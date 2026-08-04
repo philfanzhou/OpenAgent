@@ -32,6 +32,6 @@ MAF AIContextProvider
 - 无工具调用结果缓存
 
 ## Source
-- Core: `src/Core/Capabilities/`（ToolAssembler、MafToolAdapter、ToolCallDispatcher）
-- Contracts: `Agent.Contracts/`（ToolDefinition、McpToolIdentity）
-- Tests: `test/OpenAgent.Core.Tests/`（工具收集、执行路由、MCP 别名、XML 降级）
+- Core: `Backend/src/OpenAgent.Core/Capabilities/`（CapabilityToolFactory 等）
+- Contracts: `Backend/src/OpenAgent.Contracts/`
+- Tests: 无专门测试文件（待补充）

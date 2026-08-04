@@ -35,6 +35,5 @@ IRagService (RagService)
 - 适配器响应解析使用同步 `.GetAwaiter().GetResult()`
 
 ## Source
-- Core: `src/Core/Capabilities/Rag/RagService.cs`, `Adapters/QdrantAdapter.cs`, `Adapters/RagFlowAdapter.cs`
-- Contracts: `Agent.Contracts/Models/IRagAdapter.cs`
-- Tests: `test/OpenAgent.Core.Tests/Rag/`
+- Core: `Backend/src/OpenAgent.Core/Capabilities/Rag/RagService.cs`, `Backend/src/OpenAgent.Core/Capabilities/Rag/Adapters/QdrantAdapter.cs`, `Backend/src/OpenAgent.Core/Capabilities/Rag/Adapters/RagFlowAdapter.cs`
+- Contracts: `Backend/src/OpenAgent.Contracts/Models/IRagAdapter.cs`

@@ -29,6 +29,5 @@ Pipeline.ExecuteStreamAsync
 - 取消/失败写回使用 `CancellationToken.None` 确保 partial 消息不丢失
 
 ## Source
-- Core: `src/Core/Execution/Service.cs`, `Pipeline.cs`
-- Contracts: `src/Core/Abstract/IAgentPipeline.cs`
-- Tests: `test/OpenAgent.Core.Tests/Conversation/AgentRunExecutionTests.cs`
+- Core: `Backend/src/OpenAgent.Core/Runtime/Agent/`（原 Execution/ 已并入 Runtime/Agent/ 与 Exten/）
+- Tests: 无专门测试文件（待补充）

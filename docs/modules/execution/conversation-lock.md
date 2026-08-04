@@ -90,11 +90,10 @@ public interface IConversationLockHandle : IAsyncDisposable
 
 | 组件 | 位置 | 职责 |
 |------|------|------|
-| `IConversationLock` | `Agent.Contracts/Conversation/IConversationLock.cs` | 锁抽象接口 |
-| `RedisConversationLock` | `Agent.Core/src/Core/Conversation/Lock/RedisConversationLock.cs` | Redis 实现（生产） |
-| `InMemoryConversationLock` | `Agent.Core/src/Core/Conversation/Lock/InMemoryConversationLock.cs` | 内存实现（单机/测试） |
-| `ConversationPreparation` | `Agent.Core/src/Core/Execution/Phases/ConversationPreparation.cs` | turn 准备阶段获取锁；准备失败时释放 |
-| `AgentRun` | `Agent.Core/src/Core/Execution/AgentRun.cs` | 执行 finally 中释放锁并记录遥测 |
+| `IConversationLock` | `Backend/src/OpenAgent.Contracts/Conversation/IConversationLock.cs` | 锁抽象接口 |
+| `RedisConversationLock` | `Backend/src/OpenAgent.Core/Conversation/Lock/RedisConversationLock.cs` | Redis 实现（生产） |
+| `InMemoryConversationLock` | `Backend/src/OpenAgent.Core/Conversation/Lock/InMemoryConversationLock.cs` | 内存实现（单机/测试） |
+| `AgentExecutor` | `Backend/src/OpenAgent.Core/Runtime/Agent/AgentExecutor.cs` | turn 边界获取/释放锁 |
 
 ### Lua 脚本
 
@@ -189,7 +188,7 @@ Client → Router → Engine                          Redis
 ### DI 注册
 
 ```csharp
-// Agent.Core/src/Core/Extensions/ServiceExtensions.cs
+// Backend/src/OpenAgent.Core/Exten/CoreServiceExtensions.cs
 if (redis configured)
     services.AddSingleton<IConversationLock, RedisConversationLock>();
 else
@@ -200,9 +199,9 @@ else
 
 ## TASKS
 
-- [x] `IConversationLock` 接口定义（`Agent.Contracts/Conversation/`）
-- [x] `InMemoryConversationLock` 实现（`Agent.Core/src/Core/Conversation/Lock/`）
-- [x] `ConversationPreparation` 获取锁并处理准备失败释放；`AgentRun` 在非流式和流式 finally 中释放锁
+- [x] `IConversationLock` 接口定义（`Backend/src/OpenAgent.Contracts/Conversation/`）
+- [x] `InMemoryConversationLock` 实现（`Backend/src/OpenAgent.Core/Conversation/Lock/`）
+- [x] `AgentExecutor` 获取锁并处理准备失败释放；在非流式和流式 finally 中释放锁
 - [x] `RedisConversationLock` 实现 + Lua 脚本（release-lock + extend-lock）
 - [x] Heartbeat 后台任务（TTL/3 间隔）
 - [x] DI 注册扩展（条件注册 Redis/InMemory）
@@ -243,7 +242,7 @@ else
 
 ### 测试文件位置
 
-- `Agent.Core/test/OpenAgent.Core.Tests/Conversation/AgentRunConversationLockTests.cs`
+- `Backend/tests/OpenAgent.Core.Tests/Conversation/InMemoryConversationLockTests.cs`
 
 ---
 

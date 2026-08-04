@@ -31,7 +31,7 @@ DualWriteConversationStore : IConversationStore
 - 部分字段（Title、IsDeletedByUser、DeletedAt、ArchivedAt）已在表结构中，但对应功能未完全实现
 
 ## Source
-- Implementation: `src/Core/Conversation/Repository/SqlServerConversationRepository.cs`
-- Store: `src/Core/Conversation/Store/DualWriteConversationStore.cs`
-- Contracts: `Agent.Contracts/Conversation/ConversationStoreOptions.cs`
-- Tests: `test/OpenAgent.Core.Tests/Conversation/SqlServerConversationRepositoryTests.cs`
+- Implementation: `Backend/src/OpenAgent.Core/Conversation/Repository/SqlServerConversationRepository.cs`
+- Store: `Backend/src/OpenAgent.Core/Conversation/Store/DualWriteConversationStore.cs`
+- Contracts: `Backend/src/OpenAgent.Contracts/Conversation/ConversationStoreOptions.cs`
+- Tests: `Backend/tests/OpenAgent.Core.Tests/Conversation/`

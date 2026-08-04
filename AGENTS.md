@@ -6,11 +6,22 @@ OpenAgent 是基于 .NET 8.0 的多服务 Agent 平台（C#, ASP.NET Core）。
 
 ```
 Backend/
-├── Agent.Contracts/       共享接口、模型、DTO（纯契约层）
-├── Agent.Core/            核心逻辑（管道、中间件、引擎适配、会话锁）
-├── Agent.Engine/          Engine 服务（Redis 注册、健康检查、热更新）+ Host（ASP.NET Core）
-└── Agent.Hosting/         共享 DI、认证、Redis 与 OpenTelemetry 注册扩展
+├── OpenAgent.sln                  统一解决方案
+├── Directory.Build.props          编译约束（TFM、Nullable、ImplicitUsings）
+├── Directory.Packages.props       集中包版本管理（Central Package Management）
+├── src/
+│   ├── OpenAgent.Contracts/       共享接口、模型、DTO（纯契约层）
+│   ├── OpenAgent.Core/            核心逻辑（执行引擎、会话存储、MCP/RAG/Skill 能力、安全）
+│   ├── OpenAgent.Engine/          Engine 服务（Redis 注册、健康检查、热更新、配置热重载）
+│   ├── OpenAgent.Engine.Host/     ASP.NET Core 宿主（端点、中间件、流式传输）
+│   └── OpenAgent.Hosting/         共享 DI、认证、Redis 与 OpenTelemetry 注册扩展
+└── tests/
+    ├── OpenAgent.Core.Tests/
+    ├── OpenAgent.Engine.Tests/
+    └── OpenAgent.Hosting.Tests/
 ```
+
+> 项目名前缀 `OpenAgent.*` 与文件夹前缀对齐。依赖方向：Contracts ← Core ← Engine ← Hosting（不可反向）。
 
 ## 编码规则
 
@@ -33,11 +44,10 @@ Backend/
 | `docs/integrations/` | 外部依赖集成（LLM、Redis、SQL、MCP、RAG） |
 | `docs/database/` | 数据存储唯一事实源 |
 | `docs/decisions/` | 架构决策归档（ADR） |
-| `docs/planning/` | 规划文档与重构基线 |
 
 ## 关键约定
 
 - `InternalsVisibleTo` 用于测试访问 — 在假设 `internal` 可见性前先检查 `.csproj`
-- TestMCP 使用 SQLite，数据目录通过 `OPENAGENT_TEST_DATA_DIR` 环境变量指定
-- Engine Dockerfile：`Backend/Agent.Engine/src/Host/Dockerfile`
-- 依赖方向：Contracts ← Core ← Engine ← Host（不可反向）
+- 构建/测试：`dotnet build Backend/OpenAgent.sln`、`dotnet test Backend/OpenAgent.sln`
+- 包版本统一在 `Backend/Directory.Packages.props` 管理，`.csproj` 中不写 `Version`
+- 警告不全局压制；仅对预览/实验性 API（MAAI001/OPENAI001）做必要 NoWarn

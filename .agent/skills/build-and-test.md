@@ -24,12 +24,12 @@
 
 | 参数值 | Solution 路径 | 说明 |
 |--------|--------------|------|
-| `core` | `Backend/OpenAgent/Agent.Core/OpenAgent.Core.sln` | xunit |
-| `engine` | `Backend/OpenAgent/Agent.Engine/OpenAgent.Engine.sln` | xunit |
-| `router` | `Backend/OpenAgent/Agent.Router/OpenAgent.Router.sln` | xunit |
-| `channels` | `Backend/OpenAgent/Agent.Channels/OpenAgent.Channels.sln` | xunit |
-| `hosting` | `Backend/OpenAgent/Agent.Hosting/test/OpenAgent.Core.Hosting.Tests/OpenAgent.Core.Hosting.Tests.csproj` | xunit |
-| `audit` | `Backend/OpenAgent/Agent.AuditStation/OpenAgent.AuditStation.sln` | xunit；构建时可传 `-p:SkipFrontendBuild=true` |
+| `core` | `Backend/OpenAgent.sln` | xunit |
+| `engine` | `Backend/OpenAgent.sln` | xunit |
+| `router` | `Backend/OpenAgent.sln` | xunit |
+| `channels` | `Backend/OpenAgent.sln` | xunit |
+| `hosting` | `Backend/OpenAgent.sln` | xunit |
+| `audit` | `Backend/OpenAgent.sln` | xunit；构建时可传 `-p:SkipFrontendBuild=true` |
 | `integration` | `TestCode/TestEnv.sln` | MSTest + WireMock + FakeRedis，**无需外部服务** |
 | `all` | 以上全部 | 先跑 Backend/，再跑 TestCode/ |
 

@@ -14,9 +14,8 @@
 
 ## 核心代码位置
 
-- Pipeline 实现：`Backend/Agent.Core/src/Core/Execution/Pipeline.cs`
-- Service 实现：`Backend/Agent.Core/src/Core/Execution/Service.cs`
-- 会话锁实现：`Backend/Agent.Core/src/Core/Conversation/Lock/RedisConversationLock.cs`
-- 中间件：`Backend/Agent.Core/src/Core/Middleware/`、`Backend/Agent.Core/src/Core/Security/`
-- 错误码：`Backend/Agent.Contracts/Requests/AgentErrorCode.cs`
-- 异常类：`Backend/Agent.Contracts/Security/Exceptions.cs`
+- Pipeline 实现：`Backend/src/OpenAgent.Core/Runtime/Agent/AgentExecutor.cs`（原 Execution/Pipeline.cs 已并入 Runtime/Agent/）
+- 会话锁实现：`Backend/src/OpenAgent.Core/Conversation/Lock/RedisConversationLock.cs`
+- 安全服务：`Backend/src/OpenAgent.Core/Security/`（原 Middleware/ 已移入 Engine.Host/Middleware/）
+- 错误码：`Backend/src/OpenAgent.Contracts/Requests/AgentErrorCode.cs`
+- 异常类：`Backend/src/OpenAgent.Contracts/Security/Exceptions.cs`

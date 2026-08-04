@@ -32,6 +32,6 @@ Config Management ── Publish ──> Redis Pub/Sub
 - 自动化测试不模拟真实 Redis Pub/Sub 的完整生命周期
 
 ## Source
-- Core: `src/Engine/Reload/`（HotReloadService, ConfigUpdateDispatcher, LegacyMessageHandler, FullConfigRefresher）
-- Snapshot: `src/Engine/Models/ConfigSnapshot.cs`, `Config/ConfigSnapshotOptions.cs`
-- Tests: `test/OpenAgent.Engine.Tests/Config/HotReloadTests.cs`, `ConfigUpdateRegistrationTests.cs`
+- Core: `Backend/src/OpenAgent.Engine/Reload/`（HotReloadService, ConfigUpdateDispatcher, LegacyMessageHandler, FullConfigRefresher）
+- Snapshot: `Backend/src/OpenAgent.Engine/Models/ConfigSnapshot.cs`, `Backend/src/OpenAgent.Engine/Config/ConfigSnapshotOptions.cs`
+- Tests: `Backend/tests/OpenAgent.Engine.Tests/Config/HotReloadTests.cs`, `Backend/tests/OpenAgent.Engine.Tests/Config/ConfigUpdateRegistrationTests.cs`

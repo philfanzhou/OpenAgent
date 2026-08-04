@@ -28,6 +28,6 @@ ChatApi 提供 Agent.Engine 的核心 HTTP 端点，支持客户端以同步、�
 
 ## 源码位置
 
-- 端点定义：`Agent.Engine/src/Host/Extensions/EndpointExtensions.cs`
-- 中间件：`Agent.Engine/src/Host/Middleware/`
-- 流式处理：`Agent.Engine/src/Host/StreamingPayloadFactory.cs`
+- 端点定义：`Backend/src/OpenAgent.Engine.Host/Extensions/EndpointExtensions.cs`
+- 中间件：`Backend/src/OpenAgent.Engine.Host/Middleware/`
+- 流式处理：`Backend/src/OpenAgent.Engine.Host/StreamingPayloadFactory.cs`

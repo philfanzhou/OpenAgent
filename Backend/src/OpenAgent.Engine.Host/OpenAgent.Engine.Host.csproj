@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="OpenAgent.Engine.Tests" />
+    <InternalsVisibleTo Include="OpenAgent.TestFramework" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OpenAgent.Engine\OpenAgent.Engine.csproj" />
+    <ProjectReference Include="..\OpenAgent.Core\OpenAgent.Core.csproj" />
+    <ProjectReference Include="..\OpenAgent.Hosting\OpenAgent.Hosting.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -41,6 +41,6 @@ IConversationStore (热存储)
 
 ## 源码位置
 
-- 接口：`Agent.Contracts/Conversation/IConversationStore.cs`
-- 实现：`Agent.Core/src/Core/Conversation/Store/`
-- 冷归档：`Agent.Core/src/Core/Conversation/Repository/`
+- 接口：`Backend/src/OpenAgent.Contracts/Conversation/IConversationStore.cs`
+- 实现：`Backend/src/OpenAgent.Core/Conversation/Store/`
+- 冷归档：`Backend/src/OpenAgent.Core/Conversation/Repository/`

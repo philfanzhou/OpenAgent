@@ -80,7 +80,7 @@ Pipeline 中间件链 — 按注册顺序执行中间件，最终调用 AgentSer
 
 - 单元测试验证中间件链顺序
 - 单元测试验证异常转换逻辑
-- 测试文件：`test/OpenAgent.Core.Tests/Pipeline/PipelineExecutionTests.cs`
+- 测试文件：`Backend/tests/OpenAgent.Core.Tests/`（Pipeline 已移入 Runtime/Agent/）
 
 ## Design
 
@@ -112,7 +112,7 @@ AgentRequest
     "status": "implemented",
     "depends_on": [],
     "action": "Pipeline 委托链构建与执行",
-    "files": ["src/Core/Execution/Pipeline.cs"],
+    "files": ["Backend/src/OpenAgent.Core/Runtime/Agent/AgentExecutor.cs"],
     "acceptance": "中间件按注册顺序执行，核心逻辑在最后调用"
   },
   {
@@ -120,7 +120,7 @@ AgentRequest
     "status": "implemented",
     "depends_on": [],
     "action": "异常转换（AgentException → AgentResponse, Exception → AgentResponse）",
-    "files": ["src/Core/Execution/Pipeline.cs"],
+    "files": ["Backend/src/OpenAgent.Core/Runtime/Agent/AgentExecutor.cs"],
     "acceptance": "AgentException 转为对应 ErrorCode，其他异常转为 InternalError"
   },
   {
@@ -128,7 +128,7 @@ AgentRequest
     "status": "implemented",
     "depends_on": [],
     "action": "流式执行委托链构建",
-    "files": ["src/Core/Execution/Pipeline.cs"],
+    "files": ["Backend/src/OpenAgent.Core/Runtime/Agent/AgentExecutor.cs"],
     "acceptance": "流式请求正确传播 CancellationToken 和 chunks"
   },
   {
@@ -136,7 +136,7 @@ AgentRequest
     "status": "implemented",
     "depends_on": [],
     "action": "BuildContext 合并 AgentRequest 和 IAgentUserContext",
-    "files": ["src/Core/Execution/Pipeline.cs"],
+    "files": ["Backend/src/OpenAgent.Core/Runtime/Agent/AgentExecutor.cs"],
     "acceptance": "UserId, TenantId, Roles, Groups, Claims, Audience, TraceId, ConversationId, AgentId 正确传递"
   }
 ]
@@ -146,7 +146,7 @@ AgentRequest
 
 
 测试工具：xUnit + Moq
-现有测试文件：test/OpenAgent.Core.Tests/Pipeline/PipelineExecutionTests.cs
+现有测试文件：`Backend/tests/OpenAgent.Core.Tests/`
 
 ## 单元测试
 

@@ -29,6 +29,6 @@ IConversationStore
 - 降级到 InMemory 后数据仅存在于内存，重启后丢失
 
 ## Source
-- Implementation: `src/Core/Conversation/Store/RedisConversationStore.cs`
-- Contracts: `Agent.Contracts/Conversation/IConversationStore.cs`, `ConversationStoreOptions.cs`
-- Tests: `test/OpenAgent.Core.Tests/Conversation/RedisConversationStoreTests.cs`
+- Implementation: `Backend/src/OpenAgent.Core/Conversation/Store/RedisConversationStore.cs`
+- Contracts: `Backend/src/OpenAgent.Contracts/Conversation/IConversationStore.cs`, `Backend/src/OpenAgent.Contracts/Conversation/ConversationStoreOptions.cs`
+- Tests: `Backend/tests/OpenAgent.Core.Tests/Conversation/`

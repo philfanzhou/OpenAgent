@@ -29,7 +29,7 @@ ConfigProvider.GetConfigAsync(agentId)
 - 版本号与配置分离存储，`GetVersion` 缺失 key 时返回 0 而非 null
 
 ## Source
-- Interface: `src/Engine/Abstractions/IConfigSnapshot.cs`
-- Core: `src/Engine/Config/ConfigProvider.cs`, `Models/ConfigSnapshot.cs`
-- Extensions: `src/Engine/Extensions/ServiceCollectionExtensions.cs`
-- Tests: `test/OpenAgent.Engine.Tests/Config/ConfigProviderTests.cs`, `ConfigSnapshotTests.cs`
+- Interface: `Backend/src/OpenAgent.Engine/Abstractions/IConfigSnapshot.cs`
+- Core: `Backend/src/OpenAgent.Engine/Config/ConfigProvider.cs`, `Backend/src/OpenAgent.Engine/Models/ConfigSnapshot.cs`
+- Extensions: `Backend/src/OpenAgent.Engine/Extensions/ServiceCollectionExtensions.cs`
+- Tests: `Backend/tests/OpenAgent.Engine.Tests/Config/`

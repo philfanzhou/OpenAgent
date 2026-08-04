@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <AssemblyName>OpenAgent.Engine.Tests</AssemblyName>
+    <RootNamespace>OpenAgent.Engine.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\OpenAgent.Engine\OpenAgent.Engine.csproj" />
+    <ProjectReference Include="..\..\src\OpenAgent.Engine.Host\OpenAgent.Engine.Host.csproj" />
+    <ProjectReference Include="..\..\src\OpenAgent.Hosting\OpenAgent.Hosting.csproj" />
+    <ProjectReference Include="..\..\src\OpenAgent.Contracts\OpenAgent.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

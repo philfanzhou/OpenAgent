@@ -27,6 +27,6 @@ Skill 是 Agent.Core 中模型可调用的执行能力，用于承载明确的�
 - 无技能参数验证链路（`SkillValidationFailed` 错误码已定义但未使用）
 
 ## Source
-- Core: `src/Core/Capabilities/Skill/SkillProvider.cs`, `SkillService.cs`
-- Contracts: `Agent.Contracts/`（ISkill, ISkillProvider, ISkillService, IToolRegistry）
-- Tests: `test/OpenAgent.Core.Tests/Skill/`
+- Core: `Backend/src/OpenAgent.Core/Capabilities/Skill/SkillProvider.cs`, `Backend/src/OpenAgent.Core/Capabilities/Skill/SkillCatalog.cs`
+- Contracts: `Backend/src/OpenAgent.Contracts/`（ISkill, ISkillProvider, ISkillService, IToolRegistry）
+- Tests: 无专门测试文件（待补充）

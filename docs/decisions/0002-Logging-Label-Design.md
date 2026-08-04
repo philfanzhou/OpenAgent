@@ -44,8 +44,8 @@ Engine:
 
 位置:
 
-- `Backend/OpenAgent/Agent.Engine/src/Host/appsettings.json`
-- `Backend/OpenAgent/Agent.Engine/src/Host/appsettings.Development.json`
+- `Backend/src/OpenAgent.Engine.Host/appsettings.json`
+- `Backend/src/OpenAgent.Engine.Host/appsettings.Development.json`
 
 Router:
 
@@ -54,11 +54,6 @@ Router:
   { "key": "service", "value": "OpenAgent.Engine" }
 ]
 ```
-
-位置:
-
-- `Backend/OpenAgent/Agent.Router/src/Router/appsettings.json`
-- `Backend/OpenAgent/Agent.Router/src/Router/appsettings.Development.json`
 
 生产 compose 额外追加:
 
@@ -94,7 +89,7 @@ loggerConfiguration
 
 位置:
 
-- `Backend/OpenAgent/Agent.Hosting/src/SerilogHostBuilderExtensions.cs`
+- `Backend/src/OpenAgent.Hosting/SerilogHostBuilderExtensions.cs`
 
 Engine 启动传入:
 

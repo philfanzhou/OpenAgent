@@ -5,16 +5,14 @@ ErrorHandling 模块提供 Agent.Engine 的全局异常处理机制，确保所�
 ## Core Capabilities
 | Capability | Description |
 |-----------|-------------|
-| 全局异常捕获 | `GlobalExceptionHandlerMiddleware` 捕获常规 HTTP 异常，返回 ProblemDetails |
-| SSE 错误处理 | `SseErrorHandlerMiddleware` 处理 SSE 端点异常，返回 SSE 格式错误事件 |
+| 全局异常捕获 | `AgentExceptionHandlerMiddleware` 捕获常规 HTTP 异常，返回 ProblemDetails |
 | 流式错误载荷 | `StreamingPayloadFactory` 构造流式错误载荷 |
 | AgentErrorCode 映射 | 按 ErrorCode 分组映射 HTTP 状态码（403/404/429/400/503/500）|
 
 ## Architecture
 ```text
 HTTP 请求
-  → SseErrorHandlerMiddleware（仅 /sse 路径：异常→SSE error+done 事件）
-  → GlobalExceptionHandlerMiddleware（异常→ProblemDetails）
+  → AgentExceptionHandlerMiddleware（异常→ProblemDetails，SSE 路径逻辑已并入 EndpointExtensions）
   → Endpoint Handlers
 ```
 
@@ -35,7 +33,7 @@ HTTP 请求
 - SSE 端点检测通过路径包含 `/sse` 判断，可能误匹配
 
 ## Source
-- Core: `src/Host/Middleware/GlobalExceptionHandlerMiddleware.cs`, `SseErrorHandlerMiddleware.cs`
-- Payload: `src/Host/StreamingPayloadFactory.cs`
-- Orchestration: `src/Host/Program.cs`
+- Core: `Backend/src/OpenAgent.Engine.Host/Middleware/AgentExceptionHandlerMiddleware.cs`
+- Payload: `Backend/src/OpenAgent.Engine.Host/StreamingPayloadFactory.cs`
+- Orchestration: `Backend/src/OpenAgent.Engine.Host/Program.cs`
 - Tests: 无专门测试文件（待补充）

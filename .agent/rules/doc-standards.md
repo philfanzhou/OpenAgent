@@ -25,10 +25,13 @@
 │   └── review-archive/                ← 历史审阅记录
 │
 └── Backend/
-    ├── Agent.Contracts/               ← 源码（无散落文档）
-    ├── Agent.Core/                    ← 源码（无散落文档）
-    ├── Agent.Engine/                  ← 源码（无散落文档）
-    └── Agent.Hosting/                 ← 源码（无散落文档）
+    ├── src/
+    │   ├── OpenAgent.Contracts/       ← 源码（无散落文档）
+    │   ├── OpenAgent.Core/            ← 源码（无散落文档）
+    │   ├── OpenAgent.Engine/          ← 源码（无散落文档）
+    │   ├── OpenAgent.Engine.Host/     ← 源码（无散落文档）
+    │   └── OpenAgent.Hosting/         ← 源码（无散落文档）
+    └── tests/                         ← 测试项目
 ```
 
 > **原则**：源码目录只放代码，所有正式文档统一收入 `docs/`。
@@ -46,7 +49,7 @@
 ### 2.2 内容原则
 
 - **单一事实源**：每个知识点只在一处描述，其他位置用链接引用
-- **源文件引用**：关键实现标注路径 `` `src/Core/Foo.cs` ``
+- **源文件引用**：关键实现标注路径 `` `Backend/src/OpenAgent.Core/Foo.cs` ``
 - **推断标注**：基于代码推断但未验证的内容，标注 `[推断]` 或 `[待确认]`
 - **交叉引用**：相关文档间使用相对路径链接
 - **语言**：文档内容使用中文；代码注释和字符串使用英文（与编码规范一致）

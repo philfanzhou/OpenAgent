@@ -41,6 +41,6 @@ Engine Host
 
 ## 源码位置
 
-- 接口：`Agent.Engine/src/Engine/Abstractions/IRedisConnectionProvider.cs`
-- 实现：`Agent.Engine/src/Engine/Redis/`
-- 健康检查：`Agent.Engine/src/Engine/Redis/HealthChecks/`
+- 接口：`Backend/src/OpenAgent.Engine/Abstractions/IRedisConnectionProvider.cs`
+- 实现：`Backend/src/OpenAgent.Engine/Redis/`
+- 健康检查：`Backend/src/OpenAgent.Engine/Redis/ConfigHealthCheck.cs`、`LlmHealthCheck.cs`、`RedisHealthCheck.cs`

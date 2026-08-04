@@ -26,7 +26,7 @@ TenantValidation 中间件确保请求的用户上下文中包含有效的 Tenan
 - 不混入业务逻辑，存储层负责实际数据隔离
 
 ## Source
-- Implementation: `src/Core/Security/TenantValidation.cs`
-- Contract: `OpenAgent.Core.Abstract`（`IAgentMiddleware`）
-- Exception: `Agent.Contracts/Security/TenantDataIsolationException.cs`
-- Tests: `test/OpenAgent.Core.Tests/Middleware/TenantValidationTests.cs`
+- Implementation: `Backend/src/OpenAgent.Engine.Host/Middleware/AgentUserContextMiddleware.cs`, `Backend/src/OpenAgent.Engine.Host/Middleware/EngineAdmissionMiddleware.cs`（TenantValidation 已移入 Host）
+- Contract: `Backend/src/OpenAgent.Core.Abstract/`（`IAgentMiddleware`）
+- Exception: `Backend/src/OpenAgent.Contracts/Security/TenantDataIsolationException.cs`
+- Tests: 无专门测试文件（待补充）

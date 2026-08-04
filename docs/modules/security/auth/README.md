@@ -26,6 +26,6 @@ Auth 中间件是 Agent Pipeline 中的安全关卡，负责验证请求用户�
 - 不使用 HTTP 401/403 语义，由宿主层负责 HTTP 映射
 
 ## Source
-- Implementation: `src/Core/Security/Auth.cs`
-- Contract: `src/Core/Security/IPermissionEvaluator.cs`
-- Tests: `test/OpenAgent.Core.Tests/Middleware/AuthTests.cs`
+- Implementation: `Backend/src/OpenAgent.Engine.Host/Middleware/AgentUserContextMiddleware.cs`, `Backend/src/OpenAgent.Engine.Host/Middleware/EngineAdmissionMiddleware.cs`（Auth 中间件已移入 Host）
+- Contract: `Backend/src/OpenAgent.Core/Security/IAgentAuthorizationService.cs`
+- Tests: 无专门测试文件（待补充）

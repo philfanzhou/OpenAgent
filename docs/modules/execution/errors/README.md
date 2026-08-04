@@ -32,6 +32,6 @@ Service层取消/失败:
 - 流式路径异常通过 `ExceptionDispatchInfo.Capture` 延迟重新抛出
 
 ## Source
-- Contracts: `Agent.Contracts/Security/Exceptions.cs`, `Requests/AgentErrorCode.cs`
-- Core: `src/Core/Execution/Pipeline.cs`, `Service.cs`
-- Tests: `test/OpenAgent.Core.Tests/Conversation/AgentRunExecutionTests.cs`
+- Contracts: `Backend/src/OpenAgent.Contracts/Security/Exceptions.cs`, `Backend/src/OpenAgent.Contracts/Requests/AgentErrorCode.cs`
+- Core: `Backend/src/OpenAgent.Core/Runtime/Agent/`（原 Execution/ 已并入 Runtime/Agent/ 与 Exten/）
+- Tests: 无专门测试文件（待补充）
