@@ -13,7 +13,7 @@
 4. 通过 `IAgentEngineFactory` 注册；扩展方法必须使用 `TryAdd*` 或等价逻辑保证重复调用幂等。
 5. 使用 `[LoggerMessage]` 源生成日志，为新事件分配稳定且不冲突的 EventId。
 6. 先写引擎单元测试，再补 Factory/DI 注册测试和必要的 TestFramework 集成测试。
-7. 更新 `Agent.Core/docs/modules/engine/`、LLM 集成文档和根文档导航。
+7. 更新 `docs/modules/engine/`、LLM 集成文档和根文档导航。
 
 ## 验证
 

@@ -27,8 +27,8 @@
 在动手写代码前，先阅读以下参考文件：
 
 **MCP 协议与架构：**
-- `Agent.Core/docs/modules/capabilities/mcp/` — MCP 能力文档
-- `Agent.Core/docs/Integration/mcp-server/` — MCP 集成文档
+- `docs/modules/capabilities/mcp/` — MCP 能力文档
+- `docs/integrations/mcp-server/` — MCP 集成文档
 - `Agent.Core/src/Core/` — IMcpClient 接口和 McpClient 实现
 
 **测试 MCP 服务器（生产级参考）：**
@@ -109,7 +109,7 @@
 ### 第五阶段：更新文档
 
 确认以下文档是否需要更新：
-- `Agent.Core/docs/modules/capabilities/mcp/` — 如果新增能力类型
+- `docs/modules/capabilities/mcp/` — 如果新增能力类型
 - `AGENTS.md` — 如果约定或配置方式变化
 
 ---

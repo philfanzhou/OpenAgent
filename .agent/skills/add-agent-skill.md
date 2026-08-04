@@ -27,7 +27,7 @@
 在动手写代码前，先阅读以下参考文件：
 
 **技能系统架构：**
-- `Agent.Core/docs/modules/capabilities/skill/` — 技能能力文档
+- `docs/modules/capabilities/skill/` — 技能能力文档
 - `Agent.Core/src/Core/` — ISkillService、ISkillProvider 接口
 
 **现有技能实现（最佳参考）：**
@@ -119,7 +119,7 @@ public class MyNewSkill : SkillBase
 
 ### 第五阶段：更新文档
 
-- `Agent.Core/docs/modules/capabilities/skill/` — 如果新增技能模式
+- `docs/modules/capabilities/skill/` — 如果新增技能模式
 - `AGENTS.md` — 如果约定变化
 
 ---

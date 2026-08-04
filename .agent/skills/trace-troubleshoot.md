@@ -405,8 +405,8 @@ curl -fsS -X POST "${GRAFANA_URL}/api/ds/query" \
 ## 7. 相关文档
 
 - `deploy/docs/Observability-Design.md`
-- `Backend/OpenAgent/Agent.Hosting/docs/Logging-Label-Design.md`
-- `Backend/OpenAgent/Agent.Hosting/docs/Logging-Framework-Decision.md`
+- `docs/decisions/0002-Logging-Label-Design.md`
+- `docs/decisions/0001-Logging-Framework-Serilog-Loki.md`
 - `deploy/observability/docker-compose.yml`
 - `deploy/observability/grafana/dashboards/agent-observability.json`
 - `deploy/observability/grafana/provisioning/datasources/loki.yaml`

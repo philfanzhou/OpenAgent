@@ -27,7 +27,7 @@
 在动手前，先阅读：
 
 **提供商集成架构：**
-- `Agent.Core/docs/Integration/llm-provider/` — LLM 提供商集成文档
+- `docs/integrations/llm-provider/` — LLM 提供商集成文档
 - `Agent.Core/src/OpenAIDriver/` — OpenAI 兼容驱动（处理所有标准 API）
 - `Agent.Contracts/Configuration/AgentConfig.cs` — LlmProviderProfile、ApiFormat 定义
 
@@ -74,7 +74,7 @@
 2. 实现 `IAgentEngine` 接口（ChatCompletion + StreamChatCompletion）
 3. 如提供商有独特配置需求，实现 `ILlmRegistry` 适配器
 4. 在 `ServiceExtensions.cs` 中注册
-5. 添加文档到 `Agent.Core/docs/modules/engine/<provider-name>/`
+5. 添加文档到 `docs/modules/engine/<provider-name>/`
 
 ### 第四阶段：验证
 
@@ -90,9 +90,9 @@ cd TestCode/scripts
 
 ### 第五阶段：更新文档
 
-- 根 `README.md` 与 `Agent.Core/docs/Integration/llm-provider/` — 仅在新增适配器或约定时更新
+- 根 `README.md` 与 `docs/integrations/llm-provider/` — 仅在新增适配器或约定时更新
 - `TestCode/README.md` — 更新提供商表格
-- `Agent.Core/docs/Integration/llm-provider/` — 如果是自定义适配器
+- `docs/integrations/llm-provider/` — 如果是自定义适配器
 
 ---
 

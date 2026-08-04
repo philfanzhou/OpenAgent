@@ -62,7 +62,7 @@
 - [ ] sync/async 是否混用在同一条调用链中？
 - [ ] `var` 是否只在类型明显时使用？
 - [ ] Nullable 引用类型是否正确处理了 null 检查？
-- [ ] 新功能的文档是否需要更新？（Agent.Core/docs/、AGENTS.md、.agent/）
+- [ ] 新功能的文档是否需要更新？（docs/、AGENTS.md、.agent/）
 
 ---
 

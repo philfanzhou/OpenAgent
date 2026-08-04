@@ -38,9 +38,9 @@ Contracts ← Core ← Engine/Router ← Host
 
 | 需更新的文档 | 条件 |
 |-------------|------|
-| `Agent.Core/docs/modules/` | 新增核心能力（MCP/Skill/RAG/Engine） |
-| `Agent.Core/docs/Integration/` | 新增外部集成 |
-| `Agent.Core/docs/overview/` | 架构或核心流程变化 |
+| `docs/modules/` | 新增核心能力（MCP/Skill/RAG/Engine） |
+| `docs/integrations/` | 新增外部集成 |
+| `docs/overview/` | 架构或核心流程变化 |
 | `AGENTS.md` | 约定、约束或入口命令变化 |
 | `.agent/rules/coding-conventions.md` | 编码规范变化 |
 | `.agent/skills/` | 新增开发工作流 |
@@ -88,7 +88,7 @@ Contracts ← Core ← Engine/Router ← Host
 ---
 
 ## 参考文件
-- 架构概览：`Agent.Core/docs/overview/SystemContext.md`
-- 核心设计：`Agent.Core/docs/overview/Design.md`
+- 架构概览：`docs/overview/SystemContext.md`
+- 核心设计：`docs/overview/Design.md`
 - 编码规范：`.agent/rules/coding-conventions.md`
 - 代码审查清单：`.agent/prompts/code-review.md`
