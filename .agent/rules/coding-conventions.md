@@ -257,40 +257,43 @@ public async void GetUser(int id) { ... }
 
 ## 7. 项目结构
 
-### 7.1 Agent.Core 项目结构
+### 7.1 OpenAgent.Core 项目结构
 
 ```
-Agent.Core/
-├── src/
-│   ├── Core/               # 核心逻辑（Pipeline, Service, Middleware）
-│   │   ├── Execution/      # 执行管线
-│   │   ├── Capabilities/   # MCP / RAG / Skill
-│   │   ├── Conversation/   # 会话存储与锁
-│   │   └── Security/       # 中间件
-│   └── Exten/              # 扩展方法
-├── test/
-│   └── OpenAgent.Core.Tests/
-└── docs/                    # 已迁移到顶层 docs/
+Backend/src/OpenAgent.Core/
+├── Abstract/               # 抽象接口
+├── Capabilities/           # MCP / RAG / Skill
+├── Conversation/           # 会话存储与锁
+├── Exten/                  # 扩展方法
+├── Models/                 # 领域模型
+├── Routing/                # 路由
+├── Runtime/                # 运行时（含 Agent/）
+└── Security/               # 中间件
+
+Backend/tests/OpenAgent.Core.Tests/   # 单元测试
 ```
 
-### 7.2 Agent.Engine 项目结构
+### 7.2 OpenAgent.Engine 项目结构
 
 ```
-Agent.Engine/
-├── src/
-│   ├── Engine/                    # 运行时类库
-│   │   ├── Abstractions/          # IConfigSnapshot, IEngineRegistry
-│   │   ├── Config/                # 配置读取
-│   │   ├── Reload/                # 热更新
-│   │   ├── Registry/              # 服务注册与心跳
-│   │   └── Runtime/               # 运行时服务
-│   └── Host/                      # Web API 宿主
-│       ├── Extensions/            # EndpointExtensions
-│       ├── Middleware/            # 异常处理中间件
-│       └── Program.cs
-├── test/
-│   └── OpenAgent.Engine.Tests/
-└── docs/                          # 已迁移到顶层 docs/
+Backend/src/OpenAgent.Engine/        # 运行时类库
+├── Abstractions/          # IConfigSnapshot, IEngineRegistry
+├── Config/                # 配置读取
+├── Extensions/            # 服务注册扩展
+├── Models/                # 配置模型
+├── Observability/         # 可观测性
+├── Redis/                 # Redis 连接与健康检查
+├── Registry/              # 服务注册与心跳
+├── Reload/                # 热更新
+└── Runtime/               # 运行时服务
+
+Backend/src/OpenAgent.Engine.Host/   # Web API 宿主
+├── Attachments/           # 附件处理
+├── Extensions/            # EndpointExtensions
+├── Middleware/            # 异常处理中间件
+└── Program.cs
+
+Backend/tests/OpenAgent.Engine.Tests/ # 单元测试
 ```
 
 ### 7.3 项目引用规则
@@ -448,8 +451,8 @@ catch (RedisConnectionException ex)
 
 | 测试类型 | 框架 | 位置 |
 |---------|------|------|
-| Core 单元测试 | xUnit + Moq | `Agent.Core/<Module>.Tests/` |
-| Engine 单元测试 | xUnit + Moq | `Agent.Engine/test/` |
+| Core 单元测试 | xUnit + Moq | `Backend/tests/OpenAgent.Core.Tests/<Module>/` |
+| Engine 单元测试 | xUnit + Moq | `Backend/tests/OpenAgent.Engine.Tests/` |
 | Router 单元测试 | xUnit 2.6.2 + Moq 4.20.70 | `Agent.Router/test/` |
 | 集成测试 | MSTest | `TestCode/Agent.TestEngine/` |
 | E2E 测试 | PowerShell | `TestCode/scripts/` |

@@ -31,7 +31,7 @@ DualWriteConversationStore : IConversationStore
 - 无软删除、会话标题生成等（部分在 SQL Server 实现中规划）
 
 ## Source
-- Implementation: `src/Core/Conversation/Repository/SqliteConversationRepository.cs`
-- Store: `src/Core/Conversation/Store/DualWriteConversationStore.cs`
-- Contracts: `Agent.Contracts/Conversation/ConversationStoreOptions.cs`
-- Tests: `test/OpenAgent.Core.Tests/Conversation/SqliteConversationRepositoryTests.cs`
+- Implementation: `Backend/src/OpenAgent.Core/Conversation/Repository/SqliteConversationRepository.cs`
+- Store: `Backend/src/OpenAgent.Core/Conversation/Store/DualWriteConversationStore.cs`
+- Contracts: `Backend/src/OpenAgent.Contracts/Conversation/ConversationStoreOptions.cs`
+- Tests: `Backend/tests/OpenAgent.Core.Tests/Conversation/`

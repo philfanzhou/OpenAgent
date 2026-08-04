@@ -35,7 +35,6 @@ ModelContextProtocol.Core 1.4.1
 - `Http` 类型的 URL 必须是完整 MCP endpoint，不自动追加 `/mcp`
 
 ## Source
-- Core: `src/Core/Capabilities/Mcp/`（McpClient, McpConnection, McpTransportFactory, McpToolInvoker 等）
-- Connection: `src/Core/Execution/Tools/McpConnectionManager.cs`
-- Contracts: `Agent.Contracts/Mcp/IMcpClient.cs`
-- Tests: `test/OpenAgent.Core.Tests/Mcp/`
+- Core: `Backend/src/OpenAgent.Core/Capabilities/Mcp/`（McpClient, McpConnection, McpTransportFactory, McpToolInvoker 等）
+- Contracts: `Backend/src/OpenAgent.Contracts/Mcp/IMcpClient.cs`
+- Tests: 无专门测试文件（待补充）

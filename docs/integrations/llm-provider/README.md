@@ -18,10 +18,9 @@
 
 | 文件 | 职责 |
 |---|---|
-| `src/Core/Capabilities/Llm/LlmRegistry.cs` | Profile 注册与配置解析 |
-| `src/Core/Runtime/Maf/MafChatClientFactory.cs` | API 格式到 Provider client |
-| `src/Core/Execution/Phases/IdentityResolution.cs` | 固定本 turn 的授权模型快照 |
-| `src/Core/Runtime/Maf/MafAgentFactory.cs` | 创建 ChatClientAgent、AgentSession 扩展和函数循环配置 |
+| `Backend/src/OpenAgent.Core/Models/LlmRegistry.cs` | Profile 注册与配置解析 |
+| `Backend/src/OpenAgent.Core/Runtime/Agent/AgentChatClientFactory.cs` | API 格式到 Provider client |
+| `Backend/src/OpenAgent.Core/Runtime/Agent/AgentFactory.cs` | 创建 ChatClientAgent、AgentSession 扩展和函数循环配置 |
 
 ## Specification
 

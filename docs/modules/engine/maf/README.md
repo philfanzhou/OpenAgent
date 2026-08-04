@@ -5,7 +5,7 @@
 ## 概述
 
 MAF 是 Agent.Core 唯一生产运行时，而不是 `IAgentEngine` 的一种实现。运行时代码位于
-`src/Core/Runtime/Maf/`，随 Core 直接编译和注册。
+`Backend/src/OpenAgent.Core/Runtime/Agent/`，随 Core 直接编译和注册。
 
 ## 能力
 
@@ -30,12 +30,11 @@ MAF 是 Agent.Core 唯一生产运行时，而不是 `IAgentEngine` 的一种实
 
 | 文件 | 职责 |
 |---|---|
-| `src/Core/Runtime/Maf/MafAgentFactory.cs` | 创建 MAF Agent 与原生 provider |
-| `src/Core/Runtime/Maf/MafChatClientFactory.cs` | 模型 Provider |
-| `src/Core/Runtime/Maf/MafToolAdapter.cs` | 平台能力到 `AIFunction` |
-| `src/Core/Runtime/Maf/MafMessageAdapter.cs` | 消息和附件 |
-| `src/Core/Runtime/Maf/MafResponseReader.cs` | 原生 usage 读取 |
-| `src/Core/Execution/AgentRun.cs` | 平台 turn 边界 |
+| `Backend/src/OpenAgent.Core/Runtime/Agent/AgentFactory.cs` | 创建 MAF Agent 与原生 provider |
+| `Backend/src/OpenAgent.Core/Runtime/Agent/AgentChatClientFactory.cs` | 模型 Provider |
+| `Backend/src/OpenAgent.Core/Runtime/Agent/AgentResponseAdapter.cs` | 平台能力到 `AIFunction` 及响应适配 |
+| `Backend/src/OpenAgent.Core/Runtime/Agent/AgentMessageAdapter.cs` | 消息和附件 |
+| `Backend/src/OpenAgent.Core/Runtime/Agent/AgentExecutor.cs` | 原生执行与 turn 边界 |
 
 ## Specification
 

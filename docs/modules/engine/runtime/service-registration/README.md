@@ -28,8 +28,8 @@ HeartbeatService (BackgroundService)
 - 注销失败依赖 TTL 自然过期
 
 ## Source
-- Interface: `src/Engine/Abstractions/IEngineRegistry.cs`
-- Core: `src/Engine/Registry/RedisRegistry.cs`, `Redis/HeartbeatService.cs`
-- Models: `src/Engine/Models/HeartbeatOptions.cs`, `RegistryEntry.cs`
-- Extensions: `src/Engine/Extensions/ServiceCollectionExtensions.cs`
+- Interface: `Backend/src/OpenAgent.Engine/Abstractions/IEngineRegistry.cs`
+- Core: `Backend/src/OpenAgent.Engine/Registry/RedisRegistry.cs`, `Backend/src/OpenAgent.Engine/Runtime/HeartbeatService.cs`
+- Models: `Backend/src/OpenAgent.Engine/Models/HeartbeatOptions.cs`, `Backend/src/OpenAgent.Engine/Models/RegistryEntry.cs`
+- Extensions: `Backend/src/OpenAgent.Engine/Extensions/ServiceCollectionExtensions.cs`
 - Tests: 无专门测试文件（待补充）

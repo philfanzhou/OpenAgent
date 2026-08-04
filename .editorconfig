@@ -1,7 +1,5 @@
 # OpenAgent — .editorconfig
-# 编码约束配置化：命名、格式、Nullable、样式规则。
-# 与 .agent/rules/coding-conventions.md 互补：本文件管"机器可检查"的规则，
-# 文档管"机器无法检查"的规则（依赖方向、DI 模式、错误处理等）。
+# 只保留"影响一致性/防 bug"的规则，风格偏好交给代码审查和 IDE 默认值。
 
 root = true
 
@@ -14,87 +12,18 @@ trim_trailing_whitespace = true
 insert_final_newline = true
 
 [*.cs]
-# ── 命名风格 ──
-# 接口 I 前缀
-dotnet_naming_rule.interface_prefix.severity = suggestion
-dotnet_naming_rule.interface_prefix.symbols = interface_symbols
-dotnet_naming_rule.interface_prefix.style = i_prefix_style
-dotnet_naming_symbols.interface_symbols.applicable_kinds = interface
-dotnet_naming_style.i_prefix_style.required_prefix = I
-dotnet_naming_style.i_prefix_style.capitalization = pascal_case
-
-# 异步方法 Async 后缀
-dotnet_naming_rule.async_suffix.severity = suggestion
-dotnet_naming_rule.async_suffix.symbols = async_symbols
-dotnet_naming_rule.async_suffix.style = async_suffix_style
-dotnet_naming_symbols.async_symbols.applicable_methods = method
-dotnet_naming_symbols.async_symbols.required_modifiers = async
-dotnet_naming_style.async_suffix_style.required_suffix = Async
-dotnet_naming_style.async_suffix_style.capitalization = pascal_case
-
-# 私有字段 _ 前缀
-dotnet_naming_rule.private_field_prefix.severity = suggestion
-dotnet_naming_rule.private_field_prefix.symbols = private_field_symbols
-dotnet_naming_rule.private_field_prefix.style = underscore_prefix_style
-dotnet_naming_symbols.private_field_symbols.applicable_kinds = field
-dotnet_naming_symbols.private_field_symbols.applicable_accessibilities = private
-dotnet_naming_style.underscore_prefix_style.required_prefix = _
-dotnet_naming_style.underscore_prefix_style.capitalization = camel_case
-
-# ── 代码样式 ──
-# 文件作用域命名空间（分号结尾）
+# 文件作用域命名空间（现代 C# 默认）
 csharp_style_namespace_declarations = file_scoped:warning
 
-# var 偏好
-csharp_style_var_for_built_in_types = false:suggestion
-csharp_style_var_when_type_is_apparent = true:suggestion
-csharp_style_var_elsewhere = true:silent
-
-# 表达式体
-csharp_style_expression_bodied_methods = when_on_single_line:suggestion
-csharp_style_expression_bodied_constructors = false:silent
-csharp_style_expression_bodied_properties = true:suggestion
-
-# 模式匹配
-csharp_style_pattern_matching_over_is_with_cast_check = true:warning
-csharp_style_pattern_matching_over_as_with_null_check = true:warning
-
-# Null 检查
-csharp_style_throw_expression = true:suggestion
-csharp_style_conditional_delegate_call = true:suggestion
-
-# 修饰符
-csharp_preferred_modifier_order = public,private,protected,internal,file,static,extern,new,virtual,abstract,override,sealed,unsafe,volatile,async:warning
+# 必须写访问修饰符（避免忘记 internal/public）
 dotnet_style_require_accessibility_modifiers = always:warning
 
-# ── 格式化 ──
-csharp_new_line_before_open_brace = all
-csharp_new_line_before_else = true
-csharp_new_line_before_catch = true
-csharp_new_line_before_finally = true
-csharp_new_line_before_members_in_object_initializers = true
-csharp_new_line_before_members_in_anonymous_types = true
-
-csharp_indent_case_contents = true
-csharp_indent_switch_labels = true
-csharp_indent_labels = flush_left
-
-csharp_space_after_cast = false
-csharp_space_after_keywords_in_control_flow_statements = true
-csharp_space_between_method_call_parameter_list_parentheses = false
-csharp_space_between_method_declaration_parameter_list_parentheses = false
-
+# 禁止单行语句（if(x) y;）
 csharp_preserve_single_line_statements = false
-csharp_preserve_single_line_blocks = true
 
-# ── using 排序 ──
+# 修饰符顺序统一
+csharp_preferred_modifier_order = public,private,protected,internal,file,static,extern,new,virtual,abstract,override,sealed,unsafe,volatile,async:warning
+
+# using 排序
 dotnet_sort_system_directives_first = true
 dotnet_separate_import_directive_groups = false
-
-# ── 可空注解 ──
-# 在 Directory.Build.props 全局启用 <Nullable>enable</Nullable>，这里只做补充提醒
-dotnet_diagnostic.CS8600.severity = warning
-dotnet_diagnostic.CS8601.severity = warning
-dotnet_diagnostic.CS8602.severity = warning
-dotnet_diagnostic.CS8603.severity = warning
-dotnet_diagnostic.CS8604.severity = warning

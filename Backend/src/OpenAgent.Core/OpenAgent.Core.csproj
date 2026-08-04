@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="OpenAgent.Core.Tests" />
+    <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol.Core" />
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" />
+    <PackageReference Include="System.Net.Http.Json" />
+    <PackageReference Include="StackExchange.Redis" />
+    <PackageReference Include="Microsoft.Data.SqlClient" />
+    <PackageReference Include="Microsoft.Agents.AI" />
+    <PackageReference Include="Microsoft.Agents.AI.Anthropic" />
+    <PackageReference Include="Microsoft.Agents.AI.OpenAI" />
+    <PackageReference Include="Microsoft.Extensions.AI" />
+    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" />
+    <PackageReference Include="OpenAI" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <NoWarn>$(NoWarn);MAAI001;OPENAI001</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OpenAgent.Contracts\OpenAgent.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Conversation/Scripts/AppendMessages.lua"
+                      LogicalName="OpenAgent.Core.Conversation.Scripts.AppendMessages.lua" />
+    <EmbeddedResource Include="Conversation/Scripts/LockRelease.lua"
+                      LogicalName="OpenAgent.Core.Conversation.Scripts.LockRelease.lua" />
+    <EmbeddedResource Include="Conversation/Scripts/LockExtend.lua"
+                      LogicalName="OpenAgent.Core.Conversation.Scripts.LockExtend.lua" />
+    <EmbeddedResource Include="Conversation/Repository/Scripts/SqlServerSchema.sql"
+                      LogicalName="OpenAgent.Core.Conversation.Repository.Scripts.SqlServerSchema.sql" />
+    <EmbeddedResource Include="Conversation/Repository/Scripts/SqliteSchema.sql"
+                      LogicalName="OpenAgent.Core.Conversation.Repository.Scripts.SqliteSchema.sql" />
+  </ItemGroup>
+
+</Project>

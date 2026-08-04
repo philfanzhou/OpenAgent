@@ -19,14 +19,13 @@
 
 ## 工作流
 
-1. 阅读 `Backend/OpenAgent/Agent.Channels/docs/Agent.Channels.Design.md` 和受影响适配器。
+1. 阅读 Agent.Channels 设计文档和受影响适配器。
 2. 先补相应测试；涉及时间的逻辑注入 `TimeProvider`，不得用短时 `Thread.Sleep`。
 3. 保持 Contracts 和 Hosting 以外的生产项目引用为零。
 4. 使用 `ChannelLog` 的 `[LoggerMessage]` 方法，新增稳定 EventId。
-5. 运行 `dotnet test Backend/OpenAgent/Agent.Channels/OpenAgent.Channels.sln`。
+5. 运行 `dotnet test Backend/OpenAgent.sln`。
 
 ## 参考
 
-- `Backend/OpenAgent/Agent.Channels/docs/Agent.Channels.CodeWalkthrough.md`
 - `.agent/rules/coding-conventions.md`
 - `.agent/skills/build-and-test.md`

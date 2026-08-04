@@ -5,24 +5,23 @@ OpenAgent 是基于 .NET 8 和 ASP.NET Core 的多服务 Agent 平台。生产�
 ## 模块结构
 
 ```text
-Agent.Engine ──> Agent.Core ──> LLM / MCP / RAG
-
-Agent.Contracts  <- 共享接口与契约
-Agent.Hosting    <- 共享宿主、认证与可观测性注册
+OpenAgent.Engine.Host ──> OpenAgent.Engine ──> OpenAgent.Core ──> OpenAgent.Contracts
+                                      └──> OpenAgent.Hosting ──> OpenAgent.Contracts
 ```
 
 | 模块 | 职责 |
 |------|------|
-| `Agent.Contracts` | 跨模块接口、配置与 DTO |
-| `Agent.Core` | 执行管道、引擎适配、会话、工具与安全 |
-| `Agent.Engine` | Agent 执行服务、注册表、健康检查与热更新 |
-| `Agent.Hosting` | 共享宿主、JWT、Redis 与 OpenTelemetry 注册 |
+| `OpenAgent.Contracts` | 跨模块接口、配置与 DTO（纯契约层） |
+| `OpenAgent.Core` | 执行引擎、会话存储、MCP/RAG/Skill 能力、安全 |
+| `OpenAgent.Engine` | Agent 执行服务、注册表、健康检查、配置热重载 |
+| `OpenAgent.Engine.Host` | ASP.NET Core 宿主（端点、中间件、流式传输） |
+| `OpenAgent.Hosting` | 共享宿主、JWT、Redis 与 OpenTelemetry 注册 |
 
 ## 构建与测试
 
 ```bash
-dotnet test Backend/OpenAgent/Agent.Core/OpenAgent.Core.sln
-dotnet test Backend/OpenAgent/Agent.Engine/OpenAgent.Engine.sln
+dotnet build Backend/OpenAgent.sln
+dotnet test Backend/OpenAgent.sln
 ```
 
 ## 文档

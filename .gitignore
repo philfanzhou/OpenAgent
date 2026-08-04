@@ -4,6 +4,7 @@
 [Dd]ebug/
 [Rr]elease/
 x64/
+x64/
 x86/
 [Ww][Ii][Nn]32/
 [Aa][Rr][Mm]/
@@ -32,31 +33,7 @@ bld/
 *.sln.iml
 
 ## NuGet
-**/[Ww]ap/columns.json
-**/[Pp]ackages/*
-!**/[Pp]ackages/build/
 *.nupkg
-**/[Pp]ackages/repositories.config
-
-## NPM / Node
-node_modules/
-
-## Misc
-*.bak
-*.cache
-*.DS_Store
-_ReSharper*/
-_ReSharper.Caches/
-*.ncxb
-*.DotSettings.user
-*.swp
-*~
-*.tmp
-*.tmp_proj
-Thumbs.db
-
-## Windows image file caches
-ehthumbs.db
 
 # ── Environment ──
 
@@ -69,8 +46,8 @@ appsettings.*.json
 
 # ── SQLite ──
 
-*.db-shm
-*.db-wal
+*.db-shm/
+*.db-wal/
 
 # ── Test results ──
 
@@ -79,8 +56,15 @@ TestResults/
 *.coverage
 *.coveragexml
 
-# ── OS generated ──
+# ── Misc ──
 
-Desktop.ini
-$RECYCLE.BIN/
-cold_archive.db
+*.bak
+*.cache
+*.DS_Store
+*.DotSettings.user
+*.swp
+*~
+*.tmp
+*.tmp_proj
+*.ncxb
+Thumbs.db

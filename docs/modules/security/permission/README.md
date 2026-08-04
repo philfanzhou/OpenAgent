@@ -27,7 +27,7 @@ IAgentUserContext + AgentAuthorizationRequest
 - `ResourceId` 只能包含业务标识，不得包含 API key、token 等敏感信息
 
 ## Source
-- Contracts: `src/Core/Security/IPermissionEvaluator.cs`, `IAgentAuthorizationService.cs`
-- Implementation: `src/Core/Security/PermissionEvaluator.cs`, `AgentAuthorizationGate.cs`
-- Data: `Agent.Contracts/Security/AgentAuthorization.cs`, `AgentUserContext.cs`
-- Tests: `test/OpenAgent.Core.Tests/Middleware/AuthTests.cs`, `Security/AgentAuthorizationGateTests.cs`
+- Contracts: `Backend/src/OpenAgent.Core/Security/IAgentAuthorizationService.cs`
+- Implementation: `Backend/src/OpenAgent.Core/Security/AllowAllAgentAuthorizationService.cs`, `Backend/src/OpenAgent.Core/Security/AgentAuthorizationGate.cs`
+- Data: `Backend/src/OpenAgent.Contracts/Security/AgentAuthorization.cs`, `Backend/src/OpenAgent.Contracts/Security/AgentUserContext.cs`
+- Tests: `Backend/tests/OpenAgent.Core.Tests/Security/AgentAuthorizationGateTests.cs`

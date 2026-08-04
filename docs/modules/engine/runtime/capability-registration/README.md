@@ -26,6 +26,6 @@ IHostedService (启动时)
 
 ## 源码位置
 
-- 接口：`Agent.Engine/src/Engine/Abstractions/`
-- 实现：`Agent.Engine/src/Engine/Registry/`
-- 测试替身：`Agent.Engine/test/OpenAgent.Engine.Tests/TestDoubles/`
+- 接口：`Backend/src/OpenAgent.Engine/Abstractions/`
+- 实现：`Backend/src/OpenAgent.Engine/Redis/`（RedisLlmRegistrar、RedisRagRegistrar、RedisSkillRegistrar）
+- 测试替身：`Backend/tests/OpenAgent.Engine.Tests/TestDoubles/`

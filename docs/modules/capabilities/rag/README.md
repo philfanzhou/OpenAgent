@@ -36,6 +36,6 @@ Agent → ToolCall("search_knowledge_base")
 - 无检索结果缓存
 
 ## Source
-- Core: `src/Core/Capabilities/Rag/RagService.cs`, `Adapters/`
-- Contracts: `Agent.Contracts/Models/IRagAdapter.cs`
-- Tests: `test/OpenAgent.Core.Tests/Rag/`
+- Core: `Backend/src/OpenAgent.Core/Capabilities/Rag/RagService.cs`, `Backend/src/OpenAgent.Core/Capabilities/Rag/Adapters/`
+- Contracts: `Backend/src/OpenAgent.Contracts/Models/IRagAdapter.cs`
+- Tests: 无专门测试文件（待补充）

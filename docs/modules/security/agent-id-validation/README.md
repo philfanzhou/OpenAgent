@@ -8,7 +8,7 @@ AgentIdValidation 中间件负责检查请求中是否包含有效的 AgentId。
 
 ## 源码
 
-`src/Core/Security/AgentIdValidation.cs`
+`Backend/src/OpenAgent.Engine.Host/Extensions/EndpointExtensions.cs`（AgentIdValidation 中间件已移入 Host 端点扩展）
 
 ## 核心行为
 
@@ -124,7 +124,7 @@ AgentIdValidation 作为 `IAgentMiddleware` 注册到 Pipeline，不抛出异常
 
 ## 测试文件
 
-`test/OpenAgent.Core.Tests/Middleware/AgentIdValidationTests.cs`
+`Backend/tests/OpenAgent.Engine.Tests/Hosting/`（AgentIdValidation 已移入 Host 端点测试）
 
 ## 测试用例
 

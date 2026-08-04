@@ -30,5 +30,4 @@ Agent.Matrix → IAgentConfigProvider → AgentConfig
 - 不依赖 Matrix 内部实现细节
 
 ## Source
-- Contracts: `Agent.Contracts/Configuration/IAgentConfigProvider.cs`, `AgentConfig.cs`
-- Core consumer: `src/Core/Execution/Service.cs`
+- Contracts: `Backend/src/OpenAgent.Contracts/Configuration/IAgentConfigProvider.cs`, `Backend/src/OpenAgent.Contracts/Configuration/AgentConfig.cs`

@@ -6,17 +6,14 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
-
-    <!-- Suppress NU5104 for the Anthropic preview provider used by the Agent SDK. -->
-    <NoWarn>$(NoWarn);NU5104</NoWarn>
   </PropertyGroup>
 
-  <!-- 测试项目统一添加的引用 -->
+  <!-- 测试项目的公共引用（版本由 Directory.Packages.props 集中管理） -->
   <ItemGroup Condition="$(MSBuildProjectName.Contains('Tests'))">
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.10.0" />
-    <PackageReference Include="xunit" Version="2.9.0" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
-    <PackageReference Include="Moq" Version="4.20.70" />
-    <PackageReference Include="coverlet.collector" Version="6.0.2" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="Moq" />
+    <PackageReference Include="coverlet.collector" />
   </ItemGroup>
 </Project>

@@ -86,8 +86,8 @@
 
 | 改动点 | 文件 | 工作量 | 风险 |
 |---|---|---|---|
-| **新增 NuGet 包** | `Agent.Hosting/src/OpenAgent.Hosting.csproj` | 5 分钟 | 零（纯加包） |
-| **封装 `UseAgentSerilog()` 扩展** | `Agent.Hosting/src/SerilogHostBuilderExtensions.cs` | 0.5h | 低（统一 Host 初始化） |
+| **新增 NuGet 包** | `Backend/src/OpenAgent.Hosting/OpenAgent.Hosting.csproj` | 5 分钟 | 零（纯加包） |
+| **封装 `UseAgentSerilog()` 扩展** | `Backend/src/OpenAgent.Hosting/SerilogHostBuilderExtensions.cs` | 0.5h | 低（统一 Host 初始化） |
 | **应用 MEL 接管** | Engine / Router `Program.cs` | 1h | 低（添加 2 行） |
 | **`appsettings.json` 增加 Serilog 节** | Engine / Router | 0.5h | 零（新增字段） |
 | **独立部署 loki/grafana 服务** | `deploy/observability/docker-compose.yml` | 0.5h | 低（一次性基础设施） |

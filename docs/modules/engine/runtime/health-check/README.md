@@ -27,6 +27,6 @@ HealthCheck 实现三类健康检查，覆盖 Redis 连接、Agent 配置缓存�
 - Redis 不可用返回 Degraded（非 Unhealthy），Engine 可在孤岛模式运行
 
 ## Source
-- Core: `src/Engine/Redis/RedisHealthCheck.cs`, `ConfigHealthCheck.cs`, `LlmHealthCheck.cs`
-- Extensions: `src/Engine/Extensions/ServiceCollectionExtensions.cs`
-- Tests: `test/OpenAgent.Engine.Tests/HealthChecks/`
+- Core: `Backend/src/OpenAgent.Engine/Redis/RedisHealthCheck.cs`, `Backend/src/OpenAgent.Engine/Redis/ConfigHealthCheck.cs`, `Backend/src/OpenAgent.Engine/Redis/LlmHealthCheck.cs`
+- Extensions: `Backend/src/OpenAgent.Engine/Extensions/ServiceCollectionExtensions.cs`
+- Tests: `Backend/tests/OpenAgent.Engine.Tests/HealthChecks/`

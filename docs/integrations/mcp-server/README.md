@@ -35,7 +35,5 @@ ModelContextProtocol.Core 1.4.1
 - MCP 注册表发布不会自动启用服务，必须加入 Agent 配置并发布
 
 ## Source
-- Core: `src/Core/Capabilities/Mcp/`（McpClient, McpConnection, McpTransportFactory 等）
-- Connection: `src/Core/Execution/Tools/McpConnectionManager.cs`
-- Contracts: `Agent.Contracts/Mcp/IMcpClient.cs`
-- Tests: `test/OpenAgent.Core.Tests/Mcp/`, `TestCode/Agent.TestEngine/McpTests.cs`
+- Core: `Backend/src/OpenAgent.Core/Capabilities/Mcp/`（McpClient, McpConnection, McpTransportFactory 等）
+- Contracts: `Backend/src/OpenAgent.Contracts/Mcp/IMcpClient.cs`

@@ -1478,18 +1478,18 @@ Endpoint → AgentExecutor → AIAgent
 
 | 功能 | 生产源码入口 |
 |---|---|
-| HTTP/NDJSON/SSE/会话 API | `Backend/OpenAgent/Agent.Engine/src/Host/Extensions/EndpointExtensions.cs` |
-| multipart 附件 | `Backend/OpenAgent/Agent.Engine/src/Host/Extensions/AttachmentEndpointExtensions.cs`、`Host/Attachments/` |
-| 请求身份和租户 | `Backend/OpenAgent/Agent.Engine/src/Host/Middleware/AgentUserContextMiddleware.cs`、`EngineAdmissionMiddleware.cs` |
-| Agent SDK adapter 与资源 | `Backend/OpenAgent/Agent.Core/src/Core/Runtime/Agent/` |
-| Capability 与执行授权 | `Backend/OpenAgent/Agent.Core/src/Core/Capabilities/`、`Core/Security/` |
-| MCP | `Backend/OpenAgent/Agent.Core/src/Core/Capabilities/Mcp/` |
-| Skill | `Backend/OpenAgent/Agent.Core/src/Core/Capabilities/Skill/`、`Agent.Engine/src/Engine/Redis/RedisSkillRegistrar.cs` |
-| RAG | `Backend/OpenAgent/Agent.Core/src/Core/Capabilities/Rag/` |
-| 会话、锁和历史 | `Backend/OpenAgent/Agent.Core/src/Core/Conversation/` |
-| 配置、快照和热更新 | `Backend/OpenAgent/Agent.Engine/src/Engine/Config/`、`Engine/Reload/` |
-| 节点、心跳和排空 | `Backend/OpenAgent/Agent.Engine/src/Engine/Registry/`、`Engine/Runtime/` |
-| 健康和指标 | `Backend/OpenAgent/Agent.Engine/src/Engine/Redis/`、`Agent.Hosting/src/BuilderExtensions.cs` |
+| HTTP/NDJSON/SSE/会话 API | `Backend/src/OpenAgent.Engine.Host/Extensions/EndpointExtensions.cs` |
+| multipart 附件 | `Backend/src/OpenAgent.Engine.Host/Extensions/AttachmentEndpointExtensions.cs`、`Engine.Host/Attachments/` |
+| 请求身份和租户 | `Backend/src/OpenAgent.Engine.Host/Middleware/AgentUserContextMiddleware.cs`、`EngineAdmissionMiddleware.cs` |
+| Agent SDK adapter 与资源 | `Backend/src/OpenAgent.Core/Runtime/Agent/` |
+| Capability 与执行授权 | `Backend/src/OpenAgent.Core/Capabilities/`、`Security/` |
+| MCP | `Backend/src/OpenAgent.Core/Capabilities/Mcp/` |
+| Skill | `Backend/src/OpenAgent.Core/Capabilities/Skill/`、`Backend/src/OpenAgent.Engine/Redis/RedisSkillRegistrar.cs` |
+| RAG | `Backend/src/OpenAgent.Core/Capabilities/Rag/` |
+| 会话、锁和历史 | `Backend/src/OpenAgent.Core/Conversation/` |
+| 配置、快照和热更新 | `Backend/src/OpenAgent.Engine/Config/`、`Reload/` |
+| 节点、心跳和排空 | `Backend/src/OpenAgent.Engine/Registry/`、`Runtime/` |
+| 健康和指标 | `Backend/src/OpenAgent.Engine/Redis/`、`Backend/src/OpenAgent.Hosting/BuilderExtensions.cs` |
 
 ## 29. 文档收敛记录
 
