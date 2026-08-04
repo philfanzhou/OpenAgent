@@ -33,11 +33,9 @@
 └── development-guide.md      ← 代码审查、功能规划、测试编写、集成排查
 
 .agent/skills/
-├── add-component.md          ← 新增 LLM/MCP/Skill/Engine 组件（统一工作流）
 ├── build-and-test.md         ← 构建与测试命令
 ├── channels-development.md   ← Channels 开发约束
 ├── e2e-test.md               ← E2E 测试 + 服务生命周期
-├── trace-troubleshoot.md     ← 已移到 docs/trace-troubleshoot.md
 └── update-docs.md            ← 文档整理
 ```
 
