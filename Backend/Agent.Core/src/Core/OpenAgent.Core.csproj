@@ -1,0 +1,55 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="OpenAgent.Core.Tests" />
+    <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol.Core" Version="1.4.1" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.10" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="8.0.2" />
+    <PackageReference Include="System.Net.Http.Json" Version="8.0.1" />
+    <PackageReference Include="StackExchange.Redis" Version="2.8.24" />
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="5.2.2" />
+    <PackageReference Include="Microsoft.Agents.AI" Version="1.14.0" />
+    <PackageReference Include="Microsoft.Agents.AI.Anthropic" Version="1.14.0-preview.260721.1" />
+    <PackageReference Include="Microsoft.Agents.AI.OpenAI" Version="1.14.0" />
+    <PackageReference Include="Microsoft.Extensions.AI" Version="10.7.0" />
+    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="10.7.0" />
+    <PackageReference Include="OpenAI" Version="2.11.0" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <NoWarn>$(NoWarn);MAAI001;OPENAI001</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Agent.Contracts\OpenAgent.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Conversation/Scripts/AppendMessages.lua"
+                      LogicalName="OpenAgent.Core.Conversation.Scripts.AppendMessages.lua" />
+    <EmbeddedResource Include="Conversation/Scripts/LockRelease.lua"
+                      LogicalName="OpenAgent.Core.Conversation.Scripts.LockRelease.lua" />
+    <EmbeddedResource Include="Conversation/Scripts/LockExtend.lua"
+                      LogicalName="OpenAgent.Core.Conversation.Scripts.LockExtend.lua" />
+    <EmbeddedResource Include="Conversation/Repository/Scripts/SqlServerSchema.sql"
+                      LogicalName="OpenAgent.Core.Conversation.Repository.Scripts.SqlServerSchema.sql" />
+    <EmbeddedResource Include="Conversation/Repository/Scripts/SqliteSchema.sql"
+                      LogicalName="OpenAgent.Core.Conversation.Repository.Scripts.SqliteSchema.sql" />
+  </ItemGroup>
+
+</Project>

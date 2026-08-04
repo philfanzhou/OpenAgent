@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="OpenAgent.Engine.Tests" />
+    <InternalsVisibleTo Include="OpenAgent.TestFramework" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Engine\OpenAgent.Engine.csproj" />
+    <ProjectReference Include="..\..\..\Agent.Core\src\Core\OpenAgent.Core.csproj" />
+    <ProjectReference Include="..\..\..\Agent.Hosting\src\OpenAgent.Hosting.csproj" />
+  </ItemGroup>
+
+</Project>
