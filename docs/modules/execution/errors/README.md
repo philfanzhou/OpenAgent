@@ -1,0 +1,37 @@
+# Execution Error Handling
+
+统一错误处理定义执行层异常分类、传播规则和会话写回保障，确保异常不吞没、不丢失上下文。
+
+## Core Capabilities
+| Capability | Description |
+|-----------|-------------|
+| 异常分类 | `AgentException` 携带 `AgentErrorCode`（10 大类 30+ 错误码）|
+| Pipeline 转换 | 捕获 `AgentException` / 通用 `Exception` → `AgentResponse(Success=false)` |
+| 工具异常隔离 | 非 AgentException 返回错误文本，不中断推理循环 |
+| 会话写回保障 | 取消/失败时写回 partial 消息（`CancellationToken.None`）|
+
+## Architecture
+```text
+Pipeline层:
+  AgentException → AgentResponse(Success=false, ErrorCode, ErrorMessage)
+  Exception      → AgentResponse(Success=false, InternalError)
+
+Service层工具执行:
+  AgentException → 直接 throw
+  Exception      → return "Error executing tool: ..."
+
+Service层取消/失败:
+  先 PersistPartialAssistantMessage → 再 throw（ExceptionDispatchInfo 保留堆栈）
+```
+
+## Current Status
+**Implemented** — 异常分类、Pipeline 转换、工具异常处理、写回保障均已落地。
+
+## Limits
+- HTTP 状态码映射属宿主层，Core 不负责
+- 流式路径异常通过 `ExceptionDispatchInfo.Capture` 延迟重新抛出
+
+## Source
+- Contracts: `Agent.Contracts/Security/Exceptions.cs`, `Requests/AgentErrorCode.cs`
+- Core: `src/Core/Execution/Pipeline.cs`, `Service.cs`
+- Tests: `test/OpenAgent.Core.Tests/Conversation/AgentRunExecutionTests.cs`

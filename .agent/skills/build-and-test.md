@@ -70,7 +70,7 @@ Agent 配置热加载、SSO 认证等。详见 `TestCode/Agent.TestEngine/`。
 - Core / Engine / Router 使用 **xunit**，集成测试（TestCode/TestEnv.sln）使用 **MSTest**
 - 集成测试使用 WireMock 模拟 LLM/SSO/MCP/Skill，FakeRedis 模拟 Redis — **无需外部服务或 API Key**
 - **真 E2E 测试**（连接真实 SSO + Redis + LLM）需要单独配置，见 `e2e-test` 技能
-- 本技能执行具体命令；由 `.agent/skills/verify-changes.md` 根据改动范围决定调用哪些模块
+- Agent 根据改动范围自主决定调用哪些模块（改 `.cs` → 单测；改 Contracts → 全量）
 - 所有路径相对于仓库根目录 `<repository-root>`
 
 ## 参考文件
