@@ -18,10 +18,9 @@ Backend/
 
 ## AI 资源
 
-- `.agent/README.md` — 技能/规则/提示词索引
+- `.agent/README.md` — 技能/规则索引
 - `.agent/skills/` — 任务工作流（构建、测试、E2E、文档等）
-- `.agent/prompts/` — 提示词模板
-- `.agent/rules/` — 编码规范 + 文档规范
+- `.agent/rules/` — 编码规范 + 文档规范 + 开发指南
 
 ## 文档中心
 

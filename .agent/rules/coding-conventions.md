@@ -503,103 +503,31 @@ public async Task GetUserAsync_InvalidId_ThrowsNotFoundException()
 
 ### 9.5 自主验证
 
-Agent 修改代码后必须按照 `.agent/skills/verify-changes.md` 自主决定验证策略，见该文档中的决策表。
+Agent 修改代码后应自主决定验证策略（改 `.cs` → `dotnet build` + `dotnet test`；改 Contracts → 全量构建；改文档 → 无需编译）。详细命令见 `.agent/skills/build-and-test.md`。
 
 ---
 
-## 10. 构建和编译要求
+## 10. 配置化约束
 
-### 10.1 编译要求
-- 所有解决方案**必须**无错误编译
-- 所有单元测试**必须**通过
-- **禁止**出现未使用引用的警告
+以下规则已配置到 `Directory.Build.props`、`.editorconfig`、`.globalconfig`，机器自动检查：
 
-### 10.2 全局配置
+| 规则 | 配置位置 |
+|------|---------|
+| TFM / LangVersion / Nullable / ImplicitUsings | `Directory.Build.props` |
+| 文件作用域命名空间 | `.editorconfig` |
+| 接口 I 前缀 / 异步 Async 后缀 / 私有字段 _ 前缀 | `.editorconfig` |
+| 代码样式（var、表达式体、模式匹配） | `.editorconfig` |
+| 分析器规则集 | `.globalconfig` |
 
-在解决方案根目录创建 `Directory.Build.props` 统一配置：
-
-```xml
-<Project>
-  <PropertyGroup>
-    <LangVersion>latest</LangVersion>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
-  </PropertyGroup>
-</Project>
-```
+> 以下章节只保留**机器无法检查**的规则（依赖方向、DI 模式、错误处理、日志 EventId 等）。
 
 ---
 
-## 11. 合规性检查清单
-
-PR 合并前**必须**验证：
-
-### 11.1 .NET 版本合规性
-- [ ] 所有项目 targeting .NET 8.0 或 .NET Standard 2.0/2.1
-- [ ] **没有使用 .NET 6.0 或其他已过期版本**
-- [ ] 目标框架是最低可行版本
-- [ ] 类库在可能时使用 .NET Standard
-
-### 11.2 包依赖合规性
-- [ ] 所有 NuGet 包与目标框架兼容
-- [ ] 包版本是明确的（无浮动版本）
-- [ ] **没有重复引用项目已依赖的包**
-- [ ] 包是积极维护的（12 个月内有更新）
-- [ ] 使用 `dotnet list package` 验证实际依赖
-
-### 11.3 代码规范合规性
-- [ ] 使用文件作用域命名空间
-- [ ] 注释和字符串使用英文
-- [ ] 无未使用的 using 语句
-- [ ] 启用了可空引用类型
-- [ ] 异步方法命名正确（Async 后缀）
-- [ ] 类名简短无冗余前缀
-- [ ] 文件名与类名匹配且简短
-- [ ] 可见性最小化（private 优先，internal 次之，public 仅必要时）
-- [ ] 每个类职责单一
-- [ ] 未违反项目分层规则
-
-### 11.4 测试合规性
-- [ ] 所有单元测试通过
-- [ ] 关键逻辑有测试覆盖
-- [ ] 测试项目名称规范
-
-### 11.5 编译合规性
-- [ ] 解决方案无错误编译
-- [ ] 无警告（特别是未使用引用警告）
-
----
-
-## 12. 例外流程
-
-任何偏离本规范的情况**必须**遵循以下流程：
-
-1. **书面说明**：文档化为什么不能使用标准做法
-2. **影响分析**：评估对其他项目和部署的影响
-3. **审批**：必须经过架构团队审查和批准
-4. **记录在案**：在代码中添加注释说明例外原因
-
----
-
-## 13. 迁移路径
-
-对于需要合规的现有项目：
-
-1. **审计依赖**：列出所有依赖及其框架要求
-2. **识别过期版本**：特别检查是否使用了 .NET 6.0 或其他已过期版本
-3. **检查重复依赖**：使用 `dotnet list package` 识别重复引用的包
-4. **渐进式更新**：逐步更新项目文件
-5. **完整测试**：每次更改后运行完整测试套件
-6. **更新文档**：同步更新相关文档
-
----
-
-## 14. 禁止事项
+## 11. 禁止事项
 
 - ❌ 违反依赖方向添加项目引用
 - ❌ 修改 Agent.Contracts 公共接口前不检查所有消费者
 - ❌ 无理由添加 NuGet 包
-- ❌ 类型不明时使用 `var`
 - ❌ 混合 sync/async 在同一调用链
 - ❌ 使用 `async void`
 - ❌ 直接修改 Redis 中的 Agent 配置（应通过 Engine API 或 RedisTool 管理）
@@ -607,70 +535,3 @@ PR 合并前**必须**验证：
 - ❌ 重复引用项目已传递依赖的 NuGet 包
 - ❌ 使用 .NET 6.0 或其他已过期版本
 - ❌ 注释和字符串使用中文
-
----
-
-## 附录 A：常用项目配置模板
-
-### A.1 Web API 项目
-```xml
-<Project Sdk="Microsoft.NET.Sdk.Web">
-  <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <LangVersion>latest</LangVersion>
-  </PropertyGroup>
-</Project>
-```
-
-### A.2 类库（推荐 .NET Standard）
-```xml
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFramework>netstandard2.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <LangVersion>latest</LangVersion>
-  </PropertyGroup>
-</Project>
-```
-
-### A.3 测试项目
-```xml
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <IsPackable>false</IsPackable>
-    <IsTestProject>true</IsTestProject>
-    <LangVersion>latest</LangVersion>
-  </PropertyGroup>
-</Project>
-```
-
-### A.4 多目标框架（仅在必要时使用）
-```xml
-<PropertyGroup>
-  <TargetFrameworks>netstandard2.0;net8.0</TargetFrameworks>
-</PropertyGroup>
-```
-
----
-
-## 附录 B：依赖检查命令
-
-```bash
-# 查看项目引用的所有包（包括传递依赖）
-dotnet list package
-
-# 查看特定项目的包依赖
-dotnet list <project.csproj> package
-
-# 查看包依赖树
-dotnet list package --include-transitive
-
-# 检查包过时情况
-dotnet list package --outdated
-```

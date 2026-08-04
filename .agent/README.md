@@ -6,19 +6,17 @@
 
 ```
 .agent/
-├── README.md            ← 本文件
-├── rules/               ← 全局编码规则与文档规范（AI 生成代码时必须遵守）
-├── skills/              ← 技能/工作流定义（AI 执行特定任务时读取）
-└── prompts/             ← 提示词模板（用户或 AI 主动引用）
+├── README.md                 ← 本文件
+├── rules/                    ← 规则（编码规范、文档规范、开发指南）
+└── skills/                   ← 技能/工作流（AI 执行特定任务时读取）
 ```
 
-## 三个目录的分工
+## 两个目录的分工
 
 | 目录 | 定位 | AI 什么时候读 |
 |------|------|-------------|
 | `rules/` | 编码时必须遵守的硬性规则 | 每次生成代码时都应参考 |
 | `skills/` | 特定任务的分步工作流 | 执行对应任务时按需读取 |
-| `prompts/` | 可复用的提示词模板 | 用户或 AI 主动引用时读取 |
 
 ## 与项目文档的关系
 
@@ -26,22 +24,23 @@
 - **给 AI 看的资源**：本目录 + `AGENTS.md`
 - 两者互补，不重复。本目录只放"AI 无法从代码推断"的信息。
 
+## 文件索引
+
+```
+.agent/rules/
+├── coding-conventions.md     ← 权威编码规范（.NET 版本、依赖、命名、DI、日志）
+├── doc-standards.md          ← 文档风格与新增指南
+└── development-guide.md      ← 代码审查、功能规划、测试编写、集成排查
+
+.agent/skills/
+├── add-component.md          ← 新增 LLM/MCP/Skill/Engine 组件（统一工作流）
+├── build-and-test.md         ← 构建与测试命令
+├── channels-development.md   ← Channels 开发约束
+├── e2e-test.md               ← E2E 测试 + 服务生命周期
+├── trace-troubleshoot.md     ← 已移到 docs/trace-troubleshoot.md
+└── update-docs.md            ← 文档整理
+```
+
 ## 任务路由
 
-详细任务路由见 `AGENTS.md`。本目录下的技能文件按需引用：
-
-```
-.agent/skills/
-├── add-agent-skill.md      ← 添加 Agent 技能
-├── add-engine.md           ← 添加新引擎
-├── add-llm-provider.md     ← 添加 LLM 提供商
-├── add-mcp-tool.md         ← 添加 MCP 工具
-├── build-and-test.md       ← 构建与测试
-├── channels-development.md ← Channels 开发
-├── create-agent-config.md  ← 创建 Agent 配置
-├── e2e-test.md             ← E2E 测试
-├── service-lifecycle.md    ← 服务生命周期
-├── trace-troubleshoot.md   ← Trace/Log/Metrics 排查
-├── update-docs.md          ← 文档整理
-└── verify-changes.md       ← 验证变更
-```
+详细任务路由见 `AGENTS.md`。
