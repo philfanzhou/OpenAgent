@@ -194,7 +194,7 @@ Contracts ← Core ← Engine/Router ← Host
 - 必须使用业务前缀（`lock:conversation:`）以便 SCAN 排查
 - 禁止直接用裸 `conversationId` 作为 Redis key
 - Owner token 格式：`Guid.NewGuid().ToString("N")`（32 位无连字符）
-- 详见 `Agent.Core/docs/modules/execution/conversation-lock.md`
+- 详见 `docs/modules/execution/conversation-lock.md`
 
 ---
 
@@ -263,14 +263,14 @@ public async void GetUser(int id) { ... }
 Agent.Core/
 ├── src/
 │   ├── Core/               # 核心逻辑（Pipeline, Service, Middleware）
-│   ├── MAF/                # MAF 框架适配器
-│   ├── SemanticKernel/     # Semantic Kernel 集成
-│   ├── OpenAIDriver/       # OpenAI 兼容驱动
-│   └── Mock/               # Mock 实现（测试用）
+│   │   ├── Execution/      # 执行管线
+│   │   ├── Capabilities/   # MCP / RAG / Skill
+│   │   ├── Conversation/   # 会话存储与锁
+│   │   └── Security/       # 中间件
+│   └── Exten/              # 扩展方法
 ├── test/
 │   └── OpenAgent.Core.Tests/
-│       └── TestDoubles/    # 测试替身
-└── docs/
+└── docs/                    # 已迁移到顶层 docs/
 ```
 
 ### 7.2 Agent.Engine 项目结构
@@ -279,24 +279,18 @@ Agent.Core/
 Agent.Engine/
 ├── src/
 │   ├── Engine/                    # 运行时类库
-│   │   ├── Abstractions/          # IConfigSnapshot, IEngineRegistry, IRedisConnectionProvider
-│   │   ├── Extensions/            # ServiceCollectionExtensions (AddAgentEngine)
-│   │   ├── Models/                # ConfigSnapshot, HeartbeatOptions, RegistryEntry
-│   │   ├── Redis/                 # RedisRegistry, HeartbeatService, HealthChecks, Registrars
-│   │   └── Services/              # ConfigProvider, HotReloadService, ShutdownService, RequestScope
+│   │   ├── Abstractions/          # IConfigSnapshot, IEngineRegistry
+│   │   ├── Config/                # 配置读取
+│   │   ├── Reload/                # 热更新
+│   │   ├── Registry/              # 服务注册与心跳
+│   │   └── Runtime/               # 运行时服务
 │   └── Host/                      # Web API 宿主
-│       ├── Extensions/            # EndpointExtensions (MapAgentEndpoints)
-│       ├── Middleware/             # GlobalExceptionHandlerMiddleware, SseErrorHandlerMiddleware
-│       ├── Program.cs
-│       ├── StreamingPayloadFactory.cs
-│       └── appsettings.json
+│       ├── Extensions/            # EndpointExtensions
+│       ├── Middleware/            # 异常处理中间件
+│       └── Program.cs
 ├── test/
 │   └── OpenAgent.Engine.Tests/
-│       ├── Config/
-│       ├── HealthChecks/
-│       ├── Hosting/
-│       └── TestDoubles/
-└── docs/
+└── docs/                          # 已迁移到顶层 docs/
 ```
 
 ### 7.3 项目引用规则

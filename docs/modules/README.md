@@ -1,14 +1,15 @@
-# Agent.Core 功能域索引
+# 功能域索引
 
-本目录按业务域组织 Agent.Core 的功能点文档。每个功能点包含 6 件套（01-FEATURE ~ 06-CONVENTIONS）。
+本目录按业务域组织 Agent 平台的功能点文档。
 
 ## 业务域
 
 | 域 | 说明 | 功能点 |
 |----|------|--------|
-| [execution/](./execution/) | 执行管线与核心调度 | pipeline, service, streaming, errors |
+| [execution/](./execution/) | 执行管线与核心调度 | pipeline, service, streaming, errors, conversation-lock |
 | [conversation/](./conversation/) | 会话记录与存储 | store, context-compression |
-| [engine/](./engine/) | 统一 SDK Runtime 适配 | maf, mock |
+| [engine/](./engine/) | 统一 SDK Runtime 与 Host 适配 | maf, host/chat-api, host/error-handling |
+| [engine/runtime/](./engine/runtime/) | Engine 运行时管理 | config-management, config-hotreload, health-check, graceful-shutdown, service-registration, capability-registration |
 | [capabilities/](./capabilities/) | 能力集成 | skill, tool-calling, mcp, rag |
 | [security/](./security/) | 安全与租户 | auth, tenant, agent-id-validation, permission |
 

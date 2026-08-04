@@ -21,15 +21,14 @@ Agent.Hosting    <- 共享宿主、认证与可观测性注册
 ## 构建与测试
 
 ```bash
-dotnet test Agent.Core/OpenAgent.Core.sln
-dotnet test Agent.Engine/OpenAgent.Engine.sln
+dotnet test Backend/OpenAgent.Core/OpenAgent.Core.sln
+dotnet test Backend/OpenAgent.Engine/OpenAgent.Engine.sln
 ```
 
 ## 文档
 
-- [Core 文档](Agent.Core/docs/README.md)
-- [Contracts 设计文档](Agent.Contracts/Agent.Contracts.Design.md)
-- [Hosting 设计文档](Agent.Hosting/docs/Agent.Hosting.Design.md)
+- [文档中心](docs/README.md) — 总览、模块、集成、数据库、架构决策
+- [.agent/](.agent/README.md) — AI 工具资源（技能、规则、提示词）
 
 ## 安全
 
