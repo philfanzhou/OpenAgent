@@ -21,17 +21,17 @@ Agent.Hosting    <- 共享宿主、认证与可观测性注册
 ## 构建与测试
 
 ```bash
-dotnet test Agent.Core/OpenAgent.Core.sln
-dotnet test Agent.Engine/OpenAgent.Engine.sln
+dotnet test Backend/Agent.Core/OpenAgent.Core.sln
+dotnet test Backend/Agent.Engine/OpenAgent.Engine.sln
 ```
 
 ## 文档
 
-- [Core 文档](Agent.Core/docs/README.md)
-- [Contracts 设计文档](Agent.Contracts/Agent.Contracts.Design.md)
-- [Hosting 设计文档](Agent.Hosting/docs/Agent.Hosting.Design.md)
+- [Core 文档](Backend/Agent.Core/docs/README.md)
+- [Contracts 设计文档](Backend/Agent.Contracts/Agent.Contracts.Design.md)
+- [Hosting 设计文档](Backend/Agent.Hosting/docs/Agent.Hosting.Design.md)
 
 ## 安全
 
 > ⚠️ **本仓库默认使用 PassThrough 认证处理器，仅适用于开发环境。**
-> 部署到生产环境前，请务必阅读 [SECURITY.md](SECURITY.md) 进行安全加固。
+> 部署到生产环境前，请务必阅读 [安全设计文档](Backend/Agent.Core/docs/modules/security/README.md) 进行安全加固。
