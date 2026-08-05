@@ -1,8 +1,7 @@
 namespace OpenAgent.Contracts.Conversation;
 
 /// <summary>
-/// Compression strategy configuration passed via AgentRequest, per the
-/// ContextPolicy protocol. Router decides the strategy; Core executes it.
+/// Compression strategy selected by the Agent runtime profile.
 /// </summary>
 public sealed class ContextPolicy
 {

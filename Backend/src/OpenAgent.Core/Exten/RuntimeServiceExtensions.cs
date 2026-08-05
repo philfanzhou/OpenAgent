@@ -17,10 +17,12 @@ internal static class RuntimeServiceExtensions
 
         services.TryAddScoped<IAgentAuthorizationService, AllowAllAgentAuthorizationService>();
         services.AddScoped<AgentAuthorizationGate>();
+        services.AddScoped<AgentRuntimeResolver>();
+        services.AddScoped<IAgentRuntimeResolver>(serviceProvider =>
+            serviceProvider.GetRequiredService<AgentRuntimeResolver>());
         services.AddScoped<AgentFactory>();
         services.AddScoped(serviceProvider => new AgentExecutor(
-            serviceProvider.GetRequiredService<IAgentConfigProvider>(),
-            serviceProvider.GetRequiredService<AgentAuthorizationGate>(),
+            serviceProvider.GetRequiredService<IAgentRuntimeResolver>(),
             serviceProvider.GetRequiredService<AgentFactory>()));
         return services;
     }
