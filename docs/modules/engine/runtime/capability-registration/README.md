@@ -16,7 +16,7 @@ Engine 启动时从 Redis 加载 LLM/RAG/Skill 能力配置，注册到内存 Re
 IHostedService (启动时)
   ├─ RedisLlmRegistrar      → ILlmRegistry
   ├─ RedisRagRegistrar      → IRagRegistry
-  └─ RedisSkillRegistrar    → ISkillRegistry
+  └─ RedisSkillRegistrar    → IToolRegistry → SkillRegistry
                                 └─ HttpEndpointSkill (远程 HTTP 代理)
 ```
 

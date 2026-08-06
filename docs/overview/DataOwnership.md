@@ -14,7 +14,7 @@
 | AgentConfig | Agent.Matrix (通过 IAgentConfigProvider) | 获取 Agent 配置（引擎类型、技能列表、RAG 配置等） |
 | LlmProviderProfile | ILlmRegistry (内存注册) | 获取 LLM 连接配置 |
 | RagInstanceConfig | IRagRegistry (内存注册) | 获取 RAG 实例配置 |
-| SkillDescriptor | SkillCatalog (运行时发现) | 获取技能元数据 |
+| SkillDescriptor | SkillRegistry (运行时发现) | 获取技能元数据 |
 
 ## 双写规则
 

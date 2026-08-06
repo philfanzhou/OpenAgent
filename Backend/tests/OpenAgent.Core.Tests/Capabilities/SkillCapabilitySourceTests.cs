@@ -10,13 +10,13 @@ namespace OpenAgent.Core.Tests.Capabilities;
 public class SkillCapabilitySourceTests
 {
     [Fact]
-    public async Task DiscoverAsync_EnabledSkill_IsExposedAndInvokesCatalog()
+    public async Task DiscoverAsync_EnabledSkill_IsExposedAndInvokesRegistry()
     {
-        var catalog = new SkillCatalog();
-        catalog.RegisterTool(
+        var registry = new SkillRegistry();
+        registry.RegisterTool(
             Descriptor("weather"),
             (arguments, _) => Task.FromResult($"weather:{arguments["city"]}"));
-        var source = new SkillCapabilitySource(catalog);
+        var source = new SkillCapabilitySource(registry);
 
         IReadOnlyList<CapabilityDefinition> capabilities = await source.DiscoverAsync(
             "agent",
@@ -35,9 +35,9 @@ public class SkillCapabilitySourceTests
     [Fact]
     public async Task DiscoverAsync_DisabledInstances_FallsBackToEnabledSkills()
     {
-        var catalog = new SkillCatalog();
-        catalog.RegisterTool(Descriptor("weather"), (_, _) => Task.FromResult("ok"));
-        var source = new SkillCapabilitySource(catalog);
+        var registry = new SkillRegistry();
+        registry.RegisterTool(Descriptor("weather"), (_, _) => Task.FromResult("ok"));
+        var source = new SkillCapabilitySource(registry);
 
         IReadOnlyList<CapabilityDefinition> capabilities = await source.DiscoverAsync(
             "agent",
@@ -58,9 +58,9 @@ public class SkillCapabilitySourceTests
     [Fact]
     public async Task DiscoverAsync_InstanceAcl_ExcludesUnavailableSkill()
     {
-        var catalog = new SkillCatalog();
-        catalog.RegisterTool(Descriptor("weather"), (_, _) => Task.FromResult("ok"));
-        var source = new SkillCapabilitySource(catalog);
+        var registry = new SkillRegistry();
+        registry.RegisterTool(Descriptor("weather"), (_, _) => Task.FromResult("ok"));
+        var source = new SkillCapabilitySource(registry);
 
         IReadOnlyList<CapabilityDefinition> capabilities = await source.DiscoverAsync(
             "agent",

@@ -4,7 +4,7 @@ using OpenAgent.Contracts.Skills;
 
 namespace OpenAgent.Core.Capabilities.Skill;
 
-internal sealed class SkillCatalog : IToolRegistry
+internal sealed class SkillRegistry : IToolRegistry
 {
     private readonly ConcurrentDictionary<string, SkillEntry> _skills =
         new(StringComparer.OrdinalIgnoreCase);

@@ -4,7 +4,7 @@ using OpenAgent.Contracts.Skills;
 
 namespace OpenAgent.Core.Capabilities.Skill;
 
-internal sealed class SkillCapabilitySource(SkillCatalog catalog) : ICapabilitySource
+internal sealed class SkillCapabilitySource(SkillRegistry registry) : ICapabilitySource
 {
     public Task<IReadOnlyList<CapabilityDefinition>> DiscoverAsync(
         string agentId,
@@ -14,7 +14,7 @@ internal sealed class SkillCapabilitySource(SkillCatalog catalog) : ICapabilityS
     {
         cancellationToken.ThrowIfCancellationRequested();
         IReadOnlyList<SkillDescriptor> descriptors = GetAvailableDescriptors(
-            catalog.GetTools(),
+            registry.GetTools(),
             config.Skills,
             user);
         IReadOnlyList<CapabilityDefinition> result = descriptors.Select(descriptor => new CapabilityDefinition(
@@ -23,7 +23,7 @@ internal sealed class SkillCapabilitySource(SkillCatalog catalog) : ICapabilityS
             descriptor.ParametersJsonSchema,
             AgentResourceType.Skill,
             descriptor.Name,
-            (arguments, invocationCancellation) => catalog.ExecuteToolAsync(
+            (arguments, invocationCancellation) => registry.ExecuteToolAsync(
                 descriptor.Name,
                 ToValues(arguments),
                 invocationCancellation))).ToList().AsReadOnly();
