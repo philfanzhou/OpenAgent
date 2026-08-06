@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, getAccessToken, getEngineBaseUrl, getTenantId, makeLocalConversation, setAccessToken, setEngineBaseUrl, setTenantId } from './api'
-import type { AgentConfigEntity, AgentSummary, ConversationMessage, ConversationRecord, CurrentUserContext, McpServerConfig, McpTestResult, MessageAttachment } from './types'
+import type { AgentConfigEntity, AgentSummary, ConversationMessage, ConversationRecord, CurrentUserContext, McpServerConfig, McpTestResult, MessageAttachment, SkillInstanceConfig, SkillsConfig } from './types'
 
 const engineUrl = ref(getEngineBaseUrl())
 const token = ref(getAccessToken())
@@ -24,8 +24,12 @@ const testingSkill = ref(false)
 const statusText = ref('未连接')
 const config = ref<AgentConfigEntity | null>(null)
 const mcpDraft = ref<McpServerConfig>({ name: '', url: '', type: 'Http', arguments: [] })
+const mcpServers = ref<McpServerConfig[]>([])
+const selectedMcpIndex = ref(-1)
 const mcpResult = ref<McpTestResult | null>(null)
 const skillResult = ref<Record<string, unknown> | null>(null)
+const skillDraft = ref<SkillsConfig>({ enabledSkills: [], instances: [] })
+const selectedSkillIndex = ref(-1)
 const attachmentInput = ref<HTMLInputElement | null>(null)
 const pendingAttachments = ref<Array<{ id: string; file: File }>>([])
 
@@ -39,8 +43,22 @@ const filteredConversations = computed(() => {
   return conversations.value.filter(item => `${item.title || ''} ${item.agentId || ''}`.toLowerCase().includes(keyword))
 })
 
+const conversationGroups = computed(() => {
+  const today = new Date()
+  const groups = new Map<string, ConversationRecord[]>()
+  for (const item of filteredConversations.value) {
+    const date = new Date(item.updatedAt || item.lastMessageAt || item.createdAt)
+    const dayDiff = Number.isNaN(date.getTime()) ? 3 : Math.floor((today.getTime() - date.getTime()) / 86400000)
+    const label = dayDiff <= 0 ? '今天' : dayDiff === 1 ? '昨天' : '更早'
+    if (!groups.has(label)) groups.set(label, [])
+    groups.get(label)?.push(item)
+  }
+  return Array.from(groups, ([label, items]) => ({ label, items }))
+})
+
 const currentMessages = computed(() => selectedConversation.value?.messages || [])
 const selectedAgent = computed(() => agents.value.find(item => item.agentId === selectedAgentId.value))
+const selectedSkill = computed(() => selectedSkillIndex.value >= 0 ? skillDraft.value.instances[selectedSkillIndex.value] || null : null)
 const chatSubtitle = computed(() => selectedAgent.value
   ? `${selectedAgent.value.name || selectedAgent.value.agentId} 已准备好为你工作`
   : '选择一个 Agent，开始轻松协作')
@@ -51,12 +69,9 @@ const llmJson = computed({
     try { config.value.config.llm = JSON.parse(value) as Record<string, unknown> } catch { /* Keep the editor text parseable before save. */ }
   },
 })
-const skillsJson = computed({
-  get: () => config.value ? JSON.stringify(config.value.config.skills, null, 2) : '',
-  set: (value: string) => {
-    if (!config.value) return
-    try { config.value.config.skills = JSON.parse(value) as { enabledSkills: string[]; instances: Record<string, unknown>[] } } catch { /* Keep the editor text parseable before save. */ }
-  },
+const enabledSkillText = computed({
+  get: () => skillDraft.value.enabledSkills.join(', '),
+  set: (value: string) => { skillDraft.value.enabledSkills = value.split(',').map(item => item.trim()).filter(Boolean) },
 })
 const mcpArgumentsText = computed({
   get: () => (mcpDraft.value.arguments || []).join('\n'),
@@ -85,10 +100,16 @@ async function connect(): Promise<void> {
 async function loadWorkspace(): Promise<void> {
   loading.value = true
   try {
-    const [agentItems, conversationItems, userContext] = await Promise.all([api.listAgents(), api.listConversations(), api.getCurrentUser()])
-    agents.value = agentItems
-    conversations.value = conversationItems
-    currentUser.value = userContext
+    const [agentResult, conversationResult, userResult] = await Promise.allSettled([
+      api.listAgents(),
+      api.listConversations(),
+      api.getCurrentUser(),
+    ])
+    if (agentResult.status === 'fulfilled') agents.value = agentResult.value
+    else notifyError(agentResult.reason)
+    if (conversationResult.status === 'fulfilled') conversations.value = conversationResult.value
+    else conversations.value = []
+    if (userResult.status === 'fulfilled') currentUser.value = userResult.value
     if (!selectedAgentId.value && agents.value.length) selectedAgentId.value = agents.value[0].agentId
   } catch (error) {
     notifyError(error)
@@ -115,6 +136,22 @@ function newConversation(): void {
   selectedConversation.value = null
   message.value = ''
   pendingAttachments.value = []
+}
+
+function handleAgentChange(): void {
+  newConversation()
+  config.value = null
+  mcpServers.value = []
+  selectedMcpIndex.value = -1
+  skillDraft.value = { enabledSkills: [], instances: [] }
+  selectedSkillIndex.value = -1
+}
+
+function selectAgent(agentId: string): void {
+  if (selectedAgentId.value === agentId) return
+  selectedAgentId.value = agentId
+  handleAgentChange()
+  void loadConfig()
 }
 
 function formatFileSize(size: number): string {
@@ -224,9 +261,79 @@ async function loadConfig(): Promise<void> {
   if (!selectedAgentId.value) return
   try {
     config.value = await api.getAgentConfig(selectedAgentId.value)
+    skillDraft.value = {
+      enabledSkills: [...config.value.config.skills.enabledSkills],
+      instances: config.value.config.skills.instances.map(item => ({ ...item })),
+    }
+    selectedSkillIndex.value = skillDraft.value.instances.length ? 0 : -1
   } catch (error) {
     notifyError(error)
   }
+}
+
+function createDefaultMcp(): McpServerConfig {
+  return { name: '', url: '', type: 'Http', arguments: [], environmentVariables: {} }
+}
+
+function selectMcp(index: number): void {
+  const server = mcpServers.value[index]
+  if (!server) return
+  selectedMcpIndex.value = index
+  mcpDraft.value = { ...server, arguments: [...(server.arguments || [])], environmentVariables: { ...(server.environmentVariables || {}) } }
+}
+
+function newMcp(): void {
+  selectedMcpIndex.value = -1
+  mcpDraft.value = createDefaultMcp()
+  mcpResult.value = null
+}
+
+async function loadMcp(): Promise<void> {
+  if (!selectedAgentId.value) return
+  try {
+    const result = await api.getMcpConfig(selectedAgentId.value)
+    mcpServers.value = result.servers || []
+    if (selectedMcpIndex.value >= 0 && selectedMcpIndex.value < mcpServers.value.length) selectMcp(selectedMcpIndex.value)
+    else if (mcpServers.value.length) selectMcp(0)
+    else newMcp()
+  } catch (error) {
+    notifyError(error)
+  }
+}
+
+async function deleteMcp(): Promise<void> {
+  const current = mcpServers.value[selectedMcpIndex.value]
+  if (!current || !selectedAgentId.value) return
+  try {
+    await ElMessageBox.confirm(`确认移除 MCP「${current.name}」吗？`, '移除 MCP', { type: 'warning' })
+    await api.deleteMcp(current.name, selectedAgentId.value)
+    mcpServers.value.splice(selectedMcpIndex.value, 1)
+    if (mcpServers.value.length) selectMcp(Math.min(selectedMcpIndex.value, mcpServers.value.length - 1))
+    else newMcp()
+    ElMessage.success('MCP 已移除')
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') notifyError(error)
+  }
+}
+
+function createDefaultSkill(): SkillInstanceConfig {
+  return { skillId: '', name: '', enabled: true, description: '', source: 'Local' }
+}
+
+function selectSkill(index: number): void {
+  if (skillDraft.value.instances[index]) selectedSkillIndex.value = index
+}
+
+function newSkill(): void {
+  skillDraft.value.instances.push(createDefaultSkill())
+  selectedSkillIndex.value = skillDraft.value.instances.length - 1
+}
+
+function removeSkill(): void {
+  if (selectedSkillIndex.value < 0) return
+  const removed = skillDraft.value.instances.splice(selectedSkillIndex.value, 1)[0]
+  skillDraft.value.enabledSkills = skillDraft.value.enabledSkills.filter(item => item !== removed?.skillId)
+  selectedSkillIndex.value = skillDraft.value.instances.length ? Math.min(selectedSkillIndex.value, skillDraft.value.instances.length - 1) : -1
 }
 
 function createDefaultAgent(agentId: string, name: string): AgentConfigEntity {
@@ -290,7 +397,11 @@ async function saveConfig(): Promise<void> {
 async function saveMcp(): Promise<void> {
   if (!selectedAgentId.value || !mcpDraft.value.name.trim()) return
   try {
-    await api.saveMcp(mcpDraft.value.name.trim(), selectedAgentId.value, mcpDraft.value)
+    const saved = await api.saveMcp(mcpDraft.value.name.trim(), selectedAgentId.value, mcpDraft.value)
+    const existingIndex = mcpServers.value.findIndex(item => item.name === saved.name)
+    if (existingIndex >= 0) mcpServers.value[existingIndex] = saved
+    else mcpServers.value.push(saved)
+    selectMcp(existingIndex >= 0 ? existingIndex : mcpServers.value.length - 1)
     ElMessage.success('MCP 配置已保存')
   } catch (error) { notifyError(error) }
 }
@@ -298,7 +409,10 @@ async function saveMcp(): Promise<void> {
 async function saveSkills(): Promise<void> {
   if (!selectedAgentId.value || !config.value) return
   try {
-    config.value.config.skills = await api.saveSkills(selectedAgentId.value, config.value.config.skills)
+    config.value.config.skills = await api.saveSkills(selectedAgentId.value, {
+      enabledSkills: [...skillDraft.value.enabledSkills],
+      instances: skillDraft.value.instances.map(item => ({ ...item })),
+    })
     ElMessage.success('Skill 配置已保存')
   } catch (error) { notifyError(error) }
 }
@@ -306,7 +420,7 @@ async function saveSkills(): Promise<void> {
 async function testSkills(): Promise<void> {
   if (!config.value) return
   testingSkill.value = true
-  try { skillResult.value = await api.testSkills(config.value.config.skills) } catch (error) { notifyError(error) } finally { testingSkill.value = false }
+  try { skillResult.value = await api.testSkills(skillDraft.value) } catch (error) { notifyError(error) } finally { testingSkill.value = false }
 }
 
 async function testMcp(): Promise<void> {
@@ -323,11 +437,13 @@ async function testMcp(): Promise<void> {
 function openSettings(panel: typeof activeSettings.value): void {
   activeSettings.value = panel
   showSettings.value = true
-  if (panel === 'agent') void loadConfig()
+  if (panel === 'agent' || panel === 'skill') void loadConfig()
+  if (panel === 'mcp') void loadMcp()
 }
 
 function handleSettingsTabChange(name: string | number): void {
   if (name === 'agent' || name === 'skill') void loadConfig()
+  if (name === 'mcp') void loadMcp()
 }
 
 onMounted(() => {
@@ -344,13 +460,17 @@ onMounted(() => {
         <el-button circle @click="openSettings('engine')">⚙</el-button>
       </div>
       <el-input v-model="search" clearable placeholder="搜索会话" class="search-input" />
-      <div class="section-label">会话 · {{ filteredConversations.length }}</div>
+      <div class="conversation-heading"><div><span class="section-label">最近对话</span><strong>{{ filteredConversations.length }}</strong></div><el-button text class="sidebar-refresh" @click="loadWorkspace">刷新</el-button></div>
       <el-scrollbar class="conversation-list">
-        <div v-for="item in filteredConversations" :key="item.conversationId" class="conversation-item" :class="{ active: selectedConversation?.conversationId === item.conversationId }" @click="selectConversation(item)">
-          <div class="conversation-title">{{ item.title || '未命名会话' }}</div>
-          <div class="conversation-meta"><span>{{ item.agentId || '未选择 Agent' }}</span><el-button link type="danger" @click.stop="deleteConversation(item)">删除</el-button></div>
+        <div v-for="group in conversationGroups" :key="group.label" class="conversation-group">
+          <div class="conversation-group-label">{{ group.label }}</div>
+          <div v-for="item in group.items" :key="item.conversationId" class="conversation-item" :class="{ active: selectedConversation?.conversationId === item.conversationId }" @click="selectConversation(item)">
+            <div class="conversation-icon">{{ (item.title || '新').slice(0, 1) }}</div>
+            <div class="conversation-content"><div class="conversation-title">{{ item.title || '未命名会话' }}</div><div class="conversation-agent"><i />{{ item.agentId || '未选择 Agent' }}</div></div>
+            <el-button text class="conversation-more" @click.stop="deleteConversation(item)">×</el-button>
+          </div>
         </div>
-        <el-empty v-if="!filteredConversations.length" description="暂无会话" />
+        <div v-if="!filteredConversations.length" class="empty-conversations"><div class="empty-orb">✦</div><strong>还没有对话</strong><span>新建一个对话开始吧</span></div>
       </el-scrollbar>
     </el-aside>
 
@@ -358,7 +478,7 @@ onMounted(() => {
       <header class="topbar">
         <div class="topbar-status"><span class="status-dot" :class="{ connected: statusText === '已连接' }" />{{ statusText }}<span class="status-caption">工作台</span></div>
         <div class="topbar-actions">
-          <el-select v-model="selectedAgentId" placeholder="选择 Agent" @change="newConversation">
+          <el-select v-model="selectedAgentId" placeholder="选择 Agent" @change="handleAgentChange">
             <el-option v-for="agent in agents" :key="agent.agentId" :label="agent.name || agent.agentId" :value="agent.agentId" />
           </el-select>
           <el-button type="primary" plain @click="openSettings('engine')">设置</el-button>
@@ -403,18 +523,18 @@ onMounted(() => {
           </section>
         </el-tab-pane>
         <el-tab-pane label="Agent 配置" name="agent">
-          <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">AGENT RUNTIME</span><h3>Agent 配置</h3><p>模型、上下文轮次以及绑定的 Skill 都在这里统一管理。</p></div><div class="section-actions"><el-button type="primary" plain @click="createAgent">新增 Agent</el-button><el-button v-if="selectedAgentId" @click="loadConfig">重新加载</el-button></div></div>
-            <el-empty v-if="!config" description="请先选择或新增 Agent" /><template v-else><el-form label-position="top"><el-form-item label="名称"><el-input v-model="config.name" /></el-form-item><el-form-item label="最大轮次"><el-input-number v-model="config.config.maxTurns" :min="1" :max="1000" /></el-form-item><el-form-item label="LLM 配置 JSON"><el-input v-model="llmJson" type="textarea" :rows="8" /></el-form-item></el-form><el-button type="primary" :loading="savingConfig" @click="saveConfig">保存 Agent 配置</el-button></template>
+          <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">AGENT RUNTIME</span><h3>Agent 配置</h3><p>每个 Agent 都有独立的模型、Skill 和 MCP 绑定。</p></div><div class="section-actions"><el-button type="primary" plain @click="createAgent">新增 Agent</el-button><el-button v-if="selectedAgentId" @click="loadConfig">重新加载</el-button></div></div>
+            <div class="resource-layout"><aside class="resource-panel"><div class="resource-panel-heading"><span>Agent 列表</span><strong>{{ agents.length }}</strong></div><button v-for="agent in agents" :key="agent.agentId" class="resource-item" :class="{ active: selectedAgentId === agent.agentId }" @click="selectAgent(agent.agentId)"><span class="resource-avatar agent-avatar">{{ (agent.name || agent.agentId).slice(0, 1) }}</span><span class="resource-item-copy"><strong>{{ agent.name || agent.agentId }}</strong><small>{{ agent.agentId }}</small></span><i class="resource-status" /></button><div v-if="!agents.length" class="resource-empty">还没有 Agent</div></aside><div class="resource-editor"><el-empty v-if="!config" description="请先选择或新增 Agent" /><template v-else><el-form label-position="top"><el-form-item label="名称"><el-input v-model="config.name" /></el-form-item><el-form-item label="最大轮次"><el-input-number v-model="config.config.maxTurns" :min="1" :max="1000" /></el-form-item><el-form-item label="LLM 配置 JSON"><el-input v-model="llmJson" type="textarea" :rows="8" /></el-form-item></el-form><el-button type="primary" :loading="savingConfig" @click="saveConfig">保存 Agent 配置</el-button></template></div></div>
           </section>
         </el-tab-pane>
         <el-tab-pane label="MCP 绑定" name="mcp">
-          <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">CAPABILITIES</span><h3>MCP 绑定</h3><p>连接由 Engine 服务端执行，本页面只保存配置并发起测试。</p></div></div>
-            <el-form label-position="top"><el-form-item label="名称"><el-input v-model="mcpDraft.name" placeholder="例如 local-tools" /></el-form-item><el-form-item label="传输类型"><el-select v-model="mcpDraft.type"><el-option label="HTTP" value="Http" /><el-option label="SSE" value="SSE" /><el-option label="Stdio（服务端执行）" value="Stdio" /></el-select></el-form-item><el-form-item v-if="mcpDraft.type !== 'Stdio'" label="URL"><el-input v-model="mcpDraft.url" placeholder="https://mcp.example.com" /></el-form-item><template v-else><el-form-item label="Command"><el-input v-model="mcpDraft.command" placeholder="例如 node" /></el-form-item><el-form-item label="Arguments（每行一个）"><el-input v-model="mcpArgumentsText" type="textarea" :rows="3" /></el-form-item><el-form-item label="Working Directory"><el-input v-model="mcpDraft.workingDirectory" /></el-form-item></template><div class="button-row"><el-button type="primary" :loading="testingMcp" @click="testMcp">测试连接与权限</el-button><el-button :disabled="!selectedAgentId || !mcpDraft.name" @click="saveMcp">保存 MCP 配置</el-button></div></el-form><pre v-if="mcpResult" class="result-box">{{ JSON.stringify(mcpResult, null, 2) }}</pre>
+          <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">CAPABILITIES</span><h3>MCP 绑定</h3><p>一个 Agent 可以绑定多条 MCP，连接由 Engine 服务端执行。</p></div><div class="section-actions"><el-button type="primary" plain @click="newMcp">新增 MCP</el-button><el-button v-if="selectedMcpIndex >= 0" text type="danger" @click="deleteMcp">移除</el-button></div></div>
+            <div class="resource-layout"><aside class="resource-panel"><div class="resource-panel-heading"><span>当前 Agent 的 MCP</span><strong>{{ mcpServers.length }}</strong></div><button v-for="(server, index) in mcpServers" :key="server.name" class="resource-item" :class="{ active: selectedMcpIndex === index }" @click="selectMcp(index)"><span class="resource-avatar mcp-avatar">⌁</span><span class="resource-item-copy"><strong>{{ server.name }}</strong><small>{{ server.type }} · {{ server.url || server.command || '未配置地址' }}</small></span></button><div v-if="!mcpServers.length" class="resource-empty">还没有绑定 MCP</div></aside><div class="resource-editor"><el-empty v-if="!selectedAgentId" description="请先选择 Agent" /><template v-else><el-form label-position="top"><el-form-item label="名称"><el-input v-model="mcpDraft.name" placeholder="例如 local-tools" /></el-form-item><el-form-item label="传输类型"><el-select v-model="mcpDraft.type"><el-option label="HTTP" value="Http" /><el-option label="SSE" value="SSE" /><el-option label="Stdio（服务端执行）" value="Stdio" /></el-select></el-form-item><el-form-item v-if="mcpDraft.type !== 'Stdio'" label="URL"><el-input v-model="mcpDraft.url" placeholder="https://mcp.example.com" /></el-form-item><template v-else><el-form-item label="Command"><el-input v-model="mcpDraft.command" placeholder="例如 node" /></el-form-item><el-form-item label="Arguments（每行一个）"><el-input v-model="mcpArgumentsText" type="textarea" :rows="3" /></el-form-item><el-form-item label="Working Directory"><el-input v-model="mcpDraft.workingDirectory" /></el-form-item></template><div class="button-row"><el-button type="primary" :loading="testingMcp" @click="testMcp">测试连接与权限</el-button><el-button :disabled="!mcpDraft.name" @click="saveMcp">保存 MCP 配置</el-button></div></el-form><pre v-if="mcpResult" class="result-box">{{ JSON.stringify(mcpResult, null, 2) }}</pre></template></div></div>
           </section>
         </el-tab-pane>
         <el-tab-pane label="Skill 绑定" name="skill">
-          <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">CAPABILITIES</span><h3>Skill 绑定</h3><p>按 Agent 维护 Skill 可见性、实例和权限范围。</p></div></div>
-            <el-empty v-if="!config" description="请先选择或新增 Agent" /><template v-else><el-alert title="Skill 可见性和实例权限由服务端统一校验。" type="info" :closable="false" /><el-form label-position="top"><el-form-item label="Skill 配置 JSON"><el-input v-model="skillsJson" type="textarea" :rows="12" /></el-form-item></el-form><div class="button-row"><el-button type="primary" @click="saveSkills">保存 Skill 配置</el-button><el-button :loading="testingSkill" @click="testSkills">测试 Skill 配置</el-button></div><pre v-if="skillResult" class="result-box">{{ JSON.stringify(skillResult, null, 2) }}</pre></template>
+          <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">CAPABILITIES</span><h3>Skill 绑定</h3><p>一个 Agent 可以维护多条 Skill 实例，并单独启用或停用。</p></div><div class="section-actions"><el-button type="primary" plain @click="newSkill">新增 Skill</el-button><el-button v-if="selectedSkill" text type="danger" @click="removeSkill">移除</el-button></div></div>
+            <div class="resource-layout"><aside class="resource-panel"><div class="resource-panel-heading"><span>当前 Agent 的 Skill</span><strong>{{ skillDraft.instances.length }}</strong></div><button v-for="(skill, index) in skillDraft.instances" :key="`${skill.skillId}-${index}`" class="resource-item" :class="{ active: selectedSkillIndex === index }" @click="selectSkill(index)"><span class="resource-avatar skill-avatar">✦</span><span class="resource-item-copy"><strong>{{ skill.name || '未命名 Skill' }}</strong><small>{{ skill.skillId || '未设置 ID' }}</small></span><i class="resource-status" :class="{ disabled: !skill.enabled }" /></button><div v-if="!skillDraft.instances.length" class="resource-empty">还没有绑定 Skill</div></aside><div class="resource-editor"><el-empty v-if="!selectedAgentId" description="请先选择 Agent" /><el-empty v-else-if="!selectedSkill" description="请新增或选择 Skill" /><template v-else><el-form label-position="top"><el-form-item label="Skill ID"><el-input v-model="selectedSkill.skillId" placeholder="例如 weather" /></el-form-item><el-form-item label="名称"><el-input v-model="selectedSkill.name" placeholder="例如 天气查询" /></el-form-item><el-form-item label="说明"><el-input v-model="selectedSkill.description" type="textarea" :rows="3" /></el-form-item><el-form-item label="纳入 Agent 能力"><el-input v-model="enabledSkillText" placeholder="多个 Skill ID 用逗号分隔" /></el-form-item><el-form-item label="状态"><el-switch v-model="selectedSkill.enabled" active-text="启用" inactive-text="停用" /></el-form-item></el-form><div class="button-row"><el-button type="primary" @click="saveSkills">保存 Skill 配置</el-button><el-button :loading="testingSkill" @click="testSkills">测试 Skill 配置</el-button></div><pre v-if="skillResult" class="result-box">{{ JSON.stringify(skillResult, null, 2) }}</pre></template></div></div>
           </section>
         </el-tab-pane>
       </el-tabs>

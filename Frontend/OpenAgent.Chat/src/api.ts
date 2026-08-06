@@ -6,6 +6,7 @@ import type {
   CurrentUserContext,
   McpServerConfig,
   McpTestResult,
+  SkillsConfig,
   StreamEvent,
 } from './types'
 
@@ -123,12 +124,24 @@ export const api = {
     })
   },
 
+  getMcpConfig(agentId: string): Promise<{ servers: McpServerConfig[] }> {
+    return request<{ servers: McpServerConfig[] }>(`/api/v1/admin/mcp?agentId=${encodeURIComponent(agentId)}`)
+  },
+
+  deleteMcp(id: string, agentId: string): Promise<void> {
+    return request<void>(`/api/v1/admin/mcp/${encodeURIComponent(id)}?agentId=${encodeURIComponent(agentId)}`, { method: 'DELETE' })
+  },
+
   saveSkills(agentId: string, skills: AgentConfigEntity['config']['skills']): Promise<AgentConfigEntity['config']['skills']> {
     return request<AgentConfigEntity['config']['skills']>(`/api/v1/admin/skills/${encodeURIComponent(agentId)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(skills),
     })
+  },
+
+  getSkillsConfig(agentId: string): Promise<SkillsConfig> {
+    return request<SkillsConfig>(`/api/v1/admin/skills?agentId=${encodeURIComponent(agentId)}`)
   },
 
   testSkills(skills: AgentConfigEntity['config']['skills']): Promise<Record<string, unknown>> {

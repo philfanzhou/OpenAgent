@@ -58,6 +58,28 @@ export interface McpServerConfig {
   environmentVariables?: Record<string, string>
 }
 
+export interface SkillInstanceConfig {
+  skillId: string
+  name: string
+  enabled: boolean
+  description?: string
+  parametersJsonSchema?: string
+  type?: string | null
+  endpointUrl?: string | null
+  version?: string | null
+  source?: string
+  sourceId?: string | null
+  allowedUserIds?: string[]
+  allowedGroups?: string[]
+  allowedTenantIds?: string[]
+  allowedRoles?: string[]
+}
+
+export interface SkillsConfig {
+  enabledSkills: string[]
+  instances: SkillInstanceConfig[]
+}
+
 export interface AgentConfigEntity {
   agentId: string
   name: string
@@ -67,7 +89,7 @@ export interface AgentConfigEntity {
     llm: Record<string, unknown>
     mcp: { servers: McpServerConfig[] }
     rag: Record<string, unknown>
-    skills: { enabledSkills: string[]; instances: Record<string, unknown>[] }
+    skills: SkillsConfig
     maxTurns: number
   }
 }

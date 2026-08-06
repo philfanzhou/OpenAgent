@@ -91,6 +91,29 @@ internal static class ManagementEndpointExtensions
             return saved == null ? Results.Conflict() : Results.Ok(server);
         });
 
+        group.MapDelete("/mcp/{id}", async (
+            [FromServices] AgentConfigManagementService manager,
+            HttpContext context,
+            string id,
+            [FromQuery] string agentId,
+            CancellationToken cancellationToken) =>
+        {
+            if (!HasScope(context, "agent.config.write")) return Results.Forbid();
+            AgentConfigEntity? existing = await manager.GetAsync(agentId, cancellationToken).ConfigureAwait(false);
+            if (existing == null) return Results.NotFound();
+
+            int removed = existing.Config.Mcp.Servers.RemoveAll(item =>
+                string.Equals(item.Name, id, StringComparison.OrdinalIgnoreCase));
+            if (removed == 0) return Results.NotFound();
+
+            AgentConfigEntity? saved = await manager.SaveAsync(
+                agentId,
+                existing,
+                context.Request.Headers.IfMatch.FirstOrDefault(),
+                cancellationToken).ConfigureAwait(false);
+            return saved == null ? Results.Conflict() : Results.NoContent();
+        });
+
         group.MapPost("/mcp/test-connection", async (
             [FromServices] IMcpConnectionTester tester,
             [FromBody] McpConnectionTestRequest request,
