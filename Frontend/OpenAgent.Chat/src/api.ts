@@ -18,6 +18,7 @@ import type {
 const engineStorageKey = 'openagent.engine.base-url'
 const tokenStorageKey = 'openagent.auth.access-token'
 const tenantStorageKey = 'openagent.auth.tenant-id'
+const ssoAddressStorageKey = 'openagent.auth.sso-address'
 
 export function getEngineBaseUrl(): string {
   return localStorage.getItem(engineStorageKey) || ''
@@ -43,6 +44,14 @@ export function getTenantId(): string {
 
 export function setTenantId(value: string): void {
   localStorage.setItem(tenantStorageKey, value.trim())
+}
+
+export function getSsoAddress(): string {
+  return localStorage.getItem(ssoAddressStorageKey) || ''
+}
+
+export function setSsoAddress(value: string): void {
+  localStorage.setItem(ssoAddressStorageKey, value.trim())
 }
 
 function requireBaseUrl(): string {
@@ -83,16 +92,33 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return await response.json() as T
 }
 
+function parseSseBlock(block: string): StreamEvent | null {
+  let eventType = 'message'
+  const data: string[] = []
+  for (const line of block.split(/\r?\n/)) {
+    if (line.startsWith(':')) continue
+    if (line.startsWith('event:')) eventType = line.slice(6).trim()
+    else if (line.startsWith('data:')) data.push(line.slice(5).trimStart())
+  }
+  if (!data.length) return null
+
+  const payload = JSON.parse(data.join('\n')) as Record<string, unknown>
+  if (eventType === 'error' && typeof payload.detail === 'string') {
+    return { type: 'error', error: payload as StreamEvent['error'] }
+  }
+  return { ...payload, type: eventType } as StreamEvent
+}
+
 export const api = {
   getAuthConfig(): Promise<AuthConfig> {
     return request<AuthConfig>('/api/v1/auth/config')
   },
 
-  passwordLogin(username: string, password: string): Promise<AuthTokenResponse> {
+  passwordLogin(username: string, password: string, ssoAddress?: string): Promise<AuthTokenResponse> {
     return request<AuthTokenResponse>('/api/v1/auth/password/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username, password, ssoAddress: ssoAddress?.trim() || undefined }),
     })
   },
 
@@ -235,14 +261,16 @@ export const api = {
       while (true) {
         const { done, value } = await reader.read()
         buffer += decoder.decode(value || new Uint8Array(), { stream: !done })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
-        for (const line of lines) {
-          if (line.trim()) yield JSON.parse(line) as StreamEvent
+        const blocks = buffer.split(/\r?\n\r?\n/)
+        buffer = blocks.pop() || ''
+        for (const block of blocks) {
+          const event = parseSseBlock(block)
+          if (event) yield event
         }
         if (done) break
       }
-      if (buffer.trim()) yield JSON.parse(buffer) as StreamEvent
+      const event = parseSseBlock(buffer)
+      if (event) yield event
     } finally {
       reader.releaseLock()
     }

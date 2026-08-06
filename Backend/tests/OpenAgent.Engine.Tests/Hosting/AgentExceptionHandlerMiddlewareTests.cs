@@ -9,19 +9,16 @@ namespace OpenAgent.Engine.Tests.Hosting;
 public class AgentExceptionHandlerMiddlewareTests
 {
     [Fact]
-    public async Task InvokeAsync_SseEndpointThrows_WritesErrorAndDoneFrames()
+    public async Task InvokeAsync_StreamEndpointThrows_WritesSseErrorAndDoneEvents()
     {
-        // Arrange
         var context = new DefaultHttpContext();
-        context.Request.Path = "/chat/sse";
+        context.Request.Path = "/api/v1/agent/chat/stream";
         context.Response.Body = new MemoryStream();
 
         var middleware = CreateMiddleware(_ => throw new InvalidOperationException("boom"));
 
-        // Act
         await middleware.InvokeAsync(context);
 
-        // Assert
         Assert.Equal(StatusCodes.Status200OK, context.Response.StatusCode);
         Assert.Equal("text/event-stream", context.Response.ContentType);
 
@@ -29,11 +26,32 @@ public class AgentExceptionHandlerMiddlewareTests
         var payload = await new StreamReader(context.Response.Body).ReadToEndAsync();
         Assert.Contains("event: error", payload);
         Assert.Contains("event: done", payload);
-        Assert.Contains("data: [DONE]", payload);
+        Assert.Contains("\"status\":\"error\"", payload);
     }
 
     [Fact]
-    public async Task InvokeAsync_NonSseEndpointThrows_WritesProblemDetails()
+    public async Task InvokeAsync_StreamEndpointRequestAborted_DoesNotWriteResponse()
+    {
+        using var aborted = new CancellationTokenSource();
+        aborted.Cancel();
+
+        var context = new DefaultHttpContext();
+        context.Request.Path = "/api/v1/agent/chat/stream";
+        context.Response.Body = new MemoryStream();
+        context.RequestAborted = aborted.Token;
+
+        var middleware = CreateMiddleware(_ => throw new InvalidOperationException("boom"));
+
+        await middleware.InvokeAsync(context);
+
+        context.Response.Body.Seek(0, SeekOrigin.Begin);
+        var payload = await new StreamReader(context.Response.Body).ReadToEndAsync();
+        Assert.DoesNotContain("event: error", payload);
+        Assert.DoesNotContain("event: done", payload);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_EndpointThrows_WritesProblemDetails()
     {
         // Arrange
         var context = new DefaultHttpContext();
@@ -67,30 +85,6 @@ public class AgentExceptionHandlerMiddlewareTests
 
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(() => middleware.InvokeAsync(context));
-    }
-
-    [Fact]
-    public async Task InvokeAsync_SseEndpointRequestAborted_DoesNotWriteResponse()
-    {
-        // Arrange
-        var aborted = new CancellationTokenSource();
-        aborted.Cancel();
-
-        var context = new DefaultHttpContext();
-        context.Request.Path = "/chat/sse";
-        context.Response.Body = new MemoryStream();
-        context.RequestAborted = aborted.Token;
-
-        var middleware = CreateMiddleware(_ => throw new InvalidOperationException("boom"));
-
-        // Act
-        await middleware.InvokeAsync(context);
-
-        // Assert
-        context.Response.Body.Seek(0, SeekOrigin.Begin);
-        var payload = await new StreamReader(context.Response.Body).ReadToEndAsync();
-        Assert.DoesNotContain("event: error", payload);
-        Assert.DoesNotContain("event: done", payload);
     }
 
     [Fact]

@@ -120,15 +120,8 @@ export interface RagTestResult {
 }
 
 export interface AuthConfig {
-  password: { enabled: boolean; endpoint: string }
-  microsoft: {
-    enabled: boolean
-    authority: string
-    authorizationEndpoint: string
-    clientId: string
-    redirectUri: string
-    scopes: string[]
-  }
+  password: { enabled: boolean; endpoint: string; ssoAddress: string }
+  providers: Array<{ id: string; authority: string }>
 }
 
 export interface AuthTokenResponse {

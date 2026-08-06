@@ -18,8 +18,26 @@ public sealed class AgentAuthenticationOptions
     public string IntrospectionClientId { get; set; } = string.Empty;
     public string IntrospectionClientSecret { get; set; } = string.Empty;
     public bool AllowTenantHeader { get; set; }
+    public bool AllowDevelopmentPassThrough { get; set; }
+    public string DevelopmentUserId { get; set; } = "development-user";
+    public string DevelopmentTenantId { get; set; } = "development";
     public Dictionary<string, ApiKeyIdentityOptions> ApiKeys { get; set; } = new();
+    public Dictionary<string, AuthenticationProviderOptions> Providers { get; set; } = new();
     public AuthenticationLoginOptions Login { get; set; } = new();
+}
+
+public sealed class AuthenticationProviderOptions
+{
+    public string Type { get; set; } = "Oidc";
+    public string Authority { get; set; } = string.Empty;
+    public string Issuer { get; set; } = string.Empty;
+    public string Audience { get; set; } = string.Empty;
+    public bool RequireHttpsMetadata { get; set; } = true;
+    public string TokenEndpoint { get; set; } = string.Empty;
+    public string ClientId { get; set; } = string.Empty;
+    public string ClientSecret { get; set; } = string.Empty;
+    public bool PasswordLoginEnabled { get; set; }
+    public string Scope { get; set; } = "openid profile email";
 }
 
 public sealed class AuthenticationLoginOptions
@@ -31,6 +49,7 @@ public sealed class AuthenticationLoginOptions
 public sealed class PasswordLoginOptions
 {
     public bool Enabled { get; set; }
+    public string SsoAddress { get; set; } = string.Empty;
     public string TokenEndpoint { get; set; } = string.Empty;
     public string ClientId { get; set; } = string.Empty;
     public string ClientSecret { get; set; } = string.Empty;

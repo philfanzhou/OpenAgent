@@ -3,6 +3,7 @@ using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using OpenAgent.Hosting.Authentication;
 
 namespace OpenAgent.Hosting.Security;
 
@@ -20,16 +21,21 @@ internal sealed class PassThroughAuthenticationHandler
     public PassThroughAuthenticationHandler(
         IOptionsMonitor<AuthenticationSchemeOptions> options,
         ILoggerFactory logger,
-        UrlEncoder encoder)
+        UrlEncoder encoder,
+        IOptions<AgentAuthenticationOptions> authenticationOptions)
         : base(options, logger, encoder)
     {
+        _authenticationOptions = authenticationOptions.Value;
     }
+
+    private readonly AgentAuthenticationOptions _authenticationOptions;
 
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
-        string? userId = Request.Headers["X-User-Id"].FirstOrDefault() ?? "anonymous";
+        string? userId = Request.Headers["X-User-Id"].FirstOrDefault() ?? _authenticationOptions.DevelopmentUserId;
         string? tenantId = Request.Headers["X-Tenant-Id"].FirstOrDefault()
-            ?? Request.Headers["X-TenantId"].FirstOrDefault();
+            ?? Request.Headers["X-TenantId"].FirstOrDefault()
+            ?? _authenticationOptions.DevelopmentTenantId;
 
         var claims = new List<Claim>
         {

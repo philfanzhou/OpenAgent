@@ -13,12 +13,6 @@ internal static class StreamingResponseHeaders
         context.Response.Headers[HeaderNames.Connection] = "keep-alive";
     }
 
-    public static void ApplyNdjson(HttpContext context)
-    {
-        ApplyCommon(context);
-        context.Response.ContentType = "application/x-ndjson";
-    }
-
     private static void ApplyCommon(HttpContext context)
     {
         context.Features.Get<IHttpResponseBodyFeature>()?.DisableBuffering();

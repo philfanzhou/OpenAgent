@@ -31,5 +31,7 @@ dotnet test Backend/OpenAgent.sln
 
 ## 安全
 
-> ⚠️ **本仓库默认使用 PassThrough 认证处理器，仅适用于开发环境。**
-> 部署到生产环境前，请务必阅读 [安全设计文档](docs/modules/security/README.md) 进行安全加固。
+生产配置默认使用 `Authentication:Mode=JwtBearer`。第三方 OIDC/OAuth SSO 通过
+`Authentication:Providers` 配置，前端可输入已配置的 SSO 地址并使用账号密码获取 JWT。
+只有 `Development` 环境显式设置 `Authentication:AllowDevelopmentPassThrough=true` 时，才允许不带账号密码请求。
+详见 [安全设计文档](docs/modules/security/README.md)。

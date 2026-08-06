@@ -76,7 +76,6 @@ public static class ServiceCollectionExtensions
             client.DefaultRequestHeaders.Accept.Add(
                 new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
         });
-
         if (options.EnableHealthChecks)
         {
             services.AddHealthChecks();

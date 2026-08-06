@@ -4,6 +4,7 @@ public sealed class PasswordLoginRequest
 {
     public string Username { get; init; } = string.Empty;
     public string Password { get; init; } = string.Empty;
+    public string? SsoAddress { get; init; }
 }
 
 public sealed class MicrosoftTokenExchangeRequest

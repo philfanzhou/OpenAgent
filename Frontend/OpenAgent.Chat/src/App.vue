@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { api, getAccessToken, getEngineBaseUrl, getTenantId, makeLocalConversation, setAccessToken, setEngineBaseUrl, setTenantId } from './api'
+import { api, getAccessToken, getEngineBaseUrl, getSsoAddress, getTenantId, makeLocalConversation, setAccessToken, setEngineBaseUrl, setSsoAddress, setTenantId } from './api'
 import type { AgentConfigEntity, AgentSummary, AuthConfig, ConversationMessage, ConversationRecord, CurrentUserContext, McpServerConfig, McpTestResult, MessageAttachment, RagConfig, RagInstanceConfig, RagTestResult, SkillInstanceConfig, SkillsConfig } from './types'
 
 const engineUrl = ref(getEngineBaseUrl())
@@ -25,7 +25,7 @@ const testingRag = ref(false)
 const statusText = ref('未连接')
 const config = ref<AgentConfigEntity | null>(null)
 const authConfig = ref<AuthConfig | null>(null)
-const loginMethod = ref<'password' | 'microsoft'>('password')
+const ssoAddress = ref(getSsoAddress())
 const username = ref('')
 const password = ref('')
 const authLoading = ref(false)
@@ -119,6 +119,7 @@ async function connect(): Promise<void> {
   setEngineBaseUrl(engineUrl.value)
   setAccessToken(token.value)
   setTenantId(tenantId.value)
+  setSsoAddress(ssoAddress.value)
   try {
     await api.health('/ready')
     await loadAuthConfig()
@@ -134,7 +135,6 @@ async function connect(): Promise<void> {
 async function loadAuthConfig(): Promise<void> {
   try {
     authConfig.value = await api.getAuthConfig()
-    if (!authConfig.value.password.enabled && authConfig.value.microsoft.enabled) loginMethod.value = 'microsoft'
   } catch {
     authConfig.value = null
   }
@@ -144,64 +144,10 @@ async function loginWithPassword(): Promise<void> {
   if (!username.value.trim() || !password.value) return notifyError(new Error('请输入账号和密码'))
   authLoading.value = true
   try {
-    const result = await api.passwordLogin(username.value.trim(), password.value)
+    const result = await api.passwordLogin(username.value.trim(), password.value, ssoAddress.value)
     setAccessToken(result.access_token)
     token.value = result.access_token
     password.value = ''
-    await connect()
-  } catch (error) {
-    notifyError(error)
-  } finally {
-    authLoading.value = false
-  }
-}
-
-function toBase64Url(bytes: Uint8Array): string {
-  let binary = ''
-  bytes.forEach(byte => { binary += String.fromCharCode(byte) })
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-}
-
-async function startMicrosoftLogin(): Promise<void> {
-  const microsoft = authConfig.value?.microsoft
-  if (!microsoft?.enabled) return notifyError(new Error('Microsoft 登录尚未由 Engine 配置启用'))
-  const verifier = toBase64Url(crypto.getRandomValues(new Uint8Array(32)))
-  const challenge = toBase64Url(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier))))
-  const state = toBase64Url(crypto.getRandomValues(new Uint8Array(24)))
-  const redirectUri = microsoft.redirectUri || `${window.location.origin}/auth/callback`
-  sessionStorage.setItem('openagent.auth.pkce.verifier', verifier)
-  sessionStorage.setItem('openagent.auth.pkce.state', state)
-  const authority = microsoft.authority.replace(/\/$/, '')
-  const authorizationEndpoint = microsoft.authorizationEndpoint || `${authority}/oauth2/v2.0/authorize`
-  const authorizeUrl = `${authorizationEndpoint}?${new URLSearchParams({
-    client_id: microsoft.clientId,
-    response_type: 'code',
-    redirect_uri: redirectUri,
-    response_mode: 'query',
-    scope: microsoft.scopes.join(' '),
-    state,
-    code_challenge: challenge,
-    code_challenge_method: 'S256',
-  }).toString()}`
-  window.location.assign(authorizeUrl)
-}
-
-async function completeMicrosoftLogin(): Promise<void> {
-  const params = new URLSearchParams(window.location.search)
-  const code = params.get('code')
-  const state = params.get('state')
-  const expectedState = sessionStorage.getItem('openagent.auth.pkce.state')
-  const verifier = sessionStorage.getItem('openagent.auth.pkce.verifier')
-  if (!code || !state || !expectedState || state !== expectedState || !verifier) return
-  authLoading.value = true
-  try {
-    const redirectUri = authConfig.value?.microsoft.redirectUri || `${window.location.origin}/auth/callback`
-    const result = await api.exchangeMicrosoftCode(code, verifier, redirectUri)
-    setAccessToken(result.access_token)
-    token.value = result.access_token
-    sessionStorage.removeItem('openagent.auth.pkce.state')
-    sessionStorage.removeItem('openagent.auth.pkce.verifier')
-    window.history.replaceState({}, document.title, window.location.pathname)
     await connect()
   } catch (error) {
     notifyError(error)
@@ -694,10 +640,7 @@ function handleSettingsTabChange(name: string | number): void {
 
 onMounted(() => {
   if (engineUrl.value) {
-    void (async () => {
-      await connect()
-      await completeMicrosoftLogin()
-    })()
+    void connect()
   }
 })
 </script>
@@ -771,7 +714,7 @@ onMounted(() => {
             <el-form label-position="top"><el-form-item label="Engine 地址"><el-input v-model="engineUrl" placeholder="http://localhost:5208" /></el-form-item><el-form-item label="Bearer Token（高级联调）"><el-input v-model="token" type="password" show-password placeholder="可选：从认证中心获取的 Access Token" /></el-form-item><el-form-item label="租户 ID"><el-input v-model="tenantId" placeholder="由认证中心 Token 中的 tid 决定" /></el-form-item></el-form>
             <el-descriptions :column="2" border class="identity-status"><el-descriptions-item label="当前用户">{{ currentUser?.userId || '未连接' }}</el-descriptions-item><el-descriptions-item label="当前租户">{{ currentUser?.tenantId || tenantId || '未识别' }}</el-descriptions-item><el-descriptions-item label="认证状态">{{ currentUser?.isAuthenticated ? '已认证' : '未认证' }}</el-descriptions-item><el-descriptions-item label="Token 状态">{{ token ? '已配置（Bearer）' : '未配置' }}</el-descriptions-item></el-descriptions>
             <el-alert title="Engine 的 Authentication:Mode 只由后端启动配置决定；这里仅选择登录方式并获取 Token。" type="info" :closable="false" />
-            <section class="login-card"><div class="login-card-heading"><div><span class="eyebrow">IDENTITY PROVIDER</span><h4>登录 Engine</h4></div><span class="login-config-status">{{ authConfig ? '已读取后端登录配置' : '等待连接后读取' }}</span></div><el-radio-group v-model="loginMethod" class="login-methods"><el-radio-button value="password" :disabled="!authConfig?.password.enabled">账号密码</el-radio-button><el-radio-button value="microsoft" :disabled="!authConfig?.microsoft.enabled">Microsoft</el-radio-button></el-radio-group><template v-if="loginMethod === 'password'"><el-form label-position="top" class="login-form"><el-form-item label="账号"><el-input v-model="username" autocomplete="username" placeholder="name@example.com" /></el-form-item><el-form-item label="密码"><el-input v-model="password" type="password" show-password autocomplete="current-password" placeholder="请输入密码" /></el-form-item></el-form><el-button type="primary" :loading="authLoading" :disabled="!authConfig?.password.enabled" @click="loginWithPassword">账号密码登录</el-button><small v-if="!authConfig?.password.enabled" class="login-hint">请在 Engine Authentication:Login:Password 中配置 TokenEndpoint 后启用。</small></template><template v-else><p class="login-hint">将跳转到 Microsoft 登录页，使用 Authorization Code + PKCE 返回 Token。</p><el-button type="primary" :loading="authLoading" :disabled="!authConfig?.microsoft.enabled" @click="startMicrosoftLogin">使用 Microsoft 登录</el-button><small v-if="!authConfig?.microsoft.enabled" class="login-hint">请在 Engine Authentication:Login:Microsoft 中配置 Authority 和 ClientId 后启用。</small></template></section>
+            <section class="login-card"><div class="login-card-heading"><div><span class="eyebrow">THIRD-PARTY SSO</span><h4>登录 Engine</h4></div><span class="login-config-status">{{ authConfig ? '已读取后端登录配置' : '等待连接后读取' }}</span></div><el-form label-position="top" class="login-form"><el-form-item label="SSO 地址"><el-input v-model="ssoAddress" placeholder="https://sso.example.com" /></el-form-item><el-form-item label="账号"><el-input v-model="username" autocomplete="username" placeholder="name@example.com" /></el-form-item><el-form-item label="密码"><el-input v-model="password" type="password" show-password autocomplete="current-password" placeholder="请输入密码" /></el-form-item></el-form><el-button type="primary" :loading="authLoading" :disabled="!authConfig?.password.enabled" @click="loginWithPassword">账号密码登录</el-button><small class="login-hint">SSO 地址会保存在本机浏览器；后端只允许已配置的第三方 Provider，未填写时使用后端默认 SSO。</small><small v-if="!authConfig?.password.enabled" class="login-hint">请在 Engine Authentication:Login:Password 或 Authentication:Providers 中配置密码登录。</small></section>
             <div class="button-row"><el-button type="primary" @click="connect">保存并连接</el-button><el-button @click="api.health('/health').then(() => ElMessage.success('Live 健康检查通过')).catch(notifyError)">测试 Live</el-button><el-button @click="api.health('/ready').then(() => ElMessage.success('Ready 健康检查通过')).catch(notifyError)">测试 Ready</el-button></div>
           </section>
         </el-tab-pane>

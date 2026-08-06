@@ -21,10 +21,20 @@ internal static class AuthenticationEndpointExtensions
             {
                 password = new
                 {
-                    enabled = authentication.Login.Password.Enabled
-                        && !string.IsNullOrWhiteSpace(authentication.Login.Password.TokenEndpoint),
-                    endpoint = "/api/v1/auth/password/token"
+                    enabled = (authentication.Login.Password.Enabled
+                        && (!string.IsNullOrWhiteSpace(authentication.Login.Password.TokenEndpoint)
+                            || !string.IsNullOrWhiteSpace(authentication.Login.Password.SsoAddress)))
+                        || authentication.Providers.Values.Any(item => item.PasswordLoginEnabled),
+                    endpoint = "/api/v1/auth/password/token",
+                    ssoAddress = authentication.Login.Password.SsoAddress
                 },
+                providers = authentication.Providers
+                    .Where(item => item.Value.PasswordLoginEnabled)
+                    .Select(item => new
+                    {
+                        id = item.Key,
+                        authority = item.Value.Authority
+                    }),
                 microsoft = new
                 {
                     enabled = authentication.Login.Microsoft.Enabled
@@ -45,8 +55,9 @@ internal static class AuthenticationEndpointExtensions
             [FromBody] PasswordLoginRequest request,
             CancellationToken cancellationToken) =>
         {
-            PasswordLoginOptions password = options.Value.Login.Password;
-            if (!password.Enabled || string.IsNullOrWhiteSpace(password.TokenEndpoint))
+            AgentAuthenticationOptions authentication = options.Value;
+            PasswordLoginOptions password = authentication.Login.Password;
+            if (!password.Enabled && string.IsNullOrWhiteSpace(request.SsoAddress))
             {
                 return Results.Problem("Password login is not configured.", statusCode: StatusCodes.Status503ServiceUnavailable);
             }
@@ -56,19 +67,35 @@ internal static class AuthenticationEndpointExtensions
                 return Results.BadRequest(new { error = "username_and_password_required" });
             }
 
+            if (!string.IsNullOrWhiteSpace(request.SsoAddress)
+                && !IsConfiguredSsoAddress(authentication, request.SsoAddress))
+            {
+                return Results.BadRequest(new { error = "sso_provider_not_allowed" });
+            }
+
+            PasswordLoginTarget? target = await ResolvePasswordTargetAsync(
+                authentication,
+                request.SsoAddress,
+                httpClientFactory,
+                cancellationToken).ConfigureAwait(false);
+            if (target == null)
+            {
+                return Results.Problem("Password SSO token endpoint could not be resolved.", statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
+
             var passwordForm = new Dictionary<string, string>
             {
                 ["grant_type"] = "password",
                 ["username"] = request.Username,
                 ["password"] = request.Password,
-                ["client_id"] = password.ClientId,
-                ["scope"] = password.Scope
+                ["client_id"] = target.ClientId,
+                ["scope"] = target.Scope
             };
-            if (!string.IsNullOrWhiteSpace(password.ClientSecret)) passwordForm["client_secret"] = password.ClientSecret;
+            if (!string.IsNullOrWhiteSpace(target.ClientSecret)) passwordForm["client_secret"] = target.ClientSecret;
             using var content = new FormUrlEncodedContent(passwordForm);
             using HttpResponseMessage response = await httpClientFactory
                 .CreateClient("AgentLogin")
-                .PostAsync(password.TokenEndpoint, content, cancellationToken)
+                .PostAsync(target.TokenEndpoint, content, cancellationToken)
                 .ConfigureAwait(false);
             return await ForwardTokenResponse(response, cancellationToken).ConfigureAwait(false);
         });
@@ -148,4 +175,87 @@ internal static class AuthenticationEndpointExtensions
             ? tokenEndpoint.GetString()
             : null;
     }
+
+    private static bool IsConfiguredSsoAddress(
+        AgentAuthenticationOptions options,
+        string address)
+    {
+        string normalized = Normalize(address);
+        if (string.Equals(normalized, Normalize(options.Login.Password.SsoAddress), StringComparison.OrdinalIgnoreCase)) return true;
+        return options.Providers.Values.Any(provider =>
+            provider.PasswordLoginEnabled
+            && (string.Equals(normalized, Normalize(provider.Authority), StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalized, Normalize(provider.TokenEndpoint), StringComparison.OrdinalIgnoreCase)));
+    }
+
+    private static async Task<PasswordLoginTarget?> ResolvePasswordTargetAsync(
+        AgentAuthenticationOptions options,
+        string? requestedAddress,
+        IHttpClientFactory httpClientFactory,
+        CancellationToken cancellationToken)
+    {
+        PasswordLoginTarget target;
+        if (!string.IsNullOrWhiteSpace(requestedAddress))
+        {
+            AuthenticationProviderOptions? provider = options.Providers.Values.FirstOrDefault(item =>
+                item.PasswordLoginEnabled
+                && (string.Equals(Normalize(item.Authority), Normalize(requestedAddress), StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(Normalize(item.TokenEndpoint), Normalize(requestedAddress), StringComparison.OrdinalIgnoreCase)));
+            if (provider == null) return null;
+            target = new PasswordLoginTarget(
+                provider.TokenEndpoint,
+                provider.Authority,
+                provider.ClientId,
+                provider.ClientSecret,
+                provider.Scope);
+        }
+        else
+        {
+            PasswordLoginOptions password = options.Login.Password;
+            target = new PasswordLoginTarget(
+                password.TokenEndpoint,
+                password.SsoAddress,
+                password.ClientId,
+                password.ClientSecret,
+                password.Scope);
+        }
+
+        string? endpoint = await ResolveTokenEndpointAsync(
+            target.TokenEndpoint,
+            target.Authority,
+            httpClientFactory,
+            cancellationToken).ConfigureAwait(false);
+        return string.IsNullOrWhiteSpace(endpoint) ? null : target with { TokenEndpoint = endpoint };
+    }
+
+    private static async Task<string?> ResolveTokenEndpointAsync(
+        string explicitEndpoint,
+        string authority,
+        IHttpClientFactory httpClientFactory,
+        CancellationToken cancellationToken)
+    {
+        if (!string.IsNullOrWhiteSpace(explicitEndpoint)) return explicitEndpoint;
+        if (string.IsNullOrWhiteSpace(authority)) return null;
+
+        using HttpResponseMessage response = await httpClientFactory
+            .CreateClient("AgentLogin")
+            .GetAsync(authority.TrimEnd('/') + "/.well-known/openid-configuration", cancellationToken)
+            .ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode) return null;
+
+        using JsonDocument document = JsonDocument.Parse(
+            await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
+        return document.RootElement.TryGetProperty("token_endpoint", out JsonElement tokenEndpoint)
+            ? tokenEndpoint.GetString()
+            : null;
+    }
+
+    private static string Normalize(string? value) => value?.Trim().TrimEnd('/') ?? string.Empty;
+
+    private sealed record PasswordLoginTarget(
+        string TokenEndpoint,
+        string Authority,
+        string ClientId,
+        string ClientSecret,
+        string Scope);
 }
