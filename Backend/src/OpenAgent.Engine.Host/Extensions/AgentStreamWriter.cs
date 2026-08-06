@@ -8,7 +8,7 @@ internal static class AgentStreamWriter
 {
     private static readonly TimeSpan StreamHeartbeatInterval = TimeSpan.FromSeconds(15);
 
-    internal static async Task WriteNdjsonStreamAsync(
+    internal static async Task WriteSseStreamAsync(
         HttpContext context,
         IAsyncEnumerable<AgentStreamEvent> events,
         string traceId,
@@ -16,12 +16,12 @@ internal static class AgentStreamWriter
         CancellationToken cancellationToken)
     {
         context.Response.StatusCode = StatusCodes.Status200OK;
-        StreamingResponseHeaders.ApplyNdjson(context);
+        StreamingResponseHeaders.ApplySse(context);
         TokenUsage? usage = null;
         try
         {
             await using StreamingHeartbeat heartbeat = StreamingHeartbeat.Start(
-                token => WriteNdjsonHeartbeatAsync(context, traceId, token),
+                token => WriteHeartbeatAsync(context, token),
                 StreamHeartbeatInterval,
                 logger,
                 "agent-stream",
@@ -35,26 +35,32 @@ internal static class AgentStreamWriter
                     continue;
                 }
 
+                string eventName = streamEvent.Type switch
+                {
+                    AgentStreamEventType.Reasoning => "reasoning",
+                    AgentStreamEventType.ToolCall => "tool_call",
+                    _ => "content"
+                };
+                string data = JsonSerializer.Serialize(new
+                {
+                    content = streamEvent.Content,
+                    toolName = streamEvent.ToolName,
+                    toolCallId = streamEvent.ToolCallId
+                });
                 await heartbeat.WriteAsync(
-                    token => WriteNdjsonEventAsync(
-                        context,
-                        StreamingPayloadFactory.CreateAgentEvent(streamEvent, traceId),
-                        token),
+                    token => WriteSseEventAsync(context, eventName, data, token),
                     cancellationToken).ConfigureAwait(false);
             }
 
-            await heartbeat.WriteAsync(
-                token => WriteNdjsonEventAsync(
-                    context,
-                    StreamingPayloadFactory.CreateDoneEvent(traceId, usage: usage),
-                    token),
-                cancellationToken).ConfigureAwait(false);
+            string done = JsonSerializer.Serialize(new { done = true, usage });
+            await WriteSseEventAsync(context, "done", done, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (!context.RequestAborted.IsCancellationRequested)
         {
-            await WriteNdjsonEventAsync(
+            await WriteSseEventAsync(
                 context,
-                StreamingPayloadFactory.CreateDoneEvent(traceId, "cancelled"),
+                "done",
+                JsonSerializer.Serialize(new { done = true, status = "cancelled" }),
                 CancellationToken.None).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
@@ -62,36 +68,36 @@ internal static class AgentStreamWriter
         }
         catch (Exception exception) when (!context.RequestAborted.IsCancellationRequested)
         {
-            await WriteNdjsonEventAsync(
+            await WriteSseEventAsync(
                 context,
-                StreamingPayloadFactory.CreateErrorEvent(
-                    StreamingPayloadFactory.CreateErrorPayload(exception, traceId),
-                    traceId),
+                "error",
+                JsonSerializer.Serialize(StreamingPayloadFactory.CreateErrorPayload(exception, traceId)),
                 CancellationToken.None).ConfigureAwait(false);
-            await WriteNdjsonEventAsync(
+            await WriteSseEventAsync(
                 context,
-                StreamingPayloadFactory.CreateDoneEvent(traceId, "error"),
+                "done",
+                JsonSerializer.Serialize(new { done = true, status = "error" }),
                 CancellationToken.None).ConfigureAwait(false);
         }
     }
 
-    internal static async Task WriteNdjsonEventAsync(
+    private static async Task WriteHeartbeatAsync(
         HttpContext context,
-        NdjsonStreamEvent payload,
         CancellationToken cancellationToken)
     {
-        string line = JsonSerializer.Serialize(payload);
-        await context.Response.WriteAsync(line + "\n", cancellationToken).ConfigureAwait(false);
+        await context.Response.WriteAsync(": heartbeat\n\n", cancellationToken).ConfigureAwait(false);
         await context.Response.Body.FlushAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    private static async Task WriteNdjsonHeartbeatAsync(
+    private static async Task WriteSseEventAsync(
         HttpContext context,
-        string traceId,
+        string eventName,
+        string data,
         CancellationToken cancellationToken)
     {
-        string line = JsonSerializer.Serialize(new { type = "heartbeat", traceId });
-        await context.Response.WriteAsync(line + "\n", cancellationToken).ConfigureAwait(false);
+        await context.Response.WriteAsync(
+            $"event: {eventName}\ndata: {data}\n\n",
+            cancellationToken).ConfigureAwait(false);
         await context.Response.Body.FlushAsync(cancellationToken).ConfigureAwait(false);
     }
 }

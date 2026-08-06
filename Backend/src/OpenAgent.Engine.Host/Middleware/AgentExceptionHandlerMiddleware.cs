@@ -3,13 +3,15 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using OpenAgent.Contracts.Security;
+using OpenAgent.Engine.Host;
 using OpenAgent.Engine.Observability;
 
 namespace OpenAgent.Engine.Host.Middleware;
 
 /// <summary>
-/// Unified exception-handling middleware for the Engine pipeline. All endpoints
-/// receive an RFC 7807 ProblemDetails payload mapped from the exception.
+/// Unified exception-handling middleware for the Engine pipeline. The SSE stream
+/// endpoint receives an error/done event sequence; all other endpoints receive
+/// an RFC 7807 ProblemDetails payload mapped from the exception.
 /// </summary>
 internal class AgentExceptionHandlerMiddleware
 {
@@ -35,8 +37,56 @@ internal class AgentExceptionHandlerMiddleware
         }
         catch (Exception ex)
         {
-            await HandleExceptionAsync(context, ex);
+            if (IsSseEndpoint(context))
+            {
+                await HandleSseErrorAsync(context, ex);
+            }
+            else
+            {
+                await HandleExceptionAsync(context, ex);
+            }
         }
+    }
+
+    private static bool IsSseEndpoint(HttpContext context)
+    {
+        string path = context.Request.Path.Value ?? string.Empty;
+        return path.EndsWith("/chat/stream", StringComparison.OrdinalIgnoreCase)
+            || path.EndsWith("/chat/attachments/stream", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task HandleSseErrorAsync(HttpContext context, Exception exception)
+    {
+        string traceId = TraceIdResolver.Resolve(context);
+        if (exception is not AgentException)
+        {
+            EngineLog.SseEndpointErrorOccurred(
+                _logger,
+                exception,
+                context.Request.Method,
+                context.Request.Path.ToString(),
+                traceId,
+                context.Response.HasStarted);
+        }
+
+        if (context.RequestAborted.IsCancellationRequested)
+        {
+            return;
+        }
+
+        if (!context.Response.HasStarted)
+        {
+            context.Response.StatusCode = StatusCodes.Status200OK;
+            context.Response.ContentType = "text/event-stream";
+            context.Response.Headers.CacheControl = "no-cache";
+            context.Response.Headers.Connection = "keep-alive";
+        }
+
+        string error = JsonSerializer.Serialize(StreamingPayloadFactory.CreateErrorPayload(exception, traceId));
+        string done = JsonSerializer.Serialize(new { done = true, status = "error" });
+        await context.Response.WriteAsync($"event: error\ndata: {error}\n\n", CancellationToken.None).ConfigureAwait(false);
+        await context.Response.WriteAsync($"event: done\ndata: {done}\n\n", CancellationToken.None).ConfigureAwait(false);
+        await context.Response.Body.FlushAsync(CancellationToken.None).ConfigureAwait(false);
     }
 
     private async Task HandleExceptionAsync(HttpContext context, Exception exception)

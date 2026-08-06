@@ -6,13 +6,13 @@ ErrorHandling 模块提供 Agent.Engine 的全局异常处理机制，确保所�
 | Capability | Description |
 |-----------|-------------|
 | 全局异常捕获 | `AgentExceptionHandlerMiddleware` 捕获常规 HTTP 异常，返回 ProblemDetails |
-| 流式错误载荷 | `StreamingPayloadFactory` 构造 NDJSON 错误载荷 |
+| 流式错误载荷 | `StreamingPayloadFactory` 构造 SSE 错误载荷 |
 | AgentErrorCode 映射 | 按 ErrorCode 分组映射 HTTP 状态码（403/404/429/400/503/500）|
 
 ## Architecture
 ```text
 HTTP 请求
-  → AgentExceptionHandlerMiddleware（异常→ProblemDetails）
+  → AgentExceptionHandlerMiddleware（SSE 异常→error/done；其他异常→ProblemDetails）
   → Endpoint Handlers
 ```
 

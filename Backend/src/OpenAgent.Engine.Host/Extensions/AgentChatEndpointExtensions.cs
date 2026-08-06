@@ -13,7 +13,7 @@ internal static class AgentChatEndpointExtensions
             .WithName("Chat")
             .WithTags("Agent");
 
-        group.MapPost("/chat/stream", ExecuteNdjsonAsync)
+        group.MapPost("/chat/stream", ExecuteStreamAsync)
             .WithName("ChatStream")
             .WithTags("Agent");
 
@@ -33,7 +33,7 @@ internal static class AgentChatEndpointExtensions
         return Results.Ok(new ChatResponse { Message = response.Content });
     }
 
-    private static async Task ExecuteNdjsonAsync(
+    private static async Task ExecuteStreamAsync(
         [FromBody] ChatRequest request,
         [FromServices] AgentExecutor executor,
         [FromServices] ILogger<Program> logger,
@@ -41,7 +41,7 @@ internal static class AgentChatEndpointExtensions
         CancellationToken cancellationToken)
     {
         AgentRequest executionRequest = AgentEndpointRequestMapper.CreateAgentRequest(request, context);
-        await AgentStreamWriter.WriteNdjsonStreamAsync(
+        await AgentStreamWriter.WriteSseStreamAsync(
             context,
             executor.ExecuteStreamingAsync(
                 executionRequest,
@@ -51,5 +51,4 @@ internal static class AgentChatEndpointExtensions
             logger,
             cancellationToken).ConfigureAwait(false);
     }
-
 }
