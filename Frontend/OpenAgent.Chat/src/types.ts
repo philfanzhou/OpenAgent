@@ -80,6 +80,15 @@ export interface SkillsConfig {
   instances: SkillInstanceConfig[]
 }
 
+export interface LlmConfig {
+  provider: string
+  format: 'OpenAIChatCompletions' | 'OpenAIResponses' | 'AnthropicMessages' | string
+  modelId: string
+  apiKey: string
+  endpoint: string
+  temperature: number
+}
+
 export interface RagInstanceConfig {
   id: string
   name: string
@@ -135,7 +144,7 @@ export interface AgentConfigEntity {
   status: number
   currentVersion: string
   config: {
-    llm: Record<string, unknown>
+    llm: LlmConfig
     mcp: { servers: McpServerConfig[] }
     rag: RagConfig
     skills: SkillsConfig

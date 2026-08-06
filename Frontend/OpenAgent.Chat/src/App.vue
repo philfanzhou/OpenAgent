@@ -30,6 +30,7 @@ const username = ref('')
 const password = ref('')
 const authLoading = ref(false)
 const showAgentEditor = ref(false)
+const isNewAgent = ref(false)
 const showMcpEditor = ref(false)
 const showSkillEditor = ref(false)
 const showRagEditor = ref(false)
@@ -73,26 +74,42 @@ const conversationGroups = computed(() => {
 const currentMessages = computed(() => selectedConversation.value?.messages || [])
 const selectedAgent = computed(() => agents.value.find(item => item.agentId === selectedAgentId.value))
 const selectedSkill = computed(() => selectedSkillIndex.value >= 0 ? skillDraft.value.instances[selectedSkillIndex.value] || null : null)
+const enabledSkillIds = computed(() => new Set(skillDraft.value.enabledSkills))
+const enabledRagIds = computed(() => new Set(config.value?.config.rag?.enabledRagInstanceIds || ragInstances.value.filter(item => item.enabled).map(item => item.id)))
 const chatSubtitle = computed(() => selectedAgent.value
   ? `${selectedAgent.value.name || selectedAgent.value.agentId} 已准备好为你工作`
   : '选择一个 Agent，开始轻松协作')
-const llmJson = computed({
-  get: () => config.value ? JSON.stringify(config.value.config.llm, null, 2) : '',
-  set: (value: string) => {
-    if (!config.value) return
-    try { config.value.config.llm = JSON.parse(value) as Record<string, unknown> } catch { /* Keep the editor text parseable before save. */ }
-  },
-})
-const enabledSkillText = computed({
-  get: () => skillDraft.value.enabledSkills.join(', '),
-  set: (value: string) => { skillDraft.value.enabledSkills = value.split(',').map(item => item.trim()).filter(Boolean) },
-})
 const mcpArgumentsText = computed({
   get: () => (mcpDraft.value.arguments || []).join('\n'),
   set: (value: string) => { mcpDraft.value.arguments = value.split('\n').map(item => item.trim()).filter(Boolean) },
 })
 
 const ragEnabledText = computed(() => config.value?.config.rag?.enabled ? '已启用' : '未启用')
+
+function isSkillEnabled(skillId: string): boolean {
+  return enabledSkillIds.value.has(skillId)
+}
+
+function toggleSkillBinding(skill: SkillInstanceConfig, enabled: boolean): void {
+  const ids = new Set(skillDraft.value.enabledSkills)
+  if (enabled) ids.add(skill.skillId)
+  else ids.delete(skill.skillId)
+  skill.enabled = enabled
+  skillDraft.value.enabledSkills = Array.from(ids).filter(Boolean)
+}
+
+function isRagEnabled(id: string): boolean {
+  return enabledRagIds.value.has(id)
+}
+
+function toggleRagBinding(instance: RagInstanceConfig, enabled: boolean): void {
+  const current = config.value?.config.rag || { enabled: false, enabledRagInstanceIds: [], instances: [] }
+  const ids = new Set(current.enabledRagInstanceIds)
+  if (enabled) ids.add(instance.id)
+  else ids.delete(instance.id)
+  instance.enabled = enabled
+  if (config.value) config.value.config.rag = { ...current, enabled: ids.size > 0, enabledRagInstanceIds: Array.from(ids), instances: ragInstances.value.map(item => ({ ...item })) }
+}
 
 function notifyError(error: unknown): void {
   ElMessage.error(error instanceof Error ? error.message : '请求失败')
@@ -362,12 +379,18 @@ async function loadConfig(): Promise<void> {
   if (!selectedAgentId.value) return
   try {
     config.value = await api.getAgentConfig(selectedAgentId.value)
+    mcpServers.value = (config.value.config.mcp?.servers || []).map(item => ({
+      ...item,
+      arguments: [...(item.arguments || [])],
+      environmentVariables: { ...(item.environmentVariables || {}) },
+    }))
     skillDraft.value = {
       enabledSkills: [...config.value.config.skills.enabledSkills],
-      instances: config.value.config.skills.instances.map(item => ({ ...item })),
+      instances: config.value.config.skills.instances.map(item => ({ ...item, enabled: config.value?.config.skills.enabledSkills.includes(item.skillId) ?? item.enabled })),
     }
     selectedSkillIndex.value = skillDraft.value.instances.length ? 0 : -1
-    ragInstances.value = (config.value.config.rag?.instances || []).map(item => ({ ...item }))
+    const enabledRagInstanceIds = new Set(config.value.config.rag?.enabledRagInstanceIds || [])
+    ragInstances.value = (config.value.config.rag?.instances || []).map(item => ({ ...item, enabled: enabledRagInstanceIds.size ? enabledRagInstanceIds.has(item.id) : item.enabled }))
     selectedRagIndex.value = ragInstances.value.length ? 0 : -1
     if (selectedRagIndex.value >= 0) selectRag(selectedRagIndex.value)
   } catch (error) {
@@ -396,18 +419,23 @@ function newMcp(): void {
 async function editAgent(agentId: string): Promise<void> {
   selectedAgentId.value = agentId
   handleAgentChange()
-  await loadConfig()
+  await Promise.all([loadConfig(), loadMcp()])
+  isNewAgent.value = false
   showAgentEditor.value = true
 }
 
-async function loadMcp(): Promise<void> {
+async function loadMcp(openEditorIfEmpty = false): Promise<void> {
   if (!selectedAgentId.value) return
   try {
     const result = await api.getMcpConfig(selectedAgentId.value)
     mcpServers.value = result.servers || []
     if (selectedMcpIndex.value >= 0 && selectedMcpIndex.value < mcpServers.value.length) selectMcp(selectedMcpIndex.value)
     else if (mcpServers.value.length) selectMcp(0)
-    else newMcp()
+    else {
+      selectedMcpIndex.value = -1
+      mcpDraft.value = createDefaultMcp()
+      if (openEditorIfEmpty) newMcp()
+    }
   } catch (error) {
     notifyError(error)
   }
@@ -559,34 +587,50 @@ function createDefaultAgent(agentId: string, name: string): AgentConfigEntity {
 }
 
 async function createAgent(): Promise<void> {
-  try {
-    const result = await ElMessageBox.prompt('请输入 Agent ID（例如 customer-support）', '新增 Agent', {
-      confirmButtonText: '创建',
-      cancelButtonText: '取消',
-      inputPattern: /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/,
-      inputErrorMessage: '只能使用字母、数字、点、下划线或短横线',
-    })
-    const agentId = result.value.trim()
-    const created = await api.saveAgentConfig(agentId, createDefaultAgent(agentId, agentId))
-    config.value = created
-    selectedAgentId.value = agentId
-    agents.value = [
-      ...agents.value.filter(item => item.agentId !== agentId),
-      { agentId, name: created.name, status: created.status, currentVersion: created.currentVersion, apiFormat: String(created.config.llm.format || '') },
-    ]
-    showAgentEditor.value = true
-    ElMessage.success('Agent 已创建，请补充 LLM 配置')
-  } catch (error) {
-    if (error !== 'cancel' && error !== 'close') notifyError(error)
-  }
+  const agentId = `agent-${crypto.randomUUID().slice(0, 8)}`
+  selectedAgentId.value = agentId
+  handleAgentChange()
+  config.value = createDefaultAgent(agentId, '')
+  isNewAgent.value = true
+  mcpServers.value = []
+  skillDraft.value = { enabledSkills: [], instances: [] }
+  ragInstances.value = []
+  showAgentEditor.value = true
 }
 
 async function saveConfig(): Promise<void> {
   if (!config.value) return
+  const agentId = config.value.agentId.trim()
+  if (!agentId || !/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(agentId)) {
+    notifyError(new Error('Agent ID 只能使用字母、数字、点、下划线或短横线'))
+    return
+  }
+  if (!config.value.name.trim()) {
+    notifyError(new Error('请输入 Agent 名称'))
+    return
+  }
+  config.value.agentId = agentId
+  config.value.config.mcp = { servers: mcpServers.value.map(item => ({ ...item })) }
+  config.value.config.skills = {
+    enabledSkills: [...skillDraft.value.enabledSkills],
+    instances: skillDraft.value.instances.map(item => ({ ...item })),
+  }
+  config.value.config.rag = {
+    ...(config.value.config.rag || { enabled: false, enabledRagInstanceIds: [], instances: [] }),
+    enabledRagInstanceIds: [...(config.value.config.rag?.enabledRagInstanceIds || [])],
+    instances: ragInstances.value.map(item => ({ ...item })),
+  }
   savingConfig.value = true
   try {
-    config.value = await api.saveAgentConfig(config.value.agentId, config.value)
-    ElMessage.success('配置已保存')
+    const saved = await api.saveAgentConfig(agentId, config.value)
+    config.value = saved
+    selectedAgentId.value = agentId
+    agents.value = [
+      ...agents.value.filter(item => item.agentId !== agentId),
+      { agentId, name: saved.name, status: saved.status, currentVersion: saved.currentVersion, apiFormat: String(saved.config.llm.format || '') },
+    ]
+    isNewAgent.value = false
+    ElMessage.success('Agent 配置已保存')
   } catch (error) {
     notifyError(error)
   } finally {
@@ -743,21 +787,53 @@ onMounted(() => {
         </el-tab-pane>
         <el-tab-pane label="Skill 绑定" name="skill">
           <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">CAPABILITIES</span><h3>Skill 绑定</h3><p>以表格查看每条 Skill 的 ID、状态和说明，支持逐条编辑与测试。</p></div><div class="section-actions"><el-button type="primary" plain @click="newSkill">新增 Skill</el-button></div></div>
-            <el-table :data="skillDraft.instances" class="capability-table" empty-text="还没有绑定 Skill"><el-table-column label="Skill" min-width="180"><template #default="scope"><strong>{{ scope.row.name || '未命名 Skill' }}</strong><small class="table-subtext">{{ scope.row.skillId || '未设置 ID' }}</small></template></el-table-column><el-table-column label="来源 / 类型" width="150"><template #default="scope">{{ scope.row.source || 'Local' }}<span v-if="scope.row.type"> · {{ scope.row.type }}</span></template></el-table-column><el-table-column label="状态" width="110"><template #default="scope"><span class="table-status" :class="{ muted: !scope.row.enabled }"><i />{{ scope.row.enabled ? '已启用' : '已停用' }}</span></template></el-table-column><el-table-column label="说明" min-width="250" show-overflow-tooltip><template #default="scope">{{ scope.row.description || '—' }}</template></el-table-column><el-table-column label="操作" width="170" fixed="right"><template #default="scope"><el-button link type="primary" @click="editSkill(scope.$index)">编辑</el-button><el-button link @click="testSkillRow(scope.$index)">测试</el-button><el-button link type="danger" @click="selectSkill(scope.$index); removeSkill()">删除</el-button></template></el-table-column></el-table>
+            <el-table :data="skillDraft.instances" class="capability-table" empty-text="还没有绑定 Skill"><el-table-column label="Skill" min-width="180"><template #default="scope"><strong>{{ scope.row.name || '未命名 Skill' }}</strong><small class="table-subtext">{{ scope.row.skillId || '未设置 ID' }}</small></template></el-table-column><el-table-column label="来源 / 类型" width="150"><template #default="scope">{{ scope.row.source || 'Local' }}<span v-if="scope.row.type"> · {{ scope.row.type }}</span></template></el-table-column><el-table-column label="状态" width="110"><template #default="scope"><span class="table-status" :class="{ muted: !isSkillEnabled(scope.row.skillId) }"><i />{{ isSkillEnabled(scope.row.skillId) ? '已绑定' : '未绑定' }}</span></template></el-table-column><el-table-column label="说明" min-width="250" show-overflow-tooltip><template #default="scope">{{ scope.row.description || '—' }}</template></el-table-column><el-table-column label="操作" width="170" fixed="right"><template #default="scope"><el-button link type="primary" @click="editSkill(scope.$index)">编辑</el-button><el-button link @click="testSkillRow(scope.$index)">测试</el-button><el-button link type="danger" @click="selectSkill(scope.$index); removeSkill()">删除</el-button></template></el-table-column></el-table>
           </section>
         </el-tab-pane>
         <el-tab-pane label="RAG 绑定" name="rag">
           <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">CAPABILITIES</span><h3>RAG 绑定</h3><p>按表格维护检索实例，并可逐条测试 RAG 服务地址。</p></div><div class="section-actions"><el-button type="primary" plain @click="newRag">新增 RAG</el-button></div></div>
-            <div class="capability-summary"><span>当前 Agent：{{ selectedAgent?.name || selectedAgentId || '未选择' }}</span><strong>{{ ragEnabledText }}</strong></div><el-table :data="ragInstances" class="capability-table" empty-text="还没有绑定 RAG"><el-table-column label="名称" min-width="180"><template #default="scope"><strong>{{ scope.row.name || scope.row.id }}</strong><small class="table-subtext">{{ scope.row.id }}</small></template></el-table-column><el-table-column label="类型" width="130"><template #default="scope"><el-tag size="small" round>{{ scope.row.type }}</el-tag></template></el-table-column><el-table-column label="Endpoint" min-width="260" show-overflow-tooltip><template #default="scope">{{ scope.row.apiEndpoint || '未配置' }}</template></el-table-column><el-table-column label="状态" width="110"><template #default="scope"><span class="table-status" :class="{ muted: !scope.row.enabled }"><i />{{ scope.row.enabled ? '已启用' : '已停用' }}</span></template></el-table-column><el-table-column label="操作" width="190" fixed="right"><template #default="scope"><el-button link type="primary" @click="editRag(scope.$index)">编辑</el-button><el-button link @click="testRagRow(scope.$index)">测试</el-button><el-button link type="danger" @click="selectRag(scope.$index); deleteRag()">删除</el-button></template></el-table-column></el-table>
+            <div class="capability-summary"><span>当前 Agent：{{ selectedAgent?.name || selectedAgentId || '未选择' }}</span><strong>{{ ragEnabledText }}</strong></div><el-table :data="ragInstances" class="capability-table" empty-text="还没有绑定 RAG"><el-table-column label="名称" min-width="180"><template #default="scope"><strong>{{ scope.row.name || scope.row.id }}</strong><small class="table-subtext">{{ scope.row.id }}</small></template></el-table-column><el-table-column label="类型" width="130"><template #default="scope"><el-tag size="small" round>{{ scope.row.type }}</el-tag></template></el-table-column><el-table-column label="Endpoint" min-width="260" show-overflow-tooltip><template #default="scope">{{ scope.row.apiEndpoint || '未配置' }}</template></el-table-column><el-table-column label="状态" width="110"><template #default="scope"><span class="table-status" :class="{ muted: !isRagEnabled(scope.row.id) }"><i />{{ isRagEnabled(scope.row.id) ? '已绑定' : '未绑定' }}</span></template></el-table-column><el-table-column label="操作" width="190" fixed="right"><template #default="scope"><el-button link type="primary" @click="editRag(scope.$index)">编辑</el-button><el-button link @click="testRagRow(scope.$index)">测试</el-button><el-button link type="danger" @click="selectRag(scope.$index); deleteRag()">删除</el-button></template></el-table-column></el-table>
           </section>
         </el-tab-pane>
       </el-tabs>
     </div>
   </el-dialog>
 
-  <el-dialog v-model="showAgentEditor" class="editor-dialog" width="min(720px, calc(100vw - 32px))" append-to-body destroy-on-close>
-    <template #header><div class="editor-dialog-header"><div><span class="eyebrow">AGENT RUNTIME</span><h3>{{ config?.name || 'Agent 配置' }}</h3></div><el-tag effect="plain" round>{{ config?.agentId }}</el-tag></div></template>
-    <el-form v-if="config" label-position="top"><el-form-item label="名称"><el-input v-model="config.name" /></el-form-item><el-form-item label="最大轮次"><el-input-number v-model="config.config.maxTurns" :min="1" :max="1000" /></el-form-item><el-form-item label="LLM 配置 JSON"><el-input v-model="llmJson" type="textarea" :rows="9" /></el-form-item></el-form><template #footer><el-button @click="showAgentEditor = false">取消</el-button><el-button type="primary" :loading="savingConfig" @click="saveConfig">保存 Agent 配置</el-button></template>
+  <el-dialog v-model="showAgentEditor" class="editor-dialog agent-editor-dialog" width="min(920px, calc(100vw - 32px))" append-to-body destroy-on-close>
+    <template #header><div class="editor-dialog-header"><div><span class="eyebrow">AGENT RUNTIME</span><h3>{{ isNewAgent ? '创建 Agent' : (config?.name || 'Agent 配置') }}</h3></div><el-tag effect="plain" round>{{ config?.agentId }}</el-tag></div></template>
+    <div v-if="config" class="agent-editor">
+      <section class="agent-editor-section">
+        <div class="agent-editor-section-heading"><div><span class="eyebrow">PROFILE</span><h4>基础信息</h4><p>先给 Agent 一个清晰的身份，再设置它的运行边界。</p></div><span class="editor-section-index">01</span></div>
+        <el-form label-position="top" class="agent-form-grid">
+          <el-form-item label="Agent ID"><el-input v-model="config.agentId" :disabled="!isNewAgent" placeholder="例如 customer-support" /><small class="form-help">只能使用字母、数字、点、下划线或短横线。</small></el-form-item>
+          <el-form-item label="显示名称"><el-input v-model="config.name" placeholder="例如 客服助手" /></el-form-item>
+          <el-form-item label="最大连续轮次"><el-input-number v-model="config.config.maxTurns" :min="1" :max="1000" controls-position="right" /><small class="form-help">限制一次任务中的最大推理轮次。</small></el-form-item>
+          <el-form-item label="发布状态"><div class="agent-readonly-value"><el-tag round effect="plain">{{ config.status === 2 ? 'Snapshot' : config.status === 1 ? 'Pending review' : 'Draft' }}</el-tag><span>版本 {{ config.currentVersion || '尚未发布' }}</span></div></el-form-item>
+        </el-form>
+      </section>
+
+      <section class="agent-editor-section">
+        <div class="agent-editor-section-heading"><div><span class="eyebrow">MODEL</span><h4>模型连接</h4><p>使用表单配置模型供应商、模型、协议和连接地址。</p></div><span class="editor-section-index">02</span></div>
+        <el-form label-position="top" class="agent-form-grid">
+          <el-form-item label="供应商"><el-input v-model="config.config.llm.provider" placeholder="例如 OpenAI、Azure OpenAI、Anthropic" /></el-form-item>
+          <el-form-item label="模型 ID"><el-input v-model="config.config.llm.modelId" placeholder="例如 gpt-4o" /></el-form-item>
+          <el-form-item label="API 格式"><el-select v-model="config.config.llm.format" class="full-width"><el-option label="OpenAI Chat Completions" value="OpenAIChatCompletions" /><el-option label="OpenAI Responses" value="OpenAIResponses" /><el-option label="Anthropic Messages" value="AnthropicMessages" /></el-select></el-form-item>
+          <el-form-item label="Temperature"><el-input-number v-model="config.config.llm.temperature" :min="0" :max="2" :step="0.1" :precision="1" controls-position="right" /><small class="form-help">0 更稳定，2 更有创造性。</small></el-form-item>
+          <el-form-item label="Endpoint" class="span-two"><el-input v-model="config.config.llm.endpoint" placeholder="https://api.example.com/v1" /></el-form-item>
+          <el-form-item label="API Key" class="span-two"><el-input v-model="config.config.llm.apiKey" type="password" show-password placeholder="留空则保留已保存的密钥" /></el-form-item>
+        </el-form>
+      </section>
+
+      <section class="agent-editor-section">
+        <div class="agent-editor-section-heading"><div><span class="eyebrow">CAPABILITY BINDINGS</span><h4>能力绑定</h4><p>当前 Agent 的 MCP、Skill、RAG 以卡片展示；勾选即可启用或停用 Skill 与 RAG。</p></div><span class="editor-section-index">03</span></div>
+        <div class="binding-groups">
+          <article class="binding-group"><div class="binding-group-heading"><div><strong>MCP</strong><small>服务端连接的工具集合</small></div><el-button link type="primary" @click="showAgentEditor = false; openSettings('mcp')">管理 MCP</el-button></div><div v-if="mcpServers.length" class="binding-list"><div v-for="server in mcpServers" :key="server.name" class="binding-item"><span class="binding-icon mcp-avatar">M</span><div><strong>{{ server.name }}</strong><small>{{ server.type }} · {{ server.url || server.command || 'Stdio' }}</small></div><el-tag size="small" round type="success">已绑定</el-tag></div></div><div v-else class="binding-empty">还没有 MCP，去 MCP 表格中新增并绑定。</div></article>
+          <article class="binding-group"><div class="binding-group-heading"><div><strong>Skill</strong><small>可复用的业务能力</small></div><el-button link type="primary" @click="showAgentEditor = false; openSettings('skill')">管理 Skill</el-button></div><div v-if="skillDraft.instances.length" class="binding-list"><label v-for="skill in skillDraft.instances" :key="skill.skillId" class="binding-item binding-check-item"><span class="binding-icon skill-avatar">S</span><div><strong>{{ skill.name || '未命名 Skill' }}</strong><small>{{ skill.skillId || '未设置 ID' }}</small></div><el-checkbox :model-value="isSkillEnabled(skill.skillId)" @change="toggleSkillBinding(skill, Boolean($event))" /></label></div><div v-else class="binding-empty">还没有 Skill，去 Skill 表格中新增。</div></article>
+          <article class="binding-group"><div class="binding-group-heading"><div><strong>RAG</strong><small>知识检索数据源</small></div><el-button link type="primary" @click="showAgentEditor = false; openSettings('rag')">管理 RAG</el-button></div><div v-if="ragInstances.length" class="binding-list"><label v-for="rag in ragInstances" :key="rag.id" class="binding-item binding-check-item"><span class="binding-icon rag-avatar">R</span><div><strong>{{ rag.name || rag.id }}</strong><small>{{ rag.type }} · {{ rag.collectionName || '默认数据集' }}</small></div><el-checkbox :model-value="isRagEnabled(rag.id)" @change="toggleRagBinding(rag, Boolean($event))" /></label></div><div v-else class="binding-empty">还没有 RAG，去 RAG 表格中新增。</div></article>
+        </div>
+      </section>
+    </div>
+    <template #footer><el-button @click="showAgentEditor = false">取消</el-button><el-button type="primary" :loading="savingConfig" @click="saveConfig">保存 Agent 配置</el-button></template>
   </el-dialog>
 
   <el-dialog v-model="showMcpEditor" class="editor-dialog" title="编辑 MCP" width="min(650px, calc(100vw - 32px))" append-to-body destroy-on-close>
@@ -765,7 +841,7 @@ onMounted(() => {
   </el-dialog>
 
   <el-dialog v-model="showSkillEditor" class="editor-dialog" title="编辑 Skill" width="min(650px, calc(100vw - 32px))" append-to-body destroy-on-close>
-    <el-form v-if="selectedSkill" label-position="top"><el-form-item label="Skill ID"><el-input v-model="selectedSkill.skillId" placeholder="例如 weather" /></el-form-item><el-form-item label="名称"><el-input v-model="selectedSkill.name" placeholder="例如 天气查询" /></el-form-item><el-form-item label="说明"><el-input v-model="selectedSkill.description" type="textarea" :rows="3" /></el-form-item><el-form-item label="纳入 Agent 能力"><el-input v-model="enabledSkillText" placeholder="多个 Skill ID 用逗号分隔" /></el-form-item><el-form-item label="状态"><el-switch v-model="selectedSkill.enabled" active-text="启用" inactive-text="停用" /></el-form-item><el-alert v-if="skillResult" :title="skillResult.success ? 'Skill 配置测试通过' : 'Skill 配置测试失败'" :description="`已启用 ${skillResult.enabledCount || 0} 条，实例 ${skillResult.instanceCount || 0} 条`" :type="skillResult.success ? 'success' : 'warning'" :closable="false" /></el-form><template #footer><el-button @click="showSkillEditor = false">取消</el-button><el-button :loading="testingSkill" @click="testSkills">测试 Skill 配置</el-button><el-button type="primary" @click="saveSkills">保存 Skill 配置</el-button></template>
+    <el-form v-if="selectedSkill" label-position="top"><el-form-item label="Skill ID"><el-input v-model="selectedSkill.skillId" placeholder="例如 weather" /></el-form-item><el-form-item label="名称"><el-input v-model="selectedSkill.name" placeholder="例如 天气查询" /></el-form-item><el-form-item label="说明"><el-input v-model="selectedSkill.description" type="textarea" :rows="3" /></el-form-item><el-form-item label="纳入 Agent 能力"><el-switch :model-value="isSkillEnabled(selectedSkill.skillId)" active-text="已绑定并启用" inactive-text="未绑定" @change="toggleSkillBinding(selectedSkill, Boolean($event))" /></el-form-item><el-form-item label="状态"><el-switch v-model="selectedSkill.enabled" active-text="启用" inactive-text="停用" /></el-form-item><el-alert v-if="skillResult" :title="skillResult.success ? 'Skill 配置测试通过' : 'Skill 配置测试失败'" :description="`已启用 ${skillResult.enabledCount || 0} 条，实例 ${skillResult.instanceCount || 0} 条`" :type="skillResult.success ? 'success' : 'warning'" :closable="false" /></el-form><template #footer><el-button @click="showSkillEditor = false">取消</el-button><el-button :loading="testingSkill" @click="testSkills">测试 Skill 配置</el-button><el-button type="primary" @click="saveSkills">保存 Skill 配置</el-button></template>
   </el-dialog>
 
   <el-dialog v-model="showRagEditor" class="editor-dialog" title="编辑 RAG" width="min(650px, calc(100vw - 32px))" append-to-body destroy-on-close>
