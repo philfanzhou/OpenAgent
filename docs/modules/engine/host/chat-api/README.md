@@ -8,10 +8,8 @@ ChatApi 提供 Agent.Engine 的核心 HTTP 端点，支持客户端以同步、�
 |------|------|------|----------|
 | `/api/v1/agent/chat` | POST | 同步聊天 | JSON |
 | `/api/v1/agent/chat/stream` | POST | NDJSON 流式 | application/x-ndjson |
-| `/api/v1/agent/chat/sse` | POST | SSE 流式 | text/event-stream |
 | `/api/v1/agent/chat/attachments` | POST | 带附件同步 | JSON |
 | `/api/v1/agent/chat/attachments/stream` | POST | 带附件流式 | application/x-ndjson |
-| `/api/v1/agent/chat/pipeline` | POST | 原始管道请求 | JSON |
 | `/api/v1/agent/agents` | GET | Agent 列表 | JSON |
 | `/api/v1/agent/conversations` | GET | 会话列表 | JSON |
 | `/api/v1/agent/conversations/search` | GET | 会话搜索 | JSON |
@@ -22,7 +20,7 @@ ChatApi 提供 Agent.Engine 的核心 HTTP 端点，支持客户端以同步、�
 
 ## 核心能力
 
-- **多协议流式**：NDJSON + SSE 两种流式协议
+- **流式响应**：NDJSON 事件流
 - **多模态输入**：图片/PDF/文本附件映射到 `AgentRequest.Attachments`
 - **上传防护**：数量、大小、MIME 类型校验
 - **请求追踪**：Header / Activity 自动生成 TraceId

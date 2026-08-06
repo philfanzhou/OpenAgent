@@ -87,8 +87,6 @@ public class HostingTests
         {
             ("/api/v1/agent/chat", "POST", "Chat", "Agent"),
             ("/api/v1/agent/chat/stream", "POST", "ChatStream", "Agent"),
-            ("/api/v1/agent/chat/sse", "POST", "ChatSse", "Agent"),
-            ("/api/v1/agent/chat/pipeline", "POST", "ChatPipeline", "Agent"),
             ("/api/v1/agent/chat/attachments", "POST", "ChatWithAttachments", "Agent"),
             ("/api/v1/agent/chat/attachments/stream", "POST", "ChatWithAttachmentsStream", "Agent"),
             ("/api/v1/agent/agents", "GET", "ListAgents", "Agent"),

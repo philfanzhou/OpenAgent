@@ -17,13 +17,6 @@ internal static class AgentChatEndpointExtensions
             .WithName("ChatStream")
             .WithTags("Agent");
 
-        group.MapPost("/chat/sse", ExecuteSseAsync)
-            .WithName("ChatSse")
-            .WithTags("Agent");
-
-        group.MapPost("/chat/pipeline", ExecutePipelineAsync)
-            .WithName("ChatPipeline")
-            .WithTags("Agent");
     }
 
     private static async Task<IResult> ExecuteAsync(
@@ -59,36 +52,4 @@ internal static class AgentChatEndpointExtensions
             cancellationToken).ConfigureAwait(false);
     }
 
-    private static async Task ExecuteSseAsync(
-        [FromBody] ChatRequest request,
-        [FromServices] AgentExecutor executor,
-        [FromServices] ILogger<Program> logger,
-        HttpContext context,
-        CancellationToken cancellationToken)
-    {
-        AgentRequest executionRequest = AgentEndpointRequestMapper.CreateAgentRequest(request, context);
-        await AgentStreamWriter.WriteSseStreamAsync(
-            context,
-            executor.ExecuteStreamingAsync(
-                executionRequest,
-                context.GetAgentRequest().User,
-                cancellationToken),
-            executionRequest.TraceId!,
-            logger,
-            cancellationToken).ConfigureAwait(false);
-    }
-
-    private static async Task<IResult> ExecutePipelineAsync(
-        [FromBody] AgentRequest request,
-        [FromServices] AgentExecutor executor,
-        HttpContext context,
-        CancellationToken cancellationToken)
-    {
-        AgentRequest executionRequest = AgentEndpointRequestMapper.CreateAgentRequest(request, context);
-        AgentResponse response = await executor.ExecuteAsync(
-            executionRequest,
-            context.GetAgentRequest().User,
-            cancellationToken).ConfigureAwait(false);
-        return Results.Ok(response);
-    }
 }

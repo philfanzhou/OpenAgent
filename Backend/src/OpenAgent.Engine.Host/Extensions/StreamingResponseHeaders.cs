@@ -6,13 +6,6 @@ namespace OpenAgent.Engine.Host.Extensions;
 
 internal static class StreamingResponseHeaders
 {
-    public static void ApplySse(HttpContext context)
-    {
-        ApplyCommon(context);
-        context.Response.ContentType = "text/event-stream";
-        context.Response.Headers[HeaderNames.Connection] = "keep-alive";
-    }
-
     public static void ApplyNdjson(HttpContext context)
     {
         ApplyCommon(context);

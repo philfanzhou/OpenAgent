@@ -59,7 +59,7 @@ dotnet test <sln-path> --no-build
 dotnet test TestCode/TestEnv.sln --no-build
 ```
 
-集成测试覆盖：Engine 端点（chat、streaming、SSE、NDJSON）、MCP 协议、Skill 调用、
+集成测试覆盖：Engine 端点（chat、streaming、NDJSON）、MCP 协议、Skill 调用、
 Agent 配置热加载、SSO 认证等。详见 `TestCode/Agent.TestEngine/`。
 
 ### 步骤 4: 如有测试失败

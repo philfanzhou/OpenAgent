@@ -23,7 +23,7 @@ HTTP / Channel
                  -> AIContextProvider -> authorized AIFunction
                  -> CompactionProvider
                  -> FunctionInvokingChatClient
-            -> usage + tool marker + SSE/NDJSON mapping
+            -> usage + tool marker + NDJSON mapping
 ```
 
 MAF 管理 Agent、模型、流式输出、函数回填和工具迭代。平台保留租户授权、会话一致性、

@@ -9,36 +9,20 @@ internal static class AgentEndpointRequestMapper
 {
     internal static AgentRequest CreateAgentRequest(ChatRequest request, HttpContext context)
     {
+        AgentRequestFeature feature = context.GetAgentRequest();
         Dictionary<string, string>? externalContext = request.Context?
             .Where(item => !IsReservedChatContextKey(item.Key))
             .ToDictionary(item => item.Key, item => item.Value?.ToString() ?? string.Empty);
-        return CreateAgentRequest(
-            new AgentRequest
-            {
-                Query = request.Message,
-                AgentId = ReadContextValue(request.Context, "agentId"),
-                ConversationId = ReadContextValue(request.Context, "conversationId"),
-                ClientType = ClientType.Web,
-                ExternalContext = externalContext
-            },
-            context);
-    }
-
-    internal static AgentRequest CreateAgentRequest(AgentRequest request, HttpContext context)
-    {
-        AgentRequestFeature feature = context.GetAgentRequest();
         return new AgentRequest
         {
-            Query = request.Query,
-            AgentId = request.AgentId
+            Query = request.Message,
+            AgentId = ReadContextValue(request.Context, "agentId")
                 ?? context.Request.Headers["X-Agent-Id"].FirstOrDefault(),
-            ConversationId = request.ConversationId
+            ConversationId = ReadContextValue(request.Context, "conversationId")
                 ?? context.Request.Headers["X-Conversation-Id"].FirstOrDefault(),
-            TraceId = request.TraceId ?? feature.TraceId,
-            ClientType = request.ClientType,
-            IdempotencyKey = request.IdempotencyKey,
-            ExternalContext = request.ExternalContext,
-            Attachments = request.Attachments
+            TraceId = feature.TraceId,
+            ClientType = ClientType.Web,
+            ExternalContext = externalContext
         };
     }
 
