@@ -6,7 +6,7 @@ OpenAgent 通过官方 C# SDK 连接外部 MCP Server，将服务器工具映射
 | Capability | Description |
 |-----------|-------------|
 | 连接管理 | 基于配置连接一个或多个 MCP Server |
-| 工具发现与调用 | 自动发现工具并生成 `mcp_{server}_{tool}` 别名 |
+| 工具发现与调用 | 自动发现可用工具并生成 `mcp__{server}__{tool}` 运行时名称 |
 | 资源读取 | 读取文本和 Blob 资源 |
 | 传输选择 | 默认 Streamable HTTP，显式 `SSE` 兼容 legacy 服务 |
 | 故障隔离 | 单服务器连接失败不阻止其他服务器加载 |
@@ -16,11 +16,13 @@ OpenAgent 通过官方 C# SDK 连接外部 MCP Server，将服务器工具映射
 AgentConfig.Mcp.Servers
         │
         ▼
-ToolAssembler / McpToolExecutor
-        │ McpConnectionManager.EnsureConnectedAsync
+CapabilityToolFactory
+        │
         ▼
-McpClient facade
-        │ McpConnection → McpTransportFactory
+McpCapabilitySource（请求级客户端生命周期）
+        │
+        ▼
+McpClient
         ▼
 ModelContextProtocol.Core 1.4.1
 ```
@@ -30,10 +32,10 @@ ModelContextProtocol.Core 1.4.1
 
 ## Limits
 - `Stdio` 配置值尚不可用
-- 运行时每个 scoped 客户端只维持一个连接，多服务器按绑定切换
+- 不建立跨请求连接池；一次请求内每个 Server 复用一个客户端
 - `Http.Url` 必须为完整 MCP endpoint，客户端不自动追加 `/mcp`
 - MCP 注册表发布不会自动启用服务，必须加入 Agent 配置并发布
 
 ## Source
-- Core: `Backend/src/OpenAgent.Core/Capabilities/Mcp/`（McpClient, McpConnection, McpTransportFactory 等）
+- Core: `Backend/src/OpenAgent.Core/Capabilities/Mcp/`（McpCapabilitySource、McpClient）
 - Contracts: `Backend/src/OpenAgent.Contracts/Mcp/IMcpClient.cs`

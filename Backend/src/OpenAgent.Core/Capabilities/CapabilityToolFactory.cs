@@ -36,7 +36,7 @@ internal sealed class CapabilityToolFactory
                 cancellationToken).ConfigureAwait(false);
             foreach (CapabilityDefinition definition in definitions)
             {
-                if (await CanDiscoverAsync(
+                if (await IsAvailableAsync(
                     agentId,
                     definition,
                     user,
@@ -47,11 +47,7 @@ internal sealed class CapabilityToolFactory
                         throw new InvalidOperationException(
                             $"Duplicate capability runtime name: {definition.Name}");
                     }
-                    tools.Add(new AuthorizedAIFunction(
-                        agentId,
-                        definition,
-                        user,
-                        _authorization));
+                    tools.Add(new CapabilityAIFunction(definition));
                 }
             }
         }
@@ -59,57 +55,55 @@ internal sealed class CapabilityToolFactory
         return tools.AsReadOnly();
     }
 
-    private async Task<bool> CanDiscoverAsync(
+    private async Task<bool> IsAvailableAsync(
         string agentId,
         CapabilityDefinition definition,
         IAgentUserContext user,
         CancellationToken cancellationToken)
     {
-        if (!await _authorization.IsAuthorizedAsync(
+        if (!await _authorization.IsAvailableAsync(
             agentId,
             definition.ResourceType,
             definition.ResourceId,
-            "discover",
             user,
             cancellationToken).ConfigureAwait(false))
         {
             return false;
         }
 
-        return await _authorization.IsAuthorizedAsync(
+        if (!string.IsNullOrWhiteSpace(definition.ParentResourceId)
+            && !await _authorization.IsAvailableAsync(
                 agentId,
-                AgentResourceType.Tool,
-                definition.Name,
-                "discover",
+                definition.ResourceType,
+                definition.ParentResourceId,
                 user,
-                cancellationToken).ConfigureAwait(false)
-            && await _authorization.IsAuthorizedAsync(
+                cancellationToken).ConfigureAwait(false))
+        {
+            return false;
+        }
+
+        return await _authorization.IsAvailableAsync(
+            agentId,
+            AgentResourceType.Tool,
+            definition.Name,
+            user,
+            cancellationToken).ConfigureAwait(false)
+            && await _authorization.IsAvailableAsync(
                 agentId,
                 AgentResourceType.Function,
                 definition.Name,
-                "discover",
                 user,
                 cancellationToken).ConfigureAwait(false);
     }
 
-    private sealed class AuthorizedAIFunction : AIFunction
+    private sealed class CapabilityAIFunction : AIFunction
     {
-        private readonly string _agentId;
         private readonly CapabilityDefinition _definition;
-        private readonly IAgentUserContext _user;
-        private readonly AgentAuthorizationGate _authorization;
         private readonly JsonElement _schema;
 
-        internal AuthorizedAIFunction(
-            string agentId,
-            CapabilityDefinition definition,
-            IAgentUserContext user,
-            AgentAuthorizationGate authorization)
+        internal CapabilityAIFunction(CapabilityDefinition definition)
         {
-            _agentId = agentId;
             _definition = definition;
-            _user = user;
-            _authorization = authorization;
             using JsonDocument schema = JsonDocument.Parse(NormalizeSchema(definition.ParametersJsonSchema));
             _schema = schema.RootElement.Clone();
         }
@@ -122,46 +116,10 @@ internal sealed class CapabilityToolFactory
             AIFunctionArguments arguments,
             CancellationToken cancellationToken)
         {
-            await EnsureExecuteAsync(cancellationToken).ConfigureAwait(false);
             IReadOnlyDictionary<string, object?> values = arguments.ToDictionary(
                 item => item.Key,
                 item => item.Value);
             return await _definition.Invoke(values, cancellationToken).ConfigureAwait(false);
-        }
-
-        private async Task EnsureExecuteAsync(CancellationToken cancellationToken)
-        {
-            await _authorization.EnsureAuthorizedAsync(
-                _agentId,
-                _definition.ResourceType,
-                _definition.ResourceId,
-                "execute",
-                _user,
-                cancellationToken).ConfigureAwait(false);
-            if (_definition.ParentResourceId != null)
-            {
-                await _authorization.EnsureAuthorizedAsync(
-                    _agentId,
-                    _definition.ResourceType,
-                    _definition.ParentResourceId,
-                    "execute",
-                    _user,
-                    cancellationToken).ConfigureAwait(false);
-            }
-            await _authorization.EnsureAuthorizedAsync(
-                _agentId,
-                AgentResourceType.Tool,
-                _definition.Name,
-                "execute",
-                _user,
-                cancellationToken).ConfigureAwait(false);
-            await _authorization.EnsureAuthorizedAsync(
-                _agentId,
-                AgentResourceType.Function,
-                _definition.Name,
-                "execute",
-                _user,
-                cancellationToken).ConfigureAwait(false);
         }
 
         private static string NormalizeSchema(string? schema)

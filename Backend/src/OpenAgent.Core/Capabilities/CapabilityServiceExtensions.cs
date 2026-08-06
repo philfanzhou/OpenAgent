@@ -1,11 +1,11 @@
 using Microsoft.Extensions.DependencyInjection;
+using OpenAgent.Contracts.Models;
+using OpenAgent.Contracts.Skills;
 using OpenAgent.Core.Abstract;
 using OpenAgent.Core.Capabilities;
 using OpenAgent.Core.Capabilities.Mcp;
 using OpenAgent.Core.Capabilities.Rag;
 using OpenAgent.Core.Capabilities.Skill;
-using OpenAgent.Contracts.Models;
-using OpenAgent.Contracts.Skills;
 
 namespace OpenAgent.Core.Exten;
 
@@ -18,7 +18,6 @@ internal static class CapabilityServiceExtensions
             serviceProvider.GetRequiredService<SkillCatalog>());
         services.AddSingleton<IRagRegistry, RagRegistry>();
         services.AddSingleton<IMcpClientFactory, McpClientFactory>();
-        services.AddScoped<McpClientPool>();
         services.AddScoped<ICapabilitySource, McpCapabilitySource>();
         services.AddScoped<ICapabilitySource, SkillCapabilitySource>();
         services.AddScoped<ICapabilitySource, RagCapabilitySource>();
