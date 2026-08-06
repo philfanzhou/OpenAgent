@@ -70,6 +70,12 @@ public static class ServiceCollectionExtensions
         }
 
         services.AddControllers();
+        services.AddHttpClient("AgentLogin", client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(30);
+            client.DefaultRequestHeaders.Accept.Add(
+                new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+        });
 
         if (options.EnableHealthChecks)
         {

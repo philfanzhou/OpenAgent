@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Mcp;
 using OpenAgent.Contracts.Models;
+using OpenAgent.Contracts.Rag;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Engine.Config;
 using OpenAgent.Engine.Host.Middleware;
@@ -129,6 +130,137 @@ internal static class ManagementEndpointExtensions
             return Results.Ok(result);
         });
 
+        group.MapGet("/rag", async (
+            [FromServices] AgentConfigManagementService manager,
+            HttpContext context,
+            [FromQuery] string agentId,
+            CancellationToken cancellationToken) =>
+        {
+            if (!HasScope(context, "agent.config.read")) return Results.Forbid();
+            AgentConfigEntity? entity = await manager.GetAsync(agentId, cancellationToken).ConfigureAwait(false);
+            return entity == null
+                ? Results.NotFound()
+                : Results.Ok(new RagConfig
+                {
+                    Enabled = entity.Config.Rag.Enabled,
+                    EnabledRagInstanceIds = [.. entity.Config.Rag.EnabledRagInstanceIds],
+                    Instances = entity.Config.Rag.Instances.Select(RedactRag).ToList()
+                });
+        });
+
+        group.MapPut("/rag/{id}", async (
+            [FromServices] AgentConfigManagementService manager,
+            HttpContext context,
+            string id,
+            [FromQuery] string agentId,
+            [FromBody] RagInstanceConfig instance,
+            CancellationToken cancellationToken) =>
+        {
+            if (!HasScope(context, "agent.config.write")) return Results.Forbid();
+            AgentConfigEntity? existing = await manager.GetAsync(agentId, cancellationToken).ConfigureAwait(false);
+            if (existing == null) return Results.NotFound();
+
+            instance.Id = id;
+            RagInstanceConfig? current = existing.Config.Rag.Instances.FirstOrDefault(item =>
+                string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
+            if (current != null && (string.IsNullOrWhiteSpace(instance.ApiKey) || instance.ApiKey.StartsWith("***", StringComparison.Ordinal)))
+            {
+                instance.ApiKey = current.ApiKey;
+            }
+
+            int index = existing.Config.Rag.Instances.FindIndex(item =>
+                string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
+            if (index >= 0) existing.Config.Rag.Instances[index] = instance;
+            else existing.Config.Rag.Instances.Add(instance);
+            if (instance.Enabled && !existing.Config.Rag.EnabledRagInstanceIds.Contains(id, StringComparer.OrdinalIgnoreCase))
+            {
+                existing.Config.Rag.EnabledRagInstanceIds.Add(id);
+            }
+
+            AgentConfigEntity? saved = await manager.SaveAsync(
+                agentId,
+                existing,
+                context.Request.Headers.IfMatch.FirstOrDefault(),
+                cancellationToken).ConfigureAwait(false);
+            return saved == null ? Results.Conflict() : Results.Ok(RedactRag(instance));
+        });
+
+        group.MapDelete("/rag/{id}", async (
+            [FromServices] AgentConfigManagementService manager,
+            HttpContext context,
+            string id,
+            [FromQuery] string agentId,
+            CancellationToken cancellationToken) =>
+        {
+            if (!HasScope(context, "agent.config.write")) return Results.Forbid();
+            AgentConfigEntity? existing = await manager.GetAsync(agentId, cancellationToken).ConfigureAwait(false);
+            if (existing == null) return Results.NotFound();
+            int removed = existing.Config.Rag.Instances.RemoveAll(item =>
+                string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
+            if (removed == 0) return Results.NotFound();
+            existing.Config.Rag.EnabledRagInstanceIds.RemoveAll(item =>
+                string.Equals(item, id, StringComparison.OrdinalIgnoreCase));
+            AgentConfigEntity? saved = await manager.SaveAsync(
+                agentId,
+                existing,
+                context.Request.Headers.IfMatch.FirstOrDefault(),
+                cancellationToken).ConfigureAwait(false);
+            return saved == null ? Results.Conflict() : Results.NoContent();
+        });
+
+        group.MapPost("/rag/test-connection", async (
+            [FromServices] IHttpClientFactory httpClientFactory,
+            [FromBody] RagConnectionTestRequest request,
+            HttpContext context,
+            CancellationToken cancellationToken) =>
+        {
+            if (!HasScope(context, "capability.test")) return Results.Forbid();
+            if (string.IsNullOrWhiteSpace(request.Instance.ApiEndpoint))
+            {
+                return Results.Ok(new RagConnectionTestResult
+                {
+                    Error = "RAG endpoint is required.",
+                    TraceId = context.GetAgentRequest().TraceId
+                });
+            }
+
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            try
+            {
+                using HttpRequestMessage httpRequest = new(HttpMethod.Get, request.Instance.ApiEndpoint);
+                if (!string.IsNullOrWhiteSpace(request.Instance.ApiKey))
+                {
+                    httpRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", request.Instance.ApiKey);
+                }
+                using HttpResponseMessage response = await httpClientFactory
+                    .CreateClient("AgentLogin")
+                    .SendAsync(httpRequest, cancellationToken)
+                    .ConfigureAwait(false);
+                stopwatch.Stop();
+                return Results.Ok(new RagConnectionTestResult
+                {
+                    Success = response.IsSuccessStatusCode,
+                    Connected = true,
+                    StatusCode = (int)response.StatusCode,
+                    LatencyMs = stopwatch.ElapsedMilliseconds,
+                    Error = response.IsSuccessStatusCode ? null : $"HTTP {(int)response.StatusCode} {response.ReasonPhrase}",
+                    TraceId = context.GetAgentRequest().TraceId
+                });
+            }
+            catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
+            {
+                stopwatch.Stop();
+                return Results.Ok(new RagConnectionTestResult
+                {
+                    Success = false,
+                    Connected = false,
+                    LatencyMs = stopwatch.ElapsedMilliseconds,
+                    Error = exception.Message,
+                    TraceId = context.GetAgentRequest().TraceId
+                });
+            }
+        });
+
         group.MapGet("/skills", async (
             [FromServices] AgentConfigManagementService manager,
             HttpContext context,
@@ -212,12 +344,44 @@ internal static class ManagementEndpointExtensions
             requested.Config.Llm.ApiKey = existing.Config.Llm.ApiKey;
         }
 
+        foreach (RagInstanceConfig requestedRag in requested.Config.Rag.Instances)
+        {
+            RagInstanceConfig? existingRag = existing.Config.Rag.Instances.FirstOrDefault(item =>
+                string.Equals(item.Id, requestedRag.Id, StringComparison.OrdinalIgnoreCase));
+            if (existingRag != null
+                && (string.IsNullOrWhiteSpace(requestedRag.ApiKey)
+                    || requestedRag.ApiKey.StartsWith("***", StringComparison.Ordinal)))
+            {
+                requestedRag.ApiKey = existingRag.ApiKey;
+            }
+        }
+
         return requested;
     }
 
     private static AgentConfigEntity Redact(AgentConfigEntity entity)
     {
         entity.Config.Llm.ApiKey = string.IsNullOrWhiteSpace(entity.Config.Llm.ApiKey) ? string.Empty : "***redacted***";
+        entity.Config.Rag.Instances = entity.Config.Rag.Instances.Select(RedactRag).ToList();
         return entity;
+    }
+
+    private static RagInstanceConfig RedactRag(RagInstanceConfig instance)
+    {
+        return new RagInstanceConfig
+        {
+            Id = instance.Id,
+            Name = instance.Name,
+            Enabled = instance.Enabled,
+            Type = instance.Type,
+            CollectionName = instance.CollectionName,
+            ApiEndpoint = instance.ApiEndpoint,
+            ApiKey = string.IsNullOrWhiteSpace(instance.ApiKey) ? string.Empty : "***",
+            AdapterConfig = instance.AdapterConfig,
+            AllowedUserIds = [.. instance.AllowedUserIds],
+            AllowedGroups = [.. instance.AllowedGroups],
+            AllowedTenantIds = [.. instance.AllowedTenantIds],
+            AllowedRoles = [.. instance.AllowedRoles]
+        };
     }
 }

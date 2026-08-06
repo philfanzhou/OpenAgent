@@ -80,6 +80,55 @@ export interface SkillsConfig {
   instances: SkillInstanceConfig[]
 }
 
+export interface RagInstanceConfig {
+  id: string
+  name: string
+  enabled: boolean
+  type: string
+  collectionName: string
+  apiEndpoint: string
+  apiKey?: string
+  adapterConfig?: Record<string, string> | null
+  allowedUserIds?: string[]
+  allowedGroups?: string[]
+  allowedTenantIds?: string[]
+  allowedRoles?: string[]
+}
+
+export interface RagConfig {
+  enabled: boolean
+  enabledRagInstanceIds: string[]
+  instances: RagInstanceConfig[]
+}
+
+export interface RagTestResult {
+  success: boolean
+  connected: boolean
+  statusCode?: number | null
+  latencyMs: number
+  error?: string | null
+  traceId?: string | null
+}
+
+export interface AuthConfig {
+  password: { enabled: boolean; endpoint: string }
+  microsoft: {
+    enabled: boolean
+    authority: string
+    authorizationEndpoint: string
+    clientId: string
+    redirectUri: string
+    scopes: string[]
+  }
+}
+
+export interface AuthTokenResponse {
+  access_token: string
+  token_type?: string
+  expires_in?: number
+  refresh_token?: string
+}
+
 export interface AgentConfigEntity {
   agentId: string
   name: string
@@ -88,7 +137,7 @@ export interface AgentConfigEntity {
   config: {
     llm: Record<string, unknown>
     mcp: { servers: McpServerConfig[] }
-    rag: Record<string, unknown>
+    rag: RagConfig
     skills: SkillsConfig
     maxTurns: number
   }

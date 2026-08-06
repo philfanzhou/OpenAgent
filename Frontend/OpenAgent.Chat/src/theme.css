@@ -297,3 +297,63 @@
   .resource-layout { grid-template-columns: 1fr; }
   .resource-panel { max-height: 205px; overflow: auto; }
 }
+
+.agent-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 13px;
+}
+
+.agent-card {
+  position: relative;
+  display: flex;
+  min-height: 170px;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 17px;
+  border: 1px solid var(--oa-border);
+  border-radius: 20px;
+  color: var(--oa-ink);
+  background: linear-gradient(145deg, #fff, #f8f7ff);
+  box-shadow: 0 12px 25px #5850a30b;
+  text-align: left;
+}
+
+.agent-card:hover { border-color: #c8c3ff; box-shadow: 0 16px 30px #5850a318; transform: translateY(-1px); }
+.agent-card-top { display: flex; width: 100%; align-items: center; justify-content: space-between; }
+.agent-card h4 { margin: 15px 0 4px; font-size: 15px; }
+.agent-card p { overflow: hidden; width: 100%; margin: 0; color: #9290a2; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.agent-card-meta { display: flex; width: 100%; justify-content: space-between; margin: auto 0 13px; color: #8b89a0; font-size: 10px; }
+.agent-card .el-button { align-self: stretch; }
+.agent-card-add { align-items: center; justify-content: center; border-style: dashed; background: #fbfaff; text-align: center; cursor: pointer; }
+.agent-card-add span { color: var(--oa-purple); font-size: 28px; line-height: 1; }
+.agent-card-add strong { margin-top: 10px; font-size: 13px; }
+.agent-card-add small { margin-top: 5px; color: #9d9aae; font-size: 10px; }
+
+.capability-table { overflow: hidden; border: 1px solid var(--oa-border); border-radius: 16px; }
+.capability-table::before { display: none; }
+.capability-table .el-table__header th { color: #858298; background: #faf9ff; font-size: 11px; font-weight: 750; }
+.capability-table .el-table__row td { padding: 13px 0; color: var(--oa-ink); font-size: 12px; }
+.table-subtext { display: block; margin-top: 4px; color: #a3a0b0; font-size: 10px; }
+.table-status { display: inline-flex; align-items: center; gap: 6px; color: #289d82; font-size: 11px; }
+.table-status i { width: 6px; height: 6px; border-radius: 50%; background: #41c5a3; }
+.table-status.muted { color: #a5a4b0; }
+.table-status.muted i { background: #c1c2cc; }
+.capability-summary { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; padding: 11px 13px; border-radius: 13px; color: #89869a; background: #faf9ff; font-size: 11px; }
+.capability-summary strong { color: #39a98e; }
+
+.login-card { margin-top: 18px; padding: 17px; border: 1px solid #e5e1ff; border-radius: 18px; background: linear-gradient(135deg, #faf9ff, #f7fffd); }
+.login-card-heading { display: flex; align-items: flex-start; justify-content: space-between; }
+.login-card-heading h4 { margin: 4px 0 0; color: var(--oa-ink); font-size: 16px; }
+.login-config-status { color: #8b89a0; font-size: 10px; }
+.login-methods { margin: 16px 0 12px; }
+.login-form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.login-hint { display: block; margin-top: 9px; color: #9391a2; font-size: 10px; }
+.editor-dialog .el-dialog__body { padding-top: 8px; }
+.editor-dialog-header { display: flex; align-items: center; justify-content: space-between; }
+.editor-dialog-header h3 { margin: 4px 0 0; font-size: 20px; }
+
+@media (max-width: 760px) {
+  .login-form { grid-template-columns: 1fr; gap: 0; }
+  .agent-card-grid { grid-template-columns: 1fr; }
+}

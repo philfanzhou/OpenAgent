@@ -1,11 +1,16 @@
 import type {
   AgentConfigEntity,
   AgentSummary,
+  AuthConfig,
+  AuthTokenResponse,
   ConversationMessage,
   ConversationRecord,
   CurrentUserContext,
   McpServerConfig,
   McpTestResult,
+  RagConfig,
+  RagInstanceConfig,
+  RagTestResult,
   SkillsConfig,
   StreamEvent,
 } from './types'
@@ -79,6 +84,26 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
+  getAuthConfig(): Promise<AuthConfig> {
+    return request<AuthConfig>('/api/v1/auth/config')
+  },
+
+  passwordLogin(username: string, password: string): Promise<AuthTokenResponse> {
+    return request<AuthTokenResponse>('/api/v1/auth/password/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    })
+  },
+
+  exchangeMicrosoftCode(code: string, codeVerifier: string, redirectUri: string): Promise<AuthTokenResponse> {
+    return request<AuthTokenResponse>('/api/v1/auth/microsoft/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, codeVerifier, redirectUri }),
+    })
+  },
+
   async health(path: '/health' | '/ready'): Promise<void> {
     const response = await fetch(`${requireBaseUrl()}${path}`, { headers: headers() })
     if (!response.ok) throw await readError(response)
@@ -157,6 +182,30 @@ export const api = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ agentId, server, action: 'discover' }),
+    })
+  },
+
+  getRagConfig(agentId: string): Promise<RagConfig> {
+    return request<RagConfig>(`/api/v1/admin/rag?agentId=${encodeURIComponent(agentId)}`)
+  },
+
+  saveRag(id: string, agentId: string, instance: RagInstanceConfig): Promise<RagInstanceConfig> {
+    return request<RagInstanceConfig>(`/api/v1/admin/rag/${encodeURIComponent(id)}?agentId=${encodeURIComponent(agentId)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(instance),
+    })
+  },
+
+  deleteRag(id: string, agentId: string): Promise<void> {
+    return request<void>(`/api/v1/admin/rag/${encodeURIComponent(id)}?agentId=${encodeURIComponent(agentId)}`, { method: 'DELETE' })
+  },
+
+  testRag(instance: RagInstanceConfig): Promise<RagTestResult> {
+    return request<RagTestResult>('/api/v1/admin/rag/test-connection', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ instance }),
     })
   },
 
