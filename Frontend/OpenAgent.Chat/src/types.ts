@@ -25,6 +25,13 @@ export interface ConversationMessage {
   toolCallId?: string
   toolName?: string
   timestamp: string
+  attachments?: MessageAttachment[]
+}
+
+export interface MessageAttachment {
+  fileName: string
+  mediaType: string
+  length: number
 }
 
 export interface ConversationRecord {

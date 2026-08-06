@@ -147,11 +147,18 @@ export const api = {
     })
   },
 
-  async *streamChat(message: string, agentId: string, conversationId?: string): AsyncGenerator<StreamEvent> {
-    const response = await fetch(`${requireBaseUrl()}/api/v1/agent/chat/stream`, {
+  async *streamChat(message: string, agentId: string, conversationId?: string, attachments: File[] = []): AsyncGenerator<StreamEvent> {
+    const hasAttachments = attachments.length > 0
+    const form = new FormData()
+    form.set('message', message)
+    form.set('agentId', agentId)
+    if (conversationId) form.set('conversationId', conversationId)
+    for (const file of attachments) form.append('files', file, file.name)
+
+    const response = await fetch(`${requireBaseUrl()}/api/v1/agent/chat/${hasAttachments ? 'attachments/stream' : 'stream'}`, {
       method: 'POST',
-      headers: headers({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({
+      headers: headers(hasAttachments ? {} : { 'Content-Type': 'application/json' }),
+      body: hasAttachments ? form : JSON.stringify({
         message,
         context: { agentId, ...(conversationId ? { conversationId } : {}) },
       }),

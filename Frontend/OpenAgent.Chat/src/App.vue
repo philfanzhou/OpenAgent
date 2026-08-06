@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, getAccessToken, getEngineBaseUrl, getTenantId, makeLocalConversation, setAccessToken, setEngineBaseUrl, setTenantId } from './api'
-import type { AgentConfigEntity, AgentSummary, ConversationMessage, ConversationRecord, CurrentUserContext, McpServerConfig, McpTestResult } from './types'
+import type { AgentConfigEntity, AgentSummary, ConversationMessage, ConversationRecord, CurrentUserContext, McpServerConfig, McpTestResult, MessageAttachment } from './types'
 
 const engineUrl = ref(getEngineBaseUrl())
 const token = ref(getAccessToken())
@@ -26,6 +26,12 @@ const config = ref<AgentConfigEntity | null>(null)
 const mcpDraft = ref<McpServerConfig>({ name: '', url: '', type: 'Http', arguments: [] })
 const mcpResult = ref<McpTestResult | null>(null)
 const skillResult = ref<Record<string, unknown> | null>(null)
+const attachmentInput = ref<HTMLInputElement | null>(null)
+const pendingAttachments = ref<Array<{ id: string; file: File }>>([])
+
+const maxAttachmentCount = 5
+const maxAttachmentSize = 10 * 1024 * 1024
+const maxAttachmentTotalSize = 25 * 1024 * 1024
 
 const filteredConversations = computed(() => {
   const keyword = search.value.trim().toLowerCase()
@@ -105,11 +111,57 @@ async function selectConversation(item: ConversationRecord): Promise<void> {
 function newConversation(): void {
   selectedConversation.value = null
   message.value = ''
+  pendingAttachments.value = []
+}
+
+function formatFileSize(size: number): string {
+  if (size < 1024) return `${size} B`
+  if (size < 1024 * 1024) return `${Math.ceil(size / 1024)} KB`
+  return `${(size / 1024 / 1024).toFixed(1)} MB`
+}
+
+function openAttachmentPicker(): void {
+  attachmentInput.value?.click()
+}
+
+function handleAttachmentChange(event: Event): void {
+  const input = event.target as HTMLInputElement
+  const files = Array.from(input.files || [])
+  input.value = ''
+  if (!files.length) return
+
+  const currentSize = pendingAttachments.value.reduce((total, item) => total + item.file.size, 0)
+  const availableCount = maxAttachmentCount - pendingAttachments.value.length
+  if (availableCount <= 0) {
+    notifyError(`最多上传 ${maxAttachmentCount} 个文件`)
+    return
+  }
+
+  const accepted: Array<{ id: string; file: File }> = []
+  let totalSize = currentSize
+  for (const file of files.slice(0, availableCount)) {
+    if (file.size > maxAttachmentSize) {
+      notifyError(`${file.name} 超过单文件 ${formatFileSize(maxAttachmentSize)} 限制`)
+      continue
+    }
+    if (totalSize + file.size > maxAttachmentTotalSize) {
+      notifyError(`附件总大小不能超过 ${formatFileSize(maxAttachmentTotalSize)}`)
+      break
+    }
+    totalSize += file.size
+    accepted.push({ id: crypto.randomUUID(), file })
+  }
+  pendingAttachments.value = [...pendingAttachments.value, ...accepted]
+}
+
+function removeAttachment(id: string): void {
+  pendingAttachments.value = pendingAttachments.value.filter(item => item.id !== id)
 }
 
 async function send(): Promise<void> {
   const content = message.value.trim()
   if (!content || !selectedAgentId.value || loading.value) return
+  const attachments = pendingAttachments.value.map(item => item.file)
   const local = selectedConversation.value || makeLocalConversation(selectedAgentId.value, content)
   if (!selectedConversation.value) selectedConversation.value = local
   const conversationId = selectedConversation.value.conversationId
@@ -118,9 +170,15 @@ async function send(): Promise<void> {
     selectedConversation.value.messages.push({
       messageId: crypto.randomUUID(), sequence: selectedConversation.value.messages.length + 1,
       role: 'user', content, timestamp: new Date().toISOString(),
+      attachments: pendingAttachments.value.map(item => ({
+        fileName: item.file.name,
+        mediaType: item.file.type || 'application/octet-stream',
+        length: item.file.size,
+      } satisfies MessageAttachment)),
     })
   }
   message.value = ''
+  pendingAttachments.value = []
   loading.value = true
   let assistant = ''
   const assistantMessage: ConversationMessage = {
@@ -129,7 +187,7 @@ async function send(): Promise<void> {
   }
   selectedConversation.value.messages.push(assistantMessage)
   try {
-    for await (const event of api.streamChat(content, selectedAgentId.value, conversationId)) {
+    for await (const event of api.streamChat(content, selectedAgentId.value, conversationId, attachments)) {
       if (event.type === 'content') {
         assistant += event.content || ''
         assistantMessage.content = assistant
@@ -265,6 +323,10 @@ function openSettings(panel: typeof activeSettings.value): void {
   if (panel === 'agent') void loadConfig()
 }
 
+function handleSettingsTabChange(name: string | number): void {
+  if (name === 'agent' || name === 'skill') void loadConfig()
+}
+
 onMounted(() => {
   if (engineUrl.value) void connect()
 })
@@ -276,7 +338,7 @@ onMounted(() => {
       <div class="brand"><span class="brand-mark">OA</span><div><strong>OpenAgent</strong><small>Chat Workspace</small></div></div>
       <div class="sidebar-toolbar">
         <el-button type="primary" @click="newConversation">新建会话</el-button>
-        <el-button circle @click="showSettings = true">⚙</el-button>
+        <el-button circle @click="openSettings('engine')">⚙</el-button>
       </div>
       <el-input v-model="search" clearable placeholder="搜索会话" class="search-input" />
       <div class="section-label">会话 · {{ filteredConversations.length }}</div>
@@ -291,14 +353,12 @@ onMounted(() => {
 
     <el-main class="main-panel">
       <header class="topbar">
-        <div><span class="status-dot" :class="{ connected: statusText === '已连接' }" />{{ statusText }}</div>
+        <div class="topbar-status"><span class="status-dot" :class="{ connected: statusText === '已连接' }" />{{ statusText }}<span class="status-caption">工作台</span></div>
         <div class="topbar-actions">
           <el-select v-model="selectedAgentId" placeholder="选择 Agent" @change="newConversation">
             <el-option v-for="agent in agents" :key="agent.agentId" :label="agent.name || agent.agentId" :value="agent.agentId" />
           </el-select>
-          <el-button @click="openSettings('agent')">Agent 配置</el-button>
-          <el-button @click="openSettings('mcp')">MCP</el-button>
-          <el-button @click="openSettings('skill')">Skill</el-button>
+          <el-button type="primary" plain @click="openSettings('engine')">设置</el-button>
         </div>
       </header>
 
@@ -308,40 +368,58 @@ onMounted(() => {
           <div v-if="!currentMessages.length" class="welcome"><div class="welcome-icon">✦</div><h1>和 Agent 开始协作</h1><p>在下方输入问题，使用服务端的模型、Skill 和 MCP 能力。</p></div>
           <div v-for="item in currentMessages" :key="item.messageId" class="message-row" :class="item.role">
             <div class="avatar">{{ item.role === 'user' ? '我' : item.role === 'tool' ? '工具' : 'AI' }}</div>
-            <div class="message-bubble"><div v-if="item.toolName" class="tool-tag">调用工具：{{ item.toolName }}</div><div class="message-content">{{ item.content || '…' }}</div></div>
+            <div class="message-bubble"><div v-if="item.toolName" class="tool-tag">调用工具：{{ item.toolName }}</div><div v-if="item.attachments?.length" class="message-attachments"><span v-for="attachment in item.attachments" :key="attachment.fileName">↗ {{ attachment.fileName }}</span></div><div class="message-content">{{ item.content || '…' }}</div></div>
           </div>
         </el-scrollbar>
-        <div class="composer"><el-input v-model="message" type="textarea" :rows="3" resize="none" placeholder="输入消息，按 Ctrl/⌘ + Enter 发送" @keydown="(event: KeyboardEvent) => { if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') send() }" /><div class="composer-footer"><span>Engine：{{ engineUrl || '未配置' }}</span><el-button type="primary" :loading="loading" :disabled="!selectedAgentId || !message.trim()" @click="send">发送</el-button></div></div>
+        <div class="composer">
+          <div v-if="pendingAttachments.length" class="attachment-list">
+            <div v-for="item in pendingAttachments" :key="item.id" class="attachment-chip">
+              <span class="attachment-icon">↗</span><span class="attachment-name" :title="item.file.name">{{ item.file.name }}</span><span class="attachment-size">{{ formatFileSize(item.file.size) }}</span>
+              <el-button link class="attachment-remove" @click="removeAttachment(item.id)">×</el-button>
+            </div>
+          </div>
+          <el-input v-model="message" type="textarea" :rows="3" resize="none" placeholder="输入消息，按 Ctrl/⌘ + Enter 发送" @keydown="(event: KeyboardEvent) => { if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') send() }" />
+          <input ref="attachmentInput" class="attachment-input" type="file" multiple accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.json,.txt,.csv,.md" @change="handleAttachmentChange" />
+          <div class="composer-footer"><div class="composer-hints"><el-button text class="attach-button" @click="openAttachmentPicker">＋ 添加附件</el-button><span>支持图片、PDF、JSON、TXT、CSV、Markdown</span></div><div class="composer-actions"><span>Engine：{{ engineUrl || '未配置' }}</span><el-button type="primary" :loading="loading" :disabled="!selectedAgentId || !message.trim()" @click="send">发送</el-button></div></div>
+        </div>
       </section>
     </el-main>
   </el-container>
 
-  <el-drawer v-model="showSettings" title="工作台设置" size="520px" destroy-on-close>
-    <el-tabs v-model="activeSettings" @tab-change="(name: string | number) => { if (name === 'agent' || name === 'skill') loadConfig() }">
-      <el-tab-pane label="Engine" name="engine">
-        <el-form label-position="top">
-          <el-form-item label="Engine 地址"><el-input v-model="engineUrl" placeholder="http://localhost:5208" /></el-form-item>
-          <el-form-item label="Bearer Token"><el-input v-model="token" type="password" show-password placeholder="可选：从认证中心获取的 Access Token" /></el-form-item>
-          <el-form-item label="租户 ID"><el-input v-model="tenantId" placeholder="由认证中心 Token 中的 tid 决定" /></el-form-item>
-          <el-descriptions :column="1" border class="identity-status">
-            <el-descriptions-item label="当前用户">{{ currentUser?.userId || '未连接' }}</el-descriptions-item>
-            <el-descriptions-item label="当前租户">{{ currentUser?.tenantId || tenantId || '未识别' }}</el-descriptions-item>
-            <el-descriptions-item label="认证状态">{{ currentUser?.isAuthenticated ? '已认证' : '未认证' }}</el-descriptions-item>
-            <el-descriptions-item label="Token 状态">{{ token ? '已配置（Bearer）' : '未配置' }}</el-descriptions-item>
-          </el-descriptions>
-          <el-alert title="当前页面直接调用 Engine，账号密码和 Microsoft/企业 SSO 由外部认证中心负责。" type="info" :closable="false" />
-          <div class="button-row"><el-button type="primary" @click="connect">保存并连接</el-button><el-button @click="api.health('/health').then(() => ElMessage.success('Live 健康检查通过')).catch(notifyError)">测试 Live</el-button><el-button @click="api.health('/ready').then(() => ElMessage.success('Ready 检查通过')).catch(notifyError)">测试 Ready</el-button></div>
-        </el-form>
-      </el-tab-pane>
-      <el-tab-pane label="Agent" name="agent">
-        <div class="button-row agent-create-row"><el-button type="primary" @click="createAgent">新增 Agent</el-button><el-button v-if="selectedAgentId" @click="loadConfig">加载当前 Agent</el-button></div>
-        <el-empty v-if="!config" description="请选择 Agent 或新增 Agent" />
-        <template v-else><el-form label-position="top"><el-form-item label="名称"><el-input v-model="config.name" /></el-form-item><el-form-item label="最大轮次"><el-input-number v-model="config.config.maxTurns" :min="1" :max="1000" /></el-form-item><el-form-item label="LLM 配置 JSON"><el-input v-model="llmJson" type="textarea" :rows="8" /></el-form-item><el-form-item label="Skill 配置 JSON"><el-input v-model="skillsJson" type="textarea" :rows="8" /></el-form-item></el-form><el-button type="primary" :loading="savingConfig" @click="saveConfig">保存 Agent 配置</el-button></template>
-      </el-tab-pane>
-      <el-tab-pane label="MCP" name="mcp">
-        <el-form label-position="top"><el-form-item label="名称"><el-input v-model="mcpDraft.name" /></el-form-item><el-form-item label="传输类型"><el-select v-model="mcpDraft.type"><el-option label="HTTP" value="Http" /><el-option label="SSE" value="SSE" /><el-option label="Stdio（服务端执行）" value="Stdio" /></el-select></el-form-item><el-form-item v-if="mcpDraft.type !== 'Stdio'" label="URL"><el-input v-model="mcpDraft.url" /></el-form-item><template v-else><el-form-item label="Command"><el-input v-model="mcpDraft.command" placeholder="例如 node" /></el-form-item><el-form-item label="Arguments（每行一个）"><el-input v-model="mcpArgumentsText" type="textarea" /></el-form-item><el-form-item label="Working Directory"><el-input v-model="mcpDraft.workingDirectory" /></el-form-item></template><div class="button-row"><el-button type="primary" :loading="testingMcp" @click="testMcp">测试连接与权限</el-button><el-button :disabled="!selectedAgentId || !mcpDraft.name" @click="saveMcp">保存 MCP 配置</el-button></div></el-form><pre v-if="mcpResult" class="result-box">{{ JSON.stringify(mcpResult, null, 2) }}</pre>
-      </el-tab-pane>
-      <el-tab-pane label="Skill" name="skill"><el-empty v-if="!config" description="请选择 Agent 或点击加载" /><template v-else><el-alert title="Skill 可见性和实例权限由服务端统一校验。" type="info" :closable="false" /><el-form label-position="top"><el-form-item label="Skill 配置 JSON"><el-input v-model="skillsJson" type="textarea" :rows="12" /></el-form-item></el-form><div class="button-row"><el-button type="primary" @click="saveSkills">保存 Skill 配置</el-button><el-button :loading="testingSkill" @click="testSkills">测试 Skill 配置</el-button></div><pre v-if="skillResult" class="result-box">{{ JSON.stringify(skillResult, null, 2) }}</pre></template></el-tab-pane>
-    </el-tabs>
-  </el-drawer>
+  <el-dialog v-model="showSettings" class="settings-dialog" width="min(960px, calc(100vw - 32px))" top="5vh" :close-on-click-modal="false" destroy-on-close>
+    <template #header>
+      <div class="settings-header"><div><span class="eyebrow">WORKSPACE CONTROL</span><h2>工作台设置</h2></div><el-tag v-if="selectedAgent" effect="plain" round>{{ selectedAgent.name || selectedAgent.agentId }}</el-tag></div>
+    </template>
+    <div class="settings-body">
+      <el-tabs v-model="activeSettings" tab-position="left" class="settings-tabs" @tab-change="handleSettingsTabChange">
+        <el-tab-pane label="Engine 连接" name="engine">
+          <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">CONNECTION</span><h3>连接与身份</h3><p>配置当前工作台要访问的 Engine，设置会保存在本机浏览器中。</p></div><span class="connection-badge" :class="{ online: statusText === '已连接' }"><i />{{ statusText }}</span></div>
+            <el-form label-position="top"><el-form-item label="Engine 地址"><el-input v-model="engineUrl" placeholder="http://localhost:5208" /></el-form-item><el-form-item label="Bearer Token"><el-input v-model="token" type="password" show-password placeholder="可选：从认证中心获取的 Access Token" /></el-form-item><el-form-item label="租户 ID"><el-input v-model="tenantId" placeholder="由认证中心 Token 中的 tid 决定" /></el-form-item></el-form>
+            <el-descriptions :column="2" border class="identity-status"><el-descriptions-item label="当前用户">{{ currentUser?.userId || '未连接' }}</el-descriptions-item><el-descriptions-item label="当前租户">{{ currentUser?.tenantId || tenantId || '未识别' }}</el-descriptions-item><el-descriptions-item label="认证状态">{{ currentUser?.isAuthenticated ? '已认证' : '未认证' }}</el-descriptions-item><el-descriptions-item label="Token 状态">{{ token ? '已配置（Bearer）' : '未配置' }}</el-descriptions-item></el-descriptions>
+            <el-alert title="当前页面直接调用 Engine，账号密码和 Microsoft/企业 SSO 由外部认证中心负责。" type="info" :closable="false" /><div class="button-row"><el-button type="primary" @click="connect">保存并连接</el-button><el-button @click="api.health('/health').then(() => ElMessage.success('Live 健康检查通过')).catch(notifyError)">测试 Live</el-button><el-button @click="api.health('/ready').then(() => ElMessage.success('Ready 健康检查通过')).catch(notifyError)">测试 Ready</el-button></div>
+          </section>
+        </el-tab-pane>
+        <el-tab-pane label="Agent 配置" name="agent">
+          <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">AGENT RUNTIME</span><h3>Agent 配置</h3><p>模型、上下文轮次以及绑定的 Skill 都在这里统一管理。</p></div><div class="section-actions"><el-button type="primary" plain @click="createAgent">新增 Agent</el-button><el-button v-if="selectedAgentId" @click="loadConfig">重新加载</el-button></div></div>
+            <el-empty v-if="!config" description="请先选择或新增 Agent" /><template v-else><el-form label-position="top"><el-form-item label="名称"><el-input v-model="config.name" /></el-form-item><el-form-item label="最大轮次"><el-input-number v-model="config.config.maxTurns" :min="1" :max="1000" /></el-form-item><el-form-item label="LLM 配置 JSON"><el-input v-model="llmJson" type="textarea" :rows="8" /></el-form-item></el-form><el-button type="primary" :loading="savingConfig" @click="saveConfig">保存 Agent 配置</el-button></template>
+          </section>
+        </el-tab-pane>
+        <el-tab-pane label="MCP 绑定" name="mcp">
+          <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">CAPABILITIES</span><h3>MCP 绑定</h3><p>连接由 Engine 服务端执行，本页面只保存配置并发起测试。</p></div></div>
+            <el-form label-position="top"><el-form-item label="名称"><el-input v-model="mcpDraft.name" placeholder="例如 local-tools" /></el-form-item><el-form-item label="传输类型"><el-select v-model="mcpDraft.type"><el-option label="HTTP" value="Http" /><el-option label="SSE" value="SSE" /><el-option label="Stdio（服务端执行）" value="Stdio" /></el-select></el-form-item><el-form-item v-if="mcpDraft.type !== 'Stdio'" label="URL"><el-input v-model="mcpDraft.url" placeholder="https://mcp.example.com" /></el-form-item><template v-else><el-form-item label="Command"><el-input v-model="mcpDraft.command" placeholder="例如 node" /></el-form-item><el-form-item label="Arguments（每行一个）"><el-input v-model="mcpArgumentsText" type="textarea" :rows="3" /></el-form-item><el-form-item label="Working Directory"><el-input v-model="mcpDraft.workingDirectory" /></el-form-item></template><div class="button-row"><el-button type="primary" :loading="testingMcp" @click="testMcp">测试连接与权限</el-button><el-button :disabled="!selectedAgentId || !mcpDraft.name" @click="saveMcp">保存 MCP 配置</el-button></div></el-form><pre v-if="mcpResult" class="result-box">{{ JSON.stringify(mcpResult, null, 2) }}</pre>
+          </section>
+        </el-tab-pane>
+        <el-tab-pane label="Skill 绑定" name="skill">
+          <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">CAPABILITIES</span><h3>Skill 绑定</h3><p>按 Agent 维护 Skill 可见性、实例和权限范围。</p></div></div>
+            <el-empty v-if="!config" description="请先选择或新增 Agent" /><template v-else><el-alert title="Skill 可见性和实例权限由服务端统一校验。" type="info" :closable="false" /><el-form label-position="top"><el-form-item label="Skill 配置 JSON"><el-input v-model="skillsJson" type="textarea" :rows="12" /></el-form-item></el-form><div class="button-row"><el-button type="primary" @click="saveSkills">保存 Skill 配置</el-button><el-button :loading="testingSkill" @click="testSkills">测试 Skill 配置</el-button></div><pre v-if="skillResult" class="result-box">{{ JSON.stringify(skillResult, null, 2) }}</pre></template>
+          </section>
+        </el-tab-pane>
+      </el-tabs>
+    </div>
+  </el-dialog>
 </template>
+
+<style>
+.message-attachments { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 7px; }
+.message-attachments span { display: inline-flex; align-items: center; padding: 4px 7px; color: #5d54e8; background: #fff; border: 1px solid #dfe2ff; border-radius: 6px; font-size: 11px; }
+</style>
