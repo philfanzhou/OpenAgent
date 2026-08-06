@@ -84,7 +84,7 @@ internal static class AgentChatEndpointExtensions
         HttpContext context,
         CancellationToken cancellationToken)
     {
-        AgentRequest executionRequest = AgentEndpointRequestMapper.ResolveRequest(request, context);
+        AgentRequest executionRequest = AgentEndpointRequestMapper.CreateAgentRequest(request, context);
         AgentResponse response = await executor.ExecuteAsync(
             executionRequest,
             context.GetAgentRequest().User,

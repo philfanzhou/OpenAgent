@@ -77,4 +77,29 @@ public class EndpointExtensionsTests
 
         Assert.Equal("header-agent", agentRequest.AgentId);
     }
+
+    [Fact]
+    public void CreateAgentRequest_FullRequest_UsesSharedNormalization()
+    {
+        var context = CreateContext(traceId: "trace-from-context");
+        context.Request.Headers["X-Agent-Id"] = "agent-from-header";
+        context.Request.Headers["X-Conversation-Id"] = "conversation-from-header";
+
+        var request = new AgentRequest
+        {
+            Query = "pipeline request",
+            TraceId = null,
+            ClientType = ClientType.API,
+            ExternalContext = new Dictionary<string, string> { ["source"] = "test" }
+        };
+
+        var agentRequest = AgentEndpointRequestMapper.CreateAgentRequest(request, context);
+
+        Assert.Equal("pipeline request", agentRequest.Query);
+        Assert.Equal("agent-from-header", agentRequest.AgentId);
+        Assert.Equal("conversation-from-header", agentRequest.ConversationId);
+        Assert.Equal("trace-from-context", agentRequest.TraceId);
+        Assert.Equal(ClientType.API, agentRequest.ClientType);
+        Assert.Equal("test", agentRequest.ExternalContext!["source"]);
+    }
 }
