@@ -7,7 +7,10 @@ using StackExchange.Redis;
 
 namespace OpenAgent.Engine.Config;
 
-internal sealed class AgentConfigManagementService(IRedisConnectionProvider redis)
+internal sealed class AgentConfigManagementService(
+    IRedisConnectionProvider redis,
+    MockAgentResolver mockAgentResolver,
+    AgentConfigLocalStore localStore)
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -20,10 +23,22 @@ internal sealed class AgentConfigManagementService(IRedisConnectionProvider redi
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        RedisValue value = await redis.StringGetAsync($"agent:config:{agentId}").ConfigureAwait(false);
-        return value.IsNullOrEmpty
-            ? null
-            : JsonSerializer.Deserialize<AgentConfigEntity>(value.ToString(), JsonOptions);
+        if (!redis.IsAvailable)
+        {
+            return mockAgentResolver.IsEnabled ? localStore.Get(agentId) : null;
+        }
+
+        try
+        {
+            RedisValue value = await redis.StringGetAsync($"agent:config:{agentId}").ConfigureAwait(false);
+            return value.IsNullOrEmpty
+                ? null
+                : JsonSerializer.Deserialize<AgentConfigEntity>(value.ToString(), JsonOptions);
+        }
+        catch (RedisException) when (mockAgentResolver.IsEnabled)
+        {
+            return localStore.Get(agentId);
+        }
     }
 
     internal async Task<AgentConfigEntity?> SaveAsync(
@@ -35,9 +50,29 @@ internal sealed class AgentConfigManagementService(IRedisConnectionProvider redi
         cancellationToken.ThrowIfCancellationRequested();
         if (!redis.IsAvailable)
         {
-            throw new InvalidOperationException("Agent configuration store is unavailable.");
+            if (!mockAgentResolver.IsEnabled)
+            {
+                throw new InvalidOperationException("Agent configuration store is unavailable.");
+            }
+
+            return localStore.Save(agentId, entity, expectedVersion);
         }
 
+        try
+        {
+            return await SaveToRedisAsync(agentId, entity, expectedVersion).ConfigureAwait(false);
+        }
+        catch (RedisException) when (mockAgentResolver.IsEnabled)
+        {
+            return localStore.Save(agentId, entity, expectedVersion);
+        }
+    }
+
+    private async Task<AgentConfigEntity?> SaveToRedisAsync(
+        string agentId,
+        AgentConfigEntity entity,
+        string? expectedVersion)
+    {
         string key = $"agent:config:{agentId}";
         IDatabase database = redis.GetDatabase();
         RedisValue currentValue = await database.StringGetAsync(key).ConfigureAwait(false);

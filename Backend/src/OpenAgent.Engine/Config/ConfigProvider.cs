@@ -24,6 +24,7 @@ internal class ConfigProvider : IAgentConfigProvider
     private readonly MockAgentResolver _mockAgentResolver;
     private readonly SecretInjector _secretInjector;
     private readonly AgentListQuery _agentListQuery;
+    private readonly AgentConfigLocalStore _localStore;
 
     public ConfigProvider(
         IRedisConnectionProvider redis,
@@ -31,7 +32,8 @@ internal class ConfigProvider : IAgentConfigProvider
         ConfigSnapshot snapshot,
         MockAgentResolver mockAgentResolver,
         SecretInjector secretInjector,
-        AgentListQuery agentListQuery)
+        AgentListQuery agentListQuery,
+        AgentConfigLocalStore localStore)
     {
         _redis = redis;
         _logger = logger;
@@ -39,6 +41,7 @@ internal class ConfigProvider : IAgentConfigProvider
         _mockAgentResolver = mockAgentResolver;
         _secretInjector = secretInjector;
         _agentListQuery = agentListQuery;
+        _localStore = localStore;
     }
 
     public Task<AgentConfig> GetConfigAsync(CancellationToken cancellationToken = default)
@@ -61,6 +64,16 @@ internal class ConfigProvider : IAgentConfigProvider
 
             EngineLog.ConfigMissingAgentIdDisabled(_logger);
             return null;
+        }
+
+        if (_mockAgentResolver.IsEnabled)
+        {
+            AgentConfigEntity? localEntity = _localStore.Get(agentId);
+            if (localEntity?.Config != null)
+            {
+                _secretInjector.Enrich(localEntity.Config);
+                return localEntity.Config;
+            }
         }
 
         var snapshotConfig = LoadFromSnapshot(agentId);

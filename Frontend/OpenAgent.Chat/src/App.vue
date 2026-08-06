@@ -168,6 +168,51 @@ async function loadConfig(): Promise<void> {
   }
 }
 
+function createDefaultAgent(agentId: string, name: string): AgentConfigEntity {
+  return {
+    agentId,
+    name,
+    status: 0,
+    currentVersion: '',
+    config: {
+      llm: {
+        provider: '',
+        format: 'OpenAIChatCompletions',
+        modelId: 'gpt-4o',
+        apiKey: '',
+        endpoint: '',
+        temperature: 0.7,
+      },
+      mcp: { servers: [] },
+      rag: { enabled: false, enabledRagInstanceIds: [], instances: [] },
+      skills: { enabledSkills: [], instances: [] },
+      maxTurns: 50,
+    },
+  }
+}
+
+async function createAgent(): Promise<void> {
+  try {
+    const result = await ElMessageBox.prompt('请输入 Agent ID（例如 customer-support）', '新增 Agent', {
+      confirmButtonText: '创建',
+      cancelButtonText: '取消',
+      inputPattern: /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/,
+      inputErrorMessage: '只能使用字母、数字、点、下划线或短横线',
+    })
+    const agentId = result.value.trim()
+    const created = await api.saveAgentConfig(agentId, createDefaultAgent(agentId, agentId))
+    config.value = created
+    selectedAgentId.value = agentId
+    agents.value = [
+      ...agents.value.filter(item => item.agentId !== agentId),
+      { agentId, name: created.name, status: created.status, currentVersion: created.currentVersion, apiFormat: String(created.config.llm.format || '') },
+    ]
+    ElMessage.success('Agent 已创建，请补充 LLM 配置')
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') notifyError(error)
+  }
+}
+
 async function saveConfig(): Promise<void> {
   if (!config.value) return
   savingConfig.value = true
@@ -289,7 +334,8 @@ onMounted(() => {
         </el-form>
       </el-tab-pane>
       <el-tab-pane label="Agent" name="agent">
-        <el-empty v-if="!config" description="请选择 Agent 或点击加载" />
+        <div class="button-row agent-create-row"><el-button type="primary" @click="createAgent">新增 Agent</el-button><el-button v-if="selectedAgentId" @click="loadConfig">加载当前 Agent</el-button></div>
+        <el-empty v-if="!config" description="请选择 Agent 或新增 Agent" />
         <template v-else><el-form label-position="top"><el-form-item label="名称"><el-input v-model="config.name" /></el-form-item><el-form-item label="最大轮次"><el-input-number v-model="config.config.maxTurns" :min="1" :max="1000" /></el-form-item><el-form-item label="LLM 配置 JSON"><el-input v-model="llmJson" type="textarea" :rows="8" /></el-form-item><el-form-item label="Skill 配置 JSON"><el-input v-model="skillsJson" type="textarea" :rows="8" /></el-form-item></el-form><el-button type="primary" :loading="savingConfig" @click="saveConfig">保存 Agent 配置</el-button></template>
       </el-tab-pane>
       <el-tab-pane label="MCP" name="mcp">

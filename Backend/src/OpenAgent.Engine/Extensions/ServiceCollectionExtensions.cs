@@ -28,6 +28,7 @@ internal static class ServiceCollectionExtensions
         // ConfigProvider helpers — were hand-newed inside ConfigProvider; now injected.
         services.AddSingleton<SecretInjector>();
         services.AddSingleton<MockAgentResolver>();
+        services.AddSingleton<AgentConfigLocalStore>();
         services.AddSingleton<AgentListQuery>();
         services.AddSingleton<AgentConfigManagementService>();
 
