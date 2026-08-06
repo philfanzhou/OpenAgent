@@ -64,7 +64,10 @@ internal sealed class McpCapabilitySource(
             }
             catch (Exception exception)
             {
-                McpLog.DiscoveryFailed(logger, exception, identity.Name);
+                logger.LogWarning(
+                    exception,
+                    "MCP server unavailable. Server={Server}",
+                    identity.Name);
             }
         }
 

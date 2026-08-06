@@ -22,7 +22,7 @@ CapabilityToolFactory
 McpCapabilitySource（请求级客户端生命周期）
         │
         ▼
-McpClient
+McpServerClient
         ▼
 ModelContextProtocol.Core 1.4.1
 ```
@@ -37,5 +37,5 @@ ModelContextProtocol.Core 1.4.1
 - MCP 注册表发布不会自动启用服务，必须加入 Agent 配置并发布
 
 ## Source
-- Core: `Backend/src/OpenAgent.Core/Capabilities/Mcp/`（McpCapabilitySource、McpClient）
+- Core: `Backend/src/OpenAgent.Core/Capabilities/Mcp/`（McpCapabilitySource、McpServerClient）
 - Contracts: `Backend/src/OpenAgent.Contracts/Mcp/IMcpClient.cs`

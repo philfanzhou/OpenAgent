@@ -18,11 +18,11 @@ CapabilityToolFactory
         ▼
 McpCapabilitySource（请求级）
   ├─ 过滤不可用 Server
-  ├─ 每个 Server 保持一个 McpClient
+  ├─ 每个 Server 保持一个 McpServerClient
   └─ MCP Tool → CapabilityDefinition
         │
         ▼
-McpClient
+McpServerClient
   └─ ModelContextProtocol.Core 1.4.1
 ```
 
@@ -35,6 +35,6 @@ McpClient
 - `Http` 类型的 URL 必须是完整 MCP endpoint，不自动追加 `/mcp`
 
 ## Source
-- Core: `Backend/src/OpenAgent.Core/Capabilities/Mcp/`（McpCapabilitySource、McpClient）
+- Core: `Backend/src/OpenAgent.Core/Capabilities/Mcp/`（McpCapabilitySource、McpServerClient）
 - Contracts: `Backend/src/OpenAgent.Contracts/Mcp/IMcpClient.cs`
 - Tests: `Backend/tests/OpenAgent.Core.Tests/Capabilities/McpCapabilitySourceTests.cs`

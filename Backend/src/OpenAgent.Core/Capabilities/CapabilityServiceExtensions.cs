@@ -17,7 +17,7 @@ internal static class CapabilityServiceExtensions
         services.AddSingleton<IToolRegistry>(serviceProvider =>
             serviceProvider.GetRequiredService<SkillCatalog>());
         services.AddSingleton<IRagRegistry, RagRegistry>();
-        services.AddSingleton<IMcpClientFactory, McpClientFactory>();
+        services.AddSingleton<IMcpClientFactory, McpServerClientFactory>();
         services.AddScoped<ICapabilitySource, McpCapabilitySource>();
         services.AddScoped<ICapabilitySource, SkillCapabilitySource>();
         services.AddScoped<ICapabilitySource, RagCapabilitySource>();

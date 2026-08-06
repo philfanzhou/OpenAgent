@@ -5,7 +5,7 @@
 | 外部系统 | 接口类型 | 方向 | 用途 | 失败语义 |
 |----------|----------|------|------|----------|
 | LLM API（OpenAI/Azure/Anthropic/Gemini/兼容端点） | MAF + Provider SDK | 出 | `ChatClientAgent` 推理、流式与函数调用 | 保留 Provider 异常，请求失败 |
-| MCP Server | SSE + HTTP POST | 出 | 工具发现与调用（McpClient） | 连接失败抛 ConnectionException；调用超时 30s 抛 TimeoutException；重试最多 5 次 |
+| MCP Server | Streamable HTTP / SSE | 出 | 工具发现与调用（McpServerClient） | 协议与传输生命周期由官方 MCP SDK 管理 |
 | RAG - Qdrant | HTTP REST | 出 | 向量检索（QdrantAdapter） | 返回空结果，不中断主流程 |
 | RAG - RagFlow | HTTP REST | 出 | 文档检索（RagFlowAdapter） | 返回空结果，不中断主流程 |
 | Redis | TCP (StackExchange.Redis) | 出 | 会话热存储 | 读取失败返回 null/空列表；写入失败记录日志，不影响主流程 |

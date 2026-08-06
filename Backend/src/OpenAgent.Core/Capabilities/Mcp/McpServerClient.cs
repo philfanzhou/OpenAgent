@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
@@ -11,26 +10,14 @@ using SdkMcpClient = ModelContextProtocol.Client.McpClient;
 
 namespace OpenAgent.Core.Capabilities.Mcp;
 
-internal sealed class McpClient : IMcpClient, IDisposable, IAsyncDisposable
+internal sealed class McpServerClient(ILoggerFactory loggerFactory)
+    : IMcpClient, IDisposable, IAsyncDisposable
 {
-    private readonly IHttpClientFactory _httpClientFactory;
-    private readonly ILogger<McpClient> _logger;
-    private readonly ILoggerFactory _loggerFactory;
     private readonly SemaphoreSlim _connectionLock = new(1, 1);
     private IReadOnlyDictionary<string, McpTool> _tools =
         new Dictionary<string, McpTool>(StringComparer.OrdinalIgnoreCase);
     private SdkMcpClient? _client;
     private int _disposeState;
-
-    internal McpClient(
-        IHttpClientFactory httpClientFactory,
-        ILogger<McpClient> logger,
-        ILoggerFactory loggerFactory)
-    {
-        _httpClientFactory = httpClientFactory;
-        _logger = logger;
-        _loggerFactory = loggerFactory;
-    }
 
     public bool IsConnected => _client is { Completion.IsCompleted: false };
 
@@ -64,7 +51,7 @@ internal sealed class McpClient : IMcpClient, IDisposable, IAsyncDisposable
                         },
                         InitializationTimeout = TimeSpan.FromSeconds(30)
                     },
-                    _loggerFactory,
+                    loggerFactory,
                     cancellationToken).ConfigureAwait(false);
 
                 IList<McpClientTool> tools = await client.ListToolsAsync(
@@ -76,18 +63,10 @@ internal sealed class McpClient : IMcpClient, IDisposable, IAsyncDisposable
                     StringComparer.OrdinalIgnoreCase);
                 _client = client;
             }
-            catch (OperationCanceledException)
+            catch
             {
                 await DisposeConnectionAsync(client, transport).ConfigureAwait(false);
                 throw;
-            }
-            catch (Exception exception)
-            {
-                await DisposeConnectionAsync(client, transport).ConfigureAwait(false);
-                McpLog.ConnectFailed(_logger, exception);
-                throw new InvalidOperationException(
-                    $"Failed to connect to MCP server: {exception.Message}",
-                    exception);
             }
         }
         finally
@@ -120,28 +99,14 @@ internal sealed class McpClient : IMcpClient, IDisposable, IAsyncDisposable
         Dictionary<string, object> arguments,
         CancellationToken cancellationToken = default)
     {
-        Stopwatch stopwatch = Stopwatch.StartNew();
-        if (!_tools.TryGetValue(toolName, out McpTool? tool))
+        if (!_tools.ContainsKey(toolName))
         {
-            _logger.LogWarning(
-                "MCP tool unavailable. Tool={Tool} Status={Status}",
-                toolName,
-                "tool_not_found");
             return $"Error: Tool '{toolName}' not found.";
-        }
-
-        if (tool.IsDangerous)
-        {
-            _logger.LogWarning("Dangerous MCP tool requested. Tool={Tool}", toolName);
         }
 
         SdkMcpClient? client = _client;
         if (client == null || client.Completion.IsCompleted)
         {
-            _logger.LogWarning(
-                "MCP tool unavailable. Tool={Tool} Status={Status}",
-                toolName,
-                "not_connected");
             return "Error: MCP Client not connected.";
         }
 
@@ -162,10 +127,6 @@ internal sealed class McpClient : IMcpClient, IDisposable, IAsyncDisposable
 
             if (result.IsError == true)
             {
-                _logger.LogWarning(
-                    "MCP tool returned an error. Tool={Tool} DurationMs={DurationMs}",
-                    toolName,
-                    stopwatch.Elapsed.TotalMilliseconds);
                 return $"Error executing tool {toolName}: {resultText}";
             }
 
@@ -175,29 +136,16 @@ internal sealed class McpClient : IMcpClient, IDisposable, IAsyncDisposable
         {
             throw;
         }
-        catch (McpProtocolException exception)
-        {
-            LogFailure(toolName, "rpc_error", exception, stopwatch);
-            return $"Error executing tool {toolName}: {exception.Message} (Code: {(int)exception.ErrorCode})";
-        }
         catch (McpException exception)
         {
-            LogFailure(toolName, "rpc_error", exception, stopwatch);
             return $"Error executing tool {toolName}: {exception.Message}";
         }
-        catch (TimeoutException exception)
+        catch (TimeoutException)
         {
-            LogFailure(toolName, "timeout", exception, stopwatch);
             return $"Error: Tool {toolName} execution timed out.";
         }
         catch (HttpRequestException exception)
         {
-            LogFailure(toolName, "http_error", exception, stopwatch);
-            return $"Error executing tool {toolName}: {exception.Message}";
-        }
-        catch (Exception exception)
-        {
-            LogFailure(toolName, "unexpected_error", exception, stopwatch);
             return $"Error executing tool {toolName}: {exception.Message}";
         }
     }
@@ -212,31 +160,19 @@ internal sealed class McpClient : IMcpClient, IDisposable, IAsyncDisposable
             throw new InvalidOperationException("MCP Client not connected.");
         }
 
-        try
+        ReadResourceResult result = await client.ReadResourceAsync(
+            resourceUri,
+            options: null,
+            cancellationToken).ConfigureAwait(false);
+        return result.Contents.FirstOrDefault() switch
         {
-            ReadResourceResult result = await client.ReadResourceAsync(
-                resourceUri,
-                options: null,
-                cancellationToken).ConfigureAwait(false);
-            return result.Contents.FirstOrDefault() switch
-            {
-                TextResourceContents text => new MemoryStream(Encoding.UTF8.GetBytes(text.Text)),
-                BlobResourceContents blob => new MemoryStream(blob.DecodedData.ToArray(), writable: false),
-                null => throw new InvalidOperationException(
-                    $"Resource '{resourceUri}' returned no content."),
-                _ => throw new InvalidOperationException(
-                    $"Resource '{resourceUri}' returned an unsupported content type.")
-            };
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception exception) when (exception is not InvalidOperationException)
-        {
-            McpLog.ReadMcpResourceFailed(_logger, exception, resourceUri);
-            throw;
-        }
+            TextResourceContents text => new MemoryStream(Encoding.UTF8.GetBytes(text.Text)),
+            BlobResourceContents blob => new MemoryStream(blob.DecodedData.ToArray(), writable: false),
+            null => throw new InvalidOperationException(
+                $"Resource '{resourceUri}' returned no content."),
+            _ => throw new InvalidOperationException(
+                $"Resource '{resourceUri}' returned an unsupported content type.")
+        };
     }
 
     public async ValueTask DisposeAsync()
@@ -272,8 +208,6 @@ internal sealed class McpClient : IMcpClient, IDisposable, IAsyncDisposable
             _ => throw new NotSupportedException(
                 $"MCP server type '{type}' is not supported by the HTTP client transport.")
         };
-        HttpClient httpClient = _httpClientFactory.CreateClient();
-        httpClient.Timeout = TimeSpan.FromMinutes(5);
         return new HttpClientTransport(
             new HttpClientTransportOptions
             {
@@ -284,9 +218,7 @@ internal sealed class McpClient : IMcpClient, IDisposable, IAsyncDisposable
                 MaxReconnectionAttempts = 5,
                 DefaultReconnectionInterval = TimeSpan.FromSeconds(2)
             },
-            httpClient,
-            _loggerFactory,
-            ownsHttpClient: true);
+            loggerFactory);
     }
 
     private async Task DisconnectCoreAsync()
@@ -322,17 +254,4 @@ internal sealed class McpClient : IMcpClient, IDisposable, IAsyncDisposable
         IsDangerous = tool.ProtocolTool.Annotations?.DestructiveHint == true
     };
 
-    private void LogFailure(
-        string toolName,
-        string status,
-        Exception exception,
-        Stopwatch stopwatch)
-    {
-        _logger.LogError(
-            exception,
-            "MCP tool failed. Tool={Tool} Status={Status} DurationMs={DurationMs}",
-            toolName,
-            status,
-            stopwatch.Elapsed.TotalMilliseconds);
-    }
 }
