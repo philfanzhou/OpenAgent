@@ -29,6 +29,7 @@ internal static class ServiceCollectionExtensions
         services.AddSingleton<SecretInjector>();
         services.AddSingleton<MockAgentResolver>();
         services.AddSingleton<AgentListQuery>();
+        services.AddSingleton<AgentConfigManagementService>();
 
         services.AddSingleton<IAgentConfigProvider, ConfigProvider>();
 

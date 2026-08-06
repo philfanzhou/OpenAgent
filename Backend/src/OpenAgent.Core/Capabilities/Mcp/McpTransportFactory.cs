@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using ModelContextProtocol.Client;
 using OpenAgent.Contracts.Configuration;
 
@@ -8,18 +9,26 @@ internal sealed class McpTransportFactory
 {
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILoggerFactory _loggerFactory;
+    private readonly McpExecutionOptions _options;
 
     internal McpTransportFactory(
         IHttpClientFactory httpClientFactory,
-        ILoggerFactory loggerFactory)
+        ILoggerFactory loggerFactory,
+        IOptions<McpExecutionOptions> options)
     {
         _httpClientFactory = httpClientFactory;
         _loggerFactory = loggerFactory;
+        _options = options.Value;
     }
 
-    internal HttpClientTransport Create(string serverUrl, McpServerType type)
+    internal IClientTransport Create(McpServerConfig server)
     {
-        (Uri endpoint, HttpTransportMode mode) = ResolveEndpoint(serverUrl, type);
+        if (server.Type == McpServerType.Stdio)
+        {
+            return CreateStdioTransport(server);
+        }
+
+        (Uri endpoint, HttpTransportMode mode) = ResolveEndpoint(server.Url, server.Type);
         HttpClient httpClient = _httpClientFactory.CreateClient();
         httpClient.Timeout = TimeSpan.FromMinutes(5);
 
@@ -36,6 +45,41 @@ internal sealed class McpTransportFactory
             httpClient,
             _loggerFactory,
             ownsHttpClient: true);
+    }
+
+    private StdioClientTransport CreateStdioTransport(McpServerConfig server)
+    {
+        if (string.IsNullOrWhiteSpace(server.Command))
+        {
+            throw new InvalidOperationException($"MCP Stdio server '{server.Name}' must specify a command.");
+        }
+        if (!_options.AllowUnlistedCommands
+            && !_options.AllowedCommands.Contains(
+                Path.GetFileName(server.Command), StringComparer.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                $"MCP Stdio command '{server.Command}' is not allowed by the server policy.");
+        }
+
+        Dictionary<string, string?> environment =
+            StdioClientTransportOptions.GetDefaultEnvironmentVariables();
+        foreach (var item in server.EnvironmentVariables)
+        {
+            environment[item.Key] = item.Value;
+        }
+
+        return new StdioClientTransport(
+            new StdioClientTransportOptions
+            {
+                Command = server.Command,
+                Arguments = server.Arguments,
+                Name = string.IsNullOrWhiteSpace(server.Name) ? server.Command : server.Name,
+                WorkingDirectory = server.WorkingDirectory,
+                InheritEnvironmentVariables = false,
+                EnvironmentVariables = environment,
+                ShutdownTimeout = TimeSpan.FromSeconds(5)
+            },
+            _loggerFactory);
     }
 
     internal static (Uri Endpoint, HttpTransportMode Mode) ResolveEndpoint(

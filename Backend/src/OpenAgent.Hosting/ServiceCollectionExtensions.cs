@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -9,6 +8,7 @@ using OpenTelemetry.Trace;
 using Serilog;
 using OpenAgent.Hosting.Observability;
 using OpenAgent.Hosting.Security;
+using OpenAgent.Hosting.Authentication;
 
 namespace OpenAgent.Hosting;
 
@@ -23,6 +23,11 @@ public static class ServiceCollectionExtensions
     {
         var options = new AgentHostOptions();
         configure?.Invoke(options);
+        string[] configuredOrigins = configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
+        if (configuredOrigins.Length > 0)
+        {
+            options.CorsAllowedOrigins = configuredOrigins;
+        }
 
         services.Configure<AgentHostOptions>(opt =>
         {
@@ -32,12 +37,15 @@ public static class ServiceCollectionExtensions
             opt.EnableJwtAuth = options.EnableJwtAuth;
             opt.EnableOpenTelemetry = options.EnableOpenTelemetry;
             opt.CorsPolicyName = options.CorsPolicyName;
+            opt.CorsAllowedOrigins = options.CorsAllowedOrigins;
             opt.HealthCheckLivePath = options.HealthCheckLivePath;
             opt.HealthCheckReadyPath = options.HealthCheckReadyPath;
             opt.ServiceName = options.ServiceName;
             opt.ServiceVersion = options.ServiceVersion;
             opt.OpenTelemetrySource = options.OpenTelemetrySource;
         });
+        services.AddOptions<AgentAuthenticationOptions>()
+            .Bind(configuration.GetSection("Authentication"));
 
         if (options.EnableCors)
         {
@@ -46,7 +54,7 @@ public static class ServiceCollectionExtensions
                 cors.AddPolicy(options.CorsPolicyName, policy =>
                 {
                     policy
-                        .SetIsOriginAllowed(_ => true)
+                        .WithOrigins(options.CorsAllowedOrigins)
                         .AllowAnyMethod()
                         .AllowAnyHeader()
                         .AllowCredentials()
@@ -70,17 +78,7 @@ public static class ServiceCollectionExtensions
 
         if (options.EnableJwtAuth)
         {
-            // ⚠️ SECURITY: PassThrough auth is for development only.
-            // Replace with JwtBearer or your own handler before production.
-            BootstrapLogger.Warning(
-                "Configuring pass-through authentication. " +
-                "This accepts all requests without validation and is NOT safe for production. " +
-                "Replace PassThroughAuthenticationHandler with a real authentication handler.");
-            services.AddAuthentication(PassThroughAuthenticationHandler.SchemeName)
-                .AddScheme<AuthenticationSchemeOptions, PassThroughAuthenticationHandler>(
-                    PassThroughAuthenticationHandler.SchemeName,
-                    _ => { });
-            services.AddAuthorization();
+            services.AddAgentAuthentication(configuration);
         }
 
         if (options.EnableOpenTelemetry)

@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using OpenAgent.Hosting.Authentication;
 using StackExchange.Redis;
 using Xunit;
 
@@ -44,6 +45,59 @@ public class ServiceCollectionExtensionsTests
         var schemes = provider.GetRequiredService<IAuthenticationSchemeProvider>();
 
         Assert.NotNull(await schemes.GetSchemeAsync("PassThrough"));
+    }
+
+    [Fact]
+    public async Task AddAgentHost_WithJwtBearerMode_RegistersBearerScheme()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Authentication:Mode"] = "JwtBearer",
+                ["Authentication:Authority"] = "https://identity.example.com",
+                ["Authentication:Audience"] = "openagent-engine"
+            })
+            .Build();
+        var services = new ServiceCollection();
+        services.AddLogging();
+
+        services.AddAgentHost(configuration, options =>
+        {
+            DisableOptionalFeatures(options);
+            options.EnableJwtAuth = true;
+        });
+
+        using var provider = services.BuildServiceProvider();
+        var schemes = provider.GetRequiredService<IAuthenticationSchemeProvider>();
+
+        Assert.NotNull(await schemes.GetSchemeAsync("Bearer"));
+        Assert.Equal(AgentAuthenticationMode.JwtBearer,
+            provider.GetRequiredService<IOptions<AgentAuthenticationOptions>>().Value.Mode);
+    }
+
+    [Fact]
+    public async Task AddAgentHost_WithApiKeyMode_RegistersApiKeyScheme()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Authentication:Mode"] = "ApiKey",
+                ["Authentication:ApiKeys:test-key:UserId"] = "service-user"
+            })
+            .Build();
+        var services = new ServiceCollection();
+        services.AddLogging();
+
+        services.AddAgentHost(configuration, options =>
+        {
+            DisableOptionalFeatures(options);
+            options.EnableJwtAuth = true;
+        });
+
+        using var provider = services.BuildServiceProvider();
+        var schemes = provider.GetRequiredService<IAuthenticationSchemeProvider>();
+
+        Assert.NotNull(await schemes.GetSchemeAsync("ApiKey"));
     }
 
     [Fact]

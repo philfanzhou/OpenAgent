@@ -56,6 +56,10 @@ public class McpServerConfig
     public string Url { get; set; } = string.Empty;
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public McpServerType Type { get; set; } = McpServerType.Http;
+    public string? Command { get; set; }
+    public List<string> Arguments { get; set; } = new();
+    public string? WorkingDirectory { get; set; }
+    public Dictionary<string, string> EnvironmentVariables { get; set; } = new();
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter))]

@@ -19,6 +19,23 @@ internal static class EndpointExtensions
     {
         RouteGroupBuilder group = endpoints.MapGroup(pattern).RequireAuthorization();
         group.MapAttachmentChat();
+        endpoints.MapManagementEndpoints();
+
+        group.MapGet("/me", (HttpContext context) =>
+        {
+            IAgentUserContext user = context.GetAgentRequest().User;
+            return Results.Ok(new
+            {
+                userId = user.UserId,
+                tenantId = user.TenantId,
+                roles = user.Roles,
+                groups = user.Groups,
+                audience = user.Audience,
+                isAuthenticated = user.IsAuthenticated
+            });
+        })
+        .WithName("CurrentAgentUser")
+        .WithTags("Agent");
 
         group.MapPost("/chat", async (
             [FromBody] ChatRequest request,
@@ -144,6 +161,26 @@ internal static class EndpointExtensions
             return Results.Ok(results);
         })
         .WithName("SearchConversations")
+        .WithTags("Conversation");
+
+        group.MapGet("/conversations/{conversationId}", async (
+            [FromServices] IConversationQueryService queryService,
+            HttpContext context,
+            string conversationId,
+            CancellationToken cancellationToken = default) =>
+        {
+            ConversationRecord? record = await queryService.GetRecordAsync(
+                RequireTenant(context),
+                conversationId,
+                cancellationToken).ConfigureAwait(false);
+            if (record == null) return Results.NotFound();
+
+            string userId = context.GetAgentRequest().User.UserId;
+            return string.Equals(record.UserId, userId, StringComparison.OrdinalIgnoreCase)
+                ? Results.Ok(record)
+                : Results.Forbid();
+        })
+        .WithName("GetConversation")
         .WithTags("Conversation");
 
         group.MapDelete("/conversations/{conversationId}", async (

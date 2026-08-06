@@ -1,0 +1,205 @@
+import type {
+  AgentConfigEntity,
+  AgentSummary,
+  ConversationMessage,
+  ConversationRecord,
+  CurrentUserContext,
+  McpServerConfig,
+  McpTestResult,
+  StreamEvent,
+} from './types'
+
+const engineStorageKey = 'openagent.engine.base-url'
+const tokenStorageKey = 'openagent.auth.access-token'
+const tenantStorageKey = 'openagent.auth.tenant-id'
+
+export function getEngineBaseUrl(): string {
+  return localStorage.getItem(engineStorageKey) || ''
+}
+
+export function setEngineBaseUrl(value: string): void {
+  const normalized = value.trim().replace(/\/$/, '')
+  localStorage.setItem(engineStorageKey, normalized)
+}
+
+export function getAccessToken(): string {
+  return sessionStorage.getItem(tokenStorageKey) || ''
+}
+
+export function setAccessToken(value: string): void {
+  if (value.trim()) sessionStorage.setItem(tokenStorageKey, value.trim())
+  else sessionStorage.removeItem(tokenStorageKey)
+}
+
+export function getTenantId(): string {
+  return localStorage.getItem(tenantStorageKey) || ''
+}
+
+export function setTenantId(value: string): void {
+  localStorage.setItem(tenantStorageKey, value.trim())
+}
+
+function requireBaseUrl(): string {
+  const value = getEngineBaseUrl()
+  if (!value) throw new Error('请先在设置中输入 Engine 地址')
+  return value
+}
+
+function headers(extra: HeadersInit = {}): Headers {
+  const result = new Headers({
+    Accept: 'application/json',
+    ...extra,
+  })
+  const token = getAccessToken()
+  const tenantId = getTenantId()
+  if (token) result.set('Authorization', `Bearer ${token}`)
+  if (tenantId) result.set('X-Tenant-Id', tenantId)
+  result.set('X-Trace-Id', crypto.randomUUID())
+  return result
+}
+
+async function readError(response: Response): Promise<Error> {
+  try {
+    const body = await response.json() as { detail?: string; title?: string; traceId?: string }
+    return new Error(`${body.detail || body.title || response.statusText}${body.traceId ? ` (TraceId: ${body.traceId})` : ''}`)
+  } catch {
+    return new Error(`${response.status} ${response.statusText}`)
+  }
+}
+
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const response = await fetch(`${requireBaseUrl()}${path}`, {
+    ...init,
+    headers: headers(init.headers),
+  })
+  if (!response.ok) throw await readError(response)
+  if (response.status === 204) return undefined as T
+  return await response.json() as T
+}
+
+export const api = {
+  async health(path: '/health' | '/ready'): Promise<void> {
+    const response = await fetch(`${requireBaseUrl()}${path}`, { headers: headers() })
+    if (!response.ok) throw await readError(response)
+  },
+
+  listAgents(): Promise<AgentSummary[]> {
+    return request<AgentSummary[]>('/api/v1/agent/agents')
+  },
+
+  getCurrentUser(): Promise<CurrentUserContext> {
+    return request<CurrentUserContext>('/api/v1/agent/me')
+  },
+
+  listConversations(): Promise<ConversationRecord[]> {
+    return request<ConversationRecord[]>('/api/v1/agent/conversations?skip=0&take=1000')
+  },
+
+  getConversation(id: string): Promise<ConversationRecord> {
+    return request<ConversationRecord>(`/api/v1/agent/conversations/${encodeURIComponent(id)}`)
+  },
+
+  deleteConversation(id: string): Promise<void> {
+    return request<void>(`/api/v1/agent/conversations/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  },
+
+  getAgentConfig(id: string): Promise<AgentConfigEntity> {
+    return request<AgentConfigEntity>(`/api/v1/admin/agents/${encodeURIComponent(id)}`)
+  },
+
+  saveAgentConfig(id: string, config: AgentConfigEntity): Promise<AgentConfigEntity> {
+    return request<AgentConfigEntity>(`/api/v1/admin/agents/${encodeURIComponent(id)}/config`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
+    })
+  },
+
+  saveMcp(id: string, agentId: string, server: McpServerConfig): Promise<McpServerConfig> {
+    return request<McpServerConfig>(`/api/v1/admin/mcp/${encodeURIComponent(id)}?agentId=${encodeURIComponent(agentId)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(server),
+    })
+  },
+
+  saveSkills(agentId: string, skills: AgentConfigEntity['config']['skills']): Promise<AgentConfigEntity['config']['skills']> {
+    return request<AgentConfigEntity['config']['skills']>(`/api/v1/admin/skills/${encodeURIComponent(agentId)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(skills),
+    })
+  },
+
+  testSkills(skills: AgentConfigEntity['config']['skills']): Promise<Record<string, unknown>> {
+    return request<Record<string, unknown>>('/api/v1/admin/skills/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(skills),
+    })
+  },
+
+  testMcp(server: McpServerConfig, agentId?: string): Promise<McpTestResult> {
+    return request<McpTestResult>('/api/v1/admin/mcp/test-connection', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agentId, server, action: 'discover' }),
+    })
+  },
+
+  async *streamChat(message: string, agentId: string, conversationId?: string): AsyncGenerator<StreamEvent> {
+    const response = await fetch(`${requireBaseUrl()}/api/v1/agent/chat/stream`, {
+      method: 'POST',
+      headers: headers({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({
+        message,
+        context: { agentId, ...(conversationId ? { conversationId } : {}) },
+      }),
+    })
+    if (!response.ok) throw await readError(response)
+    if (!response.body) throw new Error('Engine 未返回流式响应')
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        buffer += decoder.decode(value || new Uint8Array(), { stream: !done })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+        for (const line of lines) {
+          if (line.trim()) yield JSON.parse(line) as StreamEvent
+        }
+        if (done) break
+      }
+      if (buffer.trim()) yield JSON.parse(buffer) as StreamEvent
+    } finally {
+      reader.releaseLock()
+    }
+  },
+}
+
+export function makeLocalConversation(agentId: string, message: string): ConversationRecord {
+  const now = new Date().toISOString()
+  const userMessage: ConversationMessage = {
+    messageId: crypto.randomUUID(),
+    sequence: 1,
+    role: 'user',
+    content: message,
+    timestamp: now,
+  }
+  return {
+    conversationId: crypto.randomUUID(),
+    tenantId: getTenantId(),
+    userId: 'local',
+    agentId,
+    status: 'Running',
+    createdAt: now,
+    updatedAt: now,
+    lastMessageAt: now,
+    messageCount: 1,
+    title: message.slice(0, 40),
+    messages: [userMessage],
+  }
+}

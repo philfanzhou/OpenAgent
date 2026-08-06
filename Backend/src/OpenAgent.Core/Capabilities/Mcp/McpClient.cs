@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using OpenAgent.Core.Abstract;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Mcp;
@@ -17,11 +18,12 @@ internal sealed class McpClient : IMcpClient, IDisposable, IAsyncDisposable
     public McpClient(
         IHttpClientFactory httpClientFactory,
         ILogger<McpClient> logger,
-        ILoggerFactory loggerFactory)
+        ILoggerFactory loggerFactory,
+        IOptions<McpExecutionOptions> options)
     {
         _state = new McpSessionState();
         _catalog = new McpToolCatalog();
-        McpTransportFactory transportFactory = new(httpClientFactory, loggerFactory);
+        McpTransportFactory transportFactory = new(httpClientFactory, loggerFactory, options);
         _connection = new McpConnection(
             _state,
             _catalog,
@@ -39,7 +41,16 @@ internal sealed class McpClient : IMcpClient, IDisposable, IAsyncDisposable
         McpServerType type = McpServerType.Http,
         CancellationToken cancellationToken = default)
     {
-        return _connection.ConnectAsync(serverUrl, type, cancellationToken);
+        return _connection.ConnectAsync(
+            new McpServerConfig { Url = serverUrl, Type = type },
+            cancellationToken);
+    }
+
+    public Task ConnectAsync(
+        McpServerConfig server,
+        CancellationToken cancellationToken = default)
+    {
+        return _connection.ConnectAsync(server, cancellationToken);
     }
 
     public Task DisconnectAsync(CancellationToken cancellationToken = default)

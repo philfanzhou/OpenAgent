@@ -129,6 +129,9 @@ internal static partial class EngineLog
     [LoggerMessage(EventId = 4040, Level = LogLevel.Error, Message = "Failed to refresh config from Redis for agent {AgentId}. ExceptionType={ExceptionType}")]
     private static partial void HotReloadRefreshFailedCore(ILogger logger, Exception ex, string agentId, string exceptionType);
 
+    [LoggerMessage(EventId = 4041, Level = LogLevel.Debug, Message = "Redis is unavailable. Hot reload subscription will retry.")]
+    public static partial void HotReloadRedisUnavailable(ILogger logger);
+
     // --- ShutdownService (4046–4053) ---
 
     [LoggerMessage(EventId = 4048, Level = LogLevel.Information, Message = "Initiating graceful shutdown with timeout: {TimeoutSeconds}s")]

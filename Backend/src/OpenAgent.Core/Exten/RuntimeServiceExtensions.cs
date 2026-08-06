@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 using OpenAgent.Core.Abstract;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Core.Models;
@@ -15,7 +16,15 @@ internal static class RuntimeServiceExtensions
         services.AddSingleton<ILlmRegistry, LlmRegistry>();
         services.AddSingleton<AgentChatClientFactory>();
 
-        services.TryAddScoped<IAgentAuthorizationService, AllowAllAgentAuthorizationService>();
+        services.TryAddScoped<IAgentAuthorizationService>(serviceProvider =>
+        {
+            AgentAuthorizationMode mode = serviceProvider
+                .GetRequiredService<IOptions<AgentAuthorizationOptions>>()
+                .Value.Mode;
+            return mode == AgentAuthorizationMode.Claims
+                ? new ClaimsAgentAuthorizationService()
+                : new AllowAllAgentAuthorizationService();
+        });
         services.AddScoped<AgentAuthorizationGate>();
         services.AddScoped<AgentFactory>();
         services.AddScoped(serviceProvider => new AgentExecutor(

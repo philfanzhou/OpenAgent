@@ -28,7 +28,7 @@ internal sealed class McpClientPool(IMcpClientFactory factory) : IAsyncDisposabl
         // the same identity-switching contract in tests.
         if (created || !client.IsConnected)
         {
-            await client.ConnectAsync(identity.Url, identity.Type, cancellationToken).ConfigureAwait(false);
+            await client.ConnectAsync(server, cancellationToken).ConfigureAwait(false);
         }
 
         return client;
@@ -104,12 +104,13 @@ internal sealed class McpClientPool(IMcpClientFactory factory) : IAsyncDisposabl
     }
 }
 
-internal readonly record struct McpServerIdentity(string Name, string Url, McpServerType Type)
+internal readonly record struct McpServerIdentity(string Name, string Url, McpServerType Type, string? Command)
 {
     internal static McpServerIdentity From(McpServerConfig server) => new(
         string.IsNullOrWhiteSpace(server.Name) ? server.Url : server.Name,
         server.Url,
-        server.Type);
+        server.Type,
+        server.Command);
 }
 
 internal readonly record struct McpToolIdentity(

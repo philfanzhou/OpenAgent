@@ -29,8 +29,7 @@ internal sealed class McpConnection
     }
 
     internal async Task ConnectAsync(
-        string serverUrl,
-        McpServerType type,
+        McpServerConfig server,
         CancellationToken cancellationToken)
     {
         await _state.ConnectionLock.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -43,12 +42,12 @@ internal sealed class McpConnection
 
             await DisconnectCoreAsync().ConfigureAwait(false);
 
-            string normalizedServerUrl = serverUrl.Trim();
-            HttpClientTransport? transport = null;
+            string normalizedServerUrl = server.Url?.Trim() ?? string.Empty;
+            IClientTransport? transport = null;
             SdkMcpClient? client = null;
             try
             {
-                transport = _transportFactory.Create(normalizedServerUrl, type);
+                transport = _transportFactory.Create(server);
                 client = await SdkMcpClient.CreateAsync(
                     transport,
                     new McpClientOptions
@@ -67,7 +66,7 @@ internal sealed class McpConnection
                     options: null,
                     cancellationToken).ConfigureAwait(false);
                 _catalog.Replace(tools);
-                _state.Activate(client, normalizedServerUrl);
+                _state.Activate(client, string.IsNullOrWhiteSpace(server.Name) ? normalizedServerUrl : server.Name);
             }
             catch (OperationCanceledException)
             {
@@ -114,7 +113,7 @@ internal sealed class McpConnection
 
     private static async Task DisposeConnectionAsync(
         SdkMcpClient? client,
-        HttpClientTransport? transport)
+        IClientTransport? transport)
     {
         if (client != null)
         {
@@ -122,7 +121,14 @@ internal sealed class McpConnection
         }
         else if (transport != null)
         {
-            await transport.DisposeAsync().ConfigureAwait(false);
+            if (transport is IAsyncDisposable asyncDisposable)
+            {
+                await asyncDisposable.DisposeAsync().ConfigureAwait(false);
+            }
+            else if (transport is IDisposable disposable)
+            {
+                disposable.Dispose();
+            }
         }
     }
 }
