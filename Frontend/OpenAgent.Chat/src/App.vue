@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { api, getAccessToken, getEngineBaseUrl, getSsoAddress, getTenantId, makeLocalConversation, setAccessToken, setEngineBaseUrl, setSsoAddress, setTenantId } from './api'
+import { api, getAccessToken, getEngineBaseUrl, getTenantId, makeLocalConversation, setAccessToken, setEngineBaseUrl, setTenantId } from './api'
 import type { AgentConfigEntity, AgentSummary, AuthConfig, ConversationMessage, ConversationRecord, CurrentUserContext, McpServerConfig, McpTestResult, MessageAttachment, RagConfig, RagInstanceConfig, RagTestResult, SkillInstanceConfig, SkillsConfig } from './types'
 
 const engineUrl = ref(getEngineBaseUrl())
@@ -25,7 +25,6 @@ const testingRag = ref(false)
 const statusText = ref('未连接')
 const config = ref<AgentConfigEntity | null>(null)
 const authConfig = ref<AuthConfig | null>(null)
-const ssoAddress = ref(getSsoAddress())
 const username = ref('')
 const password = ref('')
 const authLoading = ref(false)
@@ -119,7 +118,6 @@ async function connect(): Promise<void> {
   setEngineBaseUrl(engineUrl.value)
   setAccessToken(token.value)
   setTenantId(tenantId.value)
-  setSsoAddress(ssoAddress.value)
   try {
     await api.health('/ready')
     await loadAuthConfig()
@@ -144,8 +142,8 @@ async function loginWithPassword(): Promise<void> {
   if (!username.value.trim() || !password.value) return notifyError(new Error('请输入账号和密码'))
   authLoading.value = true
   try {
-    const result = await api.passwordLogin(username.value.trim(), password.value, ssoAddress.value)
-    setAccessToken(result.access_token)
+    const result = await api.passwordLogin(username.value.trim(), password.value)
+    setAccessToken(result.access_token, result.token_type || 'Basic')
     token.value = result.access_token
     password.value = ''
     await connect()
@@ -711,10 +709,10 @@ onMounted(() => {
       <el-tabs v-model="activeSettings" tab-position="left" class="settings-tabs" @tab-change="handleSettingsTabChange">
         <el-tab-pane label="Engine 连接" name="engine">
           <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">CONNECTION</span><h3>连接与身份</h3><p>配置当前工作台要访问的 Engine，设置会保存在本机浏览器中。</p></div><span class="connection-badge" :class="{ online: statusText === '已连接' }"><i />{{ statusText }}</span></div>
-            <el-form label-position="top"><el-form-item label="Engine 地址"><el-input v-model="engineUrl" placeholder="http://localhost:5208" /></el-form-item><el-form-item label="Bearer Token（高级联调）"><el-input v-model="token" type="password" show-password placeholder="可选：从认证中心获取的 Access Token" /></el-form-item><el-form-item label="租户 ID"><el-input v-model="tenantId" placeholder="由认证中心 Token 中的 tid 决定" /></el-form-item></el-form>
-            <el-descriptions :column="2" border class="identity-status"><el-descriptions-item label="当前用户">{{ currentUser?.userId || '未连接' }}</el-descriptions-item><el-descriptions-item label="当前租户">{{ currentUser?.tenantId || tenantId || '未识别' }}</el-descriptions-item><el-descriptions-item label="认证状态">{{ currentUser?.isAuthenticated ? '已认证' : '未认证' }}</el-descriptions-item><el-descriptions-item label="Token 状态">{{ token ? '已配置（Bearer）' : '未配置' }}</el-descriptions-item></el-descriptions>
-            <el-alert title="Engine 的 Authentication:Mode 只由后端启动配置决定；这里仅选择登录方式并获取 Token。" type="info" :closable="false" />
-            <section class="login-card"><div class="login-card-heading"><div><span class="eyebrow">THIRD-PARTY SSO</span><h4>登录 Engine</h4></div><span class="login-config-status">{{ authConfig ? '已读取后端登录配置' : '等待连接后读取' }}</span></div><el-form label-position="top" class="login-form"><el-form-item label="SSO 地址"><el-input v-model="ssoAddress" placeholder="https://sso.example.com" /></el-form-item><el-form-item label="账号"><el-input v-model="username" autocomplete="username" placeholder="name@example.com" /></el-form-item><el-form-item label="密码"><el-input v-model="password" type="password" show-password autocomplete="current-password" placeholder="请输入密码" /></el-form-item></el-form><el-button type="primary" :loading="authLoading" :disabled="!authConfig?.password.enabled" @click="loginWithPassword">账号密码登录</el-button><small class="login-hint">SSO 地址会保存在本机浏览器；后端只允许已配置的第三方 Provider，未填写时使用后端默认 SSO。</small><small v-if="!authConfig?.password.enabled" class="login-hint">请在 Engine Authentication:Login:Password 或 Authentication:Providers 中配置密码登录。</small></section>
+            <el-form label-position="top"><el-form-item label="Engine 地址"><el-input v-model="engineUrl" placeholder="http://localhost:5208" /></el-form-item><el-form-item label="租户 ID"><el-input v-model="tenantId" placeholder="可选：用于当前工作台隔离" /></el-form-item></el-form>
+            <el-descriptions :column="2" border class="identity-status"><el-descriptions-item label="当前用户">{{ currentUser?.userId || '未连接' }}</el-descriptions-item><el-descriptions-item label="当前租户">{{ currentUser?.tenantId || tenantId || '未识别' }}</el-descriptions-item><el-descriptions-item label="认证状态">{{ currentUser?.isAuthenticated ? '已认证' : '未认证' }}</el-descriptions-item><el-descriptions-item label="登录状态">{{ token ? '已登录（Basic）' : '未登录' }}</el-descriptions-item></el-descriptions>
+            <el-alert title="当前仅使用基础账号密码建立身份。后端暂不校验账号密码正确性，具体资源授权后续单独实现。" type="info" :closable="false" />
+            <section class="login-card"><div class="login-card-heading"><div><span class="eyebrow">BASIC ACCOUNT</span><h4>登录 Engine</h4></div><span class="login-config-status">{{ authConfig?.mode || 'Basic' }}</span></div><el-form label-position="top" class="login-form"><el-form-item label="账号"><el-input v-model="username" autocomplete="username" placeholder="请输入账号" /></el-form-item><el-form-item label="密码"><el-input v-model="password" type="password" show-password autocomplete="current-password" placeholder="请输入密码" /></el-form-item></el-form><el-button type="primary" :loading="authLoading" :disabled="!authConfig?.password.enabled" @click="loginWithPassword">账号密码登录</el-button><small class="login-hint">当前阶段只要填写账号和密码即可通过；后端不会核对账号是否存在或密码是否正确。</small></section>
             <div class="button-row"><el-button type="primary" @click="connect">保存并连接</el-button><el-button @click="api.health('/health').then(() => ElMessage.success('Live 健康检查通过')).catch(notifyError)">测试 Live</el-button><el-button @click="api.health('/ready').then(() => ElMessage.success('Ready 健康检查通过')).catch(notifyError)">测试 Ready</el-button></div>
           </section>
         </el-tab-pane>

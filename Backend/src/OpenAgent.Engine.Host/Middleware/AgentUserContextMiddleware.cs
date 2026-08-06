@@ -42,7 +42,6 @@ internal sealed class AgentUserContextMiddleware
         string? tenantId = context.User.Claims
             .FirstOrDefault(claim => claim.Type == "tenant_id" || claim.Type == "tid")?.Value
             ?? (_authenticationOptions.AllowTenantHeader
-                || _authenticationOptions.Mode == AgentAuthenticationMode.PassThrough
                 ? context.Request.Headers["X-Tenant-Id"].FirstOrDefault()
                     ?? context.Request.Headers["X-TenantId"].FirstOrDefault()
                 : null);

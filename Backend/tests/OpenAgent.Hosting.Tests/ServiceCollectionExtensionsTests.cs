@@ -29,13 +29,12 @@ public class ServiceCollectionExtensionsTests
     }
 
     [Fact]
-    public async Task AddAgentHost_WithJwtAuthEnabled_RegistersPassThroughScheme()
+    public async Task AddAgentHost_WithJwtAuthEnabled_RegistersBasicScheme()
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["DOTNET_ENVIRONMENT"] = "Development",
-                ["Authentication:AllowDevelopmentPassThrough"] = "true"
+                ["Authentication:Mode"] = "Basic"
             })
             .Build();
         var services = new ServiceCollection();
@@ -50,77 +49,16 @@ public class ServiceCollectionExtensionsTests
         using var provider = services.BuildServiceProvider();
         var schemes = provider.GetRequiredService<IAuthenticationSchemeProvider>();
 
-        Assert.NotNull(await schemes.GetSchemeAsync("PassThrough"));
+        Assert.NotNull(await schemes.GetSchemeAsync("Basic"));
     }
 
     [Fact]
-    public async Task AddAgentHost_WithJwtBearerMode_RegistersBearerScheme()
+    public void AddAgentHost_WithUnsupportedAuthenticationMode_Throws()
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["Authentication:Mode"] = "JwtBearer",
-                ["Authentication:Authority"] = "https://identity.example.com",
-                ["Authentication:Audience"] = "openagent-engine"
-            })
-            .Build();
-        var services = new ServiceCollection();
-        services.AddLogging();
-
-        services.AddAgentHost(configuration, options =>
-        {
-            DisableOptionalFeatures(options);
-            options.EnableJwtAuth = true;
-        });
-
-        using var provider = services.BuildServiceProvider();
-        var schemes = provider.GetRequiredService<IAuthenticationSchemeProvider>();
-
-        Assert.NotNull(await schemes.GetSchemeAsync("Bearer"));
-        Assert.Equal(AgentAuthenticationMode.JwtBearer,
-            provider.GetRequiredService<IOptions<AgentAuthenticationOptions>>().Value.Mode);
-    }
-
-    [Fact]
-    public async Task AddAgentHost_WithConfiguredJwtProviders_RegistersProviderSchemes()
-    {
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["Authentication:Mode"] = "JwtBearer",
-                ["Authentication:Audience"] = "openagent-engine",
-                ["Authentication:Providers:entra:Authority"] = "https://login.example.com/entra",
-                ["Authentication:Providers:entra:Audience"] = "engine-entra",
-                ["Authentication:Providers:partner:Authority"] = "https://sso.example.com/partner",
-                ["Authentication:Providers:partner:Audience"] = "engine-partner"
-            })
-            .Build();
-        var services = new ServiceCollection();
-        services.AddLogging();
-
-        services.AddAgentHost(configuration, options =>
-        {
-            DisableOptionalFeatures(options);
-            options.EnableJwtAuth = true;
-        });
-
-        using var provider = services.BuildServiceProvider();
-        var schemes = provider.GetRequiredService<IAuthenticationSchemeProvider>();
-
-        Assert.NotNull(await schemes.GetSchemeAsync("Bearer"));
-        Assert.NotNull(await schemes.GetSchemeAsync("Jwt:entra"));
-        Assert.NotNull(await schemes.GetSchemeAsync("Jwt:partner"));
-    }
-
-    [Fact]
-    public void AddAgentHost_RejectsPassThroughOutsideDevelopment()
-    {
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["Authentication:Mode"] = "PassThrough",
-                ["Authentication:AllowDevelopmentPassThrough"] = "true",
-                ["DOTNET_ENVIRONMENT"] = "Production"
+                ["Authentication:Mode"] = "JwtBearer"
             })
             .Build();
         var services = new ServiceCollection();
@@ -131,31 +69,6 @@ public class ServiceCollectionExtensionsTests
             DisableOptionalFeatures(options);
             options.EnableJwtAuth = true;
         }));
-    }
-
-    [Fact]
-    public async Task AddAgentHost_WithApiKeyMode_RegistersApiKeyScheme()
-    {
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["Authentication:Mode"] = "ApiKey",
-                ["Authentication:ApiKeys:test-key:UserId"] = "service-user"
-            })
-            .Build();
-        var services = new ServiceCollection();
-        services.AddLogging();
-
-        services.AddAgentHost(configuration, options =>
-        {
-            DisableOptionalFeatures(options);
-            options.EnableJwtAuth = true;
-        });
-
-        using var provider = services.BuildServiceProvider();
-        var schemes = provider.GetRequiredService<IAuthenticationSchemeProvider>();
-
-        Assert.NotNull(await schemes.GetSchemeAsync("ApiKey"));
     }
 
     [Fact]

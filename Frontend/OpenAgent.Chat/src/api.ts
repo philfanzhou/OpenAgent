@@ -17,8 +17,8 @@ import type {
 
 const engineStorageKey = 'openagent.engine.base-url'
 const tokenStorageKey = 'openagent.auth.access-token'
+const tokenTypeStorageKey = 'openagent.auth.token-type'
 const tenantStorageKey = 'openagent.auth.tenant-id'
-const ssoAddressStorageKey = 'openagent.auth.sso-address'
 
 export function getEngineBaseUrl(): string {
   return localStorage.getItem(engineStorageKey) || ''
@@ -33,9 +33,14 @@ export function getAccessToken(): string {
   return sessionStorage.getItem(tokenStorageKey) || ''
 }
 
-export function setAccessToken(value: string): void {
-  if (value.trim()) sessionStorage.setItem(tokenStorageKey, value.trim())
-  else sessionStorage.removeItem(tokenStorageKey)
+export function setAccessToken(value: string, tokenType = 'Basic'): void {
+  if (value.trim()) {
+    sessionStorage.setItem(tokenStorageKey, value.trim())
+    sessionStorage.setItem(tokenTypeStorageKey, tokenType.trim() || 'Basic')
+  } else {
+    sessionStorage.removeItem(tokenStorageKey)
+    sessionStorage.removeItem(tokenTypeStorageKey)
+  }
 }
 
 export function getTenantId(): string {
@@ -44,14 +49,6 @@ export function getTenantId(): string {
 
 export function setTenantId(value: string): void {
   localStorage.setItem(tenantStorageKey, value.trim())
-}
-
-export function getSsoAddress(): string {
-  return localStorage.getItem(ssoAddressStorageKey) || ''
-}
-
-export function setSsoAddress(value: string): void {
-  localStorage.setItem(ssoAddressStorageKey, value.trim())
 }
 
 function requireBaseUrl(): string {
@@ -67,7 +64,7 @@ function headers(extra: HeadersInit = {}): Headers {
   })
   const token = getAccessToken()
   const tenantId = getTenantId()
-  if (token) result.set('Authorization', `Bearer ${token}`)
+  if (token) result.set('Authorization', `${sessionStorage.getItem(tokenTypeStorageKey) || 'Basic'} ${token}`)
   if (tenantId) result.set('X-Tenant-Id', tenantId)
   result.set('X-Trace-Id', crypto.randomUUID())
   return result
@@ -114,19 +111,11 @@ export const api = {
     return request<AuthConfig>('/api/v1/auth/config')
   },
 
-  passwordLogin(username: string, password: string, ssoAddress?: string): Promise<AuthTokenResponse> {
+  passwordLogin(username: string, password: string): Promise<AuthTokenResponse> {
     return request<AuthTokenResponse>('/api/v1/auth/password/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password, ssoAddress: ssoAddress?.trim() || undefined }),
-    })
-  },
-
-  exchangeMicrosoftCode(code: string, codeVerifier: string, redirectUri: string): Promise<AuthTokenResponse> {
-    return request<AuthTokenResponse>('/api/v1/auth/microsoft/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code, codeVerifier, redirectUri }),
+      body: JSON.stringify({ username, password }),
     })
   },
 

@@ -315,24 +315,7 @@ internal static class ManagementEndpointExtensions
 
     private static bool HasScope(HttpContext context, string requiredScope)
     {
-        if (string.Equals(context.User.Identity?.AuthenticationType, "PassThrough", StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        if (context.User.IsInRole("Admin")
-            || context.User.Claims.Any(claim =>
-                (claim.Type is "scope" or "scp" or "permissions")
-                && claim.Value.Split(' ', StringSplitOptions.RemoveEmptyEntries)
-                    .Contains("agent.admin", StringComparer.OrdinalIgnoreCase)))
-        {
-            return true;
-        }
-
-        return context.User.Claims
-            .Where(claim => claim.Type is "scope" or "scp" or "permissions")
-            .SelectMany(claim => claim.Value.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-            .Contains(requiredScope, StringComparer.OrdinalIgnoreCase);
+        return context.User.Identity?.IsAuthenticated == true;
     }
 
     private static AgentConfigEntity MergeSecrets(AgentConfigEntity? existing, AgentConfigEntity requested)

@@ -120,8 +120,8 @@ export interface RagTestResult {
 }
 
 export interface AuthConfig {
-  password: { enabled: boolean; endpoint: string; ssoAddress: string }
-  providers: Array<{ id: string; authority: string }>
+  mode: 'Basic' | string
+  password: { enabled: boolean; endpoint: string }
 }
 
 export interface AuthTokenResponse {

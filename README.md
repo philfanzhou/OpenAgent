@@ -31,7 +31,7 @@ dotnet test Backend/OpenAgent.sln
 
 ## 安全
 
-生产配置默认使用 `Authentication:Mode=JwtBearer`。第三方 OIDC/OAuth SSO 通过
-`Authentication:Providers` 配置，前端可输入已配置的 SSO 地址并使用账号密码获取 JWT。
-只有 `Development` 环境显式设置 `Authentication:AllowDevelopmentPassThrough=true` 时，才允许不带账号密码请求。
+当前认证仅使用基础账号密码。后端只解析 Basic 凭据，不查询用户目录、不校验密码正确性；
+资源和能力授权暂不实现，后续单独建设。Development 环境可配置
+`Authentication:AllowDevelopmentAnonymous=true`，允许不带账号密码请求。
 详见 [安全设计文档](docs/modules/security/README.md)。
