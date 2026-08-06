@@ -5,21 +5,12 @@ using OpenAgent.Contracts.Configuration;
 
 namespace OpenAgent.Core.Capabilities.Mcp;
 
-internal sealed class McpTransportFactory
+internal sealed class McpTransportFactory(
+    IHttpClientFactory httpClientFactory,
+    ILoggerFactory loggerFactory,
+    IOptions<McpExecutionOptions> options)
 {
-    private readonly IHttpClientFactory _httpClientFactory;
-    private readonly ILoggerFactory _loggerFactory;
-    private readonly McpExecutionOptions _options;
-
-    internal McpTransportFactory(
-        IHttpClientFactory httpClientFactory,
-        ILoggerFactory loggerFactory,
-        IOptions<McpExecutionOptions> options)
-    {
-        _httpClientFactory = httpClientFactory;
-        _loggerFactory = loggerFactory;
-        _options = options.Value;
-    }
+    private readonly McpExecutionOptions _options = options.Value;
 
     internal IClientTransport Create(McpServerConfig server)
     {
@@ -29,7 +20,7 @@ internal sealed class McpTransportFactory
         }
 
         (Uri endpoint, HttpTransportMode mode) = ResolveEndpoint(server.Url, server.Type);
-        HttpClient httpClient = _httpClientFactory.CreateClient();
+        HttpClient httpClient = httpClientFactory.CreateClient();
         httpClient.Timeout = TimeSpan.FromMinutes(5);
 
         return new HttpClientTransport(
@@ -43,7 +34,7 @@ internal sealed class McpTransportFactory
                 DefaultReconnectionInterval = TimeSpan.FromSeconds(2)
             },
             httpClient,
-            _loggerFactory,
+            loggerFactory,
             ownsHttpClient: true);
     }
 
@@ -53,6 +44,7 @@ internal sealed class McpTransportFactory
         {
             throw new InvalidOperationException($"MCP Stdio server '{server.Name}' must specify a command.");
         }
+
         if (!_options.AllowUnlistedCommands
             && !_options.AllowedCommands.Contains(
                 Path.GetFileName(server.Command), StringComparer.OrdinalIgnoreCase))
@@ -63,7 +55,7 @@ internal sealed class McpTransportFactory
 
         Dictionary<string, string?> environment =
             StdioClientTransportOptions.GetDefaultEnvironmentVariables();
-        foreach (var item in server.EnvironmentVariables)
+        foreach (KeyValuePair<string, string> item in server.EnvironmentVariables)
         {
             environment[item.Key] = item.Value;
         }
@@ -79,10 +71,10 @@ internal sealed class McpTransportFactory
                 EnvironmentVariables = environment,
                 ShutdownTimeout = TimeSpan.FromSeconds(5)
             },
-            _loggerFactory);
+            loggerFactory);
     }
 
-    internal static (Uri Endpoint, HttpTransportMode Mode) ResolveEndpoint(
+    private static (Uri Endpoint, HttpTransportMode Mode) ResolveEndpoint(
         string serverUrl,
         McpServerType type)
     {
@@ -100,10 +92,8 @@ internal sealed class McpTransportFactory
         };
     }
 
-    private static string AppendEndpoint(string serverUrl, string suffix)
-    {
-        return serverUrl.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)
+    private static string AppendEndpoint(string serverUrl, string suffix) =>
+        serverUrl.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)
             ? serverUrl
             : $"{serverUrl}{suffix}";
-    }
 }

@@ -11,7 +11,7 @@ MAF 是 Agent.Core 唯一生产运行时，而不是 `IAgentEngine` 的一种实
 
 - `ChatClientAgent.RunAsync` / `RunStreamingAsync`；
 - `FunctionInvokingChatClient` 管理函数循环和最大迭代；
-- 平台工具 JSON Schema 转为带授权执行体的 `AIFunction`；
+- 平台可用能力 JSON Schema 转为 `AIFunction`；
 - `ChatHistoryProvider`、`AIContextProvider` 和 `CompactionProvider`；
 - 原生历史消息、附件、usage 和流式 update；
 - OpenAI Chat Completions、OpenAI Responses 和 Anthropic Messages；
@@ -23,7 +23,7 @@ MAF 是 Agent.Core 唯一生产运行时，而不是 `IAgentEngine` 的一种实
 |---|---|
 | Agent 构造与运行 | 入口认证、租户和 Router |
 | Provider `IChatClient` | 模型配置解析与授权 |
-| 函数调用和结果回填 | 工具发现、执行授权与审计 |
+| 函数调用和结果回填 | 能力可用性解析、审计与外部执行治理 |
 | 模型增量响应 | 会话锁、持久化和外部流协议 |
 
 ## 关键文件
@@ -32,7 +32,8 @@ MAF 是 Agent.Core 唯一生产运行时，而不是 `IAgentEngine` 的一种实
 |---|---|
 | `Backend/src/OpenAgent.Core/Runtime/Agent/AgentFactory.cs` | 创建 MAF Agent 与原生 provider |
 | `Backend/src/OpenAgent.Core/Runtime/Agent/AgentChatClientFactory.cs` | 模型 Provider |
-| `Backend/src/OpenAgent.Core/Runtime/Agent/AgentResponseAdapter.cs` | 平台能力到 `AIFunction` 及响应适配 |
+| `Backend/src/OpenAgent.Core/Capabilities/CapabilityToolFactory.cs` | 可用能力到 `AIFunction` 的适配 |
+| `Backend/src/OpenAgent.Core/Runtime/Agent/AgentResponseAdapter.cs` | MAF 响应和 usage 适配 |
 | `Backend/src/OpenAgent.Core/Runtime/Agent/AgentMessageAdapter.cs` | 消息和附件 |
 | `Backend/src/OpenAgent.Core/Runtime/Agent/AgentExecutor.cs` | 原生执行与 turn 边界 |
 
@@ -44,7 +45,7 @@ MAF 是 Agent.Core 唯一生产运行时，而不是 `IAgentEngine` 的一种实
 - 每个 run 用 `FunctionInvokingChatClient` 包装 client。
 - `MaximumIterationsPerRequest = max(1, AgentConfig.MaxTurns)`。
 - 未知函数终止运行；函数连续错误阈值为零。
-- 平台权限异常和取消必须原样离开 MAF 循环。
+- 不可用能力在构建 Agent 前被过滤，不进入 MAF 工具列表。
 - 工具由携带原始 `ToolDefinition` 的 `AIFunction` 执行。
 - 平台 Redis/SQL 会话是唯一持久历史。
 - `AddAgentCore` 是唯一 DI 注册入口。
@@ -69,15 +70,15 @@ Pipeline -> AgentRun
   -> IdentityResolution
   -> MafAgentFactory -> ChatClientAgent
        -> PlatformChatHistory : ChatHistoryProvider
-       -> MafCapabilityProvider : AIContextProvider
+       -> CapabilityToolFactory : AITool
        -> CompactionProvider
        -> FunctionInvokingChatClient
   -> Agent.Run[Streaming]Async
 ```
 
 `PlatformChatHistory` 在 MAF 请求历史时获取分布式锁、加载 Redis/SQL 消息，并在 MAF
-结束通知中写回成功、失败或取消状态。`MafCapabilityProvider` 在 MAF 请求上下文时发现
-授权能力，直接提供携带执行体的 `AIFunction`。工具名称、描述与 schema 不再复制到
+结束通知中写回成功、失败或取消状态。`CapabilityToolFactory` 发现并筛选可用能力，
+直接提供携带执行体的 `AIFunction`。工具名称、描述与 schema 不再复制到
 system prompt。
 
 新增 Provider 只扩展 `IMafChatClientFactory`；新增能力只产生 `AIFunction`；新增记忆
@@ -147,10 +148,10 @@ system prompt。
 
 ## 权限约定
 
-- `discover` 控制能力是否暴露给模型，`execute` 在真实调用前复核。
-- Tool 与 Function 是两个独立维度；Skill/MCP 再按来源增加第三层检查。
+- `use` 是能力是否可用的唯一判断；不可用能力不会暴露给模型。
+- Tool、Function、来源资源和父级资源共同决定最终可用性，不拆分为 discover/execute 两个动作。
 - 策略实现通过 `IAgentAuthorizationService` 注入；默认 allow-all 只保证升级兼容。
-- 权限异常必须原样离开 MAF 工具循环。
+- 具体能力执行层负责 Provider 的连接、不可用和执行错误；MAF 只负责工具循环。
 
 ## 版本约定
 

@@ -33,9 +33,10 @@ internal static class ServiceCollectionExtensions
 
         services.AddSingleton<IAgentConfigProvider, ConfigProvider>();
 
-        // Named client inherits Core's ConfigureHttpClientDefaults (skip-cert handler),
-        // which the previous static HttpClient bypassed.
-        services.AddHttpClient("SkillEndpoint");
+        services.AddHttpClient("SkillEndpoint", client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(30);
+        });
         services.AddHostedService<RedisSkillRegistrar>();
         services.AddHostedService<RedisRagRegistrar>();
         services.AddHostedService<RedisLlmRegistrar>();

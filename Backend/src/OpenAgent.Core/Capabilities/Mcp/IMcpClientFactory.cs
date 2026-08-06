@@ -9,14 +9,9 @@ internal interface IMcpClientFactory
     IMcpClient Create();
 }
 
-internal sealed class McpClientFactory(
-    IHttpClientFactory httpClientFactory,
+internal sealed class McpServerClientFactory(
     ILoggerFactory loggerFactory,
-    IOptions<McpExecutionOptions> options) : IMcpClientFactory
+    McpTransportFactory transportFactory) : IMcpClientFactory
 {
-    public IMcpClient Create() => new McpClient(
-        httpClientFactory,
-        loggerFactory.CreateLogger<McpClient>(),
-        loggerFactory,
-        options);
+    public IMcpClient Create() => new McpServerClient(loggerFactory, transportFactory);
 }

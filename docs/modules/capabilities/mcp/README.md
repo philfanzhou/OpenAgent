@@ -13,17 +13,17 @@ MCP 客户端负责连接外部 MCP 服务器、发现工具、执行工具以�
 
 ## Architecture
 ```text
-Service / SkillProvider
-        │ IMcpClient
+CapabilityToolFactory
+        │ ICapabilitySource
         ▼
-OpenAgent McpClient facade
-  ├─ McpConnection：SDK 会话生命周期
-  ├─ McpTransportFactory：SSE/Streamable HTTP endpoint
-  ├─ McpToolCatalog / McpToolInvoker：工具映射与调用
-  └─ McpResourceReader：资源映射
+McpCapabilitySource（请求级）
+  ├─ 过滤不可用 Server
+  ├─ 每个 Server 保持一个 McpServerClient
+  └─ MCP Tool → CapabilityDefinition
         │
         ▼
-ModelContextProtocol.Core 1.4.1
+McpServerClient
+  └─ ModelContextProtocol.Core 1.4.1
 ```
 
 ## Current Status
@@ -31,10 +31,10 @@ ModelContextProtocol.Core 1.4.1
 
 ## Limits
 - `McpServerType.Stdio` 仍是配置枚举，生产客户端未实现
-- 一个 scoped `IMcpClient` 同时只保持一个活动连接
+- 不建立跨请求连接池；一次请求内每个 Server 复用一个客户端
 - `Http` 类型的 URL 必须是完整 MCP endpoint，不自动追加 `/mcp`
 
 ## Source
-- Core: `Backend/src/OpenAgent.Core/Capabilities/Mcp/`（McpClient, McpConnection, McpTransportFactory, McpToolInvoker 等）
+- Core: `Backend/src/OpenAgent.Core/Capabilities/Mcp/`（McpCapabilitySource、McpServerClient）
 - Contracts: `Backend/src/OpenAgent.Contracts/Mcp/IMcpClient.cs`
-- Tests: 无专门测试文件（待补充）
+- Tests: `Backend/tests/OpenAgent.Core.Tests/Capabilities/McpCapabilitySourceTests.cs`

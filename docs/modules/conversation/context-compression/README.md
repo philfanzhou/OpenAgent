@@ -32,7 +32,8 @@ PlatformChatHistory -> MAF ChatMessage history
 ## Data Models
 
 
-平台只保留入口合同 `ContextPolicy`：
+`ContextPolicy` 是 `AgentConfig` 的一部分，由 `IAgentRuntimeResolver` 从 Agent Profile
+解析后提供给本次运行；客户端请求不再覆盖该策略：
 
 | 字段 | 用途 |
 |---|---|

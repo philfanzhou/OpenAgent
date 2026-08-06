@@ -24,19 +24,17 @@ internal sealed class AgentFactory
         _capabilities = capabilities;
     }
 
-    internal async Task<AgentLease> CreateAsync(
-        string agentId,
-        AgentConfig config,
-        LlmConfig model,
+    internal async Task<AgentExecutionScope> CreateAsync(
+        AgentRuntimeProfile profile,
         AgentRequest request,
         IAgentUserContext user,
         CancellationToken cancellationToken)
     {
-        IChatClient modelClient = _chatClients.Create(model);
-        PlatformChatHistory history = _conversations.Create(agentId, request, user);
+        IChatClient modelClient = _chatClients.Create(profile.Model);
+        PlatformChatHistory history = _conversations.Create(profile.AgentId, request, user);
         IReadOnlyList<AITool> tools = await _capabilities.CreateAsync(
-            agentId,
-            config,
+            profile.AgentId,
+            profile.Config,
             user,
             cancellationToken).ConfigureAwait(false);
 
@@ -45,13 +43,13 @@ internal sealed class AgentFactory
             AllowConcurrentInvocation = false,
             IncludeDetailedErrors = false,
             MaximumConsecutiveErrorsPerRequest = 0,
-            MaximumIterationsPerRequest = config.MaxTurns > 0 ? config.MaxTurns : 5,
+            MaximumIterationsPerRequest = profile.Config.MaxTurns > 0 ? profile.Config.MaxTurns : 5,
             TerminateOnUnknownCalls = true
         };
 
         List<AIContextProvider> providers = [];
         AIContextProvider? compaction = _conversations.CreateCompaction(
-            request.ContextPolicy,
+            profile.Config.ContextPolicy,
             modelClient);
         if (compaction != null)
         {
@@ -60,11 +58,11 @@ internal sealed class AgentFactory
 
         AIAgent agent = new ChatClientAgent(chatClient, new ChatClientAgentOptions
         {
-            Id = agentId,
-            Name = agentId,
+            Id = profile.AgentId,
+            Name = profile.AgentId,
             ChatOptions = new ChatOptions
             {
-                Temperature = (float?)model.Temperature,
+                Temperature = (float?)profile.Model.Temperature,
                 Tools = tools.ToList()
             },
             ChatHistoryProvider = history,
@@ -72,6 +70,6 @@ internal sealed class AgentFactory
             UseProvidedChatClientAsIs = true,
             RequirePerServiceCallChatHistoryPersistence = false
         });
-        return new AgentLease(agent, history);
+        return new AgentExecutionScope(agent, history);
     }
 }

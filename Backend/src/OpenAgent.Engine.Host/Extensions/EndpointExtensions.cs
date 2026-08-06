@@ -409,8 +409,6 @@ internal static class EndpointExtensions
             ClientType = request.ClientType,
             IdempotencyKey = request.IdempotencyKey,
             ExternalContext = request.ExternalContext,
-            EnabledSkills = request.EnabledSkills,
-            ContextPolicy = request.ContextPolicy,
             Attachments = request.Attachments
         };
     }

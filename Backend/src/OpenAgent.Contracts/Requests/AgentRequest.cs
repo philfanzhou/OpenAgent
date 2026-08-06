@@ -1,5 +1,4 @@
 using System.Text.Json.Serialization;
-using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Content;
 
 namespace OpenAgent.Contracts.Requests;
@@ -13,8 +12,6 @@ public class AgentRequest
     public ClientType ClientType { get; init; } = ClientType.Web;
     public string? IdempotencyKey { get; init; }
     public Dictionary<string, string>? ExternalContext { get; init; }
-    public List<string>? EnabledSkills { get; init; }
-    public ContextPolicy? ContextPolicy { get; init; }
     [JsonIgnore]
     public IReadOnlyList<AgentAttachment> Attachments { get; init; } = Array.Empty<AgentAttachment>();
 }

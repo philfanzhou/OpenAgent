@@ -4,7 +4,6 @@ using Microsoft.Extensions.AI;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
-using OpenAgent.Core.Security;
 using PlatformAgentResponse = OpenAgent.Contracts.Requests.AgentResponse;
 
 namespace OpenAgent.Core.Runtime.Agent;
@@ -13,17 +12,14 @@ public sealed class AgentExecutor
 {
     private const string DefaultAgentId = "default";
 
-    private readonly IAgentConfigProvider _configs;
-    private readonly AgentAuthorizationGate _authorization;
+    private readonly IAgentRuntimeResolver _runtime;
     private readonly AgentFactory _agents;
 
     internal AgentExecutor(
-        IAgentConfigProvider configs,
-        AgentAuthorizationGate authorization,
+        IAgentRuntimeResolver runtime,
         AgentFactory agents)
     {
-        _configs = configs;
-        _authorization = authorization;
+        _runtime = runtime;
         _agents = agents;
     }
 
@@ -35,26 +31,22 @@ public sealed class AgentExecutor
         EnsureRequest(request);
         string traceId = ResolveTraceId(request.TraceId);
         string agentId = ResolveAgentId(request.AgentId);
-        AgentConfig config = await LoadConfigAsync(agentId, cancellationToken).ConfigureAwait(false);
-        LlmConfig model = await _authorization.ResolveAuthorizedModelAsync(
+        AgentRuntimeProfile profile = await _runtime.ResolveAsync(
             agentId,
-            config.Llm,
             user,
             cancellationToken).ConfigureAwait(false);
         AgentRequest executionRequest = CopyWithResolvedValues(request, agentId, traceId);
 
-        await using AgentLease lease = await _agents.CreateAsync(
-            agentId,
-            config,
-            model,
+        await using AgentExecutionScope scope = await _agents.CreateAsync(
+            profile,
             executionRequest,
             user,
             cancellationToken).ConfigureAwait(false);
-        AgentSession session = await lease.Agent.CreateSessionAsync(cancellationToken).ConfigureAwait(false);
+        AgentSession session = await scope.Agent.CreateSessionAsync(cancellationToken).ConfigureAwait(false);
         ChatMessage userMessage = AgentMessageAdapter.CreateUser(
             executionRequest.Query,
             executionRequest.Attachments);
-        Microsoft.Agents.AI.AgentResponse response = await lease.Agent.RunAsync(
+        Microsoft.Agents.AI.AgentResponse response = await scope.Agent.RunAsync(
             userMessage,
             session,
             options: null,
@@ -76,28 +68,24 @@ public sealed class AgentExecutor
         EnsureRequest(request);
         string traceId = ResolveTraceId(request.TraceId);
         string agentId = ResolveAgentId(request.AgentId);
-        AgentConfig config = await LoadConfigAsync(agentId, cancellationToken).ConfigureAwait(false);
-        LlmConfig model = await _authorization.ResolveAuthorizedModelAsync(
+        AgentRuntimeProfile profile = await _runtime.ResolveAsync(
             agentId,
-            config.Llm,
             user,
             cancellationToken).ConfigureAwait(false);
         AgentRequest executionRequest = CopyWithResolvedValues(request, agentId, traceId);
 
-        await using AgentLease lease = await _agents.CreateAsync(
-            agentId,
-            config,
-            model,
+        await using AgentExecutionScope scope = await _agents.CreateAsync(
+            profile,
             executionRequest,
             user,
             cancellationToken).ConfigureAwait(false);
-        AgentSession session = await lease.Agent.CreateSessionAsync(cancellationToken).ConfigureAwait(false);
+        AgentSession session = await scope.Agent.CreateSessionAsync(cancellationToken).ConfigureAwait(false);
         ChatMessage userMessage = AgentMessageAdapter.CreateUser(
             executionRequest.Query,
             executionRequest.Attachments);
         HashSet<string> announcedToolCalls = new(StringComparer.Ordinal);
         TokenUsage? usage = null;
-        IAsyncEnumerable<AgentResponseUpdate> updates = lease.Agent.RunStreamingAsync(
+        IAsyncEnumerable<AgentResponseUpdate> updates = scope.Agent.RunStreamingAsync(
             userMessage,
             session,
             options: null,
@@ -133,7 +121,7 @@ public sealed class AgentExecutor
             string content = update.Text ?? string.Empty;
             if (!string.IsNullOrEmpty(content))
             {
-                lease.AppendPartial(content);
+                scope.AppendPartial(content);
                 yield return new AgentStreamEvent
                 {
                     Type = AgentStreamEventType.Content,
@@ -152,14 +140,6 @@ public sealed class AgentExecutor
                 Usage = usage
             };
         }
-    }
-
-    private async Task<AgentConfig> LoadConfigAsync(
-        string agentId,
-        CancellationToken cancellationToken)
-    {
-        return await _configs.GetConfigAsync(agentId, cancellationToken).ConfigureAwait(false)
-            ?? throw new InvalidOperationException($"Agent configuration not found: {agentId}");
     }
 
     private static void EnsureRequest(AgentRequest request)
@@ -190,8 +170,6 @@ public sealed class AgentExecutor
             ClientType = request.ClientType,
             IdempotencyKey = request.IdempotencyKey,
             ExternalContext = request.ExternalContext,
-            EnabledSkills = request.EnabledSkills,
-            ContextPolicy = request.ContextPolicy,
             Attachments = request.Attachments
         };
 }

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using OpenAgent.Contracts.Conversation;
 
 namespace OpenAgent.Contracts.Configuration;
 
@@ -13,6 +14,7 @@ public class AgentConfig
     public McpConfig Mcp { get; set; } = new();
     public RagConfig Rag { get; set; } = new();
     public SkillsConfig Skills { get; set; } = new();
+    public ContextPolicy? ContextPolicy { get; set; }
 
     public int MaxTurns { get; set; } = 50;
 }
