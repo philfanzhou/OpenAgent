@@ -23,19 +23,6 @@ internal sealed class SkillCatalog : IToolRegistry
         _skills[tool.Name] = new SkillEntry(tool, executor);
     }
 
-    internal void RegisterSkill(ISkill skill, SkillSource source, string? sourceId)
-    {
-        ArgumentNullException.ThrowIfNull(skill);
-        RegisterTool(new SkillDescriptor
-        {
-            Id = skill.Name,
-            Name = skill.Name,
-            Description = skill.Description,
-            Source = source,
-            SourceId = sourceId
-        }, skill.ExecuteAsync);
-    }
-
     public IReadOnlyList<SkillDescriptor> GetTools() =>
         _skills.Values.Select(entry => entry.Descriptor).ToList().AsReadOnly();
 

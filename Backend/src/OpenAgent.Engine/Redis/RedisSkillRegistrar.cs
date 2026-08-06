@@ -40,26 +40,26 @@ internal class RedisSkillRegistrar : RedisRegistrarBase<SkillInstanceConfig>
 
     protected override void Register(SkillInstanceConfig item)
     {
-        var mockSkill = new RedisMockSkill(item, _httpClientFactory);
+        var skill = new HttpEndpointSkill(item, _httpClientFactory);
 
         _toolRegistry.RegisterTool(
             new SkillDescriptor
             {
-                Id = mockSkill.Name,
-                Name = mockSkill.Name,
-                Description = mockSkill.Description,
+                Id = skill.Name,
+                Name = skill.Name,
+                Description = skill.Description,
                 ParametersJsonSchema = item.ParametersJsonSchema ?? string.Empty,
                 Source = SkillSource.Local
             },
-            mockSkill.ExecuteAsync);
+            skill.ExecuteAsync);
     }
 
-    private sealed class RedisMockSkill
+    private sealed class HttpEndpointSkill
     {
         private readonly SkillInstanceConfig _metadata;
         private readonly IHttpClientFactory _httpClientFactory;
 
-        public RedisMockSkill(SkillInstanceConfig metadata, IHttpClientFactory httpClientFactory)
+        public HttpEndpointSkill(SkillInstanceConfig metadata, IHttpClientFactory httpClientFactory)
         {
             _metadata = metadata;
             _httpClientFactory = httpClientFactory;
@@ -85,15 +85,15 @@ internal class RedisSkillRegistrar : RedisRegistrarBase<SkillInstanceConfig>
         {
             try
             {
-                // Factory-created client: inherits Core's skip-cert handler and respects DNS refresh.
-                // 30s timeout preserved from the previous static HttpClient contract.
                 using var client = _httpClientFactory.CreateClient("SkillEndpoint");
-                client.Timeout = TimeSpan.FromSeconds(30);
 
                 var payload = JsonSerializer.Serialize(arguments);
                 var content = new StringContent(payload, Encoding.UTF8, "application/json");
 
-                var response = await client.PostAsync(_metadata.EndpointUrl, content, cancellationToken);
+                using var response = await client.PostAsync(
+                    _metadata.EndpointUrl,
+                    content,
+                    cancellationToken).ConfigureAwait(false);
                 var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
 
                 if (response.IsSuccessStatusCode)
@@ -103,9 +103,13 @@ internal class RedisSkillRegistrar : RedisRegistrarBase<SkillInstanceConfig>
 
                 return $"Skill endpoint returned error: {response.StatusCode} - {responseBody}";
             }
-            catch (Exception ex)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                return $"Skill endpoint call failed: {ex.Message}";
+                throw;
+            }
+            catch (Exception exception)
+            {
+                return $"Skill endpoint call failed: {exception.Message}";
             }
         }
     }

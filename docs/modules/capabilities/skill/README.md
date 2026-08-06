@@ -1,15 +1,15 @@
 # Skill
 
-Skill 是 Agent.Core 中模型可调用的执行能力，用于承载明确的动作操作。技能来源分为本地注册、MCP 外部工具和动态注册三类。
+Skill 是 Agent.Core 中模型可调用的执行能力，用于承载明确的动作操作。`SkillCatalog` 是已注册技能的唯一存储，`SkillCapabilitySource` 负责将当前 Agent 配置可用的技能转换为能力定义。
 
 ## Core Capabilities
 | Capability | Description |
 |-----------|-------------|
-| 技能发现 | 从 ToolRegistry / ISkillService / IMcpClient / 动态注册四渠道收集 |
+| 技能发现 | 从 `SkillCatalog` 获取已注册的本地和动态技能 |
 | 配置过滤 | 根据 `SkillsConfig.EnabledSkills` / `Instances` 过滤 |
 | 权限过滤 | 基于用户上下文 ACL（AllowedUserIds / Groups / TenantIds / Roles）|
-| 执行路由 | ToolRegistry → ISkillService → MCP 优先级路由 |
-| 动态注册 | `RegisterSkill` / `RegisterMcpSkills` 运行时注册 |
+| 执行路由 | `SkillCapabilitySource` 直接调用 `SkillCatalog` |
+| 动态注册 | 通过 `IToolRegistry.RegisterTool` 注册 |
 
 ## Source Layers
 | Source | SkillSource |
@@ -19,14 +19,13 @@ Skill 是 Agent.Core 中模型可调用的执行能力，用于承载明确的�
 | Matrix 平台 | `Matrix` |
 
 ## Current Status
-**Implemented** — 技能发现、过滤与执行链路均已落地。
+**Implemented** — 技能发现、配置/ACL 过滤与执行链路均由两层完成，无额外 Provider 转发层。
 
 ## Limits
-- MCP 描述符收集使用同步 `.GetAwaiter().GetResult()`，高并发场景可能阻塞
 - 无技能调用配额控制（`SkillQuotaExceeded` 错误码已定义但未使用）
 - 无技能参数验证链路（`SkillValidationFailed` 错误码已定义但未使用）
 
 ## Source
-- Core: `Backend/src/OpenAgent.Core/Capabilities/Skill/SkillProvider.cs`, `Backend/src/OpenAgent.Core/Capabilities/Skill/SkillCatalog.cs`
-- Contracts: `Backend/src/OpenAgent.Contracts/`（ISkill, ISkillProvider, ISkillService, IToolRegistry）
-- Tests: 无专门测试文件（待补充）
+- Core: `Backend/src/OpenAgent.Core/Capabilities/Skill/SkillCapabilitySource.cs`, `Backend/src/OpenAgent.Core/Capabilities/Skill/SkillCatalog.cs`
+- Contracts: `Backend/src/OpenAgent.Core/Abstract/IToolRegistry.cs`, `Backend/src/OpenAgent.Contracts/Skills/ISkill.cs`
+- Tests: `Backend/tests/OpenAgent.Core.Tests/Capabilities/SkillCapabilitySourceTests.cs`

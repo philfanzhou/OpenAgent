@@ -23,9 +23,7 @@ internal static class CapabilityServiceExtensions
         services.AddScoped<ICapabilitySource, RagCapabilitySource>();
         services.AddScoped<CapabilityToolFactory>();
 
-        services.AddScoped<ISkillProvider, SkillProvider>();
         services.AddScoped<IRagService, RagService>();
-        services.AddScoped<RagSearchTool>();
         services.AddScoped<IRagAdapter, RagFlowAdapter>();
         services.AddScoped<IRagAdapter, QdrantAdapter>();
         return services;
