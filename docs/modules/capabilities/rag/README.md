@@ -20,8 +20,7 @@ RAG 在 Agent.Core 中作为模型可调用的工具参与执行，是否被调�
 ## Architecture
 ```text
 Agent → ToolCall("search_knowledge_base")
-  → Service.ExecuteToolAsync()
-  → RagSearchTool.ExecuteAsync()
+  → RagCapabilitySource
   → IRagService.SearchAsync/SearchDetailedAsync
   → IRagAdapter → RAG Backend
 ```
@@ -36,6 +35,6 @@ Agent → ToolCall("search_knowledge_base")
 - 无检索结果缓存
 
 ## Source
-- Core: `Backend/src/OpenAgent.Core/Capabilities/Rag/RagService.cs`, `Backend/src/OpenAgent.Core/Capabilities/Rag/Adapters/`
+- Core: `Backend/src/OpenAgent.Core/Capabilities/Rag/RagCapabilitySource.cs`, `Backend/src/OpenAgent.Core/Capabilities/Rag/RagService.cs`, `Backend/src/OpenAgent.Core/Capabilities/Rag/Adapters/`
 - Contracts: `Backend/src/OpenAgent.Contracts/Models/IRagAdapter.cs`
-- Tests: 无专门测试文件（待补充）
+- Tests: `Backend/tests/OpenAgent.Core.Tests/Capabilities/RagCapabilitySourceTests.cs`

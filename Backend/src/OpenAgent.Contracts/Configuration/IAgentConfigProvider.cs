@@ -1,5 +1,3 @@
-using OpenAgent.Contracts.Configuration;
-
 namespace OpenAgent.Contracts.Configuration;
 
 public interface IAgentConfigProvider

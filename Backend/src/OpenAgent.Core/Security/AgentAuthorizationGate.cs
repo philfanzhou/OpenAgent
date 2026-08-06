@@ -1,7 +1,7 @@
-using OpenAgent.Core.Abstract;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
+using OpenAgent.Core.Abstract;
 
 namespace OpenAgent.Core.Security;
 
@@ -85,5 +85,21 @@ internal sealed class AgentAuthorizationGate
     {
         AgentAuthorizationRequest request = new(agentId, resourceType, resourceId, action);
         return _authorizationService.IsAuthorizedAsync(request, userContext, cancellationToken);
+    }
+
+    internal Task<bool> IsAvailableAsync(
+        string agentId,
+        AgentResourceType resourceType,
+        string resourceId,
+        IAgentUserContext userContext,
+        CancellationToken cancellationToken)
+    {
+        return IsAuthorizedAsync(
+            agentId,
+            resourceType,
+            resourceId,
+            "use",
+            userContext,
+            cancellationToken);
     }
 }

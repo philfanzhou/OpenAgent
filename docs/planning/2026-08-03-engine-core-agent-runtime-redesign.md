@@ -836,7 +836,7 @@ AIAgent function call
 - `CapabilityDefinition` 和单独的 SDK binding 重复；
 - Skill descriptor 到 Tool descriptor 的重复转换；
 - Tool/Function 两套泛化 ACL；
-- SkillService、SkillProvider、ToolRegistry 三套查询路径，收敛为 `SkillCatalog` 存储和单一 capability source；
+- SkillService、SkillProvider、ToolRegistry 三套查询路径，收敛为 `SkillRegistry` 存储和单一 capability source；
 - 把 schema 拼进 prompt 的逻辑；
 - 通过字符串二次查找 MCP server/tool 的路径。
 
@@ -891,10 +891,10 @@ Microsoft Agent Framework SDK 不参与 ACL 决策，只调用已装饰的 funct
 
 ### 11.1 合并内部注册
 
-使用一个 `SkillCatalog`：
+使用一个 `SkillRegistry`：
 
 ```text
-SkillCatalog
+SkillRegistry
 ├── built-in skill manifests
 └── published HTTP skill manifests
 ```
@@ -915,7 +915,7 @@ SkillCatalog
 流程：
 
 1. 读取 AgentConfig 显式启用列表；
-2. 从 `SkillCatalog` 获取对应 manifest；
+2. 从 `SkillRegistry` 获取对应 manifest；
 3. 应用配置覆盖的描述/schema；
 4. 创建 `AIFunction`；
 5. 交给统一 CapabilityToolFactory 做 discover/execute ACL。
@@ -1182,7 +1182,7 @@ AgentExecutor (Application Service)
 | `AgentIdentity` 大型绑定 | 删除 | 不再跨层复制配置和身份 |
 | 现有 Agent 创建器 + 资源装配器 | 合并为 `AgentFactory` | 一次创建 `AIAgent`，删除两个 Factory 的转发 |
 | `CapabilityRuntime` + 现有 SDK capability provider | 合并为 CapabilityToolFactory | 直接产出 AITool |
-| `SkillService` + `SkillProvider` + `ToolRegistry` | 合并为 SkillCatalog | 单一 Skill 注册源 |
+| `SkillService` + `SkillProvider` + `ToolRegistry` | 合并为 SkillRegistry | 单一 Skill 注册源 |
 | `AgentRequestContext` | 删除；复用 AgentUserContext feature | 不再携带 Agent/Conversation/trace |
 | `RequestScope` | 合并到 request middleware active counter | endpoint 不手工登记 |
 | 重复 EngineLog 方法 | 删除/合并 | 每个失败边界只记录一次 |
@@ -1216,7 +1216,7 @@ Agent.Core/src/Core/
 │   ├── CapabilityToolFactory.cs
 │   ├── ICapabilitySource.cs
 │   ├── Mcp/
-│   ├── Skill/SkillCatalog.cs
+│   ├── Skill/SkillRegistry.cs
 │   └── Rag/
 ├── Conversation/
 │   ├── ConversationHistoryFactory.cs

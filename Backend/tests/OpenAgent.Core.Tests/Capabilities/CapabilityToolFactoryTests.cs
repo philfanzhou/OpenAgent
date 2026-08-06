@@ -1,3 +1,4 @@
+using Microsoft.Extensions.AI;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Capabilities;
@@ -81,6 +82,31 @@ public class CapabilityToolFactoryTests
     }
 
     [Fact]
+    public async Task CreateAsync_UsesSingleAvailabilityAction()
+    {
+        var authorization = new RecordingAuthorizationService();
+        var source = new FakeCapabilitySource(new[] { Tool("search") });
+        var factory = Factory(source, authorization);
+
+        IReadOnlyList<AITool> tools = await factory.CreateAsync(
+            "a1",
+            new AgentConfig(),
+            Context(),
+            default);
+
+        Assert.Single(tools);
+        Assert.NotEmpty(authorization.Actions);
+        Assert.All(authorization.Actions, action => Assert.Equal("use", action));
+
+        int availabilityChecks = authorization.Actions.Count;
+        AIFunction tool = Assert.IsAssignableFrom<AIFunction>(tools[0]);
+        object? result = await tool.InvokeAsync(new AIFunctionArguments(), default);
+
+        Assert.Equal("ok", result);
+        Assert.Equal(availabilityChecks, authorization.Actions.Count);
+    }
+
+    [Fact]
     public async Task CreateAsync_EmptySource_ReturnsEmpty()
     {
         var factory = Factory(new FakeCapabilitySource(Enumerable.Empty<CapabilityDefinition>()));
@@ -97,5 +123,19 @@ public class CapabilityToolFactoryTests
             IAgentUserContext userContext,
             CancellationToken cancellationToken = default)
             => Task.FromResult(false);
+    }
+
+    private sealed class RecordingAuthorizationService : IAgentAuthorizationService
+    {
+        internal List<string> Actions { get; } = [];
+
+        public Task<bool> IsAuthorizedAsync(
+            AgentAuthorizationRequest request,
+            IAgentUserContext userContext,
+            CancellationToken cancellationToken = default)
+        {
+            Actions.Add(request.Action);
+            return Task.FromResult(true);
+        }
     }
 }

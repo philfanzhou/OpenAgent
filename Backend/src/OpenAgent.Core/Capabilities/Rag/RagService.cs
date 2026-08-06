@@ -1,30 +1,15 @@
-using OpenAgent.Core.Abstract;
-using Microsoft.Extensions.Logging;
-using OpenAgent.Contracts.Security;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Models;
+using OpenAgent.Contracts.Security;
+using OpenAgent.Core.Abstract;
 
 namespace OpenAgent.Core.Capabilities.Rag;
 
-internal class RagService : IRagService
+internal sealed class RagService(
+    IHttpClientFactory httpClientFactory,
+    IRagRegistry ragRegistry,
+    IEnumerable<IRagAdapter> adapters) : IRagService
 {
-    private readonly ILogger<RagService> _logger;
-    private readonly IHttpClientFactory _httpClientFactory;
-    private readonly IRagRegistry _ragRegistry;
-    private readonly IEnumerable<IRagAdapter> _adapters;
-
-    public RagService(
-        ILogger<RagService> logger,
-        IHttpClientFactory httpClientFactory,
-        IRagRegistry ragRegistry,
-        IEnumerable<IRagAdapter> adapters)
-    {
-        _logger = logger;
-        _httpClientFactory = httpClientFactory;
-        _ragRegistry = ragRegistry;
-        _adapters = adapters;
-    }
-
     public async Task IndexDocumentAsync(
         string content,
         Dictionary<string, object>? metadata,
@@ -46,7 +31,6 @@ internal class RagService : IRagService
             targetConfigs = configs.Where(c => c.Id == ragInstanceId).ToList();
             if (!targetConfigs.Any())
             {
-                RagLog.TargetInstanceNotFound(_logger, ragInstanceId);
                 return;
             }
         }
@@ -91,26 +75,15 @@ internal class RagService : IRagService
 
         var allResults = new List<SearchResult>();
 
-        foreach (var config in configs)
+        foreach (RagInstanceConfig config in configs)
         {
-            try
-            {
-                var instanceResults = await SearchExternalDetailedAsync(
-                    query,
-                    limit,
-                    config,
-                    userContext,
-                    cancellationToken).ConfigureAwait(false);
-                allResults.AddRange(instanceResults);
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                RagLog.SearchInstanceFailed(_logger, ex, config.Id);
-            }
+            List<SearchResult> instanceResults = await SearchExternalDetailedAsync(
+                query,
+                limit,
+                config,
+                userContext,
+                cancellationToken).ConfigureAwait(false);
+            allResults.AddRange(instanceResults);
         }
 
         return allResults
@@ -131,7 +104,7 @@ internal class RagService : IRagService
         }
         else if (ragConfig.EnabledRagInstanceIds != null && ragConfig.EnabledRagInstanceIds.Any())
         {
-            var allInstances = _ragRegistry.GetAllInstances();
+            var allInstances = ragRegistry.GetAllInstances();
             var enabledSet = new HashSet<string>(ragConfig.EnabledRagInstanceIds, StringComparer.OrdinalIgnoreCase);
             instances = allInstances.Where(i => enabledSet.Contains(i.Id)).ToList();
         }
@@ -181,40 +154,34 @@ internal class RagService : IRagService
     {
         if (string.IsNullOrEmpty(config.ApiEndpoint))
         {
-            RagLog.InstanceMissingApiEndpointSkippingIndexing(_logger, config.Id);
             return;
         }
 
         try
         {
-            var adapter = GetAdapter(config);
+            IRagAdapter? adapter = GetAdapter(config);
             if (adapter == null)
             {
-                RagLog.NoAdapterFoundForIndexing(_logger, config.Id);
                 return;
             }
 
-            var client = _httpClientFactory.CreateClient();
+            HttpClient client = httpClientFactory.CreateClient();
 
-            var request = adapter.BuildIndexRequest(config, content, metadata);
+            using HttpRequestMessage? request = adapter.BuildIndexRequest(config, content, metadata);
             if (request == null)
             {
-                RagLog.AdapterDoesNotSupportIndexing(_logger, config.Id, adapter.AdapterName);
                 return;
             }
 
-            var response = await client.SendAsync(request, cancellationToken);
+            using HttpResponseMessage response = await client.SendAsync(request, cancellationToken)
+                .ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
-
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;
         }
-        catch (Exception ex)
-        {
-            RagLog.IndexFailed(_logger, ex, config.Id);
-        }
+        catch (Exception) { }
     }
 
     private async Task<List<SearchResult>> SearchExternalDetailedAsync(
@@ -226,24 +193,23 @@ internal class RagService : IRagService
     {
         if (string.IsNullOrEmpty(config.ApiEndpoint))
         {
-            RagLog.InstanceMissingApiEndpointSkippingSearch(_logger, config.Id);
             return new List<SearchResult>();
         }
 
         try
         {
-            var adapter = GetAdapter(config);
+            IRagAdapter? adapter = GetAdapter(config);
             if (adapter == null)
             {
-                RagLog.NoAdapterFoundForSearch(_logger, config.Id);
                 return new List<SearchResult>();
             }
 
-            var client = _httpClientFactory.CreateClient();
-            var filters = BuildAclFilters(userContext);
+            HttpClient client = httpClientFactory.CreateClient();
+            Dictionary<string, object> filters = BuildAclFilters(userContext);
 
-            var request = adapter.BuildSearchRequest(config, query, limit, filters);
-            var response = await client.SendAsync(request, cancellationToken);
+            using HttpRequestMessage request = adapter.BuildSearchRequest(config, query, limit, filters);
+            using HttpResponseMessage response = await client.SendAsync(request, cancellationToken)
+                .ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
 
             return adapter.ParseSearchResponse(config, response);
@@ -252,16 +218,15 @@ internal class RagService : IRagService
         {
             throw;
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            RagLog.SearchFailed(_logger, ex, config.Id);
             return new List<SearchResult>();
         }
     }
 
     private IRagAdapter? GetAdapter(RagInstanceConfig config)
     {
-        return _adapters.FirstOrDefault(a => a.CanHandle(config));
+        return adapters.FirstOrDefault(adapter => adapter.CanHandle(config));
     }
 
     private static Dictionary<string, object> EnrichMetadata(Dictionary<string, object>? metadata, IAgentUserContext? userContext)

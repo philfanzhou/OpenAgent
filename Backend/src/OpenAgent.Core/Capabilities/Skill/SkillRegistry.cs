@@ -4,7 +4,7 @@ using OpenAgent.Contracts.Skills;
 
 namespace OpenAgent.Core.Capabilities.Skill;
 
-internal sealed class SkillCatalog : IToolRegistry
+internal sealed class SkillRegistry : IToolRegistry
 {
     private readonly ConcurrentDictionary<string, SkillEntry> _skills =
         new(StringComparer.OrdinalIgnoreCase);
@@ -21,19 +21,6 @@ internal sealed class SkillCatalog : IToolRegistry
         }
 
         _skills[tool.Name] = new SkillEntry(tool, executor);
-    }
-
-    internal void RegisterSkill(ISkill skill, SkillSource source, string? sourceId)
-    {
-        ArgumentNullException.ThrowIfNull(skill);
-        RegisterTool(new SkillDescriptor
-        {
-            Id = skill.Name,
-            Name = skill.Name,
-            Description = skill.Description,
-            Source = source,
-            SourceId = sourceId
-        }, skill.ExecuteAsync);
     }
 
     public IReadOnlyList<SkillDescriptor> GetTools() =>
