@@ -6,7 +6,6 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Mcp;
-using SdkMcpClient = ModelContextProtocol.Client.McpClient;
 
 namespace OpenAgent.Core.Capabilities.Mcp;
 
@@ -16,7 +15,7 @@ internal sealed class McpServerClient(ILoggerFactory loggerFactory)
     private readonly SemaphoreSlim _connectionLock = new(1, 1);
     private IReadOnlyDictionary<string, McpTool> _tools =
         new Dictionary<string, McpTool>(StringComparer.OrdinalIgnoreCase);
-    private SdkMcpClient? _client;
+    private McpClient? _client;
     private int _disposeState;
 
     public bool IsConnected => _client is { Completion.IsCompleted: false };
@@ -36,11 +35,11 @@ internal sealed class McpServerClient(ILoggerFactory loggerFactory)
 
             await DisconnectCoreAsync().ConfigureAwait(false);
             HttpClientTransport? transport = null;
-            SdkMcpClient? client = null;
+            McpClient? client = null;
             try
             {
                 transport = CreateTransport(serverUrl, type);
-                client = await SdkMcpClient.CreateAsync(
+                client = await McpClient.CreateAsync(
                     transport,
                     new McpClientOptions
                     {
@@ -104,7 +103,7 @@ internal sealed class McpServerClient(ILoggerFactory loggerFactory)
             return $"Error: Tool '{toolName}' not found.";
         }
 
-        SdkMcpClient? client = _client;
+        McpClient? client = _client;
         if (client == null || client.Completion.IsCompleted)
         {
             return "Error: MCP Client not connected.";
@@ -154,7 +153,7 @@ internal sealed class McpServerClient(ILoggerFactory loggerFactory)
         string resourceUri,
         CancellationToken cancellationToken = default)
     {
-        SdkMcpClient? client = _client;
+        McpClient? client = _client;
         if (client == null || client.Completion.IsCompleted)
         {
             throw new InvalidOperationException("MCP Client not connected.");
@@ -223,7 +222,7 @@ internal sealed class McpServerClient(ILoggerFactory loggerFactory)
 
     private async Task DisconnectCoreAsync()
     {
-        SdkMcpClient? client = _client;
+        McpClient? client = _client;
         _client = null;
         _tools = new Dictionary<string, McpTool>(StringComparer.OrdinalIgnoreCase);
         if (client != null)
@@ -233,7 +232,7 @@ internal sealed class McpServerClient(ILoggerFactory loggerFactory)
     }
 
     private static async Task DisposeConnectionAsync(
-        SdkMcpClient? client,
+        McpClient? client,
         HttpClientTransport? transport)
     {
         if (client != null)
