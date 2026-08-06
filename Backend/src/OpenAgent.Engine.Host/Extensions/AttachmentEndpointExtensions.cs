@@ -51,7 +51,7 @@ internal static class AttachmentEndpointExtensions
             context,
             attachmentReader,
             cancellationToken).ConfigureAwait(false);
-        await EndpointExtensions.WriteNdjsonStreamAsync(
+        await AgentStreamWriter.WriteNdjsonStreamAsync(
             context,
             executor.ExecuteStreamingAsync(
                 request,

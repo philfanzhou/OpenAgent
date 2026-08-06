@@ -39,7 +39,7 @@ public class EndpointExtensionsTests
             }
         };
 
-        var agentRequest = EndpointExtensions.CreateAgentRequest(request, context);
+        var agentRequest = AgentEndpointRequestMapper.CreateAgentRequest(request, context);
 
         Assert.Equal("hello", agentRequest.Query);
         Assert.Equal("body-agent", agentRequest.AgentId);
@@ -57,7 +57,7 @@ public class EndpointExtensionsTests
         var context = CreateContext(traceId: "trace-2");
         var request = new ChatRequest { Message = "hi" };
 
-        var agentRequest = EndpointExtensions.CreateAgentRequest(request, context);
+        var agentRequest = AgentEndpointRequestMapper.CreateAgentRequest(request, context);
 
         Assert.Null(agentRequest.AgentId);
         Assert.Null(agentRequest.ConversationId);
@@ -73,7 +73,7 @@ public class EndpointExtensionsTests
 
         var request = new ChatRequest { Message = "ping" };
 
-        var agentRequest = EndpointExtensions.CreateAgentRequest(request, context);
+        var agentRequest = AgentEndpointRequestMapper.CreateAgentRequest(request, context);
 
         Assert.Equal("header-agent", agentRequest.AgentId);
     }

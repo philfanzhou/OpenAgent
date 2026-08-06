@@ -1,0 +1,94 @@
+using Microsoft.AspNetCore.Mvc;
+using OpenAgent.Contracts.Requests;
+using OpenAgent.Core.Runtime.Agent;
+using OpenAgent.Engine.Host.Middleware;
+
+namespace OpenAgent.Engine.Host.Extensions;
+
+internal static class AgentChatEndpointExtensions
+{
+    internal static void MapAgentChat(this RouteGroupBuilder group)
+    {
+        group.MapPost("/chat", ExecuteAsync)
+            .WithName("Chat")
+            .WithTags("Agent");
+
+        group.MapPost("/chat/stream", ExecuteNdjsonAsync)
+            .WithName("ChatStream")
+            .WithTags("Agent");
+
+        group.MapPost("/chat/sse", ExecuteSseAsync)
+            .WithName("ChatSse")
+            .WithTags("Agent");
+
+        group.MapPost("/chat/pipeline", ExecutePipelineAsync)
+            .WithName("ChatPipeline")
+            .WithTags("Agent");
+    }
+
+    private static async Task<IResult> ExecuteAsync(
+        [FromBody] ChatRequest request,
+        [FromServices] AgentExecutor executor,
+        HttpContext context,
+        CancellationToken cancellationToken)
+    {
+        AgentRequest executionRequest = AgentEndpointRequestMapper.CreateAgentRequest(request, context);
+        AgentResponse response = await executor.ExecuteAsync(
+            executionRequest,
+            context.GetAgentRequest().User,
+            cancellationToken).ConfigureAwait(false);
+        return Results.Ok(new ChatResponse { Message = response.Content });
+    }
+
+    private static async Task ExecuteNdjsonAsync(
+        [FromBody] ChatRequest request,
+        [FromServices] AgentExecutor executor,
+        [FromServices] ILogger<Program> logger,
+        HttpContext context,
+        CancellationToken cancellationToken)
+    {
+        AgentRequest executionRequest = AgentEndpointRequestMapper.CreateAgentRequest(request, context);
+        await AgentStreamWriter.WriteNdjsonStreamAsync(
+            context,
+            executor.ExecuteStreamingAsync(
+                executionRequest,
+                context.GetAgentRequest().User,
+                cancellationToken),
+            executionRequest.TraceId!,
+            logger,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task ExecuteSseAsync(
+        [FromBody] ChatRequest request,
+        [FromServices] AgentExecutor executor,
+        [FromServices] ILogger<Program> logger,
+        HttpContext context,
+        CancellationToken cancellationToken)
+    {
+        AgentRequest executionRequest = AgentEndpointRequestMapper.CreateAgentRequest(request, context);
+        await AgentStreamWriter.WriteSseStreamAsync(
+            context,
+            executor.ExecuteStreamingAsync(
+                executionRequest,
+                context.GetAgentRequest().User,
+                cancellationToken),
+            executionRequest.TraceId!,
+            logger,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task<IResult> ExecutePipelineAsync(
+        [FromBody] AgentRequest request,
+        [FromServices] AgentExecutor executor,
+        HttpContext context,
+        CancellationToken cancellationToken)
+    {
+        AgentRequest executionRequest = AgentEndpointRequestMapper.ResolveRequest(request, context);
+        AgentResponse response = await executor.ExecuteAsync(
+            executionRequest,
+            context.GetAgentRequest().User,
+            cancellationToken).ConfigureAwait(false);
+        return Results.Ok(response);
+    }
+}

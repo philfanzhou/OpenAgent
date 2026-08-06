@@ -61,8 +61,6 @@ public static class ServiceCollectionExtensions
             services.AddSwaggerGen();
         }
 
-        services.AddControllers();
-
         if (options.EnableHealthChecks)
         {
             services.AddHealthChecks();
