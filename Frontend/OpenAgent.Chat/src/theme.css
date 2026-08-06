@@ -1,0 +1,90 @@
+:root {
+  --oa-purple: #685cf0;
+  --oa-purple-dark: #5649d8;
+  --oa-lilac: #f0efff;
+  --oa-mint: #dff8f0;
+  --oa-ink: #25243a;
+  --oa-muted: #8a899d;
+  --oa-border: #e9e7f3;
+  --oa-shadow: 0 18px 48px rgba(57, 48, 116, .10);
+}
+
+/* Keep Element Plus behavior, but give the workspace one coherent visual language. */
+.el-button {
+  --el-button-border-color: transparent;
+  --el-button-hover-border-color: transparent;
+  --el-button-active-border-color: transparent;
+  border: 0;
+  border-radius: 13px;
+  font-weight: 650;
+  letter-spacing: -.01em;
+  transition: transform .18s ease, box-shadow .18s ease, background .18s ease;
+}
+.el-button:hover { transform: translateY(-1px); }
+.el-button--primary {
+  color: #fff;
+  background: linear-gradient(135deg, #7d71ff, #5a4bda);
+  box-shadow: 0 8px 17px rgba(99, 86, 231, .24);
+}
+.el-button--primary:hover, .el-button--primary:focus { color: #fff; background: linear-gradient(135deg, #8b80ff, #6253e5); box-shadow: 0 11px 22px rgba(99, 86, 231, .30); }
+.el-button--primary.is-plain { color: var(--oa-purple-dark); background: var(--oa-lilac); box-shadow: none; }
+.el-button.is-text, .el-button.is-link { color: #77738f; background: transparent; box-shadow: none; }
+.el-button.is-text:hover, .el-button.is-link:hover { color: var(--oa-purple-dark); background: #f5f3ff; }
+.sidebar .el-button--primary { background: linear-gradient(135deg, #8278ff, #6459ed); }
+.sidebar .el-button:not(.el-button--primary) { color: #c8d0e0; background: #1b2940; }
+
+.el-input__wrapper, .el-select__wrapper {
+  min-height: 42px;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 0 0 1px var(--oa-border) inset, 0 4px 12px rgba(72, 64, 122, .035);
+  transition: box-shadow .18s ease, background .18s ease;
+}
+.el-input__wrapper:hover, .el-select__wrapper:hover { box-shadow: 0 0 0 1px #d8d4f6 inset, 0 5px 14px rgba(72, 64, 122, .06); }
+.el-input__wrapper.is-focus, .el-select__wrapper.is-focused { box-shadow: 0 0 0 2px #b8b0ff inset, 0 6px 18px rgba(104, 92, 240, .10); }
+.el-textarea__inner { border: 0; border-radius: 16px; color: var(--oa-ink); background: transparent; }
+.sidebar .el-input__wrapper { background: #18263b; box-shadow: 0 0 0 1px #2a3a55 inset; }
+.sidebar .el-input__wrapper:hover { box-shadow: 0 0 0 1px #526488 inset; }
+
+.el-dialog { border-radius: 26px !important; }
+.el-dialog__headerbtn { top: 19px; right: 20px; width: 32px; height: 32px; border-radius: 50%; background: #f5f3ff; }
+.el-dialog__headerbtn:hover { background: #ece9ff; }
+.el-dialog__headerbtn .el-dialog__close { color: #77738f; }
+.el-tabs__item { font-weight: 650; }
+.el-alert { border: 0; border-radius: 15px; }
+.el-descriptions { overflow: hidden; border-radius: 15px; }
+.el-empty { padding: 42px 0; }
+
+.app-shell { background: radial-gradient(circle at 80% 0%, #fff 0, #f8f7fc 35%, #f5f7fb 70%); }
+.sidebar { background: linear-gradient(180deg, #171a35 0%, #12162b 100%); }
+.brand-mark { border-radius: 15px; }
+.conversation-item { border-radius: 15px; }
+.conversation-item.active { background: linear-gradient(110deg, #2a3054, #232946); border-color: #414875; }
+.topbar { background: rgba(255, 255, 255, .72); backdrop-filter: blur(14px); }
+.chat-card { margin-top: 10px; }
+.chat-kicker { display: block; margin-bottom: 5px; color: #a29ce8; font-size: 10px; font-weight: 800; letter-spacing: .17em; }
+.chat-header h2 { color: var(--oa-ink); font-size: 24px; }
+.messages { border: 0; border-radius: 24px 24px 0 0; background: rgba(255,255,255,.76); box-shadow: var(--oa-shadow); }
+.welcome { padding-top: 72px; }
+.welcome-orbit { position: relative; width: 75px; height: 75px; margin: auto; }
+.welcome-icon { position: absolute; inset: 12px; z-index: 1; width: 51px; height: 51px; border-radius: 19px; background: linear-gradient(145deg, #eeeaff, #e0f8f1); color: var(--oa-purple); box-shadow: 0 12px 22px rgba(104, 92, 240, .13); }
+.orbit-dot { position: absolute; width: 8px; height: 8px; border-radius: 50%; background: #f0a8ba; }
+.orbit-dot-one { top: 2px; right: 7px; }.orbit-dot-two { bottom: 4px; left: 3px; background: #68cbb5; }
+.welcome h1 { color: var(--oa-ink); font-size: 25px; letter-spacing: -.04em; }
+.welcome p { color: #9693a7; }
+.message-row { max-width: 960px; }
+.avatar { border-radius: 14px; box-shadow: 0 5px 12px rgba(80, 73, 157, .10); }
+.message-bubble { border: 1px solid #efedf6; border-radius: 8px 20px 20px 20px; box-shadow: 0 7px 20px rgba(62, 55, 118, .05); }
+.user .message-bubble { border: 0; border-radius: 20px 8px 20px 20px; background: linear-gradient(145deg, #eeedff, #e7f8f3); }
+.composer { margin: 0 3px; border: 0; border-radius: 0 0 24px 24px; box-shadow: 0 18px 48px rgba(57, 48, 116, .10); }
+.composer .el-textarea__inner { padding: 10px 4px; font-size: 14px; }
+.attachment-chip { border-radius: 11px; background: #f5f3ff; border-color: #e4e0ff; }
+.attach-button { border-radius: 10px; }
+.settings-dialog .el-dialog { box-shadow: 0 26px 80px rgba(37, 33, 80, .20); }
+.settings-tabs .el-tabs__item { border-radius: 13px; }
+.settings-tabs .el-tabs__item.is-active { background: #f0efff; }
+
+@media (max-width: 760px) {
+  .topbar-actions .el-select { width: 150px; }
+  .welcome { padding-top: 52px; }
+}

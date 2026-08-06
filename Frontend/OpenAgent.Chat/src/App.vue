@@ -41,6 +41,9 @@ const filteredConversations = computed(() => {
 
 const currentMessages = computed(() => selectedConversation.value?.messages || [])
 const selectedAgent = computed(() => agents.value.find(item => item.agentId === selectedAgentId.value))
+const chatSubtitle = computed(() => selectedAgent.value
+  ? `${selectedAgent.value.name || selectedAgent.value.agentId} 已准备好为你工作`
+  : '选择一个 Agent，开始轻松协作')
 const llmJson = computed({
   get: () => config.value ? JSON.stringify(config.value.config.llm, null, 2) : '',
   set: (value: string) => {
@@ -363,9 +366,9 @@ onMounted(() => {
       </header>
 
       <section class="chat-card">
-        <div class="chat-header"><div><h2>{{ selectedConversation?.title || '开始一段新对话' }}</h2><p>{{ selectedAgent?.name || '请选择 Agent' }}</p></div><el-button text @click="newConversation">清空当前</el-button></div>
+        <div class="chat-header"><div><span class="chat-kicker">OPENAGENT CHAT</span><h2>{{ selectedConversation?.title || '今天想从哪里开始？' }}</h2><p>{{ chatSubtitle }}</p></div><el-button text @click="newConversation">清空当前</el-button></div>
         <el-scrollbar class="messages" v-loading="loadingConversation">
-          <div v-if="!currentMessages.length" class="welcome"><div class="welcome-icon">✦</div><h1>和 Agent 开始协作</h1><p>在下方输入问题，使用服务端的模型、Skill 和 MCP 能力。</p></div>
+          <div v-if="!currentMessages.length" class="welcome"><div class="welcome-orbit"><div class="welcome-icon">✦</div><span class="orbit-dot orbit-dot-one" /><span class="orbit-dot orbit-dot-two" /></div><h1>你好，今天想完成什么？</h1><p>把问题、文件或灵感交给你的 Agent，一起把事情做好。</p></div>
           <div v-for="item in currentMessages" :key="item.messageId" class="message-row" :class="item.role">
             <div class="avatar">{{ item.role === 'user' ? '我' : item.role === 'tool' ? '工具' : 'AI' }}</div>
             <div class="message-bubble"><div v-if="item.toolName" class="tool-tag">调用工具：{{ item.toolName }}</div><div v-if="item.attachments?.length" class="message-attachments"><span v-for="attachment in item.attachments" :key="attachment.fileName">↗ {{ attachment.fileName }}</span></div><div class="message-content">{{ item.content || '…' }}</div></div>
