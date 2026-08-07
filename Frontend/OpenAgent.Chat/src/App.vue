@@ -57,6 +57,8 @@ const testingLlm = ref(false)
 const savingLlm = ref(false)
 const showLlmEditor = ref(false)
 const isNewLlm = ref(false)
+const llmSecretVisible = ref(false)
+const revealingLlmSecret = ref(false)
 const pendingAttachments = ref<PendingAttachment[]>([])
 const themeMode = ref<'light' | 'dark'>(localStorage.getItem('openagent.ui.theme') === 'dark' ? 'dark' : 'light')
 
@@ -200,12 +202,14 @@ function selectLlm(index: number): void {
   selectedLlmIndex.value = index
   llmDraft.value = { ...profile }
   llmResult.value = null
+  llmSecretVisible.value = false
 }
 
 function newLlm(): void {
   selectedLlmIndex.value = -1
   llmDraft.value = createDefaultLlm()
   llmResult.value = null
+  llmSecretVisible.value = false
   isNewLlm.value = true
   showLlmEditor.value = true
 }
@@ -261,6 +265,20 @@ async function testLlm(): Promise<void> {
     notifyError(error)
   } finally {
     testingLlm.value = false
+  }
+}
+
+async function revealLlmSecret(): Promise<void> {
+  if (isNewLlm.value || !llmDraft.value.id) return
+  revealingLlmSecret.value = true
+  try {
+    const result = await api.revealLlmSecret(llmDraft.value.id)
+    llmDraft.value.apiKey = result.apiKey
+    llmSecretVisible.value = true
+  } catch (error) {
+    notifyError(error)
+  } finally {
+    revealingLlmSecret.value = false
   }
 }
 
@@ -846,7 +864,7 @@ onMounted(() => {
   </el-dialog>
 
   <el-dialog v-model="showLlmEditor" class="editor-dialog" :title="isNewLlm ? '新增大模型配置' : '编辑大模型配置'" width="min(720px, calc(100vw - 32px))" append-to-body destroy-on-close>
-    <el-form label-position="top" class="agent-form-grid"><el-form-item label="配置 ID"><el-input v-model="llmDraft.id" :disabled="!isNewLlm" placeholder="例如 openai-prod" /><small class="form-help">Agent 通过这个 ID 绑定大模型配置。</small></el-form-item><el-form-item label="显示名称"><el-input v-model="llmDraft.name" placeholder="例如 OpenAI 生产环境" /></el-form-item><el-form-item label="API 格式"><el-select v-model="llmDraft.format" class="full-width"><el-option label="OpenAI Chat Completions" value="OpenAIChatCompletions" /><el-option label="OpenAI Responses" value="OpenAIResponses" /><el-option label="Anthropic Messages" value="AnthropicMessages" /></el-select></el-form-item><el-form-item label="模型 ID"><el-input v-model="llmDraft.modelId" placeholder="例如 gpt-4o" /></el-form-item><el-form-item label="Temperature"><el-input-number v-model="llmDraft.temperature" :min="0" :max="2" :step="0.1" :precision="1" controls-position="right" /></el-form-item><el-form-item label="Endpoint"><el-input v-model="llmDraft.endpoint" placeholder="https://api.openai.com/v1" /></el-form-item><el-form-item label="API Key" class="span-two"><el-input v-model="llmDraft.apiKey" type="password" show-password placeholder="留空则保留已保存的密钥" /></el-form-item><el-alert v-if="llmResult" class="span-two" :title="`测试结果：${llmResult.success ? '连接和权限通过' : '连接失败'}${llmResult.statusCode ? ` · HTTP ${llmResult.statusCode}` : ''}`" :description="llmResult.error || `模型 ${llmResult.modelId || llmDraft.modelId} · 延迟 ${llmResult.latencyMs}ms`" :type="llmResult.success ? 'success' : 'warning'" :closable="false" /></el-form>
+    <el-form label-position="top" class="agent-form-grid"><el-form-item label="配置 ID"><el-input v-model="llmDraft.id" :disabled="!isNewLlm" placeholder="例如 openai-prod" /><small class="form-help">Agent 通过这个 ID 绑定大模型配置。</small></el-form-item><el-form-item label="显示名称"><el-input v-model="llmDraft.name" placeholder="例如 OpenAI 生产环境" /></el-form-item><el-form-item label="API 格式"><el-select v-model="llmDraft.format" class="full-width"><el-option label="OpenAI Chat Completions" value="OpenAIChatCompletions" /><el-option label="OpenAI Responses" value="OpenAIResponses" /><el-option label="Anthropic Messages" value="AnthropicMessages" /></el-select></el-form-item><el-form-item label="模型 ID"><el-input v-model="llmDraft.modelId" placeholder="例如 gpt-4o" /></el-form-item><el-form-item label="Temperature"><el-input-number v-model="llmDraft.temperature" :min="0" :max="2" :step="0.1" :precision="1" controls-position="right" /></el-form-item><el-form-item label="Endpoint"><el-input v-model="llmDraft.endpoint" placeholder="https://api.openai.com/v1" /></el-form-item><el-form-item label="API Key" class="span-two"><div class="secret-editor"><el-input v-model="llmDraft.apiKey" :type="llmSecretVisible ? 'text' : 'password'" show-password :placeholder="isNewLlm ? '请输入 API Key' : '已保存密钥默认隐藏，可按需显示'" /><el-button v-if="!isNewLlm && llmDraft.apiKey.startsWith('***')" :loading="revealingLlmSecret" @click="revealLlmSecret">显示已保存密钥</el-button></div><small class="form-help">列表和普通查询接口只返回遮罩；点击“显示已保存密钥”后才会按需读取真实密钥。</small></el-form-item><el-alert v-if="llmResult" class="span-two" :title="`测试结果：${llmResult.success ? '连接和权限通过' : '连接失败'}${llmResult.statusCode ? ` · HTTP ${llmResult.statusCode}` : ''}`" :description="llmResult.error || `模型 ${llmResult.modelId || llmDraft.modelId} · 延迟 ${llmResult.latencyMs}ms`" :type="llmResult.success ? 'success' : 'warning'" :closable="false" /></el-form>
     <template #footer><el-button @click="showLlmEditor = false">取消</el-button><el-button :loading="testingLlm" @click="testLlm">测试连接与权限</el-button><el-button type="primary" :loading="savingLlm" :disabled="!llmDraft.id" @click="saveLlm">保存大模型配置</el-button></template>
   </el-dialog>
 

@@ -170,6 +170,10 @@ export const api = {
     })
   },
 
+  revealLlmSecret(id: string): Promise<{ apiKey: string }> {
+    return request<{ apiKey: string }>(`/api/v1/admin/llm/${encodeURIComponent(id)}/secret`)
+  },
+
   deleteLlmProfile(id: string): Promise<void> {
     return request<void>(`/api/v1/admin/llm/${encodeURIComponent(id)}`, { method: 'DELETE' })
   },
