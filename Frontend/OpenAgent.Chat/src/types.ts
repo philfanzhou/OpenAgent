@@ -32,6 +32,7 @@ export interface MessageAttachment {
   fileName: string
   mediaType: string
   length: number
+  previewUrl?: string
 }
 
 export interface ConversationRecord {
