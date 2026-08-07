@@ -79,6 +79,7 @@ internal sealed class AgentListQuery(
         {
             AgentId = entity.AgentId,
             Name = entity.Name,
+            Description = entity.Description,
             Status = (int)entity.Status,
             CurrentVersion = entity.CurrentVersion,
             ApiFormat = entity.Config?.Llm.Format.ToString() ?? "unknown"

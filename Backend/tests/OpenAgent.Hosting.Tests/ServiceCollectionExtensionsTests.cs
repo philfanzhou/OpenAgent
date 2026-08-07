@@ -26,6 +26,7 @@ public class ServiceCollectionExtensionsTests
         Assert.Equal("test-host", options.ServiceName);
         Assert.Equal("2.0.0", options.ServiceVersion);
         Assert.Equal("/live", options.HealthCheckLivePath);
+        Assert.Contains("X-OpenAgent-Selected-Agent-Id", options.CorsExposedHeaders);
     }
 
     [Fact]

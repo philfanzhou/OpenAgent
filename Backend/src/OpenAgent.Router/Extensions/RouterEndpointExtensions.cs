@@ -27,14 +27,12 @@ public static class RouterEndpointExtensions
             HttpContext context,
             IHttpForwarder forwarder,
             IAgentUserContext userContext,
-            IIntentRecognizer intentRecognizer,
-            IRouteTable routeTable,
-            IAgentVisibilityService visibilityService,
             ILogger<Program> logger,
             CancellationToken cancellationToken) =>
             ChatEndpointHandler.HandleAsync(
-                action, context, forwarder, userContext, intentRecognizer, routeTable,
-                visibilityService, logger, httpClient, requestConfig, cancellationToken));
+                action, context, forwarder, userContext,
+                logger, httpClient, requestConfig, cancellationToken))
+            .AddEndpointFilter<AgentSelectionFilter>();
 
         app.MapGet("/api/v1/agent/agents", (
             HttpContext context, IHttpForwarder forwarder, IAgentUserContext userContext,

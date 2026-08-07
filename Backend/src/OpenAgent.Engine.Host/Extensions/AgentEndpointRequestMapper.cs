@@ -1,5 +1,6 @@
 using System.Text.Json;
 using OpenAgent.Contracts.Requests;
+using OpenAgent.Contracts.Routing;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Engine.Host.Middleware;
 
@@ -16,7 +17,8 @@ internal static class AgentEndpointRequestMapper
         return new AgentRequest
         {
             Query = request.Message,
-            AgentId = ReadContextValue(request.Context, "agentId")
+            AgentId = context.Request.Headers[AgentRoutingHeaders.ResolvedAgentId].FirstOrDefault()
+                ?? ReadContextValue(request.Context, "agentId")
                 ?? context.Request.Headers["X-Agent-Id"].FirstOrDefault(),
             ConversationId = ReadContextValue(request.Context, "conversationId")
                 ?? context.Request.Headers["X-Conversation-Id"].FirstOrDefault(),

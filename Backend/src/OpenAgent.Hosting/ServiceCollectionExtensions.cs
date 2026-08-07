@@ -24,9 +24,14 @@ public static class ServiceCollectionExtensions
         var options = new AgentHostOptions();
         configure?.Invoke(options);
         string[] configuredOrigins = configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
+        string[] configuredExposedHeaders = configuration.GetSection("Cors:ExposedHeaders").Get<string[]>() ?? [];
         if (configuredOrigins.Length > 0)
         {
             options.CorsAllowedOrigins = configuredOrigins;
+        }
+        if (configuredExposedHeaders.Length > 0)
+        {
+            options.CorsExposedHeaders = configuredExposedHeaders;
         }
 
         services.Configure<AgentHostOptions>(opt =>
@@ -38,6 +43,7 @@ public static class ServiceCollectionExtensions
             opt.EnableOpenTelemetry = options.EnableOpenTelemetry;
             opt.CorsPolicyName = options.CorsPolicyName;
             opt.CorsAllowedOrigins = options.CorsAllowedOrigins;
+            opt.CorsExposedHeaders = options.CorsExposedHeaders;
             opt.HealthCheckLivePath = options.HealthCheckLivePath;
             opt.HealthCheckReadyPath = options.HealthCheckReadyPath;
             opt.ServiceName = options.ServiceName;
@@ -58,6 +64,7 @@ public static class ServiceCollectionExtensions
                         .AllowAnyMethod()
                         .AllowAnyHeader()
                         .AllowCredentials()
+                        .WithExposedHeaders(options.CorsExposedHeaders)
                         .SetPreflightMaxAge(TimeSpan.FromMinutes(30));
                 });
             });

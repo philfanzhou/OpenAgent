@@ -9,6 +9,7 @@ public class AgentConfigEntity
 {
     public string AgentId { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
 
     public AgentPublishStatus Status { get; set; } = AgentPublishStatus.Draft;
 

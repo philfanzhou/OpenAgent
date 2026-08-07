@@ -62,6 +62,9 @@ internal sealed class AgentFactory
             Name = profile.AgentId,
             ChatOptions = new ChatOptions
             {
+                Instructions = string.IsNullOrWhiteSpace(profile.Config.Instructions)
+                    ? null
+                    : profile.Config.Instructions,
                 Temperature = (float?)profile.Model.Temperature,
                 Tools = tools.ToList()
             },

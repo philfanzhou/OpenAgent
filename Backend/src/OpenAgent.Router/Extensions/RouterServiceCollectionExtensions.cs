@@ -1,5 +1,7 @@
 using OpenAgent.Contracts.Routing;
 using OpenAgent.Core.Routing;
+using OpenAgent.Router.Endpoints;
+using OpenAgent.Router.Options;
 using StackExchange.Redis;
 
 namespace OpenAgent.Router;
@@ -11,6 +13,28 @@ public static class RouterServiceCollectionExtensions
         IConfiguration configuration)
     {
         services.AddSingleton<IConsistentHashRing, JumpHashConsistentHashRing>();
+        services.AddOptions<IntentRecognitionOptions>()
+            .Bind(configuration.GetSection(IntentRecognitionOptions.SectionName))
+            .Validate(
+                options => !options.Enabled || !string.IsNullOrWhiteSpace(options.AgentId),
+                "Intent recognition AgentId is required when intent recognition is enabled")
+            .Validate(
+                options => options.TimeoutMs > 0,
+                "Intent recognition TimeoutMs must be greater than zero")
+            .Validate(
+                options => options.MinimumConfidence is >= 0 and <= 1,
+                "Intent recognition MinimumConfidence must be between zero and one")
+            .Validate(
+                options => options.MaxCandidates > 0
+                    && options.MaxMessageCharacters > 0
+                    && options.CatalogCacheSeconds > 0,
+                "Intent recognition input limits must be greater than zero")
+            .ValidateOnStart();
+        services.AddMemoryCache();
+        services.AddHttpClient<IIntentAgentSelector, IntentAgentSelector>(client =>
+        {
+            client.Timeout = Timeout.InfiniteTimeSpan;
+        });
 
         var redisConnectionString = configuration.GetConnectionString("Redis");
         if (!string.IsNullOrEmpty(redisConnectionString))

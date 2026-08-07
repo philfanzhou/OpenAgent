@@ -1,8 +1,10 @@
 export type ConversationStatus = 'Running' | 'Completed' | 'Failed' | 'Cancelled' | number
+export const AUTO_AGENT_ID = '__auto__'
 
 export interface AgentSummary {
   agentId: string
   name: string
+  description: string
   status: number
   currentVersion: string
   apiFormat: string
@@ -160,9 +162,11 @@ export interface AuthTokenResponse {
 export interface AgentConfigEntity {
   agentId: string
   name: string
+  description: string
   status: number
   currentVersion: string
   config: {
+    instructions: string
     llm: LlmConfig
     mcp: { servers: McpServerConfig[] }
     rag: RagConfig
@@ -173,6 +177,7 @@ export interface AgentConfigEntity {
 
 export interface StreamEvent {
   type: string
+  agentId?: string
   content?: string
   status?: string
   traceId?: string

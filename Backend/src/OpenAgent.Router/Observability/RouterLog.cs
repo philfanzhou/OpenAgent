@@ -50,8 +50,8 @@ internal static partial class RouterLog
     public static partial void AgentIdExtractionFailed(ILogger logger, Exception exception, string? action, string? traceId, int bodyLength);
 
     // Request lifecycle
-    [LoggerMessage(EventId = 3030, Level = LogLevel.Information, Message = "Request accepted. Action={Action}, UserId={UserId}, TenantId={TenantId}, ConversationId={ConversationId}, Query={Query}, TraceId={TraceId}")]
-    public static partial void RequestAccepted(ILogger logger, string? action, string userId, string? tenantId, string? conversationId, string query, string? traceId);
+    [LoggerMessage(EventId = 3030, Level = LogLevel.Information, Message = "Request accepted. Action={Action}, UserId={UserId}, TenantId={TenantId}, ConversationId={ConversationId}, QueryLength={QueryLength}, TraceId={TraceId}")]
+    public static partial void RequestAccepted(ILogger logger, string? action, string userId, string? tenantId, string? conversationId, int queryLength, string? traceId);
 
     [LoggerMessage(EventId = 3031, Level = LogLevel.Information, Message = "Semantic cache hit. Action={Action}, UserId={UserId}, TenantId={TenantId}, ConversationId={ConversationId}, TraceId={TraceId}")]
     public static partial void SemanticCacheHit(ILogger logger, string? action, string userId, string? tenantId, string? conversationId, string? traceId);
@@ -61,6 +61,24 @@ internal static partial class RouterLog
 
     [LoggerMessage(EventId = 3033, Level = LogLevel.Warning, Message = "Could not determine target service. Action={Action}, Intent={Intent}, UserId={UserId}, TenantId={TenantId}, AgentId={AgentId}, ConversationId={ConversationId}, TraceId={TraceId}")]
     public static partial void TargetServiceNotFound(ILogger logger, string? action, string intent, string userId, string? tenantId, string? agentId, string? conversationId, string? traceId);
+
+    [LoggerMessage(EventId = 3034, Level = LogLevel.Warning, Message = "Intent recognition skipped because no routable agents are available")]
+    public static partial void IntentRecognitionNoCandidates(ILogger logger);
+
+    [LoggerMessage(EventId = 3035, Level = LogLevel.Warning, Message = "Intent recognition dependency returned HTTP {StatusCode}. Dependency={Dependency}")]
+    public static partial void IntentRecognitionHttpFailure(ILogger logger, int statusCode, string dependency);
+
+    [LoggerMessage(EventId = 3036, Level = LogLevel.Warning, Message = "Intent recognition agent timed out after {TimeoutMs} ms")]
+    public static partial void IntentRecognitionTimedOut(ILogger logger, int timeoutMs);
+
+    [LoggerMessage(EventId = 3037, Level = LogLevel.Warning, Message = "Intent recognition agent request failed")]
+    public static partial void IntentRecognitionRequestFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(EventId = 3038, Level = LogLevel.Warning, Message = "Intent recognition agent returned invalid JSON")]
+    public static partial void IntentRecognitionInvalidJson(ILogger logger, Exception exception);
+
+    [LoggerMessage(EventId = 3039, Level = LogLevel.Information, Message = "Agent selection completed. AgentId={AgentId}, SelectedByIntentAgent={SelectedByIntentAgent}, Confidence={Confidence}, TraceId={TraceId}")]
+    public static partial void AgentSelectionCompleted(ILogger logger, string agentId, bool selectedByIntentAgent, double? confidence, string? traceId);
 
     // Forwarding
     [LoggerMessage(EventId = 3040, Level = LogLevel.Information, Message = "Forwarding request. Action={Action}, TargetEndpoint={TargetEndpoint}, Intent={Intent}, AgentId={AgentId}, ConversationId={ConversationId}, UserId={UserId}, TenantId={TenantId}, TraceId={TraceId}")]

@@ -6,7 +6,7 @@ import ChatHeader from './components/ChatHeader.vue'
 import ChatMessages from './components/ChatMessages.vue'
 import ChatSidebar from './components/ChatSidebar.vue'
 import MessageComposer from './components/MessageComposer.vue'
-import type { AgentConfigEntity, AgentSummary, AuthConfig, ConversationMessage, ConversationRecord, CurrentUserContext, LlmProviderProfile, LlmTestResult, McpServerConfig, McpTestResult, MessageAttachment, PendingAttachment, RagConfig, RagInstanceConfig, RagTestResult, SkillInstanceConfig, SkillsConfig } from './types'
+import { AUTO_AGENT_ID, type AgentConfigEntity, type AgentSummary, type AuthConfig, type ConversationMessage, type ConversationRecord, type CurrentUserContext, type LlmProviderProfile, type LlmTestResult, type McpServerConfig, type McpTestResult, type MessageAttachment, type PendingAttachment, type RagConfig, type RagInstanceConfig, type RagTestResult, type SkillInstanceConfig, type SkillsConfig } from './types'
 
 const engineUrl = ref(getEngineBaseUrl())
 const token = ref(getAccessToken())
@@ -175,7 +175,7 @@ async function loadWorkspace(): Promise<void> {
     if (conversationResult.status === 'fulfilled') conversations.value = conversationResult.value
     else conversations.value = []
     if (userResult.status === 'fulfilled') currentUser.value = userResult.value
-    if (!agents.value.some(item => item.agentId === selectedAgentId.value)) {
+    if (selectedAgentId.value !== AUTO_AGENT_ID && !agents.value.some(item => item.agentId === selectedAgentId.value)) {
       selectedAgentId.value = agents.value[0]?.agentId || ''
       config.value = null
     }
@@ -279,11 +279,11 @@ async function refreshAgents(): Promise<void> {
   try {
     const refreshed = await api.listAgents()
     agents.value = refreshed
-    if (!refreshed.some(item => item.agentId === selectedAgentId.value)) {
+    if (selectedAgentId.value !== AUTO_AGENT_ID && !refreshed.some(item => item.agentId === selectedAgentId.value)) {
       selectedAgentId.value = refreshed[0]?.agentId || ''
       config.value = null
     }
-    if (selectedAgentId.value && activeSettings.value === 'agent') {
+    if (selectedAgentId.value && selectedAgentId.value !== AUTO_AGENT_ID && activeSettings.value === 'agent') {
       await loadConfig()
     }
     ElMessage.success('Agent 列表已刷新')
@@ -351,7 +351,10 @@ async function send(): Promise<void> {
   const requestContent = content || '请处理我上传的附件'
   const isNewConversation = !selectedConversation.value
   const attachments = pendingAttachments.value.map(item => item.file)
-  const local = selectedConversation.value || makeLocalConversation(selectedAgentId.value, requestContent)
+  const requestedAgentId = selectedAgentId.value === AUTO_AGENT_ID
+    ? selectedConversation.value?.agentId
+    : selectedAgentId.value
+  const local = selectedConversation.value || makeLocalConversation(requestedAgentId || '', requestContent)
   if (isNewConversation) {
     local.messages = []
     local.messageCount = 0
@@ -385,8 +388,11 @@ async function send(): Promise<void> {
   }
   conversation.messages.push(assistantMessage)
   try {
-    for await (const event of api.streamChat(requestContent, selectedAgentId.value, conversationId, attachments)) {
-      if (event.type === 'content') {
+    for await (const event of api.streamChat(requestContent, requestedAgentId, conversationId, attachments)) {
+      if (event.type === 'route' && event.agentId) {
+        conversation.agentId = event.agentId
+        selectedAgentId.value = event.agentId
+      } else if (event.type === 'content') {
         assistant += event.content || ''
         assistantMessage.content = assistant
       } else if (event.type === 'tool_call') {
@@ -416,7 +422,7 @@ async function deleteConversation(item: ConversationRecord): Promise<void> {
 }
 
 async function loadConfig(): Promise<void> {
-  if (!selectedAgentId.value) return
+  if (!selectedAgentId.value || selectedAgentId.value === AUTO_AGENT_ID) return
   try {
     config.value = await api.getAgentConfig(selectedAgentId.value)
     mcpServers.value = (config.value.config.mcp?.servers || []).map(item => ({
@@ -465,7 +471,7 @@ async function editAgent(agentId: string): Promise<void> {
 }
 
 async function loadMcp(openEditorIfEmpty = false): Promise<void> {
-  if (!selectedAgentId.value) return
+  if (!selectedAgentId.value || selectedAgentId.value === AUTO_AGENT_ID) return
   try {
     const result = await api.getMcpConfig(selectedAgentId.value)
     mcpServers.value = result.servers || []
@@ -607,9 +613,11 @@ function createDefaultAgent(agentId: string, name: string): AgentConfigEntity {
   return {
     agentId,
     name,
+    description: '',
     status: 0,
     currentVersion: '',
     config: {
+      instructions: '',
       llm: {
         provider: '',
         format: 'OpenAIChatCompletions',
@@ -668,7 +676,7 @@ async function saveConfig(): Promise<void> {
     selectedAgentId.value = agentId
     agents.value = [
       ...agents.value.filter(item => item.agentId !== agentId),
-      { agentId, name: saved.name, status: saved.status, currentVersion: saved.currentVersion, apiFormat: String(saved.config.llm.format || '') },
+      { agentId, name: saved.name, description: saved.description, status: saved.status, currentVersion: saved.currentVersion, apiFormat: String(saved.config.llm.format || '') },
     ]
     isNewAgent.value = false
     ElMessage.success('Agent 配置已保存')
@@ -787,7 +795,7 @@ onMounted(() => {
         </el-tab-pane>
         <el-tab-pane label="Agent 配置" name="agent">
           <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">AGENT RUNTIME</span><h3>Agent 配置</h3><p>Agent 以卡片方式管理，点击编辑后在独立窗口配置模型与运行参数。</p></div><div class="section-actions"><el-button @click="refreshAgents" :loading="refreshingAgents">刷新 Agent</el-button><el-button type="primary" plain @click="createAgent">新增 Agent</el-button></div></div>
-            <div class="agent-card-grid"><article v-for="agent in agents" :key="agent.agentId" class="agent-card"><div class="agent-card-top"><span class="resource-avatar agent-avatar">{{ (agent.name || agent.agentId).slice(0, 1) }}</span><span class="resource-status" /></div><h4>{{ agent.name || agent.agentId }}</h4><p>{{ agent.agentId }}</p><div class="agent-card-meta"><span>{{ agent.apiFormat || '未配置模型' }}</span><span>v{{ agent.currentVersion || 'draft' }}</span></div><el-button type="primary" plain @click="editAgent(agent.agentId)">编辑配置</el-button></article><button class="agent-card agent-card-add" @click="createAgent"><span>＋</span><strong>新增 Agent</strong><small>创建独立运行配置</small></button><div v-if="!agents.length" class="resource-empty">还没有 Agent</div></div>
+            <div class="agent-card-grid"><article v-for="agent in agents" :key="agent.agentId" class="agent-card"><div class="agent-card-top"><span class="resource-avatar agent-avatar">{{ (agent.name || agent.agentId).slice(0, 1) }}</span><span class="resource-status" /></div><h4>{{ agent.name || agent.agentId }}</h4><p>{{ agent.description || agent.agentId }}</p><div class="agent-card-meta"><span>{{ agent.apiFormat || '未配置模型' }}</span><span>v{{ agent.currentVersion || 'draft' }}</span></div><el-button type="primary" plain @click="editAgent(agent.agentId)">编辑配置</el-button></article><button class="agent-card agent-card-add" @click="createAgent"><span>＋</span><strong>新增 Agent</strong><small>创建独立运行配置</small></button><div v-if="!agents.length" class="resource-empty">还没有 Agent</div></div>
           </section>
         </el-tab-pane>
         <el-tab-pane label="MCP 绑定" name="mcp">
@@ -817,6 +825,8 @@ onMounted(() => {
         <el-form label-position="top" class="agent-form-grid">
           <el-form-item label="Agent ID"><el-input v-model="config.agentId" :disabled="!isNewAgent" placeholder="例如 customer-support" /><small class="form-help">只能使用字母、数字、点、下划线或短横线。</small></el-form-item>
           <el-form-item label="显示名称"><el-input v-model="config.name" placeholder="例如 客服助手" /></el-form-item>
+          <el-form-item label="能力描述" class="span-two"><el-input v-model="config.description" type="textarea" :rows="2" placeholder="说明这个 Agent 擅长处理的请求，供意图识别 Agent 选择。" /></el-form-item>
+          <el-form-item label="系统指令" class="span-two"><el-input v-model="config.config.instructions" type="textarea" :rows="4" placeholder="定义 Agent 的角色、边界和输出要求。意图识别 Agent 应要求只返回结构化选择结果。" /></el-form-item>
           <el-form-item label="最大连续轮次"><el-input-number v-model="config.config.maxTurns" :min="1" :max="1000" controls-position="right" /><small class="form-help">限制一次任务中的最大推理轮次。</small></el-form-item>
           <el-form-item label="发布状态"><div class="agent-readonly-value"><el-tag round effect="plain">{{ config.status === 2 ? 'Snapshot' : config.status === 1 ? 'Pending review' : 'Draft' }}</el-tag><span>版本 {{ config.currentVersion || '尚未发布' }}</span></div></el-form-item>
         </el-form>
