@@ -116,6 +116,11 @@ public class ConfigHealthCheckTests
             return Task.FromResult(true);
         }
 
+        public Task<bool> SetRemoveAsync(RedisKey key, RedisValue value, CommandFlags flags = CommandFlags.None)
+        {
+            return Task.FromResult(_sets.TryGetValue(key!, out var members) && members.Remove(value));
+        }
+
         public Task<TimeSpan> PingAsync(CommandFlags flags = CommandFlags.None) => Task.FromResult(TimeSpan.Zero);
 
         public RedisValue StringGet(RedisKey key, CommandFlags flags = CommandFlags.None) => RedisValue.Null;

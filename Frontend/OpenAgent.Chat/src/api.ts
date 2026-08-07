@@ -6,6 +6,8 @@ import type {
   ConversationMessage,
   ConversationRecord,
   CurrentUserContext,
+  LlmProviderProfile,
+  LlmTestResult,
   McpServerConfig,
   McpTestResult,
   RagConfig,
@@ -153,6 +155,30 @@ export const api = {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(config),
+    })
+  },
+
+  listLlmProfiles(): Promise<LlmProviderProfile[]> {
+    return request<LlmProviderProfile[]>('/api/v1/admin/llm')
+  },
+
+  saveLlmProfile(id: string, profile: LlmProviderProfile): Promise<LlmProviderProfile> {
+    return request<LlmProviderProfile>(`/api/v1/admin/llm/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(profile),
+    })
+  },
+
+  deleteLlmProfile(id: string): Promise<void> {
+    return request<void>(`/api/v1/admin/llm/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  },
+
+  testLlmProfile(profile: LlmProviderProfile): Promise<LlmTestResult> {
+    return request<LlmTestResult>('/api/v1/admin/llm/test-connection', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profile }),
     })
   },
 

@@ -95,6 +95,26 @@ export interface LlmConfig {
   temperature: number
 }
 
+export interface LlmProviderProfile {
+  id: string
+  name: string
+  format: 'OpenAIChatCompletions' | 'OpenAIResponses' | 'AnthropicMessages' | string
+  modelId: string
+  endpoint: string
+  apiKey: string
+  temperature: number
+}
+
+export interface LlmTestResult {
+  success: boolean
+  connected: boolean
+  statusCode?: number | null
+  latencyMs: number
+  modelId?: string | null
+  error?: string | null
+  traceId?: string | null
+}
+
 export interface RagInstanceConfig {
   id: string
   name: string

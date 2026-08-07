@@ -31,6 +31,7 @@ internal static class ServiceCollectionExtensions
         services.AddSingleton<AgentConfigLocalStore>();
         services.AddSingleton<AgentListQuery>();
         services.AddSingleton<AgentConfigManagementService>();
+        services.AddSingleton<LlmProfileManagementService>();
 
         services.AddSingleton<IAgentConfigProvider, ConfigProvider>();
 

@@ -37,6 +37,134 @@ internal static class ManagementEndpointExtensions
             return entity == null ? Results.NotFound() : Results.Ok(Redact(entity));
         });
 
+        group.MapGet("/llm", async (
+            [FromServices] LlmProfileManagementService manager,
+            HttpContext context,
+            CancellationToken cancellationToken) =>
+        {
+            if (!HasScope(context, "agent.config.read")) return Results.Forbid();
+            IReadOnlyList<LlmProviderProfile> profiles = await manager.ListAsync(cancellationToken).ConfigureAwait(false);
+            return Results.Ok(profiles.Select(RedactLlm));
+        });
+
+        group.MapGet("/llm/{id}", async (
+            [FromServices] LlmProfileManagementService manager,
+            HttpContext context,
+            string id,
+            CancellationToken cancellationToken) =>
+        {
+            if (!HasScope(context, "agent.config.read")) return Results.Forbid();
+            LlmProviderProfile? profile = await manager.GetAsync(id, cancellationToken).ConfigureAwait(false);
+            return profile == null ? Results.NotFound() : Results.Ok(RedactLlm(profile));
+        });
+
+        group.MapPut("/llm/{id}", async (
+            [FromServices] LlmProfileManagementService manager,
+            HttpContext context,
+            string id,
+            [FromBody] LlmProviderProfile profile,
+            CancellationToken cancellationToken) =>
+        {
+            if (!HasScope(context, "agent.config.write")) return Results.Forbid();
+            if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(profile.Name)
+                || string.IsNullOrWhiteSpace(profile.ModelId) || string.IsNullOrWhiteSpace(profile.Endpoint))
+            {
+                return Results.BadRequest(new { error = "LLM requires id, name, modelId and endpoint." });
+            }
+
+            profile.Id = id;
+            LlmProviderProfile? existing = await manager.GetAsync(id, cancellationToken).ConfigureAwait(false);
+            if (existing != null && (string.IsNullOrWhiteSpace(profile.ApiKey)
+                || profile.ApiKey.StartsWith("***", StringComparison.Ordinal)))
+            {
+                profile.ApiKey = existing.ApiKey;
+            }
+
+            LlmProviderProfile saved = await manager.SaveAsync(profile, cancellationToken).ConfigureAwait(false);
+            return Results.Ok(RedactLlm(saved));
+        });
+
+        group.MapDelete("/llm/{id}", async (
+            [FromServices] LlmProfileManagementService manager,
+            HttpContext context,
+            string id,
+            CancellationToken cancellationToken) =>
+        {
+            if (!HasScope(context, "agent.config.write")) return Results.Forbid();
+            return await manager.DeleteAsync(id, cancellationToken).ConfigureAwait(false)
+                ? Results.NoContent()
+                : Results.NotFound();
+        });
+
+        group.MapPost("/llm/test-connection", async (
+            [FromServices] IHttpClientFactory httpClientFactory,
+            [FromBody] LlmConnectionTestRequest request,
+            HttpContext context,
+            CancellationToken cancellationToken) =>
+        {
+            if (!HasScope(context, "capability.test")) return Results.Forbid();
+            LlmProviderProfile profile = request.Profile;
+            string traceId = context.GetAgentRequest().TraceId ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(profile.Endpoint))
+            {
+                return Results.Ok(new LlmConnectionTestResult
+                {
+                    ModelId = profile.ModelId,
+                    Error = "LLM endpoint is required.",
+                    TraceId = traceId
+                });
+            }
+
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            try
+            {
+                string endpoint = profile.Endpoint.TrimEnd('/');
+                if (!endpoint.EndsWith("/models", StringComparison.OrdinalIgnoreCase)) endpoint += "/models";
+                using HttpRequestMessage httpRequest = new(HttpMethod.Get, endpoint);
+                if (!string.IsNullOrWhiteSpace(profile.ApiKey) && !profile.ApiKey.StartsWith("***", StringComparison.Ordinal))
+                {
+                    if (profile.Format == ApiFormat.AnthropicMessages)
+                    {
+                        httpRequest.Headers.TryAddWithoutValidation("x-api-key", profile.ApiKey);
+                        httpRequest.Headers.TryAddWithoutValidation("anthropic-version", "2023-06-01");
+                    }
+                    else
+                    {
+                        httpRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", profile.ApiKey);
+                    }
+                }
+
+                using HttpResponseMessage response = await httpClientFactory
+                    .CreateClient("AgentLogin")
+                    .SendAsync(httpRequest, cancellationToken)
+                    .ConfigureAwait(false);
+                stopwatch.Stop();
+                return Results.Ok(new LlmConnectionTestResult
+                {
+                    Success = response.IsSuccessStatusCode,
+                    Connected = true,
+                    StatusCode = (int)response.StatusCode,
+                    LatencyMs = stopwatch.ElapsedMilliseconds,
+                    ModelId = profile.ModelId,
+                    Error = response.IsSuccessStatusCode ? null : $"HTTP {(int)response.StatusCode} {response.ReasonPhrase}",
+                    TraceId = traceId
+                });
+            }
+            catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
+            {
+                stopwatch.Stop();
+                return Results.Ok(new LlmConnectionTestResult
+                {
+                    Success = false,
+                    Connected = false,
+                    LatencyMs = stopwatch.ElapsedMilliseconds,
+                    ModelId = profile.ModelId,
+                    Error = exception.Message,
+                    TraceId = traceId
+                });
+            }
+        });
+
         group.MapPut("/agents/{agentId}/config", async (
             [FromServices] AgentConfigManagementService manager,
             HttpContext context,
@@ -365,6 +493,20 @@ internal static class ManagementEndpointExtensions
             AllowedGroups = [.. instance.AllowedGroups],
             AllowedTenantIds = [.. instance.AllowedTenantIds],
             AllowedRoles = [.. instance.AllowedRoles]
+        };
+    }
+
+    private static LlmProviderProfile RedactLlm(LlmProviderProfile profile)
+    {
+        return new LlmProviderProfile
+        {
+            Id = profile.Id,
+            Name = profile.Name,
+            Format = profile.Format,
+            ModelId = profile.ModelId,
+            Endpoint = profile.Endpoint,
+            ApiKey = string.IsNullOrWhiteSpace(profile.ApiKey) ? string.Empty : "***",
+            Temperature = profile.Temperature
         };
     }
 }

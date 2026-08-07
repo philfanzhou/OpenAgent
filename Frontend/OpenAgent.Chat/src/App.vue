@@ -6,13 +6,13 @@ import ChatHeader from './components/ChatHeader.vue'
 import ChatMessages from './components/ChatMessages.vue'
 import ChatSidebar from './components/ChatSidebar.vue'
 import MessageComposer from './components/MessageComposer.vue'
-import type { AgentConfigEntity, AgentSummary, AuthConfig, ConversationMessage, ConversationRecord, CurrentUserContext, McpServerConfig, McpTestResult, MessageAttachment, PendingAttachment, RagConfig, RagInstanceConfig, RagTestResult, SkillInstanceConfig, SkillsConfig } from './types'
+import type { AgentConfigEntity, AgentSummary, AuthConfig, ConversationMessage, ConversationRecord, CurrentUserContext, LlmProviderProfile, LlmTestResult, McpServerConfig, McpTestResult, MessageAttachment, PendingAttachment, RagConfig, RagInstanceConfig, RagTestResult, SkillInstanceConfig, SkillsConfig } from './types'
 
 const engineUrl = ref(getEngineBaseUrl())
 const token = ref(getAccessToken())
 const tenantId = ref(getTenantId())
 const showSettings = ref(!engineUrl.value)
-const activeSettings = ref<'engine' | 'agent' | 'mcp' | 'skill' | 'rag'>('engine')
+const activeSettings = ref<'engine' | 'llm' | 'agent' | 'mcp' | 'skill' | 'rag'>('engine')
 const agents = ref<AgentSummary[]>([])
 const currentUser = ref<CurrentUserContext | null>(null)
 const conversations = ref<ConversationRecord[]>([])
@@ -49,6 +49,14 @@ const ragDraft = ref<RagInstanceConfig>({ id: '', name: '', enabled: true, type:
 const ragInstances = ref<RagInstanceConfig[]>([])
 const selectedRagIndex = ref(-1)
 const ragResult = ref<RagTestResult | null>(null)
+const llmProfiles = ref<LlmProviderProfile[]>([])
+const llmDraft = ref<LlmProviderProfile>(createDefaultLlm())
+const selectedLlmIndex = ref(-1)
+const llmResult = ref<LlmTestResult | null>(null)
+const testingLlm = ref(false)
+const savingLlm = ref(false)
+const showLlmEditor = ref(false)
+const isNewLlm = ref(false)
 const pendingAttachments = ref<PendingAttachment[]>([])
 const themeMode = ref<'light' | 'dark'>(localStorage.getItem('openagent.ui.theme') === 'dark' ? 'dark' : 'light')
 
@@ -100,6 +108,18 @@ function toggleRagBinding(instance: RagInstanceConfig, enabled: boolean): void {
 
 function notifyError(error: unknown): void {
   ElMessage.error(error instanceof Error ? error.message : '请求失败')
+}
+
+function createDefaultLlm(): LlmProviderProfile {
+  return {
+    id: '',
+    name: '',
+    format: 'OpenAIChatCompletions',
+    modelId: 'gpt-4o',
+    endpoint: 'https://api.openai.com/v1',
+    apiKey: '',
+    temperature: 0.7,
+  }
 }
 
 async function connect(): Promise<void> {
@@ -164,6 +184,93 @@ async function loadWorkspace(): Promise<void> {
   } finally {
     loading.value = false
   }
+}
+
+async function loadLlmProfiles(): Promise<void> {
+  try {
+    llmProfiles.value = await api.listLlmProfiles()
+  } catch (error) {
+    notifyError(error)
+  }
+}
+
+function selectLlm(index: number): void {
+  const profile = llmProfiles.value[index]
+  if (!profile) return
+  selectedLlmIndex.value = index
+  llmDraft.value = { ...profile }
+  llmResult.value = null
+}
+
+function newLlm(): void {
+  selectedLlmIndex.value = -1
+  llmDraft.value = createDefaultLlm()
+  llmResult.value = null
+  isNewLlm.value = true
+  showLlmEditor.value = true
+}
+
+function editLlm(index: number): void {
+  selectLlm(index)
+  isNewLlm.value = false
+  showLlmEditor.value = true
+}
+
+async function deleteLlm(): Promise<void> {
+  const profile = llmProfiles.value[selectedLlmIndex.value]
+  if (!profile) return
+  try {
+    await ElMessageBox.confirm(`确认删除大模型配置「${profile.name}」吗？删除后绑定它的 Agent 将无法执行。`, '删除大模型配置', { type: 'warning' })
+    await api.deleteLlmProfile(profile.id)
+    llmProfiles.value.splice(selectedLlmIndex.value, 1)
+    selectedLlmIndex.value = llmProfiles.value.length ? 0 : -1
+    if (selectedLlmIndex.value >= 0) selectLlm(selectedLlmIndex.value)
+    ElMessage.success('大模型配置已删除')
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') notifyError(error)
+  }
+}
+
+async function saveLlm(): Promise<void> {
+  const profile = llmDraft.value
+  const id = profile.id.trim()
+  if (!id || !/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(id)) return notifyError(new Error('LLM ID 只能使用字母、数字、点、下划线或短横线'))
+  if (!profile.name.trim() || !profile.modelId.trim() || !profile.endpoint.trim()) return notifyError(new Error('请填写名称、模型 ID 和 Endpoint'))
+  profile.id = id
+  savingLlm.value = true
+  try {
+    const saved = await api.saveLlmProfile(id, profile)
+    const existingIndex = llmProfiles.value.findIndex(item => item.id === saved.id)
+    if (existingIndex >= 0) llmProfiles.value[existingIndex] = saved
+    else llmProfiles.value.push(saved)
+    selectLlm(existingIndex >= 0 ? existingIndex : llmProfiles.value.length - 1)
+    showLlmEditor.value = false
+    ElMessage.success('大模型配置已保存')
+  } catch (error) {
+    notifyError(error)
+  } finally {
+    savingLlm.value = false
+  }
+}
+
+async function testLlm(): Promise<void> {
+  testingLlm.value = true
+  try {
+    llmResult.value = await api.testLlmProfile(llmDraft.value)
+  } catch (error) {
+    notifyError(error)
+  } finally {
+    testingLlm.value = false
+  }
+}
+
+function applyLlmProfile(providerId: string): void {
+  const profile = llmProfiles.value.find(item => item.id === providerId)
+  if (!profile || !config.value) return
+  config.value.config.llm.format = profile.format
+  config.value.config.llm.modelId = profile.modelId
+  config.value.config.llm.endpoint = profile.endpoint
+  config.value.config.llm.temperature = profile.temperature
 }
 
 async function refreshAgents(): Promise<void> {
@@ -351,7 +458,7 @@ function newMcp(): void {
 async function editAgent(agentId: string): Promise<void> {
   selectedAgentId.value = agentId
   handleAgentChange()
-  await Promise.all([loadConfig(), loadMcp()])
+  await Promise.all([loadConfig(), loadMcp(), loadLlmProfiles()])
   isNewAgent.value = false
   showAgentEditor.value = true
 }
@@ -527,6 +634,7 @@ async function createAgent(): Promise<void> {
   mcpServers.value = []
   skillDraft.value = { enabledSkills: [], instances: [] }
   ragInstances.value = []
+  await loadLlmProfiles()
   showAgentEditor.value = true
 }
 
@@ -615,12 +723,22 @@ async function testMcp(): Promise<void> {
 function openSettings(panel: typeof activeSettings.value): void {
   activeSettings.value = panel
   showSettings.value = true
-  if (panel === 'agent' || panel === 'skill' || panel === 'rag') void loadConfig()
+  if (panel === 'llm') void loadLlmProfiles()
+  if (panel === 'agent') {
+    void loadConfig()
+    void loadLlmProfiles()
+  }
+  if (panel === 'skill' || panel === 'rag') void loadConfig()
   if (panel === 'mcp') void loadMcp()
 }
 
 function handleSettingsTabChange(name: string | number): void {
-  if (name === 'agent' || name === 'skill' || name === 'rag') void loadConfig()
+  if (name === 'llm') void loadLlmProfiles()
+  if (name === 'agent') {
+    void loadConfig()
+    void loadLlmProfiles()
+  }
+  if (name === 'skill' || name === 'rag') void loadConfig()
   if (name === 'mcp') void loadMcp()
 }
 
@@ -659,6 +777,11 @@ onMounted(() => {
             <el-alert title="当前仅使用基础账号密码建立身份。后端暂不校验账号密码正确性，具体资源授权后续单独实现。" type="info" :closable="false" />
             <section class="login-card"><div class="login-card-heading"><div><span class="eyebrow">BASIC ACCOUNT</span><h4>登录 Engine</h4></div><span class="login-config-status">{{ authConfig?.mode || 'Basic' }}</span></div><el-form label-position="top" class="login-form"><el-form-item label="账号"><el-input v-model="username" autocomplete="username" placeholder="请输入账号" /></el-form-item><el-form-item label="密码"><el-input v-model="password" type="password" show-password autocomplete="current-password" placeholder="请输入密码" /></el-form-item></el-form><el-button type="primary" :loading="authLoading" :disabled="!authConfig?.password.enabled" @click="loginWithPassword">账号密码登录</el-button><small class="login-hint">当前阶段只要填写账号和密码即可通过；后端不会核对账号是否存在或密码是否正确。</small></section>
             <div class="button-row"><el-button type="primary" @click="connect">保存并连接</el-button><el-button @click="api.health('/health').then(() => ElMessage.success('Live 健康检查通过')).catch(notifyError)">测试 Live</el-button><el-button @click="api.health('/ready').then(() => ElMessage.success('Ready 健康检查通过')).catch(notifyError)">测试 Ready</el-button></div>
+          </section>
+        </el-tab-pane>
+        <el-tab-pane label="LLM 配置" name="llm">
+          <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">MODEL PROVIDERS</span><h3>大模型配置</h3><p>独立维护多条模型供应商配置，Agent 通过 Provider ID 绑定；API Key 只在保存时写入，列表中始终脱敏。</p></div><div class="section-actions"><el-button @click="loadLlmProfiles">刷新</el-button><el-button type="primary" plain @click="newLlm">新增大模型</el-button></div></div>
+            <el-table :data="llmProfiles" class="capability-table" empty-text="还没有大模型配置"><el-table-column label="名称" min-width="180"><template #default="scope"><strong>{{ scope.row.name }}</strong><small class="table-subtext">{{ scope.row.id }}</small></template></el-table-column><el-table-column label="协议" width="190"><template #default="scope"><el-tag size="small" round>{{ scope.row.format }}</el-tag></template></el-table-column><el-table-column label="模型" min-width="150"> <template #default="scope">{{ scope.row.modelId }}</template></el-table-column><el-table-column label="Endpoint" min-width="260" show-overflow-tooltip><template #default="scope">{{ scope.row.endpoint }}</template></el-table-column><el-table-column label="密钥" width="100"><template #default="scope"><span class="table-status"><i />{{ scope.row.apiKey ? '已配置' : '未配置' }}</span></template></el-table-column><el-table-column label="操作" width="190" fixed="right"><template #default="scope"><el-button link type="primary" @click="editLlm(scope.$index)">编辑</el-button><el-button link @click="selectLlm(scope.$index); testLlm(); showLlmEditor = true">测试</el-button><el-button link type="danger" @click="selectLlm(scope.$index); deleteLlm()">删除</el-button></template></el-table-column></el-table>
           </section>
         </el-tab-pane>
         <el-tab-pane label="Agent 配置" name="agent">
@@ -701,7 +824,7 @@ onMounted(() => {
       <section class="agent-editor-section">
         <div class="agent-editor-section-heading"><div><span class="eyebrow">MODEL</span><h4>模型连接</h4><p>使用表单配置模型供应商、模型、协议和连接地址。</p></div><span class="editor-section-index">02</span></div>
         <el-form label-position="top" class="agent-form-grid">
-          <el-form-item label="供应商"><el-input v-model="config.config.llm.provider" placeholder="例如 OpenAI、Azure OpenAI、Anthropic" /></el-form-item>
+          <el-form-item label="大模型配置"><el-select v-model="config.config.llm.provider" class="full-width" filterable allow-create placeholder="选择已维护的配置或直接输入 Provider ID" @change="applyLlmProfile"><el-option v-for="profile in llmProfiles" :key="profile.id" :label="`${profile.name} · ${profile.modelId}`" :value="profile.id" /></el-select><small class="form-help">推荐先在“LLM 配置”中维护供应商，再在这里绑定 Provider ID。</small></el-form-item>
           <el-form-item label="模型 ID"><el-input v-model="config.config.llm.modelId" placeholder="例如 gpt-4o" /></el-form-item>
           <el-form-item label="API 格式"><el-select v-model="config.config.llm.format" class="full-width"><el-option label="OpenAI Chat Completions" value="OpenAIChatCompletions" /><el-option label="OpenAI Responses" value="OpenAIResponses" /><el-option label="Anthropic Messages" value="AnthropicMessages" /></el-select></el-form-item>
           <el-form-item label="Temperature"><el-input-number v-model="config.config.llm.temperature" :min="0" :max="2" :step="0.1" :precision="1" controls-position="right" /><small class="form-help">0 更稳定，2 更有创造性。</small></el-form-item>
@@ -720,6 +843,11 @@ onMounted(() => {
       </section>
     </div>
     <template #footer><el-button @click="showAgentEditor = false">取消</el-button><el-button type="primary" :loading="savingConfig" @click="saveConfig">保存 Agent 配置</el-button></template>
+  </el-dialog>
+
+  <el-dialog v-model="showLlmEditor" class="editor-dialog" :title="isNewLlm ? '新增大模型配置' : '编辑大模型配置'" width="min(720px, calc(100vw - 32px))" append-to-body destroy-on-close>
+    <el-form label-position="top" class="agent-form-grid"><el-form-item label="配置 ID"><el-input v-model="llmDraft.id" :disabled="!isNewLlm" placeholder="例如 openai-prod" /><small class="form-help">Agent 通过这个 ID 绑定大模型配置。</small></el-form-item><el-form-item label="显示名称"><el-input v-model="llmDraft.name" placeholder="例如 OpenAI 生产环境" /></el-form-item><el-form-item label="API 格式"><el-select v-model="llmDraft.format" class="full-width"><el-option label="OpenAI Chat Completions" value="OpenAIChatCompletions" /><el-option label="OpenAI Responses" value="OpenAIResponses" /><el-option label="Anthropic Messages" value="AnthropicMessages" /></el-select></el-form-item><el-form-item label="模型 ID"><el-input v-model="llmDraft.modelId" placeholder="例如 gpt-4o" /></el-form-item><el-form-item label="Temperature"><el-input-number v-model="llmDraft.temperature" :min="0" :max="2" :step="0.1" :precision="1" controls-position="right" /></el-form-item><el-form-item label="Endpoint"><el-input v-model="llmDraft.endpoint" placeholder="https://api.openai.com/v1" /></el-form-item><el-form-item label="API Key" class="span-two"><el-input v-model="llmDraft.apiKey" type="password" show-password placeholder="留空则保留已保存的密钥" /></el-form-item><el-alert v-if="llmResult" class="span-two" :title="`测试结果：${llmResult.success ? '连接和权限通过' : '连接失败'}${llmResult.statusCode ? ` · HTTP ${llmResult.statusCode}` : ''}`" :description="llmResult.error || `模型 ${llmResult.modelId || llmDraft.modelId} · 延迟 ${llmResult.latencyMs}ms`" :type="llmResult.success ? 'success' : 'warning'" :closable="false" /></el-form>
+    <template #footer><el-button @click="showLlmEditor = false">取消</el-button><el-button :loading="testingLlm" @click="testLlm">测试连接与权限</el-button><el-button type="primary" :loading="savingLlm" :disabled="!llmDraft.id" @click="saveLlm">保存大模型配置</el-button></template>
   </el-dialog>
 
   <el-dialog v-model="showMcpEditor" class="editor-dialog" title="编辑 MCP" width="min(650px, calc(100vw - 32px))" append-to-body destroy-on-close>
