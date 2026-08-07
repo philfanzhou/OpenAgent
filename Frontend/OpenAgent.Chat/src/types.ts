@@ -35,6 +35,11 @@ export interface MessageAttachment {
   previewUrl?: string
 }
 
+export interface PendingAttachment {
+  id: string
+  file: File
+}
+
 export interface ConversationRecord {
   conversationId: string
   tenantId: string

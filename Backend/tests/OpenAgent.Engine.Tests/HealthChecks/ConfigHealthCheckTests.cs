@@ -1,12 +1,7 @@
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
-using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using OpenAgent.Engine.Abstractions;
-using OpenAgent.Engine.Config;
-using OpenAgent.Engine.Models;
 using OpenAgent.Engine.Redis;
-using OpenAgent.Contracts.Configuration;
 using StackExchange.Redis;
 using Xunit;
 
@@ -14,93 +9,69 @@ namespace OpenAgent.Engine.Tests.HealthChecks;
 
 public class ConfigHealthCheckTests
 {
-    private static ConfigSnapshot CreateSnapshot()
-    {
-        return new ConfigSnapshot(
-            Options.Create(new ConfigSnapshotOptions()),
-            new MemoryCache(new MemoryCacheOptions()),
-            NullLogger<ConfigSnapshot>.Instance);
-    }
-
     [Fact]
-    public async Task Returns_degraded_when_no_published_agents()
+    public async Task Returns_healthy_when_no_published_agents()
     {
         var redis = new FakeRedisConnectionProvider();
-        var snapshot = CreateSnapshot();
-        var check = new ConfigHealthCheck(snapshot, redis);
-
-        var result = await check.CheckHealthAsync(new HealthCheckContext());
-
-        Assert.Equal(HealthStatus.Degraded, result.Status);
-    }
-
-    [Fact]
-    public async Task Returns_healthy_when_snapshot_fully_populated()
-    {
-        var redis = new FakeRedisConnectionProvider();
-        redis.AddSetMember("agent:published:index", "agent-ok");
-
-        var snapshot = CreateSnapshot();
-        snapshot.SetFullConfig("agent-ok", new AgentConfig
-        {
-            Llm = new LlmConfig { Provider = "openai", Format = ApiFormat.OpenAIChatCompletions }
-        });
-
-        var check = new ConfigHealthCheck(snapshot, redis);
+        var check = new ConfigHealthCheck(redis);
 
         var result = await check.CheckHealthAsync(new HealthCheckContext());
 
         Assert.Equal(HealthStatus.Healthy, result.Status);
-        Assert.Contains("fully populated", result.Description);
+        Assert.Contains("Published agents: 0", result.Description);
     }
 
     [Fact]
-    public async Task Returns_unhealthy_when_snapshot_is_empty()
+    public async Task Returns_healthy_when_published_agents_are_not_cached()
+    {
+        var redis = new FakeRedisConnectionProvider();
+        redis.AddSetMember("agent:published:index", "agent-ok");
+
+        var check = new ConfigHealthCheck(redis);
+
+        var result = await check.CheckHealthAsync(new HealthCheckContext());
+
+        Assert.Equal(HealthStatus.Healthy, result.Status);
+        Assert.Contains("optional", result.Description);
+    }
+
+    [Fact]
+    public async Task Returns_healthy_when_snapshot_is_empty()
     {
         var redis = new FakeRedisConnectionProvider();
         redis.AddSetMember("agent:published:index", "agent-missing");
 
-        var snapshot = CreateSnapshot();
-        var check = new ConfigHealthCheck(snapshot, redis);
+        var check = new ConfigHealthCheck(redis);
 
         var result = await check.CheckHealthAsync(new HealthCheckContext());
 
-        Assert.Equal(HealthStatus.Unhealthy, result.Status);
-        Assert.Contains("empty", result.Description);
+        Assert.Equal(HealthStatus.Healthy, result.Status);
     }
 
     [Fact]
-    public async Task Returns_degraded_when_snapshot_partially_populated()
+    public async Task Returns_healthy_when_snapshot_is_partially_populated()
     {
         var redis = new FakeRedisConnectionProvider();
         redis.AddSetMember("agent:published:index", "agent-ok");
         redis.AddSetMember("agent:published:index", "agent-missing");
 
-        var snapshot = CreateSnapshot();
-        snapshot.SetFullConfig("agent-ok", new AgentConfig
-        {
-            Llm = new LlmConfig { Provider = "openai", Format = ApiFormat.OpenAIChatCompletions }
-        });
-
-        var check = new ConfigHealthCheck(snapshot, redis);
+        var check = new ConfigHealthCheck(redis);
 
         var result = await check.CheckHealthAsync(new HealthCheckContext());
 
-        Assert.Equal(HealthStatus.Degraded, result.Status);
-        Assert.Contains("partially populated", result.Description);
+        Assert.Equal(HealthStatus.Healthy, result.Status);
     }
 
     [Fact]
     public async Task Returns_degraded_when_redis_not_available()
     {
         var redis = new FakeRedisConnectionProvider(available: false);
-        var snapshot = CreateSnapshot();
-        var check = new ConfigHealthCheck(snapshot, redis);
+        var check = new ConfigHealthCheck(redis);
 
         var result = await check.CheckHealthAsync(new HealthCheckContext());
 
         Assert.Equal(HealthStatus.Degraded, result.Status);
-        Assert.Contains("Redis is not available", result.Description);
+        Assert.Contains("cache is optional", result.Description);
     }
 
     private sealed class FakeRedisConnectionProvider : IRedisConnectionProvider

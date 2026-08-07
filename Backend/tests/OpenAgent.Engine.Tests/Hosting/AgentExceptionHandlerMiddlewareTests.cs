@@ -1,3 +1,4 @@
+using System.Net;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -9,7 +10,7 @@ namespace OpenAgent.Engine.Tests.Hosting;
 public class AgentExceptionHandlerMiddlewareTests
 {
     [Fact]
-    public async Task InvokeAsync_StreamEndpointThrows_WritesSseErrorAndDoneEvents()
+    public async Task InvokeAsync_StreamEndpointThrowsBeforeResponseStarts_WritesProblemDetails()
     {
         var context = new DefaultHttpContext();
         context.Request.Path = "/api/v1/agent/chat/stream";
@@ -19,14 +20,13 @@ public class AgentExceptionHandlerMiddlewareTests
 
         await middleware.InvokeAsync(context);
 
-        Assert.Equal(StatusCodes.Status200OK, context.Response.StatusCode);
-        Assert.Equal("text/event-stream", context.Response.ContentType);
+        Assert.Equal(StatusCodes.Status500InternalServerError, context.Response.StatusCode);
+        Assert.Equal("application/problem+json", context.Response.ContentType);
 
         context.Response.Body.Seek(0, SeekOrigin.Begin);
         var payload = await new StreamReader(context.Response.Body).ReadToEndAsync();
-        Assert.Contains("event: error", payload);
-        Assert.Contains("event: done", payload);
-        Assert.Contains("\"status\":\"error\"", payload);
+        Assert.Contains("\"status\":500", payload);
+        Assert.Contains("internal-error", payload);
     }
 
     [Fact]
@@ -71,6 +71,26 @@ public class AgentExceptionHandlerMiddlewareTests
         var payload = await new StreamReader(context.Response.Body).ReadToEndAsync();
         Assert.Contains("\"status\":500", payload);
         Assert.Contains("internal-error", payload);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_ProviderRateLimit_Preserves429Status()
+    {
+        var context = new DefaultHttpContext();
+        context.Request.Path = "/api/v1/agent/chat/stream";
+        context.Response.Body = new MemoryStream();
+
+        var middleware = CreateMiddleware(_ => throw new HttpRequestException(
+            "provider rate limit",
+            inner: null,
+            statusCode: HttpStatusCode.TooManyRequests));
+
+        await middleware.InvokeAsync(context);
+
+        Assert.Equal(StatusCodes.Status429TooManyRequests, context.Response.StatusCode);
+        context.Response.Body.Seek(0, SeekOrigin.Begin);
+        var payload = await new StreamReader(context.Response.Body).ReadToEndAsync();
+        Assert.Contains("ProviderRateLimited", payload);
     }
 
     [Fact]

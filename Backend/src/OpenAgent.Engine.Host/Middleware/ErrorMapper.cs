@@ -1,5 +1,7 @@
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
+using System.Net;
+using System.Net.Http;
 using ProblemDetails = Microsoft.AspNetCore.Mvc.ProblemDetails;
 
 namespace OpenAgent.Engine.Host.Middleware;
@@ -28,10 +30,46 @@ internal sealed class ErrorMapper(ProblemDetailsFactory problemDetailsFactory)
             TimeoutException => (504, problemDetailsFactory.Create(
                 "https://error.agent.com/timeout", "GatewayTimeout", 504,
                 "The request timed out", exception.Message, traceId)),
+            HttpRequestException httpException => MapHttpRequestException(
+                httpException,
+                traceId,
+                instance),
             _ => (500, problemDetailsFactory.Create(
                 "https://error.agent.com/internal-error", "InternalServerError", 500,
                 "An unexpected error occurred", "Please contact support if the problem persists", traceId))
         };
+    }
+
+    private (int StatusCode, ProblemDetails ProblemDetails) MapHttpRequestException(
+        HttpRequestException exception,
+        string traceId,
+        string instance)
+    {
+        int statusCode = exception.StatusCode switch
+        {
+            HttpStatusCode.Unauthorized => 401,
+            HttpStatusCode.Forbidden => 403,
+            HttpStatusCode.NotFound => 404,
+            HttpStatusCode.TooManyRequests => 429,
+            >= HttpStatusCode.BadRequest and < HttpStatusCode.InternalServerError => (int)exception.StatusCode.Value,
+            _ => 503
+        };
+        string title = statusCode switch
+        {
+            401 => "ProviderUnauthorized",
+            403 => "ProviderForbidden",
+            404 => "ProviderNotFound",
+            429 => "ProviderRateLimited",
+            _ => "DependencyUnavailable"
+        };
+        return (statusCode, problemDetailsFactory.Create(
+            $"https://error.agent.com/{title.ToLowerInvariant()}",
+            title,
+            statusCode,
+            "The model provider request failed.",
+            exception.Message,
+            traceId,
+            ("errorCode", (int)AgentErrorCode.DependencyUnavailable)));
     }
 
     internal static int MapAgentErrorCode(AgentErrorCode errorCode) => errorCode switch

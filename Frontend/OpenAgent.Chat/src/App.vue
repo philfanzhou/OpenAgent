@@ -1,8 +1,12 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, getAccessToken, getEngineBaseUrl, getTenantId, makeLocalConversation, setAccessToken, setEngineBaseUrl, setTenantId } from './api'
-import type { AgentConfigEntity, AgentSummary, AuthConfig, ConversationMessage, ConversationRecord, CurrentUserContext, McpServerConfig, McpTestResult, MessageAttachment, RagConfig, RagInstanceConfig, RagTestResult, SkillInstanceConfig, SkillsConfig } from './types'
+import ChatHeader from './components/ChatHeader.vue'
+import ChatMessages from './components/ChatMessages.vue'
+import ChatSidebar from './components/ChatSidebar.vue'
+import MessageComposer from './components/MessageComposer.vue'
+import type { AgentConfigEntity, AgentSummary, AuthConfig, ConversationMessage, ConversationRecord, CurrentUserContext, McpServerConfig, McpTestResult, MessageAttachment, PendingAttachment, RagConfig, RagInstanceConfig, RagTestResult, SkillInstanceConfig, SkillsConfig } from './types'
 
 const engineUrl = ref(getEngineBaseUrl())
 const token = ref(getAccessToken())
@@ -45,41 +49,13 @@ const ragDraft = ref<RagInstanceConfig>({ id: '', name: '', enabled: true, type:
 const ragInstances = ref<RagInstanceConfig[]>([])
 const selectedRagIndex = ref(-1)
 const ragResult = ref<RagTestResult | null>(null)
-const attachmentInput = ref<HTMLInputElement | null>(null)
-const messagesScrollbar = ref<{ setScrollTop: (value: number) => void } | null>(null)
-const pendingAttachments = ref<Array<{ id: string; file: File }>>([])
-
-const maxAttachmentCount = 5
-const maxAttachmentSize = 10 * 1024 * 1024
-const maxAttachmentTotalSize = 25 * 1024 * 1024
-
-const filteredConversations = computed(() => {
-  const keyword = search.value.trim().toLowerCase()
-  if (!keyword) return conversations.value
-  return conversations.value.filter(item => `${item.title || ''} ${item.conversationId}`.toLowerCase().includes(keyword))
-})
-
-const conversationGroups = computed(() => {
-  const today = new Date()
-  const groups = new Map<string, ConversationRecord[]>()
-  for (const item of filteredConversations.value) {
-    const date = new Date(item.updatedAt || item.lastMessageAt || item.createdAt)
-    const dayDiff = Number.isNaN(date.getTime()) ? 3 : Math.floor((today.getTime() - date.getTime()) / 86400000)
-    const label = dayDiff <= 0 ? '今天' : dayDiff === 1 ? '昨天' : '更早'
-    if (!groups.has(label)) groups.set(label, [])
-    groups.get(label)?.push(item)
-  }
-  return Array.from(groups, ([label, items]) => ({ label, items }))
-})
+const pendingAttachments = ref<PendingAttachment[]>([])
+const themeMode = ref<'light' | 'dark'>(localStorage.getItem('openagent.ui.theme') === 'dark' ? 'dark' : 'light')
 
 const currentMessages = computed(() => selectedConversation.value?.messages || [])
-const selectedAgent = computed(() => agents.value.find(item => item.agentId === selectedAgentId.value))
 const selectedSkill = computed(() => selectedSkillIndex.value >= 0 ? skillDraft.value.instances[selectedSkillIndex.value] || null : null)
 const enabledSkillIds = computed(() => new Set(skillDraft.value.enabledSkills))
 const enabledRagIds = computed(() => new Set(config.value?.config.rag?.enabledRagInstanceIds || ragInstances.value.filter(item => item.enabled).map(item => item.id)))
-const chatSubtitle = computed(() => selectedAgent.value
-  ? `${selectedAgent.value.name || selectedAgent.value.agentId} 已准备好为你工作`
-  : '选择一个 Agent，开始轻松协作')
 const mcpArgumentsText = computed({
   get: () => (mcpDraft.value.arguments || []).join('\n'),
   set: (value: string) => { mcpDraft.value.arguments = value.split('\n').map(item => item.trim()).filter(Boolean) },
@@ -87,9 +63,15 @@ const mcpArgumentsText = computed({
 
 const ragEnabledText = computed(() => config.value?.config.rag?.enabled ? '已启用' : '未启用')
 
-watch(currentMessages, () => {
-  void nextTick(() => messagesScrollbar.value?.setScrollTop(Number.MAX_SAFE_INTEGER))
-}, { deep: true })
+function applyTheme(): void {
+  document.documentElement.dataset.theme = themeMode.value
+  localStorage.setItem('openagent.ui.theme', themeMode.value)
+}
+
+function toggleTheme(): void {
+  themeMode.value = themeMode.value === 'dark' ? 'light' : 'dark'
+  applyTheme()
+}
 
 function isSkillEnabled(skillId: string): boolean {
   return enabledSkillIds.value.has(skillId)
@@ -254,50 +236,6 @@ function selectAgent(agentId: string): void {
   void loadConfig()
 }
 
-function formatFileSize(size: number): string {
-  if (size < 1024) return `${size} B`
-  if (size < 1024 * 1024) return `${Math.ceil(size / 1024)} KB`
-  return `${(size / 1024 / 1024).toFixed(1)} MB`
-}
-
-function openAttachmentPicker(): void {
-  attachmentInput.value?.click()
-}
-
-function handleAttachmentChange(event: Event): void {
-  const input = event.target as HTMLInputElement
-  const files = Array.from(input.files || [])
-  input.value = ''
-  if (!files.length) return
-
-  const currentSize = pendingAttachments.value.reduce((total, item) => total + item.file.size, 0)
-  const availableCount = maxAttachmentCount - pendingAttachments.value.length
-  if (availableCount <= 0) {
-    notifyError(`最多上传 ${maxAttachmentCount} 个文件`)
-    return
-  }
-
-  const accepted: Array<{ id: string; file: File }> = []
-  let totalSize = currentSize
-  for (const file of files.slice(0, availableCount)) {
-    if (file.size > maxAttachmentSize) {
-      notifyError(`${file.name} 超过单文件 ${formatFileSize(maxAttachmentSize)} 限制`)
-      continue
-    }
-    if (totalSize + file.size > maxAttachmentTotalSize) {
-      notifyError(`附件总大小不能超过 ${formatFileSize(maxAttachmentTotalSize)}`)
-      break
-    }
-    totalSize += file.size
-    accepted.push({ id: crypto.randomUUID(), file })
-  }
-  pendingAttachments.value = [...pendingAttachments.value, ...accepted]
-}
-
-function removeAttachment(id: string): void {
-  pendingAttachments.value = pendingAttachments.value.filter(item => item.id !== id)
-}
-
 async function send(): Promise<void> {
   const content = message.value.trim()
   const hasAttachments = pendingAttachments.value.length > 0
@@ -356,12 +294,6 @@ async function send(): Promise<void> {
   } finally {
     loading.value = false
   }
-}
-
-function handleComposerKeydown(event: KeyboardEvent): void {
-  if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return
-  event.preventDefault()
-  void send()
 }
 
 async function deleteConversation(item: ConversationRecord): Promise<void> {
@@ -693,6 +625,7 @@ function handleSettingsTabChange(name: string | number): void {
 }
 
 onMounted(() => {
+  applyTheme()
   if (engineUrl.value) {
     void connect()
   }
@@ -701,66 +634,21 @@ onMounted(() => {
 
 <template>
   <el-container class="app-shell">
-    <el-aside width="310px" class="sidebar">
-      <div class="brand"><span class="brand-mark">OA</span><div><strong>OpenAgent</strong><small>Chat Workspace</small></div></div>
-      <div class="sidebar-toolbar">
-        <el-button type="primary" @click="newConversation">新建会话</el-button>
-        <el-button circle @click="openSettings('engine')">⚙</el-button>
-      </div>
-      <el-input v-model="search" clearable placeholder="搜索会话" class="search-input" />
-      <div class="conversation-heading"><div><span class="section-label">最近对话</span><strong>{{ filteredConversations.length }}</strong></div><el-button text class="sidebar-refresh" @click="loadWorkspace">刷新</el-button></div>
-      <el-scrollbar class="conversation-list" wrap-class="conversation-list-wrap">
-        <div v-for="group in conversationGroups" :key="group.label" class="conversation-group">
-          <div class="conversation-group-label">{{ group.label }}</div>
-          <div v-for="item in group.items" :key="item.conversationId" class="conversation-item" :class="{ active: selectedConversation?.conversationId === item.conversationId }" @click="selectConversation(item)">
-            <div class="conversation-icon">{{ (item.title || '新').slice(0, 1) }}</div>
-            <div class="conversation-content"><div class="conversation-title">{{ item.title || '未命名会话' }}</div><div class="conversation-id">会话 ID：{{ item.conversationId }}</div></div>
-            <el-button text class="conversation-more" @click.stop="deleteConversation(item)">×</el-button>
-          </div>
-        </div>
-        <div v-if="!filteredConversations.length" class="empty-conversations"><div class="empty-orb">✦</div><strong>还没有对话</strong><span>新建一个对话开始吧</span></div>
-      </el-scrollbar>
-    </el-aside>
+    <ChatSidebar :conversations="conversations" :selected-conversation-id="selectedConversation?.conversationId" :search="search" :loading="loading" @update:search="search = $event" @new="newConversation" @settings="openSettings('engine')" @refresh="loadWorkspace" @select="selectConversation" @delete="deleteConversation" />
 
     <el-main class="main-panel">
-      <header class="topbar">
-        <div class="topbar-status"><span class="status-dot" :class="{ connected: statusText === '已连接' }" />{{ statusText }}<span class="status-caption">工作台</span></div>
-        <div class="topbar-actions">
-          <el-select v-model="selectedAgentId" placeholder="选择 Agent" @change="handleAgentChange">
-            <el-option v-for="agent in agents" :key="agent.agentId" :label="agent.name || agent.agentId" :value="agent.agentId" />
-          </el-select>
-          <el-button class="agent-refresh-button" circle :loading="refreshingAgents" aria-label="刷新 Agent 列表" title="刷新 Agent 列表" @click="refreshAgents">↻</el-button>
-          <el-button type="primary" plain @click="openSettings('engine')">设置</el-button>
-        </div>
-      </header>
+      <ChatHeader :status-text="statusText" :agents="agents" :selected-agent-id="selectedAgentId" :refreshing-agents="refreshingAgents" :title="selectedConversation?.title || '新对话'" :theme-mode="themeMode" @update:selected-agent-id="selectedAgentId = $event" @agent-change="handleAgentChange" @refresh-agents="refreshAgents" @settings="openSettings('engine')" @toggle-theme="toggleTheme" />
 
       <section class="chat-card">
-        <div class="chat-header"><div><span class="chat-kicker">OPENAGENT CHAT</span><h2>{{ selectedConversation?.title || '今天想从哪里开始？' }}</h2><p>{{ chatSubtitle }}</p></div><el-button text @click="newConversation">清空当前</el-button></div>
-        <el-scrollbar ref="messagesScrollbar" class="messages" wrap-class="messages-wrap" v-loading="loadingConversation">
-          <div v-if="!currentMessages.length" class="welcome"><div class="welcome-orbit"><div class="welcome-icon">✦</div><span class="orbit-dot orbit-dot-one" /><span class="orbit-dot orbit-dot-two" /></div><h1>你好，今天想完成什么？</h1><p>把问题、文件或灵感交给你的 Agent，一起把事情做好。</p></div>
-          <div v-for="item in currentMessages" :key="item.messageId" class="message-row" :class="item.role">
-            <div class="avatar">{{ item.role === 'user' ? '我' : item.role === 'tool' ? '工具' : 'AI' }}</div>
-            <div class="message-bubble"><div v-if="item.toolName" class="tool-tag">调用工具：{{ item.toolName }}</div><div v-if="item.attachments?.length" class="message-attachments"><div v-for="attachment in item.attachments" :key="attachment.fileName" class="message-attachment"><img v-if="attachment.previewUrl" :src="attachment.previewUrl" :alt="attachment.fileName" /><span>↗ {{ attachment.fileName }}</span></div></div><div class="message-content">{{ item.content || '…' }}</div></div>
-          </div>
-        </el-scrollbar>
-        <div class="composer">
-          <div v-if="pendingAttachments.length" class="attachment-list">
-            <div v-for="item in pendingAttachments" :key="item.id" class="attachment-chip">
-              <span class="attachment-icon">↗</span><span class="attachment-name" :title="item.file.name">{{ item.file.name }}</span><span class="attachment-size">{{ formatFileSize(item.file.size) }}</span>
-              <el-button link class="attachment-remove" @click="removeAttachment(item.id)">×</el-button>
-            </div>
-          </div>
-          <el-input v-model="message" type="textarea" :rows="3" resize="none" placeholder="输入消息，按 Enter 发送；Shift + Enter 换行" @keydown="handleComposerKeydown" />
-          <input ref="attachmentInput" class="attachment-input" type="file" multiple accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.json,.txt,.csv,.md" @change="handleAttachmentChange" />
-          <div class="composer-footer"><div class="composer-hints"><el-button text class="attach-button" @click="openAttachmentPicker">＋ 添加附件</el-button><span>支持图片、PDF、JSON、TXT、CSV、Markdown</span></div><div class="composer-actions"><span>Engine：{{ engineUrl || '未配置' }}</span><el-button type="primary" :loading="loading" :disabled="!selectedAgentId || (!message.trim() && !pendingAttachments.length)" @click="send">发送</el-button></div></div>
-        </div>
+        <ChatMessages :messages="currentMessages" :loading="loadingConversation" />
+        <MessageComposer :model-value="message" :engine-url="engineUrl" :selected-agent-id="selectedAgentId" :loading="loading" :pending-attachments="pendingAttachments" @update:model-value="message = $event" @attachments-change="pendingAttachments = $event" @send="send" />
       </section>
     </el-main>
   </el-container>
 
-  <el-dialog v-model="showSettings" class="settings-dialog" width="min(960px, calc(100vw - 32px))" top="5vh" :close-on-click-modal="false" destroy-on-close>
+  <el-dialog v-model="showSettings" class="settings-dialog" width="min(1180px, calc(100vw - 40px))" top="3vh" :close-on-click-modal="false" destroy-on-close>
     <template #header>
-      <div class="settings-header"><div><span class="eyebrow">WORKSPACE CONTROL</span><h2>工作台设置</h2></div><el-tag v-if="selectedAgent" effect="plain" round>{{ selectedAgent.name || selectedAgent.agentId }}</el-tag></div>
+      <div class="settings-header"><div><span class="eyebrow">WORKSPACE CONTROL</span><h2>工作台设置</h2></div></div>
     </template>
     <div class="settings-body">
       <el-tabs v-model="activeSettings" tab-position="left" class="settings-tabs" @tab-change="handleSettingsTabChange">
@@ -790,7 +678,7 @@ onMounted(() => {
         </el-tab-pane>
         <el-tab-pane label="RAG 绑定" name="rag">
           <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">CAPABILITIES</span><h3>RAG 绑定</h3><p>按表格维护检索实例，并可逐条测试 RAG 服务地址。</p></div><div class="section-actions"><el-button type="primary" plain @click="newRag">新增 RAG</el-button></div></div>
-            <div class="capability-summary"><span>当前 Agent：{{ selectedAgent?.name || selectedAgentId || '未选择' }}</span><strong>{{ ragEnabledText }}</strong></div><el-table :data="ragInstances" class="capability-table" empty-text="还没有绑定 RAG"><el-table-column label="名称" min-width="180"><template #default="scope"><strong>{{ scope.row.name || scope.row.id }}</strong><small class="table-subtext">{{ scope.row.id }}</small></template></el-table-column><el-table-column label="类型" width="130"><template #default="scope"><el-tag size="small" round>{{ scope.row.type }}</el-tag></template></el-table-column><el-table-column label="Endpoint" min-width="260" show-overflow-tooltip><template #default="scope">{{ scope.row.apiEndpoint || '未配置' }}</template></el-table-column><el-table-column label="状态" width="110"><template #default="scope"><span class="table-status" :class="{ muted: !isRagEnabled(scope.row.id) }"><i />{{ isRagEnabled(scope.row.id) ? '已绑定' : '未绑定' }}</span></template></el-table-column><el-table-column label="操作" width="190" fixed="right"><template #default="scope"><el-button link type="primary" @click="editRag(scope.$index)">编辑</el-button><el-button link @click="testRagRow(scope.$index)">测试</el-button><el-button link type="danger" @click="selectRag(scope.$index); deleteRag()">删除</el-button></template></el-table-column></el-table>
+            <div class="capability-summary"><strong>{{ ragEnabledText }}</strong></div><el-table :data="ragInstances" class="capability-table" empty-text="还没有绑定 RAG"><el-table-column label="名称" min-width="180"><template #default="scope"><strong>{{ scope.row.name || scope.row.id }}</strong><small class="table-subtext">{{ scope.row.id }}</small></template></el-table-column><el-table-column label="类型" width="130"><template #default="scope"><el-tag size="small" round>{{ scope.row.type }}</el-tag></template></el-table-column><el-table-column label="Endpoint" min-width="260" show-overflow-tooltip><template #default="scope">{{ scope.row.apiEndpoint || '未配置' }}</template></el-table-column><el-table-column label="状态" width="110"><template #default="scope"><span class="table-status" :class="{ muted: !isRagEnabled(scope.row.id) }"><i />{{ isRagEnabled(scope.row.id) ? '已绑定' : '未绑定' }}</span></template></el-table-column><el-table-column label="操作" width="190" fixed="right"><template #default="scope"><el-button link type="primary" @click="editRag(scope.$index)">编辑</el-button><el-button link @click="testRagRow(scope.$index)">测试</el-button><el-button link type="danger" @click="selectRag(scope.$index); deleteRag()">删除</el-button></template></el-table-column></el-table>
           </section>
         </el-tab-pane>
       </el-tabs>
