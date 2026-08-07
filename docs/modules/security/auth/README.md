@@ -1,31 +1,37 @@
 # Auth
 
-Auth 中间件是 Agent Pipeline 中的安全关卡，负责验证请求用户是否已通过认证。
+当前认证只负责从基础账号密码建立请求身份，不负责用户目录查询、密码正确性校验或资源授权。
 
-## Core Capabilities
-| Capability | Description |
-|-----------|-------------|
-| 认证检查 | 通过 `IPermissionEvaluator.IsAuthenticatedAsync` 判断认证状态 |
-| 双路径覆盖 | 同步 `InvokeAsync` 与流式 `InvokeStreamAsync` 共享 `EnsureAuthenticatedAsync` |
-| 异常拒绝 | 未认证时抛出 `AgentException(PermissionDenied, "User is not authenticated")` |
+## 当前行为
 
-## Architecture
-```text
-请求 → Auth（首个中间件）→ TenantValidation → 后续中间件
-        │
-   IsAuthenticated=false → 抛 AgentException(PermissionDenied)
-   IsAuthenticated=true  → 继续管道
+| 能力 | 行为 |
+|---|---|
+| 登录 | `POST /api/v1/auth/password/token` 接收账号密码并返回 Basic 凭据 |
+| 认证 | 后端解析 `Authorization: Basic ...`，任意格式正确的账号密码均可通过 |
+| 用户身份 | Basic 用户名作为 `UserId`，租户从 `X-Tenant-Id` 或默认配置取得 |
+| 开发免登录 | Development 环境且 `Authentication:AllowDevelopmentAnonymous=true` 时使用默认开发用户 |
+| 授权 | 当前策略只要求已认证，资源级授权后续单独实现 |
+
+## 配置
+
+```json
+{
+  "Authentication": {
+    "Mode": "Basic",
+    "AllowTenantHeader": true,
+    "AllowDevelopmentAnonymous": false,
+    "DevelopmentUserId": "development-user",
+    "DevelopmentTenantId": "development"
+  }
+}
 ```
 
-## Current Status
-**Implemented** — 作为 Pipeline 第一个中间件，依赖注入 `IPermissionEvaluator`，默认实现 `PermissionEvaluator` 仅检查 `IsAuthenticated` 属性。
-
-## Limits
-- 默认实现仅检查 `IsAuthenticated` 属性，不处理 M2M、Audience 等复杂场景
-- 复杂认证逻辑应通过替换 `IPermissionEvaluator` 实现，不修改中间件本身
-- 不使用 HTTP 401/403 语义，由宿主层负责 HTTP 映射
+生产环境应关闭 `AllowDevelopmentAnonymous`。当前 Basic 凭据本身不包含签名，适用于联调和功能开发，
+不应作为生产环境的最终安全方案。
 
 ## Source
-- Implementation: `Backend/src/OpenAgent.Engine.Host/Middleware/AgentUserContextMiddleware.cs`, `Backend/src/OpenAgent.Engine.Host/Middleware/EngineAdmissionMiddleware.cs`（Auth 中间件已移入 Host）
-- Contract: `Backend/src/OpenAgent.Core/Security/IAgentAuthorizationService.cs`
-- Tests: 无专门测试文件（待补充）
+
+- Handler: `Backend/src/OpenAgent.Hosting/Security/BasicAuthenticationHandler.cs`
+- Registration: `Backend/src/OpenAgent.Hosting/Authentication/AgentAuthenticationExtensions.cs`
+- Login endpoint: `Backend/src/OpenAgent.Engine.Host/Extensions/AuthenticationEndpointExtensions.cs`
+- Context mapping: `Backend/src/OpenAgent.Engine.Host/Middleware/AgentUserContextMiddleware.cs`

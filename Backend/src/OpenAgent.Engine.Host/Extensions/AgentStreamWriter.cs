@@ -18,67 +18,40 @@ internal static class AgentStreamWriter
         context.Response.StatusCode = StatusCodes.Status200OK;
         StreamingResponseHeaders.ApplySse(context);
         TokenUsage? usage = null;
-        try
+        await using StreamingHeartbeat heartbeat = StreamingHeartbeat.Start(
+            token => WriteHeartbeatAsync(context, token),
+            StreamHeartbeatInterval,
+            logger,
+            "agent-stream",
+            traceId,
+            cancellationToken);
+        await foreach (AgentStreamEvent streamEvent in events.WithCancellation(cancellationToken))
         {
-            await using StreamingHeartbeat heartbeat = StreamingHeartbeat.Start(
-                token => WriteHeartbeatAsync(context, token),
-                StreamHeartbeatInterval,
-                logger,
-                "agent-stream",
-                traceId,
-                cancellationToken);
-            await foreach (AgentStreamEvent streamEvent in events.WithCancellation(cancellationToken))
+            if (streamEvent.Type == AgentStreamEventType.Usage)
             {
-                if (streamEvent.Type == AgentStreamEventType.Usage)
-                {
-                    usage = streamEvent.Usage;
-                    continue;
-                }
-
-                string eventName = streamEvent.Type switch
-                {
-                    AgentStreamEventType.Reasoning => "reasoning",
-                    AgentStreamEventType.ToolCall => "tool_call",
-                    _ => "content"
-                };
-                string data = JsonSerializer.Serialize(new
-                {
-                    content = streamEvent.Content,
-                    toolName = streamEvent.ToolName,
-                    toolCallId = streamEvent.ToolCallId
-                });
-                await heartbeat.WriteAsync(
-                    token => WriteSseEventAsync(context, eventName, data, token),
-                    cancellationToken).ConfigureAwait(false);
+                usage = streamEvent.Usage;
+                continue;
             }
 
-            string done = JsonSerializer.Serialize(new { done = true, usage });
-            await WriteSseEventAsync(context, "done", done, cancellationToken).ConfigureAwait(false);
+            string eventName = streamEvent.Type switch
+            {
+                AgentStreamEventType.Reasoning => "reasoning",
+                AgentStreamEventType.ToolCall => "tool_call",
+                _ => "content"
+            };
+            string data = JsonSerializer.Serialize(new
+            {
+                content = streamEvent.Content,
+                toolName = streamEvent.ToolName,
+                toolCallId = streamEvent.ToolCallId
+            });
+            await heartbeat.WriteAsync(
+                token => WriteSseEventAsync(context, eventName, data, token),
+                cancellationToken).ConfigureAwait(false);
         }
-        catch (OperationCanceledException) when (!context.RequestAborted.IsCancellationRequested)
-        {
-            await WriteSseEventAsync(
-                context,
-                "done",
-                JsonSerializer.Serialize(new { done = true, status = "cancelled" }),
-                CancellationToken.None).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-        }
-        catch (Exception exception) when (!context.RequestAborted.IsCancellationRequested)
-        {
-            await WriteSseEventAsync(
-                context,
-                "error",
-                JsonSerializer.Serialize(StreamingPayloadFactory.CreateErrorPayload(exception, traceId)),
-                CancellationToken.None).ConfigureAwait(false);
-            await WriteSseEventAsync(
-                context,
-                "done",
-                JsonSerializer.Serialize(new { done = true, status = "error" }),
-                CancellationToken.None).ConfigureAwait(false);
-        }
+
+        string done = JsonSerializer.Serialize(new { done = true, usage });
+        await WriteSseEventAsync(context, "done", done, cancellationToken).ConfigureAwait(false);
     }
 
     private static async Task WriteHeartbeatAsync(

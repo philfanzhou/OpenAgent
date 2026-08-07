@@ -17,6 +17,10 @@ internal static class ConversationEndpointExtensions
             .WithName("SearchConversations")
             .WithTags("Conversation");
 
+        group.MapGet("/conversations/{conversationId}", GetAsync)
+            .WithName("GetConversation")
+            .WithTags("Conversation");
+
         group.MapDelete("/conversations/{conversationId}", DeleteAsync)
             .WithName("DeleteConversation")
             .WithTags("Conversation");
@@ -86,5 +90,23 @@ internal static class ConversationEndpointExtensions
             conversationId,
             cancellationToken).ConfigureAwait(false);
         return deleted ? Results.NoContent() : Results.NotFound();
+    }
+
+    private static async Task<IResult> GetAsync(
+        [FromServices] IConversationQueryService queryService,
+        HttpContext context,
+        string conversationId,
+        CancellationToken cancellationToken = default)
+    {
+        ConversationRecord? record = await queryService.GetRecordAsync(
+            AgentEndpointRequestMapper.RequireTenant(context),
+            conversationId,
+            cancellationToken).ConfigureAwait(false);
+        if (record == null) return Results.NotFound();
+
+        string userId = context.GetAgentRequest().User.UserId;
+        return string.Equals(record.UserId, userId, StringComparison.OrdinalIgnoreCase)
+            ? Results.Ok(record)
+            : Results.Forbid();
     }
 }

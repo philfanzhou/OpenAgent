@@ -36,6 +36,17 @@ internal sealed class HotReloadService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        while (!_redis.IsAvailable && !stoppingToken.IsCancellationRequested)
+        {
+            EngineLog.HotReloadRedisUnavailable(_logger);
+            await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken).ConfigureAwait(false);
+        }
+
+        if (stoppingToken.IsCancellationRequested)
+        {
+            return;
+        }
+
         Subscribe(CurrentUpdatesChannel);
         foreach (var channelName in LegacyChannels)
         {

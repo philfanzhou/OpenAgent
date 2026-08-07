@@ -90,12 +90,15 @@ public class HostingTests
             ("/api/v1/agent/chat/attachments", "POST", "ChatWithAttachments", "Agent"),
             ("/api/v1/agent/chat/attachments/stream", "POST", "ChatWithAttachmentsStream", "Agent"),
             ("/api/v1/agent/agents", "GET", "ListAgents", "Agent"),
+            ("/api/v1/agent/me", "GET", "CurrentAgentUser", "Agent"),
             ("/api/v1/agent/conversations", "GET", "ListConversations", "Conversation"),
             ("/api/v1/agent/conversations/search", "GET", "SearchConversations", "Conversation"),
+            ("/api/v1/agent/conversations/{conversationId}", "GET", "GetConversation", "Conversation"),
             ("/api/v1/agent/conversations/{conversationId}", "DELETE", "DeleteConversation", "Conversation")
         };
 
         var actual = routeEndpoints
+            .Where(endpoint => endpoint.RoutePattern.RawText?.StartsWith("/api/v1/agent", StringComparison.Ordinal) == true)
             .Select(endpoint =>
             {
                 IHttpMethodMetadata methods = endpoint.Metadata.GetMetadata<IHttpMethodMetadata>()!;

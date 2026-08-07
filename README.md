@@ -31,5 +31,7 @@ dotnet test Backend/OpenAgent.sln
 
 ## 安全
 
-> ⚠️ **本仓库默认使用 PassThrough 认证处理器，仅适用于开发环境。**
-> 部署到生产环境前，请务必阅读 [安全设计文档](docs/modules/security/README.md) 进行安全加固。
+当前认证仅使用基础账号密码。后端只解析 Basic 凭据，不查询用户目录、不校验密码正确性；
+资源和能力授权暂不实现，后续单独建设。Development 环境可配置
+`Authentication:AllowDevelopmentAnonymous=true`，允许不带账号密码请求。
+详见 [安全设计文档](docs/modules/security/README.md)。

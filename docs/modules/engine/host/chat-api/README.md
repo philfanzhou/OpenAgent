@@ -13,6 +13,7 @@ ChatApi 提供 Agent.Engine 的核心 HTTP 端点，支持客户端以同步、�
 | `/api/v1/agent/agents` | GET | Agent 列表 | JSON |
 | `/api/v1/agent/conversations` | GET | 会话列表 | JSON |
 | `/api/v1/agent/conversations/search` | GET | 会话搜索 | JSON |
+| `/api/v1/agent/conversations/{conversationId}` | GET | 会话详情 | JSON |
 | `/api/v1/agent/conversations/{conversationId}` | DELETE | 软删除会话 | 空响应 |
 | `/health`、`/health/live` | GET | 存活检查 | Health Check |
 | `/ready`、`/health/ready` | GET | 就绪检查 | Health Check |

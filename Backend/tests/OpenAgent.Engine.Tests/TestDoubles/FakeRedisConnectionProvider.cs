@@ -27,6 +27,8 @@ internal sealed class FakeRedisConnectionProvider : IRedisConnectionProvider
 
     public Task<bool> SetAddAsync(RedisKey key, RedisValue value, CommandFlags flags = CommandFlags.None) => Task.FromResult(true);
 
+    public Task<bool> SetRemoveAsync(RedisKey key, RedisValue value, CommandFlags flags = CommandFlags.None) => Task.FromResult(true);
+
     public Task<TimeSpan> PingAsync(CommandFlags flags = CommandFlags.None) => Task.FromResult(TimeSpan.FromMilliseconds(1));
 
     public RedisValue StringGet(RedisKey key, CommandFlags flags = CommandFlags.None) =>

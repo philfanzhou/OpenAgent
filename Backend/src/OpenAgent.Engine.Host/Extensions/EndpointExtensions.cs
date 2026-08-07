@@ -1,3 +1,6 @@
+using OpenAgent.Contracts.Security;
+using OpenAgent.Engine.Host.Middleware;
+
 namespace OpenAgent.Engine.Host.Extensions;
 
 internal static class EndpointExtensions
@@ -11,6 +14,24 @@ internal static class EndpointExtensions
         group.MapAttachmentChat();
         group.MapAgentCatalog();
         group.MapConversations();
+        endpoints.MapManagementEndpoints();
+
+        group.MapGet("/me", (HttpContext context) =>
+        {
+            IAgentUserContext user = context.GetAgentRequest().User;
+            return Results.Ok(new
+            {
+                userId = user.UserId,
+                tenantId = user.TenantId,
+                roles = user.Roles,
+                groups = user.Groups,
+                audience = user.Audience,
+                isAuthenticated = user.IsAuthenticated
+            });
+        })
+        .WithName("CurrentAgentUser")
+        .WithTags("Agent");
+
         return group;
     }
 }

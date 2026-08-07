@@ -34,8 +34,10 @@ public class LlmProviderProfile
     public string Id { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public ApiFormat Format { get; set; } = ApiFormat.OpenAIChatCompletions;
+    public string ModelId { get; set; } = string.Empty;
     public string Endpoint { get; set; } = string.Empty;
     public string ApiKey { get; set; } = string.Empty;
+    public double Temperature { get; set; } = 0.7;
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
@@ -58,6 +60,10 @@ public class McpServerConfig
     public string Url { get; set; } = string.Empty;
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public McpServerType Type { get; set; } = McpServerType.Http;
+    public string? Command { get; set; }
+    public List<string> Arguments { get; set; } = new();
+    public string? WorkingDirectory { get; set; }
+    public Dictionary<string, string> EnvironmentVariables { get; set; } = new();
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
