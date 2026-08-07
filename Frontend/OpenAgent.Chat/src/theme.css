@@ -112,6 +112,11 @@
   font-size: 11px;
 }
 
+.agent-refresh-button {
+  color: var(--oa-purple-dark) !important;
+  background: #f0efff !important;
+}
+
 .conversation-group-label {
   padding: 11px 9px 5px;
   color: #6f7e99;
@@ -415,7 +420,7 @@
 .messages .el-scrollbar__view { min-width: 0; }
 .message-row { min-width: 0; }
 .message-bubble { min-width: 0; max-width: min(78%, 920px); overflow-wrap: anywhere; }
-.composer { flex: 0 0 auto; }
+.composer { flex: 0 0 auto; margin-right: 0; margin-left: 0; }
 
 .message-attachments { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
 .message-attachment { display: flex; max-width: 220px; flex-direction: column; gap: 5px; padding: 6px; border: 1px solid #dfe2ff; border-radius: 10px; color: #5d54e8; background: rgba(255,255,255,.7); font-size: 11px; }

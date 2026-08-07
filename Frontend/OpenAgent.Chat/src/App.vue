@@ -19,6 +19,7 @@ const search = ref('')
 const loading = ref(false)
 const loadingConversation = ref(false)
 const savingConfig = ref(false)
+const refreshingAgents = ref(false)
 const testingMcp = ref(false)
 const testingSkill = ref(false)
 const testingRag = ref(false)
@@ -180,6 +181,26 @@ async function loadWorkspace(): Promise<void> {
     notifyError(error)
   } finally {
     loading.value = false
+  }
+}
+
+async function refreshAgents(): Promise<void> {
+  refreshingAgents.value = true
+  try {
+    const refreshed = await api.listAgents()
+    agents.value = refreshed
+    if (!refreshed.some(item => item.agentId === selectedAgentId.value)) {
+      selectedAgentId.value = refreshed[0]?.agentId || ''
+      config.value = null
+    }
+    if (selectedAgentId.value && activeSettings.value === 'agent') {
+      await loadConfig()
+    }
+    ElMessage.success('Agent 列表已刷新')
+  } catch (error) {
+    notifyError(error)
+  } finally {
+    refreshingAgents.value = false
   }
 }
 
@@ -708,6 +729,7 @@ onMounted(() => {
           <el-select v-model="selectedAgentId" placeholder="选择 Agent" @change="handleAgentChange">
             <el-option v-for="agent in agents" :key="agent.agentId" :label="agent.name || agent.agentId" :value="agent.agentId" />
           </el-select>
+          <el-button class="agent-refresh-button" circle :loading="refreshingAgents" aria-label="刷新 Agent 列表" title="刷新 Agent 列表" @click="refreshAgents">↻</el-button>
           <el-button type="primary" plain @click="openSettings('engine')">设置</el-button>
         </div>
       </header>
@@ -752,7 +774,7 @@ onMounted(() => {
           </section>
         </el-tab-pane>
         <el-tab-pane label="Agent 配置" name="agent">
-          <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">AGENT RUNTIME</span><h3>Agent 配置</h3><p>Agent 以卡片方式管理，点击编辑后在独立窗口配置模型与运行参数。</p></div><div class="section-actions"><el-button type="primary" plain @click="createAgent">新增 Agent</el-button><el-button @click="loadWorkspace">重新加载</el-button></div></div>
+          <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">AGENT RUNTIME</span><h3>Agent 配置</h3><p>Agent 以卡片方式管理，点击编辑后在独立窗口配置模型与运行参数。</p></div><div class="section-actions"><el-button @click="refreshAgents" :loading="refreshingAgents">刷新 Agent</el-button><el-button type="primary" plain @click="createAgent">新增 Agent</el-button></div></div>
             <div class="agent-card-grid"><article v-for="agent in agents" :key="agent.agentId" class="agent-card"><div class="agent-card-top"><span class="resource-avatar agent-avatar">{{ (agent.name || agent.agentId).slice(0, 1) }}</span><span class="resource-status" /></div><h4>{{ agent.name || agent.agentId }}</h4><p>{{ agent.agentId }}</p><div class="agent-card-meta"><span>{{ agent.apiFormat || '未配置模型' }}</span><span>v{{ agent.currentVersion || 'draft' }}</span></div><el-button type="primary" plain @click="editAgent(agent.agentId)">编辑配置</el-button></article><button class="agent-card agent-card-add" @click="createAgent"><span>＋</span><strong>新增 Agent</strong><small>创建独立运行配置</small></button><div v-if="!agents.length" class="resource-empty">还没有 Agent</div></div>
           </section>
         </el-tab-pane>

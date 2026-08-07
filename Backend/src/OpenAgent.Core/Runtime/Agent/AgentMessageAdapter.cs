@@ -54,8 +54,8 @@ internal static class AgentMessageAdapter
             IDictionary<string, object?>? arguments = ParseArguments(
                 message.Metadata?.GetValueOrDefault("ToolArguments"));
             chatMessage.Contents.Add(new FunctionCallContent(
-                message.ToolName,
                 message.ToolCallId,
+                message.ToolName,
                 arguments));
         }
 
@@ -93,7 +93,7 @@ internal static class AgentMessageAdapter
             if (!string.IsNullOrEmpty(text) || (calls.Count == 0 && functionResults.Count == 0))
             {
                 FunctionCallContent? firstCall = calls.FirstOrDefault();
-                if (firstCall != null)
+                if (firstCall != null && !string.IsNullOrWhiteSpace(firstCall.CallId))
                 {
                     toolNames[firstCall.CallId] = firstCall.Name;
                 }
@@ -109,7 +109,10 @@ internal static class AgentMessageAdapter
             foreach (FunctionCallContent call in calls.Skip(
                 string.IsNullOrEmpty(text) ? 0 : 1))
             {
-                toolNames[call.CallId] = call.Name;
+                if (!string.IsNullOrWhiteSpace(call.CallId))
+                {
+                    toolNames[call.CallId] = call.Name;
+                }
                 result.Add(CreateStored(
                     nextSequence++,
                     "assistant",
@@ -121,12 +124,15 @@ internal static class AgentMessageAdapter
 
             foreach (FunctionResultContent functionResult in functionResults)
             {
+                string? toolName = string.IsNullOrWhiteSpace(functionResult.CallId)
+                    ? null
+                    : toolNames.GetValueOrDefault(functionResult.CallId);
                 result.Add(CreateStored(
                     nextSequence++,
                     "tool",
                     functionResult.Result?.ToString() ?? string.Empty,
                     functionResult.CallId,
-                    toolNames.GetValueOrDefault(functionResult.CallId),
+                    toolName,
                     metadata: null));
             }
         }

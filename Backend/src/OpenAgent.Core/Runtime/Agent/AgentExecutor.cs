@@ -92,10 +92,16 @@ public sealed class AgentExecutor
             cancellationToken);
         await foreach (AgentResponseUpdate update in updates.WithCancellation(cancellationToken))
         {
-            foreach (FunctionCallContent call in update.Contents.OfType<FunctionCallContent>())
+            IList<AIContent> contents = update.Contents ?? [];
+            foreach (FunctionCallContent call in contents.OfType<FunctionCallContent>())
             {
-                string key = string.IsNullOrEmpty(call.CallId) ? call.Name : call.CallId;
-                if (!string.IsNullOrWhiteSpace(call.Name) && announcedToolCalls.Add(key))
+                if (call.Exception != null || string.IsNullOrWhiteSpace(call.Name))
+                {
+                    continue;
+                }
+
+                string key = string.IsNullOrWhiteSpace(call.CallId) ? call.Name : call.CallId;
+                if (announcedToolCalls.Add(key))
                 {
                     yield return new AgentStreamEvent
                     {
@@ -106,7 +112,7 @@ public sealed class AgentExecutor
                 }
             }
 
-            foreach (TextReasoningContent reasoning in update.Contents.OfType<TextReasoningContent>())
+            foreach (TextReasoningContent reasoning in contents.OfType<TextReasoningContent>())
             {
                 if (!string.IsNullOrEmpty(reasoning.Text))
                 {
@@ -118,7 +124,7 @@ public sealed class AgentExecutor
                 }
             }
 
-            string content = update.Text ?? string.Empty;
+            string content = string.Concat(contents.OfType<TextContent>().Select(item => item.Text));
             if (!string.IsNullOrEmpty(content))
             {
                 scope.AppendPartial(content);
@@ -129,7 +135,7 @@ public sealed class AgentExecutor
                 };
             }
 
-            usage = AgentResponseAdapter.ReadUsage(update) ?? usage;
+            usage = AgentResponseAdapter.ReadUsage(contents) ?? usage;
         }
 
         if (usage != null)
