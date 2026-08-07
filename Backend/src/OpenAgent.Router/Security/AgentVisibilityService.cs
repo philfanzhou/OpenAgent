@@ -1,7 +1,5 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Router.Observability;
 using StackExchange.Redis;
@@ -15,14 +13,15 @@ internal class AgentVisibilityService : IAgentVisibilityService
     private readonly ConcurrentDictionary<string, AgentAclEntry> _cache = new();
     private readonly AgentConfigAccessor _configAccessor;
 
-    public AgentVisibilityService(IConnectionMultiplexer? redis, IConfiguration configuration, ILogger<AgentVisibilityService> logger)
+    public AgentVisibilityService(
+        ILogger<AgentVisibilityService> logger,
+        IConnectionMultiplexer? redis = null)
     {
         _logger = logger;
         _redis = redis;
         _configAccessor = new AgentConfigAccessor(redis, logger);
 
-        var redisConnectionString = configuration.GetConnectionString("Redis");
-        RouterLog.VisibilityServiceInitialized(_logger, redisConnectionString, _redis != null);
+        RouterLog.VisibilityServiceInitialized(_logger, _redis != null);
     }
 
     public async Task<bool> IsAgentVisibleToUserAsync(string agentId, IAgentUserContext userContext, CancellationToken cancellationToken = default)

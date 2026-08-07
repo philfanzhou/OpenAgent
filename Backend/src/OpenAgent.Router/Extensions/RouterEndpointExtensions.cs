@@ -22,7 +22,6 @@ public static class RouterEndpointExtensions
         });
         var requestConfig = new ForwarderRequestConfig { ActivityTimeout = TimeSpan.FromSeconds(100) };
 
-        app.MapGet("/health", () => Results.Ok(new { Status = "Healthy", Service = "Router" }));
         app.MapPost("/api/v1/agent/chat/{*action}", (
             string? action,
             HttpContext context,

@@ -10,7 +10,10 @@ public class RouterReadyCheck : IHealthCheck
     private readonly IRouteTable _routeTable;
     private readonly ILogger<RouterReadyCheck> _logger;
 
-    public RouterReadyCheck(IConnectionMultiplexer? redis, IRouteTable routeTable, ILogger<RouterReadyCheck> logger)
+    public RouterReadyCheck(
+        IRouteTable routeTable,
+        ILogger<RouterReadyCheck> logger,
+        IConnectionMultiplexer? redis = null)
     {
         _redis = redis;
         _routeTable = routeTable;

@@ -83,7 +83,7 @@ public sealed class EngineRegistrySnapshotCache : BackgroundService
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var json = db.StringGet(key);
+            RedisValue json = await db.StringGetAsync(key).ConfigureAwait(false);
             if (json.IsNullOrEmpty) continue;
 
             try

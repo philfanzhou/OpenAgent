@@ -91,8 +91,8 @@ internal static partial class RouterLog
 
     #region --- AgentVisibilityService ---
 
-    [LoggerMessage(EventId = 3050, Level = LogLevel.Information, Message = "AgentVisibilityService initialized. RedisConnStr='{ConnStr}', UsingStackExchangeRedis={UsingStackExchangeRedis}")]
-    public static partial void VisibilityServiceInitialized(ILogger logger, string? connStr, bool usingStackExchangeRedis);
+    [LoggerMessage(EventId = 3050, Level = LogLevel.Information, Message = "AgentVisibilityService initialized. UsingStackExchangeRedis={UsingStackExchangeRedis}")]
+    public static partial void VisibilityServiceInitialized(ILogger logger, bool usingStackExchangeRedis);
 
     [LoggerMessage(EventId = 3051, Level = LogLevel.Debug, Message = "No ACL entry found for agent {AgentId}, defaulting to visible")]
     public static partial void AclEntryNotFound(ILogger logger, string agentId);
