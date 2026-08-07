@@ -474,9 +474,6 @@ body { color: var(--oa-text); background: var(--oa-surface-muted); }
 .settings-dialog .el-dialog__header, .settings-dialog .el-dialog__footer { border-color: var(--oa-border-soft); }
 .settings-dialog .el-dialog__header h2, .settings-dialog .section-heading h3 { color: #202123; }
 .capability-table { border: 1px solid var(--oa-border-soft); border-radius: 10px; }
-.secret-editor { display: flex; align-items: center; gap: 10px; width: 100%; }
-.secret-editor .el-input { flex: 1; }
-.secret-editor .el-button { flex: 0 0 auto; white-space: nowrap; }
 
 html[data-theme='dark'] body { color: #ececf1; background: #212121; }
 html[data-theme='dark'] .app-shell, html[data-theme='dark'] .main-panel { background: #212121; }

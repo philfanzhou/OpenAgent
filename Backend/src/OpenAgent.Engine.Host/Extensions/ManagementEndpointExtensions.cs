@@ -58,20 +58,6 @@ internal static class ManagementEndpointExtensions
             return profile == null ? Results.NotFound() : Results.Ok(RedactLlm(profile));
         });
 
-        group.MapGet("/llm/{id}/secret", async (
-            [FromServices] LlmProfileManagementService manager,
-            HttpContext context,
-            string id,
-            CancellationToken cancellationToken) =>
-        {
-            if (!HasScope(context, "agent.config.write")) return Results.Forbid();
-            if (!HasExplicitCredential(context)) return Results.Unauthorized();
-            LlmProviderProfile? profile = await manager.GetAsync(id, cancellationToken).ConfigureAwait(false);
-            return profile == null
-                ? Results.NotFound()
-                : Results.Ok(new { apiKey = profile.ApiKey });
-        });
-
         group.MapPut("/llm/{id}", async (
             [FromServices] LlmProfileManagementService manager,
             HttpContext context,
@@ -460,11 +446,6 @@ internal static class ManagementEndpointExtensions
         return context.User.Identity?.IsAuthenticated == true;
     }
 
-    private static bool HasExplicitCredential(HttpContext context)
-    {
-        return !string.IsNullOrWhiteSpace(context.Request.Headers.Authorization.FirstOrDefault());
-    }
-
     private static AgentConfigEntity MergeSecrets(AgentConfigEntity? existing, AgentConfigEntity requested)
     {
         if (existing == null) return requested;
@@ -491,7 +472,6 @@ internal static class ManagementEndpointExtensions
 
     private static AgentConfigEntity Redact(AgentConfigEntity entity)
     {
-        entity.Config.Llm.ApiKey = string.IsNullOrWhiteSpace(entity.Config.Llm.ApiKey) ? string.Empty : "***redacted***";
         entity.Config.Rag.Instances = entity.Config.Rag.Instances.Select(RedactRag).ToList();
         return entity;
     }
@@ -524,7 +504,7 @@ internal static class ManagementEndpointExtensions
             Format = profile.Format,
             ModelId = profile.ModelId,
             Endpoint = profile.Endpoint,
-            ApiKey = string.IsNullOrWhiteSpace(profile.ApiKey) ? string.Empty : "***",
+            ApiKey = profile.ApiKey,
             Temperature = profile.Temperature
         };
     }
