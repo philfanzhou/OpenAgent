@@ -1,8 +1,11 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http.Metadata;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
+using OpenAgent.Engine.Host.Extensions;
 using OpenAgent.Hosting;
 using Xunit;
 
@@ -64,5 +67,54 @@ public class HostingTests
             .ToList();
 
         Assert.Contains("/metrics", routePatterns);
+    }
+
+    [Fact]
+    public void MapAgentEndpoints_PreservesBusinessRouteContract()
+    {
+        var builder = WebApplication.CreateBuilder();
+        builder.Services.AddRouting();
+
+        var app = builder.Build();
+        app.MapAgentEndpoints();
+
+        var routeEndpoints = ((IEndpointRouteBuilder)app).DataSources
+            .SelectMany(source => source.Endpoints)
+            .OfType<RouteEndpoint>()
+            .ToList();
+
+        var expected = new[]
+        {
+            ("/api/v1/agent/chat", "POST", "Chat", "Agent"),
+            ("/api/v1/agent/chat/stream", "POST", "ChatStream", "Agent"),
+            ("/api/v1/agent/chat/attachments", "POST", "ChatWithAttachments", "Agent"),
+            ("/api/v1/agent/chat/attachments/stream", "POST", "ChatWithAttachmentsStream", "Agent"),
+            ("/api/v1/agent/agents", "GET", "ListAgents", "Agent"),
+            ("/api/v1/agent/me", "GET", "CurrentAgentUser", "Agent"),
+            ("/api/v1/agent/conversations", "GET", "ListConversations", "Conversation"),
+            ("/api/v1/agent/conversations/search", "GET", "SearchConversations", "Conversation"),
+            ("/api/v1/agent/conversations/{conversationId}", "GET", "GetConversation", "Conversation"),
+            ("/api/v1/agent/conversations/{conversationId}", "DELETE", "DeleteConversation", "Conversation")
+        };
+
+        var actual = routeEndpoints
+            .Where(endpoint => endpoint.RoutePattern.RawText?.StartsWith("/api/v1/agent", StringComparison.Ordinal) == true)
+            .Select(endpoint =>
+            {
+                IHttpMethodMetadata methods = endpoint.Metadata.GetMetadata<IHttpMethodMetadata>()!;
+                IEndpointNameMetadata name = endpoint.Metadata.GetMetadata<IEndpointNameMetadata>()!;
+                ITagsMetadata tags = endpoint.Metadata.GetMetadata<ITagsMetadata>()!;
+                return (
+                    endpoint.RoutePattern.RawText!,
+                    methods.HttpMethods.Single(),
+                    name.EndpointName!,
+                    tags.Tags.Single());
+            })
+            .OrderBy(route => route.Item1)
+            .ToArray();
+
+        Assert.Equal(expected.OrderBy(route => route.Item1), actual);
+        Assert.All(routeEndpoints, endpoint =>
+            Assert.NotNull(endpoint.Metadata.GetMetadata<IAuthorizeData>()));
     }
 }

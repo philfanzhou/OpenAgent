@@ -88,6 +88,34 @@ public class LlmRegistryTests
     }
 
     [Fact]
+    public void ResolveConfig_UsesProfileModelWhenAgentDoesNotOverrideIt()
+    {
+        var registry = new LlmRegistry();
+        registry.Register(new LlmProviderProfile
+        {
+            Id = "profile-1",
+            ModelId = "profile-model",
+            Endpoint = "https://llm.example.com",
+            ApiKey = "profile-key"
+        });
+
+        var resolved = registry.ResolveConfig(new LlmConfig { Provider = "profile-1", ModelId = "" });
+
+        Assert.Equal("profile-model", resolved.ModelId);
+    }
+
+    [Fact]
+    public void Remove_DeletesProfile()
+    {
+        var registry = new LlmRegistry();
+        registry.Register(new LlmProviderProfile { Id = "profile-1" });
+
+        Assert.True(registry.Remove("profile-1"));
+        Assert.Null(registry.GetProfile("profile-1"));
+        Assert.False(registry.Remove("profile-1"));
+    }
+
+    [Fact]
     public void ResolveConfig_UnknownProvider_Throws()
     {
         var registry = new LlmRegistry();

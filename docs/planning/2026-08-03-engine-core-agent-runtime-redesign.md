@@ -26,7 +26,7 @@ ASP.NET Middleware → Endpoint → AgentExecutor → AIAgent
 
 范围内：
 
-- HTTP、NDJSON、SSE、multipart Agent 对话；
+- HTTP、SSE、multipart Agent 对话；
 - Agent Runtime、模型调用、工具调用、usage 和 reasoning 映射；
 - Conversation 历史、状态、分布式锁、查询、删除、热冷存储；
 - MCP、Skill、RAG 的发现、调用、生命周期和 ACL；
@@ -47,7 +47,7 @@ ASP.NET Middleware → Endpoint → AgentExecutor → AIAgent
 
 | 领域 | 必须保留的行为 |
 |---|---|
-| 请求协议 | 同步、NDJSON、SSE、multipart；统一 request ID；流式唯一 `done` 终态 |
+| 请求协议 | 同步、SSE、multipart；统一 request ID；流式唯一 `done` 终态 |
 | Agent Runtime | SDK 原生 Agent/function loop、真流式、usage、reasoning、最大轮次 |
 | 模型 | Provider Profile、多 API 格式、运行时参数、连接故障映射 |
 | 会话 | tenant/owner 隔离、同会话串行、历史保真、取消/失败终态、查询/删除 |
@@ -68,11 +68,9 @@ ASP.NET Middleware → Endpoint → AgentExecutor → AIAgent
 | 方法 | 路径 | 语义 |
 |---|---|---|
 | POST | `/api/v1/agent/chat` | 简化 DTO 同步执行 |
-| POST | `/api/v1/agent/chat/stream` | NDJSON 执行 |
-| POST | `/api/v1/agent/chat/sse` | SSE 执行 |
-| POST | `/api/v1/agent/chat/pipeline` | 完整请求同步执行；路径兼容不代表保留内部 Pipeline |
+| POST | `/api/v1/agent/chat/stream` | SSE 执行 |
 | POST | `/api/v1/agent/chat/attachments` | 带附件同步执行 |
-| POST | `/api/v1/agent/chat/attachments/stream` | 带附件 NDJSON 执行 |
+| POST | `/api/v1/agent/chat/attachments/stream` | 带附件 SSE 执行 |
 | GET | `/api/v1/agent/agents` | 已发布 Agent 列表 |
 | GET | `/api/v1/agent/conversations` | 会话列表 |
 | GET | `/api/v1/agent/conversations/search` | 会话搜索 |
@@ -84,7 +82,7 @@ ASP.NET Middleware → Endpoint → AgentExecutor → AIAgent
 协议不变量：
 
 - 认证失败、tenant 缺失、Engine draining、请求格式错误必须在创建 `AIAgent` 前结束；
-- NDJSON 与 SSE 映射同一个内部事件模型；
+- SSE 映射统一的内部事件模型；
 - 流事件至少区分 `content`、`reasoning`、`tool_call`、`usage`、`heartbeat`、`error`、`done`；
 - `error` 后不得继续输出 content，`done` 恰好一次；
 - 客户端取消必须停止模型和外部能力调用，并释放会话锁与请求级 MCP 资源；
@@ -163,7 +161,7 @@ ASP.NET Middleware
 ### 2.1 保留
 
 - `Agent.Contracts`、`Agent.Core`、`Agent.Engine` 项目边界；
-- Engine 当前 HTTP、NDJSON、SSE、multipart 协议；
+- Engine 当前 HTTP、SSE、multipart 协议；
 - Agent 配置读取和热更新；
 - SDK `ChatClientAgent`；
 - Conversation 热存储、冷存储和分布式锁；
@@ -438,7 +436,7 @@ sequenceDiagram
 - 同步：`AIAgent.RunAsync`；
 - 流式：`AIAgent.RunStreamingAsync`。
 
-SDK update 被映射成有类型事件，再由 Engine 写成 NDJSON 或 SSE。禁止用字符串前缀承载 usage/reasoning 等控制信息。
+SDK update 被映射成有类型事件，再由 Engine 写成 SSE。禁止用字符串前缀承载 usage/reasoning 等控制信息。
 
 ## 6. Middleware 设计
 
@@ -471,7 +469,7 @@ ExceptionBoundaryMiddleware
 
 - 统一捕获 endpoint 及下游异常；
 - 非流式映射 ProblemDetails；
-- 已开始的 NDJSON/SSE 保持流式协议；
+- 已开始的 SSE 保持流式协议；
 - 只记录一次最终失败；
 - 不修改业务异常内容。
 
@@ -1245,7 +1243,6 @@ Agent.Engine/src/Host/
 │   ├── AgentEndpoints.cs
 │   └── ConversationEndpoints.cs
 ├── Streaming/
-│   ├── NdjsonStreamWriter.cs
 │   └── SseStreamWriter.cs
 └── Program.cs
 ```
@@ -1370,7 +1367,7 @@ Endpoint → AgentExecutor → AIAgent
 ### 22.5 兼容
 
 - [ ] 现有 API 路径不变；
-- [ ] NDJSON/SSE/multipart 语义不变；
+- [ ] SSE/multipart 语义不变；
 - [ ] Agent 配置格式默认不变；
 - [ ] Conversation 热冷存储语义不变；
 - [ ] Engine 注册、热更新、健康和停机行为不变；
@@ -1452,7 +1449,7 @@ Endpoint → AgentExecutor → AIAgent
 | 场景 | 必须证明的结果 |
 |---|---|
 | 同步请求 | Endpoint 只调用 AgentExecutor；最终文本、conversation ID、usage 和 finish reason 正确 |
-| 流式请求 | 真正调用 `RunStreamingAsync`；NDJSON/SSE 事件同义；`error`/`done` 终态唯一 |
+| 流式请求 | 真正调用 `RunStreamingAsync`；SSE 事件正确输出；`error`/`done` 终态唯一 |
 | 配置热更新 | 在请求中途切换配置不会改变本次已授权模型、工具或策略 |
 | 会话并发 | 同 tenant/conversation 串行；锁续租、取消和释放均可证明 |
 | 历史重放 | 文本、附件元数据、tool call/result 和 call ID 保真 |
@@ -1478,7 +1475,7 @@ Endpoint → AgentExecutor → AIAgent
 
 | 功能 | 生产源码入口 |
 |---|---|
-| HTTP/NDJSON/SSE/会话 API | `Backend/src/OpenAgent.Engine.Host/Extensions/EndpointExtensions.cs` |
+| HTTP/SSE/会话 API | `Backend/src/OpenAgent.Engine.Host/Extensions/EndpointExtensions.cs` |
 | multipart 附件 | `Backend/src/OpenAgent.Engine.Host/Extensions/AttachmentEndpointExtensions.cs`、`Engine.Host/Attachments/` |
 | 请求身份和租户 | `Backend/src/OpenAgent.Engine.Host/Middleware/AgentUserContextMiddleware.cs`、`EngineAdmissionMiddleware.cs` |
 | Agent SDK adapter 与资源 | `Backend/src/OpenAgent.Core/Runtime/Agent/` |

@@ -10,7 +10,8 @@ namespace OpenAgent.Engine.Config;
 
 internal sealed class AgentListQuery(
     IRedisConnectionProvider redis,
-    ILogger<AgentListQuery> logger)
+    ILogger<AgentListQuery> logger,
+    AgentConfigLocalStore localStore)
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -21,6 +22,7 @@ internal sealed class AgentListQuery(
     internal async Task<IReadOnlyList<AgentSummary>> ExecuteAsync(CancellationToken cancellationToken)
     {
         var result = new List<AgentSummary>();
+        AddLocalAgents(result);
         if (!redis.IsAvailable)
         {
             EngineLog.ListAgentsRedisUnavailable(logger);
@@ -44,14 +46,7 @@ internal sealed class AgentListQuery(
                     var entity = JsonSerializer.Deserialize<AgentConfigEntity>(configJson.ToString(), JsonOptions);
                     if (entity != null)
                     {
-                        result.Add(new AgentSummary
-                        {
-                            AgentId = entity.AgentId,
-                            Name = entity.Name,
-                            Status = (int)entity.Status,
-                            CurrentVersion = entity.CurrentVersion,
-                            ApiFormat = entity.Config?.Llm.Format.ToString() ?? "unknown"
-                        });
+                        AddAgent(result, entity);
                     }
                 }
                 catch (Exception exception)
@@ -67,5 +62,26 @@ internal sealed class AgentListQuery(
         }
 
         return result;
+    }
+
+    private void AddLocalAgents(List<AgentSummary> result)
+    {
+        foreach (AgentConfigEntity entity in localStore.List())
+        {
+            AddAgent(result, entity);
+        }
+    }
+
+    private static void AddAgent(List<AgentSummary> result, AgentConfigEntity entity)
+    {
+        result.RemoveAll(item => string.Equals(item.AgentId, entity.AgentId, StringComparison.OrdinalIgnoreCase));
+        result.Add(new AgentSummary
+        {
+            AgentId = entity.AgentId,
+            Name = entity.Name,
+            Status = (int)entity.Status,
+            CurrentVersion = entity.CurrentVersion,
+            ApiFormat = entity.Config?.Llm.Format.ToString() ?? "unknown"
+        });
     }
 }

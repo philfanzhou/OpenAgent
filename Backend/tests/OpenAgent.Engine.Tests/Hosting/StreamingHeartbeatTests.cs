@@ -21,7 +21,7 @@ public class StreamingHeartbeatTests
             },
             TimeSpan.FromMilliseconds(10),
             NullLogger.Instance,
-            "chat-sse",
+            "chat-stream",
             "trace-id",
             CancellationToken.None);
 

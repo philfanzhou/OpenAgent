@@ -1,6 +1,5 @@
 using System.Net.Http;
 using System.Net.Sockets;
-using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
 
 namespace OpenAgent.Engine.Host;
@@ -44,53 +43,6 @@ internal static class StreamingPayloadFactory
         };
     }
 
-    public static NdjsonStreamEvent CreateContentEvent(string content, string traceId)
-    {
-        return new NdjsonStreamEvent
-        {
-            Type = "content",
-            Content = content,
-            TraceId = traceId
-        };
-    }
-
-    public static NdjsonStreamEvent CreateAgentEvent(AgentStreamEvent streamEvent, string traceId)
-    {
-        return new NdjsonStreamEvent
-        {
-            Type = streamEvent.Type switch
-            {
-                AgentStreamEventType.Reasoning => "reasoning",
-                AgentStreamEventType.ToolCall => "tool_call",
-                _ => "content"
-            },
-            Content = streamEvent.Content,
-            ToolName = streamEvent.ToolName,
-            ToolCallId = streamEvent.ToolCallId,
-            TraceId = traceId
-        };
-    }
-
-    public static NdjsonStreamEvent CreateErrorEvent(StreamingErrorPayload error, string traceId)
-    {
-        return new NdjsonStreamEvent
-        {
-            Type = "error",
-            Error = error,
-            TraceId = traceId
-        };
-    }
-
-    public static NdjsonStreamEvent CreateDoneEvent(string traceId, string status = "completed", TokenUsage? usage = null)
-    {
-        return new NdjsonStreamEvent
-        {
-            Type = "done",
-            Status = status,
-            TraceId = traceId,
-            Usage = usage
-        };
-    }
 }
 
 internal sealed class StreamingErrorPayload
@@ -99,16 +51,4 @@ internal sealed class StreamingErrorPayload
     public required string Title { get; init; }
     public required string Detail { get; init; }
     public required string TraceId { get; init; }
-}
-
-internal sealed class NdjsonStreamEvent
-{
-    public required string Type { get; init; }
-    public string? Content { get; init; }
-    public string? Status { get; init; }
-    public string? TraceId { get; init; }
-    public StreamingErrorPayload? Error { get; init; }
-    public TokenUsage? Usage { get; init; }
-    public string? ToolName { get; init; }
-    public string? ToolCallId { get; init; }
 }

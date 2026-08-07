@@ -11,6 +11,8 @@ public class McpTool
 public interface IMcpClient
 {
     Task ConnectAsync(string serverUrl, Configuration.McpServerType type = Configuration.McpServerType.Http, CancellationToken cancellationToken = default);
+    Task ConnectAsync(Configuration.McpServerConfig server, CancellationToken cancellationToken = default)
+        => ConnectAsync(server.Url, server.Type, cancellationToken);
     Task DisconnectAsync(CancellationToken cancellationToken = default);
     Task<List<McpTool>> ListToolsAsync(CancellationToken cancellationToken = default);
     Task<string> CallToolAsync(string toolName, Dictionary<string, object> arguments, CancellationToken cancellationToken = default);

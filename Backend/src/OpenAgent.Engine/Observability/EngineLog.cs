@@ -129,6 +129,9 @@ internal static partial class EngineLog
     [LoggerMessage(EventId = 4040, Level = LogLevel.Error, Message = "Failed to refresh config from Redis for agent {AgentId}. ExceptionType={ExceptionType}")]
     private static partial void HotReloadRefreshFailedCore(ILogger logger, Exception ex, string agentId, string exceptionType);
 
+    [LoggerMessage(EventId = 4041, Level = LogLevel.Debug, Message = "Redis is unavailable. Hot reload subscription will retry.")]
+    public static partial void HotReloadRedisUnavailable(ILogger logger);
+
     // --- ShutdownService (4046–4053) ---
 
     [LoggerMessage(EventId = 4048, Level = LogLevel.Information, Message = "Initiating graceful shutdown with timeout: {TimeoutSeconds}s")]
@@ -276,7 +279,7 @@ internal static partial class EngineLog
     [LoggerMessage(EventId = 4081, Level = LogLevel.Warning, Message = "Streaming heartbeat failed. Endpoint={Endpoint}, TraceId={TraceId}, ExceptionType={ExceptionType}")]
     private static partial void StreamingHeartbeatFailedCore(ILogger logger, Exception ex, string endpoint, string traceId, string exceptionType);
 
-    // --- Middleware (4082–4085) ---
+    // --- Middleware (4082–4084) ---
 
     public static void UnhandledExceptionAfterResponseStart(ILogger logger, Exception ex, string method, string path, string traceId) =>
         UnhandledExceptionAfterResponseStartCore(logger, ex, method, path, traceId, ex.GetType().FullName ?? "unknown");
@@ -295,9 +298,6 @@ internal static partial class EngineLog
 
     [LoggerMessage(EventId = 4084, Level = LogLevel.Error, Message = "SSE endpoint error occurred. Method={Method}, Path={Path}, TraceId={TraceId}, ResponseStarted={ResponseStarted}, ExceptionType={ExceptionType}")]
     private static partial void SseEndpointErrorOccurredCore(ILogger logger, Exception ex, string method, string path, string traceId, bool responseStarted, string exceptionType);
-
-    [LoggerMessage(EventId = 4085, Level = LogLevel.Debug, Message = "SSE error response skipped because request was aborted. Method={Method}, Path={Path}, TraceId={TraceId}")]
-    public static partial void SseErrorResponseSkippedAborted(ILogger logger, string method, string path, string traceId);
 
     // --- Host Lifecycle / Program.cs (4086–4088) ---
 

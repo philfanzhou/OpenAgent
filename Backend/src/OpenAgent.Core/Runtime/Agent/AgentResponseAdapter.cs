@@ -5,9 +5,9 @@ namespace OpenAgent.Core.Runtime.Agent;
 
 internal static class AgentResponseAdapter
 {
-    internal static TokenUsage? ReadUsage(Microsoft.Agents.AI.AgentResponseUpdate update)
+    internal static TokenUsage? ReadUsage(IEnumerable<AIContent> contents)
     {
-        UsageContent? usage = update.Contents.OfType<UsageContent>().LastOrDefault();
+        UsageContent? usage = contents.OfType<UsageContent>().LastOrDefault();
         return ConvertUsage(usage?.Details);
     }
 

@@ -89,6 +89,14 @@ internal sealed class RedisConnectionProvider : IRedisConnectionProvider
             : Task.FromResult(false);
     }
 
+    public Task<bool> SetRemoveAsync(RedisKey key, RedisValue value, CommandFlags flags = CommandFlags.None)
+    {
+        var db = _connection?.GetDatabase();
+        return db != null
+            ? db.SetRemoveAsync(key, value, flags)
+            : Task.FromResult(false);
+    }
+
     public Task<TimeSpan> PingAsync(CommandFlags flags = CommandFlags.None)
     {
         var db = _connection?.GetDatabase();

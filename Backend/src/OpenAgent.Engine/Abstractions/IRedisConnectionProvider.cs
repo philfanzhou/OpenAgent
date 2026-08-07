@@ -13,6 +13,7 @@ internal interface IRedisConnectionProvider : IDisposable
     Task<bool> KeyDeleteAsync(RedisKey key, CommandFlags flags = CommandFlags.None);
     Task<RedisValue[]> SetMembersAsync(RedisKey key, CommandFlags flags = CommandFlags.None);
     Task<bool> SetAddAsync(RedisKey key, RedisValue value, CommandFlags flags = CommandFlags.None);
+    Task<bool> SetRemoveAsync(RedisKey key, RedisValue value, CommandFlags flags = CommandFlags.None);
     Task<TimeSpan> PingAsync(CommandFlags flags = CommandFlags.None);
 
     RedisValue StringGet(RedisKey key, CommandFlags flags = CommandFlags.None);

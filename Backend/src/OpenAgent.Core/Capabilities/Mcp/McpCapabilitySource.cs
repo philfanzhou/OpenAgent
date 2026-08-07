@@ -109,7 +109,7 @@ internal sealed class McpCapabilitySource(
 
         if (!client.IsConnected)
         {
-            await client.ConnectAsync(identity.Url, identity.Type, cancellationToken).ConfigureAwait(false);
+            await client.ConnectAsync(server, cancellationToken).ConfigureAwait(false);
         }
 
         return client;

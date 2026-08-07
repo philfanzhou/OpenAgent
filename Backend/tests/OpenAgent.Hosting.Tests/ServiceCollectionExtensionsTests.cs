@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using OpenAgent.Hosting.Authentication;
 using StackExchange.Redis;
 using Xunit;
 
@@ -28,9 +29,14 @@ public class ServiceCollectionExtensionsTests
     }
 
     [Fact]
-    public async Task AddAgentHost_WithJwtAuthEnabled_RegistersPassThroughScheme()
+    public async Task AddAgentHost_WithJwtAuthEnabled_RegistersBasicScheme()
     {
-        var configuration = new ConfigurationBuilder().Build();
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Authentication:Mode"] = "Basic"
+            })
+            .Build();
         var services = new ServiceCollection();
         services.AddLogging();
 
@@ -43,7 +49,26 @@ public class ServiceCollectionExtensionsTests
         using var provider = services.BuildServiceProvider();
         var schemes = provider.GetRequiredService<IAuthenticationSchemeProvider>();
 
-        Assert.NotNull(await schemes.GetSchemeAsync("PassThrough"));
+        Assert.NotNull(await schemes.GetSchemeAsync("Basic"));
+    }
+
+    [Fact]
+    public void AddAgentHost_WithUnsupportedAuthenticationMode_Throws()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Authentication:Mode"] = "JwtBearer"
+            })
+            .Build();
+        var services = new ServiceCollection();
+        services.AddLogging();
+
+        Assert.Throws<InvalidOperationException>(() => services.AddAgentHost(configuration, options =>
+        {
+            DisableOptionalFeatures(options);
+            options.EnableJwtAuth = true;
+        }));
     }
 
     [Fact]

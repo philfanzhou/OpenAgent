@@ -10,5 +10,7 @@ public interface ILlmRegistry
 
     void Register(LlmProviderProfile profile);
 
+    bool Remove(string id);
+
     LlmConfig ResolveConfig(LlmConfig llmConfig);
 }

@@ -9,7 +9,9 @@ using OpenAgent.Contracts.Mcp;
 
 namespace OpenAgent.Core.Capabilities.Mcp;
 
-internal sealed class McpServerClient(ILoggerFactory loggerFactory)
+internal sealed class McpServerClient(
+    ILoggerFactory loggerFactory,
+    McpTransportFactory transportFactory)
     : IMcpClient, IDisposable, IAsyncDisposable
 {
     private readonly SemaphoreSlim _connectionLock = new(1, 1);
@@ -20,9 +22,20 @@ internal sealed class McpServerClient(ILoggerFactory loggerFactory)
 
     public bool IsConnected => _client is { Completion.IsCompleted: false };
 
-    public async Task ConnectAsync(
+    public Task ConnectAsync(
         string serverUrl,
         McpServerType type = McpServerType.Http,
+        CancellationToken cancellationToken = default) => ConnectAsync(
+            new McpServerConfig
+            {
+                Url = serverUrl,
+                Type = type,
+                Name = serverUrl
+            },
+            cancellationToken);
+
+    public async Task ConnectAsync(
+        McpServerConfig server,
         CancellationToken cancellationToken = default)
     {
         await _connectionLock.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -34,11 +47,11 @@ internal sealed class McpServerClient(ILoggerFactory loggerFactory)
             }
 
             await DisconnectCoreAsync().ConfigureAwait(false);
-            HttpClientTransport? transport = null;
+            IClientTransport? transport = null;
             McpClient? client = null;
             try
             {
-                transport = CreateTransport(serverUrl, type);
+                transport = transportFactory.Create(server);
                 client = await McpClient.CreateAsync(
                     transport,
                     new McpClientOptions
@@ -191,35 +204,6 @@ internal sealed class McpServerClient(ILoggerFactory loggerFactory)
         DisposeAsync().AsTask().GetAwaiter().GetResult();
     }
 
-    private HttpClientTransport CreateTransport(string serverUrl, McpServerType type)
-    {
-        string normalizedUrl = serverUrl.Trim().TrimEnd('/');
-        (Uri endpoint, HttpTransportMode mode) = type switch
-        {
-            McpServerType.Http => (
-                new Uri(serverUrl.Trim(), UriKind.Absolute),
-                HttpTransportMode.StreamableHttp),
-            McpServerType.SSE => (
-                new Uri(normalizedUrl.EndsWith("/sse", StringComparison.OrdinalIgnoreCase)
-                    ? normalizedUrl
-                    : $"{normalizedUrl}/sse", UriKind.Absolute),
-                HttpTransportMode.Sse),
-            _ => throw new NotSupportedException(
-                $"MCP server type '{type}' is not supported by the HTTP client transport.")
-        };
-        return new HttpClientTransport(
-            new HttpClientTransportOptions
-            {
-                Endpoint = endpoint,
-                Name = "OpenAgent",
-                TransportMode = mode,
-                ConnectionTimeout = TimeSpan.FromSeconds(5),
-                MaxReconnectionAttempts = 5,
-                DefaultReconnectionInterval = TimeSpan.FromSeconds(2)
-            },
-            loggerFactory);
-    }
-
     private async Task DisconnectCoreAsync()
     {
         McpClient? client = _client;
@@ -233,7 +217,7 @@ internal sealed class McpServerClient(ILoggerFactory loggerFactory)
 
     private static async Task DisposeConnectionAsync(
         McpClient? client,
-        HttpClientTransport? transport)
+        IClientTransport? transport)
     {
         if (client != null)
         {
@@ -241,7 +225,14 @@ internal sealed class McpServerClient(ILoggerFactory loggerFactory)
         }
         else if (transport != null)
         {
-            await transport.DisposeAsync().ConfigureAwait(false);
+            if (transport is IAsyncDisposable asyncDisposable)
+            {
+                await asyncDisposable.DisposeAsync().ConfigureAwait(false);
+            }
+            else if (transport is IDisposable disposable)
+            {
+                disposable.Dispose();
+            }
         }
     }
 

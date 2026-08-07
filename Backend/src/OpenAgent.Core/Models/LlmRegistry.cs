@@ -13,6 +13,8 @@ internal class LlmRegistry : ILlmRegistry
         _profiles[profile.Id] = profile;
     }
 
+    public bool Remove(string id) => _profiles.Remove(id);
+
     public List<LlmProviderProfile> GetAllProfiles()
     {
         return _profiles.Values.ToList();
@@ -42,10 +44,10 @@ internal class LlmRegistry : ILlmRegistry
         {
             Provider = llmConfig.Provider,
             Format = profile.Format,
-            ModelId = llmConfig.ModelId,
+            ModelId = string.IsNullOrWhiteSpace(llmConfig.ModelId) ? profile.ModelId : llmConfig.ModelId,
             ApiKey = profile.ApiKey,
             Endpoint = profile.Endpoint,
-            Temperature = llmConfig.Temperature
+            Temperature = llmConfig.Temperature == 0.7 ? profile.Temperature : llmConfig.Temperature
         };
     }
 }
