@@ -6,6 +6,21 @@ namespace OpenAgent.Contracts.Tests.Security;
 public class GatewayPermissionMatcherTests
 {
     [Theory]
+    [InlineData("agent.execute:intent-router", "agent.execute", true)]
+    [InlineData("agent.execute:*", "agent.execute", true)]
+    [InlineData("agent.read:finance", "agent.execute", false)]
+    [InlineData("agent.execute:", "agent.execute", false)]
+    public void HasGrantForAnyResource_RecognizesScopedEndpointAccess(
+        string granted,
+        string required,
+        bool expected)
+    {
+        Assert.Equal(
+            expected,
+            GatewayPermissionMatcher.HasGrantForAnyResource([granted], required));
+    }
+
+    [Theory]
     [InlineData("*", "agent.execute", "finance", true)]
     [InlineData("agent.execute", "agent.execute", "finance", true)]
     [InlineData("agent.execute:*", "agent.execute", "finance", true)]

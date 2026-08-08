@@ -15,7 +15,7 @@ internal sealed class GatewayGrantCodec(
     internal string Encode(GatewayGrantPayload payload)
     {
         string encodedPayload = Base64UrlEncode(JsonSerializer.SerializeToUtf8Bytes(payload, JsonOptions));
-        byte[] signature = Sign(encodedPayload);
+        byte[] signature = Sign(encodedPayload, ResolveSigningKey(payload.Audience));
         string token = $"{encodedPayload}.{Base64UrlEncode(signature)}";
         return token.Length <= _options.MaxGrantCharacters
             ? token
@@ -48,7 +48,12 @@ internal sealed class GatewayGrantCodec(
             return false;
         }
 
-        byte[] expectedSignature = Sign(segments[0]);
+        if (!TryResolveSigningKey(expectedAudience, out string? signingKey))
+        {
+            return false;
+        }
+
+        byte[] expectedSignature = Sign(segments[0], signingKey);
         if (suppliedSignature.Length != expectedSignature.Length
             || !CryptographicOperations.FixedTimeEquals(suppliedSignature, expectedSignature))
         {
@@ -78,9 +83,34 @@ internal sealed class GatewayGrantCodec(
             && payload.ExpiresAt >= now - _options.ClockSkewSeconds;
     }
 
-    private byte[] Sign(string encodedPayload)
+    private string ResolveSigningKey(string audience) =>
+        TryResolveSigningKey(audience, out string? signingKey)
+            ? signingKey
+            : throw new InvalidOperationException(
+                $"No signing key is configured for gateway audience '{audience}'.");
+
+    private bool TryResolveSigningKey(string audience, out string signingKey)
     {
-        byte[] key = Encoding.UTF8.GetBytes(_options.SigningKey);
+        if (audience.Equals(_options.Audience, StringComparison.Ordinal))
+        {
+            signingKey = _options.SigningKey;
+            return true;
+        }
+
+        if (_options.AudienceSigningKeys.TryGetValue(audience, out string? configured)
+            && !string.IsNullOrWhiteSpace(configured))
+        {
+            signingKey = configured;
+            return true;
+        }
+
+        signingKey = string.Empty;
+        return false;
+    }
+
+    private static byte[] Sign(string encodedPayload, string signingKey)
+    {
+        byte[] key = Encoding.UTF8.GetBytes(signingKey);
         return HMACSHA256.HashData(key, Encoding.ASCII.GetBytes(encodedPayload));
     }
 

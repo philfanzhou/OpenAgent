@@ -14,12 +14,29 @@ internal sealed class GatewayPermissionAuthorizationHandler(
         GatewayPermissionRequirement requirement)
     {
         GatewayIdentity identity = GatewayClaimsIdentityMapper.Map(context.User);
-        if (authorization.IsAuthorized(identity, requirement.Permission))
+        IReadOnlySet<string> permissions = authorization.ResolvePermissions(identity);
+        if (authorization.IsAuthorized(identity, requirement.Permission)
+            || (requirement.Permission.Equals(
+                    GatewayAuthorizationDefaults.AgentExecutePermission,
+                    StringComparison.OrdinalIgnoreCase)
+                && HasGrantForAnyResource(permissions, requirement.Permission)))
         {
             context.Succeed(requirement);
         }
 
         return Task.CompletedTask;
+    }
+
+    private static bool HasGrantForAnyResource(
+        IEnumerable<string> grantedPermissions,
+        string requiredPermission)
+    {
+        string prefix = $"{requiredPermission}:";
+        return grantedPermissions.Any(permission =>
+            permission.Equals("*", StringComparison.OrdinalIgnoreCase)
+            || permission.Equals(requiredPermission, StringComparison.OrdinalIgnoreCase)
+            || (permission.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                && permission.Length > prefix.Length));
     }
 }
 
