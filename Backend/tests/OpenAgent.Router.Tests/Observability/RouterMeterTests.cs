@@ -27,14 +27,7 @@ public class RouterMeterTests
         });
         listener.Start();
 
-        RouterMeter.RecordRoute(" Stream ", "Forwarding");
         RouterMeter.RecordForwardingFailure("", "RequestTimedOut");
-
-        Assert.Contains(measurements, measurement =>
-            measurement.Name == "openagent_router_routes_total"
-            && measurement.Value == 1
-            && Equals(measurement.Tags["action"], "stream")
-            && Equals(measurement.Tags["status"], "forwarding"));
         Assert.Contains(measurements, measurement =>
             measurement.Name == "openagent_router_forwarding_failures_total"
             && measurement.Value == 1

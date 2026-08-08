@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OpenAgent.Hosting.Authentication;
 using OpenAgent.Hosting.Security;
+using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
@@ -102,6 +103,19 @@ public static class ServiceCollectionExtensions
                 .ConfigureResource(resource => resource
                     .AddService(serviceName, serviceVersion: serviceVersion));
 
+            services.AddLogging(logging => logging.AddOpenTelemetry(logs =>
+            {
+                logs.SetResourceBuilder(ResourceBuilder.CreateDefault()
+                    .AddService(serviceName, serviceVersion: serviceVersion));
+                logs.IncludeFormattedMessage = true;
+                logs.IncludeScopes = true;
+                logs.ParseStateValues = true;
+                if (otlpEndpoint != null)
+                {
+                    logs.AddOtlpExporter(exporter => exporter.Endpoint = otlpEndpoint);
+                }
+            }));
+
             openTelemetry.WithTracing(tracing =>
             {
                 tracing
@@ -115,10 +129,19 @@ public static class ServiceCollectionExtensions
                 }
             });
 
-            openTelemetry.WithMetrics(metrics => metrics
-                .AddAspNetCoreInstrumentation()
-                .AddMeter(options.OpenTelemetrySource)
-                .AddPrometheusExporter());
+            openTelemetry.WithMetrics(metrics =>
+            {
+                metrics
+                    .AddAspNetCoreInstrumentation()
+                    .AddMeter("OpenAgent.Hosting")
+                    .AddMeter(options.OpenTelemetrySource)
+                    .AddPrometheusExporter();
+
+                if (otlpEndpoint != null)
+                {
+                    metrics.AddOtlpExporter(exporter => exporter.Endpoint = otlpEndpoint);
+                }
+            });
         }
 
         return services;

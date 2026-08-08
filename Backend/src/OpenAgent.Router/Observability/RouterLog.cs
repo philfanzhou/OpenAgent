@@ -35,7 +35,6 @@ internal static partial class RouterLog
 
     [LoggerMessage(EventId = 3031, Level = LogLevel.Information, Message = "Semantic cache hit. Action={Action}, UserId={UserId}, TenantId={TenantId}, ConversationId={ConversationId}, TraceId={TraceId}")]
     public static partial void SemanticCacheHit(ILogger logger, string? action, string userId, string? tenantId, string? conversationId, string? traceId);
-
     /// <summary>Shared forwarding failure log used by main chat endpoint and all GET proxy endpoints.</summary>
     public static void ForwardingFailed(
         ILogger logger,
@@ -120,25 +119,6 @@ internal static partial class RouterLog
 
     [LoggerMessage(EventId = 3092, Level = LogLevel.Warning, Message = "No endpoint found for intent: {Intent}")]
     public static partial void NoEndpointForIntent(ILogger logger, string intent);
-
-    #endregion
-
-    #region --- Audit Logging Middleware ---
-
-    public static void AuditBodyParseFailed(ILogger logger, Exception exception, string method, PathString path, string? traceId) =>
-        AuditBodyParseFailedCore(logger, exception, method, path, traceId, exception.GetType().FullName ?? "unknown");
-
-    [LoggerMessage(EventId = 3100, Level = LogLevel.Debug, Message = "Audit request body parse failed. Method={Method}, Path={Path}, TraceId={TraceId}, ExceptionType={ExceptionType}")]
-    private static partial void AuditBodyParseFailedCore(ILogger logger, Exception exception, string method, PathString path, string? traceId, string exceptionType);
-
-    [LoggerMessage(EventId = 3101, Level = LogLevel.Information, Message = "Request completed. TraceId={TraceId}, Method={Method}, Path={Path}, UserId={UserId}, TenantId={TenantId}, Query={Query}, StatusCode={StatusCode}, Outcome={Outcome}, DurationMs={DurationMs}")]
-    public static partial void AuditRequestCompleted(ILogger logger, string? traceId, string method, PathString path, string userId, string? tenantId, string? query, int statusCode, string outcome, long durationMs);
-
-    public static void AuditRequestFailed(ILogger logger, Exception exception, string? traceId, string method, PathString path, string userId, string? tenantId, string? query, long durationMs) =>
-        AuditRequestFailedCore(logger, exception, traceId, method, path, userId, tenantId, query, durationMs, exception.GetType().FullName ?? "unknown");
-
-    [LoggerMessage(EventId = 3102, Level = LogLevel.Error, Message = "Request failed. TraceId={TraceId}, Method={Method}, Path={Path}, UserId={UserId}, TenantId={TenantId}, Query={Query}, Outcome=Exception, DurationMs={DurationMs}, ExceptionType={ExceptionType}")]
-    private static partial void AuditRequestFailedCore(ILogger logger, Exception exception, string? traceId, string method, PathString path, string userId, string? tenantId, string? query, long durationMs, string exceptionType);
 
     #endregion
 
