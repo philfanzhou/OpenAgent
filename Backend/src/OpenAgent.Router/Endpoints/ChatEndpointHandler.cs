@@ -46,23 +46,12 @@ internal static class ChatEndpointHandler
                 title: "Agent routing was not resolved");
         }
 
-        string query = routing.Request.Query;
         string? conversationId = routing.Request.ConversationId;
         conversationId ??= context.Request.Headers["X-Conversation-Id"].FirstOrDefault();
-        RouterLog.RequestAccepted(
-            logger, action, userContext.UserId, tenantId, conversationId, query.Length, traceId);
 
         string agentId = routing.AgentId;
-        const string intent = "chat";
-        RouterLog.IntentRecognized(
-            logger, action, intent, userContext.UserId, tenantId,
-            conversationId, query.Length, traceId);
         string targetEndpoint = routing.TargetEndpoint;
 
-        RouterLog.ForwardingStarted(
-            logger, action, targetEndpoint, intent, agentId, conversationId,
-            userContext.UserId, tenantId, traceId);
-        RouterMeter.RecordRoute(action ?? "chat", "forwarding");
         if (routing.DestinationKind == AgentDestinationKind.External)
         {
             ExternalForwardingResult? external = await externalForwarder.ForwardAsync(
@@ -107,14 +96,9 @@ internal static class ChatEndpointHandler
             httpClient,
             currentRequestConfig,
             (_, proxyRequest) =>
-            {
-                RouterLog.ProxyRequestPrepared(
-                    logger, action, targetUrl, agentId, conversationId,
-                    userContext.UserId, tenantId, traceId);
-                return ForwardingContextBuilder.ApplyAsync(
+                ForwardingContextBuilder.ApplyAsync(
                     proxyRequest, new Uri(targetUrl), userContext,
-                    tenantId, agentId, conversationId, traceId);
-            }).ConfigureAwait(false);
+                    tenantId, agentId, conversationId, traceId)).ConfigureAwait(false);
         return error == ForwarderError.None
             ? Results.Empty
             : await ForwardingErrorHandler.HandleChatAsync(

@@ -49,15 +49,8 @@ internal static partial class RouterLog
     [LoggerMessage(EventId = 3022, Level = LogLevel.Debug, Message = "Failed to extract agent ID from request body JSON. Action={Action}, TraceId={TraceId}, BodyLength={BodyLength}")]
     public static partial void AgentIdExtractionFailed(ILogger logger, Exception exception, string? action, string? traceId, int bodyLength);
 
-    // Request lifecycle
-    [LoggerMessage(EventId = 3030, Level = LogLevel.Information, Message = "Request accepted. Action={Action}, UserId={UserId}, TenantId={TenantId}, ConversationId={ConversationId}, QueryLength={QueryLength}, TraceId={TraceId}")]
-    public static partial void RequestAccepted(ILogger logger, string? action, string userId, string? tenantId, string? conversationId, int queryLength, string? traceId);
-
     [LoggerMessage(EventId = 3031, Level = LogLevel.Information, Message = "Semantic cache hit. Action={Action}, UserId={UserId}, TenantId={TenantId}, ConversationId={ConversationId}, TraceId={TraceId}")]
     public static partial void SemanticCacheHit(ILogger logger, string? action, string userId, string? tenantId, string? conversationId, string? traceId);
-
-    [LoggerMessage(EventId = 3032, Level = LogLevel.Information, Message = "Intent recognized. Action={Action}, Intent={Intent}, UserId={UserId}, TenantId={TenantId}, ConversationId={ConversationId}, QueryLength={QueryLength}, TraceId={TraceId}")]
-    public static partial void IntentRecognized(ILogger logger, string? action, string intent, string userId, string? tenantId, string? conversationId, int queryLength, string? traceId);
 
     [LoggerMessage(EventId = 3033, Level = LogLevel.Warning, Message = "Could not determine target service. Action={Action}, Intent={Intent}, UserId={UserId}, TenantId={TenantId}, AgentId={AgentId}, ConversationId={ConversationId}, TraceId={TraceId}")]
     public static partial void TargetServiceNotFound(ILogger logger, string? action, string intent, string userId, string? tenantId, string? agentId, string? conversationId, string? traceId);
@@ -79,13 +72,6 @@ internal static partial class RouterLog
 
     [LoggerMessage(EventId = 3039, Level = LogLevel.Information, Message = "Agent selection completed. AgentId={AgentId}, SelectedByIntentAgent={SelectedByIntentAgent}, Confidence={Confidence}, TraceId={TraceId}")]
     public static partial void AgentSelectionCompleted(ILogger logger, string agentId, bool selectedByIntentAgent, double? confidence, string? traceId);
-
-    // Forwarding
-    [LoggerMessage(EventId = 3040, Level = LogLevel.Information, Message = "Forwarding request. Action={Action}, TargetEndpoint={TargetEndpoint}, Intent={Intent}, AgentId={AgentId}, ConversationId={ConversationId}, UserId={UserId}, TenantId={TenantId}, TraceId={TraceId}")]
-    public static partial void ForwardingStarted(ILogger logger, string? action, string targetEndpoint, string intent, string? agentId, string? conversationId, string userId, string? tenantId, string? traceId);
-
-    [LoggerMessage(EventId = 3041, Level = LogLevel.Debug, Message = "Proxy request prepared. Action={Action}, TargetUrl={TargetUrl}, AgentId={AgentId}, ConversationId={ConversationId}, UserId={UserId}, TenantId={TenantId}, TraceId={TraceId}")]
-    public static partial void ProxyRequestPrepared(ILogger logger, string? action, string targetUrl, string? agentId, string? conversationId, string userId, string? tenantId, string? traceId);
 
     /// <summary>Shared forwarding failure log used by main chat endpoint and all GET proxy endpoints.</summary>
     public static void ForwardingFailed(
@@ -202,25 +188,6 @@ internal static partial class RouterLog
 
     [LoggerMessage(EventId = 3092, Level = LogLevel.Warning, Message = "No endpoint found for intent: {Intent}")]
     public static partial void NoEndpointForIntent(ILogger logger, string intent);
-
-    #endregion
-
-    #region --- Audit Logging Middleware ---
-
-    public static void AuditBodyParseFailed(ILogger logger, Exception exception, string method, PathString path, string? traceId) =>
-        AuditBodyParseFailedCore(logger, exception, method, path, traceId, exception.GetType().FullName ?? "unknown");
-
-    [LoggerMessage(EventId = 3100, Level = LogLevel.Debug, Message = "Audit request body parse failed. Method={Method}, Path={Path}, TraceId={TraceId}, ExceptionType={ExceptionType}")]
-    private static partial void AuditBodyParseFailedCore(ILogger logger, Exception exception, string method, PathString path, string? traceId, string exceptionType);
-
-    [LoggerMessage(EventId = 3101, Level = LogLevel.Information, Message = "Request completed. TraceId={TraceId}, Method={Method}, Path={Path}, UserId={UserId}, TenantId={TenantId}, Query={Query}, StatusCode={StatusCode}, Outcome={Outcome}, DurationMs={DurationMs}")]
-    public static partial void AuditRequestCompleted(ILogger logger, string? traceId, string method, PathString path, string userId, string? tenantId, string? query, int statusCode, string outcome, long durationMs);
-
-    public static void AuditRequestFailed(ILogger logger, Exception exception, string? traceId, string method, PathString path, string userId, string? tenantId, string? query, long durationMs) =>
-        AuditRequestFailedCore(logger, exception, traceId, method, path, userId, tenantId, query, durationMs, exception.GetType().FullName ?? "unknown");
-
-    [LoggerMessage(EventId = 3102, Level = LogLevel.Error, Message = "Request failed. TraceId={TraceId}, Method={Method}, Path={Path}, UserId={UserId}, TenantId={TenantId}, Query={Query}, Outcome=Exception, DurationMs={DurationMs}, ExceptionType={ExceptionType}")]
-    private static partial void AuditRequestFailedCore(ILogger logger, Exception exception, string? traceId, string method, PathString path, string userId, string? tenantId, string? query, long durationMs, string exceptionType);
 
     #endregion
 

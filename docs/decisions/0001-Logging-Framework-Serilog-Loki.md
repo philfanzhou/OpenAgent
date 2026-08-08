@@ -15,9 +15,9 @@
 应用直连具体日志存储会把供应商配置、重试、背压与可用性耦合进业务服务，也会与 stdout 采集造成重复日志。当前实现因此收敛为：
 
 - 业务代码使用 `ILogger<T>`；
-- Serilog 只输出 Console/stdout；
-- 部署环境自行选择日志采集与存储；
+- Serilog 输出 Console/stdout，并在配置 OTLP endpoint 时把 `ILogger` 事件交给 OpenTelemetry Logs；
+- 部署环境自行选择 Collector、日志采集与存储；
 - Trace 可选通过 OTLP 导出；
-- Metrics 由 `/metrics` 暴露给 Prometheus 抓取。
+- Metrics 同时支持 OTLP 导出与 `/metrics` Prometheus 抓取。
 
 Loki、Grafana 或其他后端仍可作为部署选择，但不是 OpenAgent 应用的编译时依赖或默认运行条件。

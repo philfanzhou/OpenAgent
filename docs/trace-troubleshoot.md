@@ -32,13 +32,12 @@ curl -i http://localhost:5208/ready
 
 ## 2. 从 Router 日志定位请求
 
-Router 结构化日志输出到 stdout。用 `TraceId` 为第一检索条件，再使用时间、`ConversationId` 或 `AgentId` 缩小范围。重点事件：
+Router 结构化日志输出到 stdout，并在配置 OTLP 时进入 OpenTelemetry Logs。用 `TraceId` 为第一检索条件，再使用时间、`ConversationId` 或 `AgentId` 缩小范围。重点事件：
 
 | 事件 | 含义 |
 |------|------|
-| `Request accepted` / `Request completed` | 请求已进入 Router，包含状态和耗时 |
+| `Request completed` | Hosting 横切层确认请求完成，包含路由、状态和耗时 |
 | `Agent selection completed` | 显式 Agent 或意图识别的最终选择 |
-| `Forwarding request` / `Proxy request prepared` | 已解析目标并准备转发 |
 | `Forwarding failed` | YARP 未完成下游请求，检查 `ForwarderError` 和异常类型 |
 | `Agent access denied` | 目标 Agent 不在当前用户可见范围 |
 
@@ -62,7 +61,7 @@ Router 结构化日志输出到 stdout。用 `TraceId` 为第一检索条件，�
 
 ```bash
 curl -fsS http://localhost:5001/metrics > /tmp/openagent-router.metrics
-grep 'openagent_router_routes_total' /tmp/openagent-router.metrics
+grep 'openagent_requests\|openagent_request_duration' /tmp/openagent-router.metrics
 grep 'openagent_router_forwarding_failures_total' /tmp/openagent-router.metrics
 ```
 

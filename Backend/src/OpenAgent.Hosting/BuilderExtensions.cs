@@ -19,6 +19,11 @@ public static class ApplicationBuilderExtensions
     {
         var options = app.ApplicationServices.GetRequiredService<IOptions<AgentHostOptions>>().Value;
 
+        if (options.EnableOpenTelemetry)
+        {
+            app.UseMiddleware<RequestTelemetryMiddleware>();
+        }
+
         if (options.EnableCors)
         {
             app.UseCors(options.CorsPolicyName);
