@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Serilog;
 
 namespace OpenAgent.Hosting;
@@ -10,6 +11,7 @@ public static class SerilogHostBuilderExtensions
         string serviceName,
         string serviceVersion = "1.0.0")
     {
+        hostBuilder.ConfigureLogging(logging => logging.ClearProviders());
         return hostBuilder.UseSerilog(
             (context, services, loggerConfiguration) =>
             {
