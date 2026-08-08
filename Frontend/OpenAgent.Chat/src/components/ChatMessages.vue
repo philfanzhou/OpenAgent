@@ -7,6 +7,16 @@ const props = defineProps<{
   loading: boolean
 }>()
 
+const emit = defineEmits<{
+  suggest: [value: string]
+}>()
+
+const suggestions = [
+  ['分析一个需求', '帮我拆解这个需求，并给出可执行计划。'],
+  ['检查服务状态', '检查当前服务状态和可用 Agent。'],
+  ['总结技术方案', '请用简洁的结构总结当前技术方案。'],
+]
+
 const messagesScrollbar = ref<{ setScrollTop: (value: number) => void } | null>(null)
 
 watch(() => props.messages, () => {
@@ -16,7 +26,7 @@ watch(() => props.messages, () => {
 
 <template>
   <el-scrollbar ref="messagesScrollbar" class="messages" wrap-class="messages-wrap" v-loading="props.loading">
-    <div v-if="!props.messages.length" class="welcome"><div class="welcome-orbit"><div class="welcome-icon">✦</div><span class="orbit-dot orbit-dot-one" /><span class="orbit-dot orbit-dot-two" /></div><h1>你好，今天想完成什么？</h1><p>把问题、文件或灵感交给你的 Agent，一起把事情做好。</p></div>
+    <div v-if="!props.messages.length" class="welcome"><div class="welcome-icon">O</div><h1>今天想处理什么？</h1><p>由 Router 自动选择最合适的 Agent，或在顶部手动指定。</p><div class="prompt-grid"><button v-for="item in suggestions" :key="item[0]" type="button" @click="emit('suggest', item[1])"><strong>{{ item[0] }}</strong><span>{{ item[1] }}</span></button></div></div>
     <div v-for="item in props.messages" :key="item.messageId" class="message-row" :class="item.role">
       <div class="avatar">{{ item.role === 'user' ? '我' : item.role === 'tool' ? '工具' : 'AI' }}</div>
       <div class="message-bubble"><div v-if="item.toolName" class="tool-tag">调用工具：{{ item.toolName }}</div><div v-if="item.attachments?.length" class="message-attachments"><div v-for="attachment in item.attachments" :key="attachment.fileName" class="message-attachment"><img v-if="attachment.previewUrl" :src="attachment.previewUrl" :alt="attachment.fileName" /><span>↗ {{ attachment.fileName }}</span></div></div><div class="message-content">{{ item.content || '…' }}</div></div>
