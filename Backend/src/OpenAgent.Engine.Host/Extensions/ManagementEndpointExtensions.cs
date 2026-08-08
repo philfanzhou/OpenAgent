@@ -19,58 +19,43 @@ internal static class ManagementEndpointExtensions
 
         group.MapGet("/agents", async (
             [FromServices] IAgentConfigProvider provider,
-            HttpContext context,
             CancellationToken cancellationToken) =>
         {
-            if (!HasScope(context, "agent.read"))
-                return Results.Forbid();
             return Results.Ok(await provider.ListAgentsAsync(cancellationToken).ConfigureAwait(false));
-        });
+        }).RequireAuthorization(GatewayPermissions.AgentRead);
 
         group.MapGet("/agents/{agentId}", async (
             [FromServices] AgentConfigManagementService manager,
-            HttpContext context,
             string agentId,
             CancellationToken cancellationToken) =>
         {
-            if (!HasScope(context, "agent.config.read"))
-                return Results.Forbid();
             AgentConfigEntity? entity = await manager.GetAsync(agentId, cancellationToken).ConfigureAwait(false);
             return entity == null ? Results.NotFound() : Results.Ok(Redact(entity));
-        });
+        }).RequireAuthorization(GatewayPermissions.AgentConfigRead);
 
         group.MapGet("/llm", async (
             [FromServices] LlmProfileManagementService manager,
-            HttpContext context,
             CancellationToken cancellationToken) =>
         {
-            if (!HasScope(context, "agent.config.read"))
-                return Results.Forbid();
             IReadOnlyList<LlmProviderProfile> profiles = await manager.ListAsync(cancellationToken).ConfigureAwait(false);
             return Results.Ok(profiles.Select(RedactLlm));
-        });
+        }).RequireAuthorization(GatewayPermissions.AgentConfigRead);
 
         group.MapGet("/llm/{id}", async (
             [FromServices] LlmProfileManagementService manager,
-            HttpContext context,
             string id,
             CancellationToken cancellationToken) =>
         {
-            if (!HasScope(context, "agent.config.read"))
-                return Results.Forbid();
             LlmProviderProfile? profile = await manager.GetAsync(id, cancellationToken).ConfigureAwait(false);
             return profile == null ? Results.NotFound() : Results.Ok(RedactLlm(profile));
-        });
+        }).RequireAuthorization(GatewayPermissions.AgentConfigRead);
 
         group.MapPut("/llm/{id}", async (
             [FromServices] LlmProfileManagementService manager,
-            HttpContext context,
             string id,
             [FromBody] LlmProviderProfile profile,
             CancellationToken cancellationToken) =>
         {
-            if (!HasScope(context, "agent.config.write"))
-                return Results.Forbid();
             if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(profile.Name)
                 || string.IsNullOrWhiteSpace(profile.ModelId) || string.IsNullOrWhiteSpace(profile.Endpoint))
             {
@@ -87,20 +72,17 @@ internal static class ManagementEndpointExtensions
 
             LlmProviderProfile saved = await manager.SaveAsync(profile, cancellationToken).ConfigureAwait(false);
             return Results.Ok(RedactLlm(saved));
-        });
+        }).RequireAuthorization(GatewayPermissions.AgentConfigWrite);
 
         group.MapDelete("/llm/{id}", async (
             [FromServices] LlmProfileManagementService manager,
-            HttpContext context,
             string id,
             CancellationToken cancellationToken) =>
         {
-            if (!HasScope(context, "agent.config.write"))
-                return Results.Forbid();
             return await manager.DeleteAsync(id, cancellationToken).ConfigureAwait(false)
                 ? Results.NoContent()
                 : Results.NotFound();
-        });
+        }).RequireAuthorization(GatewayPermissions.AgentConfigWrite);
 
         group.MapPost("/llm/test-connection", async (
             [FromServices] IHttpClientFactory httpClientFactory,
@@ -108,8 +90,6 @@ internal static class ManagementEndpointExtensions
             HttpContext context,
             CancellationToken cancellationToken) =>
         {
-            if (!HasScope(context, "capability.test"))
-                return Results.Forbid();
             LlmProviderProfile profile = request.Profile;
             string traceId = context.GetAgentRequest().TraceId ?? string.Empty;
             if (string.IsNullOrWhiteSpace(profile.Endpoint))
@@ -126,8 +106,7 @@ internal static class ManagementEndpointExtensions
             try
             {
                 string endpoint = profile.Endpoint.TrimEnd('/');
-                if (!endpoint.EndsWith("/models", StringComparison.OrdinalIgnoreCase))
-                    endpoint += "/models";
+                if (!endpoint.EndsWith("/models", StringComparison.OrdinalIgnoreCase)) endpoint += "/models";
                 using HttpRequestMessage httpRequest = new(HttpMethod.Get, endpoint);
                 if (!string.IsNullOrWhiteSpace(profile.ApiKey) && !profile.ApiKey.StartsWith("***", StringComparison.Ordinal))
                 {
@@ -171,7 +150,7 @@ internal static class ManagementEndpointExtensions
                     TraceId = traceId
                 });
             }
-        });
+        }).RequireAuthorization(GatewayPermissions.CapabilityTest);
 
         group.MapPut("/agents/{agentId}/config", async (
             [FromServices] AgentConfigManagementService manager,
@@ -180,8 +159,6 @@ internal static class ManagementEndpointExtensions
             [FromBody] AgentConfigEntity entity,
             CancellationToken cancellationToken) =>
         {
-            if (!HasScope(context, "agent.config.write"))
-                return Results.Forbid();
             AgentConfigEntity? existing = await manager.GetAsync(agentId, cancellationToken).ConfigureAwait(false);
             AgentConfigEntity merged = MergeSecrets(existing, entity);
             AgentConfigEntity? saved = await manager.SaveAsync(
@@ -190,19 +167,16 @@ internal static class ManagementEndpointExtensions
                 context.Request.Headers.IfMatch.FirstOrDefault() ?? entity.CurrentVersion,
                 cancellationToken).ConfigureAwait(false);
             return saved == null ? Results.Conflict() : Results.Ok(Redact(saved));
-        });
+        }).RequireAuthorization(GatewayPermissions.AgentConfigWrite);
 
         group.MapGet("/mcp", async (
             [FromServices] AgentConfigManagementService manager,
-            HttpContext context,
             [FromQuery] string agentId,
             CancellationToken cancellationToken) =>
         {
-            if (!HasScope(context, "agent.config.read"))
-                return Results.Forbid();
             AgentConfigEntity? entity = await manager.GetAsync(agentId, cancellationToken).ConfigureAwait(false);
             return entity == null ? Results.NotFound() : Results.Ok(RedactMcp(entity.Config.Mcp));
-        });
+        }).RequireAuthorization(GatewayPermissions.AgentConfigRead);
 
         group.MapPut("/mcp/{id}", async (
             [FromServices] AgentConfigManagementService manager,
@@ -212,11 +186,8 @@ internal static class ManagementEndpointExtensions
             [FromBody] McpServerConfig server,
             CancellationToken cancellationToken) =>
         {
-            if (!HasScope(context, "agent.config.write"))
-                return Results.Forbid();
             AgentConfigEntity? existing = await manager.GetAsync(agentId, cancellationToken).ConfigureAwait(false);
-            if (existing == null)
-                return Results.NotFound();
+            if (existing == null) return Results.NotFound();
 
             server.Name = id;
             int index = existing.Config.Mcp.Servers.FindIndex(item =>
@@ -234,7 +205,7 @@ internal static class ManagementEndpointExtensions
                 context.Request.Headers.IfMatch.FirstOrDefault(),
                 cancellationToken).ConfigureAwait(false);
             return saved == null ? Results.Conflict() : Results.Ok(RedactMcpServer(server));
-        });
+        }).RequireAuthorization(GatewayPermissions.AgentConfigWrite);
 
         group.MapDelete("/mcp/{id}", async (
             [FromServices] AgentConfigManagementService manager,
@@ -243,16 +214,12 @@ internal static class ManagementEndpointExtensions
             [FromQuery] string agentId,
             CancellationToken cancellationToken) =>
         {
-            if (!HasScope(context, "agent.config.write"))
-                return Results.Forbid();
             AgentConfigEntity? existing = await manager.GetAsync(agentId, cancellationToken).ConfigureAwait(false);
-            if (existing == null)
-                return Results.NotFound();
+            if (existing == null) return Results.NotFound();
 
             int removed = existing.Config.Mcp.Servers.RemoveAll(item =>
                 string.Equals(item.Name, id, StringComparison.OrdinalIgnoreCase));
-            if (removed == 0)
-                return Results.NotFound();
+            if (removed == 0) return Results.NotFound();
 
             AgentConfigEntity? saved = await manager.SaveAsync(
                 agentId,
@@ -260,7 +227,7 @@ internal static class ManagementEndpointExtensions
                 context.Request.Headers.IfMatch.FirstOrDefault(),
                 cancellationToken).ConfigureAwait(false);
             return saved == null ? Results.Conflict() : Results.NoContent();
-        });
+        }).RequireAuthorization(GatewayPermissions.AgentConfigWrite);
 
         group.MapPost("/mcp/test-connection", async (
             [FromServices] IMcpConnectionTester tester,
@@ -268,24 +235,19 @@ internal static class ManagementEndpointExtensions
             HttpContext context,
             CancellationToken cancellationToken) =>
         {
-            if (!HasScope(context, "capability.test"))
-                return Results.Forbid();
             McpConnectionTestResult result = await tester.TestAsync(
                 request,
                 context.GetAgentRequest().User,
                 context.GetAgentRequest().TraceId,
                 cancellationToken).ConfigureAwait(false);
             return Results.Ok(result);
-        });
+        }).RequireAuthorization(GatewayPermissions.CapabilityTest);
 
         group.MapGet("/rag", async (
             [FromServices] AgentConfigManagementService manager,
-            HttpContext context,
             [FromQuery] string agentId,
             CancellationToken cancellationToken) =>
         {
-            if (!HasScope(context, "agent.config.read"))
-                return Results.Forbid();
             AgentConfigEntity? entity = await manager.GetAsync(agentId, cancellationToken).ConfigureAwait(false);
             return entity == null
                 ? Results.NotFound()
@@ -295,7 +257,7 @@ internal static class ManagementEndpointExtensions
                     EnabledRagInstanceIds = [.. entity.Config.Rag.EnabledRagInstanceIds],
                     Instances = entity.Config.Rag.Instances.Select(RedactRag).ToList()
                 });
-        });
+        }).RequireAuthorization(GatewayPermissions.AgentConfigRead);
 
         group.MapPut("/rag/{id}", async (
             [FromServices] AgentConfigManagementService manager,
@@ -305,11 +267,8 @@ internal static class ManagementEndpointExtensions
             [FromBody] RagInstanceConfig instance,
             CancellationToken cancellationToken) =>
         {
-            if (!HasScope(context, "agent.config.write"))
-                return Results.Forbid();
             AgentConfigEntity? existing = await manager.GetAsync(agentId, cancellationToken).ConfigureAwait(false);
-            if (existing == null)
-                return Results.NotFound();
+            if (existing == null) return Results.NotFound();
 
             instance.Id = id;
             RagInstanceConfig? current = existing.Config.Rag.Instances.FirstOrDefault(item =>
@@ -321,10 +280,8 @@ internal static class ManagementEndpointExtensions
 
             int index = existing.Config.Rag.Instances.FindIndex(item =>
                 string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
-            if (index >= 0)
-                existing.Config.Rag.Instances[index] = instance;
-            else
-                existing.Config.Rag.Instances.Add(instance);
+            if (index >= 0) existing.Config.Rag.Instances[index] = instance;
+            else existing.Config.Rag.Instances.Add(instance);
             if (instance.Enabled && !existing.Config.Rag.EnabledRagInstanceIds.Contains(id, StringComparer.OrdinalIgnoreCase))
             {
                 existing.Config.Rag.EnabledRagInstanceIds.Add(id);
@@ -336,7 +293,7 @@ internal static class ManagementEndpointExtensions
                 context.Request.Headers.IfMatch.FirstOrDefault(),
                 cancellationToken).ConfigureAwait(false);
             return saved == null ? Results.Conflict() : Results.Ok(RedactRag(instance));
-        });
+        }).RequireAuthorization(GatewayPermissions.AgentConfigWrite);
 
         group.MapDelete("/rag/{id}", async (
             [FromServices] AgentConfigManagementService manager,
@@ -345,15 +302,11 @@ internal static class ManagementEndpointExtensions
             [FromQuery] string agentId,
             CancellationToken cancellationToken) =>
         {
-            if (!HasScope(context, "agent.config.write"))
-                return Results.Forbid();
             AgentConfigEntity? existing = await manager.GetAsync(agentId, cancellationToken).ConfigureAwait(false);
-            if (existing == null)
-                return Results.NotFound();
+            if (existing == null) return Results.NotFound();
             int removed = existing.Config.Rag.Instances.RemoveAll(item =>
                 string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
-            if (removed == 0)
-                return Results.NotFound();
+            if (removed == 0) return Results.NotFound();
             existing.Config.Rag.EnabledRagInstanceIds.RemoveAll(item =>
                 string.Equals(item, id, StringComparison.OrdinalIgnoreCase));
             AgentConfigEntity? saved = await manager.SaveAsync(
@@ -362,7 +315,7 @@ internal static class ManagementEndpointExtensions
                 context.Request.Headers.IfMatch.FirstOrDefault(),
                 cancellationToken).ConfigureAwait(false);
             return saved == null ? Results.Conflict() : Results.NoContent();
-        });
+        }).RequireAuthorization(GatewayPermissions.AgentConfigWrite);
 
         group.MapPost("/rag/test-connection", async (
             [FromServices] IHttpClientFactory httpClientFactory,
@@ -370,8 +323,6 @@ internal static class ManagementEndpointExtensions
             HttpContext context,
             CancellationToken cancellationToken) =>
         {
-            if (!HasScope(context, "capability.test"))
-                return Results.Forbid();
             if (string.IsNullOrWhiteSpace(request.Instance.ApiEndpoint))
             {
                 return Results.Ok(new RagConnectionTestResult
@@ -416,19 +367,16 @@ internal static class ManagementEndpointExtensions
                     TraceId = context.GetAgentRequest().TraceId
                 });
             }
-        });
+        }).RequireAuthorization(GatewayPermissions.CapabilityTest);
 
         group.MapGet("/skills", async (
             [FromServices] AgentConfigManagementService manager,
-            HttpContext context,
             [FromQuery] string agentId,
             CancellationToken cancellationToken) =>
         {
-            if (!HasScope(context, "agent.config.read"))
-                return Results.Forbid();
             AgentConfigEntity? entity = await manager.GetAsync(agentId, cancellationToken).ConfigureAwait(false);
             return entity == null ? Results.NotFound() : Results.Ok(entity.Config.Skills);
-        });
+        }).RequireAuthorization(GatewayPermissions.AgentConfigRead);
 
         group.MapPut("/skills/{agentId}", async (
             [FromServices] AgentConfigManagementService manager,
@@ -437,11 +385,8 @@ internal static class ManagementEndpointExtensions
             [FromBody] SkillsConfig skills,
             CancellationToken cancellationToken) =>
         {
-            if (!HasScope(context, "agent.config.write"))
-                return Results.Forbid();
             AgentConfigEntity? existing = await manager.GetAsync(agentId, cancellationToken).ConfigureAwait(false);
-            if (existing == null)
-                return Results.NotFound();
+            if (existing == null) return Results.NotFound();
             existing.Config.Skills = skills;
             AgentConfigEntity? saved = await manager.SaveAsync(
                 agentId,
@@ -449,14 +394,11 @@ internal static class ManagementEndpointExtensions
                 context.Request.Headers.IfMatch.FirstOrDefault(),
                 cancellationToken).ConfigureAwait(false);
             return saved == null ? Results.Conflict() : Results.Ok(saved.Config.Skills);
-        });
+        }).RequireAuthorization(GatewayPermissions.AgentConfigWrite);
 
         group.MapPost("/skills/test", (
-            [FromBody] SkillsConfig skills,
-            HttpContext context) =>
+            [FromBody] SkillsConfig skills) =>
         {
-            if (!HasScope(context, "capability.test"))
-                return Results.Forbid();
             string[] invalid = skills.Instances
                 .Where(item => string.IsNullOrWhiteSpace(item.Id) || string.IsNullOrWhiteSpace(item.Name))
                 .Select(item => string.IsNullOrWhiteSpace(item.Id) ? item.Name : item.Id)
@@ -469,20 +411,14 @@ internal static class ManagementEndpointExtensions
                 invalidSkills = invalid,
                 error = invalid.Length == 0 ? null : "Skill instances require both id and name."
             });
-        });
+        }).RequireAuthorization(GatewayPermissions.CapabilityTest);
 
         return group;
     }
 
-    private static bool HasScope(HttpContext context, string requiredScope)
-    {
-        return context.User.Identity?.IsAuthenticated == true;
-    }
-
     private static AgentConfigEntity MergeSecrets(AgentConfigEntity? existing, AgentConfigEntity requested)
     {
-        if (existing == null)
-            return requested;
+        if (existing == null) return requested;
         if (string.IsNullOrWhiteSpace(requested.Config.Llm.ApiKey)
             || requested.Config.Llm.ApiKey.StartsWith("***", StringComparison.Ordinal))
         {

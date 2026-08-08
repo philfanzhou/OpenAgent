@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
+using OpenAgent.Contracts.Security;
 using OpenAgent.Engine.Host.Extensions;
 using OpenAgent.Hosting;
 using Xunit;
@@ -121,5 +122,34 @@ public class HostingTests
             endpoint => endpoint.RoutePattern.RawText?.StartsWith(
                 "/api/v1/admin",
                 StringComparison.Ordinal) == true);
+    }
+
+    [Theory]
+    [InlineData("/api/v1/agent/chat", "POST", GatewayPermissions.AgentExecute)]
+    [InlineData("/api/v1/agent/agents", "GET", GatewayPermissions.AgentRead)]
+    [InlineData("/api/v1/agent/conversations/{conversationId}", "DELETE", GatewayPermissions.ConversationDelete)]
+    [InlineData("/api/v1/admin/agents", "GET", GatewayPermissions.AgentRead)]
+    [InlineData("/api/v1/admin/llm", "GET", GatewayPermissions.AgentConfigRead)]
+    [InlineData("/api/v1/admin/llm/{id}", "PUT", GatewayPermissions.AgentConfigWrite)]
+    [InlineData("/api/v1/admin/mcp/test-connection", "POST", GatewayPermissions.CapabilityTest)]
+    public void MapAgentEndpoints_AttachesRequiredPermissionPolicy(
+        string route,
+        string method,
+        string requiredPolicy)
+    {
+        var builder = WebApplication.CreateBuilder();
+        builder.Services.AddRouting();
+        var app = builder.Build();
+        app.MapAgentEndpoints();
+
+        RouteEndpoint endpoint = ((IEndpointRouteBuilder)app).DataSources
+            .SelectMany(source => source.Endpoints)
+            .OfType<RouteEndpoint>()
+            .Single(candidate => candidate.RoutePattern.RawText == route
+                && candidate.Metadata.GetMetadata<IHttpMethodMetadata>()?.HttpMethods.Contains(method) == true);
+
+        Assert.Contains(
+            endpoint.Metadata.GetOrderedMetadata<IAuthorizeData>(),
+            authorization => authorization.Policy == requiredPolicy);
     }
 }

@@ -30,11 +30,7 @@ app.UseAgentHost(builder.Configuration);
 app.UseMiddleware<AgentExceptionHandlerMiddleware>();
 app.UseMiddleware<AgentUserContextMiddleware>();
 app.UseMiddleware<EngineAdmissionMiddleware>();
-if (app.Environment.IsDevelopment())
-{
-    app.MapAuthenticationEndpoints();
-    app.MapManagementEndpoints();
-}
 app.MapAgentEndpoints();
+app.MapManagementEndpoints();
 
 app.Run();

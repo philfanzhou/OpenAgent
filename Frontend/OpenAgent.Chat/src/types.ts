@@ -149,8 +149,10 @@ export interface RagTestResult {
 }
 
 export interface AuthConfig {
-  mode: 'Basic' | string
-  password: { enabled: boolean; endpoint: string }
+  mode: 'Basic' | 'JwtBearer' | string
+  authority?: string | null
+  audience?: string | null
+  password: { enabled: boolean; endpoint?: string | null }
 }
 
 export interface AuthTokenResponse {

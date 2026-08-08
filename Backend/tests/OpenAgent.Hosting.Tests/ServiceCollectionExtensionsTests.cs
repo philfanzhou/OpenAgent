@@ -55,22 +55,76 @@ public class ServiceCollectionExtensionsTests
     }
 
     [Fact]
-    public void AddAgentHost_WithUnsupportedAuthenticationMode_Throws()
+    public async Task AddAgentHost_WithJwtBearerMode_RegistersJwtBearerScheme()
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["Authentication:Mode"] = "JwtBearer"
+                ["Authentication:Mode"] = "JwtBearer",
+                ["Authentication:Authority"] = "https://identity.example",
+                ["Authentication:Audience"] = "openagent"
             })
             .Build();
         var services = new ServiceCollection();
         services.AddLogging();
 
-        Assert.Throws<InvalidOperationException>(() => services.AddAgentHost(configuration, options =>
+        services.AddAgentHost(configuration, options =>
         {
             DisableOptionalFeatures(options);
             options.EnableJwtAuth = true;
-        }));
+        });
+
+        using ServiceProvider provider = services.BuildServiceProvider();
+        IAuthenticationSchemeProvider schemes = provider.GetRequiredService<IAuthenticationSchemeProvider>();
+
+        Assert.NotNull(await schemes.GetSchemeAsync("Bearer"));
+    }
+
+    [Fact]
+    public async Task AddAgentHost_WithGatewayMode_RegistersInternalGatewayScheme()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Authentication:Mode"] = "Gateway",
+                ["GatewayAuthorization:SigningKey"] = "test-only-signing-key-with-at-least-32-characters"
+            })
+            .Build();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddAgentHost(configuration, options =>
+        {
+            DisableOptionalFeatures(options);
+            options.EnableJwtAuth = true;
+        });
+
+        using ServiceProvider provider = services.BuildServiceProvider();
+        IAuthenticationSchemeProvider schemes = provider.GetRequiredService<IAuthenticationSchemeProvider>();
+
+        Assert.NotNull(await schemes.GetSchemeAsync("OpenAgentGateway"));
+    }
+
+    [Fact]
+    public void AddAgentHost_WithIncompleteJwtConfiguration_FailsFast()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Authentication:Mode"] = "JwtBearer",
+                ["Authentication:Audience"] = "openagent"
+            })
+            .Build();
+        var services = new ServiceCollection();
+        services.AddLogging();
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            services.AddAgentHost(configuration, options =>
+            {
+                DisableOptionalFeatures(options);
+                options.EnableJwtAuth = true;
+            }));
+
+        Assert.Contains("Authority", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]

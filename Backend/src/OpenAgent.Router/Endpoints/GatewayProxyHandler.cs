@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using OpenAgent.Contracts.Security;
+using OpenAgent.Hosting.Authorization;
 using OpenAgent.Router.Observability;
 using Yarp.ReverseProxy.Forwarder;
 
@@ -12,6 +13,7 @@ internal static class GatewayProxyHandler
         IHttpForwarder forwarder,
         IAgentUserContext userContext,
         IRouteTable routeTable,
+        IGatewayAuthorizationService authorization,
         ILogger logger,
         HttpMessageInvoker httpClient,
         ForwarderRequestConfig requestConfig,
@@ -22,8 +24,15 @@ internal static class GatewayProxyHandler
             return Results.Unauthorized();
         }
 
+        string? requiredPermission = ResolvePermission(context.Request);
+        if (requiredPermission != null
+            && !authorization.IsAuthorized(userContext, requiredPermission))
+        {
+            return Results.StatusCode(StatusCodes.Status403Forbidden);
+        }
+
         string? tenantId = userContext.IsAuthenticated
-            ? userContext.TenantId ?? context.Request.Headers["X-Tenant-Id"].FirstOrDefault()
+            ? userContext.TenantId
             : null;
         string? conversationId = userContext.IsAuthenticated
             ? context.Request.RouteValues["conversationId"]?.ToString()
@@ -42,6 +51,9 @@ internal static class GatewayProxyHandler
 
         string targetUrl = $"{targetEndpoint.TrimEnd('/')}{context.Request.Path}{context.Request.QueryString}";
         string traceId = Activity.Current?.Id ?? context.TraceIdentifier;
+        string? gatewayGrant = userContext.IsAuthenticated
+            ? authorization.IssueGrant(userContext)
+            : null;
         ForwarderError error = await forwarder.SendAsync(
             context,
             targetEndpoint,
@@ -54,7 +66,8 @@ internal static class GatewayProxyHandler
                     userContext,
                     tenantId,
                     conversationId,
-                    traceId)
+                    traceId,
+                    gatewayGrant!)
                 : ApplyAnonymousAsync(proxyRequest, new Uri(targetUrl), traceId)).ConfigureAwait(false);
         if (error == ForwarderError.None)
         {
@@ -103,7 +116,42 @@ internal static class GatewayProxyHandler
         proxyRequest.Headers.Remove("X-User-Id");
         proxyRequest.Headers.Remove("X-Tenant-Id");
         proxyRequest.Headers.Remove("X-Trace-Id");
+        proxyRequest.Headers.Remove("Authorization");
+        proxyRequest.Headers.Remove(GatewayAuthorizationDefaults.GrantHeaderName);
         proxyRequest.Headers.TryAddWithoutValidation("X-Trace-Id", traceId);
         return ValueTask.CompletedTask;
+    }
+
+    private static string? ResolvePermission(HttpRequest request)
+    {
+        if (request.Path.StartsWithSegments("/api/v1/admin"))
+        {
+            if (request.Method == HttpMethods.Post
+                && (request.Path.Value?.EndsWith("/test", StringComparison.OrdinalIgnoreCase) == true
+                    || request.Path.Value?.EndsWith("/test-connection", StringComparison.OrdinalIgnoreCase) == true))
+            {
+                return GatewayPermissions.CapabilityTest;
+            }
+
+            if (request.Method == HttpMethods.Get)
+            {
+                return request.Path.Equals("/api/v1/admin/agents", StringComparison.OrdinalIgnoreCase)
+                    ? GatewayPermissions.AgentRead
+                    : GatewayPermissions.AgentConfigRead;
+            }
+
+            return GatewayPermissions.AgentConfigWrite;
+        }
+
+        if (request.Path.StartsWithSegments("/api/v1/agent/conversations"))
+        {
+            return request.Method == HttpMethods.Delete
+                ? GatewayPermissions.ConversationDelete
+                : GatewayPermissions.ConversationRead;
+        }
+
+        return request.Path.Equals("/api/v1/agent/me", StringComparison.OrdinalIgnoreCase)
+            ? GatewayPermissions.IdentityRead
+            : null;
     }
 }

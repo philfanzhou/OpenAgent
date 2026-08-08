@@ -16,7 +16,6 @@ builder.Services.AddAgentHost(builder.Configuration, options =>
 });
 
 builder.Services.AddHttpContextAccessor();
-builder.Services.AddAuthorization();
 
 // IAgentUserContext is populated by JwtUserContextMiddleware (registered below in the pipeline).
 // The DI factory retrieves the context that the middleware stored in HttpContext.Items.
