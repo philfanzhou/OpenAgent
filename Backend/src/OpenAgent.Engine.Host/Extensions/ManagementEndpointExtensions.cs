@@ -502,8 +502,11 @@ internal static class ManagementEndpointExtensions
         return requested;
     }
 
-    private static AgentConfigEntity Redact(AgentConfigEntity entity)
+    internal static AgentConfigEntity Redact(AgentConfigEntity entity)
     {
+        entity.Config.Llm.ApiKey = string.IsNullOrWhiteSpace(entity.Config.Llm.ApiKey)
+            ? string.Empty
+            : "***";
         entity.Config.Rag.Instances = entity.Config.Rag.Instances.Select(RedactRag).ToList();
         return entity;
     }
@@ -527,7 +530,7 @@ internal static class ManagementEndpointExtensions
         };
     }
 
-    private static LlmProviderProfile RedactLlm(LlmProviderProfile profile)
+    internal static LlmProviderProfile RedactLlm(LlmProviderProfile profile)
     {
         return new LlmProviderProfile
         {
