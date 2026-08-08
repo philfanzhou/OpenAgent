@@ -18,6 +18,7 @@ public class ServiceCollectionExtensionsTests
             DisableOptionalFeatures(options);
             options.ServiceName = "test-host";
             options.ServiceVersion = "2.0.0";
+            options.OpenTelemetrySource = "Test.Host";
             options.HealthCheckLivePath = "/live";
         }).BuildServiceProvider();
 
@@ -25,6 +26,7 @@ public class ServiceCollectionExtensionsTests
 
         Assert.Equal("test-host", options.ServiceName);
         Assert.Equal("2.0.0", options.ServiceVersion);
+        Assert.Equal("Test.Host", options.OpenTelemetrySource);
         Assert.Equal("/live", options.HealthCheckLivePath);
     }
 
@@ -91,6 +93,30 @@ public class ServiceCollectionExtensionsTests
         Assert.False(options.EnableHealthChecks);
         Assert.False(options.EnableJwtAuth);
         Assert.False(options.EnableOpenTelemetry);
+    }
+
+    [Theory]
+    [InlineData("not-an-absolute-uri")]
+    [InlineData("ftp://collector.example.com")]
+    public void AddAgentHost_WithInvalidOtlpEndpoint_Throws(string endpoint)
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["OpenTelemetry:OtlpEndpoint"] = endpoint
+            })
+            .Build();
+        var services = new ServiceCollection();
+        services.AddLogging();
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            services.AddAgentHost(configuration, options =>
+            {
+                DisableOptionalFeatures(options);
+                options.EnableOpenTelemetry = true;
+            }));
+
+        Assert.Contains("absolute HTTP(S) URI", exception.Message, StringComparison.Ordinal);
     }
 
     private static ServiceCollection CreateServices(Action<AgentHostOptions> configure)

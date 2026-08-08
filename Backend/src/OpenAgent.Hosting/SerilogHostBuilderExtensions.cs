@@ -14,8 +14,6 @@ public static class SerilogHostBuilderExtensions
         {
             loggerConfiguration
                 .Enrich.FromLogContext()
-                .Enrich.WithMachineName()
-                .Enrich.WithThreadId()
                 .Enrich.WithProperty("ServiceName", serviceName)
                 .Enrich.WithProperty("ServiceVersion", serviceVersion)
                 .Enrich.WithProperty("InstanceId", Environment.MachineName)
