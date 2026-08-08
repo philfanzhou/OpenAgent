@@ -12,6 +12,11 @@ internal sealed class OpenAgentExternalAdapter : IExternalAgentAdapter
 
     public Uri BuildTargetUri(ExternalAgentOptions agent, string? action)
     {
+        if (!ForwardingPathValidator.IsSafeAction(action))
+        {
+            throw new ArgumentException("The chat action contains an unsafe path segment.", nameof(action));
+        }
+
         string suffix = string.IsNullOrWhiteSpace(action)
             ? string.Empty
             : $"/{action.Trim('/')}";

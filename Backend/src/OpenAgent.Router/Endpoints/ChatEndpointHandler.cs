@@ -28,6 +28,13 @@ internal static class ChatEndpointHandler
             return Results.Unauthorized();
         }
 
+        if (!ForwardingPathValidator.IsSafeAction(action))
+        {
+            return Results.Problem(
+                statusCode: StatusCodes.Status400BadRequest,
+                title: "Invalid chat action");
+        }
+
         var tenantId = context.Items[TenantIsolationMiddleware.TenantItemKey]?.ToString()
             ?? userContext.TenantId
             ?? context.Request.Headers["X-Tenant-Id"].FirstOrDefault();

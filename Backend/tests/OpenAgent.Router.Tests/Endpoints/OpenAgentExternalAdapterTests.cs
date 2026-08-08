@@ -8,6 +8,25 @@ namespace OpenAgent.Router.Tests.Endpoints;
 
 public class OpenAgentExternalAdapterTests
 {
+    [Theory]
+    [InlineData("../admin/agents")]
+    [InlineData("attachments/../../admin")]
+    [InlineData("%2e%2e/admin")]
+    [InlineData("stream?redirect=/admin")]
+    [InlineData("stream\\..\\admin")]
+    public void BuildTargetUri_UnsafeAction_IsRejected(string action)
+    {
+        var adapter = new OpenAgentExternalAdapter();
+        var agent = new ExternalAgentOptions
+        {
+            AgentId = "external-support",
+            BaseUrl = "https://partner.example",
+            ChatPath = "/api/v1/agent/chat"
+        };
+
+        Assert.Throws<ArgumentException>(() => adapter.BuildTargetUri(agent, action));
+    }
+
     [Fact]
     public async Task ApplyAsync_DefaultPolicy_ReplacesCredentialsAndDoesNotForwardIdentity()
     {
