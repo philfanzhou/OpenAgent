@@ -1,5 +1,5 @@
-using System.Text.Json;
 using System.Text;
+using System.Text.Json;
 using Microsoft.Extensions.AI;
 using OpenAgent.Contracts.Content;
 using OpenAgent.Contracts.Conversation;
@@ -154,7 +154,9 @@ internal static class AgentMessageAdapter
             {
                 attachment.FileName,
                 attachment.MediaType,
-                attachment.Length
+                attachment.Length,
+                attachment.ObjectKey,
+                attachment.Sha256
             }))
         };
     }

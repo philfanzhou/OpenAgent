@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Content;
 using OpenAgent.Contracts.Requests;
@@ -9,15 +10,23 @@ internal sealed class AgentAttachmentReader
 {
     private readonly AgentAttachmentOptions _options;
     private readonly HashSet<string> _allowedExtensions;
+    private readonly IAttachmentObjectStore _objectStore;
+    private readonly ILogger<AgentAttachmentReader> _logger;
 
-    public AgentAttachmentReader(IOptions<AgentAttachmentOptions> options)
+    public AgentAttachmentReader(
+        IOptions<AgentAttachmentOptions> options,
+        IAttachmentObjectStore objectStore,
+        ILogger<AgentAttachmentReader> logger)
     {
         _options = options.Value;
         _allowedExtensions = _options.AllowedExtensions.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        _objectStore = objectStore;
+        _logger = logger;
     }
 
     internal async Task<IReadOnlyList<AgentAttachment>> ReadAsync(
         IFormFileCollection files,
+        string? tenantId,
         CancellationToken cancellationToken)
     {
         if (files.Count == 0)
@@ -36,29 +45,74 @@ internal sealed class AgentAttachmentReader
         }
 
         List<AgentAttachment> attachments = new(files.Count);
+        List<string> storedObjectKeys = [];
         long actualTotal = 0;
-        foreach (IFormFile file in files)
+        try
         {
-            ValidateFile(file);
-            await using Stream input = file.OpenReadStream();
-            await using MemoryStream buffer = new();
-            await input.CopyToAsync(buffer, cancellationToken).ConfigureAwait(false);
-
-            actualTotal += buffer.Length;
-            if (buffer.Length > _options.MaxFileSizeBytes || actualTotal > _options.MaxTotalSizeBytes)
+            foreach (IFormFile file in files)
             {
-                throw InvalidRequest("Attachment data exceeds the configured size limit.");
+                ValidateFile(file);
+                await using Stream input = file.OpenReadStream();
+                await using MemoryStream buffer = new();
+                await input.CopyToAsync(buffer, cancellationToken).ConfigureAwait(false);
+
+                actualTotal += buffer.Length;
+                if (buffer.Length > _options.MaxFileSizeBytes || actualTotal > _options.MaxTotalSizeBytes)
+                {
+                    throw InvalidRequest("Attachment data exceeds the configured size limit.");
+                }
+
+                byte[] data = buffer.ToArray();
+                string sha256 = Convert.ToHexString(SHA256.HashData(data)).ToLowerInvariant();
+                string fileName = Path.GetFileName(file.FileName);
+                string mediaType = NormalizeMediaType(file.ContentType);
+                await using var objectContent = new MemoryStream(data, writable: false);
+                AttachmentObjectReference? stored = await _objectStore.StoreAsync(
+                    new AttachmentObjectUpload(fileName, mediaType, sha256, tenantId),
+                    objectContent,
+                    cancellationToken).ConfigureAwait(false);
+                if (stored != null)
+                {
+                    storedObjectKeys.Add(stored.ObjectKey);
+                }
+
+                attachments.Add(new AgentAttachment
+                {
+                    FileName = fileName,
+                    MediaType = mediaType,
+                    Data = data,
+                    ObjectKey = stored?.ObjectKey,
+                    Sha256 = sha256
+                });
             }
-
-            attachments.Add(new AgentAttachment
-            {
-                FileName = Path.GetFileName(file.FileName),
-                MediaType = NormalizeMediaType(file.ContentType),
-                Data = buffer.ToArray()
-            });
+        }
+        catch
+        {
+            await RollbackAsync(storedObjectKeys).ConfigureAwait(false);
+            throw;
         }
 
         return attachments;
+    }
+
+    private async Task RollbackAsync(IReadOnlyList<string> objectKeys)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        foreach (string objectKey in objectKeys.Reverse())
+        {
+            try
+            {
+                await _objectStore.DeleteAsync(objectKey, timeout.Token).ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                AttachmentLog.RollbackDeleteFailed(
+                    _logger,
+                    exception,
+                    objectKey,
+                    exception.GetType().FullName ?? exception.GetType().Name);
+            }
+        }
     }
 
     private void ValidateFile(IFormFile file)

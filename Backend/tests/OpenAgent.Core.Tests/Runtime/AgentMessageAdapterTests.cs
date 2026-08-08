@@ -1,4 +1,6 @@
+using System.Text.Json;
 using Microsoft.Extensions.AI;
+using OpenAgent.Contracts.Content;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Core.Runtime.Agent;
 using Xunit;
@@ -26,5 +28,27 @@ public sealed class AgentMessageAdapterTests
             restored!.Contents.OfType<FunctionCallContent>());
         Assert.Equal("call-1", call.CallId);
         Assert.Equal("search", call.Name);
+    }
+
+    [Fact]
+    public void BuildAttachmentMetadata_PreservesObjectReferenceWithoutBytes()
+    {
+        IReadOnlyDictionary<string, string>? metadata = AgentMessageAdapter.BuildAttachmentMetadata(
+        [
+            new AgentAttachment
+            {
+                FileName = "notes.txt",
+                MediaType = "text/plain",
+                Data = [1, 2, 3],
+                ObjectKey = "attachments/object.txt",
+                Sha256 = "sha-256"
+            }
+        ]);
+
+        using JsonDocument document = JsonDocument.Parse(metadata!["Attachments"]);
+        JsonElement attachment = document.RootElement[0];
+        Assert.Equal("attachments/object.txt", attachment.GetProperty("ObjectKey").GetString());
+        Assert.Equal("sha-256", attachment.GetProperty("Sha256").GetString());
+        Assert.False(attachment.TryGetProperty("Data", out _));
     }
 }

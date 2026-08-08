@@ -79,6 +79,7 @@ internal static class AttachmentEndpointExtensions
 
         IReadOnlyList<AgentAttachment> attachments = await attachmentReader.ReadAsync(
             form.Files,
+            context.GetAgentRequest().User.TenantId,
             cancellationToken).ConfigureAwait(false);
         return new AgentRequest
         {

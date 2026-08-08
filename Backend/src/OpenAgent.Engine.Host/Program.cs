@@ -22,6 +22,7 @@ builder.Services.AddSingleton<ProblemDetailsFactory>();
 builder.Services.AddSingleton<ErrorMapper>();
 builder.Services.Configure<AgentAttachmentOptions>(
     builder.Configuration.GetSection(AgentAttachmentOptions.SectionName));
+builder.Services.AddAttachmentStorage(builder.Configuration);
 builder.Services.AddScoped<AgentAttachmentReader>();
 
 var app = builder.Build();

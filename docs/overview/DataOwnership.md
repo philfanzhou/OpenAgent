@@ -6,6 +6,7 @@
 |------|----------|------|
 | ConversationRecord | Redis (热) / SQL Server (冷) | 会话主记录 |
 | ConversationMessage | Redis (热) / SQL Server (冷，JSON列) | 会话消息，嵌入在 ConversationRecord 中 |
+| Attachment Object | S3 兼容对象存储（可选） | multipart 附件原始字节；会话消息只保存 ObjectKey 与 SHA-256 |
 
 ## 引用的外部数据（只读）
 
@@ -21,6 +22,9 @@
 - ConversationRecord/Message：Redis（热）+ SQL Server（冷）双写
   - 热存储为写入主路径，冷归档为异步补偿
   - 冷归档失败不阻塞主流程，需后续补偿
+- Attachment Object：先写对象，再执行 Agent 并保存会话引用
+  - 同一上传请求在进入 Agent 前失败时，尽力回滚已经上传的对象
+  - 进入 Agent 后的失败会话保留引用；最终清理由 Bucket 生命周期策略负责
 
 ## 禁止事项
 

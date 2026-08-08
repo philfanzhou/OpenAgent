@@ -98,12 +98,13 @@ system prompt。
 - [x] 旧 framework 配置透明映射到 MAF。
 - [x] OpenAI Chat、Responses、Azure、Anthropic、Gemini、Ollama、LM Studio、OpenWebUI 客户端。
 - [x] 图片、PDF 和 UTF-8 文本文件输入。
-- [x] multipart 同步与 NDJSON 流式附件端点。
+- [x] multipart 同步与 SSE 流式附件端点。
+- [x] multipart 附件可选写入租户哈希分区的 S3 兼容对象存储。
 - [x] Agent、Model、Tool、Function、MCP、Skill 六维授权扩展点。
 
 ## 后续可选增强
 
-- [ ] 在 Host 前增加 magic-byte 检测、病毒扫描和租户对象存储。
+- [ ] 在 Host 前增加 magic-byte 检测和病毒扫描。
 - [ ] 对真实生产凭据执行各 Provider 的长期合约回归。
 - [ ] Anthropic MAF 集成发布稳定版后移除预览包。
 - [ ] 业务启用多 Agent 时再评估 MAF Workflow；当前 `Agent.Workflow` 仍不是运行服务。

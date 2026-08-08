@@ -23,7 +23,8 @@ ChatApi 提供 Agent.Engine 的核心 HTTP 端点，支持客户端以同步、�
 
 - **流式响应**：SSE 事件流
 - **多模态输入**：图片/PDF/文本附件映射到 `AgentRequest.Attachments`
-- **上传防护**：数量、大小、MIME 类型校验
+- **上传防护**：数量、大小、MIME 类型校验与 SHA-256 摘要
+- **对象存储**：可选 S3/MinIO 私有持久化、租户哈希分区和请求级失败回滚
 - **请求追踪**：Header / Activity 自动生成 TraceId
 - **优雅中断**：客户端断开时正确释放资源
 
@@ -37,6 +38,7 @@ ChatApi 提供 Agent.Engine 的核心 HTTP 端点，支持客户端以同步、�
 - 聊天端点：`Backend/src/OpenAgent.Engine.Host/Extensions/AgentChatEndpointExtensions.cs`
 - 会话端点：`Backend/src/OpenAgent.Engine.Host/Extensions/ConversationEndpointExtensions.cs`
 - 附件端点：`Backend/src/OpenAgent.Engine.Host/Extensions/AttachmentEndpointExtensions.cs`
+- 对象存储：`Backend/src/OpenAgent.Engine.Host/Attachments/`
 - 流式响应：`Backend/src/OpenAgent.Engine.Host/Extensions/AgentStreamWriter.cs`
 - 中间件：`Backend/src/OpenAgent.Engine.Host/Middleware/`
 - 流式处理：`Backend/src/OpenAgent.Engine.Host/StreamingPayloadFactory.cs`

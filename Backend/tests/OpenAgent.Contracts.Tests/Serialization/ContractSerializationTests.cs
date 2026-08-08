@@ -66,7 +66,9 @@ public class ContractSerializationTests
                 {
                     FileName = "sample.txt",
                     MediaType = "text/plain",
-                    Data = [1, 2, 3, 4]
+                    Data = [1, 2, 3, 4],
+                    ObjectKey = "private/attachment.txt",
+                    Sha256 = "sha-256"
                 }
             ]
         };
@@ -74,6 +76,7 @@ public class ContractSerializationTests
         string json = JsonSerializer.Serialize(request, JsonOptions);
 
         Assert.DoesNotContain("attachments", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("private/attachment.txt", json, StringComparison.Ordinal);
         Assert.Contains("hello", json, StringComparison.Ordinal);
     }
 

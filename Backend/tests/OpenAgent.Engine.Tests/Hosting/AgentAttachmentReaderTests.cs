@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Content;
 using OpenAgent.Contracts.Security;
@@ -17,12 +18,14 @@ public class AgentAttachmentReaderTests
 
         IReadOnlyList<AgentAttachment> attachments = await reader.ReadAsync(
             new FormFileCollection { file },
+            "tenant-a",
             CancellationToken.None);
 
         AgentAttachment attachment = Assert.Single(attachments);
         Assert.Equal("image.png", attachment.FileName);
         Assert.Equal("image/png", attachment.MediaType);
         Assert.Equal(new byte[] { 1, 2, 3 }, attachment.Data);
+        Assert.NotNull(attachment.Sha256);
     }
 
     [Theory]
@@ -39,6 +42,7 @@ public class AgentAttachmentReaderTests
 
         await Assert.ThrowsAsync<AgentException>(() => reader.ReadAsync(
             new FormFileCollection { file },
+            "tenant-a",
             CancellationToken.None));
     }
 
@@ -52,7 +56,10 @@ public class AgentAttachmentReaderTests
             CreateFile("two.txt", "text/plain", [2])
         };
 
-        await Assert.ThrowsAsync<AgentException>(() => reader.ReadAsync(files, CancellationToken.None));
+        await Assert.ThrowsAsync<AgentException>(() => reader.ReadAsync(
+            files,
+            "tenant-a",
+            CancellationToken.None));
     }
 
     [Fact]
@@ -63,12 +70,49 @@ public class AgentAttachmentReaderTests
 
         await Assert.ThrowsAsync<AgentException>(() => reader.ReadAsync(
             new FormFileCollection { file },
+            "tenant-a",
             CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ReadAsync_WithObjectStore_PersistsReference()
+    {
+        var store = new RecordingAttachmentObjectStore();
+        AgentAttachmentReader reader = CreateReader(objectStore: store);
+
+        AgentAttachment attachment = Assert.Single(await reader.ReadAsync(
+            new FormFileCollection { CreateFile("notes.txt", "text/plain", [1, 2, 3]) },
+            "tenant-a",
+            CancellationToken.None));
+
+        Assert.Equal("stored/object.txt", attachment.ObjectKey);
+        Assert.Equal("tenant-a", Assert.Single(store.Uploads).TenantId);
+        Assert.Empty(store.DeletedKeys);
+    }
+
+    [Fact]
+    public async Task ReadAsync_WhenLaterFileIsInvalid_RollsBackStoredObjects()
+    {
+        var store = new RecordingAttachmentObjectStore();
+        AgentAttachmentReader reader = CreateReader(objectStore: store);
+        var files = new FormFileCollection
+        {
+            CreateFile("notes.txt", "text/plain", [1, 2, 3]),
+            CreateFile("script.exe", "application/octet-stream", [4])
+        };
+
+        await Assert.ThrowsAsync<AgentException>(() => reader.ReadAsync(
+            files,
+            "tenant-a",
+            CancellationToken.None));
+
+        Assert.Equal(["stored/object.txt"], store.DeletedKeys);
     }
 
     private static AgentAttachmentReader CreateReader(
         int maxFileCount = 5,
-        long maxFileSizeBytes = 10)
+        long maxFileSizeBytes = 10,
+        IAttachmentObjectStore? objectStore = null)
     {
         var options = new AgentAttachmentOptions
         {
@@ -76,7 +120,10 @@ public class AgentAttachmentReaderTests
             MaxFileSizeBytes = maxFileSizeBytes,
             MaxTotalSizeBytes = 20
         };
-        return new AgentAttachmentReader(Options.Create(options));
+        return new AgentAttachmentReader(
+            Options.Create(options),
+            objectStore ?? new NullAttachmentObjectStore(),
+            NullLogger<AgentAttachmentReader>.Instance);
     }
 
     private static FormFile CreateFile(string fileName, string mediaType, byte[] data)
@@ -87,5 +134,27 @@ public class AgentAttachmentReaderTests
             Headers = new HeaderDictionary(),
             ContentType = mediaType
         };
+    }
+
+    private sealed class RecordingAttachmentObjectStore : IAttachmentObjectStore
+    {
+        public List<AttachmentObjectUpload> Uploads { get; } = [];
+        public List<string> DeletedKeys { get; } = [];
+
+        public async Task<AttachmentObjectReference?> StoreAsync(
+            AttachmentObjectUpload upload,
+            Stream content,
+            CancellationToken cancellationToken)
+        {
+            Uploads.Add(upload);
+            await content.CopyToAsync(Stream.Null, cancellationToken);
+            return new AttachmentObjectReference("stored/object.txt", "etag");
+        }
+
+        public Task DeleteAsync(string objectKey, CancellationToken cancellationToken)
+        {
+            DeletedKeys.Add(objectKey);
+            return Task.CompletedTask;
+        }
     }
 }

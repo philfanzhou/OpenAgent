@@ -10,6 +10,7 @@
 | RAG - RagFlow | HTTP REST | 出 | 文档检索（RagFlowAdapter） | 返回空结果，不中断主流程 |
 | Redis | TCP (StackExchange.Redis) | 出 | 会话热存储 | 读取失败返回 null/空列表；写入失败记录日志，不影响主流程 |
 | SQL Server | ADO.NET (Microsoft.Data.SqlClient) | 出 | 会话冷归档 | 归档失败仅记录日志，热存储不受影响；支持指数退避重试 |
+| S3 兼容对象存储 | AWS SDK for .NET | 出 | multipart 附件原始字节持久化 | 关闭时仅请求内存；开启后上传失败则请求失败并回滚本次已上传对象 |
 
 ## 失败语义总结
 
@@ -19,3 +20,4 @@
 - **RAG 检索失败**：返回空结果，Agent 在无 RAG 增强情况下继续推理
 - **Redis 不可用**：回退到 InMemoryConversationStore（开发/测试环境）
 - **SQL Server 归档失败**：热存储一致，冷存储需要补偿；日志记录失败详情
+- **对象存储不可用**：仅影响带附件请求；普通聊天不依赖对象存储
