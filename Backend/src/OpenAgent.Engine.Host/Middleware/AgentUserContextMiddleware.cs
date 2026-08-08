@@ -81,6 +81,17 @@ internal sealed class AgentUserContextMiddleware
 
     private static IReadOnlyList<string> ResolveAudience(HttpContext context)
     {
+        string[] claimAudience = context.User.Claims
+            .Where(claim => claim.Type == "aud")
+            .Select(claim => claim.Value)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (claimAudience.Length > 0)
+        {
+            return claimAudience;
+        }
+
         if (context.Items.TryGetValue("Audience", out object? audience)
             && audience is IEnumerable<string> values)
         {
@@ -91,13 +102,7 @@ internal sealed class AgentUserContextMiddleware
                 .AsReadOnly();
         }
 
-        return context.Request.Headers["X-Agent-Audience"]
-            .SelectMany(value => (value ?? string.Empty).Split(
-                ',',
-                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList()
-            .AsReadOnly();
+        return [];
     }
 
     private static bool RequiresTenant(PathString path) =>

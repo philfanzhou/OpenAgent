@@ -78,4 +78,27 @@ internal static class AgentAuthenticationExtensions
 
         return services;
     }
+
+    private static IServiceCollection AddGatewayAuthorization(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        services.AddOptions<GatewayAuthorizationOptions>()
+            .Bind(configuration.GetSection(GatewayAuthorizationOptions.SectionName))
+            .Validate(
+                options => options.SigningKey?.Length >= 32,
+                "GatewayAuthorization:SigningKey must contain at least 32 characters")
+            .Validate(
+                options => !string.IsNullOrWhiteSpace(options.Issuer)
+                    && !string.IsNullOrWhiteSpace(options.Audience)
+                    && options.GrantLifetimeSeconds is >= 10 and <= 300
+                    && options.ClockSkewSeconds is >= 0 and <= 60
+                    && options.MaxGrantCharacters is >= 1_024 and <= 65_536,
+                "Gateway authorization issuer, audience and lifetime settings are invalid")
+            .ValidateOnStart();
+        services.AddSingleton(TimeProvider.System);
+        services.AddSingleton<GatewayGrantCodec>();
+        services.AddSingleton<IGatewayAuthorizationService, GatewayAuthorizationService>();
+        return services;
+    }
 }

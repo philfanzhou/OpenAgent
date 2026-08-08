@@ -91,6 +91,7 @@ public class ChatEndpointHandlerTests
             registry,
             forwarder,
             userContext,
+            new TestGatewayAuthorizationService(),
             NullLogger.Instance,
             CancellationToken.None);
 

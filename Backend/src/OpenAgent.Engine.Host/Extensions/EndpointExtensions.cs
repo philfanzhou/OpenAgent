@@ -29,6 +29,7 @@ internal static class EndpointExtensions
                 isAuthenticated = user.IsAuthenticated
             });
         })
+        .RequireAuthorization(GatewayPermissions.IdentityRead)
         .WithName("CurrentAgentUser")
         .WithTags("Agent");
 

@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using OpenAgent.Contracts.Requests;
+using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Runtime.Agent;
 using OpenAgent.Engine.Host.Middleware;
 
@@ -13,6 +14,7 @@ internal static class AgentChatEndpointExtensions
     internal static void MapAgentChat(this RouteGroupBuilder group)
     {
         group.MapPost("/chat", ExecuteAsync)
+            .RequireAuthorization(GatewayPermissions.AgentExecute)
             .WithName("Chat")
             .WithTags("Agent");
 
@@ -21,6 +23,7 @@ internal static class AgentChatEndpointExtensions
             .WithTags("Agent");
 
         group.MapPost("/chat/stream", ExecuteStreamAsync)
+            .RequireAuthorization(GatewayPermissions.AgentExecute)
             .WithName("ChatStream")
             .WithTags("Agent");
 

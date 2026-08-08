@@ -66,6 +66,12 @@ internal sealed class BasicAuthenticationHandler(
             return Task.FromResult(AuthenticateResult.Fail("Invalid Basic credentials."));
         }
 
+        if (!IsDevelopmentAnonymousAllowed())
+        {
+            return Task.FromResult(AuthenticateResult.Fail(
+                "Basic authentication is only enabled for local development."));
+        }
+
         string username = decoded[..separator];
         string password = decoded[(separator + 1)..];
 

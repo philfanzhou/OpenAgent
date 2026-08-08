@@ -88,7 +88,9 @@ public class ServiceCollectionExtensionsTests
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["Authentication:Mode"] = "JwtBearer"
+                ["Authentication:Mode"] = "JwtBearer",
+                ["Authentication:Authority"] = "https://identity.example",
+                ["Authentication:Audience"] = "openagent"
             })
             .Build();
         var services = new ServiceCollection();

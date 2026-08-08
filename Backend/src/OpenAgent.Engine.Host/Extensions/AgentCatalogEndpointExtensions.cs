@@ -9,6 +9,7 @@ internal static class AgentCatalogEndpointExtensions
     internal static void MapAgentCatalog(this RouteGroupBuilder group)
     {
         group.MapGet("/agents", ExecuteAsync)
+            .RequireAuthorization(GatewayPermissions.AgentRead)
             .WithName("ListAgents")
             .WithTags("Agent");
     }
