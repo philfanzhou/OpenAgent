@@ -94,42 +94,49 @@ public static class RouterEndpointExtensions
                 httpClient,
                 requestConfig,
                 requireAuthentication: true));
-        app.MapMethods(
-            "/api/v1/admin/{**path}",
-            [HttpMethods.Get, HttpMethods.Post, HttpMethods.Put, HttpMethods.Delete, HttpMethods.Patch],
-            (
-                HttpContext context,
-                IHttpForwarder forwarder,
-                IAgentUserContext userContext,
-                IRouteTable routeTable,
-                ILogger<Program> logger) =>
-                GatewayProxyHandler.HandleAsync(
-                    context,
-                    forwarder,
-                    userContext,
-                    routeTable,
-                    logger,
-                    httpClient,
-                    requestConfig,
-                    requireAuthentication: true));
-        app.MapMethods(
-            "/api/v1/auth/{**path}",
-            [HttpMethods.Get, HttpMethods.Post],
-            (
-                HttpContext context,
-                IHttpForwarder forwarder,
-                IAgentUserContext userContext,
-                IRouteTable routeTable,
-                ILogger<Program> logger) =>
-                GatewayProxyHandler.HandleAsync(
-                    context,
-                    forwarder,
-                    userContext,
-                    routeTable,
-                    logger,
-                    httpClient,
-                    requestConfig,
-                    requireAuthentication: false));
+        IHostEnvironment environment = app.ServiceProvider.GetRequiredService<IHostEnvironment>();
+        if (environment.IsDevelopment())
+        {
+            // Basic authentication is a local-development convenience and does not
+            // establish a production authorization boundary. Keep both the login
+            // endpoint and the management proxy unreachable outside Development.
+            app.MapMethods(
+                "/api/v1/admin/{**path}",
+                [HttpMethods.Get, HttpMethods.Post, HttpMethods.Put, HttpMethods.Delete, HttpMethods.Patch],
+                (
+                    HttpContext context,
+                    IHttpForwarder forwarder,
+                    IAgentUserContext userContext,
+                    IRouteTable routeTable,
+                    ILogger<Program> logger) =>
+                    GatewayProxyHandler.HandleAsync(
+                        context,
+                        forwarder,
+                        userContext,
+                        routeTable,
+                        logger,
+                        httpClient,
+                        requestConfig,
+                        requireAuthentication: true));
+            app.MapMethods(
+                "/api/v1/auth/{**path}",
+                [HttpMethods.Get, HttpMethods.Post],
+                (
+                    HttpContext context,
+                    IHttpForwarder forwarder,
+                    IAgentUserContext userContext,
+                    IRouteTable routeTable,
+                    ILogger<Program> logger) =>
+                    GatewayProxyHandler.HandleAsync(
+                        context,
+                        forwarder,
+                        userContext,
+                        routeTable,
+                        logger,
+                        httpClient,
+                        requestConfig,
+                        requireAuthentication: false));
+        }
         return app;
     }
 }
