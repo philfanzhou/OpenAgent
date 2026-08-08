@@ -69,10 +69,12 @@ internal sealed class AgentSelectionFilter(
 
         string? tenantId = context.Items[TenantIsolationMiddleware.TenantItemKey]?.ToString()
             ?? userContext.TenantId;
+        string? conversationId = request.ConversationId
+            ?? context.Request.Headers["X-Conversation-Id"].FirstOrDefault();
         string? targetEndpoint = routeTable.GetTargetEndpoint(
             "chat",
             tenantId,
-            request.ConversationId);
+            conversationId);
         if (string.IsNullOrWhiteSpace(targetEndpoint))
         {
             return Results.Problem(

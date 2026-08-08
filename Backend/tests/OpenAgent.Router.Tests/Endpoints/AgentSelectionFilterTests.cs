@@ -75,7 +75,26 @@ public class AgentSelectionFilterTests
         Assert.Equal(1, selector.CallCount);
     }
 
-    private static AgentSelectionFilter CreateFilter(StubSelector selector)
+    [Fact]
+    public async Task InvokeAsync_ConversationHeader_PreservesEngineAffinity()
+    {
+        var selector = new StubSelector(new IntentAgentDecision("finance", 0.9, null));
+        var routeTable = new StubRouteTable();
+        AgentSelectionFilter filter = CreateFilter(selector, routeTable);
+        DefaultHttpContext httpContext = CreateHttpContext("{\"message\":\"find invoice\"}");
+        httpContext.Request.Headers["X-Conversation-Id"] = "conversation-from-header";
+        var invocation = new DefaultEndpointFilterInvocationContext(httpContext);
+
+        await filter.InvokeAsync(
+            invocation,
+            _ => ValueTask.FromResult<object?>(Results.Ok()));
+
+        Assert.Equal("conversation-from-header", routeTable.ConversationId);
+    }
+
+    private static AgentSelectionFilter CreateFilter(
+        StubSelector selector,
+        StubRouteTable? routeTable = null)
     {
         var user = new AgentUserContext
         {
@@ -84,7 +103,7 @@ public class AgentSelectionFilterTests
             IsAuthenticated = true
         };
         return new AgentSelectionFilter(
-            new StubRouteTable(),
+            routeTable ?? new StubRouteTable(),
             new AllowAllVisibilityService(),
             selector,
             user,
@@ -124,7 +143,18 @@ public class AgentSelectionFilterTests
 
     private sealed class StubRouteTable : IRouteTable
     {
+        public string? ConversationId { get; private set; }
+
         public string? GetTargetEndpoint(string intent) => "http://engine";
+
+        public string? GetTargetEndpoint(
+            string intent,
+            string? tenantId,
+            string? conversationId)
+        {
+            ConversationId = conversationId;
+            return "http://engine";
+        }
     }
 
     private sealed class AllowAllVisibilityService : IAgentVisibilityService
