@@ -106,7 +106,8 @@ internal static class ManagementEndpointExtensions
             try
             {
                 string endpoint = profile.Endpoint.TrimEnd('/');
-                if (!endpoint.EndsWith("/models", StringComparison.OrdinalIgnoreCase)) endpoint += "/models";
+                if (!endpoint.EndsWith("/models", StringComparison.OrdinalIgnoreCase))
+                    endpoint += "/models";
                 using HttpRequestMessage httpRequest = new(HttpMethod.Get, endpoint);
                 if (!string.IsNullOrWhiteSpace(profile.ApiKey) && !profile.ApiKey.StartsWith("***", StringComparison.Ordinal))
                 {
@@ -187,7 +188,8 @@ internal static class ManagementEndpointExtensions
             CancellationToken cancellationToken) =>
         {
             AgentConfigEntity? existing = await manager.GetAsync(agentId, cancellationToken).ConfigureAwait(false);
-            if (existing == null) return Results.NotFound();
+            if (existing == null)
+                return Results.NotFound();
 
             server.Name = id;
             int index = existing.Config.Mcp.Servers.FindIndex(item =>
@@ -215,11 +217,13 @@ internal static class ManagementEndpointExtensions
             CancellationToken cancellationToken) =>
         {
             AgentConfigEntity? existing = await manager.GetAsync(agentId, cancellationToken).ConfigureAwait(false);
-            if (existing == null) return Results.NotFound();
+            if (existing == null)
+                return Results.NotFound();
 
             int removed = existing.Config.Mcp.Servers.RemoveAll(item =>
                 string.Equals(item.Name, id, StringComparison.OrdinalIgnoreCase));
-            if (removed == 0) return Results.NotFound();
+            if (removed == 0)
+                return Results.NotFound();
 
             AgentConfigEntity? saved = await manager.SaveAsync(
                 agentId,
@@ -268,7 +272,8 @@ internal static class ManagementEndpointExtensions
             CancellationToken cancellationToken) =>
         {
             AgentConfigEntity? existing = await manager.GetAsync(agentId, cancellationToken).ConfigureAwait(false);
-            if (existing == null) return Results.NotFound();
+            if (existing == null)
+                return Results.NotFound();
 
             instance.Id = id;
             RagInstanceConfig? current = existing.Config.Rag.Instances.FirstOrDefault(item =>
@@ -280,8 +285,10 @@ internal static class ManagementEndpointExtensions
 
             int index = existing.Config.Rag.Instances.FindIndex(item =>
                 string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
-            if (index >= 0) existing.Config.Rag.Instances[index] = instance;
-            else existing.Config.Rag.Instances.Add(instance);
+            if (index >= 0)
+                existing.Config.Rag.Instances[index] = instance;
+            else
+                existing.Config.Rag.Instances.Add(instance);
             if (instance.Enabled && !existing.Config.Rag.EnabledRagInstanceIds.Contains(id, StringComparer.OrdinalIgnoreCase))
             {
                 existing.Config.Rag.EnabledRagInstanceIds.Add(id);
@@ -303,10 +310,12 @@ internal static class ManagementEndpointExtensions
             CancellationToken cancellationToken) =>
         {
             AgentConfigEntity? existing = await manager.GetAsync(agentId, cancellationToken).ConfigureAwait(false);
-            if (existing == null) return Results.NotFound();
+            if (existing == null)
+                return Results.NotFound();
             int removed = existing.Config.Rag.Instances.RemoveAll(item =>
                 string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
-            if (removed == 0) return Results.NotFound();
+            if (removed == 0)
+                return Results.NotFound();
             existing.Config.Rag.EnabledRagInstanceIds.RemoveAll(item =>
                 string.Equals(item, id, StringComparison.OrdinalIgnoreCase));
             AgentConfigEntity? saved = await manager.SaveAsync(
@@ -386,7 +395,8 @@ internal static class ManagementEndpointExtensions
             CancellationToken cancellationToken) =>
         {
             AgentConfigEntity? existing = await manager.GetAsync(agentId, cancellationToken).ConfigureAwait(false);
-            if (existing == null) return Results.NotFound();
+            if (existing == null)
+                return Results.NotFound();
             existing.Config.Skills = skills;
             AgentConfigEntity? saved = await manager.SaveAsync(
                 agentId,
@@ -418,7 +428,8 @@ internal static class ManagementEndpointExtensions
 
     private static AgentConfigEntity MergeSecrets(AgentConfigEntity? existing, AgentConfigEntity requested)
     {
-        if (existing == null) return requested;
+        if (existing == null)
+            return requested;
         if (string.IsNullOrWhiteSpace(requested.Config.Llm.ApiKey)
             || requested.Config.Llm.ApiKey.StartsWith("***", StringComparison.Ordinal))
         {

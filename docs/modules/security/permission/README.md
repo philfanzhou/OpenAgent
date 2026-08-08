@@ -25,7 +25,7 @@ JWT claims + authenticated defaults + role grants
 
 Router 在调用意图识别 Agent 前先移除无权访问的候选项，因此用户消息、Agent 名称和描述只会与权限内的数据组合。Engine 的 `ClaimsAgentAuthorizationService` 不再读取本地角色策略，只消费票据中的最终 permission；MCP、Skill 和模型调用沿用同一授权结果。
 
-第三方 Agent 默认只收到其服务凭据，不收到用户身份或内部票据。只有同时配置 `ForwardGatewayGrant=true` 和独立 `GatewayAudience` 时，Router 才签发 audience 绑定的票据；第三方必须使用相同协议验证签名、有效期和 audience。
+第三方 Agent 默认只收到其服务凭据，不收到用户身份或内部票据。只有同时配置 `ForwardGatewayGrant=true`、独立 `GatewayAudience` 和该 audience 的独立签名密钥时，Router 才签发 audience 绑定的票据；第三方必须使用自己的密钥验证签名、有效期和 audience，不能获得或复用 Engine 密钥。
 
 ## 默认生产策略
 

@@ -15,6 +15,7 @@ Router 是唯一公开身份边界。生产环境使用 JWT Bearer 对接企业�
 
 - Router 设置 `Authentication__Authority`、`Authentication__Audience`。
 - Router 与 Engine 通过密钥管理服务注入相同的 `GatewayAuthorization__SigningKey`，密钥至少 32 个字符，禁止写入仓库。
+- 每个接收授权票据的第三方 audience 必须配置独立的 `GatewayAuthorization__AudienceSigningKeys__<audience>`；该密钥不能与 Engine 或其他第三方共用。第三方只获得自己的 audience 密钥，不能签发 Engine 票据。
 - Engine 不应暴露到公网；即使被直连，没有有效网关票据也无法访问业务端点。
 - 浏览器只持有入口 JWT，不会看到内部网关票据。
 

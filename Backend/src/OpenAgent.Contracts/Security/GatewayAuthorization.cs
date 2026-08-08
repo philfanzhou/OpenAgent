@@ -41,6 +41,21 @@ public static class GatewayPermissions
 
 public static class GatewayPermissionMatcher
 {
+    public static bool HasGrantForAnyResource(
+        IEnumerable<string> grantedPermissions,
+        string requiredPermission)
+    {
+        if (string.IsNullOrWhiteSpace(requiredPermission))
+            return false;
+
+        string prefix = $"{requiredPermission}:";
+        return grantedPermissions.Any(permission =>
+            permission.Equals("*", StringComparison.OrdinalIgnoreCase)
+            || permission.Equals(requiredPermission, StringComparison.OrdinalIgnoreCase)
+            || (permission.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                && permission.Length > prefix.Length));
+    }
+
     public static bool IsAllowed(
         IEnumerable<string> grantedPermissions,
         string requiredPermission,
