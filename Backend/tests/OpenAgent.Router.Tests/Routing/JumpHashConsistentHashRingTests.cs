@@ -1,7 +1,7 @@
-using OpenAgent.Core.Routing;
+using OpenAgent.Router.Routing;
 using Xunit;
 
-namespace OpenAgent.Core.Tests.Routing;
+namespace OpenAgent.Router.Tests.Routing;
 
 public class JumpHashConsistentHashRingTests
 {
@@ -9,6 +9,7 @@ public class JumpHashConsistentHashRingTests
     public void GetNode_WithoutNodes_ReturnsNull()
     {
         var ring = new JumpHashConsistentHashRing();
+
         Assert.Null(ring.GetNode("any-key"));
     }
 
@@ -16,21 +17,24 @@ public class JumpHashConsistentHashRingTests
     public void GetNode_WithNodes_ReturnsAssignedNode()
     {
         var ring = new JumpHashConsistentHashRing();
-        ring.UpdateNodes(new[] { "node-a", "node-b", "node-c" });
+        string[] nodes = ["node-a", "node-b", "node-c"];
+        ring.UpdateNodes(nodes);
 
-        var node = ring.GetNode("my-key");
+        string? node = ring.GetNode("my-key");
+
         Assert.NotNull(node);
-        Assert.Contains(node, new[] { "node-a", "node-b", "node-c" });
+        Assert.Contains(node, nodes);
     }
 
     [Fact]
     public void GetNode_SameKey_IsDeterministic()
     {
         var ring = new JumpHashConsistentHashRing();
-        ring.UpdateNodes(new[] { "n1", "n2", "n3", "n4" });
+        ring.UpdateNodes(["n1", "n2", "n3", "n4"]);
 
-        var first = ring.GetNode("stable-key");
-        for (var i = 0; i < 10; i++)
+        string? first = ring.GetNode("stable-key");
+
+        for (var index = 0; index < 10; index++)
         {
             Assert.Equal(first, ring.GetNode("stable-key"));
         }
@@ -40,10 +44,11 @@ public class JumpHashConsistentHashRingTests
     public void UpdateNodes_EmptyCollection_MakesGetNodeReturnNull()
     {
         var ring = new JumpHashConsistentHashRing();
-        ring.UpdateNodes(new[] { "node-a" });
+        ring.UpdateNodes(["node-a"]);
         Assert.NotNull(ring.GetNode("key"));
 
-        ring.UpdateNodes(Array.Empty<string>());
+        ring.UpdateNodes([]);
+
         Assert.Null(ring.GetNode("key"));
     }
 
@@ -51,7 +56,9 @@ public class JumpHashConsistentHashRingTests
     public void UpdateNodes_Null_MakesGetNodeReturnNull()
     {
         var ring = new JumpHashConsistentHashRing();
+
         ring.UpdateNodes(null!);
+
         Assert.Null(ring.GetNode("key"));
     }
 
@@ -59,13 +66,13 @@ public class JumpHashConsistentHashRingTests
     public void GetNode_KeysAreDistributedAcrossNodes()
     {
         var ring = new JumpHashConsistentHashRing();
-        ring.UpdateNodes(new[] { "n1", "n2", "n3" });
+        ring.UpdateNodes(["n1", "n2", "n3"]);
 
-        var nodes = Enumerable.Range(0, 300).Select(i => ring.GetNode($"key-{i}"))
-            .Where(n => n != null)
+        List<string?> assignedNodes = Enumerable.Range(0, 300)
+            .Select(index => ring.GetNode($"key-{index}"))
             .Distinct()
             .ToList();
 
-        Assert.Equal(3, nodes.Count);
+        Assert.Equal(3, assignedNodes.Count);
     }
 }

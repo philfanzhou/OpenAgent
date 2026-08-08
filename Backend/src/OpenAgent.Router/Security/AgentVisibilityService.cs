@@ -6,7 +6,7 @@ using StackExchange.Redis;
 
 namespace OpenAgent.Router.Security;
 
-internal class AgentVisibilityService : IAgentVisibilityService
+internal sealed class AgentVisibilityService : IAgentVisibilityService
 {
     private readonly ILogger<AgentVisibilityService> _logger;
     private readonly IConnectionMultiplexer? _redis;
