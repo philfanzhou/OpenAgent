@@ -21,6 +21,7 @@
 3. **集成联调**：`integrations/` → 对应外部依赖
 4. **数据库变更**：`database/`
 5. **了解决策背景**：`decisions/`
+6. **监控与排障**：`overview/Observability.md` → `trace-troubleshoot.md`
 
 ## 文档规范
 

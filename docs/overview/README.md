@@ -14,10 +14,11 @@
 | [DataOwnership.md](./DataOwnership.md) | 数据主责、引用边界、双写禁区 | 数据库变更、数据迁移 |
 | [Requirements.md](./Requirements.md) | 平台级需求摘要 | 了解功能范围 |
 | [Design.md](./Design.md) | 平台级架构概述 | 了解分层、技术栈、依赖关系 |
+| [Observability.md](./Observability.md) | 日志、Trace、Metrics 与健康检查的当前事实 | 部署、监控、排障 |
 
 ## 阅读建议
 
 1. **首次阅读**：SystemContext → Design → KeyFlows → Requirements
-2. **联调排障**：Integration → KeyFlows → 对应 `modules/` 文档
+2. **联调排障**：Integration → KeyFlows → Observability → 对应 `modules/` 文档
 3. **数据变更**：DataOwnership → `../database/` 文档
 4. **开发执行**：Design → `.agent/rules/coding-conventions.md` → 对应 `modules/` 文档

@@ -2,20 +2,16 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using OpenAgent.Hosting.Authentication;
+using OpenAgent.Hosting.Security;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
-using Serilog;
-using OpenAgent.Hosting.Observability;
-using OpenAgent.Hosting.Security;
-using OpenAgent.Hosting.Authentication;
 
 namespace OpenAgent.Hosting;
 
 public static class ServiceCollectionExtensions
 {
-    private static readonly Serilog.ILogger BootstrapLogger = Log.ForContext(typeof(ServiceCollectionExtensions));
-
     public static IServiceCollection AddAgentHost(
         this IServiceCollection services,
         IConfiguration configuration,
@@ -95,57 +91,41 @@ public static class ServiceCollectionExtensions
 
         if (options.EnableOpenTelemetry)
         {
-            var otlpEndpoint = configuration["OpenTelemetry:OtlpEndpoint"]
+            string? configuredEndpoint = configuration["OpenTelemetry:OtlpEndpoint"]
                 ?? Environment.GetEnvironmentVariable("OTEL_EXPORTER_OTLP_ENDPOINT");
-            var serviceName = configuration["OpenTelemetry:ServiceName"] ?? options.ServiceName;
-            var serviceVersion = configuration["OpenTelemetry:ServiceVersion"] ?? options.ServiceVersion;
-
-            try
+            Uri? otlpEndpoint = null;
+            if (!string.IsNullOrWhiteSpace(configuredEndpoint)
+                && (!Uri.TryCreate(configuredEndpoint, UriKind.Absolute, out otlpEndpoint)
+                    || (otlpEndpoint.Scheme != Uri.UriSchemeHttp
+                        && otlpEndpoint.Scheme != Uri.UriSchemeHttps)))
             {
-                var openTelemetry = services.AddOpenTelemetry()
-                    .ConfigureResource(resource => resource
-                        .AddService(serviceName, serviceVersion: serviceVersion));
-
-                openTelemetry.WithTracing(tracing =>
-                {
-                    tracing
-                        .AddAspNetCoreInstrumentation()
-                        .AddHttpClientInstrumentation()
-                        .AddSource(options.OpenTelemetrySource);
-
-                    if (!string.IsNullOrEmpty(otlpEndpoint))
-                    {
-                        tracing.AddOtlpExporter(exporter => exporter.Endpoint = new Uri(otlpEndpoint));
-                    }
-                });
-
-                openTelemetry.WithMetrics(metrics =>
-                {
-                    metrics
-                        .AddAspNetCoreInstrumentation()
-                        .AddMeter("OpenAgent.Core")
-                        .AddMeter("OpenAgent.Engine")
-                        .AddPrometheusExporter();
-                });
-
-                BootstrapLogger.Information(
-                    "OpenTelemetry configured. OtlpEndpoint={OtlpEndpoint}, PrometheusEnabled={PrometheusEnabled}, ServiceName={ServiceName}, ServiceVersion={ServiceVersion}, Source={OpenTelemetrySource}",
-                    string.IsNullOrEmpty(otlpEndpoint) ? "(none)" : otlpEndpoint,
-                    true,
-                    serviceName,
-                    serviceVersion,
-                    options.OpenTelemetrySource);
+                throw new InvalidOperationException(
+                    $"OpenTelemetry:OtlpEndpoint must be an absolute HTTP(S) URI. Value: '{configuredEndpoint}'.");
             }
-            catch (Exception ex)
+
+            string serviceName = configuration["OpenTelemetry:ServiceName"] ?? options.ServiceName;
+            string serviceVersion = configuration["OpenTelemetry:ServiceVersion"] ?? options.ServiceVersion;
+            var openTelemetry = services.AddOpenTelemetry()
+                .ConfigureResource(resource => resource
+                    .AddService(serviceName, serviceVersion: serviceVersion));
+
+            openTelemetry.WithTracing(tracing =>
             {
-                BootstrapLogger.Warning(
-                    ex,
-                    "OpenTelemetry configuration failed. Endpoint={OtlpEndpoint}, ServiceName={ServiceName}, ServiceVersion={ServiceVersion}, ExceptionType={ExceptionType}",
-                    otlpEndpoint,
-                    serviceName,
-                    serviceVersion,
-                    ex.GetType().FullName);
-            }
+                tracing
+                    .AddAspNetCoreInstrumentation()
+                    .AddHttpClientInstrumentation()
+                    .AddSource(options.OpenTelemetrySource);
+
+                if (otlpEndpoint != null)
+                {
+                    tracing.AddOtlpExporter(exporter => exporter.Endpoint = otlpEndpoint);
+                }
+            });
+
+            openTelemetry.WithMetrics(metrics => metrics
+                .AddAspNetCoreInstrumentation()
+                .AddMeter(options.OpenTelemetrySource)
+                .AddPrometheusExporter());
         }
 
         return services;
