@@ -1,17 +1,25 @@
 # OpenAgent.Chat
 
-Single-page Vue 3 + TypeScript + Vite workspace for connecting directly to an OpenAgent Engine.
+Vue 3 + TypeScript + Vite 单页工作台。浏览器只连接 OpenAgent Router（Gateway），由 Router 统一处理 Agent 目录、意图选路、Engine 服务发现、外部 Agent 转发、身份和管理 API 透传。
 
-## Local development
+## 本地开发
 
 ```bash
-pnpm install --ignore-scripts
+pnpm install
 pnpm dev
 ```
 
-Enter the Engine address in the settings drawer, for example `http://localhost:5208`.
-The development Engine uses PassThrough authentication and accepts `X-Tenant-Id` through the frontend tenant field.
+在设置窗口填写 Router 地址，例如 `http://localhost:5001`，再填写租户并使用开发环境 Basic 账号登录。当前 Basic 实现仅用于本地联调：它只解码凭据，不校验密码，不能作为生产认证方案。
 
-## Production authentication
+## 验证
 
-The page accepts an access token issued by the configured external identity provider. Password, Microsoft Entra ID, and enterprise OIDC login flows belong to that identity provider; Engine validates the resulting Bearer token according to its `Authentication:Mode` configuration.
+```bash
+pnpm test
+pnpm build
+```
+
+工作台内的“诊断”页会从浏览器验证 Gateway Live、Ready、Agent Catalog、Identity 和 Conversations。完整设计与联调证据见 [`docs/modules/chat-workspace/`](../../docs/modules/chat-workspace/README.md)。
+
+## 生产边界
+
+生产环境应在 Gateway 接入企业身份提供方与统一权限策略。浏览器不应直接访问 Engine，也不应信任客户端提交的内部身份或已解析 Agent Header。

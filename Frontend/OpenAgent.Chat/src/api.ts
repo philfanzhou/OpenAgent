@@ -55,7 +55,7 @@ export function setTenantId(value: string): void {
 
 function requireBaseUrl(): string {
   const value = getEngineBaseUrl()
-  if (!value) throw new Error('请先在设置中输入 Engine 地址')
+  if (!value) throw new Error('请先在设置中输入 Gateway 地址')
   return value
 }
 
