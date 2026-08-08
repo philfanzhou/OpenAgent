@@ -15,6 +15,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\OpenAgent.Contracts\OpenAgent.Contracts.csproj" />
     <ProjectReference Include="..\OpenAgent.Core\OpenAgent.Core.csproj" />
   </ItemGroup>
 

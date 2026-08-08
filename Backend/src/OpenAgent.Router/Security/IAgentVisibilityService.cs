@@ -2,7 +2,7 @@ using OpenAgent.Contracts.Security;
 
 namespace OpenAgent.Router;
 
-public interface IAgentVisibilityService
+internal interface IAgentVisibilityService
 {
     Task<bool> IsAgentVisibleToUserAsync(string agentId, IAgentUserContext userContext, CancellationToken cancellationToken = default);
     Task<List<string>> GetPublishedAgentIdsAsync(CancellationToken cancellationToken = default);
