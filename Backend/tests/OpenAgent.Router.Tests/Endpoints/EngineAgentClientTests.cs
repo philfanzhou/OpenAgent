@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Requests;
+using OpenAgent.Contracts.Routing;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Hosting.Authorization;
 using OpenAgent.Router.Endpoints;
@@ -60,6 +61,9 @@ public class EngineAgentClientTests
         Assert.Equal("selected", result);
         Assert.Contains("\"message\":\"choose an agent\"", handler.Body, StringComparison.Ordinal);
         Assert.Contains("\"agentId\":\"intent-router\"", handler.Body, StringComparison.Ordinal);
+        Assert.Equal(
+            "intent-router",
+            handler.Headers[AgentRoutingHeaders.ResolvedAgentId]);
     }
 
     private sealed class RecordingHandler(

@@ -16,6 +16,8 @@ Router 可以把 Engine Agent 与外部 Agent 合并为一个可路由目录。�
   "ChatPath": "/api/v1/agent/chat",
   "RemoteAgentId": "support-v2",
   "ForwardIdentityHeaders": false,
+  "ForwardGatewayGrant": false,
+  "GatewayAudience": "external-support",
   "Authentication": {
     "HeaderName": "Authorization",
     "Scheme": "Bearer",
@@ -32,6 +34,8 @@ Router 可以把 Engine Agent 与外部 Agent 合并为一个可路由目录。�
 - 请求格式、目标路径和认证头由 `IExternalAgentAdapter` 处理；接入其他协议时新增实现并通过 DI 注册，不需要修改意图选择器。
 - Router 仅保留内容头与 `Accept`，会移除客户端的 Cookie、认证头、身份头及其他请求头，再写入受信任配置。用户凭据不会传给第三方。
 - `ForwardIdentityHeaders` 默认为 `false`。只有第三方处于受信任边界并确实需要用户/租户头时才应启用。
+- 只要配置服务 Token、`ForwardIdentityHeaders` 或 `ForwardGatewayGrant`，`BaseUrl` 必须使用 HTTPS。
+- `ForwardGatewayGrant` 需要显式 `GatewayAudience`，并在 Router 的 `GatewayAuthorization:AudienceSigningKeys` 中为该 audience 配置独立密钥。不得把 Engine 的 `SigningKey` 交给第三方或在不同 audience 间复用密钥。
 - 外部 Agent 仍使用 Router 的 Agent ACL 检查；统一网关权限策略上线后，该目录会直接消费网关裁剪后的候选项。
 
 关键实现位于 `Backend/src/OpenAgent.Router/Routing/AgentCatalog.cs`、`Backend/src/OpenAgent.Router/Endpoints/ExternalAgentForwarder.cs` 和 `Backend/src/OpenAgent.Router/Endpoints/OpenAgentExternalAdapter.cs`。

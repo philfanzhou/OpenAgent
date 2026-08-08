@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Requests;
+using OpenAgent.Contracts.Routing;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Hosting.Authorization;
 using OpenAgent.Router.Models;
@@ -48,6 +49,7 @@ internal sealed class EngineAgentClient(HttpClient httpClient) : IEngineAgentCli
             engineEndpoint,
             "/api/v1/agent/chat",
             identity);
+        AddHeader(request, AgentRoutingHeaders.ResolvedAgentId, agentId);
         ChatRequest chatRequest = new()
         {
             Message = message,

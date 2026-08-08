@@ -28,6 +28,31 @@ public class RouterServiceCollectionExtensionsTests
         Assert.Equal("external-support", agent.AgentId);
     }
 
+    [Fact]
+    public void AddRouterRuntime_AudienceSpecificGrantKey_ResolvesOptions()
+    {
+        Dictionary<string, string?> settings = CreateValidSettings();
+        settings["RouterSettings:ExternalAgents:Agents:0:ForwardGatewayGrant"] = "true";
+        settings["RouterSettings:ExternalAgents:Agents:0:GatewayAudience"] = "external-support";
+        settings["GatewayAuthorization:AudienceSigningKeys:external-support"] =
+            "external-support-key-with-at-least-32-characters";
+        IConfiguration configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(settings)
+            .Build();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddRouterRuntime(configuration);
+        using ServiceProvider provider = services.BuildServiceProvider();
+
+        ExternalAgentOptions agent = Assert.Single(provider
+            .GetRequiredService<IOptions<ExternalAgentRoutingOptions>>()
+            .Value
+            .Agents);
+
+        Assert.True(agent.ForwardGatewayGrant);
+        Assert.Equal("external-support", agent.GatewayAudience);
+    }
+
     [Theory]
     [InlineData("duplicate-id")]
     [InlineData("invalid-endpoint")]
@@ -38,6 +63,8 @@ public class RouterServiceCollectionExtensionsTests
     [InlineData("reserved-transport-header")]
     [InlineData("invalid-token-value")]
     [InlineData("missing-gateway-audience")]
+    [InlineData("missing-gateway-key")]
+    [InlineData("insecure-sensitive-endpoint")]
     [InlineData("reserved-auth-header")]
     public void AddRouterRuntime_InvalidExternalAgentConfiguration_FailsValidation(string scenario)
     {
@@ -75,6 +102,14 @@ public class RouterServiceCollectionExtensionsTests
                 break;
             case "missing-gateway-audience":
                 settings["RouterSettings:ExternalAgents:Agents:0:ForwardGatewayGrant"] = "true";
+                break;
+            case "missing-gateway-key":
+                settings["RouterSettings:ExternalAgents:Agents:0:ForwardGatewayGrant"] = "true";
+                settings["RouterSettings:ExternalAgents:Agents:0:GatewayAudience"] = "external:partner";
+                break;
+            case "insecure-sensitive-endpoint":
+                settings["RouterSettings:ExternalAgents:Agents:0:BaseUrl"] = "http://partner.example";
+                settings["RouterSettings:ExternalAgents:Agents:0:Authentication:Token"] = "secret";
                 break;
             case "reserved-auth-header":
                 settings["RouterSettings:ExternalAgents:Agents:0:Authentication:HeaderName"] =

@@ -35,8 +35,11 @@ public static class RouterServiceCollectionExtensions
         services.AddOptions<ExternalAgentRoutingOptions>()
             .Bind(configuration.GetSection(ExternalAgentRoutingOptions.SectionName))
             .Validate(
-                ValidateExternalAgents,
-                "External Agent entries require unique IDs, valid HTTP endpoints, absolute chat paths, and valid authentication header names")
+                options => ValidateExternalAgents(
+                    options,
+                    configuration.GetSection(GatewayAuthorizationOptions.SectionName)
+                        .Get<GatewayAuthorizationOptions>()),
+                "External Agent entries require unique IDs, safe endpoints, audience-specific grant keys, absolute chat paths, and valid authentication header names")
             .ValidateOnStart();
         services.AddMemoryCache();
         services.AddHttpClient("RouterEngineAgent", client =>
@@ -92,7 +95,9 @@ public static class RouterServiceCollectionExtensions
         return services;
     }
 
-    private static bool ValidateExternalAgents(ExternalAgentRoutingOptions options)
+    private static bool ValidateExternalAgents(
+        ExternalAgentRoutingOptions options,
+        GatewayAuthorizationOptions? gatewayAuthorization)
     {
         HashSet<string> ids = new(StringComparer.OrdinalIgnoreCase);
         foreach (ExternalAgentOptions agent in options.Agents)
@@ -103,9 +108,13 @@ public static class RouterServiceCollectionExtensions
                 || string.IsNullOrWhiteSpace(agent.Adapter)
                 || !Uri.TryCreate(agent.BaseUrl, UriKind.Absolute, out Uri? endpoint)
                 || !IsValidBaseUrl(endpoint)
+                || (HasSensitiveForwarding(agent)
+                    && !string.Equals(endpoint.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
                 || !IsValidChatPath(agent.ChatPath)
                 || !IsSafeHeaderValue(agent.RemoteAgentId)
                 || (agent.ForwardGatewayGrant && string.IsNullOrWhiteSpace(agent.GatewayAudience))
+                || (agent.ForwardGatewayGrant
+                    && !HasAudienceSigningKey(gatewayAuthorization, agent.GatewayAudience))
                 || agent.Authentication == null
                 || !IsValidHeaderName(agent.Authentication.HeaderName)
                 || IsReservedTransportHeader(agent.Authentication.HeaderName)
@@ -119,6 +128,19 @@ public static class RouterServiceCollectionExtensions
 
         return true;
     }
+
+    private static bool HasSensitiveForwarding(ExternalAgentOptions agent) =>
+        agent.ForwardIdentityHeaders
+        || agent.ForwardGatewayGrant
+        || !string.IsNullOrWhiteSpace(agent.Authentication.Token);
+
+    private static bool HasAudienceSigningKey(
+        GatewayAuthorizationOptions? authorization,
+        string? audience) =>
+        authorization != null
+        && !string.IsNullOrWhiteSpace(audience)
+        && authorization.AudienceSigningKeys.TryGetValue(audience, out string? signingKey)
+        && signingKey?.Length >= 32;
 
     private static bool IsValidHeaderName(string value) =>
         !string.IsNullOrWhiteSpace(value)

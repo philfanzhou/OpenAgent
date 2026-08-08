@@ -68,6 +68,16 @@ internal static class AgentAuthenticationExtensions
                 options => options.SigningKey?.Length >= 32,
                 "GatewayAuthorization:SigningKey must contain at least 32 characters")
             .Validate(
+                options => options.AudienceSigningKeys.All(item =>
+                    !string.IsNullOrWhiteSpace(item.Key)
+                    && item.Value?.Length >= 32
+                    && !item.Key.Equals(options.Audience, StringComparison.Ordinal)
+                    && !item.Value.Equals(options.SigningKey, StringComparison.Ordinal))
+                && options.AudienceSigningKeys.Values
+                    .Distinct(StringComparer.Ordinal)
+                    .Count() == options.AudienceSigningKeys.Count,
+                "GatewayAuthorization:AudienceSigningKeys require distinct non-default audiences and distinct keys of at least 32 characters")
+            .Validate(
                 options => !string.IsNullOrWhiteSpace(options.Issuer)
                     && !string.IsNullOrWhiteSpace(options.Audience)
                     && options.GrantLifetimeSeconds is >= 10 and <= 300
