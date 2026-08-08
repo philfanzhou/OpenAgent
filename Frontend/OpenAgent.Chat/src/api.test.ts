@@ -68,6 +68,21 @@ describe('workspace API', () => {
     ])
   })
 
+  it('preserves bearer token type for enterprise identity requests', async () => {
+    setEngineBaseUrl('http://router.example')
+    setAccessToken('signed-jwt', 'Bearer')
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await api.getCurrentUser()
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect((init.headers as Headers).get('Authorization')).toBe('Bearer signed-jwt')
+  })
+
   it('includes gateway problem details and trace ID in errors', async () => {
     setEngineBaseUrl('http://router.example')
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({

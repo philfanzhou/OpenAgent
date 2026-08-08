@@ -3,6 +3,8 @@ using System.Text;
 using System.Text.Json;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Requests;
+using OpenAgent.Contracts.Security;
+using OpenAgent.Hosting.Authorization;
 using OpenAgent.Router.Models;
 
 namespace OpenAgent.Router.Endpoints;
@@ -78,9 +80,8 @@ internal sealed class EngineAgentClient(HttpClient httpClient) : IEngineAgentCli
         HttpRequestMessage request = new(
             method,
             $"{engineEndpoint.TrimEnd('/')}{path}");
-        AddHeader(request, "Authorization", identity.Authorization);
+        AddHeader(request, GatewayAuthorizationDefaults.GrantHeaderName, identity.GatewayGrant);
         AddHeader(request, "X-Tenant-Id", identity.TenantId);
-        AddHeader(request, "X-Agent-Audience", identity.Audience);
         AddHeader(request, "X-Trace-Id", identity.TraceId);
         return request;
     }

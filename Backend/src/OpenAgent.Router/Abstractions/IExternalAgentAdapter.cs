@@ -16,5 +16,6 @@ internal interface IExternalAgentAdapter
         IAgentUserContext userContext,
         string? tenantId,
         string? conversationId,
-        string traceId);
+        string traceId,
+        string? gatewayGrant);
 }

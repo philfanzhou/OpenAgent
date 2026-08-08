@@ -116,6 +116,7 @@ public class ChatEndpointHandlerTests
             forwarder,
             externalForwarder,
             userContext,
+            new TestGatewayAuthorizationService(),
             NullLogger.Instance,
             HttpClient,
             RequestConfig,

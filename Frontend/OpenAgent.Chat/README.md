@@ -9,7 +9,7 @@ pnpm install
 pnpm dev
 ```
 
-在设置窗口填写 Router 地址，例如 `http://localhost:5001`，再填写租户并使用开发环境 Basic 账号登录。当前 Basic 实现仅用于本地联调：它只解码凭据，不校验密码，不能作为生产认证方案。
+在设置窗口填写 Router 地址，例如 `http://localhost:5001`。Development 环境可使用 Basic 联调；生产配置使用 JWT Bearer，可在设置中粘贴企业身份提供方签发的短期 access token。浏览器不会接触 Router 签发给 Engine/第三方 Agent 的内部授权票据。
 
 ## 验证
 

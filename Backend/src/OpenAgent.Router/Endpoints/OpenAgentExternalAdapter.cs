@@ -1,5 +1,6 @@
 using OpenAgent.Contracts.Routing;
 using OpenAgent.Contracts.Security;
+using OpenAgent.Hosting.Authorization;
 using OpenAgent.Router.Options;
 
 namespace OpenAgent.Router.Endpoints;
@@ -32,11 +33,18 @@ internal sealed class OpenAgentExternalAdapter : IExternalAgentAdapter
         IAgentUserContext userContext,
         string? tenantId,
         string? conversationId,
-        string traceId)
+        string traceId,
+        string? gatewayGrant)
     {
         proxyRequest.RequestUri = targetUri;
         RemoveGatewayHeaders(proxyRequest);
         proxyRequest.Headers.TryAddWithoutValidation("X-Trace-Id", traceId);
+        if (!string.IsNullOrWhiteSpace(gatewayGrant))
+        {
+            proxyRequest.Headers.TryAddWithoutValidation(
+                GatewayAuthorizationDefaults.GrantHeaderName,
+                gatewayGrant);
+        }
 
         string remoteAgentId = string.IsNullOrWhiteSpace(agent.RemoteAgentId)
             ? agent.AgentId

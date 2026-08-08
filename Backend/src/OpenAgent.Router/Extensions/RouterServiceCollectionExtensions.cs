@@ -104,6 +104,7 @@ public static class RouterServiceCollectionExtensions
                 || !IsValidBaseUrl(endpoint)
                 || !IsValidChatPath(agent.ChatPath)
                 || !IsSafeHeaderValue(agent.RemoteAgentId)
+                || (agent.ForwardGatewayGrant && string.IsNullOrWhiteSpace(agent.GatewayAudience))
                 || agent.Authentication == null
                 || !IsValidHeaderName(agent.Authentication.HeaderName)
                 || IsReservedTransportHeader(agent.Authentication.HeaderName)

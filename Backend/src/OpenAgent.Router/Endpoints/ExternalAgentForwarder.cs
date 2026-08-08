@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using OpenAgent.Contracts.Security;
+using OpenAgent.Hosting.Authorization;
 using OpenAgent.Router.Models;
 using OpenAgent.Router.Options;
 using Yarp.ReverseProxy.Forwarder;
@@ -21,15 +22,18 @@ internal sealed class ExternalAgentForwarder : IExternalAgentForwarder, IDisposa
     private readonly IHttpForwarder _forwarder;
     private readonly IExternalAgentRegistry _registry;
     private readonly IReadOnlyDictionary<string, IExternalAgentAdapter> _adapters;
+    private readonly IGatewayAuthorizationService _authorization;
     private readonly HttpMessageInvoker _httpClient;
 
     public ExternalAgentForwarder(
         IHttpForwarder forwarder,
         IExternalAgentRegistry registry,
+        IGatewayAuthorizationService authorization,
         IEnumerable<IExternalAgentAdapter> adapters)
     {
         _forwarder = forwarder;
         _registry = registry;
+        _authorization = authorization;
         _adapters = adapters.ToDictionary(
             adapter => adapter.Name,
             StringComparer.OrdinalIgnoreCase);
@@ -64,6 +68,12 @@ internal sealed class ExternalAgentForwarder : IExternalAgentForwarder, IDisposa
         }
 
         Uri targetUri = adapter.BuildTargetUri(agent, action);
+        string? gatewayGrant = agent.ForwardGatewayGrant
+            ? _authorization.IssueRestrictedGrant(
+                userContext,
+                BuildExternalPermissions(agent, userContext),
+                agent.GatewayAudience ?? $"external:{agent.AgentId}")
+            : null;
         ForwarderRequestConfig requestConfig = action is "sse" or "stream" or "attachments/stream"
             ? StreamingRequestConfig
             : DefaultRequestConfig;
@@ -79,11 +89,43 @@ internal sealed class ExternalAgentForwarder : IExternalAgentForwarder, IDisposa
                 userContext,
                 tenantId,
                 conversationId,
-                traceId)).ConfigureAwait(false);
+                traceId,
+                gatewayGrant)).ConfigureAwait(false);
         return new ExternalForwardingResult(
             error,
             agent.BaseUrl.TrimEnd('/'),
             targetUri.ToString());
+    }
+
+    internal IReadOnlyList<string> BuildExternalPermissions(
+        ExternalAgentOptions agent,
+        IAgentUserContext userContext)
+    {
+        IReadOnlySet<string> granted = _authorization.ResolvePermissions(userContext);
+        List<string> delegated =
+        [
+            $"{GatewayPermissions.AgentExecute}:{agent.RemoteAgentId ?? agent.AgentId}"
+        ];
+        foreach (string permission in new[]
+        {
+            GatewayPermissions.ModelInvoke,
+            GatewayPermissions.ToolUse,
+            GatewayPermissions.FunctionInvoke,
+            GatewayPermissions.McpUse,
+            GatewayPermissions.SkillUse
+        })
+        {
+            if (GatewayPermissionMatcher.IsAllowed(granted, permission))
+            {
+                delegated.Add(permission);
+            }
+
+            delegated.AddRange(granted.Where(item => item.StartsWith(
+                $"{permission}:",
+                StringComparison.OrdinalIgnoreCase)));
+        }
+
+        return delegated.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
     }
 
     public void Dispose() => _httpClient.Dispose();

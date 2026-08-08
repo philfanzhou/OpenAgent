@@ -2,6 +2,8 @@ using System.Net;
 using System.Net.Http.Json;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Requests;
+using OpenAgent.Contracts.Security;
+using OpenAgent.Hosting.Authorization;
 using OpenAgent.Router.Endpoints;
 using OpenAgent.Router.Models;
 using Xunit;
@@ -25,18 +27,17 @@ public class EngineAgentClientTests
         IReadOnlyList<AgentSummary> result = await client.ListAgentsAsync(
             "http://engine/",
             new DownstreamRequestIdentity(
-                "Basic user-token",
+                "signed-grant",
                 "tenant-1",
-                "router",
                 "trace-1"),
             CancellationToken.None);
 
         AgentSummary agent = Assert.Single(result);
         Assert.Equal("finance", agent.AgentId);
         Assert.Equal("http://engine/api/v1/agent/agents", handler.RequestUri);
-        Assert.Equal("Basic user-token", handler.Headers["Authorization"]);
+        Assert.Equal("signed-grant", handler.Headers[GatewayAuthorizationDefaults.GrantHeaderName]);
+        Assert.DoesNotContain("Authorization", handler.Headers);
         Assert.Equal("tenant-1", handler.Headers["X-Tenant-Id"]);
-        Assert.Equal("router", handler.Headers["X-Agent-Audience"]);
         Assert.Equal("trace-1", handler.Headers["X-Trace-Id"]);
     }
 
@@ -51,7 +52,7 @@ public class EngineAgentClientTests
 
         string? result = await client.ChatAsync(
             "http://engine",
-            new DownstreamRequestIdentity(null, null, null, null),
+            new DownstreamRequestIdentity("signed-grant", null, null),
             "intent-router",
             "choose an agent",
             CancellationToken.None);

@@ -13,11 +13,13 @@ internal static class AttachmentEndpointExtensions
     internal static void MapAttachmentChat(this RouteGroupBuilder group)
     {
         group.MapPost("/chat/attachments", ExecuteAsync)
+            .RequireAuthorization(GatewayPermissions.AgentExecute)
             .DisableAntiforgery()
             .WithName("ChatWithAttachments")
             .WithTags("Agent");
 
         group.MapPost("/chat/attachments/stream", ExecuteStreamAsync)
+            .RequireAuthorization(GatewayPermissions.AgentExecute)
             .DisableAntiforgery()
             .WithName("ChatWithAttachmentsStream")
             .WithTags("Agent");

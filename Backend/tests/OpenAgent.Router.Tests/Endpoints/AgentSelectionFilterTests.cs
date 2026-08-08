@@ -1,5 +1,6 @@
 using System.Text;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Routing;
@@ -18,7 +19,8 @@ public class AgentSelectionFilterTests
     public async Task InvokeAsync_NoExplicitAgent_UsesIntentAgentSelection()
     {
         var selector = new StubSelector(new IntentAgentDecision("finance", 0.9, null));
-        AgentSelectionFilter filter = CreateFilter(selector);
+        var authorization = new TestGatewayAuthorizationService();
+        AgentSelectionFilter filter = CreateFilter(selector, authorization: authorization);
         DefaultHttpContext httpContext = CreateHttpContext("{\"message\":\"find invoice\"}");
         var invocation = new DefaultEndpointFilterInvocationContext(httpContext);
 
@@ -35,6 +37,9 @@ public class AgentSelectionFilterTests
         Assert.Equal(1, selector.CallCount);
         Assert.Equal(0, httpContext.Request.Body.Position);
         Assert.Equal("finance", httpContext.Response.Headers[AgentRoutingHeaders.SelectedAgentId]);
+        Assert.Equal(
+            ["agent.execute:intent-router", GatewayPermissions.ModelInvoke],
+            authorization.RestrictedPermissions);
     }
 
     [Fact]
@@ -138,6 +143,28 @@ public class AgentSelectionFilterTests
     }
 
     [Fact]
+    public async Task InvokeAsync_ExplicitUnauthorizedAgent_ReturnsForbiddenBeforeForwarding()
+    {
+        var selector = new StubSelector(null);
+        AgentSelectionFilter filter = CreateFilter(
+            selector,
+            authorization: new TestGatewayAuthorizationService(
+                evaluator: (_, resourceId) => resourceId != "support"));
+        DefaultHttpContext httpContext = CreateHttpContext(
+            "{\"message\":\"hello\",\"context\":{\"agentId\":\"support\"}}");
+        var invocation = new DefaultEndpointFilterInvocationContext(httpContext);
+
+        object? result = await filter.InvokeAsync(
+            invocation,
+            _ => ValueTask.FromResult<object?>(Results.Ok()));
+        await Assert.IsAssignableFrom<IResult>(result).ExecuteAsync(httpContext);
+
+        Assert.Equal(StatusCodes.Status403Forbidden, httpContext.Response.StatusCode);
+        Assert.Null(httpContext.Features.Get<AgentRoutingFeature>());
+        Assert.Equal(0, selector.CallCount);
+    }
+
+    [Fact]
     public async Task InvokeAsync_ConversationHeader_PreservesEngineAffinity()
     {
         var selector = new StubSelector(new IntentAgentDecision("finance", 0.9, null));
@@ -175,6 +202,7 @@ public class AgentSelectionFilterTests
     private static AgentSelectionFilter CreateFilter(
         StubSelector selector,
         IReadOnlyList<RoutableAgent>? agents = null,
+        TestGatewayAuthorizationService? authorization = null,
         StubRouteTable? routeTable = null)
     {
         var user = new AgentUserContext
@@ -215,6 +243,7 @@ public class AgentSelectionFilterTests
             new StubCatalog(configuredAgents),
             new StubExternalAgentRegistry(configuredAgents),
             new AllowAllVisibilityService(),
+            authorization ?? new TestGatewayAuthorizationService(),
             selector,
             user,
             Microsoft.Extensions.Options.Options.Create(new IntentRecognitionOptions
@@ -230,7 +259,10 @@ public class AgentSelectionFilterTests
 
     private static DefaultHttpContext CreateHttpContext(string body)
     {
-        var context = new DefaultHttpContext();
+        var context = new DefaultHttpContext
+        {
+            RequestServices = new ServiceCollection().AddLogging().BuildServiceProvider()
+        };
         context.Request.Method = HttpMethods.Post;
         context.Request.ContentType = "application/json";
         context.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes(body));

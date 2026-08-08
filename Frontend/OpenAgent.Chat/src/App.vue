@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { api, getAccessToken, getEngineBaseUrl, getTenantId, makeLocalConversation, setAccessToken, setEngineBaseUrl, setTenantId } from './api'
+import { api, getAccessToken, getAccessTokenType, getEngineBaseUrl, getTenantId, makeLocalConversation, setAccessToken, setEngineBaseUrl, setTenantId } from './api'
 import ChatHeader from './components/ChatHeader.vue'
 import ChatMessages from './components/ChatMessages.vue'
 import ChatSidebar from './components/ChatSidebar.vue'
@@ -10,6 +10,7 @@ import { AUTO_AGENT_ID, type AgentConfigEntity, type AgentSummary, type AuthConf
 
 const engineUrl = ref(getEngineBaseUrl())
 const token = ref(getAccessToken())
+const tokenType = ref(getAccessTokenType())
 const tenantId = ref(getTenantId())
 const showSettings = ref(!engineUrl.value)
 const activeSettings = ref<'gateway' | 'diagnostics' | 'llm' | 'agent' | 'mcp' | 'skill' | 'rag'>('gateway')
@@ -144,11 +145,11 @@ function createDefaultLlm(): LlmProviderProfile {
 
 async function connect(): Promise<void> {
   setEngineBaseUrl(engineUrl.value)
-  setAccessToken(token.value)
+  setAccessToken(token.value, tokenType.value)
   setTenantId(tenantId.value)
   try {
-    await api.health('/ready')
     await loadAuthConfig()
+    await api.health('/ready')
     statusText.value = '已连接'
     showSettings.value = false
     await loadWorkspace()
@@ -161,6 +162,10 @@ async function connect(): Promise<void> {
 async function loadAuthConfig(): Promise<void> {
   try {
     authConfig.value = await api.getAuthConfig()
+    if (authConfig.value.mode === 'JwtBearer') {
+      tokenType.value = 'Bearer'
+      setAccessToken(token.value, tokenType.value)
+    }
   } catch {
     authConfig.value = null
   }
@@ -173,6 +178,7 @@ async function loginWithPassword(): Promise<void> {
     const result = await api.passwordLogin(username.value.trim(), password.value)
     setAccessToken(result.access_token, result.token_type || 'Basic')
     token.value = result.access_token
+    tokenType.value = result.token_type || 'Basic'
     password.value = ''
     await connect()
   } catch (error) {
@@ -842,9 +848,10 @@ onMounted(() => {
         <el-tab-pane label="Gateway" name="gateway">
           <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">CONNECTION</span><h3>Gateway 与身份</h3><p>推荐连接 Router，以统一使用意图路由、外部 Agent、权限和 Engine 服务发现。</p></div><span class="connection-badge" :class="{ online: statusText === '已连接' }"><i />{{ statusText }}</span></div>
             <el-form label-position="top" class="connection-form"><el-form-item label="Gateway 地址"><el-input v-model="engineUrl" placeholder="http://localhost:5000" /></el-form-item><el-form-item label="租户 ID"><el-input v-model="tenantId" placeholder="可选：用于当前工作台隔离" /></el-form-item></el-form>
-            <el-descriptions :column="2" border class="identity-status"><el-descriptions-item label="当前用户">{{ currentUser?.userId || '未连接' }}</el-descriptions-item><el-descriptions-item label="当前租户">{{ currentUser?.tenantId || tenantId || '未识别' }}</el-descriptions-item><el-descriptions-item label="认证状态">{{ currentUser?.isAuthenticated ? '已认证' : '未认证' }}</el-descriptions-item><el-descriptions-item label="登录状态">{{ token ? '已登录（Basic）' : '未登录' }}</el-descriptions-item></el-descriptions>
-            <el-alert title="当前 Basic 模式用于开发联调；生产环境应在 Gateway 接入企业身份提供方并启用统一权限策略。" type="info" :closable="false" />
-            <section class="login-card"><div class="login-card-heading"><div><span class="eyebrow">BASIC ACCOUNT</span><h4>登录 Gateway</h4></div><span class="login-config-status">{{ authConfig?.mode || 'Basic' }}</span></div><el-form label-position="top" class="login-form"><el-form-item label="账号"><el-input v-model="username" autocomplete="username" placeholder="请输入账号" /></el-form-item><el-form-item label="密码"><el-input v-model="password" type="password" show-password autocomplete="current-password" placeholder="请输入密码" /></el-form-item></el-form><el-button type="primary" :loading="authLoading" :disabled="!authConfig?.password.enabled" @click="loginWithPassword">账号密码登录</el-button><small class="login-hint">凭据只保存在当前浏览器会话，不写入本地持久化存储。</small></section>
+            <el-descriptions :column="2" border class="identity-status"><el-descriptions-item label="当前用户">{{ currentUser?.userId || '未连接' }}</el-descriptions-item><el-descriptions-item label="当前租户">{{ currentUser?.tenantId || tenantId || '未识别' }}</el-descriptions-item><el-descriptions-item label="认证状态">{{ currentUser?.isAuthenticated ? '已认证' : '未认证' }}</el-descriptions-item><el-descriptions-item label="登录状态">{{ token ? `已登录（${tokenType}）` : '未登录' }}</el-descriptions-item></el-descriptions>
+            <el-alert :title="authConfig?.mode === 'JwtBearer' ? '生产模式由 Gateway 校验企业身份令牌；工作台只在当前会话保存 Bearer token。' : 'Basic 认证仅在本地 Development 环境开放。'" type="info" :closable="false" />
+            <section v-if="authConfig?.mode !== 'JwtBearer'" class="login-card"><div class="login-card-heading"><div><span class="eyebrow">DEVELOPMENT BASIC</span><h4>登录 Gateway</h4></div><span class="login-config-status">{{ authConfig?.mode || 'Basic' }}</span></div><el-form label-position="top" class="login-form"><el-form-item label="账号"><el-input v-model="username" autocomplete="username" placeholder="请输入账号" /></el-form-item><el-form-item label="密码"><el-input v-model="password" type="password" show-password autocomplete="current-password" placeholder="请输入密码" /></el-form-item></el-form><el-button type="primary" :loading="authLoading" :disabled="!authConfig?.password.enabled" @click="loginWithPassword">账号密码登录</el-button><small class="login-hint">凭据只保存在当前浏览器会话，不写入本地持久化存储。</small></section>
+            <section v-else class="login-card"><div class="login-card-heading"><div><span class="eyebrow">OIDC / JWT</span><h4>连接企业身份</h4></div><span class="login-config-status">Bearer</span></div><el-form label-position="top" class="login-form"><el-form-item label="Access token"><el-input v-model="token" type="textarea" :rows="3" placeholder="粘贴由企业身份提供方签发的 JWT" /></el-form-item></el-form><small class="login-hint">Authority：{{ authConfig.authority || '由部署配置' }}；Audience：{{ authConfig.audience || 'openagent' }}。令牌只保存在当前浏览器会话。</small></section>
             <div class="button-row"><el-button type="primary" @click="connect">保存并连接</el-button><el-button @click="api.health('/health').then(() => ElMessage.success('Live 健康检查通过')).catch(notifyError)">测试 Live</el-button><el-button @click="api.health('/ready').then(() => ElMessage.success('Ready 健康检查通过')).catch(notifyError)">测试 Ready</el-button></div>
           </section>
         </el-tab-pane>

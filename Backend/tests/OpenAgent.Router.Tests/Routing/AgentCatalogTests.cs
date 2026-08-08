@@ -38,6 +38,7 @@ public class AgentCatalogTests
             ]),
             external,
             new SelectiveVisibilityService("internal"),
+            new TestGatewayAuthorizationService(),
             new MemoryCache(new MemoryCacheOptions()),
             Microsoft.Extensions.Options.Options.Create(new IntentRecognitionOptions
             {
@@ -73,6 +74,7 @@ public class AgentCatalogTests
             ]),
             CreateExternalRegistry(),
             new SelectiveVisibilityService(),
+            new TestGatewayAuthorizationService(),
             new MemoryCache(new MemoryCacheOptions()),
             Microsoft.Extensions.Options.Options.Create(new IntentRecognitionOptions
             {
@@ -91,6 +93,37 @@ public class AgentCatalogTests
         Assert.Equal("intent-router", agent.Summary.AgentId);
     }
 
+    [Fact]
+    public async Task ListAsync_RemovesUnauthorizedAgentsBeforeIntentSelection()
+    {
+        var catalog = new AgentCatalog(
+            new StubEngineClient(
+            [
+                new AgentSummary { AgentId = "finance", Name = "Finance" },
+                new AgentSummary { AgentId = "support", Name = "Support" }
+            ]),
+            CreateExternalRegistry(),
+            new SelectiveVisibilityService(),
+            new TestGatewayAuthorizationService(
+                evaluator: (_, resourceId) => resourceId == "finance"),
+            new MemoryCache(new MemoryCacheOptions()),
+            Microsoft.Extensions.Options.Options.Create(new IntentRecognitionOptions
+            {
+                AgentId = "intent-router",
+                MaxCandidates = 10,
+                TimeoutMs = 5_000,
+                CatalogCacheSeconds = 15
+            }),
+            NullLogger<AgentCatalog>.Instance);
+
+        IReadOnlyList<RoutableAgent> result = await catalog.ListAsync(
+            CreateRequest(intentCandidatesOnly: true),
+            CancellationToken.None);
+
+        RoutableAgent allowed = Assert.Single(result);
+        Assert.Equal("finance", allowed.Summary.AgentId);
+    }
+
     private static AgentCatalogRequest CreateRequest(bool intentCandidatesOnly)
     {
         var user = new AgentUserContext
@@ -101,7 +134,7 @@ public class AgentCatalogTests
         };
         return new AgentCatalogRequest(
             "http://engine",
-            new DownstreamRequestIdentity(null, "tenant-1", null, "trace-1"),
+            new DownstreamRequestIdentity("test-grant", "tenant-1", "trace-1"),
             user,
             intentCandidatesOnly);
     }

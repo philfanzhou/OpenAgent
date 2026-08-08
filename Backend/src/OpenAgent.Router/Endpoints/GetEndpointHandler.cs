@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using OpenAgent.Contracts.Security;
+using OpenAgent.Hosting.Authorization;
 using OpenAgent.Router.Observability;
 using Yarp.ReverseProxy.Forwarder;
 
@@ -12,6 +13,7 @@ internal static class GetEndpointHandler
         IHttpForwarder forwarder,
         IAgentUserContext userContext,
         IRouteTable routeTable,
+        IGatewayAuthorizationService authorization,
         ILogger logger,
         HttpMessageInvoker httpClient,
         ForwarderRequestConfig requestConfig,
@@ -24,7 +26,7 @@ internal static class GetEndpointHandler
             return Results.Unauthorized();
         }
 
-        var tenantId = userContext.TenantId ?? context.Request.Headers["X-Tenant-Id"].FirstOrDefault();
+        string? tenantId = userContext.TenantId;
         var conversationId = conversationIdFromHeader
             ? context.Request.Headers["X-Conversation-Id"].FirstOrDefault()
             : null;
@@ -37,6 +39,7 @@ internal static class GetEndpointHandler
         var normalizedPath = targetPath.StartsWith('/') ? targetPath : "/" + targetPath;
         var targetUrl = $"{targetEndpoint.TrimEnd('/')}{normalizedPath}";
         var traceId = Activity.Current?.Id ?? context.TraceIdentifier;
+        string gatewayGrant = authorization.IssueGrant(userContext);
         var error = await forwarder.SendAsync(
             context,
             targetEndpoint,
@@ -47,7 +50,7 @@ internal static class GetEndpointHandler
                 proxyRequest.Method = HttpMethod.Get;
                 return ForwardingContextBuilder.ApplyAsync(
                     proxyRequest, new Uri(targetUrl), userContext,
-                    tenantId, null, conversationId, traceId);
+                    tenantId, null, conversationId, traceId, gatewayGrant);
             }).ConfigureAwait(false);
         if (error == ForwarderError.None)
         {

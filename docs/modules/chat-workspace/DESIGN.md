@@ -41,6 +41,6 @@ Router 是浏览器流量的信任边界，负责：
 
 ## 安全约束
 
-当前 Basic 认证仅用于开发联调：实现只解码用户名和租户，不校验密码。因此 Router 仅在 `Development` 环境映射 `/api/v1/auth/**` 与 `/api/v1/admin/**`；生产环境必须在 Gateway 接入真实身份提供方和统一权限策略后再开放管理面。
+Basic 认证只在 Development 环境用于联调；生产入口使用 JWT Bearer，Router 将统一权限结果转换为短时签名票据后再访问 Engine 或显式启用该能力的第三方 Agent。
 
 工作台把开发凭据保存在 `sessionStorage`，Gateway 和租户配置保存在 `localStorage`。不要在公共终端或共享浏览器中保存生产凭据。

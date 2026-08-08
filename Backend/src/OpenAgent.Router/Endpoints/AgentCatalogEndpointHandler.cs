@@ -1,4 +1,5 @@
 using OpenAgent.Contracts.Security;
+using OpenAgent.Hosting.Authorization;
 using OpenAgent.Router.Models;
 
 namespace OpenAgent.Router.Endpoints;
@@ -10,6 +11,7 @@ internal static class AgentCatalogEndpointHandler
         IAgentUserContext userContext,
         IRouteTable routeTable,
         IAgentCatalog catalog,
+        IGatewayAuthorizationService authorization,
         CancellationToken cancellationToken)
     {
         if (!userContext.IsAuthenticated)
@@ -17,8 +19,7 @@ internal static class AgentCatalogEndpointHandler
             return Results.Unauthorized();
         }
 
-        string? tenantId = userContext.TenantId
-            ?? context.Request.Headers["X-Tenant-Id"].FirstOrDefault();
+        string? tenantId = userContext.TenantId;
         string? engineEndpoint = routeTable.GetTargetEndpoint(
             "chat",
             tenantId,
@@ -31,9 +32,8 @@ internal static class AgentCatalogEndpointHandler
         }
 
         DownstreamRequestIdentity identity = new(
-            context.Request.Headers.Authorization.FirstOrDefault(),
+            authorization.IssueGrant(userContext),
             tenantId,
-            context.Request.Headers["X-Agent-Audience"].FirstOrDefault(),
             context.Request.Headers["X-Trace-Id"].FirstOrDefault()
                 ?? context.TraceIdentifier);
         IReadOnlyList<RoutableAgent> agents = await catalog.ListAsync(

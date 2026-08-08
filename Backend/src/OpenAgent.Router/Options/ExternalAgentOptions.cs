@@ -17,6 +17,8 @@ internal sealed class ExternalAgentOptions
     public string ChatPath { get; set; } = "/api/v1/agent/chat";
     public string? RemoteAgentId { get; set; }
     public bool ForwardIdentityHeaders { get; set; }
+    public bool ForwardGatewayGrant { get; set; }
+    public string? GatewayAudience { get; set; }
     public ExternalAgentAuthenticationOptions Authentication { get; set; } = new();
 }
 

@@ -36,6 +36,7 @@ public class RouterServiceCollectionExtensionsTests
     [InlineData("unsafe-chat-path")]
     [InlineData("reserved-transport-header")]
     [InlineData("invalid-token-value")]
+    [InlineData("missing-gateway-audience")]
     public void AddRouterRuntime_InvalidExternalAgentConfiguration_FailsValidation(string scenario)
     {
         Dictionary<string, string?> settings = CreateValidSettings();
@@ -69,6 +70,9 @@ public class RouterServiceCollectionExtensionsTests
             case "invalid-token-value":
                 settings["RouterSettings:ExternalAgents:Agents:0:Authentication:Token"] =
                     "token\r\ninjected-header: value";
+                break;
+            case "missing-gateway-audience":
+                settings["RouterSettings:ExternalAgents:Agents:0:ForwardGatewayGrant"] = "true";
                 break;
         }
 

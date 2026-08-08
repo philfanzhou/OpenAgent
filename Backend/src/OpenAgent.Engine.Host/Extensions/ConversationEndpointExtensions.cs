@@ -10,18 +10,22 @@ internal static class ConversationEndpointExtensions
     internal static void MapConversations(this RouteGroupBuilder group)
     {
         group.MapGet("/conversations", ListAsync)
+            .RequireAuthorization(GatewayPermissions.ConversationRead)
             .WithName("ListConversations")
             .WithTags("Conversation");
 
         group.MapGet("/conversations/search", SearchAsync)
+            .RequireAuthorization(GatewayPermissions.ConversationRead)
             .WithName("SearchConversations")
             .WithTags("Conversation");
 
         group.MapGet("/conversations/{conversationId}", GetAsync)
+            .RequireAuthorization(GatewayPermissions.ConversationRead)
             .WithName("GetConversation")
             .WithTags("Conversation");
 
         group.MapDelete("/conversations/{conversationId}", DeleteAsync)
+            .RequireAuthorization(GatewayPermissions.ConversationDelete)
             .WithName("DeleteConversation")
             .WithTags("Conversation");
     }

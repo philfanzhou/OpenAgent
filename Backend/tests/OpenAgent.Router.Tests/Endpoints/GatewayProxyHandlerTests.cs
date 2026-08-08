@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using OpenAgent.Contracts.Routing;
 using OpenAgent.Contracts.Security;
+using OpenAgent.Hosting.Authorization;
 using OpenAgent.Router.Endpoints;
 using Xunit;
 using Yarp.ReverseProxy.Forwarder;
@@ -35,6 +36,7 @@ public class GatewayProxyHandlerTests
             forwarder,
             user,
             routeTable,
+            new TestGatewayAuthorizationService(grant: "trusted-grant"),
             NullLogger.Instance,
             HttpClient,
             RequestConfig,
@@ -50,6 +52,10 @@ public class GatewayProxyHandlerTests
         Assert.Equal("trusted-user", GetSingleHeader(forwarder.ProxyRequest, "X-User-Id"));
         Assert.Equal("trusted-tenant", GetSingleHeader(forwarder.ProxyRequest, "X-Tenant-Id"));
         Assert.Equal("conversation-1", GetSingleHeader(forwarder.ProxyRequest, "X-Conversation-Id"));
+        Assert.Equal("trusted-grant", GetSingleHeader(
+            forwarder.ProxyRequest,
+            GatewayAuthorizationDefaults.GrantHeaderName));
+        AssertHeaderMissing(forwarder.ProxyRequest, "Authorization");
     }
 
     [Fact]
@@ -70,6 +76,7 @@ public class GatewayProxyHandlerTests
             forwarder,
             AnonymousUser,
             routeTable,
+            new TestGatewayAuthorizationService(),
             NullLogger.Instance,
             HttpClient,
             RequestConfig,
@@ -99,6 +106,7 @@ public class GatewayProxyHandlerTests
             forwarder,
             AnonymousUser,
             new StubRouteTable("http://engine:5100"),
+            new TestGatewayAuthorizationService(),
             NullLogger.Instance,
             HttpClient,
             RequestConfig,
@@ -120,6 +128,7 @@ public class GatewayProxyHandlerTests
             forwarder,
             AuthenticatedUser,
             new StubRouteTable(null),
+            new TestGatewayAuthorizationService(),
             NullLogger.Instance,
             HttpClient,
             RequestConfig,
@@ -127,6 +136,30 @@ public class GatewayProxyHandlerTests
         await result.ExecuteAsync(context);
 
         Assert.Equal(StatusCodes.Status503ServiceUnavailable, context.Response.StatusCode);
+        Assert.Null(forwarder.ProxyRequest);
+    }
+
+    [Fact]
+    public async Task HandleAsync_AdminWriteWithoutPermission_ReturnsForbiddenBeforeRouting()
+    {
+        var context = CreateContext(HttpMethods.Put, "/api/v1/admin/agents/support/config");
+        var forwarder = new CapturingForwarder();
+        var routeTable = new StubRouteTable("http://engine:5100");
+
+        IResult result = await GatewayProxyHandler.HandleAsync(
+            context,
+            forwarder,
+            AuthenticatedUser,
+            routeTable,
+            new TestGatewayAuthorizationService(allow: false),
+            NullLogger.Instance,
+            HttpClient,
+            RequestConfig,
+            requireAuthentication: true);
+        await result.ExecuteAsync(context);
+
+        Assert.Equal(StatusCodes.Status403Forbidden, context.Response.StatusCode);
+        Assert.Null(routeTable.Intent);
         Assert.Null(forwarder.ProxyRequest);
     }
 

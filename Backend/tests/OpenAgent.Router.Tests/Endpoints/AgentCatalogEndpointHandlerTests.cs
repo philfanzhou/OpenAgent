@@ -21,6 +21,7 @@ public class AgentCatalogEndpointHandlerTests
             AnonymousUser,
             new StubRouteTable("http://engine"),
             new StubCatalog([]),
+            new TestGatewayAuthorizationService(),
             context.RequestAborted);
         await result.ExecuteAsync(context);
 
@@ -37,6 +38,7 @@ public class AgentCatalogEndpointHandlerTests
             AuthenticatedUser,
             new StubRouteTable(null),
             new StubCatalog([]),
+            new TestGatewayAuthorizationService(),
             context.RequestAborted);
         await result.ExecuteAsync(context);
 
@@ -67,6 +69,7 @@ public class AgentCatalogEndpointHandlerTests
             AuthenticatedUser,
             new StubRouteTable("http://engine"),
             catalog,
+            new TestGatewayAuthorizationService(grant: "trusted-grant"),
             context.RequestAborted);
         await result.ExecuteAsync(context);
         context.Response.Body.Position = 0;
@@ -79,7 +82,7 @@ public class AgentCatalogEndpointHandlerTests
         Assert.NotNull(catalog.Request);
         Assert.Equal("http://engine", catalog.Request.EngineEndpoint);
         Assert.Equal("tenant-1", catalog.Request.Identity.TenantId);
-        Assert.Equal("Basic encoded", catalog.Request.Identity.Authorization);
+        Assert.Equal("trusted-grant", catalog.Request.Identity.GatewayGrant);
         Assert.Equal("trace-1", catalog.Request.Identity.TraceId);
         Assert.False(catalog.Request.IntentCandidatesOnly);
     }

@@ -32,9 +32,8 @@ internal sealed record AgentRoutingFeature(
     bool SelectedByIntentAgent);
 
 internal sealed record DownstreamRequestIdentity(
-    string? Authorization,
+    string GatewayGrant,
     string? TenantId,
-    string? Audience,
     string? TraceId);
 
 internal sealed record AgentCatalogRequest(

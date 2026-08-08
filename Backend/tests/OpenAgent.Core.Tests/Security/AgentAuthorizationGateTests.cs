@@ -46,6 +46,32 @@ public class AgentAuthorizationGateTests
     }
 
     [Fact]
+    public async Task ClaimsAuthorization_EnforcesGatewayResourceGrant()
+    {
+        var service = new ClaimsAgentAuthorizationService();
+        var context = new AgentUserContext
+        {
+            UserId = "u1",
+            TenantId = "t1",
+            IsAuthenticated = true,
+            Claims = new Dictionary<string, string>
+            {
+                [GatewayClaimTypes.Permission] = "agent.execute:finance,mcp.use"
+            }
+        };
+
+        Assert.True(await service.IsAuthorizedAsync(
+            new AgentAuthorizationRequest("finance", AgentResourceType.Agent, "finance", "execute"),
+            context));
+        Assert.False(await service.IsAuthorizedAsync(
+            new AgentAuthorizationRequest("support", AgentResourceType.Agent, "support", "execute"),
+            context));
+        Assert.True(await service.IsAuthorizedAsync(
+            new AgentAuthorizationRequest("finance", AgentResourceType.Mcp, "billing", "use"),
+            context));
+    }
+
+    [Fact]
     public async Task EnsureAuthorizedAsync_Deny_ThrowsAgentException()
     {
         var gate = new AgentAuthorizationGate(

@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Routing;
 using OpenAgent.Contracts.Security;
+using OpenAgent.Hosting.Authorization;
 using OpenAgent.Router.Middleware;
 using OpenAgent.Router.Models;
 using OpenAgent.Router.Observability;
@@ -15,6 +16,7 @@ internal sealed class AgentSelectionFilter(
     IAgentCatalog catalog,
     IExternalAgentRegistry externalAgents,
     IAgentVisibilityService visibilityService,
+    IGatewayAuthorizationService authorization,
     IIntentAgentSelector selector,
     IAgentUserContext userContext,
     IOptions<IntentRecognitionOptions> options,
@@ -85,9 +87,8 @@ internal sealed class AgentSelectionFilter(
         }
 
         DownstreamRequestIdentity identity = new(
-            context.Request.Headers.Authorization.FirstOrDefault(),
+            authorization.IssueGrant(userContext),
             tenantId,
-            context.Request.Headers["X-Agent-Audience"].FirstOrDefault(),
             context.Request.Headers["X-Trace-Id"].FirstOrDefault()
                 ?? context.TraceIdentifier);
         string? explicitAgentId = string.IsNullOrWhiteSpace(request.AgentId)
@@ -106,12 +107,21 @@ internal sealed class AgentSelectionFilter(
         string? selectedAgentId = explicitAgentId;
         if (string.IsNullOrWhiteSpace(selectedAgentId))
         {
+            DownstreamRequestIdentity intentIdentity = identity with
+            {
+                GatewayGrant = authorization.IssueRestrictedGrant(
+                    userContext,
+                    [
+                        $"{GatewayPermissions.AgentExecute}:{_options.AgentId}",
+                        GatewayPermissions.ModelInvoke
+                    ])
+            };
             IntentAgentDecision? decision = _options.Enabled
                 ? await selector.SelectAsync(
                     new IntentAgentSelectionRequest(
                         request.Query,
                         targetEndpoint,
-                        identity,
+                        intentIdentity,
                         candidates.Select(candidate => candidate.Summary).ToArray()),
                     context.RequestAborted).ConfigureAwait(false)
                 : null;
@@ -123,6 +133,14 @@ internal sealed class AgentSelectionFilter(
                 selectedByIntentAgent,
                 decision?.Confidence,
                 context.TraceIdentifier);
+        }
+
+        if (!authorization.IsAuthorized(
+            userContext,
+            GatewayPermissions.AgentExecute,
+            selectedAgentId))
+        {
+            return Results.StatusCode(StatusCodes.Status403Forbidden);
         }
 
         if (string.IsNullOrWhiteSpace(selectedAgentId))

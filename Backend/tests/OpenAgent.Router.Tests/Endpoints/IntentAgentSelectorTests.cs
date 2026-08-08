@@ -63,9 +63,8 @@ public class IntentAgentSelectorTests
                 "find my invoice",
                 "http://engine",
                 new DownstreamRequestIdentity(
-                    "Basic token",
+                    "signed-grant",
                     "tenant-1",
-                    "router",
                     "trace-1"),
                 [
                     new AgentSummary

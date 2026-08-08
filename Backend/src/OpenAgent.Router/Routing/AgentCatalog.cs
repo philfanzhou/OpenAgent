@@ -1,6 +1,8 @@
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Configuration;
+using OpenAgent.Contracts.Security;
+using OpenAgent.Hosting.Authorization;
 using OpenAgent.Router.Models;
 using OpenAgent.Router.Observability;
 using OpenAgent.Router.Options;
@@ -11,6 +13,7 @@ internal sealed class AgentCatalog(
     IEngineAgentClient engineClient,
     IExternalAgentRegistry externalAgents,
     IAgentVisibilityService visibilityService,
+    IGatewayAuthorizationService authorization,
     IMemoryCache memoryCache,
     IOptions<IntentRecognitionOptions> options,
     ILogger<AgentCatalog> logger) : IAgentCatalog
@@ -68,7 +71,10 @@ internal sealed class AgentCatalog(
                 candidate.Summary.AgentId,
                 request.UserContext,
                 cancellationToken).ConfigureAwait(false);
-            if (allowed)
+            if (allowed && authorization.IsAuthorized(
+                request.UserContext,
+                GatewayPermissions.AgentExecute,
+                candidate.Summary.AgentId))
             {
                 visible.Add(candidate);
                 if (request.IntentCandidatesOnly && visible.Count >= _options.MaxCandidates)

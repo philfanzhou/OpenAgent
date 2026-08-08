@@ -1,5 +1,6 @@
 using OpenAgent.Contracts.Routing;
 using OpenAgent.Contracts.Security;
+using OpenAgent.Hosting.Authorization;
 using OpenAgent.Router.Endpoints;
 using OpenAgent.Router.Options;
 using Xunit;
@@ -65,7 +66,8 @@ public class OpenAgentExternalAdapterTests
             user,
             "tenant-1",
             "conversation-1",
-            "trace-1");
+            "trace-1",
+            gatewayGrant: null);
 
         Assert.Equal("https://partner.example/root/agent/chat/attachments/stream", request.RequestUri?.ToString());
         Assert.Equal("Bearer service-token", Assert.Single(request.Headers.GetValues("Authorization")));
@@ -103,9 +105,46 @@ public class OpenAgentExternalAdapterTests
             user,
             "tenant-1",
             null,
-            "trace-1");
+            "trace-1",
+            gatewayGrant: null);
 
         Assert.Equal("user-1", Assert.Single(request.Headers.GetValues("X-User-Id")));
         Assert.Equal("tenant-1", Assert.Single(request.Headers.GetValues("X-Tenant-Id")));
+    }
+
+    [Fact]
+    public async Task ApplyAsync_ExplicitGatewayGrant_ForwardsOnlyScopedGrant()
+    {
+        var adapter = new OpenAgentExternalAdapter();
+        var agent = new ExternalAgentOptions
+        {
+            AgentId = "external-support",
+            BaseUrl = "https://partner.example"
+        };
+        var user = new AgentUserContext
+        {
+            UserId = "user-1",
+            TenantId = "tenant-1",
+            IsAuthenticated = true
+        };
+        var request = new HttpRequestMessage(HttpMethod.Post, "http://untrusted");
+        request.Headers.TryAddWithoutValidation(
+            GatewayAuthorizationDefaults.GrantHeaderName,
+            "spoofed-grant");
+
+        await adapter.ApplyAsync(
+            request,
+            adapter.BuildTargetUri(agent, null),
+            agent,
+            user,
+            "tenant-1",
+            null,
+            "trace-1",
+            "trusted-scoped-grant");
+
+        Assert.Equal(
+            "trusted-scoped-grant",
+            Assert.Single(request.Headers.GetValues(
+                GatewayAuthorizationDefaults.GrantHeaderName)));
     }
 }

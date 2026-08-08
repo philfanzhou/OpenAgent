@@ -35,6 +35,10 @@ export function getAccessToken(): string {
   return sessionStorage.getItem(tokenStorageKey) || ''
 }
 
+export function getAccessTokenType(): string {
+  return sessionStorage.getItem(tokenTypeStorageKey) || 'Basic'
+}
+
 export function setAccessToken(value: string, tokenType = 'Basic'): void {
   if (value.trim()) {
     sessionStorage.setItem(tokenStorageKey, value.trim())
@@ -66,7 +70,7 @@ function headers(extra: HeadersInit = {}): Headers {
   })
   const token = getAccessToken()
   const tenantId = getTenantId()
-  if (token) result.set('Authorization', `${sessionStorage.getItem(tokenTypeStorageKey) || 'Basic'} ${token}`)
+  if (token) result.set('Authorization', `${getAccessTokenType()} ${token}`)
   if (tenantId) result.set('X-Tenant-Id', tenantId)
   result.set('X-Trace-Id', crypto.randomUUID())
   return result

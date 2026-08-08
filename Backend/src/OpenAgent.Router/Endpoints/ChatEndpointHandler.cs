@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using OpenAgent.Contracts.Security;
+using OpenAgent.Hosting.Authorization;
 using OpenAgent.Router.Middleware;
 using OpenAgent.Router.Models;
 using OpenAgent.Router.Observability;
@@ -15,6 +16,7 @@ internal static class ChatEndpointHandler
         IHttpForwarder forwarder,
         IExternalAgentForwarder externalForwarder,
         IAgentUserContext userContext,
+        IGatewayAuthorizationService authorization,
         ILogger logger,
         HttpMessageInvoker httpClient,
         ForwarderRequestConfig requestConfig,
@@ -36,8 +38,7 @@ internal static class ChatEndpointHandler
         }
 
         var tenantId = context.Items[TenantIsolationMiddleware.TenantItemKey]?.ToString()
-            ?? userContext.TenantId
-            ?? context.Request.Headers["X-Tenant-Id"].FirstOrDefault();
+            ?? userContext.TenantId;
         AgentRoutingFeature? routing = context.Features.Get<AgentRoutingFeature>();
         if (routing == null)
         {
@@ -51,6 +52,7 @@ internal static class ChatEndpointHandler
 
         string agentId = routing.AgentId;
         string targetEndpoint = routing.TargetEndpoint;
+        string gatewayGrant = authorization.IssueGrant(userContext);
 
         if (routing.DestinationKind == AgentDestinationKind.External)
         {
@@ -98,7 +100,7 @@ internal static class ChatEndpointHandler
             (_, proxyRequest) =>
                 ForwardingContextBuilder.ApplyAsync(
                     proxyRequest, new Uri(targetUrl), userContext,
-                    tenantId, agentId, conversationId, traceId)).ConfigureAwait(false);
+                    tenantId, agentId, conversationId, traceId, gatewayGrant)).ConfigureAwait(false);
         return error == ForwarderError.None
             ? Results.Empty
             : await ForwardingErrorHandler.HandleChatAsync(
