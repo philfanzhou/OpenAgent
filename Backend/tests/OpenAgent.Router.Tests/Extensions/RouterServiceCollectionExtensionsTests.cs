@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using OpenAgent.Hosting.Authorization;
 using OpenAgent.Router.Options;
 using Xunit;
 
@@ -37,6 +38,7 @@ public class RouterServiceCollectionExtensionsTests
     [InlineData("reserved-transport-header")]
     [InlineData("invalid-token-value")]
     [InlineData("missing-gateway-audience")]
+    [InlineData("reserved-auth-header")]
     public void AddRouterRuntime_InvalidExternalAgentConfiguration_FailsValidation(string scenario)
     {
         Dictionary<string, string?> settings = CreateValidSettings();
@@ -73,6 +75,10 @@ public class RouterServiceCollectionExtensionsTests
                 break;
             case "missing-gateway-audience":
                 settings["RouterSettings:ExternalAgents:Agents:0:ForwardGatewayGrant"] = "true";
+                break;
+            case "reserved-auth-header":
+                settings["RouterSettings:ExternalAgents:Agents:0:Authentication:HeaderName"] =
+                    GatewayAuthorizationDefaults.GrantHeaderName;
                 break;
         }
 

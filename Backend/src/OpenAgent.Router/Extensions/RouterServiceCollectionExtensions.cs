@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Routing;
+using OpenAgent.Hosting.Authorization;
 using OpenAgent.Router.Endpoints;
 using OpenAgent.Router.Options;
 using OpenAgent.Router.Routing;
@@ -108,6 +109,7 @@ public static class RouterServiceCollectionExtensions
                 || agent.Authentication == null
                 || !IsValidHeaderName(agent.Authentication.HeaderName)
                 || IsReservedTransportHeader(agent.Authentication.HeaderName)
+                || IsReservedGatewayHeader(agent.Authentication.HeaderName)
                 || !IsSafeHeaderValue(agent.Authentication.Scheme)
                 || !IsSafeHeaderValue(agent.Authentication.Token))
             {
@@ -156,4 +158,12 @@ public static class RouterServiceCollectionExtensions
         || value.Equals("TE", StringComparison.OrdinalIgnoreCase)
         || value.Equals("Trailer", StringComparison.OrdinalIgnoreCase)
         || value.Equals("Upgrade", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsReservedGatewayHeader(string value) =>
+        value.Equals(GatewayAuthorizationDefaults.GrantHeaderName, StringComparison.OrdinalIgnoreCase)
+        || value.Equals(AgentRoutingHeaders.ResolvedAgentId, StringComparison.OrdinalIgnoreCase)
+        || value.Equals("X-User-Id", StringComparison.OrdinalIgnoreCase)
+        || value.Equals("X-Tenant-Id", StringComparison.OrdinalIgnoreCase)
+        || value.Equals("X-Trace-Id", StringComparison.OrdinalIgnoreCase)
+        || value.Equals("X-Conversation-Id", StringComparison.OrdinalIgnoreCase);
 }
