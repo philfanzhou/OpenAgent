@@ -1,15 +1,8 @@
-using System.Net;
-using System.Net.Http.Json;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
 using OpenAgent.Contracts.Configuration;
-using OpenAgent.Contracts.Requests;
-using OpenAgent.Contracts.Security;
 using OpenAgent.Router.Endpoints;
 using OpenAgent.Router.Models;
 using OpenAgent.Router.Options;
-using OpenAgent.Router.Security;
 using Xunit;
 
 namespace OpenAgent.Router.Tests.Endpoints;
@@ -53,11 +46,9 @@ public class IntentAgentSelectorTests
     [Fact]
     public async Task SelectAsync_SendsCandidatesToConfiguredIntentAgent()
     {
-        var handler = new RecordingHandler();
+        var client = new RecordingEngineAgentClient();
         var selector = new IntentAgentSelector(
-            new HttpClient(handler),
-            new MemoryCache(new MemoryCacheOptions()),
-            new AllowAllVisibilityService(),
+            client,
             Microsoft.Extensions.Options.Options.Create(new IntentRecognitionOptions
             {
                 AgentId = "intent-router",
@@ -67,19 +58,15 @@ public class IntentAgentSelectorTests
                 MaxMessageCharacters = 16_000
             }),
             NullLogger<IntentAgentSelector>.Instance);
-        var context = new DefaultHttpContext();
-        var user = new AgentUserContext
-        {
-            UserId = "user-1",
-            TenantId = "tenant-1"
-        };
-
         IntentAgentDecision? decision = await selector.SelectAsync(
             new IntentAgentSelectionRequest(
                 "find my invoice",
                 "http://engine",
-                context,
-                user,
+                new DownstreamRequestIdentity(
+                    "Basic token",
+                    "tenant-1",
+                    "router",
+                    "trace-1"),
                 [
                     new AgentSummary
                     {
@@ -92,47 +79,34 @@ public class IntentAgentSelectorTests
 
         Assert.NotNull(decision);
         Assert.Equal("finance", decision.AgentId);
-        Assert.Equal("http://engine/api/v1/agent/chat", handler.RequestUri);
-        Assert.Contains("intent-router", handler.RequestBody, StringComparison.Ordinal);
-        Assert.Contains("Handles invoices", handler.RequestBody, StringComparison.Ordinal);
-        Assert.Contains("find my invoice", handler.RequestBody, StringComparison.Ordinal);
+        Assert.Equal("http://engine", client.EngineEndpoint);
+        Assert.Equal("intent-router", client.AgentId);
+        Assert.Contains("Handles invoices", client.Message, StringComparison.Ordinal);
+        Assert.Contains("find my invoice", client.Message, StringComparison.Ordinal);
     }
 
-    private sealed class RecordingHandler : HttpMessageHandler
+    private sealed class RecordingEngineAgentClient : IEngineAgentClient
     {
-        public string? RequestUri { get; private set; }
-        public string RequestBody { get; private set; } = string.Empty;
+        public string? EngineEndpoint { get; private set; }
+        public string? AgentId { get; private set; }
+        public string Message { get; private set; } = string.Empty;
 
-        protected override async Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request,
+        public Task<IReadOnlyList<AgentSummary>> ListAgentsAsync(
+            string engineEndpoint,
+            DownstreamRequestIdentity identity,
+            CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<AgentSummary>>([]);
+
+        public Task<string?> ChatAsync(
+            string engineEndpoint,
+            DownstreamRequestIdentity identity,
+            string agentId,
+            string message,
             CancellationToken cancellationToken)
         {
-            RequestUri = request.RequestUri?.ToString();
-            RequestBody = request.Content == null
-                ? string.Empty
-                : await request.Content.ReadAsStringAsync(cancellationToken);
-            return new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = JsonContent.Create(new ChatResponse
-                {
-                    Message = "{\"agentId\":\"finance\",\"confidence\":0.95}"
-                })
-            };
+            EngineEndpoint = engineEndpoint;
+            AgentId = agentId;
+            Message = message;
+            return Task.FromResult<string?>("{\"agentId\":\"finance\",\"confidence\":0.95}");
         }
-    }
-
-    private sealed class AllowAllVisibilityService : IAgentVisibilityService
-    {
-        public Task<bool> IsAgentVisibleToUserAsync(
-            string agentId,
-            IAgentUserContext userContext,
-            CancellationToken cancellationToken = default) => Task.FromResult(true);
-
-        public Task<List<string>> GetPublishedAgentIdsAsync(
-            CancellationToken cancellationToken = default) => Task.FromResult(new List<string>());
-
-        public Task<string?> GetAgentConfigAsync(
-            string agentId,
-            CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
     }
 }

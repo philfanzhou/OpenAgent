@@ -26,27 +26,40 @@ public static class RouterEndpointExtensions
             string? action,
             HttpContext context,
             IHttpForwarder forwarder,
+            IExternalAgentForwarder externalForwarder,
             IAgentUserContext userContext,
             ILogger<Program> logger,
             CancellationToken cancellationToken) =>
             ChatEndpointHandler.HandleAsync(
-                action, context, forwarder, userContext,
+                action, context, forwarder, externalForwarder, userContext,
                 logger, httpClient, requestConfig, cancellationToken))
             .AddEndpointFilter<AgentSelectionFilter>();
 
         app.MapGet("/api/v1/agent/agents", (
-            HttpContext context, IHttpForwarder forwarder, IAgentUserContext userContext,
-            IRouteTable routeTable, ILogger<Program> logger) =>
-            GetEndpointHandler.HandleAsync(
-                context, forwarder, userContext, routeTable, logger,
-                httpClient, requestConfig, "/api/v1/agent/agents"));
+            HttpContext context,
+            IAgentUserContext userContext,
+            IRouteTable routeTable,
+            IAgentCatalog catalog,
+            CancellationToken cancellationToken) =>
+            AgentCatalogEndpointHandler.HandleAsync(
+                context,
+                userContext,
+                routeTable,
+                catalog,
+                cancellationToken));
         // Compatibility alias retained for clients that predate /api/v1/agent/agents.
         app.MapGet("/api/v1/agents", (
-            HttpContext context, IHttpForwarder forwarder, IAgentUserContext userContext,
-            IRouteTable routeTable, ILogger<Program> logger) =>
-            GetEndpointHandler.HandleAsync(
-                context, forwarder, userContext, routeTable, logger,
-                httpClient, requestConfig, "/api/v1/agent/agents"));
+            HttpContext context,
+            IAgentUserContext userContext,
+            IRouteTable routeTable,
+            IAgentCatalog catalog,
+            CancellationToken cancellationToken) =>
+            AgentCatalogEndpointHandler.HandleAsync(
+                context,
+                userContext,
+                routeTable,
+                catalog,
+                cancellationToken));
         app.MapGet("/api/v1/agent/conversations", (
             HttpContext context, IHttpForwarder forwarder, IAgentUserContext userContext,
             IRouteTable routeTable, ILogger<Program> logger, int skip = 0, int take = 20) =>

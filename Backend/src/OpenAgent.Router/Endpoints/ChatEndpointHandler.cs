@@ -13,6 +13,7 @@ internal static class ChatEndpointHandler
         string? action,
         HttpContext context,
         IHttpForwarder forwarder,
+        IExternalAgentForwarder externalForwarder,
         IAgentUserContext userContext,
         ILogger logger,
         HttpMessageInvoker httpClient,
@@ -55,6 +56,39 @@ internal static class ChatEndpointHandler
             logger, action, targetEndpoint, intent, agentId, conversationId,
             userContext.UserId, tenantId, traceId);
         RouterMeter.RecordRoute(action ?? "chat", "forwarding");
+        if (routing.DestinationKind == AgentDestinationKind.External)
+        {
+            ExternalForwardingResult? external = await externalForwarder.ForwardAsync(
+                context,
+                agentId,
+                action,
+                userContext,
+                tenantId,
+                conversationId,
+                traceId,
+                cancellationToken).ConfigureAwait(false);
+            if (external == null)
+            {
+                return Results.Problem(
+                    statusCode: StatusCodes.Status503ServiceUnavailable,
+                    title: "External Agent adapter is unavailable");
+            }
+
+            return external.Error == ForwarderError.None
+                ? Results.Empty
+                : await ForwardingErrorHandler.HandleChatAsync(
+                    context,
+                    action,
+                    external.Error,
+                    external.TargetEndpoint,
+                    external.TargetUrl,
+                    userContext,
+                    tenantId,
+                    traceId,
+                    logger,
+                    cancellationToken).ConfigureAwait(false);
+        }
+
         string actionSuffix = string.IsNullOrWhiteSpace(action) ? string.Empty : $"/{action}";
         var targetUrl = $"{targetEndpoint.TrimEnd('/')}/api/v1/agent/chat{actionSuffix}";
         var currentRequestConfig = action is "sse" or "stream"

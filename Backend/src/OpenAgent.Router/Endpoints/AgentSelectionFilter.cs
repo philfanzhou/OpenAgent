@@ -12,6 +12,8 @@ namespace OpenAgent.Router.Endpoints;
 
 internal sealed class AgentSelectionFilter(
     IRouteTable routeTable,
+    IAgentCatalog catalog,
+    IExternalAgentRegistry externalAgents,
     IAgentVisibilityService visibilityService,
     IIntentAgentSelector selector,
     IAgentUserContext userContext,
@@ -82,9 +84,24 @@ internal sealed class AgentSelectionFilter(
                 title: "No Engine is available");
         }
 
+        DownstreamRequestIdentity identity = new(
+            context.Request.Headers.Authorization.FirstOrDefault(),
+            tenantId,
+            context.Request.Headers["X-Agent-Audience"].FirstOrDefault(),
+            context.Request.Headers["X-Trace-Id"].FirstOrDefault()
+                ?? context.TraceIdentifier);
         string? explicitAgentId = string.IsNullOrWhiteSpace(request.AgentId)
             ? context.Request.Headers["X-Agent-Id"].FirstOrDefault()
             : request.AgentId;
+        IReadOnlyList<RoutableAgent> candidates = string.IsNullOrWhiteSpace(explicitAgentId)
+            ? await catalog.ListAsync(
+                new AgentCatalogRequest(
+                    targetEndpoint,
+                    identity,
+                    userContext,
+                    IntentCandidatesOnly: true),
+                context.RequestAborted).ConfigureAwait(false)
+            : [];
         bool selectedByIntentAgent = false;
         string? selectedAgentId = explicitAgentId;
         if (string.IsNullOrWhiteSpace(selectedAgentId))
@@ -94,8 +111,8 @@ internal sealed class AgentSelectionFilter(
                     new IntentAgentSelectionRequest(
                         request.Query,
                         targetEndpoint,
-                        context,
-                        userContext),
+                        identity,
+                        candidates.Select(candidate => candidate.Summary).ToArray()),
                     context.RequestAborted).ConfigureAwait(false)
                 : null;
             selectedAgentId = decision?.AgentId ?? _options.FallbackAgentId;
@@ -115,6 +132,22 @@ internal sealed class AgentSelectionFilter(
                 title: "No Agent could be selected");
         }
 
+        RoutableAgent? selectedAgent = candidates.FirstOrDefault(candidate =>
+            string.Equals(
+                candidate.Summary.AgentId,
+                selectedAgentId,
+                StringComparison.OrdinalIgnoreCase));
+        AgentDestinationKind destinationKind = selectedAgent?.DestinationKind
+            ?? AgentDestinationKind.Engine;
+        string selectedTargetEndpoint = selectedAgent?.TargetEndpoint
+            ?? targetEndpoint;
+        if (selectedAgent == null
+            && externalAgents.TryGet(selectedAgentId, out ExternalAgentOptions? externalAgent)
+            && externalAgent != null)
+        {
+            destinationKind = AgentDestinationKind.External;
+            selectedTargetEndpoint = externalAgent.BaseUrl.TrimEnd('/');
+        }
         bool visible = await visibilityService.IsAgentVisibleToUserAsync(
             selectedAgentId,
             userContext,
@@ -127,7 +160,8 @@ internal sealed class AgentSelectionFilter(
         context.Features.Set(new AgentRoutingFeature(
             request,
             selectedAgentId,
-            targetEndpoint,
+            selectedTargetEndpoint,
+            destinationKind,
             selectedByIntentAgent));
         context.Response.Headers[AgentRoutingHeaders.SelectedAgentId] = selectedAgentId;
         return await next(invocationContext).ConfigureAwait(false);

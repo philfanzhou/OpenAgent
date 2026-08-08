@@ -1,7 +1,9 @@
+using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Routing;
 using OpenAgent.Core.Routing;
 using OpenAgent.Router.Endpoints;
 using OpenAgent.Router.Options;
+using OpenAgent.Router.Routing;
 using StackExchange.Redis;
 
 namespace OpenAgent.Router;
@@ -30,11 +32,25 @@ public static class RouterServiceCollectionExtensions
                     && options.CatalogCacheSeconds > 0,
                 "Intent recognition input limits must be greater than zero")
             .ValidateOnStart();
+        services.AddOptions<ExternalAgentRoutingOptions>()
+            .Bind(configuration.GetSection(ExternalAgentRoutingOptions.SectionName))
+            .Validate(
+                ValidateExternalAgents,
+                "External Agent entries require unique IDs, valid HTTP endpoints, absolute chat paths, and valid authentication header names")
+            .ValidateOnStart();
         services.AddMemoryCache();
-        services.AddHttpClient<IIntentAgentSelector, IntentAgentSelector>(client =>
+        services.AddHttpClient("RouterEngineAgent", client =>
         {
             client.Timeout = Timeout.InfiniteTimeSpan;
         });
+        services.AddSingleton<IEngineAgentClient>(provider => new EngineAgentClient(
+            provider.GetRequiredService<IHttpClientFactory>().CreateClient("RouterEngineAgent")));
+        services.AddSingleton<IExternalAgentRegistry, ExternalAgentRegistry>();
+        services.AddSingleton<IExternalAgentAdapter, OpenAgentExternalAdapter>();
+        services.AddSingleton<IValidateOptions<ExternalAgentRoutingOptions>, ExternalAgentOptionsValidator>();
+        services.AddSingleton<IExternalAgentForwarder, ExternalAgentForwarder>();
+        services.AddSingleton<IAgentCatalog, AgentCatalog>();
+        services.AddSingleton<IIntentAgentSelector, IntentAgentSelector>();
 
         var redisConnectionString = configuration.GetConnectionString("Redis");
         if (!string.IsNullOrEmpty(redisConnectionString))
@@ -75,4 +91,31 @@ public static class RouterServiceCollectionExtensions
         services.AddSingleton<IRateLimiter, RedisRateLimiter>();
         return services;
     }
+
+    private static bool ValidateExternalAgents(ExternalAgentRoutingOptions options)
+    {
+        HashSet<string> ids = new(StringComparer.OrdinalIgnoreCase);
+        foreach (ExternalAgentOptions agent in options.Agents)
+        {
+            if (string.IsNullOrWhiteSpace(agent.AgentId)
+                || !ids.Add(agent.AgentId)
+                || string.IsNullOrWhiteSpace(agent.Adapter)
+                || !Uri.TryCreate(agent.BaseUrl, UriKind.Absolute, out Uri? endpoint)
+                || (!string.Equals(endpoint.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(endpoint.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+                || string.IsNullOrWhiteSpace(agent.ChatPath)
+                || !agent.ChatPath.StartsWith("/", StringComparison.Ordinal)
+                || agent.Authentication == null
+                || !IsValidHeaderName(agent.Authentication.HeaderName))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool IsValidHeaderName(string value) =>
+        !string.IsNullOrWhiteSpace(value)
+        && value.All(character => char.IsAsciiLetterOrDigit(character) || character == '-');
 }
