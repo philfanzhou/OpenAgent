@@ -92,6 +92,24 @@ public class AgentSelectionFilterTests
         Assert.Equal("conversation-from-header", routeTable.ConversationId);
     }
 
+    [Fact]
+    public async Task InvokeAsync_JsonWithInvalidShape_ReturnsBadRequest()
+    {
+        var selector = new StubSelector(new IntentAgentDecision("finance", 0.9, null));
+        AgentSelectionFilter filter = CreateFilter(selector);
+        DefaultHttpContext httpContext = CreateHttpContext("[]");
+        var invocation = new DefaultEndpointFilterInvocationContext(httpContext);
+
+        object? result = await filter.InvokeAsync(
+            invocation,
+            _ => ValueTask.FromResult<object?>(Results.Ok()));
+
+        IStatusCodeHttpResult statusResult = Assert.IsAssignableFrom<IStatusCodeHttpResult>(result);
+        Assert.Equal(StatusCodes.Status400BadRequest, statusResult.StatusCode);
+        Assert.Equal(0, selector.CallCount);
+        Assert.Equal(0, httpContext.Request.Body.Position);
+    }
+
     private static AgentSelectionFilter CreateFilter(
         StubSelector selector,
         StubRouteTable? routeTable = null)

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using OpenAgent.Router.Endpoints;
 using OpenAgent.Router.Models;
@@ -43,6 +44,36 @@ public class ChatRequestParserTests
         Assert.Equal("run workflow", query);
         Assert.Equal("conversation-2", conversationId);
         Assert.Equal("operations", agentId);
+    }
+
+    [Fact]
+    public void Parse_UsesCaseInsensitiveJsonContract()
+    {
+        const string body = """
+            {
+              "Message": "find the invoice",
+              "Context": {
+                "ConversationId": "conversation-1",
+                "AgentId": "finance"
+              }
+            }
+            """;
+
+        (string query, string? conversationId, string? agentId) = ChatRequestParser.Parse(body);
+
+        Assert.Equal("find the invoice", query);
+        Assert.Equal("conversation-1", conversationId);
+        Assert.Equal("finance", agentId);
+    }
+
+    [Theory]
+    [InlineData("[]")]
+    [InlineData("{\"message\":{}}")]
+    [InlineData("{\"context\":[]}")]
+    [InlineData("{\"context\":{\"agentId\":42}}")]
+    public void Parse_InvalidShape_ThrowsJsonException(string body)
+    {
+        Assert.Throws<JsonException>(() => ChatRequestParser.Parse(body));
     }
 
     [Fact]
