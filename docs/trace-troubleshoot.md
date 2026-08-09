@@ -61,7 +61,7 @@ Router 结构化日志输出到 stdout，并在配置 OTLP 时进入 OpenTelemet
 
 ```bash
 curl -fsS http://localhost:5001/metrics > /tmp/openagent-router.metrics
-grep 'openagent_requests\|openagent_request_duration' /tmp/openagent-router.metrics
+grep 'http_server_request_duration' /tmp/openagent-router.metrics
 grep 'openagent_router_forwarding_failures_total' /tmp/openagent-router.metrics
 ```
 
