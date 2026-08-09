@@ -63,6 +63,37 @@ public class JumpHashConsistentHashRingTests
     }
 
     [Fact]
+    public void UpdateNodes_SameSetInDifferentOrder_PreservesAssignments()
+    {
+        var first = new JumpHashConsistentHashRing();
+        var second = new JumpHashConsistentHashRing();
+        first.UpdateNodes(["node-c", "node-a", "node-b"]);
+        second.UpdateNodes(["node-b", "node-c", "node-a"]);
+
+        string?[] firstAssignments = Enumerable.Range(0, 100)
+            .Select(index => first.GetNode($"conversation-{index}"))
+            .ToArray();
+        string?[] secondAssignments = Enumerable.Range(0, 100)
+            .Select(index => second.GetNode($"conversation-{index}"))
+            .ToArray();
+
+        Assert.Equal(firstAssignments, secondAssignments);
+    }
+
+    [Fact]
+    public void UpdateNodes_DuplicateAndBlankIds_AreIgnored()
+    {
+        var ring = new JumpHashConsistentHashRing();
+        ring.UpdateNodes(["node-a", string.Empty, "node-a", "  "]);
+
+        string?[] assignments = Enumerable.Range(0, 20)
+            .Select(index => ring.GetNode($"conversation-{index}"))
+            .ToArray();
+
+        Assert.All(assignments, assignment => Assert.Equal("node-a", assignment));
+    }
+
+    [Fact]
     public void GetNode_KeysAreDistributedAcrossNodes()
     {
         var ring = new JumpHashConsistentHashRing();

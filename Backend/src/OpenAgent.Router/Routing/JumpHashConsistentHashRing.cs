@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Security.Cryptography;
 using System.Text;
 using OpenAgent.Contracts.Routing;
@@ -26,14 +27,18 @@ internal sealed class JumpHashConsistentHashRing : IConsistentHashRing
 
     public void UpdateNodes(IEnumerable<string> nodeIds)
     {
-        _nodes = nodeIds?.ToArray() ?? [];
+        _nodes = nodeIds?
+            .Where(nodeId => !string.IsNullOrWhiteSpace(nodeId))
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToArray() ?? [];
     }
 
     private static ulong ComputeHash(string key)
     {
         byte[] bytes = Encoding.UTF8.GetBytes(key);
         byte[] hash = SHA1.HashData(bytes);
-        return BitConverter.ToUInt64(hash, 0);
+        return BinaryPrimitives.ReadUInt64LittleEndian(hash);
     }
 
     private static int JumpHash(ulong key, int bucketCount)
