@@ -99,14 +99,17 @@ public static class RouterServiceCollectionExtensions
         {
             if (string.IsNullOrWhiteSpace(agent.AgentId)
                 || !ids.Add(agent.AgentId)
+                || !IsSafeHeaderValue(agent.AgentId)
                 || string.IsNullOrWhiteSpace(agent.Adapter)
                 || !Uri.TryCreate(agent.BaseUrl, UriKind.Absolute, out Uri? endpoint)
-                || (!string.Equals(endpoint.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
-                    && !string.Equals(endpoint.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
-                || string.IsNullOrWhiteSpace(agent.ChatPath)
-                || !agent.ChatPath.StartsWith("/", StringComparison.Ordinal)
+                || !IsValidBaseUrl(endpoint)
+                || !IsValidChatPath(agent.ChatPath)
+                || !IsSafeHeaderValue(agent.RemoteAgentId)
                 || agent.Authentication == null
-                || !IsValidHeaderName(agent.Authentication.HeaderName))
+                || !IsValidHeaderName(agent.Authentication.HeaderName)
+                || IsReservedTransportHeader(agent.Authentication.HeaderName)
+                || !IsSafeHeaderValue(agent.Authentication.Scheme)
+                || !IsSafeHeaderValue(agent.Authentication.Token))
             {
                 return false;
             }
@@ -118,4 +121,39 @@ public static class RouterServiceCollectionExtensions
     private static bool IsValidHeaderName(string value) =>
         !string.IsNullOrWhiteSpace(value)
         && value.All(character => char.IsAsciiLetterOrDigit(character) || character == '-');
+
+    private static bool IsValidBaseUrl(Uri endpoint) =>
+        (string.Equals(endpoint.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(endpoint.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+        && !string.IsNullOrWhiteSpace(endpoint.Host)
+        && string.IsNullOrEmpty(endpoint.UserInfo)
+        && string.IsNullOrEmpty(endpoint.Query)
+        && string.IsNullOrEmpty(endpoint.Fragment);
+
+    private static bool IsValidChatPath(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)
+            || !value.StartsWith("/", StringComparison.Ordinal)
+            || value.StartsWith("//", StringComparison.Ordinal)
+            || value.Contains('\\'))
+        {
+            return false;
+        }
+
+        return ForwardingPathValidator.IsSafeAction(value.Trim('/'));
+    }
+
+    private static bool IsSafeHeaderValue(string? value) =>
+        value == null || (!value.Contains('\r') && !value.Contains('\n'));
+
+    private static bool IsReservedTransportHeader(string value) =>
+        value.Equals("Host", StringComparison.OrdinalIgnoreCase)
+        || value.Equals("Content-Length", StringComparison.OrdinalIgnoreCase)
+        || value.Equals("Transfer-Encoding", StringComparison.OrdinalIgnoreCase)
+        || value.Equals("Connection", StringComparison.OrdinalIgnoreCase)
+        || value.Equals("Keep-Alive", StringComparison.OrdinalIgnoreCase)
+        || value.Equals("Proxy-Connection", StringComparison.OrdinalIgnoreCase)
+        || value.Equals("TE", StringComparison.OrdinalIgnoreCase)
+        || value.Equals("Trailer", StringComparison.OrdinalIgnoreCase)
+        || value.Equals("Upgrade", StringComparison.OrdinalIgnoreCase);
 }

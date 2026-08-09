@@ -32,6 +32,10 @@ public class RouterServiceCollectionExtensionsTests
     [InlineData("invalid-endpoint")]
     [InlineData("invalid-header")]
     [InlineData("unknown-adapter")]
+    [InlineData("endpoint-with-query")]
+    [InlineData("unsafe-chat-path")]
+    [InlineData("reserved-transport-header")]
+    [InlineData("invalid-token-value")]
     public void AddRouterRuntime_InvalidExternalAgentConfiguration_FailsValidation(string scenario)
     {
         Dictionary<string, string?> settings = CreateValidSettings();
@@ -49,6 +53,22 @@ public class RouterServiceCollectionExtensionsTests
                 break;
             case "unknown-adapter":
                 settings["RouterSettings:ExternalAgents:Agents:0:Adapter"] = "Unknown";
+                break;
+            case "endpoint-with-query":
+                settings["RouterSettings:ExternalAgents:Agents:0:BaseUrl"] =
+                    "https://partner.example?destination=unexpected";
+                break;
+            case "unsafe-chat-path":
+                settings["RouterSettings:ExternalAgents:Agents:0:ChatPath"] =
+                    "/api/v1/agent/../admin";
+                break;
+            case "reserved-transport-header":
+                settings["RouterSettings:ExternalAgents:Agents:0:Authentication:HeaderName"] =
+                    "Host";
+                break;
+            case "invalid-token-value":
+                settings["RouterSettings:ExternalAgents:Agents:0:Authentication:Token"] =
+                    "token\r\ninjected-header: value";
                 break;
         }
 
