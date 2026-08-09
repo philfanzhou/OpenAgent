@@ -140,7 +140,6 @@ public static class ServiceCollectionExtensions
             {
                 metrics
                     .AddAspNetCoreInstrumentation()
-                    .AddMeter("OpenAgent.Hosting")
                     .AddMeter(options.OpenTelemetrySource)
                     .AddPrometheusExporter();
 

@@ -57,8 +57,7 @@ Router 当前提供以下业务指标：
 
 | 指标 | 标签 | 含义 |
 |------|------|------|
-| `openagent.requests` | `http.request.method`、`http.route`、`http.response.status_code` | Hosting 横切层统一记录的请求数 |
-| `openagent.request.duration` | 同上 | Hosting 横切层统一记录的请求耗时 |
+| `http.server.request.duration` | OpenTelemetry ASP.NET Core 标准属性 | HTTP 请求耗时；Prometheus histogram 的 count 同时表示请求量 |
 | `openagent_router_forwarding_failures_total` | `action`、`forwarder_error` | YARP 转发失败数 |
 
 标签值会被裁剪并转为小写，空值归一为 `unknown`。新增指标必须保持低基数；不能把 `TraceId`、`ConversationId`、`AgentId`、`UserId`、`TenantId`、URL 或异常文本放入指标标签。
@@ -71,7 +70,7 @@ Router 当前提供以下业务指标：
 
 ## 扩展原则
 
-1. 通用请求日志、Trace tag、请求计数与耗时由 Hosting middleware 和 ASP.NET Core/HttpClient instrumentation 横切采集；业务代码不重复写生命周期埋点。
+1. 通用请求日志与 OpenAgent Trace tag 由 Hosting middleware 横切采集；HTTP 请求量与耗时直接使用 ASP.NET Core instrumentation，业务代码不重复写生命周期埋点或 SDK 已有指标。
 2. 业务代码只保留领域决策、降级和异常等有语义事件，并只依赖 `ILogger<T>`、`ActivitySource` 和 `Meter`，不直接依赖具体观测后端。
 3. Logs、Traces 和 Metrics 都可统一通过 OTLP 交给部署侧 Collector；Console 和 Prometheus Pull 仍作为独立本地/拉取出口。
 4. 应用不包含供应商专用存储 exporter；新增自定义 Meter 时必须将其名称配置为服务的 `OpenTelemetrySource`。
@@ -89,5 +88,5 @@ curl -fsS http://localhost:5001/metrics
 
 ```bash
 curl -fsS http://localhost:5001/metrics \
-  | grep 'openagent_requests\|openagent_request_duration\|openagent_router_forwarding_failures_total'
+  | grep 'http_server_request_duration\|openagent_router_forwarding_failures_total'
 ```
