@@ -1,9 +1,9 @@
+using OpenAgent.Core.Exten;
 using OpenAgent.Engine.Extensions;
+using OpenAgent.Engine.Host.Attachments;
 using OpenAgent.Engine.Host.Extensions;
 using OpenAgent.Engine.Host.Middleware;
-using OpenAgent.Core.Exten;
 using OpenAgent.Hosting;
-using OpenAgent.Engine.Host.Attachments;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -30,7 +30,11 @@ app.UseAgentHost(builder.Configuration);
 app.UseMiddleware<AgentExceptionHandlerMiddleware>();
 app.UseMiddleware<AgentUserContextMiddleware>();
 app.UseMiddleware<EngineAdmissionMiddleware>();
-app.MapAuthenticationEndpoints();
+if (app.Environment.IsDevelopment())
+{
+    app.MapAuthenticationEndpoints();
+    app.MapManagementEndpoints();
+}
 app.MapAgentEndpoints();
 
 app.Run();

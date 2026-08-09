@@ -14,7 +14,6 @@ internal static class EndpointExtensions
         group.MapAttachmentChat();
         group.MapAgentCatalog();
         group.MapConversations();
-        endpoints.MapManagementEndpoints();
 
         group.MapGet("/me", (HttpContext context) =>
         {
