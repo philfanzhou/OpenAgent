@@ -132,7 +132,7 @@ public class HostingTests
     [InlineData("/api/v1/admin/llm", "GET", GatewayPermissions.AgentConfigRead)]
     [InlineData("/api/v1/admin/llm/{id}", "PUT", GatewayPermissions.AgentConfigWrite)]
     [InlineData("/api/v1/admin/mcp/test-connection", "POST", GatewayPermissions.CapabilityTest)]
-    public void MapAgentEndpoints_AttachesRequiredPermissionPolicy(
+    public void MapEndpoints_AttachRequiredPermissionPolicy(
         string route,
         string method,
         string requiredPolicy)
@@ -141,6 +141,7 @@ public class HostingTests
         builder.Services.AddRouting();
         var app = builder.Build();
         app.MapAgentEndpoints();
+        app.MapManagementEndpoints();
 
         RouteEndpoint endpoint = ((IEndpointRouteBuilder)app).DataSources
             .SelectMany(source => source.Endpoints)
