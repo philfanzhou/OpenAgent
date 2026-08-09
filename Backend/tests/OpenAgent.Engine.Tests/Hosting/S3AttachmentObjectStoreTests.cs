@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using Amazon.S3;
 using Amazon.S3.Model;
 using Microsoft.Extensions.Options;
@@ -47,10 +49,13 @@ public class S3AttachmentObjectStoreTests
         Assert.Equal("etag-1", result.ETag);
         Assert.NotNull(captured);
         Assert.Equal("attachments-test", captured.BucketName);
+        string tenantPartition = Convert.ToHexString(
+            SHA256.HashData(Encoding.UTF8.GetBytes("tenant-a"))).ToLowerInvariant();
         Assert.StartsWith(
-            "private/attachments/80a707af7dc77ee1/2026/08/08/",
+            $"private/attachments/{tenantPartition}/2026/08/08/",
             captured.Key,
             StringComparison.Ordinal);
+        Assert.Equal(64, tenantPartition.Length);
         Assert.EndsWith(".txt", captured.Key, StringComparison.Ordinal);
         Assert.DoesNotContain("tenant-a", captured.Key, StringComparison.Ordinal);
         Assert.Equal("text/plain", captured.ContentType);

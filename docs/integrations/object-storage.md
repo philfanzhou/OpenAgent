@@ -49,7 +49,7 @@ export Attachments__ObjectStorage__SecretKey="$MINIO_ROOT_PASSWORD"
 对象键格式：
 
 ```text
-{KeyPrefix}/{tenant-sha256-prefix}/{yyyy/MM/dd}/{opaque-guid}.{extension}
+{KeyPrefix}/{tenant-sha256}/{yyyy/MM/dd}/{opaque-guid}.{extension}
 ```
 
 - 对象键不包含原始租户 ID、用户 ID、会话 ID 或文件名；

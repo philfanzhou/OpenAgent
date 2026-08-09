@@ -23,12 +23,20 @@ internal sealed class AttachmentObjectStorageOptionsValidator
         {
             failures.Add("Attachments:ObjectStorage:Region is required.");
         }
+        if (!IsValidKeyPrefix(options.KeyPrefix))
+        {
+            failures.Add("Attachments:ObjectStorage:KeyPrefix must contain only safe, non-empty path segments.");
+        }
         if (!string.IsNullOrWhiteSpace(options.ServiceUrl)
             && (!Uri.TryCreate(options.ServiceUrl, UriKind.Absolute, out Uri? serviceUrl)
                 || (serviceUrl.Scheme != Uri.UriSchemeHttp
-                    && serviceUrl.Scheme != Uri.UriSchemeHttps)))
+                    && serviceUrl.Scheme != Uri.UriSchemeHttps)
+                || string.IsNullOrWhiteSpace(serviceUrl.Host)
+                || !string.IsNullOrEmpty(serviceUrl.UserInfo)
+                || !string.IsNullOrEmpty(serviceUrl.Query)
+                || !string.IsNullOrEmpty(serviceUrl.Fragment)))
         {
-            failures.Add("Attachments:ObjectStorage:ServiceUrl must be an absolute HTTP(S) URI.");
+            failures.Add("Attachments:ObjectStorage:ServiceUrl must be an absolute HTTP(S) origin without credentials, query, or fragment.");
         }
 
         bool hasAccessKey = !string.IsNullOrWhiteSpace(options.AccessKey);
@@ -53,4 +61,21 @@ internal sealed class AttachmentObjectStorageOptionsValidator
 
     private static bool IsLowercaseLetterOrDigit(char character) =>
         char.IsAsciiDigit(character) || character is >= 'a' and <= 'z';
+
+    private static bool IsValidKeyPrefix(string keyPrefix)
+    {
+        string normalized = keyPrefix.Trim('/');
+        if (normalized.Length == 0)
+        {
+            return string.IsNullOrEmpty(keyPrefix) || keyPrefix.All(character => character == '/');
+        }
+
+        return normalized.Split('/').All(segment =>
+            segment.Length > 0
+            && segment is not "." and not ".."
+            && segment.All(IsSafeKeyCharacter));
+    }
+
+    private static bool IsSafeKeyCharacter(char character) =>
+        char.IsAsciiLetterOrDigit(character) || character is '-' or '_' or '.' or '~';
 }

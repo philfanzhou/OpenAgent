@@ -102,6 +102,6 @@ internal sealed class S3AttachmentObjectStore : IAttachmentObjectStore
         }
 
         byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(tenantId));
-        return Convert.ToHexString(hash)[..16].ToLowerInvariant();
+        return Convert.ToHexString(hash).ToLowerInvariant();
     }
 }

@@ -25,6 +25,10 @@ public class AttachmentObjectStorageOptionsTests
     [Theory]
     [InlineData("Attachments:ObjectStorage:BucketName", "x")]
     [InlineData("Attachments:ObjectStorage:ServiceUrl", "ftp://object-store")]
+    [InlineData("Attachments:ObjectStorage:ServiceUrl", "https://user:secret@object-store")]
+    [InlineData("Attachments:ObjectStorage:ServiceUrl", "https://object-store?region=other")]
+    [InlineData("Attachments:ObjectStorage:KeyPrefix", "attachments/../shared")]
+    [InlineData("Attachments:ObjectStorage:KeyPrefix", "attachments//shared")]
     [InlineData("Attachments:ObjectStorage:AccessKey", "access-only")]
     public void AddAttachmentStorage_WithInvalidEnabledConfiguration_FailsValidation(
         string key,
