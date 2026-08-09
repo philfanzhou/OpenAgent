@@ -116,5 +116,10 @@ public class HostingTests
         Assert.Equal(expected.OrderBy(route => route.Item1), actual);
         Assert.All(routeEndpoints, endpoint =>
             Assert.NotNull(endpoint.Metadata.GetMetadata<IAuthorizeData>()));
+        Assert.DoesNotContain(
+            routeEndpoints,
+            endpoint => endpoint.RoutePattern.RawText?.StartsWith(
+                "/api/v1/admin",
+                StringComparison.Ordinal) == true);
     }
 }

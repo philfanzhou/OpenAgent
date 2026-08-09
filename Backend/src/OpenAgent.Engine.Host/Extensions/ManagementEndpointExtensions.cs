@@ -201,7 +201,7 @@ internal static class ManagementEndpointExtensions
             if (!HasScope(context, "agent.config.read"))
                 return Results.Forbid();
             AgentConfigEntity? entity = await manager.GetAsync(agentId, cancellationToken).ConfigureAwait(false);
-            return entity == null ? Results.NotFound() : Results.Ok(entity.Config.Mcp);
+            return entity == null ? Results.NotFound() : Results.Ok(RedactMcp(entity.Config.Mcp));
         });
 
         group.MapPut("/mcp/{id}", async (
@@ -222,7 +222,9 @@ internal static class ManagementEndpointExtensions
             int index = existing.Config.Mcp.Servers.FindIndex(item =>
                 string.Equals(item.Name, id, StringComparison.OrdinalIgnoreCase));
             if (index >= 0)
-                existing.Config.Mcp.Servers[index] = server;
+                existing.Config.Mcp.Servers[index] = MergeMcpSecrets(
+                    existing.Config.Mcp.Servers[index],
+                    server);
             else
                 existing.Config.Mcp.Servers.Add(server);
 
@@ -231,7 +233,7 @@ internal static class ManagementEndpointExtensions
                 existing,
                 context.Request.Headers.IfMatch.FirstOrDefault(),
                 cancellationToken).ConfigureAwait(false);
-            return saved == null ? Results.Conflict() : Results.Ok(server);
+            return saved == null ? Results.Conflict() : Results.Ok(RedactMcpServer(server));
         });
 
         group.MapDelete("/mcp/{id}", async (
@@ -499,6 +501,13 @@ internal static class ManagementEndpointExtensions
             }
         }
 
+        foreach (McpServerConfig requestedServer in requested.Config.Mcp.Servers)
+        {
+            McpServerConfig? existingServer = existing.Config.Mcp.Servers.FirstOrDefault(item =>
+                string.Equals(item.Name, requestedServer.Name, StringComparison.OrdinalIgnoreCase));
+            MergeMcpSecrets(existingServer, requestedServer);
+        }
+
         return requested;
     }
 
@@ -507,9 +516,50 @@ internal static class ManagementEndpointExtensions
         entity.Config.Llm.ApiKey = string.IsNullOrWhiteSpace(entity.Config.Llm.ApiKey)
             ? string.Empty
             : "***";
+        entity.Config.Mcp = RedactMcp(entity.Config.Mcp);
         entity.Config.Rag.Instances = entity.Config.Rag.Instances.Select(RedactRag).ToList();
         return entity;
     }
+
+    internal static McpConfig RedactMcp(McpConfig config) => new()
+    {
+        Servers = config.Servers.Select(RedactMcpServer).ToList()
+    };
+
+    internal static McpServerConfig MergeMcpSecrets(
+        McpServerConfig? existing,
+        McpServerConfig requested)
+    {
+        if (existing == null)
+        {
+            return requested;
+        }
+
+        foreach ((string key, string value) in requested.EnvironmentVariables.ToArray())
+        {
+            if (value.StartsWith("***", StringComparison.Ordinal)
+                && existing.EnvironmentVariables.TryGetValue(key, out string? secret))
+            {
+                requested.EnvironmentVariables[key] = secret;
+            }
+        }
+
+        return requested;
+    }
+
+    private static McpServerConfig RedactMcpServer(McpServerConfig server) => new()
+    {
+        Name = server.Name,
+        Url = server.Url,
+        Type = server.Type,
+        Command = server.Command,
+        Arguments = [.. server.Arguments],
+        WorkingDirectory = server.WorkingDirectory,
+        EnvironmentVariables = server.EnvironmentVariables.ToDictionary(
+            item => item.Key,
+            item => string.IsNullOrEmpty(item.Value) ? string.Empty : "***",
+            StringComparer.OrdinalIgnoreCase)
+    };
 
     private static RagInstanceConfig RedactRag(RagInstanceConfig instance)
     {
