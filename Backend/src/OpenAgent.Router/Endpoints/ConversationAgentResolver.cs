@@ -16,15 +16,13 @@ internal sealed class ConversationAgentResolver(HttpClient httpClient)
     public async Task<ConversationAgentResolution> ResolveAsync(
         string targetEndpoint,
         string conversationId,
-        HttpContext context,
+        EngineRequestIdentity identity,
         CancellationToken cancellationToken)
     {
         using HttpRequestMessage request = new(
             HttpMethod.Get,
             $"{targetEndpoint.TrimEnd('/')}/api/v1/agent/conversations/{Uri.EscapeDataString(conversationId)}/route");
-        CopyHeader(context, request, "Authorization");
-        CopyHeader(context, request, "X-Tenant-Id");
-        CopyHeader(context, request, "X-Agent-Audience");
+        identity.ApplyTo(request);
 
         using HttpResponseMessage response = await httpClient.SendAsync(
             request,
@@ -45,17 +43,6 @@ internal sealed class ConversationAgentResolver(HttpClient httpClient)
         }
 
         return new ConversationAgentResolution(true, route.AgentId);
-    }
-
-    private static void CopyHeader(
-        HttpContext context,
-        HttpRequestMessage target,
-        string name)
-    {
-        if (context.Request.Headers.TryGetValue(name, out Microsoft.Extensions.Primitives.StringValues values))
-        {
-            target.Headers.TryAddWithoutValidation(name, values.ToArray());
-        }
     }
 
     private sealed record ConversationRouteResponse(string ConversationId, string? AgentId);

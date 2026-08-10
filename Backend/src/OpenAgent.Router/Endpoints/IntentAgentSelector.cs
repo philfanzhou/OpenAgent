@@ -205,21 +205,8 @@ internal sealed class IntentAgentSelector(
         HttpRequestMessage message = new(
             method,
             $"{request.TargetEndpoint.TrimEnd('/')}{path}");
-        CopyHeader(request.HttpContext, message, "Authorization");
-        CopyHeader(request.HttpContext, message, "X-Tenant-Id");
-        CopyHeader(request.HttpContext, message, "X-Agent-Audience");
+        request.Identity.ApplyTo(message);
         return message;
-    }
-
-    private static void CopyHeader(
-        HttpContext context,
-        HttpRequestMessage target,
-        string name)
-    {
-        if (context.Request.Headers.TryGetValue(name, out Microsoft.Extensions.Primitives.StringValues values))
-        {
-            target.Headers.TryAddWithoutValidation(name, values.ToArray());
-        }
     }
 
     private string BuildPrompt(

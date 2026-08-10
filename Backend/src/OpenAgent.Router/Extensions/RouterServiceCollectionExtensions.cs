@@ -39,6 +39,7 @@ public static class RouterServiceCollectionExtensions
         {
             client.Timeout = Timeout.InfiniteTimeSpan;
         });
+        services.AddScoped<IAgentSelectionService, AgentSelectionService>();
 
         var redisConnectionString = configuration.GetConnectionString("Redis");
         if (!string.IsNullOrEmpty(redisConnectionString))

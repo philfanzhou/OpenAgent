@@ -1,25 +1,17 @@
 using System.Text.Json;
-using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Router.Middleware;
 using OpenAgent.Router.Models;
 using OpenAgent.Router.Observability;
-using OpenAgent.Router.Options;
-using OpenAgent.Router.Security;
 
 namespace OpenAgent.Router.Endpoints;
 
 internal sealed class AgentSelectionFilter(
     IRouteTable routeTable,
-    IAgentVisibilityService visibilityService,
-    IConversationAgentResolver conversationAgentResolver,
-    IIntentAgentSelector selector,
+    IAgentSelectionService selectionService,
     IAgentUserContext userContext,
-    IOptions<IntentRecognitionOptions> options,
     ILogger<AgentSelectionFilter> logger) : IEndpointFilter
 {
-    private readonly IntentRecognitionOptions _options = options.Value;
-
     public async ValueTask<object?> InvokeAsync(
         EndpointFilterInvocationContext invocationContext,
         EndpointFilterDelegate next)
@@ -85,83 +77,46 @@ internal sealed class AgentSelectionFilter(
         string? explicitAgentId = string.IsNullOrWhiteSpace(request.AgentId)
             ? context.Request.Headers["X-Agent-Id"].FirstOrDefault()
             : request.AgentId;
-        bool selectedByIntentAgent = false;
-        string? selectedAgentId = explicitAgentId;
-        if (string.IsNullOrWhiteSpace(selectedAgentId)
-            && !string.IsNullOrWhiteSpace(conversationId))
+        var identity = new EngineRequestIdentity(
+            context.Request.Headers.Authorization.FirstOrDefault(),
+            context.Request.Headers["X-Tenant-Id"].FirstOrDefault(),
+            context.Request.Headers["X-Agent-Audience"].FirstOrDefault());
+        AgentSelectionResult selection = await selectionService.SelectAsync(
+            new AgentSelectionRequest(
+                request.Query,
+                targetEndpoint,
+                conversationId,
+                explicitAgentId,
+                identity,
+                userContext,
+                context.TraceIdentifier),
+            context.RequestAborted).ConfigureAwait(false);
+        if (selection.Failure == AgentSelectionFailure.Forbidden)
         {
-            try
-            {
-                ConversationAgentResolution resolution = await conversationAgentResolver.ResolveAsync(
-                    targetEndpoint,
-                    conversationId,
-                    context,
-                    context.RequestAborted).ConfigureAwait(false);
-                if (resolution.Exists)
-                {
-                    selectedAgentId = resolution.AgentId;
-                }
-            }
-            catch (HttpRequestException exception)
-                when (exception.StatusCode == System.Net.HttpStatusCode.Forbidden)
-            {
-                return Results.StatusCode(StatusCodes.Status403Forbidden);
-            }
-            catch (Exception exception) when (exception is HttpRequestException or JsonException)
-            {
-                RouterLog.ConversationAgentResolutionFailed(
-                    logger,
-                    exception,
-                    conversationId,
-                    context.TraceIdentifier);
-                return Results.Problem(
-                    statusCode: StatusCodes.Status503ServiceUnavailable,
-                    title: "Conversation routing is unavailable");
-            }
+            return Results.StatusCode(StatusCodes.Status403Forbidden);
         }
 
-        if (string.IsNullOrWhiteSpace(selectedAgentId))
+        if (selection.Failure == AgentSelectionFailure.DependencyUnavailable)
         {
-            IntentAgentDecision? decision = _options.Enabled
-                ? await selector.SelectAsync(
-                    new IntentAgentSelectionRequest(
-                        request.Query,
-                        targetEndpoint,
-                        context,
-                        userContext),
-                    context.RequestAborted).ConfigureAwait(false)
-                : null;
-            selectedAgentId = decision?.AgentId ?? _options.FallbackAgentId;
-            selectedByIntentAgent = decision != null;
-            RouterLog.AgentSelectionCompleted(
-                logger,
-                selectedAgentId,
-                selectedByIntentAgent,
-                decision?.Confidence,
-                context.TraceIdentifier);
+            return Results.Problem(
+                statusCode: StatusCodes.Status503ServiceUnavailable,
+                title: "Conversation routing is unavailable");
         }
 
-        if (string.IsNullOrWhiteSpace(selectedAgentId))
+        if (!selection.IsSelected)
         {
             return Results.Problem(
                 statusCode: StatusCodes.Status503ServiceUnavailable,
                 title: "No Agent could be selected");
         }
 
-        bool visible = await visibilityService.IsAgentVisibleToUserAsync(
-            selectedAgentId,
-            userContext,
-            context.RequestAborted).ConfigureAwait(false);
-        if (!visible)
-        {
-            return Results.StatusCode(StatusCodes.Status403Forbidden);
-        }
+        string selectedAgentId = selection.AgentId!;
 
         context.Features.Set(new AgentRoutingFeature(
             request,
             selectedAgentId,
             targetEndpoint,
-            selectedByIntentAgent));
+            selection.SelectedByIntentAgent));
         context.Request.Headers["X-Agent-Id"] = selectedAgentId;
         return await next(invocationContext).ConfigureAwait(false);
     }

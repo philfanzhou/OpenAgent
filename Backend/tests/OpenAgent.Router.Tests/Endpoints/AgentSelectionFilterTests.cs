@@ -1,12 +1,9 @@
 using System.Text;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Router.Endpoints;
 using OpenAgent.Router.Models;
-using OpenAgent.Router.Options;
-using OpenAgent.Router.Security;
 using Xunit;
 
 namespace OpenAgent.Router.Tests.Endpoints;
@@ -14,11 +11,13 @@ namespace OpenAgent.Router.Tests.Endpoints;
 public class AgentSelectionFilterTests
 {
     [Fact]
-    public async Task InvokeAsync_NoExplicitAgent_UsesIntentAgentSelection()
+    public async Task InvokeAsync_ValidRequest_MapsSelectionAndPreservesBody()
     {
-        var selector = new StubSelector(new IntentAgentDecision("finance", 0.9, null));
-        AgentSelectionFilter filter = CreateFilter(selector);
+        var selectionService = new StubSelectionService(
+            AgentSelectionResult.Selected("finance", selectedByIntentAgent: true, confidence: 0.9));
+        AgentSelectionFilter filter = CreateFilter(selectionService);
         DefaultHttpContext httpContext = CreateHttpContext("{\"message\":\"find invoice\"}");
+        httpContext.Request.Headers.Authorization = "Basic credential";
         var invocation = new DefaultEndpointFilterInvocationContext(httpContext);
 
         object? result = await filter.InvokeAsync(
@@ -30,16 +29,19 @@ public class AgentSelectionFilterTests
         Assert.NotNull(feature);
         Assert.Equal("finance", feature.AgentId);
         Assert.True(feature.SelectedByIntentAgent);
-        Assert.Equal(1, selector.CallCount);
         Assert.Equal(0, httpContext.Request.Body.Position);
         Assert.Equal("finance", httpContext.Request.Headers["X-Agent-Id"]);
+        Assert.NotNull(selectionService.Request);
+        Assert.Equal("find invoice", selectionService.Request.Query);
+        Assert.Equal("http://engine", selectionService.Request.TargetEndpoint);
+        Assert.Equal("Basic credential", selectionService.Request.Identity.Authorization);
     }
 
     [Fact]
-    public async Task InvokeAsync_ExplicitAgent_BypassesIntentAgentSelection()
+    public async Task InvokeAsync_ExplicitAgent_MapsAgentIdToSelectionRequest()
     {
-        var selector = new StubSelector(new IntentAgentDecision("finance", 0.9, null));
-        AgentSelectionFilter filter = CreateFilter(selector);
+        var selectionService = new StubSelectionService(AgentSelectionResult.Selected("support"));
+        AgentSelectionFilter filter = CreateFilter(selectionService);
         DefaultHttpContext httpContext = CreateHttpContext(
             "{\"message\":\"hello\",\"context\":{\"agentId\":\"support\"}}");
         var invocation = new DefaultEndpointFilterInvocationContext(httpContext);
@@ -48,81 +50,18 @@ public class AgentSelectionFilterTests
             invocation,
             _ => ValueTask.FromResult<object?>(Results.Ok()));
 
-        AgentRoutingFeature? feature = httpContext.Features.Get<AgentRoutingFeature>();
-        Assert.NotNull(feature);
-        Assert.Equal("support", feature.AgentId);
-        Assert.False(feature.SelectedByIntentAgent);
-        Assert.Equal(0, selector.CallCount);
+        Assert.NotNull(selectionService.Request);
+        Assert.Equal("support", selectionService.Request.ExplicitAgentId);
         Assert.Equal("support", httpContext.Request.Headers["X-Agent-Id"]);
     }
 
     [Fact]
-    public async Task InvokeAsync_IntentAgentUnavailable_UsesConfiguredFallback()
+    public async Task InvokeAsync_ConversationHeader_PreservesEngineAffinityAndSelectionContext()
     {
-        var selector = new StubSelector(null);
-        AgentSelectionFilter filter = CreateFilter(selector);
-        DefaultHttpContext httpContext = CreateHttpContext("{\"message\":\"hello\"}");
-        var invocation = new DefaultEndpointFilterInvocationContext(httpContext);
-
-        await filter.InvokeAsync(
-            invocation,
-            _ => ValueTask.FromResult<object?>(Results.Ok()));
-
-        AgentRoutingFeature? feature = httpContext.Features.Get<AgentRoutingFeature>();
-        Assert.NotNull(feature);
-        Assert.Equal("default", feature.AgentId);
-        Assert.False(feature.SelectedByIntentAgent);
-        Assert.Equal(1, selector.CallCount);
-        Assert.Equal("default", httpContext.Request.Headers["X-Agent-Id"]);
-    }
-
-    [Fact]
-    public async Task InvokeAsync_ExistingConversation_ReusesBoundAgent()
-    {
-        var selector = new StubSelector(new IntentAgentDecision("support", 0.9, null));
-        var resolver = new StubConversationAgentResolver(
-            new ConversationAgentResolution(true, "finance"));
-        AgentSelectionFilter filter = CreateFilter(selector, conversationAgentResolver: resolver);
-        DefaultHttpContext httpContext = CreateHttpContext(
-            "{\"message\":\"follow up\",\"context\":{\"conversationId\":\"conversation-1\"}}");
-        var invocation = new DefaultEndpointFilterInvocationContext(httpContext);
-
-        await filter.InvokeAsync(
-            invocation,
-            _ => ValueTask.FromResult<object?>(Results.Ok()));
-
-        Assert.Equal(0, selector.CallCount);
-        Assert.Equal(1, resolver.CallCount);
-        Assert.Equal("conversation-1", resolver.ConversationId);
-        Assert.Equal("finance", httpContext.Request.Headers["X-Agent-Id"]);
-    }
-
-    [Fact]
-    public async Task InvokeAsync_NewConversationId_StillUsesIntentAgentSelection()
-    {
-        var selector = new StubSelector(new IntentAgentDecision("finance", 0.9, null));
-        var resolver = new StubConversationAgentResolver(ConversationAgentResolution.NotFound);
-        AgentSelectionFilter filter = CreateFilter(selector, conversationAgentResolver: resolver);
-        DefaultHttpContext httpContext = CreateHttpContext(
-            "{\"message\":\"find invoice\",\"context\":{\"conversationId\":\"new-conversation\"}}");
-        var invocation = new DefaultEndpointFilterInvocationContext(httpContext);
-
-        await filter.InvokeAsync(
-            invocation,
-            _ => ValueTask.FromResult<object?>(Results.Ok()));
-
-        Assert.Equal(1, selector.CallCount);
-        Assert.Equal(1, resolver.CallCount);
-        Assert.Equal("finance", httpContext.Request.Headers["X-Agent-Id"]);
-    }
-
-    [Fact]
-    public async Task InvokeAsync_ConversationHeader_PreservesEngineAffinity()
-    {
-        var selector = new StubSelector(new IntentAgentDecision("finance", 0.9, null));
+        var selectionService = new StubSelectionService(AgentSelectionResult.Selected("finance"));
         var routeTable = new StubRouteTable();
-        AgentSelectionFilter filter = CreateFilter(selector, routeTable);
-        DefaultHttpContext httpContext = CreateHttpContext("{\"message\":\"find invoice\"}");
+        AgentSelectionFilter filter = CreateFilter(selectionService, routeTable);
+        DefaultHttpContext httpContext = CreateHttpContext("{\"message\":\"follow up\"}");
         httpContext.Request.Headers["X-Conversation-Id"] = "conversation-from-header";
         var invocation = new DefaultEndpointFilterInvocationContext(httpContext);
 
@@ -131,13 +70,35 @@ public class AgentSelectionFilterTests
             _ => ValueTask.FromResult<object?>(Results.Ok()));
 
         Assert.Equal("conversation-from-header", routeTable.ConversationId);
+        Assert.Equal("conversation-from-header", selectionService.Request?.ConversationId);
+    }
+
+    [Theory]
+    [InlineData(AgentSelectionFailure.Forbidden, StatusCodes.Status403Forbidden)]
+    [InlineData(AgentSelectionFailure.DependencyUnavailable, StatusCodes.Status503ServiceUnavailable)]
+    [InlineData(AgentSelectionFailure.NoAgentAvailable, StatusCodes.Status503ServiceUnavailable)]
+    internal async Task InvokeAsync_SelectionFailure_MapsStatusCode(
+        AgentSelectionFailure failure,
+        int expectedStatusCode)
+    {
+        var selectionService = new StubSelectionService(AgentSelectionResult.Failed(failure));
+        AgentSelectionFilter filter = CreateFilter(selectionService);
+        DefaultHttpContext httpContext = CreateHttpContext("{\"message\":\"hello\"}");
+        var invocation = new DefaultEndpointFilterInvocationContext(httpContext);
+
+        object? result = await filter.InvokeAsync(
+            invocation,
+            _ => ValueTask.FromResult<object?>(Results.Ok()));
+
+        IStatusCodeHttpResult statusResult = Assert.IsAssignableFrom<IStatusCodeHttpResult>(result);
+        Assert.Equal(expectedStatusCode, statusResult.StatusCode);
     }
 
     [Fact]
     public async Task InvokeAsync_JsonWithInvalidShape_ReturnsBadRequest()
     {
-        var selector = new StubSelector(new IntentAgentDecision("finance", 0.9, null));
-        AgentSelectionFilter filter = CreateFilter(selector);
+        var selectionService = new StubSelectionService(AgentSelectionResult.Selected("finance"));
+        AgentSelectionFilter filter = CreateFilter(selectionService);
         DefaultHttpContext httpContext = CreateHttpContext("[]");
         var invocation = new DefaultEndpointFilterInvocationContext(httpContext);
 
@@ -147,14 +108,13 @@ public class AgentSelectionFilterTests
 
         IStatusCodeHttpResult statusResult = Assert.IsAssignableFrom<IStatusCodeHttpResult>(result);
         Assert.Equal(StatusCodes.Status400BadRequest, statusResult.StatusCode);
-        Assert.Equal(0, selector.CallCount);
+        Assert.Null(selectionService.Request);
         Assert.Equal(0, httpContext.Request.Body.Position);
     }
 
     private static AgentSelectionFilter CreateFilter(
-        StubSelector selector,
-        StubRouteTable? routeTable = null,
-        StubConversationAgentResolver? conversationAgentResolver = null)
+        IAgentSelectionService selectionService,
+        StubRouteTable? routeTable = null)
     {
         var user = new AgentUserContext
         {
@@ -164,38 +124,9 @@ public class AgentSelectionFilterTests
         };
         return new AgentSelectionFilter(
             routeTable ?? new StubRouteTable(),
-            new AllowAllVisibilityService(),
-            conversationAgentResolver
-                ?? new StubConversationAgentResolver(ConversationAgentResolution.NotFound),
-            selector,
+            selectionService,
             user,
-            Microsoft.Extensions.Options.Options.Create(new IntentRecognitionOptions
-            {
-                Enabled = true,
-                AgentId = "intent-router",
-                FallbackAgentId = "default",
-                MinimumConfidence = 0.5,
-                TimeoutMs = 5000
-            }),
             NullLogger<AgentSelectionFilter>.Instance);
-    }
-
-    private sealed class StubConversationAgentResolver(ConversationAgentResolution resolution)
-        : IConversationAgentResolver
-    {
-        public int CallCount { get; private set; }
-        public string? ConversationId { get; private set; }
-
-        public Task<ConversationAgentResolution> ResolveAsync(
-            string targetEndpoint,
-            string conversationId,
-            HttpContext context,
-            CancellationToken cancellationToken)
-        {
-            CallCount++;
-            ConversationId = conversationId;
-            return Task.FromResult(resolution);
-        }
     }
 
     private static DefaultHttpContext CreateHttpContext(string body)
@@ -208,16 +139,16 @@ public class AgentSelectionFilterTests
         return context;
     }
 
-    private sealed class StubSelector(IntentAgentDecision? decision) : IIntentAgentSelector
+    private sealed class StubSelectionService(AgentSelectionResult result) : IAgentSelectionService
     {
-        public int CallCount { get; private set; }
+        public AgentSelectionRequest? Request { get; private set; }
 
-        public Task<IntentAgentDecision?> SelectAsync(
-            IntentAgentSelectionRequest request,
+        public Task<AgentSelectionResult> SelectAsync(
+            AgentSelectionRequest request,
             CancellationToken cancellationToken)
         {
-            CallCount++;
-            return Task.FromResult(decision);
+            Request = request;
+            return Task.FromResult(result);
         }
     }
 
@@ -235,20 +166,5 @@ public class AgentSelectionFilterTests
             ConversationId = conversationId;
             return "http://engine";
         }
-    }
-
-    private sealed class AllowAllVisibilityService : IAgentVisibilityService
-    {
-        public Task<bool> IsAgentVisibleToUserAsync(
-            string agentId,
-            IAgentUserContext userContext,
-            CancellationToken cancellationToken = default) => Task.FromResult(true);
-
-        public Task<List<string>> GetPublishedAgentIdsAsync(
-            CancellationToken cancellationToken = default) => Task.FromResult(new List<string>());
-
-        public Task<string?> GetAgentConfigAsync(
-            string agentId,
-            CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
     }
 }

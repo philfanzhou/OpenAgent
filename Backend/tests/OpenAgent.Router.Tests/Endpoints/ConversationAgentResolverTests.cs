@@ -1,6 +1,5 @@
 using System.Net;
 using System.Net.Http.Json;
-using Microsoft.AspNetCore.Http;
 using OpenAgent.Router.Endpoints;
 using OpenAgent.Router.Models;
 using Xunit;
@@ -21,13 +20,10 @@ public class ConversationAgentResolverTests
             })
         });
         var resolver = new ConversationAgentResolver(new HttpClient(handler));
-        var context = new DefaultHttpContext();
-        context.Request.Headers.Authorization = "Basic credential";
-
         ConversationAgentResolution resolution = await resolver.ResolveAsync(
             "http://engine",
             "conversation-1",
-            context,
+            new EngineRequestIdentity("Basic credential", "tenant-1", "engine"),
             CancellationToken.None);
 
         Assert.True(resolution.Exists);
@@ -47,7 +43,7 @@ public class ConversationAgentResolverTests
         ConversationAgentResolution resolution = await resolver.ResolveAsync(
             "http://engine",
             "new-conversation",
-            new DefaultHttpContext(),
+            new EngineRequestIdentity(null, null, null),
             CancellationToken.None);
 
         Assert.False(resolution.Exists);

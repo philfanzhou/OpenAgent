@@ -1,6 +1,5 @@
 using System.Net;
 using System.Net.Http.Json;
-using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
 using OpenAgent.Contracts.Configuration;
@@ -67,7 +66,6 @@ public class IntentAgentSelectorTests
                 MaxMessageCharacters = 16000
             }),
             NullLogger<IntentAgentSelector>.Instance);
-        var context = new DefaultHttpContext();
         var user = new AgentUserContext
         {
             UserId = "user-1",
@@ -78,7 +76,7 @@ public class IntentAgentSelectorTests
             new IntentAgentSelectionRequest(
                 "find my invoice",
                 "http://engine",
-                context,
+                new EngineRequestIdentity("Bearer token", "tenant-1", "engine"),
                 user,
                 [
                     new AgentSummary

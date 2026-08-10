@@ -7,6 +7,6 @@ internal interface IConversationAgentResolver
     Task<ConversationAgentResolution> ResolveAsync(
         string targetEndpoint,
         string conversationId,
-        HttpContext context,
+        EngineRequestIdentity identity,
         CancellationToken cancellationToken);
 }
