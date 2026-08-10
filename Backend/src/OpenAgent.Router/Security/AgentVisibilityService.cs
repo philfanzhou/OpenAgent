@@ -20,8 +20,6 @@ internal class AgentVisibilityService : IAgentVisibilityService
         _logger = logger;
         _redis = redis;
         _configAccessor = new AgentConfigAccessor(redis, logger);
-
-        RouterLog.VisibilityServiceInitialized(_logger, _redis != null);
     }
 
     public async Task<bool> IsAgentVisibleToUserAsync(string agentId, IAgentUserContext userContext, CancellationToken cancellationToken = default)
@@ -30,7 +28,6 @@ internal class AgentVisibilityService : IAgentVisibilityService
 
         if (acl == null)
         {
-            RouterLog.AclEntryNotFound(_logger, agentId);
             return true;
         }
 
@@ -72,15 +69,9 @@ internal class AgentVisibilityService : IAgentVisibilityService
 
         if (aclJson != null)
         {
-            RouterLog.AclRawJson(_logger, agentId, aclJson);
             var entry = JsonSerializer.Deserialize<AgentAclEntry>(aclJson);
             if (entry != null)
             {
-                RouterLog.AclDeserialized(_logger, agentId,
-                    string.Join(",", entry.AllowedUserIds),
-                    string.Join(",", entry.AllowedGroups),
-                    string.Join(",", entry.AllowedTenantIds),
-                    string.Join(",", entry.AllowedRoles));
                 _cache[agentId] = entry;
                 return entry;
             }
@@ -89,45 +80,18 @@ internal class AgentVisibilityService : IAgentVisibilityService
         return null;
     }
 
-    private bool IsAllowedForUser(AgentAclEntry acl, IAgentUserContext userContext)
-    {
-        if (acl.AllowedUserIds.Count == 0
+    private static bool IsAllowedForUser(
+        AgentAclEntry acl,
+        IAgentUserContext userContext) =>
+        acl.AllowedUserIds.Count == 0
             && acl.AllowedGroups.Count == 0
             && acl.AllowedTenantIds.Count == 0
-            && acl.AllowedRoles.Count == 0)
-        {
-            RouterLog.AclNoRestrictions(_logger, userContext.UserId);
-            return true;
-        }
-
-        if (acl.AllowedUserIds.Count > 0 && acl.AllowedUserIds.Contains(userContext.UserId))
-        {
-            RouterLog.AllowedViaUserIds(_logger, userContext.UserId);
-            return true;
-        }
-
-        if (acl.AllowedGroups.Count > 0 && userContext.Groups != null
-            && acl.AllowedGroups.Intersect(userContext.Groups).Any())
-        {
-            RouterLog.AllowedViaGroups(_logger, userContext.UserId);
-            return true;
-        }
-
-        if (acl.AllowedTenantIds.Count > 0 && userContext.TenantId != null
-            && acl.AllowedTenantIds.Contains(userContext.TenantId))
-        {
-            RouterLog.AllowedViaTenantIds(_logger, userContext.UserId);
-            return true;
-        }
-
-        if (acl.AllowedRoles.Count > 0 && userContext.Roles != null
-            && acl.AllowedRoles.Intersect(userContext.Roles).Any())
-        {
-            RouterLog.AllowedViaRoles(_logger, userContext.UserId);
-            return true;
-        }
-
-        RouterLog.AccessDeniedByAcl(_logger, userContext.UserId);
-        return false;
-    }
+            && acl.AllowedRoles.Count == 0
+        || acl.AllowedUserIds.Contains(userContext.UserId)
+        || userContext.Groups != null
+            && acl.AllowedGroups.Intersect(userContext.Groups).Any()
+        || userContext.TenantId != null
+            && acl.AllowedTenantIds.Contains(userContext.TenantId)
+        || userContext.Roles != null
+            && acl.AllowedRoles.Intersect(userContext.Roles).Any();
 }

@@ -13,8 +13,7 @@ public class AgentSelectionFilterTests
     [Fact]
     public async Task InvokeAsync_ValidRequest_MapsSelectionAndPreservesBody()
     {
-        var selectionService = new StubSelectionService(
-            AgentSelectionResult.Selected("finance", selectedByIntentAgent: true, confidence: 0.9));
+        var selectionService = new StubSelectionService("finance");
         AgentSelectionFilter filter = CreateFilter(selectionService);
         DefaultHttpContext httpContext = CreateHttpContext("{\"message\":\"find invoice\"}");
         httpContext.Request.Headers.Authorization = "Basic credential";
@@ -27,20 +26,19 @@ public class AgentSelectionFilterTests
         Assert.NotNull(result);
         AgentRoutingFeature? feature = httpContext.Features.Get<AgentRoutingFeature>();
         Assert.NotNull(feature);
-        Assert.Equal("finance", feature.AgentId);
-        Assert.True(feature.SelectedByIntentAgent);
+        Assert.Equal("http://engine", feature.TargetEndpoint);
         Assert.Equal(0, httpContext.Request.Body.Position);
         Assert.Equal("finance", httpContext.Request.Headers["X-Agent-Id"]);
         Assert.NotNull(selectionService.Request);
         Assert.Equal("find invoice", selectionService.Request.Query);
         Assert.Equal("http://engine", selectionService.Request.TargetEndpoint);
-        Assert.Equal("Basic credential", selectionService.Request.Identity.Authorization);
+        Assert.Equal("Basic credential", selectionService.Request.Authorization);
     }
 
     [Fact]
     public async Task InvokeAsync_ExplicitAgent_MapsAgentIdToSelectionRequest()
     {
-        var selectionService = new StubSelectionService(AgentSelectionResult.Selected("support"));
+        var selectionService = new StubSelectionService("support");
         AgentSelectionFilter filter = CreateFilter(selectionService);
         DefaultHttpContext httpContext = CreateHttpContext(
             "{\"message\":\"hello\",\"context\":{\"agentId\":\"support\"}}");
@@ -58,7 +56,7 @@ public class AgentSelectionFilterTests
     [Fact]
     public async Task InvokeAsync_ConversationHeader_PreservesAffinityWithoutMarkingFollowUp()
     {
-        var selectionService = new StubSelectionService(AgentSelectionResult.Selected("finance"));
+        var selectionService = new StubSelectionService("finance");
         var routeTable = new StubRouteTable();
         AgentSelectionFilter filter = CreateFilter(selectionService, routeTable);
         DefaultHttpContext httpContext = CreateHttpContext("{\"message\":\"follow up\"}");
@@ -76,7 +74,7 @@ public class AgentSelectionFilterTests
     [Fact]
     public async Task InvokeAsync_ConversationContinuation_DoesNotWriteAgentHeader()
     {
-        var selectionService = new StubSelectionService(AgentSelectionResult.ContinueConversation());
+        var selectionService = new StubSelectionService(null);
         AgentSelectionFilter filter = CreateFilter(selectionService);
         DefaultHttpContext httpContext = CreateHttpContext(
             "{\"message\":\"follow up\",\"context\":{\"conversationId\":\"conversation-1\"}}");
@@ -90,18 +88,13 @@ public class AgentSelectionFilterTests
         Assert.False(httpContext.Request.Headers.ContainsKey("X-Agent-Id"));
         AgentRoutingFeature? feature = httpContext.Features.Get<AgentRoutingFeature>();
         Assert.NotNull(feature);
-        Assert.Null(feature.AgentId);
+        Assert.Equal("conversation-1", feature.ConversationId);
     }
 
-    [Theory]
-    [InlineData((int)AgentSelectionStatus.Forbidden, StatusCodes.Status403Forbidden)]
-    [InlineData((int)AgentSelectionStatus.NoAgentAvailable, StatusCodes.Status503ServiceUnavailable)]
-    public async Task InvokeAsync_SelectionFailure_MapsStatusCode(
-        int status,
-        int expectedStatusCode)
+    [Fact]
+    public async Task InvokeAsync_NoAgentSelected_ReturnsServiceUnavailable()
     {
-        var selectionService = new StubSelectionService(
-            AgentSelectionResult.Failed((AgentSelectionStatus)status));
+        var selectionService = new StubSelectionService(null);
         AgentSelectionFilter filter = CreateFilter(selectionService);
         DefaultHttpContext httpContext = CreateHttpContext("{\"message\":\"hello\"}");
         var invocation = new DefaultEndpointFilterInvocationContext(httpContext);
@@ -111,13 +104,13 @@ public class AgentSelectionFilterTests
             _ => ValueTask.FromResult<object?>(Results.Ok()));
 
         IStatusCodeHttpResult statusResult = Assert.IsAssignableFrom<IStatusCodeHttpResult>(result);
-        Assert.Equal(expectedStatusCode, statusResult.StatusCode);
+        Assert.Equal(StatusCodes.Status503ServiceUnavailable, statusResult.StatusCode);
     }
 
     [Fact]
     public async Task InvokeAsync_JsonWithInvalidShape_ReturnsBadRequest()
     {
-        var selectionService = new StubSelectionService(AgentSelectionResult.Selected("finance"));
+        var selectionService = new StubSelectionService("finance");
         AgentSelectionFilter filter = CreateFilter(selectionService);
         DefaultHttpContext httpContext = CreateHttpContext("[]");
         var invocation = new DefaultEndpointFilterInvocationContext(httpContext);
@@ -145,8 +138,7 @@ public class AgentSelectionFilterTests
         return new AgentSelectionFilter(
             routeTable ?? new StubRouteTable(),
             selectionService,
-            user,
-            NullLogger<AgentSelectionFilter>.Instance);
+            user);
     }
 
     private static DefaultHttpContext CreateHttpContext(string body)
@@ -159,11 +151,11 @@ public class AgentSelectionFilterTests
         return context;
     }
 
-    private sealed class StubSelectionService(AgentSelectionResult result) : IAgentSelectionService
+    private sealed class StubSelectionService(string? result) : IAgentSelectionService
     {
         public AgentSelectionRequest? Request { get; private set; }
 
-        public Task<AgentSelectionResult> SelectAsync(
+        public Task<string?> SelectAsync(
             AgentSelectionRequest request,
             CancellationToken cancellationToken)
         {

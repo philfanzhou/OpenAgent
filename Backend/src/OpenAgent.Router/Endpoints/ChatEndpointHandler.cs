@@ -38,22 +38,10 @@ internal static class ChatEndpointHandler
                 title: "Agent routing was not resolved");
         }
 
-        string query = routing.Request.Query;
-        string? conversationId = routing.Request.ConversationId;
+        string? conversationId = routing.ConversationId;
         conversationId ??= context.Request.Headers["X-Conversation-Id"].FirstOrDefault();
-        RouterLog.RequestAccepted(
-            logger, action, userContext.UserId, tenantId, conversationId, query.Length, traceId);
-
-        string? agentId = routing.AgentId;
-        const string intent = "chat";
-        RouterLog.IntentRecognized(
-            logger, action, intent, userContext.UserId, tenantId,
-            conversationId, query.Length, traceId);
         string targetEndpoint = routing.TargetEndpoint;
 
-        RouterLog.ForwardingStarted(
-            logger, action, targetEndpoint, intent, agentId, conversationId,
-            userContext.UserId, tenantId, traceId);
         RouterMeter.RecordRoute(action ?? "chat", "forwarding");
         string actionSuffix = string.IsNullOrWhiteSpace(action) ? string.Empty : $"/{action}";
         var targetUrl = $"{targetEndpoint.TrimEnd('/')}/api/v1/agent/chat{actionSuffix}";
@@ -65,15 +53,9 @@ internal static class ChatEndpointHandler
             targetEndpoint,
             httpClient,
             currentRequestConfig,
-            (_, proxyRequest) =>
-            {
-                RouterLog.ProxyRequestPrepared(
-                    logger, action, targetUrl, agentId, conversationId,
-                    userContext.UserId, tenantId, traceId);
-                return ForwardingContextBuilder.ApplyAsync(
-                    proxyRequest, new Uri(targetUrl), userContext,
-                    tenantId, conversationId, traceId);
-            }).ConfigureAwait(false);
+            (_, proxyRequest) => ForwardingContextBuilder.ApplyAsync(
+                proxyRequest, new Uri(targetUrl), userContext,
+                tenantId, conversationId, traceId)).ConfigureAwait(false);
         return error == ForwarderError.None
             ? Results.Empty
             : await ForwardingErrorHandler.HandleChatAsync(

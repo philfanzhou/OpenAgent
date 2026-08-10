@@ -24,13 +24,7 @@ public static class RouterServiceCollectionExtensions
             .Validate(
                 options => options.MinimumConfidence is >= 0 and <= 1,
                 "Intent recognition MinimumConfidence must be between zero and one")
-            .Validate(
-                options => options.MaxCandidates > 0
-                    && options.MaxMessageCharacters > 0
-                    && options.CatalogCacheSeconds > 0,
-                "Intent recognition input limits must be greater than zero")
             .ValidateOnStart();
-        services.AddMemoryCache();
         services.AddHttpClient<IIntentAgentSelector, IntentAgentSelector>(client =>
         {
             client.Timeout = Timeout.InfiniteTimeSpan;

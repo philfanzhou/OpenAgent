@@ -1,7 +1,5 @@
 using System.Net;
 using System.Net.Http.Json;
-using Microsoft.Extensions.Caching.Memory;
-using Microsoft.Extensions.Logging.Abstractions;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
@@ -30,11 +28,10 @@ public class IntentAgentSelectorTests
             ```
             """;
 
-        IntentAgentDecision? decision = IntentAgentSelector.ParseDecision(content, Candidates, 0.5);
+        string? decision = IntentAgentSelector.ParseDecision(content, Candidates, 0.5);
 
         Assert.NotNull(decision);
-        Assert.Equal("finance", decision.AgentId);
-        Assert.Equal(0.91, decision.Confidence);
+        Assert.Equal("finance", decision);
     }
 
     [Theory]
@@ -44,53 +41,48 @@ public class IntentAgentSelectorTests
     [InlineData("")]
     public void ParseDecision_InvalidSelection_ReturnsNull(string content)
     {
-        IntentAgentDecision? decision = IntentAgentSelector.ParseDecision(content, Candidates, 0.5);
+        string? decision = IntentAgentSelector.ParseDecision(content, Candidates, 0.5);
 
         Assert.Null(decision);
     }
 
     [Fact]
-    public async Task SelectAsync_SendsCandidatesToConfiguredIntentAgent()
+    public async Task SelectAsync_LoadsVisibleCandidatesAndCallsConfiguredIntentAgent()
     {
         var handler = new RecordingHandler();
         var selector = new IntentAgentSelector(
             new HttpClient(handler),
-            new MemoryCache(new MemoryCacheOptions()),
             new AllowAllVisibilityService(),
             Microsoft.Extensions.Options.Options.Create(new IntentRecognitionOptions
             {
                 AgentId = "intent-router",
                 MinimumConfidence = 0.5,
-                TimeoutMs = 5000,
-                MaxCandidates = 100,
-                MaxMessageCharacters = 16000
-            }),
-            NullLogger<IntentAgentSelector>.Instance);
-        var user = new AgentUserContext
-        {
-            UserId = "user-1",
-            TenantId = "tenant-1"
-        };
+                TimeoutMs = 5000
+            }));
 
-        IntentAgentDecision? decision = await selector.SelectAsync(
-            new IntentAgentSelectionRequest(
+        string? decision = await selector.SelectAsync(
+            new AgentSelectionRequest(
                 "find my invoice",
                 "http://engine",
-                new EngineRequestIdentity("Bearer token", "tenant-1", "engine"),
-                user,
-                [
-                    new AgentSummary
-                    {
-                        AgentId = "finance",
-                        Name = "Finance",
-                        Description = "Handles invoices"
-                    }
-                ]),
+                null,
+                null,
+                "Bearer token",
+                "tenant-1",
+                new AgentUserContext
+                {
+                    UserId = "user-1",
+                    TenantId = "tenant-1"
+                }),
             CancellationToken.None);
 
         Assert.NotNull(decision);
-        Assert.Equal("finance", decision.AgentId);
-        Assert.Equal("http://engine/api/v1/agent/chat", handler.RequestUri);
+        Assert.Equal("finance", decision);
+        Assert.Equal(
+            ["http://engine/api/v1/agent/agents", "http://engine/api/v1/agent/chat"],
+            handler.RequestUris);
+        Assert.Equal("Bearer token", handler.Authorization);
+        Assert.Equal("tenant-1", handler.TenantId);
+        Assert.False(handler.HasAgentAudience);
         Assert.Contains("intent-router", handler.RequestBody, StringComparison.Ordinal);
         Assert.Contains("Handles invoices", handler.RequestBody, StringComparison.Ordinal);
         Assert.Contains("find my invoice", handler.RequestBody, StringComparison.Ordinal);
@@ -98,14 +90,36 @@ public class IntentAgentSelectorTests
 
     private sealed class RecordingHandler : HttpMessageHandler
     {
-        public string? RequestUri { get; private set; }
+        public List<string> RequestUris { get; } = [];
+        public string? Authorization { get; private set; }
+        public string? TenantId { get; private set; }
+        public bool HasAgentAudience { get; private set; }
         public string RequestBody { get; private set; } = string.Empty;
 
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken)
         {
-            RequestUri = request.RequestUri?.ToString();
+            RequestUris.Add(request.RequestUri?.ToString() ?? string.Empty);
+            Authorization = request.Headers.GetValues("Authorization").Single();
+            TenantId = request.Headers.GetValues("X-Tenant-Id").Single();
+            HasAgentAudience |= request.Headers.Contains("X-Agent-Audience");
+            if (request.Method == HttpMethod.Get)
+            {
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = JsonContent.Create(new List<AgentSummary>
+                    {
+                        new()
+                        {
+                            AgentId = "finance",
+                            Name = "Finance",
+                            Description = "Handles invoices"
+                        }
+                    })
+                };
+            }
+
             RequestBody = request.Content == null
                 ? string.Empty
                 : await request.Content.ReadAsStringAsync(cancellationToken);

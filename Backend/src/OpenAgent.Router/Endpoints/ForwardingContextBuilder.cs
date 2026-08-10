@@ -18,11 +18,9 @@ internal static class ForwardingContextBuilder
         proxyRequest.Headers.Remove("X-User-Id");
         proxyRequest.Headers.Remove("X-Tenant-Id");
         proxyRequest.Headers.Add("X-User-Id", userContext.UserId);
-        if (!string.IsNullOrEmpty(tenantId))
-            proxyRequest.Headers.Add("X-Tenant-Id", tenantId);
+        if (!string.IsNullOrEmpty(tenantId)) proxyRequest.Headers.Add("X-Tenant-Id", tenantId);
         proxyRequest.Headers.Add("X-Trace-Id", traceId);
-        if (!string.IsNullOrEmpty(conversationId))
-            proxyRequest.Headers.Add("X-Conversation-Id", conversationId);
+        if (!string.IsNullOrEmpty(conversationId)) proxyRequest.Headers.Add("X-Conversation-Id", conversationId);
         return ValueTask.CompletedTask;
     }
 }

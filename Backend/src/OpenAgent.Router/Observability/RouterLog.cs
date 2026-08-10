@@ -23,9 +23,6 @@ internal static partial class RouterLog
     [LoggerMessage(EventId = 3002, Level = LogLevel.Warning, Message = "Request rejected by rate limiter. Action={Action}, ClientId={ClientId}, UserId={UserId}, TenantId={TenantId}, TraceId={TraceId}")]
     public static partial void RateLimited(ILogger logger, string? action, string clientId, string userId, string? tenantId, string? traceId);
 
-    [LoggerMessage(EventId = 3003, Level = LogLevel.Warning, Message = "Agent access denied. Action={Action}, UserId={UserId}, TenantId={TenantId}, AgentId={AgentId}, ConversationId={ConversationId}, TraceId={TraceId}")]
-    public static partial void AgentAccessDenied(ILogger logger, string? action, string userId, string? tenantId, string agentId, string? conversationId, string? traceId);
-
     // Idempotency cache
     [LoggerMessage(EventId = 3010, Level = LogLevel.Information, Message = "Idempotency cache hit. Action={Action}, IdempotencyKey={IdempotencyKey}, UserId={UserId}, TenantId={TenantId}, TraceId={TraceId}")]
     public static partial void IdempotencyCacheHit(ILogger logger, string? action, string idempotencyKey, string userId, string? tenantId, string? traceId);
@@ -36,56 +33,8 @@ internal static partial class RouterLog
     [LoggerMessage(EventId = 3011, Level = LogLevel.Warning, Message = "Idempotency cache check failed, bypassing idempotency. Action={Action}, IdempotencyKey={IdempotencyKey}, TraceId={TraceId}, ExceptionType={ExceptionType}")]
     private static partial void IdempotencyCacheCheckFailedCore(ILogger logger, Exception exception, string? action, string idempotencyKey, string? traceId, string exceptionType);
 
-    // Body reading & parsing
-    public static void BodyReadFailed(ILogger logger, Exception exception, string? action, string method, PathString path, string? traceId) =>
-        BodyReadFailedCore(logger, exception, action, method, path, traceId, exception.GetType().FullName ?? "unknown");
-
-    [LoggerMessage(EventId = 3020, Level = LogLevel.Warning, Message = "Failed to read request body. Action={Action}, Method={Method}, Path={Path}, TraceId={TraceId}, ExceptionType={ExceptionType}")]
-    private static partial void BodyReadFailedCore(ILogger logger, Exception exception, string? action, string method, PathString path, string? traceId, string exceptionType);
-
-    [LoggerMessage(EventId = 3021, Level = LogLevel.Debug, Message = "Request body is not valid JSON for metadata extraction. Action={Action}, Method={Method}, Path={Path}, TraceId={TraceId}, BodyLength={BodyLength}")]
-    public static partial void BodyNotValidJson(ILogger logger, Exception exception, string? action, string method, PathString path, string? traceId, int bodyLength);
-
-    [LoggerMessage(EventId = 3022, Level = LogLevel.Debug, Message = "Failed to extract agent ID from request body JSON. Action={Action}, TraceId={TraceId}, BodyLength={BodyLength}")]
-    public static partial void AgentIdExtractionFailed(ILogger logger, Exception exception, string? action, string? traceId, int bodyLength);
-
-    // Request lifecycle
-    [LoggerMessage(EventId = 3030, Level = LogLevel.Information, Message = "Request accepted. Action={Action}, UserId={UserId}, TenantId={TenantId}, ConversationId={ConversationId}, QueryLength={QueryLength}, TraceId={TraceId}")]
-    public static partial void RequestAccepted(ILogger logger, string? action, string userId, string? tenantId, string? conversationId, int queryLength, string? traceId);
-
     [LoggerMessage(EventId = 3031, Level = LogLevel.Information, Message = "Semantic cache hit. Action={Action}, UserId={UserId}, TenantId={TenantId}, ConversationId={ConversationId}, TraceId={TraceId}")]
     public static partial void SemanticCacheHit(ILogger logger, string? action, string userId, string? tenantId, string? conversationId, string? traceId);
-
-    [LoggerMessage(EventId = 3032, Level = LogLevel.Information, Message = "Intent recognized. Action={Action}, Intent={Intent}, UserId={UserId}, TenantId={TenantId}, ConversationId={ConversationId}, QueryLength={QueryLength}, TraceId={TraceId}")]
-    public static partial void IntentRecognized(ILogger logger, string? action, string intent, string userId, string? tenantId, string? conversationId, int queryLength, string? traceId);
-
-    [LoggerMessage(EventId = 3033, Level = LogLevel.Warning, Message = "Could not determine target service. Action={Action}, Intent={Intent}, UserId={UserId}, TenantId={TenantId}, AgentId={AgentId}, ConversationId={ConversationId}, TraceId={TraceId}")]
-    public static partial void TargetServiceNotFound(ILogger logger, string? action, string intent, string userId, string? tenantId, string? agentId, string? conversationId, string? traceId);
-
-    [LoggerMessage(EventId = 3034, Level = LogLevel.Warning, Message = "Intent recognition skipped because no routable agents are available")]
-    public static partial void IntentRecognitionNoCandidates(ILogger logger);
-
-    [LoggerMessage(EventId = 3035, Level = LogLevel.Warning, Message = "Intent recognition dependency returned HTTP {StatusCode}. Dependency={Dependency}")]
-    public static partial void IntentRecognitionHttpFailure(ILogger logger, int statusCode, string dependency);
-
-    [LoggerMessage(EventId = 3036, Level = LogLevel.Warning, Message = "Intent recognition agent timed out after {TimeoutMs} ms")]
-    public static partial void IntentRecognitionTimedOut(ILogger logger, int timeoutMs);
-
-    [LoggerMessage(EventId = 3037, Level = LogLevel.Warning, Message = "Intent recognition agent request failed")]
-    public static partial void IntentRecognitionRequestFailed(ILogger logger, Exception exception);
-
-    [LoggerMessage(EventId = 3038, Level = LogLevel.Warning, Message = "Intent recognition agent returned invalid JSON")]
-    public static partial void IntentRecognitionInvalidJson(ILogger logger, Exception exception);
-
-    [LoggerMessage(EventId = 3039, Level = LogLevel.Information, Message = "Agent selection completed. AgentId={AgentId}, SelectedByIntentAgent={SelectedByIntentAgent}, Confidence={Confidence}, TraceId={TraceId}")]
-    public static partial void AgentSelectionCompleted(ILogger logger, string agentId, bool selectedByIntentAgent, double? confidence, string? traceId);
-
-    // Forwarding
-    [LoggerMessage(EventId = 3040, Level = LogLevel.Information, Message = "Forwarding request. Action={Action}, TargetEndpoint={TargetEndpoint}, Intent={Intent}, AgentId={AgentId}, ConversationId={ConversationId}, UserId={UserId}, TenantId={TenantId}, TraceId={TraceId}")]
-    public static partial void ForwardingStarted(ILogger logger, string? action, string targetEndpoint, string intent, string? agentId, string? conversationId, string userId, string? tenantId, string? traceId);
-
-    [LoggerMessage(EventId = 3041, Level = LogLevel.Debug, Message = "Proxy request prepared. Action={Action}, TargetUrl={TargetUrl}, AgentId={AgentId}, ConversationId={ConversationId}, UserId={UserId}, TenantId={TenantId}, TraceId={TraceId}")]
-    public static partial void ProxyRequestPrepared(ILogger logger, string? action, string targetUrl, string? agentId, string? conversationId, string userId, string? tenantId, string? traceId);
 
     /// <summary>Shared forwarding failure log used by main chat endpoint and all GET proxy endpoints.</summary>
     public static void ForwardingFailed(
@@ -109,12 +58,6 @@ internal static partial class RouterLog
 
     #region --- AgentVisibilityService ---
 
-    [LoggerMessage(EventId = 3050, Level = LogLevel.Information, Message = "AgentVisibilityService initialized. UsingStackExchangeRedis={UsingStackExchangeRedis}")]
-    public static partial void VisibilityServiceInitialized(ILogger logger, bool usingStackExchangeRedis);
-
-    [LoggerMessage(EventId = 3051, Level = LogLevel.Debug, Message = "No ACL entry found for agent {AgentId}, defaulting to visible")]
-    public static partial void AclEntryNotFound(ILogger logger, string agentId);
-
     [LoggerMessage(EventId = 3052, Level = LogLevel.Warning, Message = "Failed to get published agent IDs via Redis")]
     public static partial void GetPublishedAgentIdsFailed(ILogger logger, Exception exception);
 
@@ -123,31 +66,6 @@ internal static partial class RouterLog
 
     [LoggerMessage(EventId = 3054, Level = LogLevel.Warning, Message = "Failed to read ACL entry for {AgentId} via Redis")]
     public static partial void ReadAclEntryFailed(ILogger logger, Exception exception, string agentId);
-
-    [LoggerMessage(EventId = 3055, Level = LogLevel.Debug, Message = "ACL raw JSON for {AgentId}: {Json}")]
-    public static partial void AclRawJson(ILogger logger, string agentId, string json);
-
-    [LoggerMessage(EventId = 3056, Level = LogLevel.Debug, Message = "ACL deserialized for {AgentId}: AllowedUserIds=[{UserIds}], AllowedGroups=[{Groups}], AllowedTenantIds=[{TenantIds}], AllowedRoles=[{Roles}]")]
-    public static partial void AclDeserialized(ILogger logger, string agentId, string userIds, string groups, string tenantIds, string roles);
-
-    // ACL decision logs — grouped by match type
-    [LoggerMessage(EventId = 3060, Level = LogLevel.Debug, Message = "ACL for agent has no restrictions, allowing access for user {UserId}")]
-    public static partial void AclNoRestrictions(ILogger logger, string userId);
-
-    [LoggerMessage(EventId = 3061, Level = LogLevel.Debug, Message = "User {UserId} allowed via AllowedUserIds")]
-    public static partial void AllowedViaUserIds(ILogger logger, string userId);
-
-    [LoggerMessage(EventId = 3062, Level = LogLevel.Debug, Message = "User {UserId} allowed via AllowedGroups")]
-    public static partial void AllowedViaGroups(ILogger logger, string userId);
-
-    [LoggerMessage(EventId = 3063, Level = LogLevel.Debug, Message = "User {UserId} allowed via AllowedTenantIds")]
-    public static partial void AllowedViaTenantIds(ILogger logger, string userId);
-
-    [LoggerMessage(EventId = 3064, Level = LogLevel.Debug, Message = "User {UserId} allowed via AllowedRoles")]
-    public static partial void AllowedViaRoles(ILogger logger, string userId);
-
-    [LoggerMessage(EventId = 3065, Level = LogLevel.Debug, Message = "User {UserId} denied access; no matching ACL rule")]
-    public static partial void AccessDeniedByAcl(ILogger logger, string userId);
 
     #endregion
 

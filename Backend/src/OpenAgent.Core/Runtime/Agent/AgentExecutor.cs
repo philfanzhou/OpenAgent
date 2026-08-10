@@ -168,19 +168,18 @@ public sealed class AgentExecutor
         }
     }
 
-    private static string ResolveAgentId(string? agentId) =>
-        string.IsNullOrWhiteSpace(agentId) ? DefaultAgentId : agentId;
-
     private async Task<string> ResolveAgentIdAsync(
         AgentRequest request,
         IAgentUserContext user,
         CancellationToken cancellationToken)
     {
-        string? agentId = await _conversationAgents.ResolveAsync(
+        string? resolvedAgentId = await _conversationAgents.ResolveAsync(
             request,
             user,
             cancellationToken).ConfigureAwait(false);
-        return ResolveAgentId(agentId);
+        return string.IsNullOrWhiteSpace(resolvedAgentId)
+            ? DefaultAgentId
+            : resolvedAgentId;
     }
 
     private static string ResolveTraceId(string? traceId) =>

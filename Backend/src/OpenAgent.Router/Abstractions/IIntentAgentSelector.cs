@@ -4,7 +4,7 @@ namespace OpenAgent.Router;
 
 internal interface IIntentAgentSelector
 {
-    Task<IntentAgentDecision?> SelectAsync(
-        IntentAgentSelectionRequest request,
+    Task<string?> SelectAsync(
+        AgentSelectionRequest request,
         CancellationToken cancellationToken);
 }
