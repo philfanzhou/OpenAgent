@@ -69,6 +69,8 @@ public class AgentSelectionFilterTests
 
         Assert.Equal("conversation-from-header", routeTable.ConversationId);
         Assert.Null(selectionService.Request?.ConversationId);
+        AgentRoutingFeature? feature = httpContext.Features.Get<AgentRoutingFeature>();
+        Assert.Equal("conversation-from-header", feature?.ConversationId);
     }
 
     [Fact]

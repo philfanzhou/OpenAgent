@@ -9,4 +9,9 @@ internal sealed class IntentRecognitionOptions
     public string FallbackAgentId { get; set; } = "default";
     public double MinimumConfidence { get; set; } = 0.5;
     public int TimeoutMs { get; set; } = 5000;
+
+    internal static bool IsValid(IntentRecognitionOptions options) =>
+        (!options.Enabled || !string.IsNullOrWhiteSpace(options.AgentId))
+        && options.TimeoutMs > 0
+        && options.MinimumConfidence is >= 0 and <= 1;
 }

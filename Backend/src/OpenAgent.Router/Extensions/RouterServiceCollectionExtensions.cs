@@ -15,15 +15,7 @@ public static class RouterServiceCollectionExtensions
         services.AddSingleton<IConsistentHashRing, JumpHashConsistentHashRing>();
         services.AddOptions<IntentRecognitionOptions>()
             .Bind(configuration.GetSection(IntentRecognitionOptions.SectionName))
-            .Validate(
-                options => !options.Enabled || !string.IsNullOrWhiteSpace(options.AgentId),
-                "Intent recognition AgentId is required when intent recognition is enabled")
-            .Validate(
-                options => options.TimeoutMs > 0,
-                "Intent recognition TimeoutMs must be greater than zero")
-            .Validate(
-                options => options.MinimumConfidence is >= 0 and <= 1,
-                "Intent recognition MinimumConfidence must be between zero and one")
+            .Validate(IntentRecognitionOptions.IsValid, "Intent recognition configuration is invalid")
             .ValidateOnStart();
         services.AddHttpClient<IIntentAgentSelector, IntentAgentSelector>(client =>
         {

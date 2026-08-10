@@ -39,7 +39,6 @@ internal static class ChatEndpointHandler
         }
 
         string? conversationId = routing.ConversationId;
-        conversationId ??= context.Request.Headers["X-Conversation-Id"].FirstOrDefault();
         string targetEndpoint = routing.TargetEndpoint;
 
         RouterMeter.RecordRoute(action ?? "chat", "forwarding");

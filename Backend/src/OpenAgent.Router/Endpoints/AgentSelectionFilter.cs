@@ -73,7 +73,7 @@ internal sealed class AgentSelectionFilter(
         }
 
         context.Features.Set(new AgentRoutingFeature(
-            request.ConversationId,
+            routingConversationId,
             targetEndpoint));
         if (!string.IsNullOrWhiteSpace(selectedAgentId))
         {
