@@ -1,12 +1,7 @@
-using System.Net;
-using System.Net.Http.Json;
 using OpenAgent.Contracts.Configuration;
-using OpenAgent.Contracts.Requests;
-using OpenAgent.Contracts.Security;
 using OpenAgent.Router.Endpoints;
 using OpenAgent.Router.Models;
 using OpenAgent.Router.Options;
-using OpenAgent.Router.Security;
 using Xunit;
 
 namespace OpenAgent.Router.Tests.Endpoints;
@@ -15,136 +10,105 @@ public class IntentAgentSelectorTests
 {
     private static readonly IReadOnlyList<AgentSummary> Candidates =
     [
-        new AgentSummary { AgentId = "finance", Name = "Finance" },
-        new AgentSummary { AgentId = "support", Name = "Support" }
+        new AgentSummary
+        {
+            AgentId = "finance",
+            Name = "Finance",
+            Description = "Handles invoices"
+        }
     ];
 
-    [Fact]
-    public void ParseDecision_ValidFencedJson_NormalizesAgentId()
-    {
-        const string content = """
-            ```json
-            {"agentId":"FINANCE","confidence":0.91,"reason":"invoice request"}
-            ```
-            """;
-
-        string? decision = IntentAgentSelector.ParseDecision(content, Candidates, 0.5);
-
-        Assert.NotNull(decision);
-        Assert.Equal("finance", decision);
-    }
-
     [Theory]
-    [InlineData("{\"agentId\":\"unknown\",\"confidence\":0.9}")]
-    [InlineData("{\"agentId\":\"finance\",\"confidence\":0.2}")]
-    [InlineData("{\"agentId\":\"finance\",\"confidence\":1.1}")]
-    [InlineData("")]
-    public void ParseDecision_InvalidSelection_ReturnsNull(string content)
+    [InlineData("finance", 0.9, "finance")]
+    [InlineData("FINANCE", 0.9, "finance")]
+    [InlineData("unknown", 0.9, null)]
+    [InlineData("finance", 0.1, null)]
+    public void ValidateResult_ProviderResult_ValidatesCandidateAndConfidence(
+        string agentId,
+        double confidence,
+        string? expected)
     {
-        string? decision = IntentAgentSelector.ParseDecision(content, Candidates, 0.5);
+        string? decision = IntentAgentSelector.ValidateResult(
+            new IntentRecognitionResult(agentId, confidence),
+            Candidates,
+            0.5);
 
-        Assert.Null(decision);
+        Assert.Equal(expected, decision);
     }
 
     [Fact]
-    public async Task SelectAsync_LoadsVisibleCandidatesAndCallsConfiguredIntentAgent()
+    public async Task SelectAsync_InvokesConfiguredProviderAndAgent()
     {
-        var handler = new RecordingHandler();
+        var provider = new RecordingProvider();
         var selector = new IntentAgentSelector(
-            new HttpClient(handler),
-            new AllowAllVisibilityService(),
+            new StubProviderRegistry(provider),
             Microsoft.Extensions.Options.Options.Create(new IntentRecognitionOptions
             {
+                ProviderId = "intent-provider",
                 AgentId = "intent-router",
                 MinimumConfidence = 0.5,
                 TimeoutMs = 5000
             }));
 
         string? decision = await selector.SelectAsync(
-            new AgentSelectionRequest(
-                "find my invoice",
-                "http://engine",
-                null,
-                null,
-                "Bearer token",
-                "tenant-1",
-                new AgentUserContext
-                {
-                    UserId = "user-1",
-                    TenantId = "tenant-1"
-                }),
+            "find my invoice",
+            Candidates,
             CancellationToken.None);
 
-        Assert.NotNull(decision);
         Assert.Equal("finance", decision);
-        Assert.Equal(
-            ["http://engine/api/v1/agent/agents", "http://engine/api/v1/agent/chat"],
-            handler.RequestUris);
-        Assert.Equal("Bearer token", handler.Authorization);
-        Assert.Equal("tenant-1", handler.TenantId);
-        Assert.False(handler.HasAgentAudience);
-        Assert.Contains("intent-router", handler.RequestBody, StringComparison.Ordinal);
-        Assert.Contains("Handles invoices", handler.RequestBody, StringComparison.Ordinal);
-        Assert.Contains("find my invoice", handler.RequestBody, StringComparison.Ordinal);
+        Assert.Equal("intent-router", provider.AgentId);
+        AgentSummary agent = Assert.Single(provider.Agents);
+        Assert.Equal("finance", agent.AgentId);
+        Assert.Equal("Handles invoices", agent.Description);
+        Assert.Equal("find my invoice", provider.Message);
     }
 
-    private sealed class RecordingHandler : HttpMessageHandler
+    private sealed class RecordingProvider : IAgentProvider
     {
-        public List<string> RequestUris { get; } = [];
-        public string? Authorization { get; private set; }
-        public string? TenantId { get; private set; }
-        public bool HasAgentAudience { get; private set; }
-        public string RequestBody { get; private set; } = string.Empty;
+        public string Id => "intent-provider";
+        public string? AgentId { get; private set; }
+        public IReadOnlyList<AgentSummary> Agents { get; private set; } = [];
+        public string Message { get; private set; } = string.Empty;
 
-        protected override async Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request,
+        public Task<IReadOnlyList<AgentSummary>> GetAgentsAsync(
+            CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<AgentSummary>>([]);
+
+        public Task<IntentRecognitionResult?> RecognizeIntentAsync(
+            string intentAgentId,
+            IReadOnlyList<AgentSummary> agents,
+            string message,
             CancellationToken cancellationToken)
         {
-            RequestUris.Add(request.RequestUri?.ToString() ?? string.Empty);
-            Authorization = request.Headers.GetValues("Authorization").Single();
-            TenantId = request.Headers.GetValues("X-Tenant-Id").Single();
-            HasAgentAudience |= request.Headers.Contains("X-Agent-Audience");
-            if (request.Method == HttpMethod.Get)
-            {
-                return new HttpResponseMessage(HttpStatusCode.OK)
-                {
-                    Content = JsonContent.Create(new List<AgentSummary>
-                    {
-                        new()
-                        {
-                            AgentId = "finance",
-                            Name = "Finance",
-                            Description = "Handles invoices"
-                        }
-                    })
-                };
-            }
-
-            RequestBody = request.Content == null
-                ? string.Empty
-                : await request.Content.ReadAsStringAsync(cancellationToken);
-            return new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = JsonContent.Create(new ChatResponse
-                {
-                    Message = "{\"agentId\":\"finance\",\"confidence\":0.95}"
-                })
-            };
+            AgentId = intentAgentId;
+            Agents = agents;
+            Message = message;
+            return Task.FromResult<IntentRecognitionResult?>(
+                new IntentRecognitionResult("finance", 0.95));
         }
+
+        public Task<AgentForwardingTarget?> ResolveForwardingAsync(
+            string? action,
+            string? tenantId,
+            string? conversationId,
+            CancellationToken cancellationToken) =>
+            Task.FromResult<AgentForwardingTarget?>(null);
+
+        public ValueTask ConfigureRequestAsync(
+            HttpRequestMessage request,
+            AgentForwardingTarget target,
+            CancellationToken cancellationToken) => ValueTask.CompletedTask;
     }
 
-    private sealed class AllowAllVisibilityService : IAgentVisibilityService
+    private sealed class StubProviderRegistry(IAgentProvider provider) : IAgentProviderRegistry
     {
-        public Task<bool> IsAgentVisibleToUserAsync(
-            string agentId,
-            IAgentUserContext userContext,
-            CancellationToken cancellationToken = default) => Task.FromResult(true);
+        public IReadOnlyList<IAgentProvider> Providers => [provider];
+        public IAgentProvider DefaultProvider => provider;
 
-        public Task<List<string>> GetPublishedAgentIdsAsync(
-            CancellationToken cancellationToken = default) => Task.FromResult(new List<string>());
-
-        public Task<string?> GetAgentConfigAsync(
-            string agentId,
-            CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
+        public bool TryGet(string providerId, out IAgentProvider? result)
+        {
+            result = providerId == provider.Id ? provider : null;
+            return result != null;
+        }
     }
 }

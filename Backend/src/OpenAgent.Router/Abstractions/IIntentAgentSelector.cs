@@ -1,10 +1,10 @@
-using OpenAgent.Router.Models;
-
+using OpenAgent.Contracts.Configuration;
 namespace OpenAgent.Router;
 
 internal interface IIntentAgentSelector
 {
     Task<string?> SelectAsync(
-        AgentSelectionRequest request,
+        string message,
+        IReadOnlyList<AgentSummary> candidates,
         CancellationToken cancellationToken);
 }

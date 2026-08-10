@@ -1,6 +1,5 @@
 using System.Text;
 using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Logging.Abstractions;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Router.Endpoints;
 using OpenAgent.Router.Models;
@@ -11,139 +10,106 @@ namespace OpenAgent.Router.Tests.Endpoints;
 public class AgentSelectionFilterTests
 {
     [Fact]
-    public async Task InvokeAsync_ValidRequest_MapsSelectionAndPreservesBody()
+    public async Task InvokeAsync_ValidRequest_WritesAgentHeaderAndProviderFeature()
     {
-        var selectionService = new StubSelectionService("finance");
+        var selectionService = new StubSelectionService(
+            new AgentSelection("finance", "partner"));
         AgentSelectionFilter filter = CreateFilter(selectionService);
-        DefaultHttpContext httpContext = CreateHttpContext("{\"message\":\"find invoice\"}");
-        httpContext.Request.Headers.Authorization = "Basic credential";
-        var invocation = new DefaultEndpointFilterInvocationContext(httpContext);
+        DefaultHttpContext context = CreateContext("{\"message\":\"find invoice\"}");
 
-        object? result = await filter.InvokeAsync(
-            invocation,
+        await filter.InvokeAsync(
+            new DefaultEndpointFilterInvocationContext(context),
             _ => ValueTask.FromResult<object?>(Results.Ok()));
 
-        Assert.NotNull(result);
-        AgentRoutingFeature? feature = httpContext.Features.Get<AgentRoutingFeature>();
-        Assert.NotNull(feature);
-        Assert.Equal("http://engine", feature.TargetEndpoint);
-        Assert.Equal(0, httpContext.Request.Body.Position);
-        Assert.Equal("finance", httpContext.Request.Headers["X-Agent-Id"]);
-        Assert.NotNull(selectionService.Request);
-        Assert.Equal("find invoice", selectionService.Request.Query);
-        Assert.Equal("http://engine", selectionService.Request.TargetEndpoint);
-        Assert.Equal("Basic credential", selectionService.Request.Authorization);
+        Assert.Equal("finance", context.Request.Headers["X-Agent-Id"]);
+        Assert.Equal(0, context.Request.Body.Position);
+        AgentRoutingFeature feature = Assert.IsType<AgentRoutingFeature>(
+            context.Features.Get<AgentRoutingFeature>());
+        Assert.Equal("partner", feature.ProviderId);
+        Assert.Equal("find invoice", selectionService.Message);
     }
 
     [Fact]
-    public async Task InvokeAsync_ExplicitAgent_MapsAgentIdToSelectionRequest()
+    public async Task InvokeAsync_BodyAgentId_OverwritesExistingHeader()
     {
-        var selectionService = new StubSelectionService("support");
+        var selectionService = new StubSelectionService(
+            new AgentSelection("support", "self-engine"));
         AgentSelectionFilter filter = CreateFilter(selectionService);
-        DefaultHttpContext httpContext = CreateHttpContext(
+        DefaultHttpContext context = CreateContext(
             "{\"message\":\"hello\",\"context\":{\"agentId\":\"support\"}}");
-        var invocation = new DefaultEndpointFilterInvocationContext(httpContext);
+        context.Request.Headers["X-Agent-Id"] = "old-agent";
 
         await filter.InvokeAsync(
-            invocation,
+            new DefaultEndpointFilterInvocationContext(context),
             _ => ValueTask.FromResult<object?>(Results.Ok()));
 
-        Assert.NotNull(selectionService.Request);
-        Assert.Equal("support", selectionService.Request.ExplicitAgentId);
-        Assert.Equal("support", httpContext.Request.Headers["X-Agent-Id"]);
+        Assert.Equal("support", selectionService.ExplicitAgentId);
+        Assert.Equal("support", context.Request.Headers["X-Agent-Id"]);
     }
 
     [Fact]
-    public async Task InvokeAsync_ConversationHeader_PreservesAffinityWithoutMarkingFollowUp()
+    public async Task InvokeAsync_ConversationHeader_IsPassedToSelection()
     {
-        var selectionService = new StubSelectionService("finance");
-        var routeTable = new StubRouteTable();
-        AgentSelectionFilter filter = CreateFilter(selectionService, routeTable);
-        DefaultHttpContext httpContext = CreateHttpContext("{\"message\":\"follow up\"}");
-        httpContext.Request.Headers["X-Conversation-Id"] = "conversation-from-header";
-        var invocation = new DefaultEndpointFilterInvocationContext(httpContext);
-
-        await filter.InvokeAsync(
-            invocation,
-            _ => ValueTask.FromResult<object?>(Results.Ok()));
-
-        Assert.Equal("conversation-from-header", routeTable.ConversationId);
-        Assert.Null(selectionService.Request?.ConversationId);
-        AgentRoutingFeature? feature = httpContext.Features.Get<AgentRoutingFeature>();
-        Assert.Equal("conversation-from-header", feature?.ConversationId);
-    }
-
-    [Fact]
-    public async Task InvokeAsync_ConversationContinuation_DoesNotWriteAgentHeader()
-    {
-        var selectionService = new StubSelectionService(null);
+        var selectionService = new StubSelectionService(
+            new AgentSelection(null, "self-engine"));
         AgentSelectionFilter filter = CreateFilter(selectionService);
-        DefaultHttpContext httpContext = CreateHttpContext(
-            "{\"message\":\"follow up\",\"context\":{\"conversationId\":\"conversation-1\"}}");
-        var invocation = new DefaultEndpointFilterInvocationContext(httpContext);
+        DefaultHttpContext context = CreateContext("{\"message\":\"follow up\"}");
+        context.Request.Headers["X-Conversation-Id"] = "conversation-1";
 
         await filter.InvokeAsync(
-            invocation,
+            new DefaultEndpointFilterInvocationContext(context),
             _ => ValueTask.FromResult<object?>(Results.Ok()));
 
-        Assert.Equal("conversation-1", selectionService.Request?.ConversationId);
-        Assert.False(httpContext.Request.Headers.ContainsKey("X-Agent-Id"));
-        AgentRoutingFeature? feature = httpContext.Features.Get<AgentRoutingFeature>();
-        Assert.NotNull(feature);
-        Assert.Equal("conversation-1", feature.ConversationId);
+        Assert.Equal("conversation-1", selectionService.ConversationId);
+        Assert.False(context.Request.Headers.ContainsKey("X-Agent-Id"));
+        Assert.Equal(
+            "conversation-1",
+            context.Features.Get<AgentRoutingFeature>()?.ConversationId);
     }
 
     [Fact]
-    public async Task InvokeAsync_NoAgentSelected_ReturnsServiceUnavailable()
+    public async Task InvokeAsync_NoSelection_ReturnsServiceUnavailable()
     {
-        var selectionService = new StubSelectionService(null);
-        AgentSelectionFilter filter = CreateFilter(selectionService);
-        DefaultHttpContext httpContext = CreateHttpContext("{\"message\":\"hello\"}");
-        var invocation = new DefaultEndpointFilterInvocationContext(httpContext);
+        AgentSelectionFilter filter = CreateFilter(new StubSelectionService(null));
+        DefaultHttpContext context = CreateContext("{\"message\":\"hello\"}");
 
         object? result = await filter.InvokeAsync(
-            invocation,
+            new DefaultEndpointFilterInvocationContext(context),
             _ => ValueTask.FromResult<object?>(Results.Ok()));
 
-        IStatusCodeHttpResult statusResult = Assert.IsAssignableFrom<IStatusCodeHttpResult>(result);
-        Assert.Equal(StatusCodes.Status503ServiceUnavailable, statusResult.StatusCode);
+        IStatusCodeHttpResult status = Assert.IsAssignableFrom<IStatusCodeHttpResult>(result);
+        Assert.Equal(StatusCodes.Status503ServiceUnavailable, status.StatusCode);
     }
 
     [Fact]
-    public async Task InvokeAsync_JsonWithInvalidShape_ReturnsBadRequest()
+    public async Task InvokeAsync_InvalidJson_ReturnsBadRequestAndRewindsBody()
     {
-        var selectionService = new StubSelectionService("finance");
+        var selectionService = new StubSelectionService(
+            new AgentSelection("finance", "self-engine"));
         AgentSelectionFilter filter = CreateFilter(selectionService);
-        DefaultHttpContext httpContext = CreateHttpContext("[]");
-        var invocation = new DefaultEndpointFilterInvocationContext(httpContext);
+        DefaultHttpContext context = CreateContext("[]");
 
         object? result = await filter.InvokeAsync(
-            invocation,
+            new DefaultEndpointFilterInvocationContext(context),
             _ => ValueTask.FromResult<object?>(Results.Ok()));
 
-        IStatusCodeHttpResult statusResult = Assert.IsAssignableFrom<IStatusCodeHttpResult>(result);
-        Assert.Equal(StatusCodes.Status400BadRequest, statusResult.StatusCode);
-        Assert.Null(selectionService.Request);
-        Assert.Equal(0, httpContext.Request.Body.Position);
+        IStatusCodeHttpResult status = Assert.IsAssignableFrom<IStatusCodeHttpResult>(result);
+        Assert.Equal(StatusCodes.Status400BadRequest, status.StatusCode);
+        Assert.Null(selectionService.Message);
+        Assert.Equal(0, context.Request.Body.Position);
     }
 
-    private static AgentSelectionFilter CreateFilter(
-        IAgentSelectionService selectionService,
-        StubRouteTable? routeTable = null)
-    {
-        var user = new AgentUserContext
-        {
-            UserId = "user-1",
-            TenantId = "tenant-1",
-            IsAuthenticated = true
-        };
-        return new AgentSelectionFilter(
-            routeTable ?? new StubRouteTable(),
+    private static AgentSelectionFilter CreateFilter(IAgentSelectionService selectionService) =>
+        new(
             selectionService,
-            user);
-    }
+            new AgentUserContext
+            {
+                UserId = "user-1",
+                TenantId = "tenant-1",
+                IsAuthenticated = true
+            });
 
-    private static DefaultHttpContext CreateHttpContext(string body)
+    private static DefaultHttpContext CreateContext(string body)
     {
         var context = new DefaultHttpContext();
         context.Request.Method = HttpMethods.Post;
@@ -153,32 +119,22 @@ public class AgentSelectionFilterTests
         return context;
     }
 
-    private sealed class StubSelectionService(string? result) : IAgentSelectionService
+    private sealed class StubSelectionService(AgentSelection? result) : IAgentSelectionService
     {
-        public AgentSelectionRequest? Request { get; private set; }
+        public string? Message { get; private set; }
+        public string? ConversationId { get; private set; }
+        public string? ExplicitAgentId { get; private set; }
 
-        public Task<string?> SelectAsync(
-            AgentSelectionRequest request,
+        public Task<AgentSelection?> SelectAsync(
+            string message,
+            string? conversationId,
+            string? explicitAgentId,
             CancellationToken cancellationToken)
         {
-            Request = request;
-            return Task.FromResult(result);
-        }
-    }
-
-    private sealed class StubRouteTable : IRouteTable
-    {
-        public string? ConversationId { get; private set; }
-
-        public string? GetTargetEndpoint(string intent) => "http://engine";
-
-        public string? GetTargetEndpoint(
-            string intent,
-            string? tenantId,
-            string? conversationId)
-        {
+            Message = message;
             ConversationId = conversationId;
-            return "http://engine";
+            ExplicitAgentId = explicitAgentId;
+            return Task.FromResult(result);
         }
     }
 }

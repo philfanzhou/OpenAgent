@@ -25,13 +25,13 @@ public static class RouterEndpointExtensions
         app.MapPost("/api/v1/agent/chat/{*action}", (
             string? action,
             HttpContext context,
-            IHttpForwarder forwarder,
+            IAgentProviderRegistry providers,
+            IAgentForwarder agentForwarder,
             IAgentUserContext userContext,
             ILogger<Program> logger,
             CancellationToken cancellationToken) =>
             ChatEndpointHandler.HandleAsync(
-                action, context, forwarder, userContext,
-                logger, httpClient, requestConfig, cancellationToken))
+                action, context, providers, agentForwarder, userContext, logger, cancellationToken))
             .AddEndpointFilter<AgentSelectionFilter>();
 
         app.MapGet("/api/v1/agent/agents", (
