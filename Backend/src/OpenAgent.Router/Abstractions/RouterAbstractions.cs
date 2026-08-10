@@ -28,11 +28,6 @@ public interface IRateLimiter
     Task<bool> IsAllowedAsync(string clientId, CancellationToken cancellationToken = default);
 }
 
-public interface IIntentRecognizer
-{
-    Task<string> RecognizeAsync(string query, CancellationToken cancellationToken = default);
-}
-
 public interface IQueryCache
 {
     Task<string?> GetCachedResponseAsync(string query, CancellationToken cancellationToken = default);

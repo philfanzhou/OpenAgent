@@ -10,6 +10,7 @@ namespace OpenAgent.Contracts.Configuration;
 /// </summary>
 public class AgentConfig
 {
+    public string Instructions { get; set; } = string.Empty;
     public LlmConfig Llm { get; set; } = new();
     public McpConfig Mcp { get; set; } = new();
     public RagConfig Rag { get; set; } = new();

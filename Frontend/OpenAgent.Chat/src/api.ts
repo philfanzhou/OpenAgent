@@ -250,25 +250,32 @@ export const api = {
     })
   },
 
-  async *streamChat(message: string, agentId: string, conversationId?: string, attachments: File[] = []): AsyncGenerator<StreamEvent> {
+  async *streamChat(
+    message: string,
+    agentId?: string,
+    conversationId?: string,
+    attachments: File[] = [],
+    routingConversationId?: string,
+  ): AsyncGenerator<StreamEvent> {
     const hasAttachments = attachments.length > 0
     const form = new FormData()
     form.set('message', message)
-    form.set('agentId', agentId)
+    if (agentId) form.set('agentId', agentId)
     if (conversationId) form.set('conversationId', conversationId)
     for (const file of attachments) form.append('files', file, file.name)
 
+    const requestHeaders = headers(hasAttachments ? {} : { 'Content-Type': 'application/json' })
+    if (routingConversationId) requestHeaders.set('X-Conversation-Id', routingConversationId)
     const response = await fetch(`${requireBaseUrl()}/api/v1/agent/chat/${hasAttachments ? 'attachments/stream' : 'stream'}`, {
       method: 'POST',
-      headers: headers(hasAttachments ? {} : { 'Content-Type': 'application/json' }),
+      headers: requestHeaders,
       body: hasAttachments ? form : JSON.stringify({
         message,
-        context: { agentId, ...(conversationId ? { conversationId } : {}) },
+        context: { ...(agentId ? { agentId } : {}), ...(conversationId ? { conversationId } : {}) },
       }),
     })
     if (!response.ok) throw await readError(response)
     if (!response.body) throw new Error('Engine 未返回流式响应')
-
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
     let buffer = ''

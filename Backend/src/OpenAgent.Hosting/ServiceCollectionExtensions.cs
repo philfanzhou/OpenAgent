@@ -2,13 +2,13 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using OpenAgent.Hosting.Authentication;
+using OpenAgent.Hosting.Observability;
+using OpenAgent.Hosting.Security;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using Serilog;
-using OpenAgent.Hosting.Observability;
-using OpenAgent.Hosting.Security;
-using OpenAgent.Hosting.Authentication;
 
 namespace OpenAgent.Hosting;
 

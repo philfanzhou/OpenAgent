@@ -42,7 +42,6 @@ builder.Services.AddScoped<IAgentUserContext>(sp =>
 });
 
 builder.Services.AddRouterRuntime(builder.Configuration);
-builder.Services.AddSingleton<IIntentRecognizer, SimpleIntentRecognizer>();
 builder.Services.AddSingleton<IQueryCache, DummyQueryCache>();
 builder.Services.AddSingleton<IAgentVisibilityService, AgentVisibilityService>();
 

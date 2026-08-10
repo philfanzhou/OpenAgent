@@ -9,12 +9,10 @@ internal static class ForwardingContextBuilder
         Uri targetUri,
         IAgentUserContext userContext,
         string? tenantId,
-        string? agentId,
         string? conversationId,
         string traceId)
     {
         proxyRequest.RequestUri = targetUri;
-        proxyRequest.Headers.Remove("X-Agent-Id");
         proxyRequest.Headers.Remove("X-Conversation-Id");
         proxyRequest.Headers.Remove("X-Trace-Id");
         proxyRequest.Headers.Remove("X-User-Id");
@@ -22,7 +20,6 @@ internal static class ForwardingContextBuilder
         proxyRequest.Headers.Add("X-User-Id", userContext.UserId);
         if (!string.IsNullOrEmpty(tenantId)) proxyRequest.Headers.Add("X-Tenant-Id", tenantId);
         proxyRequest.Headers.Add("X-Trace-Id", traceId);
-        if (!string.IsNullOrEmpty(agentId)) proxyRequest.Headers.Add("X-Agent-Id", agentId);
         if (!string.IsNullOrEmpty(conversationId)) proxyRequest.Headers.Add("X-Conversation-Id", conversationId);
         return ValueTask.CompletedTask;
     }

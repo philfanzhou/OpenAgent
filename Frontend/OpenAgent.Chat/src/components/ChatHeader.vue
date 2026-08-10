@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { AgentSummary } from '../types'
+import { AUTO_AGENT_ID, type AgentSummary } from '../types'
 
 const props = defineProps<{
   statusText: string
@@ -30,6 +30,7 @@ const selectedAgent = computed({
     <div class="topbar-status"><span class="status-dot" :class="{ connected: props.statusText === '已连接' }" />{{ props.statusText }}<span class="status-caption">工作台</span></div>
     <div class="topbar-actions">
       <el-select v-model="selectedAgent" placeholder="选择 Agent" @change="emit('agent-change')">
+        <el-option label="自动选择 Agent" :value="AUTO_AGENT_ID" />
         <el-option v-for="agent in props.agents" :key="agent.agentId" :label="agent.name || agent.agentId" :value="agent.agentId" />
       </el-select>
       <el-button class="agent-refresh-button" circle :loading="props.refreshingAgents" aria-label="刷新 Agent 列表" title="刷新 Agent 列表" @click="emit('refresh-agents')">↻</el-button>

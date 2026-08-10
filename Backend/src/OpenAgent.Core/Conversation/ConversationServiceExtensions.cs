@@ -46,6 +46,7 @@ internal static class ConversationServiceExtensions
         }
 
         services.AddScoped<ConversationSessionStore>();
+        services.AddScoped<ConversationAgentResolver>();
         services.AddScoped<ConversationHistoryFactory>();
         services.AddScoped<IConversationQueryService>(CreateQueryService);
         services.AddHostedService<ConversationArchiveMigrationService>();

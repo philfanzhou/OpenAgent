@@ -102,11 +102,13 @@ internal static class ConversationEndpointExtensions
             AgentEndpointRequestMapper.RequireTenant(context),
             conversationId,
             cancellationToken).ConfigureAwait(false);
-        if (record == null) return Results.NotFound();
+        if (record == null)
+            return Results.NotFound();
 
         string userId = context.GetAgentRequest().User.UserId;
         return string.Equals(record.UserId, userId, StringComparison.OrdinalIgnoreCase)
             ? Results.Ok(record)
             : Results.Forbid();
     }
+
 }
