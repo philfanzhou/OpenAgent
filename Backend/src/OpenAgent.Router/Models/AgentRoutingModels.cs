@@ -13,6 +13,13 @@ internal sealed record IntentAgentDecision(
     double Confidence,
     string? Reason);
 
+internal readonly record struct ConversationAgentResolution(
+    bool Exists,
+    string? AgentId)
+{
+    internal static ConversationAgentResolution NotFound => new(false, null);
+}
+
 internal sealed record AgentRoutingFeature(
     ParsedChatRequest Request,
     string AgentId,

@@ -17,6 +17,10 @@ internal static class ConversationEndpointExtensions
             .WithName("SearchConversations")
             .WithTags("Conversation");
 
+        group.MapGet("/conversations/{conversationId}/route", GetRouteAsync)
+            .WithName("GetConversationRoute")
+            .WithTags("Conversation");
+
         group.MapGet("/conversations/{conversationId}", GetAsync)
             .WithName("GetConversation")
             .WithTags("Conversation");
@@ -102,11 +106,33 @@ internal static class ConversationEndpointExtensions
             AgentEndpointRequestMapper.RequireTenant(context),
             conversationId,
             cancellationToken).ConfigureAwait(false);
-        if (record == null) return Results.NotFound();
+        if (record == null)
+            return Results.NotFound();
 
         string userId = context.GetAgentRequest().User.UserId;
         return string.Equals(record.UserId, userId, StringComparison.OrdinalIgnoreCase)
             ? Results.Ok(record)
+            : Results.Forbid();
+    }
+
+    private static async Task<IResult> GetRouteAsync(
+        [FromServices] IConversationQueryService queryService,
+        HttpContext context,
+        string conversationId,
+        CancellationToken cancellationToken = default)
+    {
+        ConversationRecord? record = await queryService.GetRecordAsync(
+            AgentEndpointRequestMapper.RequireTenant(context),
+            conversationId,
+            cancellationToken).ConfigureAwait(false);
+        if (record == null)
+        {
+            return Results.NotFound();
+        }
+
+        string userId = context.GetAgentRequest().User.UserId;
+        return string.Equals(record.UserId, userId, StringComparison.OrdinalIgnoreCase)
+            ? Results.Ok(new { record.ConversationId, record.AgentId })
             : Results.Forbid();
     }
 }

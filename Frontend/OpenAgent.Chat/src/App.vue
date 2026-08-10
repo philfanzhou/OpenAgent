@@ -389,10 +389,7 @@ async function send(): Promise<void> {
   conversation.messages.push(assistantMessage)
   try {
     for await (const event of api.streamChat(requestContent, requestedAgentId, conversationId, attachments)) {
-      if (event.type === 'route' && event.agentId) {
-        conversation.agentId = event.agentId
-        selectedAgentId.value = event.agentId
-      } else if (event.type === 'content') {
+      if (event.type === 'content') {
         assistant += event.content || ''
         assistantMessage.content = assistant
       } else if (event.type === 'tool_call') {

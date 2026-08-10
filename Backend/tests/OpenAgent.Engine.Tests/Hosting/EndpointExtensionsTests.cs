@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Http;
 using OpenAgent.Contracts.Requests;
-using OpenAgent.Contracts.Routing;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Engine.Host.Extensions;
 using OpenAgent.Engine.Host.Middleware;
@@ -77,23 +76,6 @@ public class EndpointExtensionsTests
         var agentRequest = AgentEndpointRequestMapper.CreateAgentRequest(request, context);
 
         Assert.Equal("header-agent", agentRequest.AgentId);
-    }
-
-    [Fact]
-    public void CreateAgentRequest_ResolvedRoutingHeader_TakesPrecedence()
-    {
-        var context = CreateContext();
-        context.Request.Headers[AgentRoutingHeaders.ResolvedAgentId] = "routed-agent";
-        context.Request.Headers["X-Agent-Id"] = "legacy-agent";
-        var request = new ChatRequest
-        {
-            Message = "ping",
-            Context = new Dictionary<string, object> { ["agentId"] = "body-agent" }
-        };
-
-        AgentRequest agentRequest = AgentEndpointRequestMapper.CreateAgentRequest(request, context);
-
-        Assert.Equal("routed-agent", agentRequest.AgentId);
     }
 
 }

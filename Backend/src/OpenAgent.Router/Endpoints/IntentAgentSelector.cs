@@ -240,7 +240,7 @@ internal sealed class IntentAgentSelector(
             {
                 candidate.AgentId,
                 Name = Truncate(candidate.Name, 200),
-                Description = Truncate(candidate.Description, 1_000)
+                Description = Truncate(candidate.Description, 1000)
             })
         };
         return JsonSerializer.Serialize(payload, JsonOptions);

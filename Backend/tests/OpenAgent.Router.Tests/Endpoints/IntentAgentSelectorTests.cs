@@ -62,9 +62,9 @@ public class IntentAgentSelectorTests
             {
                 AgentId = "intent-router",
                 MinimumConfidence = 0.5,
-                TimeoutMs = 5_000,
+                TimeoutMs = 5000,
                 MaxCandidates = 100,
-                MaxMessageCharacters = 16_000
+                MaxMessageCharacters = 16000
             }),
             NullLogger<IntentAgentSelector>.Instance);
         var context = new DefaultHttpContext();

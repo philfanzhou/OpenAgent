@@ -72,7 +72,7 @@ internal static class ChatEndpointHandler
                     userContext.UserId, tenantId, traceId);
                 return ForwardingContextBuilder.ApplyAsync(
                     proxyRequest, new Uri(targetUrl), userContext,
-                    tenantId, agentId, conversationId, traceId);
+                    tenantId, conversationId, traceId);
             }).ConfigureAwait(false);
         return error == ForwarderError.None
             ? Results.Empty

@@ -1,6 +1,5 @@
 using System.Text.Json;
 using Microsoft.Extensions.Options;
-using OpenAgent.Contracts.Routing;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Router.Middleware;
 using OpenAgent.Router.Models;
@@ -13,6 +12,7 @@ namespace OpenAgent.Router.Endpoints;
 internal sealed class AgentSelectionFilter(
     IRouteTable routeTable,
     IAgentVisibilityService visibilityService,
+    IConversationAgentResolver conversationAgentResolver,
     IIntentAgentSelector selector,
     IAgentUserContext userContext,
     IOptions<IntentRecognitionOptions> options,
@@ -87,6 +87,39 @@ internal sealed class AgentSelectionFilter(
             : request.AgentId;
         bool selectedByIntentAgent = false;
         string? selectedAgentId = explicitAgentId;
+        if (string.IsNullOrWhiteSpace(selectedAgentId)
+            && !string.IsNullOrWhiteSpace(conversationId))
+        {
+            try
+            {
+                ConversationAgentResolution resolution = await conversationAgentResolver.ResolveAsync(
+                    targetEndpoint,
+                    conversationId,
+                    context,
+                    context.RequestAborted).ConfigureAwait(false);
+                if (resolution.Exists)
+                {
+                    selectedAgentId = resolution.AgentId;
+                }
+            }
+            catch (HttpRequestException exception)
+                when (exception.StatusCode == System.Net.HttpStatusCode.Forbidden)
+            {
+                return Results.StatusCode(StatusCodes.Status403Forbidden);
+            }
+            catch (Exception exception) when (exception is HttpRequestException or JsonException)
+            {
+                RouterLog.ConversationAgentResolutionFailed(
+                    logger,
+                    exception,
+                    conversationId,
+                    context.TraceIdentifier);
+                return Results.Problem(
+                    statusCode: StatusCodes.Status503ServiceUnavailable,
+                    title: "Conversation routing is unavailable");
+            }
+        }
+
         if (string.IsNullOrWhiteSpace(selectedAgentId))
         {
             IntentAgentDecision? decision = _options.Enabled
@@ -129,7 +162,7 @@ internal sealed class AgentSelectionFilter(
             selectedAgentId,
             targetEndpoint,
             selectedByIntentAgent));
-        context.Response.Headers[AgentRoutingHeaders.SelectedAgentId] = selectedAgentId;
+        context.Request.Headers["X-Agent-Id"] = selectedAgentId;
         return await next(invocationContext).ConfigureAwait(false);
     }
 }

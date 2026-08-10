@@ -35,6 +35,10 @@ public static class RouterServiceCollectionExtensions
         {
             client.Timeout = Timeout.InfiniteTimeSpan;
         });
+        services.AddHttpClient<IConversationAgentResolver, ConversationAgentResolver>(client =>
+        {
+            client.Timeout = Timeout.InfiniteTimeSpan;
+        });
 
         var redisConnectionString = configuration.GetConnectionString("Redis");
         if (!string.IsNullOrEmpty(redisConnectionString))

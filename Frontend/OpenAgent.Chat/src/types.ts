@@ -177,7 +177,6 @@ export interface AgentConfigEntity {
 
 export interface StreamEvent {
   type: string
-  agentId?: string
   content?: string
   status?: string
   traceId?: string

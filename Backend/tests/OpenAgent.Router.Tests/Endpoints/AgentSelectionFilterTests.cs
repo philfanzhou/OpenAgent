@@ -2,7 +2,6 @@ using System.Text;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using OpenAgent.Contracts.Routing;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Router.Endpoints;
 using OpenAgent.Router.Models;
@@ -33,7 +32,7 @@ public class AgentSelectionFilterTests
         Assert.True(feature.SelectedByIntentAgent);
         Assert.Equal(1, selector.CallCount);
         Assert.Equal(0, httpContext.Request.Body.Position);
-        Assert.Equal("finance", httpContext.Response.Headers[AgentRoutingHeaders.SelectedAgentId]);
+        Assert.Equal("finance", httpContext.Request.Headers["X-Agent-Id"]);
     }
 
     [Fact]
@@ -54,6 +53,7 @@ public class AgentSelectionFilterTests
         Assert.Equal("support", feature.AgentId);
         Assert.False(feature.SelectedByIntentAgent);
         Assert.Equal(0, selector.CallCount);
+        Assert.Equal("support", httpContext.Request.Headers["X-Agent-Id"]);
     }
 
     [Fact]
@@ -73,6 +73,47 @@ public class AgentSelectionFilterTests
         Assert.Equal("default", feature.AgentId);
         Assert.False(feature.SelectedByIntentAgent);
         Assert.Equal(1, selector.CallCount);
+        Assert.Equal("default", httpContext.Request.Headers["X-Agent-Id"]);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_ExistingConversation_ReusesBoundAgent()
+    {
+        var selector = new StubSelector(new IntentAgentDecision("support", 0.9, null));
+        var resolver = new StubConversationAgentResolver(
+            new ConversationAgentResolution(true, "finance"));
+        AgentSelectionFilter filter = CreateFilter(selector, conversationAgentResolver: resolver);
+        DefaultHttpContext httpContext = CreateHttpContext(
+            "{\"message\":\"follow up\",\"context\":{\"conversationId\":\"conversation-1\"}}");
+        var invocation = new DefaultEndpointFilterInvocationContext(httpContext);
+
+        await filter.InvokeAsync(
+            invocation,
+            _ => ValueTask.FromResult<object?>(Results.Ok()));
+
+        Assert.Equal(0, selector.CallCount);
+        Assert.Equal(1, resolver.CallCount);
+        Assert.Equal("conversation-1", resolver.ConversationId);
+        Assert.Equal("finance", httpContext.Request.Headers["X-Agent-Id"]);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_NewConversationId_StillUsesIntentAgentSelection()
+    {
+        var selector = new StubSelector(new IntentAgentDecision("finance", 0.9, null));
+        var resolver = new StubConversationAgentResolver(ConversationAgentResolution.NotFound);
+        AgentSelectionFilter filter = CreateFilter(selector, conversationAgentResolver: resolver);
+        DefaultHttpContext httpContext = CreateHttpContext(
+            "{\"message\":\"find invoice\",\"context\":{\"conversationId\":\"new-conversation\"}}");
+        var invocation = new DefaultEndpointFilterInvocationContext(httpContext);
+
+        await filter.InvokeAsync(
+            invocation,
+            _ => ValueTask.FromResult<object?>(Results.Ok()));
+
+        Assert.Equal(1, selector.CallCount);
+        Assert.Equal(1, resolver.CallCount);
+        Assert.Equal("finance", httpContext.Request.Headers["X-Agent-Id"]);
     }
 
     [Fact]
@@ -112,7 +153,8 @@ public class AgentSelectionFilterTests
 
     private static AgentSelectionFilter CreateFilter(
         StubSelector selector,
-        StubRouteTable? routeTable = null)
+        StubRouteTable? routeTable = null,
+        StubConversationAgentResolver? conversationAgentResolver = null)
     {
         var user = new AgentUserContext
         {
@@ -123,6 +165,8 @@ public class AgentSelectionFilterTests
         return new AgentSelectionFilter(
             routeTable ?? new StubRouteTable(),
             new AllowAllVisibilityService(),
+            conversationAgentResolver
+                ?? new StubConversationAgentResolver(ConversationAgentResolution.NotFound),
             selector,
             user,
             Microsoft.Extensions.Options.Options.Create(new IntentRecognitionOptions
@@ -131,9 +175,27 @@ public class AgentSelectionFilterTests
                 AgentId = "intent-router",
                 FallbackAgentId = "default",
                 MinimumConfidence = 0.5,
-                TimeoutMs = 5_000
+                TimeoutMs = 5000
             }),
             NullLogger<AgentSelectionFilter>.Instance);
+    }
+
+    private sealed class StubConversationAgentResolver(ConversationAgentResolution resolution)
+        : IConversationAgentResolver
+    {
+        public int CallCount { get; private set; }
+        public string? ConversationId { get; private set; }
+
+        public Task<ConversationAgentResolution> ResolveAsync(
+            string targetEndpoint,
+            string conversationId,
+            HttpContext context,
+            CancellationToken cancellationToken)
+        {
+            CallCount++;
+            ConversationId = conversationId;
+            return Task.FromResult(resolution);
+        }
     }
 
     private static DefaultHttpContext CreateHttpContext(string body)
