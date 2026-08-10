@@ -18,24 +18,17 @@ internal sealed record EngineRequestIdentity(
     string? TenantId,
     string? AgentAudience);
 
-internal readonly record struct ConversationAgentResolution(
-    bool Exists,
-    string? AgentId)
-{
-    internal static ConversationAgentResolution NotFound => new(false, null);
-}
-
 internal sealed record AgentRoutingFeature(
     ParsedChatRequest Request,
-    string AgentId,
+    string? AgentId,
     string TargetEndpoint,
     bool SelectedByIntentAgent);
 
-internal enum AgentSelectionFailure
+internal enum AgentSelectionStatus
 {
-    None,
+    Selected,
+    ContinueConversation,
     Forbidden,
-    DependencyUnavailable,
     NoAgentAvailable
 }
 
@@ -52,19 +45,25 @@ internal sealed record AgentSelectionResult(
     string? AgentId,
     bool SelectedByIntentAgent,
     double? Confidence,
-    AgentSelectionFailure Failure)
+    AgentSelectionStatus Status)
 {
-    internal bool IsSelected => Failure == AgentSelectionFailure.None
+    internal bool IsSelected => Status == AgentSelectionStatus.Selected
         && !string.IsNullOrWhiteSpace(AgentId);
+
+    internal bool CanForward => IsSelected
+        || Status == AgentSelectionStatus.ContinueConversation;
 
     internal static AgentSelectionResult Selected(
         string agentId,
         bool selectedByIntentAgent = false,
         double? confidence = null) =>
-        new(agentId, selectedByIntentAgent, confidence, AgentSelectionFailure.None);
+        new(agentId, selectedByIntentAgent, confidence, AgentSelectionStatus.Selected);
 
-    internal static AgentSelectionResult Failed(AgentSelectionFailure failure) =>
-        new(null, false, null, failure);
+    internal static AgentSelectionResult ContinueConversation() =>
+        new(null, false, null, AgentSelectionStatus.ContinueConversation);
+
+    internal static AgentSelectionResult Failed(AgentSelectionStatus status) =>
+        new(null, false, null, status);
 }
 
 internal sealed record IntentAgentSelectionRequest(

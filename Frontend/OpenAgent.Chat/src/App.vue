@@ -354,6 +354,7 @@ async function send(): Promise<void> {
   const requestedAgentId = selectedAgentId.value === AUTO_AGENT_ID
     ? selectedConversation.value?.agentId
     : selectedAgentId.value
+  const isAutomaticSelection = selectedAgentId.value === AUTO_AGENT_ID
   const local = selectedConversation.value || makeLocalConversation(requestedAgentId || '', requestContent)
   if (isNewConversation) {
     local.messages = []
@@ -364,6 +365,11 @@ async function send(): Promise<void> {
   const conversation = selectedConversation.value
   if (!conversation) return
   const conversationId = conversation.conversationId
+  // Keep the generated ID in the existing affinity header on the first automatic turn.
+  // The message body starts carrying it from the second turn, which tells Router to skip selection.
+  const requestConversationId = isNewConversation && isAutomaticSelection
+    ? undefined
+    : conversationId
   conversation.messages ||= []
   conversation.messages.push({
     messageId: crypto.randomUUID(), sequence: conversation.messages.length + 1,
@@ -388,7 +394,13 @@ async function send(): Promise<void> {
   }
   conversation.messages.push(assistantMessage)
   try {
-    for await (const event of api.streamChat(requestContent, requestedAgentId, conversationId, attachments)) {
+    for await (const event of api.streamChat(
+      requestContent,
+      requestedAgentId,
+      requestConversationId,
+      attachments,
+      conversationId,
+    )) {
       if (event.type === 'content') {
         assistant += event.content || ''
         assistantMessage.content = assistant

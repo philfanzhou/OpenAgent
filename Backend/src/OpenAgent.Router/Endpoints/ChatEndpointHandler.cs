@@ -44,7 +44,7 @@ internal static class ChatEndpointHandler
         RouterLog.RequestAccepted(
             logger, action, userContext.UserId, tenantId, conversationId, query.Length, traceId);
 
-        string agentId = routing.AgentId;
+        string? agentId = routing.AgentId;
         const string intent = "chat";
         RouterLog.IntentRecognized(
             logger, action, intent, userContext.UserId, tenantId,

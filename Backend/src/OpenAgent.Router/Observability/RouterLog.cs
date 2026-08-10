@@ -80,9 +80,6 @@ internal static partial class RouterLog
     [LoggerMessage(EventId = 3039, Level = LogLevel.Information, Message = "Agent selection completed. AgentId={AgentId}, SelectedByIntentAgent={SelectedByIntentAgent}, Confidence={Confidence}, TraceId={TraceId}")]
     public static partial void AgentSelectionCompleted(ILogger logger, string agentId, bool selectedByIntentAgent, double? confidence, string? traceId);
 
-    [LoggerMessage(EventId = 3046, Level = LogLevel.Warning, Message = "Conversation Agent resolution failed. ConversationId={ConversationId}, TraceId={TraceId}")]
-    public static partial void ConversationAgentResolutionFailed(ILogger logger, Exception exception, string conversationId, string? traceId);
-
     // Forwarding
     [LoggerMessage(EventId = 3040, Level = LogLevel.Information, Message = "Forwarding request. Action={Action}, TargetEndpoint={TargetEndpoint}, Intent={Intent}, AgentId={AgentId}, ConversationId={ConversationId}, UserId={UserId}, TenantId={TenantId}, TraceId={TraceId}")]
     public static partial void ForwardingStarted(ILogger logger, string? action, string targetEndpoint, string intent, string? agentId, string? conversationId, string userId, string? tenantId, string? traceId);

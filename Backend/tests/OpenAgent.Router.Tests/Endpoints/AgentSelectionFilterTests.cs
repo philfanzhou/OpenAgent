@@ -56,7 +56,7 @@ public class AgentSelectionFilterTests
     }
 
     [Fact]
-    public async Task InvokeAsync_ConversationHeader_PreservesEngineAffinityAndSelectionContext()
+    public async Task InvokeAsync_ConversationHeader_PreservesAffinityWithoutMarkingFollowUp()
     {
         var selectionService = new StubSelectionService(AgentSelectionResult.Selected("finance"));
         var routeTable = new StubRouteTable();
@@ -70,18 +70,38 @@ public class AgentSelectionFilterTests
             _ => ValueTask.FromResult<object?>(Results.Ok()));
 
         Assert.Equal("conversation-from-header", routeTable.ConversationId);
-        Assert.Equal("conversation-from-header", selectionService.Request?.ConversationId);
+        Assert.Null(selectionService.Request?.ConversationId);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_ConversationContinuation_DoesNotWriteAgentHeader()
+    {
+        var selectionService = new StubSelectionService(AgentSelectionResult.ContinueConversation());
+        AgentSelectionFilter filter = CreateFilter(selectionService);
+        DefaultHttpContext httpContext = CreateHttpContext(
+            "{\"message\":\"follow up\",\"context\":{\"conversationId\":\"conversation-1\"}}");
+        var invocation = new DefaultEndpointFilterInvocationContext(httpContext);
+
+        await filter.InvokeAsync(
+            invocation,
+            _ => ValueTask.FromResult<object?>(Results.Ok()));
+
+        Assert.Equal("conversation-1", selectionService.Request?.ConversationId);
+        Assert.False(httpContext.Request.Headers.ContainsKey("X-Agent-Id"));
+        AgentRoutingFeature? feature = httpContext.Features.Get<AgentRoutingFeature>();
+        Assert.NotNull(feature);
+        Assert.Null(feature.AgentId);
     }
 
     [Theory]
-    [InlineData(AgentSelectionFailure.Forbidden, StatusCodes.Status403Forbidden)]
-    [InlineData(AgentSelectionFailure.DependencyUnavailable, StatusCodes.Status503ServiceUnavailable)]
-    [InlineData(AgentSelectionFailure.NoAgentAvailable, StatusCodes.Status503ServiceUnavailable)]
-    internal async Task InvokeAsync_SelectionFailure_MapsStatusCode(
-        AgentSelectionFailure failure,
+    [InlineData((int)AgentSelectionStatus.Forbidden, StatusCodes.Status403Forbidden)]
+    [InlineData((int)AgentSelectionStatus.NoAgentAvailable, StatusCodes.Status503ServiceUnavailable)]
+    public async Task InvokeAsync_SelectionFailure_MapsStatusCode(
+        int status,
         int expectedStatusCode)
     {
-        var selectionService = new StubSelectionService(AgentSelectionResult.Failed(failure));
+        var selectionService = new StubSelectionService(
+            AgentSelectionResult.Failed((AgentSelectionStatus)status));
         AgentSelectionFilter filter = CreateFilter(selectionService);
         DefaultHttpContext httpContext = CreateHttpContext("{\"message\":\"hello\"}");
         var invocation = new DefaultEndpointFilterInvocationContext(httpContext);

@@ -4,6 +4,7 @@ using Microsoft.Extensions.AI;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
+using OpenAgent.Core.Conversation;
 using PlatformAgentResponse = OpenAgent.Contracts.Requests.AgentResponse;
 
 namespace OpenAgent.Core.Runtime.Agent;
@@ -14,13 +15,16 @@ public sealed class AgentExecutor
 
     private readonly IAgentRuntimeResolver _runtime;
     private readonly AgentFactory _agents;
+    private readonly ConversationAgentResolver _conversationAgents;
 
     internal AgentExecutor(
         IAgentRuntimeResolver runtime,
-        AgentFactory agents)
+        AgentFactory agents,
+        ConversationAgentResolver conversationAgents)
     {
         _runtime = runtime;
         _agents = agents;
+        _conversationAgents = conversationAgents;
     }
 
     public async Task<PlatformAgentResponse> ExecuteAsync(
@@ -30,7 +34,10 @@ public sealed class AgentExecutor
     {
         EnsureRequest(request);
         string traceId = ResolveTraceId(request.TraceId);
-        string agentId = ResolveAgentId(request.AgentId);
+        string agentId = await ResolveAgentIdAsync(
+            request,
+            user,
+            cancellationToken).ConfigureAwait(false);
         AgentRuntimeProfile profile = await _runtime.ResolveAsync(
             agentId,
             user,
@@ -67,7 +74,10 @@ public sealed class AgentExecutor
     {
         EnsureRequest(request);
         string traceId = ResolveTraceId(request.TraceId);
-        string agentId = ResolveAgentId(request.AgentId);
+        string agentId = await ResolveAgentIdAsync(
+            request,
+            user,
+            cancellationToken).ConfigureAwait(false);
         AgentRuntimeProfile profile = await _runtime.ResolveAsync(
             agentId,
             user,
@@ -160,6 +170,18 @@ public sealed class AgentExecutor
 
     private static string ResolveAgentId(string? agentId) =>
         string.IsNullOrWhiteSpace(agentId) ? DefaultAgentId : agentId;
+
+    private async Task<string> ResolveAgentIdAsync(
+        AgentRequest request,
+        IAgentUserContext user,
+        CancellationToken cancellationToken)
+    {
+        string? agentId = await _conversationAgents.ResolveAsync(
+            request,
+            user,
+            cancellationToken).ConfigureAwait(false);
+        return ResolveAgentId(agentId);
+    }
 
     private static string ResolveTraceId(string? traceId) =>
         string.IsNullOrWhiteSpace(traceId) ? Guid.NewGuid().ToString("N") : traceId;

@@ -1,8 +1,9 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
-using OpenAgent.Core.Abstract;
 using OpenAgent.Contracts.Configuration;
+using OpenAgent.Core.Abstract;
+using OpenAgent.Core.Conversation;
 using OpenAgent.Core.Models;
 using OpenAgent.Core.Runtime.Agent;
 using OpenAgent.Core.Security;
@@ -32,7 +33,8 @@ internal static class RuntimeServiceExtensions
         services.AddScoped<AgentFactory>();
         services.AddScoped(serviceProvider => new AgentExecutor(
             serviceProvider.GetRequiredService<IAgentRuntimeResolver>(),
-            serviceProvider.GetRequiredService<AgentFactory>()));
+            serviceProvider.GetRequiredService<AgentFactory>(),
+            serviceProvider.GetRequiredService<ConversationAgentResolver>()));
         return services;
     }
 }

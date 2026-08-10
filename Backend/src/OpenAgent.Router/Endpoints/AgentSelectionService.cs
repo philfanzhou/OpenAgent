@@ -1,5 +1,3 @@
-using System.Net;
-using System.Text.Json;
 using Microsoft.Extensions.Options;
 using OpenAgent.Router.Models;
 using OpenAgent.Router.Observability;
@@ -10,7 +8,6 @@ namespace OpenAgent.Router.Endpoints;
 
 internal sealed class AgentSelectionService(
     IAgentVisibilityService visibilityService,
-    IConversationAgentResolver conversationAgentResolver,
     IIntentAgentSelector intentAgentSelector,
     IOptions<IntentRecognitionOptions> options,
     ILogger<AgentSelectionService> logger) : IAgentSelectionService
@@ -25,18 +22,7 @@ internal sealed class AgentSelectionService(
         if (string.IsNullOrWhiteSpace(selectedAgentId)
             && !string.IsNullOrWhiteSpace(request.ConversationId))
         {
-            AgentSelectionResult? conversationResult = await ResolveConversationAgentAsync(
-                request,
-                cancellationToken).ConfigureAwait(false);
-            if (conversationResult != null)
-            {
-                if (!conversationResult.IsSelected)
-                {
-                    return conversationResult;
-                }
-
-                selectedAgentId = conversationResult.AgentId;
-            }
+            return AgentSelectionResult.ContinueConversation();
         }
 
         bool selectedByIntentAgent = false;
@@ -59,7 +45,7 @@ internal sealed class AgentSelectionService(
 
         if (string.IsNullOrWhiteSpace(selectedAgentId))
         {
-            return AgentSelectionResult.Failed(AgentSelectionFailure.NoAgentAvailable);
+            return AgentSelectionResult.Failed(AgentSelectionStatus.NoAgentAvailable);
         }
 
         bool visible = await visibilityService.IsAgentVisibleToUserAsync(
@@ -68,7 +54,7 @@ internal sealed class AgentSelectionService(
             cancellationToken).ConfigureAwait(false);
         if (!visible)
         {
-            return AgentSelectionResult.Failed(AgentSelectionFailure.Forbidden);
+            return AgentSelectionResult.Failed(AgentSelectionStatus.Forbidden);
         }
 
         RouterLog.AgentSelectionCompleted(
@@ -81,36 +67,5 @@ internal sealed class AgentSelectionService(
             selectedAgentId,
             selectedByIntentAgent,
             confidence);
-    }
-
-    private async Task<AgentSelectionResult?> ResolveConversationAgentAsync(
-        AgentSelectionRequest request,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            ConversationAgentResolution resolution = await conversationAgentResolver.ResolveAsync(
-                request.TargetEndpoint,
-                request.ConversationId!,
-                request.Identity,
-                cancellationToken).ConfigureAwait(false);
-            return resolution.Exists
-                ? AgentSelectionResult.Selected(resolution.AgentId!)
-                : null;
-        }
-        catch (HttpRequestException exception)
-            when (exception.StatusCode == HttpStatusCode.Forbidden)
-        {
-            return AgentSelectionResult.Failed(AgentSelectionFailure.Forbidden);
-        }
-        catch (Exception exception) when (exception is HttpRequestException or JsonException)
-        {
-            RouterLog.ConversationAgentResolutionFailed(
-                logger,
-                exception,
-                request.ConversationId!,
-                request.TraceId);
-            return AgentSelectionResult.Failed(AgentSelectionFailure.DependencyUnavailable);
-        }
     }
 }

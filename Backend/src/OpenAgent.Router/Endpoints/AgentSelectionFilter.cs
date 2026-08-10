@@ -61,12 +61,12 @@ internal sealed class AgentSelectionFilter(
 
         string? tenantId = context.Items[TenantIsolationMiddleware.TenantItemKey]?.ToString()
             ?? userContext.TenantId;
-        string? conversationId = request.ConversationId
+        string? routingConversationId = request.ConversationId
             ?? context.Request.Headers["X-Conversation-Id"].FirstOrDefault();
         string? targetEndpoint = routeTable.GetTargetEndpoint(
             "chat",
             tenantId,
-            conversationId);
+            routingConversationId);
         if (string.IsNullOrWhiteSpace(targetEndpoint))
         {
             return Results.Problem(
@@ -85,39 +85,34 @@ internal sealed class AgentSelectionFilter(
             new AgentSelectionRequest(
                 request.Query,
                 targetEndpoint,
-                conversationId,
+                request.ConversationId,
                 explicitAgentId,
                 identity,
                 userContext,
                 context.TraceIdentifier),
             context.RequestAborted).ConfigureAwait(false);
-        if (selection.Failure == AgentSelectionFailure.Forbidden)
+        if (selection.Status == AgentSelectionStatus.Forbidden)
         {
             return Results.StatusCode(StatusCodes.Status403Forbidden);
         }
 
-        if (selection.Failure == AgentSelectionFailure.DependencyUnavailable)
-        {
-            return Results.Problem(
-                statusCode: StatusCodes.Status503ServiceUnavailable,
-                title: "Conversation routing is unavailable");
-        }
-
-        if (!selection.IsSelected)
+        if (!selection.CanForward)
         {
             return Results.Problem(
                 statusCode: StatusCodes.Status503ServiceUnavailable,
                 title: "No Agent could be selected");
         }
 
-        string selectedAgentId = selection.AgentId!;
-
         context.Features.Set(new AgentRoutingFeature(
             request,
-            selectedAgentId,
+            selection.AgentId,
             targetEndpoint,
             selection.SelectedByIntentAgent));
-        context.Request.Headers["X-Agent-Id"] = selectedAgentId;
+        if (selection.IsSelected)
+        {
+            context.Request.Headers["X-Agent-Id"] = selection.AgentId!;
+        }
+
         return await next(invocationContext).ConfigureAwait(false);
     }
 }
