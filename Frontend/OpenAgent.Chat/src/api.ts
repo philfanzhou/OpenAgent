@@ -5,6 +5,7 @@ import type {
   AuthTokenResponse,
   ConversationMessage,
   ConversationRecord,
+  ConnectionMode,
   CurrentUserContext,
   LlmProviderProfile,
   LlmTestResult,
@@ -17,18 +18,41 @@ import type {
   StreamEvent,
 } from './types'
 
-const engineStorageKey = 'openagent.engine.base-url'
+const legacyBaseUrlStorageKey = 'openagent.engine.base-url'
+const routerStorageKey = 'openagent.router.base-url'
+const engineStorageKey = 'openagent.direct-engine.base-url'
+const connectionModeStorageKey = 'openagent.connection.mode'
 const tokenStorageKey = 'openagent.auth.access-token'
 const tokenTypeStorageKey = 'openagent.auth.token-type'
 const tenantStorageKey = 'openagent.auth.tenant-id'
+
+function normalizeBaseUrl(value: string): string {
+  return value.trim().replace(/\/$/, '')
+}
+
+export function getConnectionMode(): ConnectionMode {
+  return localStorage.getItem(connectionModeStorageKey) === 'engine' ? 'engine' : 'router'
+}
+
+export function setConnectionMode(value: ConnectionMode): void {
+  localStorage.setItem(connectionModeStorageKey, value)
+}
+
+export function getRouterBaseUrl(): string {
+  return localStorage.getItem(routerStorageKey) || localStorage.getItem(legacyBaseUrlStorageKey) || ''
+}
+
+export function setRouterBaseUrl(value: string): void {
+  localStorage.setItem(routerStorageKey, normalizeBaseUrl(value))
+  localStorage.removeItem(legacyBaseUrlStorageKey)
+}
 
 export function getEngineBaseUrl(): string {
   return localStorage.getItem(engineStorageKey) || ''
 }
 
 export function setEngineBaseUrl(value: string): void {
-  const normalized = value.trim().replace(/\/$/, '')
-  localStorage.setItem(engineStorageKey, normalized)
+  localStorage.setItem(engineStorageKey, normalizeBaseUrl(value))
 }
 
 export function getAccessToken(): string {
@@ -54,8 +78,9 @@ export function setTenantId(value: string): void {
 }
 
 function requireBaseUrl(): string {
-  const value = getEngineBaseUrl()
-  if (!value) throw new Error('请先在设置中输入 Gateway 地址')
+  const mode = getConnectionMode()
+  const value = mode === 'router' ? getRouterBaseUrl() : getEngineBaseUrl()
+  if (!value) throw new Error(`请先在设置中输入 ${mode === 'router' ? 'Router' : 'Engine'} 地址`)
   return value
 }
 

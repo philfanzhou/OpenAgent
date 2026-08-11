@@ -5,7 +5,8 @@ import type { PendingAttachment } from '../types'
 
 const props = defineProps<{
   modelValue: string
-  gatewayUrl: string
+  endpointUrl: string
+  endpointLabel: string
   selectedAgentId: string
   loading: boolean
   pendingAttachments: PendingAttachment[]
@@ -84,6 +85,6 @@ function openAttachmentPicker(): void {
     </div>
     <el-input :model-value="props.modelValue" type="textarea" :rows="2" resize="none" placeholder="向 Agent 发送消息" @update:model-value="emit('update:modelValue', $event)" @keydown="handleKeydown" />
     <input ref="attachmentInput" class="attachment-input" type="file" multiple accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.json,.txt,.csv,.md" @change="handleAttachmentChange" />
-    <div class="composer-footer"><div class="composer-hints"><el-button text class="attach-button" @click="openAttachmentPicker">＋ 文件</el-button><span>最多 5 个 · 25 MB</span></div><div class="composer-actions"><span class="gateway-caption">Gateway · {{ props.gatewayUrl || '未配置' }}</span><span class="keyboard-hint">↵ 发送</span><el-button type="primary" circle aria-label="发送" :loading="props.loading" :disabled="!props.selectedAgentId || (!props.modelValue.trim() && !props.pendingAttachments.length)" @click="emit('send')">↑</el-button></div></div>
+    <div class="composer-footer"><div class="composer-hints"><el-button text class="attach-button" @click="openAttachmentPicker">＋ 文件</el-button><span>最多 5 个 · 25 MB</span></div><div class="composer-actions"><span class="connection-caption">{{ props.endpointLabel }} · {{ props.endpointUrl || '未配置' }}</span><span class="keyboard-hint">↵ 发送</span><el-button type="primary" circle aria-label="发送" :loading="props.loading" :disabled="!props.selectedAgentId || (!props.modelValue.trim() && !props.pendingAttachments.length)" @click="emit('send')">↑</el-button></div></div>
   </div>
 </template>

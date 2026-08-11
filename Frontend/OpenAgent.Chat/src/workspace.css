@@ -149,7 +149,7 @@ button, input, textarea, select { font: inherit; }
 .composer-footer { min-height: 30px; padding-top: 5px; color: var(--workspace-muted); font-size: 9px; }
 .composer-hints, .composer-actions { gap: 7px; }
 .attach-button { min-height: 26px !important; padding: 3px 5px; color: var(--workspace-muted); }
-.gateway-caption { overflow: hidden; max-width: 190px; text-overflow: ellipsis; white-space: nowrap; }.keyboard-hint { color: #9a9a9a; }
+.connection-caption { overflow: hidden; max-width: 190px; text-overflow: ellipsis; white-space: nowrap; }.keyboard-hint { color: #9a9a9a; }
 .composer-actions .el-button--primary { width: 30px; min-height: 30px; }
 .attachment-chip { border-color: var(--workspace-line); border-radius: 7px; color: var(--workspace-text); background: var(--workspace-subtle); }
 
@@ -259,5 +259,5 @@ html[data-theme='dark'] .settings-header h2, html[data-theme='dark'] .section-he
   .settings-tabs > .el-tabs__header { width: 112px; }
   .settings-section { padding: 16px 12px 28px; }
   .connection-form, .login-form, .agent-form-grid { grid-template-columns: 1fr; }
-  .keyboard-hint, .gateway-caption { display: none; }
+  .keyboard-hint, .connection-caption { display: none; }
 }

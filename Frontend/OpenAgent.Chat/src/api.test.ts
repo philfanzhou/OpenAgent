@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { api, setAccessToken, setEngineBaseUrl, setTenantId } from './api'
+import { api, getRouterBaseUrl, setAccessToken, setConnectionMode, setEngineBaseUrl, setRouterBaseUrl, setTenantId } from './api'
 
 class MemoryStorage implements Storage {
   private readonly values = new Map<string, string>()
@@ -20,7 +20,8 @@ beforeEach(() => {
 
 describe('workspace API', () => {
   it('sends gateway identity headers to catalog requests', async () => {
-    setEngineBaseUrl('http://router.example/')
+    setConnectionMode('router')
+    setRouterBaseUrl('http://router.example/')
     setAccessToken('encoded-user', 'Basic')
     setTenantId('tenant-1')
     const fetchMock = vi.fn().mockResolvedValue(new Response('[]', {
@@ -41,7 +42,8 @@ describe('workspace API', () => {
   })
 
   it('parses SSE events from streaming chat', async () => {
-    setEngineBaseUrl('http://router.example')
+    setConnectionMode('engine')
+    setEngineBaseUrl('http://engine.example/')
     const stream = [
       'event: content',
       'data: {"content":"hello"}',
@@ -56,16 +58,18 @@ describe('workspace API', () => {
     })))
 
     const events = []
-    for await (const event of api.streamChat('hello')) events.push(event)
+    for await (const event of api.streamChat('hello', 'support')) events.push(event)
 
     expect(events).toEqual([
       { type: 'content', content: 'hello' },
       { type: 'done', done: true },
     ])
+    expect(vi.mocked(fetch).mock.calls[0]?.[0]).toBe('http://engine.example/api/v1/agent/chat/stream')
   })
 
   it('includes gateway problem details and trace ID in errors', async () => {
-    setEngineBaseUrl('http://router.example')
+    setConnectionMode('router')
+    setRouterBaseUrl('http://router.example')
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
       detail: 'No Engine is available',
       traceId: 'trace-1',
@@ -76,5 +80,11 @@ describe('workspace API', () => {
     })))
 
     await expect(api.getCurrentUser()).rejects.toThrow('No Engine is available (TraceId: trace-1)')
+  })
+
+  it('migrates the previous single endpoint to the Router address', () => {
+    localStorage.setItem('openagent.engine.base-url', 'http://legacy-router.example')
+
+    expect(getRouterBaseUrl()).toBe('http://legacy-router.example')
   })
 })
