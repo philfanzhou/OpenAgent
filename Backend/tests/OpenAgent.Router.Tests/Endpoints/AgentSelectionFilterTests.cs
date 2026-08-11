@@ -83,6 +83,26 @@ public class AgentSelectionFilterTests
     }
 
     [Fact]
+    public async Task InvokeAsync_ScopedAgentPermissionDoesNotMatchSelection_ReturnsForbidden()
+    {
+        var selectionService = new StubSelectionService(
+            new AgentSelection("finance", "self-engine"));
+        AgentSelectionFilter filter = CreateFilter(
+            selectionService,
+            new TestGatewayAuthorizationService(
+                evaluator: (permission, resourceId) => permission != GatewayPermissions.AgentExecute
+                    || resourceId == "support"));
+        DefaultHttpContext context = CreateContext("{\"message\":\"find invoice\"}");
+
+        object? result = await filter.InvokeAsync(
+            new DefaultEndpointFilterInvocationContext(context),
+            _ => ValueTask.FromResult<object?>(Results.Ok()));
+
+        IStatusCodeHttpResult status = Assert.IsAssignableFrom<IStatusCodeHttpResult>(result);
+        Assert.Equal(StatusCodes.Status403Forbidden, status.StatusCode);
+    }
+
+    [Fact]
     public async Task InvokeAsync_InvalidJson_ReturnsBadRequestAndRewindsBody()
     {
         var selectionService = new StubSelectionService(
@@ -100,7 +120,9 @@ public class AgentSelectionFilterTests
         Assert.Equal(0, context.Request.Body.Position);
     }
 
-    private static AgentSelectionFilter CreateFilter(IAgentSelectionService selectionService) =>
+    private static AgentSelectionFilter CreateFilter(
+        IAgentSelectionService selectionService,
+        TestGatewayAuthorizationService? authorization = null) =>
         new(
             selectionService,
             new AgentUserContext
@@ -108,7 +130,8 @@ public class AgentSelectionFilterTests
                 UserId = "user-1",
                 TenantId = "tenant-1",
                 IsAuthenticated = true
-            });
+            },
+            authorization ?? new TestGatewayAuthorizationService());
 
     private static DefaultHttpContext CreateContext(string body)
     {

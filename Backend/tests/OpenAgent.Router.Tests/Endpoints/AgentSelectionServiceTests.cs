@@ -317,6 +317,7 @@ public class AgentSelectionServiceTests
             string intentAgentId,
             IReadOnlyList<AgentSummary> candidates,
             string message,
+            IAgentUserContext userContext,
             CancellationToken cancellationToken) =>
             Task.FromResult<IntentRecognitionResult?>(null);
 
@@ -358,6 +359,7 @@ public class AgentSelectionServiceTests
         public Task<string?> SelectAsync(
             string message,
             IReadOnlyList<AgentSummary> candidates,
+            IAgentUserContext userContext,
             CancellationToken cancellationToken)
         {
             CallCount++;

@@ -35,7 +35,9 @@ internal sealed class AgentForwarder(
         string? tenantId = userContext.TenantId;
         string? conversationId = context.Features.Get<AgentRoutingFeature>()?.ConversationId
             ?? context.Request.Headers["X-Conversation-Id"].FirstOrDefault();
+        string? agentId = context.Features.Get<AgentRoutingFeature>()?.AgentId;
         string traceId = Activity.Current?.Id ?? context.TraceIdentifier;
+        string gatewayGrant = authorization.IssueGrant(userContext);
 
         AgentForwardingTarget? target = await provider.ResolveForwardingAsync(
             action,
@@ -130,8 +132,10 @@ internal sealed class AgentForwarder(
         AgentForwardingTarget target,
         IAgentProvider provider,
         string? tenantId,
+        string? agentId,
         string? conversationId,
         string traceId,
+        string gatewayGrant,
         CancellationToken cancellationToken)
     {
         await ForwardingContextBuilder.ApplyAsync(

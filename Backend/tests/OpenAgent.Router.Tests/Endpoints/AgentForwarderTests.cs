@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Security;
+using OpenAgent.Hosting.Authorization;
 using OpenAgent.Router.Endpoints;
 using OpenAgent.Router.Models;
 using Xunit;
@@ -23,6 +24,7 @@ public class AgentForwarderTests
                 TenantId = "user-tenant",
                 IsAuthenticated = true
             })
+            .AddSingleton<IGatewayAuthorizationService>(new TestGatewayAuthorizationService())
             .BuildServiceProvider();
         var context = new DefaultHttpContext
         {
@@ -68,6 +70,7 @@ public class AgentForwarderTests
             string intentAgentId,
             IReadOnlyList<AgentSummary> agents,
             string message,
+            IAgentUserContext userContext,
             CancellationToken cancellationToken) =>
             Task.FromResult<IntentRecognitionResult?>(null);
 

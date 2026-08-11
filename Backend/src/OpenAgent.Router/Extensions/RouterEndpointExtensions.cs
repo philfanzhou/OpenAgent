@@ -32,7 +32,8 @@ public static class RouterEndpointExtensions
             CancellationToken cancellationToken) =>
             ChatEndpointHandler.HandleAsync(
                 action, context, providers, agentForwarder, userContext, logger, cancellationToken))
-            .AddEndpointFilter<AgentSelectionFilter>();
+            .AddEndpointFilter<AgentSelectionFilter>()
+            .RequireAuthorization(GatewayPermissions.AgentExecute);
 
         app.MapGet("/api/v1/agent/agents", (
             IAgentCatalogService catalog,

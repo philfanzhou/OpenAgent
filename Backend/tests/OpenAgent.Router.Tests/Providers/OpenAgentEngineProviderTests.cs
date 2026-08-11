@@ -33,6 +33,7 @@ public class OpenAgentEngineProviderTests
             "self-engine",
             settings,
             routeTable,
+            new TestGatewayAuthorizationService(),
             handler);
 
         var requestContext = new AgentProviderRequestContext(
@@ -51,6 +52,7 @@ public class OpenAgentEngineProviderTests
             "intent-router",
             agents,
             "select an agent",
+            new AgentUserContext { UserId = "user-1", TenantId = "tenant-1", IsAuthenticated = true },
             CancellationToken.None);
         IntentRecognitionResult? secondResponse = await provider.RecognizeIntentAsync(
             "intent-router",
@@ -142,6 +144,11 @@ public class OpenAgentEngineProviderTests
                 })
             };
         }
+
+        private static string? GetHeader(HttpRequestMessage request, string name) =>
+            request.Headers.TryGetValues(name, out IEnumerable<string>? values)
+                ? values.SingleOrDefault()
+                : null;
     }
 
     private static void AssertIntentExecution(string body)

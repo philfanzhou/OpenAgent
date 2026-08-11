@@ -13,12 +13,13 @@ internal static class GatewayProxyHandler
         IHttpForwarder forwarder,
         IAgentUserContext userContext,
         IRouteTable routeTable,
-        IGatewayAuthorizationService authorization,
         ILogger logger,
         HttpMessageInvoker httpClient,
         ForwarderRequestConfig requestConfig,
         bool requireAuthentication)
     {
+        IGatewayAuthorizationService authorization = context.RequestServices
+            .GetRequiredService<IGatewayAuthorizationService>();
         if (requireAuthentication && !userContext.IsAuthenticated)
         {
             return Results.Unauthorized();
