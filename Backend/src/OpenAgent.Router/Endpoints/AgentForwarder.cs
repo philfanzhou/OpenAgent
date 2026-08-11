@@ -9,7 +9,8 @@ namespace OpenAgent.Router.Endpoints;
 
 internal sealed class AgentForwarder(
     IHttpForwarder forwarder,
-    IDelegatedPermissionGrantIssuer grantIssuer,
+    IPermissionAuthorizationService authorization,
+    IDelegatedAuthorizationIssuer grantIssuer,
     ILogger<AgentForwarder> logger) : IAgentForwarder, IDisposable
 {
     private static readonly ForwarderRequestConfig DefaultRequestConfig = new()
@@ -39,7 +40,7 @@ internal sealed class AgentForwarder(
             ?? context.Request.Headers["X-Conversation-Id"].FirstOrDefault();
         string? agentId = context.Features.Get<AgentRoutingFeature>()?.AgentId;
         string traceId = Activity.Current?.Id ?? context.TraceIdentifier;
-        string gatewayGrant = grantIssuer.Issue(userContext);
+        string gatewayGrant = grantIssuer.Issue(authorization.CreateDelegation(userContext));
 
         AgentForwardingTarget? target = await provider.ResolveForwardingAsync(
             action,

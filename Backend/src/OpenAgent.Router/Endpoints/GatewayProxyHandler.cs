@@ -18,10 +18,10 @@ internal static class GatewayProxyHandler
         ForwarderRequestConfig requestConfig,
         bool requireAuthentication)
     {
-        IPermissionAuthorizer authorization = context.RequestServices
-            .GetRequiredService<IPermissionAuthorizer>();
-        IDelegatedPermissionGrantIssuer grantIssuer = context.RequestServices
-            .GetRequiredService<IDelegatedPermissionGrantIssuer>();
+        IPermissionAuthorizationService authorization = context.RequestServices
+            .GetRequiredService<IPermissionAuthorizationService>();
+        IDelegatedAuthorizationIssuer grantIssuer = context.RequestServices
+            .GetRequiredService<IDelegatedAuthorizationIssuer>();
         if (requireAuthentication && !userContext.IsAuthenticated)
         {
             return Results.Unauthorized();
@@ -55,7 +55,7 @@ internal static class GatewayProxyHandler
         string targetUrl = $"{targetEndpoint.TrimEnd('/')}{context.Request.Path}{context.Request.QueryString}";
         string traceId = Activity.Current?.Id ?? context.TraceIdentifier;
         string? gatewayGrant = userContext.IsAuthenticated
-            ? grantIssuer.Issue(userContext)
+            ? grantIssuer.Issue(authorization.CreateDelegation(userContext))
             : null;
         ForwarderError error = await forwarder.SendAsync(
             context,
@@ -104,7 +104,7 @@ internal static class GatewayProxyHandler
         proxyRequest.Headers.Remove("X-Tenant-Id");
         proxyRequest.Headers.Remove("X-Trace-Id");
         proxyRequest.Headers.Remove("Authorization");
-        proxyRequest.Headers.Remove(DelegatedPermissionHeaders.Grant);
+        proxyRequest.Headers.Remove(DelegatedAuthorizationHeaders.Grant);
         proxyRequest.Headers.TryAddWithoutValidation("X-Trace-Id", traceId);
         return ValueTask.CompletedTask;
     }

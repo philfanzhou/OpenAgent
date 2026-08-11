@@ -7,20 +7,26 @@ namespace OpenAgent.Hosting.Authorization;
 internal sealed record GatewayPermissionRequirement(string Permission) : IAuthorizationRequirement;
 
 internal sealed class GatewayPermissionAuthorizationHandler(
-    IPermissionAuthorizer authorization)
+    IPermissionAuthorizationService authorization)
     : AuthorizationHandler<GatewayPermissionRequirement>
 {
     protected override Task HandleRequirementAsync(
         AuthorizationHandlerContext context,
         GatewayPermissionRequirement requirement)
     {
-        PermissionSubject subject = GatewayClaimsIdentityMapper.Map(context.User);
-        IReadOnlySet<string> permissions = authorization.ResolvePermissions(subject);
-        if (authorization.IsAuthorized(subject, requirement.Permission)
+        if (!GatewayClaimsIdentityMapper.TryMap(context.User, out AuthorizationSubject? subject))
+        {
+            return Task.CompletedTask;
+        }
+
+        AuthorizationDecision decision = authorization.Authorize(new(subject!, requirement.Permission));
+        if (decision.IsAllowed
             || (requirement.Permission.Equals(
                     PermissionCatalog.AgentExecute,
                     StringComparison.OrdinalIgnoreCase)
-                && PermissionMatcher.HasGrantForAnyResource(permissions, requirement.Permission)))
+                && PermissionMatcher.HasGrantForAnyResource(
+                    decision.GrantedPermissions,
+                    requirement.Permission)))
         {
             context.Succeed(requirement);
         }
@@ -31,8 +37,14 @@ internal sealed class GatewayPermissionAuthorizationHandler(
 
 internal static class GatewayClaimsIdentityMapper
 {
-    internal static PermissionSubject Map(ClaimsPrincipal principal)
+    internal static bool TryMap(ClaimsPrincipal principal, out AuthorizationSubject? subject)
     {
+        subject = null;
+        if (principal.Identity?.IsAuthenticated != true)
+        {
+            return false;
+        }
+
         string userId = principal.FindFirst(ClaimTypes.NameIdentifier)?.Value
             ?? principal.FindFirst("sub")?.Value
             ?? principal.Identity?.Name
@@ -55,12 +67,12 @@ internal static class GatewayClaimsIdentityMapper
                 group => group.Key,
                 group => string.Join(",", group.Select(claim => claim.Value)),
                 StringComparer.OrdinalIgnoreCase);
-        return new PermissionSubject(
+        subject = new AuthorizationSubject(
             userId,
             tenantId,
             roles,
             groups,
-            claims,
-            principal.Identity?.IsAuthenticated == true);
+            claims);
+        return true;
     }
 }

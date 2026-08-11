@@ -25,7 +25,8 @@ public class AgentForwarderTests
                 TenantId = "user-tenant",
                 IsAuthenticated = true
             })
-            .AddSingleton<IDelegatedPermissionGrantIssuer>(new TestPermissionServices())
+            .AddSingleton<IPermissionAuthorizationService>(new TestPermissionServices())
+            .AddSingleton<IDelegatedAuthorizationIssuer>(new TestPermissionServices())
             .BuildServiceProvider();
         var context = new DefaultHttpContext
         {
@@ -35,6 +36,7 @@ public class AgentForwarderTests
         context.Features.Set(new AgentRoutingFeature("conversation-1", provider.Id, "finance"));
         using var forwarder = new AgentForwarder(
             null!,
+            new TestPermissionServices(),
             new TestPermissionServices(),
             NullLogger<AgentForwarder>.Instance);
 

@@ -5,32 +5,26 @@ namespace OpenAgent.Router.Tests;
 internal sealed class TestPermissionServices(
     bool allow = true,
     string grant = "test-gateway-grant",
-    Func<string, string?, bool>? evaluator = null) : IPermissionAuthorizer, IDelegatedPermissionGrantIssuer
+    Func<string, string?, bool>? evaluator = null) : IPermissionAuthorizationService, IDelegatedAuthorizationIssuer
 {
     public IReadOnlyList<string>? RestrictedPermissions { get; private set; }
 
-    public IReadOnlySet<string> ResolvePermissions(PermissionSubject subject) =>
+    public IReadOnlySet<string> GetPermissions(AuthorizationSubject subject) =>
         allow
             ? new HashSet<string>(["*"], StringComparer.OrdinalIgnoreCase)
             : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-    public bool IsAuthorized(
-        PermissionSubject subject,
-        string permission,
-        string? resourceId = null) => allow
-            && subject.IsAuthenticated
-            && (evaluator?.Invoke(permission, resourceId) ?? true);
-
-    public string Issue(
-        PermissionSubject subject,
-        string? audience = null) => grant;
-
-    public string IssueRestricted(
-        PermissionSubject subject,
-        IEnumerable<string> permissions,
-        string? audience = null)
+    public AuthorizationDecision Authorize(AuthorizationRequest request)
     {
-        RestrictedPermissions = permissions.ToArray();
+        IReadOnlySet<string> permissions = GetPermissions(request.Subject);
+        return new AuthorizationDecision(
+            allow && (evaluator?.Invoke(request.Permission, request.ResourceId) ?? true),
+            permissions);
+    }
+
+    public string Issue(DelegatedAuthorization authorization)
+    {
+        RestrictedPermissions = authorization.Permissions.ToArray();
         return grant;
     }
 }

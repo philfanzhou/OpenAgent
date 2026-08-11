@@ -5,7 +5,7 @@ Router 是唯一公开身份边界。生产环境使用 JWT Bearer 对接企业�
 ## 请求边界
 
 1. Router 校验客户端 JWT，读取用户、租户、角色、组和 scope。
-2. Router 不向下游转发客户端 `Authorization` header，而是签发 60 秒有效的 HMAC 授权票据。
+2. Router 不向下游转发客户端 `Authorization` header。认证成功后，授权服务独立计算可执行的操作；只有已被授权的范围才会被签发为 60 秒有效的 HMAC 委托授权票据。
 3. Engine 校验票据签名、issuer、audience 和有效期，并从票据重建只读身份。
 4. `X-User-Id`、`X-Tenant-Id` 和外部传入的网关票据不能覆盖已验证身份。
 
@@ -19,4 +19,4 @@ Router 是唯一公开身份边界。生产环境使用 JWT Bearer 对接企业�
 - Engine 不应暴露到公网；即使被直连，没有有效网关票据也无法访问业务端点。
 - 浏览器只持有入口 JWT，不会看到内部网关票据。
 
-关键实现位于 `OpenAgent.Authorization`（可复用权限契约）、`OpenAgent.Hosting/Authentication`、`OpenAgent.Hosting/Authorization`（当前 HTTP/HMAC 适配器）和 Router 的转发处理器。
+认证实现位于 `OpenAgent.Hosting/Authentication` 与 Router 的 JWT 中间件；授权与委托契约位于 `OpenAgent.Authorization`；`OpenAgent.Hosting/Authorization` 仅是当前 HTTP/HMAC 适配器。认证实现可以替换，不会改变授权契约或第三方 Provider 的接口。

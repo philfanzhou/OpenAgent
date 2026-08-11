@@ -23,11 +23,11 @@ internal static class ForwardingContextBuilder
         proxyRequest.Headers.Remove("X-User-Id");
         proxyRequest.Headers.Remove("X-Tenant-Id");
         proxyRequest.Headers.Remove("Authorization");
-        proxyRequest.Headers.Remove(DelegatedPermissionHeaders.Grant);
+        proxyRequest.Headers.Remove(DelegatedAuthorizationHeaders.Grant);
         proxyRequest.Headers.Add("X-User-Id", userContext.UserId);
         if (!string.IsNullOrEmpty(tenantId)) proxyRequest.Headers.Add("X-Tenant-Id", tenantId);
         proxyRequest.Headers.Add("X-Trace-Id", traceId);
-        proxyRequest.Headers.Add(DelegatedPermissionHeaders.Grant, gatewayGrant);
+        proxyRequest.Headers.Add(DelegatedAuthorizationHeaders.Grant, gatewayGrant);
         if (!string.IsNullOrWhiteSpace(agentId))
         {
             proxyRequest.Headers.Add(AgentRoutingHeaders.ResolvedAgentId, agentId);

@@ -6,17 +6,12 @@ namespace OpenAgent.Hosting.Authorization;
 internal sealed class GatewayAuthorizationService(
     IOptions<GatewayAuthorizationOptions> options,
     GatewayGrantCodec codec,
-    TimeProvider timeProvider) : IPermissionAuthorizer, IDelegatedPermissionGrantIssuer
+    TimeProvider timeProvider) : IPermissionAuthorizationService, IDelegatedAuthorizationIssuer
 {
     private readonly GatewayAuthorizationOptions _options = options.Value;
 
-    public IReadOnlySet<string> ResolvePermissions(PermissionSubject subject)
+    public IReadOnlySet<string> GetPermissions(AuthorizationSubject subject)
     {
-        if (!subject.IsAuthenticated)
-        {
-            return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        }
-
         HashSet<string> permissions = new(
             _options.AuthenticatedPermissions,
             StringComparer.OrdinalIgnoreCase);
@@ -34,49 +29,31 @@ internal sealed class GatewayAuthorizationService(
         return permissions;
     }
 
-    public bool IsAuthorized(
-        PermissionSubject subject,
-        string permission,
-        string? resourceId = null)
+    public AuthorizationDecision Authorize(AuthorizationRequest request)
     {
-        return subject.IsAuthenticated
-            && PermissionMatcher.IsAllowed(
-                ResolvePermissions(subject),
-                permission,
-                resourceId);
+        IReadOnlySet<string> permissions = GetPermissions(request.Subject);
+        return new AuthorizationDecision(
+            PermissionMatcher.IsAllowed(
+                permissions,
+                request.Permission,
+                request.ResourceId),
+            permissions);
     }
 
-    public string Issue(
-        PermissionSubject subject,
-        string? audience = null)
+    public string Issue(DelegatedAuthorization authorization)
     {
-        return IssueRestricted(subject, ResolvePermissions(subject), audience);
-    }
-
-    public string IssueRestricted(
-        PermissionSubject subject,
-        IEnumerable<string> permissions,
-        string? audience = null)
-    {
-        if (!subject.IsAuthenticated)
-        {
-            throw new InvalidOperationException("An authenticated identity is required to issue a gateway grant.");
-        }
-
-        string[] restrictedPermissions = permissions
-            .Where(permission => !string.IsNullOrWhiteSpace(permission))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
+        string[] restrictedPermissions = authorization.Permissions
             .Order(StringComparer.OrdinalIgnoreCase)
             .ToArray();
         long issuedAt = timeProvider.GetUtcNow().ToUnixTimeSeconds();
         GatewayGrantPayload payload = new()
         {
             Issuer = _options.Issuer,
-            Audience = audience ?? _options.Audience,
-            Subject = subject.SubjectId,
-            TenantId = subject.TenantId,
-            Roles = subject.Roles,
-            Groups = subject.Groups,
+            Audience = authorization.Audience ?? _options.Audience,
+            Subject = authorization.Subject.SubjectId,
+            TenantId = authorization.Subject.TenantId,
+            Roles = authorization.Subject.Roles,
+            Groups = authorization.Subject.Groups,
             Permissions = restrictedPermissions,
             IssuedAt = issuedAt,
             ExpiresAt = issuedAt + _options.GrantLifetimeSeconds,

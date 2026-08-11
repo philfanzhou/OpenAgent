@@ -38,9 +38,11 @@ internal static class GetEndpointHandler
         var normalizedPath = targetPath.StartsWith('/') ? targetPath : "/" + targetPath;
         var targetUrl = $"{targetEndpoint.TrimEnd('/')}{normalizedPath}";
         var traceId = Activity.Current?.Id ?? context.TraceIdentifier;
-        IDelegatedPermissionGrantIssuer grantIssuer = context.RequestServices
-            .GetRequiredService<IDelegatedPermissionGrantIssuer>();
-        string gatewayGrant = grantIssuer.Issue(userContext);
+        IPermissionAuthorizationService authorization = context.RequestServices
+            .GetRequiredService<IPermissionAuthorizationService>();
+        IDelegatedAuthorizationIssuer grantIssuer = context.RequestServices
+            .GetRequiredService<IDelegatedAuthorizationIssuer>();
+        string gatewayGrant = grantIssuer.Issue(authorization.CreateDelegation(userContext));
         var error = await forwarder.SendAsync(
             context,
             targetEndpoint,

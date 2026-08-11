@@ -21,7 +21,7 @@ internal sealed class GatewayAuthenticationHandler(
 
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
-        string? token = Request.Headers[DelegatedPermissionHeaders.Grant].FirstOrDefault();
+        string? token = Request.Headers[DelegatedAuthorizationHeaders.Grant].FirstOrDefault();
         if (string.IsNullOrWhiteSpace(token))
         {
             return Task.FromResult(AuthenticateResult.NoResult());

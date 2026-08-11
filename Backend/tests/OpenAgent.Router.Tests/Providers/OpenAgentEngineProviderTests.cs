@@ -32,6 +32,7 @@ public class OpenAgentEngineProviderTests
             settings,
             routeTable,
             new TestPermissionServices(),
+            new TestPermissionServices(),
             handler);
 
         IReadOnlyList<AgentSummary> agents = await provider.GetAgentsAsync(

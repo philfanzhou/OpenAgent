@@ -1,29 +1,78 @@
 namespace OpenAgent.Authorization;
 
-public sealed record PermissionSubject(
+public sealed record AuthorizationSubject(
     string SubjectId,
     string? TenantId,
     IReadOnlyList<string> Roles,
     IReadOnlyList<string> Groups,
-    IReadOnlyDictionary<string, string> Claims,
-    bool IsAuthenticated);
+    IReadOnlyDictionary<string, string> Claims);
 
-public interface IPermissionAuthorizer
+public sealed record AuthorizationRequest(
+    AuthorizationSubject Subject,
+    string Permission,
+    string? ResourceId = null);
+
+public sealed record AuthorizationDecision(
+    bool IsAllowed,
+    IReadOnlySet<string> GrantedPermissions);
+
+public interface IPermissionAuthorizationService
 {
-    IReadOnlySet<string> ResolvePermissions(PermissionSubject subject);
+    IReadOnlySet<string> GetPermissions(AuthorizationSubject subject);
 
-    bool IsAuthorized(
-        PermissionSubject subject,
-        string permission,
-        string? resourceId = null);
+    AuthorizationDecision Authorize(AuthorizationRequest request);
 }
 
-public interface IDelegatedPermissionGrantIssuer
+public sealed record DelegatedAuthorization(
+    AuthorizationSubject Subject,
+    IReadOnlySet<string> Permissions,
+    string? Audience = null)
 {
-    string Issue(PermissionSubject subject, string? audience = null);
+    public static DelegatedAuthorization Create(
+        AuthorizationSubject subject,
+        IEnumerable<string> grantedPermissions,
+        string? audience = null) => new(
+            subject,
+            Normalize(grantedPermissions),
+            audience);
 
-    string IssueRestricted(
-        PermissionSubject subject,
-        IEnumerable<string> permissions,
-        string? audience = null);
+    public static DelegatedAuthorization Restrict(
+        AuthorizationSubject subject,
+        IEnumerable<string> grantedPermissions,
+        IEnumerable<string> requestedPermissions,
+        string? audience = null)
+    {
+        IReadOnlySet<string> granted = Normalize(grantedPermissions);
+        IReadOnlySet<string> requested = Normalize(requestedPermissions);
+        foreach (string permission in requested)
+        {
+            (string requiredPermission, string? resourceId) = Parse(permission);
+            if (!PermissionMatcher.IsAllowed(granted, requiredPermission, resourceId))
+            {
+                throw new UnauthorizedAccessException(
+                    $"Cannot delegate permission '{permission}' that the subject does not hold.");
+            }
+        }
+
+        return new DelegatedAuthorization(subject, requested, audience);
+    }
+
+    private static IReadOnlySet<string> Normalize(IEnumerable<string> permissions) =>
+        permissions
+            .Where(permission => !string.IsNullOrWhiteSpace(permission))
+            .Select(permission => permission.Trim())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    private static (string Permission, string? ResourceId) Parse(string permission)
+    {
+        int separator = permission.IndexOf(':', StringComparison.Ordinal);
+        return separator < 0
+            ? (permission, null)
+            : (permission[..separator], permission[(separator + 1)..]);
+    }
+}
+
+public interface IDelegatedAuthorizationIssuer
+{
+    string Issue(DelegatedAuthorization authorization);
 }

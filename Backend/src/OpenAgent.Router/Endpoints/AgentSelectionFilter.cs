@@ -8,7 +8,7 @@ namespace OpenAgent.Router.Endpoints;
 internal sealed class AgentSelectionFilter(
     IAgentSelectionService selectionService,
     IAgentUserContext userContext,
-    IPermissionAuthorizer authorization) : IEndpointFilter
+    IPermissionAuthorizationService authorization) : IEndpointFilter
 {
     public async ValueTask<object?> InvokeAsync(
         EndpointFilterInvocationContext invocationContext,

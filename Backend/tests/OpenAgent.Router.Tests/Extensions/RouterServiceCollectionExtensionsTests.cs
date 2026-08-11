@@ -45,7 +45,8 @@ public class RouterServiceCollectionExtensionsTests
         services.AddLogging();
         services.AddSingleton(configuration);
         services.AddHttpForwarder();
-        services.AddSingleton<IDelegatedPermissionGrantIssuer>(new TestPermissionServices());
+        services.AddSingleton<IPermissionAuthorizationService>(new TestPermissionServices());
+        services.AddSingleton<IDelegatedAuthorizationIssuer>(new TestPermissionServices());
         services.AddRouterRuntime(configuration);
         using ServiceProvider provider = services.BuildServiceProvider();
 
