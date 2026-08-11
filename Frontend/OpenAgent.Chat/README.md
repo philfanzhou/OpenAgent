@@ -18,7 +18,7 @@ pnpm test
 pnpm build
 ```
 
-工作台内的“诊断”页会从浏览器验证 Gateway Live、Ready、Agent Catalog、Identity 和 Conversations。完整设计与联调证据见 [`docs/modules/chat-workspace/`](../../docs/modules/chat-workspace/README.md)。
+工作台内的“诊断”页会从浏览器验证 Gateway Live、Ready、Agent Catalog、Identity 和 Conversations。架构、接口和安全边界见 [`docs/modules/chat-workspace/`](../../docs/modules/chat-workspace/README.md)。
 
 ## 生产边界
 
