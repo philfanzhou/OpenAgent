@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using OpenAgent.Contracts.Routing;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Router.Observability;
 using Yarp.ReverseProxy.Forwarder;
@@ -49,12 +48,11 @@ internal static class GatewayProxyHandler
             httpClient,
             requestConfig,
             (_, proxyRequest) => userContext.IsAuthenticated
-                ? ForwardingContextBuilder.ApplyAsync(
+                ? ApplyAuthenticatedAsync(
                     proxyRequest,
                     new Uri(targetUrl),
                     userContext,
                     tenantId,
-                    agentId: null,
                     conversationId,
                     traceId)
                 : ApplyAnonymousAsync(proxyRequest, new Uri(targetUrl), traceId)).ConfigureAwait(false);
@@ -76,6 +74,24 @@ internal static class GatewayProxyHandler
         return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
     }
 
+    private static ValueTask ApplyAuthenticatedAsync(
+        HttpRequestMessage proxyRequest,
+        Uri targetUri,
+        IAgentUserContext userContext,
+        string? tenantId,
+        string? conversationId,
+        string traceId)
+    {
+        proxyRequest.Headers.Remove("X-Agent-Id");
+        return ForwardingContextBuilder.ApplyAsync(
+            proxyRequest,
+            targetUri,
+            userContext,
+            tenantId,
+            conversationId,
+            traceId);
+    }
+
     private static ValueTask ApplyAnonymousAsync(
         HttpRequestMessage proxyRequest,
         Uri targetUri,
@@ -83,7 +99,6 @@ internal static class GatewayProxyHandler
     {
         proxyRequest.RequestUri = targetUri;
         proxyRequest.Headers.Remove("X-Agent-Id");
-        proxyRequest.Headers.Remove(AgentRoutingHeaders.ResolvedAgentId);
         proxyRequest.Headers.Remove("X-Conversation-Id");
         proxyRequest.Headers.Remove("X-User-Id");
         proxyRequest.Headers.Remove("X-Tenant-Id");

@@ -2,7 +2,7 @@
 
 ## 验证范围
 
-本报告验证浏览器只连接 Router 时，健康检查、身份、Agent 目录、会话、管理配置和自动意图路由聊天均可到达模拟 Engine。验证日期为 2026-08-08。
+本报告验证 PR 基于最新 Provider 路由架构重建后，后端 Gateway 接口、前端 API 契约和工作台页面可以独立构建运行。验证日期为 2026-08-11。
 
 ## 自动化结果
 
@@ -20,36 +20,32 @@ pnpm build
 结果：
 
 - Backend Release 构建成功，0 警告、0 错误；
-- Backend 138 个测试全部通过，其中 Router 29 个；
+- Backend 153 个测试全部通过，其中 Router 36 个、Engine 52 个、Core 60 个、Hosting 5 个；
 - Frontend API 3 个 Vitest 测试全部通过；
 - Vue TypeScript 检查与 Vite 生产构建成功。
 
-Router 新增测试覆盖：认证拦截、无 Engine 的 503、路径和查询串保持、可信身份覆盖，以及匿名鉴权请求清除伪造内部 Header。Frontend API 测试覆盖 Gateway 身份 Header、SSE 与路由 Header 解析、Problem Details 和 Trace ID 错误展示。
+Router 新增测试覆盖：认证拦截、无 Engine 的 503、路径和查询串保持、可信身份覆盖，以及匿名鉴权请求清除伪造内部 Header。Frontend API 测试覆盖 Gateway 身份 Header、SSE 解析、Problem Details 和 Trace ID 错误展示。
 
-## 真实链路联调
+## 浏览器视觉验证
 
-联调拓扑：
+本地启动：
 
-```text
-OpenAgent.Chat (127.0.0.1:5620)
-  -> OpenAgent.Router (127.0.0.1:5631)
-  -> Fake Engine (127.0.0.1:5632)
+```bash
+cd Frontend/OpenAgent.Chat
+pnpm dev --host 127.0.0.1 --port 5620
 ```
 
-浏览器完成了以下场景：
+在 1440×900 桌面视口完成以下检查：
 
 | 场景 | 结果 |
 |------|------|
-| Gateway Basic 登录与租户上下文 | 用户 `reviewer`、租户 `tenant-smoke` 正确显示 |
-| 工作台诊断 | Live、Ready、Agent Catalog、Identity、Conversations 全部通过 |
-| Agent 目录 | 展示 3 个模拟 Agent |
-| Auto 意图路由 | `intent-router` 从 Finance/Support 中选择 Support |
-| SSE 聊天 | 页面实时显示 `Routed through support.`，状态更新为 `Completed` |
-| 路由可解释性 | 右侧上下文显示“意图路由结果”和实际 Support Agent |
-| 会话读取 | Router 透传列表与详情请求 |
-| 管理读取 | LLM、Agent、MCP、Skill、RAG 标签页均通过 Router 加载 |
+| 三栏工作台 | 会话侧栏、聊天区、路由/身份/会话上下文完整显示 |
+| Agent 选择 | `Auto · 意图路由` 与手动 Agent 选择入口正常显示 |
+| 对话输入 | 建议卡片、消息输入、附件入口和发送状态正常显示 |
+| 设置窗口 | Gateway、诊断、LLM、Agent、MCP、Skill、RAG 标签完整显示 |
+| 响应式布局 | 默认窄视口自动隐藏右侧上下文，桌面视口恢复三栏 |
 
-下游请求证据显示，聊天请求包含 Router 解析后的 `X-OpenAgent-Resolved-Agent-Id: support`；身份、会话和管理请求使用 Router 重建的 `X-User-Id: reviewer` 与 `X-Tenant-Id: tenant-smoke`。
+本次视觉验证没有启动 Router/Engine，因此页面中的“连接失败”是预期状态；真实聊天链路由后端和前端 API 自动化测试覆盖其静态契约。
 
 ## 已知构建提示
 

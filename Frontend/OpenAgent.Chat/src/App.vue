@@ -70,7 +70,6 @@ const diagnostics = ref<DiagnosticItem[]>([
   { key: 'conversations', name: 'Conversations', detail: '会话存储读取', status: 'idle' },
 ])
 const runningDiagnostics = ref(false)
-const selectedByIntentAgent = ref(false)
 
 const currentMessages = computed(() => selectedConversation.value?.messages || [])
 const selectedSkill = computed(() => selectedSkillIndex.value >= 0 ? skillDraft.value.instances[selectedSkillIndex.value] || null : null)
@@ -89,7 +88,7 @@ const gatewayHost = computed(() => {
 })
 const routeMode = computed(() => selectedAgentId.value === AUTO_AGENT_ID
   ? '自动意图路由'
-  : selectedByIntentAgent.value ? '意图路由结果' : '显式 Agent')
+  : '显式 Agent')
 
 function applyTheme(): void {
   document.documentElement.dataset.theme = themeMode.value
@@ -327,7 +326,6 @@ async function refreshConversations(): Promise<void> {
 }
 
 async function selectConversation(item: ConversationRecord): Promise<void> {
-  selectedByIntentAgent.value = false
   selectedConversation.value = item
   selectedAgentId.value = item.agentId || selectedAgentId.value
   if (item.messages?.length) return
@@ -342,15 +340,12 @@ async function selectConversation(item: ConversationRecord): Promise<void> {
 }
 
 function newConversation(): void {
-  if (selectedByIntentAgent.value) selectedAgentId.value = AUTO_AGENT_ID
-  selectedByIntentAgent.value = false
   selectedConversation.value = null
   message.value = ''
   pendingAttachments.value = []
 }
 
 function handleAgentChange(): void {
-  selectedByIntentAgent.value = false
   newConversation()
   config.value = null
   mcpServers.value = []
@@ -373,7 +368,6 @@ async function send(): Promise<void> {
   const hasAttachments = pendingAttachments.value.length > 0
   if ((!content && !hasAttachments) || !selectedAgentId.value || loading.value) return
   const requestContent = content || '请处理我上传的附件'
-  const requestedByIntentAgent = selectedAgentId.value === AUTO_AGENT_ID
   const isNewConversation = !selectedConversation.value
   const attachments = pendingAttachments.value.map(item => item.file)
   const requestedAgentId = selectedAgentId.value === AUTO_AGENT_ID
@@ -832,7 +826,7 @@ onMounted(() => {
           <MessageComposer :model-value="message" :gateway-url="engineUrl" :selected-agent-id="selectedAgentId" :loading="loading" :pending-attachments="pendingAttachments" @update:model-value="message = $event" @attachments-change="pendingAttachments = $event" @send="send" />
         </section>
         <aside class="context-panel">
-          <section><span class="context-label">ROUTING</span><strong>{{ routeMode }}</strong><p>{{ selectedAgentId === AUTO_AGENT_ID ? '由 intent-router 分析请求并选择目标。' : selectedByIntentAgent ? `intent-router 已选择 ${selectedAgent?.name || selectedAgentId}。` : (selectedAgent?.description || selectedAgentId) }}</p><dl><div><dt>Agent</dt><dd>{{ selectedAgent?.name || selectedAgentId }}</dd></div><div><dt>协议</dt><dd>{{ selectedAgent?.apiFormat || '自动' }}</dd></div></dl></section>
+          <section><span class="context-label">ROUTING</span><strong>{{ routeMode }}</strong><p>{{ selectedAgentId === AUTO_AGENT_ID ? '由意图识别 Agent 分析请求并选择目标。' : (selectedAgent?.description || selectedAgentId) }}</p><dl><div><dt>Agent</dt><dd>{{ selectedAgentId === AUTO_AGENT_ID ? '由模型选择' : (selectedAgent?.name || selectedAgentId) }}</dd></div><div><dt>协议</dt><dd>{{ selectedAgent?.apiFormat || '自动' }}</dd></div></dl></section>
           <section><span class="context-label">IDENTITY</span><dl><div><dt>用户</dt><dd>{{ currentUser?.userId || 'Guest' }}</dd></div><div><dt>租户</dt><dd>{{ currentUser?.tenantId || tenantId || '—' }}</dd></div><div><dt>Gateway</dt><dd :title="engineUrl">{{ gatewayHost }}</dd></div></dl></section>
           <section><span class="context-label">CONVERSATION</span><dl><div><dt>消息</dt><dd>{{ currentMessages.length }}</dd></div><div><dt>状态</dt><dd>{{ selectedConversation?.status ?? '新建' }}</dd></div><div><dt>ID</dt><dd class="truncate" :title="selectedConversation?.conversationId">{{ selectedConversation?.conversationId || '尚未创建' }}</dd></div></dl></section>
           <el-button class="diagnostics-shortcut" @click="openSettings('diagnostics')">运行工作台诊断</el-button>

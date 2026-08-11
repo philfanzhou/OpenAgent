@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
-using OpenAgent.Contracts.Routing;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Router.Endpoints;
 using Xunit;
@@ -21,6 +20,7 @@ public class GatewayProxyHandlerTests
         context.Request.Headers["X-User-Id"] = "spoofed-user";
         context.Request.Headers["X-Tenant-Id"] = "spoofed-tenant";
         context.Request.Headers["X-Conversation-Id"] = "conversation-1";
+        context.Request.Headers["X-Agent-Id"] = "spoofed-agent";
         var forwarder = new CapturingForwarder();
         var routeTable = new StubRouteTable("http://engine:5100/root");
         var user = new AgentUserContext
@@ -50,6 +50,7 @@ public class GatewayProxyHandlerTests
         Assert.Equal("trusted-user", GetSingleHeader(forwarder.ProxyRequest, "X-User-Id"));
         Assert.Equal("trusted-tenant", GetSingleHeader(forwarder.ProxyRequest, "X-Tenant-Id"));
         Assert.Equal("conversation-1", GetSingleHeader(forwarder.ProxyRequest, "X-Conversation-Id"));
+        AssertHeaderMissing(forwarder.ProxyRequest, "X-Agent-Id");
     }
 
     [Fact]
@@ -57,7 +58,6 @@ public class GatewayProxyHandlerTests
     {
         var context = CreateContext(HttpMethods.Post, "/api/v1/auth/token", "?mode=basic");
         context.Request.Headers["X-Agent-Id"] = "spoofed-agent";
-        context.Request.Headers[AgentRoutingHeaders.ResolvedAgentId] = "spoofed-agent";
         context.Request.Headers["X-User-Id"] = "spoofed-user";
         context.Request.Headers["X-Tenant-Id"] = "spoofed-tenant";
         context.Request.Headers["X-Conversation-Id"] = "spoofed-conversation";
@@ -81,7 +81,6 @@ public class GatewayProxyHandlerTests
         Assert.Null(routeTable.TenantId);
         Assert.Null(routeTable.ConversationId);
         AssertHeaderMissing(forwarder.ProxyRequest, "X-Agent-Id");
-        AssertHeaderMissing(forwarder.ProxyRequest, AgentRoutingHeaders.ResolvedAgentId);
         AssertHeaderMissing(forwarder.ProxyRequest, "X-User-Id");
         AssertHeaderMissing(forwarder.ProxyRequest, "X-Tenant-Id");
         AssertHeaderMissing(forwarder.ProxyRequest, "X-Conversation-Id");

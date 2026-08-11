@@ -40,7 +40,7 @@ describe('workspace API', () => {
     expect(requestHeaders.get('X-Trace-Id')).toBeTruthy()
   })
 
-  it('parses selected route and SSE events from streaming chat', async () => {
+  it('parses SSE events from streaming chat', async () => {
     setEngineBaseUrl('http://router.example')
     const stream = [
       'event: content',
@@ -52,17 +52,13 @@ describe('workspace API', () => {
     ].join('\n')
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(stream, {
       status: 200,
-      headers: {
-        'Content-Type': 'text/event-stream',
-        'X-OpenAgent-Selected-Agent-Id': 'external-support',
-      },
+      headers: { 'Content-Type': 'text/event-stream' },
     })))
 
     const events = []
     for await (const event of api.streamChat('hello')) events.push(event)
 
     expect(events).toEqual([
-      { type: 'route', agentId: 'external-support' },
       { type: 'content', content: 'hello' },
       { type: 'done', done: true },
     ])

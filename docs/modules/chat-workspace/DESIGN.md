@@ -13,9 +13,9 @@ Browser -> OpenAgent.Router -> Engine or External Agent
 Router 是浏览器流量的信任边界，负责：
 
 - 对未显式指定 Agent 的聊天请求调用意图识别 Agent；
-- 返回可见 Agent 目录，并转发聊天和附件流；
+- 聚合各 Provider 的可见 Agent 目录，并转发聊天和附件流；
 - 根据会话与租户选择 Engine；
-- 将第三方 Agent 请求交给已注册的外部适配器；
+- 将第三方 Agent 请求交给所属的 Agent Provider；
 - 为 Engine 重建可信用户、租户、会话和 Trace Header；
 - 透传身份、会话和管理 API，使工作台不需要绕过 Gateway。
 
