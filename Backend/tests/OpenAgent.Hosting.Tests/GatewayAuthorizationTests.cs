@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using OpenAgent.Authorization;
 using OpenAgent.Hosting.Authorization;
 using Xunit;
 
@@ -42,9 +43,9 @@ public class GatewayAuthorizationTests
     public void Authorization_CombinesDefaultsRolesAndResourceClaims()
     {
         using ServiceProvider provider = CreateProvider();
-        IGatewayAuthorizationService authorization = provider
-            .GetRequiredService<IGatewayAuthorizationService>();
-        GatewayIdentity identity = new(
+        IPermissionAuthorizer authorization = provider
+            .GetRequiredService<IPermissionAuthorizer>();
+        PermissionSubject subject = new(
             "user-1",
             "tenant-1",
             ["Operator"],
@@ -55,11 +56,11 @@ public class GatewayAuthorizationTests
             },
             IsAuthenticated: true);
 
-        Assert.True(authorization.IsAuthorized(identity, "agent.read"));
-        Assert.True(authorization.IsAuthorized(identity, "conversation.read"));
-        Assert.True(authorization.IsAuthorized(identity, "agent.execute", "finance"));
-        Assert.False(authorization.IsAuthorized(identity, "agent.execute", "support"));
-        Assert.False(authorization.IsAuthorized(identity, "agent.config.write"));
+        Assert.True(authorization.IsAuthorized(subject, "agent.read"));
+        Assert.True(authorization.IsAuthorized(subject, "conversation.read"));
+        Assert.True(authorization.IsAuthorized(subject, "agent.execute", "finance"));
+        Assert.False(authorization.IsAuthorized(subject, "agent.execute", "support"));
+        Assert.False(authorization.IsAuthorized(subject, "agent.config.write"));
     }
 
     [Fact]
@@ -70,7 +71,7 @@ public class GatewayAuthorizationTests
         var principal = new ClaimsPrincipal(new ClaimsIdentity(
         [
             new Claim("sub", "intent-router"),
-            new Claim(GatewayAuthorizationDefaults.PermissionClaimType, "agent.execute:intent-router")
+            new Claim(PermissionClaimTypes.Permission, "agent.execute:intent-router")
         ], "test"));
 
         AuthorizationResult result = await authorization.AuthorizeAsync(
@@ -86,10 +87,10 @@ public class GatewayAuthorizationTests
     {
         var time = new MutableTimeProvider(new DateTimeOffset(2026, 8, 8, 0, 0, 0, TimeSpan.Zero));
         using ServiceProvider provider = CreateProvider(time);
-        IGatewayAuthorizationService authorization = provider
-            .GetRequiredService<IGatewayAuthorizationService>();
+        IDelegatedPermissionGrantIssuer authorization = provider
+            .GetRequiredService<IDelegatedPermissionGrantIssuer>();
         GatewayGrantCodec codec = provider.GetRequiredService<GatewayGrantCodec>();
-        GatewayIdentity identity = new(
+        PermissionSubject subject = new(
             "user-1",
             "tenant-1",
             [],
@@ -97,15 +98,15 @@ public class GatewayAuthorizationTests
             new Dictionary<string, string>(),
             IsAuthenticated: true);
 
-        string grant = authorization.IssueGrant(identity);
+        string grant = authorization.Issue(subject);
 
         Assert.True(codec.TryDecode(grant, "openagent-engine", out GatewayGrantPayload? payload));
         Assert.Equal("user-1", payload?.Subject);
         Assert.False(codec.TryDecode(grant, "external:partner", out _));
         Assert.False(codec.TryDecode(grant + "tampered", "openagent-engine", out _));
 
-        string restrictedGrant = authorization.IssueRestrictedGrant(
-            identity,
+        string restrictedGrant = authorization.IssueRestricted(
+            subject,
             ["agent.execute:intent-router", "model.invoke"]);
         Assert.True(codec.TryDecode(
             restrictedGrant,
@@ -116,8 +117,8 @@ public class GatewayAuthorizationTests
             restrictedPayload?.Permissions);
         Assert.DoesNotContain("agent.read", restrictedPayload?.Permissions ?? []);
 
-        string externalGrant = authorization.IssueRestrictedGrant(
-            identity,
+        string externalGrant = authorization.IssueRestricted(
+            subject,
             ["agent.execute:support-v2"],
             "external-partner");
         Assert.True(codec.TryDecode(
@@ -130,9 +131,9 @@ public class GatewayAuthorizationTests
         using ServiceProvider attackerProvider = CreateProvider(
             signingKey: PartnerSigningKey,
             includePartnerKey: false);
-        IGatewayAuthorizationService attacker = attackerProvider
-            .GetRequiredService<IGatewayAuthorizationService>();
-        string forgedEngineGrant = attacker.IssueRestrictedGrant(identity, ["*"]);
+        IDelegatedPermissionGrantIssuer attacker = attackerProvider
+            .GetRequiredService<IDelegatedPermissionGrantIssuer>();
+        string forgedEngineGrant = attacker.IssueRestricted(subject, ["*"]);
         Assert.False(codec.TryDecode(forgedEngineGrant, "openagent-engine", out _));
 
         time.Advance(TimeSpan.FromMinutes(2));

@@ -1,6 +1,6 @@
 using System.Diagnostics;
+using OpenAgent.Authorization;
 using OpenAgent.Contracts.Security;
-using OpenAgent.Hosting.Authorization;
 using OpenAgent.Router.Observability;
 using Yarp.ReverseProxy.Forwarder;
 
@@ -38,9 +38,9 @@ internal static class GetEndpointHandler
         var normalizedPath = targetPath.StartsWith('/') ? targetPath : "/" + targetPath;
         var targetUrl = $"{targetEndpoint.TrimEnd('/')}{normalizedPath}";
         var traceId = Activity.Current?.Id ?? context.TraceIdentifier;
-        IGatewayAuthorizationService authorization = context.RequestServices
-            .GetRequiredService<IGatewayAuthorizationService>();
-        string gatewayGrant = authorization.IssueGrant(userContext);
+        IDelegatedPermissionGrantIssuer grantIssuer = context.RequestServices
+            .GetRequiredService<IDelegatedPermissionGrantIssuer>();
+        string gatewayGrant = grantIssuer.Issue(userContext);
         var error = await forwarder.SendAsync(
             context,
             targetEndpoint,

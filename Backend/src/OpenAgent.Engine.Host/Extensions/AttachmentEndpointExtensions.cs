@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using OpenAgent.Authorization;
 using OpenAgent.Contracts.Content;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Routing;
@@ -14,13 +15,13 @@ internal static class AttachmentEndpointExtensions
     internal static void MapAttachmentChat(this RouteGroupBuilder group)
     {
         group.MapPost("/chat/attachments", ExecuteAsync)
-            .RequireAuthorization(GatewayPermissions.AgentExecute)
+            .RequireAuthorization(PermissionCatalog.AgentExecute)
             .DisableAntiforgery()
             .WithName("ChatWithAttachments")
             .WithTags("Agent");
 
         group.MapPost("/chat/attachments/stream", ExecuteStreamAsync)
-            .RequireAuthorization(GatewayPermissions.AgentExecute)
+            .RequireAuthorization(PermissionCatalog.AgentExecute)
             .DisableAntiforgery()
             .WithName("ChatWithAttachmentsStream")
             .WithTags("Agent");

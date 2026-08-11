@@ -3,6 +3,7 @@ using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using OpenAgent.Authorization;
 using OpenAgent.Hosting.Authorization;
 
 namespace OpenAgent.Hosting.Security;
@@ -20,7 +21,7 @@ internal sealed class GatewayAuthenticationHandler(
 
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
-        string? token = Request.Headers[GatewayAuthorizationDefaults.GrantHeaderName].FirstOrDefault();
+        string? token = Request.Headers[DelegatedPermissionHeaders.Grant].FirstOrDefault();
         if (string.IsNullOrWhiteSpace(token))
         {
             return Task.FromResult(AuthenticateResult.NoResult());
@@ -50,7 +51,7 @@ internal sealed class GatewayAuthenticationHandler(
         claims.AddRange(payload.Roles.Select(role => new Claim(ClaimTypes.Role, role)));
         claims.AddRange(payload.Groups.Select(group => new Claim("group", group)));
         claims.AddRange(payload.Permissions.Select(permission =>
-            new Claim(GatewayAuthorizationDefaults.PermissionClaimType, permission)));
+            new Claim(PermissionClaimTypes.Permission, permission)));
 
         ClaimsIdentity identity = new(claims, SchemeName);
         ClaimsPrincipal principal = new(identity);

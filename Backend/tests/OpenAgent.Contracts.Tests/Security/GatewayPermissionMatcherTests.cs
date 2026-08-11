@@ -1,9 +1,9 @@
-using OpenAgent.Contracts.Security;
+using OpenAgent.Authorization;
 using Xunit;
 
 namespace OpenAgent.Contracts.Tests.Security;
 
-public class GatewayPermissionMatcherTests
+public class PermissionMatcherTests
 {
     [Theory]
     [InlineData("agent.execute:intent-router", "agent.execute", true)]
@@ -17,7 +17,7 @@ public class GatewayPermissionMatcherTests
     {
         Assert.Equal(
             expected,
-            GatewayPermissionMatcher.HasGrantForAnyResource([granted], required));
+            PermissionMatcher.HasGrantForAnyResource([granted], required));
     }
 
     [Theory]
@@ -33,6 +33,6 @@ public class GatewayPermissionMatcherTests
         string resourceId,
         bool expected)
     {
-        Assert.Equal(expected, GatewayPermissionMatcher.IsAllowed([granted], required, resourceId));
+        Assert.Equal(expected, PermissionMatcher.IsAllowed([granted], required, resourceId));
     }
 }

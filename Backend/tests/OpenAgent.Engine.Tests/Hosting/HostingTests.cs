@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
+using OpenAgent.Authorization;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Engine.Host.Extensions;
 using OpenAgent.Hosting;
@@ -125,13 +126,13 @@ public class HostingTests
     }
 
     [Theory]
-    [InlineData("/api/v1/agent/chat", "POST", GatewayPermissions.AgentExecute)]
-    [InlineData("/api/v1/agent/agents", "GET", GatewayPermissions.AgentRead)]
-    [InlineData("/api/v1/agent/conversations/{conversationId}", "DELETE", GatewayPermissions.ConversationDelete)]
-    [InlineData("/api/v1/admin/agents", "GET", GatewayPermissions.AgentRead)]
-    [InlineData("/api/v1/admin/llm", "GET", GatewayPermissions.AgentConfigRead)]
-    [InlineData("/api/v1/admin/llm/{id}", "PUT", GatewayPermissions.AgentConfigWrite)]
-    [InlineData("/api/v1/admin/mcp/test-connection", "POST", GatewayPermissions.CapabilityTest)]
+    [InlineData("/api/v1/agent/chat", "POST", PermissionCatalog.AgentExecute)]
+    [InlineData("/api/v1/agent/agents", "GET", PermissionCatalog.AgentRead)]
+    [InlineData("/api/v1/agent/conversations/{conversationId}", "DELETE", PermissionCatalog.ConversationDelete)]
+    [InlineData("/api/v1/admin/agents", "GET", PermissionCatalog.AgentRead)]
+    [InlineData("/api/v1/admin/llm", "GET", PermissionCatalog.AgentConfigRead)]
+    [InlineData("/api/v1/admin/llm/{id}", "PUT", PermissionCatalog.AgentConfigWrite)]
+    [InlineData("/api/v1/admin/mcp/test-connection", "POST", PermissionCatalog.CapabilityTest)]
     public void MapEndpoints_AttachRequiredPermissionPolicy(
         string route,
         string method,

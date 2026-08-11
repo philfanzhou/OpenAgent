@@ -1,5 +1,6 @@
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
+using OpenAgent.Authorization;
 using OpenAgent.Engine.Host.Middleware;
 using Xunit;
 
@@ -44,7 +45,7 @@ public class EngineAdmissionMiddlewareTests
         IsAuthenticated = true,
         Claims = new Dictionary<string, string>
         {
-            [GatewayClaimTypes.Permission] = permission
+            [PermissionClaimTypes.Permission] = permission
         }
     };
 }

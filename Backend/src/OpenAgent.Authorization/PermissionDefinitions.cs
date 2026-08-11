@@ -1,11 +1,11 @@
-namespace OpenAgent.Contracts.Security;
+namespace OpenAgent.Authorization;
 
-public static class GatewayClaimTypes
+public static class PermissionClaimTypes
 {
     public const string Permission = "openagent_permission";
 }
 
-public static class GatewayPermissions
+public static class PermissionCatalog
 {
     public const string AgentRead = "agent.read";
     public const string AgentExecute = "agent.execute";
@@ -39,7 +39,7 @@ public static class GatewayPermissions
     ];
 }
 
-public static class GatewayPermissionMatcher
+public static class PermissionMatcher
 {
     public static bool HasGrantForAnyResource(
         IEnumerable<string> grantedPermissions,
@@ -88,7 +88,7 @@ public static class GatewayPermissionMatcher
         IReadOnlyDictionary<string, string> claims)
     {
         return claims
-            .Where(claim => claim.Key.Equals(GatewayClaimTypes.Permission, StringComparison.OrdinalIgnoreCase)
+            .Where(claim => claim.Key.Equals(PermissionClaimTypes.Permission, StringComparison.OrdinalIgnoreCase)
                 || claim.Key.Equals("permissions", StringComparison.OrdinalIgnoreCase)
                 || claim.Key.Equals("scope", StringComparison.OrdinalIgnoreCase)
                 || claim.Key.Equals("scp", StringComparison.OrdinalIgnoreCase))

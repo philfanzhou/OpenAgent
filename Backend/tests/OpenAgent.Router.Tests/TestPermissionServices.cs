@@ -1,33 +1,32 @@
-using OpenAgent.Contracts.Security;
-using OpenAgent.Hosting.Authorization;
+using OpenAgent.Authorization;
 
 namespace OpenAgent.Router.Tests;
 
-internal sealed class TestGatewayAuthorizationService(
+internal sealed class TestPermissionServices(
     bool allow = true,
     string grant = "test-gateway-grant",
-    Func<string, string?, bool>? evaluator = null) : IGatewayAuthorizationService
+    Func<string, string?, bool>? evaluator = null) : IPermissionAuthorizer, IDelegatedPermissionGrantIssuer
 {
     public IReadOnlyList<string>? RestrictedPermissions { get; private set; }
 
-    public IReadOnlySet<string> ResolvePermissions(GatewayIdentity identity) =>
+    public IReadOnlySet<string> ResolvePermissions(PermissionSubject subject) =>
         allow
             ? new HashSet<string>(["*"], StringComparer.OrdinalIgnoreCase)
             : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
     public bool IsAuthorized(
-        GatewayIdentity identity,
-        string requiredPermission,
+        PermissionSubject subject,
+        string permission,
         string? resourceId = null) => allow
-            && identity.IsAuthenticated
-            && (evaluator?.Invoke(requiredPermission, resourceId) ?? true);
+            && subject.IsAuthenticated
+            && (evaluator?.Invoke(permission, resourceId) ?? true);
 
-    public string IssueGrant(
-        GatewayIdentity identity,
+    public string Issue(
+        PermissionSubject subject,
         string? audience = null) => grant;
 
-    public string IssueRestrictedGrant(
-        GatewayIdentity identity,
+    public string IssueRestricted(
+        PermissionSubject subject,
         IEnumerable<string> permissions,
         string? audience = null)
     {

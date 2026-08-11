@@ -2,10 +2,10 @@ using System.Diagnostics;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using OpenAgent.Authorization;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
-using OpenAgent.Hosting.Authorization;
 using OpenAgent.Router.Models;
 
 namespace OpenAgent.Router.Providers;
@@ -21,14 +21,14 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
     private readonly string _chatPath;
     private readonly IReadOnlyDictionary<string, string> _serviceHeaders;
     private readonly IRouteTable _routeTable;
-    private readonly IGatewayAuthorizationService _authorization;
+    private readonly IDelegatedPermissionGrantIssuer _grantIssuer;
     private readonly HttpMessageInvoker _httpClient;
 
     internal OpenAgentEngineProvider(
         string id,
         IConfiguration settings,
         IRouteTable routeTable,
-        IGatewayAuthorizationService authorization,
+        IDelegatedPermissionGrantIssuer grantIssuer,
         HttpMessageHandler? handler = null)
     {
         Id = id;
@@ -42,7 +42,7 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
                 header => header.Value!,
                 StringComparer.OrdinalIgnoreCase);
         _routeTable = routeTable;
-        _authorization = authorization;
+        _grantIssuer = grantIssuer;
         _httpClient = new HttpMessageInvoker(handler ?? CreateHandler());
     }
 
@@ -61,7 +61,7 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
         using HttpRequestMessage request = CreateServiceRequest(
             HttpMethod.Get,
             $"{endpoint.TrimEnd('/')}{_agentListPath}",
-            _authorization.IssueGrant(userContext));
+            _grantIssuer.Issue(userContext));
         using HttpResponseMessage response = await _httpClient.SendAsync(
             request,
             cancellationToken).ConfigureAwait(false);
@@ -87,11 +87,11 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
         using HttpRequestMessage request = CreateServiceRequest(
             HttpMethod.Post,
             $"{endpoint.TrimEnd('/')}{_chatPath}",
-            _authorization.IssueRestrictedGrant(
+            _grantIssuer.IssueRestricted(
                 userContext,
                 [
-                    $"{GatewayPermissions.AgentExecute}:{intentAgentId}",
-                    GatewayPermissions.ModelInvoke
+                    $"{PermissionCatalog.AgentExecute}:{intentAgentId}",
+                    PermissionCatalog.ModelInvoke
                 ]),
             intentAgentId);
         request.Content = new StringContent(
@@ -173,13 +173,13 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
         }
 
         request.Headers.Remove("Authorization");
-        request.Headers.Remove(GatewayAuthorizationDefaults.GrantHeaderName);
+        request.Headers.Remove(DelegatedPermissionHeaders.Grant);
         request.Headers.Remove(AgentRoutingHeaders.ResolvedAgentId);
         request.Headers.Remove("X-User-Id");
         request.Headers.Remove("X-Tenant-Id");
         request.Headers.Remove("X-Trace-Id");
         request.Headers.Remove("X-Conversation-Id");
-        request.Headers.Add(GatewayAuthorizationDefaults.GrantHeaderName, gatewayGrant);
+        request.Headers.Add(DelegatedPermissionHeaders.Grant, gatewayGrant);
         if (!string.IsNullOrWhiteSpace(resolvedAgentId))
         {
             request.Headers.Add(AgentRoutingHeaders.ResolvedAgentId, resolvedAgentId);

@@ -19,4 +19,4 @@ Router 是唯一公开身份边界。生产环境使用 JWT Bearer 对接企业�
 - Engine 不应暴露到公网；即使被直连，没有有效网关票据也无法访问业务端点。
 - 浏览器只持有入口 JWT，不会看到内部网关票据。
 
-关键实现位于 `OpenAgent.Hosting/Authentication`、`OpenAgent.Hosting/Authorization` 和 Router 的转发处理器。
+关键实现位于 `OpenAgent.Authorization`（可复用权限契约）、`OpenAgent.Hosting/Authentication`、`OpenAgent.Hosting/Authorization`（当前 HTTP/HMAC 适配器）和 Router 的转发处理器。

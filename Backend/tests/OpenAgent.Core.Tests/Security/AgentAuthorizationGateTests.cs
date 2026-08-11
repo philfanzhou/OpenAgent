@@ -1,5 +1,6 @@
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Security;
+using OpenAgent.Authorization;
 using OpenAgent.Core.Models;
 using OpenAgent.Core.Security;
 using Xunit;
@@ -56,7 +57,7 @@ public class AgentAuthorizationGateTests
             IsAuthenticated = true,
             Claims = new Dictionary<string, string>
             {
-                [GatewayClaimTypes.Permission] = "agent.execute:finance,mcp.use"
+                [PermissionClaimTypes.Permission] = "agent.execute:finance,mcp.use"
             }
         };
 

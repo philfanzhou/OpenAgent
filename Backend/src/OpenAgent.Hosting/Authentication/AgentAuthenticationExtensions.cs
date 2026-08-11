@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using OpenAgent.Authorization;
 using OpenAgent.Hosting.Authorization;
 using OpenAgent.Hosting.Security;
 
@@ -87,7 +88,11 @@ internal static class AgentAuthenticationExtensions
             .ValidateOnStart();
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<GatewayGrantCodec>();
-        services.AddSingleton<IGatewayAuthorizationService, GatewayAuthorizationService>();
+        services.AddSingleton<GatewayAuthorizationService>();
+        services.AddSingleton<IPermissionAuthorizer>(provider =>
+            provider.GetRequiredService<GatewayAuthorizationService>());
+        services.AddSingleton<IDelegatedPermissionGrantIssuer>(provider =>
+            provider.GetRequiredService<GatewayAuthorizationService>());
         return services;
     }
 }
