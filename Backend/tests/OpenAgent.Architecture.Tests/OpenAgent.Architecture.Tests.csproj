@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <AssemblyName>OpenAgent.Architecture.Tests</AssemblyName>
+    <RootNamespace>OpenAgent.Architecture.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\OpenAgent.Contracts\OpenAgent.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\OpenAgent.Core\OpenAgent.Core.csproj" />
+    <ProjectReference Include="..\..\src\OpenAgent.Engine\OpenAgent.Engine.csproj" />
+    <ProjectReference Include="..\..\src\OpenAgent.Engine.Host\OpenAgent.Engine.Host.csproj" />
+    <ProjectReference Include="..\..\src\OpenAgent.Hosting\OpenAgent.Hosting.csproj" />
+    <ProjectReference Include="..\..\src\OpenAgent.Router\OpenAgent.Router.csproj" />
+  </ItemGroup>
+
+</Project>
