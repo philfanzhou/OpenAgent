@@ -1,7 +1,9 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using OpenAgent.Authorization;
 using OpenAgent.Router.Options;
+using OpenAgent.Router.Tests;
 using Yarp.ReverseProxy.Forwarder;
 using Xunit;
 
@@ -43,6 +45,8 @@ public class RouterServiceCollectionExtensionsTests
         services.AddLogging();
         services.AddSingleton(configuration);
         services.AddHttpForwarder();
+        services.AddSingleton<IPermissionAuthorizationService>(new TestPermissionServices());
+        services.AddSingleton<IDelegatedAuthorizationIssuer>(new TestPermissionServices());
         services.AddRouterRuntime(configuration);
         using ServiceProvider provider = services.BuildServiceProvider();
 

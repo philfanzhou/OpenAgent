@@ -51,6 +51,7 @@ internal sealed class AgentSelectionService(
             string? selectedAgentId = await intentAgentSelector.SelectAsync(
                 message,
                 candidates,
+                userContext,
                 timeout.Token).ConfigureAwait(false);
             if (!string.IsNullOrWhiteSpace(selectedAgentId)
                 && providerByAgent.TryGetValue(selectedAgentId, out string? providerId))
@@ -80,6 +81,7 @@ internal sealed class AgentSelectionService(
             try
             {
                 providerAgents = await provider.GetAgentsAsync(
+                    userContext,
                     cancellationToken).ConfigureAwait(false);
             }
             catch (Exception exception) when (

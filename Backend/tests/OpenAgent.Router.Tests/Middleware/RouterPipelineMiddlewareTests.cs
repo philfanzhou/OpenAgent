@@ -43,6 +43,29 @@ public class RouterPipelineMiddlewareTests
     }
 
     [Fact]
+    public async Task TenantIsolation_AuthenticatedIdentityWithoutTenant_ReturnsForbidden()
+    {
+        bool nextCalled = false;
+        var middleware = new TenantIsolationMiddleware(
+            _ => { nextCalled = true; return Task.CompletedTask; },
+            NullLogger<TenantIsolationMiddleware>.Instance);
+        var context = new DefaultHttpContext();
+        context.Request.Headers["X-Tenant-Id"] = "spoofed-tenant";
+        var user = new AgentUserContext
+        {
+            UserId = "user-1",
+            TenantId = null,
+            IsAuthenticated = true
+        };
+
+        await middleware.InvokeAsync(context, user);
+
+        Assert.Equal(StatusCodes.Status403Forbidden, context.Response.StatusCode);
+        Assert.False(nextCalled);
+        Assert.False(context.Items.ContainsKey(TenantIsolationMiddleware.TenantItemKey));
+    }
+
+    [Fact]
     public async Task RateLimiting_DeniedRequest_ReturnsTooManyRequests()
     {
         bool nextCalled = false;

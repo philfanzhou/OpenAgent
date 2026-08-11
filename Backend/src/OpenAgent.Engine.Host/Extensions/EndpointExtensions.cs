@@ -1,3 +1,4 @@
+using OpenAgent.Authorization;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Engine.Host.Middleware;
 
@@ -28,6 +29,7 @@ internal static class EndpointExtensions
                 isAuthenticated = user.IsAuthenticated
             });
         })
+        .RequireAuthorization(PermissionCatalog.IdentityRead)
         .WithName("CurrentAgentUser")
         .WithTags("Agent");
 

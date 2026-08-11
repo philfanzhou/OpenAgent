@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using OpenAgent.Authorization;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Router.Endpoints;
@@ -24,14 +25,20 @@ public class AgentForwarderTests
                 TenantId = "user-tenant",
                 IsAuthenticated = true
             })
+            .AddSingleton<IPermissionAuthorizationService>(new TestPermissionServices())
+            .AddSingleton<IDelegatedAuthorizationIssuer>(new TestPermissionServices())
             .BuildServiceProvider();
         var context = new DefaultHttpContext
         {
             RequestServices = services
         };
         context.Items[TenantIsolationMiddleware.TenantItemKey] = "request-tenant";
-        context.Features.Set(new AgentRoutingFeature("conversation-1", provider.Id));
-        using var forwarder = new AgentForwarder(null!, NullLogger<AgentForwarder>.Instance);
+        context.Features.Set(new AgentRoutingFeature("conversation-1", provider.Id, "finance"));
+        using var forwarder = new AgentForwarder(
+            null!,
+            new TestPermissionServices(),
+            new TestPermissionServices(),
+            NullLogger<AgentForwarder>.Instance);
 
         await forwarder.ForwardAsync(
             context,
@@ -53,6 +60,7 @@ public class AgentForwarderTests
         public string? ConversationId { get; private set; }
 
         public Task<IReadOnlyList<AgentSummary>> GetAgentsAsync(
+            IAgentUserContext userContext,
             CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<AgentSummary>>([]);
 
@@ -60,6 +68,7 @@ public class AgentForwarderTests
             string intentAgentId,
             IReadOnlyList<AgentSummary> agents,
             string message,
+            IAgentUserContext userContext,
             CancellationToken cancellationToken) =>
             Task.FromResult<IntentRecognitionResult?>(null);
 

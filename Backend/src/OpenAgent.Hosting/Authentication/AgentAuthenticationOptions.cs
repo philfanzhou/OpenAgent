@@ -2,7 +2,9 @@ namespace OpenAgent.Hosting.Authentication;
 
 public enum AgentAuthenticationMode
 {
-    Basic
+    Basic,
+    JwtBearer,
+    Gateway
 }
 
 public sealed class AgentAuthenticationOptions
@@ -12,4 +14,7 @@ public sealed class AgentAuthenticationOptions
     public bool AllowDevelopmentAnonymous { get; set; } = true;
     public string DevelopmentUserId { get; set; } = "development-user";
     public string DevelopmentTenantId { get; set; } = "development";
+    public string? Authority { get; set; }
+    public string? Audience { get; set; }
+    public bool RequireHttpsMetadata { get; set; } = true;
 }

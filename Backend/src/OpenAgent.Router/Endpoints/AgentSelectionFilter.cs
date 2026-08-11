@@ -1,4 +1,5 @@
 using System.Text.Json;
+using OpenAgent.Authorization;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Router.Models;
 
@@ -6,7 +7,8 @@ namespace OpenAgent.Router.Endpoints;
 
 internal sealed class AgentSelectionFilter(
     IAgentSelectionService selectionService,
-    IAgentUserContext userContext) : IEndpointFilter
+    IAgentUserContext userContext,
+    IPermissionAuthorizationService authorization) : IEndpointFilter
 {
     public async ValueTask<object?> InvokeAsync(
         EndpointFilterInvocationContext invocationContext,
@@ -51,9 +53,19 @@ internal sealed class AgentSelectionFilter(
                 title: "No Agent could be selected");
         }
 
+        if (!string.IsNullOrWhiteSpace(selection.AgentId)
+            && !authorization.IsAuthorized(
+                userContext,
+                PermissionCatalog.AgentExecute,
+                selection.AgentId))
+        {
+            return Results.StatusCode(StatusCodes.Status403Forbidden);
+        }
+
         context.Features.Set(new AgentRoutingFeature(
             routingConversationId,
-            selection.ProviderId));
+            selection.ProviderId,
+            selection.AgentId));
         if (!string.IsNullOrWhiteSpace(selection.AgentId))
         {
             context.Request.Headers["X-Agent-Id"] = selection.AgentId;

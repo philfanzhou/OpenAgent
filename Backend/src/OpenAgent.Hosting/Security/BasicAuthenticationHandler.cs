@@ -9,9 +9,8 @@ using OpenAgent.Hosting.Authentication;
 namespace OpenAgent.Hosting.Security;
 
 /// <summary>
-/// Temporary basic authentication boundary. Credentials are only decoded; the
-/// username and password are intentionally not checked against a user store.
-/// Authorization is a separate future concern.
+/// Development-only Basic authentication boundary. Production ingress uses a
+/// configured identity provider through the JWT Bearer scheme.
 /// </summary>
 internal sealed class BasicAuthenticationHandler(
     IOptionsMonitor<AuthenticationSchemeOptions> options,
@@ -55,6 +54,12 @@ internal sealed class BasicAuthenticationHandler(
         if (separator < 0)
         {
             return Task.FromResult(AuthenticateResult.Fail("Invalid Basic credentials."));
+        }
+
+        if (!IsDevelopmentAnonymousAllowed())
+        {
+            return Task.FromResult(AuthenticateResult.Fail(
+                "Basic authentication is only enabled for local development."));
         }
 
         string username = decoded[..separator];

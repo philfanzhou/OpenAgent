@@ -1,4 +1,5 @@
 using OpenAgent.Contracts.Configuration;
+using OpenAgent.Contracts.Security;
 using OpenAgent.Router.Models;
 
 namespace OpenAgent.Router;
@@ -8,12 +9,14 @@ public interface IAgentProvider
     string Id { get; }
 
     Task<IReadOnlyList<AgentSummary>> GetAgentsAsync(
+        IAgentUserContext userContext,
         CancellationToken cancellationToken = default);
 
     Task<IntentRecognitionResult?> RecognizeIntentAsync(
         string intentAgentId,
         IReadOnlyList<AgentSummary> agents,
         string message,
+        IAgentUserContext userContext,
         CancellationToken cancellationToken = default);
 
     Task<AgentForwardingTarget?> ResolveForwardingAsync(

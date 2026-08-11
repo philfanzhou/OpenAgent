@@ -7,16 +7,22 @@ public class AssemblyDependencyTests
 {
     [Theory]
     [InlineData("OpenAgent.Contracts")]
-    [InlineData("OpenAgent.Hosting")]
-    public void FoundationAssemblies_DoNotReferenceOtherOpenAgentAssemblies(string assemblyName)
+    [InlineData("OpenAgent.Authorization")]
+    public void ContractAssemblies_DoNotReferenceOtherOpenAgentAssemblies(string assemblyName)
     {
         AssertOpenAgentReferences(assemblyName, []);
     }
 
     [Fact]
-    public void Core_ReferencesOnlyContracts()
+    public void Hosting_ReferencesOnlyAuthorizationContracts()
     {
-        AssertOpenAgentReferences("OpenAgent.Core", ["OpenAgent.Contracts"]);
+        AssertOpenAgentReferences("OpenAgent.Hosting", ["OpenAgent.Authorization"]);
+    }
+
+    [Fact]
+    public void Core_ReferencesOnlyContractsAndAuthorization()
+    {
+        AssertOpenAgentReferences("OpenAgent.Core", ["OpenAgent.Authorization", "OpenAgent.Contracts"]);
     }
 
     [Fact]
@@ -32,7 +38,7 @@ public class AssemblyDependencyTests
     {
         AssertOpenAgentReferences(
             "OpenAgent.Engine.Host",
-            ["OpenAgent.Contracts", "OpenAgent.Core", "OpenAgent.Engine", "OpenAgent.Hosting"]);
+            ["OpenAgent.Authorization", "OpenAgent.Contracts", "OpenAgent.Core", "OpenAgent.Engine", "OpenAgent.Hosting"]);
     }
 
     [Fact]
@@ -40,7 +46,7 @@ public class AssemblyDependencyTests
     {
         AssertOpenAgentReferences(
             "OpenAgent.Router",
-            ["OpenAgent.Contracts", "OpenAgent.Hosting"]);
+            ["OpenAgent.Authorization", "OpenAgent.Contracts", "OpenAgent.Hosting"]);
     }
 
     private static void AssertOpenAgentReferences(

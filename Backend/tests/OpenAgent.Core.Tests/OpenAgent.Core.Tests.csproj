@@ -12,6 +12,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\OpenAgent.Authorization\OpenAgent.Authorization.csproj" />
     <ProjectReference Include="..\..\src\OpenAgent.Core\OpenAgent.Core.csproj" />
   </ItemGroup>
 

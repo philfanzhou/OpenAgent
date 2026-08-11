@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using OpenAgent.Contracts.Configuration;
+using OpenAgent.Contracts.Security;
 using OpenAgent.Router.Models;
 using OpenAgent.Router.Options;
 using OpenAgent.Router.Routing;
@@ -61,6 +62,7 @@ public class AgentProviderRegistryTests
         public string Id => id;
 
         public Task<IReadOnlyList<AgentSummary>> GetAgentsAsync(
+            IAgentUserContext userContext,
             CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<AgentSummary>>([]);
 
@@ -68,6 +70,7 @@ public class AgentProviderRegistryTests
             string intentAgentId,
             IReadOnlyList<AgentSummary> agents,
             string message,
+            IAgentUserContext userContext,
             CancellationToken cancellationToken) =>
             Task.FromResult<IntentRecognitionResult?>(null);
 

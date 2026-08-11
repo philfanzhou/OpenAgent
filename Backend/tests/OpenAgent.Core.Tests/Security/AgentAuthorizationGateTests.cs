@@ -1,5 +1,6 @@
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Security;
+using OpenAgent.Authorization;
 using OpenAgent.Core.Models;
 using OpenAgent.Core.Security;
 using Xunit;
@@ -43,6 +44,32 @@ public class AgentAuthorizationGateTests
             "a1", AgentResourceType.Agent, "a1", "execute", Context(), default);
 
         Assert.False(result);
+    }
+
+    [Fact]
+    public async Task ClaimsAuthorization_EnforcesGatewayResourceGrant()
+    {
+        var service = new ClaimsAgentAuthorizationService();
+        var context = new AgentUserContext
+        {
+            UserId = "u1",
+            TenantId = "t1",
+            IsAuthenticated = true,
+            Claims = new Dictionary<string, string>
+            {
+                [PermissionClaimTypes.Permission] = "agent.execute:finance,mcp.use"
+            }
+        };
+
+        Assert.True(await service.IsAuthorizedAsync(
+            new AgentAuthorizationRequest("finance", AgentResourceType.Agent, "finance", "execute"),
+            context));
+        Assert.False(await service.IsAuthorizedAsync(
+            new AgentAuthorizationRequest("support", AgentResourceType.Agent, "support", "execute"),
+            context));
+        Assert.True(await service.IsAuthorizedAsync(
+            new AgentAuthorizationRequest("finance", AgentResourceType.Mcp, "billing", "use"),
+            context));
     }
 
     [Fact]

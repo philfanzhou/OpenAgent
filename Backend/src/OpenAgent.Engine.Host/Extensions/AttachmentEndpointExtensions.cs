@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Mvc;
+using OpenAgent.Authorization;
 using OpenAgent.Contracts.Content;
 using OpenAgent.Contracts.Requests;
+using OpenAgent.Contracts.Routing;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Runtime.Agent;
 using OpenAgent.Engine.Host.Attachments;
@@ -13,11 +15,13 @@ internal static class AttachmentEndpointExtensions
     internal static void MapAttachmentChat(this RouteGroupBuilder group)
     {
         group.MapPost("/chat/attachments", ExecuteAsync)
+            .RequireAuthorization(PermissionCatalog.AgentExecute)
             .DisableAntiforgery()
             .WithName("ChatWithAttachments")
             .WithTags("Agent");
 
         group.MapPost("/chat/attachments/stream", ExecuteStreamAsync)
+            .RequireAuthorization(PermissionCatalog.AgentExecute)
             .DisableAntiforgery()
             .WithName("ChatWithAttachmentsStream")
             .WithTags("Agent");
@@ -83,8 +87,7 @@ internal static class AttachmentEndpointExtensions
         return new AgentRequest
         {
             Query = message,
-            AgentId = form["agentId"].FirstOrDefault()
-                ?? context.Request.Headers["X-Agent-Id"].FirstOrDefault(),
+            AgentId = ResolveAgentId(context.Request, form),
             ConversationId = form["conversationId"].FirstOrDefault()
                 ?? context.Request.Headers["X-Conversation-Id"].FirstOrDefault(),
             TraceId = context.GetAgentRequest().TraceId,
@@ -92,4 +95,9 @@ internal static class AttachmentEndpointExtensions
             Attachments = attachments
         };
     }
+
+    internal static string? ResolveAgentId(HttpRequest request, IFormCollection form) =>
+        request.Headers[AgentRoutingHeaders.ResolvedAgentId].FirstOrDefault()
+        ?? form["agentId"].FirstOrDefault()
+        ?? request.Headers["X-Agent-Id"].FirstOrDefault();
 }

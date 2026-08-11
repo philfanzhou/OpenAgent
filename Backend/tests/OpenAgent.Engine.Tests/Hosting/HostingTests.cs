@@ -5,6 +5,8 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
+using OpenAgent.Authorization;
+using OpenAgent.Contracts.Security;
 using OpenAgent.Engine.Host.Extensions;
 using OpenAgent.Hosting;
 using Xunit;
@@ -121,5 +123,35 @@ public class HostingTests
             endpoint => endpoint.RoutePattern.RawText?.StartsWith(
                 "/api/v1/admin",
                 StringComparison.Ordinal) == true);
+    }
+
+    [Theory]
+    [InlineData("/api/v1/agent/chat", "POST", PermissionCatalog.AgentExecute)]
+    [InlineData("/api/v1/agent/agents", "GET", PermissionCatalog.AgentRead)]
+    [InlineData("/api/v1/agent/conversations/{conversationId}", "DELETE", PermissionCatalog.ConversationDelete)]
+    [InlineData("/api/v1/admin/agents", "GET", PermissionCatalog.AgentRead)]
+    [InlineData("/api/v1/admin/llm", "GET", PermissionCatalog.AgentConfigRead)]
+    [InlineData("/api/v1/admin/llm/{id}", "PUT", PermissionCatalog.AgentConfigWrite)]
+    [InlineData("/api/v1/admin/mcp/test-connection", "POST", PermissionCatalog.CapabilityTest)]
+    public void MapEndpoints_AttachRequiredPermissionPolicy(
+        string route,
+        string method,
+        string requiredPolicy)
+    {
+        var builder = WebApplication.CreateBuilder();
+        builder.Services.AddRouting();
+        var app = builder.Build();
+        app.MapAgentEndpoints();
+        app.MapManagementEndpoints();
+
+        RouteEndpoint endpoint = ((IEndpointRouteBuilder)app).DataSources
+            .SelectMany(source => source.Endpoints)
+            .OfType<RouteEndpoint>()
+            .Single(candidate => candidate.RoutePattern.RawText == route
+                && candidate.Metadata.GetMetadata<IHttpMethodMetadata>()?.HttpMethods.Contains(method) == true);
+
+        Assert.Contains(
+            endpoint.Metadata.GetOrderedMetadata<IAuthorizeData>(),
+            authorization => authorization.Policy == requiredPolicy);
     }
 }

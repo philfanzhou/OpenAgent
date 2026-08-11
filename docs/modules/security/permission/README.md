@@ -1,33 +1,47 @@
-# Permission
+# 统一权限
 
-权限模块包含两层：`IPermissionEvaluator` 判断用户是否已认证，`IAgentAuthorizationService` 对六类运行时资源进行细粒度授权。
+权限是独立的跨层能力，不是 Gateway 的附属功能。`OpenAgent.Authorization` 是不依赖 ASP.NET、Hosting、Router、Engine 或 Contracts 的纯 .NET 程序集，定义 `AuthorizationSubject`、`IPermissionAuthorizationService`、`DelegatedAuthorization` 与 `IDelegatedAuthorizationIssuer`，以及权限目录和匹配规则。Router、Engine、MCP/Skill 适配器和第三方服务都可以只引用这一程序集并提供自己的实现。
 
-## Core Capabilities
-| Capability | Description |
-|-----------|-------------|
-| 认证评估 | `IPermissionEvaluator.IsAuthenticatedAsync` 判断认证状态 |
-| 资源授权 | `IAgentAuthorizationService` 对 Agent/Model/Tool/Function/MCP/Skill 六类资源授权 |
-| 双阶段校验 | 发现阶段过滤可见性，执行阶段复核权限 |
-| 统一拒绝语义 | `AgentAuthorizationGate` 拒绝时统一返回 `PermissionDenied` |
+认证和授权是两个严格分开的阶段：认证适配器（JWT、Basic、mTLS、API Key 或第三方 SSO）先验证凭据并形成平台身份上下文；只有成功认证的上下文才能被 Router/Hosting 映射为不含 `IsAuthenticated` 的 `AuthorizationSubject`。授权服务只处理“该主体能否对某资源执行某动作”，不读取 HTTP、认证方案或令牌；未认证请求在到达授权服务前被拒绝。
 
-## Architecture
+当前 `OpenAgent.Hosting` 的 HMAC 实现只是一个可替换适配器：它把已认证的 Claims 映射为 `AuthorizationSubject`，实现 `IPermissionAuthorizationService`，并将已经计算和裁剪的 `DelegatedAuthorization` 编码为短时票据。未来接入数据库策略、OPA、企业 IAM 或远程授权服务时，替换策略接口和/或签发接口即可；业务层不引用 Hosting 的网关实现。
+
+## 决策与执行
+
 ```text
-IAgentUserContext + AgentAuthorizationRequest
-    → IAgentAuthorizationService
-    → AgentAuthorizationGate
-    → allow 或 AgentException(PermissionDenied)
+认证凭据（JWT / mTLS / API Key / SSO）
+                    │
+                    ▼
+            已认证身份上下文
+                    │
+                    ▼
+          AuthorizationSubject
+                    │
+                    ▼
+      IPermissionAuthorizationService
+             ├─ 过滤 Agent 目录
+             ├─ 过滤意图识别候选集
+             ├─ 拒绝未授权显式 Agent
+             └─ 裁剪 DelegatedAuthorization
+                    │
+                    ▼
+      IDelegatedAuthorizationIssuer
+                    │
+          ┌─────────┴─────────┐
+          ▼                   ▼
+       Engine           第三方 Agent（显式启用）
+          │
+          └─ Agent / Model / Tool / Function / MCP / Skill 执行检查
 ```
 
-## Current Status
-**Partial** — `PermissionEvaluator` 仍只处理认证。细粒度决策委托给可替换的 `IAgentAuthorizationService`，仓库内不提供具体 RBAC/ABAC 规则库。默认 `AllowAllAgentAuthorizationService` 保持旧配置兼容。
+权限支持通用授权和资源约束两种形式：`agent.execute` 允许执行任意 Agent，`agent.execute:finance` 只允许指定 Agent，`agent.execute:*` 是显式通配。管理、会话和能力测试分别使用 `agent.config.*`、`conversation.*` 与 `capability.test`。
 
-## Limits
-- 默认实现仅检查 `IsAuthenticated`，不处理角色/声明/租户策略
-- 生产部署应通过 DI 替换 `IAgentAuthorizationService` 实现
-- `ResourceId` 只能包含业务标识，不得包含 API key、token 等敏感信息
+Router 在调用意图识别 Agent 前先移除无权访问的候选项，因此用户消息、Agent 名称和描述只会与权限内的数据组合。Engine 的 `ClaimsAgentAuthorizationService` 不再读取本地角色策略，只消费票据中的最终 permission；MCP、Skill 和模型调用沿用同一授权结果。
 
-## Source
-- Contracts: `Backend/src/OpenAgent.Core/Security/IAgentAuthorizationService.cs`
-- Implementation: `Backend/src/OpenAgent.Core/Security/AllowAllAgentAuthorizationService.cs`, `Backend/src/OpenAgent.Core/Security/AgentAuthorizationGate.cs`
-- Data: `Backend/src/OpenAgent.Contracts/Security/AgentAuthorization.cs`, `Backend/src/OpenAgent.Contracts/Security/AgentUserContext.cs`
-- Tests: `Backend/tests/OpenAgent.Core.Tests/Security/AgentAuthorizationGateTests.cs`
+第三方 Agent 默认只收到其服务凭据，不收到用户身份或内部票据。只有同时配置 `ForwardGatewayGrant=true`、独立 `GatewayAudience` 和该 audience 的独立签名密钥时，Router 才将授权服务确认过的 `DelegatedAuthorization` 交给 `IDelegatedAuthorizationIssuer` 签发 audience 绑定的票据；第三方必须使用自己的密钥验证签名、有效期和 audience，不能获得或复用 Engine 密钥。第三方也可以实现策略接口或签发接口，选择 JWT、PASETO 或其企业授权服务，而不需要依赖 OpenAgent.Hosting。
+
+## 默认生产策略
+
+普通已认证用户拥有 Agent 读取/执行、模型与能力使用、本人会话读删和身份读取权限。`OpenAgent.Admin` 角色映射到 `*`，用于配置管理和连接测试。部署方可用 JWT scope 或 `GatewayAuthorization:RolePermissions` 收紧策略。
+
+密钥轮换、多 issuer 并行验证和集中策略服务不在当前 Hosting 适配器的实现范围；这些能力可通过替换 `IPermissionAuthorizationService` 和/或 `IDelegatedAuthorizationIssuer` 接入，而不改变 Router、Engine 或第三方适配器。

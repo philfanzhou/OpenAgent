@@ -17,8 +17,13 @@ internal sealed class TenantIsolationMiddleware(RequestDelegate next, ILogger<Te
         }
 
         var headerTenantId = context.Request.Headers["X-Tenant-Id"].FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(userContext.TenantId))
+        {
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            return;
+        }
+
         if (!string.IsNullOrEmpty(headerTenantId)
-            && userContext.TenantId != null
             && headerTenantId != userContext.TenantId)
         {
             RouterLog.TenantMismatchRejected(
@@ -28,7 +33,7 @@ internal sealed class TenantIsolationMiddleware(RequestDelegate next, ILogger<Te
             return;
         }
 
-        context.Items[TenantItemKey] = userContext.TenantId ?? headerTenantId;
+        context.Items[TenantItemKey] = userContext.TenantId;
         await next(context);
     }
 
