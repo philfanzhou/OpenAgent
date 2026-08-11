@@ -1,6 +1,6 @@
 namespace OpenAgent.Authorization;
 
-public static class DelegatedPermissionHeaders
+public static class DelegatedAuthorizationHeaders
 {
     public const string Grant = "X-OpenAgent-Gateway-Grant";
 }

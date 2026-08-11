@@ -43,9 +43,9 @@ public class GatewayAuthorizationTests
     public void Authorization_CombinesDefaultsRolesAndResourceClaims()
     {
         using ServiceProvider provider = CreateProvider();
-        IPermissionAuthorizer authorization = provider
-            .GetRequiredService<IPermissionAuthorizer>();
-        PermissionSubject subject = new(
+        IPermissionAuthorizationService authorization = provider
+            .GetRequiredService<IPermissionAuthorizationService>();
+        AuthorizationSubject subject = new(
             "user-1",
             "tenant-1",
             ["Operator"],
@@ -53,21 +53,21 @@ public class GatewayAuthorizationTests
             new Dictionary<string, string>
             {
                 ["scope"] = "agent.execute:finance"
-            },
-            IsAuthenticated: true);
+            });
 
-        Assert.True(authorization.IsAuthorized(subject, "agent.read"));
-        Assert.True(authorization.IsAuthorized(subject, "conversation.read"));
-        Assert.True(authorization.IsAuthorized(subject, "agent.execute", "finance"));
-        Assert.False(authorization.IsAuthorized(subject, "agent.execute", "support"));
-        Assert.False(authorization.IsAuthorized(subject, "agent.config.write"));
+        Assert.True(authorization.Authorize(new(subject, "agent.read")).IsAllowed);
+        Assert.True(authorization.Authorize(new(subject, "conversation.read")).IsAllowed);
+        Assert.True(authorization.Authorize(new(subject, "agent.execute", "finance")).IsAllowed);
+        Assert.False(authorization.Authorize(new(subject, "agent.execute", "support")).IsAllowed);
+        Assert.False(authorization.Authorize(new(subject, "agent.config.write")).IsAllowed);
     }
 
     [Fact]
     public async Task AgentExecutePolicy_ScopedGrantPassesCoarseEndpointCheck()
     {
         using ServiceProvider provider = CreateProvider();
-        IAuthorizationService authorization = provider.GetRequiredService<IAuthorizationService>();
+        Microsoft.AspNetCore.Authorization.IAuthorizationService authorization = provider
+            .GetRequiredService<Microsoft.AspNetCore.Authorization.IAuthorizationService>();
         var principal = new ClaimsPrincipal(new ClaimsIdentity(
         [
             new Claim("sub", "intent-router"),
@@ -87,27 +87,27 @@ public class GatewayAuthorizationTests
     {
         var time = new MutableTimeProvider(new DateTimeOffset(2026, 8, 8, 0, 0, 0, TimeSpan.Zero));
         using ServiceProvider provider = CreateProvider(time);
-        IDelegatedPermissionGrantIssuer authorization = provider
-            .GetRequiredService<IDelegatedPermissionGrantIssuer>();
+        IDelegatedAuthorizationIssuer authorization = provider
+            .GetRequiredService<IDelegatedAuthorizationIssuer>();
         GatewayGrantCodec codec = provider.GetRequiredService<GatewayGrantCodec>();
-        PermissionSubject subject = new(
+        AuthorizationSubject subject = new(
             "user-1",
             "tenant-1",
             [],
             [],
-            new Dictionary<string, string>(),
-            IsAuthenticated: true);
+            new Dictionary<string, string>());
 
-        string grant = authorization.Issue(subject);
+        string grant = authorization.Issue(DelegatedAuthorization.Create(subject, ["agent.read"]));
 
         Assert.True(codec.TryDecode(grant, "openagent-engine", out GatewayGrantPayload? payload));
         Assert.Equal("user-1", payload?.Subject);
         Assert.False(codec.TryDecode(grant, "external:partner", out _));
         Assert.False(codec.TryDecode(grant + "tampered", "openagent-engine", out _));
 
-        string restrictedGrant = authorization.IssueRestricted(
+        string restrictedGrant = authorization.Issue(DelegatedAuthorization.Restrict(
             subject,
-            ["agent.execute:intent-router", "model.invoke"]);
+            ["agent.execute:intent-router", "model.invoke"],
+            ["agent.execute:intent-router", "model.invoke"]));
         Assert.True(codec.TryDecode(
             restrictedGrant,
             "openagent-engine",
@@ -117,10 +117,11 @@ public class GatewayAuthorizationTests
             restrictedPayload?.Permissions);
         Assert.DoesNotContain("agent.read", restrictedPayload?.Permissions ?? []);
 
-        string externalGrant = authorization.IssueRestricted(
+        string externalGrant = authorization.Issue(DelegatedAuthorization.Restrict(
             subject,
             ["agent.execute:support-v2"],
-            "external-partner");
+            ["agent.execute:support-v2"],
+            "external-partner"));
         Assert.True(codec.TryDecode(
             externalGrant,
             "external-partner",
@@ -131,13 +132,29 @@ public class GatewayAuthorizationTests
         using ServiceProvider attackerProvider = CreateProvider(
             signingKey: PartnerSigningKey,
             includePartnerKey: false);
-        IDelegatedPermissionGrantIssuer attacker = attackerProvider
-            .GetRequiredService<IDelegatedPermissionGrantIssuer>();
-        string forgedEngineGrant = attacker.IssueRestricted(subject, ["*"]);
+        IDelegatedAuthorizationIssuer attacker = attackerProvider
+            .GetRequiredService<IDelegatedAuthorizationIssuer>();
+        string forgedEngineGrant = attacker.Issue(DelegatedAuthorization.Create(subject, ["*"]));
         Assert.False(codec.TryDecode(forgedEngineGrant, "openagent-engine", out _));
 
         time.Advance(TimeSpan.FromMinutes(2));
         Assert.False(codec.TryDecode(grant, "openagent-engine", out _));
+    }
+
+    [Fact]
+    public void Delegation_RejectsPermissionsOutsideTheAuthorizedSet()
+    {
+        AuthorizationSubject subject = new(
+            "user-1",
+            "tenant-1",
+            [],
+            [],
+            new Dictionary<string, string>());
+
+        Assert.Throws<UnauthorizedAccessException>(() => DelegatedAuthorization.Restrict(
+            subject,
+            ["agent.execute:finance"],
+            ["agent.execute:support"]));
     }
 
     private static ServiceProvider CreateProvider(

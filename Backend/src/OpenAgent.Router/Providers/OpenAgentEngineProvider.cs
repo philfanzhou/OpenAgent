@@ -23,14 +23,16 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
     private readonly string? _baseUrl;
     private readonly IReadOnlyDictionary<string, string> _serviceHeaders;
     private readonly IRouteTable _routeTable;
-    private readonly IDelegatedPermissionGrantIssuer _grantIssuer;
+    private readonly IPermissionAuthorizationService _authorization;
+    private readonly IDelegatedAuthorizationIssuer _grantIssuer;
     private readonly HttpMessageInvoker _httpClient;
 
     internal OpenAgentEngineProvider(
         string id,
         IConfiguration settings,
         IRouteTable routeTable,
-        IDelegatedPermissionGrantIssuer grantIssuer,
+        IPermissionAuthorizationService authorization,
+        IDelegatedAuthorizationIssuer grantIssuer,
         HttpMessageHandler? handler = null)
     {
         Id = id;
@@ -50,6 +52,7 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
                 header => header.Value!,
                 StringComparer.OrdinalIgnoreCase);
         _routeTable = routeTable;
+        _authorization = authorization;
         _grantIssuer = grantIssuer;
         _httpClient = new HttpMessageInvoker(handler ?? CreateHandler());
     }

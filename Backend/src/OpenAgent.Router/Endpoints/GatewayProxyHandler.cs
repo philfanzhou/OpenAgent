@@ -18,10 +18,10 @@ internal static class GatewayProxyHandler
         ForwarderRequestConfig requestConfig,
         bool requireAuthentication)
     {
-        IPermissionAuthorizer authorization = context.RequestServices
-            .GetRequiredService<IPermissionAuthorizer>();
-        IDelegatedPermissionGrantIssuer grantIssuer = context.RequestServices
-            .GetRequiredService<IDelegatedPermissionGrantIssuer>();
+        IPermissionAuthorizationService authorization = context.RequestServices
+            .GetRequiredService<IPermissionAuthorizationService>();
+        IDelegatedAuthorizationIssuer grantIssuer = context.RequestServices
+            .GetRequiredService<IDelegatedAuthorizationIssuer>();
         if (requireAuthentication && !userContext.IsAuthenticated)
         {
             return Results.Unauthorized();

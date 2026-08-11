@@ -109,9 +109,9 @@ internal static class AgentAuthenticationExtensions
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<GatewayGrantCodec>();
         services.AddSingleton<GatewayAuthorizationService>();
-        services.AddSingleton<IPermissionAuthorizer>(provider =>
+        services.AddSingleton<IPermissionAuthorizationService>(provider =>
             provider.GetRequiredService<GatewayAuthorizationService>());
-        services.AddSingleton<IDelegatedPermissionGrantIssuer>(provider =>
+        services.AddSingleton<IDelegatedAuthorizationIssuer>(provider =>
             provider.GetRequiredService<GatewayAuthorizationService>());
         return services;
     }

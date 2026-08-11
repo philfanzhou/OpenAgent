@@ -34,6 +34,7 @@ public class OpenAgentEngineProviderTests
             settings,
             routeTable,
             new TestPermissionServices(),
+            new TestPermissionServices(),
             handler);
 
         var requestContext = new AgentProviderRequestContext(

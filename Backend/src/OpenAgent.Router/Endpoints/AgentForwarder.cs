@@ -38,7 +38,7 @@ internal sealed class AgentForwarder(
             ?? context.Request.Headers["X-Conversation-Id"].FirstOrDefault();
         string? agentId = context.Features.Get<AgentRoutingFeature>()?.AgentId;
         string traceId = Activity.Current?.Id ?? context.TraceIdentifier;
-        string gatewayGrant = grantIssuer.Issue(userContext);
+        string gatewayGrant = grantIssuer.Issue(authorization.CreateDelegation(userContext));
 
         AgentForwardingTarget? target = await provider.ResolveForwardingAsync(
             action,

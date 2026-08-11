@@ -24,7 +24,8 @@ public class AgentForwarderTests
                 TenantId = "user-tenant",
                 IsAuthenticated = true
             })
-            .AddSingleton<IDelegatedPermissionGrantIssuer>(new TestPermissionServices())
+            .AddSingleton<IPermissionAuthorizationService>(new TestPermissionServices())
+            .AddSingleton<IDelegatedAuthorizationIssuer>(new TestPermissionServices())
             .BuildServiceProvider();
         var context = new DefaultHttpContext
         {

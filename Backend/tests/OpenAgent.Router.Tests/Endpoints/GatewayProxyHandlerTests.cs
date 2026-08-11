@@ -154,8 +154,8 @@ public class GatewayProxyHandlerTests
         {
             RequestServices = new ServiceCollection()
                 .AddLogging()
-                .AddSingleton<IPermissionAuthorizer>(new TestPermissionServices())
-                .AddSingleton<IDelegatedPermissionGrantIssuer>(new TestPermissionServices())
+                .AddSingleton<IPermissionAuthorizationService>(new TestPermissionServices())
+                .AddSingleton<IDelegatedAuthorizationIssuer>(new TestPermissionServices())
                 .BuildServiceProvider()
         };
         context.Request.Method = method;

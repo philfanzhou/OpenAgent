@@ -11,14 +11,23 @@
 | 统一拒绝语义 | `AgentAuthorizationGate` 拒绝时统一返回 `PermissionDenied` |
 
 ```text
-JWT claims + authenticated defaults + role grants
+认证凭据（JWT / mTLS / API Key / SSO）
                     │
                     ▼
-        IPermissionAuthorizer
+            已认证身份上下文
+                    │
+                    ▼
+          AuthorizationSubject
+                    │
+                    ▼
+      IPermissionAuthorizationService
              ├─ 过滤 Agent 目录
              ├─ 过滤意图识别候选集
              ├─ 拒绝未授权显式 Agent
-             └─ IDelegatedPermissionGrantIssuer
+             └─ 裁剪 DelegatedAuthorization
+                    │
+                    ▼
+      IDelegatedAuthorizationIssuer
                     │
           ┌─────────┴─────────┐
           ▼                   ▼
