@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Primitives;
 using OpenAgent.Contracts.Routing;
+using OpenAgent.Contracts.Security;
 using OpenAgent.Engine.Host.Extensions;
 using Xunit;
 

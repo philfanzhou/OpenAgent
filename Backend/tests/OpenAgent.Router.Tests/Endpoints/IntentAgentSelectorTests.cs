@@ -1,4 +1,5 @@
 using OpenAgent.Contracts.Configuration;
+using OpenAgent.Contracts.Security;
 using OpenAgent.Router.Endpoints;
 using OpenAgent.Router.Models;
 using OpenAgent.Router.Options;
@@ -53,6 +54,7 @@ public class IntentAgentSelectorTests
         string? decision = await selector.SelectAsync(
             "find my invoice",
             Candidates,
+            new AgentUserContext { UserId = "user-1", TenantId = "tenant-1", IsAuthenticated = true },
             CancellationToken.None);
 
         Assert.Equal("finance", decision);
@@ -71,6 +73,7 @@ public class IntentAgentSelectorTests
         public string Message { get; private set; } = string.Empty;
 
         public Task<IReadOnlyList<AgentSummary>> GetAgentsAsync(
+            IAgentUserContext userContext,
             CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<AgentSummary>>([]);
 
@@ -78,6 +81,7 @@ public class IntentAgentSelectorTests
             string intentAgentId,
             IReadOnlyList<AgentSummary> agents,
             string message,
+            IAgentUserContext userContext,
             CancellationToken cancellationToken)
         {
             AgentId = intentAgentId;

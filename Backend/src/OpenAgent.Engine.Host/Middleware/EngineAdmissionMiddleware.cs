@@ -38,8 +38,8 @@ internal sealed class EngineAdmissionMiddleware(RequestDelegate next)
             throw new TenantDataIsolationException(null, null, "TenantId is required but not provided");
         }
 
-        if (string.IsNullOrWhiteSpace(agentId)
-            || !GatewayPermissionMatcher.IsAllowed(
+        if (!string.IsNullOrWhiteSpace(agentId)
+            && !GatewayPermissionMatcher.IsAllowed(
                 GatewayPermissionMatcher.ReadPermissions(user.Claims),
                 GatewayPermissions.AgentExecute,
                 agentId))

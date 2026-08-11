@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Security;
+using OpenAgent.Hosting.Authorization;
 using OpenAgent.Router.Endpoints;
 using OpenAgent.Router.Middleware;
 using OpenAgent.Router.Models;
@@ -24,14 +25,18 @@ public class AgentForwarderTests
                 TenantId = "user-tenant",
                 IsAuthenticated = true
             })
+            .AddSingleton<IGatewayAuthorizationService>(new TestGatewayAuthorizationService())
             .BuildServiceProvider();
         var context = new DefaultHttpContext
         {
             RequestServices = services
         };
         context.Items[TenantIsolationMiddleware.TenantItemKey] = "request-tenant";
-        context.Features.Set(new AgentRoutingFeature("conversation-1", provider.Id));
-        using var forwarder = new AgentForwarder(null!, NullLogger<AgentForwarder>.Instance);
+        context.Features.Set(new AgentRoutingFeature("conversation-1", provider.Id, "finance"));
+        using var forwarder = new AgentForwarder(
+            null!,
+            new TestGatewayAuthorizationService(),
+            NullLogger<AgentForwarder>.Instance);
 
         await forwarder.ForwardAsync(
             context,
@@ -53,6 +58,7 @@ public class AgentForwarderTests
         public string? ConversationId { get; private set; }
 
         public Task<IReadOnlyList<AgentSummary>> GetAgentsAsync(
+            IAgentUserContext userContext,
             CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<AgentSummary>>([]);
 
@@ -60,6 +66,7 @@ public class AgentForwarderTests
             string intentAgentId,
             IReadOnlyList<AgentSummary> agents,
             string message,
+            IAgentUserContext userContext,
             CancellationToken cancellationToken) =>
             Task.FromResult<IntentRecognitionResult?>(null);
 

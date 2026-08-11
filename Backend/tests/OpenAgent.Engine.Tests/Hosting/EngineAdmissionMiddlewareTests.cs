@@ -17,7 +17,6 @@ public class EngineAdmissionMiddlewareTests
 
     [Theory]
     [InlineData("agent.execute:intent-router", "support")]
-    [InlineData("agent.execute:intent-router", null)]
     public void EnsureChatAccess_NonMatchingAgent_IsRejected(
         string permission,
         string? agentId)
@@ -28,6 +27,14 @@ public class EngineAdmissionMiddlewareTests
             EngineAdmissionMiddleware.EnsureChatAccess(user, agentId));
 
         Assert.Equal(AgentErrorCode.PermissionDenied, exception.ErrorCode);
+    }
+
+    [Fact]
+    public void EnsureChatAccess_NoResolvedAgent_DefersExactCheckToExecution()
+    {
+        AgentUserContext user = CreateUser("agent.execute:finance");
+
+        EngineAdmissionMiddleware.EnsureChatAccess(user, null);
     }
 
     private static AgentUserContext CreateUser(string permission) => new()

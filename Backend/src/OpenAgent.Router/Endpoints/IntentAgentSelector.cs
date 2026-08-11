@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Configuration;
+using OpenAgent.Contracts.Security;
 using OpenAgent.Router.Models;
 using OpenAgent.Router.Options;
 
@@ -14,6 +15,7 @@ internal sealed class IntentAgentSelector(
     public async Task<string?> SelectAsync(
         string message,
         IReadOnlyList<AgentSummary> candidates,
+        IAgentUserContext userContext,
         CancellationToken cancellationToken)
     {
         if (candidates.Count == 0)
@@ -35,6 +37,7 @@ internal sealed class IntentAgentSelector(
                 _options.AgentId,
                 candidates,
                 message,
+                userContext,
                 timeout.Token).ConfigureAwait(false);
             return ValidateResult(result, candidates, _options.MinimumConfidence);
         }

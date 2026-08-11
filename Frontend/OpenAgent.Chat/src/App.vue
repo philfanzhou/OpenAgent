@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { api, getAccessToken, getConnectionMode, getEngineBaseUrl, getRouterBaseUrl, getTenantId, makeLocalConversation, setAccessToken, setConnectionMode, setEngineBaseUrl, setRouterBaseUrl, setTenantId } from './api'
+import { api, getAccessToken, getAccessTokenType, getConnectionMode, getEngineBaseUrl, getRouterBaseUrl, getTenantId, makeLocalConversation, setAccessToken, setConnectionMode, setEngineBaseUrl, setRouterBaseUrl, setTenantId } from './api'
 import ChatHeader from './components/ChatHeader.vue'
 import ChatMessages from './components/ChatMessages.vue'
 import ChatSidebar from './components/ChatSidebar.vue'
@@ -12,6 +12,7 @@ const connectionMode = ref<ConnectionMode>(getConnectionMode())
 const routerUrl = ref(getRouterBaseUrl())
 const engineUrl = ref(getEngineBaseUrl())
 const token = ref(getAccessToken())
+const tokenType = ref(getAccessTokenType())
 const tenantId = ref(getTenantId())
 const showSettings = ref(!(connectionMode.value === 'router' ? routerUrl.value : engineUrl.value))
 const activeSettings = ref<'gateway' | 'diagnostics' | 'llm' | 'agent' | 'mcp' | 'skill' | 'rag'>('gateway')
@@ -158,7 +159,7 @@ async function connect(): Promise<void> {
   setConnectionMode(connectionMode.value)
   setRouterBaseUrl(routerUrl.value)
   setEngineBaseUrl(engineUrl.value)
-  setAccessToken(token.value)
+  setAccessToken(token.value, tokenType.value)
   setTenantId(tenantId.value)
   try {
     await api.health('/ready')
@@ -175,6 +176,9 @@ async function connect(): Promise<void> {
 async function loadAuthConfig(): Promise<void> {
   try {
     authConfig.value = await api.getAuthConfig()
+    if (!token.value) {
+      tokenType.value = authConfig.value.mode === 'JwtBearer' ? 'Bearer' : 'Basic'
+    }
   } catch {
     authConfig.value = null
   }
@@ -185,7 +189,8 @@ async function loginWithPassword(): Promise<void> {
   authLoading.value = true
   try {
     const result = await api.passwordLogin(username.value.trim(), password.value)
-    setAccessToken(result.access_token, result.token_type || 'Basic')
+    tokenType.value = result.token_type || 'Basic'
+    setAccessToken(result.access_token, tokenType.value)
     token.value = result.access_token
     password.value = ''
     await connect()
@@ -860,9 +865,9 @@ onMounted(() => {
       <el-tabs v-model="activeSettings" tab-position="left" class="settings-tabs" @tab-change="handleSettingsTabChange">
         <el-tab-pane label="连接" name="gateway">
           <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">CONNECTION</span><h3>服务连接与身份</h3><p>Router 模式提供意图路由、外部 Agent 和 Engine 服务发现；Engine 模式用于直接联调单个 Engine。</p></div><span class="connection-badge" :class="{ online: statusText === '已连接' }"><i />{{ statusText }}</span></div>
-            <el-form label-position="top" class="connection-form"><el-form-item label="连接模式"><el-radio-group v-model="connectionMode"><el-radio-button value="router">Router</el-radio-button><el-radio-button value="engine">直连 Engine</el-radio-button></el-radio-group></el-form-item><el-form-item label="Router 地址"><el-input v-model="routerUrl" placeholder="http://localhost:5001" /></el-form-item><el-form-item label="Engine 地址"><el-input v-model="engineUrl" placeholder="http://localhost:5000" /></el-form-item><el-form-item label="租户 ID"><el-input v-model="tenantId" placeholder="可选：用于当前工作台隔离" /></el-form-item></el-form>
-            <el-descriptions :column="2" border class="identity-status"><el-descriptions-item label="当前用户">{{ currentUser?.userId || '未连接' }}</el-descriptions-item><el-descriptions-item label="当前租户">{{ currentUser?.tenantId || tenantId || '未识别' }}</el-descriptions-item><el-descriptions-item label="认证状态">{{ currentUser?.isAuthenticated ? '已认证' : '未认证' }}</el-descriptions-item><el-descriptions-item label="登录状态">{{ token ? '已登录（Basic）' : '未登录' }}</el-descriptions-item></el-descriptions>
-            <el-alert title="当前 Basic 模式用于开发联调；生产环境应在 Gateway 接入企业身份提供方并启用统一权限策略。" type="info" :closable="false" />
+            <el-form label-position="top" class="connection-form"><el-form-item label="连接模式"><el-radio-group v-model="connectionMode"><el-radio-button value="router">Router</el-radio-button><el-radio-button value="engine">直连 Engine</el-radio-button></el-radio-group></el-form-item><el-form-item label="Router 地址"><el-input v-model="routerUrl" placeholder="http://localhost:5001" /></el-form-item><el-form-item label="Engine 地址"><el-input v-model="engineUrl" placeholder="http://localhost:5000" /></el-form-item><el-form-item label="租户 ID"><el-input v-model="tenantId" placeholder="可选：用于当前工作台隔离" /></el-form-item><el-form-item label="访问令牌"><el-input v-model="token" type="password" show-password autocomplete="off" placeholder="Development Basic 或企业 Bearer 令牌" /></el-form-item><el-form-item label="令牌类型"><el-select v-model="tokenType"><el-option label="Basic（仅开发）" value="Basic" /><el-option label="Bearer（企业身份）" value="Bearer" /></el-select></el-form-item></el-form>
+            <el-descriptions :column="2" border class="identity-status"><el-descriptions-item label="当前用户">{{ currentUser?.userId || '未连接' }}</el-descriptions-item><el-descriptions-item label="当前租户">{{ currentUser?.tenantId || tenantId || '未识别' }}</el-descriptions-item><el-descriptions-item label="认证状态">{{ currentUser?.isAuthenticated ? '已认证' : '未认证' }}</el-descriptions-item><el-descriptions-item label="登录状态">{{ token ? `已配置（${tokenType}）` : '未登录' }}</el-descriptions-item></el-descriptions>
+            <el-alert title="Basic 仅用于 Development；生产环境请通过 Router 使用企业 Bearer 令牌，Engine 应保持私有。" type="info" :closable="false" />
             <section class="login-card"><div class="login-card-heading"><div><span class="eyebrow">BASIC ACCOUNT</span><h4>登录 {{ activeEndpointLabel }}</h4></div><span class="login-config-status">{{ authConfig?.mode || 'Basic' }}</span></div><el-form label-position="top" class="login-form"><el-form-item label="账号"><el-input v-model="username" autocomplete="username" placeholder="请输入账号" /></el-form-item><el-form-item label="密码"><el-input v-model="password" type="password" show-password autocomplete="current-password" placeholder="请输入密码" /></el-form-item></el-form><el-button type="primary" :loading="authLoading" :disabled="!authConfig?.password.enabled" @click="loginWithPassword">账号密码登录</el-button><small class="login-hint">凭据只保存在当前浏览器会话，不写入本地持久化存储。</small></section>
             <div class="button-row"><el-button type="primary" @click="connect">保存并连接</el-button><el-button @click="api.health('/health').then(() => ElMessage.success('Live 健康检查通过')).catch(notifyError)">测试 Live</el-button><el-button @click="api.health('/ready').then(() => ElMessage.success('Ready 健康检查通过')).catch(notifyError)">测试 Ready</el-button></div>
           </section>

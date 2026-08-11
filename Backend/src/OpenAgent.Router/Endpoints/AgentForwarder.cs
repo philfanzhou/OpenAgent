@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using OpenAgent.Contracts.Security;
+using OpenAgent.Hosting.Authorization;
 using OpenAgent.Router.Middleware;
 using OpenAgent.Router.Models;
 using Yarp.ReverseProxy.Forwarder;
@@ -8,6 +9,7 @@ namespace OpenAgent.Router.Endpoints;
 
 internal sealed class AgentForwarder(
     IHttpForwarder forwarder,
+    IGatewayAuthorizationService authorization,
     ILogger<AgentForwarder> logger) : IAgentForwarder, IDisposable
 {
     private static readonly ForwarderRequestConfig DefaultRequestConfig = new()
@@ -35,7 +37,9 @@ internal sealed class AgentForwarder(
             ?? context.Request.Headers["X-Tenant-Id"].FirstOrDefault();
         string? conversationId = context.Features.Get<AgentRoutingFeature>()?.ConversationId
             ?? context.Request.Headers["X-Conversation-Id"].FirstOrDefault();
+        string? agentId = context.Features.Get<AgentRoutingFeature>()?.AgentId;
         string traceId = Activity.Current?.Id ?? context.TraceIdentifier;
+        string gatewayGrant = authorization.IssueGrant(userContext);
 
         AgentForwardingTarget? target = await provider.ResolveForwardingAsync(
             action,
@@ -64,8 +68,10 @@ internal sealed class AgentForwarder(
                 provider,
                 userContext,
                 tenantId,
+                agentId,
                 conversationId,
                 traceId,
+                gatewayGrant,
                 cancellationToken)).ConfigureAwait(false);
         if (error == ForwarderError.None)
         {
@@ -94,8 +100,10 @@ internal sealed class AgentForwarder(
         IAgentProvider provider,
         IAgentUserContext userContext,
         string? tenantId,
+        string? agentId,
         string? conversationId,
         string traceId,
+        string gatewayGrant,
         CancellationToken cancellationToken)
     {
         await ForwardingContextBuilder.ApplyAsync(
@@ -103,8 +111,10 @@ internal sealed class AgentForwarder(
             target.RequestUri,
             userContext,
             tenantId,
+            agentId,
             conversationId,
-            traceId).ConfigureAwait(false);
+            traceId,
+            gatewayGrant).ConfigureAwait(false);
         await provider.ConfigureRequestAsync(
             request,
             target,

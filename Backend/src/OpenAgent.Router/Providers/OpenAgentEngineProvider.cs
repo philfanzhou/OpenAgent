@@ -4,6 +4,8 @@ using System.Text;
 using System.Text.Json;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Requests;
+using OpenAgent.Contracts.Security;
+using OpenAgent.Hosting.Authorization;
 using OpenAgent.Router.Models;
 
 namespace OpenAgent.Router.Providers;
@@ -19,12 +21,14 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
     private readonly string _chatPath;
     private readonly IReadOnlyDictionary<string, string> _serviceHeaders;
     private readonly IRouteTable _routeTable;
+    private readonly IGatewayAuthorizationService _authorization;
     private readonly HttpMessageInvoker _httpClient;
 
     internal OpenAgentEngineProvider(
         string id,
         IConfiguration settings,
         IRouteTable routeTable,
+        IGatewayAuthorizationService authorization,
         HttpMessageHandler? handler = null)
     {
         Id = id;
@@ -38,12 +42,14 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
                 header => header.Value!,
                 StringComparer.OrdinalIgnoreCase);
         _routeTable = routeTable;
+        _authorization = authorization;
         _httpClient = new HttpMessageInvoker(handler ?? CreateHandler());
     }
 
     public string Id { get; }
 
     public async Task<IReadOnlyList<AgentSummary>> GetAgentsAsync(
+        IAgentUserContext userContext,
         CancellationToken cancellationToken)
     {
         string? endpoint = _routeTable.GetTargetEndpoint("chat");
@@ -54,7 +60,8 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
 
         using HttpRequestMessage request = CreateServiceRequest(
             HttpMethod.Get,
-            $"{endpoint.TrimEnd('/')}{_agentListPath}");
+            $"{endpoint.TrimEnd('/')}{_agentListPath}",
+            _authorization.IssueGrant(userContext));
         using HttpResponseMessage response = await _httpClient.SendAsync(
             request,
             cancellationToken).ConfigureAwait(false);
@@ -68,6 +75,7 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
         string intentAgentId,
         IReadOnlyList<AgentSummary> agents,
         string message,
+        IAgentUserContext userContext,
         CancellationToken cancellationToken)
     {
         string? endpoint = _routeTable.GetTargetEndpoint("chat");
@@ -78,7 +86,14 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
 
         using HttpRequestMessage request = CreateServiceRequest(
             HttpMethod.Post,
-            $"{endpoint.TrimEnd('/')}{_chatPath}");
+            $"{endpoint.TrimEnd('/')}{_chatPath}",
+            _authorization.IssueRestrictedGrant(
+                userContext,
+                [
+                    $"{GatewayPermissions.AgentExecute}:{intentAgentId}",
+                    GatewayPermissions.ModelInvoke
+                ]),
+            intentAgentId);
         request.Content = new StringContent(
             JsonSerializer.Serialize(new ChatRequest
             {
@@ -147,12 +162,27 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
 
     private HttpRequestMessage CreateServiceRequest(
         HttpMethod method,
-        string url)
+        string url,
+        string gatewayGrant,
+        string? resolvedAgentId = null)
     {
         HttpRequestMessage request = new(method, url);
         foreach ((string name, string value) in _serviceHeaders)
         {
             request.Headers.TryAddWithoutValidation(name, value);
+        }
+
+        request.Headers.Remove("Authorization");
+        request.Headers.Remove(GatewayAuthorizationDefaults.GrantHeaderName);
+        request.Headers.Remove(AgentRoutingHeaders.ResolvedAgentId);
+        request.Headers.Remove("X-User-Id");
+        request.Headers.Remove("X-Tenant-Id");
+        request.Headers.Remove("X-Trace-Id");
+        request.Headers.Remove("X-Conversation-Id");
+        request.Headers.Add(GatewayAuthorizationDefaults.GrantHeaderName, gatewayGrant);
+        if (!string.IsNullOrWhiteSpace(resolvedAgentId))
+        {
+            request.Headers.Add(AgentRoutingHeaders.ResolvedAgentId, resolvedAgentId);
         }
 
         return request;

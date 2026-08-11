@@ -68,6 +68,7 @@ describe('workspace API', () => {
   })
 
   it('preserves bearer token type for enterprise identity requests', async () => {
+    setConnectionMode('engine')
     setEngineBaseUrl('http://router.example')
     setAccessToken('signed-jwt', 'Bearer')
     const fetchMock = vi.fn().mockResolvedValue(new Response('{}', {
