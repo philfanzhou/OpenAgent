@@ -40,7 +40,6 @@ internal static class ChatEndpointHandler
                 title: "Agent provider is unavailable");
         }
 
-        RouterMeter.RecordRoute(action ?? "chat", provider.Id);
         await agentForwarder.ForwardAsync(
             context,
             provider,

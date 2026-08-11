@@ -40,7 +40,7 @@ internal sealed class ConversationWarmer
                         tenantId, conversationId, 1, coldMessages, cancellationToken).ConfigureAwait(false);
                     if (!appendResult.Success)
                     {
-                        ConversationLog.WarmUpNewRecordAppendFailed(
+                        ConversationLog.WarmUpAppendFailed(
                             _logger, conversationId, appendResult.ConflictReason);
                     }
                 }
@@ -124,12 +124,12 @@ internal sealed class ConversationWarmer
             cancellationToken).ConfigureAwait(false);
         if (!result.Success && existingLog)
         {
-            ConversationLog.WarmUpExistingRecordAppendFailed(
+            ConversationLog.WarmUpAppendFailed(
                 _logger, conversationId, result.ConflictReason);
         }
         else if (!result.Success)
         {
-            ConversationLog.WarmUpMessagesAppendFailed(
+            ConversationLog.WarmUpAppendFailed(
                 _logger, conversationId, result.ConflictReason);
         }
     }
