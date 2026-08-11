@@ -1,12 +1,10 @@
 using System.Text.Json;
 using OpenAgent.Contracts.Security;
-using OpenAgent.Router.Middleware;
 using OpenAgent.Router.Models;
 
 namespace OpenAgent.Router.Endpoints;
 
 internal sealed class AgentSelectionFilter(
-    IRouteTable routeTable,
     IAgentSelectionService selectionService,
     IAgentUserContext userContext) : IEndpointFilter
 {
@@ -36,36 +34,17 @@ internal sealed class AgentSelectionFilter(
                 detail: "The request body must contain valid JSON.");
         }
 
-        string? tenantId = context.Items[TenantIsolationMiddleware.TenantItemKey]?.ToString()
-            ?? userContext.TenantId;
         string? routingConversationId = request.ConversationId
             ?? context.Request.Headers["X-Conversation-Id"].FirstOrDefault();
-        string? targetEndpoint = routeTable.GetTargetEndpoint(
-            "chat",
-            tenantId,
-            routingConversationId);
-        if (string.IsNullOrWhiteSpace(targetEndpoint))
-        {
-            return Results.Problem(
-                statusCode: StatusCodes.Status503ServiceUnavailable,
-                title: "No Engine is available");
-        }
-
         string? explicitAgentId = string.IsNullOrWhiteSpace(request.AgentId)
             ? context.Request.Headers["X-Agent-Id"].FirstOrDefault()
             : request.AgentId;
-        string? selectedAgentId = await selectionService.SelectAsync(
-            new AgentSelectionRequest(
-                request.Query,
-                targetEndpoint,
-                request.ConversationId,
-                explicitAgentId,
-                context.Request.Headers.Authorization.FirstOrDefault(),
-                tenantId,
-                userContext),
+        AgentSelection? selection = await selectionService.SelectAsync(
+            request.Query,
+            routingConversationId,
+            explicitAgentId,
             context.RequestAborted).ConfigureAwait(false);
-        if (string.IsNullOrWhiteSpace(selectedAgentId)
-            && string.IsNullOrWhiteSpace(request.ConversationId))
+        if (selection == null)
         {
             return Results.Problem(
                 statusCode: StatusCodes.Status503ServiceUnavailable,
@@ -74,10 +53,10 @@ internal sealed class AgentSelectionFilter(
 
         context.Features.Set(new AgentRoutingFeature(
             routingConversationId,
-            targetEndpoint));
-        if (!string.IsNullOrWhiteSpace(selectedAgentId))
+            selection.ProviderId));
+        if (!string.IsNullOrWhiteSpace(selection.AgentId))
         {
-            context.Request.Headers["X-Agent-Id"] = selectedAgentId;
+            context.Request.Headers["X-Agent-Id"] = selection.AgentId;
         }
 
         return await next(invocationContext).ConfigureAwait(false);

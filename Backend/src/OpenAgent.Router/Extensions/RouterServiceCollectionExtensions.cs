@@ -2,6 +2,8 @@ using OpenAgent.Contracts.Routing;
 using OpenAgent.Core.Routing;
 using OpenAgent.Router.Endpoints;
 using OpenAgent.Router.Options;
+using OpenAgent.Router.Providers;
+using OpenAgent.Router.Routing;
 using StackExchange.Redis;
 
 namespace OpenAgent.Router;
@@ -17,10 +19,14 @@ public static class RouterServiceCollectionExtensions
             .Bind(configuration.GetSection(IntentRecognitionOptions.SectionName))
             .Validate(IntentRecognitionOptions.IsValid, "Intent recognition configuration is invalid")
             .ValidateOnStart();
-        services.AddHttpClient<IIntentAgentSelector, IntentAgentSelector>(client =>
-        {
-            client.Timeout = Timeout.InfiniteTimeSpan;
-        });
+        services.AddOptions<AgentProviderOptions>()
+            .Bind(configuration.GetSection(AgentProviderOptions.SectionName))
+            .Validate(AgentProviderOptions.IsValid, "Agent provider configuration is invalid")
+            .ValidateOnStart();
+        services.AddSingleton<IAgentProviderFactory, OpenAgentEngineProviderFactory>();
+        services.AddSingleton<IAgentProviderRegistry, AgentProviderRegistry>();
+        services.AddSingleton<IAgentForwarder, AgentForwarder>();
+        services.AddSingleton<IIntentAgentSelector, IntentAgentSelector>();
         services.AddScoped<IAgentSelectionService, AgentSelectionService>();
 
         var redisConnectionString = configuration.GetConnectionString("Redis");
