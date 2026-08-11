@@ -1,46 +1,42 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Router.Endpoints;
-using OpenAgent.Router.Middleware;
 using OpenAgent.Router.Models;
 using Xunit;
-using Yarp.ReverseProxy.Forwarder;
 
 namespace OpenAgent.Router.Tests.Endpoints;
 
 public class ChatEndpointHandlerTests
 {
-    private static readonly HttpMessageInvoker HttpClient = new(new HttpClientHandler());
-    private static readonly ForwarderRequestConfig RequestConfig = new();
-
     [Fact]
     public async Task HandleAsync_AnonymousRequest_ReturnsUnauthorized()
     {
-        var context = CreateContext();
-        var forwarder = new CapturingForwarder();
+        DefaultHttpContext context = CreateContext();
+        var forwarder = new RecordingForwarder();
 
         IResult result = await HandleAsync(
             context,
+            new StubRegistry(new StubProvider("self-engine")),
             forwarder,
-            new StubExternalForwarder(),
             AnonymousUser);
         await result.ExecuteAsync(context);
 
         Assert.Equal(StatusCodes.Status401Unauthorized, context.Response.StatusCode);
-        Assert.Null(forwarder.ProxyRequest);
+        Assert.Equal(0, forwarder.CallCount);
     }
 
     [Fact]
-    public async Task HandleAsync_NoRoutingFeature_ReturnsInternalServerError()
+    public async Task HandleAsync_RoutingWasNotResolved_ReturnsInternalServerError()
     {
-        var context = CreateContext();
+        DefaultHttpContext context = CreateContext();
 
         IResult result = await HandleAsync(
             context,
-            new CapturingForwarder(),
-            new StubExternalForwarder(),
+            new StubRegistry(new StubProvider("self-engine")),
+            new RecordingForwarder(),
             AuthenticatedUser);
         await result.ExecuteAsync(context);
 
@@ -48,89 +44,60 @@ public class ChatEndpointHandlerTests
     }
 
     [Fact]
-    public async Task HandleAsync_EngineRoute_ForwardsResolvedAgentAndTrustedContext()
+    public async Task HandleAsync_ProviderIsUnavailable_ReturnsServiceUnavailable()
     {
-        var context = CreateContext();
-        context.Items[TenantIsolationMiddleware.TenantItemKey] = "tenant-1";
-        context.Features.Set(new AgentRoutingFeature(
-            new ParsedChatRequest("hello", "conversation-1", null),
-            "support",
-            "http://engine:5100",
-            AgentDestinationKind.Engine,
-            SelectedByIntentAgent: true));
-        var forwarder = new CapturingForwarder();
+        DefaultHttpContext context = CreateContext();
+        context.Features.Set(new AgentRoutingFeature("conversation-1", "missing"));
 
-        await HandleAsync(
+        IResult result = await HandleAsync(
             context,
-            forwarder,
-            new StubExternalForwarder(),
+            new StubRegistry(new StubProvider("self-engine")),
+            new RecordingForwarder(),
             AuthenticatedUser);
+        await result.ExecuteAsync(context);
 
-        Assert.Equal(
-            "http://engine:5100/api/v1/agent/chat/stream",
-            forwarder.ProxyRequest?.RequestUri?.ToString());
-        Assert.Equal("support", GetSingleHeader(forwarder.ProxyRequest, "X-OpenAgent-Resolved-Agent-Id"));
-        Assert.Equal("user-1", GetSingleHeader(forwarder.ProxyRequest, "X-User-Id"));
-        Assert.Equal("tenant-1", GetSingleHeader(forwarder.ProxyRequest, "X-Tenant-Id"));
-        Assert.Equal("conversation-1", GetSingleHeader(forwarder.ProxyRequest, "X-Conversation-Id"));
+        Assert.Equal(StatusCodes.Status503ServiceUnavailable, context.Response.StatusCode);
     }
 
     [Fact]
-    public async Task HandleAsync_ExternalRoute_UsesExternalForwarder()
+    public async Task HandleAsync_ResolvedProvider_ForwardsRequestedAction()
     {
-        var context = CreateContext();
-        context.Features.Set(new AgentRoutingFeature(
-            new ParsedChatRequest("hello", null, "external-support"),
-            "external-support",
-            "https://partner.example",
-            AgentDestinationKind.External,
-            SelectedByIntentAgent: false));
-        var engineForwarder = new CapturingForwarder();
-        var externalForwarder = new StubExternalForwarder
-        {
-            Result = new ExternalForwardingResult(
-                ForwarderError.None,
-                "https://partner.example",
-                "https://partner.example/chat/stream")
-        };
+        DefaultHttpContext context = CreateContext();
+        context.Features.Set(new AgentRoutingFeature("conversation-1", "partner"));
+        var provider = new StubProvider("partner");
+        var forwarder = new RecordingForwarder();
 
-        await HandleAsync(
+        IResult result = await HandleAsync(
             context,
-            engineForwarder,
-            externalForwarder,
+            new StubRegistry(provider),
+            forwarder,
             AuthenticatedUser);
 
-        Assert.Equal(1, externalForwarder.CallCount);
-        Assert.Equal("external-support", externalForwarder.AgentId);
-        Assert.Equal("stream", externalForwarder.Action);
-        Assert.Null(engineForwarder.ProxyRequest);
+        Assert.NotNull(result);
+        Assert.Equal(1, forwarder.CallCount);
+        Assert.Same(context, forwarder.Context);
+        Assert.Same(provider, forwarder.Provider);
+        Assert.Equal("stream", forwarder.Action);
     }
 
     private static Task<IResult> HandleAsync(
         HttpContext context,
-        IHttpForwarder forwarder,
-        IExternalAgentForwarder externalForwarder,
-        IAgentUserContext userContext) => ChatEndpointHandler.HandleAsync(
+        IAgentProviderRegistry registry,
+        IAgentForwarder forwarder,
+        IAgentUserContext userContext) =>
+        ChatEndpointHandler.HandleAsync(
             "stream",
             context,
+            registry,
             forwarder,
-            externalForwarder,
             userContext,
             NullLogger.Instance,
-            HttpClient,
-            RequestConfig,
-            context.RequestAborted);
+            CancellationToken.None);
 
-    private static DefaultHttpContext CreateContext()
+    private static DefaultHttpContext CreateContext() => new()
     {
-        var context = new DefaultHttpContext
-        {
-            RequestServices = new ServiceCollection().AddLogging().BuildServiceProvider()
-        };
-        context.Request.Method = HttpMethods.Post;
-        context.Request.Path = "/api/v1/agent/chat/stream";
-        return context;
-    }
+        RequestServices = new ServiceCollection().AddLogging().BuildServiceProvider()
+    };
 
     private static AgentUserContext AuthenticatedUser => new()
     {
@@ -145,70 +112,69 @@ public class ChatEndpointHandlerTests
         IsAuthenticated = false
     };
 
-    private static string GetSingleHeader(HttpRequestMessage? request, string headerName)
+    private sealed class StubRegistry(IAgentProvider? provider) : IAgentProviderRegistry
     {
-        Assert.NotNull(request);
-        return Assert.Single(request.Headers.GetValues(headerName));
-    }
+        public IReadOnlyList<IAgentProvider> Providers => provider is null ? [] : [provider];
 
-    private sealed class CapturingForwarder : IHttpForwarder
-    {
-        public HttpRequestMessage? ProxyRequest { get; private set; }
+        public IAgentProvider DefaultProvider => provider
+            ?? throw new InvalidOperationException("A default provider is required.");
 
-        public ValueTask<ForwarderError> SendAsync(
-            HttpContext context,
-            string destinationPrefix,
-            HttpMessageInvoker httpClient,
-            ForwarderRequestConfig requestConfig,
-            HttpTransformer transformer) => SendAsync(
-                context,
-                destinationPrefix,
-                httpClient,
-                requestConfig,
-                transformer,
-                context.RequestAborted);
-
-        public async ValueTask<ForwarderError> SendAsync(
-            HttpContext context,
-            string destinationPrefix,
-            HttpMessageInvoker httpClient,
-            ForwarderRequestConfig requestConfig,
-            HttpTransformer transformer,
-            CancellationToken cancellationToken)
+        public bool TryGet(string providerId, out IAgentProvider? resolvedProvider)
         {
-            ProxyRequest = new HttpRequestMessage(
-                new HttpMethod(context.Request.Method),
-                destinationPrefix);
-            await transformer.TransformRequestAsync(
-                context,
-                ProxyRequest,
-                destinationPrefix,
-                cancellationToken);
-            return ForwarderError.None;
+            resolvedProvider = provider?.Id == providerId ? provider : null;
+            return resolvedProvider is not null;
         }
     }
 
-    private sealed class StubExternalForwarder : IExternalAgentForwarder
+    private sealed class RecordingForwarder : IAgentForwarder
     {
-        public ExternalForwardingResult? Result { get; init; }
         public int CallCount { get; private set; }
-        public string? AgentId { get; private set; }
+
+        public HttpContext? Context { get; private set; }
+
+        public IAgentProvider? Provider { get; private set; }
+
         public string? Action { get; private set; }
 
-        public Task<ExternalForwardingResult?> ForwardAsync(
+        public Task ForwardAsync(
             HttpContext context,
-            string agentId,
+            IAgentProvider provider,
             string? action,
-            IAgentUserContext userContext,
-            string? tenantId,
-            string? conversationId,
-            string traceId,
             CancellationToken cancellationToken)
         {
             CallCount++;
-            AgentId = agentId;
+            Context = context;
+            Provider = provider;
             Action = action;
-            return Task.FromResult(Result);
+            return Task.CompletedTask;
         }
+    }
+
+    private sealed class StubProvider(string id) : IAgentProvider
+    {
+        public string Id => id;
+
+        public Task<IReadOnlyList<AgentSummary>> GetAgentsAsync(
+            CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<AgentSummary>>([]);
+
+        public Task<IntentRecognitionResult?> RecognizeIntentAsync(
+            string intentAgentId,
+            IReadOnlyList<AgentSummary> agents,
+            string message,
+            CancellationToken cancellationToken) =>
+            Task.FromResult<IntentRecognitionResult?>(null);
+
+        public Task<AgentForwardingTarget?> ResolveForwardingAsync(
+            string? action,
+            string? tenantId,
+            string? conversationId,
+            CancellationToken cancellationToken) =>
+            Task.FromResult<AgentForwardingTarget?>(null);
+
+        public ValueTask ConfigureRequestAsync(
+            HttpRequestMessage request,
+            AgentForwardingTarget target,
+            CancellationToken cancellationToken) => ValueTask.CompletedTask;
     }
 }
