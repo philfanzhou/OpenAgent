@@ -33,7 +33,7 @@ public class OpenAgentEngineProviderTests
             "self-engine",
             settings,
             routeTable,
-            new TestGatewayAuthorizationService(),
+            new TestPermissionServices(),
             handler);
 
         var requestContext = new AgentProviderRequestContext(

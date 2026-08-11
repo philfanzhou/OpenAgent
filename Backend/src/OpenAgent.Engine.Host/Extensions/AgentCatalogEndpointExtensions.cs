@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using OpenAgent.Authorization;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Engine.Host.Middleware;
 
@@ -9,7 +10,7 @@ internal static class AgentCatalogEndpointExtensions
     internal static void MapAgentCatalog(this RouteGroupBuilder group)
     {
         group.MapGet("/agents", ExecuteAsync)
-            .RequireAuthorization(GatewayPermissions.AgentRead)
+            .RequireAuthorization(PermissionCatalog.AgentRead)
             .WithName("ListAgents")
             .WithTags("Agent");
     }

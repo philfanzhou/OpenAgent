@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using OpenAgent.Authorization;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Router.Endpoints;
 using OpenAgent.Router.Security;
@@ -33,7 +34,7 @@ public static class RouterEndpointExtensions
             ChatEndpointHandler.HandleAsync(
                 action, context, providers, agentForwarder, userContext, logger, cancellationToken))
             .AddEndpointFilter<AgentSelectionFilter>()
-            .RequireAuthorization(GatewayPermissions.AgentExecute);
+            .RequireAuthorization(PermissionCatalog.AgentExecute);
 
         app.MapGet("/api/v1/agent/agents", (
             IAgentCatalogService catalog,

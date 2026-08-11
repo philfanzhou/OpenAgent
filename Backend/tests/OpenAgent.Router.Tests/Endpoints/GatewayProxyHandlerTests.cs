@@ -1,8 +1,8 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using OpenAgent.Authorization;
 using OpenAgent.Contracts.Security;
-using OpenAgent.Hosting.Authorization;
 using OpenAgent.Router.Endpoints;
 using Xunit;
 using Yarp.ReverseProxy.Forwarder;
@@ -154,7 +154,8 @@ public class GatewayProxyHandlerTests
         {
             RequestServices = new ServiceCollection()
                 .AddLogging()
-                .AddSingleton<IGatewayAuthorizationService>(new TestGatewayAuthorizationService())
+                .AddSingleton<IPermissionAuthorizer>(new TestPermissionServices())
+                .AddSingleton<IDelegatedPermissionGrantIssuer>(new TestPermissionServices())
                 .BuildServiceProvider()
         };
         context.Request.Method = method;

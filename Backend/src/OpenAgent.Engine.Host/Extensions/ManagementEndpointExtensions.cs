@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using OpenAgent.Authorization;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Mcp;
 using OpenAgent.Contracts.Models;
@@ -25,7 +26,7 @@ internal static class ManagementEndpointExtensions
             CancellationToken cancellationToken) =>
         {
             return Results.Ok(await provider.ListAgentsAsync(cancellationToken).ConfigureAwait(false));
-        }).RequireAuthorization(GatewayPermissions.AgentRead);
+        }).RequireAuthorization(PermissionCatalog.AgentRead);
 
         group.MapGet("/agents/{agentId}", async (
             [FromServices] AgentConfigManagementService manager,
@@ -36,7 +37,7 @@ internal static class ManagementEndpointExtensions
             if (entity != null && !CanAccessAgent(entity, RequireTenant(context)))
                 return Results.Forbid();
             return entity == null ? Results.NotFound() : Results.Ok(Redact(entity));
-        }).RequireAuthorization(GatewayPermissions.AgentConfigRead);
+        }).RequireAuthorization(PermissionCatalog.AgentConfigRead);
 
         group.MapGet("/llm", async (
             [FromServices] LlmProfileManagementService manager,
@@ -44,7 +45,7 @@ internal static class ManagementEndpointExtensions
         {
             IReadOnlyList<LlmProviderProfile> profiles = await manager.ListAsync(cancellationToken).ConfigureAwait(false);
             return Results.Ok(profiles.Select(RedactLlm));
-        }).RequireAuthorization(GatewayPermissions.AgentConfigRead);
+        }).RequireAuthorization(PermissionCatalog.AgentConfigRead);
 
         group.MapGet("/llm/{id}", async (
             [FromServices] LlmProfileManagementService manager,
@@ -53,7 +54,7 @@ internal static class ManagementEndpointExtensions
         {
             LlmProviderProfile? profile = await manager.GetAsync(id, cancellationToken).ConfigureAwait(false);
             return profile == null ? Results.NotFound() : Results.Ok(RedactLlm(profile));
-        }).RequireAuthorization(GatewayPermissions.AgentConfigRead);
+        }).RequireAuthorization(PermissionCatalog.AgentConfigRead);
 
         group.MapPut("/llm/{id}", async (
             [FromServices] LlmProfileManagementService manager,
@@ -77,7 +78,7 @@ internal static class ManagementEndpointExtensions
 
             LlmProviderProfile saved = await manager.SaveAsync(profile, cancellationToken).ConfigureAwait(false);
             return Results.Ok(RedactLlm(saved));
-        }).RequireAuthorization(GatewayPermissions.AgentConfigWrite);
+        }).RequireAuthorization(PermissionCatalog.AgentConfigWrite);
 
         group.MapDelete("/llm/{id}", async (
             [FromServices] LlmProfileManagementService manager,
@@ -87,7 +88,7 @@ internal static class ManagementEndpointExtensions
             return await manager.DeleteAsync(id, cancellationToken).ConfigureAwait(false)
                 ? Results.NoContent()
                 : Results.NotFound();
-        }).RequireAuthorization(GatewayPermissions.AgentConfigWrite);
+        }).RequireAuthorization(PermissionCatalog.AgentConfigWrite);
 
         group.MapPost("/llm/test-connection", async (
             [FromServices] IHttpClientFactory httpClientFactory,
@@ -156,7 +157,7 @@ internal static class ManagementEndpointExtensions
                     TraceId = traceId
                 });
             }
-        }).RequireAuthorization(GatewayPermissions.CapabilityTest);
+        }).RequireAuthorization(PermissionCatalog.CapabilityTest);
 
         group.MapPut("/agents/{agentId}/config", async (
             [FromServices] AgentConfigManagementService manager,
@@ -206,7 +207,7 @@ internal static class ManagementEndpointExtensions
                 context.Request.Headers.IfMatch.FirstOrDefault() ?? entity.CurrentVersion,
                 cancellationToken).ConfigureAwait(false);
             return saved == null ? Results.Conflict() : Results.Ok(Redact(saved));
-        }).RequireAuthorization(GatewayPermissions.AgentConfigWrite);
+        }).RequireAuthorization(PermissionCatalog.AgentConfigWrite);
 
         group.MapPost("/mcp/test-connection", async (
             [FromServices] IMcpConnectionTester tester,
@@ -220,7 +221,7 @@ internal static class ManagementEndpointExtensions
                 context.GetAgentRequest().TraceId,
                 cancellationToken).ConfigureAwait(false);
             return Results.Ok(result);
-        }).RequireAuthorization(GatewayPermissions.CapabilityTest);
+        }).RequireAuthorization(PermissionCatalog.CapabilityTest);
 
         group.MapGet("/mcp", async (
             [FromServices] McpProfileManagementService manager,
@@ -291,7 +292,7 @@ internal static class ManagementEndpointExtensions
                     EnabledRagInstanceIds = [.. entity.Config.Rag.EnabledRagInstanceIds],
                     Instances = entity.Config.Rag.Instances.Select(RedactRag).ToList()
                 });
-        }).RequireAuthorization(GatewayPermissions.AgentConfigRead);
+        }).RequireAuthorization(PermissionCatalog.AgentConfigRead);
 
         group.MapPut("/rag/{id}", async (
             [FromServices] AgentConfigManagementService manager,
@@ -330,7 +331,7 @@ internal static class ManagementEndpointExtensions
                 context.Request.Headers.IfMatch.FirstOrDefault(),
                 cancellationToken).ConfigureAwait(false);
             return saved == null ? Results.Conflict() : Results.Ok(RedactRag(instance));
-        }).RequireAuthorization(GatewayPermissions.AgentConfigWrite);
+        }).RequireAuthorization(PermissionCatalog.AgentConfigWrite);
 
         group.MapDelete("/rag/{id}", async (
             [FromServices] AgentConfigManagementService manager,
@@ -354,7 +355,7 @@ internal static class ManagementEndpointExtensions
                 context.Request.Headers.IfMatch.FirstOrDefault(),
                 cancellationToken).ConfigureAwait(false);
             return saved == null ? Results.Conflict() : Results.NoContent();
-        }).RequireAuthorization(GatewayPermissions.AgentConfigWrite);
+        }).RequireAuthorization(PermissionCatalog.AgentConfigWrite);
 
         group.MapPost("/rag/test-connection", async (
             [FromServices] IHttpClientFactory httpClientFactory,
@@ -406,7 +407,7 @@ internal static class ManagementEndpointExtensions
                     TraceId = context.GetAgentRequest().TraceId
                 });
             }
-        }).RequireAuthorization(GatewayPermissions.CapabilityTest);
+        }).RequireAuthorization(PermissionCatalog.CapabilityTest);
 
         group.MapGet("/skills", async (
             [FromServices] ISkillCatalogStore catalog,

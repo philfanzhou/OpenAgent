@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using OpenAgent.Authorization;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Engine.Host.Middleware;
@@ -10,22 +11,22 @@ internal static class ConversationEndpointExtensions
     internal static void MapConversations(this RouteGroupBuilder group)
     {
         group.MapGet("/conversations", ListAsync)
-            .RequireAuthorization(GatewayPermissions.ConversationRead)
+            .RequireAuthorization(PermissionCatalog.ConversationRead)
             .WithName("ListConversations")
             .WithTags("Conversation");
 
         group.MapGet("/conversations/search", SearchAsync)
-            .RequireAuthorization(GatewayPermissions.ConversationRead)
+            .RequireAuthorization(PermissionCatalog.ConversationRead)
             .WithName("SearchConversations")
             .WithTags("Conversation");
 
         group.MapGet("/conversations/{conversationId}", GetAsync)
-            .RequireAuthorization(GatewayPermissions.ConversationRead)
+            .RequireAuthorization(PermissionCatalog.ConversationRead)
             .WithName("GetConversation")
             .WithTags("Conversation");
 
         group.MapDelete("/conversations/{conversationId}", DeleteAsync)
-            .RequireAuthorization(GatewayPermissions.ConversationDelete)
+            .RequireAuthorization(PermissionCatalog.ConversationDelete)
             .WithName("DeleteConversation")
             .WithTags("Conversation");
 

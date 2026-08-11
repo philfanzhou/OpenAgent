@@ -1,48 +1,37 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
+using OpenAgent.Authorization;
 
 namespace OpenAgent.Hosting.Authorization;
 
 internal sealed record GatewayPermissionRequirement(string Permission) : IAuthorizationRequirement;
 
 internal sealed class GatewayPermissionAuthorizationHandler(
-    IGatewayAuthorizationService authorization)
+    IPermissionAuthorizer authorization)
     : AuthorizationHandler<GatewayPermissionRequirement>
 {
     protected override Task HandleRequirementAsync(
         AuthorizationHandlerContext context,
         GatewayPermissionRequirement requirement)
     {
-        GatewayIdentity identity = GatewayClaimsIdentityMapper.Map(context.User);
-        IReadOnlySet<string> permissions = authorization.ResolvePermissions(identity);
-        if (authorization.IsAuthorized(identity, requirement.Permission)
+        PermissionSubject subject = GatewayClaimsIdentityMapper.Map(context.User);
+        IReadOnlySet<string> permissions = authorization.ResolvePermissions(subject);
+        if (authorization.IsAuthorized(subject, requirement.Permission)
             || (requirement.Permission.Equals(
-                    GatewayAuthorizationDefaults.AgentExecutePermission,
+                    PermissionCatalog.AgentExecute,
                     StringComparison.OrdinalIgnoreCase)
-                && HasGrantForAnyResource(permissions, requirement.Permission)))
+                && PermissionMatcher.HasGrantForAnyResource(permissions, requirement.Permission)))
         {
             context.Succeed(requirement);
         }
 
         return Task.CompletedTask;
     }
-
-    private static bool HasGrantForAnyResource(
-        IEnumerable<string> grantedPermissions,
-        string requiredPermission)
-    {
-        string prefix = $"{requiredPermission}:";
-        return grantedPermissions.Any(permission =>
-            permission.Equals("*", StringComparison.OrdinalIgnoreCase)
-            || permission.Equals(requiredPermission, StringComparison.OrdinalIgnoreCase)
-            || (permission.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
-                && permission.Length > prefix.Length));
-    }
 }
 
 internal static class GatewayClaimsIdentityMapper
 {
-    internal static GatewayIdentity Map(ClaimsPrincipal principal)
+    internal static PermissionSubject Map(ClaimsPrincipal principal)
     {
         string userId = principal.FindFirst(ClaimTypes.NameIdentifier)?.Value
             ?? principal.FindFirst("sub")?.Value
@@ -66,7 +55,7 @@ internal static class GatewayClaimsIdentityMapper
                 group => group.Key,
                 group => string.Join(",", group.Select(claim => claim.Value)),
                 StringComparer.OrdinalIgnoreCase);
-        return new GatewayIdentity(
+        return new PermissionSubject(
             userId,
             tenantId,
             roles,

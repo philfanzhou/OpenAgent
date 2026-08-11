@@ -1,6 +1,6 @@
 using System.Text.Json;
+using OpenAgent.Authorization;
 using OpenAgent.Contracts.Security;
-using OpenAgent.Hosting.Authorization;
 using OpenAgent.Router.Models;
 
 namespace OpenAgent.Router.Endpoints;
@@ -8,7 +8,7 @@ namespace OpenAgent.Router.Endpoints;
 internal sealed class AgentSelectionFilter(
     IAgentSelectionService selectionService,
     IAgentUserContext userContext,
-    IGatewayAuthorizationService authorization) : IEndpointFilter
+    IPermissionAuthorizer authorization) : IEndpointFilter
 {
     public async ValueTask<object?> InvokeAsync(
         EndpointFilterInvocationContext invocationContext,
@@ -67,7 +67,7 @@ internal sealed class AgentSelectionFilter(
         if (!string.IsNullOrWhiteSpace(selection.AgentId)
             && !authorization.IsAuthorized(
                 userContext,
-                GatewayPermissions.AgentExecute,
+                PermissionCatalog.AgentExecute,
                 selection.AgentId))
         {
             return Results.StatusCode(StatusCodes.Status403Forbidden);

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using OpenAgent.Authorization;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Router.Models;
 using Yarp.ReverseProxy.Forwarder;
@@ -37,7 +38,7 @@ internal sealed class AgentForwarder(
             ?? context.Request.Headers["X-Conversation-Id"].FirstOrDefault();
         string? agentId = context.Features.Get<AgentRoutingFeature>()?.AgentId;
         string traceId = Activity.Current?.Id ?? context.TraceIdentifier;
-        string gatewayGrant = authorization.IssueGrant(userContext);
+        string gatewayGrant = grantIssuer.Issue(userContext);
 
         AgentForwardingTarget? target = await provider.ResolveForwardingAsync(
             action,

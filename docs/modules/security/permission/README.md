@@ -14,11 +14,11 @@
 JWT claims + authenticated defaults + role grants
                     │
                     ▼
-          Router permission evaluator
+        IPermissionAuthorizer
              ├─ 过滤 Agent 目录
              ├─ 过滤意图识别候选集
              ├─ 拒绝未授权显式 Agent
-             └─ 签发短时授权票据
+             └─ IDelegatedPermissionGrantIssuer
                     │
           ┌─────────┴─────────┐
           ▼                   ▼

@@ -1,5 +1,6 @@
 using System.Text;
 using Microsoft.AspNetCore.Http;
+using OpenAgent.Authorization;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Router.Endpoints;
 using OpenAgent.Router.Models;
@@ -89,8 +90,8 @@ public class AgentSelectionFilterTests
             new AgentSelection("finance", "self-engine"));
         AgentSelectionFilter filter = CreateFilter(
             selectionService,
-            new TestGatewayAuthorizationService(
-                evaluator: (permission, resourceId) => permission != GatewayPermissions.AgentExecute
+            new TestPermissionServices(
+                evaluator: (permission, resourceId) => permission != PermissionCatalog.AgentExecute
                     || resourceId == "support"));
         DefaultHttpContext context = CreateContext("{\"message\":\"find invoice\"}");
 
@@ -122,7 +123,7 @@ public class AgentSelectionFilterTests
 
     private static AgentSelectionFilter CreateFilter(
         IAgentSelectionService selectionService,
-        TestGatewayAuthorizationService? authorization = null) =>
+        TestPermissionServices? authorization = null) =>
         new(
             selectionService,
             new AgentUserContext
@@ -131,7 +132,7 @@ public class AgentSelectionFilterTests
                 TenantId = "tenant-1",
                 IsAuthenticated = true
             },
-            authorization ?? new TestGatewayAuthorizationService());
+            authorization ?? new TestPermissionServices());
 
     private static DefaultHttpContext CreateContext(string body)
     {

@@ -1,9 +1,9 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using OpenAgent.Authorization;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Security;
-using OpenAgent.Hosting.Authorization;
 using OpenAgent.Router.Endpoints;
 using OpenAgent.Router.Models;
 using Xunit;
@@ -24,7 +24,7 @@ public class AgentForwarderTests
                 TenantId = "user-tenant",
                 IsAuthenticated = true
             })
-            .AddSingleton<IGatewayAuthorizationService>(new TestGatewayAuthorizationService())
+            .AddSingleton<IDelegatedPermissionGrantIssuer>(new TestPermissionServices())
             .BuildServiceProvider();
         var context = new DefaultHttpContext
         {

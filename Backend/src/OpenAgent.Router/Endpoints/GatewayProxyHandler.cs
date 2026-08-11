@@ -1,6 +1,6 @@
 using System.Diagnostics;
+using OpenAgent.Authorization;
 using OpenAgent.Contracts.Security;
-using OpenAgent.Hosting.Authorization;
 using OpenAgent.Router.Observability;
 using Yarp.ReverseProxy.Forwarder;
 
@@ -18,8 +18,10 @@ internal static class GatewayProxyHandler
         ForwarderRequestConfig requestConfig,
         bool requireAuthentication)
     {
-        IGatewayAuthorizationService authorization = context.RequestServices
-            .GetRequiredService<IGatewayAuthorizationService>();
+        IPermissionAuthorizer authorization = context.RequestServices
+            .GetRequiredService<IPermissionAuthorizer>();
+        IDelegatedPermissionGrantIssuer grantIssuer = context.RequestServices
+            .GetRequiredService<IDelegatedPermissionGrantIssuer>();
         if (requireAuthentication && !userContext.IsAuthenticated)
         {
             return Results.Unauthorized();
@@ -128,28 +130,28 @@ internal static class GatewayProxyHandler
                 && (request.Path.Value?.EndsWith("/test", StringComparison.OrdinalIgnoreCase) == true
                     || request.Path.Value?.EndsWith("/test-connection", StringComparison.OrdinalIgnoreCase) == true))
             {
-                return GatewayPermissions.CapabilityTest;
+                return PermissionCatalog.CapabilityTest;
             }
 
             if (request.Method == HttpMethods.Get)
             {
                 return request.Path.Equals("/api/v1/admin/agents", StringComparison.OrdinalIgnoreCase)
-                    ? GatewayPermissions.AgentRead
-                    : GatewayPermissions.AgentConfigRead;
+                    ? PermissionCatalog.AgentRead
+                    : PermissionCatalog.AgentConfigRead;
             }
 
-            return GatewayPermissions.AgentConfigWrite;
+            return PermissionCatalog.AgentConfigWrite;
         }
 
         if (request.Path.StartsWithSegments("/api/v1/agent/conversations"))
         {
             return request.Method == HttpMethods.Delete
-                ? GatewayPermissions.ConversationDelete
-                : GatewayPermissions.ConversationRead;
+                ? PermissionCatalog.ConversationDelete
+                : PermissionCatalog.ConversationRead;
         }
 
         return request.Path.Equals("/api/v1/agent/me", StringComparison.OrdinalIgnoreCase)
-            ? GatewayPermissions.IdentityRead
+            ? PermissionCatalog.IdentityRead
             : null;
     }
 }

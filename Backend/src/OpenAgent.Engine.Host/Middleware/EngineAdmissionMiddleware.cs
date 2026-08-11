@@ -1,6 +1,7 @@
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Routing;
 using OpenAgent.Contracts.Security;
+using OpenAgent.Authorization;
 using OpenAgent.Engine.Runtime;
 
 namespace OpenAgent.Engine.Host.Middleware;
@@ -39,9 +40,9 @@ internal sealed class EngineAdmissionMiddleware(RequestDelegate next)
         }
 
         if (!string.IsNullOrWhiteSpace(agentId)
-            && !GatewayPermissionMatcher.IsAllowed(
-                GatewayPermissionMatcher.ReadPermissions(user.Claims),
-                GatewayPermissions.AgentExecute,
+            && !PermissionMatcher.IsAllowed(
+                PermissionMatcher.ReadPermissions(user.Claims),
+                PermissionCatalog.AgentExecute,
                 agentId))
         {
             throw new AgentException(

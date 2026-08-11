@@ -1,17 +1,18 @@
 using Microsoft.Extensions.Options;
+using OpenAgent.Authorization;
 
 namespace OpenAgent.Hosting.Authorization;
 
 internal sealed class GatewayAuthorizationService(
     IOptions<GatewayAuthorizationOptions> options,
     GatewayGrantCodec codec,
-    TimeProvider timeProvider) : IGatewayAuthorizationService
+    TimeProvider timeProvider) : IPermissionAuthorizer, IDelegatedPermissionGrantIssuer
 {
     private readonly GatewayAuthorizationOptions _options = options.Value;
 
-    public IReadOnlySet<string> ResolvePermissions(GatewayIdentity identity)
+    public IReadOnlySet<string> ResolvePermissions(PermissionSubject subject)
     {
-        if (!identity.IsAuthenticated)
+        if (!subject.IsAuthenticated)
         {
             return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         }
@@ -19,8 +20,8 @@ internal sealed class GatewayAuthorizationService(
         HashSet<string> permissions = new(
             _options.AuthenticatedPermissions,
             StringComparer.OrdinalIgnoreCase);
-        permissions.UnionWith(ReadPermissions(identity.Claims));
-        foreach (string role in identity.Roles)
+        permissions.UnionWith(PermissionMatcher.ReadPermissions(subject.Claims));
+        foreach (string role in subject.Roles)
         {
             KeyValuePair<string, List<string>> roleGrant = _options.RolePermissions
                 .FirstOrDefault(item => item.Key.Equals(role, StringComparison.OrdinalIgnoreCase));
@@ -34,30 +35,30 @@ internal sealed class GatewayAuthorizationService(
     }
 
     public bool IsAuthorized(
-        GatewayIdentity identity,
-        string requiredPermission,
+        PermissionSubject subject,
+        string permission,
         string? resourceId = null)
     {
-        return identity.IsAuthenticated
-            && IsAllowed(
-                ResolvePermissions(identity),
-                requiredPermission,
+        return subject.IsAuthenticated
+            && PermissionMatcher.IsAllowed(
+                ResolvePermissions(subject),
+                permission,
                 resourceId);
     }
 
-    public string IssueGrant(
-        GatewayIdentity identity,
+    public string Issue(
+        PermissionSubject subject,
         string? audience = null)
     {
-        return IssueRestrictedGrant(identity, ResolvePermissions(identity), audience);
+        return IssueRestricted(subject, ResolvePermissions(subject), audience);
     }
 
-    public string IssueRestrictedGrant(
-        GatewayIdentity identity,
+    public string IssueRestricted(
+        PermissionSubject subject,
         IEnumerable<string> permissions,
         string? audience = null)
     {
-        if (!identity.IsAuthenticated)
+        if (!subject.IsAuthenticated)
         {
             throw new InvalidOperationException("An authenticated identity is required to issue a gateway grant.");
         }
@@ -72,10 +73,10 @@ internal sealed class GatewayAuthorizationService(
         {
             Issuer = _options.Issuer,
             Audience = audience ?? _options.Audience,
-            Subject = identity.UserId,
-            TenantId = identity.TenantId,
-            Roles = identity.Roles,
-            Groups = identity.Groups,
+            Subject = subject.SubjectId,
+            TenantId = subject.TenantId,
+            Roles = subject.Roles,
+            Groups = subject.Groups,
             Permissions = restrictedPermissions,
             IssuedAt = issuedAt,
             ExpiresAt = issuedAt + _options.GrantLifetimeSeconds,
@@ -84,32 +85,4 @@ internal sealed class GatewayAuthorizationService(
         return codec.Encode(payload);
     }
 
-    private static IEnumerable<string> ReadPermissions(
-        IReadOnlyDictionary<string, string> claims)
-    {
-        return claims
-            .Where(claim => claim.Key.Equals(GatewayAuthorizationDefaults.PermissionClaimType, StringComparison.OrdinalIgnoreCase)
-                || claim.Key.Equals("permissions", StringComparison.OrdinalIgnoreCase)
-                || claim.Key.Equals("scope", StringComparison.OrdinalIgnoreCase)
-                || claim.Key.Equals("scp", StringComparison.OrdinalIgnoreCase))
-            .SelectMany(claim => claim.Value.Split(
-                [' ', ','],
-                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
-    }
-
-    private static bool IsAllowed(
-        IEnumerable<string> grantedPermissions,
-        string requiredPermission,
-        string? resourceId)
-    {
-        HashSet<string> permissions = grantedPermissions.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        if (permissions.Contains("*") || permissions.Contains(requiredPermission))
-        {
-            return true;
-        }
-
-        return !string.IsNullOrWhiteSpace(resourceId)
-            && (permissions.Contains($"{requiredPermission}:*")
-                || permissions.Contains($"{requiredPermission}:{resourceId}"));
-    }
 }
