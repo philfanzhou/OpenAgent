@@ -12,6 +12,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="AWSSDK.S3" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\OpenAgent.Engine\OpenAgent.Engine.csproj" />
     <ProjectReference Include="..\..\src\OpenAgent.Engine.Host\OpenAgent.Engine.Host.csproj" />
     <ProjectReference Include="..\..\src\OpenAgent.Hosting\OpenAgent.Hosting.csproj" />

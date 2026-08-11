@@ -152,6 +152,7 @@ internal static class AgentMessageAdapter
         {
             ["Attachments"] = JsonSerializer.Serialize(attachments.Select(attachment => new
             {
+                attachment.FileId,
                 attachment.FileName,
                 attachment.MediaType,
                 attachment.Length

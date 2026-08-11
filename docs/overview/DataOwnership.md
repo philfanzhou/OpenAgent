@@ -6,6 +6,8 @@
 |------|----------|------|
 | ConversationRecord | Redis (热) / SQL Server (冷) | 会话主记录 |
 | ConversationMessage | Redis (热) / SQL Server (冷，JSON列) | 会话消息，嵌入在 ConversationRecord 中 |
+| FileAsset | SQLite | 用户文件元数据、归属、状态与会话引用 |
+| File Object | S3 兼容对象存储 | 文件原始字节；不保存授权和会话事实 |
 
 ## 引用的外部数据（只读）
 

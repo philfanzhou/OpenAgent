@@ -5,6 +5,7 @@ using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Conversation;
+using OpenAgent.Core.Files;
 using PlatformAgentResponse = OpenAgent.Contracts.Requests.AgentResponse;
 
 namespace OpenAgent.Core.Runtime.Agent;
@@ -16,15 +17,18 @@ public sealed class AgentExecutor
     private readonly IAgentRuntimeResolver _runtime;
     private readonly AgentFactory _agents;
     private readonly ConversationAgentResolver _conversationAgents;
+    private readonly FileAssetRequestResolver _files;
 
     internal AgentExecutor(
         IAgentRuntimeResolver runtime,
         AgentFactory agents,
-        ConversationAgentResolver conversationAgents)
+        ConversationAgentResolver conversationAgents,
+        FileAssetRequestResolver files)
     {
         _runtime = runtime;
         _agents = agents;
         _conversationAgents = conversationAgents;
+        _files = files;
     }
 
     public async Task<PlatformAgentResponse> ExecuteAsync(
@@ -33,6 +37,7 @@ public sealed class AgentExecutor
         CancellationToken cancellationToken)
     {
         EnsureRequest(request);
+        request = await _files.ResolveAsync(request, user, cancellationToken).ConfigureAwait(false);
         string traceId = ResolveTraceId(request.TraceId);
         string agentId = await ResolveAgentIdAsync(
             request,
@@ -73,6 +78,7 @@ public sealed class AgentExecutor
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         EnsureRequest(request);
+        request = await _files.ResolveAsync(request, user, cancellationToken).ConfigureAwait(false);
         string traceId = ResolveTraceId(request.TraceId);
         string agentId = await ResolveAgentIdAsync(
             request,
@@ -197,6 +203,7 @@ public sealed class AgentExecutor
             ClientType = request.ClientType,
             IdempotencyKey = request.IdempotencyKey,
             ExternalContext = request.ExternalContext,
+            FileIds = request.FileIds,
             Attachments = request.Attachments
         };
 }

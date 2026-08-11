@@ -1,6 +1,7 @@
 using OpenAgent.Core.Exten;
 using OpenAgent.Engine.Extensions;
 using OpenAgent.Engine.Host.Attachments;
+using OpenAgent.Engine.Host.Files;
 using OpenAgent.Engine.Host.Extensions;
 using OpenAgent.Engine.Host.Middleware;
 using OpenAgent.Hosting;
@@ -16,6 +17,7 @@ builder.Services.AddAgentHost(builder.Configuration, options =>
 });
 
 builder.Services.AddAgentCore(builder.Configuration);
+builder.Services.AddFileAssetObjectStorage(builder.Configuration);
 
 builder.Services.AddAgentEngine(builder.Configuration);
 builder.Services.AddSingleton<ProblemDetailsFactory>();

@@ -13,6 +13,8 @@ public class AgentRequest
     public string? IdempotencyKey { get; init; }
     public Dictionary<string, string>? ExternalContext { get; init; }
     [JsonIgnore]
+    public IReadOnlyList<string> FileIds { get; init; } = Array.Empty<string>();
+    [JsonIgnore]
     public IReadOnlyList<AgentAttachment> Attachments { get; init; } = Array.Empty<AgentAttachment>();
 }
 

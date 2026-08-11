@@ -7,6 +7,7 @@
 | 表名 | 说明 | 详细文档 |
 |------|------|----------|
 | ConversationRecords | 会话主记录（含消息 JSON） | [tables/ConversationRecords.md](./tables/ConversationRecords.md) |
+| FileAssets | 用户文件元数据与对象存储定位 | [tables/FileAssets.md](./tables/FileAssets.md) |
 
 > 注意：ConversationMessage 不是独立表，而是以 JSON 数组形式存储在 ConversationRecords.MessagesJson 列中。
 
@@ -23,6 +24,7 @@ Agent.Core 使用**双写架构**：
 
 ```
 ConversationRecord 1──* ConversationMessage (嵌入在 MessagesJson 中)
+ConversationRecord *──* FileAssets (通过 ConversationFileReferences)
 ```
 
 ## 迁移历史

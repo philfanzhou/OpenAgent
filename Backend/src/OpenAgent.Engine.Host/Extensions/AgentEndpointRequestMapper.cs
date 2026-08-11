@@ -22,7 +22,11 @@ internal static class AgentEndpointRequestMapper
                 ?? context.Request.Headers["X-Conversation-Id"].FirstOrDefault(),
             TraceId = feature.TraceId,
             ClientType = ClientType.Web,
-            ExternalContext = externalContext
+            ExternalContext = externalContext,
+            FileIds = request.FileIds
+                .Where(fileId => !string.IsNullOrWhiteSpace(fileId))
+                .Distinct(StringComparer.Ordinal)
+                .ToArray()
         };
     }
 

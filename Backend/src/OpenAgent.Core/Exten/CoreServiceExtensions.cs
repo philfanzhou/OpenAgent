@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using OpenAgent.Core.Capabilities.Mcp;
+using OpenAgent.Core.Files;
 using OpenAgent.Core.Security;
 
 namespace OpenAgent.Core.Exten;
@@ -24,6 +25,7 @@ public static class CoreServiceExtensions
 
         return services
             .AddConversationServices(configuration)
+            .AddFileAssetServices(configuration)
             .AddCapabilityServices()
             .AddRuntimeServices();
     }

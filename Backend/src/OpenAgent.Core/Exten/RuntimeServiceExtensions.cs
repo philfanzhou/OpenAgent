@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Core.Abstract;
 using OpenAgent.Core.Conversation;
+using OpenAgent.Core.Files;
 using OpenAgent.Core.Models;
 using OpenAgent.Core.Runtime.Agent;
 using OpenAgent.Core.Security;
@@ -34,7 +35,8 @@ internal static class RuntimeServiceExtensions
         services.AddScoped(serviceProvider => new AgentExecutor(
             serviceProvider.GetRequiredService<IAgentRuntimeResolver>(),
             serviceProvider.GetRequiredService<AgentFactory>(),
-            serviceProvider.GetRequiredService<ConversationAgentResolver>()));
+            serviceProvider.GetRequiredService<ConversationAgentResolver>(),
+            serviceProvider.GetRequiredService<FileAssetRequestResolver>()));
         return services;
     }
 }

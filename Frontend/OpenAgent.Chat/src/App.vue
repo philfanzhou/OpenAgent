@@ -345,14 +345,44 @@ async function refreshConversations(): Promise<void> {
 async function selectConversation(item: ConversationRecord): Promise<void> {
   selectedConversation.value = item
   selectedAgentId.value = item.agentId || selectedAgentId.value
-  if (item.messages?.length) return
+  if (item.messages?.length) {
+    await hydrateAttachmentPreviews(item)
+    return
+  }
   loadingConversation.value = true
   try {
-    selectedConversation.value = await api.getConversation(item.conversationId)
+    const detail = await api.getConversation(item.conversationId)
+    await hydrateAttachmentPreviews(detail)
+    selectedConversation.value = detail
   } catch (error) {
     notifyError(error)
   } finally {
     loadingConversation.value = false
+  }
+}
+
+async function hydrateAttachmentPreviews(conversation: ConversationRecord): Promise<void> {
+  const attachments = conversation.messages?.flatMap(item => item.attachments || []) || []
+  await Promise.all(attachments.map(async attachment => {
+    if (!attachment.fileId || attachment.previewUrl || attachment.previewText) return
+    try {
+      if (attachment.mediaType.startsWith('image/')) {
+        attachment.previewUrl = await api.loadFilePreview(attachment.fileId)
+      } else if (attachment.mediaType === 'text/markdown') {
+        attachment.previewText = await api.readFileText(attachment.fileId)
+      }
+    } catch {
+      // The attachment remains downloadable even when preview loading fails.
+    }
+  }))
+}
+
+async function downloadAttachment(attachment: MessageAttachment): Promise<void> {
+  if (!attachment.fileId) return
+  try {
+    await api.downloadFile(attachment.fileId, attachment.fileName)
+  } catch (error) {
+    notifyError(error)
   }
 }
 
@@ -406,35 +436,42 @@ async function send(): Promise<void> {
   const requestConversationId = isNewConversation && isAutomaticSelection
     ? undefined
     : conversationId
-  conversation.messages ||= []
-  conversation.messages.push({
-    messageId: crypto.randomUUID(), sequence: conversation.messages.length + 1,
-    role: 'user', content: content || '已上传附件', timestamp: new Date().toISOString(),
-    attachments: pendingAttachments.value.map(item => ({
-      fileName: item.file.name,
-      mediaType: item.file.type || 'application/octet-stream',
-      length: item.file.size,
-      previewUrl: item.file.type.startsWith('image/') ? URL.createObjectURL(item.file) : undefined,
-    } satisfies MessageAttachment)),
-  })
-  conversation.messageCount = conversation.messages.length
-  conversation.updatedAt = new Date().toISOString()
-  conversation.lastMessageAt = conversation.updatedAt
-  message.value = ''
-  pendingAttachments.value = []
   loading.value = true
-  let assistant = ''
-  conversation.messages.push({
-    messageId: crypto.randomUUID(), sequence: conversation.messages.length + 1,
-    role: 'assistant', content: '', timestamp: new Date().toISOString(),
-  })
-  const assistantMessage = conversation.messages[conversation.messages.length - 1]
   try {
+    const uploaded = await Promise.all(attachments.map(file => api.uploadFile(file)))
+    conversation.messages ||= []
+    const messageAttachments = await Promise.all(uploaded.map(async (asset, index) => {
+      const source = attachments[index]
+      return {
+        fileId: asset.fileId,
+        fileName: asset.fileName,
+        mediaType: asset.mediaType,
+        length: asset.length,
+        previewUrl: source && asset.mediaType.startsWith('image/') ? URL.createObjectURL(source) : undefined,
+        previewText: source && asset.mediaType === 'text/markdown' ? await source.text() : undefined,
+      } satisfies MessageAttachment
+    }))
+    conversation.messages.push({
+      messageId: crypto.randomUUID(), sequence: conversation.messages.length + 1,
+      role: 'user', content: content || '已上传附件', timestamp: new Date().toISOString(),
+      attachments: messageAttachments,
+    })
+    conversation.messageCount = conversation.messages.length
+    conversation.updatedAt = new Date().toISOString()
+    conversation.lastMessageAt = conversation.updatedAt
+    message.value = ''
+    pendingAttachments.value = []
+    let assistant = ''
+    conversation.messages.push({
+      messageId: crypto.randomUUID(), sequence: conversation.messages.length + 1,
+      role: 'assistant', content: '', timestamp: new Date().toISOString(),
+    })
+    const assistantMessage = conversation.messages[conversation.messages.length - 1]
     for await (const event of api.streamChat(
       requestContent,
       requestedAgentId,
       requestConversationId,
-      attachments,
+      uploaded.map(asset => asset.fileId),
       conversationId,
     )) {
       if (event.type === 'content') {
@@ -450,7 +487,8 @@ async function send(): Promise<void> {
     }
     await refreshConversations()
   } catch (error) {
-    assistantMessage.content = error instanceof Error ? error.message : '执行失败'
+    const lastMessage = conversation.messages?.at(-1)
+    if (lastMessage?.role === 'assistant') lastMessage.content = error instanceof Error ? error.message : '执行失败'
     notifyError(error)
   } finally {
     loading.value = false
@@ -839,7 +877,7 @@ onMounted(() => {
 
       <div class="workspace-grid">
         <section class="chat-card">
-          <ChatMessages :messages="currentMessages" :loading="loadingConversation" @suggest="message = $event" />
+          <ChatMessages :messages="currentMessages" :loading="loadingConversation" @suggest="message = $event" @download="downloadAttachment" />
           <MessageComposer :model-value="message" :endpoint-url="activeEndpointUrl" :endpoint-label="activeEndpointLabel" :selected-agent-id="selectedAgentId" :loading="loading" :pending-attachments="pendingAttachments" @update:model-value="message = $event" @attachments-change="pendingAttachments = $event" @send="send" />
         </section>
         <aside class="context-panel">

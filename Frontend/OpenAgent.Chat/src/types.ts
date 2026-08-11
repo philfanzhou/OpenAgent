@@ -28,14 +28,30 @@ export interface ConversationMessage {
   toolCallId?: string
   toolName?: string
   timestamp: string
+  metadata?: Record<string, string>
   attachments?: MessageAttachment[]
 }
 
 export interface MessageAttachment {
+  fileId?: string
   fileName: string
   mediaType: string
   length: number
   previewUrl?: string
+  previewText?: string
+}
+
+export interface FileAsset {
+  fileId: string
+  tenantId: string
+  ownerUserId: string
+  fileName: string
+  mediaType: string
+  length: number
+  sha256: string
+  source: 'UserUpload' | 'Agent' | 'Skill' | number
+  state: 'Pending' | 'Ready' | 'Failed' | number
+  createdAt: string
 }
 
 export interface PendingAttachment {

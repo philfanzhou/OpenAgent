@@ -10,6 +10,9 @@ ChatApi 提供 Agent.Engine 的核心 HTTP 端点，支持客户端以同步、�
 | `/api/v1/agent/chat/stream` | POST | SSE 流式 | text/event-stream |
 | `/api/v1/agent/chat/attachments` | POST | 带附件同步 | JSON |
 | `/api/v1/agent/chat/attachments/stream` | POST | 带附件 SSE 流式 | text/event-stream |
+| `/api/v1/agent/files` | POST | 独立上传文件资产 | JSON |
+| `/api/v1/agent/files/{fileId}/content` | GET | 文件预览内容 | 原始 MIME |
+| `/api/v1/agent/files/{fileId}/download` | GET | 下载文件资产 | 原始 MIME |
 | `/api/v1/agent/agents` | GET | Agent 列表 | JSON |
 | `/api/v1/agent/conversations` | GET | 会话列表 | JSON |
 | `/api/v1/agent/conversations/search` | GET | 会话搜索 | JSON |
@@ -23,6 +26,7 @@ ChatApi 提供 Agent.Engine 的核心 HTTP 端点，支持客户端以同步、�
 
 - **流式响应**：SSE 事件流
 - **多模态输入**：图片/PDF/文本附件映射到 `AgentRequest.Attachments`
+- **文件资产**：聊天以 `fileIds` 引用已上传文件，执行时按需读取，不在会话中保存字节
 - **上传防护**：数量、大小、MIME 类型校验
 - **请求追踪**：Header / Activity 自动生成 TraceId
 - **优雅中断**：客户端断开时正确释放资源
@@ -37,6 +41,7 @@ ChatApi 提供 Agent.Engine 的核心 HTTP 端点，支持客户端以同步、�
 - 聊天端点：`Backend/src/OpenAgent.Engine.Host/Extensions/AgentChatEndpointExtensions.cs`
 - 会话端点：`Backend/src/OpenAgent.Engine.Host/Extensions/ConversationEndpointExtensions.cs`
 - 附件端点：`Backend/src/OpenAgent.Engine.Host/Extensions/AttachmentEndpointExtensions.cs`
+- 文件端点：`Backend/src/OpenAgent.Engine.Host/Extensions/FileAssetEndpointExtensions.cs`
 - 流式响应：`Backend/src/OpenAgent.Engine.Host/Extensions/AgentStreamWriter.cs`
 - 中间件：`Backend/src/OpenAgent.Engine.Host/Middleware/`
 - 流式处理：`Backend/src/OpenAgent.Engine.Host/StreamingPayloadFactory.cs`

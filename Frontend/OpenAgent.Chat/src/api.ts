@@ -7,8 +7,10 @@ import type {
   ConversationRecord,
   ConnectionMode,
   CurrentUserContext,
+  FileAsset,
   LlmProviderProfile,
   LlmTestResult,
+  MessageAttachment,
   McpServerConfig,
   McpTestResult,
   RagConfig,
@@ -116,6 +118,22 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return await response.json() as T
 }
 
+function normalizeConversation(record: ConversationRecord): ConversationRecord {
+  return {
+    ...record,
+    messages: record.messages?.map(message => {
+      const raw = message.metadata?.Attachments
+      if (!raw) return message
+      try {
+        const attachments = JSON.parse(raw) as MessageAttachment[]
+        return { ...message, attachments }
+      } catch {
+        return message
+      }
+    }),
+  }
+}
+
 function parseSseBlock(block: string): StreamEvent | null {
   let eventType = 'message'
   const data: string[] = []
@@ -164,7 +182,48 @@ export const api = {
   },
 
   getConversation(id: string): Promise<ConversationRecord> {
-    return request<ConversationRecord>(`/api/v1/agent/conversations/${encodeURIComponent(id)}`)
+    return request<ConversationRecord>(`/api/v1/agent/conversations/${encodeURIComponent(id)}`).then(normalizeConversation)
+  },
+
+  async uploadFile(file: File): Promise<FileAsset> {
+    const form = new FormData()
+    form.set('file', file, file.name)
+    const response = await fetch(`${requireBaseUrl()}/api/v1/agent/files`, {
+      method: 'POST',
+      headers: headers(),
+      body: form,
+    })
+    if (!response.ok) throw await readError(response)
+    return await response.json() as FileAsset
+  },
+
+  async loadFilePreview(fileId: string): Promise<string> {
+    const response = await fetch(`${requireBaseUrl()}/api/v1/agent/files/${encodeURIComponent(fileId)}/content`, {
+      headers: headers(),
+    })
+    if (!response.ok) throw await readError(response)
+    return URL.createObjectURL(await response.blob())
+  },
+
+  async readFileText(fileId: string): Promise<string> {
+    const response = await fetch(`${requireBaseUrl()}/api/v1/agent/files/${encodeURIComponent(fileId)}/content`, {
+      headers: headers(),
+    })
+    if (!response.ok) throw await readError(response)
+    return await response.text()
+  },
+
+  async downloadFile(fileId: string, fileName: string): Promise<void> {
+    const response = await fetch(`${requireBaseUrl()}/api/v1/agent/files/${encodeURIComponent(fileId)}/download`, {
+      headers: headers(),
+    })
+    if (!response.ok) throw await readError(response)
+    const url = URL.createObjectURL(await response.blob())
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = fileName
+    anchor.click()
+    URL.revokeObjectURL(url)
   },
 
   deleteConversation(id: string): Promise<void> {
@@ -279,23 +338,17 @@ export const api = {
     message: string,
     agentId?: string,
     conversationId?: string,
-    attachments: File[] = [],
+    fileIds: string[] = [],
     routingConversationId?: string,
   ): AsyncGenerator<StreamEvent> {
-    const hasAttachments = attachments.length > 0
-    const form = new FormData()
-    form.set('message', message)
-    if (agentId) form.set('agentId', agentId)
-    if (conversationId) form.set('conversationId', conversationId)
-    for (const file of attachments) form.append('files', file, file.name)
-
-    const requestHeaders = headers(hasAttachments ? {} : { 'Content-Type': 'application/json' })
+    const requestHeaders = headers({ 'Content-Type': 'application/json' })
     if (routingConversationId) requestHeaders.set('X-Conversation-Id', routingConversationId)
-    const response = await fetch(`${requireBaseUrl()}/api/v1/agent/chat/${hasAttachments ? 'attachments/stream' : 'stream'}`, {
+    const response = await fetch(`${requireBaseUrl()}/api/v1/agent/chat/stream`, {
       method: 'POST',
       headers: requestHeaders,
-      body: hasAttachments ? form : JSON.stringify({
+      body: JSON.stringify({
         message,
+        fileIds,
         context: { ...(agentId ? { agentId } : {}), ...(conversationId ? { conversationId } : {}) },
       }),
     })
