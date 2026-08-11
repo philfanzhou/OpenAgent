@@ -3,6 +3,7 @@ import ElementPlus from 'element-plus'
 import 'element-plus/dist/index.css'
 import './styles.css'
 import './theme.css'
+import './workspace.css'
 import App from './App.vue'
 
 createApp(App).use(ElementPlus).mount('#app')

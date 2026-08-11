@@ -22,7 +22,8 @@ internal static class ManagementEndpointExtensions
             HttpContext context,
             CancellationToken cancellationToken) =>
         {
-            if (!HasScope(context, "agent.read")) return Results.Forbid();
+            if (!HasScope(context, "agent.read"))
+                return Results.Forbid();
             return Results.Ok(await provider.ListAgentsAsync(cancellationToken).ConfigureAwait(false));
         });
 
@@ -32,7 +33,8 @@ internal static class ManagementEndpointExtensions
             string agentId,
             CancellationToken cancellationToken) =>
         {
-            if (!HasScope(context, "agent.config.read")) return Results.Forbid();
+            if (!HasScope(context, "agent.config.read"))
+                return Results.Forbid();
             AgentConfigEntity? entity = await manager.GetAsync(agentId, cancellationToken).ConfigureAwait(false);
             return entity == null ? Results.NotFound() : Results.Ok(Redact(entity));
         });
@@ -42,7 +44,8 @@ internal static class ManagementEndpointExtensions
             HttpContext context,
             CancellationToken cancellationToken) =>
         {
-            if (!HasScope(context, "agent.config.read")) return Results.Forbid();
+            if (!HasScope(context, "agent.config.read"))
+                return Results.Forbid();
             IReadOnlyList<LlmProviderProfile> profiles = await manager.ListAsync(cancellationToken).ConfigureAwait(false);
             return Results.Ok(profiles.Select(RedactLlm));
         });
@@ -53,7 +56,8 @@ internal static class ManagementEndpointExtensions
             string id,
             CancellationToken cancellationToken) =>
         {
-            if (!HasScope(context, "agent.config.read")) return Results.Forbid();
+            if (!HasScope(context, "agent.config.read"))
+                return Results.Forbid();
             LlmProviderProfile? profile = await manager.GetAsync(id, cancellationToken).ConfigureAwait(false);
             return profile == null ? Results.NotFound() : Results.Ok(RedactLlm(profile));
         });
@@ -65,7 +69,8 @@ internal static class ManagementEndpointExtensions
             [FromBody] LlmProviderProfile profile,
             CancellationToken cancellationToken) =>
         {
-            if (!HasScope(context, "agent.config.write")) return Results.Forbid();
+            if (!HasScope(context, "agent.config.write"))
+                return Results.Forbid();
             if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(profile.Name)
                 || string.IsNullOrWhiteSpace(profile.ModelId) || string.IsNullOrWhiteSpace(profile.Endpoint))
             {
@@ -90,7 +95,8 @@ internal static class ManagementEndpointExtensions
             string id,
             CancellationToken cancellationToken) =>
         {
-            if (!HasScope(context, "agent.config.write")) return Results.Forbid();
+            if (!HasScope(context, "agent.config.write"))
+                return Results.Forbid();
             return await manager.DeleteAsync(id, cancellationToken).ConfigureAwait(false)
                 ? Results.NoContent()
                 : Results.NotFound();
@@ -102,7 +108,8 @@ internal static class ManagementEndpointExtensions
             HttpContext context,
             CancellationToken cancellationToken) =>
         {
-            if (!HasScope(context, "capability.test")) return Results.Forbid();
+            if (!HasScope(context, "capability.test"))
+                return Results.Forbid();
             LlmProviderProfile profile = request.Profile;
             string traceId = context.GetAgentRequest().TraceId ?? string.Empty;
             if (string.IsNullOrWhiteSpace(profile.Endpoint))
@@ -119,7 +126,8 @@ internal static class ManagementEndpointExtensions
             try
             {
                 string endpoint = profile.Endpoint.TrimEnd('/');
-                if (!endpoint.EndsWith("/models", StringComparison.OrdinalIgnoreCase)) endpoint += "/models";
+                if (!endpoint.EndsWith("/models", StringComparison.OrdinalIgnoreCase))
+                    endpoint += "/models";
                 using HttpRequestMessage httpRequest = new(HttpMethod.Get, endpoint);
                 if (!string.IsNullOrWhiteSpace(profile.ApiKey) && !profile.ApiKey.StartsWith("***", StringComparison.Ordinal))
                 {
@@ -172,7 +180,8 @@ internal static class ManagementEndpointExtensions
             [FromBody] AgentConfigEntity entity,
             CancellationToken cancellationToken) =>
         {
-            if (!HasScope(context, "agent.config.write")) return Results.Forbid();
+            if (!HasScope(context, "agent.config.write"))
+                return Results.Forbid();
             AgentConfigEntity? existing = await manager.GetAsync(agentId, cancellationToken).ConfigureAwait(false);
             AgentConfigEntity merged = MergeSecrets(existing, entity);
             AgentConfigEntity? saved = await manager.SaveAsync(
@@ -189,9 +198,10 @@ internal static class ManagementEndpointExtensions
             [FromQuery] string agentId,
             CancellationToken cancellationToken) =>
         {
-            if (!HasScope(context, "agent.config.read")) return Results.Forbid();
+            if (!HasScope(context, "agent.config.read"))
+                return Results.Forbid();
             AgentConfigEntity? entity = await manager.GetAsync(agentId, cancellationToken).ConfigureAwait(false);
-            return entity == null ? Results.NotFound() : Results.Ok(entity.Config.Mcp);
+            return entity == null ? Results.NotFound() : Results.Ok(RedactMcp(entity.Config.Mcp));
         });
 
         group.MapPut("/mcp/{id}", async (
@@ -202,22 +212,28 @@ internal static class ManagementEndpointExtensions
             [FromBody] McpServerConfig server,
             CancellationToken cancellationToken) =>
         {
-            if (!HasScope(context, "agent.config.write")) return Results.Forbid();
+            if (!HasScope(context, "agent.config.write"))
+                return Results.Forbid();
             AgentConfigEntity? existing = await manager.GetAsync(agentId, cancellationToken).ConfigureAwait(false);
-            if (existing == null) return Results.NotFound();
+            if (existing == null)
+                return Results.NotFound();
 
             server.Name = id;
             int index = existing.Config.Mcp.Servers.FindIndex(item =>
                 string.Equals(item.Name, id, StringComparison.OrdinalIgnoreCase));
-            if (index >= 0) existing.Config.Mcp.Servers[index] = server;
-            else existing.Config.Mcp.Servers.Add(server);
+            if (index >= 0)
+                existing.Config.Mcp.Servers[index] = MergeMcpSecrets(
+                    existing.Config.Mcp.Servers[index],
+                    server);
+            else
+                existing.Config.Mcp.Servers.Add(server);
 
             AgentConfigEntity? saved = await manager.SaveAsync(
                 agentId,
                 existing,
                 context.Request.Headers.IfMatch.FirstOrDefault(),
                 cancellationToken).ConfigureAwait(false);
-            return saved == null ? Results.Conflict() : Results.Ok(server);
+            return saved == null ? Results.Conflict() : Results.Ok(RedactMcpServer(server));
         });
 
         group.MapDelete("/mcp/{id}", async (
@@ -227,13 +243,16 @@ internal static class ManagementEndpointExtensions
             [FromQuery] string agentId,
             CancellationToken cancellationToken) =>
         {
-            if (!HasScope(context, "agent.config.write")) return Results.Forbid();
+            if (!HasScope(context, "agent.config.write"))
+                return Results.Forbid();
             AgentConfigEntity? existing = await manager.GetAsync(agentId, cancellationToken).ConfigureAwait(false);
-            if (existing == null) return Results.NotFound();
+            if (existing == null)
+                return Results.NotFound();
 
             int removed = existing.Config.Mcp.Servers.RemoveAll(item =>
                 string.Equals(item.Name, id, StringComparison.OrdinalIgnoreCase));
-            if (removed == 0) return Results.NotFound();
+            if (removed == 0)
+                return Results.NotFound();
 
             AgentConfigEntity? saved = await manager.SaveAsync(
                 agentId,
@@ -249,7 +268,8 @@ internal static class ManagementEndpointExtensions
             HttpContext context,
             CancellationToken cancellationToken) =>
         {
-            if (!HasScope(context, "capability.test")) return Results.Forbid();
+            if (!HasScope(context, "capability.test"))
+                return Results.Forbid();
             McpConnectionTestResult result = await tester.TestAsync(
                 request,
                 context.GetAgentRequest().User,
@@ -264,7 +284,8 @@ internal static class ManagementEndpointExtensions
             [FromQuery] string agentId,
             CancellationToken cancellationToken) =>
         {
-            if (!HasScope(context, "agent.config.read")) return Results.Forbid();
+            if (!HasScope(context, "agent.config.read"))
+                return Results.Forbid();
             AgentConfigEntity? entity = await manager.GetAsync(agentId, cancellationToken).ConfigureAwait(false);
             return entity == null
                 ? Results.NotFound()
@@ -284,9 +305,11 @@ internal static class ManagementEndpointExtensions
             [FromBody] RagInstanceConfig instance,
             CancellationToken cancellationToken) =>
         {
-            if (!HasScope(context, "agent.config.write")) return Results.Forbid();
+            if (!HasScope(context, "agent.config.write"))
+                return Results.Forbid();
             AgentConfigEntity? existing = await manager.GetAsync(agentId, cancellationToken).ConfigureAwait(false);
-            if (existing == null) return Results.NotFound();
+            if (existing == null)
+                return Results.NotFound();
 
             instance.Id = id;
             RagInstanceConfig? current = existing.Config.Rag.Instances.FirstOrDefault(item =>
@@ -298,8 +321,10 @@ internal static class ManagementEndpointExtensions
 
             int index = existing.Config.Rag.Instances.FindIndex(item =>
                 string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
-            if (index >= 0) existing.Config.Rag.Instances[index] = instance;
-            else existing.Config.Rag.Instances.Add(instance);
+            if (index >= 0)
+                existing.Config.Rag.Instances[index] = instance;
+            else
+                existing.Config.Rag.Instances.Add(instance);
             if (instance.Enabled && !existing.Config.Rag.EnabledRagInstanceIds.Contains(id, StringComparer.OrdinalIgnoreCase))
             {
                 existing.Config.Rag.EnabledRagInstanceIds.Add(id);
@@ -320,12 +345,15 @@ internal static class ManagementEndpointExtensions
             [FromQuery] string agentId,
             CancellationToken cancellationToken) =>
         {
-            if (!HasScope(context, "agent.config.write")) return Results.Forbid();
+            if (!HasScope(context, "agent.config.write"))
+                return Results.Forbid();
             AgentConfigEntity? existing = await manager.GetAsync(agentId, cancellationToken).ConfigureAwait(false);
-            if (existing == null) return Results.NotFound();
+            if (existing == null)
+                return Results.NotFound();
             int removed = existing.Config.Rag.Instances.RemoveAll(item =>
                 string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
-            if (removed == 0) return Results.NotFound();
+            if (removed == 0)
+                return Results.NotFound();
             existing.Config.Rag.EnabledRagInstanceIds.RemoveAll(item =>
                 string.Equals(item, id, StringComparison.OrdinalIgnoreCase));
             AgentConfigEntity? saved = await manager.SaveAsync(
@@ -342,7 +370,8 @@ internal static class ManagementEndpointExtensions
             HttpContext context,
             CancellationToken cancellationToken) =>
         {
-            if (!HasScope(context, "capability.test")) return Results.Forbid();
+            if (!HasScope(context, "capability.test"))
+                return Results.Forbid();
             if (string.IsNullOrWhiteSpace(request.Instance.ApiEndpoint))
             {
                 return Results.Ok(new RagConnectionTestResult
@@ -395,7 +424,8 @@ internal static class ManagementEndpointExtensions
             [FromQuery] string agentId,
             CancellationToken cancellationToken) =>
         {
-            if (!HasScope(context, "agent.config.read")) return Results.Forbid();
+            if (!HasScope(context, "agent.config.read"))
+                return Results.Forbid();
             AgentConfigEntity? entity = await manager.GetAsync(agentId, cancellationToken).ConfigureAwait(false);
             return entity == null ? Results.NotFound() : Results.Ok(entity.Config.Skills);
         });
@@ -407,9 +437,11 @@ internal static class ManagementEndpointExtensions
             [FromBody] SkillsConfig skills,
             CancellationToken cancellationToken) =>
         {
-            if (!HasScope(context, "agent.config.write")) return Results.Forbid();
+            if (!HasScope(context, "agent.config.write"))
+                return Results.Forbid();
             AgentConfigEntity? existing = await manager.GetAsync(agentId, cancellationToken).ConfigureAwait(false);
-            if (existing == null) return Results.NotFound();
+            if (existing == null)
+                return Results.NotFound();
             existing.Config.Skills = skills;
             AgentConfigEntity? saved = await manager.SaveAsync(
                 agentId,
@@ -423,7 +455,8 @@ internal static class ManagementEndpointExtensions
             [FromBody] SkillsConfig skills,
             HttpContext context) =>
         {
-            if (!HasScope(context, "capability.test")) return Results.Forbid();
+            if (!HasScope(context, "capability.test"))
+                return Results.Forbid();
             string[] invalid = skills.Instances
                 .Where(item => string.IsNullOrWhiteSpace(item.Id) || string.IsNullOrWhiteSpace(item.Name))
                 .Select(item => string.IsNullOrWhiteSpace(item.Id) ? item.Name : item.Id)
@@ -448,7 +481,8 @@ internal static class ManagementEndpointExtensions
 
     private static AgentConfigEntity MergeSecrets(AgentConfigEntity? existing, AgentConfigEntity requested)
     {
-        if (existing == null) return requested;
+        if (existing == null)
+            return requested;
         if (string.IsNullOrWhiteSpace(requested.Config.Llm.ApiKey)
             || requested.Config.Llm.ApiKey.StartsWith("***", StringComparison.Ordinal))
         {
@@ -467,14 +501,65 @@ internal static class ManagementEndpointExtensions
             }
         }
 
+        foreach (McpServerConfig requestedServer in requested.Config.Mcp.Servers)
+        {
+            McpServerConfig? existingServer = existing.Config.Mcp.Servers.FirstOrDefault(item =>
+                string.Equals(item.Name, requestedServer.Name, StringComparison.OrdinalIgnoreCase));
+            MergeMcpSecrets(existingServer, requestedServer);
+        }
+
         return requested;
     }
 
-    private static AgentConfigEntity Redact(AgentConfigEntity entity)
+    internal static AgentConfigEntity Redact(AgentConfigEntity entity)
     {
+        entity.Config.Llm.ApiKey = string.IsNullOrWhiteSpace(entity.Config.Llm.ApiKey)
+            ? string.Empty
+            : "***";
+        entity.Config.Mcp = RedactMcp(entity.Config.Mcp);
         entity.Config.Rag.Instances = entity.Config.Rag.Instances.Select(RedactRag).ToList();
         return entity;
     }
+
+    internal static McpConfig RedactMcp(McpConfig config) => new()
+    {
+        Servers = config.Servers.Select(RedactMcpServer).ToList()
+    };
+
+    internal static McpServerConfig MergeMcpSecrets(
+        McpServerConfig? existing,
+        McpServerConfig requested)
+    {
+        if (existing == null)
+        {
+            return requested;
+        }
+
+        foreach ((string key, string value) in requested.EnvironmentVariables.ToArray())
+        {
+            if (value.StartsWith("***", StringComparison.Ordinal)
+                && existing.EnvironmentVariables.TryGetValue(key, out string? secret))
+            {
+                requested.EnvironmentVariables[key] = secret;
+            }
+        }
+
+        return requested;
+    }
+
+    private static McpServerConfig RedactMcpServer(McpServerConfig server) => new()
+    {
+        Name = server.Name,
+        Url = server.Url,
+        Type = server.Type,
+        Command = server.Command,
+        Arguments = [.. server.Arguments],
+        WorkingDirectory = server.WorkingDirectory,
+        EnvironmentVariables = server.EnvironmentVariables.ToDictionary(
+            item => item.Key,
+            item => string.IsNullOrEmpty(item.Value) ? string.Empty : "***",
+            StringComparer.OrdinalIgnoreCase)
+    };
 
     private static RagInstanceConfig RedactRag(RagInstanceConfig instance)
     {
@@ -495,7 +580,7 @@ internal static class ManagementEndpointExtensions
         };
     }
 
-    private static LlmProviderProfile RedactLlm(LlmProviderProfile profile)
+    internal static LlmProviderProfile RedactLlm(LlmProviderProfile profile)
     {
         return new LlmProviderProfile
         {
@@ -504,7 +589,7 @@ internal static class ManagementEndpointExtensions
             Format = profile.Format,
             ModelId = profile.ModelId,
             Endpoint = profile.Endpoint,
-            ApiKey = profile.ApiKey,
+            ApiKey = string.IsNullOrWhiteSpace(profile.ApiKey) ? string.Empty : "***",
             Temperature = profile.Temperature
         };
     }

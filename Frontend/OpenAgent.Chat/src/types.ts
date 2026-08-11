@@ -1,4 +1,5 @@
 export type ConversationStatus = 'Running' | 'Completed' | 'Failed' | 'Cancelled' | number
+export type ConnectionMode = 'router' | 'engine'
 export const AUTO_AGENT_ID = '__auto__'
 
 export interface AgentSummary {

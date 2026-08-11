@@ -1,23 +1,25 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { api, getAccessToken, getEngineBaseUrl, getTenantId, makeLocalConversation, setAccessToken, setEngineBaseUrl, setTenantId } from './api'
+import { api, getAccessToken, getConnectionMode, getEngineBaseUrl, getRouterBaseUrl, getTenantId, makeLocalConversation, setAccessToken, setConnectionMode, setEngineBaseUrl, setRouterBaseUrl, setTenantId } from './api'
 import ChatHeader from './components/ChatHeader.vue'
 import ChatMessages from './components/ChatMessages.vue'
 import ChatSidebar from './components/ChatSidebar.vue'
 import MessageComposer from './components/MessageComposer.vue'
-import { AUTO_AGENT_ID, type AgentConfigEntity, type AgentSummary, type AuthConfig, type ConversationMessage, type ConversationRecord, type CurrentUserContext, type LlmProviderProfile, type LlmTestResult, type McpServerConfig, type McpTestResult, type MessageAttachment, type PendingAttachment, type RagConfig, type RagInstanceConfig, type RagTestResult, type SkillInstanceConfig, type SkillsConfig } from './types'
+import { AUTO_AGENT_ID, type AgentConfigEntity, type AgentSummary, type AuthConfig, type ConnectionMode, type ConversationMessage, type ConversationRecord, type CurrentUserContext, type LlmProviderProfile, type LlmTestResult, type McpServerConfig, type McpTestResult, type MessageAttachment, type PendingAttachment, type RagConfig, type RagInstanceConfig, type RagTestResult, type SkillInstanceConfig, type SkillsConfig } from './types'
 
+const connectionMode = ref<ConnectionMode>(getConnectionMode())
+const routerUrl = ref(getRouterBaseUrl())
 const engineUrl = ref(getEngineBaseUrl())
 const token = ref(getAccessToken())
 const tenantId = ref(getTenantId())
-const showSettings = ref(!engineUrl.value)
-const activeSettings = ref<'engine' | 'llm' | 'agent' | 'mcp' | 'skill' | 'rag'>('engine')
+const showSettings = ref(!(connectionMode.value === 'router' ? routerUrl.value : engineUrl.value))
+const activeSettings = ref<'gateway' | 'diagnostics' | 'llm' | 'agent' | 'mcp' | 'skill' | 'rag'>('gateway')
 const agents = ref<AgentSummary[]>([])
 const currentUser = ref<CurrentUserContext | null>(null)
 const conversations = ref<ConversationRecord[]>([])
 const selectedConversation = ref<ConversationRecord | null>(null)
-const selectedAgentId = ref('')
+const selectedAgentId = ref(AUTO_AGENT_ID)
 const message = ref('')
 const search = ref('')
 const loading = ref(false)
@@ -59,6 +61,17 @@ const showLlmEditor = ref(false)
 const isNewLlm = ref(false)
 const pendingAttachments = ref<PendingAttachment[]>([])
 const themeMode = ref<'light' | 'dark'>(localStorage.getItem('openagent.ui.theme') === 'dark' ? 'dark' : 'light')
+type DiagnosticKey = 'live' | 'ready' | 'catalog' | 'identity' | 'conversations'
+type DiagnosticStatus = 'idle' | 'running' | 'ok' | 'error'
+interface DiagnosticItem { key: DiagnosticKey; name: string; detail: string; status: DiagnosticStatus; elapsedMs?: number }
+const diagnostics = ref<DiagnosticItem[]>([
+  { key: 'live', name: 'Live', detail: '进程存活检查', status: 'idle' },
+  { key: 'ready', name: 'Ready', detail: '依赖与路由就绪检查', status: 'idle' },
+  { key: 'catalog', name: 'Agent Catalog', detail: '可见 Agent 与外部目录', status: 'idle' },
+  { key: 'identity', name: 'Identity', detail: '认证与租户上下文', status: 'idle' },
+  { key: 'conversations', name: 'Conversations', detail: '会话存储读取', status: 'idle' },
+])
+const runningDiagnostics = ref(false)
 
 const currentMessages = computed(() => selectedConversation.value?.messages || [])
 const selectedSkill = computed(() => selectedSkillIndex.value >= 0 ? skillDraft.value.instances[selectedSkillIndex.value] || null : null)
@@ -70,6 +83,25 @@ const mcpArgumentsText = computed({
 })
 
 const ragEnabledText = computed(() => config.value?.config.rag?.enabled ? '已启用' : '未启用')
+const selectedAgent = computed(() => agents.value.find(agent => agent.agentId === selectedAgentId.value) || null)
+const activeEndpointUrl = computed(() => connectionMode.value === 'router' ? routerUrl.value : engineUrl.value)
+const activeEndpointLabel = computed(() => connectionMode.value === 'router' ? 'Router' : 'Engine')
+const activeEndpointHost = computed(() => {
+  try { return new URL(activeEndpointUrl.value).host }
+  catch { return activeEndpointUrl.value || '未配置' }
+})
+const routeMode = computed(() => connectionMode.value === 'engine'
+  ? 'Engine 直连'
+  : selectedAgentId.value === AUTO_AGENT_ID
+  ? '自动意图路由'
+  : '显式 Agent')
+
+watch(connectionMode, mode => {
+  statusText.value = '未连接'
+  if (mode === 'engine' && selectedAgentId.value === AUTO_AGENT_ID) {
+    selectedAgentId.value = agents.value[0]?.agentId || ''
+  }
+})
 
 function applyTheme(): void {
   document.documentElement.dataset.theme = themeMode.value
@@ -123,6 +155,8 @@ function createDefaultLlm(): LlmProviderProfile {
 }
 
 async function connect(): Promise<void> {
+  setConnectionMode(connectionMode.value)
+  setRouterBaseUrl(routerUrl.value)
   setEngineBaseUrl(engineUrl.value)
   setAccessToken(token.value)
   setTenantId(tenantId.value)
@@ -175,7 +209,8 @@ async function loadWorkspace(): Promise<void> {
     if (conversationResult.status === 'fulfilled') conversations.value = conversationResult.value
     else conversations.value = []
     if (userResult.status === 'fulfilled') currentUser.value = userResult.value
-    if (selectedAgentId.value !== AUTO_AGENT_ID && !agents.value.some(item => item.agentId === selectedAgentId.value)) {
+    if ((connectionMode.value === 'engine' && selectedAgentId.value === AUTO_AGENT_ID)
+      || (selectedAgentId.value !== AUTO_AGENT_ID && !agents.value.some(item => item.agentId === selectedAgentId.value))) {
       selectedAgentId.value = agents.value[0]?.agentId || ''
       config.value = null
     }
@@ -279,7 +314,8 @@ async function refreshAgents(): Promise<void> {
   try {
     const refreshed = await api.listAgents()
     agents.value = refreshed
-    if (selectedAgentId.value !== AUTO_AGENT_ID && !refreshed.some(item => item.agentId === selectedAgentId.value)) {
+    if ((connectionMode.value === 'engine' && selectedAgentId.value === AUTO_AGENT_ID)
+      || (selectedAgentId.value !== AUTO_AGENT_ID && !refreshed.some(item => item.agentId === selectedAgentId.value))) {
       selectedAgentId.value = refreshed[0]?.agentId || ''
       config.value = null
     }
@@ -354,7 +390,7 @@ async function send(): Promise<void> {
   const requestedAgentId = selectedAgentId.value === AUTO_AGENT_ID
     ? selectedConversation.value?.agentId
     : selectedAgentId.value
-  const isAutomaticSelection = selectedAgentId.value === AUTO_AGENT_ID
+  const isAutomaticSelection = connectionMode.value === 'router' && selectedAgentId.value === AUTO_AGENT_ID
   const local = selectedConversation.value || makeLocalConversation(requestedAgentId || '', requestContent)
   if (isNewConversation) {
     local.messages = []
@@ -388,11 +424,11 @@ async function send(): Promise<void> {
   pendingAttachments.value = []
   loading.value = true
   let assistant = ''
-  const assistantMessage: ConversationMessage = {
+  conversation.messages.push({
     messageId: crypto.randomUUID(), sequence: conversation.messages.length + 1,
     role: 'assistant', content: '', timestamp: new Date().toISOString(),
-  }
-  conversation.messages.push(assistantMessage)
+  })
+  const assistantMessage = conversation.messages[conversation.messages.length - 1]
   try {
     for await (const event of api.streamChat(
       requestContent,
@@ -406,6 +442,8 @@ async function send(): Promise<void> {
         assistantMessage.content = assistant
       } else if (event.type === 'tool_call') {
         assistantMessage.toolName = event.toolName
+      } else if (event.type === 'done' && event.status) {
+        conversation.status = event.status as ConversationRecord['status']
       } else if (event.type === 'error') {
         throw new Error(event.error?.detail || 'Agent 执行失败')
       }
@@ -738,6 +776,28 @@ async function testMcp(): Promise<void> {
   }
 }
 
+async function runDiagnostics(): Promise<void> {
+  runningDiagnostics.value = true
+  diagnostics.value = diagnostics.value.map(item => ({ ...item, status: 'running', elapsedMs: undefined }))
+  const checks: Record<DiagnosticKey, () => Promise<string>> = {
+    live: async () => { await api.health('/health'); return 'HTTP 200' },
+    ready: async () => { await api.health('/ready'); return `${activeEndpointLabel.value} 已就绪` },
+    catalog: async () => { const result = await api.listAgents(); return `${result.length} 个可见 Agent` },
+    identity: async () => { const result = await api.getCurrentUser(); return `${result.userId} · ${result.tenantId || '无租户'}` },
+    conversations: async () => { const result = await api.listConversations(); return `${result.length} 个会话` },
+  }
+  await Promise.all(diagnostics.value.map(async (item, index) => {
+    const startedAt = performance.now()
+    try {
+      const detail = await checks[item.key]()
+      diagnostics.value[index] = { ...item, detail, status: 'ok', elapsedMs: Math.round(performance.now() - startedAt) }
+    } catch (error) {
+      diagnostics.value[index] = { ...item, detail: error instanceof Error ? error.message : '请求失败', status: 'error', elapsedMs: Math.round(performance.now() - startedAt) }
+    }
+  }))
+  runningDiagnostics.value = false
+}
+
 function openSettings(panel: typeof activeSettings.value): void {
   activeSettings.value = panel
   showSettings.value = true
@@ -748,6 +808,7 @@ function openSettings(panel: typeof activeSettings.value): void {
   }
   if (panel === 'skill' || panel === 'rag') void loadConfig()
   if (panel === 'mcp') void loadMcp()
+  if (panel === 'diagnostics') void runDiagnostics()
 }
 
 function handleSettingsTabChange(name: string | number): void {
@@ -758,11 +819,12 @@ function handleSettingsTabChange(name: string | number): void {
   }
   if (name === 'skill' || name === 'rag') void loadConfig()
   if (name === 'mcp') void loadMcp()
+  if (name === 'diagnostics') void runDiagnostics()
 }
 
 onMounted(() => {
   applyTheme()
-  if (engineUrl.value) {
+  if (activeEndpointUrl.value) {
     void connect()
   }
 })
@@ -770,36 +832,49 @@ onMounted(() => {
 
 <template>
   <el-container class="app-shell">
-    <ChatSidebar :conversations="conversations" :selected-conversation-id="selectedConversation?.conversationId" :search="search" :loading="loading" @update:search="search = $event" @new="newConversation" @settings="openSettings('engine')" @refresh="loadWorkspace" @select="selectConversation" @delete="deleteConversation" />
+    <ChatSidebar :conversations="conversations" :selected-conversation-id="selectedConversation?.conversationId" :search="search" :loading="loading" :status-text="statusText" :current-user="currentUser" @update:search="search = $event" @new="newConversation" @settings="openSettings('gateway')" @refresh="loadWorkspace" @select="selectConversation" @delete="deleteConversation" />
 
     <el-main class="main-panel">
-      <ChatHeader :status-text="statusText" :agents="agents" :selected-agent-id="selectedAgentId" :refreshing-agents="refreshingAgents" :title="selectedConversation?.title || '新对话'" :theme-mode="themeMode" @update:selected-agent-id="selectedAgentId = $event" @agent-change="handleAgentChange" @refresh-agents="refreshAgents" @settings="openSettings('engine')" @toggle-theme="toggleTheme" />
+      <ChatHeader :status-text="statusText" :agents="agents" :selected-agent-id="selectedAgentId" :allow-auto="connectionMode === 'router'" :refreshing-agents="refreshingAgents" :title="selectedConversation?.title || '新对话'" :theme-mode="themeMode" @update:selected-agent-id="selectedAgentId = $event" @agent-change="handleAgentChange" @refresh-agents="refreshAgents" @settings="openSettings('gateway')" @toggle-theme="toggleTheme" />
 
-      <section class="chat-card">
-        <ChatMessages :messages="currentMessages" :loading="loadingConversation" />
-        <MessageComposer :model-value="message" :engine-url="engineUrl" :selected-agent-id="selectedAgentId" :loading="loading" :pending-attachments="pendingAttachments" @update:model-value="message = $event" @attachments-change="pendingAttachments = $event" @send="send" />
-      </section>
+      <div class="workspace-grid">
+        <section class="chat-card">
+          <ChatMessages :messages="currentMessages" :loading="loadingConversation" @suggest="message = $event" />
+          <MessageComposer :model-value="message" :endpoint-url="activeEndpointUrl" :endpoint-label="activeEndpointLabel" :selected-agent-id="selectedAgentId" :loading="loading" :pending-attachments="pendingAttachments" @update:model-value="message = $event" @attachments-change="pendingAttachments = $event" @send="send" />
+        </section>
+        <aside class="context-panel">
+          <section><span class="context-label">ROUTING</span><strong>{{ routeMode }}</strong><p>{{ connectionMode === 'router' && selectedAgentId === AUTO_AGENT_ID ? '由意图识别 Agent 分析请求并选择目标。' : (selectedAgent?.description || selectedAgentId) }}</p><dl><div><dt>Agent</dt><dd>{{ connectionMode === 'router' && selectedAgentId === AUTO_AGENT_ID ? '由模型选择' : (selectedAgent?.name || selectedAgentId) }}</dd></div><div><dt>协议</dt><dd>{{ selectedAgent?.apiFormat || (connectionMode === 'router' ? '自动' : '—') }}</dd></div></dl></section>
+          <section><span class="context-label">IDENTITY</span><dl><div><dt>用户</dt><dd>{{ currentUser?.userId || 'Guest' }}</dd></div><div><dt>租户</dt><dd>{{ currentUser?.tenantId || tenantId || '—' }}</dd></div><div><dt>{{ activeEndpointLabel }}</dt><dd :title="activeEndpointUrl">{{ activeEndpointHost }}</dd></div></dl></section>
+          <section><span class="context-label">CONVERSATION</span><dl><div><dt>消息</dt><dd>{{ currentMessages.length }}</dd></div><div><dt>状态</dt><dd>{{ selectedConversation?.status ?? '新建' }}</dd></div><div><dt>ID</dt><dd class="truncate" :title="selectedConversation?.conversationId">{{ selectedConversation?.conversationId || '尚未创建' }}</dd></div></dl></section>
+          <el-button class="diagnostics-shortcut" @click="openSettings('diagnostics')">运行工作台诊断</el-button>
+        </aside>
+      </div>
     </el-main>
   </el-container>
 
   <el-dialog v-model="showSettings" class="settings-dialog" width="min(1180px, calc(100vw - 40px))" top="3vh" :close-on-click-modal="false" destroy-on-close>
     <template #header>
-      <div class="settings-header"><div><span class="eyebrow">WORKSPACE CONTROL</span><h2>工作台设置</h2></div></div>
+      <div class="settings-header"><div><span class="eyebrow">OPENAGENT CONTROL PLANE</span><h2>工作台设置</h2></div><span class="settings-endpoint">{{ activeEndpointLabel }} · {{ activeEndpointHost }}</span></div>
     </template>
     <div class="settings-body">
       <el-tabs v-model="activeSettings" tab-position="left" class="settings-tabs" @tab-change="handleSettingsTabChange">
-        <el-tab-pane label="Engine 连接" name="engine">
-          <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">CONNECTION</span><h3>连接与身份</h3><p>配置当前工作台要访问的 Engine，设置会保存在本机浏览器中。</p></div><span class="connection-badge" :class="{ online: statusText === '已连接' }"><i />{{ statusText }}</span></div>
-            <el-form label-position="top"><el-form-item label="Engine 地址"><el-input v-model="engineUrl" placeholder="http://localhost:5208" /></el-form-item><el-form-item label="租户 ID"><el-input v-model="tenantId" placeholder="可选：用于当前工作台隔离" /></el-form-item></el-form>
+        <el-tab-pane label="连接" name="gateway">
+          <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">CONNECTION</span><h3>服务连接与身份</h3><p>Router 模式提供意图路由、外部 Agent 和 Engine 服务发现；Engine 模式用于直接联调单个 Engine。</p></div><span class="connection-badge" :class="{ online: statusText === '已连接' }"><i />{{ statusText }}</span></div>
+            <el-form label-position="top" class="connection-form"><el-form-item label="连接模式"><el-radio-group v-model="connectionMode"><el-radio-button value="router">Router</el-radio-button><el-radio-button value="engine">直连 Engine</el-radio-button></el-radio-group></el-form-item><el-form-item label="Router 地址"><el-input v-model="routerUrl" placeholder="http://localhost:5001" /></el-form-item><el-form-item label="Engine 地址"><el-input v-model="engineUrl" placeholder="http://localhost:5000" /></el-form-item><el-form-item label="租户 ID"><el-input v-model="tenantId" placeholder="可选：用于当前工作台隔离" /></el-form-item></el-form>
             <el-descriptions :column="2" border class="identity-status"><el-descriptions-item label="当前用户">{{ currentUser?.userId || '未连接' }}</el-descriptions-item><el-descriptions-item label="当前租户">{{ currentUser?.tenantId || tenantId || '未识别' }}</el-descriptions-item><el-descriptions-item label="认证状态">{{ currentUser?.isAuthenticated ? '已认证' : '未认证' }}</el-descriptions-item><el-descriptions-item label="登录状态">{{ token ? '已登录（Basic）' : '未登录' }}</el-descriptions-item></el-descriptions>
-            <el-alert title="当前仅使用基础账号密码建立身份。后端暂不校验账号密码正确性，具体资源授权后续单独实现。" type="info" :closable="false" />
-            <section class="login-card"><div class="login-card-heading"><div><span class="eyebrow">BASIC ACCOUNT</span><h4>登录 Engine</h4></div><span class="login-config-status">{{ authConfig?.mode || 'Basic' }}</span></div><el-form label-position="top" class="login-form"><el-form-item label="账号"><el-input v-model="username" autocomplete="username" placeholder="请输入账号" /></el-form-item><el-form-item label="密码"><el-input v-model="password" type="password" show-password autocomplete="current-password" placeholder="请输入密码" /></el-form-item></el-form><el-button type="primary" :loading="authLoading" :disabled="!authConfig?.password.enabled" @click="loginWithPassword">账号密码登录</el-button><small class="login-hint">当前阶段只要填写账号和密码即可通过；后端不会核对账号是否存在或密码是否正确。</small></section>
+            <el-alert title="当前 Basic 模式用于开发联调；生产环境应在 Gateway 接入企业身份提供方并启用统一权限策略。" type="info" :closable="false" />
+            <section class="login-card"><div class="login-card-heading"><div><span class="eyebrow">BASIC ACCOUNT</span><h4>登录 {{ activeEndpointLabel }}</h4></div><span class="login-config-status">{{ authConfig?.mode || 'Basic' }}</span></div><el-form label-position="top" class="login-form"><el-form-item label="账号"><el-input v-model="username" autocomplete="username" placeholder="请输入账号" /></el-form-item><el-form-item label="密码"><el-input v-model="password" type="password" show-password autocomplete="current-password" placeholder="请输入密码" /></el-form-item></el-form><el-button type="primary" :loading="authLoading" :disabled="!authConfig?.password.enabled" @click="loginWithPassword">账号密码登录</el-button><small class="login-hint">凭据只保存在当前浏览器会话，不写入本地持久化存储。</small></section>
             <div class="button-row"><el-button type="primary" @click="connect">保存并连接</el-button><el-button @click="api.health('/health').then(() => ElMessage.success('Live 健康检查通过')).catch(notifyError)">测试 Live</el-button><el-button @click="api.health('/ready').then(() => ElMessage.success('Ready 健康检查通过')).catch(notifyError)">测试 Ready</el-button></div>
+          </section>
+        </el-tab-pane>
+        <el-tab-pane label="诊断" name="diagnostics">
+          <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">SYSTEM CHECK</span><h3>工作台诊断</h3><p>从浏览器逐项验证当前 {{ activeEndpointLabel }}、身份、Agent 目录与会话读取，结果可直接用于联调报告。</p></div><el-button type="primary" :loading="runningDiagnostics" @click="runDiagnostics">运行全部</el-button></div>
+            <div class="diagnostic-grid"><article v-for="item in diagnostics" :key="item.key" :class="['diagnostic-card', item.status]"><div><span class="diagnostic-dot" /><strong>{{ item.name }}</strong><small v-if="item.elapsedMs !== undefined">{{ item.elapsedMs }} ms</small></div><p>{{ item.detail }}</p></article></div>
           </section>
         </el-tab-pane>
         <el-tab-pane label="LLM 配置" name="llm">
           <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">MODEL PROVIDERS</span><h3>大模型配置</h3><p>独立维护多条模型供应商配置，Agent 通过 Provider ID 绑定；API Key 只在保存时写入，列表中始终脱敏。</p></div><div class="section-actions"><el-button @click="loadLlmProfiles">刷新</el-button><el-button type="primary" plain @click="newLlm">新增大模型</el-button></div></div>
-            <el-table :data="llmProfiles" class="capability-table" empty-text="还没有大模型配置"><el-table-column label="名称" min-width="180"><template #default="scope"><strong>{{ scope.row.name }}</strong><small class="table-subtext">{{ scope.row.id }}</small></template></el-table-column><el-table-column label="协议" width="190"><template #default="scope"><el-tag size="small" round>{{ scope.row.format }}</el-tag></template></el-table-column><el-table-column label="模型" min-width="150"> <template #default="scope">{{ scope.row.modelId }}</template></el-table-column><el-table-column label="Endpoint" min-width="260" show-overflow-tooltip><template #default="scope">{{ scope.row.endpoint }}</template></el-table-column><el-table-column label="API Key" min-width="190" show-overflow-tooltip><template #default="scope">{{ scope.row.apiKey || '未配置' }}</template></el-table-column><el-table-column label="操作" width="190" fixed="right"><template #default="scope"><el-button link type="primary" @click="editLlm(scope.$index)">编辑</el-button><el-button link @click="selectLlm(scope.$index); testLlm(); showLlmEditor = true">测试</el-button><el-button link type="danger" @click="selectLlm(scope.$index); deleteLlm()">删除</el-button></template></el-table-column></el-table>
+            <el-table :data="llmProfiles" class="capability-table" empty-text="还没有大模型配置"><el-table-column label="名称" min-width="180"><template #default="scope"><strong>{{ scope.row.name }}</strong><small class="table-subtext">{{ scope.row.id }}</small></template></el-table-column><el-table-column label="协议" width="190"><template #default="scope"><el-tag size="small" round>{{ scope.row.format }}</el-tag></template></el-table-column><el-table-column label="模型" min-width="150"> <template #default="scope">{{ scope.row.modelId }}</template></el-table-column><el-table-column label="Endpoint" min-width="260" show-overflow-tooltip><template #default="scope">{{ scope.row.endpoint }}</template></el-table-column><el-table-column label="API Key" min-width="190"><template #default="scope">{{ scope.row.apiKey ? '••••••••' : '未配置' }}</template></el-table-column><el-table-column label="操作" width="190" fixed="right"><template #default="scope"><el-button link type="primary" @click="editLlm(scope.$index)">编辑</el-button><el-button link @click="selectLlm(scope.$index); testLlm(); showLlmEditor = true">测试</el-button><el-button link type="danger" @click="selectLlm(scope.$index); deleteLlm()">删除</el-button></template></el-table-column></el-table>
           </section>
         </el-tab-pane>
         <el-tab-pane label="Agent 配置" name="agent">

@@ -6,6 +6,7 @@ const props = defineProps<{
   statusText: string
   agents: AgentSummary[]
   selectedAgentId: string
+  allowAuto: boolean
   refreshingAgents: boolean
   title: string
   themeMode: 'light' | 'dark'
@@ -23,20 +24,26 @@ const selectedAgent = computed({
   get: () => props.selectedAgentId,
   set: value => emit('update:selectedAgentId', value),
 })
+
+const activeAgent = computed(() => props.agents.find(agent => agent.agentId === props.selectedAgentId))
 </script>
 
 <template>
   <header class="topbar">
-    <div class="topbar-status"><span class="status-dot" :class="{ connected: props.statusText === '已连接' }" />{{ props.statusText }}<span class="status-caption">工作台</span></div>
+    <div class="topbar-copy"><span class="topbar-kicker">WORKSPACE / CHAT</span><strong>{{ props.title }}</strong></div>
     <div class="topbar-actions">
-      <el-select v-model="selectedAgent" placeholder="选择 Agent" @change="emit('agent-change')">
-        <el-option label="自动选择 Agent" :value="AUTO_AGENT_ID" />
-        <el-option v-for="agent in props.agents" :key="agent.agentId" :label="agent.name || agent.agentId" :value="agent.agentId" />
+      <span class="connection-pill"><i :class="{ connected: props.statusText === '已连接' }" />{{ props.statusText }}</span>
+      <el-select v-model="selectedAgent" class="agent-select" placeholder="选择 Agent" @change="emit('agent-change')">
+        <el-option v-if="props.allowAuto" label="Auto · 意图路由" :value="AUTO_AGENT_ID" />
+        <el-option v-for="agent in props.agents" :key="agent.agentId" :label="`${agent.name || agent.agentId}${agent.apiFormat ? ` · ${agent.apiFormat}` : ''}`" :value="agent.agentId" />
       </el-select>
-      <el-button class="agent-refresh-button" circle :loading="props.refreshingAgents" aria-label="刷新 Agent 列表" title="刷新 Agent 列表" @click="emit('refresh-agents')">↻</el-button>
-      <el-button class="theme-toggle" circle :aria-label="props.themeMode === 'dark' ? '切换浅色主题' : '切换深色主题'" @click="emit('toggle-theme')">{{ props.themeMode === 'dark' ? '☀' : '☾' }}</el-button>
-      <el-button type="primary" plain @click="emit('settings')">设置</el-button>
+      <el-button circle :loading="props.refreshingAgents" aria-label="刷新 Agent 列表" title="刷新 Agent 列表" @click="emit('refresh-agents')">↻</el-button>
+      <el-button circle :aria-label="props.themeMode === 'dark' ? '切换浅色主题' : '切换深色主题'" @click="emit('toggle-theme')">{{ props.themeMode === 'dark' ? '☀' : '☾' }}</el-button>
+      <el-button circle aria-label="设置" title="设置" @click="emit('settings')">⚙</el-button>
     </div>
   </header>
-  <div class="chat-header"><h2>{{ props.title }}</h2></div>
+  <div class="route-strip">
+    <span><i class="route-indicator" />{{ props.selectedAgentId === AUTO_AGENT_ID && props.allowAuto ? '意图 Agent 自动选路' : (activeAgent?.name || props.selectedAgentId || '等待选择 Agent') }}</span>
+    <span v-if="activeAgent?.description">{{ activeAgent.description }}</span>
+  </div>
 </template>
