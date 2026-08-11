@@ -4,7 +4,7 @@ namespace OpenAgent.Engine.Observability;
 
 internal static partial class EngineLog
 {
-    // --- ConfigProvider (4000–4019) ---
+    // --- ConfigProvider ---
 
     [LoggerMessage(EventId = 4000, Level = LogLevel.Information, Message = "No AgentId provided. Degrading to MockAgent (AllowMockAgent=true).")]
     public static partial void ConfigMockFallback(ILogger logger);
@@ -54,282 +54,224 @@ internal static partial class EngineLog
     public static void ListAgentsParseFailed(ILogger logger, Exception ex, string? agentId, int payloadBytes) =>
         ListAgentsParseFailedCore(logger, ex, agentId, payloadBytes, ex.GetType().FullName ?? "unknown");
 
-    [LoggerMessage(EventId = 4016, Level = LogLevel.Warning, Message = "Failed to parse agent config while listing agents. AgentId={AgentId}, PayloadBytes={PayloadBytes}, ExceptionType={ExceptionType}")]
+    [LoggerMessage(EventId = 4013, Level = LogLevel.Warning, Message = "Failed to parse agent config while listing agents. AgentId={AgentId}, PayloadBytes={PayloadBytes}, ExceptionType={ExceptionType}")]
     private static partial void ListAgentsParseFailedCore(ILogger logger, Exception ex, string? agentId, int payloadBytes, string exceptionType);
 
     public static void ListAgentsFailed(ILogger logger, Exception ex) => ListAgentsFailedCore(logger, ex, ex.GetType().FullName ?? "unknown");
 
-    [LoggerMessage(EventId = 4018, Level = LogLevel.Error, Message = "Failed to list agents from Redis. ExceptionType={ExceptionType}")]
+    [LoggerMessage(EventId = 4014, Level = LogLevel.Error, Message = "Failed to list agents from Redis. ExceptionType={ExceptionType}")]
     private static partial void ListAgentsFailedCore(ILogger logger, Exception ex, string exceptionType);
 
-    // --- ConfigSnapshot (4019–4020) ---
+    // --- ConfigSnapshot ---
 
-    [LoggerMessage(EventId = 4019, Level = LogLevel.Warning, Message = "ConfigSnapshot.Clear() fallback: IMemoryCache is not a strong MemoryCache; clear is best-effort.")]
+    [LoggerMessage(EventId = 4015, Level = LogLevel.Warning, Message = "ConfigSnapshot.Clear() fallback: IMemoryCache is not a strong MemoryCache; clear is best-effort.")]
     public static partial void ConfigSnapshotClearFallback(ILogger logger);
 
-    // --- HotReloadService (4020–4045) ---
+    // --- HotReloadService ---
 
-    [LoggerMessage(EventId = 4020, Level = LogLevel.Information, Message = "Subscribed to config updates. Waiting for cancellation...")]
+    [LoggerMessage(EventId = 4016, Level = LogLevel.Information, Message = "Subscribed to config updates. Waiting for cancellation...")]
     public static partial void HotReloadSubscribed(ILogger logger);
 
-    [LoggerMessage(EventId = 4021, Level = LogLevel.Information, Message = "Subscribing to config updates on channel: {Channel}")]
+    [LoggerMessage(EventId = 4017, Level = LogLevel.Information, Message = "Subscribing to config updates on channel: {Channel}")]
     public static partial void HotReloadSubscribingChannel(ILogger logger, string channel);
 
     public static void HotReloadProcessMessageError(ILogger logger, Exception ex, string channel) =>
         HotReloadProcessMessageErrorCore(logger, ex, channel, ex.GetType().FullName ?? "unknown");
 
-    [LoggerMessage(EventId = 4022, Level = LogLevel.Warning, Message = "Error processing config update message from channel {Channel}. ExceptionType={ExceptionType}")]
+    [LoggerMessage(EventId = 4018, Level = LogLevel.Warning, Message = "Error processing config update message from channel {Channel}. ExceptionType={ExceptionType}")]
     private static partial void HotReloadProcessMessageErrorCore(ILogger logger, Exception ex, string channel, string exceptionType);
 
-    [LoggerMessage(EventId = 4023, Level = LogLevel.Information, Message = "Received config update on {Channel}: {Message}")]
+    [LoggerMessage(EventId = 4019, Level = LogLevel.Information, Message = "Received config update on {Channel}: {Message}")]
     public static partial void HotReloadMessageReceived(ILogger logger, string channel, string message);
 
-    [LoggerMessage(EventId = 4024, Level = LogLevel.Warning, Message = "Ignoring empty config update payload on channel {Channel}")]
+    [LoggerMessage(EventId = 4020, Level = LogLevel.Warning, Message = "Ignoring empty config update payload on channel {Channel}")]
     public static partial void HotReloadEmptyPayloadIgnored(ILogger logger, string channel);
 
-    [LoggerMessage(EventId = 4025, Level = LogLevel.Warning, Message = "Failed to parse config update: null result")]
+    [LoggerMessage(EventId = 4021, Level = LogLevel.Warning, Message = "Failed to parse config update: null result")]
     public static partial void HotReloadParseNullResult(ILogger logger);
 
-    [LoggerMessage(EventId = 4026, Level = LogLevel.Warning, Message = "Config update missing AgentId, ignoring message")]
+    [LoggerMessage(EventId = 4022, Level = LogLevel.Warning, Message = "Config update missing AgentId, ignoring message")]
     public static partial void HotReloadMissingAgentId(ILogger logger);
 
-    [LoggerMessage(EventId = 4027, Level = LogLevel.Information, Message = "Reloaded full agent config from Redis after config update notification. Agent: {AgentId}")]
+    [LoggerMessage(EventId = 4023, Level = LogLevel.Information, Message = "Reloaded full agent config from Redis after config update notification. Agent: {AgentId}")]
     public static partial void HotReloadFullConfigReloaded(ILogger logger, string agentId);
 
-    [LoggerMessage(EventId = 4028, Level = LogLevel.Information, Message = "Received full sync notification. Cleared all in-memory config snapshots.")]
+    [LoggerMessage(EventId = 4024, Level = LogLevel.Information, Message = "Received full sync notification. Cleared all in-memory config snapshots.")]
     public static partial void HotReloadFullSyncSnapshotCleared(ILogger logger);
 
     public static void HotReloadProcessError(ILogger logger, Exception ex, string message) =>
         HotReloadProcessErrorCore(logger, ex, message, ex.GetType().FullName ?? "unknown");
 
-    [LoggerMessage(EventId = 4033, Level = LogLevel.Error, Message = "Error processing config message: {Message}. ExceptionType={ExceptionType}")]
+    [LoggerMessage(EventId = 4025, Level = LogLevel.Error, Message = "Error processing config message: {Message}. ExceptionType={ExceptionType}")]
     private static partial void HotReloadProcessErrorCore(ILogger logger, Exception ex, string message, string exceptionType);
 
-    [LoggerMessage(EventId = 4034, Level = LogLevel.Warning, Message = "Ignoring blank legacy config update on channel {Channel}")]
+    [LoggerMessage(EventId = 4026, Level = LogLevel.Warning, Message = "Ignoring blank legacy config update on channel {Channel}")]
     public static partial void HotReloadLegacyBlankPayloadIgnored(ILogger logger, string channel);
 
-    [LoggerMessage(EventId = 4035, Level = LogLevel.Information, Message = "Refreshed full config snapshot from legacy notification. Channel: {Channel}, Agent: {AgentId}")]
+    [LoggerMessage(EventId = 4027, Level = LogLevel.Information, Message = "Refreshed full config snapshot from legacy notification. Channel: {Channel}, Agent: {AgentId}")]
     public static partial void HotReloadLegacyRefreshed(ILogger logger, string channel, string agentId);
 
-    [LoggerMessage(EventId = 4036, Level = LogLevel.Information, Message = "Received legacy registry notification on channel {Channel} with payload {Payload}. No direct snapshot mutation is required.")]
+    [LoggerMessage(EventId = 4028, Level = LogLevel.Information, Message = "Received legacy registry notification on channel {Channel} with payload {Payload}. No direct snapshot mutation is required.")]
     public static partial void HotReloadLegacyNotificationReceived(ILogger logger, string channel, string payload);
 
-    [LoggerMessage(EventId = 4037, Level = LogLevel.Warning, Message = "Redis notification received for agent {AgentId}, but no config exists in Redis")]
+    [LoggerMessage(EventId = 4029, Level = LogLevel.Warning, Message = "Redis notification received for agent {AgentId}, but no config exists in Redis")]
     public static partial void HotReloadRefreshNoConfig(ILogger logger, string agentId);
 
-    [LoggerMessage(EventId = 4038, Level = LogLevel.Warning, Message = "Redis config payload for agent {AgentId} did not contain a valid runtime config")]
+    [LoggerMessage(EventId = 4030, Level = LogLevel.Warning, Message = "Redis config payload for agent {AgentId} did not contain a valid runtime config")]
     public static partial void HotReloadRefreshInvalidPayload(ILogger logger, string agentId);
 
-    [LoggerMessage(EventId = 4039, Level = LogLevel.Information, Message = "Refreshed full config snapshot from Redis. Agent: {AgentId}, CurrentVersion: {CurrentVersion}")]
+    [LoggerMessage(EventId = 4031, Level = LogLevel.Information, Message = "Refreshed full config snapshot from Redis. Agent: {AgentId}, CurrentVersion: {CurrentVersion}")]
     public static partial void HotReloadRefreshCompleted(ILogger logger, string agentId, string? currentVersion);
 
     public static void HotReloadRefreshFailed(ILogger logger, Exception ex, string agentId) =>
         HotReloadRefreshFailedCore(logger, ex, agentId, ex.GetType().FullName ?? "unknown");
 
-    [LoggerMessage(EventId = 4040, Level = LogLevel.Error, Message = "Failed to refresh config from Redis for agent {AgentId}. ExceptionType={ExceptionType}")]
+    [LoggerMessage(EventId = 4032, Level = LogLevel.Error, Message = "Failed to refresh config from Redis for agent {AgentId}. ExceptionType={ExceptionType}")]
     private static partial void HotReloadRefreshFailedCore(ILogger logger, Exception ex, string agentId, string exceptionType);
 
-    [LoggerMessage(EventId = 4041, Level = LogLevel.Debug, Message = "Redis is unavailable. Hot reload subscription will retry.")]
+    [LoggerMessage(EventId = 4033, Level = LogLevel.Debug, Message = "Redis is unavailable. Hot reload subscription will retry.")]
     public static partial void HotReloadRedisUnavailable(ILogger logger);
 
-    // --- ShutdownService (4046–4053) ---
+    // --- ShutdownService ---
 
-    [LoggerMessage(EventId = 4048, Level = LogLevel.Information, Message = "Initiating graceful shutdown with timeout: {TimeoutSeconds}s")]
+    [LoggerMessage(EventId = 4034, Level = LogLevel.Information, Message = "Initiating graceful shutdown with timeout: {TimeoutSeconds}s")]
     public static partial void ShutdownInitiated(ILogger logger, double timeoutSeconds);
 
-    [LoggerMessage(EventId = 4049, Level = LogLevel.Information, Message = "Waiting for {RemainingRequests} in-flight requests to complete...")]
+    [LoggerMessage(EventId = 4035, Level = LogLevel.Information, Message = "Waiting for {RemainingRequests} in-flight requests to complete...")]
     public static partial void ShutdownWaitingForRequests(ILogger logger, int remainingRequests);
 
-    [LoggerMessage(EventId = 4050, Level = LogLevel.Debug, Message = "Pending request: {RequestId}, Type: {RequestType}, Duration: {DurationMs}ms")]
+    [LoggerMessage(EventId = 4036, Level = LogLevel.Debug, Message = "Pending request: {RequestId}, Type: {RequestType}, Duration: {DurationMs}ms")]
     public static partial void ShutdownPendingRequest(ILogger logger, string requestId, string requestType, double durationMs);
 
-    [LoggerMessage(EventId = 4051, Level = LogLevel.Warning, Message = "Shutdown timeout reached. {RemainingRequests} requests are still running and may be terminated by the host")]
+    [LoggerMessage(EventId = 4037, Level = LogLevel.Warning, Message = "Shutdown timeout reached. {RemainingRequests} requests are still running and may be terminated by the host")]
     public static partial void ShutdownTimeoutReached(ILogger logger, int remainingRequests);
 
-    [LoggerMessage(EventId = 4052, Level = LogLevel.Warning, Message = "Request still running at shutdown timeout: {RequestId}, Type: {RequestType}, Duration: {DurationMs}ms")]
+    [LoggerMessage(EventId = 4038, Level = LogLevel.Warning, Message = "Request still running at shutdown timeout: {RequestId}, Type: {RequestType}, Duration: {DurationMs}ms")]
     public static partial void ShutdownTimeoutRunningRequest(ILogger logger, string requestId, string requestType, double durationMs);
 
-    [LoggerMessage(EventId = 4053, Level = LogLevel.Information, Message = "Graceful shutdown completed successfully. All requests finished in {DurationMs}ms")]
+    [LoggerMessage(EventId = 4039, Level = LogLevel.Information, Message = "Graceful shutdown completed successfully. All requests finished in {DurationMs}ms")]
     public static partial void ShutdownCompleted(ILogger logger, long durationMs);
 
-    // --- Redis Registrars — shared (4054–4059) ---
+    // --- Redis Registrars — shared ---
 
-    [LoggerMessage(EventId = 4054, Level = LogLevel.Debug, Message = "{RegistrarName} registrar: Redis not available. Skipping registration.")]
+    [LoggerMessage(EventId = 4040, Level = LogLevel.Debug, Message = "{RegistrarName} registrar: Redis not available. Skipping registration.")]
     public static partial void RedisRegistrarSkipped(ILogger logger, string registrarName);
 
     public static void RedisRegistrarIndexReadFailed(ILogger logger, Exception ex, string registrarName) =>
         RedisRegistrarIndexReadFailedCore(logger, ex, registrarName, ex.GetType().FullName ?? "unknown");
 
-    [LoggerMessage(EventId = 4055, Level = LogLevel.Warning, Message = "{RegistrarName} registrar: Failed to read published index from Redis. ExceptionType={ExceptionType}")]
+    [LoggerMessage(EventId = 4041, Level = LogLevel.Warning, Message = "{RegistrarName} registrar: Failed to read published index from Redis. ExceptionType={ExceptionType}")]
     private static partial void RedisRegistrarIndexReadFailedCore(ILogger logger, Exception ex, string registrarName, string exceptionType);
 
-    [LoggerMessage(EventId = 4056, Level = LogLevel.Information, Message = "{RegistrarName} registrar: No entries found in published index.")]
+    [LoggerMessage(EventId = 4042, Level = LogLevel.Information, Message = "{RegistrarName} registrar: No entries found in published index.")]
     public static partial void RedisRegistrarNoneFound(ILogger logger, string registrarName);
 
-    [LoggerMessage(EventId = 4057, Level = LogLevel.Debug, Message = "{RegistrarName} registrar: Registered entry '{EntryId}' from Redis")]
+    [LoggerMessage(EventId = 4043, Level = LogLevel.Debug, Message = "{RegistrarName} registrar: Registered entry '{EntryId}' from Redis")]
     public static partial void RedisRegistrarRegistered(ILogger logger, string registrarName, string entryId);
 
     public static void RedisRegistrarRegisterFailed(ILogger logger, Exception ex, string registrarName, string entryId) =>
         RedisRegistrarRegisterFailedCore(logger, ex, registrarName, entryId, ex.GetType().FullName ?? "unknown");
 
-    [LoggerMessage(EventId = 4058, Level = LogLevel.Error, Message = "{RegistrarName} registrar: Failed to register entry '{EntryId}'. ExceptionType={ExceptionType}")]
+    [LoggerMessage(EventId = 4044, Level = LogLevel.Error, Message = "{RegistrarName} registrar: Failed to register entry '{EntryId}'. ExceptionType={ExceptionType}")]
     private static partial void RedisRegistrarRegisterFailedCore(ILogger logger, Exception ex, string registrarName, string entryId, string exceptionType);
 
-    [LoggerMessage(EventId = 4059, Level = LogLevel.Information, Message = "{RegistrarName} registrar: {Count} entries registered from Redis.")]
+    [LoggerMessage(EventId = 4045, Level = LogLevel.Information, Message = "{RegistrarName} registrar: {Count} entries registered from Redis.")]
     public static partial void RedisRegistrarComplete(ILogger logger, string registrarName, int count);
 
-    // --- RedisConnectionProvider (4060–4066) ---
+    // --- RedisRegistry ---
 
-    [LoggerMessage(EventId = 4060, Level = LogLevel.Warning, Message = "Redis connection string not configured. Running in island mode until configuration is provided.")]
-    public static partial void RedisConnectionStringMissing(ILogger logger);
-
-    [LoggerMessage(EventId = 4061, Level = LogLevel.Information, Message = "Attempting to establish Redis connection...")]
-    public static partial void RedisConnecting(ILogger logger);
-
-    [LoggerMessage(EventId = 4062, Level = LogLevel.Information, Message = "Redis connection established.")]
-    public static partial void RedisConnected(ILogger logger);
-
-    public static void RedisConnectFailed(ILogger logger, Exception ex) =>
-        RedisConnectFailedCore(logger, ex, ex.GetType().FullName ?? "unknown");
-
-    [LoggerMessage(EventId = 4063, Level = LogLevel.Warning, Message = "Failed to connect to Redis. Engine will continue in island mode and retry later. ExceptionType={ExceptionType}")]
-    private static partial void RedisConnectFailedCore(ILogger logger, Exception ex, string exceptionType);
-
-    public static void RedisConnectionFailed(ILogger logger, Exception ex, string failureType, string endPoint) =>
-        RedisConnectionFailedCore(logger, ex, failureType, endPoint, ex.GetType().FullName ?? "unknown");
-
-    [LoggerMessage(EventId = 4064, Level = LogLevel.Warning, Message = "Redis connection failed. FailureType={FailureType}, Endpoint={EndPoint}. ExceptionType={ExceptionType}")]
-    private static partial void RedisConnectionFailedCore(ILogger logger, Exception ex, string failureType, string endPoint, string exceptionType);
-
-    [LoggerMessage(EventId = 4065, Level = LogLevel.Information, Message = "Redis connection restored. FailureType={FailureType}, Endpoint={EndPoint}")]
-    public static partial void RedisConnectionRestored(ILogger logger, string failureType, string endPoint);
-
-    [LoggerMessage(EventId = 4066, Level = LogLevel.Warning, Message = "Redis server error: {Message}")]
-    public static partial void RedisServerError(ILogger logger, string message);
-
-    // --- RedisRegistry (4067–4072) ---
-
-    [LoggerMessage(EventId = 4067, Level = LogLevel.Information, Message = "Engine registered with ID: {EngineId} at {Host}:{Port}")]
+    [LoggerMessage(EventId = 4046, Level = LogLevel.Information, Message = "Engine registered with ID: {EngineId} at {Host}:{Port}")]
     public static partial void EngineRegistered(ILogger logger, string engineId, string host, int port);
 
-    [LoggerMessage(EventId = 4068, Level = LogLevel.Warning, Message = "Failed to register engine in Redis. StringSetAsync returned false.")]
+    [LoggerMessage(EventId = 4047, Level = LogLevel.Warning, Message = "Failed to register engine in Redis. StringSetAsync returned false.")]
     public static partial void EngineRegisterStringSetFailed(ILogger logger);
 
     public static void EngineRegisterFailed(ILogger logger, Exception ex) =>
         EngineRegisterFailedCore(logger, ex, ex.GetType().FullName ?? "unknown");
 
-    [LoggerMessage(EventId = 4069, Level = LogLevel.Warning, Message = "Failed to register engine in Redis. Continuing in island mode. ExceptionType={ExceptionType}")]
+    [LoggerMessage(EventId = 4048, Level = LogLevel.Warning, Message = "Failed to register engine in Redis. Continuing in island mode. ExceptionType={ExceptionType}")]
     private static partial void EngineRegisterFailedCore(ILogger logger, Exception ex, string exceptionType);
 
     public static void HeartbeatSendFailed(ILogger logger, Exception ex) =>
         HeartbeatSendFailedCore(logger, ex, ex.GetType().FullName ?? "unknown");
 
-    [LoggerMessage(EventId = 4070, Level = LogLevel.Warning, Message = "Failed to send heartbeat to Redis. ExceptionType={ExceptionType}")]
+    [LoggerMessage(EventId = 4049, Level = LogLevel.Warning, Message = "Failed to send heartbeat to Redis. ExceptionType={ExceptionType}")]
     private static partial void HeartbeatSendFailedCore(ILogger logger, Exception ex, string exceptionType);
 
-    [LoggerMessage(EventId = 4071, Level = LogLevel.Information, Message = "Engine deregistered from Redis. ID: {EngineId}")]
+    [LoggerMessage(EventId = 4050, Level = LogLevel.Information, Message = "Engine deregistered from Redis. ID: {EngineId}")]
     public static partial void EngineDeregisteredFromRedis(ILogger logger, string engineId);
 
     public static void EngineDeregisterFailed(ILogger logger, Exception ex) =>
         EngineDeregisterFailedCore(logger, ex, ex.GetType().FullName ?? "unknown");
 
-    [LoggerMessage(EventId = 4072, Level = LogLevel.Warning, Message = "Failed to deregister engine from Redis. TTL will expire naturally. ExceptionType={ExceptionType}")]
+    [LoggerMessage(EventId = 4051, Level = LogLevel.Warning, Message = "Failed to deregister engine from Redis. TTL will expire naturally. ExceptionType={ExceptionType}")]
     private static partial void EngineDeregisterFailedCore(ILogger logger, Exception ex, string exceptionType);
 
-    // --- HeartbeatService (4073–4079) ---
+    // --- HeartbeatService ---
 
-    [LoggerMessage(EventId = 4073, Level = LogLevel.Information, Message = "Detected listening port after app start: {Port}")]
+    [LoggerMessage(EventId = 4052, Level = LogLevel.Information, Message = "Detected listening port after app start: {Port}")]
     public static partial void PortDetected(ILogger logger, int port);
 
-    [LoggerMessage(EventId = 4074, Level = LogLevel.Information, Message = "Engine registered after port detection.")]
+    [LoggerMessage(EventId = 4053, Level = LogLevel.Information, Message = "Engine registered after port detection.")]
     public static partial void EngineRegisteredAfterPortDetection(ILogger logger);
 
     public static void InitialRegistrationFailed(ILogger logger, Exception ex) =>
         InitialRegistrationFailedCore(logger, ex, ex.GetType().FullName ?? "unknown");
 
-    [LoggerMessage(EventId = 4075, Level = LogLevel.Warning, Message = "Initial registration after port detection failed. ExceptionType={ExceptionType}")]
+    [LoggerMessage(EventId = 4054, Level = LogLevel.Warning, Message = "Initial registration after port detection failed. ExceptionType={ExceptionType}")]
     private static partial void InitialRegistrationFailedCore(ILogger logger, Exception ex, string exceptionType);
 
-    [LoggerMessage(EventId = 4076, Level = LogLevel.Information, Message = "Engine heartbeat service starting...")]
+    [LoggerMessage(EventId = 4055, Level = LogLevel.Information, Message = "Engine heartbeat service starting...")]
     public static partial void HeartbeatServiceStarting(ILogger logger);
 
-    [LoggerMessage(EventId = 4077, Level = LogLevel.Information, Message = "Engine not registered. Attempting to register...")]
+    [LoggerMessage(EventId = 4056, Level = LogLevel.Information, Message = "Engine not registered. Attempting to register...")]
     public static partial void HeartbeatRetryingRegistration(ILogger logger);
 
     public static void HeartbeatFailed(ILogger logger, Exception ex) =>
         HeartbeatFailedCore(logger, ex, ex.GetType().FullName ?? "unknown");
 
-    [LoggerMessage(EventId = 4078, Level = LogLevel.Warning, Message = "Heartbeat failed, will retry... ExceptionType={ExceptionType}")]
+    [LoggerMessage(EventId = 4057, Level = LogLevel.Warning, Message = "Heartbeat failed, will retry... ExceptionType={ExceptionType}")]
     private static partial void HeartbeatFailedCore(ILogger logger, Exception ex, string exceptionType);
 
-    [LoggerMessage(EventId = 4079, Level = LogLevel.Information, Message = "Engine heartbeat service stopped.")]
+    [LoggerMessage(EventId = 4058, Level = LogLevel.Information, Message = "Engine heartbeat service stopped.")]
     public static partial void HeartbeatServiceStopped(ILogger logger);
 
-    // --- Health Checks & Streaming (4080–4081) ---
+    // --- Health Checks & Streaming ---
 
     public static void LlmHealthCheckFailed(ILogger logger, Exception ex) =>
         LlmHealthCheckFailedCore(logger, ex, ex.GetType().FullName ?? "unknown");
 
-    [LoggerMessage(EventId = 4080, Level = LogLevel.Warning, Message = "LLM health check failed. ExceptionType={ExceptionType}")]
+    [LoggerMessage(EventId = 4059, Level = LogLevel.Warning, Message = "LLM health check failed. ExceptionType={ExceptionType}")]
     private static partial void LlmHealthCheckFailedCore(ILogger logger, Exception ex, string exceptionType);
 
     public static void StreamingHeartbeatFailed(ILogger logger, Exception ex, string endpoint, string traceId) =>
         StreamingHeartbeatFailedCore(logger, ex, endpoint, traceId, ex.GetType().FullName ?? "unknown");
 
-    [LoggerMessage(EventId = 4081, Level = LogLevel.Warning, Message = "Streaming heartbeat failed. Endpoint={Endpoint}, TraceId={TraceId}, ExceptionType={ExceptionType}")]
+    [LoggerMessage(EventId = 4060, Level = LogLevel.Warning, Message = "Streaming heartbeat failed. Endpoint={Endpoint}, TraceId={TraceId}, ExceptionType={ExceptionType}")]
     private static partial void StreamingHeartbeatFailedCore(ILogger logger, Exception ex, string endpoint, string traceId, string exceptionType);
 
-    // --- Middleware (4082–4084) ---
+    // --- Middleware ---
 
     public static void UnhandledExceptionAfterResponseStart(ILogger logger, Exception ex, string method, string path, string traceId) =>
         UnhandledExceptionAfterResponseStartCore(logger, ex, method, path, traceId, ex.GetType().FullName ?? "unknown");
 
-    [LoggerMessage(EventId = 4082, Level = LogLevel.Warning, Message = "Unhandled exception after response started. Method={Method}, Path={Path}, TraceId={TraceId}, ExceptionType={ExceptionType}")]
+    [LoggerMessage(EventId = 4061, Level = LogLevel.Warning, Message = "Unhandled exception after response started. Method={Method}, Path={Path}, TraceId={TraceId}, ExceptionType={ExceptionType}")]
     private static partial void UnhandledExceptionAfterResponseStartCore(ILogger logger, Exception ex, string method, string path, string traceId, string exceptionType);
 
     public static void UnhandledExceptionMappedToProblemDetails(ILogger logger, Exception ex, string method, string path, int statusCode, string traceId) =>
         UnhandledExceptionMappedToProblemDetailsCore(logger, ex, method, path, statusCode, traceId, ex.GetType().FullName ?? "unknown");
 
-    [LoggerMessage(EventId = 4083, Level = LogLevel.Error, Message = "Unhandled exception mapped to problem details. Method={Method}, Path={Path}, StatusCode={StatusCode}, TraceId={TraceId}, ExceptionType={ExceptionType}")]
+    [LoggerMessage(EventId = 4062, Level = LogLevel.Error, Message = "Unhandled exception mapped to problem details. Method={Method}, Path={Path}, StatusCode={StatusCode}, TraceId={TraceId}, ExceptionType={ExceptionType}")]
     private static partial void UnhandledExceptionMappedToProblemDetailsCore(ILogger logger, Exception ex, string method, string path, int statusCode, string traceId, string exceptionType);
 
     public static void SseEndpointErrorOccurred(ILogger logger, Exception ex, string method, string path, string traceId, bool responseStarted) =>
         SseEndpointErrorOccurredCore(logger, ex, method, path, traceId, responseStarted, ex.GetType().FullName ?? "unknown");
 
-    [LoggerMessage(EventId = 4084, Level = LogLevel.Error, Message = "SSE endpoint error occurred. Method={Method}, Path={Path}, TraceId={TraceId}, ResponseStarted={ResponseStarted}, ExceptionType={ExceptionType}")]
+    [LoggerMessage(EventId = 4063, Level = LogLevel.Error, Message = "SSE endpoint error occurred. Method={Method}, Path={Path}, TraceId={TraceId}, ResponseStarted={ResponseStarted}, ExceptionType={ExceptionType}")]
     private static partial void SseEndpointErrorOccurredCore(ILogger logger, Exception ex, string method, string path, string traceId, bool responseStarted, string exceptionType);
 
-    // --- Host Lifecycle / Program.cs (4086–4088) ---
+    // --- Host Lifecycle / Program.cs ---
 
-    [LoggerMessage(EventId = 4086, Level = LogLevel.Information, Message = "Graceful shutdown initiated, waiting up to {TimeoutSeconds}s for in-flight requests...")]
-    public static partial void GracefulShutdownInitiated(ILogger logger, double timeoutSeconds);
+    // --- Endpoint Extensions ---
 
-    [LoggerMessage(EventId = 4087, Level = LogLevel.Information, Message = "Deregistering engine from Redis registry...")]
-    public static partial void EngineDeregistering(ILogger logger);
-
-    [LoggerMessage(EventId = 4088, Level = LogLevel.Information, Message = "Engine deregistered successfully.")]
-    public static partial void EngineDeregistered(ILogger logger);
-
-    // --- Endpoint Extensions (4089–4104) ---
-
-    [LoggerMessage(EventId = 4089, Level = LogLevel.Information, Message = "Chat request received. Endpoint={Endpoint}, TraceId={TraceId}, AgentId={AgentId}, ConversationId={ConversationId}, MessageLength={MessageLength}")]
-    public static partial void ChatRequestReceived(ILogger logger, string endpoint, string? traceId, string? agentId, string? conversationId, int messageLength);
-
-    [LoggerMessage(EventId = 4090, Level = LogLevel.Information, Message = "Streaming request received. Endpoint={Endpoint}, TraceId={TraceId}, AgentId={AgentId}, ConversationId={ConversationId}, MessageLength={MessageLength}")]
-    public static partial void StreamingRequestReceived(ILogger logger, string endpoint, string traceId, string? agentId, string? conversationId, int messageLength);
-
-    public static void StreamingUsageParseFailed(ILogger logger, Exception ex, string endpoint, string traceId, string? agentId, string? conversationId) =>
-        StreamingUsageParseFailedCore(logger, ex, endpoint, traceId, agentId, conversationId, ex.GetType().FullName ?? "unknown");
-
-    [LoggerMessage(EventId = 4092, Level = LogLevel.Debug, Message = "Failed to parse streaming usage marker. Endpoint={Endpoint}, TraceId={TraceId}, AgentId={AgentId}, ConversationId={ConversationId}, ExceptionType={ExceptionType}")]
-    private static partial void StreamingUsageParseFailedCore(ILogger logger, Exception ex, string endpoint, string traceId, string? agentId, string? conversationId, string exceptionType);
-
-    [LoggerMessage(EventId = 4095, Level = LogLevel.Information, Message = "Stream cancelled. Endpoint={Endpoint}, TraceId={TraceId}, AgentId={AgentId}, ConversationId={ConversationId}, ClientAborted={ClientAborted}")]
-    public static partial void StreamCancelled(ILogger logger, string endpoint, string traceId, string? agentId, string? conversationId, bool clientAborted);
-
-    public static void StreamFailed(ILogger logger, Exception ex, string endpoint, string traceId, string? agentId, string? conversationId) =>
-        StreamFailedCore(logger, ex, endpoint, traceId, agentId, conversationId, ex.GetType().FullName ?? "unknown");
-
-    [LoggerMessage(EventId = 4096, Level = LogLevel.Error, Message = "Stream failed. Endpoint={Endpoint}, TraceId={TraceId}, AgentId={AgentId}, ConversationId={ConversationId}, ExceptionType={ExceptionType}")]
-    private static partial void StreamFailedCore(ILogger logger, Exception ex, string endpoint, string traceId, string? agentId, string? conversationId, string exceptionType);
 }

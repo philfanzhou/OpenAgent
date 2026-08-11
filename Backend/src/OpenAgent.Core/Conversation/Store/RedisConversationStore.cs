@@ -195,7 +195,7 @@ internal sealed class RedisConversationStore : IConversationStore
                 }
                 catch (Exception ex)
                 {
-                    ConversationLog.AppendTenantIndexTtlRenewFailed(_logger, ex, tenantId);
+                    ConversationLog.TenantIndexTtlRenewFailed(_logger, ex, tenantId);
                 }
             }
 
@@ -253,7 +253,7 @@ internal sealed class RedisConversationStore : IConversationStore
             }
             catch (Exception indexEx)
             {
-                ConversationLog.UpdateStatusTenantIndexTtlRenewFailed(_logger, indexEx, tenantId);
+                ConversationLog.TenantIndexTtlRenewFailed(_logger, indexEx, tenantId);
             }
 
             return true;

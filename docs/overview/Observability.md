@@ -68,6 +68,10 @@ Router 当前提供以下业务指标：
 
 `X-Trace-Id` 是 OpenAgent 的请求关联标识；W3C `traceparent` 中的 Activity Trace ID 是分布式追踪标识。两者都应在排障证据中保留，但不能假设它们始终相同。
 
+## EventId 与日志封装
+
+各模块继续通过 `LoggerMessage` 目录维护有语义的领域日志，调用处不改为重复的 `ILogger` 模板。仅删除零调用事件，并合并消息模板、级别和参数完全一致的事件。当前连续编号区间为：Conversation `1100–1139`、Router `3000–3028`、Engine（含 Host）`4000–4063`。
+
 ## 扩展原则
 
 1. 通用请求日志与 OpenAgent Trace tag 由 Hosting middleware 横切采集；HTTP 请求量与耗时直接使用 ASP.NET Core instrumentation，业务代码不重复写生命周期埋点或 SDK 已有指标。
