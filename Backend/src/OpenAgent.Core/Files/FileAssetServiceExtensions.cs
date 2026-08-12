@@ -18,7 +18,6 @@ internal static class FileAssetServiceExtensions
             .Bind(configuration.GetSection(FileAssetOptions.SectionName))
             .ValidateOnStart();
         services.TryAddSingleton<IFileObjectStore, UnconfiguredFileObjectStore>();
-        services.AddSingleton<IFileAssetRepository, SqliteFileAssetRepository>();
         services.AddScoped<IFileAssetService, FileAssetService>();
         services.AddScoped<FileAssetExecutionContext>();
         services.AddScoped<FileAssetRequestResolver>();

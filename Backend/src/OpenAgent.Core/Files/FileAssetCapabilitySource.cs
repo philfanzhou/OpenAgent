@@ -73,6 +73,7 @@ internal sealed class FileAssetCapabilitySource(
             input,
             RequireScope(),
             cancellationToken).ConfigureAwait(false);
+        executionContext.RecordCreated(asset);
         return JsonSerializer.Serialize(new
         {
             fileId = asset.FileId,

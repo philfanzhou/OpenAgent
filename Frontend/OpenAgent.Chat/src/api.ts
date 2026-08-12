@@ -10,7 +10,7 @@ import type {
   FileAsset,
   LlmProviderProfile,
   LlmTestResult,
-  MessageAttachment,
+  MessageFile,
   McpServerConfig,
   McpTestResult,
   RagConfig,
@@ -122,13 +122,19 @@ function normalizeConversation(record: ConversationRecord): ConversationRecord {
   return {
     ...record,
     messages: record.messages?.map(message => {
-      const raw = message.metadata?.Attachments
-      if (!raw) return message
+      const raw = message.metadata?.Files
+      const reasoning = message.metadata?.Reasoning
+      if (!raw) return reasoning ? { ...message, reasoning } : message
       try {
-        const attachments = JSON.parse(raw) as MessageAttachment[]
-        return { ...message, attachments }
+        const files = (JSON.parse(raw) as Record<string, unknown>[]).map(file => ({
+          fileId: String(file.fileId ?? file.FileId ?? ''),
+          fileName: String(file.fileName ?? file.FileName ?? ''),
+          mediaType: String(file.mediaType ?? file.MediaType ?? 'application/octet-stream'),
+          length: Number(file.length ?? file.Length ?? 0),
+        })) satisfies MessageFile[]
+        return { ...message, files, ...(reasoning ? { reasoning } : {}) }
       } catch {
-        return message
+        return reasoning ? { ...message, reasoning } : message
       }
     }),
   }

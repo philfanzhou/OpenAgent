@@ -32,7 +32,7 @@ public class AssemblyDependencyTests
     {
         AssertOpenAgentReferences(
             "OpenAgent.Engine.Host",
-            ["OpenAgent.Contracts", "OpenAgent.Core", "OpenAgent.Engine", "OpenAgent.Hosting"]);
+            ["OpenAgent.Contracts", "OpenAgent.Core", "OpenAgent.Engine", "OpenAgent.Hosting", "OpenAgent.Persistence"]);
     }
 
     [Fact]

@@ -1,10 +1,11 @@
 using System.Text;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
-using OpenAgent.Contracts.Content;
 using OpenAgent.Contracts.Conversation;
+using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
+using OpenAgent.Core.Files;
 using OpenAgent.Core.Runtime.Agent;
 
 namespace OpenAgent.Core.Conversation;
@@ -20,7 +21,8 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
     private readonly ConversationContext _conversation;
     private readonly string _agentId;
     private readonly string _input;
-    private readonly IReadOnlyList<AgentAttachment> _attachments;
+    private readonly IReadOnlyList<FileAsset> _files;
+    private readonly FileAssetExecutionContext _fileExecution;
     private readonly IConversationLock _conversationLock;
     private readonly ConversationSessionStore _store;
     private readonly List<ConversationMessage> _pending = [];
@@ -38,14 +40,16 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         ConversationContext conversation,
         string agentId,
         string input,
-        IReadOnlyList<AgentAttachment> attachments,
+        IReadOnlyList<FileAsset> files,
+        FileAssetExecutionContext fileExecution,
         IConversationLock conversationLock,
         ConversationSessionStore store)
     {
         _conversation = conversation;
         _agentId = agentId;
         _input = input;
-        _attachments = attachments;
+        _files = files;
+        _fileExecution = fileExecution;
         _conversationLock = conversationLock;
         _store = store;
     }
@@ -117,9 +121,11 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
     {
         _finalized = true;
         RecordUser();
-        foreach (ConversationMessage message in AgentMessageAdapter.ToStored(
+        List<ConversationMessage> responses = AgentMessageAdapter.ToStored(
             context.ResponseMessages ?? [],
-            ref _nextSequence))
+            ref _nextSequence).ToList();
+        AssociateCreatedFiles(responses);
+        foreach (ConversationMessage message in responses)
         {
             _pending.Add(message);
         }
@@ -214,7 +220,34 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
             _nextSequence++,
             "user",
             _input,
-            metadata: AgentMessageAdapter.BuildAttachmentMetadata(_attachments)));
+            metadata: AgentMessageAdapter.BuildFileMetadata(_files),
+            fileIds: _files.Select(item => item.FileId).ToArray()));
+    }
+
+    private void AssociateCreatedFiles(List<ConversationMessage> responses)
+    {
+        IReadOnlyList<FileAsset> created = _fileExecution.Created;
+        if (created.Count == 0)
+        {
+            return;
+        }
+
+        int assistantIndex = responses.FindLastIndex(message =>
+            string.Equals(message.Role, "assistant", StringComparison.OrdinalIgnoreCase));
+        if (assistantIndex >= 0)
+        {
+            responses[assistantIndex] = AgentMessageAdapter.AssociateFiles(
+                responses[assistantIndex],
+                created);
+            return;
+        }
+
+        responses.Add(ConversationSessionStore.Message(
+            _nextSequence++,
+            "assistant",
+            "Created file assets.",
+            metadata: AgentMessageAdapter.BuildFileMetadata(created),
+            fileIds: created.Select(file => file.FileId).ToArray()));
     }
 
     private async ValueTask ReleaseLockAsync()

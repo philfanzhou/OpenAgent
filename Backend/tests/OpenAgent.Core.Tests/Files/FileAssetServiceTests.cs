@@ -8,7 +8,7 @@ namespace OpenAgent.Core.Tests.Files;
 public class FileAssetServiceTests
 {
     [Fact]
-    public async Task UploadAsync_StoresAssetAndConversationReference()
+    public async Task UploadAsync_StoresAssetBeforeItIsReferencedByAConversationMessage()
     {
         var repository = new RecordingRepository();
         var objects = new RecordingObjectStore();
@@ -35,8 +35,6 @@ public class FileAssetServiceTests
         Assert.Equal("tenant-a", asset.TenantId);
         Assert.Equal("user-a", asset.OwnerUserId);
         Assert.Equal($"files/{asset.FileId}", asset.ObjectKey);
-        Assert.Single(repository.ConversationReferences);
-        Assert.Equal(("conversation-a", asset.FileId), repository.ConversationReferences[0]);
         Assert.Equal("# Hello", System.Text.Encoding.UTF8.GetString(objects.LastContent));
     }
 
@@ -63,7 +61,6 @@ public class FileAssetServiceTests
             Options.Create(new FileAssetOptions
             {
                 Enabled = true,
-                MetadataConnectionString = "Data Source=ignored",
                 MaxFileSizeBytes = 1024,
                 MaxFunctionReadBytes = 128
             }));
@@ -86,7 +83,6 @@ public class FileAssetServiceTests
     private sealed class RecordingRepository : IFileAssetRepository
     {
         public Dictionary<string, FileAsset> Assets { get; } = [];
-        public List<(string ConversationId, string FileId)> ConversationReferences { get; } = [];
 
         public Task CreateAsync(FileAsset asset, CancellationToken cancellationToken)
         {
@@ -103,14 +99,6 @@ public class FileAssetServiceTests
         public Task<FileAsset?> GetAsync(string fileId, CancellationToken cancellationToken) =>
             Task.FromResult(Assets.GetValueOrDefault(fileId));
 
-        public Task AddConversationReferenceAsync(
-            string conversationId,
-            string fileId,
-            CancellationToken cancellationToken)
-        {
-            ConversationReferences.Add((conversationId, fileId));
-            return Task.CompletedTask;
-        }
     }
 
     private sealed class RecordingObjectStore : IFileObjectStore

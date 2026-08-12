@@ -1,20 +1,26 @@
-using OpenAgent.Contracts.Content;
 using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
 
 namespace OpenAgent.Core.Files;
 
-internal sealed class FileAssetRequestResolver(IFileAssetService files)
+internal sealed class FileAssetRequestResolver
 {
-    internal async Task<AgentRequest> ResolveAsync(
+    private readonly IFileAssetService _files;
+
+    public FileAssetRequestResolver(IFileAssetService files)
+    {
+        _files = files;
+    }
+
+    internal async Task<ResolvedFileRequest> ResolveAsync(
         AgentRequest request,
         IAgentUserContext user,
         CancellationToken cancellationToken)
     {
         if (request.FileIds.Count == 0)
         {
-            return request;
+            return new ResolvedFileRequest { Request = request, Files = Array.Empty<FileAssetContent>() };
         }
 
         FileAssetScope scope = new()
@@ -23,38 +29,13 @@ internal sealed class FileAssetRequestResolver(IFileAssetService files)
             UserId = user.UserId,
             ConversationId = request.ConversationId
         };
-        List<AgentAttachment> attachments = request.Attachments.ToList();
+        List<FileAssetContent> files = [];
         foreach (string fileId in request.FileIds.Distinct(StringComparer.Ordinal))
         {
-            FileAssetContent content = await files.ReadAsync(fileId, scope, cancellationToken).ConfigureAwait(false);
-            attachments.Add(new AgentAttachment
-            {
-                FileId = content.Asset.FileId,
-                FileName = content.Asset.FileName,
-                MediaType = content.Asset.MediaType,
-                Data = content.Data
-            });
+            FileAssetContent content = await _files.ReadAsync(fileId, scope, cancellationToken).ConfigureAwait(false);
+            files.Add(content);
         }
 
-        await files.AttachToConversationAsync(
-            request.FileIds,
-            request.ConversationId,
-            cancellationToken).ConfigureAwait(false);
-        return CopyWithAttachments(request, attachments);
+        return new ResolvedFileRequest { Request = request, Files = files.AsReadOnly() };
     }
-
-    private static AgentRequest CopyWithAttachments(
-        AgentRequest request,
-        IReadOnlyList<AgentAttachment> attachments) => new()
-    {
-        Query = request.Query,
-        AgentId = request.AgentId,
-        ConversationId = request.ConversationId,
-        TraceId = request.TraceId,
-        ClientType = request.ClientType,
-        IdempotencyKey = request.IdempotencyKey,
-        ExternalContext = request.ExternalContext,
-        FileIds = request.FileIds,
-        Attachments = attachments
-    };
 }

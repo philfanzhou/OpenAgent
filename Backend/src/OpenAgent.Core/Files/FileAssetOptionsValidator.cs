@@ -13,10 +13,6 @@ internal sealed class FileAssetOptionsValidator : IValidateOptions<FileAssetOpti
         }
 
         List<string> failures = [];
-        if (string.IsNullOrWhiteSpace(options.MetadataConnectionString))
-        {
-            failures.Add("FileAssets:MetadataConnectionString is required when file assets are enabled.");
-        }
         if (options.MaxFileSizeBytes <= 0)
         {
             failures.Add("FileAssets:MaxFileSizeBytes must be greater than zero.");

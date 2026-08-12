@@ -9,6 +9,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenAgent.Contracts", "src\
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenAgent.Core", "src\OpenAgent.Core\OpenAgent.Core.csproj", "{DC2D9BCE-4EEB-42D0-B4E1-C0AE3C74E66E}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenAgent.Persistence", "src\OpenAgent.Persistence\OpenAgent.Persistence.csproj", "{D5C62D45-1A0B-4FBC-962B-738EFCA8C530}"
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenAgent.Engine", "src\OpenAgent.Engine\OpenAgent.Engine.csproj", "{C1964D0D-6488-4BAC-B9F3-D19A4620F973}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenAgent.Engine.Host", "src\OpenAgent.Engine.Host\OpenAgent.Engine.Host.csproj", "{36DED676-49D6-4BAE-B7F6-47872EDA47B8}"
@@ -18,6 +20,8 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{0AB3BF05-4346-4AA6-1389-037BE0695223}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenAgent.Core.Tests", "tests\OpenAgent.Core.Tests\OpenAgent.Core.Tests.csproj", "{93A217F5-E9A4-474F-960F-ACB886E2ABD9}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenAgent.Persistence.Tests", "tests\OpenAgent.Persistence.Tests\OpenAgent.Persistence.Tests.csproj", "{ADC2646A-65A7-4D93-8BD7-9A8E833F3B39}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenAgent.Engine.Tests", "tests\OpenAgent.Engine.Tests\OpenAgent.Engine.Tests.csproj", "{2EEF5971-E0AE-4361-AA17-9BA8C72CE60B}"
 EndProject
@@ -41,6 +45,14 @@ Global
 		Release|x86 = Release|x86
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{D5C62D45-1A0B-4FBC-962B-738EFCA8C530}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D5C62D45-1A0B-4FBC-962B-738EFCA8C530}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D5C62D45-1A0B-4FBC-962B-738EFCA8C530}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D5C62D45-1A0B-4FBC-962B-738EFCA8C530}.Release|Any CPU.Build.0 = Release|Any CPU
+		{ADC2646A-65A7-4D93-8BD7-9A8E833F3B39}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{ADC2646A-65A7-4D93-8BD7-9A8E833F3B39}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{ADC2646A-65A7-4D93-8BD7-9A8E833F3B39}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{ADC2646A-65A7-4D93-8BD7-9A8E833F3B39}.Release|Any CPU.Build.0 = Release|Any CPU
 		{FA3675CE-51A4-4A92-8D8A-6B47CE450449}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{FA3675CE-51A4-4A92-8D8A-6B47CE450449}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{FA3675CE-51A4-4A92-8D8A-6B47CE450449}.Debug|x64.ActiveCfg = Debug|Any CPU

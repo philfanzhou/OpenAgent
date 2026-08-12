@@ -10,7 +10,7 @@
 | R-04 | MCP Server 工具发现与调用 | [modules/capabilities/mcp/](../modules/capabilities/mcp/) |
 | R-05 | RAG 知识库检索增强 | [modules/capabilities/rag/](../modules/capabilities/rag/) |
 | R-06 | 工具调用循环（原生 Function Calling + XML 降级） | [modules/capabilities/tool-calling/](../modules/capabilities/tool-calling/) |
-| R-07 | 会话记录存储（Redis 热 + SQL Server 冷双写） | [modules/conversation/store/](../modules/conversation/store/) |
+| R-07 | PostgreSQL 会话记录与独立文件资产存储 | [modules/conversation/store/](../modules/conversation/store/) |
 | R-08 | 流式推理输出 | [modules/execution/streaming/](../modules/execution/streaming/) |
 | R-09 | 统一错误处理与错误码 | [modules/execution/errors/](../modules/execution/errors/) |
 | R-10 | 安全中间件（认证、权限、租户隔离、AgentId 校验） | [modules/security/](../modules/security/) |

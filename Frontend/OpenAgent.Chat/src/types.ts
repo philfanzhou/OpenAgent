@@ -29,10 +29,18 @@ export interface ConversationMessage {
   toolName?: string
   timestamp: string
   metadata?: Record<string, string>
-  attachments?: MessageAttachment[]
+  reasoning?: string
+  toolActivities?: ToolActivity[]
+  files?: MessageFile[]
 }
 
-export interface MessageAttachment {
+export interface ToolActivity {
+  name: string
+  callId?: string
+  result?: string
+}
+
+export interface MessageFile {
   fileId?: string
   fileName: string
   mediaType: string
@@ -54,9 +62,12 @@ export interface FileAsset {
   createdAt: string
 }
 
-export interface PendingAttachment {
+export interface PendingFile {
   id: string
   file: File
+  state: 'uploading' | 'ready' | 'failed'
+  asset?: FileAsset
+  error?: string
 }
 
 export interface ConversationRecord {

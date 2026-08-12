@@ -6,7 +6,7 @@ import ChatHeader from './components/ChatHeader.vue'
 import ChatMessages from './components/ChatMessages.vue'
 import ChatSidebar from './components/ChatSidebar.vue'
 import MessageComposer from './components/MessageComposer.vue'
-import { AUTO_AGENT_ID, type AgentConfigEntity, type AgentSummary, type AuthConfig, type ConnectionMode, type ConversationMessage, type ConversationRecord, type CurrentUserContext, type LlmProviderProfile, type LlmTestResult, type McpServerConfig, type McpTestResult, type MessageAttachment, type PendingAttachment, type RagConfig, type RagInstanceConfig, type RagTestResult, type SkillInstanceConfig, type SkillsConfig } from './types'
+import { AUTO_AGENT_ID, type AgentConfigEntity, type AgentSummary, type AuthConfig, type ConnectionMode, type ConversationMessage, type ConversationRecord, type CurrentUserContext, type LlmProviderProfile, type LlmTestResult, type McpServerConfig, type McpTestResult, type MessageFile, type PendingFile, type RagConfig, type RagInstanceConfig, type RagTestResult, type SkillInstanceConfig, type SkillsConfig } from './types'
 
 const connectionMode = ref<ConnectionMode>(getConnectionMode())
 const routerUrl = ref(getRouterBaseUrl())
@@ -59,7 +59,7 @@ const testingLlm = ref(false)
 const savingLlm = ref(false)
 const showLlmEditor = ref(false)
 const isNewLlm = ref(false)
-const pendingAttachments = ref<PendingAttachment[]>([])
+const pendingFiles = ref<PendingFile[]>([])
 const themeMode = ref<'light' | 'dark'>(localStorage.getItem('openagent.ui.theme') === 'dark' ? 'dark' : 'light')
 type DiagnosticKey = 'live' | 'ready' | 'catalog' | 'identity' | 'conversations'
 type DiagnosticStatus = 'idle' | 'running' | 'ok' | 'error'
@@ -346,13 +346,13 @@ async function selectConversation(item: ConversationRecord): Promise<void> {
   selectedConversation.value = item
   selectedAgentId.value = item.agentId || selectedAgentId.value
   if (item.messages?.length) {
-    await hydrateAttachmentPreviews(item)
+    await hydrateFilePreviews(item)
     return
   }
   loadingConversation.value = true
   try {
     const detail = await api.getConversation(item.conversationId)
-    await hydrateAttachmentPreviews(detail)
+    await hydrateFilePreviews(detail)
     selectedConversation.value = detail
   } catch (error) {
     notifyError(error)
@@ -361,26 +361,30 @@ async function selectConversation(item: ConversationRecord): Promise<void> {
   }
 }
 
-async function hydrateAttachmentPreviews(conversation: ConversationRecord): Promise<void> {
-  const attachments = conversation.messages?.flatMap(item => item.attachments || []) || []
-  await Promise.all(attachments.map(async attachment => {
-    if (!attachment.fileId || attachment.previewUrl || attachment.previewText) return
+async function hydrateFilePreviews(conversation: ConversationRecord): Promise<void> {
+  const files = conversation.messages?.flatMap(item => item.files || []) || []
+  await Promise.all(files.map(async file => {
+    if (!file.fileId || file.previewUrl || file.previewText) return
     try {
-      if (attachment.mediaType.startsWith('image/')) {
-        attachment.previewUrl = await api.loadFilePreview(attachment.fileId)
-      } else if (attachment.mediaType === 'text/markdown') {
-        attachment.previewText = await api.readFileText(attachment.fileId)
+      if (file.mediaType.startsWith('image/')) {
+        file.previewUrl = await api.loadFilePreview(file.fileId)
+      } else if (isTextPreview(file.mediaType)) {
+        file.previewText = await api.readFileText(file.fileId)
       }
     } catch {
-      // The attachment remains downloadable even when preview loading fails.
+      // The file remains downloadable even when preview loading fails.
     }
   }))
 }
 
-async function downloadAttachment(attachment: MessageAttachment): Promise<void> {
-  if (!attachment.fileId) return
+function isTextPreview(mediaType: string): boolean {
+  return mediaType.startsWith('text/') || mediaType === 'application/json'
+}
+
+async function downloadFile(file: MessageFile): Promise<void> {
+  if (!file.fileId) return
   try {
-    await api.downloadFile(attachment.fileId, attachment.fileName)
+    await api.downloadFile(file.fileId, file.fileName)
   } catch (error) {
     notifyError(error)
   }
@@ -389,7 +393,7 @@ async function downloadAttachment(attachment: MessageAttachment): Promise<void> 
 function newConversation(): void {
   selectedConversation.value = null
   message.value = ''
-  pendingAttachments.value = []
+  pendingFiles.value = []
 }
 
 function handleAgentChange(): void {
@@ -410,13 +414,66 @@ function selectAgent(agentId: string): void {
   void loadConfig()
 }
 
+function handleFilesChange(files: PendingFile[]): void {
+  const existing = new Map(pendingFiles.value.map(item => [item.id, item]))
+  pendingFiles.value = files.map(item => existing.get(item.id) || item)
+  for (const item of pendingFiles.value.filter(item => item.state === 'uploading' && !existing.has(item.id))) {
+    void uploadPendingFile(item.id)
+  }
+}
+
+function retryPendingFile(id: string): void {
+  const file = pendingFiles.value.find(item => item.id === id)
+  if (!file || file.state === 'uploading') return
+  file.state = 'uploading'
+  file.error = undefined
+  void uploadPendingFile(id)
+}
+
+async function uploadPendingFile(id: string): Promise<void> {
+  const pending = pendingFiles.value.find(item => item.id === id)
+  if (!pending) return
+  try {
+    const asset = await api.uploadFile(pending.file)
+    const current = pendingFiles.value.find(item => item.id === id)
+    if (!current) return
+    current.asset = asset
+    current.state = 'ready'
+  } catch (error) {
+    const current = pendingFiles.value.find(item => item.id === id)
+    if (!current) return
+    current.state = 'failed'
+    current.error = error instanceof Error ? error.message : '上传失败'
+    notifyError(error)
+  }
+}
+
+async function toMessageFile(item: PendingFile): Promise<MessageFile> {
+  const asset = item.asset
+  if (!asset) throw new Error('文件尚未上传完成')
+  return {
+    fileId: asset.fileId,
+    fileName: asset.fileName,
+    mediaType: asset.mediaType,
+    length: asset.length,
+    previewUrl: asset.mediaType.startsWith('image/') ? URL.createObjectURL(item.file) : undefined,
+    previewText: isTextPreview(asset.mediaType) ? await item.file.text() : undefined,
+  }
+}
+
 async function send(): Promise<void> {
   const content = message.value.trim()
-  const hasAttachments = pendingAttachments.value.length > 0
-  if ((!content && !hasAttachments) || !selectedAgentId.value || loading.value) return
-  const requestContent = content || '请处理我上传的附件'
+  const hasFiles = pendingFiles.value.length > 0
+  if ((!content && !hasFiles) || !selectedAgentId.value || loading.value) return
+  if (pendingFiles.value.some(item => item.state !== 'ready' || !item.asset)) {
+    notifyError(new Error('请等待文件上传完成，或移除上传失败的文件后再发送'))
+    return
+  }
+  const requestContent = content || '请处理我上传的文件'
   const isNewConversation = !selectedConversation.value
-  const attachments = pendingAttachments.value.map(item => item.file)
+  const uploaded = pendingFiles.value
+    .map(item => item.asset)
+    .filter((asset): asset is NonNullable<typeof asset> => asset != null)
   const requestedAgentId = selectedAgentId.value === AUTO_AGENT_ID
     ? selectedConversation.value?.agentId
     : selectedAgentId.value
@@ -438,29 +495,18 @@ async function send(): Promise<void> {
     : conversationId
   loading.value = true
   try {
-    const uploaded = await Promise.all(attachments.map(file => api.uploadFile(file)))
     conversation.messages ||= []
-    const messageAttachments = await Promise.all(uploaded.map(async (asset, index) => {
-      const source = attachments[index]
-      return {
-        fileId: asset.fileId,
-        fileName: asset.fileName,
-        mediaType: asset.mediaType,
-        length: asset.length,
-        previewUrl: source && asset.mediaType.startsWith('image/') ? URL.createObjectURL(source) : undefined,
-        previewText: source && asset.mediaType === 'text/markdown' ? await source.text() : undefined,
-      } satisfies MessageAttachment
-    }))
+    const messageFiles = await Promise.all(pendingFiles.value.map(toMessageFile))
     conversation.messages.push({
       messageId: crypto.randomUUID(), sequence: conversation.messages.length + 1,
-      role: 'user', content: content || '已上传附件', timestamp: new Date().toISOString(),
-      attachments: messageAttachments,
+      role: 'user', content: content || '已上传文件', timestamp: new Date().toISOString(),
+      files: messageFiles,
     })
     conversation.messageCount = conversation.messages.length
     conversation.updatedAt = new Date().toISOString()
     conversation.lastMessageAt = conversation.updatedAt
     message.value = ''
-    pendingAttachments.value = []
+    pendingFiles.value = []
     let assistant = ''
     conversation.messages.push({
       messageId: crypto.randomUUID(), sequence: conversation.messages.length + 1,
@@ -477,14 +523,23 @@ async function send(): Promise<void> {
       if (event.type === 'content') {
         assistant += event.content || ''
         assistantMessage.content = assistant
+      } else if (event.type === 'reasoning') {
+        assistantMessage.reasoning = `${assistantMessage.reasoning || ''}${event.content || ''}`
       } else if (event.type === 'tool_call') {
-        assistantMessage.toolName = event.toolName
+        assistantMessage.toolActivities ||= []
+        assistantMessage.toolActivities.push({
+          name: event.toolName || '工具',
+          callId: event.toolCallId,
+        })
       } else if (event.type === 'done' && event.status) {
         conversation.status = event.status as ConversationRecord['status']
       } else if (event.type === 'error') {
         throw new Error(event.error?.detail || 'Agent 执行失败')
       }
     }
+    const persisted = await api.getConversation(conversationId)
+    await hydrateFilePreviews(persisted)
+    selectedConversation.value = persisted
     await refreshConversations()
   } catch (error) {
     const lastMessage = conversation.messages?.at(-1)
@@ -877,8 +932,8 @@ onMounted(() => {
 
       <div class="workspace-grid">
         <section class="chat-card">
-          <ChatMessages :messages="currentMessages" :loading="loadingConversation" @suggest="message = $event" @download="downloadAttachment" />
-          <MessageComposer :model-value="message" :endpoint-url="activeEndpointUrl" :endpoint-label="activeEndpointLabel" :selected-agent-id="selectedAgentId" :loading="loading" :pending-attachments="pendingAttachments" @update:model-value="message = $event" @attachments-change="pendingAttachments = $event" @send="send" />
+          <ChatMessages :messages="currentMessages" :loading="loadingConversation" @suggest="message = $event" @download="downloadFile" />
+          <MessageComposer :model-value="message" :endpoint-url="activeEndpointUrl" :endpoint-label="activeEndpointLabel" :selected-agent-id="selectedAgentId" :loading="loading" :pending-files="pendingFiles" @update:model-value="message = $event" @files-change="handleFilesChange" @retry-file="retryPendingFile" @send="send" />
         </section>
         <aside class="context-panel">
           <section><span class="context-label">ROUTING</span><strong>{{ routeMode }}</strong><p>{{ connectionMode === 'router' && selectedAgentId === AUTO_AGENT_ID ? '由意图识别 Agent 分析请求并选择目标。' : (selectedAgent?.description || selectedAgentId) }}</p><dl><div><dt>Agent</dt><dd>{{ connectionMode === 'router' && selectedAgentId === AUTO_AGENT_ID ? '由模型选择' : (selectedAgent?.name || selectedAgentId) }}</dd></div><div><dt>协议</dt><dd>{{ selectedAgent?.apiFormat || (connectionMode === 'router' ? '自动' : '—') }}</dd></div></dl></section>
@@ -997,6 +1052,6 @@ onMounted(() => {
 </template>
 
 <style>
-.message-attachments { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 7px; }
-.message-attachments span { display: inline-flex; align-items: center; padding: 4px 7px; color: #5d54e8; background: #fff; border: 1px solid #dfe2ff; border-radius: 6px; font-size: 11px; }
+.message-files { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 7px; }
+.message-files span { display: inline-flex; align-items: center; padding: 4px 7px; color: #5d54e8; background: #fff; border: 1px solid #dfe2ff; border-radius: 6px; font-size: 11px; }
 </style>

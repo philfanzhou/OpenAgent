@@ -66,14 +66,6 @@ internal sealed class FileAssetService : IFileAssetService
                 cancellationToken).ConfigureAwait(false);
             FileAsset ready = CopyWithStorage(pending, stored.ObjectKey, FileAssetState.Ready);
             await _repository.UpdateAsync(ready, cancellationToken).ConfigureAwait(false);
-            if (!string.IsNullOrWhiteSpace(scope.ConversationId))
-            {
-                await _repository.AddConversationReferenceAsync(
-                    scope.ConversationId,
-                    fileId,
-                    cancellationToken).ConfigureAwait(false);
-            }
-
             return ready;
         }
         catch
@@ -131,27 +123,6 @@ internal sealed class FileAssetService : IFileAssetService
                 AgentErrorCode.InvalidRequest,
                 $"File '{content.Asset.FileName}' is not valid UTF-8 text.",
                 innerException: exception);
-        }
-    }
-
-    public async Task AttachToConversationAsync(
-        IReadOnlyList<string> fileIds,
-        string? conversationId,
-        CancellationToken cancellationToken)
-    {
-        EnsureEnabled();
-        if (string.IsNullOrWhiteSpace(conversationId))
-        {
-            return;
-        }
-
-        foreach (string fileId in fileIds.Where(fileId => !string.IsNullOrWhiteSpace(fileId)).Distinct(StringComparer.Ordinal))
-        {
-            await GetReadyAssetAsync(fileId, cancellationToken).ConfigureAwait(false);
-            await _repository.AddConversationReferenceAsync(
-                conversationId,
-                fileId,
-                cancellationToken).ConfigureAwait(false);
         }
     }
 

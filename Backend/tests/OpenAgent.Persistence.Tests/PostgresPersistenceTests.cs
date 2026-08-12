@@ -1,0 +1,114 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using OpenAgent.Contracts.Conversation;
+using OpenAgent.Contracts.Files;
+using Testcontainers.PostgreSql;
+using Xunit;
+
+namespace OpenAgent.Persistence.Tests;
+
+public sealed class PostgresPersistenceTests : IAsyncLifetime
+{
+    private readonly PostgreSqlContainer _database = new PostgreSqlBuilder("postgres:16-alpine")
+        .WithDatabase("openagent_test")
+        .WithUsername("openagent")
+        .WithPassword("openagent")
+        .Build();
+    private ServiceProvider? _services;
+
+    public async Task InitializeAsync()
+    {
+        await _database.StartAsync().ConfigureAwait(false);
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ConnectionStrings:OpenAgentDatabase"] = _database.GetConnectionString()
+            })
+            .Build();
+        var services = new ServiceCollection();
+        services.AddOpenAgentPostgres(configuration);
+        _services = services.BuildServiceProvider(validateScopes: true);
+        IDbContextFactory<OpenAgentDbContext> contexts = _services.GetRequiredService<IDbContextFactory<OpenAgentDbContext>>();
+        await using OpenAgentDbContext context = await contexts.CreateDbContextAsync().ConfigureAwait(false);
+        await context.Database.MigrateAsync().ConfigureAwait(false);
+    }
+
+    public async Task DisposeAsync()
+    {
+        if (_services != null)
+        {
+            await _services.DisposeAsync().ConfigureAwait(false);
+        }
+
+        await _database.DisposeAsync().ConfigureAwait(false);
+    }
+
+    [Fact]
+    public async Task ConversationStore_StoresFilesAtConversationAndMessageLevel()
+    {
+        ServiceProvider services = Assert.IsType<ServiceProvider>(_services);
+        IFileAssetRepository files = services.GetRequiredService<IFileAssetRepository>();
+        IConversationStore conversations = services.GetRequiredService<IConversationStore>();
+        FileAsset asset = new()
+        {
+            FileId = "file-001",
+            TenantId = "tenant-001",
+            OwnerUserId = "user-001",
+            FileName = "notes.md",
+            MediaType = "text/markdown",
+            Length = 8,
+            Sha256 = "abc",
+            ObjectKey = "files/tenant-001/file-001.md",
+            Source = FileAssetSource.UserUpload,
+            State = FileAssetState.Ready,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        await files.CreateAsync(asset, CancellationToken.None);
+        bool created = await conversations.CreateAsync(new ConversationRecord
+        {
+            ConversationId = "conversation-001",
+            TenantId = "tenant-001",
+            UserId = "user-001",
+            AgentId = "default"
+        }, CancellationToken.None);
+
+        AppendResult appended = await conversations.AppendMessagesAsync(
+            "tenant-001",
+            "conversation-001",
+            1,
+            [new ConversationMessage
+            {
+                MessageId = "message-001",
+                Sequence = 1,
+                Role = "user",
+                Content = "Read this file",
+                FileIds = [asset.FileId]
+            }],
+            CancellationToken.None);
+        AppendResult reused = await conversations.AppendMessagesAsync(
+            "tenant-001",
+            "conversation-001",
+            appended.NewVersion,
+            [new ConversationMessage
+            {
+                MessageId = "message-002",
+                Sequence = 2,
+                Role = "user",
+                Content = "Reuse this file",
+                FileIds = [asset.FileId]
+            }],
+            CancellationToken.None);
+        ConversationRecord? record = await conversations.GetRecordAsync(
+            "tenant-001",
+            "conversation-001",
+            CancellationToken.None);
+
+        Assert.True(created);
+        Assert.True(appended.Success);
+        Assert.True(reused.Success);
+        IReadOnlyList<ConversationMessage> messages = Assert.IsType<ConversationRecord>(record).Messages;
+        Assert.Equal(2, messages.Count);
+        Assert.All(messages, message => Assert.Equal([asset.FileId], message.FileIds));
+    }
+}

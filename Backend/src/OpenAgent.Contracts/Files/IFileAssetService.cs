@@ -20,8 +20,4 @@ public interface IFileAssetService
         FileAssetScope scope,
         CancellationToken cancellationToken);
 
-    Task AttachToConversationAsync(
-        IReadOnlyList<string> fileIds,
-        string? conversationId,
-        CancellationToken cancellationToken);
 }

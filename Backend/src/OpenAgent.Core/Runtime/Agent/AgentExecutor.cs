@@ -37,7 +37,8 @@ public sealed class AgentExecutor
         CancellationToken cancellationToken)
     {
         EnsureRequest(request);
-        request = await _files.ResolveAsync(request, user, cancellationToken).ConfigureAwait(false);
+        ResolvedFileRequest resolvedFiles = await _files.ResolveAsync(request, user, cancellationToken).ConfigureAwait(false);
+        request = resolvedFiles.Request;
         string traceId = ResolveTraceId(request.TraceId);
         string agentId = await ResolveAgentIdAsync(
             request,
@@ -53,11 +54,12 @@ public sealed class AgentExecutor
             profile,
             executionRequest,
             user,
+            resolvedFiles.Files,
             cancellationToken).ConfigureAwait(false);
         AgentSession session = await scope.Agent.CreateSessionAsync(cancellationToken).ConfigureAwait(false);
         ChatMessage userMessage = AgentMessageAdapter.CreateUser(
             executionRequest.Query,
-            executionRequest.Attachments);
+            resolvedFiles.Files);
         Microsoft.Agents.AI.AgentResponse response = await scope.Agent.RunAsync(
             userMessage,
             session,
@@ -78,7 +80,8 @@ public sealed class AgentExecutor
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         EnsureRequest(request);
-        request = await _files.ResolveAsync(request, user, cancellationToken).ConfigureAwait(false);
+        ResolvedFileRequest resolvedFiles = await _files.ResolveAsync(request, user, cancellationToken).ConfigureAwait(false);
+        request = resolvedFiles.Request;
         string traceId = ResolveTraceId(request.TraceId);
         string agentId = await ResolveAgentIdAsync(
             request,
@@ -94,11 +97,12 @@ public sealed class AgentExecutor
             profile,
             executionRequest,
             user,
+            resolvedFiles.Files,
             cancellationToken).ConfigureAwait(false);
         AgentSession session = await scope.Agent.CreateSessionAsync(cancellationToken).ConfigureAwait(false);
         ChatMessage userMessage = AgentMessageAdapter.CreateUser(
             executionRequest.Query,
-            executionRequest.Attachments);
+            resolvedFiles.Files);
         HashSet<string> announcedToolCalls = new(StringComparer.Ordinal);
         TokenUsage? usage = null;
         IAsyncEnumerable<AgentResponseUpdate> updates = scope.Agent.RunStreamingAsync(
@@ -203,7 +207,6 @@ public sealed class AgentExecutor
             ClientType = request.ClientType,
             IdempotencyKey = request.IdempotencyKey,
             ExternalContext = request.ExternalContext,
-            FileIds = request.FileIds,
-            Attachments = request.Attachments
+            FileIds = request.FileIds
         };
 }

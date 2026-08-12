@@ -1,8 +1,8 @@
 using System.Text.Json;
 using System.Text;
 using Microsoft.Extensions.AI;
-using OpenAgent.Contracts.Content;
 using OpenAgent.Contracts.Conversation;
+using OpenAgent.Contracts.Files;
 
 namespace OpenAgent.Core.Runtime.Agent;
 
@@ -10,10 +10,10 @@ internal static class AgentMessageAdapter
 {
     internal static ChatMessage CreateUser(
         string input,
-        IReadOnlyList<AgentAttachment> attachments)
+        IReadOnlyList<FileAssetContent> files)
     {
         var message = new ChatMessage(Microsoft.Extensions.AI.ChatRole.User, input);
-        AddAttachments(message, attachments);
+        AddFiles(message, files);
         return message;
     }
 
@@ -89,8 +89,13 @@ internal static class AgentMessageAdapter
                 .OfType<FunctionResultContent>()
                 .ToList();
             string text = message.Text ?? string.Empty;
+            string reasoning = string.Concat(message.Contents
+                .OfType<TextReasoningContent>()
+                .Select(content => content.Text));
 
-            if (!string.IsNullOrEmpty(text) || (calls.Count == 0 && functionResults.Count == 0))
+            if (!string.IsNullOrEmpty(text)
+                || !string.IsNullOrEmpty(reasoning)
+                || (calls.Count == 0 && functionResults.Count == 0))
             {
                 FunctionCallContent? firstCall = calls.FirstOrDefault();
                 if (firstCall != null && !string.IsNullOrWhiteSpace(firstCall.CallId))
@@ -103,7 +108,7 @@ internal static class AgentMessageAdapter
                     text,
                     firstCall?.CallId,
                     firstCall?.Name,
-                    CreateToolMetadata(firstCall)));
+                    CreateMessageMetadata(firstCall, reasoning)));
             }
 
             foreach (FunctionCallContent call in calls.Skip(
@@ -140,23 +145,54 @@ internal static class AgentMessageAdapter
         return result;
     }
 
-    internal static IReadOnlyDictionary<string, string>? BuildAttachmentMetadata(
-        IReadOnlyList<AgentAttachment> attachments)
+    internal static IReadOnlyDictionary<string, string>? BuildFileMetadata(
+        IReadOnlyList<FileAsset> files)
     {
-        if (attachments.Count == 0)
+        if (files.Count == 0)
         {
             return null;
         }
 
         return new Dictionary<string, string>
         {
-            ["Attachments"] = JsonSerializer.Serialize(attachments.Select(attachment => new
+            ["Files"] = JsonSerializer.Serialize(files.Select(file => new
             {
-                attachment.FileId,
-                attachment.FileName,
-                attachment.MediaType,
-                attachment.Length
+                fileId = file.FileId,
+                fileName = file.FileName,
+                mediaType = file.MediaType,
+                length = file.Length
             }))
+        };
+    }
+
+    internal static ConversationMessage AssociateFiles(
+        ConversationMessage message,
+        IReadOnlyList<FileAsset> files)
+    {
+        if (files.Count == 0)
+        {
+            return message;
+        }
+
+        Dictionary<string, string> metadata = message.Metadata == null
+            ? []
+            : new Dictionary<string, string>(message.Metadata, StringComparer.Ordinal);
+        metadata["Files"] = BuildFileMetadata(files)!["Files"];
+        return new ConversationMessage
+        {
+            MessageId = message.MessageId,
+            Sequence = message.Sequence,
+            Role = message.Role,
+            Content = message.Content,
+            ToolCallId = message.ToolCallId,
+            ToolName = message.ToolName,
+            IdempotencyKey = message.IdempotencyKey,
+            Timestamp = message.Timestamp,
+            Metadata = metadata,
+            FileIds = message.FileIds
+                .Concat(files.Select(file => file.FileId))
+                .Distinct(StringComparer.Ordinal)
+                .ToArray()
         };
     }
 
@@ -189,6 +225,23 @@ internal static class AgentMessageAdapter
                     call.Arguments ?? new Dictionary<string, object?>())
             };
 
+    private static IReadOnlyDictionary<string, string>? CreateMessageMetadata(
+        FunctionCallContent? call,
+        string reasoning)
+    {
+        IReadOnlyDictionary<string, string>? toolMetadata = CreateToolMetadata(call);
+        if (string.IsNullOrEmpty(reasoning))
+        {
+            return toolMetadata;
+        }
+
+        Dictionary<string, string> metadata = toolMetadata == null
+            ? []
+            : new Dictionary<string, string>(toolMetadata, StringComparer.Ordinal);
+        metadata["Reasoning"] = reasoning;
+        return metadata;
+    }
+
     private static IDictionary<string, object?>? ParseArguments(string? json)
     {
         if (string.IsNullOrWhiteSpace(json))
@@ -206,43 +259,43 @@ internal static class AgentMessageAdapter
         }
     }
 
-    private static void AddAttachments(
+    private static void AddFiles(
         ChatMessage chatMessage,
-        IReadOnlyList<AgentAttachment> attachments)
+        IReadOnlyList<FileAssetContent> files)
     {
-        foreach (AgentAttachment attachment in attachments)
+        foreach (FileAssetContent file in files)
         {
-            if (IsTextAttachment(attachment.MediaType))
+            if (IsTextFile(file.Asset.MediaType))
             {
                 chatMessage.Contents.Add(new TextContent(
-                    $"[File: {attachment.FileName}]\n{DecodeUtf8(attachment)}"));
+                    $"[File: {file.Asset.FileName}]\n{DecodeUtf8(file)}"));
             }
             else
             {
-                chatMessage.Contents.Add(new DataContent(attachment.Data, attachment.MediaType)
+                chatMessage.Contents.Add(new DataContent(file.Data, file.Asset.MediaType)
                 {
-                    Name = attachment.FileName
+                    Name = file.Asset.FileName
                 });
             }
         }
     }
 
-    private static bool IsTextAttachment(string mediaType)
+    private static bool IsTextFile(string mediaType)
     {
         return mediaType.StartsWith("text/", StringComparison.OrdinalIgnoreCase)
             || mediaType.Equals("application/json", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static string DecodeUtf8(AgentAttachment attachment)
+    private static string DecodeUtf8(FileAssetContent file)
     {
         try
         {
-            return new UTF8Encoding(false, true).GetString(attachment.Data);
+            return new UTF8Encoding(false, true).GetString(file.Data);
         }
         catch (DecoderFallbackException exception)
         {
             throw new InvalidDataException(
-                $"Attachment '{attachment.FileName}' is not valid UTF-8 text.", exception);
+                $"File '{file.Asset.FileName}' is not valid UTF-8 text.", exception);
         }
     }
 

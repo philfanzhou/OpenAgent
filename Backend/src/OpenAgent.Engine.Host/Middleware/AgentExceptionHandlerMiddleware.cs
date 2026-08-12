@@ -51,8 +51,7 @@ internal class AgentExceptionHandlerMiddleware
     private static bool IsSseEndpoint(HttpContext context)
     {
         string path = context.Request.Path.Value ?? string.Empty;
-        return path.EndsWith("/chat/stream", StringComparison.OrdinalIgnoreCase)
-            || path.EndsWith("/chat/attachments/stream", StringComparison.OrdinalIgnoreCase);
+        return path.EndsWith("/chat/stream", StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task HandleSseErrorAsync(HttpContext context, Exception exception)

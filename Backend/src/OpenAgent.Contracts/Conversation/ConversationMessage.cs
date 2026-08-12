@@ -11,4 +11,5 @@ public sealed class ConversationMessage
     public string? IdempotencyKey { get; init; }
     public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
     public IReadOnlyDictionary<string, string>? Metadata { get; init; }
+    public IReadOnlyList<string> FileIds { get; init; } = Array.Empty<string>();
 }

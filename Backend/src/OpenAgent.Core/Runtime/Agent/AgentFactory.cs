@@ -6,6 +6,7 @@ using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Conversation;
 using OpenAgent.Core.Files;
+using OpenAgent.Contracts.Files;
 
 namespace OpenAgent.Core.Runtime.Agent;
 
@@ -32,16 +33,17 @@ internal sealed class AgentFactory
         AgentRuntimeProfile profile,
         AgentRequest request,
         IAgentUserContext user,
+        IReadOnlyList<FileAssetContent> files,
         CancellationToken cancellationToken)
     {
         IChatClient modelClient = _chatClients.Create(profile.Model);
-        PlatformChatHistory history = _conversations.Create(profile.AgentId, request, user);
         _files.Set(new OpenAgent.Contracts.Files.FileAssetScope
         {
             TenantId = user.TenantId ?? string.Empty,
             UserId = user.UserId,
             ConversationId = request.ConversationId
         });
+        PlatformChatHistory history = _conversations.Create(profile.AgentId, request, user, files);
         IReadOnlyList<AITool> tools = await _capabilities.CreateAsync(
             profile.AgentId,
             profile.Config,

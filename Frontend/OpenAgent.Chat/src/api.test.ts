@@ -45,6 +45,9 @@ describe('workspace API', () => {
     setConnectionMode('engine')
     setEngineBaseUrl('http://engine.example/')
     const stream = [
+      'event: reasoning',
+      'data: {"content":"inspect first"}',
+      '',
       'event: content',
       'data: {"content":"hello"}',
       '',
@@ -61,6 +64,7 @@ describe('workspace API', () => {
     for await (const event of api.streamChat('hello', 'support')) events.push(event)
 
     expect(events).toEqual([
+      { type: 'reasoning', content: 'inspect first' },
       { type: 'content', content: 'hello' },
       { type: 'done', done: true },
     ])

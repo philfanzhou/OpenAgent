@@ -151,7 +151,7 @@ button, input, textarea, select { font: inherit; }
 .attach-button { min-height: 26px !important; padding: 3px 5px; color: var(--workspace-muted); }
 .connection-caption { overflow: hidden; max-width: 190px; text-overflow: ellipsis; white-space: nowrap; }.keyboard-hint { color: #9a9a9a; }
 .composer-actions .el-button--primary { width: 30px; min-height: 30px; }
-.attachment-chip { border-color: var(--workspace-line); border-radius: 7px; color: var(--workspace-text); background: var(--workspace-subtle); }
+.file-chip { border-color: var(--workspace-line); border-radius: 7px; color: var(--workspace-text); background: var(--workspace-subtle); }
 
 .context-panel { min-width: 0; padding: 13px 12px; overflow-y: auto; background: #fbfbfb; }
 .context-panel section { padding: 11px 5px 13px; border-bottom: 1px solid var(--workspace-line); }
