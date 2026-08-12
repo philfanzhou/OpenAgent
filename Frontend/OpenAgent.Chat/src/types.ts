@@ -32,12 +32,16 @@ export interface ConversationMessage {
   reasoning?: string
   toolActivities?: ToolActivity[]
   files?: MessageFile[]
+  /** 执行失败的独立展示，不写入会话历史。 */
+  error?: { title?: string; detail?: string; traceId?: string }
 }
 
 export interface ToolActivity {
   name: string
   callId?: string
   result?: string
+  /** 工具调用参数（流式下发或从历史 metadata.ToolArguments 解析）。 */
+  arguments?: unknown
 }
 
 export interface MessageFile {
@@ -210,6 +214,7 @@ export interface StreamEvent {
   traceId?: string
   toolName?: string
   toolCallId?: string
+  toolArguments?: unknown
   conversationId?: string
   error?: { title?: string; detail?: string; traceId?: string }
   usage?: Record<string, unknown>

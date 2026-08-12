@@ -491,6 +491,7 @@ async function send(): Promise<void> {
   // 这样 router 对首次消息会执行意图识别，而不是当成续聊直接转发。
   const sendConversationId = isNewConversation ? undefined : conversationId
   loading.value = true
+  let streamError: { title?: string; detail?: string; traceId?: string } | undefined
   try {
     conversation.messages ||= []
     const messageFiles = await Promise.all(pendingFiles.value.map(toMessageFile))
@@ -528,11 +529,18 @@ async function send(): Promise<void> {
         assistantMessage.toolActivities.push({
           name: event.toolName || '工具',
           callId: event.toolCallId,
+          arguments: event.toolArguments,
         })
       } else if (event.type === 'done' && event.status) {
         conversation.status = event.status as ConversationRecord['status']
       } else if (event.type === 'error') {
-        throw new Error(event.error?.detail || 'Agent 执行失败')
+        // 捕获流式错误，交给 catch 以独立错误卡片展示；不混入助手内容。
+        streamError = {
+          title: event.error?.title,
+          detail: event.error?.detail || 'Agent 执行失败',
+          traceId: event.error?.traceId,
+        }
+        throw new Error(streamError.detail)
       }
       if (event.conversationId) returnedConversationId = event.conversationId
     }
@@ -541,8 +549,16 @@ async function send(): Promise<void> {
     selectedConversation.value = persisted
     await refreshConversations()
   } catch (error) {
+    conversation.status = 'Failed'
     const lastMessage = conversation.messages?.at(-1)
-    if (lastMessage?.role === 'assistant') lastMessage.content = error instanceof Error ? error.message : '执行失败'
+    if (lastMessage?.role === 'assistant') {
+      // 错误信息不写入历史，以独立错误卡片就近展示；保留已流式的部分内容。
+      lastMessage.error = {
+        title: streamError?.title || 'Agent 执行失败',
+        detail: streamError?.detail || (error instanceof Error ? error.message : '执行失败'),
+        traceId: streamError?.traceId,
+      }
+    }
     notifyError(error)
   } finally {
     loading.value = false
