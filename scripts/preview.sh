@@ -13,7 +13,9 @@ set -euo pipefail
 # （经 host.docker.internal 直连，宿主端口以运行中容器为准）。
 # 端口与 Redis DB 序号经 flock 原子分配，支持多个 agent 并发开预览不冲突。
 
-PREVIEW_DIR=".preview"
+# 分配状态放在机器级共享目录：多个 worktree 并行开预览时共享同一份端口/DB 分配，
+# 避免各 worktree 各持一份导致重复分配。
+PREVIEW_DIR="${OPENAGENT_PREVIEW_DIR:-$HOME/.openagent-preview}"
 LOCK_FILE="$PREVIEW_DIR/lock"
 ALLOC_FILE="$PREVIEW_DIR/allocations"
 COMPOSE_FILE="docker/preview.compose.yml"
