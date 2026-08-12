@@ -106,6 +106,7 @@ services:
       OpenTelemetry__ServiceName: agent-router
       OpenTelemetry__ServiceVersion: development
       RouterSettings__Routing__EngineEndpoint: http://engine:5208
+      RouterSettings__IntentRecognition__TimeoutMs: "30000"
       Authentication__AllowDevelopmentAnonymous: "true"
       Cors__AllowedOrigins__0: http://localhost:${OPENAGENT_CHAT_PORT:-8080}
     extra_hosts:
