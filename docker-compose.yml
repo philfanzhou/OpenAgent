@@ -65,6 +65,9 @@ services:
       Database__ApplyMigrationsOnStartup: "true"
       ConversationCache__Enabled: "true"
       FileAssets__Enabled: "true"
+      OpenTelemetry__OtlpEndpoint: ${OPENAGENT_OTLP_ENDPOINT:-http://host.docker.internal:4317}
+      OpenTelemetry__ServiceName: agent-engine
+      OpenTelemetry__ServiceVersion: development
       FileAssets__ObjectStorage__ServiceUrl: http://minio:9000
       FileAssets__ObjectStorage__ForcePathStyle: "true"
       FileAssets__ObjectStorage__AccessKey: openagent
@@ -74,6 +77,8 @@ services:
       Heartbeat__AdvertisedPort: "5208"
       Authentication__AllowDevelopmentAnonymous: "true"
       Cors__AllowedOrigins__0: http://localhost:${OPENAGENT_CHAT_PORT:-8080}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
@@ -97,9 +102,14 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:5001
       ConnectionStrings__Redis: redis:6379
+      OpenTelemetry__OtlpEndpoint: ${OPENAGENT_OTLP_ENDPOINT:-http://host.docker.internal:4317}
+      OpenTelemetry__ServiceName: agent-router
+      OpenTelemetry__ServiceVersion: development
       RouterSettings__Routing__EngineEndpoint: http://engine:5208
       Authentication__AllowDevelopmentAnonymous: "true"
       Cors__AllowedOrigins__0: http://localhost:${OPENAGENT_CHAT_PORT:-8080}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       redis:
         condition: service_healthy
