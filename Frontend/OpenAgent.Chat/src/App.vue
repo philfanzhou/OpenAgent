@@ -477,7 +477,6 @@ async function send(): Promise<void> {
   const requestedAgentId = selectedAgentId.value === AUTO_AGENT_ID
     ? selectedConversation.value?.agentId
     : selectedAgentId.value
-  const isAutomaticSelection = connectionMode.value === 'router' && selectedAgentId.value === AUTO_AGENT_ID
   const local = selectedConversation.value || makeLocalConversation(requestedAgentId || '', requestContent)
   if (isNewConversation) {
     local.messages = []
@@ -488,11 +487,9 @@ async function send(): Promise<void> {
   const conversation = selectedConversation.value
   if (!conversation) return
   const conversationId = conversation.conversationId
-  // Keep the generated ID in the existing affinity header on the first automatic turn.
-  // The message body starts carrying it from the second turn, which tells Router to skip selection.
-  const requestConversationId = isNewConversation && isAutomaticSelection
-    ? undefined
-    : conversationId
+  // 首次对话不携带任何 conversationId：由引擎生成并在 done 事件回传，前端记录后用于后续消息。
+  // 这样 router 对首次消息会执行意图识别，而不是当成续聊直接转发。
+  const sendConversationId = isNewConversation ? undefined : conversationId
   loading.value = true
   try {
     conversation.messages ||= []
@@ -513,12 +510,13 @@ async function send(): Promise<void> {
       role: 'assistant', content: '', timestamp: new Date().toISOString(),
     })
     const assistantMessage = conversation.messages[conversation.messages.length - 1]
+    let returnedConversationId: string | undefined
     for await (const event of api.streamChat(
       requestContent,
       requestedAgentId,
-      requestConversationId,
+      sendConversationId,
       uploaded.map(asset => asset.fileId),
-      conversationId,
+      sendConversationId,
     )) {
       if (event.type === 'content') {
         assistant += event.content || ''
@@ -536,8 +534,9 @@ async function send(): Promise<void> {
       } else if (event.type === 'error') {
         throw new Error(event.error?.detail || 'Agent 执行失败')
       }
+      if (event.conversationId) returnedConversationId = event.conversationId
     }
-    const persisted = await api.getConversation(conversationId)
+    const persisted = await api.getConversation(returnedConversationId || conversationId)
     await hydrateFilePreviews(persisted)
     selectedConversation.value = persisted
     await refreshConversations()

@@ -19,7 +19,8 @@ internal static class AgentEndpointRequestMapper
             AgentId = ReadContextValue(request.Context, "agentId")
                 ?? context.Request.Headers["X-Agent-Id"].FirstOrDefault(),
             ConversationId = ReadContextValue(request.Context, "conversationId")
-                ?? context.Request.Headers["X-Conversation-Id"].FirstOrDefault(),
+                ?? context.Request.Headers["X-Conversation-Id"].FirstOrDefault()
+                ?? Guid.NewGuid().ToString(),
             TraceId = feature.TraceId,
             ClientType = ClientType.Web,
             ExternalContext = externalContext,

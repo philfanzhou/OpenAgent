@@ -210,6 +210,7 @@ export interface StreamEvent {
   traceId?: string
   toolName?: string
   toolCallId?: string
+  conversationId?: string
   error?: { title?: string; detail?: string; traceId?: string }
   usage?: Record<string, unknown>
 }
