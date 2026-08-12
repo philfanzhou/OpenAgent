@@ -27,6 +27,9 @@ const connectionModeStorageKey = 'openagent.connection.mode'
 const tokenStorageKey = 'openagent.auth.access-token'
 const tokenTypeStorageKey = 'openagent.auth.token-type'
 const tenantStorageKey = 'openagent.auth.tenant-id'
+const defaultRouterBaseUrl = import.meta.env.VITE_OPENAGENT_ROUTER_BASE_URL || 'http://localhost:5001'
+const defaultEngineBaseUrl = import.meta.env.VITE_OPENAGENT_ENGINE_BASE_URL || 'http://localhost:5208'
+const defaultTenantId = import.meta.env.VITE_OPENAGENT_TENANT_ID || 'development'
 
 function normalizeBaseUrl(value: string): string {
   return value.trim().replace(/\/$/, '')
@@ -41,7 +44,9 @@ export function setConnectionMode(value: ConnectionMode): void {
 }
 
 export function getRouterBaseUrl(): string {
-  return localStorage.getItem(routerStorageKey) || localStorage.getItem(legacyBaseUrlStorageKey) || ''
+  return localStorage.getItem(routerStorageKey)
+    || localStorage.getItem(legacyBaseUrlStorageKey)
+    || defaultRouterBaseUrl
 }
 
 export function setRouterBaseUrl(value: string): void {
@@ -50,7 +55,7 @@ export function setRouterBaseUrl(value: string): void {
 }
 
 export function getEngineBaseUrl(): string {
-  return localStorage.getItem(engineStorageKey) || ''
+  return localStorage.getItem(engineStorageKey) || defaultEngineBaseUrl
 }
 
 export function setEngineBaseUrl(value: string): void {
@@ -72,7 +77,7 @@ export function setAccessToken(value: string, tokenType = 'Basic'): void {
 }
 
 export function getTenantId(): string {
-  return localStorage.getItem(tenantStorageKey) || ''
+  return localStorage.getItem(tenantStorageKey) || defaultTenantId
 }
 
 export function setTenantId(value: string): void {

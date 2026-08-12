@@ -1,0 +1,10 @@
+.git
+.agent
+.codex
+**/bin
+**/obj
+**/node_modules
+**/dist
+TestResults
+.env
+.env.*

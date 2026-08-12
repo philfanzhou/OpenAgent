@@ -3,7 +3,7 @@ WORKDIR /src
 
 COPY Backend/ Backend/
 RUN dotnet restore Backend/OpenAgent.sln
-RUN dotnet publish Backend/src/OpenAgent.Engine.Host/OpenAgent.Engine.Host.csproj \
+RUN dotnet publish Backend/src/OpenAgent.Router/OpenAgent.Router.csproj \
     --configuration Release \
     --no-restore \
     --output /app/publish
@@ -15,6 +15,6 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=build /app/publish/ .
 
-ENV ASPNETCORE_URLS=http://+:5208
-EXPOSE 5208
-ENTRYPOINT ["dotnet", "OpenAgent.Engine.Host.dll"]
+ENV ASPNETCORE_URLS=http://+:5001
+EXPOSE 5001
+ENTRYPOINT ["dotnet", "OpenAgent.Router.dll"]

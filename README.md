@@ -24,6 +24,19 @@ dotnet build Backend/OpenAgent.sln
 dotnet test Backend/OpenAgent.sln
 ```
 
+## Docker 本地全栈
+
+```bash
+docker compose up --build
+```
+
+启动后访问 `http://localhost:8080`。工作台默认使用 Router `http://localhost:5001`、直连
+Engine `http://localhost:5208`、租户 `development`；Compose 同时启动 PostgreSQL、Redis 和 MinIO。
+服务间使用 Docker DNS 地址（例如 Router -> `http://engine:5208`），浏览器仍使用上述 localhost
+地址。端口可通过 `OPENAGENT_*_PORT` 环境变量覆盖。Compose 不包含任何模型凭据或已发布 Agent；首次
+执行聊天前，请在工作台设置中创建 LLM Provider 并绑定 Agent。该默认编排启用开发匿名认证，仅适合本地
+联调，不应直接暴露到公网。
+
 ## 文档
 
 - [文档中心](docs/README.md) — 总览、模块、集成、数据库、架构决策

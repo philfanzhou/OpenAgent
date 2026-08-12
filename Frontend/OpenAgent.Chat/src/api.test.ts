@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { api, getRouterBaseUrl, setAccessToken, setConnectionMode, setEngineBaseUrl, setRouterBaseUrl, setTenantId } from './api'
+import { api, getEngineBaseUrl, getRouterBaseUrl, getTenantId, setAccessToken, setConnectionMode, setEngineBaseUrl, setRouterBaseUrl, setTenantId } from './api'
 
 class MemoryStorage implements Storage {
   private readonly values = new Map<string, string>()
@@ -19,6 +19,12 @@ beforeEach(() => {
 })
 
 describe('workspace API', () => {
+  it('uses runnable local stack defaults before the user customizes a connection', () => {
+    expect(getRouterBaseUrl()).toBe('http://localhost:5001')
+    expect(getEngineBaseUrl()).toBe('http://localhost:5208')
+    expect(getTenantId()).toBe('development')
+  })
+
   it('sends gateway identity headers to catalog requests', async () => {
     setConnectionMode('router')
     setRouterBaseUrl('http://router.example/')
