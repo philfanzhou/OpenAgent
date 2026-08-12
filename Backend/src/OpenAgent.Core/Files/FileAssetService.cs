@@ -163,7 +163,10 @@ internal sealed class FileAssetService : IFileAssetService
             || !IsAllowedMediaType(mediaType)
             || !MediaTypeMatchesExtension(extension, mediaType))
         {
-            throw new AgentException(AgentErrorCode.InvalidRequest, "File type is not allowed.");
+            throw new AgentException(
+                AgentErrorCode.InvalidRequest,
+                $"File type is not allowed. Supported extensions: " +
+                $"{string.Join(", ", _options.AllowedExtensions.Distinct(StringComparer.OrdinalIgnoreCase))}.");
         }
 
         await using var buffer = new MemoryStream();
@@ -203,12 +206,13 @@ internal sealed class FileAssetService : IFileAssetService
 
     private static bool MediaTypeMatchesExtension(string extension, string mediaType) => extension.ToLowerInvariant() switch
     {
-        ".png" or ".jpg" or ".jpeg" or ".gif" or ".webp" => mediaType.StartsWith("image/", StringComparison.OrdinalIgnoreCase),
+        ".png" or ".jpg" or ".jpeg" or ".gif" or ".webp" or ".svg" => mediaType.StartsWith("image/", StringComparison.OrdinalIgnoreCase),
         ".pdf" => mediaType.Equals("application/pdf", StringComparison.OrdinalIgnoreCase),
         ".json" => mediaType.Equals("application/json", StringComparison.OrdinalIgnoreCase),
         ".txt" => mediaType.Equals("text/plain", StringComparison.OrdinalIgnoreCase),
         ".csv" => mediaType.Equals("text/csv", StringComparison.OrdinalIgnoreCase),
         ".md" => mediaType.Equals("text/markdown", StringComparison.OrdinalIgnoreCase) || mediaType.Equals("text/plain", StringComparison.OrdinalIgnoreCase),
+        ".html" or ".htm" => mediaType.Equals("text/html", StringComparison.OrdinalIgnoreCase),
         _ => false
     };
 
