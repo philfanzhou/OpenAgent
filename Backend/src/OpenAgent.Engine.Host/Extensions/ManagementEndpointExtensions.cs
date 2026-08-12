@@ -6,6 +6,7 @@ using OpenAgent.Contracts.Rag;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Engine.Config;
 using OpenAgent.Engine.Host.Middleware;
+using OpenAgent.Engine.Host.Skills;
 
 namespace OpenAgent.Engine.Host.Extensions;
 
@@ -430,6 +431,45 @@ internal static class ManagementEndpointExtensions
             return entity == null ? Results.NotFound() : Results.Ok(entity.Config.Skills);
         });
 
+        group.MapPost("/skills/{agentId}/packages", async (
+            [FromServices] SkillPackageManagementService packages,
+            HttpContext context,
+            string agentId,
+            CancellationToken cancellationToken) =>
+        {
+            if (!HasScope(context, "agent.config.write"))
+                return Results.Forbid();
+            if (!context.Request.HasFormContentType)
+                return Results.BadRequest(new { error = "A multipart skill package is required." });
+
+            IFormCollection form = await context.Request.ReadFormAsync(cancellationToken).ConfigureAwait(false);
+            IFormFile? file = form.Files.GetFile("file");
+            if (file == null)
+                return Results.BadRequest(new { error = "The multipart field 'file' is required." });
+            if (file.Length > SkillPackageManagementService.MaxPackageBytes)
+                return Results.BadRequest(new { error = "Skill package exceeds the 4 MB limit." });
+
+            await using Stream stream = file.OpenReadStream();
+            SkillPackageInstallResult result = await packages.InstallAsync(
+                agentId,
+                context.GetAgentRequest().User.TenantId ?? "default",
+                Path.GetFileName(file.FileName),
+                string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType,
+                stream,
+                context.Request.Headers.IfMatch.FirstOrDefault(),
+                cancellationToken).ConfigureAwait(false);
+            if (!result.AgentExists)
+                return Results.NotFound();
+            if (result.HasConflict)
+                return Results.Conflict();
+            return Results.Ok(new
+            {
+                skill = result.Skill,
+                currentVersion = result.CurrentVersion,
+                storage = "object-storage"
+            });
+        });
+
         group.MapPut("/skills/{agentId}", async (
             [FromServices] AgentConfigManagementService manager,
             HttpContext context,
@@ -451,24 +491,40 @@ internal static class ManagementEndpointExtensions
             return saved == null ? Results.Conflict() : Results.Ok(saved.Config.Skills);
         });
 
-        group.MapPost("/skills/test", (
+        group.MapDelete("/skills/{agentId}/{skillId}", async (
+            [FromServices] SkillPackageManagementService packages,
+            HttpContext context,
+            string agentId,
+            string skillId,
+            CancellationToken cancellationToken) =>
+        {
+            if (!HasScope(context, "agent.config.write"))
+                return Results.Forbid();
+            SkillPackageDeleteResult result = await packages.DeleteAsync(
+                agentId,
+                skillId,
+                context.Request.Headers.IfMatch.FirstOrDefault(),
+                cancellationToken).ConfigureAwait(false);
+            return result switch
+            {
+                SkillPackageDeleteResult.Deleted => Results.NoContent(),
+                SkillPackageDeleteResult.Conflict => Results.Conflict(),
+                _ => Results.NotFound()
+            };
+        });
+
+        group.MapPost("/skills/test", async (
+            [FromServices] SkillPackageManagementService packages,
             [FromBody] SkillsConfig skills,
-            HttpContext context) =>
+            HttpContext context,
+            CancellationToken cancellationToken) =>
         {
             if (!HasScope(context, "capability.test"))
                 return Results.Forbid();
-            string[] invalid = skills.Instances
-                .Where(item => string.IsNullOrWhiteSpace(item.Id) || string.IsNullOrWhiteSpace(item.Name))
-                .Select(item => string.IsNullOrWhiteSpace(item.Id) ? item.Name : item.Id)
-                .ToArray();
-            return Results.Ok(new
-            {
-                success = invalid.Length == 0,
-                enabledCount = skills.EnabledSkills.Count,
-                instanceCount = skills.Instances.Count,
-                invalidSkills = invalid,
-                error = invalid.Length == 0 ? null : "Skill instances require both id and name."
-            });
+            SkillPackageValidationResult result = await packages
+                .ValidateAsync(skills, cancellationToken)
+                .ConfigureAwait(false);
+            return Results.Ok(result);
         });
 
         return group;
@@ -558,7 +614,8 @@ internal static class ManagementEndpointExtensions
         EnvironmentVariables = server.EnvironmentVariables.ToDictionary(
             item => item.Key,
             item => string.IsNullOrEmpty(item.Value) ? string.Empty : "***",
-            StringComparer.OrdinalIgnoreCase)
+            StringComparer.OrdinalIgnoreCase),
+        ProtocolVersion = server.ProtocolVersion
     };
 
     private static RagInstanceConfig RedactRag(RagInstanceConfig instance)

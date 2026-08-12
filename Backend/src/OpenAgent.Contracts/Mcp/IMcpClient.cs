@@ -18,4 +18,5 @@ public interface IMcpClient
     Task<string> CallToolAsync(string toolName, Dictionary<string, object> arguments, CancellationToken cancellationToken = default);
     Task<Stream> ReadResourceAsync(string resourceUri, CancellationToken cancellationToken = default);
     bool IsConnected { get; }
+    string? NegotiatedProtocolVersion { get; }
 }

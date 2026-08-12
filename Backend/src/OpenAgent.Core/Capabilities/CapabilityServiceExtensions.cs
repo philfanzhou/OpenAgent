@@ -15,6 +15,8 @@ internal static class CapabilityServiceExtensions
     internal static IServiceCollection AddCapabilityServices(this IServiceCollection services)
     {
         services.AddSingleton<SkillRegistry>();
+        services.AddSingleton<ISkillPackageReader, SkillPackageReader>();
+        services.AddSingleton<ObjectStoredSkillProvider>();
         services.AddSingleton<IToolRegistry>(serviceProvider =>
             serviceProvider.GetRequiredService<SkillRegistry>());
         services.AddSingleton<IRagRegistry, RagRegistry>();

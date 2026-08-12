@@ -20,6 +20,8 @@ import type {
   RagConfig,
   RagInstanceConfig,
   RagTestResult,
+  SkillPackageInstallResponse,
+  SkillTestResult,
   SkillsConfig,
   StreamEvent,
 } from './types'
@@ -345,8 +347,24 @@ export const api = {
     return request<SkillsConfig>(`/api/v1/admin/skills?agentId=${encodeURIComponent(agentId)}`)
   },
 
-  testSkills(skills: AgentConfigEntity['config']['skills']): Promise<Record<string, unknown>> {
-    return request<Record<string, unknown>>('/api/v1/admin/skills/test', {
+  async uploadSkillPackage(agentId: string, file: File): Promise<SkillPackageInstallResponse> {
+    const form = new FormData()
+    form.set('file', file, file.name)
+    const response = await fetch(`${requireBaseUrl()}/api/v1/admin/skills/${encodeURIComponent(agentId)}/packages`, {
+      method: 'POST',
+      headers: headers(),
+      body: form,
+    })
+    if (!response.ok) throw await readError(response)
+    return response.json() as Promise<SkillPackageInstallResponse>
+  },
+
+  deleteSkillPackage(agentId: string, skillId: string): Promise<void> {
+    return request<void>(`/api/v1/admin/skills/${encodeURIComponent(agentId)}/${encodeURIComponent(skillId)}`, { method: 'DELETE' })
+  },
+
+  testSkills(skills: AgentConfigEntity['config']['skills']): Promise<SkillTestResult> {
+    return request<SkillTestResult>('/api/v1/admin/skills/test', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(skills),

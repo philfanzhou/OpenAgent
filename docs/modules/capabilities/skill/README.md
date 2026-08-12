@@ -1,6 +1,6 @@
 # Skill
 
-Skill 是 Agent.Core 中模型可调用的执行能力，用于承载明确的动作操作。`SkillRegistry` 是已注册技能的唯一存储，`SkillCapabilitySource` 负责将当前 Agent 配置可用的技能转换为能力定义。
+Skill 是 Agent.Core 中模型可调用的执行能力，用于承载明确的动作操作。进程内技能由 `SkillRegistry` 保存；上传的 Skill 包由对象存储保存，`SkillCapabilitySource` 只加载当前 Agent 配置已启用的技能。
 
 ## Core Capabilities
 | Capability | Description |
@@ -10,6 +10,8 @@ Skill 是 Agent.Core 中模型可调用的执行能力，用于承载明确的�
 | 权限过滤 | 基于用户上下文 ACL（AllowedUserIds / Groups / TenantIds / Roles）|
 | 执行路由 | `SkillCapabilitySource` 直接调用 `SkillRegistry` |
 | 动态注册 | 通过 `IToolRegistry.RegisterTool` 注册 |
+| 多格式包 | JSON、YAML、带 YAML front matter 的 Markdown、包含 manifest 的 ZIP |
+| 对象存储 | 上传保存原始包；发现时读取并校验 SHA-256 后构造 HTTP Skill |
 
 ## Source Layers
 | Source | SkillSource |
@@ -19,13 +21,15 @@ Skill 是 Agent.Core 中模型可调用的执行能力，用于承载明确的�
 | Matrix 平台 | `Matrix` |
 
 ## Current Status
-**Implemented** — 技能发现、配置/ACL 过滤与执行链路均由两层完成，无额外 Provider 转发层。
+**Implemented** — 技能发现、配置/ACL 过滤、对象存储包加载与 HTTP 执行均在 capability source 链路内完成。管理 API 保存后驱逐当前 Agent 配置快照，下一次执行立即重新加载挂载。
 
 ## Limits
-- 无技能调用配额控制（`SkillQuotaExceeded` 错误码已在 ErrorMapper 映射，但当前无技能执行路径抛出）
-- 无技能参数验证链路（`SkillValidationFailed` 错误码已在 ErrorMapper 映射，但当前无技能执行路径抛出）
+- 无技能调用配额控制（`SkillQuotaExceeded` 错误码已定义但未使用）
+- 无技能参数验证链路（`SkillValidationFailed` 错误码已定义但未使用）
+- YAML 仅支持 manifest 的顶层标量字段；复杂 Schema 建议使用 JSON、Markdown 或 ZIP 中的 JSON manifest
 
 ## Source
-- Core: `Backend/src/OpenAgent.Core/Capabilities/Skill/SkillCapabilitySource.cs`, `Backend/src/OpenAgent.Core/Capabilities/Skill/SkillRegistry.cs`
+- Core: `Backend/src/OpenAgent.Core/Capabilities/Skill/SkillCapabilitySource.cs`, `SkillPackageReader.cs`, `ObjectStoredSkillProvider.cs`
+- Host: `Backend/src/OpenAgent.Engine.Host/Skills/SkillPackageManagementService.cs`
 - Contracts: `Backend/src/OpenAgent.Core/Abstract/IToolRegistry.cs`, `Backend/src/OpenAgent.Contracts/Skills/ISkill.cs`
-- Tests: `Backend/tests/OpenAgent.Core.Tests/Capabilities/SkillCapabilitySourceTests.cs`
+- Tests: `Backend/tests/OpenAgent.Core.Tests/Capabilities/SkillCapabilitySourceTests.cs`, `SkillPackageReaderTests.cs`

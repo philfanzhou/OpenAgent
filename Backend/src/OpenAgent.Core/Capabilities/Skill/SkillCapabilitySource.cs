@@ -4,9 +4,11 @@ using OpenAgent.Contracts.Skills;
 
 namespace OpenAgent.Core.Capabilities.Skill;
 
-internal sealed class SkillCapabilitySource(SkillRegistry registry) : ICapabilitySource
+internal sealed class SkillCapabilitySource(
+    SkillRegistry registry,
+    ObjectStoredSkillProvider objectStoredSkills) : ICapabilitySource
 {
-    public Task<IReadOnlyList<CapabilityDefinition>> DiscoverAsync(
+    public async Task<IReadOnlyList<CapabilityDefinition>> DiscoverAsync(
         string agentId,
         AgentConfig config,
         IAgentUserContext user,
@@ -17,7 +19,7 @@ internal sealed class SkillCapabilitySource(SkillRegistry registry) : ICapabilit
             registry.GetTools(),
             config.Skills,
             user);
-        IReadOnlyList<CapabilityDefinition> result = descriptors.Select(descriptor => new CapabilityDefinition(
+        var result = descriptors.Select(descriptor => new CapabilityDefinition(
             descriptor.Name,
             descriptor.Description,
             descriptor.ParametersJsonSchema,
@@ -26,8 +28,28 @@ internal sealed class SkillCapabilitySource(SkillRegistry registry) : ICapabilit
             (arguments, invocationCancellation) => registry.ExecuteToolAsync(
                 descriptor.Name,
                 ToValues(arguments),
-                invocationCancellation))).ToList().AsReadOnly();
-        return Task.FromResult(result);
+                invocationCancellation))).ToList();
+
+        foreach (SkillInstanceConfig instance in config.Skills.Instances.Where(IsObjectStoredAndEnabled))
+        {
+            StoredSkillDefinition stored = await objectStoredSkills
+                .LoadAsync(instance, cancellationToken)
+                .ConfigureAwait(false);
+            if (!IsAllowedForUser(stored.Descriptor, user))
+            {
+                continue;
+            }
+
+            result.Add(new CapabilityDefinition(
+                stored.Descriptor.Name,
+                stored.Descriptor.Description,
+                stored.Descriptor.ParametersJsonSchema,
+                AgentResourceType.Skill,
+                stored.Descriptor.Id,
+                stored.ExecuteAsync));
+        }
+
+        return result.AsReadOnly();
     }
 
     private static IReadOnlyList<SkillDescriptor> GetAvailableDescriptors(
@@ -37,7 +59,7 @@ internal sealed class SkillCapabilitySource(SkillRegistry registry) : ICapabilit
     {
         IEnumerable<SkillDescriptor> configured;
         List<SkillInstanceConfig> enabledInstances = config.Instances
-            .Where(instance => instance.Enabled)
+            .Where(instance => instance.Enabled && string.IsNullOrWhiteSpace(instance.ObjectKey))
             .ToList();
         if (enabledInstances.Count > 0)
         {
@@ -93,6 +115,9 @@ internal sealed class SkillCapabilitySource(SkillRegistry registry) : ICapabilit
         string.Equals(instance.Name, descriptor.Name, StringComparison.OrdinalIgnoreCase)
         || string.Equals(instance.Id, descriptor.Id, StringComparison.OrdinalIgnoreCase)
         || string.Equals(instance.Id, descriptor.Name, StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsObjectStoredAndEnabled(SkillInstanceConfig instance) =>
+        instance.Enabled && !string.IsNullOrWhiteSpace(instance.ObjectKey);
 
     private static bool IsAllowedForUser(SkillDescriptor descriptor, IAgentUserContext user)
     {

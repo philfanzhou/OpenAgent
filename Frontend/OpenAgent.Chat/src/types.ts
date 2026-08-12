@@ -98,6 +98,7 @@ export interface McpServerConfig {
   arguments?: string[]
   workingDirectory?: string
   environmentVariables?: Record<string, string>
+  protocolVersion?: string | null
 }
 
 export interface SkillInstanceConfig {
@@ -111,6 +112,10 @@ export interface SkillInstanceConfig {
   version?: string | null
   source?: string
   sourceId?: string | null
+  packageFileName?: string | null
+  packageFormat?: string | null
+  objectKey?: string | null
+  sha256?: string | null
   allowedUserIds?: string[]
   allowedGroups?: string[]
   allowedTenantIds?: string[]
@@ -227,11 +232,27 @@ export interface McpTestResult {
   connected: boolean
   authorized: boolean
   transport: string
+  requestedProtocolVersion?: string | null
+  negotiatedProtocolVersion?: string | null
   latencyMs: number
   toolCount: number
   deniedTools: string[]
   error?: string | null
   traceId?: string
+}
+
+export interface SkillPackageInstallResponse {
+  skill: SkillInstanceConfig
+  currentVersion: string
+  storage: string
+}
+
+export interface SkillTestResult {
+  success: boolean
+  enabledCount: number
+  instanceCount: number
+  objectStorageVerifiedSkills: string[]
+  invalidSkills: string[]
 }
 
 export interface HealthReportItem {

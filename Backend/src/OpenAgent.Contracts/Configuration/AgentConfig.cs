@@ -65,6 +65,7 @@ public class McpServerConfig
     public List<string> Arguments { get; set; } = new();
     public string? WorkingDirectory { get; set; }
     public Dictionary<string, string> EnvironmentVariables { get; set; } = new();
+    public string? ProtocolVersion { get; set; }
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
@@ -160,6 +161,10 @@ public class SkillInstanceConfig
     public string? Version { get; set; }
     public string Source { get; set; } = "Local";
     public string? SourceId { get; set; }
+    public string? PackageFileName { get; set; }
+    public string? PackageFormat { get; set; }
+    public string? ObjectKey { get; set; }
+    public string? Sha256 { get; set; }
 
     public List<string> AllowedUserIds { get; set; } = new();
     public List<string> AllowedGroups { get; set; } = new();

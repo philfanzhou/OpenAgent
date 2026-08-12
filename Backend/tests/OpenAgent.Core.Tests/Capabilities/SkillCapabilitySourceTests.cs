@@ -1,4 +1,7 @@
+using System.Net;
+using System.Text;
 using OpenAgent.Contracts.Configuration;
+using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Contracts.Skills;
 using OpenAgent.Core.Capabilities;
@@ -16,7 +19,7 @@ public class SkillCapabilitySourceTests
         registry.RegisterTool(
             Descriptor("weather"),
             (arguments, _) => Task.FromResult($"weather:{arguments["city"]}"));
-        var source = new SkillCapabilitySource(registry);
+        SkillCapabilitySource source = Source(registry);
 
         IReadOnlyList<CapabilityDefinition> capabilities = await source.DiscoverAsync(
             "agent",
@@ -37,7 +40,7 @@ public class SkillCapabilitySourceTests
     {
         var registry = new SkillRegistry();
         registry.RegisterTool(Descriptor("weather"), (_, _) => Task.FromResult("ok"));
-        var source = new SkillCapabilitySource(registry);
+        SkillCapabilitySource source = Source(registry);
 
         IReadOnlyList<CapabilityDefinition> capabilities = await source.DiscoverAsync(
             "agent",
@@ -60,7 +63,7 @@ public class SkillCapabilitySourceTests
     {
         var registry = new SkillRegistry();
         registry.RegisterTool(Descriptor("weather"), (_, _) => Task.FromResult("ok"));
-        var source = new SkillCapabilitySource(registry);
+        SkillCapabilitySource source = Source(registry);
 
         IReadOnlyList<CapabilityDefinition> capabilities = await source.DiscoverAsync(
             "agent",
@@ -84,6 +87,57 @@ public class SkillCapabilitySourceTests
         Assert.Empty(capabilities);
     }
 
+    [Fact]
+    public async Task DiscoverAsync_ObjectStoredSkill_ReadsPackageAndInvokesEndpoint()
+    {
+        byte[] package = Encoding.UTF8.GetBytes(
+            "{\"id\":\"weather\",\"name\":\"weather\",\"description\":\"Weather lookup\",\"endpointUrl\":\"https://skills.example.test/weather\"}");
+        var objectStore = new FakeObjectStore(package);
+        var registry = new SkillRegistry();
+        SkillCapabilitySource source = Source(registry, objectStore);
+        var config = new AgentConfig
+        {
+            Skills = new SkillsConfig
+            {
+                EnabledSkills = ["weather"],
+                Instances =
+                [
+                    new SkillInstanceConfig
+                    {
+                        Id = "weather",
+                        Name = "weather",
+                        Enabled = true,
+                        PackageFileName = "skill.json",
+                        ObjectKey = "skills/weather.json"
+                    }
+                ]
+            }
+        };
+
+        IReadOnlyList<CapabilityDefinition> capabilities = await source.DiscoverAsync(
+            "current-agent",
+            config,
+            User("user"),
+            default);
+        CapabilityDefinition capability = Assert.Single(capabilities);
+        string result = await capability.Invoke(
+            new Dictionary<string, object?> { ["city"] = "Singapore" },
+            default);
+
+        Assert.Equal(1, objectStore.ReadCount);
+        Assert.Equal("weather", capability.ResourceId);
+        Assert.Contains("Singapore", result, StringComparison.Ordinal);
+    }
+
+    private static SkillCapabilitySource Source(
+        SkillRegistry registry,
+        FakeObjectStore? objectStore = null) => new(
+            registry,
+            new ObjectStoredSkillProvider(
+                objectStore ?? new FakeObjectStore([]),
+                new SkillPackageReader(),
+                new FakeHttpClientFactory()));
+
     private static SkillDescriptor Descriptor(string name) => new()
     {
         Id = name,
@@ -93,4 +147,45 @@ public class SkillCapabilitySourceTests
     };
 
     private static AgentUserContext User(string userId) => new() { UserId = userId };
+
+    private sealed class FakeObjectStore(byte[] content) : IFileObjectStore
+    {
+        public int ReadCount { get; private set; }
+
+        public Task<FileObjectReference> WriteAsync(
+            FileObjectWriteRequest request,
+            Stream contentStream,
+            CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<byte[]> ReadAsync(string objectKey, CancellationToken cancellationToken)
+        {
+            ReadCount++;
+            return Task.FromResult(content);
+        }
+
+        public Task DeleteAsync(string objectKey, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+    }
+
+    private sealed class FakeHttpClientFactory : IHttpClientFactory
+    {
+        public HttpClient CreateClient(string name) => new(new EchoHandler());
+    }
+
+    private sealed class EchoHandler : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            string payload = request.Content == null
+                ? string.Empty
+                : await request.Content.ReadAsStringAsync(cancellationToken);
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(payload)
+            };
+        }
+    }
 }

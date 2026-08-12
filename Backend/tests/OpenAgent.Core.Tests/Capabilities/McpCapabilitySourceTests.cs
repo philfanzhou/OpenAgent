@@ -109,6 +109,7 @@ public class McpCapabilitySourceTests
     {
         public List<McpTool> Tools { get; init; } = [];
         public bool IsConnected { get; private set; }
+        public string? NegotiatedProtocolVersion { get; private set; }
         public int ConnectCount { get; private set; }
         public string? LastToolName { get; private set; }
         public Dictionary<string, object>? LastArguments { get; private set; }
@@ -121,6 +122,7 @@ public class McpCapabilitySourceTests
         {
             ConnectCount++;
             IsConnected = true;
+            NegotiatedProtocolVersion = "2025-06-18";
             return Task.CompletedTask;
         }
 

@@ -21,6 +21,7 @@ internal sealed class McpServerClient(
     private int _disposeState;
 
     public bool IsConnected => _client is { Completion.IsCompleted: false };
+    public string? NegotiatedProtocolVersion => _client?.NegotiatedProtocolVersion;
 
     public Task ConnectAsync(
         string serverUrl,
@@ -54,15 +55,7 @@ internal sealed class McpServerClient(
                 transport = transportFactory.Create(server);
                 client = await McpClient.CreateAsync(
                     transport,
-                    new McpClientOptions
-                    {
-                        ClientInfo = new Implementation
-                        {
-                            Name = "OpenAgent",
-                            Version = "1.0.0"
-                        },
-                        InitializationTimeout = TimeSpan.FromSeconds(30)
-                    },
+                    CreateClientOptions(server),
                     loggerFactory,
                     cancellationToken).ConfigureAwait(false);
 
@@ -86,6 +79,19 @@ internal sealed class McpServerClient(
             _connectionLock.Release();
         }
     }
+
+    internal static McpClientOptions CreateClientOptions(McpServerConfig server) => new()
+    {
+        ClientInfo = new Implementation
+        {
+            Name = "OpenAgent",
+            Version = "1.0.0"
+        },
+        ProtocolVersion = string.IsNullOrWhiteSpace(server.ProtocolVersion)
+            ? null
+            : server.ProtocolVersion.Trim(),
+        InitializationTimeout = TimeSpan.FromSeconds(30)
+    };
 
     public async Task DisconnectAsync(CancellationToken cancellationToken = default)
     {

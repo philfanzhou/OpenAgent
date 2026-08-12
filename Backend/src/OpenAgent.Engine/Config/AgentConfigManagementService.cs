@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Models;
 using OpenAgent.Engine.Abstractions;
+using OpenAgent.Engine.Models;
 using StackExchange.Redis;
 
 namespace OpenAgent.Engine.Config;
@@ -10,7 +11,8 @@ namespace OpenAgent.Engine.Config;
 internal sealed class AgentConfigManagementService(
     IRedisConnectionProvider redis,
     MockAgentResolver mockAgentResolver,
-    AgentConfigLocalStore localStore)
+    AgentConfigLocalStore localStore,
+    ConfigSnapshot snapshot)
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -55,16 +57,30 @@ internal sealed class AgentConfigManagementService(
                 throw new InvalidOperationException("Agent configuration store is unavailable.");
             }
 
-            return localStore.Save(agentId, entity, expectedVersion);
+            AgentConfigEntity? saved = localStore.Save(agentId, entity, expectedVersion);
+            EvictSavedConfig(agentId, saved);
+            return saved;
         }
 
         try
         {
-            return await SaveToRedisAsync(agentId, entity, expectedVersion).ConfigureAwait(false);
+            AgentConfigEntity? saved = await SaveToRedisAsync(agentId, entity, expectedVersion).ConfigureAwait(false);
+            EvictSavedConfig(agentId, saved);
+            return saved;
         }
         catch (RedisException) when (mockAgentResolver.IsEnabled)
         {
-            return localStore.Save(agentId, entity, expectedVersion);
+            AgentConfigEntity? saved = localStore.Save(agentId, entity, expectedVersion);
+            EvictSavedConfig(agentId, saved);
+            return saved;
+        }
+    }
+
+    private void EvictSavedConfig(string agentId, AgentConfigEntity? saved)
+    {
+        if (saved != null)
+        {
+            snapshot.Evict(agentId);
         }
     }
 

@@ -138,6 +138,55 @@ describe('workspace API', () => {
     await expect(api.getCurrentUser()).rejects.toThrow('No Engine is available (TraceId: trace-1)')
   })
 
+  it('uploads skill packages as multipart data to the selected agent', async () => {
+    setConnectionMode('engine')
+    setEngineBaseUrl('http://engine.example')
+    const responseBody = {
+      skill: { skillId: 'weather', name: 'Weather', enabled: true },
+      currentVersion: '2',
+      storage: 'object-storage',
+    }
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(responseBody), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+    const file = new File(['{"id":"weather"}'], 'skill.json', { type: 'application/json' })
+
+    const result = await api.uploadSkillPackage('support', file)
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('http://engine.example/api/v1/admin/skills/support/packages')
+    expect(init.body).toBeInstanceOf(FormData)
+    expect(((init.body as FormData).get('file') as File).name).toBe(file.name)
+    expect(result.storage).toBe('object-storage')
+  })
+
+  it('sends an MCP protocol version with the server configuration', async () => {
+    setConnectionMode('engine')
+    setEngineBaseUrl('http://engine.example')
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      name: 'tools',
+      url: 'https://mcp.example.test/mcp',
+      type: 'Http',
+      protocolVersion: '2025-06-18',
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await api.saveMcp('tools', 'support', {
+      name: 'tools',
+      url: 'https://mcp.example.test/mcp',
+      type: 'Http',
+      protocolVersion: '2025-06-18',
+    })
+
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit
+    expect(JSON.parse(String(init.body)).protocolVersion).toBe('2025-06-18')
+  })
+
   it('migrates the previous single endpoint to the Router address', () => {
     localStorage.setItem('openagent.engine.base-url', 'http://legacy-router.example')
 

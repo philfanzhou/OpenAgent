@@ -43,6 +43,7 @@ internal sealed class McpConnectionTester(
                 Connected = false,
                 Authorized = false,
                 Transport = request.Server.Type.ToString(),
+                RequestedProtocolVersion = request.Server.ProtocolVersion,
                 LatencyMs = stopwatch.ElapsedMilliseconds,
                 Error = "MCP discovery permission denied",
                 TraceId = traceId
@@ -61,6 +62,8 @@ internal sealed class McpConnectionTester(
                 Connected = client.IsConnected,
                 Authorized = true,
                 Transport = request.Server.Type.ToString(),
+                RequestedProtocolVersion = request.Server.ProtocolVersion,
+                NegotiatedProtocolVersion = client.NegotiatedProtocolVersion,
                 LatencyMs = stopwatch.ElapsedMilliseconds,
                 ToolCount = tools.Count,
                 TraceId = traceId
@@ -97,6 +100,7 @@ internal sealed class McpConnectionTester(
             Connected = false,
             Authorized = true,
             Transport = request.Server.Type.ToString(),
+            RequestedProtocolVersion = request.Server.ProtocolVersion,
             LatencyMs = stopwatch.ElapsedMilliseconds,
             Error = error,
             TraceId = traceId

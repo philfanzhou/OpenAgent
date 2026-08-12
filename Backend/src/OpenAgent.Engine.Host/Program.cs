@@ -5,6 +5,7 @@ using OpenAgent.Engine.Host.Files;
 using OpenAgent.Engine.Host.Extensions;
 using OpenAgent.Engine.Host.Health;
 using OpenAgent.Engine.Host.Middleware;
+using OpenAgent.Engine.Host.Skills;
 using OpenAgent.Hosting;
 using OpenAgent.Infrastructure;
 
@@ -21,6 +22,7 @@ builder.Services.AddAgentHost(builder.Configuration, options =>
 builder.Services.AddAgentCore(builder.Configuration);
 builder.Services.AddOpenAgentInfrastructure(builder.Configuration);
 builder.Services.AddFileAssetObjectStorage(builder.Configuration);
+builder.Services.AddSingleton<SkillPackageManagementService>();
 
 builder.Services.AddAgentEngine(builder.Configuration);
 builder.Services.AddHealthChecks()

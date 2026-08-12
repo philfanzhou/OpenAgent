@@ -139,10 +139,15 @@ internal sealed class McpCapabilitySource(
     }
 }
 
-internal readonly record struct McpServerIdentity(string Name, string Url, McpServerType Type)
+internal readonly record struct McpServerIdentity(
+    string Name,
+    string Url,
+    McpServerType Type,
+    string? ProtocolVersion)
 {
     internal static McpServerIdentity From(McpServerConfig server) => new(
         string.IsNullOrWhiteSpace(server.Name) ? server.Url : server.Name,
         server.Url,
-        server.Type);
+        server.Type,
+        server.ProtocolVersion);
 }
