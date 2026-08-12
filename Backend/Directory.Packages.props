@@ -13,6 +13,7 @@
     <PackageVersion Include="Moq" Version="4.20.70" />
     <PackageVersion Include="coverlet.collector" Version="6.0.2" />
     <PackageVersion Include="Testcontainers.PostgreSql" Version="4.13.0" />
+    <PackageVersion Include="Testcontainers.Redis" Version="4.13.0" />
 
     <!-- 基础设施 -->
     <PackageVersion Include="AWSSDK.S3" Version="4.0.102" />

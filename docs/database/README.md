@@ -1,6 +1,8 @@
 # Database
 
-PostgreSQL 是 OpenAgent 持久化业务数据的唯一事实源；EF Core migration 位于 `Backend/src/OpenAgent.Persistence/Migrations/`。应用进程不自动建表，部署流水线应显式执行 migration。
+PostgreSQL 是当前 OpenAgent 持久化业务数据的唯一事实源；EF Core migration 位于
+`Backend/src/OpenAgent.Infrastructure/Migrations/`。`IConversationStore` 与文件资产契约不绑定
+特定数据库，后续 Provider 可在 Infrastructure 层独立实现。应用进程不自动建表，部署流水线应显式执行 migration。
 
 ## 表清单
 
@@ -12,7 +14,8 @@ PostgreSQL 是 OpenAgent 持久化业务数据的唯一事实源；EF Core migra
 | `openagent.conversation_file_references` | 文件在会话中的引用 |
 | `openagent.message_file_references` | 文件在具体消息中的引用，用于预览和治理 |
 
-文件字节保存在 S3/MinIO；对象存储不保存租户、用户、会话或生命周期事实。Redis 如被部署，只能承担短生命周期协调功能，不能保存会话或文件资产。
+文件字节保存在 S3/MinIO；对象存储不保存租户、用户、会话或生命周期事实。Redis 如被部署，保存
+可过期的会话热副本并提供分布式会话锁；它不拥有会话或文件资产事实，所有热副本均可由数据库回填。
 
 ## 关系
 

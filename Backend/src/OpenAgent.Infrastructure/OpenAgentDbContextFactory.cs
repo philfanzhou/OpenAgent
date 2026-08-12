@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 
-namespace OpenAgent.Persistence;
+namespace OpenAgent.Infrastructure;
 
 public sealed class OpenAgentDbContextFactory : IDesignTimeDbContextFactory<OpenAgentDbContext>
 {

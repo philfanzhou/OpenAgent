@@ -2,7 +2,7 @@
 
 **执行日期：** 2026-08-11
 **分支：** `codex/file-assets-main-rewrite`
-**结论：** 后端、前端、PostgreSQL migration、MinIO 文件往返以及 Kimi 真实模型的普通/SSE 文件回合均通过；界面已实测独立上传反馈、用户消息预览和模型生成文件预览。
+**结论：** 后端、前端、PostgreSQL migration、MinIO 文件往返以及 Kimi 真实模型的普通/SSE 文件回合均通过；界面已实测独立上传反馈、用户消息预览和模型生成文件预览。后续架构回归还验证了 Redis 会话热副本的读写与跨实例分布式会话锁。
 
 > 更新（2026-08-12）：已使用临时 Kimi `kimi-k2.6` 配置完成真实模型和 SSE 文件链路验证，结果见“真实模型端到端验证”。
 
@@ -31,11 +31,11 @@
 | 项目 | 实际命令或操作 | 结果 | 证据 |
 |---|---|---|---|
 | 后端编译 | `dotnet build Backend/OpenAgent.sln --no-restore` | 通过，0 warning、0 error | 14 个项目均编译成功 |
-| 后端回归 | `dotnet test Backend/OpenAgent.sln --no-build` | 通过，181/181 | Contracts 5、Core 57、Hosting 9、Architecture 6、Router 56、Engine 47、Persistence 1 |
+| 后端回归 | `dotnet test Backend/OpenAgent.sln` | 通过，186/186 | Contracts 5、Core 58、Hosting 9、Architecture 6、Router 56、Engine 47、Infrastructure 5；含 PostgreSQL 与 Redis Testcontainers 集成测试 |
 | PostgreSQL 集成 | Testcontainers PostgreSQL | 通过 | migration、独立文件资产、同一文件的会话/消息复用关联均通过 |
-| EF migration 管理 | `dotnet-ef migrations list` | 通过 | 发现 `202608110001_InitialOpenAgentPostgres`，同时提交模型快照 |
+| EF migration 管理 | PostgreSQL Testcontainers 中 `Database.MigrateAsync()` | 通过 | 当前 Infrastructure migration 与模型快照均已实际应用；本机未安装 `dotnet-ef` 全局工具，因此未把 CLI 列表命令作为本轮通过项 |
 | 前端生产构建 | `pnpm --dir Frontend/OpenAgent.Chat build` | 通过 | `vue-tsc` 与 Vite 构建完成 |
-| Docker 依赖 | `docker compose -f docker-compose.storage.yml ps` | 通过 | PostgreSQL 16、MinIO 均为 `healthy` |
+| Docker 依赖 | `docker compose -f docker-compose.storage.yml ps` | 通过 | PostgreSQL 16、MinIO、Redis 7 均为 `healthy` |
 | 实际上传与下载 | 宿主启动后 `POST /api/v1/agent/files`，再 `GET /content` | 通过 | 上传后的 `state=1 (Ready)`，下载内容哈希匹配 |
 | 变更完整性 | `git diff --check` | 通过 | 无空白错误 |
 
@@ -95,3 +95,10 @@ fdab9c818008ff7cd9e2dc24ff88f465cccb08864abd7475139167fce2fa1f80
 5. PostgreSQL 回查确认同一会话的用户消息关联 `file-assets.md`，助手消息关联 `kimi-output.md`；两者均为 `text/markdown`。本次紧凑 UI 回归的 `preview.md` 未显式传递 media type，因而为 `text/plain`，同样按 `text/*` 规则展示预览。
 
 其中第 3 步模型响应有约一分钟的工具回合延迟，最终成功返回 `created.`；这属于远端模型响应时间，未触发本地重试或模拟结果。
+
+## Redis 会话协调回归（2026-08-12）
+
+- `WriteThroughConversationStore` 先提交 PostgreSQL，再刷新 Redis 完整会话热副本；Redis 读取命中不访问持久化实现，缓存错误不回滚已提交数据。
+- Redis Testcontainers 中，两个独立的 `RedisConversationLock` 实例不能同时取得同一 `{tenantId}:{conversationId}`，释放后第二实例可以取得该锁。
+- 同一容器化 Redis 实例中，`RedisConversationCache` 已验证完整会话消息可写入并读回。
+- `IConversationStore`、`IConversationCache`、`IConversationLock` 均为数据库/协调设施无关契约；当前 PostgreSQL 与 Redis 仅是 `OpenAgent.Infrastructure` 的实现选择。

@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace OpenAgent.Persistence.Migrations
+namespace OpenAgent.Infrastructure.Migrations
 {
     /// <inheritdoc />
     public partial class InitialOpenAgentPostgres : Migration

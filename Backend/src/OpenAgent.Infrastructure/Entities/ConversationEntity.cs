@@ -1,4 +1,4 @@
-namespace OpenAgent.Persistence.Entities;
+namespace OpenAgent.Infrastructure.Entities;
 
 internal sealed class ConversationEntity
 {

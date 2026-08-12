@@ -14,7 +14,7 @@
     <ProjectReference Include="..\OpenAgent.Engine\OpenAgent.Engine.csproj" />
     <ProjectReference Include="..\OpenAgent.Core\OpenAgent.Core.csproj" />
     <ProjectReference Include="..\OpenAgent.Hosting\OpenAgent.Hosting.csproj" />
-    <ProjectReference Include="..\OpenAgent.Persistence\OpenAgent.Persistence.csproj" />
+    <ProjectReference Include="..\OpenAgent.Infrastructure\OpenAgent.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

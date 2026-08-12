@@ -1,11 +1,11 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using OpenAgent.Contracts.Conversation;
-using OpenAgent.Persistence.Entities;
+using OpenAgent.Infrastructure.Entities;
 
-namespace OpenAgent.Persistence;
+namespace OpenAgent.Infrastructure;
 
-internal sealed class PostgresConversationStore(IDbContextFactory<OpenAgentDbContext> contexts) : IConversationStore
+internal sealed class EfCoreConversationStore(IDbContextFactory<OpenAgentDbContext> contexts) : IConversationStore
 {
     public async Task<IReadOnlyList<ConversationMessage>> GetMessagesAsync(
         string tenantId,

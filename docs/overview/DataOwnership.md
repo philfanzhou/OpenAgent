@@ -22,7 +22,7 @@
 
 - ConversationRecord、ConversationMessage 与 FileAsset 只写入 PostgreSQL。
 - 文件字节只写入 S3 兼容对象存储；对象存储不拥有用户、租户或会话事实。
-- Redis 不参与会话或资产存储。
+- Redis 可以保存可过期的会话热副本和分布式锁令牌，但不拥有会话或资产事实；数据库提交成功后才更新热副本，缓存可由数据库回填。
 
 ## 禁止事项
 

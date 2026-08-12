@@ -1,10 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using OpenAgent.Contracts.Files;
-using OpenAgent.Persistence.Entities;
+using OpenAgent.Infrastructure.Entities;
 
-namespace OpenAgent.Persistence;
+namespace OpenAgent.Infrastructure;
 
-internal sealed class PostgresFileAssetRepository(IDbContextFactory<OpenAgentDbContext> contexts) : IFileAssetRepository
+internal sealed class EfCoreFileAssetRepository(IDbContextFactory<OpenAgentDbContext> contexts) : IFileAssetRepository
 {
     public async Task CreateAsync(FileAsset asset, CancellationToken cancellationToken)
     {

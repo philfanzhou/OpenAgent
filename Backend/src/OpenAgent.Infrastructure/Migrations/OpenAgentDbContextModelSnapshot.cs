@@ -2,21 +2,18 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
-using OpenAgent.Persistence;
+using OpenAgent.Infrastructure;
 
 #nullable disable
 
-namespace OpenAgent.Persistence.Migrations
+namespace OpenAgent.Infrastructure.Migrations
 {
     [DbContext(typeof(OpenAgentDbContext))]
-    [Migration("202608110001_InitialOpenAgentPostgres")]
-    partial class InitialOpenAgentPostgres
+    partial class OpenAgentDbContextModelSnapshot : ModelSnapshot
     {
-        /// <inheritdoc />
-        protected override void BuildTargetModel(ModelBuilder modelBuilder)
+        protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -26,7 +23,7 @@ namespace OpenAgent.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("OpenAgent.Persistence.Entities.ConversationEntity", b =>
+            modelBuilder.Entity("OpenAgent.Infrastructure.Entities.ConversationEntity", b =>
                 {
                     b.Property<string>("ConversationId")
                         .HasMaxLength(64)
@@ -88,7 +85,7 @@ namespace OpenAgent.Persistence.Migrations
                     b.ToTable("conversations", "openagent");
                 });
 
-            modelBuilder.Entity("OpenAgent.Persistence.Entities.ConversationFileReferenceEntity", b =>
+            modelBuilder.Entity("OpenAgent.Infrastructure.Entities.ConversationFileReferenceEntity", b =>
                 {
                     b.Property<string>("ConversationId")
                         .HasMaxLength(64)
@@ -108,7 +105,7 @@ namespace OpenAgent.Persistence.Migrations
                     b.ToTable("conversation_file_references", "openagent");
                 });
 
-            modelBuilder.Entity("OpenAgent.Persistence.Entities.ConversationMessageEntity", b =>
+            modelBuilder.Entity("OpenAgent.Infrastructure.Entities.ConversationMessageEntity", b =>
                 {
                     b.Property<string>("MessageId")
                         .HasMaxLength(64)
@@ -157,7 +154,7 @@ namespace OpenAgent.Persistence.Migrations
                     b.ToTable("conversation_messages", "openagent");
                 });
 
-            modelBuilder.Entity("OpenAgent.Persistence.Entities.FileAssetEntity", b =>
+            modelBuilder.Entity("OpenAgent.Infrastructure.Entities.FileAssetEntity", b =>
                 {
                     b.Property<string>("FileId")
                         .HasMaxLength(64)
@@ -212,7 +209,7 @@ namespace OpenAgent.Persistence.Migrations
                     b.ToTable("file_assets", "openagent");
                 });
 
-            modelBuilder.Entity("OpenAgent.Persistence.Entities.MessageFileReferenceEntity", b =>
+            modelBuilder.Entity("OpenAgent.Infrastructure.Entities.MessageFileReferenceEntity", b =>
                 {
                     b.Property<string>("MessageId")
                         .HasMaxLength(64)
@@ -232,39 +229,39 @@ namespace OpenAgent.Persistence.Migrations
                     b.ToTable("message_file_references", "openagent");
                 });
 
-            modelBuilder.Entity("OpenAgent.Persistence.Entities.ConversationFileReferenceEntity", b =>
+            modelBuilder.Entity("OpenAgent.Infrastructure.Entities.ConversationFileReferenceEntity", b =>
                 {
-                    b.HasOne("OpenAgent.Persistence.Entities.ConversationEntity", null)
+                    b.HasOne("OpenAgent.Infrastructure.Entities.ConversationEntity", null)
                         .WithMany()
                         .HasForeignKey("ConversationId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("OpenAgent.Persistence.Entities.FileAssetEntity", null)
+                    b.HasOne("OpenAgent.Infrastructure.Entities.FileAssetEntity", null)
                         .WithMany()
                         .HasForeignKey("FileId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("OpenAgent.Persistence.Entities.ConversationMessageEntity", b =>
+            modelBuilder.Entity("OpenAgent.Infrastructure.Entities.ConversationMessageEntity", b =>
                 {
-                    b.HasOne("OpenAgent.Persistence.Entities.ConversationEntity", null)
+                    b.HasOne("OpenAgent.Infrastructure.Entities.ConversationEntity", null)
                         .WithMany()
                         .HasForeignKey("ConversationId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("OpenAgent.Persistence.Entities.MessageFileReferenceEntity", b =>
+            modelBuilder.Entity("OpenAgent.Infrastructure.Entities.MessageFileReferenceEntity", b =>
                 {
-                    b.HasOne("OpenAgent.Persistence.Entities.FileAssetEntity", null)
+                    b.HasOne("OpenAgent.Infrastructure.Entities.FileAssetEntity", null)
                         .WithMany()
                         .HasForeignKey("FileId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("OpenAgent.Persistence.Entities.ConversationMessageEntity", null)
+                    b.HasOne("OpenAgent.Infrastructure.Entities.ConversationMessageEntity", null)
                         .WithMany()
                         .HasForeignKey("MessageId")
                         .OnDelete(DeleteBehavior.Cascade)

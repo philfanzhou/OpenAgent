@@ -6,9 +6,9 @@ using OpenAgent.Contracts.Files;
 using Testcontainers.PostgreSql;
 using Xunit;
 
-namespace OpenAgent.Persistence.Tests;
+namespace OpenAgent.Infrastructure.Tests;
 
-public sealed class PostgresPersistenceTests : IAsyncLifetime
+public sealed class InfrastructurePersistenceTests : IAsyncLifetime
 {
     private readonly PostgreSqlContainer _database = new PostgreSqlBuilder("postgres:16-alpine")
         .WithDatabase("openagent_test")
@@ -27,7 +27,7 @@ public sealed class PostgresPersistenceTests : IAsyncLifetime
             })
             .Build();
         var services = new ServiceCollection();
-        services.AddOpenAgentPostgres(configuration);
+        services.AddOpenAgentInfrastructure(configuration);
         _services = services.BuildServiceProvider(validateScopes: true);
         IDbContextFactory<OpenAgentDbContext> contexts = _services.GetRequiredService<IDbContextFactory<OpenAgentDbContext>>();
         await using OpenAgentDbContext context = await contexts.CreateDbContextAsync().ConfigureAwait(false);

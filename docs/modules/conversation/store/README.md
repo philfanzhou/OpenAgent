@@ -1,5 +1,13 @@
 # 会话持久化
 
-`IConversationStore` 的生产实现是 `OpenAgent.Persistence.PostgresConversationStore`。每次请求从 PostgreSQL 读取会话历史，以 `Version` 进行乐观并发追加，并在同一持久化操作中保存会话、消息和消息级文件引用。
+`IConversationStore` 是数据库无关契约。当前 `OpenAgent.Infrastructure` 使用 EF Core + PostgreSQL
+作为持久化实现；未来 SQLite、SQL Server 等 Provider 只需替换 Infrastructure 注册，不改变 Core、
+会话契约或 API。
 
-`IConversationLock` 默认仅提供进程内串行化；它不承担数据存储职责。分布式协调可以在未来作为可选适配器引入，但不能改变 PostgreSQL 作为会话事实源。
+生产链路使用写穿透组合：PostgreSQL 先完成会话、消息与文件引用的事务性写入，成功后把完整会话
+写入 Redis 热副本。读取优先命中 Redis，未命中时从 PostgreSQL 回填。Redis 从不作为事实源，
+缓存失败不会回滚已提交的数据库写入。
+
+`IConversationLock` 是独立于存储的协调契约：Redis 已配置时使用带租约心跳的分布式锁，保证同一
+`{tenantId}:{conversationId}` 在多个 Engine 实例间串行执行；未配置 Redis 的单实例开发环境使用
+进程内锁。两种锁都不承担数据存储职责。

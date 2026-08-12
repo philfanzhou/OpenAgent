@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
-using OpenAgent.Persistence.Entities;
+using OpenAgent.Infrastructure.Entities;
 
-namespace OpenAgent.Persistence;
+namespace OpenAgent.Infrastructure;
 
 public sealed class OpenAgentDbContext(DbContextOptions<OpenAgentDbContext> options) : DbContext(options)
 {

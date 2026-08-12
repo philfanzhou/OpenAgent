@@ -3,17 +3,18 @@
   <PropertyGroup>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
-    <AssemblyName>OpenAgent.Persistence.Tests</AssemblyName>
-    <RootNamespace>OpenAgent.Persistence.Tests</RootNamespace>
+    <AssemblyName>OpenAgent.Infrastructure.Tests</AssemblyName>
+    <RootNamespace>OpenAgent.Infrastructure.Tests</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Testcontainers.PostgreSql" />
+    <PackageReference Include="Testcontainers.Redis" />
     <PackageReference Include="Microsoft.Extensions.Configuration" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\OpenAgent.Persistence\OpenAgent.Persistence.csproj" />
+    <ProjectReference Include="..\..\src\OpenAgent.Infrastructure\OpenAgent.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>
