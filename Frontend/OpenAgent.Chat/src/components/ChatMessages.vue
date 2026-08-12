@@ -86,6 +86,10 @@ function processSummary(message: ConversationMessage): string {
   return '查看思考过程'
 }
 
+function hasMessageContent(message: ConversationMessage): boolean {
+  return Boolean(message.content || message.files?.length)
+}
+
 watch(() => props.messages, () => {
   void nextTick(() => messagesScrollbar.value?.setScrollTop(Number.MAX_SAFE_INTEGER))
 }, { deep: true })
@@ -94,9 +98,19 @@ watch(() => props.messages, () => {
 <template>
   <el-scrollbar ref="messagesScrollbar" class="messages" wrap-class="messages-wrap" v-loading="props.loading">
     <div v-if="!props.messages.length" class="welcome"><div class="welcome-icon">O</div><h1>今天想处理什么？</h1><p>由 Router 自动选择最合适的 Agent，或在顶部手动指定。</p><div class="prompt-grid"><button v-for="item in suggestions" :key="item[0]" type="button" @click="emit('suggest', item[1])"><strong>{{ item[0] }}</strong><span>{{ item[1] }}</span></button></div></div>
-    <div v-for="item in displayMessages" :key="item.messageId" class="message-row" :class="item.role">
-      <div class="avatar">{{ item.role === 'user' ? '我' : item.role === 'tool' ? '工具' : 'AI' }}</div>
-      <div class="message-bubble"><details v-if="item.reasoning || item.toolActivities?.length" class="message-process"><summary><span>思考过程</span><small>{{ processSummary(item) }}</small></summary><pre v-if="item.reasoning" class="reasoning-content">{{ item.reasoning }}</pre><ul v-if="item.toolActivities?.length" class="tool-activity-list"><li v-for="tool in item.toolActivities" :key="tool.callId || tool.name"><span>{{ tool.result == null ? '正在调用' : '已完成' }}</span>{{ tool.name }}</li></ul></details><div v-if="item.files?.length" class="message-files"><button v-for="file in item.files" :key="file.fileId || file.fileName" type="button" class="message-file" @click="emit('download', file)"><img v-if="file.previewUrl" :src="file.previewUrl" :alt="file.fileName" /><span>↗ {{ file.fileName }}</span><pre v-if="file.previewText">{{ file.previewText }}</pre></button></div><div v-if="item.content" class="message-content">{{ item.content }}</div><div v-else-if="!item.reasoning && !item.toolActivities?.length" class="message-content">…</div></div>
+    <div v-for="item in displayMessages" :key="item.messageId" class="message-row" :class="[item.role, { 'process-only': !hasMessageContent(item) && Boolean(item.reasoning || item.toolActivities?.length) }]">
+      <div class="avatar">{{ item.role === 'user' ? '我' : 'AI' }}</div>
+      <div class="message-content-column">
+        <details v-if="item.reasoning || item.toolActivities?.length" class="process-activity">
+          <summary><span class="process-title">{{ item.reasoning ? '思考与过程' : '工具调用' }}</span><small>{{ processSummary(item) }}</small></summary>
+          <div class="process-activity-body">
+            <div v-if="item.reasoning" class="reasoning-block"><span class="process-kind">思考</span><pre class="reasoning-content">{{ item.reasoning }}</pre></div>
+            <ul v-if="item.toolActivities?.length" class="tool-activity-list"><li v-for="tool in item.toolActivities" :key="tool.callId || tool.name"><div class="tool-activity-heading"><span class="tool-status">{{ tool.result == null ? '正在调用' : '已完成' }}</span><strong>{{ tool.name }}</strong></div><pre v-if="tool.result" class="tool-result">{{ tool.result }}</pre></li></ul>
+          </div>
+        </details>
+        <div v-if="hasMessageContent(item)" class="message-bubble"><div v-if="item.files?.length" class="message-files"><button v-for="file in item.files" :key="file.fileId || file.fileName" type="button" class="message-file" @click="emit('download', file)"><img v-if="file.previewUrl" :src="file.previewUrl" :alt="file.fileName" /><span>↗ {{ file.fileName }}</span><pre v-if="file.previewText">{{ file.previewText }}</pre></button></div><div v-if="item.content" class="message-content">{{ item.content }}</div></div>
+        <div v-else-if="!item.reasoning && !item.toolActivities?.length" class="message-bubble"><div class="message-content">…</div></div>
+      </div>
     </div>
   </el-scrollbar>
 </template>
