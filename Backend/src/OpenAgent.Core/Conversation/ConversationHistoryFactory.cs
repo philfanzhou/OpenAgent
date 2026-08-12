@@ -1,6 +1,7 @@
 using Microsoft.Agents.AI;
 using Microsoft.Agents.AI.Compaction;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Conversation;
@@ -17,17 +18,20 @@ internal sealed class ConversationHistoryFactory
     private readonly ConversationSessionStore _store;
     private readonly ConversationStoreOptions _options;
     private readonly FileAssetExecutionContext _fileExecution;
+    private readonly ILogger<PlatformChatHistory> _logger;
 
     public ConversationHistoryFactory(
         IConversationLock conversationLock,
         ConversationSessionStore store,
         IOptions<ConversationStoreOptions> options,
-        FileAssetExecutionContext fileExecution)
+        FileAssetExecutionContext fileExecution,
+        ILogger<PlatformChatHistory> logger)
     {
         _conversationLock = conversationLock;
         _store = store;
         _options = options.Value;
         _fileExecution = fileExecution;
+        _logger = logger;
     }
 
     internal PlatformChatHistory Create(
@@ -49,7 +53,8 @@ internal sealed class ConversationHistoryFactory
             files.Select(item => item.Asset).ToList().AsReadOnly(),
             _fileExecution,
             _conversationLock,
-            _store);
+            _store,
+            _logger);
     }
 
     internal AIContextProvider? CreateCompaction(ContextPolicy? policy, IChatClient chatClient)

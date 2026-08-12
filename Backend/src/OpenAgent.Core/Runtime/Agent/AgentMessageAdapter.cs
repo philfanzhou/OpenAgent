@@ -111,8 +111,10 @@ internal static class AgentMessageAdapter
                     CreateMessageMetadata(firstCall, reasoning)));
             }
 
+            // 若 text 或 reasoning 非空，第一个 tool_call 已随上面的消息一并存储，需跳过；
+            // 仅当两者都为空（纯 tool_call 消息）时才全部展开，避免重复存储同一调用。
             foreach (FunctionCallContent call in calls.Skip(
-                string.IsNullOrEmpty(text) ? 0 : 1))
+                string.IsNullOrEmpty(text) && string.IsNullOrEmpty(reasoning) ? 0 : 1))
             {
                 if (!string.IsNullOrWhiteSpace(call.CallId))
                 {
