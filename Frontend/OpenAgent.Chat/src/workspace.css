@@ -245,6 +245,25 @@ button, input, textarea, select { font: inherit; }
 .diagnostic-card strong { font-size: 13px; }.diagnostic-card small { margin-left: auto; color: #8a8a8a; font-size: 11px; }
 .diagnostic-card p { overflow: hidden; margin: 8px 0 0; color: var(--workspace-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .diagnostic-card.ok .diagnostic-dot { background: var(--workspace-green); }.diagnostic-card.error .diagnostic-dot { background: var(--workspace-danger); }.diagnostic-card.running .diagnostic-dot { background: #d09a38; }
+.health-banner { display: flex; align-items: center; gap: 10px; margin-top: 12px; padding: 12px 14px; border: 1px solid var(--workspace-line); border-radius: 8px; background: var(--workspace-bg); }
+.health-banner > div { display: flex; flex-direction: column; }
+.health-banner strong { font-size: 14px; }
+.health-banner small { color: var(--workspace-muted); font-size: 12px; }
+.health-banner-dot { width: 10px; height: 10px; border-radius: 50%; }
+.health-banner.ok .health-banner-dot { background: var(--workspace-green); }
+.health-banner.warn .health-banner-dot { background: #d09a38; }
+.health-banner.error .health-banner-dot { background: var(--workspace-danger); }
+.health-banner.idle .health-banner-dot { background: #8a8a8a; }
+.health-group { margin-top: 18px; }
+.health-group-heading { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+.health-group-heading .eyebrow { color: #8a8a8a; font-size: 11px; letter-spacing: 1px; }
+.health-group-heading h4 { margin: 0; font-size: 14px; }
+.diagnostic-card.warn .diagnostic-dot { background: #d09a38; }
+.diagnostic-card.na { opacity: 0.72; }
+.diagnostic-card.na .diagnostic-dot { background: #8a8a8a; }
+.health-detail-toggle { margin-top: 6px; padding: 0; border: none; background: none; color: #409eff; font-size: 12px; cursor: pointer; }
+.health-detail { margin: 8px 0 0; padding: 8px; border-radius: 6px; background: rgba(0, 0, 0, 0.04); font-size: 11px; line-height: 1.5; overflow: auto; max-height: 160px; white-space: pre-wrap; }
+html[data-theme='dark'] .health-banner, html[data-theme='dark'] .health-detail { color: var(--workspace-text); background: var(--workspace-bg); }
 .el-dialog.editor-dialog { display: flex; max-height: calc(100vh - 48px); margin-top: 24px !important; margin-bottom: 24px !important; flex-direction: column; overflow: hidden; }
 .el-dialog.editor-dialog .el-dialog__header, .el-dialog.editor-dialog .el-dialog__footer { flex: 0 0 auto; }
 .editor-dialog .el-dialog__body { flex: 1 1 auto; min-height: 0; max-height: none; padding: 10px 16px 16px; overflow-y: auto; }
