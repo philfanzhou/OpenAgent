@@ -57,7 +57,6 @@ internal class AgentExceptionHandlerMiddleware
     private async Task HandleSseErrorAsync(HttpContext context, Exception exception)
     {
         string traceId = TraceIdResolver.Resolve(context);
-        bool includeExceptionDetails = IsDevelopment(context);
         if (exception is not AgentException)
         {
             EngineLog.SseEndpointErrorOccurred(
@@ -81,7 +80,7 @@ internal class AgentExceptionHandlerMiddleware
         }
 
         string error = JsonSerializer.Serialize(
-            StreamingPayloadFactory.CreateErrorPayload(exception, traceId, includeExceptionDetails));
+            StreamingPayloadFactory.CreateErrorPayload(exception, traceId));
         string done = JsonSerializer.Serialize(new { done = true, status = "error" });
         await context.Response.WriteAsync($"event: error\ndata: {error}\n\n", CancellationToken.None).ConfigureAwait(false);
         await context.Response.WriteAsync($"event: done\ndata: {done}\n\n", CancellationToken.None).ConfigureAwait(false);
