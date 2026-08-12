@@ -77,6 +77,52 @@ describe('workspace API', () => {
     expect(vi.mocked(fetch).mock.calls[0]?.[0]).toBe('http://engine.example/api/v1/agent/chat/stream')
   })
 
+  it('preserves streamed tool arguments and problem details for the message UI', async () => {
+    setConnectionMode('engine')
+    setEngineBaseUrl('http://engine.example/')
+    const stream = [
+      'event: tool_call',
+      'data: {"toolName":"write_file","toolCallId":"call-1","toolArguments":{"path":"report.md"}}',
+      '',
+      'event: error',
+      'data: {"title":"Execution failed","detail":"Tool unavailable","traceId":"trace-1"}',
+      '',
+    ].join('\n')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(stream, {
+      status: 200,
+      headers: { 'Content-Type': 'text/event-stream' },
+    })))
+
+    const events = []
+    for await (const event of api.streamChat('create a report', 'support')) events.push(event)
+
+    expect(events).toEqual([
+      { type: 'tool_call', toolName: 'write_file', toolCallId: 'call-1', toolArguments: { path: 'report.md' } },
+      { type: 'error', error: { title: 'Execution failed', detail: 'Tool unavailable', traceId: 'trace-1' } },
+    ])
+  })
+
+  it('uploads chat files as multipart data', async () => {
+    setConnectionMode('engine')
+    setEngineBaseUrl('http://engine.example')
+    const responseBody = {
+      fileId: 'file-1', tenantId: 'development', ownerUserId: 'user-1', fileName: 'notes.md',
+      mediaType: 'text/markdown', length: 12, sha256: 'abc', source: 'UserUpload', state: 'Ready', createdAt: '',
+    }
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(responseBody), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await api.uploadFile(new File(['# Notes'], 'notes.md', { type: 'text/markdown' }))
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('http://engine.example/api/v1/agent/files')
+    expect(init.body).toBeInstanceOf(FormData)
+    expect(result.fileId).toBe('file-1')
+  })
+
   it('includes gateway problem details and trace ID in errors', async () => {
     setConnectionMode('router')
     setRouterBaseUrl('http://router.example')
