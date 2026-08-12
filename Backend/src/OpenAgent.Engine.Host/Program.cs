@@ -47,5 +47,6 @@ if (app.Environment.IsDevelopment())
     app.MapManagementEndpoints();
 }
 app.MapAgentEndpoints();
+app.MapHealthReport();
 
 app.Run();
