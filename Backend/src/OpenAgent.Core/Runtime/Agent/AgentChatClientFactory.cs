@@ -1,6 +1,7 @@
 using System.ClientModel;
 using Anthropic;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Configuration;
 using OpenAgent.Contracts.Configuration;
 using OpenAI;
 using OpenAI.Responses;
@@ -9,6 +10,19 @@ namespace OpenAgent.Core.Runtime.Agent;
 
 internal sealed class AgentChatClientFactory
 {
+    private readonly TimeSpan _networkTimeout;
+
+    public AgentChatClientFactory(IConfiguration configuration)
+    {
+        // OpenAI SDK 默认网络读超时为 100s，对推理模型流式输出（两次数据之间可能停顿更久）太短，
+        // 会触发 ReadTimeoutStream 在会话中途掐断。默认放宽到 15 分钟；
+        // 配置 Llm:NetworkTimeoutSeconds=0 表示不限时。
+        int seconds = configuration.GetValue("Llm:NetworkTimeoutSeconds", 900);
+        _networkTimeout = seconds <= 0
+            ? Timeout.InfiniteTimeSpan
+            : TimeSpan.FromSeconds(seconds);
+    }
+
     internal IChatClient Create(LlmConfig llm)
     {
         return llm.Format switch
@@ -20,19 +34,19 @@ internal sealed class AgentChatClientFactory
         };
     }
 
-    private static IChatClient CreateOpenAIChatCompletions(LlmConfig llm)
+    private IChatClient CreateOpenAIChatCompletions(LlmConfig llm)
     {
         OpenAIClient client = CreateOpenAIClient(llm, "https://api.openai.com/v1");
         return client.GetChatClient(llm.ModelId).AsIChatClient();
     }
 
-    private static IChatClient CreateOpenAIResponses(LlmConfig llm)
+    private IChatClient CreateOpenAIResponses(LlmConfig llm)
     {
         OpenAIClient client = CreateOpenAIClient(llm, "https://api.openai.com/v1");
         return client.GetResponsesClient().AsIChatClientWithStoredOutputDisabled(llm.ModelId);
     }
 
-    private static IChatClient CreateAnthropic(LlmConfig llm)
+    private IChatClient CreateAnthropic(LlmConfig llm)
     {
         EnsureApiKey(llm, "Anthropic Messages");
         AnthropicClient client = string.IsNullOrWhiteSpace(llm.Endpoint)
@@ -41,13 +55,17 @@ internal sealed class AgentChatClientFactory
         return client.AsAIAgent(model: llm.ModelId, name: "openagent-anthropic-provider").ChatClient;
     }
 
-    private static OpenAIClient CreateOpenAIClient(LlmConfig llm, string defaultEndpoint)
+    private OpenAIClient CreateOpenAIClient(LlmConfig llm, string defaultEndpoint)
     {
         EnsureApiKey(llm, "OpenAI");
         string endpoint = string.IsNullOrWhiteSpace(llm.Endpoint) ? defaultEndpoint : llm.Endpoint;
         return new OpenAIClient(
             new ApiKeyCredential(llm.ApiKey),
-            new OpenAIClientOptions { Endpoint = new Uri(endpoint) });
+            new OpenAIClientOptions
+            {
+                Endpoint = new Uri(endpoint),
+                NetworkTimeout = _networkTimeout
+            });
     }
 
     private static void EnsureApiKey(LlmConfig llm, string format)
