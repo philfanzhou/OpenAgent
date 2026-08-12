@@ -47,7 +47,12 @@ const activeAgent = computed(() => props.agents.find(agent => agent.agentId === 
           <path d="M13.5 9.2A5.6 5.6 0 0 1 6.8 2.5a5.6 5.6 0 1 0 6.7 6.7z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
         </svg>
       </el-button>
-      <el-button circle aria-label="设置" title="设置" @click="emit('settings')">⚙</el-button>
+      <el-button circle aria-label="设置" title="设置" @click="emit('settings')">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <circle cx="8" cy="8" r="2.2" stroke="currentColor" stroke-width="1.4"/>
+          <path d="M8 1.8v1.6M8 12.6v1.6M14.2 8h-1.6M3.4 8H1.8M12.2 3.8l-1.1 1.1M4.9 11.1l-1.1 1.1M12.2 12.2l-1.1-1.1M4.9 4.9L3.8 3.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+        </svg>
+      </el-button>
     </div>
   </header>
   <div class="route-strip">
