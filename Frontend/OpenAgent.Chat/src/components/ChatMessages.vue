@@ -32,7 +32,11 @@ const displayMessages = computed(() => {
       && Boolean(message.toolName)
     if (isStoredToolCall) {
       pendingReasoning += message.reasoning || ''
-      pendingTools.push({ name: message.toolName || '工具', callId: message.toolCallId })
+      pendingTools.push({
+        name: message.toolName || '工具',
+        callId: message.toolCallId,
+        arguments: parseToolArguments(message.metadata?.ToolArguments),
+      })
       continue
     }
 
@@ -79,11 +83,15 @@ const displayMessages = computed(() => {
   return result
 })
 
-function processSummary(message: ConversationMessage): string {
-  const toolCount = message.toolActivities?.length || 0
-  if (message.reasoning && toolCount) return `思考并调用 ${toolCount} 个工具`
-  if (toolCount) return `调用 ${toolCount} 个工具`
-  return '查看思考过程'
+function parseToolArguments(json?: string): unknown {
+  if (!json) return undefined
+  try { return JSON.parse(json) } catch { return undefined }
+}
+
+function toolArgumentsText(tool: ToolActivity): string | undefined {
+  if (tool.arguments == null) return undefined
+  if (typeof tool.arguments === 'string') return tool.arguments
+  try { return JSON.stringify(tool.arguments, null, 2) } catch { return String(tool.arguments) }
 }
 
 function hasMessageContent(message: ConversationMessage): boolean {
@@ -101,15 +109,40 @@ watch(() => props.messages, () => {
     <div v-for="item in displayMessages" :key="item.messageId" class="message-row" :class="[item.role, { 'process-only': !hasMessageContent(item) && Boolean(item.reasoning || item.toolActivities?.length) }]">
       <div class="avatar">{{ item.role === 'user' ? '我' : 'AI' }}</div>
       <div class="message-content-column">
-        <details v-if="item.reasoning || item.toolActivities?.length" class="process-activity">
-          <summary><span class="process-title">{{ item.reasoning ? '思考与过程' : '工具调用' }}</span><small>{{ processSummary(item) }}</small></summary>
-          <div class="process-activity-body">
-            <div v-if="item.reasoning" class="reasoning-block"><span class="process-kind">思考</span><pre class="reasoning-content">{{ item.reasoning }}</pre></div>
-            <ul v-if="item.toolActivities?.length" class="tool-activity-list"><li v-for="tool in item.toolActivities" :key="tool.callId || tool.name"><div class="tool-activity-heading"><span class="tool-status">{{ tool.result == null ? '正在调用' : '已完成' }}</span><strong>{{ tool.name }}</strong></div><pre v-if="tool.result" class="tool-result">{{ tool.result }}</pre></li></ul>
-          </div>
+        <details v-if="item.reasoning" class="process-activity">
+          <summary><span class="process-title">思考过程</span><small>展开查看</small></summary>
+          <div class="process-activity-body"><pre class="reasoning-content">{{ item.reasoning }}</pre></div>
+        </details>
+        <details v-if="item.toolActivities?.length" class="process-activity">
+          <summary><span class="process-title">工具调用</span><small>{{ item.toolActivities.length }} 次调用</small></summary>
+          <ul class="tool-activity-list">
+            <li v-for="tool in item.toolActivities" :key="tool.callId || tool.name" class="tool-card">
+              <div class="tool-card-head">
+                <span class="tool-card-icon">{{ (tool.name || '工').slice(0, 1) }}</span>
+                <strong class="tool-card-name">{{ tool.name }}</strong>
+                <span class="tool-status" :class="{ running: tool.result == null, done: tool.result != null }">{{ tool.result == null ? '运行中' : '已完成' }}</span>
+              </div>
+              <details v-if="toolArgumentsText(tool)" class="tool-collapsible">
+                <summary>参数</summary>
+                <pre class="tool-args">{{ toolArgumentsText(tool) }}</pre>
+              </details>
+              <details v-if="tool.result != null" class="tool-collapsible">
+                <summary>结果</summary>
+                <pre class="tool-result">{{ tool.result }}</pre>
+              </details>
+            </li>
+          </ul>
         </details>
         <div v-if="hasMessageContent(item)" class="message-bubble"><div v-if="item.files?.length" class="message-files"><button v-for="file in item.files" :key="file.fileId || file.fileName" type="button" class="message-file" @click="emit('download', file)"><img v-if="file.previewUrl" :src="file.previewUrl" :alt="file.fileName" /><span>↗ {{ file.fileName }}</span><pre v-if="file.previewText">{{ file.previewText }}</pre></button></div><div v-if="item.content" class="message-content">{{ item.content }}</div></div>
-        <div v-else-if="!item.reasoning && !item.toolActivities?.length" class="message-bubble"><div class="message-content">…</div></div>
+        <div v-else-if="!item.reasoning && !item.toolActivities?.length && !item.error" class="message-bubble"><div class="message-content">…</div></div>
+        <div v-if="item.error" class="message-error">
+          <span class="message-error-icon">!</span>
+          <div class="message-error-body">
+            <strong>{{ item.error.title || '执行失败' }}</strong>
+            <p>{{ item.error.detail }}</p>
+            <small v-if="item.error.traceId" class="message-error-trace">TraceId: {{ item.error.traceId }}</small>
+          </div>
+        </div>
       </div>
     </div>
   </el-scrollbar>

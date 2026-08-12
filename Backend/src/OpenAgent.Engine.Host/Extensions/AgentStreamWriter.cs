@@ -44,7 +44,8 @@ internal static class AgentStreamWriter
             {
                 content = streamEvent.Content,
                 toolName = streamEvent.ToolName,
-                toolCallId = streamEvent.ToolCallId
+                toolCallId = streamEvent.ToolCallId,
+                toolArguments = streamEvent.ToolArguments
             });
             await heartbeat.WriteAsync(
                 token => WriteSseEventAsync(context, eventName, data, token),

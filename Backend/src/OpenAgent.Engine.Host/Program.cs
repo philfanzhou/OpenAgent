@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using OpenAgent.Engine.Extensions;
 using OpenAgent.Engine.Host.Files;
 using OpenAgent.Engine.Host.Extensions;
+using OpenAgent.Engine.Host.Health;
 using OpenAgent.Engine.Host.Middleware;
 using OpenAgent.Hosting;
 using OpenAgent.Infrastructure;
@@ -22,6 +23,8 @@ builder.Services.AddOpenAgentInfrastructure(builder.Configuration);
 builder.Services.AddFileAssetObjectStorage(builder.Configuration);
 
 builder.Services.AddAgentEngine(builder.Configuration);
+builder.Services.AddHealthChecks()
+    .AddCheck<DatabaseHealthCheck>("database", tags: ["infrastructure", "ready"]);
 builder.Services.AddSingleton<ProblemDetailsFactory>();
 builder.Services.AddSingleton<ErrorMapper>();
 var app = builder.Build();
@@ -44,5 +47,6 @@ if (app.Environment.IsDevelopment())
     app.MapManagementEndpoints();
 }
 app.MapAgentEndpoints();
+app.MapHealthReport();
 
 app.Run();

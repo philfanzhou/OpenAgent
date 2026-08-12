@@ -127,7 +127,8 @@ public sealed class AgentExecutor
                     {
                         Type = AgentStreamEventType.ToolCall,
                         ToolName = call.Name,
-                        ToolCallId = call.CallId
+                        ToolCallId = call.CallId,
+                        ToolArguments = call.Arguments
                     };
                 }
             }
