@@ -9,8 +9,23 @@ internal sealed class RequestTelemetryMiddleware(
     RequestDelegate next,
     ILogger<RequestTelemetryMiddleware> logger)
 {
+    private const string MetricsScrapePath = "/metrics";
+
+    /// <summary>
+    /// 判断请求路径是否为 Prometheus scrape 端点。该端点会被频繁拉取，
+    /// 不应进入 trace、metrics 标签或请求完成日志，以免淹没常规业务日志。
+    /// </summary>
+    internal static bool IsMetricsScrapePath(PathString path)
+        => path.StartsWithSegments(MetricsScrapePath, StringComparison.OrdinalIgnoreCase);
+
     public async Task InvokeAsync(HttpContext context)
     {
+        if (IsMetricsScrapePath(context.Request.Path))
+        {
+            await next(context).ConfigureAwait(false);
+            return;
+        }
+
         long started = Stopwatch.GetTimestamp();
         Exception? failure = null;
         try

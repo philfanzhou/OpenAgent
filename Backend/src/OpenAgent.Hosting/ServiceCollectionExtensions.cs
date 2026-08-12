@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -119,7 +120,9 @@ public static class ServiceCollectionExtensions
             openTelemetry.WithTracing(tracing =>
             {
                 tracing
-                    .AddAspNetCoreInstrumentation()
+                    .AddAspNetCoreInstrumentation(instrumentation =>
+                        instrumentation.Filter = httpContext =>
+                            !RequestTelemetryMiddleware.IsMetricsScrapePath(httpContext.Request.Path))
                     .AddHttpClientInstrumentation()
                     .AddSource(options.OpenTelemetrySource);
 

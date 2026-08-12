@@ -52,6 +52,34 @@ public class RequestTelemetryMiddlewareTests
         Assert.Contains("StatusCode=500", entry.Message, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("/metrics")]
+    [InlineData("/METRICS")]
+    [InlineData("/metrics/")]
+    public async Task InvokeAsync_MetricsScrapePathSkipsTelemetry(string path)
+    {
+        var logger = new RecordingLogger<RequestTelemetryMiddleware>();
+        bool nextInvoked = false;
+        var middleware = new RequestTelemetryMiddleware(
+            context =>
+            {
+                nextInvoked = true;
+                context.Response.StatusCode = StatusCodes.Status200OK;
+                return Task.CompletedTask;
+            },
+            logger);
+        var context = new DefaultHttpContext();
+        context.Request.Path = path;
+        using var activity = new Activity("request").Start();
+
+        await middleware.InvokeAsync(context);
+
+        Assert.True(nextInvoked);
+        Assert.Empty(logger.Entries);
+        Assert.Null(activity.GetTagItem("openagent.route"));
+        Assert.Null(activity.GetTagItem("openagent.agent.id"));
+    }
+
     private sealed class RecordingLogger<T> : ILogger<T>
     {
         public List<LogEntry> Entries { get; } = [];
