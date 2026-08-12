@@ -56,6 +56,11 @@ TestResults/
 *.coverage
 *.coveragexml
 
+# ── 并行预览 ──
+
+.preview/
+.claude/worktrees/
+
 # ── Misc ──
 
 *.bak
