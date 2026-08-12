@@ -12,8 +12,13 @@ internal sealed class ErrorMapper(ProblemDetailsFactory problemDetailsFactory)
         Exception exception,
         string traceId,
         string instance)
-    {
-        return exception switch
+        => Map(exception, traceId, instance, includeExceptionDetails: false);
+
+    internal (int StatusCode, ProblemDetails ProblemDetails) Map(
+        Exception exception,
+        string traceId,
+        string instance,
+        bool includeExceptionDetails) => exception switch
         {
             UnauthorizedAccessException => (403, problemDetailsFactory.Create(
                 "https://error.agent.com/unauthorized", "Unauthorized", 403,
@@ -36,9 +41,10 @@ internal sealed class ErrorMapper(ProblemDetailsFactory problemDetailsFactory)
                 instance),
             _ => (500, problemDetailsFactory.Create(
                 "https://error.agent.com/internal-error", "InternalServerError", 500,
-                "An unexpected error occurred", "Please contact support if the problem persists", traceId))
+                includeExceptionDetails ? exception.Message : "An unexpected error occurred",
+                includeExceptionDetails ? exception.ToString() : "Please contact support if the problem persists",
+                traceId))
         };
-    }
 
     private (int StatusCode, ProblemDetails ProblemDetails) MapHttpRequestException(
         HttpRequestException exception,

@@ -183,9 +183,11 @@ button, input, textarea, select { font: inherit; }
 .context-panel dt { color: #919191; font-size: 11px; }.context-panel dd { overflow: hidden; margin: 0; color: #454545; font-size: 11px; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
 .diagnostics-shortcut { width: 100%; margin-top: 12px; }
 
-.el-dialog.settings-dialog { width: min(1220px, calc(100vw - 24px)) !important; height: calc(100vh - 24px); margin-top: 12px !important; margin-bottom: 12px !important; overflow: hidden; }
+.settings-overlay, .settings-overlay .el-overlay-dialog { overflow: hidden !important; }
+.editor-overlay, .editor-overlay .el-overlay-dialog { overflow: hidden !important; }
+.el-dialog.settings-dialog { width: min(1220px, calc(100vw - 32px)) !important; height: calc(100vh - 32px); max-height: calc(100vh - 32px); margin-top: 16px !important; margin-bottom: 16px !important; overflow: hidden; }
 .settings-dialog .el-dialog__header { height: 66px; margin: 0; padding: 14px 20px; border-bottom: 1px solid var(--workspace-line); }
-.settings-dialog .el-dialog__body { height: calc(100vh - 90px); max-height: none; padding: 0; overflow: hidden; }
+.settings-dialog .el-dialog__body { height: calc(100vh - 98px); max-height: none; padding: 0; overflow: hidden; }
 .settings-header { height: 100%; padding-right: 34px; }
 .settings-header h2 { margin: 2px 0 0; color: var(--workspace-text); font-size: 19px; font-weight: 650; }
 .settings-endpoint { max-width: 260px; overflow: hidden; color: var(--workspace-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
@@ -228,7 +230,9 @@ button, input, textarea, select { font: inherit; }
 .diagnostic-card strong { font-size: 13px; }.diagnostic-card small { margin-left: auto; color: #8a8a8a; font-size: 11px; }
 .diagnostic-card p { overflow: hidden; margin: 8px 0 0; color: var(--workspace-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .diagnostic-card.ok .diagnostic-dot { background: var(--workspace-green); }.diagnostic-card.error .diagnostic-dot { background: var(--workspace-danger); }.diagnostic-card.running .diagnostic-dot { background: #d09a38; }
-.editor-dialog .el-dialog__body { max-height: 72vh; padding: 10px 16px 16px; overflow-y: auto; }
+.el-dialog.editor-dialog { max-height: calc(100vh - 48px); margin-top: 24px !important; margin-bottom: 24px !important; overflow: hidden; }
+.editor-dialog .el-dialog__body { max-height: calc(100vh - 150px); padding: 10px 16px 16px; overflow-y: auto; }
+.agent-editor-dialog .el-dialog__body { max-height: calc(100vh - 160px); }
 .agent-editor-section { padding: 14px; border-color: var(--workspace-line); border-radius: 9px; background: var(--workspace-bg); }
 .agent-editor-section-heading h4, .editor-dialog-header h3 { color: var(--workspace-text); }
 .binding-group, .resource-panel { border-color: var(--workspace-line); border-radius: 8px; background: var(--workspace-subtle); }
@@ -277,8 +281,8 @@ html[data-theme='dark'] .settings-header h2, html[data-theme='dark'] .section-he
   .topbar-actions { width: 100%; }
   .topbar-actions .agent-select { min-width: 0; flex: 1; }
   .route-strip { padding: 0 10px; }
-  .el-dialog.settings-dialog { width: calc(100vw - 12px) !important; height: 98vh; margin-top: 1vh !important; }
-  .settings-dialog .el-dialog__body { height: calc(98vh - 58px); }
+  .el-dialog.settings-dialog { width: calc(100vw - 12px) !important; height: calc(100vh - 12px); max-height: calc(100vh - 12px); margin-top: 6px !important; margin-bottom: 6px !important; }
+  .settings-dialog .el-dialog__body { height: calc(100vh - 78px); }
   .settings-tabs > .el-tabs__header { width: 112px; }
   .settings-section { padding: 16px 12px 28px; }
   .connection-form, .login-form, .agent-form-grid { grid-template-columns: 1fr; }

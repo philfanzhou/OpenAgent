@@ -105,11 +105,25 @@ function headers(extra: HeadersInit = {}): Headers {
 }
 
 async function readError(response: Response): Promise<Error> {
+  const fallback = `${response.status} ${response.statusText || '请求失败'}`
+  const raw = await response.text()
+  if (!raw.trim()) return new Error(fallback)
+
   try {
-    const body = await response.json() as { detail?: string; title?: string; traceId?: string }
-    return new Error(`${body.detail || body.title || response.statusText}${body.traceId ? ` (TraceId: ${body.traceId})` : ''}`)
+    const body = JSON.parse(raw) as {
+      detail?: string
+      title?: string
+      message?: string
+      error?: string | { detail?: string; message?: string }
+      traceId?: string
+      trace_id?: string
+    }
+    const nestedError = typeof body.error === 'string' ? body.error : body.error?.detail || body.error?.message
+    const message = body.detail || body.message || nestedError || body.title || fallback
+    const traceId = body.traceId || body.trace_id
+    return new Error(`${message}${traceId ? ` (TraceId: ${traceId})` : ''}`)
   } catch {
-    return new Error(`${response.status} ${response.statusText}`)
+    return new Error(raw.trim() || fallback)
   }
 }
 

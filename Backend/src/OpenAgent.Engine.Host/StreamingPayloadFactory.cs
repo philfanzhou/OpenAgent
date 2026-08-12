@@ -6,7 +6,10 @@ namespace OpenAgent.Engine.Host;
 
 internal static class StreamingPayloadFactory
 {
-    public static StreamingErrorPayload CreateErrorPayload(Exception exception, string traceId)
+    public static StreamingErrorPayload CreateErrorPayload(
+        Exception exception,
+        string traceId,
+        bool includeExceptionDetails = false)
     {
         var message = exception switch
         {
@@ -15,7 +18,7 @@ internal static class StreamingPayloadFactory
             InvalidOperationException => exception.Message,
             HttpRequestException httpEx when httpEx.InnerException is SocketException sockEx && sockEx.SocketErrorCode == SocketError.TryAgain => "网络连接失败，请检查网络配置",
             HttpRequestException => "服务请求失败",
-            _ => "服务内部错误"
+            _ => includeExceptionDetails ? exception.Message : "服务内部错误"
         };
 
         return new StreamingErrorPayload
