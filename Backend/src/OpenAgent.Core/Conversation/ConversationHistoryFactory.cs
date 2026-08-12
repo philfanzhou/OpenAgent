@@ -1,11 +1,14 @@
 using Microsoft.Agents.AI;
 using Microsoft.Agents.AI.Compaction;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
+using OpenAgent.Contracts.Files;
+using OpenAgent.Core.Files;
 
 namespace OpenAgent.Core.Conversation;
 
@@ -14,21 +17,28 @@ internal sealed class ConversationHistoryFactory
     private readonly IConversationLock _conversationLock;
     private readonly ConversationSessionStore _store;
     private readonly ConversationStoreOptions _options;
+    private readonly FileAssetExecutionContext _fileExecution;
+    private readonly ILogger<PlatformChatHistory> _logger;
 
     public ConversationHistoryFactory(
         IConversationLock conversationLock,
         ConversationSessionStore store,
-        IOptions<ConversationStoreOptions> options)
+        IOptions<ConversationStoreOptions> options,
+        FileAssetExecutionContext fileExecution,
+        ILogger<PlatformChatHistory> logger)
     {
         _conversationLock = conversationLock;
         _store = store;
         _options = options.Value;
+        _fileExecution = fileExecution;
+        _logger = logger;
     }
 
     internal PlatformChatHistory Create(
         string agentId,
         AgentRequest request,
-        IAgentUserContext user)
+        IAgentUserContext user,
+        IReadOnlyList<FileAssetContent> files)
     {
         ConversationContext context = new(
             request.ConversationId,
@@ -40,9 +50,11 @@ internal sealed class ConversationHistoryFactory
             context,
             agentId,
             request.Query,
-            request.Attachments,
+            files.Select(item => item.Asset).ToList().AsReadOnly(),
+            _fileExecution,
             _conversationLock,
-            _store);
+            _store,
+            _logger);
     }
 
     internal AIContextProvider? CreateCompaction(ContextPolicy? policy, IChatClient chatClient)

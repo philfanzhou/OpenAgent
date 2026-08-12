@@ -47,8 +47,8 @@ Agent.Core 是 Agent 矩阵架构的核心推理库（类库，非独立部署�
 | 依赖 | 类型 | 用途 |
 |------|------|------|
 | Agent.Contracts | 项目引用 | 共享数据模型（Engine、Security、Skills、Configuration、Mcp、Conversation） |
-| Redis (StackExchange.Redis) | NuGet | 会话热存储（可选，无 Redis 时回退 InMemory） |
-| SQL Server (Microsoft.Data.SqlClient) | NuGet | 会话冷归档（可选，与 Redis 双写） |
+| PostgreSQL (Npgsql EF Core) | NuGet | 会话、消息、文件资产及引用关系的唯一持久化存储 |
+| S3-compatible object storage | HTTP/S3 API | 文件原始字节；本地使用 MinIO |
 | Microsoft Agent Framework / Microsoft.Extensions.AI | NuGet | Agent、函数循环和 Provider 适配 |
 | System.Net.Http | BCL | MCP Client 与外部服务通信 |
 

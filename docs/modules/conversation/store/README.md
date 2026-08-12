@@ -1,46 +1,13 @@
-# 会话存储
+# 会话持久化
 
-会话存储链路负责 Agent 执行侧的消息持久化与读取，确保多轮对话的上下文在请求之间完整保留。
+`IConversationStore` 是数据库无关契约。当前 `OpenAgent.Infrastructure` 使用 EF Core + PostgreSQL
+作为持久化实现；未来 SQLite、SQL Server 等 Provider 只需替换 Infrastructure 注册，不改变 Core、
+会话契约或 API。
 
-## 核心能力
+生产链路使用写穿透组合：PostgreSQL 先完成会话、消息与文件引用的事务性写入，成功后把完整会话
+写入 Redis 热副本。读取优先命中 Redis，未命中时从 PostgreSQL 回填。Redis 从不作为事实源，
+缓存失败不会回滚已提交的数据库写入。
 
-- 按 `conversationId + tenantId` 读取/创建会话及历史消息
-- 追加本轮消息（user / assistant / tool）
-- 更新会话状态（Running / Completed / Failed / Cancelled）
-- 乐观并发控制，版本冲突时自动重试
-
-## 存储分层
-
-```
-IConversationStore (热存储)
-  ├─ InMemoryConversationStore      ← 开发/测试，无 Redis 时回退
-  ├─ RedisConversationStore         ← 生产，仅热存储
-  └─ DualWriteConversationStore     ← 生产，热 + 冷双写
-          └─ IConversationRepository (冷存储)
-                ├─ SqlServerConversationRepository
-                └─ SqliteConversationRepository
-```
-
-写入路径：热存储（Redis）同步成功即返回，冷归档异步补偿。
-
-## 当前状态
-
-**已实现** — InMemory / Redis / DualWrite 三级存储链路均已落地。
-
-## 当前限制
-
-- 仅执行侧读写，无查询侧 API
-- 无展示态权限控制
-- 无独立幂等键去重链路
-
-## 规划中
-
-- 软删除与审计保留
-- 会话标题生成（截取 + LLM 摘要）
-- 数据分层管理（90 天活跃 + 归档表）
-
-## 源码位置
-
-- 接口：`Backend/src/OpenAgent.Contracts/Conversation/IConversationStore.cs`
-- 实现：`Backend/src/OpenAgent.Core/Conversation/Store/`
-- 冷归档：`Backend/src/OpenAgent.Core/Conversation/Repository/`
+`IConversationLock` 是独立于存储的协调契约：Redis 已配置时使用带租约心跳的分布式锁，保证同一
+`{tenantId}:{conversationId}` 在多个 Engine 实例间串行执行；未配置 Redis 的单实例开发环境使用
+进程内锁。两种锁都不承担数据存储职责。

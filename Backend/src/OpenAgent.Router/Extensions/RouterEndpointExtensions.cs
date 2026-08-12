@@ -94,6 +94,27 @@ public static class RouterEndpointExtensions
                 httpClient,
                 requestConfig,
                 requireAuthentication: true));
+        // File assets are owned by Engine, but clients use the Router as their
+        // single API origin. Preserve multipart request bodies and binary
+        // responses by forwarding every file method through YARP.
+        app.MapMethods(
+            "/api/v1/agent/files/{**path}",
+            [HttpMethods.Get, HttpMethods.Post],
+            (
+                HttpContext context,
+                IHttpForwarder forwarder,
+                IAgentUserContext userContext,
+                IRouteTable routeTable,
+                ILogger<Program> logger) =>
+                GatewayProxyHandler.HandleAsync(
+                    context,
+                    forwarder,
+                    userContext,
+                    routeTable,
+                    logger,
+                    httpClient,
+                    requestConfig,
+                    requireAuthentication: true));
         IHostEnvironment environment = app.ServiceProvider.GetRequiredService<IHostEnvironment>();
         if (environment.IsDevelopment())
         {

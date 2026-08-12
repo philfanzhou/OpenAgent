@@ -51,13 +51,13 @@ internal class AgentExceptionHandlerMiddleware
     private static bool IsSseEndpoint(HttpContext context)
     {
         string path = context.Request.Path.Value ?? string.Empty;
-        return path.EndsWith("/chat/stream", StringComparison.OrdinalIgnoreCase)
-            || path.EndsWith("/chat/attachments/stream", StringComparison.OrdinalIgnoreCase);
+        return path.EndsWith("/chat/stream", StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task HandleSseErrorAsync(HttpContext context, Exception exception)
     {
         string traceId = TraceIdResolver.Resolve(context);
+        bool includeExceptionDetails = IsDevelopment(context);
         if (exception is not AgentException)
         {
             EngineLog.SseEndpointErrorOccurred(
@@ -80,7 +80,8 @@ internal class AgentExceptionHandlerMiddleware
             return;
         }
 
-        string error = JsonSerializer.Serialize(StreamingPayloadFactory.CreateErrorPayload(exception, traceId));
+        string error = JsonSerializer.Serialize(
+            StreamingPayloadFactory.CreateErrorPayload(exception, traceId, includeExceptionDetails));
         string done = JsonSerializer.Serialize(new { done = true, status = "error" });
         await context.Response.WriteAsync($"event: error\ndata: {error}\n\n", CancellationToken.None).ConfigureAwait(false);
         await context.Response.WriteAsync($"event: done\ndata: {done}\n\n", CancellationToken.None).ConfigureAwait(false);
@@ -95,7 +96,8 @@ internal class AgentExceptionHandlerMiddleware
         var (statusCode, problemDetails) = _errorMapper.Map(
             exception,
             traceId,
-            context.Request.Path);
+            context.Request.Path,
+            includeExceptionDetails: IsDevelopment(context));
         EngineLog.UnhandledExceptionMappedToProblemDetails(
             _logger,
             exception,
@@ -126,7 +128,11 @@ internal class AgentExceptionHandlerMiddleware
             ExceptionDispatchInfo.Capture(exception).Throw();
         }
 
-        var (statusCode, problemDetails) = _errorMapper.Map(exception, traceId, context.Request.Path);
+        var (statusCode, problemDetails) = _errorMapper.Map(
+            exception,
+            traceId,
+            context.Request.Path,
+            includeExceptionDetails: IsDevelopment(context));
 
         if (exception is not AgentException)
         {
@@ -150,4 +156,7 @@ internal class AgentExceptionHandlerMiddleware
 
         await context.Response.WriteAsync(JsonSerializer.Serialize(problemDetails, jsonOptions));
     }
+
+    private static bool IsDevelopment(HttpContext context) =>
+        context.RequestServices?.GetService<IHostEnvironment>()?.IsDevelopment() == true;
 }

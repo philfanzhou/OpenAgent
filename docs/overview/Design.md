@@ -47,17 +47,17 @@ middleware scope、请求审计和失败边界，不作为参数进入 History �
 
 | 层次 | 机制 | 位置 |
 |---|---|---|
-| 强一致 | `lock:conversation:{tenantId}:{conversationId}` 分布式锁 | Core |
-| 防覆盖 | `expectedVersion` 乐观并发 | Conversation store |
+| 防覆盖 | `expectedVersion` + EF Core 并发令牌 | PostgreSQL conversation store |
 | 性能优化 | conversation affinity | Router |
 
-MAF 通过 `PlatformChatHistory` 主动加载和写回历史。Redis/SQL 仍是唯一数据主责。
+MAF 通过 `PlatformChatHistory` 主动加载和写回历史。PostgreSQL 是会话和文件资产的唯一持久化事实源；S3 兼容对象存储只保存原始文件字节。
 
 ## DI 入口
 
 生产 Host 只需：
 
 ```csharp
+services.AddOpenAgentPostgres(configuration);
 services.AddAgentCore(configuration);
 ```
 
@@ -69,5 +69,6 @@ services.AddAgentCore(configuration);
 - .NET 8
 - Microsoft Agent Framework / Microsoft.Extensions.AI
 - Model Context Protocol SDK
-- Redis + SQL Server / SQLite conversation persistence
+- PostgreSQL + EF Core conversation and file-asset persistence
+- S3-compatible object storage for file bytes
 - xUnit

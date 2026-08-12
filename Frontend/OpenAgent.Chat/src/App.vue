@@ -6,7 +6,7 @@ import ChatHeader from './components/ChatHeader.vue'
 import ChatMessages from './components/ChatMessages.vue'
 import ChatSidebar from './components/ChatSidebar.vue'
 import MessageComposer from './components/MessageComposer.vue'
-import { AUTO_AGENT_ID, type AgentConfigEntity, type AgentSummary, type AuthConfig, type ConnectionMode, type ConversationMessage, type ConversationRecord, type CurrentUserContext, type LlmProviderProfile, type LlmTestResult, type McpServerConfig, type McpTestResult, type MessageAttachment, type PendingAttachment, type RagConfig, type RagInstanceConfig, type RagTestResult, type SkillInstanceConfig, type SkillsConfig } from './types'
+import { AUTO_AGENT_ID, type AgentConfigEntity, type AgentSummary, type AuthConfig, type ConnectionMode, type ConversationMessage, type ConversationRecord, type CurrentUserContext, type LlmProviderProfile, type LlmTestResult, type McpServerConfig, type McpTestResult, type MessageFile, type PendingFile, type RagConfig, type RagInstanceConfig, type RagTestResult, type SkillInstanceConfig, type SkillsConfig } from './types'
 
 const connectionMode = ref<ConnectionMode>(getConnectionMode())
 const routerUrl = ref(getRouterBaseUrl())
@@ -59,7 +59,7 @@ const testingLlm = ref(false)
 const savingLlm = ref(false)
 const showLlmEditor = ref(false)
 const isNewLlm = ref(false)
-const pendingAttachments = ref<PendingAttachment[]>([])
+const pendingFiles = ref<PendingFile[]>([])
 const themeMode = ref<'light' | 'dark'>(localStorage.getItem('openagent.ui.theme') === 'dark' ? 'dark' : 'light')
 type DiagnosticKey = 'live' | 'ready' | 'catalog' | 'identity' | 'conversations'
 type DiagnosticStatus = 'idle' | 'running' | 'ok' | 'error'
@@ -345,10 +345,15 @@ async function refreshConversations(): Promise<void> {
 async function selectConversation(item: ConversationRecord): Promise<void> {
   selectedConversation.value = item
   selectedAgentId.value = item.agentId || selectedAgentId.value
-  if (item.messages?.length) return
+  if (item.messages?.length) {
+    await hydrateFilePreviews(item)
+    return
+  }
   loadingConversation.value = true
   try {
-    selectedConversation.value = await api.getConversation(item.conversationId)
+    const detail = await api.getConversation(item.conversationId)
+    await hydrateFilePreviews(detail)
+    selectedConversation.value = detail
   } catch (error) {
     notifyError(error)
   } finally {
@@ -356,10 +361,39 @@ async function selectConversation(item: ConversationRecord): Promise<void> {
   }
 }
 
+async function hydrateFilePreviews(conversation: ConversationRecord): Promise<void> {
+  const files = conversation.messages?.flatMap(item => item.files || []) || []
+  await Promise.all(files.map(async file => {
+    if (!file.fileId || file.previewUrl || file.previewText) return
+    try {
+      if (file.mediaType.startsWith('image/')) {
+        file.previewUrl = await api.loadFilePreview(file.fileId)
+      } else if (isTextPreview(file.mediaType)) {
+        file.previewText = await api.readFileText(file.fileId)
+      }
+    } catch {
+      // The file remains downloadable even when preview loading fails.
+    }
+  }))
+}
+
+function isTextPreview(mediaType: string): boolean {
+  return mediaType.startsWith('text/') || mediaType === 'application/json'
+}
+
+async function downloadFile(file: MessageFile): Promise<void> {
+  if (!file.fileId) return
+  try {
+    await api.downloadFile(file.fileId, file.fileName)
+  } catch (error) {
+    notifyError(error)
+  }
+}
+
 function newConversation(): void {
   selectedConversation.value = null
   message.value = ''
-  pendingAttachments.value = []
+  pendingFiles.value = []
 }
 
 function handleAgentChange(): void {
@@ -380,17 +414,69 @@ function selectAgent(agentId: string): void {
   void loadConfig()
 }
 
+function handleFilesChange(files: PendingFile[]): void {
+  const existing = new Map(pendingFiles.value.map(item => [item.id, item]))
+  pendingFiles.value = files.map(item => existing.get(item.id) || item)
+  for (const item of pendingFiles.value.filter(item => item.state === 'uploading' && !existing.has(item.id))) {
+    void uploadPendingFile(item.id)
+  }
+}
+
+function retryPendingFile(id: string): void {
+  const file = pendingFiles.value.find(item => item.id === id)
+  if (!file || file.state === 'uploading') return
+  file.state = 'uploading'
+  file.error = undefined
+  void uploadPendingFile(id)
+}
+
+async function uploadPendingFile(id: string): Promise<void> {
+  const pending = pendingFiles.value.find(item => item.id === id)
+  if (!pending) return
+  try {
+    const asset = await api.uploadFile(pending.file)
+    const current = pendingFiles.value.find(item => item.id === id)
+    if (!current) return
+    current.asset = asset
+    current.state = 'ready'
+  } catch (error) {
+    const current = pendingFiles.value.find(item => item.id === id)
+    if (!current) return
+    current.state = 'failed'
+    current.error = error instanceof Error ? error.message : '上传失败'
+    notifyError(error)
+  }
+}
+
+async function toMessageFile(item: PendingFile): Promise<MessageFile> {
+  const asset = item.asset
+  if (!asset) throw new Error('文件尚未上传完成')
+  return {
+    fileId: asset.fileId,
+    fileName: asset.fileName,
+    mediaType: asset.mediaType,
+    length: asset.length,
+    previewUrl: asset.mediaType.startsWith('image/') ? URL.createObjectURL(item.file) : undefined,
+    previewText: isTextPreview(asset.mediaType) ? await item.file.text() : undefined,
+  }
+}
+
 async function send(): Promise<void> {
   const content = message.value.trim()
-  const hasAttachments = pendingAttachments.value.length > 0
-  if ((!content && !hasAttachments) || !selectedAgentId.value || loading.value) return
-  const requestContent = content || '请处理我上传的附件'
+  const hasFiles = pendingFiles.value.length > 0
+  if ((!content && !hasFiles) || !selectedAgentId.value || loading.value) return
+  if (pendingFiles.value.some(item => item.state !== 'ready' || !item.asset)) {
+    notifyError(new Error('请等待文件上传完成，或移除上传失败的文件后再发送'))
+    return
+  }
+  const requestContent = content || '请处理我上传的文件'
   const isNewConversation = !selectedConversation.value
-  const attachments = pendingAttachments.value.map(item => item.file)
+  const uploaded = pendingFiles.value
+    .map(item => item.asset)
+    .filter((asset): asset is NonNullable<typeof asset> => asset != null)
   const requestedAgentId = selectedAgentId.value === AUTO_AGENT_ID
     ? selectedConversation.value?.agentId
     : selectedAgentId.value
-  const isAutomaticSelection = connectionMode.value === 'router' && selectedAgentId.value === AUTO_AGENT_ID
   const local = selectedConversation.value || makeLocalConversation(requestedAgentId || '', requestContent)
   if (isNewConversation) {
     local.messages = []
@@ -401,56 +487,62 @@ async function send(): Promise<void> {
   const conversation = selectedConversation.value
   if (!conversation) return
   const conversationId = conversation.conversationId
-  // Keep the generated ID in the existing affinity header on the first automatic turn.
-  // The message body starts carrying it from the second turn, which tells Router to skip selection.
-  const requestConversationId = isNewConversation && isAutomaticSelection
-    ? undefined
-    : conversationId
-  conversation.messages ||= []
-  conversation.messages.push({
-    messageId: crypto.randomUUID(), sequence: conversation.messages.length + 1,
-    role: 'user', content: content || '已上传附件', timestamp: new Date().toISOString(),
-    attachments: pendingAttachments.value.map(item => ({
-      fileName: item.file.name,
-      mediaType: item.file.type || 'application/octet-stream',
-      length: item.file.size,
-      previewUrl: item.file.type.startsWith('image/') ? URL.createObjectURL(item.file) : undefined,
-    } satisfies MessageAttachment)),
-  })
-  conversation.messageCount = conversation.messages.length
-  conversation.updatedAt = new Date().toISOString()
-  conversation.lastMessageAt = conversation.updatedAt
-  message.value = ''
-  pendingAttachments.value = []
+  // 首次对话不携带任何 conversationId：由引擎生成并在 done 事件回传，前端记录后用于后续消息。
+  // 这样 router 对首次消息会执行意图识别，而不是当成续聊直接转发。
+  const sendConversationId = isNewConversation ? undefined : conversationId
   loading.value = true
-  let assistant = ''
-  conversation.messages.push({
-    messageId: crypto.randomUUID(), sequence: conversation.messages.length + 1,
-    role: 'assistant', content: '', timestamp: new Date().toISOString(),
-  })
-  const assistantMessage = conversation.messages[conversation.messages.length - 1]
   try {
+    conversation.messages ||= []
+    const messageFiles = await Promise.all(pendingFiles.value.map(toMessageFile))
+    conversation.messages.push({
+      messageId: crypto.randomUUID(), sequence: conversation.messages.length + 1,
+      role: 'user', content: content || '已上传文件', timestamp: new Date().toISOString(),
+      files: messageFiles,
+    })
+    conversation.messageCount = conversation.messages.length
+    conversation.updatedAt = new Date().toISOString()
+    conversation.lastMessageAt = conversation.updatedAt
+    message.value = ''
+    pendingFiles.value = []
+    let assistant = ''
+    conversation.messages.push({
+      messageId: crypto.randomUUID(), sequence: conversation.messages.length + 1,
+      role: 'assistant', content: '', timestamp: new Date().toISOString(),
+    })
+    const assistantMessage = conversation.messages[conversation.messages.length - 1]
+    let returnedConversationId: string | undefined
     for await (const event of api.streamChat(
       requestContent,
       requestedAgentId,
-      requestConversationId,
-      attachments,
-      conversationId,
+      sendConversationId,
+      uploaded.map(asset => asset.fileId),
+      sendConversationId,
     )) {
       if (event.type === 'content') {
         assistant += event.content || ''
         assistantMessage.content = assistant
+      } else if (event.type === 'reasoning') {
+        assistantMessage.reasoning = `${assistantMessage.reasoning || ''}${event.content || ''}`
       } else if (event.type === 'tool_call') {
-        assistantMessage.toolName = event.toolName
+        assistantMessage.toolActivities ||= []
+        assistantMessage.toolActivities.push({
+          name: event.toolName || '工具',
+          callId: event.toolCallId,
+        })
       } else if (event.type === 'done' && event.status) {
         conversation.status = event.status as ConversationRecord['status']
       } else if (event.type === 'error') {
         throw new Error(event.error?.detail || 'Agent 执行失败')
       }
+      if (event.conversationId) returnedConversationId = event.conversationId
     }
+    const persisted = await api.getConversation(returnedConversationId || conversationId)
+    await hydrateFilePreviews(persisted)
+    selectedConversation.value = persisted
     await refreshConversations()
   } catch (error) {
-    assistantMessage.content = error instanceof Error ? error.message : '执行失败'
+    const lastMessage = conversation.messages?.at(-1)
+    if (lastMessage?.role === 'assistant') lastMessage.content = error instanceof Error ? error.message : '执行失败'
     notifyError(error)
   } finally {
     loading.value = false
@@ -839,8 +931,8 @@ onMounted(() => {
 
       <div class="workspace-grid">
         <section class="chat-card">
-          <ChatMessages :messages="currentMessages" :loading="loadingConversation" @suggest="message = $event" />
-          <MessageComposer :model-value="message" :endpoint-url="activeEndpointUrl" :endpoint-label="activeEndpointLabel" :selected-agent-id="selectedAgentId" :loading="loading" :pending-attachments="pendingAttachments" @update:model-value="message = $event" @attachments-change="pendingAttachments = $event" @send="send" />
+          <ChatMessages :messages="currentMessages" :loading="loadingConversation" @suggest="message = $event" @download="downloadFile" />
+          <MessageComposer :model-value="message" :endpoint-url="activeEndpointUrl" :endpoint-label="activeEndpointLabel" :selected-agent-id="selectedAgentId" :loading="loading" :pending-files="pendingFiles" @update:model-value="message = $event" @files-change="handleFilesChange" @retry-file="retryPendingFile" @send="send" />
         </section>
         <aside class="context-panel">
           <section><span class="context-label">ROUTING</span><strong>{{ routeMode }}</strong><p>{{ connectionMode === 'router' && selectedAgentId === AUTO_AGENT_ID ? '由意图识别 Agent 分析请求并选择目标。' : (selectedAgent?.description || selectedAgentId) }}</p><dl><div><dt>Agent</dt><dd>{{ connectionMode === 'router' && selectedAgentId === AUTO_AGENT_ID ? '由模型选择' : (selectedAgent?.name || selectedAgentId) }}</dd></div><div><dt>协议</dt><dd>{{ selectedAgent?.apiFormat || (connectionMode === 'router' ? '自动' : '—') }}</dd></div></dl></section>
@@ -852,7 +944,7 @@ onMounted(() => {
     </el-main>
   </el-container>
 
-  <el-dialog v-model="showSettings" class="settings-dialog" width="min(1180px, calc(100vw - 40px))" top="3vh" :close-on-click-modal="false" destroy-on-close>
+  <el-dialog v-model="showSettings" class="settings-dialog" modal-class="settings-overlay" width="min(1180px, calc(100vw - 40px))" top="3vh" :close-on-click-modal="false" destroy-on-close>
     <template #header>
       <div class="settings-header"><div><span class="eyebrow">OPENAGENT CONTROL PLANE</span><h2>工作台设置</h2></div><span class="settings-endpoint">{{ activeEndpointLabel }} · {{ activeEndpointHost }}</span></div>
     </template>
@@ -901,7 +993,7 @@ onMounted(() => {
     </div>
   </el-dialog>
 
-  <el-dialog v-model="showAgentEditor" class="editor-dialog agent-editor-dialog" width="min(920px, calc(100vw - 32px))" append-to-body destroy-on-close>
+  <el-dialog v-model="showAgentEditor" class="editor-dialog agent-editor-dialog" modal-class="editor-overlay" width="min(920px, calc(100vw - 32px))" append-to-body destroy-on-close>
     <template #header><div class="editor-dialog-header"><div><span class="eyebrow">AGENT RUNTIME</span><h3>{{ isNewAgent ? '创建 Agent' : (config?.name || 'Agent 配置') }}</h3></div><el-tag effect="plain" round>{{ config?.agentId }}</el-tag></div></template>
     <div v-if="config" class="agent-editor">
       <section class="agent-editor-section">
@@ -940,25 +1032,25 @@ onMounted(() => {
     <template #footer><el-button @click="showAgentEditor = false">取消</el-button><el-button type="primary" :loading="savingConfig" @click="saveConfig">保存 Agent 配置</el-button></template>
   </el-dialog>
 
-  <el-dialog v-model="showLlmEditor" class="editor-dialog" :title="isNewLlm ? '新增大模型配置' : '编辑大模型配置'" width="min(720px, calc(100vw - 32px))" append-to-body destroy-on-close>
+  <el-dialog v-model="showLlmEditor" class="editor-dialog" modal-class="editor-overlay" :title="isNewLlm ? '新增大模型配置' : '编辑大模型配置'" width="min(720px, calc(100vw - 32px))" append-to-body destroy-on-close>
     <el-form label-position="top" class="agent-form-grid"><el-form-item label="配置 ID"><el-input v-model="llmDraft.id" :disabled="!isNewLlm" placeholder="例如 openai-prod" /><small class="form-help">Agent 通过这个 ID 绑定大模型配置。</small></el-form-item><el-form-item label="显示名称"><el-input v-model="llmDraft.name" placeholder="例如 OpenAI 生产环境" /></el-form-item><el-form-item label="API 格式"><el-select v-model="llmDraft.format" class="full-width"><el-option label="OpenAI Chat Completions" value="OpenAIChatCompletions" /><el-option label="OpenAI Responses" value="OpenAIResponses" /><el-option label="Anthropic Messages" value="AnthropicMessages" /></el-select></el-form-item><el-form-item label="模型 ID"><el-input v-model="llmDraft.modelId" placeholder="例如 gpt-4o" /></el-form-item><el-form-item label="Temperature"><el-input-number v-model="llmDraft.temperature" :min="0" :max="2" :step="0.1" :precision="1" controls-position="right" /></el-form-item><el-form-item label="Endpoint"><el-input v-model="llmDraft.endpoint" placeholder="https://api.openai.com/v1" /></el-form-item><el-form-item label="API Key" class="span-two"><el-input v-model="llmDraft.apiKey" type="text" placeholder="请输入 API Key" /><small class="form-help">API Key 直接显示，便于确认和修改当前大模型配置。</small></el-form-item><el-alert v-if="llmResult" class="span-two" :title="`测试结果：${llmResult.success ? '连接和权限通过' : '连接失败'}${llmResult.statusCode ? ` · HTTP ${llmResult.statusCode}` : ''}`" :description="llmResult.error || `模型 ${llmResult.modelId || llmDraft.modelId} · 延迟 ${llmResult.latencyMs}ms`" :type="llmResult.success ? 'success' : 'warning'" :closable="false" /></el-form>
     <template #footer><el-button @click="showLlmEditor = false">取消</el-button><el-button :loading="testingLlm" @click="testLlm">测试连接与权限</el-button><el-button type="primary" :loading="savingLlm" :disabled="!llmDraft.id" @click="saveLlm">保存大模型配置</el-button></template>
   </el-dialog>
 
-  <el-dialog v-model="showMcpEditor" class="editor-dialog" title="编辑 MCP" width="min(650px, calc(100vw - 32px))" append-to-body destroy-on-close>
+  <el-dialog v-model="showMcpEditor" class="editor-dialog" modal-class="editor-overlay" title="编辑 MCP" width="min(650px, calc(100vw - 32px))" append-to-body destroy-on-close>
     <el-form label-position="top"><el-form-item label="名称"><el-input v-model="mcpDraft.name" placeholder="例如 local-tools" /></el-form-item><el-form-item label="传输类型"><el-select v-model="mcpDraft.type"><el-option label="HTTP" value="Http" /><el-option label="SSE" value="SSE" /><el-option label="Stdio（服务端执行）" value="Stdio" /></el-select></el-form-item><el-form-item v-if="mcpDraft.type !== 'Stdio'" label="URL"><el-input v-model="mcpDraft.url" placeholder="https://mcp.example.com" /></el-form-item><template v-else><el-form-item label="Command"><el-input v-model="mcpDraft.command" placeholder="例如 node" /></el-form-item><el-form-item label="Arguments（每行一个）"><el-input v-model="mcpArgumentsText" type="textarea" :rows="3" /></el-form-item><el-form-item label="Working Directory"><el-input v-model="mcpDraft.workingDirectory" /></el-form-item></template><el-alert v-if="mcpResult" :title="`测试结果：${mcpResult.success ? '连接成功' : '连接失败'} · 权限${mcpResult.authorized ? '通过' : '拒绝'}`" :description="mcpResult.error || `延迟 ${mcpResult.latencyMs}ms，发现 ${mcpResult.toolCount} 个工具`" :type="mcpResult.success ? 'success' : 'warning'" :closable="false" /></el-form><template #footer><el-button @click="showMcpEditor = false">取消</el-button><el-button :loading="testingMcp" @click="testMcp">测试连接与权限</el-button><el-button type="primary" :disabled="!mcpDraft.name" @click="saveMcp">保存 MCP 配置</el-button></template>
   </el-dialog>
 
-  <el-dialog v-model="showSkillEditor" class="editor-dialog" title="编辑 Skill" width="min(650px, calc(100vw - 32px))" append-to-body destroy-on-close>
+  <el-dialog v-model="showSkillEditor" class="editor-dialog" modal-class="editor-overlay" title="编辑 Skill" width="min(650px, calc(100vw - 32px))" append-to-body destroy-on-close>
     <el-form v-if="selectedSkill" label-position="top"><el-form-item label="Skill ID"><el-input v-model="selectedSkill.skillId" placeholder="例如 weather" /></el-form-item><el-form-item label="名称"><el-input v-model="selectedSkill.name" placeholder="例如 天气查询" /></el-form-item><el-form-item label="说明"><el-input v-model="selectedSkill.description" type="textarea" :rows="3" /></el-form-item><el-form-item label="纳入 Agent 能力"><el-switch :model-value="isSkillEnabled(selectedSkill.skillId)" active-text="已绑定并启用" inactive-text="未绑定" @change="toggleSkillBinding(selectedSkill, Boolean($event))" /></el-form-item><el-form-item label="状态"><el-switch v-model="selectedSkill.enabled" active-text="启用" inactive-text="停用" /></el-form-item><el-alert v-if="skillResult" :title="skillResult.success ? 'Skill 配置测试通过' : 'Skill 配置测试失败'" :description="`已启用 ${skillResult.enabledCount || 0} 条，实例 ${skillResult.instanceCount || 0} 条`" :type="skillResult.success ? 'success' : 'warning'" :closable="false" /></el-form><template #footer><el-button @click="showSkillEditor = false">取消</el-button><el-button :loading="testingSkill" @click="testSkills">测试 Skill 配置</el-button><el-button type="primary" @click="saveSkills">保存 Skill 配置</el-button></template>
   </el-dialog>
 
-  <el-dialog v-model="showRagEditor" class="editor-dialog" title="编辑 RAG" width="min(650px, calc(100vw - 32px))" append-to-body destroy-on-close>
+  <el-dialog v-model="showRagEditor" class="editor-dialog" modal-class="editor-overlay" title="编辑 RAG" width="min(650px, calc(100vw - 32px))" append-to-body destroy-on-close>
     <el-form label-position="top"><el-form-item label="RAG ID"><el-input v-model="ragDraft.id" placeholder="例如 knowledge-base" /></el-form-item><el-form-item label="名称"><el-input v-model="ragDraft.name" placeholder="例如 企业知识库" /></el-form-item><el-form-item label="类型"><el-select v-model="ragDraft.type"><el-option label="RAGFlow" value="ragflow" /><el-option label="Qdrant" value="qdrant" /></el-select></el-form-item><el-form-item label="Endpoint"><el-input v-model="ragDraft.apiEndpoint" placeholder="https://rag.example.com/api/search" /></el-form-item><el-form-item label="Collection / Dataset"><el-input v-model="ragDraft.collectionName" /></el-form-item><el-form-item label="API Key"><el-input v-model="ragDraft.apiKey" type="password" show-password placeholder="留空则保留已保存的密钥" /></el-form-item><el-form-item label="状态"><el-switch v-model="ragDraft.enabled" active-text="启用" inactive-text="停用" /></el-form-item><el-alert v-if="ragResult" :title="`测试结果：${ragResult.success ? '连接成功' : '连接失败'}`" :description="ragResult.error || `HTTP ${ragResult.statusCode || '-'} · 延迟 ${ragResult.latencyMs}ms`" :type="ragResult.success ? 'success' : 'warning'" :closable="false" /></el-form><template #footer><el-button @click="showRagEditor = false">取消</el-button><el-button :loading="testingRag" @click="testRag">测试连接</el-button><el-button type="primary" :disabled="!ragDraft.id" @click="saveRag">保存 RAG 配置</el-button></template>
   </el-dialog>
 </template>
 
 <style>
-.message-attachments { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 7px; }
-.message-attachments span { display: inline-flex; align-items: center; padding: 4px 7px; color: #5d54e8; background: #fff; border: 1px solid #dfe2ff; border-radius: 6px; font-size: 11px; }
+.message-files { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 7px; }
+.message-files span { display: inline-flex; align-items: center; padding: 4px 7px; color: #5d54e8; background: #fff; border: 1px solid #dfe2ff; border-radius: 6px; font-size: 11px; }
 </style>

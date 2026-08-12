@@ -28,19 +28,46 @@ export interface ConversationMessage {
   toolCallId?: string
   toolName?: string
   timestamp: string
-  attachments?: MessageAttachment[]
+  metadata?: Record<string, string>
+  reasoning?: string
+  toolActivities?: ToolActivity[]
+  files?: MessageFile[]
 }
 
-export interface MessageAttachment {
+export interface ToolActivity {
+  name: string
+  callId?: string
+  result?: string
+}
+
+export interface MessageFile {
+  fileId?: string
   fileName: string
   mediaType: string
   length: number
   previewUrl?: string
+  previewText?: string
 }
 
-export interface PendingAttachment {
+export interface FileAsset {
+  fileId: string
+  tenantId: string
+  ownerUserId: string
+  fileName: string
+  mediaType: string
+  length: number
+  sha256: string
+  source: 'UserUpload' | 'Agent' | 'Skill' | number
+  state: 'Pending' | 'Ready' | 'Failed' | number
+  createdAt: string
+}
+
+export interface PendingFile {
   id: string
   file: File
+  state: 'uploading' | 'ready' | 'failed'
+  asset?: FileAsset
+  error?: string
 }
 
 export interface ConversationRecord {
@@ -183,6 +210,7 @@ export interface StreamEvent {
   traceId?: string
   toolName?: string
   toolCallId?: string
+  conversationId?: string
   error?: { title?: string; detail?: string; traceId?: string }
   usage?: Record<string, unknown>
 }

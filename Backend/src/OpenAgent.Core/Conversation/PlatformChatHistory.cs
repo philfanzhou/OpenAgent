@@ -1,10 +1,12 @@
 using System.Text;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
-using OpenAgent.Contracts.Content;
+using Microsoft.Extensions.Logging;
 using OpenAgent.Contracts.Conversation;
+using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
+using OpenAgent.Core.Files;
 using OpenAgent.Core.Runtime.Agent;
 
 namespace OpenAgent.Core.Conversation;
@@ -20,9 +22,11 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
     private readonly ConversationContext _conversation;
     private readonly string _agentId;
     private readonly string _input;
-    private readonly IReadOnlyList<AgentAttachment> _attachments;
+    private readonly IReadOnlyList<FileAsset> _files;
+    private readonly FileAssetExecutionContext _fileExecution;
     private readonly IConversationLock _conversationLock;
     private readonly ConversationSessionStore _store;
+    private readonly ILogger<PlatformChatHistory> _logger;
     private readonly List<ConversationMessage> _pending = [];
     private readonly StringBuilder _partialAssistant = new();
     private IConversationLockHandle? _lockHandle;
@@ -38,16 +42,20 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         ConversationContext conversation,
         string agentId,
         string input,
-        IReadOnlyList<AgentAttachment> attachments,
+        IReadOnlyList<FileAsset> files,
+        FileAssetExecutionContext fileExecution,
         IConversationLock conversationLock,
-        ConversationSessionStore store)
+        ConversationSessionStore store,
+        ILogger<PlatformChatHistory> logger)
     {
         _conversation = conversation;
         _agentId = agentId;
         _input = input;
-        _attachments = attachments;
+        _files = files;
+        _fileExecution = fileExecution;
         _conversationLock = conversationLock;
         _store = store;
+        _logger = logger;
     }
 
     internal void AppendPartial(string content)
@@ -98,11 +106,12 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
                 cancellationToken).ConfigureAwait(false);
             _currentVersion = loaded.CurrentVersion;
             _nextSequence = loaded.NextSequence;
-            return loaded.History
+            List<ChatMessage> history = loaded.History
                 .Select(AgentMessageAdapter.FromStored)
                 .Where(message => message != null)
                 .Cast<ChatMessage>()
                 .ToList();
+            return RepairToolHistory(history);
         }
         catch
         {
@@ -111,15 +120,79 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         }
     }
 
+    /// <summary>
+    /// 修复会话历史中的工具调用契约：丢弃重复声明或没有对应 tool 响应的 assistant tool_call，
+    /// 避免发给模型时出现 "tool_calls must be followed by tool messages" 的 400。
+    /// </summary>
+    private static List<ChatMessage> RepairToolHistory(IReadOnlyList<ChatMessage> messages)
+    {
+        HashSet<string> responded = [];
+        foreach (ChatMessage message in messages)
+        {
+            foreach (FunctionResultContent result in message.Contents.OfType<FunctionResultContent>())
+            {
+                if (!string.IsNullOrWhiteSpace(result.CallId))
+                {
+                    responded.Add(result.CallId);
+                }
+            }
+        }
+
+        HashSet<string> announced = new(StringComparer.Ordinal);
+        var repaired = new List<ChatMessage>(messages.Count);
+        foreach (ChatMessage message in messages)
+        {
+            List<FunctionCallContent> calls = message.Contents.OfType<FunctionCallContent>().ToList();
+            if (message.Role == ChatRole.Assistant && calls.Count > 0)
+            {
+                List<FunctionCallContent> retained = calls
+                    .Where(call => !string.IsNullOrWhiteSpace(call.CallId)
+                        && announced.Add(call.CallId)
+                        && responded.Contains(call.CallId))
+                    .ToList();
+                if (retained.Count == 0)
+                {
+                    continue;
+                }
+
+                if (retained.Count < calls.Count)
+                {
+                    ChatMessage rebuilt = new(message.Role, Array.Empty<AIContent>());
+                    foreach (AIContent content in message.Contents)
+                    {
+                        if (content is not FunctionCallContent)
+                        {
+                            rebuilt.Contents.Add(content);
+                        }
+                    }
+
+                    foreach (FunctionCallContent call in retained)
+                    {
+                        rebuilt.Contents.Add(call);
+                    }
+
+                    repaired.Add(rebuilt);
+                    continue;
+                }
+            }
+
+            repaired.Add(message);
+        }
+
+        return repaired;
+    }
+
     protected override async ValueTask StoreChatHistoryAsync(
         InvokedContext context,
         CancellationToken cancellationToken)
     {
         _finalized = true;
         RecordUser();
-        foreach (ConversationMessage message in AgentMessageAdapter.ToStored(
+        List<ConversationMessage> responses = AgentMessageAdapter.ToStored(
             context.ResponseMessages ?? [],
-            ref _nextSequence))
+            ref _nextSequence).ToList();
+        AssociateCreatedFiles(responses);
+        foreach (ConversationMessage message in responses)
         {
             _pending.Add(message);
         }
@@ -143,6 +216,24 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
             {
                 await base.InvokedCoreAsync(context, cancellationToken).ConfigureAwait(false);
                 return;
+            }
+
+            // 记录 agent/工具执行失败，避免被框架吞掉（此前 AgentException 不会被任何日志记录）。
+            if (context.InvokeException is AgentException)
+            {
+                _logger.LogWarning(
+                    context.InvokeException,
+                    "Agent '{AgentId}' execution failed for conversation '{ConversationId}'",
+                    _agentId,
+                    _conversation.ConversationId);
+            }
+            else
+            {
+                _logger.LogError(
+                    context.InvokeException,
+                    "Agent '{AgentId}' execution failed for conversation '{ConversationId}'",
+                    _agentId,
+                    _conversation.ConversationId);
             }
 
             RecordUser();
@@ -214,7 +305,34 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
             _nextSequence++,
             "user",
             _input,
-            metadata: AgentMessageAdapter.BuildAttachmentMetadata(_attachments)));
+            metadata: AgentMessageAdapter.BuildFileMetadata(_files),
+            fileIds: _files.Select(item => item.FileId).ToArray()));
+    }
+
+    private void AssociateCreatedFiles(List<ConversationMessage> responses)
+    {
+        IReadOnlyList<FileAsset> created = _fileExecution.Created;
+        if (created.Count == 0)
+        {
+            return;
+        }
+
+        int assistantIndex = responses.FindLastIndex(message =>
+            string.Equals(message.Role, "assistant", StringComparison.OrdinalIgnoreCase));
+        if (assistantIndex >= 0)
+        {
+            responses[assistantIndex] = AgentMessageAdapter.AssociateFiles(
+                responses[assistantIndex],
+                created);
+            return;
+        }
+
+        responses.Add(ConversationSessionStore.Message(
+            _nextSequence++,
+            "assistant",
+            "Created file assets.",
+            metadata: AgentMessageAdapter.BuildFileMetadata(created),
+            fileIds: created.Select(file => file.FileId).ToArray()));
     }
 
     private async ValueTask ReleaseLockAsync()

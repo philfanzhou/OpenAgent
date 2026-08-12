@@ -52,7 +52,7 @@ public class ChatRequestReaderTests
     public async Task ReadAsync_MultipartForm_ReadsFieldsAndRewindsBody()
     {
         using var form = new MultipartFormDataContent();
-        form.Add(new StringContent("inspect attachment"), "message");
+        form.Add(new StringContent("inspect file"), "message");
         form.Add(new StringContent("conversation-3"), "conversationId");
         form.Add(new StringContent("documents"), "agentId");
         await using var body = new MemoryStream();
@@ -67,7 +67,7 @@ public class ChatRequestReaderTests
             context.Request,
             CancellationToken.None);
 
-        Assert.Equal("inspect attachment", request.Query);
+        Assert.Equal("inspect file", request.Query);
         Assert.Equal("conversation-3", request.ConversationId);
         Assert.Equal("documents", request.AgentId);
         Assert.Equal(0, body.Position);

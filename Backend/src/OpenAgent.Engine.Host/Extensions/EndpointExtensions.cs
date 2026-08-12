@@ -11,7 +11,7 @@ internal static class EndpointExtensions
     {
         RouteGroupBuilder group = endpoints.MapGroup(pattern).RequireAuthorization();
         group.MapAgentChat();
-        group.MapAttachmentChat();
+        group.MapFileAssets();
         group.MapAgentCatalog();
         group.MapConversations();
 

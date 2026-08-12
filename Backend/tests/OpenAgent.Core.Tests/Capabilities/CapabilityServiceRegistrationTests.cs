@@ -1,10 +1,13 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using OpenAgent.Contracts.Configuration;
+using OpenAgent.Contracts.Conversation;
+using OpenAgent.Contracts.Files;
 using OpenAgent.Core.Capabilities;
 using OpenAgent.Core.Capabilities.Rag;
 using OpenAgent.Core.Capabilities.Skill;
 using OpenAgent.Core.Exten;
+using OpenAgent.Core.Conversation.Store;
 using Xunit;
 
 namespace OpenAgent.Core.Tests.Capabilities;
@@ -17,6 +20,8 @@ public class CapabilityServiceRegistrationTests
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton<IAgentConfigProvider, StaticConfigProvider>();
+        services.AddSingleton<IConversationStore, InMemoryConversationStore>();
+        services.AddSingleton<IFileAssetRepository, EmptyFileAssetRepository>();
         services.AddAgentCore(new ConfigurationBuilder().Build());
 
         await using ServiceProvider provider = services.BuildServiceProvider(
@@ -42,5 +47,12 @@ public class CapabilityServiceRegistrationTests
         public Task<IReadOnlyList<AgentSummary>> ListAgentsAsync(
             CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<AgentSummary>>([]);
+    }
+
+    private sealed class EmptyFileAssetRepository : IFileAssetRepository
+    {
+        public Task CreateAsync(FileAsset asset, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task UpdateAsync(FileAsset asset, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task<FileAsset?> GetAsync(string fileId, CancellationToken cancellationToken) => Task.FromResult<FileAsset?>(null);
     }
 }

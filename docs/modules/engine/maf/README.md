@@ -34,7 +34,7 @@ MAF 是 Agent.Core 唯一生产运行时，而不是 `IAgentEngine` 的一种实
 | `Backend/src/OpenAgent.Core/Runtime/Agent/AgentChatClientFactory.cs` | 模型 Provider |
 | `Backend/src/OpenAgent.Core/Capabilities/CapabilityToolFactory.cs` | 可用能力到 `AIFunction` 的适配 |
 | `Backend/src/OpenAgent.Core/Runtime/Agent/AgentResponseAdapter.cs` | MAF 响应和 usage 适配 |
-| `Backend/src/OpenAgent.Core/Runtime/Agent/AgentMessageAdapter.cs` | 消息和附件 |
+| `Backend/src/OpenAgent.Core/Runtime/Agent/AgentMessageAdapter.cs` | 消息和文件资产内容 |
 | `Backend/src/OpenAgent.Core/Runtime/Agent/AgentExecutor.cs` | 原生执行与 turn 边界 |
 
 ## Specification
@@ -47,7 +47,7 @@ MAF 是 Agent.Core 唯一生产运行时，而不是 `IAgentEngine` 的一种实
 - 未知函数终止运行；函数连续错误阈值为零。
 - 不可用能力在构建 Agent 前被过滤，不进入 MAF 工具列表。
 - 工具由携带原始 `ToolDefinition` 的 `AIFunction` 执行。
-- 平台 Redis/SQL 会话是唯一持久历史。
+- 平台 PostgreSQL 会话是唯一持久历史；对象存储保存文件原始字节。
 - `AddAgentCore` 是唯一 DI 注册入口。
 
 支持的 `ApiFormat`：
@@ -56,7 +56,7 @@ MAF 是 Agent.Core 唯一生产运行时，而不是 `IAgentEngine` 的一种实
 - `OpenAIResponses`
 - `AnthropicMessages`
 
-消息适配支持 system/user/assistant/tool、function call/result、reasoning、文本附件和
+消息适配支持 system/user/assistant/tool、function call/result、reasoning、文本文件和
 二进制 `DataContent`。
 
 ## Design
@@ -76,7 +76,7 @@ Pipeline -> AgentRun
   -> Agent.Run[Streaming]Async
 ```
 
-`PlatformChatHistory` 在 MAF 请求历史时获取分布式锁、加载 Redis/SQL 消息，并在 MAF
+`PlatformChatHistory` 在 MAF 请求历史时加载 PostgreSQL 消息，并在 MAF
 结束通知中写回成功、失败或取消状态。`CapabilityToolFactory` 发现并筛选可用能力，
 直接提供携带执行体的 `AIFunction`。工具名称、描述与 schema 不再复制到
 system prompt。
@@ -98,7 +98,7 @@ system prompt。
 - [x] 旧 framework 配置透明映射到 MAF。
 - [x] OpenAI Chat、Responses、Azure、Anthropic、Gemini、Ollama、LM Studio、OpenWebUI 客户端。
 - [x] 图片、PDF 和 UTF-8 文本文件输入。
-- [x] multipart 同步与 NDJSON 流式附件端点。
+- [x] 独立文件上传、会话预览和模型文件输入。
 - [x] Agent、Model、Tool、Function、MCP、Skill 六维授权扩展点。
 
 ## 后续可选增强

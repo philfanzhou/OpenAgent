@@ -1,6 +1,5 @@
 using System.Text.Json;
 using OpenAgent.Contracts.Configuration;
-using OpenAgent.Contracts.Content;
 using OpenAgent.Contracts.Requests;
 using Xunit;
 
@@ -55,25 +54,17 @@ public class ContractSerializationTests
     }
 
     [Fact]
-    public void AgentRequest_Attachments_AreNotSerialized()
+    public void AgentRequest_FileIds_AreNotSerialized()
     {
         AgentRequest request = new()
         {
             Query = "hello",
-            Attachments =
-            [
-                new AgentAttachment
-                {
-                    FileName = "sample.txt",
-                    MediaType = "text/plain",
-                    Data = [1, 2, 3, 4]
-                }
-            ]
+            FileIds = ["file-001"]
         };
 
         string json = JsonSerializer.Serialize(request, JsonOptions);
 
-        Assert.DoesNotContain("attachments", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("fileIds", json, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("hello", json, StringComparison.Ordinal);
     }
 

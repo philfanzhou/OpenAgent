@@ -7,8 +7,10 @@ import type {
   ConversationRecord,
   ConnectionMode,
   CurrentUserContext,
+  FileAsset,
   LlmProviderProfile,
   LlmTestResult,
+  MessageFile,
   McpServerConfig,
   McpTestResult,
   RagConfig,
@@ -25,6 +27,9 @@ const connectionModeStorageKey = 'openagent.connection.mode'
 const tokenStorageKey = 'openagent.auth.access-token'
 const tokenTypeStorageKey = 'openagent.auth.token-type'
 const tenantStorageKey = 'openagent.auth.tenant-id'
+const defaultRouterBaseUrl = import.meta.env.VITE_OPENAGENT_ROUTER_BASE_URL || 'http://localhost:5001'
+const defaultEngineBaseUrl = import.meta.env.VITE_OPENAGENT_ENGINE_BASE_URL || 'http://localhost:5208'
+const defaultTenantId = import.meta.env.VITE_OPENAGENT_TENANT_ID || 'development'
 
 function normalizeBaseUrl(value: string): string {
   return value.trim().replace(/\/$/, '')
@@ -39,7 +44,9 @@ export function setConnectionMode(value: ConnectionMode): void {
 }
 
 export function getRouterBaseUrl(): string {
-  return localStorage.getItem(routerStorageKey) || localStorage.getItem(legacyBaseUrlStorageKey) || ''
+  return localStorage.getItem(routerStorageKey)
+    || localStorage.getItem(legacyBaseUrlStorageKey)
+    || defaultRouterBaseUrl
 }
 
 export function setRouterBaseUrl(value: string): void {
@@ -48,7 +55,7 @@ export function setRouterBaseUrl(value: string): void {
 }
 
 export function getEngineBaseUrl(): string {
-  return localStorage.getItem(engineStorageKey) || ''
+  return localStorage.getItem(engineStorageKey) || defaultEngineBaseUrl
 }
 
 export function setEngineBaseUrl(value: string): void {
@@ -70,7 +77,7 @@ export function setAccessToken(value: string, tokenType = 'Basic'): void {
 }
 
 export function getTenantId(): string {
-  return localStorage.getItem(tenantStorageKey) || ''
+  return localStorage.getItem(tenantStorageKey) || defaultTenantId
 }
 
 export function setTenantId(value: string): void {
@@ -98,11 +105,25 @@ function headers(extra: HeadersInit = {}): Headers {
 }
 
 async function readError(response: Response): Promise<Error> {
+  const fallback = `${response.status} ${response.statusText || '请求失败'}`
+  const raw = await response.text()
+  if (!raw.trim()) return new Error(fallback)
+
   try {
-    const body = await response.json() as { detail?: string; title?: string; traceId?: string }
-    return new Error(`${body.detail || body.title || response.statusText}${body.traceId ? ` (TraceId: ${body.traceId})` : ''}`)
+    const body = JSON.parse(raw) as {
+      detail?: string
+      title?: string
+      message?: string
+      error?: string | { detail?: string; message?: string }
+      traceId?: string
+      trace_id?: string
+    }
+    const nestedError = typeof body.error === 'string' ? body.error : body.error?.detail || body.error?.message
+    const message = body.detail || body.message || nestedError || body.title || fallback
+    const traceId = body.traceId || body.trace_id
+    return new Error(`${message}${traceId ? ` (TraceId: ${traceId})` : ''}`)
   } catch {
-    return new Error(`${response.status} ${response.statusText}`)
+    return new Error(raw.trim() || fallback)
   }
 }
 
@@ -114,6 +135,28 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (!response.ok) throw await readError(response)
   if (response.status === 204) return undefined as T
   return await response.json() as T
+}
+
+function normalizeConversation(record: ConversationRecord): ConversationRecord {
+  return {
+    ...record,
+    messages: record.messages?.map(message => {
+      const raw = message.metadata?.Files
+      const reasoning = message.metadata?.Reasoning
+      if (!raw) return reasoning ? { ...message, reasoning } : message
+      try {
+        const files = (JSON.parse(raw) as Record<string, unknown>[]).map(file => ({
+          fileId: String(file.fileId ?? file.FileId ?? ''),
+          fileName: String(file.fileName ?? file.FileName ?? ''),
+          mediaType: String(file.mediaType ?? file.MediaType ?? 'application/octet-stream'),
+          length: Number(file.length ?? file.Length ?? 0),
+        })) satisfies MessageFile[]
+        return { ...message, files, ...(reasoning ? { reasoning } : {}) }
+      } catch {
+        return reasoning ? { ...message, reasoning } : message
+      }
+    }),
+  }
 }
 
 function parseSseBlock(block: string): StreamEvent | null {
@@ -164,7 +207,48 @@ export const api = {
   },
 
   getConversation(id: string): Promise<ConversationRecord> {
-    return request<ConversationRecord>(`/api/v1/agent/conversations/${encodeURIComponent(id)}`)
+    return request<ConversationRecord>(`/api/v1/agent/conversations/${encodeURIComponent(id)}`).then(normalizeConversation)
+  },
+
+  async uploadFile(file: File): Promise<FileAsset> {
+    const form = new FormData()
+    form.set('file', file, file.name)
+    const response = await fetch(`${requireBaseUrl()}/api/v1/agent/files`, {
+      method: 'POST',
+      headers: headers(),
+      body: form,
+    })
+    if (!response.ok) throw await readError(response)
+    return await response.json() as FileAsset
+  },
+
+  async loadFilePreview(fileId: string): Promise<string> {
+    const response = await fetch(`${requireBaseUrl()}/api/v1/agent/files/${encodeURIComponent(fileId)}/content`, {
+      headers: headers(),
+    })
+    if (!response.ok) throw await readError(response)
+    return URL.createObjectURL(await response.blob())
+  },
+
+  async readFileText(fileId: string): Promise<string> {
+    const response = await fetch(`${requireBaseUrl()}/api/v1/agent/files/${encodeURIComponent(fileId)}/content`, {
+      headers: headers(),
+    })
+    if (!response.ok) throw await readError(response)
+    return await response.text()
+  },
+
+  async downloadFile(fileId: string, fileName: string): Promise<void> {
+    const response = await fetch(`${requireBaseUrl()}/api/v1/agent/files/${encodeURIComponent(fileId)}/download`, {
+      headers: headers(),
+    })
+    if (!response.ok) throw await readError(response)
+    const url = URL.createObjectURL(await response.blob())
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = fileName
+    anchor.click()
+    URL.revokeObjectURL(url)
   },
 
   deleteConversation(id: string): Promise<void> {
@@ -279,23 +363,17 @@ export const api = {
     message: string,
     agentId?: string,
     conversationId?: string,
-    attachments: File[] = [],
+    fileIds: string[] = [],
     routingConversationId?: string,
   ): AsyncGenerator<StreamEvent> {
-    const hasAttachments = attachments.length > 0
-    const form = new FormData()
-    form.set('message', message)
-    if (agentId) form.set('agentId', agentId)
-    if (conversationId) form.set('conversationId', conversationId)
-    for (const file of attachments) form.append('files', file, file.name)
-
-    const requestHeaders = headers(hasAttachments ? {} : { 'Content-Type': 'application/json' })
+    const requestHeaders = headers({ 'Content-Type': 'application/json' })
     if (routingConversationId) requestHeaders.set('X-Conversation-Id', routingConversationId)
-    const response = await fetch(`${requireBaseUrl()}/api/v1/agent/chat/${hasAttachments ? 'attachments/stream' : 'stream'}`, {
+    const response = await fetch(`${requireBaseUrl()}/api/v1/agent/chat/stream`, {
       method: 'POST',
       headers: requestHeaders,
-      body: hasAttachments ? form : JSON.stringify({
+      body: JSON.stringify({
         message,
+        fileIds,
         context: { ...(agentId ? { agentId } : {}), ...(conversationId ? { conversationId } : {}) },
       }),
     })

@@ -48,6 +48,7 @@ internal static class AgentChatEndpointExtensions
                 context.GetAgentRequest().User,
                 cancellationToken),
             executionRequest.TraceId!,
+            executionRequest.ConversationId!,
             logger,
             cancellationToken).ConfigureAwait(false);
     }

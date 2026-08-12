@@ -12,6 +12,7 @@ internal static class AgentStreamWriter
         HttpContext context,
         IAsyncEnumerable<AgentStreamEvent> events,
         string traceId,
+        string conversationId,
         ILogger logger,
         CancellationToken cancellationToken)
     {
@@ -50,7 +51,7 @@ internal static class AgentStreamWriter
                 cancellationToken).ConfigureAwait(false);
         }
 
-        string done = JsonSerializer.Serialize(new { done = true, usage });
+        string done = JsonSerializer.Serialize(new { done = true, usage, conversationId });
         await WriteSseEventAsync(context, "done", done, cancellationToken).ConfigureAwait(false);
     }
 

@@ -87,8 +87,10 @@ public class HostingTests
         {
             ("/api/v1/agent/chat", "POST", "Chat", "Agent"),
             ("/api/v1/agent/chat/stream", "POST", "ChatStream", "Agent"),
-            ("/api/v1/agent/chat/attachments", "POST", "ChatWithAttachments", "Agent"),
-            ("/api/v1/agent/chat/attachments/stream", "POST", "ChatWithAttachmentsStream", "Agent"),
+            ("/api/v1/agent/files", "POST", "UploadFileAsset", "File"),
+            ("/api/v1/agent/files/{fileId}", "GET", "GetFileAsset", "File"),
+            ("/api/v1/agent/files/{fileId}/content", "GET", "GetFileAssetContent", "File"),
+            ("/api/v1/agent/files/{fileId}/download", "GET", "DownloadFileAsset", "File"),
             ("/api/v1/agent/agents", "GET", "ListAgents", "Agent"),
             ("/api/v1/agent/me", "GET", "CurrentAgentUser", "Agent"),
             ("/api/v1/agent/conversations", "GET", "ListConversations", "Conversation"),

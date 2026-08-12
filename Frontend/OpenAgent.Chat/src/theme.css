@@ -78,7 +78,7 @@
 .user .message-bubble { border: 0; border-radius: 20px 8px 20px 20px; background: linear-gradient(145deg, #eeedff, #e7f8f3); }
 .composer { margin: 0 3px; border: 0; border-radius: 0 0 24px 24px; box-shadow: 0 18px 48px rgba(57, 48, 116, .10); }
 .composer .el-textarea__inner { padding: 10px 4px; font-size: 14px; }
-.attachment-chip { border-radius: 11px; background: #f5f3ff; border-color: #e4e0ff; }
+.file-chip { border-radius: 11px; background: #f5f3ff; border-color: #e4e0ff; }
 .attach-button { border-radius: 10px; }
 .settings-dialog .el-dialog { box-shadow: 0 26px 80px rgba(37, 33, 80, .20); }
 .settings-tabs .el-tabs__item { border-radius: 13px; }
@@ -422,10 +422,23 @@
 .message-bubble { min-width: 0; max-width: min(78%, 920px); overflow-wrap: anywhere; }
 .composer { flex: 0 0 auto; margin-right: 0; margin-left: 0; }
 
-.message-attachments { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
-.message-attachment { display: flex; max-width: 220px; flex-direction: column; gap: 5px; padding: 6px; border: 1px solid #dfe2ff; border-radius: 10px; color: #5d54e8; background: rgba(255,255,255,.7); font-size: 11px; }
-.message-attachment img { display: block; width: 180px; max-height: 140px; object-fit: cover; border-radius: 7px; }
-.message-attachment span { display: block; overflow: hidden; padding: 0; border: 0; color: inherit; background: transparent; text-overflow: ellipsis; white-space: nowrap; }
+.message-files { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.message-file { display: flex; max-width: 220px; flex-direction: column; gap: 5px; padding: 6px; border: 1px solid #dfe2ff; border-radius: 10px; color: #5d54e8; background: rgba(255,255,255,.7); font-size: 11px; }
+.message-file img { display: block; width: 180px; max-height: 140px; object-fit: cover; border-radius: 7px; }
+.message-file span { display: block; overflow: hidden; padding: 0; border: 0; color: inherit; background: transparent; text-overflow: ellipsis; white-space: nowrap; }
+.message-file pre { max-height: 72px; margin: 0; overflow: auto; text-align: left; white-space: pre-wrap; word-break: break-word; }
+.message-process { margin: 0 0 8px; border: 1px solid #e6e7eb; border-radius: 8px; background: #fafafa; color: #6b7280; font-size: 12px; }
+.message-process summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; cursor: pointer; list-style: none; user-select: none; }
+.message-process summary::-webkit-details-marker { display: none; }
+.message-process summary::before { width: 0; height: 0; margin-right: -5px; border-top: 4px solid transparent; border-bottom: 4px solid transparent; border-left: 5px solid #8b8f98; content: ''; transition: transform .16s ease; }
+.message-process[open] summary::before { transform: rotate(90deg); }
+.message-process summary span { color: #555b66; font-weight: 600; }
+.message-process summary small { margin-left: auto; color: #8b8f98; font-size: 11px; font-weight: 400; }
+.reasoning-content { max-height: 180px; margin: 0; padding: 0 10px 10px; overflow: auto; color: #6b7280; font: inherit; line-height: 1.65; white-space: pre-wrap; word-break: break-word; }
+.tool-activity-list { display: flex; flex-direction: column; gap: 5px; margin: 0; padding: 0 10px 10px; list-style: none; }
+.tool-activity-list li { display: flex; gap: 7px; align-items: center; }
+.tool-activity-list li::before { width: 5px; height: 5px; border-radius: 50%; background: #8b8f98; content: ''; }
+.tool-activity-list span { color: #8b8f98; font-size: 11px; }
 
 @media (max-width: 760px) {
   .app-shell { --oa-sidebar-width: 250px; }
