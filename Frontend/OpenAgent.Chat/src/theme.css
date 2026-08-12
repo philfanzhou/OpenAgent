@@ -39,9 +39,9 @@
   --warn-soft: #fff9ed;
   --warn-border: #efd8ac;
 
-  /* Typography */
-  --font-sans: 'Geist', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-    'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  /* Typography — Geist for Latin, Noto Sans SC for CJK (both SIL OFL) */
+  --font-sans: 'Geist', 'Noto Sans SC', ui-sans-serif, system-ui, -apple-system,
+    BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   --font-mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, Consolas,
     'Liberation Mono', monospace;
 
@@ -297,6 +297,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
 /* Number input */
 .el-input-number { --el-input-number-bg-color: var(--bg-subtle); }
 .el-input-number .el-input__wrapper { padding-left: 0; padding-right: 0; }
+.el-input-number.is-controls-right .el-input__wrapper { padding-left: 8px; padding-right: 32px; }
 
 /* Loading */
 .el-loading-mask { background: rgba(255, 255, 255, .6); backdrop-filter: blur(2px); }

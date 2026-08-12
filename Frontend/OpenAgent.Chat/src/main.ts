@@ -1,13 +1,17 @@
 import { createApp } from 'vue'
 import ElementPlus from 'element-plus'
 import 'element-plus/dist/index.css'
-// Geist fonts (SIL OFL, commercial-free)
+// Geist fonts — Latin/numbers (SIL OFL, commercial-free)
 import '@fontsource/geist/400.css'
 import '@fontsource/geist/500.css'
 import '@fontsource/geist/600.css'
 import '@fontsource/geist/700.css'
 import '@fontsource/geist-mono/400.css'
 import '@fontsource/geist-mono/500.css'
+// Noto Sans SC — CJK glyphs (SIL OFL, commercial-free)
+import '@fontsource/noto-sans-sc/400.css'
+import '@fontsource/noto-sans-sc/500.css'
+import '@fontsource/noto-sans-sc/700.css'
 import './theme.css'
 import './workspace.css'
 import App from './App.vue'
