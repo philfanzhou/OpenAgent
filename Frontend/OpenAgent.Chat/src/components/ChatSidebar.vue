@@ -18,6 +18,8 @@ const emit = defineEmits<{
   refresh: []
   select: [conversation: ConversationRecord]
   delete: [conversation: ConversationRecord]
+  'toggle-collapse': []
+  'resize-start': [event: PointerEvent]
 }>()
 
 const filteredConversations = computed(() => {
@@ -52,6 +54,7 @@ function formatTime(value: string): string {
     <div class="brand"><span class="brand-mark">O</span><div><strong>OpenAgent</strong><small>Agent workspace</small></div></div>
     <div class="sidebar-toolbar">
       <el-button type="primary" class="new-chat-button" @click="emit('new')"><span>＋</span> 新对话</el-button>
+      <button class="panel-collapse-btn" type="button" aria-label="收起侧栏" title="收起侧栏" @click="emit('toggle-collapse')">‹</button>
       <el-button circle aria-label="打开设置" title="工作台设置" @click="emit('settings')">···</el-button>
     </div>
     <el-input :model-value="props.search" clearable placeholder="搜索对话" class="search-input" @update:model-value="emit('update:search', $event)" />
@@ -74,5 +77,6 @@ function formatTime(value: string): string {
         <i class="status-dot" :class="{ connected: props.statusText === '已连接' }" />
       </button>
     </footer>
+    <div class="sidebar-resize" @pointerdown="emit('resize-start', $event)" />
   </el-aside>
 </template>
