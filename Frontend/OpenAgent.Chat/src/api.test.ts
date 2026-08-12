@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { api, getEngineBaseUrl, getRouterBaseUrl, getTenantId, setAccessToken, setConnectionMode, setEngineBaseUrl, setRouterBaseUrl, setTenantId } from './api'
+import { api, fetchHealthReport, getEngineBaseUrl, getRouterBaseUrl, getTenantId, setAccessToken, setConnectionMode, setEngineBaseUrl, setRouterBaseUrl, setTenantId } from './api'
 
 class MemoryStorage implements Storage {
   private readonly values = new Map<string, string>()
@@ -96,5 +96,28 @@ describe('workspace API', () => {
     localStorage.setItem('openagent.engine.base-url', 'http://legacy-router.example')
 
     expect(getRouterBaseUrl()).toBe('http://legacy-router.example')
+  })
+
+  it('parses the engine health report into typed items', async () => {
+    const report = {
+      status: 'Healthy',
+      service: 'agent-engine',
+      totalDurationMs: 8,
+      items: [
+        { key: 'redis', status: 'Healthy', detail: 'Redis connection is healthy', latencyMs: 2, data: {} },
+        { key: 'database', status: 'Healthy', detail: 'Database is reachable', latencyMs: 4, data: {} },
+      ],
+    }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify(report), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })))
+
+    const result = await fetchHealthReport('http://engine.example/')
+
+    expect(result.status).toBe('Healthy')
+    expect(result.items).toHaveLength(2)
+    expect(result.items[0].key).toBe('redis')
+    expect(vi.mocked(fetch).mock.calls[0]?.[0]).toBe('http://engine.example/health/report')
   })
 })
