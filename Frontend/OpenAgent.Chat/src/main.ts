@@ -10,7 +10,6 @@ import '@fontsource/geist-mono/400.css'
 import '@fontsource/geist-mono/500.css'
 // Noto Sans SC — CJK glyphs (SIL OFL, commercial-free)
 import '@fontsource/noto-sans-sc/400.css'
-import '@fontsource/noto-sans-sc/500.css'
 import '@fontsource/noto-sans-sc/700.css'
 import './theme.css'
 import './workspace.css'

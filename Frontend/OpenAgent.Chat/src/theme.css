@@ -3,7 +3,25 @@
    Single source of truth for tokens, typography, and Element Plus overrides.
    ========================================================================== */
 
-/* Fonts (Geist, SIL OFL, commercial-free) are imported from main.ts. */
+/* Fonts (Geist + Noto Sans SC, SIL OFL, commercial-free) are imported from main.ts. */
+
+/* Fallback metric overrides — prevent layout shift when web fonts swap in */
+@font-face {
+  font-family: 'Geist Fallback';
+  src: local('Segoe UI'), local('Helvetica Neue'), local('Arial');
+  ascent-override: 92%;
+  descent-override: 22%;
+  line-gap-override: 0%;
+  size-adjust: 102%;
+}
+@font-face {
+  font-family: 'Noto Sans SC Fallback';
+  src: local('PingFang SC'), local('Microsoft YaHei'), local('Source Han Sans SC'), local('SimHei');
+  ascent-override: 90%;
+  descent-override: 22%;
+  line-gap-override: 0%;
+  size-adjust: 100%;
+}
 
 /* ---------- Design tokens ---------- */
 :root {
@@ -40,8 +58,8 @@
   --warn-border: #efd8ac;
 
   /* Typography — Geist for Latin, Noto Sans SC for CJK (both SIL OFL) */
-  --font-sans: 'Geist', 'Noto Sans SC', ui-sans-serif, system-ui, -apple-system,
-    BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --font-sans: 'Geist', 'Noto Sans SC', 'Geist Fallback', 'Noto Sans SC Fallback',
+    ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, Consolas,
     'Liberation Mono', monospace;
 
@@ -114,7 +132,9 @@ body {
   background: var(--bg);
   font-family: var(--font-sans);
   font-size: 14px;
-  line-height: 1.5;
+  line-height: 1.55;
+  text-rendering: optimizeLegibility;
+  -webkit-text-size-adjust: 100%;
 }
 button, input, textarea, select { font: inherit; color: inherit; }
 ::selection { background: var(--accent-soft); }
@@ -136,7 +156,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
   color: var(--text);
   background: var(--bg);
   box-shadow: none;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease),
     color var(--dur) var(--ease);
@@ -196,7 +216,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .el-select__wrapper:hover { box-shadow: 0 0 0 1px var(--border-strong) inset; }
 .el-input__wrapper.is-focus,
 .el-select__wrapper.is-focused { box-shadow: 0 0 0 1px var(--border-focus) inset; }
-.el-input__inner { color: var(--text); font-size: 13px; }
+.el-input__inner { color: var(--text); font-size: 14px; }
 .el-input__inner::placeholder { color: var(--text-faint); }
 .el-textarea__inner {
   border: 0;
@@ -208,7 +228,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
 }
 
 /* Form */
-.el-form-item__label { color: var(--text-secondary); font-size: 13px; font-weight: 600; }
+.el-form-item__label { color: var(--text-secondary); font-size: 14px; font-weight: 600; }
 .el-form-item { margin-bottom: 14px; }
 .el-radio-button__inner { border-color: var(--border); color: var(--text-muted); background: var(--bg); font-weight: 500; }
 .el-radio-button__original-radio:checked + .el-radio-button__inner {
@@ -238,7 +258,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .el-overlay-dialog { display: flex; align-items: flex-start; justify-content: center; }
 
 /* Tabs */
-.el-tabs__item { color: var(--text-muted); font-size: 13px; font-weight: 500; }
+.el-tabs__item { color: var(--text-muted); font-size: 14px; font-weight: 500; }
 .el-tabs__item.is-active { color: var(--text); font-weight: 600; }
 .el-tabs__active-bar { background: var(--accent); }
 
@@ -252,17 +272,17 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .el-table th.el-table__cell {
   color: var(--text-muted);
   background: var(--bg-subtle);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
 }
-.el-table td.el-table__cell { color: var(--text); font-size: 13px; }
+.el-table td.el-table__cell { color: var(--text); font-size: 14px; }
 .el-table .el-table__inner-wrapper::before,
 .el-table .el-table__inner-wrapper::after { background: var(--border); }
 
 /* Tags */
 .el-tag {
   border-radius: var(--r-pill);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
 }
 .el-tag--plain { border-color: var(--border-strong); color: var(--text-secondary); background: var(--bg); }
@@ -310,7 +330,7 @@ html[data-theme='dark'] .el-loading-mask { background: rgba(33, 33, 33, .6); }
 .eyebrow {
   display: inline-block;
   color: var(--text-faint);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: .12em;
   text-transform: uppercase;
