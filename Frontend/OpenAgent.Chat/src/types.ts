@@ -231,3 +231,31 @@ export interface McpTestResult {
   error?: string | null
   traceId?: string
 }
+
+export interface HealthReportItem {
+  key: string
+  status: 'Healthy' | 'Degraded' | 'Unhealthy'
+  detail?: string
+  latencyMs?: number
+  data?: Record<string, unknown>
+}
+
+export interface HealthReport {
+  status: 'Healthy' | 'Degraded' | 'Unhealthy'
+  service?: string
+  totalDurationMs?: number
+  items: HealthReportItem[]
+}
+
+export interface HealthEntry {
+  status: string
+  description?: string
+  duration?: string
+  data?: Record<string, unknown>
+}
+
+export interface NativeHealthReport {
+  status: string
+  entries: Record<string, HealthEntry>
+  totalDuration?: string
+}

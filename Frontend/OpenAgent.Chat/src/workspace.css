@@ -956,6 +956,34 @@ html[data-theme='dark'] .context-panel { background: #1f1f1f; }
 .login-form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .identity-status { margin: 4px 0 12px; }
 .settings-section .el-alert { margin-top: 12px; }
+/* ---------- Platform health check (merged; tokenized to the redesign system) ---------- */
+.connection-badge { padding: 5px 8px; border: 1px solid var(--warn-border); color: var(--warn); background: var(--warn-soft); font-size: 12px; }
+.connection-badge.online { border-color: var(--accent-border); color: var(--accent-hover); background: var(--accent-soft); }
+.agent-avatar { color: #fff; background: var(--text); }
+.diagnostic-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-faint); }
+.diagnostic-card.ok .diagnostic-dot { background: var(--accent); }
+.diagnostic-card.error .diagnostic-dot { background: var(--danger); }
+.diagnostic-card.running .diagnostic-dot { background: var(--warn); }
+.diagnostic-card.warn .diagnostic-dot { background: var(--warn); }
+.diagnostic-card.na { opacity: 0.72; }
+.diagnostic-card.na .diagnostic-dot { background: var(--text-faint); }
+.health-banner { display: flex; align-items: center; gap: 10px; margin-top: 12px; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--bg); }
+.health-banner > div { display: flex; flex-direction: column; }
+.health-banner strong { font-size: 14px; }
+.health-banner small { color: var(--text-muted); font-size: 12px; }
+.health-banner-dot { width: 10px; height: 10px; border-radius: 50%; }
+.health-banner.ok .health-banner-dot { background: var(--accent); }
+.health-banner.warn .health-banner-dot { background: var(--warn); }
+.health-banner.error .health-banner-dot { background: var(--danger); }
+.health-banner.idle .health-banner-dot { background: var(--text-faint); }
+.health-group { margin-top: 18px; }
+.health-group-heading { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+.health-group-heading .eyebrow { color: var(--text-faint); font-size: 11px; letter-spacing: 1px; }
+.health-group-heading h4 { margin: 0; font-size: 14px; }
+.health-detail-toggle { margin-top: 6px; padding: 0; border: none; background: none; color: var(--accent); font-size: 12px; cursor: pointer; }
+.health-detail { margin: 8px 0 0; padding: 8px; border-radius: var(--r-xs); background: var(--bg-hover); font-size: 11px; line-height: 1.5; overflow: auto; max-height: 160px; white-space: pre-wrap; }
+html[data-theme='dark'] .health-banner, html[data-theme='dark'] .health-detail { color: var(--text); background: var(--bg); }
+
 .login-card {
   margin-top: 12px;
   padding: 14px;

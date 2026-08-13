@@ -1,5 +1,6 @@
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
+using System.ClientModel;
 using System.Net;
 using System.Net.Http;
 using ProblemDetails = Microsoft.AspNetCore.Mvc.ProblemDetails;
@@ -35,16 +36,34 @@ internal sealed class ErrorMapper(ProblemDetailsFactory problemDetailsFactory)
             TimeoutException => (504, problemDetailsFactory.Create(
                 "https://error.agent.com/timeout", "GatewayTimeout", 504,
                 "The request timed out", exception.Message, traceId)),
+            ClientResultException clientException => MapProviderException(
+                clientException,
+                traceId),
             HttpRequestException httpException => MapHttpRequestException(
                 httpException,
                 traceId,
                 instance),
             _ => (500, problemDetailsFactory.Create(
                 "https://error.agent.com/internal-error", "InternalServerError", 500,
-                includeExceptionDetails ? exception.Message : "An unexpected error occurred",
+                string.IsNullOrWhiteSpace(exception.Message) ? "An unexpected error occurred" : exception.Message,
                 includeExceptionDetails ? exception.ToString() : "Please contact support if the problem persists",
                 traceId))
         };
+
+    private (int StatusCode, ProblemDetails ProblemDetails) MapProviderException(
+        ClientResultException exception,
+        string traceId)
+    {
+        int statusCode = exception.Status is >= 400 and < 500 ? exception.Status : 502;
+        return (statusCode, problemDetailsFactory.Create(
+            "https://error.agent.com/provider-request-error",
+            "ProviderRequestFailed",
+            statusCode,
+            StreamingPayloadFactory.FormatProviderError(exception.Status, exception.Message),
+            exception.Message,
+            traceId,
+            ("errorCode", (int)AgentErrorCode.DependencyUnavailable)));
+    }
 
     private (int StatusCode, ProblemDetails ProblemDetails) MapHttpRequestException(
         HttpRequestException exception,
