@@ -6,36 +6,46 @@ namespace OpenAgent.Engine.Reload;
 internal sealed class LegacyMessageHandler
 {
     private readonly FullConfigRefresher _refresher;
+    private readonly LlmProfileRefresher _llmProfileRefresher;
     private readonly ILogger<LegacyMessageHandler> _logger;
 
     public LegacyMessageHandler(
         FullConfigRefresher refresher,
+        LlmProfileRefresher llmProfileRefresher,
         ILogger<LegacyMessageHandler> logger)
     {
         _refresher = refresher;
+        _llmProfileRefresher = llmProfileRefresher;
         _logger = logger;
     }
 
-    internal void Process(string channel, string message)
+    internal bool Process(string channel, string message)
     {
         var payload = message.Trim();
         if (string.IsNullOrWhiteSpace(payload))
         {
             EngineLog.HotReloadLegacyBlankPayloadIgnored(_logger, channel);
-            return;
+            return false;
         }
 
         if (string.Equals(channel, HotReloadService.CurrentUpdatesChannel, StringComparison.OrdinalIgnoreCase)
             || string.Equals(channel, "agent:config:changed", StringComparison.OrdinalIgnoreCase))
         {
-            if (_refresher.Refresh(payload))
+            bool refreshed = _refresher.Refresh(payload);
+            if (refreshed)
             {
                 EngineLog.HotReloadLegacyRefreshed(_logger, channel, payload);
             }
 
-            return;
+            return refreshed;
+        }
+
+        if (string.Equals(channel, "llm:registry:changed", StringComparison.OrdinalIgnoreCase))
+        {
+            return _llmProfileRefresher.Refresh(payload);
         }
 
         EngineLog.HotReloadLegacyNotificationReceived(_logger, channel, payload);
+        return true;
     }
 }

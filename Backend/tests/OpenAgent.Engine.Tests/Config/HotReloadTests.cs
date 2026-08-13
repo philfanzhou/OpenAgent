@@ -2,11 +2,12 @@ using System.Text.Json;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using OpenAgent.Contracts.Configuration;
+using OpenAgent.Contracts.Models;
+using OpenAgent.Core.Abstract;
 using OpenAgent.Engine.Config;
 using OpenAgent.Engine.Models;
 using OpenAgent.Engine.Reload;
-using OpenAgent.Contracts.Configuration;
-using OpenAgent.Contracts.Models;
 using Xunit;
 
 namespace OpenAgent.Engine.Tests.Config;
@@ -286,6 +287,85 @@ public class HotReloadTests
     }
 
     [Fact]
+    public void ProcessMessage_LlmUpdate_ReloadsProfileFromRedis()
+    {
+        var redis = new FakeRedisConnectionProvider();
+        var registry = new TestLlmRegistry();
+        registry.Register(new LlmProviderProfile
+        {
+            Id = "provider-a",
+            Endpoint = "https://old.example.com"
+        });
+        redis.SetString(
+            "llm:registry:provider-a",
+            JsonSerializer.Serialize(new LlmProviderProfile
+            {
+                Id = "provider-a",
+                Endpoint = "https://new.example.com",
+                ApiKey = "new-key"
+            }));
+        var service = CreateService(redis, CreateSnapshot(), registry);
+
+        service.ProcessMessage(
+            HotReloadService.CurrentUpdatesChannel,
+            """
+            {
+              "resourceType": "Llm",
+              "resourceId": "provider-a",
+              "operation": "Upsert",
+              "version": "1723456789012"
+            }
+            """);
+
+        LlmProviderProfile? profile = registry.GetProfile("provider-a");
+        Assert.NotNull(profile);
+        Assert.Equal("https://new.example.com", profile!.Endpoint);
+        Assert.Equal("new-key", profile.ApiKey);
+    }
+
+    [Fact]
+    public void ProcessMessage_LlmDelete_RemovesProfileWhenRedisKeyIsMissing()
+    {
+        var registry = new TestLlmRegistry();
+        registry.Register(new LlmProviderProfile { Id = "provider-deleted" });
+        var service = CreateService(
+            new FakeRedisConnectionProvider(),
+            CreateSnapshot(),
+            registry);
+
+        service.ProcessMessage(
+            HotReloadService.CurrentUpdatesChannel,
+            """
+            {
+              "resourceType": "Llm",
+              "resourceId": "provider-deleted",
+              "operation": "Delete"
+            }
+            """);
+
+        Assert.Null(registry.GetProfile("provider-deleted"));
+    }
+
+    [Fact]
+    public void ProcessMessage_LegacyLlmChannel_ReloadsProfileFromRedis()
+    {
+        var redis = new FakeRedisConnectionProvider();
+        var registry = new TestLlmRegistry();
+        redis.SetString(
+            "llm:registry:legacy-provider",
+            JsonSerializer.Serialize(new LlmProviderProfile
+            {
+                Id = "legacy-provider",
+                ModelId = "current-model"
+            }));
+        var service = CreateService(redis, CreateSnapshot(), registry);
+
+        service.ProcessMessage("llm:registry:changed", "legacy-provider");
+
+        Assert.Equal("current-model", registry.GetProfile("legacy-provider")?.ModelId);
+    }
+
+    [Fact]
     public async Task SetConfig_AfterAbsoluteExpiration_ExpiresEntry()
     {
         var snapshot = CreateSnapshot(ttlMinutes: 0.01);
@@ -349,15 +429,25 @@ public class HotReloadTests
 
     private static HotReloadService CreateService(
         FakeRedisConnectionProvider redis,
-        ConfigSnapshot snapshot)
+        ConfigSnapshot snapshot,
+        ILlmRegistry? llmRegistry = null)
     {
+        llmRegistry ??= new TestLlmRegistry();
         var refresher = new FullConfigRefresher(
             redis,
             snapshot,
             NullLogger<FullConfigRefresher>.Instance);
+        var llmRefresher = new LlmProfileRefresher(
+            redis,
+            llmRegistry,
+            NullLogger<LlmProfileRefresher>.Instance);
         var dispatcher = new ConfigUpdateDispatcher(
             refresher,
-            new LegacyMessageHandler(refresher, NullLogger<LegacyMessageHandler>.Instance),
+            llmRefresher,
+            new LegacyMessageHandler(
+                refresher,
+                llmRefresher,
+                NullLogger<LegacyMessageHandler>.Instance),
             snapshot,
             NullLogger<ConfigUpdateDispatcher>.Instance);
 
@@ -365,5 +455,21 @@ public class HotReloadTests
             redis,
             dispatcher,
             NullLogger<HotReloadService>.Instance);
+    }
+
+    private sealed class TestLlmRegistry : ILlmRegistry
+    {
+        private readonly Dictionary<string, LlmProviderProfile> _profiles =
+            new(StringComparer.OrdinalIgnoreCase);
+
+        public List<LlmProviderProfile> GetAllProfiles() => _profiles.Values.ToList();
+
+        public LlmProviderProfile? GetProfile(string id) => _profiles.GetValueOrDefault(id);
+
+        public void Register(LlmProviderProfile profile) => _profiles[profile.Id] = profile;
+
+        public bool Remove(string id) => _profiles.Remove(id);
+
+        public LlmConfig ResolveConfig(LlmConfig llmConfig) => llmConfig;
     }
 }

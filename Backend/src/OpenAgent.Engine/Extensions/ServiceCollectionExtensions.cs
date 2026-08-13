@@ -3,11 +3,11 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Engine.Abstractions;
+using OpenAgent.Engine.Config;
 using OpenAgent.Engine.Models;
 using OpenAgent.Engine.Redis;
-using OpenAgent.Engine.Config;
-using OpenAgent.Engine.Reload;
 using OpenAgent.Engine.Registry;
+using OpenAgent.Engine.Reload;
 using OpenAgent.Engine.Runtime;
 using StackExchange.Redis;
 
@@ -56,6 +56,7 @@ internal static class ServiceCollectionExtensions
         services.AddMemoryCache();
         services.AddSingleton<ConfigSnapshot>();
         services.AddSingleton<FullConfigRefresher>();
+        services.AddSingleton<LlmProfileRefresher>();
         services.AddSingleton<LegacyMessageHandler>();
         services.AddSingleton<ConfigUpdateDispatcher>();
         services.AddHostedService<HotReloadService>();

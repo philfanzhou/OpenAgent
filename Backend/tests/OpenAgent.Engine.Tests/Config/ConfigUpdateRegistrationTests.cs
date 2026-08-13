@@ -2,12 +2,14 @@ using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Moq;
+using OpenAgent.Contracts.Configuration;
+using OpenAgent.Contracts.Models;
+using OpenAgent.Core.Abstract;
 using OpenAgent.Engine.Abstractions;
 using OpenAgent.Engine.Extensions;
 using OpenAgent.Engine.Models;
 using OpenAgent.Engine.Reload;
-using OpenAgent.Contracts.Configuration;
-using OpenAgent.Contracts.Models;
 using Xunit;
 
 namespace OpenAgent.Engine.Tests.Config;
@@ -21,6 +23,7 @@ public class ConfigUpdateRegistrationTests
         services.AddLogging();
         services.AddAgentEngine(new ConfigurationBuilder().Build());
         services.AddSingleton<IRedisConnectionProvider, FakeRedisConnectionProvider>();
+        services.AddSingleton(Mock.Of<ILlmRegistry>());
 
         using var provider = services.BuildServiceProvider(validateScopes: true);
 
@@ -30,6 +33,7 @@ public class ConfigUpdateRegistrationTests
         Assert.Same(first, second);
         Assert.NotNull(provider.GetRequiredService<ConfigSnapshot>());
         Assert.NotNull(provider.GetRequiredService<FullConfigRefresher>());
+        Assert.NotNull(provider.GetRequiredService<LlmProfileRefresher>());
         Assert.NotNull(provider.GetRequiredService<LegacyMessageHandler>());
         Assert.Contains(services, descriptor =>
             descriptor.ServiceType == typeof(IHostedService)
@@ -43,6 +47,7 @@ public class ConfigUpdateRegistrationTests
         services.AddLogging();
         services.AddAgentEngine(new ConfigurationBuilder().Build());
         services.AddSingleton<IRedisConnectionProvider, FakeRedisConnectionProvider>();
+        services.AddSingleton(Mock.Of<ILlmRegistry>());
 
         using var provider = services.BuildServiceProvider(validateScopes: true);
         var redis = (FakeRedisConnectionProvider)provider.GetRequiredService<IRedisConnectionProvider>();

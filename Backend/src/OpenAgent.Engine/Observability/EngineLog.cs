@@ -270,6 +270,27 @@ internal static partial class EngineLog
     [LoggerMessage(EventId = 4063, Level = LogLevel.Error, Message = "SSE endpoint error occurred. Method={Method}, Path={Path}, TraceId={TraceId}, ResponseStarted={ResponseStarted}, ExceptionType={ExceptionType}")]
     private static partial void SseEndpointErrorOccurredCore(ILogger logger, Exception ex, string method, string path, string traceId, bool responseStarted, string exceptionType);
 
+    [LoggerMessage(EventId = 4064, Level = LogLevel.Warning, Message = "Config update for resource type {ResourceType} is missing ResourceId.")]
+    public static partial void HotReloadMissingResourceId(ILogger logger, string resourceType);
+
+    [LoggerMessage(EventId = 4065, Level = LogLevel.Warning, Message = "Ignoring config update with unknown resource type {ResourceType}.")]
+    public static partial void HotReloadUnknownResourceType(ILogger logger, string resourceType);
+
+    [LoggerMessage(EventId = 4066, Level = LogLevel.Information, Message = "Reloaded LLM profile {ProfileId} from Redis after config update notification.")]
+    public static partial void HotReloadLlmProfileRefreshed(ILogger logger, string profileId);
+
+    [LoggerMessage(EventId = 4067, Level = LogLevel.Information, Message = "Removed LLM profile {ProfileId} after config update notification.")]
+    public static partial void HotReloadLlmProfileRemoved(ILogger logger, string profileId);
+
+    [LoggerMessage(EventId = 4068, Level = LogLevel.Warning, Message = "Redis payload for LLM profile {ProfileId} is invalid.")]
+    public static partial void HotReloadLlmProfileInvalid(ILogger logger, string profileId);
+
+    public static void HotReloadLlmProfileRefreshFailed(ILogger logger, Exception ex, string profileId) =>
+        HotReloadLlmProfileRefreshFailedCore(logger, ex, profileId, ex.GetType().FullName ?? "unknown");
+
+    [LoggerMessage(EventId = 4069, Level = LogLevel.Error, Message = "Failed to reload LLM profile {ProfileId} from Redis. ExceptionType={ExceptionType}")]
+    private static partial void HotReloadLlmProfileRefreshFailedCore(ILogger logger, Exception ex, string profileId, string exceptionType);
+
     // --- Host Lifecycle / Program.cs ---
 
     // --- Endpoint Extensions ---

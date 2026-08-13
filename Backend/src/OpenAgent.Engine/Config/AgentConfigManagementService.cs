@@ -3,6 +3,8 @@ using System.Text.Json.Serialization;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Models;
 using OpenAgent.Engine.Abstractions;
+using OpenAgent.Engine.Reload;
+using OpenAgent.Engine.Reload.Dtos;
 using StackExchange.Redis;
 
 namespace OpenAgent.Engine.Config;
@@ -10,7 +12,8 @@ namespace OpenAgent.Engine.Config;
 internal sealed class AgentConfigManagementService(
     IRedisConnectionProvider redis,
     MockAgentResolver mockAgentResolver,
-    AgentConfigLocalStore localStore)
+    AgentConfigLocalStore localStore,
+    ConfigUpdateDispatcher configUpdates)
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -90,6 +93,14 @@ internal sealed class AgentConfigManagementService(
         long version = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         entity.CurrentVersion = version.ToString();
         string payload = JsonSerializer.Serialize(entity, JsonOptions);
+        string notification = JsonSerializer.Serialize(new ConfigUpdate
+        {
+            ResourceType = ConfigUpdate.AgentResourceType,
+            ResourceId = agentId,
+            Operation = ConfigUpdate.UpsertOperation,
+            Version = version,
+            Timestamp = DateTimeOffset.UtcNow
+        }, ConfigUpdateDispatcher.JsonOptions);
         ITransaction transaction = database.CreateTransaction();
         if (currentValue.IsNullOrEmpty)
         {
@@ -101,24 +112,23 @@ internal sealed class AgentConfigManagementService(
         }
 
         Task<bool> setTask = transaction.StringSetAsync(key, payload);
+        Task<long> publishTask = transaction.PublishAsync(
+            RedisChannel.Literal(HotReloadService.CurrentUpdatesChannel),
+            notification);
         bool executed = await transaction.ExecuteAsync().ConfigureAwait(false);
         if (!executed || !await setTask.ConfigureAwait(false))
         {
             return null;
         }
 
+        await publishTask.ConfigureAwait(false);
+        if (!configUpdates.Process(HotReloadService.CurrentUpdatesChannel, notification))
+        {
+            throw new InvalidOperationException(
+                $"Agent configuration '{agentId}' was saved, but the local cache could not be refreshed.");
+        }
+
         await database.SetAddAsync("agent:published:index", agentId).ConfigureAwait(false);
-        await database.PublishAsync(
-            RedisChannel.Literal("agent:config:updates"),
-            JsonSerializer.Serialize(new
-            {
-                AgentId = agentId,
-                Type = "FullConfig",
-                // 消费方 ConfigUpdate.Version 是 long；之前误传字符串导致 JSON 反序列化异常，
-                // 使 agent 配置更新无法热加载。
-                Version = version,
-                Timestamp = DateTime.UtcNow
-            })).ConfigureAwait(false);
         return entity;
     }
 }

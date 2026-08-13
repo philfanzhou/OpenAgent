@@ -33,7 +33,7 @@ Engine Host
 | Skill 注册 | `skill:published:index` | 已发布技能索引 |
 | RAG 注册 | `rag:published:index` | 已发布 RAG 索引 |
 | 会话锁 | `lock:conversation:{tenantId}:{conversationId}` | 分布式会话锁 |
-| 配置频道 | `__keyevent@*__:set` | Pub/Sub 配置变更通知 |
+| 配置频道 | `agent:config:updates` | Agent 与 LLM 的结构化配置变更通知 |
 
 ## 当前状态
 

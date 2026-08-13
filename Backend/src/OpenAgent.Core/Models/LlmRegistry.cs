@@ -1,19 +1,21 @@
-using OpenAgent.Core.Abstract;
+using System.Collections.Concurrent;
 using OpenAgent.Contracts.Configuration;
+using OpenAgent.Core.Abstract;
 
 namespace OpenAgent.Core.Models;
 
 internal class LlmRegistry : ILlmRegistry
 {
-    private readonly Dictionary<string, LlmProviderProfile> _profiles = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, LlmProviderProfile> _profiles = new(StringComparer.OrdinalIgnoreCase);
 
     public void Register(LlmProviderProfile profile)
     {
-        if (string.IsNullOrEmpty(profile.Id)) return;
+        if (string.IsNullOrEmpty(profile.Id))
+            return;
         _profiles[profile.Id] = profile;
     }
 
-    public bool Remove(string id) => _profiles.Remove(id);
+    public bool Remove(string id) => _profiles.TryRemove(id, out _);
 
     public List<LlmProviderProfile> GetAllProfiles()
     {
