@@ -8,7 +8,6 @@
     "build": "vue-tsc --noEmit && vite build",
     "type-check": "vue-tsc --noEmit",
     "test": "vitest run",
-    "test:ui:server": "node scripts/ui-scenario-server.mjs",
     "check": "pnpm test && pnpm build",
     "preview": "vite preview"
   },
