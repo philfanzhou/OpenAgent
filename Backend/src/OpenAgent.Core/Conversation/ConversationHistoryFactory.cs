@@ -38,7 +38,8 @@ internal sealed class ConversationHistoryFactory
         string agentId,
         AgentRequest request,
         IAgentUserContext user,
-        IReadOnlyList<FileAssetContent> files)
+        IReadOnlyList<FileAssetContent> files,
+        IChatClient? titleClient = null)
     {
         ConversationContext context = new(
             request.ConversationId,
@@ -54,7 +55,8 @@ internal sealed class ConversationHistoryFactory
             _fileExecution,
             _conversationLock,
             _store,
-            _logger);
+            _logger,
+            titleClient);
     }
 
     internal AIContextProvider? CreateCompaction(ContextPolicy? policy, IChatClient chatClient)

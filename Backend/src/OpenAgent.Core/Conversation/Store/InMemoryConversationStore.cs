@@ -118,6 +118,23 @@ internal sealed class InMemoryConversationStore : IConversationStore
         return Task.FromResult(true);
     }
 
+    public Task<bool> UpdateTitleAsync(
+        string tenantId, string conversationId, string title,
+        CancellationToken cancellationToken = default)
+    {
+        var key = BuildKey(tenantId, conversationId);
+
+        if (!_store.TryGetValue(key, out var record))
+        {
+            return Task.FromResult(false);
+        }
+
+        record.Title = title;
+        record.UpdatedAt = DateTimeOffset.UtcNow;
+
+        return Task.FromResult(true);
+    }
+
     public Task<IReadOnlyList<ConversationRecord>> ListConversationsAsync(
         string tenantId, int skip, int take, CancellationToken cancellationToken = default)
     {

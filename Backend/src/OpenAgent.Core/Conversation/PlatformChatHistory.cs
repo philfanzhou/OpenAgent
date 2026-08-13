@@ -29,6 +29,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
     private readonly ILogger<PlatformChatHistory> _logger;
     private readonly List<ConversationMessage> _pending = [];
     private readonly StringBuilder _partialAssistant = new();
+    private readonly IChatClient? _titleClient;
     private IConversationLockHandle? _lockHandle;
     private int _currentVersion;
     private int _nextSequence = 1;
@@ -37,6 +38,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
     private bool _released;
     private bool _stored;
     private bool _finalized;
+    private bool _firstExchange;
 
     internal PlatformChatHistory(
         ConversationContext conversation,
@@ -46,7 +48,8 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         FileAssetExecutionContext fileExecution,
         IConversationLock conversationLock,
         ConversationSessionStore store,
-        ILogger<PlatformChatHistory> logger)
+        ILogger<PlatformChatHistory> logger,
+        IChatClient? titleClient = null)
     {
         _conversation = conversation;
         _agentId = agentId;
@@ -56,6 +59,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         _conversationLock = conversationLock;
         _store = store;
         _logger = logger;
+        _titleClient = titleClient;
     }
 
     internal void AppendPartial(string content)
@@ -106,6 +110,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
                 cancellationToken).ConfigureAwait(false);
             _currentVersion = loaded.CurrentVersion;
             _nextSequence = loaded.NextSequence;
+            _firstExchange = loaded.History.Count == 0;
             List<ChatMessage> history = loaded.History
                 .Select(AgentMessageAdapter.FromStored)
                 .Where(message => message != null)
@@ -204,6 +209,11 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
             ConversationStatus.Completed,
             cancellationToken).ConfigureAwait(false);
         _stored = true;
+        if (_titleClient != null && _firstExchange)
+        {
+            // 首次交换完成后异步生成智能标题；失败时沿用首条消息截断标题。
+            _ = SummarizeTitleAsync(CancellationToken.None);
+        }
     }
 
     protected override async ValueTask InvokedCoreAsync(
@@ -333,6 +343,43 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
             "Created file assets.",
             metadata: AgentMessageAdapter.BuildFileMetadata(created),
             fileIds: created.Select(file => file.FileId).ToArray()));
+    }
+
+    private async Task SummarizeTitleAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (_titleClient == null)
+            {
+                return;
+            }
+
+            Microsoft.Extensions.AI.ChatResponse response = await _titleClient.GetResponseAsync(
+                [
+                    new ChatMessage(ChatRole.System, "你是一个会话标题生成助手，只输出标题本身，不要任何解释。"),
+                    new ChatMessage(ChatRole.User, $"为下面的用户请求生成一个简洁中文会话标题，不超过 20 字，不要引号、句号或多余文字，只输出标题：\n{_input}"),
+                ],
+                new ChatOptions { MaxOutputTokens = 30 },
+                cancellationToken).ConfigureAwait(false);
+            string title = (response.Text ?? string.Empty).Trim().Trim('"', '\'', '「', '」', '“', '”', '‘', '’');
+            if (string.IsNullOrEmpty(title))
+            {
+                return;
+            }
+
+            await _store.UpdateTitleAsync(
+                _conversation.TenantId!,
+                _conversation.ConversationId!,
+                title,
+                CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "会话标题摘要生成失败，沿用首条消息截断标题 (ConversationId: {ConversationId})",
+                _conversation.ConversationId);
+        }
     }
 
     private async ValueTask ReleaseLockAsync()

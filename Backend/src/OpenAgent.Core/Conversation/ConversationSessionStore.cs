@@ -113,6 +113,13 @@ internal sealed class ConversationSessionStore
         }
     }
 
+    internal Task<bool> UpdateTitleAsync(
+        string tenantId,
+        string conversationId,
+        string title,
+        CancellationToken cancellationToken = default)
+        => _store.UpdateTitleAsync(tenantId, conversationId, title, cancellationToken);
+
     internal static ConversationMessage Message(
         int sequence,
         string role,

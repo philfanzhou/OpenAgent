@@ -221,6 +221,34 @@ internal sealed class EfCoreConversationStore(IDbContextFactory<OpenAgentDbConte
         }
     }
 
+    public async Task<bool> UpdateTitleAsync(
+        string tenantId,
+        string conversationId,
+        string title,
+        CancellationToken cancellationToken = default)
+    {
+        await using OpenAgentDbContext context = await contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        ConversationEntity? conversation = await context.Conversations.SingleOrDefaultAsync(
+            item => item.ConversationId == conversationId && item.TenantId == tenantId && !item.IsDeletedByUser,
+            cancellationToken).ConfigureAwait(false);
+        if (conversation == null)
+        {
+            return false;
+        }
+
+        conversation.Title = title;
+        conversation.UpdatedAt = DateTimeOffset.UtcNow;
+        try
+        {
+            await context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return false;
+        }
+    }
+
     public async Task<IReadOnlyList<ConversationRecord>> ListConversationsAsync(
         string tenantId,
         int skip,
