@@ -137,6 +137,8 @@ public sealed class AgentExecutor
             {
                 if (!string.IsNullOrEmpty(reasoning.Text))
                 {
+                    // 累积思考内容，保证流式中止（暂停）时也能把思考过程持久化进会话历史。
+                    scope.AppendPartialReasoning(reasoning.Text);
                     yield return new AgentStreamEvent
                     {
                         Type = AgentStreamEventType.Reasoning,

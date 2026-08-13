@@ -87,7 +87,8 @@ internal sealed class AgentConfigManagementService(
         }
 
         entity.AgentId = agentId;
-        entity.CurrentVersion = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString();
+        long version = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        entity.CurrentVersion = version.ToString();
         string payload = JsonSerializer.Serialize(entity, JsonOptions);
         ITransaction transaction = database.CreateTransaction();
         if (currentValue.IsNullOrEmpty)
@@ -113,7 +114,9 @@ internal sealed class AgentConfigManagementService(
             {
                 AgentId = agentId,
                 Type = "FullConfig",
-                Version = entity.CurrentVersion,
+                // 消费方 ConfigUpdate.Version 是 long；之前误传字符串导致 JSON 反序列化异常，
+                // 使 agent 配置更新无法热加载。
+                Version = version,
                 Timestamp = DateTime.UtcNow
             })).ConfigureAwait(false);
         return entity;

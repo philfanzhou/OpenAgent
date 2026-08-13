@@ -388,6 +388,7 @@ export const api = {
     conversationId?: string,
     fileIds: string[] = [],
     routingConversationId?: string,
+    signal?: AbortSignal,
   ): AsyncGenerator<StreamEvent> {
     const requestHeaders = headers({ 'Content-Type': 'application/json' })
     if (routingConversationId) requestHeaders.set('X-Conversation-Id', routingConversationId)
@@ -399,6 +400,7 @@ export const api = {
         fileIds,
         context: { ...(agentId ? { agentId } : {}), ...(conversationId ? { conversationId } : {}) },
       }),
+      signal,
     })
     if (!response.ok) throw await readError(response)
     if (!response.body) throw new Error('Engine 未返回流式响应')

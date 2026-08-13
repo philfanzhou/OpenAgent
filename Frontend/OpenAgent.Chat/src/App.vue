@@ -25,6 +25,8 @@ const selectedAgentId = ref(AUTO_AGENT_ID)
 const message = ref('')
 const search = ref('')
 const loading = ref(false)
+/** 当前流式请求的取消句柄，用于发送按钮在生成中切换为“停止”。 */
+let streamAbort: AbortController | null = null
 const loadingConversation = ref(false)
 const savingConfig = ref(false)
 const refreshingAgents = ref(false)
@@ -471,6 +473,10 @@ async function toMessageFile(item: PendingFile): Promise<MessageFile> {
   }
 }
 
+function stopStreaming(): void {
+  streamAbort?.abort()
+}
+
 async function send(): Promise<void> {
   const content = message.value.trim()
   const hasFiles = pendingFiles.value.length > 0
@@ -501,7 +507,11 @@ async function send(): Promise<void> {
   // 这样 router 对首次消息会执行意图识别，而不是当成续聊直接转发。
   const sendConversationId = isNewConversation ? undefined : conversationId
   loading.value = true
+  const controller = new AbortController()
+  streamAbort = controller
   let streamError: { title?: string; detail?: string; traceId?: string } | undefined
+  let flushStream: (() => void) | undefined
+  let returnedConversationId: string | undefined
   try {
     conversation.messages ||= []
     const messageFiles = await Promise.all(pendingFiles.value.map(toMessageFile))
@@ -516,24 +526,33 @@ async function send(): Promise<void> {
     message.value = ''
     pendingFiles.value = []
     let assistant = ''
+    let reasoning = ''
+    let lastFlush = 0
     conversation.messages.push({
       messageId: crypto.randomUUID(), sequence: conversation.messages.length + 1,
       role: 'assistant', content: '', timestamp: new Date().toISOString(),
     })
     const assistantMessage = conversation.messages[conversation.messages.length - 1]
-    let returnedConversationId: string | undefined
+    flushStream = (): void => {
+      assistantMessage.content = assistant
+      assistantMessage.reasoning = reasoning || undefined
+      lastFlush = performance.now()
+    }
+    // 流式写入节流：思考/正文很长时按帧批量刷新，避免每个事件都触发整段重渲染导致卡顿。
     for await (const event of api.streamChat(
       requestContent,
       requestedAgentId,
       sendConversationId,
       uploaded.map(asset => asset.fileId),
       sendConversationId,
+      controller.signal,
     )) {
       if (event.type === 'content') {
         assistant += event.content || ''
-        assistantMessage.content = assistant
+        if (performance.now() - lastFlush > 100) flushStream?.()
       } else if (event.type === 'reasoning') {
-        assistantMessage.reasoning = `${assistantMessage.reasoning || ''}${event.content || ''}`
+        reasoning += event.content || ''
+        if (performance.now() - lastFlush > 100) flushStream?.()
       } else if (event.type === 'tool_call') {
         assistantMessage.toolActivities ||= []
         assistantMessage.toolActivities.push({
@@ -554,6 +573,7 @@ async function send(): Promise<void> {
       }
       if (event.conversationId) returnedConversationId = event.conversationId
     }
+    flushStream?.()
     const persisted = await api.getConversation(returnedConversationId || conversationId)
     await hydrateFilePreviews(persisted)
     selectedConversation.value = persisted
@@ -565,18 +585,45 @@ async function send(): Promise<void> {
       ElMessage.info(`已由意图识别路由到 Agent「${routed?.name || persisted.agentId}」`)
     }
   } catch (error) {
-    conversation.status = 'Failed'
-    const lastMessage = conversation.messages?.at(-1)
-    if (lastMessage?.role === 'assistant') {
-      // 错误信息不写入历史，以独立错误卡片就近展示；保留已流式的部分内容。
-      lastMessage.error = {
-        title: streamError?.title || 'Agent 执行失败',
-        detail: streamError?.detail || (error instanceof Error ? error.message : '执行失败'),
-        traceId: streamError?.traceId,
+    if (controller.signal.aborted) {
+      // 用户主动停止：保留已生成的部分内容并正常存档，不当作错误处理。
+      conversation.status = 'Cancelled'
+      conversation.updatedAt = new Date().toISOString()
+      conversation.lastMessageAt = conversation.updatedAt
+      flushStream?.()
+      // 引擎在流开始时就下发了真实 conversationId；用它替换本地临时 ID，
+      // 保证下次输入继续同一会话，之前的消息与文件才能被引擎识别。
+      const persistedConversationId = returnedConversationId || conversationId
+      if (returnedConversationId) {
+        conversation.conversationId = returnedConversationId
       }
+      try {
+        const persisted = await api.getConversation(persistedConversationId)
+        await hydrateFilePreviews(persisted)
+        // 仅当服务端会话已有消息时才替换本地视图；否则保留本地部分内容，
+        // 避免中止后页面退回空的“新会话”欢迎页。
+        if (persisted.messages?.length) {
+          selectedConversation.value = persisted
+        }
+      } catch {
+        // 首次会话未持久化时保留本地部分内容作为存档。
+      }
+      await refreshConversations().catch(() => undefined)
+    } else {
+      conversation.status = 'Failed'
+      const lastMessage = conversation.messages?.at(-1)
+      if (lastMessage?.role === 'assistant') {
+        // 错误信息不写入历史，以独立错误卡片就近展示；保留已流式的部分内容。
+        lastMessage.error = {
+          title: streamError?.title || 'Agent 执行失败',
+          detail: streamError?.detail || (error instanceof Error ? error.message : '执行失败'),
+          traceId: streamError?.traceId,
+        }
+      }
+      notifyError(error)
     }
-    notifyError(error)
   } finally {
+    streamAbort = null
     loading.value = false
   }
 }
@@ -850,6 +897,7 @@ async function saveConfig(): Promise<void> {
       { agentId, name: saved.name, description: saved.description, status: saved.status, currentVersion: saved.currentVersion, apiFormat: String(saved.config.llm.format || ''), llmProvider: saved.config.llm.provider, llmModel: saved.config.llm.modelId },
     ]
     isNewAgent.value = false
+    showAgentEditor.value = false
     ElMessage.success('Agent 配置已保存')
   } catch (error) {
     notifyError(error)
@@ -941,7 +989,7 @@ onMounted(() => {
       <div class="workspace-grid" :class="{ 'context-collapsed': contextCollapsed }">
         <section class="chat-card">
           <ChatMessages :messages="currentMessages" :loading="loadingConversation" :current-user="currentUser" :streaming="loading" @suggest="message = $event" @download="downloadFile" />
-          <MessageComposer :model-value="message" :endpoint-url="activeEndpointUrl" :endpoint-label="activeEndpointLabel" :selected-agent-id="selectedAgentId" :loading="loading" :pending-files="pendingFiles" @update:model-value="message = $event" @files-change="handleFilesChange" @retry-file="retryPendingFile" @send="send" />
+          <MessageComposer :model-value="message" :endpoint-url="activeEndpointUrl" :endpoint-label="activeEndpointLabel" :selected-agent-id="selectedAgentId" :loading="loading" :pending-files="pendingFiles" @update:model-value="message = $event" @files-change="handleFilesChange" @retry-file="retryPendingFile" @send="send" @stop="stopStreaming" />
         </section>
         <aside class="context-panel">
           <div class="context-panel-head"><span class="context-label">INSPECTOR</span><button class="panel-collapse-btn" type="button" aria-label="收起上下文面板" title="收起" @click="toggleContext">›</button></div>

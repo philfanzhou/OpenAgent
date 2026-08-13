@@ -22,6 +22,18 @@ describe('message presentation', () => {
     expect(html).not.toContain('href="javascript:')
   })
 
+  it('blocks dangerous link protocols and keeps safe relative links', () => {
+    const html = renderMarkdown(
+      '[vb](vbscript:msgbox(1)) [data](data:text/html,%3Cscript%3Ealert(1)%3C/script%3E) [rel](./docs.md) [http](https://example.com)',
+    )
+
+    expect(html).not.toContain('href="vbscript:')
+    expect(html).not.toContain('href="data:')
+    expect(html).not.toContain('href="javascript:')
+    expect(html).toContain('href="./docs.md"')
+    expect(html).toContain('href="https://example.com"')
+  })
+
   it('groups stored tool calls and results into the next assistant message', () => {
     const messages: ConversationMessage[] = [
       { messageId: '1', sequence: 1, role: 'assistant', content: '', timestamp: '', toolName: 'write_file', toolCallId: 'call-1', metadata: { ToolArguments: '{"path":"report.md"}' } },

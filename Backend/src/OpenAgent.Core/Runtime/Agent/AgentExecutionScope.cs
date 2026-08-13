@@ -20,5 +20,10 @@ internal sealed class AgentExecutionScope : IAsyncDisposable
         _history.AppendPartial(content);
     }
 
+    internal void AppendPartialReasoning(string reasoning)
+    {
+        _history.AppendPartialReasoning(reasoning);
+    }
+
     public ValueTask DisposeAsync() => _history.DisposeAsync();
 }

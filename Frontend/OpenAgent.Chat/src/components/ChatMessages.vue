@@ -26,6 +26,33 @@ const suggestions = [
 const messagesScrollbar = ref<{ setScrollTop: (value: number) => void } | null>(null)
 const displayMessages = computed(() => buildDisplayMessages(props.messages))
 
+/** 思考过程自动跟随滚动：流式追加时始终滚到最新；用户主动向上翻阅时暂停跟随，回到底部后恢复。 */
+const vAutoScroll = {
+  mounted(el: HTMLElement): void {
+    const target = el as HTMLElement & { __scrollHandler?: () => void }
+    target.__scrollHandler = () => onThinkingScroll(el)
+    el.addEventListener('scroll', target.__scrollHandler, { passive: true })
+    followLatest(el)
+  },
+  updated(el: HTMLElement): void {
+    followLatest(el)
+  },
+  unmounted(el: HTMLElement): void {
+    const target = el as HTMLElement & { __scrollHandler?: () => void }
+    if (target.__scrollHandler) el.removeEventListener('scroll', target.__scrollHandler)
+  },
+}
+
+function onThinkingScroll(el: HTMLElement): void {
+  const target = el as HTMLElement & { __userScrolledUp?: boolean }
+  target.__userScrolledUp = el.scrollHeight - el.scrollTop - el.clientHeight >= 24
+}
+
+function followLatest(el: HTMLElement): void {
+  const target = el as HTMLElement & { __userScrolledUp?: boolean }
+  if (!target.__userScrolledUp) target.scrollTop = target.scrollHeight
+}
+
 function hasMessageContent(message: ConversationMessage): boolean {
   return Boolean(message.content || message.files?.length)
 }
@@ -113,7 +140,7 @@ watch(() => props.streaming, () => { if (props.streaming) scrollToBottom() })
             <span class="process-title">{{ isThinking(item, index) ? '正在思考' : '思考过程' }}</span>
             <small>{{ isThinking(item, index) ? '生成中' : '已完成 · 展开查看' }}</small>
           </summary>
-          <div class="process-activity-body"><MarkdownContent :content="item.reasoning" :streaming="isThinking(item, index)" /></div>
+          <textarea class="process-activity-body reasoning-text" v-auto-scroll readonly spellcheck="false" rows="2" :value="item.reasoning" />
         </details>
 
         <section v-if="item.toolActivities?.length" class="tool-activity-group" aria-label="工具调用">

@@ -79,8 +79,11 @@ internal class AgentExceptionHandlerMiddleware
             return;
         }
 
+        // 用 camelCase 序列化错误载荷：前端 parseSseBlock 读取 detail/title/traceId（小写）。
+        // 否则 PascalCase 的 Detail 与前端字段不匹配，前端只会显示兜底的“Agent 执行失败”。
         string error = JsonSerializer.Serialize(
-            StreamingPayloadFactory.CreateErrorPayload(exception, traceId));
+            StreamingPayloadFactory.CreateErrorPayload(exception, traceId),
+            new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
         string done = JsonSerializer.Serialize(new { done = true, status = "error" });
         await context.Response.WriteAsync($"event: error\ndata: {error}\n\n", CancellationToken.None).ConfigureAwait(false);
         await context.Response.WriteAsync($"event: done\ndata: {done}\n\n", CancellationToken.None).ConfigureAwait(false);
