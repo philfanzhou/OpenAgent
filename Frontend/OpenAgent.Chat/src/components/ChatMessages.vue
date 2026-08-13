@@ -2,12 +2,14 @@
 import { ElMessage } from 'element-plus'
 import { computed, nextTick, ref, watch } from 'vue'
 import { buildDisplayMessages, fileLabel, formatFileSize, toolArgumentsText } from '../messagePresentation'
-import type { ConversationMessage, MessageFile, ToolActivity } from '../types'
+import type { ConversationMessage, CurrentUserContext, MessageFile, ToolActivity } from '../types'
 import MarkdownContent from './MarkdownContent.vue'
 
 const props = defineProps<{
   messages: ConversationMessage[]
   loading: boolean
+  currentUser: CurrentUserContext | null
+  streaming: boolean
 }>()
 
 const emit = defineEmits<{
@@ -29,7 +31,12 @@ function hasMessageContent(message: ConversationMessage): boolean {
 }
 
 function isStreamingItem(message: ConversationMessage, index: number): boolean {
-  return props.loading && message.role === 'assistant' && index === displayMessages.value.length - 1
+  return props.streaming && message.role === 'assistant' && index === displayMessages.value.length - 1
+}
+
+/** 思考阶段：消息正在流式生成，且尚未输出正文内容。 */
+function isThinking(message: ConversationMessage, index: number): boolean {
+  return isStreamingItem(message, index) && !message.content
 }
 
 function toolResultText(tool: ToolActivity): string | undefined {
@@ -57,9 +64,13 @@ async function copyTraceId(traceId: string): Promise<void> {
   }
 }
 
-watch(() => props.messages, () => {
-  void nextTick(() => messagesScrollbar.value?.setScrollTop(Number.MAX_SAFE_INTEGER))
-}, { deep: true })
+function scrollToBottom(): void {
+  const scroll = () => messagesScrollbar.value?.setScrollTop(Number.MAX_SAFE_INTEGER)
+  scroll()
+  requestAnimationFrame(scroll)
+}
+watch(() => props.messages, () => { void nextTick(scrollToBottom) }, { deep: true })
+watch(() => props.streaming, () => { if (props.streaming) scrollToBottom() })
 </script>
 
 <template>
@@ -94,15 +105,15 @@ watch(() => props.messages, () => {
         <details
           v-if="item.reasoning"
           class="process-activity reasoning-activity"
-          :class="{ running: isStreamingItem(item, index) }"
-          :open="isStreamingItem(item, index)"
+          :class="{ running: isThinking(item, index) }"
+          :open="isThinking(item, index)"
         >
           <summary>
             <span class="activity-icon thinking-icon"><i /><i /><i /></span>
-            <span class="process-title">{{ isStreamingItem(item, index) ? '正在思考' : '思考过程' }}</span>
-            <small>{{ isStreamingItem(item, index) ? '生成中' : '已完成 · 展开查看' }}</small>
+            <span class="process-title">{{ isThinking(item, index) ? '正在思考' : '思考过程' }}</span>
+            <small>{{ isThinking(item, index) ? '生成中' : '已完成 · 展开查看' }}</small>
           </summary>
-          <div class="process-activity-body"><MarkdownContent :content="item.reasoning" /></div>
+          <div class="process-activity-body"><MarkdownContent :content="item.reasoning" :streaming="isThinking(item, index)" /></div>
         </details>
 
         <section v-if="item.toolActivities?.length" class="tool-activity-group" aria-label="工具调用">
@@ -137,7 +148,7 @@ watch(() => props.messages, () => {
           </button>
         </div>
 
-        <div v-if="item.content" class="message-bubble"><MarkdownContent :content="item.content" /></div>
+        <div v-if="item.content || isStreamingItem(item, index)" class="message-bubble"><MarkdownContent :content="item.content" :streaming="isStreamingItem(item, index) && Boolean(item.content)" /></div>
 
         <div v-if="item.role === 'assistant' && item.files?.length" class="generated-files">
           <div class="generated-files-heading"><span>生成的文件</span><small>{{ item.files.length }} 个可下载文件</small></div>
@@ -167,6 +178,8 @@ watch(() => props.messages, () => {
           </div>
         </div>
       </div>
+
+      <div v-if="item.role === 'user'" class="user-mark" aria-hidden="true">{{ (props.currentUser?.userId || 'U').slice(0, 1).toUpperCase() }}</div>
     </div>
   </el-scrollbar>
 </template>
