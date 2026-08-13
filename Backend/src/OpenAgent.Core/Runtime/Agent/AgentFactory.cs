@@ -1,9 +1,7 @@
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
-using Microsoft.Extensions.Options;
 using OpenAgent.Core.Capabilities;
 using OpenAgent.Contracts.Configuration;
-using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Conversation;
@@ -18,20 +16,17 @@ internal sealed class AgentFactory
     private readonly ConversationHistoryFactory _conversations;
     private readonly CapabilityToolFactory _capabilities;
     private readonly FileAssetExecutionContext _files;
-    private readonly bool _titleSummarizationEnabled;
 
     public AgentFactory(
         AgentChatClientFactory chatClients,
         ConversationHistoryFactory conversations,
         CapabilityToolFactory capabilities,
-        FileAssetExecutionContext files,
-        IOptions<ConversationStoreOptions> options)
+        FileAssetExecutionContext files)
     {
         _chatClients = chatClients;
         _conversations = conversations;
         _capabilities = capabilities;
         _files = files;
-        _titleSummarizationEnabled = options.Value.EnableTitleSummarization;
     }
 
     internal async Task<AgentExecutionScope> CreateAsync(
@@ -48,12 +43,7 @@ internal sealed class AgentFactory
             UserId = user.UserId,
             ConversationId = request.ConversationId
         });
-        PlatformChatHistory history = _conversations.Create(
-            profile.AgentId,
-            request,
-            user,
-            files,
-            _titleSummarizationEnabled ? modelClient : null);
+        PlatformChatHistory history = _conversations.Create(profile.AgentId, request, user, files);
         IReadOnlyList<AITool> tools = await _capabilities.CreateAsync(
             profile.AgentId,
             profile.Config,

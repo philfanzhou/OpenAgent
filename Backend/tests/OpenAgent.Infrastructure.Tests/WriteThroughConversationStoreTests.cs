@@ -129,12 +129,6 @@ public sealed class WriteThroughConversationStoreTests
         public Task<bool> UpdateStatusAsync(string tenantId, string conversationId, ConversationStatus status, int expectedVersion, CancellationToken cancellationToken = default) =>
             Task.FromResult(true);
 
-        public Task<bool> UpdateTitleAsync(string tenantId, string conversationId, string title, CancellationToken cancellationToken = default)
-        {
-            Record.Title = title;
-            return Task.FromResult(true);
-        }
-
         public Task<IReadOnlyList<ConversationRecord>> ListConversationsAsync(string tenantId, int skip, int take, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<ConversationRecord>>([]);
 

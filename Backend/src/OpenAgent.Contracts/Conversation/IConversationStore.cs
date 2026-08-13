@@ -58,15 +58,6 @@ public interface IConversationStore
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// 更新会话标题（用于 LLM 摘要回写）。
-    /// </summary>
-    Task<bool> UpdateTitleAsync(
-        string tenantId,
-        string conversationId,
-        string title,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
     /// 列出指定租户的会话，按 LastMessageAt 降序返回（不含消息体）。
     /// </summary>
     Task<IReadOnlyList<ConversationRecord>> ListConversationsAsync(

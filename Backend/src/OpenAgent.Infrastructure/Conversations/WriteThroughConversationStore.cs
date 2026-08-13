@@ -96,19 +96,6 @@ internal sealed class WriteThroughConversationStore(
         return updated;
     }
 
-    public async Task<bool> UpdateTitleAsync(
-        string tenantId, string conversationId, string title,
-        CancellationToken cancellationToken = default)
-    {
-        bool updated = await durable.UpdateTitleAsync(
-            tenantId, conversationId, title, cancellationToken).ConfigureAwait(false);
-        if (updated)
-        {
-            await WarmAsync(tenantId, conversationId, cancellationToken).ConfigureAwait(false);
-        }
-        return updated;
-    }
-
     public Task<IReadOnlyList<ConversationRecord>> ListConversationsAsync(
         string tenantId, int skip, int take, CancellationToken cancellationToken = default) =>
         durable.ListConversationsAsync(tenantId, skip, take, cancellationToken);
