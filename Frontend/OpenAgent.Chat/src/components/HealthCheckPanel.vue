@@ -1,20 +1,8 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { api, fetchHealth, fetchHealthReport, getConnectionMode, getEngineBaseUrl, getRouterBaseUrl } from '../api'
+import { loadHealthCheckCache, mergeChecksWithSeed, saveHealthCheckCache, type CheckGroup, type CheckItem, type CheckStatus } from '../healthCheckCache'
 import type { HealthReport } from '../types'
-
-type CheckStatus = 'idle' | 'running' | 'ok' | 'warn' | 'error' | 'na'
-type CheckGroup = 'services' | 'infrastructure' | 'data'
-
-interface CheckItem {
-  key: string
-  group: CheckGroup
-  name: string
-  detail: string
-  status: CheckStatus
-  latencyMs?: number
-  data?: Record<string, unknown>
-}
 
 const mode = ref(getConnectionMode())
 const engineUrl = ref(getEngineBaseUrl())
@@ -22,6 +10,7 @@ const routerUrl = ref(getRouterBaseUrl())
 const running = ref(false)
 const checks = ref<CheckItem[]>([])
 const expanded = ref<Record<string, boolean>>({})
+const ranAt = ref('')
 
 const groupMeta: Record<CheckGroup, { label: string; eyebrow: string }> = {
   services: { label: '服务连接', eyebrow: 'SERVICES' },
@@ -41,6 +30,25 @@ const overall = computed(() => {
 const summary = computed(() => {
   const count = (status: CheckStatus) => checks.value.filter(item => item.status === status).length
   return `${count('ok')} 项正常 · ${count('warn')} 项降级 · ${count('error')} 项异常`
+})
+
+function formatRunAt(iso: string): string {
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return iso
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+}
+
+const runAtLabel = computed(() => {
+  if (!ranAt.value) return ''
+  const elapsedMs = Date.now() - new Date(ranAt.value).getTime()
+  if (Number.isNaN(elapsedMs) || elapsedMs < 0) return formatRunAt(ranAt.value)
+  const minutes = Math.floor(elapsedMs / 60000)
+  if (minutes < 1) return `刚刚（${formatRunAt(ranAt.value)}）`
+  if (minutes < 60) return `${minutes} 分钟前（${formatRunAt(ranAt.value)}）`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours} 小时前（${formatRunAt(ranAt.value)}）`
+  return `${Math.floor(hours / 24)} 天前（${formatRunAt(ranAt.value)}）`
 })
 
 function seeded(): CheckItem[] {
@@ -163,13 +171,26 @@ async function probeGateway(): Promise<void> {
 async function run(): Promise<void> {
   running.value = true
   checks.value = seeded().map(item => ({ ...item, status: 'running' }))
-  const tasks = [probeEngine(), probeGateway()]
-  if (mode.value === 'router') tasks.push(probeRouter())
-  await Promise.all(tasks)
-  running.value = false
+  try {
+    const tasks = [probeEngine(), probeGateway()]
+    if (mode.value === 'router') tasks.push(probeRouter())
+    await Promise.all(tasks)
+  } finally {
+    running.value = false
+    ranAt.value = new Date().toISOString()
+    saveHealthCheckCache(localStorage, { ranAt: ranAt.value, checks: checks.value })
+  }
 }
 
-defineExpose({ run })
+onMounted(() => {
+  const cache = loadHealthCheckCache(localStorage)
+  if (cache) {
+    checks.value = mergeChecksWithSeed(seeded(), cache.checks)
+    ranAt.value = cache.ranAt
+    return
+  }
+  void run()
+})
 </script>
 
 <template>
@@ -181,7 +202,7 @@ defineExpose({ run })
 
     <div class="health-banner" :class="overall.status">
       <span class="health-banner-dot" />
-      <div><strong>{{ overall.label }}</strong><small>{{ running ? '正在运行检测…' : summary }}</small></div>
+      <div><strong>{{ overall.label }}</strong><small>{{ running ? '正在运行检测…' : summary }}{{ ranAt ? ` · 上次运行 ${runAtLabel}` : '' }}</small></div>
     </div>
 
     <section v-for="group in groupOrder" :key="group" class="health-group">
