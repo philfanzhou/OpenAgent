@@ -82,7 +82,9 @@ internal sealed class AgentListQuery(
             Description = entity.Description,
             Status = (int)entity.Status,
             CurrentVersion = entity.CurrentVersion,
-            ApiFormat = entity.Config?.Llm.Format.ToString() ?? "unknown"
+            ApiFormat = entity.Config?.Llm?.Format.ToString() ?? "unknown",
+            LlmProvider = entity.Config?.Llm?.Provider ?? string.Empty,
+            LlmModel = entity.Config?.Llm?.ModelId ?? string.Empty
         });
     }
 }
