@@ -8,11 +8,15 @@ import type {
   ConnectionMode,
   CurrentUserContext,
   FileAsset,
+  HealthEntry,
+  HealthReport,
+  HealthReportItem,
   LlmProviderProfile,
   LlmTestResult,
   MessageFile,
   McpServerConfig,
   McpTestResult,
+  NativeHealthReport,
   RagConfig,
   RagInstanceConfig,
   RagTestResult,
@@ -135,6 +139,18 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (!response.ok) throw await readError(response)
   if (response.status === 204) return undefined as T
   return await response.json() as T
+}
+
+export async function fetchHealthReport(baseUrl: string): Promise<HealthReport> {
+  const response = await fetch(`${normalizeBaseUrl(baseUrl)}/health/report`, { headers: headers() })
+  if (!response.ok) throw await readError(response)
+  return await response.json() as HealthReport
+}
+
+export async function fetchHealth(baseUrl: string, path: '/health' | '/ready'): Promise<NativeHealthReport> {
+  const response = await fetch(`${normalizeBaseUrl(baseUrl)}${path}`, { headers: headers() })
+  if (!response.ok) throw await readError(response)
+  return await response.json() as NativeHealthReport
 }
 
 function normalizeConversation(record: ConversationRecord): ConversationRecord {

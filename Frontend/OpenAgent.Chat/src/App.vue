@@ -6,6 +6,7 @@ import ChatHeader from './components/ChatHeader.vue'
 import ChatMessages from './components/ChatMessages.vue'
 import ChatSidebar from './components/ChatSidebar.vue'
 import MessageComposer from './components/MessageComposer.vue'
+import HealthCheckPanel from './components/HealthCheckPanel.vue'
 import { AUTO_AGENT_ID, type AgentConfigEntity, type AgentSummary, type AuthConfig, type ConnectionMode, type ConversationMessage, type ConversationRecord, type CurrentUserContext, type LlmProviderProfile, type LlmTestResult, type McpServerConfig, type McpTestResult, type MessageFile, type PendingFile, type RagConfig, type RagInstanceConfig, type RagTestResult, type SkillInstanceConfig, type SkillsConfig } from './types'
 import { usePanelLayout } from './composables/usePanelLayout'
 
@@ -15,7 +16,8 @@ const engineUrl = ref(getEngineBaseUrl())
 const token = ref(getAccessToken())
 const tenantId = ref(getTenantId())
 const showSettings = ref(!(connectionMode.value === 'router' ? routerUrl.value : engineUrl.value))
-const activeSettings = ref<'gateway' | 'diagnostics' | 'llm' | 'agent' | 'mcp' | 'skill' | 'rag'>('gateway')
+const activeSettings = ref<'gateway' | 'health' | 'llm' | 'agent' | 'mcp' | 'skill' | 'rag'>('gateway')
+const healthPanel = ref<InstanceType<typeof HealthCheckPanel> | null>(null)
 const agents = ref<AgentSummary[]>([])
 const currentUser = ref<CurrentUserContext | null>(null)
 const conversations = ref<ConversationRecord[]>([])
@@ -62,20 +64,7 @@ const showLlmEditor = ref(false)
 const isNewLlm = ref(false)
 const pendingFiles = ref<PendingFile[]>([])
 const themeMode = ref<'light' | 'dark'>(localStorage.getItem('openagent.ui.theme') === 'dark' ? 'dark' : 'light')
-type DiagnosticKey = 'live' | 'ready' | 'catalog' | 'identity' | 'conversations'
-type DiagnosticStatus = 'idle' | 'running' | 'ok' | 'error'
-interface DiagnosticItem { key: DiagnosticKey; name: string; detail: string; status: DiagnosticStatus; elapsedMs?: number }
-const diagnostics = ref<DiagnosticItem[]>([
-  { key: 'live', name: 'Live', detail: '进程存活检查', status: 'idle' },
-  { key: 'ready', name: 'Ready', detail: '依赖与路由就绪检查', status: 'idle' },
-  { key: 'catalog', name: 'Agent Catalog', detail: '可见 Agent 与外部目录', status: 'idle' },
-  { key: 'identity', name: 'Identity', detail: '认证与租户上下文', status: 'idle' },
-  { key: 'conversations', name: 'Conversations', detail: '会话存储读取', status: 'idle' },
-])
-const runningDiagnostics = ref(false)
-
 const { sidebarCollapsed, contextCollapsed, toggleSidebar, toggleContext, startSidebarResize, startContextResize } = usePanelLayout()
-
 const currentMessages = computed(() => selectedConversation.value?.messages || [])
 const selectedSkill = computed(() => selectedSkillIndex.value >= 0 ? skillDraft.value.instances[selectedSkillIndex.value] || null : null)
 const enabledSkillIds = computed(() => new Set(skillDraft.value.enabledSkills))
@@ -887,28 +876,6 @@ async function testMcp(): Promise<void> {
   }
 }
 
-async function runDiagnostics(): Promise<void> {
-  runningDiagnostics.value = true
-  diagnostics.value = diagnostics.value.map(item => ({ ...item, status: 'running', elapsedMs: undefined }))
-  const checks: Record<DiagnosticKey, () => Promise<string>> = {
-    live: async () => { await api.health('/health'); return 'HTTP 200' },
-    ready: async () => { await api.health('/ready'); return `${activeEndpointLabel.value} 已就绪` },
-    catalog: async () => { const result = await api.listAgents(); return `${result.length} 个可见 Agent` },
-    identity: async () => { const result = await api.getCurrentUser(); return `${result.userId} · ${result.tenantId || '无租户'}` },
-    conversations: async () => { const result = await api.listConversations(); return `${result.length} 个会话` },
-  }
-  await Promise.all(diagnostics.value.map(async (item, index) => {
-    const startedAt = performance.now()
-    try {
-      const detail = await checks[item.key]()
-      diagnostics.value[index] = { ...item, detail, status: 'ok', elapsedMs: Math.round(performance.now() - startedAt) }
-    } catch (error) {
-      diagnostics.value[index] = { ...item, detail: error instanceof Error ? error.message : '请求失败', status: 'error', elapsedMs: Math.round(performance.now() - startedAt) }
-    }
-  }))
-  runningDiagnostics.value = false
-}
-
 function openSettings(panel: typeof activeSettings.value): void {
   activeSettings.value = panel
   showSettings.value = true
@@ -919,7 +886,7 @@ function openSettings(panel: typeof activeSettings.value): void {
   }
   if (panel === 'skill' || panel === 'rag') void loadConfig()
   if (panel === 'mcp') void loadMcp()
-  if (panel === 'diagnostics') void runDiagnostics()
+  if (panel === 'health') void healthPanel.value?.run()
 }
 
 function handleSettingsTabChange(name: string | number): void {
@@ -930,7 +897,7 @@ function handleSettingsTabChange(name: string | number): void {
   }
   if (name === 'skill' || name === 'rag') void loadConfig()
   if (name === 'mcp') void loadMcp()
-  if (name === 'diagnostics') void runDiagnostics()
+  if (name === 'health') void healthPanel.value?.run()
 }
 
 onMounted(() => {
@@ -959,7 +926,7 @@ onMounted(() => {
           <section><span class="context-label">ROUTING</span><strong>{{ routeMode }}</strong><p>{{ connectionMode === 'router' && selectedAgentId === AUTO_AGENT_ID ? '由意图识别 Agent 分析请求并选择目标。' : (selectedAgent?.description || selectedAgentId) }}</p><dl><div><dt>Agent</dt><dd>{{ connectionMode === 'router' && selectedAgentId === AUTO_AGENT_ID ? '由模型选择' : (selectedAgent?.name || selectedAgentId) }}</dd></div><div><dt>协议</dt><dd>{{ selectedAgent?.apiFormat || (connectionMode === 'router' ? '自动' : '—') }}</dd></div></dl></section>
           <section><span class="context-label">IDENTITY</span><dl><div><dt>用户</dt><dd>{{ currentUser?.userId || 'Guest' }}</dd></div><div><dt>租户</dt><dd>{{ currentUser?.tenantId || tenantId || '—' }}</dd></div><div><dt>{{ activeEndpointLabel }}</dt><dd :title="activeEndpointUrl">{{ activeEndpointHost }}</dd></div></dl></section>
           <section><span class="context-label">CONVERSATION</span><dl><div><dt>消息</dt><dd>{{ currentMessages.length }}</dd></div><div><dt>状态</dt><dd>{{ selectedConversation?.status ?? '新建' }}</dd></div><div><dt>ID</dt><dd class="truncate" :title="selectedConversation?.conversationId">{{ selectedConversation?.conversationId || '尚未创建' }}</dd></div></dl></section>
-          <el-button class="diagnostics-shortcut" @click="openSettings('diagnostics')">运行工作台诊断</el-button>
+          <el-button class="diagnostics-shortcut" @click="openSettings('health')">运行平台健康检查</el-button>
           <div class="context-resize" @pointerdown="startContextResize" />
         </aside>
       </div>
@@ -982,9 +949,9 @@ onMounted(() => {
             <div class="button-row"><el-button type="primary" @click="connect">保存并连接</el-button><el-button @click="api.health('/health').then(() => ElMessage.success('Live 健康检查通过')).catch(notifyError)">测试 Live</el-button><el-button @click="api.health('/ready').then(() => ElMessage.success('Ready 健康检查通过')).catch(notifyError)">测试 Ready</el-button></div>
           </section>
         </el-tab-pane>
-        <el-tab-pane label="诊断" name="diagnostics">
-          <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">SYSTEM CHECK</span><h3>工作台诊断</h3><p>从浏览器逐项验证当前 {{ activeEndpointLabel }}、身份、Agent 目录与会话读取，结果可直接用于联调报告。</p></div><el-button type="primary" :loading="runningDiagnostics" @click="runDiagnostics">运行全部</el-button></div>
-            <div class="diagnostic-grid"><article v-for="item in diagnostics" :key="item.key" :class="['diagnostic-card', item.status]"><div><span class="diagnostic-dot" /><strong>{{ item.name }}</strong><small v-if="item.elapsedMs !== undefined">{{ item.elapsedMs }} ms</small></div><p>{{ item.detail }}</p></article></div>
+        <el-tab-pane label="健康检查" name="health">
+          <section class="settings-section">
+            <HealthCheckPanel ref="healthPanel" />
           </section>
         </el-tab-pane>
         <el-tab-pane label="LLM 配置" name="llm">
