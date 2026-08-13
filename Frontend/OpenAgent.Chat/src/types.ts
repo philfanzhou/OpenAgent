@@ -9,6 +9,8 @@ export interface AgentSummary {
   status: number
   currentVersion: string
   apiFormat: string
+  llmProvider?: string
+  llmModel?: string
 }
 
 export interface CurrentUserContext {

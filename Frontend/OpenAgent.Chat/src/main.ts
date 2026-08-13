@@ -1,6 +1,7 @@
 import { createApp } from 'vue'
 import ElementPlus from 'element-plus'
 import 'element-plus/dist/index.css'
+import 'element-plus/theme-chalk/dark/css-vars.css'
 // Geist fonts — Latin/numbers (SIL OFL, commercial-free)
 import '@fontsource/geist/400.css'
 import '@fontsource/geist/500.css'

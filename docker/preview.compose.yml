@@ -1,12 +1,11 @@
 # 并行预览实例（仅 engine + router + chat，共享主 openagent 栈的基础设施）
 #
 # 由 scripts/preview.sh 管理生命周期。不要直接 docker compose up：
-# 端口/Redis DB 槽位需经脚本原子分配，避免与其他预览或主实例冲突。
+# 端口需经脚本原子分配，避免与其他预览或主实例冲突。
 #
 # 共享基础设施（主栈容器）通过 host.docker.internal 直连：
 #   postgres / redis / minio 必须在主 openagent 栈中运行并发布到宿主机。
-# 每个预览用独立的 Redis DB 序号（PREVIEW_REDIS_DB）隔离注册表/限流/缓存，
-# 与主实例（DB 0）互不干扰。
+# 测试环境：预览直接复用主实例的 Redis DB 0，共享 agent 目录等应用数据。
 services:
   engine:
     build:
@@ -16,7 +15,7 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:5208
       ConnectionStrings__OpenAgentDatabase: Host=host.docker.internal;Port=${OPENAGENT_POSTGRES_PORT:-5432};Database=openagent;Username=openagent;Password=openagent
-      ConnectionStrings__Redis: host.docker.internal:${OPENAGENT_REDIS_PORT:-6379},defaultDatabase=${PREVIEW_REDIS_DB:-1}
+      ConnectionStrings__Redis: host.docker.internal:${OPENAGENT_REDIS_PORT:-6379},defaultDatabase=0
       Database__ApplyMigrationsOnStartup: "true"
       ConversationCache__Enabled: "true"
       FileAssets__Enabled: "true"
@@ -49,7 +48,7 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:5001
-      ConnectionStrings__Redis: host.docker.internal:${OPENAGENT_REDIS_PORT:-6379},defaultDatabase=${PREVIEW_REDIS_DB:-1}
+      ConnectionStrings__Redis: host.docker.internal:${OPENAGENT_REDIS_PORT:-6379},defaultDatabase=0
       OpenTelemetry__OtlpEndpoint: ${OPENAGENT_OTLP_ENDPOINT:-http://host.docker.internal:4317}
       OpenTelemetry__ServiceName: agent-router
       OpenTelemetry__ServiceVersion: preview-${PREVIEW_SLUG:-dev}

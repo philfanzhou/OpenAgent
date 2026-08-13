@@ -219,13 +219,15 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .el-input__inner { color: var(--text); font-size: 14px; }
 .el-input__inner::placeholder { color: var(--text-faint); }
 .el-textarea__inner {
-  border: 0;
   border-radius: var(--r-md);
   color: var(--text);
-  background: transparent;
+  background: var(--bg);
   font-family: var(--font-sans);
-  box-shadow: none;
+  box-shadow: 0 0 0 1px var(--border) inset;
+  transition: box-shadow var(--dur) var(--ease);
 }
+.el-textarea__inner:hover { box-shadow: 0 0 0 1px var(--border-strong) inset; }
+.el-textarea__inner:focus { box-shadow: 0 0 0 1px var(--border-focus) inset; }
 
 /* Form */
 .el-form-item__label { color: var(--text-secondary); font-size: 14px; font-weight: 600; }
