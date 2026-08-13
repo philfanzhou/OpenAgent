@@ -96,6 +96,8 @@ watch(connectionMode, mode => {
 
 function applyTheme(): void {
   document.documentElement.dataset.theme = themeMode.value
+  // Element Plus 暗色主题依赖 html.dark class + dark css-vars。
+  document.documentElement.classList.toggle('dark', themeMode.value === 'dark')
   localStorage.setItem('openagent.ui.theme', themeMode.value)
 }
 
@@ -388,7 +390,7 @@ function newConversation(): void {
 }
 
 function handleAgentChange(): void {
-  newConversation()
+  // 切换 Agent 时保留当前会话与输入内容：实际场景中 Agent 可随时切换。
   config.value = null
   mcpServers.value = []
   selectedMcpIndex.value = -1
@@ -396,6 +398,23 @@ function handleAgentChange(): void {
   selectedSkillIndex.value = -1
   ragInstances.value = []
   selectedRagIndex.value = -1
+}
+
+function llmName(agent: AgentSummary): string {
+  if (agent.llmProvider) {
+    const profile = llmProfiles.value.find(item => item.id === agent.llmProvider)
+    return profile?.name || agent.llmProvider
+  }
+  return agent.llmModel || '未配置模型'
+}
+
+function llmId(agent: AgentSummary): string {
+  if (agent.llmModel) return agent.llmModel
+  if (agent.llmProvider) {
+    const profile = llmProfiles.value.find(item => item.id === agent.llmProvider)
+    return profile?.modelId || ''
+  }
+  return ''
 }
 
 function selectAgent(agentId: string): void {
@@ -539,6 +558,12 @@ async function send(): Promise<void> {
     await hydrateFilePreviews(persisted)
     selectedConversation.value = persisted
     await refreshConversations()
+    // 初次会话：若后端意图识别将对话路由到了其他 Agent，更新右上角选择器并提示。
+    if (isNewConversation && persisted.agentId && persisted.agentId !== requestedAgentId) {
+      const routed = agents.value.find(agent => agent.agentId === persisted.agentId)
+      selectedAgentId.value = persisted.agentId
+      ElMessage.info(`已由意图识别路由到 Agent「${routed?.name || persisted.agentId}」`)
+    }
   } catch (error) {
     conversation.status = 'Failed'
     const lastMessage = conversation.messages?.at(-1)
@@ -822,7 +847,7 @@ async function saveConfig(): Promise<void> {
     selectedAgentId.value = agentId
     agents.value = [
       ...agents.value.filter(item => item.agentId !== agentId),
-      { agentId, name: saved.name, description: saved.description, status: saved.status, currentVersion: saved.currentVersion, apiFormat: String(saved.config.llm.format || '') },
+      { agentId, name: saved.name, description: saved.description, status: saved.status, currentVersion: saved.currentVersion, apiFormat: String(saved.config.llm.format || ''), llmProvider: saved.config.llm.provider, llmModel: saved.config.llm.modelId },
     ]
     isNewAgent.value = false
     ElMessage.success('Agent 配置已保存')
@@ -915,7 +940,7 @@ onMounted(() => {
 
       <div class="workspace-grid" :class="{ 'context-collapsed': contextCollapsed }">
         <section class="chat-card">
-          <ChatMessages :messages="currentMessages" :loading="loadingConversation" @suggest="message = $event" @download="downloadFile" />
+          <ChatMessages :messages="currentMessages" :loading="loadingConversation" :current-user="currentUser" :streaming="loading" @suggest="message = $event" @download="downloadFile" />
           <MessageComposer :model-value="message" :endpoint-url="activeEndpointUrl" :endpoint-label="activeEndpointLabel" :selected-agent-id="selectedAgentId" :loading="loading" :pending-files="pendingFiles" @update:model-value="message = $event" @files-change="handleFilesChange" @retry-file="retryPendingFile" @send="send" />
         </section>
         <aside class="context-panel">
@@ -958,7 +983,7 @@ onMounted(() => {
         </el-tab-pane>
         <el-tab-pane label="Agent 配置" name="agent">
           <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">AGENT RUNTIME</span><h3>Agent 配置</h3><p>Agent 以卡片方式管理，点击编辑后在独立窗口配置模型与运行参数。</p></div><div class="section-actions"><el-button @click="refreshAgents" :loading="refreshingAgents">刷新 Agent</el-button><el-button type="primary" plain @click="createAgent">新增 Agent</el-button></div></div>
-            <div class="agent-card-grid"><article v-for="agent in agents" :key="agent.agentId" class="agent-card"><div class="agent-card-top"><span class="resource-avatar agent-avatar">{{ (agent.name || agent.agentId).slice(0, 1) }}</span><span class="resource-status" /></div><h4>{{ agent.name || agent.agentId }}</h4><p>{{ agent.description || agent.agentId }}</p><div class="agent-card-meta"><span>{{ agent.apiFormat || '未配置模型' }}</span><span>v{{ agent.currentVersion || 'draft' }}</span></div><el-button type="primary" plain @click="editAgent(agent.agentId)">编辑配置</el-button></article><button class="agent-card agent-card-add" @click="createAgent"><span>＋</span><strong>新增 Agent</strong><small>创建独立运行配置</small></button><div v-if="!agents.length" class="resource-empty">还没有 Agent</div></div>
+            <div class="agent-card-grid"><article v-for="agent in agents" :key="agent.agentId" class="agent-card"><h4>{{ agent.name || agent.agentId }}</h4><p>{{ agent.description || agent.agentId }}</p><div class="agent-card-meta"><span>{{ llmName(agent) }}</span><span>{{ llmId(agent) }}</span></div><el-button type="primary" plain @click="editAgent(agent.agentId)">编辑配置</el-button></article><button class="agent-card agent-card-add" @click="createAgent"><span>＋</span><strong>新增 Agent</strong><small>创建独立运行配置</small></button><div v-if="!agents.length" class="resource-empty">还没有 Agent</div></div>
           </section>
         </el-tab-pane>
         <el-tab-pane label="MCP 绑定" name="mcp">

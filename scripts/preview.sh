@@ -114,8 +114,8 @@ cmd_up() {
         || die "无可用 router 端口($ROUTER_BASE-$ROUTER_MAX)"
       chat_port="$(pick_next "$CHAT_BASE" "$CHAT_MAX" "$(used_ports 4)")" \
         || die "无可用 chat 端口($CHAT_BASE-$CHAT_MAX)"
-      redis_db="$(pick_next 1 "$REDIS_DB_MAX" "$(used_ports 5)")" \
-        || die "无可用 Redis DB 序号(1-$REDIS_DB_MAX)"
+      # 测试环境直接复用主实例的 Redis DB 0，便于共享 agent 目录等应用数据。
+      redis_db=0
       printf '%s\t%s\t%s\t%s\t%s\n' "$slug" "$engine_port" "$router_port" "$chat_port" "$redis_db" >>"$ALLOC_FILE"
       line="$(grep -P "^${slug}\t" "$ALLOC_FILE")"
     fi
