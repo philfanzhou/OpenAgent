@@ -58,6 +58,13 @@ internal static class AgentMessageAdapter
                 message.ToolName,
                 arguments));
         }
+        else if (role == Microsoft.Extensions.AI.ChatRole.Assistant
+            && string.IsNullOrWhiteSpace(content))
+        {
+            // 中止/失败时可能存储正文为空、仅含 reasoning 元数据的 assistant 消息；
+            // 空正文的 assistant 消息会让部分模型拒绝续接请求，加载历史时跳过。
+            return null;
+        }
 
         return chatMessage;
     }
@@ -267,18 +274,24 @@ internal static class AgentMessageAdapter
     {
         foreach (FileAssetContent file in files)
         {
-            if (IsTextFile(file.Asset.MediaType))
+            AttachFile(chatMessage, file);
+        }
+    }
+
+    /// <summary>把一个文件资产以文本或二进制附件形式挂到某条 ChatMessage 上（供续接历史重建附件使用）。</summary>
+    internal static void AttachFile(ChatMessage chatMessage, FileAssetContent file)
+    {
+        if (IsTextFile(file.Asset.MediaType))
+        {
+            chatMessage.Contents.Add(new TextContent(
+                $"[File: {file.Asset.FileName}]\n{DecodeUtf8(file)}"));
+        }
+        else
+        {
+            chatMessage.Contents.Add(new DataContent(file.Data, file.Asset.MediaType)
             {
-                chatMessage.Contents.Add(new TextContent(
-                    $"[File: {file.Asset.FileName}]\n{DecodeUtf8(file)}"));
-            }
-            else
-            {
-                chatMessage.Contents.Add(new DataContent(file.Data, file.Asset.MediaType)
-                {
-                    Name = file.Asset.FileName
-                });
-            }
+                Name = file.Asset.FileName
+            });
         }
     }
 

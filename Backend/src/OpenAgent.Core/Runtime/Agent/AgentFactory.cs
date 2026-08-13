@@ -53,8 +53,11 @@ internal sealed class AgentFactory
         IChatClient chatClient = new FunctionInvokingChatClient(modelClient)
         {
             AllowConcurrentInvocation = false,
+            // 工具调用失败时捕获异常回传给模型重试，而不是让整个会话失败。
+            // IncludeDetailedErrors 保持 false：不把原始异常消息/内部路径泄露给模型，
+            // 工具侧的校验失败统一返回净化后的错误文本（见 FileAssetCapabilitySource）。
             IncludeDetailedErrors = false,
-            MaximumConsecutiveErrorsPerRequest = 0,
+            MaximumConsecutiveErrorsPerRequest = 3,
             MaximumIterationsPerRequest = profile.Config.MaxTurns > 0 ? profile.Config.MaxTurns : 5,
             TerminateOnUnknownCalls = true
         };

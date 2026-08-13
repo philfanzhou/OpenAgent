@@ -137,7 +137,8 @@ body {
   -webkit-text-size-adjust: 100%;
 }
 button, input, textarea, select { font: inherit; color: inherit; }
-::selection { background: var(--accent-soft); }
+::selection { background: #a8c3ff; color: #0c1120; }
+html[data-theme='dark'] ::selection { background: #3d5d99; color: #eef3fb; }
 
 /* Scrollbars — slim, OpenAI-like */
 * { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }

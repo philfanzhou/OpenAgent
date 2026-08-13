@@ -27,8 +27,10 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
     private readonly IConversationLock _conversationLock;
     private readonly ConversationSessionStore _store;
     private readonly ILogger<PlatformChatHistory> _logger;
+    private readonly IFileAssetService _fileService;
     private readonly List<ConversationMessage> _pending = [];
     private readonly StringBuilder _partialAssistant = new();
+    private readonly StringBuilder _partialReasoning = new();
     private IConversationLockHandle? _lockHandle;
     private int _currentVersion;
     private int _nextSequence = 1;
@@ -46,7 +48,8 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         FileAssetExecutionContext fileExecution,
         IConversationLock conversationLock,
         ConversationSessionStore store,
-        ILogger<PlatformChatHistory> logger)
+        ILogger<PlatformChatHistory> logger,
+        IFileAssetService fileService)
     {
         _conversation = conversation;
         _agentId = agentId;
@@ -56,6 +59,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         _conversationLock = conversationLock;
         _store = store;
         _logger = logger;
+        _fileService = fileService;
     }
 
     internal void AppendPartial(string content)
@@ -64,6 +68,28 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         {
             _partialAssistant.Append(content);
         }
+    }
+
+    internal void AppendPartialReasoning(string reasoning)
+    {
+        if (!string.IsNullOrEmpty(reasoning))
+        {
+            _partialReasoning.Append(reasoning);
+        }
+    }
+
+    /// <summary>把中止/失败时已产生的部分正文与思考内容组装成一条 assistant 消息（含 reasoning 元数据）。</summary>
+    private ConversationMessage BuildPartialMessage()
+    {
+        string reasoning = _partialReasoning.ToString();
+        IReadOnlyDictionary<string, string>? metadata = reasoning.Length > 0
+            ? new Dictionary<string, string>(StringComparer.Ordinal) { ["Reasoning"] = reasoning }
+            : null;
+        return ConversationSessionStore.Message(
+            _nextSequence++,
+            "assistant",
+            _partialAssistant.ToString(),
+            metadata: metadata);
     }
 
     protected override async ValueTask<IEnumerable<ChatMessage>> ProvideChatHistoryAsync(
@@ -106,17 +132,69 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
                 cancellationToken).ConfigureAwait(false);
             _currentVersion = loaded.CurrentVersion;
             _nextSequence = loaded.NextSequence;
-            List<ChatMessage> history = loaded.History
-                .Select(AgentMessageAdapter.FromStored)
-                .Where(message => message != null)
-                .Cast<ChatMessage>()
-                .ToList();
+            List<ChatMessage> history = await BuildHistoryAsync(loaded.History, cancellationToken).ConfigureAwait(false);
             return RepairToolHistory(history);
         }
         catch
         {
             await ReleaseLockAsync().ConfigureAwait(false);
             throw;
+        }
+    }
+
+    /// <summary>
+    /// 把存储的会话消息转成模型输入，并为历史用户消息重建文件附件
+    /// （否则续接会话时模型看不到上一次上传的图片等文件）。
+    /// </summary>
+    private async Task<List<ChatMessage>> BuildHistoryAsync(
+        IReadOnlyList<ConversationMessage> stored,
+        CancellationToken cancellationToken)
+    {
+        var history = new List<ChatMessage>(stored.Count);
+        foreach (ConversationMessage message in stored)
+        {
+            ChatMessage? chatMessage = AgentMessageAdapter.FromStored(message);
+            if (chatMessage == null)
+            {
+                continue;
+            }
+            if (string.Equals(message.Role, "user", StringComparison.OrdinalIgnoreCase)
+                && message.FileIds.Count > 0)
+            {
+                await AttachFilesAsync(chatMessage, message.FileIds, cancellationToken).ConfigureAwait(false);
+            }
+            history.Add(chatMessage);
+        }
+        return history;
+    }
+
+    private async Task AttachFilesAsync(
+        ChatMessage chatMessage,
+        IReadOnlyList<string> fileIds,
+        CancellationToken cancellationToken)
+    {
+        FileAssetScope scope = new()
+        {
+            TenantId = _conversation.TenantId ?? string.Empty,
+            UserId = _conversation.UserId ?? string.Empty,
+            ConversationId = _conversation.ConversationId
+        };
+        foreach (string fileId in fileIds.Distinct(StringComparer.Ordinal))
+        {
+            try
+            {
+                FileAssetContent content = await _fileService.ReadAsync(
+                    fileId, scope, cancellationToken).ConfigureAwait(false);
+                AgentMessageAdapter.AttachFile(chatMessage, content);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                // 历史中的文件已删除或无权限时忽略，不阻断续接。
+            }
         }
     }
 
@@ -238,12 +316,9 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
 
             RecordUser();
             _finalized = true;
-            if (_partialAssistant.Length > 0)
+            if (_partialAssistant.Length > 0 || _partialReasoning.Length > 0)
             {
-                _pending.Add(ConversationSessionStore.Message(
-                    _nextSequence++,
-                    "assistant",
-                    _partialAssistant.ToString()));
+                _pending.Add(BuildPartialMessage());
             }
 
             ConversationStatus status = context.InvokeException is OperationCanceledException
@@ -271,12 +346,9 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
             {
                 _finalized = true;
                 RecordUser();
-                if (_partialAssistant.Length > 0)
+                if (_partialAssistant.Length > 0 || _partialReasoning.Length > 0)
                 {
-                    _pending.Add(ConversationSessionStore.Message(
-                        _nextSequence++,
-                        "assistant",
-                        _partialAssistant.ToString()));
+                    _pending.Add(BuildPartialMessage());
                 }
                 await _store.SaveAsync(
                     _conversation,
