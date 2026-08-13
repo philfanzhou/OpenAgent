@@ -34,8 +34,68 @@ public class FileAssetServiceTests
         Assert.Equal(FileAssetState.Ready, asset.State);
         Assert.Equal("tenant-a", asset.TenantId);
         Assert.Equal("user-a", asset.OwnerUserId);
-        Assert.Equal($"files/{asset.FileId}", asset.ObjectKey);
+        Assert.Equal("conversation-a", asset.ConversationId);
+        Assert.Equal($"files/tenant-a/user-a/conversation-a/{asset.FileId}", asset.ObjectKey);
+        Assert.Equal("tenant-a", objects.LastRequest?.TenantId);
+        Assert.Equal("user-a", objects.LastRequest?.UserId);
+        Assert.Equal("conversation-a", objects.LastRequest?.ConversationId);
         Assert.Equal("# Hello", System.Text.Encoding.UTF8.GetString(objects.LastContent));
+    }
+
+    [Theory]
+    [InlineData("tenant-b", "user-a", "conversation-a")]
+    [InlineData("tenant-a", "user-b", "conversation-a")]
+    [InlineData("tenant-a", "user-a", "conversation-b")]
+    public async Task ReadAsync_OutsideAssetScope_DoesNotReadObject(
+        string tenantId,
+        string userId,
+        string conversationId)
+    {
+        var repository = new RecordingRepository();
+        var objects = new RecordingObjectStore { Content = [1, 2, 3] };
+        FileAsset asset = CreateAsset("notes.md", "text/markdown");
+        repository.Assets[asset.FileId] = asset;
+        IFileAssetService service = CreateService(repository, objects);
+
+        await Assert.ThrowsAsync<OpenAgent.Contracts.Security.AgentException>(() => service.ReadAsync(
+            asset.FileId,
+            new FileAssetScope
+            {
+                TenantId = tenantId,
+                UserId = userId,
+                ConversationId = conversationId
+            },
+            CancellationToken.None));
+
+        Assert.Equal(0, objects.ReadCount);
+    }
+
+    [Fact]
+    public async Task UploadAsync_AnonymousUser_UsesAnonymousUserPartition()
+    {
+        var repository = new RecordingRepository();
+        var objects = new RecordingObjectStore();
+        IFileAssetService service = CreateService(repository, objects);
+        await using var content = new MemoryStream("anonymous"u8.ToArray());
+
+        FileAsset asset = await service.UploadAsync(
+            new FileAssetCreateRequest
+            {
+                FileName = "notes.txt",
+                MediaType = "text/plain",
+                Source = FileAssetSource.UserUpload
+            },
+            content,
+            new FileAssetScope
+            {
+                TenantId = "tenant-a",
+                UserId = "anonymous",
+                ConversationId = "conversation-a"
+            },
+            CancellationToken.None);
+
+        Assert.Equal("anonymous", asset.OwnerUserId);
+        Assert.Contains("/anonymous/", asset.ObjectKey, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -49,7 +109,12 @@ public class FileAssetServiceTests
 
         await Assert.ThrowsAsync<OpenAgent.Contracts.Security.AgentException>(() => service.ReadTextAsync(
             asset.FileId,
-            new FileAssetScope { TenantId = "tenant-a", UserId = "user-a" },
+            new FileAssetScope
+            {
+                TenantId = "tenant-a",
+                UserId = "user-a",
+                ConversationId = "conversation-a"
+            },
             CancellationToken.None));
     }
 
@@ -70,6 +135,7 @@ public class FileAssetServiceTests
         FileId = "file-a",
         TenantId = "tenant-a",
         OwnerUserId = "user-a",
+        ConversationId = "conversation-a",
         FileName = fileName,
         MediaType = mediaType,
         Length = 3,
@@ -105,21 +171,30 @@ public class FileAssetServiceTests
     {
         public byte[] Content { get; set; } = [];
         public byte[] LastContent { get; private set; } = [];
+        public FileObjectWriteRequest? LastRequest { get; private set; }
+        public int ReadCount { get; private set; }
 
         public async Task<FileObjectReference> WriteAsync(
             FileObjectWriteRequest request,
             Stream content,
             CancellationToken cancellationToken)
         {
+            LastRequest = request;
             await using var buffer = new MemoryStream();
             await content.CopyToAsync(buffer, cancellationToken);
             LastContent = buffer.ToArray();
             Content = LastContent;
-            return new FileObjectReference { ObjectKey = $"files/{request.FileId}" };
+            return new FileObjectReference
+            {
+                ObjectKey = $"files/{request.TenantId}/{request.UserId}/{request.ConversationId}/{request.FileId}"
+            };
         }
 
-        public Task<byte[]> ReadAsync(string objectKey, CancellationToken cancellationToken) =>
-            Task.FromResult(Content);
+        public Task<byte[]> ReadAsync(string objectKey, CancellationToken cancellationToken)
+        {
+            ReadCount++;
+            return Task.FromResult(Content);
+        }
 
         public Task DeleteAsync(string objectKey, CancellationToken cancellationToken) => Task.CompletedTask;
     }

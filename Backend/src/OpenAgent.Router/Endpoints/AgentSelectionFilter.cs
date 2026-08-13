@@ -8,6 +8,8 @@ internal sealed class AgentSelectionFilter(
     IAgentSelectionService selectionService,
     IAgentUserContext userContext) : IEndpointFilter
 {
+    private const string NewConversationHeaderName = "X-New-Conversation";
+
     public async ValueTask<object?> InvokeAsync(
         EndpointFilterInvocationContext invocationContext,
         EndpointFilterDelegate next)
@@ -34,8 +36,14 @@ internal sealed class AgentSelectionFilter(
                 detail: "The request body must contain valid JSON.");
         }
 
-        string? routingConversationId = request.ConversationId
-            ?? context.Request.Headers["X-Conversation-Id"].FirstOrDefault();
+        bool routeAsNewConversation = bool.TryParse(
+            context.Request.Headers[NewConversationHeaderName].FirstOrDefault(),
+            out bool isNewConversation)
+            && isNewConversation;
+        string? routingConversationId = routeAsNewConversation
+            ? null
+            : request.ConversationId
+                ?? context.Request.Headers["X-Conversation-Id"].FirstOrDefault();
         string? explicitAgentId = string.IsNullOrWhiteSpace(request.AgentId)
             ? context.Request.Headers["X-Agent-Id"].FirstOrDefault()
             : request.AgentId;

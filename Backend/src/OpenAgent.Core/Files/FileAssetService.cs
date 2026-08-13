@@ -39,6 +39,7 @@ internal sealed class FileAssetService : IFileAssetService
             FileId = fileId,
             TenantId = scope.TenantId,
             OwnerUserId = scope.UserId,
+            ConversationId = scope.ConversationId!,
             FileName = Path.GetFileName(request.FileName),
             MediaType = NormalizeMediaType(request.MediaType),
             Length = data.LongLength,
@@ -58,6 +59,8 @@ internal sealed class FileAssetService : IFileAssetService
                 {
                     FileId = fileId,
                     TenantId = scope.TenantId,
+                    UserId = scope.UserId,
+                    ConversationId = scope.ConversationId!,
                     FileName = pending.FileName,
                     MediaType = pending.MediaType,
                     Sha256 = sha256
@@ -76,10 +79,20 @@ internal sealed class FileAssetService : IFileAssetService
         }
     }
 
-    public Task<FileAsset?> GetAsync(string fileId, CancellationToken cancellationToken)
+    public async Task<FileAsset?> GetAsync(
+        string fileId,
+        FileAssetScope scope,
+        CancellationToken cancellationToken)
     {
         EnsureEnabled();
-        return _repository.GetAsync(fileId, cancellationToken);
+        ValidateScope(scope);
+        if (string.IsNullOrWhiteSpace(fileId))
+        {
+            return null;
+        }
+
+        FileAsset? asset = await _repository.GetAsync(fileId, cancellationToken).ConfigureAwait(false);
+        return asset != null && IsInScope(asset, scope) ? asset : null;
     }
 
     public async Task<FileAssetContent> ReadAsync(
@@ -89,7 +102,7 @@ internal sealed class FileAssetService : IFileAssetService
     {
         EnsureEnabled();
         ValidateScope(scope);
-        FileAsset asset = await GetReadyAssetAsync(fileId, cancellationToken).ConfigureAwait(false);
+        FileAsset asset = await GetReadyAssetAsync(fileId, scope, cancellationToken).ConfigureAwait(false);
         byte[] data = await _objectStore.ReadAsync(asset.ObjectKey, cancellationToken).ConfigureAwait(false);
         return new FileAssetContent { Asset = asset, Data = data };
     }
@@ -126,7 +139,10 @@ internal sealed class FileAssetService : IFileAssetService
         }
     }
 
-    private async Task<FileAsset> GetReadyAssetAsync(string fileId, CancellationToken cancellationToken)
+    private async Task<FileAsset> GetReadyAssetAsync(
+        string fileId,
+        FileAssetScope scope,
+        CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(fileId))
         {
@@ -134,7 +150,7 @@ internal sealed class FileAssetService : IFileAssetService
         }
 
         FileAsset? asset = await _repository.GetAsync(fileId, cancellationToken).ConfigureAwait(false);
-        if (asset == null)
+        if (asset == null || !IsInScope(asset, scope))
         {
             throw new AgentException(AgentErrorCode.InvalidRequest, $"File '{fileId}' was not found.");
         }
@@ -197,7 +213,16 @@ internal sealed class FileAssetService : IFileAssetService
         {
             throw new AgentException(AgentErrorCode.InvalidRequest, "UserId is required for file assets.");
         }
+        if (string.IsNullOrWhiteSpace(scope.ConversationId))
+        {
+            throw new AgentException(AgentErrorCode.InvalidRequest, "ConversationId is required for file assets.");
+        }
     }
+
+    private static bool IsInScope(FileAsset asset, FileAssetScope scope) =>
+        string.Equals(asset.TenantId, scope.TenantId, StringComparison.Ordinal)
+        && string.Equals(asset.OwnerUserId, scope.UserId, StringComparison.Ordinal)
+        && string.Equals(asset.ConversationId, scope.ConversationId, StringComparison.Ordinal);
 
     private bool IsAllowedMediaType(string mediaType) => _options.AllowedMediaTypes.Any(allowed =>
         allowed.EndsWith("/*", StringComparison.Ordinal)
@@ -229,6 +254,7 @@ internal sealed class FileAssetService : IFileAssetService
         FileId = asset.FileId,
         TenantId = asset.TenantId,
         OwnerUserId = asset.OwnerUserId,
+        ConversationId = asset.ConversationId,
         FileName = asset.FileName,
         MediaType = asset.MediaType,
         Length = asset.Length,

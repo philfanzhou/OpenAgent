@@ -226,36 +226,39 @@ export const api = {
     return request<ConversationRecord>(`/api/v1/agent/conversations/${encodeURIComponent(id)}`).then(normalizeConversation)
   },
 
-  async uploadFile(file: File): Promise<FileAsset> {
+  async uploadFile(file: File, conversationId: string): Promise<FileAsset> {
     const form = new FormData()
     form.set('file', file, file.name)
-    const response = await fetch(`${requireBaseUrl()}/api/v1/agent/files`, {
-      method: 'POST',
-      headers: headers(),
-      body: form,
-    })
+    const response = await fetch(
+      `${requireBaseUrl()}/api/v1/agent/files?conversationId=${encodeURIComponent(conversationId)}`,
+      {
+        method: 'POST',
+        headers: headers(),
+        body: form,
+      },
+    )
     if (!response.ok) throw await readError(response)
     return await response.json() as FileAsset
   },
 
-  async loadFilePreview(fileId: string): Promise<string> {
-    const response = await fetch(`${requireBaseUrl()}/api/v1/agent/files/${encodeURIComponent(fileId)}/content`, {
+  async loadFilePreview(fileId: string, conversationId: string): Promise<string> {
+    const response = await fetch(`${requireBaseUrl()}/api/v1/agent/files/${encodeURIComponent(fileId)}/content?conversationId=${encodeURIComponent(conversationId)}`, {
       headers: headers(),
     })
     if (!response.ok) throw await readError(response)
     return URL.createObjectURL(await response.blob())
   },
 
-  async readFileText(fileId: string): Promise<string> {
-    const response = await fetch(`${requireBaseUrl()}/api/v1/agent/files/${encodeURIComponent(fileId)}/content`, {
+  async readFileText(fileId: string, conversationId: string): Promise<string> {
+    const response = await fetch(`${requireBaseUrl()}/api/v1/agent/files/${encodeURIComponent(fileId)}/content?conversationId=${encodeURIComponent(conversationId)}`, {
       headers: headers(),
     })
     if (!response.ok) throw await readError(response)
     return await response.text()
   },
 
-  async downloadFile(fileId: string, fileName: string): Promise<void> {
-    const response = await fetch(`${requireBaseUrl()}/api/v1/agent/files/${encodeURIComponent(fileId)}/download`, {
+  async downloadFile(fileId: string, fileName: string, conversationId: string): Promise<void> {
+    const response = await fetch(`${requireBaseUrl()}/api/v1/agent/files/${encodeURIComponent(fileId)}/download?conversationId=${encodeURIComponent(conversationId)}`, {
       headers: headers(),
     })
     if (!response.ok) throw await readError(response)
@@ -384,6 +387,7 @@ export const api = {
   ): AsyncGenerator<StreamEvent> {
     const requestHeaders = headers({ 'Content-Type': 'application/json' })
     if (routingConversationId) requestHeaders.set('X-Conversation-Id', routingConversationId)
+    else if (conversationId) requestHeaders.set('X-New-Conversation', 'true')
     const response = await fetch(`${requireBaseUrl()}/api/v1/agent/chat/stream`, {
       method: 'POST',
       headers: requestHeaders,
@@ -418,7 +422,11 @@ export const api = {
   },
 }
 
-export function makeLocalConversation(agentId: string, message: string): ConversationRecord {
+export function makeLocalConversation(
+  agentId: string,
+  message: string,
+  conversationId: string = crypto.randomUUID(),
+): ConversationRecord {
   const now = new Date().toISOString()
   const userMessage: ConversationMessage = {
     messageId: crypto.randomUUID(),
@@ -428,7 +436,7 @@ export function makeLocalConversation(agentId: string, message: string): Convers
     timestamp: now,
   }
   return {
-    conversationId: crypto.randomUUID(),
+    conversationId,
     tenantId: getTenantId(),
     userId: 'local',
     agentId,

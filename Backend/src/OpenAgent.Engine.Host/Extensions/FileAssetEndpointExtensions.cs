@@ -28,6 +28,7 @@ internal static class FileAssetEndpointExtensions
     private static async Task<IResult> UploadAsync(
         [FromServices] IFileAssetService files,
         HttpContext context,
+        [FromQuery] string conversationId,
         CancellationToken cancellationToken)
     {
         IFormCollection form = await context.Request.ReadFormAsync(cancellationToken).ConfigureAwait(false);
@@ -46,17 +47,24 @@ internal static class FileAssetEndpointExtensions
                 Source = FileAssetSource.UserUpload
             },
             content,
-            CreateScope(context),
+            CreateScope(context, conversationId),
             cancellationToken).ConfigureAwait(false);
-        return Results.Created($"/api/v1/agent/files/{asset.FileId}", ToResponse(asset));
+        return Results.Created(
+            $"/api/v1/agent/files/{asset.FileId}?conversationId={Uri.EscapeDataString(conversationId)}",
+            ToResponse(asset));
     }
 
     private static async Task<IResult> GetAsync(
         [FromServices] IFileAssetService files,
+        HttpContext context,
         string fileId,
+        [FromQuery] string conversationId,
         CancellationToken cancellationToken)
     {
-        FileAsset? asset = await files.GetAsync(fileId, cancellationToken).ConfigureAwait(false);
+        FileAsset? asset = await files.GetAsync(
+            fileId,
+            CreateScope(context, conversationId),
+            cancellationToken).ConfigureAwait(false);
         return asset == null ? Results.NotFound() : Results.Ok(ToResponse(asset));
     }
 
@@ -64,11 +72,12 @@ internal static class FileAssetEndpointExtensions
         [FromServices] IFileAssetService files,
         HttpContext context,
         string fileId,
+        [FromQuery] string conversationId,
         CancellationToken cancellationToken)
     {
         FileAssetContent content = await files.ReadAsync(
             fileId,
-            CreateScope(context),
+            CreateScope(context, conversationId),
             cancellationToken).ConfigureAwait(false);
         return Results.File(content.Data, content.Asset.MediaType, enableRangeProcessing: false);
     }
@@ -77,11 +86,12 @@ internal static class FileAssetEndpointExtensions
         [FromServices] IFileAssetService files,
         HttpContext context,
         string fileId,
+        [FromQuery] string conversationId,
         CancellationToken cancellationToken)
     {
         FileAssetContent content = await files.ReadAsync(
             fileId,
-            CreateScope(context),
+            CreateScope(context, conversationId),
             cancellationToken).ConfigureAwait(false);
         return Results.File(
             content.Data,
@@ -90,10 +100,11 @@ internal static class FileAssetEndpointExtensions
             enableRangeProcessing: false);
     }
 
-    private static FileAssetScope CreateScope(HttpContext context) => new()
+    private static FileAssetScope CreateScope(HttpContext context, string conversationId) => new()
     {
         TenantId = AgentEndpointRequestMapper.RequireTenant(context),
-        UserId = context.GetAgentRequest().User.UserId
+        UserId = context.GetAgentRequest().User.UserId,
+        ConversationId = conversationId
     };
 
     private static object ToResponse(FileAsset asset) => new
@@ -101,6 +112,7 @@ internal static class FileAssetEndpointExtensions
         asset.FileId,
         asset.TenantId,
         asset.OwnerUserId,
+        asset.ConversationId,
         asset.FileName,
         asset.MediaType,
         asset.Length,

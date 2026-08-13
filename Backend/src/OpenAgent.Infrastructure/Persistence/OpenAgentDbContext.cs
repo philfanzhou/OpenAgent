@@ -52,11 +52,12 @@ public sealed class OpenAgentDbContext(DbContextOptions<OpenAgentDbContext> opti
             entity.Property(item => item.FileId).HasMaxLength(64);
             entity.Property(item => item.TenantId).HasMaxLength(256);
             entity.Property(item => item.OwnerUserId).HasMaxLength(256);
+            entity.Property(item => item.ConversationId).HasMaxLength(64);
             entity.Property(item => item.FileName).HasMaxLength(1024);
             entity.Property(item => item.MediaType).HasMaxLength(256);
             entity.Property(item => item.Sha256).HasMaxLength(128);
             entity.Property(item => item.ObjectKey).HasMaxLength(2048);
-            entity.HasIndex(item => new { item.TenantId, item.OwnerUserId, item.CreatedAt });
+            entity.HasIndex(item => new { item.TenantId, item.OwnerUserId, item.ConversationId, item.CreatedAt });
         });
 
         modelBuilder.Entity<ConversationFileReferenceEntity>(entity =>

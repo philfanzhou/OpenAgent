@@ -8,7 +8,10 @@ public interface IFileAssetService
         FileAssetScope scope,
         CancellationToken cancellationToken);
 
-    Task<FileAsset?> GetAsync(string fileId, CancellationToken cancellationToken);
+    Task<FileAsset?> GetAsync(
+        string fileId,
+        FileAssetScope scope,
+        CancellationToken cancellationToken);
 
     Task<FileAssetContent> ReadAsync(
         string fileId,
@@ -19,5 +22,4 @@ public interface IFileAssetService
         string fileId,
         FileAssetScope scope,
         CancellationToken cancellationToken);
-
 }

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { api, fetchHealthReport, getEngineBaseUrl, getRouterBaseUrl, getTenantId, setAccessToken, setConnectionMode, setEngineBaseUrl, setRouterBaseUrl, setTenantId } from './api'
+import { api, fetchHealthReport, getEngineBaseUrl, getRouterBaseUrl, getTenantId, makeLocalConversation, setAccessToken, setConnectionMode, setEngineBaseUrl, setRouterBaseUrl, setTenantId } from './api'
 
 class MemoryStorage implements Storage {
   private readonly values = new Map<string, string>()
@@ -77,6 +77,27 @@ describe('workspace API', () => {
     expect(vi.mocked(fetch).mock.calls[0]?.[0]).toBe('http://engine.example/api/v1/agent/chat/stream')
   })
 
+  it('marks a draft conversation as new without dropping its body scope', async () => {
+    setConnectionMode('router')
+    setRouterBaseUrl('http://router.example/')
+    const stream = ['event: done', 'data: {"done":true}', '', ''].join('\n')
+    const fetchMock = vi.fn().mockResolvedValue(new Response(stream, {
+      status: 200,
+      headers: { 'Content-Type': 'text/event-stream' },
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    for await (const _ of api.streamChat('hello', undefined, 'draft-1')) {
+      // Consume the stream to complete the request.
+    }
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    const requestHeaders = init.headers as Headers
+    expect(requestHeaders.get('X-New-Conversation')).toBe('true')
+    expect(requestHeaders.has('X-Conversation-Id')).toBe(false)
+    expect(JSON.parse(init.body as string).context.conversationId).toBe('draft-1')
+  })
+
   it('includes gateway problem details and trace ID in errors', async () => {
     setConnectionMode('router')
     setRouterBaseUrl('http://router.example')
@@ -90,6 +111,24 @@ describe('workspace API', () => {
     })))
 
     await expect(api.getCurrentUser()).rejects.toThrow('No Engine is available (TraceId: trace-1)')
+  })
+
+  it('scopes file reads to the encoded conversation ID', async () => {
+    setConnectionMode('engine')
+    setEngineBaseUrl('http://engine.example/')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('content', { status: 200 })))
+
+    await expect(api.readFileText('file/1', 'conversation/1')).resolves.toBe('content')
+
+    expect(vi.mocked(fetch).mock.calls[0]?.[0]).toBe(
+      'http://engine.example/api/v1/agent/files/file%2F1/content?conversationId=conversation%2F1',
+    )
+  })
+
+  it('uses the draft conversation ID for a local conversation', () => {
+    const conversation = makeLocalConversation('support', 'hello', 'draft-conversation')
+
+    expect(conversation.conversationId).toBe('draft-conversation')
   })
 
   it('migrates the previous single endpoint to the Router address', () => {

@@ -21,6 +21,7 @@ const agents = ref<AgentSummary[]>([])
 const currentUser = ref<CurrentUserContext | null>(null)
 const conversations = ref<ConversationRecord[]>([])
 const selectedConversation = ref<ConversationRecord | null>(null)
+const draftConversationId = ref(crypto.randomUUID())
 const selectedAgentId = ref(AUTO_AGENT_ID)
 const message = ref('')
 const search = ref('')
@@ -334,6 +335,7 @@ async function refreshConversations(): Promise<void> {
 }
 
 async function selectConversation(item: ConversationRecord): Promise<void> {
+  pendingFiles.value = []
   selectedConversation.value = item
   selectedAgentId.value = item.agentId || selectedAgentId.value
   if (item.messages?.length) {
@@ -358,9 +360,9 @@ async function hydrateFilePreviews(conversation: ConversationRecord): Promise<vo
     if (!file.fileId || file.previewUrl || file.previewText) return
     try {
       if (file.mediaType.startsWith('image/')) {
-        file.previewUrl = await api.loadFilePreview(file.fileId)
+        file.previewUrl = await api.loadFilePreview(file.fileId, conversation.conversationId)
       } else if (isTextPreview(file.mediaType)) {
-        file.previewText = await api.readFileText(file.fileId)
+        file.previewText = await api.readFileText(file.fileId, conversation.conversationId)
       }
     } catch {
       // The file remains downloadable even when preview loading fails.
@@ -373,9 +375,9 @@ function isTextPreview(mediaType: string): boolean {
 }
 
 async function downloadFile(file: MessageFile): Promise<void> {
-  if (!file.fileId) return
+  if (!file.fileId || !selectedConversation.value) return
   try {
-    await api.downloadFile(file.fileId, file.fileName)
+    await api.downloadFile(file.fileId, file.fileName, selectedConversation.value.conversationId)
   } catch (error) {
     notifyError(error)
   }
@@ -383,6 +385,7 @@ async function downloadFile(file: MessageFile): Promise<void> {
 
 function newConversation(): void {
   selectedConversation.value = null
+  draftConversationId.value = crypto.randomUUID()
   message.value = ''
   pendingFiles.value = []
 }
@@ -425,7 +428,8 @@ async function uploadPendingFile(id: string): Promise<void> {
   const pending = pendingFiles.value.find(item => item.id === id)
   if (!pending) return
   try {
-    const asset = await api.uploadFile(pending.file)
+    const conversationId = selectedConversation.value?.conversationId ?? draftConversationId.value
+    const asset = await api.uploadFile(pending.file, conversationId)
     const current = pendingFiles.value.find(item => item.id === id)
     if (!current) return
     current.asset = asset
@@ -468,7 +472,11 @@ async function send(): Promise<void> {
   const requestedAgentId = selectedAgentId.value === AUTO_AGENT_ID
     ? selectedConversation.value?.agentId
     : selectedAgentId.value
-  const local = selectedConversation.value || makeLocalConversation(requestedAgentId || '', requestContent)
+  const local = selectedConversation.value || makeLocalConversation(
+    requestedAgentId || '',
+    requestContent,
+    draftConversationId.value,
+  )
   if (isNewConversation) {
     local.messages = []
     local.messageCount = 0
@@ -478,8 +486,8 @@ async function send(): Promise<void> {
   const conversation = selectedConversation.value
   if (!conversation) return
   const conversationId = conversation.conversationId
-  // 首次对话不携带任何 conversationId：由引擎生成并在 done 事件回传，前端记录后用于后续消息。
-  // 这样 router 对首次消息会执行意图识别，而不是当成续聊直接转发。
+  // The body always carries the draft conversation ID so uploaded files and chat share one scope.
+  // The routing header remains absent for the first turn so Router still performs intent recognition.
   const sendConversationId = isNewConversation ? undefined : conversationId
   loading.value = true
   let streamError: { title?: string; detail?: string; traceId?: string } | undefined
@@ -506,7 +514,7 @@ async function send(): Promise<void> {
     for await (const event of api.streamChat(
       requestContent,
       requestedAgentId,
-      sendConversationId,
+      conversationId,
       uploaded.map(asset => asset.fileId),
       sendConversationId,
     )) {

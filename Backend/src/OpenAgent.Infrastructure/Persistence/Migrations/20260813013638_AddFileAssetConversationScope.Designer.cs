@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using OpenAgent.Infrastructure;
@@ -11,9 +12,11 @@ using OpenAgent.Infrastructure;
 namespace OpenAgent.Infrastructure.Migrations
 {
     [DbContext(typeof(OpenAgentDbContext))]
-    partial class OpenAgentDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260813013638_AddFileAssetConversationScope")]
+    partial class AddFileAssetConversationScope
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

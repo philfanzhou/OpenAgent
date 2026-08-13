@@ -55,6 +55,7 @@ public sealed class InfrastructurePersistenceTests : IAsyncLifetime
             FileId = "file-001",
             TenantId = "tenant-001",
             OwnerUserId = "user-001",
+            ConversationId = "conversation-001",
             FileName = "notes.md",
             MediaType = "text/markdown",
             Length = 8,

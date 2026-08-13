@@ -68,6 +68,26 @@ public class AgentSelectionFilterTests
     }
 
     [Fact]
+    public async Task InvokeAsync_NewConversationHeader_IgnoresDraftConversationForSelection()
+    {
+        var selectionService = new StubSelectionService(
+            new AgentSelection("finance", "self-engine"));
+        AgentSelectionFilter filter = CreateFilter(selectionService);
+        DefaultHttpContext context = CreateContext(
+            "{\"message\":\"find invoice\",\"context\":{\"conversationId\":\"draft-1\"}}");
+        context.Request.Headers["X-New-Conversation"] = "true";
+
+        await filter.InvokeAsync(
+            new DefaultEndpointFilterInvocationContext(context),
+            _ => ValueTask.FromResult<object?>(Results.Ok()));
+
+        Assert.Null(selectionService.ConversationId);
+        Assert.Null(context.Features.Get<AgentRoutingFeature>()?.ConversationId);
+        Assert.Equal("finance", context.Request.Headers["X-Agent-Id"]);
+        Assert.Equal(0, context.Request.Body.Position);
+    }
+
+    [Fact]
     public async Task InvokeAsync_NoSelection_ReturnsServiceUnavailable()
     {
         AgentSelectionFilter filter = CreateFilter(new StubSelectionService(null));

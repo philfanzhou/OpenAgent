@@ -12,8 +12,10 @@ namespace OpenAgent.Engine.Tests.Hosting;
 
 public class S3FileObjectStoreTests
 {
-    [Fact]
-    public async Task WriteAsync_UsesOpaqueTenantPartitionAndFileId()
+    [Theory]
+    [InlineData("user-a")]
+    [InlineData("anonymous")]
+    public async Task WriteAsync_UsesOpaqueTenantUserAndConversationPartitions(string userId)
     {
         PutObjectRequest? captured = null;
         var s3 = new Mock<IAmazonS3>();
@@ -30,6 +32,8 @@ public class S3FileObjectStoreTests
             {
                 FileId = "file-a",
                 TenantId = "tenant-a",
+                UserId = userId,
+                ConversationId = "conversation-a",
                 FileName = "report.md",
                 MediaType = "text/markdown",
                 Sha256 = "sha-256"
@@ -38,10 +42,17 @@ public class S3FileObjectStoreTests
             CancellationToken.None);
 
         string tenantHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes("tenant-a"))).ToLowerInvariant();
-        Assert.Equal($"private/files/{tenantHash}/file-a.md", result.ObjectKey);
+        string userHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(userId))).ToLowerInvariant();
+        string conversationHash = Convert.ToHexString(
+            SHA256.HashData(Encoding.UTF8.GetBytes("conversation-a"))).ToLowerInvariant();
+        Assert.Equal(
+            $"private/files/tenants/{tenantHash}/users/{userHash}/conversations/{conversationHash}/file-a.md",
+            result.ObjectKey);
         Assert.NotNull(captured);
         Assert.Equal("files-test", captured.BucketName);
         Assert.Equal("sha-256", captured.Metadata["sha256"]);
         Assert.DoesNotContain("tenant-a", captured.Key, StringComparison.Ordinal);
+        Assert.DoesNotContain(userId, captured.Key, StringComparison.Ordinal);
+        Assert.DoesNotContain("conversation-a", captured.Key, StringComparison.Ordinal);
     }
 }

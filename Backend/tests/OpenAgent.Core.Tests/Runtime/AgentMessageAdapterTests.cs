@@ -38,6 +38,7 @@ public sealed class AgentMessageAdapterTests
             FileId = "generated-file-1",
             TenantId = "tenant-1",
             OwnerUserId = "user-1",
+            ConversationId = "conversation-1",
             FileName = "summary.md",
             MediaType = "text/markdown",
             Length = 12,

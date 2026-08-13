@@ -57,6 +57,7 @@ export interface FileAsset {
   fileId: string
   tenantId: string
   ownerUserId: string
+  conversationId: string
   fileName: string
   mediaType: string
   length: number
