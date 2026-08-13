@@ -35,4 +35,4 @@ HTTP 请求
 - Core: `Backend/src/OpenAgent.Engine.Host/Middleware/AgentExceptionHandlerMiddleware.cs`
 - Payload: `Backend/src/OpenAgent.Engine.Host/StreamingPayloadFactory.cs`
 - Orchestration: `Backend/src/OpenAgent.Engine.Host/Program.cs`
-- Tests: 无专门测试文件（待补充）
+- Tests: `Backend/tests/OpenAgent.Engine.Tests/Hosting/AgentExceptionHandlerMiddlewareTests.cs`

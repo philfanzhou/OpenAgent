@@ -24,13 +24,14 @@
 ## 2. 项目分层规则（硬性约束，不可违反）
 
 ```
-Contracts ← Core ← Engine/Router ← Host
+Contracts ← Core ← {Engine, Infrastructure, Router} ← {Engine.Host, Hosting}
 ```
 
-- **Agent.Contracts**：纯接口、DTO、错误码。**不引用任何其他项目**
-- **Agent.Core**：核心逻辑。可引用 Contracts，**不可**引用 Engine 或 Router
-- **Agent.Engine / Agent.Router**：可引用 Contracts、Core。**不可**引用 Host
-- **Agent.Hosting**：基础设施。可引用所有下层
+- **OpenAgent.Contracts**：纯接口、DTO、错误码。**不引用任何其他项目**
+- **OpenAgent.Core**：核心逻辑。可引用 Contracts，**不可**引用 Engine 或 Router
+- **OpenAgent.Engine / OpenAgent.Router**：可引用 Contracts、Core。**不可**引用 Host
+- **OpenAgent.Infrastructure**：可引用 Contracts、Core，承载持久化（PostgreSQL+EF Core、Redis 写穿缓存、分布式锁），不可引用 Engine/Router/Host
+- **OpenAgent.Hosting**：基础设施。可引用所有下层
 
 > 新增项目引用前，先确认不违反上述依赖方向。
 
@@ -69,12 +70,13 @@ Contracts ← Core ← Engine/Router ← Host
 
 | 项目 | TFM | 类型 |
 |------|-----|------|
-| `Agent.Contracts` | net8.0 | 类库 |
-| `Agent.Core` | net8.0 | 类库 |
+| `OpenAgent.Contracts` | net8.0 | 类库 |
+| `OpenAgent.Core` | net8.0 | 类库 |
 | `OpenAgent.Engine` | net8.0 | 类库 |
-| `OpenAgent.Core.Engine.Host` | net8.0 | Web API |
-| `Agent.Router` | net8.0 | Web API |
-| `Agent.Hosting` | net8.0 | 类库 |
+| `OpenAgent.Engine.Host` | net8.0 | Web API |
+| `OpenAgent.Router` | net8.0 | Web API |
+| `OpenAgent.Infrastructure` | net8.0 | 类库 |
+| `OpenAgent.Hosting` | net8.0 | 类库 |
 
 ### 3.4 项目文件配置
 
@@ -135,11 +137,11 @@ Contracts ← Core ← Engine/Router ← Host
 
 | 类型 | 规则 | 示例 |
 |------|------|------|
-| 接口 | `I` 前缀 + PascalCase | `IAgentEngine`, `IPipeline`, `IRouteTable` |
+| 接口 | `I` 前缀 + PascalCase | `IAgentAuthorizationService`, `IRouteTable` |
 | 异步方法 | `Async` 后缀 | `ExecuteAsync`, `SendMessageAsync`, `IsAllowedAsync` |
 | CancellationToken | 最后一个参数，默认 `default` | `Task DoAsync(..., CancellationToken ct = default)` |
-| 公共抽象 | 定义在 Agent.Contracts | `IAgentPipeline`（接口）、`AgentConfig`（DTO） |
-| 实现类 | PascalCase，在对应模块的 `src/` 下 | `Pipeline`, `EngineFactory` |
+| 公共抽象 | 定义在 Agent.Contracts | `IAgentAuthorizationService`（接口）、`AgentConfig`（DTO） |
+| 实现类 | PascalCase，在对应模块的 `src/` 下 | `AgentExecutor`, `AgentFactory` |
 | 枚举 | PascalCase | `EngineFrameworkType` |
 | 私有字段 | `_` 前缀 + camelCase | `_redis`, `_logger`, `_config` |
 | 常量 | PascalCase，无特殊前缀 | — |
@@ -164,20 +166,20 @@ Contracts ← Core ← Engine/Router ← Host
 
 ### 5.4 模块特定命名
 
-**Agent.Core：**
+**OpenAgent.Core：**
 
 | 类别 | 约定 | 示例 |
 |------|------|------|
-| 中间件 | 语义化名称 | `AgentIdValidation`, `TenantValidation`, `Tracing`, `Auth`, `AuditLogging` |
-| 引擎 | `{框架名}Engine` | `SemanticKernelEngine`, `MafEngine`, `OpenAIDriverEngine` |
-| DI 扩展方法 | `Add{功能名}` | `AddAgentCore`, `AddSemanticKernelEngine`, `AddMafEngine` |
+| 中间件 | 语义化名称 | `AgentUserContextMiddleware`, `EngineAdmissionMiddleware`, `AgentExceptionHandlerMiddleware` |
+| 引擎 | chat client 构造 | `AgentChatClientFactory` |
+| DI 扩展方法 | `Add{功能名}` | `AddAgentCore`, `AddAgentEngine`, `AddFileAssetObjectStorage` |
 
-**Agent.Router：**
+**OpenAgent.Router：**
 
 | 类别 | 约定 | 示例 |
 |------|------|------|
-| 项目名 | `OpenAgent.Core.{ServiceName}` | `OpenAgent.Core.Router` |
-| 命名空间 | 与项目名一致 | `OpenAgent.Core.Router` |
+| 项目名 | `OpenAgent.{ServiceName}` | `OpenAgent.Router` |
+| 命名空间 | 与项目名一致 | `OpenAgent.Router` |
 | record 类型 | PascalCase | `RouteRequest`, `RouteResponse` |
 | 配置节 | PascalCase + 冒号分隔层级 | `RouterSettings:RateLimiting:RequestsPerSecond` |
 
@@ -265,10 +267,10 @@ Backend/src/OpenAgent.Core/
 ├── Capabilities/           # MCP / RAG / Skill
 ├── Conversation/           # 会话存储与锁
 ├── Exten/                  # 扩展方法
+├── Files/                  # 文件资产
 ├── Models/                 # 领域模型
-├── Routing/                # 路由
 ├── Runtime/                # 运行时（含 Agent/）
-└── Security/               # 中间件
+└── Security/               # 授权服务
 
 Backend/tests/OpenAgent.Core.Tests/   # 单元测试
 ```
@@ -288,8 +290,9 @@ Backend/src/OpenAgent.Engine/        # 运行时类库
 └── Runtime/               # 运行时服务
 
 Backend/src/OpenAgent.Engine.Host/   # Web API 宿主
-├── Attachments/           # 附件处理
 ├── Extensions/            # EndpointExtensions
+├── Files/                 # 文件资产与对象存储
+├── Health/                # 健康检查
 ├── Middleware/            # 异常处理中间件
 └── Program.cs
 
@@ -306,33 +309,33 @@ Backend/tests/OpenAgent.Engine.Tests/ # 单元测试
 
 ## 8. 模块特定编码模式
 
-### 8.1 Agent.Core — 依赖注入
+### 8.1 OpenAgent.Core — 依赖注入
 
 - 通过构造函数注入，不使用 Service Locator 模式
 - 生命周期选择：
   - **Singleton**：无状态服务、注册表（`IToolRegistry`, `IRagRegistry`, `ILlmRegistry`, `IConversationStore`）
-  - **Scoped**：请求级服务（`IAgentService`, `IAgentPipeline`, `IMcpClient`, `IRagService`, `IAgentMiddleware`）
-- 扩展方法封装 DI 注册（`ServiceExtensions.AddAgentCore()`）
+  - **Scoped**：请求级服务（`IAgentUserContext`, `AgentExecutor`, `IRagService`）
+- 扩展方法封装 DI 注册（`CoreServiceExtensions.AddAgentCore()`）
 - 可重复调用的注册扩展必须幂等，优先使用 `TryAdd*`；Factory、Registry 等单例不得重复注册
-- 中间件注册顺序必须保持：`AgentIdValidation → TenantValidation → Tracing → Auth → AuditLogging`
-- Engine Host 的 `EngineRequestScopeMiddleware` 必须位于 `SseErrorHandlerMiddleware` 和
-  `GlobalExceptionHandlerMiddleware` 之前，确保异常路径也携带请求 scope
+- Engine Host 的 `AgentUserContextMiddleware` 与 `EngineAdmissionMiddleware` 必须位于
+  `AgentExceptionHandlerMiddleware` 之前，确保异常路径也携带请求 scope 与租户上下文
 - Redis 为可选依赖时，消费者通过 `GetService<IConnectionMultiplexer>()` 获取并处理 `null`，
   不得强制解析后再假设连接存在
 
 ```csharp
-// 在 ServiceExtensions.cs 中注册
-services.AddScoped<IAgentPipeline, Pipeline>();
-services.AddSingleton<IAgentEngineFactory, EngineFactory>();
+// 在 RuntimeServiceExtensions.cs 中注册
+services.AddSingleton<AgentChatClientFactory>();
+services.AddScoped<AgentFactory>();
+services.AddScoped<AgentExecutor>();
 ```
 
-### 8.2 Agent.Core — 错误处理
+### 8.2 OpenAgent.Core — 错误处理
 
 - 业务异常使用 `AgentException` 及其子类
-- 中间件异常由 Pipeline 统一捕获，转为 `AgentResponse(Success=false, ErrorCode=...)`
+- 异常由 `AgentExceptionHandlerMiddleware` 经 `ErrorMapper` 映射为 HTTP 错误响应
 - 外部依赖异常不吞没，记录日志后向上传播或降级
-- 使用 `AgentErrorCodes`（定义在 Agent.Contracts）进行错误分类
-- 错误统一流经中间件管道，不要在业务代码中直接 try-catch 吞掉
+- 使用 `AgentErrorCode`（定义在 Agent.Contracts）进行错误分类
+- 错误统一流经 ASP.NET Core 中间件，不要在业务代码中直接 try-catch 吞掉
 
 ### 8.3 Agent.Core — 日志
 
@@ -350,21 +353,15 @@ internal static partial void EngineSelected(ILogger logger, string framework);
 
 | 模块 | EventId 区间 |
 |------|--------------|
-| Core / ToolCall | `1000-2199` |
 | Router | `3000-3199` |
-| Hosting | `3000-3005`（独立日志类别） |
 | Engine | `4000-4199` |
-| Channels | `5000-5199` |
-| AuditStation | `6000-6099` |
-| RedisTool | `7000-7099` |
 
-### 8.4 Agent.Core — Engine 模式
+### 8.4 OpenAgent.Core — Engine 模式
 
-- 所有 LLM 引擎实现 `IAgentEngine`（ChatCompletion + StreamChatCompletion）
+- LLM 调用通过 `AgentChatClientFactory` 构造 `IChatClient`，由 `AgentFactory` 创建 `AIAgent`，`AgentExecutor` 驱动
 - 新引擎放在 `src/<EngineName>/` 下，带独立的 `.csproj`
-- 通过 `IAgentEngineFactory` 注册
 
-### 8.5 Agent.Router — 日志规范
+### 8.5 OpenAgent.Router — 日志规范
 
 Router 同样只能调用 `RouterLog` 中的源生成日志。Debug 用于路由细节，Information 用于关键
 业务事件，Warning 用于可降级异常，Error 用于不可恢复或转发失败。
@@ -421,27 +418,11 @@ catch (RedisConnectionException ex)
 - 配置通过 `IConfiguration` 注入，不使用 Options 模式
 - Redis 连接串通过 `IConfiguration.GetConnectionString("Redis")` 读取
 
-### 8.8 Agent.Router — 异步模式
+### 8.8 OpenAgent.Router — 异步模式
 
 - 所有异步方法接受 `CancellationToken` 参数（默认值 `default`）
-- `SimpleIntentRecognizer.RecognizeAsync` 当前未检查 CancellationToken，返回同步结果
+- `IntentAgentSelector` 当前未检查 CancellationToken，返回同步结果
 - YARP 转发使用 `IHttpForwarder.SendAsync`
-
-### 8.9 Agent.Channels — 边界与运行约束
-
-- Channels 只能通过 `IChannelRouterClient` 调 Router；修复 Channels 时不得把业务逻辑下沉到
-  Router，也不得引用 Core/Engine。
-- 中间件顺序：异常处理 `50`、身份上下文 `100`、关联 ID `200`、限流 `300`、审计 `350`、
-  分发 `400`；`ChannelRequestScopeMiddleware` 保持 ASP.NET Core 最外层。
-- `TraceId` 解析优先级为 `X-Trace-Id` → `Activity.Current.Id` → `HttpContext.TraceIdentifier`，
-  并原样传给 Router。Core scope 中 `TenantId` 缺失时保持 `null`。
-- 外部 HTTP 一律使用 `IHttpClientFactory`；`RouterClientOptions.InternalServiceName` 必须随内部
-  token 一起传播。
-- Teams Playground 使用 `DefaultTenantId=tenant-001`；生产环境从真实 channel data 解析。
-  Outlook 默认关闭，只有显式配置时启用。
-- Cron Job 标记 `[DisallowConcurrentExecution]`，单次异常记录后结束本次触发，不得终止调度器。
-- 系统触发的 MessageId 格式为 `{JobName}-{Guid:N}`，确保去重中间件不会吞掉后续触发。
-- 与时间相关的测试注入 `TimeProvider` 或可控延迟，禁止用短时 `Thread.Sleep` 猜测时序。
 
 ---
 
@@ -453,9 +434,8 @@ catch (RedisConnectionException ex)
 |---------|------|------|
 | Core 单元测试 | xUnit + Moq | `Backend/tests/OpenAgent.Core.Tests/<Module>/` |
 | Engine 单元测试 | xUnit + Moq | `Backend/tests/OpenAgent.Engine.Tests/` |
-| Router 单元测试 | xUnit 2.6.2 + Moq 4.20.70 | `Agent.Router/test/` |
-| 集成测试 | MSTest | `TestCode/Agent.TestEngine/` |
-| E2E 测试 | PowerShell | `TestCode/scripts/` |
+| Router 单元测试 | xUnit 2.9.0 + Moq 4.20.70 | `Backend/tests/OpenAgent.Router.Tests/` |
+| 集成测试 | xUnit + Testcontainers | `Backend/tests/OpenAgent.Infrastructure.Tests/`、`Backend/tests/OpenAgent.Engine.Tests/` |
 
 ### 9.2 测试代码规范
 
@@ -470,11 +450,11 @@ catch (RedisConnectionException ex)
 - 测试替身集中在 `TestDoubles/` 目录
 - 配置使用 `ConfigurationBuilder.AddInMemoryCollection`
 - 通过 `InternalsVisibleTo` 访问内部类型进行测试
-- 集成测试用 `[ClassInitialize]`/`[ClassCleanup]` 管理宿主生命周期
+- 集成测试用 xUnit fixture（如 `IAsyncLifetime`）管理 Testcontainers 容器生命周期
 - HTTP 依赖使用自定义 `DelegatingHandler` mock，不引入额外依赖
 
 ```csharp
-[Test]
+[Fact]
 public async Task GetUserAsync_InvalidId_ThrowsNotFoundException()
 {
     // Arrange
@@ -485,7 +465,7 @@ public async Task GetUserAsync_InvalidId_ThrowsNotFoundException()
 }
 ```
 
-### 9.3 Agent.Engine 测试结构
+### 9.3 OpenAgent.Engine 测试结构
 
 | 测试目录 | 被测组件 |
 |----------|----------|
@@ -512,7 +492,7 @@ Agent 修改代码后应自主决定验证策略（改 `.cs` → `dotnet build` 
 
 ## 10. 配置化约束
 
-以下规则已配置到 `Directory.Build.props`、`.editorconfig`、`.globalconfig`，机器自动检查：
+以下规则已配置到 `Directory.Build.props`、`.editorconfig`，机器自动检查：
 
 | 规则 | 配置位置 |
 |------|---------|
@@ -520,7 +500,6 @@ Agent 修改代码后应自主决定验证策略（改 `.cs` → `dotnet build` 
 | 文件作用域命名空间 | `.editorconfig` |
 | 接口 I 前缀 / 异步 Async 后缀 / 私有字段 _ 前缀 | `.editorconfig` |
 | 代码样式（var、表达式体、模式匹配） | `.editorconfig` |
-| 分析器规则集 | `.globalconfig` |
 
 > 以下章节只保留**机器无法检查**的规则（依赖方向、DI 模式、错误处理、日志 EventId 等）。
 
@@ -533,7 +512,7 @@ Agent 修改代码后应自主决定验证策略（改 `.cs` → `dotnet build` 
 - ❌ 无理由添加 NuGet 包
 - ❌ 混合 sync/async 在同一调用链
 - ❌ 使用 `async void`
-- ❌ 直接修改 Redis 中的 Agent 配置（应通过 Engine API 或 RedisTool 管理）
+- ❌ 直接修改 Redis 中的 Agent 配置（应通过 Engine API 管理）
 - ❌ 使用浮动版本或版本范围的 PackageReference
 - ❌ 重复引用项目已传递依赖的 NuGet 包
 - ❌ 使用 .NET 6.0 或其他已过期版本

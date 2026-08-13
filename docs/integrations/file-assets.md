@@ -18,4 +18,4 @@ POST /chat/stream { fileIds } -> read ready files -> model -> message and file r
 | `GET /api/v1/agent/files/{fileId}/content` | 认证预览内容 |
 | `GET /api/v1/agent/files/{fileId}/download` | 认证下载 |
 
-权限校验将在后续 PR 中统一接入 `IFileAssetService`；当前数据模型已保留 TenantId、OwnerUserId 和会话引用边界。
+权限校验通过 `FileAssetScope` 的 TenantId/OwnerUserId 边界在 `FileAssetService` 内强制执行（缺失时抛 `TenantDataIsolationException`）。

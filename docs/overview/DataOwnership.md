@@ -1,4 +1,4 @@
-# Data Ownership — Agent.Core
+# Data Ownership — OpenAgent
 
 ## 本服务拥有的数据实体
 

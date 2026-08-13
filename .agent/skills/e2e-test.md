@@ -12,22 +12,23 @@
 
 | 服务 | 端口 | 说明 |
 |------|------|------|
-| TestMCP | 8090 | MCP 服务器 |
-| TestSkillService | 8091 | 技能服务 |
-| TestSSO | 5003 | OAuth2 认证 |
-| TestChat | 8080 | 测试聊天与 Playground 页面 |
-| Engine | 5208 | Agent 引擎 |
+| chat | 8080 | 聊天与 Playground 页面 |
+| engine | 5208 | Agent 引擎 |
+| router | 5001 | 网关路由 |
+| postgres | 5432 | PostgreSQL 会话存储 |
+| redis | 6379 | Redis 注册表/缓存 |
+| minio | 9000/9001 | 对象存储（API/Console） |
 
-启动顺序必须遵循上表（依赖顺序）；停止顺序相反。
+启动顺序由 `docker compose` 管理依赖；停止顺序相反。
 
-## 相关脚本
+## 相关命令
 
-| 脚本 | 路径 |
+| 操作 | 命令 |
 |------|------|
-| 启动服务 | `TestCode/scripts/start-services.ps1` |
-| 清理端口 | `TestCode/scripts/cleanup-ports.ps1` |
-| 检查端口 | `TestCode/scripts/devtools/check-ports.ps1` |
-| 检查 Engine | `TestCode/scripts/devtools/check-engine-now.ps1` |
+| 启动服务 | `docker compose up -d` |
+| 停止服务 | `docker compose down` |
+| 查看服务状态 | `docker compose ps` |
+| 查看日志 | `docker compose logs -f <service>` |
 
 ---
 
@@ -41,20 +42,16 @@
 
 ### 步骤
 
-1. 确认 `TestCode/.env` 存在：
+1. 启动服务并确认健康：
    ```powershell
-   cd TestCode/scripts
-   Import-Module ./lib/test-helpers.psm1 -Force
-   Get-AvailableProviders
+   docker compose up -d
+   docker compose ps
+   curl http://localhost:5208/health
    ```
 
-2. 执行测试（自动完成构建 → 启动 → 测试 → 清理）：
-   ```powershell
-   ./test-e2e.ps1 -Provider <provider>
-   ./test-e2e.ps1 -SkipLlmTests
-   ```
+2. 配置 LLM Provider（在工作台设置中创建，参考根 `README.md`），然后通过聊天界面或 `curl` 调用 engine 端点验证端到端流程。
 
-3. 端口冲突时：`./cleanup-ports.ps1` 后重试
+3. 端口冲突时：`docker compose down` 后重试
 
 ### Playground 启动约束
 
@@ -69,37 +66,30 @@
 ### 启动
 
 ```powershell
-cd TestCode/scripts/devtools
-./check-ports.ps1            # 确认端口空闲
-cd ../
-./start-services.ps1         # 按依赖顺序启动
-./devtools/check-ports.ps1   # 验证
-./devtools/check-engine-now.ps1
+docker compose up -d           # 按依赖顺序启动
+docker compose ps              # 验证服务状态
+curl http://localhost:5208/health  # 验证 Engine 健康
 ```
 
 ### 停止
 
 ```powershell
-cd TestCode/scripts
-./cleanup-ports.ps1
-./devtools/check-ports.ps1   # 确认 5 个端口已释放
+docker compose down            # 停止并清理容器
+docker compose ps              # 确认服务已停止
 ```
 
 ### 常见问题
 
 | 问题 | 解决 |
 |------|------|
-| 端口被占用 | `./cleanup-ports.ps1` |
-| 进程杀不掉 | `devtools/kill-port.ps1 <端口>`（管理员权限） |
-| Engine 连不上 Redis | 确认 Redis 可达 |
-| 认证失败 | 确认 TestSSO 在 5003 端口运行 |
-| SQLite 锁残留 | 删除 `TestCode/Data/*.db-shm` 和 `*.db-wal` |
+| 端口被占用 | `docker compose down` 后重试 |
+| Engine 连不上 Redis | `docker compose restart redis`，确认 Redis 容器健康 |
+| Engine 连不上 PostgreSQL | `docker compose restart postgres`，检查 `appsettings.json` 连接串 |
 
 ---
 
 ## 参考
 
-- 完整 E2E 文档：`TestCode/docs/e2e-test-guide.md`
-- MCP+Skill 测试：`TestCode/docs/mcp-test-guide.md`
-- Skill 对比测试：`TestCode/docs/skill-demo-test-guide.md`
-- 集成测试项目：`TestCode/Agent.TestEngine/`
+- 排查手册：`docs/trace-troubleshoot.md`
+- 模块文档：`docs/modules/`
+- 集成测试项目：`Backend/tests/OpenAgent.Infrastructure.Tests/`、`Backend/tests/OpenAgent.Engine.Tests/`

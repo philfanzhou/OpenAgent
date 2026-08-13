@@ -1,6 +1,6 @@
 # Agent.Matrix Integration
 
-Agent.Core 以**只读引用**方式访问 Agent.Matrix 的配置与权限数据。原始配置由 `IAgentConfigProvider` 提供，运行前由 `IAgentRuntimeResolver` 汇总解析为已授权、已校验的 `AgentRuntimeProfile`。
+OpenAgent.Core 以**只读引用**方式访问 OpenAgent 的配置与权限数据。原始配置由 `IAgentConfigProvider` 提供，运行前由 `IAgentRuntimeResolver` 汇总解析为已授权、已校验的 `AgentRuntimeProfile`。
 
 ## Core Capabilities
 | Capability | Description |
@@ -8,7 +8,7 @@ Agent.Core 以**只读引用**方式访问 Agent.Matrix 的配置与权限数据
 | 配置读取 | `GetConfigAsync` 按 AgentId 获取运行时配置 |
 | 运行配置解析 | `IAgentRuntimeResolver.ResolveAsync` 固定一次调用所需的有效配置 |
 | Agent 列表 | `ListAgentsAsync` 返回所有可用 Agent 摘要 |
-| 子配置模型 | Llm / Mcp / Rag / Skills 四类子配置 |
+| 子配置模型 | Llm / ContextPolicy / Mcp / Rag / Skills / MaxTurns 等运行时子配置 |
 | 只读契约 | Agent.Core 绝不向 Matrix 写入数据 |
 
 ## Architecture

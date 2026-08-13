@@ -13,7 +13,6 @@
 ├── .agent/rules/coding-conventions.md ← 编码规范（权威）
 ├── .agent/rules/doc-standards.md     ← 本文件（文档规范）
 ├── .agent/skills/                     ← 任务工作流
-├── .agent/prompts/                    ← 可复用提示模板
 │
 ├── docs/                              ← 统一文档中心
 │   ├── overview/                      ← 全局总览（系统上下文、设计、流程、数据）
@@ -22,7 +21,6 @@
 │   ├── database/                      ← 数据存储唯一事实源
 │   ├── decisions/                     ← ADR 归档（已决策的技术选型）
 │   ├── planning/                      ← 规划文档（目标架构、重构基线）
-│   └── review-archive/                ← 历史审阅记录
 │
 └── Backend/
     ├── src/
@@ -30,7 +28,9 @@
     │   ├── OpenAgent.Core/            ← 源码（无散落文档）
     │   ├── OpenAgent.Engine/          ← 源码（无散落文档）
     │   ├── OpenAgent.Engine.Host/     ← 源码（无散落文档）
-    │   └── OpenAgent.Hosting/         ← 源码（无散落文档）
+    │   ├── OpenAgent.Hosting/         ← 源码（无散落文档）
+    │   ├── OpenAgent.Infrastructure/  ← 源码（无散落文档）
+    │   └── OpenAgent.Router/          ← 源码（无散落文档）
     └── tests/                         ← 测试项目
 ```
 

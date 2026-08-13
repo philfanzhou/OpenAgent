@@ -66,4 +66,3 @@
 ## 参考文件
 - 文档规范（必读）：`.agent/rules/doc-standards.md`
 - 编码规范：`.agent/rules/coding-conventions.md`
-- 历史审阅记录：`docs/review-archive/`
