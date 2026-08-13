@@ -356,9 +356,9 @@ async function hydrateFilePreviews(conversation: ConversationRecord): Promise<vo
     if (!file.fileId || file.previewUrl || file.previewText) return
     try {
       if (file.mediaType.startsWith('image/')) {
-        file.previewUrl = await api.loadFilePreview(file.fileId)
+        file.previewUrl = await api.loadFilePreview(file.fileId, conversation.conversationId)
       } else if (isTextPreview(file.mediaType)) {
-        file.previewText = await api.readFileText(file.fileId)
+        file.previewText = await api.readFileText(file.fileId, conversation.conversationId)
       }
     } catch {
       // The file remains downloadable even when preview loading fails.
@@ -371,9 +371,9 @@ function isTextPreview(mediaType: string): boolean {
 }
 
 async function downloadFile(file: MessageFile): Promise<void> {
-  if (!file.fileId) return
+  if (!file.fileId || !selectedConversation.value) return
   try {
-    await api.downloadFile(file.fileId, file.fileName)
+    await api.downloadFile(file.fileId, file.fileName, selectedConversation.value.conversationId)
   } catch (error) {
     notifyError(error)
   }

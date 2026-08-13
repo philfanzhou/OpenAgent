@@ -58,6 +58,7 @@ internal sealed class FileAssetService : IFileAssetService
                 {
                     FileId = fileId,
                     TenantId = scope.TenantId,
+                    UserId = scope.UserId,
                     FileName = pending.FileName,
                     MediaType = pending.MediaType,
                     Sha256 = sha256
@@ -82,6 +83,36 @@ internal sealed class FileAssetService : IFileAssetService
         return _repository.GetAsync(fileId, cancellationToken);
     }
 
+    public async Task EnsureReferencesAsync(
+        IReadOnlyList<string> fileIds,
+        FileAssetScope scope,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(scope.ConversationId))
+        {
+            return;
+        }
+
+        List<string> owned = [];
+        foreach (string fileId in fileIds.Distinct(StringComparer.Ordinal))
+        {
+            FileAsset? asset = await _repository.GetAsync(fileId, cancellationToken).ConfigureAwait(false);
+            if (asset != null && IsOwner(asset, scope))
+            {
+                owned.Add(fileId);
+            }
+        }
+
+        if (owned.Count > 0)
+        {
+            await _repository.EnsureConversationReferencesAsync(
+                scope.ConversationId,
+                owned,
+                DateTimeOffset.UtcNow,
+                cancellationToken).ConfigureAwait(false);
+        }
+    }
+
     public async Task<FileAssetContent> ReadAsync(
         string fileId,
         FileAssetScope scope,
@@ -89,7 +120,7 @@ internal sealed class FileAssetService : IFileAssetService
     {
         EnsureEnabled();
         ValidateScope(scope);
-        FileAsset asset = await GetReadyAssetAsync(fileId, cancellationToken).ConfigureAwait(false);
+        FileAsset asset = await GetReadyAssetAsync(fileId, scope, cancellationToken).ConfigureAwait(false);
         byte[] data = await _objectStore.ReadAsync(asset.ObjectKey, cancellationToken).ConfigureAwait(false);
         return new FileAssetContent { Asset = asset, Data = data };
     }
@@ -126,15 +157,24 @@ internal sealed class FileAssetService : IFileAssetService
         }
     }
 
-    private async Task<FileAsset> GetReadyAssetAsync(string fileId, CancellationToken cancellationToken)
+    private async Task<FileAsset> GetReadyAssetAsync(
+        string fileId,
+        FileAssetScope scope,
+        CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(fileId))
         {
             throw new AgentException(AgentErrorCode.InvalidRequest, "FileId is required.");
         }
+        if (string.IsNullOrWhiteSpace(scope.ConversationId))
+        {
+            throw new AgentException(AgentErrorCode.InvalidRequest, "ConversationId is required for file reads.");
+        }
 
         FileAsset? asset = await _repository.GetAsync(fileId, cancellationToken).ConfigureAwait(false);
-        if (asset == null)
+        if (asset == null
+            || !IsOwner(asset, scope)
+            || !await IsReferencedAsync(asset, scope, cancellationToken).ConfigureAwait(false))
         {
             throw new AgentException(AgentErrorCode.InvalidRequest, $"File '{fileId}' was not found.");
         }
@@ -145,6 +185,16 @@ internal sealed class FileAssetService : IFileAssetService
 
         return asset;
     }
+
+    private static bool IsOwner(FileAsset asset, FileAssetScope scope) =>
+        string.Equals(asset.TenantId, scope.TenantId, StringComparison.Ordinal)
+        && string.Equals(asset.OwnerUserId, scope.UserId, StringComparison.Ordinal);
+
+    private Task<bool> IsReferencedAsync(
+        FileAsset asset,
+        FileAssetScope scope,
+        CancellationToken cancellationToken) =>
+        _repository.IsReferencedAsync(scope.ConversationId!, asset.FileId, cancellationToken);
 
     private async Task<byte[]> ReadAndValidateAsync(
         FileAssetCreateRequest request,

@@ -38,6 +38,51 @@ internal sealed class EfCoreFileAssetRepository(IDbContextFactory<OpenAgentDbCon
         return entity == null ? null : ToAsset(entity);
     }
 
+    public async Task EnsureConversationReferencesAsync(
+        string conversationId,
+        IReadOnlyList<string> fileIds,
+        DateTimeOffset createdAt,
+        CancellationToken cancellationToken)
+    {
+        string[] distinct = fileIds.Distinct(StringComparer.Ordinal).ToArray();
+        if (distinct.Length == 0)
+        {
+            return;
+        }
+
+        await using OpenAgentDbContext context = await contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        HashSet<string> existing = (await context.ConversationFileReferences.AsNoTracking()
+            .Where(item => item.ConversationId == conversationId && distinct.Contains(item.FileId))
+            .Select(item => item.FileId)
+            .ToListAsync(cancellationToken).ConfigureAwait(false))
+            .ToHashSet(StringComparer.Ordinal);
+        foreach (string fileId in distinct)
+        {
+            if (existing.Add(fileId))
+            {
+                context.ConversationFileReferences.Add(new ConversationFileReferenceEntity
+                {
+                    ConversationId = conversationId,
+                    FileId = fileId,
+                    CreatedAt = createdAt
+                });
+            }
+        }
+
+        await context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<bool> IsReferencedAsync(
+        string conversationId,
+        string fileId,
+        CancellationToken cancellationToken)
+    {
+        await using OpenAgentDbContext context = await contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        return await context.ConversationFileReferences.AsNoTracking()
+            .AnyAsync(item => item.ConversationId == conversationId && item.FileId == fileId, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     private static FileAssetEntity ToEntity(FileAsset asset) => new()
     {
         FileId = asset.FileId,

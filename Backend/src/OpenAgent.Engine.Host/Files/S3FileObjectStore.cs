@@ -90,9 +90,11 @@ internal sealed class S3FileObjectStore : IFileObjectStore
 
     private string CreateObjectKey(FileObjectWriteRequest request)
     {
-        byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(request.TenantId));
-        string tenantPartition = Convert.ToHexString(hash).ToLowerInvariant();
         string extension = Path.GetExtension(request.FileName).ToLowerInvariant();
-        return $"{_options.KeyPrefix.Trim('/')}/{tenantPartition}/{request.FileId}{extension}";
+        return $"{_options.KeyPrefix.Trim('/')}/tenants/{CreatePartition(request.TenantId)}" +
+            $"/users/{CreatePartition(request.UserId)}/{request.FileId}{extension}";
     }
+
+    private static string CreatePartition(string value) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
 }

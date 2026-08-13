@@ -29,6 +29,7 @@ internal sealed class FileAssetRequestResolver
             UserId = user.UserId,
             ConversationId = request.ConversationId
         };
+        await _files.EnsureReferencesAsync(request.FileIds, scope, cancellationToken).ConfigureAwait(false);
         List<FileAssetContent> files = [];
         foreach (string fileId in request.FileIds.Distinct(StringComparer.Ordinal))
         {

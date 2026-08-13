@@ -63,6 +63,7 @@ internal sealed class FileAssetCapabilitySource(
         string mediaType = ReadString(arguments, "mediaType") ?? "text/plain";
         byte[] data = new UTF8Encoding(false).GetBytes(content);
         await using var input = new MemoryStream(data, writable: false);
+        FileAssetScope scope = RequireScope();
         FileAsset asset = await files.UploadAsync(
             new FileAssetCreateRequest
             {
@@ -71,8 +72,9 @@ internal sealed class FileAssetCapabilitySource(
                 Source = FileAssetSource.Agent
             },
             input,
-            RequireScope(),
+            scope,
             cancellationToken).ConfigureAwait(false);
+        await files.EnsureReferencesAsync([asset.FileId], scope, cancellationToken).ConfigureAwait(false);
         executionContext.RecordCreated(asset);
         return JsonSerializer.Serialize(new
         {

@@ -238,26 +238,29 @@ export const api = {
     return await response.json() as FileAsset
   },
 
-  async loadFilePreview(fileId: string): Promise<string> {
-    const response = await fetch(`${requireBaseUrl()}/api/v1/agent/files/${encodeURIComponent(fileId)}/content`, {
-      headers: headers(),
-    })
+  async loadFilePreview(fileId: string, conversationId: string): Promise<string> {
+    const response = await fetch(
+      `${requireBaseUrl()}/api/v1/agent/files/${encodeURIComponent(fileId)}/content?conversationId=${encodeURIComponent(conversationId)}`,
+      { headers: headers() },
+    )
     if (!response.ok) throw await readError(response)
     return URL.createObjectURL(await response.blob())
   },
 
-  async readFileText(fileId: string): Promise<string> {
-    const response = await fetch(`${requireBaseUrl()}/api/v1/agent/files/${encodeURIComponent(fileId)}/content`, {
-      headers: headers(),
-    })
+  async readFileText(fileId: string, conversationId: string): Promise<string> {
+    const response = await fetch(
+      `${requireBaseUrl()}/api/v1/agent/files/${encodeURIComponent(fileId)}/content?conversationId=${encodeURIComponent(conversationId)}`,
+      { headers: headers() },
+    )
     if (!response.ok) throw await readError(response)
     return await response.text()
   },
 
-  async downloadFile(fileId: string, fileName: string): Promise<void> {
-    const response = await fetch(`${requireBaseUrl()}/api/v1/agent/files/${encodeURIComponent(fileId)}/download`, {
-      headers: headers(),
-    })
+  async downloadFile(fileId: string, fileName: string, conversationId: string): Promise<void> {
+    const response = await fetch(
+      `${requireBaseUrl()}/api/v1/agent/files/${encodeURIComponent(fileId)}/download?conversationId=${encodeURIComponent(conversationId)}`,
+      { headers: headers() },
+    )
     if (!response.ok) throw await readError(response)
     const url = URL.createObjectURL(await response.blob())
     const anchor = document.createElement('a')
