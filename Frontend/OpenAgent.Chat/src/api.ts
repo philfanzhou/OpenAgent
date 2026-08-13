@@ -150,7 +150,14 @@ export async function fetchHealthReport(baseUrl: string): Promise<HealthReport> 
 export async function fetchHealth(baseUrl: string, path: '/health' | '/ready'): Promise<NativeHealthReport> {
   const response = await fetch(`${normalizeBaseUrl(baseUrl)}${path}`, { headers: headers() })
   if (!response.ok) throw await readError(response)
-  return await response.json() as NativeHealthReport
+  // Router 的健康端点以纯文本返回 "Healthy"/"Degraded"/"Unhealthy"，
+  // Engine 返回 JSON HealthReport；统一做兜底解析。
+  const text = await response.text()
+  try {
+    return JSON.parse(text) as NativeHealthReport
+  } catch {
+    return { status: text.trim(), entries: {} } as NativeHealthReport
+  }
 }
 
 function normalizeConversation(record: ConversationRecord): ConversationRecord {
