@@ -17,7 +17,6 @@ const token = ref(getAccessToken())
 const tenantId = ref(getTenantId())
 const showSettings = ref(!(connectionMode.value === 'router' ? routerUrl.value : engineUrl.value))
 const activeSettings = ref<'gateway' | 'health' | 'llm' | 'agent' | 'mcp' | 'skill' | 'rag'>('gateway')
-const healthPanel = ref<InstanceType<typeof HealthCheckPanel> | null>(null)
 const agents = ref<AgentSummary[]>([])
 const currentUser = ref<CurrentUserContext | null>(null)
 const conversations = ref<ConversationRecord[]>([])
@@ -886,7 +885,6 @@ function openSettings(panel: typeof activeSettings.value): void {
   }
   if (panel === 'skill' || panel === 'rag') void loadConfig()
   if (panel === 'mcp') void loadMcp()
-  if (panel === 'health') void healthPanel.value?.run()
 }
 
 function handleSettingsTabChange(name: string | number): void {
@@ -897,7 +895,6 @@ function handleSettingsTabChange(name: string | number): void {
   }
   if (name === 'skill' || name === 'rag') void loadConfig()
   if (name === 'mcp') void loadMcp()
-  if (name === 'health') void healthPanel.value?.run()
 }
 
 onMounted(() => {
@@ -951,7 +948,7 @@ onMounted(() => {
         </el-tab-pane>
         <el-tab-pane label="健康检查" name="health">
           <section class="settings-section">
-            <HealthCheckPanel ref="healthPanel" />
+            <HealthCheckPanel />
           </section>
         </el-tab-pane>
         <el-tab-pane label="LLM 配置" name="llm">
