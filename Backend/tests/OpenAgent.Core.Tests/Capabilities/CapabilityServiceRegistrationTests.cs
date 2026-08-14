@@ -22,7 +22,9 @@ public class CapabilityServiceRegistrationTests
         services.AddSingleton<IAgentConfigProvider, StaticConfigProvider>();
         services.AddSingleton<IConversationStore, InMemoryConversationStore>();
         services.AddSingleton<IFileAssetRepository, EmptyFileAssetRepository>();
-        services.AddAgentCore(new ConfigurationBuilder().Build());
+        IConfiguration configuration = new ConfigurationBuilder().Build();
+        services.AddSingleton(configuration);
+        services.AddAgentCore(configuration);
 
         await using ServiceProvider provider = services.BuildServiceProvider(
             new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });

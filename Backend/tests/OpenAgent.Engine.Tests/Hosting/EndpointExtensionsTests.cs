@@ -60,7 +60,7 @@ public class EndpointExtensionsTests
         var agentRequest = AgentEndpointRequestMapper.CreateAgentRequest(request, context);
 
         Assert.Null(agentRequest.AgentId);
-        Assert.Null(agentRequest.ConversationId);
+        Assert.False(string.IsNullOrWhiteSpace(agentRequest.ConversationId));
         Assert.Equal("trace-2", agentRequest.TraceId);
         Assert.Null(agentRequest.ExternalContext);
     }
