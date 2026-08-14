@@ -14,6 +14,7 @@ internal static class CapabilityServiceExtensions
     internal static IServiceCollection AddCapabilityServices(this IServiceCollection services)
     {
         services.AddSingleton<IRagRegistry, RagRegistry>();
+        services.AddSingleton<ISkillCatalog, SkillCatalog>();
         services.AddSingleton<McpTransportFactory>();
         services.AddScoped<McpToolFactory>();
         services.AddScoped<AgentSkillsProviderFactory>();

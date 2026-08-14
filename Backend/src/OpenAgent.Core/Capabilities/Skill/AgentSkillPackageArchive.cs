@@ -1,51 +1,113 @@
 using System.IO.Compression;
 using Microsoft.Agents.AI;
+using OpenAgent.Contracts.Skills;
 
 namespace OpenAgent.Core.Capabilities.Skill;
 
-internal static class AgentSkillPackageArchive
+public static class AgentSkillPackageArchive
 {
-    internal static AgentSkillPackageMetadata Inspect(
+    public static AgentSkillPackageMetadata Inspect(
         byte[] content,
         CancellationToken cancellationToken)
     {
-        string root = Path.Combine(Path.GetTempPath(), "openagent-skill-inspect", Guid.NewGuid().ToString("N"));
-        try
+        IReadOnlyList<SkillPackageFile> files = ReadZipFiles(content, cancellationToken);
+        return InspectSkillFiles(files);
+    }
+
+    public static AgentSkillPackageMetadata InspectMarkdown(
+        byte[] content,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return InspectSkillFiles([new SkillPackageFile("SKILL.md", content)]);
+    }
+
+    public static AgentSkillPackageMetadata InspectFiles(
+        IReadOnlyList<SkillPackageFile> files,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return InspectSkillFiles(files);
+    }
+
+    public static IReadOnlyList<SkillPackageFile> ReadZipFiles(
+        byte[] content,
+        CancellationToken cancellationToken)
+    {
+        using var input = new MemoryStream(content, writable: false);
+        using var archive = new ZipArchive(input, ZipArchiveMode.Read, leaveOpen: false);
+        var files = new List<SkillPackageFile>();
+        var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (ZipArchiveEntry entry in archive.Entries)
         {
-            Directory.CreateDirectory(root);
-            ExtractZip(content, root);
             cancellationToken.ThrowIfCancellationRequested();
-            string[] skillFiles = Directory.GetFiles(root, "SKILL.md", SearchOption.AllDirectories);
-            if (skillFiles.Length == 0)
+            string normalized = entry.FullName.Replace('\\', '/').TrimStart('/');
+            if (string.IsNullOrWhiteSpace(normalized) || normalized.EndsWith('/'))
             {
-                throw new InvalidOperationException("Skill package does not contain a valid SKILL.md.");
+                continue;
             }
 
-            AgentSkillFrontmatter frontmatter = ReadFrontmatter(skillFiles[0]);
-            return new AgentSkillPackageMetadata(
-                frontmatter.Name,
-                frontmatter.Description,
-                skillFiles.Length);
+            if (!IsSafeRelativePath(normalized) || !paths.Add(normalized))
+            {
+                throw new InvalidOperationException("Skill package contains an unsafe or duplicate path.");
+            }
+
+            using Stream source = entry.Open();
+            using var buffer = new MemoryStream();
+            source.CopyTo(buffer);
+            files.Add(new SkillPackageFile(normalized, buffer.ToArray()));
         }
-        finally
+
+        if (files.Count == 0)
         {
-            try
+            throw new InvalidOperationException("Skill package is empty.");
+        }
+
+        return files;
+    }
+
+    public static void Materialize(
+        IEnumerable<SkillPackageStorageFile> files,
+        Func<string, byte[]> readFile,
+        string destination)
+    {
+        string root = Path.GetFullPath(destination) + Path.DirectorySeparatorChar;
+        foreach (SkillPackageStorageFile file in files)
+        {
+            if (!IsSafeRelativePath(file.RelativePath))
             {
-                if (Directory.Exists(root))
-                {
-                    Directory.Delete(root, recursive: true);
-                }
+                throw new InvalidOperationException("Stored Skill package contains an unsafe path.");
             }
-            catch
+
+            string target = Path.GetFullPath(Path.Combine(destination, file.RelativePath));
+            if (!target.StartsWith(root, StringComparison.Ordinal))
             {
-                // Do not replace validation errors with best-effort temp cleanup errors.
+                throw new InvalidOperationException("Stored Skill package escapes its destination.");
             }
+
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.WriteAllBytes(target, readFile(file.ObjectKey));
         }
     }
 
-    private static AgentSkillFrontmatter ReadFrontmatter(string path)
+    private static AgentSkillPackageMetadata InspectSkillFiles(
+        IReadOnlyList<SkillPackageFile> files)
     {
-        string[] lines = File.ReadAllLines(path);
+        SkillPackageFile[] skillFiles = files
+            .Where(file => string.Equals(Path.GetFileName(file.RelativePath), "SKILL.md", StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        if (skillFiles.Length != 1)
+        {
+            throw new InvalidOperationException("Each Skill package must contain exactly one SKILL.md.");
+        }
+
+        AgentSkillFrontmatter frontmatter = ReadFrontmatter(skillFiles[0].Content);
+        return new AgentSkillPackageMetadata(frontmatter.Name, frontmatter.Description, 1);
+    }
+
+    private static AgentSkillFrontmatter ReadFrontmatter(byte[] content)
+    {
+        string[] lines = System.Text.Encoding.UTF8.GetString(content).Split('\n');
         int start = Array.FindIndex(lines, line => line.TrimStart('\uFEFF').Trim() == "---");
         if (start < 0)
         {
@@ -83,45 +145,18 @@ internal static class AgentSkillPackageArchive
         return new AgentSkillFrontmatter(name, description, compatibility ?? string.Empty);
     }
 
-    internal static void ExtractZip(byte[] content, string destination)
+    private static bool IsSafeRelativePath(string path)
     {
-        using var input = new MemoryStream(content, writable: false);
-        using var archive = new ZipArchive(input, ZipArchiveMode.Read, leaveOpen: false);
-        string root = Path.GetFullPath(destination) + Path.DirectorySeparatorChar;
-        bool hasSkillFile = false;
-
-        foreach (ZipArchiveEntry entry in archive.Entries)
-        {
-            string normalized = entry.FullName.Replace('\\', '/');
-            if (string.IsNullOrWhiteSpace(normalized) || normalized.EndsWith('/'))
-            {
-                continue;
-            }
-
-            string target = Path.GetFullPath(Path.Combine(destination, normalized));
-            if (!target.StartsWith(root, StringComparison.Ordinal))
-            {
-                throw new InvalidOperationException("Skill package contains an unsafe path.");
-            }
-
-            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-            using Stream source = entry.Open();
-            using FileStream output = File.Create(target);
-            source.CopyTo(output);
-            if (string.Equals(Path.GetFileName(target), "SKILL.md", StringComparison.OrdinalIgnoreCase))
-            {
-                hasSkillFile = true;
-            }
-        }
-
-        if (!hasSkillFile)
-        {
-            throw new InvalidOperationException("Skill package must contain at least one SKILL.md file.");
-        }
+        if (string.IsNullOrWhiteSpace(path) || path.StartsWith('/') || Path.IsPathRooted(path))
+            return false;
+        string[] segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        return segments.Length > 0 && segments.All(segment => segment != "." && segment != ".." && !segment.Contains('\0'));
     }
 }
 
-internal sealed record AgentSkillPackageMetadata(
+public sealed record AgentSkillPackageMetadata(
     string Name,
     string Description,
     int SkillCount);
+
+public sealed record SkillPackageFile(string RelativePath, byte[] Content);

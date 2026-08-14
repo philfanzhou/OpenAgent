@@ -32,11 +32,13 @@ internal static class ServiceCollectionExtensions
         services.AddSingleton<AgentListQuery>();
         services.AddSingleton<AgentConfigManagementService>();
         services.AddSingleton<LlmProfileManagementService>();
+        services.AddSingleton<ISkillCatalogStore, RedisSkillCatalogStore>();
 
         services.AddSingleton<IAgentConfigProvider, ConfigProvider>();
 
         services.AddHostedService<RedisRagRegistrar>();
         services.AddHostedService<RedisLlmRegistrar>();
+        services.AddHostedService<RedisSkillRegistrar>();
 
         services.AddHealthChecks()
             .AddCheck<RedisHealthCheck>("redis", tags: new[] { "infrastructure", "ready", "live" })

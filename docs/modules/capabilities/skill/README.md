@@ -1,6 +1,6 @@
 # Agent Skills
 
-OpenAgent 使用 MAF 官方 `AgentSkillsProvider` 提供 Agent Skills。上传内容必须是 ZIP，包内包含一个符合官方 Agent Skills 规范的 `SKILL.md` 目录；包字节保存在对象存储，执行时解压到请求级临时目录。
+OpenAgent 使用 MAF 官方 `AgentSkillsProvider` 提供 Agent Skills。Web 端支持上传 ZIP 或手动填写单文件 Markdown；两者都必须包含一个符合官方 Agent Skills 规范的 `SKILL.md`。ZIP 在 OSS 中按目录文件对象保存，并由索引对象记录路径和哈希；执行时只 materialize 到请求级临时目录，不再重复解压 ZIP。
 
 ## Core Capabilities
 
@@ -8,7 +8,8 @@ OpenAgent 使用 MAF 官方 `AgentSkillsProvider` 提供 Agent Skills。上传�
 |---|---|
 | 官方格式 | `SKILL.md` YAML frontmatter + Markdown instructions |
 | 渐进披露 | MAF 提供 `load_skill` 和 `read_skill_resource` |
-| Agent 绑定 | `SkillsConfig` 只从当前 Agent 配置选择已启用包 |
+| Skill 目录 | Redis `skill:published:index` + `skill:registry:{skillId}` 保存可发现的 Skill 元数据 |
+| Agent 绑定 | `SkillsConfig` 只从当前 Agent 配置选择已启用 Skill；目录注册不产生绑定 |
 | 权限过滤 | 在创建 provider 前按 Agent、Skill 和用户 ACL 过滤 |
 | 生命周期 | `AgentExecutionScope` 释放 provider 并删除临时目录 |
 
@@ -19,7 +20,7 @@ AgentConfig.Skills
         │
         ▼
 AgentSkillsProviderFactory
-        │  object storage → request temp directory
+        │  Redis AgentConfig 绑定 + OSS 文件对象 → request temp directory
         ▼
 MAF AgentSkillsProvider
         │

@@ -5,6 +5,7 @@ using OpenAgent.Contracts.Models;
 using OpenAgent.Contracts.Rag;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Engine.Config;
+using OpenAgent.Engine.Abstractions;
 using OpenAgent.Engine.Host.Middleware;
 using OpenAgent.Engine.Host.Skills;
 
@@ -349,6 +350,16 @@ internal static class ManagementEndpointExtensions
             }
         });
 
+        group.MapGet("/skills", async (
+            [FromServices] ISkillCatalogStore catalog,
+            HttpContext context,
+            CancellationToken cancellationToken) =>
+        {
+            if (!HasScope(context, "agent.config.read"))
+                return Results.Forbid();
+            return Results.Ok(await catalog.ListAsync(cancellationToken).ConfigureAwait(false));
+        });
+
         group.MapPost("/skills/{agentId}/packages", async (
             [FromServices] SkillPackageManagementService packages,
             HttpContext context,
@@ -358,25 +369,39 @@ internal static class ManagementEndpointExtensions
             if (!HasScope(context, "agent.config.write"))
                 return Results.Forbid();
             if (!context.Request.HasFormContentType)
-                return Results.BadRequest(new { error = "A multipart skill package is required." });
+                return Results.BadRequest(new { error = "A multipart .zip or .md Skill file is required." });
 
             IFormCollection form = await context.Request.ReadFormAsync(cancellationToken).ConfigureAwait(false);
             IFormFile? file = form.Files.GetFile("file");
             if (file == null)
                 return Results.BadRequest(new { error = "The multipart field 'file' is required." });
+            string extension = Path.GetExtension(file.FileName);
+            if (!string.Equals(extension, ".zip", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(extension, ".md", StringComparison.OrdinalIgnoreCase))
+            {
+                return Results.BadRequest(new { error = "Skill upload must be a .zip package or a single .md file." });
+            }
             if (file.Length > SkillPackageManagementService.MaxPackageBytes)
                 return Results.BadRequest(new { error = "Skill package exceeds the 4 MB limit." });
 
-            await using Stream stream = file.OpenReadStream();
-            SkillPackageInstallResult result = await packages.InstallAsync(
-                agentId,
-                context.GetAgentRequest().User.TenantId ?? "default",
-                context.GetAgentRequest().User.UserId,
-                Path.GetFileName(file.FileName),
-                string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType,
-                stream,
-                context.Request.Headers.IfMatch.FirstOrDefault(),
-                cancellationToken).ConfigureAwait(false);
+            SkillPackageInstallResult result;
+            try
+            {
+                await using Stream stream = file.OpenReadStream();
+                result = await packages.InstallAsync(
+                    agentId,
+                    context.GetAgentRequest().User.TenantId ?? "default",
+                    context.GetAgentRequest().User.UserId,
+                    Path.GetFileName(file.FileName),
+                    string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType,
+                    stream,
+                    context.Request.Headers.IfMatch.FirstOrDefault(),
+                    cancellationToken).ConfigureAwait(false);
+            }
+            catch (InvalidOperationException exception)
+            {
+                return Results.BadRequest(new { error = exception.Message });
+            }
             if (!result.AgentExists)
                 return Results.NotFound();
             if (result.HasConflict)

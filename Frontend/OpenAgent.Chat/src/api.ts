@@ -21,6 +21,7 @@ import type {
   RagInstanceConfig,
   RagTestResult,
   SkillPackageInstallResponse,
+  SkillCatalogItem,
   SkillTestResult,
   StreamEvent,
 } from './types'
@@ -328,6 +329,10 @@ export const api = {
     })
     if (!response.ok) throw await readError(response)
     return response.json() as Promise<SkillPackageInstallResponse>
+  },
+
+  listSkills(): Promise<SkillCatalogItem[]> {
+    return request<SkillCatalogItem[]>('/api/v1/admin/skills')
   },
 
   deleteSkillPackage(agentId: string, skillId: string): Promise<void> {

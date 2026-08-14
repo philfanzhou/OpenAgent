@@ -1,8 +1,11 @@
+using System.Security.Cryptography;
+using System.Text.Json;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.Logging;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Security;
+using OpenAgent.Contracts.Skills;
 using OpenAgent.Core.Security;
 
 namespace OpenAgent.Core.Capabilities.Skill;
@@ -43,12 +46,9 @@ internal sealed class AgentSkillsProviderFactory(
                     continue;
                 }
 
-                byte[] content = await objectStore.ReadAsync(instance.ObjectKey!, cancellationToken).ConfigureAwait(false);
-                VerifyHash(instance, content);
-
                 string packagePath = Path.Combine(temporaryRoot, Guid.NewGuid().ToString("N"));
                 Directory.CreateDirectory(packagePath);
-                AgentSkillPackageArchive.ExtractZip(content, packagePath);
+                await MaterializeAsync(instance, packagePath, cancellationToken).ConfigureAwait(false);
                 packagePaths.Add(packagePath);
 
                 if (!string.IsNullOrWhiteSpace(instance.Name))
@@ -100,14 +100,78 @@ internal sealed class AgentSkillsProviderFactory(
         || config.EnabledSkills.Contains(instance.Id, StringComparer.OrdinalIgnoreCase)
         || config.EnabledSkills.Contains(instance.Name, StringComparer.OrdinalIgnoreCase);
 
-    private static void VerifyHash(SkillInstanceConfig instance, byte[] content)
+    private async Task MaterializeAsync(
+        SkillInstanceConfig instance,
+        string packagePath,
+        CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(instance.Sha256))
+        byte[] storedContent = await objectStore.ReadAsync(instance.ObjectKey!, cancellationToken).ConfigureAwait(false);
+        VerifyHash(instance, storedContent);
+
+        SkillPackageStorageIndex index;
+        if (string.Equals(instance.PackageFormat, "directory", StringComparison.OrdinalIgnoreCase))
         {
+            index = JsonSerializer.Deserialize<SkillPackageStorageIndex>(storedContent)
+                ?? throw new InvalidOperationException($"Skill package '{instance.Id}' has an invalid storage index.");
+        }
+        else
+        {
+            // Keep already-installed ZIP records readable during migration. New uploads
+            // always use the directory format below.
+            IReadOnlyList<SkillPackageFile> files = AgentSkillPackageArchive.ReadZipFiles(storedContent, cancellationToken);
+            index = new SkillPackageStorageIndex
+            {
+                Files = files.Select((file, index) => new SkillPackageStorageFile
+                {
+                    RelativePath = file.RelativePath,
+                    ObjectKey = index.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    Sha256 = Convert.ToHexString(SHA256.HashData(file.Content)).ToLowerInvariant()
+                }).ToList()
+            };
+            WriteFiles(index, files, packagePath);
             return;
         }
 
-        string actual = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(content)).ToLowerInvariant();
+        foreach (SkillPackageStorageFile file in index.Files)
+        {
+            byte[] content = await objectStore.ReadAsync(file.ObjectKey, cancellationToken).ConfigureAwait(false);
+            string actual = Convert.ToHexString(SHA256.HashData(content)).ToLowerInvariant();
+            if (!string.Equals(actual, file.Sha256, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException($"Skill package '{instance.Id}' file '{file.RelativePath}' failed its SHA-256 integrity check.");
+            }
+
+            AgentSkillPackageArchive.Materialize(
+                [new SkillPackageStorageFile
+                {
+                    RelativePath = file.RelativePath,
+                    ObjectKey = file.ObjectKey,
+                    Sha256 = file.Sha256
+                }],
+                key => string.Equals(key, file.ObjectKey, StringComparison.Ordinal) ? content : [],
+                packagePath);
+        }
+    }
+
+    private static void WriteFiles(
+        SkillPackageStorageIndex index,
+        IReadOnlyList<SkillPackageFile> files,
+        string packagePath)
+    {
+        var byKey = files
+            .Select((file, index) => (Key: index.ToString(System.Globalization.CultureInfo.InvariantCulture), File: file))
+            .ToDictionary(item => item.Key, item => item.File, StringComparer.Ordinal);
+        AgentSkillPackageArchive.Materialize(
+            index.Files,
+            key => byKey[key].Content,
+            packagePath);
+    }
+
+    private static void VerifyHash(SkillInstanceConfig instance, byte[] content)
+    {
+        if (string.IsNullOrWhiteSpace(instance.Sha256)) return;
+
+        string actual = Convert.ToHexString(SHA256.HashData(content)).ToLowerInvariant();
         if (!string.Equals(actual, instance.Sha256, StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidOperationException($"Skill package '{instance.Id}' failed its SHA-256 integrity check.");

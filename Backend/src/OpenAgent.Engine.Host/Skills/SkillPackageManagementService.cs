@@ -1,17 +1,21 @@
 using System.Security.Cryptography;
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Models;
+using OpenAgent.Contracts.Skills;
 using OpenAgent.Core.Capabilities.Skill;
 using OpenAgent.Engine.Config;
+using OpenAgent.Engine.Abstractions;
 
 namespace OpenAgent.Engine.Host.Skills;
 
 internal sealed class SkillPackageManagementService(
     AgentConfigManagementService agentConfigs,
     IFileObjectStore objectStore,
-    ILogger<SkillPackageManagementService> logger)
+    ILogger<SkillPackageManagementService> logger,
+    ISkillCatalogStore? skillCatalog = null)
 {
     internal const long MaxPackageBytes = 4 * 1024 * 1024;
 
@@ -26,31 +30,88 @@ internal sealed class SkillPackageManagementService(
         CancellationToken cancellationToken)
     {
         byte[] content = await ReadPackageAsync(package, cancellationToken).ConfigureAwait(false);
-        AgentSkillPackageMetadata metadata = AgentSkillPackageArchive.Inspect(content, cancellationToken);
-        if (metadata.SkillCount != 1)
+        bool isMarkdown = string.Equals(Path.GetExtension(fileName), ".md", StringComparison.OrdinalIgnoreCase);
+        if (!isMarkdown && !string.Equals(Path.GetExtension(fileName), ".zip", StringComparison.OrdinalIgnoreCase))
         {
-            throw new InvalidOperationException("Each uploaded Skill package must contain exactly one SKILL.md skill.");
+            throw new InvalidOperationException("Skill upload must be a .zip package or a single .md file.");
         }
-        string sha256 = Convert.ToHexString(SHA256.HashData(content)).ToLowerInvariant();
+
+        IReadOnlyList<SkillPackageFile> files = isMarkdown
+            ? [new SkillPackageFile("SKILL.md", content)]
+            : AgentSkillPackageArchive.ReadZipFiles(content, cancellationToken);
+        if (files.Sum(item => item.Content.LongLength) > MaxPackageBytes)
+        {
+            throw new InvalidOperationException("Expanded Skill package exceeds the 4 MB limit.");
+        }
+
+        AgentSkillPackageMetadata metadata = AgentSkillPackageArchive.InspectFiles(files, cancellationToken);
         AgentConfigEntity? entity = await agentConfigs.GetAsync(agentId, cancellationToken).ConfigureAwait(false);
         if (entity == null)
         {
             return SkillPackageInstallResult.NotFound();
         }
 
-        await using var input = new MemoryStream(content, writable: false);
-        FileObjectReference stored = await objectStore.WriteAsync(
-            new FileObjectWriteRequest
+        string packageId = $"skill-{Guid.NewGuid():N}";
+        const string packagePrefixRoot = "skill-packages";
+        var storedKeys = new List<string>();
+        FileObjectReference stored;
+        string storedIndexHash;
+        try
+        {
+            var storedFiles = new List<SkillPackageStorageFile>(files.Count);
+            for (int fileIndex = 0; fileIndex < files.Count; fileIndex++)
             {
-                FileId = $"skill-{Guid.NewGuid():N}",
-                TenantId = tenantId,
-                UserId = userId,
-                FileName = fileName,
-                MediaType = mediaType,
-                Sha256 = sha256
-            },
-            input,
-            cancellationToken).ConfigureAwait(false);
+                SkillPackageFile file = files[fileIndex];
+                string fileHash = Convert.ToHexString(SHA256.HashData(file.Content)).ToLowerInvariant();
+                await using var input = new MemoryStream(file.Content, writable: false);
+                FileObjectReference fileObject = await objectStore.WriteAsync(
+                    new FileObjectWriteRequest
+                    {
+                        FileId = $"{packageId}-{fileIndex:D4}",
+                        TenantId = tenantId,
+                        UserId = userId,
+                        FileName = Path.GetFileName(file.RelativePath),
+                        MediaType = "application/octet-stream",
+                        Sha256 = fileHash,
+                        ObjectKeyPrefix = $"{packagePrefixRoot}/{packageId}/{Path.GetDirectoryName(file.RelativePath)?.Replace('\\', '/') ?? string.Empty}"
+                    },
+                    input,
+                    cancellationToken).ConfigureAwait(false);
+                storedKeys.Add(fileObject.ObjectKey);
+                storedFiles.Add(new SkillPackageStorageFile
+                {
+                    RelativePath = file.RelativePath,
+                    ObjectKey = fileObject.ObjectKey,
+                    Sha256 = fileHash
+                });
+            }
+
+            byte[] indexContent = JsonSerializer.SerializeToUtf8Bytes(new SkillPackageStorageIndex { Files = storedFiles });
+            string indexHash = Convert.ToHexString(SHA256.HashData(indexContent)).ToLowerInvariant();
+            storedIndexHash = indexHash;
+            await using var indexStream = new MemoryStream(indexContent, writable: false);
+            stored = await objectStore.WriteAsync(
+                new FileObjectWriteRequest
+                {
+                    FileId = packageId,
+                    TenantId = tenantId,
+                    UserId = userId,
+                    FileName = $"{packageId}.json",
+                    MediaType = "application/json",
+                    Sha256 = indexHash,
+                    ObjectKeyPrefix = $"{packagePrefixRoot}/{packageId}"
+                },
+                indexStream,
+                cancellationToken).ConfigureAwait(false);
+            storedKeys.Add(stored.ObjectKey);
+        }
+        catch
+        {
+            foreach (string objectKey in storedKeys)
+                await DeleteObjectBestEffortAsync(objectKey).ConfigureAwait(false);
+            throw;
+        }
+
         var instance = new SkillInstanceConfig
         {
             Id = metadata.Name,
@@ -58,18 +119,17 @@ internal sealed class SkillPackageManagementService(
             Enabled = true,
             Description = metadata.Description,
             Source = "ObjectStorage",
-            SourceId = stored.ObjectKey,
+            SourceId = metadata.Name,
             PackageFileName = fileName,
-            PackageFormat = "zip",
+            PackageFormat = "directory",
             ObjectKey = stored.ObjectKey,
-            Sha256 = sha256
+            Sha256 = storedIndexHash
         };
 
         int index = entity.Config.Skills.Instances.FindIndex(item =>
             string.Equals(item.Id, metadata.Name, StringComparison.OrdinalIgnoreCase));
-        string? previousObjectKey = index >= 0
-            ? entity.Config.Skills.Instances[index].ObjectKey
-            : null;
+        SkillInstanceConfig? previousInstance = index >= 0 ? entity.Config.Skills.Instances[index] : null;
+        string? previousObjectKey = previousInstance?.ObjectKey;
         if (index >= 0)
         {
             entity.Config.Skills.Instances[index] = instance;
@@ -93,19 +153,22 @@ internal sealed class SkillPackageManagementService(
         }
         catch
         {
-            await DeleteObjectBestEffortAsync(stored.ObjectKey).ConfigureAwait(false);
+            await DeletePackageBestEffortAsync(stored.ObjectKey, instance.PackageFormat).ConfigureAwait(false);
             throw;
         }
         if (saved == null)
         {
-            await DeleteObjectBestEffortAsync(stored.ObjectKey).ConfigureAwait(false);
+            await DeletePackageBestEffortAsync(stored.ObjectKey, instance.PackageFormat).ConfigureAwait(false);
             return SkillPackageInstallResult.Conflict();
         }
+
+        if (skillCatalog != null)
+            await skillCatalog.PublishAsync(instance, cancellationToken).ConfigureAwait(false);
 
         if (!string.IsNullOrWhiteSpace(previousObjectKey)
             && !string.Equals(previousObjectKey, stored.ObjectKey, StringComparison.Ordinal))
         {
-            await DeleteObjectBestEffortAsync(previousObjectKey).ConfigureAwait(false);
+            await DeletePackageBestEffortAsync(previousObjectKey, previousInstance?.PackageFormat).ConfigureAwait(false);
         }
 
         return SkillPackageInstallResult.Installed(instance, saved.CurrentVersion);
@@ -143,7 +206,7 @@ internal sealed class SkillPackageManagementService(
             return SkillPackageDeleteResult.Conflict;
         }
 
-        await DeleteObjectBestEffortAsync(instance.ObjectKey).ConfigureAwait(false);
+        await DeletePackageBestEffortAsync(instance.ObjectKey, instance.PackageFormat).ConfigureAwait(false);
 
         return SkillPackageDeleteResult.Deleted;
     }
@@ -178,7 +241,10 @@ internal sealed class SkillPackageManagementService(
                     continue;
                 }
 
-                AgentSkillPackageMetadata metadata = AgentSkillPackageArchive.Inspect(content, cancellationToken);
+                IReadOnlyList<SkillPackageFile> files = string.Equals(instance.PackageFormat, "directory", StringComparison.OrdinalIgnoreCase)
+                    ? await ReadStoredFilesAsync(content, cancellationToken).ConfigureAwait(false)
+                    : AgentSkillPackageArchive.ReadZipFiles(content, cancellationToken);
+                AgentSkillPackageMetadata metadata = AgentSkillPackageArchive.InspectFiles(files, cancellationToken);
                 if (!string.Equals(metadata.Name, instance.Id, StringComparison.OrdinalIgnoreCase)
                     && !string.Equals(metadata.Name, instance.Name, StringComparison.OrdinalIgnoreCase))
                 {
@@ -187,7 +253,7 @@ internal sealed class SkillPackageManagementService(
                 }
                 verified.Add(instance.Id);
             }
-            catch (InvalidOperationException)
+            catch (Exception exception) when (exception is InvalidOperationException or JsonException)
             {
                 invalid.Add(instance.Id);
             }
@@ -241,6 +307,49 @@ internal sealed class SkillPackageManagementService(
                 logger.LogError(exception, "Failed to delete Skill package object {ObjectKey} after retries.", objectKey);
             }
         }
+    }
+
+    private async Task DeletePackageBestEffortAsync(string? objectKey, string? packageFormat)
+    {
+        if (string.IsNullOrWhiteSpace(objectKey)) return;
+
+        if (string.Equals(packageFormat, "directory", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                byte[] indexContent = await objectStore.ReadAsync(objectKey, CancellationToken.None).ConfigureAwait(false);
+                SkillPackageStorageIndex? index = JsonSerializer.Deserialize<SkillPackageStorageIndex>(indexContent);
+                if (index != null)
+                {
+                    foreach (SkillPackageStorageFile file in index.Files)
+                        await DeleteObjectBestEffortAsync(file.ObjectKey).ConfigureAwait(false);
+                }
+            }
+            catch (Exception exception)
+            {
+                logger.LogWarning(exception, "Failed to read Skill storage index {ObjectKey}; deleting index only.", objectKey);
+            }
+        }
+
+        await DeleteObjectBestEffortAsync(objectKey).ConfigureAwait(false);
+    }
+
+    private async Task<IReadOnlyList<SkillPackageFile>> ReadStoredFilesAsync(
+        byte[] indexContent,
+        CancellationToken cancellationToken)
+    {
+        SkillPackageStorageIndex index = JsonSerializer.Deserialize<SkillPackageStorageIndex>(indexContent)
+            ?? throw new InvalidOperationException("Skill storage index is invalid.");
+        var files = new List<SkillPackageFile>(index.Files.Count);
+        foreach (SkillPackageStorageFile file in index.Files)
+        {
+            byte[] content = await objectStore.ReadAsync(file.ObjectKey, cancellationToken).ConfigureAwait(false);
+            string actual = Convert.ToHexString(SHA256.HashData(content)).ToLowerInvariant();
+            if (!string.Equals(actual, file.Sha256, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException($"Skill file '{file.RelativePath}' failed its SHA-256 integrity check.");
+            files.Add(new SkillPackageFile(file.RelativePath, content));
+        }
+        return files;
     }
 }
 

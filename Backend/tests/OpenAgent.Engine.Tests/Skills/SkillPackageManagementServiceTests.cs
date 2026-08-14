@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Text;
+using System.Text.Json;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
@@ -9,6 +10,7 @@ using Moq;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Models;
+using OpenAgent.Contracts.Skills;
 using OpenAgent.Engine.Abstractions;
 using OpenAgent.Engine.Config;
 using OpenAgent.Engine.Host.Skills;
@@ -52,8 +54,11 @@ public class SkillPackageManagementServiceTests
 
         Assert.True(result.AgentExists);
         Assert.False(result.HasConflict);
-        Assert.Equal("skills/customer.zip", result.Skill?.ObjectKey);
-        Assert.Equal(content, store.Content);
+        Assert.Equal("directory", result.Skill?.PackageFormat);
+        Assert.NotNull(result.Skill?.ObjectKey);
+        SkillPackageStorageIndex storage = store.ReadIndex(result.Skill!.ObjectKey!);
+        Assert.Equal(content.Length > 0, storage.Files.Count == 1);
+        Assert.Equal(SkillMarkdown, Encoding.UTF8.GetString(store.Objects[storage.Files[0].ObjectKey]).TrimStart('\uFEFF'));
         AgentConfigEntity? saved = await configs.GetAsync(AgentId);
         SkillInstanceConfig skill = Assert.Single(saved!.Config.Skills.Instances);
         Assert.Equal("customer-lookup", skill.Id);
@@ -65,21 +70,16 @@ public class SkillPackageManagementServiceTests
     {
         (SkillPackageManagementService service, _, RecordingObjectStore store) = await CreateServiceAsync();
         byte[] content = CreatePackage();
-        store.Content = content;
+        await using var package = new MemoryStream(content);
+        SkillPackageInstallResult installed = await service.InstallAsync(
+            AgentId, "tenant", "user", "customer.zip", "application/zip", package, null, default);
+        SkillInstanceConfig storedSkill = installed.Skill!;
         var skills = new SkillsConfig
         {
             EnabledSkills = ["customer-lookup"],
             Instances =
             [
-                new SkillInstanceConfig
-                {
-                    Id = "customer-lookup",
-                    Name = "Customer lookup",
-                    Enabled = true,
-                    PackageFileName = "customer.zip",
-                    ObjectKey = "skills/customer.zip",
-                    Sha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(content)).ToLowerInvariant()
-                }
+                storedSkill
             ]
         };
 
@@ -87,7 +87,8 @@ public class SkillPackageManagementServiceTests
 
         Assert.True(result.Success);
         Assert.Equal(["customer-lookup"], result.ObjectStorageVerifiedSkills);
-        Assert.Equal("skills/customer.zip", store.LastReadObjectKey);
+        Assert.NotNull(store.LastReadObjectKey);
+        Assert.Contains(store.LastReadObjectKey!, store.Objects.Keys);
     }
 
     [Fact]
@@ -113,7 +114,7 @@ public class SkillPackageManagementServiceTests
             default);
 
         Assert.Equal(SkillPackageDeleteResult.Deleted, result);
-        Assert.Equal("skills/customer.zip", store.DeletedObjectKey);
+        Assert.True(store.DeletedObjectKeys.Count >= 2);
         AgentConfigEntity? saved = await configs.GetAsync(AgentId);
         Assert.Empty(saved!.Config.Skills.Instances);
         Assert.Empty(saved.Config.Skills.EnabledSkills);
@@ -125,7 +126,7 @@ public class SkillPackageManagementServiceTests
         (SkillPackageManagementService service, _, RecordingObjectStore store) = await CreateServiceAsync();
         byte[] content = CreatePackage();
 
-        await service.InstallAsync(
+        SkillPackageInstallResult first = await service.InstallAsync(
             AgentId,
             "tenant",
             "user",
@@ -144,8 +145,28 @@ public class SkillPackageManagementServiceTests
             expectedVersion: null,
             default);
 
-        Assert.Equal("skills/customer.zip-2", result.Skill?.ObjectKey);
-        Assert.Contains("skills/customer.zip", store.DeletedObjectKeys);
+        Assert.NotEqual(first.Skill?.ObjectKey, result.Skill?.ObjectKey);
+        Assert.Contains(first.Skill!.ObjectKey!, store.DeletedObjectKeys);
+    }
+
+    [Fact]
+    public async Task InstallAsync_AcceptsSingleMarkdownSkill()
+    {
+        (SkillPackageManagementService service, _, RecordingObjectStore store) = await CreateServiceAsync();
+
+        SkillPackageInstallResult result = await service.InstallAsync(
+            AgentId,
+            "tenant",
+            "user",
+            "customer.md",
+            "text/markdown",
+            new MemoryStream(Encoding.UTF8.GetBytes(SkillMarkdown)),
+            expectedVersion: null,
+            default);
+
+        Assert.Equal("customer-lookup", result.Skill?.Id);
+        Assert.Equal("directory", result.Skill?.PackageFormat);
+        Assert.Equal(2, store.Objects.Count);
     }
 
     private static async Task<(
@@ -190,7 +211,7 @@ public class SkillPackageManagementServiceTests
 
     private sealed class RecordingObjectStore : IFileObjectStore
     {
-        public byte[] Content { get; set; } = [];
+        public Dictionary<string, byte[]> Objects { get; } = new(StringComparer.Ordinal);
         public string? LastReadObjectKey { get; private set; }
         public List<string> DeletedObjectKeys { get; } = [];
         public string? DeletedObjectKey => DeletedObjectKeys.LastOrDefault();
@@ -203,25 +224,27 @@ public class SkillPackageManagementServiceTests
         {
             await using var buffer = new MemoryStream();
             await content.CopyToAsync(buffer, cancellationToken);
-            Content = buffer.ToArray();
+            string objectKey = $"skills/{request.FileId}{Path.GetExtension(request.FileName)}";
+            Objects[objectKey] = buffer.ToArray();
             WriteCount++;
-            string objectKey = WriteCount == 1
-                ? $"skills/{request.FileName}"
-                : $"skills/{request.FileName}-{WriteCount}";
             return new FileObjectReference { ObjectKey = objectKey };
         }
 
         public Task<byte[]> ReadAsync(string objectKey, CancellationToken cancellationToken)
         {
             LastReadObjectKey = objectKey;
-            return Task.FromResult(Content);
+            return Task.FromResult(Objects[objectKey]);
         }
 
         public Task DeleteAsync(string objectKey, CancellationToken cancellationToken)
         {
             DeletedObjectKeys.Add(objectKey);
+            Objects.Remove(objectKey);
             return Task.CompletedTask;
         }
+
+        public SkillPackageStorageIndex ReadIndex(string objectKey) =>
+            JsonSerializer.Deserialize<SkillPackageStorageIndex>(Objects[objectKey])!;
     }
 
     private sealed class UnavailableRedisConnectionProvider : IRedisConnectionProvider

@@ -7,7 +7,7 @@ import ChatMessages from './components/ChatMessages.vue'
 import ChatSidebar from './components/ChatSidebar.vue'
 import MessageComposer from './components/MessageComposer.vue'
 import HealthCheckPanel from './components/HealthCheckPanel.vue'
-import { AUTO_AGENT_ID, type AgentConfigEntity, type AgentSummary, type AuthConfig, type ConnectionMode, type ConversationMessage, type ConversationRecord, type CurrentUserContext, type LlmProviderProfile, type LlmTestResult, type McpServerConfig, type McpTestResult, type MessageFile, type PendingFile, type RagConfig, type RagInstanceConfig, type RagTestResult, type SkillInstanceConfig, type SkillTestResult, type SkillsConfig } from './types'
+import { AUTO_AGENT_ID, type AgentConfigEntity, type AgentSummary, type AuthConfig, type ConnectionMode, type ConversationMessage, type ConversationRecord, type CurrentUserContext, type LlmProviderProfile, type LlmTestResult, type McpServerConfig, type McpTestResult, type MessageFile, type PendingFile, type RagConfig, type RagInstanceConfig, type RagTestResult, type SkillCatalogItem, type SkillInstanceConfig, type SkillTestResult, type SkillsConfig } from './types'
 import { usePanelLayout } from './composables/usePanelLayout'
 
 const connectionMode = ref<ConnectionMode>(getConnectionMode())
@@ -51,6 +51,9 @@ const selectedMcpIndex = ref(-1)
 const mcpResult = ref<McpTestResult | null>(null)
 const skillResult = ref<SkillTestResult | null>(null)
 const skillPackageInput = ref<HTMLInputElement | null>(null)
+const showSkillTextEditor = ref(false)
+const skillMarkdownDraft = ref('---\nname: my-skill\ndescription: Describe what this Skill does\n---\n\n# Instructions\n\n')
+const skillCatalog = ref<SkillCatalogItem[]>([])
 const skillDraft = ref<SkillsConfig>({ enabledSkills: [], instances: [] })
 const skillEditorSnapshot = ref<SkillsConfig | null>(null)
 const selectedSkillIndex = ref(-1)
@@ -72,6 +75,7 @@ const { sidebarCollapsed, contextCollapsed, toggleSidebar, toggleContext, startS
 const currentMessages = computed(() => selectedConversation.value?.messages || [])
 const selectedSkill = computed(() => selectedSkillIndex.value >= 0 ? skillDraft.value.instances[selectedSkillIndex.value] || null : null)
 const enabledSkillIds = computed(() => new Set(skillDraft.value.enabledSkills))
+const unboundCatalogSkills = computed(() => skillCatalog.value.filter(item => !skillDraft.value.instances.some(bound => bound.skillId.toLowerCase() === item.skillId.toLowerCase())))
 const enabledRagIds = computed(() => new Set(config.value?.config.rag?.enabledRagInstanceIds || ragInstances.value.filter(item => item.enabled).map(item => item.id)))
 const mcpArgumentsText = computed({
   get: () => (mcpDraft.value.arguments || []).join('\n'),
@@ -673,7 +677,10 @@ async function deleteConversation(item: ConversationRecord): Promise<void> {
 async function loadConfig(agentId = selectedAgentId.value): Promise<void> {
   if (!agentId || agentId === AUTO_AGENT_ID) return
   try {
-    config.value = await api.getAgentConfig(agentId)
+    const loadedConfig = await api.getAgentConfig(agentId)
+    const catalog = await api.listSkills().catch(() => [] as SkillCatalogItem[])
+    config.value = loadedConfig
+    skillCatalog.value = catalog
     mcpServers.value = (config.value.config.mcp?.servers || []).map(item => ({
       ...item,
       arguments: [...(item.arguments || [])],
@@ -785,6 +792,54 @@ function chooseSkillPackage(): void {
   skillPackageInput.value?.click()
 }
 
+function openSkillTextEditor(): void {
+  if (!config.value?.agentId) {
+    notifyError(new Error('请先从 Agent 配置中打开 Skill 绑定'))
+    return
+  }
+  skillMarkdownDraft.value = '---\nname: my-skill\ndescription: Describe what this Skill does\n---\n\n# Instructions\n\n'
+  showSkillTextEditor.value = true
+}
+
+function parseSkillFrontmatter(markdown: string): { name: string; description: string } | null {
+  const lines = markdown.replace(/^\uFEFF/, '').split(/\r?\n/)
+  if (lines[0]?.trim() !== '---') return null
+  const end = lines.findIndex((line, index) => index > 0 && line.trim() === '---')
+  if (end < 0) return null
+  const values = new Map<string, string>()
+  for (const line of lines.slice(1, end)) {
+    const separator = line.indexOf(':')
+    if (separator > 0) values.set(line.slice(0, separator).trim().toLowerCase(), line.slice(separator + 1).trim().replace(/^['"]|['"]$/g, ''))
+  }
+  const name = values.get('name')?.trim() || ''
+  const description = values.get('description')?.trim() || ''
+  return name && description ? { name, description } : null
+}
+
+function bindCatalogSkill(skill: SkillCatalogItem): void {
+  if (skillDraft.value.instances.some(item => item.skillId.toLowerCase() === skill.skillId.toLowerCase())) return
+  skillDraft.value.instances.push({ ...skill, enabled: false })
+  selectedSkillIndex.value = skillDraft.value.instances.length - 1
+  ElMessage.success(`已将 Skill「${skill.name}」加入 Agent 草稿，请保存 Agent 配置`)
+}
+
+async function uploadSkillFile(file: File): Promise<void> {
+  if (!config.value?.agentId) return
+  const extension = file.name.toLowerCase().split('.').pop()
+  if (extension !== 'zip' && extension !== 'md') throw new Error('Skill 只能上传 .zip 或单文件 .md')
+  if (file.size === 0 || file.size > 4 * 1024 * 1024) throw new Error('Skill 文件必须在 1B 到 4MB 之间')
+  const installed = await api.uploadSkillPackage(config.value.agentId, file)
+  const index = skillDraft.value.instances.findIndex(item => item.skillId === installed.skill.skillId)
+  if (index >= 0) skillDraft.value.instances[index] = installed.skill
+  else skillDraft.value.instances.push(installed.skill)
+  skillDraft.value.enabledSkills = Array.from(new Set([...skillDraft.value.enabledSkills, installed.skill.skillId]))
+  config.value.currentVersion = installed.currentVersion
+  syncCapabilityDraftsToAgent()
+  selectedSkillIndex.value = index >= 0 ? index : skillDraft.value.instances.length - 1
+  skillCatalog.value = [installed.skill, ...skillCatalog.value.filter(item => item.skillId.toLowerCase() !== installed.skill.skillId.toLowerCase())]
+  ElMessage.success(`Skill 已校验并写入${installed.storage === 'object-storage' ? 'OSS 解压目录' : installed.storage}`)
+}
+
 async function uploadSkillPackage(event: Event): Promise<void> {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
@@ -792,15 +847,24 @@ async function uploadSkillPackage(event: Event): Promise<void> {
   if (!file || !config.value?.agentId) return
   uploadingSkill.value = true
   try {
-    const installed = await api.uploadSkillPackage(config.value.agentId, file)
-    const index = skillDraft.value.instances.findIndex(item => item.skillId === installed.skill.skillId)
-    if (index >= 0) skillDraft.value.instances[index] = installed.skill
-    else skillDraft.value.instances.push(installed.skill)
-    skillDraft.value.enabledSkills = Array.from(new Set([...skillDraft.value.enabledSkills, installed.skill.skillId]))
-    config.value.currentVersion = installed.currentVersion
-    syncCapabilityDraftsToAgent()
-    selectedSkillIndex.value = index >= 0 ? index : skillDraft.value.instances.length - 1
-    ElMessage.success(`Skill 已解析并写入${installed.storage === 'object-storage' ? '对象存储' : installed.storage}`)
+    await uploadSkillFile(file)
+  } catch (error) {
+    notifyError(error)
+  } finally {
+    uploadingSkill.value = false
+  }
+}
+
+async function saveTextSkill(): Promise<void> {
+  const frontmatter = parseSkillFrontmatter(skillMarkdownDraft.value)
+  if (!frontmatter) {
+    notifyError(new Error('Skill Markdown 必须以 YAML frontmatter 开始，并包含 name 与 description'))
+    return
+  }
+  uploadingSkill.value = true
+  try {
+    await uploadSkillFile(new File([skillMarkdownDraft.value], `${frontmatter.name}.md`, { type: 'text/markdown' }))
+    showSkillTextEditor.value = false
   } catch (error) {
     notifyError(error)
   } finally {
@@ -996,7 +1060,7 @@ function saveSkills(): void {
     .filter(item => !item.objectKey || !item.skillId.trim() || !item.name.trim())
     .map(item => item.skillId || item.name || '未命名 Skill')
   if (invalid.length) {
-    notifyError(new Error(`Skill 必须来自官方 ZIP 包：${invalid.join('、')}`))
+    notifyError(new Error(`Skill 必须是已校验的 ZIP/Markdown 包：${invalid.join('、')}`))
     return
   }
   syncCapabilityDraftsToAgent()
@@ -1150,7 +1214,7 @@ onMounted(() => {
         <div class="agent-editor-section-heading"><div><span class="eyebrow">CAPABILITY BINDINGS</span><h4>能力绑定</h4><p>当前 Agent 的 MCP、Skill、RAG 以卡片展示；勾选即可启用或停用 Skill 与 RAG。</p></div><span class="editor-section-index">03</span></div>
         <div class="binding-groups">
           <article class="binding-group"><div class="binding-group-heading"><div><strong>MCP</strong><small>保存到当前 Agent 配置</small></div><el-button link type="primary" @click="newMcp">新增 MCP</el-button></div><div v-if="mcpServers.length" class="binding-list"><div v-for="(server, index) in mcpServers" :key="server.name" class="binding-item"><span class="binding-icon mcp-avatar">M</span><div><strong>{{ server.name }}</strong><small>{{ server.type }} · {{ server.url || server.command || 'Stdio' }}</small></div><el-button link type="primary" @click="selectMcp(index); showMcpEditor = true">编辑</el-button><el-button link type="danger" @click="removeMcp(index)">删除</el-button></div></div><div v-else class="binding-empty">当前 Agent 尚未绑定 MCP。</div></article>
-          <article class="binding-group"><div class="binding-group-heading"><div><strong>Skill</strong><small>MAF Agent Skills · 保存到当前 Agent 配置</small></div><div><input ref="skillPackageInput" type="file" hidden accept=".zip" @change="uploadSkillPackage" /><el-button :loading="uploadingSkill" link type="primary" @click="chooseSkillPackage">上传官方 Skill ZIP</el-button></div></div><div v-if="skillDraft.instances.length" class="binding-list"><label v-for="(skill, index) in skillDraft.instances" :key="skill.skillId" class="binding-item binding-check-item"><span class="binding-icon skill-avatar">S</span><div><strong>{{ skill.name || '未命名 Skill' }}</strong><small>{{ skill.skillId || '未设置 ID' }} · SKILL.md</small></div><el-checkbox :model-value="isSkillEnabled(skill.skillId)" @change="toggleSkillBinding(skill, Boolean($event))" /><el-button link type="primary" @click="editSkill(index)">查看</el-button></label></div><div v-else class="binding-empty">当前 Agent 尚未绑定官方 Skill。</div></article>
+          <article class="binding-group"><div class="binding-group-heading"><div><strong>Skill</strong><small>MAF Agent Skills · 绑定关系随 Agent 配置保存到 Redis</small></div><div><input ref="skillPackageInput" type="file" hidden accept=".zip,.md" @change="uploadSkillPackage" /><el-button :loading="uploadingSkill" link type="primary" @click="chooseSkillPackage">上传 ZIP / MD</el-button><el-button link type="primary" @click="openSkillTextEditor">手动填写</el-button></div></div><div v-if="skillDraft.instances.length" class="binding-list"><label v-for="(skill, index) in skillDraft.instances" :key="skill.skillId" class="binding-item binding-check-item"><span class="binding-icon skill-avatar">S</span><div><strong>{{ skill.name || '未命名 Skill' }}</strong><small>{{ skill.skillId || '未设置 ID' }} · {{ skill.packageFileName?.toLowerCase().endsWith('.md') ? '单文件 SKILL.md' : 'Skill 目录' }}</small></div><el-checkbox :model-value="isSkillEnabled(skill.skillId)" @change="toggleSkillBinding(skill, Boolean($event))" /><el-button link type="primary" @click="editSkill(index)">查看</el-button></label></div><div v-else class="binding-empty">当前 Agent 尚未绑定 Skill。</div><div v-if="unboundCatalogSkills.length" class="catalog-list"><small>Redis Skill 目录</small><el-button v-for="skill in unboundCatalogSkills" :key="skill.skillId" link type="primary" @click="bindCatalogSkill(skill)">绑定 {{ skill.name || skill.skillId }}</el-button></div></article>
           <article class="binding-group"><div class="binding-group-heading"><div><strong>RAG</strong><small>知识检索数据源</small></div><el-button link type="primary" @click="showAgentEditor = false; openSettings('rag')">管理 RAG</el-button></div><div v-if="ragInstances.length" class="binding-list"><label v-for="rag in ragInstances" :key="rag.id" class="binding-item binding-check-item"><span class="binding-icon rag-avatar">R</span><div><strong>{{ rag.name || rag.id }}</strong><small>{{ rag.type }} · {{ rag.collectionName || '默认数据集' }}</small></div><el-checkbox :model-value="isRagEnabled(rag.id)" @change="toggleRagBinding(rag, Boolean($event))" /></label></div><div v-else class="binding-empty">还没有 RAG，去 RAG 表格中新增。</div></article>
         </div>
       </section>
@@ -1185,6 +1249,12 @@ onMounted(() => {
       <el-form-item label="状态"><el-switch v-model="selectedSkill.enabled" active-text="启用" inactive-text="停用" /></el-form-item>
       <el-alert v-if="skillResult" :title="skillResult.success ? 'Skill 验证通过' : 'Skill 验证失败'" :description="`对象存储已验证 ${skillResult.objectStorageVerifiedSkills.length} 条；实例 ${skillResult.instanceCount} 条`" :type="skillResult.success ? 'success' : 'warning'" :closable="false" />
     </el-form><template #footer><el-button @click="cancelSkillEditor">取消</el-button><el-button :loading="testingSkill" @click="testSkills">验证对象与配置</el-button><el-button type="primary" @click="saveSkills">加入 Agent 配置</el-button></template>
+  </el-dialog>
+
+  <el-dialog v-model="showSkillTextEditor" class="editor-dialog" modal-class="editor-overlay" title="手动填写 Markdown Skill" width="min(760px, calc(100vw - 32px))" append-to-body destroy-on-close>
+    <el-alert title="单文件 Skill 必须包含 YAML frontmatter 的 name、description，以及后续 Markdown 指令内容。保存后服务端会再次校验并按目录 Skill 存入 OSS。" type="info" :closable="false" />
+    <el-input v-model="skillMarkdownDraft" class="skill-markdown-input" type="textarea" :rows="18" spellcheck="false" />
+    <template #footer><el-button @click="showSkillTextEditor = false">取消</el-button><el-button type="primary" :loading="uploadingSkill" @click="saveTextSkill">校验并保存 Skill</el-button></template>
   </el-dialog>
 
   <el-dialog v-model="showRagEditor" class="editor-dialog" modal-class="editor-overlay" title="编辑 RAG" width="min(650px, calc(100vw - 32px))" append-to-body destroy-on-close>

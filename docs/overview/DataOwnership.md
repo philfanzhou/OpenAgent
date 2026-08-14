@@ -16,7 +16,8 @@
 | AgentConfig | Agent.Matrix (通过 IAgentConfigProvider) | 获取 Agent 配置（MCP、官方 Skill 包绑定、RAG 配置等） |
 | LlmProviderProfile | ILlmRegistry (内存注册) | 获取 LLM 连接配置 |
 | RagInstanceConfig | IRagRegistry (内存注册) | 获取 RAG 实例配置 |
-| Agent Skill ZIP | S3 兼容对象存储 | 保存官方 `SKILL.md` 包；运行时解压到请求级临时目录并由 MAF `AgentSkillsProvider` 读取 |
+| Agent Skill 文件目录 | S3 兼容对象存储 | ZIP/MD 上传后按解压目录写入文件对象；运行时 materialize 到请求级临时目录并由 MAF `AgentSkillsProvider` 读取 |
+| Skill 目录元数据 | Redis `skill:published:index` / `skill:registry:{skillId}` | 提供可绑定的 Skill 列表；不表示某个 Agent 已绑定 |
 
 ## 持久化规则
 

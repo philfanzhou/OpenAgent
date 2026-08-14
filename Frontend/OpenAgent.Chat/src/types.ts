@@ -118,6 +118,8 @@ export interface SkillInstanceConfig {
   allowedRoles?: string[]
 }
 
+export type SkillCatalogItem = SkillInstanceConfig
+
 export interface SkillsConfig {
   enabledSkills: string[]
   instances: SkillInstanceConfig[]
