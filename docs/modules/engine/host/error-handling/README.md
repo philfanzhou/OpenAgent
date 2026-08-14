@@ -7,7 +7,7 @@ ErrorHandling 模块提供 Agent.Engine 的全局异常处理机制，确保所�
 |-----------|-------------|
 | 全局异常捕获 | `AgentExceptionHandlerMiddleware` 捕获常规 HTTP 异常，返回 ProblemDetails |
 | 流式错误载荷 | `StreamingPayloadFactory` 构造 SSE 错误载荷 |
-| AgentErrorCode 映射 | 按 ErrorCode 分组映射 HTTP 状态码（403/404/429/400/503/500）|
+| AgentErrorCode 映射 | 按 ErrorCode 分组映射 HTTP 状态码（403/404/409/429/400/503/500）|
 
 ## Architecture
 ```text
@@ -23,6 +23,8 @@ HTTP 请求
 | HumanApprovalRequiredException | 202 |
 | AgentException | 按 ErrorCode |
 | TimeoutException | 504 |
+| ClientResultException | 4xx 或 502（Provider 故障）|
+| HttpRequestException | 401/403/404/429/503（Provider HTTP 故障）|
 | 其他 | 500 |
 
 ## Current Status

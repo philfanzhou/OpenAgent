@@ -14,9 +14,13 @@ Core，不再存在单独的 MAF 引擎项目或可切换的生产引擎体系�
 | `OpenAgent.Engine.Host` | ASP.NET Core 宿主（端点、中间件、流式传输） |
 | `OpenAgent.Hosting` | 共享 DI、认证、Redis 与 OpenTelemetry 注册扩展 |
 | `OpenAgent.Router` | HTTP/gRPC 入口、会话亲和、限流、转发 |
+| `OpenAgent.Architecture.Tests` | 架构依赖与分层约束测试 |
+| `OpenAgent.Contracts.Tests` | Contracts 序列化与契约测试 |
 | `OpenAgent.Core.Tests` | Core 单元与组件测试 |
 | `OpenAgent.Engine.Tests` | Engine 单元与组件测试 |
 | `OpenAgent.Hosting.Tests` | Hosting 单元与组件测试 |
+| `OpenAgent.Infrastructure.Tests` | Infrastructure 持久化集成测试 |
+| `OpenAgent.Router.Tests` | Router 单元与组件测试 |
 
 ## 请求主链
 

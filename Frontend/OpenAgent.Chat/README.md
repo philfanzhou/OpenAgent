@@ -9,7 +9,7 @@ pnpm install
 pnpm dev
 ```
 
-在设置窗口分别保存 Router 地址（例如 `http://localhost:5001`）与 Engine 地址（例如 `http://localhost:5000`），选择本次连接模式，再填写租户并使用开发环境 Basic 账号登录。两套地址和当前模式保存在浏览器本地，切换模式不会覆盖另一套地址。当前 Basic 实现仅用于本地联调：它只解码凭据，不校验密码，不能作为生产认证方案。
+在设置窗口分别保存 Router 地址（例如 `http://localhost:5001`）与 Engine 地址（例如 `http://localhost:5208`），选择本次连接模式，再填写租户并使用开发环境 Basic 账号登录。两套地址和当前模式保存在浏览器本地，切换模式不会覆盖另一套地址。当前 Basic 实现仅用于本地联调：它只解码凭据，不校验密码，不能作为生产认证方案。
 
 ## 验证
 
@@ -18,7 +18,7 @@ pnpm test
 pnpm build
 ```
 
-工作台内的“诊断”页会从浏览器验证当前 Router 或 Engine 的 Live、Ready、Agent Catalog、Identity 和 Conversations。架构、接口和安全边界见 [`docs/modules/chat-workspace/`](../../docs/modules/chat-workspace/README.md)。
+工作台内的“健康检查”页会从浏览器验证当前 Router 或 Engine 的 Live、Ready、Agent Catalog、Identity 和 Conversations。架构、接口和安全边界见 [`docs/modules/chat-workspace/`](../../docs/modules/chat-workspace/README.md)。
 
 ## 生产边界
 

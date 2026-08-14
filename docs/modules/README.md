@@ -9,7 +9,7 @@
 | [execution/](./execution/) | 执行管线与核心调度 | pipeline, streaming, errors, conversation-lock |
 | [conversation/](./conversation/) | 会话记录与存储 | store, context-compression |
 | [engine/](./engine/) | 统一 SDK Runtime 与 Host 适配 | maf, host/chat-api, host/error-handling |
-| [engine/runtime/](./engine/runtime/) | Engine 运行时管理 | config-management, config-hotreload, health-check, graceful-shutdown, service-registration, capability-registration |
+| [engine/runtime/](./engine/runtime/) | Engine 运行时管理 | config-management, config-hot-reload, health-check, graceful-shutdown, service-registration, capability-registration |
 | [capabilities/](./capabilities/) | 能力集成 | skill, tool-calling, mcp, rag |
 | [security/](./security/) | 安全与租户 | auth, tenant, permission |
 | [chat-workspace/](./chat-workspace/) | Gateway-first Chat 工作台 | chat, diagnostics, admin proxy, validation |

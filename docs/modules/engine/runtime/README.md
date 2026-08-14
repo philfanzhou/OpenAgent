@@ -3,7 +3,7 @@
 | 功能点 | 说明 | 文档 |
 |--------|------|------|
 | config-management | Agent 配置读取与快照 | [config-management/](./config-management/) |
-| config-hotreload | Redis Pub/Sub 配置热加载 | [config-hotreload/](./config-hotreload/) |
+| config-hot-reload | Redis Pub/Sub 配置热加载 | [config-hot-reload/](./config-hot-reload/) |
 | health-check | 健康检查探针 | [health-check/](./health-check/) |
 | graceful-shutdown | 优雅停机与排空 | [graceful-shutdown/](./graceful-shutdown/) |
 | service-registration | Redis 服务注册与心跳 | [service-registration/](./service-registration/) |

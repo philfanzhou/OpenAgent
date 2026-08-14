@@ -34,7 +34,6 @@
 
 .agent/skills/
 ├── build-and-test.md         ← 构建与测试命令
-├── channels-development.md   ← Channels 开发约束
 ├── e2e-test.md               ← E2E 测试 + 服务生命周期
 └── update-docs.md            ← 文档整理
 ```
