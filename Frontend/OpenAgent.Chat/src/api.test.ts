@@ -162,29 +162,45 @@ describe('workspace API', () => {
     expect(result.storage).toBe('object-storage')
   })
 
-  it('sends an MCP protocol version with the server configuration', async () => {
+  it('sends MCP and Skill bindings inside the Agent configuration', async () => {
     setConnectionMode('engine')
     setEngineBaseUrl('http://engine.example')
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
-      name: 'tools',
-      url: 'https://mcp.example.test/mcp',
-      type: 'Http',
-      protocolVersion: '2025-06-18',
+      agentId: 'support',
+      name: 'Support',
+      config: {
+        mcp: { servers: [] },
+        skills: { enabledSkills: [], instances: [] },
+      },
     }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     }))
     vi.stubGlobal('fetch', fetchMock)
 
-    await api.saveMcp('tools', 'support', {
-      name: 'tools',
-      url: 'https://mcp.example.test/mcp',
-      type: 'Http',
-      protocolVersion: '2025-06-18',
+    await api.saveAgentConfig('support', {
+      agentId: 'support',
+      name: 'Support',
+      description: '',
+      status: 0,
+      currentVersion: '1',
+      config: {
+        instructions: '',
+        llm: { provider: '', format: 'OpenAIChatCompletions', modelId: 'gpt-4o', apiKey: '', endpoint: '', temperature: 0.7 },
+        mcp: {
+          servers: [{ name: 'tools', url: 'https://mcp.example.test/mcp', type: 'Http', protocolVersion: '2025-06-18' }],
+        },
+        rag: { enabled: false, enabledRagInstanceIds: [], instances: [] },
+        skills: { enabledSkills: ['weather'], instances: [{ skillId: 'weather', name: 'Weather', enabled: true }] },
+        maxTurns: 50,
+      },
     })
 
+    expect(vi.mocked(fetch).mock.calls[0]?.[0]).toBe('http://engine.example/api/v1/admin/agents/support/config')
     const init = fetchMock.mock.calls[0]?.[1] as RequestInit
-    expect(JSON.parse(String(init.body)).protocolVersion).toBe('2025-06-18')
+    const body = JSON.parse(String(init.body)) as { config: { mcp: { servers: Array<{ protocolVersion: string }>; }; skills: { enabledSkills: string[] } } }
+    expect(body.config.mcp.servers[0].protocolVersion).toBe('2025-06-18')
+    expect(body.config.skills.enabledSkills).toEqual(['weather'])
   })
 
   it('migrates the previous single endpoint to the Router address', () => {

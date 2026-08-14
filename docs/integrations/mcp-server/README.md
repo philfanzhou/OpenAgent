@@ -29,7 +29,7 @@ ModelContextProtocol.Core 1.4.1
 ```
 
 ## Current Status
-**Implemented** — 协议、JSON-RPC 和传输生命周期全部委托给官方 SDK。生产侧不再维护手写协议代码。
+**Implemented** — MCP Server 必须绑定在具体 Agent 配置中并随 Agent 配置统一保存；协议、JSON-RPC 和传输生命周期全部委托给官方 SDK。生产侧不再维护手写协议代码。
 
 ## Limits
 - `Stdio` 仅允许执行服务端策略白名单中的命令

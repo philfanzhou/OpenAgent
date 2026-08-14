@@ -193,76 +193,6 @@ internal static class ManagementEndpointExtensions
             return saved == null ? Results.Conflict() : Results.Ok(Redact(saved));
         });
 
-        group.MapGet("/mcp", async (
-            [FromServices] AgentConfigManagementService manager,
-            HttpContext context,
-            [FromQuery] string agentId,
-            CancellationToken cancellationToken) =>
-        {
-            if (!HasScope(context, "agent.config.read"))
-                return Results.Forbid();
-            AgentConfigEntity? entity = await manager.GetAsync(agentId, cancellationToken).ConfigureAwait(false);
-            return entity == null ? Results.NotFound() : Results.Ok(RedactMcp(entity.Config.Mcp));
-        });
-
-        group.MapPut("/mcp/{id}", async (
-            [FromServices] AgentConfigManagementService manager,
-            HttpContext context,
-            string id,
-            [FromQuery] string agentId,
-            [FromBody] McpServerConfig server,
-            CancellationToken cancellationToken) =>
-        {
-            if (!HasScope(context, "agent.config.write"))
-                return Results.Forbid();
-            AgentConfigEntity? existing = await manager.GetAsync(agentId, cancellationToken).ConfigureAwait(false);
-            if (existing == null)
-                return Results.NotFound();
-
-            server.Name = id;
-            int index = existing.Config.Mcp.Servers.FindIndex(item =>
-                string.Equals(item.Name, id, StringComparison.OrdinalIgnoreCase));
-            if (index >= 0)
-                existing.Config.Mcp.Servers[index] = MergeMcpSecrets(
-                    existing.Config.Mcp.Servers[index],
-                    server);
-            else
-                existing.Config.Mcp.Servers.Add(server);
-
-            AgentConfigEntity? saved = await manager.SaveAsync(
-                agentId,
-                existing,
-                context.Request.Headers.IfMatch.FirstOrDefault(),
-                cancellationToken).ConfigureAwait(false);
-            return saved == null ? Results.Conflict() : Results.Ok(RedactMcpServer(server));
-        });
-
-        group.MapDelete("/mcp/{id}", async (
-            [FromServices] AgentConfigManagementService manager,
-            HttpContext context,
-            string id,
-            [FromQuery] string agentId,
-            CancellationToken cancellationToken) =>
-        {
-            if (!HasScope(context, "agent.config.write"))
-                return Results.Forbid();
-            AgentConfigEntity? existing = await manager.GetAsync(agentId, cancellationToken).ConfigureAwait(false);
-            if (existing == null)
-                return Results.NotFound();
-
-            int removed = existing.Config.Mcp.Servers.RemoveAll(item =>
-                string.Equals(item.Name, id, StringComparison.OrdinalIgnoreCase));
-            if (removed == 0)
-                return Results.NotFound();
-
-            AgentConfigEntity? saved = await manager.SaveAsync(
-                agentId,
-                existing,
-                context.Request.Headers.IfMatch.FirstOrDefault(),
-                cancellationToken).ConfigureAwait(false);
-            return saved == null ? Results.Conflict() : Results.NoContent();
-        });
-
         group.MapPost("/mcp/test-connection", async (
             [FromServices] IMcpConnectionTester tester,
             [FromBody] McpConnectionTestRequest request,
@@ -419,18 +349,6 @@ internal static class ManagementEndpointExtensions
             }
         });
 
-        group.MapGet("/skills", async (
-            [FromServices] AgentConfigManagementService manager,
-            HttpContext context,
-            [FromQuery] string agentId,
-            CancellationToken cancellationToken) =>
-        {
-            if (!HasScope(context, "agent.config.read"))
-                return Results.Forbid();
-            AgentConfigEntity? entity = await manager.GetAsync(agentId, cancellationToken).ConfigureAwait(false);
-            return entity == null ? Results.NotFound() : Results.Ok(entity.Config.Skills);
-        });
-
         group.MapPost("/skills/{agentId}/packages", async (
             [FromServices] SkillPackageManagementService packages,
             HttpContext context,
@@ -453,6 +371,7 @@ internal static class ManagementEndpointExtensions
             SkillPackageInstallResult result = await packages.InstallAsync(
                 agentId,
                 context.GetAgentRequest().User.TenantId ?? "default",
+                context.GetAgentRequest().User.UserId,
                 Path.GetFileName(file.FileName),
                 string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType,
                 stream,
@@ -468,27 +387,6 @@ internal static class ManagementEndpointExtensions
                 currentVersion = result.CurrentVersion,
                 storage = "object-storage"
             });
-        });
-
-        group.MapPut("/skills/{agentId}", async (
-            [FromServices] AgentConfigManagementService manager,
-            HttpContext context,
-            string agentId,
-            [FromBody] SkillsConfig skills,
-            CancellationToken cancellationToken) =>
-        {
-            if (!HasScope(context, "agent.config.write"))
-                return Results.Forbid();
-            AgentConfigEntity? existing = await manager.GetAsync(agentId, cancellationToken).ConfigureAwait(false);
-            if (existing == null)
-                return Results.NotFound();
-            existing.Config.Skills = skills;
-            AgentConfigEntity? saved = await manager.SaveAsync(
-                agentId,
-                existing,
-                context.Request.Headers.IfMatch.FirstOrDefault(),
-                cancellationToken).ConfigureAwait(false);
-            return saved == null ? Results.Conflict() : Results.Ok(saved.Config.Skills);
         });
 
         group.MapDelete("/skills/{agentId}/{skillId}", async (

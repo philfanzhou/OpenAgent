@@ -30,7 +30,7 @@ internal sealed class RedisConversationCache(
             .ConfigureAwait(false);
         return value.IsNullOrEmpty
             ? null
-            : JsonSerializer.Deserialize<ConversationRecord>(value.ToString(), JsonOptions);
+            : JsonSerializer.Deserialize<ConversationRecord>(value!, JsonOptions);
     }
 
     public Task SetAsync(ConversationRecord record, CancellationToken cancellationToken = default) =>

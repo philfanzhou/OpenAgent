@@ -28,7 +28,7 @@ McpServerClient
 ```
 
 ## Current Status
-**Implemented** — 生产侧不解析 SSE event，也不组装 JSON-RPC 消息。连接测试返回请求版本和实际协商版本；请求级连接身份包含协议版本，避免跨版本复用。
+**Implemented** — MCP Server 绑定属于 Agent 配置的一部分，由 `/api/v1/admin/agents/{agentId}/config` 统一保存；生产侧不解析 SSE event，也不组装 JSON-RPC 消息。连接测试返回请求版本和实际协商版本；请求级连接身份包含协议版本，避免跨版本复用。
 
 ## Limits
 - `McpServerType.Stdio` 已实现；命令受 `Mcp:AllowedCommands` 策略限制（`McpTransportFactory.CreateStdioTransport`）

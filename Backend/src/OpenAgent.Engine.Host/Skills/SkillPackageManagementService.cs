@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using Microsoft.Extensions.Logging;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Models;
@@ -10,13 +11,15 @@ namespace OpenAgent.Engine.Host.Skills;
 internal sealed class SkillPackageManagementService(
     AgentConfigManagementService agentConfigs,
     IFileObjectStore objectStore,
-    ISkillPackageReader packageReader)
+    ISkillPackageReader packageReader,
+    ILogger<SkillPackageManagementService> logger)
 {
     internal const long MaxPackageBytes = 4 * 1024 * 1024;
 
     internal async Task<SkillPackageInstallResult> InstallAsync(
         string agentId,
         string tenantId,
+        string userId,
         string fileName,
         string mediaType,
         Stream package,
@@ -38,6 +41,7 @@ internal sealed class SkillPackageManagementService(
             {
                 FileId = $"skill-{Guid.NewGuid():N}",
                 TenantId = tenantId,
+                UserId = userId,
                 FileName = fileName,
                 MediaType = mediaType,
                 Sha256 = sha256
@@ -64,6 +68,9 @@ internal sealed class SkillPackageManagementService(
 
         int index = entity.Config.Skills.Instances.FindIndex(item =>
             string.Equals(item.Id, manifest.Id, StringComparison.OrdinalIgnoreCase));
+        string? previousObjectKey = index >= 0
+            ? entity.Config.Skills.Instances[index].ObjectKey
+            : null;
         if (index >= 0)
         {
             entity.Config.Skills.Instances[index] = instance;
@@ -76,15 +83,30 @@ internal sealed class SkillPackageManagementService(
         entity.Config.Skills.EnabledSkills.RemoveAll(item =>
             string.Equals(item, manifest.Id, StringComparison.OrdinalIgnoreCase));
         entity.Config.Skills.EnabledSkills.Add(manifest.Id);
-        AgentConfigEntity? saved = await agentConfigs.SaveAsync(
-            agentId,
-            entity,
-            expectedVersion,
-            cancellationToken).ConfigureAwait(false);
+        AgentConfigEntity? saved;
+        try
+        {
+            saved = await agentConfigs.SaveAsync(
+                agentId,
+                entity,
+                expectedVersion,
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            await DeleteObjectBestEffortAsync(stored.ObjectKey).ConfigureAwait(false);
+            throw;
+        }
         if (saved == null)
         {
-            await objectStore.DeleteAsync(stored.ObjectKey, cancellationToken).ConfigureAwait(false);
+            await DeleteObjectBestEffortAsync(stored.ObjectKey).ConfigureAwait(false);
             return SkillPackageInstallResult.Conflict();
+        }
+
+        if (!string.IsNullOrWhiteSpace(previousObjectKey)
+            && !string.Equals(previousObjectKey, stored.ObjectKey, StringComparison.Ordinal))
+        {
+            await DeleteObjectBestEffortAsync(previousObjectKey).ConfigureAwait(false);
         }
 
         return SkillPackageInstallResult.Installed(instance, saved.CurrentVersion);
@@ -122,10 +144,7 @@ internal sealed class SkillPackageManagementService(
             return SkillPackageDeleteResult.Conflict;
         }
 
-        if (!string.IsNullOrWhiteSpace(instance.ObjectKey))
-        {
-            await objectStore.DeleteAsync(instance.ObjectKey, cancellationToken).ConfigureAwait(false);
-        }
+        await DeleteObjectBestEffortAsync(instance.ObjectKey).ConfigureAwait(false);
 
         return SkillPackageDeleteResult.Deleted;
     }
@@ -194,6 +213,29 @@ internal sealed class SkillPackageManagementService(
         }
 
         return buffer.ToArray();
+    }
+
+    private async Task DeleteObjectBestEffortAsync(string? objectKey)
+    {
+        if (string.IsNullOrWhiteSpace(objectKey)) return;
+
+        for (int attempt = 1; attempt <= 3; attempt++)
+        {
+            try
+            {
+                await objectStore.DeleteAsync(objectKey, CancellationToken.None).ConfigureAwait(false);
+                return;
+            }
+            catch (Exception exception) when (attempt < 3)
+            {
+                logger.LogWarning(exception, "Failed to delete Skill package object {ObjectKey}; retry {Attempt}.", objectKey, attempt);
+                await Task.Delay(TimeSpan.FromMilliseconds(50 * attempt)).ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                logger.LogError(exception, "Failed to delete Skill package object {ObjectKey} after retries.", objectKey);
+            }
+        }
     }
 }
 

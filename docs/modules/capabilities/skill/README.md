@@ -21,7 +21,7 @@ Skill 是 Agent.Core 中模型可调用的执行能力，用于承载明确的�
 | Matrix 平台 | `Matrix` |
 
 ## Current Status
-**Implemented** — 技能发现、配置/ACL 过滤、对象存储包加载与 HTTP 执行均在 capability source 链路内完成。管理 API 保存后驱逐当前 Agent 配置快照，下一次执行立即重新加载挂载。
+**Implemented** — 技能发现、配置/ACL 过滤、对象存储包加载与 HTTP 执行均在 capability source 链路内完成。Skill 绑定属于 Agent 配置的一部分，由 `/api/v1/admin/agents/{agentId}/config` 统一保存；上传/删除对象存储包只使用明确的 `agentId` 管理对应 Agent 的包生命周期。配置保存后驱逐当前 Agent 配置快照，下一次执行立即重新加载挂载。
 
 ## Limits
 - 无技能调用配额控制（`SkillQuotaExceeded` 错误码已定义但未使用）

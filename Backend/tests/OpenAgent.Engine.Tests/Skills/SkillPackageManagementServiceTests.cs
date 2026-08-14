@@ -38,6 +38,7 @@ public class SkillPackageManagementServiceTests
         SkillPackageInstallResult result = await service.InstallAsync(
             AgentId,
             "tenant",
+            "user",
             "customer.yaml",
             "application/yaml",
             package,
@@ -93,6 +94,7 @@ public class SkillPackageManagementServiceTests
         await service.InstallAsync(
             AgentId,
             "tenant",
+            "user",
             "customer.yaml",
             "application/yaml",
             package,
@@ -110,6 +112,35 @@ public class SkillPackageManagementServiceTests
         AgentConfigEntity? saved = await configs.GetAsync(AgentId);
         Assert.Empty(saved!.Config.Skills.Instances);
         Assert.Empty(saved.Config.Skills.EnabledSkills);
+    }
+
+    [Fact]
+    public async Task InstallAsync_ReplacingPackage_DeletesPreviousObject()
+    {
+        (SkillPackageManagementService service, _, RecordingObjectStore store) = await CreateServiceAsync();
+        byte[] content = Encoding.UTF8.GetBytes(SkillYaml);
+
+        await service.InstallAsync(
+            AgentId,
+            "tenant",
+            "user",
+            "customer.yaml",
+            "application/yaml",
+            new MemoryStream(content),
+            expectedVersion: null,
+            default);
+        SkillPackageInstallResult result = await service.InstallAsync(
+            AgentId,
+            "tenant",
+            "user",
+            "customer.yaml",
+            "application/yaml",
+            new MemoryStream(content),
+            expectedVersion: null,
+            default);
+
+        Assert.Equal("skills/customer.yaml-2", result.Skill?.ObjectKey);
+        Assert.Contains("skills/customer.yaml", store.DeletedObjectKeys);
     }
 
     private static async Task<(
@@ -135,7 +166,11 @@ public class SkillPackageManagementServiceTests
             snapshot);
         await configs.SaveAsync(AgentId, new AgentConfigEntity { AgentId = AgentId }, expectedVersion: null);
         var store = new RecordingObjectStore();
-        return (new SkillPackageManagementService(configs, store, new TestSkillPackageReader()), configs, store);
+        return (new SkillPackageManagementService(
+            configs,
+            store,
+            new TestSkillPackageReader(),
+            NullLogger<SkillPackageManagementService>.Instance), configs, store);
     }
 
     private sealed class TestSkillPackageReader : OpenAgent.Contracts.Skills.ISkillPackageReader
@@ -158,7 +193,9 @@ public class SkillPackageManagementServiceTests
     {
         public byte[] Content { get; set; } = [];
         public string? LastReadObjectKey { get; private set; }
-        public string? DeletedObjectKey { get; private set; }
+        public List<string> DeletedObjectKeys { get; } = [];
+        public string? DeletedObjectKey => DeletedObjectKeys.LastOrDefault();
+        private int WriteCount { get; set; }
 
         public async Task<FileObjectReference> WriteAsync(
             FileObjectWriteRequest request,
@@ -168,7 +205,11 @@ public class SkillPackageManagementServiceTests
             await using var buffer = new MemoryStream();
             await content.CopyToAsync(buffer, cancellationToken);
             Content = buffer.ToArray();
-            return new FileObjectReference { ObjectKey = $"skills/{request.FileName}" };
+            WriteCount++;
+            string objectKey = WriteCount == 1
+                ? $"skills/{request.FileName}"
+                : $"skills/{request.FileName}-{WriteCount}";
+            return new FileObjectReference { ObjectKey = objectKey };
         }
 
         public Task<byte[]> ReadAsync(string objectKey, CancellationToken cancellationToken)
@@ -179,7 +220,7 @@ public class SkillPackageManagementServiceTests
 
         public Task DeleteAsync(string objectKey, CancellationToken cancellationToken)
         {
-            DeletedObjectKey = objectKey;
+            DeletedObjectKeys.Add(objectKey);
             return Task.CompletedTask;
         }
     }
