@@ -51,25 +51,20 @@ internal sealed class EfCoreFileAssetRepository(IDbContextFactory<OpenAgentDbCon
         }
 
         await using OpenAgentDbContext context = await contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
-        HashSet<string> existing = (await context.ConversationFileReferences.AsNoTracking()
-            .Where(item => item.ConversationId == conversationId && distinct.Contains(item.FileId))
-            .Select(item => item.FileId)
-            .ToListAsync(cancellationToken).ConfigureAwait(false))
-            .ToHashSet(StringComparer.Ordinal);
+        await using var transaction =
+            await context.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
         foreach (string fileId in distinct)
         {
-            if (existing.Add(fileId))
-            {
-                context.ConversationFileReferences.Add(new ConversationFileReferenceEntity
-                {
-                    ConversationId = conversationId,
-                    FileId = fileId,
-                    CreatedAt = createdAt
-                });
-            }
+            await context.Database.ExecuteSqlInterpolatedAsync(
+                $"""
+                INSERT INTO "openagent"."conversation_file_references" ("ConversationId", "FileId", "CreatedAt")
+                VALUES ({conversationId}, {fileId}, {createdAt})
+                ON CONFLICT ("ConversationId", "FileId") DO NOTHING
+                """,
+                cancellationToken).ConfigureAwait(false);
         }
 
-        await context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<bool> IsReferencedAsync(
