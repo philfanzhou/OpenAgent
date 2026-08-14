@@ -19,14 +19,28 @@ const renderer = new MarkdownIt({
 ;(renderer as unknown as { validateLink: (url: string) => boolean }).validateLink = isSafeLink
 
 const defaultLinkOpen = renderer.renderer.rules.link_open
+const defaultAutolink = renderer.renderer.rules.autolink
 
+// 渲染层防御：即使 validateLink 被绕过/移除，也绝不把危险协议渲染成 href。
 renderer.renderer.rules.link_open = (tokens, index, options, environment, self) => {
   const token = tokens[index]
   if (!token) return ''
+  const href = token.attrGet('href') ?? ''
+  if (!isSafeLink(href)) return ''
   token.attrSet('target', '_blank')
   token.attrSet('rel', 'noopener noreferrer')
   return defaultLinkOpen
     ? defaultLinkOpen(tokens, index, options, environment, self)
+    : self.renderToken(tokens, index, options)
+}
+
+renderer.renderer.rules.autolink = (tokens, index, options, environment, self) => {
+  const token = tokens[index]
+  if (!token) return ''
+  const href = token.attrGet('href') ?? ''
+  if (!isSafeLink(href)) return ''
+  return defaultAutolink
+    ? defaultAutolink(tokens, index, options, environment, self)
     : self.renderToken(tokens, index, options)
 }
 
