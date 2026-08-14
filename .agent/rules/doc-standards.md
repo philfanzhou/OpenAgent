@@ -21,6 +21,8 @@
 │   ├── database/                      ← 数据存储唯一事实源
 │   ├── decisions/                     ← ADR 归档（已决策的技术选型）
 │   ├── planning/                      ← 规划文档（目标架构、重构基线）
+│   ├── superpowers/                   ← 计划与设计规格（superpowers 工作流产物）
+│   └── test-reports/                  ← 测试报告与验证记录
 │
 └── Backend/
     ├── src/
@@ -42,7 +44,7 @@
 
 ### 2.1 文件命名
 
-- 功能点目录使用 kebab-case（如 `config-hotreload`、`tool-calling`）
+- 功能点目录使用 kebab-case（如 `config-hot-reload`、`tool-calling`）
 - 功能点内的文档使用简短标题式命名（如 `DESIGN.md`、`CONVENTIONS.md`），不再强制 6 件套编号
 - 上层目录的 `README.md` 必须作为该目录的导航索引
 

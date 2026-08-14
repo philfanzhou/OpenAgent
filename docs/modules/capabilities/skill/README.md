@@ -22,8 +22,8 @@ Skill 是 Agent.Core 中模型可调用的执行能力，用于承载明确的�
 **Implemented** — 技能发现、配置/ACL 过滤与执行链路均由两层完成，无额外 Provider 转发层。
 
 ## Limits
-- 无技能调用配额控制（`SkillQuotaExceeded` 错误码已定义但未使用）
-- 无技能参数验证链路（`SkillValidationFailed` 错误码已定义但未使用）
+- 无技能调用配额控制（`SkillQuotaExceeded` 错误码已在 ErrorMapper 映射，但当前无技能执行路径抛出）
+- 无技能参数验证链路（`SkillValidationFailed` 错误码已在 ErrorMapper 映射，但当前无技能执行路径抛出）
 
 ## Source
 - Core: `Backend/src/OpenAgent.Core/Capabilities/Skill/SkillCapabilitySource.cs`, `Backend/src/OpenAgent.Core/Capabilities/Skill/SkillRegistry.cs`

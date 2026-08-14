@@ -12,7 +12,7 @@
 
 | 服务 | 端口 | 说明 |
 |------|------|------|
-| chat | 8080 | 聊天与 Playground 页面 |
+| chat | 8080 | 聊天工作台前端 |
 | engine | 5208 | Agent 引擎 |
 | router | 5001 | 网关路由 |
 | postgres | 5432 | PostgreSQL 会话存储 |
@@ -52,12 +52,6 @@
 2. 配置 LLM Provider（在工作台设置中创建，参考根 `README.md`），然后通过聊天界面或 `curl` 调用 engine 端点验证端到端流程。
 
 3. 端口冲突时：`docker compose down` 后重试
-
-### Playground 启动约束
-
-1. delivery mode 使用 `expectReplies`，校验 reply 数量
-2. 设置 `Channels__Outlook__Enabled=false`
-3. 设置 `Channels__Teams__DefaultTenantId=tenant-001`
 
 ---
 

@@ -13,8 +13,7 @@
 ## Architecture
 ```text
 MAF AIContextProvider
-  → ToolAssembler: Skill / RAG / MCP 发现 + 授权
-  → CapabilityToolFactory: CapabilityFunctions → AIFunction
+  → CapabilityToolFactory: Skill / RAG / MCP 发现 + 授权 → AIFunction
   → FunctionInvokingChatClient: 原生工具循环（执行授权 + 审计）
   → Skill / RAG / MCP
 ```

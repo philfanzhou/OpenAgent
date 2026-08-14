@@ -158,4 +158,4 @@ docker compose ps
 
 ### 完整排查手册
 
-详见 `docs/trace-troubleshoot.md`（含 Grafana/Loki/Tempo/Prometheus 查询示例）。
+详见 `docs/trace-troubleshoot.md`（含 health、metrics 与 trace 排查步骤）。

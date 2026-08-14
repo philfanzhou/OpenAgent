@@ -43,8 +43,8 @@ MAF 是 Agent.Core 唯一生产运行时。运行时代码位于
 - 每个 turn 使用授权后的 `LlmConfig` 创建 `IChatClient` 和 `ChatClientAgent`。
 - `UseProvidedChatClientAsIs = true`。
 - 每个 run 用 `FunctionInvokingChatClient` 包装 client。
-- `MaximumIterationsPerRequest = max(1, AgentConfig.MaxTurns)`。
-- 未知函数终止运行；函数连续错误阈值为零。
+- `MaximumIterationsPerRequest = AgentConfig.MaxTurns > 0 ? AgentConfig.MaxTurns : 5`。
+- 未知函数终止运行；函数连续错误阈值为 3（`MaximumConsecutiveErrorsPerRequest = 3`）。
 - 不可用能力在构建 Agent 前被过滤，不进入 MAF 工具列表。
 - 工具由携带原始 `ToolDefinition` 的 `AIFunction` 执行。
 - 平台 PostgreSQL 会话是唯一持久历史；对象存储保存文件原始字节。

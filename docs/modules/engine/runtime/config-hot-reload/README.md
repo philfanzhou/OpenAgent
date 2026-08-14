@@ -6,7 +6,7 @@ ConfigHotReload 通过 Redis Pub/Sub 订阅配置变更通知，实时更新内�
 | Capability | Description |
 |-----------|-------------|
 | Pub/Sub 订阅 | 监听 6 个频道（1 个当前 + 5 个遗留）|
-| 结构化消息 | ConfigUpdate / IncrementalUpdate 统一从 Redis 全量刷新；FullSync 清空快照 |
+| 结构化消息 | ConfigUpdate 统一从 Redis 全量刷新；FullSync 清空快照 |
 | TTL 自愈 | 快照条目按 `AbsoluteExpirationMinutes`（默认 5 分钟）绝对过期 |
 | 遗留兼容 | 非 JSON 消息在 `agent:config:changed` 频道视为 agentId 触发全量刷新 |
 
