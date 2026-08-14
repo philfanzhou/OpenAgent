@@ -111,4 +111,52 @@ public sealed class InfrastructurePersistenceTests : IAsyncLifetime
         Assert.Equal(2, messages.Count);
         Assert.All(messages, message => Assert.Equal([asset.FileId], message.FileIds));
     }
+
+    [Fact]
+    public async Task FileAssetRepository_EnsuresConversationReferencesConcurrently()
+    {
+        ServiceProvider services = Assert.IsType<ServiceProvider>(_services);
+        IFileAssetRepository files = services.GetRequiredService<IFileAssetRepository>();
+        IConversationStore conversations = services.GetRequiredService<IConversationStore>();
+        IDbContextFactory<OpenAgentDbContext> contexts =
+            services.GetRequiredService<IDbContextFactory<OpenAgentDbContext>>();
+        FileAsset asset = new()
+        {
+            FileId = "file-concurrent",
+            TenantId = "tenant-concurrent",
+            OwnerUserId = "user-concurrent",
+            FileName = "notes.md",
+            MediaType = "text/markdown",
+            Length = 8,
+            Sha256 = "concurrent-sha",
+            ObjectKey = "files/tenant-concurrent/file-concurrent.md",
+            Source = FileAssetSource.UserUpload,
+            State = FileAssetState.Ready,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        await files.CreateAsync(asset, CancellationToken.None);
+        Assert.True(await conversations.CreateAsync(new ConversationRecord
+        {
+            ConversationId = "conversation-concurrent",
+            TenantId = "tenant-concurrent",
+            UserId = "user-concurrent",
+            AgentId = "default"
+        }, CancellationToken.None));
+
+        DateTimeOffset createdAt = DateTimeOffset.UtcNow;
+        Task[] attempts = Enumerable.Range(0, 8)
+            .Select(_ => files.EnsureConversationReferencesAsync(
+                "conversation-concurrent",
+                [asset.FileId],
+                createdAt,
+                CancellationToken.None))
+            .ToArray();
+
+        await Task.WhenAll(attempts);
+
+        await using OpenAgentDbContext context = await contexts.CreateDbContextAsync();
+        int referenceCount = await context.ConversationFileReferences.CountAsync(item =>
+            item.ConversationId == "conversation-concurrent" && item.FileId == asset.FileId);
+        Assert.Equal(1, referenceCount);
+    }
 }

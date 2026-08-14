@@ -61,6 +61,25 @@ internal sealed class ConversationHistoryFactory
             _fileService);
     }
 
+    internal async Task EnsureConversationAsync(
+        string agentId,
+        AgentRequest request,
+        IAgentUserContext user,
+        CancellationToken cancellationToken)
+    {
+        ConversationContext context = new(
+            request.ConversationId,
+            user.TenantId,
+            user.UserId,
+            agentId,
+            request.TraceId);
+        await _store.OpenAsync(
+            context,
+            agentId,
+            request.Query,
+            cancellationToken).ConfigureAwait(false);
+    }
+
     internal AIContextProvider? CreateCompaction(ContextPolicy? policy, IChatClient chatClient)
     {
         CompactionStrategy? strategy = policy?.Strategy.ToLowerInvariant() switch

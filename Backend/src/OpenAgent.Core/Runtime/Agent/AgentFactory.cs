@@ -90,4 +90,11 @@ internal sealed class AgentFactory
         });
         return new AgentExecutionScope(agent, history);
     }
+
+    internal Task EnsureConversationAsync(
+        string agentId,
+        AgentRequest request,
+        IAgentUserContext user,
+        CancellationToken cancellationToken) =>
+        _conversations.EnsureConversationAsync(agentId, request, user, cancellationToken);
 }

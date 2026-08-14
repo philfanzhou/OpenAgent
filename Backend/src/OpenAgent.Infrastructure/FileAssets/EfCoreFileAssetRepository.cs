@@ -38,6 +38,46 @@ internal sealed class EfCoreFileAssetRepository(IDbContextFactory<OpenAgentDbCon
         return entity == null ? null : ToAsset(entity);
     }
 
+    public async Task EnsureConversationReferencesAsync(
+        string conversationId,
+        IReadOnlyList<string> fileIds,
+        DateTimeOffset createdAt,
+        CancellationToken cancellationToken)
+    {
+        string[] distinct = fileIds.Distinct(StringComparer.Ordinal).ToArray();
+        if (distinct.Length == 0)
+        {
+            return;
+        }
+
+        await using OpenAgentDbContext context = await contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        await using var transaction =
+            await context.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        foreach (string fileId in distinct)
+        {
+            await context.Database.ExecuteSqlInterpolatedAsync(
+                $"""
+                INSERT INTO "openagent"."conversation_file_references" ("ConversationId", "FileId", "CreatedAt")
+                VALUES ({conversationId}, {fileId}, {createdAt})
+                ON CONFLICT ("ConversationId", "FileId") DO NOTHING
+                """,
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<bool> IsReferencedAsync(
+        string conversationId,
+        string fileId,
+        CancellationToken cancellationToken)
+    {
+        await using OpenAgentDbContext context = await contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        return await context.ConversationFileReferences.AsNoTracking()
+            .AnyAsync(item => item.ConversationId == conversationId && item.FileId == fileId, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     private static FileAssetEntity ToEntity(FileAsset asset) => new()
     {
         FileId = asset.FileId,

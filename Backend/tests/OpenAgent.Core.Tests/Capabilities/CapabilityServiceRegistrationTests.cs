@@ -22,7 +22,9 @@ public class CapabilityServiceRegistrationTests
         services.AddSingleton<IAgentConfigProvider, StaticConfigProvider>();
         services.AddSingleton<IConversationStore, InMemoryConversationStore>();
         services.AddSingleton<IFileAssetRepository, EmptyFileAssetRepository>();
-        services.AddAgentCore(new ConfigurationBuilder().Build());
+        IConfiguration configuration = new ConfigurationBuilder().Build();
+        services.AddSingleton(configuration);
+        services.AddAgentCore(configuration);
 
         await using ServiceProvider provider = services.BuildServiceProvider(
             new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
@@ -54,5 +56,14 @@ public class CapabilityServiceRegistrationTests
         public Task CreateAsync(FileAsset asset, CancellationToken cancellationToken) => Task.CompletedTask;
         public Task UpdateAsync(FileAsset asset, CancellationToken cancellationToken) => Task.CompletedTask;
         public Task<FileAsset?> GetAsync(string fileId, CancellationToken cancellationToken) => Task.FromResult<FileAsset?>(null);
+        public Task EnsureConversationReferencesAsync(
+            string conversationId,
+            IReadOnlyList<string> fileIds,
+            DateTimeOffset createdAt,
+            CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task<bool> IsReferencedAsync(
+            string conversationId,
+            string fileId,
+            CancellationToken cancellationToken) => Task.FromResult(false);
     }
 }

@@ -46,7 +46,7 @@ internal static class FileAssetEndpointExtensions
                 Source = FileAssetSource.UserUpload
             },
             content,
-            CreateScope(context),
+            CreateScope(context, conversationId: null),
             cancellationToken).ConfigureAwait(false);
         return Results.Created($"/api/v1/agent/files/{asset.FileId}", ToResponse(asset));
     }
@@ -64,11 +64,12 @@ internal static class FileAssetEndpointExtensions
         [FromServices] IFileAssetService files,
         HttpContext context,
         string fileId,
+        [FromQuery] string? conversationId,
         CancellationToken cancellationToken)
     {
         FileAssetContent content = await files.ReadAsync(
             fileId,
-            CreateScope(context),
+            CreateScope(context, conversationId),
             cancellationToken).ConfigureAwait(false);
         return Results.File(content.Data, content.Asset.MediaType, enableRangeProcessing: false);
     }
@@ -77,11 +78,12 @@ internal static class FileAssetEndpointExtensions
         [FromServices] IFileAssetService files,
         HttpContext context,
         string fileId,
+        [FromQuery] string? conversationId,
         CancellationToken cancellationToken)
     {
         FileAssetContent content = await files.ReadAsync(
             fileId,
-            CreateScope(context),
+            CreateScope(context, conversationId),
             cancellationToken).ConfigureAwait(false);
         return Results.File(
             content.Data,
@@ -90,10 +92,11 @@ internal static class FileAssetEndpointExtensions
             enableRangeProcessing: false);
     }
 
-    private static FileAssetScope CreateScope(HttpContext context) => new()
+    private static FileAssetScope CreateScope(HttpContext context, string? conversationId) => new()
     {
         TenantId = AgentEndpointRequestMapper.RequireTenant(context),
-        UserId = context.GetAgentRequest().User.UserId
+        UserId = context.GetAgentRequest().User.UserId,
+        ConversationId = conversationId
     };
 
     private static object ToResponse(FileAsset asset) => new

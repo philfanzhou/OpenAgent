@@ -102,6 +102,7 @@ internal sealed class FileAssetCapabilitySource(
                 input,
                 executionContext.Scope,
                 cancellationToken).ConfigureAwait(false);
+            await files.EnsureReferencesAsync([asset.FileId], executionContext.Scope, cancellationToken).ConfigureAwait(false);
             executionContext.RecordCreated(asset);
             return JsonSerializer.Serialize(new
             {

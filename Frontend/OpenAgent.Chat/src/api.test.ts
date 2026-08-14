@@ -144,6 +144,18 @@ describe('workspace API', () => {
     expect(getRouterBaseUrl()).toBe('http://legacy-router.example')
   })
 
+  it('scopes file reads to the conversation id', async () => {
+    setConnectionMode('engine')
+    setEngineBaseUrl('http://engine.example/')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('content', { status: 200 })))
+
+    await expect(api.readFileText('file/1', 'conversation/1')).resolves.toBe('content')
+
+    expect(vi.mocked(fetch).mock.calls[0]?.[0]).toBe(
+      'http://engine.example/api/v1/agent/files/file%2F1/content?conversationId=conversation%2F1',
+    )
+  })
+
   it('parses the engine health report into typed items', async () => {
     const report = {
       status: 'Healthy',
