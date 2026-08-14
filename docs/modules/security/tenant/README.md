@@ -6,7 +6,7 @@ TenantValidation 中间件确保请求的用户上下文中包含有效的 Tenan
 | Capability | Description |
 |-----------|-------------|
 | 租户校验 | 检查 `userContext.TenantId` 是否为 null 或空 |
-| 双路径覆盖 | 同步 `InvokeAsync` 与流式 `InvokeStreamAsync` 共享同一 `EnsureTenant` 逻辑 |
+| 入口校验 | `EngineAdmissionMiddleware` 在请求入口校验 TenantId（ASP.NET Core RequestDelegate，仅 `InvokeAsync`） |
 | 异常拒绝 | TenantId 缺失时抛出 `TenantDataIsolationException`（ErrorCode 5003） |
 
 ## Architecture
@@ -18,7 +18,7 @@ TenantValidation 中间件确保请求的用户上下文中包含有效的 Tenan
 ```
 
 ## Current Status
-**Implemented** — 作为 `IAgentMiddleware` 注册在 Auth 之后，Pipeline 捕获异常后转为 `AgentResponse(Success=false, ErrorCode=TenantDataIsolationViolation)`。
+**IMPLEMENTED** — `EngineAdmissionMiddleware` 在请求入口校验 TenantId，缺失时抛 `TenantDataIsolationException`，由 `AgentExceptionHandlerMiddleware` 经 `ErrorMapper` 映射为 HTTP 400。
 
 ## Limits
 - 仅校验 TenantId 是否存在，不校验租户存在性、状态或数据归属
@@ -26,7 +26,6 @@ TenantValidation 中间件确保请求的用户上下文中包含有效的 Tenan
 - 不混入业务逻辑，存储层负责实际数据隔离
 
 ## Source
-- Implementation: `Backend/src/OpenAgent.Engine.Host/Middleware/AgentUserContextMiddleware.cs`, `Backend/src/OpenAgent.Engine.Host/Middleware/EngineAdmissionMiddleware.cs`（TenantValidation 已移入 Host）
-- Contract: `Backend/src/OpenAgent.Core.Abstract/`（`IAgentMiddleware`）
-- Exception: `Backend/src/OpenAgent.Contracts/Security/TenantDataIsolationException.cs`
-- Tests: 无专门测试文件（待补充）
+- Implementation: `Backend/src/OpenAgent.Engine.Host/Middleware/EngineAdmissionMiddleware.cs`
+- Exception: `Backend/src/OpenAgent.Contracts/Security/Exceptions.cs`
+- Tests: 无专门测试文件

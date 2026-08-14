@@ -30,7 +30,7 @@ McpServerClient
 **Implemented** — 生产侧不解析 SSE event，也不组装 JSON-RPC 消息。
 
 ## Limits
-- `McpServerType.Stdio` 仍是配置枚举，生产客户端未实现
+- `McpServerType.Stdio` 已实现（`McpTransportFactory.CreateStdioTransport`，含命令白名单）
 - 不建立跨请求连接池；一次请求内每个 Server 复用一个客户端
 - `Http` 类型的 URL 必须是完整 MCP endpoint，不自动追加 `/mcp`
 

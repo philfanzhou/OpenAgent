@@ -4,7 +4,7 @@
 
 ## 概述
 
-MAF 是 Agent.Core 唯一生产运行时，而不是 `IAgentEngine` 的一种实现。运行时代码位于
+MAF 是 Agent.Core 唯一生产运行时。运行时代码位于
 `Backend/src/OpenAgent.Core/Runtime/Agent/`，随 Core 直接编译和注册。
 
 ## 能力
@@ -68,7 +68,7 @@ MAF 是 Agent.Core 唯一生产运行时，而不是 `IAgentEngine` 的一种实
 ```text
 Pipeline -> AgentRun
   -> IdentityResolution
-  -> MafAgentFactory -> ChatClientAgent
+  -> AgentFactory -> ChatClientAgent
        -> PlatformChatHistory : ChatHistoryProvider
        -> CapabilityToolFactory : AITool
        -> CompactionProvider
@@ -81,7 +81,7 @@ Pipeline -> AgentRun
 直接提供携带执行体的 `AIFunction`。工具名称、描述与 schema 不再复制到
 system prompt。
 
-新增 Provider 只扩展 `IMafChatClientFactory`；新增能力只产生 `AIFunction`；新增记忆
+Provider 由 `AgentChatClientFactory` 构造 `IChatClient`；新增能力只产生 `AIFunction`；新增记忆
 实现只扩展 `ChatHistoryProvider`；多 Agent 编排只使用 MAF Workflow。
 
 ## Tasks
@@ -89,14 +89,14 @@ system prompt。
 
 ## 已完成
 
-- [x] MAF 成为唯一生产 Agent 引擎；保留 Mock 测试引擎。
+- [x] MAF 成为唯一生产 Agent 引擎；保留 MockAgent 降级解析器。
 - [x] `RunAsync` 与 `RunStreamingAsync` 真实执行。
 - [x] `FunctionInvokingChatClient` 接管函数调用循环和最大迭代次数。
 - [x] 精确 JSON Schema 的可执行 `AIFunction` 适配器。
 - [x] 工具执行回接权限、MCP、Skill、RAG、审计、遥测和持久化。
 - [x] 删除 OpenAIDriver、SemanticKernel 生产实现和重复测试。
 - [x] 旧 framework 配置透明映射到 MAF。
-- [x] OpenAI Chat、Responses、Azure、Anthropic、Gemini、Ollama、LM Studio、OpenWebUI 客户端。
+- [x] OpenAI Chat、Responses、Azure、Anthropic、Ollama、LM Studio、OpenWebUI 客户端。
 - [x] 图片、PDF 和 UTF-8 文本文件输入。
 - [x] 独立文件上传、会话预览和模型文件输入。
 - [x] Agent、Model、Tool、Function、MCP、Skill 六维授权扩展点。
@@ -131,10 +131,10 @@ system prompt。
 
 - 新生产能力只扩展 MAF，不再增加并行 Agent 引擎。
 - `SemanticKernel`、`LangChain`、`OpenAIDriver` 只作为配置兼容值，运行时全部归一为 `MAF`。
-- Provider 协议必须使用对应 SDK；Responses、Anthropic、Gemini 不伪装成 Chat Completions。
+- Provider 协议必须使用对应 SDK；Responses、Anthropic 不伪装成 Chat Completions。
 - `FunctionInvokingChatClient` 是工具循环唯一 owner；平台不得再实现第二个模型轮次循环。
 - 工具声明必须保留注册表 JSON Schema，不用反射推断替代。
-- 所有工具执行必须经过同一个 `ToolCallDispatcher`，确保权限、审计和取消语义一致。
+- 所有工具执行由 MAF `FunctionInvokingChatClient` 统一驱动，确保权限、审计和取消语义一致。
 - 平台会话库是唯一永久数据主责；MAF run 接收平台已加载的历史。
 - Agent 不缓存，以配置热更新的正确性优先。
 

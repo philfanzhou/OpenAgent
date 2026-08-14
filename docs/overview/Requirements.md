@@ -1,10 +1,10 @@
-# Requirements — Agent.Core
+# Requirements — OpenAgent
 
 ## 服务级需求摘要
 
 | # | 需求 | 详细文档 |
 |---|------|----------|
-| R-01 | 生产推理统一使用 MAF，并保留 Mock 测试引擎和旧配置兼容 | [modules/engine/](../modules/engine/) |
+| R-01 | 生产推理统一使用 MAF，并保留 MockAgent 降级解析器（AllowMockAgent）和旧配置兼容 | [modules/engine/](../modules/engine/) |
 | R-02 | Pipeline 中间件链（认证、租户校验、追踪、审计） | [modules/execution/pipeline/](../modules/execution/pipeline/) |
 | R-03 | Skill 技能注册与执行 | [modules/capabilities/skill/](../modules/capabilities/skill/) |
 | R-04 | MCP Server 工具发现与调用 | [modules/capabilities/mcp/](../modules/capabilities/mcp/) |
@@ -17,7 +17,7 @@
 
 ## 范围外
 
-- 不负责 HTTP/gRPC 端点暴露（由 Agent.Engine/Agent.Router 负责）
-- 不负责进程生命周期管理（心跳、优雅关闭由 Agent.Engine 负责）
+- 不负责 HTTP/gRPC 端点暴露（由 OpenAgent.Engine/OpenAgent.Router 负责）
+- 不负责进程生命周期管理（心跳、优雅关闭由 OpenAgent.Engine 负责）
 - 不负责 Agent 配置的 CRUD（由 Agent.Matrix 负责）
 - 不负责前端 UI（由独立前端项目负责）

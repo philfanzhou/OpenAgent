@@ -12,11 +12,11 @@ OpenAgent 项目的代码审查、功能规划、测试编写和集成排查指�
 - [ ] 公共接口签名向后兼容
 - [ ] 新增接口属于 Contracts 层（无实现依赖）
 - [ ] DTO JSON 序列化使用 camelCase
-- [ ] 错误码使用 `AgentErrorCodes` 统一定义
+- [ ] 错误码使用 `AgentErrorCode` 统一定义
 - [ ] 未引入对其他项目的引用（Contracts 是叶子节点）
 
 **Agent.Core（核心逻辑层）**
-- [ ] Pipeline 中间件顺序：AgentIdValidation → TenantValidation → Tracing → Auth → AuditLogging
+- [ ] Engine Host 中间件顺序：AgentUserContextMiddleware → EngineAdmissionMiddleware → AgentExceptionHandlerMiddleware
 - [ ] 异步方法正确传播 CancellationToken
 - [ ] 流式 `IAsyncEnumerable<T>` 正确释放资源
 - [ ] DI 注册：中间件 `AddScoped`，注册表 `AddSingleton`
@@ -29,7 +29,7 @@ OpenAgent 项目的代码审查、功能规划、测试编写和集成排查指�
 
 **测试层**
 - [ ] Core 逻辑 → xunit 单元测试
-- [ ] 跨服务行为 → MSTest 集成测试
+- [ ] 跨服务行为 → xUnit + Testcontainers 集成测试
 - [ ] 端到端流程 → PowerShell E2E 脚本
 - [ ] 测试命名：`方法名_场景_预期行为`
 
@@ -62,14 +62,14 @@ OpenAgent 项目的代码审查、功能规划、测试编写和集成排查指�
 | 新 HTTP 端点或后台服务 | Engine |
 | 新路由/网关策略 | Router |
 | 新 DI 或认证基础设施 | Hosting |
-| 测试辅助 | TestCode |
+| 测试辅助 | Backend/tests/OpenAgent.{Project}.Tests |
 
 > 跨层功能从最内层（Contracts）开始定义，向外逐层实现。
 
 ### 架构影响检查
 
 - [ ] 是否违反依赖方向？
-- [ ] 是否需要新 `IAgentEngine` 实现？
+- [ ] 是否需要新增 LLM Provider 适配？
 - [ ] 是否需要新 Pipeline 中间件？
 - [ ] 是否需要新集成点？
 
@@ -126,8 +126,8 @@ public async Task MethodName_WithDifferentInputs_ReturnsExpected(
 
 ### 集成测试
 
-- 使用 MSTest + WireMock + FakeRedis
-- 位置：`TestCode/Agent.TestEngine/`
+- 使用 xUnit + Testcontainers（PostgreSQL/Redis）
+- 位置：`Backend/tests/OpenAgent.Infrastructure.Tests/`、`Backend/tests/OpenAgent.Engine.Tests/`
 - 无需外部服务或 API Key
 
 ---
@@ -139,23 +139,22 @@ public async Task MethodName_WithDifferentInputs_ReturnsExpected(
 ### 服务连通性
 
 ```powershell
-cd TestCode/scripts/devtools
-./check-ports.ps1
+docker compose ps
 ```
 
-预期端口：8090、8091、5003、8080、5208
+预期端口：8080（chat）、5001（router）、5208（engine）、5432（postgres）、6379（redis）、9000/9001（minio）
 
 ### LLM 提供商问题
 
-1. 检查 API Key：`TestCode/.env` 中变量名格式 `{PROVIDER_ID}_API_KEY`
+1. 检查 LLM Provider：在工作台设置中创建 LLM Provider（参考根 `README.md`）
 2. 检查提供商配置：RedisTool 查看 `llm:registry:<provider>`
 3. 用 curl 直接测试 API 可达性
 
 ### MCP 问题
 
-1. MCP 服务健康：`curl http://localhost:8090/health`
+1. MCP 服务健康：`curl http://localhost:5208/health`
 2. 工具发现：检查 MCP 配置是否注册到 Engine
-3. 协议测试：`TestCode/scripts/integration/test-it-mcp-protocol.ps1`
+3. 配置检查：MCP 由 Engine 内嵌，检查 `appsettings.json` 的 Mcp 配置节
 
 ### 完整排查手册
 

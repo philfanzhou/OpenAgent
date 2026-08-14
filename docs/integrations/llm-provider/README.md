@@ -1,10 +1,7 @@
 
-## Feature
-
-
 ## 概述
 
-所有生产模型调用通过 MAF 的 `MafChatClientFactory` 创建 `IChatClient`。平台的 `ILlmRegistry` 仍负责 Profile 注册、密钥/端点解析和 Agent 配置引用；不再存在 OpenAIDriver 或 Semantic Kernel 并行引擎。
+所有生产模型调用通过 `AgentChatClientFactory` 创建 `IChatClient`。平台的 `ILlmRegistry` 仍负责 Profile 注册、密钥/端点解析和 Agent 配置引用；不再存在 OpenAIDriver 或 Semantic Kernel 并行引擎。
 
 ## 支持格式
 
@@ -22,19 +19,9 @@
 | `Backend/src/OpenAgent.Core/Runtime/Agent/AgentChatClientFactory.cs` | API 格式到 Provider client |
 | `Backend/src/OpenAgent.Core/Runtime/Agent/AgentFactory.cs` | 创建 ChatClientAgent、AgentSession 扩展和函数循环配置 |
 
-## Specification
-
-
 ## 配置解析
 
-`MafAgentProvider` 读取 `AgentConfig.Llm`，调用 `ILlmRegistry.ResolveConfig` 合并 Profile 与 Agent 局部覆盖，再传给 `IMafChatClientFactory.Create`。
-
-```csharp
-internal interface IMafChatClientFactory
-{
-    IChatClient Create(LlmConfig config);
-}
-```
+`AgentFactory` 创建 AIAgent、`AgentExecutor` 驱动执行；读取 `AgentConfig.Llm`，调用 `ILlmRegistry.ResolveConfig` 合并 Profile 与 Agent 局部覆盖，再传给 `AgentChatClientFactory.Create`。
 
 必需字段为 `Format`、`ModelId`；三个云 Provider 都需要 API key，Endpoint 为空时 OpenAI 使用官方默认地址，Anthropic 使用 SDK 默认地址。密钥不得进入日志。
 
@@ -50,41 +37,35 @@ internal interface IMafChatClientFactory
 
 配置缺失或格式不支持在发出网络请求前失败；Provider HTTP、限流、模型和内容策略错误保持原异常进入平台失败路径。权限校验在 client 请求之前完成。
 
-## Design
-
-
 ## 数据流
 
 ```text
 AgentConfig.Llm
   -> ILlmRegistry.ResolveConfig
-  -> MafChatClientFactory
+  -> AgentChatClientFactory
        -> protocol-specific official SDK
        -> IChatClient
   -> ChatClientAgent
   -> FunctionInvokingChatClient
 ```
 
-API 格式按协议分支，不共享自研 HTTP body 或 SSE parser。Responses 使用 Responses client；Anthropic 使用 Messages provider；Gemini 使用 generateContent provider；仅明确兼容 Chat Completions 的端点复用 OpenAI Chat client。
+API 格式按协议分支，不共享自研 HTTP body 或 SSE parser。Responses 使用 Responses client；Anthropic 使用 Messages provider；仅明确兼容 Chat Completions 的端点复用 OpenAI Chat client。
 
 ## 配置热更新
 
-`MafAgentProvider` 不缓存 `AIAgent`。每次调用读取当前 Agent 配置并创建轻量 `ChatClientAgent`，从而与现有 ConfigProvider 热更新保持一致。
+`AgentFactory` 不缓存 `AIAgent`。每次调用读取当前 Agent 配置并创建轻量 `ChatClientAgent`，从而与现有 ConfigProvider 热更新保持一致。
 
 ## 能力边界
 
 平台将图片/PDF/文本、工具 Schema 和历史转换为 MEAI 内容。具体模型是否支持视觉、PDF、函数或 reasoning 由 Provider 返回明确结果；工厂不伪造能力。
 
-## Tasks
-
-
 ## 已完成
 
 - [x] LLM Profile 注册、解析和 Agent 覆盖。
 - [x] 生产调用统一到 MAF。
-- [x] 八种 ApiFormat 的独立 client 构造。
+- [x] 三种 ApiFormat 的独立 client 构造。
 - [x] OpenAI Responses 使用 Responses client。
-- [x] Anthropic Messages 与 Gemini generateContent 官方 SDK 适配。
+- [x] Anthropic Messages 官方 SDK 适配。
 - [x] 真流式、函数调用、多模态和 usage 统一映射。
 - [x] 删除自研 OpenAI HTTP/SSE/重试实现和 Semantic Kernel 引擎。
 
@@ -98,9 +79,9 @@ API 格式按协议分支，不共享自研 HTTP body 或 SSE parser。Responses
 
 旧 Engine DTO 和委托替身测试已失效。新测试应直接使用 fake `IChatClient` 验证：
 
-- `MafChatClientFactory` 的 Provider 构造；
+- `AgentChatClientFactory` 的 Provider 构造；
 - `ChatClientAgent` 非流式/流式调用；
-- `MafCapabilityProvider` 返回原生 `AITool`；
+- `CapabilityToolFactory` 返回原生 `AITool`；
 - `PlatformChatHistory` 的 MAF history 生命周期；
 - `CompactionProvider` 策略选择；
 - `AgentSession` 内的函数循环、usage 和失败传播。
