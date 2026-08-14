@@ -35,11 +35,6 @@ internal static class ServiceCollectionExtensions
 
         services.AddSingleton<IAgentConfigProvider, ConfigProvider>();
 
-        services.AddHttpClient("SkillEndpoint", client =>
-        {
-            client.Timeout = TimeSpan.FromSeconds(30);
-        });
-        services.AddHostedService<RedisSkillRegistrar>();
         services.AddHostedService<RedisRagRegistrar>();
         services.AddHostedService<RedisLlmRegistrar>();
 

@@ -155,10 +155,6 @@ public class SkillInstanceConfig
     public string Name { get; set; } = string.Empty;
     public bool Enabled { get; set; } = true;
     public string Description { get; set; } = string.Empty;
-    public string ParametersJsonSchema { get; set; } = string.Empty;
-    public string? Type { get; set; }
-    public string? EndpointUrl { get; set; }
-    public string? Version { get; set; }
     public string Source { get; set; } = "Local";
     public string? SourceId { get; set; }
     public string? PackageFileName { get; set; }

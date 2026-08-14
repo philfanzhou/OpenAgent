@@ -47,7 +47,7 @@ MAF 管理 Agent、模型、流式输出、函数回填和工具迭代。平台�
 | 扩展面 | 实现 | 约束 |
 |---|---|---|
 | Model | `AgentChatClientFactory` | Provider 返回 `IChatClient`，不新增 Engine |
-| Capability | `ICapabilitySource` + `CapabilityToolFactory` | MCP/Skill/RAG 以受控 `AIFunction` 暴露 |
+| Capability | RAG `ICapabilitySource`、官方 `McpClientTool`、官方 `AgentSkillsProvider` | MCP/Skill 不复制协议或 Skill 执行运行时；RAG 保留平台授权适配 |
 | Memory | `PlatformChatHistory` | 平台存储实现 MAF `ChatHistoryProvider` |
 | Orchestration | `ChatClientAgent` / `AgentSession` | 单 Agent 或未来 MAF Workflow 均留在此边界 |
 

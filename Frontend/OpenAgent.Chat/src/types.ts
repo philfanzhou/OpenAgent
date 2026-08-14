@@ -106,10 +106,6 @@ export interface SkillInstanceConfig {
   name: string
   enabled: boolean
   description?: string
-  parametersJsonSchema?: string
-  type?: string | null
-  endpointUrl?: string | null
-  version?: string | null
   source?: string
   sourceId?: string | null
   packageFileName?: string | null

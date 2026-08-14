@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using System.Text;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
@@ -20,12 +21,15 @@ namespace OpenAgent.Engine.Tests.Skills;
 public class SkillPackageManagementServiceTests
 {
     private const string AgentId = "support";
-    private const string SkillYaml = """
-        id: customer-lookup
-        name: Customer lookup
-        description: Looks up a customer
-        endpointUrl: https://skills.example.test/customer
-        version: 1.0.0
+    private const string SkillMarkdown = """
+        ---
+        name: customer-lookup
+        description: Looks up customers
+        ---
+
+        # Instructions
+
+        Use the customer system.
         """;
 
     [Fact]
@@ -34,21 +38,22 @@ public class SkillPackageManagementServiceTests
         (SkillPackageManagementService service, AgentConfigManagementService configs, RecordingObjectStore store) =
             await CreateServiceAsync();
 
-        await using var package = new MemoryStream(Encoding.UTF8.GetBytes(SkillYaml));
+        byte[] content = CreatePackage();
+        await using var package = new MemoryStream(content);
         SkillPackageInstallResult result = await service.InstallAsync(
             AgentId,
             "tenant",
             "user",
-            "customer.yaml",
-            "application/yaml",
+            "customer.zip",
+            "application/zip",
             package,
             expectedVersion: null,
             default);
 
         Assert.True(result.AgentExists);
         Assert.False(result.HasConflict);
-        Assert.Equal("skills/customer.yaml", result.Skill?.ObjectKey);
-        Assert.Equal(Encoding.UTF8.GetBytes(SkillYaml), store.Content);
+        Assert.Equal("skills/customer.zip", result.Skill?.ObjectKey);
+        Assert.Equal(content, store.Content);
         AgentConfigEntity? saved = await configs.GetAsync(AgentId);
         SkillInstanceConfig skill = Assert.Single(saved!.Config.Skills.Instances);
         Assert.Equal("customer-lookup", skill.Id);
@@ -59,7 +64,7 @@ public class SkillPackageManagementServiceTests
     public async Task ValidateAsync_ReadsPackageFromObjectStorageAndVerifiesHash()
     {
         (SkillPackageManagementService service, _, RecordingObjectStore store) = await CreateServiceAsync();
-        byte[] content = Encoding.UTF8.GetBytes(SkillYaml);
+        byte[] content = CreatePackage();
         store.Content = content;
         var skills = new SkillsConfig
         {
@@ -71,8 +76,8 @@ public class SkillPackageManagementServiceTests
                     Id = "customer-lookup",
                     Name = "Customer lookup",
                     Enabled = true,
-                    PackageFileName = "customer.yaml",
-                    ObjectKey = "skills/customer.yaml",
+                    PackageFileName = "customer.zip",
+                    ObjectKey = "skills/customer.zip",
                     Sha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(content)).ToLowerInvariant()
                 }
             ]
@@ -82,7 +87,7 @@ public class SkillPackageManagementServiceTests
 
         Assert.True(result.Success);
         Assert.Equal(["customer-lookup"], result.ObjectStorageVerifiedSkills);
-        Assert.Equal("skills/customer.yaml", store.LastReadObjectKey);
+        Assert.Equal("skills/customer.zip", store.LastReadObjectKey);
     }
 
     [Fact]
@@ -90,13 +95,13 @@ public class SkillPackageManagementServiceTests
     {
         (SkillPackageManagementService service, AgentConfigManagementService configs, RecordingObjectStore store) =
             await CreateServiceAsync();
-        await using var package = new MemoryStream(Encoding.UTF8.GetBytes(SkillYaml));
+        await using var package = new MemoryStream(CreatePackage());
         await service.InstallAsync(
             AgentId,
             "tenant",
             "user",
-            "customer.yaml",
-            "application/yaml",
+            "customer.zip",
+            "application/zip",
             package,
             expectedVersion: null,
             default);
@@ -108,7 +113,7 @@ public class SkillPackageManagementServiceTests
             default);
 
         Assert.Equal(SkillPackageDeleteResult.Deleted, result);
-        Assert.Equal("skills/customer.yaml", store.DeletedObjectKey);
+        Assert.Equal("skills/customer.zip", store.DeletedObjectKey);
         AgentConfigEntity? saved = await configs.GetAsync(AgentId);
         Assert.Empty(saved!.Config.Skills.Instances);
         Assert.Empty(saved.Config.Skills.EnabledSkills);
@@ -118,14 +123,14 @@ public class SkillPackageManagementServiceTests
     public async Task InstallAsync_ReplacingPackage_DeletesPreviousObject()
     {
         (SkillPackageManagementService service, _, RecordingObjectStore store) = await CreateServiceAsync();
-        byte[] content = Encoding.UTF8.GetBytes(SkillYaml);
+        byte[] content = CreatePackage();
 
         await service.InstallAsync(
             AgentId,
             "tenant",
             "user",
-            "customer.yaml",
-            "application/yaml",
+            "customer.zip",
+            "application/zip",
             new MemoryStream(content),
             expectedVersion: null,
             default);
@@ -133,14 +138,14 @@ public class SkillPackageManagementServiceTests
             AgentId,
             "tenant",
             "user",
-            "customer.yaml",
-            "application/yaml",
+            "customer.zip",
+            "application/zip",
             new MemoryStream(content),
             expectedVersion: null,
             default);
 
-        Assert.Equal("skills/customer.yaml-2", result.Skill?.ObjectKey);
-        Assert.Contains("skills/customer.yaml", store.DeletedObjectKeys);
+        Assert.Equal("skills/customer.zip-2", result.Skill?.ObjectKey);
+        Assert.Contains("skills/customer.zip", store.DeletedObjectKeys);
     }
 
     private static async Task<(
@@ -169,24 +174,18 @@ public class SkillPackageManagementServiceTests
         return (new SkillPackageManagementService(
             configs,
             store,
-            new TestSkillPackageReader(),
             NullLogger<SkillPackageManagementService>.Instance), configs, store);
     }
 
-    private sealed class TestSkillPackageReader : OpenAgent.Contracts.Skills.ISkillPackageReader
+    private static byte[] CreatePackage()
     {
-        public OpenAgent.Contracts.Skills.SkillPackageManifest Read(
-            string fileName,
-            ReadOnlyMemory<byte> content) => new()
-            {
-                Id = "customer-lookup",
-                Name = "Customer lookup",
-                Description = "Looks up a customer",
-                EndpointUrl = "https://skills.example.test/customer",
-                Version = "1.0.0"
-            };
-
-        public string GetFormat(string fileName) => "yaml";
+        using var stream = new MemoryStream();
+        using (var archive = new ZipArchive(stream, ZipArchiveMode.Create, leaveOpen: true))
+        using (StreamWriter writer = new(archive.CreateEntry("customer-lookup/SKILL.md").Open(), Encoding.UTF8))
+        {
+            writer.Write(SkillMarkdown);
+        }
+        return stream.ToArray();
     }
 
     private sealed class RecordingObjectStore : IFileObjectStore

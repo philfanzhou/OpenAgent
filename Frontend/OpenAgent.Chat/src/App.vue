@@ -738,23 +738,8 @@ async function editAgent(agentId: string): Promise<void> {
   showAgentEditor.value = true
 }
 
-function createDefaultSkill(): SkillInstanceConfig {
-  return { skillId: '', name: '', enabled: true, description: '', source: 'Local', type: 'HttpEndpoint', endpointUrl: '', parametersJsonSchema: '{"type":"object"}' }
-}
-
 function selectSkill(index: number): void {
   if (skillDraft.value.instances[index]) selectedSkillIndex.value = index
-}
-
-function newSkill(): void {
-  if (!config.value) {
-    notifyError(new Error('请先从 Agent 配置中打开 Skill 绑定'))
-    return
-  }
-  skillEditorSnapshot.value = cloneSkills(skillDraft.value)
-  skillDraft.value.instances.push(createDefaultSkill())
-  selectedSkillIndex.value = skillDraft.value.instances.length - 1
-  showSkillEditor.value = true
 }
 
 function editSkill(index: number): void {
@@ -1008,10 +993,10 @@ function saveSkills(): void {
     return
   }
   const invalid = skillDraft.value.instances
-    .filter(item => !item.skillId.trim() || !item.name.trim())
+    .filter(item => !item.objectKey || !item.skillId.trim() || !item.name.trim())
     .map(item => item.skillId || item.name || '未命名 Skill')
   if (invalid.length) {
-    notifyError(new Error(`Skill 需要填写 ID 和名称：${invalid.join('、')}`))
+    notifyError(new Error(`Skill 必须来自官方 ZIP 包：${invalid.join('、')}`))
     return
   }
   syncCapabilityDraftsToAgent()
@@ -1165,7 +1150,7 @@ onMounted(() => {
         <div class="agent-editor-section-heading"><div><span class="eyebrow">CAPABILITY BINDINGS</span><h4>能力绑定</h4><p>当前 Agent 的 MCP、Skill、RAG 以卡片展示；勾选即可启用或停用 Skill 与 RAG。</p></div><span class="editor-section-index">03</span></div>
         <div class="binding-groups">
           <article class="binding-group"><div class="binding-group-heading"><div><strong>MCP</strong><small>保存到当前 Agent 配置</small></div><el-button link type="primary" @click="newMcp">新增 MCP</el-button></div><div v-if="mcpServers.length" class="binding-list"><div v-for="(server, index) in mcpServers" :key="server.name" class="binding-item"><span class="binding-icon mcp-avatar">M</span><div><strong>{{ server.name }}</strong><small>{{ server.type }} · {{ server.url || server.command || 'Stdio' }}</small></div><el-button link type="primary" @click="selectMcp(index); showMcpEditor = true">编辑</el-button><el-button link type="danger" @click="removeMcp(index)">删除</el-button></div></div><div v-else class="binding-empty">当前 Agent 尚未绑定 MCP。</div></article>
-          <article class="binding-group"><div class="binding-group-heading"><div><strong>Skill</strong><small>保存到当前 Agent 配置</small></div><div><input ref="skillPackageInput" type="file" hidden accept=".json,.yaml,.yml,.md,.markdown,.zip" @change="uploadSkillPackage" /><el-button :loading="uploadingSkill" link type="primary" @click="chooseSkillPackage">上传 Skill 包</el-button><el-button link type="primary" @click="newSkill">新增 Skill</el-button></div></div><div v-if="skillDraft.instances.length" class="binding-list"><label v-for="(skill, index) in skillDraft.instances" :key="skill.skillId" class="binding-item binding-check-item"><span class="binding-icon skill-avatar">S</span><div><strong>{{ skill.name || '未命名 Skill' }}</strong><small>{{ skill.skillId || '未设置 ID' }}</small></div><el-checkbox :model-value="isSkillEnabled(skill.skillId)" @change="toggleSkillBinding(skill, Boolean($event))" /><el-button link type="primary" @click="editSkill(index)">编辑</el-button></label></div><div v-else class="binding-empty">当前 Agent 尚未绑定 Skill。</div></article>
+          <article class="binding-group"><div class="binding-group-heading"><div><strong>Skill</strong><small>MAF Agent Skills · 保存到当前 Agent 配置</small></div><div><input ref="skillPackageInput" type="file" hidden accept=".zip" @change="uploadSkillPackage" /><el-button :loading="uploadingSkill" link type="primary" @click="chooseSkillPackage">上传官方 Skill ZIP</el-button></div></div><div v-if="skillDraft.instances.length" class="binding-list"><label v-for="(skill, index) in skillDraft.instances" :key="skill.skillId" class="binding-item binding-check-item"><span class="binding-icon skill-avatar">S</span><div><strong>{{ skill.name || '未命名 Skill' }}</strong><small>{{ skill.skillId || '未设置 ID' }} · SKILL.md</small></div><el-checkbox :model-value="isSkillEnabled(skill.skillId)" @change="toggleSkillBinding(skill, Boolean($event))" /><el-button link type="primary" @click="editSkill(index)">查看</el-button></label></div><div v-else class="binding-empty">当前 Agent 尚未绑定官方 Skill。</div></article>
           <article class="binding-group"><div class="binding-group-heading"><div><strong>RAG</strong><small>知识检索数据源</small></div><el-button link type="primary" @click="showAgentEditor = false; openSettings('rag')">管理 RAG</el-button></div><div v-if="ragInstances.length" class="binding-list"><label v-for="rag in ragInstances" :key="rag.id" class="binding-item binding-check-item"><span class="binding-icon rag-avatar">R</span><div><strong>{{ rag.name || rag.id }}</strong><small>{{ rag.type }} · {{ rag.collectionName || '默认数据集' }}</small></div><el-checkbox :model-value="isRagEnabled(rag.id)" @change="toggleRagBinding(rag, Boolean($event))" /></label></div><div v-else class="binding-empty">还没有 RAG，去 RAG 表格中新增。</div></article>
         </div>
       </section>
@@ -1191,12 +1176,10 @@ onMounted(() => {
 
   <el-dialog v-model="showSkillEditor" class="editor-dialog" modal-class="editor-overlay" title="编辑 Skill" width="min(650px, calc(100vw - 32px))" append-to-body destroy-on-close>
     <el-form v-if="selectedSkill" label-position="top">
-      <el-form-item label="Skill ID"><el-input v-model="selectedSkill.skillId" :disabled="Boolean(selectedSkill.objectKey)" placeholder="例如 weather" /></el-form-item>
-      <el-form-item label="名称"><el-input v-model="selectedSkill.name" :disabled="Boolean(selectedSkill.objectKey)" placeholder="例如 天气查询" /></el-form-item>
-      <el-form-item label="说明"><el-input v-model="selectedSkill.description" type="textarea" :rows="2" /></el-form-item>
-      <el-form-item label="类型"><el-select v-model="selectedSkill.type" :disabled="Boolean(selectedSkill.objectKey)"><el-option label="HTTP Endpoint" value="HttpEndpoint" /></el-select></el-form-item>
-      <el-form-item label="Endpoint"><el-input v-model="selectedSkill.endpointUrl" :disabled="Boolean(selectedSkill.objectKey)" placeholder="https://skill.example.com/invoke" /></el-form-item>
-      <el-form-item label="参数 JSON Schema"><el-input v-model="selectedSkill.parametersJsonSchema" :disabled="Boolean(selectedSkill.objectKey)" type="textarea" :rows="3" /></el-form-item>
+      <el-form-item label="Skill ID"><el-input v-model="selectedSkill.skillId" disabled /></el-form-item>
+      <el-form-item label="名称"><el-input v-model="selectedSkill.name" disabled /></el-form-item>
+      <el-form-item label="说明"><el-input v-model="selectedSkill.description" type="textarea" :rows="2" disabled /></el-form-item>
+      <el-alert title="该 Skill 由 MAF AgentSkillsProvider 按 SKILL.md 提供 load_skill/read_skill_resource；不再支持自定义 HTTP Endpoint 执行。" type="info" :closable="false" />
       <el-descriptions v-if="selectedSkill.objectKey" :column="1" border><el-descriptions-item label="包格式">{{ selectedSkill.packageFormat?.toUpperCase() }}</el-descriptions-item><el-descriptions-item label="对象键">{{ selectedSkill.objectKey }}</el-descriptions-item><el-descriptions-item label="SHA-256">{{ selectedSkill.sha256 }}</el-descriptions-item></el-descriptions>
       <el-form-item label="纳入 Agent 能力"><el-switch :model-value="isSkillEnabled(selectedSkill.skillId)" active-text="已绑定并启用" inactive-text="未绑定" @change="toggleSkillBinding(selectedSkill, Boolean($event))" /></el-form-item>
       <el-form-item label="状态"><el-switch v-model="selectedSkill.enabled" active-text="启用" inactive-text="停用" /></el-form-item>

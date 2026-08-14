@@ -1,6 +1,8 @@
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using OpenAgent.Core.Capabilities;
+using OpenAgent.Core.Capabilities.Mcp;
+using OpenAgent.Core.Capabilities.Skill;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
@@ -15,17 +17,23 @@ internal sealed class AgentFactory
     private readonly AgentChatClientFactory _chatClients;
     private readonly ConversationHistoryFactory _conversations;
     private readonly CapabilityToolFactory _capabilities;
+    private readonly McpToolFactory _mcpTools;
+    private readonly AgentSkillsProviderFactory _skills;
     private readonly FileAssetExecutionContext _files;
 
     public AgentFactory(
         AgentChatClientFactory chatClients,
         ConversationHistoryFactory conversations,
         CapabilityToolFactory capabilities,
+        McpToolFactory mcpTools,
+        AgentSkillsProviderFactory skills,
         FileAssetExecutionContext files)
     {
         _chatClients = chatClients;
         _conversations = conversations;
         _capabilities = capabilities;
+        _mcpTools = mcpTools;
+        _skills = skills;
         _files = files;
     }
 
@@ -49,46 +57,68 @@ internal sealed class AgentFactory
             profile.Config,
             user,
             cancellationToken).ConfigureAwait(false);
-
-        IChatClient chatClient = new FunctionInvokingChatClient(modelClient)
+        McpToolRuntime mcpRuntime = McpToolRuntime.Empty;
+        AgentSkillsRuntime skillsRuntime = AgentSkillsRuntime.Empty;
+        try
         {
-            AllowConcurrentInvocation = false,
-            // 工具调用失败时捕获异常回传给模型重试，而不是让整个会话失败。
-            // IncludeDetailedErrors 保持 false：不把原始异常消息/内部路径泄露给模型，
-            // 工具侧的校验失败统一返回净化后的错误文本（见 FileAssetCapabilitySource）。
-            IncludeDetailedErrors = false,
-            MaximumConsecutiveErrorsPerRequest = 3,
-            MaximumIterationsPerRequest = profile.Config.MaxTurns > 0 ? profile.Config.MaxTurns : 5,
-            TerminateOnUnknownCalls = true
-        };
+            mcpRuntime = await _mcpTools.CreateAsync(
+                profile.AgentId,
+                profile.Config.Mcp,
+                user,
+                cancellationToken).ConfigureAwait(false);
+            skillsRuntime = await _skills.CreateAsync(
+                profile.AgentId,
+                profile.Config.Skills,
+                user,
+                cancellationToken).ConfigureAwait(false);
 
-        List<AIContextProvider> providers = [];
-        AIContextProvider? compaction = _conversations.CreateCompaction(
-            profile.Config.ContextPolicy,
-            modelClient);
-        if (compaction != null)
-        {
-            providers.Add(compaction);
-        }
-
-        AIAgent agent = new ChatClientAgent(chatClient, new ChatClientAgentOptions
-        {
-            Id = profile.AgentId,
-            Name = profile.AgentId,
-            ChatOptions = new ChatOptions
+            IChatClient chatClient = new FunctionInvokingChatClient(modelClient)
             {
-                Instructions = string.IsNullOrWhiteSpace(profile.Config.Instructions)
-                    ? null
-                    : profile.Config.Instructions,
-                Temperature = (float?)profile.Model.Temperature,
-                Tools = tools.ToList()
-            },
-            ChatHistoryProvider = history,
-            AIContextProviders = providers,
-            UseProvidedChatClientAsIs = true,
-            RequirePerServiceCallChatHistoryPersistence = false
-        });
-        return new AgentExecutionScope(agent, history);
+                AllowConcurrentInvocation = false,
+                IncludeDetailedErrors = false,
+                MaximumConsecutiveErrorsPerRequest = 3,
+                MaximumIterationsPerRequest = profile.Config.MaxTurns > 0 ? profile.Config.MaxTurns : 5,
+                TerminateOnUnknownCalls = true
+            };
+
+            List<AIContextProvider> providers = [];
+            if (skillsRuntime.Provider != null)
+            {
+                providers.Add(skillsRuntime.Provider);
+            }
+            AIContextProvider? compaction = _conversations.CreateCompaction(
+                profile.Config.ContextPolicy,
+                modelClient);
+            if (compaction != null)
+            {
+                providers.Add(compaction);
+            }
+
+            AIAgent agent = new ChatClientAgent(chatClient, new ChatClientAgentOptions
+            {
+                Id = profile.AgentId,
+                Name = profile.AgentId,
+                ChatOptions = new ChatOptions
+                {
+                    Instructions = string.IsNullOrWhiteSpace(profile.Config.Instructions)
+                        ? null
+                        : profile.Config.Instructions,
+                    Temperature = (float?)profile.Model.Temperature,
+                    Tools = tools.Concat(mcpRuntime.Tools).ToList()
+                },
+                ChatHistoryProvider = history,
+                AIContextProviders = providers,
+                UseProvidedChatClientAsIs = true,
+                RequirePerServiceCallChatHistoryPersistence = false
+            });
+            return new AgentExecutionScope(agent, history, mcpRuntime, skillsRuntime);
+        }
+        catch
+        {
+            await mcpRuntime.DisposeAsync().ConfigureAwait(false);
+            await skillsRuntime.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
     }
 
     internal Task EnsureConversationAsync(

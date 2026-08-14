@@ -17,13 +17,10 @@ OpenAgent 通过官方 C# SDK 连接外部 MCP Server，将服务器工具映射
 AgentConfig.Mcp.Servers
         │
         ▼
-CapabilityToolFactory
+McpToolFactory（请求级客户端生命周期）
         │
         ▼
-McpCapabilitySource（请求级客户端生命周期）
-        │
-        ▼
-McpServerClient
+官方 McpClient → McpClientTool
         ▼
 ModelContextProtocol.Core 1.4.1
 ```
@@ -38,5 +35,4 @@ ModelContextProtocol.Core 1.4.1
 - MCP 注册表发布不会自动启用服务，必须加入 Agent 配置并发布
 
 ## Source
-- Core: `Backend/src/OpenAgent.Core/Capabilities/Mcp/`（McpCapabilitySource、McpServerClient）
-- Contracts: `Backend/src/OpenAgent.Contracts/Mcp/IMcpClient.cs`
+- Core: `Backend/src/OpenAgent.Core/Capabilities/Mcp/`（McpToolFactory、McpTransportFactory）

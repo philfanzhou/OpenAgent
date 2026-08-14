@@ -142,7 +142,7 @@ describe('workspace API', () => {
     setConnectionMode('engine')
     setEngineBaseUrl('http://engine.example')
     const responseBody = {
-      skill: { skillId: 'weather', name: 'Weather', enabled: true },
+      skill: { skillId: 'weather', name: 'weather', enabled: true, objectKey: 'skills/weather.zip', packageFormat: 'zip' },
       currentVersion: '2',
       storage: 'object-storage',
     }
@@ -151,7 +151,7 @@ describe('workspace API', () => {
       headers: { 'Content-Type': 'application/json' },
     }))
     vi.stubGlobal('fetch', fetchMock)
-    const file = new File(['{"id":"weather"}'], 'skill.json', { type: 'application/json' })
+    const file = new File(['official skill package'], 'skill.zip', { type: 'application/zip' })
 
     const result = await api.uploadSkillPackage('support', file)
 
@@ -191,7 +191,7 @@ describe('workspace API', () => {
           servers: [{ name: 'tools', url: 'https://mcp.example.test/mcp', type: 'Http', protocolVersion: '2025-06-18' }],
         },
         rag: { enabled: false, enabledRagInstanceIds: [], instances: [] },
-        skills: { enabledSkills: ['weather'], instances: [{ skillId: 'weather', name: 'Weather', enabled: true }] },
+        skills: { enabledSkills: ['weather'], instances: [{ skillId: 'weather', name: 'weather', enabled: true, objectKey: 'skills/weather.zip', packageFormat: 'zip' }] },
         maxTurns: 50,
       },
     })

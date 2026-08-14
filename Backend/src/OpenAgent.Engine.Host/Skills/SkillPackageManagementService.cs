@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Models;
-using OpenAgent.Contracts.Skills;
+using OpenAgent.Core.Capabilities.Skill;
 using OpenAgent.Engine.Config;
 
 namespace OpenAgent.Engine.Host.Skills;
@@ -11,7 +11,6 @@ namespace OpenAgent.Engine.Host.Skills;
 internal sealed class SkillPackageManagementService(
     AgentConfigManagementService agentConfigs,
     IFileObjectStore objectStore,
-    ISkillPackageReader packageReader,
     ILogger<SkillPackageManagementService> logger)
 {
     internal const long MaxPackageBytes = 4 * 1024 * 1024;
@@ -27,7 +26,11 @@ internal sealed class SkillPackageManagementService(
         CancellationToken cancellationToken)
     {
         byte[] content = await ReadPackageAsync(package, cancellationToken).ConfigureAwait(false);
-        SkillPackageManifest manifest = packageReader.Read(fileName, content);
+        AgentSkillPackageMetadata metadata = AgentSkillPackageArchive.Inspect(content, cancellationToken);
+        if (metadata.SkillCount != 1)
+        {
+            throw new InvalidOperationException("Each uploaded Skill package must contain exactly one SKILL.md skill.");
+        }
         string sha256 = Convert.ToHexString(SHA256.HashData(content)).ToLowerInvariant();
         AgentConfigEntity? entity = await agentConfigs.GetAsync(agentId, cancellationToken).ConfigureAwait(false);
         if (entity == null)
@@ -50,24 +53,20 @@ internal sealed class SkillPackageManagementService(
             cancellationToken).ConfigureAwait(false);
         var instance = new SkillInstanceConfig
         {
-            Id = manifest.Id,
-            Name = manifest.Name,
+            Id = metadata.Name,
+            Name = metadata.Name,
             Enabled = true,
-            Description = manifest.Description,
-            ParametersJsonSchema = manifest.ParametersJsonSchema,
-            Type = manifest.Type,
-            EndpointUrl = manifest.EndpointUrl,
-            Version = manifest.Version,
+            Description = metadata.Description,
             Source = "ObjectStorage",
             SourceId = stored.ObjectKey,
             PackageFileName = fileName,
-            PackageFormat = packageReader.GetFormat(fileName),
+            PackageFormat = "zip",
             ObjectKey = stored.ObjectKey,
             Sha256 = sha256
         };
 
         int index = entity.Config.Skills.Instances.FindIndex(item =>
-            string.Equals(item.Id, manifest.Id, StringComparison.OrdinalIgnoreCase));
+            string.Equals(item.Id, metadata.Name, StringComparison.OrdinalIgnoreCase));
         string? previousObjectKey = index >= 0
             ? entity.Config.Skills.Instances[index].ObjectKey
             : null;
@@ -81,8 +80,8 @@ internal sealed class SkillPackageManagementService(
         }
 
         entity.Config.Skills.EnabledSkills.RemoveAll(item =>
-            string.Equals(item, manifest.Id, StringComparison.OrdinalIgnoreCase));
-        entity.Config.Skills.EnabledSkills.Add(manifest.Id);
+            string.Equals(item, metadata.Name, StringComparison.OrdinalIgnoreCase));
+        entity.Config.Skills.EnabledSkills.Add(metadata.Name);
         AgentConfigEntity? saved;
         try
         {
@@ -179,7 +178,13 @@ internal sealed class SkillPackageManagementService(
                     continue;
                 }
 
-                packageReader.Read(instance.PackageFileName ?? string.Empty, content);
+                AgentSkillPackageMetadata metadata = AgentSkillPackageArchive.Inspect(content, cancellationToken);
+                if (!string.Equals(metadata.Name, instance.Id, StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(metadata.Name, instance.Name, StringComparison.OrdinalIgnoreCase))
+                {
+                    invalid.Add(instance.Id);
+                    continue;
+                }
                 verified.Add(instance.Id);
             }
             catch (InvalidOperationException)
