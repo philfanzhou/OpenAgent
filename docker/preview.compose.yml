@@ -1,0 +1,84 @@
+# 并行预览实例（仅 engine + router + chat，共享主 openagent 栈的基础设施）
+#
+# 由 scripts/preview.sh 管理生命周期。不要直接 docker compose up：
+# 端口需经脚本原子分配，避免与其他预览或主实例冲突。
+#
+# 共享基础设施（主栈容器）通过 host.docker.internal 直连：
+#   postgres / redis / minio 必须在主 openagent 栈中运行并发布到宿主机。
+# 测试环境：预览直接复用主实例的 Redis DB 0，共享 agent 目录等应用数据。
+services:
+  engine:
+    build:
+      context: ..
+      dockerfile: Backend/src/OpenAgent.Engine.Host/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:5208
+      ConnectionStrings__OpenAgentDatabase: Host=host.docker.internal;Port=${OPENAGENT_POSTGRES_PORT:-5432};Database=openagent;Username=openagent;Password=openagent
+      ConnectionStrings__Redis: host.docker.internal:${OPENAGENT_REDIS_PORT:-6379},defaultDatabase=0
+      Database__ApplyMigrationsOnStartup: "true"
+      ConversationCache__Enabled: "true"
+      FileAssets__Enabled: "true"
+      OpenTelemetry__OtlpEndpoint: ${OPENAGENT_OTLP_ENDPOINT:-http://host.docker.internal:4317}
+      OpenTelemetry__ServiceName: agent-engine
+      OpenTelemetry__ServiceVersion: preview-${PREVIEW_SLUG:-dev}
+      FileAssets__ObjectStorage__ServiceUrl: http://host.docker.internal:${OPENAGENT_MINIO_PORT:-9000}
+      FileAssets__ObjectStorage__ForcePathStyle: "true"
+      FileAssets__ObjectStorage__AccessKey: openagent
+      FileAssets__ObjectStorage__SecretKey: openagent-secret
+      Engine__AllowMockAgent: "true"
+      Heartbeat__AdvertisedHost: engine
+      Heartbeat__AdvertisedPort: "5208"
+      Authentication__AllowDevelopmentAnonymous: "true"
+      Cors__AllowedOrigins__0: http://localhost:${PREVIEW_CHAT_PORT:-8090}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${PREVIEW_ENGINE_PORT:-5210}:5208"
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:5208/health >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  router:
+    build:
+      context: ..
+      dockerfile: Backend/src/OpenAgent.Router/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:5001
+      ConnectionStrings__Redis: host.docker.internal:${OPENAGENT_REDIS_PORT:-6379},defaultDatabase=0
+      OpenTelemetry__OtlpEndpoint: ${OPENAGENT_OTLP_ENDPOINT:-http://host.docker.internal:4317}
+      OpenTelemetry__ServiceName: agent-router
+      OpenTelemetry__ServiceVersion: preview-${PREVIEW_SLUG:-dev}
+      RouterSettings__Routing__EngineEndpoint: http://engine:5208
+      RouterSettings__IntentRecognition__TimeoutMs: "30000"
+      Authentication__AllowDevelopmentAnonymous: "true"
+      Cors__AllowedOrigins__0: http://localhost:${PREVIEW_CHAT_PORT:-8090}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      engine:
+        condition: service_healthy
+    ports:
+      - "${PREVIEW_ROUTER_PORT:-5010}:5001"
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:5001/health >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  chat:
+    build:
+      context: ..
+      dockerfile: Frontend/OpenAgent.Chat/Dockerfile
+      args:
+        VITE_OPENAGENT_ROUTER_BASE_URL: http://localhost:${PREVIEW_ROUTER_PORT:-5010}
+        VITE_OPENAGENT_ENGINE_BASE_URL: http://localhost:${PREVIEW_ENGINE_PORT:-5210}
+        VITE_OPENAGENT_TENANT_ID: development
+    depends_on:
+      router:
+        condition: service_healthy
+    ports:
+      - "${PREVIEW_CHAT_PORT:-8090}:80"

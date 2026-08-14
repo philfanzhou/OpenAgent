@@ -26,6 +26,13 @@ internal static class AgentStreamWriter
             "agent-stream",
             traceId,
             cancellationToken);
+        // 尽早下发 conversationId：客户端在流式中止（如暂停/停止）时也能获知真实会话 ID，
+        // 否则首次会话被中止后前端不知道会话 ID，后续输入会被当成新会话。
+        await WriteSseEventAsync(
+            context,
+            "conversation",
+            JsonSerializer.Serialize(new { conversationId }),
+            cancellationToken).ConfigureAwait(false);
         await foreach (AgentStreamEvent streamEvent in events.WithCancellation(cancellationToken))
         {
             if (streamEvent.Type == AgentStreamEventType.Usage)

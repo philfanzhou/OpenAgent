@@ -8,6 +8,7 @@ import ChatSidebar from './components/ChatSidebar.vue'
 import MessageComposer from './components/MessageComposer.vue'
 import HealthCheckPanel from './components/HealthCheckPanel.vue'
 import { AUTO_AGENT_ID, type AgentConfigEntity, type AgentSummary, type AuthConfig, type ConnectionMode, type ConversationMessage, type ConversationRecord, type CurrentUserContext, type LlmProviderProfile, type LlmTestResult, type McpServerConfig, type McpTestResult, type MessageFile, type PendingFile, type RagConfig, type RagInstanceConfig, type RagTestResult, type SkillInstanceConfig, type SkillsConfig } from './types'
+import { usePanelLayout } from './composables/usePanelLayout'
 
 const connectionMode = ref<ConnectionMode>(getConnectionMode())
 const routerUrl = ref(getRouterBaseUrl())
@@ -24,6 +25,8 @@ const selectedAgentId = ref(AUTO_AGENT_ID)
 const message = ref('')
 const search = ref('')
 const loading = ref(false)
+/** 当前流式请求的取消句柄，用于发送按钮在生成中切换为“停止”。 */
+let streamAbort: AbortController | null = null
 const loadingConversation = ref(false)
 const savingConfig = ref(false)
 const refreshingAgents = ref(false)
@@ -62,6 +65,7 @@ const showLlmEditor = ref(false)
 const isNewLlm = ref(false)
 const pendingFiles = ref<PendingFile[]>([])
 const themeMode = ref<'light' | 'dark'>(localStorage.getItem('openagent.ui.theme') === 'dark' ? 'dark' : 'light')
+const { sidebarCollapsed, contextCollapsed, toggleSidebar, toggleContext, startSidebarResize, startContextResize } = usePanelLayout()
 const currentMessages = computed(() => selectedConversation.value?.messages || [])
 const selectedSkill = computed(() => selectedSkillIndex.value >= 0 ? skillDraft.value.instances[selectedSkillIndex.value] || null : null)
 const enabledSkillIds = computed(() => new Set(skillDraft.value.enabledSkills))
@@ -94,6 +98,8 @@ watch(connectionMode, mode => {
 
 function applyTheme(): void {
   document.documentElement.dataset.theme = themeMode.value
+  // Element Plus 暗色主题依赖 html.dark class + dark css-vars。
+  document.documentElement.classList.toggle('dark', themeMode.value === 'dark')
   localStorage.setItem('openagent.ui.theme', themeMode.value)
 }
 
@@ -386,7 +392,7 @@ function newConversation(): void {
 }
 
 function handleAgentChange(): void {
-  newConversation()
+  // 切换 Agent 时保留当前会话与输入内容：实际场景中 Agent 可随时切换。
   config.value = null
   mcpServers.value = []
   selectedMcpIndex.value = -1
@@ -394,6 +400,23 @@ function handleAgentChange(): void {
   selectedSkillIndex.value = -1
   ragInstances.value = []
   selectedRagIndex.value = -1
+}
+
+function llmName(agent: AgentSummary): string {
+  if (agent.llmProvider) {
+    const profile = llmProfiles.value.find(item => item.id === agent.llmProvider)
+    return profile?.name || agent.llmProvider
+  }
+  return agent.llmModel || '未配置模型'
+}
+
+function llmId(agent: AgentSummary): string {
+  if (agent.llmModel) return agent.llmModel
+  if (agent.llmProvider) {
+    const profile = llmProfiles.value.find(item => item.id === agent.llmProvider)
+    return profile?.modelId || ''
+  }
+  return ''
 }
 
 function selectAgent(agentId: string): void {
@@ -450,6 +473,10 @@ async function toMessageFile(item: PendingFile): Promise<MessageFile> {
   }
 }
 
+function stopStreaming(): void {
+  streamAbort?.abort()
+}
+
 async function send(): Promise<void> {
   const content = message.value.trim()
   const hasFiles = pendingFiles.value.length > 0
@@ -480,7 +507,11 @@ async function send(): Promise<void> {
   // 这样 router 对首次消息会执行意图识别，而不是当成续聊直接转发。
   const sendConversationId = isNewConversation ? undefined : conversationId
   loading.value = true
+  const controller = new AbortController()
+  streamAbort = controller
   let streamError: { title?: string; detail?: string; traceId?: string } | undefined
+  let flushStream: (() => void) | undefined
+  let returnedConversationId: string | undefined
   try {
     conversation.messages ||= []
     const messageFiles = await Promise.all(pendingFiles.value.map(toMessageFile))
@@ -495,24 +526,33 @@ async function send(): Promise<void> {
     message.value = ''
     pendingFiles.value = []
     let assistant = ''
+    let reasoning = ''
+    let lastFlush = 0
     conversation.messages.push({
       messageId: crypto.randomUUID(), sequence: conversation.messages.length + 1,
       role: 'assistant', content: '', timestamp: new Date().toISOString(),
     })
     const assistantMessage = conversation.messages[conversation.messages.length - 1]
-    let returnedConversationId: string | undefined
+    flushStream = (): void => {
+      assistantMessage.content = assistant
+      assistantMessage.reasoning = reasoning || undefined
+      lastFlush = performance.now()
+    }
+    // 流式写入节流：思考/正文很长时按帧批量刷新，避免每个事件都触发整段重渲染导致卡顿。
     for await (const event of api.streamChat(
       requestContent,
       requestedAgentId,
       sendConversationId,
       uploaded.map(asset => asset.fileId),
       sendConversationId,
+      controller.signal,
     )) {
       if (event.type === 'content') {
         assistant += event.content || ''
-        assistantMessage.content = assistant
+        if (performance.now() - lastFlush > 100) flushStream?.()
       } else if (event.type === 'reasoning') {
-        assistantMessage.reasoning = `${assistantMessage.reasoning || ''}${event.content || ''}`
+        reasoning += event.content || ''
+        if (performance.now() - lastFlush > 100) flushStream?.()
       } else if (event.type === 'tool_call') {
         assistantMessage.toolActivities ||= []
         assistantMessage.toolActivities.push({
@@ -533,23 +573,57 @@ async function send(): Promise<void> {
       }
       if (event.conversationId) returnedConversationId = event.conversationId
     }
+    flushStream?.()
     const persisted = await api.getConversation(returnedConversationId || conversationId)
     await hydrateFilePreviews(persisted)
     selectedConversation.value = persisted
     await refreshConversations()
-  } catch (error) {
-    conversation.status = 'Failed'
-    const lastMessage = conversation.messages?.at(-1)
-    if (lastMessage?.role === 'assistant') {
-      // 错误信息不写入历史，以独立错误卡片就近展示；保留已流式的部分内容。
-      lastMessage.error = {
-        title: streamError?.title || 'Agent 执行失败',
-        detail: streamError?.detail || (error instanceof Error ? error.message : '执行失败'),
-        traceId: streamError?.traceId,
-      }
+    // 初次会话：若后端意图识别将对话路由到了其他 Agent，更新右上角选择器并提示。
+    if (isNewConversation && persisted.agentId && persisted.agentId !== requestedAgentId) {
+      const routed = agents.value.find(agent => agent.agentId === persisted.agentId)
+      selectedAgentId.value = persisted.agentId
+      ElMessage.info(`已由意图识别路由到 Agent「${routed?.name || persisted.agentId}」`)
     }
-    notifyError(error)
+  } catch (error) {
+    if (controller.signal.aborted) {
+      // 用户主动停止：保留已生成的部分内容并正常存档，不当作错误处理。
+      conversation.status = 'Cancelled'
+      conversation.updatedAt = new Date().toISOString()
+      conversation.lastMessageAt = conversation.updatedAt
+      flushStream?.()
+      // 引擎在流开始时就下发了真实 conversationId；用它替换本地临时 ID，
+      // 保证下次输入继续同一会话，之前的消息与文件才能被引擎识别。
+      const persistedConversationId = returnedConversationId || conversationId
+      if (returnedConversationId) {
+        conversation.conversationId = returnedConversationId
+      }
+      try {
+        const persisted = await api.getConversation(persistedConversationId)
+        await hydrateFilePreviews(persisted)
+        // 仅当服务端会话已有消息时才替换本地视图；否则保留本地部分内容，
+        // 避免中止后页面退回空的“新会话”欢迎页。
+        if (persisted.messages?.length) {
+          selectedConversation.value = persisted
+        }
+      } catch {
+        // 首次会话未持久化时保留本地部分内容作为存档。
+      }
+      await refreshConversations().catch(() => undefined)
+    } else {
+      conversation.status = 'Failed'
+      const lastMessage = conversation.messages?.at(-1)
+      if (lastMessage?.role === 'assistant') {
+        // 错误信息不写入历史，以独立错误卡片就近展示；保留已流式的部分内容。
+        lastMessage.error = {
+          title: streamError?.title || 'Agent 执行失败',
+          detail: streamError?.detail || (error instanceof Error ? error.message : '执行失败'),
+          traceId: streamError?.traceId,
+        }
+      }
+      notifyError(error)
+    }
   } finally {
+    streamAbort = null
     loading.value = false
   }
 }
@@ -820,9 +894,10 @@ async function saveConfig(): Promise<void> {
     selectedAgentId.value = agentId
     agents.value = [
       ...agents.value.filter(item => item.agentId !== agentId),
-      { agentId, name: saved.name, description: saved.description, status: saved.status, currentVersion: saved.currentVersion, apiFormat: String(saved.config.llm.format || '') },
+      { agentId, name: saved.name, description: saved.description, status: saved.status, currentVersion: saved.currentVersion, apiFormat: String(saved.config.llm.format || ''), llmProvider: saved.config.llm.provider, llmModel: saved.config.llm.modelId },
     ]
     isNewAgent.value = false
+    showAgentEditor.value = false
     ElMessage.success('Agent 配置已保存')
   } catch (error) {
     notifyError(error)
@@ -904,24 +979,28 @@ onMounted(() => {
 </script>
 
 <template>
-  <el-container class="app-shell">
-    <ChatSidebar :conversations="conversations" :selected-conversation-id="selectedConversation?.conversationId" :search="search" :loading="loading" :status-text="statusText" :current-user="currentUser" @update:search="search = $event" @new="newConversation" @settings="openSettings('gateway')" @refresh="loadWorkspace" @select="selectConversation" @delete="deleteConversation" />
+  <el-container class="app-shell" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
+    <ChatSidebar :conversations="conversations" :selected-conversation-id="selectedConversation?.conversationId" :search="search" :loading="loading" :status-text="statusText" :current-user="currentUser" @update:search="search = $event" @new="newConversation" @settings="openSettings('gateway')" @refresh="loadWorkspace" @select="selectConversation" @delete="deleteConversation" @toggle-collapse="toggleSidebar" @resize-start="startSidebarResize" />
+    <button v-if="sidebarCollapsed" class="panel-restore sidebar-restore" type="button" aria-label="展开侧栏" title="展开侧栏" @click="toggleSidebar">›</button>
 
     <el-main class="main-panel">
       <ChatHeader :status-text="statusText" :agents="agents" :selected-agent-id="selectedAgentId" :allow-auto="connectionMode === 'router'" :refreshing-agents="refreshingAgents" :title="selectedConversation?.title || '新对话'" :theme-mode="themeMode" @update:selected-agent-id="selectedAgentId = $event" @agent-change="handleAgentChange" @refresh-agents="refreshAgents" @settings="openSettings('gateway')" @toggle-theme="toggleTheme" />
 
-      <div class="workspace-grid">
+      <div class="workspace-grid" :class="{ 'context-collapsed': contextCollapsed }">
         <section class="chat-card">
-          <ChatMessages :messages="currentMessages" :loading="loadingConversation" @suggest="message = $event" @download="downloadFile" />
-          <MessageComposer :model-value="message" :endpoint-url="activeEndpointUrl" :endpoint-label="activeEndpointLabel" :selected-agent-id="selectedAgentId" :loading="loading" :pending-files="pendingFiles" @update:model-value="message = $event" @files-change="handleFilesChange" @retry-file="retryPendingFile" @send="send" />
+          <ChatMessages :messages="currentMessages" :loading="loadingConversation" :current-user="currentUser" :streaming="loading" @suggest="message = $event" @download="downloadFile" />
+          <MessageComposer :model-value="message" :endpoint-url="activeEndpointUrl" :endpoint-label="activeEndpointLabel" :selected-agent-id="selectedAgentId" :loading="loading" :pending-files="pendingFiles" @update:model-value="message = $event" @files-change="handleFilesChange" @retry-file="retryPendingFile" @send="send" @stop="stopStreaming" />
         </section>
         <aside class="context-panel">
+          <div class="context-panel-head"><span class="context-label">INSPECTOR</span><button class="panel-collapse-btn" type="button" aria-label="收起上下文面板" title="收起" @click="toggleContext">›</button></div>
           <section><span class="context-label">ROUTING</span><strong>{{ routeMode }}</strong><p>{{ connectionMode === 'router' && selectedAgentId === AUTO_AGENT_ID ? '由意图识别 Agent 分析请求并选择目标。' : (selectedAgent?.description || selectedAgentId) }}</p><dl><div><dt>Agent</dt><dd>{{ connectionMode === 'router' && selectedAgentId === AUTO_AGENT_ID ? '由模型选择' : (selectedAgent?.name || selectedAgentId) }}</dd></div><div><dt>协议</dt><dd>{{ selectedAgent?.apiFormat || (connectionMode === 'router' ? '自动' : '—') }}</dd></div></dl></section>
           <section><span class="context-label">IDENTITY</span><dl><div><dt>用户</dt><dd>{{ currentUser?.userId || 'Guest' }}</dd></div><div><dt>租户</dt><dd>{{ currentUser?.tenantId || tenantId || '—' }}</dd></div><div><dt>{{ activeEndpointLabel }}</dt><dd :title="activeEndpointUrl">{{ activeEndpointHost }}</dd></div></dl></section>
           <section><span class="context-label">CONVERSATION</span><dl><div><dt>消息</dt><dd>{{ currentMessages.length }}</dd></div><div><dt>状态</dt><dd>{{ selectedConversation?.status ?? '新建' }}</dd></div><div><dt>ID</dt><dd class="truncate" :title="selectedConversation?.conversationId">{{ selectedConversation?.conversationId || '尚未创建' }}</dd></div></dl></section>
           <el-button class="diagnostics-shortcut" @click="openSettings('health')">运行平台健康检查</el-button>
+          <div class="context-resize" @pointerdown="startContextResize" />
         </aside>
       </div>
+      <button v-if="contextCollapsed" class="panel-restore context-restore" type="button" aria-label="展开上下文面板" title="展开上下文面板" @click="toggleContext">‹</button>
     </el-main>
   </el-container>
 
@@ -947,12 +1026,12 @@ onMounted(() => {
         </el-tab-pane>
         <el-tab-pane label="LLM 配置" name="llm">
           <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">MODEL PROVIDERS</span><h3>大模型配置</h3><p>独立维护多条模型供应商配置，Agent 通过 Provider ID 绑定；API Key 只在保存时写入，列表中始终脱敏。</p></div><div class="section-actions"><el-button @click="loadLlmProfiles">刷新</el-button><el-button type="primary" plain @click="newLlm">新增大模型</el-button></div></div>
-            <el-table :data="llmProfiles" class="capability-table" empty-text="还没有大模型配置"><el-table-column label="名称" min-width="180"><template #default="scope"><strong>{{ scope.row.name }}</strong><small class="table-subtext">{{ scope.row.id }}</small></template></el-table-column><el-table-column label="协议" width="190"><template #default="scope"><el-tag size="small" round>{{ scope.row.format }}</el-tag></template></el-table-column><el-table-column label="模型" min-width="150"> <template #default="scope">{{ scope.row.modelId }}</template></el-table-column><el-table-column label="Endpoint" min-width="260" show-overflow-tooltip><template #default="scope">{{ scope.row.endpoint }}</template></el-table-column><el-table-column label="API Key" min-width="190"><template #default="scope">{{ scope.row.apiKey ? '••••••••' : '未配置' }}</template></el-table-column><el-table-column label="操作" width="190" fixed="right"><template #default="scope"><el-button link type="primary" @click="editLlm(scope.$index)">编辑</el-button><el-button link @click="selectLlm(scope.$index); testLlm(); showLlmEditor = true">测试</el-button><el-button link type="danger" @click="selectLlm(scope.$index); deleteLlm()">删除</el-button></template></el-table-column></el-table>
+            <el-table :data="llmProfiles" class="capability-table" empty-text="还没有大模型配置"><el-table-column label="名称" min-width="140"><template #default="scope"><strong>{{ scope.row.name }}</strong><small class="table-subtext">{{ scope.row.id }}</small></template></el-table-column><el-table-column label="协议" width="160"><template #default="scope"><el-tag size="small" round>{{ scope.row.format }}</el-tag></template></el-table-column><el-table-column label="模型" min-width="120"><template #default="scope">{{ scope.row.modelId }}</template></el-table-column><el-table-column label="Endpoint" min-width="200" show-overflow-tooltip><template #default="scope">{{ scope.row.endpoint }}</template></el-table-column><el-table-column label="API Key" min-width="120"><template #default="scope">{{ scope.row.apiKey ? '••••••••' : '未配置' }}</template></el-table-column><el-table-column label="操作" width="160" fixed="right"><template #default="scope"><el-button link type="primary" @click="editLlm(scope.$index)">编辑</el-button><el-button link @click="selectLlm(scope.$index); testLlm(); showLlmEditor = true">测试</el-button><el-button link type="danger" @click="selectLlm(scope.$index); deleteLlm()">删除</el-button></template></el-table-column></el-table>
           </section>
         </el-tab-pane>
         <el-tab-pane label="Agent 配置" name="agent">
           <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">AGENT RUNTIME</span><h3>Agent 配置</h3><p>Agent 以卡片方式管理，点击编辑后在独立窗口配置模型与运行参数。</p></div><div class="section-actions"><el-button @click="refreshAgents" :loading="refreshingAgents">刷新 Agent</el-button><el-button type="primary" plain @click="createAgent">新增 Agent</el-button></div></div>
-            <div class="agent-card-grid"><article v-for="agent in agents" :key="agent.agentId" class="agent-card"><div class="agent-card-top"><span class="resource-avatar agent-avatar">{{ (agent.name || agent.agentId).slice(0, 1) }}</span><span class="resource-status" /></div><h4>{{ agent.name || agent.agentId }}</h4><p>{{ agent.description || agent.agentId }}</p><div class="agent-card-meta"><span>{{ agent.apiFormat || '未配置模型' }}</span><span>v{{ agent.currentVersion || 'draft' }}</span></div><el-button type="primary" plain @click="editAgent(agent.agentId)">编辑配置</el-button></article><button class="agent-card agent-card-add" @click="createAgent"><span>＋</span><strong>新增 Agent</strong><small>创建独立运行配置</small></button><div v-if="!agents.length" class="resource-empty">还没有 Agent</div></div>
+            <div class="agent-card-grid"><article v-for="agent in agents" :key="agent.agentId" class="agent-card"><h4>{{ agent.name || agent.agentId }}</h4><p>{{ agent.description || agent.agentId }}</p><div class="agent-card-meta"><span>{{ llmName(agent) }}</span><span>{{ llmId(agent) }}</span></div><el-button type="primary" plain @click="editAgent(agent.agentId)">编辑配置</el-button></article><button class="agent-card agent-card-add" @click="createAgent"><span>＋</span><strong>新增 Agent</strong><small>创建独立运行配置</small></button><div v-if="!agents.length" class="resource-empty">还没有 Agent</div></div>
           </section>
         </el-tab-pane>
         <el-tab-pane label="MCP 绑定" name="mcp">
@@ -1030,8 +1109,3 @@ onMounted(() => {
     <el-form label-position="top"><el-form-item label="RAG ID"><el-input v-model="ragDraft.id" placeholder="例如 knowledge-base" /></el-form-item><el-form-item label="名称"><el-input v-model="ragDraft.name" placeholder="例如 企业知识库" /></el-form-item><el-form-item label="类型"><el-select v-model="ragDraft.type"><el-option label="RAGFlow" value="ragflow" /><el-option label="Qdrant" value="qdrant" /></el-select></el-form-item><el-form-item label="Endpoint"><el-input v-model="ragDraft.apiEndpoint" placeholder="https://rag.example.com/api/search" /></el-form-item><el-form-item label="Collection / Dataset"><el-input v-model="ragDraft.collectionName" /></el-form-item><el-form-item label="API Key"><el-input v-model="ragDraft.apiKey" type="password" show-password placeholder="留空则保留已保存的密钥" /></el-form-item><el-form-item label="状态"><el-switch v-model="ragDraft.enabled" active-text="启用" inactive-text="停用" /></el-form-item><el-alert v-if="ragResult" :title="`测试结果：${ragResult.success ? '连接成功' : '连接失败'}`" :description="ragResult.error || `HTTP ${ragResult.statusCode || '-'} · 延迟 ${ragResult.latencyMs}ms`" :type="ragResult.success ? 'success' : 'warning'" :closable="false" /></el-form><template #footer><el-button @click="showRagEditor = false">取消</el-button><el-button :loading="testingRag" @click="testRag">测试连接</el-button><el-button type="primary" :disabled="!ragDraft.id" @click="saveRag">保存 RAG 配置</el-button></template>
   </el-dialog>
 </template>
-
-<style>
-.message-files { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 7px; }
-.message-files span { display: inline-flex; align-items: center; padding: 4px 7px; color: #5d54e8; background: #fff; border: 1px solid #dfe2ff; border-radius: 6px; font-size: 11px; }
-</style>

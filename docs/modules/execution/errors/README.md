@@ -6,26 +6,26 @@
 | Capability | Description |
 |-----------|-------------|
 | 异常分类 | `AgentException` 携带 `AgentErrorCode`（10 大类 30+ 错误码）|
-| Pipeline 转换 | 捕获 `AgentException` / 通用 `Exception` → `AgentResponse(Success=false)` |
+| AgentExecutor 转换 | 捕获 `AgentException` / 通用 `Exception` → `AgentResponse(Success=false)` |
 | 工具异常隔离 | 非 AgentException 返回错误文本，不中断推理循环 |
 | 会话写回保障 | 取消/失败时写回 partial 消息（`CancellationToken.None`）|
 
 ## Architecture
 ```text
-Pipeline层:
+AgentExecutor 层:
   AgentException → AgentResponse(Success=false, ErrorCode, ErrorMessage)
   Exception      → AgentResponse(Success=false, InternalError)
 
-Service层工具执行:
+MAF 工具执行:
   AgentException → 直接 throw
   Exception      → return "Error executing tool: ..."
 
-Service层取消/失败:
+会话写回取消/失败:
   先 PersistPartialAssistantMessage → 再 throw（ExceptionDispatchInfo 保留堆栈）
 ```
 
 ## Current Status
-**Implemented** — 异常分类、Pipeline 转换、工具异常处理、写回保障均已落地。
+**Implemented** — 异常分类、AgentExecutor 转换、工具异常处理、写回保障均已落地。
 
 ## Limits
 - HTTP 状态码映射属宿主层，Core 不负责
@@ -33,5 +33,5 @@ Service层取消/失败:
 
 ## Source
 - Contracts: `Backend/src/OpenAgent.Contracts/Security/Exceptions.cs`, `Backend/src/OpenAgent.Contracts/Requests/AgentErrorCode.cs`
-- Core: `Backend/src/OpenAgent.Core/Runtime/Agent/`（原 Execution/ 已并入 Runtime/Agent/ 与 Exten/）
+- Core: `Backend/src/OpenAgent.Core/Runtime/Agent/`
 - Tests: 无专门测试文件（待补充）

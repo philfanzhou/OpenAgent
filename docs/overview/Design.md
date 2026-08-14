@@ -1,4 +1,4 @@
-# Design — Agent.Core
+# Design — OpenAgent
 
 ## 项目定位
 
@@ -7,18 +7,26 @@ Core，不再存在单独的 MAF 引擎项目或可切换的生产引擎体系�
 
 | 项目 | 说明 |
 |---|---|
-| `OpenAgent.Core` | Pipeline、MAF runtime、能力、授权、会话与持久化 |
+| `OpenAgent.Contracts` | 共享接口、模型、DTO（纯契约层） |
+| `OpenAgent.Core` | Pipeline、MAF runtime、能力、授权、会话 |
+| `OpenAgent.Infrastructure` | 持久化（PostgreSQL/S3）、外部资源访问 |
+| `OpenAgent.Engine` | Engine 服务（Redis 注册、健康检查、热更新、配置热重载） |
+| `OpenAgent.Engine.Host` | ASP.NET Core 宿主（端点、中间件、流式传输） |
+| `OpenAgent.Hosting` | 共享 DI、认证、Redis 与 OpenTelemetry 注册扩展 |
+| `OpenAgent.Router` | HTTP/gRPC 入口、会话亲和、限流、转发 |
 | `OpenAgent.Core.Tests` | Core 单元与组件测试 |
+| `OpenAgent.Engine.Tests` | Engine 单元与组件测试 |
+| `OpenAgent.Hosting.Tests` | Hosting 单元与组件测试 |
 
 ## 请求主链
 
 ```text
 HTTP / Channel
-  -> IAgentPipeline
+  -> AgentExecutor
        -> middleware: validation / tracing / auth / audit
        -> AgentRun
             -> identity + authorized model snapshot
-            -> MafAgentFactory -> ChatClientAgent + AgentSession
+            -> AgentFactory -> ChatClientAgent + AgentSession
                  -> ChatHistoryProvider -> lock + platform history
                  -> AIContextProvider -> authorized AIFunction
                  -> CompactionProvider
@@ -34,8 +42,8 @@ MAF 管理 Agent、模型、流式输出、函数回填和工具迭代。平台�
 
 | 扩展面 | 实现 | 约束 |
 |---|---|---|
-| Model | `IMafChatClientFactory` | Provider 返回 `IChatClient`，不新增 Engine |
-| Capability | `MafCapabilityProvider` | MCP/Skill/RAG 以受控 `AIFunction` 暴露 |
+| Model | `AgentChatClientFactory` | Provider 返回 `IChatClient`，不新增 Engine |
+| Capability | `ICapabilitySource` + `CapabilityToolFactory` | MCP/Skill/RAG 以受控 `AIFunction` 暴露 |
 | Memory | `PlatformChatHistory` | 平台存储实现 MAF `ChatHistoryProvider` |
 | Orchestration | `ChatClientAgent` / `AgentSession` | 单 Agent 或未来 MAF Workflow 均留在此边界 |
 
@@ -57,12 +65,14 @@ MAF 通过 `PlatformChatHistory` 主动加载和写回历史。PostgreSQL 是会
 生产 Host 只需：
 
 ```csharp
-services.AddOpenAgentPostgres(configuration);
 services.AddAgentCore(configuration);
+services.AddOpenAgentInfrastructure(configuration);
+services.AddFileAssetObjectStorage(configuration);
+services.AddAgentEngine(configuration);
 ```
 
-该入口同时注册 MAF model factory、runtime、turn、能力和平台边界。不得恢复
-`AddMafEngine` 之类的第二 composition root。
+该入口同时注册 MAF model factory、runtime、turn、能力和平台边界。不得在
+Core 之外引入第二 Agent composition root。
 
 ## 技术栈
 

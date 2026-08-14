@@ -11,17 +11,23 @@ Backend/
 ├── Directory.Packages.props       集中包版本管理（Central Package Management）
 ├── src/
 │   ├── OpenAgent.Contracts/       共享接口、模型、DTO（纯契约层）
-│   ├── OpenAgent.Core/            核心逻辑（执行引擎、会话存储、MCP/RAG/Skill 能力、安全）
+│   ├── OpenAgent.Core/            核心逻辑（执行引擎、能力、会话抽象、安全）
 │   ├── OpenAgent.Engine/          Engine 服务（Redis 注册、健康检查、热更新、配置热重载）
 │   ├── OpenAgent.Engine.Host/     ASP.NET Core 宿主（端点、中间件、流式传输）
-│   └── OpenAgent.Hosting/         共享 DI、认证、Redis 与 OpenTelemetry 注册扩展
+│   ├── OpenAgent.Hosting/         共享 DI、认证、Redis 与 OpenTelemetry 注册扩展
+│   ├── OpenAgent.Infrastructure/  持久化实现（PostgreSQL+EF Core、Redis 写穿缓存、分布式锁）
+│   └── OpenAgent.Router/          网关服务（路由、意图识别、限流、租户隔离）
 └── tests/
+    ├── OpenAgent.Architecture.Tests/
+    ├── OpenAgent.Contracts.Tests/
     ├── OpenAgent.Core.Tests/
     ├── OpenAgent.Engine.Tests/
-    └── OpenAgent.Hosting.Tests/
+    ├── OpenAgent.Hosting.Tests/
+    ├── OpenAgent.Infrastructure.Tests/
+    └── OpenAgent.Router.Tests/
 ```
 
-> 项目名前缀 `OpenAgent.*` 与文件夹前缀对齐。依赖方向：Contracts ← Core ← Engine ← Hosting（不可反向）。
+> 项目名前缀 `OpenAgent.*` 与文件夹前缀对齐。依赖方向：Contracts ← Core ← {Engine, Infrastructure, Router} ← {Engine.Host, Hosting}（不可反向）。
 
 ## 编码规则
 

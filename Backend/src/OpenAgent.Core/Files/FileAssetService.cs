@@ -259,6 +259,7 @@ internal sealed class FileAssetService : IFileAssetService
         ".png" or ".jpg" or ".jpeg" or ".gif" or ".webp" or ".svg" => mediaType.StartsWith("image/", StringComparison.OrdinalIgnoreCase),
         ".pdf" => mediaType.Equals("application/pdf", StringComparison.OrdinalIgnoreCase),
         ".json" => mediaType.Equals("application/json", StringComparison.OrdinalIgnoreCase),
+        ".drawio" => mediaType.Equals("application/vnd.jgraph.mxfile", StringComparison.OrdinalIgnoreCase),
         ".txt" => mediaType.Equals("text/plain", StringComparison.OrdinalIgnoreCase),
         ".csv" => mediaType.Equals("text/csv", StringComparison.OrdinalIgnoreCase),
         ".md" => mediaType.Equals("text/markdown", StringComparison.OrdinalIgnoreCase) || mediaType.Equals("text/plain", StringComparison.OrdinalIgnoreCase),

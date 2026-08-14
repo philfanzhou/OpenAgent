@@ -1,10 +1,15 @@
 <script setup lang="ts">
+import { ElMessage } from 'element-plus'
 import { computed, nextTick, ref, watch } from 'vue'
-import type { ConversationMessage, MessageFile, ToolActivity } from '../types'
+import { buildDisplayMessages, fileLabel, formatFileSize, toolArgumentsText } from '../messagePresentation'
+import type { ConversationMessage, CurrentUserContext, MessageFile, ToolActivity } from '../types'
+import MarkdownContent from './MarkdownContent.vue'
 
 const props = defineProps<{
   messages: ConversationMessage[]
   loading: boolean
+  currentUser: CurrentUserContext | null
+  streaming: boolean
 }>()
 
 const emit = defineEmits<{
@@ -19,131 +24,189 @@ const suggestions = [
 ]
 
 const messagesScrollbar = ref<{ setScrollTop: (value: number) => void } | null>(null)
+const displayMessages = computed(() => buildDisplayMessages(props.messages))
 
-const displayMessages = computed(() => {
-  const result: ConversationMessage[] = []
-  let pendingReasoning = ''
-  let pendingTools: ToolActivity[] = []
-
-  for (const message of props.messages) {
-    const isStoredToolCall = message.role === 'assistant'
-      && !message.content
-      && !message.files?.length
-      && Boolean(message.toolName)
-    if (isStoredToolCall) {
-      pendingReasoning += message.reasoning || ''
-      pendingTools.push({
-        name: message.toolName || '工具',
-        callId: message.toolCallId,
-        arguments: parseToolArguments(message.metadata?.ToolArguments),
-      })
-      continue
-    }
-
-    if (message.role === 'tool') {
-      let index = pendingTools.length - 1
-      if (message.toolCallId) {
-        for (let current = pendingTools.length - 1; current >= 0; current -= 1) {
-          if (pendingTools[current]?.callId === message.toolCallId) {
-            index = current
-            break
-          }
-        }
-      }
-      if (index >= 0) pendingTools[index] = { ...pendingTools[index], result: message.content }
-      else pendingTools.push({ name: message.toolName || '工具', callId: message.toolCallId, result: message.content })
-      continue
-    }
-
-    if (message.role === 'assistant') {
-      result.push({
-        ...message,
-        reasoning: `${pendingReasoning}${message.reasoning || ''}` || undefined,
-        toolActivities: [...pendingTools, ...(message.toolActivities || [])],
-      })
-      pendingReasoning = ''
-      pendingTools = []
-      continue
-    }
-
-    result.push(message)
-  }
-
-  if (pendingReasoning || pendingTools.length) {
-    result.push({
-      messageId: 'pending-agent-process',
-      sequence: Number.MAX_SAFE_INTEGER,
-      role: 'assistant',
-      content: '',
-      timestamp: new Date().toISOString(),
-      reasoning: pendingReasoning || undefined,
-      toolActivities: pendingTools,
-    })
-  }
-  return result
-})
-
-function parseToolArguments(json?: string): unknown {
-  if (!json) return undefined
-  try { return JSON.parse(json) } catch { return undefined }
+/** 思考过程自动跟随滚动：流式追加时始终滚到最新；用户主动向上翻阅时暂停跟随，回到底部后恢复。 */
+const vAutoScroll = {
+  mounted(el: HTMLElement): void {
+    const target = el as HTMLElement & { __scrollHandler?: () => void }
+    target.__scrollHandler = () => onThinkingScroll(el)
+    el.addEventListener('scroll', target.__scrollHandler, { passive: true })
+    followLatest(el)
+  },
+  updated(el: HTMLElement): void {
+    followLatest(el)
+  },
+  unmounted(el: HTMLElement): void {
+    const target = el as HTMLElement & { __scrollHandler?: () => void }
+    if (target.__scrollHandler) el.removeEventListener('scroll', target.__scrollHandler)
+  },
 }
 
-function toolArgumentsText(tool: ToolActivity): string | undefined {
-  if (tool.arguments == null) return undefined
-  if (typeof tool.arguments === 'string') return tool.arguments
-  try { return JSON.stringify(tool.arguments, null, 2) } catch { return String(tool.arguments) }
+function onThinkingScroll(el: HTMLElement): void {
+  const target = el as HTMLElement & { __userScrolledUp?: boolean }
+  target.__userScrolledUp = el.scrollHeight - el.scrollTop - el.clientHeight >= 24
+}
+
+function followLatest(el: HTMLElement): void {
+  const target = el as HTMLElement & { __userScrolledUp?: boolean }
+  if (!target.__userScrolledUp) target.scrollTop = target.scrollHeight
 }
 
 function hasMessageContent(message: ConversationMessage): boolean {
   return Boolean(message.content || message.files?.length)
 }
 
-watch(() => props.messages, () => {
-  void nextTick(() => messagesScrollbar.value?.setScrollTop(Number.MAX_SAFE_INTEGER))
-}, { deep: true })
+function isStreamingItem(message: ConversationMessage, index: number): boolean {
+  return props.streaming && message.role === 'assistant' && index === displayMessages.value.length - 1
+}
+
+/** 思考阶段：消息正在流式生成，且尚未输出正文内容。 */
+function isThinking(message: ConversationMessage, index: number): boolean {
+  return isStreamingItem(message, index) && !message.content
+}
+
+function toolResultText(tool: ToolActivity): string | undefined {
+  if (tool.result == null) return undefined
+  try { return JSON.stringify(JSON.parse(tool.result), null, 2) } catch { return tool.result }
+}
+
+function toolStatusText(tool: ToolActivity, streaming: boolean): string {
+  if (tool.result != null) return '已完成'
+  return streaming ? '运行中' : '已调用'
+}
+
+function formatTimestamp(value: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+}
+
+async function copyTraceId(traceId: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(traceId)
+    ElMessage.success('TraceId 已复制')
+  } catch {
+    ElMessage.warning('无法复制，请手动选择 TraceId')
+  }
+}
+
+function scrollToBottom(): void {
+  const scroll = () => messagesScrollbar.value?.setScrollTop(Number.MAX_SAFE_INTEGER)
+  scroll()
+  requestAnimationFrame(scroll)
+}
+watch(() => props.messages, () => { void nextTick(scrollToBottom) }, { deep: true })
+watch(() => props.streaming, () => { if (props.streaming) scrollToBottom() })
 </script>
 
 <template>
   <el-scrollbar ref="messagesScrollbar" class="messages" wrap-class="messages-wrap" v-loading="props.loading">
-    <div v-if="!props.messages.length" class="welcome"><div class="welcome-icon">O</div><h1>今天想处理什么？</h1><p>由 Router 自动选择最合适的 Agent，或在顶部手动指定。</p><div class="prompt-grid"><button v-for="item in suggestions" :key="item[0]" type="button" @click="emit('suggest', item[1])"><strong>{{ item[0] }}</strong><span>{{ item[1] }}</span></button></div></div>
-    <div v-for="item in displayMessages" :key="item.messageId" class="message-row" :class="[item.role, { 'process-only': !hasMessageContent(item) && Boolean(item.reasoning || item.toolActivities?.length) }]">
-      <div class="avatar">{{ item.role === 'user' ? '我' : 'AI' }}</div>
+    <div v-if="!props.messages.length" class="welcome">
+      <div class="welcome-icon">O</div>
+      <h1>今天想处理什么？</h1>
+      <p>由 Router 自动选择最合适的 Agent，或在顶部手动指定。</p>
+      <div class="prompt-grid">
+        <button v-for="item in suggestions" :key="item[0]" type="button" @click="emit('suggest', item[1])">
+          <strong>{{ item[0] }}</strong><span>{{ item[1] }}</span>
+        </button>
+      </div>
+    </div>
+
+    <div
+      v-for="(item, index) in displayMessages"
+      :key="item.messageId"
+      class="message-row"
+      :class="[item.role, { 'process-only': !hasMessageContent(item) && Boolean(item.reasoning || item.toolActivities?.length) }]"
+    >
+      <div v-if="item.role === 'assistant'" class="assistant-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none"><circle cx="6" cy="6" r="2.2" /><circle cx="18" cy="8" r="2.2" /><circle cx="11" cy="18" r="2.2" /><path d="M7.9 7.2 16 8M7 7.9l3.2 8.1M16.7 9.8l-4.3 6.5" /></svg>
+      </div>
+
       <div class="message-content-column">
-        <details v-if="item.reasoning" class="process-activity">
-          <summary><span class="process-title">思考过程</span><small>展开查看</small></summary>
-          <div class="process-activity-body"><pre class="reasoning-content">{{ item.reasoning }}</pre></div>
+        <div v-if="item.role === 'assistant'" class="message-author">
+          <strong>OpenAgent</strong>
+          <span v-if="formatTimestamp(item.timestamp)">{{ formatTimestamp(item.timestamp) }}</span>
+        </div>
+
+        <details
+          v-if="item.reasoning"
+          class="process-activity reasoning-activity"
+          :class="{ running: isThinking(item, index) }"
+          :open="isThinking(item, index)"
+        >
+          <summary>
+            <span class="activity-icon thinking-icon"><i /><i /><i /></span>
+            <span class="process-title">{{ isThinking(item, index) ? '正在思考' : '思考过程' }}</span>
+            <small>{{ isThinking(item, index) ? '生成中' : '已完成 · 展开查看' }}</small>
+          </summary>
+          <textarea class="process-activity-body reasoning-text" v-auto-scroll readonly spellcheck="false" rows="2" :value="item.reasoning" />
         </details>
-        <details v-if="item.toolActivities?.length" class="process-activity">
-          <summary><span class="process-title">工具调用</span><small>{{ item.toolActivities.length }} 次调用</small></summary>
-          <ul class="tool-activity-list">
-            <li v-for="tool in item.toolActivities" :key="tool.callId || tool.name" class="tool-card">
-              <div class="tool-card-head">
-                <span class="tool-card-icon">{{ (tool.name || '工').slice(0, 1) }}</span>
-                <strong class="tool-card-name">{{ tool.name }}</strong>
-                <span class="tool-status" :class="{ running: tool.result == null, done: tool.result != null }">{{ tool.result == null ? '运行中' : '已完成' }}</span>
-              </div>
-              <details v-if="toolArgumentsText(tool)" class="tool-collapsible">
-                <summary>参数</summary>
-                <pre class="tool-args">{{ toolArgumentsText(tool) }}</pre>
-              </details>
-              <details v-if="tool.result != null" class="tool-collapsible">
-                <summary>结果</summary>
-                <pre class="tool-result">{{ tool.result }}</pre>
-              </details>
-            </li>
-          </ul>
-        </details>
-        <div v-if="hasMessageContent(item)" class="message-bubble"><div v-if="item.files?.length" class="message-files"><button v-for="file in item.files" :key="file.fileId || file.fileName" type="button" class="message-file" @click="emit('download', file)"><img v-if="file.previewUrl" :src="file.previewUrl" :alt="file.fileName" /><span>↗ {{ file.fileName }}</span><pre v-if="file.previewText">{{ file.previewText }}</pre></button></div><div v-if="item.content" class="message-content">{{ item.content }}</div></div>
-        <div v-else-if="!item.reasoning && !item.toolActivities?.length && !item.error" class="message-bubble"><div class="message-content">…</div></div>
-        <div v-if="item.error" class="message-error">
-          <span class="message-error-icon">!</span>
+
+        <section v-if="item.toolActivities?.length" class="tool-activity-group" aria-label="工具调用">
+          <div class="activity-group-label"><span>操作记录</span><small>{{ item.toolActivities.length }} 项</small></div>
+          <details
+            v-for="tool in item.toolActivities"
+            :key="tool.callId || tool.name"
+            class="tool-card"
+            :class="{ running: tool.result == null && isStreamingItem(item, index) }"
+          >
+            <summary class="tool-card-head">
+              <span class="activity-icon tool-card-icon">
+                <svg viewBox="0 0 20 20" fill="none"><path d="M8.1 3.2a4.1 4.1 0 0 0 4.7 5.2l3.4 3.4a1.5 1.5 0 0 1 0 2.1l-2.3 2.3a1.5 1.5 0 0 1-2.1 0l-3.4-3.4a4.1 4.1 0 0 0-5.2-4.7l2.6 2.6 2.9-2.9-2.6-2.6Z" /></svg>
+              </span>
+              <span class="tool-card-copy"><strong class="tool-card-name">{{ tool.name }}</strong><small>Tool call</small></span>
+              <span class="tool-status" :class="{ running: tool.result == null && isStreamingItem(item, index), done: tool.result != null }">{{ toolStatusText(tool, isStreamingItem(item, index)) }}</span>
+              <span class="tool-chevron">›</span>
+            </summary>
+            <div class="tool-card-body">
+              <div v-if="toolArgumentsText(tool)" class="tool-section"><span>输入</span><pre class="tool-args">{{ toolArgumentsText(tool) }}</pre></div>
+              <div v-if="toolResultText(tool)" class="tool-section"><span>输出</span><pre class="tool-result">{{ toolResultText(tool) }}</pre></div>
+              <div v-else class="tool-waiting"><span class="status-spinner" />{{ isStreamingItem(item, index) ? '等待工具返回结果…' : '本次调用未返回可展示结果' }}</div>
+            </div>
+          </details>
+        </section>
+
+        <div v-if="item.role === 'user' && item.files?.length" class="message-files user-files">
+          <button v-for="file in item.files" :key="file.fileId || file.fileName" type="button" class="message-file upload-file" @click="emit('download', file)">
+            <img v-if="file.previewUrl" :src="file.previewUrl" :alt="file.fileName" />
+            <span v-else class="message-file-type">{{ fileLabel(file) }}</span>
+            <span class="message-file-meta"><strong>{{ file.fileName }}</strong><small>已上传 · {{ formatFileSize(file.length) }}</small></span>
+          </button>
+        </div>
+
+        <div v-if="item.content || isStreamingItem(item, index)" class="message-bubble"><MarkdownContent :content="item.content" :streaming="isStreamingItem(item, index) && Boolean(item.content)" /></div>
+
+        <div v-if="item.role === 'assistant' && item.files?.length" class="generated-files">
+          <div class="generated-files-heading"><span>生成的文件</span><small>{{ item.files.length }} 个可下载文件</small></div>
+          <div class="message-files assistant-files">
+            <button v-for="file in item.files" :key="file.fileId || file.fileName" type="button" class="message-file output-file" @click="emit('download', file)">
+              <img v-if="file.previewUrl" :src="file.previewUrl" :alt="file.fileName" />
+              <span v-else class="message-file-type">{{ fileLabel(file) }}</span>
+              <span class="message-file-meta"><strong>{{ file.fileName }}</strong><small>{{ formatFileSize(file.length) }} · 点击下载</small></span>
+              <span class="message-file-action">↓</span>
+              <pre v-if="file.previewText" class="message-file-preview">{{ file.previewText }}</pre>
+            </button>
+          </div>
+        </div>
+
+        <div v-if="!hasMessageContent(item) && !item.reasoning && !item.toolActivities?.length && !item.error" class="message-thinking-placeholder" aria-live="polite">
+          <span class="thinking-dots"><i /><i /><i /></span><span>正在生成回复</span>
+        </div>
+
+        <div v-if="item.error" class="message-error" role="alert">
+          <span class="message-error-icon">
+            <svg viewBox="0 0 20 20" fill="none"><path d="M10 6v4.5M10 14h.01" /><circle cx="10" cy="10" r="7.5" /></svg>
+          </span>
           <div class="message-error-body">
-            <strong>{{ item.error.title || '执行失败' }}</strong>
+            <strong>{{ item.error.title || 'Agent 执行失败' }}</strong>
             <p>{{ item.error.detail }}</p>
-            <small v-if="item.error.traceId" class="message-error-trace">TraceId: {{ item.error.traceId }}</small>
+            <button v-if="item.error.traceId" type="button" class="message-error-trace" title="复制 TraceId" @click="copyTraceId(item.error.traceId)">TraceId · {{ item.error.traceId }}</button>
           </div>
         </div>
       </div>
+
+      <div v-if="item.role === 'user'" class="user-mark" aria-hidden="true">{{ (props.currentUser?.userId || 'U').slice(0, 1).toUpperCase() }}</div>
     </div>
   </el-scrollbar>
 </template>

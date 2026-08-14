@@ -37,8 +37,6 @@ public sealed class AgentExecutor
         CancellationToken cancellationToken)
     {
         EnsureRequest(request);
-        ResolvedFileRequest resolvedFiles = await _files.ResolveAsync(request, user, cancellationToken).ConfigureAwait(false);
-        request = resolvedFiles.Request;
         string traceId = ResolveTraceId(request.TraceId);
         string agentId = await ResolveAgentIdAsync(
             request,
@@ -49,6 +47,18 @@ public sealed class AgentExecutor
             user,
             cancellationToken).ConfigureAwait(false);
         AgentRequest executionRequest = CopyWithResolvedValues(request, agentId, traceId);
+        if (executionRequest.FileIds.Count > 0)
+        {
+            await _agents.EnsureConversationAsync(
+                agentId,
+                executionRequest,
+                user,
+                cancellationToken).ConfigureAwait(false);
+        }
+        ResolvedFileRequest resolvedFiles = await _files.ResolveAsync(
+            executionRequest,
+            user,
+            cancellationToken).ConfigureAwait(false);
 
         await using AgentExecutionScope scope = await _agents.CreateAsync(
             profile,
@@ -80,8 +90,6 @@ public sealed class AgentExecutor
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         EnsureRequest(request);
-        ResolvedFileRequest resolvedFiles = await _files.ResolveAsync(request, user, cancellationToken).ConfigureAwait(false);
-        request = resolvedFiles.Request;
         string traceId = ResolveTraceId(request.TraceId);
         string agentId = await ResolveAgentIdAsync(
             request,
@@ -92,6 +100,18 @@ public sealed class AgentExecutor
             user,
             cancellationToken).ConfigureAwait(false);
         AgentRequest executionRequest = CopyWithResolvedValues(request, agentId, traceId);
+        if (executionRequest.FileIds.Count > 0)
+        {
+            await _agents.EnsureConversationAsync(
+                agentId,
+                executionRequest,
+                user,
+                cancellationToken).ConfigureAwait(false);
+        }
+        ResolvedFileRequest resolvedFiles = await _files.ResolveAsync(
+            executionRequest,
+            user,
+            cancellationToken).ConfigureAwait(false);
 
         await using AgentExecutionScope scope = await _agents.CreateAsync(
             profile,
@@ -137,6 +157,8 @@ public sealed class AgentExecutor
             {
                 if (!string.IsNullOrEmpty(reasoning.Text))
                 {
+                    // 累积思考内容，保证流式中止（暂停）时也能把思考过程持久化进会话历史。
+                    scope.AppendPartialReasoning(reasoning.Text);
                     yield return new AgentStreamEvent
                     {
                         Type = AgentStreamEventType.Reasoning,

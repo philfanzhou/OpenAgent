@@ -48,50 +48,76 @@ internal sealed class FileAssetCapabilitySource(
         IReadOnlyDictionary<string, object?> arguments,
         CancellationToken cancellationToken)
     {
-        string fileId = RequireString(arguments, "fileId");
-        FileAssetScope scope = RequireScope();
-        string content = await files.ReadTextAsync(fileId, scope, cancellationToken).ConfigureAwait(false);
-        return JsonSerializer.Serialize(new { fileId, content });
+        string? fileId = ReadString(arguments, "fileId");
+        if (string.IsNullOrWhiteSpace(fileId))
+        {
+            return "文件读取失败：'fileId' 是必填参数，请提供目标文件的 fileId 后重试。";
+        }
+        if (executionContext.Scope == null)
+        {
+            return "文件读取失败：文件执行上下文不可用。";
+        }
+        try
+        {
+            string content = await files.ReadTextAsync(fileId, executionContext.Scope, cancellationToken).ConfigureAwait(false);
+            return JsonSerializer.Serialize(new { fileId, content });
+        }
+        catch (OpenAgent.Contracts.Security.AgentException exception)
+        {
+            // 返回净化后的校验错误文本，供模型修正后重试，不把原始异常泄露给模型。
+            return $"文件读取失败：{exception.Message}";
+        }
     }
 
     private async Task<string> WriteAsync(
         IReadOnlyDictionary<string, object?> arguments,
         CancellationToken cancellationToken)
     {
-        string fileName = RequireString(arguments, "fileName");
-        string content = RequireString(arguments, "content");
-        string mediaType = ReadString(arguments, "mediaType") ?? "text/plain";
-        byte[] data = new UTF8Encoding(false).GetBytes(content);
-        await using var input = new MemoryStream(data, writable: false);
-        FileAssetScope scope = RequireScope();
-        FileAsset asset = await files.UploadAsync(
-            new FileAssetCreateRequest
-            {
-                FileName = fileName,
-                MediaType = mediaType,
-                Source = FileAssetSource.Agent
-            },
-            input,
-            scope,
-            cancellationToken).ConfigureAwait(false);
-        await files.EnsureReferencesAsync([asset.FileId], scope, cancellationToken).ConfigureAwait(false);
-        executionContext.RecordCreated(asset);
-        return JsonSerializer.Serialize(new
+        string? fileName = ReadString(arguments, "fileName");
+        string? content = ReadString(arguments, "content");
+        if (string.IsNullOrWhiteSpace(fileName))
         {
-            fileId = asset.FileId,
-            fileName = asset.FileName,
-            mediaType = asset.MediaType,
-            length = asset.Length
-        });
+            return "文件写入失败：'fileName' 是必填参数，请提供目标文件名（如 report.txt 或 circuit.drawio）后重试。";
+        }
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            return "文件写入失败：'content' 是必填参数，请提供文件内容后重试。";
+        }
+        string mediaType = ReadString(arguments, "mediaType") ?? "text/plain";
+        if (executionContext.Scope == null)
+        {
+            return "文件写入失败：文件执行上下文不可用。";
+        }
+        try
+        {
+            byte[] data = new UTF8Encoding(false).GetBytes(content);
+            await using var input = new MemoryStream(data, writable: false);
+            FileAsset asset = await files.UploadAsync(
+                new FileAssetCreateRequest
+                {
+                    FileName = fileName,
+                    MediaType = mediaType,
+                    Source = FileAssetSource.Agent
+                },
+                input,
+                executionContext.Scope,
+                cancellationToken).ConfigureAwait(false);
+            await files.EnsureReferencesAsync([asset.FileId], executionContext.Scope, cancellationToken).ConfigureAwait(false);
+            executionContext.RecordCreated(asset);
+            return JsonSerializer.Serialize(new
+            {
+                fileId = asset.FileId,
+                fileName = asset.FileName,
+                mediaType = asset.MediaType,
+                length = asset.Length
+            });
+        }
+        catch (OpenAgent.Contracts.Security.AgentException exception)
+        {
+            // 类型/大小等校验失败：返回净化后的错误文本，供模型修正后重试，不把原始异常泄露给模型。
+            return $"文件写入失败：{exception.Message}";
+        }
     }
-
-    private FileAssetScope RequireScope() => executionContext.Scope
-        ?? throw new InvalidOperationException("File asset execution context is not available.");
-
-    private static string RequireString(IReadOnlyDictionary<string, object?> arguments, string name) =>
-        ReadString(arguments, name) is { Length: > 0 } value
-            ? value
-            : throw new ArgumentException($"'{name}' is required.", name);
 
     private static string? ReadString(IReadOnlyDictionary<string, object?> arguments, string name) =>
         arguments.TryGetValue(name, out object? value) ? value?.ToString() : null;

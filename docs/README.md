@@ -8,11 +8,12 @@
 |------|------|
 | [overview/](./overview/) | 总览文档（系统上下文、集成、流程、需求、设计、数据所有权） |
 | [modules/](./modules/) | 功能域详细文档（execution、conversation、capabilities、security、engine） |
-| [integrations/](./integrations/) | 外部依赖集成（LLM、Redis、SQL、MCP、RAG） |
+| [integrations/](./integrations/) | 外部依赖集成（LLM、Redis、MCP、RAG、Matrix、Agent Provider、文件资产） |
 | [database/](./database/) | 数据存储唯一事实源 |
 | [decisions/](./decisions/) | 架构决策归档（ADR） |
 | [planning/](./planning/) | 规划文档（目标架构、重构基线） |
-| [review-archive/](./review-archive/) | 历史审阅记录 |
+| [superpowers/](./superpowers/) | 规格/计划 |
+| [test-reports/](./test-reports/) | 测试报告 |
 
 ## 阅读路径
 

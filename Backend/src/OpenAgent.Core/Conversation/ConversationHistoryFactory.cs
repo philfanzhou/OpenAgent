@@ -19,19 +19,22 @@ internal sealed class ConversationHistoryFactory
     private readonly ConversationStoreOptions _options;
     private readonly FileAssetExecutionContext _fileExecution;
     private readonly ILogger<PlatformChatHistory> _logger;
+    private readonly IFileAssetService _fileService;
 
     public ConversationHistoryFactory(
         IConversationLock conversationLock,
         ConversationSessionStore store,
         IOptions<ConversationStoreOptions> options,
         FileAssetExecutionContext fileExecution,
-        ILogger<PlatformChatHistory> logger)
+        ILogger<PlatformChatHistory> logger,
+        IFileAssetService fileService)
     {
         _conversationLock = conversationLock;
         _store = store;
         _options = options.Value;
         _fileExecution = fileExecution;
         _logger = logger;
+        _fileService = fileService;
     }
 
     internal PlatformChatHistory Create(
@@ -54,7 +57,27 @@ internal sealed class ConversationHistoryFactory
             _fileExecution,
             _conversationLock,
             _store,
-            _logger);
+            _logger,
+            _fileService);
+    }
+
+    internal async Task EnsureConversationAsync(
+        string agentId,
+        AgentRequest request,
+        IAgentUserContext user,
+        CancellationToken cancellationToken)
+    {
+        ConversationContext context = new(
+            request.ConversationId,
+            user.TenantId,
+            user.UserId,
+            agentId,
+            request.TraceId);
+        await _store.OpenAsync(
+            context,
+            agentId,
+            request.Query,
+            cancellationToken).ConfigureAwait(false);
     }
 
     internal AIContextProvider? CreateCompaction(ContextPolicy? policy, IChatClient chatClient)

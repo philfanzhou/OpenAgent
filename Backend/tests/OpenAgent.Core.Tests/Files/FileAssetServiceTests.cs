@@ -167,6 +167,46 @@ public class FileAssetServiceTests
 
         Assert.Single(repository.References);
         Assert.Contains($"conversation-a:{asset.FileId}", repository.References);
+
+    }
+
+    [Fact]
+    public async Task UploadAsync_DrawioFile_StoresEditableDiagram()
+    {
+        var repository = new RecordingRepository();
+        var objects = new RecordingObjectStore();
+        IFileAssetService service = new FileAssetService(
+            repository,
+            objects,
+            Options.Create(new FileAssetOptions
+            {
+                Enabled = true,
+                MaxFileSizeBytes = 1024,
+                MaxFunctionReadBytes = 128,
+                AllowedMediaTypes = ["application/vnd.jgraph.mxfile"],
+                AllowedExtensions = [".drawio"]
+            }));
+        await using var content = new MemoryStream("<mxfile><diagram /></mxfile>"u8.ToArray());
+
+        FileAsset asset = await service.UploadAsync(
+            new FileAssetCreateRequest
+            {
+                FileName = "circuit.drawio",
+                MediaType = "application/vnd.jgraph.mxfile",
+                Source = FileAssetSource.Agent
+            },
+            content,
+            new FileAssetScope
+            {
+                TenantId = "tenant-a",
+                UserId = "user-a",
+                ConversationId = "conversation-a"
+            },
+            CancellationToken.None);
+
+        Assert.Equal("circuit.drawio", asset.FileName);
+        Assert.Equal("application/vnd.jgraph.mxfile", asset.MediaType);
+        Assert.Equal("<mxfile><diagram /></mxfile>", System.Text.Encoding.UTF8.GetString(objects.LastContent));
     }
 
     private static IFileAssetService CreateService(

@@ -18,6 +18,8 @@ const emit = defineEmits<{
   refresh: []
   select: [conversation: ConversationRecord]
   delete: [conversation: ConversationRecord]
+  'toggle-collapse': []
+  'resize-start': [event: PointerEvent]
 }>()
 
 const filteredConversations = computed(() => {
@@ -43,16 +45,35 @@ function formatTime(value: string): string {
   const date = new Date(value)
   return Number.isNaN(date.getTime())
     ? '未知时间'
-    : new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit' }).format(date)
+    : new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(date)
 }
 </script>
 
 <template>
   <el-aside width="264px" class="sidebar">
-    <div class="brand"><span class="brand-mark">O</span><div><strong>OpenAgent</strong><small>Agent workspace</small></div></div>
+    <div class="brand">
+      <span class="brand-mark">
+        <svg width="18" height="18" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+          <circle cx="10" cy="11" r="2.5" stroke="currentColor" stroke-width="2"/>
+          <circle cx="22" cy="11" r="2.5" stroke="currentColor" stroke-width="2"/>
+          <circle cx="16" cy="22" r="2.5" stroke="currentColor" stroke-width="2"/>
+          <path d="M10 11L16 22M22 11L16 22M10 11L22 11" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity="0.45"/>
+        </svg>
+      </span>
+      <div><strong>OpenAgent</strong><small>Agent workspace</small></div>
+    </div>
     <div class="sidebar-toolbar">
-      <el-button type="primary" class="new-chat-button" @click="emit('new')"><span>＋</span> 新对话</el-button>
-      <el-button circle aria-label="打开设置" title="工作台设置" @click="emit('settings')">···</el-button>
+      <button class="new-chat-btn" type="button" @click="emit('new')">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <span>新对话</span>
+      </button>
+      <button class="sidebar-collapse-btn" type="button" aria-label="收起侧栏" title="收起侧栏" @click="emit('toggle-collapse')">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path d="M10 4L6 8l4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
     </div>
     <el-input :model-value="props.search" clearable placeholder="搜索对话" class="search-input" @update:model-value="emit('update:search', $event)" />
     <div class="conversation-heading"><div><span class="section-label">对话</span><strong>{{ filteredConversations.length }}</strong></div><el-button text class="sidebar-refresh" :loading="props.loading" @click="emit('refresh')">同步</el-button></div>
@@ -74,5 +95,6 @@ function formatTime(value: string): string {
         <i class="status-dot" :class="{ connected: props.statusText === '已连接' }" />
       </button>
     </footer>
+    <div class="sidebar-resize" @pointerdown="emit('resize-start', $event)" />
   </el-aside>
 </template>
