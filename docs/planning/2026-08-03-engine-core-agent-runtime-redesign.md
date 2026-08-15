@@ -251,7 +251,7 @@ ASP.NET Middleware
 
 1. 请求固有字段使用有类型 `AgentRequest`；
 2. 认证结果复用并收窄现有 `AgentUserContext`；
-3. `AgentFactory` 返回只负责生命周期的 `AgentLease`。
+3. `AgentFactory` 返回只负责生命周期的 `AgentExecutionScope`。
 
 ### 3.4 依赖跟随功能
 
@@ -272,7 +272,7 @@ ASP.NET Middleware
 | 文档旧称 | 目标名称 | 处理 |
 |---|---|---|
 | `MafResourceFactory` + `MafAgentFactory` | `AgentFactory` | 合并为一个创建器 |
-| `MafResources` | `AgentLease` | 收窄为 Agent 与 owned resources 的生命周期对象 |
+| `MafResources` | `AgentExecutionScope` | 收窄为 Agent 与 owned resources 的生命周期对象 |
 | `IMafChatClientFactory` | `AgentChatClientFactory` | 按产物命名 |
 | `Runtime/Maf` | `Runtime/Agent` | 目录表达平台功能，不表达供应商 |
 | `MafMessageAdapter` | `AgentMessageAdapter` | 只负责消息转换 |
@@ -354,7 +354,7 @@ flowchart LR
 |---|---|---|---|
 | Transport | `Agent.Engine/src/Host` | Middleware、Endpoint、协议映射、流 writer | Agent 配置、工具发现、模型调用 |
 | Application | `Agent.Core/src/Core/Execution` | `AgentExecutor` 用例、配置快照、Agent/Model ACL | HTTP 解析、SDK tool loop、外部协议细节 |
-| Agent Runtime | `Agent.Core/src/Core/Runtime/Agent` | `AgentFactory`、`AgentLease`、SDK message/response adapter | tenant 策略存储、Redis key、业务编排 Pipeline |
+| Agent Runtime | `Agent.Core/src/Core/Runtime/Agent` | `AgentFactory`、`AgentExecutionScope`、SDK message/response adapter | tenant 策略存储、Redis key、业务编排 Pipeline |
 | Platform Adapters | `Conversation`、`Capabilities`、`Security`、Engine `Config` | History、MCP/Skill/RAG、ACL、配置和持久化实现 | 再创建一套 Agent/function/history loop |
 
 静态依赖方向：
@@ -375,7 +375,7 @@ flowchart LR
     Endpoint[Endpoint]
     Executor[AgentExecutor]
     Factory[AgentFactory]
-    Lease[AgentLease]
+    Lease[AgentExecutionScope]
     Agent[AIAgent]
     Model[IChatClient]
     History[ChatHistoryProvider]
@@ -399,7 +399,7 @@ flowchart LR
 Endpoint → AgentExecutor → AIAgent
 ```
 
-`AgentFactory` 只在创建阶段装配对象，`AgentLease` 只管理释放；二者都没有 `Execute`/`Invoke` 转发方法，因此不计入业务调用层级。
+`AgentFactory` 只在创建阶段装配对象，`AgentExecutionScope` 只管理释放；二者都没有 `Execute`/`Invoke` 转发方法，因此不计入业务调用层级。
 
 ### 5.3 同步时序
 
@@ -422,7 +422,7 @@ sequenceDiagram
     Config-->>Exec: immutable AgentConfig snapshot
     Exec->>ACL: Agent execute + Model invoke
     Exec->>Factory: CreateAsync(snapshot, request, identity)
-    Factory-->>Exec: AgentLease { Agent }
+    Factory-->>Exec: AgentExecutionScope { Agent }
     Exec->>Agent: RunAsync(message)
     Agent-->>Exec: AgentResponse
     Exec-->>API: result
@@ -617,7 +617,7 @@ await authorization.EnsureModelInvocationAsync(
     model,
     cancellationToken);
 
-await using AgentLease lease = await agentFactory.CreateAsync(
+await using AgentExecutionScope lease = await agentFactory.CreateAsync(
     config,
     model,
     request,
@@ -649,12 +649,12 @@ ResolveAndAuthorizeAsync
 
 ## 8. Agent Runtime 创建与生命周期
 
-### 8.1 AgentLease
+### 8.1 AgentExecutionScope
 
-`AgentLease` 不是业务上下文，也不是执行器。它只把创建好的 `AIAgent` 与本次请求拥有的可释放资源绑定在一起：
+`AgentExecutionScope` 不是业务上下文，也不是执行器。它只把创建好的 `AIAgent` 与本次请求拥有的可释放资源绑定在一起：
 
 ```csharp
-internal sealed class AgentLease(
+internal sealed class AgentExecutionScope(
     AIAgent agent,
     IReadOnlyList<IAsyncDisposable> ownedResources) : IAsyncDisposable
 {
@@ -694,7 +694,7 @@ Conversation fields → ChatHistoryProvider + lock lease
 Capability config   → IReadOnlyList<AITool> + request-owned handles
 Context policy      → IReadOnlyList<AIContextProvider>
 native resources    → ChatClientAgent/AIAgent
-AIAgent + handles   → AgentLease
+AIAgent + handles   → AgentExecutionScope
 ```
 
 核心构造逻辑：
@@ -716,16 +716,16 @@ AIAgent agent = new ChatClientAgent(
         }
     });
 
-return new AgentLease(agent, ownedResources);
+return new AgentExecutionScope(agent, ownedResources);
 ```
 
 具体 SDK 属性以实施时锁定的 Microsoft Agent Framework 版本为准；这里约束的是平台资源边界，不把 SDK option 类型复制成一套平台 Contract。
 
 `AgentFactory` 合并旧的“资源 Factory + Agent Factory”两层。它负责创建，不负责执行、授权决策、日志或响应映射；`AgentExecutor` 直接调用 `lease.Agent.RunAsync` 或 `RunStreamingAsync`，中间没有 invoker 转发层。
 
-### 8.3 为什么保留 AgentLease
+### 8.3 为什么保留 AgentExecutionScope
 
-直接只返回 `AIAgent` 会丢失平台请求级资源的释放责任；把 handles 放回 `AgentExecutor` 又会让执行器知道 MCP/history 细节。`AgentLease` 使用 RAII/Lease 模式表达所有权，用一个无业务行为的小对象解决释放问题，不形成新的架构层。
+直接只返回 `AIAgent` 会丢失平台请求级资源的释放责任；把 handles 放回 `AgentExecutor` 又会让执行器知道 MCP/history 细节。`AgentExecutionScope` 使用 RAII/Lease 模式表达所有权，用一个无业务行为的小对象解决释放问题，不形成新的架构层。
 
 ## 9. Capability 设计
 
@@ -868,7 +868,7 @@ AIAgent function call
 - Stdio 默认请求级；
 - 不同租户或凭据不共享连接；
 - cancellation 传播到 connect/list/call；
-- `AgentLease.DisposeAsync` 释放请求拥有的 handle；
+- `AgentExecutionScope.DisposeAsync` 释放请求拥有的 handle；
 - pool 本身由 DI 管理，不放入 request context。
 
 ### 10.4 ACL
@@ -1056,7 +1056,7 @@ Config snapshot 和 hot reload 继续属于 Engine 控制面。它们只负责�
 
 - AgentExecutor；
 - AgentFactory；
-- AgentLease；
+- AgentExecutionScope；
 - CapabilityToolFactory；
 - resolver/value mapper；
 - PlatformChatHistory 的纯生命周期逻辑。
@@ -1095,7 +1095,7 @@ Run endpoint 只注入：
 | CapabilitySource | Scoped 或 Singleton，按其 client 生命周期 |
 | ConversationHistoryFactory | Scoped |
 | PlatformChatHistory | 普通请求对象，不注册 DI |
-| AgentLease | 普通请求对象，不注册 DI |
+| AgentExecutionScope | 普通请求对象，不注册 DI |
 | Config snapshot/registries | Singleton |
 | MCP connection pool | Singleton |
 | AgentUserContext | HttpContext feature，不重复注册 Scoped context |
@@ -1132,7 +1132,7 @@ Run endpoint 只注入：
 | Endpoint Filter | DTO、multipart、分页校验 | 协议错误在进入用例前结束 | 读取配置或执行 ACL 的业务层 |
 | Application Service / Facade | `AgentExecutor` | 一个用例入口，以直线代码协调配置、授权、创建和执行 | 仅隐藏深层转发的万能 Facade |
 | Factory | `AgentFactory` | 集中创建 SDK Agent、History、Tools、Context Providers | 返回巨型资源包的 Abstract Factory 链 |
-| Lease / RAII | `AgentLease` | 明确请求级资源所有权和逆序释放 | 带配置、身份、ACL 的运行上下文 |
+| Lease / RAII | `AgentExecutionScope` | 明确请求级资源所有权和逆序释放 | 带配置、身份、ACL 的运行上下文 |
 | Strategy | `ICapabilitySource`、模型/RAG adapter | 按能力或 Provider 类型替换实现 | 每种策略再复制一套执行流程 |
 | Adapter | ChatClient、MCP、Skill、RAG adapter | 隔离外部 SDK 与协议 | 平台重写官方 SDK 协议 |
 | Decorator | `AuthorizedAIFunction`、`IChatClient` metrics | 在真实调用点执行 ACL 和必要 AOP | 把 trace/logger 参数逐层传递 |
@@ -1150,7 +1150,7 @@ AgentExecutor (Application Service)
         └── AgentFactory (Factory)
               ├── provider adapters (Strategy + Adapter)
               ├── AuthorizedAIFunction (Decorator)
-              └── AgentLease (Lease/RAII)
+              └── AgentExecutionScope (Lease/RAII)
                     └── AIAgent
 ```
 
@@ -1206,7 +1206,7 @@ Agent.Core/src/Core/
 ├── Runtime/Agent/
 │   ├── AgentExecutor.cs
 │   ├── AgentFactory.cs
-│   ├── AgentLease.cs
+│   ├── AgentExecutionScope.cs
 │   ├── AgentChatClientFactory.cs
 │   ├── AgentMessageAdapter.cs
 │   └── AgentResponseAdapter.cs
@@ -1285,7 +1285,7 @@ Endpoint → AgentExecutor → 当前 SDK adapter
 
 1. 将目标目录命名为 `Runtime/Agent`，SDK 名称不进入平台目录；
 2. 合并现有资源装配与 Agent 创建逻辑为 `AgentFactory`；
-3. 创建只包含 `AIAgent` 和 owned disposables 的 `AgentLease`；
+3. 创建只包含 `AIAgent` 和 owned disposables 的 `AgentExecutionScope`；
 4. 把 history、tools、compaction 作为 SDK 原生资源直接用于创建 `AIAgent`；
 5. 删除 `AgentRun`、`AgentIdentity`、旧 Factory 和 resolver 链。
 
@@ -1343,7 +1343,7 @@ Endpoint → AgentExecutor → AIAgent
 - [x] AgentExecutor 不超过 3 个依赖；
 - [x] AgentFactory 不超过 3 个依赖；
 - [x] 单个 CapabilitySource 不超过 3 个依赖；
-- [x] `AgentLease` 和 `PlatformChatHistory` 不注册为 DI service；
+- [x] `AgentExecutionScope` 和 `PlatformChatHistory` 不注册为 DI service；
 - [x] 不使用 Service Locator。
 
 ### 22.3 Agent Runtime
@@ -1381,7 +1381,7 @@ Endpoint → AgentExecutor → AIAgent
 2. Middleware 不读取 Agent 配置或调用 `AIAgent`；
 3. AgentExecutor 不管理 MCP/Skill/RAG 具体协议；
 4. AgentFactory 只创建对象，不执行 Agent/Model ACL，不记录业务日志，不暴露 `RunAsync` 转发；
-5. AgentLease 只包含 `AIAgent` 和本请求拥有的可释放资源；
+5. AgentExecutionScope 只包含 `AIAgent` 和本请求拥有的可释放资源；
 6. CapabilitySource 只依赖自身功能；
 7. AIFunction 执行前必须重新授权；
 8. PlatformChatHistory 只负责 SDK 会话历史生命周期；
@@ -1396,7 +1396,7 @@ Endpoint → AgentExecutor → AIAgent
 2. 移除 Core 自定义 pipeline，通用前置校验进入 ASP.NET middleware/endpoint filter；
 3. `AgentExecutor` 是唯一 Core 执行入口；
 4. `AgentFactory` 合并 SDK Agent 创建与资源装配，只创建、不执行；
-5. `AgentLease` 只管理 `AIAgent` 与请求级资源所有权；
+5. `AgentExecutionScope` 只管理 `AIAgent` 与请求级资源所有权；
 6. 平台自有类型、目录和文档名不使用 `Maf`/`MAF` 前缀；
 7. MCP/Skill/RAG 通过 `ICapabilitySource` 按需提供 `AITool`；
 8. `AuthorizedAIFunction` 承担执行时 ACL；
@@ -1476,7 +1476,7 @@ Endpoint → AgentExecutor → AIAgent
 | 功能 | 生产源码入口 |
 |---|---|
 | HTTP/SSE/会话 API | `Backend/src/OpenAgent.Engine.Host/Extensions/EndpointExtensions.cs` |
-| multipart 附件 | `Backend/src/OpenAgent.Engine.Host/Extensions/AttachmentEndpointExtensions.cs`、`Engine.Host/Attachments/` |
+| multipart 附件 | `Backend/src/OpenAgent.Engine.Host/Extensions/FileAssetEndpointExtensions.cs`、`Engine.Host/Files/` |
 | 请求身份和租户 | `Backend/src/OpenAgent.Engine.Host/Middleware/AgentUserContextMiddleware.cs`、`EngineAdmissionMiddleware.cs` |
 | Agent SDK adapter 与资源 | `Backend/src/OpenAgent.Core/Runtime/Agent/` |
 | Capability 与执行授权 | `Backend/src/OpenAgent.Core/Capabilities/`、`Security/` |

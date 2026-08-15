@@ -63,7 +63,7 @@ Router 通过 `IAgentProvider` 统一调用自有 Engine 和第三方 Agent 服�
 
 公共配置只定义 `Id`、`Type` 和不透明的 `Settings`。Router 不解析 `Settings`，每个 Provider Factory 可以自行读取任意嵌套参数。敏感凭据应由环境变量或密钥配置源注入。
 
-`DefaultProviderId` 用于已有 `agentId`、已有 `conversationId` 以及 fallback Agent 没有候选来源时的兼容转发，它不是意图识别失败时的 Provider fallback。配置中没有 `FallbackProviderId` 或公共 `Routing` 字段。
+`DefaultProviderId` 用于已有 `agentId`、已有 `conversationId` 以及 fallback Agent 没有候选来源时的兼容转发，它不是意图识别失败时的 Provider fallback。配置中没有 `FallbackProviderId` 字段。`RouterSettings:Routing`（`EngineEndpoint`/`WorkflowEndpoint`）是 `InMemoryRouteTable` 使用的静态路由回退，不属于某个 Provider 的 `Settings`。
 
 ## 实现 Provider
 

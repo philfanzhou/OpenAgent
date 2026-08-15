@@ -88,9 +88,6 @@ API 格式按协议分支，不共享自研 HTTP body 或 SSE parser。Responses
 
 真实 Provider、Redis、MCP E2E 与本地替身分开报告。
 
-## Conventions
-
-
 ## 配置约定
 
 - Provider Profile 保存共享 endpoint/key/format，Agent 保存 provider 引用、model 和必要覆盖。

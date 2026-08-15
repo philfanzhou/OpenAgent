@@ -1,5 +1,7 @@
 # 平台健康检查 Implementation Plan
 
+> **状态：已实现** — 后端 `DatabaseHealthCheck`、`/health/report` 端点、`OpenAgent.Infrastructure` 目录重组与前端 `HealthCheckPanel` 均已落地。以下任务清单保留为实施记录，未勾选项不代表待办。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 将"工作台诊断"重构为"平台健康检查"：新增后端 DB 健康检查与统一明细端点 `/health/report`，`OpenAgent.Infrastructure` 目录按功能划分（仅移动文件），前端新增 HealthCheckPanel 组件并接入 App.vue。
