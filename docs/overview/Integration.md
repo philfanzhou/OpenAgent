@@ -13,7 +13,7 @@
 
 ## 失败语义总结
 
-- **LLM 调用失败**：请求直接失败，Pipeline 捕获异常后返回 `AgentResponse.Success=false`
+- **LLM 调用失败**：请求直接失败，异常经 `AgentExceptionHandlerMiddleware` 映射为 ProblemDetails（非流式）或 SSE error 终态（流式）
 - **MCP 连接失败**：抛出 ConnectionException，工具列表为空，不影响已有工具执行
 - **MCP 调用超时**：30 秒超时，返回错误文本，不中断主流程
 - **RAG 检索失败**：返回空结果，Agent 在无 RAG 增强情况下继续推理
