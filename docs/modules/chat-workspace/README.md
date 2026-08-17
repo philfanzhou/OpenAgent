@@ -15,6 +15,9 @@ Browser ---------------------> Engine
 - Router/Engine 连接、诊断、LLM、Agent、MCP、Skill、RAG 设置；
 - 独立登录页、登录态恢复、OIDC PKCE、登出、401/403 状态和受保护页面跳转；
 - 深浅主题和响应式布局。
+- 每条 assistant 响应展示模型与 input/output/total Token；右侧 Inspector 展示当前会话累计。
+
+Token 仅取服务端 Provider usage。流式生成期间等待 `done` 事件更新当前响应；历史恢复后从消息中的 `tokenUsage` 重建。Provider 未返回、请求失败/取消或旧历史缺少 usage 时显示“暂不可用”，不以正文长度估算；会话累计只按唯一 `messageId` 计算，避免重试、切换和重复加载造成二次累计。
 
 前端请求统一由 `Frontend/OpenAgent.Chat/src/api.ts` 根据当前模式发送到 Router 或 Engine。Router 模式聚合各 Provider 的可见 Agent、支持 `Auto` 意图选择并转发聊天；Engine 模式直接使用 Engine Agent 目录，要求显式选择 Agent。Router 地址、Engine 地址与当前模式分别持久化，切换时互不覆盖。
 

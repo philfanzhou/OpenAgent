@@ -123,7 +123,7 @@ describe('workspace API', () => {
       'data: {"content":"hello"}',
       '',
       'event: done',
-      'data: {"done":true}',
+      'data: {"done":true,"usage":{"promptTokens":21,"completionTokens":8,"totalTokens":29},"modelId":"provider-model"}',
       '',
     ].join('\n')
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(stream, {
@@ -137,7 +137,12 @@ describe('workspace API', () => {
     expect(events).toEqual([
       { type: 'reasoning', content: 'inspect first' },
       { type: 'content', content: 'hello' },
-      { type: 'done', done: true },
+      {
+        type: 'done',
+        done: true,
+        usage: { promptTokens: 21, completionTokens: 8, totalTokens: 29 },
+        modelId: 'provider-model',
+      },
     ])
     expect(vi.mocked(fetch).mock.calls[0]?.[0]).toBe('http://engine.example/api/v1/agent/chat/stream')
   })

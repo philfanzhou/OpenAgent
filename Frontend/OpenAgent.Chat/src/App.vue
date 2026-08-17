@@ -8,6 +8,7 @@ import ChatMessages from './components/ChatMessages.vue'
 import ChatSidebar from './components/ChatSidebar.vue'
 import LoginPage from './components/LoginPage.vue'
 import MessageComposer from './components/MessageComposer.vue'
+import { formatTokenCount, summarizeConversationUsage } from './tokenUsage'
 import HealthCheckPanel from './components/HealthCheckPanel.vue'
 import { AUTO_AGENT_ID, type AgentConfigEntity, type AgentSummary, type AuthConfig, type ConnectionMode, type ConversationMessage, type ConversationRecord, type CurrentUserContext, type LlmProviderProfile, type LlmTestResult, type McpServerConfig, type McpTestResult, type MessageFile, type PendingFile, type RagConfig, type RagInstanceConfig, type RagTestResult, type SkillCatalogItem, type SkillInstanceConfig, type SkillsConfig } from './types'
 import { usePanelLayout } from './composables/usePanelLayout'
@@ -99,6 +100,7 @@ const conversationStatusText = computed(() => {
   }
   return selectedConversation.value.status
 })
+const currentUsageSummary = computed(() => summarizeConversationUsage(currentMessages.value))
 const enabledSkillIds = computed(() => new Set(skillDraft.value.enabledSkills))
 const enabledRagIds = computed(() => new Set(config.value?.config.rag?.enabledRagInstanceIds || ragInstances.value.filter(item => item.enabled).map(item => item.id)))
 const boundMcpServers = computed(() => agentMcpIds.value.map(id =>
@@ -858,6 +860,8 @@ async function send(): Promise<void> {
       } else if (event.type === 'done') {
         receivedDone = true
         conversation.status = (event.status || 'Completed') as ConversationRecord['status']
+        assistantMessage.tokenUsage = event.usage ?? undefined
+        assistantMessage.modelId = event.modelId ?? undefined
       } else if (event.type === 'error') {
         // 捕获流式错误，交给 catch 以独立错误卡片展示；不混入助手内容。
         streamError = {
@@ -1428,7 +1432,7 @@ onBeforeUnmount(() => {
           <div class="context-panel-head"><span class="context-label">INSPECTOR</span><button class="panel-collapse-btn" type="button" aria-label="收起上下文面板" title="收起" @click="toggleContext">›</button></div>
           <section><span class="context-label">ROUTING</span><strong>{{ routeMode }}</strong><p>{{ connectionMode === 'router' && selectedAgentId === AUTO_AGENT_ID ? '由意图识别 Agent 分析请求并选择目标。' : (selectedAgent?.description || selectedAgentId) }}</p><dl><div><dt>Agent</dt><dd>{{ connectionMode === 'router' && selectedAgentId === AUTO_AGENT_ID ? '由模型选择' : (selectedAgent?.name || selectedAgentId) }}</dd></div><div><dt>协议</dt><dd>{{ selectedAgent?.apiFormat || (connectionMode === 'router' ? '自动' : '—') }}</dd></div></dl></section>
           <section><span class="context-label">IDENTITY</span><dl><div><dt>用户</dt><dd>{{ currentUser?.userId || 'Guest' }}</dd></div><div><dt>租户</dt><dd>{{ currentUser?.tenantId || tenantId || '—' }}</dd></div><div><dt>{{ activeEndpointLabel }}</dt><dd :title="activeEndpointUrl">{{ activeEndpointHost }}</dd></div></dl></section>
-          <section><span class="context-label">CONVERSATION</span><dl><div><dt>消息</dt><dd>{{ currentMessages.length }}</dd></div><div><dt>状态</dt><dd>{{ conversationStatusText }}</dd></div><div><dt>ID</dt><dd class="truncate" :title="selectedConversation?.conversationId">{{ selectedConversation?.conversationId || '尚未创建' }}</dd></div></dl></section>
+          <section><span class="context-label">CONVERSATION</span><dl><div><dt>消息</dt><dd>{{ currentMessages.length }}</dd></div><div><dt>状态</dt><dd>{{ conversationStatusText }}</dd></div><div><dt>ID</dt><dd class="truncate" :title="selectedConversation?.conversationId">{{ selectedConversation?.conversationId || '尚未创建' }}</dd></div></dl><div class="conversation-usage"><span>会话累计 Token</span><template v-if="currentUsageSummary.available && currentUsageSummary.usage"><strong>{{ formatTokenCount(currentUsageSummary.usage.totalTokens) }}</strong><small>输入 {{ formatTokenCount(currentUsageSummary.usage.promptTokens) }} · 输出 {{ formatTokenCount(currentUsageSummary.usage.completionTokens) }}</small></template><template v-else><strong class="unavailable">暂不可用</strong><small>Provider 未返回完整 usage</small></template></div></section>
           <el-button class="diagnostics-shortcut" @click="openSettings('health')">运行平台健康检查</el-button>
           <div class="context-resize" @pointerdown="startContextResize" />
         </aside>

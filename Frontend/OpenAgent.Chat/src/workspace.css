@@ -504,6 +504,20 @@ html[data-theme='dark'] .welcome-icon { background: #ececec; color: #1d1d1f; }
   line-height: 1.7;
 }
 .user .message-bubble { padding: 9px 14px; border-radius: 18px; background: var(--bg-subtle); }
+.message-usage {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px 9px;
+  margin-top: 8px;
+  color: var(--text-faint);
+  font-size: 11px;
+}
+.message-usage > span,
+.message-usage > small { padding: 2px 7px; border: 1px solid var(--border); border-radius: var(--r-pill); }
+.message-usage .message-model { color: var(--text-muted); font-family: var(--font-mono); }
+.message-usage .unavailable { color: var(--text-faint); }
+.message-usage > small { color: var(--text-faint); }
 .process-only { margin-top: 8px; }
 
 /* 消息文本选中高亮 */
@@ -889,6 +903,19 @@ html[data-theme='dark'] .context-panel { background: #1f1f1f; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.conversation-usage {
+  display: grid;
+  gap: 3px;
+  margin-top: 12px;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg);
+}
+.conversation-usage > span { color: var(--text-faint); font-size: 11px; }
+.conversation-usage > strong { color: var(--text); font-family: var(--font-mono); font-size: 17px; }
+.conversation-usage > strong.unavailable { font-family: inherit; font-size: 13px; font-weight: 600; }
+.conversation-usage > small { color: var(--text-muted); font-size: 11px; line-height: 1.4; }
 .diagnostics-shortcut { width: 100%; margin-top: 12px; }
 
 /* Context resize handle */
