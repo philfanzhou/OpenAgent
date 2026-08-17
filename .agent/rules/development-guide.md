@@ -16,7 +16,7 @@ OpenAgent 项目的代码审查、功能规划、测试编写和集成排查指�
 - [ ] 未引入对其他项目的引用（Contracts 是叶子节点）
 
 **Agent.Core（核心逻辑层）**
-- [ ] Engine Host 中间件顺序：AgentUserContextMiddleware → EngineAdmissionMiddleware → AgentExceptionHandlerMiddleware
+- [ ] Engine Host 中间件顺序：AgentExceptionHandlerMiddleware → AgentUserContextMiddleware → EngineAdmissionMiddleware
 - [ ] 异步方法正确传播 CancellationToken
 - [ ] 流式 `IAsyncEnumerable<T>` 正确释放资源
 - [ ] DI 注册：中间件 `AddScoped`，注册表 `AddSingleton`

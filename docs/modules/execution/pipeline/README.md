@@ -72,9 +72,9 @@
 
 ```text
 AgentRequest
+  -> AgentExceptionHandlerMiddleware
   -> AgentUserContextMiddleware
   -> EngineAdmissionMiddleware
-  -> AgentExceptionHandlerMiddleware
   -> AgentExecutor.Execute[Streaming]Async
 ```
 

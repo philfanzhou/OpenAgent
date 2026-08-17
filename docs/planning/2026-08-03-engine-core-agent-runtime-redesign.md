@@ -125,7 +125,6 @@ ASP.NET Middleware → Endpoint → AgentExecutor → AIAgent
 | Redis 不可用时的有状态请求 | 拒绝，避免失去分布式串行保证 |
 | RAG 全部实例失败 | 返回依赖失败，不伪装为零结果 |
 | 附件二进制长期存储 | 本轮不做，只保留必要元数据 |
-| SQL Provider | 保留 SQL Server；SQLite 仅本地模式 |
 | 现有 API 兼容 | 默认保持，内部结构不得依赖旧实现 |
 
 ## 1. Review 结论
