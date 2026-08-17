@@ -47,7 +47,7 @@ Backend/
 |------|------|
 | `docs/overview/` | 系统上下文、设计、流程、数据所有权 |
 | `docs/modules/` | 功能域详细文档（execution、conversation、capabilities、security、engine） |
-| `docs/integrations/` | 外部依赖集成（LLM、Redis、SQL、MCP、RAG） |
+| `docs/integrations/` | 外部依赖集成（LLM、Redis、PostgreSQL、MCP、RAG） |
 | `docs/database/` | 数据存储唯一事实源 |
 | `docs/decisions/` | 架构决策归档（ADR） |
 

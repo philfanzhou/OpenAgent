@@ -8,7 +8,7 @@
 
 ## 功能名称和一句话概括
 
-执行入口 AgentExecutor — 编排 `FileAssetRequestResolver → ConversationAgentResolver → AgentFactory.CreateAsync → AIAgent.Run[Streaming]Async`。
+执行入口 AgentExecutor — 编排 `FileAssetRequestResolver → ConversationAgentResolver → IAgentRuntimeResolver → AgentFactory.CreateAsync → AIAgent.Run[Streaming]Async`。
 
 ## 补充约束
 
@@ -18,9 +18,9 @@
 
 ## 关键验收条件摘要
 
-- [ ] 请求经 Engine.Host 中间件链后到达 AgentExecutor
-- [ ] 异常由 AgentExceptionHandlerMiddleware 映射为 HTTP 错误响应
-- [ ] 流式请求正确传递 CancellationToken
+- [x] 请求经 Engine.Host 中间件链后到达 AgentExecutor
+- [x] 异常由 AgentExceptionHandlerMiddleware 映射为 HTTP 错误响应
+- [x] 流式请求正确传递 CancellationToken
 - [ ] AgentException 被捕获并转换为 AgentResponse（Success=false）
 
 ## 明确列出"范围外"
@@ -84,12 +84,12 @@ AgentRequest
   -> AgentExecutor.Execute[Streaming]Async
 ```
 
-非流式路径把异常映射为 `AgentResponse`；流式路径保留异常，由 Host 的流协议边界映射。
+异常（流式与非流式）不在 `AgentExecutor` 内捕获，向上传播由 `AgentExceptionHandlerMiddleware` 映射为 HTTP 错误响应（ProblemDetails）；流式路径在 SSE 协议边界映射。
 
 ## Tasks
 
 
-> 本功能已实现完成，无待办任务。以下为代码评审清单。
+> 执行编排已实现完成；异常映射由 Engine.Host 中间件承担（FR-05/FR-06 不在 `AgentExecutor` 内实现）。以下为代码评审清单。
 
 ```json
 [
@@ -103,11 +103,11 @@ AgentRequest
   },
   {
     "id": "TASK-02",
-    "status": "implemented",
+    "status": "removed",
     "depends_on": [],
-    "action": "异常转换（AgentException → AgentResponse, Exception → AgentResponse）",
-    "files": ["Backend/src/OpenAgent.Core/Runtime/Agent/AgentExecutor.cs"],
-    "acceptance": "AgentException 转为对应 ErrorCode，其他异常转为 InternalError"
+    "action": "异常转换已移交 Engine.Host 的 AgentExceptionHandlerMiddleware（AgentExecutor 不捕获异常）",
+    "files": ["Backend/src/OpenAgent.Engine.Host/Middleware/AgentExceptionHandlerMiddleware.cs"],
+    "acceptance": "异常由 Host 中间件映射为 HTTP 错误响应（ProblemDetails），AgentExecutor 不返回 Success=false"
   },
   {
     "id": "TASK-03",
