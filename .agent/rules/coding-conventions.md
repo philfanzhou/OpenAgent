@@ -187,13 +187,13 @@ Contracts ← Core ← {Engine, Infrastructure, Router} ← {Engine.Host, Hostin
 
 | 类别 | 格式 | 示例 |
 |------|------|------|
-| 分布式锁 | `lock:{业务域}:{tenantId}:{entityId}` | `lock:conversation:{tenantId}:{conversationId}` |
+| 分布式锁 | `openagent:{业务域}-lock:{tenantId}:{entityId}` | `openagent:conversation-lock:{tenantId}:{conversationId}` |
 | Agent 配置 | `agent:config:{agentId}` | `agent:config:default` |
 | Engine 注册 | `engine:registry:{engineId}` | `engine:registry:engine-1` |
 
 **分布式锁 key 命名规范：**
-- 格式：`lock:conversation:{tenantId}:{conversationId}`
-- 必须使用业务前缀（`lock:conversation:`）以便 SCAN 排查
+- 格式：`openagent:conversation-lock:{tenantId}:{conversationId}`
+- 必须使用业务前缀（`openagent:conversation-lock:`）以便 SCAN 排查
 - 禁止直接用裸 `conversationId` 作为 Redis key
 - Owner token 格式：`Guid.NewGuid().ToString("N")`（32 位无连字符）
 - 详见 `docs/modules/execution/conversation-lock.md`
@@ -318,7 +318,7 @@ Backend/tests/OpenAgent.Engine.Tests/ # 单元测试
 - 扩展方法封装 DI 注册（`CoreServiceExtensions.AddAgentCore()`）
 - 可重复调用的注册扩展必须幂等，优先使用 `TryAdd*`；Factory、Registry 等单例不得重复注册
 - Engine Host 的 `AgentUserContextMiddleware` 与 `EngineAdmissionMiddleware` 必须位于
-  `AgentExceptionHandlerMiddleware` 之前，确保异常路径也携带请求 scope 与租户上下文
+  `AgentExceptionHandlerMiddleware` 之后（内层），确保异常路径也携带请求 scope 与租户上下文
 - Redis 为可选依赖时，消费者通过 `GetService<IConnectionMultiplexer>()` 获取并处理 `null`，
   不得强制解析后再假设连接存在
 

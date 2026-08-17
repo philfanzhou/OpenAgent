@@ -1,8 +1,7 @@
 # 会话持久化
 
 `IConversationStore` 是数据库无关契约。当前 `OpenAgent.Infrastructure` 使用 EF Core + PostgreSQL
-作为持久化实现；未来 SQLite、SQL Server 等 Provider 只需替换 Infrastructure 注册，不改变 Core、
-会话契约或 API。
+作为持久化实现，不支持其他数据库 Provider。
 
 生产链路使用写穿透组合：PostgreSQL 先完成会话、消息与文件引用的事务性写入，成功后把完整会话
 写入 Redis 热副本。读取优先命中 Redis，未命中时从 PostgreSQL 回填。Redis 从不作为事实源，
