@@ -30,7 +30,10 @@ const engineStorageKey = 'openagent.direct-engine.base-url'
 const connectionModeStorageKey = 'openagent.connection.mode'
 const tokenStorageKey = 'openagent.auth.access-token'
 const tokenTypeStorageKey = 'openagent.auth.token-type'
+const tokenExpiryStorageKey = 'openagent.auth.expires-at'
+const tokenEndpointStorageKey = 'openagent.auth.endpoint'
 const tenantStorageKey = 'openagent.auth.tenant-id'
+export const AUTH_FAILURE_EVENT = 'openagent:auth-failure'
 const defaultRouterBaseUrl = import.meta.env.VITE_OPENAGENT_ROUTER_BASE_URL || 'http://localhost:5001'
 const defaultEngineBaseUrl = import.meta.env.VITE_OPENAGENT_ENGINE_BASE_URL || 'http://localhost:5208'
 const defaultTenantId = import.meta.env.VITE_OPENAGENT_TENANT_ID || 'development'
@@ -67,17 +70,40 @@ export function setEngineBaseUrl(value: string): void {
 }
 
 export function getAccessToken(): string {
+  const expiresAt = Number(sessionStorage.getItem(tokenExpiryStorageKey) || 0)
+  if (expiresAt > 0 && Date.now() >= expiresAt) {
+    clearAuthentication()
+    return ''
+  }
+  const tokenEndpoint = sessionStorage.getItem(tokenEndpointStorageKey)
+  if (tokenEndpoint && tokenEndpoint !== normalizeBaseUrl(requireBaseUrl())) return ''
   return sessionStorage.getItem(tokenStorageKey) || ''
 }
 
-export function setAccessToken(value: string, tokenType = 'Basic'): void {
+export function getTokenType(): string {
+  return sessionStorage.getItem(tokenTypeStorageKey) || ''
+}
+
+export function setAccessToken(value: string, tokenType = 'Basic', expiresIn?: number): void {
   if (value.trim()) {
     sessionStorage.setItem(tokenStorageKey, value.trim())
     sessionStorage.setItem(tokenTypeStorageKey, tokenType.trim() || 'Basic')
+    sessionStorage.setItem(tokenEndpointStorageKey, normalizeBaseUrl(requireBaseUrl()))
+    if (expiresIn && Number.isFinite(expiresIn) && expiresIn > 0) {
+      sessionStorage.setItem(tokenExpiryStorageKey, String(Date.now() + expiresIn * 1000))
+    } else {
+      sessionStorage.removeItem(tokenExpiryStorageKey)
+    }
   } else {
-    sessionStorage.removeItem(tokenStorageKey)
-    sessionStorage.removeItem(tokenTypeStorageKey)
+    clearAuthentication()
   }
+}
+
+export function clearAuthentication(): void {
+  sessionStorage.removeItem(tokenStorageKey)
+  sessionStorage.removeItem(tokenTypeStorageKey)
+  sessionStorage.removeItem(tokenExpiryStorageKey)
+  sessionStorage.removeItem(tokenEndpointStorageKey)
 }
 
 export function getTenantId(): string {
@@ -101,17 +127,41 @@ function headers(extra: HeadersInit = {}): Headers {
     ...extra,
   })
   const token = getAccessToken()
+  const tokenType = getTokenType() || 'Basic'
   const tenantId = getTenantId()
-  if (token) result.set('Authorization', `${sessionStorage.getItem(tokenTypeStorageKey) || 'Basic'} ${token}`)
-  if (tenantId) result.set('X-Tenant-Id', tenantId)
+  if (token) result.set('Authorization', `${tokenType} ${token}`)
+  if (tenantId && (!token || tokenType.toLowerCase() === 'basic')) result.set('X-Tenant-Id', tenantId)
   result.set('X-Trace-Id', crypto.randomUUID())
   return result
 }
 
-async function readError(response: Response): Promise<Error> {
+export class ApiError extends Error {
+  constructor(message: string, public readonly status: number) {
+    super(message)
+    this.name = 'ApiError'
+  }
+}
+
+function safeErrorMessage(value: string, fallback: string): string {
+  const trimmed = value.trim().slice(0, 500)
+  if (!trimmed) return fallback
+  return trimmed
+    .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, '[redacted token]')
+    .replace(/\b(Basic|Bearer)\s+[A-Za-z0-9._~+\/-]+=*/gi, '$1 [redacted]')
+    .replace(/(access_token|refresh_token|authorization|password)\s*[=:]\s*[^\s,;]+/gi, '$1=[redacted]')
+}
+
+function notifyAuthenticationFailure(status: number): void {
+  if ((status === 401 || status === 403) && typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(AUTH_FAILURE_EVENT, { detail: { status } }))
+  }
+}
+
+async function readError(response: Response): Promise<ApiError> {
   const fallback = `${response.status} ${response.statusText || '请求失败'}`
   const raw = await response.text()
-  if (!raw.trim()) return new Error(fallback)
+  notifyAuthenticationFailure(response.status)
+  if (!raw.trim()) return new ApiError(fallback, response.status)
 
   try {
     const body = JSON.parse(raw) as {
@@ -123,11 +173,12 @@ async function readError(response: Response): Promise<Error> {
       trace_id?: string
     }
     const nestedError = typeof body.error === 'string' ? body.error : body.error?.detail || body.error?.message
-    const message = body.detail || body.message || nestedError || body.title || fallback
-    const traceId = body.traceId || body.trace_id
-    return new Error(`${message}${traceId ? ` (TraceId: ${traceId})` : ''}`)
+    const message = safeErrorMessage(body.detail || body.message || nestedError || body.title || fallback, fallback)
+    const rawTraceId = body.traceId || body.trace_id
+    const traceId = rawTraceId ? safeErrorMessage(rawTraceId, '') : ''
+    return new ApiError(`${message}${traceId ? ` (TraceId: ${traceId})` : ''}`, response.status)
   } catch {
-    return new Error(raw.trim() || fallback)
+    return new ApiError(fallback, response.status)
   }
 }
 

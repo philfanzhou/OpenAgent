@@ -15,6 +15,7 @@ const emit = defineEmits<{
   'update:search': [value: string]
   new: []
   settings: []
+  logout: []
   refresh: []
   select: [conversation: ConversationRecord]
   delete: [conversation: ConversationRecord]
@@ -94,6 +95,7 @@ function formatTime(value: string): string {
         <span><strong>{{ props.currentUser?.userId || 'Guest' }}</strong><small>{{ props.currentUser?.tenantId || '未设置租户' }}</small></span>
         <i class="status-dot" :class="{ connected: props.statusText === '已连接' }" />
       </button>
+      <button class="sidebar-logout" type="button" aria-label="退出登录" title="退出登录" @click="emit('logout')">退出</button>
     </footer>
     <div class="sidebar-resize" @pointerdown="emit('resize-start', $event)" />
   </el-aside>

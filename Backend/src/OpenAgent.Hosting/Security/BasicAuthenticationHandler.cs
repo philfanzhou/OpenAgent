@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using OpenAgent.Hosting.Authentication;
 
@@ -17,15 +18,23 @@ internal sealed class BasicAuthenticationHandler(
     IOptionsMonitor<AuthenticationSchemeOptions> options,
     ILoggerFactory logger,
     UrlEncoder encoder,
-    IOptions<AgentAuthenticationOptions> authenticationOptions)
+    IOptions<AgentAuthenticationOptions> authenticationOptions,
+    IHostEnvironment environment)
     : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
 {
     internal const string SchemeName = "Basic";
 
     private readonly AgentAuthenticationOptions _authenticationOptions = authenticationOptions.Value;
+    private readonly IHostEnvironment _environment = environment;
 
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
+        if (!_environment.IsDevelopment())
+        {
+            return Task.FromResult(AuthenticateResult.Fail(
+                "Basic authentication is available only in Development."));
+        }
+
         string? authorization = Request.Headers.Authorization.FirstOrDefault();
         if (string.IsNullOrWhiteSpace(authorization)
             || !authorization.StartsWith("Basic ", StringComparison.OrdinalIgnoreCase))
@@ -92,7 +101,5 @@ internal sealed class BasicAuthenticationHandler(
 
     private bool IsDevelopmentAnonymousAllowed() =>
         _authenticationOptions.AllowDevelopmentAnonymous
-        && (Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT")
-            ?? Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")
-            ?? "Production").Equals("Development", StringComparison.OrdinalIgnoreCase);
+        && _environment.IsDevelopment();
 }

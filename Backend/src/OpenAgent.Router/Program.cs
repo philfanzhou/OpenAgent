@@ -1,5 +1,6 @@
 using OpenAgent.Contracts.Security;
 using OpenAgent.Hosting;
+using OpenAgent.Hosting.Authentication;
 using OpenAgent.Router;
 using OpenAgent.Router.Security;
 using OpenAgent.Router.Middleware;
@@ -57,15 +58,22 @@ var app = builder.Build();
 app.UseAgentHost(builder.Configuration);
 app.UseMiddleware<JwtUserContextMiddleware>();
 app.UseWhen(
-    context => context.Request.Path.StartsWithSegments("/api/v1/agent/chat"),
+    context => context.Request.Path.StartsWithSegments("/api/v1/agent")
+        || context.Request.Path.StartsWithSegments("/api/v1/admin"),
     branch =>
     {
         branch.UseMiddleware<TenantIsolationMiddleware>();
+    });
+app.UseWhen(
+    context => context.Request.Path.StartsWithSegments("/api/v1/agent/chat"),
+    branch =>
+    {
         branch.UseMiddleware<RateLimitingMiddleware>();
         branch.UseMiddleware<IdempotencyMiddleware>();
         branch.UseMiddleware<QueryCacheMiddleware>();
     });
 app.MapControllers();
+app.MapAgentAuthenticationEndpoints();
 app.MapRouterEndpoints();
 
 app.Run();
