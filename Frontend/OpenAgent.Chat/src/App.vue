@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, shallowReactive, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, getAccessToken, getConnectionMode, getEngineBaseUrl, getRouterBaseUrl, getTenantId, makeLocalConversation, setAccessToken, setConnectionMode, setEngineBaseUrl, setRouterBaseUrl, setTenantId } from './api'
 import ChatHeader from './components/ChatHeader.vue'
@@ -9,6 +9,10 @@ import MessageComposer from './components/MessageComposer.vue'
 import HealthCheckPanel from './components/HealthCheckPanel.vue'
 import { AUTO_AGENT_ID, type AgentConfigEntity, type AgentSummary, type AuthConfig, type ConnectionMode, type ConversationMessage, type ConversationRecord, type CurrentUserContext, type LlmProviderProfile, type LlmTestResult, type McpServerConfig, type McpTestResult, type MessageFile, type PendingFile, type RagConfig, type RagInstanceConfig, type RagTestResult, type SkillCatalogItem, type SkillInstanceConfig, type SkillsConfig } from './types'
 import { usePanelLayout } from './composables/usePanelLayout'
+import { useConversationStreams } from './composables/useConversationStreams'
+import { mergeConversationRecords, replaceConversationRecord, selectionMatchesConversation } from './conversationCollection'
+
+const selectedConversationStorageKey = 'openagent.chat.selected-conversation-id'
 
 const connectionMode = ref<ConnectionMode>(getConnectionMode())
 const routerUrl = ref(getRouterBaseUrl())
@@ -24,10 +28,9 @@ const selectedConversation = ref<ConversationRecord | null>(null)
 const selectedAgentId = ref(AUTO_AGENT_ID)
 const message = ref('')
 const search = ref('')
-const loading = ref(false)
-/** 当前流式请求的取消句柄，用于发送按钮在生成中切换为“停止”。 */
-let streamAbort: AbortController | null = null
-const loadingConversation = ref(false)
+const workspaceLoading = ref(false)
+const conversationDetailRequests = shallowReactive(new Map<string, string>())
+const conversationStreams = useConversationStreams()
 const savingConfig = ref(false)
 const refreshingAgents = ref(false)
 const testingMcp = ref(false)
@@ -80,6 +83,18 @@ const pendingFiles = ref<PendingFile[]>([])
 const themeMode = ref<'light' | 'dark'>(localStorage.getItem('openagent.ui.theme') === 'dark' ? 'dark' : 'light')
 const { sidebarCollapsed, contextCollapsed, toggleSidebar, toggleContext, startSidebarResize, startContextResize } = usePanelLayout()
 const currentMessages = computed(() => selectedConversation.value?.messages || [])
+const selectedConversationStreaming = computed(() => conversationStreams.isStreaming(selectedConversation.value?.conversationId))
+const streamingConversationIds = computed(() => conversationStreams.activeConversationIds())
+const loadingConversation = computed(() => selectedConversation.value
+  ? conversationDetailRequests.has(selectedConversation.value.conversationId)
+  : false)
+const conversationStatusText = computed(() => {
+  if (!selectedConversation.value) return '新建'
+  if (selectedConversation.value.status === 'Running' && !selectedConversationStreaming.value) {
+    return 'Running（当前页面未连接流）'
+  }
+  return selectedConversation.value.status
+})
 const enabledSkillIds = computed(() => new Set(skillDraft.value.enabledSkills))
 const enabledRagIds = computed(() => new Set(config.value?.config.rag?.enabledRagInstanceIds || ragInstances.value.filter(item => item.enabled).map(item => item.id)))
 const boundMcpServers = computed(() => agentMcpIds.value.map(id =>
@@ -254,6 +269,9 @@ async function loginWithPassword(): Promise<void> {
   authLoading.value = true
   try {
     const result = await api.passwordLogin(username.value.trim(), password.value)
+    if (token.value && token.value !== result.access_token) {
+      await Promise.allSettled(conversationStreams.cancelAll('logout'))
+    }
     setAccessToken(result.access_token, result.token_type || 'Basic')
     token.value = result.access_token
     password.value = ''
@@ -266,7 +284,7 @@ async function loginWithPassword(): Promise<void> {
 }
 
 async function loadWorkspace(): Promise<void> {
-  loading.value = true
+  workspaceLoading.value = true
   try {
     const [agentResult, conversationResult, userResult] = await Promise.allSettled([
       api.listAgents(),
@@ -275,19 +293,32 @@ async function loadWorkspace(): Promise<void> {
     ])
     if (agentResult.status === 'fulfilled') agents.value = agentResult.value
     else notifyError(agentResult.reason)
-    if (conversationResult.status === 'fulfilled') conversations.value = conversationResult.value
-    else conversations.value = []
+    if (conversationResult.status === 'fulfilled') mergeConversationList(conversationResult.value)
+    else if (!conversationStreams.activeConversationIds().length) conversations.value = []
     if (userResult.status === 'fulfilled') currentUser.value = userResult.value
     if ((connectionMode.value === 'engine' && selectedAgentId.value === AUTO_AGENT_ID)
       || (selectedAgentId.value !== AUTO_AGENT_ID && !agents.value.some(item => item.agentId === selectedAgentId.value))) {
       selectedAgentId.value = agents.value[0]?.agentId || ''
       config.value = null
     }
+    await restoreSelectedConversation()
   } catch (error) {
     notifyError(error)
   } finally {
-    loading.value = false
+    workspaceLoading.value = false
   }
+}
+
+async function logout(): Promise<void> {
+  await Promise.allSettled(conversationStreams.cancelAll('logout'))
+  setAccessToken('')
+  token.value = ''
+  currentUser.value = null
+  conversationDetailRequests.clear()
+  conversations.value = []
+  newConversation()
+  statusText.value = '未连接'
+  showSettings.value = true
 }
 
 async function loadLlmProfiles(): Promise<void> {
@@ -414,34 +445,67 @@ async function refreshAgents(): Promise<void> {
   }
 }
 
-async function refreshConversations(): Promise<void> {
+async function refreshConversations(showError = true): Promise<void> {
   try {
     const refreshed = await api.listConversations()
-    const current = selectedConversation.value
-    conversations.value = current && !refreshed.some(item => item.conversationId === current.conversationId)
-      ? [current, ...refreshed]
-      : refreshed
+    mergeConversationList(refreshed)
   } catch (error) {
-    notifyError(error)
+    if (showError) notifyError(error)
   }
+}
+
+function mergeConversationList(refreshed: ConversationRecord[]): void {
+  conversations.value = mergeConversationRecords(
+    conversations.value,
+    refreshed,
+    new Set(conversationStreams.activeConversationIds()),
+    selectedConversation.value?.conversationId,
+  )
+}
+
+function replaceConversation(detail: ConversationRecord, previousConversationId = detail.conversationId): void {
+  const selectionMatches = selectionMatchesConversation(
+    selectedConversation.value?.conversationId,
+    detail.conversationId,
+    previousConversationId,
+  )
+  conversations.value = replaceConversationRecord(conversations.value, detail, previousConversationId)
+  if (selectionMatches) {
+    selectedConversation.value = detail
+    sessionStorage.setItem(selectedConversationStorageKey, detail.conversationId)
+  }
+}
+
+async function restoreSelectedConversation(): Promise<void> {
+  if (selectedConversation.value) return
+  const storedConversationId = sessionStorage.getItem(selectedConversationStorageKey)
+  const stored = conversations.value.find(item => item.conversationId === storedConversationId)
+  if (stored) await selectConversation(stored)
 }
 
 async function selectConversation(item: ConversationRecord): Promise<void> {
   selectedConversation.value = item
+  sessionStorage.setItem(selectedConversationStorageKey, item.conversationId)
   selectedAgentId.value = item.agentId || selectedAgentId.value
   if (item.messages?.length) {
     await hydrateFilePreviews(item)
     return
   }
-  loadingConversation.value = true
+  const requestId = crypto.randomUUID()
+  conversationDetailRequests.set(item.conversationId, requestId)
   try {
     const detail = await api.getConversation(item.conversationId)
     await hydrateFilePreviews(detail)
-    selectedConversation.value = detail
+    if (conversationDetailRequests.get(item.conversationId) !== requestId
+      || conversationStreams.isStreaming(item.conversationId)) return
+    replaceConversation(detail, item.conversationId)
   } catch (error) {
-    notifyError(error)
+    if (conversationDetailRequests.get(item.conversationId) === requestId
+      && selectedConversation.value?.conversationId === item.conversationId) notifyError(error)
   } finally {
-    loadingConversation.value = false
+    if (conversationDetailRequests.get(item.conversationId) === requestId) {
+      conversationDetailRequests.delete(item.conversationId)
+    }
   }
 }
 
@@ -476,6 +540,7 @@ async function downloadFile(file: MessageFile): Promise<void> {
 
 function newConversation(): void {
   selectedConversation.value = null
+  sessionStorage.removeItem(selectedConversationStorageKey)
   message.value = ''
   pendingFiles.value = []
 }
@@ -560,13 +625,14 @@ async function toMessageFile(item: PendingFile): Promise<MessageFile> {
 }
 
 function stopStreaming(): void {
-  streamAbort?.abort()
+  const conversationId = selectedConversation.value?.conversationId
+  if (conversationId) conversationStreams.cancelConversation(conversationId, 'user')
 }
 
 async function send(): Promise<void> {
   const content = message.value.trim()
   const hasFiles = pendingFiles.value.length > 0
-  if ((!content && !hasFiles) || !selectedAgentId.value || loading.value) return
+  if ((!content && !hasFiles) || !selectedAgentId.value || selectedConversationStreaming.value) return
   if (pendingFiles.value.some(item => item.state !== 'ready' || !item.asset)) {
     notifyError(new Error('请等待文件上传完成，或移除上传失败的文件后再发送'))
     return
@@ -588,18 +654,19 @@ async function send(): Promise<void> {
   }
   const conversation = selectedConversation.value
   if (!conversation) return
-  const conversationId = conversation.conversationId
+  let conversationId = conversation.conversationId
   // 首次对话不携带任何 conversationId：由引擎生成并在 done 事件回传，前端记录后用于后续消息。
   // 这样 router 对首次消息会执行意图识别，而不是当成续聊直接转发。
   const sendConversationId = isNewConversation ? undefined : conversationId
-  loading.value = true
-  const controller = new AbortController()
-  streamAbort = controller
+  const streamState = conversationStreams.start(conversationId)
+  const requestId = streamState.requestId
   let streamError: { title?: string; detail?: string; traceId?: string } | undefined
   let flushStream: (() => void) | undefined
-  let returnedConversationId: string | undefined
+  let receivedDone = false
+  let completedAgentId = conversation.agentId
   try {
     conversation.messages ||= []
+    conversation.status = 'Running'
     const messageFiles = await Promise.all(pendingFiles.value.map(toMessageFile))
     conversation.messages.push({
       messageId: crypto.randomUUID(), sequence: conversation.messages.length + 1,
@@ -619,6 +686,7 @@ async function send(): Promise<void> {
       role: 'assistant', content: '', timestamp: new Date().toISOString(),
     })
     const assistantMessage = conversation.messages[conversation.messages.length - 1]
+    conversation.messageCount = conversation.messages.length
     flushStream = (): void => {
       assistantMessage.content = assistant
       assistantMessage.reasoning = reasoning || undefined
@@ -631,8 +699,17 @@ async function send(): Promise<void> {
       sendConversationId,
       uploaded.map(asset => asset.fileId),
       sendConversationId,
-      controller.signal,
+      streamState.controller.signal,
     )) {
+      if (event.conversationId && event.conversationId !== conversationId) {
+        const previousConversationId = conversationId
+        const selectionMatches = selectedConversation.value === conversation
+          || selectedConversation.value?.conversationId === previousConversationId
+        conversationStreams.remap(requestId, event.conversationId)
+        conversationId = event.conversationId
+        conversation.conversationId = conversationId
+        if (selectionMatches) sessionStorage.setItem(selectedConversationStorageKey, conversationId)
+      }
       if (event.type === 'content') {
         assistant += event.content || ''
         if (performance.now() - lastFlush > 100) flushStream?.()
@@ -646,8 +723,9 @@ async function send(): Promise<void> {
           callId: event.toolCallId,
           arguments: event.toolArguments,
         })
-      } else if (event.type === 'done' && event.status) {
-        conversation.status = event.status as ConversationRecord['status']
+      } else if (event.type === 'done') {
+        receivedDone = true
+        conversation.status = (event.status || 'Completed') as ConversationRecord['status']
       } else if (event.type === 'error') {
         // 捕获流式错误，交给 catch 以独立错误卡片展示；不混入助手内容。
         streamError = {
@@ -657,45 +735,48 @@ async function send(): Promise<void> {
         }
         throw new Error(streamError.detail)
       }
-      if (event.conversationId) returnedConversationId = event.conversationId
     }
     flushStream?.()
-    const persisted = await api.getConversation(returnedConversationId || conversationId)
-    await hydrateFilePreviews(persisted)
-    selectedConversation.value = persisted
-    await refreshConversations()
+    if (!receivedDone) throw new Error('流连接在完成事件前意外结束')
+    try {
+      const persisted = await api.getConversation(conversationId)
+      await hydrateFilePreviews(persisted)
+      completedAgentId = persisted.agentId
+      replaceConversation(persisted, conversationId)
+    } catch (error) {
+      if (selectedConversation.value?.conversationId === conversationId) notifyError(error)
+    }
+    await refreshConversations(false)
     // 初次会话：若后端意图识别将对话路由到了其他 Agent，更新右上角选择器并提示。
-    if (isNewConversation && persisted.agentId && persisted.agentId !== requestedAgentId) {
-      const routed = agents.value.find(agent => agent.agentId === persisted.agentId)
-      selectedAgentId.value = persisted.agentId
-      ElMessage.info(`已由意图识别路由到 Agent「${routed?.name || persisted.agentId}」`)
+    if (isNewConversation && completedAgentId && completedAgentId !== requestedAgentId
+      && selectedConversation.value?.conversationId === conversationId) {
+      const routed = agents.value.find(agent => agent.agentId === completedAgentId)
+      selectedAgentId.value = completedAgentId
+      ElMessage.info(`已由意图识别路由到 Agent「${routed?.name || completedAgentId}」`)
     }
   } catch (error) {
-    if (controller.signal.aborted) {
-      // 用户主动停止：保留已生成的部分内容并正常存档，不当作错误处理。
+    const cancelReason = conversationStreams.getByRequest(requestId)?.cancelReason
+    if (cancelReason && cancelReason !== 'network') {
+      // Cancellation keeps received content while the server finalizes persistence.
       conversation.status = 'Cancelled'
       conversation.updatedAt = new Date().toISOString()
       conversation.lastMessageAt = conversation.updatedAt
       flushStream?.()
-      // 引擎在流开始时就下发了真实 conversationId；用它替换本地临时 ID，
-      // 保证下次输入继续同一会话，之前的消息与文件才能被引擎识别。
-      const persistedConversationId = returnedConversationId || conversationId
-      if (returnedConversationId) {
-        conversation.conversationId = returnedConversationId
-      }
-      try {
-        const persisted = await api.getConversation(persistedConversationId)
-        await hydrateFilePreviews(persisted)
-        // 仅当服务端会话已有消息时才替换本地视图；否则保留本地部分内容，
-        // 避免中止后页面退回空的“新会话”欢迎页。
-        if (persisted.messages?.length) {
-          selectedConversation.value = persisted
+      if (cancelReason !== 'unload') {
+        try {
+          const persisted = await api.getConversation(conversationId)
+          await hydrateFilePreviews(persisted)
+          // 仅当服务端会话已有消息时才替换本地内容；否则保留已接收的片段。
+          if (persisted.messages?.length && persisted.status !== 'Running') {
+            replaceConversation(persisted, conversationId)
+          }
+        } catch {
+          // The server may not have persisted a newly cancelled conversation yet.
         }
-      } catch {
-        // 首次会话未持久化时保留本地部分内容作为存档。
+        await refreshConversations(false)
       }
-      await refreshConversations().catch(() => undefined)
     } else {
+      if (!streamError) conversationStreams.cancelRequest(requestId, 'network')
       conversation.status = 'Failed'
       const lastMessage = conversation.messages?.at(-1)
       if (lastMessage?.role === 'assistant') {
@@ -706,17 +787,28 @@ async function send(): Promise<void> {
           traceId: streamError?.traceId,
         }
       }
-      notifyError(error)
+      try {
+        const persisted = await api.getConversation(conversationId)
+        await hydrateFilePreviews(persisted)
+        if (persisted.messages?.length && persisted.status !== 'Running') {
+          replaceConversation(persisted, conversationId)
+        }
+      } catch {
+        // Reconnect and conversation detail loading will recover persisted messages later.
+      }
+      if (selectedConversation.value?.conversationId === conversationId) notifyError(error)
     }
   } finally {
-    streamAbort = null
-    loading.value = false
+    conversationStreams.finish(requestId)
   }
 }
 
 async function deleteConversation(item: ConversationRecord): Promise<void> {
   try {
     await ElMessageBox.confirm('确认删除这个会话吗？', '删除会话', { type: 'warning' })
+    conversationDetailRequests.delete(item.conversationId)
+    const settled = conversationStreams.cancelConversation(item.conversationId, 'delete')
+    if (settled) await settled
     await api.deleteConversation(item.conversationId)
     conversations.value = conversations.value.filter(value => value.conversationId !== item.conversationId)
     if (selectedConversation.value?.conversationId === item.conversationId) newConversation()
@@ -1144,15 +1236,25 @@ function handleSettingsTabChange(name: string | number): void {
 
 onMounted(() => {
   applyTheme()
+  window.addEventListener('beforeunload', handlePageUnload)
   if (activeEndpointUrl.value) {
     void connect()
   }
+})
+
+function handlePageUnload(): void {
+  conversationStreams.cancelAll('unload')
+}
+
+onBeforeUnmount(() => {
+  window.removeEventListener('beforeunload', handlePageUnload)
+  handlePageUnload()
 })
 </script>
 
 <template>
   <el-container class="app-shell" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
-    <ChatSidebar :conversations="conversations" :selected-conversation-id="selectedConversation?.conversationId" :search="search" :loading="loading" :status-text="statusText" :current-user="currentUser" @update:search="search = $event" @new="newConversation" @settings="openSettings('gateway')" @refresh="loadWorkspace" @select="selectConversation" @delete="deleteConversation" @toggle-collapse="toggleSidebar" @resize-start="startSidebarResize" />
+    <ChatSidebar :conversations="conversations" :selected-conversation-id="selectedConversation?.conversationId" :streaming-conversation-ids="streamingConversationIds" :search="search" :loading="workspaceLoading" :status-text="statusText" :current-user="currentUser" @update:search="search = $event" @new="newConversation" @settings="openSettings('gateway')" @refresh="loadWorkspace" @select="selectConversation" @delete="deleteConversation" @toggle-collapse="toggleSidebar" @resize-start="startSidebarResize" />
     <button v-if="sidebarCollapsed" class="panel-restore sidebar-restore" type="button" aria-label="展开侧栏" title="展开侧栏" @click="toggleSidebar">›</button>
 
     <el-main class="main-panel">
@@ -1160,14 +1262,14 @@ onMounted(() => {
 
       <div class="workspace-grid" :class="{ 'context-collapsed': contextCollapsed }">
         <section class="chat-card">
-          <ChatMessages :messages="currentMessages" :loading="loadingConversation" :current-user="currentUser" :streaming="loading" @suggest="message = $event" @download="downloadFile" />
-          <MessageComposer :model-value="message" :endpoint-url="activeEndpointUrl" :endpoint-label="activeEndpointLabel" :selected-agent-id="selectedAgentId" :loading="loading" :pending-files="pendingFiles" @update:model-value="message = $event" @files-change="handleFilesChange" @retry-file="retryPendingFile" @send="send" @stop="stopStreaming" />
+          <ChatMessages :messages="currentMessages" :loading="loadingConversation" :current-user="currentUser" :streaming="selectedConversationStreaming" @suggest="message = $event" @download="downloadFile" />
+          <MessageComposer :model-value="message" :endpoint-url="activeEndpointUrl" :endpoint-label="activeEndpointLabel" :selected-agent-id="selectedAgentId" :loading="selectedConversationStreaming" :pending-files="pendingFiles" @update:model-value="message = $event" @files-change="handleFilesChange" @retry-file="retryPendingFile" @send="send" @stop="stopStreaming" />
         </section>
         <aside class="context-panel">
           <div class="context-panel-head"><span class="context-label">INSPECTOR</span><button class="panel-collapse-btn" type="button" aria-label="收起上下文面板" title="收起" @click="toggleContext">›</button></div>
           <section><span class="context-label">ROUTING</span><strong>{{ routeMode }}</strong><p>{{ connectionMode === 'router' && selectedAgentId === AUTO_AGENT_ID ? '由意图识别 Agent 分析请求并选择目标。' : (selectedAgent?.description || selectedAgentId) }}</p><dl><div><dt>Agent</dt><dd>{{ connectionMode === 'router' && selectedAgentId === AUTO_AGENT_ID ? '由模型选择' : (selectedAgent?.name || selectedAgentId) }}</dd></div><div><dt>协议</dt><dd>{{ selectedAgent?.apiFormat || (connectionMode === 'router' ? '自动' : '—') }}</dd></div></dl></section>
           <section><span class="context-label">IDENTITY</span><dl><div><dt>用户</dt><dd>{{ currentUser?.userId || 'Guest' }}</dd></div><div><dt>租户</dt><dd>{{ currentUser?.tenantId || tenantId || '—' }}</dd></div><div><dt>{{ activeEndpointLabel }}</dt><dd :title="activeEndpointUrl">{{ activeEndpointHost }}</dd></div></dl></section>
-          <section><span class="context-label">CONVERSATION</span><dl><div><dt>消息</dt><dd>{{ currentMessages.length }}</dd></div><div><dt>状态</dt><dd>{{ selectedConversation?.status ?? '新建' }}</dd></div><div><dt>ID</dt><dd class="truncate" :title="selectedConversation?.conversationId">{{ selectedConversation?.conversationId || '尚未创建' }}</dd></div></dl></section>
+          <section><span class="context-label">CONVERSATION</span><dl><div><dt>消息</dt><dd>{{ currentMessages.length }}</dd></div><div><dt>状态</dt><dd>{{ conversationStatusText }}</dd></div><div><dt>ID</dt><dd class="truncate" :title="selectedConversation?.conversationId">{{ selectedConversation?.conversationId || '尚未创建' }}</dd></div></dl></section>
           <el-button class="diagnostics-shortcut" @click="openSettings('health')">运行平台健康检查</el-button>
           <div class="context-resize" @pointerdown="startContextResize" />
         </aside>
@@ -1187,7 +1289,7 @@ onMounted(() => {
             <el-form label-position="top" class="connection-form"><el-form-item label="连接模式"><el-radio-group v-model="connectionMode"><el-radio-button value="router">Router</el-radio-button><el-radio-button value="engine">直连 Engine</el-radio-button></el-radio-group></el-form-item><el-form-item label="Router 地址"><el-input v-model="routerUrl" placeholder="http://localhost:5001" /></el-form-item><el-form-item label="Engine 地址"><el-input v-model="engineUrl" placeholder="http://localhost:5000" /></el-form-item><el-form-item label="租户 ID"><el-input v-model="tenantId" placeholder="可选：用于当前工作台隔离" /></el-form-item></el-form>
             <el-descriptions :column="2" border class="identity-status"><el-descriptions-item label="当前用户">{{ currentUser?.userId || '未连接' }}</el-descriptions-item><el-descriptions-item label="当前租户">{{ currentUser?.tenantId || tenantId || '未识别' }}</el-descriptions-item><el-descriptions-item label="认证状态">{{ currentUser?.isAuthenticated ? '已认证' : '未认证' }}</el-descriptions-item><el-descriptions-item label="登录状态">{{ token ? '已登录（Basic）' : '未登录' }}</el-descriptions-item></el-descriptions>
             <el-alert title="当前 Basic 模式用于开发联调；生产环境应在 Gateway 接入企业身份提供方并启用统一权限策略。" type="info" :closable="false" />
-            <section class="login-card"><div class="login-card-heading"><div><span class="eyebrow">BASIC ACCOUNT</span><h4>登录 {{ activeEndpointLabel }}</h4></div><span class="login-config-status">{{ authConfig?.mode || 'Basic' }}</span></div><el-form label-position="top" class="login-form"><el-form-item label="账号"><el-input v-model="username" autocomplete="username" placeholder="请输入账号" /></el-form-item><el-form-item label="密码"><el-input v-model="password" type="password" show-password autocomplete="current-password" placeholder="请输入密码" /></el-form-item></el-form><el-button type="primary" :loading="authLoading" :disabled="!authConfig?.password.enabled" @click="loginWithPassword">账号密码登录</el-button><small class="login-hint">凭据只保存在当前浏览器会话，不写入本地持久化存储。</small></section>
+            <section class="login-card"><div class="login-card-heading"><div><span class="eyebrow">BASIC ACCOUNT</span><h4>登录 {{ activeEndpointLabel }}</h4></div><span class="login-config-status">{{ authConfig?.mode || 'Basic' }}</span></div><el-form label-position="top" class="login-form"><el-form-item label="账号"><el-input v-model="username" autocomplete="username" placeholder="请输入账号" /></el-form-item><el-form-item label="密码"><el-input v-model="password" type="password" show-password autocomplete="current-password" placeholder="请输入密码" /></el-form-item></el-form><div class="button-row"><el-button type="primary" :loading="authLoading" :disabled="!authConfig?.password.enabled" @click="loginWithPassword">账号密码登录</el-button><el-button v-if="token" @click="logout">退出登录</el-button></div><small class="login-hint">凭据只保存在当前浏览器会话，不写入本地持久化存储。</small></section>
             <div class="button-row"><el-button type="primary" @click="connect">保存并连接</el-button><el-button @click="api.health('/health').then(() => ElMessage.success('Live 健康检查通过')).catch(notifyError)">测试 Live</el-button><el-button @click="api.health('/ready').then(() => ElMessage.success('Ready 健康检查通过')).catch(notifyError)">测试 Ready</el-button></div>
           </section>
         </el-tab-pane>

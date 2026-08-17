@@ -102,6 +102,23 @@ describe('workspace API', () => {
     ])
   })
 
+  it('binds streaming fetch cancellation to the supplied request signal', async () => {
+    setConnectionMode('engine')
+    setEngineBaseUrl('http://engine.example/')
+    const controller = new AbortController()
+    const fetchMock = vi.fn((_url: string | URL | Request, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')))
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const nextEvent = api.streamChat('hello', 'support', 'conversation-a', [], 'conversation-a', controller.signal).next()
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
+    controller.abort()
+
+    await expect(nextEvent).rejects.toMatchObject({ name: 'AbortError' })
+    expect(fetchMock.mock.calls[0]?.[1]?.signal).toBe(controller.signal)
+  })
+
   it('uploads chat files as multipart data', async () => {
     setConnectionMode('engine')
     setEngineBaseUrl('http://engine.example')
