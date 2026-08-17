@@ -1,5 +1,5 @@
-using System.Text.Json;
 using System.Text;
+using System.Text.Json;
 using Microsoft.Extensions.AI;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Files;
@@ -214,7 +214,9 @@ internal static class AgentMessageAdapter
             FileIds = message.FileIds
                 .Concat(files.Select(file => file.FileId))
                 .Distinct(StringComparer.Ordinal)
-                .ToArray()
+                .ToArray(),
+            TokenUsage = message.TokenUsage,
+            ModelId = message.ModelId
         };
     }
 

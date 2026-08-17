@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Security;
+using OpenAgent.Contracts.Requests;
 using Testcontainers.PostgreSql;
 using Xunit;
 
@@ -160,6 +161,55 @@ public sealed class InfrastructurePersistenceTests : IAsyncLifetime
         int referenceCount = await context.ConversationFileReferences.CountAsync(item =>
             item.ConversationId == "conversation-concurrent" && item.FileId == asset.FileId);
         Assert.Equal(1, referenceCount);
+    }
+
+    [Fact]
+    public async Task ConversationStore_TokenUsage_RoundTripsProviderCounts()
+    {
+        ServiceProvider services = Assert.IsType<ServiceProvider>(_services);
+        IConversationStore conversations = services.GetRequiredService<IConversationStore>();
+        Assert.True(await conversations.CreateAsync(new ConversationRecord
+        {
+            ConversationId = "conversation-usage",
+            TenantId = "tenant-usage",
+            UserId = "user-usage",
+            AgentId = "default"
+        }, CancellationToken.None));
+        TokenUsage usage = new()
+        {
+            PromptTokens = 21,
+            CompletionTokens = 8,
+            TotalTokens = 29,
+            CachedInputTokens = 5,
+            ReasoningTokens = 3
+        };
+
+        AppendResult appended = await conversations.AppendMessagesAsync(
+            "tenant-usage",
+            "conversation-usage",
+            1,
+            [new ConversationMessage
+            {
+                MessageId = "message-usage",
+                Sequence = 1,
+                Role = "assistant",
+                Content = "response",
+                TokenUsage = usage,
+                ModelId = "provider-model"
+            }],
+            CancellationToken.None);
+        ConversationRecord record = Assert.IsType<ConversationRecord>(
+            await conversations.GetRecordAsync(
+                "tenant-usage",
+                "conversation-usage",
+                CancellationToken.None));
+        ConversationMessage message = Assert.Single(record.Messages);
+
+        Assert.True(appended.Success);
+        Assert.Equal(29, message.TokenUsage?.TotalTokens);
+        Assert.Equal(5, message.TokenUsage?.CachedInputTokens);
+        Assert.Equal(3, message.TokenUsage?.ReasoningTokens);
+        Assert.Equal("provider-model", message.ModelId);
     }
 
     private sealed class TestCurrentUserContext : ICurrentUserContext

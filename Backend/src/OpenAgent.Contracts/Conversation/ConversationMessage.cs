@@ -1,3 +1,5 @@
+using OpenAgent.Contracts.Requests;
+
 namespace OpenAgent.Contracts.Conversation;
 
 public sealed class ConversationMessage
@@ -12,4 +14,6 @@ public sealed class ConversationMessage
     public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
     public IReadOnlyDictionary<string, string>? Metadata { get; init; }
     public IReadOnlyList<string> FileIds { get; init; } = Array.Empty<string>();
+    public TokenUsage? TokenUsage { get; init; }
+    public string? ModelId { get; init; }
 }

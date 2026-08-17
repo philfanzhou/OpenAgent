@@ -322,7 +322,13 @@ internal sealed class EfCoreConversationStore(
         ToolName = message.ToolName,
         IdempotencyKey = message.IdempotencyKey,
         Timestamp = message.Timestamp,
-        MetadataJson = message.Metadata == null ? null : JsonSerializer.Serialize(message.Metadata)
+        MetadataJson = message.Metadata == null ? null : JsonSerializer.Serialize(message.Metadata),
+        PromptTokens = message.TokenUsage?.PromptTokens,
+        CompletionTokens = message.TokenUsage?.CompletionTokens,
+        TotalTokens = message.TokenUsage?.TotalTokens,
+        CachedInputTokens = message.TokenUsage?.CachedInputTokens,
+        ReasoningTokens = message.TokenUsage?.ReasoningTokens,
+        ModelId = message.ModelId
     };
 
     private static ConversationRecord ToRecord(ConversationEntity entity, IReadOnlyList<ConversationMessage> messages) => new()
@@ -374,8 +380,30 @@ internal sealed class EfCoreConversationStore(
             IdempotencyKey = entity.IdempotencyKey,
             Timestamp = entity.Timestamp,
             Metadata = DeserializeMetadata(entity.MetadataJson),
-            FileIds = fileIds.GetValueOrDefault(entity.MessageId, Array.Empty<string>())
+            FileIds = fileIds.GetValueOrDefault(entity.MessageId, Array.Empty<string>()),
+            TokenUsage = CreateTokenUsage(entity),
+            ModelId = entity.ModelId
         }).ToList().AsReadOnly();
+    }
+
+    private static OpenAgent.Contracts.Requests.TokenUsage? CreateTokenUsage(
+        ConversationMessageEntity entity)
+    {
+        if (entity.PromptTokens == null
+            || entity.CompletionTokens == null
+            || entity.TotalTokens == null)
+        {
+            return null;
+        }
+
+        return new OpenAgent.Contracts.Requests.TokenUsage
+        {
+            PromptTokens = entity.PromptTokens.Value,
+            CompletionTokens = entity.CompletionTokens.Value,
+            TotalTokens = entity.TotalTokens.Value,
+            CachedInputTokens = entity.CachedInputTokens,
+            ReasoningTokens = entity.ReasoningTokens
+        };
     }
 
     private static IReadOnlyDictionary<string, string>? DeserializeMetadata(string? json)

@@ -8,7 +8,12 @@ using OpenAI.Responses;
 
 namespace OpenAgent.Core.Runtime.Agent;
 
-internal sealed class AgentChatClientFactory
+internal interface IAgentChatClientFactory
+{
+    IChatClient Create(LlmConfig llm);
+}
+
+internal sealed class AgentChatClientFactory : IAgentChatClientFactory
 {
     private readonly TimeSpan _networkTimeout;
 
@@ -23,7 +28,7 @@ internal sealed class AgentChatClientFactory
             : TimeSpan.FromSeconds(seconds);
     }
 
-    internal IChatClient Create(LlmConfig llm)
+    public IChatClient Create(LlmConfig llm)
     {
         return llm.Format switch
         {

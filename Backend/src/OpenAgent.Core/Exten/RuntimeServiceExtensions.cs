@@ -16,7 +16,7 @@ internal static class RuntimeServiceExtensions
     internal static IServiceCollection AddRuntimeServices(this IServiceCollection services)
     {
         services.AddSingleton<ILlmRegistry, LlmRegistry>();
-        services.AddSingleton<AgentChatClientFactory>();
+        services.AddSingleton<IAgentChatClientFactory, AgentChatClientFactory>();
 
         services.TryAddScoped<IAgentAuthorizationService>(serviceProvider =>
         {

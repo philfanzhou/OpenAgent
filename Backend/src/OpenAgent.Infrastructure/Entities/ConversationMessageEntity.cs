@@ -12,4 +12,10 @@ internal sealed class ConversationMessageEntity
     public string? IdempotencyKey { get; init; }
     public DateTimeOffset Timestamp { get; init; }
     public string? MetadataJson { get; init; }
+    public int? PromptTokens { get; init; }
+    public int? CompletionTokens { get; init; }
+    public int? TotalTokens { get; init; }
+    public int? CachedInputTokens { get; init; }
+    public int? ReasoningTokens { get; init; }
+    public string? ModelId { get; init; }
 }
