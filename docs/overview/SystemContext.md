@@ -2,13 +2,13 @@
 
 ## 服务定位
 
-OpenAgent.Core 是 Agent 矩阵架构的核心推理库（类库，非独立部署服务），为上层服务提供 MAF Agent 执行、Pipeline、Skill/MCP/RAG、权限和会话存储能力。
+OpenAgent.Core 是 Agent 矩阵架构的核心推理库（类库，非独立部署服务），为上层服务提供 MAF Agent 执行、执行入口（AgentExecutor）、Skill/MCP/RAG、权限和会话存储能力。
 
 ## 上下游关系
 
 ```
                     ┌─────────────────┐
-                    │ OpenAgent.Router │  (HTTP/gRPC 入口)
+                    │ OpenAgent.Router │  (HTTP 入口)
                     └────────┬────────┘
                              │ 引用 OpenAgent.Core
                              ▼
@@ -53,5 +53,5 @@ OpenAgent.Core 是 Agent 矩阵架构的核心推理库（类库，非独立部�
 ## 边界
 
 - OpenAgent.Core 是**类库**，不独立部署，由上层 Host 服务注册和启动
-- 不直接暴露 HTTP/gRPC 端口，由引用方负责端点暴露
+- 不直接暴露 HTTP 端口，由引用方负责端点暴露
 - 不直接管理进程生命周期（心跳、关闭等由 OpenAgent.Engine Host 负责）

@@ -31,7 +31,6 @@ ModelContextProtocol.Core 1.4.1
 **Implemented** — 协议、JSON-RPC 和传输生命周期全部委托给官方 SDK。生产侧不再维护手写协议代码。
 
 ## Limits
-- `Stdio` 配置值尚不可用
 - 不建立跨请求连接池；一次请求内每个 Server 复用一个客户端
 - `Http.Url` 必须为完整 MCP endpoint，客户端不自动追加 `/mcp`
 - MCP 注册表发布不会自动启用服务，必须加入 Agent 配置并发布

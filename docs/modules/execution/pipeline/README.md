@@ -1,7 +1,4 @@
 
-## Feature
-
-
 ## 核心用户故事
 
 作为上层服务，我希望通过 AgentExecutor 执行 Agent 请求，由 Engine.Host 中间件链处理认证、租户校验和异常映射等横切关注点。
@@ -27,9 +24,6 @@
 
 - 不负责 Engine.Host 中间件实现逻辑
 - 不负责中间件注册顺序（由 DI 容器决定）
-
-## Specification
-
 
 ## 功能概述和用户故事
 
@@ -158,9 +152,6 @@ AgentRequest
 
 - 流式执行编排测试
 - CancellationToken 取消传播测试
-
-## Conventions
-
 
 ## 命名约定
 

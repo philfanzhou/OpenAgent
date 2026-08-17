@@ -18,7 +18,7 @@ OpenAgent.Engine.Host ──> OpenAgent.Engine ──> OpenAgent.Core ──> Op
 | `OpenAgent.Core` | 执行引擎、能力（MCP/RAG/Skill）、会话抽象、安全 |
 | `OpenAgent.Engine` | Agent 执行服务、注册表、健康检查、配置热重载 |
 | `OpenAgent.Engine.Host` | ASP.NET Core 宿主（端点、中间件、流式传输、文件资产接入） |
-| `OpenAgent.Hosting` | 共享宿主、JWT、Redis 与 OpenTelemetry 注册 |
+| `OpenAgent.Hosting` | 共享宿主、认证、Redis 与 OpenTelemetry 注册 |
 | `OpenAgent.Infrastructure` | PostgreSQL+EF Core 持久化、Redis 写穿缓存、分布式锁 |
 | `OpenAgent.Router` | 网关服务（路由、意图识别、限流、租户隔离） |
 

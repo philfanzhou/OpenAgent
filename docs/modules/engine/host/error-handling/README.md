@@ -28,7 +28,7 @@ HTTP 请求
 | 其他 | 500 |
 
 ## Current Status
-**Partial** — 功能已实现，但缺少测试覆盖（规划中）。
+**Implemented** — 异常捕获、ProblemDetails/SSE 错误载荷与 ErrorCode→HTTP 映射均已落地，含 `AgentExceptionHandlerMiddleware` 测试。
 
 ## Limits
 - 响应已开始时重新抛出异常，不写入 ProblemDetails

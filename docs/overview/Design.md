@@ -8,12 +8,12 @@ Core，不再存在单独的 MAF 引擎项目或可切换的生产引擎体系�
 | 项目 | 说明 |
 |---|---|
 | `OpenAgent.Contracts` | 共享接口、模型、DTO（纯契约层） |
-| `OpenAgent.Core` | Pipeline、MAF runtime、能力、授权、会话 |
+| `OpenAgent.Core` | 执行入口（AgentExecutor）、MAF runtime、能力、授权、会话 |
 | `OpenAgent.Infrastructure` | 持久化（PostgreSQL/S3）、外部资源访问 |
 | `OpenAgent.Engine` | Engine 服务（Redis 注册、健康检查、热更新、配置热重载） |
 | `OpenAgent.Engine.Host` | ASP.NET Core 宿主（端点、中间件、流式传输） |
 | `OpenAgent.Hosting` | 共享 DI、认证、Redis 与 OpenTelemetry 注册扩展 |
-| `OpenAgent.Router` | HTTP/gRPC 入口、会话亲和、限流、转发 |
+| `OpenAgent.Router` | HTTP 入口、会话亲和、限流、转发 |
 | `OpenAgent.Architecture.Tests` | 架构依赖与分层约束测试 |
 | `OpenAgent.Contracts.Tests` | Contracts 序列化与契约测试 |
 | `OpenAgent.Core.Tests` | Core 单元与组件测试 |
@@ -26,9 +26,8 @@ Core，不再存在单独的 MAF 引擎项目或可切换的生产引擎体系�
 
 ```text
 HTTP / Channel
-  -> AgentExecutor
-       -> middleware: validation / tracing / auth / audit
-       -> AgentRun
+  -> Engine.Host middleware: validation / tracing / auth / audit
+       -> AgentExecutor
             -> identity + authorized model snapshot
             -> AgentFactory -> ChatClientAgent + AgentSession
                  -> ChatHistoryProvider -> lock + platform history

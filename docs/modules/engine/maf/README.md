@@ -1,7 +1,4 @@
 
-## Feature
-
-
 ## 概述
 
 MAF 是 Agent.Core 唯一生产运行时。运行时代码位于
@@ -66,7 +63,7 @@ MAF 是 Agent.Core 唯一生产运行时。运行时代码位于
 `ExecutionContext` 或 Engine 请求。
 
 ```text
-Pipeline -> AgentRun
+AgentExecutor
   -> IdentityResolution
   -> AgentFactory -> ChatClientAgent
        -> PlatformChatHistory : ChatHistoryProvider
@@ -83,9 +80,6 @@ system prompt。
 
 Provider 由 `AgentChatClientFactory` 构造 `IChatClient`；新增能力只产生 `AIFunction`；新增记忆
 实现只扩展 `ChatHistoryProvider`；多 Agent 编排只使用 MAF Workflow。
-
-## Tasks
-
 
 ## 已完成
 
@@ -123,9 +117,6 @@ Provider 由 `AgentChatClientFactory` 构造 `IChatClient`；新增能力只产�
 
 生产 Core 与 Engine Host 必须保持 0 warning 编译；真实 Provider、Redis、MCP E2E
 单独验证。
-
-## Conventions
-
 
 ## 设计约定
 
