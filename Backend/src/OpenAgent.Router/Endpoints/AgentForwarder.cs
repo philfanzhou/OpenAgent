@@ -44,9 +44,10 @@ internal sealed class AgentForwarder(
             cancellationToken).ConfigureAwait(false);
         if (target == null)
         {
-            await Results.Problem(
-                statusCode: StatusCodes.Status503ServiceUnavailable,
-                title: "Agent provider is unavailable").ExecuteAsync(context).ConfigureAwait(false);
+            await RouterProblem.From(new AgentRoutingException(
+                StatusCodes.Status503ServiceUnavailable,
+                RouterErrorCodes.AgentProviderUnavailable,
+                "Agent Provider is unavailable")).ExecuteAsync(context).ConfigureAwait(false);
             return;
         }
 

@@ -70,9 +70,17 @@ public class IntentAgentSelectorTests
         public IReadOnlyList<AgentSummary> Agents { get; private set; } = [];
         public string Message { get; private set; } = string.Empty;
 
-        public Task<IReadOnlyList<AgentSummary>> GetAgentsAsync(
+        public Task<AgentProviderCatalog> GetAgentsAsync(
+            AgentProviderRequestContext requestContext,
             CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<AgentSummary>>([]);
+            Task.FromResult(new AgentProviderCatalog([]));
+
+        public Task<AgentProviderConversation> ResolveConversationAsync(
+            AgentProviderRequestContext requestContext,
+            string conversationId,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(new AgentProviderConversation(
+                AgentProviderConversationStatus.NotFound));
 
         public Task<IntentRecognitionResult?> RecognizeIntentAsync(
             string intentAgentId,

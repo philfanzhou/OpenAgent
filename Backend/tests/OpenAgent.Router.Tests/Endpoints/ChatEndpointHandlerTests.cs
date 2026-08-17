@@ -47,7 +47,7 @@ public class ChatEndpointHandlerTests
     public async Task HandleAsync_ProviderIsUnavailable_ReturnsServiceUnavailable()
     {
         DefaultHttpContext context = CreateContext();
-        context.Features.Set(new AgentRoutingFeature("conversation-1", "missing"));
+        context.Features.Set(new AgentRoutingFeature("conversation-1", "missing", null));
 
         IResult result = await HandleAsync(
             context,
@@ -63,7 +63,7 @@ public class ChatEndpointHandlerTests
     public async Task HandleAsync_ResolvedProvider_ForwardsRequestedAction()
     {
         DefaultHttpContext context = CreateContext();
-        context.Features.Set(new AgentRoutingFeature("conversation-1", "partner"));
+        context.Features.Set(new AgentRoutingFeature("conversation-1", "partner", "finance"));
         var provider = new StubProvider("partner");
         var forwarder = new RecordingForwarder();
 
@@ -154,9 +154,17 @@ public class ChatEndpointHandlerTests
     {
         public string Id => id;
 
-        public Task<IReadOnlyList<AgentSummary>> GetAgentsAsync(
+        public Task<AgentProviderCatalog> GetAgentsAsync(
+            AgentProviderRequestContext requestContext,
             CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<AgentSummary>>([]);
+            Task.FromResult(new AgentProviderCatalog([]));
+
+        public Task<AgentProviderConversation> ResolveConversationAsync(
+            AgentProviderRequestContext requestContext,
+            string conversationId,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(new AgentProviderConversation(
+                AgentProviderConversationStatus.NotFound));
 
         public Task<IntentRecognitionResult?> RecognizeIntentAsync(
             string intentAgentId,

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using OpenAgent.Contracts.Security;
+using OpenAgent.Router.Middleware;
 using OpenAgent.Router.Models;
 
 namespace OpenAgent.Router.Endpoints;
@@ -39,21 +40,35 @@ internal sealed class AgentSelectionFilter(
         string? explicitAgentId = string.IsNullOrWhiteSpace(request.AgentId)
             ? context.Request.Headers["X-Agent-Id"].FirstOrDefault()
             : request.AgentId;
-        AgentSelection? selection = await selectionService.SelectAsync(
-            request.Query,
-            routingConversationId,
-            explicitAgentId,
-            context.RequestAborted).ConfigureAwait(false);
+        string? tenantId = context.Items[TenantIsolationMiddleware.TenantItemKey]?.ToString()
+            ?? userContext.TenantId
+            ?? context.Request.Headers["X-Tenant-Id"].FirstOrDefault();
+        AgentSelection? selection;
+        try
+        {
+            selection = await selectionService.SelectAsync(
+                request.Query,
+                tenantId ?? string.Empty,
+                routingConversationId,
+                explicitAgentId,
+                context.RequestAborted).ConfigureAwait(false);
+        }
+        catch (AgentRoutingException exception)
+        {
+            return RouterProblem.From(exception);
+        }
         if (selection == null)
         {
-            return Results.Problem(
-                statusCode: StatusCodes.Status503ServiceUnavailable,
-                title: "No Agent could be selected");
+            return RouterProblem.From(new AgentRoutingException(
+                StatusCodes.Status503ServiceUnavailable,
+                RouterErrorCodes.NoAgentAvailable,
+                "No Agent could be selected"));
         }
 
         context.Features.Set(new AgentRoutingFeature(
             routingConversationId,
-            selection.ProviderId));
+            selection.ProviderId,
+            selection.AgentId));
         if (!string.IsNullOrWhiteSpace(selection.AgentId))
         {
             context.Request.Headers["X-Agent-Id"] = selection.AgentId;

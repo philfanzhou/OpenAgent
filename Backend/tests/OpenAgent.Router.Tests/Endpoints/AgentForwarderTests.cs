@@ -30,7 +30,7 @@ public class AgentForwarderTests
             RequestServices = services
         };
         context.Items[TenantIsolationMiddleware.TenantItemKey] = "request-tenant";
-        context.Features.Set(new AgentRoutingFeature("conversation-1", provider.Id));
+        context.Features.Set(new AgentRoutingFeature("conversation-1", provider.Id, "finance"));
         using var forwarder = new AgentForwarder(null!, NullLogger<AgentForwarder>.Instance);
 
         await forwarder.ForwardAsync(
@@ -52,9 +52,17 @@ public class AgentForwarderTests
         public string? TenantId { get; private set; }
         public string? ConversationId { get; private set; }
 
-        public Task<IReadOnlyList<AgentSummary>> GetAgentsAsync(
+        public Task<AgentProviderCatalog> GetAgentsAsync(
+            AgentProviderRequestContext requestContext,
             CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<AgentSummary>>([]);
+            Task.FromResult(new AgentProviderCatalog([]));
+
+        public Task<AgentProviderConversation> ResolveConversationAsync(
+            AgentProviderRequestContext requestContext,
+            string conversationId,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(new AgentProviderConversation(
+                AgentProviderConversationStatus.NotFound));
 
         public Task<IntentRecognitionResult?> RecognizeIntentAsync(
             string intentAgentId,

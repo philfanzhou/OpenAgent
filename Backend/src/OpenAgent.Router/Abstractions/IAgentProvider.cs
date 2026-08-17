@@ -7,7 +7,13 @@ public interface IAgentProvider
 {
     string Id { get; }
 
-    Task<IReadOnlyList<AgentSummary>> GetAgentsAsync(
+    Task<AgentProviderCatalog> GetAgentsAsync(
+        AgentProviderRequestContext requestContext,
+        CancellationToken cancellationToken = default);
+
+    Task<AgentProviderConversation> ResolveConversationAsync(
+        AgentProviderRequestContext requestContext,
+        string conversationId,
         CancellationToken cancellationToken = default);
 
     Task<IntentRecognitionResult?> RecognizeIntentAsync(

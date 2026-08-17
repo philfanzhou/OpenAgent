@@ -26,6 +26,7 @@ public class AgentSelectionFilterTests
         AgentRoutingFeature feature = Assert.IsType<AgentRoutingFeature>(
             context.Features.Get<AgentRoutingFeature>());
         Assert.Equal("partner", feature.ProviderId);
+        Assert.Equal("finance", feature.AgentId);
         Assert.Equal("find invoice", selectionService.Message);
     }
 
@@ -127,6 +128,7 @@ public class AgentSelectionFilterTests
 
         public Task<AgentSelection?> SelectAsync(
             string message,
+            string tenantId,
             string? conversationId,
             string? explicitAgentId,
             CancellationToken cancellationToken)
