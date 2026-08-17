@@ -8,7 +8,8 @@ namespace OpenAgent.Router.Endpoints;
 
 internal sealed class AgentForwarder(
     IHttpForwarder forwarder,
-    ILogger<AgentForwarder> logger) : IAgentForwarder, IDisposable
+    ILogger<AgentForwarder> logger,
+    IEndpointHealthTracker healthTracker) : IAgentForwarder, IDisposable
 {
     private static readonly ForwarderRequestConfig DefaultRequestConfig = new()
     {
@@ -69,8 +70,12 @@ internal sealed class AgentForwarder(
                 cancellationToken)).ConfigureAwait(false);
         if (error == ForwarderError.None)
         {
+            healthTracker.ReportSuccess(target.DestinationPrefix);
             return;
         }
+
+        healthTracker.ReportFailure(target.DestinationPrefix);
+        Observability.RouterLog.DownstreamQuarantined(logger, target.DestinationPrefix);
 
         IResult result = await ForwardingErrorHandler.HandleChatAsync(
             context,

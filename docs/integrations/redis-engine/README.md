@@ -29,6 +29,7 @@ Engine Host
 |------|----------|------|
 | Agent 配置 | `agent:config:{agentId}` | Agent 运行时配置 |
 | Engine 注册 | `engine:registry:{engineId}` | 服务发现 |
+| Engine 注册索引 | `engine:registry:index` | Router 有界读取注册项，避免 Redis 全库键枚举 |
 | LLM 注册 | `llm:registry:{providerId}` | LLM 提供商配置 |
 | Skill 注册 | `skill:published:index` | 已发布技能索引 |
 | MCP 注册 | `mcp:published:index` | 独立维护的 MCP Server 配置索引 |

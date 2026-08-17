@@ -18,4 +18,13 @@ public class InMemoryRouteTable : IRouteTable
             _ => settings["EngineEndpoint"] ?? "http://localhost:5208"
         };
     }
+
+    public string? GetTargetEndpoint(
+        string intent,
+        string? capability,
+        string? tenantId,
+        string? conversationId)
+    {
+        return GetTargetEndpoint(intent);
+    }
 }

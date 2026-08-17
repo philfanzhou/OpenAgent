@@ -7,7 +7,7 @@ namespace OpenAgent.Router.Observability;
 
 /// <summary>
 /// Centralized logging definitions for the Router project using [LoggerMessage] source generators.
-/// EventId range: 3000–3028.
+/// EventId range: 3000–3034.
 /// </summary>
 internal static partial class RouterLog
 {
@@ -98,8 +98,8 @@ internal static partial class RouterLog
     [LoggerMessage(EventId = 3017, Level = LogLevel.Warning, Message = "Failed to refresh engine registry snapshot")]
     public static partial void RefreshSnapshotFailed(ILogger logger, Exception exception);
 
-    [LoggerMessage(EventId = 3018, Level = LogLevel.Warning, Message = "Failed to refresh engine registry snapshot; preserving previous snapshot")]
-    public static partial void RefreshSnapshotPreservingPrevious(ILogger logger, Exception exception);
+    [LoggerMessage(EventId = 3018, Level = LogLevel.Warning, Message = "Failed to refresh engine registry snapshot. RedisFailureMode={RedisFailureMode}")]
+    public static partial void RefreshSnapshotUnavailable(ILogger logger, Exception exception, string redisFailureMode);
 
     [LoggerMessage(EventId = 3019, Level = LogLevel.Warning, Message = "Engine {EngineId} heartbeat is stale ({HeartbeatAge}s), skipping")]
     public static partial void EngineHeartbeatStale(ILogger logger, string engineId, double heartbeatAge);
@@ -134,11 +134,11 @@ internal static partial class RouterLog
 
     #region --- Rate Limiter ---
 
-    [LoggerMessage(EventId = 3026, Level = LogLevel.Warning, Message = "Redis connection failed. Bypassing rate limit for {ClientId} (Fail-open)")]
-    public static partial void RateLimitConnectionFailed(ILogger logger, Exception exception, string clientId);
+    [LoggerMessage(EventId = 3026, Level = LogLevel.Warning, Message = "Redis rate limiting failed. ClientId={ClientId}, FailureMode={FailureMode}")]
+    public static partial void RateLimitRedisFailed(ILogger logger, Exception exception, string clientId, string failureMode);
 
-    [LoggerMessage(EventId = 3027, Level = LogLevel.Warning, Message = "Unexpected error in rate limiting. Bypassing rate limit for {ClientId} (Fail-open)")]
-    public static partial void RateLimitUnexpectedError(ILogger logger, Exception exception, string clientId);
+    [LoggerMessage(EventId = 3027, Level = LogLevel.Debug, Message = "Redis rate limiting is not configured. ClientId={ClientId}, FailureMode={FailureMode}")]
+    public static partial void RateLimitRedisNotConfigured(ILogger logger, string clientId, string failureMode);
 
     #endregion
 
@@ -146,6 +146,24 @@ internal static partial class RouterLog
 
     [LoggerMessage(EventId = 3028, Level = LogLevel.Warning, Message = "Redis ping failed during readiness check")]
     public static partial void RedisPingFailedDuringReadinessCheck(ILogger logger, Exception exception);
+
+    [LoggerMessage(EventId = 3029, Level = LogLevel.Warning, Message = "No eligible Engine supports the route. Intent={Intent}, Capability={Capability}")]
+    public static partial void NoEligibleEngines(ILogger logger, string intent, string capability);
+
+    [LoggerMessage(EventId = 3030, Level = LogLevel.Warning, Message = "Failed to remove {Count} stale members from the Engine registry index")]
+    public static partial void RegistryIndexCleanupFailed(ILogger logger, Exception exception, int count);
+
+    [LoggerMessage(EventId = 3031, Level = LogLevel.Warning, Message = "Downstream Engine readiness probe failed. Endpoint={Endpoint}")]
+    public static partial void DownstreamProbeFailed(ILogger logger, Exception exception, string endpoint);
+
+    [LoggerMessage(EventId = 3032, Level = LogLevel.Warning, Message = "Downstream Engine is not ready. Endpoint={Endpoint}, StatusCode={StatusCode}")]
+    public static partial void DownstreamNotReady(ILogger logger, string endpoint, int statusCode);
+
+    [LoggerMessage(EventId = 3033, Level = LogLevel.Warning, Message = "Downstream endpoint quarantined after forwarding failure. Endpoint={Endpoint}")]
+    public static partial void DownstreamQuarantined(ILogger logger, string endpoint);
+
+    [LoggerMessage(EventId = 3034, Level = LogLevel.Information, Message = "Readiness probe used fallback downstream. FailedEndpoint={FailedEndpoint}, FallbackEndpoint={FallbackEndpoint}")]
+    public static partial void ReadinessFallbackSelected(ILogger logger, string failedEndpoint, string fallbackEndpoint);
 
     #endregion
 

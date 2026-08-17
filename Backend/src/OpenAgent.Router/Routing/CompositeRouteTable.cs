@@ -25,19 +25,29 @@ public class CompositeRouteTable : IRouteTable
 
     public string? GetTargetEndpoint(string intent, string? tenantId, string? conversationId)
     {
-        // Try dynamic discovery first
-        var dynamicEndpoint = _dynamicRouteTable.GetTargetEndpoint(intent, tenantId, conversationId);
+        return GetTargetEndpoint(intent, capability: null, tenantId, conversationId);
+    }
+
+    public string? GetTargetEndpoint(
+        string intent,
+        string? capability,
+        string? tenantId,
+        string? conversationId)
+    {
+        string? dynamicEndpoint = _dynamicRouteTable.GetTargetEndpoint(
+            intent, capability, tenantId, conversationId);
         if (!string.IsNullOrEmpty(dynamicEndpoint))
         {
             RouterLog.DynamicDiscoveryReturnedEndpoint(_logger, dynamicEndpoint);
             return dynamicEndpoint;
         }
 
-        // Fall back to static configuration
-        var staticEndpoint = _staticRouteTable.GetTargetEndpoint(intent, tenantId, conversationId);
+        string? staticEndpoint = _staticRouteTable.GetTargetEndpoint(
+            intent, capability, tenantId, conversationId);
         if (!string.IsNullOrEmpty(staticEndpoint))
         {
             RouterLog.FallbackToStaticEndpoint(_logger, staticEndpoint);
+            RouterMeter.RecordDiscoverySelection(intent, capability, "static_fallback");
             return staticEndpoint;
         }
 

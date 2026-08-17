@@ -31,7 +31,10 @@ public class AgentForwarderTests
         };
         context.Items[TenantIsolationMiddleware.TenantItemKey] = "request-tenant";
         context.Features.Set(new AgentRoutingFeature("conversation-1", provider.Id));
-        using var forwarder = new AgentForwarder(null!, NullLogger<AgentForwarder>.Instance);
+        using var forwarder = new AgentForwarder(
+            null!,
+            NullLogger<AgentForwarder>.Instance,
+            new StubEndpointHealthTracker());
 
         await forwarder.ForwardAsync(
             context,
@@ -79,5 +82,12 @@ public class AgentForwarderTests
             HttpRequestMessage request,
             AgentForwardingTarget target,
             CancellationToken cancellationToken) => ValueTask.CompletedTask;
+    }
+
+    private sealed class StubEndpointHealthTracker : IEndpointHealthTracker
+    {
+        public bool IsAvailable(string endpoint) => true;
+        public void ReportSuccess(string endpoint) { }
+        public void ReportFailure(string endpoint) { }
     }
 }
