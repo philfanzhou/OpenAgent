@@ -7,7 +7,7 @@ namespace OpenAgent.Router.Observability;
 
 /// <summary>
 /// Centralized logging definitions for the Router project using [LoggerMessage] source generators.
-/// EventId range: 3000–3028.
+/// EventId range: 3000–3030.
 /// </summary>
 internal static partial class RouterLog
 {
@@ -33,8 +33,8 @@ internal static partial class RouterLog
     [LoggerMessage(EventId = 3004, Level = LogLevel.Warning, Message = "Idempotency cache check failed, bypassing idempotency. Action={Action}, IdempotencyKey={IdempotencyKey}, TraceId={TraceId}, ExceptionType={ExceptionType}")]
     private static partial void IdempotencyCacheCheckFailedCore(ILogger logger, Exception exception, string? action, string idempotencyKey, string? traceId, string exceptionType);
 
-    [LoggerMessage(EventId = 3005, Level = LogLevel.Information, Message = "Semantic cache hit. Action={Action}, UserId={UserId}, TenantId={TenantId}, ConversationId={ConversationId}, TraceId={TraceId}")]
-    public static partial void SemanticCacheHit(ILogger logger, string? action, string userId, string? tenantId, string? conversationId, string? traceId);
+    [LoggerMessage(EventId = 3005, Level = LogLevel.Information, Message = "Query cache hit. Action={Action}, UserId={UserId}, TenantId={TenantId}, ConversationId={ConversationId}, TraceId={TraceId}")]
+    public static partial void QueryCacheHit(ILogger logger, string? action, string userId, string? tenantId, string? conversationId, string? traceId);
     /// <summary>Shared forwarding failure log used by main chat endpoint and all GET proxy endpoints.</summary>
     public static void ForwardingFailed(
         ILogger logger,
@@ -146,6 +146,16 @@ internal static partial class RouterLog
 
     [LoggerMessage(EventId = 3028, Level = LogLevel.Warning, Message = "Redis ping failed during readiness check")]
     public static partial void RedisPingFailedDuringReadinessCheck(ILogger logger, Exception exception);
+
+    #endregion
+
+    #region --- Router response caches ---
+
+    [LoggerMessage(EventId = 3029, Level = LogLevel.Warning, Message = "Query cache operation failed; bypassing cache. Route={Route}")]
+    public static partial void QueryCacheFailed(ILogger logger, Exception exception, string route);
+
+    [LoggerMessage(EventId = 3030, Level = LogLevel.Warning, Message = "Failed to release idempotency placeholder. StorageKey={StorageKey}")]
+    public static partial void IdempotencyReleaseFailed(ILogger logger, Exception exception, string storageKey);
 
     #endregion
 

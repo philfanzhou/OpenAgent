@@ -30,6 +30,39 @@ public interface IRateLimiter
 
 public interface IQueryCache
 {
-    Task<string?> GetCachedResponseAsync(string query, CancellationToken cancellationToken = default);
-    Task SetCachedResponseAsync(string query, string response, CancellationToken cancellationToken = default);
+    Task<string?> GetCachedResponseAsync(
+        string query,
+        CancellationToken cancellationToken = default);
+
+    Task SetCachedResponseAsync(
+        string query,
+        string response,
+        CancellationToken cancellationToken = default);
+
+    async Task<CachedResponse?> GetAsync(
+        string key,
+        CancellationToken cancellationToken = default)
+    {
+        string? response = await GetCachedResponseAsync(
+            key,
+            cancellationToken).ConfigureAwait(false);
+        return response == null
+            ? null
+            : new CachedResponse(
+                StatusCodes.Status200OK,
+                "application/json",
+                System.Text.Encoding.UTF8.GetBytes(response));
+    }
+
+    async Task SetAsync(
+        string key,
+        CachedResponse response,
+        TimeSpan timeToLive,
+        CancellationToken cancellationToken = default)
+    {
+        await SetCachedResponseAsync(
+            key,
+            System.Text.Encoding.UTF8.GetString(response.Body),
+            cancellationToken).ConfigureAwait(false);
+    }
 }
