@@ -14,6 +14,7 @@ import type {
   LlmProviderProfile,
   LlmTestResult,
   MessageFile,
+  McpRuntimeStatus,
   McpServerConfig,
   McpTestResult,
   NativeHealthReport,
@@ -23,6 +24,7 @@ import type {
   SkillPackageInstallResponse,
   SkillCatalogItem,
   SkillInstanceConfig,
+  SkillSandboxStatus,
   SkillTestResult,
   StreamEvent,
 } from './types'
@@ -352,6 +354,18 @@ export const api = {
     return request<SkillCatalogItem[]>('/api/v1/admin/skills')
   },
 
+  getSkillRuntime(): Promise<SkillSandboxStatus> {
+    return request<SkillSandboxStatus>('/api/v1/admin/skills/runtime')
+  },
+
+  setSkillScriptExecution(skillId: string, enabled: boolean): Promise<SkillCatalogItem> {
+    return request<SkillCatalogItem>(`/api/v1/admin/skills/${encodeURIComponent(skillId)}/execution`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled }),
+    })
+  },
+
   deleteSkillPackage(agentId: string, skillId: string): Promise<void> {
     return request<void>(`/api/v1/admin/skills/${encodeURIComponent(agentId)}/${encodeURIComponent(skillId)}`, { method: 'DELETE' })
   },
@@ -374,6 +388,10 @@ export const api = {
 
   listMcpProfiles(): Promise<McpServerConfig[]> {
     return request<McpServerConfig[]>('/api/v1/admin/mcp')
+  },
+
+  getMcpRuntime(): Promise<McpRuntimeStatus> {
+    return request<McpRuntimeStatus>('/api/v1/admin/mcp/runtime')
   },
 
   saveMcpProfile(id: string, server: McpServerConfig): Promise<McpServerConfig> {

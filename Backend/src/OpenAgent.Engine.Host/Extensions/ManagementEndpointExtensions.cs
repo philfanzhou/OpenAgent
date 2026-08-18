@@ -1,10 +1,12 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Mcp;
 using OpenAgent.Contracts.Models;
 using OpenAgent.Contracts.Rag;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Contracts.Skills;
+using OpenAgent.Core.Capabilities.Mcp;
 using OpenAgent.Engine.Config;
 using OpenAgent.Engine.Abstractions;
 using OpenAgent.Engine.Host.Middleware;
@@ -222,6 +224,23 @@ internal static class ManagementEndpointExtensions
             return Results.Ok(servers.Select(RedactMcpServer));
         });
 
+        group.MapGet("/mcp/runtime", (
+            [FromServices] IOptions<McpExecutionOptions> executionOptions,
+            HttpContext context) =>
+        {
+            if (!HasScope(context, "agent.config.read"))
+                return Results.Forbid();
+            McpExecutionOptions policy = executionOptions.Value;
+            return Results.Ok(new McpRuntimeStatus
+            {
+                StdioEnabled = policy.AllowStdio,
+                StdioIsolation = policy.AllowStdio ? "trusted-host-process" : "disabled",
+                AllowedCommands = policy.AllowedCommands.ToArray(),
+                AllowedEnvironmentVariables = policy.AllowedEnvironmentVariables.ToArray(),
+                AllowedWorkingDirectories = policy.AllowedWorkingDirectories.ToArray()
+            });
+        });
+
         group.MapPut("/mcp/{id}", async (
             [FromServices] McpProfileManagementService manager,
             HttpContext context,
@@ -233,10 +252,15 @@ internal static class ManagementEndpointExtensions
                 return Results.Forbid();
             if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(server.Name))
                 return Results.BadRequest(new { error = "MCP requires an id and name." });
-            if (string.IsNullOrWhiteSpace(server.Url))
-                return Results.BadRequest(new { error = "MCP requires a URL." });
+            if (server.Type != McpServerType.Stdio && string.IsNullOrWhiteSpace(server.Url))
+                return Results.BadRequest(new { error = "HTTP/SSE MCP requires a URL." });
+            if (server.Type == McpServerType.Stdio && string.IsNullOrWhiteSpace(server.Command))
+                return Results.BadRequest(new { error = "Stdio MCP requires a command." });
 
             server.Name = id;
+            McpServerConfig? existing = await manager.GetAsync(id, cancellationToken).ConfigureAwait(false);
+            if (existing != null)
+                MergeMcpSecrets(existing, server);
             McpServerConfig saved = await manager.SaveAsync(server, cancellationToken).ConfigureAwait(false);
             return Results.Ok(RedactMcpServer(saved));
         });
@@ -402,6 +426,50 @@ internal static class ManagementEndpointExtensions
             if (!HasScope(context, "agent.config.read"))
                 return Results.Forbid();
             return Results.Ok(await catalog.ListAsync(cancellationToken).ConfigureAwait(false));
+        });
+
+        group.MapGet("/skills/runtime", (
+            [FromServices] ISkillScriptSandbox sandbox,
+            HttpContext context) =>
+        {
+            if (!HasScope(context, "agent.config.read"))
+                return Results.Forbid();
+            return Results.Ok(sandbox.Status);
+        });
+
+        group.MapPut("/skills/{skillId}/execution", async (
+            [FromServices] ISkillCatalogStore catalog,
+            [FromServices] ISkillScriptSandbox sandbox,
+            [FromBody] SkillScriptExecutionPolicy policy,
+            HttpContext context,
+            string skillId,
+            CancellationToken cancellationToken) =>
+        {
+            if (!HasScope(context, "agent.config.write"))
+                return Results.Forbid();
+            SkillInstanceConfig? skill = await catalog.GetAsync(
+                skillId,
+                cancellationToken).ConfigureAwait(false);
+            if (skill == null)
+                return Results.NotFound();
+            if (policy.Enabled && !sandbox.Status.Enabled)
+            {
+                return Results.BadRequest(new
+                {
+                    error = "Skill script execution requires an enabled isolated sandbox."
+                });
+            }
+            if (policy.Enabled && skill.ScriptCount == 0)
+            {
+                return Results.BadRequest(new
+                {
+                    error = "The Skill package does not contain a supported script."
+                });
+            }
+
+            skill.AllowScriptExecution = policy.Enabled;
+            await catalog.PublishAsync(skill, cancellationToken).ConfigureAwait(false);
+            return Results.Ok(skill);
         });
 
         group.MapPost("/skills/packages", async (
@@ -572,6 +640,13 @@ internal static class ManagementEndpointExtensions
             }
         }
 
+        foreach (McpServerConfig requestedServer in requested.Config.Mcp.Servers)
+        {
+            McpServerConfig? existingServer = existing.Config.Mcp.Servers.FirstOrDefault(item =>
+                string.Equals(item.Name, requestedServer.Name, StringComparison.OrdinalIgnoreCase));
+            MergeMcpSecrets(existingServer, requestedServer);
+        }
+
         return requested;
     }
 
@@ -591,11 +666,39 @@ internal static class ManagementEndpointExtensions
         Servers = config.Servers.Select(RedactMcpServer).ToList()
     };
 
+    internal static McpServerConfig MergeMcpSecrets(
+        McpServerConfig? existing,
+        McpServerConfig requested)
+    {
+        if (existing == null)
+        {
+            return requested;
+        }
+
+        foreach ((string key, string value) in requested.EnvironmentVariables.ToArray())
+        {
+            if (value.StartsWith("***", StringComparison.Ordinal)
+                && existing.EnvironmentVariables.TryGetValue(key, out string? secret))
+            {
+                requested.EnvironmentVariables[key] = secret;
+            }
+        }
+
+        return requested;
+    }
+
     private static McpServerConfig RedactMcpServer(McpServerConfig server) => new()
     {
         Name = server.Name,
         Url = server.Url,
         Type = server.Type,
+        Command = server.Command,
+        Arguments = [.. server.Arguments],
+        WorkingDirectory = server.WorkingDirectory,
+        EnvironmentVariables = server.EnvironmentVariables.ToDictionary(
+            item => item.Key,
+            item => string.IsNullOrEmpty(item.Value) ? string.Empty : "***",
+            StringComparer.OrdinalIgnoreCase),
         ProtocolVersion = server.ProtocolVersion
     };
 

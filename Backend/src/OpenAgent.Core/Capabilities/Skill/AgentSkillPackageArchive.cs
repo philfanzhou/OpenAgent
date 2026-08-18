@@ -112,11 +112,15 @@ public static class AgentSkillPackageArchive
 
         AgentSkillFrontmatter frontmatter = ReadFrontmatter(skillFiles[0].Content);
         int resourceCount = files.Count(file => HasPathSegment(file.RelativePath, "resources"));
+        int scriptCount = files.Count(file =>
+            HasPathSegment(file.RelativePath, "scripts")
+            && string.Equals(Path.GetExtension(file.RelativePath), ".py", StringComparison.OrdinalIgnoreCase));
         return new AgentSkillPackageMetadata(
             frontmatter.Name,
             frontmatter.Description,
             1,
-            resourceCount);
+            resourceCount,
+            scriptCount);
     }
 
     private static AgentSkillFrontmatter ReadFrontmatter(byte[] content)
@@ -195,6 +199,7 @@ public sealed record AgentSkillPackageMetadata(
     string Name,
     string Description,
     int SkillCount,
-    int ResourceCount);
+    int ResourceCount,
+    int ScriptCount);
 
 public sealed record SkillPackageFile(string RelativePath, byte[] Content);

@@ -10,5 +10,6 @@
 | File Assets | 独立用户文件、S3 兼容对象存储、预览与模型文件能力 | [file-assets.md](./file-assets.md) |
 | PostgreSQL | EF Core 会话与文件资产持久化 | [../database/](../database/) |
 | MCP Server | 外部工具协议（Model Context Protocol） | [mcp-server/](./mcp-server/) |
+| MCP 与 Skill 本地执行 | 官方 SDK 职责、stdio 与脚本沙盒安全边界 | [mcp-skill-execution/](./mcp-skill-execution/) |
 | RAG Service | 知识检索（Qdrant/RagFlow） | [rag-service/](./rag-service/) |
 | Redis（Engine 视角）| 可选注册中心、Pub/Sub 与短生命周期协调 | [redis-engine/](./redis-engine/) |
