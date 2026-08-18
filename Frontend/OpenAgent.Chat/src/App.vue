@@ -7,7 +7,7 @@ import ChatMessages from './components/ChatMessages.vue'
 import ChatSidebar from './components/ChatSidebar.vue'
 import MessageComposer from './components/MessageComposer.vue'
 import HealthCheckPanel from './components/HealthCheckPanel.vue'
-import { AUTO_AGENT_ID, type AgentConfigEntity, type AgentSummary, type AuthConfig, type ConnectionMode, type ConversationMessage, type ConversationRecord, type CurrentUserContext, type LlmProviderProfile, type LlmTestResult, type McpServerConfig, type McpTestResult, type MessageFile, type PendingFile, type RagConfig, type RagInstanceConfig, type RagTestResult, type SkillCatalogItem, type SkillInstanceConfig, type SkillsConfig } from './types'
+import { AUTO_AGENT_ID, type AgentConfigEntity, type AgentSummary, type AuthConfig, type ConnectionMode, type ConversationMessage, type ConversationRecord, type CurrentUserContext, type LlmProviderProfile, type LlmTestResult, type McpRuntimeStatus, type McpServerConfig, type McpTestResult, type MessageFile, type PendingFile, type RagConfig, type RagInstanceConfig, type RagTestResult, type SkillCatalogItem, type SkillInstanceConfig, type SkillSandboxStatus, type SkillsConfig } from './types'
 import { usePanelLayout } from './composables/usePanelLayout'
 
 const connectionMode = ref<ConnectionMode>(getConnectionMode())
@@ -43,8 +43,9 @@ const showAgentEditor = ref(false)
 const isNewAgent = ref(false)
 const showMcpEditor = ref(false)
 const showRagEditor = ref(false)
-const mcpDraft = ref<McpServerConfig>({ name: '', url: '', type: 'Http', protocolVersion: null })
+const mcpDraft = ref<McpServerConfig>({ name: '', url: '', type: 'Http', arguments: [], environmentVariables: {}, protocolVersion: null })
 const mcpServers = ref<McpServerConfig[]>([])
+const mcpRuntime = ref<McpRuntimeStatus | null>(null)
 const agentMcpIds = ref<string[]>([])
 const selectedMcpIndex = ref(-1)
 const mcpResult = ref<McpTestResult | null>(null)
@@ -52,6 +53,8 @@ const skillPackageInput = ref<HTMLInputElement | null>(null)
 const showSkillTextEditor = ref(false)
 const skillMarkdownDraft = ref('---\nname: my-skill\ndescription: Describe what this Skill does\n---\n\n# Instructions\n\n')
 const skillCatalog = ref<SkillCatalogItem[]>([])
+const skillRuntime = ref<SkillSandboxStatus | null>(null)
+const updatingSkillExecution = ref('')
 const skillDraft = ref<SkillsConfig>({ enabledSkills: [], instances: [] })
 const ragDraft = ref<RagInstanceConfig>({ id: '', name: '', enabled: true, type: 'ragflow', collectionName: 'default', apiEndpoint: '', apiKey: '' })
 const ragInstances = ref<RagInstanceConfig[]>([])
@@ -71,6 +74,19 @@ const { sidebarCollapsed, contextCollapsed, toggleSidebar, toggleContext, startS
 const currentMessages = computed(() => selectedConversation.value?.messages || [])
 const enabledSkillIds = computed(() => new Set(skillDraft.value.enabledSkills))
 const enabledRagIds = computed(() => new Set(config.value?.config.rag?.enabledRagInstanceIds || ragInstances.value.filter(item => item.enabled).map(item => item.id)))
+const mcpArgumentsText = computed({
+  get: () => (mcpDraft.value.arguments || []).join('\n'),
+  set: (value: string) => { mcpDraft.value.arguments = value.split('\n').map(item => item.trim()).filter(Boolean) },
+})
+const mcpEnvironmentText = computed({
+  get: () => Object.entries(mcpDraft.value.environmentVariables || {}).map(([key, value]) => `${key}=${value}`).join('\n'),
+  set: (value: string) => {
+    mcpDraft.value.environmentVariables = Object.fromEntries(value.split('\n').map(item => item.trim()).filter(Boolean).map(item => {
+      const separator = item.indexOf('=')
+      return separator < 1 ? [item, ''] : [item.slice(0, separator), item.slice(separator + 1)]
+    }))
+  },
+})
 
 function syncCapabilityDraftsToAgent(): void {
   if (!config.value) return
@@ -245,7 +261,9 @@ async function loadLlmProfiles(): Promise<void> {
 
 async function loadMcpProfiles(): Promise<void> {
   try {
-    mcpServers.value = await api.listMcpProfiles()
+    const [profiles, runtime] = await Promise.all([api.listMcpProfiles(), api.getMcpRuntime()])
+    mcpServers.value = profiles
+    mcpRuntime.value = runtime
   } catch (error) {
     notifyError(error)
   }
@@ -253,7 +271,9 @@ async function loadMcpProfiles(): Promise<void> {
 
 async function loadSkillCatalog(): Promise<void> {
   try {
-    skillCatalog.value = await api.listSkills()
+    const [skills, runtime] = await Promise.all([api.listSkills(), api.getSkillRuntime()])
+    skillCatalog.value = skills
+    skillRuntime.value = runtime
   } catch (error) {
     notifyError(error)
   }
@@ -695,14 +715,14 @@ async function loadConfig(agentId = selectedAgentId.value): Promise<void> {
 }
 
 function createDefaultMcp(): McpServerConfig {
-  return { name: '', url: '', type: 'Http', protocolVersion: null }
+  return { name: '', url: '', type: 'Http', arguments: [], environmentVariables: {}, protocolVersion: null }
 }
 
 function selectMcp(index: number): void {
   const server = mcpServers.value[index]
   if (!server) return
   selectedMcpIndex.value = index
-  mcpDraft.value = { ...server }
+  mcpDraft.value = { ...server, arguments: [...(server.arguments || [])], environmentVariables: { ...(server.environmentVariables || {}) } }
 }
 
 function newMcp(): void {
@@ -794,6 +814,19 @@ async function deleteSkillCatalog(skill: SkillCatalogItem): Promise<void> {
     ElMessage.success('Skill 已从目录删除')
   } catch (error) {
     if (error !== 'cancel' && error !== 'close') notifyError(error)
+  }
+}
+
+async function setSkillScriptExecution(skill: SkillCatalogItem, enabled: boolean): Promise<void> {
+  updatingSkillExecution.value = skill.skillId
+  try {
+    const updated = await api.setSkillScriptExecution(skill.skillId, enabled)
+    skillCatalog.value = skillCatalog.value.map(item => item.skillId === skill.skillId ? updated : item)
+    ElMessage.success(enabled ? 'Skill 脚本执行已启用' : 'Skill 脚本执行已停用')
+  } catch (error) {
+    notifyError(error)
+  } finally {
+    updatingSkillExecution.value = ''
   }
 }
 
@@ -964,10 +997,6 @@ async function saveMcp(): Promise<void> {
     notifyError(new Error('请输入 MCP 名称'))
     return
   }
-  if (!mcpDraft.value.url.trim()) {
-    notifyError(new Error('请输入 MCP URL'))
-    return
-  }
   const duplicate = mcpServers.value.findIndex((item, index) =>
     index !== selectedMcpIndex.value && item.name.trim().toLowerCase() === name.toLowerCase())
   if (duplicate >= 0) {
@@ -978,7 +1007,8 @@ async function saveMcp(): Promise<void> {
   const saved: McpServerConfig = {
     ...mcpDraft.value,
     name,
-    url: mcpDraft.value.url.trim(),
+    arguments: [...(mcpDraft.value.arguments || [])],
+    environmentVariables: { ...(mcpDraft.value.environmentVariables || {}) },
   }
   try {
     const persisted = await api.saveMcpProfile(name, saved)
@@ -1092,13 +1122,15 @@ onMounted(() => {
           </section>
         </el-tab-pane>
         <el-tab-pane label="MCP 配置" name="mcp">
-          <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">MCP CATALOG</span><h3>MCP 配置</h3><p>独立维护远程 MCP Server；Agent 页面只选择已注册的 Server，不在 Agent 中复制 Endpoint。</p></div><div class="section-actions"><el-button @click="loadMcpProfiles">刷新</el-button><el-button type="primary" plain @click="newMcp">新增 MCP</el-button></div></div>
-            <el-table :data="mcpServers" class="capability-table" empty-text="还没有 MCP 配置"><el-table-column label="名称" min-width="160"><template #default="scope"><strong>{{ scope.row.name }}</strong></template></el-table-column><el-table-column label="类型" width="120"><template #default="scope"><el-tag size="small" round>{{ scope.row.type }}</el-tag></template></el-table-column><el-table-column label="地址" min-width="240" show-overflow-tooltip><template #default="scope">{{ scope.row.url || '未配置' }}</template></el-table-column><el-table-column label="操作" width="190" fixed="right"><template #default="scope"><el-button link type="primary" @click="selectMcp(scope.$index); showMcpEditor = true">编辑</el-button><el-button link @click="selectMcp(scope.$index); testMcp(); showMcpEditor = true">测试</el-button><el-button link type="danger" @click="removeMcp(scope.$index)">删除</el-button></template></el-table-column></el-table>
+          <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">MCP CATALOG</span><h3>MCP 配置</h3><p>独立维护 MCP Server；Agent 页面只选择已注册的 Server，不在 Agent 中复制 Endpoint、命令和密钥。</p></div><div class="section-actions"><el-button @click="loadMcpProfiles">刷新</el-button><el-button type="primary" plain @click="newMcp">新增 MCP</el-button></div></div>
+            <el-alert v-if="mcpRuntime" :type="mcpRuntime.stdioEnabled ? 'warning' : 'info'" :closable="false" show-icon><template #title>Stdio {{ mcpRuntime.stdioEnabled ? '已启用（可信宿主进程）' : '已停用' }}</template><p v-if="mcpRuntime.stdioEnabled">仅允许命令：{{ mcpRuntime.allowedCommands.join('、') || '未配置' }}。Stdio 会在 Engine 宿主启动进程，不等同于脚本隔离沙盒。</p><p v-else>生产配置默认禁止启动本地 MCP 进程；HTTP / SSE MCP 不受此开关影响。</p></el-alert>
+            <el-table :data="mcpServers" class="capability-table" empty-text="还没有 MCP 配置"><el-table-column label="名称" min-width="160"><template #default="scope"><strong>{{ scope.row.name }}</strong></template></el-table-column><el-table-column label="类型" width="120"><template #default="scope"><el-tag size="small" round>{{ scope.row.type }}</el-tag></template></el-table-column><el-table-column label="地址/命令" min-width="240" show-overflow-tooltip><template #default="scope">{{ scope.row.url || scope.row.command || '未配置' }}</template></el-table-column><el-table-column label="操作" width="190" fixed="right"><template #default="scope"><el-button link type="primary" @click="selectMcp(scope.$index); showMcpEditor = true">编辑</el-button><el-button link @click="selectMcp(scope.$index); testMcp(); showMcpEditor = true">测试</el-button><el-button link type="danger" @click="removeMcp(scope.$index)">删除</el-button></template></el-table-column></el-table>
           </section>
         </el-tab-pane>
         <el-tab-pane label="Skill 配置" name="skill">
           <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">SKILL CATALOG</span><h3>Skill 配置</h3><p>独立维护官方 Skill 目录；Agent 页面只选择 Skill ID，绑定关系保存到 Agent 配置。</p></div><div class="section-actions"><input ref="skillPackageInput" type="file" hidden accept=".zip,.md" @change="uploadSkillPackage" /><el-button @click="loadSkillCatalog">刷新</el-button><el-button :loading="uploadingSkill" type="primary" plain @click="chooseSkillPackage">上传 ZIP / MD</el-button><el-button type="primary" plain @click="openSkillTextEditor">手动填写</el-button></div></div>
-            <el-table :data="skillCatalog" class="capability-table" empty-text="还没有 Skill"><el-table-column label="名称" min-width="180"><template #default="scope"><strong>{{ scope.row.name }}</strong><small class="table-subtext">{{ scope.row.skillId }}</small></template></el-table-column><el-table-column label="说明" min-width="240" show-overflow-tooltip><template #default="scope">{{ scope.row.description }}</template></el-table-column><el-table-column label="内容" width="120"><template #default="scope">{{ scope.row.resourceCount || 0 }} 资源</template></el-table-column><el-table-column label="来源" width="150"><template #default="scope">{{ scope.row.packageFileName }}</template></el-table-column><el-table-column label="操作" width="100" fixed="right"><template #default="scope"><el-button link type="danger" @click="deleteSkillCatalog(scope.row)">删除</el-button></template></el-table-column></el-table>
+            <el-alert v-if="skillRuntime" :type="skillRuntime.enabled ? 'success' : 'info'" :closable="false" show-icon><template #title>本地脚本沙盒{{ skillRuntime.enabled ? '可用' : '未启用' }}</template><p v-if="skillRuntime.enabled">隔离方式：{{ skillRuntime.isolation }}；支持 {{ skillRuntime.supportedExtensions.join('、') }}；单次超时 {{ skillRuntime.timeoutSeconds }} 秒。每个 Skill 仍需单独授权。</p><p v-else>Skill 指令和资源仍可使用；脚本工具不会暴露给模型。启用脚本前必须配置独立隔离服务。</p></el-alert>
+            <el-table :data="skillCatalog" class="capability-table" empty-text="还没有 Skill"><el-table-column label="名称" min-width="180"><template #default="scope"><strong>{{ scope.row.name }}</strong><small class="table-subtext">{{ scope.row.skillId }}</small></template></el-table-column><el-table-column label="说明" min-width="240" show-overflow-tooltip><template #default="scope">{{ scope.row.description }}</template></el-table-column><el-table-column label="内容" width="120"><template #default="scope">{{ scope.row.resourceCount || 0 }} 资源 / {{ scope.row.scriptCount || 0 }} 脚本</template></el-table-column><el-table-column label="脚本执行" width="140"><template #default="scope"><el-switch :model-value="scope.row.allowScriptExecution" :loading="updatingSkillExecution === scope.row.skillId" :disabled="!skillRuntime?.enabled || !scope.row.scriptCount" inline-prompt active-text="允许" inactive-text="禁止" @change="setSkillScriptExecution(scope.row, Boolean($event))" /></template></el-table-column><el-table-column label="来源" width="150"><template #default="scope">{{ scope.row.packageFileName }}</template></el-table-column><el-table-column label="操作" width="100" fixed="right"><template #default="scope"><el-button link type="danger" @click="deleteSkillCatalog(scope.row)">删除</el-button></template></el-table-column></el-table>
           </section>
         </el-tab-pane>
         <el-tab-pane label="Agent 配置" name="agent">
@@ -1145,7 +1177,7 @@ onMounted(() => {
       <section class="agent-editor-section">
         <div class="agent-editor-section-heading"><div><span class="eyebrow">CAPABILITY BINDINGS</span><h4>能力绑定</h4><p>当前 Agent 的 MCP、Skill、RAG 以卡片展示；勾选即可启用或停用 Skill 与 RAG。</p></div><span class="editor-section-index">03</span></div>
         <div class="binding-groups">
-          <article class="binding-group"><div class="binding-group-heading"><div><strong>MCP</strong><small>从独立 MCP 配置中选择，绑定关系保存到 Agent 配置</small></div><el-button link type="primary" @click="showAgentEditor = false; openSettings('mcp')">管理 MCP 配置</el-button></div><div v-if="mcpServers.length" class="binding-list"><label v-for="server in mcpServers" :key="server.name" class="binding-item binding-check-item"><span class="binding-icon mcp-avatar">M</span><div><strong>{{ server.name }}</strong><small>{{ server.type }} · {{ server.url }}</small></div><el-checkbox :model-value="agentMcpIds.includes(server.name)" @change="toggleMcpBinding(server, Boolean($event))" /></label></div><div v-else class="binding-empty">还没有 MCP 配置，请先在 MCP 配置页面新增。</div></article>
+          <article class="binding-group"><div class="binding-group-heading"><div><strong>MCP</strong><small>从独立 MCP 配置中选择，绑定关系保存到 Agent 配置</small></div><el-button link type="primary" @click="showAgentEditor = false; openSettings('mcp')">管理 MCP 配置</el-button></div><div v-if="mcpServers.length" class="binding-list"><label v-for="server in mcpServers" :key="server.name" class="binding-item binding-check-item"><span class="binding-icon mcp-avatar">M</span><div><strong>{{ server.name }}</strong><small>{{ server.type }} · {{ server.url || server.command || 'Stdio' }}</small></div><el-checkbox :model-value="agentMcpIds.includes(server.name)" @change="toggleMcpBinding(server, Boolean($event))" /></label></div><div v-else class="binding-empty">还没有 MCP 配置，请先在 MCP 配置页面新增。</div></article>
           <article class="binding-group"><div class="binding-group-heading"><div><strong>Skill</strong><small>从独立 Skill 目录中选择，绑定关系保存到 Agent 配置</small></div><el-button link type="primary" @click="showAgentEditor = false; openSettings('skill')">管理 Skill 配置</el-button></div><div v-if="skillCatalog.length" class="binding-list"><label v-for="skill in skillCatalog" :key="skill.skillId" class="binding-item binding-check-item"><span class="binding-icon skill-avatar">S</span><div><strong>{{ skill.name || '未命名 Skill' }}</strong><small>{{ skill.skillId }} · {{ skill.packageFileName?.toLowerCase().endsWith('.md') ? '单文件 SKILL.md' : 'Skill 目录' }}</small></div><el-checkbox :model-value="isSkillEnabled(skill.skillId)" @change="toggleSkillBinding(skill, Boolean($event))" /></label></div><div v-else class="binding-empty">还没有 Skill 配置，请先在 Skill 配置页面新增。</div></article>
           <article class="binding-group"><div class="binding-group-heading"><div><strong>RAG</strong><small>知识检索数据源</small></div><el-button link type="primary" @click="showAgentEditor = false; openSettings('rag')">管理 RAG</el-button></div><div v-if="ragInstances.length" class="binding-list"><label v-for="rag in ragInstances" :key="rag.id" class="binding-item binding-check-item"><span class="binding-icon rag-avatar">R</span><div><strong>{{ rag.name || rag.id }}</strong><small>{{ rag.type }} · {{ rag.collectionName || '默认数据集' }}</small></div><el-checkbox :model-value="isRagEnabled(rag.id)" @change="toggleRagBinding(rag, Boolean($event))" /></label></div><div v-else class="binding-empty">还没有 RAG，去 RAG 表格中新增。</div></article>
         </div>
@@ -1162,11 +1194,12 @@ onMounted(() => {
   <el-dialog v-model="showMcpEditor" class="editor-dialog" modal-class="editor-overlay" title="编辑 MCP" width="min(650px, calc(100vw - 32px))" append-to-body destroy-on-close>
     <el-form label-position="top">
       <el-form-item label="名称"><el-input v-model="mcpDraft.name" :disabled="selectedMcpIndex >= 0" placeholder="例如 local-tools" /><small class="form-help">名称同时作为 MCP 配置 ID；编辑时不可修改，避免已有 Agent 绑定失效。</small></el-form-item>
-      <el-form-item label="传输类型"><el-select v-model="mcpDraft.type"><el-option label="Streamable HTTP" value="Http" /><el-option label="Legacy SSE" value="SSE" /></el-select></el-form-item>
+      <el-form-item label="传输类型"><el-select v-model="mcpDraft.type"><el-option label="Streamable HTTP" value="Http" /><el-option label="Legacy SSE" value="SSE" /><el-option label="Stdio（服务端执行）" value="Stdio" /></el-select></el-form-item>
       <el-form-item label="MCP 协议版本"><el-select v-model="mcpDraft.protocolVersion" clearable filterable allow-create placeholder="自动协商（推荐）"><el-option label="2026-07-28" value="2026-07-28" /><el-option label="2025-11-25" value="2025-11-25" /><el-option label="2025-06-18" value="2025-06-18" /><el-option label="2025-03-26" value="2025-03-26" /><el-option label="2024-11-05" value="2024-11-05" /></el-select><small class="form-help">留空由官方 SDK 自动协商；指定版本作为最低版本，服务器降级到更早版本时连接会失败。</small></el-form-item>
-      <el-form-item label="URL"><el-input v-model="mcpDraft.url" placeholder="https://mcp.example.com/mcp" /></el-form-item>
+      <el-form-item v-if="mcpDraft.type !== 'Stdio'" label="URL"><el-input v-model="mcpDraft.url" placeholder="https://mcp.example.com/mcp" /></el-form-item>
+      <template v-else><el-form-item label="Command"><el-input v-model="mcpDraft.command" placeholder="例如 node" /></el-form-item><el-form-item label="Arguments（每行一个）"><el-input v-model="mcpArgumentsText" type="textarea" :rows="3" /></el-form-item><el-form-item label="Working Directory"><el-input v-model="mcpDraft.workingDirectory" /></el-form-item><el-form-item label="环境变量（KEY=VALUE，每行一个）"><el-input v-model="mcpEnvironmentText" type="textarea" :rows="3" /></el-form-item></template>
       <el-alert v-if="mcpResult" :title="`测试结果：${mcpResult.success ? '连接成功' : '连接失败'} · 权限${mcpResult.authorized ? '通过' : '拒绝'}`" :description="mcpResult.error || `协商版本 ${mcpResult.negotiatedProtocolVersion || '未知'} · ${mcpResult.latencyMs}ms · ${mcpResult.toolCount} 个工具`" :type="mcpResult.success ? 'success' : 'warning'" :closable="false" />
-    </el-form><template #footer><el-button @click="showMcpEditor = false">取消</el-button><el-button :loading="testingMcp" @click="testMcp">测试连接、版本与权限</el-button><el-button type="primary" :disabled="!mcpDraft.name || !mcpDraft.url" @click="saveMcp">保存 MCP 配置</el-button></template>
+    </el-form><template #footer><el-button @click="showMcpEditor = false">取消</el-button><el-button :loading="testingMcp" @click="testMcp">测试连接、版本与权限</el-button><el-button type="primary" :disabled="!mcpDraft.name" @click="saveMcp">保存 MCP 配置</el-button></template>
   </el-dialog>
 
   <el-dialog v-model="showSkillTextEditor" class="editor-dialog" modal-class="editor-overlay" title="手动填写 Markdown Skill" width="min(760px, calc(100vw - 32px))" append-to-body destroy-on-close>

@@ -1,7 +1,9 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using OpenAgent.Contracts.Skills;
 using OpenAgent.Core.Capabilities.Mcp;
+using OpenAgent.Core.Capabilities.Skill;
 using OpenAgent.Core.Files;
 using OpenAgent.Core.Security;
 
@@ -23,7 +25,18 @@ public static class CoreServiceExtensions
         });
         services.AddHttpContextAccessor();
         services.Configure<McpExecutionOptions>(configuration.GetSection("Mcp"));
+        services.Configure<SkillScriptSandboxOptions>(
+            configuration.GetSection(SkillScriptSandboxOptions.SectionName));
         services.Configure<AgentAuthorizationOptions>(configuration.GetSection("Authorization"));
+        services.TryAddSingleton<ISkillScriptSandbox>(serviceProvider =>
+        {
+            SkillScriptSandboxOptions options = serviceProvider
+                .GetRequiredService<Microsoft.Extensions.Options.IOptions<SkillScriptSandboxOptions>>()
+                .Value;
+            return options.Enabled
+                ? ActivatorUtilities.CreateInstance<HttpSkillScriptSandbox>(serviceProvider)
+                : new DisabledSkillScriptSandbox();
+        });
 
         return services
             .AddConversationServices(configuration)

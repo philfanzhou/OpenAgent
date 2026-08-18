@@ -14,6 +14,7 @@
     <ProjectReference Include="..\..\src\OpenAgent.Engine.Host\OpenAgent.Engine.Host.csproj" />
     <ProjectReference Include="..\..\src\OpenAgent.Hosting\OpenAgent.Hosting.csproj" />
     <ProjectReference Include="..\..\src\OpenAgent.Router\OpenAgent.Router.csproj" />
+    <ProjectReference Include="..\..\src\OpenAgent.SkillSandbox.Host\OpenAgent.SkillSandbox.Host.csproj" />
   </ItemGroup>
 
 </Project>
