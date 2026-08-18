@@ -33,13 +33,11 @@ internal static class ConversationEndpointExtensions
         [FromQuery] int take = 20,
         CancellationToken cancellationToken = default)
     {
-        AgentRequestFeature feature = context.GetAgentRequest();
         IReadOnlyList<ConversationRecord> conversations = await queryService.ListConversationsAsync(
-            feature.User.TenantId ?? string.Empty,
+            AgentEndpointRequestMapper.RequireTenant(context),
             skip,
             take,
-            cancellationToken,
-            feature.User.UserId).ConfigureAwait(false);
+            cancellationToken).ConfigureAwait(false);
         return Results.Ok(conversations);
     }
 
@@ -56,14 +54,12 @@ internal static class ConversationEndpointExtensions
             return Results.BadRequest("keyword is required");
         }
 
-        AgentRequestFeature feature = context.GetAgentRequest();
         IReadOnlyList<ConversationRecord> results = await queryService.SearchConversationsAsync(
-            feature.User.TenantId ?? string.Empty,
+            AgentEndpointRequestMapper.RequireTenant(context),
             keyword,
             skip,
             take,
-            cancellationToken,
-            feature.User.UserId).ConfigureAwait(false);
+            cancellationToken).ConfigureAwait(false);
         return Results.Ok(results);
     }
 

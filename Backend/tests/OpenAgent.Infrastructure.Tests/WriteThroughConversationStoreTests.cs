@@ -129,10 +129,10 @@ public sealed class WriteThroughConversationStoreTests
         public Task<bool> UpdateStatusAsync(string tenantId, string conversationId, ConversationStatus status, int expectedVersion, CancellationToken cancellationToken = default) =>
             Task.FromResult(true);
 
-        public Task<IReadOnlyList<ConversationRecord>> ListConversationsAsync(string tenantId, int skip, int take, CancellationToken cancellationToken = default, string? userId = null) =>
+        public Task<IReadOnlyList<ConversationRecord>> ListConversationsAsync(string tenantId, int skip, int take, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<ConversationRecord>>([]);
 
-        public Task<IReadOnlyList<ConversationRecord>> SearchConversationsAsync(string tenantId, string keyword, int skip, int take, CancellationToken cancellationToken = default, string? userId = null) =>
+        public Task<IReadOnlyList<ConversationRecord>> SearchConversationsAsync(string tenantId, string keyword, int skip, int take, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<ConversationRecord>>([]);
 
         public Task<bool> SoftDeleteAsync(string tenantId, string conversationId, CancellationToken cancellationToken = default) =>

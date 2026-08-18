@@ -31,7 +31,7 @@ public class AuthenticationEndpointTests
             ?? throw new InvalidOperationException("Authentication config was empty.");
         HttpResponseMessage login = await client.PostAsJsonAsync(
             "/api/v1/auth/password/token",
-            new { username = "developer", password = "not-verified" });
+            new { username = "admin", password = "admin" });
 
         Assert.Equal("Basic", config.RootElement.GetProperty("mode").GetString());
         Assert.True(config.RootElement.GetProperty("development").GetBoolean());

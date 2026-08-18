@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Files;
+using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Capabilities;
 using OpenAgent.Core.Capabilities.Mcp;
 using OpenAgent.Core.Capabilities.Rag;
@@ -21,6 +22,7 @@ public class CapabilityServiceRegistrationTests
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton<IAgentConfigProvider, StaticConfigProvider>();
+        services.AddSingleton<ICurrentUserContext, TestUserContext>();
         services.AddSingleton<IConversationStore, InMemoryConversationStore>();
         services.AddSingleton<IFileAssetRepository, EmptyFileAssetRepository>();
         IConfiguration configuration = new ConfigurationBuilder().Build();
@@ -68,5 +70,14 @@ public class CapabilityServiceRegistrationTests
             string conversationId,
             string fileId,
             CancellationToken cancellationToken) => Task.FromResult(false);
+    }
+
+    private sealed class TestUserContext : ICurrentUserContext
+    {
+        public string UserId => "test";
+        public string? TenantId => "test-tenant";
+        public bool IsAuthenticated => true;
+        public IReadOnlyList<string> Roles => [];
+        public bool IsInRole(string role) => false;
     }
 }
