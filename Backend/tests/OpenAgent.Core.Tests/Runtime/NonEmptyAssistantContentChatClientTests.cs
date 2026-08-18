@@ -22,7 +22,7 @@ public sealed class NonEmptyAssistantContentChatClientTests
 
         ChatMessage forwarded = Assert.Single(inner.Messages!);
         Assert.NotSame(original, forwarded);
-        Assert.Equal("[tool call]", forwarded.Text);
+        Assert.Equal(string.Empty, forwarded.Text);
         Assert.DoesNotContain(
             forwarded.Contents.OfType<TextContent>(),
             content => string.IsNullOrWhiteSpace(content.Text));

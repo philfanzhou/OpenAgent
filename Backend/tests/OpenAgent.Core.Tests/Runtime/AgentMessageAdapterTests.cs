@@ -73,5 +73,31 @@ public sealed class AgentMessageAdapterTests
             restored!.Contents.OfType<FunctionCallContent>());
         Assert.Equal("call-1", call.CallId);
         Assert.Equal("search", call.Name);
+        Assert.Empty(restored.Contents.OfType<TextContent>());
+    }
+
+    [Fact]
+    public void FromStored_ReasoningToolCall_RestoresReasoningWithoutEmptyText()
+    {
+        ConversationMessage stored = new()
+        {
+            MessageId = "message-1",
+            Sequence = 1,
+            Role = "assistant",
+            Content = string.Empty,
+            ToolCallId = "call-1",
+            ToolName = "load_skill",
+            Metadata = new Dictionary<string, string>
+            {
+                ["Reasoning"] = "Inspect the skill first."
+            }
+        };
+
+        ChatMessage? restored = AgentMessageAdapter.FromStored(stored);
+
+        Assert.Contains(
+            restored!.Contents,
+            content => content is TextReasoningContent { Text: "Inspect the skill first." });
+        Assert.Empty(restored.Contents.OfType<TextContent>());
     }
 }

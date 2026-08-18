@@ -4,9 +4,8 @@ using Microsoft.Extensions.AI;
 namespace OpenAgent.Core.Runtime.Agent;
 
 /// <summary>
-/// Adds the smallest provider-compatibility shim needed for OpenAI Chat Completions:
-/// the OpenAI adapter emits an empty text part when an assistant message contains only
-/// reasoning and tool calls, while some compatible endpoints reject that payload.
+/// Removes empty text parts before OpenAI Chat Completions serializes assistant tool calls.
+/// Tool-call-only messages are intentionally left without a fabricated text placeholder.
 /// </summary>
 internal sealed class NonEmptyAssistantContentChatClient(IChatClient inner) : DelegatingChatClient(inner)
 {
@@ -45,11 +44,6 @@ internal sealed class NonEmptyAssistantContentChatClient(IChatClient inner) : De
                 .Where(content => content is not TextContent text
                     || !string.IsNullOrWhiteSpace(text.Text))
                 .ToList();
-            if (!sanitized.Contents.OfType<TextContent>().Any())
-            {
-                sanitized.Contents.Add(new TextContent("[tool call]"));
-            }
-
             yield return sanitized;
         }
     }
