@@ -4,6 +4,7 @@ using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Files;
 using OpenAgent.Core.Capabilities;
+using OpenAgent.Core.Capabilities.Mcp;
 using OpenAgent.Core.Capabilities.Rag;
 using OpenAgent.Core.Capabilities.Skill;
 using OpenAgent.Core.Exten;
@@ -33,7 +34,9 @@ public class CapabilityServiceRegistrationTests
             .GetRequiredService<IEnumerable<ICapabilitySource>>();
 
         Assert.Contains(sources, source => source is RagCapabilitySource);
-        Assert.Contains(sources, source => source is SkillCapabilitySource);
+        Assert.DoesNotContain(sources, source => source.GetType().Name.Contains("Skill", StringComparison.Ordinal));
+        Assert.NotNull(scope.ServiceProvider.GetRequiredService<AgentSkillsProviderFactory>());
+        Assert.NotNull(scope.ServiceProvider.GetRequiredService<McpToolFactory>());
     }
 
     private sealed class StaticConfigProvider : IAgentConfigProvider

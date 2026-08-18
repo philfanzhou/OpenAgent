@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using OpenAgent.Core.Capabilities.Mcp;
 using OpenAgent.Core.Files;
 using OpenAgent.Core.Security;
@@ -12,6 +13,7 @@ public static class CoreServiceExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
+        services.TryAddSingleton<IConfiguration>(configuration);
         services.ConfigureHttpClientDefaults(builder =>
         {
             builder.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler

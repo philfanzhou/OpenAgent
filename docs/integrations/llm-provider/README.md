@@ -23,7 +23,7 @@
 
 `AgentFactory` 创建 AIAgent、`AgentExecutor` 驱动执行；读取 `AgentConfig.Llm`，调用 `ILlmRegistry.ResolveConfig` 合并 Profile 与 Agent 局部覆盖，再传给 `AgentChatClientFactory.Create`。
 
-必需字段为 `Format`、`ModelId`；三个云 Provider 都需要 API key，Endpoint 为空时 OpenAI 使用官方默认地址，Anthropic 使用 SDK 默认地址。密钥不得进入日志。
+解析后的 `LlmConfig` 必须有 `Format`、`ModelId`；配置页保存的 `LlmProviderProfile` 不再要求默认 Model ID，Agent 选择 Provider 后填写具体 Model ID。旧 Profile 中的 `ModelId` 只作为历史配置的兼容 fallback。三个云 Provider 都需要 API key，Endpoint 为空时 OpenAI 使用官方默认地址，Anthropic 使用 SDK 默认地址。密钥不得进入日志。
 
 ## 格式映射
 
