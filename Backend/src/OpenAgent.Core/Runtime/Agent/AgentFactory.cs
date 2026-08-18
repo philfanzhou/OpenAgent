@@ -72,7 +72,7 @@ internal sealed class AgentFactory
                 user,
                 cancellationToken).ConfigureAwait(false);
 
-            IChatClient chatClient = new FunctionInvokingChatClient(new NonEmptyMessageChatClient(modelClient))
+            IChatClient chatClient = new FunctionInvokingChatClient(modelClient)
             {
                 AllowConcurrentInvocation = false,
                 IncludeDetailedErrors = false,
