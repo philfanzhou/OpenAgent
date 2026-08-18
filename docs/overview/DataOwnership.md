@@ -13,10 +13,12 @@
 
 | 数据 | 来源 | 用途 |
 |------|------|------|
-| AgentConfig | Agent.Matrix (通过 IAgentConfigProvider) | 获取 Agent 配置（引擎类型、技能列表、RAG 配置等） |
-| LlmProviderProfile | ILlmRegistry (内存注册) | 获取 LLM 连接配置 |
+| AgentConfig | Agent.Matrix (通过 IAgentConfigProvider) | 获取 Agent 绑定关系（MCP Server ID、官方 Skill ID、LLM Provider ID + Model ID、RAG 配置等） |
+| LlmProviderProfile | Redis `llm:published:index` + ILlmRegistry (内存注册) | 获取共享 LLM 协议、Endpoint、密钥和默认参数；具体 Model ID 由 Agent 指定 |
+| McpServerConfig | Redis `mcp:published:index` + IMcpRegistry (内存注册) | 获取独立 MCP Server 连接配置；不复制到 Agent |
 | RagInstanceConfig | IRagRegistry (内存注册) | 获取 RAG 实例配置 |
-| SkillDescriptor | SkillRegistry (运行时发现) | 获取技能元数据 |
+| Agent Skill 文件目录 | S3 兼容对象存储 | ZIP/MD 上传后按解压目录写入文件对象；运行时 materialize 到请求级临时目录并由 MAF `AgentSkillsProvider` 读取 |
+| Skill 目录元数据 | Redis `skill:published:index` / `skill:registry:{skillId}` | 提供可绑定的 Skill 列表；不表示某个 Agent 已绑定 |
 
 ## 持久化规则
 

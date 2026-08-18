@@ -20,7 +20,10 @@ import type {
   RagConfig,
   RagInstanceConfig,
   RagTestResult,
-  SkillsConfig,
+  SkillPackageInstallResponse,
+  SkillCatalogItem,
+  SkillInstanceConfig,
+  SkillTestResult,
   StreamEvent,
 } from './types'
 
@@ -317,36 +320,44 @@ export const api = {
     })
   },
 
-  saveMcp(id: string, agentId: string, server: McpServerConfig): Promise<McpServerConfig> {
-    return request<McpServerConfig>(`/api/v1/admin/mcp/${encodeURIComponent(id)}?agentId=${encodeURIComponent(agentId)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(server),
+  async uploadSkillPackage(agentId: string, file: File): Promise<SkillPackageInstallResponse> {
+    const form = new FormData()
+    form.set('file', file, file.name)
+    const response = await fetch(`${requireBaseUrl()}/api/v1/admin/skills/${encodeURIComponent(agentId)}/packages`, {
+      method: 'POST',
+      headers: headers(),
+      body: form,
     })
+    if (!response.ok) throw await readError(response)
+    return response.json() as Promise<SkillPackageInstallResponse>
   },
 
-  getMcpConfig(agentId: string): Promise<{ servers: McpServerConfig[] }> {
-    return request<{ servers: McpServerConfig[] }>(`/api/v1/admin/mcp?agentId=${encodeURIComponent(agentId)}`)
-  },
-
-  deleteMcp(id: string, agentId: string): Promise<void> {
-    return request<void>(`/api/v1/admin/mcp/${encodeURIComponent(id)}?agentId=${encodeURIComponent(agentId)}`, { method: 'DELETE' })
-  },
-
-  saveSkills(agentId: string, skills: AgentConfigEntity['config']['skills']): Promise<AgentConfigEntity['config']['skills']> {
-    return request<AgentConfigEntity['config']['skills']>(`/api/v1/admin/skills/${encodeURIComponent(agentId)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(skills),
+  async uploadSkillCatalog(file: File): Promise<{ skill: SkillInstanceConfig; storage: string }> {
+    const form = new FormData()
+    form.set('file', file, file.name)
+    const response = await fetch(`${requireBaseUrl()}/api/v1/admin/skills/packages`, {
+      method: 'POST',
+      headers: headers(),
+      body: form,
     })
+    if (!response.ok) throw await readError(response)
+    return response.json() as Promise<{ skill: SkillInstanceConfig; storage: string }>
   },
 
-  getSkillsConfig(agentId: string): Promise<SkillsConfig> {
-    return request<SkillsConfig>(`/api/v1/admin/skills?agentId=${encodeURIComponent(agentId)}`)
+  deleteSkillCatalog(skillId: string): Promise<void> {
+    return request<void>(`/api/v1/admin/skills/${encodeURIComponent(skillId)}`, { method: 'DELETE' })
   },
 
-  testSkills(skills: AgentConfigEntity['config']['skills']): Promise<Record<string, unknown>> {
-    return request<Record<string, unknown>>('/api/v1/admin/skills/test', {
+  listSkills(): Promise<SkillCatalogItem[]> {
+    return request<SkillCatalogItem[]>('/api/v1/admin/skills')
+  },
+
+  deleteSkillPackage(agentId: string, skillId: string): Promise<void> {
+    return request<void>(`/api/v1/admin/skills/${encodeURIComponent(agentId)}/${encodeURIComponent(skillId)}`, { method: 'DELETE' })
+  },
+
+  testSkills(skills: AgentConfigEntity['config']['skills']): Promise<SkillTestResult> {
+    return request<SkillTestResult>('/api/v1/admin/skills/test', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(skills),
@@ -359,6 +370,22 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ agentId, server, action: 'discover' }),
     })
+  },
+
+  listMcpProfiles(): Promise<McpServerConfig[]> {
+    return request<McpServerConfig[]>('/api/v1/admin/mcp')
+  },
+
+  saveMcpProfile(id: string, server: McpServerConfig): Promise<McpServerConfig> {
+    return request<McpServerConfig>(`/api/v1/admin/mcp/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(server),
+    })
+  },
+
+  deleteMcpProfile(id: string): Promise<void> {
+    return request<void>(`/api/v1/admin/mcp/${encodeURIComponent(id)}`, { method: 'DELETE' })
   },
 
   getRagConfig(agentId: string): Promise<RagConfig> {

@@ -46,7 +46,9 @@ internal class LlmRegistry : ILlmRegistry
         {
             Provider = llmConfig.Provider,
             Format = profile.Format,
-            ModelId = string.IsNullOrWhiteSpace(llmConfig.ModelId) ? profile.ModelId : llmConfig.ModelId,
+            // AgentConfig.Llm.ModelId is the new source of truth. Profile.ModelId
+            // remains only as a backwards-compatible fallback for old Redis data.
+            ModelId = string.IsNullOrWhiteSpace(llmConfig.ModelId) ? profile.ModelId ?? string.Empty : llmConfig.ModelId,
             ApiKey = profile.ApiKey,
             Endpoint = profile.Endpoint,
             Temperature = llmConfig.Temperature == 0.7 ? profile.Temperature : llmConfig.Temperature
