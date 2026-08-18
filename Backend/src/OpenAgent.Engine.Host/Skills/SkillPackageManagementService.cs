@@ -213,6 +213,32 @@ internal sealed class SkillPackageManagementService(
         return true;
     }
 
+    internal async Task<string?> ReadMarkdownAsync(
+        string skillId,
+        CancellationToken cancellationToken)
+    {
+        if (skillCatalog == null) return null;
+        SkillInstanceConfig? skill = await skillCatalog.GetAsync(skillId, cancellationToken).ConfigureAwait(false);
+        if (skill == null || string.IsNullOrWhiteSpace(skill.ObjectKey)) return null;
+
+        if (string.Equals(skill.PackageFormat, "directory", StringComparison.OrdinalIgnoreCase))
+        {
+            byte[] indexContent = await objectStore.ReadAsync(skill.ObjectKey, cancellationToken).ConfigureAwait(false);
+            SkillPackageStorageIndex index = JsonSerializer.Deserialize<SkillPackageStorageIndex>(indexContent)
+                ?? throw new InvalidOperationException($"Skill package '{skillId}' has an invalid storage index.");
+            SkillPackageStorageFile? markdown = index.Files.FirstOrDefault(file =>
+                string.Equals(Path.GetFileName(file.RelativePath), "SKILL.md", StringComparison.OrdinalIgnoreCase));
+            if (markdown == null) return null;
+            byte[] content = await objectStore.ReadAsync(markdown.ObjectKey, cancellationToken).ConfigureAwait(false);
+            return System.Text.Encoding.UTF8.GetString(content);
+        }
+
+        byte[] package = await objectStore.ReadAsync(skill.ObjectKey, cancellationToken).ConfigureAwait(false);
+        SkillPackageFile? legacyMarkdown = AgentSkillPackageArchive.ReadZipFiles(package, cancellationToken)
+            .FirstOrDefault(file => string.Equals(Path.GetFileName(file.RelativePath), "SKILL.md", StringComparison.OrdinalIgnoreCase));
+        return legacyMarkdown == null ? null : System.Text.Encoding.UTF8.GetString(legacyMarkdown.Content);
+    }
+
     internal async Task<SkillPackageDeleteResult> DeleteAsync(
         string agentId,
         string skillId,

@@ -352,6 +352,14 @@ export const api = {
     return request<SkillCatalogItem[]>('/api/v1/admin/skills')
   },
 
+  getSkill(skillId: string): Promise<SkillCatalogItem> {
+    return request<SkillCatalogItem>(`/api/v1/admin/skills/${encodeURIComponent(skillId)}`)
+  },
+
+  getSkillSource(skillId: string): Promise<{ markdown: string }> {
+    return request<{ markdown: string }>(`/api/v1/admin/skills/${encodeURIComponent(skillId)}/source`)
+  },
+
   deleteSkillPackage(agentId: string, skillId: string): Promise<void> {
     return request<void>(`/api/v1/admin/skills/${encodeURIComponent(agentId)}/${encodeURIComponent(skillId)}`, { method: 'DELETE' })
   },
@@ -374,6 +382,10 @@ export const api = {
 
   listMcpProfiles(): Promise<McpServerConfig[]> {
     return request<McpServerConfig[]>('/api/v1/admin/mcp')
+  },
+
+  getMcpProfile(id: string): Promise<McpServerConfig> {
+    return request<McpServerConfig>(`/api/v1/admin/mcp/${encodeURIComponent(id)}`)
   },
 
   saveMcpProfile(id: string, server: McpServerConfig): Promise<McpServerConfig> {

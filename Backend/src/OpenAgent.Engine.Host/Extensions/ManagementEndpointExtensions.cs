@@ -222,6 +222,18 @@ internal static class ManagementEndpointExtensions
             return Results.Ok(servers.Select(RedactMcpServer));
         });
 
+        group.MapGet("/mcp/{id}", async (
+            [FromServices] McpProfileManagementService manager,
+            HttpContext context,
+            string id,
+            CancellationToken cancellationToken) =>
+        {
+            if (!HasScope(context, "agent.config.read"))
+                return Results.Forbid();
+            McpServerConfig? server = await manager.GetAsync(id, cancellationToken).ConfigureAwait(false);
+            return server == null ? Results.NotFound() : Results.Ok(RedactMcpServer(server));
+        });
+
         group.MapPut("/mcp/{id}", async (
             [FromServices] McpProfileManagementService manager,
             HttpContext context,
@@ -402,6 +414,30 @@ internal static class ManagementEndpointExtensions
             if (!HasScope(context, "agent.config.read"))
                 return Results.Forbid();
             return Results.Ok(await catalog.ListAsync(cancellationToken).ConfigureAwait(false));
+        });
+
+        group.MapGet("/skills/{skillId}/source", async (
+            [FromServices] SkillPackageManagementService packages,
+            HttpContext context,
+            string skillId,
+            CancellationToken cancellationToken) =>
+        {
+            if (!HasScope(context, "agent.config.read"))
+                return Results.Forbid();
+            string? markdown = await packages.ReadMarkdownAsync(skillId, cancellationToken).ConfigureAwait(false);
+            return markdown == null ? Results.NotFound() : Results.Ok(new { markdown });
+        });
+
+        group.MapGet("/skills/{skillId}", async (
+            [FromServices] ISkillCatalogStore catalog,
+            HttpContext context,
+            string skillId,
+            CancellationToken cancellationToken) =>
+        {
+            if (!HasScope(context, "agent.config.read"))
+                return Results.Forbid();
+            SkillInstanceConfig? skill = await catalog.GetAsync(skillId, cancellationToken).ConfigureAwait(false);
+            return skill == null ? Results.NotFound() : Results.Ok(skill);
         });
 
         group.MapPost("/skills/packages", async (

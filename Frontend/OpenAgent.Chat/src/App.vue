@@ -46,11 +46,22 @@ const showRagEditor = ref(false)
 const mcpDraft = ref<McpServerConfig>({ name: '', url: '', type: 'Http', protocolVersion: null })
 const mcpServers = ref<McpServerConfig[]>([])
 const agentMcpIds = ref<string[]>([])
+const showMcpBindingPicker = ref(false)
+const mcpBindingOptions = ref<McpServerConfig[]>([])
+const loadingMcpBindingOptions = ref(false)
 const selectedMcpIndex = ref(-1)
 const mcpResult = ref<McpTestResult | null>(null)
 const skillPackageInput = ref<HTMLInputElement | null>(null)
 const showSkillTextEditor = ref(false)
 const skillMarkdownDraft = ref('---\nname: my-skill\ndescription: Describe what this Skill does\n---\n\n# Instructions\n\n')
+const skillEditorMode = ref<'form' | 'markdown'>('form')
+const skillEditorName = ref('')
+const skillEditorDescription = ref('')
+const skillEditorInstructions = ref('')
+const editingSkillId = ref('')
+const showSkillBindingPicker = ref(false)
+const skillBindingOptions = ref<SkillCatalogItem[]>([])
+const loadingSkillBindingOptions = ref(false)
 const skillCatalog = ref<SkillCatalogItem[]>([])
 const skillDraft = ref<SkillsConfig>({ enabledSkills: [], instances: [] })
 const ragDraft = ref<RagInstanceConfig>({ id: '', name: '', enabled: true, type: 'ragflow', collectionName: 'default', apiEndpoint: '', apiKey: '' })
@@ -71,6 +82,15 @@ const { sidebarCollapsed, contextCollapsed, toggleSidebar, toggleContext, startS
 const currentMessages = computed(() => selectedConversation.value?.messages || [])
 const enabledSkillIds = computed(() => new Set(skillDraft.value.enabledSkills))
 const enabledRagIds = computed(() => new Set(config.value?.config.rag?.enabledRagInstanceIds || ragInstances.value.filter(item => item.enabled).map(item => item.id)))
+const boundMcpServers = computed(() => agentMcpIds.value.map(id =>
+  mcpServers.value.find(item => item.name.toLowerCase() === id.toLowerCase())
+  || mcpBindingOptions.value.find(item => item.name.toLowerCase() === id.toLowerCase())
+  || { name: id, url: '', type: 'Http' as const }))
+const boundSkills = computed(() => skillDraft.value.enabledSkills.map(id =>
+  skillCatalog.value.find(item => item.skillId.toLowerCase() === id.toLowerCase())
+  || skillBindingOptions.value.find(item => item.skillId.toLowerCase() === id.toLowerCase())
+  || skillDraft.value.instances.find(item => item.skillId.toLowerCase() === id.toLowerCase())
+  || { skillId: id, name: id, enabled: true }))
 
 function syncCapabilityDraftsToAgent(): void {
   if (!config.value) return
@@ -138,6 +158,41 @@ function toggleMcpBinding(server: McpServerConfig, enabled: boolean): void {
   if (enabled) ids.add(server.name)
   else ids.delete(server.name)
   agentMcpIds.value = [...ids]
+  if (enabled && !mcpServers.value.some(item => item.name.toLowerCase() === server.name.toLowerCase())) {
+    mcpServers.value = [...mcpServers.value, server]
+  }
+}
+
+async function openMcpBindingPicker(): Promise<void> {
+  loadingMcpBindingOptions.value = true
+  try {
+    mcpBindingOptions.value = await api.listMcpProfiles()
+    showMcpBindingPicker.value = true
+  } catch (error) {
+    notifyError(error)
+  } finally {
+    loadingMcpBindingOptions.value = false
+  }
+}
+
+async function openSkillBindingPicker(): Promise<void> {
+  loadingSkillBindingOptions.value = true
+  try {
+    skillBindingOptions.value = await api.listSkills()
+    showSkillBindingPicker.value = true
+  } catch (error) {
+    notifyError(error)
+  } finally {
+    loadingSkillBindingOptions.value = false
+  }
+}
+
+function removeMcpBinding(name: string): void {
+  agentMcpIds.value = agentMcpIds.value.filter(id => id.toLowerCase() !== name.toLowerCase())
+}
+
+function removeSkillBinding(skillId: string): void {
+  skillDraft.value.enabledSkills = skillDraft.value.enabledSkills.filter(id => id.toLowerCase() !== skillId.toLowerCase())
 }
 
 function isRagEnabled(id: string): boolean {
@@ -430,7 +485,9 @@ function handleAgentChange(): void {
   config.value = null
   agentMcpIds.value = []
   mcpServers.value = []
+  mcpBindingOptions.value = []
   selectedMcpIndex.value = -1
+  skillBindingOptions.value = []
   skillDraft.value = { enabledSkills: [], instances: [] }
   ragInstances.value = []
   selectedRagIndex.value = -1
@@ -672,10 +729,18 @@ async function loadConfig(agentId = selectedAgentId.value): Promise<void> {
   if (!agentId || agentId === AUTO_AGENT_ID) return
   try {
     const loadedConfig = await api.getAgentConfig(agentId)
-    const catalog = await api.listSkills().catch(() => [] as SkillCatalogItem[])
+    const mcpIds = [...(loadedConfig.config.mcp?.enabledServerIds || [])]
+    for (const legacy of loadedConfig.config.mcp?.servers || []) {
+      if (!mcpIds.some(id => id.toLowerCase() === legacy.name.toLowerCase())) mcpIds.push(legacy.name)
+    }
+    const [selectedMcps, selectedSkills] = await Promise.all([
+      Promise.all(mcpIds.map(id => api.getMcpProfile(id).catch(() => null))),
+      Promise.all(loadedConfig.config.skills.enabledSkills.map(id => api.getSkill(id).catch(() => null))),
+    ])
     config.value = loadedConfig
-    skillCatalog.value = catalog
-    agentMcpIds.value = [...(config.value.config.mcp?.enabledServerIds || [])]
+    mcpServers.value = selectedMcps.filter((item): item is McpServerConfig => item !== null)
+    skillCatalog.value = selectedSkills.filter((item): item is SkillCatalogItem => item !== null)
+    agentMcpIds.value = mcpIds
     for (const legacy of config.value.config.mcp?.servers || []) {
       if (!agentMcpIds.value.includes(legacy.name)) agentMcpIds.value.push(legacy.name)
       if (!mcpServers.value.some(item => item.name.toLowerCase() === legacy.name.toLowerCase())) mcpServers.value.push(legacy)
@@ -731,7 +796,7 @@ async function removeMcp(index: number): Promise<void> {
 async function editAgent(agentId: string): Promise<void> {
   selectedAgentId.value = agentId
   handleAgentChange()
-  await Promise.all([loadConfig(agentId), loadLlmProfiles(), loadMcpProfiles()])
+  await Promise.all([loadConfig(agentId), loadLlmProfiles()])
   if (config.value?.config.llm.provider) applyLlmProfile(config.value.config.llm.provider)
   isNewAgent.value = false
   showAgentEditor.value = true
@@ -742,11 +807,16 @@ function chooseSkillPackage(): void {
 }
 
 function openSkillTextEditor(): void {
-  skillMarkdownDraft.value = '---\nname: my-skill\ndescription: Describe what this Skill does\n---\n\n# Instructions\n\n'
+  editingSkillId.value = ''
+  skillEditorMode.value = 'form'
+  skillEditorName.value = 'my-skill'
+  skillEditorDescription.value = 'Describe what this Skill does'
+  skillEditorInstructions.value = '# Instructions\n\n'
+  skillMarkdownDraft.value = composeSkillMarkdown()
   showSkillTextEditor.value = true
 }
 
-function parseSkillFrontmatter(markdown: string): { name: string; description: string } | null {
+function parseSkillMarkdown(markdown: string): { name: string; description: string; body: string } | null {
   const lines = markdown.replace(/^\uFEFF/, '').split(/\r?\n/)
   if (lines[0]?.trim() !== '---') return null
   const end = lines.findIndex((line, index) => index > 0 && line.trim() === '---')
@@ -758,7 +828,48 @@ function parseSkillFrontmatter(markdown: string): { name: string; description: s
   }
   const name = values.get('name')?.trim() || ''
   const description = values.get('description')?.trim() || ''
-  return name && description ? { name, description } : null
+  return name && description ? { name, description, body: lines.slice(end + 1).join('\n').replace(/^\n/, '') } : null
+}
+
+function composeSkillMarkdown(): string {
+  return `---\nname: ${skillEditorName.value.trim()}\ndescription: ${skillEditorDescription.value.trim()}\n---\n\n${skillEditorInstructions.value}`
+}
+
+function switchSkillEditorMode(): void {
+  if (skillEditorMode.value === 'form') {
+    skillMarkdownDraft.value = composeSkillMarkdown()
+    skillEditorMode.value = 'markdown'
+    return
+  }
+  const parsed = parseSkillMarkdown(skillMarkdownDraft.value)
+  if (!parsed) {
+    ElMessage.warning('当前 Markdown 无法解析，请修正 frontmatter 或继续使用源码模式')
+    return
+  }
+  skillEditorName.value = parsed.name
+  skillEditorDescription.value = parsed.description
+  skillEditorInstructions.value = parsed.body
+  skillEditorMode.value = 'form'
+}
+
+async function editSkill(skill: SkillCatalogItem): Promise<void> {
+  try {
+    const source = await api.getSkillSource(skill.skillId)
+    editingSkillId.value = skill.skillId
+    skillMarkdownDraft.value = source.markdown
+    const parsed = parseSkillMarkdown(source.markdown)
+    if (parsed) {
+      skillEditorName.value = parsed.name
+      skillEditorDescription.value = parsed.description
+      skillEditorInstructions.value = parsed.body
+      skillEditorMode.value = 'form'
+    } else {
+      skillEditorMode.value = 'markdown'
+    }
+    showSkillTextEditor.value = true
+  } catch (error) {
+    notifyError(error)
+  }
 }
 
 async function uploadSkillFile(file: File): Promise<void> {
@@ -798,7 +909,8 @@ async function deleteSkillCatalog(skill: SkillCatalogItem): Promise<void> {
 }
 
 async function saveTextSkill(): Promise<void> {
-  const frontmatter = parseSkillFrontmatter(skillMarkdownDraft.value)
+  if (skillEditorMode.value === 'form') skillMarkdownDraft.value = composeSkillMarkdown()
+  const frontmatter = parseSkillMarkdown(skillMarkdownDraft.value)
   if (!frontmatter) {
     notifyError(new Error('Skill Markdown 必须以 YAML frontmatter 开始，并包含 name 与 description'))
     return
@@ -917,7 +1029,7 @@ async function createAgent(): Promise<void> {
   mcpServers.value = []
   skillDraft.value = { enabledSkills: [], instances: [] }
   ragInstances.value = []
-  await Promise.all([loadLlmProfiles(), loadMcpProfiles(), loadSkillCatalog()])
+  await loadLlmProfiles()
   showAgentEditor.value = true
 }
 
@@ -1015,7 +1127,6 @@ function openSettings(panel: typeof activeSettings.value): void {
   if (panel === 'agent') {
     void loadConfig()
     void loadLlmProfiles()
-    void loadMcpProfiles()
   }
   if (panel === 'rag') void loadConfig()
 }
@@ -1027,7 +1138,6 @@ function handleSettingsTabChange(name: string | number): void {
   if (name === 'agent') {
     void loadConfig()
     void loadLlmProfiles()
-    void loadMcpProfiles()
   }
   if (name === 'rag') void loadConfig()
 }
@@ -1098,7 +1208,7 @@ onMounted(() => {
         </el-tab-pane>
         <el-tab-pane label="Skill 配置" name="skill">
           <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">SKILL CATALOG</span><h3>Skill 配置</h3><p>独立维护官方 Skill 目录；Agent 页面只选择 Skill ID，绑定关系保存到 Agent 配置。</p></div><div class="section-actions"><input ref="skillPackageInput" type="file" hidden accept=".zip,.md" @change="uploadSkillPackage" /><el-button @click="loadSkillCatalog">刷新</el-button><el-button :loading="uploadingSkill" type="primary" plain @click="chooseSkillPackage">上传 ZIP / MD</el-button><el-button type="primary" plain @click="openSkillTextEditor">手动填写</el-button></div></div>
-            <el-table :data="skillCatalog" class="capability-table" empty-text="还没有 Skill"><el-table-column label="名称" min-width="180"><template #default="scope"><strong>{{ scope.row.name }}</strong><small class="table-subtext">{{ scope.row.skillId }}</small></template></el-table-column><el-table-column label="说明" min-width="240" show-overflow-tooltip><template #default="scope">{{ scope.row.description }}</template></el-table-column><el-table-column label="内容" width="120"><template #default="scope">{{ scope.row.resourceCount || 0 }} 资源</template></el-table-column><el-table-column label="来源" width="150"><template #default="scope">{{ scope.row.packageFileName }}</template></el-table-column><el-table-column label="操作" width="100" fixed="right"><template #default="scope"><el-button link type="danger" @click="deleteSkillCatalog(scope.row)">删除</el-button></template></el-table-column></el-table>
+            <el-table :data="skillCatalog" class="capability-table" empty-text="还没有 Skill"><el-table-column label="名称" min-width="180"><template #default="scope"><strong>{{ scope.row.name }}</strong><small class="table-subtext">{{ scope.row.skillId }}</small></template></el-table-column><el-table-column label="说明" min-width="240" show-overflow-tooltip><template #default="scope">{{ scope.row.description }}</template></el-table-column><el-table-column label="内容" width="120"><template #default="scope">{{ scope.row.resourceCount || 0 }} 资源</template></el-table-column><el-table-column label="来源" width="150"><template #default="scope">{{ scope.row.packageFileName }}</template></el-table-column><el-table-column label="操作" width="170" fixed="right"><template #default="scope"><el-button link type="primary" @click="editSkill(scope.row)">编辑</el-button><el-button link type="danger" @click="deleteSkillCatalog(scope.row)">删除</el-button></template></el-table-column></el-table>
           </section>
         </el-tab-pane>
         <el-tab-pane label="Agent 配置" name="agent">
@@ -1145,13 +1255,23 @@ onMounted(() => {
       <section class="agent-editor-section">
         <div class="agent-editor-section-heading"><div><span class="eyebrow">CAPABILITY BINDINGS</span><h4>能力绑定</h4><p>当前 Agent 的 MCP、Skill、RAG 以卡片展示；勾选即可启用或停用 Skill 与 RAG。</p></div><span class="editor-section-index">03</span></div>
         <div class="binding-groups">
-          <article class="binding-group"><div class="binding-group-heading"><div><strong>MCP</strong><small>从独立 MCP 配置中选择，绑定关系保存到 Agent 配置</small></div><el-button link type="primary" @click="showAgentEditor = false; openSettings('mcp')">管理 MCP 配置</el-button></div><div v-if="mcpServers.length" class="binding-list"><label v-for="server in mcpServers" :key="server.name" class="binding-item binding-check-item"><span class="binding-icon mcp-avatar">M</span><div><strong>{{ server.name }}</strong><small>{{ server.type }} · {{ server.url }}</small></div><el-checkbox :model-value="agentMcpIds.includes(server.name)" @change="toggleMcpBinding(server, Boolean($event))" /></label></div><div v-else class="binding-empty">还没有 MCP 配置，请先在 MCP 配置页面新增。</div></article>
-          <article class="binding-group"><div class="binding-group-heading"><div><strong>Skill</strong><small>从独立 Skill 目录中选择，绑定关系保存到 Agent 配置</small></div><el-button link type="primary" @click="showAgentEditor = false; openSettings('skill')">管理 Skill 配置</el-button></div><div v-if="skillCatalog.length" class="binding-list"><label v-for="skill in skillCatalog" :key="skill.skillId" class="binding-item binding-check-item"><span class="binding-icon skill-avatar">S</span><div><strong>{{ skill.name || '未命名 Skill' }}</strong><small>{{ skill.skillId }} · {{ skill.packageFileName?.toLowerCase().endsWith('.md') ? '单文件 SKILL.md' : 'Skill 目录' }}</small></div><el-checkbox :model-value="isSkillEnabled(skill.skillId)" @change="toggleSkillBinding(skill, Boolean($event))" /></label></div><div v-else class="binding-empty">还没有 Skill 配置，请先在 Skill 配置页面新增。</div></article>
+          <article class="binding-group"><div class="binding-group-heading"><div><strong>MCP</strong><small>通过选择窗口绑定 MCP，当前仅显示已绑定项</small></div><el-button link type="primary" :loading="loadingMcpBindingOptions" @click="openMcpBindingPicker">选择 MCP</el-button></div><div v-if="boundMcpServers.length" class="binding-list"><div v-for="server in boundMcpServers" :key="server.name" class="binding-item"><span class="binding-icon mcp-avatar">M</span><div><strong>{{ server.name }}</strong><small>{{ server.type }} · {{ server.url || '配置不存在' }}</small></div><el-button link type="danger" @click="removeMcpBinding(server.name)">移除</el-button></div></div><div v-else class="binding-empty">尚未绑定 MCP，请点击“选择 MCP”。</div></article>
+          <article class="binding-group"><div class="binding-group-heading"><div><strong>Skill</strong><small>通过选择窗口绑定 Skill，当前仅显示已绑定项</small></div><el-button link type="primary" :loading="loadingSkillBindingOptions" @click="openSkillBindingPicker">选择 Skill</el-button></div><div v-if="boundSkills.length" class="binding-list"><div v-for="skill in boundSkills" :key="skill.skillId" class="binding-item"><span class="binding-icon skill-avatar">S</span><div><strong>{{ skill.name || '未命名 Skill' }}</strong><small>{{ skill.skillId }}</small></div><el-button link type="danger" @click="removeSkillBinding(skill.skillId)">移除</el-button></div></div><div v-else class="binding-empty">尚未绑定 Skill，请点击“选择 Skill”。</div></article>
           <article class="binding-group"><div class="binding-group-heading"><div><strong>RAG</strong><small>知识检索数据源</small></div><el-button link type="primary" @click="showAgentEditor = false; openSettings('rag')">管理 RAG</el-button></div><div v-if="ragInstances.length" class="binding-list"><label v-for="rag in ragInstances" :key="rag.id" class="binding-item binding-check-item"><span class="binding-icon rag-avatar">R</span><div><strong>{{ rag.name || rag.id }}</strong><small>{{ rag.type }} · {{ rag.collectionName || '默认数据集' }}</small></div><el-checkbox :model-value="isRagEnabled(rag.id)" @change="toggleRagBinding(rag, Boolean($event))" /></label></div><div v-else class="binding-empty">还没有 RAG，去 RAG 表格中新增。</div></article>
         </div>
       </section>
     </div>
     <template #footer><el-button @click="showAgentEditor = false">取消</el-button><el-button type="primary" :loading="savingConfig" @click="saveConfig">保存 Agent 配置</el-button></template>
+  </el-dialog>
+
+  <el-dialog v-model="showMcpBindingPicker" class="editor-dialog" modal-class="editor-overlay" title="选择 MCP" width="min(760px, calc(100vw - 32px))" append-to-body destroy-on-close>
+    <el-table :data="mcpBindingOptions" max-height="440" empty-text="还没有可绑定的 MCP"><el-table-column label="名称" min-width="170"><template #default="scope"><strong>{{ scope.row.name }}</strong></template></el-table-column><el-table-column label="类型" width="120"><template #default="scope"><el-tag size="small" round>{{ scope.row.type }}</el-tag></template></el-table-column><el-table-column label="地址" min-width="260" show-overflow-tooltip><template #default="scope">{{ scope.row.url }}</template></el-table-column><el-table-column label="绑定" width="90"><template #default="scope"><el-checkbox :model-value="agentMcpIds.some(id => id.toLowerCase() === scope.row.name.toLowerCase())" @change="toggleMcpBinding(scope.row, Boolean($event))" /></template></el-table-column></el-table>
+    <template #footer><el-button @click="showMcpBindingPicker = false">完成</el-button></template>
+  </el-dialog>
+
+  <el-dialog v-model="showSkillBindingPicker" class="editor-dialog" modal-class="editor-overlay" title="选择 Skill" width="min(820px, calc(100vw - 32px))" append-to-body destroy-on-close>
+    <el-table :data="skillBindingOptions" max-height="440" empty-text="还没有可绑定的 Skill"><el-table-column label="名称" min-width="190"><template #default="scope"><strong>{{ scope.row.name || '未命名 Skill' }}</strong><small class="table-subtext">{{ scope.row.skillId }}</small></template></el-table-column><el-table-column label="说明" min-width="260" show-overflow-tooltip><template #default="scope">{{ scope.row.description }}</template></el-table-column><el-table-column label="资源" width="100"><template #default="scope">{{ scope.row.resourceCount || 0 }}</template></el-table-column><el-table-column label="绑定" width="90"><template #default="scope"><el-checkbox :model-value="isSkillEnabled(scope.row.skillId)" @change="toggleSkillBinding(scope.row, Boolean($event))" /></template></el-table-column></el-table>
+    <template #footer><el-button @click="showSkillBindingPicker = false">完成</el-button></template>
   </el-dialog>
 
   <el-dialog v-model="showLlmEditor" class="editor-dialog" modal-class="editor-overlay" :title="isNewLlm ? '新增大模型配置' : '编辑大模型配置'" width="min(720px, calc(100vw - 32px))" append-to-body destroy-on-close>
@@ -1169,9 +1289,15 @@ onMounted(() => {
     </el-form><template #footer><el-button @click="showMcpEditor = false">取消</el-button><el-button :loading="testingMcp" @click="testMcp">测试连接、版本与权限</el-button><el-button type="primary" :disabled="!mcpDraft.name || !mcpDraft.url" @click="saveMcp">保存 MCP 配置</el-button></template>
   </el-dialog>
 
-  <el-dialog v-model="showSkillTextEditor" class="editor-dialog" modal-class="editor-overlay" title="手动填写 Markdown Skill" width="min(760px, calc(100vw - 32px))" append-to-body destroy-on-close>
-    <el-alert title="单文件 Skill 必须包含 YAML frontmatter 的 name、description，以及后续 Markdown 指令内容。保存后服务端会再次校验并按目录 Skill 存入 OSS。" type="info" :closable="false" />
-    <el-input v-model="skillMarkdownDraft" class="skill-markdown-input" type="textarea" :rows="18" spellcheck="false" />
+  <el-dialog v-model="showSkillTextEditor" class="editor-dialog" modal-class="editor-overlay" :title="editingSkillId ? '编辑 Markdown Skill' : '新增 Markdown Skill'" width="min(820px, calc(100vw - 32px))" append-to-body destroy-on-close>
+    <el-alert title="可用表单填写 Skill 名称、说明和 Markdown 指令；切换到源码模式后直接编辑完整 SKILL.md。无法解析的 Skill 会自动进入源码模式。" type="info" :closable="false" />
+    <div class="skill-editor-toolbar"><el-tag v-if="skillEditorMode === 'markdown'" type="warning" effect="plain">Markdown 源码模式</el-tag><el-button link type="primary" @click="switchSkillEditorMode">{{ skillEditorMode === 'form' ? '切换到 Markdown 源码' : '切换到表单模式' }}</el-button></div>
+    <el-form v-if="skillEditorMode === 'form'" label-position="top" class="agent-form-grid">
+      <el-form-item label="Skill 名称"><el-input v-model="skillEditorName" placeholder="例如 customer-lookup" /></el-form-item>
+      <el-form-item label="Skill 说明"><el-input v-model="skillEditorDescription" placeholder="说明这个 Skill 适用的场景" /></el-form-item>
+      <el-form-item label="Markdown 指令" class="span-two"><el-input v-model="skillEditorInstructions" class="skill-markdown-input" type="textarea" :rows="16" spellcheck="false" placeholder="# Instructions" /></el-form-item>
+    </el-form>
+    <el-input v-else v-model="skillMarkdownDraft" class="skill-markdown-input" type="textarea" :rows="20" spellcheck="false" />
     <template #footer><el-button @click="showSkillTextEditor = false">取消</el-button><el-button type="primary" :loading="uploadingSkill" @click="saveTextSkill">校验并保存 Skill</el-button></template>
   </el-dialog>
 
