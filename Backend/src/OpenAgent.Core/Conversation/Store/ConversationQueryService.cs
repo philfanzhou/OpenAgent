@@ -11,15 +11,15 @@ internal sealed class ConversationQueryService : IConversationQueryService
     }
 
     public async Task<IReadOnlyList<ConversationRecord>> ListConversationsAsync(
-        string tenantId, int skip, int take, CancellationToken cancellationToken = default)
+        string tenantId, int skip, int take, CancellationToken cancellationToken = default, string? userId = null)
     {
-        return await _store.ListConversationsAsync(tenantId, skip, take, cancellationToken).ConfigureAwait(false);
+        return await _store.ListConversationsAsync(tenantId, skip, take, cancellationToken, userId).ConfigureAwait(false);
     }
 
     public async Task<IReadOnlyList<ConversationRecord>> SearchConversationsAsync(
-        string tenantId, string keyword, int skip, int take, CancellationToken cancellationToken = default)
+        string tenantId, string keyword, int skip, int take, CancellationToken cancellationToken = default, string? userId = null)
     {
-        return await _store.SearchConversationsAsync(tenantId, keyword, skip, take, cancellationToken).ConfigureAwait(false);
+        return await _store.SearchConversationsAsync(tenantId, keyword, skip, take, cancellationToken, userId).ConfigureAwait(false);
     }
 
     public Task<bool> SoftDeleteAsync(

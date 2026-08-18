@@ -225,7 +225,8 @@ internal sealed class EfCoreConversationStore(IDbContextFactory<OpenAgentDbConte
         string tenantId,
         int skip,
         int take,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? userId = null)
     {
         if (take <= 0)
         {
@@ -235,6 +236,7 @@ internal sealed class EfCoreConversationStore(IDbContextFactory<OpenAgentDbConte
         await using OpenAgentDbContext context = await contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         List<ConversationEntity> conversations = await context.Conversations.AsNoTracking()
             .Where(item => item.TenantId == tenantId && !item.IsDeletedByUser)
+            .Where(item => string.IsNullOrWhiteSpace(userId) || item.UserId == userId)
             .OrderByDescending(item => item.LastMessageAt)
             .Skip(Math.Max(skip, 0))
             .Take(take)
@@ -247,7 +249,8 @@ internal sealed class EfCoreConversationStore(IDbContextFactory<OpenAgentDbConte
         string keyword,
         int skip,
         int take,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? userId = null)
     {
         if (string.IsNullOrWhiteSpace(keyword) || take <= 0)
         {
@@ -257,6 +260,7 @@ internal sealed class EfCoreConversationStore(IDbContextFactory<OpenAgentDbConte
         await using OpenAgentDbContext context = await contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         List<ConversationEntity> conversations = await context.Conversations.AsNoTracking()
             .Where(conversation => conversation.TenantId == tenantId && !conversation.IsDeletedByUser)
+            .Where(conversation => string.IsNullOrWhiteSpace(userId) || conversation.UserId == userId)
             .Where(conversation => context.ConversationMessages.Any(message =>
                 message.ConversationId == conversation.ConversationId
                 && EF.Functions.ILike(message.Content, $"%{keyword}%")))

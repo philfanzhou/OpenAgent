@@ -97,12 +97,12 @@ internal sealed class WriteThroughConversationStore(
     }
 
     public Task<IReadOnlyList<ConversationRecord>> ListConversationsAsync(
-        string tenantId, int skip, int take, CancellationToken cancellationToken = default) =>
-        durable.ListConversationsAsync(tenantId, skip, take, cancellationToken);
+        string tenantId, int skip, int take, CancellationToken cancellationToken = default, string? userId = null) =>
+        durable.ListConversationsAsync(tenantId, skip, take, cancellationToken, userId);
 
     public Task<IReadOnlyList<ConversationRecord>> SearchConversationsAsync(
-        string tenantId, string keyword, int skip, int take, CancellationToken cancellationToken = default) =>
-        durable.SearchConversationsAsync(tenantId, keyword, skip, take, cancellationToken);
+        string tenantId, string keyword, int skip, int take, CancellationToken cancellationToken = default, string? userId = null) =>
+        durable.SearchConversationsAsync(tenantId, keyword, skip, take, cancellationToken, userId);
 
     public async Task<bool> SoftDeleteAsync(
         string tenantId, string conversationId, CancellationToken cancellationToken = default)

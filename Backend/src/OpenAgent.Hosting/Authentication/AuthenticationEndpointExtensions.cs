@@ -55,6 +55,11 @@ public static class AuthenticationEndpointExtensions
                     return Results.BadRequest(new { error = "username_and_password_required" });
                 }
 
+                if (!DevelopmentCredentials.IsValid(request.Username, request.Password))
+                {
+                    return Results.Unauthorized();
+                }
+
                 string basicCredential = Convert.ToBase64String(
                     Encoding.UTF8.GetBytes($"{request.Username}:{request.Password}"));
                 return Results.Ok(new

@@ -208,7 +208,8 @@ html[data-theme='dark'] .empty-orb { color: #d9d9d9; background: #2f2f2f; }
 html[data-theme='dark'] .sidebar-footer { border-top-color: #303030; }
 .identity-button {
   display: flex;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   align-items: center;
   gap: 8px;
   padding: 7px;
@@ -220,7 +221,7 @@ html[data-theme='dark'] .sidebar-footer { border-top-color: #303030; }
   cursor: pointer;
   transition: background var(--dur) var(--ease);
 }
-.sidebar-logout { min-height: 30px; padding: 0 8px; border: 0; border-radius: var(--r-sm); color: var(--text-faint); background: transparent; font-size: 11px; cursor: pointer; }
+.sidebar-logout { display: grid; place-items: center; flex: none; width: 34px; height: 34px; padding: 0; border: 0; border-radius: var(--r-sm); color: var(--text-faint); background: transparent; cursor: pointer; transition: color .15s, background-color .15s; }
 .sidebar-logout:hover, .sidebar-logout:focus-visible { color: var(--danger); background: var(--danger-soft); }
 
 .auth-state-page { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 24px; color: var(--text); background: var(--bg); text-align: center; }
@@ -243,7 +244,7 @@ html[data-theme='dark'] .identity-button:hover { background: #2f2f2f; }
   font-size: 12px;
   font-weight: 700;
 }
-.identity-button > span:nth-child(2) { display: flex; min-width: 0; flex: 1; flex-direction: column; }
+.identity-button .identity-info { display: flex; min-width: 0; flex: 1; flex-direction: column; }
 .identity-button strong,
 .identity-button small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .identity-button strong { font-size: 13px; }

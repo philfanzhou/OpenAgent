@@ -119,11 +119,13 @@ internal sealed class InMemoryConversationStore : IConversationStore
     }
 
     public Task<IReadOnlyList<ConversationRecord>> ListConversationsAsync(
-        string tenantId, int skip, int take, CancellationToken cancellationToken = default)
+        string tenantId, int skip, int take, CancellationToken cancellationToken = default, string? userId = null)
     {
         var records = _store.Values
             .Where(r => string.Equals(r.TenantId, tenantId, StringComparison.OrdinalIgnoreCase))
             .Where(r => !r.IsDeletedByUser)
+            .Where(r => string.IsNullOrWhiteSpace(userId)
+                || string.Equals(r.UserId, userId, StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(r => r.LastMessageAt)
             .Skip(skip)
             .Take(take)
@@ -135,11 +137,13 @@ internal sealed class InMemoryConversationStore : IConversationStore
     }
 
     public Task<IReadOnlyList<ConversationRecord>> SearchConversationsAsync(
-        string tenantId, string keyword, int skip, int take, CancellationToken cancellationToken = default)
+        string tenantId, string keyword, int skip, int take, CancellationToken cancellationToken = default, string? userId = null)
     {
         var records = _store.Values
             .Where(r => string.Equals(r.TenantId, tenantId, StringComparison.OrdinalIgnoreCase))
             .Where(r => !r.IsDeletedByUser)
+            .Where(r => string.IsNullOrWhiteSpace(userId)
+                || string.Equals(r.UserId, userId, StringComparison.OrdinalIgnoreCase))
             .Where(r => r.Title != null && r.Title.Contains(keyword, StringComparison.OrdinalIgnoreCase)
                         || r.Messages.Any(m => m.Content != null && m.Content.Contains(keyword, StringComparison.OrdinalIgnoreCase)))
             .OrderByDescending(r => r.LastMessageAt)

@@ -11,24 +11,28 @@ public interface IConversationQueryService
 {
     /// <summary>
     /// List conversation records for a tenant, ordered by LastMessageAt descending.
-    /// Returns metadata only (no message bodies).
+    /// Returns metadata only (no message bodies). When userId is non-empty,
+    /// only conversations belonging to that user are returned.
     /// </summary>
     Task<IReadOnlyList<ConversationRecord>> ListConversationsAsync(
         string tenantId,
         int skip,
         int take,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        string? userId = null);
 
     /// <summary>
     /// Search conversations by keyword in message content.
-    /// Returns metadata only (no message bodies).
+    /// Returns metadata only (no message bodies). When userId is non-empty,
+    /// only conversations belonging to that user are searched.
     /// </summary>
     Task<IReadOnlyList<ConversationRecord>> SearchConversationsAsync(
         string tenantId,
         string keyword,
         int skip,
         int take,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        string? userId = null);
 
     /// <summary>
     /// Get a single conversation record by ID. Returns null if not found.

@@ -59,22 +59,26 @@ public interface IConversationStore
 
     /// <summary>
     /// 列出指定租户的会话，按 LastMessageAt 降序返回（不含消息体）。
+    /// 当 userId 非空时仅返回该用户的会话。
     /// </summary>
     Task<IReadOnlyList<ConversationRecord>> ListConversationsAsync(
         string tenantId,
         int skip,
         int take,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        string? userId = null);
 
     /// <summary>
     /// 按关键词搜索会话（在消息内容中匹配），按 LastMessageAt 降序返回（不含消息体）。
+    /// 当 userId 非空时仅搜索该用户的会话。
     /// </summary>
     Task<IReadOnlyList<ConversationRecord>> SearchConversationsAsync(
         string tenantId,
         string keyword,
         int skip,
         int take,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        string? userId = null);
 
     /// <summary>
     /// 软删除会话：设置 IsDeletedByUser=true，数据保留供审计。用户侧查询自动过滤。

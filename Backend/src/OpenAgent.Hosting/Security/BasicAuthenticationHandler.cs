@@ -10,8 +10,8 @@ using OpenAgent.Hosting.Authentication;
 namespace OpenAgent.Hosting.Security;
 
 /// <summary>
-/// Temporary basic authentication boundary. Credentials are only decoded; the
-/// username and password are intentionally not checked against a user store.
+/// Development-only basic authentication boundary. Credentials are validated
+/// against <see cref="DevelopmentCredentials"/> (admin/admin, test/test).
 /// Authorization is a separate future concern.
 /// </summary>
 internal sealed class BasicAuthenticationHandler(
@@ -67,6 +67,13 @@ internal sealed class BasicAuthenticationHandler(
         }
 
         string username = decoded[..separator];
+        string password = decoded[(separator + 1)..];
+
+        if (!DevelopmentCredentials.IsValid(username, password))
+        {
+            return Task.FromResult(AuthenticateResult.Fail("Invalid username or password."));
+        }
+
         string tenantId = _authenticationOptions.AllowTenantHeader
             ? Request.Headers["X-Tenant-Id"].FirstOrDefault()
                 ?? Request.Headers["X-TenantId"].FirstOrDefault()
