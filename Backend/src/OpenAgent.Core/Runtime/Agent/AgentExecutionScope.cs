@@ -22,7 +22,7 @@ internal sealed class AgentExecutionScope : IAsyncDisposable
     {
         Agent = agent;
         _history = history;
-        _resources = resources;
+        _resources = [history, .. resources];
     }
 
     internal AIAgent Agent { get; }
@@ -50,14 +50,6 @@ internal sealed class AgentExecutionScope : IAsyncDisposable
             {
                 failure ??= exception;
             }
-        }
-        try
-        {
-            await _history.DisposeAsync().ConfigureAwait(false);
-        }
-        catch (Exception exception)
-        {
-            failure ??= exception;
         }
         if (failure != null)
         {
