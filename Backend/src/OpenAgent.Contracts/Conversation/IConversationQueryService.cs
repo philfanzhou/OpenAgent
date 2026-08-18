@@ -11,7 +11,8 @@ public interface IConversationQueryService
 {
     /// <summary>
     /// List conversation records for a tenant, ordered by LastMessageAt descending.
-    /// Returns metadata only (no message bodies).
+    /// Returns metadata only (no message bodies). Only conversations belonging to
+    /// the current authenticated user (via ICurrentUserContext) are returned.
     /// </summary>
     Task<IReadOnlyList<ConversationRecord>> ListConversationsAsync(
         string tenantId,
@@ -21,7 +22,8 @@ public interface IConversationQueryService
 
     /// <summary>
     /// Search conversations by keyword in message content.
-    /// Returns metadata only (no message bodies).
+    /// Returns metadata only (no message bodies). Only conversations belonging to
+    /// the current authenticated user (via ICurrentUserContext) are searched.
     /// </summary>
     Task<IReadOnlyList<ConversationRecord>> SearchConversationsAsync(
         string tenantId,

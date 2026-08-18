@@ -139,24 +139,6 @@ public static class RouterEndpointExtensions
                         httpClient,
                         requestConfig,
                         requireAuthentication: true));
-            app.MapMethods(
-                "/api/v1/auth/{**path}",
-                [HttpMethods.Get, HttpMethods.Post],
-                (
-                    HttpContext context,
-                    IHttpForwarder forwarder,
-                    IAgentUserContext userContext,
-                    IRouteTable routeTable,
-                    ILogger<Program> logger) =>
-                    GatewayProxyHandler.HandleAsync(
-                        context,
-                        forwarder,
-                        userContext,
-                        routeTable,
-                        logger,
-                        httpClient,
-                        requestConfig,
-                        requireAuthentication: false));
         }
         return app;
     }

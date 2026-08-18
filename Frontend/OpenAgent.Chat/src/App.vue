@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, shallowReactive, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { api, getAccessToken, getConnectionMode, getEngineBaseUrl, getRouterBaseUrl, getTenantId, makeLocalConversation, setAccessToken, setConnectionMode, setEngineBaseUrl, setRouterBaseUrl, setTenantId } from './api'
+import { api, ApiError, AUTH_FAILURE_EVENT, clearAuthentication, getAccessToken, getConnectionMode, getEngineBaseUrl, getRouterBaseUrl, getTenantId, makeLocalConversation, setAccessToken, setConnectionMode, setEngineBaseUrl, setRouterBaseUrl, setTenantId } from './api'
+import { beginOidcLogin, cleanAuthorizationCallbackUrl, clearAuthState, completeOidcLogin, LOGIN_HASH, sanitizeReturnHash, WORKSPACE_HASH } from './auth'
 import ChatHeader from './components/ChatHeader.vue'
 import ChatMessages from './components/ChatMessages.vue'
 import ChatSidebar from './components/ChatSidebar.vue'
+import LoginPage from './components/LoginPage.vue'
 import MessageComposer from './components/MessageComposer.vue'
 import HealthCheckPanel from './components/HealthCheckPanel.vue'
 import { AUTO_AGENT_ID, type AgentConfigEntity, type AgentSummary, type AuthConfig, type ConnectionMode, type ConversationMessage, type ConversationRecord, type CurrentUserContext, type LlmProviderProfile, type LlmTestResult, type McpServerConfig, type McpTestResult, type MessageFile, type PendingFile, type RagConfig, type RagInstanceConfig, type RagTestResult, type SkillCatalogItem, type SkillInstanceConfig, type SkillsConfig } from './types'
@@ -39,9 +41,11 @@ const testingRag = ref(false)
 const statusText = ref('未连接')
 const config = ref<AgentConfigEntity | null>(null)
 const authConfig = ref<AuthConfig | null>(null)
-const username = ref('')
-const password = ref('')
 const authLoading = ref(false)
+const authView = ref<'restoring' | 'login' | 'workspace' | 'forbidden'>('restoring')
+const authError = ref('')
+const authReason = ref('')
+const authReturnHash = ref(sanitizeReturnHash(window.location.hash))
 const showAgentEditor = ref(false)
 const isNewAgent = ref(false)
 const showMcpEditor = ref(false)
@@ -242,8 +246,13 @@ async function connect(): Promise<void> {
   setConnectionMode(connectionMode.value)
   setRouterBaseUrl(routerUrl.value)
   setEngineBaseUrl(engineUrl.value)
-  setAccessToken(token.value)
   setTenantId(tenantId.value)
+  if (token.value && !getAccessToken()) {
+    clearAuthState()
+    showLogin('服务地址已变更，请针对新的认证边界重新登录。')
+    await detectAuthentication(false)
+    return
+  }
   try {
     await api.health('/ready')
     await loadAuthConfig()
@@ -257,27 +266,148 @@ async function connect(): Promise<void> {
 }
 
 async function loadAuthConfig(): Promise<void> {
+  authConfig.value = await api.getAuthConfig()
+}
+
+function updateLoginConnection(value: {
+  mode: ConnectionMode
+  routerUrl: string
+  engineUrl: string
+  tenantId: string
+}): void {
+  connectionMode.value = value.mode
+  routerUrl.value = value.routerUrl
+  engineUrl.value = value.engineUrl
+  tenantId.value = value.tenantId
+  setConnectionMode(value.mode)
+  setRouterBaseUrl(value.routerUrl)
+  setEngineBaseUrl(value.engineUrl)
+  setTenantId(value.tenantId)
+  authConfig.value = null
+  authError.value = ''
+  void detectAuthentication()
+}
+
+function resetWorkspace(): void {
+  void Promise.allSettled(conversationStreams.cancelAll('logout'))
+  currentUser.value = null
+  agents.value = []
+  conversations.value = []
+  selectedConversation.value = null
+  conversationDetailRequests.clear()
+  pendingFiles.value = []
+  message.value = ''
+  config.value = null
+  llmDraft.value = createDefaultLlm()
+  llmProfiles.value = []
+  mcpDraft.value = { name: '', url: '', type: 'Http', protocolVersion: null }
+  mcpServers.value = []
+  skillDraft.value = { enabledSkills: [], instances: [] }
+  ragDraft.value = { id: '', name: '', enabled: true, type: 'ragflow', collectionName: 'default', apiEndpoint: '', apiKey: '' }
+  ragInstances.value = []
+  llmResult.value = null
+  mcpResult.value = null
+  ragResult.value = null
+  showAgentEditor.value = false
+  showLlmEditor.value = false
+  showMcpEditor.value = false
+  showRagEditor.value = false
+  token.value = ''
+  showSettings.value = false
+  statusText.value = '未连接'
+}
+
+function showLogin(reason = ''): void {
+  if (window.location.hash && window.location.hash !== LOGIN_HASH && window.location.hash !== '#/forbidden') {
+    authReturnHash.value = sanitizeReturnHash(window.location.hash)
+  }
+  resetWorkspace()
+  authView.value = 'login'
+  authReason.value = reason
+  window.history.replaceState(null, document.title, `${window.location.pathname}${LOGIN_HASH}`)
+}
+
+async function establishSession(returnHash = WORKSPACE_HASH): Promise<void> {
+  const user = await api.getCurrentUser()
+  if (!user.isAuthenticated) throw new Error('服务端未建立已认证身份')
+  currentUser.value = user
+  if (user.tenantId) {
+    tenantId.value = user.tenantId
+    setTenantId(user.tenantId)
+  }
+  token.value = getAccessToken()
+  authError.value = ''
+  authReason.value = ''
+  authView.value = 'workspace'
+  statusText.value = '已连接'
+  window.history.replaceState(null, document.title, `${window.location.pathname}${sanitizeReturnHash(returnHash)}`)
+  await loadWorkspace()
+}
+
+async function loginWithPassword(credentials: { username: string; password: string }): Promise<void> {
+  authLoading.value = true
+  authError.value = ''
   try {
-    authConfig.value = await api.getAuthConfig()
+    if (!authConfig.value?.development || authConfig.value.mode !== 'Basic' || !authConfig.value.password.enabled) {
+      throw new Error('Development Basic 登录未启用')
+    }
+    const result = await api.passwordLogin(credentials.username, credentials.password)
+    setAccessToken(result.access_token, result.token_type || 'Basic', result.expires_in)
+    token.value = result.access_token
+    await establishSession(authReturnHash.value)
   } catch {
-    authConfig.value = null
+    clearAuthentication()
+    token.value = ''
+    authError.value = '登录失败，请检查连接、账号和租户后重试。'
+  } finally {
+    authLoading.value = false
   }
 }
 
-async function loginWithPassword(): Promise<void> {
-  if (!username.value.trim() || !password.value) return notifyError(new Error('请输入账号和密码'))
+async function loginWithOidc(): Promise<void> {
+  if (!authConfig.value) return
   authLoading.value = true
+  authError.value = ''
   try {
-    const result = await api.passwordLogin(username.value.trim(), password.value)
-    if (token.value && token.value !== result.access_token) {
-      await Promise.allSettled(conversationStreams.cancelAll('logout'))
+    await beginOidcLogin(authConfig.value, authReturnHash.value)
+  } catch {
+    authError.value = '无法启动企业登录，请检查身份提供方配置。'
+    authLoading.value = false
+  }
+}
+
+function returnToWorkspace(): void {
+  authView.value = 'workspace'
+  window.history.replaceState(null, document.title, `${window.location.pathname}${WORKSPACE_HASH}`)
+}
+
+function handleAuthenticationFailure(event: Event): void {
+  const status = (event as CustomEvent<{ status: number }>).detail?.status
+  if (status === 401) {
+    clearAuthState()
+    showLogin('登录已过期，请重新登录。')
+  } else if (status === 403 && authView.value === 'workspace') {
+    authView.value = 'forbidden'
+    window.history.replaceState(null, document.title, `${window.location.pathname}#/forbidden`)
+  }
+}
+
+async function detectAuthentication(restoreSession = true): Promise<void> {
+  authLoading.value = true
+  authError.value = ''
+  try {
+    await loadAuthConfig()
+    if (restoreSession && getAccessToken()) {
+      authView.value = 'restoring'
+      await establishSession(authReturnHash.value)
+      return
     }
-    setAccessToken(result.access_token, result.token_type || 'Basic')
-    token.value = result.access_token
-    password.value = ''
-    await connect()
+    showLogin(authReason.value)
   } catch (error) {
-    notifyError(error)
+    if (error instanceof ApiError && error.status === 401) return
+    authConfig.value = null
+    authView.value = 'login'
+    authError.value = '无法读取服务认证配置，请检查连接地址后重试。'
   } finally {
     authLoading.value = false
   }
@@ -311,14 +441,16 @@ async function loadWorkspace(): Promise<void> {
 
 async function logout(): Promise<void> {
   await Promise.allSettled(conversationStreams.cancelAll('logout'))
-  setAccessToken('')
+  clearAuthState()
+  authConfig.value = null
+  authError.value = ''
   token.value = ''
   currentUser.value = null
   conversationDetailRequests.clear()
   conversations.value = []
-  newConversation()
   statusText.value = '未连接'
-  showSettings.value = true
+  showLogin('你已安全退出，当前会话中的敏感信息已清理。')
+  void detectAuthentication(false)
 }
 
 async function loadLlmProfiles(): Promise<void> {
@@ -1234,12 +1366,36 @@ function handleSettingsTabChange(name: string | number): void {
   if (name === 'rag') void loadConfig()
 }
 
-onMounted(() => {
+onMounted(async () => {
   applyTheme()
   window.addEventListener('beforeunload', handlePageUnload)
-  if (activeEndpointUrl.value) {
-    void connect()
+  window.addEventListener(AUTH_FAILURE_EVENT, handleAuthenticationFailure)
+  const hasCallback = new URLSearchParams(window.location.search).has('code')
+    || new URLSearchParams(window.location.search).has('error')
+  if (hasCallback) {
+    const parameters = cleanAuthorizationCallbackUrl()
+    authView.value = 'restoring'
+    authLoading.value = true
+    try {
+      await loadAuthConfig()
+      if (!authConfig.value) throw new Error('Authentication configuration unavailable')
+      const returnHash = await completeOidcLogin(authConfig.value, parameters)
+      await establishSession(returnHash)
+    } catch {
+      clearAuthState()
+      authError.value = '企业登录未完成或回调已失效，请重新登录。'
+      authView.value = 'login'
+    } finally {
+      authLoading.value = false
+    }
+    return
   }
+  if (window.location.hash === LOGIN_HASH) clearAuthentication()
+  await detectAuthentication(window.location.hash !== LOGIN_HASH)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener(AUTH_FAILURE_EVENT, handleAuthenticationFailure)
 })
 
 function handlePageUnload(): void {
@@ -1253,8 +1409,11 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <el-container class="app-shell" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
-    <ChatSidebar :conversations="conversations" :selected-conversation-id="selectedConversation?.conversationId" :streaming-conversation-ids="streamingConversationIds" :search="search" :loading="workspaceLoading" :status-text="statusText" :current-user="currentUser" @update:search="search = $event" @new="newConversation" @settings="openSettings('gateway')" @refresh="loadWorkspace" @select="selectConversation" @delete="deleteConversation" @toggle-collapse="toggleSidebar" @resize-start="startSidebarResize" />
+  <LoginPage v-if="authView === 'login'" :auth-config="authConfig" :loading="authLoading" :error="authError" :reason="authReason" :connection-mode="connectionMode" :router-url="routerUrl" :engine-url="engineUrl" :tenant-id="tenantId" @basic-login="loginWithPassword" @oidc-login="loginWithOidc" @retry="detectAuthentication(false)" @update-connection="updateLoginConnection" />
+  <main v-else-if="authView === 'restoring'" class="auth-state-page" aria-live="polite" aria-busy="true"><span class="auth-state-spinner" aria-hidden="true" /><h1>正在恢复登录状态</h1><p>正在安全验证当前会话，请稍候。</p></main>
+  <main v-else-if="authView === 'forbidden'" class="auth-state-page"><span class="auth-state-code">403</span><h1>无权访问此内容</h1><p>身份验证有效，但当前账号不具备所请求资源的权限。权限由服务端策略决定。</p><div><el-button @click="returnToWorkspace">返回工作台</el-button><el-button type="primary" @click="logout">退出登录</el-button></div></main>
+  <el-container v-else class="app-shell" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
+    <ChatSidebar :conversations="conversations" :selected-conversation-id="selectedConversation?.conversationId" :streaming-conversation-ids="streamingConversationIds" :search="search" :loading="workspaceLoading" :status-text="statusText" :current-user="currentUser" @update:search="search = $event" @new="newConversation" @settings="openSettings('gateway')" @logout="logout" @refresh="loadWorkspace" @select="selectConversation" @delete="deleteConversation" @toggle-collapse="toggleSidebar" @resize-start="startSidebarResize" />
     <button v-if="sidebarCollapsed" class="panel-restore sidebar-restore" type="button" aria-label="展开侧栏" title="展开侧栏" @click="toggleSidebar">›</button>
 
     <el-main class="main-panel">
@@ -1287,9 +1446,10 @@ onBeforeUnmount(() => {
         <el-tab-pane label="连接" name="gateway">
           <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">CONNECTION</span><h3>服务连接与身份</h3><p>Router 模式提供意图路由、外部 Agent 和 Engine 服务发现；Engine 模式用于直接联调单个 Engine。</p></div><span class="connection-badge" :class="{ online: statusText === '已连接' }"><i />{{ statusText }}</span></div>
             <el-form label-position="top" class="connection-form"><el-form-item label="连接模式"><el-radio-group v-model="connectionMode"><el-radio-button value="router">Router</el-radio-button><el-radio-button value="engine">直连 Engine</el-radio-button></el-radio-group></el-form-item><el-form-item label="Router 地址"><el-input v-model="routerUrl" placeholder="http://localhost:5001" /></el-form-item><el-form-item label="Engine 地址"><el-input v-model="engineUrl" placeholder="http://localhost:5000" /></el-form-item><el-form-item label="租户 ID"><el-input v-model="tenantId" placeholder="可选：用于当前工作台隔离" /></el-form-item></el-form>
-            <el-descriptions :column="2" border class="identity-status"><el-descriptions-item label="当前用户">{{ currentUser?.userId || '未连接' }}</el-descriptions-item><el-descriptions-item label="当前租户">{{ currentUser?.tenantId || tenantId || '未识别' }}</el-descriptions-item><el-descriptions-item label="认证状态">{{ currentUser?.isAuthenticated ? '已认证' : '未认证' }}</el-descriptions-item><el-descriptions-item label="登录状态">{{ token ? '已登录（Basic）' : '未登录' }}</el-descriptions-item></el-descriptions>
-            <el-alert title="当前 Basic 模式用于开发联调；生产环境应在 Gateway 接入企业身份提供方并启用统一权限策略。" type="info" :closable="false" />
-            <section class="login-card"><div class="login-card-heading"><div><span class="eyebrow">BASIC ACCOUNT</span><h4>登录 {{ activeEndpointLabel }}</h4></div><span class="login-config-status">{{ authConfig?.mode || 'Basic' }}</span></div><el-form label-position="top" class="login-form"><el-form-item label="账号"><el-input v-model="username" autocomplete="username" placeholder="请输入账号" /></el-form-item><el-form-item label="密码"><el-input v-model="password" type="password" show-password autocomplete="current-password" placeholder="请输入密码" /></el-form-item></el-form><div class="button-row"><el-button type="primary" :loading="authLoading" :disabled="!authConfig?.password.enabled" @click="loginWithPassword">账号密码登录</el-button><el-button v-if="token" @click="logout">退出登录</el-button></div><small class="login-hint">凭据只保存在当前浏览器会话，不写入本地持久化存储。</small></section>
+            <el-descriptions :column="2" border class="identity-status"><el-descriptions-item label="当前用户">{{ currentUser?.userId || '未连接' }}</el-descriptions-item><el-descriptions-item label="当前租户">{{ currentUser?.tenantId || tenantId || '未识别' }}</el-descriptions-item><el-descriptions-item label="认证状态">{{ currentUser?.isAuthenticated ? '已认证' : '未认证' }}</el-descriptions-item><el-descriptions-item label="认证模式">{{ authConfig?.mode || '未知' }}</el-descriptions-item></el-descriptions>
+            <el-alert v-if="authConfig?.mode === 'Basic'" title="当前 Basic 模式仅用于 Development 联调，不校验真实密码，严禁用于生产环境。" type="warning" :closable="false" />
+            <el-alert v-else title="身份认证由企业 IdP 完成；角色、Agent ACL 与租户授权继续由服务端策略独立判定。" type="info" :closable="false" />
+            <div class="button-row"><el-button type="danger" plain @click="logout">退出登录并清理会话</el-button></div>
             <div class="button-row"><el-button type="primary" @click="connect">保存并连接</el-button><el-button @click="api.health('/health').then(() => ElMessage.success('Live 健康检查通过')).catch(notifyError)">测试 Live</el-button><el-button @click="api.health('/ready').then(() => ElMessage.success('Ready 健康检查通过')).catch(notifyError)">测试 Ready</el-button></div>
           </section>
         </el-tab-pane>

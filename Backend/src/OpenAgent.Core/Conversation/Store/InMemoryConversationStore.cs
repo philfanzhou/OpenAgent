@@ -1,11 +1,15 @@
 using System.Collections.Concurrent;
 using OpenAgent.Contracts.Conversation;
+using OpenAgent.Contracts.Security;
 
 namespace OpenAgent.Core.Conversation.Store;
 
 internal sealed class InMemoryConversationStore : IConversationStore
 {
     private readonly ConcurrentDictionary<string, ConversationRecord> _store = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ICurrentUserContext _currentUser;
+
+    public InMemoryConversationStore(ICurrentUserContext currentUser) => _currentUser = currentUser;
 
     public Task<IReadOnlyList<ConversationMessage>> GetMessagesAsync(
         string tenantId, string conversationId, int maxMessages, CancellationToken cancellationToken = default)
@@ -124,6 +128,7 @@ internal sealed class InMemoryConversationStore : IConversationStore
         var records = _store.Values
             .Where(r => string.Equals(r.TenantId, tenantId, StringComparison.OrdinalIgnoreCase))
             .Where(r => !r.IsDeletedByUser)
+            .Where(r => string.Equals(r.UserId, _currentUser.UserId, StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(r => r.LastMessageAt)
             .Skip(skip)
             .Take(take)
@@ -140,6 +145,7 @@ internal sealed class InMemoryConversationStore : IConversationStore
         var records = _store.Values
             .Where(r => string.Equals(r.TenantId, tenantId, StringComparison.OrdinalIgnoreCase))
             .Where(r => !r.IsDeletedByUser)
+            .Where(r => string.Equals(r.UserId, _currentUser.UserId, StringComparison.OrdinalIgnoreCase))
             .Where(r => r.Title != null && r.Title.Contains(keyword, StringComparison.OrdinalIgnoreCase)
                         || r.Messages.Any(m => m.Content != null && m.Content.Contains(keyword, StringComparison.OrdinalIgnoreCase)))
             .OrderByDescending(r => r.LastMessageAt)

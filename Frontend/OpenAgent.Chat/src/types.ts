@@ -187,8 +187,16 @@ export interface RagTestResult {
 }
 
 export interface AuthConfig {
-  mode: 'Basic' | string
+  mode: 'Basic' | 'JwtBearer' | string
+  development: boolean
   password: { enabled: boolean; endpoint: string }
+  anonymous: { enabled: boolean }
+  oidc?: {
+    authority: string
+    clientId: string
+    audience: string
+    scopes: string[]
+  } | null
 }
 
 export interface AuthTokenResponse {

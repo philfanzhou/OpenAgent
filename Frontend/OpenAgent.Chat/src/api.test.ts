@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { api, fetchHealthReport, getEngineBaseUrl, getRouterBaseUrl, getTenantId, setAccessToken, setConnectionMode, setEngineBaseUrl, setRouterBaseUrl, setTenantId } from './api'
+import { api, ApiError, AUTH_FAILURE_EVENT, clearAuthentication, fetchHealthReport, getAccessToken, getEngineBaseUrl, getRouterBaseUrl, getTenantId, setAccessToken, setConnectionMode, setEngineBaseUrl, setRouterBaseUrl, setTenantId } from './api'
 
 class MemoryStorage implements Storage {
   private readonly values = new Map<string, string>()
@@ -13,9 +13,11 @@ class MemoryStorage implements Storage {
 }
 
 beforeEach(() => {
+  vi.unstubAllGlobals()
   vi.stubGlobal('localStorage', new MemoryStorage())
   vi.stubGlobal('sessionStorage', new MemoryStorage())
   vi.restoreAllMocks()
+  vi.useRealTimers()
 })
 
 describe('workspace API', () => {
@@ -45,6 +47,69 @@ describe('workspace API', () => {
     expect(requestHeaders.get('Authorization')).toBe('Basic encoded-user')
     expect(requestHeaders.get('X-Tenant-Id')).toBe('tenant-1')
     expect(requestHeaders.get('X-Trace-Id')).toBeTruthy()
+  })
+
+  it('keeps tokens out of localStorage and binds them to the authenticated endpoint', () => {
+    setConnectionMode('router')
+    setRouterBaseUrl('https://router.example')
+    setAccessToken('session-only-token', 'Bearer', 60)
+
+    expect(getAccessToken()).toBe('session-only-token')
+    expect(localStorage.getItem('openagent.auth.access-token')).toBeNull()
+
+    setRouterBaseUrl('https://other-router.example')
+    expect(getAccessToken()).toBe('')
+  })
+
+  it('drops expired session tokens', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-08-17T00:00:00Z'))
+    setAccessToken('short-lived-token', 'Bearer', 1)
+    vi.setSystemTime(new Date('2026-08-17T00:00:02Z'))
+
+    expect(getAccessToken()).toBe('')
+    expect(sessionStorage.getItem('openagent.auth.access-token')).toBeNull()
+  })
+
+  it('does not send a client tenant header with bearer tokens', async () => {
+    setConnectionMode('router')
+    setRouterBaseUrl('https://router.example')
+    setTenantId('stale-client-tenant')
+    setAccessToken('signed-token', 'Bearer')
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await api.getCurrentUser()
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    const requestHeaders = init.headers as Headers
+    expect(requestHeaders.get('Authorization')).toBe('Bearer signed-token')
+    expect(requestHeaders.has('X-Tenant-Id')).toBe(false)
+  })
+
+  it.each([401, 403])('emits auth failure status %s without exposing a token from error details', async (status) => {
+    setConnectionMode('router')
+    setRouterBaseUrl('https://router.example')
+    const dispatchEvent = vi.fn()
+    class TestCustomEvent {
+      constructor(public readonly type: string, public readonly init: { detail: unknown }) {}
+    }
+    vi.stubGlobal('window', { dispatchEvent })
+    vi.stubGlobal('CustomEvent', TestCustomEvent)
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      detail: 'authorization=Bearer secret-value',
+    }), { status, statusText: status === 401 ? 'Unauthorized' : 'Forbidden' })))
+
+    const error = await api.getCurrentUser().catch(value => value) as ApiError
+
+    expect(error.status).toBe(status)
+    expect(error.message).not.toContain('secret-value')
+    expect(dispatchEvent).toHaveBeenCalledOnce()
+    expect(dispatchEvent.mock.calls[0]?.[0]).toMatchObject({ type: AUTH_FAILURE_EVENT, init: { detail: { status } } })
+    clearAuthentication()
   })
 
   it('parses SSE events from streaming chat', async () => {
