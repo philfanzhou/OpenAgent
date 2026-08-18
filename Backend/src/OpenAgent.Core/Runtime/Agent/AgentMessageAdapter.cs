@@ -218,6 +218,29 @@ internal static class AgentMessageAdapter
         };
     }
 
+    internal static IEnumerable<ChatMessage> RemoveEmptyOpenAIToolCallText(
+        IEnumerable<ChatMessage> messages)
+    {
+        foreach (ChatMessage message in messages)
+        {
+            if (message.Role != Microsoft.Extensions.AI.ChatRole.Assistant
+                || !message.Contents.OfType<FunctionCallContent>().Any()
+                || !message.Contents.OfType<TextContent>().Any(content =>
+                    string.IsNullOrEmpty(content.Text)))
+            {
+                yield return message;
+                continue;
+            }
+
+            ChatMessage normalized = message.Clone();
+            normalized.Contents = normalized.Contents
+                .Where(content => content is not TextContent text
+                    || !string.IsNullOrEmpty(text.Text))
+                .ToList();
+            yield return normalized;
+        }
+    }
+
     private static ConversationMessage CreateStored(
         int sequence,
         string role,
