@@ -1,7 +1,7 @@
-# PR21 MCP 与 Skill 集成测试报告
+# PR43 MCP Stdio 与 Skill 脚本隔离执行测试报告
 
 **执行日期：** 2026-08-17
-**PR：** [#21](https://github.com/philfanzhou/OpenAgent/pull/21)
+**PR：** [#43](https://github.com/philfanzhou/OpenAgent/pull/43)（从 #21 拆出的本地执行增量）
 **基线：** `origin/main` `56301b01`
 
 ## 结论
@@ -39,7 +39,7 @@
 请求：
 
 ```text
-请完成 PR21 验收：用 MCP 和 secure-calculator Skill 分别计算 20+22，并展示执行结果。
+请完成本地执行验收：用 MCP 和 secure-calculator Skill 分别计算 20+22，并展示执行结果。
 ```
 
 SSE 关键事件：

@@ -1,4 +1,4 @@
-# PR21 MCP 与 Skill 执行安全调研
+# PR43 MCP 与 Skill 本地执行安全调研
 
 **调研日期：** 2026-08-17
 **适用版本：** Microsoft Agent Framework 1.14.0、ModelContextProtocol.Core 1.4.1
