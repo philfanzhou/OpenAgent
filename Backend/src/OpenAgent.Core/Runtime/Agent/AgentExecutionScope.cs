@@ -1,8 +1,15 @@
+using System.Runtime.ExceptionServices;
 using Microsoft.Agents.AI;
 using OpenAgent.Core.Conversation;
 
 namespace OpenAgent.Core.Runtime.Agent;
 
+/// <summary>
+/// Owns per-request resources created by <see cref="AgentFactory"/>: conversation
+/// history, MCP client runtimes, and Skill providers with their temporary package
+/// directories. Disposal is reverse-order and best-effort so one cleanup failure
+/// does not leak the remaining resources.
+/// </summary>
 internal sealed class AgentExecutionScope : IAsyncDisposable
 {
     private readonly PlatformChatHistory _history;
@@ -32,10 +39,29 @@ internal sealed class AgentExecutionScope : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        Exception? failure = null;
         for (int index = _resources.Length - 1; index >= 0; index--)
         {
-            await _resources[index].DisposeAsync().ConfigureAwait(false);
+            try
+            {
+                await _resources[index].DisposeAsync().ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                failure ??= exception;
+            }
         }
-        await _history.DisposeAsync().ConfigureAwait(false);
+        try
+        {
+            await _history.DisposeAsync().ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            failure ??= exception;
+        }
+        if (failure != null)
+        {
+            ExceptionDispatchInfo.Capture(failure).Throw();
+        }
     }
 }
