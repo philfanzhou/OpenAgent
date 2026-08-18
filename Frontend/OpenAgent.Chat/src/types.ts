@@ -93,11 +93,13 @@ export interface ConversationRecord {
 export interface McpServerConfig {
   name: string
   url: string
-  type: 'Http' | 'SSE' | 'Stdio'
-  command?: string
-  arguments?: string[]
-  workingDirectory?: string
-  environmentVariables?: Record<string, string>
+  type: 'Http' | 'SSE'
+  protocolVersion?: string | null
+}
+
+export interface McpConfig {
+  enabledServerIds: string[]
+  servers: McpServerConfig[]
 }
 
 export interface SkillInstanceConfig {
@@ -105,17 +107,20 @@ export interface SkillInstanceConfig {
   name: string
   enabled: boolean
   description?: string
-  parametersJsonSchema?: string
-  type?: string | null
-  endpointUrl?: string | null
-  version?: string | null
   source?: string
   sourceId?: string | null
+  packageFileName?: string | null
+  packageFormat?: string | null
+  objectKey?: string | null
+  sha256?: string | null
+  resourceCount?: number
   allowedUserIds?: string[]
   allowedGroups?: string[]
   allowedTenantIds?: string[]
   allowedRoles?: string[]
 }
+
+export type SkillCatalogItem = SkillInstanceConfig
 
 export interface SkillsConfig {
   enabledSkills: string[]
@@ -135,7 +140,7 @@ export interface LlmProviderProfile {
   id: string
   name: string
   format: 'OpenAIChatCompletions' | 'OpenAIResponses' | 'AnthropicMessages' | string
-  modelId: string
+  modelId?: string | null
   endpoint: string
   apiKey: string
   temperature: number
@@ -210,7 +215,7 @@ export interface AgentConfigEntity {
   config: {
     instructions: string
     llm: LlmConfig
-    mcp: { servers: McpServerConfig[] }
+    mcp: { enabledServerIds?: string[]; servers: McpServerConfig[] }
     rag: RagConfig
     skills: SkillsConfig
     maxTurns: number
@@ -235,11 +240,27 @@ export interface McpTestResult {
   connected: boolean
   authorized: boolean
   transport: string
+  requestedProtocolVersion?: string | null
+  negotiatedProtocolVersion?: string | null
   latencyMs: number
   toolCount: number
   deniedTools: string[]
   error?: string | null
   traceId?: string
+}
+
+export interface SkillPackageInstallResponse {
+  skill: SkillInstanceConfig
+  currentVersion: string
+  storage: string
+}
+
+export interface SkillTestResult {
+  success: boolean
+  enabledCount: number
+  instanceCount: number
+  objectStorageVerifiedSkills: string[]
+  invalidSkills: string[]
 }
 
 export interface HealthReportItem {

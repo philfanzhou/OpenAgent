@@ -90,9 +90,26 @@ internal sealed class S3FileObjectStore : IFileObjectStore
 
     private string CreateObjectKey(FileObjectWriteRequest request)
     {
+        string root = $"{_options.KeyPrefix.Trim('/')}/tenants/{CreatePartition(request.TenantId)}" +
+            $"/users/{CreatePartition(request.UserId)}";
+        if (!string.IsNullOrWhiteSpace(request.ObjectKeyPrefix))
+        {
+            return $"{root}/{NormalizePath(request.ObjectKeyPrefix!)}/{NormalizePath(request.FileName)}";
+        }
+
         string extension = Path.GetExtension(request.FileName).ToLowerInvariant();
-        return $"{_options.KeyPrefix.Trim('/')}/tenants/{CreatePartition(request.TenantId)}" +
-            $"/users/{CreatePartition(request.UserId)}/{request.FileId}{extension}";
+        return $"{root}/{request.FileId}{extension}";
+    }
+
+    private static string NormalizePath(string value)
+    {
+        string normalized = value.Replace('\\', '/').Trim('/');
+        if (string.IsNullOrWhiteSpace(normalized)
+            || normalized.Split('/').Any(segment => segment is "" or "." or ".."))
+        {
+            throw new InvalidOperationException("Object storage path is invalid.");
+        }
+        return normalized;
     }
 
     private static string CreatePartition(string value) =>

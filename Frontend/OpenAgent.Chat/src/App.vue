@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, shallowReactive, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, ApiError, AUTH_FAILURE_EVENT, clearAuthentication, getAccessToken, getConnectionMode, getEngineBaseUrl, getRouterBaseUrl, getTenantId, makeLocalConversation, setAccessToken, setConnectionMode, setEngineBaseUrl, setRouterBaseUrl, setTenantId } from './api'
 import { beginOidcLogin, cleanAuthorizationCallbackUrl, clearAuthState, completeOidcLogin, LOGIN_HASH, sanitizeReturnHash, WORKSPACE_HASH } from './auth'
@@ -9,8 +9,12 @@ import ChatSidebar from './components/ChatSidebar.vue'
 import LoginPage from './components/LoginPage.vue'
 import MessageComposer from './components/MessageComposer.vue'
 import HealthCheckPanel from './components/HealthCheckPanel.vue'
-import { AUTO_AGENT_ID, type AgentConfigEntity, type AgentSummary, type AuthConfig, type ConnectionMode, type ConversationMessage, type ConversationRecord, type CurrentUserContext, type LlmProviderProfile, type LlmTestResult, type McpServerConfig, type McpTestResult, type MessageFile, type PendingFile, type RagConfig, type RagInstanceConfig, type RagTestResult, type SkillInstanceConfig, type SkillsConfig } from './types'
+import { AUTO_AGENT_ID, type AgentConfigEntity, type AgentSummary, type AuthConfig, type ConnectionMode, type ConversationMessage, type ConversationRecord, type CurrentUserContext, type LlmProviderProfile, type LlmTestResult, type McpServerConfig, type McpTestResult, type MessageFile, type PendingFile, type RagConfig, type RagInstanceConfig, type RagTestResult, type SkillCatalogItem, type SkillInstanceConfig, type SkillsConfig } from './types'
 import { usePanelLayout } from './composables/usePanelLayout'
+import { useConversationStreams } from './composables/useConversationStreams'
+import { mergeConversationRecords, replaceConversationRecord, selectionMatchesConversation } from './conversationCollection'
+
+const selectedConversationStorageKey = 'openagent.chat.selected-conversation-id'
 
 const connectionMode = ref<ConnectionMode>(getConnectionMode())
 const routerUrl = ref(getRouterBaseUrl())
@@ -18,7 +22,7 @@ const engineUrl = ref(getEngineBaseUrl())
 const token = ref(getAccessToken())
 const tenantId = ref(getTenantId())
 const showSettings = ref(!(connectionMode.value === 'router' ? routerUrl.value : engineUrl.value))
-const activeSettings = ref<'gateway' | 'health' | 'llm' | 'agent' | 'mcp' | 'skill' | 'rag'>('gateway')
+const activeSettings = ref<'gateway' | 'health' | 'llm' | 'mcp' | 'skill' | 'agent' | 'rag'>('gateway')
 const agents = ref<AgentSummary[]>([])
 const currentUser = ref<CurrentUserContext | null>(null)
 const conversations = ref<ConversationRecord[]>([])
@@ -26,14 +30,13 @@ const selectedConversation = ref<ConversationRecord | null>(null)
 const selectedAgentId = ref(AUTO_AGENT_ID)
 const message = ref('')
 const search = ref('')
-const loading = ref(false)
-/** 当前流式请求的取消句柄，用于发送按钮在生成中切换为“停止”。 */
-let streamAbort: AbortController | null = null
-const loadingConversation = ref(false)
+const workspaceLoading = ref(false)
+const conversationDetailRequests = shallowReactive(new Map<string, string>())
+const conversationStreams = useConversationStreams()
 const savingConfig = ref(false)
 const refreshingAgents = ref(false)
 const testingMcp = ref(false)
-const testingSkill = ref(false)
+const uploadingSkill = ref(false)
 const testingRag = ref(false)
 const statusText = ref('未连接')
 const config = ref<AgentConfigEntity | null>(null)
@@ -46,15 +49,28 @@ const authReturnHash = ref(sanitizeReturnHash(window.location.hash))
 const showAgentEditor = ref(false)
 const isNewAgent = ref(false)
 const showMcpEditor = ref(false)
-const showSkillEditor = ref(false)
 const showRagEditor = ref(false)
-const mcpDraft = ref<McpServerConfig>({ name: '', url: '', type: 'Http', arguments: [] })
+const mcpDraft = ref<McpServerConfig>({ name: '', url: '', type: 'Http', protocolVersion: null })
 const mcpServers = ref<McpServerConfig[]>([])
+const agentMcpIds = ref<string[]>([])
+const showMcpBindingPicker = ref(false)
+const mcpBindingOptions = ref<McpServerConfig[]>([])
+const loadingMcpBindingOptions = ref(false)
 const selectedMcpIndex = ref(-1)
 const mcpResult = ref<McpTestResult | null>(null)
-const skillResult = ref<Record<string, unknown> | null>(null)
+const skillPackageInput = ref<HTMLInputElement | null>(null)
+const showSkillTextEditor = ref(false)
+const skillMarkdownDraft = ref('---\nname: my-skill\ndescription: Describe what this Skill does\n---\n\n# Instructions\n\n')
+const skillEditorMode = ref<'form' | 'markdown'>('form')
+const skillEditorName = ref('')
+const skillEditorDescription = ref('')
+const skillEditorInstructions = ref('')
+const editingSkillId = ref('')
+const showSkillBindingPicker = ref(false)
+const skillBindingOptions = ref<SkillCatalogItem[]>([])
+const loadingSkillBindingOptions = ref(false)
+const skillCatalog = ref<SkillCatalogItem[]>([])
 const skillDraft = ref<SkillsConfig>({ enabledSkills: [], instances: [] })
-const selectedSkillIndex = ref(-1)
 const ragDraft = ref<RagInstanceConfig>({ id: '', name: '', enabled: true, type: 'ragflow', collectionName: 'default', apiEndpoint: '', apiKey: '' })
 const ragInstances = ref<RagInstanceConfig[]>([])
 const selectedRagIndex = ref(-1)
@@ -71,13 +87,45 @@ const pendingFiles = ref<PendingFile[]>([])
 const themeMode = ref<'light' | 'dark'>(localStorage.getItem('openagent.ui.theme') === 'dark' ? 'dark' : 'light')
 const { sidebarCollapsed, contextCollapsed, toggleSidebar, toggleContext, startSidebarResize, startContextResize } = usePanelLayout()
 const currentMessages = computed(() => selectedConversation.value?.messages || [])
-const selectedSkill = computed(() => selectedSkillIndex.value >= 0 ? skillDraft.value.instances[selectedSkillIndex.value] || null : null)
+const selectedConversationStreaming = computed(() => conversationStreams.isStreaming(selectedConversation.value?.conversationId))
+const streamingConversationIds = computed(() => conversationStreams.activeConversationIds())
+const loadingConversation = computed(() => selectedConversation.value
+  ? conversationDetailRequests.has(selectedConversation.value.conversationId)
+  : false)
+const conversationStatusText = computed(() => {
+  if (!selectedConversation.value) return '新建'
+  if (selectedConversation.value.status === 'Running' && !selectedConversationStreaming.value) {
+    return 'Running（当前页面未连接流）'
+  }
+  return selectedConversation.value.status
+})
 const enabledSkillIds = computed(() => new Set(skillDraft.value.enabledSkills))
 const enabledRagIds = computed(() => new Set(config.value?.config.rag?.enabledRagInstanceIds || ragInstances.value.filter(item => item.enabled).map(item => item.id)))
-const mcpArgumentsText = computed({
-  get: () => (mcpDraft.value.arguments || []).join('\n'),
-  set: (value: string) => { mcpDraft.value.arguments = value.split('\n').map(item => item.trim()).filter(Boolean) },
-})
+const boundMcpServers = computed(() => agentMcpIds.value.map(id =>
+  mcpServers.value.find(item => item.name.toLowerCase() === id.toLowerCase())
+  || mcpBindingOptions.value.find(item => item.name.toLowerCase() === id.toLowerCase())
+  || { name: id, url: '', type: 'Http' as const }))
+const boundSkills = computed(() => skillDraft.value.enabledSkills.map(id =>
+  skillCatalog.value.find(item => item.skillId.toLowerCase() === id.toLowerCase())
+  || skillBindingOptions.value.find(item => item.skillId.toLowerCase() === id.toLowerCase())
+  || skillDraft.value.instances.find(item => item.skillId.toLowerCase() === id.toLowerCase())
+  || { skillId: id, name: id, enabled: true }))
+
+function syncCapabilityDraftsToAgent(): void {
+  if (!config.value) return
+  config.value.config.mcp = {
+    enabledServerIds: [...agentMcpIds.value],
+    servers: [],
+  }
+  const catalogIds = new Set(skillCatalog.value.map(item => item.skillId.toLowerCase()))
+  config.value.config.skills = {
+    enabledSkills: [...skillDraft.value.enabledSkills],
+    // Keep only legacy inline instances; catalog Skills are bound by ID.
+    instances: skillDraft.value.instances
+      .filter(item => !catalogIds.has(item.skillId.toLowerCase()))
+      .map(item => ({ ...item })),
+  }
+}
 
 const ragEnabledText = computed(() => config.value?.config.rag?.enabled ? '已启用' : '未启用')
 const selectedAgent = computed(() => agents.value.find(agent => agent.agentId === selectedAgentId.value) || null)
@@ -124,6 +172,48 @@ function toggleSkillBinding(skill: SkillInstanceConfig, enabled: boolean): void 
   skillDraft.value.enabledSkills = Array.from(ids).filter(Boolean)
 }
 
+function toggleMcpBinding(server: McpServerConfig, enabled: boolean): void {
+  const ids = new Set(agentMcpIds.value)
+  if (enabled) ids.add(server.name)
+  else ids.delete(server.name)
+  agentMcpIds.value = [...ids]
+  if (enabled && !mcpServers.value.some(item => item.name.toLowerCase() === server.name.toLowerCase())) {
+    mcpServers.value = [...mcpServers.value, server]
+  }
+}
+
+async function openMcpBindingPicker(): Promise<void> {
+  loadingMcpBindingOptions.value = true
+  try {
+    mcpBindingOptions.value = await api.listMcpProfiles()
+    showMcpBindingPicker.value = true
+  } catch (error) {
+    notifyError(error)
+  } finally {
+    loadingMcpBindingOptions.value = false
+  }
+}
+
+async function openSkillBindingPicker(): Promise<void> {
+  loadingSkillBindingOptions.value = true
+  try {
+    skillBindingOptions.value = await api.listSkills()
+    showSkillBindingPicker.value = true
+  } catch (error) {
+    notifyError(error)
+  } finally {
+    loadingSkillBindingOptions.value = false
+  }
+}
+
+function removeMcpBinding(name: string): void {
+  agentMcpIds.value = agentMcpIds.value.filter(id => id.toLowerCase() !== name.toLowerCase())
+}
+
+function removeSkillBinding(skillId: string): void {
+  skillDraft.value.enabledSkills = skillDraft.value.enabledSkills.filter(id => id.toLowerCase() !== skillId.toLowerCase())
+}
+
 function isRagEnabled(id: string): boolean {
   return enabledRagIds.value.has(id)
 }
@@ -146,7 +236,6 @@ function createDefaultLlm(): LlmProviderProfile {
     id: '',
     name: '',
     format: 'OpenAIChatCompletions',
-    modelId: 'gpt-4o',
     endpoint: 'https://api.openai.com/v1',
     apiKey: '',
     temperature: 0.7,
@@ -200,30 +289,28 @@ function updateLoginConnection(value: {
 }
 
 function resetWorkspace(): void {
-  streamAbort?.abort()
-  streamAbort = null
+  void Promise.allSettled(conversationStreams.cancelAll('logout'))
   currentUser.value = null
   agents.value = []
   conversations.value = []
   selectedConversation.value = null
+  conversationDetailRequests.clear()
   pendingFiles.value = []
   message.value = ''
   config.value = null
   llmDraft.value = createDefaultLlm()
   llmProfiles.value = []
-  mcpDraft.value = { name: '', url: '', type: 'Http', arguments: [] }
+  mcpDraft.value = { name: '', url: '', type: 'Http', protocolVersion: null }
   mcpServers.value = []
   skillDraft.value = { enabledSkills: [], instances: [] }
   ragDraft.value = { id: '', name: '', enabled: true, type: 'ragflow', collectionName: 'default', apiEndpoint: '', apiKey: '' }
   ragInstances.value = []
   llmResult.value = null
   mcpResult.value = null
-  skillResult.value = null
   ragResult.value = null
   showAgentEditor.value = false
   showLlmEditor.value = false
   showMcpEditor.value = false
-  showSkillEditor.value = false
   showRagEditor.value = false
   token.value = ''
   showSettings.value = false
@@ -289,14 +376,6 @@ async function loginWithOidc(): Promise<void> {
   }
 }
 
-function logout(): void {
-  clearAuthState()
-  authConfig.value = null
-  authError.value = ''
-  showLogin('你已安全退出，当前会话中的敏感信息已清理。')
-  void detectAuthentication(false)
-}
-
 function returnToWorkspace(): void {
   authView.value = 'workspace'
   window.history.replaceState(null, document.title, `${window.location.pathname}${WORKSPACE_HASH}`)
@@ -335,7 +414,7 @@ async function detectAuthentication(restoreSession = true): Promise<void> {
 }
 
 async function loadWorkspace(): Promise<void> {
-  loading.value = true
+  workspaceLoading.value = true
   try {
     const [agentResult, conversationResult, userResult] = await Promise.allSettled([
       api.listAgents(),
@@ -344,24 +423,55 @@ async function loadWorkspace(): Promise<void> {
     ])
     if (agentResult.status === 'fulfilled') agents.value = agentResult.value
     else notifyError(agentResult.reason)
-    if (conversationResult.status === 'fulfilled') conversations.value = conversationResult.value
-    else conversations.value = []
+    if (conversationResult.status === 'fulfilled') mergeConversationList(conversationResult.value)
+    else if (!conversationStreams.activeConversationIds().length) conversations.value = []
     if (userResult.status === 'fulfilled') currentUser.value = userResult.value
     if ((connectionMode.value === 'engine' && selectedAgentId.value === AUTO_AGENT_ID)
       || (selectedAgentId.value !== AUTO_AGENT_ID && !agents.value.some(item => item.agentId === selectedAgentId.value))) {
       selectedAgentId.value = agents.value[0]?.agentId || ''
       config.value = null
     }
+    await restoreSelectedConversation()
   } catch (error) {
     notifyError(error)
   } finally {
-    loading.value = false
+    workspaceLoading.value = false
   }
+}
+
+async function logout(): Promise<void> {
+  await Promise.allSettled(conversationStreams.cancelAll('logout'))
+  clearAuthState()
+  authConfig.value = null
+  authError.value = ''
+  token.value = ''
+  currentUser.value = null
+  conversationDetailRequests.clear()
+  conversations.value = []
+  statusText.value = '未连接'
+  showLogin('你已安全退出，当前会话中的敏感信息已清理。')
+  void detectAuthentication(false)
 }
 
 async function loadLlmProfiles(): Promise<void> {
   try {
     llmProfiles.value = await api.listLlmProfiles()
+  } catch (error) {
+    notifyError(error)
+  }
+}
+
+async function loadMcpProfiles(): Promise<void> {
+  try {
+    mcpServers.value = await api.listMcpProfiles()
+  } catch (error) {
+    notifyError(error)
+  }
+}
+
+async function loadSkillCatalog(): Promise<void> {
+  try {
+    skillCatalog.value = await api.listSkills()
   } catch (error) {
     notifyError(error)
   }
@@ -408,7 +518,7 @@ async function saveLlm(): Promise<void> {
   const profile = llmDraft.value
   const id = profile.id.trim()
   if (!id || !/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(id)) return notifyError(new Error('LLM ID 只能使用字母、数字、点、下划线或短横线'))
-  if (!profile.name.trim() || !profile.modelId.trim() || !profile.endpoint.trim()) return notifyError(new Error('请填写名称、模型 ID 和 Endpoint'))
+  if (!profile.name.trim() || !profile.endpoint.trim()) return notifyError(new Error('请填写名称和 Endpoint'))
   profile.id = id
   savingLlm.value = true
   try {
@@ -442,7 +552,6 @@ function applyLlmProfile(providerId: string): void {
   const profile = llmProfiles.value.find(item => item.id === providerId)
   if (!profile || !config.value) return
   config.value.config.llm.format = profile.format
-  config.value.config.llm.modelId = profile.modelId
   config.value.config.llm.endpoint = profile.endpoint
   config.value.config.llm.temperature = profile.temperature
 }
@@ -468,34 +577,67 @@ async function refreshAgents(): Promise<void> {
   }
 }
 
-async function refreshConversations(): Promise<void> {
+async function refreshConversations(showError = true): Promise<void> {
   try {
     const refreshed = await api.listConversations()
-    const current = selectedConversation.value
-    conversations.value = current && !refreshed.some(item => item.conversationId === current.conversationId)
-      ? [current, ...refreshed]
-      : refreshed
+    mergeConversationList(refreshed)
   } catch (error) {
-    notifyError(error)
+    if (showError) notifyError(error)
   }
+}
+
+function mergeConversationList(refreshed: ConversationRecord[]): void {
+  conversations.value = mergeConversationRecords(
+    conversations.value,
+    refreshed,
+    new Set(conversationStreams.activeConversationIds()),
+    selectedConversation.value?.conversationId,
+  )
+}
+
+function replaceConversation(detail: ConversationRecord, previousConversationId = detail.conversationId): void {
+  const selectionMatches = selectionMatchesConversation(
+    selectedConversation.value?.conversationId,
+    detail.conversationId,
+    previousConversationId,
+  )
+  conversations.value = replaceConversationRecord(conversations.value, detail, previousConversationId)
+  if (selectionMatches) {
+    selectedConversation.value = detail
+    sessionStorage.setItem(selectedConversationStorageKey, detail.conversationId)
+  }
+}
+
+async function restoreSelectedConversation(): Promise<void> {
+  if (selectedConversation.value) return
+  const storedConversationId = sessionStorage.getItem(selectedConversationStorageKey)
+  const stored = conversations.value.find(item => item.conversationId === storedConversationId)
+  if (stored) await selectConversation(stored)
 }
 
 async function selectConversation(item: ConversationRecord): Promise<void> {
   selectedConversation.value = item
+  sessionStorage.setItem(selectedConversationStorageKey, item.conversationId)
   selectedAgentId.value = item.agentId || selectedAgentId.value
   if (item.messages?.length) {
     await hydrateFilePreviews(item)
     return
   }
-  loadingConversation.value = true
+  const requestId = crypto.randomUUID()
+  conversationDetailRequests.set(item.conversationId, requestId)
   try {
     const detail = await api.getConversation(item.conversationId)
     await hydrateFilePreviews(detail)
-    selectedConversation.value = detail
+    if (conversationDetailRequests.get(item.conversationId) !== requestId
+      || conversationStreams.isStreaming(item.conversationId)) return
+    replaceConversation(detail, item.conversationId)
   } catch (error) {
-    notifyError(error)
+    if (conversationDetailRequests.get(item.conversationId) === requestId
+      && selectedConversation.value?.conversationId === item.conversationId) notifyError(error)
   } finally {
-    loadingConversation.value = false
+    if (conversationDetailRequests.get(item.conversationId) === requestId) {
+      conversationDetailRequests.delete(item.conversationId)
+    }
   }
 }
 
@@ -530,6 +672,7 @@ async function downloadFile(file: MessageFile): Promise<void> {
 
 function newConversation(): void {
   selectedConversation.value = null
+  sessionStorage.removeItem(selectedConversationStorageKey)
   message.value = ''
   pendingFiles.value = []
 }
@@ -537,10 +680,12 @@ function newConversation(): void {
 function handleAgentChange(): void {
   // 切换 Agent 时保留当前会话与输入内容：实际场景中 Agent 可随时切换。
   config.value = null
+  agentMcpIds.value = []
   mcpServers.value = []
+  mcpBindingOptions.value = []
   selectedMcpIndex.value = -1
+  skillBindingOptions.value = []
   skillDraft.value = { enabledSkills: [], instances: [] }
-  selectedSkillIndex.value = -1
   ragInstances.value = []
   selectedRagIndex.value = -1
 }
@@ -554,12 +699,7 @@ function llmName(agent: AgentSummary): string {
 }
 
 function llmId(agent: AgentSummary): string {
-  if (agent.llmModel) return agent.llmModel
-  if (agent.llmProvider) {
-    const profile = llmProfiles.value.find(item => item.id === agent.llmProvider)
-    return profile?.modelId || ''
-  }
-  return ''
+  return agent.llmModel || ''
 }
 
 function selectAgent(agentId: string): void {
@@ -617,13 +757,14 @@ async function toMessageFile(item: PendingFile): Promise<MessageFile> {
 }
 
 function stopStreaming(): void {
-  streamAbort?.abort()
+  const conversationId = selectedConversation.value?.conversationId
+  if (conversationId) conversationStreams.cancelConversation(conversationId, 'user')
 }
 
 async function send(): Promise<void> {
   const content = message.value.trim()
   const hasFiles = pendingFiles.value.length > 0
-  if ((!content && !hasFiles) || !selectedAgentId.value || loading.value) return
+  if ((!content && !hasFiles) || !selectedAgentId.value || selectedConversationStreaming.value) return
   if (pendingFiles.value.some(item => item.state !== 'ready' || !item.asset)) {
     notifyError(new Error('请等待文件上传完成，或移除上传失败的文件后再发送'))
     return
@@ -645,18 +786,19 @@ async function send(): Promise<void> {
   }
   const conversation = selectedConversation.value
   if (!conversation) return
-  const conversationId = conversation.conversationId
+  let conversationId = conversation.conversationId
   // 首次对话不携带任何 conversationId：由引擎生成并在 done 事件回传，前端记录后用于后续消息。
   // 这样 router 对首次消息会执行意图识别，而不是当成续聊直接转发。
   const sendConversationId = isNewConversation ? undefined : conversationId
-  loading.value = true
-  const controller = new AbortController()
-  streamAbort = controller
+  const streamState = conversationStreams.start(conversationId)
+  const requestId = streamState.requestId
   let streamError: { title?: string; detail?: string; traceId?: string } | undefined
   let flushStream: (() => void) | undefined
-  let returnedConversationId: string | undefined
+  let receivedDone = false
+  let completedAgentId = conversation.agentId
   try {
     conversation.messages ||= []
+    conversation.status = 'Running'
     const messageFiles = await Promise.all(pendingFiles.value.map(toMessageFile))
     conversation.messages.push({
       messageId: crypto.randomUUID(), sequence: conversation.messages.length + 1,
@@ -676,6 +818,7 @@ async function send(): Promise<void> {
       role: 'assistant', content: '', timestamp: new Date().toISOString(),
     })
     const assistantMessage = conversation.messages[conversation.messages.length - 1]
+    conversation.messageCount = conversation.messages.length
     flushStream = (): void => {
       assistantMessage.content = assistant
       assistantMessage.reasoning = reasoning || undefined
@@ -688,8 +831,17 @@ async function send(): Promise<void> {
       sendConversationId,
       uploaded.map(asset => asset.fileId),
       sendConversationId,
-      controller.signal,
+      streamState.controller.signal,
     )) {
+      if (event.conversationId && event.conversationId !== conversationId) {
+        const previousConversationId = conversationId
+        const selectionMatches = selectedConversation.value === conversation
+          || selectedConversation.value?.conversationId === previousConversationId
+        conversationStreams.remap(requestId, event.conversationId)
+        conversationId = event.conversationId
+        conversation.conversationId = conversationId
+        if (selectionMatches) sessionStorage.setItem(selectedConversationStorageKey, conversationId)
+      }
       if (event.type === 'content') {
         assistant += event.content || ''
         if (performance.now() - lastFlush > 100) flushStream?.()
@@ -703,8 +855,9 @@ async function send(): Promise<void> {
           callId: event.toolCallId,
           arguments: event.toolArguments,
         })
-      } else if (event.type === 'done' && event.status) {
-        conversation.status = event.status as ConversationRecord['status']
+      } else if (event.type === 'done') {
+        receivedDone = true
+        conversation.status = (event.status || 'Completed') as ConversationRecord['status']
       } else if (event.type === 'error') {
         // 捕获流式错误，交给 catch 以独立错误卡片展示；不混入助手内容。
         streamError = {
@@ -714,45 +867,48 @@ async function send(): Promise<void> {
         }
         throw new Error(streamError.detail)
       }
-      if (event.conversationId) returnedConversationId = event.conversationId
     }
     flushStream?.()
-    const persisted = await api.getConversation(returnedConversationId || conversationId)
-    await hydrateFilePreviews(persisted)
-    selectedConversation.value = persisted
-    await refreshConversations()
+    if (!receivedDone) throw new Error('流连接在完成事件前意外结束')
+    try {
+      const persisted = await api.getConversation(conversationId)
+      await hydrateFilePreviews(persisted)
+      completedAgentId = persisted.agentId
+      replaceConversation(persisted, conversationId)
+    } catch (error) {
+      if (selectedConversation.value?.conversationId === conversationId) notifyError(error)
+    }
+    await refreshConversations(false)
     // 初次会话：若后端意图识别将对话路由到了其他 Agent，更新右上角选择器并提示。
-    if (isNewConversation && persisted.agentId && persisted.agentId !== requestedAgentId) {
-      const routed = agents.value.find(agent => agent.agentId === persisted.agentId)
-      selectedAgentId.value = persisted.agentId
-      ElMessage.info(`已由意图识别路由到 Agent「${routed?.name || persisted.agentId}」`)
+    if (isNewConversation && completedAgentId && completedAgentId !== requestedAgentId
+      && selectedConversation.value?.conversationId === conversationId) {
+      const routed = agents.value.find(agent => agent.agentId === completedAgentId)
+      selectedAgentId.value = completedAgentId
+      ElMessage.info(`已由意图识别路由到 Agent「${routed?.name || completedAgentId}」`)
     }
   } catch (error) {
-    if (controller.signal.aborted) {
-      // 用户主动停止：保留已生成的部分内容并正常存档，不当作错误处理。
+    const cancelReason = conversationStreams.getByRequest(requestId)?.cancelReason
+    if (cancelReason && cancelReason !== 'network') {
+      // Cancellation keeps received content while the server finalizes persistence.
       conversation.status = 'Cancelled'
       conversation.updatedAt = new Date().toISOString()
       conversation.lastMessageAt = conversation.updatedAt
       flushStream?.()
-      // 引擎在流开始时就下发了真实 conversationId；用它替换本地临时 ID，
-      // 保证下次输入继续同一会话，之前的消息与文件才能被引擎识别。
-      const persistedConversationId = returnedConversationId || conversationId
-      if (returnedConversationId) {
-        conversation.conversationId = returnedConversationId
-      }
-      try {
-        const persisted = await api.getConversation(persistedConversationId)
-        await hydrateFilePreviews(persisted)
-        // 仅当服务端会话已有消息时才替换本地视图；否则保留本地部分内容，
-        // 避免中止后页面退回空的“新会话”欢迎页。
-        if (persisted.messages?.length) {
-          selectedConversation.value = persisted
+      if (cancelReason !== 'unload') {
+        try {
+          const persisted = await api.getConversation(conversationId)
+          await hydrateFilePreviews(persisted)
+          // 仅当服务端会话已有消息时才替换本地内容；否则保留已接收的片段。
+          if (persisted.messages?.length && persisted.status !== 'Running') {
+            replaceConversation(persisted, conversationId)
+          }
+        } catch {
+          // The server may not have persisted a newly cancelled conversation yet.
         }
-      } catch {
-        // 首次会话未持久化时保留本地部分内容作为存档。
+        await refreshConversations(false)
       }
-      await refreshConversations().catch(() => undefined)
     } else {
+      if (!streamError) conversationStreams.cancelRequest(requestId, 'network')
       conversation.status = 'Failed'
       const lastMessage = conversation.messages?.at(-1)
       if (lastMessage?.role === 'assistant') {
@@ -763,17 +919,28 @@ async function send(): Promise<void> {
           traceId: streamError?.traceId,
         }
       }
-      notifyError(error)
+      try {
+        const persisted = await api.getConversation(conversationId)
+        await hydrateFilePreviews(persisted)
+        if (persisted.messages?.length && persisted.status !== 'Running') {
+          replaceConversation(persisted, conversationId)
+        }
+      } catch {
+        // Reconnect and conversation detail loading will recover persisted messages later.
+      }
+      if (selectedConversation.value?.conversationId === conversationId) notifyError(error)
     }
   } finally {
-    streamAbort = null
-    loading.value = false
+    conversationStreams.finish(requestId)
   }
 }
 
 async function deleteConversation(item: ConversationRecord): Promise<void> {
   try {
     await ElMessageBox.confirm('确认删除这个会话吗？', '删除会话', { type: 'warning' })
+    conversationDetailRequests.delete(item.conversationId)
+    const settled = conversationStreams.cancelConversation(item.conversationId, 'delete')
+    if (settled) await settled
     await api.deleteConversation(item.conversationId)
     conversations.value = conversations.value.filter(value => value.conversationId !== item.conversationId)
     if (selectedConversation.value?.conversationId === item.conversationId) newConversation()
@@ -782,20 +949,31 @@ async function deleteConversation(item: ConversationRecord): Promise<void> {
   }
 }
 
-async function loadConfig(): Promise<void> {
-  if (!selectedAgentId.value || selectedAgentId.value === AUTO_AGENT_ID) return
+async function loadConfig(agentId = selectedAgentId.value): Promise<void> {
+  if (!agentId || agentId === AUTO_AGENT_ID) return
   try {
-    config.value = await api.getAgentConfig(selectedAgentId.value)
-    mcpServers.value = (config.value.config.mcp?.servers || []).map(item => ({
-      ...item,
-      arguments: [...(item.arguments || [])],
-      environmentVariables: { ...(item.environmentVariables || {}) },
-    }))
+    const loadedConfig = await api.getAgentConfig(agentId)
+    const mcpIds = [...(loadedConfig.config.mcp?.enabledServerIds || [])]
+    for (const legacy of loadedConfig.config.mcp?.servers || []) {
+      if (!mcpIds.some(id => id.toLowerCase() === legacy.name.toLowerCase())) mcpIds.push(legacy.name)
+    }
+    const [selectedMcps, selectedSkills] = await Promise.all([
+      Promise.all(mcpIds.map(id => api.getMcpProfile(id).catch(() => null))),
+      Promise.all(loadedConfig.config.skills.enabledSkills.map(id => api.getSkill(id).catch(() => null))),
+    ])
+    config.value = loadedConfig
+    mcpServers.value = selectedMcps.filter((item): item is McpServerConfig => item !== null)
+    skillCatalog.value = selectedSkills.filter((item): item is SkillCatalogItem => item !== null)
+    agentMcpIds.value = mcpIds
+    for (const legacy of config.value.config.mcp?.servers || []) {
+      if (!agentMcpIds.value.includes(legacy.name)) agentMcpIds.value.push(legacy.name)
+      if (!mcpServers.value.some(item => item.name.toLowerCase() === legacy.name.toLowerCase())) mcpServers.value.push(legacy)
+    }
     skillDraft.value = {
       enabledSkills: [...config.value.config.skills.enabledSkills],
-      instances: config.value.config.skills.instances.map(item => ({ ...item, enabled: config.value?.config.skills.enabledSkills.includes(item.skillId) ?? item.enabled })),
+      instances: [...skillCatalog.value, ...config.value.config.skills.instances.filter(item => !skillCatalog.value.some(catalog => catalog.skillId.toLowerCase() === item.skillId.toLowerCase()))]
+        .map(item => ({ ...item, enabled: config.value?.config.skills.enabledSkills.includes(item.skillId) ?? item.enabled })),
     }
-    selectedSkillIndex.value = skillDraft.value.instances.length ? 0 : -1
     const enabledRagInstanceIds = new Set(config.value.config.rag?.enabledRagInstanceIds || [])
     ragInstances.value = (config.value.config.rag?.instances || []).map(item => ({ ...item, enabled: enabledRagInstanceIds.size ? enabledRagInstanceIds.has(item.id) : item.enabled }))
     selectedRagIndex.value = ragInstances.value.length ? 0 : -1
@@ -806,14 +984,14 @@ async function loadConfig(): Promise<void> {
 }
 
 function createDefaultMcp(): McpServerConfig {
-  return { name: '', url: '', type: 'Http', arguments: [], environmentVariables: {} }
+  return { name: '', url: '', type: 'Http', protocolVersion: null }
 }
 
 function selectMcp(index: number): void {
   const server = mcpServers.value[index]
   if (!server) return
   selectedMcpIndex.value = index
-  mcpDraft.value = { ...server, arguments: [...(server.arguments || [])], environmentVariables: { ...(server.environmentVariables || {}) } }
+  mcpDraft.value = { ...server }
 }
 
 function newMcp(): void {
@@ -823,82 +1001,153 @@ function newMcp(): void {
   showMcpEditor.value = true
 }
 
-async function editAgent(agentId: string): Promise<void> {
-  selectedAgentId.value = agentId
-  handleAgentChange()
-  await Promise.all([loadConfig(), loadMcp(), loadLlmProfiles()])
-  isNewAgent.value = false
-  showAgentEditor.value = true
-}
-
-async function loadMcp(openEditorIfEmpty = false): Promise<void> {
-  if (!selectedAgentId.value || selectedAgentId.value === AUTO_AGENT_ID) return
-  try {
-    const result = await api.getMcpConfig(selectedAgentId.value)
-    mcpServers.value = result.servers || []
-    if (selectedMcpIndex.value >= 0 && selectedMcpIndex.value < mcpServers.value.length) selectMcp(selectedMcpIndex.value)
-    else if (mcpServers.value.length) selectMcp(0)
-    else {
-      selectedMcpIndex.value = -1
-      mcpDraft.value = createDefaultMcp()
-      if (openEditorIfEmpty) newMcp()
-    }
-  } catch (error) {
-    notifyError(error)
-  }
-}
-
-async function deleteMcp(): Promise<void> {
-  const current = mcpServers.value[selectedMcpIndex.value]
-  if (!current || !selectedAgentId.value) return
+async function removeMcp(index: number): Promise<void> {
+  const current = mcpServers.value[index]
+  if (!current) return
   try {
     await ElMessageBox.confirm(`确认移除 MCP「${current.name}」吗？`, '移除 MCP', { type: 'warning' })
-    await api.deleteMcp(current.name, selectedAgentId.value)
-    mcpServers.value.splice(selectedMcpIndex.value, 1)
-    if (mcpServers.value.length) selectMcp(Math.min(selectedMcpIndex.value, mcpServers.value.length - 1))
-    else newMcp()
-    ElMessage.success('MCP 已移除')
+    await api.deleteMcpProfile(current.name)
+    mcpServers.value.splice(index, 1)
+    selectedMcpIndex.value = mcpServers.value.length ? Math.min(index, mcpServers.value.length - 1) : -1
+    if (selectedMcpIndex.value >= 0) selectMcp(selectedMcpIndex.value)
+    agentMcpIds.value = agentMcpIds.value.filter(id => id.toLowerCase() !== current.name.toLowerCase())
+    ElMessage.success('MCP 配置已删除；已绑定的 Agent 需要重新选择配置')
   } catch (error) {
     if (error !== 'cancel' && error !== 'close') notifyError(error)
   }
 }
 
-async function testMcpRow(index: number): Promise<void> {
-  selectMcp(index)
-  await testMcp()
-  showMcpEditor.value = true
+async function editAgent(agentId: string): Promise<void> {
+  selectedAgentId.value = agentId
+  handleAgentChange()
+  await Promise.all([loadConfig(agentId), loadLlmProfiles()])
+  if (config.value?.config.llm.provider) applyLlmProfile(config.value.config.llm.provider)
+  isNewAgent.value = false
+  showAgentEditor.value = true
 }
 
-function createDefaultSkill(): SkillInstanceConfig {
-  return { skillId: '', name: '', enabled: true, description: '', source: 'Local' }
+function chooseSkillPackage(): void {
+  skillPackageInput.value?.click()
 }
 
-function selectSkill(index: number): void {
-  if (skillDraft.value.instances[index]) selectedSkillIndex.value = index
+function openSkillTextEditor(): void {
+  editingSkillId.value = ''
+  skillEditorMode.value = 'form'
+  skillEditorName.value = 'my-skill'
+  skillEditorDescription.value = 'Describe what this Skill does'
+  skillEditorInstructions.value = '# Instructions\n\n'
+  skillMarkdownDraft.value = composeSkillMarkdown()
+  showSkillTextEditor.value = true
 }
 
-function newSkill(): void {
-  skillDraft.value.instances.push(createDefaultSkill())
-  selectedSkillIndex.value = skillDraft.value.instances.length - 1
-  showSkillEditor.value = true
+function parseSkillMarkdown(markdown: string): { name: string; description: string; body: string } | null {
+  const lines = markdown.replace(/^\uFEFF/, '').split(/\r?\n/)
+  if (lines[0]?.trim() !== '---') return null
+  const end = lines.findIndex((line, index) => index > 0 && line.trim() === '---')
+  if (end < 0) return null
+  const values = new Map<string, string>()
+  for (const line of lines.slice(1, end)) {
+    const separator = line.indexOf(':')
+    if (separator > 0) values.set(line.slice(0, separator).trim().toLowerCase(), line.slice(separator + 1).trim().replace(/^['"]|['"]$/g, ''))
+  }
+  const name = values.get('name')?.trim() || ''
+  const description = values.get('description')?.trim() || ''
+  return name && description ? { name, description, body: lines.slice(end + 1).join('\n').replace(/^\n/, '') } : null
 }
 
-function editSkill(index: number): void {
-  selectSkill(index)
-  showSkillEditor.value = true
+function composeSkillMarkdown(): string {
+  return `---\nname: ${skillEditorName.value.trim()}\ndescription: ${skillEditorDescription.value.trim()}\n---\n\n${skillEditorInstructions.value}`
 }
 
-function removeSkill(): void {
-  if (selectedSkillIndex.value < 0) return
-  const removed = skillDraft.value.instances.splice(selectedSkillIndex.value, 1)[0]
-  skillDraft.value.enabledSkills = skillDraft.value.enabledSkills.filter(item => item !== removed?.skillId)
-  selectedSkillIndex.value = skillDraft.value.instances.length ? Math.min(selectedSkillIndex.value, skillDraft.value.instances.length - 1) : -1
+function switchSkillEditorMode(): void {
+  if (skillEditorMode.value === 'form') {
+    skillMarkdownDraft.value = composeSkillMarkdown()
+    skillEditorMode.value = 'markdown'
+    return
+  }
+  const parsed = parseSkillMarkdown(skillMarkdownDraft.value)
+  if (!parsed) {
+    ElMessage.warning('当前 Markdown 无法解析，请修正 frontmatter 或继续使用源码模式')
+    return
+  }
+  skillEditorName.value = parsed.name
+  skillEditorDescription.value = parsed.description
+  skillEditorInstructions.value = parsed.body
+  skillEditorMode.value = 'form'
 }
 
-async function testSkillRow(index: number): Promise<void> {
-  selectSkill(index)
-  await testSkills()
-  showSkillEditor.value = true
+async function editSkill(skill: SkillCatalogItem): Promise<void> {
+  try {
+    const source = await api.getSkillSource(skill.skillId)
+    editingSkillId.value = skill.skillId
+    skillMarkdownDraft.value = source.markdown
+    const parsed = parseSkillMarkdown(source.markdown)
+    if (parsed) {
+      skillEditorName.value = parsed.name
+      skillEditorDescription.value = parsed.description
+      skillEditorInstructions.value = parsed.body
+      skillEditorMode.value = 'form'
+    } else {
+      skillEditorMode.value = 'markdown'
+    }
+    showSkillTextEditor.value = true
+  } catch (error) {
+    notifyError(error)
+  }
+}
+
+async function uploadSkillFile(file: File): Promise<void> {
+  const extension = file.name.toLowerCase().split('.').pop()
+  if (extension !== 'zip' && extension !== 'md') throw new Error('Skill 只能上传 .zip 或单文件 .md')
+  if (file.size === 0 || file.size > 4 * 1024 * 1024) throw new Error('Skill 文件必须在 1B 到 4MB 之间')
+  const installed = await api.uploadSkillCatalog(file)
+  skillCatalog.value = [installed.skill, ...skillCatalog.value.filter(item => item.skillId.toLowerCase() !== installed.skill.skillId.toLowerCase())]
+  ElMessage.success('Skill 已校验并写入 OSS 解压目录；请在 Agent 中选择绑定')
+}
+
+async function uploadSkillPackage(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  uploadingSkill.value = true
+  try {
+    await uploadSkillFile(file)
+  } catch (error) {
+    notifyError(error)
+  } finally {
+    uploadingSkill.value = false
+  }
+}
+
+async function deleteSkillCatalog(skill: SkillCatalogItem): Promise<void> {
+  try {
+    await ElMessageBox.confirm(`确认删除 Skill「${skill.name}」吗？删除后所有 Agent 的该绑定都会失效。`, '删除 Skill', { type: 'warning' })
+    await api.deleteSkillCatalog(skill.skillId)
+    skillCatalog.value = skillCatalog.value.filter(item => item.skillId.toLowerCase() !== skill.skillId.toLowerCase())
+    skillDraft.value.enabledSkills = skillDraft.value.enabledSkills.filter(id => id.toLowerCase() !== skill.skillId.toLowerCase())
+    ElMessage.success('Skill 已从目录删除')
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') notifyError(error)
+  }
+}
+
+async function saveTextSkill(): Promise<void> {
+  if (skillEditorMode.value === 'form') skillMarkdownDraft.value = composeSkillMarkdown()
+  const frontmatter = parseSkillMarkdown(skillMarkdownDraft.value)
+  if (!frontmatter) {
+    notifyError(new Error('Skill Markdown 必须以 YAML frontmatter 开始，并包含 name 与 description'))
+    return
+  }
+  uploadingSkill.value = true
+  try {
+    await uploadSkillFile(new File([skillMarkdownDraft.value], `${frontmatter.name}.md`, { type: 'text/markdown' }))
+    showSkillTextEditor.value = false
+  } catch (error) {
+    notifyError(error)
+  } finally {
+    uploadingSkill.value = false
+  }
 }
 
 function createDefaultRag(): RagInstanceConfig {
@@ -1020,11 +1269,7 @@ async function saveConfig(): Promise<void> {
     return
   }
   config.value.agentId = agentId
-  config.value.config.mcp = { servers: mcpServers.value.map(item => ({ ...item })) }
-  config.value.config.skills = {
-    enabledSkills: [...skillDraft.value.enabledSkills],
-    instances: skillDraft.value.instances.map(item => ({ ...item })),
-  }
+  syncCapabilityDraftsToAgent()
   config.value.config.rag = {
     ...(config.value.config.rag || { enabled: false, enabledRagInstanceIds: [], instances: [] }),
     enabledRagInstanceIds: [...(config.value.config.rag?.enabledRagInstanceIds || [])],
@@ -1050,40 +1295,46 @@ async function saveConfig(): Promise<void> {
 }
 
 async function saveMcp(): Promise<void> {
-  if (!selectedAgentId.value || !mcpDraft.value.name.trim()) return
+  const name = mcpDraft.value.name.trim()
+  if (!name) {
+    notifyError(new Error('请输入 MCP 名称'))
+    return
+  }
+  if (!mcpDraft.value.url.trim()) {
+    notifyError(new Error('请输入 MCP URL'))
+    return
+  }
+  const duplicate = mcpServers.value.findIndex((item, index) =>
+    index !== selectedMcpIndex.value && item.name.trim().toLowerCase() === name.toLowerCase())
+  if (duplicate >= 0) {
+    notifyError(new Error(`MCP「${name}」已经存在`))
+    return
+  }
+
+  const saved: McpServerConfig = {
+    ...mcpDraft.value,
+    name,
+    url: mcpDraft.value.url.trim(),
+  }
   try {
-    const saved = await api.saveMcp(mcpDraft.value.name.trim(), selectedAgentId.value, mcpDraft.value)
-    const existingIndex = mcpServers.value.findIndex(item => item.name === saved.name)
-    if (existingIndex >= 0) mcpServers.value[existingIndex] = saved
-    else mcpServers.value.push(saved)
-    selectMcp(existingIndex >= 0 ? existingIndex : mcpServers.value.length - 1)
+    const persisted = await api.saveMcpProfile(name, saved)
+    if (selectedMcpIndex.value >= 0 && selectedMcpIndex.value < mcpServers.value.length) mcpServers.value[selectedMcpIndex.value] = persisted
+    else {
+      mcpServers.value.push(persisted)
+      selectedMcpIndex.value = mcpServers.value.length - 1
+    }
+    selectMcp(selectedMcpIndex.value)
     showMcpEditor.value = false
-    ElMessage.success('MCP 配置已保存')
-  } catch (error) { notifyError(error) }
-}
-
-async function saveSkills(): Promise<void> {
-  if (!selectedAgentId.value || !config.value) return
-  try {
-    config.value.config.skills = await api.saveSkills(selectedAgentId.value, {
-      enabledSkills: [...skillDraft.value.enabledSkills],
-      instances: skillDraft.value.instances.map(item => ({ ...item })),
-    })
-    showSkillEditor.value = false
-    ElMessage.success('Skill 配置已保存')
-  } catch (error) { notifyError(error) }
-}
-
-async function testSkills(): Promise<void> {
-  if (!config.value) return
-  testingSkill.value = true
-  try { skillResult.value = await api.testSkills(skillDraft.value) } catch (error) { notifyError(error) } finally { testingSkill.value = false }
+    ElMessage.success('MCP 配置已保存，可在 Agent 中选择绑定')
+  } catch (error) {
+    notifyError(error)
+  }
 }
 
 async function testMcp(): Promise<void> {
   testingMcp.value = true
   try {
-    mcpResult.value = await api.testMcp(mcpDraft.value, selectedAgentId.value)
+    mcpResult.value = await api.testMcp(mcpDraft.value, config.value?.agentId)
   } catch (error) {
     notifyError(error)
   } finally {
@@ -1095,26 +1346,29 @@ function openSettings(panel: typeof activeSettings.value): void {
   activeSettings.value = panel
   showSettings.value = true
   if (panel === 'llm') void loadLlmProfiles()
+  if (panel === 'mcp') void loadMcpProfiles()
+  if (panel === 'skill') void loadSkillCatalog()
   if (panel === 'agent') {
     void loadConfig()
     void loadLlmProfiles()
   }
-  if (panel === 'skill' || panel === 'rag') void loadConfig()
-  if (panel === 'mcp') void loadMcp()
+  if (panel === 'rag') void loadConfig()
 }
 
 function handleSettingsTabChange(name: string | number): void {
   if (name === 'llm') void loadLlmProfiles()
+  if (name === 'mcp') void loadMcpProfiles()
+  if (name === 'skill') void loadSkillCatalog()
   if (name === 'agent') {
     void loadConfig()
     void loadLlmProfiles()
   }
-  if (name === 'skill' || name === 'rag') void loadConfig()
-  if (name === 'mcp') void loadMcp()
+  if (name === 'rag') void loadConfig()
 }
 
 onMounted(async () => {
   applyTheme()
+  window.addEventListener('beforeunload', handlePageUnload)
   window.addEventListener(AUTH_FAILURE_EVENT, handleAuthenticationFailure)
   const hasCallback = new URLSearchParams(window.location.search).has('code')
     || new URLSearchParams(window.location.search).has('error')
@@ -1143,6 +1397,15 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   window.removeEventListener(AUTH_FAILURE_EVENT, handleAuthenticationFailure)
 })
+
+function handlePageUnload(): void {
+  conversationStreams.cancelAll('unload')
+}
+
+onBeforeUnmount(() => {
+  window.removeEventListener('beforeunload', handlePageUnload)
+  handlePageUnload()
+})
 </script>
 
 <template>
@@ -1150,7 +1413,7 @@ onBeforeUnmount(() => {
   <main v-else-if="authView === 'restoring'" class="auth-state-page" aria-live="polite" aria-busy="true"><span class="auth-state-spinner" aria-hidden="true" /><h1>正在恢复登录状态</h1><p>正在安全验证当前会话，请稍候。</p></main>
   <main v-else-if="authView === 'forbidden'" class="auth-state-page"><span class="auth-state-code">403</span><h1>无权访问此内容</h1><p>身份验证有效，但当前账号不具备所请求资源的权限。权限由服务端策略决定。</p><div><el-button @click="returnToWorkspace">返回工作台</el-button><el-button type="primary" @click="logout">退出登录</el-button></div></main>
   <el-container v-else class="app-shell" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
-    <ChatSidebar :conversations="conversations" :selected-conversation-id="selectedConversation?.conversationId" :search="search" :loading="loading" :status-text="statusText" :current-user="currentUser" @update:search="search = $event" @new="newConversation" @settings="openSettings('gateway')" @logout="logout" @refresh="loadWorkspace" @select="selectConversation" @delete="deleteConversation" @toggle-collapse="toggleSidebar" @resize-start="startSidebarResize" />
+    <ChatSidebar :conversations="conversations" :selected-conversation-id="selectedConversation?.conversationId" :streaming-conversation-ids="streamingConversationIds" :search="search" :loading="workspaceLoading" :status-text="statusText" :current-user="currentUser" @update:search="search = $event" @new="newConversation" @settings="openSettings('gateway')" @refresh="loadWorkspace" @select="selectConversation" @delete="deleteConversation" @toggle-collapse="toggleSidebar" @resize-start="startSidebarResize" />
     <button v-if="sidebarCollapsed" class="panel-restore sidebar-restore" type="button" aria-label="展开侧栏" title="展开侧栏" @click="toggleSidebar">›</button>
 
     <el-main class="main-panel">
@@ -1158,14 +1421,14 @@ onBeforeUnmount(() => {
 
       <div class="workspace-grid" :class="{ 'context-collapsed': contextCollapsed }">
         <section class="chat-card">
-          <ChatMessages :messages="currentMessages" :loading="loadingConversation" :current-user="currentUser" :streaming="loading" @suggest="message = $event" @download="downloadFile" />
-          <MessageComposer :model-value="message" :endpoint-url="activeEndpointUrl" :endpoint-label="activeEndpointLabel" :selected-agent-id="selectedAgentId" :loading="loading" :pending-files="pendingFiles" @update:model-value="message = $event" @files-change="handleFilesChange" @retry-file="retryPendingFile" @send="send" @stop="stopStreaming" />
+          <ChatMessages :messages="currentMessages" :loading="loadingConversation" :current-user="currentUser" :streaming="selectedConversationStreaming" @suggest="message = $event" @download="downloadFile" />
+          <MessageComposer :model-value="message" :endpoint-url="activeEndpointUrl" :endpoint-label="activeEndpointLabel" :selected-agent-id="selectedAgentId" :loading="selectedConversationStreaming" :pending-files="pendingFiles" @update:model-value="message = $event" @files-change="handleFilesChange" @retry-file="retryPendingFile" @send="send" @stop="stopStreaming" />
         </section>
         <aside class="context-panel">
           <div class="context-panel-head"><span class="context-label">INSPECTOR</span><button class="panel-collapse-btn" type="button" aria-label="收起上下文面板" title="收起" @click="toggleContext">›</button></div>
           <section><span class="context-label">ROUTING</span><strong>{{ routeMode }}</strong><p>{{ connectionMode === 'router' && selectedAgentId === AUTO_AGENT_ID ? '由意图识别 Agent 分析请求并选择目标。' : (selectedAgent?.description || selectedAgentId) }}</p><dl><div><dt>Agent</dt><dd>{{ connectionMode === 'router' && selectedAgentId === AUTO_AGENT_ID ? '由模型选择' : (selectedAgent?.name || selectedAgentId) }}</dd></div><div><dt>协议</dt><dd>{{ selectedAgent?.apiFormat || (connectionMode === 'router' ? '自动' : '—') }}</dd></div></dl></section>
           <section><span class="context-label">IDENTITY</span><dl><div><dt>用户</dt><dd>{{ currentUser?.userId || 'Guest' }}</dd></div><div><dt>租户</dt><dd>{{ currentUser?.tenantId || tenantId || '—' }}</dd></div><div><dt>{{ activeEndpointLabel }}</dt><dd :title="activeEndpointUrl">{{ activeEndpointHost }}</dd></div></dl></section>
-          <section><span class="context-label">CONVERSATION</span><dl><div><dt>消息</dt><dd>{{ currentMessages.length }}</dd></div><div><dt>状态</dt><dd>{{ selectedConversation?.status ?? '新建' }}</dd></div><div><dt>ID</dt><dd class="truncate" :title="selectedConversation?.conversationId">{{ selectedConversation?.conversationId || '尚未创建' }}</dd></div></dl></section>
+          <section><span class="context-label">CONVERSATION</span><dl><div><dt>消息</dt><dd>{{ currentMessages.length }}</dd></div><div><dt>状态</dt><dd>{{ conversationStatusText }}</dd></div><div><dt>ID</dt><dd class="truncate" :title="selectedConversation?.conversationId">{{ selectedConversation?.conversationId || '尚未创建' }}</dd></div></dl></section>
           <el-button class="diagnostics-shortcut" @click="openSettings('health')">运行平台健康检查</el-button>
           <div class="context-resize" @pointerdown="startContextResize" />
         </aside>
@@ -1196,23 +1459,23 @@ onBeforeUnmount(() => {
           </section>
         </el-tab-pane>
         <el-tab-pane label="LLM 配置" name="llm">
-          <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">MODEL PROVIDERS</span><h3>大模型配置</h3><p>独立维护多条模型供应商配置，Agent 通过 Provider ID 绑定；API Key 只在保存时写入，列表中始终脱敏。</p></div><div class="section-actions"><el-button @click="loadLlmProfiles">刷新</el-button><el-button type="primary" plain @click="newLlm">新增大模型</el-button></div></div>
-            <el-table :data="llmProfiles" class="capability-table" empty-text="还没有大模型配置"><el-table-column label="名称" min-width="140"><template #default="scope"><strong>{{ scope.row.name }}</strong><small class="table-subtext">{{ scope.row.id }}</small></template></el-table-column><el-table-column label="协议" width="160"><template #default="scope"><el-tag size="small" round>{{ scope.row.format }}</el-tag></template></el-table-column><el-table-column label="模型" min-width="120"><template #default="scope">{{ scope.row.modelId }}</template></el-table-column><el-table-column label="Endpoint" min-width="200" show-overflow-tooltip><template #default="scope">{{ scope.row.endpoint }}</template></el-table-column><el-table-column label="API Key" min-width="120"><template #default="scope">{{ scope.row.apiKey ? '••••••••' : '未配置' }}</template></el-table-column><el-table-column label="操作" width="160" fixed="right"><template #default="scope"><el-button link type="primary" @click="editLlm(scope.$index)">编辑</el-button><el-button link @click="selectLlm(scope.$index); testLlm(); showLlmEditor = true">测试</el-button><el-button link type="danger" @click="selectLlm(scope.$index); deleteLlm()">删除</el-button></template></el-table-column></el-table>
+          <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">MODEL PROVIDERS</span><h3>大模型供应商</h3><p>这里维护协议、Endpoint 和密钥；具体模型 ID 属于 Agent 配置，选择供应商后只在 Agent 中填写。</p></div><div class="section-actions"><el-button @click="loadLlmProfiles">刷新</el-button><el-button type="primary" plain @click="newLlm">新增供应商</el-button></div></div>
+            <el-table :data="llmProfiles" class="capability-table" empty-text="还没有大模型供应商"><el-table-column label="名称" min-width="140"><template #default="scope"><strong>{{ scope.row.name }}</strong><small class="table-subtext">{{ scope.row.id }}</small></template></el-table-column><el-table-column label="协议" width="160"><template #default="scope"><el-tag size="small" round>{{ scope.row.format }}</el-tag></template></el-table-column><el-table-column label="模型归属" min-width="120"><template #default>由 Agent 指定</template></el-table-column><el-table-column label="Endpoint" min-width="200" show-overflow-tooltip><template #default="scope">{{ scope.row.endpoint }}</template></el-table-column><el-table-column label="API Key" min-width="120"><template #default="scope">{{ scope.row.apiKey ? '••••••••' : '未配置' }}</template></el-table-column><el-table-column label="操作" width="160" fixed="right"><template #default="scope"><el-button link type="primary" @click="editLlm(scope.$index)">编辑</el-button><el-button link @click="selectLlm(scope.$index); testLlm(); showLlmEditor = true">测试</el-button><el-button link type="danger" @click="selectLlm(scope.$index); deleteLlm()">删除</el-button></template></el-table-column></el-table>
+          </section>
+        </el-tab-pane>
+        <el-tab-pane label="MCP 配置" name="mcp">
+          <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">MCP CATALOG</span><h3>MCP 配置</h3><p>独立维护远程 MCP Server；Agent 页面只选择已注册的 Server，不在 Agent 中复制 Endpoint。</p></div><div class="section-actions"><el-button @click="loadMcpProfiles">刷新</el-button><el-button type="primary" plain @click="newMcp">新增 MCP</el-button></div></div>
+            <el-table :data="mcpServers" class="capability-table" empty-text="还没有 MCP 配置"><el-table-column label="名称" min-width="160"><template #default="scope"><strong>{{ scope.row.name }}</strong></template></el-table-column><el-table-column label="类型" width="120"><template #default="scope"><el-tag size="small" round>{{ scope.row.type }}</el-tag></template></el-table-column><el-table-column label="地址" min-width="240" show-overflow-tooltip><template #default="scope">{{ scope.row.url || '未配置' }}</template></el-table-column><el-table-column label="操作" width="190" fixed="right"><template #default="scope"><el-button link type="primary" @click="selectMcp(scope.$index); showMcpEditor = true">编辑</el-button><el-button link @click="selectMcp(scope.$index); testMcp(); showMcpEditor = true">测试</el-button><el-button link type="danger" @click="removeMcp(scope.$index)">删除</el-button></template></el-table-column></el-table>
+          </section>
+        </el-tab-pane>
+        <el-tab-pane label="Skill 配置" name="skill">
+          <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">SKILL CATALOG</span><h3>Skill 配置</h3><p>独立维护官方 Skill 目录；Agent 页面只选择 Skill ID，绑定关系保存到 Agent 配置。</p></div><div class="section-actions"><input ref="skillPackageInput" type="file" hidden accept=".zip,.md" @change="uploadSkillPackage" /><el-button @click="loadSkillCatalog">刷新</el-button><el-button :loading="uploadingSkill" type="primary" plain @click="chooseSkillPackage">上传 ZIP / MD</el-button><el-button type="primary" plain @click="openSkillTextEditor">手动填写</el-button></div></div>
+            <el-table :data="skillCatalog" class="capability-table" empty-text="还没有 Skill"><el-table-column label="名称" min-width="180"><template #default="scope"><strong>{{ scope.row.name }}</strong><small class="table-subtext">{{ scope.row.skillId }}</small></template></el-table-column><el-table-column label="说明" min-width="240" show-overflow-tooltip><template #default="scope">{{ scope.row.description }}</template></el-table-column><el-table-column label="内容" width="120"><template #default="scope">{{ scope.row.resourceCount || 0 }} 资源</template></el-table-column><el-table-column label="来源" width="150"><template #default="scope">{{ scope.row.packageFileName }}</template></el-table-column><el-table-column label="操作" width="170" fixed="right"><template #default="scope"><el-button link type="primary" @click="editSkill(scope.row)">编辑</el-button><el-button link type="danger" @click="deleteSkillCatalog(scope.row)">删除</el-button></template></el-table-column></el-table>
           </section>
         </el-tab-pane>
         <el-tab-pane label="Agent 配置" name="agent">
           <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">AGENT RUNTIME</span><h3>Agent 配置</h3><p>Agent 以卡片方式管理，点击编辑后在独立窗口配置模型与运行参数。</p></div><div class="section-actions"><el-button @click="refreshAgents" :loading="refreshingAgents">刷新 Agent</el-button><el-button type="primary" plain @click="createAgent">新增 Agent</el-button></div></div>
             <div class="agent-card-grid"><article v-for="agent in agents" :key="agent.agentId" class="agent-card"><h4>{{ agent.name || agent.agentId }}</h4><p>{{ agent.description || agent.agentId }}</p><div class="agent-card-meta"><span>{{ llmName(agent) }}</span><span>{{ llmId(agent) }}</span></div><el-button type="primary" plain @click="editAgent(agent.agentId)">编辑配置</el-button></article><button class="agent-card agent-card-add" @click="createAgent"><span>＋</span><strong>新增 Agent</strong><small>创建独立运行配置</small></button><div v-if="!agents.length" class="resource-empty">还没有 Agent</div></div>
-          </section>
-        </el-tab-pane>
-        <el-tab-pane label="MCP 绑定" name="mcp">
-          <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">CAPABILITIES</span><h3>MCP 绑定</h3><p>以表格查看每条 MCP 的传输方式、地址和测试状态，连接由 Engine 服务端执行。</p></div><div class="section-actions"><el-button type="primary" plain @click="newMcp">新增 MCP</el-button></div></div>
-            <el-table :data="mcpServers" class="capability-table" empty-text="还没有绑定 MCP"><el-table-column label="名称" min-width="170"><template #default="scope"><strong>{{ scope.row.name }}</strong></template></el-table-column><el-table-column label="传输" width="110"><template #default="scope"><el-tag size="small" round>{{ scope.row.type }}</el-tag></template></el-table-column><el-table-column label="地址 / 命令" min-width="250" show-overflow-tooltip><template #default="scope">{{ scope.row.url || [scope.row.command, ...(scope.row.arguments || [])].filter(Boolean).join(' ') || '未配置' }}</template></el-table-column><el-table-column label="状态" width="100"><template #default="scope"><span class="table-status"><i />已绑定</span></template></el-table-column><el-table-column label="操作" width="190" fixed="right"><template #default="scope"><el-button link type="primary" @click="selectMcp(scope.$index); showMcpEditor = true">编辑</el-button><el-button link @click="testMcpRow(scope.$index)">测试</el-button><el-button link type="danger" @click="selectMcp(scope.$index); deleteMcp()">删除</el-button></template></el-table-column></el-table>
-          </section>
-        </el-tab-pane>
-        <el-tab-pane label="Skill 绑定" name="skill">
-          <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">CAPABILITIES</span><h3>Skill 绑定</h3><p>以表格查看每条 Skill 的 ID、状态和说明，支持逐条编辑与测试。</p></div><div class="section-actions"><el-button type="primary" plain @click="newSkill">新增 Skill</el-button></div></div>
-            <el-table :data="skillDraft.instances" class="capability-table" empty-text="还没有绑定 Skill"><el-table-column label="Skill" min-width="180"><template #default="scope"><strong>{{ scope.row.name || '未命名 Skill' }}</strong><small class="table-subtext">{{ scope.row.skillId || '未设置 ID' }}</small></template></el-table-column><el-table-column label="来源 / 类型" width="150"><template #default="scope">{{ scope.row.source || 'Local' }}<span v-if="scope.row.type"> · {{ scope.row.type }}</span></template></el-table-column><el-table-column label="状态" width="110"><template #default="scope"><span class="table-status" :class="{ muted: !isSkillEnabled(scope.row.skillId) }"><i />{{ isSkillEnabled(scope.row.skillId) ? '已绑定' : '未绑定' }}</span></template></el-table-column><el-table-column label="说明" min-width="250" show-overflow-tooltip><template #default="scope">{{ scope.row.description || '—' }}</template></el-table-column><el-table-column label="操作" width="170" fixed="right"><template #default="scope"><el-button link type="primary" @click="editSkill(scope.$index)">编辑</el-button><el-button link @click="testSkillRow(scope.$index)">测试</el-button><el-button link type="danger" @click="selectSkill(scope.$index); removeSkill()">删除</el-button></template></el-table-column></el-table>
           </section>
         </el-tab-pane>
         <el-tab-pane label="RAG 绑定" name="rag">
@@ -1242,20 +1505,20 @@ onBeforeUnmount(() => {
       <section class="agent-editor-section">
         <div class="agent-editor-section-heading"><div><span class="eyebrow">MODEL</span><h4>模型连接</h4><p>使用表单配置模型供应商、模型、协议和连接地址。</p></div><span class="editor-section-index">02</span></div>
         <el-form label-position="top" class="agent-form-grid">
-          <el-form-item label="大模型配置"><el-select v-model="config.config.llm.provider" class="full-width" filterable allow-create placeholder="选择已维护的配置或直接输入 Provider ID" @change="applyLlmProfile"><el-option v-for="profile in llmProfiles" :key="profile.id" :label="`${profile.name} · ${profile.modelId}`" :value="profile.id" /></el-select><small class="form-help">推荐先在“LLM 配置”中维护供应商，再在这里绑定 Provider ID。</small></el-form-item>
-          <el-form-item label="模型 ID"><el-input v-model="config.config.llm.modelId" placeholder="例如 gpt-4o" /></el-form-item>
-          <el-form-item label="API 格式"><el-select v-model="config.config.llm.format" class="full-width"><el-option label="OpenAI Chat Completions" value="OpenAIChatCompletions" /><el-option label="OpenAI Responses" value="OpenAIResponses" /><el-option label="Anthropic Messages" value="AnthropicMessages" /></el-select></el-form-item>
-          <el-form-item label="Temperature"><el-input-number v-model="config.config.llm.temperature" :min="0" :max="2" :step="0.1" :precision="1" controls-position="right" /><small class="form-help">0 更稳定，2 更有创造性。</small></el-form-item>
-          <el-form-item label="Endpoint" class="span-two"><el-input v-model="config.config.llm.endpoint" placeholder="https://api.example.com/v1" /></el-form-item>
-          <el-form-item label="API Key" class="span-two"><el-input v-model="config.config.llm.apiKey" type="password" show-password placeholder="留空则保留已保存的密钥" /></el-form-item>
+          <el-form-item label="大模型供应商"><el-select v-model="config.config.llm.provider" class="full-width" filterable placeholder="选择已维护的供应商" @change="applyLlmProfile"><el-option v-for="profile in llmProfiles" :key="profile.id" :label="profile.name" :value="profile.id" /></el-select><small class="form-help">供应商的协议、Endpoint、API Key 在 LLM 配置页面维护。</small></el-form-item>
+          <el-form-item label="模型 ID"><el-input v-model="config.config.llm.modelId" placeholder="例如 gpt-4o" /><small class="form-help">模型 ID 属于 Agent；选择供应商后这里只允许修改模型 ID。</small></el-form-item>
+          <el-form-item label="API 格式"><el-select v-model="config.config.llm.format" class="full-width" :disabled="Boolean(config.config.llm.provider)"><el-option label="OpenAI Chat Completions" value="OpenAIChatCompletions" /><el-option label="OpenAI Responses" value="OpenAIResponses" /><el-option label="Anthropic Messages" value="AnthropicMessages" /></el-select></el-form-item>
+          <el-form-item label="Temperature"><el-input-number v-model="config.config.llm.temperature" :min="0" :max="2" :step="0.1" :precision="1" controls-position="right" :disabled="Boolean(config.config.llm.provider)" /><small class="form-help">选择供应商后使用供应商配置。</small></el-form-item>
+          <el-form-item label="Endpoint" class="span-two"><el-input v-model="config.config.llm.endpoint" placeholder="由供应商配置提供" :disabled="Boolean(config.config.llm.provider)" /></el-form-item>
+          <el-form-item label="API Key" class="span-two"><el-input v-model="config.config.llm.apiKey" type="password" show-password placeholder="由供应商配置提供" :disabled="Boolean(config.config.llm.provider)" /></el-form-item>
         </el-form>
       </section>
 
       <section class="agent-editor-section">
         <div class="agent-editor-section-heading"><div><span class="eyebrow">CAPABILITY BINDINGS</span><h4>能力绑定</h4><p>当前 Agent 的 MCP、Skill、RAG 以卡片展示；勾选即可启用或停用 Skill 与 RAG。</p></div><span class="editor-section-index">03</span></div>
         <div class="binding-groups">
-          <article class="binding-group"><div class="binding-group-heading"><div><strong>MCP</strong><small>服务端连接的工具集合</small></div><el-button link type="primary" @click="showAgentEditor = false; openSettings('mcp')">管理 MCP</el-button></div><div v-if="mcpServers.length" class="binding-list"><div v-for="server in mcpServers" :key="server.name" class="binding-item"><span class="binding-icon mcp-avatar">M</span><div><strong>{{ server.name }}</strong><small>{{ server.type }} · {{ server.url || server.command || 'Stdio' }}</small></div><el-tag size="small" round type="success">已绑定</el-tag></div></div><div v-else class="binding-empty">还没有 MCP，去 MCP 表格中新增并绑定。</div></article>
-          <article class="binding-group"><div class="binding-group-heading"><div><strong>Skill</strong><small>可复用的业务能力</small></div><el-button link type="primary" @click="showAgentEditor = false; openSettings('skill')">管理 Skill</el-button></div><div v-if="skillDraft.instances.length" class="binding-list"><label v-for="skill in skillDraft.instances" :key="skill.skillId" class="binding-item binding-check-item"><span class="binding-icon skill-avatar">S</span><div><strong>{{ skill.name || '未命名 Skill' }}</strong><small>{{ skill.skillId || '未设置 ID' }}</small></div><el-checkbox :model-value="isSkillEnabled(skill.skillId)" @change="toggleSkillBinding(skill, Boolean($event))" /></label></div><div v-else class="binding-empty">还没有 Skill，去 Skill 表格中新增。</div></article>
+          <article class="binding-group"><div class="binding-group-heading"><div><strong>MCP</strong><small>通过选择窗口绑定 MCP，当前仅显示已绑定项</small></div><el-button link type="primary" :loading="loadingMcpBindingOptions" @click="openMcpBindingPicker">选择 MCP</el-button></div><div v-if="boundMcpServers.length" class="binding-list"><div v-for="server in boundMcpServers" :key="server.name" class="binding-item"><span class="binding-icon mcp-avatar">M</span><div><strong>{{ server.name }}</strong><small>{{ server.type }} · {{ server.url || '配置不存在' }}</small></div><el-button link type="danger" @click="removeMcpBinding(server.name)">移除</el-button></div></div><div v-else class="binding-empty">尚未绑定 MCP，请点击“选择 MCP”。</div></article>
+          <article class="binding-group"><div class="binding-group-heading"><div><strong>Skill</strong><small>通过选择窗口绑定 Skill，当前仅显示已绑定项</small></div><el-button link type="primary" :loading="loadingSkillBindingOptions" @click="openSkillBindingPicker">选择 Skill</el-button></div><div v-if="boundSkills.length" class="binding-list"><div v-for="skill in boundSkills" :key="skill.skillId" class="binding-item"><span class="binding-icon skill-avatar">S</span><div><strong>{{ skill.name || '未命名 Skill' }}</strong><small>{{ skill.skillId }}</small></div><el-button link type="danger" @click="removeSkillBinding(skill.skillId)">移除</el-button></div></div><div v-else class="binding-empty">尚未绑定 Skill，请点击“选择 Skill”。</div></article>
           <article class="binding-group"><div class="binding-group-heading"><div><strong>RAG</strong><small>知识检索数据源</small></div><el-button link type="primary" @click="showAgentEditor = false; openSettings('rag')">管理 RAG</el-button></div><div v-if="ragInstances.length" class="binding-list"><label v-for="rag in ragInstances" :key="rag.id" class="binding-item binding-check-item"><span class="binding-icon rag-avatar">R</span><div><strong>{{ rag.name || rag.id }}</strong><small>{{ rag.type }} · {{ rag.collectionName || '默认数据集' }}</small></div><el-checkbox :model-value="isRagEnabled(rag.id)" @change="toggleRagBinding(rag, Boolean($event))" /></label></div><div v-else class="binding-empty">还没有 RAG，去 RAG 表格中新增。</div></article>
         </div>
       </section>
@@ -1263,17 +1526,41 @@ onBeforeUnmount(() => {
     <template #footer><el-button @click="showAgentEditor = false">取消</el-button><el-button type="primary" :loading="savingConfig" @click="saveConfig">保存 Agent 配置</el-button></template>
   </el-dialog>
 
+  <el-dialog v-model="showMcpBindingPicker" class="editor-dialog" modal-class="editor-overlay" title="选择 MCP" width="min(760px, calc(100vw - 32px))" append-to-body destroy-on-close>
+    <el-table :data="mcpBindingOptions" max-height="440" empty-text="还没有可绑定的 MCP"><el-table-column label="名称" min-width="170"><template #default="scope"><strong>{{ scope.row.name }}</strong></template></el-table-column><el-table-column label="类型" width="120"><template #default="scope"><el-tag size="small" round>{{ scope.row.type }}</el-tag></template></el-table-column><el-table-column label="地址" min-width="260" show-overflow-tooltip><template #default="scope">{{ scope.row.url }}</template></el-table-column><el-table-column label="绑定" width="90"><template #default="scope"><el-checkbox :model-value="agentMcpIds.some(id => id.toLowerCase() === scope.row.name.toLowerCase())" @change="toggleMcpBinding(scope.row, Boolean($event))" /></template></el-table-column></el-table>
+    <template #footer><el-button @click="showMcpBindingPicker = false">完成</el-button></template>
+  </el-dialog>
+
+  <el-dialog v-model="showSkillBindingPicker" class="editor-dialog" modal-class="editor-overlay" title="选择 Skill" width="min(820px, calc(100vw - 32px))" append-to-body destroy-on-close>
+    <el-table :data="skillBindingOptions" max-height="440" empty-text="还没有可绑定的 Skill"><el-table-column label="名称" min-width="190"><template #default="scope"><strong>{{ scope.row.name || '未命名 Skill' }}</strong><small class="table-subtext">{{ scope.row.skillId }}</small></template></el-table-column><el-table-column label="说明" min-width="260" show-overflow-tooltip><template #default="scope">{{ scope.row.description }}</template></el-table-column><el-table-column label="资源" width="100"><template #default="scope">{{ scope.row.resourceCount || 0 }}</template></el-table-column><el-table-column label="绑定" width="90"><template #default="scope"><el-checkbox :model-value="isSkillEnabled(scope.row.skillId)" @change="toggleSkillBinding(scope.row, Boolean($event))" /></template></el-table-column></el-table>
+    <template #footer><el-button @click="showSkillBindingPicker = false">完成</el-button></template>
+  </el-dialog>
+
   <el-dialog v-model="showLlmEditor" class="editor-dialog" modal-class="editor-overlay" :title="isNewLlm ? '新增大模型配置' : '编辑大模型配置'" width="min(720px, calc(100vw - 32px))" append-to-body destroy-on-close>
-    <el-form label-position="top" class="agent-form-grid"><el-form-item label="配置 ID"><el-input v-model="llmDraft.id" :disabled="!isNewLlm" placeholder="例如 openai-prod" /><small class="form-help">Agent 通过这个 ID 绑定大模型配置。</small></el-form-item><el-form-item label="显示名称"><el-input v-model="llmDraft.name" placeholder="例如 OpenAI 生产环境" /></el-form-item><el-form-item label="API 格式"><el-select v-model="llmDraft.format" class="full-width"><el-option label="OpenAI Chat Completions" value="OpenAIChatCompletions" /><el-option label="OpenAI Responses" value="OpenAIResponses" /><el-option label="Anthropic Messages" value="AnthropicMessages" /></el-select></el-form-item><el-form-item label="模型 ID"><el-input v-model="llmDraft.modelId" placeholder="例如 gpt-4o" /></el-form-item><el-form-item label="Temperature"><el-input-number v-model="llmDraft.temperature" :min="0" :max="2" :step="0.1" :precision="1" controls-position="right" /></el-form-item><el-form-item label="Endpoint"><el-input v-model="llmDraft.endpoint" placeholder="https://api.openai.com/v1" /></el-form-item><el-form-item label="API Key" class="span-two"><el-input v-model="llmDraft.apiKey" type="text" placeholder="请输入 API Key" /><small class="form-help">API Key 直接显示，便于确认和修改当前大模型配置。</small></el-form-item><el-alert v-if="llmResult" class="span-two" :title="`测试结果：${llmResult.success ? '连接和权限通过' : '连接失败'}${llmResult.statusCode ? ` · HTTP ${llmResult.statusCode}` : ''}`" :description="llmResult.error || `模型 ${llmResult.modelId || llmDraft.modelId} · 延迟 ${llmResult.latencyMs}ms`" :type="llmResult.success ? 'success' : 'warning'" :closable="false" /></el-form>
+    <el-form label-position="top" class="agent-form-grid"><el-form-item label="配置 ID"><el-input v-model="llmDraft.id" :disabled="!isNewLlm" placeholder="例如 openai-prod" /><small class="form-help">Agent 通过这个 ID 绑定供应商配置。</small></el-form-item><el-form-item label="显示名称"><el-input v-model="llmDraft.name" placeholder="例如 OpenAI 生产环境" /></el-form-item><el-form-item label="API 格式"><el-select v-model="llmDraft.format" class="full-width"><el-option label="OpenAI Chat Completions" value="OpenAIChatCompletions" /><el-option label="OpenAI Responses" value="OpenAIResponses" /><el-option label="Anthropic Messages" value="AnthropicMessages" /></el-select></el-form-item><el-form-item label="Temperature"><el-input-number v-model="llmDraft.temperature" :min="0" :max="2" :step="0.1" :precision="1" controls-position="right" /></el-form-item><el-form-item label="Endpoint"><el-input v-model="llmDraft.endpoint" placeholder="https://api.openai.com/v1" /></el-form-item><el-form-item label="API Key" class="span-two"><el-input v-model="llmDraft.apiKey" type="text" placeholder="请输入 API Key" /><small class="form-help">模型 ID 不在供应商配置中维护，由 Agent 选择供应商后填写。</small></el-form-item><el-alert v-if="llmResult" class="span-two" :title="`测试结果：${llmResult.success ? '连接和权限通过' : '连接失败'}${llmResult.statusCode ? ` · HTTP ${llmResult.statusCode}` : ''}`" :description="llmResult.error || `模型 ${llmResult.modelId || '由 Agent 指定'} · 延迟 ${llmResult.latencyMs}ms`" :type="llmResult.success ? 'success' : 'warning'" :closable="false" /></el-form>
     <template #footer><el-button @click="showLlmEditor = false">取消</el-button><el-button :loading="testingLlm" @click="testLlm">测试连接与权限</el-button><el-button type="primary" :loading="savingLlm" :disabled="!llmDraft.id" @click="saveLlm">保存大模型配置</el-button></template>
   </el-dialog>
 
   <el-dialog v-model="showMcpEditor" class="editor-dialog" modal-class="editor-overlay" title="编辑 MCP" width="min(650px, calc(100vw - 32px))" append-to-body destroy-on-close>
-    <el-form label-position="top"><el-form-item label="名称"><el-input v-model="mcpDraft.name" placeholder="例如 local-tools" /></el-form-item><el-form-item label="传输类型"><el-select v-model="mcpDraft.type"><el-option label="HTTP" value="Http" /><el-option label="SSE" value="SSE" /><el-option label="Stdio（服务端执行）" value="Stdio" /></el-select></el-form-item><el-form-item v-if="mcpDraft.type !== 'Stdio'" label="URL"><el-input v-model="mcpDraft.url" placeholder="https://mcp.example.com" /></el-form-item><template v-else><el-form-item label="Command"><el-input v-model="mcpDraft.command" placeholder="例如 node" /></el-form-item><el-form-item label="Arguments（每行一个）"><el-input v-model="mcpArgumentsText" type="textarea" :rows="3" /></el-form-item><el-form-item label="Working Directory"><el-input v-model="mcpDraft.workingDirectory" /></el-form-item></template><el-alert v-if="mcpResult" :title="`测试结果：${mcpResult.success ? '连接成功' : '连接失败'} · 权限${mcpResult.authorized ? '通过' : '拒绝'}`" :description="mcpResult.error || `延迟 ${mcpResult.latencyMs}ms，发现 ${mcpResult.toolCount} 个工具`" :type="mcpResult.success ? 'success' : 'warning'" :closable="false" /></el-form><template #footer><el-button @click="showMcpEditor = false">取消</el-button><el-button :loading="testingMcp" @click="testMcp">测试连接与权限</el-button><el-button type="primary" :disabled="!mcpDraft.name" @click="saveMcp">保存 MCP 配置</el-button></template>
+    <el-form label-position="top">
+      <el-form-item label="名称"><el-input v-model="mcpDraft.name" :disabled="selectedMcpIndex >= 0" placeholder="例如 local-tools" /><small class="form-help">名称同时作为 MCP 配置 ID；编辑时不可修改，避免已有 Agent 绑定失效。</small></el-form-item>
+      <el-form-item label="传输类型"><el-select v-model="mcpDraft.type"><el-option label="Streamable HTTP" value="Http" /><el-option label="Legacy SSE" value="SSE" /></el-select></el-form-item>
+      <el-form-item label="MCP 协议版本"><el-select v-model="mcpDraft.protocolVersion" clearable filterable allow-create placeholder="自动协商（推荐）"><el-option label="2026-07-28" value="2026-07-28" /><el-option label="2025-11-25" value="2025-11-25" /><el-option label="2025-06-18" value="2025-06-18" /><el-option label="2025-03-26" value="2025-03-26" /><el-option label="2024-11-05" value="2024-11-05" /></el-select><small class="form-help">留空由官方 SDK 自动协商；指定版本作为最低版本，服务器降级到更早版本时连接会失败。</small></el-form-item>
+      <el-form-item label="URL"><el-input v-model="mcpDraft.url" placeholder="https://mcp.example.com/mcp" /></el-form-item>
+      <el-alert v-if="mcpResult" :title="`测试结果：${mcpResult.success ? '连接成功' : '连接失败'} · 权限${mcpResult.authorized ? '通过' : '拒绝'}`" :description="mcpResult.error || `协商版本 ${mcpResult.negotiatedProtocolVersion || '未知'} · ${mcpResult.latencyMs}ms · ${mcpResult.toolCount} 个工具`" :type="mcpResult.success ? 'success' : 'warning'" :closable="false" />
+    </el-form><template #footer><el-button @click="showMcpEditor = false">取消</el-button><el-button :loading="testingMcp" @click="testMcp">测试连接、版本与权限</el-button><el-button type="primary" :disabled="!mcpDraft.name || !mcpDraft.url" @click="saveMcp">保存 MCP 配置</el-button></template>
   </el-dialog>
 
-  <el-dialog v-model="showSkillEditor" class="editor-dialog" modal-class="editor-overlay" title="编辑 Skill" width="min(650px, calc(100vw - 32px))" append-to-body destroy-on-close>
-    <el-form v-if="selectedSkill" label-position="top"><el-form-item label="Skill ID"><el-input v-model="selectedSkill.skillId" placeholder="例如 weather" /></el-form-item><el-form-item label="名称"><el-input v-model="selectedSkill.name" placeholder="例如 天气查询" /></el-form-item><el-form-item label="说明"><el-input v-model="selectedSkill.description" type="textarea" :rows="3" /></el-form-item><el-form-item label="纳入 Agent 能力"><el-switch :model-value="isSkillEnabled(selectedSkill.skillId)" active-text="已绑定并启用" inactive-text="未绑定" @change="toggleSkillBinding(selectedSkill, Boolean($event))" /></el-form-item><el-form-item label="状态"><el-switch v-model="selectedSkill.enabled" active-text="启用" inactive-text="停用" /></el-form-item><el-alert v-if="skillResult" :title="skillResult.success ? 'Skill 配置测试通过' : 'Skill 配置测试失败'" :description="`已启用 ${skillResult.enabledCount || 0} 条，实例 ${skillResult.instanceCount || 0} 条`" :type="skillResult.success ? 'success' : 'warning'" :closable="false" /></el-form><template #footer><el-button @click="showSkillEditor = false">取消</el-button><el-button :loading="testingSkill" @click="testSkills">测试 Skill 配置</el-button><el-button type="primary" @click="saveSkills">保存 Skill 配置</el-button></template>
+  <el-dialog v-model="showSkillTextEditor" class="editor-dialog" modal-class="editor-overlay" :title="editingSkillId ? '编辑 Markdown Skill' : '新增 Markdown Skill'" width="min(820px, calc(100vw - 32px))" append-to-body destroy-on-close>
+    <el-alert title="可用表单填写 Skill 名称、说明和 Markdown 指令；切换到源码模式后直接编辑完整 SKILL.md。无法解析的 Skill 会自动进入源码模式。" type="info" :closable="false" />
+    <div class="skill-editor-toolbar"><el-tag v-if="skillEditorMode === 'markdown'" type="warning" effect="plain">Markdown 源码模式</el-tag><el-button link type="primary" @click="switchSkillEditorMode">{{ skillEditorMode === 'form' ? '切换到 Markdown 源码' : '切换到表单模式' }}</el-button></div>
+    <el-form v-if="skillEditorMode === 'form'" label-position="top" class="agent-form-grid">
+      <el-form-item label="Skill 名称"><el-input v-model="skillEditorName" placeholder="例如 customer-lookup" /></el-form-item>
+      <el-form-item label="Skill 说明"><el-input v-model="skillEditorDescription" placeholder="说明这个 Skill 适用的场景" /></el-form-item>
+      <el-form-item label="Markdown 指令" class="span-two"><el-input v-model="skillEditorInstructions" class="skill-markdown-input" type="textarea" :rows="16" spellcheck="false" placeholder="# Instructions" /></el-form-item>
+    </el-form>
+    <el-input v-else v-model="skillMarkdownDraft" class="skill-markdown-input" type="textarea" :rows="20" spellcheck="false" />
+    <template #footer><el-button @click="showSkillTextEditor = false">取消</el-button><el-button type="primary" :loading="uploadingSkill" @click="saveTextSkill">校验并保存 Skill</el-button></template>
   </el-dialog>
 
   <el-dialog v-model="showRagEditor" class="editor-dialog" modal-class="editor-overlay" title="编辑 RAG" width="min(650px, calc(100vw - 32px))" append-to-body destroy-on-close>

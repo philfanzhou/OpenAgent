@@ -167,6 +167,23 @@ describe('workspace API', () => {
     ])
   })
 
+  it('binds streaming fetch cancellation to the supplied request signal', async () => {
+    setConnectionMode('engine')
+    setEngineBaseUrl('http://engine.example/')
+    const controller = new AbortController()
+    const fetchMock = vi.fn((_url: string | URL | Request, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')))
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const nextEvent = api.streamChat('hello', 'support', 'conversation-a', [], 'conversation-a', controller.signal).next()
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
+    controller.abort()
+
+    await expect(nextEvent).rejects.toMatchObject({ name: 'AbortError' })
+    expect(fetchMock.mock.calls[0]?.[1]?.signal).toBe(controller.signal)
+  })
+
   it('uploads chat files as multipart data', async () => {
     setConnectionMode('engine')
     setEngineBaseUrl('http://engine.example')
@@ -201,6 +218,71 @@ describe('workspace API', () => {
     })))
 
     await expect(api.getCurrentUser()).rejects.toThrow('No Engine is available (TraceId: trace-1)')
+  })
+
+  it('uploads skill packages as multipart data to the selected agent', async () => {
+    setConnectionMode('engine')
+    setEngineBaseUrl('http://engine.example')
+    const responseBody = {
+      skill: { skillId: 'weather', name: 'weather', enabled: true, objectKey: 'skills/weather.zip', packageFormat: 'zip' },
+      currentVersion: '2',
+      storage: 'object-storage',
+    }
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(responseBody), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+    const file = new File(['official skill package'], 'skill.zip', { type: 'application/zip' })
+
+    const result = await api.uploadSkillPackage('support', file)
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('http://engine.example/api/v1/admin/skills/support/packages')
+    expect(init.body).toBeInstanceOf(FormData)
+    expect(((init.body as FormData).get('file') as File).name).toBe(file.name)
+    expect(result.storage).toBe('object-storage')
+  })
+
+  it('sends MCP and Skill bindings inside the Agent configuration', async () => {
+    setConnectionMode('engine')
+    setEngineBaseUrl('http://engine.example')
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      agentId: 'support',
+      name: 'Support',
+      config: {
+        mcp: { servers: [] },
+        skills: { enabledSkills: [], instances: [] },
+      },
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await api.saveAgentConfig('support', {
+      agentId: 'support',
+      name: 'Support',
+      description: '',
+      status: 0,
+      currentVersion: '1',
+      config: {
+        instructions: '',
+        llm: { provider: '', format: 'OpenAIChatCompletions', modelId: 'gpt-4o', apiKey: '', endpoint: '', temperature: 0.7 },
+        mcp: {
+          servers: [{ name: 'tools', url: 'https://mcp.example.test/mcp', type: 'Http', protocolVersion: '2025-06-18' }],
+        },
+        rag: { enabled: false, enabledRagInstanceIds: [], instances: [] },
+        skills: { enabledSkills: ['weather'], instances: [{ skillId: 'weather', name: 'weather', enabled: true, objectKey: 'skills/weather.zip', packageFormat: 'zip' }] },
+        maxTurns: 50,
+      },
+    })
+
+    expect(vi.mocked(fetch).mock.calls[0]?.[0]).toBe('http://engine.example/api/v1/admin/agents/support/config')
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit
+    const body = JSON.parse(String(init.body)) as { config: { mcp: { servers: Array<{ protocolVersion: string }>; }; skills: { enabledSkills: string[] } } }
+    expect(body.config.mcp.servers[0].protocolVersion).toBe('2025-06-18')
+    expect(body.config.skills.enabledSkills).toEqual(['weather'])
   })
 
   it('migrates the previous single endpoint to the Router address', () => {

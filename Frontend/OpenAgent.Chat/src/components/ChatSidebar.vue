@@ -5,6 +5,7 @@ import type { ConversationRecord, CurrentUserContext } from '../types'
 const props = defineProps<{
   conversations: ConversationRecord[]
   selectedConversationId?: string
+  streamingConversationIds: string[]
   search: string
   loading?: boolean
   statusText: string
@@ -81,9 +82,9 @@ function formatTime(value: string): string {
     <el-scrollbar class="conversation-list" wrap-class="conversation-list-wrap">
       <div v-for="group in conversationGroups" :key="group.label" class="conversation-group">
         <div class="conversation-group-label">{{ group.label }}</div>
-        <div v-for="item in group.items" :key="item.conversationId" class="conversation-item" :class="{ active: props.selectedConversationId === item.conversationId }" @click="emit('select', item)">
+        <div v-for="item in group.items" :key="item.conversationId" class="conversation-item" :class="{ active: props.selectedConversationId === item.conversationId, streaming: props.streamingConversationIds.includes(item.conversationId) }" @click="emit('select', item)">
           <div class="conversation-icon">{{ (item.title || '新').slice(0, 1) }}</div>
-          <div class="conversation-content"><div class="conversation-title">{{ item.title || '未命名会话' }}</div><div class="conversation-meta"><span>{{ item.agentId || '自动路由' }}</span><time>{{ formatTime(item.updatedAt || item.lastMessageAt) }}</time></div></div>
+          <div class="conversation-content"><div class="conversation-title">{{ item.title || '未命名会话' }}</div><div class="conversation-meta"><span v-if="props.streamingConversationIds.includes(item.conversationId)" class="conversation-streaming"><i />生成中</span><span v-else>{{ item.agentId || '自动路由' }}</span><time>{{ formatTime(item.updatedAt || item.lastMessageAt) }}</time></div></div>
           <el-button text class="conversation-more" @click.stop="emit('delete', item)">×</el-button>
         </div>
       </div>

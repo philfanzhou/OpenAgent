@@ -1,6 +1,5 @@
 using OpenAgent.Contracts.Models;
 using OpenAgent.Contracts.Security;
-using OpenAgent.Contracts.Skills;
 
 namespace OpenAgent.Contracts.Services;
 
@@ -13,11 +12,6 @@ public interface IAgentMatrixApi
     /// Retrieves the published agent configuration entity for the given agent ID.
     /// </summary>
     Task<AgentConfigEntity?> GetAgentConfigAsync(string agentId, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Retrieves the list of available skills registered in the Matrix.
-    /// </summary>
-    Task<List<MatrixSkillMetadata>> GetSkillsAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Retrieves the M2M authorization rules for a specific client.
