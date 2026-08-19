@@ -14,7 +14,7 @@ public class GatewayProxyHandlerTests
     private static readonly ForwarderRequestConfig RequestConfig = new();
 
     [Fact]
-    public async Task HandleAsync_AuthenticatedRequest_ForwardsOriginalPathWithTrustedIdentity()
+    public async Task HandleAsync_AuthenticatedRequest_ForwardsOriginalPathWithoutIdentityHeaders()
     {
         var context = CreateContext(HttpMethods.Get, "/api/v1/admin/agents", "?take=10");
         context.Request.Headers["X-User-Id"] = "spoofed-user";
@@ -47,8 +47,8 @@ public class GatewayProxyHandlerTests
         Assert.Equal(
             "http://engine:5100/root/api/v1/admin/agents?take=10",
             forwarder.ProxyRequest?.RequestUri?.ToString());
-        Assert.Equal("trusted-user", GetSingleHeader(forwarder.ProxyRequest, "X-User-Id"));
-        Assert.Equal("trusted-tenant", GetSingleHeader(forwarder.ProxyRequest, "X-Tenant-Id"));
+        AssertHeaderMissing(forwarder.ProxyRequest, "X-User-Id");
+        AssertHeaderMissing(forwarder.ProxyRequest, "X-Tenant-Id");
         Assert.Equal("conversation-1", GetSingleHeader(forwarder.ProxyRequest, "X-Conversation-Id"));
         AssertHeaderMissing(forwarder.ProxyRequest, "X-Agent-Id");
     }

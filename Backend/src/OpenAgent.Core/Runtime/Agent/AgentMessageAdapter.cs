@@ -38,7 +38,13 @@ internal static class AgentMessageAdapter
             StringComparison.OrdinalIgnoreCase)
                 ? $"[Conversation summary]\n{message.Content}"
                 : message.Content;
-        var chatMessage = new ChatMessage(role.Value, content);
+        var contents = new List<AIContent>();
+        if (!string.IsNullOrEmpty(content))
+        {
+            contents.Add(new TextContent(content));
+        }
+
+        var chatMessage = new ChatMessage(role.Value, contents);
         if (role == Microsoft.Extensions.AI.ChatRole.Tool
             && !string.IsNullOrEmpty(message.ToolCallId))
         {
@@ -64,6 +70,13 @@ internal static class AgentMessageAdapter
             // 中止/失败时可能存储正文为空、仅含 reasoning 元数据的 assistant 消息；
             // 空正文的 assistant 消息会让部分模型拒绝续接请求，加载历史时跳过。
             return null;
+        }
+
+        if (role == Microsoft.Extensions.AI.ChatRole.Assistant
+            && message.Metadata?.GetValueOrDefault("Reasoning") is string reasoning
+            && !string.IsNullOrWhiteSpace(reasoning))
+        {
+            chatMessage.Contents.Add(new TextReasoningContent(reasoning));
         }
 
         return chatMessage;
@@ -203,6 +216,29 @@ internal static class AgentMessageAdapter
                 .Distinct(StringComparer.Ordinal)
                 .ToArray()
         };
+    }
+
+    internal static IEnumerable<ChatMessage> RemoveEmptyOpenAIToolCallText(
+        IEnumerable<ChatMessage> messages)
+    {
+        foreach (ChatMessage message in messages)
+        {
+            if (message.Role != Microsoft.Extensions.AI.ChatRole.Assistant
+                || !message.Contents.OfType<FunctionCallContent>().Any()
+                || !message.Contents.OfType<TextContent>().Any(content =>
+                    string.IsNullOrEmpty(content.Text)))
+            {
+                yield return message;
+                continue;
+            }
+
+            ChatMessage normalized = message.Clone();
+            normalized.Contents = normalized.Contents
+                .Where(content => content is not TextContent text
+                    || !string.IsNullOrEmpty(text.Text))
+                .ToList();
+            yield return normalized;
+        }
     }
 
     private static ConversationMessage CreateStored(

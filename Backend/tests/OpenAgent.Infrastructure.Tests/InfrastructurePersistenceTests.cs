@@ -3,6 +3,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Files;
+using OpenAgent.Contracts.Security;
 using Testcontainers.PostgreSql;
 using Xunit;
 
@@ -27,6 +28,7 @@ public sealed class InfrastructurePersistenceTests : IAsyncLifetime
             })
             .Build();
         var services = new ServiceCollection();
+        services.AddSingleton<ICurrentUserContext>(new TestCurrentUserContext());
         services.AddOpenAgentInfrastructure(configuration);
         _services = services.BuildServiceProvider(validateScopes: true);
         IDbContextFactory<OpenAgentDbContext> contexts = _services.GetRequiredService<IDbContextFactory<OpenAgentDbContext>>();
@@ -158,5 +160,18 @@ public sealed class InfrastructurePersistenceTests : IAsyncLifetime
         int referenceCount = await context.ConversationFileReferences.CountAsync(item =>
             item.ConversationId == "conversation-concurrent" && item.FileId == asset.FileId);
         Assert.Equal(1, referenceCount);
+    }
+
+    private sealed class TestCurrentUserContext : ICurrentUserContext
+    {
+        public string UserId => "test-user";
+
+        public string? TenantId => "tenant-001";
+
+        public bool IsAuthenticated => true;
+
+        public IReadOnlyList<string> Roles => [];
+
+        public bool IsInRole(string role) => false;
     }
 }

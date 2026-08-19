@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using ModelContextProtocol.Client;
 using OpenAgent.Contracts.Mcp;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Security;
@@ -7,7 +8,7 @@ using Microsoft.Extensions.Options;
 namespace OpenAgent.Core.Capabilities.Mcp;
 
 internal sealed class McpConnectionTester(
-    IMcpClientFactory clients,
+    McpTransportFactory transports,
     AgentAuthorizationGate authorization,
     IOptions<McpExecutionOptions> options) : IMcpConnectionTester
 {
@@ -43,24 +44,34 @@ internal sealed class McpConnectionTester(
                 Connected = false,
                 Authorized = false,
                 Transport = request.Server.Type.ToString(),
+                RequestedProtocolVersion = request.Server.ProtocolVersion,
                 LatencyMs = stopwatch.ElapsedMilliseconds,
                 Error = "MCP discovery permission denied",
                 TraceId = traceId
             };
         }
 
-        IMcpClient? client = null;
+        McpClient? client = null;
+        IClientTransport? transport = null;
         try
         {
-            client = clients.Create();
-            await client.ConnectAsync(request.Server, operationToken).ConfigureAwait(false);
-            IReadOnlyList<McpTool> tools = await client.ListToolsAsync(operationToken).ConfigureAwait(false);
+            transport = transports.Create(request.Server);
+            client = await McpClient.CreateAsync(
+                transport,
+                McpToolFactory.CreateClientOptions(request.Server),
+                loggerFactory: null,
+                operationToken).ConfigureAwait(false);
+            IList<McpClientTool> tools = await client.ListToolsAsync(
+                options: null,
+                operationToken).ConfigureAwait(false);
             return new McpConnectionTestResult
             {
                 Success = true,
-                Connected = client.IsConnected,
+                Connected = !client.Completion.IsCompleted,
                 Authorized = true,
                 Transport = request.Server.Type.ToString(),
+                RequestedProtocolVersion = request.Server.ProtocolVersion,
+                NegotiatedProtocolVersion = client.NegotiatedProtocolVersion,
                 LatencyMs = stopwatch.ElapsedMilliseconds,
                 ToolCount = tools.Count,
                 TraceId = traceId
@@ -76,13 +87,17 @@ internal sealed class McpConnectionTester(
         }
         finally
         {
-            if (client is IAsyncDisposable asyncDisposable)
+            if (client != null)
             {
-                await asyncDisposable.DisposeAsync().ConfigureAwait(false);
+                await client.DisposeAsync().ConfigureAwait(false);
             }
-            else if (client is IDisposable disposable)
+            else if (transport is IAsyncDisposable asyncTransport)
             {
-                disposable.Dispose();
+                await asyncTransport.DisposeAsync().ConfigureAwait(false);
+            }
+            else if (transport is IDisposable disposableTransport)
+            {
+                disposableTransport.Dispose();
             }
         }
     }
@@ -97,6 +112,7 @@ internal sealed class McpConnectionTester(
             Connected = false,
             Authorized = true,
             Transport = request.Server.Type.ToString(),
+            RequestedProtocolVersion = request.Server.ProtocolVersion,
             LatencyMs = stopwatch.ElapsedMilliseconds,
             Error = error,
             TraceId = traceId

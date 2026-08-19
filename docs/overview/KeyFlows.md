@@ -28,3 +28,7 @@ Browser
 Engine 的服务注册、心跳、配置热更新和能力发现使用 Redis 作为可选协调设施。Redis 还可以保存会话
 热副本并提供分布式会话锁：写入顺序为 PostgreSQL 成功后写 Redis，读取未命中从 PostgreSQL 回填；
 它不拥有会话或文件资产事实。未配置 Redis 的单实例环境使用本地锁且直接读取数据库。
+
+## Router 多 Provider 路由
+
+Router 聚合并授权过滤各 Provider 的 Agent 目录，公开响应不暴露 Provider 标识。新会话把公开 Agent ID 解析为内部 Provider 并写入租户隔离的亲和记录；旧会话通过 Provider 所有权探测回填归属。续聊始终使用已确认归属，Provider 不可用或归属冲突时明确失败，不跨 Provider 静默回退。协议和错误语义见 [Agent Provider 集成](../integrations/agent-provider.md)。

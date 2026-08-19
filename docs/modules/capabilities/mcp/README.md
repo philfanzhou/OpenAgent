@@ -1,40 +1,38 @@
 # MCP Client
 
-MCP 客户端负责连接外部 MCP 服务器、发现工具、执行工具以及读取资源。协议、JSON-RPC 和传输生命周期全部委托给官方 C# SDK `ModelContextProtocol.Core` 1.4.1。
+OpenAgent 使用官方 `ModelContextProtocol.Core` C# SDK 连接外部 MCP Server，并把 SDK 返回的 `McpClientTool` 直接交给 MAF Agent。
 
 ## Core Capabilities
+
 | Capability | Description |
-|-----------|-------------|
-| 连接 | 官方 `HttpClientTransport`；默认 `StreamableHttp`，显式 `SSE` 时使用 legacy |
-| 协议协商 | 官方 `McpClient.CreateAsync` 完成 initialize/initialized |
-| 工具发现与调用 | `ListToolsAsync` / `CallToolAsync`，映射文本内容和 `IsError` |
-| 资源读取 | `ReadResourceAsync`，支持文本和 Blob 内容 |
-| 危险工具标记 | 读取标准 `annotations.destructiveHint` |
+|---|---|
+| 传输 | 官方 `HttpClientTransport`，支持 Streamable HTTP 和 legacy SSE |
+| 协议协商 | 官方 `McpClient.CreateAsync` 完成初始化与版本协商 |
+| 工具发现 | `ListToolsAsync` 返回官方 `McpClientTool` |
+| 配置目录 | MCP Server 独立维护并注册到 Redis，使用 Server 名称作为绑定 ID |
+| Agent 绑定 | Agent 只保存 `EnabledServerIds`；运行时按 ID 从 MCP 注册表解析配置 |
+| 故障隔离 | 单服务器连接失败不阻止其他服务器加载 |
 
 ## Architecture
+
 ```text
-CapabilityToolFactory
-        │ ICapabilitySource
-        ▼
-McpCapabilitySource（请求级）
-  ├─ 过滤不可用 Server
-  ├─ 每个 Server 保持一个 McpServerClient
-  └─ MCP Tool → CapabilityDefinition
+MCP 配置页 → Redis mcp:registry:{serverId}
+        │
+AgentConfig.Mcp.EnabledServerIds
         │
         ▼
-McpServerClient
-  └─ ModelContextProtocol.Core 1.4.1
+McpToolFactory
+        │ official McpClient + ListToolsAsync
+        ▼
+McpClientTool.WithName(...)
+        │
+        ▼
+ChatClientAgent.ChatOptions.Tools
 ```
 
-## Current Status
-**Implemented** — 生产侧不解析 SSE event，也不组装 JSON-RPC 消息。
-
-## Limits
-- `McpServerType.Stdio` 已实现（`McpTransportFactory.CreateStdioTransport`，含命令白名单）
-- 不建立跨请求连接池；一次请求内每个 Server 复用一个客户端
-- `Http` 类型的 URL 必须是完整 MCP endpoint，不自动追加 `/mcp`
+平台只保留 MCP 配置目录、Agent 绑定关系、权限、远程传输选择和请求级资源生命周期，不复制 MCP 协议或工具执行逻辑。旧版 `Mcp.Servers` 仍作为迁移兼容字段读取，新配置不再把 endpoint 复制到 Agent。
 
 ## Source
-- Core: `Backend/src/OpenAgent.Core/Capabilities/Mcp/`（McpCapabilitySource、McpServerClient）
-- Contracts: `Backend/src/OpenAgent.Contracts/Mcp/IMcpClient.cs`
-- Tests: `Backend/tests/OpenAgent.Core.Tests/Capabilities/McpCapabilitySourceTests.cs`
+
+- Core: `Backend/src/OpenAgent.Core/Capabilities/Mcp/McpToolFactory.cs`, `McpTransportFactory.cs`
+- Tests: official SDK option/configuration coverage and integration tests

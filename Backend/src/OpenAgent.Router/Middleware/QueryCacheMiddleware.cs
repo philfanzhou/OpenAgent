@@ -36,8 +36,7 @@ internal sealed class QueryCacheMiddleware(
         }
 
         context.Items[QueryItemKey] = ExtractQuery(snapshot.CanonicalBody);
-        string? tenantId = context.Items[TenantIsolationMiddleware.TenantItemKey]?.ToString()
-            ?? userContext.TenantId;
+        string? tenantId = userContext.TenantId;
         string route = RouterCacheKeyFactory.GetRouteIdentity(context.Request);
         string requestDigest = RouterCacheKeyFactory.GetRequestDigest(context.Request, snapshot);
         string cacheKey = RouterCacheKeyFactory.GetQueryKey(
@@ -55,7 +54,7 @@ internal sealed class QueryCacheMiddleware(
             {
                 RouterLog.QueryCacheHit(
                     logger,
-                    TenantIsolationMiddleware.GetAction(context),
+                    RouterRequestMetadata.GetAction(context),
                     userContext.UserId,
                     tenantId,
                     context.Request.Headers["X-Conversation-Id"].FirstOrDefault(),

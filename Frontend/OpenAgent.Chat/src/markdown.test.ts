@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { renderMarkdown } from './markdown'
-import { buildDisplayMessages, fileLabel, formatFileSize, parseToolArguments } from './messagePresentation'
+import { buildDisplayMessages, fileLabel, formatFileSize, parseToolArguments, toolPresentation } from './messagePresentation'
 import type { ConversationMessage } from './types'
 
 describe('message presentation', () => {
@@ -51,5 +51,13 @@ describe('message presentation', () => {
     expect(parseToolArguments('{bad json')).toBe('{bad json')
     expect(formatFileSize(1536)).toBe('2 KB')
     expect(fileLabel({ fileName: 'report.md', mediaType: 'text/markdown', length: 12 })).toBe('MD')
+  })
+
+  it('labels MCP and Skill operations for conversation visibility', () => {
+    expect(toolPresentation('mcp__local_tools__get_weather')).toEqual({
+      kind: 'MCP',
+      displayName: 'local_tools / get_weather',
+    })
+    expect(toolPresentation('load_skill')).toEqual({ kind: 'SKILL', displayName: '加载 Skill 指令' })
   })
 })

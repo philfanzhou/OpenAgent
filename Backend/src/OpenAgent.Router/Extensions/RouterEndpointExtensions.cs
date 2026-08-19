@@ -35,18 +35,26 @@ public static class RouterEndpointExtensions
             .AddEndpointFilter<AgentSelectionFilter>();
 
         app.MapGet("/api/v1/agent/agents", (
-            HttpContext context, IHttpForwarder forwarder, IAgentUserContext userContext,
-            IRouteTable routeTable, ILogger<Program> logger) =>
-            GetEndpointHandler.HandleAsync(
-                context, forwarder, userContext, routeTable, logger,
-                httpClient, requestConfig, "/api/v1/agent/agents"));
+            IAgentCatalogService catalog,
+            IAgentUserContext userContext,
+            HttpContext context,
+            CancellationToken cancellationToken) =>
+            AgentCatalogEndpointHandler.HandleAsync(
+                catalog,
+                userContext,
+                context,
+                cancellationToken));
         // Compatibility alias retained for clients that predate /api/v1/agent/agents.
         app.MapGet("/api/v1/agents", (
-            HttpContext context, IHttpForwarder forwarder, IAgentUserContext userContext,
-            IRouteTable routeTable, ILogger<Program> logger) =>
-            GetEndpointHandler.HandleAsync(
-                context, forwarder, userContext, routeTable, logger,
-                httpClient, requestConfig, "/api/v1/agent/agents"));
+            IAgentCatalogService catalog,
+            IAgentUserContext userContext,
+            HttpContext context,
+            CancellationToken cancellationToken) =>
+            AgentCatalogEndpointHandler.HandleAsync(
+                catalog,
+                userContext,
+                context,
+                cancellationToken));
         app.MapGet("/api/v1/agent/conversations", (
             HttpContext context, IHttpForwarder forwarder, IAgentUserContext userContext,
             IRouteTable routeTable, ILogger<Program> logger, int skip = 0, int take = 20) =>
@@ -139,24 +147,6 @@ public static class RouterEndpointExtensions
                         httpClient,
                         requestConfig,
                         requireAuthentication: true));
-            app.MapMethods(
-                "/api/v1/auth/{**path}",
-                [HttpMethods.Get, HttpMethods.Post],
-                (
-                    HttpContext context,
-                    IHttpForwarder forwarder,
-                    IAgentUserContext userContext,
-                    IRouteTable routeTable,
-                    ILogger<Program> logger) =>
-                    GatewayProxyHandler.HandleAsync(
-                        context,
-                        forwarder,
-                        userContext,
-                        routeTable,
-                        logger,
-                        httpClient,
-                        requestConfig,
-                        requireAuthentication: false));
         }
         return app;
     }

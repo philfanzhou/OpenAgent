@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 using OpenAgent.Hosting.Authentication;
 using StackExchange.Redis;
 using Xunit;
@@ -55,7 +55,35 @@ public class ServiceCollectionExtensionsTests
     }
 
     [Fact]
-    public void AddAgentHost_WithUnsupportedAuthenticationMode_Throws()
+    public async Task AddAgentHost_WithJwtBearerMode_RegistersBearerScheme()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Authentication:Mode"] = "JwtBearer",
+                ["Authentication:Authority"] = "https://identity.example",
+                ["Authentication:Audience"] = "openagent-api",
+                ["Authentication:ClientId"] = "openagent-chat"
+            })
+            .Build();
+        var services = new ServiceCollection();
+        services.AddLogging();
+
+        services.AddAgentHost(configuration, options =>
+        {
+            DisableOptionalFeatures(options);
+            options.EnableJwtAuth = true;
+        });
+
+        using ServiceProvider provider = services.BuildServiceProvider();
+        var schemes = provider.GetRequiredService<IAuthenticationSchemeProvider>();
+
+        Assert.NotNull(await schemes.GetSchemeAsync("Bearer"));
+        Assert.Null(await schemes.GetSchemeAsync("Basic"));
+    }
+
+    [Fact]
+    public void AddAgentHost_WithIncompleteJwtBearerConfiguration_FailsValidation()
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
@@ -65,12 +93,16 @@ public class ServiceCollectionExtensionsTests
             .Build();
         var services = new ServiceCollection();
         services.AddLogging();
-
-        Assert.Throws<InvalidOperationException>(() => services.AddAgentHost(configuration, options =>
+        services.AddAgentHost(configuration, options =>
         {
             DisableOptionalFeatures(options);
             options.EnableJwtAuth = true;
-        }));
+        });
+
+        using ServiceProvider provider = services.BuildServiceProvider();
+
+        Assert.Throws<OptionsValidationException>(() =>
+            provider.GetRequiredService<IOptions<AgentAuthenticationOptions>>().Value);
     }
 
     [Fact]

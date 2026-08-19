@@ -50,7 +50,6 @@ public class QueryCacheMiddlewareTests
             cache);
 
         DefaultHttpContext otherTenant = CacheMiddlewareTestHelper.CreateContext();
-        otherTenant.Items[TenantIsolationMiddleware.TenantItemKey] = "tenant-2";
         await middleware.InvokeAsync(
             otherTenant,
             CacheMiddlewareTestHelper.CreateUser(tenantId: "tenant-2"),

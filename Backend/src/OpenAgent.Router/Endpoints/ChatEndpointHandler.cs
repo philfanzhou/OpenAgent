@@ -35,9 +35,10 @@ internal static class ChatEndpointHandler
         if (!providers.TryGet(routing.ProviderId, out IAgentProvider? provider)
             || provider == null)
         {
-            return Results.Problem(
-                statusCode: StatusCodes.Status503ServiceUnavailable,
-                title: "Agent provider is unavailable");
+            return RouterProblem.From(new AgentRoutingException(
+                StatusCodes.Status503ServiceUnavailable,
+                RouterErrorCodes.AgentProviderUnavailable,
+                "Agent Provider is unavailable"));
         }
 
         await agentForwarder.ForwardAsync(

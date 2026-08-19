@@ -154,9 +154,16 @@ public class ChatEndpointHandlerTests
     {
         public string Id => id;
 
-        public Task<IReadOnlyList<AgentSummary>> GetAgentsAsync(
+        public Task<AgentProviderCatalog> GetAgentsAsync(
+            AgentProviderRequestContext requestContext,
             CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<AgentSummary>>([]);
+            Task.FromResult(new AgentProviderCatalog([]));
+
+        public Task<AgentProviderConversationStatus> ResolveConversationAsync(
+            AgentProviderRequestContext requestContext,
+            string conversationId,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(AgentProviderConversationStatus.NotFound);
 
         public Task<IntentRecognitionResult?> RecognizeIntentAsync(
             string intentAgentId,

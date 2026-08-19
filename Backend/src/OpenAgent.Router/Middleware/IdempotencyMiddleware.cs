@@ -58,8 +58,7 @@ internal sealed class IdempotencyMiddleware(
             return;
         }
 
-        string? tenantId = context.Items[TenantIsolationMiddleware.TenantItemKey]?.ToString()
-            ?? userContext.TenantId;
+        string? tenantId = userContext.TenantId;
         string route = RouterCacheKeyFactory.GetRouteIdentity(context.Request);
         string requestDigest = RouterCacheKeyFactory.GetRequestDigest(context.Request, snapshot);
         string storageKey = RouterCacheKeyFactory.GetIdempotencyKey(
@@ -86,7 +85,7 @@ internal sealed class IdempotencyMiddleware(
             RouterLog.IdempotencyCacheCheckFailed(
                 logger,
                 exception,
-                TenantIsolationMiddleware.GetAction(context),
+                RouterRequestMetadata.GetAction(context),
                 clientKey,
                 Activity.Current?.Id ?? context.TraceIdentifier);
             await next(context).ConfigureAwait(false);
@@ -98,7 +97,7 @@ internal sealed class IdempotencyMiddleware(
         {
             RouterLog.IdempotencyCacheHit(
                 logger,
-                TenantIsolationMiddleware.GetAction(context),
+                RouterRequestMetadata.GetAction(context),
                 clientKey,
                 userContext.UserId,
                 tenantId,
@@ -170,7 +169,7 @@ internal sealed class IdempotencyMiddleware(
                 RouterLog.IdempotencyCacheCheckFailed(
                     logger,
                     exception,
-                    TenantIsolationMiddleware.GetAction(context),
+                    RouterRequestMetadata.GetAction(context),
                     clientKey,
                     Activity.Current?.Id ?? context.TraceIdentifier);
             }

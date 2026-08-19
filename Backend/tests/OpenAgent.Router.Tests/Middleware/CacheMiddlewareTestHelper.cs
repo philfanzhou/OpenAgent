@@ -28,7 +28,6 @@ internal static class CacheMiddlewareTestHelper
         context.Request.ContentType = "application/json";
         context.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes(body));
         context.Response.Body = new MemoryStream();
-        context.Items[TenantIsolationMiddleware.TenantItemKey] = "tenant-1";
         return context;
     }
 

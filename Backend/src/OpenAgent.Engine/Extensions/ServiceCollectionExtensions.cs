@@ -32,16 +32,15 @@ internal static class ServiceCollectionExtensions
         services.AddSingleton<AgentListQuery>();
         services.AddSingleton<AgentConfigManagementService>();
         services.AddSingleton<LlmProfileManagementService>();
+        services.AddSingleton<McpProfileManagementService>();
+        services.AddSingleton<ISkillCatalogStore, RedisSkillCatalogStore>();
 
         services.AddSingleton<IAgentConfigProvider, ConfigProvider>();
 
-        services.AddHttpClient("SkillEndpoint", client =>
-        {
-            client.Timeout = TimeSpan.FromSeconds(30);
-        });
-        services.AddHostedService<RedisSkillRegistrar>();
         services.AddHostedService<RedisRagRegistrar>();
         services.AddHostedService<RedisLlmRegistrar>();
+        services.AddHostedService<RedisSkillRegistrar>();
+        services.AddHostedService<RedisMcpRegistrar>();
 
         services.AddHealthChecks()
             .AddCheck<RedisHealthCheck>("redis", tags: new[] { "infrastructure", "ready", "live" })

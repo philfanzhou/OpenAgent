@@ -5,6 +5,7 @@ import type { ConversationRecord, CurrentUserContext } from '../types'
 const props = defineProps<{
   conversations: ConversationRecord[]
   selectedConversationId?: string
+  streamingConversationIds: string[]
   search: string
   loading?: boolean
   statusText: string
@@ -15,6 +16,7 @@ const emit = defineEmits<{
   'update:search': [value: string]
   new: []
   settings: []
+  logout: []
   refresh: []
   select: [conversation: ConversationRecord]
   delete: [conversation: ConversationRecord]
@@ -80,9 +82,9 @@ function formatTime(value: string): string {
     <el-scrollbar class="conversation-list" wrap-class="conversation-list-wrap">
       <div v-for="group in conversationGroups" :key="group.label" class="conversation-group">
         <div class="conversation-group-label">{{ group.label }}</div>
-        <div v-for="item in group.items" :key="item.conversationId" class="conversation-item" :class="{ active: props.selectedConversationId === item.conversationId }" @click="emit('select', item)">
+        <div v-for="item in group.items" :key="item.conversationId" class="conversation-item" :class="{ active: props.selectedConversationId === item.conversationId, streaming: props.streamingConversationIds.includes(item.conversationId) }" @click="emit('select', item)">
           <div class="conversation-icon">{{ (item.title || '新').slice(0, 1) }}</div>
-          <div class="conversation-content"><div class="conversation-title">{{ item.title || '未命名会话' }}</div><div class="conversation-meta"><span>{{ item.agentId || '自动路由' }}</span><time>{{ formatTime(item.updatedAt || item.lastMessageAt) }}</time></div></div>
+          <div class="conversation-content"><div class="conversation-title">{{ item.title || '未命名会话' }}</div><div class="conversation-meta"><span v-if="props.streamingConversationIds.includes(item.conversationId)" class="conversation-streaming"><i />生成中</span><span v-else>{{ item.agentId || '自动路由' }}</span><time>{{ formatTime(item.updatedAt || item.lastMessageAt) }}</time></div></div>
           <el-button text class="conversation-more" @click.stop="emit('delete', item)">×</el-button>
         </div>
       </div>
@@ -91,8 +93,14 @@ function formatTime(value: string): string {
     <footer class="sidebar-footer">
       <button class="identity-button" type="button" @click="emit('settings')">
         <span class="identity-avatar">{{ (props.currentUser?.userId || 'G').slice(0, 1).toUpperCase() }}</span>
-        <span><strong>{{ props.currentUser?.userId || 'Guest' }}</strong><small>{{ props.currentUser?.tenantId || '未设置租户' }}</small></span>
+        <span class="identity-info"><strong>{{ props.currentUser?.userId || 'Guest' }}</strong><small>{{ props.currentUser?.tenantId || '未设置租户' }}</small></span>
         <i class="status-dot" :class="{ connected: props.statusText === '已连接' }" />
+      </button>
+      <button class="sidebar-logout" type="button" aria-label="退出登录" title="退出登录" @click="emit('logout')">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path d="M9.5 3.5H4v9h5.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M7.5 8h6M11 5.5L13.5 8 11 10.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
       </button>
     </footer>
     <div class="sidebar-resize" @pointerdown="emit('resize-start', $event)" />

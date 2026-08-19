@@ -39,8 +39,8 @@ docker compose up --build
 Engine `http://localhost:5208`、租户 `development`；Compose 同时启动 PostgreSQL、Redis 和 MinIO。
 服务间使用 Docker DNS 地址（例如 Router -> `http://engine:5208`），浏览器仍使用上述 localhost
 地址。端口可通过 `OPENAGENT_*_PORT` 环境变量覆盖。Compose 不包含任何模型凭据或已发布 Agent；首次
-执行聊天前，请在工作台设置中创建 LLM Provider 并绑定 Agent。该默认编排启用开发匿名认证，仅适合本地
-联调，不应直接暴露到公网。
+执行聊天前，请先在登录页使用任意非空账号密码建立 Development 身份，再在工作台设置中创建 LLM
+Provider 并绑定 Agent。该兼容登录不校验真实密码，仅适合本地联调，不应直接暴露到公网。
 
 ## 文档
 
@@ -49,7 +49,7 @@ Engine `http://localhost:5208`、租户 `development`；Compose 同时启动 Pos
 
 ## 安全
 
-当前认证仅使用基础账号密码。后端只解析 Basic 凭据，不查询用户目录、不校验密码正确性；
-资源和能力授权暂不实现，后续单独建设。Development 环境可配置
-`Authentication:AllowDevelopmentAnonymous=true`，允许不带账号密码请求。
+生产认证使用可配置的 OIDC/OAuth2 身份提供方与 JWT Bearer 校验，验证 issuer、audience、签名和有效期。
+Basic 兼容登录严格限制在 Development；它只解析凭据，不查询用户目录，也不校验真实密码。
+认证只负责建立身份，角色、Agent ACL、能力权限与租户授权由独立的服务端授权层判断。
 详见 [安全设计文档](docs/modules/security/README.md)。

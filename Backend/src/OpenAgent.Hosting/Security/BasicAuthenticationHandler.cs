@@ -3,29 +3,38 @@ using System.Text;
 using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using OpenAgent.Hosting.Authentication;
 
 namespace OpenAgent.Hosting.Security;
 
 /// <summary>
-/// Temporary basic authentication boundary. Credentials are only decoded; the
-/// username and password are intentionally not checked against a user store.
+/// Development-only basic authentication boundary. Credentials are validated
+/// against <see cref="DevelopmentCredentials"/> (admin/admin, test/test).
 /// Authorization is a separate future concern.
 /// </summary>
 internal sealed class BasicAuthenticationHandler(
     IOptionsMonitor<AuthenticationSchemeOptions> options,
     ILoggerFactory logger,
     UrlEncoder encoder,
-    IOptions<AgentAuthenticationOptions> authenticationOptions)
+    IOptions<AgentAuthenticationOptions> authenticationOptions,
+    IHostEnvironment environment)
     : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
 {
     internal const string SchemeName = "Basic";
 
     private readonly AgentAuthenticationOptions _authenticationOptions = authenticationOptions.Value;
+    private readonly IHostEnvironment _environment = environment;
 
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
+        if (!_environment.IsDevelopment())
+        {
+            return Task.FromResult(AuthenticateResult.Fail(
+                "Basic authentication is available only in Development."));
+        }
+
         string? authorization = Request.Headers.Authorization.FirstOrDefault();
         if (string.IsNullOrWhiteSpace(authorization)
             || !authorization.StartsWith("Basic ", StringComparison.OrdinalIgnoreCase))
@@ -58,13 +67,14 @@ internal sealed class BasicAuthenticationHandler(
         }
 
         string username = decoded[..separator];
-        string tenantId = _authenticationOptions.AllowTenantHeader
-            ? Request.Headers["X-Tenant-Id"].FirstOrDefault()
-                ?? Request.Headers["X-TenantId"].FirstOrDefault()
-                ?? _authenticationOptions.DevelopmentTenantId
-            : _authenticationOptions.DevelopmentTenantId;
+        string password = decoded[(separator + 1)..];
 
-        return Task.FromResult(Succeed(username, tenantId));
+        if (!DevelopmentCredentials.IsValid(username, password))
+        {
+            return Task.FromResult(AuthenticateResult.Fail("Invalid username or password."));
+        }
+
+        return Task.FromResult(Succeed(username, _authenticationOptions.DevelopmentTenantId));
     }
 
     private AuthenticateResult Succeed(string username, string? tenantId)
@@ -92,7 +102,5 @@ internal sealed class BasicAuthenticationHandler(
 
     private bool IsDevelopmentAnonymousAllowed() =>
         _authenticationOptions.AllowDevelopmentAnonymous
-        && (Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT")
-            ?? Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")
-            ?? "Production").Equals("Development", StringComparison.OrdinalIgnoreCase);
+        && _environment.IsDevelopment();
 }

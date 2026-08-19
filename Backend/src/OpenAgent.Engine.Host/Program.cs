@@ -5,7 +5,9 @@ using OpenAgent.Engine.Host.Files;
 using OpenAgent.Engine.Host.Extensions;
 using OpenAgent.Engine.Host.Health;
 using OpenAgent.Engine.Host.Middleware;
+using OpenAgent.Engine.Host.Skills;
 using OpenAgent.Hosting;
+using OpenAgent.Hosting.Authentication;
 using OpenAgent.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -21,6 +23,7 @@ builder.Services.AddAgentHost(builder.Configuration, options =>
 builder.Services.AddAgentCore(builder.Configuration);
 builder.Services.AddOpenAgentInfrastructure(builder.Configuration);
 builder.Services.AddFileAssetObjectStorage(builder.Configuration);
+builder.Services.AddSingleton<SkillPackageManagementService>();
 
 builder.Services.AddAgentEngine(builder.Configuration);
 builder.Services.AddHealthChecks()
@@ -41,9 +44,9 @@ app.UseAgentHost(builder.Configuration);
 app.UseMiddleware<AgentExceptionHandlerMiddleware>();
 app.UseMiddleware<AgentUserContextMiddleware>();
 app.UseMiddleware<EngineAdmissionMiddleware>();
+app.MapAgentAuthenticationEndpoints();
 if (app.Environment.IsDevelopment())
 {
-    app.MapAuthenticationEndpoints();
     app.MapManagementEndpoints();
 }
 app.MapAgentEndpoints();
