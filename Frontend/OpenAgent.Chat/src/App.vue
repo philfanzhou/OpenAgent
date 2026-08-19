@@ -15,6 +15,8 @@ import { AUTO_AGENT_ID, type AgentConfigEntity, type AgentSummary, type AuthConf
 import { usePanelLayout } from './composables/usePanelLayout'
 import { useConversationStreams } from './composables/useConversationStreams'
 import { mergeConversationRecords, replaceConversationRecord, selectionMatchesConversation } from './conversationCollection'
+import { createStreamingAssistantContentState, enqueueAssistantContent, markAssistantPhaseBoundary } from './streamingAssistantContent'
+import { createTypewriterQueue, type TypewriterQueue } from './typewriterQueue'
 
 const selectedConversationStorageKey = 'openagent.chat.selected-conversation-id'
 
@@ -797,9 +799,12 @@ async function send(): Promise<void> {
   const requestId = streamState.requestId
   let streamError: { title?: string; detail?: string; traceId?: string } | undefined
   let flushStream: (() => void) | undefined
+  let contentQueue: TypewriterQueue | undefined
   let streamedAssistant: ConversationMessage | undefined
   let receivedDone = false
   let completedAgentId = conversation.agentId
+  const assistantContentState = createStreamingAssistantContentState()
+  let showedEarlyRoutingNotice = false
   try {
     conversation.messages ||= []
     conversation.status = 'Running'
@@ -814,7 +819,6 @@ async function send(): Promise<void> {
     conversation.lastMessageAt = conversation.updatedAt
     message.value = ''
     pendingFiles.value = []
-    let assistant = ''
     let reasoning = ''
     let lastFlush = 0
     conversation.messages.push({
@@ -824,12 +828,15 @@ async function send(): Promise<void> {
     const assistantMessage = conversation.messages[conversation.messages.length - 1]!
     streamedAssistant = assistantMessage
     conversation.messageCount = conversation.messages.length
+    contentQueue = createTypewriterQueue(content => {
+      assistantMessage.content += content
+    })
     flushStream = (): void => {
-      assistantMessage.content = assistant
+      contentQueue?.flush()
       assistantMessage.reasoning = reasoning || undefined
       lastFlush = performance.now()
     }
-    // 流式写入节流：思考/正文很长时按帧批量刷新，避免每个事件都触发整段重渲染导致卡顿。
+    // 正文按可控节奏逐字推进；思考内容继续节流，避免高频重渲染。
     for await (const event of api.streamChat(
       requestContent,
       requestedAgentId,
@@ -847,13 +854,25 @@ async function send(): Promise<void> {
         conversation.conversationId = conversationId
         if (selectionMatches) sessionStorage.setItem(selectedConversationStorageKey, conversationId)
       }
-      if (event.type === 'content') {
-        assistant += event.content || ''
-        if (performance.now() - lastFlush > 100) flushStream?.()
+      if (event.type === 'agent_selected') {
+        if (isNewConversation && selectedAgentId.value === AUTO_AGENT_ID && event.agentId) {
+          completedAgentId = event.agentId
+          conversation.agentId = event.agentId
+          selectedAgentId.value = event.agentId
+          const routed = agents.value.find(agent => agent.agentId === event.agentId)
+          ElMessage.info(`已由意图识别路由到 Agent「${routed?.name || event.agentId}」`)
+          showedEarlyRoutingNotice = true
+        }
+      } else if (event.type === 'content') {
+        enqueueAssistantContent(assistantContentState, content => contentQueue?.enqueue(content), event.content || '')
       } else if (event.type === 'reasoning') {
         reasoning += event.content || ''
-        if (performance.now() - lastFlush > 100) flushStream?.()
+        if (performance.now() - lastFlush > 100) {
+          assistantMessage.reasoning = reasoning
+          lastFlush = performance.now()
+        }
       } else if (event.type === 'tool_call') {
+        markAssistantPhaseBoundary(assistantContentState)
         assistantMessage.toolActivities ||= []
         assistantMessage.toolActivities.push({
           name: event.toolName || '工具',
@@ -861,11 +880,13 @@ async function send(): Promise<void> {
           arguments: event.toolArguments,
         })
       } else if (event.type === 'done') {
+        flushStream?.()
         receivedDone = true
         conversation.status = (event.status || 'Completed') as ConversationRecord['status']
         assistantMessage.tokenUsage = event.usage ?? undefined
         assistantMessage.modelId = event.modelId ?? undefined
       } else if (event.type === 'error') {
+        flushStream?.()
         // 捕获流式错误，交给 catch 以独立错误卡片展示；不混入助手内容。
         streamError = {
           title: event.error?.title,
@@ -888,20 +909,20 @@ async function send(): Promise<void> {
     }
     await refreshConversations(false)
     // 初次会话：若后端意图识别将对话路由到了其他 Agent，更新右上角选择器并提示。
-    if (isNewConversation && completedAgentId && completedAgentId !== requestedAgentId
+    if (!showedEarlyRoutingNotice && isNewConversation && completedAgentId && completedAgentId !== requestedAgentId
       && selectedConversation.value?.conversationId === conversationId) {
       const routed = agents.value.find(agent => agent.agentId === completedAgentId)
       selectedAgentId.value = completedAgentId
       ElMessage.info(`已由意图识别路由到 Agent「${routed?.name || completedAgentId}」`)
     }
   } catch (error) {
+    flushStream?.()
     const cancelReason = conversationStreams.getByRequest(requestId)?.cancelReason
     if (cancelReason && cancelReason !== 'network') {
       // Cancellation keeps received content while the server finalizes persistence.
       conversation.status = 'Cancelled'
       conversation.updatedAt = new Date().toISOString()
       conversation.lastMessageAt = conversation.updatedAt
-      flushStream?.()
       if (cancelReason !== 'unload') {
         try {
           const persisted = await api.getConversation(conversationId)
@@ -945,6 +966,7 @@ async function send(): Promise<void> {
       if (selectedConversation.value?.conversationId === conversationId) notifyError(error)
     }
   } finally {
+    contentQueue?.clear()
     conversationStreams.finish(requestId)
   }
 }

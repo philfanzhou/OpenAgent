@@ -41,6 +41,9 @@ public sealed class RouterHostIntegrationTests : IClassFixture<RouterHostFixture
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Contains("primary-engine", body, StringComparison.Ordinal);
+        Assert.Equal(
+            "default",
+            Assert.Single(response.Headers.GetValues("X-OpenAgent-Selected-Agent-Id")));
         Assert.Null(_fixture.PrimaryEngine.LastUserId);
         Assert.Null(_fixture.PrimaryEngine.LastTenantId);
         Assert.Contains("openagent_router_provider_selections_total", metrics, StringComparison.Ordinal);

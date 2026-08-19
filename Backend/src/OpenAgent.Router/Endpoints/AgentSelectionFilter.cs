@@ -67,6 +67,7 @@ internal sealed class AgentSelectionFilter(
         if (!string.IsNullOrWhiteSpace(selection.AgentId))
         {
             context.Request.Headers["X-Agent-Id"] = selection.AgentId;
+            context.Response.Headers["X-OpenAgent-Selected-Agent-Id"] = selection.AgentId;
         }
 
         return await next(invocationContext).ConfigureAwait(false);
