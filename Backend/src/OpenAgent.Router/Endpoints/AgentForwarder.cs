@@ -61,8 +61,10 @@ internal sealed class AgentForwarder(
                 proxyRequest,
                 target,
                 provider,
+                tenantId,
                 conversationId,
                 traceId,
+                context.RequestServices.GetService<IHostEnvironment>()?.IsDevelopment() == true,
                 cancellationToken)).ConfigureAwait(false);
         if (error == ForwarderError.None)
         {
@@ -93,15 +95,19 @@ internal sealed class AgentForwarder(
         HttpRequestMessage request,
         AgentForwardingTarget target,
         IAgentProvider provider,
+        string? tenantId,
         string? conversationId,
         string traceId,
+        bool forwardDevelopmentTenantHeader,
         CancellationToken cancellationToken)
     {
         await ForwardingContextBuilder.ApplyAsync(
             request,
             target.RequestUri,
+            tenantId,
             conversationId,
-            traceId).ConfigureAwait(false);
+            traceId,
+            forwardDevelopmentTenantHeader).ConfigureAwait(false);
         await provider.ConfigureRequestAsync(
             request,
             target,

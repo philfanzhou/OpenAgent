@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using OpenAgent.Contracts.Configuration;
+using OpenAgent.Engine.Host.Middleware;
 
 namespace OpenAgent.Engine.Host.Extensions;
 
@@ -14,9 +15,11 @@ internal static class AgentCatalogEndpointExtensions
 
     private static async Task<IResult> ExecuteAsync(
         [FromServices] IAgentConfigProvider configProvider,
+        HttpContext context,
         CancellationToken cancellationToken)
     {
         IReadOnlyList<AgentSummary> agents = await configProvider.ListAgentsAsync(
+            AgentEndpointRequestMapper.RequireTenant(context),
             cancellationToken).ConfigureAwait(false);
         return Results.Ok(agents);
     }

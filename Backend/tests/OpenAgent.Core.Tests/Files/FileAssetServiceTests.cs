@@ -148,6 +148,27 @@ public class FileAssetServiceTests
     }
 
     [Fact]
+    public async Task GetAsync_DifferentTenant_ReturnsNotFound()
+    {
+        var repository = new RecordingRepository();
+        var objects = new RecordingObjectStore();
+        FileAsset asset = CreateAsset("notes.md", "text/markdown");
+        repository.Assets[asset.FileId] = asset;
+        IFileAssetService service = CreateService(repository, objects);
+
+        FileAsset? result = await service.GetAsync(
+            asset.FileId,
+            new FileAssetScope
+            {
+                TenantId = "tenant-b",
+                UserId = "user-a"
+            },
+            CancellationToken.None);
+
+        Assert.Null(result);
+    }
+
+    [Fact]
     public async Task EnsureReferencesAsync_IsIdempotent()
     {
         var repository = new RecordingRepository();
@@ -230,7 +251,8 @@ public class FileAssetServiceTests
         MediaType = mediaType,
         Length = 3,
         Sha256 = "sha",
-        ObjectKey = "files/tenant-a/user-a/file-a",
+        ObjectKey = $"files/tenants/{FileObjectTenantScope.CreatePartition("tenant-a")}" +
+            "/users/user-a/file-a",
         Source = FileAssetSource.UserUpload,
         State = FileAssetState.Ready,
         CreatedAt = DateTimeOffset.UtcNow

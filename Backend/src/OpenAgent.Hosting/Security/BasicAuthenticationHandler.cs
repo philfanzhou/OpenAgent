@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
+using OpenAgent.Contracts.Security;
 using OpenAgent.Hosting.Authentication;
 
 namespace OpenAgent.Hosting.Security;
@@ -41,9 +42,8 @@ internal sealed class BasicAuthenticationHandler(
         {
             if (IsDevelopmentAnonymousAllowed())
             {
-                return Task.FromResult(Succeed(
-                    _authenticationOptions.DevelopmentUserId,
-                    _authenticationOptions.DevelopmentTenantId));
+                return Task.FromResult(SucceedDevelopment(
+                    _authenticationOptions.DevelopmentUserId));
             }
 
             return Task.FromResult(AuthenticateResult.NoResult());
@@ -74,7 +74,21 @@ internal sealed class BasicAuthenticationHandler(
             return Task.FromResult(AuthenticateResult.Fail("Invalid username or password."));
         }
 
-        return Task.FromResult(Succeed(username, _authenticationOptions.DevelopmentTenantId));
+        return Task.FromResult(SucceedDevelopment(username));
+    }
+
+    private AuthenticateResult SucceedDevelopment(string username)
+    {
+        try
+        {
+            string? tenantId = TenantIdentityResolver.ResolveDevelopmentHeader(Request.Headers)
+                ?? _authenticationOptions.DevelopmentTenantId;
+            return Succeed(username, tenantId);
+        }
+        catch (AgentException exception)
+        {
+            return AuthenticateResult.Fail(exception.Message);
+        }
     }
 
     private AuthenticateResult Succeed(string username, string? tenantId)

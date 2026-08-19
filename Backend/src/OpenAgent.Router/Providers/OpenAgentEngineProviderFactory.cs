@@ -1,7 +1,8 @@
 namespace OpenAgent.Router.Providers;
 
 internal sealed class OpenAgentEngineProviderFactory(
-    IRouteTable routeTable) : IAgentProviderFactory
+    IRouteTable routeTable,
+    IHostEnvironment? environment = null) : IAgentProviderFactory
 {
     internal const string ProviderType = "OpenAgentEngine";
 
@@ -13,5 +14,6 @@ internal sealed class OpenAgentEngineProviderFactory(
         new OpenAgentEngineProvider(
             providerId,
             settings,
-            routeTable);
+            routeTable,
+            forwardDevelopmentTenantHeader: environment?.IsDevelopment() == true);
 }

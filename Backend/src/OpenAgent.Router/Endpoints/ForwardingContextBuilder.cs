@@ -5,15 +5,25 @@ internal static class ForwardingContextBuilder
     internal static ValueTask ApplyAsync(
         HttpRequestMessage proxyRequest,
         Uri targetUri,
+        string? tenantId,
         string? conversationId,
-        string traceId)
+        string traceId,
+        bool forwardDevelopmentTenantHeader)
     {
         proxyRequest.RequestUri = targetUri;
         proxyRequest.Headers.Remove("X-Conversation-Id");
         proxyRequest.Headers.Remove("X-Trace-Id");
         proxyRequest.Headers.Remove("X-User-Id");
+        proxyRequest.Headers.Remove("X-UserId");
+        proxyRequest.Headers.Remove("X-OpenAgent-User-Id");
         proxyRequest.Headers.Remove("X-Tenant-Id");
+        proxyRequest.Headers.Remove("X-TenantId");
+        proxyRequest.Headers.Remove("X-OpenAgent-Tenant-Id");
         proxyRequest.Headers.Add("X-Trace-Id", traceId);
+        if (forwardDevelopmentTenantHeader && !string.IsNullOrWhiteSpace(tenantId))
+        {
+            proxyRequest.Headers.Add("X-Tenant-Id", tenantId);
+        }
         if (!string.IsNullOrEmpty(conversationId)) proxyRequest.Headers.Add("X-Conversation-Id", conversationId);
         return ValueTask.CompletedTask;
     }

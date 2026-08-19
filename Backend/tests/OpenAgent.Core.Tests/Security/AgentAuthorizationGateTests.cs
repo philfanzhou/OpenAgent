@@ -63,6 +63,7 @@ public class AgentAuthorizationGateTests
         var registry = new LlmRegistry();
         registry.Register(new LlmProviderProfile
         {
+            TenantId = "t1",
             Id = "azure",
             Format = ApiFormat.OpenAIChatCompletions,
             Endpoint = "https://azure.example.com",
@@ -104,6 +105,7 @@ public class AgentAuthorizationGateTests
         var registry = new LlmRegistry();
         registry.Register(new LlmProviderProfile
         {
+            TenantId = "t1",
             Id = "bad",
             Endpoint = "",
             ApiKey = ""
@@ -117,6 +119,28 @@ public class AgentAuthorizationGateTests
             () => gate.ResolveAuthorizedModelAsync(
                 "a1",
                 new LlmConfig { Provider = "bad", ModelId = "gpt-4o" },
+                Context(),
+                default));
+    }
+
+    [Fact]
+    public async Task ResolveAuthorizedModelAsync_DifferentTenant_ThrowsTenantIsolation()
+    {
+        var registry = new LlmRegistry();
+        registry.Register(new LlmProviderProfile
+        {
+            TenantId = "t2",
+            Id = "other-tenant",
+            Endpoint = "https://llm.example.com"
+        });
+        var gate = new AgentAuthorizationGate(
+            new AllowAllAgentAuthorizationService(),
+            registry);
+
+        await Assert.ThrowsAsync<TenantDataIsolationException>(() =>
+            gate.ResolveAuthorizedModelAsync(
+                "a1",
+                new LlmConfig { Provider = "other-tenant", ModelId = "model" },
                 Context(),
                 default));
     }

@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using OpenAgent.Contracts.Security;
+using OpenAgent.Hosting.Security;
 
 namespace OpenAgent.Engine.Host.Middleware;
 
@@ -7,19 +8,31 @@ internal sealed class AgentUserContextMiddleware
 {
     private readonly RequestDelegate _next;
     private readonly ILogger<AgentUserContextMiddleware> _logger;
+    private readonly IHostEnvironment _environment;
 
     public AgentUserContextMiddleware(
         RequestDelegate next,
-        ILogger<AgentUserContextMiddleware> logger)
+        ILogger<AgentUserContextMiddleware> logger,
+        IHostEnvironment environment)
     {
         _next = next;
         _logger = logger;
+        _environment = environment;
     }
 
     public async Task InvokeAsync(HttpContext context)
     {
         string traceId = TraceIdResolver.Resolve(context);
         AgentUserContext user = BuildUserContext(context);
+        if (RequiresTenant(context.Request.Path)
+            && user.IsAuthenticated
+            && string.IsNullOrWhiteSpace(user.TenantId))
+        {
+            throw new TenantDataIsolationException(
+                null,
+                null,
+                "TenantId is required but not provided");
+        }
         context.Features.Set(new AgentRequestFeature(traceId, user));
 
         using IDisposable? scope = _logger.BeginScope(new Dictionary<string, object?>
@@ -36,8 +49,10 @@ internal sealed class AgentUserContextMiddleware
         string? userId = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value
             ?? context.User.FindFirst("sub")?.Value
             ?? context.User.Identity?.Name;
-        string? tenantId = context.User.Claims
-            .FirstOrDefault(claim => claim.Type == "tenant_id" || claim.Type == "tid")?.Value;
+        string? tenantId = TenantIdentityResolver.Resolve(
+            context.User,
+            context.Request.Headers,
+            _environment.IsDevelopment());
         List<string> roles = context.User.Claims
             .Where(claim => claim.Type == ClaimTypes.Role || claim.Type is "roles" or "role")
             .Select(claim => claim.Value)
@@ -87,6 +102,10 @@ internal sealed class AgentUserContextMiddleware
             .ToList()
             .AsReadOnly();
     }
+
+    private static bool RequiresTenant(PathString path) =>
+        path.StartsWithSegments("/api/v1/agent")
+        || path.StartsWithSegments("/api/v1/admin");
 }
 
 internal sealed record AgentRequestFeature(

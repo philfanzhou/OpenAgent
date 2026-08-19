@@ -71,6 +71,7 @@ internal class ConfigProvider : IAgentConfigProvider
             AgentConfigEntity? localEntity = _localStore.Get(agentId);
             if (localEntity?.Config != null)
             {
+                ApplyTenant(localEntity);
                 _secretInjector.Enrich(localEntity.Config);
                 return localEntity.Config;
             }
@@ -88,6 +89,7 @@ internal class ConfigProvider : IAgentConfigProvider
             var redisConfigEntity = await LoadFromRedisAsync(agentId, cancellationToken);
             if (redisConfigEntity?.Config != null)
             {
+                ApplyTenant(redisConfigEntity);
                 _snapshot.SetFullConfig(agentId, redisConfigEntity.Config);
                 EngineLog.ConfigLoadedFromRedisCached(_logger, agentId);
                 return redisConfigEntity.Config;
@@ -108,6 +110,52 @@ internal class ConfigProvider : IAgentConfigProvider
 
         EngineLog.ConfigNotCached(_logger, agentId);
         return null;
+    }
+
+    public async Task<AgentConfig?> GetConfigAsync(
+        string agentId,
+        string tenantId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(agentId))
+        {
+            return _mockAgentResolver.IsEnabled ? CreateFallback(tenantId) : null;
+        }
+
+        if (_mockAgentResolver.IsEnabled)
+        {
+            AgentConfigEntity? localEntity = _localStore.Get(agentId);
+            if (localEntity?.Config != null)
+            {
+                ApplyTenant(localEntity);
+                return ResolveForTenant(localEntity.Config, tenantId);
+            }
+        }
+
+        AgentConfig? snapshotConfig = LoadFromSnapshot(agentId);
+        if (snapshotConfig != null)
+        {
+            return ResolveForTenant(snapshotConfig, tenantId);
+        }
+
+        if (_redis.IsAvailable)
+        {
+            AgentConfigEntity? redisEntity = await LoadFromRedisAsync(
+                agentId,
+                cancellationToken).ConfigureAwait(false);
+            if (redisEntity?.Config != null)
+            {
+                ApplyTenant(redisEntity);
+                AgentConfig? config = ResolveForTenant(redisEntity.Config, tenantId);
+                if (config != null)
+                {
+                    _snapshot.SetFullConfig(agentId, config);
+                }
+                return config;
+            }
+        }
+
+        return _mockAgentResolver.IsEnabled ? CreateFallback(tenantId) : null;
     }
 
     private AgentConfig? LoadFromSnapshot(string agentId)
@@ -196,5 +244,38 @@ internal class ConfigProvider : IAgentConfigProvider
     public async Task<IReadOnlyList<AgentSummary>> ListAgentsAsync(CancellationToken cancellationToken = default)
     {
         return await _agentListQuery.ExecuteAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<IReadOnlyList<AgentSummary>> ListAgentsAsync(
+        string tenantId,
+        CancellationToken cancellationToken = default)
+    {
+        return await _agentListQuery.ExecuteAsync(tenantId, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static void ApplyTenant(AgentConfigEntity entity)
+    {
+        if (!string.IsNullOrWhiteSpace(entity.TenantId))
+        {
+            entity.Config.TenantId = entity.TenantId;
+        }
+    }
+
+    private AgentConfig CreateFallback(string tenantId)
+    {
+        AgentConfig config = _mockAgentResolver.CreateFallback();
+        config.TenantId = tenantId;
+        return config;
+    }
+
+    private AgentConfig? ResolveForTenant(AgentConfig config, string tenantId)
+    {
+        if (!string.Equals(config.TenantId, tenantId, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        _secretInjector.Enrich(config);
+        return config;
     }
 }

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using OpenAgent.Contracts.Configuration;
+using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Abstract;
 using OpenAgent.Engine.Abstractions;
 using OpenAgent.Engine.Reload;
@@ -48,6 +49,16 @@ internal sealed class LlmProfileManagementService(
         }
     }
 
+    internal async Task<IReadOnlyList<LlmProviderProfile>> ListAsync(
+        string tenantId,
+        CancellationToken cancellationToken = default)
+    {
+        IReadOnlyList<LlmProviderProfile> profiles = await ListAsync(cancellationToken).ConfigureAwait(false);
+        return profiles
+            .Where(profile => string.Equals(profile.TenantId, tenantId, StringComparison.Ordinal))
+            .ToArray();
+    }
+
     internal async Task<LlmProviderProfile?> GetAsync(string id, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -66,6 +77,18 @@ internal sealed class LlmProfileManagementService(
         }
     }
 
+    internal async Task<LlmProviderProfile?> GetAsync(
+        string id,
+        string tenantId,
+        CancellationToken cancellationToken = default)
+    {
+        LlmProviderProfile? profile = await GetAsync(id, cancellationToken).ConfigureAwait(false);
+        return profile != null
+            && string.Equals(profile.TenantId, tenantId, StringComparison.Ordinal)
+            ? profile
+            : null;
+    }
+
     internal async Task<LlmProviderProfile> SaveAsync(
         LlmProviderProfile profile,
         CancellationToken cancellationToken = default)
@@ -77,12 +100,31 @@ internal sealed class LlmProfileManagementService(
             return profile;
         }
 
+        string key = $"llm:registry:{profile.Id}";
+        IDatabase database = redis.GetDatabase();
+        RedisValue currentValue = await database.StringGetAsync(key).ConfigureAwait(false);
+        LlmProviderProfile? current = currentValue.IsNullOrEmpty
+            ? null
+            : JsonSerializer.Deserialize<LlmProviderProfile>(currentValue.ToString(), JsonOptions);
+        if (current != null
+            && !string.IsNullOrWhiteSpace(current.TenantId)
+            && !string.Equals(current.TenantId, profile.TenantId, StringComparison.Ordinal))
+        {
+            throw new TenantDataIsolationException(
+                profile.TenantId,
+                current.TenantId,
+                "LLM profile does not belong to the authenticated tenant.");
+        }
+
         string payload = JsonSerializer.Serialize(profile, JsonOptions);
         string notification = CreateNotification(
             profile.Id,
             ConfigUpdate.UpsertOperation);
-        ITransaction transaction = redis.GetDatabase().CreateTransaction();
-        Task<bool> setTask = transaction.StringSetAsync($"llm:registry:{profile.Id}", payload);
+        ITransaction transaction = database.CreateTransaction();
+        transaction.AddCondition(currentValue.IsNullOrEmpty
+            ? Condition.KeyNotExists(key)
+            : Condition.StringEqual(key, currentValue));
+        Task<bool> setTask = transaction.StringSetAsync(key, payload);
         Task<long> publishTask = transaction.PublishAsync(
             RedisChannel.Literal(HotReloadService.CurrentUpdatesChannel),
             notification);
@@ -96,6 +138,25 @@ internal sealed class LlmProfileManagementService(
         EnsureLocalReload(profile.Id, notification);
         await redis.SetAddAsync("llm:published:index", profile.Id).ConfigureAwait(false);
         return profile;
+    }
+
+    internal async Task<LlmProviderProfile> SaveAsync(
+        LlmProviderProfile profile,
+        string tenantId,
+        CancellationToken cancellationToken = default)
+    {
+        LlmProviderProfile? existing = await GetAsync(profile.Id, cancellationToken).ConfigureAwait(false);
+        if (existing != null
+            && !string.Equals(existing.TenantId, tenantId, StringComparison.Ordinal))
+        {
+            throw new TenantDataIsolationException(
+                tenantId,
+                existing.TenantId,
+                "LLM profile does not belong to the authenticated tenant.");
+        }
+
+        profile.TenantId = tenantId;
+        return await SaveAsync(profile, cancellationToken).ConfigureAwait(false);
     }
 
     internal async Task<bool> DeleteAsync(string id, CancellationToken cancellationToken = default)
@@ -124,6 +185,21 @@ internal sealed class LlmProfileManagementService(
         EnsureLocalReload(id, notification);
         await redis.SetRemoveAsync("llm:published:index", id).ConfigureAwait(false);
         return deleted || existedLocally;
+    }
+
+    internal async Task<bool> DeleteAsync(
+        string id,
+        string tenantId,
+        CancellationToken cancellationToken = default)
+    {
+        LlmProviderProfile? existing = await GetAsync(id, cancellationToken).ConfigureAwait(false);
+        if (existing == null
+            || !string.Equals(existing.TenantId, tenantId, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        return await DeleteAsync(id, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<LlmProviderProfile?> GetFromRedisAsync(string id)

@@ -42,9 +42,24 @@ public sealed class RouterHostIntegrationTests : IClassFixture<RouterHostFixture
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Contains("primary-engine", body, StringComparison.Ordinal);
         Assert.Null(_fixture.PrimaryEngine.LastUserId);
-        Assert.Null(_fixture.PrimaryEngine.LastTenantId);
+        Assert.Equal("tenant-1", _fixture.PrimaryEngine.LastTenantId);
         Assert.Contains("openagent_router_provider_selections_total", metrics, StringComparison.Ordinal);
         Assert.Contains("source=\"explicit\"", metrics, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Chat_DevelopmentTenantHeader_ForwardsResolvedTenant()
+    {
+        using RouterApplicationFactory factory = _fixture.CreateFactory();
+        using HttpClient client = factory.CreateClient();
+        using HttpRequestMessage request = CreateChatRequest("development tenant");
+        request.Headers.Add("X-Tenant-Id", "development-tenant");
+
+        using HttpResponseMessage response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("development-tenant", _fixture.PrimaryEngine.LastTenantId);
+        Assert.Equal("development-tenant", _fixture.PrimaryEngine.LastCatalogTenantId);
     }
 
     [Fact]

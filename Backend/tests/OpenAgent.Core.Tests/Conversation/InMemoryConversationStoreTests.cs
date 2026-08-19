@@ -75,6 +75,17 @@ public class InMemoryConversationStoreTests
     }
 
     [Fact]
+    public async Task GetRecordAsync_DifferentTenant_ReturnsNull()
+    {
+        var store = new InMemoryConversationStore(UserContext());
+        await store.CreateAsync(CreateRecord(tenantId: "tenant-a"));
+
+        ConversationRecord? result = await store.GetRecordAsync("tenant-b", "c1");
+
+        Assert.Null(result);
+    }
+
+    [Fact]
     public async Task AppendMessages_NewMessages_IncrementsVersionAndCount()
     {
         var store = new InMemoryConversationStore(UserContext());

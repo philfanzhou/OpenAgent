@@ -70,6 +70,8 @@ public sealed class TestEngineHost(string responseName) : IAsyncDisposable
 
     public string? LastTenantId { get; private set; }
 
+    public string? LastCatalogTenantId { get; private set; }
+
     public string? UploadedFileName { get; private set; }
 
     public string? UploadedContentType { get; private set; }
@@ -88,10 +90,14 @@ public sealed class TestEngineHost(string responseName) : IAsyncDisposable
         WebApplication application = builder.Build();
 
         application.MapGet("/ready", () => Results.Ok());
-        application.MapGet("/api/v1/agent/agents", () => Results.Json(new[]
+        application.MapGet("/api/v1/agent/agents", (HttpContext context) =>
         {
-            new { agentId = "default", name = "Default", description = "Test agent" }
-        }));
+            LastCatalogTenantId = context.Request.Headers["X-Tenant-Id"].FirstOrDefault();
+            return Results.Json(new[]
+            {
+                new { agentId = "default", name = "Default", description = "Test agent" }
+            });
+        });
         application.MapPost("/api/v1/agent/chat", async context =>
         {
             Interlocked.Increment(ref _chatRequestCount);

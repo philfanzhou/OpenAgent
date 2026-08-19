@@ -44,6 +44,7 @@ internal class LlmRegistry : ILlmRegistry
 
         return new LlmConfig
         {
+            TenantId = profile.TenantId,
             Provider = llmConfig.Provider,
             Format = profile.Format,
             // AgentConfig.Llm.ModelId is the new source of truth. Profile.ModelId

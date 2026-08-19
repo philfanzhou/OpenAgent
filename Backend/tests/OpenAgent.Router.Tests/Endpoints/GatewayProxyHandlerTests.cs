@@ -19,6 +19,7 @@ public class GatewayProxyHandlerTests
         var context = CreateContext(HttpMethods.Get, "/api/v1/admin/agents", "?take=10");
         context.Request.Headers["X-User-Id"] = "spoofed-user";
         context.Request.Headers["X-Tenant-Id"] = "spoofed-tenant";
+        context.Request.Headers["X-TenantId"] = "spoofed-legacy-tenant";
         context.Request.Headers["X-Conversation-Id"] = "conversation-1";
         context.Request.Headers["X-Agent-Id"] = "spoofed-agent";
         var forwarder = new CapturingForwarder();
@@ -49,6 +50,7 @@ public class GatewayProxyHandlerTests
             forwarder.ProxyRequest?.RequestUri?.ToString());
         AssertHeaderMissing(forwarder.ProxyRequest, "X-User-Id");
         AssertHeaderMissing(forwarder.ProxyRequest, "X-Tenant-Id");
+        AssertHeaderMissing(forwarder.ProxyRequest, "X-TenantId");
         Assert.Equal("conversation-1", GetSingleHeader(forwarder.ProxyRequest, "X-Conversation-Id"));
         AssertHeaderMissing(forwarder.ProxyRequest, "X-Agent-Id");
     }
