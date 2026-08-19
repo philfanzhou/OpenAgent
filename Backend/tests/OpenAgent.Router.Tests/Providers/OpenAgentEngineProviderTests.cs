@@ -3,7 +3,6 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using OpenAgent.Contracts.Configuration;
-using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Routing;
 using OpenAgent.Contracts.Security;
@@ -75,8 +74,8 @@ public class OpenAgentEngineProviderTests
         Assert.Equal(
             [
                 "http://engine/custom/agents",
-                "http://engine/custom/chat",
-                "http://engine/custom/chat",
+                "http://engine/custom/chat/intent",
+                "http://engine/custom/chat/intent",
                 "http://engine/api/v1/agent/provider/conversations/conversation-1"
             ],
             handler.RequestUris);
@@ -90,8 +89,6 @@ public class OpenAgentEngineProviderTests
         Assert.Equal("http://engine", target?.DestinationPrefix);
         Assert.Equal("http://engine/custom/chat/stream", target?.RequestUri.ToString());
         Assert.All(handler.ChatBodies, body => AssertIntentExecution(body));
-        string[] executionIds = handler.ChatBodies.Select(ReadConversationId).ToArray();
-        Assert.Equal(2, executionIds.Distinct(StringComparer.Ordinal).Count());
     }
 
     private sealed class RecordingHandler : HttpMessageHandler
@@ -152,14 +149,7 @@ public class OpenAgentEngineProviderTests
         using JsonDocument document = JsonDocument.Parse(body);
         JsonElement context = document.RootElement.GetProperty("context");
         Assert.Equal("intent-router", context.GetProperty("agentId").GetString());
-        Assert.StartsWith("intent-", context.GetProperty("conversationId").GetString());
-        Assert.Equal(ConversationType.Internal.ToString(), context.GetProperty("conversationType").GetString());
-    }
-
-    private static string ReadConversationId(string body)
-    {
-        using JsonDocument document = JsonDocument.Parse(body);
-        return document.RootElement.GetProperty("context").GetProperty("conversationId").GetString()!;
+        Assert.DoesNotContain("conversationId", context.EnumerateObject().Select(property => property.Name));
     }
 
     private sealed class StubRouteTable : IRouteTable

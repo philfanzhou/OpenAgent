@@ -13,7 +13,6 @@ public interface IConversationQueryService
     /// List conversation records for a tenant, ordered by LastMessageAt descending.
     /// Returns metadata only (no message bodies). Only conversations belonging to
     /// the current authenticated user (via ICurrentUserContext) are returned.
-    /// Internal and channel conversations are excluded.
     /// </summary>
     Task<IReadOnlyList<ConversationRecord>> ListConversationsAsync(
         string tenantId,
@@ -25,7 +24,6 @@ public interface IConversationQueryService
     /// Search conversations by keyword in message content.
     /// Returns metadata only (no message bodies). Only conversations belonging to
     /// the current authenticated user (via ICurrentUserContext) are searched.
-    /// Internal and channel conversations are excluded.
     /// </summary>
     Task<IReadOnlyList<ConversationRecord>> SearchConversationsAsync(
         string tenantId,
@@ -35,8 +33,7 @@ public interface IConversationQueryService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Get a user-visible conversation record by ID. Returns null for internal,
-    /// channel, deleted, other-user, and missing conversations.
+    /// Get a single conversation record by ID. Returns null if not found.
     /// </summary>
     Task<ConversationRecord?> GetRecordAsync(
         string tenantId,

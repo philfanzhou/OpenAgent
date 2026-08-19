@@ -33,6 +33,7 @@ Router 通过 `IAgentProvider` 统一调用自有 Engine 和第三方 Agent 服�
 - `ConfigureRequestAsync`：在 YARP 转发前处理 Provider 认证或协议适配。
 
 内置 Engine Provider 使用 `GET /api/v1/agent/provider/conversations/{conversationId}` 探测归属。请求复用当前调用方的 `Authorization` 令牌；端点从 Engine 已验证的 `IAgentUserContext` 获取用户和租户，只返回 204/404，不返回会话内容。
+意图识别使用 `POST /api/v1/agent/chat/intent`，只执行一次性 Agent 调用，不创建会话；该调用使用 Provider 配置的服务凭据，不转发渠道用户上下文。
 
 ## 配置
 

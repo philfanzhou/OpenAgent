@@ -5,7 +5,6 @@ internal sealed class ConversationEntity
     public required string ConversationId { get; init; }
     public required string TenantId { get; init; }
     public required string UserId { get; init; }
-    public int Type { get; init; }
     public string? AgentId { get; set; }
     public string? TraceId { get; set; }
     public int Version { get; set; }

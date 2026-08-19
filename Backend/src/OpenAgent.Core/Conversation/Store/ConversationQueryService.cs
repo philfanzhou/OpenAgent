@@ -5,7 +5,6 @@ namespace OpenAgent.Core.Conversation.Store;
 internal sealed class ConversationQueryService : IConversationQueryService
 {
     private readonly IConversationStore _store;
-
     public ConversationQueryService(IConversationStore store)
     {
         _store = store;
@@ -32,9 +31,6 @@ internal sealed class ConversationQueryService : IConversationQueryService
     public async Task<ConversationRecord?> GetRecordAsync(
         string tenantId, string conversationId, CancellationToken cancellationToken = default)
     {
-        return await _store.GetRecordAsync(
-            tenantId,
-            conversationId,
-            cancellationToken).ConfigureAwait(false);
+        return await _store.GetRecordAsync(tenantId, conversationId, cancellationToken).ConfigureAwait(false);
     }
 }

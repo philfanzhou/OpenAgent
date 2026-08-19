@@ -239,7 +239,6 @@ internal sealed class EfCoreConversationStore(
         List<ConversationEntity> conversations = await context.Conversations.AsNoTracking()
             .Where(item => item.TenantId == tenantId && !item.IsDeletedByUser)
             .Where(item => item.UserId == currentUser.UserId)
-            .Where(item => item.Type == (int)ConversationType.User)
             .OrderByDescending(item => item.LastMessageAt)
             .Skip(Math.Max(skip, 0))
             .Take(take)
@@ -263,7 +262,6 @@ internal sealed class EfCoreConversationStore(
         List<ConversationEntity> conversations = await context.Conversations.AsNoTracking()
             .Where(conversation => conversation.TenantId == tenantId && !conversation.IsDeletedByUser)
             .Where(conversation => conversation.UserId == currentUser.UserId)
-            .Where(conversation => conversation.Type == (int)ConversationType.User)
             .Where(conversation => context.ConversationMessages.Any(message =>
                 message.ConversationId == conversation.ConversationId
                 && EF.Functions.ILike(message.Content, $"%{keyword}%")))
@@ -300,7 +298,6 @@ internal sealed class EfCoreConversationStore(
         ConversationId = record.ConversationId,
         TenantId = record.TenantId,
         UserId = record.UserId,
-        Type = (int)record.Type,
         AgentId = record.AgentId,
         TraceId = record.TraceId,
         Version = record.Version,
@@ -339,7 +336,6 @@ internal sealed class EfCoreConversationStore(
         ConversationId = entity.ConversationId,
         TenantId = entity.TenantId,
         UserId = entity.UserId,
-        Type = (ConversationType)entity.Type,
         AgentId = entity.AgentId,
         TraceId = entity.TraceId,
         Version = entity.Version,

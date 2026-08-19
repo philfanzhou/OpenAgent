@@ -13,6 +13,10 @@ internal static class AgentChatEndpointExtensions
             .WithName("Chat")
             .WithTags("Agent");
 
+        group.MapPost("/chat/intent", ExecuteIntentAsync)
+            .WithName("IntentRecognition")
+            .WithTags("Agent");
+
         group.MapPost("/chat/stream", ExecuteStreamAsync)
             .WithName("ChatStream")
             .WithTags("Agent");
@@ -26,6 +30,28 @@ internal static class AgentChatEndpointExtensions
         CancellationToken cancellationToken)
     {
         AgentRequest executionRequest = AgentEndpointRequestMapper.CreateAgentRequest(request, context);
+        AgentResponse response = await executor.ExecuteAsync(
+            executionRequest,
+            context.GetAgentRequest().User,
+            cancellationToken).ConfigureAwait(false);
+        return Results.Ok(new ChatResponse
+        {
+            Message = response.Content,
+            Usage = response.TokenUsage,
+            ModelId = response.ModelId
+        });
+    }
+
+    private static async Task<IResult> ExecuteIntentAsync(
+        [FromBody] ChatRequest request,
+        [FromServices] AgentExecutor executor,
+        HttpContext context,
+        CancellationToken cancellationToken)
+    {
+        AgentRequest executionRequest = AgentEndpointRequestMapper.CreateAgentRequest(
+            request,
+            context,
+            createConversation: false);
         AgentResponse response = await executor.ExecuteAsync(
             executionRequest,
             context.GetAgentRequest().User,
