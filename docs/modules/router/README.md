@@ -6,8 +6,7 @@ Router 使用 Redis Engine 注册索引发现动态实例，并以静态 `Router
 
 - Engine 维护 `engine:registry:index` Set，并以带 TTL 的 `engine:registry:{engineId}` String 保存注册值。
 - Router 通过 `SMEMBERS` 读取索引，再用一次 `MGET` 批量读取注册值，不执行 `KEYS`/`SCAN` 全库枚举。
-- 注册值按 EngineId 排序；候选实例先按 intent/capability 过滤，再按负载、EngineId 确定性排序。
-- `X-Agent-Capability` 可指定本次代理所需 capability；未声明 capability 时只按 intent 过滤。
+- 注册值按 EngineId 排序；候选实例按 intent 过滤，再按负载、EngineId 确定性排序。
 - 会话亲和使用 tenantId 与 conversationId 的组合键，候选集合变化时使用一致性哈希重新映射。
 - TTL 已过期、心跳超时、JSON 无效或索引悬空的实例会被排除；悬空索引成员会尽力清理。
 
@@ -16,7 +15,7 @@ Router 使用 Redis Engine 注册索引发现动态实例，并以静态 `Router
 | 场景 | 行为 | 可观测性 |
 |------|------|----------|
 | Redis 不可用 | 默认清空动态快照并走静态路由；可配置短时使用 last-known 快照 | Warning 日志、`discovery_refresh_total{outcome="redis_error"}` |
-| 注册过期/无匹配能力 | 排除实例并走静态路由；无静态路由时返回不可用 | Warning 日志、发现选择指标 |
+| 注册过期/无匹配 intent | 排除实例并走静态路由；无静态路由时返回不可用 | Warning 日志、发现选择指标 |
 | 下游转发失败 | 将目标隔离一段时间，后续选择下一动态实例或静态目标 | Warning 日志、转发失败与选择指标 |
 | 下游 ready 失败 | ready 探测下一候选；回退可用时返回 Degraded，否则 Unhealthy | 探测计数与结构化日志 |
 

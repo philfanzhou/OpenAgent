@@ -29,7 +29,7 @@ public class RouterMeterTests
 
         RouterMeter.RecordForwardingFailure("", "RequestTimedOut");
         RouterMeter.RecordDiscoveryRefresh("Redis_Error", 0);
-        RouterMeter.RecordDiscoverySelection("CHAT", "MCP", "Static_Fallback");
+        RouterMeter.RecordDiscoverySelection("CHAT", "Static_Fallback");
         RouterMeter.RecordRateLimitDecision(new RateLimitDecision(
             false,
             TimeSpan.FromSeconds(1),
@@ -48,7 +48,6 @@ public class RouterMeterTests
         Assert.Contains(measurements, measurement =>
             measurement.Name == "openagent_router_discovery_selections_total"
             && Equals(measurement.Tags["intent"], "chat")
-            && Equals(measurement.Tags["capability"], "mcp")
             && Equals(measurement.Tags["source"], "static_fallback"));
         Assert.Contains(measurements, measurement =>
             measurement.Name == "openagent_router_rate_limit_decisions_total"

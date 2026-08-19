@@ -39,12 +39,11 @@ internal static class RouterMeter
         DiscoveryEngineCount.Record(engineCount, new TagList { { "outcome", Normalize(outcome) } });
     }
 
-    public static void RecordDiscoverySelection(string intent, string? capability, string source)
+    public static void RecordDiscoverySelection(string intent, string source)
     {
         DiscoverySelectionsTotal.Add(1, new TagList
         {
             { "intent", Normalize(intent) },
-            { "capability", Normalize(capability) },
             { "source", Normalize(source) }
         });
     }

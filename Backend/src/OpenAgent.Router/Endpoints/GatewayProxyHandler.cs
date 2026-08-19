@@ -29,10 +29,8 @@ internal static class GatewayProxyHandler
             ? context.Request.RouteValues["conversationId"]?.ToString()
                 ?? context.Request.Headers["X-Conversation-Id"].FirstOrDefault()
             : null;
-        string? capability = context.Request.Headers["X-Agent-Capability"].FirstOrDefault();
         string? targetEndpoint = routeTable.GetTargetEndpoint(
             "chat",
-            capability,
             tenantId,
             conversationId);
         if (string.IsNullOrWhiteSpace(targetEndpoint))

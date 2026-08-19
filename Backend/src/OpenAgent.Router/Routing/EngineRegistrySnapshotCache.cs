@@ -148,7 +148,6 @@ public sealed class EngineRegistrySnapshotCache : BackgroundService
                 }
 
                 entry.Intents = NormalizeTags(entry.Intents);
-                entry.Capabilities = NormalizeTags(entry.Capabilities);
                 healthyEngines.Add(entry);
             }
             catch (JsonException ex)

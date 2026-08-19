@@ -77,13 +77,13 @@ public sealed class RedisRouterIntegrationTests(RedisRouterFixture fixture)
     }
 
     [Fact]
-    public async Task GetTargetEndpoint_IntentCapabilityLoadAndAffinity_SelectsEligibleEngine()
+    public async Task GetTargetEndpoint_IntentLoadAndAffinity_SelectsEligibleEngine()
     {
         await fixture.ResetAsync();
         IDatabase database = fixture.Connection.GetDatabase();
-        await WriteEngineAsync(database, Entry("engine-a", 10, ["chat"], ["rag"]));
-        await WriteEngineAsync(database, Entry("engine-b", 1, ["chat"], ["mcp"]));
-        await WriteEngineAsync(database, Entry("engine-c", 0, ["workflow"], ["rag"]));
+        await WriteEngineAsync(database, Entry("engine-a", 10, ["chat"]));
+        await WriteEngineAsync(database, Entry("engine-b", 1, ["chat"]));
+        await WriteEngineAsync(database, Entry("engine-c", 0, ["workflow"]));
         EngineRegistrySnapshotCache cache = CreateCache(fixture.Connection);
         await cache.RefreshAsync();
         IEndpointHealthTracker tracker = new EndpointHealthTracker(
@@ -94,14 +94,12 @@ public sealed class RedisRouterIntegrationTests(RedisRouterFixture fixture)
             new JumpHashConsistentHashRing(),
             tracker);
 
-        string? mcpEndpoint = routes.GetTargetEndpoint("chat", "mcp", null, null);
-        string? ragEndpoint = routes.GetTargetEndpoint("chat", "rag", null, null);
-        string? workflowEndpoint = routes.GetTargetEndpoint("workflow", "rag", null, null);
-        string? affinityFirst = routes.GetTargetEndpoint("chat", null, "tenant-1", "conversation-1");
-        string? affinitySecond = routes.GetTargetEndpoint("chat", null, "tenant-1", "conversation-1");
+        string? chatEndpoint = routes.GetTargetEndpoint("chat", null, null);
+        string? workflowEndpoint = routes.GetTargetEndpoint("workflow", null, null);
+        string? affinityFirst = routes.GetTargetEndpoint("chat", "tenant-1", "conversation-1");
+        string? affinitySecond = routes.GetTargetEndpoint("chat", "tenant-1", "conversation-1");
 
-        Assert.Equal("http://engine-b:5208", mcpEndpoint);
-        Assert.Equal("http://engine-a:5208", ragEndpoint);
+        Assert.Equal("http://engine-b:5208", chatEndpoint);
         Assert.Equal("http://engine-c:5208", workflowEndpoint);
         Assert.Equal(affinityFirst, affinitySecond);
     }
@@ -238,7 +236,6 @@ public sealed class RedisRouterIntegrationTests(RedisRouterFixture fixture)
         string engineId,
         int load,
         string[]? intents = null,
-        string[]? capabilities = null,
         DateTime? heartbeat = null) =>
         new()
         {
@@ -247,8 +244,7 @@ public sealed class RedisRouterIntegrationTests(RedisRouterFixture fixture)
             Port = 5208,
             Load = load,
             LastHeartbeat = heartbeat ?? DateTime.UtcNow,
-            Intents = intents ?? ["chat"],
-            Capabilities = capabilities ?? []
+            Intents = intents ?? ["chat"]
         };
 
     private static async Task WriteEngineAsync(

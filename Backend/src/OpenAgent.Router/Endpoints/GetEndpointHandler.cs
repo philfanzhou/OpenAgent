@@ -28,9 +28,7 @@ internal static class GetEndpointHandler
         var conversationId = conversationIdFromHeader
             ? context.Request.Headers["X-Conversation-Id"].FirstOrDefault()
             : null;
-        string? capability = context.Request.Headers["X-Agent-Capability"].FirstOrDefault();
-        var targetEndpoint = routeTable.GetTargetEndpoint(
-            intent, capability, tenantId, conversationId);
+        var targetEndpoint = routeTable.GetTargetEndpoint(intent, tenantId, conversationId);
         if (string.IsNullOrEmpty(targetEndpoint))
         {
             return Results.BadRequest(new { Error = "Unable to determine target service" });

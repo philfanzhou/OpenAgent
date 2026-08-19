@@ -25,25 +25,15 @@ internal sealed class RedisServiceDiscoveryRouteTable : IRouteTable
 
     public string? GetTargetEndpoint(string intent)
     {
-        return GetTargetEndpoint(intent, capability: null, tenantId: null, conversationId: null);
+        return GetTargetEndpoint(intent, tenantId: null, conversationId: null);
     }
 
     public string? GetTargetEndpoint(string intent, string? tenantId, string? conversationId)
-    {
-        return GetTargetEndpoint(intent, capability: null, tenantId, conversationId);
-    }
-
-    public string? GetTargetEndpoint(
-        string intent,
-        string? capability,
-        string? tenantId,
-        string? conversationId)
     {
         try
         {
             EngineRegistryEntry[] eligibleEngines = _snapshotCache.Snapshot
                 .Where(entry => Supports(entry.Intents, intent, allowEmpty: true))
-                .Where(entry => Supports(entry.Capabilities, capability, allowEmpty: false))
                 .Where(entry => _healthTracker.IsAvailable(BuildEndpoint(entry)))
                 .OrderBy(entry => entry.Load)
                 .ThenBy(entry => entry.EngineId, StringComparer.Ordinal)
@@ -51,7 +41,7 @@ internal sealed class RedisServiceDiscoveryRouteTable : IRouteTable
 
             if (eligibleEngines.Length == 0)
             {
-                RouterLog.NoEligibleEngines(_logger, intent, capability ?? "none");
+                RouterLog.NoEligibleEngines(_logger, intent);
                 return null;
             }
 
@@ -59,13 +49,13 @@ internal sealed class RedisServiceDiscoveryRouteTable : IRouteTable
                 eligibleEngines, tenantId, conversationId) ?? eligibleEngines[0];
             string endpoint = BuildEndpoint(selectedEngine);
             RouterLog.EngineSelected(_logger, selectedEngine.EngineId, endpoint, selectedEngine.Load);
-            RouterMeter.RecordDiscoverySelection(intent, capability, "dynamic");
+            RouterMeter.RecordDiscoverySelection(intent, "dynamic");
             return endpoint;
         }
         catch (Exception ex)
         {
             RouterLog.DiscoveryUnexpectedError(_logger, ex);
-            RouterMeter.RecordDiscoverySelection(intent, capability, "error");
+            RouterMeter.RecordDiscoverySelection(intent, "error");
             return null;
         }
     }

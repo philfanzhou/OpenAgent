@@ -21,18 +21,6 @@ public interface IRouteTable
     {
         return GetTargetEndpoint(intent);
     }
-
-    /// <summary>
-    /// Get a target that supports both the requested intent and capability.
-    /// </summary>
-    string? GetTargetEndpoint(
-        string intent,
-        string? capability,
-        string? tenantId,
-        string? conversationId)
-    {
-        return GetTargetEndpoint(intent, tenantId, conversationId);
-    }
 }
 
 public interface IRateLimiter

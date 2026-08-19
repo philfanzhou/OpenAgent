@@ -8,5 +8,4 @@ internal class HeartbeatOptions
     public string? AdvertisedHost { get; set; }
     public int? AdvertisedPort { get; set; }
     public string[] Intents { get; set; } = ["chat"];
-    public string[] Capabilities { get; set; } = [];
 }

@@ -147,8 +147,8 @@ internal static partial class RouterLog
     [LoggerMessage(EventId = 3028, Level = LogLevel.Warning, Message = "Redis ping failed during readiness check")]
     public static partial void RedisPingFailedDuringReadinessCheck(ILogger logger, Exception exception);
 
-    [LoggerMessage(EventId = 3029, Level = LogLevel.Warning, Message = "No eligible Engine supports the route. Intent={Intent}, Capability={Capability}")]
-    public static partial void NoEligibleEngines(ILogger logger, string intent, string capability);
+    [LoggerMessage(EventId = 3029, Level = LogLevel.Warning, Message = "No eligible Engine supports the route. Intent={Intent}")]
+    public static partial void NoEligibleEngines(ILogger logger, string intent);
 
     [LoggerMessage(EventId = 3030, Level = LogLevel.Warning, Message = "Failed to remove {Count} stale members from the Engine registry index")]
     public static partial void RegistryIndexCleanupFailed(ILogger logger, Exception exception, int count);

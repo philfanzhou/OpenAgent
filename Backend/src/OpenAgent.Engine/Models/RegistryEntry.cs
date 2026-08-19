@@ -8,5 +8,4 @@ internal class RegistryEntry
     public int Load { get; set; }
     public DateTime LastHeartbeat { get; set; }
     public string[] Intents { get; set; } = [];
-    public string[] Capabilities { get; set; } = [];
 }

@@ -41,8 +41,7 @@ internal class RedisRegistry : IEngineRegistry, IDisposable
             Port = heartbeatOptions.AdvertisedPort ?? 0,
             Load = 0,
             LastHeartbeat = DateTime.UtcNow,
-            Intents = NormalizeTags(heartbeatOptions.Intents),
-            Capabilities = NormalizeTags(heartbeatOptions.Capabilities)
+            Intents = NormalizeTags(heartbeatOptions.Intents)
         };
     }
 
@@ -186,7 +185,6 @@ internal class RedisRegistry : IEngineRegistry, IDisposable
     {
         HeartbeatOptions options = _options.CurrentValue;
         _entry.Intents = NormalizeTags(options.Intents);
-        _entry.Capabilities = NormalizeTags(options.Capabilities);
     }
 
     private static string[] NormalizeTags(IEnumerable<string>? values) =>

@@ -24,7 +24,6 @@ public class RedisRegistryTests
         RedisValue value = await redis.StringGetAsync($"engine:registry:{engineId}");
         using JsonDocument payload = JsonDocument.Parse(value.ToString());
         Assert.Equal("chat", payload.RootElement.GetProperty("Intents")[0].GetString());
-        Assert.Equal("mcp", payload.RootElement.GetProperty("Capabilities")[0].GetString());
     }
 
     [Fact]
@@ -46,8 +45,7 @@ public class RedisRegistryTests
         {
             AdvertisedHost = "engine",
             AdvertisedPort = 5208,
-            Intents = ["CHAT", "chat"],
-            Capabilities = ["MCP"]
+            Intents = ["CHAT", "chat"]
         };
         return new RedisRegistry(
             redis,
