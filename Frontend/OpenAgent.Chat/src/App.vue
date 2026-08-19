@@ -8,11 +8,15 @@ import ChatMessages from './components/ChatMessages.vue'
 import ChatSidebar from './components/ChatSidebar.vue'
 import LoginPage from './components/LoginPage.vue'
 import MessageComposer from './components/MessageComposer.vue'
+import { formatTokenCount, summarizeConversationUsage } from './tokenUsage'
 import HealthCheckPanel from './components/HealthCheckPanel.vue'
+import { mergeAssistantSnapshot } from './messagePresentation'
 import { AUTO_AGENT_ID, type AgentConfigEntity, type AgentSummary, type AuthConfig, type ConnectionMode, type ConversationMessage, type ConversationRecord, type CurrentUserContext, type LlmProviderProfile, type LlmTestResult, type McpServerConfig, type McpTestResult, type MessageFile, type PendingFile, type RagConfig, type RagInstanceConfig, type RagTestResult, type SkillCatalogItem, type SkillInstanceConfig, type SkillsConfig } from './types'
 import { usePanelLayout } from './composables/usePanelLayout'
 import { useConversationStreams } from './composables/useConversationStreams'
 import { mergeConversationRecords, replaceConversationRecord, selectionMatchesConversation } from './conversationCollection'
+import { createStreamingAssistantContentState, enqueueAssistantContent, markAssistantPhaseBoundary } from './streamingAssistantContent'
+import { createTypewriterQueue, type TypewriterQueue } from './typewriterQueue'
 
 const selectedConversationStorageKey = 'openagent.chat.selected-conversation-id'
 
@@ -99,6 +103,7 @@ const conversationStatusText = computed(() => {
   }
   return selectedConversation.value.status
 })
+const currentUsageSummary = computed(() => summarizeConversationUsage(currentMessages.value))
 const enabledSkillIds = computed(() => new Set(skillDraft.value.enabledSkills))
 const enabledRagIds = computed(() => new Set(config.value?.config.rag?.enabledRagInstanceIds || ragInstances.value.filter(item => item.enabled).map(item => item.id)))
 const boundMcpServers = computed(() => agentMcpIds.value.map(id =>
@@ -794,8 +799,12 @@ async function send(): Promise<void> {
   const requestId = streamState.requestId
   let streamError: { title?: string; detail?: string; traceId?: string } | undefined
   let flushStream: (() => void) | undefined
+  let contentQueue: TypewriterQueue | undefined
+  let streamedAssistant: ConversationMessage | undefined
   let receivedDone = false
   let completedAgentId = conversation.agentId
+  const assistantContentState = createStreamingAssistantContentState()
+  let showedEarlyRoutingNotice = false
   try {
     conversation.messages ||= []
     conversation.status = 'Running'
@@ -810,21 +819,24 @@ async function send(): Promise<void> {
     conversation.lastMessageAt = conversation.updatedAt
     message.value = ''
     pendingFiles.value = []
-    let assistant = ''
     let reasoning = ''
     let lastFlush = 0
     conversation.messages.push({
       messageId: crypto.randomUUID(), sequence: conversation.messages.length + 1,
       role: 'assistant', content: '', timestamp: new Date().toISOString(),
     })
-    const assistantMessage = conversation.messages[conversation.messages.length - 1]
+    const assistantMessage = conversation.messages[conversation.messages.length - 1]!
+    streamedAssistant = assistantMessage
     conversation.messageCount = conversation.messages.length
+    contentQueue = createTypewriterQueue(content => {
+      assistantMessage.content += content
+    })
     flushStream = (): void => {
-      assistantMessage.content = assistant
+      contentQueue?.flush()
       assistantMessage.reasoning = reasoning || undefined
       lastFlush = performance.now()
     }
-    // 流式写入节流：思考/正文很长时按帧批量刷新，避免每个事件都触发整段重渲染导致卡顿。
+    // 正文按可控节奏逐字推进；思考内容继续节流，避免高频重渲染。
     for await (const event of api.streamChat(
       requestContent,
       requestedAgentId,
@@ -842,13 +854,25 @@ async function send(): Promise<void> {
         conversation.conversationId = conversationId
         if (selectionMatches) sessionStorage.setItem(selectedConversationStorageKey, conversationId)
       }
-      if (event.type === 'content') {
-        assistant += event.content || ''
-        if (performance.now() - lastFlush > 100) flushStream?.()
+      if (event.type === 'agent_selected') {
+        if (isNewConversation && selectedAgentId.value === AUTO_AGENT_ID && event.agentId) {
+          completedAgentId = event.agentId
+          conversation.agentId = event.agentId
+          selectedAgentId.value = event.agentId
+          const routed = agents.value.find(agent => agent.agentId === event.agentId)
+          ElMessage.info(`已由意图识别路由到 Agent「${routed?.name || event.agentId}」`)
+          showedEarlyRoutingNotice = true
+        }
+      } else if (event.type === 'content') {
+        enqueueAssistantContent(assistantContentState, content => contentQueue?.enqueue(content), event.content || '')
       } else if (event.type === 'reasoning') {
         reasoning += event.content || ''
-        if (performance.now() - lastFlush > 100) flushStream?.()
+        if (performance.now() - lastFlush > 100) {
+          assistantMessage.reasoning = reasoning
+          lastFlush = performance.now()
+        }
       } else if (event.type === 'tool_call') {
+        markAssistantPhaseBoundary(assistantContentState)
         assistantMessage.toolActivities ||= []
         assistantMessage.toolActivities.push({
           name: event.toolName || '工具',
@@ -856,9 +880,13 @@ async function send(): Promise<void> {
           arguments: event.toolArguments,
         })
       } else if (event.type === 'done') {
+        flushStream?.()
         receivedDone = true
         conversation.status = (event.status || 'Completed') as ConversationRecord['status']
+        assistantMessage.tokenUsage = event.usage ?? undefined
+        assistantMessage.modelId = event.modelId ?? undefined
       } else if (event.type === 'error') {
+        flushStream?.()
         // 捕获流式错误，交给 catch 以独立错误卡片展示；不混入助手内容。
         streamError = {
           title: event.error?.title,
@@ -873,6 +901,7 @@ async function send(): Promise<void> {
     try {
       const persisted = await api.getConversation(conversationId)
       await hydrateFilePreviews(persisted)
+      persisted.messages = mergeAssistantSnapshot(persisted.messages || [], assistantMessage)
       completedAgentId = persisted.agentId
       replaceConversation(persisted, conversationId)
     } catch (error) {
@@ -880,24 +909,27 @@ async function send(): Promise<void> {
     }
     await refreshConversations(false)
     // 初次会话：若后端意图识别将对话路由到了其他 Agent，更新右上角选择器并提示。
-    if (isNewConversation && completedAgentId && completedAgentId !== requestedAgentId
+    if (!showedEarlyRoutingNotice && isNewConversation && completedAgentId && completedAgentId !== requestedAgentId
       && selectedConversation.value?.conversationId === conversationId) {
       const routed = agents.value.find(agent => agent.agentId === completedAgentId)
       selectedAgentId.value = completedAgentId
       ElMessage.info(`已由意图识别路由到 Agent「${routed?.name || completedAgentId}」`)
     }
   } catch (error) {
+    flushStream?.()
     const cancelReason = conversationStreams.getByRequest(requestId)?.cancelReason
     if (cancelReason && cancelReason !== 'network') {
       // Cancellation keeps received content while the server finalizes persistence.
       conversation.status = 'Cancelled'
       conversation.updatedAt = new Date().toISOString()
       conversation.lastMessageAt = conversation.updatedAt
-      flushStream?.()
       if (cancelReason !== 'unload') {
         try {
           const persisted = await api.getConversation(conversationId)
           await hydrateFilePreviews(persisted)
+          if (streamedAssistant) {
+            persisted.messages = mergeAssistantSnapshot(persisted.messages || [], streamedAssistant)
+          }
           // 仅当服务端会话已有消息时才替换本地内容；否则保留已接收的片段。
           if (persisted.messages?.length && persisted.status !== 'Running') {
             replaceConversation(persisted, conversationId)
@@ -922,6 +954,9 @@ async function send(): Promise<void> {
       try {
         const persisted = await api.getConversation(conversationId)
         await hydrateFilePreviews(persisted)
+        if (streamedAssistant) {
+          persisted.messages = mergeAssistantSnapshot(persisted.messages || [], streamedAssistant)
+        }
         if (persisted.messages?.length && persisted.status !== 'Running') {
           replaceConversation(persisted, conversationId)
         }
@@ -931,6 +966,7 @@ async function send(): Promise<void> {
       if (selectedConversation.value?.conversationId === conversationId) notifyError(error)
     }
   } finally {
+    contentQueue?.clear()
     conversationStreams.finish(requestId)
   }
 }
@@ -1428,7 +1464,7 @@ onBeforeUnmount(() => {
           <div class="context-panel-head"><span class="context-label">INSPECTOR</span><button class="panel-collapse-btn" type="button" aria-label="收起上下文面板" title="收起" @click="toggleContext">›</button></div>
           <section><span class="context-label">ROUTING</span><strong>{{ routeMode }}</strong><p>{{ connectionMode === 'router' && selectedAgentId === AUTO_AGENT_ID ? '由意图识别 Agent 分析请求并选择目标。' : (selectedAgent?.description || selectedAgentId) }}</p><dl><div><dt>Agent</dt><dd>{{ connectionMode === 'router' && selectedAgentId === AUTO_AGENT_ID ? '由模型选择' : (selectedAgent?.name || selectedAgentId) }}</dd></div><div><dt>协议</dt><dd>{{ selectedAgent?.apiFormat || (connectionMode === 'router' ? '自动' : '—') }}</dd></div></dl></section>
           <section><span class="context-label">IDENTITY</span><dl><div><dt>用户</dt><dd>{{ currentUser?.userId || 'Guest' }}</dd></div><div><dt>租户</dt><dd>{{ currentUser?.tenantId || tenantId || '—' }}</dd></div><div><dt>{{ activeEndpointLabel }}</dt><dd :title="activeEndpointUrl">{{ activeEndpointHost }}</dd></div></dl></section>
-          <section><span class="context-label">CONVERSATION</span><dl><div><dt>消息</dt><dd>{{ currentMessages.length }}</dd></div><div><dt>状态</dt><dd>{{ conversationStatusText }}</dd></div><div><dt>ID</dt><dd class="truncate" :title="selectedConversation?.conversationId">{{ selectedConversation?.conversationId || '尚未创建' }}</dd></div></dl></section>
+          <section><span class="context-label">CONVERSATION</span><dl><div><dt>消息</dt><dd>{{ currentMessages.length }}</dd></div><div><dt>状态</dt><dd>{{ conversationStatusText }}</dd></div><div><dt>ID</dt><dd class="truncate" :title="selectedConversation?.conversationId">{{ selectedConversation?.conversationId || '尚未创建' }}</dd></div></dl><div class="conversation-usage"><span>会话累计 Token</span><template v-if="currentUsageSummary.available && currentUsageSummary.usage"><strong>{{ formatTokenCount(currentUsageSummary.usage.totalTokens) }}</strong><small>输入 {{ formatTokenCount(currentUsageSummary.usage.promptTokens) }} · 输出 {{ formatTokenCount(currentUsageSummary.usage.completionTokens) }}</small></template><template v-else><strong class="unavailable">暂不可用</strong><small>Provider 未返回完整 usage</small></template></div></section>
           <el-button class="diagnostics-shortcut" @click="openSettings('health')">运行平台健康检查</el-button>
           <div class="context-resize" @pointerdown="startContextResize" />
         </aside>

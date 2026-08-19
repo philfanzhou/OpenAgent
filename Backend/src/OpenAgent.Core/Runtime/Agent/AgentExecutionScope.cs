@@ -1,5 +1,6 @@
 using System.Runtime.ExceptionServices;
 using Microsoft.Agents.AI;
+using OpenAgent.Contracts.Requests;
 using OpenAgent.Core.Conversation;
 
 namespace OpenAgent.Core.Runtime.Agent;
@@ -36,6 +37,12 @@ internal sealed class AgentExecutionScope : IAsyncDisposable
     {
         _history.AppendPartialReasoning(reasoning);
     }
+
+    internal Task CompleteAsync(
+        TokenUsage? usage,
+        string modelId,
+        CancellationToken cancellationToken) =>
+        _history.CompleteAsync(usage, modelId, cancellationToken);
 
     public async ValueTask DisposeAsync()
     {

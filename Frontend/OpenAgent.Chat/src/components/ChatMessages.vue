@@ -2,6 +2,7 @@
 import { ElMessage } from 'element-plus'
 import { computed, nextTick, ref, watch } from 'vue'
 import { buildDisplayMessages, fileLabel, formatFileSize, toolArgumentsText, toolPresentation } from '../messagePresentation'
+import { formatTokenBreakdown, formatTokenUsage } from '../tokenUsage'
 import type { ConversationMessage, CurrentUserContext, MessageFile, ToolActivity } from '../types'
 import MarkdownContent from './MarkdownContent.vue'
 
@@ -64,6 +65,16 @@ function isStreamingItem(message: ConversationMessage, index: number): boolean {
 /** 思考阶段：消息正在流式生成，且尚未输出正文内容。 */
 function isThinking(message: ConversationMessage, index: number): boolean {
   return isStreamingItem(message, index) && !message.content
+}
+
+function shouldShowUsage(message: ConversationMessage, index: number): boolean {
+  return message.role === 'assistant' && !message.toolName && !isStreamingItem(message, index)
+}
+
+function incompleteResponseText(message: ConversationMessage): string {
+  if (message.metadata?.ExecutionStatus === 'Cancelled') return '响应已取消'
+  if (message.metadata?.ExecutionStatus === 'Failed') return '响应失败'
+  return '响应未完成'
 }
 
 function toolResultText(tool: ToolActivity): string | undefined {
@@ -177,6 +188,12 @@ watch(() => props.streaming, () => { if (props.streaming) scrollToBottom() })
 
         <div v-if="item.content || isStreamingItem(item, index)" class="message-bubble"><MarkdownContent :content="item.content" :streaming="isStreamingItem(item, index) && Boolean(item.content)" /></div>
 
+        <div v-if="shouldShowUsage(item, index)" class="message-usage" aria-label="当前响应 Token 用量">
+          <span v-if="item.modelId" class="message-model">{{ item.modelId }}</span>
+          <span :class="{ unavailable: !item.tokenUsage }">Token · {{ formatTokenUsage(item.tokenUsage) }}</span>
+          <small v-if="formatTokenBreakdown(item.tokenUsage)">{{ formatTokenBreakdown(item.tokenUsage) }}</small>
+        </div>
+
         <div v-if="item.role === 'assistant' && item.files?.length" class="generated-files">
           <div class="generated-files-heading"><span>生成的文件</span><small>{{ item.files.length }} 个可下载文件</small></div>
           <div class="message-files assistant-files">
@@ -191,7 +208,7 @@ watch(() => props.streaming, () => { if (props.streaming) scrollToBottom() })
         </div>
 
         <div v-if="!hasMessageContent(item) && !item.reasoning && !item.toolActivities?.length && !item.error" class="message-thinking-placeholder" aria-live="polite">
-          <span class="thinking-dots"><i /><i /><i /></span><span>正在生成回复</span>
+          <span v-if="isStreamingItem(item, index)" class="thinking-dots"><i /><i /><i /></span><span>{{ isStreamingItem(item, index) ? '正在生成回复' : incompleteResponseText(item) }}</span>
         </div>
 
         <div v-if="item.error" class="message-error" role="alert">

@@ -120,7 +120,9 @@ internal sealed class ConversationSessionStore
         string? toolCallId = null,
         string? toolName = null,
         IReadOnlyDictionary<string, string>? metadata = null,
-        IReadOnlyList<string>? fileIds = null) => new()
+        IReadOnlyList<string>? fileIds = null,
+        TokenUsage? tokenUsage = null,
+        string? modelId = null) => new()
         {
             MessageId = Guid.NewGuid().ToString("N"),
             Sequence = sequence,
@@ -130,7 +132,9 @@ internal sealed class ConversationSessionStore
             ToolName = toolName,
             Timestamp = DateTimeOffset.UtcNow,
             Metadata = metadata,
-            FileIds = fileIds ?? Array.Empty<string>()
+            FileIds = fileIds ?? Array.Empty<string>(),
+            TokenUsage = tokenUsage,
+            ModelId = modelId
         };
 
     private ConversationRecord CreateRecord(
@@ -178,7 +182,9 @@ internal sealed class ConversationSessionStore
                 message.ToolCallId,
                 message.ToolName,
                 message.Metadata,
-                message.FileIds))
+                message.FileIds,
+                message.TokenUsage,
+                message.ModelId))
             .ToList();
         return await _store.AppendMessagesAsync(
             context.TenantId!,

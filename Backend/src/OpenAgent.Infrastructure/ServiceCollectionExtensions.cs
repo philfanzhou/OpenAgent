@@ -35,7 +35,9 @@ public static class ServiceCollectionExtensions
         services.Configure<ConversationCacheOptions>(options =>
             configuration.GetSection(ConversationCacheOptions.SectionName).Bind(options));
 
-        // The store reads the request-scoped authenticated user for user-level isolation.
+        // The durable conversation store evaluates tenant/user ownership from
+        // the request-scoped current-user context, so it must not be captured
+        // by a singleton registration.
         services.AddScoped<EfCoreConversationStore>();
         services.AddSingleton<IFileAssetRepository, EfCoreFileAssetRepository>();
         services.AddSingleton<ISkillDefinitionRepository, EfCoreSkillDefinitionRepository>();

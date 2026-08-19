@@ -495,6 +495,8 @@ export const api = {
     })
     if (!response.ok) throw await readError(response)
     if (!response.body) throw new Error('Engine 未返回流式响应')
+    const selectedAgentId = response.headers.get('X-OpenAgent-Selected-Agent-Id')
+    if (selectedAgentId) yield { type: 'agent_selected', agentId: selectedAgentId }
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
     let buffer = ''

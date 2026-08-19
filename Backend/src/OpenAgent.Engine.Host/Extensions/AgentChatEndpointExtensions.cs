@@ -30,7 +30,12 @@ internal static class AgentChatEndpointExtensions
             executionRequest,
             context.GetAgentRequest().User,
             cancellationToken).ConfigureAwait(false);
-        return Results.Ok(new ChatResponse { Message = response.Content });
+        return Results.Ok(new ChatResponse
+        {
+            Message = response.Content,
+            Usage = response.TokenUsage,
+            ModelId = response.ModelId
+        });
     }
 
     private static async Task ExecuteStreamAsync(

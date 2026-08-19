@@ -6,6 +6,7 @@ public class AgentResponse
     public List<Citation>? Citations { get; init; }
     public List<ToolCallLog>? ToolCalls { get; init; }
     public TokenUsage? TokenUsage { get; init; }
+    public string? ModelId { get; init; }
     public string? TraceId { get; init; }
     public bool Success { get; init; } = true;
     public AgentErrorCode? ErrorCode { get; init; }
@@ -33,4 +34,6 @@ public class TokenUsage
     public int PromptTokens { get; init; }
     public int CompletionTokens { get; init; }
     public int TotalTokens { get; init; }
+    public int? CachedInputTokens { get; init; }
+    public int? ReasoningTokens { get; init; }
 }

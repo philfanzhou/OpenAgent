@@ -34,6 +34,8 @@ export interface ConversationMessage {
   reasoning?: string
   toolActivities?: ToolActivity[]
   files?: MessageFile[]
+  tokenUsage?: TokenUsage
+  modelId?: string
   /** 执行失败的独立展示，不写入会话历史。 */
   error?: { title?: string; detail?: string; traceId?: string }
 }
@@ -88,6 +90,14 @@ export interface ConversationRecord {
   messageCount: number
   title?: string
   messages?: ConversationMessage[]
+}
+
+export interface TokenUsage {
+  promptTokens: number
+  completionTokens: number
+  totalTokens: number
+  cachedInputTokens?: number | null
+  reasoningTokens?: number | null
 }
 
 export interface McpServerConfig {
@@ -225,6 +235,7 @@ export interface AgentConfigEntity {
 export interface StreamEvent {
   type: string
   content?: string
+  agentId?: string
   status?: string
   traceId?: string
   toolName?: string
@@ -232,7 +243,8 @@ export interface StreamEvent {
   toolArguments?: unknown
   conversationId?: string
   error?: { title?: string; detail?: string; traceId?: string }
-  usage?: Record<string, unknown>
+  usage?: TokenUsage | null
+  modelId?: string | null
 }
 
 export interface McpTestResult {
