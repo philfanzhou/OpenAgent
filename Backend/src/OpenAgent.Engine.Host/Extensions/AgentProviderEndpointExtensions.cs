@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using OpenAgent.Contracts.Conversation;
+using OpenAgent.Contracts.Routing;
 using OpenAgent.Contracts.Security;
-using OpenAgent.Hosting.Authentication;
 using OpenAgent.Engine.Host.Middleware;
 
 namespace OpenAgent.Engine.Host.Extensions;
@@ -22,20 +22,17 @@ internal static class AgentProviderEndpointExtensions
         CancellationToken cancellationToken)
     {
         IAgentUserContext serviceUser = context.GetAgentRequest().User;
-        if (!serviceUser.IsAuthenticated
-            || !serviceUser.Claims.TryGetValue(
-                AgentDelegationTokenClaims.AuthenticationMode,
-                out string? authenticationMode)
-            || !string.Equals(
-                authenticationMode,
-                AgentDelegationTokenClaims.ProviderDelegation,
-                StringComparison.Ordinal)
-            || string.IsNullOrWhiteSpace(serviceUser.TenantId))
+        if (!serviceUser.IsAuthenticated)
         {
             return Results.Unauthorized();
         }
 
-        string tenantId = serviceUser.TenantId;
+        string? tenantId = context.Request.Headers[AgentProviderHeaders.TenantId].FirstOrDefault();
+        string? userId = context.Request.Headers[AgentProviderHeaders.UserId].FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(tenantId) || string.IsNullOrWhiteSpace(userId))
+        {
+            return Results.BadRequest();
+        }
 
         ConversationRecord? record = await queryService.GetRecordAsync(
             tenantId,
@@ -43,7 +40,7 @@ internal static class AgentProviderEndpointExtensions
             cancellationToken).ConfigureAwait(false);
         return record != null
             && !record.IsDeletedByUser
-            && string.Equals(record.UserId, serviceUser.UserId, StringComparison.Ordinal)
+            && string.Equals(record.UserId, userId, StringComparison.Ordinal)
             ? Results.NoContent()
             : Results.NotFound();
     }

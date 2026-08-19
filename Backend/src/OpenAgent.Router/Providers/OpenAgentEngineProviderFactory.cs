@@ -1,10 +1,7 @@
-using OpenAgent.Hosting.Authentication;
-
 namespace OpenAgent.Router.Providers;
 
 internal sealed class OpenAgentEngineProviderFactory(
-    IRouteTable routeTable,
-    IAgentDelegationTokenService delegationTokenService) : IAgentProviderFactory
+    IRouteTable routeTable) : IAgentProviderFactory
 {
     internal const string ProviderType = "OpenAgentEngine";
 
@@ -16,6 +13,5 @@ internal sealed class OpenAgentEngineProviderFactory(
         new OpenAgentEngineProvider(
             providerId,
             settings,
-            routeTable,
-            delegationTokenService);
+            routeTable);
 }

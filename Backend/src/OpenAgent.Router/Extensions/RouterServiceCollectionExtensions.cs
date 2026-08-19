@@ -1,7 +1,4 @@
-using Microsoft.Extensions.DependencyInjection.Extensions;
 using OpenAgent.Contracts.Routing;
-using OpenAgent.Contracts.Security;
-using OpenAgent.Hosting.Authentication;
 using OpenAgent.Router.Endpoints;
 using OpenAgent.Router.Options;
 using OpenAgent.Router.Providers;
@@ -25,9 +22,6 @@ public static class RouterServiceCollectionExtensions
             .Bind(configuration.GetSection(AgentProviderOptions.SectionName))
             .Validate(AgentProviderOptions.IsValid, "Agent provider configuration is invalid")
             .ValidateOnStart();
-        services.AddOptions<AgentDelegationTokenOptions>()
-            .Bind(configuration.GetSection(AgentDelegationTokenOptions.SectionName));
-        services.TryAddSingleton<IAgentDelegationTokenService, AgentDelegationTokenService>();
         services.AddSingleton<IAgentProviderFactory, OpenAgentEngineProviderFactory>();
         services.AddSingleton<IAgentProviderRegistry, AgentProviderRegistry>();
         services.AddScoped<IAgentCatalogService, AgentCatalogService>();

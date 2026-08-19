@@ -4,7 +4,6 @@ using OpenAgent.Contracts.Routing;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Engine.Host.Extensions;
 using OpenAgent.Engine.Host.Middleware;
-using OpenAgent.Hosting.Authentication;
 using Xunit;
 
 namespace OpenAgent.Engine.Tests.Hosting;
@@ -60,45 +59,22 @@ public class AgentProviderEndpointTests
         Assert.Equal(StatusCodes.Status401Unauthorized, status.StatusCode);
     }
 
-    [Fact]
-    public async Task ResolveConversationAsync_BasicIdentity_ReturnsUnauthorized()
-    {
-        DefaultHttpContext context = CreateContext(
-            authenticated: true,
-            "tenant-1",
-            "user-1",
-            "Basic");
-
-        IResult result = await AgentProviderEndpointExtensions.ResolveConversationAsync(
-            new StubConversationQueryService(null),
-            context,
-            "conversation-1",
-            CancellationToken.None);
-
-        IStatusCodeHttpResult status = Assert.IsAssignableFrom<IStatusCodeHttpResult>(result);
-        Assert.Equal(StatusCodes.Status401Unauthorized, status.StatusCode);
-    }
-
     private static DefaultHttpContext CreateContext(
         bool authenticated,
         string tenantId,
-        string userId,
-        string authenticationMode = AgentDelegationTokenClaims.ProviderDelegation)
+        string userId)
     {
         var context = new DefaultHttpContext();
         context.Features.Set(new AgentRequestFeature(
             "trace-1",
             new AgentUserContext
             {
-                UserId = userId,
-                TenantId = tenantId,
-                Claims = new Dictionary<string, string>
-                {
-                    [AgentDelegationTokenClaims.AuthenticationMode] =
-                        authenticationMode
-                },
+                UserId = "router-service",
+                TenantId = "service-tenant",
                 IsAuthenticated = authenticated
             }));
+        context.Request.Headers[AgentProviderHeaders.TenantId] = tenantId;
+        context.Request.Headers[AgentProviderHeaders.UserId] = userId;
         return context;
     }
 

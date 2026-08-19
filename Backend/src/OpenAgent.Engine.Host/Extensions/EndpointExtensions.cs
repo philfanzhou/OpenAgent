@@ -1,6 +1,5 @@
 using OpenAgent.Contracts.Security;
 using OpenAgent.Engine.Host.Middleware;
-using OpenAgent.Hosting.Authentication;
 
 namespace OpenAgent.Engine.Host.Extensions;
 
@@ -14,11 +13,8 @@ internal static class EndpointExtensions
         group.MapAgentChat();
         group.MapFileAssets();
         group.MapAgentCatalog();
+        group.MapAgentProviderContract();
         group.MapConversations();
-
-        endpoints.MapGroup(pattern)
-            .RequireAuthorization(AgentDelegationTokenDefaults.PolicyName)
-            .MapAgentProviderContract();
 
         group.MapGet("/me", (HttpContext context) =>
         {
