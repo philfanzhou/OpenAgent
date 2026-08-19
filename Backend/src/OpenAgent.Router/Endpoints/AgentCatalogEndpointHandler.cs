@@ -25,10 +25,10 @@ internal static class AgentCatalogEndpointHandler
 
         try
         {
-            AgentCatalogSnapshot snapshot = await catalog.GetAuthorizedAsync(
+            IReadOnlyList<AgentCatalogEntry> entries = await catalog.GetAuthorizedAsync(
                 new AgentProviderRequestContext(userContext.TenantId, userContext),
                 cancellationToken).ConfigureAwait(false);
-            return Results.Ok(snapshot.Entries.Select(entry => entry.Agent));
+            return Results.Ok(entries.Select(entry => entry.Agent));
         }
         catch (AgentRoutingException exception)
         {

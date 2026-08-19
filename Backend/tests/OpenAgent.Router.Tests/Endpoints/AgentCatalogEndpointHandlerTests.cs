@@ -12,11 +12,11 @@ public class AgentCatalogEndpointHandlerTests
     [Fact]
     public async Task HandleAsync_AuthorizedCatalog_ReturnsAgentsWithoutProviderIds()
     {
-        var catalog = new StubCatalogService(new AgentCatalogSnapshot(
+        var catalog = new StubCatalogService(
         [
             new AgentCatalogEntry(new AgentSummary { AgentId = "finance" }, "partner"),
             new AgentCatalogEntry(new AgentSummary { AgentId = "general" }, "self-engine")
-        ]));
+        ]);
 
         IResult result = await AgentCatalogEndpointHandler.HandleAsync(
             catalog,
@@ -36,7 +36,7 @@ public class AgentCatalogEndpointHandlerTests
     public async Task HandleAsync_AnonymousUser_ReturnsUnauthorized()
     {
         IResult result = await AgentCatalogEndpointHandler.HandleAsync(
-            new StubCatalogService(new AgentCatalogSnapshot([])),
+            new StubCatalogService([]),
             new AgentUserContext { UserId = "anonymous", IsAuthenticated = false },
             CancellationToken.None);
 
@@ -51,16 +51,16 @@ public class AgentCatalogEndpointHandlerTests
         IsAuthenticated = true
     };
 
-    private sealed class StubCatalogService(AgentCatalogSnapshot snapshot) : IAgentCatalogService
+    private sealed class StubCatalogService(IReadOnlyList<AgentCatalogEntry> entries) : IAgentCatalogService
     {
-        public Task<AgentCatalogSnapshot> GetAuthorizedAsync(
+        public Task<IReadOnlyList<AgentCatalogEntry>> GetAuthorizedAsync(
             AgentProviderRequestContext requestContext,
-            CancellationToken cancellationToken = default) => Task.FromResult(snapshot);
+            CancellationToken cancellationToken = default) => Task.FromResult(entries);
 
         public Task<AgentCatalogEntry> ResolveAsync(
             AgentProviderRequestContext requestContext,
             string agentId,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult(snapshot.Entries.Single(entry => entry.Agent.AgentId == agentId));
+            Task.FromResult(entries.Single(entry => entry.Agent.AgentId == agentId));
     }
 }

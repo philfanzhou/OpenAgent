@@ -67,8 +67,7 @@ internal sealed class AgentSelectionFilter(
 
         context.Features.Set(new AgentRoutingFeature(
             routingConversationId,
-            selection.ProviderId,
-            selection.AgentId));
+            selection.ProviderId));
         if (!string.IsNullOrWhiteSpace(selection.AgentId))
         {
             context.Request.Headers["X-Agent-Id"] = selection.AgentId;

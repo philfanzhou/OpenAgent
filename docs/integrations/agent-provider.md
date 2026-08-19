@@ -43,7 +43,9 @@ Router 通过 `IAgentProvider` 统一调用自有 Engine 和第三方 Agent 服�
       "Enabled": true,
       "ProviderId": "self-engine",
       "AgentId": "intent-router",
-      "FallbackAgentId": "default"
+      "FallbackAgentId": "default",
+      "MinimumConfidence": 0.5,
+      "TimeoutMs": 5000
     },
     "AgentProviders": {
       "DefaultProviderId": "self-engine",

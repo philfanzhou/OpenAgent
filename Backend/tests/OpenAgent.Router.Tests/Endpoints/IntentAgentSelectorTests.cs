@@ -75,12 +75,11 @@ public class IntentAgentSelectorTests
             CancellationToken cancellationToken) =>
             Task.FromResult(new AgentProviderCatalog([]));
 
-        public Task<AgentProviderConversation> ResolveConversationAsync(
+        public Task<AgentProviderConversationStatus> ResolveConversationAsync(
             AgentProviderRequestContext requestContext,
             string conversationId,
             CancellationToken cancellationToken) =>
-            Task.FromResult(new AgentProviderConversation(
-                AgentProviderConversationStatus.NotFound));
+            Task.FromResult(AgentProviderConversationStatus.NotFound);
 
         public Task<IntentRecognitionResult?> RecognizeIntentAsync(
             string intentAgentId,

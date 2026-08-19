@@ -10,7 +10,7 @@ internal sealed class AgentCatalogService(
 {
     private readonly IReadOnlyList<IAgentAccessControl> _accessControls = accessControls.ToArray();
 
-    public async Task<AgentCatalogSnapshot> GetAuthorizedAsync(
+    public async Task<IReadOnlyList<AgentCatalogEntry>> GetAuthorizedAsync(
         AgentProviderRequestContext requestContext,
         CancellationToken cancellationToken)
     {
@@ -63,9 +63,9 @@ internal sealed class AgentCatalogService(
                 $"Agent ID '{conflict}' is not unique");
         }
 
-        return new AgentCatalogSnapshot(entries
+        return entries
             .OrderBy(entry => entry.Agent.AgentId, StringComparer.OrdinalIgnoreCase)
-            .ToArray());
+            .ToArray();
     }
 
     public async Task<AgentCatalogEntry> ResolveAsync(
@@ -73,10 +73,10 @@ internal sealed class AgentCatalogService(
         string agentId,
         CancellationToken cancellationToken)
     {
-        AgentCatalogSnapshot snapshot = await GetAuthorizedAsync(
+        IReadOnlyList<AgentCatalogEntry> entries = await GetAuthorizedAsync(
             requestContext,
             cancellationToken).ConfigureAwait(false);
-        AgentCatalogEntry? entry = snapshot.Entries.FirstOrDefault(candidate =>
+        AgentCatalogEntry? entry = entries.FirstOrDefault(candidate =>
             string.Equals(
                 candidate.Agent.AgentId,
                 agentId,

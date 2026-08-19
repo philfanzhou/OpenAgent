@@ -80,7 +80,7 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
         return new AgentProviderCatalog(agents);
     }
 
-    public async Task<AgentProviderConversation> ResolveConversationAsync(
+    public async Task<AgentProviderConversationStatus> ResolveConversationAsync(
         AgentProviderRequestContext requestContext,
         string conversationId,
         CancellationToken cancellationToken)
@@ -88,7 +88,7 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
         string? endpoint = ResolveEndpoint();
         if (string.IsNullOrWhiteSpace(endpoint))
         {
-            return new AgentProviderConversation(AgentProviderConversationStatus.Unavailable);
+            return AgentProviderConversationStatus.Unavailable;
         }
 
         using HttpRequestMessage request = CreateServiceRequest(
@@ -101,12 +101,12 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
         return response.StatusCode switch
         {
             System.Net.HttpStatusCode.OK or System.Net.HttpStatusCode.NoContent =>
-                new AgentProviderConversation(AgentProviderConversationStatus.Found),
+                AgentProviderConversationStatus.Found,
             System.Net.HttpStatusCode.NotFound =>
-                new AgentProviderConversation(AgentProviderConversationStatus.NotFound),
+                AgentProviderConversationStatus.NotFound,
             System.Net.HttpStatusCode.Forbidden or System.Net.HttpStatusCode.Unauthorized =>
-                new AgentProviderConversation(AgentProviderConversationStatus.Forbidden),
-            _ => new AgentProviderConversation(AgentProviderConversationStatus.Unavailable)
+                AgentProviderConversationStatus.Forbidden,
+            _ => AgentProviderConversationStatus.Unavailable
         };
     }
 

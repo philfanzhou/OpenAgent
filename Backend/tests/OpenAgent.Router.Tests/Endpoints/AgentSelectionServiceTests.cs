@@ -310,7 +310,7 @@ public class AgentSelectionServiceTests
             CancellationToken cancellationToken) =>
             Task.FromResult(new AgentProviderCatalog(agents));
 
-        public Task<AgentProviderConversation> ResolveConversationAsync(
+        public Task<AgentProviderConversationStatus> ResolveConversationAsync(
             AgentProviderRequestContext requestContext,
             string conversationId,
             CancellationToken cancellationToken)
@@ -321,7 +321,7 @@ public class AgentSelectionServiceTests
                 out AgentProviderConversationStatus configured)
                 ? configured
                 : DefaultConversationStatus;
-            return Task.FromResult(new AgentProviderConversation(status));
+            return Task.FromResult(status);
         }
 
         public Task<IntentRecognitionResult?> RecognizeIntentAsync(

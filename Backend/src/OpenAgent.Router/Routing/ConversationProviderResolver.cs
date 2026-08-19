@@ -52,12 +52,12 @@ internal sealed class ConversationProviderResolver(
             throw ProviderUnavailable();
         }
 
-        AgentProviderConversation resolution = await ResolveProviderAsync(
+        AgentProviderConversationStatus resolution = await ResolveProviderAsync(
             provider,
             requestContext,
             conversationId,
             cancellationToken).ConfigureAwait(false);
-        if (resolution.Status == AgentProviderConversationStatus.Found)
+        if (resolution == AgentProviderConversationStatus.Found)
         {
             if (affinity.State != ConversationAffinityState.Confirmed)
             {
@@ -72,12 +72,12 @@ internal sealed class ConversationProviderResolver(
             return affinity;
         }
 
-        if (resolution.Status == AgentProviderConversationStatus.Unavailable)
+        if (resolution == AgentProviderConversationStatus.Unavailable)
         {
             throw ProviderUnavailable();
         }
 
-        if (resolution.Status == AgentProviderConversationStatus.Forbidden)
+        if (resolution == AgentProviderConversationStatus.Forbidden)
         {
             throw ConversationNotFound();
         }
@@ -111,12 +111,12 @@ internal sealed class ConversationProviderResolver(
                 continue;
             }
 
-            AgentProviderConversation resolution = await ResolveProviderAsync(
+            AgentProviderConversationStatus resolution = await ResolveProviderAsync(
                 provider,
                 requestContext,
                 conversationId,
                 cancellationToken).ConfigureAwait(false);
-            switch (resolution.Status)
+            switch (resolution)
             {
                 case AgentProviderConversationStatus.Found:
                     owners.Add(provider.Id);
@@ -167,7 +167,7 @@ internal sealed class ConversationProviderResolver(
         return null;
     }
 
-    private static async Task<AgentProviderConversation> ResolveProviderAsync(
+    private static async Task<AgentProviderConversationStatus> ResolveProviderAsync(
         IAgentProvider provider,
         AgentProviderRequestContext requestContext,
         string conversationId,
@@ -182,7 +182,7 @@ internal sealed class ConversationProviderResolver(
         }
         catch (HttpRequestException)
         {
-            return new AgentProviderConversation(AgentProviderConversationStatus.Unavailable);
+            return AgentProviderConversationStatus.Unavailable;
         }
     }
 

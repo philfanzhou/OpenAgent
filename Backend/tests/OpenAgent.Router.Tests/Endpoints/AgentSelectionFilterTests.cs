@@ -26,7 +26,6 @@ public class AgentSelectionFilterTests
         AgentRoutingFeature feature = Assert.IsType<AgentRoutingFeature>(
             context.Features.Get<AgentRoutingFeature>());
         Assert.Equal("partner", feature.ProviderId);
-        Assert.Equal("finance", feature.AgentId);
         Assert.Equal("find invoice", selectionService.Message);
     }
 

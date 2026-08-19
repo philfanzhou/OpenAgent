@@ -75,12 +75,12 @@ internal sealed class AgentSelectionService(
         timeout.CancelAfter(TimeSpan.FromMilliseconds(_options.TimeoutMs));
         try
         {
-            AgentCatalogSnapshot snapshot = await catalog.GetAuthorizedAsync(
+            IReadOnlyList<AgentCatalogEntry> entries = await catalog.GetAuthorizedAsync(
                 requestContext,
                 timeout.Token).ConfigureAwait(false);
             AgentCatalogEntry? selected = await SelectNewAsync(
                 message,
-                snapshot,
+                entries,
                 timeout.Token).ConfigureAwait(false);
             if (selected == null)
             {
@@ -106,10 +106,10 @@ internal sealed class AgentSelectionService(
 
     private async Task<AgentCatalogEntry?> SelectNewAsync(
         string message,
-        AgentCatalogSnapshot snapshot,
+        IReadOnlyList<AgentCatalogEntry> entries,
         CancellationToken cancellationToken)
     {
-        AgentCatalogEntry[] candidates = snapshot.Entries
+        AgentCatalogEntry[] candidates = entries
             .Where(entry => !string.Equals(
                 entry.Agent.AgentId,
                 _options.AgentId,

@@ -1,4 +1,10 @@
+using OpenAgent.Contracts.Configuration;
+
 namespace OpenAgent.Router.Models;
+
+internal sealed record AgentCatalogEntry(
+    AgentSummary Agent,
+    string ProviderId);
 
 internal sealed record ParsedChatRequest(
     string Query,
@@ -7,8 +13,7 @@ internal sealed record ParsedChatRequest(
 
 internal sealed record AgentRoutingFeature(
     string? ConversationId,
-    string ProviderId,
-    string? AgentId);
+    string ProviderId);
 
 internal sealed record AgentSelection(
     string? AgentId,

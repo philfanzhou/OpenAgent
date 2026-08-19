@@ -50,7 +50,7 @@ public class OpenAgentEngineProviderTests
             agents,
             "select an agent",
             CancellationToken.None);
-        AgentProviderConversation conversation = await provider.ResolveConversationAsync(
+        AgentProviderConversationStatus conversation = await provider.ResolveConversationAsync(
             requestContext,
             "conversation-1",
             CancellationToken.None);
@@ -76,7 +76,7 @@ public class OpenAgentEngineProviderTests
             handler.Authorizations);
         Assert.Equal("user-1", handler.ProviderUserIds[0]);
         Assert.Equal("tenant-1", handler.ProviderTenantIds[0]);
-        Assert.Equal(AgentProviderConversationStatus.Found, conversation.Status);
+        Assert.Equal(AgentProviderConversationStatus.Found, conversation);
         Assert.Equal("tenant-1", routeTable.TenantId);
         Assert.Equal("conversation-1", routeTable.ConversationId);
         Assert.Equal("http://engine", target?.DestinationPrefix);

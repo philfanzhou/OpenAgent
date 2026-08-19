@@ -4,7 +4,7 @@ namespace OpenAgent.Router;
 
 internal interface IAgentCatalogService
 {
-    Task<AgentCatalogSnapshot> GetAuthorizedAsync(
+    Task<IReadOnlyList<AgentCatalogEntry>> GetAuthorizedAsync(
         AgentProviderRequestContext requestContext,
         CancellationToken cancellationToken = default);
 

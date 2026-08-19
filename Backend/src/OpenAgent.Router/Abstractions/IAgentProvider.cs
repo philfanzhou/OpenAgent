@@ -11,7 +11,7 @@ public interface IAgentProvider
         AgentProviderRequestContext requestContext,
         CancellationToken cancellationToken = default);
 
-    Task<AgentProviderConversation> ResolveConversationAsync(
+    Task<AgentProviderConversationStatus> ResolveConversationAsync(
         AgentProviderRequestContext requestContext,
         string conversationId,
         CancellationToken cancellationToken = default);
