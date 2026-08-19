@@ -69,8 +69,8 @@ describe('message presentation', () => {
     expect(result[1]).toMatchObject({
       messageId: 'assistant-1',
       role: 'assistant',
-      content: 'I will inspect the source.The report is ready.',
-      reasoning: 'Find the source.Write the report.',
+      content: 'I will inspect the source.\nThe report is ready.',
+      reasoning: 'Find the source.\nWrite the report.',
     })
     expect(result[1]?.toolActivities).toEqual([
       { name: 'load_skill', callId: 'call-1', arguments: { name: 'reports' }, result: 'Skill loaded' },
@@ -79,8 +79,8 @@ describe('message presentation', () => {
 
     const streamed: ConversationMessage = {
       messageId: 'stream', sequence: 2, role: 'assistant', timestamp: '2026-08-19T01:00:01Z',
-      content: 'I will inspect the source.The report is ready.',
-      reasoning: 'Find the source.Write the report.',
+      content: 'I will inspect the source.\nThe report is ready.',
+      reasoning: 'Find the source.\nWrite the report.',
       toolActivities: [
         { name: 'load_skill', callId: 'call-1', arguments: { name: 'reports' } },
         { name: 'write_file', callId: 'call-2', arguments: { path: 'report.md' } },
@@ -88,6 +88,18 @@ describe('message presentation', () => {
     }
     expect(buildDisplayMessages(mergeAssistantSnapshot(messages, streamed))).toEqual(result)
     expect(buildDisplayMessages(result)).toEqual(result)
+  })
+
+  it('separates new assistant messages with a line break instead of concatenating them', () => {
+    const messages: ConversationMessage[] = [
+      { messageId: 'assistant-1', sequence: 1, role: 'assistant', content: 'First response', reasoning: 'First thought', timestamp: '' },
+      { messageId: 'assistant-2', sequence: 2, role: 'assistant', content: 'Second response', reasoning: 'Second thought', timestamp: '' },
+    ]
+
+    expect(buildDisplayMessages(messages)[0]).toMatchObject({
+      content: 'First response\nSecond response',
+      reasoning: 'First thought\nSecond thought',
+    })
   })
 
   it('keeps assistant executions separated by user turns', () => {

@@ -136,7 +136,8 @@ function mergeToolActivity(current: ToolActivity[] | undefined, incoming: ToolAc
 function appendText(current?: string, incoming?: string): string {
   if (!current) return incoming || ''
   if (!incoming) return current
-  return `${current}${incoming}`
+  if (current.endsWith('\n') || incoming.startsWith('\n')) return `${current}${incoming}`
+  return `${current}\n${incoming}`
 }
 
 function preferCompleteText(stored?: string, streamed?: string): string {
