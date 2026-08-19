@@ -40,6 +40,7 @@ public sealed class OpenAgentDbContext(DbContextOptions<OpenAgentDbContext> opti
             entity.Property(item => item.ToolCallId).HasMaxLength(256);
             entity.Property(item => item.ToolName).HasMaxLength(256);
             entity.Property(item => item.IdempotencyKey).HasMaxLength(256);
+            entity.Property(item => item.ModelId).HasMaxLength(256);
             entity.Property(item => item.MetadataJson).HasColumnType("jsonb");
             entity.HasIndex(item => new { item.ConversationId, item.Sequence }).IsUnique();
             entity.HasOne<ConversationEntity>().WithMany().HasForeignKey(item => item.ConversationId).OnDelete(DeleteBehavior.Cascade);

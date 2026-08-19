@@ -4,17 +4,17 @@ using OpenAgent.Core.Capabilities;
 using OpenAgent.Core.Capabilities.Mcp;
 using OpenAgent.Core.Capabilities.Skill;
 using OpenAgent.Contracts.Configuration;
+using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Conversation;
 using OpenAgent.Core.Files;
-using OpenAgent.Contracts.Files;
 
 namespace OpenAgent.Core.Runtime.Agent;
 
 internal sealed class AgentFactory
 {
-    private readonly AgentChatClientFactory _chatClients;
+    private readonly IAgentChatClientFactory _chatClients;
     private readonly ConversationHistoryFactory _conversations;
     private readonly CapabilityToolFactory _capabilities;
     private readonly McpToolFactory _mcpTools;
@@ -22,7 +22,7 @@ internal sealed class AgentFactory
     private readonly FileAssetExecutionContext _files;
 
     public AgentFactory(
-        AgentChatClientFactory chatClients,
+        IAgentChatClientFactory chatClients,
         ConversationHistoryFactory conversations,
         CapabilityToolFactory capabilities,
         McpToolFactory mcpTools,
@@ -51,7 +51,12 @@ internal sealed class AgentFactory
             UserId = user.UserId,
             ConversationId = request.ConversationId
         });
-        PlatformChatHistory history = _conversations.Create(profile.AgentId, request, user, files);
+        PlatformChatHistory history = _conversations.Create(
+            profile.AgentId,
+            profile.Model.ModelId,
+            request,
+            user,
+            files);
         IReadOnlyList<AITool> tools = await _capabilities.CreateAsync(
             profile.AgentId,
             profile.Config,
