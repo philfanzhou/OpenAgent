@@ -33,7 +33,9 @@ internal sealed class AgentUserContextMiddleware
 
     private AgentUserContext BuildUserContext(HttpContext context)
     {
-        string? userId = context.User.Identity?.Name;
+        string? userId = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+            ?? context.User.FindFirst("sub")?.Value
+            ?? context.User.Identity?.Name;
         string? tenantId = context.User.Claims
             .FirstOrDefault(claim => claim.Type == "tenant_id" || claim.Type == "tid")?.Value;
         List<string> roles = context.User.Claims

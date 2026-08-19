@@ -31,8 +31,9 @@ Engine Host
 | Engine 注册 | `engine:registry:{engineId}` | 服务发现 |
 | LLM 注册 | `llm:registry:{providerId}` | LLM 提供商配置 |
 | Skill 注册 | `skill:published:index` | 已发布技能索引 |
+| MCP 注册 | `mcp:published:index` | 独立维护的 MCP Server 配置索引 |
 | RAG 注册 | `rag:published:index` | 已发布 RAG 索引 |
-| 会话锁 | `lock:conversation:{tenantId}:{conversationId}` | 分布式会话锁 |
+| 会话锁 | `openagent:conversation-lock:{tenantId}:{conversationId}` | 分布式会话锁 |
 | 配置频道 | `agent:config:updates` | Agent 与 LLM 的结构化配置变更通知 |
 
 ## 当前状态

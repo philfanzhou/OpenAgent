@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
 import { computed, nextTick, ref, watch } from 'vue'
-import { buildDisplayMessages, fileLabel, formatFileSize, toolArgumentsText } from '../messagePresentation'
+import { buildDisplayMessages, fileLabel, formatFileSize, toolArgumentsText, toolPresentation } from '../messagePresentation'
 import type { ConversationMessage, CurrentUserContext, MessageFile, ToolActivity } from '../types'
 import MarkdownContent from './MarkdownContent.vue'
 
@@ -155,7 +155,7 @@ watch(() => props.streaming, () => { if (props.streaming) scrollToBottom() })
               <span class="activity-icon tool-card-icon">
                 <svg viewBox="0 0 20 20" fill="none"><path d="M8.1 3.2a4.1 4.1 0 0 0 4.7 5.2l3.4 3.4a1.5 1.5 0 0 1 0 2.1l-2.3 2.3a1.5 1.5 0 0 1-2.1 0l-3.4-3.4a4.1 4.1 0 0 0-5.2-4.7l2.6 2.6 2.9-2.9-2.6-2.6Z" /></svg>
               </span>
-              <span class="tool-card-copy"><strong class="tool-card-name">{{ tool.name }}</strong><small>Tool call</small></span>
+              <span class="tool-card-copy"><strong class="tool-card-name">{{ toolPresentation(tool.name).displayName }}</strong><small>{{ toolPresentation(tool.name).kind }}</small></span>
               <span class="tool-status" :class="{ running: tool.result == null && isStreamingItem(item, index), done: tool.result != null }">{{ toolStatusText(tool, isStreamingItem(item, index)) }}</span>
               <span class="tool-chevron">›</span>
             </summary>

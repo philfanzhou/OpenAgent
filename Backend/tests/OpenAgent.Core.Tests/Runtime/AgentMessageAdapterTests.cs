@@ -73,5 +73,68 @@ public sealed class AgentMessageAdapterTests
             restored!.Contents.OfType<FunctionCallContent>());
         Assert.Equal("call-1", call.CallId);
         Assert.Equal("search", call.Name);
+        Assert.Empty(restored.Contents.OfType<TextContent>());
+    }
+
+    [Fact]
+    public void FromStored_ReasoningToolCall_RestoresReasoningWithoutEmptyText()
+    {
+        ConversationMessage stored = new()
+        {
+            MessageId = "message-1",
+            Sequence = 1,
+            Role = "assistant",
+            Content = string.Empty,
+            ToolCallId = "call-1",
+            ToolName = "load_skill",
+            Metadata = new Dictionary<string, string>
+            {
+                ["Reasoning"] = "Inspect the skill first."
+            }
+        };
+
+        ChatMessage? restored = AgentMessageAdapter.FromStored(stored);
+
+        Assert.Contains(
+            restored!.Contents,
+            content => content is TextReasoningContent { Text: "Inspect the skill first." });
+        Assert.Empty(restored.Contents.OfType<TextContent>());
+    }
+
+    [Fact]
+    public void RemoveEmptyOpenAIToolCallText_EmptyText_RemovesTextFromClone()
+    {
+        ChatMessage message = new(
+            ChatRole.Assistant,
+            [
+                new TextContent(string.Empty),
+                new TextReasoningContent("Inspect the skill first."),
+                new FunctionCallContent("call-1", "load_skill")
+            ]);
+
+        ChatMessage normalized = Assert.Single(
+            AgentMessageAdapter.RemoveEmptyOpenAIToolCallText([message]));
+
+        Assert.NotSame(message, normalized);
+        Assert.Empty(normalized.Contents.OfType<TextContent>());
+        Assert.Single(normalized.Contents.OfType<TextReasoningContent>());
+        Assert.Single(normalized.Contents.OfType<FunctionCallContent>());
+        Assert.Single(message.Contents.OfType<TextContent>());
+    }
+
+    [Fact]
+    public void RemoveEmptyOpenAIToolCallText_NonEmptyText_PreservesMessage()
+    {
+        ChatMessage message = new(
+            ChatRole.Assistant,
+            [
+                new TextContent("Loading the selected skill."),
+                new FunctionCallContent("call-1", "load_skill")
+            ]);
+
+        ChatMessage normalized = Assert.Single(
+            AgentMessageAdapter.RemoveEmptyOpenAIToolCallText([message]));
+
+        Assert.Same(message, normalized);
     }
 }

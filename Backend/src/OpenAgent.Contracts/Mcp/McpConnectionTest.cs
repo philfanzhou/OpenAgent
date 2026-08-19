@@ -16,6 +16,8 @@ public sealed class McpConnectionTestResult
     public bool Connected { get; init; }
     public bool Authorized { get; init; }
     public string Transport { get; init; } = string.Empty;
+    public string? RequestedProtocolVersion { get; init; }
+    public string? NegotiatedProtocolVersion { get; init; }
     public long LatencyMs { get; init; }
     public int ToolCount { get; init; }
     public IReadOnlyList<string> DeniedTools { get; init; } = Array.Empty<string>();

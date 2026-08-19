@@ -9,10 +9,21 @@ namespace OpenAgent.Core.Tests.Conversation;
 
 public class ConversationAgentResolverTests
 {
+    private static ICurrentUserContext UserContext(string userId = "u1") => new FakeUserContext(userId);
+
+    private sealed class FakeUserContext(string userId) : ICurrentUserContext
+    {
+        public string UserId => userId;
+        public string? TenantId => null;
+        public bool IsAuthenticated => true;
+        public IReadOnlyList<string> Roles => [];
+        public bool IsInRole(string role) => false;
+    }
+
     [Fact]
     public async Task ResolveAsync_ExplicitAgent_DoesNotReadConversation()
     {
-        var resolver = new ConversationAgentResolver(new InMemoryConversationStore());
+        var resolver = new ConversationAgentResolver(new InMemoryConversationStore(UserContext()));
 
         string? agentId = await resolver.ResolveAsync(
             CreateRequest(agentId: "support", conversationId: "missing"),
@@ -25,7 +36,7 @@ public class ConversationAgentResolverTests
     [Fact]
     public async Task ResolveAsync_ExistingConversation_ReturnsBoundAgent()
     {
-        var store = new InMemoryConversationStore();
+        var store = new InMemoryConversationStore(UserContext());
         await store.CreateAsync(CreateRecord("user-1", "finance"));
         var resolver = new ConversationAgentResolver(store);
 
@@ -40,7 +51,7 @@ public class ConversationAgentResolverTests
     [Fact]
     public async Task ResolveAsync_MissingConversation_ReturnsNull()
     {
-        var resolver = new ConversationAgentResolver(new InMemoryConversationStore());
+        var resolver = new ConversationAgentResolver(new InMemoryConversationStore(UserContext()));
 
         string? agentId = await resolver.ResolveAsync(
             CreateRequest(conversationId: "missing"),
@@ -57,7 +68,7 @@ public class ConversationAgentResolverTests
         string ownerId,
         bool deleted)
     {
-        var store = new InMemoryConversationStore();
+        var store = new InMemoryConversationStore(UserContext());
         ConversationRecord record = CreateRecord(ownerId, "finance");
         record.IsDeletedByUser = deleted;
         await store.CreateAsync(record);

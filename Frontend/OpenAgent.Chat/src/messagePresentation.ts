@@ -74,6 +74,19 @@ export function toolArgumentsText(tool: ToolActivity): string | undefined {
   try { return JSON.stringify(tool.arguments, null, 2) } catch { return String(tool.arguments) }
 }
 
+export function toolPresentation(name: string): { kind: string; displayName: string } {
+  if (name.startsWith('mcp__')) {
+    const parts = name.split('__').filter(Boolean)
+    const server = parts[1] || 'server'
+    const tool = parts.slice(2).join(' / ') || 'tool'
+    return { kind: 'MCP', displayName: `${server} / ${tool}` }
+  }
+
+  if (name === 'load_skill') return { kind: 'SKILL', displayName: '加载 Skill 指令' }
+  if (name === 'read_skill_resource') return { kind: 'SKILL', displayName: '读取 Skill 资源' }
+  return { kind: '工具', displayName: name }
+}
+
 export function formatFileSize(size: number): string {
   if (size < 1024) return `${size} B`
   if (size < 1024 * 1024) return `${Math.ceil(size / 1024)} KB`

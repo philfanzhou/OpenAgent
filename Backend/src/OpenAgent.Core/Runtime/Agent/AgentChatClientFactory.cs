@@ -37,7 +37,15 @@ internal sealed class AgentChatClientFactory
     private IChatClient CreateOpenAIChatCompletions(LlmConfig llm)
     {
         OpenAIClient client = CreateOpenAIClient(llm, "https://api.openai.com/v1");
-        return client.GetChatClient(llm.ModelId).AsIChatClient();
+        return client.GetChatClient(llm.ModelId)
+            .AsIChatClient()
+            .AsBuilder()
+            .Use(static (messages, options, next, cancellationToken) =>
+                next(
+                    AgentMessageAdapter.RemoveEmptyOpenAIToolCallText(messages),
+                    options,
+                    cancellationToken))
+            .Build();
     }
 
     private IChatClient CreateOpenAIResponses(LlmConfig llm)

@@ -35,7 +35,8 @@ public class LlmProviderProfile
     public string Id { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public ApiFormat Format { get; set; } = ApiFormat.OpenAIChatCompletions;
-    public string ModelId { get; set; } = string.Empty;
+    // Kept for deserializing old provider profiles; new profiles select a model per Agent.
+    public string? ModelId { get; set; }
     public string Endpoint { get; set; } = string.Empty;
     public string ApiKey { get; set; } = string.Empty;
     public double Temperature { get; set; } = 0.7;
@@ -51,7 +52,11 @@ public enum ApiFormat
 
 public class McpConfig
 {
+    public List<string> EnabledServerIds { get; set; } = new();
+
     [JsonConverter(typeof(McpServersConverter))]
+    // Compatibility payload for configurations written before MCP profiles
+    // became independent resources. New Agent configs should save IDs only.
     public List<McpServerConfig> Servers { get; set; } = new();
 }
 
@@ -61,18 +66,14 @@ public class McpServerConfig
     public string Url { get; set; } = string.Empty;
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public McpServerType Type { get; set; } = McpServerType.Http;
-    public string? Command { get; set; }
-    public List<string> Arguments { get; set; } = new();
-    public string? WorkingDirectory { get; set; }
-    public Dictionary<string, string> EnvironmentVariables { get; set; } = new();
+    public string? ProtocolVersion { get; set; }
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum McpServerType
 {
     SSE,
-    Http,
-    Stdio
+    Http
 }
 
 internal class McpServersConverter : JsonConverter<List<McpServerConfig>>
@@ -154,12 +155,13 @@ public class SkillInstanceConfig
     public string Name { get; set; } = string.Empty;
     public bool Enabled { get; set; } = true;
     public string Description { get; set; } = string.Empty;
-    public string ParametersJsonSchema { get; set; } = string.Empty;
-    public string? Type { get; set; }
-    public string? EndpointUrl { get; set; }
-    public string? Version { get; set; }
     public string Source { get; set; } = "Local";
     public string? SourceId { get; set; }
+    public string? PackageFileName { get; set; }
+    public string? PackageFormat { get; set; }
+    public string? ObjectKey { get; set; }
+    public string? Sha256 { get; set; }
+    public int ResourceCount { get; set; }
 
     public List<string> AllowedUserIds { get; set; } = new();
     public List<string> AllowedGroups { get; set; } = new();

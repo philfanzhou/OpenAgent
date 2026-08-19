@@ -1,5 +1,6 @@
 using OpenAgent.Contracts.Security;
 using OpenAgent.Hosting;
+using OpenAgent.Hosting.Authentication;
 using OpenAgent.Router;
 using OpenAgent.Router.Security;
 using OpenAgent.Router.Middleware;
@@ -65,6 +66,7 @@ app.UseWhen(
         branch.UseMiddleware<QueryCacheMiddleware>();
     });
 app.MapControllers();
+app.MapAgentAuthenticationEndpoints();
 app.MapRouterEndpoints();
 
 app.Run();

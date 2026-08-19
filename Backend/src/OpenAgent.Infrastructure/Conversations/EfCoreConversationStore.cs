@@ -1,11 +1,14 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using OpenAgent.Contracts.Conversation;
+using OpenAgent.Contracts.Security;
 using OpenAgent.Infrastructure.Entities;
 
 namespace OpenAgent.Infrastructure;
 
-internal sealed class EfCoreConversationStore(IDbContextFactory<OpenAgentDbContext> contexts) : IConversationStore
+internal sealed class EfCoreConversationStore(
+    IDbContextFactory<OpenAgentDbContext> contexts,
+    ICurrentUserContext currentUser) : IConversationStore
 {
     public async Task<IReadOnlyList<ConversationMessage>> GetMessagesAsync(
         string tenantId,
@@ -235,6 +238,7 @@ internal sealed class EfCoreConversationStore(IDbContextFactory<OpenAgentDbConte
         await using OpenAgentDbContext context = await contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         List<ConversationEntity> conversations = await context.Conversations.AsNoTracking()
             .Where(item => item.TenantId == tenantId && !item.IsDeletedByUser)
+            .Where(item => item.UserId == currentUser.UserId)
             .OrderByDescending(item => item.LastMessageAt)
             .Skip(Math.Max(skip, 0))
             .Take(take)
@@ -257,6 +261,7 @@ internal sealed class EfCoreConversationStore(IDbContextFactory<OpenAgentDbConte
         await using OpenAgentDbContext context = await contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         List<ConversationEntity> conversations = await context.Conversations.AsNoTracking()
             .Where(conversation => conversation.TenantId == tenantId && !conversation.IsDeletedByUser)
+            .Where(conversation => conversation.UserId == currentUser.UserId)
             .Where(conversation => context.ConversationMessages.Any(message =>
                 message.ConversationId == conversation.ConversationId
                 && EF.Functions.ILike(message.Content, $"%{keyword}%")))
