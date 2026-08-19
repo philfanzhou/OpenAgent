@@ -24,6 +24,10 @@ internal static class ConversationEndpointExtensions
         group.MapDelete("/conversations/{conversationId}", DeleteAsync)
             .WithName("DeleteConversation")
             .WithTags("Conversation");
+
+        group.MapPost("/conversations/{conversationId}/compact", CompactAsync)
+            .WithName("CompactConversation")
+            .WithTags("Conversation");
     }
 
     private static async Task<IResult> ListAsync(
@@ -109,6 +113,38 @@ internal static class ConversationEndpointExtensions
         return string.Equals(record.UserId, userId, StringComparison.OrdinalIgnoreCase)
             ? Results.Ok(record)
             : Results.Forbid();
+    }
+
+    internal static async Task<IResult> CompactAsync(
+        [FromServices] IConversationQueryService queryService,
+        [FromServices] IConversationCompactionService compactionService,
+        HttpContext context,
+        string conversationId,
+        CancellationToken cancellationToken = default)
+    {
+        string tenantId = AgentEndpointRequestMapper.RequireTenant(context);
+        ConversationRecord? record = await queryService.GetRecordAsync(
+            tenantId,
+            conversationId,
+            cancellationToken).ConfigureAwait(false);
+        if (record == null)
+        {
+            return Results.NotFound();
+        }
+
+        IAgentUserContext user = context.GetAgentRequest().User;
+        if (!string.Equals(record.TenantId, tenantId, StringComparison.Ordinal)
+            || !string.Equals(record.UserId, user.UserId, StringComparison.Ordinal))
+        {
+            return Results.Forbid();
+        }
+
+        ContextSummary result = await compactionService.CompactAsync(
+            tenantId,
+            conversationId,
+            user,
+            cancellationToken).ConfigureAwait(false);
+        return Results.Ok(result);
     }
 
 }

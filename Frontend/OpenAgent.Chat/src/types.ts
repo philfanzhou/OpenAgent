@@ -90,6 +90,25 @@ export interface ConversationRecord {
   messageCount: number
   title?: string
   messages?: ConversationMessage[]
+  contextSummaries?: ContextSummary[]
+}
+
+export interface ContextSummary {
+  compressionId: string
+  strategy: 'truncation' | 'sliding_window' | 'summarization' | string
+  trigger: 'Automatic' | 'Manual' | string
+  status: 'Succeeded' | 'Failed' | string
+  summary?: string | null
+  result?: string | null
+  error?: string | null
+  lastCompressedAt: string
+  compressedMessageCount: number
+  originalStartSequence: number
+  originalEndSequence: number
+  tokenCount: number
+  originalHistoryRestored: boolean
+  sourceEndSequence: number
+  compactedMessages?: ConversationMessage[]
 }
 
 export interface TokenUsage {

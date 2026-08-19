@@ -917,6 +917,11 @@ html[data-theme='dark'] .context-panel { background: #1f1f1f; }
 .conversation-usage > strong.unavailable { font-family: inherit; font-size: 13px; font-weight: 600; }
 .conversation-usage > small { color: var(--text-muted); font-size: 11px; line-height: 1.4; }
 .diagnostics-shortcut { width: 100%; margin-top: 12px; }
+.compaction-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.compaction-heading strong { color: var(--text); font-size: 12px; }
+.compaction-summary { max-height: 96px; overflow: auto; white-space: pre-wrap; }
+.compaction-recovered { display: block; margin-top: 7px; color: var(--warn); font-size: 11px; line-height: 1.4; }
+.compact-conversation-btn { width: 100%; margin-top: 10px; }
 
 /* Context resize handle */
 .context-resize {

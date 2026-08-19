@@ -93,7 +93,13 @@ internal sealed class AgentFactory
             }
             AIContextProvider? compaction = _conversations.CreateCompaction(
                 profile.Config.ContextPolicy,
-                modelClient);
+                modelClient,
+                new ConversationContext(
+                    request.ConversationId,
+                    user.TenantId,
+                    user.UserId,
+                    profile.AgentId,
+                    request.TraceId));
             if (compaction != null)
             {
                 providers.Add(compaction);

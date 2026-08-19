@@ -19,6 +19,7 @@ internal sealed class ConversationHistoryFactory
     private readonly ConversationStoreOptions _options;
     private readonly FileAssetExecutionContext _fileExecution;
     private readonly ILogger<PlatformChatHistory> _logger;
+    private readonly ILoggerFactory _loggerFactory;
     private readonly IFileAssetService _fileService;
 
     public ConversationHistoryFactory(
@@ -27,6 +28,7 @@ internal sealed class ConversationHistoryFactory
         IOptions<ConversationStoreOptions> options,
         FileAssetExecutionContext fileExecution,
         ILogger<PlatformChatHistory> logger,
+        ILoggerFactory loggerFactory,
         IFileAssetService fileService)
     {
         _conversationLock = conversationLock;
@@ -34,6 +36,7 @@ internal sealed class ConversationHistoryFactory
         _options = options.Value;
         _fileExecution = fileExecution;
         _logger = logger;
+        _loggerFactory = loggerFactory;
         _fileService = fileService;
     }
 
@@ -82,49 +85,109 @@ internal sealed class ConversationHistoryFactory
             cancellationToken).ConfigureAwait(false);
     }
 
-    internal AIContextProvider? CreateCompaction(ContextPolicy? policy, IChatClient chatClient)
+    internal AIContextProvider? CreateCompaction(
+        ContextPolicy? policy,
+        IChatClient chatClient,
+        ConversationContext context)
     {
-        CompactionStrategy? strategy = policy?.Strategy.ToLowerInvariant() switch
+        CompactionStrategy? strategy = CreateStrategy(
+            policy,
+            chatClient,
+            force: false,
+            out CompactionTrigger trigger);
+        if (strategy == null)
         {
-            "summarize" => CreateSummarization(policy, chatClient),
-            "sliding_window" => CreateSlidingWindow(policy),
-            "none" => CreateDefaultTruncation(),
-            null => CreateDefaultTruncation(),
-            _ => CreateDefaultTruncation()
-        };
-        return strategy == null ? null : new CompactionProvider(strategy);
+            return null;
+        }
+
+        string strategyName = ResolveStrategyName(policy);
+        var audited = new AuditedCompactionStrategy(
+            strategy,
+            trigger,
+            strategyName,
+            "Automatic",
+            context,
+            _store.Store,
+            _loggerFactory.CreateLogger<AuditedCompactionStrategy>(),
+            recordUnchanged: false);
+        return new CompactionProvider(audited);
     }
 
-    private CompactionStrategy? CreateDefaultTruncation()
+    internal CompactionStrategy? CreateStrategy(
+        ContextPolicy? policy,
+        IChatClient chatClient,
+        bool force,
+        out CompactionTrigger trigger)
     {
-        if (_options.MaxHistoryMessages <= 0)
+        trigger = ResolveTrigger(policy, force);
+        return policy?.Strategy.ToLowerInvariant() switch
+        {
+            "summarize" => CreateSummarization(policy, chatClient, trigger),
+            "sliding_window" => CreateSlidingWindow(policy, trigger),
+            "none" => CreateDefaultTruncation(force, trigger),
+            null => CreateDefaultTruncation(force, trigger),
+            _ => CreateDefaultTruncation(force, trigger)
+        };
+    }
+
+    internal static string ResolveStrategyName(ContextPolicy? policy) =>
+        policy?.Strategy.ToLowerInvariant() switch
+        {
+            "summarize" => "summarization",
+            "sliding_window" => "sliding_window",
+            _ => "truncation"
+        };
+
+    private CompactionTrigger ResolveTrigger(ContextPolicy? policy, bool force)
+    {
+        if (force)
+        {
+            return CompactionTriggers.Always;
+        }
+
+        return policy?.Strategy.ToLowerInvariant() switch
+        {
+            "summarize" => CompactionTriggers.TokensExceed(
+                policy.MaxTokens > 0 ? policy.MaxTokens : 8_000),
+            "sliding_window" when policy.MaxTokens > 0 =>
+                CompactionTriggers.TokensExceed(policy.MaxTokens),
+            _ => CompactionTriggers.MessagesExceed(Math.Max(1, _options.MaxHistoryMessages))
+        };
+    }
+
+    private CompactionStrategy? CreateDefaultTruncation(
+        bool force,
+        CompactionTrigger trigger)
+    {
+        if (!force && _options.MaxHistoryMessages <= 0)
         {
             return null;
         }
 
         return new TruncationCompactionStrategy(
-            CompactionTriggers.MessagesExceed(_options.MaxHistoryMessages),
+            trigger,
             minimumPreservedGroups: 4,
             target: null);
     }
 
-    private CompactionStrategy CreateSlidingWindow(ContextPolicy policy)
+    private static CompactionStrategy CreateSlidingWindow(
+        ContextPolicy policy,
+        CompactionTrigger trigger)
     {
-        CompactionTrigger trigger = policy.MaxTokens > 0
-            ? CompactionTriggers.TokensExceed(policy.MaxTokens)
-            : CompactionTriggers.MessagesExceed(Math.Max(1, _options.MaxHistoryMessages));
         return new SlidingWindowCompactionStrategy(
             trigger,
             Math.Max(1, policy.PreserveRecentTurns),
             target: null);
     }
 
-    private static CompactionStrategy CreateSummarization(ContextPolicy policy, IChatClient chatClient)
+    private static CompactionStrategy CreateSummarization(
+        ContextPolicy policy,
+        IChatClient chatClient,
+        CompactionTrigger trigger)
     {
-        int maxTokens = policy.MaxTokens > 0 ? policy.MaxTokens : 8_000;
         return new SummarizationCompactionStrategy(
             chatClient,
-            CompactionTriggers.TokensExceed(maxTokens),
+            trigger,
             minimumPreservedGroups: Math.Max(4, policy.PreserveRecentTurns * 2),
             summarizationPrompt: null,
             target: null);

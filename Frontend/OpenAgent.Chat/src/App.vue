@@ -15,6 +15,7 @@ import { AUTO_AGENT_ID, type AgentConfigEntity, type AgentSummary, type AuthConf
 import { usePanelLayout } from './composables/usePanelLayout'
 import { useConversationStreams } from './composables/useConversationStreams'
 import { mergeConversationRecords, replaceConversationRecord, selectionMatchesConversation } from './conversationCollection'
+import { buildCompactionDisplay } from './compactionPresentation'
 import { createStreamingAssistantContentState, enqueueAssistantContent, markAssistantPhaseBoundary } from './streamingAssistantContent'
 import { createTypewriterQueue, type TypewriterQueue } from './typewriterQueue'
 
@@ -39,6 +40,7 @@ const conversationDetailRequests = shallowReactive(new Map<string, string>())
 const conversationStreams = useConversationStreams()
 const savingConfig = ref(false)
 const refreshingAgents = ref(false)
+const compactingConversation = ref(false)
 const testingMcp = ref(false)
 const uploadingSkill = ref(false)
 const testingRag = ref(false)
@@ -104,6 +106,10 @@ const conversationStatusText = computed(() => {
   return selectedConversation.value.status
 })
 const currentUsageSummary = computed(() => summarizeConversationUsage(currentMessages.value))
+const latestCompression = computed(() => selectedConversation.value?.contextSummaries?.at(-1))
+const compactionDisplay = computed(() => latestCompression.value
+  ? buildCompactionDisplay(latestCompression.value)
+  : null)
 const enabledSkillIds = computed(() => new Set(skillDraft.value.enabledSkills))
 const enabledRagIds = computed(() => new Set(config.value?.config.rag?.enabledRagInstanceIds || ragInstances.value.filter(item => item.enabled).map(item => item.id)))
 const boundMcpServers = computed(() => agentMcpIds.value.map(id =>
@@ -985,6 +991,28 @@ async function deleteConversation(item: ConversationRecord): Promise<void> {
   }
 }
 
+async function compactConversation(): Promise<void> {
+  const conversation = selectedConversation.value
+  if (!conversation || selectedConversationStreaming.value) return
+  compactingConversation.value = true
+  try {
+    const summary = await api.compactConversation(conversation.conversationId)
+    conversation.contextSummaries = [...(conversation.contextSummaries || []), summary]
+    if (summary.status === 'Succeeded') ElMessage.success('会话上下文压缩已完成')
+    else ElMessage.warning('压缩失败，原始会话历史已恢复')
+  } catch (error) {
+    notifyError(error)
+    try {
+      const persisted = await api.getConversation(conversation.conversationId)
+      replaceConversation(persisted, conversation.conversationId)
+    } catch {
+      // The original error remains the actionable result.
+    }
+  } finally {
+    compactingConversation.value = false
+  }
+}
+
 async function loadConfig(agentId = selectedAgentId.value): Promise<void> {
   if (!agentId || agentId === AUTO_AGENT_ID) return
   try {
@@ -1465,6 +1493,7 @@ onBeforeUnmount(() => {
           <section><span class="context-label">ROUTING</span><strong>{{ routeMode }}</strong><p>{{ connectionMode === 'router' && selectedAgentId === AUTO_AGENT_ID ? '由意图识别 Agent 分析请求并选择目标。' : (selectedAgent?.description || selectedAgentId) }}</p><dl><div><dt>Agent</dt><dd>{{ connectionMode === 'router' && selectedAgentId === AUTO_AGENT_ID ? '由模型选择' : (selectedAgent?.name || selectedAgentId) }}</dd></div><div><dt>协议</dt><dd>{{ selectedAgent?.apiFormat || (connectionMode === 'router' ? '自动' : '—') }}</dd></div></dl></section>
           <section><span class="context-label">IDENTITY</span><dl><div><dt>用户</dt><dd>{{ currentUser?.userId || 'Guest' }}</dd></div><div><dt>租户</dt><dd>{{ currentUser?.tenantId || tenantId || '—' }}</dd></div><div><dt>{{ activeEndpointLabel }}</dt><dd :title="activeEndpointUrl">{{ activeEndpointHost }}</dd></div></dl></section>
           <section><span class="context-label">CONVERSATION</span><dl><div><dt>消息</dt><dd>{{ currentMessages.length }}</dd></div><div><dt>状态</dt><dd>{{ conversationStatusText }}</dd></div><div><dt>ID</dt><dd class="truncate" :title="selectedConversation?.conversationId">{{ selectedConversation?.conversationId || '尚未创建' }}</dd></div></dl><div class="conversation-usage"><span>会话累计 Token</span><template v-if="currentUsageSummary.available && currentUsageSummary.usage"><strong>{{ formatTokenCount(currentUsageSummary.usage.totalTokens) }}</strong><small>输入 {{ formatTokenCount(currentUsageSummary.usage.promptTokens) }} · 输出 {{ formatTokenCount(currentUsageSummary.usage.completionTokens) }}</small></template><template v-else><strong class="unavailable">暂不可用</strong><small>Provider 未返回完整 usage</small></template></div></section>
+          <section class="compaction-panel"><span class="context-label">COMPACTION</span><template v-if="latestCompression && compactionDisplay"><div class="compaction-heading"><strong>已发生 {{ selectedConversation?.contextSummaries?.length || 0 }} 次压缩</strong><el-tag size="small" :type="latestCompression.status === 'Succeeded' ? 'success' : 'danger'">{{ compactionDisplay.status }}</el-tag></div><dl><div><dt>策略</dt><dd>{{ compactionDisplay.strategy }}</dd></div><div><dt>触发</dt><dd>{{ compactionDisplay.trigger }}</dd></div><div><dt>范围</dt><dd>{{ latestCompression.originalStartSequence || '—' }}–{{ latestCompression.originalEndSequence || '—' }}</dd></div></dl><p class="compaction-summary">{{ compactionDisplay.detail }}</p><small v-if="compactionDisplay.recovered" class="compaction-recovered">原始历史已恢复，本次模型上下文未丢失。</small></template><p v-else>当前会话尚未发生上下文压缩。</p><el-button class="compact-conversation-btn" size="small" :loading="compactingConversation" :disabled="!selectedConversation || selectedConversationStreaming" @click="compactConversation">手动压缩</el-button></section>
           <el-button class="diagnostics-shortcut" @click="openSettings('health')">运行平台健康检查</el-button>
           <div class="context-resize" @pointerdown="startContextResize" />
         </aside>

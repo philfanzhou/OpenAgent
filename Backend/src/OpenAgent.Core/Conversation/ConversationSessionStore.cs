@@ -24,6 +24,8 @@ internal sealed class ConversationSessionStore
         _options = options.Value;
     }
 
+    internal IConversationStore Store => _store;
+
     internal async Task<ConversationSession> OpenAsync(
         ConversationContext context,
         string resolvedAgentId,
@@ -60,7 +62,24 @@ internal sealed class ConversationSessionStore
         return new ConversationSession(
             record.Version,
             record.MessageCount + 1,
-            record.Messages.AsReadOnly());
+            ResolveModelHistory(record));
+    }
+
+    internal static IReadOnlyList<ConversationMessage> ResolveModelHistory(ConversationRecord record)
+    {
+        ContextSummary? manual = record.ContextSummaries.LastOrDefault(summary =>
+            string.Equals(summary.Trigger, "Manual", StringComparison.Ordinal)
+            && string.Equals(summary.Status, "Succeeded", StringComparison.Ordinal)
+            && summary.CompactedMessages.Count > 0);
+        if (manual == null)
+        {
+            return record.Messages.AsReadOnly();
+        }
+
+        return manual.CompactedMessages
+            .Concat(record.Messages.Where(message => message.Sequence > manual.SourceEndSequence))
+            .ToList()
+            .AsReadOnly();
     }
 
     internal async Task SaveAsync(

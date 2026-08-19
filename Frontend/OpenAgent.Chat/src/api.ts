@@ -5,6 +5,7 @@ import type {
   AuthTokenResponse,
   ConversationMessage,
   ConversationRecord,
+  ContextSummary,
   ConnectionMode,
   CurrentUserContext,
   FileAsset,
@@ -333,6 +334,10 @@ export const api = {
 
   deleteConversation(id: string): Promise<void> {
     return request<void>(`/api/v1/agent/conversations/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  },
+
+  compactConversation(id: string): Promise<ContextSummary> {
+    return request<ContextSummary>(`/api/v1/agent/conversations/${encodeURIComponent(id)}/compact`, { method: 'POST' })
   },
 
   getAgentConfig(id: string): Promise<AgentConfigEntity> {

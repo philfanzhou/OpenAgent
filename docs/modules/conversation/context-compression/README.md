@@ -29,6 +29,11 @@ PlatformChatHistory -> MAF ChatMessage history
 
 平台会话存储保留完整审计历史；compaction 只决定本次模型调用看到的消息。
 
+自动压缩通过审计包装记录触发方式、策略、原始消息范围、摘要或结果以及失败恢复状态，包装层不实现消息裁剪。
+`POST /api/v1/agent/conversations/{conversationId}/compact` 在校验租户、用户、会话归属和 Agent 授权后，使用同一 MAF
+策略执行手动压缩。压缩失败时恢复调用前的消息组，完整会话消息不会被覆盖或删除。
+最近一次成功的手动压缩结果作为后续模型调用的历史视图，并自动拼接压缩后新增的原始消息；自动压缩结果仍只作用于触发它的 Agent run。
+
 ## Data Models
 
 
@@ -44,3 +49,6 @@ PlatformChatHistory -> MAF ChatMessage history
 
 运行时状态、消息分组、trigger 和 target 均使用 MAF
 `Microsoft.Agents.AI.Compaction` 类型，不复制平台 DTO。
+
+每次实际自动压缩和每次手动尝试以 `ContextSummary` 追加到会话的数据库记录。Chat Inspector 展示压缩次数、最近策略、
+触发方式、原始范围、摘要或结果；失败记录同时标识原始上下文是否已恢复。
