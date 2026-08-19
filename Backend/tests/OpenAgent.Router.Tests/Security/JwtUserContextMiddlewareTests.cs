@@ -52,7 +52,7 @@ public class JwtUserContextMiddlewareTests
     }
 
     [Fact]
-    public async Task InvokeAsync_DevelopmentHeaderFallback_CreatesTenantContext()
+    public async Task InvokeAsync_DevelopmentHeaderWithoutClaim_ReturnsBadRequest()
     {
         JwtUserContextMiddleware middleware = CreateMiddleware(
             Environments.Development,
@@ -62,9 +62,7 @@ public class JwtUserContextMiddlewareTests
 
         await middleware.InvokeAsync(context);
 
-        IAgentUserContext user = Assert.IsAssignableFrom<IAgentUserContext>(
-            context.Items["AgentUserContext"]);
-        Assert.Equal("development-tenant", user.TenantId);
+        Assert.Equal(StatusCodes.Status400BadRequest, context.Response.StatusCode);
     }
 
     private static JwtUserContextMiddleware CreateMiddleware(

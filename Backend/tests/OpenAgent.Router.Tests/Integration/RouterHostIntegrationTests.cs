@@ -42,13 +42,14 @@ public sealed class RouterHostIntegrationTests : IClassFixture<RouterHostFixture
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Contains("primary-engine", body, StringComparison.Ordinal);
         Assert.Null(_fixture.PrimaryEngine.LastUserId);
-        Assert.Equal("tenant-1", _fixture.PrimaryEngine.LastTenantId);
+        Assert.Null(_fixture.PrimaryEngine.LastTenantId);
+        Assert.StartsWith("Basic ", _fixture.PrimaryEngine.LastAuthorization, StringComparison.Ordinal);
         Assert.Contains("openagent_router_provider_selections_total", metrics, StringComparison.Ordinal);
         Assert.Contains("source=\"explicit\"", metrics, StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task Chat_DevelopmentTenantHeader_ForwardsResolvedTenant()
+    public async Task Chat_DevelopmentTenantHeader_CannotOverrideAuthenticatedTenant()
     {
         using RouterApplicationFactory factory = _fixture.CreateFactory();
         using HttpClient client = factory.CreateClient();
@@ -57,9 +58,9 @@ public sealed class RouterHostIntegrationTests : IClassFixture<RouterHostFixture
 
         using HttpResponseMessage response = await client.SendAsync(request);
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal("development-tenant", _fixture.PrimaryEngine.LastTenantId);
-        Assert.Equal("development-tenant", _fixture.PrimaryEngine.LastCatalogTenantId);
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Null(_fixture.PrimaryEngine.LastTenantId);
+        Assert.Null(_fixture.PrimaryEngine.LastCatalogTenantId);
     }
 
     [Fact]

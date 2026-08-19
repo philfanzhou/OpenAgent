@@ -81,9 +81,7 @@ internal sealed class BasicAuthenticationHandler(
     {
         try
         {
-            string? tenantId = TenantIdentityResolver.ResolveDevelopmentHeader(Request.Headers)
-                ?? _authenticationOptions.DevelopmentTenantId;
-            return Succeed(username, tenantId);
+            return Succeed(username, _authenticationOptions.DevelopmentTenantId);
         }
         catch (AgentException exception)
         {

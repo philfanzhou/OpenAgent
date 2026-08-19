@@ -23,14 +23,12 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
     private readonly IReadOnlyDictionary<string, string> _serviceHeaders;
     private readonly IRouteTable _routeTable;
     private readonly HttpMessageInvoker _httpClient;
-    private readonly bool _forwardDevelopmentTenantHeader;
 
     internal OpenAgentEngineProvider(
         string id,
         IConfiguration settings,
         IRouteTable routeTable,
-        HttpMessageHandler? handler = null,
-        bool forwardDevelopmentTenantHeader = false)
+        HttpMessageHandler? handler = null)
     {
         Id = id;
         _agentListPath = NormalizePath(settings["AgentListPath"], "/api/v1/agent/agents");
@@ -49,7 +47,6 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
                 header => header.Value!,
                 StringComparer.OrdinalIgnoreCase);
         _routeTable = routeTable;
-        _forwardDevelopmentTenantHeader = forwardDevelopmentTenantHeader;
         _httpClient = new HttpMessageInvoker(handler ?? CreateHandler());
     }
 
@@ -212,16 +209,6 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
             request.Headers.TryAddWithoutValidation(
                 "Authorization",
                 requestContext.AuthenticationToken);
-        }
-
-        if (_forwardDevelopmentTenantHeader
-            && requestContext != null
-            && !string.IsNullOrWhiteSpace(requestContext.UserContext.TenantId))
-        {
-            request.Headers.Remove("X-Tenant-Id");
-            request.Headers.TryAddWithoutValidation(
-                "X-Tenant-Id",
-                requestContext.UserContext.TenantId);
         }
 
         return request;

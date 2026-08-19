@@ -53,7 +53,8 @@ public sealed class InfrastructurePersistenceTests : IAsyncLifetime
     {
         ServiceProvider services = Assert.IsType<ServiceProvider>(_services);
         IFileAssetRepository files = services.GetRequiredService<IFileAssetRepository>();
-        IConversationStore conversations = services.GetRequiredService<IConversationStore>();
+        using IServiceScope scope = services.CreateScope();
+        IConversationStore conversations = scope.ServiceProvider.GetRequiredService<IConversationStore>();
         FileAsset asset = new()
         {
             FileId = "file-001",
@@ -121,7 +122,8 @@ public sealed class InfrastructurePersistenceTests : IAsyncLifetime
     {
         ServiceProvider services = Assert.IsType<ServiceProvider>(_services);
         IFileAssetRepository files = services.GetRequiredService<IFileAssetRepository>();
-        IConversationStore conversations = services.GetRequiredService<IConversationStore>();
+        using IServiceScope scope = services.CreateScope();
+        IConversationStore conversations = scope.ServiceProvider.GetRequiredService<IConversationStore>();
         IDbContextFactory<OpenAgentDbContext> contexts =
             services.GetRequiredService<IDbContextFactory<OpenAgentDbContext>>();
         FileAsset asset = new()

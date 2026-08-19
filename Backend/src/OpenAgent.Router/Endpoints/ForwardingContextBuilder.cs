@@ -7,8 +7,7 @@ internal static class ForwardingContextBuilder
         Uri targetUri,
         string? tenantId,
         string? conversationId,
-        string traceId,
-        bool forwardDevelopmentTenantHeader)
+        string traceId)
     {
         proxyRequest.RequestUri = targetUri;
         proxyRequest.Headers.Remove("X-Conversation-Id");
@@ -20,10 +19,6 @@ internal static class ForwardingContextBuilder
         proxyRequest.Headers.Remove("X-TenantId");
         proxyRequest.Headers.Remove("X-OpenAgent-Tenant-Id");
         proxyRequest.Headers.Add("X-Trace-Id", traceId);
-        if (forwardDevelopmentTenantHeader && !string.IsNullOrWhiteSpace(tenantId))
-        {
-            proxyRequest.Headers.Add("X-Tenant-Id", tenantId);
-        }
         if (!string.IsNullOrEmpty(conversationId)) proxyRequest.Headers.Add("X-Conversation-Id", conversationId);
         return ValueTask.CompletedTask;
     }

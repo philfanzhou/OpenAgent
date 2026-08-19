@@ -54,8 +54,7 @@ internal static class GatewayProxyHandler
                     userContext,
                     tenantId,
                     conversationId,
-                    traceId,
-                    context.RequestServices.GetService<IHostEnvironment>()?.IsDevelopment() == true)
+                    traceId)
                 : ApplyAnonymousAsync(proxyRequest, new Uri(targetUrl), traceId)).ConfigureAwait(false);
         if (error == ForwarderError.None)
         {
@@ -86,8 +85,7 @@ internal static class GatewayProxyHandler
         IAgentUserContext userContext,
         string? tenantId,
         string? conversationId,
-        string traceId,
-        bool forwardDevelopmentTenantHeader)
+        string traceId)
     {
         proxyRequest.Headers.Remove("X-Agent-Id");
         return ForwardingContextBuilder.ApplyAsync(
@@ -95,8 +93,7 @@ internal static class GatewayProxyHandler
             targetUri,
             tenantId,
             conversationId,
-            traceId,
-            forwardDevelopmentTenantHeader);
+            traceId);
     }
 
     private static ValueTask ApplyAnonymousAsync(

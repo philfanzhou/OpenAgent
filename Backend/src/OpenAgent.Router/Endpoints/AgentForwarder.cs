@@ -64,7 +64,6 @@ internal sealed class AgentForwarder(
                 tenantId,
                 conversationId,
                 traceId,
-                context.RequestServices.GetService<IHostEnvironment>()?.IsDevelopment() == true,
                 cancellationToken)).ConfigureAwait(false);
         if (error == ForwarderError.None)
         {
@@ -98,7 +97,6 @@ internal sealed class AgentForwarder(
         string? tenantId,
         string? conversationId,
         string traceId,
-        bool forwardDevelopmentTenantHeader,
         CancellationToken cancellationToken)
     {
         await ForwardingContextBuilder.ApplyAsync(
@@ -106,8 +104,7 @@ internal sealed class AgentForwarder(
             target.RequestUri,
             tenantId,
             conversationId,
-            traceId,
-            forwardDevelopmentTenantHeader).ConfigureAwait(false);
+            traceId).ConfigureAwait(false);
         await provider.ConfigureRequestAsync(
             request,
             target,

@@ -50,8 +50,7 @@ internal static class GetEndpointHandler
                     new Uri(targetUrl),
                     tenantId,
                     conversationId,
-                    traceId,
-                    context.RequestServices.GetService<IHostEnvironment>()?.IsDevelopment() == true);
+                    traceId);
             }).ConfigureAwait(false);
         if (error == ForwarderError.None)
         {

@@ -42,7 +42,7 @@ public class BasicAuthenticationHandlerTests
     }
 
     [Fact]
-    public async Task AuthenticateAsync_DevelopmentTenantHeader_CreatesTenantClaim()
+    public async Task AuthenticateAsync_DevelopmentTenantHeader_DoesNotOverrideConfiguredClaim()
     {
         using ServiceProvider provider = CreateProvider(Environments.Development);
         var context = new DefaultHttpContext { RequestServices = provider };
@@ -54,9 +54,7 @@ public class BasicAuthenticationHandlerTests
             BasicAuthenticationHandler.SchemeName);
 
         Assert.True(result.Succeeded);
-        Assert.Equal(
-            "tenant-from-header",
-            result.Principal?.FindFirst("tenant_id")?.Value);
+        Assert.Equal("development", result.Principal?.FindFirst("tenant_id")?.Value);
     }
 
     [Fact]

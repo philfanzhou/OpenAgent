@@ -9,15 +9,14 @@ public static class TenantIdentityResolver
 {
     public static string? Resolve(
         ClaimsPrincipal principal,
-        IHeaderDictionary headers,
-        bool allowDevelopmentHeader)
+        IHeaderDictionary headers)
     {
         string? claimTenantId = ResolveSingle(
             principal.Claims
                 .Where(claim => claim.Type is "tenant_id" or "tid")
                 .Select(claim => claim.Value),
             "Authenticated identity contains conflicting tenant claims.");
-        string? headerTenantId = ResolveDevelopmentHeader(headers);
+        string? headerTenantId = ResolveHeader(headers);
 
         if (claimTenantId != null
             && headerTenantId != null
@@ -28,10 +27,10 @@ public static class TenantIdentityResolver
                 "Authenticated tenant does not match X-Tenant-Id.");
         }
 
-        return claimTenantId ?? (allowDevelopmentHeader ? headerTenantId : null);
+        return claimTenantId;
     }
 
-    public static string? ResolveDevelopmentHeader(IHeaderDictionary headers) => ResolveSingle(
+    private static string? ResolveHeader(IHeaderDictionary headers) => ResolveSingle(
         headers["X-Tenant-Id"].Concat(headers["X-TenantId"]),
         "Request contains conflicting tenant headers.");
 

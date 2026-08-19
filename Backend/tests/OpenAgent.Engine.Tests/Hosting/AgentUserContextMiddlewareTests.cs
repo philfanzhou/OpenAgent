@@ -36,17 +36,14 @@ public class AgentUserContextMiddlewareTests
     }
 
     [Fact]
-    public async Task InvokeAsync_DevelopmentHeaderFallback_CreatesSameTenantContext()
+    public async Task InvokeAsync_DevelopmentHeaderWithoutClaim_StillFailsTenantIsolation()
     {
         AgentUserContextMiddleware middleware = CreateMiddleware(Environments.Development);
         DefaultHttpContext context = CreateContext();
         context.Request.Headers["X-Tenant-Id"] = "development-tenant";
 
-        await middleware.InvokeAsync(context);
-
-        Assert.Equal(
-            "development-tenant",
-            context.GetAgentRequest().User.TenantId);
+        await Assert.ThrowsAsync<TenantDataIsolationException>(() =>
+            middleware.InvokeAsync(context));
     }
 
     private static AgentUserContextMiddleware CreateMiddleware(string environmentName)

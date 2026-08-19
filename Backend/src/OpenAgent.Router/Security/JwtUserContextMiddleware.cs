@@ -10,7 +10,6 @@ public class JwtUserContextMiddleware
 {
     private readonly RequestDelegate _next;
     private readonly ILogger<JwtUserContextMiddleware> _logger;
-    private readonly IHostEnvironment _environment;
 
     public JwtUserContextMiddleware(
         RequestDelegate next,
@@ -19,7 +18,6 @@ public class JwtUserContextMiddleware
     {
         _next = next;
         _logger = logger;
-        _environment = environment;
     }
 
     public async Task InvokeAsync(HttpContext context)
@@ -37,8 +35,7 @@ public class JwtUserContextMiddleware
             {
                 tenantId = TenantIdentityResolver.Resolve(
                     context.User,
-                    context.Request.Headers,
-                    _environment.IsDevelopment());
+                    context.Request.Headers);
             }
             catch (AgentException exception) when (
                 exception.ErrorCode == AgentErrorCode.TenantMismatch)

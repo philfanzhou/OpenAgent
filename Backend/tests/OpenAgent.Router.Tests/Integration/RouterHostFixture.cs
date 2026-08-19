@@ -70,6 +70,8 @@ public sealed class TestEngineHost(string responseName) : IAsyncDisposable
 
     public string? LastTenantId { get; private set; }
 
+    public string? LastAuthorization { get; private set; }
+
     public string? LastCatalogTenantId { get; private set; }
 
     public string? UploadedFileName { get; private set; }
@@ -93,6 +95,7 @@ public sealed class TestEngineHost(string responseName) : IAsyncDisposable
         application.MapGet("/api/v1/agent/agents", (HttpContext context) =>
         {
             LastCatalogTenantId = context.Request.Headers["X-Tenant-Id"].FirstOrDefault();
+            LastAuthorization = context.Request.Headers.Authorization.FirstOrDefault();
             return Results.Json(new[]
             {
                 new { agentId = "default", name = "Default", description = "Test agent" }
@@ -103,6 +106,7 @@ public sealed class TestEngineHost(string responseName) : IAsyncDisposable
             Interlocked.Increment(ref _chatRequestCount);
             LastUserId = context.Request.Headers["X-User-Id"].FirstOrDefault();
             LastTenantId = context.Request.Headers["X-Tenant-Id"].FirstOrDefault();
+            LastAuthorization = context.Request.Headers.Authorization.FirstOrDefault();
             context.Response.ContentType = "application/json";
             context.Response.Headers.CacheControl = "public, max-age=60";
             await context.Response.WriteAsync(

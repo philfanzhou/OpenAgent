@@ -35,7 +35,8 @@ public static class ServiceCollectionExtensions
         services.Configure<ConversationCacheOptions>(options =>
             configuration.GetSection(ConversationCacheOptions.SectionName).Bind(options));
 
-        services.AddSingleton<EfCoreConversationStore>();
+        // The store reads the request-scoped authenticated user for user-level isolation.
+        services.AddScoped<EfCoreConversationStore>();
         services.AddSingleton<IFileAssetRepository, EfCoreFileAssetRepository>();
         services.AddSingleton<ISkillDefinitionRepository, EfCoreSkillDefinitionRepository>();
 
@@ -55,7 +56,7 @@ public static class ServiceCollectionExtensions
                 return ConnectionMultiplexer.Connect(options);
             });
             services.AddSingleton<IConversationCache, RedisConversationCache>();
-            services.AddSingleton<IConversationStore>(serviceProvider => new WriteThroughConversationStore(
+            services.AddScoped<IConversationStore>(serviceProvider => new WriteThroughConversationStore(
                 serviceProvider.GetRequiredService<EfCoreConversationStore>(),
                 serviceProvider.GetRequiredService<IConversationCache>(),
                 serviceProvider.GetRequiredService<ILogger<WriteThroughConversationStore>>()));
@@ -63,7 +64,7 @@ public static class ServiceCollectionExtensions
         }
         else
         {
-            services.AddSingleton<IConversationStore>(serviceProvider =>
+            services.AddScoped<IConversationStore>(serviceProvider =>
                 serviceProvider.GetRequiredService<EfCoreConversationStore>());
         }
 

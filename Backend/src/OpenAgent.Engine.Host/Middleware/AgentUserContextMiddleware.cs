@@ -8,7 +8,6 @@ internal sealed class AgentUserContextMiddleware
 {
     private readonly RequestDelegate _next;
     private readonly ILogger<AgentUserContextMiddleware> _logger;
-    private readonly IHostEnvironment _environment;
 
     public AgentUserContextMiddleware(
         RequestDelegate next,
@@ -17,7 +16,6 @@ internal sealed class AgentUserContextMiddleware
     {
         _next = next;
         _logger = logger;
-        _environment = environment;
     }
 
     public async Task InvokeAsync(HttpContext context)
@@ -51,8 +49,7 @@ internal sealed class AgentUserContextMiddleware
             ?? context.User.Identity?.Name;
         string? tenantId = TenantIdentityResolver.Resolve(
             context.User,
-            context.Request.Headers,
-            _environment.IsDevelopment());
+            context.Request.Headers);
         List<string> roles = context.User.Claims
             .Where(claim => claim.Type == ClaimTypes.Role || claim.Type is "roles" or "role")
             .Select(claim => claim.Value)

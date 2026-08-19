@@ -157,7 +157,6 @@ public class SkillInstanceConfig
     public string TenantId { get; set; } = string.Empty;
     [JsonPropertyName("skillId")]
     public string Id { get; set; } = string.Empty;
-    public string TenantId { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public bool Enabled { get; set; } = true;
     public string Description { get; set; } = string.Empty;

@@ -127,7 +127,7 @@ public sealed class AgentRuntimeResolverTests
     }
 
     [Fact]
-    public async Task ResolveAsync_SkillBindingOwnedByAnotherTenant_ThrowsIsolationException()
+    public async Task ResolveAsync_SkillBindingOwnedByAnotherTenant_HidesAgentConfiguration()
     {
         var config = new AgentConfig
         {
@@ -140,11 +140,12 @@ public sealed class AgentRuntimeResolverTests
                 new AllowAllAgentAuthorizationService(),
                 new LlmRegistry()));
 
-        await Assert.ThrowsAsync<TenantDataIsolationException>(
+        InvalidOperationException exception = await Assert.ThrowsAsync<InvalidOperationException>(
             () => resolver.ResolveAsync(
                 "agent-a",
                 new AgentUserContext { UserId = "user-b", TenantId = "tenant-b" },
                 CancellationToken.None));
+        Assert.Contains("agent-a", exception.Message, StringComparison.Ordinal);
     }
 
     private static AgentUserContext User() => new()
