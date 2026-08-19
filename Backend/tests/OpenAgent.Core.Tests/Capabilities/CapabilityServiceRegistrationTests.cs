@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using OpenAgent.Contracts.Capabilities;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Files;
@@ -8,8 +9,8 @@ using OpenAgent.Core.Capabilities;
 using OpenAgent.Core.Capabilities.Mcp;
 using OpenAgent.Core.Capabilities.Rag;
 using OpenAgent.Core.Capabilities.Skill;
-using OpenAgent.Core.Exten;
 using OpenAgent.Core.Conversation.Store;
+using OpenAgent.Core.Exten;
 using Xunit;
 
 namespace OpenAgent.Core.Tests.Capabilities;
@@ -39,6 +40,7 @@ public class CapabilityServiceRegistrationTests
         Assert.DoesNotContain(sources, source => source.GetType().Name.Contains("Skill", StringComparison.Ordinal));
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<AgentSkillsProviderFactory>());
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<McpToolFactory>());
+        Assert.Empty(scope.ServiceProvider.GetRequiredService<IReflectionFunctionRegistry>().Functions);
     }
 
     private sealed class StaticConfigProvider : IAgentConfigProvider
