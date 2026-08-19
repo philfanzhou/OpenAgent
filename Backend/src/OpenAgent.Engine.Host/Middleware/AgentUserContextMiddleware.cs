@@ -1,7 +1,5 @@
 using System.Security.Claims;
-using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Security;
-using OpenAgent.Hosting.Authentication;
 
 namespace OpenAgent.Engine.Host.Middleware;
 
@@ -9,16 +7,13 @@ internal sealed class AgentUserContextMiddleware
 {
     private readonly RequestDelegate _next;
     private readonly ILogger<AgentUserContextMiddleware> _logger;
-    private readonly AgentAuthenticationOptions _authenticationOptions;
 
     public AgentUserContextMiddleware(
         RequestDelegate next,
-        ILogger<AgentUserContextMiddleware> logger,
-        IOptions<AgentAuthenticationOptions> authenticationOptions)
+        ILogger<AgentUserContextMiddleware> logger)
     {
         _next = next;
         _logger = logger;
-        _authenticationOptions = authenticationOptions.Value;
     }
 
     public async Task InvokeAsync(HttpContext context)
@@ -40,11 +35,7 @@ internal sealed class AgentUserContextMiddleware
     {
         string? userId = context.User.Identity?.Name;
         string? tenantId = context.User.Claims
-            .FirstOrDefault(claim => claim.Type == "tenant_id" || claim.Type == "tid")?.Value
-            ?? (_authenticationOptions.AllowTenantHeader
-                ? context.Request.Headers["X-Tenant-Id"].FirstOrDefault()
-                    ?? context.Request.Headers["X-TenantId"].FirstOrDefault()
-                : null);
+            .FirstOrDefault(claim => claim.Type == "tenant_id" || claim.Type == "tid")?.Value;
         List<string> roles = context.User.Claims
             .Where(claim => claim.Type == ClaimTypes.Role || claim.Type is "roles" or "role")
             .Select(claim => claim.Value)

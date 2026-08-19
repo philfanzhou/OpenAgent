@@ -1,6 +1,5 @@
 using System.Text.Json;
 using OpenAgent.Contracts.Security;
-using OpenAgent.Router.Middleware;
 using OpenAgent.Router.Models;
 
 namespace OpenAgent.Router.Endpoints;
@@ -40,15 +39,11 @@ internal sealed class AgentSelectionFilter(
         string? explicitAgentId = string.IsNullOrWhiteSpace(request.AgentId)
             ? context.Request.Headers["X-Agent-Id"].FirstOrDefault()
             : request.AgentId;
-        string? tenantId = context.Items[TenantIsolationMiddleware.TenantItemKey]?.ToString()
-            ?? userContext.TenantId
-            ?? context.Request.Headers["X-Tenant-Id"].FirstOrDefault();
         AgentSelection? selection;
         try
         {
             selection = await selectionService.SelectAsync(
                 request.Query,
-                tenantId ?? string.Empty,
                 routingConversationId,
                 explicitAgentId,
                 context.RequestAborted,

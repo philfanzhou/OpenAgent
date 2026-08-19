@@ -24,7 +24,7 @@ Router 通过 `IAgentProvider` 统一调用自有 Engine 和第三方 Agent 服�
 
 ## Provider contract
 
-第三方接入实现 `IAgentProviderFactory` 和 `IAgentProvider`，并注册 Factory。`AgentProviderRequestContext` 只包含已认证用户上下文、Router 解析后的租户和当前请求认证令牌，不传递 `HttpContext`。内置 Engine Provider 原样透传当前请求的 `Authorization`；Router 与 Engine 使用同一套认证配置和认证管线，用户和租户身份不通过自定义 header 传输。
+第三方接入实现 `IAgentProviderFactory` 和 `IAgentProvider`，并注册 Factory。`AgentProviderRequestContext` 只包含已认证用户上下文和当前请求认证令牌，不传递 `HttpContext`；租户从 `IAgentUserContext.TenantId` 获取。内置 Engine Provider 原样透传当前请求的 `Authorization`；Router 与 Engine 使用同一套认证配置和认证管线，用户和租户身份不通过自定义 header 传输。
 
 - `GetAgentsAsync`：返回 `AgentProviderCatalog`；`IsAvailable=false` 表示不能形成完整目录。
 - `ResolveConversationAsync`：返回 `NotFound`、`Found`、`Forbidden` 或 `Unavailable`。

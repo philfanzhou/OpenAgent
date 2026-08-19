@@ -35,7 +35,6 @@ public class OpenAgentEngineProviderTests
             handler);
 
         var requestContext = new AgentProviderRequestContext(
-            "tenant-1",
             new AgentUserContext
             {
                 UserId = "user-1",

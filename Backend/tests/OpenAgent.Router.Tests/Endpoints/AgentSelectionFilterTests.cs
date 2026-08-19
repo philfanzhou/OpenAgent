@@ -127,7 +127,6 @@ public class AgentSelectionFilterTests
 
         public Task<AgentSelection?> SelectAsync(
             string message,
-            string tenantId,
             string? conversationId,
             string? explicitAgentId,
             CancellationToken cancellationToken,

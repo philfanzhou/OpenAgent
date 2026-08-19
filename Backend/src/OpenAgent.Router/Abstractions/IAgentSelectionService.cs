@@ -6,7 +6,6 @@ internal interface IAgentSelectionService
 {
     Task<AgentSelection?> SelectAsync(
         string message,
-        string tenantId,
         string? conversationId,
         string? explicitAgentId,
         CancellationToken cancellationToken,

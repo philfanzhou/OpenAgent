@@ -17,13 +17,12 @@ internal sealed class AgentSelectionService(
 
     public async Task<AgentSelection?> SelectAsync(
         string message,
-        string tenantId,
         string? conversationId,
         string? explicitAgentId,
         CancellationToken cancellationToken,
         string? authenticationToken = null)
     {
-        if (string.IsNullOrWhiteSpace(tenantId))
+        if (string.IsNullOrWhiteSpace(userContext.TenantId))
         {
             throw new AgentRoutingException(
                 StatusCodes.Status400BadRequest,
@@ -32,7 +31,6 @@ internal sealed class AgentSelectionService(
         }
 
         AgentProviderRequestContext requestContext = new(
-            tenantId,
             userContext,
             authenticationToken);
         ConversationProviderAffinity? affinity = string.IsNullOrWhiteSpace(conversationId)

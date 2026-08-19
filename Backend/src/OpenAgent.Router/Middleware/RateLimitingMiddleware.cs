@@ -17,12 +17,12 @@ internal sealed class RateLimitingMiddleware(RequestDelegate next, ILogger<RateL
             return;
         }
 
-        var tenantId = context.Items[TenantIsolationMiddleware.TenantItemKey]?.ToString();
+        var tenantId = userContext.TenantId;
         var clientId = $"{tenantId}:{userContext.UserId}";
         if (!await rateLimiter.IsAllowedAsync(clientId, context.RequestAborted))
         {
             RouterLog.RateLimited(
-                logger, TenantIsolationMiddleware.GetAction(context), clientId,
+                logger, RouterRequestMetadata.GetAction(context), clientId,
                 userContext.UserId, tenantId, Activity.Current?.Id ?? context.TraceIdentifier);
             context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
             return;

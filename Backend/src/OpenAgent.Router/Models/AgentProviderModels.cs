@@ -16,6 +16,5 @@ public enum AgentProviderConversationStatus
 }
 
 public sealed record AgentProviderRequestContext(
-    string TenantId,
     IAgentUserContext UserContext,
     string? AuthenticationToken = null);

@@ -11,8 +11,9 @@ internal sealed class ConversationProviderResolver(
         string conversationId,
         CancellationToken cancellationToken)
     {
+        string tenantId = RequireTenantId(requestContext);
         ConversationProviderAffinity? affinity = await store.GetAsync(
-            requestContext.TenantId,
+            tenantId,
             conversationId,
             cancellationToken).ConfigureAwait(false);
         if (affinity != null)
@@ -34,11 +35,14 @@ internal sealed class ConversationProviderResolver(
         AgentProviderRequestContext requestContext,
         string conversationId,
         string providerId,
-        CancellationToken cancellationToken) => store.BindAsync(
-            requestContext.TenantId,
+        CancellationToken cancellationToken)
+    {
+        return store.BindAsync(
+            RequireTenantId(requestContext),
             conversationId,
             new ConversationProviderAffinity(providerId, ConversationAffinityState.Pending),
             cancellationToken);
+    }
 
     private async Task<ConversationProviderAffinity> ResolveKnownAsync(
         AgentProviderRequestContext requestContext,
@@ -46,6 +50,7 @@ internal sealed class ConversationProviderResolver(
         ConversationProviderAffinity affinity,
         CancellationToken cancellationToken)
     {
+        string tenantId = RequireTenantId(requestContext);
         if (!providers.TryGet(affinity.ProviderId, out IAgentProvider? provider)
             || provider == null)
         {
@@ -63,7 +68,7 @@ internal sealed class ConversationProviderResolver(
             {
                 affinity = affinity with { State = ConversationAffinityState.Confirmed };
                 await store.SetAsync(
-                    requestContext.TenantId,
+                    tenantId,
                     conversationId,
                     affinity,
                     cancellationToken).ConfigureAwait(false);
@@ -101,6 +106,7 @@ internal sealed class ConversationProviderResolver(
         CancellationToken cancellationToken,
         string? excludedProviderId = null)
     {
+        string tenantId = RequireTenantId(requestContext);
         List<string> owners = [];
         bool unavailable = false;
         bool forbidden = false;
@@ -152,7 +158,7 @@ internal sealed class ConversationProviderResolver(
                 owners[0],
                 ConversationAffinityState.Confirmed);
             await store.SetAsync(
-                requestContext.TenantId,
+                tenantId,
                 conversationId,
                 affinity,
                 cancellationToken).ConfigureAwait(false);
@@ -195,4 +201,11 @@ internal sealed class ConversationProviderResolver(
         StatusCodes.Status404NotFound,
         RouterErrorCodes.ConversationNotFound,
         "Conversation was not found");
+
+    private static string RequireTenantId(AgentProviderRequestContext requestContext) =>
+        requestContext.UserContext.TenantId
+        ?? throw new AgentRoutingException(
+            StatusCodes.Status400BadRequest,
+            RouterErrorCodes.InvalidTenant,
+            "Tenant ID is required");
 }

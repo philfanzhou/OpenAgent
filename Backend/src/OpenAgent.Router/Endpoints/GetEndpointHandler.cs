@@ -24,7 +24,7 @@ internal static class GetEndpointHandler
             return Results.Unauthorized();
         }
 
-        var tenantId = userContext.TenantId ?? context.Request.Headers["X-Tenant-Id"].FirstOrDefault();
+        var tenantId = userContext.TenantId;
         var conversationId = conversationIdFromHeader
             ? context.Request.Headers["X-Conversation-Id"].FirstOrDefault()
             : null;

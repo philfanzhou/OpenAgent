@@ -28,9 +28,9 @@ internal sealed class IdempotencyMiddleware(RequestDelegate next, ILogger<Idempo
                 if (!string.IsNullOrEmpty(response))
                 {
                     RouterLog.IdempotencyCacheHit(
-                        logger, TenantIsolationMiddleware.GetAction(context), key,
+                        logger, RouterRequestMetadata.GetAction(context), key,
                         userContext.UserId,
-                        context.Items[TenantIsolationMiddleware.TenantItemKey]?.ToString(),
+                        userContext.TenantId,
                         Activity.Current?.Id ?? context.TraceIdentifier);
                     context.Response.ContentType = "application/json";
                     await context.Response.WriteAsync(response, context.RequestAborted);
@@ -40,7 +40,7 @@ internal sealed class IdempotencyMiddleware(RequestDelegate next, ILogger<Idempo
             catch (Exception exception)
             {
                 RouterLog.IdempotencyCacheCheckFailed(
-                    logger, exception, TenantIsolationMiddleware.GetAction(context), key,
+                    logger, exception, RouterRequestMetadata.GetAction(context), key,
                     Activity.Current?.Id ?? context.TraceIdentifier);
             }
         }

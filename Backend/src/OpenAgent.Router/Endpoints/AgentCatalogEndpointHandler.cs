@@ -28,7 +28,6 @@ internal static class AgentCatalogEndpointHandler
         {
             IReadOnlyList<AgentCatalogEntry> entries = await catalog.GetAuthorizedAsync(
                 new AgentProviderRequestContext(
-                    userContext.TenantId,
                     userContext,
                     context.Request.Headers.Authorization.FirstOrDefault()),
                 cancellationToken).ConfigureAwait(false);

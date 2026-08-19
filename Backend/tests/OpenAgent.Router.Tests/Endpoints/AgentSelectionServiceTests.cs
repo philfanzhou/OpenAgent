@@ -20,7 +20,6 @@ public class AgentSelectionServiceTests
 
         AgentSelection? selection = await service.SelectAsync(
             "hello",
-            "tenant-1",
             null,
             "finance",
             CancellationToken.None);
@@ -40,7 +39,6 @@ public class AgentSelectionServiceTests
         AgentRoutingException exception = await Assert.ThrowsAsync<AgentRoutingException>(() =>
             service.SelectAsync(
                 "hello",
-                "tenant-1",
                 null,
                 "finance",
                 CancellationToken.None));
@@ -61,7 +59,6 @@ public class AgentSelectionServiceTests
 
         AgentSelection? selection = await service.SelectAsync(
             "follow up",
-            "tenant-1",
             "conversation-1",
             null,
             CancellationToken.None);
@@ -90,7 +87,6 @@ public class AgentSelectionServiceTests
 
         AgentSelection? selection = await service.SelectAsync(
             "find invoice",
-            "tenant-1",
             "conversation-new",
             null,
             CancellationToken.None);
@@ -119,7 +115,6 @@ public class AgentSelectionServiceTests
 
         AgentSelection? selection = await service.SelectAsync(
             "follow up",
-            "tenant-1",
             "conversation-1",
             null,
             CancellationToken.None);
@@ -141,7 +136,6 @@ public class AgentSelectionServiceTests
         AgentRoutingException exception = await Assert.ThrowsAsync<AgentRoutingException>(() =>
             service.SelectAsync(
                 "follow up",
-                "tenant-1",
                 "conversation-1",
                 "general",
                 CancellationToken.None));
@@ -160,7 +154,6 @@ public class AgentSelectionServiceTests
         AgentRoutingException exception = await Assert.ThrowsAsync<AgentRoutingException>(() =>
             service.SelectAsync(
                 "hello",
-                "tenant-1",
                 null,
                 "support",
                 CancellationToken.None));
@@ -180,7 +173,6 @@ public class AgentSelectionServiceTests
         AgentRoutingException exception = await Assert.ThrowsAsync<AgentRoutingException>(() =>
             service.SelectAsync(
                 "follow up",
-                "tenant-1",
                 "conversation-1",
                 null,
                 CancellationToken.None));
@@ -207,7 +199,6 @@ public class AgentSelectionServiceTests
         AgentRoutingException exception = await Assert.ThrowsAsync<AgentRoutingException>(() =>
             service.SelectAsync(
                 "follow up",
-                "tenant-1",
                 "conversation-1",
                 null,
                 CancellationToken.None));
@@ -229,7 +220,6 @@ public class AgentSelectionServiceTests
 
         AgentSelection? selection = await service.SelectAsync(
             "hello",
-            "tenant-1",
             null,
             null,
             CancellationToken.None);
@@ -251,7 +241,6 @@ public class AgentSelectionServiceTests
         AgentRoutingException exception = await Assert.ThrowsAsync<AgentRoutingException>(() =>
             service.SelectAsync(
                 "follow up",
-                "tenant-1",
                 "conversation-1",
                 null,
                 CancellationToken.None));
@@ -315,7 +304,7 @@ public class AgentSelectionServiceTests
             string conversationId,
             CancellationToken cancellationToken)
         {
-            LastTenantId = requestContext.TenantId;
+            LastTenantId = requestContext.UserContext.TenantId;
             AgentProviderConversationStatus status = Conversations.TryGetValue(
                 conversationId,
                 out AgentProviderConversationStatus configured)

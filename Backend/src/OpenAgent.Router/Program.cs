@@ -60,7 +60,6 @@ app.UseWhen(
     context => context.Request.Path.StartsWithSegments("/api/v1/agent/chat"),
     branch =>
     {
-        branch.UseMiddleware<TenantIsolationMiddleware>();
         branch.UseMiddleware<RateLimitingMiddleware>();
         branch.UseMiddleware<IdempotencyMiddleware>();
         branch.UseMiddleware<QueryCacheMiddleware>();
