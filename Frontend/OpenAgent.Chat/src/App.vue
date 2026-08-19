@@ -10,6 +10,7 @@ import LoginPage from './components/LoginPage.vue'
 import MessageComposer from './components/MessageComposer.vue'
 import { formatTokenCount, summarizeConversationUsage } from './tokenUsage'
 import HealthCheckPanel from './components/HealthCheckPanel.vue'
+import { mergeAssistantSnapshot } from './messagePresentation'
 import { AUTO_AGENT_ID, type AgentConfigEntity, type AgentSummary, type AuthConfig, type ConnectionMode, type ConversationMessage, type ConversationRecord, type CurrentUserContext, type LlmProviderProfile, type LlmTestResult, type McpServerConfig, type McpTestResult, type MessageFile, type PendingFile, type RagConfig, type RagInstanceConfig, type RagTestResult, type SkillCatalogItem, type SkillInstanceConfig, type SkillsConfig } from './types'
 import { usePanelLayout } from './composables/usePanelLayout'
 import { useConversationStreams } from './composables/useConversationStreams'
@@ -796,6 +797,7 @@ async function send(): Promise<void> {
   const requestId = streamState.requestId
   let streamError: { title?: string; detail?: string; traceId?: string } | undefined
   let flushStream: (() => void) | undefined
+  let streamedAssistant: ConversationMessage | undefined
   let receivedDone = false
   let completedAgentId = conversation.agentId
   try {
@@ -819,7 +821,8 @@ async function send(): Promise<void> {
       messageId: crypto.randomUUID(), sequence: conversation.messages.length + 1,
       role: 'assistant', content: '', timestamp: new Date().toISOString(),
     })
-    const assistantMessage = conversation.messages[conversation.messages.length - 1]
+    const assistantMessage = conversation.messages[conversation.messages.length - 1]!
+    streamedAssistant = assistantMessage
     conversation.messageCount = conversation.messages.length
     flushStream = (): void => {
       assistantMessage.content = assistant
@@ -877,6 +880,7 @@ async function send(): Promise<void> {
     try {
       const persisted = await api.getConversation(conversationId)
       await hydrateFilePreviews(persisted)
+      persisted.messages = mergeAssistantSnapshot(persisted.messages || [], assistantMessage)
       completedAgentId = persisted.agentId
       replaceConversation(persisted, conversationId)
     } catch (error) {
@@ -902,6 +906,9 @@ async function send(): Promise<void> {
         try {
           const persisted = await api.getConversation(conversationId)
           await hydrateFilePreviews(persisted)
+          if (streamedAssistant) {
+            persisted.messages = mergeAssistantSnapshot(persisted.messages || [], streamedAssistant)
+          }
           // 仅当服务端会话已有消息时才替换本地内容；否则保留已接收的片段。
           if (persisted.messages?.length && persisted.status !== 'Running') {
             replaceConversation(persisted, conversationId)
@@ -926,6 +933,9 @@ async function send(): Promise<void> {
       try {
         const persisted = await api.getConversation(conversationId)
         await hydrateFilePreviews(persisted)
+        if (streamedAssistant) {
+          persisted.messages = mergeAssistantSnapshot(persisted.messages || [], streamedAssistant)
+        }
         if (persisted.messages?.length && persisted.status !== 'Running') {
           replaceConversation(persisted, conversationId)
         }

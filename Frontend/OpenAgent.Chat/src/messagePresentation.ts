@@ -2,65 +2,149 @@ import type { ConversationMessage, MessageFile, ToolActivity } from './types'
 
 export function buildDisplayMessages(messages: ConversationMessage[]): ConversationMessage[] {
   const result: ConversationMessage[] = []
-  let pendingReasoning = ''
-  let pendingTools: ToolActivity[] = []
+  let assistant: ConversationMessage | undefined
 
   for (const message of messages) {
-    const isStoredToolCall = message.role === 'assistant'
-      && !message.content
-      && !message.files?.length
-      && Boolean(message.toolName)
-    if (isStoredToolCall) {
-      pendingReasoning += message.reasoning || ''
-      pendingTools.push({
-        name: message.toolName || '工具',
-        callId: message.toolCallId,
-        arguments: parseToolArguments(message.metadata?.ToolArguments),
-      })
+    if (message.role === 'assistant') {
+      assistant = mergeAssistantMessage(assistant, message)
       continue
     }
 
     if (message.role === 'tool') {
-      let index = pendingTools.length - 1
-      if (message.toolCallId) {
-        for (let current = pendingTools.length - 1; current >= 0; current -= 1) {
-          if (pendingTools[current]?.callId === message.toolCallId) {
-            index = current
-            break
-          }
-        }
-      }
-      if (index >= 0) pendingTools[index] = { ...pendingTools[index], result: message.content }
-      else pendingTools.push({ name: message.toolName || '工具', callId: message.toolCallId, result: message.content })
-      continue
-    }
-
-    if (message.role === 'assistant') {
-      result.push({
-        ...message,
-        reasoning: `${pendingReasoning}${message.reasoning || ''}` || undefined,
-        toolActivities: [...pendingTools, ...(message.toolActivities || [])],
+      assistant ||= createAssistantMessage(message)
+      assistant.toolActivities = mergeToolActivity(assistant.toolActivities, {
+        name: message.toolName || '工具',
+        callId: message.toolCallId,
+        result: message.content,
       })
-      pendingReasoning = ''
-      pendingTools = []
       continue
     }
 
+    if (assistant) result.push(assistant)
+    assistant = undefined
     result.push(message)
   }
 
-  if (pendingReasoning || pendingTools.length) {
-    result.push({
-      messageId: 'pending-agent-process',
-      sequence: Number.MAX_SAFE_INTEGER,
-      role: 'assistant',
-      content: '',
-      timestamp: new Date().toISOString(),
-      reasoning: pendingReasoning || undefined,
-      toolActivities: pendingTools,
+  if (assistant) result.push(assistant)
+  return result
+}
+
+/** Preserve streamed-only details when a completed, failed, or cancelled request is replaced by history. */
+export function mergeAssistantSnapshot(
+  messages: ConversationMessage[],
+  snapshot: ConversationMessage,
+): ConversationMessage[] {
+  const merged = buildDisplayMessages(messages)
+  let assistantIndex = -1
+  for (let index = merged.length - 1; index >= 0; index -= 1) {
+    if (merged[index]?.role === 'user') break
+    if (merged[index]?.role === 'assistant') {
+      assistantIndex = index
+      break
+    }
+  }
+  if (assistantIndex < 0) {
+    return [
+      ...merged,
+      { ...snapshot, toolActivities: snapshot.toolActivities?.map(tool => ({ ...tool })) },
+    ]
+  }
+
+  const stored = merged[assistantIndex]!
+  merged[assistantIndex] = {
+    ...stored,
+    content: preferCompleteText(stored.content, snapshot.content),
+    reasoning: preferCompleteText(stored.reasoning, snapshot.reasoning) || undefined,
+    toolActivities: mergeToolActivities(stored.toolActivities, snapshot.toolActivities),
+    files: stored.files?.length ? stored.files : snapshot.files,
+    error: snapshot.error || stored.error,
+  }
+  return merged
+}
+
+function mergeAssistantMessage(
+  current: ConversationMessage | undefined,
+  message: ConversationMessage,
+): ConversationMessage {
+  const merged = current
+    ? {
+        ...current,
+        content: appendText(current.content, message.content),
+        reasoning: appendText(current.reasoning, message.reasoning) || undefined,
+        files: current.files?.length || message.files?.length
+          ? [...(current.files || []), ...(message.files || [])]
+          : undefined,
+        error: message.error || current.error,
+      }
+    : {
+        ...message,
+        toolActivities: [],
+        files: message.files ? [...message.files] : undefined,
+      }
+
+  if (message.toolName) {
+    merged.toolActivities = mergeToolActivity(merged.toolActivities, {
+      name: message.toolName,
+      callId: message.toolCallId,
+      arguments: parseToolArguments(message.metadata?.ToolArguments),
     })
   }
-  return result
+  merged.toolActivities = mergeToolActivities(merged.toolActivities, message.toolActivities)
+  return merged
+}
+
+function createAssistantMessage(message: ConversationMessage): ConversationMessage {
+  return {
+    messageId: `assistant-${message.messageId}`,
+    sequence: message.sequence,
+    role: 'assistant',
+    content: '',
+    timestamp: message.timestamp,
+    toolActivities: [],
+  }
+}
+
+function mergeToolActivities(
+  current: ToolActivity[] | undefined,
+  incoming: ToolActivity[] | undefined,
+): ToolActivity[] {
+  let merged = current?.map(tool => ({ ...tool })) || []
+  for (const tool of incoming || []) merged = mergeToolActivity(merged, tool)
+  return merged
+}
+
+function mergeToolActivity(current: ToolActivity[] | undefined, incoming: ToolActivity): ToolActivity[] {
+  const merged = current ? [...current] : []
+  const index = incoming.callId
+    ? merged.findIndex(tool => tool.callId === incoming.callId)
+    : -1
+  if (index < 0) {
+    merged.push({ ...incoming })
+    return merged
+  }
+
+  const existing = merged[index]!
+  merged[index] = {
+    name: existing.name === '工具' && incoming.name !== '工具' ? incoming.name : existing.name,
+    callId: existing.callId || incoming.callId,
+    arguments: incoming.arguments ?? existing.arguments,
+    result: incoming.result ?? existing.result,
+  }
+  return merged
+}
+
+function appendText(current?: string, incoming?: string): string {
+  if (!current) return incoming || ''
+  if (!incoming) return current
+  if (current.endsWith('\n') || incoming.startsWith('\n')) return `${current}${incoming}`
+  return `${current}\n${incoming}`
+}
+
+function preferCompleteText(stored?: string, streamed?: string): string {
+  if (!stored) return streamed || ''
+  if (!streamed || stored.includes(streamed)) return stored
+  if (streamed.includes(stored)) return streamed
+  return stored
 }
 
 export function parseToolArguments(json?: string): unknown {
