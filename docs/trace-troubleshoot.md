@@ -64,13 +64,11 @@ curl -fsS http://localhost:5001/metrics > /tmp/openagent-router.metrics
 grep 'http_server_request_duration' /tmp/openagent-router.metrics
 grep 'openagent_router_forwarding_failures_total' /tmp/openagent-router.metrics
 grep 'openagent_router_provider_selections_total' /tmp/openagent-router.metrics
-grep 'openagent_router_cache_operations_total' /tmp/openagent-router.metrics
-grep 'openagent_router_downstream_health_total' /tmp/openagent-router.metrics
+grep 'openagent_router_cache_hits_total' /tmp/openagent-router.metrics
 ```
 
 - 路由计数增长而转发失败不增长：问题更可能发生在下游业务响应或客户端消费。
 - 某个 `forwarder_error` 持续增长：检查目标解析、连接、超时和下游可用性。
-- `openagent_router_downstream_health_total{outcome="unavailable"}` 增长：优先检查 Engine 地址、健康状态和连接错误。
 - Provider 选择或缓存计数没有增长：确认请求确实经过 Router 的对应认证、选择和缓存路径。
 - 指标不存在：先确认至少完成过一次相应操作，再检查服务的 `OpenTelemetrySource` 是否匹配 Meter 名称。
 

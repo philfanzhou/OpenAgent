@@ -44,7 +44,6 @@ public sealed class RouterHostIntegrationTests : IClassFixture<RouterHostFixture
         Assert.Null(_fixture.PrimaryEngine.LastUserId);
         Assert.Null(_fixture.PrimaryEngine.LastTenantId);
         Assert.Contains("openagent_router_provider_selections_total", metrics, StringComparison.Ordinal);
-        Assert.Contains("provider_id=\"self-engine\"", metrics, StringComparison.Ordinal);
         Assert.Contains("source=\"explicit\"", metrics, StringComparison.Ordinal);
     }
 
@@ -66,8 +65,7 @@ public sealed class RouterHostIntegrationTests : IClassFixture<RouterHostFixture
         Assert.Equal(firstBody, secondBody);
         Assert.Equal(requestCount + 1, _fixture.PrimaryEngine.ChatRequestCount);
         Assert.Contains("cache=\"query\"", metrics, StringComparison.Ordinal);
-        Assert.Contains("operation=\"write\"", metrics, StringComparison.Ordinal);
-        Assert.Contains("operation=\"hit\"", metrics, StringComparison.Ordinal);
+        Assert.Contains("openagent_router_cache_hits_total", metrics, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -130,7 +128,7 @@ public sealed class RouterHostIntegrationTests : IClassFixture<RouterHostFixture
     }
 
     [Fact]
-    public async Task File_UnreachableEngine_MapsForwardingFailureAndHealthMetric()
+    public async Task File_UnreachableEngine_MapsForwardingFailureMetric()
     {
         using RouterApplicationFactory factory = _fixture.CreateFactory("http://127.0.0.1:1");
         using HttpClient client = factory.CreateClient();
@@ -144,8 +142,6 @@ public sealed class RouterHostIntegrationTests : IClassFixture<RouterHostFixture
 
         Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
         Assert.Contains("openagent_router_forwarding_failures_total", metrics, StringComparison.Ordinal);
-        Assert.Contains("openagent_router_downstream_health_total", metrics, StringComparison.Ordinal);
-        Assert.Contains("outcome=\"unavailable\"", metrics, StringComparison.Ordinal);
     }
 
     private static HttpRequestMessage CreateChatRequest(

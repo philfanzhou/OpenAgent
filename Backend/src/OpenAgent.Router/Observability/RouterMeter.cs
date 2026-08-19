@@ -24,10 +24,8 @@ internal static class RouterMeter
         "openagent_router_provider_selections_total");
     private static readonly Counter<long> AclDenialsTotal = Meter.CreateCounter<long>(
         "openagent_router_acl_denials_total");
-    private static readonly Counter<long> CacheOperationsTotal = Meter.CreateCounter<long>(
-        "openagent_router_cache_operations_total");
-    private static readonly Counter<long> DownstreamHealthTotal = Meter.CreateCounter<long>(
-        "openagent_router_downstream_health_total");
+    private static readonly Counter<long> CacheHitsTotal = Meter.CreateCounter<long>(
+        "openagent_router_cache_hits_total");
 
     /// <summary>
     /// 记录一次转发失败
@@ -71,11 +69,10 @@ internal static class RouterMeter
         DownstreamProbesTotal.Add(1, new TagList { { "outcome", Normalize(outcome) } });
     }
 
-    public static void RecordProviderSelection(string? providerId, string source)
+    public static void RecordProviderSelection(string source)
     {
         ProviderSelectionsTotal.Add(1, new TagList
         {
-            { "provider_id", Normalize(providerId) },
             { "source", NormalizeSelectionSource(source) }
         });
     }
@@ -83,21 +80,11 @@ internal static class RouterMeter
     public static void RecordAclDenial() =>
         AclDenialsTotal.Add(1, new TagList { { "reason", "agent_acl" } });
 
-    public static void RecordCacheOperation(string cache, string operation)
+    public static void RecordCacheHit(string cache)
     {
-        CacheOperationsTotal.Add(1, new TagList
+        CacheHitsTotal.Add(1, new TagList
         {
-            { "cache", NormalizeCache(cache) },
-            { "operation", NormalizeCacheOperation(operation) }
-        });
-    }
-
-    public static void RecordDownstreamHealth(string dependency, string outcome)
-    {
-        DownstreamHealthTotal.Add(1, new TagList
-        {
-            { "dependency", NormalizeDependency(dependency) },
-            { "outcome", NormalizeHealthOutcome(outcome) }
+            { "cache", NormalizeCache(cache) }
         });
     }
 
@@ -122,27 +109,4 @@ internal static class RouterMeter
         _ => "other"
     };
 
-    private static string NormalizeCacheOperation(string value) => value.Trim().ToLowerInvariant() switch
-    {
-        "hit" => "hit",
-        "write" => "write",
-        _ => "other"
-    };
-
-    private static string NormalizeDependency(string value) => value.Trim().ToLowerInvariant() switch
-    {
-        "engine" => "engine",
-        "redis" => "redis",
-        _ => "other"
-    };
-
-    private static string NormalizeHealthOutcome(string value) => value.Trim().ToLowerInvariant() switch
-    {
-        "available" => "available",
-        "healthy" => "healthy",
-        "degraded" => "degraded",
-        "unavailable" => "unavailable",
-        "not_configured" => "not_configured",
-        _ => "other"
-    };
 }

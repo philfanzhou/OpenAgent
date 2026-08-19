@@ -37,7 +37,6 @@ internal sealed class RouterReadyCheck : IHealthCheck
         if (string.IsNullOrWhiteSpace(endpoint))
         {
             checks["engine"] = "No Engine endpoint is available";
-            RouterMeter.RecordDownstreamHealth("engine", "unavailable");
             return HealthCheckResult.Unhealthy("Router has no serviceable downstream", data: checks);
         }
 
@@ -45,14 +44,12 @@ internal sealed class RouterReadyCheck : IHealthCheck
         {
             _healthTracker.ReportSuccess(endpoint);
             checks["engine"] = $"Engine is ready: {endpoint}";
-            RouterMeter.RecordDownstreamHealth("engine", "healthy");
             return redisDegraded
                 ? HealthCheckResult.Degraded("Router is serving through a degraded discovery path", data: checks)
                 : HealthCheckResult.Healthy("Router is ready", data: checks);
         }
 
         _healthTracker.ReportFailure(endpoint);
-        RouterMeter.RecordDownstreamHealth("engine", "unavailable");
         RouterLog.DownstreamQuarantined(_logger, endpoint);
         string? fallbackEndpoint = _routeTable.GetTargetEndpoint("chat");
         if (!string.IsNullOrWhiteSpace(fallbackEndpoint) &&
@@ -60,7 +57,6 @@ internal sealed class RouterReadyCheck : IHealthCheck
             await _probe.IsReadyAsync(fallbackEndpoint, cancellationToken).ConfigureAwait(false))
         {
             _healthTracker.ReportSuccess(fallbackEndpoint);
-            RouterMeter.RecordDownstreamHealth("engine", "healthy");
             RouterLog.ReadinessFallbackSelected(_logger, endpoint, fallbackEndpoint);
             checks["engine"] = $"Fallback Engine is ready: {fallbackEndpoint}";
             return HealthCheckResult.Degraded(
@@ -78,7 +74,6 @@ internal sealed class RouterReadyCheck : IHealthCheck
         if (_redis == null)
         {
             checks["redis"] = "Redis is not configured; static discovery is active";
-            RouterMeter.RecordDownstreamHealth("redis", "not_configured");
             return false;
         }
 
@@ -87,7 +82,6 @@ internal sealed class RouterReadyCheck : IHealthCheck
             await _redis.GetDatabase().PingAsync()
                 .WaitAsync(cancellationToken).ConfigureAwait(false);
             checks["redis"] = "Redis connection is healthy";
-            RouterMeter.RecordDownstreamHealth("redis", "healthy");
             return false;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -98,7 +92,6 @@ internal sealed class RouterReadyCheck : IHealthCheck
         {
             RouterLog.RedisPingFailedDuringReadinessCheck(_logger, ex);
             checks["redis"] = "Redis connection is degraded";
-            RouterMeter.RecordDownstreamHealth("redis", "degraded");
             return true;
         }
     }

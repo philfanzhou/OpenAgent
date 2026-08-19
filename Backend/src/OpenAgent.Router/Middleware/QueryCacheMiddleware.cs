@@ -59,7 +59,7 @@ internal sealed class QueryCacheMiddleware(
                     tenantId,
                     context.Request.Headers["X-Conversation-Id"].FirstOrDefault(),
                     Activity.Current?.Id ?? context.TraceIdentifier);
-                RouterMeter.RecordCacheOperation("query", "hit");
+                RouterMeter.RecordCacheHit("query");
                 await ReplayAsync(context, cached).ConfigureAwait(false);
                 return;
             }
@@ -100,7 +100,6 @@ internal sealed class QueryCacheMiddleware(
                     capture.GetCapturedBody()),
                 settings.QueryTimeToLive,
                 context.RequestAborted).ConfigureAwait(false);
-            RouterMeter.RecordCacheOperation("query", "write");
         }
         catch (Exception exception)
         {

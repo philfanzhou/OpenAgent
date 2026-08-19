@@ -65,14 +65,14 @@ internal sealed class AgentSelectionService(
                 entry.ProviderId,
                 cancellationToken).ConfigureAwait(false);
             AgentSelection selection = new(entry.Agent.AgentId, entry.ProviderId);
-            RouterMeter.RecordProviderSelection(selection.ProviderId, "explicit");
+            RouterMeter.RecordProviderSelection("explicit");
             return selection;
         }
 
         if (affinity != null)
         {
             AgentSelection selection = new(null, affinity.ProviderId);
-            RouterMeter.RecordProviderSelection(selection.ProviderId, "conversation");
+            RouterMeter.RecordProviderSelection("conversation");
             return selection;
         }
 
@@ -90,7 +90,7 @@ internal sealed class AgentSelectionService(
                 timeout.Token).ConfigureAwait(false);
             if (selection.Entry == null)
             {
-                RouterMeter.RecordProviderSelection(null, "unavailable");
+                RouterMeter.RecordProviderSelection("unavailable");
                 return null;
             }
 
@@ -103,7 +103,7 @@ internal sealed class AgentSelectionService(
             AgentSelection result = new(
                 selection.Entry.Agent.AgentId,
                 selection.Entry.ProviderId);
-            RouterMeter.RecordProviderSelection(result.ProviderId, selection.Source);
+            RouterMeter.RecordProviderSelection(selection.Source);
             return result;
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
