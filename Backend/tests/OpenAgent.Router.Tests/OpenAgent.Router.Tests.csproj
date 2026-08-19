@@ -6,6 +6,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Testcontainers.Redis" />
     <ProjectReference Include="..\..\src\OpenAgent.Router\OpenAgent.Router.csproj" />
   </ItemGroup>
 

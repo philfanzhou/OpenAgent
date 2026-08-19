@@ -58,8 +58,12 @@ internal static class GatewayProxyHandler
                 : ApplyAnonymousAsync(proxyRequest, new Uri(targetUrl), traceId)).ConfigureAwait(false);
         if (error == ForwarderError.None)
         {
+            context.RequestServices.GetService<IEndpointHealthTracker>()?.ReportSuccess(targetEndpoint);
             return Results.Empty;
         }
+
+        context.RequestServices.GetService<IEndpointHealthTracker>()?.ReportFailure(targetEndpoint);
+        RouterLog.DownstreamQuarantined(logger, targetEndpoint);
 
         RouterLog.ForwardingFailed(
             logger,

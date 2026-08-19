@@ -21,6 +21,7 @@ public class RouterPipelineMiddlewareTests
         await middleware.InvokeAsync(context, AuthenticatedUser, limiter);
 
         Assert.Equal(StatusCodes.Status429TooManyRequests, context.Response.StatusCode);
+        Assert.Equal("2", context.Response.Headers.RetryAfter);
         Assert.Equal("tenant-1:user-1", limiter.ClientId);
         Assert.False(nextCalled);
     }
@@ -71,12 +72,16 @@ public class RouterPipelineMiddlewareTests
     {
         public string? ClientId { get; private set; }
 
-        public Task<bool> IsAllowedAsync(
+        public Task<RateLimitDecision> AcquireAsync(
             string clientId,
             CancellationToken cancellationToken = default)
         {
             ClientId = clientId;
-            return Task.FromResult(allowed);
+            return Task.FromResult(new RateLimitDecision(
+                allowed,
+                TimeSpan.FromSeconds(2),
+                false,
+                "test"));
         }
     }
 }

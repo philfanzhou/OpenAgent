@@ -1,16 +1,17 @@
+using System.Net;
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OpenAgent.Engine.Abstractions;
-using OpenAgent.Engine.Observability;
-using System.Net;
-using System.Text.Json;
 using OpenAgent.Engine.Models;
-using OpenAgent.Engine.Registry;
+using OpenAgent.Engine.Observability;
 
 namespace OpenAgent.Engine.Registry;
 
 internal class RedisRegistry : IEngineRegistry, IDisposable
 {
+    internal const string RegistryIndexKey = "engine:registry:index";
+
     private readonly IRedisConnectionProvider _redis;
     private readonly RegistryEntry _entry;
     private readonly ILogger<RedisRegistry> _logger;
@@ -39,7 +40,8 @@ internal class RedisRegistry : IEngineRegistry, IDisposable
             Host = string.IsNullOrWhiteSpace(heartbeatOptions.AdvertisedHost) ? Dns.GetHostName() : heartbeatOptions.AdvertisedHost,
             Port = heartbeatOptions.AdvertisedPort ?? 0,
             Load = 0,
-            LastHeartbeat = DateTime.UtcNow
+            LastHeartbeat = DateTime.UtcNow,
+            Intents = NormalizeTags(heartbeatOptions.Intents)
         };
     }
 
@@ -71,12 +73,20 @@ internal class RedisRegistry : IEngineRegistry, IDisposable
     {
         try
         {
-            var key = RegistryKey;
-            var json = JsonSerializer.Serialize(_entry);
+            UpdateRoutingMetadata();
+            string key = RegistryKey;
+            string json = JsonSerializer.Serialize(_entry);
 
-            var success = await _redis.StringSetAsync(key, json, GetTtl());
-            _isRegistered = success;
-            if (success)
+            bool stored = await _redis.StringSetAsync(key, json, GetTtl())
+                .WaitAsync(cancellationToken).ConfigureAwait(false);
+            if (stored)
+            {
+                await _redis.SetAddAsync(RegistryIndexKey, _entry.EngineId)
+                    .WaitAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            _isRegistered = stored;
+            if (_isRegistered)
             {
                 EngineLog.EngineRegistered(_logger, _entry.EngineId, _entry.Host, _entry.Port);
             }
@@ -84,6 +94,10 @@ internal class RedisRegistry : IEngineRegistry, IDisposable
             {
                 EngineLog.EngineRegisterStringSetFailed(_logger);
             }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -104,11 +118,24 @@ internal class RedisRegistry : IEngineRegistry, IDisposable
         {
             _entry.LastHeartbeat = DateTime.UtcNow;
             _entry.Load = _loadCollector.GetCurrentLoad();
+            UpdateRoutingMetadata();
 
-            var key = RegistryKey;
-            var json = JsonSerializer.Serialize(_entry);
+            string key = RegistryKey;
+            string json = JsonSerializer.Serialize(_entry);
 
-            await _redis.StringSetAsync(key, json, GetTtl());
+            bool stored = await _redis.StringSetAsync(key, json, GetTtl())
+                .WaitAsync(cancellationToken).ConfigureAwait(false);
+            if (stored)
+            {
+                await _redis.SetAddAsync(RegistryIndexKey, _entry.EngineId)
+                    .WaitAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            _isRegistered = stored;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -121,10 +148,16 @@ internal class RedisRegistry : IEngineRegistry, IDisposable
     {
         try
         {
-            var key = RegistryKey;
-            await _redis.KeyDeleteAsync(key);
+            string key = RegistryKey;
+            await _redis.KeyDeleteAsync(key).WaitAsync(cancellationToken).ConfigureAwait(false);
+            await _redis.SetRemoveAsync(RegistryIndexKey, _entry.EngineId)
+                .WaitAsync(cancellationToken).ConfigureAwait(false);
             _isRegistered = false;
             EngineLog.EngineDeregisteredFromRedis(_logger, _entry.EngineId);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -134,7 +167,11 @@ internal class RedisRegistry : IEngineRegistry, IDisposable
 
     public void Dispose()
     {
-        if (_disposed) return;
+        if (_disposed)
+        {
+            return;
+        }
+
         _disposed = true;
     }
 
@@ -143,5 +180,19 @@ internal class RedisRegistry : IEngineRegistry, IDisposable
         var ttlSeconds = Math.Max(_options.CurrentValue.RegistryTtlSeconds, 1);
         return TimeSpan.FromSeconds(ttlSeconds);
     }
+
+    private void UpdateRoutingMetadata()
+    {
+        HeartbeatOptions options = _options.CurrentValue;
+        _entry.Intents = NormalizeTags(options.Intents);
+    }
+
+    private static string[] NormalizeTags(IEnumerable<string>? values) =>
+        values?
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value.Trim().ToLowerInvariant())
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToArray() ?? [];
 
 }

@@ -15,6 +15,11 @@ internal static class RouterMeter
 
     /// <summary>转发失败总数，按 action/forwarder_error 分组</summary>
     private static readonly Counter<long> ForwardingFailuresTotal = Meter.CreateCounter<long>("openagent_router_forwarding_failures_total");
+    private static readonly Counter<long> DiscoveryRefreshTotal = Meter.CreateCounter<long>("openagent_router_discovery_refresh_total");
+    private static readonly Counter<long> DiscoverySelectionsTotal = Meter.CreateCounter<long>("openagent_router_discovery_selections_total");
+    private static readonly Counter<long> RateLimitDecisionsTotal = Meter.CreateCounter<long>("openagent_router_rate_limit_decisions_total");
+    private static readonly Histogram<int> DiscoveryEngineCount = Meter.CreateHistogram<int>("openagent_router_discovery_engine_count");
+    private static readonly Counter<long> DownstreamProbesTotal = Meter.CreateCounter<long>("openagent_router_downstream_probes_total");
 
     /// <summary>
     /// 记录一次转发失败
@@ -26,6 +31,36 @@ internal static class RouterMeter
             { "action", Normalize(action) },
             { "forwarder_error", Normalize(forwarderError) }
         });
+    }
+
+    public static void RecordDiscoveryRefresh(string outcome, int engineCount)
+    {
+        DiscoveryRefreshTotal.Add(1, new TagList { { "outcome", Normalize(outcome) } });
+        DiscoveryEngineCount.Record(engineCount, new TagList { { "outcome", Normalize(outcome) } });
+    }
+
+    public static void RecordDiscoverySelection(string intent, string source)
+    {
+        DiscoverySelectionsTotal.Add(1, new TagList
+        {
+            { "intent", Normalize(intent) },
+            { "source", Normalize(source) }
+        });
+    }
+
+    public static void RecordRateLimitDecision(RateLimitDecision decision)
+    {
+        RateLimitDecisionsTotal.Add(1, new TagList
+        {
+            { "outcome", decision.IsAllowed ? "allowed" : "denied" },
+            { "source", Normalize(decision.Source) },
+            { "degraded", decision.IsDegraded }
+        });
+    }
+
+    public static void RecordDownstreamProbe(string outcome)
+    {
+        DownstreamProbesTotal.Add(1, new TagList { { "outcome", Normalize(outcome) } });
     }
 
     private static string Normalize(string? value) =>

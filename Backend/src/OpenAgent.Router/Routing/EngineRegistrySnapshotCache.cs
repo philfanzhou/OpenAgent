@@ -1,5 +1,6 @@
 using System.Text.Json;
 using OpenAgent.Router.Observability;
+using OpenAgent.Router.Options;
 using OpenAgent.Router.Routing;
 using StackExchange.Redis;
 
@@ -7,31 +8,49 @@ namespace OpenAgent.Router;
 
 public sealed class EngineRegistrySnapshotCache : BackgroundService
 {
+    internal const string RegistryIndexKey = "engine:registry:index";
+
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
+
     private readonly IConnectionMultiplexer? _redis;
     private readonly ILogger<EngineRegistrySnapshotCache> _logger;
-    private readonly TimeSpan _refreshInterval;
     private readonly TimeProvider _timeProvider;
     private readonly RegistryPoller _poller;
+    private readonly ServiceDiscoverySettings _settings;
     private volatile IReadOnlyList<EngineRegistryEntry> _snapshot = Array.Empty<EngineRegistryEntry>();
+    private DateTimeOffset? _lastSuccessfulRefresh;
+    private volatile bool _isRedisAvailable;
 
     public IReadOnlyList<EngineRegistryEntry> Snapshot => _snapshot;
-
-    public EngineRegistrySnapshotCache(IConnectionMultiplexer? redis, ILogger<EngineRegistrySnapshotCache> logger)
-        : this(redis, logger, TimeSpan.FromSeconds(5), TimeProvider.System)
-    {
-    }
+    public bool IsRedisAvailable => _isRedisAvailable;
+    public DateTimeOffset? LastSuccessfulRefresh => _lastSuccessfulRefresh;
 
     public EngineRegistrySnapshotCache(
         IConnectionMultiplexer? redis,
         ILogger<EngineRegistrySnapshotCache> logger,
-        TimeSpan refreshInterval,
+        IConfiguration configuration)
+        : this(
+            redis,
+            logger,
+            ServiceDiscoverySettings.FromConfiguration(configuration),
+            TimeProvider.System)
+    {
+    }
+
+    internal EngineRegistrySnapshotCache(
+        IConnectionMultiplexer? redis,
+        ILogger<EngineRegistrySnapshotCache> logger,
+        ServiceDiscoverySettings settings,
         TimeProvider timeProvider)
     {
         _redis = redis;
         _logger = logger;
-        _refreshInterval = refreshInterval;
+        _settings = settings;
         _timeProvider = timeProvider;
-        _poller = new RegistryPoller(refreshInterval, timeProvider, logger);
+        _poller = new RegistryPoller(settings.RefreshInterval, timeProvider, logger);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -43,73 +62,154 @@ public sealed class EngineRegistrySnapshotCache : BackgroundService
     {
         try
         {
-            _snapshot = await LoadHealthyEnginesAsync(cancellationToken);
+            IReadOnlyList<EngineRegistryEntry> engines = await LoadHealthyEnginesAsync(
+                cancellationToken).ConfigureAwait(false);
+            _snapshot = engines;
+            _isRedisAvailable = true;
+            _lastSuccessfulRefresh = _timeProvider.GetUtcNow();
+            RouterMeter.RecordDiscoveryRefresh("success", engines.Count);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;
         }
         catch (Exception ex)
         {
-            RouterLog.RefreshSnapshotPreservingPrevious(_logger, ex);
+            _isRedisAvailable = false;
+            RouterMeter.RecordDiscoveryRefresh("redis_error", _snapshot.Count);
+            RouterLog.RefreshSnapshotUnavailable(_logger, ex, _settings.RedisFailureMode.ToString());
+
+            if (!CanUseLastKnownSnapshot())
+            {
+                _snapshot = [];
+            }
         }
     }
 
-    private async Task<IReadOnlyList<EngineRegistryEntry>> LoadHealthyEnginesAsync(CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<EngineRegistryEntry>> LoadHealthyEnginesAsync(
+        CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         if (_redis == null)
         {
-            return Array.Empty<EngineRegistryEntry>();
+            throw new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Redis is not configured.");
         }
 
-        var db = _redis.GetDatabase();
-        var endpoint = _redis.GetEndPoints().FirstOrDefault();
-        if (endpoint == null)
+        IDatabase database = _redis.GetDatabase();
+        RedisValue[] members = await database.SetMembersAsync(RegistryIndexKey)
+            .WaitAsync(cancellationToken).ConfigureAwait(false);
+        string[] engineIds = members
+            .Where(member => !member.IsNullOrEmpty)
+            .Select(member => member.ToString())
+            .Where(engineId => !string.IsNullOrWhiteSpace(engineId))
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+        if (engineIds.Length == 0)
         {
-            return Array.Empty<EngineRegistryEntry>();
+            return [];
         }
 
-        var server = _redis.GetServer(endpoint);
-        var engineKeys = server.Keys(pattern: "engine:registry:*").ToArray();
+        RedisKey[] keys = engineIds
+            .Select(engineId => (RedisKey)$"engine:registry:{engineId}")
+            .ToArray();
+        RedisValue[] payloads = await database.StringGetAsync(keys)
+            .WaitAsync(cancellationToken).ConfigureAwait(false);
+        DateTime utcNow = _timeProvider.GetUtcNow().UtcDateTime;
+        List<EngineRegistryEntry> healthyEngines = new(engineIds.Length);
+        List<RedisValue> staleMembers = [];
 
-        if (engineKeys.Length == 0)
-        {
-            return Array.Empty<EngineRegistryEntry>();
-        }
-
-        var healthyEngines = new List<EngineRegistryEntry>();
-
-        foreach (var key in engineKeys)
+        for (int index = 0; index < engineIds.Length; index++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-
-            RedisValue json = await db.StringGetAsync(key).ConfigureAwait(false);
-            if (json.IsNullOrEmpty) continue;
+            RedisValue payload = payloads[index];
+            if (payload.IsNullOrEmpty)
+            {
+                staleMembers.Add(engineIds[index]);
+                continue;
+            }
 
             try
             {
-                var entry = JsonSerializer.Deserialize<EngineRegistryEntry>(json.ToString(), new JsonSerializerOptions
+                EngineRegistryEntry? entry = JsonSerializer.Deserialize<EngineRegistryEntry>(
+                    payload.ToString(), JsonOptions);
+                if (!IsValid(entry, engineIds[index]))
                 {
-                    PropertyNameCaseInsensitive = true
-                });
-
-                if (entry == null) continue;
-
-                var heartbeatAge = DateTime.UtcNow - entry.LastHeartbeat;
-                if (heartbeatAge > TimeSpan.FromSeconds(60))
-                {
-                    RouterLog.EngineHeartbeatStale(_logger, entry.EngineId, heartbeatAge.TotalSeconds);
+                    staleMembers.Add(engineIds[index]);
                     continue;
                 }
 
+                TimeSpan heartbeatAge = utcNow - entry!.LastHeartbeat.ToUniversalTime();
+                if (heartbeatAge > _settings.HeartbeatStaleAfter)
+                {
+                    RouterLog.EngineHeartbeatStale(_logger, entry.EngineId, heartbeatAge.TotalSeconds);
+                    staleMembers.Add(engineIds[index]);
+                    continue;
+                }
+
+                entry.Intents = NormalizeTags(entry.Intents);
                 healthyEngines.Add(entry);
             }
             catch (JsonException ex)
             {
-                RouterLog.EngineEntryDeserializationFailed(_logger, ex, key);
+                RouterLog.EngineEntryDeserializationFailed(_logger, ex, keys[index]);
+                staleMembers.Add(engineIds[index]);
             }
         }
 
-        return healthyEngines;
+        if (staleMembers.Count > 0)
+        {
+            await RemoveStaleMembersAsync(database, staleMembers.ToArray(), cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        return healthyEngines
+            .OrderBy(entry => entry.EngineId, StringComparer.Ordinal)
+            .ToArray();
     }
+
+    private async Task RemoveStaleMembersAsync(
+        IDatabase database,
+        RedisValue[] members,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await database.SetRemoveAsync(RegistryIndexKey, members)
+                .WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            RouterLog.RegistryIndexCleanupFailed(_logger, ex, members.Length);
+        }
+    }
+
+    private bool CanUseLastKnownSnapshot()
+    {
+        if (_settings.RedisFailureMode != RedisDiscoveryFailureMode.LastKnown ||
+            _lastSuccessfulRefresh is not DateTimeOffset refreshedAt)
+        {
+            return false;
+        }
+
+        return _timeProvider.GetUtcNow() - refreshedAt <= _settings.SnapshotMaxAge;
+    }
+
+    private static bool IsValid(EngineRegistryEntry? entry, string expectedEngineId) =>
+        entry != null &&
+        string.Equals(entry.EngineId, expectedEngineId, StringComparison.Ordinal) &&
+        !string.IsNullOrWhiteSpace(entry.Host) &&
+        entry.Port is > 0 and <= 65535;
+
+    private static string[] NormalizeTags(IEnumerable<string>? values) =>
+        values?
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value.Trim().ToLowerInvariant())
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToArray() ?? [];
 }

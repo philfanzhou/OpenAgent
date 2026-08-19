@@ -14,6 +14,8 @@ public static class RouterServiceCollectionExtensions
         IConfiguration configuration)
     {
         services.AddSingleton<IConsistentHashRing, JumpHashConsistentHashRing>();
+        services.AddSingleton<IEndpointHealthTracker, EndpointHealthTracker>();
+        services.AddSingleton<IEngineReadinessProbe, EngineReadinessProbe>();
         services.AddOptions<IntentRecognitionOptions>()
             .Bind(configuration.GetSection(IntentRecognitionOptions.SectionName))
             .Validate(IntentRecognitionOptions.IsValid, "Intent recognition configuration is invalid")
@@ -53,10 +55,10 @@ public static class RouterServiceCollectionExtensions
             services.AddSingleton<IRouteTable>(provider =>
             {
                 var dynamicRouteTable = new RedisServiceDiscoveryRouteTable(
-                    provider.GetRequiredService<IConnectionMultiplexer>(),
                     provider.GetRequiredService<EngineRegistrySnapshotCache>(),
                     provider.GetRequiredService<ILogger<RedisServiceDiscoveryRouteTable>>(),
-                    provider.GetRequiredService<IConsistentHashRing>());
+                    provider.GetRequiredService<IConsistentHashRing>(),
+                    provider.GetRequiredService<IEndpointHealthTracker>());
                 var staticRouteTable = new InMemoryRouteTable(configuration);
                 return new CompositeRouteTable(
                     dynamicRouteTable,

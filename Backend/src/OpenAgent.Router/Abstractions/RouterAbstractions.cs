@@ -25,7 +25,27 @@ public interface IRouteTable
 
 public interface IRateLimiter
 {
-    Task<bool> IsAllowedAsync(string clientId, CancellationToken cancellationToken = default);
+    Task<RateLimitDecision> AcquireAsync(
+        string clientId,
+        CancellationToken cancellationToken = default);
+}
+
+public sealed record RateLimitDecision(
+    bool IsAllowed,
+    TimeSpan RetryAfter,
+    bool IsDegraded,
+    string Source);
+
+internal interface IEndpointHealthTracker
+{
+    bool IsAvailable(string endpoint);
+    void ReportSuccess(string endpoint);
+    void ReportFailure(string endpoint);
+}
+
+internal interface IEngineReadinessProbe
+{
+    Task<bool> IsReadyAsync(string endpoint, CancellationToken cancellationToken = default);
 }
 
 public interface IQueryCache

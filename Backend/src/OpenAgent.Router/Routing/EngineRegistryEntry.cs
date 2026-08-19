@@ -7,4 +7,5 @@ public sealed class EngineRegistryEntry
     public int Port { get; set; }
     public int Load { get; set; }
     public DateTime LastHeartbeat { get; set; }
+    public string[] Intents { get; set; } = [];
 }
