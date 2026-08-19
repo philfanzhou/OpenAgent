@@ -12,7 +12,6 @@ internal sealed class IntentAgentSelector(
     private readonly IntentRecognitionOptions _options = options.Value;
 
     public async Task<string?> SelectAsync(
-        AgentProviderRequestContext requestContext,
         string message,
         IReadOnlyList<AgentSummary> candidates,
         CancellationToken cancellationToken)
@@ -33,7 +32,6 @@ internal sealed class IntentAgentSelector(
             }
 
             IntentRecognitionResult? result = await provider.RecognizeIntentAsync(
-                requestContext,
                 _options.AgentId,
                 candidates,
                 message,

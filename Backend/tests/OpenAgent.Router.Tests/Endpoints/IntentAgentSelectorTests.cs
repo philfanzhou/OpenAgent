@@ -1,5 +1,4 @@
 using OpenAgent.Contracts.Configuration;
-using OpenAgent.Contracts.Security;
 using OpenAgent.Router.Endpoints;
 using OpenAgent.Router.Models;
 using OpenAgent.Router.Options;
@@ -52,12 +51,6 @@ public class IntentAgentSelectorTests
             }));
 
         string? decision = await selector.SelectAsync(
-            new AgentProviderRequestContext(new AgentUserContext
-            {
-                UserId = "user-1",
-                TenantId = "tenant-1",
-                IsAuthenticated = true
-            }),
             "find my invoice",
             Candidates,
             CancellationToken.None);
@@ -89,7 +82,6 @@ public class IntentAgentSelectorTests
             Task.FromResult(AgentProviderConversationStatus.NotFound);
 
         public Task<IntentRecognitionResult?> RecognizeIntentAsync(
-            AgentProviderRequestContext requestContext,
             string intentAgentId,
             IReadOnlyList<AgentSummary> agents,
             string message,

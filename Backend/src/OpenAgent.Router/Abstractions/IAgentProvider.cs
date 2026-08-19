@@ -17,7 +17,6 @@ public interface IAgentProvider
         CancellationToken cancellationToken = default);
 
     Task<IntentRecognitionResult?> RecognizeIntentAsync(
-        AgentProviderRequestContext requestContext,
         string intentAgentId,
         IReadOnlyList<AgentSummary> agents,
         string message,

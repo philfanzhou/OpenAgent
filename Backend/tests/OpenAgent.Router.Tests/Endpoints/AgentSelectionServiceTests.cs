@@ -314,7 +314,6 @@ public class AgentSelectionServiceTests
         }
 
         public Task<IntentRecognitionResult?> RecognizeIntentAsync(
-            AgentProviderRequestContext requestContext,
             string intentAgentId,
             IReadOnlyList<AgentSummary> candidates,
             string message,
@@ -357,7 +356,6 @@ public class AgentSelectionServiceTests
         public int CallCount { get; private set; }
 
         public Task<string?> SelectAsync(
-            AgentProviderRequestContext requestContext,
             string message,
             IReadOnlyList<AgentSummary> candidates,
             CancellationToken cancellationToken)
