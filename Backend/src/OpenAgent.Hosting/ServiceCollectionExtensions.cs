@@ -56,6 +56,7 @@ public static class ServiceCollectionExtensions
                         .WithOrigins(options.CorsAllowedOrigins)
                         .AllowAnyMethod()
                         .AllowAnyHeader()
+                        .WithExposedHeaders("X-OpenAgent-Selected-Agent-Id")
                         .AllowCredentials()
                         .SetPreflightMaxAge(TimeSpan.FromMinutes(30));
                 });

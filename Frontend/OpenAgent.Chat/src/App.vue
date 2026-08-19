@@ -15,6 +15,7 @@ import { AUTO_AGENT_ID, type AgentConfigEntity, type AgentSummary, type AuthConf
 import { usePanelLayout } from './composables/usePanelLayout'
 import { useConversationStreams } from './composables/useConversationStreams'
 import { mergeConversationRecords, replaceConversationRecord, selectionMatchesConversation } from './conversationCollection'
+import { createStreamingAssistantContentState, enqueueAssistantContent, markAssistantPhaseBoundary } from './streamingAssistantContent'
 import { createTypewriterQueue, type TypewriterQueue } from './typewriterQueue'
 
 const selectedConversationStorageKey = 'openagent.chat.selected-conversation-id'
@@ -802,6 +803,8 @@ async function send(): Promise<void> {
   let streamedAssistant: ConversationMessage | undefined
   let receivedDone = false
   let completedAgentId = conversation.agentId
+  const assistantContentState = createStreamingAssistantContentState()
+  let showedEarlyRoutingNotice = false
   try {
     conversation.messages ||= []
     conversation.status = 'Running'
@@ -851,8 +854,17 @@ async function send(): Promise<void> {
         conversation.conversationId = conversationId
         if (selectionMatches) sessionStorage.setItem(selectedConversationStorageKey, conversationId)
       }
-      if (event.type === 'content') {
-        contentQueue.enqueue(event.content || '')
+      if (event.type === 'agent_selected') {
+        if (isNewConversation && selectedAgentId.value === AUTO_AGENT_ID && event.agentId) {
+          completedAgentId = event.agentId
+          conversation.agentId = event.agentId
+          selectedAgentId.value = event.agentId
+          const routed = agents.value.find(agent => agent.agentId === event.agentId)
+          ElMessage.info(`已由意图识别路由到 Agent「${routed?.name || event.agentId}」`)
+          showedEarlyRoutingNotice = true
+        }
+      } else if (event.type === 'content') {
+        enqueueAssistantContent(assistantContentState, content => contentQueue?.enqueue(content), event.content || '')
       } else if (event.type === 'reasoning') {
         reasoning += event.content || ''
         if (performance.now() - lastFlush > 100) {
@@ -860,6 +872,7 @@ async function send(): Promise<void> {
           lastFlush = performance.now()
         }
       } else if (event.type === 'tool_call') {
+        markAssistantPhaseBoundary(assistantContentState)
         assistantMessage.toolActivities ||= []
         assistantMessage.toolActivities.push({
           name: event.toolName || '工具',
@@ -896,7 +909,7 @@ async function send(): Promise<void> {
     }
     await refreshConversations(false)
     // 初次会话：若后端意图识别将对话路由到了其他 Agent，更新右上角选择器并提示。
-    if (isNewConversation && completedAgentId && completedAgentId !== requestedAgentId
+    if (!showedEarlyRoutingNotice && isNewConversation && completedAgentId && completedAgentId !== requestedAgentId
       && selectedConversation.value?.conversationId === conversationId) {
       const routed = agents.value.find(agent => agent.agentId === completedAgentId)
       selectedAgentId.value = completedAgentId
