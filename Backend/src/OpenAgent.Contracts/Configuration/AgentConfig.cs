@@ -159,7 +159,6 @@ public class SkillInstanceConfig
     public string Description { get; set; } = string.Empty;
     public string ParametersJsonSchema { get; set; } = string.Empty;
     public string Type { get; set; } = SkillTypes.AgentSkill;
-    public string? EndpointUrl { get; set; }
     public string Source { get; set; } = "Local";
     public string SourceType { get; set; } = SkillSourceTypes.ObjectStorage;
     public string? SourceId { get; set; }
@@ -178,7 +177,6 @@ public class SkillInstanceConfig
 public static class SkillTypes
 {
     public const string AgentSkill = "AgentSkill";
-    public const string HttpEndpoint = "HttpEndpoint";
 }
 
 public static class SkillSourceTypes

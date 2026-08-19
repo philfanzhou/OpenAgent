@@ -18,12 +18,13 @@
 | McpServerConfig | Redis `mcp:published:index` + IMcpRegistry (内存注册) | 获取独立 MCP Server 连接配置；不复制到 Agent |
 | RagInstanceConfig | IRagRegistry (内存注册) | 获取 RAG 实例配置 |
 | Agent Skill 文件目录 | S3 兼容对象存储 | ZIP/MD 上传后按解压目录写入文件对象；运行时 materialize 到请求级临时目录并由 MAF `AgentSkillsProvider` 读取 |
-| Skill 目录元数据 | Redis `skill:published:index` / `skill:registry:{skillId}` | 提供可绑定的 Skill 列表；不表示某个 Agent 已绑定 |
+| Skill 目录元数据 | PostgreSQL `SkillDefinitions`；Redis 为派生缓存 | 按租户保存可绑定的 Skill 元数据；不表示某个 Agent 已绑定 |
 
 ## 持久化规则
 
 - ConversationRecord、ConversationMessage 与 FileAsset 只写入 PostgreSQL。
 - 文件字节只写入 S3 兼容对象存储；对象存储不拥有用户、租户或会话事实。
+- Skill 元数据先写入 PostgreSQL；Redis 只作为可删除、可重建的派生缓存。Skill 文件对象必须落在 `files/tenants/{tenant-hash}/users/{user-hash}/...` 租户分区。
 - Redis 可以保存可过期的会话热副本和分布式锁令牌，但不拥有会话或资产事实；数据库提交成功后才更新热副本，缓存可由数据库回填。
 
 ## 禁止事项

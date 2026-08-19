@@ -18,8 +18,7 @@ public class RedisSkillCatalogStoreTests
 
         SkillInstanceConfig? result = await catalog.GetAsync(
             "tenant-a",
-            "lookup",
-            SkillTypes.HttpEndpoint);
+            "lookup");
 
         Assert.Equal("Database", result?.Description);
     }
@@ -33,8 +32,7 @@ public class RedisSkillCatalogStoreTests
 
         SkillInstanceConfig? result = await catalog.GetAsync(
             "tenant-b",
-            "lookup",
-            SkillTypes.HttpEndpoint);
+            "lookup");
 
         Assert.Null(result);
     }
@@ -45,9 +43,9 @@ public class RedisSkillCatalogStoreTests
         TenantId = tenantId,
         Name = "lookup",
         Description = description,
-        Type = SkillTypes.HttpEndpoint,
-        SourceType = SkillSourceTypes.PostgreSql,
-        EndpointUrl = "https://example.test/lookup"
+        Type = SkillTypes.AgentSkill,
+        SourceType = SkillSourceTypes.ObjectStorage,
+        ObjectKey = $"files/tenants/{tenantId}/skills/lookup/index.json"
     };
 
     private sealed class RecordingRepository(SkillInstanceConfig skill) : ISkillDefinitionRepository
@@ -55,22 +53,18 @@ public class RedisSkillCatalogStoreTests
         public Task<SkillInstanceConfig?> GetAsync(
             string tenantId,
             string skillId,
-            string type,
             CancellationToken cancellationToken = default) =>
             Task.FromResult<SkillInstanceConfig?>(
                 string.Equals(skill.TenantId, tenantId, StringComparison.Ordinal)
                 && string.Equals(skill.Id, skillId, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(skill.Type, type, StringComparison.OrdinalIgnoreCase)
                     ? skill
                     : null);
 
         public Task<IReadOnlyList<SkillInstanceConfig>> ListAsync(
             string tenantId,
-            string? type = null,
             CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<SkillInstanceConfig>>(
                 string.Equals(skill.TenantId, tenantId, StringComparison.Ordinal)
-                && (type == null || string.Equals(skill.Type, type, StringComparison.OrdinalIgnoreCase))
                     ? [skill]
                     : []);
 
@@ -81,7 +75,6 @@ public class RedisSkillCatalogStoreTests
         public Task<bool> DeleteAsync(
             string tenantId,
             string skillId,
-            string type,
             CancellationToken cancellationToken = default) => Task.FromResult(false);
     }
 }

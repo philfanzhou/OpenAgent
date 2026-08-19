@@ -10,12 +10,10 @@ public interface ISkillCatalog
 {
     Task<IReadOnlyList<SkillInstanceConfig>> ListAsync(
         string tenantId,
-        string? type = null,
         CancellationToken cancellationToken = default);
 
     Task<SkillInstanceConfig?> GetAsync(
         string tenantId,
         string skillId,
-        string type,
         CancellationToken cancellationToken = default);
 }

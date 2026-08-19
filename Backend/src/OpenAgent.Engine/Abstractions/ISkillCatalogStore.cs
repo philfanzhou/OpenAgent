@@ -9,6 +9,5 @@ internal interface ISkillCatalogStore : ISkillCatalog
     Task RemoveAsync(
         string tenantId,
         string skillId,
-        string type,
         CancellationToken cancellationToken = default);
 }

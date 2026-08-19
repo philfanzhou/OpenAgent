@@ -165,19 +165,10 @@ public sealed class InfrastructurePersistenceTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task SkillDefinitionRepository_UsesTenantIdSkillIdAndTypeAsIdentity()
+    public async Task SkillDefinitionRepository_PersistsTenantScopedObjectStorageSkill()
     {
         ServiceProvider services = Assert.IsType<ServiceProvider>(_services);
         ISkillDefinitionRepository repository = services.GetRequiredService<ISkillDefinitionRepository>();
-        var endpoint = new SkillInstanceConfig
-        {
-            TenantId = "tenant-skill",
-            Id = "lookup",
-            Name = "lookup",
-            Type = SkillTypes.HttpEndpoint,
-            SourceType = SkillSourceTypes.PostgreSql,
-            EndpointUrl = "https://example.test/lookup"
-        };
         var package = new SkillInstanceConfig
         {
             TenantId = "tenant-skill",
@@ -187,21 +178,15 @@ public sealed class InfrastructurePersistenceTests : IAsyncLifetime
             SourceType = SkillSourceTypes.ObjectStorage,
             ObjectKey = "private/tenants/example/users/example/skill.json"
         };
-        await repository.UpsertAsync(endpoint);
         await repository.UpsertAsync(package);
 
-        SkillInstanceConfig? storedEndpoint = await repository.GetAsync(
-            "tenant-skill",
-            "lookup",
-            SkillTypes.HttpEndpoint);
+        SkillInstanceConfig? storedPackage = await repository.GetAsync("tenant-skill", "lookup");
         IReadOnlyList<SkillInstanceConfig> stored = await repository.ListAsync("tenant-skill");
-        SkillInstanceConfig? foreign = await repository.GetAsync(
-            "another-tenant",
-            "lookup",
-            SkillTypes.HttpEndpoint);
+        SkillInstanceConfig? foreign = await repository.GetAsync("another-tenant", "lookup");
 
-        Assert.Equal(SkillSourceTypes.PostgreSql, storedEndpoint?.SourceType);
-        Assert.Equal(2, stored.Count);
+        Assert.Equal(SkillSourceTypes.ObjectStorage, storedPackage?.SourceType);
+        Assert.Equal("private/tenants/example/users/example/skill.json", storedPackage?.ObjectKey);
+        Assert.Single(stored);
         Assert.Null(foreign);
     }
 

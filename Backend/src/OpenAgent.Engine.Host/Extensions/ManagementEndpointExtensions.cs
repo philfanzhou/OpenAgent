@@ -215,16 +215,8 @@ internal static class ManagementEndpointExtensions
                 SkillInstanceConfig? packageSkill = await skillCatalog.GetAsync(
                     tenantId,
                     skillId,
-                    SkillTypes.AgentSkill,
                     cancellationToken).ConfigureAwait(false);
-                SkillInstanceConfig? endpointSkill = packageSkill == null
-                    ? await skillCatalog.GetAsync(
-                        tenantId,
-                        skillId,
-                        SkillTypes.HttpEndpoint,
-                        cancellationToken).ConfigureAwait(false)
-                    : null;
-                if (packageSkill == null && endpointSkill == null)
+                if (packageSkill == null)
                     return Results.BadRequest(new { error = $"Skill '{skillId}' is not available to this tenant." });
             }
             AgentConfigEntity merged = MergeSecrets(existing, entity);
@@ -450,14 +442,12 @@ internal static class ManagementEndpointExtensions
         group.MapGet("/skills", async (
             [FromServices] ISkillCatalogStore catalog,
             HttpContext context,
-            [FromQuery] string? type,
             CancellationToken cancellationToken) =>
         {
             if (!HasScope(context, "agent.config.read"))
                 return Results.Forbid();
             return Results.Ok(await catalog.ListAsync(
                 RequireTenant(context),
-                type,
                 cancellationToken).ConfigureAwait(false));
         });
 
@@ -480,7 +470,6 @@ internal static class ManagementEndpointExtensions
             [FromServices] ISkillCatalogStore catalog,
             HttpContext context,
             string skillId,
-            [FromQuery] string? type,
             CancellationToken cancellationToken) =>
         {
             if (!HasScope(context, "agent.config.read"))
@@ -488,35 +477,8 @@ internal static class ManagementEndpointExtensions
             SkillInstanceConfig? skill = await catalog.GetAsync(
                 RequireTenant(context),
                 skillId,
-                string.IsNullOrWhiteSpace(type) ? SkillTypes.AgentSkill : type,
                 cancellationToken).ConfigureAwait(false);
             return skill == null ? Results.NotFound() : Results.Ok(skill);
-        });
-
-        group.MapPut("/skills/{skillId}", async (
-            [FromServices] ISkillCatalogStore catalog,
-            HttpContext context,
-            string skillId,
-            [FromBody] SkillInstanceConfig skill,
-            CancellationToken cancellationToken) =>
-        {
-            if (!HasScope(context, "agent.config.write"))
-                return Results.Forbid();
-            if (!string.Equals(skill.Type, SkillTypes.HttpEndpoint, StringComparison.OrdinalIgnoreCase))
-                return Results.BadRequest(new { error = "Only HTTP Endpoint Skills can be saved directly." });
-            if (!Uri.TryCreate(skill.EndpointUrl, UriKind.Absolute, out Uri? endpoint)
-                || endpoint.Scheme is not ("http" or "https"))
-                return Results.BadRequest(new { error = "HTTP Endpoint Skill requires an HTTP(S) endpoint URL." });
-            if (string.IsNullOrWhiteSpace(skill.Name))
-                return Results.BadRequest(new { error = "Skill name is required." });
-
-            skill.Id = skillId;
-            skill.TenantId = RequireTenant(context);
-            skill.Type = SkillTypes.HttpEndpoint;
-            skill.Source = SkillSourceTypes.PostgreSql;
-            skill.SourceType = SkillSourceTypes.PostgreSql;
-            await catalog.PublishAsync(skill, cancellationToken).ConfigureAwait(false);
-            return Results.Ok(skill);
         });
 
         group.MapPost("/skills/packages", async (
@@ -558,7 +520,6 @@ internal static class ManagementEndpointExtensions
             [FromServices] SkillPackageManagementService packages,
             HttpContext context,
             string skillId,
-            [FromQuery] string? type,
             CancellationToken cancellationToken) =>
         {
             if (!HasScope(context, "agent.config.write"))
@@ -566,7 +527,6 @@ internal static class ManagementEndpointExtensions
             return await packages.DeleteCatalogAsync(
                 RequireTenant(context),
                 skillId,
-                string.IsNullOrWhiteSpace(type) ? SkillTypes.AgentSkill : type,
                 cancellationToken).ConfigureAwait(false)
                 ? Results.NoContent()
                 : Results.NotFound();

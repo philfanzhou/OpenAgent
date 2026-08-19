@@ -9,13 +9,12 @@ internal sealed class SkillCatalog : ISkillCatalog
 
     public Task<IReadOnlyList<SkillInstanceConfig>> ListAsync(
         string tenantId,
-        string? type = null,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         IReadOnlyList<SkillInstanceConfig> skills = _skills.Values
             .Where(skill => string.Equals(skill.TenantId, tenantId, StringComparison.Ordinal)
-                && (type == null || string.Equals(skill.Type, type, StringComparison.OrdinalIgnoreCase)))
+                && string.Equals(skill.Type, SkillTypes.AgentSkill, StringComparison.OrdinalIgnoreCase))
             .ToList()
             .AsReadOnly();
         return Task.FromResult(skills);
@@ -24,11 +23,10 @@ internal sealed class SkillCatalog : ISkillCatalog
     public Task<SkillInstanceConfig?> GetAsync(
         string tenantId,
         string skillId,
-        string type,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        _skills.TryGetValue(BuildKey(tenantId, skillId, type), out SkillInstanceConfig? skill);
+        _skills.TryGetValue(BuildKey(tenantId, skillId), out SkillInstanceConfig? skill);
         return Task.FromResult(skill);
     }
 
@@ -36,15 +34,15 @@ internal sealed class SkillCatalog : ISkillCatalog
     {
         if (!string.IsNullOrWhiteSpace(skill.TenantId)
             && !string.IsNullOrWhiteSpace(skill.Id)
-            && !string.IsNullOrWhiteSpace(skill.Type))
+            && string.Equals(skill.Type, SkillTypes.AgentSkill, StringComparison.OrdinalIgnoreCase))
         {
-            _skills[BuildKey(skill.TenantId, skill.Id, skill.Type)] = skill;
+            _skills[BuildKey(skill.TenantId, skill.Id)] = skill;
         }
     }
 
-    internal bool Remove(string tenantId, string skillId, string type) =>
-        _skills.Remove(BuildKey(tenantId, skillId, type));
+    internal bool Remove(string tenantId, string skillId) =>
+        _skills.Remove(BuildKey(tenantId, skillId));
 
-    private static string BuildKey(string tenantId, string skillId, string type) =>
-        $"{tenantId}\n{type}\n{skillId}";
+    private static string BuildKey(string tenantId, string skillId) =>
+        $"{tenantId}\n{skillId}";
 }

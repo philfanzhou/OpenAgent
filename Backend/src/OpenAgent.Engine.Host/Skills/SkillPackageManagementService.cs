@@ -122,7 +122,6 @@ internal sealed class SkillPackageManagementService(
             : await skillCatalog.GetAsync(
                 tenantId,
                 metadata.Name,
-                SkillTypes.AgentSkill,
                 cancellationToken).ConfigureAwait(false);
         string packageId = $"skill-{Guid.NewGuid():N}";
         const string packagePrefixRoot = "skill-packages";
@@ -227,18 +226,16 @@ internal sealed class SkillPackageManagementService(
     internal async Task<bool> DeleteCatalogAsync(
         string tenantId,
         string skillId,
-        string type,
         CancellationToken cancellationToken)
     {
         if (skillCatalog == null) return false;
         SkillInstanceConfig? skill = await skillCatalog.GetAsync(
             tenantId,
             skillId,
-            type,
             cancellationToken).ConfigureAwait(false);
         if (skill == null) return false;
         await DeletePackageBestEffortAsync(tenantId, skill.ObjectKey, skill.PackageFormat).ConfigureAwait(false);
-        await skillCatalog.RemoveAsync(tenantId, skillId, type, cancellationToken).ConfigureAwait(false);
+        await skillCatalog.RemoveAsync(tenantId, skillId, cancellationToken).ConfigureAwait(false);
         return true;
     }
 
@@ -251,7 +248,6 @@ internal sealed class SkillPackageManagementService(
         SkillInstanceConfig? skill = await skillCatalog.GetAsync(
             tenantId,
             skillId,
-            SkillTypes.AgentSkill,
             cancellationToken).ConfigureAwait(false);
         if (skill == null || string.IsNullOrWhiteSpace(skill.ObjectKey)) return null;
         EnsureTenantObjectKey(skill.ObjectKey, tenantId);

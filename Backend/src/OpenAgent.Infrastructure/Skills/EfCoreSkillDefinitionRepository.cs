@@ -17,7 +17,6 @@ internal sealed class EfCoreSkillDefinitionRepository(
     public async Task<SkillInstanceConfig?> GetAsync(
         string tenantId,
         string skillId,
-        string type,
         CancellationToken cancellationToken = default)
     {
         await using OpenAgentDbContext database = await contexts
@@ -26,7 +25,9 @@ internal sealed class EfCoreSkillDefinitionRepository(
         SkillDefinitionEntity? entity = await database.SkillDefinitions
             .AsNoTracking()
             .SingleOrDefaultAsync(
-                item => item.TenantId == tenantId && item.SkillId == skillId && item.Type == type,
+                item => item.TenantId == tenantId
+                    && item.SkillId == skillId
+                    && item.Type == SkillTypes.AgentSkill,
                 cancellationToken)
             .ConfigureAwait(false);
         return entity == null ? null : Map(entity);
@@ -34,7 +35,6 @@ internal sealed class EfCoreSkillDefinitionRepository(
 
     public async Task<IReadOnlyList<SkillInstanceConfig>> ListAsync(
         string tenantId,
-        string? type = null,
         CancellationToken cancellationToken = default)
     {
         await using OpenAgentDbContext database = await contexts
@@ -42,11 +42,7 @@ internal sealed class EfCoreSkillDefinitionRepository(
             .ConfigureAwait(false);
         IQueryable<SkillDefinitionEntity> query = database.SkillDefinitions
             .AsNoTracking()
-            .Where(item => item.TenantId == tenantId);
-        if (!string.IsNullOrWhiteSpace(type))
-        {
-            query = query.Where(item => item.Type == type);
-        }
+            .Where(item => item.TenantId == tenantId && item.Type == SkillTypes.AgentSkill);
 
         List<SkillDefinitionEntity> entities = await query
             .OrderBy(item => item.SkillId)
@@ -64,7 +60,7 @@ internal sealed class EfCoreSkillDefinitionRepository(
             .CreateDbContextAsync(cancellationToken)
             .ConfigureAwait(false);
         SkillDefinitionEntity? entity = await database.SkillDefinitions.FindAsync(
-            [skill.TenantId, skill.Id, skill.Type],
+            [skill.TenantId, skill.Id, SkillTypes.AgentSkill],
             cancellationToken).ConfigureAwait(false);
         string payload = JsonSerializer.Serialize(skill, JsonOptions);
         if (entity == null)
@@ -92,14 +88,15 @@ internal sealed class EfCoreSkillDefinitionRepository(
     public async Task<bool> DeleteAsync(
         string tenantId,
         string skillId,
-        string type,
         CancellationToken cancellationToken = default)
     {
         await using OpenAgentDbContext database = await contexts
             .CreateDbContextAsync(cancellationToken)
             .ConfigureAwait(false);
         int deleted = await database.SkillDefinitions
-            .Where(item => item.TenantId == tenantId && item.SkillId == skillId && item.Type == type)
+            .Where(item => item.TenantId == tenantId
+                && item.SkillId == skillId
+                && item.Type == SkillTypes.AgentSkill)
             .ExecuteDeleteAsync(cancellationToken)
             .ConfigureAwait(false);
         return deleted > 0;
@@ -122,7 +119,7 @@ internal sealed class EfCoreSkillDefinitionRepository(
     {
         if (string.IsNullOrWhiteSpace(skill.TenantId)
             || string.IsNullOrWhiteSpace(skill.Id)
-            || string.IsNullOrWhiteSpace(skill.Type)
+            || !string.Equals(skill.Type, SkillTypes.AgentSkill, StringComparison.OrdinalIgnoreCase)
             || string.IsNullOrWhiteSpace(skill.SourceType))
         {
             throw new ArgumentException("Skill tenant, id, type and source type are required.", nameof(skill));

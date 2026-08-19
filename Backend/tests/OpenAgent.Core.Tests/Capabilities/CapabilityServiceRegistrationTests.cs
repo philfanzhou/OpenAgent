@@ -36,7 +36,7 @@ public class CapabilityServiceRegistrationTests
             .GetRequiredService<IEnumerable<ICapabilitySource>>();
 
         Assert.Contains(sources, source => source is RagCapabilitySource);
-        Assert.Contains(sources, source => source is HttpSkillCapabilitySource);
+        Assert.DoesNotContain(sources, source => source.GetType().Name.Contains("HttpSkill", StringComparison.Ordinal));
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<AgentSkillsProviderFactory>());
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<McpToolFactory>());
     }

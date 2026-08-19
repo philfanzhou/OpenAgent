@@ -9,6 +9,10 @@ using StackExchange.Redis;
 
 namespace OpenAgent.Engine.Redis;
 
+/// <summary>
+/// Persists Skill metadata in PostgreSQL and uses Redis only as a derived cache.
+/// Redis is never used as the source of truth when the repository is available.
+/// </summary>
 internal sealed class RedisSkillCatalogStore(
     IRedisConnectionProvider redis,
     ISkillDefinitionRepository? repository = null) : ISkillCatalogStore
@@ -33,35 +37,46 @@ internal sealed class RedisSkillCatalogStore(
             await repository.UpsertAsync(skill, cancellationToken).ConfigureAwait(false);
         }
 
-        _local[BuildLocalKey(skill.TenantId, skill.Id, skill.Type)] = skill;
+        _local[BuildLocalKey(skill.TenantId, skill.Id)] = skill;
         if (!redis.IsAvailable)
         {
             return;
         }
 
-        string payload = JsonSerializer.Serialize(skill, JsonOptions);
         await redis.StringSetAsync(
-            BuildItemKey(skill.TenantId, skill.Id, skill.Type),
-            payload).ConfigureAwait(false);
+            BuildItemKey(skill.TenantId, skill.Id),
+            JsonSerializer.Serialize(skill, JsonOptions)).ConfigureAwait(false);
         await redis.SetAddAsync(
             BuildIndexKey(skill.TenantId),
-            SerializeIndexMember(skill.Id, skill.Type)).ConfigureAwait(false);
+            skill.Id).ConfigureAwait(false);
     }
 
     public async Task<IReadOnlyList<SkillInstanceConfig>> ListAsync(
         string tenantId,
-        string? type = null,
         CancellationToken cancellationToken = default)
     {
         ValidateTenant(tenantId);
         cancellationToken.ThrowIfCancellationRequested();
-        var result = new Dictionary<string, SkillInstanceConfig>(StringComparer.OrdinalIgnoreCase);
 
+        if (repository != null)
+        {
+            IReadOnlyList<SkillInstanceConfig> databaseSkills = await repository
+                .ListAsync(tenantId, cancellationToken)
+                .ConfigureAwait(false);
+            foreach (SkillInstanceConfig skill in databaseSkills)
+            {
+                _local[BuildLocalKey(tenantId, skill.Id)] = skill;
+            }
+
+            return databaseSkills;
+        }
+
+        var result = new Dictionary<string, SkillInstanceConfig>(StringComparer.OrdinalIgnoreCase);
         foreach (SkillInstanceConfig skill in _local.Values.Where(skill =>
             string.Equals(skill.TenantId, tenantId, StringComparison.Ordinal)
-            && (type == null || string.Equals(skill.Type, type, StringComparison.OrdinalIgnoreCase))))
+            && string.Equals(skill.Type, SkillTypes.AgentSkill, StringComparison.OrdinalIgnoreCase)))
         {
-            result[BuildLocalKey(skill.TenantId, skill.Id, skill.Type)] = skill;
+            result[BuildLocalKey(tenantId, skill.Id)] = skill;
         }
 
         if (redis.IsAvailable)
@@ -70,33 +85,13 @@ internal sealed class RedisSkillCatalogStore(
             foreach (RedisValue member in members)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (!TryDeserializeIndexMember(member.ToString(), out SkillCatalogKey? key)
-                    || key == null
-                    || (type != null && !string.Equals(key.Type, type, StringComparison.OrdinalIgnoreCase)))
-                {
-                    continue;
-                }
-
                 SkillInstanceConfig? skill = await ReadRedisAsync(
                     tenantId,
-                    key.SkillId,
-                    key.Type).ConfigureAwait(false);
+                    member.ToString()).ConfigureAwait(false);
                 if (skill != null)
                 {
-                    result[BuildLocalKey(tenantId, skill.Id, skill.Type)] = skill;
+                    result[BuildLocalKey(tenantId, skill.Id)] = skill;
                 }
-            }
-        }
-
-        if (repository != null)
-        {
-            IReadOnlyList<SkillInstanceConfig> databaseSkills = await repository
-                .ListAsync(tenantId, type, cancellationToken)
-                .ConfigureAwait(false);
-            foreach (SkillInstanceConfig skill in databaseSkills)
-            {
-                result[BuildLocalKey(tenantId, skill.Id, skill.Type)] = skill;
-                _local[BuildLocalKey(tenantId, skill.Id, skill.Type)] = skill;
             }
         }
 
@@ -106,69 +101,63 @@ internal sealed class RedisSkillCatalogStore(
     public async Task<SkillInstanceConfig?> GetAsync(
         string tenantId,
         string skillId,
-        string type,
         CancellationToken cancellationToken = default)
     {
-        ValidateKey(tenantId, skillId, type);
+        ValidateKey(tenantId, skillId);
         cancellationToken.ThrowIfCancellationRequested();
 
         if (repository != null)
         {
             SkillInstanceConfig? databaseSkill = await repository
-                .GetAsync(tenantId, skillId, type, cancellationToken)
+                .GetAsync(tenantId, skillId, cancellationToken)
                 .ConfigureAwait(false);
             if (databaseSkill != null)
             {
-                _local[BuildLocalKey(tenantId, skillId, type)] = databaseSkill;
-                return databaseSkill;
+                _local[BuildLocalKey(tenantId, skillId)] = databaseSkill;
             }
+
+            return databaseSkill;
         }
 
         SkillInstanceConfig? redisSkill = redis.IsAvailable
-            ? await ReadRedisAsync(tenantId, skillId, type).ConfigureAwait(false)
+            ? await ReadRedisAsync(tenantId, skillId).ConfigureAwait(false)
             : null;
         if (redisSkill != null)
         {
-            _local[BuildLocalKey(tenantId, skillId, type)] = redisSkill;
+            _local[BuildLocalKey(tenantId, skillId)] = redisSkill;
             return redisSkill;
         }
 
-        _local.TryGetValue(BuildLocalKey(tenantId, skillId, type), out SkillInstanceConfig? localSkill);
+        _local.TryGetValue(BuildLocalKey(tenantId, skillId), out SkillInstanceConfig? localSkill);
         return localSkill;
     }
 
     public async Task RemoveAsync(
         string tenantId,
         string skillId,
-        string type,
         CancellationToken cancellationToken = default)
     {
-        ValidateKey(tenantId, skillId, type);
+        ValidateKey(tenantId, skillId);
         cancellationToken.ThrowIfCancellationRequested();
 
         if (repository != null)
         {
-            await repository.DeleteAsync(tenantId, skillId, type, cancellationToken).ConfigureAwait(false);
+            await repository.DeleteAsync(tenantId, skillId, cancellationToken).ConfigureAwait(false);
         }
 
-        _local.TryRemove(BuildLocalKey(tenantId, skillId, type), out _);
+        _local.TryRemove(BuildLocalKey(tenantId, skillId), out _);
         if (!redis.IsAvailable)
         {
             return;
         }
 
-        await redis.SetRemoveAsync(
-            BuildIndexKey(tenantId),
-            SerializeIndexMember(skillId, type)).ConfigureAwait(false);
-        await redis.KeyDeleteAsync(BuildItemKey(tenantId, skillId, type)).ConfigureAwait(false);
+        await redis.SetRemoveAsync(BuildIndexKey(tenantId), skillId).ConfigureAwait(false);
+        await redis.KeyDeleteAsync(BuildItemKey(tenantId, skillId)).ConfigureAwait(false);
     }
 
-    private async Task<SkillInstanceConfig?> ReadRedisAsync(
-        string tenantId,
-        string skillId,
-        string type)
+    private async Task<SkillInstanceConfig?> ReadRedisAsync(string tenantId, string skillId)
     {
-        RedisValue value = await redis.StringGetAsync(BuildItemKey(tenantId, skillId, type)).ConfigureAwait(false);
+        RedisValue value = await redis.StringGetAsync(BuildItemKey(tenantId, skillId)).ConfigureAwait(false);
         if (value.IsNullOrEmpty)
         {
             return null;
@@ -178,7 +167,7 @@ internal sealed class RedisSkillCatalogStore(
         return skill != null
             && string.Equals(skill.TenantId, tenantId, StringComparison.Ordinal)
             && string.Equals(skill.Id, skillId, StringComparison.OrdinalIgnoreCase)
-            && string.Equals(skill.Type, type, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(skill.Type, SkillTypes.AgentSkill, StringComparison.OrdinalIgnoreCase)
                 ? skill
                 : null;
     }
@@ -186,11 +175,11 @@ internal sealed class RedisSkillCatalogStore(
     private static string BuildIndexKey(string tenantId) =>
         $"skill:published:index:{Hash(tenantId)}";
 
-    private static string BuildItemKey(string tenantId, string skillId, string type) =>
-        $"skill:registry:{Hash(tenantId)}:{Encode(type)}:{Encode(skillId)}";
+    private static string BuildItemKey(string tenantId, string skillId) =>
+        $"skill:registry:{Hash(tenantId)}:{Encode(skillId)}";
 
-    private static string BuildLocalKey(string tenantId, string skillId, string type) =>
-        $"{tenantId}\n{type}\n{skillId}";
+    private static string BuildLocalKey(string tenantId, string skillId) =>
+        $"{tenantId}\n{skillId}";
 
     private static string Hash(string value) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
@@ -201,32 +190,15 @@ internal sealed class RedisSkillCatalogStore(
             .Replace('+', '-')
             .Replace('/', '_');
 
-    private static string SerializeIndexMember(string skillId, string type) =>
-        JsonSerializer.Serialize(new SkillCatalogKey(skillId, type), JsonOptions);
-
-    private static bool TryDeserializeIndexMember(string value, out SkillCatalogKey? key)
-    {
-        try
-        {
-            key = JsonSerializer.Deserialize<SkillCatalogKey>(value, JsonOptions);
-            return key != null;
-        }
-        catch (JsonException)
-        {
-            key = null;
-            return false;
-        }
-    }
-
     private static void Validate(SkillInstanceConfig skill) =>
-        ValidateKey(skill.TenantId, skill.Id, skill.Type);
+        ValidateKey(skill.TenantId, skill.Id);
 
-    private static void ValidateKey(string tenantId, string skillId, string type)
+    private static void ValidateKey(string tenantId, string skillId)
     {
         ValidateTenant(tenantId);
-        if (string.IsNullOrWhiteSpace(skillId) || string.IsNullOrWhiteSpace(type))
+        if (string.IsNullOrWhiteSpace(skillId))
         {
-            throw new ArgumentException("Skill id and type are required.");
+            throw new ArgumentException("Skill id is required.", nameof(skillId));
         }
     }
 
@@ -237,6 +209,4 @@ internal sealed class RedisSkillCatalogStore(
             throw new ArgumentException("Tenant id is required.", nameof(tenantId));
         }
     }
-
-    private sealed record SkillCatalogKey(string SkillId, string Type);
 }

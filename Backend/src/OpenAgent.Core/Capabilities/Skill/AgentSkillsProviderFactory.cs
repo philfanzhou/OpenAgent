@@ -156,7 +156,6 @@ internal sealed class AgentSkillsProviderFactory(
             SkillInstanceConfig? skill = await catalog.GetAsync(
                 tenantId,
                 id,
-                SkillTypes.AgentSkill,
                 cancellationToken).ConfigureAwait(false)
                 ?? config.Instances.FirstOrDefault(item =>
                     string.Equals(item.TenantId, tenantId, StringComparison.Ordinal)
