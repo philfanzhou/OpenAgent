@@ -24,8 +24,7 @@ public class InMemoryConversationStoreTests
         string tenantId = "t1",
         string conversationId = "c1",
         string userId = "u1",
-        ConversationType type = ConversationType.User,
-        ConversationOwnerRole ownerRole = ConversationOwnerRole.User)
+        ConversationType type = ConversationType.User)
     {
         return new ConversationRecord
         {
@@ -33,7 +32,6 @@ public class InMemoryConversationStoreTests
             ConversationId = conversationId,
             UserId = userId,
             Type = type,
-            OwnerRole = ownerRole,
             AgentId = "a1"
         };
     }
@@ -169,13 +167,11 @@ public class InMemoryConversationStoreTests
         await store.CreateAsync(CreateRecord(conversationId: "user"));
         await store.CreateAsync(CreateRecord(
             conversationId: "intent",
-            type: ConversationType.Internal,
-            ownerRole: ConversationOwnerRole.Service));
+            type: ConversationType.Internal));
         await store.CreateAsync(CreateRecord(
             conversationId: "channel",
             userId: "channel-service",
-            type: ConversationType.Channel,
-            ownerRole: ConversationOwnerRole.System));
+            type: ConversationType.Channel));
         await store.AppendMessagesAsync(
             "t1",
             "user",
@@ -201,22 +197,6 @@ public class InMemoryConversationStoreTests
     }
 
     [Fact]
-    public async Task GetRecordAsync_InternalRecordThroughUserQuery_ReturnsNull()
-    {
-        ICurrentUserContext user = UserContext();
-        var store = new InMemoryConversationStore(user);
-        await store.CreateAsync(CreateRecord(
-            conversationId: "intent",
-            type: ConversationType.Internal,
-            ownerRole: ConversationOwnerRole.Service));
-        var query = new ConversationQueryService(store, user);
-
-        ConversationRecord? record = await query.GetRecordAsync("t1", "intent");
-
-        Assert.Null(record);
-    }
-
-    [Fact]
     public async Task OpenAsync_InternalExecution_PersistsSeparateConversationBoundary()
     {
         ICurrentUserContext user = UserContext();
@@ -230,8 +210,7 @@ public class InMemoryConversationStoreTests
             "u1",
             "intent-router",
             "trace-1",
-            ConversationType.Internal,
-            ConversationOwnerRole.Service);
+            ConversationType.Internal);
 
         await sessions.OpenAsync(
             context,
@@ -242,7 +221,6 @@ public class InMemoryConversationStoreTests
         ConversationRecord? stored = await store.GetRecordAsync("t1", "intent-execution");
         Assert.NotNull(stored);
         Assert.Equal(ConversationType.Internal, stored.Type);
-        Assert.Equal(ConversationOwnerRole.Service, stored.OwnerRole);
         Assert.Empty(await store.ListConversationsAsync("t1", 0, 10));
     }
 

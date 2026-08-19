@@ -48,9 +48,6 @@ namespace OpenAgent.Infrastructure.Migrations
                     b.Property<int>("MessageCount")
                         .HasColumnType("integer");
 
-                    b.Property<int>("OwnerRole")
-                        .HasColumnType("integer");
-
                     b.Property<int>("Status")
                         .HasColumnType("integer");
 

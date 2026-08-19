@@ -129,8 +129,7 @@ internal sealed class InMemoryConversationStore : IConversationStore
             .Where(r => string.Equals(r.TenantId, tenantId, StringComparison.OrdinalIgnoreCase))
             .Where(r => !r.IsDeletedByUser)
             .Where(r => string.Equals(r.UserId, _currentUser.UserId, StringComparison.OrdinalIgnoreCase))
-            .Where(r => r.Type == ConversationType.User
-                && r.OwnerRole == ConversationOwnerRole.User)
+            .Where(r => r.Type == ConversationType.User)
             .OrderByDescending(r => r.LastMessageAt)
             .Skip(skip)
             .Take(take)
@@ -148,8 +147,7 @@ internal sealed class InMemoryConversationStore : IConversationStore
             .Where(r => string.Equals(r.TenantId, tenantId, StringComparison.OrdinalIgnoreCase))
             .Where(r => !r.IsDeletedByUser)
             .Where(r => string.Equals(r.UserId, _currentUser.UserId, StringComparison.OrdinalIgnoreCase))
-            .Where(r => r.Type == ConversationType.User
-                && r.OwnerRole == ConversationOwnerRole.User)
+            .Where(r => r.Type == ConversationType.User)
             .Where(r => r.Title != null && r.Title.Contains(keyword, StringComparison.OrdinalIgnoreCase)
                         || r.Messages.Any(m => m.Content != null && m.Content.Contains(keyword, StringComparison.OrdinalIgnoreCase)))
             .OrderByDescending(r => r.LastMessageAt)
@@ -185,7 +183,6 @@ internal sealed class InMemoryConversationStore : IConversationStore
         TenantId = r.TenantId,
         UserId = r.UserId,
         Type = r.Type,
-        OwnerRole = r.OwnerRole,
         AgentId = r.AgentId,
         TraceId = r.TraceId,
         Version = r.Version,

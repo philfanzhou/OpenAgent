@@ -2,7 +2,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using OpenAgent.Contracts.Conversation;
-using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Conversation;
 using OpenAgent.Core.Conversation.Lock;
 using OpenAgent.Core.Conversation.Store;
@@ -28,7 +27,6 @@ internal static class ConversationServiceExtensions
     private static IConversationQueryService CreateQueryService(IServiceProvider serviceProvider)
     {
         return new ConversationQueryService(
-            serviceProvider.GetRequiredService<IConversationStore>(),
-            serviceProvider.GetRequiredService<ICurrentUserContext>());
+            serviceProvider.GetRequiredService<IConversationStore>());
     }
 }

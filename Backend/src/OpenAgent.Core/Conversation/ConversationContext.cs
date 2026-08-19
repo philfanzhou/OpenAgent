@@ -9,8 +9,7 @@ internal readonly record struct ConversationContext(
     string? UserId,
     string? AgentId,
     string? TraceId,
-    ConversationType Type,
-    ConversationOwnerRole OwnerRole)
+    ConversationType Type)
 {
     internal bool IsValid =>
         !string.IsNullOrEmpty(ConversationId)

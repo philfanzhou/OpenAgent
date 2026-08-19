@@ -115,7 +115,6 @@ internal static class ConversationEndpointExtensions
     private static bool IsUserConversation([NotNullWhen(true)] ConversationRecord? record) =>
         record != null
         && !record.IsDeletedByUser
-        && record.Type == ConversationType.User
-        && record.OwnerRole == ConversationOwnerRole.User;
+        && record.Type == ConversationType.User;
 
 }

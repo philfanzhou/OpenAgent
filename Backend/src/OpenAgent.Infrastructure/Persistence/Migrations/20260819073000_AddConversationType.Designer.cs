@@ -12,8 +12,8 @@ using OpenAgent.Infrastructure;
 namespace OpenAgent.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(OpenAgentDbContext))]
-    [Migration("20260819073000_AddConversationTypeAndOwnerRole")]
-    partial class AddConversationTypeAndOwnerRole
+    [Migration("20260819073000_AddConversationType")]
+    partial class AddConversationType
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -49,9 +49,6 @@ namespace OpenAgent.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("MessageCount")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("OwnerRole")
                         .HasColumnType("integer");
 
                     b.Property<int>("Status")

@@ -156,7 +156,6 @@ public class OpenAgentEngineProviderTests
         Assert.Equal("intent-router", context.GetProperty("agentId").GetString());
         Assert.StartsWith("intent-", context.GetProperty("conversationId").GetString());
         Assert.Equal(ConversationType.Internal.ToString(), context.GetProperty("conversationType").GetString());
-        Assert.Equal(ConversationOwnerRole.Service.ToString(), context.GetProperty("conversationOwnerRole").GetString());
     }
 
     private static string ReadConversationId(string body)

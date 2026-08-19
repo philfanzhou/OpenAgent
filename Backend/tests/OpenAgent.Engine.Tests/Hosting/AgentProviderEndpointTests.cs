@@ -66,8 +66,7 @@ public class AgentProviderEndpointTests
             ConversationId = "intent-1",
             TenantId = "tenant-1",
             UserId = "user-1",
-            Type = ConversationType.Internal,
-            OwnerRole = ConversationOwnerRole.Service
+            Type = ConversationType.Internal
         });
         DefaultHttpContext context = CreateContext(
             authenticated: true,

@@ -9,7 +9,6 @@ public class AgentRequest
     public string? AgentId { get; init; }
     public string? ConversationId { get; init; }
     public ConversationType ConversationType { get; init; } = ConversationType.User;
-    public ConversationOwnerRole ConversationOwnerRole { get; init; } = ConversationOwnerRole.User;
     public string? TraceId { get; init; }
     public ClientType ClientType { get; init; } = ClientType.Web;
     public string? IdempotencyKey { get; init; }

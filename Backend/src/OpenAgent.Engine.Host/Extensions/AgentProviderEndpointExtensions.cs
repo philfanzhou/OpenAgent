@@ -38,7 +38,6 @@ internal static class AgentProviderEndpointExtensions
         return record != null
             && !record.IsDeletedByUser
             && record.Type == ConversationType.User
-            && record.OwnerRole == ConversationOwnerRole.User
             && string.Equals(record.UserId, serviceUser.UserId, StringComparison.Ordinal)
             ? Results.NoContent()
             : Results.NotFound();

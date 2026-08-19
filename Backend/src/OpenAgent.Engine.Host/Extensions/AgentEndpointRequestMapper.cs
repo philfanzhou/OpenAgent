@@ -26,10 +26,6 @@ internal static class AgentEndpointRequestMapper
                 request.Context,
                 "conversationType",
                 ConversationType.User),
-            ConversationOwnerRole = ReadContextEnum(
-                request.Context,
-                "conversationOwnerRole",
-                ConversationOwnerRole.User),
             TraceId = feature.TraceId,
             ClientType = ClientType.Web,
             ExternalContext = externalContext,
@@ -77,6 +73,5 @@ internal static class AgentEndpointRequestMapper
         key.Equals("agentId", StringComparison.OrdinalIgnoreCase)
         || key.Equals("conversationId", StringComparison.OrdinalIgnoreCase)
         || key.Equals("conversationType", StringComparison.OrdinalIgnoreCase)
-        || key.Equals("conversationOwnerRole", StringComparison.OrdinalIgnoreCase)
         || key.Equals("traceId", StringComparison.OrdinalIgnoreCase);
 }

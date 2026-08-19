@@ -136,8 +136,7 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
                 {
                     ["agentId"] = intentAgentId,
                     ["conversationId"] = $"intent-{Guid.NewGuid():N}",
-                    ["conversationType"] = ConversationType.Internal.ToString(),
-                    ["conversationOwnerRole"] = ConversationOwnerRole.Service.ToString()
+                    ["conversationType"] = ConversationType.Internal.ToString()
                 }
             }, JsonOptions),
             Encoding.UTF8,
