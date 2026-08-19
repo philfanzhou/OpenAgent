@@ -178,6 +178,7 @@ public class AgentExecutorUsageTests
     {
         var services = new ServiceCollection();
         services.AddLogging();
+        services.AddSingleton<ICurrentUserContext>(new TestCurrentUserContext());
         services.AddSingleton<IConversationStore, InMemoryConversationStore>();
         services.AddSingleton<IFileAssetRepository, EmptyFileAssetRepository>();
         IConfiguration configuration = new ConfigurationBuilder().Build();
@@ -198,6 +199,15 @@ public class AgentExecutorUsageTests
             scope.ServiceProvider.GetRequiredService<AgentExecutor>(),
             Assert.IsType<InMemoryConversationStore>(
                 scope.ServiceProvider.GetRequiredService<IConversationStore>()));
+    }
+
+    private sealed class TestCurrentUserContext : ICurrentUserContext
+    {
+        public string UserId => User.UserId;
+        public string? TenantId => User.TenantId;
+        public bool IsAuthenticated => true;
+        public IReadOnlyList<string> Roles => [];
+        public bool IsInRole(string role) => false;
     }
 
     private sealed class StaticRuntimeResolver : IAgentRuntimeResolver

@@ -51,8 +51,9 @@ public sealed class InfrastructurePersistenceTests : IAsyncLifetime
     public async Task ConversationStore_StoresFilesAtConversationAndMessageLevel()
     {
         ServiceProvider services = Assert.IsType<ServiceProvider>(_services);
+        using IServiceScope scope = services.CreateScope();
         IFileAssetRepository files = services.GetRequiredService<IFileAssetRepository>();
-        IConversationStore conversations = services.GetRequiredService<IConversationStore>();
+        IConversationStore conversations = scope.ServiceProvider.GetRequiredService<IConversationStore>();
         FileAsset asset = new()
         {
             FileId = "file-001",
@@ -119,8 +120,9 @@ public sealed class InfrastructurePersistenceTests : IAsyncLifetime
     public async Task FileAssetRepository_EnsuresConversationReferencesConcurrently()
     {
         ServiceProvider services = Assert.IsType<ServiceProvider>(_services);
+        using IServiceScope scope = services.CreateScope();
         IFileAssetRepository files = services.GetRequiredService<IFileAssetRepository>();
-        IConversationStore conversations = services.GetRequiredService<IConversationStore>();
+        IConversationStore conversations = scope.ServiceProvider.GetRequiredService<IConversationStore>();
         IDbContextFactory<OpenAgentDbContext> contexts =
             services.GetRequiredService<IDbContextFactory<OpenAgentDbContext>>();
         FileAsset asset = new()
@@ -167,7 +169,8 @@ public sealed class InfrastructurePersistenceTests : IAsyncLifetime
     public async Task ConversationStore_TokenUsage_RoundTripsProviderCounts()
     {
         ServiceProvider services = Assert.IsType<ServiceProvider>(_services);
-        IConversationStore conversations = services.GetRequiredService<IConversationStore>();
+        using IServiceScope scope = services.CreateScope();
+        IConversationStore conversations = scope.ServiceProvider.GetRequiredService<IConversationStore>();
         Assert.True(await conversations.CreateAsync(new ConversationRecord
         {
             ConversationId = "conversation-usage",
