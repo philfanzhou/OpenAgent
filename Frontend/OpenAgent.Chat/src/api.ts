@@ -131,9 +131,7 @@ function headers(extra: HeadersInit = {}): Headers {
   })
   const token = getAccessToken()
   const tokenType = getTokenType() || 'Basic'
-  const tenantId = getTenantId()
   if (token) result.set('Authorization', `${tokenType} ${token}`)
-  if (tenantId && (!token || tokenType.toLowerCase() === 'basic')) result.set('X-Tenant-Id', tenantId)
   result.set('X-Trace-Id', crypto.randomUUID())
   return result
 }

@@ -33,6 +33,11 @@ internal sealed class AgentRuntimeResolver : IAgentRuntimeResolver
 
         AgentConfig config = await _configs.GetConfigAsync(
                 agentId,
+                userContext.TenantId
+                    ?? throw new TenantDataIsolationException(
+                        null,
+                        null,
+                        "TenantId is required but not provided"),
                 cancellationToken)
             .ConfigureAwait(false)
             ?? throw new InvalidOperationException($"Agent configuration not found: {agentId}");

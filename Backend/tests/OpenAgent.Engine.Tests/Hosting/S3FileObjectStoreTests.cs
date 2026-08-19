@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using Amazon.S3;
 using Amazon.S3.Model;
 using Microsoft.Extensions.Options;
@@ -38,8 +36,8 @@ public class S3FileObjectStoreTests
             content,
             CancellationToken.None);
 
-        string tenantHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes("tenant-a"))).ToLowerInvariant();
-        string userHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes("user-a"))).ToLowerInvariant();
+        string tenantHash = FileObjectTenantScope.CreatePartition("tenant-a");
+        string userHash = FileObjectTenantScope.CreatePartition("user-a");
         Assert.Equal($"private/files/tenants/{tenantHash}/users/{userHash}/file-a.md", result.ObjectKey);
         Assert.NotNull(captured);
         Assert.Equal("files-test", captured.BucketName);

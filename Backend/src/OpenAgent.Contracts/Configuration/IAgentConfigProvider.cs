@@ -6,7 +6,16 @@ public interface IAgentConfigProvider
 
     Task<AgentConfig?> GetConfigAsync(string agentId, CancellationToken cancellationToken = default);
 
+    Task<AgentConfig?> GetConfigAsync(
+        string agentId,
+        string tenantId,
+        CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<AgentSummary>> ListAgentsAsync(CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<AgentSummary>> ListAgentsAsync(
+        string tenantId,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class AgentSummary

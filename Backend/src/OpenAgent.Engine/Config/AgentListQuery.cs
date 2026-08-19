@@ -21,8 +21,22 @@ internal sealed class AgentListQuery(
 
     internal async Task<IReadOnlyList<AgentSummary>> ExecuteAsync(CancellationToken cancellationToken)
     {
+        return await ExecuteCoreAsync(tenantId: null, cancellationToken).ConfigureAwait(false);
+    }
+
+    internal async Task<IReadOnlyList<AgentSummary>> ExecuteAsync(
+        string tenantId,
+        CancellationToken cancellationToken)
+    {
+        return await ExecuteCoreAsync(tenantId, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<IReadOnlyList<AgentSummary>> ExecuteCoreAsync(
+        string? tenantId,
+        CancellationToken cancellationToken)
+    {
         var result = new List<AgentSummary>();
-        AddLocalAgents(result);
+        AddLocalAgents(result, tenantId);
         if (!redis.IsAvailable)
         {
             EngineLog.ListAgentsRedisUnavailable(logger);
@@ -46,7 +60,7 @@ internal sealed class AgentListQuery(
                     var entity = JsonSerializer.Deserialize<AgentConfigEntity>(configJson.ToString(), JsonOptions);
                     if (entity != null)
                     {
-                        AddAgent(result, entity);
+                        AddAgent(result, entity, tenantId);
                     }
                 }
                 catch (Exception exception)
@@ -64,16 +78,28 @@ internal sealed class AgentListQuery(
         return result;
     }
 
-    private void AddLocalAgents(List<AgentSummary> result)
+    private void AddLocalAgents(List<AgentSummary> result, string? tenantId)
     {
         foreach (AgentConfigEntity entity in localStore.List())
         {
-            AddAgent(result, entity);
+            AddAgent(result, entity, tenantId);
         }
     }
 
-    private static void AddAgent(List<AgentSummary> result, AgentConfigEntity entity)
+    private static void AddAgent(
+        List<AgentSummary> result,
+        AgentConfigEntity entity,
+        string? tenantId)
     {
+        string ownerTenantId = string.IsNullOrWhiteSpace(entity.TenantId)
+            ? entity.Config?.TenantId ?? string.Empty
+            : entity.TenantId;
+        if (tenantId != null
+            && !string.Equals(ownerTenantId, tenantId, StringComparison.Ordinal))
+        {
+            return;
+        }
+
         result.RemoveAll(item => string.Equals(item.AgentId, entity.AgentId, StringComparison.OrdinalIgnoreCase));
         result.Add(new AgentSummary
         {

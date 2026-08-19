@@ -53,10 +53,14 @@ internal static class FileAssetEndpointExtensions
 
     private static async Task<IResult> GetAsync(
         [FromServices] IFileAssetService files,
+        HttpContext context,
         string fileId,
         CancellationToken cancellationToken)
     {
-        FileAsset? asset = await files.GetAsync(fileId, cancellationToken).ConfigureAwait(false);
+        FileAsset? asset = await files.GetAsync(
+            fileId,
+            CreateScope(context, conversationId: null),
+            cancellationToken).ConfigureAwait(false);
         return asset == null ? Results.NotFound() : Results.Ok(ToResponse(asset));
     }
 

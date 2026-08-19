@@ -61,6 +61,7 @@ internal sealed class AgentForwarder(
                 proxyRequest,
                 target,
                 provider,
+                tenantId,
                 conversationId,
                 traceId,
                 cancellationToken)).ConfigureAwait(false);
@@ -93,6 +94,7 @@ internal sealed class AgentForwarder(
         HttpRequestMessage request,
         AgentForwardingTarget target,
         IAgentProvider provider,
+        string? tenantId,
         string? conversationId,
         string traceId,
         CancellationToken cancellationToken)
@@ -100,7 +102,6 @@ internal sealed class AgentForwarder(
         await ForwardingContextBuilder.ApplyAsync(
             request,
             target.RequestUri,
-            conversationId,
             traceId).ConfigureAwait(false);
         await provider.ConfigureRequestAsync(
             request,

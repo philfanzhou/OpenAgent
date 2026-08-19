@@ -27,7 +27,7 @@ describe('workspace API', () => {
     expect(getTenantId()).toBe('development')
   })
 
-  it('sends gateway identity headers to catalog requests', async () => {
+  it('sends only authentication credentials to catalog requests', async () => {
     setConnectionMode('router')
     setRouterBaseUrl('http://router.example/')
     setAccessToken('encoded-user', 'Basic')
@@ -45,7 +45,7 @@ describe('workspace API', () => {
     expect(url).toBe('http://router.example/api/v1/agent/agents')
     const requestHeaders = init.headers as Headers
     expect(requestHeaders.get('Authorization')).toBe('Basic encoded-user')
-    expect(requestHeaders.get('X-Tenant-Id')).toBe('tenant-1')
+    expect(requestHeaders.has('X-Tenant-Id')).toBe(false)
     expect(requestHeaders.get('X-Trace-Id')).toBeTruthy()
   })
 

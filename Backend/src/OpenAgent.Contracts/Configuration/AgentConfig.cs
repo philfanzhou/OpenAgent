@@ -23,6 +23,7 @@ public class AgentConfig
 
 public class LlmConfig
 {
+    public string TenantId { get; set; } = string.Empty;
     public string Provider { get; set; } = string.Empty;
     public ApiFormat Format { get; set; } = ApiFormat.OpenAIChatCompletions;
     public string ModelId { get; set; } = "gpt-4o";
@@ -33,6 +34,7 @@ public class LlmConfig
 
 public class LlmProviderProfile
 {
+    public string TenantId { get; set; } = string.Empty;
     public string Id { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public ApiFormat Format { get; set; } = ApiFormat.OpenAIChatCompletions;
@@ -63,6 +65,7 @@ public class McpConfig
 
 public class McpServerConfig
 {
+    public string TenantId { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string Url { get; set; } = string.Empty;
     [JsonConverter(typeof(JsonStringEnumConverter))]
@@ -151,9 +154,9 @@ public class RagConfig
 
 public class SkillInstanceConfig
 {
+    public string TenantId { get; set; } = string.Empty;
     [JsonPropertyName("skillId")]
     public string Id { get; set; } = string.Empty;
-    public string TenantId { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public bool Enabled { get; set; } = true;
     public string Description { get; set; } = string.Empty;

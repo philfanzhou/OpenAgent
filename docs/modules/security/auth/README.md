@@ -10,7 +10,8 @@
 | Production API | JWT Bearer 校验 issuer、audience、签名和 lifetime，不接受 URL token |
 | Development 登录 | `/api/v1/auth/password/token` 返回 Basic 凭据，仅用于联调且不校验真实密码 |
 | 登录态 | token、PKCE verifier/state 仅存于 `sessionStorage`，不进入 `localStorage` |
-| 租户 | Bearer 租户取自受信 claim；客户端 tenant header 不覆盖 claim，不一致返回 403 |
+| 租户 | Production 仅信任 `tenant_id`/`tid` claim；客户端 tenant header 不覆盖 claim，不一致返回 403 |
+| Development 兼容 | 仅 Development 的 Basic 认证允许 `X-Tenant-Id` 作为 claim 缺失时的回退，并由 Router 净化后转发 |
 | 失败 | 401 清理会话并重新登录；403 保留身份并交由授权界面处理 |
 | 授权 | 角色、Agent ACL、能力和租户授权由服务端独立策略处理 |
 
@@ -26,7 +27,6 @@
     "Scopes": [ "openid", "profile" ],
     "RequireHttpsMetadata": true,
     "ClockSkewSeconds": 60,
-    "AllowTenantHeader": false,
     "AllowDevelopmentAnonymous": false,
     "DevelopmentTenantId": "development"
   }
@@ -36,6 +36,10 @@
 生产环境缺少 `Authority`、`Audience` 或 `ClientId` 时启动校验失败；启用 HTTPS metadata 时 Authority
 必须为 HTTPS。`Basic` 模式在非 Development 环境同样启动失败。Development 可显式启用匿名兼容，
 但默认关闭。
+
+`X-Tenant-Id` 只用于 Development 的 Basic 联调。Production 中该 header 不能建立或覆盖租户身份；
+缺少租户 claim 的受保护资源请求会被拒绝，header 与 claim 不一致时返回 403。Router 仅在 Development
+向 Engine 转发从认证上下文解析并净化后的租户值，Production 转发始终移除租户 header。
 
 `GET /api/v1/auth/config` 可匿名读取公开登录参数；Basic 密码端点只在 Development + Basic 模式映射。
 前端交换 OIDC code 后立即清理回调查询参数，不保存 refresh token，也不会把 token 放入 URL、日志或错误详情。

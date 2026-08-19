@@ -42,6 +42,22 @@ public class BasicAuthenticationHandlerTests
     }
 
     [Fact]
+    public async Task AuthenticateAsync_DevelopmentTenantHeader_DoesNotOverrideConfiguredClaim()
+    {
+        using ServiceProvider provider = CreateProvider(Environments.Development);
+        var context = new DefaultHttpContext { RequestServices = provider };
+        context.Request.Headers.Authorization =
+            $"Basic {Convert.ToBase64String(Encoding.UTF8.GetBytes("admin:admin"))}";
+        context.Request.Headers["X-Tenant-Id"] = "tenant-from-header";
+
+        AuthenticateResult result = await context.AuthenticateAsync(
+            BasicAuthenticationHandler.SchemeName);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal("development", result.Principal?.FindFirst("tenant_id")?.Value);
+    }
+
+    [Fact]
     public void AuthenticationOptions_ProductionBasicMode_IsRejected()
     {
         using ServiceProvider provider = CreateProvider(Environments.Production);

@@ -1,5 +1,7 @@
 using System.Security.Claims;
+using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
+using OpenAgent.Hosting.Security;
 using OpenAgent.Router.Observability;
 
 namespace OpenAgent.Router.Security;
@@ -9,7 +11,10 @@ public class JwtUserContextMiddleware
     private readonly RequestDelegate _next;
     private readonly ILogger<JwtUserContextMiddleware> _logger;
 
-    public JwtUserContextMiddleware(RequestDelegate next, ILogger<JwtUserContextMiddleware> logger)
+    public JwtUserContextMiddleware(
+        RequestDelegate next,
+        ILogger<JwtUserContextMiddleware> logger,
+        IHostEnvironment environment)
     {
         _next = next;
         _logger = logger;
@@ -25,8 +30,14 @@ public class JwtUserContextMiddleware
                 ?? context.User.FindFirst("sub")?.Value
                 ?? "unknown";
 
-            var tenantId = context.User.FindFirst("tid")?.Value
-                ?? context.User.FindFirst("tenant_id")?.Value;
+            string? tenantId = TenantIdentityResolver.ResolveClaimsOnly(context.User);
+
+            if (RequiresTenant(context.Request.Path)
+                && string.IsNullOrWhiteSpace(tenantId))
+            {
+                context.Response.StatusCode = StatusCodes.Status400BadRequest;
+                return;
+            }
 
             var roles = context.User.Claims
                 .Where(c => c.Type == ClaimTypes.Role || c.Type == "roles")
@@ -80,4 +91,8 @@ public class JwtUserContextMiddleware
 
         await _next(context);
     }
+
+    private static bool RequiresTenant(PathString path) =>
+        path.StartsWithSegments("/api/v1/agent")
+        || path.StartsWithSegments("/api/v1/admin");
 }
