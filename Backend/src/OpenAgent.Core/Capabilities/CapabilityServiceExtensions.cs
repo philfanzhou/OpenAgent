@@ -21,6 +21,7 @@ internal static class CapabilityServiceExtensions
         services.AddScoped<AgentSkillsProviderFactory>();
         services.AddScoped<IMcpConnectionTester, McpConnectionTester>();
         services.AddScoped<ICapabilitySource, RagCapabilitySource>();
+        services.AddScoped<ICapabilitySource, HttpSkillCapabilitySource>();
         services.AddScoped<CapabilityToolFactory>();
 
         services.AddScoped<IRagService, RagService>();

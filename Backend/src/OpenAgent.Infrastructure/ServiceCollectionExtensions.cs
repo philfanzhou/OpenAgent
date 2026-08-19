@@ -7,6 +7,8 @@ using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Infrastructure;
+using OpenAgent.Contracts.Skills;
+using OpenAgent.Infrastructure.Skills;
 using StackExchange.Redis;
 
 namespace OpenAgent.Infrastructure;
@@ -35,6 +37,7 @@ public static class ServiceCollectionExtensions
 
         services.AddSingleton<EfCoreConversationStore>();
         services.AddSingleton<IFileAssetRepository, EfCoreFileAssetRepository>();
+        services.AddSingleton<ISkillDefinitionRepository, EfCoreSkillDefinitionRepository>();
 
         ConversationCacheOptions cache = configuration.GetSection(ConversationCacheOptions.SectionName)
             .Get<ConversationCacheOptions>() ?? new();

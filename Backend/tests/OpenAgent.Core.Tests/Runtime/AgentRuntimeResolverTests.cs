@@ -123,6 +123,27 @@ public sealed class AgentRuntimeResolverTests
         Assert.Contains("Unsupported ContextPolicy", exception.Message, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task ResolveAsync_SkillBindingOwnedByAnotherTenant_ThrowsIsolationException()
+    {
+        var config = new AgentConfig
+        {
+            TenantId = "tenant-a",
+            Skills = new SkillsConfig { EnabledSkills = ["lookup"] }
+        };
+        AgentRuntimeResolver resolver = new(
+            new StaticConfigProvider(config),
+            new AgentAuthorizationGate(
+                new AllowAllAgentAuthorizationService(),
+                new LlmRegistry()));
+
+        await Assert.ThrowsAsync<TenantDataIsolationException>(
+            () => resolver.ResolveAsync(
+                "agent-a",
+                new AgentUserContext { UserId = "user-b", TenantId = "tenant-b" },
+                CancellationToken.None));
+    }
+
     private static AgentUserContext User() => new()
     {
         UserId = "user-1",

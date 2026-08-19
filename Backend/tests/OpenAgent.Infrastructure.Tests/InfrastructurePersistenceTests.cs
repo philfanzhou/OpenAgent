@@ -4,6 +4,8 @@ using Microsoft.Extensions.DependencyInjection;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Security;
+using OpenAgent.Contracts.Configuration;
+using OpenAgent.Contracts.Skills;
 using Testcontainers.PostgreSql;
 using Xunit;
 
@@ -160,6 +162,47 @@ public sealed class InfrastructurePersistenceTests : IAsyncLifetime
         int referenceCount = await context.ConversationFileReferences.CountAsync(item =>
             item.ConversationId == "conversation-concurrent" && item.FileId == asset.FileId);
         Assert.Equal(1, referenceCount);
+    }
+
+    [Fact]
+    public async Task SkillDefinitionRepository_UsesTenantIdSkillIdAndTypeAsIdentity()
+    {
+        ServiceProvider services = Assert.IsType<ServiceProvider>(_services);
+        ISkillDefinitionRepository repository = services.GetRequiredService<ISkillDefinitionRepository>();
+        var endpoint = new SkillInstanceConfig
+        {
+            TenantId = "tenant-skill",
+            Id = "lookup",
+            Name = "lookup",
+            Type = SkillTypes.HttpEndpoint,
+            SourceType = SkillSourceTypes.PostgreSql,
+            EndpointUrl = "https://example.test/lookup"
+        };
+        var package = new SkillInstanceConfig
+        {
+            TenantId = "tenant-skill",
+            Id = "lookup",
+            Name = "lookup",
+            Type = SkillTypes.AgentSkill,
+            SourceType = SkillSourceTypes.ObjectStorage,
+            ObjectKey = "private/tenants/example/users/example/skill.json"
+        };
+        await repository.UpsertAsync(endpoint);
+        await repository.UpsertAsync(package);
+
+        SkillInstanceConfig? storedEndpoint = await repository.GetAsync(
+            "tenant-skill",
+            "lookup",
+            SkillTypes.HttpEndpoint);
+        IReadOnlyList<SkillInstanceConfig> stored = await repository.ListAsync("tenant-skill");
+        SkillInstanceConfig? foreign = await repository.GetAsync(
+            "another-tenant",
+            "lookup",
+            SkillTypes.HttpEndpoint);
+
+        Assert.Equal(SkillSourceTypes.PostgreSql, storedEndpoint?.SourceType);
+        Assert.Equal(2, stored.Count);
+        Assert.Null(foreign);
     }
 
     private sealed class TestCurrentUserContext : ICurrentUserContext

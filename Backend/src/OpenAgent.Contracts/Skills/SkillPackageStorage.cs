@@ -8,6 +8,7 @@ namespace OpenAgent.Contracts.Skills;
 public sealed class SkillPackageStorageIndex
 {
     public int Version { get; set; } = 1;
+    public string TenantId { get; set; } = string.Empty;
     public List<SkillPackageStorageFile> Files { get; set; } = new();
 }
 

@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using Amazon.Runtime;
 using Amazon.S3;
 using Amazon.S3.Model;
@@ -90,8 +88,8 @@ internal sealed class S3FileObjectStore : IFileObjectStore
 
     private string CreateObjectKey(FileObjectWriteRequest request)
     {
-        string root = $"{_options.KeyPrefix.Trim('/')}/tenants/{CreatePartition(request.TenantId)}" +
-            $"/users/{CreatePartition(request.UserId)}";
+        string root = $"{_options.KeyPrefix.Trim('/')}/tenants/{FileObjectTenantScope.CreatePartition(request.TenantId)}" +
+            $"/users/{FileObjectTenantScope.CreatePartition(request.UserId)}";
         if (!string.IsNullOrWhiteSpace(request.ObjectKeyPrefix))
         {
             return $"{root}/{NormalizePath(request.ObjectKeyPrefix!)}/{NormalizePath(request.FileName)}";
@@ -111,7 +109,4 @@ internal sealed class S3FileObjectStore : IFileObjectStore
         }
         return normalized;
     }
-
-    private static string CreatePartition(string value) =>
-        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
 }
