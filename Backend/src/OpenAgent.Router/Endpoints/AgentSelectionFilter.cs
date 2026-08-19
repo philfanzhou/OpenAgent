@@ -39,16 +39,26 @@ internal sealed class AgentSelectionFilter(
         string? explicitAgentId = string.IsNullOrWhiteSpace(request.AgentId)
             ? context.Request.Headers["X-Agent-Id"].FirstOrDefault()
             : request.AgentId;
-        AgentSelection? selection = await selectionService.SelectAsync(
-            request.Query,
-            routingConversationId,
-            explicitAgentId,
-            context.RequestAborted).ConfigureAwait(false);
+        AgentSelection? selection;
+        try
+        {
+            selection = await selectionService.SelectAsync(
+                request.Query,
+                routingConversationId,
+                explicitAgentId,
+                context.RequestAborted,
+                context.Request.Headers.Authorization.FirstOrDefault()).ConfigureAwait(false);
+        }
+        catch (AgentRoutingException exception)
+        {
+            return RouterProblem.From(exception);
+        }
         if (selection == null)
         {
-            return Results.Problem(
-                statusCode: StatusCodes.Status503ServiceUnavailable,
-                title: "No Agent could be selected");
+            return RouterProblem.From(new AgentRoutingException(
+                StatusCodes.Status503ServiceUnavailable,
+                RouterErrorCodes.NoAgentAvailable,
+                "No Agent could be selected"));
         }
 
         context.Features.Set(new AgentRoutingFeature(

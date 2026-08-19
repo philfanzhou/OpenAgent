@@ -1,5 +1,6 @@
 using System.Text.Json;
 using OpenAgent.Contracts.Requests;
+using OpenAgent.Router.Middleware;
 using OpenAgent.Router.Models;
 
 namespace OpenAgent.Router.Endpoints;
@@ -26,15 +27,26 @@ internal static class ChatRequestReader
                     form["agentId"].FirstOrDefault());
             }
 
+            if (RequestBodySnapshot.TryGet(request.HttpContext, out Task<RequestBodySnapshot> snapshotTask))
+            {
+                RequestBodySnapshot snapshot = await snapshotTask.ConfigureAwait(false);
+                cancellationToken.ThrowIfCancellationRequested();
+                if (snapshot.Digest.Length > 0)
+                {
+                    ChatRequest cachedBody = JsonSerializer.Deserialize<ChatRequest>(
+                        snapshot.CanonicalBody,
+                        JsonOptions) ?? throw new JsonException(
+                            "The chat request body is required.");
+                    return ToParsedRequest(cachedBody);
+                }
+            }
+
             ChatRequest body = await JsonSerializer.DeserializeAsync<ChatRequest>(
                 request.Body,
                 JsonOptions,
                 cancellationToken).ConfigureAwait(false)
                 ?? throw new JsonException("The chat request body is required.");
-            return new ParsedChatRequest(
-                body.Message,
-                ReadContextString(body.Context, "conversationId"),
-                ReadContextString(body.Context, "agentId"));
+            return ToParsedRequest(body);
         }
         finally
         {
@@ -43,6 +55,14 @@ internal static class ChatRequestReader
                 request.Body.Position = 0;
             }
         }
+    }
+
+    private static ParsedChatRequest ToParsedRequest(ChatRequest body)
+    {
+        return new ParsedChatRequest(
+            body.Message,
+            ReadContextString(body.Context, "conversationId"),
+            ReadContextString(body.Context, "agentId"));
     }
 
     private static string? ReadContextString(

@@ -2,8 +2,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using OpenAgent.Router.Options;
-using Yarp.ReverseProxy.Forwarder;
 using Xunit;
+using Yarp.ReverseProxy.Forwarder;
 
 namespace OpenAgent.Router.Tests.Extensions;
 
@@ -51,6 +51,24 @@ public class RouterServiceCollectionExtensionsTests
 
         Assert.Equal("self-engine", registry.DefaultProvider.Id);
         Assert.Single(registry.Providers);
+    }
+
+    [Fact]
+    public void AddRouterRuntime_WithoutRedis_RegistersOperationalMemoryCaches()
+    {
+        IConfiguration configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(CreateValidSettings())
+            .Build();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddRouterRuntime(configuration);
+        using ServiceProvider provider = services.BuildServiceProvider();
+
+        IQueryCache queryCache = provider.GetRequiredService<IQueryCache>();
+        IIdempotencyStore idempotencyStore = provider.GetRequiredService<IIdempotencyStore>();
+
+        Assert.IsType<RouterQueryCache>(queryCache);
+        Assert.IsType<IdempotencyStore>(idempotencyStore);
     }
 
     [Theory]

@@ -1,22 +1,40 @@
 # Agent Provider 集成
 
-Router 通过 `IAgentProvider` 统一调用自有 Engine 和第三方 Agent 服务。Provider 负责自己的 Agent 列表协议、意图 Agent 调用、目标地址解析和协议相关的请求配置；Router 负责意图识别编排与统一转发。
+Router 通过 `IAgentProvider` 统一调用自有 Engine 和第三方 Agent 服务。Provider 负责目录协议、会话归属探测、意图调用、目标解析和请求配置；Router 负责公开目录、授权、Provider 映射、会话亲和与统一转发。
 
-## 请求流程
+## 公开 Agent Catalog
 
-当请求已经包含 `agentId` 或 `conversationId` 时，Router 不执行意图识别，也不查询或校验会话。否则 Router 按以下顺序处理：
+`GET /api/v1/agent/agents`（兼容别名：`GET /api/v1/agents`）会读取所有 Provider 的目录，并依次应用已注册的 `IAgentAccessControl`。响应仍为按 `agentId` 排序的 `AgentSummary[]`，不会包含 `providerId`、内部地址或 Provider 配置。
 
-1. 调用所有 Provider 的 `GetAgentsAsync` 聚合 Agent 列表。
-2. 如果注册了 `IAgentAccessControl`，将候选列表交给权限实现过滤。
-3. 使用 `IntentRecognition:ProviderId` 找到意图识别 Provider，并把候选 Agent 与用户消息交给配置的 `AgentId` 完成意图识别。
-4. 校验模型返回的 Agent ID，将其写入 `X-Agent-Id`。
-5. 调用候选 Agent 所属 Provider 解析目标，由 Router 的统一转发器转发原始请求。
+公开 `agentId` 保留 Provider 发布的稳定 ID，Router 只在内部维护其 Provider 映射。同一用户可见范围内若两个 Provider 发布相同 `agentId`，目录和显式选择均返回 `409 agent_id_conflict`，不会用 Provider 前缀改写 ID 或按注册顺序静默选取。
 
-`HttpContext` 只保留在 Router 的 HTTP/YARP 边界，不再沿 Provider 调用链传递。Agent 列表查询和意图识别使用 Provider 自己的服务身份；权限扩展点只接收 `IAgentUserContext` 与候选列表。真实转发仍保留原始请求体、Header、附件和取消信号，Provider 可以通过 `ConfigureRequestAsync` 调整最终的 `HttpRequestMessage`。Router 不定义通用聊天请求 DTO，也不要求不同服务使用相同的网络协议。
+显式 `agentId` 必须先经过完整目录和授权过滤，再定位 Provider。不存在和未授权统一返回 `404 agent_not_found`，避免利用显式选择探测不可见 Agent。任何 Provider 的目录不可用时返回 `503 agent_provider_unavailable`，避免在不完整快照上产生不稳定映射。
+
+## 会话归属与亲和
+
+亲和记录以租户和 `conversationId` 的摘要为键，值只保存内部 `providerId` 与 `Pending`/`Confirmed` 状态；配置 Redis 时由分布式缓存持久化，未配置时使用进程内分布式缓存实现。
+
+1. 新会话完成显式或自动选择后写入 `Pending` 亲和，重试仍固定到同一 Provider。
+2. 续聊先读取亲和，再通过 Provider contract 验证归属；首次验证成功后转为 `Confirmed`。
+3. 旧会话没有亲和时逐一探测所有 Provider；唯一命中会回填 `Confirmed`，实现无停机迁移。
+4. 已确认会话在原 Provider 不存在时重新探测其他 Provider；唯一命中会更新归属。
+5. 已绑定 Provider 不可用、迁移探测不完整或 Provider 已移除时不回退到默认 Provider，避免拆分会话历史。
+
+亲和键包含租户边界；所有归属探测都在 Engine 侧使用已验证的用户上下文执行。Provider 对无权访问、跨租户或已删除会话统一返回未找到语义。会话同时命中多个 Provider 时返回冲突，不自动选取。
+
+## Provider contract
+
+第三方接入实现 `IAgentProviderFactory` 和 `IAgentProvider`，并注册 Factory。`AgentProviderRequestContext` 只包含已认证用户上下文和当前请求认证令牌，不传递 `HttpContext`；租户从 `IAgentUserContext.TenantId` 获取。内置 Engine Provider 原样透传当前请求的 `Authorization`；Router 与 Engine 使用同一套认证配置和认证管线，用户和租户身份不通过自定义 header 传输。
+
+- `GetAgentsAsync`：返回 `AgentProviderCatalog`；`IsAvailable=false` 表示不能形成完整目录。
+- `ResolveConversationAsync`：返回 `NotFound`、`Found`、`Forbidden` 或 `Unavailable`。
+- `RecognizeIntentAsync`：调用指定意图 Agent，返回标准化选择结果。
+- `ResolveForwardingAsync`：按 action、租户与会话解析聊天目标。
+- `ConfigureRequestAsync`：在 YARP 转发前处理 Provider 认证或协议适配。
+
+内置 Engine Provider 使用 `GET /api/v1/agent/provider/conversations/{conversationId}` 探测归属。请求复用当前调用方的 `Authorization` 令牌；端点从 Engine 已验证的 `IAgentUserContext` 获取用户和租户，只返回 204/404，不返回会话内容。
 
 ## 配置
-
-自有 Engine 也作为 Provider 持久化在配置中：
 
 ```json
 {
@@ -38,21 +56,16 @@ Router 通过 `IAgentProvider` 统一调用自有 Engine 和第三方 Agent 服�
           "Settings": {
             "AgentListPath": "/api/v1/agent/agents",
             "ChatPath": "/api/v1/agent/chat",
-            "ServiceHeaders": {
-              "Authorization": "use-a-secret-provider",
-              "X-Tenant-Id": "intent-service"
-            }
+            "ConversationPath": "/api/v1/agent/provider/conversations",
+            "ServiceHeaders": { "Authorization": "use-a-secret-provider" }
           }
         },
         {
           "Id": "partner-a",
-          "Type": "PartnerA",
+          "Type": "OpenAgentEngine",
           "Settings": {
             "BaseUrl": "https://partner.example",
-            "ApiKey": "use-a-secret-provider",
-            "Custom": {
-              "Region": "east"
-            }
+            "ServiceHeaders": { "Authorization": "use-a-secret-provider" }
           }
         }
       ]
@@ -61,25 +74,19 @@ Router 通过 `IAgentProvider` 统一调用自有 Engine 和第三方 Agent 服�
 }
 ```
 
-公共配置只定义 `Id`、`Type` 和不透明的 `Settings`。Router 不解析 `Settings`，每个 Provider Factory 可以自行读取任意嵌套参数。敏感凭据应由环境变量或密钥配置源注入。
+`BaseUrl` 存在时 Provider 直接使用该地址；否则内置 Provider 使用 `IRouteTable` 发现 Engine 实例。`Settings` 对 Registry 保持不透明，敏感凭据应由环境变量或密钥配置源注入。`DefaultProviderId` 仍是必填的注册表兼容配置，但不会覆盖显式 Agent 映射或会话亲和。Fallback Agent 也必须存在于完整、已授权的目录中。
 
-`DefaultProviderId` 用于已有 `agentId`、已有 `conversationId` 以及 fallback Agent 没有候选来源时的兼容转发，它不是意图识别失败时的 Provider fallback。配置中没有 `FallbackProviderId` 字段。`RouterSettings:Routing`（`EngineEndpoint`/`WorkflowEndpoint`）是 `InMemoryRouteTable` 使用的静态路由回退，不属于某个 Provider 的 `Settings`。
+## 错误语义
 
-## 实现 Provider
+| HTTP / code | 含义 | 回退 |
+|-------------|------|------|
+| `404 agent_not_found` | Agent 不存在或当前用户不可见 | 无 |
+| `409 agent_id_conflict` | 可见目录存在重复公开 ID | 无 |
+| `409 conversation_owner_conflict` | 多个 Provider 声明同一会话 | 无 |
+| `409 conversation_provider_mismatch` | 显式 Agent 与已绑定会话不在同一 Provider | 无 |
+| `404 conversation_not_found` | 会话不存在、已删除或用户无权访问 | 无 |
+| `503 agent_provider_unavailable` | 已知 Provider 或完整目录不可用 | 不跨 Provider 回退 |
+| `503 conversation_owner_unresolved` | 无亲和且迁移探测不完整 | 不落到默认 Provider |
+| `503 no_agent_available` | 意图和授权后的 fallback 均无法选择 Agent | 无 |
 
-第三方接入需要实现 `IAgentProviderFactory` 和 `IAgentProvider`，并注册 Factory：
-
-```csharp
-services.AddSingleton<IAgentProviderFactory, PartnerAgentProviderFactory>();
-```
-
-Factory 的 `Type` 必须与配置一致。`Create` 会收到 Provider ID 和该 Provider 的 `Settings` 配置节。Provider 的四个操作具有不同职责：
-
-- `GetAgentsAsync`：使用 Provider 服务身份读取 Agent 列表并转换为 `AgentSummary`。
-- `RecognizeIntentAsync`：接收意图 Agent ID、候选 Agent 与用户消息，返回标准化的 `IntentRecognitionResult`。
-- `ResolveForwardingAsync`：根据 action、租户 ID 和会话 ID 解析目标地址。
-- `ConfigureRequestAsync`：在统一转发前调整目标 `HttpRequestMessage`，处理服务方认证或自定义协议。
-
-Provider 内可以注入自己的 HTTP 客户端、SDK、RouteTable 或认证服务。内置 `OpenAgentEngineProvider` 在 Provider 内调用 `IRouteTable`，因此没有把 endpoint 放进公共配置。Agent 列表与意图识别均不继承用户请求身份；调用自有 Engine 所需的服务身份可以通过 Provider 的 `ServiceHeaders` 配置。
-
-`IAgentAccessControl` 是可选扩展点。没有实现时候选列表直接进入意图识别；当前 Router Host 注册了基于 `IAgentVisibilityService` 的实现，并且只在候选聚合完成后过滤一次。
+关键实现位于 `Backend/src/OpenAgent.Router/Routing/AgentCatalogService.cs`、`ConversationProviderResolver.cs` 与 `Backend/src/OpenAgent.Engine.Host/Extensions/AgentProviderEndpointExtensions.cs`。

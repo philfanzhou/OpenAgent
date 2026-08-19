@@ -26,9 +26,15 @@ public static class RouterServiceCollectionExtensions
             .ValidateOnStart();
         services.AddSingleton<IAgentProviderFactory, OpenAgentEngineProviderFactory>();
         services.AddSingleton<IAgentProviderRegistry, AgentProviderRegistry>();
+        services.AddScoped<IAgentCatalogService, AgentCatalogService>();
+        services.AddSingleton<IConversationProviderStore, ConversationProviderStore>();
+        services.AddSingleton<IConversationProviderResolver, ConversationProviderResolver>();
         services.AddSingleton<IAgentForwarder, AgentForwarder>();
         services.AddSingleton<IIntentAgentSelector, IntentAgentSelector>();
         services.AddScoped<IAgentSelectionService, AgentSelectionService>();
+        services.AddSingleton(new RouterCacheSettings(configuration));
+        services.AddSingleton<IIdempotencyStore, IdempotencyStore>();
+        services.AddSingleton<IQueryCache, RouterQueryCache>();
 
         var redisConnectionString = configuration.GetConnectionString("Redis");
         if (!string.IsNullOrEmpty(redisConnectionString))

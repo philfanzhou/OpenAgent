@@ -23,7 +23,7 @@ internal static class GatewayProxyHandler
         }
 
         string? tenantId = userContext.IsAuthenticated
-            ? userContext.TenantId ?? context.Request.Headers["X-Tenant-Id"].FirstOrDefault()
+            ? userContext.TenantId
             : null;
         string? conversationId = userContext.IsAuthenticated
             ? context.Request.RouteValues["conversationId"]?.ToString()
@@ -90,8 +90,6 @@ internal static class GatewayProxyHandler
         return ForwardingContextBuilder.ApplyAsync(
             proxyRequest,
             targetUri,
-            userContext,
-            tenantId,
             conversationId,
             traceId);
     }

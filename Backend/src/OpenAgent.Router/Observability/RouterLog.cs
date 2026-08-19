@@ -33,8 +33,8 @@ internal static partial class RouterLog
     [LoggerMessage(EventId = 3004, Level = LogLevel.Warning, Message = "Idempotency cache check failed, bypassing idempotency. Action={Action}, IdempotencyKey={IdempotencyKey}, TraceId={TraceId}, ExceptionType={ExceptionType}")]
     private static partial void IdempotencyCacheCheckFailedCore(ILogger logger, Exception exception, string? action, string idempotencyKey, string? traceId, string exceptionType);
 
-    [LoggerMessage(EventId = 3005, Level = LogLevel.Information, Message = "Semantic cache hit. Action={Action}, UserId={UserId}, TenantId={TenantId}, ConversationId={ConversationId}, TraceId={TraceId}")]
-    public static partial void SemanticCacheHit(ILogger logger, string? action, string userId, string? tenantId, string? conversationId, string? traceId);
+    [LoggerMessage(EventId = 3005, Level = LogLevel.Information, Message = "Query cache hit. Action={Action}, UserId={UserId}, TenantId={TenantId}, ConversationId={ConversationId}, TraceId={TraceId}")]
+    public static partial void QueryCacheHit(ILogger logger, string? action, string userId, string? tenantId, string? conversationId, string? traceId);
     /// <summary>Shared forwarding failure log used by main chat endpoint and all GET proxy endpoints.</summary>
     public static void ForwardingFailed(
         ILogger logger,
@@ -164,6 +164,16 @@ internal static partial class RouterLog
 
     [LoggerMessage(EventId = 3034, Level = LogLevel.Information, Message = "Readiness probe used fallback downstream. FailedEndpoint={FailedEndpoint}, FallbackEndpoint={FallbackEndpoint}")]
     public static partial void ReadinessFallbackSelected(ILogger logger, string failedEndpoint, string fallbackEndpoint);
+
+    #endregion
+
+    #region --- Router response caches ---
+
+    [LoggerMessage(EventId = 3029, Level = LogLevel.Warning, Message = "Query cache operation failed; bypassing cache. Route={Route}")]
+    public static partial void QueryCacheFailed(ILogger logger, Exception exception, string route);
+
+    [LoggerMessage(EventId = 3030, Level = LogLevel.Warning, Message = "Failed to release idempotency placeholder. StorageKey={StorageKey}")]
+    public static partial void IdempotencyReleaseFailed(ILogger logger, Exception exception, string storageKey);
 
     #endregion
 
