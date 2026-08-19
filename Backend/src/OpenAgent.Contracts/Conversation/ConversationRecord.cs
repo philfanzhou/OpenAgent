@@ -5,6 +5,8 @@ public sealed class ConversationRecord
     public required string ConversationId { get; init; }
     public required string TenantId { get; init; }
     public required string UserId { get; init; }
+    public ConversationType Type { get; init; } = ConversationType.User;
+    public ConversationOwnerRole OwnerRole { get; init; } = ConversationOwnerRole.User;
     public string? AgentId { get; set; }
     public string? TraceId { get; set; }
     public int Version { get; set; } = 1;
@@ -42,4 +44,18 @@ public enum ConversationStatus
     Completed = 1,
     Failed = 2,
     Cancelled = 3
+}
+
+public enum ConversationType
+{
+    User = 0,
+    Internal = 1,
+    Channel = 2
+}
+
+public enum ConversationOwnerRole
+{
+    User = 0,
+    System = 1,
+    Service = 2
 }

@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Http;
+using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Engine.Host.Extensions;
@@ -35,6 +36,8 @@ public class EndpointExtensionsTests
             {
                 ["agentId"] = "body-agent",
                 ["conversationId"] = "body-conv",
+                ["conversationType"] = "Internal",
+                ["conversationOwnerRole"] = "Service",
                 ["customKey"] = "custom-value"
             }
         };
@@ -44,11 +47,15 @@ public class EndpointExtensionsTests
         Assert.Equal("hello", agentRequest.Query);
         Assert.Equal("body-agent", agentRequest.AgentId);
         Assert.Equal("body-conv", agentRequest.ConversationId);
+        Assert.Equal(ConversationType.Internal, agentRequest.ConversationType);
+        Assert.Equal(ConversationOwnerRole.Service, agentRequest.ConversationOwnerRole);
         Assert.Equal("trace-1", agentRequest.TraceId);
         Assert.NotNull(agentRequest.ExternalContext);
         Assert.Equal("custom-value", agentRequest.ExternalContext!["customKey"]);
         Assert.False(agentRequest.ExternalContext.ContainsKey("agentId"));
         Assert.False(agentRequest.ExternalContext.ContainsKey("conversationId"));
+        Assert.False(agentRequest.ExternalContext.ContainsKey("conversationType"));
+        Assert.False(agentRequest.ExternalContext.ContainsKey("conversationOwnerRole"));
     }
 
     [Fact]
@@ -61,6 +68,8 @@ public class EndpointExtensionsTests
 
         Assert.Null(agentRequest.AgentId);
         Assert.False(string.IsNullOrWhiteSpace(agentRequest.ConversationId));
+        Assert.Equal(ConversationType.User, agentRequest.ConversationType);
+        Assert.Equal(ConversationOwnerRole.User, agentRequest.ConversationOwnerRole);
         Assert.Equal("trace-2", agentRequest.TraceId);
         Assert.Null(agentRequest.ExternalContext);
     }

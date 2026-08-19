@@ -59,7 +59,7 @@ public interface IConversationStore
 
     /// <summary>
     /// 列出指定租户的会话，按 LastMessageAt 降序返回（不含消息体）。
-    /// 仅返回当前认证用户（ICurrentUserContext）拥有的会话。
+    /// 仅返回当前认证用户（ICurrentUserContext）拥有的普通用户会话。
     /// </summary>
     Task<IReadOnlyList<ConversationRecord>> ListConversationsAsync(
         string tenantId,
@@ -69,7 +69,7 @@ public interface IConversationStore
 
     /// <summary>
     /// 按关键词搜索会话（在消息内容中匹配），按 LastMessageAt 降序返回（不含消息体）。
-    /// 仅搜索当前认证用户（ICurrentUserContext）拥有的会话。
+    /// 仅搜索当前认证用户（ICurrentUserContext）拥有的普通用户会话。
     /// </summary>
     Task<IReadOnlyList<ConversationRecord>> SearchConversationsAsync(
         string tenantId,

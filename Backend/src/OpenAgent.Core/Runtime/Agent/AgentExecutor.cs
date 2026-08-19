@@ -233,6 +233,8 @@ public sealed class AgentExecutor
             Query = request.Query,
             AgentId = agentId,
             ConversationId = request.ConversationId,
+            ConversationType = request.ConversationType,
+            ConversationOwnerRole = request.ConversationOwnerRole,
             TraceId = traceId,
             ClientType = request.ClientType,
             IdempotencyKey = request.IdempotencyKey,

@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.AspNetCore.Mvc;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Security;
@@ -74,7 +75,7 @@ internal static class ConversationEndpointExtensions
             tenantId,
             conversationId,
             cancellationToken).ConfigureAwait(false);
-        if (record == null)
+        if (!IsUserConversation(record))
         {
             return Results.NotFound();
         }
@@ -102,7 +103,7 @@ internal static class ConversationEndpointExtensions
             AgentEndpointRequestMapper.RequireTenant(context),
             conversationId,
             cancellationToken).ConfigureAwait(false);
-        if (record == null)
+        if (!IsUserConversation(record))
             return Results.NotFound();
 
         string userId = context.GetAgentRequest().User.UserId;
@@ -110,5 +111,11 @@ internal static class ConversationEndpointExtensions
             ? Results.Ok(record)
             : Results.Forbid();
     }
+
+    private static bool IsUserConversation([NotNullWhen(true)] ConversationRecord? record) =>
+        record != null
+        && !record.IsDeletedByUser
+        && record.Type == ConversationType.User
+        && record.OwnerRole == ConversationOwnerRole.User;
 
 }

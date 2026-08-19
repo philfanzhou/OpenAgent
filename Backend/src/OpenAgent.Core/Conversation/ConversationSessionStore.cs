@@ -49,6 +49,8 @@ internal sealed class ConversationSessionStore
         }
 
         if (!string.Equals(record.TenantId, context.TenantId, StringComparison.Ordinal)
+            || record.Type != context.Type
+            || record.OwnerRole != context.OwnerRole
             || (!string.IsNullOrWhiteSpace(context.UserId)
                 && !string.Equals(record.UserId, context.UserId, StringComparison.Ordinal)))
         {
@@ -148,6 +150,8 @@ internal sealed class ConversationSessionStore
             ConversationId = context.ConversationId!,
             TenantId = context.TenantId!,
             UserId = context.UserId ?? "anonymous",
+            Type = context.Type,
+            OwnerRole = context.OwnerRole,
             AgentId = context.AgentId ?? resolvedAgentId,
             TraceId = context.TraceId,
             Status = ConversationStatus.Running,

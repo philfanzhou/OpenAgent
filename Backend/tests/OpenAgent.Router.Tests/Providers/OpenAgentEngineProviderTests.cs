@@ -1,7 +1,9 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using OpenAgent.Contracts.Configuration;
+using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Routing;
 using OpenAgent.Contracts.Security;
@@ -47,9 +49,16 @@ public class OpenAgentEngineProviderTests
             CancellationToken.None);
         IReadOnlyList<AgentSummary> agents = catalog.Agents;
         IntentRecognitionResult? response = await provider.RecognizeIntentAsync(
+            requestContext,
             "intent-router",
             agents,
             "select an agent",
+            CancellationToken.None);
+        IntentRecognitionResult? secondResponse = await provider.RecognizeIntentAsync(
+            requestContext,
+            "intent-router",
+            agents,
+            "select another agent",
             CancellationToken.None);
         AgentProviderConversationStatus conversation = await provider.ResolveConversationAsync(
             requestContext,
@@ -63,16 +72,18 @@ public class OpenAgentEngineProviderTests
 
         Assert.Equal("finance", Assert.Single(agents).AgentId);
         Assert.Equal("finance", response?.AgentId);
+        Assert.Equal("finance", secondResponse?.AgentId);
         Assert.Equal(0.95, response?.Confidence);
         Assert.Equal(
             [
                 "http://engine/custom/agents",
                 "http://engine/custom/chat",
+                "http://engine/custom/chat",
                 "http://engine/api/v1/agent/provider/conversations/conversation-1"
             ],
             handler.RequestUris);
         Assert.Equal(
-            ["Basic forwarded-token", "Basic service-token", "Basic forwarded-token"],
+            ["Basic forwarded-token", "Basic forwarded-token", "Basic forwarded-token", "Basic forwarded-token"],
             handler.Authorizations);
         Assert.All(handler.IdentityHeaders, present => Assert.False(present));
         Assert.Equal(AgentProviderConversationStatus.Found, conversation);
@@ -80,8 +91,9 @@ public class OpenAgentEngineProviderTests
         Assert.Equal("conversation-1", routeTable.ConversationId);
         Assert.Equal("http://engine", target?.DestinationPrefix);
         Assert.Equal("http://engine/custom/chat/stream", target?.RequestUri.ToString());
-        Assert.Contains("intent-router", handler.ChatBody, StringComparison.Ordinal);
-        Assert.Contains("select an agent", handler.ChatBody, StringComparison.Ordinal);
+        Assert.All(handler.ChatBodies, body => AssertIntentExecution(body));
+        string[] executionIds = handler.ChatBodies.Select(ReadConversationId).ToArray();
+        Assert.Equal(2, executionIds.Distinct(StringComparer.Ordinal).Count());
     }
 
     private sealed class RecordingHandler : HttpMessageHandler
@@ -89,7 +101,7 @@ public class OpenAgentEngineProviderTests
         public List<string> RequestUris { get; } = [];
         public List<string?> Authorizations { get; } = [];
         public List<bool> IdentityHeaders { get; } = [];
-        public string ChatBody { get; private set; } = string.Empty;
+        public List<string> ChatBodies { get; } = [];
 
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
@@ -123,9 +135,10 @@ public class OpenAgentEngineProviderTests
                 return new HttpResponseMessage(HttpStatusCode.NoContent);
             }
 
-            ChatBody = request.Content == null
+            string chatBody = request.Content == null
                 ? string.Empty
                 : await request.Content.ReadAsStringAsync(cancellationToken);
+            ChatBodies.Add(chatBody);
             return new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = JsonContent.Create(new ChatResponse
@@ -134,6 +147,22 @@ public class OpenAgentEngineProviderTests
                 })
             };
         }
+    }
+
+    private static void AssertIntentExecution(string body)
+    {
+        using JsonDocument document = JsonDocument.Parse(body);
+        JsonElement context = document.RootElement.GetProperty("context");
+        Assert.Equal("intent-router", context.GetProperty("agentId").GetString());
+        Assert.StartsWith("intent-", context.GetProperty("conversationId").GetString());
+        Assert.Equal(ConversationType.Internal.ToString(), context.GetProperty("conversationType").GetString());
+        Assert.Equal(ConversationOwnerRole.Service.ToString(), context.GetProperty("conversationOwnerRole").GetString());
+    }
+
+    private static string ReadConversationId(string body)
+    {
+        using JsonDocument document = JsonDocument.Parse(body);
+        return document.RootElement.GetProperty("context").GetProperty("conversationId").GetString()!;
     }
 
     private sealed class StubRouteTable : IRouteTable

@@ -1,5 +1,7 @@
+using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Security;
+using OpenAgent.Core.Conversation;
 using OpenAgent.Core.Conversation.Store;
 using Xunit;
 
@@ -21,13 +23,17 @@ public class InMemoryConversationStoreTests
     private static ConversationRecord CreateRecord(
         string tenantId = "t1",
         string conversationId = "c1",
-        string userId = "u1")
+        string userId = "u1",
+        ConversationType type = ConversationType.User,
+        ConversationOwnerRole ownerRole = ConversationOwnerRole.User)
     {
         return new ConversationRecord
         {
             TenantId = tenantId,
             ConversationId = conversationId,
             UserId = userId,
+            Type = type,
+            OwnerRole = ownerRole,
             AgentId = "a1"
         };
     }
@@ -153,6 +159,91 @@ public class InMemoryConversationStoreTests
 
         Assert.Single(list);
         Assert.Equal("keep", list[0].ConversationId);
+    }
+
+    [Fact]
+    public async Task ListAndSearchConversations_InternalAndChannelRecords_ExcludeFromUserResults()
+    {
+        ICurrentUserContext user = UserContext();
+        var store = new InMemoryConversationStore(user);
+        await store.CreateAsync(CreateRecord(conversationId: "user"));
+        await store.CreateAsync(CreateRecord(
+            conversationId: "intent",
+            type: ConversationType.Internal,
+            ownerRole: ConversationOwnerRole.Service));
+        await store.CreateAsync(CreateRecord(
+            conversationId: "channel",
+            userId: "channel-service",
+            type: ConversationType.Channel,
+            ownerRole: ConversationOwnerRole.System));
+        await store.AppendMessagesAsync(
+            "t1",
+            "user",
+            1,
+            [CreateMessage("user-message", 1, content: "needle")]);
+        await store.AppendMessagesAsync(
+            "t1",
+            "intent",
+            1,
+            [CreateMessage("intent-message", 1, content: "needle")]);
+        await store.AppendMessagesAsync(
+            "t1",
+            "channel",
+            1,
+            [CreateMessage("channel-message", 1, content: "needle")]);
+
+        IReadOnlyList<ConversationRecord> list = await store.ListConversationsAsync("t1", 0, 10);
+        IReadOnlyList<ConversationRecord> search = await store.SearchConversationsAsync("t1", "needle", 0, 10);
+
+        Assert.Equal("user", Assert.Single(list).ConversationId);
+        Assert.Equal("user", Assert.Single(search).ConversationId);
+        Assert.Null(await store.GetRecordAsync("other-tenant", "channel"));
+    }
+
+    [Fact]
+    public async Task GetRecordAsync_InternalRecordThroughUserQuery_ReturnsNull()
+    {
+        ICurrentUserContext user = UserContext();
+        var store = new InMemoryConversationStore(user);
+        await store.CreateAsync(CreateRecord(
+            conversationId: "intent",
+            type: ConversationType.Internal,
+            ownerRole: ConversationOwnerRole.Service));
+        var query = new ConversationQueryService(store, user);
+
+        ConversationRecord? record = await query.GetRecordAsync("t1", "intent");
+
+        Assert.Null(record);
+    }
+
+    [Fact]
+    public async Task OpenAsync_InternalExecution_PersistsSeparateConversationBoundary()
+    {
+        ICurrentUserContext user = UserContext();
+        var store = new InMemoryConversationStore(user);
+        var sessions = new ConversationSessionStore(
+            store,
+            Options.Create(new ConversationStoreOptions()));
+        var context = new ConversationContext(
+            "intent-execution",
+            "t1",
+            "u1",
+            "intent-router",
+            "trace-1",
+            ConversationType.Internal,
+            ConversationOwnerRole.Service);
+
+        await sessions.OpenAsync(
+            context,
+            "intent-router",
+            "route this request",
+            CancellationToken.None);
+
+        ConversationRecord? stored = await store.GetRecordAsync("t1", "intent-execution");
+        Assert.NotNull(stored);
+        Assert.Equal(ConversationType.Internal, stored.Type);
+        Assert.Equal(ConversationOwnerRole.Service, stored.OwnerRole);
+        Assert.Empty(await store.ListConversationsAsync("t1", 0, 10));
     }
 
     [Fact]

@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using OpenAgent.Contracts.Configuration;
+using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Routing;
 using OpenAgent.Router.Models;
@@ -111,6 +112,7 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
     }
 
     public async Task<IntentRecognitionResult?> RecognizeIntentAsync(
+        AgentProviderRequestContext requestContext,
         string intentAgentId,
         IReadOnlyList<AgentSummary> agents,
         string message,
@@ -124,14 +126,18 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
 
         using HttpRequestMessage request = CreateServiceRequest(
             HttpMethod.Post,
-            $"{endpoint.TrimEnd('/')}{_chatPath}");
+            $"{endpoint.TrimEnd('/')}{_chatPath}",
+            requestContext);
         request.Content = new StringContent(
             JsonSerializer.Serialize(new ChatRequest
             {
                 Message = BuildIntentPrompt(message, agents),
                 Context = new Dictionary<string, object>
                 {
-                    ["agentId"] = intentAgentId
+                    ["agentId"] = intentAgentId,
+                    ["conversationId"] = $"intent-{Guid.NewGuid():N}",
+                    ["conversationType"] = ConversationType.Internal.ToString(),
+                    ["conversationOwnerRole"] = ConversationOwnerRole.Service.ToString()
                 }
             }, JsonOptions),
             Encoding.UTF8,
