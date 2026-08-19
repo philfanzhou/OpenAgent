@@ -2,18 +2,21 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using OpenAgent.Infrastructure;
 
 #nullable disable
 
-namespace OpenAgent.Infrastructure.Migrations
+namespace OpenAgent.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(OpenAgentDbContext))]
-    partial class OpenAgentDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260817132742_AddConversationTokenUsage")]
+    partial class AddConversationTokenUsage
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -246,39 +249,6 @@ namespace OpenAgent.Infrastructure.Migrations
                     b.HasIndex("FileId");
 
                     b.ToTable("message_file_references", "openagent");
-                });
-
-            modelBuilder.Entity("OpenAgent.Infrastructure.Entities.SkillDefinitionEntity", b =>
-                {
-                    b.Property<string>("TenantId")
-                        .HasMaxLength(256)
-                        .HasColumnType("character varying(256)");
-
-                    b.Property<string>("SkillId")
-                        .HasMaxLength(256)
-                        .HasColumnType("character varying(256)");
-
-                    b.Property<string>("Type")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.Property<string>("DefinitionJson")
-                        .IsRequired()
-                        .HasColumnType("jsonb");
-
-                    b.Property<string>("SourceType")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("TenantId", "SkillId", "Type");
-
-                    b.HasIndex("TenantId", "UpdatedAt");
-
-                    b.ToTable("skill_definitions", "openagent");
                 });
 
             modelBuilder.Entity("OpenAgent.Infrastructure.Entities.ConversationFileReferenceEntity", b =>

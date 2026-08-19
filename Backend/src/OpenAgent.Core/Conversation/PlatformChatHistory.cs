@@ -21,6 +21,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
 
     private readonly ConversationContext _conversation;
     private readonly string _agentId;
+    private readonly string _modelId;
     private readonly string _input;
     private readonly IReadOnlyList<FileAsset> _files;
     private readonly FileAssetExecutionContext _fileExecution;
@@ -39,10 +40,12 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
     private bool _released;
     private bool _stored;
     private bool _finalized;
+    private bool _completionStaged;
 
     internal PlatformChatHistory(
         ConversationContext conversation,
         string agentId,
+        string modelId,
         string input,
         IReadOnlyList<FileAsset> files,
         FileAssetExecutionContext fileExecution,
@@ -53,6 +56,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
     {
         _conversation = conversation;
         _agentId = agentId;
+        _modelId = modelId;
         _input = input;
         _files = files;
         _fileExecution = fileExecution;
@@ -79,17 +83,23 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
     }
 
     /// <summary>把中止/失败时已产生的部分正文与思考内容组装成一条 assistant 消息（含 reasoning 元数据）。</summary>
-    private ConversationMessage BuildPartialMessage()
+    private ConversationMessage BuildPartialMessage(ConversationStatus status)
     {
         string reasoning = _partialReasoning.ToString();
-        IReadOnlyDictionary<string, string>? metadata = reasoning.Length > 0
-            ? new Dictionary<string, string>(StringComparer.Ordinal) { ["Reasoning"] = reasoning }
-            : null;
+        var metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["ExecutionStatus"] = status.ToString()
+        };
+        if (reasoning.Length > 0)
+        {
+            metadata["Reasoning"] = reasoning;
+        }
         return ConversationSessionStore.Message(
             _nextSequence++,
             "assistant",
             _partialAssistant.ToString(),
-            metadata: metadata);
+            metadata: metadata,
+            modelId: _modelId);
     }
 
     protected override async ValueTask<IEnumerable<ChatMessage>> ProvideChatHistoryAsync(
@@ -260,7 +270,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         return repaired;
     }
 
-    protected override async ValueTask StoreChatHistoryAsync(
+    protected override ValueTask StoreChatHistoryAsync(
         InvokedContext context,
         CancellationToken cancellationToken)
     {
@@ -273,6 +283,33 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         foreach (ConversationMessage message in responses)
         {
             _pending.Add(message);
+        }
+        _completionStaged = true;
+        return ValueTask.CompletedTask;
+    }
+
+    internal async Task CompleteAsync(
+        TokenUsage? usage,
+        string modelId,
+        CancellationToken cancellationToken)
+    {
+        if (_stored)
+        {
+            return;
+        }
+        if (!_completionStaged)
+        {
+            throw new InvalidOperationException("Conversation completion was not staged.");
+        }
+
+        int assistantIndex = _pending.FindLastIndex(message =>
+            string.Equals(message.Role, "assistant", StringComparison.OrdinalIgnoreCase));
+        if (assistantIndex >= 0)
+        {
+            _pending[assistantIndex] = WithCompletion(
+                _pending[assistantIndex],
+                usage,
+                modelId);
         }
 
         await _store.SaveAsync(
@@ -316,14 +353,10 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
 
             RecordUser();
             _finalized = true;
-            if (_partialAssistant.Length > 0 || _partialReasoning.Length > 0)
-            {
-                _pending.Add(BuildPartialMessage());
-            }
-
             ConversationStatus status = context.InvokeException is OperationCanceledException
                 ? ConversationStatus.Cancelled
                 : ConversationStatus.Failed;
+            _pending.Add(BuildPartialMessage(status));
             await _store.SaveAsync(
                 _conversation,
                 _currentVersion,
@@ -342,19 +375,21 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
     {
         try
         {
-            if (_loaded && !_stored && !_finalized)
+            if (_loaded && !_stored)
             {
-                _finalized = true;
-                RecordUser();
-                if (_partialAssistant.Length > 0 || _partialReasoning.Length > 0)
+                ConversationStatus status = ConversationStatus.Completed;
+                if (!_finalized)
                 {
-                    _pending.Add(BuildPartialMessage());
+                    _finalized = true;
+                    RecordUser();
+                    status = ConversationStatus.Cancelled;
+                    _pending.Add(BuildPartialMessage(status));
                 }
                 await _store.SaveAsync(
                     _conversation,
                     _currentVersion,
                     _pending,
-                    ConversationStatus.Cancelled,
+                    status,
                     CancellationToken.None).ConfigureAwait(false);
                 _stored = true;
             }
@@ -406,6 +441,25 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
             metadata: AgentMessageAdapter.BuildFileMetadata(created),
             fileIds: created.Select(file => file.FileId).ToArray()));
     }
+
+    private static ConversationMessage WithCompletion(
+        ConversationMessage message,
+        TokenUsage? usage,
+        string modelId) => new()
+        {
+            MessageId = message.MessageId,
+            Sequence = message.Sequence,
+            Role = message.Role,
+            Content = message.Content,
+            ToolCallId = message.ToolCallId,
+            ToolName = message.ToolName,
+            IdempotencyKey = message.IdempotencyKey,
+            Timestamp = message.Timestamp,
+            Metadata = message.Metadata,
+            FileIds = message.FileIds,
+            TokenUsage = usage,
+            ModelId = modelId
+        };
 
     private async ValueTask ReleaseLockAsync()
     {

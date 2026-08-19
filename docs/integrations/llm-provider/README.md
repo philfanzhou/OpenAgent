@@ -11,6 +11,12 @@
 
 函数调用、流式响应、多模态内容和 usage 统一通过 Microsoft.Extensions.AI / MAF 类型进入平台。
 
+## Usage 语义
+
+Provider 经 SDK 返回的 `UsageDetails` 是 Token 用量唯一权威来源。平台只在 input、output、total 三项均存在且有效时生成 `TokenUsage`；缺少任一核心字段时返回 `null`，前端显示“暂不可用”，不使用本地 tokenizer 或字符数估算补齐。`promptTokens`/`completionTokens` 是 input/output 的兼容线名称。
+
+`cachedInputTokens` 与 `reasoningTokens` 是可选细分项，分别属于 Provider 报告的 input/output 子集，不能再次加到 total。`AdditionalCounts` 可能包含请求数、计费单位等非 Token 指标，当前不进入 `TokenUsage`，避免跨 Provider 误合并。
+
 ## 关键文件
 
 | 文件 | 职责 |
@@ -18,6 +24,7 @@
 | `Backend/src/OpenAgent.Core/Models/LlmRegistry.cs` | Profile 注册与配置解析 |
 | `Backend/src/OpenAgent.Core/Runtime/Agent/AgentChatClientFactory.cs` | API 格式到 Provider client |
 | `Backend/src/OpenAgent.Core/Runtime/Agent/AgentFactory.cs` | 创建 ChatClientAgent、AgentSession 扩展和函数循环配置 |
+| `Backend/src/OpenAgent.Core/Runtime/Agent/AgentResponseAdapter.cs` | Provider usage 与模型标识映射 |
 
 ## 配置解析
 

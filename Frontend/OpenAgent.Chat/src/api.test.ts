@@ -123,7 +123,7 @@ describe('workspace API', () => {
       'data: {"content":"hello"}',
       '',
       'event: done',
-      'data: {"done":true}',
+      'data: {"done":true,"usage":{"promptTokens":21,"completionTokens":8,"totalTokens":29},"modelId":"provider-model"}',
       '',
     ].join('\n')
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(stream, {
@@ -137,9 +137,37 @@ describe('workspace API', () => {
     expect(events).toEqual([
       { type: 'reasoning', content: 'inspect first' },
       { type: 'content', content: 'hello' },
-      { type: 'done', done: true },
+      {
+        type: 'done',
+        done: true,
+        usage: { promptTokens: 21, completionTokens: 8, totalTokens: 29 },
+        modelId: 'provider-model',
+      },
     ])
     expect(vi.mocked(fetch).mock.calls[0]?.[0]).toBe('http://engine.example/api/v1/agent/chat/stream')
+  })
+
+  it('emits the router-selected agent before reading the SSE body', async () => {
+    setConnectionMode('router')
+    setRouterBaseUrl('http://router.example')
+    const stream = [
+      'event: content',
+      'data: {"content":"hello"}',
+      '',
+    ].join('\n')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(stream, {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'X-OpenAgent-Selected-Agent-Id': 'support',
+      },
+    })))
+
+    const events = []
+    for await (const event of api.streamChat('hello')) events.push(event)
+
+    expect(events[0]).toEqual({ type: 'agent_selected', agentId: 'support' })
+    expect(events[1]).toEqual({ type: 'content', content: 'hello' })
   })
 
   it('preserves streamed tool arguments and problem details for the message UI', async () => {

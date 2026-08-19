@@ -6,6 +6,7 @@ using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Skills;
+using OpenAgent.Contracts.Requests;
 using Testcontainers.PostgreSql;
 using Xunit;
 
@@ -52,8 +53,9 @@ public sealed class InfrastructurePersistenceTests : IAsyncLifetime
     public async Task ConversationStore_StoresFilesAtConversationAndMessageLevel()
     {
         ServiceProvider services = Assert.IsType<ServiceProvider>(_services);
+        using IServiceScope scope = services.CreateScope();
         IFileAssetRepository files = services.GetRequiredService<IFileAssetRepository>();
-        IConversationStore conversations = services.GetRequiredService<IConversationStore>();
+        IConversationStore conversations = scope.ServiceProvider.GetRequiredService<IConversationStore>();
         FileAsset asset = new()
         {
             FileId = "file-001",
@@ -120,8 +122,9 @@ public sealed class InfrastructurePersistenceTests : IAsyncLifetime
     public async Task FileAssetRepository_EnsuresConversationReferencesConcurrently()
     {
         ServiceProvider services = Assert.IsType<ServiceProvider>(_services);
+        using IServiceScope scope = services.CreateScope();
         IFileAssetRepository files = services.GetRequiredService<IFileAssetRepository>();
-        IConversationStore conversations = services.GetRequiredService<IConversationStore>();
+        IConversationStore conversations = scope.ServiceProvider.GetRequiredService<IConversationStore>();
         IDbContextFactory<OpenAgentDbContext> contexts =
             services.GetRequiredService<IDbContextFactory<OpenAgentDbContext>>();
         FileAsset asset = new()
@@ -188,6 +191,56 @@ public sealed class InfrastructurePersistenceTests : IAsyncLifetime
         Assert.Equal("private/tenants/example/skill-packages/skill.json", storedPackage?.ObjectKey);
         Assert.Single(stored);
         Assert.Null(foreign);
+    }
+
+    [Fact]
+    public async Task ConversationStore_TokenUsage_RoundTripsProviderCounts()
+    {
+        ServiceProvider services = Assert.IsType<ServiceProvider>(_services);
+        using IServiceScope scope = services.CreateScope();
+        IConversationStore conversations = scope.ServiceProvider.GetRequiredService<IConversationStore>();
+        Assert.True(await conversations.CreateAsync(new ConversationRecord
+        {
+            ConversationId = "conversation-usage",
+            TenantId = "tenant-usage",
+            UserId = "user-usage",
+            AgentId = "default"
+        }, CancellationToken.None));
+        TokenUsage usage = new()
+        {
+            PromptTokens = 21,
+            CompletionTokens = 8,
+            TotalTokens = 29,
+            CachedInputTokens = 5,
+            ReasoningTokens = 3
+        };
+
+        AppendResult appended = await conversations.AppendMessagesAsync(
+            "tenant-usage",
+            "conversation-usage",
+            1,
+            [new ConversationMessage
+            {
+                MessageId = "message-usage",
+                Sequence = 1,
+                Role = "assistant",
+                Content = "response",
+                TokenUsage = usage,
+                ModelId = "provider-model"
+            }],
+            CancellationToken.None);
+        ConversationRecord record = Assert.IsType<ConversationRecord>(
+            await conversations.GetRecordAsync(
+                "tenant-usage",
+                "conversation-usage",
+                CancellationToken.None));
+        ConversationMessage message = Assert.Single(record.Messages);
+
+        Assert.True(appended.Success);
+        Assert.Equal(29, message.TokenUsage?.TotalTokens);
+        Assert.Equal(5, message.TokenUsage?.CachedInputTokens);
+        Assert.Equal(3, message.TokenUsage?.ReasoningTokens);
+        Assert.Equal("provider-model", message.ModelId);
     }
 
     private sealed class TestCurrentUserContext : ICurrentUserContext

@@ -7,6 +7,7 @@ namespace OpenAgent.Engine.Host.Extensions;
 internal static class AgentStreamWriter
 {
     private static readonly TimeSpan StreamHeartbeatInterval = TimeSpan.FromSeconds(15);
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     internal static async Task WriteSseStreamAsync(
         HttpContext context,
@@ -19,6 +20,7 @@ internal static class AgentStreamWriter
         context.Response.StatusCode = StatusCodes.Status200OK;
         StreamingResponseHeaders.ApplySse(context);
         TokenUsage? usage = null;
+        string? modelId = null;
         await using StreamingHeartbeat heartbeat = StreamingHeartbeat.Start(
             token => WriteHeartbeatAsync(context, token),
             StreamHeartbeatInterval,
@@ -31,13 +33,14 @@ internal static class AgentStreamWriter
         await WriteSseEventAsync(
             context,
             "conversation",
-            JsonSerializer.Serialize(new { conversationId }),
+            JsonSerializer.Serialize(new { conversationId }, JsonOptions),
             cancellationToken).ConfigureAwait(false);
         await foreach (AgentStreamEvent streamEvent in events.WithCancellation(cancellationToken))
         {
             if (streamEvent.Type == AgentStreamEventType.Usage)
             {
                 usage = streamEvent.Usage;
+                modelId = streamEvent.ModelId;
                 continue;
             }
 
@@ -53,13 +56,15 @@ internal static class AgentStreamWriter
                 toolName = streamEvent.ToolName,
                 toolCallId = streamEvent.ToolCallId,
                 toolArguments = streamEvent.ToolArguments
-            });
+            }, JsonOptions);
             await heartbeat.WriteAsync(
                 token => WriteSseEventAsync(context, eventName, data, token),
                 cancellationToken).ConfigureAwait(false);
         }
 
-        string done = JsonSerializer.Serialize(new { done = true, usage, conversationId });
+        string done = JsonSerializer.Serialize(
+            new { done = true, usage, modelId, conversationId },
+            JsonOptions);
         await WriteSseEventAsync(context, "done", done, cancellationToken).ConfigureAwait(false);
     }
 

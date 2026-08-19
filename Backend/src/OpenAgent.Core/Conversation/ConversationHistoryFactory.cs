@@ -5,9 +5,9 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Conversation;
+using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
-using OpenAgent.Contracts.Files;
 using OpenAgent.Core.Files;
 
 namespace OpenAgent.Core.Conversation;
@@ -39,6 +39,7 @@ internal sealed class ConversationHistoryFactory
 
     internal PlatformChatHistory Create(
         string agentId,
+        string modelId,
         AgentRequest request,
         IAgentUserContext user,
         IReadOnlyList<FileAssetContent> files)
@@ -52,6 +53,7 @@ internal sealed class ConversationHistoryFactory
         return new PlatformChatHistory(
             context,
             agentId,
+            modelId,
             request.Query,
             files.Select(item => item.Asset).ToList().AsReadOnly(),
             _fileExecution,

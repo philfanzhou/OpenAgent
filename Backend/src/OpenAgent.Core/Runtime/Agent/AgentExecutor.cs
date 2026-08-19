@@ -75,10 +75,16 @@ public sealed class AgentExecutor
             session,
             options: null,
             cancellationToken).ConfigureAwait(false);
+        TokenUsage? usage = AgentResponseAdapter.ConvertUsage(response.Usage);
+        string modelId = AgentResponseAdapter.ReadModelId(
+            response.RawRepresentation,
+            profile.Model.ModelId);
+        await scope.CompleteAsync(usage, modelId, cancellationToken).ConfigureAwait(false);
         return new PlatformAgentResponse
         {
             Content = response.Text ?? string.Empty,
-            TokenUsage = AgentResponseAdapter.ConvertUsage(response.Usage),
+            TokenUsage = usage,
+            ModelId = modelId,
             TraceId = traceId,
             Success = true
         };
@@ -125,6 +131,7 @@ public sealed class AgentExecutor
             resolvedFiles.Files);
         HashSet<string> announcedToolCalls = new(StringComparer.Ordinal);
         TokenUsage? usage = null;
+        string modelId = profile.Model.ModelId;
         IAsyncEnumerable<AgentResponseUpdate> updates = scope.Agent.RunStreamingAsync(
             userMessage,
             session,
@@ -179,16 +186,16 @@ public sealed class AgentExecutor
             }
 
             usage = AgentResponseAdapter.ReadUsage(contents) ?? usage;
+            modelId = AgentResponseAdapter.ReadModelId(update.RawRepresentation, modelId);
         }
 
-        if (usage != null)
+        await scope.CompleteAsync(usage, modelId, cancellationToken).ConfigureAwait(false);
+        yield return new AgentStreamEvent
         {
-            yield return new AgentStreamEvent
-            {
-                Type = AgentStreamEventType.Usage,
-                Usage = usage
-            };
-        }
+            Type = AgentStreamEventType.Usage,
+            Usage = usage,
+            ModelId = modelId
+        };
     }
 
     private static void EnsureRequest(AgentRequest request)

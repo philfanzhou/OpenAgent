@@ -22,6 +22,7 @@ public class AgentSelectionFilterTests
             _ => ValueTask.FromResult<object?>(Results.Ok()));
 
         Assert.Equal("finance", context.Request.Headers["X-Agent-Id"]);
+        Assert.Equal("finance", context.Response.Headers["X-OpenAgent-Selected-Agent-Id"]);
         Assert.Equal(0, context.Request.Body.Position);
         AgentRoutingFeature feature = Assert.IsType<AgentRoutingFeature>(
             context.Features.Get<AgentRoutingFeature>());
