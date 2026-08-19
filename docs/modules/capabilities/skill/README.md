@@ -21,7 +21,7 @@ POST /skills/packages
         │
         ▼
 PostgreSQL SkillDefinitions + MinIO/S3
-        │  租户分区对象键 + SkillPackageStorageIndex
+        │  租户共享对象键 + SkillPackageStorageIndex
         ▼
 AgentConfig.Skills → AgentSkillsProviderFactory
         │  租户范围对象文件 → request temp directory
@@ -36,7 +36,7 @@ ChatClientAgent.AIContextProviders
 
 当前集成只启用 Skill 指令加载与资源读取。文件源通过 `ScriptFilter` 隐藏所有脚本，并注册显式拒绝的 runner，避免上传包中的代码在 OpenAgent 宿主进程执行；脚本执行及其隔离方案不在当前能力范围内。
 
-Skill 只允许本地持久化来源：数据库中的目录元数据和租户对象存储中的 ZIP/MD 展开文件。HTTP Endpoint Skill 已移除；Redis 不是事实源，数据库可用时不会用 Redis-only 数据恢复目录。
+Skill 只允许本地持久化来源：数据库中的目录元数据和租户对象存储中的 ZIP/MD 展开文件。Skill 对象键使用 `files/tenants/{tenant-hash}/skill-packages/...`，不包含 `users/{user-hash}`；HTTP Endpoint Skill 已移除；Redis 不是事实源，数据库可用时不会用 Redis-only 数据恢复目录。
 
 ## Source
 

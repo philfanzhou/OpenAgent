@@ -176,7 +176,7 @@ public sealed class InfrastructurePersistenceTests : IAsyncLifetime
             Name = "lookup",
             Type = SkillTypes.AgentSkill,
             SourceType = SkillSourceTypes.ObjectStorage,
-            ObjectKey = "private/tenants/example/users/example/skill.json"
+            ObjectKey = "private/tenants/example/skill-packages/skill.json"
         };
         await repository.UpsertAsync(package);
 
@@ -185,7 +185,7 @@ public sealed class InfrastructurePersistenceTests : IAsyncLifetime
         SkillInstanceConfig? foreign = await repository.GetAsync("another-tenant", "lookup");
 
         Assert.Equal(SkillSourceTypes.ObjectStorage, storedPackage?.SourceType);
-        Assert.Equal("private/tenants/example/users/example/skill.json", storedPackage?.ObjectKey);
+        Assert.Equal("private/tenants/example/skill-packages/skill.json", storedPackage?.ObjectKey);
         Assert.Single(stored);
         Assert.Null(foreign);
     }

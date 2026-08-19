@@ -173,7 +173,7 @@ internal sealed class AgentSkillsProviderFactory(
         string packagePath,
         CancellationToken cancellationToken)
     {
-        EnsureTenantObjectKey(instance.ObjectKey!, instance.TenantId);
+        EnsureTenantSharedObjectKey(instance.ObjectKey!, instance.TenantId);
         byte[] storedContent = await objectStore.ReadAsync(instance.ObjectKey!, cancellationToken).ConfigureAwait(false);
         VerifyHash(instance, storedContent);
 
@@ -207,7 +207,7 @@ internal sealed class AgentSkillsProviderFactory(
 
         foreach (SkillPackageStorageFile file in index.Files)
         {
-            EnsureTenantObjectKey(file.ObjectKey, instance.TenantId);
+            EnsureTenantSharedObjectKey(file.ObjectKey, instance.TenantId);
             byte[] content = await objectStore.ReadAsync(file.ObjectKey, cancellationToken).ConfigureAwait(false);
             string actual = Convert.ToHexString(SHA256.HashData(content)).ToLowerInvariant();
             if (!string.Equals(actual, file.Sha256, StringComparison.OrdinalIgnoreCase))
@@ -252,11 +252,11 @@ internal sealed class AgentSkillsProviderFactory(
         }
     }
 
-    private static void EnsureTenantObjectKey(string objectKey, string tenantId)
+    private static void EnsureTenantSharedObjectKey(string objectKey, string tenantId)
     {
-        if (!FileObjectTenantScope.ContainsTenantPartition(objectKey, tenantId))
+        if (!FileObjectTenantScope.ContainsTenantSharedPartition(objectKey, tenantId))
         {
-            throw new InvalidOperationException("Skill object storage key is outside the tenant partition.");
+            throw new InvalidOperationException("Skill object storage key is outside the tenant-shared partition.");
         }
     }
 

@@ -88,8 +88,16 @@ internal sealed class S3FileObjectStore : IFileObjectStore
 
     private string CreateObjectKey(FileObjectWriteRequest request)
     {
-        string root = $"{_options.KeyPrefix.Trim('/')}/tenants/{FileObjectTenantScope.CreatePartition(request.TenantId)}" +
-            $"/users/{FileObjectTenantScope.CreatePartition(request.UserId)}";
+        string root = $"{_options.KeyPrefix.Trim('/')}/tenants/{FileObjectTenantScope.CreatePartition(request.TenantId)}";
+        if (request.Scope == FileObjectScope.User)
+        {
+            root += $"/users/{FileObjectTenantScope.CreatePartition(request.UserId)}";
+        }
+        else if (request.Scope != FileObjectScope.Tenant)
+        {
+            throw new InvalidOperationException($"Unsupported file object scope '{request.Scope}'.");
+        }
+
         if (!string.IsNullOrWhiteSpace(request.ObjectKeyPrefix))
         {
             return $"{root}/{NormalizePath(request.ObjectKeyPrefix!)}/{NormalizePath(request.FileName)}";
