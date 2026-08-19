@@ -41,7 +41,7 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
             : settings["BaseUrl"]!.TrimEnd('/');
         _serviceHeaders = settings.GetSection("ServiceHeaders")
             .GetChildren()
-            .Where(header => header.Value != null)
+            .Where(header => header.Value != null && !IsIdentityHeader(header.Key))
             .ToDictionary(
                 header => header.Key,
                 header => header.Value!,
@@ -202,16 +202,13 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
             request.Headers.TryAddWithoutValidation(name, value);
         }
 
-        if (requestContext != null)
+        if (requestContext != null
+            && !string.IsNullOrWhiteSpace(requestContext.AuthenticationToken))
         {
-            request.Headers.Remove(AgentProviderHeaders.UserId);
-            request.Headers.Remove(AgentProviderHeaders.TenantId);
+            request.Headers.Remove("Authorization");
             request.Headers.TryAddWithoutValidation(
-                AgentProviderHeaders.UserId,
-                requestContext.UserContext.UserId);
-            request.Headers.TryAddWithoutValidation(
-                AgentProviderHeaders.TenantId,
-                requestContext.TenantId);
+                "Authorization",
+                requestContext.AuthenticationToken);
         }
 
         return request;
@@ -225,6 +222,14 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
         string path = string.IsNullOrWhiteSpace(value) ? fallback : value;
         return path.StartsWith("/", StringComparison.Ordinal) ? path : $"/{path}";
     }
+
+    private static bool IsIdentityHeader(string name) =>
+        name.Equals("X-User-Id", StringComparison.OrdinalIgnoreCase)
+        || name.Equals("X-Tenant-Id", StringComparison.OrdinalIgnoreCase)
+        || name.Equals("X-UserId", StringComparison.OrdinalIgnoreCase)
+        || name.Equals("X-TenantId", StringComparison.OrdinalIgnoreCase)
+        || name.Equals("X-OpenAgent-User-Id", StringComparison.OrdinalIgnoreCase)
+        || name.Equals("X-OpenAgent-Tenant-Id", StringComparison.OrdinalIgnoreCase);
 
     private static string BuildIntentPrompt(
         string message,

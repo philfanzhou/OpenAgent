@@ -86,8 +86,6 @@ internal static class GatewayProxyHandler
         return ForwardingContextBuilder.ApplyAsync(
             proxyRequest,
             targetUri,
-            userContext,
-            tenantId,
             conversationId,
             traceId);
     }

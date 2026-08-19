@@ -8,6 +8,7 @@ internal static class AgentCatalogEndpointHandler
     internal static async Task<IResult> HandleAsync(
         IAgentCatalogService catalog,
         IAgentUserContext userContext,
+        HttpContext context,
         CancellationToken cancellationToken)
     {
         if (!userContext.IsAuthenticated)
@@ -26,7 +27,10 @@ internal static class AgentCatalogEndpointHandler
         try
         {
             IReadOnlyList<AgentCatalogEntry> entries = await catalog.GetAuthorizedAsync(
-                new AgentProviderRequestContext(userContext.TenantId, userContext),
+                new AgentProviderRequestContext(
+                    userContext.TenantId,
+                    userContext,
+                    context.Request.Headers.Authorization.FirstOrDefault()),
                 cancellationToken).ConfigureAwait(false);
             return Results.Ok(entries.Select(entry => entry.Agent));
         }

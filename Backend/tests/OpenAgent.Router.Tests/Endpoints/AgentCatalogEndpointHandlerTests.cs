@@ -21,6 +21,7 @@ public class AgentCatalogEndpointHandlerTests
         IResult result = await AgentCatalogEndpointHandler.HandleAsync(
             catalog,
             AuthenticatedUser,
+            new DefaultHttpContext(),
             CancellationToken.None);
 
         IValueHttpResult valueResult = Assert.IsAssignableFrom<IValueHttpResult>(result);
@@ -38,6 +39,7 @@ public class AgentCatalogEndpointHandlerTests
         IResult result = await AgentCatalogEndpointHandler.HandleAsync(
             new StubCatalogService([]),
             new AgentUserContext { UserId = "anonymous", IsAuthenticated = false },
+            new DefaultHttpContext(),
             CancellationToken.None);
 
         IStatusCodeHttpResult status = Assert.IsAssignableFrom<IStatusCodeHttpResult>(result);

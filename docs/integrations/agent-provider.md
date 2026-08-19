@@ -20,11 +20,11 @@ Router 通过 `IAgentProvider` 统一调用自有 Engine 和第三方 Agent 服�
 4. 已确认会话在原 Provider 不存在时重新探测其他 Provider；唯一命中会更新归属。
 5. 已绑定 Provider 不可用、迁移探测不完整或 Provider 已移除时不回退到默认 Provider，避免拆分会话历史。
 
-亲和键包含租户边界；所有归属探测同时携带租户和用户 ID。Provider 对无权访问、跨租户或已删除会话统一返回未找到语义。会话同时命中多个 Provider 时返回冲突，不自动选取。
+亲和键包含租户边界；所有归属探测都在 Engine 侧使用已验证的用户上下文执行。Provider 对无权访问、跨租户或已删除会话统一返回未找到语义。会话同时命中多个 Provider 时返回冲突，不自动选取。
 
 ## Provider contract
 
-第三方接入实现 `IAgentProviderFactory` 和 `IAgentProvider`，并注册 Factory。`AgentProviderRequestContext` 只包含已认证用户上下文与 Router 解析后的租户，不传递 `HttpContext`。
+第三方接入实现 `IAgentProviderFactory` 和 `IAgentProvider`，并注册 Factory。`AgentProviderRequestContext` 只包含已认证用户上下文、Router 解析后的租户和当前请求认证令牌，不传递 `HttpContext`。内置 Engine Provider 原样透传当前请求的 `Authorization`；Router 与 Engine 使用同一套认证配置和认证管线，用户和租户身份不通过自定义 header 传输。
 
 - `GetAgentsAsync`：返回 `AgentProviderCatalog`；`IsAvailable=false` 表示不能形成完整目录。
 - `ResolveConversationAsync`：返回 `NotFound`、`Found`、`Forbidden` 或 `Unavailable`。
@@ -32,7 +32,7 @@ Router 通过 `IAgentProvider` 统一调用自有 Engine 和第三方 Agent 服�
 - `ResolveForwardingAsync`：按 action、租户与会话解析聊天目标。
 - `ConfigureRequestAsync`：在 YARP 转发前处理 Provider 认证或协议适配。
 
-内置 Engine Provider 使用 `GET /api/v1/agent/provider/conversations/{conversationId}` 探测归属。请求必须以 Provider 服务身份认证，并通过 `X-OpenAgent-Tenant-Id`、`X-OpenAgent-User-Id` 传递待验证边界；端点只返回 204/404，不返回会话内容。
+内置 Engine Provider 使用 `GET /api/v1/agent/provider/conversations/{conversationId}` 探测归属。请求复用当前调用方的 `Authorization` 令牌；端点从 Engine 已验证的 `IAgentUserContext` 获取用户和租户，只返回 204/404，不返回会话内容。
 
 ## 配置
 

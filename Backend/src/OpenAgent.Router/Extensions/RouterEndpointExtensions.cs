@@ -37,19 +37,23 @@ public static class RouterEndpointExtensions
         app.MapGet("/api/v1/agent/agents", (
             IAgentCatalogService catalog,
             IAgentUserContext userContext,
+            HttpContext context,
             CancellationToken cancellationToken) =>
             AgentCatalogEndpointHandler.HandleAsync(
                 catalog,
                 userContext,
+                context,
                 cancellationToken));
         // Compatibility alias retained for clients that predate /api/v1/agent/agents.
         app.MapGet("/api/v1/agents", (
             IAgentCatalogService catalog,
             IAgentUserContext userContext,
+            HttpContext context,
             CancellationToken cancellationToken) =>
             AgentCatalogEndpointHandler.HandleAsync(
                 catalog,
                 userContext,
+                context,
                 cancellationToken));
         app.MapGet("/api/v1/agent/conversations", (
             HttpContext context, IHttpForwarder forwarder, IAgentUserContext userContext,

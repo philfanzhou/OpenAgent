@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
 using OpenAgent.Contracts.Conversation;
-using OpenAgent.Contracts.Routing;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Engine.Host.Middleware;
 
@@ -27,20 +26,18 @@ internal static class AgentProviderEndpointExtensions
             return Results.Unauthorized();
         }
 
-        string? tenantId = context.Request.Headers[AgentProviderHeaders.TenantId].FirstOrDefault();
-        string? userId = context.Request.Headers[AgentProviderHeaders.UserId].FirstOrDefault();
-        if (string.IsNullOrWhiteSpace(tenantId) || string.IsNullOrWhiteSpace(userId))
+        if (string.IsNullOrWhiteSpace(serviceUser.TenantId))
         {
-            return Results.BadRequest();
+            return Results.Unauthorized();
         }
 
         ConversationRecord? record = await queryService.GetRecordAsync(
-            tenantId,
+            serviceUser.TenantId,
             conversationId,
             cancellationToken).ConfigureAwait(false);
         return record != null
             && !record.IsDeletedByUser
-            && string.Equals(record.UserId, userId, StringComparison.Ordinal)
+            && string.Equals(record.UserId, serviceUser.UserId, StringComparison.Ordinal)
             ? Results.NoContent()
             : Results.NotFound();
     }

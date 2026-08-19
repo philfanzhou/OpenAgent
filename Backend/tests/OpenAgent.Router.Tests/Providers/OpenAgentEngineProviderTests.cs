@@ -24,7 +24,8 @@ public class OpenAgentEngineProviderTests
                 ["AgentListPath"] = "/custom/agents",
                 ["ChatPath"] = "/custom/chat",
                 ["ServiceHeaders:Authorization"] = "Basic service-token",
-                ["ServiceHeaders:X-Tenant-Id"] = "intent-tenant"
+                ["ServiceHeaders:X-Tenant-Id"] = "configured-tenant",
+                ["ServiceHeaders:X-User-Id"] = "configured-user"
             })
             .Build();
         using var provider = new OpenAgentEngineProvider(
@@ -40,7 +41,8 @@ public class OpenAgentEngineProviderTests
                 UserId = "user-1",
                 TenantId = "tenant-1",
                 IsAuthenticated = true
-            });
+            },
+            "Basic forwarded-token");
         AgentProviderCatalog catalog = await provider.GetAgentsAsync(
             requestContext,
             CancellationToken.None);
@@ -70,12 +72,10 @@ public class OpenAgentEngineProviderTests
                 "http://engine/api/v1/agent/provider/conversations/conversation-1"
             ],
             handler.RequestUris);
-        Assert.Equal(["intent-tenant", "intent-tenant", "intent-tenant"], handler.TenantIds);
         Assert.Equal(
-            ["Basic service-token", "Basic service-token", "Basic service-token"],
+            ["Basic forwarded-token", "Basic service-token", "Basic forwarded-token"],
             handler.Authorizations);
-        Assert.Equal("user-1", handler.ProviderUserIds[0]);
-        Assert.Equal("tenant-1", handler.ProviderTenantIds[0]);
+        Assert.All(handler.IdentityHeaders, present => Assert.False(present));
         Assert.Equal(AgentProviderConversationStatus.Found, conversation);
         Assert.Equal("tenant-1", routeTable.TenantId);
         Assert.Equal("conversation-1", routeTable.ConversationId);
@@ -88,10 +88,8 @@ public class OpenAgentEngineProviderTests
     private sealed class RecordingHandler : HttpMessageHandler
     {
         public List<string> RequestUris { get; } = [];
-        public List<string?> TenantIds { get; } = [];
         public List<string?> Authorizations { get; } = [];
-        public List<string?> ProviderUserIds { get; } = [];
-        public List<string?> ProviderTenantIds { get; } = [];
+        public List<bool> IdentityHeaders { get; } = [];
         public string ChatBody { get; private set; } = string.Empty;
 
         protected override async Task<HttpResponseMessage> SendAsync(
@@ -99,14 +97,16 @@ public class OpenAgentEngineProviderTests
             CancellationToken cancellationToken)
         {
             RequestUris.Add(request.RequestUri?.ToString() ?? string.Empty);
-            TenantIds.Add(request.Headers.GetValues("X-Tenant-Id").SingleOrDefault());
-            Authorizations.Add(request.Headers.GetValues("Authorization").SingleOrDefault());
-            ProviderUserIds.Add(request.Headers.TryGetValues(
-                AgentProviderHeaders.UserId,
-                out IEnumerable<string>? userIds) ? userIds.SingleOrDefault() : null);
-            ProviderTenantIds.Add(request.Headers.TryGetValues(
-                AgentProviderHeaders.TenantId,
-                out IEnumerable<string>? tenantIds) ? tenantIds.SingleOrDefault() : null);
+            Authorizations.Add(request.Headers.TryGetValues(
+                "Authorization",
+                out IEnumerable<string>? authorizations)
+                ? authorizations.SingleOrDefault()
+                : null);
+            IdentityHeaders.Add(
+                request.Headers.Contains("X-User-Id")
+                || request.Headers.Contains("X-Tenant-Id")
+                || request.Headers.Contains("X-OpenAgent-User-Id")
+                || request.Headers.Contains("X-OpenAgent-Tenant-Id"));
             if (request.Method == HttpMethod.Get
                 && request.RequestUri?.AbsolutePath == "/custom/agents")
             {

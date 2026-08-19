@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Http;
 using OpenAgent.Contracts.Conversation;
-using OpenAgent.Contracts.Routing;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Engine.Host.Extensions;
 using OpenAgent.Engine.Host.Middleware;
@@ -69,12 +68,10 @@ public class AgentProviderEndpointTests
             "trace-1",
             new AgentUserContext
             {
-                UserId = "router-service",
-                TenantId = "service-tenant",
+                UserId = userId,
+                TenantId = tenantId,
                 IsAuthenticated = authenticated
             }));
-        context.Request.Headers[AgentProviderHeaders.TenantId] = tenantId;
-        context.Request.Headers[AgentProviderHeaders.UserId] = userId;
         return context;
     }
 
