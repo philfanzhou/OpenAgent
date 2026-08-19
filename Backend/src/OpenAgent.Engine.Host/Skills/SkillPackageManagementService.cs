@@ -142,6 +142,7 @@ internal sealed class SkillPackageManagementService(
                         FileId = $"{packageId}-{fileIndex:D4}",
                         TenantId = tenantId,
                         UserId = userId,
+                        Scope = FileObjectScope.Tenant,
                         FileName = Path.GetFileName(file.RelativePath),
                         MediaType = mediaType,
                         Sha256 = fileHash,
@@ -171,6 +172,7 @@ internal sealed class SkillPackageManagementService(
                     FileId = packageId,
                     TenantId = tenantId,
                     UserId = userId,
+                    Scope = FileObjectScope.Tenant,
                     FileName = $"{packageId}.json",
                     MediaType = "application/json",
                     Sha256 = storedIndexHash,
@@ -250,7 +252,7 @@ internal sealed class SkillPackageManagementService(
             skillId,
             cancellationToken).ConfigureAwait(false);
         if (skill == null || string.IsNullOrWhiteSpace(skill.ObjectKey)) return null;
-        EnsureTenantObjectKey(skill.ObjectKey, tenantId);
+        EnsureTenantSharedObjectKey(skill.ObjectKey, tenantId);
 
         if (string.Equals(skill.PackageFormat, "directory", StringComparison.OrdinalIgnoreCase))
         {
@@ -261,7 +263,7 @@ internal sealed class SkillPackageManagementService(
             SkillPackageStorageFile? markdown = index.Files.FirstOrDefault(file =>
                 string.Equals(Path.GetFileName(file.RelativePath), "SKILL.md", StringComparison.OrdinalIgnoreCase));
             if (markdown == null) return null;
-            EnsureTenantObjectKey(markdown.ObjectKey, tenantId);
+            EnsureTenantSharedObjectKey(markdown.ObjectKey, tenantId);
             byte[] content = await objectStore.ReadAsync(markdown.ObjectKey, cancellationToken).ConfigureAwait(false);
             return System.Text.Encoding.UTF8.GetString(content);
         }
@@ -341,7 +343,7 @@ internal sealed class SkillPackageManagementService(
 
             try
             {
-                EnsureTenantObjectKey(instance.ObjectKey, tenantId);
+                EnsureTenantSharedObjectKey(instance.ObjectKey, tenantId);
                 byte[] content = await objectStore.ReadAsync(instance.ObjectKey, cancellationToken).ConfigureAwait(false);
                 string actual = Convert.ToHexString(SHA256.HashData(content)).ToLowerInvariant();
                 if (!string.IsNullOrWhiteSpace(instance.Sha256)
@@ -422,7 +424,7 @@ internal sealed class SkillPackageManagementService(
     private async Task DeletePackageBestEffortAsync(string tenantId, string? objectKey, string? packageFormat)
     {
         if (string.IsNullOrWhiteSpace(objectKey)) return;
-        EnsureTenantObjectKey(objectKey, tenantId);
+        EnsureTenantSharedObjectKey(objectKey, tenantId);
 
         if (string.Equals(packageFormat, "directory", StringComparison.OrdinalIgnoreCase))
         {
@@ -435,7 +437,7 @@ internal sealed class SkillPackageManagementService(
                     EnsureTenantIndex(index, tenantId);
                     foreach (SkillPackageStorageFile file in index.Files)
                     {
-                        EnsureTenantObjectKey(file.ObjectKey, tenantId);
+                        EnsureTenantSharedObjectKey(file.ObjectKey, tenantId);
                         await DeleteObjectBestEffortAsync(file.ObjectKey).ConfigureAwait(false);
                     }
                 }
@@ -460,7 +462,7 @@ internal sealed class SkillPackageManagementService(
         var files = new List<SkillPackageFile>(index.Files.Count);
         foreach (SkillPackageStorageFile file in index.Files)
         {
-            EnsureTenantObjectKey(file.ObjectKey, tenantId);
+            EnsureTenantSharedObjectKey(file.ObjectKey, tenantId);
             byte[] content = await objectStore.ReadAsync(file.ObjectKey, cancellationToken).ConfigureAwait(false);
             string actual = Convert.ToHexString(SHA256.HashData(content)).ToLowerInvariant();
             if (!string.Equals(actual, file.Sha256, StringComparison.OrdinalIgnoreCase))
@@ -478,11 +480,11 @@ internal sealed class SkillPackageManagementService(
         }
     }
 
-    private static void EnsureTenantObjectKey(string objectKey, string tenantId)
+    private static void EnsureTenantSharedObjectKey(string objectKey, string tenantId)
     {
-        if (!FileObjectTenantScope.ContainsTenantPartition(objectKey, tenantId))
+        if (!FileObjectTenantScope.ContainsTenantSharedPartition(objectKey, tenantId))
         {
-            throw new InvalidOperationException("Skill object storage key is outside the tenant partition.");
+            throw new InvalidOperationException("Skill object storage key is outside the tenant-shared partition.");
         }
     }
 }

@@ -68,7 +68,9 @@ public class SkillPackageManagementServiceTests
         Assert.Equal(SkillTypes.AgentSkill, skill.Type);
         Assert.Equal(SkillSourceTypes.ObjectStorage, skill.SourceType);
         Assert.Contains("customer-lookup", saved.Config.Skills.EnabledSkills);
-        Assert.True(FileObjectTenantScope.ContainsTenantPartition(skill.ObjectKey!, "tenant"));
+        Assert.True(FileObjectTenantScope.ContainsTenantSharedPartition(skill.ObjectKey!, "tenant"));
+        Assert.DoesNotContain("/users/", skill.ObjectKey!, StringComparison.Ordinal);
+        Assert.All(store.WriteRequests, request => Assert.Equal(FileObjectScope.Tenant, request.Scope));
     }
 
     [Fact]
@@ -319,6 +321,7 @@ public class SkillPackageManagementServiceTests
     private sealed class RecordingObjectStore : IFileObjectStore
     {
         public Dictionary<string, byte[]> Objects { get; } = new(StringComparer.Ordinal);
+        public List<FileObjectWriteRequest> WriteRequests { get; } = [];
         public string? LastReadObjectKey { get; private set; }
         public List<string> DeletedObjectKeys { get; } = [];
         public string? DeletedObjectKey => DeletedObjectKeys.LastOrDefault();
@@ -331,9 +334,14 @@ public class SkillPackageManagementServiceTests
         {
             await using var buffer = new MemoryStream();
             await content.CopyToAsync(buffer, cancellationToken);
-            string objectKey = $"private/tenants/{FileObjectTenantScope.CreatePartition(request.TenantId)}" +
-                $"/users/{FileObjectTenantScope.CreatePartition(request.UserId)}/skills/" +
-                $"{request.FileId}{Path.GetExtension(request.FileName)}";
+            WriteRequests.Add(request);
+            string objectKey = $"private/tenants/{FileObjectTenantScope.CreatePartition(request.TenantId)}";
+            if (request.Scope == FileObjectScope.User)
+            {
+                objectKey += $"/users/{FileObjectTenantScope.CreatePartition(request.UserId)}";
+            }
+
+            objectKey += $"/skills/{request.FileId}{Path.GetExtension(request.FileName)}";
             Objects[objectKey] = buffer.ToArray();
             WriteCount++;
             return new FileObjectReference { ObjectKey = objectKey };

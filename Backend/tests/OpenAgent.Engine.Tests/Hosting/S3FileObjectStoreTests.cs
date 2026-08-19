@@ -45,4 +45,39 @@ public class S3FileObjectStoreTests
         Assert.DoesNotContain("tenant-a", captured.Key, StringComparison.Ordinal);
         Assert.DoesNotContain("user-a", captured.Key, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public async Task WriteAsync_TenantScopeDoesNotIncludeUserPartition()
+    {
+        PutObjectRequest? captured = null;
+        var s3 = new Mock<IAmazonS3>();
+        s3.Setup(client => client.PutObjectAsync(It.IsAny<PutObjectRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<PutObjectRequest, CancellationToken>((request, _) => captured = request)
+            .ReturnsAsync(new PutObjectResponse());
+        var store = new S3FileObjectStore(
+            s3.Object,
+            Options.Create(new FileObjectStorageOptions { BucketName = "files-test", KeyPrefix = "private/files" }));
+        await using var content = new MemoryStream([1, 2, 3], writable: false);
+
+        FileObjectReference result = await store.WriteAsync(
+            new FileObjectWriteRequest
+            {
+                FileId = "skill-file",
+                TenantId = "tenant-a",
+                UserId = "uploader-a",
+                Scope = FileObjectScope.Tenant,
+                FileName = "SKILL.md",
+                MediaType = "text/markdown",
+                Sha256 = "sha-256",
+                ObjectKeyPrefix = "skill-packages/skill-1"
+            },
+            content,
+            CancellationToken.None);
+
+        string tenantHash = FileObjectTenantScope.CreatePartition("tenant-a");
+        Assert.Equal($"private/files/tenants/{tenantHash}/skill-packages/skill-1/SKILL.md", result.ObjectKey);
+        Assert.NotNull(captured);
+        Assert.DoesNotContain("/users/", captured.Key, StringComparison.Ordinal);
+        Assert.DoesNotContain("uploader-a", captured.Key, StringComparison.Ordinal);
+    }
 }

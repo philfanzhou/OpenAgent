@@ -23,4 +23,17 @@ public static class FileObjectTenantScope
             $"/tenants/{CreatePartition(tenantId)}/",
             StringComparison.Ordinal);
     }
+
+    public static bool ContainsTenantSharedPartition(string objectKey, string tenantId)
+    {
+        if (!ContainsTenantPartition(objectKey, tenantId))
+        {
+            return false;
+        }
+
+        string normalized = objectKey.Replace('\\', '/');
+        return !normalized
+            .Split('/', StringSplitOptions.RemoveEmptyEntries)
+            .Contains("users", StringComparer.OrdinalIgnoreCase);
+    }
 }
