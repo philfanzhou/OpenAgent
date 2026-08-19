@@ -22,6 +22,7 @@ internal static class ForwardingErrorHandler
         RouterLog.ForwardingFailed(
             logger, exception, error, $"/api/v1/agent/chat/{action}", targetEndpoint,
             targetUrl, userContext.UserId, tenantId, traceId);
+        RouterMeter.RecordDownstreamHealth("engine", "unavailable");
         RouterMeter.RecordForwardingFailure(action ?? "chat", error.ToString());
         return await StreamingForwardingError.HandleAsync(
             context, action, error, traceId, cancellationToken);

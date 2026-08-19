@@ -14,6 +14,7 @@
     <PackageVersion Include="coverlet.collector" Version="6.0.2" />
     <PackageVersion Include="Testcontainers.PostgreSql" Version="4.13.0" />
     <PackageVersion Include="Testcontainers.Redis" Version="4.13.0" />
+    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="8.0.16" />
 
     <!-- 基础设施 -->
     <PackageVersion Include="AWSSDK.S3" Version="4.0.102" />
@@ -32,6 +33,7 @@
     <PackageVersion Include="Microsoft.Extensions.Configuration" Version="8.0.0" />
     <PackageVersion Include="System.Net.Http.Json" Version="8.0.1" />
     <PackageVersion Include="System.Text.Json" Version="10.0.9" />
+    <PackageVersion Include="System.Text.Encodings.Web" Version="10.0.9" />
 
     <!-- AI / LLM -->
     <PackageVersion Include="Microsoft.Agents.AI" Version="1.14.0" />

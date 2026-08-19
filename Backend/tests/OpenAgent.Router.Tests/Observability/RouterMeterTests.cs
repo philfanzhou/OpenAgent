@@ -36,6 +36,10 @@ public class RouterMeterTests
             true,
             "Fail_Closed"));
         RouterMeter.RecordDownstreamProbe("Not_Ready");
+        RouterMeter.RecordProviderSelection("SELF-ENGINE", "Explicit");
+        RouterMeter.RecordAclDenial();
+        RouterMeter.RecordCacheOperation("Query", "Write");
+        RouterMeter.RecordDownstreamHealth("Redis", "Degraded");
 
         Assert.Contains(measurements, measurement =>
             measurement.Name == "openagent_router_forwarding_failures_total"
@@ -57,5 +61,20 @@ public class RouterMeterTests
         Assert.Contains(measurements, measurement =>
             measurement.Name == "openagent_router_downstream_probes_total"
             && Equals(measurement.Tags["outcome"], "not_ready"));
+        Assert.Contains(measurements, measurement =>
+            measurement.Name == "openagent_router_provider_selections_total"
+            && Equals(measurement.Tags["provider_id"], "self-engine")
+            && Equals(measurement.Tags["source"], "explicit"));
+        Assert.Contains(measurements, measurement =>
+            measurement.Name == "openagent_router_acl_denials_total"
+            && Equals(measurement.Tags["reason"], "agent_acl"));
+        Assert.Contains(measurements, measurement =>
+            measurement.Name == "openagent_router_cache_operations_total"
+            && Equals(measurement.Tags["cache"], "query")
+            && Equals(measurement.Tags["operation"], "write"));
+        Assert.Contains(measurements, measurement =>
+            measurement.Name == "openagent_router_downstream_health_total"
+            && Equals(measurement.Tags["dependency"], "redis")
+            && Equals(measurement.Tags["outcome"], "degraded"));
     }
 }

@@ -64,12 +64,16 @@ internal sealed class AgentSelectionService(
                 affinity,
                 entry.ProviderId,
                 cancellationToken).ConfigureAwait(false);
-            return new AgentSelection(entry.Agent.AgentId, entry.ProviderId);
+            AgentSelection selection = new(entry.Agent.AgentId, entry.ProviderId);
+            RouterMeter.RecordProviderSelection(selection.ProviderId, "explicit");
+            return selection;
         }
 
         if (affinity != null)
         {
-            return new AgentSelection(null, affinity.ProviderId);
+            AgentSelection selection = new(null, affinity.ProviderId);
+            RouterMeter.RecordProviderSelection(selection.ProviderId, "conversation");
+            return selection;
         }
 
         using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(
@@ -80,12 +84,13 @@ internal sealed class AgentSelectionService(
             IReadOnlyList<AgentCatalogEntry> entries = await catalog.GetAuthorizedAsync(
                 requestContext,
                 timeout.Token).ConfigureAwait(false);
-            AgentCatalogEntry? selected = await SelectNewAsync(
+            (AgentCatalogEntry? Entry, string Source) selection = await SelectNewAsync(
                 message,
                 entries,
                 timeout.Token).ConfigureAwait(false);
-            if (selected == null)
+            if (selection.Entry == null)
             {
+                RouterMeter.RecordProviderSelection(null, "unavailable");
                 return null;
             }
 
@@ -93,9 +98,13 @@ internal sealed class AgentSelectionService(
                 requestContext,
                 conversationId,
                 affinity,
-                selected.ProviderId,
+                selection.Entry.ProviderId,
                 cancellationToken).ConfigureAwait(false);
-            return new AgentSelection(selected.Agent.AgentId, selected.ProviderId);
+            AgentSelection result = new(
+                selection.Entry.Agent.AgentId,
+                selection.Entry.ProviderId);
+            RouterMeter.RecordProviderSelection(result.ProviderId, selection.Source);
+            return result;
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -106,7 +115,7 @@ internal sealed class AgentSelectionService(
         }
     }
 
-    private async Task<AgentCatalogEntry?> SelectNewAsync(
+    private async Task<(AgentCatalogEntry? Entry, string Source)> SelectNewAsync(
         string message,
         IReadOnlyList<AgentCatalogEntry> entries,
         CancellationToken cancellationToken)
@@ -130,16 +139,17 @@ internal sealed class AgentSelectionService(
                     StringComparison.OrdinalIgnoreCase));
             if (selected != null)
             {
-                return selected;
+                return (selected, "intent");
             }
         }
 
-        return string.IsNullOrWhiteSpace(_options.FallbackAgentId)
+        AgentCatalogEntry? fallback = string.IsNullOrWhiteSpace(_options.FallbackAgentId)
             ? null
             : candidates.FirstOrDefault(entry => string.Equals(
                 entry.Agent.AgentId,
                 _options.FallbackAgentId,
                 StringComparison.OrdinalIgnoreCase));
+        return (fallback, fallback == null ? "unavailable" : "fallback");
     }
 
     private async Task EnsureConversationBindingAsync(
