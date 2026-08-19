@@ -1,10 +1,12 @@
 using System.Diagnostics;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Requests;
-using OpenAgent.Contracts.Routing;
+using OpenAgent.Contracts.Security;
+using OpenAgent.Hosting.Authentication;
 using OpenAgent.Router.Models;
 
 namespace OpenAgent.Router.Providers;
@@ -21,6 +23,7 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
     private readonly string _conversationPath;
     private readonly string? _baseUrl;
     private readonly IReadOnlyDictionary<string, string> _serviceHeaders;
+    private readonly IAgentDelegationTokenService _delegationTokenService;
     private readonly IRouteTable _routeTable;
     private readonly HttpMessageInvoker _httpClient;
 
@@ -28,6 +31,7 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
         string id,
         IConfiguration settings,
         IRouteTable routeTable,
+        IAgentDelegationTokenService delegationTokenService,
         HttpMessageHandler? handler = null)
     {
         Id = id;
@@ -41,12 +45,13 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
             : settings["BaseUrl"]!.TrimEnd('/');
         _serviceHeaders = settings.GetSection("ServiceHeaders")
             .GetChildren()
-            .Where(header => header.Value != null)
+            .Where(header => header.Value != null && !IsIdentityHeader(header.Key))
             .ToDictionary(
                 header => header.Key,
                 header => header.Value!,
                 StringComparer.OrdinalIgnoreCase);
         _routeTable = routeTable;
+        _delegationTokenService = delegationTokenService;
         _httpClient = new HttpMessageInvoker(handler ?? CreateHandler());
     }
 
@@ -204,14 +209,17 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
 
         if (requestContext != null)
         {
-            request.Headers.Remove(AgentProviderHeaders.UserId);
-            request.Headers.Remove(AgentProviderHeaders.TenantId);
-            request.Headers.TryAddWithoutValidation(
-                AgentProviderHeaders.UserId,
-                requestContext.UserContext.UserId);
-            request.Headers.TryAddWithoutValidation(
-                AgentProviderHeaders.TenantId,
-                requestContext.TenantId);
+            request.Headers.Remove("Authorization");
+            request.Headers.Authorization = new AuthenticationHeaderValue(
+                "Bearer",
+                _delegationTokenService.CreateToken(
+                    new AgentDelegationIdentity(
+                        requestContext.UserContext.UserId,
+                        requestContext.TenantId,
+                        requestContext.UserContext.Groups,
+                        requestContext.UserContext.Roles,
+                        requestContext.UserContext.Claims,
+                        requestContext.UserContext.Audience)));
         }
 
         return request;
@@ -225,6 +233,13 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
         string path = string.IsNullOrWhiteSpace(value) ? fallback : value;
         return path.StartsWith("/", StringComparison.Ordinal) ? path : $"/{path}";
     }
+
+    private static bool IsIdentityHeader(string name) =>
+        name.Equals("X-User-Id", StringComparison.OrdinalIgnoreCase)
+        || name.Equals("X-Tenant-Id", StringComparison.OrdinalIgnoreCase)
+        || name.Equals("X-TenantId", StringComparison.OrdinalIgnoreCase)
+        || name.Equals("X-OpenAgent-User-Id", StringComparison.OrdinalIgnoreCase)
+        || name.Equals("X-OpenAgent-Tenant-Id", StringComparison.OrdinalIgnoreCase);
 
     private static string BuildIntentPrompt(
         string message,

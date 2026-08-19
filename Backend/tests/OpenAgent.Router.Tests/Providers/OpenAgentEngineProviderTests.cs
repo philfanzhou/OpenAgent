@@ -3,8 +3,8 @@ using System.Net.Http.Json;
 using Microsoft.Extensions.Configuration;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Requests;
-using OpenAgent.Contracts.Routing;
 using OpenAgent.Contracts.Security;
+using OpenAgent.Hosting.Authentication;
 using OpenAgent.Router.Models;
 using OpenAgent.Router.Providers;
 using Xunit;
@@ -24,13 +24,14 @@ public class OpenAgentEngineProviderTests
                 ["AgentListPath"] = "/custom/agents",
                 ["ChatPath"] = "/custom/chat",
                 ["ServiceHeaders:Authorization"] = "Basic service-token",
-                ["ServiceHeaders:X-Tenant-Id"] = "intent-tenant"
+                ["ServiceHeaders:X-Service-Name"] = "intent-service"
             })
             .Build();
         using var provider = new OpenAgentEngineProvider(
             "self-engine",
             settings,
             routeTable,
+            new StubDelegationTokenService(),
             handler);
 
         var requestContext = new AgentProviderRequestContext(
@@ -70,12 +71,10 @@ public class OpenAgentEngineProviderTests
                 "http://engine/api/v1/agent/provider/conversations/conversation-1"
             ],
             handler.RequestUris);
-        Assert.Equal(["intent-tenant", "intent-tenant", "intent-tenant"], handler.TenantIds);
         Assert.Equal(
-            ["Basic service-token", "Basic service-token", "Basic service-token"],
+            ["Bearer delegation-token", "Basic service-token", "Bearer delegation-token"],
             handler.Authorizations);
-        Assert.Equal("user-1", handler.ProviderUserIds[0]);
-        Assert.Equal("tenant-1", handler.ProviderTenantIds[0]);
+        Assert.All(handler.IdentityHeaderPresence, Assert.False);
         Assert.Equal(AgentProviderConversationStatus.Found, conversation);
         Assert.Equal("tenant-1", routeTable.TenantId);
         Assert.Equal("conversation-1", routeTable.ConversationId);
@@ -88,10 +87,8 @@ public class OpenAgentEngineProviderTests
     private sealed class RecordingHandler : HttpMessageHandler
     {
         public List<string> RequestUris { get; } = [];
-        public List<string?> TenantIds { get; } = [];
         public List<string?> Authorizations { get; } = [];
-        public List<string?> ProviderUserIds { get; } = [];
-        public List<string?> ProviderTenantIds { get; } = [];
+        public List<bool> IdentityHeaderPresence { get; } = [];
         public string ChatBody { get; private set; } = string.Empty;
 
         protected override async Task<HttpResponseMessage> SendAsync(
@@ -99,14 +96,13 @@ public class OpenAgentEngineProviderTests
             CancellationToken cancellationToken)
         {
             RequestUris.Add(request.RequestUri?.ToString() ?? string.Empty);
-            TenantIds.Add(request.Headers.GetValues("X-Tenant-Id").SingleOrDefault());
             Authorizations.Add(request.Headers.GetValues("Authorization").SingleOrDefault());
-            ProviderUserIds.Add(request.Headers.TryGetValues(
-                AgentProviderHeaders.UserId,
-                out IEnumerable<string>? userIds) ? userIds.SingleOrDefault() : null);
-            ProviderTenantIds.Add(request.Headers.TryGetValues(
-                AgentProviderHeaders.TenantId,
-                out IEnumerable<string>? tenantIds) ? tenantIds.SingleOrDefault() : null);
+            IdentityHeaderPresence.Add(
+                request.Headers.Contains("X-User-Id")
+                || request.Headers.Contains("X-Tenant-Id")
+                || request.Headers.Contains("X-TenantId")
+                || request.Headers.Contains("X-OpenAgent-User-Id")
+                || request.Headers.Contains("X-OpenAgent-Tenant-Id"));
             if (request.Method == HttpMethod.Get
                 && request.RequestUri?.AbsolutePath == "/custom/agents")
             {
@@ -135,6 +131,12 @@ public class OpenAgentEngineProviderTests
                 })
             };
         }
+    }
+
+    private sealed class StubDelegationTokenService : IAgentDelegationTokenService
+    {
+        public string CreateToken(
+            AgentDelegationIdentity identity) => "delegation-token";
     }
 
     private sealed class StubRouteTable : IRouteTable

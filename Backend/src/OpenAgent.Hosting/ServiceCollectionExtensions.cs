@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OpenAgent.Hosting.Authentication;
@@ -44,6 +45,9 @@ public static class ServiceCollectionExtensions
         });
         services.AddOptions<AgentAuthenticationOptions>()
             .Bind(configuration.GetSection("Authentication"));
+        services.AddOptions<AgentDelegationTokenOptions>()
+            .Bind(configuration.GetSection(AgentDelegationTokenOptions.SectionName));
+        services.TryAddSingleton<IAgentDelegationTokenService, AgentDelegationTokenService>();
 
         if (options.EnableCors)
         {

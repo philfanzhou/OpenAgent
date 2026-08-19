@@ -32,12 +32,20 @@ Router 通过 `IAgentProvider` 统一调用自有 Engine 和第三方 Agent 服�
 - `ResolveForwardingAsync`：按 action、租户与会话解析聊天目标。
 - `ConfigureRequestAsync`：在 YARP 转发前处理 Provider 认证或协议适配。
 
-内置 Engine Provider 使用 `GET /api/v1/agent/provider/conversations/{conversationId}` 探测归属。请求必须以 Provider 服务身份认证，并通过 `X-OpenAgent-Tenant-Id`、`X-OpenAgent-User-Id` 传递待验证边界；端点只返回 204/404，不返回会话内容。
+内置 Engine Provider 使用 `GET /api/v1/agent/provider/conversations/{conversationId}` 探测归属。Router 使用共享密钥签发短时效 Provider delegation JWT，Engine 通过标准 Bearer authentication 验证令牌，并从 `IAgentUserContext` 解析用户和租户；不再通过用户/租户 header 传递身份。端点只返回 204/404，不返回会话内容。
 
 ## 配置
 
 ```json
 {
+  "Authentication": {
+    "Mode": "Basic",
+    "ProviderToken": {
+      "Issuer": "openagent-router",
+      "Audience": "openagent-engine-provider",
+      "SigningKey": "<secret-store-value-at-least-32-bytes>"
+    }
+  },
   "RouterSettings": {
     "IntentRecognition": {
       "Enabled": true,

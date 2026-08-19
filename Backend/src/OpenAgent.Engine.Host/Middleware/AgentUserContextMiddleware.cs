@@ -76,6 +76,25 @@ internal sealed class AgentUserContextMiddleware
 
     private static IReadOnlyList<string> ResolveAudience(HttpContext context)
     {
+        bool isProviderDelegation = context.User.Claims.Any(claim =>
+            claim.Type == AgentDelegationTokenClaims.AuthenticationMode
+            && claim.Value == AgentDelegationTokenClaims.ProviderDelegation);
+        string[] audienceClaimTypes = isProviderDelegation
+            ? [AgentDelegationTokenClaims.UserAudience]
+            : ["aud", "audience"];
+        IReadOnlyList<string> tokenAudience = context.User.Claims
+            .Where(claim => audienceClaimTypes.Contains(
+                claim.Type,
+                StringComparer.OrdinalIgnoreCase))
+            .Select(claim => claim.Value)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (tokenAudience.Count > 0)
+        {
+            return tokenAudience;
+        }
+
         if (context.Items.TryGetValue("Audience", out object? audience)
             && audience is IEnumerable<string> values)
         {
