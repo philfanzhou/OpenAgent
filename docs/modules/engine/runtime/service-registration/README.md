@@ -10,7 +10,7 @@ ServiceRegistration 负责 Engine 实例在分布式环境中的自动注册与�
 | 主动注销 | 停机时从 Redis 删除注册信息 |
 | 孤岛模式 | Redis 不可用时降级运行，不阻塞 Engine 启动 |
 | 负载上报 | 综合内存、GC、线程池压力计算负载值 |
-| 路由元数据 | 随心跳发布支持的 intent 与 capability |
+| 路由元数据 | 随心跳发布支持的 intent |
 
 ## Architecture
 ```text
