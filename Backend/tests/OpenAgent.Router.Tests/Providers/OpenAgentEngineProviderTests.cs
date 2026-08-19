@@ -74,7 +74,7 @@ public class OpenAgentEngineProviderTests
         Assert.Equal(
             ["Basic forwarded-token", "Basic service-token", "Basic forwarded-token"],
             handler.Authorizations);
-        Assert.All(handler.IdentityHeaders, present => Assert.False(present));
+        Assert.All(handler.IdentityHeaders, present => Assert.True(present));
         Assert.Equal(AgentProviderConversationStatus.Found, conversation);
         Assert.Equal("tenant-1", routeTable.TenantId);
         Assert.Equal("conversation-1", routeTable.ConversationId);

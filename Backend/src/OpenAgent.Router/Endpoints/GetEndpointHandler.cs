@@ -48,8 +48,6 @@ internal static class GetEndpointHandler
                 return ForwardingContextBuilder.ApplyAsync(
                     proxyRequest,
                     new Uri(targetUrl),
-                    tenantId,
-                    conversationId,
                     traceId);
             }).ConfigureAwait(false);
         if (error == ForwarderError.None)

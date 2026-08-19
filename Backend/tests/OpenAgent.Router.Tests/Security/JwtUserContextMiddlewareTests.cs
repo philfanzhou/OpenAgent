@@ -32,7 +32,7 @@ public class JwtUserContextMiddlewareTests
     }
 
     [Fact]
-    public async Task InvokeAsync_TenantClaimAndHeaderMismatch_ReturnsForbidden()
+    public async Task InvokeAsync_TenantClaimAndHeaderMismatch_DoesNotStopForwarding()
     {
         bool called = false;
         JwtUserContextMiddleware middleware = CreateMiddleware(
@@ -47,8 +47,8 @@ public class JwtUserContextMiddlewareTests
 
         await middleware.InvokeAsync(context);
 
-        Assert.Equal(StatusCodes.Status403Forbidden, context.Response.StatusCode);
-        Assert.False(called);
+        Assert.Equal(StatusCodes.Status200OK, context.Response.StatusCode);
+        Assert.True(called);
     }
 
     [Fact]

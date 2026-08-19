@@ -4,7 +4,7 @@
 
 ## Header 伪造场景
 
-对同一个已认证 Skill 使用冲突租户 Header：
+对同一个已认证 Skill 使用冲突租户 Header，Engine 业务边界拒绝：
 
 ```text
 GET /api/v1/admin/skills/minio-tenant-e2e
@@ -13,7 +13,7 @@ X-Tenant-Id: foreign-tenant
 -> 403
 ```
 
-Router 真实入口同样验证：
+完整 Router → Engine 链路同样返回 403；Router 自身不解释、不清理该 Header，只原样转发：
 
 ```text
 POST /api/v1/agent/chat
@@ -22,7 +22,7 @@ X-Tenant-Id: foreign-tenant
 -> 403
 ```
 
-Header-only 的租户身份在 Router/Engine 中不再建立租户上下文；转发层会移除 `X-Tenant-Id`、`X-TenantId` 等客户端身份 Header，并保留认证凭据供下游重新认证。
+Header-only 的租户身份在 Engine 中不再建立租户上下文；Router 只转发原始请求，不管理或移除 `X-Tenant-Id`、`X-TenantId` 等业务 Header，并保留认证凭据供下游重新认证。
 
 ## 自动化结果
 

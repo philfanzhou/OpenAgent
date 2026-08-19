@@ -51,9 +51,6 @@ internal static class GatewayProxyHandler
                 ? ApplyAuthenticatedAsync(
                     proxyRequest,
                     new Uri(targetUrl),
-                    userContext,
-                    tenantId,
-                    conversationId,
                     traceId)
                 : ApplyAnonymousAsync(proxyRequest, new Uri(targetUrl), traceId)).ConfigureAwait(false);
         if (error == ForwarderError.None)
@@ -82,17 +79,11 @@ internal static class GatewayProxyHandler
     private static ValueTask ApplyAuthenticatedAsync(
         HttpRequestMessage proxyRequest,
         Uri targetUri,
-        IAgentUserContext userContext,
-        string? tenantId,
-        string? conversationId,
         string traceId)
     {
-        proxyRequest.Headers.Remove("X-Agent-Id");
         return ForwardingContextBuilder.ApplyAsync(
             proxyRequest,
             targetUri,
-            tenantId,
-            conversationId,
             traceId);
     }
 
@@ -102,16 +93,10 @@ internal static class GatewayProxyHandler
         string traceId)
     {
         proxyRequest.RequestUri = targetUri;
-        proxyRequest.Headers.Remove("X-Agent-Id");
-        proxyRequest.Headers.Remove("X-Conversation-Id");
-        proxyRequest.Headers.Remove("X-User-Id");
-        proxyRequest.Headers.Remove("X-UserId");
-        proxyRequest.Headers.Remove("X-OpenAgent-User-Id");
-        proxyRequest.Headers.Remove("X-Tenant-Id");
-        proxyRequest.Headers.Remove("X-TenantId");
-        proxyRequest.Headers.Remove("X-OpenAgent-Tenant-Id");
-        proxyRequest.Headers.Remove("X-Trace-Id");
-        proxyRequest.Headers.TryAddWithoutValidation("X-Trace-Id", traceId);
+        if (!proxyRequest.Headers.Contains("X-Trace-Id"))
+        {
+            proxyRequest.Headers.TryAddWithoutValidation("X-Trace-Id", traceId);
+        }
         return ValueTask.CompletedTask;
     }
 }

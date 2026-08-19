@@ -30,19 +30,7 @@ public class JwtUserContextMiddleware
                 ?? context.User.FindFirst("sub")?.Value
                 ?? "unknown";
 
-            string? tenantId;
-            try
-            {
-                tenantId = TenantIdentityResolver.Resolve(
-                    context.User,
-                    context.Request.Headers);
-            }
-            catch (AgentException exception) when (
-                exception.ErrorCode == AgentErrorCode.TenantMismatch)
-            {
-                context.Response.StatusCode = StatusCodes.Status403Forbidden;
-                return;
-            }
+            string? tenantId = TenantIdentityResolver.ResolveClaimsOnly(context.User);
 
             if (RequiresTenant(context.Request.Path)
                 && string.IsNullOrWhiteSpace(tenantId))

@@ -102,8 +102,6 @@ internal sealed class AgentForwarder(
         await ForwardingContextBuilder.ApplyAsync(
             request,
             target.RequestUri,
-            tenantId,
-            conversationId,
             traceId).ConfigureAwait(false);
         await provider.ConfigureRequestAsync(
             request,

@@ -49,7 +49,7 @@ public sealed class RouterHostIntegrationTests : IClassFixture<RouterHostFixture
     }
 
     [Fact]
-    public async Task Chat_DevelopmentTenantHeader_CannotOverrideAuthenticatedTenant()
+    public async Task Chat_DevelopmentTenantHeader_IsForwardedWithoutRouterInterpretation()
     {
         using RouterApplicationFactory factory = _fixture.CreateFactory();
         using HttpClient client = factory.CreateClient();
@@ -58,8 +58,8 @@ public sealed class RouterHostIntegrationTests : IClassFixture<RouterHostFixture
 
         using HttpResponseMessage response = await client.SendAsync(request);
 
-        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
-        Assert.Null(_fixture.PrimaryEngine.LastTenantId);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("development-tenant", _fixture.PrimaryEngine.LastTenantId);
         Assert.Null(_fixture.PrimaryEngine.LastCatalogTenantId);
     }
 
