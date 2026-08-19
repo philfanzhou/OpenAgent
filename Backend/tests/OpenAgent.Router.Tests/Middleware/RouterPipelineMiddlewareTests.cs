@@ -11,38 +11,6 @@ namespace OpenAgent.Router.Tests.Middleware;
 public class RouterPipelineMiddlewareTests
 {
     [Fact]
-    public async Task TenantIsolation_MismatchedTenant_ReturnsForbidden()
-    {
-        bool nextCalled = false;
-        var middleware = new TenantIsolationMiddleware(
-            _ => { nextCalled = true; return Task.CompletedTask; },
-            NullLogger<TenantIsolationMiddleware>.Instance);
-        var context = new DefaultHttpContext();
-        context.Request.Headers["X-Tenant-Id"] = "tenant-2";
-
-        await middleware.InvokeAsync(context, AuthenticatedUser);
-
-        Assert.Equal(StatusCodes.Status403Forbidden, context.Response.StatusCode);
-        Assert.False(nextCalled);
-    }
-
-    [Fact]
-    public async Task TenantIsolation_AuthenticatedRequest_StoresTrustedTenant()
-    {
-        bool nextCalled = false;
-        var middleware = new TenantIsolationMiddleware(
-            _ => { nextCalled = true; return Task.CompletedTask; },
-            NullLogger<TenantIsolationMiddleware>.Instance);
-        var context = new DefaultHttpContext();
-        context.Request.Headers["X-Tenant-Id"] = "tenant-1";
-
-        await middleware.InvokeAsync(context, AuthenticatedUser);
-
-        Assert.True(nextCalled);
-        Assert.Equal("tenant-1", context.Items[TenantIsolationMiddleware.TenantItemKey]);
-    }
-
-    [Fact]
     public async Task RateLimiting_DeniedRequest_ReturnsTooManyRequests()
     {
         bool nextCalled = false;
@@ -50,7 +18,6 @@ public class RouterPipelineMiddlewareTests
             _ => { nextCalled = true; return Task.CompletedTask; },
             NullLogger<RateLimitingMiddleware>.Instance);
         var context = new DefaultHttpContext();
-        context.Items[TenantIsolationMiddleware.TenantItemKey] = "tenant-1";
         var limiter = new StubRateLimiter(false);
 
         await middleware.InvokeAsync(context, AuthenticatedUser, limiter);

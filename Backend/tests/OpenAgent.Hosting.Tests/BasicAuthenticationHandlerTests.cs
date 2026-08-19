@@ -21,13 +21,12 @@ public class BasicAuthenticationHandlerTests
         using ServiceProvider provider = CreateProvider(Environments.Development);
         var context = new DefaultHttpContext { RequestServices = provider };
         context.Request.Headers.Authorization = $"Basic {Convert.ToBase64String(Encoding.UTF8.GetBytes("admin:admin"))}";
-        context.Request.Headers["X-Tenant-Id"] = "tenant-1";
 
         AuthenticateResult result = await context.AuthenticateAsync(BasicAuthenticationHandler.SchemeName);
 
         Assert.True(result.Succeeded);
         Assert.Equal("admin", result.Principal?.FindFirst("sub")?.Value);
-        Assert.Equal("tenant-1", result.Principal?.FindFirst("tenant_id")?.Value);
+        Assert.Equal("development", result.Principal?.FindFirst("tenant_id")?.Value);
     }
 
     [Fact]
@@ -58,7 +57,6 @@ public class BasicAuthenticationHandlerTests
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["Authentication:Mode"] = "Basic",
-                ["Authentication:AllowTenantHeader"] = "true",
                 ["Authentication:AllowDevelopmentAnonymous"] = "false"
             })
             .Build();

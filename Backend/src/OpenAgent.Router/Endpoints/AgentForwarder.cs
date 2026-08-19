@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using OpenAgent.Contracts.Security;
-using OpenAgent.Router.Middleware;
 using OpenAgent.Router.Models;
 using Yarp.ReverseProxy.Forwarder;
 
@@ -30,9 +29,7 @@ internal sealed class AgentForwarder(
     {
         IAgentUserContext userContext = context.RequestServices
             .GetRequiredService<IAgentUserContext>();
-        string? tenantId = context.Items[TenantIsolationMiddleware.TenantItemKey]?.ToString()
-            ?? userContext.TenantId
-            ?? context.Request.Headers["X-Tenant-Id"].FirstOrDefault();
+        string? tenantId = userContext.TenantId;
         string? conversationId = context.Features.Get<AgentRoutingFeature>()?.ConversationId
             ?? context.Request.Headers["X-Conversation-Id"].FirstOrDefault();
         string traceId = Activity.Current?.Id ?? context.TraceIdentifier;
@@ -44,9 +41,10 @@ internal sealed class AgentForwarder(
             cancellationToken).ConfigureAwait(false);
         if (target == null)
         {
-            await Results.Problem(
-                statusCode: StatusCodes.Status503ServiceUnavailable,
-                title: "Agent provider is unavailable").ExecuteAsync(context).ConfigureAwait(false);
+            await RouterProblem.From(new AgentRoutingException(
+                StatusCodes.Status503ServiceUnavailable,
+                RouterErrorCodes.AgentProviderUnavailable,
+                "Agent Provider is unavailable")).ExecuteAsync(context).ConfigureAwait(false);
             return;
         }
 
@@ -62,8 +60,6 @@ internal sealed class AgentForwarder(
                 proxyRequest,
                 target,
                 provider,
-                userContext,
-                tenantId,
                 conversationId,
                 traceId,
                 cancellationToken)).ConfigureAwait(false);
@@ -92,8 +88,6 @@ internal sealed class AgentForwarder(
         HttpRequestMessage request,
         AgentForwardingTarget target,
         IAgentProvider provider,
-        IAgentUserContext userContext,
-        string? tenantId,
         string? conversationId,
         string traceId,
         CancellationToken cancellationToken)
@@ -101,8 +95,6 @@ internal sealed class AgentForwarder(
         await ForwardingContextBuilder.ApplyAsync(
             request,
             target.RequestUri,
-            userContext,
-            tenantId,
             conversationId,
             traceId).ConfigureAwait(false);
         await provider.ConfigureRequestAsync(

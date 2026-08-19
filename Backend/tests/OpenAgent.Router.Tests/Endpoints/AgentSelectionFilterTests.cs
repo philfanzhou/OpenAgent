@@ -129,7 +129,8 @@ public class AgentSelectionFilterTests
             string message,
             string? conversationId,
             string? explicitAgentId,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            string? authenticationToken = null)
         {
             Message = message;
             ConversationId = conversationId;

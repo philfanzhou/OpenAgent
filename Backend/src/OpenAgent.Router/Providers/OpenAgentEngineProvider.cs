@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Requests;
+using OpenAgent.Contracts.Routing;
 using OpenAgent.Router.Models;
 
 namespace OpenAgent.Router.Providers;
@@ -17,6 +18,8 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
 
     private readonly string _agentListPath;
     private readonly string _chatPath;
+    private readonly string _conversationPath;
+    private readonly string? _baseUrl;
     private readonly IReadOnlyDictionary<string, string> _serviceHeaders;
     private readonly IRouteTable _routeTable;
     private readonly HttpMessageInvoker _httpClient;
@@ -30,9 +33,15 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
         Id = id;
         _agentListPath = NormalizePath(settings["AgentListPath"], "/api/v1/agent/agents");
         _chatPath = NormalizePath(settings["ChatPath"], "/api/v1/agent/chat");
+        _conversationPath = NormalizePath(
+            settings["ConversationPath"],
+            "/api/v1/agent/provider/conversations");
+        _baseUrl = string.IsNullOrWhiteSpace(settings["BaseUrl"])
+            ? null
+            : settings["BaseUrl"]!.TrimEnd('/');
         _serviceHeaders = settings.GetSection("ServiceHeaders")
             .GetChildren()
-            .Where(header => header.Value != null)
+            .Where(header => header.Value != null && !IsIdentityHeader(header.Key))
             .ToDictionary(
                 header => header.Key,
                 header => header.Value!,
@@ -43,25 +52,62 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
 
     public string Id { get; }
 
-    public async Task<IReadOnlyList<AgentSummary>> GetAgentsAsync(
+    public async Task<AgentProviderCatalog> GetAgentsAsync(
+        AgentProviderRequestContext requestContext,
         CancellationToken cancellationToken)
     {
-        string? endpoint = _routeTable.GetTargetEndpoint("chat");
+        string? endpoint = ResolveEndpoint();
         if (string.IsNullOrWhiteSpace(endpoint))
         {
-            return [];
+            return new AgentProviderCatalog([], false);
         }
 
         using HttpRequestMessage request = CreateServiceRequest(
             HttpMethod.Get,
-            $"{endpoint.TrimEnd('/')}{_agentListPath}");
+            $"{endpoint.TrimEnd('/')}{_agentListPath}",
+            requestContext);
         using HttpResponseMessage response = await _httpClient.SendAsync(
             request,
             cancellationToken).ConfigureAwait(false);
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<List<AgentSummary>>(
+        if (!response.IsSuccessStatusCode)
+        {
+            return new AgentProviderCatalog([], false);
+        }
+
+        IReadOnlyList<AgentSummary> agents = await response.Content.ReadFromJsonAsync<List<AgentSummary>>(
             JsonOptions,
             cancellationToken).ConfigureAwait(false) ?? [];
+        return new AgentProviderCatalog(agents);
+    }
+
+    public async Task<AgentProviderConversationStatus> ResolveConversationAsync(
+        AgentProviderRequestContext requestContext,
+        string conversationId,
+        CancellationToken cancellationToken)
+    {
+        string? endpoint = ResolveEndpoint();
+        if (string.IsNullOrWhiteSpace(endpoint))
+        {
+            return AgentProviderConversationStatus.Unavailable;
+        }
+
+        using HttpRequestMessage request = CreateServiceRequest(
+            HttpMethod.Get,
+            $"{endpoint.TrimEnd('/')}{_conversationPath}/{Uri.EscapeDataString(conversationId)}",
+            requestContext);
+        using HttpResponseMessage response = await _httpClient.SendAsync(
+            request,
+            cancellationToken).ConfigureAwait(false);
+        return response.StatusCode switch
+        {
+            System.Net.HttpStatusCode.OK or System.Net.HttpStatusCode.NoContent =>
+                AgentProviderConversationStatus.Found,
+            System.Net.HttpStatusCode.NotFound =>
+                AgentProviderConversationStatus.NotFound,
+            System.Net.HttpStatusCode.Forbidden or System.Net.HttpStatusCode.Unauthorized =>
+                AgentProviderConversationStatus.Forbidden,
+            _ => AgentProviderConversationStatus.Unavailable
+        };
     }
 
     public async Task<IntentRecognitionResult?> RecognizeIntentAsync(
@@ -70,7 +116,7 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
         string message,
         CancellationToken cancellationToken)
     {
-        string? endpoint = _routeTable.GetTargetEndpoint("chat");
+        string? endpoint = ResolveEndpoint();
         if (string.IsNullOrWhiteSpace(endpoint))
         {
             return null;
@@ -107,7 +153,7 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        string? endpoint = _routeTable.GetTargetEndpoint(
+        string? endpoint = _baseUrl ?? _routeTable.GetTargetEndpoint(
             "chat",
             tenantId,
             conversationId);
@@ -147,7 +193,8 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
 
     private HttpRequestMessage CreateServiceRequest(
         HttpMethod method,
-        string url)
+        string url,
+        AgentProviderRequestContext? requestContext = null)
     {
         HttpRequestMessage request = new(method, url);
         foreach ((string name, string value) in _serviceHeaders)
@@ -155,14 +202,34 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
             request.Headers.TryAddWithoutValidation(name, value);
         }
 
+        if (requestContext != null
+            && !string.IsNullOrWhiteSpace(requestContext.AuthenticationToken))
+        {
+            request.Headers.Remove("Authorization");
+            request.Headers.TryAddWithoutValidation(
+                "Authorization",
+                requestContext.AuthenticationToken);
+        }
+
         return request;
     }
+
+    private string? ResolveEndpoint() =>
+        _baseUrl ?? _routeTable.GetTargetEndpoint("chat");
 
     private static string NormalizePath(string? value, string fallback)
     {
         string path = string.IsNullOrWhiteSpace(value) ? fallback : value;
         return path.StartsWith("/", StringComparison.Ordinal) ? path : $"/{path}";
     }
+
+    private static bool IsIdentityHeader(string name) =>
+        name.Equals("X-User-Id", StringComparison.OrdinalIgnoreCase)
+        || name.Equals("X-Tenant-Id", StringComparison.OrdinalIgnoreCase)
+        || name.Equals("X-UserId", StringComparison.OrdinalIgnoreCase)
+        || name.Equals("X-TenantId", StringComparison.OrdinalIgnoreCase)
+        || name.Equals("X-OpenAgent-User-Id", StringComparison.OrdinalIgnoreCase)
+        || name.Equals("X-OpenAgent-Tenant-Id", StringComparison.OrdinalIgnoreCase);
 
     private static string BuildIntentPrompt(
         string message,

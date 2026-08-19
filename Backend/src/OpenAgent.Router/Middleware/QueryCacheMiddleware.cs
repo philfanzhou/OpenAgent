@@ -36,8 +36,8 @@ internal sealed class QueryCacheMiddleware(RequestDelegate next, ILogger<QueryCa
             if (!string.IsNullOrEmpty(cached))
             {
                 RouterLog.SemanticCacheHit(
-                    logger, TenantIsolationMiddleware.GetAction(context), userContext.UserId,
-                    context.Items[TenantIsolationMiddleware.TenantItemKey]?.ToString(),
+                    logger, RouterRequestMetadata.GetAction(context), userContext.UserId,
+                    userContext.TenantId,
                     context.Request.Headers["X-Conversation-Id"].FirstOrDefault(),
                     Activity.Current?.Id ?? context.TraceIdentifier);
                 context.Response.ContentType = "application/json";

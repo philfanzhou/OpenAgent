@@ -58,13 +58,6 @@ var app = builder.Build();
 app.UseAgentHost(builder.Configuration);
 app.UseMiddleware<JwtUserContextMiddleware>();
 app.UseWhen(
-    context => context.Request.Path.StartsWithSegments("/api/v1/agent")
-        || context.Request.Path.StartsWithSegments("/api/v1/admin"),
-    branch =>
-    {
-        branch.UseMiddleware<TenantIsolationMiddleware>();
-    });
-app.UseWhen(
     context => context.Request.Path.StartsWithSegments("/api/v1/agent/chat"),
     branch =>
     {

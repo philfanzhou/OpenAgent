@@ -24,7 +24,7 @@ internal static class GetEndpointHandler
             return Results.Unauthorized();
         }
 
-        var tenantId = userContext.TenantId ?? context.Request.Headers["X-Tenant-Id"].FirstOrDefault();
+        var tenantId = userContext.TenantId;
         var conversationId = conversationIdFromHeader
             ? context.Request.Headers["X-Conversation-Id"].FirstOrDefault()
             : null;
@@ -46,8 +46,7 @@ internal static class GetEndpointHandler
             {
                 proxyRequest.Method = HttpMethod.Get;
                 return ForwardingContextBuilder.ApplyAsync(
-                    proxyRequest, new Uri(targetUrl), userContext,
-                    tenantId, conversationId, traceId);
+                    proxyRequest, new Uri(targetUrl), conversationId, traceId);
             }).ConfigureAwait(false);
         if (error == ForwarderError.None)
         {

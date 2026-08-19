@@ -74,13 +74,7 @@ internal sealed class BasicAuthenticationHandler(
             return Task.FromResult(AuthenticateResult.Fail("Invalid username or password."));
         }
 
-        string tenantId = _authenticationOptions.AllowTenantHeader
-            ? Request.Headers["X-Tenant-Id"].FirstOrDefault()
-                ?? Request.Headers["X-TenantId"].FirstOrDefault()
-                ?? _authenticationOptions.DevelopmentTenantId
-            : _authenticationOptions.DevelopmentTenantId;
-
-        return Task.FromResult(Succeed(username, tenantId));
+        return Task.FromResult(Succeed(username, _authenticationOptions.DevelopmentTenantId));
     }
 
     private AuthenticateResult Succeed(string username, string? tenantId)
