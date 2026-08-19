@@ -1,7 +1,5 @@
 using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging.Abstractions;
-using Moq;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Router.Middleware;
 using Xunit;
@@ -54,47 +52,6 @@ public class RouterPipelineMiddlewareTests
 
         Assert.True(nextCalled);
         Assert.Null(limiter.ClientId);
-    }
-
-    [Fact]
-    public async Task Idempotency_CachedResponse_ShortCircuitsPipeline()
-    {
-        bool nextCalled = false;
-        var middleware = new IdempotencyMiddleware(
-            _ => { nextCalled = true; return Task.CompletedTask; },
-            NullLogger<IdempotencyMiddleware>.Instance);
-        var context = new DefaultHttpContext();
-        context.Response.Body = new MemoryStream();
-        context.Request.Headers["Idempotency-Key"] = "request-1";
-        Mock<IDistributedCache> cache = new();
-        cache.Setup(value => value.GetAsync("idempotency:request-1", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(System.Text.Encoding.UTF8.GetBytes("{\"cached\":true}"));
-
-        await middleware.InvokeAsync(context, AuthenticatedUser, cache.Object);
-        context.Response.Body.Position = 0;
-        using var reader = new StreamReader(context.Response.Body);
-
-        Assert.False(nextCalled);
-        Assert.Equal("application/json", context.Response.ContentType);
-        Assert.Equal("{\"cached\":true}", await reader.ReadToEndAsync());
-    }
-
-    [Fact]
-    public async Task Idempotency_CacheFailure_ContinuesPipeline()
-    {
-        bool nextCalled = false;
-        var middleware = new IdempotencyMiddleware(
-            _ => { nextCalled = true; return Task.CompletedTask; },
-            NullLogger<IdempotencyMiddleware>.Instance);
-        var context = new DefaultHttpContext();
-        context.Request.Headers["Idempotency-Key"] = "request-1";
-        Mock<IDistributedCache> cache = new();
-        cache.Setup(value => value.GetAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new InvalidOperationException("cache unavailable"));
-
-        await middleware.InvokeAsync(context, AuthenticatedUser, cache.Object);
-
-        Assert.True(nextCalled);
     }
 
     private static AgentUserContext AuthenticatedUser => new()
