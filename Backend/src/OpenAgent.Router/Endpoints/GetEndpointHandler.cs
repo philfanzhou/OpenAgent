@@ -60,6 +60,7 @@ internal static class GetEndpointHandler
         RouterLog.ForwardingFailed(
             logger, context.GetForwarderErrorFeature()?.Exception, error, targetPath,
             targetEndpoint, targetUrl, userContext.UserId, tenantId, traceId);
+        RouterMeter.RecordForwardingFailure("other", error.ToString());
         return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
     }
 }

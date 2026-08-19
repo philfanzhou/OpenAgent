@@ -75,6 +75,7 @@ internal static class GatewayProxyHandler
             userContext.UserId,
             tenantId,
             traceId);
+        RouterMeter.RecordForwardingFailure("other", error.ToString());
         return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
     }
 

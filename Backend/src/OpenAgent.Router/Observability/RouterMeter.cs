@@ -20,6 +20,12 @@ internal static class RouterMeter
     private static readonly Counter<long> RateLimitDecisionsTotal = Meter.CreateCounter<long>("openagent_router_rate_limit_decisions_total");
     private static readonly Histogram<int> DiscoveryEngineCount = Meter.CreateHistogram<int>("openagent_router_discovery_engine_count");
     private static readonly Counter<long> DownstreamProbesTotal = Meter.CreateCounter<long>("openagent_router_downstream_probes_total");
+    private static readonly Counter<long> ProviderSelectionsTotal = Meter.CreateCounter<long>(
+        "openagent_router_provider_selections_total");
+    private static readonly Counter<long> AclDenialsTotal = Meter.CreateCounter<long>(
+        "openagent_router_acl_denials_total");
+    private static readonly Counter<long> CacheHitsTotal = Meter.CreateCounter<long>(
+        "openagent_router_cache_hits_total");
 
     /// <summary>
     /// 记录一次转发失败
@@ -63,8 +69,44 @@ internal static class RouterMeter
         DownstreamProbesTotal.Add(1, new TagList { { "outcome", Normalize(outcome) } });
     }
 
+    public static void RecordProviderSelection(string source)
+    {
+        ProviderSelectionsTotal.Add(1, new TagList
+        {
+            { "source", NormalizeSelectionSource(source) }
+        });
+    }
+
+    public static void RecordAclDenial() =>
+        AclDenialsTotal.Add(1, new TagList { { "reason", "agent_acl" } });
+
+    public static void RecordCacheHit(string cache)
+    {
+        CacheHitsTotal.Add(1, new TagList
+        {
+            { "cache", NormalizeCache(cache) }
+        });
+    }
+
     private static string Normalize(string? value) =>
         string.IsNullOrWhiteSpace(value)
             ? "unknown"
             : value.Trim().ToLowerInvariant();
+
+    private static string NormalizeSelectionSource(string value) => value.Trim().ToLowerInvariant() switch
+    {
+        "explicit" => "explicit",
+        "conversation" => "conversation",
+        "intent" => "intent",
+        "fallback" => "fallback",
+        _ => "other"
+    };
+
+    private static string NormalizeCache(string value) => value.Trim().ToLowerInvariant() switch
+    {
+        "idempotency" => "idempotency",
+        "query" => "query",
+        _ => "other"
+    };
+
 }

@@ -102,6 +102,7 @@ internal sealed class IdempotencyMiddleware(
                 userContext.UserId,
                 tenantId,
                 Activity.Current?.Id ?? context.TraceIdentifier);
+            RouterMeter.RecordCacheHit("idempotency");
             await ReplayAsync(context, acquisition.Response).ConfigureAwait(false);
             return;
         }
