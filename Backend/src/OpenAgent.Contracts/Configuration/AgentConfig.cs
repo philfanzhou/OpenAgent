@@ -10,6 +10,7 @@ namespace OpenAgent.Contracts.Configuration;
 /// </summary>
 public class AgentConfig
 {
+    public string TenantId { get; set; } = string.Empty;
     public string Instructions { get; set; } = string.Empty;
     public LlmConfig Llm { get; set; } = new();
     public McpConfig Mcp { get; set; } = new();
@@ -152,10 +153,14 @@ public class SkillInstanceConfig
 {
     [JsonPropertyName("skillId")]
     public string Id { get; set; } = string.Empty;
+    public string TenantId { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public bool Enabled { get; set; } = true;
     public string Description { get; set; } = string.Empty;
+    public string ParametersJsonSchema { get; set; } = string.Empty;
+    public string Type { get; set; } = SkillTypes.AgentSkill;
     public string Source { get; set; } = "Local";
+    public string SourceType { get; set; } = SkillSourceTypes.ObjectStorage;
     public string? SourceId { get; set; }
     public string? PackageFileName { get; set; }
     public string? PackageFormat { get; set; }
@@ -167,6 +172,18 @@ public class SkillInstanceConfig
     public List<string> AllowedGroups { get; set; } = new();
     public List<string> AllowedTenantIds { get; set; } = new();
     public List<string> AllowedRoles { get; set; } = new();
+}
+
+public static class SkillTypes
+{
+    public const string AgentSkill = "AgentSkill";
+}
+
+public static class SkillSourceTypes
+{
+    public const string ObjectStorage = "ObjectStorage";
+    public const string PostgreSql = "PostgreSql";
+    public const string Redis = "Redis";
 }
 
 public class SkillsConfig

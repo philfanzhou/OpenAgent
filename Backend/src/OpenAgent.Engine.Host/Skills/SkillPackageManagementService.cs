@@ -34,6 +34,18 @@ internal sealed class SkillPackageManagementService(
         {
             return SkillPackageInstallResult.NotFound();
         }
+        if (!string.IsNullOrWhiteSpace(entity.TenantId)
+            && !string.Equals(entity.TenantId, tenantId, StringComparison.Ordinal))
+        {
+            return SkillPackageInstallResult.TenantMismatch();
+        }
+        if (string.IsNullOrWhiteSpace(entity.TenantId)
+            && (entity.Config.Skills.EnabledSkills.Count > 0 || entity.Config.Skills.Instances.Count > 0))
+        {
+            return SkillPackageInstallResult.TenantMismatch();
+        }
+        entity.TenantId = tenantId;
+        entity.Config.TenantId = tenantId;
 
         SkillPackageUploadResult uploaded = await UploadAsync(
             tenantId, userId, fileName, mediaType, package, cancellationToken, publishCatalog: false).ConfigureAwait(false);
@@ -66,19 +78,19 @@ internal sealed class SkillPackageManagementService(
         }
         catch
         {
-            await DeletePackageBestEffortAsync(instance.ObjectKey, instance.PackageFormat).ConfigureAwait(false);
+            await DeletePackageBestEffortAsync(tenantId, instance.ObjectKey, instance.PackageFormat).ConfigureAwait(false);
             throw;
         }
         if (saved == null)
         {
-            await DeletePackageBestEffortAsync(instance.ObjectKey, instance.PackageFormat).ConfigureAwait(false);
+            await DeletePackageBestEffortAsync(tenantId, instance.ObjectKey, instance.PackageFormat).ConfigureAwait(false);
             return SkillPackageInstallResult.Conflict();
         }
 
         if (!string.IsNullOrWhiteSpace(previousObjectKey)
             && !string.Equals(previousObjectKey, instance.ObjectKey, StringComparison.Ordinal))
         {
-            await DeletePackageBestEffortAsync(previousObjectKey, previousInstance?.PackageFormat).ConfigureAwait(false);
+            await DeletePackageBestEffortAsync(tenantId, previousObjectKey, previousInstance?.PackageFormat).ConfigureAwait(false);
         }
 
         return SkillPackageInstallResult.Installed(instance, saved.CurrentVersion);
@@ -107,7 +119,10 @@ internal sealed class SkillPackageManagementService(
         AgentSkillPackageMetadata metadata = AgentSkillPackageArchive.InspectFiles(files, cancellationToken);
         SkillInstanceConfig? previous = !publishCatalog || skillCatalog == null
             ? null
-            : await skillCatalog.GetAsync(metadata.Name, cancellationToken).ConfigureAwait(false);
+            : await skillCatalog.GetAsync(
+                tenantId,
+                metadata.Name,
+                cancellationToken).ConfigureAwait(false);
         string packageId = $"skill-{Guid.NewGuid():N}";
         const string packagePrefixRoot = "skill-packages";
         var storedKeys = new List<string>();
@@ -127,6 +142,7 @@ internal sealed class SkillPackageManagementService(
                         FileId = $"{packageId}-{fileIndex:D4}",
                         TenantId = tenantId,
                         UserId = userId,
+                        Scope = FileObjectScope.Tenant,
                         FileName = Path.GetFileName(file.RelativePath),
                         MediaType = mediaType,
                         Sha256 = fileHash,
@@ -143,7 +159,11 @@ internal sealed class SkillPackageManagementService(
                 });
             }
 
-            byte[] indexContent = JsonSerializer.SerializeToUtf8Bytes(new SkillPackageStorageIndex { Files = storedFiles });
+            byte[] indexContent = JsonSerializer.SerializeToUtf8Bytes(new SkillPackageStorageIndex
+            {
+                TenantId = tenantId,
+                Files = storedFiles
+            });
             storedIndexHash = Convert.ToHexString(SHA256.HashData(indexContent)).ToLowerInvariant();
             await using var indexStream = new MemoryStream(indexContent, writable: false);
             stored = await objectStore.WriteAsync(
@@ -152,6 +172,7 @@ internal sealed class SkillPackageManagementService(
                     FileId = packageId,
                     TenantId = tenantId,
                     UserId = userId,
+                    Scope = FileObjectScope.Tenant,
                     FileName = $"{packageId}.json",
                     MediaType = "application/json",
                     Sha256 = storedIndexHash,
@@ -171,10 +192,13 @@ internal sealed class SkillPackageManagementService(
         var instance = new SkillInstanceConfig
         {
             Id = metadata.Name,
+            TenantId = tenantId,
             Name = metadata.Name,
             Enabled = true,
             Description = metadata.Description,
-            Source = "ObjectStorage",
+            Type = SkillTypes.AgentSkill,
+            Source = SkillSourceTypes.ObjectStorage,
+            SourceType = SkillSourceTypes.ObjectStorage,
             SourceId = metadata.Name,
             PackageFileName = fileName,
             PackageFormat = "directory",
@@ -190,45 +214,56 @@ internal sealed class SkillPackageManagementService(
             }
             catch
             {
-                await DeletePackageBestEffortAsync(instance.ObjectKey, instance.PackageFormat).ConfigureAwait(false);
+                await DeletePackageBestEffortAsync(tenantId, instance.ObjectKey, instance.PackageFormat).ConfigureAwait(false);
                 throw;
             }
 
             if (previous?.ObjectKey != null && !string.Equals(previous.ObjectKey, instance.ObjectKey, StringComparison.Ordinal))
-                await DeletePackageBestEffortAsync(previous.ObjectKey, previous.PackageFormat).ConfigureAwait(false);
+                await DeletePackageBestEffortAsync(tenantId, previous.ObjectKey, previous.PackageFormat).ConfigureAwait(false);
         }
 
         return new SkillPackageUploadResult(instance);
     }
 
     internal async Task<bool> DeleteCatalogAsync(
+        string tenantId,
         string skillId,
         CancellationToken cancellationToken)
     {
         if (skillCatalog == null) return false;
-        SkillInstanceConfig? skill = await skillCatalog.GetAsync(skillId, cancellationToken).ConfigureAwait(false);
+        SkillInstanceConfig? skill = await skillCatalog.GetAsync(
+            tenantId,
+            skillId,
+            cancellationToken).ConfigureAwait(false);
         if (skill == null) return false;
-        await DeletePackageBestEffortAsync(skill.ObjectKey, skill.PackageFormat).ConfigureAwait(false);
-        await skillCatalog.RemoveAsync(skillId, cancellationToken).ConfigureAwait(false);
+        await DeletePackageBestEffortAsync(tenantId, skill.ObjectKey, skill.PackageFormat).ConfigureAwait(false);
+        await skillCatalog.RemoveAsync(tenantId, skillId, cancellationToken).ConfigureAwait(false);
         return true;
     }
 
     internal async Task<string?> ReadMarkdownAsync(
+        string tenantId,
         string skillId,
         CancellationToken cancellationToken)
     {
         if (skillCatalog == null) return null;
-        SkillInstanceConfig? skill = await skillCatalog.GetAsync(skillId, cancellationToken).ConfigureAwait(false);
+        SkillInstanceConfig? skill = await skillCatalog.GetAsync(
+            tenantId,
+            skillId,
+            cancellationToken).ConfigureAwait(false);
         if (skill == null || string.IsNullOrWhiteSpace(skill.ObjectKey)) return null;
+        EnsureTenantSharedObjectKey(skill.ObjectKey, tenantId);
 
         if (string.Equals(skill.PackageFormat, "directory", StringComparison.OrdinalIgnoreCase))
         {
             byte[] indexContent = await objectStore.ReadAsync(skill.ObjectKey, cancellationToken).ConfigureAwait(false);
             SkillPackageStorageIndex index = JsonSerializer.Deserialize<SkillPackageStorageIndex>(indexContent)
                 ?? throw new InvalidOperationException($"Skill package '{skillId}' has an invalid storage index.");
+            EnsureTenantIndex(index, tenantId);
             SkillPackageStorageFile? markdown = index.Files.FirstOrDefault(file =>
                 string.Equals(Path.GetFileName(file.RelativePath), "SKILL.md", StringComparison.OrdinalIgnoreCase));
             if (markdown == null) return null;
+            EnsureTenantSharedObjectKey(markdown.ObjectKey, tenantId);
             byte[] content = await objectStore.ReadAsync(markdown.ObjectKey, cancellationToken).ConfigureAwait(false);
             return System.Text.Encoding.UTF8.GetString(content);
         }
@@ -241,6 +276,7 @@ internal sealed class SkillPackageManagementService(
 
     internal async Task<SkillPackageDeleteResult> DeleteAsync(
         string agentId,
+        string tenantId,
         string skillId,
         string? expectedVersion,
         CancellationToken cancellationToken)
@@ -249,6 +285,10 @@ internal sealed class SkillPackageManagementService(
         if (entity == null)
         {
             return SkillPackageDeleteResult.AgentNotFound;
+        }
+        if (!string.Equals(entity.TenantId, tenantId, StringComparison.Ordinal))
+        {
+            return SkillPackageDeleteResult.TenantMismatch;
         }
 
         SkillInstanceConfig? instance = entity.Config.Skills.Instances.FirstOrDefault(item =>
@@ -271,12 +311,13 @@ internal sealed class SkillPackageManagementService(
             return SkillPackageDeleteResult.Conflict;
         }
 
-        await DeletePackageBestEffortAsync(instance.ObjectKey, instance.PackageFormat).ConfigureAwait(false);
+        await DeletePackageBestEffortAsync(tenantId, instance.ObjectKey, instance.PackageFormat).ConfigureAwait(false);
 
         return SkillPackageDeleteResult.Deleted;
     }
 
     internal async Task<SkillPackageValidationResult> ValidateAsync(
+        string tenantId,
         SkillsConfig skills,
         CancellationToken cancellationToken)
     {
@@ -284,6 +325,11 @@ internal sealed class SkillPackageManagementService(
         var verified = new List<string>();
         foreach (SkillInstanceConfig instance in skills.Instances.Where(item => item.Enabled))
         {
+            if (!string.Equals(instance.TenantId, tenantId, StringComparison.Ordinal))
+            {
+                invalid.Add(instance.Id);
+                continue;
+            }
             if (string.IsNullOrWhiteSpace(instance.Id) || string.IsNullOrWhiteSpace(instance.Name))
             {
                 invalid.Add(string.IsNullOrWhiteSpace(instance.Id) ? instance.Name : instance.Id);
@@ -297,6 +343,7 @@ internal sealed class SkillPackageManagementService(
 
             try
             {
+                EnsureTenantSharedObjectKey(instance.ObjectKey, tenantId);
                 byte[] content = await objectStore.ReadAsync(instance.ObjectKey, cancellationToken).ConfigureAwait(false);
                 string actual = Convert.ToHexString(SHA256.HashData(content)).ToLowerInvariant();
                 if (!string.IsNullOrWhiteSpace(instance.Sha256)
@@ -307,7 +354,7 @@ internal sealed class SkillPackageManagementService(
                 }
 
                 IReadOnlyList<SkillPackageFile> files = string.Equals(instance.PackageFormat, "directory", StringComparison.OrdinalIgnoreCase)
-                    ? await ReadStoredFilesAsync(content, cancellationToken).ConfigureAwait(false)
+                    ? await ReadStoredFilesAsync(tenantId, content, cancellationToken).ConfigureAwait(false)
                     : AgentSkillPackageArchive.ReadZipFiles(content, cancellationToken);
                 AgentSkillPackageMetadata metadata = AgentSkillPackageArchive.InspectFiles(files, cancellationToken);
                 if (!string.Equals(metadata.Name, instance.Id, StringComparison.OrdinalIgnoreCase)
@@ -374,9 +421,10 @@ internal sealed class SkillPackageManagementService(
         }
     }
 
-    private async Task DeletePackageBestEffortAsync(string? objectKey, string? packageFormat)
+    private async Task DeletePackageBestEffortAsync(string tenantId, string? objectKey, string? packageFormat)
     {
         if (string.IsNullOrWhiteSpace(objectKey)) return;
+        EnsureTenantSharedObjectKey(objectKey, tenantId);
 
         if (string.Equals(packageFormat, "directory", StringComparison.OrdinalIgnoreCase))
         {
@@ -386,8 +434,12 @@ internal sealed class SkillPackageManagementService(
                 SkillPackageStorageIndex? index = JsonSerializer.Deserialize<SkillPackageStorageIndex>(indexContent);
                 if (index != null)
                 {
+                    EnsureTenantIndex(index, tenantId);
                     foreach (SkillPackageStorageFile file in index.Files)
+                    {
+                        EnsureTenantSharedObjectKey(file.ObjectKey, tenantId);
                         await DeleteObjectBestEffortAsync(file.ObjectKey).ConfigureAwait(false);
+                    }
                 }
             }
             catch (Exception exception)
@@ -400,14 +452,17 @@ internal sealed class SkillPackageManagementService(
     }
 
     private async Task<IReadOnlyList<SkillPackageFile>> ReadStoredFilesAsync(
+        string tenantId,
         byte[] indexContent,
         CancellationToken cancellationToken)
     {
         SkillPackageStorageIndex index = JsonSerializer.Deserialize<SkillPackageStorageIndex>(indexContent)
             ?? throw new InvalidOperationException("Skill storage index is invalid.");
+        EnsureTenantIndex(index, tenantId);
         var files = new List<SkillPackageFile>(index.Files.Count);
         foreach (SkillPackageStorageFile file in index.Files)
         {
+            EnsureTenantSharedObjectKey(file.ObjectKey, tenantId);
             byte[] content = await objectStore.ReadAsync(file.ObjectKey, cancellationToken).ConfigureAwait(false);
             string actual = Convert.ToHexString(SHA256.HashData(content)).ToLowerInvariant();
             if (!string.Equals(actual, file.Sha256, StringComparison.OrdinalIgnoreCase))
@@ -416,22 +471,42 @@ internal sealed class SkillPackageManagementService(
         }
         return files;
     }
+
+    private static void EnsureTenantIndex(SkillPackageStorageIndex index, string tenantId)
+    {
+        if (!string.Equals(index.TenantId, tenantId, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("Skill storage index belongs to another tenant.");
+        }
+    }
+
+    private static void EnsureTenantSharedObjectKey(string objectKey, string tenantId)
+    {
+        if (!FileObjectTenantScope.ContainsTenantSharedPartition(objectKey, tenantId))
+        {
+            throw new InvalidOperationException("Skill object storage key is outside the tenant-shared partition.");
+        }
+    }
 }
 
 internal sealed record SkillPackageInstallResult(
     SkillInstanceConfig? Skill,
     string? CurrentVersion,
     bool AgentExists,
-    bool HasConflict)
+    bool HasConflict,
+    bool HasTenantMismatch)
 {
     internal static SkillPackageInstallResult Installed(SkillInstanceConfig skill, string currentVersion) =>
-        new(skill, currentVersion, AgentExists: true, HasConflict: false);
+        new(skill, currentVersion, AgentExists: true, HasConflict: false, HasTenantMismatch: false);
 
     internal static SkillPackageInstallResult NotFound() =>
-        new(null, null, AgentExists: false, HasConflict: false);
+        new(null, null, AgentExists: false, HasConflict: false, HasTenantMismatch: false);
 
     internal static SkillPackageInstallResult Conflict() =>
-        new(null, null, AgentExists: true, HasConflict: true);
+        new(null, null, AgentExists: true, HasConflict: true, HasTenantMismatch: false);
+
+    internal static SkillPackageInstallResult TenantMismatch() =>
+        new(null, null, AgentExists: true, HasConflict: false, HasTenantMismatch: true);
 }
 
 internal sealed record SkillPackageUploadResult(SkillInstanceConfig Skill);
@@ -441,7 +516,8 @@ internal enum SkillPackageDeleteResult
     Deleted,
     AgentNotFound,
     SkillNotFound,
-    Conflict
+    Conflict,
+    TenantMismatch
 }
 
 internal sealed record SkillPackageValidationResult(

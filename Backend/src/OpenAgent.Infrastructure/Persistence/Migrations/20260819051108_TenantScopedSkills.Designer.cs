@@ -2,18 +2,21 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using OpenAgent.Infrastructure;
 
 #nullable disable
 
-namespace OpenAgent.Infrastructure.Migrations
+namespace OpenAgent.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(OpenAgentDbContext))]
-    partial class OpenAgentDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260819051108_TenantScopedSkills")]
+    partial class TenantScopedSkills
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -111,12 +114,6 @@ namespace OpenAgent.Infrastructure.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
-                    b.Property<int?>("CachedInputTokens")
-                        .HasColumnType("integer");
-
-                    b.Property<int?>("CompletionTokens")
-                        .HasColumnType("integer");
-
                     b.Property<string>("Content")
                         .IsRequired()
                         .HasColumnType("text");
@@ -132,16 +129,6 @@ namespace OpenAgent.Infrastructure.Migrations
 
                     b.Property<string>("MetadataJson")
                         .HasColumnType("jsonb");
-
-                    b.Property<string>("ModelId")
-                        .HasMaxLength(256)
-                        .HasColumnType("character varying(256)");
-
-                    b.Property<int?>("PromptTokens")
-                        .HasColumnType("integer");
-
-                    b.Property<int?>("ReasoningTokens")
-                        .HasColumnType("integer");
 
                     b.Property<string>("Role")
                         .IsRequired()
@@ -161,9 +148,6 @@ namespace OpenAgent.Infrastructure.Migrations
                     b.Property<string>("ToolName")
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
-
-                    b.Property<int?>("TotalTokens")
-                        .HasColumnType("integer");
 
                     b.HasKey("MessageId");
 
