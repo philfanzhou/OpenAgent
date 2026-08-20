@@ -26,6 +26,39 @@ internal static class RouterMeter
         "openagent_router_acl_denials_total");
     private static readonly Counter<long> CacheHitsTotal = Meter.CreateCounter<long>(
         "openagent_router_cache_hits_total");
+    private static readonly Counter<long> RequestsTotal = Meter.CreateCounter<long>(
+        "openagent_router_requests_total");
+    private static readonly Counter<long> ForwardsTotal = Meter.CreateCounter<long>(
+        "openagent_router_forwards_total");
+    private static readonly Histogram<double> SseDuration = Meter.CreateHistogram<double>(
+        "openagent_router_sse_duration_seconds",
+        unit: "s");
+
+    public static void RecordRequest(string? action)
+    {
+        RequestsTotal.Add(1, new TagList
+        {
+            { "action", NormalizeAction(action) }
+        });
+    }
+
+    public static void RecordForward(string? action, bool succeeded)
+    {
+        ForwardsTotal.Add(1, new TagList
+        {
+            { "action", NormalizeAction(action) },
+            { "outcome", succeeded ? "success" : "failure" }
+        });
+    }
+
+    public static void RecordSseCompletion(string? action, TimeSpan duration, bool succeeded)
+    {
+        SseDuration.Record(duration.TotalSeconds, new TagList
+        {
+            { "action", NormalizeAction(action) },
+            { "outcome", succeeded ? "success" : "failure" }
+        });
+    }
 
     /// <summary>
     /// 记录一次转发失败
@@ -49,8 +82,8 @@ internal static class RouterMeter
     {
         DiscoverySelectionsTotal.Add(1, new TagList
         {
-            { "intent", Normalize(intent) },
-            { "source", Normalize(source) }
+            { "intent", NormalizeIntent(intent) },
+            { "source", NormalizeDiscoverySource(source) }
         });
     }
 
@@ -99,6 +132,31 @@ internal static class RouterMeter
         "conversation" => "conversation",
         "intent" => "intent",
         "fallback" => "fallback",
+        "unavailable" => "unavailable",
+        _ => "other"
+    };
+
+    private static string NormalizeDiscoverySource(string? value) => value?.Trim().ToLowerInvariant() switch
+    {
+        "dynamic" => "dynamic",
+        "static_fallback" => "static_fallback",
+        "error" => "error",
+        _ => "other"
+    };
+
+    private static string NormalizeAction(string? value) => value?.Trim().ToLowerInvariant() switch
+    {
+        null or "" => "chat",
+        "chat" => "chat",
+        "stream" => "stream",
+        "sse" => "sse",
+        _ => "other"
+    };
+
+    private static string NormalizeIntent(string? value) => value?.Trim().ToLowerInvariant() switch
+    {
+        "chat" => "chat",
+        "workflow" => "workflow",
         _ => "other"
     };
 

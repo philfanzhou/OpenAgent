@@ -42,17 +42,27 @@ internal static class GatewayProxyHandler
 
         string targetUrl = $"{targetEndpoint.TrimEnd('/')}{context.Request.Path}{context.Request.QueryString}";
         string traceId = Activity.Current?.Id ?? context.TraceIdentifier;
-        ForwarderError error = await forwarder.SendAsync(
-            context,
-            targetEndpoint,
-            httpClient,
-            requestConfig,
-            (_, proxyRequest) => userContext.IsAuthenticated
-                ? ApplyAuthenticatedAsync(
-                    proxyRequest,
-                    new Uri(targetUrl),
-                    traceId)
-                : ApplyAnonymousAsync(proxyRequest, new Uri(targetUrl), traceId)).ConfigureAwait(false);
+        ForwarderError error;
+        try
+        {
+            error = await forwarder.SendAsync(
+                context,
+                targetEndpoint,
+                httpClient,
+                requestConfig,
+                (_, proxyRequest) => userContext.IsAuthenticated
+                    ? ApplyAuthenticatedAsync(
+                        proxyRequest,
+                        new Uri(targetUrl),
+                        traceId)
+                    : ApplyAnonymousAsync(proxyRequest, new Uri(targetUrl), traceId)).ConfigureAwait(false);
+        }
+        catch
+        {
+            RouterMeter.RecordForward("other", succeeded: false);
+            throw;
+        }
+        RouterMeter.RecordForward("other", error == ForwarderError.None);
         if (error == ForwarderError.None)
         {
             context.RequestServices.GetService<IEndpointHealthTracker>()?.ReportSuccess(targetEndpoint);

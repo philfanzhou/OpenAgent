@@ -9,6 +9,7 @@ using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Files;
+using OpenAgent.Core.Runtime.Agent;
 
 namespace OpenAgent.Core.Conversation;
 
@@ -92,7 +93,18 @@ internal sealed class ConversationHistoryFactory
             null => CreateDefaultTruncation(),
             _ => CreateDefaultTruncation()
         };
-        return strategy == null ? null : new CompactionProvider(strategy);
+        if (strategy == null)
+        {
+            return null;
+        }
+
+        string strategyName = policy?.Strategy.ToLowerInvariant() switch
+        {
+            "summarize" => "summarize",
+            "sliding_window" => "sliding_window",
+            _ => "truncation"
+        };
+        return new CompactionProvider(new MeteredCompactionStrategy(strategy, strategyName));
     }
 
     private CompactionStrategy? CreateDefaultTruncation()
@@ -128,5 +140,26 @@ internal sealed class ConversationHistoryFactory
             minimumPreservedGroups: Math.Max(4, policy.PreserveRecentTurns * 2),
             summarizationPrompt: null,
             target: null);
+    }
+
+    private sealed class MeteredCompactionStrategy(
+        CompactionStrategy strategy,
+        string strategyName) : CompactionStrategy(_ => true, target: null)
+    {
+        protected override async ValueTask<bool> CompactCoreAsync(
+            CompactionMessageIndex index,
+            ILogger logger,
+            CancellationToken cancellationToken)
+        {
+            bool compacted = await strategy.CompactAsync(
+                index,
+                logger,
+                cancellationToken).ConfigureAwait(false);
+            if (compacted)
+            {
+                EngineMeter.RecordCompression(strategyName);
+            }
+            return compacted;
+        }
     }
 }

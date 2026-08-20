@@ -276,6 +276,20 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
     {
         _finalized = true;
         RecordUser();
+        HashSet<string> recordedCallIds = new(StringComparer.Ordinal);
+        foreach (FunctionCallContent call in (context.ResponseMessages ?? [])
+            .SelectMany(message => message.Contents.OfType<FunctionCallContent>()))
+        {
+            if (call.Exception != null || string.IsNullOrWhiteSpace(call.Name))
+            {
+                continue;
+            }
+            if (!string.IsNullOrWhiteSpace(call.CallId) && !recordedCallIds.Add(call.CallId))
+            {
+                continue;
+            }
+            EngineMeter.RecordCapabilityCall(call.Name);
+        }
         List<ConversationMessage> responses = AgentMessageAdapter.ToStored(
             context.ResponseMessages ?? [],
             ref _nextSequence).ToList();

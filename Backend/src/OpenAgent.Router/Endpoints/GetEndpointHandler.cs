@@ -37,19 +37,29 @@ internal static class GetEndpointHandler
         var normalizedPath = targetPath.StartsWith('/') ? targetPath : "/" + targetPath;
         var targetUrl = $"{targetEndpoint.TrimEnd('/')}{normalizedPath}";
         var traceId = Activity.Current?.Id ?? context.TraceIdentifier;
-        var error = await forwarder.SendAsync(
-            context,
-            targetEndpoint,
-            httpClient,
-            requestConfig,
-            (_, proxyRequest) =>
-            {
-                proxyRequest.Method = HttpMethod.Get;
-                return ForwardingContextBuilder.ApplyAsync(
-                    proxyRequest,
-                    new Uri(targetUrl),
-                    traceId);
-            }).ConfigureAwait(false);
+        ForwarderError error;
+        try
+        {
+            error = await forwarder.SendAsync(
+                context,
+                targetEndpoint,
+                httpClient,
+                requestConfig,
+                (_, proxyRequest) =>
+                {
+                    proxyRequest.Method = HttpMethod.Get;
+                    return ForwardingContextBuilder.ApplyAsync(
+                        proxyRequest,
+                        new Uri(targetUrl),
+                        traceId);
+                }).ConfigureAwait(false);
+        }
+        catch
+        {
+            RouterMeter.RecordForward("other", succeeded: false);
+            throw;
+        }
+        RouterMeter.RecordForward("other", error == ForwarderError.None);
         if (error == ForwarderError.None)
         {
             context.RequestServices.GetService<IEndpointHealthTracker>()?.ReportSuccess(targetEndpoint);
