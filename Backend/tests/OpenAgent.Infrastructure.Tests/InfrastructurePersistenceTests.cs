@@ -4,6 +4,8 @@ using Microsoft.Extensions.DependencyInjection;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Security;
+using OpenAgent.Contracts.Configuration;
+using OpenAgent.Contracts.Skills;
 using OpenAgent.Contracts.Requests;
 using Testcontainers.PostgreSql;
 using Xunit;
@@ -163,6 +165,32 @@ public sealed class InfrastructurePersistenceTests : IAsyncLifetime
         int referenceCount = await context.ConversationFileReferences.CountAsync(item =>
             item.ConversationId == "conversation-concurrent" && item.FileId == asset.FileId);
         Assert.Equal(1, referenceCount);
+    }
+
+    [Fact]
+    public async Task SkillDefinitionRepository_PersistsTenantScopedObjectStorageSkill()
+    {
+        ServiceProvider services = Assert.IsType<ServiceProvider>(_services);
+        ISkillDefinitionRepository repository = services.GetRequiredService<ISkillDefinitionRepository>();
+        var package = new SkillInstanceConfig
+        {
+            TenantId = "tenant-skill",
+            Id = "lookup",
+            Name = "lookup",
+            Type = SkillTypes.AgentSkill,
+            SourceType = SkillSourceTypes.ObjectStorage,
+            ObjectKey = "private/tenants/example/skill-packages/skill.json"
+        };
+        await repository.UpsertAsync(package);
+
+        SkillInstanceConfig? storedPackage = await repository.GetAsync("tenant-skill", "lookup");
+        IReadOnlyList<SkillInstanceConfig> stored = await repository.ListAsync("tenant-skill");
+        SkillInstanceConfig? foreign = await repository.GetAsync("another-tenant", "lookup");
+
+        Assert.Equal(SkillSourceTypes.ObjectStorage, storedPackage?.SourceType);
+        Assert.Equal("private/tenants/example/skill-packages/skill.json", storedPackage?.ObjectKey);
+        Assert.Single(stored);
+        Assert.Null(foreign);
     }
 
     [Fact]

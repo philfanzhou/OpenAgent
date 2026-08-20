@@ -44,6 +44,18 @@ internal sealed class AgentConfigManagementService(
         }
     }
 
+    internal async Task<AgentConfigEntity?> GetAsync(
+        string agentId,
+        string tenantId,
+        CancellationToken cancellationToken = default)
+    {
+        AgentConfigEntity? entity = await GetAsync(agentId, cancellationToken).ConfigureAwait(false);
+        return entity != null
+            && string.Equals(ResolveTenant(entity), tenantId, StringComparison.Ordinal)
+            ? entity
+            : null;
+    }
+
     internal async Task<AgentConfigEntity?> SaveAsync(
         string agentId,
         AgentConfigEntity entity,
@@ -71,6 +83,28 @@ internal sealed class AgentConfigManagementService(
         }
     }
 
+    internal async Task<AgentConfigEntity?> SaveAsync(
+        string agentId,
+        string tenantId,
+        AgentConfigEntity entity,
+        string? expectedVersion,
+        CancellationToken cancellationToken = default)
+    {
+        AgentConfigEntity? current = await GetAsync(agentId, cancellationToken).ConfigureAwait(false);
+        if (current != null
+            && !string.Equals(ResolveTenant(current), tenantId, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        StampTenant(entity, tenantId);
+        return await SaveAsync(
+            agentId,
+            entity,
+            expectedVersion,
+            cancellationToken).ConfigureAwait(false);
+    }
+
     private async Task<AgentConfigEntity?> SaveToRedisAsync(
         string agentId,
         AgentConfigEntity entity,
@@ -82,6 +116,13 @@ internal sealed class AgentConfigManagementService(
         AgentConfigEntity? current = currentValue.IsNullOrEmpty
             ? null
             : JsonSerializer.Deserialize<AgentConfigEntity>(currentValue.ToString(), JsonOptions);
+
+        if (current != null
+            && !string.IsNullOrWhiteSpace(ResolveTenant(current))
+            && !string.Equals(ResolveTenant(current), ResolveTenant(entity), StringComparison.Ordinal))
+        {
+            return null;
+        }
 
         if (!string.IsNullOrWhiteSpace(expectedVersion)
             && !string.Equals(current?.CurrentVersion, expectedVersion, StringComparison.Ordinal))
@@ -130,5 +171,29 @@ internal sealed class AgentConfigManagementService(
 
         await database.SetAddAsync("agent:published:index", agentId).ConfigureAwait(false);
         return entity;
+    }
+
+    private static string ResolveTenant(AgentConfigEntity entity) =>
+        string.IsNullOrWhiteSpace(entity.TenantId)
+            ? entity.Config.TenantId
+            : entity.TenantId;
+
+    private static void StampTenant(AgentConfigEntity entity, string tenantId)
+    {
+        entity.TenantId = tenantId;
+        entity.Config.TenantId = tenantId;
+        foreach (McpServerConfig server in entity.Config.Mcp.Servers)
+        {
+            server.TenantId = tenantId;
+        }
+        foreach (RagInstanceConfig rag in entity.Config.Rag.Instances)
+        {
+            rag.AllowedTenantIds = [tenantId];
+        }
+        foreach (SkillInstanceConfig skill in entity.Config.Skills.Instances)
+        {
+            skill.TenantId = tenantId;
+            skill.AllowedTenantIds = [tenantId];
+        }
     }
 }

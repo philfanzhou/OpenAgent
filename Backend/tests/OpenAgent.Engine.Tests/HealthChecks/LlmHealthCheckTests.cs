@@ -137,7 +137,17 @@ public class LlmHealthCheckTests
         public Task<AgentConfig?> GetConfigAsync(string agentId, CancellationToken cancellationToken = default)
             => Task.FromResult(_config);
 
+        public Task<AgentConfig?> GetConfigAsync(
+            string agentId,
+            string tenantId,
+            CancellationToken cancellationToken = default) => Task.FromResult(_config);
+
         public Task<IReadOnlyList<AgentSummary>> ListAgentsAsync(CancellationToken cancellationToken = default)
             => Task.FromResult<IReadOnlyList<AgentSummary>>(Array.Empty<AgentSummary>());
+
+        public Task<IReadOnlyList<AgentSummary>> ListAgentsAsync(
+            string tenantId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<AgentSummary>>(Array.Empty<AgentSummary>());
     }
 }

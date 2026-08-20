@@ -42,20 +42,27 @@ internal static class GatewayProxyHandler
 
         string targetUrl = $"{targetEndpoint.TrimEnd('/')}{context.Request.Path}{context.Request.QueryString}";
         string traceId = Activity.Current?.Id ?? context.TraceIdentifier;
-        ForwarderError error = await forwarder.SendAsync(
-            context,
-            targetEndpoint,
-            httpClient,
-            requestConfig,
-            (_, proxyRequest) => userContext.IsAuthenticated
-                ? ApplyAuthenticatedAsync(
-                    proxyRequest,
-                    new Uri(targetUrl),
-                    userContext,
-                    tenantId,
-                    conversationId,
-                    traceId)
-                : ApplyAnonymousAsync(proxyRequest, new Uri(targetUrl), traceId)).ConfigureAwait(false);
+        ForwarderError error;
+        try
+        {
+            error = await forwarder.SendAsync(
+                context,
+                targetEndpoint,
+                httpClient,
+                requestConfig,
+                (_, proxyRequest) => userContext.IsAuthenticated
+                    ? ApplyAuthenticatedAsync(
+                        proxyRequest,
+                        new Uri(targetUrl),
+                        traceId)
+                    : ApplyAnonymousAsync(proxyRequest, new Uri(targetUrl), traceId)).ConfigureAwait(false);
+        }
+        catch
+        {
+            RouterMeter.RecordForward("other", succeeded: false);
+            throw;
+        }
+        RouterMeter.RecordForward("other", error == ForwarderError.None);
         if (error == ForwarderError.None)
         {
             context.RequestServices.GetService<IEndpointHealthTracker>()?.ReportSuccess(targetEndpoint);
@@ -82,16 +89,11 @@ internal static class GatewayProxyHandler
     private static ValueTask ApplyAuthenticatedAsync(
         HttpRequestMessage proxyRequest,
         Uri targetUri,
-        IAgentUserContext userContext,
-        string? tenantId,
-        string? conversationId,
         string traceId)
     {
-        proxyRequest.Headers.Remove("X-Agent-Id");
         return ForwardingContextBuilder.ApplyAsync(
             proxyRequest,
             targetUri,
-            conversationId,
             traceId);
     }
 
@@ -101,12 +103,10 @@ internal static class GatewayProxyHandler
         string traceId)
     {
         proxyRequest.RequestUri = targetUri;
-        proxyRequest.Headers.Remove("X-Agent-Id");
-        proxyRequest.Headers.Remove("X-Conversation-Id");
-        proxyRequest.Headers.Remove("X-User-Id");
-        proxyRequest.Headers.Remove("X-Tenant-Id");
-        proxyRequest.Headers.Remove("X-Trace-Id");
-        proxyRequest.Headers.TryAddWithoutValidation("X-Trace-Id", traceId);
+        if (!proxyRequest.Headers.Contains("X-Trace-Id"))
+        {
+            proxyRequest.Headers.TryAddWithoutValidation("X-Trace-Id", traceId);
+        }
         return ValueTask.CompletedTask;
     }
 }

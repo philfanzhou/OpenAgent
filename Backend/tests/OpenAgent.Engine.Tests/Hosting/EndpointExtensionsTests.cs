@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Http;
+using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Engine.Host.Extensions;
@@ -35,6 +36,8 @@ public class EndpointExtensionsTests
             {
                 ["agentId"] = "body-agent",
                 ["conversationId"] = "body-conv",
+                ["conversationType"] = "Channel",
+                ["clientType"] = "Teams",
                 ["customKey"] = "custom-value"
             }
         };
@@ -44,11 +47,15 @@ public class EndpointExtensionsTests
         Assert.Equal("hello", agentRequest.Query);
         Assert.Equal("body-agent", agentRequest.AgentId);
         Assert.Equal("body-conv", agentRequest.ConversationId);
+        Assert.Equal(ConversationType.Channel, agentRequest.ConversationType);
+        Assert.Equal(ClientType.Teams, agentRequest.ClientType);
         Assert.Equal("trace-1", agentRequest.TraceId);
         Assert.NotNull(agentRequest.ExternalContext);
         Assert.Equal("custom-value", agentRequest.ExternalContext!["customKey"]);
         Assert.False(agentRequest.ExternalContext.ContainsKey("agentId"));
         Assert.False(agentRequest.ExternalContext.ContainsKey("conversationId"));
+        Assert.False(agentRequest.ExternalContext.ContainsKey("conversationType"));
+        Assert.False(agentRequest.ExternalContext.ContainsKey("clientType"));
     }
 
     [Fact]
@@ -76,6 +83,30 @@ public class EndpointExtensionsTests
         var agentRequest = AgentEndpointRequestMapper.CreateAgentRequest(request, context);
 
         Assert.Equal("header-agent", agentRequest.AgentId);
+    }
+
+    [Fact]
+    public void CreateAgentRequest_WithoutConversation_DoesNotCreateOne()
+    {
+        var context = CreateContext();
+        context.Request.Headers["X-Conversation-Id"] = "must-not-persist";
+        var request = new ChatRequest
+        {
+            Message = "select an agent",
+            Context = new Dictionary<string, object>
+            {
+                ["agentId"] = "intent-router",
+                ["conversationId"] = "also-must-not-persist"
+            }
+        };
+
+        var agentRequest = AgentEndpointRequestMapper.CreateAgentRequest(
+            request,
+            context,
+            createConversation: false);
+
+        Assert.Equal("intent-router", agentRequest.AgentId);
+        Assert.Null(agentRequest.ConversationId);
     }
 
 }

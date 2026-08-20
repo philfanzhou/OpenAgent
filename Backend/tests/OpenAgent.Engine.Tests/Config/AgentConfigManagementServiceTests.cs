@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using Moq;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Models;
+using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Abstract;
 using OpenAgent.Engine.Abstractions;
 using OpenAgent.Engine.Config;
@@ -20,6 +21,96 @@ public class AgentConfigManagementServiceTests
 {
     [Fact]
     public async Task SaveAsync_WithoutRedis_WritesLocalStore()
+    {
+        (AgentConfigManagementService manager, AgentConfigLocalStore localStore) = CreateManager();
+
+        AgentConfigEntity? saved = await manager.SaveAsync(
+            "support",
+            new AgentConfigEntity
+            {
+                AgentId = "support",
+                Config = new AgentConfig { Instructions = "new" }
+            },
+            expectedVersion: null);
+
+        Assert.NotNull(saved);
+        Assert.Equal("new", localStore.Get("support")?.Config.Instructions);
+    }
+
+    [Fact]
+    public async Task ScopedAccess_DifferentTenant_CannotReadOrOverwriteAgentConfig()
+    {
+        (AgentConfigManagementService manager, AgentConfigLocalStore localStore) = CreateManager();
+        AgentConfigEntity? saved = await manager.SaveAsync(
+            "support",
+            "tenant-a",
+            new AgentConfigEntity
+            {
+                AgentId = "support",
+                Config = new AgentConfig { Instructions = "tenant-a" }
+            },
+            expectedVersion: null);
+
+        AgentConfigEntity? read = await manager.GetAsync("support", "tenant-b");
+        AgentConfigEntity? overwritten = await manager.SaveAsync(
+            "support",
+            "tenant-b",
+            new AgentConfigEntity
+            {
+                AgentId = "support",
+                Config = new AgentConfig { Instructions = "tenant-b" }
+            },
+            expectedVersion: null);
+
+        Assert.NotNull(saved);
+        Assert.Null(read);
+        Assert.Null(overwritten);
+        Assert.Equal("tenant-a", localStore.Get("support")?.TenantId);
+        Assert.Equal("tenant-a", localStore.Get("support")?.Config.Instructions);
+    }
+
+    [Fact]
+    public async Task ProfileAccess_DifferentTenant_CannotReadOrOverwriteProfiles()
+    {
+        var redis = new UnavailableRedisConnectionProvider();
+        LlmProviderProfile? llmProfile = null;
+        var llmRegistry = new Mock<ILlmRegistry>();
+        llmRegistry.Setup(item => item.GetProfile(It.IsAny<string>()))
+            .Returns(() => llmProfile);
+        llmRegistry.Setup(item => item.Register(It.IsAny<LlmProviderProfile>()))
+            .Callback<LlmProviderProfile>(profile => llmProfile = profile);
+        McpServerConfig? mcpProfile = null;
+        var mcpRegistry = new Mock<IMcpRegistry>();
+        mcpRegistry.Setup(item => item.Get(It.IsAny<string>()))
+            .Returns(() => mcpProfile);
+        mcpRegistry.Setup(item => item.Register(It.IsAny<McpServerConfig>()))
+            .Callback<McpServerConfig>(profile => mcpProfile = profile);
+        var llm = new LlmProfileManagementService(
+            redis,
+            llmRegistry.Object,
+            configUpdates: null!);
+        var mcp = new McpProfileManagementService(redis, mcpRegistry.Object);
+        await llm.SaveAsync(
+            new LlmProviderProfile { Id = "private-llm", Name = "Private" },
+            "tenant-a");
+        await mcp.SaveAsync(
+            new McpServerConfig { Name = "private-mcp", Url = "https://mcp.example.com" },
+            "tenant-a");
+
+        LlmProviderProfile? llmRead = await llm.GetAsync("private-llm", "tenant-b");
+        McpServerConfig? mcpRead = await mcp.GetAsync("private-mcp", "tenant-b");
+
+        Assert.Null(llmRead);
+        Assert.Null(mcpRead);
+        await Assert.ThrowsAsync<TenantDataIsolationException>(() => llm.SaveAsync(
+            new LlmProviderProfile { Id = "private-llm", Name = "Other" },
+            "tenant-b"));
+        await Assert.ThrowsAsync<TenantDataIsolationException>(() => mcp.SaveAsync(
+            new McpServerConfig { Name = "private-mcp", Url = "https://other.example.com" },
+            "tenant-b"));
+    }
+
+    private static (AgentConfigManagementService Manager, AgentConfigLocalStore LocalStore) CreateManager()
     {
         var environment = new Mock<IHostEnvironment>();
         var configuration = new ConfigurationBuilder()
@@ -39,18 +130,7 @@ public class AgentConfigManagementServiceTests
             new MockAgentResolver(environment.Object, configuration),
             localStore,
             CreateDispatcher(redis, snapshot));
-
-        AgentConfigEntity? saved = await manager.SaveAsync(
-            "support",
-            new AgentConfigEntity
-            {
-                AgentId = "support",
-                Config = new AgentConfig { Instructions = "new" }
-            },
-            expectedVersion: null);
-
-        Assert.NotNull(saved);
-        Assert.Equal("new", localStore.Get("support")?.Config.Instructions);
+        return (manager, localStore);
     }
 
     private static ConfigUpdateDispatcher CreateDispatcher(

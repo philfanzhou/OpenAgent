@@ -41,7 +41,7 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
             : settings["BaseUrl"]!.TrimEnd('/');
         _serviceHeaders = settings.GetSection("ServiceHeaders")
             .GetChildren()
-            .Where(header => header.Value != null && !IsIdentityHeader(header.Key))
+            .Where(header => header.Value != null)
             .ToDictionary(
                 header => header.Key,
                 header => header.Value!,
@@ -124,7 +124,7 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
 
         using HttpRequestMessage request = CreateServiceRequest(
             HttpMethod.Post,
-            $"{endpoint.TrimEnd('/')}{_chatPath}");
+            $"{endpoint.TrimEnd('/')}{_chatPath.TrimEnd('/')}/intent");
         request.Content = new StringContent(
             JsonSerializer.Serialize(new ChatRequest
             {
@@ -222,14 +222,6 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
         string path = string.IsNullOrWhiteSpace(value) ? fallback : value;
         return path.StartsWith("/", StringComparison.Ordinal) ? path : $"/{path}";
     }
-
-    private static bool IsIdentityHeader(string name) =>
-        name.Equals("X-User-Id", StringComparison.OrdinalIgnoreCase)
-        || name.Equals("X-Tenant-Id", StringComparison.OrdinalIgnoreCase)
-        || name.Equals("X-UserId", StringComparison.OrdinalIgnoreCase)
-        || name.Equals("X-TenantId", StringComparison.OrdinalIgnoreCase)
-        || name.Equals("X-OpenAgent-User-Id", StringComparison.OrdinalIgnoreCase)
-        || name.Equals("X-OpenAgent-Tenant-Id", StringComparison.OrdinalIgnoreCase);
 
     private static string BuildIntentPrompt(
         string message,

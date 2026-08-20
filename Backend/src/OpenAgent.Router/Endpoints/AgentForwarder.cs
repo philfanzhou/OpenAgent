@@ -28,6 +28,8 @@ internal sealed class AgentForwarder(
         string? action,
         CancellationToken cancellationToken)
     {
+        bool isStreaming = action is "sse" or "stream";
+        long forwardingStarted = Stopwatch.GetTimestamp();
         IAgentUserContext userContext = context.RequestServices
             .GetRequiredService<IAgentUserContext>();
         string? tenantId = userContext.TenantId;
@@ -42,6 +44,14 @@ internal sealed class AgentForwarder(
             cancellationToken).ConfigureAwait(false);
         if (target == null)
         {
+            RouterMeter.RecordForward(action, succeeded: false);
+            if (isStreaming)
+            {
+                RouterMeter.RecordSseCompletion(
+                    action,
+                    Stopwatch.GetElapsedTime(forwardingStarted),
+                    succeeded: false);
+            }
             await RouterProblem.From(new AgentRoutingException(
                 StatusCodes.Status503ServiceUnavailable,
                 RouterErrorCodes.AgentProviderUnavailable,
@@ -49,22 +59,48 @@ internal sealed class AgentForwarder(
             return;
         }
 
-        ForwarderRequestConfig requestConfig = action is "sse" or "stream"
+        ForwarderRequestConfig requestConfig = isStreaming
             ? StreamingRequestConfig
             : DefaultRequestConfig;
-        ForwarderError error = await forwarder.SendAsync(
-            context,
-            target.DestinationPrefix,
-            _httpClient,
-            requestConfig,
-            (_, proxyRequest) => ConfigureRequestAsync(
-                proxyRequest,
-                target,
-                provider,
-                conversationId,
-                traceId,
-                cancellationToken)).ConfigureAwait(false);
-        if (error == ForwarderError.None)
+        ForwarderError error;
+        try
+        {
+            error = await forwarder.SendAsync(
+                context,
+                target.DestinationPrefix,
+                _httpClient,
+                requestConfig,
+                (_, proxyRequest) => ConfigureRequestAsync(
+                    proxyRequest,
+                    target,
+                    provider,
+                    tenantId,
+                    conversationId,
+                    traceId,
+                    cancellationToken)).ConfigureAwait(false);
+        }
+        catch
+        {
+            RouterMeter.RecordForward(action, succeeded: false);
+            if (isStreaming)
+            {
+                RouterMeter.RecordSseCompletion(
+                    action,
+                    Stopwatch.GetElapsedTime(forwardingStarted),
+                    succeeded: false);
+            }
+            throw;
+        }
+        bool succeeded = error == ForwarderError.None;
+        RouterMeter.RecordForward(action, succeeded);
+        if (isStreaming)
+        {
+            RouterMeter.RecordSseCompletion(
+                action,
+                Stopwatch.GetElapsedTime(forwardingStarted),
+                succeeded);
+        }
+        if (succeeded)
         {
             healthTracker.ReportSuccess(target.DestinationPrefix);
             return;
@@ -93,6 +129,7 @@ internal sealed class AgentForwarder(
         HttpRequestMessage request,
         AgentForwardingTarget target,
         IAgentProvider provider,
+        string? tenantId,
         string? conversationId,
         string traceId,
         CancellationToken cancellationToken)
@@ -100,7 +137,6 @@ internal sealed class AgentForwarder(
         await ForwardingContextBuilder.ApplyAsync(
             request,
             target.RequestUri,
-            conversationId,
             traceId).ConfigureAwait(false);
         await provider.ConfigureRequestAsync(
             request,

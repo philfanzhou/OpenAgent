@@ -38,7 +38,7 @@ public class CapabilityServiceRegistrationTests
 
         Assert.Contains(sources, source => source is RagCapabilitySource);
         Assert.Contains(sources, source => source is UserProfileCapabilitySource);
-        Assert.DoesNotContain(sources, source => source.GetType().Name.Contains("Skill", StringComparison.Ordinal));
+        Assert.DoesNotContain(sources, source => source.GetType().Name.Contains("HttpSkill", StringComparison.Ordinal));
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<AgentSkillsProviderFactory>());
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<McpToolFactory>());
     }
@@ -53,7 +53,18 @@ public class CapabilityServiceRegistrationTests
             CancellationToken cancellationToken = default) =>
             Task.FromResult<AgentConfig?>(new AgentConfig());
 
+        public Task<AgentConfig?> GetConfigAsync(
+            string agentId,
+            string tenantId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<AgentConfig?>(new AgentConfig { TenantId = tenantId });
+
         public Task<IReadOnlyList<AgentSummary>> ListAgentsAsync(
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<AgentSummary>>([]);
+
+        public Task<IReadOnlyList<AgentSummary>> ListAgentsAsync(
+            string tenantId,
             CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<AgentSummary>>([]);
     }
@@ -62,7 +73,8 @@ public class CapabilityServiceRegistrationTests
     {
         public Task CreateAsync(FileAsset asset, CancellationToken cancellationToken) => Task.CompletedTask;
         public Task UpdateAsync(FileAsset asset, CancellationToken cancellationToken) => Task.CompletedTask;
-        public Task<FileAsset?> GetAsync(string fileId, CancellationToken cancellationToken) => Task.FromResult<FileAsset?>(null);
+        public Task<FileAsset?> GetAsync(string fileId, CancellationToken cancellationToken) =>
+            Task.FromResult<FileAsset?>(null);
         public Task EnsureConversationReferencesAsync(
             string conversationId,
             IReadOnlyList<string> fileIds,

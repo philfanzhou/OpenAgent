@@ -43,6 +43,11 @@ internal sealed class FullConfigRefresher
                 return false;
             }
 
+            if (!string.IsNullOrWhiteSpace(entity.TenantId))
+            {
+                entity.Config.TenantId = entity.TenantId;
+            }
+
             _snapshot.SetFullConfig(agentId, entity.Config);
             EngineLog.HotReloadRefreshCompleted(_logger, agentId, entity.CurrentVersion);
             return true;

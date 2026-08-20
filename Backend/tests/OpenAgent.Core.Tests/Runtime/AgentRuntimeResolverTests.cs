@@ -32,6 +32,7 @@ public sealed class AgentRuntimeResolverTests
         LlmRegistry models = new();
         models.Register(new LlmProviderProfile
         {
+            TenantId = "tenant-1",
             Id = "profile-1",
             Endpoint = "https://llm.example.test",
             ApiKey = "test-key"
@@ -65,6 +66,7 @@ public sealed class AgentRuntimeResolverTests
         LlmRegistry models = new();
         models.Register(new LlmProviderProfile
         {
+            TenantId = "tenant-1",
             Id = "profile-1",
             Endpoint = "https://llm.example.test",
             ApiKey = "test-key"
@@ -107,6 +109,7 @@ public sealed class AgentRuntimeResolverTests
         LlmRegistry models = new();
         models.Register(new LlmProviderProfile
         {
+            TenantId = "tenant-1",
             Id = "profile-1",
             Endpoint = "https://llm.example.test",
             ApiKey = "test-key"
@@ -123,6 +126,28 @@ public sealed class AgentRuntimeResolverTests
         Assert.Contains("Unsupported ContextPolicy", exception.Message, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task ResolveAsync_SkillBindingOwnedByAnotherTenant_HidesAgentConfiguration()
+    {
+        var config = new AgentConfig
+        {
+            TenantId = "tenant-a",
+            Skills = new SkillsConfig { EnabledSkills = ["lookup"] }
+        };
+        AgentRuntimeResolver resolver = new(
+            new StaticConfigProvider(config),
+            new AgentAuthorizationGate(
+                new AllowAllAgentAuthorizationService(),
+                new LlmRegistry()));
+
+        InvalidOperationException exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => resolver.ResolveAsync(
+                "agent-a",
+                new AgentUserContext { UserId = "user-b", TenantId = "tenant-b" },
+                CancellationToken.None));
+        Assert.Contains("agent-a", exception.Message, StringComparison.Ordinal);
+    }
+
     private static AgentUserContext User() => new()
     {
         UserId = "user-1",
@@ -136,6 +161,10 @@ public sealed class AgentRuntimeResolverTests
         public StaticConfigProvider(AgentConfig? config)
         {
             _config = config;
+            if (_config != null)
+            {
+                _config.TenantId = "tenant-1";
+            }
         }
 
         public Task<AgentConfig> GetConfigAsync(CancellationToken cancellationToken = default) =>
@@ -146,7 +175,22 @@ public sealed class AgentRuntimeResolverTests
             CancellationToken cancellationToken = default) =>
             Task.FromResult(_config);
 
+        public Task<AgentConfig?> GetConfigAsync(
+            string agentId,
+            string tenantId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(
+                _config != null
+                && string.Equals(_config.TenantId, tenantId, StringComparison.Ordinal)
+                    ? _config
+                    : null);
+
         public Task<IReadOnlyList<AgentSummary>> ListAgentsAsync(
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<AgentSummary>>([]);
+
+        public Task<IReadOnlyList<AgentSummary>> ListAgentsAsync(
+            string tenantId,
             CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<AgentSummary>>([]);
     }

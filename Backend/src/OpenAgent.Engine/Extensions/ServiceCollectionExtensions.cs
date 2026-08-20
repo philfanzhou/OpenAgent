@@ -1,7 +1,9 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using OpenAgent.Contracts.Configuration;
+using OpenAgent.Core.Abstract;
 using OpenAgent.Engine.Abstractions;
 using OpenAgent.Engine.Config;
 using OpenAgent.Engine.Models;
@@ -33,13 +35,16 @@ internal static class ServiceCollectionExtensions
         services.AddSingleton<AgentConfigManagementService>();
         services.AddSingleton<LlmProfileManagementService>();
         services.AddSingleton<McpProfileManagementService>();
-        services.AddSingleton<ISkillCatalogStore, RedisSkillCatalogStore>();
+        services.AddSingleton<RedisSkillCatalogStore>();
+        services.AddSingleton<ISkillCatalogStore>(serviceProvider =>
+            serviceProvider.GetRequiredService<RedisSkillCatalogStore>());
+        services.Replace(ServiceDescriptor.Singleton<ISkillCatalog>(serviceProvider =>
+            serviceProvider.GetRequiredService<RedisSkillCatalogStore>()));
 
         services.AddSingleton<IAgentConfigProvider, ConfigProvider>();
 
         services.AddHostedService<RedisRagRegistrar>();
         services.AddHostedService<RedisLlmRegistrar>();
-        services.AddHostedService<RedisSkillRegistrar>();
         services.AddHostedService<RedisMcpRegistrar>();
 
         services.AddHealthChecks()

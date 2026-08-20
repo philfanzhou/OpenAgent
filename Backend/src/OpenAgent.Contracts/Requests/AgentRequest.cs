@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using OpenAgent.Contracts.Conversation;
 
 namespace OpenAgent.Contracts.Requests;
 
@@ -7,6 +8,7 @@ public class AgentRequest
     public required string Query { get; init; }
     public string? AgentId { get; init; }
     public string? ConversationId { get; init; }
+    public ConversationType ConversationType { get; init; } = ConversationType.User;
     public string? TraceId { get; init; }
     public ClientType ClientType { get; init; } = ClientType.Web;
     public string? IdempotencyKey { get; init; }

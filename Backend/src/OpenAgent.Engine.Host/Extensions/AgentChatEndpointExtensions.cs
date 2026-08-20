@@ -7,10 +7,17 @@ namespace OpenAgent.Engine.Host.Extensions;
 
 internal static class AgentChatEndpointExtensions
 {
+    // Set to false to restore stateless intent recognition without changing the Provider contract.
+    private const bool PersistIntentConversations = true;
+
     internal static void MapAgentChat(this RouteGroupBuilder group)
     {
         group.MapPost("/chat", ExecuteAsync)
             .WithName("Chat")
+            .WithTags("Agent");
+
+        group.MapPost("/chat/intent", ExecuteIntentAsync)
+            .WithName("IntentRecognition")
             .WithTags("Agent");
 
         group.MapPost("/chat/stream", ExecuteStreamAsync)
@@ -26,6 +33,28 @@ internal static class AgentChatEndpointExtensions
         CancellationToken cancellationToken)
     {
         AgentRequest executionRequest = AgentEndpointRequestMapper.CreateAgentRequest(request, context);
+        AgentResponse response = await executor.ExecuteAsync(
+            executionRequest,
+            context.GetAgentRequest().User,
+            cancellationToken).ConfigureAwait(false);
+        return Results.Ok(new ChatResponse
+        {
+            Message = response.Content,
+            Usage = response.TokenUsage,
+            ModelId = response.ModelId
+        });
+    }
+
+    private static async Task<IResult> ExecuteIntentAsync(
+        [FromBody] ChatRequest request,
+        [FromServices] AgentExecutor executor,
+        HttpContext context,
+        CancellationToken cancellationToken)
+    {
+        AgentRequest executionRequest = AgentEndpointRequestMapper.CreateAgentRequest(
+            request,
+            context,
+            createConversation: PersistIntentConversations);
         AgentResponse response = await executor.ExecuteAsync(
             executionRequest,
             context.GetAgentRequest().User,

@@ -33,6 +33,14 @@ internal sealed class AgentAuthorizationGate
             cancellationToken).ConfigureAwait(false);
 
         LlmConfig model = _models.ResolveConfig(configuredModel);
+        if (!string.IsNullOrWhiteSpace(configuredModel.Provider)
+            && !string.Equals(model.TenantId, userContext.TenantId, StringComparison.Ordinal))
+        {
+            throw new TenantDataIsolationException(
+                userContext.TenantId,
+                model.TenantId,
+                "LLM profile does not belong to the authenticated tenant.");
+        }
         string provider = string.IsNullOrWhiteSpace(model.Provider)
             ? model.Format.ToString()
             : model.Provider;

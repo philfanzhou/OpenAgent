@@ -46,8 +46,24 @@ public sealed class RouterHostIntegrationTests : IClassFixture<RouterHostFixture
             Assert.Single(response.Headers.GetValues("X-OpenAgent-Selected-Agent-Id")));
         Assert.Null(_fixture.PrimaryEngine.LastUserId);
         Assert.Null(_fixture.PrimaryEngine.LastTenantId);
+        Assert.StartsWith("Basic ", _fixture.PrimaryEngine.LastAuthorization, StringComparison.Ordinal);
         Assert.Contains("openagent_router_provider_selections_total", metrics, StringComparison.Ordinal);
         Assert.Contains("source=\"explicit\"", metrics, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Chat_DevelopmentTenantHeader_IsForwardedWithoutRouterInterpretation()
+    {
+        using RouterApplicationFactory factory = _fixture.CreateFactory();
+        using HttpClient client = factory.CreateClient();
+        using HttpRequestMessage request = CreateChatRequest("development tenant");
+        request.Headers.Add("X-Tenant-Id", "development-tenant");
+
+        using HttpResponseMessage response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("development-tenant", _fixture.PrimaryEngine.LastTenantId);
+        Assert.Null(_fixture.PrimaryEngine.LastCatalogTenantId);
     }
 
     [Fact]

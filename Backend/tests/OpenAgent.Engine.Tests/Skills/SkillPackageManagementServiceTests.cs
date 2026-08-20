@@ -64,7 +64,13 @@ public class SkillPackageManagementServiceTests
         AgentConfigEntity? saved = await configs.GetAsync(AgentId);
         SkillInstanceConfig skill = Assert.Single(saved!.Config.Skills.Instances);
         Assert.Equal("customer-lookup", skill.Id);
+        Assert.Equal("tenant", skill.TenantId);
+        Assert.Equal(SkillTypes.AgentSkill, skill.Type);
+        Assert.Equal(SkillSourceTypes.ObjectStorage, skill.SourceType);
         Assert.Contains("customer-lookup", saved.Config.Skills.EnabledSkills);
+        Assert.True(FileObjectTenantScope.ContainsTenantSharedPartition(skill.ObjectKey!, "tenant"));
+        Assert.DoesNotContain("/users/", skill.ObjectKey!, StringComparison.Ordinal);
+        Assert.All(store.WriteRequests, request => Assert.Equal(FileObjectScope.Tenant, request.Scope));
     }
 
     [Fact]
@@ -85,7 +91,7 @@ public class SkillPackageManagementServiceTests
             ]
         };
 
-        SkillPackageValidationResult result = await service.ValidateAsync(skills, default);
+        SkillPackageValidationResult result = await service.ValidateAsync("tenant", skills, default);
 
         Assert.True(result.Success);
         Assert.Equal(["customer-lookup"], result.ObjectStorageVerifiedSkills);
@@ -111,6 +117,7 @@ public class SkillPackageManagementServiceTests
 
         SkillPackageDeleteResult result = await service.DeleteAsync(
             AgentId,
+            "tenant",
             "customer-lookup",
             expectedVersion: null,
             default);
@@ -120,6 +127,51 @@ public class SkillPackageManagementServiceTests
         AgentConfigEntity? saved = await configs.GetAsync(AgentId);
         Assert.Empty(saved!.Config.Skills.Instances);
         Assert.Empty(saved.Config.Skills.EnabledSkills);
+    }
+
+    [Fact]
+    public async Task InstallAsync_AgentOwnedByAnotherTenant_ReturnsTenantMismatch()
+    {
+        (SkillPackageManagementService service, AgentConfigManagementService configs, RecordingObjectStore store) =
+            await CreateServiceAsync("tenant-a");
+
+        SkillPackageInstallResult result = await service.InstallAsync(
+            AgentId,
+            "tenant-b",
+            "user",
+            "customer.md",
+            "text/markdown",
+            new MemoryStream(Encoding.UTF8.GetBytes(SkillMarkdown)),
+            expectedVersion: null,
+            default);
+
+        Assert.True(result.HasTenantMismatch);
+        Assert.Empty(store.Objects);
+        Assert.Equal("tenant-a", (await configs.GetAsync(AgentId))!.TenantId);
+    }
+
+    [Fact]
+    public async Task ValidateAsync_SkillOwnedByAnotherTenant_DoesNotReadObjectStorage()
+    {
+        (SkillPackageManagementService service, _, RecordingObjectStore store) = await CreateServiceAsync();
+        var skills = new SkillsConfig
+        {
+            Instances =
+            [
+                new SkillInstanceConfig
+                {
+                    Id = "customer-lookup",
+                    Name = "customer-lookup",
+                    TenantId = "tenant-b",
+                    ObjectKey = "private/tenants/foreign/users/foreign/skill.json"
+                }
+            ]
+        };
+
+        SkillPackageValidationResult result = await service.ValidateAsync("tenant-a", skills, default);
+
+        Assert.False(result.Success);
+        Assert.Null(store.LastReadObjectKey);
     }
 
     [Fact]
@@ -195,7 +247,7 @@ public class SkillPackageManagementServiceTests
     private static async Task<(
         SkillPackageManagementService Service,
         AgentConfigManagementService Configs,
-        RecordingObjectStore Store)> CreateServiceAsync()
+        RecordingObjectStore Store)> CreateServiceAsync(string tenantId = "tenant")
     {
         var environment = new Mock<IHostEnvironment>();
         IConfiguration configuration = new ConfigurationBuilder()
@@ -214,7 +266,10 @@ public class SkillPackageManagementServiceTests
             new MockAgentResolver(environment.Object, configuration),
             new AgentConfigLocalStore(),
             CreateDispatcher(redis, snapshot));
-        await configs.SaveAsync(AgentId, new AgentConfigEntity { AgentId = AgentId }, expectedVersion: null);
+        await configs.SaveAsync(
+            AgentId,
+            new AgentConfigEntity { AgentId = AgentId, TenantId = tenantId },
+            expectedVersion: null);
         var store = new RecordingObjectStore();
         return (new SkillPackageManagementService(
             configs,
@@ -266,6 +321,7 @@ public class SkillPackageManagementServiceTests
     private sealed class RecordingObjectStore : IFileObjectStore
     {
         public Dictionary<string, byte[]> Objects { get; } = new(StringComparer.Ordinal);
+        public List<FileObjectWriteRequest> WriteRequests { get; } = [];
         public string? LastReadObjectKey { get; private set; }
         public List<string> DeletedObjectKeys { get; } = [];
         public string? DeletedObjectKey => DeletedObjectKeys.LastOrDefault();
@@ -278,7 +334,14 @@ public class SkillPackageManagementServiceTests
         {
             await using var buffer = new MemoryStream();
             await content.CopyToAsync(buffer, cancellationToken);
-            string objectKey = $"skills/{request.FileId}{Path.GetExtension(request.FileName)}";
+            WriteRequests.Add(request);
+            string objectKey = $"private/tenants/{FileObjectTenantScope.CreatePartition(request.TenantId)}";
+            if (request.Scope == FileObjectScope.User)
+            {
+                objectKey += $"/users/{FileObjectTenantScope.CreatePartition(request.UserId)}";
+            }
+
+            objectKey += $"/skills/{request.FileId}{Path.GetExtension(request.FileName)}";
             Objects[objectKey] = buffer.ToArray();
             WriteCount++;
             return new FileObjectReference { ObjectKey = objectKey };
