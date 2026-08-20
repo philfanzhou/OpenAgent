@@ -13,6 +13,7 @@ internal sealed class AgentSelectionFilter(
         EndpointFilterDelegate next)
     {
         HttpContext context = invocationContext.HttpContext;
+        RouterMeter.RecordRequest(context.Request.RouteValues["action"]?.ToString());
         if (!userContext.IsAuthenticated)
         {
             return await next(invocationContext).ConfigureAwait(false);
