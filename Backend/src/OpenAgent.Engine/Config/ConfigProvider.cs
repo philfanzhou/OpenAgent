@@ -1,12 +1,11 @@
-using Microsoft.Extensions.Logging;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.Extensions.Logging;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Models;
 using OpenAgent.Engine.Abstractions;
 using OpenAgent.Engine.Models;
 using OpenAgent.Engine.Observability;
-using OpenAgent.Engine.Config;
 
 namespace OpenAgent.Engine.Config;
 
@@ -25,6 +24,7 @@ internal class ConfigProvider : IAgentConfigProvider
     private readonly SecretInjector _secretInjector;
     private readonly AgentListQuery _agentListQuery;
     private readonly AgentConfigLocalStore _localStore;
+    private readonly AgentConfigDatabaseStore? _databaseStore;
 
     public ConfigProvider(
         IRedisConnectionProvider redis,
@@ -33,7 +33,8 @@ internal class ConfigProvider : IAgentConfigProvider
         MockAgentResolver mockAgentResolver,
         SecretInjector secretInjector,
         AgentListQuery agentListQuery,
-        AgentConfigLocalStore localStore)
+        AgentConfigLocalStore localStore,
+        AgentConfigDatabaseStore? databaseStore = null)
     {
         _redis = redis;
         _logger = logger;
@@ -42,6 +43,7 @@ internal class ConfigProvider : IAgentConfigProvider
         _secretInjector = secretInjector;
         _agentListQuery = agentListQuery;
         _localStore = localStore;
+        _databaseStore = databaseStore;
     }
 
     public Task<AgentConfig> GetConfigAsync(CancellationToken cancellationToken = default)
@@ -82,6 +84,22 @@ internal class ConfigProvider : IAgentConfigProvider
         {
             EngineLog.ConfigLoadedFromSnapshot(_logger, agentId);
             return snapshotConfig;
+        }
+
+        if (_databaseStore?.IsEnabled == true)
+        {
+            AgentConfigEntity? databaseEntity = await _databaseStore
+                .GetRuntimeAsync(agentId, cancellationToken)
+                .ConfigureAwait(false);
+            if (databaseEntity?.Config != null)
+            {
+                ApplyTenant(databaseEntity);
+                _snapshot.SetFullConfig(agentId, databaseEntity.Config);
+                _secretInjector.Enrich(databaseEntity.Config);
+                return databaseEntity.Config;
+            }
+
+            return ResolveMissingConfig(agentId);
         }
 
         if (_redis.IsAvailable)
@@ -136,6 +154,25 @@ internal class ConfigProvider : IAgentConfigProvider
         if (snapshotConfig != null)
         {
             return ResolveForTenant(snapshotConfig, tenantId);
+        }
+
+        if (_databaseStore?.IsEnabled == true)
+        {
+            AgentConfigEntity? databaseEntity = await _databaseStore
+                .GetRuntimeAsync(agentId, cancellationToken)
+                .ConfigureAwait(false);
+            if (databaseEntity?.Config == null)
+            {
+                return _mockAgentResolver.IsEnabled ? CreateFallback(tenantId) : null;
+            }
+
+            ApplyTenant(databaseEntity);
+            AgentConfig? config = ResolveForTenant(databaseEntity.Config, tenantId);
+            if (config != null)
+            {
+                _snapshot.SetFullConfig(agentId, config);
+            }
+            return config;
         }
 
         if (_redis.IsAvailable)
@@ -277,5 +314,19 @@ internal class ConfigProvider : IAgentConfigProvider
 
         _secretInjector.Enrich(config);
         return config;
+    }
+
+    private AgentConfig? ResolveMissingConfig(string agentId)
+    {
+        if (_mockAgentResolver.IsEnabled)
+        {
+            EngineLog.ConfigNotFoundDegradingToMock(_logger, agentId);
+            AgentConfig mockConfig = _mockAgentResolver.CreateFallback();
+            _snapshot.SetFullConfig(agentId, mockConfig);
+            return mockConfig;
+        }
+
+        EngineLog.ConfigNotCached(_logger, agentId);
+        return null;
     }
 }

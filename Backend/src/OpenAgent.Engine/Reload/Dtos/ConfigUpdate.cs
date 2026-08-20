@@ -5,6 +5,7 @@ namespace OpenAgent.Engine.Reload.Dtos;
 internal sealed class ConfigUpdate
 {
     internal const string AgentResourceType = "Agent";
+    internal const string PostgreSqlAgentResourceType = "PostgreSqlAgent";
     internal const string LlmResourceType = "Llm";
     internal const string UpsertOperation = "Upsert";
     internal const string DeleteOperation = "Delete";

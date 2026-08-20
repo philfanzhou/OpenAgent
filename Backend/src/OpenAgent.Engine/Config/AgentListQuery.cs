@@ -1,17 +1,18 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
+using OpenAgent.Contracts.Configuration;
+using OpenAgent.Contracts.Models;
 using OpenAgent.Engine.Abstractions;
 using OpenAgent.Engine.Observability;
-using OpenAgent.Contracts.Models;
-using OpenAgent.Contracts.Configuration;
-using System.Text.Json.Serialization;
 
 namespace OpenAgent.Engine.Config;
 
 internal sealed class AgentListQuery(
     IRedisConnectionProvider redis,
     ILogger<AgentListQuery> logger,
-    AgentConfigLocalStore localStore)
+    AgentConfigLocalStore localStore,
+    AgentConfigDatabaseStore? databaseStore = null)
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -35,6 +36,19 @@ internal sealed class AgentListQuery(
         string? tenantId,
         CancellationToken cancellationToken)
     {
+        if (databaseStore?.IsEnabled == true)
+        {
+            IReadOnlyList<AgentConfigEntity> databaseAgents = await databaseStore
+                .ListAuthoritativeAsync(tenantId, cancellationToken)
+                .ConfigureAwait(false);
+            var databaseResult = new List<AgentSummary>(databaseAgents.Count);
+            foreach (AgentConfigEntity entity in databaseAgents)
+            {
+                AddAgent(databaseResult, entity, tenantId);
+            }
+            return databaseResult;
+        }
+
         var result = new List<AgentSummary>();
         AddLocalAgents(result, tenantId);
         if (!redis.IsAvailable)

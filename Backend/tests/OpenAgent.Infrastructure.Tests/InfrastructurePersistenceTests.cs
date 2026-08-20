@@ -1,12 +1,13 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Files;
-using OpenAgent.Contracts.Security;
-using OpenAgent.Contracts.Configuration;
-using OpenAgent.Contracts.Skills;
+using OpenAgent.Contracts.Models;
 using OpenAgent.Contracts.Requests;
+using OpenAgent.Contracts.Security;
+using OpenAgent.Contracts.Skills;
 using Testcontainers.PostgreSql;
 using Xunit;
 
@@ -194,6 +195,36 @@ public sealed class InfrastructurePersistenceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task AgentConfigRepository_ConcurrentUpdates_OnlyExpectedVersionWins()
+    {
+        ServiceProvider services = Assert.IsType<ServiceProvider>(_services);
+        IAgentConfigRepository repository = services.GetRequiredService<IAgentConfigRepository>();
+        AgentConfigEntity created = Assert.IsType<AgentConfigEntity>(
+            await repository.UpsertAsync(
+                "database-agent",
+                CreateAgentConfig("initial"),
+                expectedVersion: null));
+
+        Task<AgentConfigEntity?> first = repository.UpsertAsync(
+            "database-agent",
+            CreateAgentConfig("first"),
+            created.CurrentVersion);
+        Task<AgentConfigEntity?> second = repository.UpsertAsync(
+            "database-agent",
+            CreateAgentConfig("second"),
+            created.CurrentVersion);
+        AgentConfigEntity?[] results = await Task.WhenAll(first, second);
+        AgentConfigEntity stored = Assert.IsType<AgentConfigEntity>(
+            await repository.GetAsync("database-agent"));
+
+        AgentConfigEntity winner = Assert.Single(results, result => result != null)!;
+        Assert.Equal("1", created.CurrentVersion);
+        Assert.Equal("2", winner.CurrentVersion);
+        Assert.Equal(winner.Config.Instructions, stored.Config.Instructions);
+        Assert.Single(results, result => result == null);
+    }
+
+    [Fact]
     public async Task ConversationStore_TokenUsage_RoundTripsProviderCounts()
     {
         ServiceProvider services = Assert.IsType<ServiceProvider>(_services);
@@ -255,4 +286,16 @@ public sealed class InfrastructurePersistenceTests : IAsyncLifetime
 
         public bool IsInRole(string role) => false;
     }
+
+    private static AgentConfigEntity CreateAgentConfig(string instructions) => new()
+    {
+        AgentId = "database-agent",
+        TenantId = "tenant-config",
+        Name = "Database Agent",
+        Config = new AgentConfig
+        {
+            TenantId = "tenant-config",
+            Instructions = instructions
+        }
+    };
 }

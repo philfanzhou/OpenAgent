@@ -8,7 +8,7 @@ internal sealed class FakeRedisConnectionProvider : IRedisConnectionProvider
     private readonly Dictionary<string, string> _strings = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, HashSet<string>> _sets = new(StringComparer.OrdinalIgnoreCase);
 
-    public bool IsAvailable => true;
+    public bool IsAvailable { get; set; } = true;
 
     public IServer? GetServer(int database = 0) => null;
 

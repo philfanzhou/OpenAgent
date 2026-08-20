@@ -116,6 +116,14 @@ internal sealed class ConfigUpdateDispatcher
 
         if (string.Equals(
                 update.ResourceType,
+                ConfigUpdate.PostgreSqlAgentResourceType,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return _fullConfigRefresher.RefreshPostgreSql(update.ResourceId);
+        }
+
+        if (string.Equals(
+                update.ResourceType,
                 ConfigUpdate.LlmResourceType,
                 StringComparison.OrdinalIgnoreCase))
         {

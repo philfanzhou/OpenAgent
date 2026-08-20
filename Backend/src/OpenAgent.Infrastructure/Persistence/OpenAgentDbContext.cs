@@ -11,6 +11,7 @@ public sealed class OpenAgentDbContext(DbContextOptions<OpenAgentDbContext> opti
     internal DbSet<ConversationFileReferenceEntity> ConversationFileReferences => Set<ConversationFileReferenceEntity>();
     internal DbSet<MessageFileReferenceEntity> MessageFileReferences => Set<MessageFileReferenceEntity>();
     internal DbSet<SkillDefinitionEntity> SkillDefinitions => Set<SkillDefinitionEntity>();
+    internal DbSet<AgentConfigurationEntity> AgentConfigurations => Set<AgentConfigurationEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -92,6 +93,17 @@ public sealed class OpenAgentDbContext(DbContextOptions<OpenAgentDbContext> opti
             entity.Property(item => item.Type).HasMaxLength(64);
             entity.Property(item => item.SourceType).HasMaxLength(64);
             entity.Property(item => item.DefinitionJson).HasColumnType("jsonb");
+            entity.HasIndex(item => new { item.TenantId, item.UpdatedAt });
+        });
+
+        modelBuilder.Entity<AgentConfigurationEntity>(entity =>
+        {
+            entity.ToTable("agent_configurations");
+            entity.HasKey(item => item.AgentId);
+            entity.Property(item => item.AgentId).HasMaxLength(256);
+            entity.Property(item => item.TenantId).HasMaxLength(256);
+            entity.Property(item => item.ConfigurationJson).HasColumnType("jsonb");
+            entity.Property(item => item.Version).IsConcurrencyToken();
             entity.HasIndex(item => new { item.TenantId, item.UpdatedAt });
         });
     }
