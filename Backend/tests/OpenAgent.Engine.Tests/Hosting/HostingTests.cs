@@ -93,6 +93,10 @@ public class HostingTests
             ("/api/v1/agent/files/{fileId}/content", "GET", "GetFileAssetContent", "File"),
             ("/api/v1/agent/files/{fileId}/download", "GET", "DownloadFileAsset", "File"),
             ("/api/v1/agent/agents", "GET", "ListAgents", "Agent"),
+            ("/api/v1/agent/approvals", "GET", "ListPendingHumanApprovals", "Approval"),
+            ("/api/v1/agent/approvals/{approvalId}", "GET", "GetHumanApproval", "Approval"),
+            ("/api/v1/agent/approvals/{approvalId}/decision", "POST", "DecideHumanApproval", "Approval"),
+            ("/api/v1/agent/approvals/{approvalId}/withdraw", "POST", "WithdrawHumanApproval", "Approval"),
             ("/api/v1/agent/provider/conversations/{conversationId}", "GET", "ResolveProviderConversation", "Agent Provider"),
             ("/api/v1/agent/me", "GET", "CurrentAgentUser", "Agent"),
             ("/api/v1/agent/conversations", "GET", "ListConversations", "Conversation"),
@@ -120,6 +124,12 @@ public class HostingTests
         Assert.Equal(expected.OrderBy(route => route.Item1), actual);
         Assert.All(routeEndpoints, endpoint =>
             Assert.NotNull(endpoint.Metadata.GetMetadata<IAuthorizeData>()));
+        RouteEndpoint decisionEndpoint = Assert.Single(routeEndpoints, endpoint =>
+            endpoint.RoutePattern.RawText ==
+                "/api/v1/agent/approvals/{approvalId}/decision");
+        Assert.Contains(
+            decisionEndpoint.Metadata.GetOrderedMetadata<IAuthorizeData>(),
+            authorization => authorization.Policy == "approval.decide");
         Assert.DoesNotContain(
             routeEndpoints,
             endpoint => endpoint.RoutePattern.RawText?.StartsWith(

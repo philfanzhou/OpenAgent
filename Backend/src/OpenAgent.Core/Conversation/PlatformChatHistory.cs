@@ -29,6 +29,8 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
     private readonly ConversationSessionStore _store;
     private readonly ILogger<PlatformChatHistory> _logger;
     private readonly IFileAssetService _fileService;
+    private readonly bool _recordUserInput;
+    private readonly bool _allowAwaitingApproval;
     private readonly List<ConversationMessage> _pending = [];
     private readonly StringBuilder _partialAssistant = new();
     private readonly StringBuilder _partialReasoning = new();
@@ -52,7 +54,9 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         IConversationLock conversationLock,
         ConversationSessionStore store,
         ILogger<PlatformChatHistory> logger,
-        IFileAssetService fileService)
+        IFileAssetService fileService,
+        bool recordUserInput,
+        bool allowAwaitingApproval)
     {
         _conversation = conversation;
         _agentId = agentId;
@@ -64,6 +68,8 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         _store = store;
         _logger = logger;
         _fileService = fileService;
+        _recordUserInput = recordUserInput;
+        _allowAwaitingApproval = allowAwaitingApproval;
     }
 
     internal void AppendPartial(string content)
@@ -139,7 +145,8 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
                 conversation,
                 _agentId,
                 _input,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken,
+                _allowAwaitingApproval).ConfigureAwait(false);
             _currentVersion = loaded.CurrentVersion;
             _nextSequence = loaded.NextSequence;
             List<ChatMessage> history = await BuildHistoryAsync(loaded.History, cancellationToken).ConfigureAwait(false);
@@ -335,6 +342,45 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         _stored = true;
     }
 
+    internal async Task PauseAsync(
+        string approvalId,
+        string mafRequestId,
+        CancellationToken cancellationToken)
+    {
+        if (_stored)
+        {
+            return;
+        }
+        if (!_completionStaged)
+        {
+            throw new InvalidOperationException("Conversation approval pause was not staged.");
+        }
+
+        int approvalIndex = _pending.FindLastIndex(message =>
+            string.Equals(
+                message.Metadata?.GetValueOrDefault("MafApprovalRequestId"),
+                mafRequestId,
+                StringComparison.Ordinal));
+        if (approvalIndex >= 0)
+        {
+            ConversationMessage message = _pending[approvalIndex];
+            Dictionary<string, string> metadata = message.Metadata == null
+                ? []
+                : new Dictionary<string, string>(message.Metadata, StringComparer.Ordinal);
+            metadata["ApprovalId"] = approvalId;
+            metadata["ApprovalStatus"] = "Pending";
+            _pending[approvalIndex] = CopyWithMetadata(message, metadata);
+        }
+
+        await _store.SaveAsync(
+            _conversation,
+            _currentVersion,
+            _pending,
+            ConversationStatus.AwaitingApproval,
+            cancellationToken).ConfigureAwait(false);
+        _stored = true;
+    }
+
     protected override async ValueTask InvokedCoreAsync(
         InvokedContext context,
         CancellationToken cancellationToken)
@@ -416,7 +462,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
 
     private void RecordUser()
     {
-        if (_userRecorded)
+        if (_userRecorded || !_recordUserInput)
         {
             return;
         }
@@ -429,6 +475,24 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
             metadata: AgentMessageAdapter.BuildFileMetadata(_files),
             fileIds: _files.Select(item => item.FileId).ToArray()));
     }
+
+    private static ConversationMessage CopyWithMetadata(
+        ConversationMessage message,
+        IReadOnlyDictionary<string, string> metadata) => new()
+        {
+            MessageId = message.MessageId,
+            Sequence = message.Sequence,
+            Role = message.Role,
+            Content = message.Content,
+            ToolCallId = message.ToolCallId,
+            ToolName = message.ToolName,
+            IdempotencyKey = message.IdempotencyKey,
+            Timestamp = message.Timestamp,
+            Metadata = metadata,
+            FileIds = message.FileIds,
+            TokenUsage = message.TokenUsage,
+            ModelId = message.ModelId
+        };
 
     private void AssociateCreatedFiles(List<ConversationMessage> responses)
     {

@@ -74,6 +74,37 @@ public class SkillPackageManagementServiceTests
     }
 
     [Fact]
+    public async Task InstallAsync_PersistsHumanApprovalDeclarationFromSkillMetadata()
+    {
+        (SkillPackageManagementService service, AgentConfigManagementService configs, _) =
+            await CreateServiceAsync();
+        const string highRiskSkill = """
+            ---
+            name: production-change
+            description: Changes production
+            requires-human-approval: true
+            ---
+
+            Change production only after review.
+            """;
+
+        SkillPackageInstallResult result = await service.InstallAsync(
+            AgentId,
+            "tenant",
+            "user",
+            "production.md",
+            "text/markdown",
+            new MemoryStream(Encoding.UTF8.GetBytes(highRiskSkill)),
+            expectedVersion: null,
+            default);
+
+        Assert.True(result.Skill?.RequiresHumanApproval);
+        SkillInstanceConfig saved = Assert.Single(
+            (await configs.GetAsync(AgentId))!.Config.Skills.Instances);
+        Assert.True(saved.RequiresHumanApproval);
+    }
+
+    [Fact]
     public async Task ValidateAsync_ReadsPackageFromObjectStorageAndVerifiesHash()
     {
         (SkillPackageManagementService service, _, RecordingObjectStore store) = await CreateServiceAsync();

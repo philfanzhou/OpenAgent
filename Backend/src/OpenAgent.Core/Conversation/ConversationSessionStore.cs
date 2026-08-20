@@ -28,7 +28,8 @@ internal sealed class ConversationSessionStore
         ConversationContext context,
         string resolvedAgentId,
         string input,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool allowAwaitingApproval = false)
     {
         ConversationRecord? record = await _store.GetRecordAsync(
             context.TenantId!,
@@ -56,6 +57,13 @@ internal sealed class ConversationSessionStore
             throw new AgentException(
                 AgentErrorCode.PermissionDenied,
                 "Conversation does not belong to the current user");
+        }
+        if (record.Status == ConversationStatus.AwaitingApproval
+            && !allowAwaitingApproval)
+        {
+            throw new AgentException(
+                AgentErrorCode.Conflict,
+                "Conversation is awaiting a human approval decision");
         }
 
         return new ConversationSession(

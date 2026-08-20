@@ -1,6 +1,8 @@
 using System.Runtime.ExceptionServices;
 using Microsoft.Agents.AI;
+using Microsoft.Extensions.AI;
 using OpenAgent.Contracts.Requests;
+using OpenAgent.Core.Capabilities;
 using OpenAgent.Core.Conversation;
 
 namespace OpenAgent.Core.Runtime.Agent;
@@ -19,14 +21,17 @@ internal sealed class AgentExecutionScope : IAsyncDisposable
     internal AgentExecutionScope(
         AIAgent agent,
         PlatformChatHistory history,
+        ApprovalTargetResolver approvalTargets,
         params IAsyncDisposable[] resources)
     {
         Agent = agent;
+        ApprovalTargets = approvalTargets;
         _history = history;
         _resources = [history, .. resources];
     }
 
     internal AIAgent Agent { get; }
+    internal ApprovalTargetResolver ApprovalTargets { get; }
 
     internal void AppendPartial(string content)
     {
@@ -43,6 +48,15 @@ internal sealed class AgentExecutionScope : IAsyncDisposable
         string modelId,
         CancellationToken cancellationToken) =>
         _history.CompleteAsync(usage, modelId, cancellationToken);
+
+    internal Task PauseAsync(
+        string approvalId,
+        ToolApprovalRequestContent approval,
+        CancellationToken cancellationToken) =>
+        _history.PauseAsync(
+            approvalId,
+            approval.RequestId,
+            cancellationToken);
 
     public async ValueTask DisposeAsync()
     {

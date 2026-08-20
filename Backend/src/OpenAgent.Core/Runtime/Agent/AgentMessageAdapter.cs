@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.Extensions.AI;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Files;
+using OpenAgent.Core.Approvals;
 
 namespace OpenAgent.Core.Runtime.Agent;
 
@@ -28,6 +29,11 @@ internal static class AgentMessageAdapter
             _ => null
         };
         if (role == null)
+        {
+            return null;
+        }
+
+        if (message.Metadata?.ContainsKey("MafApprovalRequestId") == true)
         {
             return null;
         }
@@ -108,6 +114,9 @@ internal static class AgentMessageAdapter
             List<FunctionResultContent> functionResults = message.Contents
                 .OfType<FunctionResultContent>()
                 .ToList();
+            List<ToolApprovalRequestContent> approvals = message.Contents
+                .OfType<ToolApprovalRequestContent>()
+                .ToList();
             string text = message.Text ?? string.Empty;
             string reasoning = string.Concat(message.Contents
                 .OfType<TextReasoningContent>()
@@ -115,7 +124,9 @@ internal static class AgentMessageAdapter
 
             if (!string.IsNullOrEmpty(text)
                 || !string.IsNullOrEmpty(reasoning)
-                || (calls.Count == 0 && functionResults.Count == 0))
+                || (calls.Count == 0
+                    && functionResults.Count == 0
+                    && approvals.Count == 0))
             {
                 FunctionCallContent? firstCall = calls.FirstOrDefault();
                 if (firstCall != null && !string.IsNullOrWhiteSpace(firstCall.CallId))
@@ -161,6 +172,23 @@ internal static class AgentMessageAdapter
                     functionResult.CallId,
                     toolName,
                     metadata: null));
+            }
+
+            foreach (ToolApprovalRequestContent approval in approvals)
+            {
+                FunctionCallContent? call = approval.ToolCall as FunctionCallContent;
+                result.Add(CreateStored(
+                    nextSequence++,
+                    "assistant",
+                    "Approval required.",
+                    call?.CallId,
+                    call?.Name,
+                    new Dictionary<string, string>
+                    {
+                        ["MafApprovalRequestId"] = approval.RequestId,
+                        ["RedactedToolArguments"] = ApprovalArgumentRedactor.SerializeRedacted(
+                            call?.Arguments)
+                    }));
             }
         }
 

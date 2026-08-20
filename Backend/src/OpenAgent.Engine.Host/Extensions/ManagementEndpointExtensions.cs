@@ -690,7 +690,8 @@ internal static class ManagementEndpointExtensions
         Name = server.Name,
         Url = server.Url,
         Type = server.Type,
-        ProtocolVersion = server.ProtocolVersion
+        ProtocolVersion = server.ProtocolVersion,
+        RequiresHumanApproval = server.RequiresHumanApproval
     };
 
     private static RagInstanceConfig RedactRag(RagInstanceConfig instance)

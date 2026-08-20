@@ -6,6 +6,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using OpenAgent.Hosting.Security;
+using System.Security.Claims;
 
 namespace OpenAgent.Hosting.Authentication;
 
@@ -74,8 +75,28 @@ internal static class AgentAuthenticationExtensions
             {
                 authorization.AddPolicy(policyName, policy => policy.RequireAuthenticatedUser());
             }
+            authorization.AddPolicy("approval.decide", policy => policy.RequireAssertion(context =>
+                HasApprovalPermission(context.User)));
         });
 
         return services;
+    }
+
+    private static bool HasApprovalPermission(ClaimsPrincipal user)
+    {
+        if (user.IsInRole("Admin") || user.IsInRole("ApprovalApprover"))
+        {
+            return true;
+        }
+
+        return user.Claims
+            .Where(claim =>
+                string.Equals(claim.Type, "scope", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(claim.Type, "scp", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(claim.Type, "permissions", StringComparison.OrdinalIgnoreCase))
+            .SelectMany(claim => claim.Value.Split(
+                [' ', ','],
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            .Contains("approval.decide", StringComparer.OrdinalIgnoreCase);
     }
 }

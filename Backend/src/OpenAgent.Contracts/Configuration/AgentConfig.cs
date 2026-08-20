@@ -71,6 +71,7 @@ public class McpServerConfig
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public McpServerType Type { get; set; } = McpServerType.Http;
     public string? ProtocolVersion { get; set; }
+    public bool RequiresHumanApproval { get; set; }
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
@@ -170,6 +171,7 @@ public class SkillInstanceConfig
     public string? ObjectKey { get; set; }
     public string? Sha256 { get; set; }
     public int ResourceCount { get; set; }
+    public bool RequiresHumanApproval { get; set; }
 
     public List<string> AllowedUserIds { get; set; } = new();
     public List<string> AllowedGroups { get; set; } = new();

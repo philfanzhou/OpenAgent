@@ -28,6 +28,7 @@ internal sealed class McpToolFactory(
     {
         var clients = new List<McpClient>();
         var tools = new List<AITool>();
+        var approvalTargets = new Dictionary<string, ApprovalTarget>(StringComparer.Ordinal);
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         try
@@ -80,9 +81,19 @@ internal sealed class McpToolFactory(
                             string runtimeName = CreateRuntimeName(serverName, tool.Name, names);
                             // WithName/WithDescription are official SDK projections. The
                             // underlying invocation still calls the original MCP tool.
-                            tools.Add(tool
+                            AIFunction projected = tool
                                 .WithName(runtimeName)
-                                .WithDescription($"[MCP:{serverName}] {tool.Description}"));
+                                .WithDescription($"[MCP:{serverName}] {tool.Description}");
+                            tools.Add(ApplyApprovalRequirement(
+                                projected,
+                                server.RequiresHumanApproval));
+                            if (server.RequiresHumanApproval)
+                            {
+                                approvalTargets.Add(runtimeName, new ApprovalTarget(
+                                    AgentResourceType.Mcp,
+                                    resourceId,
+                                    "invoke"));
+                            }
                         }
                     }
                     catch
@@ -104,7 +115,10 @@ internal sealed class McpToolFactory(
                 }
             }
 
-            return new McpToolRuntime(tools.AsReadOnly(), clients);
+            return new McpToolRuntime(
+                tools.AsReadOnly(),
+                clients,
+                approvalTargets.AsReadOnly());
         }
         catch
         {
@@ -125,6 +139,11 @@ internal sealed class McpToolFactory(
             : server.ProtocolVersion.Trim(),
         InitializationTimeout = TimeSpan.FromSeconds(30)
     };
+
+    internal static AIFunction ApplyApprovalRequirement(
+        AIFunction function,
+        bool requiresHumanApproval) =>
+        requiresHumanApproval ? new ApprovalRequiredAIFunction(function) : function;
 
     private async Task<bool> IsToolAvailableAsync(
         string agentId,
@@ -197,11 +216,14 @@ internal sealed class McpToolFactory(
 
 internal sealed class McpToolRuntime(
     IReadOnlyList<AITool> tools,
-    IReadOnlyList<McpClient> clients) : IAsyncDisposable
+    IReadOnlyList<McpClient> clients,
+    IReadOnlyDictionary<string, ApprovalTarget>? approvalTargets = null) : IAsyncDisposable
 {
     internal static McpToolRuntime Empty { get; } = new([], []);
 
     internal IReadOnlyList<AITool> Tools { get; } = tools;
+    internal IReadOnlyDictionary<string, ApprovalTarget> ApprovalTargets { get; } =
+        approvalTargets ?? new Dictionary<string, ApprovalTarget>();
 
     public async ValueTask DisposeAsync()
     {

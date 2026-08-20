@@ -8,6 +8,9 @@ using OpenAgent.Core.Files;
 using OpenAgent.Core.Models;
 using OpenAgent.Core.Runtime.Agent;
 using OpenAgent.Core.Security;
+using OpenAgent.Contracts.Approvals;
+using OpenAgent.Core.Approvals;
+using Microsoft.Extensions.Hosting;
 
 namespace OpenAgent.Core.Exten;
 
@@ -17,6 +20,8 @@ internal static class RuntimeServiceExtensions
     {
         services.AddSingleton<ILlmRegistry, LlmRegistry>();
         services.AddSingleton<IAgentChatClientFactory, AgentChatClientFactory>();
+        services.TryAddSingleton(TimeProvider.System);
+        services.TryAddSingleton<IHumanApprovalStore, InMemoryHumanApprovalStore>();
 
         services.TryAddScoped<IAgentAuthorizationService>(serviceProvider =>
         {
@@ -32,11 +37,16 @@ internal static class RuntimeServiceExtensions
         services.AddScoped<IAgentRuntimeResolver>(serviceProvider =>
             serviceProvider.GetRequiredService<AgentRuntimeResolver>());
         services.AddScoped<AgentFactory>();
+        services.AddScoped<HumanApprovalService>();
+        services.AddScoped<IHumanApprovalService>(serviceProvider =>
+            serviceProvider.GetRequiredService<HumanApprovalService>());
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, HumanApprovalExpirationService>());
         services.AddScoped(serviceProvider => new AgentExecutor(
             serviceProvider.GetRequiredService<IAgentRuntimeResolver>(),
             serviceProvider.GetRequiredService<AgentFactory>(),
             serviceProvider.GetRequiredService<ConversationAgentResolver>(),
-            serviceProvider.GetRequiredService<FileAssetRequestResolver>()));
+            serviceProvider.GetRequiredService<FileAssetRequestResolver>(),
+            serviceProvider.GetRequiredService<HumanApprovalService>()));
         return services;
     }
 }

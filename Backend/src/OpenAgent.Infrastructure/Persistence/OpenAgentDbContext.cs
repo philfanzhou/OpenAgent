@@ -11,6 +11,7 @@ public sealed class OpenAgentDbContext(DbContextOptions<OpenAgentDbContext> opti
     internal DbSet<ConversationFileReferenceEntity> ConversationFileReferences => Set<ConversationFileReferenceEntity>();
     internal DbSet<MessageFileReferenceEntity> MessageFileReferences => Set<MessageFileReferenceEntity>();
     internal DbSet<SkillDefinitionEntity> SkillDefinitions => Set<SkillDefinitionEntity>();
+    internal DbSet<HumanApprovalEntity> HumanApprovals => Set<HumanApprovalEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -93,6 +94,34 @@ public sealed class OpenAgentDbContext(DbContextOptions<OpenAgentDbContext> opti
             entity.Property(item => item.SourceType).HasMaxLength(64);
             entity.Property(item => item.DefinitionJson).HasColumnType("jsonb");
             entity.HasIndex(item => new { item.TenantId, item.UpdatedAt });
+        });
+
+        modelBuilder.Entity<HumanApprovalEntity>(entity =>
+        {
+            entity.ToTable("human_approvals");
+            entity.HasKey(item => item.ApprovalId);
+            entity.Property(item => item.ApprovalId).HasMaxLength(64);
+            entity.Property(item => item.TenantId).HasMaxLength(256);
+            entity.Property(item => item.ConversationId).HasMaxLength(64);
+            entity.Property(item => item.AgentId).HasMaxLength(256);
+            entity.Property(item => item.TraceId).HasMaxLength(256);
+            entity.Property(item => item.Action).HasMaxLength(64);
+            entity.Property(item => item.TargetCapability).HasMaxLength(512);
+            entity.Property(item => item.RequestedBy).HasMaxLength(256);
+            entity.Property(item => item.DecidedBy).HasMaxLength(256);
+            entity.Property(item => item.MafRequestId).HasMaxLength(256);
+            entity.Property(item => item.ToolCallId).HasMaxLength(256);
+            entity.Property(item => item.ToolName).HasMaxLength(256);
+            entity.Property(item => item.RedactedArgumentsJson).HasColumnType("jsonb");
+            entity.Property(item => item.SessionStateJson).HasColumnType("jsonb");
+            entity.Property(item => item.RequesterContextJson).HasColumnType("jsonb");
+            entity.Property(item => item.Version).IsConcurrencyToken();
+            entity.HasIndex(item => new { item.TenantId, item.Status, item.ExpiresAt });
+            entity.HasIndex(item => new { item.TenantId, item.ConversationId });
+            entity.HasOne<ConversationEntity>()
+                .WithMany()
+                .HasForeignKey(item => item.ConversationId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

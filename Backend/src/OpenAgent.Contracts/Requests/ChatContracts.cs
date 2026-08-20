@@ -1,3 +1,5 @@
+using OpenAgent.Contracts.Approvals;
+
 namespace OpenAgent.Contracts.Requests;
 
 public class ChatRequest
@@ -12,4 +14,5 @@ public class ChatResponse
     public string Message { get; set; } = string.Empty;
     public TokenUsage? Usage { get; set; }
     public string? ModelId { get; set; }
+    public HumanApprovalRequest? Approval { get; set; }
 }

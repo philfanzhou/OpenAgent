@@ -10,6 +10,8 @@ using OpenAgent.Contracts.Infrastructure;
 using OpenAgent.Contracts.Skills;
 using OpenAgent.Infrastructure.Skills;
 using StackExchange.Redis;
+using OpenAgent.Contracts.Approvals;
+using OpenAgent.Infrastructure.Approvals;
 
 namespace OpenAgent.Infrastructure;
 
@@ -41,6 +43,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<EfCoreConversationStore>();
         services.AddSingleton<IFileAssetRepository, EfCoreFileAssetRepository>();
         services.AddSingleton<ISkillDefinitionRepository, EfCoreSkillDefinitionRepository>();
+        services.Replace(ServiceDescriptor.Singleton<IHumanApprovalStore, EfCoreHumanApprovalStore>());
 
         ConversationCacheOptions cache = configuration.GetSection(ConversationCacheOptions.SectionName)
             .Get<ConversationCacheOptions>() ?? new();

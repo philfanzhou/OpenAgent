@@ -114,16 +114,19 @@ public static class AgentSkillPackageArchive
             throw new InvalidOperationException("Each Skill package must contain exactly one SKILL.md.");
         }
 
-        AgentSkillFrontmatter frontmatter = ReadFrontmatter(skillFiles[0].Content);
+        (AgentSkillFrontmatter frontmatter, bool requiresHumanApproval) =
+            ReadFrontmatter(skillFiles[0].Content);
         int resourceCount = files.Count(file => HasPathSegment(file.RelativePath, "resources"));
         return new AgentSkillPackageMetadata(
             frontmatter.Name,
             frontmatter.Description,
             1,
-            resourceCount);
+            resourceCount,
+            requiresHumanApproval);
     }
 
-    private static AgentSkillFrontmatter ReadFrontmatter(byte[] content)
+    private static (AgentSkillFrontmatter Frontmatter, bool RequiresHumanApproval) ReadFrontmatter(
+        byte[] content)
     {
         string[] lines = System.Text.Encoding.UTF8.GetString(content).Split('\n');
         int start = Array.FindIndex(lines, line => line.TrimStart('\uFEFF').Trim() == "---");
@@ -135,6 +138,7 @@ public static class AgentSkillPackageArchive
         string? name = null;
         string? description = null;
         string? compatibility = null;
+        bool requiresHumanApproval = false;
         bool closed = false;
         for (int index = start + 1; index < lines.Length; index++)
         {
@@ -154,13 +158,21 @@ public static class AgentSkillPackageArchive
             if (key.Equals("name", StringComparison.OrdinalIgnoreCase)) name = value;
             if (key.Equals("description", StringComparison.OrdinalIgnoreCase)) description = value;
             if (key.Equals("compatibility", StringComparison.OrdinalIgnoreCase)) compatibility = value;
+            if ((key.Equals("requires-human-approval", StringComparison.OrdinalIgnoreCase)
+                    || key.Equals("requiresHumanApproval", StringComparison.OrdinalIgnoreCase))
+                && bool.TryParse(value, out bool parsed))
+            {
+                requiresHumanApproval = parsed;
+            }
         }
 
         if (!closed || string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(description))
         {
             throw new InvalidOperationException("SKILL.md frontmatter requires name and description.");
         }
-        return new AgentSkillFrontmatter(name, description, compatibility ?? string.Empty);
+        return (
+            new AgentSkillFrontmatter(name, description, compatibility ?? string.Empty),
+            requiresHumanApproval);
     }
 
     private static bool IsSafeRelativePath(string path)
@@ -199,6 +211,7 @@ public sealed record AgentSkillPackageMetadata(
     string Name,
     string Description,
     int SkillCount,
-    int ResourceCount);
+    int ResourceCount,
+    bool RequiresHumanApproval = false);
 
 public sealed record SkillPackageFile(string RelativePath, byte[] Content);

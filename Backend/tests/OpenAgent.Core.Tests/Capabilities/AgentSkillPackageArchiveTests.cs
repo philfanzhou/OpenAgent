@@ -54,6 +54,20 @@ public sealed class AgentSkillPackageArchiveTests
     }
 
     [Fact]
+    public void InspectAsync_ReadsHumanApprovalDeclarationFromSkillMetadata()
+    {
+        byte[] package = CreateArchive(archive =>
+            WriteEntry(
+                archive,
+                "production/SKILL.md",
+                "---\nname: production\ndescription: Changes production\nrequires-human-approval: true\n---\n"));
+
+        AgentSkillPackageMetadata metadata = AgentSkillPackageArchive.Inspect(package, default);
+
+        Assert.True(metadata.RequiresHumanApproval);
+    }
+
+    [Fact]
     public void ReadZipFiles_RejectsTooManyFiles()
     {
         byte[] package = CreateArchive(archive =>

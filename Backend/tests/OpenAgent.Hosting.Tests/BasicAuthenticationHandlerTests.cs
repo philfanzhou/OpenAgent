@@ -27,6 +27,7 @@ public class BasicAuthenticationHandlerTests
         Assert.True(result.Succeeded);
         Assert.Equal("admin", result.Principal?.FindFirst("sub")?.Value);
         Assert.Equal("development", result.Principal?.FindFirst("tenant_id")?.Value);
+        Assert.True(result.Principal?.IsInRole("Admin"));
     }
 
     [Fact]
