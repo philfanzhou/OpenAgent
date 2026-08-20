@@ -21,13 +21,15 @@ public class InMemoryConversationStoreTests
     private static ConversationRecord CreateRecord(
         string tenantId = "t1",
         string conversationId = "c1",
-        string userId = "u1")
+        string userId = "u1",
+        ConversationType type = ConversationType.User)
     {
         return new ConversationRecord
         {
             TenantId = tenantId,
             ConversationId = conversationId,
             UserId = userId,
+            Type = type,
             AgentId = "a1"
         };
     }
@@ -166,6 +168,21 @@ public class InMemoryConversationStoreTests
         var results = await store.SearchConversationsAsync("t1", "needle", 0, 10);
 
         Assert.Single(results);
+    }
+
+    [Fact]
+    public async Task ListAndSearchConversations_ExcludeNonUserTypes()
+    {
+        var store = new InMemoryConversationStore(UserContext());
+        await store.CreateAsync(CreateRecord(conversationId: "channel", type: ConversationType.Channel));
+        await store.AppendMessagesAsync("t1", "channel", 1,
+            new[] { CreateMessage("m1", 1, content: "channel needle") });
+        await store.CreateAsync(CreateRecord(conversationId: "internal", type: ConversationType.Internal));
+        await store.AppendMessagesAsync("t1", "internal", 1,
+            new[] { CreateMessage("m2", 1, content: "internal needle") });
+
+        Assert.Empty(await store.ListConversationsAsync("t1", 0, 10));
+        Assert.Empty(await store.SearchConversationsAsync("t1", "needle", 0, 10));
     }
 
     [Fact]

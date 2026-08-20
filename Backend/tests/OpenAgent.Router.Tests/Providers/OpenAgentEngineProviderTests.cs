@@ -149,7 +149,7 @@ public class OpenAgentEngineProviderTests
         using JsonDocument document = JsonDocument.Parse(body);
         JsonElement context = document.RootElement.GetProperty("context");
         Assert.Equal("intent-router", context.GetProperty("agentId").GetString());
-        Assert.DoesNotContain("conversationId", context.EnumerateObject().Select(property => property.Name));
+        Assert.Single(context.EnumerateObject());
     }
 
     private sealed class StubRouteTable : IRouteTable

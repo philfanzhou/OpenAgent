@@ -1,4 +1,5 @@
 using System.Text.Json;
+using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Engine.Host.Middleware;
@@ -27,8 +28,15 @@ internal static class AgentEndpointRequestMapper
             AgentId = ReadContextValue(request.Context, "agentId")
                 ?? context.Request.Headers["X-Agent-Id"].FirstOrDefault(),
             ConversationId = conversationId,
+            ConversationType = ReadContextEnum(
+                request.Context,
+                "conversationType",
+                ConversationType.User),
             TraceId = feature.TraceId,
-            ClientType = ClientType.Web,
+            ClientType = ReadContextEnum(
+                request.Context,
+                "clientType",
+                ClientType.Web),
             ExternalContext = externalContext,
             FileIds = request.FileIds
                 .Where(fileId => !string.IsNullOrWhiteSpace(fileId))
@@ -57,8 +65,23 @@ internal static class AgentEndpointRequestMapper
             : value?.ToString();
     }
 
+    private static TEnum ReadContextEnum<TEnum>(
+        IReadOnlyDictionary<string, object>? context,
+        string key,
+        TEnum fallback)
+        where TEnum : struct, Enum
+    {
+        string? value = ReadContextValue(context, key);
+        return Enum.TryParse(value, ignoreCase: true, out TEnum result)
+            && Enum.IsDefined(result)
+            ? result
+            : fallback;
+    }
+
     private static bool IsReservedChatContextKey(string key) =>
         key.Equals("agentId", StringComparison.OrdinalIgnoreCase)
         || key.Equals("conversationId", StringComparison.OrdinalIgnoreCase)
+        || key.Equals("conversationType", StringComparison.OrdinalIgnoreCase)
+        || key.Equals("clientType", StringComparison.OrdinalIgnoreCase)
         || key.Equals("traceId", StringComparison.OrdinalIgnoreCase);
 }

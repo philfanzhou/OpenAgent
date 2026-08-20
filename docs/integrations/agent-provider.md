@@ -77,6 +77,8 @@ Router 通过 `IAgentProvider` 统一调用自有 Engine 和第三方 Agent 服�
 
 `BaseUrl` 存在时 Provider 直接使用该地址；否则内置 Provider 使用 `IRouteTable` 发现 Engine 实例。`Settings` 对 Registry 保持不透明，敏感凭据应由环境变量或密钥配置源注入。`DefaultProviderId` 仍是必填的注册表兼容配置，但不会覆盖显式 Agent 映射或会话亲和。Fallback Agent 也必须存在于完整、已授权的目录中。
 
+实际渠道会话统一使用 `ConversationType.Channel`，具体渠道通过已有的 `ClientType` 区分；意图识别使用无会话执行，不携带会话分类字段。
+
 ## 错误语义
 
 | HTTP / code | 含义 | 回退 |

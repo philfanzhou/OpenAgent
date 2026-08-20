@@ -58,6 +58,31 @@ public class AgentProviderEndpointTests
         Assert.Equal(StatusCodes.Status401Unauthorized, status.StatusCode);
     }
 
+    [Theory]
+    [InlineData(ConversationType.Channel)]
+    [InlineData(ConversationType.Internal)]
+    public async Task ResolveConversationAsync_NonUserConversation_ReturnsNotFound(
+        ConversationType type)
+    {
+        var query = new StubConversationQueryService(new ConversationRecord
+        {
+            ConversationId = "conversation-1",
+            TenantId = "tenant-1",
+            UserId = "user-1",
+            Type = type
+        });
+        DefaultHttpContext context = CreateContext(true, "tenant-1", "user-1");
+
+        IResult result = await AgentProviderEndpointExtensions.ResolveConversationAsync(
+            query,
+            context,
+            "conversation-1",
+            CancellationToken.None);
+
+        IStatusCodeHttpResult status = Assert.IsAssignableFrom<IStatusCodeHttpResult>(result);
+        Assert.Equal(StatusCodes.Status404NotFound, status.StatusCode);
+    }
+
     private static DefaultHttpContext CreateContext(
         bool authenticated,
         string tenantId,
