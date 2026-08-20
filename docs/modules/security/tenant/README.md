@@ -1,31 +1,18 @@
-# TenantValidation
+# 租户架构
 
-TenantValidation 中间件确保请求的用户上下文中包含有效的 TenantId，是多租户数据隔离的第一道防线。
+本目录定义 OpenAgent 的租户概念、安全边界和演进路径。设计状态为 **Proposed**，在对应迁移阶段完成前，不能把目标模型描述为当前已实现行为。
 
-## Core Capabilities
-| Capability | Description |
-|-----------|-------------|
-| 租户校验 | 检查 `userContext.TenantId` 是否为 null 或空 |
-| 入口校验 | `EngineAdmissionMiddleware` 在请求入口校验 TenantId（ASP.NET Core RequestDelegate，仅 `InvokeAsync`） |
-| 异常拒绝 | TenantId 缺失时抛出 `TenantDataIsolationException`（ErrorCode 5003） |
+## 文档清单
 
-## Architecture
-```text
-请求 → Auth 中间件 → TenantValidation → 后续中间件
-                         │
-                   TenantId 为空 → 抛 TenantDataIsolationException
-                   TenantId 非空 → 继续管道
-```
+| 文档 | 内容 |
+|------|------|
+| [DESIGN.md](./DESIGN.md) | 租户定义、生命周期、成员、角色、身份来源和请求上下文 |
+| [BOUNDARIES.md](./BOUNDARIES.md) | 资源归属与共享、组件职责、资源/缓存键、存储、审计和未来 Channel 边界 |
+| [CURRENT-STATE.md](./CURRENT-STATE.md) | Router、Engine、各资源与前端链路的当前实现证据和目标差距 |
+| [MIGRATION.md](./MIGRATION.md) | 分阶段迁移、兼容发布、风险、验收门槛与后续 PR 拆分 |
 
-## Current Status
-**IMPLEMENTED** — `EngineAdmissionMiddleware` 在请求入口校验 TenantId，缺失时抛 `TenantDataIsolationException`，由 `AgentExceptionHandlerMiddleware` 经 `ErrorMapper` 映射为 HTTP 400。
+## 阅读建议
 
-## Limits
-- 仅校验 TenantId 是否存在，不校验租户存在性、状态或数据归属
-- 租户存在性/状态检查需扩展此中间件或新增中间件
-- 不混入业务逻辑，存储层负责实际数据隔离
-
-## Source
-- Implementation: `Backend/src/OpenAgent.Engine.Host/Middleware/EngineAdmissionMiddleware.cs`
-- Exception: `Backend/src/OpenAgent.Contracts/Security/Exceptions.cs`
-- Tests: 无专门测试文件
+1. 先阅读 `DESIGN.md` 和 `BOUNDARIES.md` 了解目标模型。
+2. 用 `CURRENT-STATE.md` 对照当前代码，再按 `MIGRATION.md` 的前置关系拆分 PR。
+3. 当前认证行为以 [auth](../auth/) 文档和源码为准；目标规则在迁移完成后才成为已实现行为。
