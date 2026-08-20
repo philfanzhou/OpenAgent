@@ -78,7 +78,8 @@ internal static class ConversationEndpointExtensions
             tenantId,
             conversationId,
             cancellationToken).ConfigureAwait(false);
-        if (record == null)
+        if (record == null
+            || record.Type != ConversationType.User)
         {
             return Results.NotFound();
         }
@@ -106,7 +107,8 @@ internal static class ConversationEndpointExtensions
             AgentEndpointRequestMapper.RequireTenant(context),
             conversationId,
             cancellationToken).ConfigureAwait(false);
-        if (record == null)
+        if (record == null
+            || record.Type != ConversationType.User)
             return Results.NotFound();
 
         string userId = context.GetAgentRequest().User.UserId;

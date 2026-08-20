@@ -4,12 +4,14 @@ using Xunit;
 
 namespace OpenAgent.Router.Tests.Observability;
 
+[Collection("Router metrics")]
 public class RouterMeterTests
 {
     [Fact]
     public void RecordMethods_EmitNormalizedLowCardinalityTags()
     {
         ConcurrentBag<(string Name, long Value, Dictionary<string, object?> Tags)> measurements = [];
+        ConcurrentBag<(string Name, double Value, Dictionary<string, object?> Tags)> durations = [];
         using var listener = new MeterListener();
         listener.InstrumentPublished = (instrument, currentListener) =>
         {
@@ -25,8 +27,20 @@ public class RouterMeterTests
                 value,
                 tags.ToArray().ToDictionary(tag => tag.Key, tag => tag.Value)));
         });
+        listener.SetMeasurementEventCallback<double>((instrument, value, tags, _) =>
+        {
+            durations.Add((
+                instrument.Name,
+                value,
+                tags.ToArray().ToDictionary(tag => tag.Key, tag => tag.Value)));
+        });
         listener.Start();
 
+        RouterMeter.RecordRequest("STREAM");
+        RouterMeter.RecordRequest("stream");
+        RouterMeter.RecordForward("stream", succeeded: true);
+        RouterMeter.RecordForward("stream", succeeded: false);
+        RouterMeter.RecordSseCompletion("stream", TimeSpan.FromSeconds(2), succeeded: true);
         RouterMeter.RecordForwardingFailure("", "RequestTimedOut");
         RouterMeter.RecordDiscoveryRefresh("Redis_Error", 0);
         RouterMeter.RecordDiscoverySelection("CHAT", "Static_Fallback");
@@ -40,6 +54,22 @@ public class RouterMeterTests
         RouterMeter.RecordAclDenial();
         RouterMeter.RecordCacheHit("Query");
 
+        Assert.Equal(2, measurements
+            .Where(measurement => measurement.Name == "openagent_router_requests_total"
+                && Equals(measurement.Tags["action"], "stream"))
+            .Sum(measurement => measurement.Value));
+        Assert.Contains(measurements, measurement =>
+            measurement.Name == "openagent_router_forwards_total"
+            && Equals(measurement.Tags["action"], "stream")
+            && Equals(measurement.Tags["outcome"], "success"));
+        Assert.Contains(measurements, measurement =>
+            measurement.Name == "openagent_router_forwards_total"
+            && Equals(measurement.Tags["outcome"], "failure"));
+        Assert.Contains(durations, measurement =>
+            measurement.Name == "openagent_router_sse_duration_seconds"
+            && measurement.Value == 2
+            && Equals(measurement.Tags["action"], "stream")
+            && Equals(measurement.Tags["outcome"], "success"));
         Assert.Contains(measurements, measurement =>
             measurement.Name == "openagent_router_forwarding_failures_total"
             && measurement.Value == 1
@@ -70,4 +100,9 @@ public class RouterMeterTests
             measurement.Name == "openagent_router_cache_hits_total"
             && Equals(measurement.Tags["cache"], "query"));
     }
+}
+
+[CollectionDefinition("Router metrics", DisableParallelization = true)]
+public sealed class RouterMeterTestCollection
+{
 }

@@ -86,6 +86,7 @@ public class HostingTests
         var expected = new[]
         {
             ("/api/v1/agent/chat", "POST", "Chat", "Agent"),
+            ("/api/v1/agent/chat/intent", "POST", "IntentRecognition", "Agent"),
             ("/api/v1/agent/chat/stream", "POST", "ChatStream", "Agent"),
             ("/api/v1/agent/files", "POST", "UploadFileAsset", "File"),
             ("/api/v1/agent/files/{fileId}", "GET", "GetFileAsset", "File"),

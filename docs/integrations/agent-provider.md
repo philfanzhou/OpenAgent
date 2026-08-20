@@ -33,6 +33,7 @@ Router 通过 `IAgentProvider` 统一调用自有 Engine 和第三方 Agent 服�
 - `ConfigureRequestAsync`：在 YARP 转发前处理 Provider 认证或协议适配。
 
 内置 Engine Provider 使用 `GET /api/v1/agent/provider/conversations/{conversationId}` 探测归属。请求复用当前调用方的 `Authorization` 令牌；端点从 Engine 已验证的 `IAgentUserContext` 获取用户和租户，只返回 204/404，不返回会话内容。
+意图识别使用 `POST /api/v1/agent/chat/intent`，默认生成并持久化普通会话，便于通过现有会话查询接口查看；该调用使用 Provider 配置的服务凭据，不转发渠道用户上下文。Engine 入口的 `PersistIntentConversations` 开关可切回无会话执行。
 
 ## 配置
 
@@ -75,6 +76,8 @@ Router 通过 `IAgentProvider` 统一调用自有 Engine 和第三方 Agent 服�
 ```
 
 `BaseUrl` 存在时 Provider 直接使用该地址；否则内置 Provider 使用 `IRouteTable` 发现 Engine 实例。`Settings` 对 Registry 保持不透明，敏感凭据应由环境变量或密钥配置源注入。`DefaultProviderId` 仍是必填的注册表兼容配置，但不会覆盖显式 Agent 映射或会话亲和。Fallback Agent 也必须存在于完整、已授权的目录中。
+
+实际渠道会话统一使用 `ConversationType.Channel`，具体渠道通过已有的 `ClientType` 区分；意图识别的会话分类和会话 ID 由 Engine 入口内部生成，不由 Provider 请求携带。
 
 ## 错误语义
 

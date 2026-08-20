@@ -70,7 +70,8 @@ internal sealed class ConversationHistoryFactory
             user.TenantId,
             user.UserId,
             agentId,
-            request.TraceId);
+            request.TraceId,
+            request.ConversationType);
         return new PlatformChatHistory(
             context,
             agentId,
@@ -95,7 +96,8 @@ internal sealed class ConversationHistoryFactory
             user.TenantId,
             user.UserId,
             agentId,
-            request.TraceId);
+            request.TraceId,
+            request.ConversationType);
         await _store.OpenAsync(
             context,
             agentId,
