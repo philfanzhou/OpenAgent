@@ -124,7 +124,7 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
 
         using HttpRequestMessage request = CreateServiceRequest(
             HttpMethod.Post,
-            $"{endpoint.TrimEnd('/')}{_chatPath}");
+            $"{endpoint.TrimEnd('/')}{_chatPath.TrimEnd('/')}/intent");
         request.Content = new StringContent(
             JsonSerializer.Serialize(new ChatRequest
             {
