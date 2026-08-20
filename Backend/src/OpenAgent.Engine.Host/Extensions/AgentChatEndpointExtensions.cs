@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Mvc;
-using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Core.Runtime.Agent;
 using OpenAgent.Engine.Host.Middleware;
@@ -55,8 +54,7 @@ internal static class AgentChatEndpointExtensions
         AgentRequest executionRequest = AgentEndpointRequestMapper.CreateAgentRequest(
             request,
             context,
-            createConversation: PersistIntentConversations,
-            conversationTypeOverride: ConversationType.Internal);
+            createConversation: PersistIntentConversations);
         AgentResponse response = await executor.ExecuteAsync(
             executionRequest,
             context.GetAgentRequest().User,

@@ -11,8 +11,7 @@ internal static class AgentEndpointRequestMapper
     internal static AgentRequest CreateAgentRequest(
         ChatRequest request,
         HttpContext context,
-        bool createConversation = true,
-        ConversationType? conversationTypeOverride = null)
+        bool createConversation = true)
     {
         AgentRequestFeature feature = context.GetAgentRequest();
         string? conversationId = createConversation
@@ -29,11 +28,10 @@ internal static class AgentEndpointRequestMapper
             AgentId = ReadContextValue(request.Context, "agentId")
                 ?? context.Request.Headers["X-Agent-Id"].FirstOrDefault(),
             ConversationId = conversationId,
-            ConversationType = conversationTypeOverride
-                ?? ReadContextEnum(
-                    request.Context,
-                    "conversationType",
-                    ConversationType.User),
+            ConversationType = ReadContextEnum(
+                request.Context,
+                "conversationType",
+                ConversationType.User),
             TraceId = feature.TraceId,
             ClientType = ReadContextEnum(
                 request.Context,
