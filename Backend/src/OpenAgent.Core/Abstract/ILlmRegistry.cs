@@ -13,4 +13,7 @@ public interface ILlmRegistry
     bool Remove(string id);
 
     LlmConfig ResolveConfig(LlmConfig llmConfig);
+
+    LlmConfig ResolveConfig(LlmConfig llmConfig, bool requireCatalogEntry) =>
+        ResolveConfig(llmConfig);
 }

@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
 using OpenAgent.Contracts.Configuration;
+using OpenAgent.Contracts.Requests;
+using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Abstract;
 
 namespace OpenAgent.Core.Models;
@@ -27,7 +29,10 @@ internal class LlmRegistry : ILlmRegistry
         return _profiles.GetValueOrDefault(id);
     }
 
-    public LlmConfig ResolveConfig(LlmConfig llmConfig)
+    public LlmConfig ResolveConfig(LlmConfig llmConfig) =>
+        ResolveConfig(llmConfig, requireCatalogEntry: false);
+
+    public LlmConfig ResolveConfig(LlmConfig llmConfig, bool requireCatalogEntry)
     {
         if (string.IsNullOrEmpty(llmConfig.Provider))
         {
@@ -37,9 +42,46 @@ internal class LlmRegistry : ILlmRegistry
         var profile = GetProfile(llmConfig.Provider);
         if (profile == null)
         {
-            throw new InvalidOperationException(
-                $"LLM provider '{llmConfig.Provider}' is not registered in the LLM registry. " +
-                "Ensure the provider profile has been synced to Redis and the Engine has loaded it.");
+            throw new AgentException(
+                AgentErrorCode.DependencyUnavailable,
+                $"LLM provider '{llmConfig.Provider}' is not available.");
+        }
+
+        if (!profile.IsEnabled
+            || string.IsNullOrWhiteSpace(profile.Endpoint)
+            || string.IsNullOrWhiteSpace(profile.ApiKey)
+            || profile.ApiKey.StartsWith("***", StringComparison.Ordinal))
+        {
+            throw new AgentException(
+                AgentErrorCode.DependencyUnavailable,
+                $"LLM provider '{llmConfig.Provider}' is not available.");
+        }
+
+        string modelId = string.IsNullOrWhiteSpace(llmConfig.ModelId)
+            ? profile.ModelId ?? string.Empty
+            : llmConfig.ModelId;
+        if (string.IsNullOrWhiteSpace(modelId))
+        {
+            throw new AgentException(
+                AgentErrorCode.LlmModelNotFound,
+                $"No model is configured for LLM provider '{llmConfig.Provider}'.");
+        }
+
+        IReadOnlyList<string> modelIds = (profile.ModelIds ?? [])
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (requireCatalogEntry && modelIds.Count == 0)
+        {
+            throw new AgentException(
+                AgentErrorCode.LlmModelNotFound,
+                $"LLM provider '{llmConfig.Provider}' does not publish selectable models.");
+        }
+        if (modelIds.Count > 0 && !modelIds.Contains(modelId, StringComparer.OrdinalIgnoreCase))
+        {
+            throw new AgentException(
+                AgentErrorCode.LlmModelNotFound,
+                $"LLM model '{llmConfig.Provider}/{modelId}' does not exist.");
         }
 
         return new LlmConfig
@@ -49,7 +91,7 @@ internal class LlmRegistry : ILlmRegistry
             Format = profile.Format,
             // AgentConfig.Llm.ModelId is the new source of truth. Profile.ModelId
             // remains only as a backwards-compatible fallback for old Redis data.
-            ModelId = string.IsNullOrWhiteSpace(llmConfig.ModelId) ? profile.ModelId ?? string.Empty : llmConfig.ModelId,
+            ModelId = modelId,
             ApiKey = profile.ApiKey,
             Endpoint = profile.Endpoint,
             Temperature = llmConfig.Temperature == 0.7 ? profile.Temperature : llmConfig.Temperature

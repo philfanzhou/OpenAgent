@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Http;
+using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
@@ -107,6 +108,56 @@ public class EndpointExtensionsTests
 
         Assert.Equal("intent-router", agentRequest.AgentId);
         Assert.Null(agentRequest.ConversationId);
+    }
+
+    [Theory]
+    [InlineData("message", false, true)]
+    [InlineData("conversation", true, false)]
+    public void CreateAgentRequest_ModelOverride_MapsRequestedScope(
+        string scope,
+        bool updatesConversation,
+        bool isMessageOverride)
+    {
+        var request = new ChatRequest
+        {
+            Message = "hello",
+            Context = new Dictionary<string, object>
+            {
+                ["modelScope"] = scope,
+                ["modelProvider"] = "provider-1",
+                ["modelId"] = "model-1",
+                ["custom"] = "value"
+            }
+        };
+
+        AgentRequest result = AgentEndpointRequestMapper.CreateAgentRequest(
+            request,
+            CreateContext());
+        LlmModelSelection selection = Assert.IsType<LlmModelSelection>(
+            isMessageOverride ? result.MessageModelOverride : result.ConversationModelOverride);
+
+        Assert.Equal("provider-1", selection.Provider);
+        Assert.Equal("model-1", selection.ModelId);
+        Assert.Equal(updatesConversation, result.UpdateConversationModelOverride);
+        Assert.Equal("value", result.ExternalContext?["custom"]);
+        Assert.False(result.ExternalContext!.ContainsKey("modelProvider"));
+    }
+
+    [Fact]
+    public void CreateAgentRequest_ConversationScopeWithoutModel_MapsClearOverride()
+    {
+        var request = new ChatRequest
+        {
+            Message = "hello",
+            Context = new Dictionary<string, object> { ["modelScope"] = "conversation" }
+        };
+
+        AgentRequest result = AgentEndpointRequestMapper.CreateAgentRequest(
+            request,
+            CreateContext());
+
+        Assert.True(result.UpdateConversationModelOverride);
+        Assert.Null(result.ConversationModelOverride);
     }
 
 }

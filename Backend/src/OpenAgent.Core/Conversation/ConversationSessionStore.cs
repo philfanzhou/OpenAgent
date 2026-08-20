@@ -28,6 +28,8 @@ internal sealed class ConversationSessionStore
         ConversationContext context,
         string resolvedAgentId,
         string input,
+        bool updateModelOverride,
+        LlmModelSelection? modelOverride,
         CancellationToken cancellationToken)
     {
         ConversationRecord? record = await _store.GetRecordAsync(
@@ -36,7 +38,11 @@ internal sealed class ConversationSessionStore
             cancellationToken).ConfigureAwait(false);
         if (record == null)
         {
-            record = CreateRecord(context, resolvedAgentId, input);
+            record = CreateRecord(
+                context,
+                resolvedAgentId,
+                input,
+                updateModelOverride ? modelOverride : null);
             if (!await _store.CreateAsync(record, cancellationToken).ConfigureAwait(false))
             {
                 record = await _store.GetRecordAsync(
@@ -56,6 +62,25 @@ internal sealed class ConversationSessionStore
             throw new AgentException(
                 AgentErrorCode.PermissionDenied,
                 "Conversation does not belong to the current user");
+        }
+
+        if (updateModelOverride && !SameModel(record.ModelOverride, modelOverride))
+        {
+            bool updated = await _store.UpdateModelOverrideAsync(
+                context.TenantId!,
+                context.ConversationId!,
+                modelOverride,
+                record.Version,
+                cancellationToken).ConfigureAwait(false);
+            if (!updated)
+            {
+                throw new AgentException(
+                    AgentErrorCode.Conflict,
+                    "Conversation model update conflicted with another request");
+            }
+
+            record.ModelOverride = modelOverride;
+            record.Version++;
         }
 
         return new ConversationSession(
@@ -141,7 +166,8 @@ internal sealed class ConversationSessionStore
     private ConversationRecord CreateRecord(
         ConversationContext context,
         string resolvedAgentId,
-        string input)
+        string input,
+        LlmModelSelection? modelOverride)
     {
         int titleLength = _options.TitleTruncateLength;
         return new ConversationRecord
@@ -151,6 +177,7 @@ internal sealed class ConversationSessionStore
             UserId = context.UserId ?? "anonymous",
             Type = context.Type,
             AgentId = context.AgentId ?? resolvedAgentId,
+            ModelOverride = modelOverride,
             TraceId = context.TraceId,
             Status = ConversationStatus.Running,
             Version = 1,
@@ -161,6 +188,15 @@ internal sealed class ConversationSessionStore
             Messages = []
         };
     }
+
+    private static bool SameModel(
+        LlmModelSelection? left,
+        LlmModelSelection? right) =>
+        left == null && right == null
+        || left != null
+            && right != null
+            && string.Equals(left.Provider, right.Provider, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(left.ModelId, right.ModelId, StringComparison.OrdinalIgnoreCase);
 
     private async Task<AppendResult> RetryAppendAsync(
         ConversationContext context,

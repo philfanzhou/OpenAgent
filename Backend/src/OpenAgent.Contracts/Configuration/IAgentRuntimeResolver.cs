@@ -12,4 +12,11 @@ public interface IAgentRuntimeResolver
         string agentId,
         IAgentUserContext userContext,
         CancellationToken cancellationToken = default);
+
+    Task<AgentRuntimeProfile> ResolveAsync(
+        string agentId,
+        IAgentUserContext userContext,
+        LlmModelSelection? modelOverride,
+        CancellationToken cancellationToken = default) =>
+        ResolveAsync(agentId, userContext, cancellationToken);
 }

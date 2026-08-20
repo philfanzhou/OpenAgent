@@ -1,4 +1,5 @@
 using System.Text.Json;
+using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
@@ -22,6 +23,12 @@ internal static class AgentEndpointRequestMapper
         Dictionary<string, string>? externalContext = request.Context?
             .Where(item => !IsReservedChatContextKey(item.Key))
             .ToDictionary(item => item.Key, item => item.Value?.ToString() ?? string.Empty);
+        string? modelScope = ReadContextValue(request.Context, "modelScope");
+        LlmModelSelection? modelSelection = ReadModelSelection(request.Context, modelScope);
+        bool updateConversationModel = string.Equals(
+            modelScope,
+            "conversation",
+            StringComparison.OrdinalIgnoreCase);
         return new AgentRequest
         {
             Query = request.Message,
@@ -37,11 +44,58 @@ internal static class AgentEndpointRequestMapper
                 request.Context,
                 "clientType",
                 ClientType.Web),
+            ConversationModelOverride = updateConversationModel ? modelSelection : null,
+            UpdateConversationModelOverride = updateConversationModel,
+            MessageModelOverride = string.Equals(
+                modelScope,
+                "message",
+                StringComparison.OrdinalIgnoreCase)
+                ? modelSelection
+                : null,
             ExternalContext = externalContext,
             FileIds = request.FileIds
                 .Where(fileId => !string.IsNullOrWhiteSpace(fileId))
                 .Distinct(StringComparer.Ordinal)
                 .ToArray()
+        };
+    }
+
+    private static LlmModelSelection? ReadModelSelection(
+        IReadOnlyDictionary<string, object>? context,
+        string? scope)
+    {
+        string? provider = ReadContextValue(context, "modelProvider");
+        string? modelId = ReadContextValue(context, "modelId");
+        bool hasSelection = !string.IsNullOrWhiteSpace(provider)
+            || !string.IsNullOrWhiteSpace(modelId);
+        if (string.IsNullOrWhiteSpace(scope))
+        {
+            if (hasSelection)
+            {
+                throw new AgentException(
+                    AgentErrorCode.InvalidRequest,
+                    "modelScope is required when a model override is provided.");
+            }
+            return null;
+        }
+
+        if (!scope.Equals("conversation", StringComparison.OrdinalIgnoreCase)
+            && !scope.Equals("message", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new AgentException(
+                AgentErrorCode.InvalidRequest,
+                "modelScope must be either 'conversation' or 'message'.");
+        }
+
+        if (!hasSelection && scope.Equals("conversation", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return new LlmModelSelection
+        {
+            Provider = provider ?? string.Empty,
+            ModelId = modelId ?? string.Empty
         };
     }
 
@@ -83,5 +137,8 @@ internal static class AgentEndpointRequestMapper
         || key.Equals("conversationId", StringComparison.OrdinalIgnoreCase)
         || key.Equals("conversationType", StringComparison.OrdinalIgnoreCase)
         || key.Equals("clientType", StringComparison.OrdinalIgnoreCase)
-        || key.Equals("traceId", StringComparison.OrdinalIgnoreCase);
+        || key.Equals("traceId", StringComparison.OrdinalIgnoreCase)
+        || key.Equals("modelScope", StringComparison.OrdinalIgnoreCase)
+        || key.Equals("modelProvider", StringComparison.OrdinalIgnoreCase)
+        || key.Equals("modelId", StringComparison.OrdinalIgnoreCase);
 }

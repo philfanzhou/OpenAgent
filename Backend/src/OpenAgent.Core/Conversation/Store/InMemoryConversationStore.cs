@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Security;
 
@@ -122,6 +123,33 @@ internal sealed class InMemoryConversationStore : IConversationStore
         return Task.FromResult(true);
     }
 
+    public Task<bool> UpdateModelOverrideAsync(
+        string tenantId,
+        string conversationId,
+        LlmModelSelection? modelOverride,
+        int expectedVersion,
+        CancellationToken cancellationToken = default)
+    {
+        var key = BuildKey(tenantId, conversationId);
+        if (!_store.TryGetValue(key, out ConversationRecord? record))
+        {
+            return Task.FromResult(false);
+        }
+
+        lock (record)
+        {
+            if (record.Version != expectedVersion)
+            {
+                return Task.FromResult(false);
+            }
+
+            record.ModelOverride = modelOverride;
+            record.Version++;
+            record.UpdatedAt = DateTimeOffset.UtcNow;
+            return Task.FromResult(true);
+        }
+    }
+
     public Task<IReadOnlyList<ConversationRecord>> ListConversationsAsync(
         string tenantId, int skip, int take, CancellationToken cancellationToken = default)
     {
@@ -184,6 +212,7 @@ internal sealed class InMemoryConversationStore : IConversationStore
         UserId = r.UserId,
         Type = r.Type,
         AgentId = r.AgentId,
+        ModelOverride = r.ModelOverride,
         TraceId = r.TraceId,
         Version = r.Version,
         Status = r.Status,

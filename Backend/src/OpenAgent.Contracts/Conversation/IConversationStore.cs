@@ -57,6 +57,13 @@ public interface IConversationStore
         int expectedVersion,
         CancellationToken cancellationToken = default);
 
+    Task<bool> UpdateModelOverrideAsync(
+        string tenantId,
+        string conversationId,
+        Configuration.LlmModelSelection? modelOverride,
+        int expectedVersion,
+        CancellationToken cancellationToken = default);
+
     /// <summary>
     /// 列出指定租户的会话，按 LastMessageAt 降序返回（不含消息体）。
     /// 仅返回当前认证用户（ICurrentUserContext）拥有的会话。

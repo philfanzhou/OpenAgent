@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Conversation;
 
 namespace OpenAgent.Infrastructure;
@@ -89,6 +90,26 @@ internal sealed class WriteThroughConversationStore(
     {
         bool updated = await durable.UpdateStatusAsync(
             tenantId, conversationId, status, expectedVersion, cancellationToken).ConfigureAwait(false);
+        if (updated)
+        {
+            await WarmAsync(tenantId, conversationId, cancellationToken).ConfigureAwait(false);
+        }
+        return updated;
+    }
+
+    public async Task<bool> UpdateModelOverrideAsync(
+        string tenantId,
+        string conversationId,
+        LlmModelSelection? modelOverride,
+        int expectedVersion,
+        CancellationToken cancellationToken = default)
+    {
+        bool updated = await durable.UpdateModelOverrideAsync(
+            tenantId,
+            conversationId,
+            modelOverride,
+            expectedVersion,
+            cancellationToken).ConfigureAwait(false);
         if (updated)
         {
             await WarmAsync(tenantId, conversationId, cancellationToken).ConfigureAwait(false);

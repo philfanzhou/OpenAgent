@@ -1,4 +1,5 @@
 using OpenAgent.Contracts.Conversation;
+using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Conversation.Store;
 using Xunit;
@@ -218,5 +219,25 @@ public class InMemoryConversationStoreTests
 
         var ok = await store.UpdateStatusAsync("t1", "c1", ConversationStatus.Completed, 5);
         Assert.False(ok);
+    }
+
+    [Fact]
+    public async Task UpdateModelOverride_ExpectedVersion_PersistsSelection()
+    {
+        var store = new InMemoryConversationStore(UserContext());
+        await store.CreateAsync(CreateRecord());
+
+        bool updated = await store.UpdateModelOverrideAsync(
+            "t1",
+            "c1",
+            new LlmModelSelection { Provider = "provider-1", ModelId = "model-1" },
+            expectedVersion: 1);
+        ConversationRecord record = Assert.IsType<ConversationRecord>(
+            await store.GetRecordAsync("t1", "c1"));
+
+        Assert.True(updated);
+        Assert.Equal("provider-1", record.ModelOverride?.Provider);
+        Assert.Equal("model-1", record.ModelOverride?.ModelId);
+        Assert.Equal(2, record.Version);
     }
 }

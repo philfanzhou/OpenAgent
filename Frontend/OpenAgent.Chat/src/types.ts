@@ -11,6 +11,16 @@ export interface AgentSummary {
   apiFormat: string
   llmProvider?: string
   llmModel?: string
+  availableModels?: LlmModelOption[]
+}
+
+export interface LlmModelSelection {
+  provider: string
+  modelId: string
+}
+
+export interface LlmModelOption extends LlmModelSelection {
+  providerName: string
 }
 
 export interface CurrentUserContext {
@@ -83,6 +93,7 @@ export interface ConversationRecord {
   tenantId: string
   userId: string
   agentId?: string
+  modelOverride?: LlmModelSelection | null
   status: ConversationStatus
   createdAt: string
   updatedAt: string
@@ -151,6 +162,8 @@ export interface LlmProviderProfile {
   name: string
   format: 'OpenAIChatCompletions' | 'OpenAIResponses' | 'AnthropicMessages' | string
   modelId?: string | null
+  modelIds?: string[]
+  isEnabled?: boolean
   endpoint: string
   apiKey: string
   temperature: number

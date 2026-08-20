@@ -1,5 +1,6 @@
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Conversation;
+using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Security;
 
@@ -24,6 +25,13 @@ internal sealed class AgentRuntimeResolver : IAgentRuntimeResolver
     public async Task<AgentRuntimeProfile> ResolveAsync(
         string agentId,
         IAgentUserContext userContext,
+        CancellationToken cancellationToken = default) =>
+        await ResolveAsync(agentId, userContext, null, cancellationToken).ConfigureAwait(false);
+
+    public async Task<AgentRuntimeProfile> ResolveAsync(
+        string agentId,
+        IAgentUserContext userContext,
+        LlmModelSelection? modelOverride,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(agentId))
@@ -44,9 +52,20 @@ internal sealed class AgentRuntimeResolver : IAgentRuntimeResolver
 
         ValidateSkillTenant(agentId, config, userContext);
 
+        await _authorization.EnsureAuthorizedAsync(
+            agentId,
+            AgentResourceType.Agent,
+            agentId,
+            "execute",
+            userContext,
+            cancellationToken).ConfigureAwait(false);
+
+        LlmConfig configuredModel = CreateConfiguredModel(config.Llm, modelOverride);
+
         LlmConfig model = await _authorization.ResolveAuthorizedModelAsync(
                 agentId,
-                config.Llm,
+                configuredModel,
+                modelOverride != null,
                 userContext,
                 cancellationToken)
             .ConfigureAwait(false);
@@ -57,6 +76,30 @@ internal sealed class AgentRuntimeResolver : IAgentRuntimeResolver
             AgentId = agentId,
             Config = config,
             Model = model
+        };
+    }
+
+    private static LlmConfig CreateConfiguredModel(
+        LlmConfig agentDefault,
+        LlmModelSelection? modelOverride)
+    {
+        if (modelOverride == null)
+        {
+            return agentDefault;
+        }
+
+        if (string.IsNullOrWhiteSpace(modelOverride.Provider)
+            || string.IsNullOrWhiteSpace(modelOverride.ModelId))
+        {
+            throw new AgentException(
+                AgentErrorCode.MissingRequiredField,
+                "A model override requires both provider and modelId.");
+        }
+
+        return new LlmConfig
+        {
+            Provider = modelOverride.Provider,
+            ModelId = modelOverride.ModelId
         };
     }
 

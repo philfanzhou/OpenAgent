@@ -11,7 +11,7 @@ import MessageComposer from './components/MessageComposer.vue'
 import { formatTokenCount, summarizeConversationUsage } from './tokenUsage'
 import HealthCheckPanel from './components/HealthCheckPanel.vue'
 import { mergeAssistantSnapshot } from './messagePresentation'
-import { AUTO_AGENT_ID, type AgentConfigEntity, type AgentSummary, type AuthConfig, type ConnectionMode, type ConversationMessage, type ConversationRecord, type CurrentUserContext, type LlmProviderProfile, type LlmTestResult, type McpServerConfig, type McpTestResult, type MessageFile, type PendingFile, type RagConfig, type RagInstanceConfig, type RagTestResult, type SkillCatalogItem, type SkillInstanceConfig, type SkillsConfig } from './types'
+import { AUTO_AGENT_ID, type AgentConfigEntity, type AgentSummary, type AuthConfig, type ConnectionMode, type ConversationMessage, type ConversationRecord, type CurrentUserContext, type LlmModelOption, type LlmModelSelection, type LlmProviderProfile, type LlmTestResult, type McpServerConfig, type McpTestResult, type MessageFile, type PendingFile, type RagConfig, type RagInstanceConfig, type RagTestResult, type SkillCatalogItem, type SkillInstanceConfig, type SkillsConfig } from './types'
 import { usePanelLayout } from './composables/usePanelLayout'
 import { useConversationStreams } from './composables/useConversationStreams'
 import { mergeConversationRecords, replaceConversationRecord, selectionMatchesConversation } from './conversationCollection'
@@ -32,6 +32,9 @@ const currentUser = ref<CurrentUserContext | null>(null)
 const conversations = ref<ConversationRecord[]>([])
 const selectedConversation = ref<ConversationRecord | null>(null)
 const selectedAgentId = ref(AUTO_AGENT_ID)
+const selectedModelKey = ref('')
+const modelScope = ref<'conversation' | 'message'>('conversation')
+const conversationModelDirty = ref(false)
 const message = ref('')
 const search = ref('')
 const workspaceLoading = ref(false)
@@ -134,6 +137,7 @@ function syncCapabilityDraftsToAgent(): void {
 
 const ragEnabledText = computed(() => config.value?.config.rag?.enabled ? '已启用' : '未启用')
 const selectedAgent = computed(() => agents.value.find(agent => agent.agentId === selectedAgentId.value) || null)
+const availableModels = computed<LlmModelOption[]>(() => selectedAgent.value?.availableModels || [])
 const activeEndpointUrl = computed(() => connectionMode.value === 'router' ? routerUrl.value : engineUrl.value)
 const activeEndpointLabel = computed(() => connectionMode.value === 'router' ? 'Router' : 'Engine')
 const activeEndpointHost = computed(() => {
@@ -241,6 +245,8 @@ function createDefaultLlm(): LlmProviderProfile {
     id: '',
     name: '',
     format: 'OpenAIChatCompletions',
+    modelIds: [],
+    isEnabled: true,
     endpoint: 'https://api.openai.com/v1',
     apiKey: '',
     temperature: 0.7,
@@ -486,7 +492,7 @@ function selectLlm(index: number): void {
   const profile = llmProfiles.value[index]
   if (!profile) return
   selectedLlmIndex.value = index
-  llmDraft.value = { ...profile }
+  llmDraft.value = { ...profile, modelIds: [...(profile.modelIds || [])] }
   llmResult.value = null
 }
 
@@ -513,6 +519,7 @@ async function deleteLlm(): Promise<void> {
     llmProfiles.value.splice(selectedLlmIndex.value, 1)
     selectedLlmIndex.value = llmProfiles.value.length ? 0 : -1
     if (selectedLlmIndex.value >= 0) selectLlm(selectedLlmIndex.value)
+    await reloadAgentCatalog()
     ElMessage.success('大模型配置已删除')
   } catch (error) {
     if (error !== 'cancel' && error !== 'close') notifyError(error)
@@ -532,6 +539,7 @@ async function saveLlm(): Promise<void> {
     if (existingIndex >= 0) llmProfiles.value[existingIndex] = saved
     else llmProfiles.value.push(saved)
     selectLlm(existingIndex >= 0 ? existingIndex : llmProfiles.value.length - 1)
+    await reloadAgentCatalog()
     showLlmEditor.value = false
     ElMessage.success('大模型配置已保存')
   } catch (error) {
@@ -559,6 +567,14 @@ function applyLlmProfile(providerId: string): void {
   config.value.config.llm.format = profile.format
   config.value.config.llm.endpoint = profile.endpoint
   config.value.config.llm.temperature = profile.temperature
+}
+
+async function reloadAgentCatalog(): Promise<void> {
+  try {
+    agents.value = await api.listAgents()
+  } catch (error) {
+    notifyError(error)
+  }
 }
 
 async function refreshAgents(): Promise<void> {
@@ -609,6 +625,7 @@ function replaceConversation(detail: ConversationRecord, previousConversationId 
   conversations.value = replaceConversationRecord(conversations.value, detail, previousConversationId)
   if (selectionMatches) {
     selectedConversation.value = detail
+    syncConversationModel(detail)
     sessionStorage.setItem(selectedConversationStorageKey, detail.conversationId)
   }
 }
@@ -622,6 +639,7 @@ async function restoreSelectedConversation(): Promise<void> {
 
 async function selectConversation(item: ConversationRecord): Promise<void> {
   selectedConversation.value = item
+  syncConversationModel(item)
   sessionStorage.setItem(selectedConversationStorageKey, item.conversationId)
   selectedAgentId.value = item.agentId || selectedAgentId.value
   if (item.messages?.length) {
@@ -680,6 +698,9 @@ function newConversation(): void {
   sessionStorage.removeItem(selectedConversationStorageKey)
   message.value = ''
   pendingFiles.value = []
+  selectedModelKey.value = ''
+  modelScope.value = 'conversation'
+  conversationModelDirty.value = false
 }
 
 function handleAgentChange(): void {
@@ -693,6 +714,35 @@ function handleAgentChange(): void {
   skillDraft.value = { enabledSkills: [], instances: [] }
   ragInstances.value = []
   selectedRagIndex.value = -1
+  selectedModelKey.value = ''
+  modelScope.value = 'conversation'
+  conversationModelDirty.value = false
+}
+
+function modelKey(selection?: LlmModelSelection | null): string {
+  return selection ? `${selection.provider}::${selection.modelId}` : ''
+}
+
+function parseModelKey(value: string): LlmModelSelection | undefined {
+  const separator = value.indexOf('::')
+  if (separator <= 0 || separator >= value.length - 2) return undefined
+  return { provider: value.slice(0, separator), modelId: value.slice(separator + 2) }
+}
+
+function syncConversationModel(conversation?: ConversationRecord | null): void {
+  selectedModelKey.value = modelKey(conversation?.modelOverride)
+  modelScope.value = 'conversation'
+  conversationModelDirty.value = false
+}
+
+function updateSelectedModelKey(value: string): void {
+  selectedModelKey.value = value
+  conversationModelDirty.value = value !== modelKey(selectedConversation.value?.modelOverride)
+  if (!value) modelScope.value = 'conversation'
+}
+
+function updateModelScope(value: 'conversation' | 'message'): void {
+  modelScope.value = value
 }
 
 function llmName(agent: AgentSummary): string {
@@ -783,6 +833,12 @@ async function send(): Promise<void> {
     ? selectedConversation.value?.agentId
     : selectedAgentId.value
   const local = selectedConversation.value || makeLocalConversation(requestedAgentId || '', requestContent)
+  const selectedModel = parseModelKey(selectedModelKey.value)
+  const requestedModelScope = selectedModel && modelScope.value === 'message'
+    ? 'message'
+    : conversationModelDirty.value ? 'conversation' : undefined
+  const requestedModel = requestedModelScope ? selectedModel : undefined
+  if (requestedModelScope === 'conversation') local.modelOverride = selectedModel || null
   if (isNewConversation) {
     local.messages = []
     local.messageCount = 0
@@ -844,6 +900,8 @@ async function send(): Promise<void> {
       uploaded.map(asset => asset.fileId),
       sendConversationId,
       streamState.controller.signal,
+      requestedModel,
+      requestedModelScope,
     )) {
       if (event.conversationId && event.conversationId !== conversationId) {
         const previousConversationId = conversationId
@@ -968,6 +1026,7 @@ async function send(): Promise<void> {
   } finally {
     contentQueue?.clear()
     conversationStreams.finish(requestId)
+    if (requestedModelScope === 'message') syncConversationModel(selectedConversation.value)
   }
 }
 
@@ -1320,6 +1379,7 @@ async function saveConfig(): Promise<void> {
       ...agents.value.filter(item => item.agentId !== agentId),
       { agentId, name: saved.name, description: saved.description, status: saved.status, currentVersion: saved.currentVersion, apiFormat: String(saved.config.llm.format || ''), llmProvider: saved.config.llm.provider, llmModel: saved.config.llm.modelId },
     ]
+    await reloadAgentCatalog()
     isNewAgent.value = false
     showAgentEditor.value = false
     ElMessage.success('Agent 配置已保存')
@@ -1458,7 +1518,7 @@ onBeforeUnmount(() => {
       <div class="workspace-grid" :class="{ 'context-collapsed': contextCollapsed }">
         <section class="chat-card">
           <ChatMessages :messages="currentMessages" :loading="loadingConversation" :current-user="currentUser" :streaming="selectedConversationStreaming" @suggest="message = $event" @download="downloadFile" />
-          <MessageComposer :model-value="message" :endpoint-url="activeEndpointUrl" :endpoint-label="activeEndpointLabel" :selected-agent-id="selectedAgentId" :loading="selectedConversationStreaming" :pending-files="pendingFiles" @update:model-value="message = $event" @files-change="handleFilesChange" @retry-file="retryPendingFile" @send="send" @stop="stopStreaming" />
+          <MessageComposer :model-value="message" :endpoint-url="activeEndpointUrl" :endpoint-label="activeEndpointLabel" :selected-agent-id="selectedAgentId" :loading="selectedConversationStreaming" :pending-files="pendingFiles" :available-models="availableModels" :selected-model-key="selectedModelKey" :model-scope="modelScope" @update:model-value="message = $event" @update:selected-model-key="updateSelectedModelKey" @update:model-scope="updateModelScope" @files-change="handleFilesChange" @retry-file="retryPendingFile" @send="send" @stop="stopStreaming" />
         </section>
         <aside class="context-panel">
           <div class="context-panel-head"><span class="context-label">INSPECTOR</span><button class="panel-collapse-btn" type="button" aria-label="收起上下文面板" title="收起" @click="toggleContext">›</button></div>
@@ -1496,7 +1556,7 @@ onBeforeUnmount(() => {
         </el-tab-pane>
         <el-tab-pane label="LLM 配置" name="llm">
           <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">MODEL PROVIDERS</span><h3>大模型供应商</h3><p>这里维护协议、Endpoint 和密钥；具体模型 ID 属于 Agent 配置，选择供应商后只在 Agent 中填写。</p></div><div class="section-actions"><el-button @click="loadLlmProfiles">刷新</el-button><el-button type="primary" plain @click="newLlm">新增供应商</el-button></div></div>
-            <el-table :data="llmProfiles" class="capability-table" empty-text="还没有大模型供应商"><el-table-column label="名称" min-width="140"><template #default="scope"><strong>{{ scope.row.name }}</strong><small class="table-subtext">{{ scope.row.id }}</small></template></el-table-column><el-table-column label="协议" width="160"><template #default="scope"><el-tag size="small" round>{{ scope.row.format }}</el-tag></template></el-table-column><el-table-column label="模型归属" min-width="120"><template #default>由 Agent 指定</template></el-table-column><el-table-column label="Endpoint" min-width="200" show-overflow-tooltip><template #default="scope">{{ scope.row.endpoint }}</template></el-table-column><el-table-column label="API Key" min-width="120"><template #default="scope">{{ scope.row.apiKey ? '••••••••' : '未配置' }}</template></el-table-column><el-table-column label="操作" width="160" fixed="right"><template #default="scope"><el-button link type="primary" @click="editLlm(scope.$index)">编辑</el-button><el-button link @click="selectLlm(scope.$index); testLlm(); showLlmEditor = true">测试</el-button><el-button link type="danger" @click="selectLlm(scope.$index); deleteLlm()">删除</el-button></template></el-table-column></el-table>
+            <el-table :data="llmProfiles" class="capability-table" empty-text="还没有大模型供应商"><el-table-column label="名称" min-width="140"><template #default="scope"><strong>{{ scope.row.name }}</strong><small class="table-subtext">{{ scope.row.id }}</small></template></el-table-column><el-table-column label="协议" width="160"><template #default="scope"><el-tag size="small" round>{{ scope.row.format }}</el-tag></template></el-table-column><el-table-column label="可切换模型" min-width="120"><template #default="scope">{{ scope.row.modelIds?.length || 0 }} 个</template></el-table-column><el-table-column label="Endpoint" min-width="200" show-overflow-tooltip><template #default="scope">{{ scope.row.endpoint }}</template></el-table-column><el-table-column label="API Key" min-width="120"><template #default="scope">{{ scope.row.apiKey ? '••••••••' : '未配置' }}</template></el-table-column><el-table-column label="操作" width="160" fixed="right"><template #default="scope"><el-button link type="primary" @click="editLlm(scope.$index)">编辑</el-button><el-button link @click="selectLlm(scope.$index); testLlm(); showLlmEditor = true">测试</el-button><el-button link type="danger" @click="selectLlm(scope.$index); deleteLlm()">删除</el-button></template></el-table-column></el-table>
           </section>
         </el-tab-pane>
         <el-tab-pane label="MCP 配置" name="mcp">
@@ -1573,7 +1633,7 @@ onBeforeUnmount(() => {
   </el-dialog>
 
   <el-dialog v-model="showLlmEditor" class="editor-dialog" modal-class="editor-overlay" :title="isNewLlm ? '新增大模型配置' : '编辑大模型配置'" width="min(720px, calc(100vw - 32px))" append-to-body destroy-on-close>
-    <el-form label-position="top" class="agent-form-grid"><el-form-item label="配置 ID"><el-input v-model="llmDraft.id" :disabled="!isNewLlm" placeholder="例如 openai-prod" /><small class="form-help">Agent 通过这个 ID 绑定供应商配置。</small></el-form-item><el-form-item label="显示名称"><el-input v-model="llmDraft.name" placeholder="例如 OpenAI 生产环境" /></el-form-item><el-form-item label="API 格式"><el-select v-model="llmDraft.format" class="full-width"><el-option label="OpenAI Chat Completions" value="OpenAIChatCompletions" /><el-option label="OpenAI Responses" value="OpenAIResponses" /><el-option label="Anthropic Messages" value="AnthropicMessages" /></el-select></el-form-item><el-form-item label="Temperature"><el-input-number v-model="llmDraft.temperature" :min="0" :max="2" :step="0.1" :precision="1" controls-position="right" /></el-form-item><el-form-item label="Endpoint"><el-input v-model="llmDraft.endpoint" placeholder="https://api.openai.com/v1" /></el-form-item><el-form-item label="API Key" class="span-two"><el-input v-model="llmDraft.apiKey" type="text" placeholder="请输入 API Key" /><small class="form-help">模型 ID 不在供应商配置中维护，由 Agent 选择供应商后填写。</small></el-form-item><el-alert v-if="llmResult" class="span-two" :title="`测试结果：${llmResult.success ? '连接和权限通过' : '连接失败'}${llmResult.statusCode ? ` · HTTP ${llmResult.statusCode}` : ''}`" :description="llmResult.error || `模型 ${llmResult.modelId || '由 Agent 指定'} · 延迟 ${llmResult.latencyMs}ms`" :type="llmResult.success ? 'success' : 'warning'" :closable="false" /></el-form>
+    <el-form label-position="top" class="agent-form-grid"><el-form-item label="配置 ID"><el-input v-model="llmDraft.id" :disabled="!isNewLlm" placeholder="例如 openai-prod" /><small class="form-help">Agent 通过这个 ID 绑定供应商配置。</small></el-form-item><el-form-item label="显示名称"><el-input v-model="llmDraft.name" placeholder="例如 OpenAI 生产环境" /></el-form-item><el-form-item label="API 格式"><el-select v-model="llmDraft.format" class="full-width"><el-option label="OpenAI Chat Completions" value="OpenAIChatCompletions" /><el-option label="OpenAI Responses" value="OpenAIResponses" /><el-option label="Anthropic Messages" value="AnthropicMessages" /></el-select></el-form-item><el-form-item label="Temperature"><el-input-number v-model="llmDraft.temperature" :min="0" :max="2" :step="0.1" :precision="1" controls-position="right" /></el-form-item><el-form-item label="Endpoint"><el-input v-model="llmDraft.endpoint" placeholder="https://api.openai.com/v1" /></el-form-item><el-form-item label="Provider 状态"><el-switch v-model="llmDraft.isEnabled" active-text="可用" inactive-text="停用" /></el-form-item><el-form-item label="可切换模型 ID" class="span-two"><el-select v-model="llmDraft.modelIds" class="full-width" multiple filterable allow-create default-first-option placeholder="输入模型 ID 后按 Enter"><el-option v-for="modelId in llmDraft.modelIds || []" :key="modelId" :label="modelId" :value="modelId" /></el-select><small class="form-help">只有这里发布的模型可用于会话或单次消息切换；Agent 默认模型保持向后兼容。</small></el-form-item><el-form-item label="API Key" class="span-two"><el-input v-model="llmDraft.apiKey" type="password" show-password placeholder="请输入 API Key" /><small class="form-help">密钥仅提交到服务端，接口返回值始终脱敏。</small></el-form-item><el-alert v-if="llmResult" class="span-two" :title="`测试结果：${llmResult.success ? '连接和权限通过' : '连接失败'}${llmResult.statusCode ? ` · HTTP ${llmResult.statusCode}` : ''}`" :description="llmResult.error || `模型 ${llmResult.modelId || '由 Agent 指定'} · 延迟 ${llmResult.latencyMs}ms`" :type="llmResult.success ? 'success' : 'warning'" :closable="false" /></el-form>
     <template #footer><el-button @click="showLlmEditor = false">取消</el-button><el-button :loading="testingLlm" @click="testLlm">测试连接与权限</el-button><el-button type="primary" :loading="savingLlm" :disabled="!llmDraft.id" @click="saveLlm">保存大模型配置</el-button></template>
   </el-dialog>
 

@@ -2,6 +2,7 @@ using System.Text;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
+using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Requests;
@@ -21,7 +22,11 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
 
     private readonly ConversationContext _conversation;
     private readonly string _agentId;
+    private readonly LlmModelSelectionSource _modelSource;
+    private readonly string _modelProvider;
     private readonly string _modelId;
+    private readonly bool _updateModelOverride;
+    private readonly LlmModelSelection? _conversationModelOverride;
     private readonly string _input;
     private readonly IReadOnlyList<FileAsset> _files;
     private readonly FileAssetExecutionContext _fileExecution;
@@ -45,7 +50,11 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
     internal PlatformChatHistory(
         ConversationContext conversation,
         string agentId,
+        LlmModelSelectionSource modelSource,
+        string modelProvider,
         string modelId,
+        bool updateModelOverride,
+        LlmModelSelection? conversationModelOverride,
         string input,
         IReadOnlyList<FileAsset> files,
         FileAssetExecutionContext fileExecution,
@@ -56,7 +65,11 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
     {
         _conversation = conversation;
         _agentId = agentId;
+        _modelSource = modelSource;
+        _modelProvider = modelProvider;
         _modelId = modelId;
+        _updateModelOverride = updateModelOverride;
+        _conversationModelOverride = conversationModelOverride;
         _input = input;
         _files = files;
         _fileExecution = fileExecution;
@@ -139,6 +152,8 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
                 conversation,
                 _agentId,
                 _input,
+                _updateModelOverride,
+                _conversationModelOverride,
                 cancellationToken).ConfigureAwait(false);
             _currentVersion = loaded.CurrentVersion;
             _nextSequence = loaded.NextSequence;
@@ -426,8 +441,20 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
             _nextSequence++,
             "user",
             _input,
-            metadata: AgentMessageAdapter.BuildFileMetadata(_files),
+            metadata: BuildUserMetadata(),
             fileIds: _files.Select(item => item.FileId).ToArray()));
+    }
+
+    private IReadOnlyDictionary<string, string> BuildUserMetadata()
+    {
+        IReadOnlyDictionary<string, string>? fileMetadata = AgentMessageAdapter.BuildFileMetadata(_files);
+        Dictionary<string, string> metadata = fileMetadata == null
+            ? []
+            : new Dictionary<string, string>(fileMetadata, StringComparer.Ordinal);
+        metadata["ModelProvider"] = _modelProvider;
+        metadata["ModelId"] = _modelId;
+        metadata["ModelSelectionSource"] = _modelSource.ToString();
+        return metadata;
     }
 
     private void AssociateCreatedFiles(List<ConversationMessage> responses)

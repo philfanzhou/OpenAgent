@@ -1,3 +1,5 @@
+using OpenAgent.Contracts.Configuration;
+
 namespace OpenAgent.Contracts.Conversation;
 
 public sealed class ConversationRecord
@@ -7,6 +9,7 @@ public sealed class ConversationRecord
     public required string UserId { get; init; }
     public ConversationType Type { get; init; } = ConversationType.User;
     public string? AgentId { get; set; }
+    public LlmModelSelection? ModelOverride { get; set; }
     public string? TraceId { get; set; }
     public int Version { get; set; } = 1;
     public ConversationStatus Status { get; set; } = ConversationStatus.Running;

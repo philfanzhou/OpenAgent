@@ -1,4 +1,5 @@
 using OpenAgent.Contracts.Conversation;
+using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
 
@@ -11,11 +12,22 @@ internal sealed class ConversationAgentResolver(IConversationStore store)
         IAgentUserContext user,
         CancellationToken cancellationToken)
     {
-        if (!string.IsNullOrWhiteSpace(request.AgentId)
-            || string.IsNullOrWhiteSpace(request.ConversationId)
+        ConversationResolution resolution = await ResolveContextAsync(
+            request,
+            user,
+            cancellationToken).ConfigureAwait(false);
+        return resolution.AgentId;
+    }
+
+    internal async Task<ConversationResolution> ResolveContextAsync(
+        AgentRequest request,
+        IAgentUserContext user,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.ConversationId)
             || string.IsNullOrWhiteSpace(user.TenantId))
         {
-            return request.AgentId;
+            return new ConversationResolution(request.AgentId, null);
         }
 
         ConversationRecord? record = await store.GetRecordAsync(
@@ -24,10 +36,11 @@ internal sealed class ConversationAgentResolver(IConversationStore store)
             cancellationToken).ConfigureAwait(false);
         if (record == null)
         {
-            return null;
+            return new ConversationResolution(request.AgentId, null);
         }
 
         if (record.IsDeletedByUser
+            || record.Type != request.ConversationType
             || !string.Equals(record.UserId, user.UserId, StringComparison.Ordinal))
         {
             throw new AgentException(
@@ -35,6 +48,12 @@ internal sealed class ConversationAgentResolver(IConversationStore store)
                 "Conversation does not belong to the current user");
         }
 
-        return record.AgentId;
+        return new ConversationResolution(
+            string.IsNullOrWhiteSpace(request.AgentId) ? record.AgentId : request.AgentId,
+            record.ModelOverride);
     }
 }
+
+internal sealed record ConversationResolution(
+    string? AgentId,
+    LlmModelSelection? ModelOverride);

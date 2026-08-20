@@ -1,4 +1,5 @@
 using OpenAgent.Contracts.Configuration;
+using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Models;
 using OpenAgent.Core.Security;
@@ -85,22 +86,32 @@ public class AgentAuthorizationGateTests
     }
 
     [Fact]
-    public async Task ResolveAuthorizedModelAsync_DeniedAgent_Throws()
+    public async Task ResolveAuthorizedModelAsync_DeniedModel_ThrowsPermissionDenied()
     {
+        var registry = new LlmRegistry();
+        registry.Register(new LlmProviderProfile
+        {
+            TenantId = "t1",
+            Id = "azure",
+            Endpoint = "https://llm.example.test",
+            ApiKey = "secret"
+        });
         var gate = new AgentAuthorizationGate(
             new DenyAllAuthorizationService(),
-            new LlmRegistry());
+            registry);
 
-        await Assert.ThrowsAsync<AgentException>(
+        AgentException exception = await Assert.ThrowsAsync<AgentException>(
             () => gate.ResolveAuthorizedModelAsync(
                 "a1",
                 new LlmConfig { Provider = "azure", ModelId = "gpt-4o" },
                 Context(),
                 default));
+
+        Assert.Equal(AgentErrorCode.PermissionDenied, exception.ErrorCode);
     }
 
     [Fact]
-    public async Task ResolveAuthorizedModelAsync_EmptyEndpoint_ThrowsInvalidOperation()
+    public async Task ResolveAuthorizedModelAsync_EmptyEndpoint_ThrowsDependencyUnavailable()
     {
         var registry = new LlmRegistry();
         registry.Register(new LlmProviderProfile
@@ -115,12 +126,14 @@ public class AgentAuthorizationGateTests
             new AllowAllAgentAuthorizationService(),
             registry);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(
+        AgentException exception = await Assert.ThrowsAsync<AgentException>(
             () => gate.ResolveAuthorizedModelAsync(
                 "a1",
                 new LlmConfig { Provider = "bad", ModelId = "gpt-4o" },
                 Context(),
                 default));
+
+        Assert.Equal(AgentErrorCode.DependencyUnavailable, exception.ErrorCode);
     }
 
     [Fact]
@@ -131,7 +144,8 @@ public class AgentAuthorizationGateTests
         {
             TenantId = "t2",
             Id = "other-tenant",
-            Endpoint = "https://llm.example.com"
+            Endpoint = "https://llm.example.com",
+            ApiKey = "secret"
         });
         var gate = new AgentAuthorizationGate(
             new AllowAllAgentAuthorizationService(),

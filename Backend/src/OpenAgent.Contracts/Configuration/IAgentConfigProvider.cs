@@ -28,4 +28,5 @@ public sealed class AgentSummary
     public string ApiFormat { get; init; } = string.Empty;
     public string LlmProvider { get; init; } = string.Empty;
     public string LlmModel { get; init; } = string.Empty;
+    public IReadOnlyList<LlmModelOption> AvailableModels { get; init; } = [];
 }

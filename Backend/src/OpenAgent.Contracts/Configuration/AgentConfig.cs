@@ -40,6 +40,8 @@ public class LlmProviderProfile
     public ApiFormat Format { get; set; } = ApiFormat.OpenAIChatCompletions;
     // Kept for deserializing old provider profiles; new profiles select a model per Agent.
     public string? ModelId { get; set; }
+    public List<string> ModelIds { get; set; } = new();
+    public bool IsEnabled { get; set; } = true;
     public string Endpoint { get; set; } = string.Empty;
     public string ApiKey { get; set; } = string.Empty;
     public double Temperature { get; set; } = 0.7;
