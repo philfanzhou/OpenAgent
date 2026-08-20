@@ -5,12 +5,15 @@ using Microsoft.Extensions.Configuration;
 using OpenAgent.Contracts.Configuration;
 using OpenAI;
 using OpenAI.Responses;
+using OpenAgent.Contracts.Conversation;
 
 namespace OpenAgent.Core.Runtime.Agent;
 
 internal interface IAgentChatClientFactory
 {
     IChatClient Create(LlmConfig llm);
+
+    IChatClient CreateSummarizationClient(LlmConfig llm, ContextPolicy? policy);
 }
 
 internal sealed class AgentChatClientFactory : IAgentChatClientFactory
@@ -37,6 +40,26 @@ internal sealed class AgentChatClientFactory : IAgentChatClientFactory
             ApiFormat.AnthropicMessages => CreateAnthropic(llm),
             _ => throw new NotSupportedException($"Unsupported API format: {llm.Format}")
         };
+    }
+
+    public IChatClient CreateSummarizationClient(LlmConfig llm, ContextPolicy? policy)
+    {
+        string? summaryModel = policy?.SummarizeOptions?.SummaryModel;
+        if (string.IsNullOrWhiteSpace(summaryModel))
+        {
+            return Create(llm);
+        }
+
+        return Create(new LlmConfig
+        {
+            TenantId = llm.TenantId,
+            Provider = llm.Provider,
+            Format = llm.Format,
+            ModelId = summaryModel,
+            ApiKey = llm.ApiKey,
+            Endpoint = llm.Endpoint,
+            Temperature = llm.Temperature
+        });
     }
 
     private IChatClient CreateOpenAIChatCompletions(LlmConfig llm)

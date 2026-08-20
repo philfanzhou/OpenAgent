@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { renderMarkdown } from './markdown'
-import { buildDisplayMessages, fileLabel, formatFileSize, mergeAssistantSnapshot, parseToolArguments, toolPresentation } from './messagePresentation'
-import type { ConversationMessage } from './types'
+import { buildConversationTimeline, buildDisplayMessages, fileLabel, formatFileSize, mergeAssistantSnapshot, parseToolArguments, toolPresentation } from './messagePresentation'
+import type { ContextSummary, ConversationMessage } from './types'
 
 describe('message presentation', () => {
   it('renders common markdown while escaping raw HTML', () => {
@@ -75,6 +75,12 @@ describe('message presentation', () => {
     expect(result[1]?.toolActivities).toEqual([
       { name: 'load_skill', callId: 'call-1', arguments: { name: 'reports' }, result: 'Skill loaded' },
       { name: 'write_file', callId: 'call-2', arguments: { path: 'report.md' }, result: '{"created":true}' },
+    ])
+    expect(result[1]?.processActivities).toEqual([
+      { kind: 'reasoning', content: 'Find the source.' },
+      { kind: 'tool', tool: { name: 'load_skill', callId: 'call-1', arguments: { name: 'reports' }, result: 'Skill loaded' } },
+      { kind: 'reasoning', content: 'Write the report.' },
+      { kind: 'tool', tool: { name: 'write_file', callId: 'call-2', arguments: { path: 'report.md' }, result: '{"created":true}' } },
     ])
 
     const streamed: ConversationMessage = {
@@ -170,5 +176,26 @@ describe('message presentation', () => {
       displayName: 'local_tools / get_weather',
     })
     expect(toolPresentation('load_skill')).toEqual({ kind: 'SKILL', displayName: '加载 Skill 指令' })
+  })
+
+  it('places a compaction summary at its source boundary instead of fixing it at the end', () => {
+    const messages: ConversationMessage[] = [
+      { messageId: 'user-1', sequence: 1, role: 'user', content: 'Before', timestamp: '2026-08-20T01:00:00Z' },
+      { messageId: 'assistant-1', sequence: 2, role: 'assistant', content: 'Answer', timestamp: '2026-08-20T01:00:01Z' },
+      { messageId: 'user-2', sequence: 3, role: 'user', content: 'After', timestamp: '2026-08-20T01:05:00Z' },
+      { messageId: 'assistant-2', sequence: 4, role: 'assistant', content: 'Later answer', timestamp: '2026-08-20T01:05:01Z' },
+    ]
+    const summary: ContextSummary = {
+      compressionId: 'compression-1', strategy: 'summarization', trigger: 'Manual', status: 'Succeeded',
+      summary: 'Compact context', lastCompressedAt: '2026-08-20T01:02:00Z', compressedMessageCount: 2,
+      originalStartSequence: 1, originalEndSequence: 2, originalTokenCount: 500, tokenCount: 200,
+      originalHistoryRestored: false, sourceEndSequence: 2,
+    }
+
+    expect(buildConversationTimeline(messages, [summary]).map(item => item.kind === 'message'
+      ? item.message.messageId
+      : item.summary.compressionId)).toEqual([
+      'user-1', 'assistant-1', 'compression-1', 'user-2', 'assistant-2',
+    ])
   })
 })

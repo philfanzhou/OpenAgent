@@ -7,7 +7,7 @@ import { onBeforeUnmount, ref, watch, type Ref } from 'vue'
  * Widths are written to CSS variables on :root so the layout cascades;
  * the collapsed state is exposed as refs for the host to bind classes.
  */
-const STORAGE_KEY = 'openagent.ui.panelLayout.v2'
+const STORAGE_KEY = 'openagent.ui.panelLayout.v3'
 
 interface PanelLayoutState {
   sidebarWidth: number
@@ -17,14 +17,14 @@ interface PanelLayoutState {
 }
 
 const DEFAULTS: PanelLayoutState = {
-  sidebarWidth: 420,
+  sidebarWidth: 240,
   sidebarCollapsed: false,
   contextWidth: 244,
   contextCollapsed: false,
 }
 
-const MIN_SIDEBAR = 220
-const MAX_SIDEBAR = 420
+const MIN_SIDEBAR = 210
+const MAX_SIDEBAR = 380
 const MIN_CONTEXT = 200
 const MAX_CONTEXT = 360
 

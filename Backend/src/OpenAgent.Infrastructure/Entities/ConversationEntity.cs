@@ -16,4 +16,5 @@ internal sealed class ConversationEntity
     public string? Title { get; set; }
     public bool IsDeletedByUser { get; set; }
     public DateTimeOffset? DeletedAt { get; set; }
+    public string ContextSummariesJson { get; set; } = "[]";
 }
