@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Core.Runtime.Agent;
 using OpenAgent.Engine.Host.Middleware;
@@ -7,6 +8,9 @@ namespace OpenAgent.Engine.Host.Extensions;
 
 internal static class AgentChatEndpointExtensions
 {
+    // Set to false to restore stateless intent recognition without changing the Provider contract.
+    private const bool PersistIntentConversations = true;
+
     internal static void MapAgentChat(this RouteGroupBuilder group)
     {
         group.MapPost("/chat", ExecuteAsync)
@@ -51,7 +55,8 @@ internal static class AgentChatEndpointExtensions
         AgentRequest executionRequest = AgentEndpointRequestMapper.CreateAgentRequest(
             request,
             context,
-            createConversation: false);
+            createConversation: PersistIntentConversations,
+            conversationTypeOverride: ConversationType.Internal);
         AgentResponse response = await executor.ExecuteAsync(
             executionRequest,
             context.GetAgentRequest().User,

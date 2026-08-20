@@ -109,4 +109,20 @@ public class EndpointExtensionsTests
         Assert.Null(agentRequest.ConversationId);
     }
 
+    [Fact]
+    public void CreateAgentRequest_IntentPersistence_CreatesInternalConversation()
+    {
+        var context = CreateContext();
+        var request = new ChatRequest { Message = "select an agent" };
+
+        var agentRequest = AgentEndpointRequestMapper.CreateAgentRequest(
+            request,
+            context,
+            createConversation: true,
+            conversationTypeOverride: ConversationType.Internal);
+
+        Assert.False(string.IsNullOrWhiteSpace(agentRequest.ConversationId));
+        Assert.Equal(ConversationType.Internal, agentRequest.ConversationType);
+    }
+
 }
