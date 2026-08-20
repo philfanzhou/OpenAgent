@@ -26,13 +26,16 @@ public class CapabilityToolFactoryTests
             => Task.FromResult<IReadOnlyList<CapabilityDefinition>>(_definitions);
     }
 
-    private static CapabilityDefinition Tool(string name) => new(
+    private static CapabilityDefinition Tool(
+        string name,
+        bool requiresHumanApproval = false) => new(
         Name: name,
         Description: $"{name} tool",
         ParametersJsonSchema: "{\"type\":\"object\"}",
         ResourceType: AgentResourceType.Tool,
         ResourceId: name,
-        Invoke: (_, _) => Task.FromResult("ok"));
+        Invoke: (_, _) => Task.FromResult("ok"),
+        RequiresHumanApproval: requiresHumanApproval);
 
     private static AgentUserContext Context() => new() { UserId = "u1" };
 
@@ -114,6 +117,28 @@ public class CapabilityToolFactoryTests
         var tools = await factory.CreateAsync("a1", new AgentConfig(), Context(), default);
 
         Assert.Empty(tools);
+    }
+
+    [Fact]
+    public async Task CreateAsync_HighRiskFunction_RequiresApprovalAndLowRiskIsUnchanged()
+    {
+        var source = new FakeCapabilitySource(
+        [
+            Tool("dangerous_function", requiresHumanApproval: true),
+            Tool("ordinary_function")
+        ]);
+        var factory = Factory(source);
+
+        IReadOnlyList<AITool> tools = await factory.CreateAsync(
+            "a1",
+            new AgentConfig(),
+            Context(),
+            default);
+
+        Assert.IsType<ApprovalRequiredAIFunction>(
+            Assert.Single(tools, tool => tool.Name == "dangerous_function"));
+        Assert.IsNotType<ApprovalRequiredAIFunction>(
+            Assert.Single(tools, tool => tool.Name == "ordinary_function"));
     }
 
     private class DenyAuthorizationService : IAgentAuthorizationService

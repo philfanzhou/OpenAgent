@@ -13,7 +13,7 @@ namespace OpenAgent.Hosting.Security;
 /// <summary>
 /// Development-only basic authentication boundary. Credentials are validated
 /// against <see cref="DevelopmentCredentials"/> (admin/admin, test/test).
-/// Authorization is a separate future concern.
+/// The development admin identity receives the explicit approval role.
 /// </summary>
 internal sealed class BasicAuthenticationHandler(
     IOptionsMonitor<AuthenticationSchemeOptions> options,
@@ -105,6 +105,10 @@ internal sealed class BasicAuthenticationHandler(
         {
             claims.Add(new Claim("tenant_id", tenantId));
             claims.Add(new Claim("tid", tenantId));
+        }
+        if (string.Equals(userId, "admin", StringComparison.Ordinal))
+        {
+            claims.Add(new Claim(ClaimTypes.Role, "Admin"));
         }
 
         var identity = new ClaimsIdentity(claims, SchemeName);

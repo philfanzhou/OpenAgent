@@ -42,7 +42,9 @@ internal sealed class ConversationHistoryFactory
         string modelId,
         AgentRequest request,
         IAgentUserContext user,
-        IReadOnlyList<FileAssetContent> files)
+        IReadOnlyList<FileAssetContent> files,
+        bool recordUserInput = true,
+        bool allowAwaitingApproval = false)
     {
         ConversationContext context = new(
             request.ConversationId,
@@ -61,7 +63,9 @@ internal sealed class ConversationHistoryFactory
             _conversationLock,
             _store,
             _logger,
-            _fileService);
+            _fileService,
+            recordUserInput,
+            allowAwaitingApproval);
     }
 
     internal async Task EnsureConversationAsync(

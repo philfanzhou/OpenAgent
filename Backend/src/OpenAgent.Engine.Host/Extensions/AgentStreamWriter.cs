@@ -48,6 +48,7 @@ internal static class AgentStreamWriter
             {
                 AgentStreamEventType.Reasoning => "reasoning",
                 AgentStreamEventType.ToolCall => "tool_call",
+                AgentStreamEventType.Approval => "approval",
                 _ => "content"
             };
             string data = JsonSerializer.Serialize(new
@@ -55,7 +56,8 @@ internal static class AgentStreamWriter
                 content = streamEvent.Content,
                 toolName = streamEvent.ToolName,
                 toolCallId = streamEvent.ToolCallId,
-                toolArguments = streamEvent.ToolArguments
+                toolArguments = streamEvent.ToolArguments,
+                approval = streamEvent.Approval
             }, JsonOptions);
             await heartbeat.WriteAsync(
                 token => WriteSseEventAsync(context, eventName, data, token),

@@ -2,6 +2,8 @@ using System.Net;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.Logging.Abstractions;
+using OpenAgent.Contracts.Requests;
+using OpenAgent.Contracts.Security;
 using OpenAgent.Engine.Host.Middleware;
 using Xunit;
 
@@ -91,6 +93,21 @@ public class AgentExceptionHandlerMiddlewareTests
         context.Response.Body.Seek(0, SeekOrigin.Begin);
         var payload = await new StreamReader(context.Response.Body).ReadToEndAsync();
         Assert.Contains("ProviderRateLimited", payload);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_ExpiredApproval_ReturnsGone()
+    {
+        var context = new DefaultHttpContext();
+        context.Request.Path = "/api/v1/agent/approvals/approval-1/decision";
+        context.Response.Body = new MemoryStream();
+        var middleware = CreateMiddleware(_ => throw new AgentException(
+            AgentErrorCode.HumanApprovalTimeout,
+            "Approval expired"));
+
+        await middleware.InvokeAsync(context);
+
+        Assert.Equal(StatusCodes.Status410Gone, context.Response.StatusCode);
     }
 
     [Fact]

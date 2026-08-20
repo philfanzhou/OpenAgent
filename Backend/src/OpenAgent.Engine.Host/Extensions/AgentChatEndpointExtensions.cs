@@ -37,12 +37,16 @@ internal static class AgentChatEndpointExtensions
             executionRequest,
             context.GetAgentRequest().User,
             cancellationToken).ConfigureAwait(false);
-        return Results.Ok(new ChatResponse
+        ChatResponse chatResponse = new()
         {
             Message = response.Content,
             Usage = response.TokenUsage,
-            ModelId = response.ModelId
-        });
+            ModelId = response.ModelId,
+            Approval = response.Approval
+        };
+        return response.Approval == null
+            ? Results.Ok(chatResponse)
+            : Results.Json(chatResponse, statusCode: StatusCodes.Status202Accepted);
     }
 
     private static async Task<IResult> ExecuteIntentAsync(
@@ -59,12 +63,16 @@ internal static class AgentChatEndpointExtensions
             executionRequest,
             context.GetAgentRequest().User,
             cancellationToken).ConfigureAwait(false);
-        return Results.Ok(new ChatResponse
+        ChatResponse chatResponse = new()
         {
             Message = response.Content,
             Usage = response.TokenUsage,
-            ModelId = response.ModelId
-        });
+            ModelId = response.ModelId,
+            Approval = response.Approval
+        };
+        return response.Approval == null
+            ? Results.Ok(chatResponse)
+            : Results.Json(chatResponse, statusCode: StatusCodes.Status202Accepted);
     }
 
     private static async Task ExecuteStreamAsync(

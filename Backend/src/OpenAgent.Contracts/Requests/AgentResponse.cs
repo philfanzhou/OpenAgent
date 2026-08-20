@@ -1,3 +1,5 @@
+using OpenAgent.Contracts.Approvals;
+
 namespace OpenAgent.Contracts.Requests;
 
 public class AgentResponse
@@ -11,6 +13,7 @@ public class AgentResponse
     public bool Success { get; init; } = true;
     public AgentErrorCode? ErrorCode { get; init; }
     public string? ErrorMessage { get; init; }
+    public HumanApprovalRequest? Approval { get; init; }
 }
 
 public class Citation

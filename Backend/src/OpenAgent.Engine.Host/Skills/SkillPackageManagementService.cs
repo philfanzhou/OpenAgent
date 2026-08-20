@@ -204,7 +204,8 @@ internal sealed class SkillPackageManagementService(
             PackageFormat = "directory",
             ObjectKey = stored.ObjectKey,
             Sha256 = storedIndexHash,
-            ResourceCount = metadata.ResourceCount
+            ResourceCount = metadata.ResourceCount,
+            RequiresHumanApproval = metadata.RequiresHumanApproval
         };
         if (publishCatalog && skillCatalog != null)
         {

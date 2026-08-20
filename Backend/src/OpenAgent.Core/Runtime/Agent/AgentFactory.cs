@@ -1,5 +1,6 @@
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
 using OpenAgent.Core.Capabilities;
 using OpenAgent.Core.Capabilities.Mcp;
 using OpenAgent.Core.Capabilities.Skill;
@@ -20,6 +21,7 @@ internal sealed class AgentFactory
     private readonly McpToolFactory _mcpTools;
     private readonly AgentSkillsProviderFactory _skills;
     private readonly FileAssetExecutionContext _files;
+    private readonly ILoggerFactory _loggerFactory;
 
     public AgentFactory(
         IAgentChatClientFactory chatClients,
@@ -27,7 +29,8 @@ internal sealed class AgentFactory
         CapabilityToolFactory capabilities,
         McpToolFactory mcpTools,
         AgentSkillsProviderFactory skills,
-        FileAssetExecutionContext files)
+        FileAssetExecutionContext files,
+        ILoggerFactory loggerFactory)
     {
         _chatClients = chatClients;
         _conversations = conversations;
@@ -35,6 +38,7 @@ internal sealed class AgentFactory
         _mcpTools = mcpTools;
         _skills = skills;
         _files = files;
+        _loggerFactory = loggerFactory;
     }
 
     internal async Task<AgentExecutionScope> CreateAsync(
@@ -42,6 +46,37 @@ internal sealed class AgentFactory
         AgentRequest request,
         IAgentUserContext user,
         IReadOnlyList<FileAssetContent> files,
+        CancellationToken cancellationToken) =>
+        await CreateCoreAsync(
+            profile,
+            request,
+            user,
+            files,
+            recordUserInput: true,
+            allowAwaitingApproval: false,
+            cancellationToken).ConfigureAwait(false);
+
+    internal async Task<AgentExecutionScope> CreateForResumeAsync(
+        AgentRuntimeProfile profile,
+        AgentRequest request,
+        IAgentUserContext user,
+        CancellationToken cancellationToken) =>
+        await CreateCoreAsync(
+            profile,
+            request,
+            user,
+            [],
+            recordUserInput: false,
+            allowAwaitingApproval: true,
+            cancellationToken).ConfigureAwait(false);
+
+    private async Task<AgentExecutionScope> CreateCoreAsync(
+        AgentRuntimeProfile profile,
+        AgentRequest request,
+        IAgentUserContext user,
+        IReadOnlyList<FileAssetContent> files,
+        bool recordUserInput,
+        bool allowAwaitingApproval,
         CancellationToken cancellationToken)
     {
         IChatClient modelClient = _chatClients.Create(profile.Model);
@@ -56,8 +91,10 @@ internal sealed class AgentFactory
             profile.Model.ModelId,
             request,
             user,
-            files);
-        IReadOnlyList<AITool> tools = await _capabilities.CreateAsync(
+            files,
+            recordUserInput,
+            allowAwaitingApproval);
+        CapabilityToolRuntime capabilityRuntime = await _capabilities.CreateRuntimeAsync(
             profile.AgentId,
             profile.Config,
             user,
@@ -77,14 +114,33 @@ internal sealed class AgentFactory
                 user,
                 cancellationToken).ConfigureAwait(false);
 
-            IChatClient chatClient = new FunctionInvokingChatClient(modelClient)
+            ChatClientBuilder chatClientBuilder = new(modelClient);
+            Dictionary<string, ApprovalTarget> approvalTargets = new(StringComparer.Ordinal);
+            foreach ((string name, ApprovalTarget target) in capabilityRuntime.ApprovalTargets)
+            {
+                approvalTargets.Add(name, target);
+            }
+            foreach ((string name, ApprovalTarget target) in mcpRuntime.ApprovalTargets)
+            {
+                approvalTargets.Add(name, target);
+            }
+            bool requiresApproval = approvalTargets.Count > 0 || skillsRuntime.RequiresApproval;
+            if (requiresApproval)
+            {
+                // Builder registrations are outer-to-inner. Binding must observe
+                // the model-originated request before function invocation handles it.
+                chatClientBuilder.UseApprovalResponseBinding(_loggerFactory);
+                chatClientBuilder.UseApprovalNotRequiredFunctionBypassing(_loggerFactory);
+            }
+            chatClientBuilder.Use(innerClient => new FunctionInvokingChatClient(innerClient)
             {
                 AllowConcurrentInvocation = false,
                 IncludeDetailedErrors = false,
                 MaximumConsecutiveErrorsPerRequest = 3,
                 MaximumIterationsPerRequest = profile.Config.MaxTurns > 0 ? profile.Config.MaxTurns : 5,
                 TerminateOnUnknownCalls = true
-            };
+            });
+            IChatClient chatClient = chatClientBuilder.Build();
 
             List<AIContextProvider> providers = [];
             if (skillsRuntime.Provider != null)
@@ -109,14 +165,30 @@ internal sealed class AgentFactory
                         ? null
                         : profile.Config.Instructions,
                     Temperature = (float?)profile.Model.Temperature,
-                    Tools = tools.Concat(mcpRuntime.Tools).ToList()
+                    Tools = capabilityRuntime.Tools.Concat(mcpRuntime.Tools).ToList()
                 },
                 ChatHistoryProvider = history,
                 AIContextProviders = providers,
                 UseProvidedChatClientAsIs = true,
                 RequirePerServiceCallChatHistoryPersistence = false
             });
-            return new AgentExecutionScope(agent, history, mcpRuntime, skillsRuntime);
+            if (requiresApproval)
+            {
+                agent = new ToolApprovalAgent(agent, new ToolApprovalAgentOptions
+                {
+                    AutoApprovalRules = skillsRuntime.RequiresApproval
+                        ? [skillsRuntime.AutoApprovalRule]
+                        : null
+                });
+            }
+            return new AgentExecutionScope(
+                agent,
+                history,
+                new ApprovalTargetResolver(
+                    approvalTargets,
+                    skillsRuntime.HighRiskNames),
+                mcpRuntime,
+                skillsRuntime);
         }
         catch
         {
