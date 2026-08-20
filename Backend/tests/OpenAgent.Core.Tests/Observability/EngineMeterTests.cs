@@ -47,9 +47,6 @@ public class EngineMeterTests
         using (EngineMeter.StartAgentCall("unexpected"))
         {
         }
-        EngineMeter.RecordCompression("SUMMARIZE");
-        EngineMeter.RecordCompression("custom");
-
         Assert.Equal(1, Sum(measurements, "openagent_engine_agent_calls_total", "mode", "stream"));
         Assert.Equal(1, Sum(measurements, "openagent_engine_agent_calls_total", "mode", "sync"));
         Assert.Equal(1, Sum(measurements, "openagent_engine_executions_total", "outcome", "success"));
@@ -61,8 +58,6 @@ public class EngineMeterTests
         Assert.Equal(16, Sum(measurements, "openagent_engine_tokens_total", "type", "total"));
         Assert.Equal(3, Sum(measurements, "openagent_engine_tokens_total", "type", "cached_input"));
         Assert.Equal(2, Sum(measurements, "openagent_engine_tokens_total", "type", "reasoning"));
-        Assert.Equal(1, Sum(measurements, "openagent_engine_compressions_total", "strategy", "summarize"));
-        Assert.Equal(1, Sum(measurements, "openagent_engine_compressions_total", "strategy", "other"));
     }
 
     private static long Sum(

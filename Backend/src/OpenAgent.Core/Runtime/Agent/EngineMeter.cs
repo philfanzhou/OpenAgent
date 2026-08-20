@@ -17,8 +17,6 @@ internal static class EngineMeter
         "openagent_engine_capability_calls_total");
     private static readonly Counter<long> TokensTotal = Meter.CreateCounter<long>(
         "openagent_engine_tokens_total");
-    private static readonly Counter<long> CompressionsTotal = Meter.CreateCounter<long>(
-        "openagent_engine_compressions_total");
 
     internal static EngineExecutionMeasurement StartAgentCall(string mode)
     {
@@ -32,14 +30,6 @@ internal static class EngineMeter
         CapabilityCallsTotal.Add(1, new TagList
         {
             { "kind", IsSkillCall(name) ? "skill" : "tool" }
-        });
-    }
-
-    internal static void RecordCompression(string strategy)
-    {
-        CompressionsTotal.Add(1, new TagList
-        {
-            { "strategy", NormalizeCompressionStrategy(strategy) }
         });
     }
 
@@ -86,14 +76,6 @@ internal static class EngineMeter
     {
         "stream" => "stream",
         _ => "sync"
-    };
-
-    private static string NormalizeCompressionStrategy(string? value) => value?.Trim().ToLowerInvariant() switch
-    {
-        "summarize" => "summarize",
-        "sliding_window" => "sliding_window",
-        "truncation" => "truncation",
-        _ => "other"
     };
 
     internal sealed class EngineExecutionMeasurement(string mode) : IDisposable
