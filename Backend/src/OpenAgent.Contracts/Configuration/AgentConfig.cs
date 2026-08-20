@@ -30,6 +30,11 @@ public class LlmConfig
     public string ApiKey { get; set; } = string.Empty;
     public string Endpoint { get; set; } = string.Empty;
     public double Temperature { get; set; } = 0.7;
+    public int? ContextWindowTokens { get; set; }
+    public int? MaxOutputTokens { get; set; }
+
+    [JsonIgnore]
+    public LlmTokenCapabilities TokenCapabilities { get; set; } = new();
 }
 
 public class LlmProviderProfile
@@ -43,6 +48,16 @@ public class LlmProviderProfile
     public string Endpoint { get; set; } = string.Empty;
     public string ApiKey { get; set; } = string.Empty;
     public double Temperature { get; set; } = 0.7;
+    public int? ContextWindowTokens { get; set; }
+    public int? MaxOutputTokens { get; set; }
+    public bool SupportsMaxOutputTokens { get; set; } = true;
+}
+
+public sealed class LlmTokenCapabilities
+{
+    public int? ContextWindowTokens { get; init; }
+    public int? MaxOutputTokens { get; init; }
+    public bool SupportsMaxOutputTokens { get; init; } = true;
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter))]

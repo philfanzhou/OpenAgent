@@ -1,5 +1,6 @@
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Conversation;
+using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Security;
 
@@ -74,8 +75,83 @@ internal sealed class AgentRuntimeResolver : IAgentRuntimeResolver
                 $"MaxTurns cannot be negative for agent '{agentId}'.");
         }
 
+        ValidateTokenLimits(agentId, config.Llm, model);
         ValidateContextPolicy(agentId, config.ContextPolicy);
     }
+
+    private static void ValidateTokenLimits(
+        string agentId,
+        LlmConfig configuredModel,
+        LlmConfig model)
+    {
+        LlmTokenCapabilities capabilities = model.TokenCapabilities;
+        EnsurePositive(agentId, "model context window", capabilities.ContextWindowTokens);
+        EnsurePositive(agentId, "model maximum output", capabilities.MaxOutputTokens);
+        EnsurePositive(agentId, "Agent context window", configuredModel.ContextWindowTokens);
+        EnsurePositive(agentId, "Agent maximum output", configuredModel.MaxOutputTokens);
+
+        if (configuredModel.ContextWindowTokens.HasValue
+            && capabilities.ContextWindowTokens.HasValue
+            && configuredModel.ContextWindowTokens.Value > capabilities.ContextWindowTokens.Value)
+        {
+            throw ConfigurationError(
+                agentId,
+                $"Agent context window {configuredModel.ContextWindowTokens} exceeds model capability {capabilities.ContextWindowTokens}.");
+        }
+        if (configuredModel.MaxOutputTokens.HasValue
+            && capabilities.MaxOutputTokens.HasValue
+            && configuredModel.MaxOutputTokens.Value > capabilities.MaxOutputTokens.Value)
+        {
+            throw ConfigurationError(
+                agentId,
+                $"Agent maximum output {configuredModel.MaxOutputTokens} exceeds model capability {capabilities.MaxOutputTokens}.");
+        }
+        if (configuredModel.MaxOutputTokens.HasValue
+            && !capabilities.SupportsMaxOutputTokens)
+        {
+            throw ConfigurationError(
+                agentId,
+                "The selected provider does not support the max output tokens parameter configured by the Agent.");
+        }
+
+        EnsureOutputFitsContext(
+            agentId,
+            capabilities.ContextWindowTokens,
+            capabilities.MaxOutputTokens,
+            "Model");
+        EnsureOutputFitsContext(
+            agentId,
+            model.ContextWindowTokens,
+            model.MaxOutputTokens,
+            "Effective Agent");
+    }
+
+    private static void EnsurePositive(string agentId, string name, int? value)
+    {
+        if (value.HasValue && value.Value <= 0)
+        {
+            throw ConfigurationError(agentId, $"The {name} token value must be positive.");
+        }
+    }
+
+    private static void EnsureOutputFitsContext(
+        string agentId,
+        int? contextWindowTokens,
+        int? maxOutputTokens,
+        string source)
+    {
+        if (contextWindowTokens.HasValue
+            && maxOutputTokens.HasValue
+            && maxOutputTokens.Value >= contextWindowTokens.Value)
+        {
+            throw ConfigurationError(
+                agentId,
+                $"{source} maximum output tokens must be less than its context window.");
+        }
+    }
+
+    private static AgentException ConfigurationError(string agentId, string message) =>
+        new(AgentErrorCode.ConfigurationError, $"Invalid LLM token configuration for agent '{agentId}': {message}");
 
     private static void ValidateSkillTenant(
         string agentId,

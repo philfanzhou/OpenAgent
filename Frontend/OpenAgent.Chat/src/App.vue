@@ -245,6 +245,9 @@ function createDefaultLlm(): LlmProviderProfile {
     endpoint: 'https://api.openai.com/v1',
     apiKey: '',
     temperature: 0.7,
+    contextWindowTokens: null,
+    maxOutputTokens: null,
+    supportsMaxOutputTokens: true,
   }
 }
 
@@ -525,6 +528,8 @@ async function saveLlm(): Promise<void> {
   const id = profile.id.trim()
   if (!id || !/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(id)) return notifyError(new Error('LLM ID 只能使用字母、数字、点、下划线或短横线'))
   if (!profile.name.trim() || !profile.endpoint.trim()) return notifyError(new Error('请填写名称和 Endpoint'))
+  const tokenLimitError = validateTokenLimits(profile.contextWindowTokens, profile.maxOutputTokens)
+  if (tokenLimitError) return notifyError(new Error(tokenLimitError))
   profile.id = id
   savingLlm.value = true
   try {
@@ -540,6 +545,18 @@ async function saveLlm(): Promise<void> {
   } finally {
     savingLlm.value = false
   }
+}
+
+function validateTokenLimits(
+  contextWindowTokens?: number | null,
+  maxOutputTokens?: number | null,
+): string | null {
+  if (contextWindowTokens != null && contextWindowTokens <= 0) return '上下文窗口 Token 必须为正整数'
+  if (maxOutputTokens != null && maxOutputTokens <= 0) return '最大输出 Token 必须为正整数'
+  if (contextWindowTokens != null && maxOutputTokens != null && maxOutputTokens >= contextWindowTokens) {
+    return '最大输出 Token 必须小于上下文窗口'
+  }
+  return null
 }
 
 async function testLlm(): Promise<void> {
@@ -1295,6 +1312,8 @@ function createDefaultAgent(agentId: string, name: string): AgentConfigEntity {
         apiKey: '',
         endpoint: '',
         temperature: 0.7,
+        contextWindowTokens: null,
+        maxOutputTokens: null,
       },
       mcp: { servers: [] },
       rag: { enabled: false, enabledRagInstanceIds: [], instances: [] },
@@ -1326,6 +1345,14 @@ async function saveConfig(): Promise<void> {
   }
   if (!config.value.name.trim()) {
     notifyError(new Error('请输入 Agent 名称'))
+    return
+  }
+  const tokenLimitError = validateTokenLimits(
+    config.value.config.llm.contextWindowTokens,
+    config.value.config.llm.maxOutputTokens,
+  )
+  if (tokenLimitError) {
+    notifyError(new Error(tokenLimitError))
     return
   }
   config.value.agentId = agentId
@@ -1520,7 +1547,7 @@ onBeforeUnmount(() => {
         </el-tab-pane>
         <el-tab-pane label="LLM 配置" name="llm">
           <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">MODEL PROVIDERS</span><h3>大模型供应商</h3><p>这里维护协议、Endpoint 和密钥；具体模型 ID 属于 Agent 配置，选择供应商后只在 Agent 中填写。</p></div><div class="section-actions"><el-button @click="loadLlmProfiles">刷新</el-button><el-button type="primary" plain @click="newLlm">新增供应商</el-button></div></div>
-            <el-table :data="llmProfiles" class="capability-table" empty-text="还没有大模型供应商"><el-table-column label="名称" min-width="140"><template #default="scope"><strong>{{ scope.row.name }}</strong><small class="table-subtext">{{ scope.row.id }}</small></template></el-table-column><el-table-column label="协议" width="160"><template #default="scope"><el-tag size="small" round>{{ scope.row.format }}</el-tag></template></el-table-column><el-table-column label="模型归属" min-width="120"><template #default>由 Agent 指定</template></el-table-column><el-table-column label="Endpoint" min-width="200" show-overflow-tooltip><template #default="scope">{{ scope.row.endpoint }}</template></el-table-column><el-table-column label="API Key" min-width="120"><template #default="scope">{{ scope.row.apiKey ? '••••••••' : '未配置' }}</template></el-table-column><el-table-column label="操作" width="160" fixed="right"><template #default="scope"><el-button link type="primary" @click="editLlm(scope.$index)">编辑</el-button><el-button link @click="selectLlm(scope.$index); testLlm(); showLlmEditor = true">测试</el-button><el-button link type="danger" @click="selectLlm(scope.$index); deleteLlm()">删除</el-button></template></el-table-column></el-table>
+            <el-table :data="llmProfiles" class="capability-table" empty-text="还没有大模型供应商"><el-table-column label="名称" min-width="140"><template #default="scope"><strong>{{ scope.row.name }}</strong><small class="table-subtext">{{ scope.row.id }}</small></template></el-table-column><el-table-column label="协议" width="160"><template #default="scope"><el-tag size="small" round>{{ scope.row.format }}</el-tag></template></el-table-column><el-table-column label="Token 能力" min-width="190"><template #default="scope">{{ scope.row.contextWindowTokens || '未声明' }} / {{ scope.row.maxOutputTokens || '未声明' }}<small class="table-subtext">上下文 / 最大输出</small></template></el-table-column><el-table-column label="Endpoint" min-width="200" show-overflow-tooltip><template #default="scope">{{ scope.row.endpoint }}</template></el-table-column><el-table-column label="API Key" min-width="120"><template #default="scope">{{ scope.row.apiKey ? '••••••••' : '未配置' }}</template></el-table-column><el-table-column label="操作" width="160" fixed="right"><template #default="scope"><el-button link type="primary" @click="editLlm(scope.$index)">编辑</el-button><el-button link @click="selectLlm(scope.$index); testLlm(); showLlmEditor = true">测试</el-button><el-button link type="danger" @click="selectLlm(scope.$index); deleteLlm()">删除</el-button></template></el-table-column></el-table>
           </section>
         </el-tab-pane>
         <el-tab-pane label="MCP 配置" name="mcp">
@@ -1569,6 +1596,8 @@ onBeforeUnmount(() => {
           <el-form-item label="模型 ID"><el-input v-model="config.config.llm.modelId" placeholder="例如 gpt-4o" /><small class="form-help">模型 ID 属于 Agent；选择供应商后这里只允许修改模型 ID。</small></el-form-item>
           <el-form-item label="API 格式"><el-select v-model="config.config.llm.format" class="full-width" :disabled="Boolean(config.config.llm.provider)"><el-option label="OpenAI Chat Completions" value="OpenAIChatCompletions" /><el-option label="OpenAI Responses" value="OpenAIResponses" /><el-option label="Anthropic Messages" value="AnthropicMessages" /></el-select></el-form-item>
           <el-form-item label="Temperature"><el-input-number v-model="config.config.llm.temperature" :min="0" :max="2" :step="0.1" :precision="1" controls-position="right" :disabled="Boolean(config.config.llm.provider)" /><small class="form-help">选择供应商后使用供应商配置。</small></el-form-item>
+          <el-form-item label="上下文窗口 Token"><el-input-number v-model="config.config.llm.contextWindowTokens" :min="1" :precision="0" controls-position="right" class="full-width" /><small class="form-help">可选 Agent 默认值，不得超过供应商能力。</small></el-form-item>
+          <el-form-item label="最大输出 Token"><el-input-number v-model="config.config.llm.maxOutputTokens" :min="1" :precision="0" controls-position="right" class="full-width" /><small class="form-help">可选 Agent 默认值，必须小于有效上下文窗口。</small></el-form-item>
           <el-form-item label="Endpoint" class="span-two"><el-input v-model="config.config.llm.endpoint" placeholder="由供应商配置提供" :disabled="Boolean(config.config.llm.provider)" /></el-form-item>
           <el-form-item label="API Key" class="span-two"><el-input v-model="config.config.llm.apiKey" type="password" show-password placeholder="由供应商配置提供" :disabled="Boolean(config.config.llm.provider)" /></el-form-item>
         </el-form>
@@ -1597,7 +1626,18 @@ onBeforeUnmount(() => {
   </el-dialog>
 
   <el-dialog v-model="showLlmEditor" class="editor-dialog" modal-class="editor-overlay" :title="isNewLlm ? '新增大模型配置' : '编辑大模型配置'" width="min(720px, calc(100vw - 32px))" append-to-body destroy-on-close>
-    <el-form label-position="top" class="agent-form-grid"><el-form-item label="配置 ID"><el-input v-model="llmDraft.id" :disabled="!isNewLlm" placeholder="例如 openai-prod" /><small class="form-help">Agent 通过这个 ID 绑定供应商配置。</small></el-form-item><el-form-item label="显示名称"><el-input v-model="llmDraft.name" placeholder="例如 OpenAI 生产环境" /></el-form-item><el-form-item label="API 格式"><el-select v-model="llmDraft.format" class="full-width"><el-option label="OpenAI Chat Completions" value="OpenAIChatCompletions" /><el-option label="OpenAI Responses" value="OpenAIResponses" /><el-option label="Anthropic Messages" value="AnthropicMessages" /></el-select></el-form-item><el-form-item label="Temperature"><el-input-number v-model="llmDraft.temperature" :min="0" :max="2" :step="0.1" :precision="1" controls-position="right" /></el-form-item><el-form-item label="Endpoint"><el-input v-model="llmDraft.endpoint" placeholder="https://api.openai.com/v1" /></el-form-item><el-form-item label="API Key" class="span-two"><el-input v-model="llmDraft.apiKey" type="text" placeholder="请输入 API Key" /><small class="form-help">模型 ID 不在供应商配置中维护，由 Agent 选择供应商后填写。</small></el-form-item><el-alert v-if="llmResult" class="span-two" :title="`测试结果：${llmResult.success ? '连接和权限通过' : '连接失败'}${llmResult.statusCode ? ` · HTTP ${llmResult.statusCode}` : ''}`" :description="llmResult.error || `模型 ${llmResult.modelId || '由 Agent 指定'} · 延迟 ${llmResult.latencyMs}ms`" :type="llmResult.success ? 'success' : 'warning'" :closable="false" /></el-form>
+    <el-form label-position="top" class="agent-form-grid">
+      <el-form-item label="配置 ID"><el-input v-model="llmDraft.id" :disabled="!isNewLlm" placeholder="例如 openai-prod" /><small class="form-help">Agent 通过这个 ID 绑定供应商配置。</small></el-form-item>
+      <el-form-item label="显示名称"><el-input v-model="llmDraft.name" placeholder="例如 OpenAI 生产环境" /></el-form-item>
+      <el-form-item label="API 格式"><el-select v-model="llmDraft.format" class="full-width"><el-option label="OpenAI Chat Completions" value="OpenAIChatCompletions" /><el-option label="OpenAI Responses" value="OpenAIResponses" /><el-option label="Anthropic Messages" value="AnthropicMessages" /></el-select></el-form-item>
+      <el-form-item label="Temperature"><el-input-number v-model="llmDraft.temperature" :min="0" :max="2" :step="0.1" :precision="1" controls-position="right" /></el-form-item>
+      <el-form-item label="上下文窗口 Token"><el-input-number v-model="llmDraft.contextWindowTokens" :min="1" :precision="0" controls-position="right" class="full-width" /><small class="form-help">模型声明的硬上限。</small></el-form-item>
+      <el-form-item label="最大输出 Token"><el-input-number v-model="llmDraft.maxOutputTokens" :min="1" :precision="0" controls-position="right" class="full-width" /><small class="form-help">模型输出能力上限，也用于预留输入预算。</small></el-form-item>
+      <el-form-item label="发送最大输出参数"><el-switch v-model="llmDraft.supportsMaxOutputTokens" /><small class="form-help">关闭时仅将输出上限用于上下文预留，不发送给 Provider。</small></el-form-item>
+      <el-form-item label="Endpoint"><el-input v-model="llmDraft.endpoint" placeholder="https://api.openai.com/v1" /></el-form-item>
+      <el-form-item label="API Key" class="span-two"><el-input v-model="llmDraft.apiKey" type="text" placeholder="请输入 API Key" /><small class="form-help">模型 ID 不在供应商配置中维护，由 Agent 选择供应商后填写。</small></el-form-item>
+      <el-alert v-if="llmResult" class="span-two" :title="`测试结果：${llmResult.success ? '连接和权限通过' : '连接失败'}${llmResult.statusCode ? ` · HTTP ${llmResult.statusCode}` : ''}`" :description="llmResult.error || `模型 ${llmResult.modelId || '由 Agent 指定'} · 延迟 ${llmResult.latencyMs}ms`" :type="llmResult.success ? 'success' : 'warning'" :closable="false" />
+    </el-form>
     <template #footer><el-button @click="showLlmEditor = false">取消</el-button><el-button :loading="testingLlm" @click="testLlm">测试连接与权限</el-button><el-button type="primary" :loading="savingLlm" :disabled="!llmDraft.id" @click="saveLlm">保存大模型配置</el-button></template>
   </el-dialog>
 

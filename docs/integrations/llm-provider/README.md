@@ -32,6 +32,10 @@ Provider 经 SDK 返回的 `UsageDetails` 是 Token 用量唯一权威来源。�
 
 解析后的 `LlmConfig` 必须有 `Format`、`ModelId`；配置页保存的 `LlmProviderProfile` 不再要求默认 Model ID，Agent 选择 Provider 后填写具体 Model ID。旧 Profile 中的 `ModelId` 只作为历史配置的兼容 fallback。三个云 Provider 都需要 API key，Endpoint 为空时 OpenAI 使用官方默认地址，Anthropic 使用 SDK 默认地址。密钥不得进入日志。
 
+Token 限制的解析优先级固定为：**单次请求 > Agent 默认值 > 模型 Profile**。`LlmProviderProfile.ContextWindowTokens` 与 `MaxOutputTokens` 描述模型能力上限并作为 Agent 未配置时的默认值；Agent 可配置更小的默认值；`ChatRequest` 可在单次调用中覆盖，但任何覆盖都不得超过模型 Profile 上限，且最大输出必须小于有效上下文窗口。非法 Agent 配置返回 `ConfigurationError`，非法请求覆盖返回 `InvalidRequest`，均在 Provider 调用前失败。
+
+`SupportsMaxOutputTokens=false` 表示该 Provider 协议不接受最大输出参数。此时模型 Profile 的输出上限仍用于上下文预算预留，但不会写入 `ChatOptions.MaxOutputTokens`；Agent 或请求若显式要求该参数会提前失败，避免假装已限制输出。
+
 ## 格式映射
 
 | ApiFormat | SDK 边界 |
@@ -43,6 +47,8 @@ Provider 经 SDK 返回的 `UsageDetails` 是 Token 用量唯一权威来源。�
 ## 失败语义
 
 配置缺失或格式不支持在发出网络请求前失败；Provider HTTP、限流、模型和内容策略错误保持原异常进入平台失败路径。权限校验在 client 请求之前完成。
+
+模型上下文窗口配置存在时，运行时按“上下文窗口 - 有效最大输出”计算输入预算，并在每次模型调用前执行安全压缩。模型/Agent/请求配置超出硬能力时不会依赖 Provider 的 400 响应兜底。
 
 ## 数据流
 
@@ -99,6 +105,7 @@ API 格式按协议分支，不共享自研 HTTP body 或 SSE parser。Responses
 
 - Provider Profile 保存共享 endpoint/key/format，Agent 保存 provider 引用、model 和必要覆盖。
 - 禁止日志输出 API key、Authorization header、附件字节和完整提示内容。
+- 每次执行把模型能力、Agent 默认、请求覆盖、有效值以及输出参数是否实际应用写入用户消息 metadata；Provider 返回的实际 `TokenUsage` 仍只写入 assistant 消息。
 - 新 Provider 格式必须扩展 `ApiFormat`、工厂、RedisTool 类型和测试。
 
 ## 协议约定

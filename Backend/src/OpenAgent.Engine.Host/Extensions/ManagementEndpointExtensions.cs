@@ -722,7 +722,10 @@ internal static class ManagementEndpointExtensions
             ModelId = profile.ModelId,
             Endpoint = profile.Endpoint,
             ApiKey = string.IsNullOrWhiteSpace(profile.ApiKey) ? string.Empty : "***",
-            Temperature = profile.Temperature
+            Temperature = profile.Temperature,
+            ContextWindowTokens = profile.ContextWindowTokens,
+            MaxOutputTokens = profile.MaxOutputTokens,
+            SupportsMaxOutputTokens = profile.SupportsMaxOutputTokens
         };
     }
 }

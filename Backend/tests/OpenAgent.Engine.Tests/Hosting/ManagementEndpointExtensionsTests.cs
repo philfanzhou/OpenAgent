@@ -30,12 +30,18 @@ public class ManagementEndpointExtensionsTests
         var profile = new LlmProviderProfile
         {
             Id = "primary",
-            ApiKey = "provider-secret"
+            ApiKey = "provider-secret",
+            ContextWindowTokens = 128_000,
+            MaxOutputTokens = 16_000,
+            SupportsMaxOutputTokens = false
         };
 
         LlmProviderProfile redacted = ManagementEndpointExtensions.RedactLlm(profile);
 
         Assert.Equal("***", redacted.ApiKey);
+        Assert.Equal(128_000, redacted.ContextWindowTokens);
+        Assert.Equal(16_000, redacted.MaxOutputTokens);
+        Assert.False(redacted.SupportsMaxOutputTokens);
         Assert.Equal("provider-secret", profile.ApiKey);
     }
 }
