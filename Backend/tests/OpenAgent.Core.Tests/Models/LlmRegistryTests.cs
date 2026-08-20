@@ -1,4 +1,6 @@
 using OpenAgent.Contracts.Configuration;
+using OpenAgent.Contracts.Requests;
+using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Models;
 using Xunit;
 
@@ -119,7 +121,48 @@ public class LlmRegistryTests
     public void ResolveConfig_UnknownProvider_Throws()
     {
         var registry = new LlmRegistry();
-        Assert.Throws<InvalidOperationException>(
+        AgentException exception = Assert.Throws<AgentException>(
             () => registry.ResolveConfig(new LlmConfig { Provider = "missing" }));
+        Assert.Equal(AgentErrorCode.DependencyUnavailable, exception.ErrorCode);
+    }
+
+    [Fact]
+    public void ResolveConfig_SelectableModelNotInCatalog_ThrowsModelNotFound()
+    {
+        var registry = new LlmRegistry();
+        registry.Register(new LlmProviderProfile
+        {
+            Id = "provider-1",
+            Endpoint = "https://llm.example.test",
+            ApiKey = "secret",
+            ModelIds = ["model-1"]
+        });
+
+        AgentException exception = Assert.Throws<AgentException>(() => registry.ResolveConfig(
+            new LlmConfig { Provider = "provider-1", ModelId = "missing" },
+            requireCatalogEntry: true));
+
+        Assert.Equal(AgentErrorCode.LlmModelNotFound, exception.ErrorCode);
+        Assert.DoesNotContain("secret", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ResolveConfig_DisabledProvider_ThrowsDependencyUnavailable()
+    {
+        var registry = new LlmRegistry();
+        registry.Register(new LlmProviderProfile
+        {
+            Id = "provider-1",
+            IsEnabled = false,
+            Endpoint = "https://llm.example.test",
+            ApiKey = "secret",
+            ModelIds = ["model-1"]
+        });
+
+        AgentException exception = Assert.Throws<AgentException>(() => registry.ResolveConfig(
+            new LlmConfig { Provider = "provider-1", ModelId = "model-1" },
+            requireCatalogEntry: true));
+
+        Assert.Equal(AgentErrorCode.DependencyUnavailable, exception.ErrorCode);
     }
 }

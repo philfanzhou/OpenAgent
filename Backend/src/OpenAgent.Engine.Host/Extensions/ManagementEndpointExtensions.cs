@@ -51,7 +51,9 @@ internal static class ManagementEndpointExtensions
         {
             if (!HasScope(context, "agent.config.read"))
                 return Results.Forbid();
-            IReadOnlyList<LlmProviderProfile> profiles = await manager.ListAsync(cancellationToken).ConfigureAwait(false);
+            IReadOnlyList<LlmProviderProfile> profiles = await manager.ListAsync(
+                RequireTenant(context),
+                cancellationToken).ConfigureAwait(false);
             return Results.Ok(profiles.Select(RedactLlm));
         });
 
@@ -63,7 +65,10 @@ internal static class ManagementEndpointExtensions
         {
             if (!HasScope(context, "agent.config.read"))
                 return Results.Forbid();
-            LlmProviderProfile? profile = await manager.GetAsync(id, cancellationToken).ConfigureAwait(false);
+            LlmProviderProfile? profile = await manager.GetAsync(
+                id,
+                RequireTenant(context),
+                cancellationToken).ConfigureAwait(false);
             return profile == null ? Results.NotFound() : Results.Ok(RedactLlm(profile));
         });
 
@@ -83,14 +88,28 @@ internal static class ManagementEndpointExtensions
             }
 
             profile.Id = id;
+            string tenantId = RequireTenant(context);
             LlmProviderProfile? existing = await manager.GetAsync(id, cancellationToken).ConfigureAwait(false);
+            if (existing != null
+                && !string.Equals(existing.TenantId, tenantId, StringComparison.Ordinal))
+            {
+                return Results.Forbid();
+            }
             if (existing != null && (string.IsNullOrWhiteSpace(profile.ApiKey)
                 || profile.ApiKey.StartsWith("***", StringComparison.Ordinal)))
             {
                 profile.ApiKey = existing.ApiKey;
             }
+            profile.ModelIds = (profile.ModelIds ?? [])
+                .Where(modelId => !string.IsNullOrWhiteSpace(modelId))
+                .Select(modelId => modelId.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
 
-            LlmProviderProfile saved = await manager.SaveAsync(profile, cancellationToken).ConfigureAwait(false);
+            LlmProviderProfile saved = await manager.SaveAsync(
+                profile,
+                tenantId,
+                cancellationToken).ConfigureAwait(false);
             return Results.Ok(RedactLlm(saved));
         });
 
@@ -102,7 +121,10 @@ internal static class ManagementEndpointExtensions
         {
             if (!HasScope(context, "agent.config.write"))
                 return Results.Forbid();
-            return await manager.DeleteAsync(id, cancellationToken).ConfigureAwait(false)
+            return await manager.DeleteAsync(
+                id,
+                RequireTenant(context),
+                cancellationToken).ConfigureAwait(false)
                 ? Results.NoContent()
                 : Results.NotFound();
         });
@@ -720,6 +742,8 @@ internal static class ManagementEndpointExtensions
             Name = profile.Name,
             Format = profile.Format,
             ModelId = profile.ModelId,
+            ModelIds = [.. profile.ModelIds ?? []],
+            IsEnabled = profile.IsEnabled,
             Endpoint = profile.Endpoint,
             ApiKey = string.IsNullOrWhiteSpace(profile.ApiKey) ? string.Empty : "***",
             Temperature = profile.Temperature

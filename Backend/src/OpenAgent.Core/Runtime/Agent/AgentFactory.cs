@@ -53,7 +53,7 @@ internal sealed class AgentFactory
         });
         PlatformChatHistory history = _conversations.Create(
             profile.AgentId,
-            profile.Model.ModelId,
+            profile.Model,
             request,
             user,
             files);

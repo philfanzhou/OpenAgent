@@ -12,6 +12,7 @@ import type {
   HealthReport,
   HealthReportItem,
   LlmProviderProfile,
+  LlmModelSelection,
   LlmTestResult,
   MessageFile,
   McpServerConfig,
@@ -480,6 +481,8 @@ export const api = {
     fileIds: string[] = [],
     routingConversationId?: string,
     signal?: AbortSignal,
+    modelSelection?: LlmModelSelection,
+    modelScope?: 'conversation' | 'message',
   ): AsyncGenerator<StreamEvent> {
     const requestHeaders = headers({ 'Content-Type': 'application/json' })
     if (routingConversationId) requestHeaders.set('X-Conversation-Id', routingConversationId)
@@ -489,7 +492,15 @@ export const api = {
       body: JSON.stringify({
         message,
         fileIds,
-        context: { ...(agentId ? { agentId } : {}), ...(conversationId ? { conversationId } : {}) },
+        context: {
+          ...(agentId ? { agentId } : {}),
+          ...(conversationId ? { conversationId } : {}),
+          ...(modelScope ? { modelScope } : {}),
+          ...(modelSelection ? {
+            modelProvider: modelSelection.provider,
+            modelId: modelSelection.modelId,
+          } : {}),
+        },
       }),
       signal,
     })

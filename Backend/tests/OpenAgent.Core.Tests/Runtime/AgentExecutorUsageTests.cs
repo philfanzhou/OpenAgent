@@ -140,6 +140,78 @@ public class AgentExecutorUsageTests
         Assert.Null(assistant.TokenUsage);
     }
 
+    [Fact]
+    public async Task ExecuteAsync_ConversationOverride_PersistsAndAppliesToFollowingRequest()
+    {
+        var provider = new FakeChatProvider(new Microsoft.Extensions.AI.ChatResponse(
+            new ChatMessage(ChatRole.Assistant, "provider response")));
+        await using TestRuntime runtime = CreateRuntime(provider);
+        AgentRequest first = new()
+        {
+            Query = "hello",
+            AgentId = "test-agent",
+            ConversationId = "model-conversation",
+            TraceId = "trace-model-conversation",
+            ConversationModelOverride = new LlmModelSelection
+            {
+                Provider = "provider-1",
+                ModelId = "conversation-model"
+            },
+            UpdateConversationModelOverride = true
+        };
+
+        await runtime.Executor.ExecuteAsync(first, User, CancellationToken.None);
+        await runtime.Executor.ExecuteAsync(
+            CreateRequest("model-conversation"),
+            User,
+            CancellationToken.None);
+        ConversationRecord record = Assert.IsType<ConversationRecord>(
+            await runtime.Store.GetRecordAsync("tenant-1", "model-conversation"));
+        ConversationMessage[] userMessages = record.Messages
+            .Where(message => message.Role == "user")
+            .ToArray();
+
+        Assert.Equal("provider-1", record.ModelOverride?.Provider);
+        Assert.Equal("conversation-model", record.ModelOverride?.ModelId);
+        Assert.Equal(2, userMessages.Length);
+        Assert.All(userMessages, message =>
+            Assert.Equal("conversation-model", message.Metadata?["ModelId"]));
+        Assert.All(userMessages, message =>
+            Assert.Equal("Conversation", message.Metadata?["ModelSelectionSource"]));
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_MessageOverride_PersistsAuditMetadataWithoutChangingConversation()
+    {
+        var provider = new FakeChatProvider(new Microsoft.Extensions.AI.ChatResponse(
+            new ChatMessage(ChatRole.Assistant, "provider response")));
+        await using TestRuntime runtime = CreateRuntime(provider);
+        AgentRequest request = new()
+        {
+            Query = "hello",
+            AgentId = "test-agent",
+            ConversationId = "message-model-conversation",
+            TraceId = "trace-message-model-conversation",
+            MessageModelOverride = new LlmModelSelection
+            {
+                Provider = "provider-1",
+                ModelId = "message-model"
+            }
+        };
+
+        await runtime.Executor.ExecuteAsync(request, User, CancellationToken.None);
+        ConversationRecord record = Assert.IsType<ConversationRecord>(
+            await runtime.Store.GetRecordAsync("tenant-1", "message-model-conversation"));
+        ConversationMessage userMessage = Assert.Single(
+            record.Messages,
+            message => message.Role == "user");
+
+        Assert.Null(record.ModelOverride);
+        Assert.Equal("provider-1", userMessage.Metadata?["ModelProvider"]);
+        Assert.Equal("message-model", userMessage.Metadata?["ModelId"]);
+        Assert.Equal("Message", userMessage.Metadata?["ModelSelectionSource"]);
+    }
+
     private static readonly AgentUserContext User = new()
     {
         UserId = "user-1",
@@ -221,6 +293,22 @@ public class AgentExecutorUsageTests
                 AgentId = agentId,
                 Config = new AgentConfig { MaxTurns = 2 },
                 Model = new LlmConfig { ModelId = "configured-model" }
+            });
+
+        public Task<AgentRuntimeProfile> ResolveAsync(
+            string agentId,
+            IAgentUserContext userContext,
+            LlmModelSelection? modelOverride,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new AgentRuntimeProfile
+            {
+                AgentId = agentId,
+                Config = new AgentConfig { MaxTurns = 2 },
+                Model = new LlmConfig
+                {
+                    Provider = modelOverride?.Provider ?? "configured-provider",
+                    ModelId = modelOverride?.ModelId ?? "configured-model"
+                }
             });
     }
 

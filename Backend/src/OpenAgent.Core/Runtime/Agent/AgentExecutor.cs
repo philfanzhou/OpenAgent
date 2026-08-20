@@ -14,7 +14,7 @@ public sealed class AgentExecutor
 {
     private const string DefaultAgentId = "default";
 
-    private readonly IAgentRuntimeResolver _runtime;
+    private readonly AgentModelResolver _models;
     private readonly AgentFactory _agents;
     private readonly ConversationAgentResolver _conversationAgents;
     private readonly FileAssetRequestResolver _files;
@@ -25,7 +25,7 @@ public sealed class AgentExecutor
         ConversationAgentResolver conversationAgents,
         FileAssetRequestResolver files)
     {
-        _runtime = runtime;
+        _models = new AgentModelResolver(runtime);
         _agents = agents;
         _conversationAgents = conversationAgents;
         _files = files;
@@ -39,16 +39,24 @@ public sealed class AgentExecutor
         using EngineMeter.EngineExecutionMeasurement measurement = EngineMeter.StartAgentCall("sync");
         EnsureRequest(request);
         string traceId = ResolveTraceId(request.TraceId);
-        string agentId = await ResolveAgentIdAsync(
+        (string agentId, LlmModelSelection? conversationModel) = await ResolveAgentAsync(
             request,
             user,
             cancellationToken).ConfigureAwait(false);
-        AgentRuntimeProfile profile = await _runtime.ResolveAsync(
+        AgentModelResolution modelResolution = await _models.ResolveAsync(
             agentId,
+            request,
+            conversationModel,
             user,
             cancellationToken).ConfigureAwait(false);
-        AgentRequest executionRequest = CopyWithResolvedValues(request, agentId, traceId);
-        if (executionRequest.FileIds.Count > 0)
+        AgentRuntimeProfile profile = modelResolution.Profile;
+        AgentRequest executionRequest = CopyWithResolvedValues(
+            request,
+            agentId,
+            traceId,
+            modelResolution);
+        if (executionRequest.FileIds.Count > 0
+            || executionRequest.UpdateConversationModelOverride)
         {
             await _agents.EnsureConversationAsync(
                 agentId,
@@ -100,16 +108,24 @@ public sealed class AgentExecutor
         using EngineMeter.EngineExecutionMeasurement measurement = EngineMeter.StartAgentCall("stream");
         EnsureRequest(request);
         string traceId = ResolveTraceId(request.TraceId);
-        string agentId = await ResolveAgentIdAsync(
+        (string agentId, LlmModelSelection? conversationModel) = await ResolveAgentAsync(
             request,
             user,
             cancellationToken).ConfigureAwait(false);
-        AgentRuntimeProfile profile = await _runtime.ResolveAsync(
+        AgentModelResolution modelResolution = await _models.ResolveAsync(
             agentId,
+            request,
+            conversationModel,
             user,
             cancellationToken).ConfigureAwait(false);
-        AgentRequest executionRequest = CopyWithResolvedValues(request, agentId, traceId);
-        if (executionRequest.FileIds.Count > 0)
+        AgentRuntimeProfile profile = modelResolution.Profile;
+        AgentRequest executionRequest = CopyWithResolvedValues(
+            request,
+            agentId,
+            traceId,
+            modelResolution);
+        if (executionRequest.FileIds.Count > 0
+            || executionRequest.UpdateConversationModelOverride)
         {
             await _agents.EnsureConversationAsync(
                 agentId,
@@ -212,18 +228,19 @@ public sealed class AgentExecutor
         }
     }
 
-    private async Task<string> ResolveAgentIdAsync(
+    private async Task<(string AgentId, LlmModelSelection? ConversationModel)> ResolveAgentAsync(
         AgentRequest request,
         IAgentUserContext user,
         CancellationToken cancellationToken)
     {
-        string? resolvedAgentId = await _conversationAgents.ResolveAsync(
+        ConversationResolution resolution = await _conversationAgents.ResolveContextAsync(
             request,
             user,
             cancellationToken).ConfigureAwait(false);
-        return string.IsNullOrWhiteSpace(resolvedAgentId)
+        string agentId = string.IsNullOrWhiteSpace(resolution.AgentId)
             ? DefaultAgentId
-            : resolvedAgentId;
+            : resolution.AgentId;
+        return (agentId, resolution.ModelOverride);
     }
 
     private static string ResolveTraceId(string? traceId) =>
@@ -232,7 +249,8 @@ public sealed class AgentExecutor
     private static AgentRequest CopyWithResolvedValues(
         AgentRequest request,
         string agentId,
-        string traceId) => new()
+        string traceId,
+        AgentModelResolution modelResolution) => new()
         {
             Query = request.Query,
             AgentId = agentId,
@@ -241,6 +259,10 @@ public sealed class AgentExecutor
             TraceId = traceId,
             ClientType = request.ClientType,
             IdempotencyKey = request.IdempotencyKey,
+            ConversationModelOverride = modelResolution.ConversationModel,
+            UpdateConversationModelOverride = modelResolution.ApplyConversationUpdate,
+            MessageModelOverride = request.MessageModelOverride,
+            ModelSelectionSource = modelResolution.Source,
             ExternalContext = request.ExternalContext,
             FileIds = request.FileIds
         };

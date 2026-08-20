@@ -39,7 +39,7 @@ internal sealed class ConversationHistoryFactory
 
     internal PlatformChatHistory Create(
         string agentId,
-        string modelId,
+        LlmConfig model,
         AgentRequest request,
         IAgentUserContext user,
         IReadOnlyList<FileAssetContent> files)
@@ -54,7 +54,11 @@ internal sealed class ConversationHistoryFactory
         return new PlatformChatHistory(
             context,
             agentId,
-            modelId,
+            request.ModelSelectionSource,
+            model.Provider,
+            model.ModelId,
+            request.UpdateConversationModelOverride,
+            request.ConversationModelOverride,
             request.Query,
             files.Select(item => item.Asset).ToList().AsReadOnly(),
             _fileExecution,
@@ -81,6 +85,8 @@ internal sealed class ConversationHistoryFactory
             context,
             agentId,
             request.Query,
+            request.UpdateConversationModelOverride,
+            request.ConversationModelOverride,
             cancellationToken).ConfigureAwait(false);
     }
 

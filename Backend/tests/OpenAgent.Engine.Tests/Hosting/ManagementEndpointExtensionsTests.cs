@@ -30,12 +30,16 @@ public class ManagementEndpointExtensionsTests
         var profile = new LlmProviderProfile
         {
             Id = "primary",
-            ApiKey = "provider-secret"
+            ApiKey = "provider-secret",
+            ModelIds = ["model-1"],
+            IsEnabled = false
         };
 
         LlmProviderProfile redacted = ManagementEndpointExtensions.RedactLlm(profile);
 
         Assert.Equal("***", redacted.ApiKey);
+        Assert.Equal(["model-1"], redacted.ModelIds);
+        Assert.False(redacted.IsEnabled);
         Assert.Equal("provider-secret", profile.ApiKey);
     }
 }

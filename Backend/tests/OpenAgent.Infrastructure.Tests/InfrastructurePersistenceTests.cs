@@ -243,6 +243,42 @@ public sealed class InfrastructurePersistenceTests : IAsyncLifetime
         Assert.Equal("provider-model", message.ModelId);
     }
 
+    [Fact]
+    public async Task ConversationStore_ModelOverride_RoundTripsProviderAndModel()
+    {
+        ServiceProvider services = Assert.IsType<ServiceProvider>(_services);
+        using IServiceScope scope = services.CreateScope();
+        IConversationStore conversations = scope.ServiceProvider.GetRequiredService<IConversationStore>();
+        Assert.True(await conversations.CreateAsync(new ConversationRecord
+        {
+            ConversationId = "conversation-model",
+            TenantId = "tenant-model",
+            UserId = "user-model",
+            AgentId = "default"
+        }, CancellationToken.None));
+
+        bool updated = await conversations.UpdateModelOverrideAsync(
+            "tenant-model",
+            "conversation-model",
+            new LlmModelSelection
+            {
+                Provider = "provider-1",
+                ModelId = "model-1"
+            },
+            expectedVersion: 1,
+            cancellationToken: CancellationToken.None);
+        ConversationRecord record = Assert.IsType<ConversationRecord>(
+            await conversations.GetRecordAsync(
+                "tenant-model",
+                "conversation-model",
+                CancellationToken.None));
+
+        Assert.True(updated);
+        Assert.Equal("provider-1", record.ModelOverride?.Provider);
+        Assert.Equal("model-1", record.ModelOverride?.ModelId);
+        Assert.Equal(2, record.Version);
+    }
+
     private sealed class TestCurrentUserContext : ICurrentUserContext
     {
         public string UserId => "test-user";

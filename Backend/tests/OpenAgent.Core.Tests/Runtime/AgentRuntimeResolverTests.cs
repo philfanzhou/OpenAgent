@@ -56,6 +56,43 @@ public sealed class AgentRuntimeResolverTests
     }
 
     [Fact]
+    public async Task ResolveAsync_ModelOverride_UsesCatalogModelInsteadOfAgentDefault()
+    {
+        var config = new AgentConfig
+        {
+            Llm = new LlmConfig { Provider = "default-provider", ModelId = "default-model" }
+        };
+        LlmRegistry models = new();
+        models.Register(new LlmProviderProfile
+        {
+            TenantId = "tenant-1",
+            Id = "override-provider",
+            Endpoint = "https://override.example.test",
+            ApiKey = "override-key",
+            ModelIds = ["override-model"]
+        });
+        AgentRuntimeResolver resolver = new(
+            new StaticConfigProvider(config),
+            new AgentAuthorizationGate(
+                new AllowAllAgentAuthorizationService(),
+                models));
+
+        AgentRuntimeProfile result = await resolver.ResolveAsync(
+            "agent-1",
+            User(),
+            new LlmModelSelection
+            {
+                Provider = "override-provider",
+                ModelId = "override-model"
+            },
+            CancellationToken.None);
+
+        Assert.Equal("override-provider", result.Model.Provider);
+        Assert.Equal("override-model", result.Model.ModelId);
+        Assert.Equal("override-key", result.Model.ApiKey);
+    }
+
+    [Fact]
     public async Task ResolveAsync_InvalidMaxTurns_ThrowsBeforeAgentCreation()
     {
         AgentConfig config = new()

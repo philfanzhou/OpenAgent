@@ -24,6 +24,8 @@ public sealed class OpenAgentDbContext(DbContextOptions<OpenAgentDbContext> opti
             entity.Property(item => item.TenantId).HasMaxLength(256);
             entity.Property(item => item.UserId).HasMaxLength(256);
             entity.Property(item => item.AgentId).HasMaxLength(256);
+            entity.Property(item => item.ModelProvider).HasMaxLength(256);
+            entity.Property(item => item.ModelId).HasMaxLength(256);
             entity.Property(item => item.TraceId).HasMaxLength(256);
             entity.Property(item => item.Title).HasMaxLength(512);
             entity.Property(item => item.Version).IsConcurrencyToken();

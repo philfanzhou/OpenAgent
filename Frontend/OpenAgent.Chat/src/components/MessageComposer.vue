@@ -2,7 +2,7 @@
 import { ElMessage } from 'element-plus'
 import { ref } from 'vue'
 import { formatFileSize } from '../messagePresentation'
-import type { PendingFile } from '../types'
+import type { LlmModelOption, PendingFile } from '../types'
 
 const props = defineProps<{
   modelValue: string
@@ -11,6 +11,9 @@ const props = defineProps<{
   selectedAgentId: string
   loading: boolean
   pendingFiles: PendingFile[]
+  availableModels: LlmModelOption[]
+  selectedModelKey: string
+  modelScope: 'conversation' | 'message'
 }>()
 
 const emit = defineEmits<{
@@ -19,6 +22,8 @@ const emit = defineEmits<{
   stop: []
   'files-change': [files: PendingFile[]]
   'retry-file': [id: string]
+  'update:selectedModelKey': [value: string]
+  'update:modelScope': [value: 'conversation' | 'message']
 }>()
 
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -96,6 +101,31 @@ function openFilePicker(): void {
       </div>
     </div>
     <div class="composer-box">
+      <div class="model-controls">
+        <el-select
+          :model-value="props.selectedModelKey"
+          :disabled="props.loading || !props.selectedAgentId"
+          placeholder="Agent 默认模型"
+          clearable
+          @update:model-value="emit('update:selectedModelKey', $event || '')"
+        >
+          <el-option label="Agent 默认模型" value="" />
+          <el-option
+            v-for="model in props.availableModels"
+            :key="`${model.provider}/${model.modelId}`"
+            :label="`${model.providerName || model.provider} · ${model.modelId}`"
+            :value="`${model.provider}::${model.modelId}`"
+          />
+        </el-select>
+        <el-select
+          :model-value="props.modelScope"
+          :disabled="props.loading || !props.selectedModelKey"
+          @update:model-value="emit('update:modelScope', $event)"
+        >
+          <el-option label="用于本会话" value="conversation" />
+          <el-option label="仅本条消息" value="message" />
+        </el-select>
+      </div>
       <el-input :model-value="props.modelValue" type="textarea" :autosize="{ minRows: 2, maxRows: 10 }" resize="none" placeholder="向 Agent 发送消息（Shift+Enter 换行）" @update:model-value="emit('update:modelValue', $event)" @keydown="handleKeydown" />
       <input ref="fileInput" class="file-input" type="file" multiple accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.json,.txt,.csv,.md" @change="handleFileChange" />
       <div class="composer-footer">

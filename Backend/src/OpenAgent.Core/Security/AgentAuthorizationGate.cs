@@ -18,21 +18,26 @@ internal sealed class AgentAuthorizationGate
         _models = models;
     }
 
-    internal async Task<LlmConfig> ResolveAuthorizedModelAsync(
+    internal Task<LlmConfig> ResolveAuthorizedModelAsync(
         string agentId,
         LlmConfig configuredModel,
         IAgentUserContext userContext,
+        CancellationToken cancellationToken) =>
+        ResolveAuthorizedModelAsync(
+            agentId,
+            configuredModel,
+            requireCatalogEntry: false,
+            userContext,
+            cancellationToken);
+
+    internal async Task<LlmConfig> ResolveAuthorizedModelAsync(
+        string agentId,
+        LlmConfig configuredModel,
+        bool requireCatalogEntry,
+        IAgentUserContext userContext,
         CancellationToken cancellationToken)
     {
-        await EnsureAuthorizedAsync(
-            agentId,
-            AgentResourceType.Agent,
-            agentId,
-            "execute",
-            userContext,
-            cancellationToken).ConfigureAwait(false);
-
-        LlmConfig model = _models.ResolveConfig(configuredModel);
+        LlmConfig model = _models.ResolveConfig(configuredModel, requireCatalogEntry);
         if (!string.IsNullOrWhiteSpace(configuredModel.Provider)
             && !string.Equals(model.TenantId, userContext.TenantId, StringComparison.Ordinal))
         {
@@ -54,8 +59,17 @@ internal sealed class AgentAuthorizationGate
 
         if (string.IsNullOrWhiteSpace(model.Endpoint))
         {
-            throw new InvalidOperationException(
+            throw new AgentException(
+                AgentErrorCode.DependencyUnavailable,
                 $"LLM endpoint is empty after resolving config for agent '{agentId}'.");
+        }
+
+        if (string.IsNullOrWhiteSpace(model.ApiKey)
+            || model.ApiKey.StartsWith("***", StringComparison.Ordinal))
+        {
+            throw new AgentException(
+                AgentErrorCode.DependencyUnavailable,
+                $"LLM credentials are not available for agent '{agentId}'.");
         }
 
         return model;

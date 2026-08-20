@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Infrastructure.Entities;
@@ -224,6 +225,37 @@ internal sealed class EfCoreConversationStore(
         }
     }
 
+    public async Task<bool> UpdateModelOverrideAsync(
+        string tenantId,
+        string conversationId,
+        LlmModelSelection? modelOverride,
+        int expectedVersion,
+        CancellationToken cancellationToken = default)
+    {
+        await using OpenAgentDbContext context = await contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        ConversationEntity? conversation = await context.Conversations.SingleOrDefaultAsync(
+            item => item.ConversationId == conversationId && item.TenantId == tenantId && !item.IsDeletedByUser,
+            cancellationToken).ConfigureAwait(false);
+        if (conversation == null || conversation.Version != expectedVersion)
+        {
+            return false;
+        }
+
+        conversation.ModelProvider = modelOverride?.Provider;
+        conversation.ModelId = modelOverride?.ModelId;
+        conversation.Version++;
+        conversation.UpdatedAt = DateTimeOffset.UtcNow;
+        try
+        {
+            await context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return false;
+        }
+    }
+
     public async Task<IReadOnlyList<ConversationRecord>> ListConversationsAsync(
         string tenantId,
         int skip,
@@ -302,6 +334,8 @@ internal sealed class EfCoreConversationStore(
         UserId = record.UserId,
         Type = (int)record.Type,
         AgentId = record.AgentId,
+        ModelProvider = record.ModelOverride?.Provider,
+        ModelId = record.ModelOverride?.ModelId,
         TraceId = record.TraceId,
         Version = record.Version,
         Status = (int)record.Status,
@@ -341,6 +375,14 @@ internal sealed class EfCoreConversationStore(
         UserId = entity.UserId,
         Type = (ConversationType)entity.Type,
         AgentId = entity.AgentId,
+        ModelOverride = string.IsNullOrWhiteSpace(entity.ModelProvider)
+            || string.IsNullOrWhiteSpace(entity.ModelId)
+            ? null
+            : new LlmModelSelection
+            {
+                Provider = entity.ModelProvider,
+                ModelId = entity.ModelId
+            },
         TraceId = entity.TraceId,
         Version = entity.Version,
         Status = (ConversationStatus)entity.Status,

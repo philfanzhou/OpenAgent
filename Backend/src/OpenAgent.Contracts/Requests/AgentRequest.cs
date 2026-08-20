@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Conversation;
 
 namespace OpenAgent.Contracts.Requests;
@@ -13,6 +14,14 @@ public class AgentRequest
     public ClientType ClientType { get; init; } = ClientType.Web;
     public string? IdempotencyKey { get; init; }
     public Dictionary<string, string>? ExternalContext { get; init; }
+    [JsonIgnore]
+    public LlmModelSelection? ConversationModelOverride { get; init; }
+    [JsonIgnore]
+    public bool UpdateConversationModelOverride { get; init; }
+    [JsonIgnore]
+    public LlmModelSelection? MessageModelOverride { get; init; }
+    [JsonIgnore]
+    public LlmModelSelectionSource ModelSelectionSource { get; init; }
     [JsonIgnore]
     public IReadOnlyList<string> FileIds { get; init; } = Array.Empty<string>();
 }

@@ -1,4 +1,5 @@
 using OpenAgent.Contracts.Conversation;
+using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Conversation;
@@ -59,6 +60,29 @@ public class ConversationAgentResolverTests
             CancellationToken.None);
 
         Assert.Null(agentId);
+    }
+
+    [Fact]
+    public async Task ResolveContextAsync_ExistingConversation_ReturnsPersistedModelOverride()
+    {
+        var store = new InMemoryConversationStore(UserContext());
+        ConversationRecord record = CreateRecord("user-1", "finance");
+        record.ModelOverride = new LlmModelSelection
+        {
+            Provider = "provider-1",
+            ModelId = "model-1"
+        };
+        await store.CreateAsync(record);
+        var resolver = new ConversationAgentResolver(store);
+
+        ConversationResolution result = await resolver.ResolveContextAsync(
+            CreateRequest(conversationId: "conversation-1"),
+            CreateUser(),
+            CancellationToken.None);
+
+        Assert.Equal("finance", result.AgentId);
+        Assert.Equal("provider-1", result.ModelOverride?.Provider);
+        Assert.Equal("model-1", result.ModelOverride?.ModelId);
     }
 
     [Theory]

@@ -170,6 +170,39 @@ describe('workspace API', () => {
     expect(events[1]).toEqual({ type: 'content', content: 'hello' })
   })
 
+  it('sends model overrides through the existing chat context', async () => {
+    setConnectionMode('engine')
+    setEngineBaseUrl('http://engine.example/')
+    const fetchMock = vi.fn().mockResolvedValue(new Response('', {
+      status: 200,
+      headers: { 'Content-Type': 'text/event-stream' },
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    for await (const _event of api.streamChat(
+      'hello',
+      'support',
+      'conversation-1',
+      [],
+      'conversation-1',
+      undefined,
+      { provider: 'provider-1', modelId: 'model-1' },
+      'message',
+    )) {
+      // The empty stream only exercises request serialization.
+    }
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit
+    const body = JSON.parse(String(init.body)) as { context: Record<string, string> }
+
+    expect(body.context).toMatchObject({
+      agentId: 'support',
+      conversationId: 'conversation-1',
+      modelScope: 'message',
+      modelProvider: 'provider-1',
+      modelId: 'model-1',
+    })
+  })
+
   it('preserves streamed tool arguments and problem details for the message UI', async () => {
     setConnectionMode('engine')
     setEngineBaseUrl('http://engine.example/')

@@ -808,6 +808,9 @@ html[data-theme='dark'] .message-row ::selection { background: rgba(16, 163, 127
   transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
 }
 .composer-box:focus-within { border-color: var(--text-faint); box-shadow: 0 8px 30px rgba(0, 0, 0, .1); }
+.model-controls { display: flex; gap: 8px; padding: 8px 10px 0; }
+.model-controls .el-select:first-child { width: min(360px, 65%); }
+.model-controls .el-select:last-child { width: 140px; }
 .composer .el-textarea__inner {
   min-height: 54px !important;
   padding: 8px 4px 5px;

@@ -7,6 +7,8 @@ internal sealed class ConversationEntity
     public required string UserId { get; init; }
     public int Type { get; init; }
     public string? AgentId { get; set; }
+    public string? ModelProvider { get; set; }
+    public string? ModelId { get; set; }
     public string? TraceId { get; set; }
     public int Version { get; set; }
     public int Status { get; set; }

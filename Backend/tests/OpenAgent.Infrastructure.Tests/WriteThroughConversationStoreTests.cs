@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging.Abstractions;
+using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Conversation;
 using Xunit;
 
@@ -68,6 +69,35 @@ public sealed class WriteThroughConversationStoreTests
         Assert.Equal(0, durable.GetRecordCalls);
     }
 
+    [Fact]
+    public async Task UpdateModelOverride_WritesDurableRecordAndRefreshesHotCache()
+    {
+        var durable = new FakeConversationStore();
+        var cache = new FakeConversationCache();
+        var store = new WriteThroughConversationStore(
+            durable,
+            cache,
+            NullLogger<WriteThroughConversationStore>.Instance);
+        await store.CreateAsync(new ConversationRecord
+        {
+            ConversationId = "conversation-1",
+            TenantId = "tenant-1",
+            UserId = "user-1",
+            Version = 1
+        });
+
+        bool updated = await store.UpdateModelOverrideAsync(
+            "tenant-1",
+            "conversation-1",
+            new LlmModelSelection { Provider = "provider-1", ModelId = "model-1" },
+            expectedVersion: 1);
+
+        Assert.True(updated);
+        Assert.Equal("model-1", durable.Record.ModelOverride?.ModelId);
+        Assert.Equal("model-1", cache.Record?.ModelOverride?.ModelId);
+        Assert.Equal(2, cache.Record?.Version);
+    }
+
     private sealed class FakeConversationCache : IConversationCache
     {
         public ConversationRecord? Record { get; set; }
@@ -129,6 +159,18 @@ public sealed class WriteThroughConversationStoreTests
         public Task<bool> UpdateStatusAsync(string tenantId, string conversationId, ConversationStatus status, int expectedVersion, CancellationToken cancellationToken = default) =>
             Task.FromResult(true);
 
+        public Task<bool> UpdateModelOverrideAsync(
+            string tenantId,
+            string conversationId,
+            LlmModelSelection? modelOverride,
+            int expectedVersion,
+            CancellationToken cancellationToken = default)
+        {
+            Record.ModelOverride = modelOverride;
+            Record.Version += 1;
+            return Task.FromResult(true);
+        }
+
         public Task<IReadOnlyList<ConversationRecord>> ListConversationsAsync(string tenantId, int skip, int take, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<ConversationRecord>>([]);
 
@@ -145,6 +187,7 @@ public sealed class WriteThroughConversationStoreTests
         TenantId = record.TenantId,
         UserId = record.UserId,
         AgentId = record.AgentId,
+        ModelOverride = record.ModelOverride,
         Version = record.Version,
         MessageCount = record.MessageCount,
         Messages = record.Messages.Select(message => new ConversationMessage
