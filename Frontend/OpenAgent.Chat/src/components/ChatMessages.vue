@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
 import { computed, nextTick, ref, watch } from 'vue'
-import { buildDisplayMessages, fileLabel, formatFileSize, toolArgumentsText, toolPresentation } from '../messagePresentation'
-import { formatTokenBreakdown, formatTokenUsage } from '../tokenUsage'
-import type { ConversationMessage, CurrentUserContext, MessageFile, ToolActivity } from '../types'
+import { buildCompactionDisplay, buildCompactionTokenDisplay } from '../compactionPresentation'
+import { buildConversationTimeline, fileLabel, formatFileSize, toolArgumentsText, toolPresentation } from '../messagePresentation'
+import { formatTokenBreakdown, formatTokenCount, formatTokenUsage } from '../tokenUsage'
+import type { ContextSummary, ConversationMessage, CurrentUserContext, MessageFile, ProcessActivity, ToolActivity } from '../types'
 import MarkdownContent from './MarkdownContent.vue'
 
 const props = defineProps<{
   messages: ConversationMessage[]
+  contextSummaries?: ContextSummary[]
   loading: boolean
   currentUser: CurrentUserContext | null
   streaming: boolean
@@ -25,50 +27,59 @@ const suggestions = [
 ]
 
 const messagesScrollbar = ref<{ setScrollTop: (value: number) => void } | null>(null)
-const displayMessages = computed(() => buildDisplayMessages(props.messages))
-
-/** 思考过程自动跟随滚动：流式追加时始终滚到最新；用户主动向上翻阅时暂停跟随，回到底部后恢复。 */
-const vAutoScroll = {
-  mounted(el: HTMLElement): void {
-    const target = el as HTMLElement & { __scrollHandler?: () => void }
-    target.__scrollHandler = () => onThinkingScroll(el)
-    el.addEventListener('scroll', target.__scrollHandler, { passive: true })
-    followLatest(el)
-  },
-  updated(el: HTMLElement): void {
-    followLatest(el)
-  },
-  unmounted(el: HTMLElement): void {
-    const target = el as HTMLElement & { __scrollHandler?: () => void }
-    if (target.__scrollHandler) el.removeEventListener('scroll', target.__scrollHandler)
-  },
-}
-
-function onThinkingScroll(el: HTMLElement): void {
-  const target = el as HTMLElement & { __userScrolledUp?: boolean }
-  target.__userScrolledUp = el.scrollHeight - el.scrollTop - el.clientHeight >= 24
-}
-
-function followLatest(el: HTMLElement): void {
-  const target = el as HTMLElement & { __userScrolledUp?: boolean }
-  if (!target.__userScrolledUp) target.scrollTop = target.scrollHeight
-}
+const timelineItems = computed(() => buildConversationTimeline(
+  props.messages,
+  props.contextSummaries || [],
+))
+type TimelineRow =
+  | (ConversationMessage & { timelineKind: 'message' })
+  | { timelineKind: 'summary'; messageId: string; role: 'summary'; timestamp: string; contextSummary: ContextSummary }
+const timelineRows = computed<TimelineRow[]>(() => timelineItems.value.map(item => item.kind === 'message'
+  ? { ...item.message, timelineKind: 'message' }
+  : {
+      timelineKind: 'summary',
+      messageId: `context-summary-${item.summary.compressionId}`,
+      role: 'summary',
+      timestamp: item.summary.lastCompressedAt,
+      contextSummary: item.summary,
+    }))
+const displayMessages = computed(() => timelineRows.value
+  .filter((item): item is ConversationMessage & { timelineKind: 'message' } => item.timelineKind === 'message'))
 
 function hasMessageContent(message: ConversationMessage): boolean {
   return Boolean(message.content || message.files?.length)
 }
 
-function isStreamingItem(message: ConversationMessage, index: number): boolean {
-  return props.streaming && message.role === 'assistant' && index === displayMessages.value.length - 1
+function isStreamingItem(message: ConversationMessage): boolean {
+  const last = displayMessages.value[displayMessages.value.length - 1]
+  return props.streaming && message.role === 'assistant' && last?.messageId === message.messageId
 }
 
 /** 思考阶段：消息正在流式生成，且尚未输出正文内容。 */
-function isThinking(message: ConversationMessage, index: number): boolean {
-  return isStreamingItem(message, index) && !message.content
+function isThinking(message: ConversationMessage): boolean {
+  return isStreamingItem(message) && !message.content
 }
 
-function shouldShowUsage(message: ConversationMessage, index: number): boolean {
-  return message.role === 'assistant' && !message.toolName && !isStreamingItem(message, index)
+function shouldShowUsage(message: ConversationMessage): boolean {
+  return message.role === 'assistant' && !message.toolName && !isStreamingItem(message)
+}
+
+function processActivities(message: ConversationMessage): ProcessActivity[] {
+  if (message.processActivities?.length) return message.processActivities
+  return [
+    ...(message.reasoning ? [{ kind: 'reasoning' as const, content: message.reasoning }] : []),
+    ...(message.toolActivities || []).map(tool => ({ kind: 'tool' as const, tool })),
+  ]
+}
+
+function processSummary(message: ConversationMessage): string {
+  const activities = processActivities(message)
+  const reasoningCount = activities.filter(activity => activity.kind === 'reasoning').length
+  const toolCount = activities.length - reasoningCount
+  const parts = []
+  if (reasoningCount) parts.push(`${reasoningCount} 段思考`)
+  if (toolCount) parts.push(`${toolCount} 项操作`)
+  return parts.join(' · ')
 }
 
 function incompleteResponseText(message: ConversationMessage): string {
@@ -93,6 +104,27 @@ function formatTimestamp(value: string): string {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
+function compactionDisplay(summary: ContextSummary) {
+  return buildCompactionDisplay(summary)
+}
+
+function compactionTokens(summary: ContextSummary) {
+  return buildCompactionTokenDisplay(summary)
+}
+
+function compactionBeforeTokenText(summary: ContextSummary): string {
+  const before = compactionTokens(summary).before
+  return before == null ? '—' : `${formatTokenCount(before)} tokens`
+}
+
+function compactionTitle(summary: ContextSummary): string {
+  return summary.status === 'Succeeded' ? '上下文已压缩' : '上下文压缩'
+}
+
+function compactionStatusClass(summary: ContextSummary): string {
+  return `is-${summary.status.toLowerCase()}`
+}
+
 async function copyTraceId(traceId: string): Promise<void> {
   try {
     await navigator.clipboard.writeText(traceId)
@@ -108,6 +140,7 @@ function scrollToBottom(): void {
   requestAnimationFrame(scroll)
 }
 watch(() => props.messages, () => { void nextTick(scrollToBottom) }, { deep: true })
+watch(() => props.contextSummaries, () => { void nextTick(scrollToBottom) }, { deep: true })
 watch(() => props.streaming, () => { if (props.streaming) scrollToBottom() })
 </script>
 
@@ -124,11 +157,11 @@ watch(() => props.streaming, () => { if (props.streaming) scrollToBottom() })
       </div>
     </div>
 
+    <template v-for="item in timelineRows" :key="item.messageId">
     <div
-      v-for="(item, index) in displayMessages"
-      :key="item.messageId"
+      v-if="item.timelineKind === 'message'"
       class="message-row"
-      :class="[item.role, { 'process-only': !hasMessageContent(item) && Boolean(item.reasoning || item.toolActivities?.length) }]"
+      :class="[item.role, { 'process-only': !hasMessageContent(item) && processActivities(item).length > 0 }]"
     >
       <div v-if="item.role === 'assistant'" class="assistant-mark" aria-hidden="true">
         <svg viewBox="0 0 24 24" fill="none"><circle cx="6" cy="6" r="2.2" /><circle cx="18" cy="8" r="2.2" /><circle cx="11" cy="18" r="2.2" /><path d="M7.9 7.2 16 8M7 7.9l3.2 8.1M16.7 9.8l-4.3 6.5" /></svg>
@@ -141,42 +174,44 @@ watch(() => props.streaming, () => { if (props.streaming) scrollToBottom() })
         </div>
 
         <details
-          v-if="item.reasoning"
-          class="process-activity reasoning-activity"
-          :class="{ running: isThinking(item, index) }"
-          :open="isThinking(item, index)"
+          v-if="processActivities(item).length"
+          class="process-activity process-bundle"
+          :class="{ running: isThinking(item) }"
         >
           <summary>
             <span class="activity-icon thinking-icon"><i /><i /><i /></span>
-            <span class="process-title">{{ isThinking(item, index) ? '正在思考' : '思考过程' }}</span>
-            <small>{{ isThinking(item, index) ? '生成中' : '已完成 · 展开查看' }}</small>
+            <span class="process-title">{{ isThinking(item) ? '正在执行' : '执行过程' }}</span>
+            <small>{{ processSummary(item) }} · {{ isThinking(item) ? '进行中' : '已折叠' }}</small>
           </summary>
-          <textarea class="process-activity-body reasoning-text" v-auto-scroll readonly spellcheck="false" rows="2" :value="item.reasoning" />
+          <div class="process-bundle-body">
+            <details
+              v-for="(activity, activityIndex) in processActivities(item)"
+              :key="activity.kind === 'tool' ? activity.tool.callId || `${activity.tool.name}-${activityIndex}` : `reasoning-${activityIndex}`"
+              class="process-step"
+              :class="{ running: activity.kind === 'tool' && !activity.tool.result && isStreamingItem(item) }"
+            >
+              <summary class="process-step-head">
+                <span class="process-step-index">{{ activityIndex + 1 }}</span>
+                <span class="process-step-copy">
+                  <strong>{{ activity.kind === 'reasoning' ? '思考' : toolPresentation(activity.tool.name).displayName }}</strong>
+                  <small>{{ activity.kind === 'reasoning' ? '模型推理' : toolPresentation(activity.tool.name).kind }}</small>
+                </span>
+                <span v-if="activity.kind === 'tool'" class="process-step-status" :class="{ done: activity.tool.result != null, running: isStreamingItem(item) && activity.tool.result == null }">
+                  {{ toolStatusText(activity.tool, isStreamingItem(item)) }}
+                </span>
+                <span class="process-step-chevron">›</span>
+              </summary>
+              <div class="process-step-body">
+                <pre v-if="activity.kind === 'reasoning'" class="process-reasoning">{{ activity.content }}</pre>
+                <div v-else class="process-tool-body">
+                  <div v-if="toolArgumentsText(activity.tool)" class="tool-section"><span>输入</span><pre class="tool-args">{{ toolArgumentsText(activity.tool) }}</pre></div>
+                  <div v-if="toolResultText(activity.tool)" class="tool-section"><span>输出</span><pre class="tool-result">{{ toolResultText(activity.tool) }}</pre></div>
+                  <div v-else class="tool-waiting"><span class="status-spinner" />{{ isStreamingItem(item) ? '等待工具返回结果…' : '本次调用未返回可展示结果' }}</div>
+                </div>
+              </div>
+            </details>
+          </div>
         </details>
-
-        <section v-if="item.toolActivities?.length" class="tool-activity-group" aria-label="工具调用">
-          <div class="activity-group-label"><span>操作记录</span><small>{{ item.toolActivities.length }} 项</small></div>
-          <details
-            v-for="tool in item.toolActivities"
-            :key="tool.callId || tool.name"
-            class="tool-card"
-            :class="{ running: tool.result == null && isStreamingItem(item, index) }"
-          >
-            <summary class="tool-card-head">
-              <span class="activity-icon tool-card-icon">
-                <svg viewBox="0 0 20 20" fill="none"><path d="M8.1 3.2a4.1 4.1 0 0 0 4.7 5.2l3.4 3.4a1.5 1.5 0 0 1 0 2.1l-2.3 2.3a1.5 1.5 0 0 1-2.1 0l-3.4-3.4a4.1 4.1 0 0 0-5.2-4.7l2.6 2.6 2.9-2.9-2.6-2.6Z" /></svg>
-              </span>
-              <span class="tool-card-copy"><strong class="tool-card-name">{{ toolPresentation(tool.name).displayName }}</strong><small>{{ toolPresentation(tool.name).kind }}</small></span>
-              <span class="tool-status" :class="{ running: tool.result == null && isStreamingItem(item, index), done: tool.result != null }">{{ toolStatusText(tool, isStreamingItem(item, index)) }}</span>
-              <span class="tool-chevron">›</span>
-            </summary>
-            <div class="tool-card-body">
-              <div v-if="toolArgumentsText(tool)" class="tool-section"><span>输入</span><pre class="tool-args">{{ toolArgumentsText(tool) }}</pre></div>
-              <div v-if="toolResultText(tool)" class="tool-section"><span>输出</span><pre class="tool-result">{{ toolResultText(tool) }}</pre></div>
-              <div v-else class="tool-waiting"><span class="status-spinner" />{{ isStreamingItem(item, index) ? '等待工具返回结果…' : '本次调用未返回可展示结果' }}</div>
-            </div>
-          </details>
-        </section>
 
         <div v-if="item.role === 'user' && item.files?.length" class="message-files user-files">
           <button v-for="file in item.files" :key="file.fileId || file.fileName" type="button" class="message-file upload-file" @click="emit('download', file)">
@@ -186,9 +221,9 @@ watch(() => props.streaming, () => { if (props.streaming) scrollToBottom() })
           </button>
         </div>
 
-        <div v-if="item.content || isStreamingItem(item, index)" class="message-bubble"><MarkdownContent :content="item.content" :streaming="isStreamingItem(item, index) && Boolean(item.content)" /></div>
+        <div v-if="item.content || isStreamingItem(item)" class="message-bubble"><MarkdownContent :content="item.content" :streaming="isStreamingItem(item) && Boolean(item.content)" /></div>
 
-        <div v-if="shouldShowUsage(item, index)" class="message-usage" aria-label="当前响应 Token 用量">
+        <div v-if="shouldShowUsage(item)" class="message-usage" aria-label="当前响应 Token 用量">
           <span v-if="item.modelId" class="message-model">{{ item.modelId }}</span>
           <span :class="{ unavailable: !item.tokenUsage }">Token · {{ formatTokenUsage(item.tokenUsage) }}</span>
           <small v-if="formatTokenBreakdown(item.tokenUsage)">{{ formatTokenBreakdown(item.tokenUsage) }}</small>
@@ -207,8 +242,8 @@ watch(() => props.streaming, () => { if (props.streaming) scrollToBottom() })
           </div>
         </div>
 
-        <div v-if="!hasMessageContent(item) && !item.reasoning && !item.toolActivities?.length && !item.error" class="message-thinking-placeholder" aria-live="polite">
-          <span v-if="isStreamingItem(item, index)" class="thinking-dots"><i /><i /><i /></span><span>{{ isStreamingItem(item, index) ? '正在生成回复' : incompleteResponseText(item) }}</span>
+        <div v-if="!hasMessageContent(item) && !processActivities(item).length && !item.error" class="message-thinking-placeholder" aria-live="polite">
+          <span v-if="isStreamingItem(item)" class="thinking-dots"><i /><i /><i /></span><span>{{ isStreamingItem(item) ? '正在生成回复' : incompleteResponseText(item) }}</span>
         </div>
 
         <div v-if="item.error" class="message-error" role="alert">
@@ -225,5 +260,32 @@ watch(() => props.streaming, () => { if (props.streaming) scrollToBottom() })
 
       <div v-if="item.role === 'user'" class="user-mark" aria-hidden="true">{{ (props.currentUser?.userId || 'U').slice(0, 1).toUpperCase() }}</div>
     </div>
+
+    <div
+      v-else
+      class="message-row context-summary-row"
+    >
+      <details class="context-summary-message">
+        <summary class="context-summary-line">
+          <span class="context-summary-chevron" aria-hidden="true">›</span>
+          <span class="context-summary-icon" aria-hidden="true">↻</span>
+          <strong>{{ compactionTitle(item.contextSummary) }}</strong>
+          <span class="context-summary-brief">{{ compactionDisplay(item.contextSummary).trigger }} · {{ compactionDisplay(item.contextSummary).strategy }}</span>
+          <time>{{ formatTimestamp(item.contextSummary.lastCompressedAt) }}</time>
+          <span class="context-summary-status" :class="compactionStatusClass(item.contextSummary)">{{ compactionDisplay(item.contextSummary).status }}</span>
+        </summary>
+        <div class="context-summary-expanded">
+          <div class="context-summary-meta">
+            <span>范围 <strong>{{ item.contextSummary.originalStartSequence || '—' }}–{{ item.contextSummary.originalEndSequence || '—' }}</strong></span>
+            <span>压缩前 <strong>{{ compactionBeforeTokenText(item.contextSummary) }}</strong></span>
+            <span>压缩后 <strong>{{ formatTokenCount(compactionTokens(item.contextSummary).after) }} tokens</strong></span>
+            <span>保留 <strong>{{ compactionTokens(item.contextSummary).retainedPercent }}</strong></span>
+          </div>
+          <div class="context-summary-body"><MarkdownContent :content="compactionDisplay(item.contextSummary).detail" /></div>
+          <small v-if="compactionDisplay(item.contextSummary).recovered" class="context-summary-recovered">原始历史已恢复，本次模型上下文未丢失。</small>
+        </div>
+      </details>
+    </div>
+    </template>
   </el-scrollbar>
 </template>

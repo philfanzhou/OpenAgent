@@ -1,5 +1,5 @@
 import { computed, ref, shallowReactive, type Ref } from 'vue'
-import { ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '../api'
 import { mergeConversationRecords, replaceConversationRecord, selectionMatchesConversation } from '../conversationCollection'
 import { summarizeConversationUsage } from '../tokenUsage'
@@ -20,6 +20,7 @@ export function useConversationState(options: ConversationStateOptions) {
   const conversations = ref<ConversationRecord[]>([])
   const selectedConversation = ref<ConversationRecord | null>(null)
   const conversationDetailRequests = shallowReactive(new Map<string, string>())
+  const compactingConversation = ref(false)
 
   const currentMessages = computed(() => selectedConversation.value?.messages || [])
   const streamingConversationIds = computed(() => options.streams.activeConversationIds())
@@ -118,6 +119,29 @@ export function useConversationState(options: ConversationStateOptions) {
     }
   }
 
+  async function compactConversation(): Promise<void> {
+    const conversation = selectedConversation.value
+    if (!conversation || selectedConversationStreaming.value) return
+    compactingConversation.value = true
+    try {
+      const summary = await api.compactConversation(conversation.conversationId)
+      conversation.contextSummaries = [...(conversation.contextSummaries || []), summary]
+      if (summary.status === 'Succeeded') ElMessage.success('会话上下文压缩已完成')
+      else if (summary.status === 'Skipped') ElMessage.info('本次压缩未执行，原始会话保持不变')
+      else ElMessage.warning('压缩失败，原始会话历史已恢复')
+    } catch (error) {
+      options.notifyError(error)
+      try {
+        const persisted = await api.getConversation(conversation.conversationId)
+        replaceConversation(persisted, conversation.conversationId)
+      } catch {
+        // The original error remains the actionable result.
+      }
+    } finally {
+      compactingConversation.value = false
+    }
+  }
+
   function resetConversations(): void {
     conversations.value = []
     selectedConversation.value = null
@@ -132,6 +156,7 @@ export function useConversationState(options: ConversationStateOptions) {
     streamingConversationIds,
     loadingConversation,
     selectedConversationStreaming,
+    compactingConversation,
     conversationStatusText,
     currentUsageSummary,
     mergeConversationList,
@@ -141,6 +166,7 @@ export function useConversationState(options: ConversationStateOptions) {
     selectConversation,
     clearSelectedConversation,
     deleteConversation,
+    compactConversation,
     resetConversations,
   }
 }

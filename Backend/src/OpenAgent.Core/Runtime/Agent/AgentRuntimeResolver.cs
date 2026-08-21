@@ -101,23 +101,16 @@ internal sealed class AgentRuntimeResolver : IAgentRuntimeResolver
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(policy.Strategy))
-        {
-            throw new InvalidOperationException(
-                $"ContextPolicy strategy is required for agent '{agentId}'.");
-        }
-
-        string strategy = policy.Strategy.ToLowerInvariant();
-        if (strategy is not ("summarize" or "sliding_window" or "none"))
-        {
-            throw new InvalidOperationException(
-                $"Unsupported ContextPolicy strategy '{policy.Strategy}' for agent '{agentId}'.");
-        }
-
         if (policy.MaxTokens < 0 || policy.PreserveRecentTurns < 0)
         {
             throw new InvalidOperationException(
                 $"ContextPolicy limits cannot be negative for agent '{agentId}'.");
+        }
+
+        if (policy.SummarizeOptions?.MaxSummaryTokens < 1)
+        {
+            throw new InvalidOperationException(
+                $"ContextPolicy summary token limit must be positive for agent '{agentId}'.");
         }
     }
 }

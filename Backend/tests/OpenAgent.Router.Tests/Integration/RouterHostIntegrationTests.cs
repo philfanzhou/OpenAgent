@@ -119,6 +119,23 @@ public sealed class RouterHostIntegrationTests : IClassFixture<RouterHostFixture
     }
 
     [Fact]
+    public async Task ConversationCompaction_ForwardsPostToEngine()
+    {
+        using RouterApplicationFactory factory = _fixture.CreateFactory();
+        using HttpClient client = factory.CreateClient();
+        using HttpRequestMessage request = new(
+            HttpMethod.Post,
+            "/api/v1/agent/conversations/conversation-1/compact");
+        AddAuthentication(request);
+
+        using HttpResponseMessage response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("conversation-1", _fixture.PrimaryEngine.LastCompactedConversationId);
+        Assert.StartsWith("Basic ", _fixture.PrimaryEngine.LastAuthorization, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Chat_SseClientCancellation_ReachesDownstream()
     {
         using RouterApplicationFactory factory = _fixture.CreateFactory();
