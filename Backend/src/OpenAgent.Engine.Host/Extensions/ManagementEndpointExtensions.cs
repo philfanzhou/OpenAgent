@@ -51,7 +51,9 @@ internal static class ManagementEndpointExtensions
         {
             if (!HasScope(context, "agent.config.read"))
                 return Results.Forbid();
-            IReadOnlyList<LlmProviderProfile> profiles = await manager.ListAsync(cancellationToken).ConfigureAwait(false);
+            IReadOnlyList<LlmProviderProfile> profiles = await manager.ListAsync(
+                RequireTenant(context),
+                cancellationToken).ConfigureAwait(false);
             return Results.Ok(profiles.Select(RedactLlm));
         });
 
@@ -63,7 +65,10 @@ internal static class ManagementEndpointExtensions
         {
             if (!HasScope(context, "agent.config.read"))
                 return Results.Forbid();
-            LlmProviderProfile? profile = await manager.GetAsync(id, cancellationToken).ConfigureAwait(false);
+            LlmProviderProfile? profile = await manager.GetAsync(
+                id,
+                RequireTenant(context),
+                cancellationToken).ConfigureAwait(false);
             return profile == null ? Results.NotFound() : Results.Ok(RedactLlm(profile));
         });
 
@@ -81,16 +86,28 @@ internal static class ManagementEndpointExtensions
             {
                 return Results.BadRequest(new { error = "LLM requires id, name and endpoint. Model ID is selected per Agent." });
             }
+            string? tokenLimitError = ValidateLlmTokenCapabilities(profile);
+            if (tokenLimitError != null)
+            {
+                return Results.BadRequest(new { error = tokenLimitError });
+            }
 
             profile.Id = id;
-            LlmProviderProfile? existing = await manager.GetAsync(id, cancellationToken).ConfigureAwait(false);
+            string tenantId = RequireTenant(context);
+            LlmProviderProfile? existing = await manager.GetAsync(
+                id,
+                tenantId,
+                cancellationToken).ConfigureAwait(false);
             if (existing != null && (string.IsNullOrWhiteSpace(profile.ApiKey)
                 || profile.ApiKey.StartsWith("***", StringComparison.Ordinal)))
             {
                 profile.ApiKey = existing.ApiKey;
             }
 
-            LlmProviderProfile saved = await manager.SaveAsync(profile, cancellationToken).ConfigureAwait(false);
+            LlmProviderProfile saved = await manager.SaveAsync(
+                profile,
+                tenantId,
+                cancellationToken).ConfigureAwait(false);
             return Results.Ok(RedactLlm(saved));
         });
 
@@ -102,6 +119,12 @@ internal static class ManagementEndpointExtensions
         {
             if (!HasScope(context, "agent.config.write"))
                 return Results.Forbid();
+            LlmProviderProfile? existing = await manager.GetAsync(
+                id,
+                RequireTenant(context),
+                cancellationToken).ConfigureAwait(false);
+            if (existing == null)
+                return Results.NotFound();
             return await manager.DeleteAsync(id, cancellationToken).ConfigureAwait(false)
                 ? Results.NoContent()
                 : Results.NotFound();
@@ -727,5 +750,24 @@ internal static class ManagementEndpointExtensions
             MaxOutputTokens = profile.MaxOutputTokens,
             SupportsMaxOutputTokens = profile.SupportsMaxOutputTokens
         };
+    }
+
+    internal static string? ValidateLlmTokenCapabilities(LlmProviderProfile profile)
+    {
+        if (profile.ContextWindowTokens is <= 0)
+        {
+            return "LLM context window tokens must be positive.";
+        }
+        if (profile.MaxOutputTokens is <= 0)
+        {
+            return "LLM maximum output tokens must be positive.";
+        }
+        if (profile.ContextWindowTokens.HasValue
+            && profile.MaxOutputTokens.HasValue
+            && profile.MaxOutputTokens.Value >= profile.ContextWindowTokens.Value)
+        {
+            return "LLM maximum output tokens must be less than its context window.";
+        }
+        return null;
     }
 }
