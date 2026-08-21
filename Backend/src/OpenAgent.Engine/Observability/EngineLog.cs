@@ -291,6 +291,74 @@ internal static partial class EngineLog
     [LoggerMessage(EventId = 4069, Level = LogLevel.Error, Message = "Failed to reload LLM profile {ProfileId} from Redis. ExceptionType={ExceptionType}")]
     private static partial void HotReloadLlmProfileRefreshFailedCore(ILogger logger, Exception ex, string profileId, string exceptionType);
 
+    // --- PostgreSQL Agent configuration proof of concept ---
+
+    [LoggerMessage(EventId = 4070, Level = LogLevel.Information, Message = "Loaded Agent configuration from PostgreSQL. AgentId={AgentId}, Version={Version}")]
+    public static partial void AgentConfigLoadedFromPostgreSql(
+        ILogger logger,
+        string agentId,
+        string version);
+
+    public static void AgentConfigCacheReadFailed(
+        ILogger logger,
+        Exception exception,
+        string agentId) => AgentConfigCacheReadFailedCore(
+            logger,
+            exception,
+            agentId,
+            exception.GetType().FullName ?? "unknown");
+
+    [LoggerMessage(EventId = 4071, Level = LogLevel.Warning, Message = "Failed to read the PostgreSQL-derived Agent configuration cache. AgentId={AgentId}, ExceptionType={ExceptionType}")]
+    private static partial void AgentConfigCacheReadFailedCore(
+        ILogger logger,
+        Exception exception,
+        string agentId,
+        string exceptionType);
+
+    public static void AgentConfigCacheWriteFailed(
+        ILogger logger,
+        Exception exception,
+        string agentId) => AgentConfigCacheWriteFailedCore(
+            logger,
+            exception,
+            agentId,
+            exception.GetType().FullName ?? "unknown");
+
+    [LoggerMessage(EventId = 4072, Level = LogLevel.Warning, Message = "PostgreSQL committed Agent configuration but Redis cache refresh failed. AgentId={AgentId}, ExceptionType={ExceptionType}")]
+    private static partial void AgentConfigCacheWriteFailedCore(
+        ILogger logger,
+        Exception exception,
+        string agentId,
+        string exceptionType);
+
+    [LoggerMessage(EventId = 4073, Level = LogLevel.Information, Message = "Refreshed Agent configuration from the PostgreSQL-derived Redis cache. AgentId={AgentId}, Version={Version}")]
+    public static partial void AgentConfigPostgreSqlHotReloaded(
+        ILogger logger,
+        string agentId,
+        string version);
+
+    [LoggerMessage(EventId = 4074, Level = LogLevel.Information, Message = "PostgreSQL Agent configuration cache warmup completed. Cached={CachedCount}, Total={TotalCount}")]
+    public static partial void AgentConfigCacheWarmupCompleted(
+        ILogger logger,
+        int cachedCount,
+        int totalCount);
+
+    public static void AgentConfigCacheWarmupFailed(
+        ILogger logger,
+        Exception exception) => AgentConfigCacheWarmupFailedCore(
+            logger,
+            exception,
+            exception.GetType().FullName ?? "unknown");
+
+    [LoggerMessage(EventId = 4075, Level = LogLevel.Warning, Message = "PostgreSQL Agent configuration cache warmup failed and will retry. ExceptionType={ExceptionType}")]
+    private static partial void AgentConfigCacheWarmupFailedCore(
+        ILogger logger,
+        Exception exception,
+        string exceptionType);
+
+    [LoggerMessage(EventId = 4076, Level = LogLevel.Warning, Message = "Redis rejected the PostgreSQL-derived Agent configuration cache write. AgentId={AgentId}")]
+    public static partial void AgentConfigCacheWriteRejected(ILogger logger, string agentId);
+
     // --- Host Lifecycle / Program.cs ---
 
     // --- Endpoint Extensions ---

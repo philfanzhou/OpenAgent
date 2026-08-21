@@ -8,7 +8,7 @@ OpenAgent 使用 MAF 官方 `AgentSkillsProvider` 提供 Agent Skills。Web 端�
 |---|---|
 | 官方格式 | `SKILL.md` YAML frontmatter + Markdown instructions |
 | 渐进披露 | MAF 提供 `load_skill` 和 `read_skill_resource` |
-| Skill 目录 | PostgreSQL 保存租户范围的 Skill 元数据；Redis `skill:published:index` + `skill:registry:{tenantHash}:{skillId}` 仅作派生缓存 |
+| Skill 目录 | PostgreSQL 保存租户范围的 Skill 元数据；Redis `skill:published:index:{tenantHash}` + `skill:registry:{tenantHash}:{encodedSkillId}` 仅作派生缓存 |
 | Agent 绑定 | `SkillsConfig` 只从当前 Agent 配置选择已启用 Skill；目录注册不产生绑定 |
 | 权限过滤 | 在创建 provider 前按 Agent、Skill 和用户 ACL 过滤 |
 | 生命周期 | `AgentExecutionScope` 释放 provider 并删除临时目录 |

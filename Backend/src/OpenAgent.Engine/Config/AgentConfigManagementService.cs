@@ -13,7 +13,8 @@ internal sealed class AgentConfigManagementService(
     IRedisConnectionProvider redis,
     MockAgentResolver mockAgentResolver,
     AgentConfigLocalStore localStore,
-    ConfigUpdateDispatcher configUpdates)
+    ConfigUpdateDispatcher configUpdates,
+    AgentConfigDatabaseStore? databaseStore = null)
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -26,6 +27,13 @@ internal sealed class AgentConfigManagementService(
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (databaseStore?.IsEnabled == true)
+        {
+            return await databaseStore
+                .GetAuthoritativeAsync(agentId, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         if (!redis.IsAvailable)
         {
             return mockAgentResolver.IsEnabled ? localStore.Get(agentId) : null;
@@ -63,6 +71,13 @@ internal sealed class AgentConfigManagementService(
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (databaseStore?.IsEnabled == true)
+        {
+            return await databaseStore
+                .SaveAsync(agentId, entity, expectedVersion, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         if (!redis.IsAvailable)
         {
             if (!mockAgentResolver.IsEnabled)

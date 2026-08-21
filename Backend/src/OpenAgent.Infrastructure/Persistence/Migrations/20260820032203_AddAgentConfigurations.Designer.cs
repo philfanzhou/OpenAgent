@@ -2,18 +2,21 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using OpenAgent.Infrastructure;
 
 #nullable disable
 
-namespace OpenAgent.Infrastructure.Migrations
+namespace OpenAgent.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(OpenAgentDbContext))]
-    partial class OpenAgentDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260820032203_AddAgentConfigurations")]
+    partial class AddAgentConfigurations
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -64,10 +67,6 @@ namespace OpenAgent.Infrastructure.Migrations
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("ContextSummariesJson")
-                        .IsRequired()
-                        .HasColumnType("jsonb");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
                         .HasColumnType("timestamp with time zone");

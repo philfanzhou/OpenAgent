@@ -21,6 +21,8 @@ internal static class ServiceCollectionExtensions
     {
         services.Configure<HeartbeatOptions>(configuration.GetSection("Heartbeat"));
         services.Configure<ConfigSnapshotOptions>(configuration.GetSection("ConfigSnapshot"));
+        services.Configure<AgentConfigSourceOptions>(
+            configuration.GetSection(AgentConfigSourceOptions.SectionName));
 
         // Factory uses GetService so island mode works even when IConnectionMultiplexer
         // is not registered (e.g. Core's Redis connection string is empty).
@@ -31,6 +33,7 @@ internal static class ServiceCollectionExtensions
         services.AddSingleton<SecretInjector>();
         services.AddSingleton<MockAgentResolver>();
         services.AddSingleton<AgentConfigLocalStore>();
+        services.AddSingleton<AgentConfigDatabaseStore>();
         services.AddSingleton<AgentListQuery>();
         services.AddSingleton<AgentConfigManagementService>();
         services.AddSingleton<LlmProfileManagementService>();
@@ -64,6 +67,7 @@ internal static class ServiceCollectionExtensions
         services.AddSingleton<LegacyMessageHandler>();
         services.AddSingleton<ConfigUpdateDispatcher>();
         services.AddHostedService<HotReloadService>();
+        services.AddHostedService<AgentConfigCacheWarmupService>();
 
         services.AddSingleton<ShutdownService>();
         services.AddHostedService(sp => sp.GetRequiredService<ShutdownService>());
