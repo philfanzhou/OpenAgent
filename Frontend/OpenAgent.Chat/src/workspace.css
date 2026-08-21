@@ -5,7 +5,7 @@
 
 /* Sidebar / context widths are driven by JS (persisted). */
 :root {
-  --workspace-sidebar: 240px;
+  --workspace-sidebar: 280px;
   --workspace-context: 244px;
   --workspace-min-sidebar: 210px;
   --workspace-max-sidebar: 380px;
@@ -136,6 +136,7 @@ html[data-theme='dark'] .sidebar .el-input__inner { color: #ececec; }
 .conversation-item {
   display: flex;
   align-items: center;
+  position: relative;
   gap: 8px;
   min-height: 48px;
   margin: 1px 0;
@@ -177,9 +178,23 @@ html[data-theme='dark'] .conversation-title { color: #e7e7e7; }
 .conversation-streaming { display: inline-flex; align-items: center; gap: 5px; color: var(--accent); }
 .conversation-streaming i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: stream-pulse 1.2s ease-in-out infinite; }
 @keyframes stream-pulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
-.conversation-more { color: var(--text-faint) !important; opacity: 0; }
+.conversation-more {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 1;
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  padding: 0;
+  color: var(--text-faint) !important;
+  opacity: 0;
+  pointer-events: none;
+  transition: color var(--dur) var(--ease), background var(--dur) var(--ease), opacity var(--dur) var(--ease);
+}
 .conversation-item:hover .conversation-more,
-.conversation-item.active .conversation-more { opacity: 1; }
+.conversation-item:focus-within .conversation-more,
+.conversation-more:focus-visible { opacity: 1; pointer-events: auto; }
 
 .empty-conversations {
   display: flex;
@@ -1408,7 +1423,7 @@ html[data-theme='dark'] .health-banner, html[data-theme='dark'] .health-detail {
 }
 
 @media (max-width: 860px) {
-  :root { --workspace-sidebar: 220px; }
+  :root { --workspace-sidebar: 240px; }
   .context-panel { display: none; }
   .workspace-grid { grid-template-columns: minmax(0, 1fr); }
   .chat-card { border-right: 0; }
