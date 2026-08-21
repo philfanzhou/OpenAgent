@@ -22,6 +22,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
     private readonly ConversationContext _conversation;
     private readonly string _agentId;
     private readonly string _modelId;
+    private readonly IReadOnlyDictionary<string, string> _executionMetadata;
     private readonly string _input;
     private readonly IReadOnlyList<FileAsset> _files;
     private readonly FileAssetExecutionContext _fileExecution;
@@ -46,6 +47,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         ConversationContext conversation,
         string agentId,
         string modelId,
+        IReadOnlyDictionary<string, string> executionMetadata,
         string input,
         IReadOnlyList<FileAsset> files,
         FileAssetExecutionContext fileExecution,
@@ -57,6 +59,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         _conversation = conversation;
         _agentId = agentId;
         _modelId = modelId;
+        _executionMetadata = executionMetadata;
         _input = input;
         _files = files;
         _fileExecution = fileExecution;
@@ -422,11 +425,20 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         }
 
         _userRecorded = true;
+        var metadata = new Dictionary<string, string>(_executionMetadata, StringComparer.Ordinal);
+        IReadOnlyDictionary<string, string>? fileMetadata = AgentMessageAdapter.BuildFileMetadata(_files);
+        if (fileMetadata != null)
+        {
+            foreach ((string key, string value) in fileMetadata)
+            {
+                metadata[key] = value;
+            }
+        }
         _pending.Add(ConversationSessionStore.Message(
             _nextSequence++,
             "user",
             _input,
-            metadata: AgentMessageAdapter.BuildFileMetadata(_files),
+            metadata: metadata.Count == 0 ? null : metadata,
             fileIds: _files.Select(item => item.FileId).ToArray()));
     }
 

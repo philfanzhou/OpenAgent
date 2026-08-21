@@ -13,6 +13,8 @@ public class AgentRequest
     public ClientType ClientType { get; init; } = ClientType.Web;
     public string? IdempotencyKey { get; init; }
     public Dictionary<string, string>? ExternalContext { get; init; }
+    public int? ContextWindowTokens { get; init; }
+    public int? MaxOutputTokens { get; init; }
     [JsonIgnore]
     public IReadOnlyList<string> FileIds { get; init; } = Array.Empty<string>();
 }

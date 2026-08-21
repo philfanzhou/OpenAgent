@@ -52,7 +52,15 @@ internal class LlmRegistry : ILlmRegistry
             ModelId = string.IsNullOrWhiteSpace(llmConfig.ModelId) ? profile.ModelId ?? string.Empty : llmConfig.ModelId,
             ApiKey = profile.ApiKey,
             Endpoint = profile.Endpoint,
-            Temperature = llmConfig.Temperature == 0.7 ? profile.Temperature : llmConfig.Temperature
+            Temperature = llmConfig.Temperature == 0.7 ? profile.Temperature : llmConfig.Temperature,
+            ContextWindowTokens = llmConfig.ContextWindowTokens ?? profile.ContextWindowTokens,
+            MaxOutputTokens = llmConfig.MaxOutputTokens ?? profile.MaxOutputTokens,
+            TokenCapabilities = new LlmTokenCapabilities
+            {
+                ContextWindowTokens = profile.ContextWindowTokens,
+                MaxOutputTokens = profile.MaxOutputTokens,
+                SupportsMaxOutputTokens = profile.SupportsMaxOutputTokens
+            }
         };
     }
 }

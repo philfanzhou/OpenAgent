@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using OpenAgent.Core.Capabilities;
@@ -57,6 +58,7 @@ internal sealed class AgentFactory
         PlatformChatHistory history = _conversations.Create(
             profile.AgentId,
             profile.Model.ModelId,
+            CreateExecutionMetadata(profile, request),
             request,
             user,
             files);
@@ -82,6 +84,7 @@ internal sealed class AgentFactory
 
             AIContextProvider compaction = _conversations.CreateCompaction(
                 profile.Config.ContextPolicy,
+                profile.Model,
                 summarizationClient,
                 user.TenantId,
                 request.ConversationId);
@@ -113,6 +116,9 @@ internal sealed class AgentFactory
                         ? null
                         : profile.Config.Instructions,
                     Temperature = (float?)profile.Model.Temperature,
+                    MaxOutputTokens = profile.Model.TokenCapabilities.SupportsMaxOutputTokens
+                        ? profile.Model.MaxOutputTokens
+                        : null,
                     Tools = tools.Concat(mcpRuntime.Tools).ToList()
                 },
                 ChatHistoryProvider = history,
@@ -136,4 +142,47 @@ internal sealed class AgentFactory
         IAgentUserContext user,
         CancellationToken cancellationToken) =>
         _conversations.EnsureConversationAsync(agentId, request, user, cancellationToken);
+
+    private static IReadOnlyDictionary<string, string> CreateExecutionMetadata(
+        AgentRuntimeProfile profile,
+        AgentRequest request)
+    {
+        LlmTokenCapabilities capabilities = profile.Model.TokenCapabilities;
+        bool hasTokenConfiguration = capabilities.ContextWindowTokens.HasValue
+            || capabilities.MaxOutputTokens.HasValue
+            || profile.Config.Llm.ContextWindowTokens.HasValue
+            || profile.Config.Llm.MaxOutputTokens.HasValue
+            || request.ContextWindowTokens.HasValue
+            || request.MaxOutputTokens.HasValue;
+        if (!hasTokenConfiguration)
+        {
+            return new Dictionary<string, string>();
+        }
+
+        var metadata = new Dictionary<string, string>(StringComparer.Ordinal);
+        AddTokenValue(metadata, "LlmModelContextWindowTokens", capabilities.ContextWindowTokens);
+        AddTokenValue(metadata, "LlmModelMaxOutputTokens", capabilities.MaxOutputTokens);
+        AddTokenValue(metadata, "LlmAgentContextWindowTokens", profile.Config.Llm.ContextWindowTokens);
+        AddTokenValue(metadata, "LlmAgentMaxOutputTokens", profile.Config.Llm.MaxOutputTokens);
+        AddTokenValue(metadata, "LlmRequestContextWindowTokens", request.ContextWindowTokens);
+        AddTokenValue(metadata, "LlmRequestMaxOutputTokens", request.MaxOutputTokens);
+        AddTokenValue(metadata, "LlmEffectiveContextWindowTokens", profile.Model.ContextWindowTokens);
+        AddTokenValue(metadata, "LlmEffectiveMaxOutputTokens", profile.Model.MaxOutputTokens);
+        metadata["LlmMaxOutputTokensSupported"] = capabilities.SupportsMaxOutputTokens.ToString();
+        metadata["LlmMaxOutputTokensApplied"] = (
+            capabilities.SupportsMaxOutputTokens
+            && profile.Model.MaxOutputTokens.HasValue).ToString();
+        return metadata;
+    }
+
+    private static void AddTokenValue(
+        Dictionary<string, string> metadata,
+        string name,
+        int? value)
+    {
+        if (value.HasValue)
+        {
+            metadata[name] = value.Value.ToString(CultureInfo.InvariantCulture);
+        }
+    }
 }

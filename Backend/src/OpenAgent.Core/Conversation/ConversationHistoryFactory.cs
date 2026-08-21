@@ -61,6 +61,7 @@ internal sealed class ConversationHistoryFactory
     internal PlatformChatHistory Create(
         string agentId,
         string modelId,
+        IReadOnlyDictionary<string, string> executionMetadata,
         AgentRequest request,
         IAgentUserContext user,
         IReadOnlyList<FileAssetContent> files)
@@ -76,6 +77,7 @@ internal sealed class ConversationHistoryFactory
             context,
             agentId,
             modelId,
+            executionMetadata,
             request.Query,
             files.Select(item => item.Asset).ToList().AsReadOnly(),
             _fileExecution,
@@ -107,17 +109,18 @@ internal sealed class ConversationHistoryFactory
 
     internal AIContextProvider CreateCompaction(
         ContextPolicy? policy,
+        LlmConfig model,
         IChatClient summarizationClient,
         string? tenantId,
         string? conversationId)
     {
-        SummarizationCompactionStrategy strategy = CreateStrategy(
+        SummarizationCompactionStrategy summaryStrategy = CreateStrategy(
             policy,
             summarizationClient,
             force: false,
             out CompactionTrigger trigger);
         var audited = new AuditedCompactionStrategy(
-            strategy,
+            summaryStrategy,
             trigger,
             "Automatic",
             tenantId,
@@ -125,8 +128,17 @@ internal sealed class ConversationHistoryFactory
             _store.Store,
             _loggerFactory.CreateLogger<AuditedCompactionStrategy>(),
             recordUnchanged: false);
-        return new CompactionProvider(audited);
+        CompactionStrategy compactionStrategy = model.ContextWindowTokens.HasValue
+            ? new PipelineCompactionStrategy(
+                [audited, CreateContextWindowSafety(model)])
+            : audited;
+        return new CompactionProvider(compactionStrategy);
     }
+
+    private static ContextWindowCompactionStrategy CreateContextWindowSafety(
+        LlmConfig model) => new(
+            model.ContextWindowTokens!.Value,
+            model.MaxOutputTokens ?? 0);
 
     internal SummarizationCompactionStrategy CreateStrategy(
         ContextPolicy? policy,

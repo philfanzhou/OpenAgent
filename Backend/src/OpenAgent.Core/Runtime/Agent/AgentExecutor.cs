@@ -43,10 +43,11 @@ public sealed class AgentExecutor
             request,
             user,
             cancellationToken).ConfigureAwait(false);
-        AgentRuntimeProfile profile = await _runtime.ResolveAsync(
+        AgentRuntimeProfile configuredProfile = await _runtime.ResolveAsync(
             agentId,
             user,
             cancellationToken).ConfigureAwait(false);
+        AgentRuntimeProfile profile = ModelTokenLimitResolver.Apply(configuredProfile, request);
         AgentRequest executionRequest = CopyWithResolvedValues(request, agentId, traceId);
         if (executionRequest.FileIds.Count > 0)
         {
@@ -104,10 +105,11 @@ public sealed class AgentExecutor
             request,
             user,
             cancellationToken).ConfigureAwait(false);
-        AgentRuntimeProfile profile = await _runtime.ResolveAsync(
+        AgentRuntimeProfile configuredProfile = await _runtime.ResolveAsync(
             agentId,
             user,
             cancellationToken).ConfigureAwait(false);
+        AgentRuntimeProfile profile = ModelTokenLimitResolver.Apply(configuredProfile, request);
         AgentRequest executionRequest = CopyWithResolvedValues(request, agentId, traceId);
         if (executionRequest.FileIds.Count > 0)
         {
@@ -241,6 +243,8 @@ public sealed class AgentExecutor
             TraceId = traceId,
             ClientType = request.ClientType,
             IdempotencyKey = request.IdempotencyKey,
+            ContextWindowTokens = request.ContextWindowTokens,
+            MaxOutputTokens = request.MaxOutputTokens,
             ExternalContext = request.ExternalContext,
             FileIds = request.FileIds
         };

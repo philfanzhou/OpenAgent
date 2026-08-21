@@ -105,6 +105,49 @@ public class LlmRegistryTests
     }
 
     [Fact]
+    public void ResolveConfig_AgentTokenDefaultsOverrideModelProfileAndPreserveCapabilities()
+    {
+        var registry = new LlmRegistry();
+        registry.Register(new LlmProviderProfile
+        {
+            Id = "profile-1",
+            ContextWindowTokens = 128_000,
+            MaxOutputTokens = 16_000,
+            SupportsMaxOutputTokens = false
+        });
+
+        LlmConfig resolved = registry.ResolveConfig(new LlmConfig
+        {
+            Provider = "profile-1",
+            ContextWindowTokens = 64_000,
+            MaxOutputTokens = 4_000
+        });
+
+        Assert.Equal(64_000, resolved.ContextWindowTokens);
+        Assert.Equal(4_000, resolved.MaxOutputTokens);
+        Assert.Equal(128_000, resolved.TokenCapabilities.ContextWindowTokens);
+        Assert.Equal(16_000, resolved.TokenCapabilities.MaxOutputTokens);
+        Assert.False(resolved.TokenCapabilities.SupportsMaxOutputTokens);
+    }
+
+    [Fact]
+    public void ResolveConfig_WithoutAgentTokenDefaultsFallsBackToModelProfile()
+    {
+        var registry = new LlmRegistry();
+        registry.Register(new LlmProviderProfile
+        {
+            Id = "profile-1",
+            ContextWindowTokens = 128_000,
+            MaxOutputTokens = 16_000
+        });
+
+        LlmConfig resolved = registry.ResolveConfig(new LlmConfig { Provider = "profile-1" });
+
+        Assert.Equal(128_000, resolved.ContextWindowTokens);
+        Assert.Equal(16_000, resolved.MaxOutputTokens);
+    }
+
+    [Fact]
     public void Remove_DeletesProfile()
     {
         var registry = new LlmRegistry();

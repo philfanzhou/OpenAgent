@@ -48,6 +48,27 @@ public class ContractSerializationTests
     }
 
     [Fact]
+    public void LlmConfig_RuntimeCapabilities_AreNotSerialized()
+    {
+        LlmConfig config = new()
+        {
+            ContextWindowTokens = 64_000,
+            MaxOutputTokens = 4_000,
+            TokenCapabilities = new LlmTokenCapabilities
+            {
+                ContextWindowTokens = 128_000,
+                MaxOutputTokens = 16_000
+            }
+        };
+
+        string json = JsonSerializer.Serialize(config, JsonOptions);
+
+        Assert.Contains("\"contextWindowTokens\":64000", json, StringComparison.Ordinal);
+        Assert.Contains("\"maxOutputTokens\":4000", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("tokenCapabilities", json, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void SkillInstanceConfig_UsesSkillIdWireName()
     {
         SkillInstanceConfig skill = new() { Id = "search", Name = "Search" };

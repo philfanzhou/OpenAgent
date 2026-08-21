@@ -170,6 +170,8 @@ export interface LlmConfig {
   apiKey: string
   endpoint: string
   temperature: number
+  contextWindowTokens?: number | null
+  maxOutputTokens?: number | null
 }
 
 export interface LlmProviderProfile {
@@ -180,6 +182,9 @@ export interface LlmProviderProfile {
   endpoint: string
   apiKey: string
   temperature: number
+  contextWindowTokens?: number | null
+  maxOutputTokens?: number | null
+  supportsMaxOutputTokens: boolean
 }
 
 export interface LlmTestResult {

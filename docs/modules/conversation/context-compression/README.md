@@ -10,6 +10,8 @@
 压缩发生在 MAF 模型调用前，保持函数调用与函数结果的原子消息组，并可覆盖同一 Agent
 run 内的后续工具迭代。
 
+当有效 `ContextWindowTokens` 存在时，摘要策略之后会追加 `ContextWindowCompactionStrategy` 安全回退。该策略按“有效上下文窗口 - 有效最大输出”预留输入预算，先收缩旧工具结果，再截断旧消息组；完整审计历史不受影响。`ContextPolicy.MaxTokens` 继续决定摘要策略的主动触发阈值，模型窗口提供不可突破的运行时安全边界。
+
 ## Architecture
 
 
@@ -17,7 +19,8 @@ run 内的后续工具迭代。
 PlatformChatHistory -> MAF ChatMessage history
   -> FunctionInvokingChatClient
        -> CompactionProvider (before every model call)
-            -> SummarizationCompactionStrategy
+            -> Audited SummarizationCompactionStrategy
+            -> ContextWindowCompactionStrategy (when configured)
        -> Provider IChatClient
 ```
 
@@ -63,3 +66,5 @@ PlatformChatHistory -> MAF ChatMessage history
 
 每次实际自动压缩和每次手动尝试以 `ContextSummary` 追加到会话的数据库记录。Chat Inspector 展示压缩次数、最近策略、
 触发方式、原始范围、摘要或结果；失败记录同时标识原始上下文是否已恢复。
+
+单次请求可以降低或提高本次有效上下文窗口，但不得超过模型 Profile 声明的能力；其优先级高于 Agent 默认值。压缩使用最终有效值计算输入预算。

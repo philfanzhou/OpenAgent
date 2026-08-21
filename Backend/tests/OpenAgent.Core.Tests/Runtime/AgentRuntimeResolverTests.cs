@@ -1,5 +1,6 @@
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Conversation;
+using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Models;
 using OpenAgent.Core.Runtime.Agent;
@@ -98,6 +99,63 @@ public sealed class AgentRuntimeResolverTests
     }
 
     [Fact]
+    public async Task ResolveAsync_AgentTokenDefaultExceedsModelCapability_ThrowsConfigurationError()
+    {
+        AgentConfig config = new()
+        {
+            Llm = new LlmConfig
+            {
+                Provider = "profile-1",
+                ContextWindowTokens = 129_000
+            }
+        };
+        AgentRuntimeResolver resolver = CreateResolver(config, new LlmProviderProfile
+        {
+            Id = "profile-1",
+            TenantId = "tenant-1",
+            Endpoint = "https://llm.example.test",
+            ApiKey = "test-key",
+            ContextWindowTokens = 128_000,
+            MaxOutputTokens = 16_000
+        });
+
+        AgentException exception = await Assert.ThrowsAsync<AgentException>(() =>
+            resolver.ResolveAsync("agent-1", User(), CancellationToken.None));
+
+        Assert.Equal(AgentErrorCode.ConfigurationError, exception.ErrorCode);
+        Assert.Contains("exceeds model capability", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_ProviderDoesNotSupportAgentOutputDefault_ThrowsConfigurationError()
+    {
+        AgentConfig config = new()
+        {
+            Llm = new LlmConfig
+            {
+                Provider = "profile-1",
+                MaxOutputTokens = 4_000
+            }
+        };
+        AgentRuntimeResolver resolver = CreateResolver(config, new LlmProviderProfile
+        {
+            Id = "profile-1",
+            TenantId = "tenant-1",
+            Endpoint = "https://llm.example.test",
+            ApiKey = "test-key",
+            ContextWindowTokens = 128_000,
+            MaxOutputTokens = 16_000,
+            SupportsMaxOutputTokens = false
+        });
+
+        AgentException exception = await Assert.ThrowsAsync<AgentException>(() =>
+            resolver.ResolveAsync("agent-1", User(), CancellationToken.None));
+
+        Assert.Equal(AgentErrorCode.ConfigurationError, exception.ErrorCode);
+        Assert.Contains("does not support", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task ResolveAsync_SkillBindingOwnedByAnotherTenant_HidesAgentConfiguration()
     {
         var config = new AgentConfig
@@ -124,6 +182,19 @@ public sealed class AgentRuntimeResolverTests
         UserId = "user-1",
         TenantId = "tenant-1"
     };
+
+    private static AgentRuntimeResolver CreateResolver(
+        AgentConfig config,
+        LlmProviderProfile profile)
+    {
+        LlmRegistry models = new();
+        models.Register(profile);
+        return new AgentRuntimeResolver(
+            new StaticConfigProvider(config),
+            new AgentAuthorizationGate(
+                new AllowAllAgentAuthorizationService(),
+                models));
+    }
 
     private sealed class StaticConfigProvider : IAgentConfigProvider
     {
