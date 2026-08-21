@@ -5,8 +5,8 @@
 
 /* Sidebar / context widths are driven by JS (persisted). */
 :root {
-  --workspace-sidebar: 280px;
-  --workspace-context: 244px;
+  --workspace-sidebar: 300px;
+  --workspace-context: 300px;
   --workspace-min-sidebar: 240px;
   --workspace-max-sidebar: 380px;
   --workspace-min-context: 200px;

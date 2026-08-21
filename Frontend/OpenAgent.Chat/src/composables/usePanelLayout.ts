@@ -17,9 +17,9 @@ interface PanelLayoutState {
 }
 
 const DEFAULTS: PanelLayoutState = {
-  sidebarWidth: 280,
+  sidebarWidth: 300,
   sidebarCollapsed: false,
-  contextWidth: 244,
+  contextWidth: 300,
   contextCollapsed: false,
 }
 
@@ -33,7 +33,8 @@ function loadState(): PanelLayoutState {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (raw) {
       const state = { ...DEFAULTS, ...JSON.parse(raw) }
-      if (state.sidebarWidth === 240) state.sidebarWidth = DEFAULTS.sidebarWidth
+      if (state.sidebarWidth === 240 || state.sidebarWidth === 280) state.sidebarWidth = DEFAULTS.sidebarWidth
+      if (state.contextWidth === 244) state.contextWidth = DEFAULTS.contextWidth
       return state
     }
   } catch {
