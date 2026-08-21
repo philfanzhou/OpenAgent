@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { mergeConversationRecords, replaceConversationRecord, selectionMatchesConversation } from './conversationCollection'
-import type { ConversationMessage, ConversationRecord } from './types'
+import type { ContextSummary, ConversationMessage, ConversationRecord } from './types'
 
 function conversation(conversationId: string, status: ConversationRecord['status'], messages?: ConversationMessage[]): ConversationRecord {
   return {
@@ -48,6 +48,34 @@ describe('conversation collection', () => {
     const result = mergeConversationRecords([live], [], new Set(['temporary-a']))
 
     expect(result).toEqual([live])
+  })
+
+  it('preserves loaded compaction details when list metadata refreshes', () => {
+    const detail = conversation('conversation-a', 'Completed')
+    detail.contextSummaries = [{
+      compressionId: 'compression-1',
+      strategy: 'summarization',
+      trigger: 'Automatic',
+      status: 'Succeeded',
+      summary: 'Retained context.',
+      lastCompressedAt: '2026-08-19T00:00:00Z',
+      compressedMessageCount: 4,
+      originalStartSequence: 1,
+      originalEndSequence: 4,
+      originalTokenCount: 40,
+      tokenCount: 20,
+      originalHistoryRestored: false,
+      sourceEndSequence: 4,
+    } satisfies ContextSummary]
+
+    const result = mergeConversationRecords(
+      [detail],
+      [conversation('conversation-a', 'Completed')],
+      new Set(),
+      'conversation-a',
+    )
+
+    expect(result[0]?.contextSummaries?.[0]?.summary).toBe('Retained context.')
   })
 
   it('replaces a completed background conversation without matching another selected view', () => {

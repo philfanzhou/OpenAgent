@@ -177,6 +177,26 @@ internal sealed class InMemoryConversationStore : IConversationStore
         return Task.FromResult(true);
     }
 
+    public Task<bool> RecordCompressionAsync(
+        string tenantId,
+        string conversationId,
+        ContextSummary summary,
+        CancellationToken cancellationToken = default)
+    {
+        var key = BuildKey(tenantId, conversationId);
+        if (!_store.TryGetValue(key, out var record))
+        {
+            return Task.FromResult(false);
+        }
+
+        lock (record)
+        {
+            record.ContextSummaries.Add(summary);
+            record.UpdatedAt = DateTimeOffset.UtcNow;
+        }
+        return Task.FromResult(true);
+    }
+
     private static ConversationRecord StripMessages(ConversationRecord r) => new()
     {
         ConversationId = r.ConversationId,
@@ -195,7 +215,8 @@ internal sealed class InMemoryConversationStore : IConversationStore
         IsDeletedByUser = r.IsDeletedByUser,
         DeletedAt = r.DeletedAt,
         ArchivedAt = r.ArchivedAt,
-        Messages = []
+        Messages = [],
+        ContextSummaries = []
     };
 
     private static string BuildKey(string tenantId, string conversationId) => $"{tenantId}:{conversationId}";

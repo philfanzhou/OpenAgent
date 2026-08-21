@@ -23,7 +23,6 @@ public sealed class AgentRuntimeResolverTests
             },
             ContextPolicy = new ContextPolicy
             {
-                Strategy = "sliding_window",
                 MaxTokens = 2_000
             },
             MaxTurns = 8
@@ -96,34 +95,6 @@ public sealed class AgentRuntimeResolverTests
             () => resolver.ResolveAsync("missing", User(), CancellationToken.None));
 
         Assert.Contains("missing", exception.Message, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task ResolveAsync_UnsupportedContextPolicy_Throws()
-    {
-        AgentConfig config = new()
-        {
-            ContextPolicy = new ContextPolicy { Strategy = "unknown" },
-            Llm = new LlmConfig { Provider = "profile-1" }
-        };
-        LlmRegistry models = new();
-        models.Register(new LlmProviderProfile
-        {
-            TenantId = "tenant-1",
-            Id = "profile-1",
-            Endpoint = "https://llm.example.test",
-            ApiKey = "test-key"
-        });
-        AgentRuntimeResolver resolver = new(
-            new StaticConfigProvider(config),
-            new AgentAuthorizationGate(
-                new AllowAllAgentAuthorizationService(),
-                models));
-
-        InvalidOperationException exception = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => resolver.ResolveAsync("agent-1", User(), CancellationToken.None));
-
-        Assert.Contains("Unsupported ContextPolicy", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
