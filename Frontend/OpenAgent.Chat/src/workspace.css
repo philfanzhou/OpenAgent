@@ -7,7 +7,7 @@
 :root {
   --workspace-sidebar: 280px;
   --workspace-context: 244px;
-  --workspace-min-sidebar: 210px;
+  --workspace-min-sidebar: 240px;
   --workspace-max-sidebar: 380px;
   --workspace-min-context: 200px;
   --workspace-max-context: 360px;
