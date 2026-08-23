@@ -24,6 +24,8 @@ internal sealed class ConversationSessionStore
         _options = options.Value;
     }
 
+    internal IConversationStore Store => _store;
+
     internal async Task<ConversationSession> OpenAsync(
         ConversationContext context,
         string resolvedAgentId,
@@ -61,8 +63,69 @@ internal sealed class ConversationSessionStore
         return new ConversationSession(
             record.Version,
             record.MessageCount + 1,
-            record.Messages.AsReadOnly());
+            ResolveModelHistory(record));
     }
+
+    internal static IReadOnlyList<ConversationMessage> ResolveModelHistory(ConversationRecord record)
+    {
+        ContextSummary? latest = record.ContextSummaries.LastOrDefault(summary =>
+            string.Equals(summary.Status, "Succeeded", StringComparison.Ordinal)
+            && summary.CompactedMessages.Count > 0
+            && IsUsableProjection(summary));
+        if (latest == null)
+        {
+            return record.Messages.AsReadOnly();
+        }
+
+        IReadOnlyList<ConversationMessage> tail = record.Messages
+            .Where(message => message.Sequence > latest.SourceEndSequence)
+            .ToList();
+        int overlap = FindProjectionOverlap(latest.CompactedMessages, tail);
+        return latest.CompactedMessages
+            .Concat(tail.Skip(overlap))
+            .ToList()
+            .AsReadOnly();
+    }
+
+    private static bool IsUsableProjection(ContextSummary summary) =>
+        !string.IsNullOrWhiteSpace(summary.Summary)
+        && !summary.Summary.Contains(
+            "[Summary unavailable]",
+            StringComparison.OrdinalIgnoreCase);
+
+    private static int FindProjectionOverlap(
+        IReadOnlyList<ConversationMessage> projection,
+        IReadOnlyList<ConversationMessage> tail)
+    {
+        int maximum = Math.Min(projection.Count, tail.Count);
+        for (int candidate = maximum; candidate > 0; candidate--)
+        {
+            bool matches = true;
+            for (int index = 0; index < candidate; index++)
+            {
+                if (!Equivalent(
+                        projection[projection.Count - candidate + index],
+                        tail[index]))
+                {
+                    matches = false;
+                    break;
+                }
+            }
+
+            if (matches)
+            {
+                return candidate;
+            }
+        }
+
+        return 0;
+    }
+
+    private static bool Equivalent(ConversationMessage left, ConversationMessage right) =>
+        string.Equals(left.Role, right.Role, StringComparison.OrdinalIgnoreCase)
+        && string.Equals(left.Content, right.Content, StringComparison.Ordinal)
+        && string.Equals(left.ToolCallId, right.ToolCallId, StringComparison.Ordinal)
+        && string.Equals(left.ToolName, right.ToolName, StringComparison.Ordinal);
 
     internal async Task SaveAsync(
         ConversationContext context,
