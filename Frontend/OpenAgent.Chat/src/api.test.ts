@@ -122,8 +122,11 @@ describe('workspace API', () => {
       'event: content',
       'data: {"content":"hello"}',
       '',
+      'event: approval',
+      'data: {"approval":{"approvalId":"approval-1","tenantId":"tenant-1","conversationId":"conversation-1","agentId":"support","action":"execute","targetType":"Function","targetCapability":"dangerous_function","redactedArgumentsJson":"{\\"apiKey\\":\\"***\\"}","requestedBy":"user-1","createdAt":"2026-08-20T10:00:00Z","expiresAt":"2026-08-20T10:15:00Z","status":"Pending"}}',
+      '',
       'event: done',
-      'data: {"done":true,"usage":{"promptTokens":21,"completionTokens":8,"totalTokens":29},"modelId":"provider-model"}',
+      'data: {"done":true,"usage":{"promptTokens":21,"completionTokens":8,"totalTokens":29},"modelId":"provider-model","status":"AwaitingApproval"}',
       '',
     ].join('\n')
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(stream, {
@@ -138,13 +141,54 @@ describe('workspace API', () => {
       { type: 'reasoning', content: 'inspect first' },
       { type: 'content', content: 'hello' },
       {
+        type: 'approval',
+        approval: expect.objectContaining({
+          approvalId: 'approval-1',
+          redactedArgumentsJson: '{"apiKey":"***"}',
+        }),
+      },
+      {
         type: 'done',
         done: true,
         usage: { promptTokens: 21, completionTokens: 8, totalTokens: 29 },
         modelId: 'provider-model',
+        status: 'AwaitingApproval',
       },
     ])
     expect(vi.mocked(fetch).mock.calls[0]?.[0]).toBe('http://engine.example/api/v1/agent/chat/stream')
+  })
+
+  it('lists and decides human approvals through the active gateway', async () => {
+    setConnectionMode('router')
+    setRouterBaseUrl('http://router.example')
+    const approval = {
+      approvalId: 'approval-1', tenantId: 'tenant-1', conversationId: 'conversation-1', agentId: 'support',
+      action: 'execute', targetType: 'Function', targetCapability: 'dangerous_function',
+      redactedArgumentsJson: '{"apiKey":"***"}', requestedBy: 'user-1',
+      createdAt: '2026-08-20T10:00:00Z', expiresAt: '2026-08-20T10:15:00Z', status: 'Pending',
+    }
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify([approval]), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ approval: { ...approval, status: 'Approved' } }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    expect(await api.listHumanApprovals()).toEqual([approval])
+    expect(await api.decideHumanApproval('approval-1', true, 'reviewed')).toMatchObject({
+      approval: { status: 'Approved' },
+    })
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('http://router.example/api/v1/agent/approvals')
+    expect(fetchMock.mock.calls[1]?.[0]).toBe('http://router.example/api/v1/agent/approvals/approval-1/decision')
+    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({
+      method: 'POST',
+      body: JSON.stringify({ approved: true, reason: 'reviewed' }),
+    })
   })
 
   it('emits the router-selected agent before reading the SSE body', async () => {

@@ -1,6 +1,8 @@
+using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using OpenAgent.Contracts.Approvals;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Security;
@@ -241,6 +243,72 @@ public sealed class InfrastructurePersistenceTests : IAsyncLifetime
         Assert.Equal(5, message.TokenUsage?.CachedInputTokens);
         Assert.Equal(3, message.TokenUsage?.ReasoningTokens);
         Assert.Equal("provider-model", message.ModelId);
+    }
+
+    [Fact]
+    public async Task HumanApprovalStore_PersistsTenantScopedStateAndTransitionsOnce()
+    {
+        ServiceProvider services = Assert.IsType<ServiceProvider>(_services);
+        using IServiceScope scope = services.CreateScope();
+        IConversationStore conversations = scope.ServiceProvider.GetRequiredService<IConversationStore>();
+        IHumanApprovalStore approvals = services.GetRequiredService<IHumanApprovalStore>();
+        Assert.True(await conversations.CreateAsync(new ConversationRecord
+        {
+            ConversationId = "conversation-approval",
+            TenantId = "tenant-001",
+            UserId = "test-user",
+            AgentId = "approval-agent"
+        }));
+        DateTimeOffset createdAt = DateTimeOffset.UtcNow;
+        var approval = new HumanApprovalRecord
+        {
+            ApprovalId = "approval-persisted",
+            TenantId = "tenant-001",
+            ConversationId = "conversation-approval",
+            AgentId = "approval-agent",
+            TraceId = "trace-approval",
+            Action = "execute",
+            TargetType = AgentResourceType.Function,
+            TargetCapability = "dangerous_function",
+            RedactedArgumentsJson = "{\"apiKey\":\"***\"}",
+            RequestedBy = "requester-1",
+            CreatedAt = createdAt,
+            ExpiresAt = createdAt.AddMinutes(15),
+            Status = HumanApprovalStatus.Pending,
+            MafRequestId = "maf-request-1",
+            ToolCallId = "tool-call-1",
+            ToolName = "dangerous_function",
+            // MAF polymorphic state requires metadata properties such as $type
+            // to remain ahead of ordinary properties after the database round trip.
+            SessionStateJson = "{\"pending\":[{\"$type\":\"approval\",\"toolCall\":{\"$type\":\"function\",\"name\":\"load_skill\"}}]}",
+            RequesterContextJson = "{}"
+        };
+
+        Assert.True(await approvals.CreateAsync(approval));
+        HumanApprovalRecord stored = Assert.IsType<HumanApprovalRecord>(
+            await approvals.GetAsync("tenant-001", approval.ApprovalId));
+        Assert.Equal(approval.SessionStateJson, stored.SessionStateJson);
+        Assert.True(JsonNode.DeepEquals(
+            JsonNode.Parse(approval.RedactedArgumentsJson),
+            JsonNode.Parse(stored.RedactedArgumentsJson)));
+        Assert.Null(await approvals.GetAsync("another-tenant", approval.ApprovalId));
+
+        Task<HumanApprovalRecord?>[] attempts = Enumerable.Range(0, 8)
+            .Select(index => approvals.TryTransitionAsync(
+                "tenant-001",
+                approval.ApprovalId,
+                HumanApprovalStatus.Pending,
+                HumanApprovalStatus.Approved,
+                $"approver-{index}",
+                "reviewed",
+                createdAt.AddSeconds(1)))
+            .ToArray();
+        HumanApprovalRecord?[] transitioned = await Task.WhenAll(attempts);
+
+        Assert.Single(transitioned, item => item != null);
+        Assert.Equal(
+            HumanApprovalStatus.Approved,
+            (await approvals.GetAsync("tenant-001", approval.ApprovalId))?.Status);
     }
 
     [Fact]

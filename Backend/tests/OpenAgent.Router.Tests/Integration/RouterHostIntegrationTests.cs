@@ -136,6 +136,35 @@ public sealed class RouterHostIntegrationTests : IClassFixture<RouterHostFixture
     }
 
     [Fact]
+    public async Task HumanApprovals_ListAndDecision_ForwardThroughRouter()
+    {
+        using RouterApplicationFactory factory = _fixture.CreateFactory();
+        using HttpClient client = factory.CreateClient();
+        using HttpRequestMessage list = new(HttpMethod.Get, "/api/v1/agent/approvals");
+        AddAuthentication(list);
+
+        using HttpResponseMessage listResponse = await client.SendAsync(list);
+        Assert.Equal(HttpStatusCode.OK, listResponse.StatusCode);
+        Assert.Equal("/api/v1/agent/approvals", _fixture.PrimaryEngine.LastApprovalPath);
+
+        using HttpRequestMessage decision = new(
+            HttpMethod.Post,
+            "/api/v1/agent/approvals/approval-1/decision")
+        {
+            Content = JsonContent.Create(new { approved = true, reason = "reviewed" })
+        };
+        AddAuthentication(decision);
+        using HttpResponseMessage decisionResponse = await client.SendAsync(decision);
+
+        Assert.Equal(HttpStatusCode.OK, decisionResponse.StatusCode);
+        Assert.Equal(
+            "/api/v1/agent/approvals/approval-1/decision",
+            _fixture.PrimaryEngine.LastApprovalPath);
+        Assert.Contains("\"approved\":true", _fixture.PrimaryEngine.LastApprovalBody, StringComparison.Ordinal);
+        Assert.StartsWith("Basic ", _fixture.PrimaryEngine.LastAuthorization, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Chat_SseClientCancellation_ReachesDownstream()
     {
         using RouterApplicationFactory factory = _fixture.CreateFactory();

@@ -110,6 +110,7 @@ internal sealed class ErrorMapper(ProblemDetailsFactory problemDetailsFactory)
         AgentErrorCode.TenantMismatch => 403,
         AgentErrorCode.TenantNotFound or AgentErrorCode.TenantDataIsolationViolation => 400,
         AgentErrorCode.Conflict => 409,
+        AgentErrorCode.HumanApprovalTimeout => 410,
         AgentErrorCode.DependencyUnavailable => 503,
         _ => 500
     };

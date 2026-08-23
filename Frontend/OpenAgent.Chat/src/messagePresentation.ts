@@ -92,6 +92,7 @@ export function mergeAssistantSnapshot(
     processActivities: mergeProcessActivities(stored.processActivities, snapshotProcesses),
     files: stored.files?.length ? stored.files : snapshot.files,
     error: snapshot.error || stored.error,
+    approval: snapshot.approval || stored.approval,
   }
   return merged
 }
@@ -110,6 +111,7 @@ function mergeAssistantMessage(
           : undefined,
         processActivities: cloneProcessActivities(current.processActivities),
         error: message.error || current.error,
+        approval: message.approval || current.approval,
       }
     : {
         ...message,

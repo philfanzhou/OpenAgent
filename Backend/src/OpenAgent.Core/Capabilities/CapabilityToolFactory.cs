@@ -23,9 +23,21 @@ internal sealed class CapabilityToolFactory
         string agentId,
         AgentConfig config,
         IAgentUserContext user,
+        CancellationToken cancellationToken) =>
+        (await CreateRuntimeAsync(
+            agentId,
+            config,
+            user,
+            cancellationToken).ConfigureAwait(false)).Tools;
+
+    internal async Task<CapabilityToolRuntime> CreateRuntimeAsync(
+        string agentId,
+        AgentConfig config,
+        IAgentUserContext user,
         CancellationToken cancellationToken)
     {
         List<AITool> tools = [];
+        Dictionary<string, ApprovalTarget> approvalTargets = new(StringComparer.Ordinal);
         HashSet<string> names = new(StringComparer.OrdinalIgnoreCase);
         foreach (ICapabilitySource source in _sources)
         {
@@ -47,12 +59,24 @@ internal sealed class CapabilityToolFactory
                         throw new InvalidOperationException(
                             $"Duplicate capability runtime name: {definition.Name}");
                     }
-                    tools.Add(new CapabilityAIFunction(definition));
+                    AIFunction function = new CapabilityAIFunction(definition);
+                    tools.Add(definition.RequiresHumanApproval
+                        ? new ApprovalRequiredAIFunction(function)
+                        : function);
+                    if (definition.RequiresHumanApproval)
+                    {
+                        approvalTargets.Add(definition.Name, new ApprovalTarget(
+                            definition.ResourceType,
+                            definition.ResourceId,
+                            definition.ApprovalAction));
+                    }
                 }
             }
         }
 
-        return tools.AsReadOnly();
+        return new CapabilityToolRuntime(
+            tools.AsReadOnly(),
+            approvalTargets.AsReadOnly());
     }
 
     private async Task<bool> IsAvailableAsync(
@@ -141,3 +165,7 @@ internal sealed class CapabilityToolFactory
         }
     }
 }
+
+internal sealed record CapabilityToolRuntime(
+    IReadOnlyList<AITool> Tools,
+    IReadOnlyDictionary<string, ApprovalTarget> ApprovalTargets);

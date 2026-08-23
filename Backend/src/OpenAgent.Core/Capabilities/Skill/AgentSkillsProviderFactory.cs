@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text.Json;
 using Microsoft.Agents.AI;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Files;
@@ -31,6 +32,7 @@ internal sealed class AgentSkillsProviderFactory(
         string temporaryRoot = Path.Combine(Path.GetTempPath(), "openagent-skills", Guid.NewGuid().ToString("N"));
         var packagePaths = new List<string>();
         var allowedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var highRiskNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         try
         {
@@ -61,10 +63,18 @@ internal sealed class AgentSkillsProviderFactory(
                 if (!string.IsNullOrWhiteSpace(instance.Name))
                 {
                     allowedNames.Add(instance.Name);
+                    if (instance.RequiresHumanApproval)
+                    {
+                        highRiskNames.Add(instance.Name);
+                    }
                 }
                 if (!string.IsNullOrWhiteSpace(instance.Id))
                 {
                     allowedNames.Add(instance.Id);
+                    if (instance.RequiresHumanApproval)
+                    {
+                        highRiskNames.Add(instance.Id);
+                    }
                 }
             }
 
@@ -84,13 +94,12 @@ internal sealed class AgentSkillsProviderFactory(
                 .UseFileScriptRunner((_, _, _, _, _) =>
                     throw new InvalidOperationException(
                         "Skill scripts are disabled until an isolated script runner is configured."))
-                // The current chat contract cannot round-trip MAF approval requests.
-                // Loading Skill instructions and reading resources remain constrained by
-                // the Agent binding and OpenAgent authorization checks above.
                 .UseOptions(options =>
                 {
-                    options.DisableLoadSkillApproval = true;
-                    options.DisableReadSkillResourceApproval = true;
+                    bool requiresApproval = highRiskNames.Count > 0;
+                    options.DisableLoadSkillApproval = !requiresApproval;
+                    options.DisableReadSkillResourceApproval = !requiresApproval;
+                    options.DisableRunSkillScriptApproval = !requiresApproval;
                     options.IncludeDetailedErrors = false;
                 })
                 .UseFilter((skill, _) =>
@@ -99,7 +108,7 @@ internal sealed class AgentSkillsProviderFactory(
                 .UseLoggerFactory(loggerFactory)
                 .Build();
 
-            return new AgentSkillsRuntime(provider, temporaryRoot);
+            return new AgentSkillsRuntime(provider, temporaryRoot, highRiskNames);
         }
         catch
         {
@@ -280,14 +289,43 @@ internal sealed class AgentSkillsRuntime : IAsyncDisposable
 {
     internal static AgentSkillsRuntime Empty { get; } = new(null, null);
 
-    internal AgentSkillsRuntime(AgentSkillsProvider? provider, string? temporaryRoot)
+    internal AgentSkillsRuntime(
+        AgentSkillsProvider? provider,
+        string? temporaryRoot,
+        IReadOnlySet<string>? highRiskNames = null)
     {
         Provider = provider;
         TemporaryRoot = temporaryRoot;
+        HighRiskNames = highRiskNames ?? new HashSet<string>();
     }
 
     internal AgentSkillsProvider? Provider { get; }
+    internal IReadOnlySet<string> HighRiskNames { get; }
+    internal bool RequiresApproval => HighRiskNames.Count > 0;
+    internal Func<ToolAutoApprovalRuleContext, ValueTask<bool>> AutoApprovalRule =>
+        context => new ValueTask<bool>(ShouldAutoApprove(
+            context.FunctionCallContent,
+            HighRiskNames));
     private string? TemporaryRoot { get; }
+
+    internal static bool ShouldAutoApprove(
+        FunctionCallContent call,
+        IReadOnlySet<string> highRiskNames)
+    {
+        if (call.Name is not (
+            AgentSkillsProvider.LoadSkillToolName
+            or AgentSkillsProvider.ReadSkillResourceToolName
+            or AgentSkillsProvider.RunSkillScriptToolName))
+        {
+            return false;
+        }
+
+        string? skillName = call.Arguments?.TryGetValue("skillName", out object? value) == true
+            ? value?.ToString()
+            : null;
+        return !string.IsNullOrWhiteSpace(skillName)
+            && !highRiskNames.Contains(skillName);
+    }
 
     public ValueTask DisposeAsync()
     {

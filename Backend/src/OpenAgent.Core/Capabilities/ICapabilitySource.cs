@@ -19,4 +19,6 @@ internal sealed record CapabilityDefinition(
     AgentResourceType ResourceType,
     string ResourceId,
     Func<IReadOnlyDictionary<string, object?>, CancellationToken, Task<string>> Invoke,
-    string? ParentResourceId = null);
+    string? ParentResourceId = null,
+    bool RequiresHumanApproval = false,
+    string ApprovalAction = "invoke");

@@ -1,3 +1,4 @@
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using ModelContextProtocol.Client;
@@ -66,5 +67,23 @@ public sealed class McpToolFactoryTests
 
         Assert.Empty(runtime.Tools);
         httpClients.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public void ApplyApprovalRequirement_HighRiskMcpToolIsWrappedAndLowRiskIsUnchanged()
+    {
+        AIFunction function = AIFunctionFactory.Create(
+            () => "ok",
+            "mcp__server__tool");
+
+        AIFunction highRisk = McpToolFactory.ApplyApprovalRequirement(
+            function,
+            requiresHumanApproval: true);
+        AIFunction lowRisk = McpToolFactory.ApplyApprovalRequirement(
+            function,
+            requiresHumanApproval: false);
+
+        Assert.IsType<ApprovalRequiredAIFunction>(highRisk);
+        Assert.Same(function, lowRisk);
     }
 }

@@ -1,4 +1,4 @@
-export type ConversationStatus = 'Running' | 'Completed' | 'Failed' | 'Cancelled' | number
+export type ConversationStatus = 'Running' | 'Completed' | 'Failed' | 'Cancelled' | 'AwaitingApproval' | number
 export type ConnectionMode = 'router' | 'engine'
 export const AUTO_AGENT_ID = '__auto__'
 
@@ -20,6 +20,7 @@ export interface CurrentUserContext {
   groups: string[]
   audience: string[]
   isAuthenticated: boolean
+  canDecideApprovals?: boolean
 }
 
 export interface ConversationMessage {
@@ -40,6 +41,30 @@ export interface ConversationMessage {
   modelId?: string
   /** 执行失败的独立展示，不写入会话历史。 */
   error?: { title?: string; detail?: string; traceId?: string }
+  /** UI snapshot carried by the live approval SSE event. */
+  approval?: HumanApprovalRequest
+}
+
+export interface HumanApprovalRequest {
+  approvalId: string
+  tenantId: string
+  conversationId: string
+  agentId: string
+  action: string
+  targetType: string | number
+  targetCapability: string
+  redactedArgumentsJson: string
+  requestedBy: string
+  createdAt: string
+  expiresAt: string
+  status: string | number
+  decidedBy?: string | null
+  decidedAt?: string | null
+  decisionReason?: string | null
+}
+
+export interface HumanApprovalDecisionResult {
+  approval: HumanApprovalRequest
 }
 
 export interface ToolActivity {
@@ -131,6 +156,7 @@ export interface McpServerConfig {
   url: string
   type: 'Http' | 'SSE'
   protocolVersion?: string | null
+  requiresHumanApproval?: boolean
 }
 
 export interface McpConfig {
@@ -150,6 +176,7 @@ export interface SkillInstanceConfig {
   objectKey?: string | null
   sha256?: string | null
   resourceCount?: number
+  requiresHumanApproval?: boolean
   allowedUserIds?: string[]
   allowedGroups?: string[]
   allowedTenantIds?: string[]
@@ -271,6 +298,7 @@ export interface StreamEvent {
   error?: { title?: string; detail?: string; traceId?: string }
   usage?: TokenUsage | null
   modelId?: string | null
+  approval?: HumanApprovalRequest
 }
 
 export interface McpTestResult {

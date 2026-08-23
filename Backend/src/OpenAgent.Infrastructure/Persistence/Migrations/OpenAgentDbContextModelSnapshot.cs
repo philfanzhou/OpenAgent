@@ -235,6 +235,111 @@ namespace OpenAgent.Infrastructure.Migrations
                     b.ToTable("file_assets", "openagent");
                 });
 
+            modelBuilder.Entity("OpenAgent.Infrastructure.Entities.HumanApprovalEntity", b =>
+                {
+                    b.Property<string>("ApprovalId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("AgentId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("ConversationId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("DecidedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DecidedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("DecisionReason")
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("MafRequestId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("RedactedArgumentsJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("RequestedBy")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("RequesterContextJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("SessionStateJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("TargetCapability")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<int>("TargetType")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("ToolCallId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("ToolName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("TraceId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer");
+
+                    b.HasKey("ApprovalId");
+
+                    b.HasIndex("ConversationId");
+
+                    b.HasIndex("TenantId", "ConversationId");
+
+                    b.HasIndex("TenantId", "Status", "ExpiresAt");
+
+                    b.ToTable("human_approvals", "openagent");
+                });
+
             modelBuilder.Entity("OpenAgent.Infrastructure.Entities.MessageFileReferenceEntity", b =>
                 {
                     b.Property<string>("MessageId")
@@ -304,6 +409,15 @@ namespace OpenAgent.Infrastructure.Migrations
                 });
 
             modelBuilder.Entity("OpenAgent.Infrastructure.Entities.ConversationMessageEntity", b =>
+                {
+                    b.HasOne("OpenAgent.Infrastructure.Entities.ConversationEntity", null)
+                        .WithMany()
+                        .HasForeignKey("ConversationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("OpenAgent.Infrastructure.Entities.HumanApprovalEntity", b =>
                 {
                     b.HasOne("OpenAgent.Infrastructure.Entities.ConversationEntity", null)
                         .WithMany()

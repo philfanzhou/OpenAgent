@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Engine.Host.Middleware;
 
@@ -15,10 +17,17 @@ internal static class EndpointExtensions
         group.MapAgentCatalog();
         group.MapAgentProviderContract();
         group.MapConversations();
+        group.MapHumanApprovals();
 
-        group.MapGet("/me", (HttpContext context) =>
+        group.MapGet("/me", async (
+            HttpContext context,
+            [FromServices] IAuthorizationService authorization) =>
         {
             IAgentUserContext user = context.GetAgentRequest().User;
+            AuthorizationResult approval = await authorization.AuthorizeAsync(
+                context.User,
+                resource: null,
+                policyName: "approval.decide").ConfigureAwait(false);
             return Results.Ok(new
             {
                 userId = user.UserId,
@@ -26,7 +35,8 @@ internal static class EndpointExtensions
                 roles = user.Roles,
                 groups = user.Groups,
                 audience = user.Audience,
-                isAuthenticated = user.IsAuthenticated
+                isAuthenticated = user.IsAuthenticated,
+                canDecideApprovals = approval.Succeeded
             });
         })
         .WithName("CurrentAgentUser")

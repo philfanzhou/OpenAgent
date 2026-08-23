@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using OpenAgent.Core.Capabilities.Mcp;
 using OpenAgent.Core.Files;
 using OpenAgent.Core.Security;
+using OpenAgent.Contracts.Configuration;
 
 namespace OpenAgent.Core.Exten;
 
@@ -24,6 +25,14 @@ public static class CoreServiceExtensions
         services.AddHttpContextAccessor();
         services.Configure<McpExecutionOptions>(configuration.GetSection("Mcp"));
         services.Configure<AgentAuthorizationOptions>(configuration.GetSection("Authorization"));
+        services.AddOptions<HumanApprovalOptions>()
+            .Bind(configuration.GetSection(HumanApprovalOptions.SectionName))
+            .Validate(
+                options => options.RequestTimeoutMinutes > 0,
+                "HumanApproval:RequestTimeoutMinutes must be greater than zero.")
+            .Validate(
+                options => options.SweepIntervalSeconds > 0,
+                "HumanApproval:SweepIntervalSeconds must be greater than zero.");
 
         return services
             .AddConversationServices(configuration)

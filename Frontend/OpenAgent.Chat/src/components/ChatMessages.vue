@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
 import { computed, nextTick, ref, watch } from 'vue'
+import { buildApprovalNoticePresentation } from '../approvalPresentation'
 import { buildCompactionDisplay, buildCompactionTokenDisplay } from '../compactionPresentation'
 import { buildConversationTimeline, fileLabel, formatFileSize, toolArgumentsText, toolPresentation } from '../messagePresentation'
 import { formatTokenBreakdown, formatTokenCount, formatTokenUsage } from '../tokenUsage'
-import type { ContextSummary, ConversationMessage, CurrentUserContext, MessageFile, ProcessActivity, ToolActivity } from '../types'
+import type { ContextSummary, ConversationMessage, ConversationStatus, CurrentUserContext, MessageFile, ProcessActivity, ToolActivity } from '../types'
 import MarkdownContent from './MarkdownContent.vue'
 
 const props = defineProps<{
@@ -13,6 +14,7 @@ const props = defineProps<{
   loading: boolean
   currentUser: CurrentUserContext | null
   streaming: boolean
+  conversationStatus?: ConversationStatus
 }>()
 
 const emit = defineEmits<{
@@ -96,6 +98,32 @@ function toolResultText(tool: ToolActivity): string | undefined {
 function toolStatusText(tool: ToolActivity, streaming: boolean): string {
   if (tool.result != null) return '已完成'
   return streaming ? '运行中' : '已调用'
+}
+
+function hasApproval(message: ConversationMessage): boolean {
+  return Boolean(message.approval || message.metadata?.ApprovalId)
+}
+
+function approvalArgumentsText(message: ConversationMessage): string {
+  const raw = message.approval?.redactedArgumentsJson
+    || message.metadata?.RedactedToolArguments
+    || '{}'
+  try { return JSON.stringify(JSON.parse(raw), null, 2) } catch { return '{}' }
+}
+
+function approvalTarget(message: ConversationMessage): string {
+  return message.approval?.targetCapability || message.toolName || '高风险操作'
+}
+
+function approvalId(message: ConversationMessage): string {
+  return message.approval?.approvalId || message.metadata?.ApprovalId || ''
+}
+
+function approvalPresentation(message: ConversationMessage) {
+  return buildApprovalNoticePresentation(
+    message.approval?.status ?? message.metadata?.ApprovalStatus,
+    props.conversationStatus,
+  )
 }
 
 function formatTimestamp(value: string): string {
@@ -223,6 +251,19 @@ watch(() => props.streaming, () => { if (props.streaming) scrollToBottom() })
 
         <div v-if="item.content || isStreamingItem(item)" class="message-bubble"><MarkdownContent :content="item.content" :streaming="isStreamingItem(item) && Boolean(item.content)" /></div>
 
+        <div v-if="hasApproval(item)" class="approval-notice" :class="approvalPresentation(item).state" role="status">
+          <span class="approval-notice-icon" aria-hidden="true">{{ approvalPresentation(item).icon }}</span>
+          <div class="approval-notice-body">
+            <strong>{{ approvalPresentation(item).title }}</strong>
+            <p>操作 <code>{{ approvalTarget(item) }}</code> {{ approvalPresentation(item).detail }}</p>
+            <details>
+              <summary>查看脱敏参数</summary>
+              <pre>{{ approvalArgumentsText(item) }}</pre>
+            </details>
+            <small v-if="approvalId(item)">审批 ID · {{ approvalId(item) }}</small>
+          </div>
+        </div>
+
         <div v-if="shouldShowUsage(item)" class="message-usage" aria-label="当前响应 Token 用量">
           <span v-if="item.modelId" class="message-model">{{ item.modelId }}</span>
           <span :class="{ unavailable: !item.tokenUsage }">Token · {{ formatTokenUsage(item.tokenUsage) }}</span>
@@ -242,7 +283,7 @@ watch(() => props.streaming, () => { if (props.streaming) scrollToBottom() })
           </div>
         </div>
 
-        <div v-if="!hasMessageContent(item) && !processActivities(item).length && !item.error" class="message-thinking-placeholder" aria-live="polite">
+        <div v-if="!hasMessageContent(item) && !processActivities(item).length && !item.error && !hasApproval(item)" class="message-thinking-placeholder" aria-live="polite">
           <span v-if="isStreamingItem(item)" class="thinking-dots"><i /><i /><i /></span><span>{{ isStreamingItem(item) ? '正在生成回复' : incompleteResponseText(item) }}</span>
         </div>
 
