@@ -31,9 +31,12 @@ public class AgentForwarderTests
         {
             RequestServices = services
         };
-        context.Features.Set(new AgentRoutingFeature("conversation-1", provider.Id));
+        context.Features.Set(new AgentRoutingFeature("conversation-1", provider.Id, "finance"));
+        var permissions = new TestPermissionServices();
         using var forwarder = new AgentForwarder(
             null!,
+            permissions,
+            permissions,
             NullLogger<AgentForwarder>.Instance,
             new StubEndpointHealthTracker());
 
@@ -47,6 +50,9 @@ public class AgentForwarderTests
         Assert.Equal("stream", provider.Action);
         Assert.Equal("user-tenant", provider.TenantId);
         Assert.Equal("conversation-1", provider.ConversationId);
+        Assert.NotNull(permissions.RestrictedPermissions);
+        Assert.Contains("agent.execute:finance", permissions.RestrictedPermissions);
+        Assert.DoesNotContain("*", permissions.RestrictedPermissions);
     }
 
     private sealed class RecordingProvider : IAgentProvider

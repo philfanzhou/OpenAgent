@@ -47,6 +47,40 @@ internal static class PermissionAuthorizationExtensions
             audience);
     }
 
+    internal static DelegatedAuthorization CreateAgentDelegation(
+        this IPermissionAuthorizationService authorization,
+        IAgentUserContext userContext,
+        string? agentId,
+        string? audience = null)
+    {
+        if (string.IsNullOrWhiteSpace(agentId))
+        {
+            return authorization.CreateDelegation(userContext, audience);
+        }
+
+        AuthorizationSubject subject = GetSubject(userContext);
+        IReadOnlySet<string> granted = authorization.GetPermissions(subject);
+        HashSet<string> requested = granted
+            .Where(permission => !permission.Equals("*", StringComparison.OrdinalIgnoreCase)
+                && !permission.Equals(PermissionCatalog.AgentExecute, StringComparison.OrdinalIgnoreCase)
+                && !permission.StartsWith(
+                    $"{PermissionCatalog.AgentExecute}:",
+                    StringComparison.OrdinalIgnoreCase))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (granted.Contains("*"))
+        {
+            requested.UnionWith(PermissionCatalog.All.Where(permission =>
+                !permission.Equals(PermissionCatalog.AgentExecute, StringComparison.OrdinalIgnoreCase)));
+        }
+        requested.Add($"{PermissionCatalog.AgentExecute}:{agentId}");
+
+        return DelegatedAuthorization.Restrict(
+            subject,
+            granted,
+            requested,
+            audience);
+    }
+
     private static AuthorizationSubject GetSubject(IAgentUserContext userContext) =>
         TryCreateSubject(userContext, out AuthorizationSubject? subject)
             ? subject!

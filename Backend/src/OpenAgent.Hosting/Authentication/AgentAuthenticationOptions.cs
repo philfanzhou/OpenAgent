@@ -3,7 +3,8 @@ namespace OpenAgent.Hosting.Authentication;
 public enum AgentAuthenticationMode
 {
     Basic,
-    JwtBearer
+    JwtBearer,
+    Gateway
 }
 
 public sealed class AgentAuthenticationOptions

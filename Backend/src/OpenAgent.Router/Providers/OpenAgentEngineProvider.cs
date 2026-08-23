@@ -6,6 +6,7 @@ using OpenAgent.Authorization;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Routing;
+using OpenAgent.Contracts.Security;
 using OpenAgent.Router.Models;
 
 namespace OpenAgent.Router.Providers;
@@ -72,7 +73,8 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
         using HttpRequestMessage request = CreateServiceRequest(
             HttpMethod.Get,
             $"{endpoint.TrimEnd('/')}{_agentListPath}",
-            requestContext);
+            requestContext.UserContext,
+            [PermissionCatalog.AgentRead]);
         using HttpResponseMessage response = await _httpClient.SendAsync(
             request,
             cancellationToken).ConfigureAwait(false);
@@ -101,7 +103,8 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
         using HttpRequestMessage request = CreateServiceRequest(
             HttpMethod.Get,
             $"{endpoint.TrimEnd('/')}{_conversationPath}/{Uri.EscapeDataString(conversationId)}",
-            requestContext);
+            requestContext.UserContext,
+            [PermissionCatalog.ConversationRead]);
         using HttpResponseMessage response = await _httpClient.SendAsync(
             request,
             cancellationToken).ConfigureAwait(false);
@@ -132,7 +135,13 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
 
         using HttpRequestMessage request = CreateServiceRequest(
             HttpMethod.Post,
-            $"{endpoint.TrimEnd('/')}{_chatPath.TrimEnd('/')}/intent");
+            $"{endpoint.TrimEnd('/')}{_chatPath.TrimEnd('/')}/intent",
+            userContext,
+            [
+                $"{PermissionCatalog.AgentExecute}:{intentAgentId}",
+                PermissionCatalog.ModelInvoke
+            ],
+            intentAgentId);
         request.Content = new StringContent(
             JsonSerializer.Serialize(new ChatRequest
             {
@@ -202,7 +211,9 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
     private HttpRequestMessage CreateServiceRequest(
         HttpMethod method,
         string url,
-        AgentProviderRequestContext? requestContext = null)
+        IAgentUserContext userContext,
+        IEnumerable<string> delegatedPermissions,
+        string? resolvedAgentId = null)
     {
         HttpRequestMessage request = new(method, url);
         foreach ((string name, string value) in _serviceHeaders)
@@ -210,13 +221,31 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
             request.Headers.TryAddWithoutValidation(name, value);
         }
 
-        if (requestContext != null
-            && !string.IsNullOrWhiteSpace(requestContext.AuthenticationToken))
+        foreach (string header in new[]
         {
-            request.Headers.Remove("Authorization");
-            request.Headers.TryAddWithoutValidation(
-                "Authorization",
-                requestContext.AuthenticationToken);
+            "Authorization",
+            "X-Agent-Id",
+            AgentRoutingHeaders.ResolvedAgentId,
+            "X-Conversation-Id",
+            "X-Trace-Id",
+            "X-User-Id",
+            "X-Tenant-Id",
+            "X-TenantId",
+            DelegatedAuthorizationHeaders.Grant
+        })
+        {
+            request.Headers.Remove(header);
+        }
+
+        DelegatedAuthorization delegation = _authorization.CreateRestrictedDelegation(
+            userContext,
+            delegatedPermissions);
+        request.Headers.Add(
+            DelegatedAuthorizationHeaders.Grant,
+            _grantIssuer.Issue(delegation));
+        if (!string.IsNullOrWhiteSpace(resolvedAgentId))
+        {
+            request.Headers.Add(AgentRoutingHeaders.ResolvedAgentId, resolvedAgentId);
         }
 
         return request;

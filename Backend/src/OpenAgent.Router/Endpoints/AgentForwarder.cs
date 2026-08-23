@@ -8,6 +8,8 @@ namespace OpenAgent.Router.Endpoints;
 
 internal sealed class AgentForwarder(
     IHttpForwarder forwarder,
+    IPermissionAuthorizationService authorization,
+    IDelegatedAuthorizationIssuer grantIssuer,
     ILogger<AgentForwarder> logger,
     IEndpointHealthTracker healthTracker) : IAgentForwarder, IDisposable
 {
@@ -38,7 +40,8 @@ internal sealed class AgentForwarder(
             ?? context.Request.Headers["X-Conversation-Id"].FirstOrDefault();
         string? agentId = context.Features.Get<AgentRoutingFeature>()?.AgentId;
         string traceId = Activity.Current?.Id ?? context.TraceIdentifier;
-        string gatewayGrant = grantIssuer.Issue(authorization.CreateDelegation(userContext));
+        string gatewayGrant = grantIssuer.Issue(
+            authorization.CreateAgentDelegation(userContext, agentId));
 
         AgentForwardingTarget? target = await provider.ResolveForwardingAsync(
             action,
@@ -77,9 +80,12 @@ internal sealed class AgentForwarder(
                     proxyRequest,
                     target,
                     provider,
+                    userContext,
                     tenantId,
+                    agentId,
                     conversationId,
                     traceId,
+                    gatewayGrant,
                     cancellationToken)).ConfigureAwait(false);
         }
         catch
@@ -132,6 +138,7 @@ internal sealed class AgentForwarder(
         HttpRequestMessage request,
         AgentForwardingTarget target,
         IAgentProvider provider,
+        IAgentUserContext userContext,
         string? tenantId,
         string? agentId,
         string? conversationId,
@@ -142,7 +149,12 @@ internal sealed class AgentForwarder(
         await ForwardingContextBuilder.ApplyAsync(
             request,
             target.RequestUri,
-            traceId).ConfigureAwait(false);
+            userContext,
+            tenantId,
+            agentId,
+            conversationId,
+            traceId,
+            gatewayGrant).ConfigureAwait(false);
         await provider.ConfigureRequestAsync(
             request,
             target,

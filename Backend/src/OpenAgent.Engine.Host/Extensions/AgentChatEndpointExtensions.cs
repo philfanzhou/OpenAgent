@@ -20,6 +20,7 @@ internal static class AgentChatEndpointExtensions
             .WithTags("Agent");
 
         group.MapPost("/chat/intent", ExecuteIntentAsync)
+            .RequireAuthorization(PermissionCatalog.AgentExecute)
             .WithName("IntentRecognition")
             .WithTags("Agent");
 

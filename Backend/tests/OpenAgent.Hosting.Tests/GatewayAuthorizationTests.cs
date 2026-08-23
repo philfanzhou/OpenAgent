@@ -40,6 +40,34 @@ public class GatewayAuthorizationTests
     }
 
     [Fact]
+    public void GrantIssuer_WithoutConfiguredKey_FailsClosed()
+    {
+        IConfiguration configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Authentication:Mode"] = "Basic"
+            })
+            .Build();
+        ServiceCollection services = new();
+        services.AddLogging();
+        services.AddAgentHost(configuration, options =>
+        {
+            options.EnableCors = false;
+            options.EnableSwagger = false;
+            options.EnableHealthChecks = false;
+            options.EnableOpenTelemetry = false;
+        });
+        using ServiceProvider provider = services.BuildServiceProvider();
+        IDelegatedAuthorizationIssuer issuer = provider
+            .GetRequiredService<IDelegatedAuthorizationIssuer>();
+        AuthorizationSubject subject = new("user-1", "tenant-1", [], [],
+            new Dictionary<string, string>());
+
+        Assert.Throws<InvalidOperationException>(() => issuer.Issue(
+            DelegatedAuthorization.Create(subject, ["agent.read"])));
+    }
+
+    [Fact]
     public void Authorization_CombinesDefaultsRolesAndResourceClaims()
     {
         using ServiceProvider provider = CreateProvider();

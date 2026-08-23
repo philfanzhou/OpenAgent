@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
+using OpenAgent.Authorization;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Routing;
@@ -59,6 +60,7 @@ public class OpenAgentEngineProviderTests
             "intent-router",
             agents,
             "select another agent",
+            new AgentUserContext { UserId = "user-1", TenantId = "tenant-1", IsAuthenticated = true },
             CancellationToken.None);
         AgentProviderConversationStatus conversation = await provider.ResolveConversationAsync(
             requestContext,
@@ -82,10 +84,10 @@ public class OpenAgentEngineProviderTests
                 "http://engine/api/v1/agent/provider/conversations/conversation-1"
             ],
             handler.RequestUris);
-        Assert.Equal(
-            ["Basic forwarded-token", "Basic service-token", "Basic service-token", "Basic forwarded-token"],
-            handler.Authorizations);
-        Assert.All(handler.IdentityHeaders, present => Assert.True(present));
+        Assert.All(handler.Authorizations, Assert.Null);
+        Assert.All(handler.IdentityHeaders, present => Assert.False(present));
+        Assert.All(handler.GatewayGrants, grant => Assert.Equal("test-gateway-grant", grant));
+        Assert.Equal([null, "intent-router", "intent-router", null], handler.ResolvedAgentIds);
         Assert.Equal(AgentProviderConversationStatus.Found, conversation);
         Assert.Equal("tenant-1", routeTable.TenantId);
         Assert.Equal("conversation-1", routeTable.ConversationId);
@@ -99,6 +101,8 @@ public class OpenAgentEngineProviderTests
         public List<string> RequestUris { get; } = [];
         public List<string?> Authorizations { get; } = [];
         public List<bool> IdentityHeaders { get; } = [];
+        public List<string?> GatewayGrants { get; } = [];
+        public List<string?> ResolvedAgentIds { get; } = [];
         public List<string> ChatBodies { get; } = [];
 
         protected override async Task<HttpResponseMessage> SendAsync(
@@ -116,6 +120,8 @@ public class OpenAgentEngineProviderTests
                 || request.Headers.Contains("X-Tenant-Id")
                 || request.Headers.Contains("X-OpenAgent-User-Id")
                 || request.Headers.Contains("X-OpenAgent-Tenant-Id"));
+            GatewayGrants.Add(GetHeader(request, DelegatedAuthorizationHeaders.Grant));
+            ResolvedAgentIds.Add(GetHeader(request, AgentRoutingHeaders.ResolvedAgentId));
             if (request.Method == HttpMethod.Get
                 && request.RequestUri?.AbsolutePath == "/custom/agents")
             {

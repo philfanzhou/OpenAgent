@@ -44,15 +44,16 @@ public sealed class RouterHostIntegrationTests : IClassFixture<RouterHostFixture
         Assert.Equal(
             "default",
             Assert.Single(response.Headers.GetValues("X-OpenAgent-Selected-Agent-Id")));
-        Assert.Null(_fixture.PrimaryEngine.LastUserId);
-        Assert.Null(_fixture.PrimaryEngine.LastTenantId);
-        Assert.StartsWith("Basic ", _fixture.PrimaryEngine.LastAuthorization, StringComparison.Ordinal);
+        Assert.Equal("admin", _fixture.PrimaryEngine.LastUserId);
+        Assert.Equal("tenant-1", _fixture.PrimaryEngine.LastTenantId);
+        Assert.Null(_fixture.PrimaryEngine.LastAuthorization);
+        Assert.False(string.IsNullOrWhiteSpace(_fixture.PrimaryEngine.LastGatewayGrant));
         Assert.Contains("openagent_router_provider_selections_total", metrics, StringComparison.Ordinal);
         Assert.Contains("source=\"explicit\"", metrics, StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task Chat_DevelopmentTenantHeader_IsForwardedWithoutRouterInterpretation()
+    public async Task Chat_DevelopmentTenantHeader_CannotOverrideAuthenticatedTenant()
     {
         using RouterApplicationFactory factory = _fixture.CreateFactory();
         using HttpClient client = factory.CreateClient();
@@ -62,7 +63,7 @@ public sealed class RouterHostIntegrationTests : IClassFixture<RouterHostFixture
         using HttpResponseMessage response = await client.SendAsync(request);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal("development-tenant", _fixture.PrimaryEngine.LastTenantId);
+        Assert.Equal("tenant-1", _fixture.PrimaryEngine.LastTenantId);
         Assert.Null(_fixture.PrimaryEngine.LastCatalogTenantId);
     }
 
@@ -132,7 +133,8 @@ public sealed class RouterHostIntegrationTests : IClassFixture<RouterHostFixture
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("conversation-1", _fixture.PrimaryEngine.LastCompactedConversationId);
-        Assert.StartsWith("Basic ", _fixture.PrimaryEngine.LastAuthorization, StringComparison.Ordinal);
+        Assert.Null(_fixture.PrimaryEngine.LastAuthorization);
+        Assert.False(string.IsNullOrWhiteSpace(_fixture.PrimaryEngine.LastGatewayGrant));
     }
 
     [Fact]

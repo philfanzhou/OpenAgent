@@ -94,7 +94,7 @@ internal sealed class GatewayGrantCodec(
         if (audience.Equals(_options.Audience, StringComparison.Ordinal))
         {
             signingKey = _options.SigningKey;
-            return true;
+            return !string.IsNullOrWhiteSpace(signingKey);
         }
 
         if (_options.AudienceSigningKeys.TryGetValue(audience, out string? configured)

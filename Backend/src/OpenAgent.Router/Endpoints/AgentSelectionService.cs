@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using OpenAgent.Authorization;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Router.Models;
@@ -10,6 +11,7 @@ internal sealed class AgentSelectionService(
     IAgentCatalogService catalog,
     IConversationProviderResolver conversations,
     IIntentAgentSelector intentAgentSelector,
+    IPermissionAuthorizationService authorization,
     IAgentUserContext userContext,
     IOptions<IntentRecognitionOptions> options) : IAgentSelectionService
 {
@@ -125,12 +127,17 @@ internal sealed class AgentSelectionService(
                 entry.Agent.AgentId,
                 _options.AgentId,
                 StringComparison.OrdinalIgnoreCase))
+            .Where(entry => authorization.IsAuthorized(
+                userContext,
+                PermissionCatalog.AgentExecute,
+                entry.Agent.AgentId))
             .ToArray();
         if (_options.Enabled)
         {
             string? selectedAgentId = await intentAgentSelector.SelectAsync(
                 message,
                 candidates.Select(entry => entry.Agent).ToArray(),
+                userContext,
                 cancellationToken).ConfigureAwait(false);
             AgentCatalogEntry? selected = candidates.FirstOrDefault(entry =>
                 string.Equals(

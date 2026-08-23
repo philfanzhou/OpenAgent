@@ -38,6 +38,11 @@ internal static class GetEndpointHandler
         var normalizedPath = targetPath.StartsWith('/') ? targetPath : "/" + targetPath;
         var targetUrl = $"{targetEndpoint.TrimEnd('/')}{normalizedPath}";
         var traceId = Activity.Current?.Id ?? context.TraceIdentifier;
+        IPermissionAuthorizationService authorization = context.RequestServices
+            .GetRequiredService<IPermissionAuthorizationService>();
+        IDelegatedAuthorizationIssuer grantIssuer = context.RequestServices
+            .GetRequiredService<IDelegatedAuthorizationIssuer>();
+        string gatewayGrant = grantIssuer.Issue(authorization.CreateDelegation(userContext));
         ForwarderError error;
         try
         {
@@ -52,7 +57,12 @@ internal static class GetEndpointHandler
                     return ForwardingContextBuilder.ApplyAsync(
                         proxyRequest,
                         new Uri(targetUrl),
-                        traceId);
+                        userContext,
+                        tenantId,
+                        agentId: null,
+                        conversationId,
+                        traceId,
+                        gatewayGrant);
                 }).ConfigureAwait(false);
         }
         catch

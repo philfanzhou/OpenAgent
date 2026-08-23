@@ -1,10 +1,13 @@
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
+using OpenAgent.Authorization;
+using OpenAgent.Hosting.Authorization;
 using OpenAgent.Hosting.Security;
 
 namespace OpenAgent.Hosting.Authentication;
@@ -33,15 +36,16 @@ internal static class AgentAuthenticationExtensions
         services.AddSingleton<IValidateOptions<AgentAuthenticationOptions>>(provider =>
             new AgentAuthenticationOptionsValidator(provider.GetService<IHostEnvironment>()));
 
-        if (options.Mode == AgentAuthenticationMode.Basic)
+        services.AddGatewayAuthorization(configuration);
+
+        _ = options.Mode switch
         {
-            services.AddAuthentication(BasicAuthenticationHandler.SchemeName)
+            AgentAuthenticationMode.Basic => services
+                .AddAuthentication(BasicAuthenticationHandler.SchemeName)
                 .AddScheme<AuthenticationSchemeOptions, BasicAuthenticationHandler>(
-                    BasicAuthenticationHandler.SchemeName, _ => { });
-        }
-        else
-        {
-            services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+                    BasicAuthenticationHandler.SchemeName, _ => { }),
+            AgentAuthenticationMode.JwtBearer => services
+                .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 .AddJwtBearer(jwt =>
                 {
                     jwt.Authority = options.Authority;
@@ -59,22 +63,18 @@ internal static class AgentAuthenticationExtensions
                         ValidateIssuerSigningKey = true,
                         ClockSkew = TimeSpan.FromSeconds(options.ClockSkewSeconds)
                     };
-                });
-        }
+                }),
+            AgentAuthenticationMode.Gateway => services
+                .AddAuthentication(GatewayAuthenticationHandler.SchemeName)
+                .AddScheme<AuthenticationSchemeOptions, GatewayAuthenticationHandler>(
+                    GatewayAuthenticationHandler.SchemeName, _ => { }),
+            _ => throw new InvalidOperationException(
+                $"Unsupported authentication mode '{options.Mode}'.")
+        };
 
-        // Authentication only establishes an identity for now. Resource and
-        // capability authorization will be implemented separately.
-        services.AddAuthorization(authorization =>
-        {
-            foreach (string policyName in new[]
-            {
-                "agent.read", "agent.config.read", "agent.config.write", "mcp.config.write",
-                "skill.config.write", "capability.test", "conversation.read", "conversation.delete"
-            })
-            {
-                authorization.AddPolicy(policyName, policy => policy.RequireAuthenticatedUser());
-            }
-        });
+        services.AddAuthorization();
+        services.AddSingleton<IAuthorizationPolicyProvider, GatewayAuthorizationPolicyProvider>();
+        services.AddSingleton<IAuthorizationHandler, GatewayPermissionAuthorizationHandler>();
 
         return services;
     }
@@ -83,10 +83,13 @@ internal static class AgentAuthenticationExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
+        bool gatewayConfigured = configuration
+            .GetSection(GatewayAuthorizationOptions.SectionName)
+            .Exists();
         services.AddOptions<GatewayAuthorizationOptions>()
             .Bind(configuration.GetSection(GatewayAuthorizationOptions.SectionName))
             .Validate(
-                options => options.SigningKey?.Length >= 32,
+                options => !gatewayConfigured || options.SigningKey?.Length >= 32,
                 "GatewayAuthorization:SigningKey must contain at least 32 characters")
             .Validate(
                 options => options.AudienceSigningKeys.All(item =>

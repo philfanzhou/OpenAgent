@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using OpenAgent.Authorization;
 using Xunit;
 
 namespace OpenAgent.Router.Tests.Integration;
@@ -72,6 +73,8 @@ public sealed class TestEngineHost(string responseName) : IAsyncDisposable
 
     public string? LastAuthorization { get; private set; }
 
+    public string? LastGatewayGrant { get; private set; }
+
     public string? LastCompactedConversationId { get; private set; }
 
     public string? LastCatalogTenantId { get; private set; }
@@ -98,6 +101,7 @@ public sealed class TestEngineHost(string responseName) : IAsyncDisposable
         {
             LastCatalogTenantId = context.Request.Headers["X-Tenant-Id"].FirstOrDefault();
             LastAuthorization = context.Request.Headers.Authorization.FirstOrDefault();
+            LastGatewayGrant = context.Request.Headers[DelegatedAuthorizationHeaders.Grant].FirstOrDefault();
             return Results.Json(new[]
             {
                 new { agentId = "default", name = "Default", description = "Test agent" }
@@ -109,6 +113,7 @@ public sealed class TestEngineHost(string responseName) : IAsyncDisposable
             LastUserId = context.Request.Headers["X-User-Id"].FirstOrDefault();
             LastTenantId = context.Request.Headers["X-Tenant-Id"].FirstOrDefault();
             LastAuthorization = context.Request.Headers.Authorization.FirstOrDefault();
+            LastGatewayGrant = context.Request.Headers[DelegatedAuthorizationHeaders.Grant].FirstOrDefault();
             context.Response.ContentType = "application/json";
             context.Response.Headers.CacheControl = "public, max-age=60";
             await context.Response.WriteAsync(
@@ -138,6 +143,7 @@ public sealed class TestEngineHost(string responseName) : IAsyncDisposable
             {
                 LastCompactedConversationId = conversationId;
                 LastAuthorization = context.Request.Headers.Authorization.FirstOrDefault();
+                LastGatewayGrant = context.Request.Headers[DelegatedAuthorizationHeaders.Grant].FirstOrDefault();
                 return Results.Json(new { status = "Succeeded", trigger = "Manual" });
             });
         application.MapPost("/api/v1/agent/files", async context =>

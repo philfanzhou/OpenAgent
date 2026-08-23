@@ -18,7 +18,9 @@ public class AssemblyDependencyTests
     [Fact]
     public void Hosting_ReferencesOnlyAuthorizationContracts()
     {
-        AssertOpenAgentReferences("OpenAgent.Hosting", ["OpenAgent.Authorization"]);
+        AssertOpenAgentReferences(
+            "OpenAgent.Hosting",
+            ["OpenAgent.Authorization", "OpenAgent.Contracts"]);
     }
 
     [Fact]
@@ -40,7 +42,7 @@ public class AssemblyDependencyTests
     {
         AssertOpenAgentReferences(
             "OpenAgent.Engine.Host",
-            ["OpenAgent.Contracts", "OpenAgent.Core", "OpenAgent.Engine", "OpenAgent.Hosting", "OpenAgent.Infrastructure"]);
+            ["OpenAgent.Authorization", "OpenAgent.Contracts", "OpenAgent.Core", "OpenAgent.Engine", "OpenAgent.Hosting", "OpenAgent.Infrastructure"]);
     }
 
     [Fact]

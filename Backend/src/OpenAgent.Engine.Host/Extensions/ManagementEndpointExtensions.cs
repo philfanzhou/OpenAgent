@@ -30,6 +30,7 @@ internal static class ManagementEndpointExtensions
 
         group.MapGet("/agents/{agentId}", async (
             [FromServices] AgentConfigManagementService manager,
+            HttpContext context,
             string agentId,
             CancellationToken cancellationToken) =>
         {
@@ -167,8 +168,6 @@ internal static class ManagementEndpointExtensions
             [FromBody] AgentConfigEntity entity,
             CancellationToken cancellationToken) =>
         {
-            if (!HasScope(context, "agent.config.write"))
-                return Results.Forbid();
             string tenantId = RequireTenant(context);
             AgentConfigEntity? existing = await manager.GetAsync(agentId, cancellationToken).ConfigureAwait(false);
             if (existing != null && !CanAccessAgent(existing, tenantId))
@@ -225,36 +224,27 @@ internal static class ManagementEndpointExtensions
 
         group.MapGet("/mcp", async (
             [FromServices] McpProfileManagementService manager,
-            HttpContext context,
             CancellationToken cancellationToken) =>
         {
-            if (!HasScope(context, "agent.config.read"))
-                return Results.Forbid();
             IReadOnlyList<McpServerConfig> servers = await manager.ListAsync(cancellationToken).ConfigureAwait(false);
             return Results.Ok(servers.Select(RedactMcpServer));
-        });
+        }).RequireAuthorization(PermissionCatalog.AgentConfigRead);
 
         group.MapGet("/mcp/{id}", async (
             [FromServices] McpProfileManagementService manager,
-            HttpContext context,
             string id,
             CancellationToken cancellationToken) =>
         {
-            if (!HasScope(context, "agent.config.read"))
-                return Results.Forbid();
             McpServerConfig? server = await manager.GetAsync(id, cancellationToken).ConfigureAwait(false);
             return server == null ? Results.NotFound() : Results.Ok(RedactMcpServer(server));
-        });
+        }).RequireAuthorization(PermissionCatalog.AgentConfigRead);
 
         group.MapPut("/mcp/{id}", async (
             [FromServices] McpProfileManagementService manager,
-            HttpContext context,
             string id,
             [FromBody] McpServerConfig server,
             CancellationToken cancellationToken) =>
         {
-            if (!HasScope(context, "agent.config.write"))
-                return Results.Forbid();
             if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(server.Name))
                 return Results.BadRequest(new { error = "MCP requires an id and name." });
             if (string.IsNullOrWhiteSpace(server.Url))
@@ -263,20 +253,17 @@ internal static class ManagementEndpointExtensions
             server.Name = id;
             McpServerConfig saved = await manager.SaveAsync(server, cancellationToken).ConfigureAwait(false);
             return Results.Ok(RedactMcpServer(saved));
-        });
+        }).RequireAuthorization(PermissionCatalog.AgentConfigWrite);
 
         group.MapDelete("/mcp/{id}", async (
             [FromServices] McpProfileManagementService manager,
-            HttpContext context,
             string id,
             CancellationToken cancellationToken) =>
         {
-            if (!HasScope(context, "agent.config.write"))
-                return Results.Forbid();
             return await manager.DeleteAsync(id, cancellationToken).ConfigureAwait(false)
                 ? Results.NoContent()
                 : Results.NotFound();
-        });
+        }).RequireAuthorization(PermissionCatalog.AgentConfigWrite);
 
         group.MapGet("/rag", async (
             [FromServices] AgentConfigManagementService manager,
@@ -414,12 +401,10 @@ internal static class ManagementEndpointExtensions
             HttpContext context,
             CancellationToken cancellationToken) =>
         {
-            if (!HasScope(context, "agent.config.read"))
-                return Results.Forbid();
             return Results.Ok(await catalog.ListAsync(
                 RequireTenant(context),
                 cancellationToken).ConfigureAwait(false));
-        });
+        }).RequireAuthorization(PermissionCatalog.AgentConfigRead);
 
         group.MapGet("/skills/{skillId}/source", async (
             [FromServices] SkillPackageManagementService packages,
@@ -427,14 +412,12 @@ internal static class ManagementEndpointExtensions
             string skillId,
             CancellationToken cancellationToken) =>
         {
-            if (!HasScope(context, "agent.config.read"))
-                return Results.Forbid();
             string? markdown = await packages.ReadMarkdownAsync(
                 RequireTenant(context),
                 skillId,
                 cancellationToken).ConfigureAwait(false);
             return markdown == null ? Results.NotFound() : Results.Ok(new { markdown });
-        });
+        }).RequireAuthorization(PermissionCatalog.AgentConfigRead);
 
         group.MapGet("/skills/{skillId}", async (
             [FromServices] ISkillCatalogStore catalog,
@@ -442,22 +425,18 @@ internal static class ManagementEndpointExtensions
             string skillId,
             CancellationToken cancellationToken) =>
         {
-            if (!HasScope(context, "agent.config.read"))
-                return Results.Forbid();
             SkillInstanceConfig? skill = await catalog.GetAsync(
                 RequireTenant(context),
                 skillId,
                 cancellationToken).ConfigureAwait(false);
             return skill == null ? Results.NotFound() : Results.Ok(skill);
-        });
+        }).RequireAuthorization(PermissionCatalog.AgentConfigRead);
 
         group.MapPost("/skills/packages", async (
             [FromServices] SkillPackageManagementService packages,
             HttpContext context,
             CancellationToken cancellationToken) =>
         {
-            if (!HasScope(context, "agent.config.write"))
-                return Results.Forbid();
             if (!context.Request.HasFormContentType)
                 return Results.BadRequest(new { error = "A multipart .zip or .md Skill file is required." });
 
@@ -484,7 +463,7 @@ internal static class ManagementEndpointExtensions
             {
                 return Results.BadRequest(new { error = exception.Message });
             }
-        });
+        }).RequireAuthorization(PermissionCatalog.AgentConfigWrite);
 
         group.MapDelete("/skills/{skillId}", async (
             [FromServices] SkillPackageManagementService packages,
@@ -492,15 +471,13 @@ internal static class ManagementEndpointExtensions
             string skillId,
             CancellationToken cancellationToken) =>
         {
-            if (!HasScope(context, "agent.config.write"))
-                return Results.Forbid();
             return await packages.DeleteCatalogAsync(
                 RequireTenant(context),
                 skillId,
                 cancellationToken).ConfigureAwait(false)
                 ? Results.NoContent()
                 : Results.NotFound();
-        });
+        }).RequireAuthorization(PermissionCatalog.AgentConfigWrite);
 
         group.MapPost("/skills/{agentId}/packages", async (
             [FromServices] SkillPackageManagementService packages,
@@ -508,8 +485,6 @@ internal static class ManagementEndpointExtensions
             string agentId,
             CancellationToken cancellationToken) =>
         {
-            if (!HasScope(context, "agent.config.write"))
-                return Results.Forbid();
             if (!context.Request.HasFormContentType)
                 return Results.BadRequest(new { error = "A multipart .zip or .md Skill file is required." });
 
@@ -556,7 +531,7 @@ internal static class ManagementEndpointExtensions
                 currentVersion = result.CurrentVersion,
                 storage = "object-storage"
             });
-        });
+        }).RequireAuthorization(PermissionCatalog.AgentConfigWrite);
 
         group.MapDelete("/skills/{agentId}/{skillId}", async (
             [FromServices] SkillPackageManagementService packages,
@@ -565,8 +540,6 @@ internal static class ManagementEndpointExtensions
             string skillId,
             CancellationToken cancellationToken) =>
         {
-            if (!HasScope(context, "agent.config.write"))
-                return Results.Forbid();
             SkillPackageDeleteResult result = await packages.DeleteAsync(
                 agentId,
                 RequireTenant(context),
@@ -580,7 +553,7 @@ internal static class ManagementEndpointExtensions
                 SkillPackageDeleteResult.TenantMismatch => Results.Forbid(),
                 _ => Results.NotFound()
             };
-        });
+        }).RequireAuthorization(PermissionCatalog.AgentConfigWrite);
 
         group.MapPost("/skills/test", async (
             [FromServices] SkillPackageManagementService packages,
@@ -588,20 +561,13 @@ internal static class ManagementEndpointExtensions
             HttpContext context,
             CancellationToken cancellationToken) =>
         {
-            if (!HasScope(context, "capability.test"))
-                return Results.Forbid();
             SkillPackageValidationResult result = await packages
                 .ValidateAsync(RequireTenant(context), skills, cancellationToken)
                 .ConfigureAwait(false);
             return Results.Ok(result);
-        });
+        }).RequireAuthorization(PermissionCatalog.CapabilityTest);
 
         return group;
-    }
-
-    private static bool HasScope(HttpContext context, string requiredScope)
-    {
-        return context.User.Identity?.IsAuthenticated == true;
     }
 
     private static string RequireTenant(HttpContext context) =>

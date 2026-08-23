@@ -261,6 +261,7 @@ public class AgentSelectionServiceTests
             new AgentCatalogService(registry, accessControls ?? []),
             new ConversationProviderResolver(registry, affinityStore),
             selector ?? new StubSelector("general"),
+            new OpenAgent.Router.Tests.TestPermissionServices(),
             new AgentUserContext
             {
                 UserId = "user-1",

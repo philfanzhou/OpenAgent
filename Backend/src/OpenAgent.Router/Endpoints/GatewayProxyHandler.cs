@@ -54,6 +54,9 @@ internal static class GatewayProxyHandler
 
         string targetUrl = $"{targetEndpoint.TrimEnd('/')}{context.Request.Path}{context.Request.QueryString}";
         string traceId = Activity.Current?.Id ?? context.TraceIdentifier;
+        string? gatewayGrant = userContext.IsAuthenticated
+            ? grantIssuer.Issue(authorization.CreateDelegation(userContext))
+            : null;
         ForwarderError error;
         try
         {
@@ -66,7 +69,11 @@ internal static class GatewayProxyHandler
                     ? ApplyAuthenticatedAsync(
                         proxyRequest,
                         new Uri(targetUrl),
-                        traceId)
+                        userContext,
+                        tenantId,
+                        conversationId,
+                        traceId,
+                        gatewayGrant!)
                     : ApplyAnonymousAsync(proxyRequest, new Uri(targetUrl), traceId)).ConfigureAwait(false);
         }
         catch
@@ -101,12 +108,21 @@ internal static class GatewayProxyHandler
     private static ValueTask ApplyAuthenticatedAsync(
         HttpRequestMessage proxyRequest,
         Uri targetUri,
-        string traceId)
+        IAgentUserContext userContext,
+        string? tenantId,
+        string? conversationId,
+        string traceId,
+        string gatewayGrant)
     {
         return ForwardingContextBuilder.ApplyAsync(
             proxyRequest,
             targetUri,
-            traceId);
+            userContext,
+            tenantId,
+            agentId: null,
+            conversationId,
+            traceId,
+            gatewayGrant);
     }
 
     private static ValueTask ApplyAnonymousAsync(
@@ -115,10 +131,22 @@ internal static class GatewayProxyHandler
         string traceId)
     {
         proxyRequest.RequestUri = targetUri;
-        if (!proxyRequest.Headers.Contains("X-Trace-Id"))
+        foreach (string header in new[]
         {
-            proxyRequest.Headers.TryAddWithoutValidation("X-Trace-Id", traceId);
+            "Authorization",
+            "X-Agent-Id",
+            AgentRoutingHeaders.ResolvedAgentId,
+            "X-Conversation-Id",
+            "X-User-Id",
+            "X-Tenant-Id",
+            "X-TenantId",
+            "X-Trace-Id",
+            DelegatedAuthorizationHeaders.Grant
+        })
+        {
+            proxyRequest.Headers.Remove(header);
         }
+        proxyRequest.Headers.TryAddWithoutValidation("X-Trace-Id", traceId);
         return ValueTask.CompletedTask;
     }
 
