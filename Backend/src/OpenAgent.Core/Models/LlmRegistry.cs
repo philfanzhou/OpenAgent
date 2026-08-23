@@ -77,7 +77,8 @@ internal class LlmRegistry : ILlmRegistry
                 AgentErrorCode.LlmModelNotFound,
                 $"LLM provider '{llmConfig.Provider}' does not publish selectable models.");
         }
-        if (modelIds.Count > 0 && !modelIds.Contains(modelId, StringComparer.OrdinalIgnoreCase))
+        if (requireCatalogEntry
+            && !modelIds.Contains(modelId, StringComparer.OrdinalIgnoreCase))
         {
             throw new AgentException(
                 AgentErrorCode.LlmModelNotFound,

@@ -92,10 +92,17 @@ internal static class AgentEndpointRequestMapper
             return null;
         }
 
+        if (string.IsNullOrWhiteSpace(provider) || string.IsNullOrWhiteSpace(modelId))
+        {
+            throw new AgentException(
+                AgentErrorCode.InvalidRequest,
+                "A model override requires both modelProvider and modelId.");
+        }
+
         return new LlmModelSelection
         {
-            Provider = provider ?? string.Empty,
-            ModelId = modelId ?? string.Empty
+            Provider = provider,
+            ModelId = modelId
         };
     }
 

@@ -160,4 +160,36 @@ public class EndpointExtensionsTests
         Assert.Null(result.ConversationModelOverride);
     }
 
+    [Theory]
+    [InlineData("message", null, null)]
+    [InlineData("message", "provider-1", null)]
+    [InlineData("message", null, "model-1")]
+    [InlineData("conversation", "provider-1", null)]
+    [InlineData("conversation", null, "model-1")]
+    public void CreateAgentRequest_IncompleteModelOverride_IsRejected(
+        string scope,
+        string? provider,
+        string? modelId)
+    {
+        var modelContext = new Dictionary<string, object> { ["modelScope"] = scope };
+        if (provider != null)
+        {
+            modelContext["modelProvider"] = provider;
+        }
+        if (modelId != null)
+        {
+            modelContext["modelId"] = modelId;
+        }
+        var request = new ChatRequest
+        {
+            Message = "hello",
+            Context = modelContext
+        };
+
+        AgentException exception = Assert.Throws<AgentException>(() =>
+            AgentEndpointRequestMapper.CreateAgentRequest(request, CreateContext()));
+
+        Assert.Equal(AgentErrorCode.InvalidRequest, exception.ErrorCode);
+    }
+
 }

@@ -147,6 +147,27 @@ public class LlmRegistryTests
     }
 
     [Fact]
+    public void ResolveConfig_AgentDefaultModel_DoesNotRequireSelectableCatalogEntry()
+    {
+        var registry = new LlmRegistry();
+        registry.Register(new LlmProviderProfile
+        {
+            Id = "provider-1",
+            Endpoint = "https://llm.example.test",
+            ApiKey = "secret",
+            ModelIds = ["selectable-model"]
+        });
+
+        LlmConfig resolved = registry.ResolveConfig(new LlmConfig
+        {
+            Provider = "provider-1",
+            ModelId = "agent-default"
+        });
+
+        Assert.Equal("agent-default", resolved.ModelId);
+    }
+
+    [Fact]
     public void ResolveConfig_DisabledProvider_ThrowsDependencyUnavailable()
     {
         var registry = new LlmRegistry();
