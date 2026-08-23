@@ -35,11 +35,16 @@ Token 仅取服务端 Provider usage。流式生成期间等待 `done` 事件更
 - `Backend/src/OpenAgent.Router/Endpoints/GatewayProxyHandler.cs`；
 - `Backend/src/OpenAgent.Router/Extensions/RouterEndpointExtensions.cs`。
 
-Router 是浏览器流量的信任边界。转发前会清除客户端提交的 Agent、用户、租户、会话和 Trace 内部 Header，再根据认证上下文写入可信值。
+Router 是浏览器流量的第一层信任边界。当前 YARP 仍保留客户端提交的 `Authorization`、用户、租户和
+Agent Header；Engine 必须继续只信任已验证 Claims。清洗 Header、建立 Router workload 身份并签发
+受众受限委托的目标方案见
+[`ADR-0004`](../../decisions/0004-Authentication-Authorization-Trust-Boundary.md)。
 
 ## 开发与安全边界
 
-当前 Basic 认证只用于 Development 联调，它不校验真实密码，且在非 Development 环境启动失败。生产环境必须配置 OIDC/OAuth2 企业 IdP，Router 和 Engine 验证 JWT issuer、audience、签名与有效期。管理接口仍只在 Development 映射。
+当前 Basic 认证只用于 Development 联调，只校验仓库内置的固定账号，且在非 Development 环境启动失败。
+生产环境必须配置 OIDC/OAuth2 企业 IdP，Router 和 Engine 验证 JWT issuer、audience、签名与有效期。
+管理接口仍只在 Development 映射。
 
 凭据不会持久化；token 与 OIDC 临时参数仅保存在当前标签页的 `sessionStorage`，连接模式、地址和租户配置可保存在 `localStorage`。token 绑定登录端点，退出或 401 会清理敏感会话信息；Bearer 模式的租户来自服务端 claim。直连 Engine 会绕过 Router 权限边界，只适合受控网络或开发联调。
 
