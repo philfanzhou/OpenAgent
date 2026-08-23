@@ -72,6 +72,8 @@ public sealed class TestEngineHost(string responseName) : IAsyncDisposable
 
     public string? LastAuthorization { get; private set; }
 
+    public string? LastCompactedConversationId { get; private set; }
+
     public string? LastCatalogTenantId { get; private set; }
 
     public string? UploadedFileName { get; private set; }
@@ -130,6 +132,14 @@ public sealed class TestEngineHost(string responseName) : IAsyncDisposable
                 _sseCanceled.TrySetResult(true);
             }
         });
+        application.MapPost(
+            "/api/v1/agent/conversations/{conversationId}/compact",
+            (HttpContext context, string conversationId) =>
+            {
+                LastCompactedConversationId = conversationId;
+                LastAuthorization = context.Request.Headers.Authorization.FirstOrDefault();
+                return Results.Json(new { status = "Succeeded", trigger = "Manual" });
+            });
         application.MapPost("/api/v1/agent/files", async context =>
         {
             IFormCollection form = await context.Request.ReadFormAsync(

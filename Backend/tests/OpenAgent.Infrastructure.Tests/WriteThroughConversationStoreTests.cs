@@ -179,6 +179,16 @@ public sealed class WriteThroughConversationStoreTests
 
         public Task<bool> SoftDeleteAsync(string tenantId, string conversationId, CancellationToken cancellationToken = default) =>
             Task.FromResult(true);
+
+        public Task<bool> RecordCompressionAsync(
+            string tenantId,
+            string conversationId,
+            ContextSummary summary,
+            CancellationToken cancellationToken = default)
+        {
+            Record.ContextSummaries.Add(summary);
+            return Task.FromResult(true);
+        }
     }
 
     private static ConversationRecord Clone(ConversationRecord record) => new()
@@ -196,6 +206,7 @@ public sealed class WriteThroughConversationStoreTests
             Sequence = message.Sequence,
             Role = message.Role,
             Content = message.Content
-        }).ToList()
+        }).ToList(),
+        ContextSummaries = record.ContextSummaries.ToList()
     };
 }

@@ -143,6 +143,21 @@ internal sealed class WriteThroughConversationStore(
         return deleted;
     }
 
+    public async Task<bool> RecordCompressionAsync(
+        string tenantId,
+        string conversationId,
+        ContextSummary summary,
+        CancellationToken cancellationToken = default)
+    {
+        bool recorded = await durable.RecordCompressionAsync(
+            tenantId, conversationId, summary, cancellationToken).ConfigureAwait(false);
+        if (recorded)
+        {
+            await WarmAsync(tenantId, conversationId, cancellationToken).ConfigureAwait(false);
+        }
+        return recorded;
+    }
+
     private async Task WarmAsync(string tenantId, string conversationId, CancellationToken cancellationToken)
     {
         ConversationRecord? record = await durable.GetRecordAsync(tenantId, conversationId, cancellationToken).ConfigureAwait(false);

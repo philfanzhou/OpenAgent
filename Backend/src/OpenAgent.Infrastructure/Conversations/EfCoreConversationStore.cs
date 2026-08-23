@@ -276,7 +276,7 @@ internal sealed class EfCoreConversationStore(
             .Skip(Math.Max(skip, 0))
             .Take(take)
             .ToListAsync(cancellationToken).ConfigureAwait(false);
-        return conversations.Select(item => ToRecord(item, [])).ToList().AsReadOnly();
+        return conversations.Select(item => ToRecord(item, [], includeSummaries: false)).ToList().AsReadOnly();
     }
 
     public async Task<IReadOnlyList<ConversationRecord>> SearchConversationsAsync(
@@ -303,7 +303,7 @@ internal sealed class EfCoreConversationStore(
             .Skip(Math.Max(skip, 0))
             .Take(take)
             .ToListAsync(cancellationToken).ConfigureAwait(false);
-        return conversations.Select(item => ToRecord(item, [])).ToList().AsReadOnly();
+        return conversations.Select(item => ToRecord(item, [], includeSummaries: false)).ToList().AsReadOnly();
     }
 
     public async Task<bool> SoftDeleteAsync(
@@ -327,6 +327,36 @@ internal sealed class EfCoreConversationStore(
         return true;
     }
 
+    public async Task<bool> RecordCompressionAsync(
+        string tenantId,
+        string conversationId,
+        ContextSummary summary,
+        CancellationToken cancellationToken = default)
+    {
+        await using OpenAgentDbContext context = await contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        ConversationEntity? conversation = await context.Conversations.SingleOrDefaultAsync(
+            item => item.ConversationId == conversationId && item.TenantId == tenantId && !item.IsDeletedByUser,
+            cancellationToken).ConfigureAwait(false);
+        if (conversation == null)
+        {
+            return false;
+        }
+
+        List<ContextSummary> summaries = DeserializeSummaries(conversation.ContextSummariesJson);
+        summaries.Add(summary);
+        conversation.ContextSummariesJson = JsonSerializer.Serialize(summaries);
+        conversation.UpdatedAt = DateTimeOffset.UtcNow;
+        try
+        {
+            await context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return false;
+        }
+    }
+
     private static ConversationEntity ToEntity(ConversationRecord record) => new()
     {
         ConversationId = record.ConversationId,
@@ -345,7 +375,8 @@ internal sealed class EfCoreConversationStore(
         MessageCount = record.MessageCount,
         Title = record.Title,
         IsDeletedByUser = record.IsDeletedByUser,
-        DeletedAt = record.DeletedAt
+        DeletedAt = record.DeletedAt,
+        ContextSummariesJson = JsonSerializer.Serialize(record.ContextSummaries)
     };
 
     private static ConversationMessageEntity ToEntity(string conversationId, ConversationMessage message) => new()
@@ -368,7 +399,10 @@ internal sealed class EfCoreConversationStore(
         ModelId = message.ModelId
     };
 
-    private static ConversationRecord ToRecord(ConversationEntity entity, IReadOnlyList<ConversationMessage> messages) => new()
+    private static ConversationRecord ToRecord(
+        ConversationEntity entity,
+        IReadOnlyList<ConversationMessage> messages,
+        bool includeSummaries = true) => new()
     {
         ConversationId = entity.ConversationId,
         TenantId = entity.TenantId,
@@ -393,8 +427,14 @@ internal sealed class EfCoreConversationStore(
         Title = entity.Title,
         IsDeletedByUser = entity.IsDeletedByUser,
         DeletedAt = entity.DeletedAt,
-        Messages = messages.ToList()
+        Messages = messages.ToList(),
+        ContextSummaries = includeSummaries ? DeserializeSummaries(entity.ContextSummariesJson) : []
     };
+
+    private static List<ContextSummary> DeserializeSummaries(string? value) =>
+        string.IsNullOrWhiteSpace(value)
+            ? []
+            : JsonSerializer.Deserialize<List<ContextSummary>>(value) ?? [];
 
     private static async Task<IReadOnlyList<ConversationMessage>> ToMessagesAsync(
         OpenAgentDbContext context,

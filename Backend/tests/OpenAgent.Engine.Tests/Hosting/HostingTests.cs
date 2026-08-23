@@ -98,7 +98,8 @@ public class HostingTests
             ("/api/v1/agent/conversations", "GET", "ListConversations", "Conversation"),
             ("/api/v1/agent/conversations/search", "GET", "SearchConversations", "Conversation"),
             ("/api/v1/agent/conversations/{conversationId}", "GET", "GetConversation", "Conversation"),
-            ("/api/v1/agent/conversations/{conversationId}", "DELETE", "DeleteConversation", "Conversation")
+            ("/api/v1/agent/conversations/{conversationId}", "DELETE", "DeleteConversation", "Conversation"),
+            ("/api/v1/agent/conversations/{conversationId}/compact", "POST", "CompactConversation", "Conversation")
         };
 
         var actual = routeEndpoints

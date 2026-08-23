@@ -43,6 +43,8 @@ export interface ConversationMessage {
   metadata?: Record<string, string>
   reasoning?: string
   toolActivities?: ToolActivity[]
+  /** UI-only ordered execution trace assembled from reasoning and tool messages. */
+  processActivities?: ProcessActivity[]
   files?: MessageFile[]
   tokenUsage?: TokenUsage
   modelId?: string
@@ -57,6 +59,10 @@ export interface ToolActivity {
   /** 工具调用参数（流式下发或从历史 metadata.ToolArguments 解析）。 */
   arguments?: unknown
 }
+
+export type ProcessActivity =
+  | { kind: 'reasoning'; content: string }
+  | { kind: 'tool'; tool: ToolActivity }
 
 export interface MessageFile {
   fileId?: string
@@ -101,6 +107,26 @@ export interface ConversationRecord {
   messageCount: number
   title?: string
   messages?: ConversationMessage[]
+  contextSummaries?: ContextSummary[]
+}
+
+export interface ContextSummary {
+  compressionId: string
+  strategy: string
+  trigger: 'Automatic' | 'Manual' | string
+  status: 'Succeeded' | 'Skipped' | 'Failed' | string
+  summary?: string | null
+  result?: string | null
+  error?: string | null
+  lastCompressedAt: string
+  compressedMessageCount: number
+  originalStartSequence: number
+  originalEndSequence: number
+  originalTokenCount: number
+  tokenCount: number
+  originalHistoryRestored: boolean
+  sourceEndSequence: number
+  compactedMessages?: ConversationMessage[]
 }
 
 export interface TokenUsage {

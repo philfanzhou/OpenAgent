@@ -1,4 +1,5 @@
 using Microsoft.Extensions.AI;
+using Microsoft.Agents.AI.Compaction;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Files;
 using OpenAgent.Core.Runtime.Agent;
@@ -21,6 +22,26 @@ public sealed class AgentMessageAdapterTests
         Assert.Equal("assistant", stored.Role);
         Assert.Equal(string.Empty, stored.Content);
         Assert.Equal("Inspect the uploaded file before answering.", stored.Metadata!["Reasoning"]);
+    }
+
+    [Fact]
+    public void ToStored_CompactionSummary_PersistsSummaryRole()
+    {
+        var response = new ChatMessage(ChatRole.Assistant, "Earlier conversation summary")
+        {
+            AdditionalProperties = new AdditionalPropertiesDictionary
+            {
+                [CompactionMessageGroup.SummaryPropertyKey] = true
+            }
+        };
+        int sequence = 1;
+
+        ConversationMessage stored = Assert.Single(
+            AgentMessageAdapter.ToStored([response], ref sequence));
+        ChatMessage restored = Assert.IsType<ChatMessage>(AgentMessageAdapter.FromStored(stored));
+
+        Assert.Equal("summary", stored.Role);
+        Assert.StartsWith("[Conversation summary]", restored.Text);
     }
 
     [Fact]

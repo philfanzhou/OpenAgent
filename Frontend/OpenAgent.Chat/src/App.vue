@@ -42,6 +42,7 @@ const conversationDetailRequests = shallowReactive(new Map<string, string>())
 const conversationStreams = useConversationStreams()
 const savingConfig = ref(false)
 const refreshingAgents = ref(false)
+const compactingConversation = ref(false)
 const testingMcp = ref(false)
 const uploadingSkill = ref(false)
 const testingRag = ref(false)
@@ -1044,6 +1045,29 @@ async function deleteConversation(item: ConversationRecord): Promise<void> {
   }
 }
 
+async function compactConversation(): Promise<void> {
+  const conversation = selectedConversation.value
+  if (!conversation || selectedConversationStreaming.value) return
+  compactingConversation.value = true
+  try {
+    const summary = await api.compactConversation(conversation.conversationId)
+    conversation.contextSummaries = [...(conversation.contextSummaries || []), summary]
+    if (summary.status === 'Succeeded') ElMessage.success('会话上下文压缩已完成')
+    else if (summary.status === 'Skipped') ElMessage.info('本次压缩未执行，原始会话保持不变')
+    else ElMessage.warning('压缩失败，原始会话历史已恢复')
+  } catch (error) {
+    notifyError(error)
+    try {
+      const persisted = await api.getConversation(conversation.conversationId)
+      replaceConversation(persisted, conversation.conversationId)
+    } catch {
+      // The original error remains the actionable result.
+    }
+  } finally {
+    compactingConversation.value = false
+  }
+}
+
 async function loadConfig(agentId = selectedAgentId.value): Promise<void> {
   if (!agentId || agentId === AUTO_AGENT_ID) return
   try {
@@ -1517,15 +1541,15 @@ onBeforeUnmount(() => {
 
       <div class="workspace-grid" :class="{ 'context-collapsed': contextCollapsed }">
         <section class="chat-card">
-          <ChatMessages :messages="currentMessages" :loading="loadingConversation" :current-user="currentUser" :streaming="selectedConversationStreaming" @suggest="message = $event" @download="downloadFile" />
+          <ChatMessages :messages="currentMessages" :context-summaries="selectedConversation?.contextSummaries" :loading="loadingConversation" :current-user="currentUser" :streaming="selectedConversationStreaming" @suggest="message = $event" @download="downloadFile" />
           <MessageComposer :model-value="message" :endpoint-url="activeEndpointUrl" :endpoint-label="activeEndpointLabel" :selected-agent-id="selectedAgentId" :loading="selectedConversationStreaming" :pending-files="pendingFiles" :available-models="availableModels" :selected-model-key="selectedModelKey" :model-scope="modelScope" @update:model-value="message = $event" @update:selected-model-key="updateSelectedModelKey" @update:model-scope="updateModelScope" @files-change="handleFilesChange" @retry-file="retryPendingFile" @send="send" @stop="stopStreaming" />
         </section>
         <aside class="context-panel">
           <div class="context-panel-head"><span class="context-label">INSPECTOR</span><button class="panel-collapse-btn" type="button" aria-label="收起上下文面板" title="收起" @click="toggleContext">›</button></div>
           <section><span class="context-label">ROUTING</span><strong>{{ routeMode }}</strong><p>{{ connectionMode === 'router' && selectedAgentId === AUTO_AGENT_ID ? '由意图识别 Agent 分析请求并选择目标。' : (selectedAgent?.description || selectedAgentId) }}</p><dl><div><dt>Agent</dt><dd>{{ connectionMode === 'router' && selectedAgentId === AUTO_AGENT_ID ? '由模型选择' : (selectedAgent?.name || selectedAgentId) }}</dd></div><div><dt>协议</dt><dd>{{ selectedAgent?.apiFormat || (connectionMode === 'router' ? '自动' : '—') }}</dd></div></dl></section>
           <section><span class="context-label">IDENTITY</span><dl><div><dt>用户</dt><dd>{{ currentUser?.userId || 'Guest' }}</dd></div><div><dt>租户</dt><dd>{{ currentUser?.tenantId || tenantId || '—' }}</dd></div><div><dt>{{ activeEndpointLabel }}</dt><dd :title="activeEndpointUrl">{{ activeEndpointHost }}</dd></div></dl></section>
-          <section><span class="context-label">CONVERSATION</span><dl><div><dt>消息</dt><dd>{{ currentMessages.length }}</dd></div><div><dt>状态</dt><dd>{{ conversationStatusText }}</dd></div><div><dt>ID</dt><dd class="truncate" :title="selectedConversation?.conversationId">{{ selectedConversation?.conversationId || '尚未创建' }}</dd></div></dl><div class="conversation-usage"><span>会话累计 Token</span><template v-if="currentUsageSummary.available && currentUsageSummary.usage"><strong>{{ formatTokenCount(currentUsageSummary.usage.totalTokens) }}</strong><small>输入 {{ formatTokenCount(currentUsageSummary.usage.promptTokens) }} · 输出 {{ formatTokenCount(currentUsageSummary.usage.completionTokens) }}</small></template><template v-else><strong class="unavailable">暂不可用</strong><small>Provider 未返回完整 usage</small></template></div></section>
-          <el-button class="diagnostics-shortcut" @click="openSettings('health')">运行平台健康检查</el-button>
+          <section><span class="context-label">CONVERSATION</span><dl><div><dt>消息</dt><dd>{{ currentMessages.length }}</dd></div><div><dt>状态</dt><dd>{{ conversationStatusText }}</dd></div><div><dt>ID</dt><dd class="conversation-id" :title="selectedConversation?.conversationId">{{ selectedConversation?.conversationId || '尚未创建' }}</dd></div></dl><div class="conversation-usage"><div class="token-usage-head"><span>Token</span><span class="token-usage-status" :class="{ unavailable: !currentUsageSummary.available }">{{ currentUsageSummary.available ? '完整' : '部分' }}</span></div><template v-if="currentUsageSummary.available && currentUsageSummary.usage"><div class="token-usage-total"><strong>{{ formatTokenCount(currentUsageSummary.usage.totalTokens) }}</strong><small>总计</small></div><div class="token-usage-breakdown"><span>入 {{ formatTokenCount(currentUsageSummary.usage.promptTokens) }}</span><span>出 {{ formatTokenCount(currentUsageSummary.usage.completionTokens) }}</span></div><small v-if="currentUsageSummary.usage.cachedInputTokens != null || currentUsageSummary.usage.reasoningTokens != null" class="token-usage-extra"><template v-if="currentUsageSummary.usage.cachedInputTokens != null">缓存 {{ formatTokenCount(currentUsageSummary.usage.cachedInputTokens) }}</template><template v-if="currentUsageSummary.usage.cachedInputTokens != null && currentUsageSummary.usage.reasoningTokens != null"> · </template><template v-if="currentUsageSummary.usage.reasoningTokens != null">思考 {{ formatTokenCount(currentUsageSummary.usage.reasoningTokens) }}</template></small></template><template v-else><strong class="unavailable">—</strong><small>Provider usage 不完整</small></template></div></section>
+          <section class="inspector-actions"><span class="context-label">OPERATIONS</span><div class="inspector-action-grid"><el-button class="inspector-action inspector-action-primary" size="small" :loading="compactingConversation" :disabled="!selectedConversation || selectedConversationStreaming" @click="compactConversation"><span class="inspector-action-mark" aria-hidden="true">↻</span><span>手动压缩</span></el-button><el-button class="inspector-action" size="small" @click="openSettings('health')"><span class="inspector-action-mark" aria-hidden="true">✓</span><span>平台健康检查</span></el-button></div></section>
           <div class="context-resize" @pointerdown="startContextResize" />
         </aside>
       </div>

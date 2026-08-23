@@ -364,6 +364,38 @@ describe('workspace API', () => {
     )
   })
 
+  it('manually triggers conversation compaction with an encoded conversation id', async () => {
+    setConnectionMode('engine')
+    setEngineBaseUrl('http://engine.example/')
+    const responseBody = {
+      compressionId: 'compression-1',
+      strategy: 'truncation',
+      trigger: 'Manual',
+      status: 'Succeeded',
+      lastCompressedAt: '2026-08-19T00:00:00Z',
+      compressedMessageCount: 4,
+      originalStartSequence: 1,
+      originalEndSequence: 4,
+      originalTokenCount: 40,
+      tokenCount: 20,
+      originalHistoryRestored: false,
+      sourceEndSequence: 4,
+    }
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(responseBody), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await api.compactConversation('conversation/1')
+
+    expect(result.trigger).toBe('Manual')
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      'http://engine.example/api/v1/agent/conversations/conversation%2F1/compact',
+    )
+    expect((fetchMock.mock.calls[0]?.[1] as RequestInit).method).toBe('POST')
+  })
+
   it('parses the engine health report into typed items', async () => {
     const report = {
       status: 'Healthy',
