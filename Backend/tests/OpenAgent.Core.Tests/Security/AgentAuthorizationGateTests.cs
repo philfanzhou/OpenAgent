@@ -57,7 +57,8 @@ public class AgentAuthorizationGateTests
             IsAuthenticated = true,
             Claims = new Dictionary<string, string>
             {
-                [PermissionClaimTypes.Permission] = "agent.execute:finance,mcp.use"
+                [PermissionClaimTypes.Permission] =
+                    "agent.execute:finance,mcp.use,function.invoke:billing/add"
             }
         };
 
@@ -69,6 +70,13 @@ public class AgentAuthorizationGateTests
             context));
         Assert.True(await service.IsAuthorizedAsync(
             new AgentAuthorizationRequest("finance", AgentResourceType.Mcp, "billing", "use"),
+            context));
+        Assert.True(await service.IsAuthorizedAsync(
+            new AgentAuthorizationRequest(
+                "finance",
+                AgentResourceType.Function,
+                "billing/add",
+                "use"),
             context));
     }
 
