@@ -313,6 +313,46 @@ describe('workspace API', () => {
     expect(body.config.skills.enabledSkills).toEqual(['weather'])
   })
 
+  it('reads execution policies and explicitly authorizes one Skill script', async () => {
+    setConnectionMode('engine')
+    setEngineBaseUrl('http://engine.example')
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        stdioEnabled: false,
+        stdioIsolation: 'disabled',
+        allowedCommands: [],
+        protocolVersionPolicy: 'automatic-or-minimum',
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        enabled: true,
+        isolation: 'container-unix-socket',
+        supportedExtensions: ['.py'],
+        timeoutSeconds: 10,
+        maxScriptBytes: 131072,
+        maxOutputBytes: 65536,
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        skillId: 'analysis',
+        name: 'analysis',
+        enabled: true,
+        scriptCount: 1,
+        allowScriptExecution: true,
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await api.getMcpRuntime()
+    await api.getSkillRuntime()
+    const updated = await api.setSkillScriptExecution('analysis', true)
+
+    expect(fetchMock.mock.calls.map(call => call[0])).toEqual([
+      'http://engine.example/api/v1/admin/mcp/runtime',
+      'http://engine.example/api/v1/admin/skills/runtime',
+      'http://engine.example/api/v1/admin/skills/analysis/execution',
+    ])
+    expect(JSON.parse(String((fetchMock.mock.calls[2]?.[1] as RequestInit).body))).toEqual({ enabled: true })
+    expect(updated.allowScriptExecution).toBe(true)
+  })
+
   it('migrates the previous single endpoint to the Router address', () => {
     localStorage.setItem('openagent.engine.base-url', 'http://legacy-router.example')
 

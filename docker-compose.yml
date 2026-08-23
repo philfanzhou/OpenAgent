@@ -53,6 +53,29 @@ services:
       /bin/sh -c "mc alias set local http://minio:9000 openagent openagent-secret &&
       mc mb --ignore-existing local/openagent-files"
 
+  skill-sandbox:
+    build:
+      context: .
+      dockerfile: Backend/src/OpenAgent.SkillSandbox.Host/Dockerfile
+    network_mode: none
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 32
+    mem_limit: 128m
+    cpus: 0.5
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=32m,mode=1777
+    volumes:
+      - skill-sandbox-socket:/run/openagent-sandbox
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent --unix-socket /run/openagent-sandbox/sandbox.sock http://localhost/health >/dev/null"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
   engine:
     build:
       context: .
@@ -73,6 +96,11 @@ services:
       FileAssets__ObjectStorage__AccessKey: openagent
       FileAssets__ObjectStorage__SecretKey: openagent-secret
       Engine__AllowMockAgent: "true"
+      SkillSandbox__Enabled: "true"
+      SkillSandbox__UnixSocketPath: /run/openagent-sandbox/sandbox.sock
+      SkillSandbox__TimeoutSeconds: "10"
+      SkillSandbox__MaxScriptBytes: "262144"
+      SkillSandbox__MaxOutputBytes: "65536"
       Heartbeat__AdvertisedHost: engine
       Heartbeat__AdvertisedPort: "5208"
       Authentication__AllowDevelopmentAnonymous: "false"
@@ -80,6 +108,8 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
+      skill-sandbox:
+        condition: service_healthy
       postgres:
         condition: service_healthy
       redis:
@@ -88,6 +118,8 @@ services:
         condition: service_completed_successfully
     ports:
       - "${OPENAGENT_ENGINE_PORT:-5208}:5208"
+    volumes:
+      - skill-sandbox-socket:/run/openagent-sandbox:ro
     healthcheck:
       test: ["CMD-SHELL", "curl --fail --silent http://localhost:5208/health >/dev/null"]
       interval: 5s
@@ -142,3 +174,4 @@ volumes:
   postgres-data:
   redis-data:
   minio-data:
+  skill-sandbox-socket:

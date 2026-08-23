@@ -25,6 +25,35 @@ public class ContractSerializationTests
     }
 
     [Fact]
+    public void AgentConfig_StructuredStdioServer_RoundTrips()
+    {
+        AgentConfig config = new()
+        {
+            Mcp = new McpConfig
+            {
+                Servers =
+                [
+                    new McpServerConfig
+                    {
+                        Name = "local-tools",
+                        Type = McpServerType.Stdio,
+                        Command = "dotnet",
+                        Arguments = ["run", "--project", "Tools"]
+                    }
+                ]
+            }
+        };
+
+        string json = JsonSerializer.Serialize(config, JsonOptions);
+        AgentConfig? roundTrip = JsonSerializer.Deserialize<AgentConfig>(json, JsonOptions);
+
+        McpServerConfig server = Assert.Single(Assert.IsType<AgentConfig>(roundTrip).Mcp.Servers);
+        Assert.Equal(McpServerType.Stdio, server.Type);
+        Assert.Equal("dotnet", server.Command);
+        Assert.Equal(["run", "--project", "Tools"], server.Arguments);
+    }
+
+    [Fact]
     public void AgentRequest_FileIds_AreNotSerialized()
     {
         AgentRequest request = new()

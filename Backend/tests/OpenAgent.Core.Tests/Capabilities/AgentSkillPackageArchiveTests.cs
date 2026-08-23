@@ -19,6 +19,7 @@ public sealed class AgentSkillPackageArchiveTests
         Assert.Equal("Looks up customers", metadata.Description);
         Assert.Equal(1, metadata.SkillCount);
         Assert.Equal(0, metadata.ResourceCount);
+        Assert.Equal(0, metadata.ScriptCount);
     }
 
     [Fact]
@@ -40,17 +41,20 @@ public sealed class AgentSkillPackageArchiveTests
     }
 
     [Fact]
-    public void InspectAsync_CountsResources()
+    public void InspectAsync_CountsResourcesAndSupportedScripts()
     {
         byte[] package = CreateArchive(archive =>
         {
             WriteEntry(archive, "analysis/SKILL.md", "---\nname: analysis\ndescription: Analyze data\n---\n");
             WriteEntry(archive, "analysis/resources/sample.csv", "value\n42\n");
+            WriteEntry(archive, "analysis/scripts/calculate.py", "print(42)\n");
+            WriteEntry(archive, "analysis/scripts/unsupported.sh", "echo 42\n");
         });
 
         AgentSkillPackageMetadata metadata = AgentSkillPackageArchive.Inspect(package, default);
 
         Assert.Equal(1, metadata.ResourceCount);
+        Assert.Equal(1, metadata.ScriptCount);
     }
 
     [Fact]

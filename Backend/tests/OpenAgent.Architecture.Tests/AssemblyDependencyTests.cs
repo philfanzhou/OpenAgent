@@ -45,6 +45,12 @@ public class AssemblyDependencyTests
             ["OpenAgent.Contracts", "OpenAgent.Hosting"]);
     }
 
+    [Fact]
+    public void SkillSandboxHost_ReferencesOnlyContracts()
+    {
+        AssertOpenAgentReferences("OpenAgent.SkillSandbox.Host", ["OpenAgent.Contracts"]);
+    }
+
     private static void AssertOpenAgentReferences(
         string assemblyName,
         IReadOnlyCollection<string> expectedReferences)

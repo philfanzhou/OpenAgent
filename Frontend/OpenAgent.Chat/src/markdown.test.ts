@@ -176,6 +176,7 @@ describe('message presentation', () => {
       displayName: 'local_tools / get_weather',
     })
     expect(toolPresentation('load_skill')).toEqual({ kind: 'SKILL', displayName: '加载 Skill 指令' })
+    expect(toolPresentation('run_skill_script')).toEqual({ kind: 'SKILL 脚本', displayName: '执行 Skill 脚本' })
   })
 
   it('places a compaction summary at its source boundary instead of fixing it at the end', () => {

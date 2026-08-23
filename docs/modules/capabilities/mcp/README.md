@@ -6,7 +6,7 @@ OpenAgent 使用官方 `ModelContextProtocol.Core` C# SDK 连接外部 MCP Serve
 
 | Capability | Description |
 |---|---|
-| 传输 | 官方 `HttpClientTransport`，支持 Streamable HTTP 和 legacy SSE |
+| 传输 | 官方 `HttpClientTransport`、SSE 和受策略约束的 Stdio |
 | 协议协商 | 官方 `McpClient.CreateAsync` 完成初始化与版本协商 |
 | 工具发现 | `ListToolsAsync` 返回官方 `McpClientTool` |
 | 配置目录 | MCP Server 独立维护并注册到 Redis，使用 Server 名称作为绑定 ID |
@@ -30,7 +30,7 @@ McpClientTool.WithName(...)
 ChatClientAgent.ChatOptions.Tools
 ```
 
-平台只保留 MCP 配置目录、Agent 绑定关系、权限、远程传输选择和请求级资源生命周期，不复制 MCP 协议或工具执行逻辑。旧版 `Mcp.Servers` 仍作为迁移兼容字段读取，新配置不再把 endpoint 复制到 Agent。
+平台只保留 MCP 配置目录、Agent 绑定关系、权限、传输策略和请求级资源生命周期，不复制 MCP 协议或工具执行逻辑。旧版 `Mcp.Servers` 仍作为迁移兼容字段读取，新配置不再把 endpoint、命令和密钥复制到 Agent。
 
 ## Source
 

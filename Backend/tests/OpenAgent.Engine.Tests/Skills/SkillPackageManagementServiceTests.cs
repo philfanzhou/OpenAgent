@@ -224,12 +224,13 @@ public class SkillPackageManagementServiceTests
     }
 
     [Fact]
-    public async Task UploadAsync_RecordsResourceCount()
+    public async Task UploadAsync_RecordsContentAndRequiresSeparateScriptAuthorization()
     {
         (SkillPackageManagementService service, _, _) = await CreateServiceAsync();
         byte[] content = CreatePackage(archive =>
         {
             WriteEntry(archive, "customer-lookup/resources/sample.csv", "id\n42\n");
+            WriteEntry(archive, "customer-lookup/scripts/lookup.py", "print(42)\n");
         });
 
         SkillPackageUploadResult result = await service.UploadAsync(
@@ -242,6 +243,8 @@ public class SkillPackageManagementServiceTests
             publishCatalog: false);
 
         Assert.Equal(1, result.Skill.ResourceCount);
+        Assert.Equal(1, result.Skill.ScriptCount);
+        Assert.False(result.Skill.AllowScriptExecution);
     }
 
     private static async Task<(

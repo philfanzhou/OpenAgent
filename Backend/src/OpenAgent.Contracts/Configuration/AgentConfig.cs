@@ -70,6 +70,10 @@ public class McpServerConfig
     public string Url { get; set; } = string.Empty;
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public McpServerType Type { get; set; } = McpServerType.Http;
+    public string? Command { get; set; }
+    public List<string> Arguments { get; set; } = new();
+    public string? WorkingDirectory { get; set; }
+    public Dictionary<string, string> EnvironmentVariables { get; set; } = new();
     public string? ProtocolVersion { get; set; }
 }
 
@@ -77,7 +81,8 @@ public class McpServerConfig
 public enum McpServerType
 {
     SSE,
-    Http
+    Http,
+    Stdio
 }
 
 internal class McpServersConverter : JsonConverter<List<McpServerConfig>>
@@ -170,6 +175,8 @@ public class SkillInstanceConfig
     public string? ObjectKey { get; set; }
     public string? Sha256 { get; set; }
     public int ResourceCount { get; set; }
+    public int ScriptCount { get; set; }
+    public bool AllowScriptExecution { get; set; }
 
     public List<string> AllowedUserIds { get; set; } = new();
     public List<string> AllowedGroups { get; set; } = new();

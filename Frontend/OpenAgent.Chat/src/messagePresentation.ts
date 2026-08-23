@@ -301,6 +301,7 @@ export function toolPresentation(name: string): { kind: string; displayName: str
     return { kind: 'MCP', displayName: `${server} / ${tool}` }
   }
 
+  if (name === 'run_skill_script') return { kind: 'SKILL 脚本', displayName: '执行 Skill 脚本' }
   if (name === 'load_skill') return { kind: 'SKILL', displayName: '加载 Skill 指令' }
   if (name === 'read_skill_resource') return { kind: 'SKILL', displayName: '读取 Skill 资源' }
   return { kind: '工具', displayName: name }

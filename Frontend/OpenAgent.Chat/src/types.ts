@@ -129,13 +129,24 @@ export interface TokenUsage {
 export interface McpServerConfig {
   name: string
   url: string
-  type: 'Http' | 'SSE'
+  type: 'Http' | 'SSE' | 'Stdio'
+  command?: string
+  arguments?: string[]
+  workingDirectory?: string
+  environmentVariables?: Record<string, string>
   protocolVersion?: string | null
 }
 
 export interface McpConfig {
   enabledServerIds: string[]
   servers: McpServerConfig[]
+}
+
+export interface McpRuntimeStatus {
+  stdioEnabled: boolean
+  stdioIsolation: string
+  allowedCommands: string[]
+  protocolVersionPolicy: string
 }
 
 export interface SkillInstanceConfig {
@@ -150,6 +161,8 @@ export interface SkillInstanceConfig {
   objectKey?: string | null
   sha256?: string | null
   resourceCount?: number
+  scriptCount?: number
+  allowScriptExecution?: boolean
   allowedUserIds?: string[]
   allowedGroups?: string[]
   allowedTenantIds?: string[]
@@ -157,6 +170,15 @@ export interface SkillInstanceConfig {
 }
 
 export type SkillCatalogItem = SkillInstanceConfig
+
+export interface SkillSandboxStatus {
+  enabled: boolean
+  isolation: string
+  supportedExtensions: string[]
+  timeoutSeconds: number
+  maxScriptBytes: number
+  maxOutputBytes: number
+}
 
 export interface SkillsConfig {
   enabledSkills: string[]

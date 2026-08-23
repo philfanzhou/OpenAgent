@@ -20,6 +20,7 @@ internal sealed class AgentSkillsProviderFactory(
     IFileObjectStore objectStore,
     ISkillCatalog catalog,
     AgentAuthorizationGate authorization,
+    ISkillScriptSandbox scriptSandbox,
     ILoggerFactory loggerFactory)
 {
     internal async Task<AgentSkillsRuntime> CreateAsync(
@@ -28,9 +29,12 @@ internal sealed class AgentSkillsProviderFactory(
         IAgentUserContext user,
         CancellationToken cancellationToken)
     {
+        ILogger logger = loggerFactory.CreateLogger<AgentSkillsProviderFactory>();
         string temporaryRoot = Path.Combine(Path.GetTempPath(), "openagent-skills", Guid.NewGuid().ToString("N"));
         var packagePaths = new List<string>();
         var allowedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var scriptEnabledNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        SkillScriptSandboxStatus sandboxStatus = scriptSandbox.Status;
 
         try
         {
@@ -66,6 +70,11 @@ internal sealed class AgentSkillsProviderFactory(
                 {
                     allowedNames.Add(instance.Id);
                 }
+                if (instance.AllowScriptExecution && instance.ScriptCount > 0)
+                {
+                    scriptEnabledNames.Add(instance.Name);
+                    scriptEnabledNames.Add(instance.Id);
+                }
             }
 
             if (packagePaths.Count == 0)
@@ -79,18 +88,29 @@ internal sealed class AgentSkillsProviderFactory(
                     packagePaths,
                     new AgentFileSkillsSourceOptions
                     {
-                        ScriptFilter = _ => false
+                        AllowedScriptExtensions = sandboxStatus.SupportedExtensions,
+                        ScriptFilter = context => IsAllowedScript(
+                            context.SkillName,
+                            context.RelativeFilePath,
+                            sandboxStatus,
+                            scriptEnabledNames,
+                            logger)
                     })
-                .UseFileScriptRunner((_, _, _, _, _) =>
-                    throw new InvalidOperationException(
-                        "Skill scripts are disabled until an isolated script runner is configured."))
-                // The current chat contract cannot round-trip MAF approval requests.
-                // Loading Skill instructions and reading resources remain constrained by
-                // the Agent binding and OpenAgent authorization checks above.
+                .UseFileScriptRunner((skill, script, arguments, _, cancellationToken) =>
+                    RunScriptAsync(
+                        skill,
+                        script,
+                        arguments,
+                        scriptEnabledNames,
+                        cancellationToken))
+                // OpenAgent's approval boundary is the admin-only, per-Skill execution
+                // switch plus the sandbox policy. The current chat contract cannot
+                // round-trip MAF approval requests, so do not expose unusable approval tools.
                 .UseOptions(options =>
                 {
                     options.DisableLoadSkillApproval = true;
                     options.DisableReadSkillResourceApproval = true;
+                    options.DisableRunSkillScriptApproval = true;
                     options.IncludeDetailedErrors = false;
                 })
                 .UseFilter((skill, _) =>
@@ -106,6 +126,100 @@ internal sealed class AgentSkillsProviderFactory(
             TryDelete(temporaryRoot);
             throw;
         }
+    }
+
+    private async Task<object?> RunScriptAsync(
+        AgentFileSkill skill,
+        AgentFileSkillScript script,
+        JsonElement? arguments,
+        IReadOnlySet<string> scriptEnabledNames,
+        CancellationToken cancellationToken)
+    {
+        if (!scriptSandbox.Status.Enabled)
+        {
+            throw new InvalidOperationException(DisabledSkillScriptSandbox.DisabledMessage);
+        }
+
+        string skillRoot = Path.GetFullPath(skill.Path) + Path.DirectorySeparatorChar;
+        string scriptPath = Path.GetFullPath(script.FullPath);
+        string relativePath = Path.GetRelativePath(skill.Path, scriptPath);
+        if (!scriptEnabledNames.Contains(skill.Frontmatter.Name)
+            || !scriptPath.StartsWith(skillRoot, StringComparison.Ordinal)
+            || !IsScriptPath(relativePath, scriptSandbox.Status.SupportedExtensions))
+        {
+            throw new InvalidOperationException("Skill script is not authorized by the owning Skill policy.");
+        }
+
+        FileInfo scriptFile = new(scriptPath);
+        if (!scriptFile.Exists || scriptFile.Length <= 0
+            || scriptFile.Length > scriptSandbox.Status.MaxScriptBytes)
+        {
+            throw new InvalidOperationException("Skill script size is outside the sandbox policy.");
+        }
+
+        IReadOnlyList<string> parsedArguments = ParseArguments(arguments);
+        byte[] content = await File.ReadAllBytesAsync(scriptPath, cancellationToken).ConfigureAwait(false);
+        return await scriptSandbox.ExecuteAsync(
+            new SkillScriptExecutionRequest
+            {
+                SkillName = skill.Frontmatter.Name,
+                ScriptName = Path.GetFileName(scriptPath),
+                Script = content,
+                Arguments = parsedArguments
+            },
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private static IReadOnlyList<string> ParseArguments(JsonElement? arguments)
+    {
+        if (arguments == null || arguments.Value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+        {
+            return [];
+        }
+        if (arguments.Value.ValueKind != JsonValueKind.Array)
+        {
+            throw new InvalidOperationException("Skill script arguments must be a JSON string array.");
+        }
+
+        var result = new List<string>();
+        foreach (JsonElement argument in arguments.Value.EnumerateArray())
+        {
+            if (argument.ValueKind != JsonValueKind.String)
+            {
+                throw new InvalidOperationException("Skill script arguments must contain only strings.");
+            }
+            result.Add(argument.GetString() ?? string.Empty);
+        }
+        return result;
+    }
+
+    private static bool IsScriptPath(
+        string relativePath,
+        IReadOnlyList<string> supportedExtensions)
+    {
+        string normalized = relativePath.Replace('\\', '/').TrimStart('/');
+        return normalized.StartsWith("scripts/", StringComparison.OrdinalIgnoreCase)
+            && supportedExtensions.Contains(
+                Path.GetExtension(normalized),
+                StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static bool IsAllowedScript(
+        string skillName,
+        string relativeFilePath,
+        SkillScriptSandboxStatus sandboxStatus,
+        IReadOnlySet<string> scriptEnabledNames,
+        ILogger logger)
+    {
+        bool allowed = sandboxStatus.Enabled
+            && scriptEnabledNames.Contains(skillName)
+            && IsScriptPath(relativeFilePath, sandboxStatus.SupportedExtensions);
+        logger.LogDebug(
+            "Skill script discovery policy evaluated Skill={SkillName}, Path={RelativeFilePath}, Allowed={Allowed}",
+            skillName,
+            relativeFilePath,
+            allowed);
+        return allowed;
     }
 
     private static bool IsEnabledObjectPackage(SkillInstanceConfig instance) =>

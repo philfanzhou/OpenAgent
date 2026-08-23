@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Moq;
 using ModelContextProtocol.Client;
 using OpenAgent.Contracts.Configuration;
@@ -33,7 +34,10 @@ public sealed class McpToolFactoryTests
     {
         var httpClients = new Mock<IHttpClientFactory>();
         var factory = new McpToolFactory(
-            new McpTransportFactory(httpClients.Object, NullLoggerFactory.Instance),
+            new McpTransportFactory(
+                httpClients.Object,
+                NullLoggerFactory.Instance,
+                Options.Create(new McpExecutionOptions())),
             new AgentAuthorizationGate(
                 new AllowAllAgentAuthorizationService(),
                 new LlmRegistry()),
