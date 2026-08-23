@@ -86,6 +86,15 @@ public interface IConversationStore
         string conversationId,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Appends a context compression audit record without modifying stored messages.
+    /// </summary>
+    Task<bool> RecordCompressionAsync(
+        string tenantId,
+        string conversationId,
+        ContextSummary summary,
+        CancellationToken cancellationToken = default);
+
 }
 
 public sealed class AppendResult

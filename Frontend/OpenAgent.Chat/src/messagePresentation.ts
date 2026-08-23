@@ -1,4 +1,36 @@
-import type { ConversationMessage, MessageFile, ToolActivity } from './types'
+import type { ContextSummary, ConversationMessage, MessageFile, ProcessActivity, ToolActivity } from './types'
+
+export type ConversationTimelineItem =
+  | { kind: 'message'; message: ConversationMessage }
+  | { kind: 'summary'; summary: ContextSummary }
+
+export function buildConversationTimeline(
+  messages: ConversationMessage[],
+  summaries: ContextSummary[],
+): ConversationTimelineItem[] {
+  const orderedMessages = [...messages].sort((left, right) => left.sequence - right.sequence)
+  const orderedSummaries = summaries
+    .map(summary => ({ summary, boundary: summaryBoundary(summary, orderedMessages) }))
+    .sort((left, right) => left.boundary - right.boundary
+      || Date.parse(left.summary.lastCompressedAt) - Date.parse(right.summary.lastCompressedAt))
+  const result: ConversationTimelineItem[] = []
+  let messageIndex = 0
+
+  for (const entry of orderedSummaries) {
+    const segment: ConversationMessage[] = []
+    while (messageIndex < orderedMessages.length
+      && orderedMessages[messageIndex]!.sequence <= entry.boundary) {
+      segment.push(orderedMessages[messageIndex]!)
+      messageIndex += 1
+    }
+    result.push(...buildDisplayMessages(segment).map(message => ({ kind: 'message' as const, message })))
+    result.push({ kind: 'summary', summary: entry.summary })
+  }
+
+  result.push(...buildDisplayMessages(orderedMessages.slice(messageIndex))
+    .map(message => ({ kind: 'message' as const, message })))
+  return result
+}
 
 export function buildDisplayMessages(messages: ConversationMessage[]): ConversationMessage[] {
   const result: ConversationMessage[] = []
@@ -12,7 +44,7 @@ export function buildDisplayMessages(messages: ConversationMessage[]): Conversat
 
     if (message.role === 'tool') {
       assistant ||= createAssistantMessage(message)
-      assistant.toolActivities = mergeToolActivity(assistant.toolActivities, {
+      mergeToolIntoAssistant(assistant, {
         name: message.toolName || '工具',
         callId: message.toolCallId,
         result: message.content,
@@ -51,11 +83,13 @@ export function mergeAssistantSnapshot(
   }
 
   const stored = merged[assistantIndex]!
+  const snapshotProcesses = mergeAssistantMessage(undefined, snapshot).processActivities
   merged[assistantIndex] = {
     ...stored,
     content: preferCompleteText(stored.content, snapshot.content),
     reasoning: preferCompleteText(stored.reasoning, snapshot.reasoning) || undefined,
     toolActivities: mergeToolActivities(stored.toolActivities, snapshot.toolActivities),
+    processActivities: mergeProcessActivities(stored.processActivities, snapshotProcesses),
     files: stored.files?.length ? stored.files : snapshot.files,
     error: snapshot.error || stored.error,
   }
@@ -74,22 +108,39 @@ function mergeAssistantMessage(
         files: current.files?.length || message.files?.length
           ? [...(current.files || []), ...(message.files || [])]
           : undefined,
+        processActivities: cloneProcessActivities(current.processActivities),
         error: message.error || current.error,
       }
     : {
         ...message,
         toolActivities: [],
+        processActivities: [],
         files: message.files ? [...message.files] : undefined,
       }
 
+  const hasOrderedProcesses = Boolean(message.processActivities?.length)
+  if (hasOrderedProcesses) {
+    merged.processActivities = mergeProcessActivities(
+      merged.processActivities,
+      message.processActivities,
+    )
+  } else if (message.reasoning) {
+    merged.processActivities = appendReasoningProcess(merged.processActivities, message.reasoning)
+  }
+
   if (message.toolName) {
-    merged.toolActivities = mergeToolActivity(merged.toolActivities, {
+    const tool = {
       name: message.toolName,
       callId: message.toolCallId,
       arguments: parseToolArguments(message.metadata?.ToolArguments),
-    })
+    }
+    merged.toolActivities = mergeToolActivity(merged.toolActivities, tool)
+    if (!hasOrderedProcesses) merged.processActivities = mergeToolProcess(merged.processActivities, tool)
   }
-  merged.toolActivities = mergeToolActivities(merged.toolActivities, message.toolActivities)
+  for (const tool of message.toolActivities || []) {
+    merged.toolActivities = mergeToolActivity(merged.toolActivities, tool)
+    if (!hasOrderedProcesses) merged.processActivities = mergeToolProcess(merged.processActivities, tool)
+  }
   return merged
 }
 
@@ -101,7 +152,75 @@ function createAssistantMessage(message: ConversationMessage): ConversationMessa
     content: '',
     timestamp: message.timestamp,
     toolActivities: [],
+    processActivities: [],
   }
+}
+
+function mergeToolIntoAssistant(message: ConversationMessage, tool: ToolActivity): void {
+  message.toolActivities = mergeToolActivity(message.toolActivities, tool)
+  message.processActivities = mergeToolProcess(message.processActivities, tool)
+}
+
+function appendReasoningProcess(
+  current: ProcessActivity[] | undefined,
+  content: string,
+): ProcessActivity[] {
+  if (!content) return current || []
+  const merged = cloneProcessActivities(current)
+  const last = merged[merged.length - 1]
+  if (last?.kind === 'reasoning') {
+    last.content = appendText(last.content, content)
+  } else {
+    merged.push({ kind: 'reasoning', content })
+  }
+  return merged
+}
+
+function mergeToolProcess(
+  current: ProcessActivity[] | undefined,
+  incoming: ToolActivity,
+): ProcessActivity[] {
+  const merged = cloneProcessActivities(current)
+  const index = incoming.callId
+    ? merged.findIndex(activity => activity.kind === 'tool' && activity.tool.callId === incoming.callId)
+    : -1
+  if (index < 0) {
+    merged.push({ kind: 'tool', tool: { ...incoming } })
+    return merged
+  }
+
+  const existing = merged[index]
+  if (existing?.kind === 'tool') existing.tool = mergeTool(existing.tool, incoming)
+  return merged
+}
+
+function mergeProcessActivities(
+  current: ProcessActivity[] | undefined,
+  incoming: ProcessActivity[] | undefined,
+): ProcessActivity[] {
+  let merged = cloneProcessActivities(current)
+  for (const activity of incoming || []) {
+    if (activity.kind === 'reasoning') {
+      const existingReasoning = merged
+        .filter((item): item is Extract<ProcessActivity, { kind: 'reasoning' }> => item.kind === 'reasoning')
+        .map(item => item.content)
+        .join('\n')
+      if (existingReasoning === activity.content || existingReasoning.includes(activity.content)) continue
+      const content = existingReasoning && activity.content.startsWith(existingReasoning)
+        ? activity.content.slice(existingReasoning.length).trimStart()
+        : activity.content
+      merged = appendReasoningProcess(merged, content)
+    } else {
+      merged = mergeToolProcess(merged, activity.tool)
+    }
+  }
+  return merged
+}
+
+function cloneProcessActivities(activities?: ProcessActivity[]): ProcessActivity[] {
+  return (activities || []).map(activity => activity.kind === 'reasoning'
+    ? { ...activity }
+    : { kind: 'tool', tool: { ...activity.tool } })
 }
 
 function mergeToolActivities(
@@ -124,13 +243,29 @@ function mergeToolActivity(current: ToolActivity[] | undefined, incoming: ToolAc
   }
 
   const existing = merged[index]!
-  merged[index] = {
+  merged[index] = mergeTool(existing, incoming)
+  return merged
+}
+
+function mergeTool(existing: ToolActivity, incoming: ToolActivity): ToolActivity {
+  return {
     name: existing.name === '工具' && incoming.name !== '工具' ? incoming.name : existing.name,
     callId: existing.callId || incoming.callId,
     arguments: incoming.arguments ?? existing.arguments,
     result: incoming.result ?? existing.result,
   }
-  return merged
+}
+
+function summaryBoundary(summary: ContextSummary, messages: ConversationMessage[]): number {
+  if (summary.sourceEndSequence > 0) return summary.sourceEndSequence
+  const compressedAt = Date.parse(summary.lastCompressedAt)
+  if (Number.isNaN(compressedAt)) return Number.MAX_SAFE_INTEGER
+  return messages.reduce((boundary, message) => {
+    const timestamp = Date.parse(message.timestamp)
+    return !Number.isNaN(timestamp) && timestamp <= compressedAt
+      ? Math.max(boundary, message.sequence)
+      : boundary
+  }, 0)
 }
 
 function appendText(current?: string, incoming?: string): string {

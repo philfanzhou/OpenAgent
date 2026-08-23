@@ -20,6 +20,7 @@ internal static class ConversationServiceExtensions
         services.AddScoped<ConversationSessionStore>();
         services.AddScoped<ConversationAgentResolver>();
         services.AddScoped<ConversationHistoryFactory>();
+        services.AddScoped<IConversationCompactionService, ConversationCompactionService>();
         services.AddScoped<IConversationQueryService>(CreateQueryService);
         return services;
     }
