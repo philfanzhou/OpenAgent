@@ -5,6 +5,7 @@
     <IsTestProject>true</IsTestProject>
     <AssemblyName>OpenAgent.Core.Tests</AssemblyName>
     <RootNamespace>OpenAgent.Core.Tests</RootNamespace>
+    <NoWarn>$(NoWarn);MAAI001</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

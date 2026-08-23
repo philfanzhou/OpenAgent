@@ -18,6 +18,24 @@ namespace OpenAgent.Core.Tests.Runtime;
 public class AgentExecutorUsageTests
 {
     [Fact]
+    public async Task ExecuteAsync_CurrentUserProfileFunction_IsPassedToModelClient()
+    {
+        var provider = new FakeChatProvider(new Microsoft.Extensions.AI.ChatResponse(
+            new ChatMessage(ChatRole.Assistant, "provider response")));
+        await using TestRuntime runtime = CreateRuntime(provider);
+
+        await runtime.Executor.ExecuteAsync(
+            CreateRequest("profile-function-conversation"),
+            User,
+            CancellationToken.None);
+
+        Assert.Contains(
+            Assert.IsAssignableFrom<IList<AITool>>(provider.LastOptions?.Tools),
+            tool => tool is AIFunction function
+                && function.Name == "get_current_user_profile");
+    }
+
+    [Fact]
     public async Task ExecuteAsync_ProviderReturnsUsage_MapsAndPersistsActualCounts()
     {
         UsageDetails providerUsage = CreateUsage();
@@ -227,6 +245,10 @@ public class AgentExecutorUsageTests
     private sealed class FakeChatClientFactory(IChatClient provider) : IAgentChatClientFactory
     {
         public IChatClient Create(LlmConfig llm) => provider;
+
+        public IChatClient CreateSummarizationClient(
+            LlmConfig llm,
+            ContextPolicy? policy) => provider;
     }
 
     private sealed class EmptyFileAssetRepository : IFileAssetRepository

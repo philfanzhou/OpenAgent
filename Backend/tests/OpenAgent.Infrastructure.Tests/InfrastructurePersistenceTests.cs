@@ -274,6 +274,66 @@ public sealed class InfrastructurePersistenceTests : IAsyncLifetime
         Assert.Equal("provider-model", message.ModelId);
     }
 
+    [Fact]
+    public async Task ConversationStore_CompressionAudit_RoundTripsWithoutChangingMessages()
+    {
+        ServiceProvider services = Assert.IsType<ServiceProvider>(_services);
+        using IServiceScope scope = services.CreateScope();
+        IConversationStore conversations = scope.ServiceProvider.GetRequiredService<IConversationStore>();
+        Assert.True(await conversations.CreateAsync(new ConversationRecord
+        {
+            ConversationId = "conversation-compaction",
+            TenantId = "tenant-compaction",
+            UserId = "user-compaction",
+            AgentId = "default"
+        }));
+        AppendResult appended = await conversations.AppendMessagesAsync(
+            "tenant-compaction",
+            "conversation-compaction",
+            1,
+            [new ConversationMessage
+            {
+                MessageId = "message-compaction",
+                Sequence = 1,
+                Role = "user",
+                Content = "Retain this audit message"
+            }]);
+        var summary = new ContextSummary
+        {
+            CompressionId = "compression-1",
+            Strategy = "summarization",
+            Trigger = "Automatic",
+            Status = "Succeeded",
+            Summary = "Retained user intent.",
+            OriginalStartSequence = 1,
+            OriginalEndSequence = 1,
+            CompressedMessageCount = 1,
+            LastCompressedAt = DateTimeOffset.UtcNow,
+            SourceEndSequence = 1,
+            CompactedMessages = [new ConversationMessage
+            {
+                MessageId = "compacted-message-1",
+                Sequence = 1,
+                Role = "summary",
+                Content = "Retained user intent."
+            }]
+        };
+
+        bool recorded = await conversations.RecordCompressionAsync(
+            "tenant-compaction",
+            "conversation-compaction",
+            summary);
+        ConversationRecord record = Assert.IsType<ConversationRecord>(
+            await conversations.GetRecordAsync("tenant-compaction", "conversation-compaction"));
+
+        Assert.True(recorded);
+        Assert.True(appended.Success);
+        ContextSummary storedSummary = Assert.Single(record.ContextSummaries);
+        Assert.Equal("Retained user intent.", storedSummary.Summary);
+        Assert.Equal("Retained user intent.", Assert.Single(storedSummary.CompactedMessages).Content);
+        Assert.Equal("Retain this audit message", Assert.Single(record.Messages).Content);
+    }
+
     private sealed class TestCurrentUserContext : ICurrentUserContext
     {
         public string UserId => "test-user";
