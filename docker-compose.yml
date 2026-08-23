@@ -61,9 +61,6 @@ services:
     read_only: true
     cap_drop:
       - ALL
-    cap_add:
-      - SETGID
-      - SETUID
     security_opt:
       - no-new-privileges:true
     pids_limit: 32

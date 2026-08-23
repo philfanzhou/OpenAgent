@@ -5,35 +5,28 @@ using OpenAgent.Contracts.Skills;
 
 namespace OpenAgent.Core.Capabilities.Skill;
 
-internal sealed class HttpSkillScriptSandbox : ISkillScriptSandbox, IDisposable
+internal sealed class UnixSocketSkillScriptSandbox : ISkillScriptSandbox, IDisposable
 {
     private readonly HttpClient _client;
     private readonly SkillScriptSandboxOptions _options;
 
-    public HttpSkillScriptSandbox(IOptions<SkillScriptSandboxOptions> options)
+    public UnixSocketSkillScriptSandbox(IOptions<SkillScriptSandboxOptions> options)
     {
         _options = options.Value;
         Validate(_options);
 
-        HttpMessageHandler handler = string.IsNullOrWhiteSpace(_options.UnixSocketPath)
-            ? new SocketsHttpHandler()
-            : CreateUnixSocketHandler(_options.UnixSocketPath);
-        _client = new HttpClient(handler, disposeHandler: true)
+        _client = new HttpClient(
+            CreateUnixSocketHandler(_options.UnixSocketPath!),
+            disposeHandler: true)
         {
-            BaseAddress = new Uri(
-                string.IsNullOrWhiteSpace(_options.Endpoint)
-                    ? "http://localhost"
-                    : _options.Endpoint,
-                UriKind.Absolute),
+            BaseAddress = new Uri("http://localhost", UriKind.Absolute),
             Timeout = TimeSpan.FromSeconds(_options.TimeoutSeconds + 5)
         };
 
         Status = new SkillScriptSandboxStatus
         {
             Enabled = true,
-            Isolation = string.IsNullOrWhiteSpace(_options.UnixSocketPath)
-                ? "remote-http"
-                : "container-unix-socket",
+            Isolation = "container-unix-socket",
             SupportedExtensions = _options.AllowedExtensions
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray(),
@@ -98,13 +91,13 @@ internal sealed class HttpSkillScriptSandbox : ISkillScriptSandbox, IDisposable
     {
         if (!options.Enabled)
         {
-            throw new InvalidOperationException("The HTTP Skill sandbox cannot be created while disabled.");
+            throw new InvalidOperationException("The Unix Socket Skill sandbox cannot be created while disabled.");
         }
-        if (string.IsNullOrWhiteSpace(options.Endpoint)
-            && string.IsNullOrWhiteSpace(options.UnixSocketPath))
+        if (string.IsNullOrWhiteSpace(options.UnixSocketPath)
+            || !Path.IsPathRooted(options.UnixSocketPath))
         {
             throw new InvalidOperationException(
-                "SkillSandbox requires either Endpoint or UnixSocketPath when enabled.");
+                "SkillSandbox requires an absolute UnixSocketPath when enabled.");
         }
         if (options.TimeoutSeconds <= 0
             || options.MaxScriptBytes <= 0

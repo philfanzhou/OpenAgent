@@ -5,7 +5,6 @@ internal sealed class SkillScriptSandboxOptions
     internal const string SectionName = "SkillSandbox";
 
     public bool Enabled { get; set; }
-    public string? Endpoint { get; set; }
     public string? UnixSocketPath { get; set; }
     public int TimeoutSeconds { get; set; } = 10;
     public int MaxScriptBytes { get; set; } = 256 * 1024;

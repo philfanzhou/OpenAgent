@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Text;
 using OpenAgent.Contracts.Skills;
 
@@ -31,9 +32,7 @@ internal sealed class ScriptExecutionService(
             {
                 File.SetUnixFileMode(
                     workDirectory,
-                    UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
-                    | UnixFileMode.GroupRead | UnixFileMode.GroupWrite | UnixFileMode.GroupExecute
-                    | UnixFileMode.OtherRead | UnixFileMode.OtherWrite | UnixFileMode.OtherExecute);
+                    UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
             }
 
             string scriptPath = Path.Combine(workDirectory, Path.GetFileName(request.ScriptName));
@@ -75,11 +74,11 @@ internal sealed class ScriptExecutionService(
         Task<CapturedOutput> outputTask = ReadLimitedAsync(
             process.StandardOutput.BaseStream,
             outputBudget,
-            cancellationToken);
+            CancellationToken.None);
         Task<CapturedOutput> errorTask = ReadLimitedAsync(
             process.StandardError.BaseStream,
             outputBudget,
-            cancellationToken);
+            CancellationToken.None);
         Task exitTask = process.WaitForExitAsync(CancellationToken.None);
         Task timeoutTask = Task.Delay(
             TimeSpan.FromSeconds(options.TimeoutSeconds),
@@ -93,7 +92,15 @@ internal sealed class ScriptExecutionService(
 
         bool timedOut = completed == timeoutTask;
         bool truncated = completed == outputExceeded.Task;
-        if (completed != exitTask)
+        bool hasProcessGroup = string.Equals(
+            process.StartInfo.FileName,
+            "/usr/bin/setsid",
+            StringComparison.Ordinal);
+        if (hasProcessGroup)
+        {
+            TryKillProcessGroup(process.Id);
+        }
+        if (!process.HasExited)
         {
             TryKill(process);
         }
@@ -130,21 +137,19 @@ internal sealed class ScriptExecutionService(
         IReadOnlyList<string> arguments,
         string workDirectory)
     {
-        bool dropUser = !string.IsNullOrWhiteSpace(options.RunAsUser);
+        bool useProcessGroup = OperatingSystem.IsLinux()
+            && File.Exists("/usr/bin/setsid");
         var startInfo = new ProcessStartInfo
         {
-            FileName = dropUser ? "/usr/sbin/runuser" : options.Interpreter,
+            FileName = useProcessGroup ? "/usr/bin/setsid" : options.Interpreter,
             WorkingDirectory = workDirectory,
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             CreateNoWindow = true
         };
-        if (dropUser)
+        if (useProcessGroup)
         {
-            startInfo.ArgumentList.Add("--user");
-            startInfo.ArgumentList.Add(options.RunAsUser!);
-            startInfo.ArgumentList.Add("--");
             startInfo.ArgumentList.Add(options.Interpreter);
         }
         startInfo.ArgumentList.Add("-I");
@@ -232,6 +237,19 @@ internal sealed class ScriptExecutionService(
         {
         }
     }
+
+    private static void TryKillProcessGroup(int processId)
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return;
+        }
+
+        _ = Kill(-processId, 9);
+    }
+
+    [DllImport("libc", EntryPoint = "kill", SetLastError = true)]
+    private static extern int Kill(int processId, int signal);
 
     private static void TryDelete(string path)
     {

@@ -321,8 +321,6 @@ describe('workspace API', () => {
         stdioEnabled: false,
         stdioIsolation: 'disabled',
         allowedCommands: [],
-        allowedEnvironmentVariables: [],
-        allowedWorkingDirectories: [],
         protocolVersionPolicy: 'automatic-or-minimum',
       }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
       .mockResolvedValueOnce(new Response(JSON.stringify({

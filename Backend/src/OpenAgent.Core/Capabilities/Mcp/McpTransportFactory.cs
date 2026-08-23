@@ -50,7 +50,7 @@ internal sealed class McpTransportFactory(
             throw new InvalidOperationException($"MCP Stdio server '{server.Name}' must specify a command.");
         }
 
-        if (!_options.AllowUnlistedCommands && !IsCommandAllowed(server.Command))
+        if (!IsCommandAllowed(server.Command))
         {
             throw new InvalidOperationException(
                 $"MCP Stdio command '{server.Command}' is not allowed by the server policy.");
@@ -112,24 +112,20 @@ internal sealed class McpTransportFactory(
         }
 
         string workingDirectory = Path.GetFullPath(configured);
+        if (!Directory.Exists(workingDirectory))
+        {
+            throw new InvalidOperationException(
+                $"MCP Stdio working directory '{configured}' does not exist.");
+        }
         bool allowed = _options.AllowedWorkingDirectories
             .Select(Path.GetFullPath)
-            .Any(root => IsWithinRoot(workingDirectory, root));
+            .Contains(workingDirectory, StringComparer.Ordinal);
         if (!allowed)
         {
             throw new InvalidOperationException(
                 $"MCP Stdio working directory '{configured}' is not allowed by the server policy.");
         }
         return workingDirectory;
-    }
-
-    private static bool IsWithinRoot(string path, string root)
-    {
-        string normalizedRoot = root.TrimEnd(
-            Path.DirectorySeparatorChar,
-            Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
-        return string.Equals(path, root, StringComparison.Ordinal)
-            || path.StartsWith(normalizedRoot, StringComparison.Ordinal);
     }
 
     private static (Uri Endpoint, HttpTransportMode Mode) ResolveEndpoint(

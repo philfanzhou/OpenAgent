@@ -30,8 +30,6 @@ public sealed class McpRuntimeStatus
     public bool StdioEnabled { get; init; }
     public string StdioIsolation { get; init; } = "disabled";
     public IReadOnlyList<string> AllowedCommands { get; init; } = [];
-    public IReadOnlyList<string> AllowedEnvironmentVariables { get; init; } = [];
-    public IReadOnlyList<string> AllowedWorkingDirectories { get; init; } = [];
     public string ProtocolVersionPolicy { get; init; } = "automatic-or-minimum";
 }
 

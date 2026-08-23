@@ -14,9 +14,10 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends curl python3 util-linux \
     && useradd --uid 10001 --no-create-home --shell /usr/sbin/nologin sandbox \
     && mkdir -p /run/openagent-sandbox /tmp/openagent-sandbox \
-    && chmod 0750 /run/openagent-sandbox \
-    && chmod 1777 /tmp/openagent-sandbox \
+    && chown -R sandbox:sandbox /run/openagent-sandbox /tmp/openagent-sandbox \
+    && chmod 0700 /run/openagent-sandbox /tmp/openagent-sandbox \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=build /app/publish/ .
 
+USER sandbox
 ENTRYPOINT ["dotnet", "OpenAgent.SkillSandbox.Host.dll"]

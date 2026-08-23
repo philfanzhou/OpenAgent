@@ -146,8 +146,6 @@ export interface McpRuntimeStatus {
   stdioEnabled: boolean
   stdioIsolation: string
   allowedCommands: string[]
-  allowedEnvironmentVariables: string[]
-  allowedWorkingDirectories: string[]
   protocolVersionPolicy: string
 }
 

@@ -35,7 +35,7 @@ OpenAgent 不需要复制 MCP 协议实现或 Agent Skills 工具实现：MCP �
 | `Sse` | `HttpClientTransport` / SSE mode | 只用于兼容 legacy MCP Server |
 | `Stdio` | `StdioClientTransport` | 仅用于受信 Server；进程权限等同 Engine 宿主，不视为隔离执行 |
 
-stdio 策略采用拒绝优先：生产默认 `AllowStdio=false`；开启后，裸命令必须精确匹配白名单，带路径命令必须精确匹配已允许的绝对路径，不能通过相同 basename 绕过；自定义环境变量与工作目录分别使用白名单；不继承宿主全部环境变量。
+stdio 策略采用拒绝优先：所有环境默认 `AllowStdio=false`；开启后，裸命令必须精确匹配白名单，带路径命令必须精确匹配已允许的绝对路径，不能通过相同 basename 绕过；自定义环境变量使用白名单；工作目录必须是明确允许的现存目录，不能用其子目录绕过；不继承宿主全部环境变量。`Arguments` 属于普通配置、会返回给有读取权限的管理员，不能承载密钥；敏感值必须使用受白名单约束且在管理响应中脱敏的环境变量。
 
 ### 协议版本语义
 
@@ -65,7 +65,7 @@ MAF AgentSkillsProvider / run_skill_script
 Engine ── Unix Domain Socket ── SkillSandbox.Host
                                   │
                                   ▼
-                       低权限 uid + python3 -I -B -s
+                       非 root uid 10001 + setsid + python3 -I -B -s
 ```
 
 当前控制：
@@ -73,9 +73,9 @@ Engine ── Unix Domain Socket ── SkillSandbox.Host
 - 新上传 Skill 即使包含脚本，`AllowScriptExecution` 默认仍为 `false`；
 - ZIP 限 128 个文件、解压后合计 4 MiB，拒绝路径穿越、重复路径和不唯一 `SKILL.md`；
 - runner 重新校验所属 Skill、`scripts/` 路径、`.py`、脚本大小、参数数量和长度；
-- 沙盒容器无网络、只读根文件系统、`no-new-privileges`、drop all capabilities，只为 root supervisor 保留 `SETUID/SETGID`，脚本降权到 uid 10001；
+- 沙盒镜像和运行时均使用非 root uid 10001；容器无网络、只读根文件系统、`no-new-privileges`、drop all capabilities；
 - `/tmp` 使用 32 MiB tmpfs，带 `noexec,nosuid,nodev`；限制 128 MiB 内存、0.5 CPU、32 PID；
-- Python 使用 isolated mode，不读取用户 site 或环境注入；执行有 10 秒超时、进程树终止、stdout+stderr 合计 64 KiB；
+- Python 使用 isolated mode，不读取用户 site 或环境注入；每次执行建立独立进程组，完成、超时或调用取消后都终止整个进程组；执行有 10 秒超时、stdout+stderr 合计 64 KiB；
 - Engine 与沙盒只通过只读挂载的 Unix Socket 通信，沙盒不挂载对象存储、数据库、Redis 或宿主工作区。
 
 ### MAF 审批边界
@@ -93,7 +93,6 @@ MAF 1.14 默认可为 `load_skill`、资源读取和脚本运行生成 approval 
 | 可信内部 Skill、单租户 | 当前独立容器、无网络、只读根、资源限额可作为上线基线 |
 | 不可信 Skill、多租户 | 使用 gVisor 或 Kata Containers 等更强运行时隔离，每次执行创建短生命周期 sandbox |
 | Kubernetes Agent 平台 | 通过 RuntimeClass 选择 gVisor/Kata；评估 Agent Sandbox API 的池化、网络与身份隔离 |
-| 远程沙盒服务 | 当前 `remote-http` 适配必须置于 mTLS/服务网格或认证代理后；不可把未认证执行端点暴露到普通网络 |
 
 参考：
 
@@ -107,6 +106,7 @@ MAF 1.14 默认可为 `load_skill`、资源读取和脚本运行生成 approval 
 ## 未覆盖与后续建议
 
 - 尚未实现逐次用户审批、租户级并发队列、沙盒实例池和执行身份凭证；
+- MAF 1.14 在没有可发现脚本时仍可能向模型提供通用 `run_skill_script` 工具；关闭逐 Skill 开关后，脚本不会出现在 `load_skill` 清单中，调用会被拒绝且不会触发沙盒，但工具名本身仍可能可见；
 - 仅开放 Python，未开放 shell、PowerShell、JavaScript、C# 脚本；
 - MCP stdio 仍在 Engine 宿主执行，配置者必须被视为能部署受信代码的管理员；
 - 未在本轮使用外部云 LLM 凭据；工具循环由确定性 OpenAI-compatible fixture 驱动，MCP Server 和 Skill 脚本本身均为真实官方链路；

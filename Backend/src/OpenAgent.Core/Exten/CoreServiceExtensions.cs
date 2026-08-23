@@ -34,7 +34,7 @@ public static class CoreServiceExtensions
                 .GetRequiredService<Microsoft.Extensions.Options.IOptions<SkillScriptSandboxOptions>>()
                 .Value;
             return options.Enabled
-                ? ActivatorUtilities.CreateInstance<HttpSkillScriptSandbox>(serviceProvider)
+                ? ActivatorUtilities.CreateInstance<UnixSocketSkillScriptSandbox>(serviceProvider)
                 : new DisabledSkillScriptSandbox();
         });
 

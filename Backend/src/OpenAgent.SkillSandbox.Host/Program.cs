@@ -78,8 +78,7 @@ static void PrepareSocket(string socketPath)
     {
         File.SetUnixFileMode(
             directory,
-            UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
-            | UnixFileMode.GroupRead | UnixFileMode.GroupExecute);
+            UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
     }
 }
 
@@ -92,8 +91,7 @@ static void ProtectSocket(string socketPath)
 
     File.SetUnixFileMode(
         socketPath,
-        UnixFileMode.UserRead | UnixFileMode.UserWrite
-        | UnixFileMode.GroupRead | UnixFileMode.GroupWrite);
+        UnixFileMode.UserRead | UnixFileMode.UserWrite);
 }
 
 public partial class Program;

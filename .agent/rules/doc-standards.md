@@ -22,7 +22,6 @@
 │   ├── decisions/                     ← ADR 归档（已决策的技术选型）
 │   ├── planning/                      ← 规划文档（目标架构、重构基线）
 │   ├── superpowers/                   ← 计划与设计规格（superpowers 工作流产物）
-│   ├── reviews/                       ← 变更 Review 与风险记录
 │   └── test-reports/                  ← 测试报告与验证记录
 │
 └── Backend/

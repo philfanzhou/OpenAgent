@@ -253,8 +253,29 @@ internal static class ManagementEndpointExtensions
         {
             if (!HasScope(context, "agent.config.read"))
                 return Results.Forbid();
-            IReadOnlyList<McpServerConfig> servers = await manager.ListAsync(cancellationToken).ConfigureAwait(false);
+            IReadOnlyList<McpServerConfig> servers = await manager.ListAsync(
+                RequireTenant(context),
+                cancellationToken).ConfigureAwait(false);
             return Results.Ok(servers.Select(RedactMcpServer));
+        });
+
+        group.MapGet("/mcp/runtime", (
+            [FromServices] IOptions<McpExecutionOptions> executionOptions,
+            HttpContext context) =>
+        {
+            if (!HasScope(context, "agent.config.read"))
+                return Results.Forbid();
+            McpExecutionOptions policy = executionOptions.Value;
+            return Results.Ok(new McpRuntimeStatus
+            {
+                StdioEnabled = policy.AllowStdio,
+                StdioIsolation = policy.AllowStdio ? "trusted-host-process" : "disabled",
+                AllowedCommands = policy.AllowedCommands
+                    .Select(Path.GetFileName)
+                    .Where(command => !string.IsNullOrWhiteSpace(command))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToArray()!
+            });
         });
 
         group.MapGet("/mcp/{id}", async (
@@ -265,7 +286,10 @@ internal static class ManagementEndpointExtensions
         {
             if (!HasScope(context, "agent.config.read"))
                 return Results.Forbid();
-            McpServerConfig? server = await manager.GetAsync(id, cancellationToken).ConfigureAwait(false);
+            McpServerConfig? server = await manager.GetAsync(
+                id,
+                RequireTenant(context),
+                cancellationToken).ConfigureAwait(false);
             return server == null ? Results.NotFound() : Results.Ok(RedactMcpServer(server));
         });
 
@@ -286,10 +310,17 @@ internal static class ManagementEndpointExtensions
                 return Results.BadRequest(new { error = "Stdio MCP requires a command." });
 
             server.Name = id;
-            McpServerConfig? existing = await manager.GetAsync(id, cancellationToken).ConfigureAwait(false);
+            string tenantId = RequireTenant(context);
+            McpServerConfig? existing = await manager.GetAsync(
+                id,
+                tenantId,
+                cancellationToken).ConfigureAwait(false);
             if (existing != null)
                 MergeMcpSecrets(existing, server);
-            McpServerConfig saved = await manager.SaveAsync(server, cancellationToken).ConfigureAwait(false);
+            McpServerConfig saved = await manager.SaveAsync(
+                server,
+                tenantId,
+                cancellationToken).ConfigureAwait(false);
             return Results.Ok(RedactMcpServer(saved));
         });
 
@@ -301,7 +332,10 @@ internal static class ManagementEndpointExtensions
         {
             if (!HasScope(context, "agent.config.write"))
                 return Results.Forbid();
-            return await manager.DeleteAsync(id, cancellationToken).ConfigureAwait(false)
+            return await manager.DeleteAsync(
+                id,
+                RequireTenant(context),
+                cancellationToken).ConfigureAwait(false)
                 ? Results.NoContent()
                 : Results.NotFound();
         });
@@ -507,7 +541,9 @@ internal static class ManagementEndpointExtensions
         {
             if (!HasScope(context, "agent.config.write"))
                 return Results.Forbid();
+            string tenantId = RequireTenant(context);
             SkillInstanceConfig? skill = await catalog.GetAsync(
+                tenantId,
                 skillId,
                 cancellationToken).ConfigureAwait(false);
             if (skill == null)
@@ -527,6 +563,7 @@ internal static class ManagementEndpointExtensions
                 });
             }
 
+            skill.TenantId = tenantId;
             skill.AllowScriptExecution = policy.Enabled;
             await catalog.PublishAsync(skill, cancellationToken).ConfigureAwait(false);
             return Results.Ok(skill);

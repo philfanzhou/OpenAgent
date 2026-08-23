@@ -14,7 +14,6 @@
 | [planning/](./planning/) | 规划文档（目标架构、重构基线） |
 | [superpowers/](./superpowers/) | 规格/计划 |
 | [test-reports/](./test-reports/) | 测试报告 |
-| [reviews/](./reviews/) | 变更 Review 与风险记录 |
 
 ## 阅读路径
 

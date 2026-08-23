@@ -66,6 +66,30 @@ public sealed class ScriptExecutionServiceTests
         Assert.True(capturedBytes <= 32);
     }
 
+    [Fact]
+    public async Task ExecuteAsync_BackgroundChild_DoesNotKeepExecutionOpen()
+    {
+        if (!OperatingSystem.IsLinux() || !File.Exists("/usr/bin/setsid"))
+        {
+            return;
+        }
+
+        ScriptExecutionService service = CreateService();
+        const string script = """
+            import subprocess
+            import sys
+            subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'])
+            print('parent-finished')
+            """;
+
+        SkillScriptExecutionResult result = await service.ExecuteAsync(
+            Request(script),
+            default).WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.True(result.Success);
+        Assert.Contains("parent-finished", result.StandardOutput, StringComparison.Ordinal);
+    }
+
     private static ScriptExecutionService CreateService(
         int timeoutSeconds = 5,
         int maxOutputBytes = 4096) =>
@@ -73,7 +97,6 @@ public sealed class ScriptExecutionServiceTests
             new SandboxOptions
             {
                 Interpreter = "/usr/bin/python3",
-                RunAsUser = null,
                 TimeoutSeconds = timeoutSeconds,
                 MaxOutputBytes = maxOutputBytes
             },

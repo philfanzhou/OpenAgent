@@ -84,6 +84,50 @@ public sealed class McpTransportFactoryTests
         Assert.IsType<StdioClientTransport>(transport);
     }
 
+    [Fact]
+    public void Create_AllowsOnlyExactApprovedWorkingDirectory()
+    {
+        string approved = Path.GetFullPath(Path.GetTempPath());
+        McpTransportFactory factory = CreateFactory(new McpExecutionOptions
+        {
+            AllowStdio = true,
+            AllowedCommands = ["node"],
+            AllowedWorkingDirectories = [approved]
+        });
+        McpServerConfig server = CreateServer("node");
+        server.WorkingDirectory = approved;
+
+        IClientTransport transport = factory.Create(server);
+
+        Assert.IsType<StdioClientTransport>(transport);
+    }
+
+    [Fact]
+    public void Create_RejectsChildOfApprovedWorkingDirectory()
+    {
+        string child = Directory.CreateTempSubdirectory("openagent-mcp-").FullName;
+        try
+        {
+            McpTransportFactory factory = CreateFactory(new McpExecutionOptions
+            {
+                AllowStdio = true,
+                AllowedCommands = ["node"],
+                AllowedWorkingDirectories = [Path.GetDirectoryName(child)!]
+            });
+            McpServerConfig server = CreateServer("node");
+            server.WorkingDirectory = child;
+
+            InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+                factory.Create(server));
+
+            Assert.Contains("not allowed", exception.Message, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            Directory.Delete(child);
+        }
+    }
+
     private static McpTransportFactory CreateFactory(McpExecutionOptions options) => new(
         new ThrowingHttpClientFactory(),
         NullLoggerFactory.Instance,
