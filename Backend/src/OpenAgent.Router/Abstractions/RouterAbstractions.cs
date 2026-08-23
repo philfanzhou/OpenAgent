@@ -25,11 +25,64 @@ public interface IRouteTable
 
 public interface IRateLimiter
 {
-    Task<bool> IsAllowedAsync(string clientId, CancellationToken cancellationToken = default);
+    Task<RateLimitDecision> AcquireAsync(
+        string clientId,
+        CancellationToken cancellationToken = default);
+}
+
+public sealed record RateLimitDecision(
+    bool IsAllowed,
+    TimeSpan RetryAfter,
+    bool IsDegraded,
+    string Source);
+
+internal interface IEndpointHealthTracker
+{
+    bool IsAvailable(string endpoint);
+    void ReportSuccess(string endpoint);
+    void ReportFailure(string endpoint);
+}
+
+internal interface IEngineReadinessProbe
+{
+    Task<bool> IsReadyAsync(string endpoint, CancellationToken cancellationToken = default);
 }
 
 public interface IQueryCache
 {
-    Task<string?> GetCachedResponseAsync(string query, CancellationToken cancellationToken = default);
-    Task SetCachedResponseAsync(string query, string response, CancellationToken cancellationToken = default);
+    Task<string?> GetCachedResponseAsync(
+        string query,
+        CancellationToken cancellationToken = default);
+
+    Task SetCachedResponseAsync(
+        string query,
+        string response,
+        CancellationToken cancellationToken = default);
+
+    async Task<CachedResponse?> GetAsync(
+        string key,
+        CancellationToken cancellationToken = default)
+    {
+        string? response = await GetCachedResponseAsync(
+            key,
+            cancellationToken).ConfigureAwait(false);
+        return response == null
+            ? null
+            : new CachedResponse(
+                StatusCodes.Status200OK,
+                "application/json",
+                System.Text.Encoding.UTF8.GetBytes(response));
+    }
+
+    async Task SetAsync(
+        string key,
+        CachedResponse response,
+        TimeSpan timeToLive,
+        CancellationToken cancellationToken = default)
+    {
+        await SetCachedResponseAsync(
+            key,
+            System.Text.Encoding.UTF8.GetString(response.Body),
+            cancellationToken).ConfigureAwait(false);
+    }
 }

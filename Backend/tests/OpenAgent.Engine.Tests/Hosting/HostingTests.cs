@@ -86,17 +86,20 @@ public class HostingTests
         var expected = new[]
         {
             ("/api/v1/agent/chat", "POST", "Chat", "Agent"),
+            ("/api/v1/agent/chat/intent", "POST", "IntentRecognition", "Agent"),
             ("/api/v1/agent/chat/stream", "POST", "ChatStream", "Agent"),
             ("/api/v1/agent/files", "POST", "UploadFileAsset", "File"),
             ("/api/v1/agent/files/{fileId}", "GET", "GetFileAsset", "File"),
             ("/api/v1/agent/files/{fileId}/content", "GET", "GetFileAssetContent", "File"),
             ("/api/v1/agent/files/{fileId}/download", "GET", "DownloadFileAsset", "File"),
             ("/api/v1/agent/agents", "GET", "ListAgents", "Agent"),
+            ("/api/v1/agent/provider/conversations/{conversationId}", "GET", "ResolveProviderConversation", "Agent Provider"),
             ("/api/v1/agent/me", "GET", "CurrentAgentUser", "Agent"),
             ("/api/v1/agent/conversations", "GET", "ListConversations", "Conversation"),
             ("/api/v1/agent/conversations/search", "GET", "SearchConversations", "Conversation"),
             ("/api/v1/agent/conversations/{conversationId}", "GET", "GetConversation", "Conversation"),
-            ("/api/v1/agent/conversations/{conversationId}", "DELETE", "DeleteConversation", "Conversation")
+            ("/api/v1/agent/conversations/{conversationId}", "DELETE", "DeleteConversation", "Conversation"),
+            ("/api/v1/agent/conversations/{conversationId}/compact", "POST", "CompactConversation", "Conversation")
         };
 
         var actual = routeEndpoints

@@ -3,10 +3,12 @@ using Microsoft.Extensions.DependencyInjection;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Files;
+using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Capabilities;
 using OpenAgent.Core.Capabilities.Mcp;
 using OpenAgent.Core.Capabilities.Rag;
 using OpenAgent.Core.Capabilities.Skill;
+using OpenAgent.Core.Capabilities.UserProfile;
 using OpenAgent.Core.Exten;
 using OpenAgent.Core.Conversation.Store;
 using Xunit;
@@ -21,6 +23,7 @@ public class CapabilityServiceRegistrationTests
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton<IAgentConfigProvider, StaticConfigProvider>();
+        services.AddSingleton<ICurrentUserContext, TestUserContext>();
         services.AddSingleton<IConversationStore, InMemoryConversationStore>();
         services.AddSingleton<IFileAssetRepository, EmptyFileAssetRepository>();
         IConfiguration configuration = new ConfigurationBuilder().Build();
@@ -34,7 +37,8 @@ public class CapabilityServiceRegistrationTests
             .GetRequiredService<IEnumerable<ICapabilitySource>>();
 
         Assert.Contains(sources, source => source is RagCapabilitySource);
-        Assert.DoesNotContain(sources, source => source.GetType().Name.Contains("Skill", StringComparison.Ordinal));
+        Assert.Contains(sources, source => source is UserProfileCapabilitySource);
+        Assert.DoesNotContain(sources, source => source.GetType().Name.Contains("HttpSkill", StringComparison.Ordinal));
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<AgentSkillsProviderFactory>());
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<McpToolFactory>());
     }
@@ -49,7 +53,18 @@ public class CapabilityServiceRegistrationTests
             CancellationToken cancellationToken = default) =>
             Task.FromResult<AgentConfig?>(new AgentConfig());
 
+        public Task<AgentConfig?> GetConfigAsync(
+            string agentId,
+            string tenantId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<AgentConfig?>(new AgentConfig { TenantId = tenantId });
+
         public Task<IReadOnlyList<AgentSummary>> ListAgentsAsync(
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<AgentSummary>>([]);
+
+        public Task<IReadOnlyList<AgentSummary>> ListAgentsAsync(
+            string tenantId,
             CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<AgentSummary>>([]);
     }
@@ -58,7 +73,8 @@ public class CapabilityServiceRegistrationTests
     {
         public Task CreateAsync(FileAsset asset, CancellationToken cancellationToken) => Task.CompletedTask;
         public Task UpdateAsync(FileAsset asset, CancellationToken cancellationToken) => Task.CompletedTask;
-        public Task<FileAsset?> GetAsync(string fileId, CancellationToken cancellationToken) => Task.FromResult<FileAsset?>(null);
+        public Task<FileAsset?> GetAsync(string fileId, CancellationToken cancellationToken) =>
+            Task.FromResult<FileAsset?>(null);
         public Task EnsureConversationReferencesAsync(
             string conversationId,
             IReadOnlyList<string> fileIds,
@@ -68,5 +84,14 @@ public class CapabilityServiceRegistrationTests
             string conversationId,
             string fileId,
             CancellationToken cancellationToken) => Task.FromResult(false);
+    }
+
+    private sealed class TestUserContext : ICurrentUserContext
+    {
+        public string UserId => "test";
+        public string? TenantId => "test-tenant";
+        public bool IsAuthenticated => true;
+        public IReadOnlyList<string> Roles => [];
+        public bool IsInRole(string role) => false;
     }
 }

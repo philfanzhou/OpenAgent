@@ -59,6 +59,11 @@ Router 当前提供以下业务指标：
 |------|------|------|
 | `http.server.request.duration` | OpenTelemetry ASP.NET Core 标准属性 | HTTP 请求耗时；Prometheus histogram 的 count 同时表示请求量 |
 | `openagent_router_forwarding_failures_total` | `action`、`forwarder_error` | YARP 转发失败数 |
+| `openagent_router_provider_selections_total` | `source` | Provider 选择来源与结果 |
+| `openagent_router_acl_denials_total` | `reason` | Agent ACL 拒绝次数 |
+| `openagent_router_cache_hits_total` | `cache` | 幂等/查询缓存命中 |
+| `openagent_router_rate_limit_decisions_total` | `outcome`、`source`、`degraded` | 限流允许、拒绝与降级决策 |
+| `openagent_router_discovery_selections_total` | `intent`、`source` | 动态发现、静态回退或错误选择 |
 
 标签值会被裁剪并转为小写，空值归一为 `unknown`。新增指标必须保持低基数；不能把 `TraceId`、`ConversationId`、`AgentId`、`UserId`、`TenantId`、URL 或异常文本放入指标标签。
 
@@ -92,5 +97,5 @@ curl -fsS http://localhost:5001/metrics
 
 ```bash
 curl -fsS http://localhost:5001/metrics \
-  | grep 'http_server_request_duration\|openagent_router_forwarding_failures_total'
+  | grep 'http_server_request_duration\|openagent_router_forwarding_failures_total\|openagent_router_provider_selections_total\|openagent_router_cache_hits_total'
 ```

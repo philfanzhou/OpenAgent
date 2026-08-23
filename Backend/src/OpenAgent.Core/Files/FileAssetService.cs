@@ -77,10 +77,15 @@ internal sealed class FileAssetService : IFileAssetService
         }
     }
 
-    public Task<FileAsset?> GetAsync(string fileId, CancellationToken cancellationToken)
+    public async Task<FileAsset?> GetAsync(
+        string fileId,
+        FileAssetScope scope,
+        CancellationToken cancellationToken)
     {
         EnsureEnabled();
-        return _repository.GetAsync(fileId, cancellationToken);
+        ValidateScope(scope);
+        FileAsset? asset = await _repository.GetAsync(fileId, cancellationToken).ConfigureAwait(false);
+        return asset != null && IsOwner(asset, scope) ? asset : null;
     }
 
     public async Task EnsureReferencesAsync(
@@ -121,6 +126,7 @@ internal sealed class FileAssetService : IFileAssetService
         EnsureEnabled();
         ValidateScope(scope);
         FileAsset asset = await GetReadyAssetAsync(fileId, scope, cancellationToken).ConfigureAwait(false);
+        EnsureTenantObjectKey(asset.ObjectKey, scope.TenantId);
         byte[] data = await _objectStore.ReadAsync(asset.ObjectKey, cancellationToken).ConfigureAwait(false);
         return new FileAssetContent { Asset = asset, Data = data };
     }
@@ -246,6 +252,17 @@ internal sealed class FileAssetService : IFileAssetService
         if (string.IsNullOrWhiteSpace(scope.UserId))
         {
             throw new AgentException(AgentErrorCode.InvalidRequest, "UserId is required for file assets.");
+        }
+    }
+
+    private static void EnsureTenantObjectKey(string objectKey, string tenantId)
+    {
+        if (!FileObjectTenantScope.ContainsTenantPartition(objectKey, tenantId))
+        {
+            throw new TenantDataIsolationException(
+                tenantId,
+                null,
+                "File object storage key is outside the tenant partition.");
         }
     }
 

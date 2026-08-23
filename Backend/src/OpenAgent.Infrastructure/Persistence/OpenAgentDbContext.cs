@@ -10,6 +10,7 @@ public sealed class OpenAgentDbContext(DbContextOptions<OpenAgentDbContext> opti
     internal DbSet<FileAssetEntity> FileAssets => Set<FileAssetEntity>();
     internal DbSet<ConversationFileReferenceEntity> ConversationFileReferences => Set<ConversationFileReferenceEntity>();
     internal DbSet<MessageFileReferenceEntity> MessageFileReferences => Set<MessageFileReferenceEntity>();
+    internal DbSet<SkillDefinitionEntity> SkillDefinitions => Set<SkillDefinitionEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -25,6 +26,7 @@ public sealed class OpenAgentDbContext(DbContextOptions<OpenAgentDbContext> opti
             entity.Property(item => item.AgentId).HasMaxLength(256);
             entity.Property(item => item.TraceId).HasMaxLength(256);
             entity.Property(item => item.Title).HasMaxLength(512);
+            entity.Property(item => item.ContextSummariesJson).HasColumnType("jsonb");
             entity.Property(item => item.Version).IsConcurrencyToken();
             entity.HasIndex(item => new { item.TenantId, item.LastMessageAt });
             entity.HasIndex(item => new { item.TenantId, item.IsDeletedByUser, item.LastMessageAt });
@@ -40,6 +42,7 @@ public sealed class OpenAgentDbContext(DbContextOptions<OpenAgentDbContext> opti
             entity.Property(item => item.ToolCallId).HasMaxLength(256);
             entity.Property(item => item.ToolName).HasMaxLength(256);
             entity.Property(item => item.IdempotencyKey).HasMaxLength(256);
+            entity.Property(item => item.ModelId).HasMaxLength(256);
             entity.Property(item => item.MetadataJson).HasColumnType("jsonb");
             entity.HasIndex(item => new { item.ConversationId, item.Sequence }).IsUnique();
             entity.HasOne<ConversationEntity>().WithMany().HasForeignKey(item => item.ConversationId).OnDelete(DeleteBehavior.Cascade);
@@ -79,6 +82,18 @@ public sealed class OpenAgentDbContext(DbContextOptions<OpenAgentDbContext> opti
             entity.HasIndex(item => item.FileId);
             entity.HasOne<ConversationMessageEntity>().WithMany().HasForeignKey(item => item.MessageId).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne<FileAssetEntity>().WithMany().HasForeignKey(item => item.FileId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<SkillDefinitionEntity>(entity =>
+        {
+            entity.ToTable("skill_definitions");
+            entity.HasKey(item => new { item.TenantId, item.SkillId, item.Type });
+            entity.Property(item => item.TenantId).HasMaxLength(256);
+            entity.Property(item => item.SkillId).HasMaxLength(256);
+            entity.Property(item => item.Type).HasMaxLength(64);
+            entity.Property(item => item.SourceType).HasMaxLength(64);
+            entity.Property(item => item.DefinitionJson).HasColumnType("jsonb");
+            entity.HasIndex(item => new { item.TenantId, item.UpdatedAt });
         });
     }
 }

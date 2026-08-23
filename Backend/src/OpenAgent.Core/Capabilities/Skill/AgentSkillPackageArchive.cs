@@ -4,6 +4,10 @@ using OpenAgent.Contracts.Skills;
 
 namespace OpenAgent.Core.Capabilities.Skill;
 
+/// <summary>
+/// Validates uploaded Skill packages, extracts official frontmatter metadata, and
+/// safely reads or materializes package files. It never executes package scripts.
+/// </summary>
 public static class AgentSkillPackageArchive
 {
     public const int MaxFileCount = 128;

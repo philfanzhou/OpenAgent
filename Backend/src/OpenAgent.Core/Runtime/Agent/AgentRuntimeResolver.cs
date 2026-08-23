@@ -33,9 +33,16 @@ internal sealed class AgentRuntimeResolver : IAgentRuntimeResolver
 
         AgentConfig config = await _configs.GetConfigAsync(
                 agentId,
+                userContext.TenantId
+                    ?? throw new TenantDataIsolationException(
+                        null,
+                        null,
+                        "TenantId is required but not provided"),
                 cancellationToken)
             .ConfigureAwait(false)
             ?? throw new InvalidOperationException($"Agent configuration not found: {agentId}");
+
+        ValidateSkillTenant(agentId, config, userContext);
 
         LlmConfig model = await _authorization.ResolveAuthorizedModelAsync(
                 agentId,
@@ -70,6 +77,23 @@ internal sealed class AgentRuntimeResolver : IAgentRuntimeResolver
         ValidateContextPolicy(agentId, config.ContextPolicy);
     }
 
+    private static void ValidateSkillTenant(
+        string agentId,
+        AgentConfig config,
+        IAgentUserContext userContext)
+    {
+        bool hasSkillBinding = config.Skills.EnabledSkills.Count > 0
+            || config.Skills.Instances.Count > 0;
+        if (hasSkillBinding
+            && !string.Equals(config.TenantId, userContext.TenantId, StringComparison.Ordinal))
+        {
+            throw new TenantDataIsolationException(
+                userContext.TenantId,
+                config.TenantId,
+                $"Agent '{agentId}' cannot use Skills from another tenant.");
+        }
+    }
+
     private static void ValidateContextPolicy(string agentId, ContextPolicy? policy)
     {
         if (policy == null)
@@ -77,23 +101,16 @@ internal sealed class AgentRuntimeResolver : IAgentRuntimeResolver
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(policy.Strategy))
-        {
-            throw new InvalidOperationException(
-                $"ContextPolicy strategy is required for agent '{agentId}'.");
-        }
-
-        string strategy = policy.Strategy.ToLowerInvariant();
-        if (strategy is not ("summarize" or "sliding_window" or "none"))
-        {
-            throw new InvalidOperationException(
-                $"Unsupported ContextPolicy strategy '{policy.Strategy}' for agent '{agentId}'.");
-        }
-
         if (policy.MaxTokens < 0 || policy.PreserveRecentTurns < 0)
         {
             throw new InvalidOperationException(
                 $"ContextPolicy limits cannot be negative for agent '{agentId}'.");
+        }
+
+        if (policy.SummarizeOptions?.MaxSummaryTokens < 1)
+        {
+            throw new InvalidOperationException(
+                $"ContextPolicy summary token limit must be positive for agent '{agentId}'.");
         }
     }
 }

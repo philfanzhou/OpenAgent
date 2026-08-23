@@ -33,7 +33,11 @@ export interface ConversationMessage {
   metadata?: Record<string, string>
   reasoning?: string
   toolActivities?: ToolActivity[]
+  /** UI-only ordered execution trace assembled from reasoning and tool messages. */
+  processActivities?: ProcessActivity[]
   files?: MessageFile[]
+  tokenUsage?: TokenUsage
+  modelId?: string
   /** 执行失败的独立展示，不写入会话历史。 */
   error?: { title?: string; detail?: string; traceId?: string }
 }
@@ -45,6 +49,10 @@ export interface ToolActivity {
   /** 工具调用参数（流式下发或从历史 metadata.ToolArguments 解析）。 */
   arguments?: unknown
 }
+
+export type ProcessActivity =
+  | { kind: 'reasoning'; content: string }
+  | { kind: 'tool'; tool: ToolActivity }
 
 export interface MessageFile {
   fileId?: string
@@ -88,6 +96,34 @@ export interface ConversationRecord {
   messageCount: number
   title?: string
   messages?: ConversationMessage[]
+  contextSummaries?: ContextSummary[]
+}
+
+export interface ContextSummary {
+  compressionId: string
+  strategy: string
+  trigger: 'Automatic' | 'Manual' | string
+  status: 'Succeeded' | 'Skipped' | 'Failed' | string
+  summary?: string | null
+  result?: string | null
+  error?: string | null
+  lastCompressedAt: string
+  compressedMessageCount: number
+  originalStartSequence: number
+  originalEndSequence: number
+  originalTokenCount: number
+  tokenCount: number
+  originalHistoryRestored: boolean
+  sourceEndSequence: number
+  compactedMessages?: ConversationMessage[]
+}
+
+export interface TokenUsage {
+  promptTokens: number
+  completionTokens: number
+  totalTokens: number
+  cachedInputTokens?: number | null
+  reasoningTokens?: number | null
 }
 
 export interface McpServerConfig {
@@ -211,8 +247,16 @@ export interface RagTestResult {
 }
 
 export interface AuthConfig {
-  mode: 'Basic' | string
+  mode: 'Basic' | 'JwtBearer' | string
+  development: boolean
   password: { enabled: boolean; endpoint: string }
+  anonymous: { enabled: boolean }
+  oidc?: {
+    authority: string
+    clientId: string
+    audience: string
+    scopes: string[]
+  } | null
 }
 
 export interface AuthTokenResponse {
@@ -241,6 +285,7 @@ export interface AgentConfigEntity {
 export interface StreamEvent {
   type: string
   content?: string
+  agentId?: string
   status?: string
   traceId?: string
   toolName?: string
@@ -248,7 +293,8 @@ export interface StreamEvent {
   toolArguments?: unknown
   conversationId?: string
   error?: { title?: string; detail?: string; traceId?: string }
-  usage?: Record<string, unknown>
+  usage?: TokenUsage | null
+  modelId?: string | null
 }
 
 export interface McpTestResult {

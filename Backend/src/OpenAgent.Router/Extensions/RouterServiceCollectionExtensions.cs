@@ -14,6 +14,8 @@ public static class RouterServiceCollectionExtensions
         IConfiguration configuration)
     {
         services.AddSingleton<IConsistentHashRing, JumpHashConsistentHashRing>();
+        services.AddSingleton<IEndpointHealthTracker, EndpointHealthTracker>();
+        services.AddSingleton<IEngineReadinessProbe, EngineReadinessProbe>();
         services.AddOptions<IntentRecognitionOptions>()
             .Bind(configuration.GetSection(IntentRecognitionOptions.SectionName))
             .Validate(IntentRecognitionOptions.IsValid, "Intent recognition configuration is invalid")
@@ -24,9 +26,15 @@ public static class RouterServiceCollectionExtensions
             .ValidateOnStart();
         services.AddSingleton<IAgentProviderFactory, OpenAgentEngineProviderFactory>();
         services.AddSingleton<IAgentProviderRegistry, AgentProviderRegistry>();
+        services.AddScoped<IAgentCatalogService, AgentCatalogService>();
+        services.AddSingleton<IConversationProviderStore, ConversationProviderStore>();
+        services.AddSingleton<IConversationProviderResolver, ConversationProviderResolver>();
         services.AddSingleton<IAgentForwarder, AgentForwarder>();
         services.AddSingleton<IIntentAgentSelector, IntentAgentSelector>();
         services.AddScoped<IAgentSelectionService, AgentSelectionService>();
+        services.AddSingleton(new RouterCacheSettings(configuration));
+        services.AddSingleton<IIdempotencyStore, IdempotencyStore>();
+        services.AddSingleton<IQueryCache, RouterQueryCache>();
 
         var redisConnectionString = configuration.GetConnectionString("Redis");
         if (!string.IsNullOrEmpty(redisConnectionString))
@@ -47,10 +55,10 @@ public static class RouterServiceCollectionExtensions
             services.AddSingleton<IRouteTable>(provider =>
             {
                 var dynamicRouteTable = new RedisServiceDiscoveryRouteTable(
-                    provider.GetRequiredService<IConnectionMultiplexer>(),
                     provider.GetRequiredService<EngineRegistrySnapshotCache>(),
                     provider.GetRequiredService<ILogger<RedisServiceDiscoveryRouteTable>>(),
-                    provider.GetRequiredService<IConsistentHashRing>());
+                    provider.GetRequiredService<IConsistentHashRing>(),
+                    provider.GetRequiredService<IEndpointHealthTracker>());
                 var staticRouteTable = new InMemoryRouteTable(configuration);
                 return new CompositeRouteTable(
                     dynamicRouteTable,

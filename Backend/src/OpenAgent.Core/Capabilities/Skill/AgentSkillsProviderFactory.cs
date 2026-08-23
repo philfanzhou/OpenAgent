@@ -39,7 +39,12 @@ internal sealed class AgentSkillsProviderFactory(
         try
         {
             Directory.CreateDirectory(temporaryRoot);
-            foreach (SkillInstanceConfig instance in ResolveInstances(config, catalog).Where(IsEnabledObjectPackage))
+            IReadOnlyList<SkillInstanceConfig> instances = await ResolveInstancesAsync(
+                config,
+                catalog,
+                user.TenantId,
+                cancellationToken).ConfigureAwait(false);
+            foreach (SkillInstanceConfig instance in instances.Where(IsEnabledObjectPackage))
             {
                 if (!IsSelected(config, instance)
                     || !await authorization.IsAvailableAsync(
@@ -218,7 +223,9 @@ internal sealed class AgentSkillsProviderFactory(
     }
 
     private static bool IsEnabledObjectPackage(SkillInstanceConfig instance) =>
-        instance.Enabled && !string.IsNullOrWhiteSpace(instance.ObjectKey);
+        instance.Enabled
+        && string.Equals(instance.Type, SkillTypes.AgentSkill, StringComparison.OrdinalIgnoreCase)
+        && !string.IsNullOrWhiteSpace(instance.ObjectKey);
 
     /// <summary>
     /// The MAF file-skills source requires the parent directory of SKILL.md to be
@@ -238,25 +245,41 @@ internal sealed class AgentSkillsProviderFactory(
         || config.EnabledSkills.Contains(instance.Id, StringComparer.OrdinalIgnoreCase)
         || config.EnabledSkills.Contains(instance.Name, StringComparer.OrdinalIgnoreCase);
 
-    private static IEnumerable<SkillInstanceConfig> ResolveInstances(
+    private static async Task<IReadOnlyList<SkillInstanceConfig>> ResolveInstancesAsync(
         SkillsConfig config,
-        ISkillCatalog catalog)
+        ISkillCatalog catalog,
+        string? tenantId,
+        CancellationToken cancellationToken)
     {
+        if (string.IsNullOrWhiteSpace(tenantId))
+        {
+            return [];
+        }
+
         if (config.EnabledSkills.Count == 0)
         {
-            return config.Instances;
+            return config.Instances
+                .Where(instance => string.Equals(instance.TenantId, tenantId, StringComparison.Ordinal))
+                .ToList()
+                .AsReadOnly();
         }
 
         var resolved = new List<SkillInstanceConfig>();
         foreach (string id in config.EnabledSkills)
         {
-            SkillInstanceConfig? skill = catalog.Get(id)
+            SkillInstanceConfig? skill = await catalog.GetAsync(
+                tenantId,
+                id,
+                cancellationToken).ConfigureAwait(false)
                 ?? config.Instances.FirstOrDefault(item =>
+                    string.Equals(item.TenantId, tenantId, StringComparison.Ordinal)
+                    && string.Equals(item.Type, SkillTypes.AgentSkill, StringComparison.OrdinalIgnoreCase)
+                    && (
                     string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(item.Name, id, StringComparison.OrdinalIgnoreCase));
+                    || string.Equals(item.Name, id, StringComparison.OrdinalIgnoreCase)));
             if (skill != null) resolved.Add(skill);
         }
-        return resolved;
+        return resolved.AsReadOnly();
     }
 
     private async Task MaterializeAsync(
@@ -264,6 +287,7 @@ internal sealed class AgentSkillsProviderFactory(
         string packagePath,
         CancellationToken cancellationToken)
     {
+        EnsureTenantSharedObjectKey(instance.ObjectKey!, instance.TenantId);
         byte[] storedContent = await objectStore.ReadAsync(instance.ObjectKey!, cancellationToken).ConfigureAwait(false);
         VerifyHash(instance, storedContent);
 
@@ -272,6 +296,10 @@ internal sealed class AgentSkillsProviderFactory(
         {
             index = JsonSerializer.Deserialize<SkillPackageStorageIndex>(storedContent)
                 ?? throw new InvalidOperationException($"Skill package '{instance.Id}' has an invalid storage index.");
+            if (!string.Equals(index.TenantId, instance.TenantId, StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException($"Skill package '{instance.Id}' belongs to another tenant.");
+            }
         }
         else
         {
@@ -293,6 +321,7 @@ internal sealed class AgentSkillsProviderFactory(
 
         foreach (SkillPackageStorageFile file in index.Files)
         {
+            EnsureTenantSharedObjectKey(file.ObjectKey, instance.TenantId);
             byte[] content = await objectStore.ReadAsync(file.ObjectKey, cancellationToken).ConfigureAwait(false);
             string actual = Convert.ToHexString(SHA256.HashData(content)).ToLowerInvariant();
             if (!string.Equals(actual, file.Sha256, StringComparison.OrdinalIgnoreCase))
@@ -334,6 +363,14 @@ internal sealed class AgentSkillsProviderFactory(
         if (!string.Equals(actual, instance.Sha256, StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidOperationException($"Skill package '{instance.Id}' failed its SHA-256 integrity check.");
+        }
+    }
+
+    private static void EnsureTenantSharedObjectKey(string objectKey, string tenantId)
+    {
+        if (!FileObjectTenantScope.ContainsTenantSharedPartition(objectKey, tenantId))
+        {
+            throw new InvalidOperationException("Skill object storage key is outside the tenant-shared partition.");
         }
     }
 

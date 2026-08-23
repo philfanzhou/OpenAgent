@@ -13,6 +13,7 @@ internal sealed class AgentSelectionFilter(
         EndpointFilterDelegate next)
     {
         HttpContext context = invocationContext.HttpContext;
+        RouterMeter.RecordRequest(context.Request.RouteValues["action"]?.ToString());
         if (!userContext.IsAuthenticated)
         {
             return await next(invocationContext).ConfigureAwait(false);
@@ -39,16 +40,26 @@ internal sealed class AgentSelectionFilter(
         string? explicitAgentId = string.IsNullOrWhiteSpace(request.AgentId)
             ? context.Request.Headers["X-Agent-Id"].FirstOrDefault()
             : request.AgentId;
-        AgentSelection? selection = await selectionService.SelectAsync(
-            request.Query,
-            routingConversationId,
-            explicitAgentId,
-            context.RequestAborted).ConfigureAwait(false);
+        AgentSelection? selection;
+        try
+        {
+            selection = await selectionService.SelectAsync(
+                request.Query,
+                routingConversationId,
+                explicitAgentId,
+                context.RequestAborted,
+                context.Request.Headers.Authorization.FirstOrDefault()).ConfigureAwait(false);
+        }
+        catch (AgentRoutingException exception)
+        {
+            return RouterProblem.From(exception);
+        }
         if (selection == null)
         {
-            return Results.Problem(
-                statusCode: StatusCodes.Status503ServiceUnavailable,
-                title: "No Agent could be selected");
+            return RouterProblem.From(new AgentRoutingException(
+                StatusCodes.Status503ServiceUnavailable,
+                RouterErrorCodes.NoAgentAvailable,
+                "No Agent could be selected"));
         }
 
         context.Features.Set(new AgentRoutingFeature(
@@ -57,6 +68,7 @@ internal sealed class AgentSelectionFilter(
         if (!string.IsNullOrWhiteSpace(selection.AgentId))
         {
             context.Request.Headers["X-Agent-Id"] = selection.AgentId;
+            context.Response.Headers["X-OpenAgent-Selected-Agent-Id"] = selection.AgentId;
         }
 
         return await next(invocationContext).ConfigureAwait(false);

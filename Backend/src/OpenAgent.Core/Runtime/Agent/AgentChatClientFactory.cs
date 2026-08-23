@@ -5,10 +5,18 @@ using Microsoft.Extensions.Configuration;
 using OpenAgent.Contracts.Configuration;
 using OpenAI;
 using OpenAI.Responses;
+using OpenAgent.Contracts.Conversation;
 
 namespace OpenAgent.Core.Runtime.Agent;
 
-internal sealed class AgentChatClientFactory
+internal interface IAgentChatClientFactory
+{
+    IChatClient Create(LlmConfig llm);
+
+    IChatClient CreateSummarizationClient(LlmConfig llm, ContextPolicy? policy);
+}
+
+internal sealed class AgentChatClientFactory : IAgentChatClientFactory
 {
     private readonly TimeSpan _networkTimeout;
 
@@ -23,7 +31,7 @@ internal sealed class AgentChatClientFactory
             : TimeSpan.FromSeconds(seconds);
     }
 
-    internal IChatClient Create(LlmConfig llm)
+    public IChatClient Create(LlmConfig llm)
     {
         return llm.Format switch
         {
@@ -34,10 +42,38 @@ internal sealed class AgentChatClientFactory
         };
     }
 
+    public IChatClient CreateSummarizationClient(LlmConfig llm, ContextPolicy? policy)
+    {
+        string? summaryModel = policy?.SummarizeOptions?.SummaryModel;
+        if (string.IsNullOrWhiteSpace(summaryModel))
+        {
+            return Create(llm);
+        }
+
+        return Create(new LlmConfig
+        {
+            TenantId = llm.TenantId,
+            Provider = llm.Provider,
+            Format = llm.Format,
+            ModelId = summaryModel,
+            ApiKey = llm.ApiKey,
+            Endpoint = llm.Endpoint,
+            Temperature = llm.Temperature
+        });
+    }
+
     private IChatClient CreateOpenAIChatCompletions(LlmConfig llm)
     {
         OpenAIClient client = CreateOpenAIClient(llm, "https://api.openai.com/v1");
-        return client.GetChatClient(llm.ModelId).AsIChatClient();
+        return client.GetChatClient(llm.ModelId)
+            .AsIChatClient()
+            .AsBuilder()
+            .Use(static (messages, options, next, cancellationToken) =>
+                next(
+                    AgentMessageAdapter.RemoveEmptyOpenAIToolCallText(messages),
+                    options,
+                    cancellationToken))
+            .Build();
     }
 
     private IChatClient CreateOpenAIResponses(LlmConfig llm)

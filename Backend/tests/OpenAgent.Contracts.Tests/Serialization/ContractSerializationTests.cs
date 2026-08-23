@@ -86,4 +86,34 @@ public class ContractSerializationTests
         Assert.Contains("\"skillId\":\"search\"", json, StringComparison.Ordinal);
         Assert.DoesNotContain("\"id\"", json, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public void TokenUsage_LegacyPayload_RemainsCompatible()
+    {
+        const string json = """
+            {"promptTokens":12,"completionTokens":4,"totalTokens":16}
+            """;
+
+        TokenUsage? usage = JsonSerializer.Deserialize<TokenUsage>(json, JsonOptions);
+
+        TokenUsage actual = Assert.IsType<TokenUsage>(usage);
+        Assert.Equal(12, actual.PromptTokens);
+        Assert.Equal(4, actual.CompletionTokens);
+        Assert.Equal(16, actual.TotalTokens);
+        Assert.Null(actual.CachedInputTokens);
+        Assert.Null(actual.ReasoningTokens);
+    }
+
+    [Fact]
+    public void ChatResponse_LegacyPayload_LeavesUsageUnavailable()
+    {
+        const string json = """{"message":"hello"}""";
+
+        ChatResponse? response = JsonSerializer.Deserialize<ChatResponse>(json, JsonOptions);
+
+        ChatResponse actual = Assert.IsType<ChatResponse>(response);
+        Assert.Equal("hello", actual.Message);
+        Assert.Null(actual.Usage);
+        Assert.Null(actual.ModelId);
+    }
 }

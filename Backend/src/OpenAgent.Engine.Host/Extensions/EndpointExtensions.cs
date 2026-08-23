@@ -13,6 +13,7 @@ internal static class EndpointExtensions
         group.MapAgentChat();
         group.MapFileAssets();
         group.MapAgentCatalog();
+        group.MapAgentProviderContract();
         group.MapConversations();
 
         group.MapGet("/me", (HttpContext context) =>

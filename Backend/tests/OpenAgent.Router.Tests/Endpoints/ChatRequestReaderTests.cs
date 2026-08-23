@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using OpenAgent.Router.Endpoints;
+using OpenAgent.Router.Middleware;
 using OpenAgent.Router.Models;
 using Xunit;
 
@@ -73,6 +74,26 @@ public class ChatRequestReaderTests
         Assert.Equal(0, body.Position);
     }
 
+    [Fact]
+    public async Task ReadAsync_CachedBodySnapshot_DoesNotReadRequestStreamAgain()
+    {
+        byte[] body = Encoding.UTF8.GetBytes("{\"message\":\"hello\"}");
+        var stream = new CountingStream(body);
+        var context = new DefaultHttpContext();
+        context.Request.ContentType = "application/json";
+        context.Request.ContentLength = body.Length;
+        context.Request.Body = stream;
+        await RequestBodySnapshot.GetAsync(context, 1024);
+        int readsAfterSnapshot = stream.ReadCount;
+
+        ParsedChatRequest request = await ChatRequestReader.ReadAsync(
+            context.Request,
+            CancellationToken.None);
+
+        Assert.Equal("hello", request.Query);
+        Assert.Equal(readsAfterSnapshot, stream.ReadCount);
+    }
+
     private static DefaultHttpContext CreateJsonContext(string body)
     {
         var context = new DefaultHttpContext();
@@ -80,5 +101,18 @@ public class ChatRequestReaderTests
         context.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes(body));
         context.Request.ContentLength = context.Request.Body.Length;
         return context;
+    }
+
+    private sealed class CountingStream(byte[] buffer) : MemoryStream(buffer)
+    {
+        internal int ReadCount { get; private set; }
+
+        public override ValueTask<int> ReadAsync(
+            Memory<byte> destination,
+            CancellationToken cancellationToken = default)
+        {
+            ReadCount++;
+            return base.ReadAsync(destination, cancellationToken);
+        }
     }
 }

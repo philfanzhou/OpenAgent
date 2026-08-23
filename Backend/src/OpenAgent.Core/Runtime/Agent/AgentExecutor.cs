@@ -36,6 +36,7 @@ public sealed class AgentExecutor
         IAgentUserContext user,
         CancellationToken cancellationToken)
     {
+        using EngineMeter.EngineExecutionMeasurement measurement = EngineMeter.StartAgentCall("sync");
         EnsureRequest(request);
         string traceId = ResolveTraceId(request.TraceId);
         string agentId = await ResolveAgentIdAsync(
@@ -75,10 +76,17 @@ public sealed class AgentExecutor
             session,
             options: null,
             cancellationToken).ConfigureAwait(false);
+        TokenUsage? usage = AgentResponseAdapter.ConvertUsage(response.Usage);
+        string modelId = AgentResponseAdapter.ReadModelId(
+            response.RawRepresentation,
+            profile.Model.ModelId);
+        await scope.CompleteAsync(usage, modelId, cancellationToken).ConfigureAwait(false);
+        measurement.Complete(usage);
         return new PlatformAgentResponse
         {
             Content = response.Text ?? string.Empty,
-            TokenUsage = AgentResponseAdapter.ConvertUsage(response.Usage),
+            TokenUsage = usage,
+            ModelId = modelId,
             TraceId = traceId,
             Success = true
         };
@@ -89,6 +97,7 @@ public sealed class AgentExecutor
         IAgentUserContext user,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
+        using EngineMeter.EngineExecutionMeasurement measurement = EngineMeter.StartAgentCall("stream");
         EnsureRequest(request);
         string traceId = ResolveTraceId(request.TraceId);
         string agentId = await ResolveAgentIdAsync(
@@ -125,6 +134,7 @@ public sealed class AgentExecutor
             resolvedFiles.Files);
         HashSet<string> announcedToolCalls = new(StringComparer.Ordinal);
         TokenUsage? usage = null;
+        string modelId = profile.Model.ModelId;
         IAsyncEnumerable<AgentResponseUpdate> updates = scope.Agent.RunStreamingAsync(
             userMessage,
             session,
@@ -179,16 +189,17 @@ public sealed class AgentExecutor
             }
 
             usage = AgentResponseAdapter.ReadUsage(contents) ?? usage;
+            modelId = AgentResponseAdapter.ReadModelId(update.RawRepresentation, modelId);
         }
 
-        if (usage != null)
+        await scope.CompleteAsync(usage, modelId, cancellationToken).ConfigureAwait(false);
+        measurement.Complete(usage);
+        yield return new AgentStreamEvent
         {
-            yield return new AgentStreamEvent
-            {
-                Type = AgentStreamEventType.Usage,
-                Usage = usage
-            };
-        }
+            Type = AgentStreamEventType.Usage,
+            Usage = usage,
+            ModelId = modelId
+        };
     }
 
     private static void EnsureRequest(AgentRequest request)
@@ -226,6 +237,7 @@ public sealed class AgentExecutor
             Query = request.Query,
             AgentId = agentId,
             ConversationId = request.ConversationId,
+            ConversationType = request.ConversationType,
             TraceId = traceId,
             ClientType = request.ClientType,
             IdempotencyKey = request.IdempotencyKey,

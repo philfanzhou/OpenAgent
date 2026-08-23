@@ -6,6 +6,7 @@ namespace OpenAgent.Engine.Tests;
 internal sealed class FakeRedisConnectionProvider : IRedisConnectionProvider
 {
     private readonly Dictionary<string, string> _strings = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, HashSet<string>> _sets = new(StringComparer.OrdinalIgnoreCase);
 
     public bool IsAvailable => true;
 
@@ -23,11 +24,27 @@ internal sealed class FakeRedisConnectionProvider : IRedisConnectionProvider
 
     public Task<bool> KeyDeleteAsync(RedisKey key, CommandFlags flags = CommandFlags.None) => Task.FromResult(_strings.Remove(key!));
 
-    public Task<RedisValue[]> SetMembersAsync(RedisKey key, CommandFlags flags = CommandFlags.None) => Task.FromResult(Array.Empty<RedisValue>());
+    public Task<RedisValue[]> SetMembersAsync(RedisKey key, CommandFlags flags = CommandFlags.None) =>
+        Task.FromResult(
+            _sets.TryGetValue(key!, out HashSet<string>? members)
+                ? members.Select(member => (RedisValue)member).ToArray()
+                : []);
 
-    public Task<bool> SetAddAsync(RedisKey key, RedisValue value, CommandFlags flags = CommandFlags.None) => Task.FromResult(true);
+    public Task<bool> SetAddAsync(RedisKey key, RedisValue value, CommandFlags flags = CommandFlags.None)
+    {
+        if (!_sets.TryGetValue(key!, out HashSet<string>? members))
+        {
+            members = new HashSet<string>(StringComparer.Ordinal);
+            _sets[key!] = members;
+        }
 
-    public Task<bool> SetRemoveAsync(RedisKey key, RedisValue value, CommandFlags flags = CommandFlags.None) => Task.FromResult(true);
+        return Task.FromResult(members.Add(value.ToString()));
+    }
+
+    public Task<bool> SetRemoveAsync(RedisKey key, RedisValue value, CommandFlags flags = CommandFlags.None) =>
+        Task.FromResult(
+            _sets.TryGetValue(key!, out HashSet<string>? members) &&
+            members.Remove(value.ToString()));
 
     public Task<TimeSpan> PingAsync(CommandFlags flags = CommandFlags.None) => Task.FromResult(TimeSpan.FromMilliseconds(1));
 

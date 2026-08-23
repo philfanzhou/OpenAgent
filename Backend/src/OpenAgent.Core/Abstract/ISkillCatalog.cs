@@ -8,8 +8,12 @@ namespace OpenAgent.Core.Abstract;
 /// </summary>
 public interface ISkillCatalog
 {
-    IReadOnlyList<SkillInstanceConfig> GetAll();
-    SkillInstanceConfig? Get(string id);
-    void Register(SkillInstanceConfig skill);
-    bool Remove(string id);
+    Task<IReadOnlyList<SkillInstanceConfig>> ListAsync(
+        string tenantId,
+        CancellationToken cancellationToken = default);
+
+    Task<SkillInstanceConfig?> GetAsync(
+        string tenantId,
+        string skillId,
+        CancellationToken cancellationToken = default);
 }

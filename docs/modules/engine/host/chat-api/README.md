@@ -28,6 +28,17 @@ ChatApi 提供 Agent.Engine 的核心 HTTP 端点；聊天使用 JSON，文件�
 - **请求追踪**：Header / Activity 自动生成 TraceId
 - **优雅中断**：客户端断开时正确释放资源
 
+## Token usage 契约
+
+非流式 `/chat` 响应在原有 `message` 外增加可选 `usage` 和 `modelId`。流式 `/chat/stream` 不发送独立 usage 事件，而是在终态事件中返回：
+
+```text
+event: done
+data: {"done":true,"usage":{"promptTokens":21,"completionTokens":8,"totalTokens":29},"modelId":"provider-model","conversationId":"..."}
+```
+
+`usage` 为 `null` 表示 Provider 未返回完整统计，客户端不得将其解释为 0。可选的 `cachedInputTokens`、`reasoningTokens` 是细分项，不额外计入 total。旧客户端可忽略新增字段，原有 `message`、content/reasoning/tool_call/done 事件名称保持不变。
+
 ## 当前状态
 
 **已实现** — 所有端点均已落地。

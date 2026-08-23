@@ -41,6 +41,12 @@ internal sealed class AgentConfigLocalStore
     {
         entity.AgentId = agentId;
         AgentConfigEntity? current = Get(agentId);
+        if (current != null
+            && !string.IsNullOrWhiteSpace(current.TenantId)
+            && !string.Equals(current.TenantId, entity.TenantId, StringComparison.Ordinal))
+        {
+            return null;
+        }
         if (!string.IsNullOrWhiteSpace(expectedVersion)
             && !string.Equals(current?.CurrentVersion, expectedVersion, StringComparison.Ordinal))
         {

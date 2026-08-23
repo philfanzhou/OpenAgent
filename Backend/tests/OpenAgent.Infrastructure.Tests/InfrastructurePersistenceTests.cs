@@ -3,6 +3,10 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Files;
+using OpenAgent.Contracts.Security;
+using OpenAgent.Contracts.Configuration;
+using OpenAgent.Contracts.Skills;
+using OpenAgent.Contracts.Requests;
 using Testcontainers.PostgreSql;
 using Xunit;
 
@@ -27,6 +31,7 @@ public sealed class InfrastructurePersistenceTests : IAsyncLifetime
             })
             .Build();
         var services = new ServiceCollection();
+        services.AddSingleton<ICurrentUserContext>(new TestCurrentUserContext());
         services.AddOpenAgentInfrastructure(configuration);
         _services = services.BuildServiceProvider(validateScopes: true);
         IDbContextFactory<OpenAgentDbContext> contexts = _services.GetRequiredService<IDbContextFactory<OpenAgentDbContext>>();
@@ -48,8 +53,9 @@ public sealed class InfrastructurePersistenceTests : IAsyncLifetime
     public async Task ConversationStore_StoresFilesAtConversationAndMessageLevel()
     {
         ServiceProvider services = Assert.IsType<ServiceProvider>(_services);
+        using IServiceScope scope = services.CreateScope();
         IFileAssetRepository files = services.GetRequiredService<IFileAssetRepository>();
-        IConversationStore conversations = services.GetRequiredService<IConversationStore>();
+        IConversationStore conversations = scope.ServiceProvider.GetRequiredService<IConversationStore>();
         FileAsset asset = new()
         {
             FileId = "file-001",
@@ -116,8 +122,9 @@ public sealed class InfrastructurePersistenceTests : IAsyncLifetime
     public async Task FileAssetRepository_EnsuresConversationReferencesConcurrently()
     {
         ServiceProvider services = Assert.IsType<ServiceProvider>(_services);
+        using IServiceScope scope = services.CreateScope();
         IFileAssetRepository files = services.GetRequiredService<IFileAssetRepository>();
-        IConversationStore conversations = services.GetRequiredService<IConversationStore>();
+        IConversationStore conversations = scope.ServiceProvider.GetRequiredService<IConversationStore>();
         IDbContextFactory<OpenAgentDbContext> contexts =
             services.GetRequiredService<IDbContextFactory<OpenAgentDbContext>>();
         FileAsset asset = new()
@@ -158,5 +165,154 @@ public sealed class InfrastructurePersistenceTests : IAsyncLifetime
         int referenceCount = await context.ConversationFileReferences.CountAsync(item =>
             item.ConversationId == "conversation-concurrent" && item.FileId == asset.FileId);
         Assert.Equal(1, referenceCount);
+    }
+
+    [Fact]
+    public async Task SkillDefinitionRepository_PersistsTenantScopedObjectStorageSkill()
+    {
+        ServiceProvider services = Assert.IsType<ServiceProvider>(_services);
+        ISkillDefinitionRepository repository = services.GetRequiredService<ISkillDefinitionRepository>();
+        var package = new SkillInstanceConfig
+        {
+            TenantId = "tenant-skill",
+            Id = "lookup",
+            Name = "lookup",
+            Type = SkillTypes.AgentSkill,
+            SourceType = SkillSourceTypes.ObjectStorage,
+            ObjectKey = "private/tenants/example/skill-packages/skill.json"
+        };
+        await repository.UpsertAsync(package);
+
+        SkillInstanceConfig? storedPackage = await repository.GetAsync("tenant-skill", "lookup");
+        IReadOnlyList<SkillInstanceConfig> stored = await repository.ListAsync("tenant-skill");
+        SkillInstanceConfig? foreign = await repository.GetAsync("another-tenant", "lookup");
+
+        Assert.Equal(SkillSourceTypes.ObjectStorage, storedPackage?.SourceType);
+        Assert.Equal("private/tenants/example/skill-packages/skill.json", storedPackage?.ObjectKey);
+        Assert.Single(stored);
+        Assert.Null(foreign);
+    }
+
+    [Fact]
+    public async Task ConversationStore_TokenUsage_RoundTripsProviderCounts()
+    {
+        ServiceProvider services = Assert.IsType<ServiceProvider>(_services);
+        using IServiceScope scope = services.CreateScope();
+        IConversationStore conversations = scope.ServiceProvider.GetRequiredService<IConversationStore>();
+        Assert.True(await conversations.CreateAsync(new ConversationRecord
+        {
+            ConversationId = "conversation-usage",
+            TenantId = "tenant-usage",
+            UserId = "user-usage",
+            AgentId = "default"
+        }, CancellationToken.None));
+        TokenUsage usage = new()
+        {
+            PromptTokens = 21,
+            CompletionTokens = 8,
+            TotalTokens = 29,
+            CachedInputTokens = 5,
+            ReasoningTokens = 3
+        };
+
+        AppendResult appended = await conversations.AppendMessagesAsync(
+            "tenant-usage",
+            "conversation-usage",
+            1,
+            [new ConversationMessage
+            {
+                MessageId = "message-usage",
+                Sequence = 1,
+                Role = "assistant",
+                Content = "response",
+                TokenUsage = usage,
+                ModelId = "provider-model"
+            }],
+            CancellationToken.None);
+        ConversationRecord record = Assert.IsType<ConversationRecord>(
+            await conversations.GetRecordAsync(
+                "tenant-usage",
+                "conversation-usage",
+                CancellationToken.None));
+        ConversationMessage message = Assert.Single(record.Messages);
+
+        Assert.True(appended.Success);
+        Assert.Equal(29, message.TokenUsage?.TotalTokens);
+        Assert.Equal(5, message.TokenUsage?.CachedInputTokens);
+        Assert.Equal(3, message.TokenUsage?.ReasoningTokens);
+        Assert.Equal("provider-model", message.ModelId);
+    }
+
+    [Fact]
+    public async Task ConversationStore_CompressionAudit_RoundTripsWithoutChangingMessages()
+    {
+        ServiceProvider services = Assert.IsType<ServiceProvider>(_services);
+        using IServiceScope scope = services.CreateScope();
+        IConversationStore conversations = scope.ServiceProvider.GetRequiredService<IConversationStore>();
+        Assert.True(await conversations.CreateAsync(new ConversationRecord
+        {
+            ConversationId = "conversation-compaction",
+            TenantId = "tenant-compaction",
+            UserId = "user-compaction",
+            AgentId = "default"
+        }));
+        AppendResult appended = await conversations.AppendMessagesAsync(
+            "tenant-compaction",
+            "conversation-compaction",
+            1,
+            [new ConversationMessage
+            {
+                MessageId = "message-compaction",
+                Sequence = 1,
+                Role = "user",
+                Content = "Retain this audit message"
+            }]);
+        var summary = new ContextSummary
+        {
+            CompressionId = "compression-1",
+            Strategy = "summarization",
+            Trigger = "Automatic",
+            Status = "Succeeded",
+            Summary = "Retained user intent.",
+            OriginalStartSequence = 1,
+            OriginalEndSequence = 1,
+            CompressedMessageCount = 1,
+            LastCompressedAt = DateTimeOffset.UtcNow,
+            SourceEndSequence = 1,
+            CompactedMessages = [new ConversationMessage
+            {
+                MessageId = "compacted-message-1",
+                Sequence = 1,
+                Role = "summary",
+                Content = "Retained user intent."
+            }]
+        };
+
+        bool recorded = await conversations.RecordCompressionAsync(
+            "tenant-compaction",
+            "conversation-compaction",
+            summary);
+        ConversationRecord record = Assert.IsType<ConversationRecord>(
+            await conversations.GetRecordAsync("tenant-compaction", "conversation-compaction"));
+
+        Assert.True(recorded);
+        Assert.True(appended.Success);
+        ContextSummary storedSummary = Assert.Single(record.ContextSummaries);
+        Assert.Equal("Retained user intent.", storedSummary.Summary);
+        Assert.Equal("Retained user intent.", Assert.Single(storedSummary.CompactedMessages).Content);
+        Assert.Equal("Retain this audit message", Assert.Single(record.Messages).Content);
+    }
+
+    private sealed class TestCurrentUserContext : ICurrentUserContext
+    {
+        public string UserId => "test-user";
+
+        public string? TenantId => "tenant-001";
+
+        public bool IsAuthenticated => true;
+
+        public IReadOnlyList<string> Roles => [];
+
+        public bool IsInRole(string role) => false;
     }
 }

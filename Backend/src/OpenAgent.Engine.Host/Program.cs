@@ -7,6 +7,7 @@ using OpenAgent.Engine.Host.Health;
 using OpenAgent.Engine.Host.Middleware;
 using OpenAgent.Engine.Host.Skills;
 using OpenAgent.Hosting;
+using OpenAgent.Hosting.Authentication;
 using OpenAgent.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -43,9 +44,9 @@ app.UseAgentHost(builder.Configuration);
 app.UseMiddleware<AgentExceptionHandlerMiddleware>();
 app.UseMiddleware<AgentUserContextMiddleware>();
 app.UseMiddleware<EngineAdmissionMiddleware>();
+app.MapAgentAuthenticationEndpoints();
 if (app.Environment.IsDevelopment())
 {
-    app.MapAuthenticationEndpoints();
     app.MapManagementEndpoints();
 }
 app.MapAgentEndpoints();

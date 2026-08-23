@@ -1,11 +1,14 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using OpenAgent.Contracts.Conversation;
+using OpenAgent.Contracts.Security;
 using OpenAgent.Infrastructure.Entities;
 
 namespace OpenAgent.Infrastructure;
 
-internal sealed class EfCoreConversationStore(IDbContextFactory<OpenAgentDbContext> contexts) : IConversationStore
+internal sealed class EfCoreConversationStore(
+    IDbContextFactory<OpenAgentDbContext> contexts,
+    ICurrentUserContext currentUser) : IConversationStore
 {
     public async Task<IReadOnlyList<ConversationMessage>> GetMessagesAsync(
         string tenantId,
@@ -235,11 +238,13 @@ internal sealed class EfCoreConversationStore(IDbContextFactory<OpenAgentDbConte
         await using OpenAgentDbContext context = await contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         List<ConversationEntity> conversations = await context.Conversations.AsNoTracking()
             .Where(item => item.TenantId == tenantId && !item.IsDeletedByUser)
+            .Where(item => item.UserId == currentUser.UserId)
+            .Where(item => item.Type == (int)ConversationType.User)
             .OrderByDescending(item => item.LastMessageAt)
             .Skip(Math.Max(skip, 0))
             .Take(take)
             .ToListAsync(cancellationToken).ConfigureAwait(false);
-        return conversations.Select(item => ToRecord(item, [])).ToList().AsReadOnly();
+        return conversations.Select(item => ToRecord(item, [], includeSummaries: false)).ToList().AsReadOnly();
     }
 
     public async Task<IReadOnlyList<ConversationRecord>> SearchConversationsAsync(
@@ -257,6 +262,8 @@ internal sealed class EfCoreConversationStore(IDbContextFactory<OpenAgentDbConte
         await using OpenAgentDbContext context = await contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         List<ConversationEntity> conversations = await context.Conversations.AsNoTracking()
             .Where(conversation => conversation.TenantId == tenantId && !conversation.IsDeletedByUser)
+            .Where(conversation => conversation.UserId == currentUser.UserId)
+            .Where(conversation => conversation.Type == (int)ConversationType.User)
             .Where(conversation => context.ConversationMessages.Any(message =>
                 message.ConversationId == conversation.ConversationId
                 && EF.Functions.ILike(message.Content, $"%{keyword}%")))
@@ -264,7 +271,7 @@ internal sealed class EfCoreConversationStore(IDbContextFactory<OpenAgentDbConte
             .Skip(Math.Max(skip, 0))
             .Take(take)
             .ToListAsync(cancellationToken).ConfigureAwait(false);
-        return conversations.Select(item => ToRecord(item, [])).ToList().AsReadOnly();
+        return conversations.Select(item => ToRecord(item, [], includeSummaries: false)).ToList().AsReadOnly();
     }
 
     public async Task<bool> SoftDeleteAsync(
@@ -288,11 +295,42 @@ internal sealed class EfCoreConversationStore(IDbContextFactory<OpenAgentDbConte
         return true;
     }
 
+    public async Task<bool> RecordCompressionAsync(
+        string tenantId,
+        string conversationId,
+        ContextSummary summary,
+        CancellationToken cancellationToken = default)
+    {
+        await using OpenAgentDbContext context = await contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        ConversationEntity? conversation = await context.Conversations.SingleOrDefaultAsync(
+            item => item.ConversationId == conversationId && item.TenantId == tenantId && !item.IsDeletedByUser,
+            cancellationToken).ConfigureAwait(false);
+        if (conversation == null)
+        {
+            return false;
+        }
+
+        List<ContextSummary> summaries = DeserializeSummaries(conversation.ContextSummariesJson);
+        summaries.Add(summary);
+        conversation.ContextSummariesJson = JsonSerializer.Serialize(summaries);
+        conversation.UpdatedAt = DateTimeOffset.UtcNow;
+        try
+        {
+            await context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return false;
+        }
+    }
+
     private static ConversationEntity ToEntity(ConversationRecord record) => new()
     {
         ConversationId = record.ConversationId,
         TenantId = record.TenantId,
         UserId = record.UserId,
+        Type = (int)record.Type,
         AgentId = record.AgentId,
         TraceId = record.TraceId,
         Version = record.Version,
@@ -303,7 +341,8 @@ internal sealed class EfCoreConversationStore(IDbContextFactory<OpenAgentDbConte
         MessageCount = record.MessageCount,
         Title = record.Title,
         IsDeletedByUser = record.IsDeletedByUser,
-        DeletedAt = record.DeletedAt
+        DeletedAt = record.DeletedAt,
+        ContextSummariesJson = JsonSerializer.Serialize(record.ContextSummaries)
     };
 
     private static ConversationMessageEntity ToEntity(string conversationId, ConversationMessage message) => new()
@@ -317,14 +356,24 @@ internal sealed class EfCoreConversationStore(IDbContextFactory<OpenAgentDbConte
         ToolName = message.ToolName,
         IdempotencyKey = message.IdempotencyKey,
         Timestamp = message.Timestamp,
-        MetadataJson = message.Metadata == null ? null : JsonSerializer.Serialize(message.Metadata)
+        MetadataJson = message.Metadata == null ? null : JsonSerializer.Serialize(message.Metadata),
+        PromptTokens = message.TokenUsage?.PromptTokens,
+        CompletionTokens = message.TokenUsage?.CompletionTokens,
+        TotalTokens = message.TokenUsage?.TotalTokens,
+        CachedInputTokens = message.TokenUsage?.CachedInputTokens,
+        ReasoningTokens = message.TokenUsage?.ReasoningTokens,
+        ModelId = message.ModelId
     };
 
-    private static ConversationRecord ToRecord(ConversationEntity entity, IReadOnlyList<ConversationMessage> messages) => new()
+    private static ConversationRecord ToRecord(
+        ConversationEntity entity,
+        IReadOnlyList<ConversationMessage> messages,
+        bool includeSummaries = true) => new()
     {
         ConversationId = entity.ConversationId,
         TenantId = entity.TenantId,
         UserId = entity.UserId,
+        Type = (ConversationType)entity.Type,
         AgentId = entity.AgentId,
         TraceId = entity.TraceId,
         Version = entity.Version,
@@ -336,8 +385,14 @@ internal sealed class EfCoreConversationStore(IDbContextFactory<OpenAgentDbConte
         Title = entity.Title,
         IsDeletedByUser = entity.IsDeletedByUser,
         DeletedAt = entity.DeletedAt,
-        Messages = messages.ToList()
+        Messages = messages.ToList(),
+        ContextSummaries = includeSummaries ? DeserializeSummaries(entity.ContextSummariesJson) : []
     };
+
+    private static List<ContextSummary> DeserializeSummaries(string? value) =>
+        string.IsNullOrWhiteSpace(value)
+            ? []
+            : JsonSerializer.Deserialize<List<ContextSummary>>(value) ?? [];
 
     private static async Task<IReadOnlyList<ConversationMessage>> ToMessagesAsync(
         OpenAgentDbContext context,
@@ -369,8 +424,30 @@ internal sealed class EfCoreConversationStore(IDbContextFactory<OpenAgentDbConte
             IdempotencyKey = entity.IdempotencyKey,
             Timestamp = entity.Timestamp,
             Metadata = DeserializeMetadata(entity.MetadataJson),
-            FileIds = fileIds.GetValueOrDefault(entity.MessageId, Array.Empty<string>())
+            FileIds = fileIds.GetValueOrDefault(entity.MessageId, Array.Empty<string>()),
+            TokenUsage = CreateTokenUsage(entity),
+            ModelId = entity.ModelId
         }).ToList().AsReadOnly();
+    }
+
+    private static OpenAgent.Contracts.Requests.TokenUsage? CreateTokenUsage(
+        ConversationMessageEntity entity)
+    {
+        if (entity.PromptTokens == null
+            || entity.CompletionTokens == null
+            || entity.TotalTokens == null)
+        {
+            return null;
+        }
+
+        return new OpenAgent.Contracts.Requests.TokenUsage
+        {
+            PromptTokens = entity.PromptTokens.Value,
+            CompletionTokens = entity.CompletionTokens.Value,
+            TotalTokens = entity.TotalTokens.Value,
+            CachedInputTokens = entity.CachedInputTokens,
+            ReasoningTokens = entity.ReasoningTokens
+        };
     }
 
     private static IReadOnlyDictionary<string, string>? DeserializeMetadata(string? json)

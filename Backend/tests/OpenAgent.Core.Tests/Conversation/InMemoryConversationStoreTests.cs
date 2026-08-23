@@ -1,4 +1,5 @@
 using OpenAgent.Contracts.Conversation;
+using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Conversation.Store;
 using Xunit;
 
@@ -6,16 +7,29 @@ namespace OpenAgent.Core.Tests.Conversation;
 
 public class InMemoryConversationStoreTests
 {
+    private static ICurrentUserContext UserContext(string userId = "u1") => new FakeUserContext(userId);
+
+    private sealed class FakeUserContext(string userId) : ICurrentUserContext
+    {
+        public string UserId => userId;
+        public string? TenantId => null;
+        public bool IsAuthenticated => true;
+        public IReadOnlyList<string> Roles => [];
+        public bool IsInRole(string role) => false;
+    }
+
     private static ConversationRecord CreateRecord(
         string tenantId = "t1",
         string conversationId = "c1",
-        string userId = "u1")
+        string userId = "u1",
+        ConversationType type = ConversationType.User)
     {
         return new ConversationRecord
         {
             TenantId = tenantId,
             ConversationId = conversationId,
             UserId = userId,
+            Type = type,
             AgentId = "a1"
         };
     }
@@ -40,7 +54,7 @@ public class InMemoryConversationStoreTests
     [Fact]
     public async Task CreateAsync_NewRecord_ReturnsTrue()
     {
-        var store = new InMemoryConversationStore();
+        var store = new InMemoryConversationStore(UserContext());
         var result = await store.CreateAsync(CreateRecord());
         Assert.True(result);
     }
@@ -48,7 +62,7 @@ public class InMemoryConversationStoreTests
     [Fact]
     public async Task CreateAsync_Duplicate_ReturnsFalse()
     {
-        var store = new InMemoryConversationStore();
+        var store = new InMemoryConversationStore(UserContext());
         await store.CreateAsync(CreateRecord());
         var second = await store.CreateAsync(CreateRecord());
         Assert.False(second);
@@ -57,15 +71,26 @@ public class InMemoryConversationStoreTests
     [Fact]
     public async Task GetRecordAsync_Missing_ReturnsNull()
     {
-        var store = new InMemoryConversationStore();
+        var store = new InMemoryConversationStore(UserContext());
         var result = await store.GetRecordAsync("t1", "missing");
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task GetRecordAsync_DifferentTenant_ReturnsNull()
+    {
+        var store = new InMemoryConversationStore(UserContext());
+        await store.CreateAsync(CreateRecord(tenantId: "tenant-a"));
+
+        ConversationRecord? result = await store.GetRecordAsync("tenant-b", "c1");
+
         Assert.Null(result);
     }
 
     [Fact]
     public async Task AppendMessages_NewMessages_IncrementsVersionAndCount()
     {
-        var store = new InMemoryConversationStore();
+        var store = new InMemoryConversationStore(UserContext());
         await store.CreateAsync(CreateRecord());
 
         var result = await store.AppendMessagesAsync(
@@ -79,7 +104,7 @@ public class InMemoryConversationStoreTests
     [Fact]
     public async Task AppendMessages_VersionConflict_ReturnsConflict()
     {
-        var store = new InMemoryConversationStore();
+        var store = new InMemoryConversationStore(UserContext());
         await store.CreateAsync(CreateRecord());
 
         var result = await store.AppendMessagesAsync(
@@ -92,7 +117,7 @@ public class InMemoryConversationStoreTests
     [Fact]
     public async Task AppendMessages_IdempotencyKey_Deduplicates()
     {
-        var store = new InMemoryConversationStore();
+        var store = new InMemoryConversationStore(UserContext());
         await store.CreateAsync(CreateRecord());
 
         await store.AppendMessagesAsync("t1", "c1", 1,
@@ -113,7 +138,7 @@ public class InMemoryConversationStoreTests
     [Fact]
     public async Task GetMessagesAsync_ReturnsLastNMessages()
     {
-        var store = new InMemoryConversationStore();
+        var store = new InMemoryConversationStore(UserContext());
         await store.CreateAsync(CreateRecord());
         await store.AppendMessagesAsync("t1", "c1", 1, new[]
         {
@@ -132,7 +157,7 @@ public class InMemoryConversationStoreTests
     [Fact]
     public async Task ListConversations_ExcludesSoftDeleted()
     {
-        var store = new InMemoryConversationStore();
+        var store = new InMemoryConversationStore(UserContext());
         await store.CreateAsync(CreateRecord(conversationId: "keep"));
         await store.CreateAsync(CreateRecord(conversationId: "drop"));
         await store.SoftDeleteAsync("t1", "drop");
@@ -146,7 +171,7 @@ public class InMemoryConversationStoreTests
     [Fact]
     public async Task SearchConversations_MatchesTitleAndContent()
     {
-        var store = new InMemoryConversationStore();
+        var store = new InMemoryConversationStore(UserContext());
         await store.CreateAsync(CreateRecord(conversationId: "c1"));
         await store.AppendMessagesAsync("t1", "c1", 1,
             new[] { CreateMessage("m1", 1, content: "unique needle text") });
@@ -157,9 +182,24 @@ public class InMemoryConversationStoreTests
     }
 
     [Fact]
+    public async Task ListAndSearchConversations_ExcludeNonUserTypes()
+    {
+        var store = new InMemoryConversationStore(UserContext());
+        await store.CreateAsync(CreateRecord(conversationId: "channel", type: ConversationType.Channel));
+        await store.AppendMessagesAsync("t1", "channel", 1,
+            new[] { CreateMessage("m1", 1, content: "channel needle") });
+        await store.CreateAsync(CreateRecord(conversationId: "internal", type: ConversationType.Internal));
+        await store.AppendMessagesAsync("t1", "internal", 1,
+            new[] { CreateMessage("m2", 1, content: "internal needle") });
+
+        Assert.Empty(await store.ListConversationsAsync("t1", 0, 10));
+        Assert.Empty(await store.SearchConversationsAsync("t1", "needle", 0, 10));
+    }
+
+    [Fact]
     public async Task UpdateStatus_ExpectedVersion_Succeeds()
     {
-        var store = new InMemoryConversationStore();
+        var store = new InMemoryConversationStore(UserContext());
         await store.CreateAsync(CreateRecord());
 
         var ok = await store.UpdateStatusAsync("t1", "c1", ConversationStatus.Completed, 1);
@@ -173,7 +213,7 @@ public class InMemoryConversationStoreTests
     [Fact]
     public async Task UpdateStatus_WrongVersion_Fails()
     {
-        var store = new InMemoryConversationStore();
+        var store = new InMemoryConversationStore(UserContext());
         await store.CreateAsync(CreateRecord());
 
         var ok = await store.UpdateStatusAsync("t1", "c1", ConversationStatus.Completed, 5);

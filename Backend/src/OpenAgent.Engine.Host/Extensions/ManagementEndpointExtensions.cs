@@ -41,6 +41,8 @@ internal static class ManagementEndpointExtensions
             if (!HasScope(context, "agent.config.read"))
                 return Results.Forbid();
             AgentConfigEntity? entity = await manager.GetAsync(agentId, cancellationToken).ConfigureAwait(false);
+            if (entity != null && !CanAccessAgent(entity, RequireTenant(context)))
+                return Results.Forbid();
             return entity == null ? Results.NotFound() : Results.Ok(Redact(entity));
         });
 
@@ -180,6 +182,7 @@ internal static class ManagementEndpointExtensions
 
         group.MapPut("/agents/{agentId}/config", async (
             [FromServices] AgentConfigManagementService manager,
+            [FromServices] ISkillCatalogStore skillCatalog,
             HttpContext context,
             string agentId,
             [FromBody] AgentConfigEntity entity,
@@ -187,7 +190,37 @@ internal static class ManagementEndpointExtensions
         {
             if (!HasScope(context, "agent.config.write"))
                 return Results.Forbid();
+            string tenantId = RequireTenant(context);
             AgentConfigEntity? existing = await manager.GetAsync(agentId, cancellationToken).ConfigureAwait(false);
+            if (existing != null && !CanAccessAgent(existing, tenantId))
+                return Results.Forbid();
+            if (!string.IsNullOrWhiteSpace(entity.TenantId)
+                && !string.Equals(entity.TenantId, tenantId, StringComparison.Ordinal))
+                return Results.Forbid();
+            entity.TenantId = tenantId;
+            entity.Config.TenantId = tenantId;
+            foreach (SkillInstanceConfig skill in entity.Config.Skills.Instances)
+            {
+                if (!string.IsNullOrWhiteSpace(skill.TenantId)
+                    && !string.Equals(skill.TenantId, tenantId, StringComparison.Ordinal))
+                    return Results.Forbid();
+                skill.TenantId = tenantId;
+            }
+            foreach (string skillId in entity.Config.Skills.EnabledSkills)
+            {
+                bool isEmbedded = entity.Config.Skills.Instances.Any(skill =>
+                    string.Equals(skill.Id, skillId, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(skill.Name, skillId, StringComparison.OrdinalIgnoreCase));
+                if (isEmbedded)
+                    continue;
+
+                SkillInstanceConfig? packageSkill = await skillCatalog.GetAsync(
+                    tenantId,
+                    skillId,
+                    cancellationToken).ConfigureAwait(false);
+                if (packageSkill == null)
+                    return Results.BadRequest(new { error = $"Skill '{skillId}' is not available to this tenant." });
+            }
             AgentConfigEntity merged = MergeSecrets(existing, entity);
             AgentConfigEntity? saved = await manager.SaveAsync(
                 agentId,
@@ -224,21 +257,16 @@ internal static class ManagementEndpointExtensions
             return Results.Ok(servers.Select(RedactMcpServer));
         });
 
-        group.MapGet("/mcp/runtime", (
-            [FromServices] IOptions<McpExecutionOptions> executionOptions,
-            HttpContext context) =>
+        group.MapGet("/mcp/{id}", async (
+            [FromServices] McpProfileManagementService manager,
+            HttpContext context,
+            string id,
+            CancellationToken cancellationToken) =>
         {
             if (!HasScope(context, "agent.config.read"))
                 return Results.Forbid();
-            McpExecutionOptions policy = executionOptions.Value;
-            return Results.Ok(new McpRuntimeStatus
-            {
-                StdioEnabled = policy.AllowStdio,
-                StdioIsolation = policy.AllowStdio ? "trusted-host-process" : "disabled",
-                AllowedCommands = policy.AllowedCommands.ToArray(),
-                AllowedEnvironmentVariables = policy.AllowedEnvironmentVariables.ToArray(),
-                AllowedWorkingDirectories = policy.AllowedWorkingDirectories.ToArray()
-            });
+            McpServerConfig? server = await manager.GetAsync(id, cancellationToken).ConfigureAwait(false);
+            return server == null ? Results.NotFound() : Results.Ok(RedactMcpServer(server));
         });
 
         group.MapPut("/mcp/{id}", async (
@@ -425,7 +453,39 @@ internal static class ManagementEndpointExtensions
         {
             if (!HasScope(context, "agent.config.read"))
                 return Results.Forbid();
-            return Results.Ok(await catalog.ListAsync(cancellationToken).ConfigureAwait(false));
+            return Results.Ok(await catalog.ListAsync(
+                RequireTenant(context),
+                cancellationToken).ConfigureAwait(false));
+        });
+
+        group.MapGet("/skills/{skillId}/source", async (
+            [FromServices] SkillPackageManagementService packages,
+            HttpContext context,
+            string skillId,
+            CancellationToken cancellationToken) =>
+        {
+            if (!HasScope(context, "agent.config.read"))
+                return Results.Forbid();
+            string? markdown = await packages.ReadMarkdownAsync(
+                RequireTenant(context),
+                skillId,
+                cancellationToken).ConfigureAwait(false);
+            return markdown == null ? Results.NotFound() : Results.Ok(new { markdown });
+        });
+
+        group.MapGet("/skills/{skillId}", async (
+            [FromServices] ISkillCatalogStore catalog,
+            HttpContext context,
+            string skillId,
+            CancellationToken cancellationToken) =>
+        {
+            if (!HasScope(context, "agent.config.read"))
+                return Results.Forbid();
+            SkillInstanceConfig? skill = await catalog.GetAsync(
+                RequireTenant(context),
+                skillId,
+                cancellationToken).ConfigureAwait(false);
+            return skill == null ? Results.NotFound() : Results.Ok(skill);
         });
 
         group.MapGet("/skills/runtime", (
@@ -515,7 +575,10 @@ internal static class ManagementEndpointExtensions
         {
             if (!HasScope(context, "agent.config.write"))
                 return Results.Forbid();
-            return await packages.DeleteCatalogAsync(skillId, cancellationToken).ConfigureAwait(false)
+            return await packages.DeleteCatalogAsync(
+                RequireTenant(context),
+                skillId,
+                cancellationToken).ConfigureAwait(false)
                 ? Results.NoContent()
                 : Results.NotFound();
         });
@@ -564,6 +627,8 @@ internal static class ManagementEndpointExtensions
             }
             if (!result.AgentExists)
                 return Results.NotFound();
+            if (result.HasTenantMismatch)
+                return Results.Forbid();
             if (result.HasConflict)
                 return Results.Conflict();
             return Results.Ok(new
@@ -585,6 +650,7 @@ internal static class ManagementEndpointExtensions
                 return Results.Forbid();
             SkillPackageDeleteResult result = await packages.DeleteAsync(
                 agentId,
+                RequireTenant(context),
                 skillId,
                 context.Request.Headers.IfMatch.FirstOrDefault(),
                 cancellationToken).ConfigureAwait(false);
@@ -592,6 +658,7 @@ internal static class ManagementEndpointExtensions
             {
                 SkillPackageDeleteResult.Deleted => Results.NoContent(),
                 SkillPackageDeleteResult.Conflict => Results.Conflict(),
+                SkillPackageDeleteResult.TenantMismatch => Results.Forbid(),
                 _ => Results.NotFound()
             };
         });
@@ -605,7 +672,7 @@ internal static class ManagementEndpointExtensions
             if (!HasScope(context, "capability.test"))
                 return Results.Forbid();
             SkillPackageValidationResult result = await packages
-                .ValidateAsync(skills, cancellationToken)
+                .ValidateAsync(RequireTenant(context), skills, cancellationToken)
                 .ConfigureAwait(false);
             return Results.Ok(result);
         });
@@ -617,6 +684,16 @@ internal static class ManagementEndpointExtensions
     {
         return context.User.Identity?.IsAuthenticated == true;
     }
+
+    private static string RequireTenant(HttpContext context) =>
+        context.GetAgentRequest().User.TenantId
+        ?? throw new InvalidOperationException("TenantId is required.");
+
+    private static bool CanAccessAgent(AgentConfigEntity entity, string tenantId) =>
+        string.Equals(entity.TenantId, tenantId, StringComparison.Ordinal)
+        || string.IsNullOrWhiteSpace(entity.TenantId)
+            && entity.Config.Skills.EnabledSkills.Count == 0
+            && entity.Config.Skills.Instances.Count == 0;
 
     private static AgentConfigEntity MergeSecrets(AgentConfigEntity? existing, AgentConfigEntity requested)
     {

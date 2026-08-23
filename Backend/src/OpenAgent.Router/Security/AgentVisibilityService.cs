@@ -31,7 +31,13 @@ internal sealed class AgentVisibilityService : IAgentVisibilityService
             return true;
         }
 
-        return IsAllowedForUser(acl, userContext);
+        bool allowed = IsAllowedForUser(acl, userContext);
+        if (!allowed)
+        {
+            RouterMeter.RecordAclDenial();
+        }
+
+        return allowed;
     }
 
     public async Task<List<string>> GetPublishedAgentIdsAsync(CancellationToken cancellationToken = default)

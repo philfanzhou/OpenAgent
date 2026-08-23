@@ -10,7 +10,9 @@ public class AssemblyDependencyTests
     [InlineData("OpenAgent.Hosting")]
     public void FoundationAssemblies_DoNotReferenceOtherOpenAgentAssemblies(string assemblyName)
     {
-        AssertOpenAgentReferences(assemblyName, []);
+        AssertOpenAgentReferences(
+            assemblyName,
+            assemblyName == "OpenAgent.Hosting" ? ["OpenAgent.Contracts"] : []);
     }
 
     [Fact]

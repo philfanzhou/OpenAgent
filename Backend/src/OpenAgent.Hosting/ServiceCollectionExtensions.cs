@@ -3,6 +3,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using OpenAgent.Contracts.Security;
 using OpenAgent.Hosting.Authentication;
 using OpenAgent.Hosting.Security;
 using OpenTelemetry.Logs;
@@ -55,6 +56,7 @@ public static class ServiceCollectionExtensions
                         .WithOrigins(options.CorsAllowedOrigins)
                         .AllowAnyMethod()
                         .AllowAnyHeader()
+                        .WithExposedHeaders("X-OpenAgent-Selected-Agent-Id")
                         .AllowCredentials()
                         .SetPreflightMaxAge(TimeSpan.FromMinutes(30));
                 });
@@ -68,6 +70,8 @@ public static class ServiceCollectionExtensions
         }
 
         services.AddControllers();
+        services.AddHttpContextAccessor();
+        services.AddScoped<ICurrentUserContext, HttpCurrentUserContext>();
         services.AddHttpClient("AgentLogin", client =>
         {
             client.Timeout = TimeSpan.FromSeconds(30);

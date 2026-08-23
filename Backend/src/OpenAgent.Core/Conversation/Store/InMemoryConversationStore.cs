@@ -1,11 +1,15 @@
 using System.Collections.Concurrent;
 using OpenAgent.Contracts.Conversation;
+using OpenAgent.Contracts.Security;
 
 namespace OpenAgent.Core.Conversation.Store;
 
 internal sealed class InMemoryConversationStore : IConversationStore
 {
     private readonly ConcurrentDictionary<string, ConversationRecord> _store = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ICurrentUserContext _currentUser;
+
+    public InMemoryConversationStore(ICurrentUserContext currentUser) => _currentUser = currentUser;
 
     public Task<IReadOnlyList<ConversationMessage>> GetMessagesAsync(
         string tenantId, string conversationId, int maxMessages, CancellationToken cancellationToken = default)
@@ -124,6 +128,8 @@ internal sealed class InMemoryConversationStore : IConversationStore
         var records = _store.Values
             .Where(r => string.Equals(r.TenantId, tenantId, StringComparison.OrdinalIgnoreCase))
             .Where(r => !r.IsDeletedByUser)
+            .Where(r => string.Equals(r.UserId, _currentUser.UserId, StringComparison.OrdinalIgnoreCase))
+            .Where(r => r.Type == ConversationType.User)
             .OrderByDescending(r => r.LastMessageAt)
             .Skip(skip)
             .Take(take)
@@ -140,6 +146,8 @@ internal sealed class InMemoryConversationStore : IConversationStore
         var records = _store.Values
             .Where(r => string.Equals(r.TenantId, tenantId, StringComparison.OrdinalIgnoreCase))
             .Where(r => !r.IsDeletedByUser)
+            .Where(r => string.Equals(r.UserId, _currentUser.UserId, StringComparison.OrdinalIgnoreCase))
+            .Where(r => r.Type == ConversationType.User)
             .Where(r => r.Title != null && r.Title.Contains(keyword, StringComparison.OrdinalIgnoreCase)
                         || r.Messages.Any(m => m.Content != null && m.Content.Contains(keyword, StringComparison.OrdinalIgnoreCase)))
             .OrderByDescending(r => r.LastMessageAt)
@@ -169,11 +177,32 @@ internal sealed class InMemoryConversationStore : IConversationStore
         return Task.FromResult(true);
     }
 
+    public Task<bool> RecordCompressionAsync(
+        string tenantId,
+        string conversationId,
+        ContextSummary summary,
+        CancellationToken cancellationToken = default)
+    {
+        var key = BuildKey(tenantId, conversationId);
+        if (!_store.TryGetValue(key, out var record))
+        {
+            return Task.FromResult(false);
+        }
+
+        lock (record)
+        {
+            record.ContextSummaries.Add(summary);
+            record.UpdatedAt = DateTimeOffset.UtcNow;
+        }
+        return Task.FromResult(true);
+    }
+
     private static ConversationRecord StripMessages(ConversationRecord r) => new()
     {
         ConversationId = r.ConversationId,
         TenantId = r.TenantId,
         UserId = r.UserId,
+        Type = r.Type,
         AgentId = r.AgentId,
         TraceId = r.TraceId,
         Version = r.Version,
@@ -186,7 +215,8 @@ internal sealed class InMemoryConversationStore : IConversationStore
         IsDeletedByUser = r.IsDeletedByUser,
         DeletedAt = r.DeletedAt,
         ArchivedAt = r.ArchivedAt,
-        Messages = []
+        Messages = [],
+        ContextSummaries = []
     };
 
     private static string BuildKey(string tenantId, string conversationId) => $"{tenantId}:{conversationId}";

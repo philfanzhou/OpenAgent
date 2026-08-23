@@ -9,7 +9,9 @@ pnpm install
 pnpm dev
 ```
 
-在设置窗口分别保存 Router 地址（例如 `http://localhost:5001`）与 Engine 地址（例如 `http://localhost:5208`），选择本次连接模式，再填写租户并使用开发环境 Basic 账号登录。两套地址和当前模式保存在浏览器本地，切换模式不会覆盖另一套地址。当前 Basic 实现仅用于本地联调：它只解码凭据，不校验密码，不能作为生产认证方案。
+登录页默认连接 Router `http://localhost:5001`。Development 可填写任意非空账号密码建立 Basic 联调身份；该方式不校验真实密码，不能用于生产。Production 使用企业 IdP 的 OIDC Authorization Code + PKCE，API 仅接受经过 issuer、audience、签名和有效期校验的 JWT Bearer token。
+
+连接地址、模式与租户配置可保存在 `localStorage`；凭据、OIDC 临时参数和 token 只进入当前标签页的 `sessionStorage`。token 绑定到登录时的服务地址，切换地址必须重新登录；退出会清除 token、OIDC state/PKCE verifier、会话数据与未发送内容。
 
 ## 验证
 
@@ -22,4 +24,4 @@ pnpm build
 
 ## 生产边界
 
-生产环境建议通过 Router 接入企业身份提供方与统一权限策略。直连 Engine 会绕过 Router 的意图识别、服务发现、外部 Provider 和 Router 权限边界，只适合受控网络或开发联调；服务端仍不得信任客户端提交的内部身份 Header。
+生产环境必须通过 Router 接入可验证的企业身份提供方。登录页不解释角色、Agent ACL 或租户权限；401 会清理会话并跳转登录，403 保留身份并展示禁止访问状态。直连 Engine 会绕过 Router 的意图识别、服务发现、外部 Provider 和 Router 权限边界，只适合受控网络或开发联调。

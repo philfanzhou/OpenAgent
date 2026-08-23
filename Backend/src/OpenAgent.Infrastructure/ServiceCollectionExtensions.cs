@@ -7,6 +7,8 @@ using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Infrastructure;
+using OpenAgent.Contracts.Skills;
+using OpenAgent.Infrastructure.Skills;
 using StackExchange.Redis;
 
 namespace OpenAgent.Infrastructure;
@@ -33,8 +35,12 @@ public static class ServiceCollectionExtensions
         services.Configure<ConversationCacheOptions>(options =>
             configuration.GetSection(ConversationCacheOptions.SectionName).Bind(options));
 
-        services.AddSingleton<EfCoreConversationStore>();
+        // The durable conversation store evaluates tenant/user ownership from
+        // the request-scoped current-user context, so it must not be captured
+        // by a singleton registration.
+        services.AddScoped<EfCoreConversationStore>();
         services.AddSingleton<IFileAssetRepository, EfCoreFileAssetRepository>();
+        services.AddSingleton<ISkillDefinitionRepository, EfCoreSkillDefinitionRepository>();
 
         ConversationCacheOptions cache = configuration.GetSection(ConversationCacheOptions.SectionName)
             .Get<ConversationCacheOptions>() ?? new();
@@ -52,7 +58,7 @@ public static class ServiceCollectionExtensions
                 return ConnectionMultiplexer.Connect(options);
             });
             services.AddSingleton<IConversationCache, RedisConversationCache>();
-            services.AddSingleton<IConversationStore>(serviceProvider => new WriteThroughConversationStore(
+            services.AddScoped<IConversationStore>(serviceProvider => new WriteThroughConversationStore(
                 serviceProvider.GetRequiredService<EfCoreConversationStore>(),
                 serviceProvider.GetRequiredService<IConversationCache>(),
                 serviceProvider.GetRequiredService<ILogger<WriteThroughConversationStore>>()));
@@ -60,7 +66,7 @@ public static class ServiceCollectionExtensions
         }
         else
         {
-            services.AddSingleton<IConversationStore>(serviceProvider =>
+            services.AddScoped<IConversationStore>(serviceProvider =>
                 serviceProvider.GetRequiredService<EfCoreConversationStore>());
         }
 

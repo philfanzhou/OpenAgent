@@ -107,8 +107,8 @@ internal sealed class ErrorMapper(ProblemDetailsFactory problemDetailsFactory)
         AgentErrorCode.SkillQuotaExceeded or AgentErrorCode.LlmQuotaExceeded => 429,
         AgentErrorCode.InvalidRequest or AgentErrorCode.MissingRequiredField
             or AgentErrorCode.InvalidIdempotencyKey or AgentErrorCode.SkillValidationFailed => 400,
-        AgentErrorCode.TenantMismatch or AgentErrorCode.TenantNotFound
-            or AgentErrorCode.TenantDataIsolationViolation => 400,
+        AgentErrorCode.TenantMismatch => 403,
+        AgentErrorCode.TenantNotFound or AgentErrorCode.TenantDataIsolationViolation => 400,
         AgentErrorCode.Conflict => 409,
         AgentErrorCode.DependencyUnavailable => 503,
         _ => 500

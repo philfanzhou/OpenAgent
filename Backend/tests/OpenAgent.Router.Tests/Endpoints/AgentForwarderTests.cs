@@ -4,7 +4,6 @@ using Microsoft.Extensions.Logging.Abstractions;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Router.Endpoints;
-using OpenAgent.Router.Middleware;
 using OpenAgent.Router.Models;
 using Xunit;
 
@@ -29,9 +28,11 @@ public class AgentForwarderTests
         {
             RequestServices = services
         };
-        context.Items[TenantIsolationMiddleware.TenantItemKey] = "request-tenant";
         context.Features.Set(new AgentRoutingFeature("conversation-1", provider.Id));
-        using var forwarder = new AgentForwarder(null!, NullLogger<AgentForwarder>.Instance);
+        using var forwarder = new AgentForwarder(
+            null!,
+            NullLogger<AgentForwarder>.Instance,
+            new StubEndpointHealthTracker());
 
         await forwarder.ForwardAsync(
             context,
@@ -41,7 +42,7 @@ public class AgentForwarderTests
 
         Assert.Equal(StatusCodes.Status503ServiceUnavailable, context.Response.StatusCode);
         Assert.Equal("stream", provider.Action);
-        Assert.Equal("request-tenant", provider.TenantId);
+        Assert.Equal("user-tenant", provider.TenantId);
         Assert.Equal("conversation-1", provider.ConversationId);
     }
 
@@ -52,9 +53,16 @@ public class AgentForwarderTests
         public string? TenantId { get; private set; }
         public string? ConversationId { get; private set; }
 
-        public Task<IReadOnlyList<AgentSummary>> GetAgentsAsync(
+        public Task<AgentProviderCatalog> GetAgentsAsync(
+            AgentProviderRequestContext requestContext,
             CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<AgentSummary>>([]);
+            Task.FromResult(new AgentProviderCatalog([]));
+
+        public Task<AgentProviderConversationStatus> ResolveConversationAsync(
+            AgentProviderRequestContext requestContext,
+            string conversationId,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(AgentProviderConversationStatus.NotFound);
 
         public Task<IntentRecognitionResult?> RecognizeIntentAsync(
             string intentAgentId,
@@ -79,5 +87,12 @@ public class AgentForwarderTests
             HttpRequestMessage request,
             AgentForwardingTarget target,
             CancellationToken cancellationToken) => ValueTask.CompletedTask;
+    }
+
+    private sealed class StubEndpointHealthTracker : IEndpointHealthTracker
+    {
+        public bool IsAvailable(string endpoint) => true;
+        public void ReportSuccess(string endpoint) { }
+        public void ReportFailure(string endpoint) { }
     }
 }

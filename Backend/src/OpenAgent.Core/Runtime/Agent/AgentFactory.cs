@@ -4,17 +4,17 @@ using OpenAgent.Core.Capabilities;
 using OpenAgent.Core.Capabilities.Mcp;
 using OpenAgent.Core.Capabilities.Skill;
 using OpenAgent.Contracts.Configuration;
+using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Conversation;
 using OpenAgent.Core.Files;
-using OpenAgent.Contracts.Files;
 
 namespace OpenAgent.Core.Runtime.Agent;
 
 internal sealed class AgentFactory
 {
-    private readonly AgentChatClientFactory _chatClients;
+    private readonly IAgentChatClientFactory _chatClients;
     private readonly ConversationHistoryFactory _conversations;
     private readonly CapabilityToolFactory _capabilities;
     private readonly McpToolFactory _mcpTools;
@@ -22,7 +22,7 @@ internal sealed class AgentFactory
     private readonly FileAssetExecutionContext _files;
 
     public AgentFactory(
-        AgentChatClientFactory chatClients,
+        IAgentChatClientFactory chatClients,
         ConversationHistoryFactory conversations,
         CapabilityToolFactory capabilities,
         McpToolFactory mcpTools,
@@ -45,13 +45,21 @@ internal sealed class AgentFactory
         CancellationToken cancellationToken)
     {
         IChatClient modelClient = _chatClients.Create(profile.Model);
+        IChatClient summarizationClient = _chatClients.CreateSummarizationClient(
+            profile.Model,
+            profile.Config.ContextPolicy);
         _files.Set(new OpenAgent.Contracts.Files.FileAssetScope
         {
             TenantId = user.TenantId ?? string.Empty,
             UserId = user.UserId,
             ConversationId = request.ConversationId
         });
-        PlatformChatHistory history = _conversations.Create(profile.AgentId, request, user, files);
+        PlatformChatHistory history = _conversations.Create(
+            profile.AgentId,
+            profile.Model.ModelId,
+            request,
+            user,
+            files);
         IReadOnlyList<AITool> tools = await _capabilities.CreateAsync(
             profile.AgentId,
             profile.Config,
@@ -72,7 +80,16 @@ internal sealed class AgentFactory
                 user,
                 cancellationToken).ConfigureAwait(false);
 
-            IChatClient chatClient = new FunctionInvokingChatClient(modelClient)
+            AIContextProvider compaction = _conversations.CreateCompaction(
+                profile.Config.ContextPolicy,
+                summarizationClient,
+                user.TenantId,
+                request.ConversationId);
+            IChatClient compactingClient = modelClient
+                .AsBuilder()
+                .UseAIContextProviders(compaction)
+                .Build();
+            IChatClient chatClient = new FunctionInvokingChatClient(compactingClient)
             {
                 AllowConcurrentInvocation = false,
                 IncludeDetailedErrors = false,
@@ -86,14 +103,6 @@ internal sealed class AgentFactory
             {
                 providers.Add(skillsRuntime.Provider);
             }
-            AIContextProvider? compaction = _conversations.CreateCompaction(
-                profile.Config.ContextPolicy,
-                modelClient);
-            if (compaction != null)
-            {
-                providers.Add(compaction);
-            }
-
             AIAgent agent = new ChatClientAgent(chatClient, new ChatClientAgentOptions
             {
                 Id = profile.AgentId,

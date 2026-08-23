@@ -1,5 +1,5 @@
-using System.Text.Json;
 using System.Text;
+using System.Text.Json;
 using Microsoft.Extensions.AI;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Files;
@@ -38,7 +38,13 @@ internal static class AgentMessageAdapter
             StringComparison.OrdinalIgnoreCase)
                 ? $"[Conversation summary]\n{message.Content}"
                 : message.Content;
-        var chatMessage = new ChatMessage(role.Value, content);
+        var contents = new List<AIContent>();
+        if (!string.IsNullOrEmpty(content))
+        {
+            contents.Add(new TextContent(content));
+        }
+
+        var chatMessage = new ChatMessage(role.Value, contents);
         if (role == Microsoft.Extensions.AI.ChatRole.Tool
             && !string.IsNullOrEmpty(message.ToolCallId))
         {
@@ -66,6 +72,13 @@ internal static class AgentMessageAdapter
             return null;
         }
 
+        if (role == Microsoft.Extensions.AI.ChatRole.Assistant
+            && message.Metadata?.GetValueOrDefault("Reasoning") is string reasoning
+            && !string.IsNullOrWhiteSpace(reasoning))
+        {
+            chatMessage.Contents.Add(new TextReasoningContent(reasoning));
+        }
+
         return chatMessage;
     }
 
@@ -77,13 +90,31 @@ internal static class AgentMessageAdapter
         var toolNames = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (ChatMessage message in messages)
         {
-            string? role = message.Role == Microsoft.Extensions.AI.ChatRole.User
-                ? "user"
-                : message.Role == Microsoft.Extensions.AI.ChatRole.Assistant
-                    ? "assistant"
-                    : message.Role == Microsoft.Extensions.AI.ChatRole.Tool
-                        ? "tool"
-                        : null;
+            bool isSummary = message.AdditionalProperties?.TryGetValue(
+                Microsoft.Agents.AI.Compaction.CompactionMessageGroup.SummaryPropertyKey,
+                out object? summaryValue) == true
+                && summaryValue is true;
+            string? role;
+            if (isSummary)
+            {
+                role = "summary";
+            }
+            else if (message.Role == Microsoft.Extensions.AI.ChatRole.User)
+            {
+                role = "user";
+            }
+            else if (message.Role == Microsoft.Extensions.AI.ChatRole.Assistant)
+            {
+                role = "assistant";
+            }
+            else if (message.Role == Microsoft.Extensions.AI.ChatRole.Tool)
+            {
+                role = "tool";
+            }
+            else
+            {
+                role = null;
+            }
             if (role == null)
             {
                 continue;
@@ -201,8 +232,33 @@ internal static class AgentMessageAdapter
             FileIds = message.FileIds
                 .Concat(files.Select(file => file.FileId))
                 .Distinct(StringComparer.Ordinal)
-                .ToArray()
+                .ToArray(),
+            TokenUsage = message.TokenUsage,
+            ModelId = message.ModelId
         };
+    }
+
+    internal static IEnumerable<ChatMessage> RemoveEmptyOpenAIToolCallText(
+        IEnumerable<ChatMessage> messages)
+    {
+        foreach (ChatMessage message in messages)
+        {
+            if (message.Role != Microsoft.Extensions.AI.ChatRole.Assistant
+                || !message.Contents.OfType<FunctionCallContent>().Any()
+                || !message.Contents.OfType<TextContent>().Any(content =>
+                    string.IsNullOrEmpty(content.Text)))
+            {
+                yield return message;
+                continue;
+            }
+
+            ChatMessage normalized = message.Clone();
+            normalized.Contents = normalized.Contents
+                .Where(content => content is not TextContent text
+                    || !string.IsNullOrEmpty(text.Text))
+                .ToList();
+            yield return normalized;
+        }
     }
 
     private static ConversationMessage CreateStored(

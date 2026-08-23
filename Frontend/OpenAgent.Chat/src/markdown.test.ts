@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { renderMarkdown } from './markdown'
-import { buildDisplayMessages, fileLabel, formatFileSize, parseToolArguments, toolPresentation } from './messagePresentation'
-import type { ConversationMessage } from './types'
+import { buildConversationTimeline, buildDisplayMessages, fileLabel, formatFileSize, mergeAssistantSnapshot, parseToolArguments, toolPresentation } from './messagePresentation'
+import type { ContextSummary, ConversationMessage } from './types'
 
 describe('message presentation', () => {
   it('renders common markdown while escaping raw HTML', () => {
@@ -47,6 +47,123 @@ describe('message presentation', () => {
     expect(result[0]?.toolActivities).toEqual([{ name: 'write_file', callId: 'call-1', arguments: { path: 'report.md' }, result: 'created' }])
   })
 
+  it('merges every assistant phase in one turn without losing reasoning, calls, results, or content', () => {
+    const messages: ConversationMessage[] = [
+      { messageId: 'user-1', sequence: 1, role: 'user', content: 'Prepare the report', timestamp: '2026-08-19T01:00:00Z' },
+      {
+        messageId: 'assistant-1', sequence: 2, role: 'assistant', content: 'I will inspect the source.', timestamp: '2026-08-19T01:00:01Z',
+        reasoning: 'Find the source.', toolName: 'load_skill', toolCallId: 'call-1', metadata: { ToolArguments: '{"name":"reports"}' },
+      },
+      { messageId: 'tool-1', sequence: 3, role: 'tool', content: 'Skill loaded', timestamp: '2026-08-19T01:00:02Z', toolCallId: 'call-1' },
+      {
+        messageId: 'assistant-2', sequence: 4, role: 'assistant', content: '', timestamp: '2026-08-19T01:00:03Z',
+        reasoning: 'Write the report.', toolName: 'write_file', toolCallId: 'call-2', metadata: { ToolArguments: '{"path":"report.md"}' },
+      },
+      { messageId: 'tool-2', sequence: 5, role: 'tool', content: '{"created":true}', timestamp: '2026-08-19T01:00:04Z', toolCallId: 'call-2' },
+      { messageId: 'assistant-3', sequence: 6, role: 'assistant', content: 'The report is ready.', timestamp: '2026-08-19T01:00:05Z' },
+    ]
+
+    const result = buildDisplayMessages(messages)
+
+    expect(result).toHaveLength(2)
+    expect(result[1]).toMatchObject({
+      messageId: 'assistant-1',
+      role: 'assistant',
+      content: 'I will inspect the source.\nThe report is ready.',
+      reasoning: 'Find the source.\nWrite the report.',
+    })
+    expect(result[1]?.toolActivities).toEqual([
+      { name: 'load_skill', callId: 'call-1', arguments: { name: 'reports' }, result: 'Skill loaded' },
+      { name: 'write_file', callId: 'call-2', arguments: { path: 'report.md' }, result: '{"created":true}' },
+    ])
+    expect(result[1]?.processActivities).toEqual([
+      { kind: 'reasoning', content: 'Find the source.' },
+      { kind: 'tool', tool: { name: 'load_skill', callId: 'call-1', arguments: { name: 'reports' }, result: 'Skill loaded' } },
+      { kind: 'reasoning', content: 'Write the report.' },
+      { kind: 'tool', tool: { name: 'write_file', callId: 'call-2', arguments: { path: 'report.md' }, result: '{"created":true}' } },
+    ])
+
+    const streamed: ConversationMessage = {
+      messageId: 'stream', sequence: 2, role: 'assistant', timestamp: '2026-08-19T01:00:01Z',
+      content: 'I will inspect the source.\nThe report is ready.',
+      reasoning: 'Find the source.\nWrite the report.',
+      toolActivities: [
+        { name: 'load_skill', callId: 'call-1', arguments: { name: 'reports' } },
+        { name: 'write_file', callId: 'call-2', arguments: { path: 'report.md' } },
+      ],
+    }
+    expect(buildDisplayMessages(mergeAssistantSnapshot(messages, streamed))).toEqual(result)
+    expect(buildDisplayMessages(result)).toEqual(result)
+  })
+
+  it('separates new assistant messages with a line break instead of concatenating them', () => {
+    const messages: ConversationMessage[] = [
+      { messageId: 'assistant-1', sequence: 1, role: 'assistant', content: 'First response', reasoning: 'First thought', timestamp: '' },
+      { messageId: 'assistant-2', sequence: 2, role: 'assistant', content: 'Second response', reasoning: 'Second thought', timestamp: '' },
+    ]
+
+    expect(buildDisplayMessages(messages)[0]).toMatchObject({
+      content: 'First response\nSecond response',
+      reasoning: 'First thought\nSecond thought',
+    })
+  })
+
+  it('keeps assistant executions separated by user turns', () => {
+    const messages: ConversationMessage[] = [
+      { messageId: 'assistant-1', sequence: 1, role: 'assistant', content: 'First answer', timestamp: '' },
+      { messageId: 'user-1', sequence: 2, role: 'user', content: 'Follow-up', timestamp: '' },
+      { messageId: 'assistant-2', sequence: 3, role: 'assistant', content: 'Second answer', timestamp: '' },
+    ]
+
+    expect(buildDisplayMessages(messages).map(message => message.content)).toEqual([
+      'First answer',
+      'Follow-up',
+      'Second answer',
+    ])
+  })
+
+  it('keeps incomplete tool history in one assistant message after cancellation', () => {
+    const messages: ConversationMessage[] = [
+      { messageId: 'call', sequence: 1, role: 'assistant', content: '', timestamp: '2026-08-19T01:00:00Z', toolName: 'read_file', toolCallId: 'call-1', metadata: { ToolArguments: '{bad json' } },
+      { messageId: 'result', sequence: 2, role: 'tool', content: 'Cancelled by caller', timestamp: '2026-08-19T01:00:01Z', toolCallId: 'call-1' },
+    ]
+
+    const result = buildDisplayMessages(messages)
+
+    expect(result).toHaveLength(1)
+    expect(result[0]?.toolActivities).toEqual([
+      { name: 'read_file', callId: 'call-1', arguments: '{bad json', result: 'Cancelled by caller' },
+    ])
+  })
+
+  it('reconciles persisted tool results with the streamed snapshot and error', () => {
+    const persisted: ConversationMessage[] = [
+      {
+        messageId: 'call', sequence: 1, role: 'assistant', content: '', timestamp: '', reasoning: 'Trying the write.',
+        toolName: 'write_file', toolCallId: 'call-1', metadata: { ToolArguments: '{"path":"report.md"}' },
+      },
+      { messageId: 'result', sequence: 2, role: 'tool', content: 'Permission denied', timestamp: '', toolCallId: 'call-1' },
+    ]
+    const streamed: ConversationMessage = {
+      messageId: 'stream', sequence: 1, role: 'assistant', content: 'Partial response', timestamp: '',
+      reasoning: 'Trying the write.',
+      toolActivities: [{ name: 'write_file', callId: 'call-1', arguments: { path: 'report.md' } }],
+      error: { title: 'Execution failed', detail: 'Permission denied', traceId: 'trace-1' },
+    }
+
+    const result = buildDisplayMessages(mergeAssistantSnapshot(persisted, streamed))
+
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({
+      content: 'Partial response',
+      reasoning: 'Trying the write.',
+      error: { title: 'Execution failed', detail: 'Permission denied', traceId: 'trace-1' },
+    })
+    expect(result[0]?.toolActivities).toEqual([
+      { name: 'write_file', callId: 'call-1', arguments: { path: 'report.md' }, result: 'Permission denied' },
+    ])
+  })
+
   it('keeps malformed tool arguments visible and formats file metadata', () => {
     expect(parseToolArguments('{bad json')).toBe('{bad json')
     expect(formatFileSize(1536)).toBe('2 KB')
@@ -60,5 +177,26 @@ describe('message presentation', () => {
     })
     expect(toolPresentation('load_skill')).toEqual({ kind: 'SKILL', displayName: '加载 Skill 指令' })
     expect(toolPresentation('run_skill_script')).toEqual({ kind: 'SKILL 脚本', displayName: '执行 Skill 脚本' })
+  })
+
+  it('places a compaction summary at its source boundary instead of fixing it at the end', () => {
+    const messages: ConversationMessage[] = [
+      { messageId: 'user-1', sequence: 1, role: 'user', content: 'Before', timestamp: '2026-08-20T01:00:00Z' },
+      { messageId: 'assistant-1', sequence: 2, role: 'assistant', content: 'Answer', timestamp: '2026-08-20T01:00:01Z' },
+      { messageId: 'user-2', sequence: 3, role: 'user', content: 'After', timestamp: '2026-08-20T01:05:00Z' },
+      { messageId: 'assistant-2', sequence: 4, role: 'assistant', content: 'Later answer', timestamp: '2026-08-20T01:05:01Z' },
+    ]
+    const summary: ContextSummary = {
+      compressionId: 'compression-1', strategy: 'summarization', trigger: 'Manual', status: 'Succeeded',
+      summary: 'Compact context', lastCompressedAt: '2026-08-20T01:02:00Z', compressedMessageCount: 2,
+      originalStartSequence: 1, originalEndSequence: 2, originalTokenCount: 500, tokenCount: 200,
+      originalHistoryRestored: false, sourceEndSequence: 2,
+    }
+
+    expect(buildConversationTimeline(messages, [summary]).map(item => item.kind === 'message'
+      ? item.message.messageId
+      : item.summary.compressionId)).toEqual([
+      'user-1', 'assistant-1', 'compression-1', 'user-2', 'assistant-2',
+    ])
   })
 })

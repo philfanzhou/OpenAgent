@@ -106,7 +106,7 @@ services:
       SkillSandbox__MaxOutputBytes: "65536"
       Heartbeat__AdvertisedHost: engine
       Heartbeat__AdvertisedPort: "5208"
-      Authentication__AllowDevelopmentAnonymous: "true"
+      Authentication__AllowDevelopmentAnonymous: "false"
       Cors__AllowedOrigins__0: http://localhost:${OPENAGENT_CHAT_PORT:-8080}
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -142,7 +142,7 @@ services:
       OpenTelemetry__ServiceVersion: development
       RouterSettings__Routing__EngineEndpoint: http://engine:5208
       RouterSettings__IntentRecognition__TimeoutMs: "30000"
-      Authentication__AllowDevelopmentAnonymous: "true"
+      Authentication__AllowDevelopmentAnonymous: "false"
       Cors__AllowedOrigins__0: http://localhost:${OPENAGENT_CHAT_PORT:-8080}
     extra_hosts:
       - "host.docker.internal:host-gateway"

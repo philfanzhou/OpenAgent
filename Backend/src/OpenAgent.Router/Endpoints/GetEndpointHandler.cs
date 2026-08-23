@@ -24,7 +24,7 @@ internal static class GetEndpointHandler
             return Results.Unauthorized();
         }
 
-        var tenantId = userContext.TenantId ?? context.Request.Headers["X-Tenant-Id"].FirstOrDefault();
+        var tenantId = userContext.TenantId;
         var conversationId = conversationIdFromHeader
             ? context.Request.Headers["X-Conversation-Id"].FirstOrDefault()
             : null;
@@ -37,26 +37,42 @@ internal static class GetEndpointHandler
         var normalizedPath = targetPath.StartsWith('/') ? targetPath : "/" + targetPath;
         var targetUrl = $"{targetEndpoint.TrimEnd('/')}{normalizedPath}";
         var traceId = Activity.Current?.Id ?? context.TraceIdentifier;
-        var error = await forwarder.SendAsync(
-            context,
-            targetEndpoint,
-            httpClient,
-            requestConfig,
-            (_, proxyRequest) =>
-            {
-                proxyRequest.Method = HttpMethod.Get;
-                return ForwardingContextBuilder.ApplyAsync(
-                    proxyRequest, new Uri(targetUrl), userContext,
-                    tenantId, conversationId, traceId);
-            }).ConfigureAwait(false);
+        ForwarderError error;
+        try
+        {
+            error = await forwarder.SendAsync(
+                context,
+                targetEndpoint,
+                httpClient,
+                requestConfig,
+                (_, proxyRequest) =>
+                {
+                    proxyRequest.Method = HttpMethod.Get;
+                    return ForwardingContextBuilder.ApplyAsync(
+                        proxyRequest,
+                        new Uri(targetUrl),
+                        traceId);
+                }).ConfigureAwait(false);
+        }
+        catch
+        {
+            RouterMeter.RecordForward("other", succeeded: false);
+            throw;
+        }
+        RouterMeter.RecordForward("other", error == ForwarderError.None);
         if (error == ForwarderError.None)
         {
+            context.RequestServices.GetService<IEndpointHealthTracker>()?.ReportSuccess(targetEndpoint);
             return Results.Empty;
         }
+
+        context.RequestServices.GetService<IEndpointHealthTracker>()?.ReportFailure(targetEndpoint);
+        RouterLog.DownstreamQuarantined(logger, targetEndpoint);
 
         RouterLog.ForwardingFailed(
             logger, context.GetForwarderErrorFeature()?.Exception, error, targetPath,
             targetEndpoint, targetUrl, userContext.UserId, tenantId, traceId);
+        RouterMeter.RecordForwardingFailure("other", error.ToString());
         return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
     }
 }

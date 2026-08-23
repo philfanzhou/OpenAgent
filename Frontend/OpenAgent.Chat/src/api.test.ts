@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { api, fetchHealthReport, getEngineBaseUrl, getRouterBaseUrl, getTenantId, setAccessToken, setConnectionMode, setEngineBaseUrl, setRouterBaseUrl, setTenantId } from './api'
+import { api, ApiError, AUTH_FAILURE_EVENT, clearAuthentication, fetchHealthReport, getAccessToken, getEngineBaseUrl, getRouterBaseUrl, getTenantId, setAccessToken, setConnectionMode, setEngineBaseUrl, setRouterBaseUrl, setTenantId } from './api'
 
 class MemoryStorage implements Storage {
   private readonly values = new Map<string, string>()
@@ -13,9 +13,11 @@ class MemoryStorage implements Storage {
 }
 
 beforeEach(() => {
+  vi.unstubAllGlobals()
   vi.stubGlobal('localStorage', new MemoryStorage())
   vi.stubGlobal('sessionStorage', new MemoryStorage())
   vi.restoreAllMocks()
+  vi.useRealTimers()
 })
 
 describe('workspace API', () => {
@@ -25,7 +27,7 @@ describe('workspace API', () => {
     expect(getTenantId()).toBe('development')
   })
 
-  it('sends gateway identity headers to catalog requests', async () => {
+  it('sends only authentication credentials to catalog requests', async () => {
     setConnectionMode('router')
     setRouterBaseUrl('http://router.example/')
     setAccessToken('encoded-user', 'Basic')
@@ -43,8 +45,71 @@ describe('workspace API', () => {
     expect(url).toBe('http://router.example/api/v1/agent/agents')
     const requestHeaders = init.headers as Headers
     expect(requestHeaders.get('Authorization')).toBe('Basic encoded-user')
-    expect(requestHeaders.get('X-Tenant-Id')).toBe('tenant-1')
+    expect(requestHeaders.has('X-Tenant-Id')).toBe(false)
     expect(requestHeaders.get('X-Trace-Id')).toBeTruthy()
+  })
+
+  it('keeps tokens out of localStorage and binds them to the authenticated endpoint', () => {
+    setConnectionMode('router')
+    setRouterBaseUrl('https://router.example')
+    setAccessToken('session-only-token', 'Bearer', 60)
+
+    expect(getAccessToken()).toBe('session-only-token')
+    expect(localStorage.getItem('openagent.auth.access-token')).toBeNull()
+
+    setRouterBaseUrl('https://other-router.example')
+    expect(getAccessToken()).toBe('')
+  })
+
+  it('drops expired session tokens', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-08-17T00:00:00Z'))
+    setAccessToken('short-lived-token', 'Bearer', 1)
+    vi.setSystemTime(new Date('2026-08-17T00:00:02Z'))
+
+    expect(getAccessToken()).toBe('')
+    expect(sessionStorage.getItem('openagent.auth.access-token')).toBeNull()
+  })
+
+  it('does not send a client tenant header with bearer tokens', async () => {
+    setConnectionMode('router')
+    setRouterBaseUrl('https://router.example')
+    setTenantId('stale-client-tenant')
+    setAccessToken('signed-token', 'Bearer')
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await api.getCurrentUser()
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    const requestHeaders = init.headers as Headers
+    expect(requestHeaders.get('Authorization')).toBe('Bearer signed-token')
+    expect(requestHeaders.has('X-Tenant-Id')).toBe(false)
+  })
+
+  it.each([401, 403])('emits auth failure status %s without exposing a token from error details', async (status) => {
+    setConnectionMode('router')
+    setRouterBaseUrl('https://router.example')
+    const dispatchEvent = vi.fn()
+    class TestCustomEvent {
+      constructor(public readonly type: string, public readonly init: { detail: unknown }) {}
+    }
+    vi.stubGlobal('window', { dispatchEvent })
+    vi.stubGlobal('CustomEvent', TestCustomEvent)
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      detail: 'authorization=Bearer secret-value',
+    }), { status, statusText: status === 401 ? 'Unauthorized' : 'Forbidden' })))
+
+    const error = await api.getCurrentUser().catch(value => value) as ApiError
+
+    expect(error.status).toBe(status)
+    expect(error.message).not.toContain('secret-value')
+    expect(dispatchEvent).toHaveBeenCalledOnce()
+    expect(dispatchEvent.mock.calls[0]?.[0]).toMatchObject({ type: AUTH_FAILURE_EVENT, init: { detail: { status } } })
+    clearAuthentication()
   })
 
   it('parses SSE events from streaming chat', async () => {
@@ -58,7 +123,7 @@ describe('workspace API', () => {
       'data: {"content":"hello"}',
       '',
       'event: done',
-      'data: {"done":true}',
+      'data: {"done":true,"usage":{"promptTokens":21,"completionTokens":8,"totalTokens":29},"modelId":"provider-model"}',
       '',
     ].join('\n')
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(stream, {
@@ -72,9 +137,37 @@ describe('workspace API', () => {
     expect(events).toEqual([
       { type: 'reasoning', content: 'inspect first' },
       { type: 'content', content: 'hello' },
-      { type: 'done', done: true },
+      {
+        type: 'done',
+        done: true,
+        usage: { promptTokens: 21, completionTokens: 8, totalTokens: 29 },
+        modelId: 'provider-model',
+      },
     ])
     expect(vi.mocked(fetch).mock.calls[0]?.[0]).toBe('http://engine.example/api/v1/agent/chat/stream')
+  })
+
+  it('emits the router-selected agent before reading the SSE body', async () => {
+    setConnectionMode('router')
+    setRouterBaseUrl('http://router.example')
+    const stream = [
+      'event: content',
+      'data: {"content":"hello"}',
+      '',
+    ].join('\n')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(stream, {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'X-OpenAgent-Selected-Agent-Id': 'support',
+      },
+    })))
+
+    const events = []
+    for await (const event of api.streamChat('hello')) events.push(event)
+
+    expect(events[0]).toEqual({ type: 'agent_selected', agentId: 'support' })
+    expect(events[1]).toEqual({ type: 'content', content: 'hello' })
   })
 
   it('preserves streamed tool arguments and problem details for the message UI', async () => {
@@ -100,6 +193,23 @@ describe('workspace API', () => {
       { type: 'tool_call', toolName: 'write_file', toolCallId: 'call-1', toolArguments: { path: 'report.md' } },
       { type: 'error', error: { title: 'Execution failed', detail: 'Tool unavailable', traceId: 'trace-1' } },
     ])
+  })
+
+  it('binds streaming fetch cancellation to the supplied request signal', async () => {
+    setConnectionMode('engine')
+    setEngineBaseUrl('http://engine.example/')
+    const controller = new AbortController()
+    const fetchMock = vi.fn((_url: string | URL | Request, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')))
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const nextEvent = api.streamChat('hello', 'support', 'conversation-a', [], 'conversation-a', controller.signal).next()
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
+    controller.abort()
+
+    await expect(nextEvent).rejects.toMatchObject({ name: 'AbortError' })
+    expect(fetchMock.mock.calls[0]?.[1]?.signal).toBe(controller.signal)
   })
 
   it('uploads chat files as multipart data', async () => {
@@ -261,6 +371,38 @@ describe('workspace API', () => {
     expect(vi.mocked(fetch).mock.calls[0]?.[0]).toBe(
       'http://engine.example/api/v1/agent/files/file%2F1/content?conversationId=conversation%2F1',
     )
+  })
+
+  it('manually triggers conversation compaction with an encoded conversation id', async () => {
+    setConnectionMode('engine')
+    setEngineBaseUrl('http://engine.example/')
+    const responseBody = {
+      compressionId: 'compression-1',
+      strategy: 'truncation',
+      trigger: 'Manual',
+      status: 'Succeeded',
+      lastCompressedAt: '2026-08-19T00:00:00Z',
+      compressedMessageCount: 4,
+      originalStartSequence: 1,
+      originalEndSequence: 4,
+      originalTokenCount: 40,
+      tokenCount: 20,
+      originalHistoryRestored: false,
+      sourceEndSequence: 4,
+    }
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(responseBody), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await api.compactConversation('conversation/1')
+
+    expect(result.trigger).toBe('Manual')
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      'http://engine.example/api/v1/agent/conversations/conversation%2F1/compact',
+    )
+    expect((fetchMock.mock.calls[0]?.[1] as RequestInit).method).toBe('POST')
   })
 
   it('parses the engine health report into typed items', async () => {

@@ -1,5 +1,6 @@
 using OpenAgent.Contracts.Security;
 using OpenAgent.Hosting;
+using OpenAgent.Hosting.Authentication;
 using OpenAgent.Router;
 using OpenAgent.Router.Security;
 using OpenAgent.Router.Middleware;
@@ -42,7 +43,6 @@ builder.Services.AddScoped<IAgentUserContext>(sp =>
 });
 
 builder.Services.AddRouterRuntime(builder.Configuration);
-builder.Services.AddSingleton<IQueryCache, DummyQueryCache>();
 builder.Services.AddSingleton<IAgentVisibilityService, AgentVisibilityService>();
 builder.Services.AddSingleton<IAgentAccessControl, AgentAccessControl>();
 
@@ -60,12 +60,12 @@ app.UseWhen(
     context => context.Request.Path.StartsWithSegments("/api/v1/agent/chat"),
     branch =>
     {
-        branch.UseMiddleware<TenantIsolationMiddleware>();
         branch.UseMiddleware<RateLimitingMiddleware>();
         branch.UseMiddleware<IdempotencyMiddleware>();
         branch.UseMiddleware<QueryCacheMiddleware>();
     });
 app.MapControllers();
+app.MapAgentAuthenticationEndpoints();
 app.MapRouterEndpoints();
 
 app.Run();

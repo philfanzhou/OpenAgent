@@ -7,4 +7,5 @@ internal class HeartbeatOptions
     public int RegistryTtlSeconds { get; set; } = 30;
     public string? AdvertisedHost { get; set; }
     public int? AdvertisedPort { get; set; }
+    public string[] Intents { get; set; } = ["chat"];
 }

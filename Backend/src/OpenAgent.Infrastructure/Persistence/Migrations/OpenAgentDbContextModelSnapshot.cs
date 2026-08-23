@@ -36,6 +36,10 @@ namespace OpenAgent.Infrastructure.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("ContextSummariesJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
                     b.Property<DateTimeOffset?>("DeletedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -63,6 +67,9 @@ namespace OpenAgent.Infrastructure.Migrations
                     b.Property<string>("TraceId")
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("integer");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -111,6 +118,12 @@ namespace OpenAgent.Infrastructure.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
+                    b.Property<int?>("CachedInputTokens")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("CompletionTokens")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Content")
                         .IsRequired()
                         .HasColumnType("text");
@@ -126,6 +139,16 @@ namespace OpenAgent.Infrastructure.Migrations
 
                     b.Property<string>("MetadataJson")
                         .HasColumnType("jsonb");
+
+                    b.Property<string>("ModelId")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<int?>("PromptTokens")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("ReasoningTokens")
+                        .HasColumnType("integer");
 
                     b.Property<string>("Role")
                         .IsRequired()
@@ -145,6 +168,9 @@ namespace OpenAgent.Infrastructure.Migrations
                     b.Property<string>("ToolName")
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
+
+                    b.Property<int?>("TotalTokens")
+                        .HasColumnType("integer");
 
                     b.HasKey("MessageId");
 
@@ -227,6 +253,39 @@ namespace OpenAgent.Infrastructure.Migrations
                     b.HasIndex("FileId");
 
                     b.ToTable("message_file_references", "openagent");
+                });
+
+            modelBuilder.Entity("OpenAgent.Infrastructure.Entities.SkillDefinitionEntity", b =>
+                {
+                    b.Property<string>("TenantId")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("SkillId")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("Type")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("DefinitionJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("SourceType")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("TenantId", "SkillId", "Type");
+
+                    b.HasIndex("TenantId", "UpdatedAt");
+
+                    b.ToTable("skill_definitions", "openagent");
                 });
 
             modelBuilder.Entity("OpenAgent.Infrastructure.Entities.ConversationFileReferenceEntity", b =>

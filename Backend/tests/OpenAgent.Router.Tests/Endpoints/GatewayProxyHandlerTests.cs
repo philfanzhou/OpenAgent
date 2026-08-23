@@ -14,11 +14,12 @@ public class GatewayProxyHandlerTests
     private static readonly ForwarderRequestConfig RequestConfig = new();
 
     [Fact]
-    public async Task HandleAsync_AuthenticatedRequest_ForwardsOriginalPathWithTrustedIdentity()
+    public async Task HandleAsync_AuthenticatedRequest_ForwardsOriginalPathAndHeaders()
     {
         var context = CreateContext(HttpMethods.Get, "/api/v1/admin/agents", "?take=10");
         context.Request.Headers["X-User-Id"] = "spoofed-user";
         context.Request.Headers["X-Tenant-Id"] = "spoofed-tenant";
+        context.Request.Headers["X-TenantId"] = "spoofed-legacy-tenant";
         context.Request.Headers["X-Conversation-Id"] = "conversation-1";
         context.Request.Headers["X-Agent-Id"] = "spoofed-agent";
         var forwarder = new CapturingForwarder();
@@ -47,14 +48,15 @@ public class GatewayProxyHandlerTests
         Assert.Equal(
             "http://engine:5100/root/api/v1/admin/agents?take=10",
             forwarder.ProxyRequest?.RequestUri?.ToString());
-        Assert.Equal("trusted-user", GetSingleHeader(forwarder.ProxyRequest, "X-User-Id"));
-        Assert.Equal("trusted-tenant", GetSingleHeader(forwarder.ProxyRequest, "X-Tenant-Id"));
+        Assert.Equal("spoofed-user", GetSingleHeader(forwarder.ProxyRequest, "X-User-Id"));
+        Assert.Equal("spoofed-tenant", GetSingleHeader(forwarder.ProxyRequest, "X-Tenant-Id"));
+        Assert.Equal("spoofed-legacy-tenant", GetSingleHeader(forwarder.ProxyRequest, "X-TenantId"));
         Assert.Equal("conversation-1", GetSingleHeader(forwarder.ProxyRequest, "X-Conversation-Id"));
-        AssertHeaderMissing(forwarder.ProxyRequest, "X-Agent-Id");
+        Assert.Equal("spoofed-agent", GetSingleHeader(forwarder.ProxyRequest, "X-Agent-Id"));
     }
 
     [Fact]
-    public async Task HandleAsync_AnonymousAuthRequest_StripsSpoofableRoutingHeaders()
+    public async Task HandleAsync_AnonymousAuthRequest_ForwardsApplicationHeaders()
     {
         var context = CreateContext(HttpMethods.Post, "/api/v1/auth/token", "?mode=basic");
         context.Request.Headers["X-Agent-Id"] = "spoofed-agent";
@@ -80,11 +82,11 @@ public class GatewayProxyHandlerTests
             forwarder.ProxyRequest?.RequestUri?.ToString());
         Assert.Null(routeTable.TenantId);
         Assert.Null(routeTable.ConversationId);
-        AssertHeaderMissing(forwarder.ProxyRequest, "X-Agent-Id");
-        AssertHeaderMissing(forwarder.ProxyRequest, "X-User-Id");
-        AssertHeaderMissing(forwarder.ProxyRequest, "X-Tenant-Id");
-        AssertHeaderMissing(forwarder.ProxyRequest, "X-Conversation-Id");
-        Assert.NotEqual("spoofed-trace", GetSingleHeader(forwarder.ProxyRequest, "X-Trace-Id"));
+        Assert.Equal("spoofed-agent", GetSingleHeader(forwarder.ProxyRequest, "X-Agent-Id"));
+        Assert.Equal("spoofed-user", GetSingleHeader(forwarder.ProxyRequest, "X-User-Id"));
+        Assert.Equal("spoofed-tenant", GetSingleHeader(forwarder.ProxyRequest, "X-Tenant-Id"));
+        Assert.Equal("spoofed-conversation", GetSingleHeader(forwarder.ProxyRequest, "X-Conversation-Id"));
+        Assert.Equal("spoofed-trace", GetSingleHeader(forwarder.ProxyRequest, "X-Trace-Id"));
     }
 
     [Fact]
