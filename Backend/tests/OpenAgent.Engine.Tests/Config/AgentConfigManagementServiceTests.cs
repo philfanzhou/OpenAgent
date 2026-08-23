@@ -70,7 +70,7 @@ public class AgentConfigManagementServiceTests
     }
 
     [Fact]
-    public async Task ProfileAccess_DifferentTenant_CannotReadOrOverwriteProfiles()
+    public async Task ProfileAccess_DifferentTenant_CannotReadOverwriteOrDeleteProfiles()
     {
         var redis = new UnavailableRedisConnectionProvider();
         LlmProviderProfile? llmProfile = null;
@@ -79,6 +79,16 @@ public class AgentConfigManagementServiceTests
             .Returns(() => llmProfile);
         llmRegistry.Setup(item => item.Register(It.IsAny<LlmProviderProfile>()))
             .Callback<LlmProviderProfile>(profile => llmProfile = profile);
+        llmRegistry.Setup(item => item.Remove(It.IsAny<string>()))
+            .Returns<string>(id =>
+            {
+                bool removed = string.Equals(llmProfile?.Id, id, StringComparison.Ordinal);
+                if (removed)
+                {
+                    llmProfile = null;
+                }
+                return removed;
+            });
         McpServerConfig? mcpProfile = null;
         var mcpRegistry = new Mock<IMcpRegistry>();
         mcpRegistry.Setup(item => item.Get(It.IsAny<string>()))
@@ -108,6 +118,10 @@ public class AgentConfigManagementServiceTests
         await Assert.ThrowsAsync<TenantDataIsolationException>(() => mcp.SaveAsync(
             new McpServerConfig { Name = "private-mcp", Url = "https://other.example.com" },
             "tenant-b"));
+        Assert.False(await llm.DeleteAsync("private-llm", "tenant-b"));
+        Assert.NotNull(llmProfile);
+        Assert.True(await llm.DeleteAsync("private-llm", "tenant-a"));
+        Assert.Null(llmProfile);
     }
 
     private static (AgentConfigManagementService Manager, AgentConfigLocalStore LocalStore) CreateManager()

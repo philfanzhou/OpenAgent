@@ -119,13 +119,10 @@ internal static class ManagementEndpointExtensions
         {
             if (!HasScope(context, "agent.config.write"))
                 return Results.Forbid();
-            LlmProviderProfile? existing = await manager.GetAsync(
+            return await manager.DeleteAsync(
                 id,
                 RequireTenant(context),
-                cancellationToken).ConfigureAwait(false);
-            if (existing == null)
-                return Results.NotFound();
-            return await manager.DeleteAsync(id, cancellationToken).ConfigureAwait(false)
+                cancellationToken).ConfigureAwait(false)
                 ? Results.NoContent()
                 : Results.NotFound();
         });
