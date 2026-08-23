@@ -1,15 +1,10 @@
 namespace OpenAgent.Contracts.Conversation;
 
 /// <summary>
-/// Compression strategy selected by the Agent runtime profile.
+/// Summary-compression settings selected by the Agent runtime profile.
 /// </summary>
 public sealed class ContextPolicy
 {
-    /// <summary>
-    /// Compression strategy: "summarize", "sliding_window", or "none".
-    /// </summary>
-    public required string Strategy { get; init; }
-
     /// <summary>
     /// Target token limit for compressed context (0 = no limit).
     /// </summary>
@@ -21,7 +16,7 @@ public sealed class ContextPolicy
     public int PreserveRecentTurns { get; init; } = 2;
 
     /// <summary>
-    /// Options for the "summarize" strategy. Ignored for other strategies.
+    /// Options for summary generation.
     /// </summary>
     public SummarizeOptions? SummarizeOptions { get; init; }
 }

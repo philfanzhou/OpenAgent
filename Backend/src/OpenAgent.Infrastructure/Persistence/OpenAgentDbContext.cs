@@ -27,6 +27,7 @@ public sealed class OpenAgentDbContext(DbContextOptions<OpenAgentDbContext> opti
             entity.Property(item => item.AgentId).HasMaxLength(256);
             entity.Property(item => item.TraceId).HasMaxLength(256);
             entity.Property(item => item.Title).HasMaxLength(512);
+            entity.Property(item => item.ContextSummariesJson).HasColumnType("jsonb");
             entity.Property(item => item.Version).IsConcurrencyToken();
             entity.HasIndex(item => new { item.TenantId, item.LastMessageAt });
             entity.HasIndex(item => new { item.TenantId, item.IsDeletedByUser, item.LastMessageAt });

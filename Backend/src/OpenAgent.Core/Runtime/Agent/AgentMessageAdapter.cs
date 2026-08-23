@@ -96,13 +96,31 @@ internal static class AgentMessageAdapter
         var toolNames = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (ChatMessage message in messages)
         {
-            string? role = message.Role == Microsoft.Extensions.AI.ChatRole.User
-                ? "user"
-                : message.Role == Microsoft.Extensions.AI.ChatRole.Assistant
-                    ? "assistant"
-                    : message.Role == Microsoft.Extensions.AI.ChatRole.Tool
-                        ? "tool"
-                        : null;
+            bool isSummary = message.AdditionalProperties?.TryGetValue(
+                Microsoft.Agents.AI.Compaction.CompactionMessageGroup.SummaryPropertyKey,
+                out object? summaryValue) == true
+                && summaryValue is true;
+            string? role;
+            if (isSummary)
+            {
+                role = "summary";
+            }
+            else if (message.Role == Microsoft.Extensions.AI.ChatRole.User)
+            {
+                role = "user";
+            }
+            else if (message.Role == Microsoft.Extensions.AI.ChatRole.Assistant)
+            {
+                role = "assistant";
+            }
+            else if (message.Role == Microsoft.Extensions.AI.ChatRole.Tool)
+            {
+                role = "tool";
+            }
+            else
+            {
+                role = null;
+            }
             if (role == null)
             {
                 continue;

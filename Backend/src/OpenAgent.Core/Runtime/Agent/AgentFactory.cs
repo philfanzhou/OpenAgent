@@ -80,6 +80,9 @@ internal sealed class AgentFactory
         CancellationToken cancellationToken)
     {
         IChatClient modelClient = _chatClients.Create(profile.Model);
+        IChatClient summarizationClient = _chatClients.CreateSummarizationClient(
+            profile.Model,
+            profile.Config.ContextPolicy);
         _files.Set(new OpenAgent.Contracts.Files.FileAssetScope
         {
             TenantId = user.TenantId ?? string.Empty,
@@ -114,7 +117,16 @@ internal sealed class AgentFactory
                 user,
                 cancellationToken).ConfigureAwait(false);
 
-            ChatClientBuilder chatClientBuilder = new(modelClient);
+            AIContextProvider compaction = _conversations.CreateCompaction(
+                profile.Config.ContextPolicy,
+                summarizationClient,
+                user.TenantId,
+                request.ConversationId);
+            IChatClient compactingClient = modelClient
+                .AsBuilder()
+                .UseAIContextProviders(compaction)
+                .Build();
+            ChatClientBuilder chatClientBuilder = new(compactingClient);
             Dictionary<string, ApprovalTarget> approvalTargets = new(StringComparer.Ordinal);
             foreach ((string name, ApprovalTarget target) in capabilityRuntime.ApprovalTargets)
             {
@@ -147,14 +159,6 @@ internal sealed class AgentFactory
             {
                 providers.Add(skillsRuntime.Provider);
             }
-            AIContextProvider? compaction = _conversations.CreateCompaction(
-                profile.Config.ContextPolicy,
-                modelClient);
-            if (compaction != null)
-            {
-                providers.Add(compaction);
-            }
-
             AIAgent agent = new ChatClientAgent(chatClient, new ChatClientAgentOptions
             {
                 Id = profile.AgentId,

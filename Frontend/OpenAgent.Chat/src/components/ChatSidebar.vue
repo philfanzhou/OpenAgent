@@ -52,7 +52,7 @@ function formatTime(value: string): string {
 </script>
 
 <template>
-  <el-aside width="264px" class="sidebar">
+  <el-aside width="240px" class="sidebar">
     <div class="brand">
       <span class="brand-mark">
         <svg width="18" height="18" viewBox="0 0 32 32" fill="none" aria-hidden="true">
