@@ -291,7 +291,7 @@ namespace OpenAgent.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("SessionStateJson")
                         .IsRequired()
-                        .HasColumnType("jsonb");
+                        .HasColumnType("text");
 
                     b.Property<int>("Status")
                         .HasColumnType("integer");

@@ -119,6 +119,27 @@ public static class RouterEndpointExtensions
                 httpClient,
                 requestConfig,
                 requireAuthentication: true));
+        // Approval state is persisted in the shared Engine database. Any healthy
+        // Engine can list, decide, or withdraw a request, so no conversation
+        // affinity is required at this gateway boundary.
+        app.MapMethods(
+            "/api/v1/agent/approvals/{**path}",
+            [HttpMethods.Get, HttpMethods.Post],
+            (
+                HttpContext context,
+                IHttpForwarder forwarder,
+                IAgentUserContext userContext,
+                IRouteTable routeTable,
+                ILogger<Program> logger) =>
+                GatewayProxyHandler.HandleAsync(
+                    context,
+                    forwarder,
+                    userContext,
+                    routeTable,
+                    logger,
+                    httpClient,
+                    requestConfig,
+                    requireAuthentication: true));
         // File assets are owned by Engine, but clients use the Router as their
         // single API origin. Preserve multipart request bodies and binary
         // responses by forwarding every file method through YARP.

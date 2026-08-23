@@ -1,5 +1,4 @@
 using System.Text.Json.Serialization;
-using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
 
 namespace OpenAgent.Contracts.Approvals;
@@ -91,7 +90,6 @@ public sealed class HumanApprovalDecisionRequest
 public sealed class HumanApprovalDecisionResult
 {
     public required HumanApprovalRequest Approval { get; init; }
-    public AgentResponse? Response { get; init; }
 }
 
 public interface IHumanApprovalStore

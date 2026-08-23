@@ -12,6 +12,8 @@ import type {
   HealthEntry,
   HealthReport,
   HealthReportItem,
+  HumanApprovalDecisionResult,
+  HumanApprovalRequest,
   LlmProviderProfile,
   LlmTestResult,
   MessageFile,
@@ -276,6 +278,25 @@ export const api = {
 
   getCurrentUser(): Promise<CurrentUserContext> {
     return request<CurrentUserContext>('/api/v1/agent/me')
+  },
+
+  listHumanApprovals(): Promise<HumanApprovalRequest[]> {
+    return request<HumanApprovalRequest[]>('/api/v1/agent/approvals')
+  },
+
+  decideHumanApproval(
+    approvalId: string,
+    approved: boolean,
+    reason?: string,
+  ): Promise<HumanApprovalDecisionResult> {
+    return request<HumanApprovalDecisionResult>(
+      `/api/v1/agent/approvals/${encodeURIComponent(approvalId)}/decision`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approved, reason }),
+      },
+    )
   },
 
   listConversations(): Promise<ConversationRecord[]> {

@@ -35,7 +35,7 @@ namespace OpenAgent.Infrastructure.Persistence.Migrations
                     MafRequestId = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: false),
                     ToolCallId = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: false),
                     ToolName = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: false),
-                    SessionStateJson = table.Column<string>(type: "jsonb", nullable: false),
+                    SessionStateJson = table.Column<string>(type: "text", nullable: false),
                     RequesterContextJson = table.Column<string>(type: "jsonb", nullable: false),
                     Version = table.Column<int>(type: "integer", nullable: false)
                 },

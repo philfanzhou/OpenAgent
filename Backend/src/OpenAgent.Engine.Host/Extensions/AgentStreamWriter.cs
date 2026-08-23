@@ -21,6 +21,7 @@ internal static class AgentStreamWriter
         StreamingResponseHeaders.ApplySse(context);
         TokenUsage? usage = null;
         string? modelId = null;
+        bool awaitingApproval = false;
         await using StreamingHeartbeat heartbeat = StreamingHeartbeat.Start(
             token => WriteHeartbeatAsync(context, token),
             StreamHeartbeatInterval,
@@ -43,6 +44,7 @@ internal static class AgentStreamWriter
                 modelId = streamEvent.ModelId;
                 continue;
             }
+            awaitingApproval |= streamEvent.Type == AgentStreamEventType.Approval;
 
             string eventName = streamEvent.Type switch
             {
@@ -65,7 +67,14 @@ internal static class AgentStreamWriter
         }
 
         string done = JsonSerializer.Serialize(
-            new { done = true, usage, modelId, conversationId },
+            new
+            {
+                done = true,
+                usage,
+                modelId,
+                conversationId,
+                status = awaitingApproval ? "AwaitingApproval" : "Completed"
+            },
             JsonOptions);
         await WriteSseEventAsync(context, "done", done, cancellationToken).ConfigureAwait(false);
     }

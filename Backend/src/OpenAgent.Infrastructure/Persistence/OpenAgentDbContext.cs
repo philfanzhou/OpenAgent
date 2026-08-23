@@ -114,7 +114,11 @@ public sealed class OpenAgentDbContext(DbContextOptions<OpenAgentDbContext> opti
             entity.Property(item => item.ToolCallId).HasMaxLength(256);
             entity.Property(item => item.ToolName).HasMaxLength(256);
             entity.Property(item => item.RedactedArgumentsJson).HasColumnType("jsonb");
-            entity.Property(item => item.SessionStateJson).HasColumnType("jsonb");
+            // MAF session state uses order-sensitive System.Text.Json metadata
+            // properties (for example, "$type"). PostgreSQL jsonb normalizes
+            // object property order and can therefore make a valid serialized
+            // AgentSession impossible to deserialize after an approval pause.
+            entity.Property(item => item.SessionStateJson).HasColumnType("text");
             entity.Property(item => item.RequesterContextJson).HasColumnType("jsonb");
             entity.Property(item => item.Version).IsConcurrencyToken();
             entity.HasIndex(item => new { item.TenantId, item.Status, item.ExpiresAt });

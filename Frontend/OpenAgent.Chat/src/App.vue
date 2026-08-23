@@ -11,7 +11,8 @@ import MessageComposer from './components/MessageComposer.vue'
 import { formatTokenCount, summarizeConversationUsage } from './tokenUsage'
 import HealthCheckPanel from './components/HealthCheckPanel.vue'
 import { mergeAssistantSnapshot } from './messagePresentation'
-import { AUTO_AGENT_ID, type AgentConfigEntity, type AgentSummary, type AuthConfig, type ConnectionMode, type ConversationMessage, type ConversationRecord, type CurrentUserContext, type LlmProviderProfile, type LlmTestResult, type McpServerConfig, type McpTestResult, type MessageFile, type PendingFile, type RagConfig, type RagInstanceConfig, type RagTestResult, type SkillCatalogItem, type SkillInstanceConfig, type SkillsConfig } from './types'
+import { formatApprovalTargetType } from './approvalPresentation'
+import { AUTO_AGENT_ID, type AgentConfigEntity, type AgentSummary, type AuthConfig, type ConnectionMode, type ConversationMessage, type ConversationRecord, type CurrentUserContext, type HumanApprovalRequest, type LlmProviderProfile, type LlmTestResult, type McpServerConfig, type McpTestResult, type MessageFile, type PendingFile, type RagConfig, type RagInstanceConfig, type RagTestResult, type SkillCatalogItem, type SkillInstanceConfig, type SkillsConfig } from './types'
 import { usePanelLayout } from './composables/usePanelLayout'
 import { useConversationStreams } from './composables/useConversationStreams'
 import { mergeConversationRecords, replaceConversationRecord, selectionMatchesConversation } from './conversationCollection'
@@ -26,9 +27,12 @@ const engineUrl = ref(getEngineBaseUrl())
 const token = ref(getAccessToken())
 const tenantId = ref(getTenantId())
 const showSettings = ref(!(connectionMode.value === 'router' ? routerUrl.value : engineUrl.value))
-const activeSettings = ref<'gateway' | 'health' | 'llm' | 'mcp' | 'skill' | 'agent' | 'rag'>('gateway')
+const activeSettings = ref<'gateway' | 'health' | 'approval' | 'llm' | 'mcp' | 'skill' | 'agent' | 'rag'>('gateway')
 const agents = ref<AgentSummary[]>([])
 const currentUser = ref<CurrentUserContext | null>(null)
+const pendingApprovals = ref<HumanApprovalRequest[]>([])
+const loadingApprovals = ref(false)
+const decidingApprovalId = ref('')
 const conversations = ref<ConversationRecord[]>([])
 const selectedConversation = ref<ConversationRecord | null>(null)
 const selectedAgentId = ref(AUTO_AGENT_ID)
@@ -55,7 +59,7 @@ const showAgentEditor = ref(false)
 const isNewAgent = ref(false)
 const showMcpEditor = ref(false)
 const showRagEditor = ref(false)
-const mcpDraft = ref<McpServerConfig>({ name: '', url: '', type: 'Http', protocolVersion: null })
+const mcpDraft = ref<McpServerConfig>({ name: '', url: '', type: 'Http', protocolVersion: null, requiresHumanApproval: false })
 const mcpServers = ref<McpServerConfig[]>([])
 const agentMcpIds = ref<string[]>([])
 const showMcpBindingPicker = ref(false)
@@ -70,6 +74,7 @@ const skillEditorMode = ref<'form' | 'markdown'>('form')
 const skillEditorName = ref('')
 const skillEditorDescription = ref('')
 const skillEditorInstructions = ref('')
+const skillEditorRequiresHumanApproval = ref(false)
 const editingSkillId = ref('')
 const showSkillBindingPicker = ref(false)
 const skillBindingOptions = ref<SkillCatalogItem[]>([])
@@ -297,6 +302,7 @@ function updateLoginConnection(value: {
 function resetWorkspace(): void {
   void Promise.allSettled(conversationStreams.cancelAll('logout'))
   currentUser.value = null
+  pendingApprovals.value = []
   agents.value = []
   conversations.value = []
   selectedConversation.value = null
@@ -306,7 +312,7 @@ function resetWorkspace(): void {
   config.value = null
   llmDraft.value = createDefaultLlm()
   llmProfiles.value = []
-  mcpDraft.value = { name: '', url: '', type: 'Http', protocolVersion: null }
+  mcpDraft.value = { name: '', url: '', type: 'Http', protocolVersion: null, requiresHumanApproval: false }
   mcpServers.value = []
   skillDraft.value = { enabledSkills: [], instances: [] }
   ragDraft.value = { id: '', name: '', enabled: true, type: 'ragflow', collectionName: 'default', apiEndpoint: '', apiKey: '' }
@@ -880,6 +886,12 @@ async function send(): Promise<void> {
           callId: event.toolCallId,
           arguments: event.toolArguments,
         })
+      } else if (event.type === 'approval' && event.approval) {
+        flushStream?.()
+        markAssistantPhaseBoundary(assistantContentState)
+        assistantMessage.approval = event.approval
+        conversation.status = 'AwaitingApproval'
+        ElMessage.warning('高风险操作已暂停，正在等待人工审批')
       } else if (event.type === 'done') {
         flushStream?.()
         receivedDone = true
@@ -1044,7 +1056,7 @@ async function loadConfig(agentId = selectedAgentId.value): Promise<void> {
 }
 
 function createDefaultMcp(): McpServerConfig {
-  return { name: '', url: '', type: 'Http', protocolVersion: null }
+  return { name: '', url: '', type: 'Http', protocolVersion: null, requiresHumanApproval: false }
 }
 
 function selectMcp(index: number): void {
@@ -1096,11 +1108,12 @@ function openSkillTextEditor(): void {
   skillEditorName.value = 'my-skill'
   skillEditorDescription.value = 'Describe what this Skill does'
   skillEditorInstructions.value = '# Instructions\n\n'
+  skillEditorRequiresHumanApproval.value = false
   skillMarkdownDraft.value = composeSkillMarkdown()
   showSkillTextEditor.value = true
 }
 
-function parseSkillMarkdown(markdown: string): { name: string; description: string; body: string } | null {
+function parseSkillMarkdown(markdown: string): { name: string; description: string; body: string; requiresHumanApproval: boolean } | null {
   const lines = markdown.replace(/^\uFEFF/, '').split(/\r?\n/)
   if (lines[0]?.trim() !== '---') return null
   const end = lines.findIndex((line, index) => index > 0 && line.trim() === '---')
@@ -1112,11 +1125,19 @@ function parseSkillMarkdown(markdown: string): { name: string; description: stri
   }
   const name = values.get('name')?.trim() || ''
   const description = values.get('description')?.trim() || ''
-  return name && description ? { name, description, body: lines.slice(end + 1).join('\n').replace(/^\n/, '') } : null
+  const approval = values.get('requires-human-approval') || values.get('requireshumanapproval')
+  return name && description
+    ? {
+        name,
+        description,
+        body: lines.slice(end + 1).join('\n').replace(/^\n/, ''),
+        requiresHumanApproval: approval?.toLowerCase() === 'true',
+      }
+    : null
 }
 
 function composeSkillMarkdown(): string {
-  return `---\nname: ${skillEditorName.value.trim()}\ndescription: ${skillEditorDescription.value.trim()}\n---\n\n${skillEditorInstructions.value}`
+  return `---\nname: ${skillEditorName.value.trim()}\ndescription: ${skillEditorDescription.value.trim()}\nrequires-human-approval: ${skillEditorRequiresHumanApproval.value}\n---\n\n${skillEditorInstructions.value}`
 }
 
 function switchSkillEditorMode(): void {
@@ -1133,6 +1154,7 @@ function switchSkillEditorMode(): void {
   skillEditorName.value = parsed.name
   skillEditorDescription.value = parsed.description
   skillEditorInstructions.value = parsed.body
+  skillEditorRequiresHumanApproval.value = parsed.requiresHumanApproval
   skillEditorMode.value = 'form'
 }
 
@@ -1146,6 +1168,7 @@ async function editSkill(skill: SkillCatalogItem): Promise<void> {
       skillEditorName.value = parsed.name
       skillEditorDescription.value = parsed.description
       skillEditorInstructions.value = parsed.body
+      skillEditorRequiresHumanApproval.value = parsed.requiresHumanApproval
       skillEditorMode.value = 'form'
     } else {
       skillEditorMode.value = 'markdown'
@@ -1406,6 +1429,7 @@ function openSettings(panel: typeof activeSettings.value): void {
   activeSettings.value = panel
   showSettings.value = true
   if (panel === 'llm') void loadLlmProfiles()
+  if (panel === 'approval') void loadHumanApprovals()
   if (panel === 'mcp') void loadMcpProfiles()
   if (panel === 'skill') void loadSkillCatalog()
   if (panel === 'agent') {
@@ -1417,6 +1441,7 @@ function openSettings(panel: typeof activeSettings.value): void {
 
 function handleSettingsTabChange(name: string | number): void {
   if (name === 'llm') void loadLlmProfiles()
+  if (name === 'approval') void loadHumanApprovals()
   if (name === 'mcp') void loadMcpProfiles()
   if (name === 'skill') void loadSkillCatalog()
   if (name === 'agent') {
@@ -1424,6 +1449,64 @@ function handleSettingsTabChange(name: string | number): void {
     void loadLlmProfiles()
   }
   if (name === 'rag') void loadConfig()
+}
+
+async function loadHumanApprovals(): Promise<void> {
+  loadingApprovals.value = true
+  try {
+    pendingApprovals.value = await api.listHumanApprovals()
+  } catch (error) {
+    pendingApprovals.value = []
+    notifyError(error)
+  } finally {
+    loadingApprovals.value = false
+  }
+}
+
+async function decideHumanApproval(
+  approval: HumanApprovalRequest,
+  approved: boolean,
+): Promise<void> {
+  try {
+    await ElMessageBox.confirm(
+      approved
+        ? `确认执行高风险操作「${approval.targetCapability}」吗？`
+        : `确认拒绝高风险操作「${approval.targetCapability}」吗？`,
+      approved ? '批准人工审批' : '拒绝人工审批',
+      {
+        type: approved ? 'warning' : 'error',
+        confirmButtonText: approved ? '确认批准并执行' : '确认拒绝',
+        cancelButtonText: '取消',
+      },
+    )
+  } catch {
+    return
+  }
+
+  decidingApprovalId.value = approval.approvalId
+  try {
+    await api.decideHumanApproval(
+      approval.approvalId,
+      approved,
+      approved ? 'Approved from OpenAgent Chat.' : 'Rejected from OpenAgent Chat.',
+    )
+    ElMessage.success(approved ? '审批已通过，原会话已恢复执行' : '审批已拒绝，原会话已取消')
+    await loadHumanApprovals()
+    if (selectedConversation.value?.conversationId === approval.conversationId) {
+      const detail = await api.getConversation(approval.conversationId)
+      await hydrateFilePreviews(detail)
+      replaceConversation(detail)
+    }
+  } catch (error) {
+    notifyError(error)
+  } finally {
+    decidingApprovalId.value = ''
+  }
+}
+
+function approvalExpiry(value: string): string {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString()
 }
 
 onMounted(async () => {
@@ -1481,7 +1564,7 @@ onBeforeUnmount(() => {
 
       <div class="workspace-grid" :class="{ 'context-collapsed': contextCollapsed }">
         <section class="chat-card">
-          <ChatMessages :messages="currentMessages" :context-summaries="selectedConversation?.contextSummaries" :loading="loadingConversation" :current-user="currentUser" :streaming="selectedConversationStreaming" @suggest="message = $event" @download="downloadFile" />
+          <ChatMessages :messages="currentMessages" :context-summaries="selectedConversation?.contextSummaries" :loading="loadingConversation" :current-user="currentUser" :streaming="selectedConversationStreaming" :conversation-status="selectedConversation?.status" @suggest="message = $event" @download="downloadFile" />
           <MessageComposer :model-value="message" :endpoint-url="activeEndpointUrl" :endpoint-label="activeEndpointLabel" :selected-agent-id="selectedAgentId" :loading="selectedConversationStreaming" :pending-files="pendingFiles" @update:model-value="message = $event" @files-change="handleFilesChange" @retry-file="retryPendingFile" @send="send" @stop="stopStreaming" />
         </section>
         <aside class="context-panel">
@@ -1518,6 +1601,11 @@ onBeforeUnmount(() => {
             <HealthCheckPanel />
           </section>
         </el-tab-pane>
+        <el-tab-pane v-if="currentUser?.canDecideApprovals" label="人工审批" name="approval">
+          <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">HUMAN APPROVAL</span><h3>待审批操作</h3><p>这里只显示当前租户的待审批高风险操作；参数已经过服务端脱敏。</p></div><div class="section-actions"><el-button :loading="loadingApprovals" @click="loadHumanApprovals">刷新</el-button></div></div>
+            <el-table v-loading="loadingApprovals" :data="pendingApprovals" class="capability-table" empty-text="当前没有待审批操作"><el-table-column label="目标" min-width="190"><template #default="scope"><strong>{{ scope.row.targetCapability }}</strong><small class="table-subtext">{{ formatApprovalTargetType(scope.row.targetType) }} · {{ scope.row.action }}</small></template></el-table-column><el-table-column label="申请人" min-width="140"><template #default="scope">{{ scope.row.requestedBy }}</template></el-table-column><el-table-column label="脱敏参数" min-width="220" show-overflow-tooltip><template #default="scope"><code>{{ scope.row.redactedArgumentsJson }}</code></template></el-table-column><el-table-column label="过期时间" min-width="170"><template #default="scope">{{ approvalExpiry(scope.row.expiresAt) }}</template></el-table-column><el-table-column label="操作" width="170" fixed="right"><template #default="scope"><el-button link type="primary" :loading="decidingApprovalId === scope.row.approvalId" @click="decideHumanApproval(scope.row, true)">批准</el-button><el-button link type="danger" :disabled="decidingApprovalId === scope.row.approvalId" @click="decideHumanApproval(scope.row, false)">拒绝</el-button></template></el-table-column></el-table>
+          </section>
+        </el-tab-pane>
         <el-tab-pane label="LLM 配置" name="llm">
           <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">MODEL PROVIDERS</span><h3>大模型供应商</h3><p>这里维护协议、Endpoint 和密钥；具体模型 ID 属于 Agent 配置，选择供应商后只在 Agent 中填写。</p></div><div class="section-actions"><el-button @click="loadLlmProfiles">刷新</el-button><el-button type="primary" plain @click="newLlm">新增供应商</el-button></div></div>
             <el-table :data="llmProfiles" class="capability-table" empty-text="还没有大模型供应商"><el-table-column label="名称" min-width="140"><template #default="scope"><strong>{{ scope.row.name }}</strong><small class="table-subtext">{{ scope.row.id }}</small></template></el-table-column><el-table-column label="协议" width="160"><template #default="scope"><el-tag size="small" round>{{ scope.row.format }}</el-tag></template></el-table-column><el-table-column label="模型归属" min-width="120"><template #default>由 Agent 指定</template></el-table-column><el-table-column label="Endpoint" min-width="200" show-overflow-tooltip><template #default="scope">{{ scope.row.endpoint }}</template></el-table-column><el-table-column label="API Key" min-width="120"><template #default="scope">{{ scope.row.apiKey ? '••••••••' : '未配置' }}</template></el-table-column><el-table-column label="操作" width="160" fixed="right"><template #default="scope"><el-button link type="primary" @click="editLlm(scope.$index)">编辑</el-button><el-button link @click="selectLlm(scope.$index); testLlm(); showLlmEditor = true">测试</el-button><el-button link type="danger" @click="selectLlm(scope.$index); deleteLlm()">删除</el-button></template></el-table-column></el-table>
@@ -1525,12 +1613,12 @@ onBeforeUnmount(() => {
         </el-tab-pane>
         <el-tab-pane label="MCP 配置" name="mcp">
           <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">MCP CATALOG</span><h3>MCP 配置</h3><p>独立维护远程 MCP Server；Agent 页面只选择已注册的 Server，不在 Agent 中复制 Endpoint。</p></div><div class="section-actions"><el-button @click="loadMcpProfiles">刷新</el-button><el-button type="primary" plain @click="newMcp">新增 MCP</el-button></div></div>
-            <el-table :data="mcpServers" class="capability-table" empty-text="还没有 MCP 配置"><el-table-column label="名称" min-width="160"><template #default="scope"><strong>{{ scope.row.name }}</strong></template></el-table-column><el-table-column label="类型" width="120"><template #default="scope"><el-tag size="small" round>{{ scope.row.type }}</el-tag></template></el-table-column><el-table-column label="地址" min-width="240" show-overflow-tooltip><template #default="scope">{{ scope.row.url || '未配置' }}</template></el-table-column><el-table-column label="操作" width="190" fixed="right"><template #default="scope"><el-button link type="primary" @click="selectMcp(scope.$index); showMcpEditor = true">编辑</el-button><el-button link @click="selectMcp(scope.$index); testMcp(); showMcpEditor = true">测试</el-button><el-button link type="danger" @click="removeMcp(scope.$index)">删除</el-button></template></el-table-column></el-table>
+            <el-table :data="mcpServers" class="capability-table" empty-text="还没有 MCP 配置"><el-table-column label="名称" min-width="160"><template #default="scope"><strong>{{ scope.row.name }}</strong></template></el-table-column><el-table-column label="类型" width="120"><template #default="scope"><el-tag size="small" round>{{ scope.row.type }}</el-tag></template></el-table-column><el-table-column label="审批" width="110"><template #default="scope"><el-tag :type="scope.row.requiresHumanApproval ? 'warning' : 'info'" size="small" effect="plain">{{ scope.row.requiresHumanApproval ? '人工审批' : '直接执行' }}</el-tag></template></el-table-column><el-table-column label="地址" min-width="240" show-overflow-tooltip><template #default="scope">{{ scope.row.url || '未配置' }}</template></el-table-column><el-table-column label="操作" width="190" fixed="right"><template #default="scope"><el-button link type="primary" @click="selectMcp(scope.$index); showMcpEditor = true">编辑</el-button><el-button link @click="selectMcp(scope.$index); testMcp(); showMcpEditor = true">测试</el-button><el-button link type="danger" @click="removeMcp(scope.$index)">删除</el-button></template></el-table-column></el-table>
           </section>
         </el-tab-pane>
         <el-tab-pane label="Skill 配置" name="skill">
           <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">SKILL CATALOG</span><h3>Skill 配置</h3><p>独立维护官方 Skill 目录；Agent 页面只选择 Skill ID，绑定关系保存到 Agent 配置。</p></div><div class="section-actions"><input ref="skillPackageInput" type="file" hidden accept=".zip,.md" @change="uploadSkillPackage" /><el-button @click="loadSkillCatalog">刷新</el-button><el-button :loading="uploadingSkill" type="primary" plain @click="chooseSkillPackage">上传 ZIP / MD</el-button><el-button type="primary" plain @click="openSkillTextEditor">手动填写</el-button></div></div>
-            <el-table :data="skillCatalog" class="capability-table" empty-text="还没有 Skill"><el-table-column label="名称" min-width="180"><template #default="scope"><strong>{{ scope.row.name }}</strong><small class="table-subtext">{{ scope.row.skillId }}</small></template></el-table-column><el-table-column label="说明" min-width="240" show-overflow-tooltip><template #default="scope">{{ scope.row.description }}</template></el-table-column><el-table-column label="内容" width="120"><template #default="scope">{{ scope.row.resourceCount || 0 }} 资源</template></el-table-column><el-table-column label="来源" width="150"><template #default="scope">{{ scope.row.packageFileName }}</template></el-table-column><el-table-column label="操作" width="170" fixed="right"><template #default="scope"><el-button link type="primary" @click="editSkill(scope.row)">编辑</el-button><el-button link type="danger" @click="deleteSkillCatalog(scope.row)">删除</el-button></template></el-table-column></el-table>
+            <el-table :data="skillCatalog" class="capability-table" empty-text="还没有 Skill"><el-table-column label="名称" min-width="180"><template #default="scope"><strong>{{ scope.row.name }}</strong><small class="table-subtext">{{ scope.row.skillId }}</small></template></el-table-column><el-table-column label="说明" min-width="240" show-overflow-tooltip><template #default="scope">{{ scope.row.description }}</template></el-table-column><el-table-column label="审批" width="110"><template #default="scope"><el-tag :type="scope.row.requiresHumanApproval ? 'warning' : 'info'" size="small" effect="plain">{{ scope.row.requiresHumanApproval ? '人工审批' : '直接执行' }}</el-tag></template></el-table-column><el-table-column label="内容" width="120"><template #default="scope">{{ scope.row.resourceCount || 0 }} 资源</template></el-table-column><el-table-column label="来源" width="150"><template #default="scope">{{ scope.row.packageFileName }}</template></el-table-column><el-table-column label="操作" width="170" fixed="right"><template #default="scope"><el-button link type="primary" @click="editSkill(scope.row)">编辑</el-button><el-button link type="danger" @click="deleteSkillCatalog(scope.row)">删除</el-button></template></el-table-column></el-table>
           </section>
         </el-tab-pane>
         <el-tab-pane label="Agent 配置" name="agent">
@@ -1607,6 +1695,7 @@ onBeforeUnmount(() => {
       <el-form-item label="传输类型"><el-select v-model="mcpDraft.type"><el-option label="Streamable HTTP" value="Http" /><el-option label="Legacy SSE" value="SSE" /></el-select></el-form-item>
       <el-form-item label="MCP 协议版本"><el-select v-model="mcpDraft.protocolVersion" clearable filterable allow-create placeholder="自动协商（推荐）"><el-option label="2026-07-28" value="2026-07-28" /><el-option label="2025-11-25" value="2025-11-25" /><el-option label="2025-06-18" value="2025-06-18" /><el-option label="2025-03-26" value="2025-03-26" /><el-option label="2024-11-05" value="2024-11-05" /></el-select><small class="form-help">留空由官方 SDK 自动协商；指定版本作为最低版本，服务器降级到更早版本时连接会失败。</small></el-form-item>
       <el-form-item label="URL"><el-input v-model="mcpDraft.url" placeholder="https://mcp.example.com/mcp" /></el-form-item>
+      <el-form-item label="人工审批"><el-switch v-model="mcpDraft.requiresHumanApproval" active-text="每次工具调用前暂停审批" inactive-text="直接执行" /><small class="form-help">开启后，该 MCP Server 暴露的所有工具都必须先由具备 approval.decide 权限的人员审批。</small></el-form-item>
       <el-alert v-if="mcpResult" :title="`测试结果：${mcpResult.success ? '连接成功' : '连接失败'} · 权限${mcpResult.authorized ? '通过' : '拒绝'}`" :description="mcpResult.error || `协商版本 ${mcpResult.negotiatedProtocolVersion || '未知'} · ${mcpResult.latencyMs}ms · ${mcpResult.toolCount} 个工具`" :type="mcpResult.success ? 'success' : 'warning'" :closable="false" />
     </el-form><template #footer><el-button @click="showMcpEditor = false">取消</el-button><el-button :loading="testingMcp" @click="testMcp">测试连接、版本与权限</el-button><el-button type="primary" :disabled="!mcpDraft.name || !mcpDraft.url" @click="saveMcp">保存 MCP 配置</el-button></template>
   </el-dialog>
@@ -1617,6 +1706,7 @@ onBeforeUnmount(() => {
     <el-form v-if="skillEditorMode === 'form'" label-position="top" class="agent-form-grid">
       <el-form-item label="Skill 名称"><el-input v-model="skillEditorName" placeholder="例如 customer-lookup" /></el-form-item>
       <el-form-item label="Skill 说明"><el-input v-model="skillEditorDescription" placeholder="说明这个 Skill 适用的场景" /></el-form-item>
+      <el-form-item label="人工审批"><el-switch v-model="skillEditorRequiresHumanApproval" active-text="高风险 Skill" inactive-text="直接执行" /><small class="form-help">开启后会写入 requires-human-approval frontmatter，加载、读取资源和脚本调用都进入审批链路。</small></el-form-item>
       <el-form-item label="Markdown 指令" class="span-two"><el-input v-model="skillEditorInstructions" class="skill-markdown-input" type="textarea" :rows="16" spellcheck="false" placeholder="# Instructions" /></el-form-item>
     </el-form>
     <el-input v-else v-model="skillMarkdownDraft" class="skill-markdown-input" type="textarea" :rows="20" spellcheck="false" />

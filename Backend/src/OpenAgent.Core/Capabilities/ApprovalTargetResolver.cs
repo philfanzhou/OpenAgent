@@ -8,7 +8,7 @@ internal sealed class ApprovalTargetResolver(
     IReadOnlyDictionary<string, ApprovalTarget> targets,
     IReadOnlySet<string> highRiskSkillNames)
 {
-    internal ApprovalTarget Resolve(ToolApprovalRequestContent request)
+    internal ApprovalTarget ResolveRequired(ToolApprovalRequestContent request)
     {
         FunctionCallContent? call = request.ToolCall as FunctionCallContent;
         if (call != null && targets.TryGetValue(call.Name, out ApprovalTarget? target))
@@ -30,17 +30,17 @@ internal sealed class ApprovalTargetResolver(
                 AgentSkillsProvider.ReadSkillResourceToolName => "read",
                 _ => "execute"
             };
-            return new ApprovalTarget(
-                AgentResourceType.Skill,
-                !string.IsNullOrWhiteSpace(skillName) && highRiskSkillNames.Contains(skillName)
-                    ? skillName
-                    : call.Name,
-                action);
+            if (!string.IsNullOrWhiteSpace(skillName)
+                && highRiskSkillNames.Contains(skillName))
+            {
+                return new ApprovalTarget(
+                    AgentResourceType.Skill,
+                    skillName,
+                    action);
+            }
         }
 
-        return new ApprovalTarget(
-            AgentResourceType.Function,
-            call?.Name ?? request.ToolCall.CallId,
-            "invoke");
+        throw new InvalidOperationException(
+            "Approval request does not match a configured high-risk target.");
     }
 }

@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -277,7 +278,9 @@ public sealed class InfrastructurePersistenceTests : IAsyncLifetime
             MafRequestId = "maf-request-1",
             ToolCallId = "tool-call-1",
             ToolName = "dangerous_function",
-            SessionStateJson = "{}",
+            // MAF polymorphic state requires metadata properties such as $type
+            // to remain ahead of ordinary properties after the database round trip.
+            SessionStateJson = "{\"pending\":[{\"$type\":\"approval\",\"toolCall\":{\"$type\":\"function\",\"name\":\"load_skill\"}}]}",
             RequesterContextJson = "{}"
         };
 
@@ -285,7 +288,9 @@ public sealed class InfrastructurePersistenceTests : IAsyncLifetime
         HumanApprovalRecord stored = Assert.IsType<HumanApprovalRecord>(
             await approvals.GetAsync("tenant-001", approval.ApprovalId));
         Assert.Equal(approval.SessionStateJson, stored.SessionStateJson);
-        Assert.Equal(approval.RedactedArgumentsJson, stored.RedactedArgumentsJson);
+        Assert.True(JsonNode.DeepEquals(
+            JsonNode.Parse(approval.RedactedArgumentsJson),
+            JsonNode.Parse(stored.RedactedArgumentsJson)));
         Assert.Null(await approvals.GetAsync("another-tenant", approval.ApprovalId));
 
         Task<HumanApprovalRecord?>[] attempts = Enumerable.Range(0, 8)

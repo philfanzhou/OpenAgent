@@ -9,7 +9,6 @@ using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Capabilities;
 using OpenAgent.Core.Runtime.Agent;
-using PlatformAgentResponse = OpenAgent.Contracts.Requests.AgentResponse;
 
 namespace OpenAgent.Core.Approvals;
 
@@ -64,7 +63,7 @@ internal sealed class HumanApprovalService : IHumanApprovalService
         FunctionCallContent call = approval.ToolCall as FunctionCallContent
             ?? throw new InvalidOperationException(
                 "Only local function tool approvals can be persisted and resumed.");
-        ApprovalTarget target = scope.ApprovalTargets.Resolve(approval);
+        ApprovalTarget target = scope.ApprovalTargets.ResolveRequired(approval);
         DateTimeOffset createdAt = _timeProvider.GetUtcNow();
         JsonElement sessionState = await scope.Agent.SerializeSessionAsync(
             session,
@@ -120,6 +119,8 @@ internal sealed class HumanApprovalService : IHumanApprovalService
             throw;
         }
 
+        // The conversation pause is already durable. Finish activation even if the
+        // originating HTTP/SSE request disconnects at this boundary.
         HumanApprovalRecord? ready = await _approvals.TryTransitionAsync(
             tenantId,
             record.ApprovalId,
@@ -128,7 +129,7 @@ internal sealed class HumanApprovalService : IHumanApprovalService
             "system",
             reason: null,
             _timeProvider.GetUtcNow(),
-            cancellationToken).ConfigureAwait(false);
+            CancellationToken.None).ConfigureAwait(false);
         if (ready == null)
         {
             await CancelConversationAsync(record, CancellationToken.None).ConfigureAwait(false);
@@ -227,13 +228,14 @@ internal sealed class HumanApprovalService : IHumanApprovalService
 
         try
         {
-            PlatformAgentResponse response = await ResumeApprovedAsync(
+            // The approval transition is already durable. A disconnected
+            // approver must not abort the authorized tool execution midway.
+            await ResumeApprovedAsync(
                 transitioned,
-                cancellationToken).ConfigureAwait(false);
+                CancellationToken.None).ConfigureAwait(false);
             return new HumanApprovalDecisionResult
             {
-                Approval = transitioned.ToRequest(),
-                Response = response
+                Approval = transitioned.ToRequest()
             };
         }
         catch
@@ -350,7 +352,7 @@ internal sealed class HumanApprovalService : IHumanApprovalService
         }
     }
 
-    private async Task<PlatformAgentResponse> ResumeApprovedAsync(
+    private async Task ResumeApprovedAsync(
         HumanApprovalRecord approval,
         CancellationToken cancellationToken)
     {
@@ -395,6 +397,7 @@ internal sealed class HumanApprovalService : IHumanApprovalService
         ToolApprovalRequestContent requestContent = new(
             approval.MafRequestId,
             call);
+        EnsureTargetUnchanged(scope, requestContent, approval);
         ChatMessage responseMessage = new(
             ChatRole.User,
             [requestContent.CreateResponse(
@@ -413,14 +416,13 @@ internal sealed class HumanApprovalService : IHumanApprovalService
             .SelectMany(message => message.Contents)
             .OfType<ToolApprovalRequestContent>()
             .FirstOrDefault();
-        HumanApprovalRequest? pending = null;
         if (nextApproval == null)
         {
             await scope.CompleteAsync(usage, modelId, cancellationToken).ConfigureAwait(false);
         }
         else
         {
-            pending = await SuspendAsync(
+            await SuspendAsync(
                 scope,
                 session,
                 nextApproval,
@@ -429,15 +431,6 @@ internal sealed class HumanApprovalService : IHumanApprovalService
                 cancellationToken).ConfigureAwait(false);
         }
 
-        return new PlatformAgentResponse
-        {
-            Content = response.Text ?? string.Empty,
-            TokenUsage = usage,
-            ModelId = modelId,
-            TraceId = approval.TraceId,
-            Success = true,
-            Approval = pending
-        };
     }
 
     private async Task CancelConversationAsync(
@@ -470,6 +463,34 @@ internal sealed class HumanApprovalService : IHumanApprovalService
         }
 
         throw new InvalidOperationException("Approval conversation could not be cancelled safely.");
+    }
+
+    private static void EnsureTargetUnchanged(
+        AgentExecutionScope scope,
+        ToolApprovalRequestContent request,
+        HumanApprovalRecord approval)
+    {
+        ApprovalTarget current;
+        try
+        {
+            current = scope.ApprovalTargets.ResolveRequired(request);
+        }
+        catch (InvalidOperationException exception)
+        {
+            throw new AgentException(
+                AgentErrorCode.Conflict,
+                "The approved target is no longer configured for human approval.",
+                innerException: exception);
+        }
+
+        if (current.ResourceType != approval.TargetType
+            || !string.Equals(current.ResourceId, approval.TargetCapability, StringComparison.Ordinal)
+            || !string.Equals(current.Action, approval.Action, StringComparison.Ordinal))
+        {
+            throw new AgentException(
+                AgentErrorCode.Conflict,
+                "The approved target changed before execution.");
+        }
     }
 
     private static string SerializeRequester(IAgentUserContext requester) =>

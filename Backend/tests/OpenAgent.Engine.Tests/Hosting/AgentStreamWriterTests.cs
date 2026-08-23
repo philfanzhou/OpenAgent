@@ -93,6 +93,7 @@ public class AgentStreamWriterTests
         Assert.Contains("event: approval", payload, StringComparison.Ordinal);
         Assert.Contains("\"approvalId\":\"approval-1\"", payload, StringComparison.Ordinal);
         Assert.Contains("\"redactedArgumentsJson\":", payload, StringComparison.Ordinal);
+        Assert.Contains("\"status\":\"AwaitingApproval\"", payload, StringComparison.Ordinal);
         Assert.DoesNotContain("do-not-expose", payload, StringComparison.Ordinal);
     }
 

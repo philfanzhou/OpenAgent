@@ -108,7 +108,7 @@ internal sealed class BasicAuthenticationHandler(
         }
         if (string.Equals(userId, "admin", StringComparison.Ordinal))
         {
-            claims.Add(new Claim(ClaimTypes.Role, "Admin"));
+            claims.Add(new Claim(ClaimTypes.Role, "ApprovalApprover"));
         }
 
         var identity = new ClaimsIdentity(claims, SchemeName);

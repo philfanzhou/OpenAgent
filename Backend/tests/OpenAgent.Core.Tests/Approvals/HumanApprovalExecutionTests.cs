@@ -49,10 +49,40 @@ public sealed class HumanApprovalExecutionTests
 
         Assert.Equal(1, runtime.Capability.InvocationCount);
         Assert.Equal("do-not-expose", runtime.Capability.LastApiKey);
-        Assert.Equal("execution complete", decision.Response?.Content);
+        Assert.DoesNotContain(
+            "execution complete",
+            JsonSerializer.Serialize(decision),
+            StringComparison.Ordinal);
+        ConversationRecord completed = Assert.IsType<ConversationRecord>(
+            await runtime.Conversations.GetRecordAsync("tenant-1", "approval-resume"));
+        Assert.Contains(completed.Messages, message =>
+            string.Equals(message.Content, "execution complete", StringComparison.Ordinal));
         Assert.Equal(
             ConversationStatus.Completed,
-            (await runtime.Conversations.GetRecordAsync("tenant-1", "approval-resume"))?.Status);
+            completed.Status);
+    }
+
+    [Fact]
+    public async Task StreamingApproval_DoesNotExposeSensitiveToolArguments()
+    {
+        await using ApprovalRuntime runtime = CreateRuntime();
+        var events = new List<AgentStreamEvent>();
+
+        await foreach (AgentStreamEvent item in runtime.Executor.ExecuteStreamingAsync(
+            Request("approval-stream-redaction"),
+            Requester,
+            CancellationToken.None))
+        {
+            events.Add(item);
+        }
+
+        AgentStreamEvent approval = Assert.Single(events, item =>
+            item.Type == AgentStreamEventType.Approval);
+        Assert.NotNull(approval.Approval);
+        Assert.DoesNotContain(
+            "do-not-expose",
+            JsonSerializer.Serialize(events),
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -72,7 +102,6 @@ public sealed class HumanApprovalExecutionTests
             CancellationToken.None);
 
         Assert.Equal(HumanApprovalStatus.Rejected, decision.Approval.Status);
-        Assert.Null(decision.Response);
         Assert.Equal(0, runtime.Capability.InvocationCount);
         Assert.Equal(
             ConversationStatus.Cancelled,
@@ -176,6 +205,33 @@ public sealed class HumanApprovalExecutionTests
         Assert.Equal(0, runtime.Capability.InvocationCount);
     }
 
+    [Fact]
+    public async Task ApprovedFunction_DoesNotExecuteAfterApprovalRequirementIsRemoved()
+    {
+        await using ApprovalRuntime runtime = CreateRuntime();
+        AgentResponse suspended = await runtime.Executor.ExecuteAsync(
+            Request("approval-target-drift"),
+            Requester,
+            CancellationToken.None);
+        runtime.Capability.RequiresHumanApproval = false;
+
+        AgentException exception = await Assert.ThrowsAsync<AgentException>(() =>
+            runtime.Approvals.DecideAsync(
+                "tenant-1",
+                suspended.Approval!.ApprovalId,
+                new HumanApprovalDecisionRequest { Approved = true },
+                Approver,
+                CancellationToken.None));
+
+        Assert.Equal(AgentErrorCode.Conflict, exception.ErrorCode);
+        Assert.Equal(0, runtime.Capability.InvocationCount);
+        Assert.Equal(
+            ConversationStatus.Cancelled,
+            (await runtime.Conversations.GetRecordAsync(
+                "tenant-1",
+                "approval-target-drift"))?.Status);
+    }
+
     private static readonly AgentUserContext Requester = new()
     {
         UserId = "requester-1",
@@ -273,6 +329,7 @@ public sealed class HumanApprovalExecutionTests
         private int _invocationCount;
         internal int InvocationCount => Volatile.Read(ref _invocationCount);
         internal string? LastApiKey { get; private set; }
+        internal bool RequiresHumanApproval { get; set; } = true;
 
         public Task<IReadOnlyList<CapabilityDefinition>> DiscoverAsync(
             string agentId,
@@ -298,7 +355,7 @@ public sealed class HumanApprovalExecutionTests
                         Interlocked.Increment(ref _invocationCount);
                         return Task.FromResult("executed");
                     },
-                    RequiresHumanApproval: true,
+                    RequiresHumanApproval: RequiresHumanApproval,
                     ApprovalAction: "execute")
             ]);
     }
@@ -375,6 +432,10 @@ public sealed class HumanApprovalExecutionTests
     private sealed class FakeChatClientFactory(IChatClient provider) : IAgentChatClientFactory
     {
         public IChatClient Create(LlmConfig llm) => provider;
+
+        public IChatClient CreateSummarizationClient(
+            LlmConfig llm,
+            ContextPolicy? contextPolicy) => provider;
     }
 
     private sealed class TestCurrentUserContext : ICurrentUserContext
