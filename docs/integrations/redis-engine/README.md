@@ -1,7 +1,6 @@
 # Redis 集成（Engine 视角）
 
-Engine 通过 Redis 实现配置热加载、引擎注册/心跳、LLM/RAG/MCP 注册发现以及 Pub/Sub 配置变更通知。
-Skill 目录已由 PostgreSQL 持久化；Redis 只保存租户隔离的派生 Skill 缓存。
+Engine 通过 Redis 实现配置热加载、引擎注册/心跳、技能/LLM/RAG 注册发现以及 Pub/Sub 配置变更通知。
 
 ## 核心能力
 
@@ -35,8 +34,7 @@ Engine Host
 | Engine 注册 | `engine:registry:{engineId}` | 服务发现 |
 | Engine 注册索引 | `engine:registry:index` | Router 有界读取注册项，避免 Redis 全库键枚举 |
 | LLM 注册 | `llm:registry:{providerId}` | LLM 提供商配置 |
-| Skill 注册 | `skill:published:index:{tenantSha256}` | 当前租户已发布 Skill 的派生索引 |
-| Skill 元数据 | `skill:registry:{tenantSha256}:{base64urlSkillId}` | PostgreSQL Skill 元数据的派生缓存 |
+| Skill 注册 | `skill:published:index` | 已发布技能索引 |
 | MCP 注册 | `mcp:published:index` | 独立维护的 MCP Server 配置索引 |
 | RAG 注册 | `rag:published:index` | 已发布 RAG 索引 |
 | 会话锁 | `openagent:conversation-lock:{tenantId}:{conversationId}` | 分布式会话锁 |

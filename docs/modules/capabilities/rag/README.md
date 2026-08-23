@@ -29,7 +29,6 @@ Agent → ToolCall("search_knowledge_base")
 **Implemented** — 多实例检索、适配器扩展、权限过滤均已落地。
 
 ## Limits
-- 管理 API 当前把 RAG 实例内嵌在 Agent 配置中；独立 `rag:registry:*` 只有启动加载，没有对应管理写链路和实时刷新
 - Qdrant 索引请求中向量字段使用空数组占位，实际使用需调用嵌入模型
 - RagFlowAdapter 不支持索引
 - 适配器响应解析使用同步 `.GetAwaiter().GetResult()`

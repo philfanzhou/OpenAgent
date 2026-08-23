@@ -1,7 +1,6 @@
 # 能力注册（Engine Runtime）
 
-Engine 启动时从 Redis 加载 LLM/RAG/MCP 目录；Skill 目录按请求从 PostgreSQL 读取，Redis 只作派生缓存。
-MCP 与 Skill 按 Agent 配置中的 ID 在每次 Agent 执行时创建官方 SDK 资源。
+Engine 启动时从 Redis 加载 LLM/RAG/Skill/MCP 目录；MCP 与 Skill 按 Agent 配置中的 ID 在每次 Agent 执行时创建官方 SDK 资源。
 
 ## 核心能力
 
@@ -14,13 +13,11 @@ MCP 与 Skill 按 Agent 配置中的 ID 在每次 Agent 执行时创建官方 SD
 ## 架构
 
 ```
-IHostedService（启动时）
+IHostedService (启动时)
   ├─ RedisLlmRegistrar      → ILlmRegistry
   ├─ RedisRagRegistrar      → IRagRegistry
+  ├─ RedisSkillRegistrar    → ISkillCatalog
   └─ RedisMcpRegistrar      → IMcpRegistry
-
-ISkillCatalog（按租户读取）
-  └─ PostgreSQL skill_definitions → Redis 派生缓存
 
 AgentFactory（按 AgentConfig）
   ├─ McpToolFactory              → official McpClientTool → ChatOptions.Tools
@@ -29,8 +26,7 @@ AgentFactory（按 AgentConfig）
 
 ## 当前状态
 
-**已实现** — LLM/RAG/MCP 目录由 Redis Registrar 加载；Skill 目录以 PostgreSQL 为事实源。
-MCP/Skill 的绑定来自 Agent 配置中的 ID，执行资源按请求释放。
+**已实现** — LLM/RAG/Skill/MCP 目录由 Redis Registrar 加载；MCP/Skill 的绑定来源是前端保存到 Redis 的 Agent 配置中的 ID，执行资源按请求释放。
 
 ## 源码位置
 
