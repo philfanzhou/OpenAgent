@@ -64,3 +64,12 @@ function sumOptional(counts: Array<number | null | undefined>): number | undefin
 export function formatTokenCount(count: number): string {
   return count.toLocaleString('zh-CN')
 }
+
+export function formatCacheHitRate(
+  cachedInputTokens?: number | null,
+  promptTokens?: number | null,
+): string | undefined {
+  if (cachedInputTokens == null || !promptTokens) return undefined
+  const rate = Math.min(100, (cachedInputTokens / promptTokens) * 100)
+  return `${rate.toFixed(1)}%`
+}

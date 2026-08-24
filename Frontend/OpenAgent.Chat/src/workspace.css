@@ -1032,10 +1032,12 @@ html[data-theme='dark'] .context-panel { background: #1f1f1f; }
 .token-usage-status.unavailable { color: var(--warn); }
 .token-usage-total { display: flex; align-items: baseline; gap: 6px; }
 .token-usage-total strong { color: var(--text); font-family: var(--font-mono); font-size: 16px; letter-spacing: -.03em; }
-.token-usage-total small, .token-usage-breakdown small, .token-usage-extra { color: var(--text-muted); font-size: 10px; }
-.token-usage-breakdown { display: flex; flex-wrap: wrap; gap: 4px 10px; color: var(--text-muted); font-family: var(--font-mono); font-size: 11px; }
-.token-usage-breakdown span { white-space: nowrap; }
-.token-usage-extra { line-height: 1.4; }
+.token-usage-total small { color: var(--text-muted); font-size: 10px; }
+.token-usage-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px 14px; margin: 0; }
+.token-usage-grid > div { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.token-usage-grid > .grid-span-two { grid-column: span 2; }
+.token-usage-grid dt { color: var(--text-muted); font-size: 10px; white-space: nowrap; }
+.token-usage-grid dd { margin: 0; color: var(--text); font-family: var(--font-mono); font-size: 11px; white-space: nowrap; }
 .conversation-usage > strong.unavailable { color: var(--text); font-family: inherit; font-size: 13px; font-weight: 600; }
 .conversation-usage > small { color: var(--text-muted); font-size: 11px; line-height: 1.4; }
 .conversation-id {

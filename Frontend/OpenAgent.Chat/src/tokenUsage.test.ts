@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatTokenBreakdown, formatTokenUsage, summarizeConversationUsage } from './tokenUsage'
+import { formatCacheHitRate, formatTokenBreakdown, formatTokenUsage, summarizeConversationUsage } from './tokenUsage'
 import type { ConversationMessage } from './types'
 
 describe('token usage presentation', () => {
@@ -52,6 +52,22 @@ describe('token usage presentation', () => {
 
     expect(summary.responseCount).toBe(1)
     expect(summary.available).toBe(true)
+  })
+
+  it('computes cache hit rate from cached and prompt tokens', () => {
+    expect(formatCacheHitRate(800, 1200)).toBe('66.7%')
+    expect(formatCacheHitRate(0, 500)).toBe('0.0%')
+  })
+
+  it('omits cache hit rate when provider does not report caching or prompts', () => {
+    expect(formatCacheHitRate(null, 500)).toBeUndefined()
+    expect(formatCacheHitRate(undefined, 500)).toBeUndefined()
+    expect(formatCacheHitRate(800, 0)).toBeUndefined()
+    expect(formatCacheHitRate(800, null)).toBeUndefined()
+  })
+
+  it('clamps cache hit rate at 100 percent', () => {
+    expect(formatCacheHitRate(600, 500)).toBe('100.0%')
   })
 })
 
