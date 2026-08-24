@@ -154,9 +154,17 @@ function handleScroll(): void {
   if (distance != null) stickToBottom.value = distance <= BOTTOM_STICK_THRESHOLD
 }
 
+// 流式输出会高频把视口钉回底部，仅靠“距底阈值”永远攒不够上滑位移；
+// 直接以向上滚动的意图（滚轮 deltaY<0）立即解除跟随。
+function handleWheel(event: WheelEvent): void {
+  if (event.deltaY < 0) stickToBottom.value = false
+}
+
 function scrollToBottom(force = false): void {
   if (!force && !stickToBottom.value) return
-  const scroll = () => messagesScrollbar.value?.setScrollTop(Number.MAX_SAFE_INTEGER)
+  const scroll = () => {
+    if (stickToBottom.value || force) messagesScrollbar.value?.setScrollTop(Number.MAX_SAFE_INTEGER)
+  }
   scroll()
   requestAnimationFrame(scroll)
   stickToBottom.value = true
@@ -169,7 +177,7 @@ defineExpose({ scrollToBottom })
 </script>
 
 <template>
-  <el-scrollbar ref="messagesScrollbar" class="messages" wrap-class="messages-wrap" v-loading="props.loading" @scroll="handleScroll">
+  <el-scrollbar ref="messagesScrollbar" class="messages" wrap-class="messages-wrap" v-loading="props.loading" @scroll="handleScroll" @wheel="handleWheel">
     <div v-if="!props.messages.length" class="welcome">
       <div class="welcome-icon">O</div>
       <h1>今天想处理什么？</h1>
