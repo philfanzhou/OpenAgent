@@ -55,6 +55,7 @@ describe('token usage presentation', () => {
 
   it('keeps an estimated total visible while a reply is still streaming', () => {
     const streaming = response('stream-1', 0, 0, 0)
+    delete streaming.tokenUsage
     streaming.content = '正在生成的回复内容'
 
     const summary = summarizeConversationUsage([response('done-1', 10, 4, 14), streaming])

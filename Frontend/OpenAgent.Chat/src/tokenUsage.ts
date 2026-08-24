@@ -83,9 +83,9 @@ function isAssistantResponse(message: ConversationMessage): boolean {
 }
 
 function sumOptional(counts: Array<number | null | undefined>): number | undefined {
-  return counts.every(count => count != null)
-    ? counts.reduce<number>((total, count) => total + count!, 0)
-    : undefined
+  // 空数组（尚无任何真实上报）应视为不可用而非 0。
+  if (!counts.length || counts.some(count => count == null)) return undefined
+  return counts.reduce<number>((total, count) => total + count!, 0)
 }
 
 export function formatTokenCount(count: number): string {
