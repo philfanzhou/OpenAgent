@@ -208,7 +208,23 @@ watch(
   { deep: true, immediate: true },
 )
 watch(() => props.contextSummaries, () => { void nextTick(() => scrollToBottom()) }, { deep: true })
-watch(() => props.streaming, () => { if (props.streaming) scrollToBottom() })
+watch(
+  () => props.streaming,
+  (streaming, previous) => {
+    if (streaming) {
+      scrollToBottom()
+      return
+    }
+    // 回复完成：Token 用量 / 模型名等页脚随后才插入布局，
+    // 等两帧渲染稳定后再补一次归底；用户若已在阅读历史则不打扰。
+    if (previous) {
+      void nextTick(() => {
+        scrollToBottom()
+        requestAnimationFrame(() => requestAnimationFrame(() => scrollToBottom()))
+      })
+    }
+  },
+)
 
 defineExpose({ scrollToBottom })
 </script>
