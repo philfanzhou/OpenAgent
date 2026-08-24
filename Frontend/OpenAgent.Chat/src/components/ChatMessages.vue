@@ -26,7 +26,16 @@ const suggestions = [
   ['总结技术方案', '请用简洁的结构总结当前技术方案。'],
 ]
 
-const messagesScrollbar = ref<{ setScrollTop: (value: number) => void } | null>(null)
+interface MessagesScrollbar {
+  setScrollTop: (value: number) => void
+  wrapRef?: HTMLElement | null
+}
+
+// 距底部小于该阈值视为“贴着底部”，继续自动跟随新内容。
+const BOTTOM_STICK_THRESHOLD = 96
+
+const messagesScrollbar = ref<MessagesScrollbar | null>(null)
+const stickToBottom = ref(true)
 const timelineItems = computed(() => buildConversationTimeline(
   props.messages,
   props.contextSummaries || [],
@@ -134,18 +143,33 @@ async function copyTraceId(traceId: string): Promise<void> {
   }
 }
 
-function scrollToBottom(): void {
+function distanceFromBottom(): number | null {
+  const wrap = messagesScrollbar.value?.wrapRef
+  if (!wrap) return null
+  return wrap.scrollHeight - wrap.scrollTop - wrap.clientHeight
+}
+
+function handleScroll(): void {
+  const distance = distanceFromBottom()
+  if (distance != null) stickToBottom.value = distance <= BOTTOM_STICK_THRESHOLD
+}
+
+function scrollToBottom(force = false): void {
+  if (!force && !stickToBottom.value) return
   const scroll = () => messagesScrollbar.value?.setScrollTop(Number.MAX_SAFE_INTEGER)
   scroll()
   requestAnimationFrame(scroll)
+  stickToBottom.value = true
 }
-watch(() => props.messages, () => { void nextTick(scrollToBottom) }, { deep: true })
-watch(() => props.contextSummaries, () => { void nextTick(scrollToBottom) }, { deep: true })
+watch(() => props.messages, () => { void nextTick(() => scrollToBottom()) }, { deep: true })
+watch(() => props.contextSummaries, () => { void nextTick(() => scrollToBottom()) }, { deep: true })
 watch(() => props.streaming, () => { if (props.streaming) scrollToBottom() })
+
+defineExpose({ scrollToBottom })
 </script>
 
 <template>
-  <el-scrollbar ref="messagesScrollbar" class="messages" wrap-class="messages-wrap" v-loading="props.loading">
+  <el-scrollbar ref="messagesScrollbar" class="messages" wrap-class="messages-wrap" v-loading="props.loading" @scroll="handleScroll">
     <div v-if="!props.messages.length" class="welcome">
       <div class="welcome-icon">O</div>
       <h1>今天想处理什么？</h1>

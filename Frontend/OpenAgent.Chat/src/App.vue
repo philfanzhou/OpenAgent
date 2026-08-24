@@ -157,6 +157,14 @@ const chatStreaming = useChatStreaming({
 })
 const { message, send, stopStreaming, clearDraft } = chatStreaming
 
+const chatMessagesRef = ref<InstanceType<typeof ChatMessages> | null>(null)
+
+function handleSend(): void {
+  // 发送后强制回到底部并恢复自动跟随；流式期间用户上滑阅读不会被拉回。
+  chatMessagesRef.value?.scrollToBottom(true)
+  void send()
+}
+
 const selectedAgent = computed(() => agents.value.find(agent => agent.agentId === selectedAgentId.value) || null)
 const routeMode = computed(() => connectionMode.value === 'engine'
   ? 'Engine 直连'
@@ -257,8 +265,8 @@ onBeforeUnmount(() => {
 
       <div class="workspace-grid" :class="{ 'context-collapsed': contextCollapsed }">
         <section class="chat-card">
-          <ChatMessages :messages="currentMessages" :context-summaries="selectedConversation?.contextSummaries" :loading="loadingConversation" :current-user="currentUser" :streaming="selectedConversationStreaming" @suggest="message = $event" @download="downloadFile" />
-          <MessageComposer :model-value="message" :endpoint-url="activeEndpointUrl" :endpoint-label="activeEndpointLabel" :selected-agent-id="selectedAgentId" :loading="selectedConversationStreaming" :pending-files="pendingFiles" @update:model-value="message = $event" @files-change="handleFilesChange" @retry-file="retryPendingFile" @send="send" @stop="stopStreaming" />
+          <ChatMessages ref="chatMessagesRef" :messages="currentMessages" :context-summaries="selectedConversation?.contextSummaries" :loading="loadingConversation" :current-user="currentUser" :streaming="selectedConversationStreaming" @suggest="message = $event" @download="downloadFile" />
+          <MessageComposer :model-value="message" :endpoint-url="activeEndpointUrl" :endpoint-label="activeEndpointLabel" :selected-agent-id="selectedAgentId" :loading="selectedConversationStreaming" :pending-files="pendingFiles" @update:model-value="message = $event" @files-change="handleFilesChange" @retry-file="retryPendingFile" @send="handleSend" @stop="stopStreaming" />
         </section>
         <aside class="context-panel">
           <div class="context-panel-head"><span class="context-label">INSPECTOR</span><button class="panel-collapse-btn" type="button" aria-label="收起上下文面板" title="收起" @click="toggleContext">›</button></div>
