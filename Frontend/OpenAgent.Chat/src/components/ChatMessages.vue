@@ -32,7 +32,9 @@ interface MessagesScrollbar {
 }
 
 // 距底部小于该阈值视为“贴着底部”，继续自动跟随新内容。
-const BOTTOM_STICK_THRESHOLD = 96
+const BOTTOM_STICK_THRESHOLD = 48
+// 向上滚动后的冷却期：期间不允许贴底判定重新接管，避免小幅上滑被抵消。
+const REENGAGE_COOLDOWN_MS = 400
 
 const messagesScrollbar = ref<MessagesScrollbar | null>(null)
 const stickToBottom = ref(true)
@@ -150,6 +152,7 @@ function distanceFromBottom(): number | null {
 }
 
 let lastObservedTop: number | null = null
+let lastUpwardAt = 0
 
 function handleScroll(): void {
   const wrap = messagesScrollbar.value?.wrapRef
@@ -158,13 +161,18 @@ function handleScroll(): void {
     return
   }
   // 程序化跟随只会增大 scrollTop；任何向上的位移都意味着用户在看历史。
+  let movedUp = false
   if (lastObservedTop != null && wrap.scrollTop < lastObservedTop - 1) {
+    movedUp = true
     stickToBottom.value = false
+    lastUpwardAt = Date.now()
     console.log('[scroll-debug] 检测到向上位移，解除跟随', wrap.scrollTop, '<-', lastObservedTop)
   }
   lastObservedTop = wrap.scrollTop
   const distance = wrap.scrollHeight - wrap.scrollTop - wrap.clientHeight
-  if (distance <= BOTTOM_STICK_THRESHOLD) stickToBottom.value = true
+  // 冷却期内贴底判定不得夺权，否则小幅上滑会被高频输出立即抵消。
+  const cooling = Date.now() - lastUpwardAt < REENGAGE_COOLDOWN_MS
+  if (!movedUp && !cooling && distance <= BOTTOM_STICK_THRESHOLD) stickToBottom.value = true
 }
 
 // 流式输出会高频把视口钉回底部，仅靠“距底阈值”永远攒不够上滑位移；
