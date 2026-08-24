@@ -149,19 +149,38 @@ function distanceFromBottom(): number | null {
   return wrap.scrollHeight - wrap.scrollTop - wrap.clientHeight
 }
 
+let lastObservedTop: number | null = null
+
 function handleScroll(): void {
-  const distance = distanceFromBottom()
-  if (distance != null) stickToBottom.value = distance <= BOTTOM_STICK_THRESHOLD
+  const wrap = messagesScrollbar.value?.wrapRef
+  if (!wrap) {
+    console.log('[scroll-debug] handleScroll: wrapRef 缺失')
+    return
+  }
+  // 程序化跟随只会增大 scrollTop；任何向上的位移都意味着用户在看历史。
+  if (lastObservedTop != null && wrap.scrollTop < lastObservedTop - 1) {
+    stickToBottom.value = false
+    console.log('[scroll-debug] 检测到向上位移，解除跟随', wrap.scrollTop, '<-', lastObservedTop)
+  }
+  lastObservedTop = wrap.scrollTop
+  const distance = wrap.scrollHeight - wrap.scrollTop - wrap.clientHeight
+  if (distance <= BOTTOM_STICK_THRESHOLD) stickToBottom.value = true
 }
 
 // 流式输出会高频把视口钉回底部，仅靠“距底阈值”永远攒不够上滑位移；
 // 直接以向上滚动的意图（滚轮 deltaY<0）立即解除跟随。
 function handleWheel(event: WheelEvent): void {
-  if (event.deltaY < 0) stickToBottom.value = false
+  if (event.deltaY < 0) {
+    stickToBottom.value = false
+    console.log('[scroll-debug] 滚轮向上，解除跟随')
+  }
 }
 
 function scrollToBottom(force = false): void {
-  if (!force && !stickToBottom.value) return
+  if (!force && !stickToBottom.value) {
+    console.log('[scroll-debug] 跟随已解除，跳过自动滚动')
+    return
+  }
   const scroll = () => {
     if (stickToBottom.value || force) messagesScrollbar.value?.setScrollTop(Number.MAX_SAFE_INTEGER)
   }
