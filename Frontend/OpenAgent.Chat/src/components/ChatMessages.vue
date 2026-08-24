@@ -26,7 +26,18 @@ const suggestions = [
   ['总结技术方案', '请用简洁的结构总结当前技术方案。'],
 ]
 
-const messagesScrollbar = ref<{ setScrollTop: (value: number) => void } | null>(null)
+interface MessagesScrollbar {
+  setScrollTop: (value: number) => void
+  wrapRef?: HTMLElement | null
+}
+
+// 距底部小于该阈值视为“贴着底部”，继续自动跟随新内容。
+const BOTTOM_STICK_THRESHOLD = 48
+// 向上滚动后的冷却期：期间不允许贴底判定重新接管，避免小幅上滑被抵消。
+const REENGAGE_COOLDOWN_MS = 400
+
+const messagesScrollbar = ref<MessagesScrollbar | null>(null)
+const stickToBottom = ref(true)
 const timelineItems = computed(() => buildConversationTimeline(
   props.messages,
   props.contextSummaries || [],
@@ -134,18 +145,88 @@ async function copyTraceId(traceId: string): Promise<void> {
   }
 }
 
-function scrollToBottom(): void {
-  const scroll = () => messagesScrollbar.value?.setScrollTop(Number.MAX_SAFE_INTEGER)
-  scroll()
-  requestAnimationFrame(scroll)
+function distanceFromBottom(): number | null {
+  const wrap = messagesScrollbar.value?.wrapRef
+  if (!wrap) return null
+  return wrap.scrollHeight - wrap.scrollTop - wrap.clientHeight
 }
-watch(() => props.messages, () => { void nextTick(scrollToBottom) }, { deep: true })
-watch(() => props.contextSummaries, () => { void nextTick(scrollToBottom) }, { deep: true })
-watch(() => props.streaming, () => { if (props.streaming) scrollToBottom() })
+
+let lastObservedTop: number | null = null
+let lastUpwardAt = 0
+// 程序化滚动后的短暂窗口内忽略方向判定，避免与浏览器滚动事件竞态产生误判。
+const PROGRAMMATIC_SCROLL_WINDOW_MS = 80
+let programmaticUntil = 0
+
+function handleScroll(): void {
+  const wrap = messagesScrollbar.value?.wrapRef
+  if (!wrap) return
+  const now = Date.now()
+  const suppressed = now < programmaticUntil
+  let movedUp = false
+  if (!suppressed && lastObservedTop != null && wrap.scrollTop < lastObservedTop - 1) {
+    movedUp = true
+    stickToBottom.value = false
+    lastUpwardAt = now
+  }
+  lastObservedTop = wrap.scrollTop
+  if (suppressed) return
+  const distance = wrap.scrollHeight - wrap.scrollTop - wrap.clientHeight
+  // 冷却期内贴底判定不得夺权，否则小幅上滑会被高频输出立即抵消。
+  const cooling = now - lastUpwardAt < REENGAGE_COOLDOWN_MS
+  if (!movedUp && !cooling && distance <= BOTTOM_STICK_THRESHOLD) stickToBottom.value = true
+}
+
+// 流式输出会高频把视口钉回底部，仅靠“距底阈值”永远攒不够上滑位移；
+// 直接以向上滚动的意图（滚轮 deltaY<0）立即解除跟随。
+function handleWheel(event: WheelEvent): void {
+  if (event.deltaY < 0) stickToBottom.value = false
+}
+
+function scrollToBottom(force = false): void {
+  if (!force && !stickToBottom.value) return
+  const attempt = () => {
+    if (!force && !stickToBottom.value) return
+    programmaticUntil = Date.now() + PROGRAMMATIC_SCROLL_WINDOW_MS
+    messagesScrollbar.value?.setScrollTop(Number.MAX_SAFE_INTEGER)
+  }
+  attempt()
+  requestAnimationFrame(attempt)
+  stickToBottom.value = true
+}
+// 默认始终自动跟随；数组引用被替换（打开/切换会话）时强制归底一次，
+// 深层变更（流式追加内容）仅在用户未上滑时跟随。immediate 保证首屏即到底部。
+watch(
+  () => props.messages,
+  (value, previous) => {
+    const replaced = value !== previous
+    void nextTick(() => scrollToBottom(replaced || previous === undefined))
+  },
+  { deep: true, immediate: true },
+)
+watch(() => props.contextSummaries, () => { void nextTick(() => scrollToBottom()) }, { deep: true })
+watch(
+  () => props.streaming,
+  (streaming, previous) => {
+    if (streaming) {
+      scrollToBottom()
+      return
+    }
+    // 回复完成：Token 用量 / 模型名等页脚随后才插入布局，
+    // 等两帧渲染稳定后再补一次归底；用户若已在阅读历史则不打扰。
+    if (previous) {
+      void nextTick(() => {
+        scrollToBottom()
+        requestAnimationFrame(() => requestAnimationFrame(() => scrollToBottom()))
+      })
+    }
+  },
+)
+
+defineExpose({ scrollToBottom })
 </script>
 
 <template>
-  <el-scrollbar ref="messagesScrollbar" class="messages" wrap-class="messages-wrap" v-loading="props.loading">
+  <el-scrollbar ref="messagesScrollbar" class="messages" wrap-class="messages-wrap" v-loading="props.loading" @scroll="handleScroll" @wheel="handleWheel">
     <div v-if="!props.messages.length" class="welcome">
       <div class="welcome-icon">O</div>
       <h1>今天想处理什么？</h1>
