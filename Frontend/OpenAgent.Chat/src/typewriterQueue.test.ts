@@ -18,19 +18,33 @@ describe('typewriter queue', () => {
     expect(displayed).toBe('你好 A😀')
   })
 
-  it('limits render frequency while catching up with a large backlog', () => {
+  it('accelerates rendering to drain a large backlog within the catch-up window', () => {
     vi.useFakeTimers()
     const updates: string[] = []
     const queue = createTypewriterQueue(content => updates.push(content))
     const content = 'x'.repeat(800)
 
     queue.enqueue(content)
-    vi.advanceTimersByTime(160)
-
-    expect(updates).toHaveLength(5)
-    expect(updates.every(update => update.length <= 8)).toBe(true)
+    // 默认 catchUpDivisor=8、intervalMs=32：剩余字符摊到最多 8 个 tick，恰好 ~256ms 追平。
+    vi.advanceTimersByTime(32)
+    expect(updates.reduce((total, update) => total + update.length, 0)).toBe(100)
+    vi.advanceTimersByTime(32 * 7)
+    expect(updates.reduce((total, update) => total + update.length, 0)).toBe(800)
     queue.flush()
     expect(updates.join('')).toBe(content)
+  })
+
+  it('keeps character-by-character pacing when the stream is slow', () => {
+    vi.useFakeTimers()
+    const updates: string[] = []
+    const queue = createTypewriterQueue(content => updates.push(content), {
+      charactersPerTick: 1,
+      catchUpDivisor: 8,
+    })
+
+    for (const character of 'abc') queue.enqueue(character)
+    vi.advanceTimersByTime(96)
+    expect(updates).toEqual(['a', 'b', 'c'])
   })
 
   it('uses configurable timing and batch size', () => {
@@ -39,7 +53,7 @@ describe('typewriter queue', () => {
     const queue = createTypewriterQueue(content => { displayed += content }, {
       intervalMs: 50,
       charactersPerTick: 2,
-      maxCharactersPerTick: 2,
+      catchUpDivisor: 4,
     })
 
     queue.enqueue('abcd')
