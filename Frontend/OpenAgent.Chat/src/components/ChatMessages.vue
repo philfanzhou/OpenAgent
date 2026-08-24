@@ -167,7 +167,6 @@ function handleScroll(): void {
     movedUp = true
     stickToBottom.value = false
     lastUpwardAt = now
-    console.log('[scroll-debug] 检测到向上位移，解除跟随', wrap.scrollTop, '<-', lastObservedTop)
   }
   lastObservedTop = wrap.scrollTop
   if (suppressed) return
@@ -180,10 +179,7 @@ function handleScroll(): void {
 // 流式输出会高频把视口钉回底部，仅靠“距底阈值”永远攒不够上滑位移；
 // 直接以向上滚动的意图（滚轮 deltaY<0）立即解除跟随。
 function handleWheel(event: WheelEvent): void {
-  if (event.deltaY < 0) {
-    stickToBottom.value = false
-    console.log('[scroll-debug] 滚轮向上，解除跟随')
-  }
+  if (event.deltaY < 0) stickToBottom.value = false
 }
 
 function scrollToBottom(force = false): void {
