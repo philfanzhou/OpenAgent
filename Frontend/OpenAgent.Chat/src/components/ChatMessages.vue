@@ -153,25 +153,27 @@ function distanceFromBottom(): number | null {
 
 let lastObservedTop: number | null = null
 let lastUpwardAt = 0
+// 程序化滚动后的短暂窗口内忽略方向判定，避免与浏览器滚动事件竞态产生误判。
+const PROGRAMMATIC_SCROLL_WINDOW_MS = 80
+let programmaticUntil = 0
 
 function handleScroll(): void {
   const wrap = messagesScrollbar.value?.wrapRef
-  if (!wrap) {
-    console.log('[scroll-debug] handleScroll: wrapRef 缺失')
-    return
-  }
-  // 程序化跟随只会增大 scrollTop；任何向上的位移都意味着用户在看历史。
+  if (!wrap) return
+  const now = Date.now()
+  const suppressed = now < programmaticUntil
   let movedUp = false
-  if (lastObservedTop != null && wrap.scrollTop < lastObservedTop - 1) {
+  if (!suppressed && lastObservedTop != null && wrap.scrollTop < lastObservedTop - 1) {
     movedUp = true
     stickToBottom.value = false
-    lastUpwardAt = Date.now()
+    lastUpwardAt = now
     console.log('[scroll-debug] 检测到向上位移，解除跟随', wrap.scrollTop, '<-', lastObservedTop)
   }
   lastObservedTop = wrap.scrollTop
+  if (suppressed) return
   const distance = wrap.scrollHeight - wrap.scrollTop - wrap.clientHeight
   // 冷却期内贴底判定不得夺权，否则小幅上滑会被高频输出立即抵消。
-  const cooling = Date.now() - lastUpwardAt < REENGAGE_COOLDOWN_MS
+  const cooling = now - lastUpwardAt < REENGAGE_COOLDOWN_MS
   if (!movedUp && !cooling && distance <= BOTTOM_STICK_THRESHOLD) stickToBottom.value = true
 }
 
@@ -185,18 +187,26 @@ function handleWheel(event: WheelEvent): void {
 }
 
 function scrollToBottom(force = false): void {
-  if (!force && !stickToBottom.value) {
-    console.log('[scroll-debug] 跟随已解除，跳过自动滚动')
-    return
+  if (!force && !stickToBottom.value) return
+  const attempt = () => {
+    if (!force && !stickToBottom.value) return
+    programmaticUntil = Date.now() + PROGRAMMATIC_SCROLL_WINDOW_MS
+    messagesScrollbar.value?.setScrollTop(Number.MAX_SAFE_INTEGER)
   }
-  const scroll = () => {
-    if (stickToBottom.value || force) messagesScrollbar.value?.setScrollTop(Number.MAX_SAFE_INTEGER)
-  }
-  scroll()
-  requestAnimationFrame(scroll)
+  attempt()
+  requestAnimationFrame(attempt)
   stickToBottom.value = true
 }
-watch(() => props.messages, () => { void nextTick(() => scrollToBottom()) }, { deep: true })
+// 默认始终自动跟随；数组引用被替换（打开/切换会话）时强制归底一次，
+// 深层变更（流式追加内容）仅在用户未上滑时跟随。immediate 保证首屏即到底部。
+watch(
+  () => props.messages,
+  (value, previous) => {
+    const replaced = value !== previous
+    void nextTick(() => scrollToBottom(replaced || previous === undefined))
+  },
+  { deep: true, immediate: true },
+)
 watch(() => props.contextSummaries, () => { void nextTick(() => scrollToBottom()) }, { deep: true })
 watch(() => props.streaming, () => { if (props.streaming) scrollToBottom() })
 
