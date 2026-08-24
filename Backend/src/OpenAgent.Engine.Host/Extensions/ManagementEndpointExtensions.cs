@@ -638,11 +638,10 @@ internal static class ManagementEndpointExtensions
         context.GetAgentRequest().User.TenantId
         ?? throw new InvalidOperationException("TenantId is required.");
 
+    // 调试用：空租户（存量）agent 视为全局可见，不限制其 skills 是否为空。
     private static bool CanAccessAgent(AgentConfigEntity entity, string tenantId) =>
         string.Equals(entity.TenantId, tenantId, StringComparison.Ordinal)
-        || string.IsNullOrWhiteSpace(entity.TenantId)
-            && entity.Config.Skills.EnabledSkills.Count == 0
-            && entity.Config.Skills.Instances.Count == 0;
+        || string.IsNullOrWhiteSpace(entity.TenantId);
 
     private static AgentConfigEntity MergeSecrets(AgentConfigEntity? existing, AgentConfigEntity requested)
     {
