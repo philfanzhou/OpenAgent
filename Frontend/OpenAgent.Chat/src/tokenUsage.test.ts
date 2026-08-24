@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatCacheHitRate, formatTokenBreakdown, formatTokenUsage, summarizeConversationUsage } from './tokenUsage'
+import { estimateTokens, formatCacheHitRate, formatTokenBreakdown, formatTokenUsage, summarizeConversationUsage } from './tokenUsage'
 import type { ConversationMessage } from './types'
 
 describe('token usage presentation', () => {
@@ -39,7 +39,29 @@ describe('token usage presentation', () => {
 
     const summary = summarizeConversationUsage([response('response-1', 10, 4, 14), missing])
 
-    expect(summary).toEqual({ available: false, responseCount: 2, unavailableCount: 1 })
+    // 未上报 usage 的回复改为内容长度预估，面板不再整体隐藏。
+    expect(summary.available).toBe(true)
+    expect(summary.estimated).toBe(true)
+    expect(summary.unavailableCount).toBe(1)
+    expect(summary.usage!.promptTokens).toBe(10)
+    expect(summary.usage!.totalTokens).toBe(14 + estimateTokens('response'))
+  })
+
+  it('estimates tokens from content length with CJK awareness', () => {
+    expect(estimateTokens('abcd')).toBe(1) // 4/4
+    expect(estimateTokens('你好')).toBe(2) // 2 * 0.75 → ceil(1.5)
+    expect(estimateTokens('')).toBe(0)
+  })
+
+  it('keeps an estimated total visible while a reply is still streaming', () => {
+    const streaming = response('stream-1', 0, 0, 0)
+    streaming.content = '正在生成的回复内容'
+
+    const summary = summarizeConversationUsage([response('done-1', 10, 4, 14), streaming])
+
+    expect(summary.available).toBe(true)
+    expect(summary.estimated).toBe(true)
+    expect(summary.usage!.completionTokens).toBe(4 + estimateTokens(streaming.content))
   })
 
   it('does not count stored tool-call messages as responses', () => {
