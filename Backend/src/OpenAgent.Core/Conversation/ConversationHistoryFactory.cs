@@ -105,12 +105,17 @@ internal sealed class ConversationHistoryFactory
             cancellationToken).ConfigureAwait(false);
     }
 
-    internal AIContextProvider CreateCompaction(
+    internal AIContextProvider? CreateCompaction(
         ContextPolicy? policy,
         IChatClient summarizationClient,
         string? tenantId,
         string? conversationId)
     {
+        if (!_options.AutoCompactionEnabled)
+        {
+            return null;
+        }
+
         SummarizationCompactionStrategy strategy = CreateStrategy(
             policy,
             summarizationClient,

@@ -22,4 +22,10 @@ public sealed class ConversationStoreOptions
     /// 是否启用 LLM 异步生成会话摘要标题。默认 true。
     /// </summary>
     public bool EnableTitleSummarization { get; set; } = true;
+
+    /// <summary>
+    /// 是否在模型调用前按上下文阈值自动压缩历史。默认 false；
+    /// 手动压缩（POST /conversations/{id}/compact）不受此开关影响。
+    /// </summary>
+    public bool AutoCompactionEnabled { get; set; } = false;
 }
