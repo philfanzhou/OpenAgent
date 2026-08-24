@@ -101,6 +101,7 @@ cmd_up() {
   line="$(grep -P "^${slug}\t" "$ALLOC_FILE" 2>/dev/null || true)"
   if [[ -n "$line" ]]; then
     echo "预览 '$slug' 已分配，复用现有槽位。"
+    IFS=$'\t' read -r slug engine_port router_port chat_port redis_db <<<"$line"
     write_env_file <<<"$line"
   else
     exec 9>"$LOCK_FILE"

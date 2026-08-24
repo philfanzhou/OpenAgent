@@ -270,7 +270,9 @@ internal class ConfigProvider : IAgentConfigProvider
 
     private AgentConfig? ResolveForTenant(AgentConfig config, string tenantId)
     {
-        if (!string.Equals(config.TenantId, tenantId, StringComparison.Ordinal))
+        // 调试用：空租户（存量）配置视为全局可见。
+        if (!string.IsNullOrWhiteSpace(config.TenantId)
+            && !string.Equals(config.TenantId, tenantId, StringComparison.Ordinal))
         {
             return null;
         }

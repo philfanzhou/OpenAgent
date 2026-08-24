@@ -33,7 +33,9 @@ internal sealed class AgentAuthorizationGate
             cancellationToken).ConfigureAwait(false);
 
         LlmConfig model = _models.ResolveConfig(configuredModel);
+        // 调试用：空租户（存量）LLM profile 视为全局可用。
         if (!string.IsNullOrWhiteSpace(configuredModel.Provider)
+            && !string.IsNullOrWhiteSpace(model.TenantId)
             && !string.Equals(model.TenantId, userContext.TenantId, StringComparison.Ordinal))
         {
             throw new TenantDataIsolationException(

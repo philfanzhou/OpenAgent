@@ -84,7 +84,9 @@ internal sealed class AgentRuntimeResolver : IAgentRuntimeResolver
     {
         bool hasSkillBinding = config.Skills.EnabledSkills.Count > 0
             || config.Skills.Instances.Count > 0;
+        // 调试用：空租户（存量）agent 的技能绑定不参与跨租户校验。
         if (hasSkillBinding
+            && !string.IsNullOrWhiteSpace(config.TenantId)
             && !string.Equals(config.TenantId, userContext.TenantId, StringComparison.Ordinal))
         {
             throw new TenantDataIsolationException(

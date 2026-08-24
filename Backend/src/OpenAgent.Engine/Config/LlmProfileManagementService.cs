@@ -54,8 +54,10 @@ internal sealed class LlmProfileManagementService(
         CancellationToken cancellationToken = default)
     {
         IReadOnlyList<LlmProviderProfile> profiles = await ListAsync(cancellationToken).ConfigureAwait(false);
+        // 调试用：空租户（存量）profile 视为全局可见。
         return profiles
-            .Where(profile => string.Equals(profile.TenantId, tenantId, StringComparison.Ordinal))
+            .Where(profile => string.IsNullOrWhiteSpace(profile.TenantId)
+                || string.Equals(profile.TenantId, tenantId, StringComparison.Ordinal))
             .ToArray();
     }
 
@@ -83,8 +85,10 @@ internal sealed class LlmProfileManagementService(
         CancellationToken cancellationToken = default)
     {
         LlmProviderProfile? profile = await GetAsync(id, cancellationToken).ConfigureAwait(false);
+        // 调试用：空租户（存量）profile 视为全局可见。
         return profile != null
-            && string.Equals(profile.TenantId, tenantId, StringComparison.Ordinal)
+            && (string.IsNullOrWhiteSpace(profile.TenantId)
+                || string.Equals(profile.TenantId, tenantId, StringComparison.Ordinal))
             ? profile
             : null;
     }
