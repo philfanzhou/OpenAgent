@@ -80,17 +80,15 @@ internal sealed class AgentFactory
                 user,
                 cancellationToken).ConfigureAwait(false);
 
-            AIContextProvider? compaction = _conversations.CreateCompaction(
+            AIContextProvider compaction = _conversations.CreateCompaction(
                 profile.Config.ContextPolicy,
                 summarizationClient,
                 user.TenantId,
                 request.ConversationId);
-            IChatClient compactingClient = compaction == null
-                ? modelClient
-                : modelClient
-                    .AsBuilder()
-                    .UseAIContextProviders(compaction)
-                    .Build();
+            IChatClient compactingClient = modelClient
+                .AsBuilder()
+                .UseAIContextProviders(compaction)
+                .Build();
             IChatClient chatClient = new FunctionInvokingChatClient(compactingClient)
             {
                 AllowConcurrentInvocation = false,
