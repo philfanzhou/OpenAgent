@@ -111,6 +111,7 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
     }
 
     public async Task<IntentRecognitionResult?> RecognizeIntentAsync(
+        AgentProviderRequestContext requestContext,
         string intentAgentId,
         IReadOnlyList<AgentSummary> agents,
         string message,
@@ -124,7 +125,8 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
 
         using HttpRequestMessage request = CreateServiceRequest(
             HttpMethod.Post,
-            $"{endpoint.TrimEnd('/')}{_chatPath.TrimEnd('/')}/intent");
+            $"{endpoint.TrimEnd('/')}{_chatPath.TrimEnd('/')}/intent",
+            requestContext);
         request.Content = new StringContent(
             JsonSerializer.Serialize(new ChatRequest
             {

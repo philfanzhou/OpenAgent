@@ -48,11 +48,13 @@ public class OpenAgentEngineProviderTests
             CancellationToken.None);
         IReadOnlyList<AgentSummary> agents = catalog.Agents;
         IntentRecognitionResult? response = await provider.RecognizeIntentAsync(
+            requestContext,
             "intent-router",
             agents,
             "select an agent",
             CancellationToken.None);
         IntentRecognitionResult? secondResponse = await provider.RecognizeIntentAsync(
+            requestContext,
             "intent-router",
             agents,
             "select another agent",
@@ -80,7 +82,7 @@ public class OpenAgentEngineProviderTests
             ],
             handler.RequestUris);
         Assert.Equal(
-            ["Basic forwarded-token", "Basic service-token", "Basic service-token", "Basic forwarded-token"],
+            ["Basic forwarded-token", "Basic forwarded-token", "Basic forwarded-token", "Basic forwarded-token"],
             handler.Authorizations);
         Assert.All(handler.IdentityHeaders, present => Assert.True(present));
         Assert.Equal(AgentProviderConversationStatus.Found, conversation);
