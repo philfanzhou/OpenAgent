@@ -1,4 +1,5 @@
 using System.ClientModel;
+using System.ClientModel.Primitives;
 using Anthropic;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
@@ -58,7 +59,8 @@ internal sealed class AgentChatClientFactory : IAgentChatClientFactory
             ModelId = summaryModel,
             ApiKey = llm.ApiKey,
             Endpoint = llm.Endpoint,
-            Temperature = llm.Temperature
+            Temperature = llm.Temperature,
+            AllowInsecureTls = llm.AllowInsecureTls
         });
     }
 
@@ -85,9 +87,24 @@ internal sealed class AgentChatClientFactory : IAgentChatClientFactory
     private IChatClient CreateAnthropic(LlmConfig llm)
     {
         EnsureApiKey(llm, "Anthropic Messages");
-        AnthropicClient client = string.IsNullOrWhiteSpace(llm.Endpoint)
-            ? new AnthropicClient { ApiKey = llm.ApiKey }
-            : new AnthropicClient { ApiKey = llm.ApiKey, BaseUrl = llm.Endpoint.TrimEnd('/') };
+        AnthropicClient client;
+        if (llm.AllowInsecureTls)
+        {
+            client = string.IsNullOrWhiteSpace(llm.Endpoint)
+                ? new AnthropicClient { ApiKey = llm.ApiKey, HttpClient = CreateInsecureHttpClient() }
+                : new AnthropicClient
+                {
+                    ApiKey = llm.ApiKey,
+                    BaseUrl = llm.Endpoint.TrimEnd('/'),
+                    HttpClient = CreateInsecureHttpClient()
+                };
+        }
+        else
+        {
+            client = string.IsNullOrWhiteSpace(llm.Endpoint)
+                ? new AnthropicClient { ApiKey = llm.ApiKey }
+                : new AnthropicClient { ApiKey = llm.ApiKey, BaseUrl = llm.Endpoint.TrimEnd('/') };
+        }
         return client.AsAIAgent(model: llm.ModelId, name: "openagent-anthropic-provider").ChatClient;
     }
 
@@ -95,13 +112,26 @@ internal sealed class AgentChatClientFactory : IAgentChatClientFactory
     {
         EnsureApiKey(llm, "OpenAI");
         string endpoint = string.IsNullOrWhiteSpace(llm.Endpoint) ? defaultEndpoint : llm.Endpoint;
-        return new OpenAIClient(
-            new ApiKeyCredential(llm.ApiKey),
-            new OpenAIClientOptions
-            {
-                Endpoint = new Uri(endpoint),
-                NetworkTimeout = _networkTimeout
-            });
+        var options = new OpenAIClientOptions
+        {
+            Endpoint = new Uri(endpoint),
+            NetworkTimeout = _networkTimeout
+        };
+        if (llm.AllowInsecureTls)
+        {
+            options.Transport = new HttpClientPipelineTransport(CreateInsecureHttpClient());
+        }
+        return new OpenAIClient(new ApiKeyCredential(llm.ApiKey), options);
+    }
+
+    private static HttpClient CreateInsecureHttpClient()
+    {
+        var handler = new HttpClientHandler
+        {
+            ServerCertificateCustomValidationCallback =
+                HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
+        };
+        return new HttpClient(handler);
     }
 
     private static void EnsureApiKey(LlmConfig llm, string format)

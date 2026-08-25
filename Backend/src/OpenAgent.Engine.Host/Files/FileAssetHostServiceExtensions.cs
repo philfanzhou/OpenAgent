@@ -31,7 +31,10 @@ internal static class FileAssetHostServiceExtensions
             var config = new AmazonS3Config
             {
                 ForcePathStyle = options.ForcePathStyle,
-                AuthenticationRegion = options.Region
+                AuthenticationRegion = options.Region,
+                RequestChecksumCalculation = RequestChecksumCalculation.WHEN_REQUIRED,
+                ResponseChecksumValidation = ResponseChecksumValidation.WHEN_REQUIRED,
+                HttpClientFactory = new S3HttpClientFactory(options.AllowInsecureTls)
             };
             if (string.IsNullOrWhiteSpace(options.ServiceUrl))
             {
@@ -51,5 +54,31 @@ internal static class FileAssetHostServiceExtensions
             "file-object-storage",
             tags: ["infrastructure", "ready"]);
         return services;
+    }
+
+    private sealed class S3HttpClientFactory(bool allowInsecureTls) : HttpClientFactory
+    {
+        public override HttpClient CreateHttpClient(IClientConfig clientConfig)
+        {
+            var handler = new HttpClientHandler();
+            if (allowInsecureTls)
+            {
+                handler.ServerCertificateCustomValidationCallback =
+                    HttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
+            }
+            return new HttpClient(new EtagStripHandler { InnerHandler = handler });
+        }
+    }
+
+    private sealed class EtagStripHandler : DelegatingHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            HttpResponseMessage response = await base.SendAsync(request, cancellationToken).ConfigureAwait(false);
+            response.Headers.Remove("ETag");
+            return response;
+        }
     }
 }

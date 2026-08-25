@@ -11,4 +11,5 @@ internal sealed class FileObjectStorageOptions
     public bool ForcePathStyle { get; init; }
     public string? AccessKey { get; init; }
     public string? SecretKey { get; init; }
+    public bool AllowInsecureTls { get; init; }
 }
