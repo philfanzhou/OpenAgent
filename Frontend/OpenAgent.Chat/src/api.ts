@@ -226,6 +226,9 @@ function normalizeConversation(record: ConversationRecord): ConversationRecord {
           fileName: String(file.fileName ?? file.FileName ?? ''),
           mediaType: String(file.mediaType ?? file.MediaType ?? 'application/octet-stream'),
           length: Number(file.length ?? file.Length ?? 0),
+          ...(file.objectKey || file.ObjectKey
+            ? { objectKey: String(file.objectKey ?? file.ObjectKey) }
+            : {}),
         })) satisfies MessageFile[]
         return { ...message, files, ...(reasoning ? { reasoning } : {}) }
       } catch {
@@ -301,6 +304,17 @@ export const api = {
   async loadFilePreview(fileId: string, conversationId: string): Promise<string> {
     const response = await fetch(
       `${requireBaseUrl()}/api/v1/agent/files/${encodeURIComponent(fileId)}/content?conversationId=${encodeURIComponent(conversationId)}`,
+      { headers: headers() },
+    )
+    if (!response.ok) throw await readError(response)
+    return URL.createObjectURL(await response.blob())
+  },
+
+  async loadObjectPreview(objectKey: string, conversationId?: string): Promise<string> {
+    const query = new URLSearchParams({ path: objectKey })
+    if (conversationId) query.set('conversationId', conversationId)
+    const response = await fetch(
+      `${requireBaseUrl()}/api/v1/agent/files/object?${query.toString()}`,
       { headers: headers() },
     )
     if (!response.ok) throw await readError(response)

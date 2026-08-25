@@ -200,7 +200,8 @@ internal static class AgentMessageAdapter
                 fileId = file.FileId,
                 fileName = file.FileName,
                 mediaType = file.MediaType,
-                length = file.Length
+                length = file.Length,
+                objectKey = file.ObjectKey
             }))
         };
     }
@@ -342,12 +343,20 @@ internal static class AgentMessageAdapter
             chatMessage.Contents.Add(new TextContent(
                 $"[File: {file.Asset.FileName}]\n{DecodeUtf8(file)}"));
         }
-        else
+        else if (IsImageFile(file.Asset.MediaType))
         {
             chatMessage.Contents.Add(new DataContent(file.Data, file.Asset.MediaType)
             {
                 Name = file.Asset.FileName
             });
+        }
+        else
+        {
+            // 非文本且非图片的二进制文件（如 PDF）不能内联：多数 OpenAI 兼容网关会直接拒绝
+            // 该请求（HTTP 400）。改为文本占位并附上 fileId 与 S3 对象键，供模型调用
+            // read_file 或文档解析类 MCP 工具（s3Id）。
+            chatMessage.Contents.Add(new TextContent(
+                $"[File: {file.Asset.FileName}] fileId={file.Asset.FileId} s3Key={file.Asset.ObjectKey} ({file.Asset.MediaType}, {file.Asset.Length} bytes; binary content not inlined. Parse this document via document-parsing MCP tools passing s3Id=\"{file.Asset.ObjectKey}\"; the read_file tool only supports UTF-8 text files.)"));
         }
     }
 
@@ -355,6 +364,11 @@ internal static class AgentMessageAdapter
     {
         return mediaType.StartsWith("text/", StringComparison.OrdinalIgnoreCase)
             || mediaType.Equals("application/json", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsImageFile(string mediaType)
+    {
+        return mediaType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string DecodeUtf8(FileAssetContent file)

@@ -158,4 +158,68 @@ public sealed class AgentMessageAdapterTests
 
         Assert.Same(message, normalized);
     }
+
+    [Fact]
+    public void AttachFile_PdfBinary_AddsTextPlaceholderInsteadOfDataContent()
+    {
+        var message = new ChatMessage(ChatRole.User, "解析这个文件");
+
+        AgentMessageAdapter.AttachFile(message, CreateContent("report.pdf", "application/pdf", [0x25, 0x50, 0x44, 0x46]));
+
+        Assert.Empty(message.Contents.OfType<DataContent>());
+        TextContent placeholder = Assert.Single(
+            message.Contents.OfType<TextContent>(), content => content.Text.Contains("[File:"));
+        Assert.Contains("[File: report.pdf]", placeholder.Text);
+        Assert.Contains("application/pdf", placeholder.Text);
+        Assert.Contains("read_file", placeholder.Text);
+        Assert.Contains("fileId=file-1", placeholder.Text);
+        Assert.Contains("s3Key=files/tenant-1/file-1", placeholder.Text);
+        Assert.Contains("s3Key", placeholder.Text);
+    }
+
+    [Fact]
+    public void AttachFile_Image_AddsDataContent()
+    {
+        var message = new ChatMessage(ChatRole.User, "描述这张图");
+
+        AgentMessageAdapter.AttachFile(message, CreateContent("chart.png", "image/png", [0x89, 0x50]));
+
+        DataContent data = Assert.Single(message.Contents.OfType<DataContent>());
+        Assert.Equal("image/png", data.MediaType);
+        Assert.Single(message.Contents.OfType<TextContent>(), content => !string.IsNullOrEmpty(content.Text));
+        Assert.DoesNotContain(message.Contents.OfType<TextContent>(), content => content.Text.Contains("[File:"));
+    }
+
+    [Fact]
+    public void AttachFile_TextFile_InlinesUtf8Content()
+    {
+        var message = new ChatMessage(ChatRole.User, "总结这个文件");
+
+        AgentMessageAdapter.AttachFile(
+            message, CreateContent("notes.txt", "text/plain", "hello notes"u8.ToArray()));
+
+        TextContent inlined = Assert.Single(
+            message.Contents.OfType<TextContent>(), content => content.Text.Contains("[File:"));
+        Assert.StartsWith("[File: notes.txt]", inlined.Text);
+        Assert.Contains("hello notes", inlined.Text);
+    }
+
+    private static FileAssetContent CreateContent(string fileName, string mediaType, byte[] data) => new()
+    {
+        Asset = new FileAsset
+        {
+            FileId = "file-1",
+            TenantId = "tenant-1",
+            OwnerUserId = "user-1",
+            FileName = fileName,
+            MediaType = mediaType,
+            Length = data.Length,
+            Sha256 = "hash",
+            ObjectKey = "files/tenant-1/file-1",
+            Source = FileAssetSource.UserUpload,
+            State = FileAssetState.Ready,
+            CreatedAt = DateTimeOffset.UtcNow
+        },
+        Data = data
+    };
 }
