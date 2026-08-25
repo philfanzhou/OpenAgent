@@ -855,6 +855,14 @@ html[data-theme='dark'] .message-row ::selection { background: rgba(16, 163, 127
 .message-file-action { display: grid; width: 24px; height: 24px; place-items: center; border-radius: var(--r-pill); color: var(--text-muted); background: var(--bg-subtle); font-size: 14px; }
 .message-file-preview { grid-column: 1 / -1; max-height: 80px; margin: 2px -2px -2px; padding: 7px 8px; overflow: auto; border-top: 1px solid var(--border); color: var(--text-muted); background: transparent; font-family: var(--font-mono); font-size: 10px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
 
+/* Generated-file card markdown preview */
+.message-file-markdown { grid-column: 1 / -1; margin: 2px -2px -2px; border-top: 1px solid var(--border); }
+.message-file-markdown > summary { padding: 7px 8px; cursor: pointer; list-style: none; color: var(--text-muted); font-size: 11px; font-weight: 600; user-select: none; }
+.message-file-markdown > summary::before { content: '› '; }
+.message-file-markdown[open] > summary::before { content: '⌄ '; }
+.message-file-markdown .markdown-content { max-height: 420px; overflow: auto; padding: 4px 8px 8px; font-size: 12px; }
+.message-file-markdown .markdown-content img { max-width: 100%; height: auto; border-radius: var(--r-xs); }
+
 /* Message error */
 .message-error {
   display: flex;

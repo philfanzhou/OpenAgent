@@ -2,6 +2,8 @@
 import { ElMessage } from 'element-plus'
 import { computed, nextTick, ref, watch } from 'vue'
 import { buildCompactionDisplay, buildCompactionTokenDisplay } from '../compactionPresentation'
+import { isMarkdownFile } from '../composables/useFileHandling'
+import { isSelfContainedImageRef } from '../markdownAssets'
 import { buildConversationTimeline, fileLabel, formatFileSize, toolArgumentsText, toolPresentation } from '../messagePresentation'
 import { formatTokenBreakdown, formatTokenCount, formatTokenUsage } from '../tokenUsage'
 import type { ContextSummary, ConversationMessage, CurrentUserContext, MessageFile, ProcessActivity, ToolActivity } from '../types'
@@ -13,6 +15,8 @@ const props = defineProps<{
   loading: boolean
   currentUser: CurrentUserContext | null
   streaming: boolean
+  /** 已解析的 markdown 图片 blob URL（见 useFileHandling.markdownImageUrls）。 */
+  markdownImageUrls?: Map<string, string>
 }>()
 
 const emit = defineEmits<{
@@ -134,6 +138,18 @@ function compactionTitle(summary: ContextSummary): string {
 
 function compactionStatusClass(summary: ContextSummary): string {
   return `is-${summary.status.toLowerCase()}`
+}
+
+/** 构造消息内 markdown 的图片同步查找：键与 useFileHandling 的解析缓存一致。 */
+function imageLookup(
+  messageId: string,
+  selfObjectKey?: string,
+): ((src: string) => string | undefined) | undefined {
+  if (!props.markdownImageUrls?.size) return undefined
+  return (src: string): string | undefined => {
+    if (!src || isSelfContainedImageRef(src)) return undefined
+    return props.markdownImageUrls?.get(`${messageId}|${selfObjectKey ?? ''}|${src}`)
+  }
 }
 
 async function copyTraceId(traceId: string): Promise<void> {
@@ -302,7 +318,7 @@ defineExpose({ scrollToBottom })
           </button>
         </div>
 
-        <div v-if="item.content || isStreamingItem(item)" class="message-bubble"><MarkdownContent :content="item.content" :streaming="isStreamingItem(item) && Boolean(item.content)" /></div>
+        <div v-if="item.content || isStreamingItem(item)" class="message-bubble"><MarkdownContent :content="item.content" :streaming="isStreamingItem(item) && Boolean(item.content)" :resolve-image="imageLookup(item.messageId)" /></div>
 
         <div v-if="shouldShowUsage(item)" class="message-usage" aria-label="当前响应 Token 用量">
           <span v-if="item.modelId" class="message-model">{{ item.modelId }}</span>
@@ -313,13 +329,18 @@ defineExpose({ scrollToBottom })
         <div v-if="item.role === 'assistant' && item.files?.length" class="generated-files">
           <div class="generated-files-heading"><span>生成的文件</span><small>{{ item.files.length }} 个可下载文件</small></div>
           <div class="message-files assistant-files">
-            <button v-for="file in item.files" :key="file.fileId || file.fileName" type="button" class="message-file output-file" @click="emit('download', file)">
+            <!-- div 而非 button：卡片内嵌可交互的 markdown 预览折叠面板，button 不允许交互后代。 -->
+            <div v-for="file in item.files" :key="file.fileId || file.fileName" class="message-file output-file" role="button" tabindex="0" @click="emit('download', file)" @keydown.enter.prevent="emit('download', file)">
               <img v-if="file.previewUrl" :src="file.previewUrl" :alt="file.fileName" />
               <span v-else class="message-file-type">{{ fileLabel(file) }}</span>
               <span class="message-file-meta"><strong>{{ file.fileName }}</strong><small>{{ formatFileSize(file.length) }} · 点击下载</small></span>
               <span class="message-file-action">↓</span>
-              <pre v-if="file.previewText" class="message-file-preview">{{ file.previewText }}</pre>
-            </button>
+              <details v-if="isMarkdownFile(file.mediaType, file.fileName) && file.previewText" class="message-file-markdown" open @click.stop @keydown.stop>
+                <summary @click.stop>预览 Markdown</summary>
+                <MarkdownContent :content="file.previewText" :resolve-image="imageLookup(item.messageId, file.objectKey)" />
+              </details>
+              <pre v-else-if="file.previewText" class="message-file-preview">{{ file.previewText }}</pre>
+            </div>
           </div>
         </div>
 
