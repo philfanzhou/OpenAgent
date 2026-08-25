@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
@@ -28,8 +29,9 @@ internal sealed class FileAssetCapabilitySource(
         [
             new CapabilityDefinition(
                 "read_file",
-                "Read a UTF-8 text file that belongs to the current user or conversation.",
-                """{"type":"object","properties":{"fileId":{"type":"string"}},"required":["fileId"]}""",
+                "Read a UTF-8 text file that belongs to the current user or conversation, "
+                + "either by fileId or by an object storage key inside the current tenant partition.",
+                """{"type":"object","properties":{"fileId":{"type":"string"},"objectKey":{"type":"string"}}}""",
                 AgentResourceType.Tool,
                 "file-assets",
                 ReadAsync),
@@ -39,7 +41,16 @@ internal sealed class FileAssetCapabilitySource(
                 """{"type":"object","properties":{"fileName":{"type":"string"},"content":{"type":"string"},"mediaType":{"type":"string"}},"required":["fileName","content"]}""",
                 AgentResourceType.Tool,
                 "file-assets",
-                WriteAsync)
+                WriteAsync),
+            new CapabilityDefinition(
+                "compress_files",
+                "Compress files into one zip archive written to object storage. "
+                + "Each item targets a file by fileId (conversation-referenced) or by objectKey with fileName. "
+                + "Returns the archive objectKey, length, and file count.",
+                """{"type":"object","properties":{"outputName":{"type":"string","description":"zip file name, e.g. report.zip"},"items":{"type":"array","items":{"type":"object","properties":{"fileId":{"type":"string"},"objectKey":{"type":"string"},"fileName":{"type":"string"}}}}},"required":["outputName","items"]}""",
+                AgentResourceType.Tool,
+                "file-assets",
+                CompressAsync)
         ];
         return Task.FromResult(definitions);
     }
@@ -49,9 +60,10 @@ internal sealed class FileAssetCapabilitySource(
         CancellationToken cancellationToken)
     {
         string? fileId = ReadString(arguments, "fileId");
-        if (string.IsNullOrWhiteSpace(fileId))
+        string? objectKey = ReadString(arguments, "objectKey");
+        if (string.IsNullOrWhiteSpace(fileId) == string.IsNullOrWhiteSpace(objectKey))
         {
-            return "文件读取失败：'fileId' 是必填参数，请提供目标文件的 fileId 后重试。";
+            return "文件读取失败：请提供 'fileId' 或 'objectKey' 之一（不可同时提供或同时缺失）。";
         }
         if (executionContext.Scope == null)
         {
@@ -59,7 +71,12 @@ internal sealed class FileAssetCapabilitySource(
         }
         try
         {
-            string content = await files.ReadTextAsync(fileId, executionContext.Scope, cancellationToken).ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(objectKey))
+            {
+                string objectContent = await files.ReadObjectTextAsync(objectKey, executionContext.Scope, cancellationToken).ConfigureAwait(false);
+                return JsonSerializer.Serialize(new { objectKey, content = objectContent });
+            }
+            string content = await files.ReadTextAsync(fileId!, executionContext.Scope, cancellationToken).ConfigureAwait(false);
             return JsonSerializer.Serialize(new { fileId, content });
         }
         catch (OpenAgent.Contracts.Security.AgentException exception)
@@ -116,6 +133,63 @@ internal sealed class FileAssetCapabilitySource(
         {
             // 类型/大小等校验失败：返回净化后的错误文本，供模型修正后重试，不把原始异常泄露给模型。
             return $"文件写入失败：{exception.Message}";
+        }
+    }
+
+    private async Task<string> CompressAsync(
+        IReadOnlyDictionary<string, object?> arguments,
+        CancellationToken cancellationToken)
+    {
+        string? outputName = ReadString(arguments, "outputName");
+        if (string.IsNullOrWhiteSpace(outputName))
+        {
+            return "文件压缩失败：'outputName' 是必填参数，请提供输出 zip 文件名（如 report.zip）后重试。";
+        }
+        if (!arguments.TryGetValue("items", out object? itemsValue) || itemsValue == null)
+        {
+            return "文件压缩失败：'items' 是必填参数，请提供至少一个待打包文件（fileId 或 objectKey+fileName）。";
+        }
+        IReadOnlyList<FileArchiveItem> items;
+        try
+        {
+            byte[] json = JsonSerializer.SerializeToUtf8Bytes(itemsValue);
+            items = JsonSerializer.Deserialize<IReadOnlyList<FileArchiveItem>>(
+                json,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
+        }
+        catch (JsonException)
+        {
+            return "文件压缩失败：'items' 格式无效，请按 [{\"fileId\":\"...\"}] 或 [{\"objectKey\":\"...\",\"fileName\":\"...\"}] 提供。";
+        }
+        if (items.Count == 0)
+        {
+            return "文件压缩失败：'items' 至少需要一个待打包文件。";
+        }
+        if (executionContext.Scope == null)
+        {
+            return "文件压缩失败：文件执行上下文不可用。";
+        }
+        try
+        {
+            FileArchiveResult result = await files.CompressAsync(
+                new FileArchiveRequest
+                {
+                    OutputName = outputName,
+                    Items = items
+                },
+                executionContext.Scope,
+                cancellationToken).ConfigureAwait(false);
+            return JsonSerializer.Serialize(new
+            {
+                objectKey = result.ObjectKey,
+                length = result.Length,
+                fileCount = result.FileCount
+            });
+        }
+        catch (OpenAgent.Contracts.Security.AgentException exception)
+        {
+            // 返回净化后的校验错误文本，供模型修正后重试，不把原始异常泄露给模型。
+            return $"文件压缩失败：{exception.Message}";
         }
     }
 

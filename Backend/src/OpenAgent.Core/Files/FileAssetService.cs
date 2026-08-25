@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Options;
@@ -143,24 +144,177 @@ internal sealed class FileAssetService : IFileAssetService
                 AgentErrorCode.InvalidRequest,
                 $"File '{content.Asset.FileName}' is not a text file.");
         }
-        if (content.Data.LongLength > _options.MaxFunctionReadBytes)
+
+        return DecodeFunctionText(content.Data, content.Asset.FileName);
+    }
+
+    public async Task<string> ReadObjectTextAsync(
+        string objectKey,
+        FileAssetScope scope,
+        CancellationToken cancellationToken)
+    {
+        byte[] data = await ReadObjectAsync(objectKey, scope, cancellationToken).ConfigureAwait(false);
+        return DecodeFunctionText(data, objectKey);
+    }
+
+    private string DecodeFunctionText(byte[] data, string displayName)
+    {
+        if (data.LongLength > _options.MaxFunctionReadBytes)
         {
             throw new AgentException(
                 AgentErrorCode.InvalidRequest,
-                $"File '{content.Asset.FileName}' exceeds the function read limit.");
+                $"File '{displayName}' exceeds the function read limit.");
         }
 
         try
         {
-            return new UTF8Encoding(false, true).GetString(content.Data);
+            return new UTF8Encoding(false, true).GetString(data);
         }
         catch (DecoderFallbackException exception)
         {
             throw new AgentException(
                 AgentErrorCode.InvalidRequest,
-                $"File '{content.Asset.FileName}' is not valid UTF-8 text.",
+                $"File '{displayName}' is not valid UTF-8 text.",
                 innerException: exception);
         }
+    }
+
+    public async Task<byte[]> ReadObjectAsync(
+        string objectKey,
+        FileAssetScope scope,
+        CancellationToken cancellationToken)
+    {
+        EnsureEnabled();
+        ValidateScope(scope);
+        string normalized = NormalizeObjectKey(objectKey);
+        EnsureTenantObjectKey(normalized, scope.TenantId);
+        return await _objectStore.ReadAsync(normalized, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<FileArchiveResult> CompressAsync(
+        FileArchiveRequest request,
+        FileAssetScope scope,
+        CancellationToken cancellationToken)
+    {
+        EnsureEnabled();
+        ValidateScope(scope);
+        if (string.IsNullOrWhiteSpace(request.OutputName))
+        {
+            throw new AgentException(AgentErrorCode.InvalidRequest, "OutputName is required.");
+        }
+        string outputName = Path.GetFileName(request.OutputName);
+        if (!string.Equals(Path.GetExtension(outputName), ".zip", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new AgentException(AgentErrorCode.InvalidRequest, "Archive output name must end with .zip.");
+        }
+        IReadOnlyList<FileArchiveItem> items = request.Items;
+        if (items.Count == 0)
+        {
+            throw new AgentException(AgentErrorCode.InvalidRequest, "At least one archive item is required.");
+        }
+        if (items.Count > _options.MaxArchiveFileCount)
+        {
+            throw new AgentException(
+                AgentErrorCode.InvalidRequest,
+                $"Archive cannot contain more than {_options.MaxArchiveFileCount} files.");
+        }
+
+        var entries = new List<(string EntryName, byte[] Data)>(items.Count);
+        var entryNames = new HashSet<string>(StringComparer.Ordinal);
+        long totalBytes = 0;
+        foreach (FileArchiveItem item in items)
+        {
+            (string entryName, byte[] data) = await ReadArchiveItemAsync(item, scope, cancellationToken).ConfigureAwait(false);
+            totalBytes = checked(totalBytes + data.LongLength);
+            if (totalBytes > _options.MaxArchiveInputBytes)
+            {
+                throw new AgentException(
+                    AgentErrorCode.InvalidRequest,
+                    $"Archive input exceeds the {_options.MaxArchiveInputBytes} byte limit.");
+            }
+            if (!entryNames.Add(entryName))
+            {
+                throw new AgentException(
+                    AgentErrorCode.InvalidRequest,
+                    $"Archive contains duplicate entry name '{entryName}'.");
+            }
+            entries.Add((entryName, data));
+        }
+
+        byte[] archive = BuildZipArchive(entries);
+        string sha256 = Convert.ToHexString(SHA256.HashData(archive)).ToLowerInvariant();
+        await using var input = new MemoryStream(archive, writable: false);
+        FileObjectReference stored = await _objectStore.WriteAsync(
+            new FileObjectWriteRequest
+            {
+                FileId = $"archive-{Guid.NewGuid():N}",
+                TenantId = scope.TenantId,
+                UserId = scope.UserId,
+                FileName = outputName,
+                MediaType = "application/zip",
+                Sha256 = sha256
+            },
+            input,
+            cancellationToken).ConfigureAwait(false);
+
+        return new FileArchiveResult
+        {
+            ObjectKey = stored.ObjectKey,
+            Length = archive.LongLength,
+            FileCount = entries.Count
+        };
+    }
+
+    private async Task<(string EntryName, byte[] Data)> ReadArchiveItemAsync(
+        FileArchiveItem item,
+        FileAssetScope scope,
+        CancellationToken cancellationToken)
+    {
+        bool hasFileId = !string.IsNullOrWhiteSpace(item.FileId);
+        bool hasObjectKey = !string.IsNullOrWhiteSpace(item.ObjectKey);
+        if (hasFileId == hasObjectKey)
+        {
+            throw new AgentException(
+                AgentErrorCode.InvalidRequest,
+                "Each archive item must provide exactly one of fileId or objectKey.");
+        }
+
+        if (hasFileId)
+        {
+            FileAssetContent content = await ReadAsync(item.FileId!, scope, cancellationToken).ConfigureAwait(false);
+            return (NormalizeArchiveEntryName(item.FileName ?? content.Asset.FileName), content.Data);
+        }
+
+        byte[] data = await ReadObjectAsync(item.ObjectKey!, scope, cancellationToken).ConfigureAwait(false);
+        return (NormalizeArchiveEntryName(item.FileName ?? Path.GetFileName(item.ObjectKey) ?? string.Empty), data);
+    }
+
+    private string NormalizeArchiveEntryName(string value)
+    {
+        string normalized = value.Replace('\\', '/').Trim('/');
+        if (string.IsNullOrWhiteSpace(normalized)
+            || normalized.Split('/').Any(segment => segment is "" or "." or ".." || segment.Contains('\0')))
+        {
+            throw new AgentException(
+                AgentErrorCode.InvalidRequest,
+                $"Archive entry name '{value}' is invalid.");
+        }
+        return normalized;
+    }
+
+    private static byte[] BuildZipArchive(IReadOnlyList<(string EntryName, byte[] Data)> entries)
+    {
+        using var output = new MemoryStream();
+        using (var archive = new ZipArchive(output, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            foreach ((string entryName, byte[] data) in entries)
+            {
+                ZipArchiveEntry entry = archive.CreateEntry(entryName, CompressionLevel.Optimal);
+                using Stream entryStream = entry.Open();
+                entryStream.Write(data, 0, data.Length);
+            }
+        }
+        return output.ToArray();
     }
 
     private async Task<FileAsset> GetReadyAssetAsync(
@@ -266,6 +420,17 @@ internal sealed class FileAssetService : IFileAssetService
         }
     }
 
+    private static string NormalizeObjectKey(string value)
+    {
+        string normalized = value.Replace('\\', '/').Trim('/');
+        if (string.IsNullOrWhiteSpace(normalized)
+            || normalized.Split('/').Any(segment => segment is "" or "." or ".."))
+        {
+            throw new AgentException(AgentErrorCode.InvalidRequest, "Object storage key is invalid.");
+        }
+        return normalized;
+    }
+
     private bool IsAllowedMediaType(string mediaType) => _options.AllowedMediaTypes.Any(allowed =>
         allowed.EndsWith("/*", StringComparison.Ordinal)
             ? mediaType.StartsWith(allowed[..^1], StringComparison.OrdinalIgnoreCase)
@@ -281,6 +446,7 @@ internal sealed class FileAssetService : IFileAssetService
         ".csv" => mediaType.Equals("text/csv", StringComparison.OrdinalIgnoreCase),
         ".md" => mediaType.Equals("text/markdown", StringComparison.OrdinalIgnoreCase) || mediaType.Equals("text/plain", StringComparison.OrdinalIgnoreCase),
         ".html" or ".htm" => mediaType.Equals("text/html", StringComparison.OrdinalIgnoreCase),
+        ".zip" => mediaType.Equals("application/zip", StringComparison.OrdinalIgnoreCase),
         _ => false
     };
 
