@@ -10,6 +10,8 @@ namespace OpenAgent.Core.Files;
 
 internal sealed class FileAssetService : IFileAssetService
 {
+    private static readonly TimeSpan TransferUrlLifetime = TimeSpan.FromMinutes(15);
+
     private readonly IFileAssetRepository _repository;
     private readonly IFileObjectStore _objectStore;
     private readonly FileAssetOptions _options;
@@ -133,6 +135,36 @@ internal sealed class FileAssetService : IFileAssetService
         return assets
             .Where(asset => IsOwner(asset, scope))
             .ToArray();
+    }
+
+    public async Task<FileObjectAccessReference> CreateTransferUrlAsync(
+        string fileId,
+        FileAssetScope scope,
+        CancellationToken cancellationToken)
+    {
+        EnsureEnabled();
+        ValidateScope(scope);
+        if (string.IsNullOrWhiteSpace(fileId))
+        {
+            throw new AgentException(AgentErrorCode.InvalidRequest, "FileId is required.");
+        }
+
+        FileAsset? asset = await _repository.GetAsync(fileId, cancellationToken).ConfigureAwait(false);
+        if (asset == null || !IsOwner(asset, scope))
+        {
+            throw new AgentException(AgentErrorCode.InvalidRequest, $"File '{fileId}' was not found.");
+        }
+        if (asset.State != FileAssetState.Ready)
+        {
+            throw new AgentException(AgentErrorCode.DependencyUnavailable, $"File '{fileId}' is not ready.");
+        }
+
+        EnsureTenantObjectKey(asset.ObjectKey, scope.TenantId);
+        DateTimeOffset expiresAt = DateTimeOffset.UtcNow.Add(TransferUrlLifetime);
+        return await _objectStore.CreateReadUrlAsync(
+            asset.ObjectKey,
+            expiresAt,
+            cancellationToken).ConfigureAwait(false);
     }
 
     public async Task EnsureReferencesAsync(

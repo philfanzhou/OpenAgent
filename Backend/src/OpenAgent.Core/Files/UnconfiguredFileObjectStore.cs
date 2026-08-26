@@ -21,6 +21,12 @@ internal sealed class UnconfiguredFileObjectStore : IFileObjectStore
         CancellationToken cancellationToken) =>
         Task.FromException<byte[]>(CreateException());
 
+    public Task<FileObjectAccessReference> CreateReadUrlAsync(
+        string objectKey,
+        DateTimeOffset expiresAt,
+        CancellationToken cancellationToken) =>
+        Task.FromException<FileObjectAccessReference>(CreateException());
+
     public Task DeleteAsync(string objectKey, CancellationToken cancellationToken) =>
         Task.FromException(CreateException());
 

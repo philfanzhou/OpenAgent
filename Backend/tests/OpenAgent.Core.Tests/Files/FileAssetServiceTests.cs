@@ -607,6 +607,26 @@ public class FileAssetServiceTests
     private static string TenantObjectKey(string tail) =>
         $"files/tenants/{FileObjectTenantScope.CreatePartition("tenant-a")}/users/user-a/{tail}";
 
+    [Fact]
+    public async Task CreateTransferUrlAsync_ReturnsActualObjectKeyForOwnedReadyAsset()
+    {
+        var repository = new RecordingFileAssetRepository();
+        var objects = new RecordingFileObjectStore();
+        FileAsset asset = CreateAsset("notes.md", "text/markdown");
+        repository.Assets[asset.FileId] = asset;
+        IFileAssetService service = CreateService(repository, objects);
+
+        FileObjectAccessReference result = await service.CreateTransferUrlAsync(
+            asset.FileId,
+            new FileAssetScope { TenantId = "tenant-a", UserId = "user-a" },
+            CancellationToken.None);
+
+        Assert.Equal(asset.ObjectKey, result.ObjectKey);
+        Assert.Equal($"https://storage.example/{asset.ObjectKey}", result.Url);
+        Assert.True(result.ExpiresAt > DateTimeOffset.UtcNow.AddSeconds(100));
+        Assert.Equal(asset.ObjectKey, objects.LastAccessObjectKey);
+    }
+
     private static IFileAssetService CreateService(
         RecordingFileAssetRepository repository,
         RecordingFileObjectStore objects) => new FileAssetService(

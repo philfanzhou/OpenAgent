@@ -13,6 +13,11 @@ public interface IFileAssetService
         FileAssetScope scope,
         CancellationToken cancellationToken);
 
+    Task<FileObjectAccessReference> CreateTransferUrlAsync(
+        string fileId,
+        FileAssetScope scope,
+        CancellationToken cancellationToken);
+
     /// <summary>
     /// 获取当前会话已引用且可用的文件元数据，不读取对象存储内容。
     /// </summary>

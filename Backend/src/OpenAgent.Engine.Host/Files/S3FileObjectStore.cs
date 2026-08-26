@@ -129,6 +129,36 @@ internal sealed class S3FileObjectStore : IFileObjectStore
         }
     }
 
+    public Task<FileObjectAccessReference> CreateReadUrlAsync(
+        string objectKey,
+        DateTimeOffset expiresAt,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (string.IsNullOrWhiteSpace(objectKey))
+        {
+            throw new ArgumentException("Object key is required.", nameof(objectKey));
+        }
+        if (expiresAt <= DateTimeOffset.UtcNow)
+        {
+            throw new ArgumentException("Object URL expiration must be in the future.", nameof(expiresAt));
+        }
+
+        string url = _s3.GetPreSignedURL(new GetPreSignedUrlRequest
+        {
+            BucketName = _options.BucketName,
+            Key = objectKey,
+            Verb = HttpVerb.GET,
+            Expires = expiresAt.UtcDateTime
+        });
+        return Task.FromResult(new FileObjectAccessReference
+        {
+            ObjectKey = objectKey,
+            Url = url,
+            ExpiresAt = expiresAt
+        });
+    }
+
     public async Task DeleteAsync(string objectKey, CancellationToken cancellationToken)
     {
         try

@@ -40,8 +40,44 @@ public class FileAssetCapabilitySourceTests
 
         IReadOnlyList<CapabilityDefinition> definitions = await DiscoverAsync(source);
 
-        string[] names = ["read_file", "list_files", "write_file", "compress_files", "publish_files"];
+        string[] names = ["read_file", "create_file_transfer_url", "list_files", "write_file", "compress_files", "publish_files"];
         Assert.Equal(names, definitions.Select(definition => definition.Name).ToArray());
+    }
+
+    [Fact]
+    public async Task InvokeAsync_CreateTransferUrl_ReturnsUrlOnlyForReferencedReadyFile()
+    {
+        TestHarness harness = CreateHarness();
+        FileAsset asset = CreateAsset("report.pdf", "application/pdf");
+        harness.Repository.Assets[asset.FileId] = asset;
+        harness.Repository.References.Add($"conversation-a:{asset.FileId}");
+
+        string result = await InvokeAsync(
+            harness.Source,
+            "create_file_transfer_url",
+            new Dictionary<string, object?> { ["fileId"] = asset.FileId });
+
+        using JsonDocument document = JsonDocument.Parse(result);
+        Assert.Equal(asset.FileId, document.RootElement.GetProperty("fileId").GetString());
+        Assert.Equal(asset.ObjectKey, document.RootElement.GetProperty("objectKey").GetString());
+        Assert.Equal($"https://storage.example/{asset.ObjectKey}", document.RootElement.GetProperty("url").GetString());
+        Assert.Equal(asset.ObjectKey, harness.Objects.LastAccessObjectKey);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_CreateTransferUrl_DoesNotExposeUnreferencedFile()
+    {
+        TestHarness harness = CreateHarness();
+        FileAsset asset = CreateAsset("report.pdf", "application/pdf");
+        harness.Repository.Assets[asset.FileId] = asset;
+
+        string result = await InvokeAsync(
+            harness.Source,
+            "create_file_transfer_url",
+            new Dictionary<string, object?> { ["fileId"] = asset.FileId });
+
+        Assert.StartsWith("文件传输链接生成失败：", result, StringComparison.Ordinal);
+        Assert.Null(harness.Objects.LastAccessObjectKey);
     }
 
     [Fact]
