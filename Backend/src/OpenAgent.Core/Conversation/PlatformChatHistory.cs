@@ -143,7 +143,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
             _currentVersion = loaded.CurrentVersion;
             _nextSequence = loaded.NextSequence;
             List<ChatMessage> history = await BuildHistoryAsync(loaded.History, cancellationToken).ConfigureAwait(false);
-            return RepairToolHistory(history);
+            return RepairToolHistory(CoalesceAssistantToolCallRows(history));
         }
         catch
         {
@@ -208,6 +208,56 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
                 // 历史中的文件已删除或无权限时忽略，不阻断续接。
             }
         }
+    }
+
+    /// <summary>
+    /// Merges consecutive assistant rows that each carry a tool_call back into one
+    /// assistant message. ToStored expands parallel calls of a single turn into
+    /// separate rows; reloaded as-is, every provider that requires tool responses to
+    /// directly follow each assistant tool_call block rejects the history with
+    /// "tool_call_ids did not have response messages".
+    /// </summary>
+    private static List<ChatMessage> CoalesceAssistantToolCallRows(List<ChatMessage> messages)
+    {
+        var result = new List<ChatMessage>(messages.Count);
+        foreach (ChatMessage message in messages)
+        {
+            if (result.Count > 0
+                && TryMergeToolCallRow(result[^1], message, out ChatMessage? merged))
+            {
+                result[^1] = merged;
+                continue;
+            }
+            result.Add(message);
+        }
+        return result;
+    }
+
+    private static bool TryMergeToolCallRow(
+        ChatMessage previous,
+        ChatMessage current,
+        out ChatMessage? merged)
+    {
+        merged = null;
+        if (previous.Role != ChatRole.Assistant
+            || current.Role != ChatRole.Assistant
+            || !previous.Contents.OfType<FunctionCallContent>().Any()
+            || !current.Contents.OfType<FunctionCallContent>().Any())
+        {
+            return false;
+        }
+
+        var contents = new List<AIContent>(previous.Contents);
+        foreach (AIContent content in current.Contents)
+        {
+            if (content is not FunctionCallContent)
+            {
+                contents.Add(content);
+            }
+        }
+        contents.AddRange(current.Contents.OfType<FunctionCallContent>());
+        merged = new ChatMessage(ChatRole.Assistant, contents);
+        return true;
     }
 
     /// <summary>
