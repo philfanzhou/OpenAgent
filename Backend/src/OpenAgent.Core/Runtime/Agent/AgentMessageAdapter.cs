@@ -338,13 +338,19 @@ internal static class AgentMessageAdapter
     /// <summary>把一个文件资产以文本或二进制附件形式挂到某条 ChatMessage 上（供续接历史重建附件使用）。</summary>
     internal static void AttachFile(ChatMessage chatMessage, FileAssetContent file)
     {
+        string descriptor =
+            $"[File: {file.Asset.FileName}] fileId={file.Asset.FileId} "
+            + $"({file.Asset.MediaType}, {file.Asset.Length} bytes)";
         if (IsTextFile(file.Asset.MediaType))
         {
             chatMessage.Contents.Add(new TextContent(
-                $"[File: {file.Asset.FileName}]\n{DecodeUtf8(file)}"));
+                $"{descriptor}\n{DecodeUtf8(file)}"));
         }
         else if (IsImageFile(file.Asset.MediaType))
         {
+            // Keep the opaque fileId in a text part so the model can later call
+            // publish_files for an image it received as a multimodal attachment.
+            chatMessage.Contents.Add(new TextContent(descriptor));
             chatMessage.Contents.Add(new DataContent(file.Data, file.Asset.MediaType)
             {
                 Name = file.Asset.FileName
@@ -356,7 +362,9 @@ internal static class AgentMessageAdapter
             // 该请求（HTTP 400）。改为文本占位并附上 fileId 与 S3 对象键，供模型调用
             // read_file 或文档解析类 MCP 工具（s3Id）。
             chatMessage.Contents.Add(new TextContent(
-                $"[File: {file.Asset.FileName}] fileId={file.Asset.FileId} s3Key={file.Asset.ObjectKey} ({file.Asset.MediaType}, {file.Asset.Length} bytes; binary content not inlined. Parse this document via document-parsing MCP tools passing s3Id=\"{file.Asset.ObjectKey}\"; the read_file tool only supports UTF-8 text files.)"));
+                $"{descriptor} s3Key={file.Asset.ObjectKey} (binary content not inlined. "
+                + $"Parse this document via document-parsing MCP tools passing s3Id=\"{file.Asset.ObjectKey}\"; "
+                + "the read_file tool only supports UTF-8 text files.)"));
         }
     }
 

@@ -186,8 +186,11 @@ public sealed class AgentMessageAdapterTests
 
         DataContent data = Assert.Single(message.Contents.OfType<DataContent>());
         Assert.Equal("image/png", data.MediaType);
-        Assert.Single(message.Contents.OfType<TextContent>(), content => !string.IsNullOrEmpty(content.Text));
-        Assert.DoesNotContain(message.Contents.OfType<TextContent>(), content => content.Text.Contains("[File:"));
+        TextContent descriptor = Assert.Single(
+            message.Contents.OfType<TextContent>(),
+            content => content.Text.Contains("[File:", StringComparison.Ordinal));
+        Assert.Contains("[File: chart.png]", descriptor.Text);
+        Assert.Contains("fileId=file-1", descriptor.Text);
     }
 
     [Fact]
@@ -201,6 +204,7 @@ public sealed class AgentMessageAdapterTests
         TextContent inlined = Assert.Single(
             message.Contents.OfType<TextContent>(), content => content.Text.Contains("[File:"));
         Assert.StartsWith("[File: notes.txt]", inlined.Text);
+        Assert.Contains("fileId=file-1", inlined.Text);
         Assert.Contains("hello notes", inlined.Text);
     }
 
