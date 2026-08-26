@@ -170,7 +170,7 @@ describe('workspace API', () => {
     expect(events[1]).toEqual({ type: 'content', content: 'hello' })
   })
 
-  it('preserves streamed tool arguments and problem details for the message UI', async () => {
+  it('preserves streamed tool calls, results, and problem details for the message UI', async () => {
     setConnectionMode('engine')
     setEngineBaseUrl('http://engine.example/')
     const stream = [
@@ -178,7 +178,7 @@ describe('workspace API', () => {
       'data: {"toolName":"write_file","toolCallId":"call-1","toolArguments":{"path":"report.md"}}',
       '',
       'event: tool_result',
-      'data: {"toolName":"write_file","toolCallId":"call-1","toolResult":"created"}',
+      'data: {"content":"created","toolCallId":"call-1"}',
       '',
       'event: error',
       'data: {"title":"Execution failed","detail":"Tool unavailable","traceId":"trace-1"}',
@@ -194,7 +194,7 @@ describe('workspace API', () => {
 
     expect(events).toEqual([
       { type: 'tool_call', toolName: 'write_file', toolCallId: 'call-1', toolArguments: { path: 'report.md' } },
-      { type: 'tool_result', toolName: 'write_file', toolCallId: 'call-1', toolResult: 'created' },
+      { type: 'tool_result', content: 'created', toolCallId: 'call-1' },
       { type: 'error', error: { title: 'Execution failed', detail: 'Tool unavailable', traceId: 'trace-1' } },
     ])
   })

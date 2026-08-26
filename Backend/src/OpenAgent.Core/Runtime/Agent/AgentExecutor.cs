@@ -47,7 +47,11 @@ public sealed class AgentExecutor
             agentId,
             user,
             cancellationToken).ConfigureAwait(false);
-        AgentRequest executionRequest = CopyWithResolvedValues(request, agentId, traceId);
+        AgentRequest executionRequest = CopyWithResolvedValues(
+            request,
+            agentId,
+            traceId,
+            ResolveConversationId(request));
         if (executionRequest.FileIds.Count > 0)
         {
             await _agents.EnsureConversationAsync(
@@ -108,7 +112,11 @@ public sealed class AgentExecutor
             agentId,
             user,
             cancellationToken).ConfigureAwait(false);
-        AgentRequest executionRequest = CopyWithResolvedValues(request, agentId, traceId);
+        AgentRequest executionRequest = CopyWithResolvedValues(
+            request,
+            agentId,
+            traceId,
+            ResolveConversationId(request));
         if (executionRequest.FileIds.Count > 0)
         {
             await _agents.EnsureConversationAsync(
@@ -133,7 +141,6 @@ public sealed class AgentExecutor
             executionRequest.Query,
             resolvedFiles.Files);
         HashSet<string> announcedToolCalls = new(StringComparer.Ordinal);
-        Dictionary<string, string> toolNames = new(StringComparer.Ordinal);
         TokenUsage? usage = null;
         string modelId = profile.Model.ModelId;
         IAsyncEnumerable<AgentResponseUpdate> updates = scope.Agent.RunStreamingAsync(
@@ -152,10 +159,6 @@ public sealed class AgentExecutor
                 }
 
                 string key = string.IsNullOrWhiteSpace(call.CallId) ? call.Name : call.CallId;
-                if (!string.IsNullOrWhiteSpace(call.CallId))
-                {
-                    toolNames[call.CallId] = call.Name;
-                }
                 if (announcedToolCalls.Add(key))
                 {
                     yield return new AgentStreamEvent
@@ -168,16 +171,14 @@ public sealed class AgentExecutor
                 }
             }
 
+            // 工具执行完成后立即下发结果，客户端无需等整轮结束重载历史即可看到工具输出。
             foreach (FunctionResultContent result in contents.OfType<FunctionResultContent>())
             {
                 yield return new AgentStreamEvent
                 {
                     Type = AgentStreamEventType.ToolResult,
-                    ToolName = !string.IsNullOrWhiteSpace(result.CallId)
-                        ? toolNames.GetValueOrDefault(result.CallId)
-                        : null,
                     ToolCallId = result.CallId,
-                    ToolResult = result.Exception?.Message ?? result.Result?.ToString() ?? string.Empty
+                    Content = result.Result?.ToString()
                 };
             }
 
@@ -250,11 +251,12 @@ public sealed class AgentExecutor
     private static AgentRequest CopyWithResolvedValues(
         AgentRequest request,
         string agentId,
-        string traceId) => new()
+        string traceId,
+        string? conversationId) => new()
         {
             Query = request.Query,
             AgentId = agentId,
-            ConversationId = request.ConversationId,
+            ConversationId = conversationId,
             ConversationType = request.ConversationType,
             TraceId = traceId,
             ClientType = request.ClientType,
@@ -262,4 +264,18 @@ public sealed class AgentExecutor
             ExternalContext = request.ExternalContext,
             FileIds = request.FileIds
         };
+
+    private static string? ResolveConversationId(AgentRequest request)
+    {
+        if (!string.IsNullOrWhiteSpace(request.ConversationId))
+        {
+            return request.ConversationId;
+        }
+
+        // Direct callers may omit a conversation id on the first request. Files
+        // still need a conversation-scoped reference before they can be read.
+        return request.FileIds.Count > 0
+            ? Guid.NewGuid().ToString("N")
+            : null;
+    }
 }

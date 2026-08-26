@@ -44,8 +44,10 @@ internal sealed class McpProfileManagementService(
         CancellationToken cancellationToken = default)
     {
         IReadOnlyList<McpServerConfig> servers = await ListAsync(cancellationToken).ConfigureAwait(false);
+        // 调试用：空租户（存量）server 视为全局可见。
         return servers
-            .Where(server => string.Equals(server.TenantId, tenantId, StringComparison.Ordinal))
+            .Where(server => string.IsNullOrWhiteSpace(server.TenantId)
+                || string.Equals(server.TenantId, tenantId, StringComparison.Ordinal))
             .ToArray();
     }
 
@@ -69,8 +71,10 @@ internal sealed class McpProfileManagementService(
         CancellationToken cancellationToken = default)
     {
         McpServerConfig? server = await GetAsync(id, cancellationToken).ConfigureAwait(false);
+        // 调试用：空租户（存量）server 视为全局可见。
         return server != null
-            && string.Equals(server.TenantId, tenantId, StringComparison.Ordinal)
+            && (string.IsNullOrWhiteSpace(server.TenantId)
+                || string.Equals(server.TenantId, tenantId, StringComparison.Ordinal))
             ? server
             : null;
     }

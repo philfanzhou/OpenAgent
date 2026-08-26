@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { api } from '../api'
 import { buildCompactionDisplay, buildCompactionTokenDisplay } from '../compactionPresentation'
+import { isMarkdownFile, isTextPreview } from '../composables/useFileHandling'
+import { isSelfContainedImageRef } from '../markdownAssets'
 import { buildConversationTimeline, fileLabel, formatFileSize, toolArgumentsText, toolPresentation } from '../messagePresentation'
 import { formatTokenBreakdown, formatTokenCount, formatTokenUsage } from '../tokenUsage'
 import type { ContextSummary, ConversationMessage, CurrentUserContext, MessageFile, ProcessActivity, ToolActivity } from '../types'
@@ -13,6 +16,10 @@ const props = defineProps<{
   loading: boolean
   currentUser: CurrentUserContext | null
   streaming: boolean
+  /** 当前会话 ID：文件预览弹窗懒加载内容时需要。 */
+  conversationId?: string
+  /** 已解析的 markdown 图片 blob URL（见 useFileHandling.markdownImageUrls）。 */
+  markdownImageUrls?: Map<string, string>
 }>()
 
 const emit = defineEmits<{
@@ -26,11 +33,16 @@ const suggestions = [
   ['总结技术方案', '请用简洁的结构总结当前技术方案。'],
 ]
 
-type ScrollbarWrapRef = HTMLElement | { value?: HTMLElement }
-type MessagesScrollbar = {
+interface MessagesScrollbar {
   setScrollTop: (value: number) => void
-  wrapRef?: ScrollbarWrapRef
+  wrapRef?: HTMLElement | null
 }
+
+// 距底部小于该阈值视为“贴着底部”，继续自动跟随新内容。
+const BOTTOM_STICK_THRESHOLD = 48
+// 向上滚动后的冷却期：期间不允许贴底判定重新接管，避免小幅上滑被抵消。
+const REENGAGE_COOLDOWN_MS = 400
+
 const messagesScrollbar = ref<MessagesScrollbar | null>(null)
 const stickToBottom = ref(true)
 const timelineItems = computed(() => buildConversationTimeline(
@@ -131,6 +143,99 @@ function compactionStatusClass(summary: ContextSummary): string {
   return `is-${summary.status.toLowerCase()}`
 }
 
+/** 构造消息内 markdown 的图片同步查找：键与 useFileHandling 的解析缓存一致。 */
+function imageLookup(
+  messageId: string,
+  selfObjectKey?: string,
+): ((src: string) => string | undefined) | undefined {
+  const cache = props.markdownImageUrls
+  if (!cache?.size) return undefined
+  return (src: string): string | undefined => {
+    if (!src || isSelfContainedImageRef(src)) return undefined
+    const exact = cache.get(`${messageId}|${selfObjectKey ?? ''}|${src}`)
+    if (exact) return exact
+    // Adjacent assistant messages are merged for display, so the cache may have
+    // been populated with the original message id rather than the merged id.
+    if (selfObjectKey) {
+      const suffix = `|${selfObjectKey}|${src}`
+      for (const [key, value] of cache) {
+        if (key.endsWith(suffix)) return value
+      }
+    }
+    return undefined
+  }
+}
+
+// —— 文件预览弹窗：卡片只保留预览图标按钮，内容点击后开窗按需加载，不再内联渲染。——
+const filePreview = ref<{ open: boolean; loading: boolean; messageId: string; file: MessageFile | null }>({
+  open: false,
+  loading: false,
+  messageId: '',
+  file: null,
+})
+const previewText = ref<string | null>(null)
+const previewImageUrl = ref<string | null>(null)
+const previewFailed = ref(false)
+// 弹窗内容缓存：文本常驻内存即可，blob URL 在组件卸载时统一释放。
+const previewTextCache = new Map<string, string>()
+const previewImageUrls = new Map<string, string>()
+
+const previewIsMarkdown = computed(() => {
+  const file = filePreview.value.file
+  return !!file && isMarkdownFile(file.mediaType, file.fileName)
+})
+
+function isPreviewable(file: MessageFile): boolean {
+  return Boolean(file.fileId) && (
+    file.mediaType.startsWith('image/')
+    || isTextPreview(file.mediaType)
+    || isMarkdownFile(file.mediaType, file.fileName))
+}
+
+function openFilePreview(messageId: string, file: MessageFile): void {
+  if (!file.fileId) return
+  filePreview.value = { open: true, loading: true, messageId, file }
+  previewText.value = null
+  previewImageUrl.value = null
+  previewFailed.value = false
+  void loadPreviewContent()
+}
+
+async function loadPreviewContent(): Promise<void> {
+  const file = filePreview.value.file
+  if (!file?.fileId || !props.conversationId) {
+    filePreview.value.loading = false
+    return
+  }
+  const fileId = file.fileId
+  const conversationId = props.conversationId
+  try {
+    if (file.mediaType.startsWith('image/')) {
+      let url = file.previewUrl || previewImageUrls.get(fileId)
+      if (!url) {
+        url = await api.loadFilePreview(fileId, conversationId)
+        previewImageUrls.set(fileId, url)
+      }
+      previewImageUrl.value = url
+    } else {
+      let text = previewTextCache.get(fileId)
+      if (text == null) text = file.previewText
+      if (text == null) text = await api.readFileText(fileId, conversationId)
+      previewTextCache.set(fileId, text)
+      previewText.value = text
+    }
+  } catch {
+    // 预览失败不阻塞下载：弹窗内提示，仍可通过卡片或页脚按钮下载。
+    previewFailed.value = true
+  } finally {
+    filePreview.value.loading = false
+  }
+}
+
+onBeforeUnmount(() => {
+  for (const url of previewImageUrls.values()) URL.revokeObjectURL(url)
+})
+
 async function copyTraceId(traceId: string): Promise<void> {
   try {
     await navigator.clipboard.writeText(traceId)
@@ -140,36 +245,88 @@ async function copyTraceId(traceId: string): Promise<void> {
   }
 }
 
-function messagesWrap(): HTMLElement | undefined {
+function distanceFromBottom(): number | null {
   const wrap = messagesScrollbar.value?.wrapRef
-  if (!wrap) return undefined
-  return wrap instanceof HTMLElement ? wrap : wrap.value
+  if (!wrap) return null
+  return wrap.scrollHeight - wrap.scrollTop - wrap.clientHeight
 }
 
-function handleMessagesScroll(position: { scrollTop: number }): void {
-  const wrap = messagesWrap()
+let lastObservedTop: number | null = null
+let lastUpwardAt = 0
+// 程序化滚动后的短暂窗口内忽略方向判定，避免与浏览器滚动事件竞态产生误判。
+const PROGRAMMATIC_SCROLL_WINDOW_MS = 80
+let programmaticUntil = 0
+
+function handleScroll(): void {
+  const wrap = messagesScrollbar.value?.wrapRef
   if (!wrap) return
-  stickToBottom.value = wrap.scrollHeight - position.scrollTop - wrap.clientHeight <= 48
+  const now = Date.now()
+  const suppressed = now < programmaticUntil
+  let movedUp = false
+  if (!suppressed && lastObservedTop != null && wrap.scrollTop < lastObservedTop - 1) {
+    movedUp = true
+    stickToBottom.value = false
+    lastUpwardAt = now
+  }
+  lastObservedTop = wrap.scrollTop
+  if (suppressed) return
+  const distance = wrap.scrollHeight - wrap.scrollTop - wrap.clientHeight
+  // 冷却期内贴底判定不得夺权，否则小幅上滑会被高频输出立即抵消。
+  const cooling = now - lastUpwardAt < REENGAGE_COOLDOWN_MS
+  if (!movedUp && !cooling && distance <= BOTTOM_STICK_THRESHOLD) stickToBottom.value = true
 }
 
-function scrollToBottom(): void {
-  if (!stickToBottom.value) return
-  const scroll = () => messagesScrollbar.value?.setScrollTop(Number.MAX_SAFE_INTEGER)
-  scroll()
-  requestAnimationFrame(scroll)
+// 流式输出会高频把视口钉回底部，仅靠“距底阈值”永远攒不够上滑位移；
+// 直接以向上滚动的意图（滚轮 deltaY<0）立即解除跟随。
+function handleWheel(event: WheelEvent): void {
+  if (event.deltaY < 0) stickToBottom.value = false
 }
-watch(() => props.messages, () => { void nextTick(scrollToBottom) }, { deep: true })
-watch(() => props.contextSummaries, () => { void nextTick(scrollToBottom) }, { deep: true })
-watch(() => props.streaming, (streaming, previous) => {
-  if (streaming && !previous) {
-    stickToBottom.value = true
-    scrollToBottom()
+
+function scrollToBottom(force = false): void {
+  if (!force && !stickToBottom.value) return
+  const attempt = () => {
+    if (!force && !stickToBottom.value) return
+    programmaticUntil = Date.now() + PROGRAMMATIC_SCROLL_WINDOW_MS
+    messagesScrollbar.value?.setScrollTop(Number.MAX_SAFE_INTEGER)
   }
-})
+  attempt()
+  requestAnimationFrame(attempt)
+  stickToBottom.value = true
+}
+// 默认始终自动跟随；数组引用被替换（打开/切换会话）时强制归底一次，
+// 深层变更（流式追加内容）仅在用户未上滑时跟随。immediate 保证首屏即到底部。
+watch(
+  () => props.messages,
+  (value, previous) => {
+    const replaced = value !== previous
+    void nextTick(() => scrollToBottom(replaced || previous === undefined))
+  },
+  { deep: true, immediate: true },
+)
+watch(() => props.contextSummaries, () => { void nextTick(() => scrollToBottom()) }, { deep: true })
+watch(
+  () => props.streaming,
+  (streaming, previous) => {
+    if (streaming) {
+      scrollToBottom()
+      return
+    }
+    // 回复完成：Token 用量 / 模型名等页脚随后才插入布局，
+    // 等两帧渲染稳定后再补一次归底；用户若已在阅读历史则不打扰。
+    if (previous) {
+      void nextTick(() => {
+        scrollToBottom()
+        requestAnimationFrame(() => requestAnimationFrame(() => scrollToBottom()))
+      })
+    }
+  },
+)
+
+defineExpose({ scrollToBottom })
 </script>
 
 <template>
-  <el-scrollbar ref="messagesScrollbar" class="messages" wrap-class="messages-wrap" v-loading="props.loading" @scroll="handleMessagesScroll">
+  <el-scrollbar ref="messagesScrollbar" class="messages" wrap-class="messages-wrap" v-loading="props.loading" @scroll="handleScroll" @wheel="handleWheel">
     <div v-if="!props.messages.length" class="welcome">
       <div class="welcome-icon">O</div>
       <h1>今天想处理什么？</h1>
@@ -238,14 +395,18 @@ watch(() => props.streaming, (streaming, previous) => {
         </details>
 
         <div v-if="item.role === 'user' && item.files?.length" class="message-files user-files">
-          <button v-for="file in item.files" :key="file.fileId || file.fileName" type="button" class="message-file upload-file" @click="emit('download', file)">
+          <!-- div 而非 button：卡片内嵌预览图标按钮，原生 button 不允许交互后代。 -->
+          <div v-for="file in item.files" :key="file.fileId || file.fileName" class="message-file upload-file" role="button" tabindex="0" @click="emit('download', file)" @keydown.enter.prevent="emit('download', file)">
             <img v-if="file.previewUrl" :src="file.previewUrl" :alt="file.fileName" />
             <span v-else class="message-file-type">{{ fileLabel(file) }}</span>
             <span class="message-file-meta"><strong>{{ file.fileName }}</strong><small>已上传 · {{ formatFileSize(file.length) }}</small></span>
-          </button>
+            <button v-if="isPreviewable(file)" type="button" class="message-file-preview-btn" title="预览文件" aria-label="预览文件" @click.stop="openFilePreview(item.messageId, file)">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z" /><circle cx="12" cy="12" r="3" /></svg>
+            </button>
+          </div>
         </div>
 
-        <div v-if="item.content || isStreamingItem(item)" class="message-bubble"><MarkdownContent :content="item.content" :streaming="isStreamingItem(item) && Boolean(item.content)" /></div>
+        <div v-if="item.content || isStreamingItem(item)" class="message-bubble"><MarkdownContent :content="item.content" :streaming="isStreamingItem(item) && Boolean(item.content)" :resolve-image="imageLookup(item.messageId)" /></div>
 
         <div v-if="shouldShowUsage(item)" class="message-usage" aria-label="当前响应 Token 用量">
           <span v-if="item.modelId" class="message-model">{{ item.modelId }}</span>
@@ -256,13 +417,16 @@ watch(() => props.streaming, (streaming, previous) => {
         <div v-if="item.role === 'assistant' && item.files?.length" class="generated-files">
           <div class="generated-files-heading"><span>生成的文件</span><small>{{ item.files.length }} 个可下载文件</small></div>
           <div class="message-files assistant-files">
-            <button v-for="file in item.files" :key="file.fileId || file.fileName" type="button" class="message-file output-file" @click="emit('download', file)">
+            <!-- div 而非 button：卡片内嵌预览图标按钮，原生 button 不允许交互后代。 -->
+            <div v-for="file in item.files" :key="file.fileId || file.fileName" class="message-file output-file" role="button" tabindex="0" @click="emit('download', file)" @keydown.enter.prevent="emit('download', file)">
               <img v-if="file.previewUrl" :src="file.previewUrl" :alt="file.fileName" />
               <span v-else class="message-file-type">{{ fileLabel(file) }}</span>
               <span class="message-file-meta"><strong>{{ file.fileName }}</strong><small>{{ formatFileSize(file.length) }} · 点击下载</small></span>
-              <span class="message-file-action">↓</span>
-              <pre v-if="file.previewText" class="message-file-preview">{{ file.previewText }}</pre>
-            </button>
+              <button v-if="isPreviewable(file)" type="button" class="message-file-preview-btn" title="预览文件" aria-label="预览文件" @click.stop="openFilePreview(item.messageId, file)">
+                <svg viewBox="0 0 24 24" fill="none"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z" /><circle cx="12" cy="12" r="3" /></svg>
+              </button>
+              <span v-else class="message-file-action">↓</span>
+            </div>
           </div>
         </div>
 
@@ -312,4 +476,23 @@ watch(() => props.streaming, (streaming, previous) => {
     </div>
     </template>
   </el-scrollbar>
+
+  <el-dialog v-model="filePreview.open" class="file-preview-dialog" append-to-body destroy-on-close width="min(880px, calc(100vw - 40px))" top="6vh">
+    <template #header>
+      <div class="file-preview-head">
+        <strong>{{ filePreview.file?.fileName }}</strong>
+        <small v-if="filePreview.file">{{ formatFileSize(filePreview.file.length) }} · {{ filePreview.file.mediaType }}</small>
+      </div>
+    </template>
+    <div v-loading="filePreview.loading" class="file-preview-body">
+      <img v-if="previewImageUrl" :src="previewImageUrl" :alt="filePreview.file?.fileName" />
+      <MarkdownContent v-else-if="previewIsMarkdown && previewText != null" :content="previewText" :resolve-image="imageLookup(filePreview.messageId, filePreview.file?.objectKey)" />
+      <pre v-else-if="previewText != null" class="file-preview-text">{{ previewText }}</pre>
+      <p v-else-if="previewFailed" class="file-preview-hint">预览加载失败，请下载后查看。</p>
+      <p v-else class="file-preview-hint">该文件暂无可预览的内容，可直接下载查看。</p>
+    </div>
+    <template #footer>
+      <el-button size="small" :disabled="!filePreview.file" @click="filePreview.file && emit('download', filePreview.file)">下载文件</el-button>
+    </template>
+  </el-dialog>
 </template>

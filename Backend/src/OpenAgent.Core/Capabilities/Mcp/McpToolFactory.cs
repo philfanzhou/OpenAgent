@@ -35,8 +35,10 @@ internal sealed class McpToolFactory(
             IEnumerable<McpServerConfig> servers = config.EnabledServerIds.Count > 0
                 ? config.EnabledServerIds.Select(registry.Get).Where(server => server != null).Select(server => server!)
                 : config.Servers;
+            // 空 TenantId 的存量 profile 视为全局可用，与 AgentAuthorizationGate 对 LLM profile 的约定一致。
             foreach (McpServerConfig server in servers.Where(server =>
-                string.Equals(server.TenantId, user.TenantId, StringComparison.Ordinal)))
+                string.IsNullOrEmpty(server.TenantId)
+                || string.Equals(server.TenantId, user.TenantId, StringComparison.Ordinal)))
             {
                 string serverName = string.IsNullOrWhiteSpace(server.Name) ? server.Url : server.Name;
                 if (!await authorization.IsAvailableAsync(

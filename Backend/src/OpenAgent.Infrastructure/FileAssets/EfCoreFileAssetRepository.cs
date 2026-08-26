@@ -38,6 +38,24 @@ internal sealed class EfCoreFileAssetRepository(IDbContextFactory<OpenAgentDbCon
         return entity == null ? null : ToAsset(entity);
     }
 
+    public async Task<IReadOnlyList<FileAsset>> ListReferencedAsync(
+        string conversationId,
+        CancellationToken cancellationToken)
+    {
+        await using OpenAgentDbContext context = await contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        List<FileAssetEntity> entities = await (
+            from reference in context.ConversationFileReferences.AsNoTracking()
+            join asset in context.FileAssets.AsNoTracking()
+                on reference.FileId equals asset.FileId
+            where reference.ConversationId == conversationId
+            orderby reference.CreatedAt, asset.CreatedAt
+            select asset)
+            .Distinct()
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+        return entities.Select(ToAsset).ToArray();
+    }
+
     public async Task EnsureConversationReferencesAsync(
         string conversationId,
         IReadOnlyList<string> fileIds,

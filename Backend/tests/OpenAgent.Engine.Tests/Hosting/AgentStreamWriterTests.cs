@@ -59,7 +59,7 @@ public class AgentStreamWriterTests
     }
 
     [Fact]
-    public async Task WriteSseStreamAsync_ToolResult_WritesItBeforeDoneEvent()
+    public async Task WriteSseStreamAsync_ToolResult_WritesEventWithCallIdAndContent()
     {
         var context = new DefaultHttpContext();
         context.Response.Body = new MemoryStream();
@@ -73,12 +73,20 @@ public class AgentStreamWriterTests
             CancellationToken.None);
 
         string payload = await ReadBodyAsync(context);
-        int resultIndex = payload.IndexOf("event: tool_result", StringComparison.Ordinal);
-        int doneIndex = payload.IndexOf("event: done", StringComparison.Ordinal);
-        Assert.True(resultIndex >= 0);
-        Assert.True(doneIndex > resultIndex);
+        Assert.Contains("event: tool_result", payload, StringComparison.Ordinal);
         Assert.Contains("\"toolCallId\":\"call-1\"", payload, StringComparison.Ordinal);
-        Assert.Contains("\"toolResult\":\"created\"", payload, StringComparison.Ordinal);
+        Assert.Contains("\"content\":\"sunny\"", payload, StringComparison.Ordinal);
+    }
+
+    private static async IAsyncEnumerable<AgentStreamEvent> ToolResultEvents()
+    {
+        yield return new AgentStreamEvent
+        {
+            Type = AgentStreamEventType.ToolResult,
+            ToolCallId = "call-1",
+            Content = "sunny"
+        };
+        await Task.Yield();
     }
 
     private static async IAsyncEnumerable<AgentStreamEvent> Events(
@@ -96,23 +104,6 @@ public class AgentStreamWriterTests
             Type = AgentStreamEventType.Usage,
             Usage = usage,
             ModelId = modelId
-        };
-    }
-
-    private static async IAsyncEnumerable<AgentStreamEvent> ToolResultEvents()
-    {
-        yield return new AgentStreamEvent
-        {
-            Type = AgentStreamEventType.ToolResult,
-            ToolName = "write_file",
-            ToolCallId = "call-1",
-            ToolResult = "created"
-        };
-        await Task.Yield();
-        yield return new AgentStreamEvent
-        {
-            Type = AgentStreamEventType.Usage,
-            ModelId = "provider-model"
         };
     }
 

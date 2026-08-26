@@ -4,19 +4,22 @@ namespace OpenAgent.Core.Files;
 
 internal sealed class FileAssetExecutionContext
 {
-    private readonly List<FileAsset> _created = [];
+    private readonly List<FileAsset> _published = [];
 
     internal FileAssetScope? Scope { get; private set; }
 
-    internal IReadOnlyList<FileAsset> Created => _created.AsReadOnly();
+    internal IReadOnlyList<FileAsset> Published => _published.AsReadOnly();
 
     internal void Set(FileAssetScope scope)
     {
         Scope = scope;
     }
 
-    internal void RecordCreated(FileAsset asset)
+    internal void RecordPublished(FileAsset asset)
     {
-        _created.Add(asset);
+        if (_published.All(item => !string.Equals(item.FileId, asset.FileId, StringComparison.Ordinal)))
+        {
+            _published.Add(asset);
+        }
     }
 }

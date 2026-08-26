@@ -10,7 +10,9 @@ using Moq;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Models;
+using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Skills;
+using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Abstract;
 using OpenAgent.Engine.Abstractions;
 using OpenAgent.Engine.Config;
@@ -352,6 +354,34 @@ public class SkillPackageManagementServiceTests
             LastReadObjectKey = objectKey;
             return Task.FromResult(Objects[objectKey]);
         }
+
+        public Task<byte[]> ReadAsync(
+            string objectKey,
+            long maxBytes,
+            CancellationToken cancellationToken)
+        {
+            LastReadObjectKey = objectKey;
+            byte[] content = Objects[objectKey];
+            if (content.LongLength > maxBytes)
+            {
+                throw new AgentException(
+                    AgentErrorCode.InvalidRequest,
+                    $"File object '{objectKey}' exceeds the configured {maxBytes} byte limit.");
+            }
+
+            return Task.FromResult(content);
+        }
+
+        public Task<FileObjectAccessReference> CreateReadUrlAsync(
+            string objectKey,
+            DateTimeOffset expiresAt,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(new FileObjectAccessReference
+            {
+                ObjectKey = objectKey,
+                Url = $"https://storage.example/{Uri.EscapeDataString(objectKey)}",
+                ExpiresAt = expiresAt
+            });
 
         public Task DeleteAsync(string objectKey, CancellationToken cancellationToken)
         {

@@ -16,7 +16,6 @@ public sealed record AgentStreamEvent
     public string? ToolName { get; init; }
     public string? ToolCallId { get; init; }
     public object? ToolArguments { get; init; }
-    public string? ToolResult { get; init; }
     public TokenUsage? Usage { get; init; }
     public string? ModelId { get; init; }
 }
