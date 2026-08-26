@@ -34,10 +34,9 @@ docker compose -p openagent-keycloak-app \
 - Keycloak 管理台：`http://localhost:58091/admin/`
 - Keycloak Realm：`openagent`
 - 管理员：由 `OPENAGENT_KEYCLOAK_ADMIN_USERNAME` / `OPENAGENT_KEYCLOAK_ADMIN_PASSWORD` 提供，默认值仅适用于本地临时环境
-- 测试用户：`demo / openagent-demo`（租户 `development`，邮箱 `demo@openagent.local`）
-- 第二个租户测试用户：`tenant-demo / tenant-demo-password`（租户 `test-tenant`，邮箱 `tenant-demo@test-tenant.local`）
+- 用户和租户组织：不在 Realm 文件中预置，需要在管理台手动创建
 
-Realm、SPA Client、API audience、`tenant_id` claim 和本地测试用户由 [openagent-realm.json](../../../docker/keycloak/realm/openagent-realm.json) 导入。
+Realm、SPA Client、API audience、`tenant_id` claim 和 Organization 能力由 [openagent-realm.json](../../../docker/keycloak/realm/openagent-realm.json) 导入；用户、密码、邮箱和租户组织由业务管理员手动维护。
 停止应用时只删除应用容器，不影响 PostgreSQL、Redis、MinIO 数据：
 
 ```bash
@@ -71,8 +70,8 @@ docker compose -p openagent-keycloak-infrastructure \
 
 - `EnableKeycloak` 控制 Keycloak/OIDC 登录入口。AD 只是 Keycloak 的一种身份源；接入真实 AD 时，需要在 Keycloak 中配置 LDAP/AD User Federation。本地 Realm 没有真实域控，因此只验证开关和登录链路。
 - Engine 和 Router 固定解析认证 token 中的租户 claim，并在 Agent/管理接口缺少租户时拒绝请求，不提供关闭租户隔离的配置。
-- 本地 Realm 已启用 Keycloak Organization，`demo` 用户属于 `development` 组织，`tenant-demo` 用户属于 `test-tenant` 组织；申请 `organization` scope 后，访问令牌会包含对应的 `tenant_id` 和 `organization` claim。
-- 邮箱 scope 已默认开启，两个测试用户分别使用 `demo@openagent.local` 和 `tenant-demo@test-tenant.local`。
+- 本地 Realm 已启用 Keycloak Organization。创建用户时，需要在用户属性中设置 `tenant_id`，并将用户加入同名 Organization；申请 `organization` scope 后，访问令牌会包含对应的 `tenant_id` 和 `organization` claim。
+- 邮箱由 Keycloak 用户资料维护，并通过 OIDC `email` scope 返回。
 
 退出登录会调用 Keycloak 的 OIDC end-session endpoint，并在下一次登录时发送 `prompt=login`，避免浏览器保留 Keycloak SSO 会话导致“退出后直接进入”。
 
@@ -91,6 +90,6 @@ curl -fsS http://localhost:55011/api/v1/auth/config
 curl -i http://localhost:55011/api/v1/agent/me
 ```
 
-第二个请求应为 `401`。浏览器使用 `demo / openagent-demo` 登录后，工作台的身份检查应显示 `demo` 和 `development`；使用 `tenant-demo / tenant-demo-password` 登录后应显示 `tenant-demo` 和 `test-tenant`。
+第二个请求应为 `401`。在管理台手动创建用户和 Organization 后，浏览器登录应显示 JWT 中配置的用户名、邮箱和租户。
 
-Realm 导入只会在 Keycloak 数据卷首次创建时自动执行。如果本地已经存在旧的 `keycloak-data`，需要通过 Keycloak 管理台手动创建第二个用户和组织，或仅在确认不需要保留本地数据时使用 `down -v` 重建测试数据卷。
+手动创建时，用户属性 `tenant_id`、Organization 属性 `tenant_id` 和 Organization alias 应保持一致；否则 OpenAgent 会因为缺少可信租户 Claim 拒绝 Agent/管理请求。

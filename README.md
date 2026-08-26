@@ -74,8 +74,8 @@ docker compose -p openagent-infrastructure \
   down -v
 ```
 
-需要验证真实 OIDC 登录时，基础设施 Compose 会导入本地 Realm、SPA Client 和 `demo` 测试用户；
-详细命令参见 [Keycloak 本地认证集成](docs/integrations/keycloak/README.md)。本地 Realm 还包含第二个租户 `test-tenant`，可使用 `tenant-demo / tenant-demo-password` 验证租户切换。
+需要验证真实 OIDC 登录时，基础设施 Compose 会导入本地 Realm、SPA Client 和租户 Claim Mapper；
+用户与租户组织需要在 Keycloak 管理台中手动创建，详细命令参见 [Keycloak 本地认证集成](docs/integrations/keycloak/README.md)。
 
 默认使用 Compose 内置的 MinIO（bucket `openagent-files`）。接入外部 S3/MinIO 时，可覆盖
 `OPENAGENT_S3_SERVICE_URL`、`OPENAGENT_S3_BUCKET`、`OPENAGENT_S3_ACCESS_KEY`、

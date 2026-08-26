@@ -24,7 +24,6 @@
       "protocol": "openid-connect",
       "publicClient": true,
       "standardFlowEnabled": true,
-      "directAccessGrantsEnabled": true,
       "redirectUris": [
         "http://localhost:8080/*",
         "http://localhost:58090/*"
@@ -83,94 +82,6 @@
       "enabled": true,
       "protocol": "openid-connect",
       "bearerOnly": true
-    }
-  ],
-  "users": [
-    {
-      "username": "demo",
-      "enabled": true,
-      "firstName": "Demo",
-      "lastName": "User",
-      "email": "demo@openagent.local",
-      "emailVerified": true,
-      "attributes": {
-        "tenant_id": [
-          "development"
-        ]
-      },
-      "credentials": [
-        {
-          "type": "password",
-          "value": "openagent-demo",
-          "temporary": false
-        }
-      ],
-      "realmRoles": [
-        "user"
-      ]
-    },
-    {
-      "username": "tenant-demo",
-      "enabled": true,
-      "firstName": "Tenant",
-      "lastName": "Demo",
-      "email": "tenant-demo@test-tenant.local",
-      "emailVerified": true,
-      "attributes": {
-        "tenant_id": [
-          "test-tenant"
-        ]
-      },
-      "credentials": [
-        {
-          "type": "password",
-          "value": "tenant-demo-password",
-          "temporary": false
-        }
-      ],
-      "realmRoles": [
-        "user"
-      ]
-    }
-  ],
-  "organizations": [
-    {
-      "name": "Development Workspace",
-      "alias": "development",
-      "enabled": true,
-      "domains": [
-        {
-          "name": "openagent.local"
-        }
-      ],
-      "attributes": {
-        "tenant_id": ["development"]
-      },
-      "members": [
-        {
-          "username": "demo"
-        }
-      ]
-    },
-    {
-      "name": "Test Tenant Workspace",
-      "alias": "test-tenant",
-      "enabled": true,
-      "domains": [
-        {
-          "name": "test-tenant.local"
-        }
-      ],
-      "attributes": {
-        "tenant_id": [
-          "test-tenant"
-        ]
-      },
-      "members": [
-        {
-          "username": "tenant-demo"
-        }
-      ]
     }
   ]
 }
