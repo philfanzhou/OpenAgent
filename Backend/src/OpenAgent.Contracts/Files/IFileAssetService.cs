@@ -14,6 +14,13 @@ public interface IFileAssetService
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// 列出当前会话引用的文件资产。只返回当前租户和用户拥有的资产。
+    /// </summary>
+    Task<IReadOnlyList<FileAsset>> ListAsync(
+        FileAssetScope scope,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// 在当前请求范围内幂等地建立会话对文件的引用，供后续读取校验。只关联属于该租户和用户的文件。
     /// </summary>
     Task EnsureReferencesAsync(

@@ -27,6 +27,13 @@ internal sealed class RecordingFileAssetRepository : IFileAssetRepository
     public Task<FileAsset?> GetAsync(string fileId, CancellationToken cancellationToken) =>
         Task.FromResult(Assets.GetValueOrDefault(fileId));
 
+    public Task<IReadOnlyList<FileAsset>> ListReferencedAsync(
+        string conversationId,
+        CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<FileAsset>>(Assets.Values
+            .Where(asset => References.Contains($"{conversationId}:{asset.FileId}"))
+            .ToArray());
+
     public Task EnsureConversationReferencesAsync(
         string conversationId,
         IReadOnlyList<string> fileIds,

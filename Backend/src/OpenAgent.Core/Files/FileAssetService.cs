@@ -89,6 +89,27 @@ internal sealed class FileAssetService : IFileAssetService
         return asset != null && IsOwner(asset, scope) ? asset : null;
     }
 
+    public async Task<IReadOnlyList<FileAsset>> ListAsync(
+        FileAssetScope scope,
+        CancellationToken cancellationToken)
+    {
+        EnsureEnabled();
+        ValidateScope(scope);
+        if (string.IsNullOrWhiteSpace(scope.ConversationId))
+        {
+            throw new AgentException(
+                AgentErrorCode.InvalidRequest,
+                "ConversationId is required to list conversation files.");
+        }
+
+        IReadOnlyList<FileAsset> assets = await _repository.ListReferencedAsync(
+            scope.ConversationId,
+            cancellationToken).ConfigureAwait(false);
+        return assets
+            .Where(asset => IsOwner(asset, scope))
+            .ToArray();
+    }
+
     public async Task EnsureReferencesAsync(
         IReadOnlyList<string> fileIds,
         FileAssetScope scope,

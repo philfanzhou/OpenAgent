@@ -36,6 +36,14 @@ internal sealed class FileAssetCapabilitySource(
                 "file-assets",
                 ReadAsync),
             new CapabilityDefinition(
+                "list_files",
+                "List file assets referenced by the current conversation. Returns fileId and safe metadata only; "
+                + "use read_file to inspect text or publish_files to deliver selected files to the user.",
+                """{"type":"object","properties":{}}""",
+                AgentResourceType.Tool,
+                "file-assets",
+                ListAsync),
+            new CapabilityDefinition(
                 "write_file",
                 "Create and register a UTF-8 text file for the current user and conversation. "
                 + "The returned fileId can be passed to publish_files when it should be delivered to the user.",
@@ -94,6 +102,40 @@ internal sealed class FileAssetCapabilitySource(
         {
             // 返回净化后的校验错误文本，供模型修正后重试，不把原始异常泄露给模型。
             return $"文件读取失败：{exception.Message}";
+        }
+    }
+
+    private async Task<string> ListAsync(
+        IReadOnlyDictionary<string, object?> arguments,
+        CancellationToken cancellationToken)
+    {
+        if (executionContext.Scope == null)
+        {
+            return "文件列表获取失败：文件执行上下文不可用。";
+        }
+
+        try
+        {
+            IReadOnlyList<FileAsset> assets = await files.ListAsync(
+                executionContext.Scope,
+                cancellationToken).ConfigureAwait(false);
+            return JsonSerializer.Serialize(new
+            {
+                files = assets.Select(asset => new
+                {
+                    fileId = asset.FileId,
+                    fileName = asset.FileName,
+                    mediaType = asset.MediaType,
+                    length = asset.Length,
+                    source = asset.Source.ToString(),
+                    state = asset.State.ToString(),
+                    createdAt = asset.CreatedAt
+                }).ToArray()
+            });
+        }
+        catch (OpenAgent.Contracts.Security.AgentException exception)
+        {
+            return $"文件列表获取失败：{exception.Message}";
         }
     }
 

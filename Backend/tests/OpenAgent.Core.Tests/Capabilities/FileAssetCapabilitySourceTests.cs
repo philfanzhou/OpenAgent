@@ -40,7 +40,7 @@ public class FileAssetCapabilitySourceTests
 
         IReadOnlyList<CapabilityDefinition> definitions = await DiscoverAsync(source);
 
-        string[] names = ["read_file", "write_file", "compress_files", "publish_files"];
+        string[] names = ["read_file", "list_files", "write_file", "compress_files", "publish_files"];
         Assert.Equal(names, definitions.Select(definition => definition.Name).ToArray());
     }
 
@@ -76,6 +76,29 @@ public class FileAssetCapabilitySourceTests
         using JsonDocument document = JsonDocument.Parse(result);
         Assert.Equal("# Report", document.RootElement.GetProperty("content").GetString());
         Assert.Equal(asset.FileId, document.RootElement.GetProperty("fileId").GetString());
+    }
+
+    [Fact]
+    public async Task InvokeAsync_ListFiles_ReturnsReferencedMetadataOnly()
+    {
+        TestHarness harness = CreateHarness();
+        FileAsset referenced = CreateAsset("report.md", "text/markdown");
+        FileAsset unrelated = CreateAsset("other.md", "text/markdown", "file-b");
+        harness.Repository.Assets[referenced.FileId] = referenced;
+        harness.Repository.Assets[unrelated.FileId] = unrelated;
+        harness.Repository.References.Add($"conversation-a:{referenced.FileId}");
+
+        string result = await InvokeAsync(
+            harness.Source,
+            "list_files",
+            new Dictionary<string, object?>());
+
+        using JsonDocument document = JsonDocument.Parse(result);
+        JsonElement files = document.RootElement.GetProperty("files");
+        Assert.Equal(1, files.GetArrayLength());
+        Assert.Equal("file-a", files[0].GetProperty("fileId").GetString());
+        Assert.Equal("report.md", files[0].GetProperty("fileName").GetString());
+        Assert.False(files[0].TryGetProperty("objectKey", out _));
     }
 
     [Fact]
