@@ -143,7 +143,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
             _currentVersion = loaded.CurrentVersion;
             _nextSequence = loaded.NextSequence;
             List<ChatMessage> history = await BuildHistoryAsync(loaded.History, cancellationToken).ConfigureAwait(false);
-            return RepairToolHistory(CoalesceAssistantToolCallRows(history));
+            return RepairToolHistory(history);
         }
         catch
         {
@@ -211,58 +211,12 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
     }
 
     /// <summary>
-    /// Merges consecutive assistant rows that each carry a tool_call back into one
-    /// assistant message. ToStored expands parallel calls of a single turn into
-    /// separate rows; reloaded as-is, every provider that requires tool responses to
-    /// directly follow each assistant tool_call block rejects the history with
-    /// "tool_call_ids did not have response messages".
-    /// </summary>
-    private static List<ChatMessage> CoalesceAssistantToolCallRows(List<ChatMessage> messages)
-    {
-        var result = new List<ChatMessage>(messages.Count);
-        foreach (ChatMessage message in messages)
-        {
-            if (result.Count > 0
-                && TryMergeToolCallRow(result[^1], message, out ChatMessage? merged))
-            {
-                result[^1] = merged;
-                continue;
-            }
-            result.Add(message);
-        }
-        return result;
-    }
-
-    private static bool TryMergeToolCallRow(
-        ChatMessage previous,
-        ChatMessage current,
-        out ChatMessage? merged)
-    {
-        merged = null;
-        if (previous.Role != ChatRole.Assistant
-            || current.Role != ChatRole.Assistant
-            || !previous.Contents.OfType<FunctionCallContent>().Any()
-            || !current.Contents.OfType<FunctionCallContent>().Any())
-        {
-            return false;
-        }
-
-        var contents = new List<AIContent>(previous.Contents);
-        foreach (AIContent content in current.Contents)
-        {
-            if (content is not FunctionCallContent)
-            {
-                contents.Add(content);
-            }
-        }
-        contents.AddRange(current.Contents.OfType<FunctionCallContent>());
-        merged = new ChatMessage(ChatRole.Assistant, contents);
-        return true;
-    }
-
-    /// <summary>
-    /// 修复会话历史中的工具调用契约：丢弃重复声明或没有对应 tool 响应的 assistant tool_call，
-    /// 避免发给模型时出现 "tool_calls must be followed by tool messages" 的 400。
+    /// Normalizes stored history into the tool-call contract providers expect.
+    /// Storage expands one turn's parallel calls into separate assistant rows with
+    /// their responses only after the last row, and strict gateways reject the
+    /// reloaded blocks with "tool_calls must be followed by tool messages"; so
+    /// consecutive assistant rows are folded back into one call block, duplicate or
+    /// unanswered calls are dropped, and every retained call keeps its responses.
     /// </summary>
     private static List<ChatMessage> RepairToolHistory(IReadOnlyList<ChatMessage> messages)
     {
@@ -283,37 +237,64 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         foreach (ChatMessage message in messages)
         {
             List<FunctionCallContent> calls = message.Contents.OfType<FunctionCallContent>().ToList();
-            if (message.Role == ChatRole.Assistant && calls.Count > 0)
+            if (message.Role != ChatRole.Assistant || calls.Count == 0)
             {
-                List<FunctionCallContent> retained = calls
-                    .Where(call => !string.IsNullOrWhiteSpace(call.CallId)
-                        && announced.Add(call.CallId)
-                        && responded.Contains(call.CallId))
-                    .ToList();
-                if (retained.Count == 0)
+                repaired.Add(message);
+                continue;
+            }
+
+            List<FunctionCallContent> retained = calls
+                .Where(call => !string.IsNullOrWhiteSpace(call.CallId)
+                    && announced.Add(call.CallId)
+                    && responded.Contains(call.CallId))
+                .ToList();
+
+            // Consecutive assistant rows are fragments of one turn's parallel calls;
+            // fold each fragment's non-call contents and retained calls into the block
+            // emitted before it so the responses that follow apply to all of them.
+            if (repaired.Count > 0
+                && repaired[^1].Role == ChatRole.Assistant
+                && repaired[^1].Contents.OfType<FunctionCallContent>().Any())
+            {
+                var merged = new List<AIContent>(repaired[^1].Contents);
+                foreach (AIContent content in message.Contents)
                 {
-                    continue;
+                    if (content is not FunctionCallContent)
+                    {
+                        merged.Add(content);
+                    }
+                }
+                foreach (FunctionCallContent call in retained)
+                {
+                    merged.Add(call);
+                }
+                repaired[^1] = new ChatMessage(ChatRole.Assistant, merged);
+                continue;
+            }
+
+            if (retained.Count == 0)
+            {
+                continue;
+            }
+
+            if (retained.Count < calls.Count)
+            {
+                ChatMessage rebuilt = new(message.Role, Array.Empty<AIContent>());
+                foreach (AIContent content in message.Contents)
+                {
+                    if (content is not FunctionCallContent)
+                    {
+                        rebuilt.Contents.Add(content);
+                    }
                 }
 
-                if (retained.Count < calls.Count)
+                foreach (FunctionCallContent call in retained)
                 {
-                    ChatMessage rebuilt = new(message.Role, Array.Empty<AIContent>());
-                    foreach (AIContent content in message.Contents)
-                    {
-                        if (content is not FunctionCallContent)
-                        {
-                            rebuilt.Contents.Add(content);
-                        }
-                    }
-
-                    foreach (FunctionCallContent call in retained)
-                    {
-                        rebuilt.Contents.Add(call);
-                    }
-
-                    repaired.Add(rebuilt);
-                    continue;
+                    rebuilt.Contents.Add(call);
                 }
+
+                repaired.Add(rebuilt);
+                continue;
             }
 
             repaired.Add(message);
