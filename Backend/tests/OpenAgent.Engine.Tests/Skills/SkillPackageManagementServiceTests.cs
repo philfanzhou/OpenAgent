@@ -372,6 +372,17 @@ public class SkillPackageManagementServiceTests
             return Task.FromResult(content);
         }
 
+        public Task<FileObjectAccessReference> CreateReadUrlAsync(
+            string objectKey,
+            DateTimeOffset expiresAt,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(new FileObjectAccessReference
+            {
+                ObjectKey = objectKey,
+                Url = $"https://storage.example/{Uri.EscapeDataString(objectKey)}",
+                ExpiresAt = expiresAt
+            });
+
         public Task DeleteAsync(string objectKey, CancellationToken cancellationToken)
         {
             DeletedObjectKeys.Add(objectKey);

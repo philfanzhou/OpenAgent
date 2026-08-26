@@ -67,6 +67,7 @@ internal sealed class RecordingFileObjectStore : IFileObjectStore
     public byte[] LastContent { get; private set; } = [];
     public FileObjectWriteRequest? LastRequest { get; private set; }
     public int ReadCount { get; private set; }
+    public string? LastAccessObjectKey { get; private set; }
 
     public async Task<FileObjectReference> WriteAsync(
         FileObjectWriteRequest request,
@@ -105,6 +106,20 @@ internal sealed class RecordingFileObjectStore : IFileObjectStore
 
         ReadCount++;
         return Task.FromResult(content);
+    }
+
+    public Task<FileObjectAccessReference> CreateReadUrlAsync(
+        string objectKey,
+        DateTimeOffset expiresAt,
+        CancellationToken cancellationToken)
+    {
+        LastAccessObjectKey = objectKey;
+        return Task.FromResult(new FileObjectAccessReference
+        {
+            ObjectKey = objectKey,
+            Url = $"https://storage.example/{objectKey}",
+            ExpiresAt = expiresAt
+        });
     }
 
     public Task DeleteAsync(string objectKey, CancellationToken cancellationToken) => Task.CompletedTask;

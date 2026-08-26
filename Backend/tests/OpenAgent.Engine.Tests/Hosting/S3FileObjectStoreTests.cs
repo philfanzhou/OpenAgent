@@ -127,4 +127,31 @@ public class S3FileObjectStoreTests
 
         Assert.Equal([1, 2, 3, 4], result);
     }
+
+    [Fact]
+    public async Task CreateReadUrlAsync_UsesBucketAndObjectKey()
+    {
+        var s3 = new Mock<IAmazonS3>();
+        s3.Setup(client => client.GetPreSignedURL(It.IsAny<GetPreSignedUrlRequest>()))
+            .Returns("https://storage.example/signed-file");
+        var store = new S3FileObjectStore(
+            s3.Object,
+            Options.Create(new FileObjectStorageOptions { BucketName = "files-test", KeyPrefix = "private/files" }));
+        DateTimeOffset expiresAt = DateTimeOffset.UtcNow.AddMinutes(10);
+
+        FileObjectAccessReference result = await store.CreateReadUrlAsync(
+            "private/files/tenants/tenant-hash/file-a.pdf",
+            expiresAt,
+            CancellationToken.None);
+
+        Assert.Equal("https://storage.example/signed-file", result.Url);
+        Assert.Equal("private/files/tenants/tenant-hash/file-a.pdf", result.ObjectKey);
+        GetPreSignedUrlRequest request = s3.Invocations
+            .Single(invocation => invocation.Method.Name == nameof(IAmazonS3.GetPreSignedURL))
+            .Arguments[0] as GetPreSignedUrlRequest
+            ?? throw new Xunit.Sdk.XunitException("Presign request was not captured.");
+        Assert.Equal("files-test", request.BucketName);
+        Assert.Equal(result.ObjectKey, request.Key);
+        Assert.Equal(HttpVerb.GET, request.Verb);
+    }
 }
