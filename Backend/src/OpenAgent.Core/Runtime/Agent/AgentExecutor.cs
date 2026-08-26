@@ -171,6 +171,17 @@ public sealed class AgentExecutor
                 }
             }
 
+            // 工具执行完成后立即下发结果，客户端无需等整轮结束重载历史即可看到工具输出。
+            foreach (FunctionResultContent result in contents.OfType<FunctionResultContent>())
+            {
+                yield return new AgentStreamEvent
+                {
+                    Type = AgentStreamEventType.ToolResult,
+                    ToolCallId = result.CallId,
+                    Content = result.Result?.ToString()
+                };
+            }
+
             foreach (TextReasoningContent reasoning in contents.OfType<TextReasoningContent>())
             {
                 if (!string.IsNullOrEmpty(reasoning.Text))

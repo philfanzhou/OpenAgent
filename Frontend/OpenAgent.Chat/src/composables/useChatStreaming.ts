@@ -155,6 +155,12 @@ export function useChatStreaming(options: ChatStreamingOptions) {
             callId: event.toolCallId,
             arguments: event.toolArguments,
           })
+        } else if (event.type === 'tool_result') {
+          // 工具结果随流即时回填到对应调用行，无需等整轮结束重载历史。
+          const tools = assistantMessage.toolActivities ||= []
+          const tool = tools.find(item => item.callId && item.callId === event.toolCallId)
+          if (tool) tool.result = event.content ?? ''
+          else tools.push({ name: '工具', callId: event.toolCallId, result: event.content ?? '' })
         } else if (event.type === 'done') {
           flushStream?.()
           receivedDone = true
