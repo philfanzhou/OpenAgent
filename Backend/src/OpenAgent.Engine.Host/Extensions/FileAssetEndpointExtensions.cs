@@ -20,9 +20,6 @@ internal static class FileAssetEndpointExtensions
         group.MapGet("/files/object", ObjectContentAsync)
             .WithName("GetObjectAssetContent")
             .WithTags("File");
-        group.MapPost("/files/{fileId}/transfer-url", CreateTransferUrlAsync)
-            .WithName("CreateFileAssetTransferUrl")
-            .WithTags("File");
         group.MapGet("/files/{fileId}/content", ContentAsync)
             .WithName("GetFileAssetContent")
             .WithTags("File");
@@ -121,25 +118,6 @@ internal static class FileAssetEndpointExtensions
             ".zip" => "application/zip",
             _ => "application/octet-stream"
         };
-    }
-
-    private static async Task<IResult> CreateTransferUrlAsync(
-        [FromServices] IFileAssetService files,
-        HttpContext context,
-        string fileId,
-        CancellationToken cancellationToken)
-    {
-        FileObjectAccessReference access = await files.CreateTransferUrlAsync(
-            fileId,
-            CreateScope(context, conversationId: null),
-            cancellationToken).ConfigureAwait(false);
-        return Results.Ok(new
-        {
-            fileId,
-            objectKey = access.ObjectKey,
-            url = access.Url,
-            expiresAt = access.ExpiresAt
-        });
     }
 
     private static async Task<IResult> DownloadAsync(

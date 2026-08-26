@@ -36,6 +36,14 @@ internal sealed class FileAssetCapabilitySource(
                 "file-assets",
                 ReadAsync),
             new CapabilityDefinition(
+                "create_file_transfer_url",
+                "Create a short-lived read URL for a file only when an external MCP tool requires a file URL. "
+                + "Call this immediately before passing the URL to that MCP tool; do not use it for normal file reading or user downloads.",
+                """{"type":"object","properties":{"fileId":{"type":"string","description":"Referenced file asset ID"}},"required":["fileId"]}""",
+                AgentResourceType.Tool,
+                "file-assets",
+                CreateTransferUrlAsync),
+            new CapabilityDefinition(
                 "list_files",
                 "List file assets referenced by the current conversation. Returns fileId and safe metadata only; "
                 + "use read_file to inspect text or publish_files to deliver selected files to the user.",
@@ -136,6 +144,49 @@ internal sealed class FileAssetCapabilitySource(
         catch (OpenAgent.Contracts.Security.AgentException exception)
         {
             return $"文件列表获取失败：{exception.Message}";
+        }
+    }
+
+    private async Task<string> CreateTransferUrlAsync(
+        IReadOnlyDictionary<string, object?> arguments,
+        CancellationToken cancellationToken)
+    {
+        string? fileId = ReadString(arguments, "fileId");
+        if (string.IsNullOrWhiteSpace(fileId))
+        {
+            return "文件传输链接生成失败：'fileId' 是必填参数。";
+        }
+        if (executionContext.Scope == null)
+        {
+            return "文件传输链接生成失败：文件执行上下文不可用。";
+        }
+
+        try
+        {
+            FileAsset? asset = await files.GetReferencedAsync(
+                fileId,
+                executionContext.Scope,
+                cancellationToken).ConfigureAwait(false);
+            if (asset == null || asset.State != FileAssetState.Ready)
+            {
+                return "文件传输链接生成失败：文件不存在、未就绪或未关联到当前会话。";
+            }
+
+            FileObjectAccessReference access = await files.CreateTransferUrlAsync(
+                fileId,
+                executionContext.Scope,
+                cancellationToken).ConfigureAwait(false);
+            return JsonSerializer.Serialize(new
+            {
+                fileId,
+                objectKey = access.ObjectKey,
+                url = access.Url,
+                expiresAt = access.ExpiresAt
+            });
+        }
+        catch (OpenAgent.Contracts.Security.AgentException exception)
+        {
+            return $"文件传输链接生成失败：{exception.Message}";
         }
     }
 

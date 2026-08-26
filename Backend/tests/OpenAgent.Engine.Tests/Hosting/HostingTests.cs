@@ -90,7 +90,6 @@ public class HostingTests
             ("/api/v1/agent/chat/stream", "POST", "ChatStream", "Agent"),
             ("/api/v1/agent/files", "POST", "UploadFileAsset", "File"),
             ("/api/v1/agent/files/{fileId}", "GET", "GetFileAsset", "File"),
-            ("/api/v1/agent/files/{fileId}/transfer-url", "POST", "CreateFileAssetTransferUrl", "File"),
             ("/api/v1/agent/files/{fileId}/content", "GET", "GetFileAssetContent", "File"),
             ("/api/v1/agent/files/{fileId}/download", "GET", "DownloadFileAsset", "File"),
             ("/api/v1/agent/files/object", "GET", "GetObjectAssetContent", "File"),
