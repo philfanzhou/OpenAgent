@@ -65,6 +65,7 @@ public class AgentForwarderTests
             Task.FromResult(AgentProviderConversationStatus.NotFound);
 
         public Task<IntentRecognitionResult?> RecognizeIntentAsync(
+            AgentProviderRequestContext requestContext,
             string intentAgentId,
             IReadOnlyList<AgentSummary> agents,
             string message,

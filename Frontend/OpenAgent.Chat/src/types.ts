@@ -59,6 +59,8 @@ export interface MessageFile {
   fileName: string
   mediaType: string
   length: number
+  /** 对象存储键，用于 markdown 预览时相对解析同批 S3 图片。 */
+  objectKey?: string
   previewUrl?: string
   previewText?: string
 }
@@ -71,6 +73,7 @@ export interface FileAsset {
   mediaType: string
   length: number
   sha256: string
+  objectKey?: string
   source: 'UserUpload' | 'Agent' | 'Skill' | number
   state: 'Pending' | 'Ready' | 'Failed' | number
   createdAt: string

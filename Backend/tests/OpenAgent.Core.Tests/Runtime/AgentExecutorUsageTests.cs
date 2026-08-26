@@ -62,6 +62,34 @@ public class AgentExecutorUsageTests
     }
 
     [Fact]
+    public async Task ExecuteStreamingAsync_ToolInvocation_EmitsToolResultAfterItsCall()
+    {
+        var provider = new FakeChatProvider(
+        [
+            new ChatResponseUpdate(ChatRole.Assistant,
+                [new FunctionCallContent("call-1", "get_current_user_profile")]),
+            new ChatResponseUpdate(ChatRole.Assistant, "tool finished")
+        ]);
+        await using TestRuntime runtime = CreateRuntime(provider);
+
+        List<AgentStreamEvent> events = [];
+        await foreach (AgentStreamEvent streamEvent in runtime.Executor.ExecuteStreamingAsync(
+            CreateRequest("tool-result-conversation"),
+            User,
+            CancellationToken.None))
+        {
+            events.Add(streamEvent);
+        }
+
+        AgentStreamEvent call = Assert.Single(events, item => item.Type == AgentStreamEventType.ToolCall);
+        Assert.Equal("get_current_user_profile", call.ToolName);
+        AgentStreamEvent result = Assert.Single(events, item => item.Type == AgentStreamEventType.ToolResult);
+        Assert.Equal("call-1", result.ToolCallId);
+        Assert.NotNull(result.Content);
+        Assert.True(events.IndexOf(result) > events.IndexOf(call), "Tool result must be streamed after its call");
+    }
+
+    [Fact]
     public async Task ExecuteStreamingAsync_TerminalProviderUsage_EmitsTerminalEventAndPersistsCounts()
     {
         UsageDetails providerUsage = CreateUsage();
@@ -257,6 +285,10 @@ public class AgentExecutorUsageTests
         public Task UpdateAsync(FileAsset asset, CancellationToken cancellationToken) => Task.CompletedTask;
         public Task<FileAsset?> GetAsync(string fileId, CancellationToken cancellationToken) =>
             Task.FromResult<FileAsset?>(null);
+        public Task<IReadOnlyList<FileAsset>> ListReferencedAsync(
+            string conversationId,
+            CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<FileAsset>>([]);
         public Task EnsureConversationReferencesAsync(
             string conversationId,
             IReadOnlyList<string> fileIds,

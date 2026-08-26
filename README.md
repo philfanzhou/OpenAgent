@@ -46,6 +46,11 @@ Provider 并绑定 Agent。该兼容登录不校验真实密码，仅适合本�
 [Keycloak 本地认证集成](docs/integrations/keycloak/README.md)。该环境导入本地 Realm、SPA Client
 和 `demo` 测试用户，不复用默认 OpenAgent Compose 项目的数据卷或端口。
 
+默认使用 Compose 内置的 MinIO（bucket `openagent-files`）。接入外部 S3/MinIO 时，可覆盖
+`OPENAGENT_S3_SERVICE_URL`、`OPENAGENT_S3_BUCKET`、`OPENAGENT_S3_ACCESS_KEY`、
+`OPENAGENT_S3_SECRET_KEY`；仅在自签名证书场景显式设置
+`OPENAGENT_S3_ALLOW_INSECURE_TLS=true`。
+
 ## 文档
 
 - [文档中心](docs/README.md) — 总览、模块、集成、数据库、架构决策

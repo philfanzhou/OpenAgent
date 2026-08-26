@@ -92,6 +92,7 @@ public class HostingTests
             ("/api/v1/agent/files/{fileId}", "GET", "GetFileAsset", "File"),
             ("/api/v1/agent/files/{fileId}/content", "GET", "GetFileAssetContent", "File"),
             ("/api/v1/agent/files/{fileId}/download", "GET", "DownloadFileAsset", "File"),
+            ("/api/v1/agent/files/object", "GET", "GetObjectAssetContent", "File"),
             ("/api/v1/agent/agents", "GET", "ListAgents", "Agent"),
             ("/api/v1/agent/provider/conversations/{conversationId}", "GET", "ResolveProviderConversation", "Agent Provider"),
             ("/api/v1/agent/me", "GET", "CurrentAgentUser", "Agent"),

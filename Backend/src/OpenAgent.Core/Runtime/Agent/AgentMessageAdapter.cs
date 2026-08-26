@@ -1,4 +1,3 @@
-using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.AI;
 using OpenAgent.Contracts.Conversation;
@@ -10,7 +9,7 @@ internal static class AgentMessageAdapter
 {
     internal static ChatMessage CreateUser(
         string input,
-        IReadOnlyList<FileAssetContent> files)
+        IReadOnlyList<FileAsset> files)
     {
         var message = new ChatMessage(Microsoft.Extensions.AI.ChatRole.User, input);
         AddFiles(message, files);
@@ -200,7 +199,8 @@ internal static class AgentMessageAdapter
                 fileId = file.FileId,
                 fileName = file.FileName,
                 mediaType = file.MediaType,
-                length = file.Length
+                length = file.Length,
+                objectKey = file.ObjectKey
             }))
         };
     }
@@ -326,48 +326,30 @@ internal static class AgentMessageAdapter
 
     private static void AddFiles(
         ChatMessage chatMessage,
-        IReadOnlyList<FileAssetContent> files)
+        IReadOnlyList<FileAsset> files)
     {
-        foreach (FileAssetContent file in files)
+        foreach (FileAsset file in files)
         {
             AttachFile(chatMessage, file);
         }
     }
 
-    /// <summary>把一个文件资产以文本或二进制附件形式挂到某条 ChatMessage 上（供续接历史重建附件使用）。</summary>
-    internal static void AttachFile(ChatMessage chatMessage, FileAssetContent file)
+    /// <summary>只把文件元数据挂到消息上；内容由模型按需调用 read_file 等工具获取。</summary>
+    internal static void AttachFile(ChatMessage chatMessage, FileAsset file)
     {
-        if (IsTextFile(file.Asset.MediaType))
-        {
-            chatMessage.Contents.Add(new TextContent(
-                $"[File: {file.Asset.FileName}]\n{DecodeUtf8(file)}"));
-        }
-        else
-        {
-            chatMessage.Contents.Add(new DataContent(file.Data, file.Asset.MediaType)
-            {
-                Name = file.Asset.FileName
-            });
-        }
+        string descriptor =
+            $"[File: {file.FileName}] fileId={file.FileId} "
+            + $"({file.MediaType}, {file.Length} bytes)";
+        string instruction = IsTextFile(file.MediaType)
+            ? $"Use the read_file tool with fileId=\"{file.FileId}\" when you need to inspect it."
+            : $"Use a file-aware analysis tool with fileId=\"{file.FileId}\" when you need to inspect it.";
+        chatMessage.Contents.Add(new TextContent(
+            $"{descriptor}. Content is not included in this message. "
+            + instruction));
     }
 
-    private static bool IsTextFile(string mediaType)
-    {
-        return mediaType.StartsWith("text/", StringComparison.OrdinalIgnoreCase)
-            || mediaType.Equals("application/json", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static string DecodeUtf8(FileAssetContent file)
-    {
-        try
-        {
-            return new UTF8Encoding(false, true).GetString(file.Data);
-        }
-        catch (DecoderFallbackException exception)
-        {
-            throw new InvalidDataException(
-                $"File '{file.Asset.FileName}' is not valid UTF-8 text.", exception);
-        }
-    }
+    private static bool IsTextFile(string mediaType) =>
+        mediaType.StartsWith("text/", StringComparison.OrdinalIgnoreCase)
+        || mediaType.Equals("application/json", StringComparison.OrdinalIgnoreCase);
 
 }
