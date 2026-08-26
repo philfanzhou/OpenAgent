@@ -9,10 +9,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Xunit.SkippableFact" />
-  </ItemGroup>
-
-  <ItemGroup>
     <ProjectReference Include="..\..\src\OpenAgent.Core\OpenAgent.Core.csproj" />
   </ItemGroup>
 

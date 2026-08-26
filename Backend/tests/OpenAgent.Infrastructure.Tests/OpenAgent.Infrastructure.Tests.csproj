@@ -8,13 +8,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Testcontainers.PostgreSql" />
-    <PackageReference Include="Testcontainers.Redis" />
-    <PackageReference Include="Microsoft.Extensions.Configuration" />
-    <PackageReference Include="Xunit.SkippableFact" />
-  </ItemGroup>
-
-  <ItemGroup>
     <ProjectReference Include="..\..\src\OpenAgent.Infrastructure\OpenAgent.Infrastructure.csproj" />
   </ItemGroup>
 
