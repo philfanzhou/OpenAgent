@@ -8,7 +8,8 @@ export function buildConversationTimeline(
   messages: ConversationMessage[],
   summaries: ContextSummary[],
 ): ConversationTimelineItem[] {
-  const orderedMessages = [...messages].sort((left, right) => left.sequence - right.sequence)
+  // 序号缺失时按 0 处理：NaN 比较结果会让整个排序顺序错乱。
+  const orderedMessages = [...messages].sort((left, right) => (left.sequence || 0) - (right.sequence || 0))
   const orderedSummaries = summaries
     .map(summary => ({ summary, boundary: summaryBoundary(summary, orderedMessages) }))
     .sort((left, right) => left.boundary - right.boundary

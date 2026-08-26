@@ -25,6 +25,16 @@ public class ContractSerializationTests
     }
 
     [Fact]
+    public void LlmTlsRelaxation_IsNotPartOfPersistedContracts()
+    {
+        string configJson = JsonSerializer.Serialize(new LlmConfig(), JsonOptions);
+        string profileJson = JsonSerializer.Serialize(new LlmProviderProfile(), JsonOptions);
+
+        Assert.DoesNotContain("AllowInsecureTls", configJson, StringComparison.Ordinal);
+        Assert.DoesNotContain("AllowInsecureTls", profileJson, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AgentRequest_FileIds_AreNotSerialized()
     {
         AgentRequest request = new()

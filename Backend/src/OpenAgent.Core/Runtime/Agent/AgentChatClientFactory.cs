@@ -1,4 +1,5 @@
 using System.ClientModel;
+using System.ClientModel.Primitives;
 using Anthropic;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
@@ -19,6 +20,7 @@ internal interface IAgentChatClientFactory
 internal sealed class AgentChatClientFactory : IAgentChatClientFactory
 {
     private readonly TimeSpan _networkTimeout;
+    private readonly bool _allowInsecureTls;
 
     public AgentChatClientFactory(IConfiguration configuration)
     {
@@ -29,6 +31,10 @@ internal sealed class AgentChatClientFactory : IAgentChatClientFactory
         _networkTimeout = seconds <= 0
             ? Timeout.InfiniteTimeSpan
             : TimeSpan.FromSeconds(seconds);
+        // This is a deployment-only escape hatch. It intentionally does not belong
+        // to AgentConfig or persisted LLM provider profiles.
+        _allowInsecureTls = configuration.GetValue("OPENAGENT_LLM_ALLOW_INSECURE_TLS", false)
+            || configuration.GetValue("Llm:AllowInsecureTls", false);
     }
 
     public IChatClient Create(LlmConfig llm)
@@ -85,9 +91,24 @@ internal sealed class AgentChatClientFactory : IAgentChatClientFactory
     private IChatClient CreateAnthropic(LlmConfig llm)
     {
         EnsureApiKey(llm, "Anthropic Messages");
-        AnthropicClient client = string.IsNullOrWhiteSpace(llm.Endpoint)
-            ? new AnthropicClient { ApiKey = llm.ApiKey }
-            : new AnthropicClient { ApiKey = llm.ApiKey, BaseUrl = llm.Endpoint.TrimEnd('/') };
+        AnthropicClient client;
+        if (_allowInsecureTls)
+        {
+            client = string.IsNullOrWhiteSpace(llm.Endpoint)
+                ? new AnthropicClient { ApiKey = llm.ApiKey, HttpClient = CreateInsecureHttpClient() }
+                : new AnthropicClient
+                {
+                    ApiKey = llm.ApiKey,
+                    BaseUrl = llm.Endpoint.TrimEnd('/'),
+                    HttpClient = CreateInsecureHttpClient()
+                };
+        }
+        else
+        {
+            client = string.IsNullOrWhiteSpace(llm.Endpoint)
+                ? new AnthropicClient { ApiKey = llm.ApiKey }
+                : new AnthropicClient { ApiKey = llm.ApiKey, BaseUrl = llm.Endpoint.TrimEnd('/') };
+        }
         return client.AsAIAgent(model: llm.ModelId, name: "openagent-anthropic-provider").ChatClient;
     }
 
@@ -95,13 +116,26 @@ internal sealed class AgentChatClientFactory : IAgentChatClientFactory
     {
         EnsureApiKey(llm, "OpenAI");
         string endpoint = string.IsNullOrWhiteSpace(llm.Endpoint) ? defaultEndpoint : llm.Endpoint;
-        return new OpenAIClient(
-            new ApiKeyCredential(llm.ApiKey),
-            new OpenAIClientOptions
-            {
-                Endpoint = new Uri(endpoint),
-                NetworkTimeout = _networkTimeout
-            });
+        var options = new OpenAIClientOptions
+        {
+            Endpoint = new Uri(endpoint),
+            NetworkTimeout = _networkTimeout
+        };
+        if (_allowInsecureTls)
+        {
+            options.Transport = new HttpClientPipelineTransport(CreateInsecureHttpClient());
+        }
+        return new OpenAIClient(new ApiKeyCredential(llm.ApiKey), options);
+    }
+
+    private static HttpClient CreateInsecureHttpClient()
+    {
+        var handler = new HttpClientHandler
+        {
+            ServerCertificateCustomValidationCallback =
+                HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
+        };
+        return new HttpClient(handler);
     }
 
     private static void EnsureApiKey(LlmConfig llm, string format)

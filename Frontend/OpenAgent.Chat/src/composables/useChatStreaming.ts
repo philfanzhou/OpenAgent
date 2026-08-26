@@ -63,8 +63,10 @@ export function useChatStreaming(options: ChatStreamingOptions) {
     const conversation = options.selectedConversation.value
     if (!conversation) return
     let conversationId = conversation.conversationId
-    // First messages omit conversationId so Router intent selection remains on the initial-message path.
-    const sendConversationId = isNewConversation ? undefined : conversationId
+    // Send the local id even on the first message. Uploaded assets were created
+    // for this conversation; omitting it made Engine generate a different id and
+    // caused the first message's file references to miss their scope.
+    const sendConversationId = conversationId
     const streamState = options.streams.start(conversationId)
     const requestId = streamState.requestId
     let streamError: { title?: string; detail?: string; traceId?: string } | undefined
@@ -78,9 +80,13 @@ export function useChatStreaming(options: ChatStreamingOptions) {
     try {
       conversation.messages ||= []
       conversation.status = 'Running'
+      // 会话内存的是合并后的展示消息（tool 行被折叠），行数与真实 Sequence 有落差，
+      // 不能用数组长度推算新序号；取现有最大序号递增，保证乐观消息始终排在最后。
+      const baseSequence = conversation.messages.reduce(
+        (max, item) => Math.max(max, item.sequence || 0), 0)
       const messageFiles = await Promise.all(options.pendingFiles.value.map(toMessageFile))
       conversation.messages.push({
-        messageId: crypto.randomUUID(), sequence: conversation.messages.length + 1,
+        messageId: crypto.randomUUID(), sequence: baseSequence + 1,
         role: 'user', content: content || '已上传文件', timestamp: new Date().toISOString(),
         files: messageFiles,
       })
@@ -92,7 +98,7 @@ export function useChatStreaming(options: ChatStreamingOptions) {
       let reasoning = ''
       let lastFlush = 0
       conversation.messages.push({
-        messageId: crypto.randomUUID(), sequence: conversation.messages.length + 1,
+        messageId: crypto.randomUUID(), sequence: baseSequence + 2,
         role: 'assistant', content: '', timestamp: new Date().toISOString(),
       })
       const assistantMessage = conversation.messages[conversation.messages.length - 1]!
@@ -149,6 +155,12 @@ export function useChatStreaming(options: ChatStreamingOptions) {
             callId: event.toolCallId,
             arguments: event.toolArguments,
           })
+        } else if (event.type === 'tool_result') {
+          // 工具结果随流即时回填到对应调用行，无需等整轮结束重载历史。
+          const tools = assistantMessage.toolActivities ||= []
+          const tool = tools.find(item => item.callId && item.callId === event.toolCallId)
+          if (tool) tool.result = event.content ?? ''
+          else tools.push({ name: '工具', callId: event.toolCallId, result: event.content ?? '' })
         } else if (event.type === 'done') {
           flushStream?.()
           receivedDone = true

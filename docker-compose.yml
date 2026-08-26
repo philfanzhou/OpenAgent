@@ -68,10 +68,12 @@ services:
       OpenTelemetry__OtlpEndpoint: ${OPENAGENT_OTLP_ENDPOINT:-http://host.docker.internal:4317}
       OpenTelemetry__ServiceName: agent-engine
       OpenTelemetry__ServiceVersion: development
-      FileAssets__ObjectStorage__ServiceUrl: http://minio:9000
+      FileAssets__ObjectStorage__ServiceUrl: ${OPENAGENT_S3_SERVICE_URL:-http://minio:9000}
       FileAssets__ObjectStorage__ForcePathStyle: "true"
-      FileAssets__ObjectStorage__AccessKey: openagent
-      FileAssets__ObjectStorage__SecretKey: openagent-secret
+      OPENAGENT_S3_ALLOW_INSECURE_TLS: ${OPENAGENT_S3_ALLOW_INSECURE_TLS:-false}
+      FileAssets__ObjectStorage__BucketName: ${OPENAGENT_S3_BUCKET:-openagent-files}
+      FileAssets__ObjectStorage__AccessKey: ${OPENAGENT_S3_ACCESS_KEY:-openagent}
+      FileAssets__ObjectStorage__SecretKey: ${OPENAGENT_S3_SECRET_KEY:-openagent-secret}
       Engine__AllowMockAgent: "true"
       Heartbeat__AdvertisedHost: engine
       Heartbeat__AdvertisedPort: "5208"

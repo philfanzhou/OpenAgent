@@ -58,6 +58,37 @@ public class AgentStreamWriterTests
         Assert.Contains("\"done\":true,\"usage\":null", payload, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task WriteSseStreamAsync_ToolResult_WritesEventWithCallIdAndContent()
+    {
+        var context = new DefaultHttpContext();
+        context.Response.Body = new MemoryStream();
+
+        await AgentStreamWriter.WriteSseStreamAsync(
+            context,
+            ToolResultEvents(),
+            "trace-1",
+            "conversation-1",
+            NullLogger.Instance,
+            CancellationToken.None);
+
+        string payload = await ReadBodyAsync(context);
+        Assert.Contains("event: tool_result", payload, StringComparison.Ordinal);
+        Assert.Contains("\"toolCallId\":\"call-1\"", payload, StringComparison.Ordinal);
+        Assert.Contains("\"content\":\"sunny\"", payload, StringComparison.Ordinal);
+    }
+
+    private static async IAsyncEnumerable<AgentStreamEvent> ToolResultEvents()
+    {
+        yield return new AgentStreamEvent
+        {
+            Type = AgentStreamEventType.ToolResult,
+            ToolCallId = "call-1",
+            Content = "sunny"
+        };
+        await Task.Yield();
+    }
+
     private static async IAsyncEnumerable<AgentStreamEvent> Events(
         TokenUsage? usage,
         string modelId)

@@ -14,6 +14,13 @@ public sealed class ConversationStoreOptions
     public int DefaultModelContextTokens { get; set; } = 1_000;
 
     /// <summary>
+    /// Automatic compaction trigger threshold in tokens. When set above zero it takes
+    /// precedence over the ratio-based heuristic, pinning the automatic trigger to a
+    /// fixed context budget regardless of per-agent context policies.
+    /// </summary>
+    public int? AutomaticCompactionTokenThreshold { get; set; }
+
+    /// <summary>
     /// 会话标题截取的最大字符数。首轮用户消息截取前 N 个字符作为初始标题。默认 50。
     /// </summary>
     public int TitleTruncateLength { get; set; } = 50;
