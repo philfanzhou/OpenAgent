@@ -10,7 +10,7 @@ import LoginPage from './components/LoginPage.vue'
 import MessageComposer from './components/MessageComposer.vue'
 import { formatTokenCount, summarizeConversationUsage } from './tokenUsage'
 import HealthCheckPanel from './components/HealthCheckPanel.vue'
-import { mergeAssistantSnapshot } from './messagePresentation'
+import { appendStreamingReasoning, appendStreamingTool, mergeAssistantSnapshot } from './messagePresentation'
 import { AUTO_AGENT_ID, type AgentConfigEntity, type AgentSummary, type AuthConfig, type ConnectionMode, type ConversationMessage, type ConversationRecord, type CurrentUserContext, type LlmProviderProfile, type LlmTestResult, type McpServerConfig, type McpTestResult, type MessageFile, type PendingFile, type RagConfig, type RagInstanceConfig, type RagTestResult, type SkillCatalogItem, type SkillInstanceConfig, type SkillsConfig } from './types'
 import { usePanelLayout } from './composables/usePanelLayout'
 import { useConversationStreams } from './composables/useConversationStreams'
@@ -867,7 +867,9 @@ async function send(): Promise<void> {
       } else if (event.type === 'content') {
         enqueueAssistantContent(assistantContentState, content => contentQueue?.enqueue(content), event.content || '')
       } else if (event.type === 'reasoning') {
-        reasoning += event.content || ''
+        const reasoningContent = event.content || ''
+        reasoning += reasoningContent
+        appendStreamingReasoning(assistantMessage, reasoningContent)
         if (performance.now() - lastFlush > 100) {
           assistantMessage.reasoning = reasoning
           lastFlush = performance.now()
@@ -875,11 +877,13 @@ async function send(): Promise<void> {
       } else if (event.type === 'tool_call') {
         markAssistantPhaseBoundary(assistantContentState)
         assistantMessage.toolActivities ||= []
-        assistantMessage.toolActivities.push({
+        const tool = {
           name: event.toolName || '工具',
           callId: event.toolCallId,
           arguments: event.toolArguments,
-        })
+        }
+        assistantMessage.toolActivities.push(tool)
+        appendStreamingTool(assistantMessage, tool)
       } else if (event.type === 'done') {
         flushStream?.()
         receivedDone = true

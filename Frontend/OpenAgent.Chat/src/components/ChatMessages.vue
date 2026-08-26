@@ -26,7 +26,13 @@ const suggestions = [
   ['总结技术方案', '请用简洁的结构总结当前技术方案。'],
 ]
 
-const messagesScrollbar = ref<{ setScrollTop: (value: number) => void } | null>(null)
+type ScrollbarWrapRef = HTMLElement | { value?: HTMLElement }
+type MessagesScrollbar = {
+  setScrollTop: (value: number) => void
+  wrapRef?: ScrollbarWrapRef
+}
+const messagesScrollbar = ref<MessagesScrollbar | null>(null)
+const stickToBottom = ref(true)
 const timelineItems = computed(() => buildConversationTimeline(
   props.messages,
   props.contextSummaries || [],
@@ -134,18 +140,36 @@ async function copyTraceId(traceId: string): Promise<void> {
   }
 }
 
+function messagesWrap(): HTMLElement | undefined {
+  const wrap = messagesScrollbar.value?.wrapRef
+  if (!wrap) return undefined
+  return wrap instanceof HTMLElement ? wrap : wrap.value
+}
+
+function handleMessagesScroll(position: { scrollTop: number }): void {
+  const wrap = messagesWrap()
+  if (!wrap) return
+  stickToBottom.value = wrap.scrollHeight - position.scrollTop - wrap.clientHeight <= 48
+}
+
 function scrollToBottom(): void {
+  if (!stickToBottom.value) return
   const scroll = () => messagesScrollbar.value?.setScrollTop(Number.MAX_SAFE_INTEGER)
   scroll()
   requestAnimationFrame(scroll)
 }
 watch(() => props.messages, () => { void nextTick(scrollToBottom) }, { deep: true })
 watch(() => props.contextSummaries, () => { void nextTick(scrollToBottom) }, { deep: true })
-watch(() => props.streaming, () => { if (props.streaming) scrollToBottom() })
+watch(() => props.streaming, (streaming, previous) => {
+  if (streaming && !previous) {
+    stickToBottom.value = true
+    scrollToBottom()
+  }
+})
 </script>
 
 <template>
-  <el-scrollbar ref="messagesScrollbar" class="messages" wrap-class="messages-wrap" v-loading="props.loading">
+  <el-scrollbar ref="messagesScrollbar" class="messages" wrap-class="messages-wrap" v-loading="props.loading" @scroll="handleMessagesScroll">
     <div v-if="!props.messages.length" class="welcome">
       <div class="welcome-icon">O</div>
       <h1>今天想处理什么？</h1>
