@@ -44,9 +44,9 @@ internal sealed class FileAssetCapabilitySource(
                 WriteAsync),
             new CapabilityDefinition(
                 "compress_files",
-                "Compress files into one zip archive written to object storage. "
+                "Compress files into one zip archive, register it as a downloadable file asset, and return its fileId. "
                 + "Each item targets a file by fileId (conversation-referenced) or by objectKey with fileName. "
-                + "Returns the archive objectKey, length, and file count.",
+                + "Returns the fileId, objectKey, length, and file count.",
                 """{"type":"object","properties":{"outputName":{"type":"string","description":"zip file name, e.g. report.zip"},"items":{"type":"array","items":{"type":"object","properties":{"fileId":{"type":"string"},"objectKey":{"type":"string"},"fileName":{"type":"string"}}}}},"required":["outputName","items"]}""",
                 AgentResourceType.Tool,
                 "file-assets",
@@ -179,10 +179,18 @@ internal sealed class FileAssetCapabilitySource(
                 },
                 executionContext.Scope,
                 cancellationToken).ConfigureAwait(false);
+            await files.EnsureReferencesAsync(
+                [result.Asset.FileId],
+                executionContext.Scope,
+                cancellationToken).ConfigureAwait(false);
+            executionContext.RecordCreated(result.Asset);
             return JsonSerializer.Serialize(new
             {
-                objectKey = result.ObjectKey,
-                length = result.Length,
+                fileId = result.Asset.FileId,
+                fileName = result.Asset.FileName,
+                mediaType = result.Asset.MediaType,
+                objectKey = result.Asset.ObjectKey,
+                length = result.Asset.Length,
                 fileCount = result.FileCount
             });
         }

@@ -270,25 +270,56 @@ internal sealed class FileAssetService : IFileAssetService
         }
 
         byte[] archive = BuildZipArchive(entries);
+        string fileId = $"archive-{Guid.NewGuid():N}";
         string sha256 = Convert.ToHexString(SHA256.HashData(archive)).ToLowerInvariant();
-        await using var input = new MemoryStream(archive, writable: false);
-        FileObjectReference stored = await _objectStore.WriteAsync(
-            new FileObjectWriteRequest
-            {
-                FileId = $"archive-{Guid.NewGuid():N}",
-                TenantId = scope.TenantId,
-                UserId = scope.UserId,
-                FileName = outputName,
-                MediaType = "application/zip",
-                Sha256 = sha256
-            },
-            input,
-            cancellationToken).ConfigureAwait(false);
+        FileAsset pending = new()
+        {
+            FileId = fileId,
+            TenantId = scope.TenantId,
+            OwnerUserId = scope.UserId,
+            FileName = outputName,
+            MediaType = "application/zip",
+            Length = archive.LongLength,
+            Sha256 = sha256,
+            ObjectKey = string.Empty,
+            Source = FileAssetSource.Agent,
+            State = FileAssetState.Pending,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        await _repository.CreateAsync(pending, cancellationToken).ConfigureAwait(false);
+
+        FileAsset asset;
+        try
+        {
+            await using var input = new MemoryStream(archive, writable: false);
+            FileObjectReference stored = await _objectStore.WriteAsync(
+                new FileObjectWriteRequest
+                {
+                    FileId = fileId,
+                    TenantId = scope.TenantId,
+                    UserId = scope.UserId,
+                    FileName = outputName,
+                    MediaType = "application/zip",
+                    Sha256 = sha256
+                },
+                input,
+                cancellationToken).ConfigureAwait(false);
+            asset = CopyWithStorage(pending, stored.ObjectKey, FileAssetState.Ready);
+            await _repository.UpdateAsync(asset, cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            await _repository.UpdateAsync(
+                CopyWithStorage(pending, string.Empty, FileAssetState.Failed),
+                CancellationToken.None).ConfigureAwait(false);
+            throw;
+        }
 
         return new FileArchiveResult
         {
-            ObjectKey = stored.ObjectKey,
-            Length = archive.LongLength,
+            Asset = asset,
+            ObjectKey = asset.ObjectKey,
+            Length = asset.Length,
             FileCount = entries.Count
         };
     }

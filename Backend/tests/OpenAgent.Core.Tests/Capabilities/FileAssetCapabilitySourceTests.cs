@@ -129,9 +129,15 @@ public class FileAssetCapabilitySourceTests
         string result = await InvokeAsync(harness.Source, "compress_files", arguments);
 
         using JsonDocument document = JsonDocument.Parse(result);
+        string fileId = document.RootElement.GetProperty("fileId").GetString()!;
         Assert.Equal(2, document.RootElement.GetProperty("fileCount").GetInt32());
         Assert.True(document.RootElement.GetProperty("length").GetInt64() > 0);
         Assert.False(string.IsNullOrEmpty(document.RootElement.GetProperty("objectKey").GetString()));
+        Assert.Equal("bundle.zip", document.RootElement.GetProperty("fileName").GetString());
+        Assert.Equal("application/zip", document.RootElement.GetProperty("mediaType").GetString());
+        Assert.True(harness.Repository.Assets.ContainsKey(fileId));
+        Assert.Contains($"conversation-a:{fileId}", harness.Repository.References);
+        Assert.Contains(harness.Context.Created, asset => asset.FileId == fileId);
         Assert.Equal("bundle.zip", harness.Objects.LastRequest?.FileName);
         Assert.Equal("application/zip", harness.Objects.LastRequest?.MediaType);
         Assert.Equal("tenant-a", harness.Objects.LastRequest?.TenantId);
@@ -266,7 +272,7 @@ public class FileAssetCapabilitySourceTests
                 ConversationId = "conversation-a"
             });
         }
-        return new TestHarness(repository, objects, new FileAssetCapabilitySource(
+        return new TestHarness(repository, objects, context, new FileAssetCapabilitySource(
             service,
             context,
             Options.Create(effective)));
@@ -275,5 +281,6 @@ public class FileAssetCapabilitySourceTests
     private sealed record TestHarness(
         RecordingFileAssetRepository Repository,
         RecordingFileObjectStore Objects,
+        FileAssetExecutionContext Context,
         FileAssetCapabilitySource Source);
 }

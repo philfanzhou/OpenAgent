@@ -349,6 +349,10 @@ public class FileAssetServiceTests
 
         Assert.Equal(2, result.FileCount);
         Assert.True(result.Length > 0);
+        Assert.Equal(FileAssetSource.Agent, result.Asset.Source);
+        Assert.Equal(FileAssetState.Ready, result.Asset.State);
+        Assert.Equal(result.Asset.ObjectKey, result.ObjectKey);
+        Assert.Same(result.Asset, repository.Assets[result.Asset.FileId]);
         Assert.Equal("tenant-a", objects.LastRequest?.TenantId);
         Assert.Equal("user-a", objects.LastRequest?.UserId);
         Assert.Equal("bundle.zip", objects.LastRequest?.FileName);
