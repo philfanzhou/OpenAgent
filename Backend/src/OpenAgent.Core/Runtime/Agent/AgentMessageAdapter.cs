@@ -343,7 +343,7 @@ internal static class AgentMessageAdapter
         string instruction = IsTextFile(file.MediaType)
             ? $"Use the read_file tool with fileId=\"{file.FileId}\" when you need to inspect it."
             : $"Use a file-aware analysis tool with fileId=\"{file.FileId}\" when you need to inspect it.";
-        instruction += $" If an external MCP tool requires a file URL, use create_file_transfer_url with fileId=\"{file.FileId}\" immediately before calling that tool.";
+        instruction += $" If an external MCP tool requires a file URL, use create_file_transfer_url with fileId=\"{file.FileId}\" immediately before calling that tool; if you instead share that URL with the user as a download link, tell them when it expires.";
         chatMessage.Contents.Add(new TextContent(
             $"{descriptor}. Content is not included in this message. "
             + instruction));

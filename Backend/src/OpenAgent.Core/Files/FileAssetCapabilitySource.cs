@@ -37,8 +37,11 @@ internal sealed class FileAssetCapabilitySource(
                 ReadAsync),
             new CapabilityDefinition(
                 "create_file_transfer_url",
-                "Create a short-lived read URL for a file only when an external MCP tool requires a file URL. "
-                + "Call this immediately before passing the URL to that MCP tool; do not use it for normal file reading or user downloads.",
+                "Create a short-lived signed read URL for a file. Two intended uses: hand it to an external "
+                + "MCP tool that requires a file URL (call this immediately before that tool), or give it to the "
+                + "user as a temporary download/share link. When sharing the link with the user, always state the "
+                + "validity period from expiresAt so they know it stops working; never present it as a permanent "
+                + "link, and do not use it for model-side file reading.",
                 """{"type":"object","properties":{"fileId":{"type":"string","description":"Referenced file asset ID"}},"required":["fileId"]}""",
                 AgentResourceType.Tool,
                 "file-assets",
