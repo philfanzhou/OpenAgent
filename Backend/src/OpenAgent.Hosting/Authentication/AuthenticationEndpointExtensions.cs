@@ -27,10 +27,6 @@ public static class AuthenticationEndpointExtensions
             {
                 enabled = options.EnableKeycloak
             },
-            tenant = new
-            {
-                enabled = options.EnableTenant
-            },
             password = new
             {
                 enabled = environment.IsDevelopment() && options.Mode == AgentAuthenticationMode.Basic,

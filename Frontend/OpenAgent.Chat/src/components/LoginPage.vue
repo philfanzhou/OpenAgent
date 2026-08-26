@@ -32,7 +32,6 @@ const usernameInput = ref<HTMLInputElement>()
 const isBasic = computed(() => props.authConfig?.mode === 'Basic')
 const isJwtBearer = computed(() => props.authConfig?.mode === 'JwtBearer')
 const isOidc = computed(() => isJwtBearer.value && props.authConfig?.keycloak?.enabled !== false)
-const isTenantEnabled = computed(() => props.authConfig?.tenant?.enabled !== false)
 
 watch(() => props.loading, async (loading, wasLoading) => {
   if (!loading && wasLoading && isBasic.value) {
@@ -96,7 +95,7 @@ function submit(): void {
         </label>
         <label>Router 地址<input v-model="router" type="url" autocomplete="url" spellcheck="false"></label>
         <label v-if="mode === 'engine'">Engine 地址<input v-model="engine" type="url" autocomplete="url" spellcheck="false"></label>
-        <label v-if="isBasic && isTenantEnabled">租户 ID<input v-model="tenant" autocomplete="organization" spellcheck="false"></label>
+        <label v-if="isBasic">租户 ID<input v-model="tenant" autocomplete="organization" spellcheck="false"></label>
         <button class="secondary-action" type="button" @click="applyConnection">应用并重新检测</button>
       </div>
 

@@ -2,10 +2,8 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using Moq;
 using OpenAgent.Contracts.Security;
-using OpenAgent.Hosting.Authentication;
 using OpenAgent.Router.Security;
 using Xunit;
 
@@ -76,8 +74,7 @@ public class JwtUserContextMiddlewareTests
         return new JwtUserContextMiddleware(
             next,
             NullLogger<JwtUserContextMiddleware>.Instance,
-            environment.Object,
-            Microsoft.Extensions.Options.Options.Create(new AgentAuthenticationOptions()));
+            environment.Object);
     }
 
     private static DefaultHttpContext CreateContext(string? tenantId = null)

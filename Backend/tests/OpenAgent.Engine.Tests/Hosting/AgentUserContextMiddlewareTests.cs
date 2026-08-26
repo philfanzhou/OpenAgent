@@ -2,7 +2,6 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using Moq;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
@@ -54,8 +53,7 @@ public class AgentUserContextMiddlewareTests
         return new AgentUserContextMiddleware(
             _ => Task.CompletedTask,
             NullLogger<AgentUserContextMiddleware>.Instance,
-            environment.Object,
-            Options.Create(new OpenAgent.Hosting.Authentication.AgentAuthenticationOptions()));
+            environment.Object);
     }
 
     private static DefaultHttpContext CreateContext(string? tenantId = null)
