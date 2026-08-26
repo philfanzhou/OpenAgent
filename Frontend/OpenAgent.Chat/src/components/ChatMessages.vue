@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { api } from '../api'
 import { buildCompactionDisplay, buildCompactionTokenDisplay } from '../compactionPresentation'
-import { isMarkdownFile } from '../composables/useFileHandling'
+import { isMarkdownFile, isTextPreview } from '../composables/useFileHandling'
 import { isSelfContainedImageRef } from '../markdownAssets'
 import { buildConversationTimeline, fileLabel, formatFileSize, toolArgumentsText, toolPresentation } from '../messagePresentation'
 import { formatTokenBreakdown, formatTokenCount, formatTokenUsage } from '../tokenUsage'
@@ -15,6 +16,8 @@ const props = defineProps<{
   loading: boolean
   currentUser: CurrentUserContext | null
   streaming: boolean
+  /** 当前会话 ID：文件预览弹窗懒加载内容时需要。 */
+  conversationId?: string
   /** 已解析的 markdown 图片 blob URL（见 useFileHandling.markdownImageUrls）。 */
   markdownImageUrls?: Map<string, string>
 }>()
@@ -162,6 +165,76 @@ function imageLookup(
     return undefined
   }
 }
+
+// —— 文件预览弹窗：卡片只保留预览图标按钮，内容点击后开窗按需加载，不再内联渲染。——
+const filePreview = ref<{ open: boolean; loading: boolean; messageId: string; file: MessageFile | null }>({
+  open: false,
+  loading: false,
+  messageId: '',
+  file: null,
+})
+const previewText = ref<string | null>(null)
+const previewImageUrl = ref<string | null>(null)
+const previewFailed = ref(false)
+// 弹窗内容缓存：文本常驻内存即可，blob URL 在组件卸载时统一释放。
+const previewTextCache = new Map<string, string>()
+const previewImageUrls = new Map<string, string>()
+
+const previewIsMarkdown = computed(() => {
+  const file = filePreview.value.file
+  return !!file && isMarkdownFile(file.mediaType, file.fileName)
+})
+
+function isPreviewable(file: MessageFile): boolean {
+  return Boolean(file.fileId) && (
+    file.mediaType.startsWith('image/')
+    || isTextPreview(file.mediaType)
+    || isMarkdownFile(file.mediaType, file.fileName))
+}
+
+function openFilePreview(messageId: string, file: MessageFile): void {
+  if (!file.fileId) return
+  filePreview.value = { open: true, loading: true, messageId, file }
+  previewText.value = null
+  previewImageUrl.value = null
+  previewFailed.value = false
+  void loadPreviewContent()
+}
+
+async function loadPreviewContent(): Promise<void> {
+  const file = filePreview.value.file
+  if (!file?.fileId || !props.conversationId) {
+    filePreview.value.loading = false
+    return
+  }
+  const fileId = file.fileId
+  const conversationId = props.conversationId
+  try {
+    if (file.mediaType.startsWith('image/')) {
+      let url = file.previewUrl || previewImageUrls.get(fileId)
+      if (!url) {
+        url = await api.loadFilePreview(fileId, conversationId)
+        previewImageUrls.set(fileId, url)
+      }
+      previewImageUrl.value = url
+    } else {
+      let text = previewTextCache.get(fileId)
+      if (text == null) text = file.previewText
+      if (text == null) text = await api.readFileText(fileId, conversationId)
+      previewTextCache.set(fileId, text)
+      previewText.value = text
+    }
+  } catch {
+    // 预览失败不阻塞下载：弹窗内提示，仍可通过卡片或页脚按钮下载。
+    previewFailed.value = true
+  } finally {
+    filePreview.value.loading = false
+  }
+}
+
+onBeforeUnmount(() => {
+  for (const url of previewImageUrls.values()) URL.revokeObjectURL(url)
+})
 
 async function copyTraceId(traceId: string): Promise<void> {
   try {
@@ -322,11 +395,15 @@ defineExpose({ scrollToBottom })
         </details>
 
         <div v-if="item.role === 'user' && item.files?.length" class="message-files user-files">
-          <button v-for="file in item.files" :key="file.fileId || file.fileName" type="button" class="message-file upload-file" @click="emit('download', file)">
+          <!-- div 而非 button：卡片内嵌预览图标按钮，原生 button 不允许交互后代。 -->
+          <div v-for="file in item.files" :key="file.fileId || file.fileName" class="message-file upload-file" role="button" tabindex="0" @click="emit('download', file)" @keydown.enter.prevent="emit('download', file)">
             <img v-if="file.previewUrl" :src="file.previewUrl" :alt="file.fileName" />
             <span v-else class="message-file-type">{{ fileLabel(file) }}</span>
             <span class="message-file-meta"><strong>{{ file.fileName }}</strong><small>已上传 · {{ formatFileSize(file.length) }}</small></span>
-          </button>
+            <button v-if="isPreviewable(file)" type="button" class="message-file-preview-btn" title="预览文件" aria-label="预览文件" @click.stop="openFilePreview(item.messageId, file)">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z" /><circle cx="12" cy="12" r="3" /></svg>
+            </button>
+          </div>
         </div>
 
         <div v-if="item.content || isStreamingItem(item)" class="message-bubble"><MarkdownContent :content="item.content" :streaming="isStreamingItem(item) && Boolean(item.content)" :resolve-image="imageLookup(item.messageId)" /></div>
@@ -340,17 +417,15 @@ defineExpose({ scrollToBottom })
         <div v-if="item.role === 'assistant' && item.files?.length" class="generated-files">
           <div class="generated-files-heading"><span>生成的文件</span><small>{{ item.files.length }} 个可下载文件</small></div>
           <div class="message-files assistant-files">
-            <!-- div 而非 button：卡片内嵌可交互的 markdown 预览折叠面板，button 不允许交互后代。 -->
+            <!-- div 而非 button：卡片内嵌预览图标按钮，原生 button 不允许交互后代。 -->
             <div v-for="file in item.files" :key="file.fileId || file.fileName" class="message-file output-file" role="button" tabindex="0" @click="emit('download', file)" @keydown.enter.prevent="emit('download', file)">
               <img v-if="file.previewUrl" :src="file.previewUrl" :alt="file.fileName" />
               <span v-else class="message-file-type">{{ fileLabel(file) }}</span>
               <span class="message-file-meta"><strong>{{ file.fileName }}</strong><small>{{ formatFileSize(file.length) }} · 点击下载</small></span>
-              <span class="message-file-action">↓</span>
-              <details v-if="isMarkdownFile(file.mediaType, file.fileName) && file.previewText" class="message-file-markdown" open @click.stop @keydown.stop>
-                <summary @click.stop>预览 Markdown</summary>
-                <MarkdownContent :content="file.previewText" :resolve-image="imageLookup(item.messageId, file.objectKey)" />
-              </details>
-              <pre v-else-if="file.previewText" class="message-file-preview">{{ file.previewText }}</pre>
+              <button v-if="isPreviewable(file)" type="button" class="message-file-preview-btn" title="预览文件" aria-label="预览文件" @click.stop="openFilePreview(item.messageId, file)">
+                <svg viewBox="0 0 24 24" fill="none"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z" /><circle cx="12" cy="12" r="3" /></svg>
+              </button>
+              <span v-else class="message-file-action">↓</span>
             </div>
           </div>
         </div>
@@ -401,4 +476,23 @@ defineExpose({ scrollToBottom })
     </div>
     </template>
   </el-scrollbar>
+
+  <el-dialog v-model="filePreview.open" class="file-preview-dialog" append-to-body destroy-on-close width="min(880px, calc(100vw - 40px))" top="6vh">
+    <template #header>
+      <div class="file-preview-head">
+        <strong>{{ filePreview.file?.fileName }}</strong>
+        <small v-if="filePreview.file">{{ formatFileSize(filePreview.file.length) }} · {{ filePreview.file.mediaType }}</small>
+      </div>
+    </template>
+    <div v-loading="filePreview.loading" class="file-preview-body">
+      <img v-if="previewImageUrl" :src="previewImageUrl" :alt="filePreview.file?.fileName" />
+      <MarkdownContent v-else-if="previewIsMarkdown && previewText != null" :content="previewText" :resolve-image="imageLookup(filePreview.messageId, filePreview.file?.objectKey)" />
+      <pre v-else-if="previewText != null" class="file-preview-text">{{ previewText }}</pre>
+      <p v-else-if="previewFailed" class="file-preview-hint">预览加载失败，请下载后查看。</p>
+      <p v-else class="file-preview-hint">该文件暂无可预览的内容，可直接下载查看。</p>
+    </div>
+    <template #footer>
+      <el-button size="small" :disabled="!filePreview.file" @click="filePreview.file && emit('download', filePreview.file)">下载文件</el-button>
+    </template>
+  </el-dialog>
 </template>

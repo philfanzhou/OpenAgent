@@ -853,15 +853,23 @@ html[data-theme='dark'] .message-row ::selection { background: rgba(16, 163, 127
 .message-file-meta strong { overflow: hidden; color: var(--text); font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .message-file-meta small { margin-top: 2px; color: var(--text-faint); font-size: 10px; }
 .message-file-action { display: grid; width: 24px; height: 24px; place-items: center; border-radius: var(--r-pill); color: var(--text-muted); background: var(--bg-subtle); font-size: 14px; }
-.message-file-preview { grid-column: 1 / -1; max-height: 80px; margin: 2px -2px -2px; padding: 7px 8px; overflow: auto; border-top: 1px solid var(--border); color: var(--text-muted); background: transparent; font-family: var(--font-mono); font-size: 10px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
 
-/* Generated-file card markdown preview */
-.message-file-markdown { grid-column: 1 / -1; margin: 2px -2px -2px; border-top: 1px solid var(--border); }
-.message-file-markdown > summary { padding: 7px 8px; cursor: pointer; list-style: none; color: var(--text-muted); font-size: 11px; font-weight: 600; user-select: none; }
-.message-file-markdown > summary::before { content: '› '; }
-.message-file-markdown[open] > summary::before { content: '⌄ '; }
-.message-file-markdown .markdown-content { max-height: 420px; overflow: auto; padding: 4px 8px 8px; font-size: 12px; }
-.message-file-markdown .markdown-content img { max-width: 100%; height: auto; border-radius: var(--r-xs); }
+/* File card preview icon button (opens the preview dialog) */
+.message-file-preview-btn { display: grid; flex: 0 0 auto; width: 24px; height: 24px; place-items: center; padding: 0; border: 1px solid transparent; border-radius: var(--r-pill); color: var(--text-muted); background: var(--bg-subtle); cursor: pointer; transition: color var(--dur) var(--ease), background-color var(--dur) var(--ease); }
+.message-file-preview-btn:hover { color: var(--accent-hover); background: var(--accent-soft); }
+.message-file-preview-btn svg { width: 14px; height: 14px; stroke: currentColor; stroke-width: 1.7; }
+
+/* File preview dialog */
+.el-dialog.file-preview-dialog .el-dialog__header { padding-right: 14px; }
+.file-preview-head { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
+.file-preview-head strong { overflow: hidden; color: var(--text); font-size: 14px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.file-preview-head small { color: var(--text-faint); font-size: 11px; }
+.file-preview-body { min-height: 140px; max-height: calc(100vh - 240px); overflow: auto; }
+.file-preview-body > img { display: block; max-width: 100%; margin: 0 auto; border-radius: var(--r-xs); }
+.file-preview-body .markdown-content img { max-width: 100%; height: auto; border-radius: var(--r-xs); }
+.file-preview-text { margin: 0; color: var(--text-muted); font-family: var(--font-mono); font-size: 12px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
+.file-preview-hint { padding: 40px 0; color: var(--text-faint); font-size: 12px; text-align: center; }
+.file-preview-footer { display: flex; justify-content: flex-end; }
 
 /* Message error */
 .message-error {
