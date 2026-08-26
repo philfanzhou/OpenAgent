@@ -40,7 +40,7 @@ public class FileAssetCapabilitySourceTests
 
         IReadOnlyList<CapabilityDefinition> definitions = await DiscoverAsync(source);
 
-        string[] names = ["read_file", "write_file", "compress_files"];
+        string[] names = ["read_file", "write_file", "compress_files", "publish_files"];
         Assert.Equal(names, definitions.Select(definition => definition.Name).ToArray());
     }
 
@@ -76,6 +76,27 @@ public class FileAssetCapabilitySourceTests
         using JsonDocument document = JsonDocument.Parse(result);
         Assert.Equal("# Report", document.RootElement.GetProperty("content").GetString());
         Assert.Equal(asset.FileId, document.RootElement.GetProperty("fileId").GetString());
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WriteFile_RegistersButDoesNotPublish()
+    {
+        TestHarness harness = CreateHarness();
+        var arguments = new Dictionary<string, object?>
+        {
+            ["fileName"] = "draft.md",
+            ["content"] = "# Draft",
+            ["mediaType"] = "text/markdown"
+        };
+
+        string result = await InvokeAsync(harness.Source, "write_file", arguments);
+
+        using JsonDocument document = JsonDocument.Parse(result);
+        string fileId = document.RootElement.GetProperty("fileId").GetString()!;
+        Assert.True(harness.Repository.Assets.ContainsKey(fileId));
+        Assert.Contains($"conversation-a:{fileId}", harness.Repository.References);
+        Assert.Empty(harness.Context.Published);
+        Assert.Equal("draft.md", harness.Objects.LastRequest?.FileName);
     }
 
     [Theory]
@@ -137,10 +158,50 @@ public class FileAssetCapabilitySourceTests
         Assert.Equal("application/zip", document.RootElement.GetProperty("mediaType").GetString());
         Assert.True(harness.Repository.Assets.ContainsKey(fileId));
         Assert.Contains($"conversation-a:{fileId}", harness.Repository.References);
-        Assert.Contains(harness.Context.Created, asset => asset.FileId == fileId);
+        Assert.Empty(harness.Context.Published);
         Assert.Equal("bundle.zip", harness.Objects.LastRequest?.FileName);
         Assert.Equal("application/zip", harness.Objects.LastRequest?.MediaType);
         Assert.Equal("tenant-a", harness.Objects.LastRequest?.TenantId);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_PublishFiles_AssociatesSelectedAssets()
+    {
+        TestHarness harness = CreateHarness();
+        FileAsset markdown = CreateAsset("report.md", "text/markdown");
+        FileAsset image = CreateAsset("preview.png", "image/png", "file-b");
+        harness.Repository.Assets[markdown.FileId] = markdown;
+        harness.Repository.Assets[image.FileId] = image;
+        var arguments = new Dictionary<string, object?>
+        {
+            ["fileIds"] = JsonSerializer.Deserialize<JsonElement>("[\"file-a\",\"file-b\"]")
+        };
+
+        string result = await InvokeAsync(harness.Source, "publish_files", arguments);
+
+        using JsonDocument document = JsonDocument.Parse(result);
+        JsonElement published = document.RootElement.GetProperty("files");
+        Assert.Equal(2, published.GetArrayLength());
+        Assert.Equal(["file-a", "file-b"], harness.Context.Published.Select(asset => asset.FileId));
+        Assert.Contains("conversation-a:file-a", harness.Repository.References);
+        Assert.Contains("conversation-a:file-b", harness.Repository.References);
+        Assert.Null(harness.Objects.LastRequest);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_PublishFilesForUnknownAsset_ReturnsSanitizedError()
+    {
+        TestHarness harness = CreateHarness();
+        var arguments = new Dictionary<string, object?>
+        {
+            ["fileIds"] = JsonSerializer.Deserialize<JsonElement>("[\"missing-file\"]")
+        };
+
+        string result = await InvokeAsync(harness.Source, "publish_files", arguments);
+
+        Assert.StartsWith("文件发布失败：", result, StringComparison.Ordinal);
+        Assert.DoesNotContain("missing-file", result, StringComparison.Ordinal);
+        Assert.Empty(harness.Context.Published);
     }
 
     [Fact]
@@ -237,9 +298,12 @@ public class FileAssetCapabilitySourceTests
     private static string TenantObjectKey(string tail) =>
         $"files/tenants/{FileObjectTenantScope.CreatePartition("tenant-a")}/users/user-a/{tail}";
 
-    private static FileAsset CreateAsset(string fileName, string mediaType) => new()
+    private static FileAsset CreateAsset(
+        string fileName,
+        string mediaType,
+        string fileId = "file-a") => new()
     {
-        FileId = "file-a",
+        FileId = fileId,
         TenantId = "tenant-a",
         OwnerUserId = "user-a",
         FileName = fileName,
@@ -247,7 +311,7 @@ public class FileAssetCapabilitySourceTests
         Length = 3,
         Sha256 = "sha",
         ObjectKey = $"files/tenants/{FileObjectTenantScope.CreatePartition("tenant-a")}" +
-            "/users/user-a/file-a",
+            $"/users/user-a/{fileId}",
         Source = FileAssetSource.UserUpload,
         State = FileAssetState.Ready,
         CreatedAt = DateTimeOffset.UtcNow

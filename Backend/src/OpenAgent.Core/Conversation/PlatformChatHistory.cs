@@ -293,7 +293,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         List<ConversationMessage> responses = AgentMessageAdapter.ToStored(
             context.ResponseMessages ?? [],
             ref _nextSequence).ToList();
-        AssociateCreatedFiles(responses);
+        AssociatePublishedFiles(responses);
         foreach (ConversationMessage message in responses)
         {
             _pending.Add(message);
@@ -430,10 +430,10 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
             fileIds: _files.Select(item => item.FileId).ToArray()));
     }
 
-    private void AssociateCreatedFiles(List<ConversationMessage> responses)
+    private void AssociatePublishedFiles(List<ConversationMessage> responses)
     {
-        IReadOnlyList<FileAsset> created = _fileExecution.Created;
-        if (created.Count == 0)
+        IReadOnlyList<FileAsset> published = _fileExecution.Published;
+        if (published.Count == 0)
         {
             return;
         }
@@ -444,16 +444,16 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         {
             responses[assistantIndex] = AgentMessageAdapter.AssociateFiles(
                 responses[assistantIndex],
-                created);
+                published);
             return;
         }
 
         responses.Add(ConversationSessionStore.Message(
             _nextSequence++,
             "assistant",
-            "Created file assets.",
-            metadata: AgentMessageAdapter.BuildFileMetadata(created),
-            fileIds: created.Select(file => file.FileId).ToArray()));
+            "Published file assets.",
+            metadata: AgentMessageAdapter.BuildFileMetadata(published),
+            fileIds: published.Select(file => file.FileId).ToArray()));
     }
 
     private static ConversationMessage WithCompletion(

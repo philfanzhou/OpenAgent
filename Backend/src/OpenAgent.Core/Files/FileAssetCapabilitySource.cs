@@ -37,7 +37,8 @@ internal sealed class FileAssetCapabilitySource(
                 ReadAsync),
             new CapabilityDefinition(
                 "write_file",
-                "Create a UTF-8 text file for the current user and conversation.",
+                "Create and register a UTF-8 text file for the current user and conversation. "
+                + "The returned fileId can be passed to publish_files when it should be delivered to the user.",
                 """{"type":"object","properties":{"fileName":{"type":"string"},"content":{"type":"string"},"mediaType":{"type":"string"}},"required":["fileName","content"]}""",
                 AgentResourceType.Tool,
                 "file-assets",
@@ -45,12 +46,22 @@ internal sealed class FileAssetCapabilitySource(
             new CapabilityDefinition(
                 "compress_files",
                 "Compress files into one zip archive, register it as a downloadable file asset, and return its fileId. "
+                + "The archive is not added to the assistant message until publish_files is called. "
                 + "Each item targets a file by fileId (conversation-referenced) or by objectKey with fileName. "
                 + "Returns the fileId, objectKey, length, and file count.",
                 """{"type":"object","properties":{"outputName":{"type":"string","description":"zip file name, e.g. report.zip"},"items":{"type":"array","items":{"type":"object","properties":{"fileId":{"type":"string"},"objectKey":{"type":"string"},"fileName":{"type":"string"}}}}},"required":["outputName","items"]}""",
                 AgentResourceType.Tool,
                 "file-assets",
-                CompressAsync)
+                CompressAsync),
+            new CapabilityDefinition(
+                "publish_files",
+                "Publish one or more existing file assets to the current assistant message for user download or preview. "
+                + "Use fileIds returned by write_file, compress_files, or earlier file operations. "
+                + "Publishing does not copy file bytes; it only associates the selected assets with this message.",
+                """{"type":"object","properties":{"fileIds":{"type":"array","items":{"type":"string"},"description":"Existing file asset IDs to deliver to the user"}},"required":["fileIds"]}""",
+                AgentResourceType.Tool,
+                "file-assets",
+                PublishAsync)
         ];
         return Task.FromResult(definitions);
     }
@@ -120,7 +131,6 @@ internal sealed class FileAssetCapabilitySource(
                 executionContext.Scope,
                 cancellationToken).ConfigureAwait(false);
             await files.EnsureReferencesAsync([asset.FileId], executionContext.Scope, cancellationToken).ConfigureAwait(false);
-            executionContext.RecordCreated(asset);
             return JsonSerializer.Serialize(new
             {
                 fileId = asset.FileId,
@@ -183,7 +193,6 @@ internal sealed class FileAssetCapabilitySource(
                 [result.Asset.FileId],
                 executionContext.Scope,
                 cancellationToken).ConfigureAwait(false);
-            executionContext.RecordCreated(result.Asset);
             return JsonSerializer.Serialize(new
             {
                 fileId = result.Asset.FileId,
@@ -201,6 +210,89 @@ internal sealed class FileAssetCapabilitySource(
         }
     }
 
+    private async Task<string> PublishAsync(
+        IReadOnlyDictionary<string, object?> arguments,
+        CancellationToken cancellationToken)
+    {
+        IReadOnlyList<string> fileIds = ReadStrings(arguments, "fileIds");
+        if (fileIds.Count == 0)
+        {
+            return "文件发布失败：'fileIds' 是必填参数，请提供至少一个文件 ID。";
+        }
+        if (executionContext.Scope == null)
+        {
+            return "文件发布失败：文件执行上下文不可用。";
+        }
+
+        try
+        {
+            List<FileAsset> assets = [];
+            foreach (string fileId in fileIds)
+            {
+                FileAsset? asset = await files.GetAsync(
+                    fileId,
+                    executionContext.Scope,
+                    cancellationToken).ConfigureAwait(false);
+                if (asset == null || asset.State != FileAssetState.Ready)
+                {
+                    return "文件发布失败：文件不存在、未就绪或不属于当前用户。";
+                }
+                assets.Add(asset);
+            }
+
+            await files.EnsureReferencesAsync(
+                fileIds,
+                executionContext.Scope,
+                cancellationToken).ConfigureAwait(false);
+            foreach (FileAsset asset in assets)
+            {
+                executionContext.RecordPublished(asset);
+            }
+
+            return JsonSerializer.Serialize(new
+            {
+                files = assets.Select(asset => new
+                {
+                    fileId = asset.FileId,
+                    fileName = asset.FileName,
+                    mediaType = asset.MediaType,
+                    objectKey = asset.ObjectKey,
+                    length = asset.Length
+                }).ToArray()
+            });
+        }
+        catch (OpenAgent.Contracts.Security.AgentException exception)
+        {
+            return $"文件发布失败：{exception.Message}";
+        }
+    }
+
     private static string? ReadString(IReadOnlyDictionary<string, object?> arguments, string name) =>
         arguments.TryGetValue(name, out object? value) ? value?.ToString() : null;
+
+    private static IReadOnlyList<string> ReadStrings(
+        IReadOnlyDictionary<string, object?> arguments,
+        string name)
+    {
+        if (!arguments.TryGetValue(name, out object? value) || value == null)
+        {
+            return [];
+        }
+
+        IEnumerable<string?> values = value switch
+        {
+            JsonElement element when element.ValueKind == JsonValueKind.Array =>
+                element.EnumerateArray().Select(item =>
+                    item.ValueKind == JsonValueKind.String ? item.GetString() : null),
+            IEnumerable<string> strings => strings,
+            IEnumerable<object?> objects => objects.Select(item => item?.ToString()),
+            _ => []
+        };
+
+        return values
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .Select(item => item!)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+    }
 }
