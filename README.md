@@ -31,7 +31,7 @@ dotnet test Backend/OpenAgent.sln
 
 ## Docker 本地部署
 
-基础设施和实际代码镜像分开部署。基础设施 Compose 只需要首次启动或基础设施变更时操作，数据卷不会随着应用镜像重复构建而被重建：
+基础设施和实际代码镜像分开部署。基础设施 Compose 同时包含 PostgreSQL、Redis、MinIO 和 Keycloak；它只需要首次启动或基础设施变更时操作，数据卷不会随着应用镜像重复构建而被重建：
 
 ```bash
 docker compose -p openagent-infrastructure \
@@ -74,9 +74,8 @@ docker compose -p openagent-infrastructure \
   down -v
 ```
 
-需要验证真实 OIDC 登录时，可使用独立的 Keycloak Compose 覆盖：参见
-[Keycloak 本地认证集成](docs/integrations/keycloak/README.md)。该环境导入本地 Realm、SPA Client
-和 `demo` 测试用户，不复用默认 OpenAgent Compose 项目的数据卷或端口。
+需要验证真实 OIDC 登录时，基础设施 Compose 会导入本地 Realm、SPA Client 和 `demo` 测试用户；
+详细命令参见 [Keycloak 本地认证集成](docs/integrations/keycloak/README.md)。
 
 默认使用 Compose 内置的 MinIO（bucket `openagent-files`）。接入外部 S3/MinIO 时，可覆盖
 `OPENAGENT_S3_SERVICE_URL`、`OPENAGENT_S3_BUCKET`、`OPENAGENT_S3_ACCESS_KEY`、

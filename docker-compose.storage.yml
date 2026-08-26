@@ -53,10 +53,26 @@ services:
       /bin/sh -c "mc alias set local http://minio:9000 openagent openagent-secret &&
       mc mb --ignore-existing local/openagent-files"
 
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.7.2
+    command: start-dev --import-realm
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${OPENAGENT_KEYCLOAK_ADMIN_USERNAME:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${OPENAGENT_KEYCLOAK_ADMIN_PASSWORD:-admin}
+      KC_HOSTNAME: http://localhost:${OPENAGENT_KEYCLOAK_PORT:-58081}
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      KC_HTTP_ENABLED: "true"
+    volumes:
+      - ./docker/keycloak/realm:/opt/keycloak/data/import:ro
+      - keycloak-data:/opt/keycloak/data
+    ports:
+      - "${OPENAGENT_KEYCLOAK_PORT:-58081}:8080"
+
 volumes:
   postgres-data:
   redis-data:
   minio-data:
+  keycloak-data:
 
 networks:
   default:

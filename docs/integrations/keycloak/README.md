@@ -4,15 +4,12 @@
 
 ## 启动
 
-当前工作区已有其他 OpenAgent Compose 项目运行时，请使用独立的基础设施项目、应用项目和网络：
+当前工作区已有其他 OpenAgent Compose 项目运行时，请使用独立的基础设施项目、应用项目和网络。基础设施 Compose 同时启动 PostgreSQL、Redis、MinIO 和 Keycloak：
 
 ```bash
 export OPENAGENT_INFRA_NETWORK=openagent-keycloak-infrastructure
 
 OPENAGENT_KEYCLOAK_PORT=58091 \
-OPENAGENT_CHAT_PORT=58090 \
-OPENAGENT_ROUTER_PORT=55011 \
-OPENAGENT_ENGINE_PORT=55218 \
 OPENAGENT_POSTGRES_PORT=55442 \
 OPENAGENT_REDIS_PORT=56389 \
 OPENAGENT_MINIO_PORT=59010 \
@@ -21,14 +18,13 @@ docker compose -p openagent-keycloak-infrastructure \
   -f docker-compose.storage.yml \
   up -d
 
-OPENAGENT_KEYCLOAK_PORT=58091 \
 OPENAGENT_CHAT_PORT=58090 \
 OPENAGENT_ROUTER_PORT=55011 \
 OPENAGENT_ENGINE_PORT=55218 \
+OPENAGENT_KEYCLOAK_PORT=58091 \
 OPENAGENT_INFRA_NETWORK=openagent-keycloak-infrastructure \
-docker compose -p openagent-keycloak \
+docker compose -p openagent-keycloak-app \
   -f docker-compose.yml \
-  -f docker-compose.keycloak.yml \
   up --build -d
 ```
 
@@ -44,9 +40,8 @@ Realm、SPA Client、API audience、`tenant_id` claim 和本地测试用户由 [
 停止应用时只删除应用容器，不影响 PostgreSQL、Redis、MinIO 数据：
 
 ```bash
-docker compose -p openagent-keycloak \
+docker compose -p openagent-keycloak-app \
   -f docker-compose.yml \
-  -f docker-compose.keycloak.yml \
   down
 ```
 
