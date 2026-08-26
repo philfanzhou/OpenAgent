@@ -5,9 +5,14 @@
 ```text
 POST /files -> PostgreSQL FileAssets(Pending) -> S3/MinIO -> FileAssets(Ready)
 POST /chat/stream { fileIds } -> read ready files -> model -> message and file references
+model -> download_file(url) -> HTTP(S) resource -> current conversation's FileAsset -> S3/MinIO
 ```
 
 `FileAssetService` 是上传、读取和模型函数的唯一入口，`S3FileObjectStore` 是对象存储适配器。未配置对象存储时文件端点返回依赖不可用；不存在旧的 multipart 聊天降级路径。
+
+启用文件资产后，模型还可以调用 `download_file`。该函数只接收公开的 HTTP(S) 地址，下载结果使用 `FileAssetSource.Agent` 写入当前租户、用户和会话范围，并建立会话引用；工具返回 `fileId`、文件名、MIME 和长度，后续消息可直接携带该文件资产。下载器会限制响应大小、超时和重定向次数，并拒绝回环、链路本地、私有网段及多播地址。
+
+下载器使用固定的超时和重定向上限；响应的文件名和 MIME 仍须满足现有 `AllowedExtensions` / `AllowedMediaTypes` 白名单。
 
 本地依赖由仓库根目录 `docker-compose.storage.yml` 提供 PostgreSQL、MinIO 与 bucket 初始化。开发环境中使用 `ConnectionStrings:OpenAgentDatabase` 和 `FileAssets:ObjectStorage` 配置。
 
