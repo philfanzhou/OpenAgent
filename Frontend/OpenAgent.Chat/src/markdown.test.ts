@@ -204,4 +204,23 @@ describe('message presentation', () => {
       'user-1', 'assistant-1', 'compression-1', 'user-2', 'assistant-2',
     ])
   })
+
+  it('keeps optimistic messages last when stored sequences have gaps from merged tool rows', () => {
+    // 回答完成后本地只保留合并后的展示消息（tool 行被折叠、序号有空洞），
+    // 乐观追加的新消息序号可能小于历史最大序号，排序必须保证其仍排在最后。
+    const messages: ConversationMessage[] = [
+      { messageId: 'user-new', sequence: 6, role: 'user', content: 'Third question', timestamp: '2026-08-20T02:00:00Z' },
+      { messageId: 'user-2', sequence: 4, role: 'user', content: 'Second question', timestamp: '2026-08-20T01:05:00Z' },
+      { messageId: 'assistant-merged', sequence: 2, role: 'assistant', content: 'First answer', timestamp: '2026-08-20T01:01:00Z' },
+      { messageId: 'user-1', sequence: 1, role: 'user', content: 'First question', timestamp: '2026-08-20T01:00:00Z' },
+      { messageId: 'assistant-new', sequence: 7, role: 'assistant', content: '', timestamp: '2026-08-20T02:00:01Z' },
+      { messageId: 'assistant-2', sequence: 5, role: 'assistant', content: 'Second answer', timestamp: '2026-08-20T01:06:00Z' },
+    ]
+
+    expect(buildConversationTimeline(messages, []).map(item => item.kind === 'message'
+      ? item.message.messageId
+      : '')).toEqual([
+      'user-1', 'assistant-merged', 'user-2', 'assistant-2', 'user-new', 'assistant-new',
+    ])
+  })
 })
