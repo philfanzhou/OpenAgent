@@ -30,7 +30,6 @@ public class LlmConfig
     public string ApiKey { get; set; } = string.Empty;
     public string Endpoint { get; set; } = string.Empty;
     public double Temperature { get; set; } = 0.7;
-    public bool AllowInsecureTls { get; set; }
 }
 
 public class LlmProviderProfile
@@ -44,7 +43,6 @@ public class LlmProviderProfile
     public string Endpoint { get; set; } = string.Empty;
     public string ApiKey { get; set; } = string.Empty;
     public double Temperature { get; set; } = 0.7;
-    public bool AllowInsecureTls { get; set; }
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter))]

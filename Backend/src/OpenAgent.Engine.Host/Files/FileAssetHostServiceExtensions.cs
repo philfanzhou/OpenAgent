@@ -23,6 +23,8 @@ internal static class FileAssetHostServiceExtensions
         services.AddOptions<FileObjectStorageOptions>()
             .Bind(configuration.GetSection(FileObjectStorageOptions.SectionName))
             .ValidateOnStart();
+        bool allowInsecureTls = configuration.GetValue("OPENAGENT_S3_ALLOW_INSECURE_TLS", false)
+            || configuration.GetValue($"{FileObjectStorageOptions.SectionName}:AllowInsecureTls", false);
         services.TryAddSingleton<IAmazonS3>(serviceProvider =>
         {
             FileObjectStorageOptions options = serviceProvider
@@ -34,7 +36,7 @@ internal static class FileAssetHostServiceExtensions
                 AuthenticationRegion = options.Region,
                 RequestChecksumCalculation = RequestChecksumCalculation.WHEN_REQUIRED,
                 ResponseChecksumValidation = ResponseChecksumValidation.WHEN_REQUIRED,
-                HttpClientFactory = new S3HttpClientFactory(options.AllowInsecureTls)
+                HttpClientFactory = new S3HttpClientFactory(allowInsecureTls)
             };
             if (string.IsNullOrWhiteSpace(options.ServiceUrl))
             {

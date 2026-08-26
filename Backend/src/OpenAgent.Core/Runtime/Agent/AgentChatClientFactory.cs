@@ -20,6 +20,7 @@ internal interface IAgentChatClientFactory
 internal sealed class AgentChatClientFactory : IAgentChatClientFactory
 {
     private readonly TimeSpan _networkTimeout;
+    private readonly bool _allowInsecureTls;
 
     public AgentChatClientFactory(IConfiguration configuration)
     {
@@ -30,6 +31,10 @@ internal sealed class AgentChatClientFactory : IAgentChatClientFactory
         _networkTimeout = seconds <= 0
             ? Timeout.InfiniteTimeSpan
             : TimeSpan.FromSeconds(seconds);
+        // This is a deployment-only escape hatch. It intentionally does not belong
+        // to AgentConfig or persisted LLM provider profiles.
+        _allowInsecureTls = configuration.GetValue("OPENAGENT_LLM_ALLOW_INSECURE_TLS", false)
+            || configuration.GetValue("Llm:AllowInsecureTls", false);
     }
 
     public IChatClient Create(LlmConfig llm)
@@ -59,8 +64,7 @@ internal sealed class AgentChatClientFactory : IAgentChatClientFactory
             ModelId = summaryModel,
             ApiKey = llm.ApiKey,
             Endpoint = llm.Endpoint,
-            Temperature = llm.Temperature,
-            AllowInsecureTls = llm.AllowInsecureTls
+            Temperature = llm.Temperature
         });
     }
 
@@ -88,7 +92,7 @@ internal sealed class AgentChatClientFactory : IAgentChatClientFactory
     {
         EnsureApiKey(llm, "Anthropic Messages");
         AnthropicClient client;
-        if (llm.AllowInsecureTls)
+        if (_allowInsecureTls)
         {
             client = string.IsNullOrWhiteSpace(llm.Endpoint)
                 ? new AnthropicClient { ApiKey = llm.ApiKey, HttpClient = CreateInsecureHttpClient() }
@@ -117,7 +121,7 @@ internal sealed class AgentChatClientFactory : IAgentChatClientFactory
             Endpoint = new Uri(endpoint),
             NetworkTimeout = _networkTimeout
         };
-        if (llm.AllowInsecureTls)
+        if (_allowInsecureTls)
         {
             options.Transport = new HttpClientPipelineTransport(CreateInsecureHttpClient());
         }
