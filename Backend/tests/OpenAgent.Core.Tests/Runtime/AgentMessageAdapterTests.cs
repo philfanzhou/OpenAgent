@@ -222,6 +222,25 @@ public sealed class AgentMessageAdapterTests
         Assert.DoesNotContain("#", descriptor.Text);
     }
 
+    [Fact]
+    public void CreateUser_VisionImage_AddsInlineDataContent()
+    {
+        FileAsset asset = CreateAsset("chart.png", "image/png", 2);
+        ChatMessage message = AgentMessageAdapter.CreateUser(
+            "描述图片",
+            [asset],
+            [new FileAssetContent { Asset = asset, Data = [0x89, 0x50] }]);
+
+        DataContent image = Assert.Single(message.Contents.OfType<DataContent>());
+        Assert.Equal("image/png", image.MediaType);
+        Assert.Equal("chart.png", image.Name);
+        TextContent descriptor = Assert.Single(
+            message.Contents.OfType<TextContent>(),
+            content => content.Text.Contains("[File:", StringComparison.Ordinal));
+        Assert.Contains("Image content is attached", descriptor.Text);
+        Assert.DoesNotContain("Content is not included", descriptor.Text);
+    }
+
     private static FileAsset CreateAsset(string fileName, string mediaType, long length) => new()
     {
         FileId = "file-1",

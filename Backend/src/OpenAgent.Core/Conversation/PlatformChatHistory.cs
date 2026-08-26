@@ -29,6 +29,9 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
     private readonly ConversationSessionStore _store;
     private readonly ILogger<PlatformChatHistory> _logger;
     private readonly IFileAssetService _fileService;
+    private readonly bool _supportsVision;
+    private readonly long _maxInlineImageBytes;
+    private readonly int _maxInlineImageCount;
     private readonly List<ConversationMessage> _pending = [];
     private readonly StringBuilder _partialAssistant = new();
     private readonly StringBuilder _partialReasoning = new();
@@ -52,7 +55,10 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         IConversationLock conversationLock,
         ConversationSessionStore store,
         ILogger<PlatformChatHistory> logger,
-        IFileAssetService fileService)
+        IFileAssetService fileService,
+        bool supportsVision = false,
+        long maxInlineImageBytes = 4 * 1024 * 1024,
+        int maxInlineImageCount = 4)
     {
         _conversation = conversation;
         _agentId = agentId;
@@ -64,6 +70,9 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         _store = store;
         _logger = logger;
         _fileService = fileService;
+        _supportsVision = supportsVision;
+        _maxInlineImageBytes = maxInlineImageBytes;
+        _maxInlineImageCount = maxInlineImageCount;
     }
 
     internal void AppendPartial(string content)
@@ -188,6 +197,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
             UserId = _conversation.UserId ?? string.Empty,
             ConversationId = _conversation.ConversationId
         };
+        int inlineImageCount = 0;
         foreach (string fileId in fileIds.Distinct(StringComparer.Ordinal))
         {
             try
@@ -196,7 +206,32 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
                     fileId, scope, cancellationToken).ConfigureAwait(false);
                 if (asset != null)
                 {
-                    AgentMessageAdapter.AttachFile(chatMessage, asset);
+                    FileAssetContent? inlineImage = null;
+                    if (_supportsVision
+                        && inlineImageCount < _maxInlineImageCount
+                        && IsImage(asset.MediaType)
+                        && asset.Length <= _maxInlineImageBytes)
+                    {
+                        try
+                        {
+                            inlineImage = await _fileService.ReadAsync(
+                                fileId,
+                                scope,
+                                cancellationToken,
+                                _maxInlineImageBytes).ConfigureAwait(false);
+                            inlineImageCount++;
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            throw;
+                        }
+                        catch
+                        {
+                            // Keep the metadata manifest when the optional inline read fails.
+                        }
+                    }
+
+                    AgentMessageAdapter.AttachFile(chatMessage, asset, inlineImage);
                 }
             }
             catch (OperationCanceledException)
@@ -209,6 +244,9 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
             }
         }
     }
+
+    private static bool IsImage(string mediaType) =>
+        mediaType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// 修复会话历史中的工具调用契约：丢弃重复声明或没有对应 tool 响应的 assistant tool_call，

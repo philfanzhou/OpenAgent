@@ -59,7 +59,8 @@ internal sealed class AgentFactory
             profile.Model.ModelId,
             request,
             user,
-            files);
+            files,
+            profile.Config.Llm.SupportsVision);
         IReadOnlyList<AITool> tools = await _capabilities.CreateAsync(
             profile.AgentId,
             profile.Config,

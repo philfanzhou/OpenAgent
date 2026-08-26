@@ -39,6 +39,7 @@ internal sealed class ConversationHistoryFactory
     private readonly ILogger<PlatformChatHistory> _logger;
     private readonly ILoggerFactory _loggerFactory;
     private readonly IFileAssetService _fileService;
+    private readonly FileAssetOptions _fileOptions;
 
     public ConversationHistoryFactory(
         IConversationLock conversationLock,
@@ -47,7 +48,8 @@ internal sealed class ConversationHistoryFactory
         FileAssetExecutionContext fileExecution,
         ILogger<PlatformChatHistory> logger,
         ILoggerFactory loggerFactory,
-        IFileAssetService fileService)
+        IFileAssetService fileService,
+        IOptions<FileAssetOptions> fileOptions)
     {
         _conversationLock = conversationLock;
         _store = store;
@@ -56,6 +58,7 @@ internal sealed class ConversationHistoryFactory
         _logger = logger;
         _loggerFactory = loggerFactory;
         _fileService = fileService;
+        _fileOptions = fileOptions.Value;
     }
 
     internal PlatformChatHistory Create(
@@ -63,7 +66,8 @@ internal sealed class ConversationHistoryFactory
         string modelId,
         AgentRequest request,
         IAgentUserContext user,
-        IReadOnlyList<FileAsset> files)
+        IReadOnlyList<FileAsset> files,
+        bool supportsVision)
     {
         ConversationContext context = new(
             request.ConversationId,
@@ -82,7 +86,10 @@ internal sealed class ConversationHistoryFactory
             _conversationLock,
             _store,
             _logger,
-            _fileService);
+            _fileService,
+            supportsVision,
+            _fileOptions.MaxInlineImageBytes,
+            _fileOptions.MaxInlineImageCount);
     }
 
     internal async Task EnsureConversationAsync(

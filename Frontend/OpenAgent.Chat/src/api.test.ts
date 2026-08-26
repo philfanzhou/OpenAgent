@@ -300,7 +300,7 @@ describe('workspace API', () => {
       currentVersion: '1',
       config: {
         instructions: '',
-        llm: { provider: '', format: 'OpenAIChatCompletions', modelId: 'gpt-4o', apiKey: '', endpoint: '', temperature: 0.7 },
+        llm: { provider: '', format: 'OpenAIChatCompletions', modelId: 'gpt-4o', apiKey: '', endpoint: '', temperature: 0.7, supportsVision: false },
         mcp: {
           servers: [{ name: 'tools', url: 'https://mcp.example.test/mcp', type: 'Http', protocolVersion: '2025-06-18' }],
         },

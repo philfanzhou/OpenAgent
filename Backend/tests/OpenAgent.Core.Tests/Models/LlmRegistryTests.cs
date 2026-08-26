@@ -76,7 +76,8 @@ public class LlmRegistryTests
         {
             Provider = "azure",
             ModelId = "gpt-4o",
-            Temperature = 0.5
+            Temperature = 0.5,
+            SupportsVision = true
         });
 
         Assert.Equal("azure", resolved.Provider);
@@ -85,6 +86,7 @@ public class LlmRegistryTests
         Assert.Equal("sk-azure", resolved.ApiKey);
         Assert.Equal("gpt-4o", resolved.ModelId);
         Assert.Equal(0.5, resolved.Temperature);
+        Assert.True(resolved.SupportsVision);
     }
 
     [Fact]

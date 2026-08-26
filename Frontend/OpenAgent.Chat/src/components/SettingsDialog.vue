@@ -211,6 +211,7 @@ const {
           <el-form-item label="模型 ID"><el-input v-model="config.config.llm.modelId" placeholder="例如 gpt-4o" /><small class="form-help">模型 ID 属于 Agent；选择供应商后这里只允许修改模型 ID。</small></el-form-item>
           <el-form-item label="API 格式"><el-select v-model="config.config.llm.format" class="full-width" :disabled="Boolean(config.config.llm.provider)"><el-option label="OpenAI Chat Completions" value="OpenAIChatCompletions" /><el-option label="OpenAI Responses" value="OpenAIResponses" /><el-option label="Anthropic Messages" value="AnthropicMessages" /></el-select></el-form-item>
           <el-form-item label="Temperature"><el-input-number v-model="config.config.llm.temperature" :min="0" :max="2" :step="0.1" :precision="1" controls-position="right" :disabled="Boolean(config.config.llm.provider)" /><small class="form-help">选择供应商后使用供应商配置。</small></el-form-item>
+          <el-form-item label="视觉输入"><el-switch v-model="config.config.llm.supportsVision" /><small class="form-help">仅对支持多模态的模型开启；开启后受限大小的图片会直接发送给模型。</small></el-form-item>
           <el-form-item label="Endpoint" class="span-two"><el-input v-model="config.config.llm.endpoint" placeholder="由供应商配置提供" :disabled="Boolean(config.config.llm.provider)" /></el-form-item>
           <el-form-item label="API Key" class="span-two"><el-input v-model="config.config.llm.apiKey" type="password" show-password placeholder="由供应商配置提供" :disabled="Boolean(config.config.llm.provider)" /></el-form-item>
         </el-form>

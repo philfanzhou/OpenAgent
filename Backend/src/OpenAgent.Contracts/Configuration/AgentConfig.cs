@@ -30,6 +30,8 @@ public class LlmConfig
     public string ApiKey { get; set; } = string.Empty;
     public string Endpoint { get; set; } = string.Empty;
     public double Temperature { get; set; } = 0.7;
+    /// <summary>允许将受限大小的图片作为多模态内容直接发送给模型。</summary>
+    public bool SupportsVision { get; set; }
 }
 
 public class LlmProviderProfile

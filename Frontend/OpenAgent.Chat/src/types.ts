@@ -173,6 +173,7 @@ export interface LlmConfig {
   apiKey: string
   endpoint: string
   temperature: number
+  supportsVision: boolean
 }
 
 export interface LlmProviderProfile {

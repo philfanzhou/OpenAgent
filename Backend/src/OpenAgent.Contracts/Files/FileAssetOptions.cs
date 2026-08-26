@@ -7,6 +7,8 @@ public sealed class FileAssetOptions
     public bool Enabled { get; init; }
     public long MaxFileSizeBytes { get; init; } = 10 * 1024 * 1024;
     public long MaxFunctionReadBytes { get; init; } = 128 * 1024;
+    public long MaxInlineImageBytes { get; init; } = 4 * 1024 * 1024;
+    public int MaxInlineImageCount { get; init; } = 4;
     public long MaxArchiveInputBytes { get; init; } = 64 * 1024 * 1024;
     public int MaxArchiveFileCount { get; init; } = 100;
     public IReadOnlyList<string> AllowedMediaTypes { get; init; } =

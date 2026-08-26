@@ -52,9 +52,9 @@ function createDefaultLlm(): LlmProviderProfile {
     id: '',
     name: '',
     format: 'OpenAIChatCompletions',
-    endpoint: 'https://api.openai.com/v1',
-    apiKey: '',
-    temperature: 0.7,
+        endpoint: 'https://api.openai.com/v1',
+        apiKey: '',
+        temperature: 0.7,
   }
 }
 
@@ -81,7 +81,8 @@ function createDefaultAgent(agentId: string, name: string): AgentConfigEntity {
         modelId: 'gpt-4o',
         apiKey: '',
         endpoint: '',
-        temperature: 0.7,
+      temperature: 0.7,
+      supportsVision: false,
       },
       mcp: { servers: [] },
       rag: { enabled: false, enabledRagInstanceIds: [], instances: [] },
