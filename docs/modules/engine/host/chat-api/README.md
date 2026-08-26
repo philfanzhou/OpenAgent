@@ -9,6 +9,7 @@ ChatApi 提供 Agent.Engine 的核心 HTTP 端点；聊天使用 JSON，文件�
 | `/api/v1/agent/chat` | POST | 同步聊天 | JSON |
 | `/api/v1/agent/chat/stream` | POST | SSE 流式 | text/event-stream |
 | `/api/v1/agent/files` | POST | 独立上传文件资产 | JSON |
+| `/api/v1/agent/files/{fileId}/transfer-url` | POST | 生成跨系统传输用的短期 S3 GET 签名 URL | JSON |
 | `/api/v1/agent/files/{fileId}/content` | GET | 文件预览内容 | 原始 MIME |
 | `/api/v1/agent/files/{fileId}/download` | GET | 下载文件资产 | 原始 MIME |
 | `/api/v1/agent/agents` | GET | Agent 列表 | JSON |
@@ -23,7 +24,8 @@ ChatApi 提供 Agent.Engine 的核心 HTTP 端点；聊天使用 JSON，文件�
 ## 核心能力
 
 - **流式响应**：SSE 事件流
-- **多模态输入**：聊天以 `fileIds` 引用已上传文件，执行时按需读取，不在会话中保存字节
+- **多模态输入**：聊天以 `fileIds` 引用已上传文件，执行时按需读取，不在会话中保存字节。
+- **跨系统传输**：`fileId` 是业务资产 ID，文件资产元数据中的 `objectKey` 才是实际 S3 对象键；`transfer-url` 端点额外生成短期签名 URL 供第三方读取。
 - **上传防护**：数量、大小、MIME 类型校验
 - **请求追踪**：Header / Activity 自动生成 TraceId
 - **优雅中断**：客户端断开时正确释放资源

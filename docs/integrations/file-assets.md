@@ -1,6 +1,6 @@
 # 文件资产与对象存储
 
-文件资产独立于会话：PostgreSQL 保存资产、所有者、状态和引用，S3/MinIO 只保存原始字节。聊天请求只传递 `fileIds`；执行期由文件服务读取内容给模型，消息与数据库中都不再存在旧附件对象或文件字节。
+文件资产独立于会话：PostgreSQL 保存资产、所有者、状态、实际 S3 `ObjectKey` 和引用，S3/MinIO 只保存原始字节。聊天请求只传递 `fileIds`；执行期由文件服务读取内容给模型，消息与数据库中都不再存在旧附件对象或文件字节。
 
 ```text
 POST /files -> PostgreSQL FileAssets(Pending) -> S3/MinIO -> FileAssets(Ready)
@@ -17,7 +17,27 @@ POST /chat/stream { fileIds } -> read ready files -> model -> message and file r
 |---|---|
 | `POST /api/v1/agent/files` | 上传一个独立资产，返回 `fileId` |
 | `GET /api/v1/agent/files/{fileId}` | 读取资产元数据 |
+| `POST /api/v1/agent/files/{fileId}/transfer-url` | 为跨系统传输生成短期 S3 GET 签名 URL，并返回实际 `objectKey` |
 | `GET /api/v1/agent/files/{fileId}/content` | 认证预览内容 |
 | `GET /api/v1/agent/files/{fileId}/download` | 认证下载 |
 
 权限校验通过 `FileAssetScope` 的 TenantId/OwnerUserId 边界在 `FileAssetService` 内强制执行（缺失时抛 `TenantDataIsolationException`）。
+
+## 跨系统传输
+
+调用 `POST /api/v1/agent/files/{fileId}/transfer-url`，无需请求体；只有第三方确实需要读取文件时才调用该端点。
+
+响应示例：
+
+```json
+{
+  "fileId": "c745f86af1e44857ac63d463f0bc0495",
+  "objectKey": "files/tenants/{tenant-sha256}/users/{user-sha256}/c745f86af1e44857ac63d463f0bc0495.pdf",
+  "url": "https://s3.example.com/openagent-files?...",
+  "expiresAt": "2026-08-26T12:00:00Z"
+}
+```
+
+`fileId` 是 OpenAgent 的业务资产 ID；`objectKey` 是 S3 对象的实际键，不能把二者混称为“S3 ID”。S3 对象由 bucket 与 `objectKey` 定位。`url` 是调用该端点时才生成的、有效期 15 分钟的只读签名 URL，第三方应使用它读取文件，不应保存 S3 凭据或依赖租户/用户路径。
+
+签名 URL 使用对象存储客户端配置的 S3 endpoint 生成；如果部署 MinIO 或其他 S3-compatible 存储，`ServiceUrl` 必须是第三方能够访问的地址，而不能是仅 Engine 容器可访问的内部地址。
