@@ -68,6 +68,14 @@ function basename(path: string): string {
 /** blob URL 缓存：同一 fileId/objectKey 在会话内只拉取一次；失败条目移除以便重试。 */
 const blobUrlCache = new Map<string, Promise<string>>()
 
+/** 清理鉴权图片的 blob URL，切换身份时避免旧会话内容残留在页面内存中。 */
+export function clearImagePreviewCache(): void {
+  for (const pending of blobUrlCache.values()) {
+    void pending.then(url => URL.revokeObjectURL(url)).catch(() => undefined)
+  }
+  blobUrlCache.clear()
+}
+
 async function cacheBlob(key: string, loader: () => Promise<string>): Promise<string> {
   let cached = blobUrlCache.get(key)
   if (!cached) {

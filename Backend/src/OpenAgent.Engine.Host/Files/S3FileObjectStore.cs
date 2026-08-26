@@ -49,7 +49,26 @@ internal sealed class S3FileObjectStore : IFileObjectStore
         }
     }
 
-    public async Task<byte[]> ReadAsync(string objectKey, CancellationToken cancellationToken)
+    public Task<byte[]> ReadAsync(string objectKey, CancellationToken cancellationToken) =>
+        ReadAsyncCore(objectKey, maxBytes: null, cancellationToken);
+
+    public Task<byte[]> ReadAsync(
+        string objectKey,
+        long maxBytes,
+        CancellationToken cancellationToken)
+    {
+        if (maxBytes <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxBytes));
+        }
+
+        return ReadAsyncCore(objectKey, maxBytes, cancellationToken);
+    }
+
+    private async Task<byte[]> ReadAsyncCore(
+        string objectKey,
+        long? maxBytes,
+        CancellationToken cancellationToken)
     {
         try
         {
@@ -57,9 +76,48 @@ internal sealed class S3FileObjectStore : IFileObjectStore
                 _options.BucketName,
                 objectKey,
                 cancellationToken).ConfigureAwait(false);
+            if (maxBytes.HasValue && response.ContentLength > maxBytes.Value)
+            {
+                throw new AgentException(
+                    AgentErrorCode.InvalidRequest,
+                    $"File object '{objectKey}' exceeds the configured {maxBytes.Value} byte limit.");
+            }
+
             await using Stream input = response.ResponseStream;
             await using var buffer = new MemoryStream();
-            await input.CopyToAsync(buffer, cancellationToken).ConfigureAwait(false);
+            byte[] chunk = new byte[64 * 1024];
+            while (true)
+            {
+                long remaining = maxBytes.GetValueOrDefault(long.MaxValue) - buffer.Length;
+                if (remaining < 0)
+                {
+                    throw new AgentException(
+                        AgentErrorCode.InvalidRequest,
+                        $"File object '{objectKey}' exceeds the configured {maxBytes} byte limit.");
+                }
+
+                int readLength = maxBytes.HasValue
+                    ? (int)Math.Min(
+                        chunk.Length,
+                        remaining == long.MaxValue ? chunk.Length : remaining + 1)
+                    : chunk.Length;
+                int read = await input.ReadAsync(chunk.AsMemory(0, readLength), cancellationToken)
+                    .ConfigureAwait(false);
+                if (read == 0)
+                {
+                    break;
+                }
+
+                if (maxBytes.HasValue && read > remaining)
+                {
+                    throw new AgentException(
+                        AgentErrorCode.InvalidRequest,
+                        $"File object '{objectKey}' exceeds the configured {maxBytes} byte limit.");
+                }
+
+                await buffer.WriteAsync(chunk.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
+            }
+
             return buffer.ToArray();
         }
         catch (Exception exception) when (exception is AmazonServiceException or AmazonClientException)

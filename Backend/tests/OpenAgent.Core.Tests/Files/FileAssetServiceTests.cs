@@ -317,6 +317,8 @@ public class FileAssetServiceTests
             TenantObjectKey("big.log"),
             Scope("conversation-a"),
             CancellationToken.None));
+
+        Assert.Equal(0, objects.ReadCount);
     }
 
     [Fact]
@@ -609,4 +611,3 @@ public class FileAssetServiceTests
         CreatedAt = DateTimeOffset.UtcNow
     };
 }
-

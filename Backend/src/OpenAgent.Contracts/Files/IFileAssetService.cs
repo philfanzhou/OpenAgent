@@ -24,7 +24,8 @@ public interface IFileAssetService
     Task<FileAssetContent> ReadAsync(
         string fileId,
         FileAssetScope scope,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        long? maxBytes = null);
 
     Task<string> ReadTextAsync(
         string fileId,
@@ -38,7 +39,8 @@ public interface IFileAssetService
     Task<byte[]> ReadObjectAsync(
         string objectKey,
         FileAssetScope scope,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        long? maxBytes = null);
 
     /// <summary>
     /// 按对象存储键直读 UTF-8 文本内容。与 <see cref="ReadTextAsync"/> 共享函数读取限额，

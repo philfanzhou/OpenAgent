@@ -22,6 +22,12 @@ describe('message presentation', () => {
     expect(html).not.toContain('href="javascript:')
   })
 
+  it('renders authenticated blob image URLs used by file previews', () => {
+    const html = renderMarkdown('![chart](blob:preview-image)')
+
+    expect(html).toContain('<img src="blob:preview-image" alt="chart">')
+  })
+
   it('blocks dangerous link protocols and keeps safe relative links', () => {
     const html = renderMarkdown(
       '[vb](vbscript:msgbox(1)) [data](data:text/html,%3Cscript%3Ealert(1)%3C/script%3E) [rel](./docs.md) [http](https://example.com)',

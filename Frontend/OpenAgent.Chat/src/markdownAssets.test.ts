@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { api } from './api'
 import {
+  clearImagePreviewCache,
   createImageResolver,
   extractImageRefs,
   isSelfContainedImageRef,
@@ -10,6 +11,8 @@ import {
 import type { MessageFile } from './types'
 
 const baseKey = 'files/tenants/t1/users/u1/report.md'
+
+beforeEach(() => clearImagePreviewCache())
 
 describe('extractImageRefs', () => {
   it('collects inline and reference-style image refs without duplicates', () => {
@@ -110,6 +113,7 @@ describe('createImageResolver', () => {
     await expect(resolver).resolves.toBe('blob:files/tenants/t1/users/u1/images/a.png')
     expect(requestedPath).toBe('files/tenants/t1/users/u1/images/a.png')
   })
+
 })
 
 /** 在解析期间临时替换 api 方法，避免测试发起真实请求。 */

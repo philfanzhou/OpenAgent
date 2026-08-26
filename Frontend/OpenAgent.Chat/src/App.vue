@@ -112,6 +112,7 @@ const {
   hydrateFilePreviews,
   downloadFile,
   clearPendingFiles,
+  clearMarkdownImageCache,
   markdownImageUrls,
 } = files
 
@@ -206,6 +207,7 @@ function resetWorkspace(): void {
   agents.value = []
   resetConversations()
   clearPendingFiles()
+  clearMarkdownImageCache()
   message.value = ''
   resetSettings()
 }

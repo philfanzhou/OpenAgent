@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import { api } from '../api'
 import {
+  clearImagePreviewCache,
   createImageResolver,
   extractImageRefs,
   isSelfContainedImageRef,
@@ -145,6 +146,12 @@ export function useFileHandling(options: FileHandlingOptions) {
     pendingFiles.value = []
   }
 
+  function clearMarkdownImageCache(): void {
+    for (const url of markdownImageUrls.value.values()) URL.revokeObjectURL(url)
+    markdownImageUrls.value = new Map()
+    clearImagePreviewCache()
+  }
+
   return {
     pendingFiles,
     handleFilesChange,
@@ -152,6 +159,7 @@ export function useFileHandling(options: FileHandlingOptions) {
     hydrateFilePreviews,
     downloadFile,
     clearPendingFiles,
+    clearMarkdownImageCache,
     markdownImageUrls,
   }
 }

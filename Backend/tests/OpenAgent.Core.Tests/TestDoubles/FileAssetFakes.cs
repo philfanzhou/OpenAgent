@@ -1,4 +1,6 @@
 using OpenAgent.Contracts.Files;
+using OpenAgent.Contracts.Requests;
+using OpenAgent.Contracts.Security;
 
 namespace OpenAgent.Core.Tests.TestDoubles;
 
@@ -79,6 +81,23 @@ internal sealed class RecordingFileObjectStore : IFileObjectStore
     {
         ReadCount++;
         return Task.FromResult(ContentsByKey.TryGetValue(objectKey, out byte[]? content) ? content : Content);
+    }
+
+    public Task<byte[]> ReadAsync(
+        string objectKey,
+        long maxBytes,
+        CancellationToken cancellationToken)
+    {
+        byte[] content = ContentsByKey.TryGetValue(objectKey, out byte[]? value) ? value : Content;
+        if (content.LongLength > maxBytes)
+        {
+            throw new AgentException(
+                AgentErrorCode.InvalidRequest,
+                $"File object '{objectKey}' exceeds the configured {maxBytes} byte limit.");
+        }
+
+        ReadCount++;
+        return Task.FromResult(content);
     }
 
     public Task DeleteAsync(string objectKey, CancellationToken cancellationToken) => Task.CompletedTask;

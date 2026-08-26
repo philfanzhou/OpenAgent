@@ -122,13 +122,17 @@ internal sealed class FileAssetService : IFileAssetService
     public async Task<FileAssetContent> ReadAsync(
         string fileId,
         FileAssetScope scope,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        long? maxBytes = null)
     {
         EnsureEnabled();
         ValidateScope(scope);
         FileAsset asset = await GetReadyAssetAsync(fileId, scope, cancellationToken).ConfigureAwait(false);
         EnsureTenantObjectKey(asset.ObjectKey, scope.TenantId);
-        byte[] data = await _objectStore.ReadAsync(asset.ObjectKey, cancellationToken).ConfigureAwait(false);
+        byte[] data = await ReadObjectBytesAsync(
+            asset.ObjectKey,
+            maxBytes ?? _options.MaxFileSizeBytes,
+            cancellationToken).ConfigureAwait(false);
         return new FileAssetContent { Asset = asset, Data = data };
     }
 
@@ -137,7 +141,11 @@ internal sealed class FileAssetService : IFileAssetService
         FileAssetScope scope,
         CancellationToken cancellationToken)
     {
-        FileAssetContent content = await ReadAsync(fileId, scope, cancellationToken).ConfigureAwait(false);
+        FileAssetContent content = await ReadAsync(
+            fileId,
+            scope,
+            cancellationToken,
+            _options.MaxFunctionReadBytes).ConfigureAwait(false);
         if (!IsTextMediaType(content.Asset.MediaType))
         {
             throw new AgentException(
@@ -153,7 +161,11 @@ internal sealed class FileAssetService : IFileAssetService
         FileAssetScope scope,
         CancellationToken cancellationToken)
     {
-        byte[] data = await ReadObjectAsync(objectKey, scope, cancellationToken).ConfigureAwait(false);
+        byte[] data = await ReadObjectAsync(
+            objectKey,
+            scope,
+            cancellationToken,
+            _options.MaxFunctionReadBytes).ConfigureAwait(false);
         return DecodeFunctionText(data, objectKey);
     }
 
@@ -182,13 +194,17 @@ internal sealed class FileAssetService : IFileAssetService
     public async Task<byte[]> ReadObjectAsync(
         string objectKey,
         FileAssetScope scope,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        long? maxBytes = null)
     {
         EnsureEnabled();
         ValidateScope(scope);
         string normalized = NormalizeObjectKey(objectKey);
         EnsureTenantObjectKey(normalized, scope.TenantId);
-        return await _objectStore.ReadAsync(normalized, cancellationToken).ConfigureAwait(false);
+        return await ReadObjectBytesAsync(
+            normalized,
+            maxBytes ?? _options.MaxFileSizeBytes,
+            cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<FileArchiveResult> CompressAsync(
@@ -224,7 +240,19 @@ internal sealed class FileAssetService : IFileAssetService
         long totalBytes = 0;
         foreach (FileArchiveItem item in items)
         {
-            (string entryName, byte[] data) = await ReadArchiveItemAsync(item, scope, cancellationToken).ConfigureAwait(false);
+            long remainingBytes = _options.MaxArchiveInputBytes - totalBytes;
+            if (remainingBytes <= 0)
+            {
+                throw new AgentException(
+                    AgentErrorCode.InvalidRequest,
+                    $"Archive input exceeds the {_options.MaxArchiveInputBytes} byte limit.");
+            }
+
+            (string entryName, byte[] data) = await ReadArchiveItemAsync(
+                item,
+                scope,
+                remainingBytes,
+                cancellationToken).ConfigureAwait(false);
             totalBytes = checked(totalBytes + data.LongLength);
             if (totalBytes > _options.MaxArchiveInputBytes)
             {
@@ -268,6 +296,7 @@ internal sealed class FileAssetService : IFileAssetService
     private async Task<(string EntryName, byte[] Data)> ReadArchiveItemAsync(
         FileArchiveItem item,
         FileAssetScope scope,
+        long maxBytes,
         CancellationToken cancellationToken)
     {
         bool hasFileId = !string.IsNullOrWhiteSpace(item.FileId);
@@ -281,12 +310,33 @@ internal sealed class FileAssetService : IFileAssetService
 
         if (hasFileId)
         {
-            FileAssetContent content = await ReadAsync(item.FileId!, scope, cancellationToken).ConfigureAwait(false);
+            FileAssetContent content = await ReadAsync(
+                item.FileId!,
+                scope,
+                cancellationToken,
+                maxBytes).ConfigureAwait(false);
             return (NormalizeArchiveEntryName(item.FileName ?? content.Asset.FileName), content.Data);
         }
 
-        byte[] data = await ReadObjectAsync(item.ObjectKey!, scope, cancellationToken).ConfigureAwait(false);
+        byte[] data = await ReadObjectAsync(
+            item.ObjectKey!,
+            scope,
+            cancellationToken,
+            maxBytes).ConfigureAwait(false);
         return (NormalizeArchiveEntryName(item.FileName ?? Path.GetFileName(item.ObjectKey) ?? string.Empty), data);
+    }
+
+    private Task<byte[]> ReadObjectBytesAsync(
+        string objectKey,
+        long maxBytes,
+        CancellationToken cancellationToken)
+    {
+        if (maxBytes <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxBytes));
+        }
+
+        return _objectStore.ReadAsync(objectKey, maxBytes, cancellationToken);
     }
 
     private string NormalizeArchiveEntryName(string value)

@@ -145,10 +145,21 @@ function imageLookup(
   messageId: string,
   selfObjectKey?: string,
 ): ((src: string) => string | undefined) | undefined {
-  if (!props.markdownImageUrls?.size) return undefined
+  const cache = props.markdownImageUrls
+  if (!cache?.size) return undefined
   return (src: string): string | undefined => {
     if (!src || isSelfContainedImageRef(src)) return undefined
-    return props.markdownImageUrls?.get(`${messageId}|${selfObjectKey ?? ''}|${src}`)
+    const exact = cache.get(`${messageId}|${selfObjectKey ?? ''}|${src}`)
+    if (exact) return exact
+    // Adjacent assistant messages are merged for display, so the cache may have
+    // been populated with the original message id rather than the merged id.
+    if (selfObjectKey) {
+      const suffix = `|${selfObjectKey}|${src}`
+      for (const [key, value] of cache) {
+        if (key.endsWith(suffix)) return value
+      }
+    }
+    return undefined
   }
 }
 

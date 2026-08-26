@@ -42,6 +42,11 @@ Engine `http://localhost:5208`、租户 `development`；Compose 同时启动 Pos
 执行聊天前，请先在登录页使用任意非空账号密码建立 Development 身份，再在工作台设置中创建 LLM
 Provider 并绑定 Agent。该兼容登录不校验真实密码，仅适合本地联调，不应直接暴露到公网。
 
+默认使用 Compose 内置的 MinIO（bucket `openagent-files`）。接入外部 S3/MinIO 时，可覆盖
+`OPENAGENT_S3_SERVICE_URL`、`OPENAGENT_S3_BUCKET`、`OPENAGENT_S3_ACCESS_KEY`、
+`OPENAGENT_S3_SECRET_KEY`；仅在自签名证书场景显式设置
+`OPENAGENT_S3_ALLOW_INSECURE_TLS=true`。
+
 ## 文档
 
 - [文档中心](docs/README.md) — 总览、模块、集成、数据库、架构决策
