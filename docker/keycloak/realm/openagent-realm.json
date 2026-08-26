@@ -108,6 +108,29 @@
       "realmRoles": [
         "user"
       ]
+    },
+    {
+      "username": "tenant-demo",
+      "enabled": true,
+      "firstName": "Tenant",
+      "lastName": "Demo",
+      "email": "tenant-demo@test-tenant.local",
+      "emailVerified": true,
+      "attributes": {
+        "tenant_id": [
+          "test-tenant"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "tenant-demo-password",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "user"
+      ]
     }
   ],
   "organizations": [
@@ -126,6 +149,26 @@
       "members": [
         {
           "username": "demo"
+        }
+      ]
+    },
+    {
+      "name": "Test Tenant Workspace",
+      "alias": "test-tenant",
+      "enabled": true,
+      "domains": [
+        {
+          "name": "test-tenant.local"
+        }
+      ],
+      "attributes": {
+        "tenant_id": [
+          "test-tenant"
+        ]
+      },
+      "members": [
+        {
+          "username": "tenant-demo"
         }
       ]
     }
