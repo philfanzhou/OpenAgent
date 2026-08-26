@@ -22,9 +22,14 @@ POST /chat/stream { fileIds } -> read ready files -> model -> message and file r
 
 权限校验通过 `FileAssetScope` 的 TenantId/OwnerUserId 边界在 `FileAssetService` 内强制执行（缺失时抛 `TenantDataIsolationException`）。
 
-## MCP 跨系统传输
+## 短期签名 URL（MCP 传输 / 用户分享）
 
-跨系统传输不提供独立的 HTTP 生成端点。只有大模型判断某个第三方 MCP 工具需要文件 URL 时，才调用 Agent 内部工具 `create_file_transfer_url`，并将返回的 URL 作为参数传给该 MCP 工具。普通上传、查询、预览、下载和聊天流程不会生成临时 URL。
+短期 URL 不提供独立的 HTTP 生成端点，由大模型调用 Agent 内部工具 `create_file_transfer_url` 生成，有两个用途：
+
+- **MCP 跨系统传输**：大模型判断某个第三方 MCP 工具需要文件 URL 时调用，并把返回的 URL 作为参数传给该 MCP 工具。
+- **用户临时分享链接**：用户需要直接下载链接时调用，把 URL 作为分享链接交给用户；此时必须同时告知有效期（`expiresAt`，15 分钟），不得表述为永久链接。
+
+普通上传、查询、预览、下载和聊天流程不会生成临时 URL。
 
 响应示例：
 
@@ -37,6 +42,6 @@ POST /chat/stream { fileIds } -> read ready files -> model -> message and file r
 }
 ```
 
-`fileId` 是 OpenAgent 的业务资产 ID；`objectKey` 是 S3 对象的实际键，不能把二者混称为“S3 ID”。S3 对象由 bucket 与 `objectKey` 定位。`url` 是模型调用 `create_file_transfer_url` 时才生成的、有效期 15 分钟的只读签名 URL，第三方 MCP 应使用它读取文件，不应保存 S3 凭据或依赖租户/用户路径。
+`fileId` 是 OpenAgent 的业务资产 ID；`objectKey` 是 S3 对象的实际键，不能把二者混称为“S3 ID”。S3 对象由 bucket 与 `objectKey` 定位。`url` 是模型调用 `create_file_transfer_url` 时才生成的、有效期 15 分钟的只读签名 URL，可用于 MCP 读取或作为用户临时分享链接（分享时必须告知有效期），接收方不应保存 S3 凭据或依赖租户/用户路径。
 
 签名 URL 使用对象存储客户端配置的 S3 endpoint 生成；如果部署 MinIO 或其他 S3-compatible 存储，`ServiceUrl` 必须是第三方能够访问的地址，而不能是仅 Engine 容器可访问的内部地址。

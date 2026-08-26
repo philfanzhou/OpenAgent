@@ -220,7 +220,7 @@ public class AgentExecutorUsageTests
         Assert.Equal(3, actual.ReasoningTokens);
     }
 
-    private static TestRuntime CreateRuntime(IChatClient provider)
+    internal static TestRuntime CreateRuntime(IChatClient provider)
     {
         var services = new ServiceCollection();
         services.AddLogging();
@@ -300,7 +300,7 @@ public class AgentExecutorUsageTests
             CancellationToken cancellationToken) => Task.FromResult(false);
     }
 
-    private sealed class TestRuntime(
+    internal sealed class TestRuntime(
         ServiceProvider serviceProvider,
         AsyncServiceScope scope,
         AgentExecutor executor,

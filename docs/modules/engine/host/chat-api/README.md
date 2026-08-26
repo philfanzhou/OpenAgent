@@ -24,7 +24,7 @@ ChatApi 提供 Agent.Engine 的核心 HTTP 端点；聊天使用 JSON，文件�
 
 - **流式响应**：SSE 事件流
 - **多模态输入**：聊天以 `fileIds` 引用已上传文件，执行时按需读取，不在会话中保存字节。
-- **MCP 跨系统传输**：仅当大模型判断第三方 MCP 需要文件 URL 时调用 `create_file_transfer_url`，返回短期签名 URL；`objectKey` 是实际 S3 对象键，不是 S3 ID。
+- **MCP 跨系统传输 / 用户分享链接**：大模型调用 `create_file_transfer_url` 返回短期签名 URL——既可传给需要文件 URL 的第三方 MCP，也可作为临时下载链接交给用户（须告知 `expiresAt` 有效期）；`objectKey` 是实际 S3 对象键，不是 S3 ID。
 - **上传防护**：数量、大小、MIME 类型校验
 - **请求追踪**：Header / Activity 自动生成 TraceId
 - **优雅中断**：客户端断开时正确释放资源
