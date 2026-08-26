@@ -31,7 +31,7 @@ const showConnection = ref(false)
 const usernameInput = ref<HTMLInputElement>()
 const isBasic = computed(() => props.authConfig?.mode === 'Basic')
 const isJwtBearer = computed(() => props.authConfig?.mode === 'JwtBearer')
-const isOidc = computed(() => isJwtBearer.value && props.authConfig?.domainLogin?.enabled !== false)
+const isOidc = computed(() => isJwtBearer.value && props.authConfig?.keycloak?.enabled !== false)
 const isTenantEnabled = computed(() => props.authConfig?.tenant?.enabled !== false)
 
 watch(() => props.loading, async (loading, wasLoading) => {
@@ -132,7 +132,7 @@ function submit(): void {
       </div>
 
       <div v-else-if="isJwtBearer" class="login-unavailable">
-        <p>域登录未启用，请在服务端 Authentication:EnableDomainLogin 中开启。</p>
+        <p>Keycloak 未启用，请在服务端 Authentication:EnableKeycloak 中开启。</p>
         <button class="primary-action" type="button" :disabled="props.loading" @click="emit('retry')">重新检测</button>
       </div>
 

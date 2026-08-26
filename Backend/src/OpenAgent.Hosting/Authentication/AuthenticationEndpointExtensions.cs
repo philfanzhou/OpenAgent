@@ -23,9 +23,9 @@ public static class AuthenticationEndpointExtensions
         {
             mode = options.Mode.ToString(),
             development = environment.IsDevelopment(),
-            domainLogin = new
+            keycloak = new
             {
-                enabled = options.EnableDomainLogin
+                enabled = options.EnableKeycloak
             },
             tenant = new
             {

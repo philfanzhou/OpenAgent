@@ -17,7 +17,7 @@ services:
   engine:
     environment:
       Authentication__Mode: JwtBearer
-      Authentication__EnableDomainLogin: "true"
+      Authentication__EnableKeycloak: "true"
       Authentication__EnableTenant: "true"
       Authentication__Authority: http://localhost:${OPENAGENT_KEYCLOAK_PORT:-58081}/realms/openagent
       Authentication__MetadataAddress: http://keycloak:8080/realms/openagent/.well-known/openid-configuration
@@ -31,7 +31,7 @@ services:
   router:
     environment:
       Authentication__Mode: JwtBearer
-      Authentication__EnableDomainLogin: "true"
+      Authentication__EnableKeycloak: "true"
       Authentication__EnableTenant: "true"
       Authentication__Authority: http://localhost:${OPENAGENT_KEYCLOAK_PORT:-58081}/realms/openagent
       Authentication__MetadataAddress: http://keycloak:8080/realms/openagent/.well-known/openid-configuration

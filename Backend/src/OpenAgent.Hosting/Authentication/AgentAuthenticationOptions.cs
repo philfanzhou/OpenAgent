@@ -9,7 +9,7 @@ public enum AgentAuthenticationMode
 public sealed class AgentAuthenticationOptions
 {
     public AgentAuthenticationMode Mode { get; set; } = AgentAuthenticationMode.Basic;
-    public bool EnableDomainLogin { get; set; } = true;
+    public bool EnableKeycloak { get; set; } = true;
     public bool EnableTenant { get; set; } = true;
     public bool AllowDevelopmentAnonymous { get; set; } = true;
     public string DevelopmentUserId { get; set; } = "development-user";
