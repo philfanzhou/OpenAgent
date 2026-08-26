@@ -63,8 +63,10 @@ export function useChatStreaming(options: ChatStreamingOptions) {
     const conversation = options.selectedConversation.value
     if (!conversation) return
     let conversationId = conversation.conversationId
-    // First messages omit conversationId so Router intent selection remains on the initial-message path.
-    const sendConversationId = isNewConversation ? undefined : conversationId
+    // Send the local id even on the first message. Uploaded assets were created
+    // for this conversation; omitting it made Engine generate a different id and
+    // caused the first message's file references to miss their scope.
+    const sendConversationId = conversationId
     const streamState = options.streams.start(conversationId)
     const requestId = streamState.requestId
     let streamError: { title?: string; detail?: string; traceId?: string } | undefined

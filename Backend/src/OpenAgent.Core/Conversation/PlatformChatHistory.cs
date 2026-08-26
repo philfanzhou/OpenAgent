@@ -153,10 +153,10 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
     }
 
     /// <summary>
-    /// 把存储的会话消息转成模型输入，并为历史用户消息重建文件附件
-    /// （否则续接会话时模型看不到上一次上传的图片等文件）。
+    /// 把存储的会话消息转成模型输入，并为每条带文件引用的历史消息重建文件附件
+    /// （用户上传和 assistant 发布的文件都属于模型上下文）。
     /// </summary>
-    private async Task<List<ChatMessage>> BuildHistoryAsync(
+    internal async Task<List<ChatMessage>> BuildHistoryAsync(
         IReadOnlyList<ConversationMessage> stored,
         CancellationToken cancellationToken)
     {
@@ -168,8 +168,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
             {
                 continue;
             }
-            if (string.Equals(message.Role, "user", StringComparison.OrdinalIgnoreCase)
-                && message.FileIds.Count > 0)
+            if (message.FileIds.Count > 0)
             {
                 await AttachFilesAsync(chatMessage, message.FileIds, cancellationToken).ConfigureAwait(false);
             }

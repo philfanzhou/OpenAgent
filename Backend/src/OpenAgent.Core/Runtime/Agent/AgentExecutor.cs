@@ -47,7 +47,11 @@ public sealed class AgentExecutor
             agentId,
             user,
             cancellationToken).ConfigureAwait(false);
-        AgentRequest executionRequest = CopyWithResolvedValues(request, agentId, traceId);
+        AgentRequest executionRequest = CopyWithResolvedValues(
+            request,
+            agentId,
+            traceId,
+            ResolveConversationId(request));
         if (executionRequest.FileIds.Count > 0)
         {
             await _agents.EnsureConversationAsync(
@@ -108,7 +112,11 @@ public sealed class AgentExecutor
             agentId,
             user,
             cancellationToken).ConfigureAwait(false);
-        AgentRequest executionRequest = CopyWithResolvedValues(request, agentId, traceId);
+        AgentRequest executionRequest = CopyWithResolvedValues(
+            request,
+            agentId,
+            traceId,
+            ResolveConversationId(request));
         if (executionRequest.FileIds.Count > 0)
         {
             await _agents.EnsureConversationAsync(
@@ -232,11 +240,12 @@ public sealed class AgentExecutor
     private static AgentRequest CopyWithResolvedValues(
         AgentRequest request,
         string agentId,
-        string traceId) => new()
+        string traceId,
+        string? conversationId) => new()
         {
             Query = request.Query,
             AgentId = agentId,
-            ConversationId = request.ConversationId,
+            ConversationId = conversationId,
             ConversationType = request.ConversationType,
             TraceId = traceId,
             ClientType = request.ClientType,
@@ -244,4 +253,18 @@ public sealed class AgentExecutor
             ExternalContext = request.ExternalContext,
             FileIds = request.FileIds
         };
+
+    private static string? ResolveConversationId(AgentRequest request)
+    {
+        if (!string.IsNullOrWhiteSpace(request.ConversationId))
+        {
+            return request.ConversationId;
+        }
+
+        // Direct callers may omit a conversation id on the first request. Files
+        // still need a conversation-scoped reference before they can be read.
+        return request.FileIds.Count > 0
+            ? Guid.NewGuid().ToString("N")
+            : null;
+    }
 }
