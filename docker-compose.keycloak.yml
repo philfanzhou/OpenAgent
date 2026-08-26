@@ -13,6 +13,8 @@ services:
       - keycloak-data:/opt/keycloak/data
     ports:
       - "${OPENAGENT_KEYCLOAK_PORT:-58081}:8080"
+    networks:
+      - infrastructure
 
   engine:
     environment:
@@ -44,3 +46,8 @@ services:
 
 volumes:
   keycloak-data:
+
+networks:
+  infrastructure:
+    external: true
+    name: ${OPENAGENT_INFRA_NETWORK:-openagent-infrastructure}

@@ -4,9 +4,11 @@
 
 ## 启动
 
-当前工作区已有其他 OpenAgent Compose 项目运行时，请使用独立项目名和端口：
+当前工作区已有其他 OpenAgent Compose 项目运行时，请使用独立的基础设施项目、应用项目和网络：
 
 ```bash
+export OPENAGENT_INFRA_NETWORK=openagent-keycloak-infrastructure
+
 OPENAGENT_KEYCLOAK_PORT=58091 \
 OPENAGENT_CHAT_PORT=58090 \
 OPENAGENT_ROUTER_PORT=55011 \
@@ -15,6 +17,15 @@ OPENAGENT_POSTGRES_PORT=55442 \
 OPENAGENT_REDIS_PORT=56389 \
 OPENAGENT_MINIO_PORT=59010 \
 OPENAGENT_MINIO_CONSOLE_PORT=59011 \
+docker compose -p openagent-keycloak-infrastructure \
+  -f docker-compose.storage.yml \
+  up -d
+
+OPENAGENT_KEYCLOAK_PORT=58091 \
+OPENAGENT_CHAT_PORT=58090 \
+OPENAGENT_ROUTER_PORT=55011 \
+OPENAGENT_ENGINE_PORT=55218 \
+OPENAGENT_INFRA_NETWORK=openagent-keycloak-infrastructure \
 docker compose -p openagent-keycloak \
   -f docker-compose.yml \
   -f docker-compose.keycloak.yml \
@@ -29,16 +40,26 @@ docker compose -p openagent-keycloak \
 - 管理员：由 `OPENAGENT_KEYCLOAK_ADMIN_USERNAME` / `OPENAGENT_KEYCLOAK_ADMIN_PASSWORD` 提供，默认值仅适用于本地临时环境
 - 测试用户：`demo / openagent-demo`
 
-Realm、SPA Client、API audience、`tenant_id` claim 和本地测试用户由 [openagent-realm.json](../../../docker/keycloak/realm/openagent-realm.json) 导入。清理时只删除本 Compose 项目：
+Realm、SPA Client、API audience、`tenant_id` claim 和本地测试用户由 [openagent-realm.json](../../../docker/keycloak/realm/openagent-realm.json) 导入。
+停止应用时只删除应用容器，不影响 PostgreSQL、Redis、MinIO 数据：
 
 ```bash
 docker compose -p openagent-keycloak \
   -f docker-compose.yml \
   -f docker-compose.keycloak.yml \
+  down
+```
+
+确认不再需要这套隔离的本地基础设施后，才清理基础设施项目和数据卷：
+
+```bash
+docker compose -p openagent-keycloak-infrastructure \
+  -f docker-compose.storage.yml \
   down -v
 ```
 
-不要对正在运行的其他 Compose 项目执行 `down -v`。
+不要对正在运行的其他 Compose 项目执行 `down -v`。基础设施项目由 [docker-compose.storage.yml](../../../docker-compose.storage.yml)
+提供，应用代码镜像由 [docker-compose.yml](../../../docker-compose.yml) 提供。
 
 ## 功能开关
 

@@ -6,7 +6,9 @@ services:
       POSTGRES_USER: openagent
       POSTGRES_PASSWORD: openagent
     ports:
-      - "5432:5432"
+      - "${OPENAGENT_POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U openagent -d openagent"]
       interval: 2s
@@ -16,7 +18,9 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "${OPENAGENT_REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 2s
@@ -30,8 +34,10 @@ services:
       MINIO_ROOT_USER: openagent
       MINIO_ROOT_PASSWORD: openagent-secret
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "${OPENAGENT_MINIO_PORT:-9000}:9000"
+      - "${OPENAGENT_MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio-data:/data
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 2s
@@ -46,3 +52,12 @@ services:
     entrypoint: >-
       /bin/sh -c "mc alias set local http://minio:9000 openagent openagent-secret &&
       mc mb --ignore-existing local/openagent-files"
+
+volumes:
+  postgres-data:
+  redis-data:
+  minio-data:
+
+networks:
+  default:
+    name: ${OPENAGENT_INFRA_NETWORK:-openagent-infrastructure}
