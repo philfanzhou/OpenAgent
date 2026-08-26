@@ -63,6 +63,9 @@ public class AuthenticationEndpointTests
         Assert.False(config.RootElement.GetProperty("development").GetBoolean());
         Assert.False(config.RootElement.GetProperty("password").GetProperty("enabled").GetBoolean());
         Assert.Equal("openagent-chat", config.RootElement.GetProperty("oidc").GetProperty("clientId").GetString());
+        Assert.Equal(
+            new[] { "openid", "profile" },
+            config.RootElement.GetProperty("oidc").GetProperty("scopes").Deserialize<string[]>());
         Assert.Equal(HttpStatusCode.NotFound, login.StatusCode);
     }
 

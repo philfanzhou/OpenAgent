@@ -42,6 +42,10 @@ Engine `http://localhost:5208`、租户 `development`；Compose 同时启动 Pos
 执行聊天前，请先在登录页使用任意非空账号密码建立 Development 身份，再在工作台设置中创建 LLM
 Provider 并绑定 Agent。该兼容登录不校验真实密码，仅适合本地联调，不应直接暴露到公网。
 
+需要验证真实 OIDC 登录时，可使用独立的 Keycloak Compose 覆盖：参见
+[Keycloak 本地认证集成](docs/integrations/keycloak/README.md)。该环境导入本地 Realm、SPA Client
+和 `demo` 测试用户，不复用默认 OpenAgent Compose 项目的数据卷或端口。
+
 ## 文档
 
 - [文档中心](docs/README.md) — 总览、模块、集成、数据库、架构决策

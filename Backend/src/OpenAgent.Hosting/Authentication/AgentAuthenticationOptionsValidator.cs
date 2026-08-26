@@ -24,6 +24,15 @@ internal sealed class AgentAuthenticationOptionsValidator(IHostEnvironment? envi
                     "JWT Bearer Authority must be an absolute HTTP(S) URI.");
             }
 
+            if (!string.IsNullOrWhiteSpace(options.MetadataAddress)
+                && (!Uri.TryCreate(options.MetadataAddress, UriKind.Absolute, out Uri? metadataAddress)
+                    || (metadataAddress.Scheme != Uri.UriSchemeHttp
+                        && metadataAddress.Scheme != Uri.UriSchemeHttps)))
+            {
+                return ValidateOptionsResult.Fail(
+                    "JWT Bearer MetadataAddress must be an absolute HTTP(S) URI.");
+            }
+
             if (authority.Scheme != Uri.UriSchemeHttps && authority.Scheme != Uri.UriSchemeHttp)
             {
                 return ValidateOptionsResult.Fail(
@@ -50,6 +59,16 @@ internal sealed class AgentAuthenticationOptionsValidator(IHostEnvironment? envi
             {
                 return ValidateOptionsResult.Fail(
                     "Production JWT metadata must require HTTPS.");
+            }
+
+            if (!string.IsNullOrWhiteSpace(options.MetadataAddress)
+                && environment != null
+                && !environment.IsDevelopment()
+                && Uri.TryCreate(options.MetadataAddress, UriKind.Absolute, out Uri? metadataUri)
+                && metadataUri.Scheme != Uri.UriSchemeHttps)
+            {
+                return ValidateOptionsResult.Fail(
+                    "Production JWT MetadataAddress must use HTTPS.");
             }
         }
 

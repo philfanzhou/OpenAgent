@@ -19,7 +19,6 @@ internal static class AgentAuthenticationExtensions
             .GetSection("Authentication")
             .Get<AgentAuthenticationOptions>() ?? new AgentAuthenticationOptions();
         services.AddOptions<AgentAuthenticationOptions>()
-            .Bind(configuration.GetSection("Authentication"))
             .Validate(
                 value => value.Mode != AgentAuthenticationMode.JwtBearer
                     || (!string.IsNullOrWhiteSpace(value.Authority)
@@ -45,6 +44,10 @@ internal static class AgentAuthenticationExtensions
                 .AddJwtBearer(jwt =>
                 {
                     jwt.Authority = options.Authority;
+                    if (!string.IsNullOrWhiteSpace(options.MetadataAddress))
+                    {
+                        jwt.MetadataAddress = options.MetadataAddress;
+                    }
                     jwt.Audience = options.Audience;
                     jwt.RequireHttpsMetadata = options.RequireHttpsMetadata;
                     jwt.MapInboundClaims = false;
