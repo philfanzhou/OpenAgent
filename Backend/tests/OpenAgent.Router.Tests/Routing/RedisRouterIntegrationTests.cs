@@ -18,12 +18,18 @@ public sealed class RedisRouterCollection : ICollectionFixture<RedisRouterFixtur
 
 public sealed class RedisRouterFixture : IAsyncLifetime
 {
-    private readonly RedisContainer _container = new RedisBuilder("redis:7-alpine").Build();
+    private RedisContainer? _container;
 
     public IConnectionMultiplexer Connection { get; private set; } = null!;
 
     public async Task InitializeAsync()
     {
+        if (!ContainerTestGuard.Enabled)
+        {
+            return;
+        }
+
+        _container = new RedisBuilder("redis:7-alpine").Build();
         await _container.StartAsync().ConfigureAwait(false);
         ConfigurationOptions options = ConfigurationOptions.Parse(_container.GetConnectionString());
         options.AllowAdmin = true;
@@ -32,8 +38,14 @@ public sealed class RedisRouterFixture : IAsyncLifetime
 
     public async Task DisposeAsync()
     {
-        await Connection.DisposeAsync().ConfigureAwait(false);
-        await _container.DisposeAsync().ConfigureAwait(false);
+        if (Connection != null)
+        {
+            await Connection.DisposeAsync().ConfigureAwait(false);
+        }
+        if (_container != null)
+        {
+            await _container.DisposeAsync().ConfigureAwait(false);
+        }
     }
 
     public async Task ResetAsync()
@@ -42,15 +54,18 @@ public sealed class RedisRouterFixture : IAsyncLifetime
         await Connection.GetServer(endpoint).FlushDatabaseAsync().ConfigureAwait(false);
     }
 
-    public string GetConnectionString() => _container.GetConnectionString();
+    public string GetConnectionString() => _container?.GetConnectionString()
+        ?? throw new InvalidOperationException("Container integration tests are disabled.");
 }
 
 [Collection(RedisRouterCollection.Name)]
+[Trait("Category", "Container")]
 public sealed class RedisRouterIntegrationTests(RedisRouterFixture fixture)
 {
-    [Fact]
+    [SkippableFact]
     public async Task RefreshAsync_ScaleAndExpiration_TracksIndexedHealthyEngines()
     {
+        ContainerTestGuard.RequireEnabled();
         await fixture.ResetAsync();
         IDatabase database = fixture.Connection.GetDatabase();
         await WriteEngineAsync(database, Entry("engine-b", 2));
@@ -76,9 +91,10 @@ public sealed class RedisRouterIntegrationTests(RedisRouterFixture fixture)
             indexed.Select(value => value.ToString()).Order(StringComparer.Ordinal));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetTargetEndpoint_IntentLoadAndAffinity_SelectsEligibleEngine()
     {
+        ContainerTestGuard.RequireEnabled();
         await fixture.ResetAsync();
         IDatabase database = fixture.Connection.GetDatabase();
         await WriteEngineAsync(database, Entry("engine-a", 10, ["chat"]));
@@ -104,9 +120,10 @@ public sealed class RedisRouterIntegrationTests(RedisRouterFixture fixture)
         Assert.Equal(affinityFirst, affinitySecond);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetTargetEndpoint_QuarantinedEngines_FallsBackToHealthyThenStatic()
     {
+        ContainerTestGuard.RequireEnabled();
         await fixture.ResetAsync();
         IDatabase database = fixture.Connection.GetDatabase();
         await WriteEngineAsync(database, Entry("engine-a", 0));
@@ -141,9 +158,10 @@ public sealed class RedisRouterIntegrationTests(RedisRouterFixture fixture)
         Assert.Equal("http://static-engine:5208", fallback);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task RefreshAsync_RedisDisconnect_StaticOnlyClearsDynamicSnapshot()
     {
+        ContainerTestGuard.RequireEnabled();
         await fixture.ResetAsync();
         IDatabase database = fixture.Connection.GetDatabase();
         await WriteEngineAsync(database, Entry("engine-a", 0));
@@ -160,9 +178,10 @@ public sealed class RedisRouterIntegrationTests(RedisRouterFixture fixture)
         Assert.False(cache.IsRedisAvailable);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task RefreshAsync_RedisDisconnect_LastKnownExpiresAfterConfiguredAge()
     {
+        ContainerTestGuard.RequireEnabled();
         await fixture.ResetAsync();
         IDatabase database = fixture.Connection.GetDatabase();
         await WriteEngineAsync(database, Entry("engine-a", 0));
@@ -184,9 +203,10 @@ public sealed class RedisRouterIntegrationTests(RedisRouterFixture fixture)
         Assert.Empty(cache.Snapshot);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task AcquireAsync_ConcurrentRequests_EnforcesRedisBurstAtomically()
     {
+        ContainerTestGuard.RequireEnabled();
         await fixture.ResetAsync();
         RateLimitSettings settings = new(0.001, 25, RateLimitFailureMode.FailClosed);
         RedisRateLimiter limiter = new(
@@ -206,9 +226,10 @@ public sealed class RedisRouterIntegrationTests(RedisRouterFixture fixture)
         Assert.All(decisions, decision => Assert.Equal("redis", decision.Source));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task RefreshAsync_PreCancelled_PropagatesCancellation()
     {
+        ContainerTestGuard.RequireEnabled();
         await fixture.ResetAsync();
         EngineRegistrySnapshotCache cache = CreateCache(fixture.Connection);
         using CancellationTokenSource cancellation = new();

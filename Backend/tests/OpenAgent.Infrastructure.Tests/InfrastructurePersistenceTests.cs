@@ -12,17 +12,24 @@ using Xunit;
 
 namespace OpenAgent.Infrastructure.Tests;
 
+[Trait("Category", "Container")]
 public sealed class InfrastructurePersistenceTests : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _database = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithDatabase("openagent_test")
-        .WithUsername("openagent")
-        .WithPassword("openagent")
-        .Build();
+    private PostgreSqlContainer? _database;
     private ServiceProvider? _services;
 
     public async Task InitializeAsync()
     {
+        if (!ContainerTestGuard.Enabled)
+        {
+            return;
+        }
+
+        _database = new PostgreSqlBuilder("postgres:16-alpine")
+            .WithDatabase("openagent_test")
+            .WithUsername("openagent")
+            .WithPassword("openagent")
+            .Build();
         await _database.StartAsync().ConfigureAwait(false);
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
@@ -46,12 +53,16 @@ public sealed class InfrastructurePersistenceTests : IAsyncLifetime
             await _services.DisposeAsync().ConfigureAwait(false);
         }
 
-        await _database.DisposeAsync().ConfigureAwait(false);
+        if (_database != null)
+        {
+            await _database.DisposeAsync().ConfigureAwait(false);
+        }
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ConversationStore_StoresFilesAtConversationAndMessageLevel()
     {
+        ContainerTestGuard.RequireEnabled();
         ServiceProvider services = Assert.IsType<ServiceProvider>(_services);
         using IServiceScope scope = services.CreateScope();
         IFileAssetRepository files = services.GetRequiredService<IFileAssetRepository>();
@@ -118,9 +129,10 @@ public sealed class InfrastructurePersistenceTests : IAsyncLifetime
         Assert.All(messages, message => Assert.Equal([asset.FileId], message.FileIds));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task FileAssetRepository_EnsuresConversationReferencesConcurrently()
     {
+        ContainerTestGuard.RequireEnabled();
         ServiceProvider services = Assert.IsType<ServiceProvider>(_services);
         using IServiceScope scope = services.CreateScope();
         IFileAssetRepository files = services.GetRequiredService<IFileAssetRepository>();
@@ -167,9 +179,10 @@ public sealed class InfrastructurePersistenceTests : IAsyncLifetime
         Assert.Equal(1, referenceCount);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task SkillDefinitionRepository_PersistsTenantScopedObjectStorageSkill()
     {
+        ContainerTestGuard.RequireEnabled();
         ServiceProvider services = Assert.IsType<ServiceProvider>(_services);
         ISkillDefinitionRepository repository = services.GetRequiredService<ISkillDefinitionRepository>();
         var package = new SkillInstanceConfig
@@ -193,9 +206,10 @@ public sealed class InfrastructurePersistenceTests : IAsyncLifetime
         Assert.Null(foreign);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ConversationStore_TokenUsage_RoundTripsProviderCounts()
     {
+        ContainerTestGuard.RequireEnabled();
         ServiceProvider services = Assert.IsType<ServiceProvider>(_services);
         using IServiceScope scope = services.CreateScope();
         IConversationStore conversations = scope.ServiceProvider.GetRequiredService<IConversationStore>();
@@ -243,9 +257,10 @@ public sealed class InfrastructurePersistenceTests : IAsyncLifetime
         Assert.Equal("provider-model", message.ModelId);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ConversationStore_CompressionAudit_RoundTripsWithoutChangingMessages()
     {
+        ContainerTestGuard.RequireEnabled();
         ServiceProvider services = Assert.IsType<ServiceProvider>(_services);
         using IServiceScope scope = services.CreateScope();
         IConversationStore conversations = scope.ServiceProvider.GetRequiredService<IConversationStore>();

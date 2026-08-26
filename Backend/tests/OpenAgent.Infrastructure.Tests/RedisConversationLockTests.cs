@@ -7,13 +7,20 @@ using Xunit;
 
 namespace OpenAgent.Infrastructure.Tests;
 
+[Trait("Category", "Container")]
 public sealed class RedisConversationLockTests : IAsyncLifetime
 {
-    private readonly RedisContainer _redis = new RedisBuilder("redis:7-alpine").Build();
+    private RedisContainer? _redis;
     private IConnectionMultiplexer? _connection;
 
     public async Task InitializeAsync()
     {
+        if (!ContainerTestGuard.Enabled)
+        {
+            return;
+        }
+
+        _redis = new RedisBuilder("redis:7-alpine").Build();
         await _redis.StartAsync().ConfigureAwait(false);
         _connection = await ConnectionMultiplexer.ConnectAsync(_redis.GetConnectionString()).ConfigureAwait(false);
     }
@@ -24,12 +31,16 @@ public sealed class RedisConversationLockTests : IAsyncLifetime
         {
             await _connection.DisposeAsync().ConfigureAwait(false);
         }
-        await _redis.DisposeAsync().ConfigureAwait(false);
+        if (_redis != null)
+        {
+            await _redis.DisposeAsync().ConfigureAwait(false);
+        }
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task SameConversation_IsSerializedAcrossLockInstances()
     {
+        ContainerTestGuard.RequireEnabled();
         IConnectionMultiplexer connection = Assert.IsAssignableFrom<IConnectionMultiplexer>(_connection);
         var firstNode = new RedisConversationLock(connection, NullLogger<RedisConversationLock>.Instance);
         var secondNode = new RedisConversationLock(connection, NullLogger<RedisConversationLock>.Instance);
@@ -48,9 +59,10 @@ public sealed class RedisConversationLockTests : IAsyncLifetime
         Assert.NotNull(afterRelease);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ConversationCache_RoundTripsHotRecord()
     {
+        ContainerTestGuard.RequireEnabled();
         IConnectionMultiplexer connection = Assert.IsAssignableFrom<IConnectionMultiplexer>(_connection);
         var cache = new RedisConversationCache(
             connection,
