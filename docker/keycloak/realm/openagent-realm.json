@@ -1,6 +1,7 @@
 {
   "realm": "openagent",
   "enabled": true,
+  "organizationsEnabled": true,
   "displayName": "OpenAgent Local",
   "sslRequired": "NONE",
   "registrationAllowed": false,
@@ -33,7 +34,8 @@
         "http://localhost:58090"
       ],
       "attributes": {
-        "pkce.code.challenge.method": "S256"
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:58090/*"
       },
       "protocolMappers": [
         {
@@ -105,6 +107,26 @@
       ],
       "realmRoles": [
         "user"
+      ]
+    }
+  ],
+  "organizations": [
+    {
+      "name": "Development Workspace",
+      "alias": "development",
+      "enabled": true,
+      "domains": [
+        {
+          "name": "openagent.local"
+        }
+      ],
+      "attributes": {
+        "tenant_id": ["development"]
+      },
+      "members": [
+        {
+          "username": "demo"
+        }
       ]
     }
   ]

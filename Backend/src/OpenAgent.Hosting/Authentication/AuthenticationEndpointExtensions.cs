@@ -23,6 +23,14 @@ public static class AuthenticationEndpointExtensions
         {
             mode = options.Mode.ToString(),
             development = environment.IsDevelopment(),
+            domainLogin = new
+            {
+                enabled = options.EnableDomainLogin
+            },
+            tenant = new
+            {
+                enabled = options.EnableTenant
+            },
             password = new
             {
                 enabled = environment.IsDevelopment() && options.Mode == AgentAuthenticationMode.Basic,

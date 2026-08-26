@@ -1,7 +1,9 @@
 using System.Security.Claims;
+using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Hosting.Security;
+using OpenAgent.Hosting.Authentication;
 using OpenAgent.Router.Observability;
 
 namespace OpenAgent.Router.Security;
@@ -10,14 +12,17 @@ public class JwtUserContextMiddleware
 {
     private readonly RequestDelegate _next;
     private readonly ILogger<JwtUserContextMiddleware> _logger;
+    private readonly bool _tenantEnabled;
 
     public JwtUserContextMiddleware(
         RequestDelegate next,
         ILogger<JwtUserContextMiddleware> logger,
-        IHostEnvironment environment)
+        IHostEnvironment environment,
+        IOptions<AgentAuthenticationOptions> authenticationOptions)
     {
         _next = next;
         _logger = logger;
+        _tenantEnabled = authenticationOptions.Value.EnableTenant;
     }
 
     public async Task InvokeAsync(HttpContext context)
@@ -30,9 +35,12 @@ public class JwtUserContextMiddleware
                 ?? context.User.FindFirst("sub")?.Value
                 ?? "unknown";
 
-            string? tenantId = TenantIdentityResolver.ResolveClaimsOnly(context.User);
+            string? tenantId = _tenantEnabled
+                ? TenantIdentityResolver.ResolveClaimsOnly(context.User)
+                : null;
 
-            if (RequiresTenant(context.Request.Path)
+            if (_tenantEnabled
+                && RequiresTenant(context.Request.Path)
                 && string.IsNullOrWhiteSpace(tenantId))
             {
                 context.Response.StatusCode = StatusCodes.Status400BadRequest;

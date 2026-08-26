@@ -40,6 +40,26 @@ docker compose -p openagent-keycloak \
 
 不要对正在运行的其他 Compose 项目执行 `down -v`。
 
+## 功能开关
+
+认证开关位于 `Authentication` 配置节：
+
+```json
+{
+  "Authentication": {
+    "EnableDomainLogin": true,
+    "EnableTenant": true
+  }
+}
+```
+
+- `EnableDomainLogin` 控制企业账号/OIDC 登录入口。接入真实 AD 时，还需要在 Keycloak 中配置 LDAP/AD User Federation；本地 Realm 没有真实域控，因此只验证开关和登录链路。
+- `EnableTenant` 控制租户 claim 的解析和 Agent/管理接口的租户要求。关闭后仍可认证，但不会强制租户 claim。
+- 本地 Realm 已启用 Keycloak Organization，`demo` 用户属于 `development` 组织；申请 `organization` scope 后，访问令牌会包含 `tenant_id=development` 和 `organization` claim。
+- 邮箱 scope 已默认开启，测试用户邮箱为 `demo@openagent.local`。
+
+退出登录会调用 Keycloak 的 OIDC end-session endpoint，并在下一次登录时发送 `prompt=login`，避免浏览器保留 Keycloak SSO 会话导致“退出后直接进入”。
+
 ## 认证边界
 
 - Keycloak 负责用户、密码、OIDC 登录和 JWT 签发。

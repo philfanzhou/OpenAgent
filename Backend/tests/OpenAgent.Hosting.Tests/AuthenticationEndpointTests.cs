@@ -61,6 +61,8 @@ public class AuthenticationEndpointTests
 
         Assert.Equal("JwtBearer", config.RootElement.GetProperty("mode").GetString());
         Assert.False(config.RootElement.GetProperty("development").GetBoolean());
+        Assert.True(config.RootElement.GetProperty("domainLogin").GetProperty("enabled").GetBoolean());
+        Assert.True(config.RootElement.GetProperty("tenant").GetProperty("enabled").GetBoolean());
         Assert.False(config.RootElement.GetProperty("password").GetProperty("enabled").GetBoolean());
         Assert.Equal("openagent-chat", config.RootElement.GetProperty("oidc").GetProperty("clientId").GetString());
         Assert.Equal(
