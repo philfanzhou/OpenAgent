@@ -192,9 +192,12 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         {
             try
             {
-                FileAssetContent content = await _fileService.ReadAsync(
+                FileAsset? asset = await _fileService.GetReferencedAsync(
                     fileId, scope, cancellationToken).ConfigureAwait(false);
-                AgentMessageAdapter.AttachFile(chatMessage, content);
+                if (asset != null)
+                {
+                    AgentMessageAdapter.AttachFile(chatMessage, asset);
+                }
             }
             catch (OperationCanceledException)
             {

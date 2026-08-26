@@ -89,6 +89,31 @@ internal sealed class FileAssetService : IFileAssetService
         return asset != null && IsOwner(asset, scope) ? asset : null;
     }
 
+    public async Task<FileAsset?> GetReferencedAsync(
+        string fileId,
+        FileAssetScope scope,
+        CancellationToken cancellationToken)
+    {
+        EnsureEnabled();
+        ValidateScope(scope);
+        if (string.IsNullOrWhiteSpace(scope.ConversationId)
+            || string.IsNullOrWhiteSpace(fileId))
+        {
+            return null;
+        }
+
+        FileAsset? asset = await _repository.GetAsync(fileId, cancellationToken).ConfigureAwait(false);
+        if (asset == null
+            || !IsOwner(asset, scope)
+            || asset.State != FileAssetState.Ready
+            || !await IsReferencedAsync(asset, scope, cancellationToken).ConfigureAwait(false))
+        {
+            return null;
+        }
+
+        return asset;
+    }
+
     public async Task<IReadOnlyList<FileAsset>> ListAsync(
         FileAssetScope scope,
         CancellationToken cancellationToken)

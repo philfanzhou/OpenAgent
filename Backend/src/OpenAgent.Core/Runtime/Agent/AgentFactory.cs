@@ -41,7 +41,7 @@ internal sealed class AgentFactory
         AgentRuntimeProfile profile,
         AgentRequest request,
         IAgentUserContext user,
-        IReadOnlyList<FileAssetContent> files,
+        IReadOnlyList<FileAsset> files,
         CancellationToken cancellationToken)
     {
         IChatClient modelClient = _chatClients.Create(profile.Model);

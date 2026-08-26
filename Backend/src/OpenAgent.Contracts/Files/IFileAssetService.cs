@@ -14,6 +14,14 @@ public interface IFileAssetService
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// 获取当前会话已引用且可用的文件元数据，不读取对象存储内容。
+    /// </summary>
+    Task<FileAsset?> GetReferencedAsync(
+        string fileId,
+        FileAssetScope scope,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// 列出当前会话引用的文件资产。只返回当前租户和用户拥有的资产。
     /// </summary>
     Task<IReadOnlyList<FileAsset>> ListAsync(

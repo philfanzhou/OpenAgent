@@ -67,6 +67,26 @@ public class FileAssetServiceTests
         Assert.Equal(0, objects.ReadCount);
     }
 
+    [Fact]
+    public async Task GetReferencedAsync_ReturnsMetadataWithoutReadingObject()
+    {
+        var repository = new RecordingFileAssetRepository();
+        var objects = new RecordingFileObjectStore { Content = [1, 2, 3] };
+        FileAsset asset = CreateAsset("notes.md", "text/markdown");
+        repository.Assets[asset.FileId] = asset;
+        repository.References.Add($"conversation-a:{asset.FileId}");
+        IFileAssetService service = CreateService(repository, objects);
+
+        FileAsset? result = await service.GetReferencedAsync(
+            asset.FileId,
+            Scope("conversation-a"),
+            CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Equal(asset.FileId, result.FileId);
+        Assert.Equal(0, objects.ReadCount);
+    }
+
     [Theory]
     [InlineData("tenant-b", "user-a")]
     [InlineData("tenant-a", "user-b")]

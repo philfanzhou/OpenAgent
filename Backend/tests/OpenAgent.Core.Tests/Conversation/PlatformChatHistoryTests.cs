@@ -34,7 +34,6 @@ public sealed class PlatformChatHistoryTests
         };
         repository.Assets[asset.FileId] = asset;
         repository.References.Add("conversation-a:assistant-file");
-        objects.ContentsByKey[asset.ObjectKey] = "# Report"u8.ToArray();
         var service = new FileAssetService(
             repository,
             objects,
@@ -74,6 +73,10 @@ public sealed class PlatformChatHistoryTests
         ChatMessage message = Assert.Single(restored);
         Assert.Contains(
             message.Contents.OfType<TextContent>(),
+            content => content.Text.Contains("fileId=assistant-file", StringComparison.Ordinal));
+        Assert.DoesNotContain(
+            message.Contents.OfType<TextContent>(),
             content => content.Text.Contains("# Report", StringComparison.Ordinal));
+        Assert.Equal(0, objects.ReadCount);
     }
 }

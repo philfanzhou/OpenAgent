@@ -63,7 +63,7 @@ internal sealed class ConversationHistoryFactory
         string modelId,
         AgentRequest request,
         IAgentUserContext user,
-        IReadOnlyList<FileAssetContent> files)
+        IReadOnlyList<FileAsset> files)
     {
         ConversationContext context = new(
             request.ConversationId,
@@ -77,7 +77,7 @@ internal sealed class ConversationHistoryFactory
             agentId,
             modelId,
             request.Query,
-            files.Select(item => item.Asset).ToList().AsReadOnly(),
+            files.ToList().AsReadOnly(),
             _fileExecution,
             _conversationLock,
             _store,
