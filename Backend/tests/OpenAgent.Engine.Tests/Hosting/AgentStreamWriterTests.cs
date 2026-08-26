@@ -58,6 +58,29 @@ public class AgentStreamWriterTests
         Assert.Contains("\"done\":true,\"usage\":null", payload, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task WriteSseStreamAsync_ToolResult_WritesItBeforeDoneEvent()
+    {
+        var context = new DefaultHttpContext();
+        context.Response.Body = new MemoryStream();
+
+        await AgentStreamWriter.WriteSseStreamAsync(
+            context,
+            ToolResultEvents(),
+            "trace-1",
+            "conversation-1",
+            NullLogger.Instance,
+            CancellationToken.None);
+
+        string payload = await ReadBodyAsync(context);
+        int resultIndex = payload.IndexOf("event: tool_result", StringComparison.Ordinal);
+        int doneIndex = payload.IndexOf("event: done", StringComparison.Ordinal);
+        Assert.True(resultIndex >= 0);
+        Assert.True(doneIndex > resultIndex);
+        Assert.Contains("\"toolCallId\":\"call-1\"", payload, StringComparison.Ordinal);
+        Assert.Contains("\"toolResult\":\"created\"", payload, StringComparison.Ordinal);
+    }
+
     private static async IAsyncEnumerable<AgentStreamEvent> Events(
         TokenUsage? usage,
         string modelId)
@@ -73,6 +96,23 @@ public class AgentStreamWriterTests
             Type = AgentStreamEventType.Usage,
             Usage = usage,
             ModelId = modelId
+        };
+    }
+
+    private static async IAsyncEnumerable<AgentStreamEvent> ToolResultEvents()
+    {
+        yield return new AgentStreamEvent
+        {
+            Type = AgentStreamEventType.ToolResult,
+            ToolName = "write_file",
+            ToolCallId = "call-1",
+            ToolResult = "created"
+        };
+        await Task.Yield();
+        yield return new AgentStreamEvent
+        {
+            Type = AgentStreamEventType.Usage,
+            ModelId = "provider-model"
         };
     }
 

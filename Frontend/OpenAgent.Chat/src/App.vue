@@ -876,14 +876,20 @@ async function send(): Promise<void> {
         }
       } else if (event.type === 'tool_call') {
         markAssistantPhaseBoundary(assistantContentState)
-        assistantMessage.toolActivities ||= []
+        flushStream?.()
         const tool = {
           name: event.toolName || '工具',
           callId: event.toolCallId,
           arguments: event.toolArguments,
         }
-        assistantMessage.toolActivities.push(tool)
         appendStreamingTool(assistantMessage, tool)
+      } else if (event.type === 'tool_result') {
+        flushStream?.()
+        appendStreamingTool(assistantMessage, {
+          name: event.toolName || '工具',
+          callId: event.toolCallId,
+          result: event.toolResult || '',
+        })
       } else if (event.type === 'done') {
         flushStream?.()
         receivedDone = true

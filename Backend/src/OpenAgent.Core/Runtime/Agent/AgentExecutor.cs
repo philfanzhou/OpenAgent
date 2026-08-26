@@ -133,6 +133,7 @@ public sealed class AgentExecutor
             executionRequest.Query,
             resolvedFiles.Files);
         HashSet<string> announcedToolCalls = new(StringComparer.Ordinal);
+        Dictionary<string, string> toolNames = new(StringComparer.Ordinal);
         TokenUsage? usage = null;
         string modelId = profile.Model.ModelId;
         IAsyncEnumerable<AgentResponseUpdate> updates = scope.Agent.RunStreamingAsync(
@@ -151,6 +152,10 @@ public sealed class AgentExecutor
                 }
 
                 string key = string.IsNullOrWhiteSpace(call.CallId) ? call.Name : call.CallId;
+                if (!string.IsNullOrWhiteSpace(call.CallId))
+                {
+                    toolNames[call.CallId] = call.Name;
+                }
                 if (announcedToolCalls.Add(key))
                 {
                     yield return new AgentStreamEvent
@@ -161,6 +166,19 @@ public sealed class AgentExecutor
                         ToolArguments = call.Arguments
                     };
                 }
+            }
+
+            foreach (FunctionResultContent result in contents.OfType<FunctionResultContent>())
+            {
+                yield return new AgentStreamEvent
+                {
+                    Type = AgentStreamEventType.ToolResult,
+                    ToolName = !string.IsNullOrWhiteSpace(result.CallId)
+                        ? toolNames.GetValueOrDefault(result.CallId)
+                        : null,
+                    ToolCallId = result.CallId,
+                    ToolResult = result.Exception?.Message ?? result.Result?.ToString() ?? string.Empty
+                };
             }
 
             foreach (TextReasoningContent reasoning in contents.OfType<TextReasoningContent>())

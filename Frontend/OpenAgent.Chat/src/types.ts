@@ -267,6 +267,7 @@ export interface StreamEvent {
   toolName?: string
   toolCallId?: string
   toolArguments?: unknown
+  toolResult?: string
   conversationId?: string
   error?: { title?: string; detail?: string; traceId?: string }
   usage?: TokenUsage | null

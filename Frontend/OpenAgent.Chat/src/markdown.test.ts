@@ -10,13 +10,15 @@ describe('message presentation', () => {
     appendStreamingReasoning(message, 'first ')
     appendStreamingReasoning(message, 'thought')
     appendStreamingTool(message, { name: 'search', callId: 'call-1' })
+    appendStreamingTool(message, { name: 'search', callId: 'call-1', result: 'found' })
     appendStreamingReasoning(message, 'second thought')
 
     expect(message.processActivities).toEqual([
       { kind: 'reasoning', content: 'first thought' },
-      { kind: 'tool', tool: { name: 'search', callId: 'call-1' } },
+      { kind: 'tool', tool: { name: 'search', callId: 'call-1', result: 'found' } },
       { kind: 'reasoning', content: 'second thought' },
     ])
+    expect(message.toolActivities).toEqual([{ name: 'search', callId: 'call-1', result: 'found' }])
   })
 
   it('renders common markdown while escaping raw HTML', () => {

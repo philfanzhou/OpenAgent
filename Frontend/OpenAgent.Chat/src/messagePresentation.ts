@@ -176,6 +176,7 @@ export function appendStreamingReasoning(message: ConversationMessage, content: 
 
 /** Keep live tool calls in the same ordered process trace as streamed reasoning. */
 export function appendStreamingTool(message: ConversationMessage, tool: ToolActivity): void {
+  message.toolActivities = mergeToolActivity(message.toolActivities, tool)
   message.processActivities = mergeToolProcess(message.processActivities, tool)
 }
 

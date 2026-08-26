@@ -177,6 +177,9 @@ describe('workspace API', () => {
       'event: tool_call',
       'data: {"toolName":"write_file","toolCallId":"call-1","toolArguments":{"path":"report.md"}}',
       '',
+      'event: tool_result',
+      'data: {"toolName":"write_file","toolCallId":"call-1","toolResult":"created"}',
+      '',
       'event: error',
       'data: {"title":"Execution failed","detail":"Tool unavailable","traceId":"trace-1"}',
       '',
@@ -191,6 +194,7 @@ describe('workspace API', () => {
 
     expect(events).toEqual([
       { type: 'tool_call', toolName: 'write_file', toolCallId: 'call-1', toolArguments: { path: 'report.md' } },
+      { type: 'tool_result', toolName: 'write_file', toolCallId: 'call-1', toolResult: 'created' },
       { type: 'error', error: { title: 'Execution failed', detail: 'Tool unavailable', traceId: 'trace-1' } },
     ])
   })
