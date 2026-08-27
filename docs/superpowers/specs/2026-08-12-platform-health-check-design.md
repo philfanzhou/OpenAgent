@@ -103,7 +103,7 @@ src/OpenAgent.Infrastructure/
 - 只移动文件路径，**不改任何命名空间** → `Migrations/` 快照与 Designer 里的实体类型名字符串无需改动。
 - `Entities/` 保持在根（与 `.Entities` 命名空间一致），实体是共享数据模型，不按功能拆分。
 - `ServiceCollectionExtensions.cs` 留在根命名空间，`Engine.Host/Program.cs` 的 `using OpenAgent.Infrastructure;` 不受影响。
-- 验证：`dotnet build Backend/OpenAgent.sln` + `dotnet test`（Infrastructure.Tests 需要 Docker/Testcontainers；Architecture.Tests 不依赖文件夹）。
+- 验证：`dotnet build Backend/OpenAgent.sln` + `dotnet test`；当前测试不依赖 Docker 或外部基础设施容器。
 
 ## 三、前端改动
 

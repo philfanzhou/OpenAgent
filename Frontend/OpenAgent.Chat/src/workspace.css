@@ -392,7 +392,7 @@ html[data-theme='dark'] .route-strip { background: #1f1f1f; }
 /* ---------- Messages ---------- */
 .messages {
   width: 100%;
-  height: auto;
+  height: 100%;
   min-height: 0 !important;
   padding: 20px 14px;
   overflow: hidden;
@@ -403,6 +403,7 @@ html[data-theme='dark'] .route-strip { background: #1f1f1f; }
 }
 .messages .el-scrollbar__wrap,
 .messages-wrap { overflow-x: hidden !important; }
+.messages .el-scrollbar__wrap { height: 100%; overflow-y: auto; }
 
 .welcome {
   display: flex;

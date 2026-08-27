@@ -1,9 +1,26 @@
 import { describe, expect, it } from 'vitest'
 import { renderMarkdown } from './markdown'
-import { buildConversationTimeline, buildDisplayMessages, fileLabel, formatFileSize, mergeAssistantSnapshot, parseToolArguments, toolPresentation } from './messagePresentation'
+import { appendStreamingReasoning, appendStreamingTool, buildConversationTimeline, buildDisplayMessages, fileLabel, formatFileSize, mergeAssistantSnapshot, parseToolArguments, toolPresentation } from './messagePresentation'
 import type { ContextSummary, ConversationMessage } from './types'
 
 describe('message presentation', () => {
+  it('keeps live reasoning split around an interleaved tool call', () => {
+    const message: ConversationMessage = { messageId: 'stream', sequence: 1, role: 'assistant', content: '', timestamp: '' }
+
+    appendStreamingReasoning(message, 'first ')
+    appendStreamingReasoning(message, 'thought')
+    appendStreamingTool(message, { name: 'search', callId: 'call-1' })
+    appendStreamingTool(message, { name: 'search', callId: 'call-1', result: 'found' })
+    appendStreamingReasoning(message, 'second thought')
+
+    expect(message.processActivities).toEqual([
+      { kind: 'reasoning', content: 'first thought' },
+      { kind: 'tool', tool: { name: 'search', callId: 'call-1', result: 'found' } },
+      { kind: 'reasoning', content: 'second thought' },
+    ])
+    expect(message.toolActivities).toEqual([{ name: 'search', callId: 'call-1', result: 'found' }])
+  })
+
   it('renders common markdown while escaping raw HTML', () => {
     const html = renderMarkdown('# Result\n\n- **ready**\n\n```ts\nconst ok = true\n```\n\n<script>alert(1)</script>')
 

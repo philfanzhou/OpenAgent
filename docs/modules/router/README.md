@@ -38,4 +38,4 @@ Router 使用 Redis Engine 注册索引发现动态实例，并以静态 `Router
 
 ## 验证
 
-`Backend/tests/OpenAgent.Router.Tests/Routing/RedisRouterIntegrationTests.cs` 使用 Testcontainers Redis 覆盖扩缩容、心跳过期、选择、亲和、回退与并发限流；`Runtime/EngineReadinessProbeTests.cs` 使用真实 TCP 下游验证 ready 探测。
+Router 测试不依赖真实 Redis；限流失败/降级路径使用 mock，Engine readiness 使用进程内 TCP 测试下游验证。

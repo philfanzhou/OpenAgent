@@ -12,7 +12,8 @@ namespace OpenAgent.Core.Files;
 internal sealed class FileAssetCapabilitySource(
     IFileAssetService files,
     FileAssetExecutionContext executionContext,
-    IOptions<FileAssetOptions> options) : ICapabilitySource
+    IOptions<FileAssetOptions> options,
+    FileAssetUrlDownloader downloader) : ICapabilitySource
 {
     public Task<IReadOnlyList<CapabilityDefinition>> DiscoverAsync(
         string agentId,
@@ -25,7 +26,7 @@ internal sealed class FileAssetCapabilitySource(
             return Task.FromResult<IReadOnlyList<CapabilityDefinition>>([]);
         }
 
-        IReadOnlyList<CapabilityDefinition> definitions =
+        List<CapabilityDefinition> definitions =
         [
             new CapabilityDefinition(
                 "read_file",
@@ -82,7 +83,17 @@ internal sealed class FileAssetCapabilitySource(
                 "file-assets",
                 PublishAsync)
         ];
-        return Task.FromResult(definitions);
+        if (!string.IsNullOrWhiteSpace(executionContext.Scope.ConversationId))
+        {
+            definitions.Add(new CapabilityDefinition(
+                "download_file",
+                "Download a public HTTP(S) file into the current conversation's file storage and return its fileId.",
+                """{"type":"object","properties":{"url":{"type":"string","description":"The public HTTP(S) URL of the file to download."}},"required":["url"],"additionalProperties":false}""",
+                AgentResourceType.Tool,
+                "file-assets",
+                DownloadAsync));
+        }
+        return Task.FromResult<IReadOnlyList<CapabilityDefinition>>(definitions);
     }
 
     private async Task<string> ReadAsync(
@@ -239,6 +250,63 @@ internal sealed class FileAssetCapabilitySource(
         {
             // 类型/大小等校验失败：返回净化后的错误文本，供模型修正后重试，不把原始异常泄露给模型。
             return $"文件写入失败：{exception.Message}";
+        }
+    }
+
+    private async Task<string> DownloadAsync(
+        IReadOnlyDictionary<string, object?> arguments,
+        CancellationToken cancellationToken)
+    {
+        string? url = ReadString(arguments, "url");
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            return "文件下载失败：'url' 是必填参数，请提供公开的 HTTP(S) 文件地址后重试。";
+        }
+        FileAssetScope? scope = executionContext.Scope;
+        if (scope == null || string.IsNullOrWhiteSpace(scope.ConversationId))
+        {
+            return "文件下载失败：当前请求没有可绑定的会话。";
+        }
+
+        try
+        {
+            DownloadedFile downloaded = await downloader.DownloadAsync(url, cancellationToken).ConfigureAwait(false);
+            await using var input = new MemoryStream(downloaded.Content, writable: false);
+            FileAsset asset = await files.UploadAsync(
+                new FileAssetCreateRequest
+                {
+                    FileName = downloaded.FileName,
+                    MediaType = downloaded.MediaType,
+                    Source = FileAssetSource.Agent
+                },
+                input,
+                scope,
+                cancellationToken).ConfigureAwait(false);
+            await files.EnsureReferencesAsync([asset.FileId], scope, cancellationToken).ConfigureAwait(false);
+            return JsonSerializer.Serialize(new
+            {
+                fileId = asset.FileId,
+                fileName = asset.FileName,
+                mediaType = asset.MediaType,
+                length = asset.Length,
+                source = "download"
+            });
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (OpenAgent.Contracts.Security.AgentException exception)
+        {
+            return $"文件下载失败：{exception.Message}";
+        }
+        catch (HttpRequestException)
+        {
+            return "文件下载失败：远程地址不可访问。";
+        }
+        catch (TaskCanceledException)
+        {
+            return "文件下载失败：远程地址响应超时。";
         }
     }
 

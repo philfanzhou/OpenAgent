@@ -162,6 +162,25 @@ function mergeToolIntoAssistant(message: ConversationMessage, tool: ToolActivity
   message.processActivities = mergeToolProcess(message.processActivities, tool)
 }
 
+/** Append live stream phases without waiting for the persisted conversation snapshot. */
+export function appendStreamingReasoning(message: ConversationMessage, content: string): void {
+  if (!content) return
+  const activities = message.processActivities || []
+  const last = activities[activities.length - 1]
+  if (last?.kind === 'reasoning') {
+    last.content += content
+  } else {
+    activities.push({ kind: 'reasoning', content })
+  }
+  message.processActivities = activities
+}
+
+/** Keep live tool calls in the same ordered process trace as streamed reasoning. */
+export function appendStreamingTool(message: ConversationMessage, tool: ToolActivity): void {
+  message.toolActivities = mergeToolActivity(message.toolActivities, tool)
+  message.processActivities = mergeToolProcess(message.processActivities, tool)
+}
+
 function appendReasoningProcess(
   current: ProcessActivity[] | undefined,
   content: string,

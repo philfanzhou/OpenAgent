@@ -1,7 +1,7 @@
 import { ref, type ComputedRef, type Ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { api, makeLocalConversation } from '../api'
-import { mergeAssistantSnapshot } from '../messagePresentation'
+import { appendStreamingReasoning, appendStreamingTool, mergeAssistantSnapshot } from '../messagePresentation'
 import { createStreamingAssistantContentState, enqueueAssistantContent, markAssistantPhaseBoundary } from '../streamingAssistantContent'
 import { createTypewriterQueue, type TypewriterQueue } from '../typewriterQueue'
 import { AUTO_AGENT_ID, type AgentSummary, type ConversationMessage, type ConversationRecord, type PendingFile } from '../types'
@@ -142,25 +142,28 @@ export function useChatStreaming(options: ChatStreamingOptions) {
         } else if (event.type === 'content') {
           enqueueAssistantContent(assistantContentState, content => contentQueue?.enqueue(content), event.content || '')
         } else if (event.type === 'reasoning') {
-          reasoning += event.content || ''
+          const reasoningContent = event.content || ''
+          reasoning += reasoningContent
+          appendStreamingReasoning(assistantMessage, reasoningContent)
           if (performance.now() - lastFlush > 100) {
             assistantMessage.reasoning = reasoning
             lastFlush = performance.now()
           }
         } else if (event.type === 'tool_call') {
           markAssistantPhaseBoundary(assistantContentState)
-          assistantMessage.toolActivities ||= []
-          assistantMessage.toolActivities.push({
+          appendStreamingTool(assistantMessage, {
             name: event.toolName || '工具',
             callId: event.toolCallId,
             arguments: event.toolArguments,
           })
         } else if (event.type === 'tool_result') {
           // 工具结果随流即时回填到对应调用行，无需等整轮结束重载历史。
-          const tools = assistantMessage.toolActivities ||= []
-          const tool = tools.find(item => item.callId && item.callId === event.toolCallId)
-          if (tool) tool.result = event.content ?? ''
-          else tools.push({ name: '工具', callId: event.toolCallId, result: event.content ?? '' })
+          const tool = assistantMessage.toolActivities?.find(item => item.callId === event.toolCallId)
+          appendStreamingTool(assistantMessage, {
+            name: tool?.name || '工具',
+            callId: event.toolCallId,
+            result: event.content ?? '',
+          })
         } else if (event.type === 'done') {
           flushStream?.()
           receivedDone = true

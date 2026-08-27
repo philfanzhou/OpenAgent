@@ -8,12 +8,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Testcontainers.PostgreSql" />
-    <PackageReference Include="Testcontainers.Redis" />
-    <PackageReference Include="Microsoft.Extensions.Configuration" />
-  </ItemGroup>
-
-  <ItemGroup>
     <ProjectReference Include="..\..\src\OpenAgent.Infrastructure\OpenAgent.Infrastructure.csproj" />
   </ItemGroup>
 

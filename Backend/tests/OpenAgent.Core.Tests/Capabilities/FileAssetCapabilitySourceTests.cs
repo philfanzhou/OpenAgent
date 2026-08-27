@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Configuration;
@@ -40,7 +41,7 @@ public class FileAssetCapabilitySourceTests
 
         IReadOnlyList<CapabilityDefinition> definitions = await DiscoverAsync(source);
 
-        string[] names = ["read_file", "create_file_transfer_url", "list_files", "write_file", "compress_files", "publish_files"];
+        string[] names = ["read_file", "create_file_transfer_url", "list_files", "write_file", "compress_files", "publish_files", "download_file"];
         Assert.Equal(names, definitions.Select(definition => definition.Name).ToArray());
     }
 
@@ -398,7 +399,11 @@ public class FileAssetCapabilitySourceTests
         return new TestHarness(repository, objects, context, new FileAssetCapabilitySource(
             service,
             context,
-            Options.Create(effective)));
+            Options.Create(effective),
+            new FileAssetUrlDownloader(
+                new StubHttpClientFactory(new HttpClient(new StubHandler())),
+                Options.Create(effective),
+                (_, _) => Task.FromResult(new[] { IPAddress.Parse("93.184.216.34") }))));
     }
 
     private sealed record TestHarness(
@@ -406,4 +411,17 @@ public class FileAssetCapabilitySourceTests
         RecordingFileObjectStore Objects,
         FileAssetExecutionContext Context,
         FileAssetCapabilitySource Source);
+
+    private sealed class StubHttpClientFactory(HttpClient client) : IHttpClientFactory
+    {
+        public HttpClient CreateClient(string name) => client;
+    }
+
+    private sealed class StubHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("The capability discovery test must not send a request.");
+    }
 }
