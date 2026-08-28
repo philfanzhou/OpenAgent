@@ -29,18 +29,53 @@ dotnet build Backend/OpenAgent.sln
 dotnet test Backend/OpenAgent.sln
 ```
 
-## Docker 本地全栈
+## Docker 本地部署
+
+基础设施和实际代码镜像分开部署。基础设施 Compose 同时包含 PostgreSQL、Redis、MinIO 和 Keycloak；它只需要首次启动或基础设施变更时操作，数据卷不会随着应用镜像重复构建而被重建：
 
 ```bash
-docker compose up --build
+docker compose -p openagent-infrastructure \
+  -f docker-compose.storage.yml \
+  up -d
+
+OPENAGENT_INFRA_NETWORK=openagent-infrastructure \
+docker compose -p openagent-app \
+  -f docker-compose.yml \
+  up --build -d
 ```
 
 启动后访问 `http://localhost:8080`。工作台默认使用 Router `http://localhost:5001`、直连
-Engine `http://localhost:5208`、租户 `development`；Compose 同时启动 PostgreSQL、Redis 和 MinIO。
-服务间使用 Docker DNS 地址（例如 Router -> `http://engine:5208`），浏览器仍使用上述 localhost
-地址。端口可通过 `OPENAGENT_*_PORT` 环境变量覆盖。Compose 不包含任何模型凭据或已发布 Agent；首次
-执行聊天前，请先在登录页使用任意非空账号密码建立 Development 身份，再在工作台设置中创建 LLM
-Provider 并绑定 Agent。该兼容登录不校验真实密码，仅适合本地联调，不应直接暴露到公网。
+Engine `http://localhost:5208`、租户 `development`。服务间通过共享 Docker 网络访问 PostgreSQL、
+Redis、MinIO 和其他应用服务；浏览器仍使用 localhost 地址。端口可通过 `OPENAGENT_*_PORT` 环境变量覆盖。
+Compose 不包含任何模型凭据或已发布 Agent；首次执行聊天前，请先在登录页使用任意非空账号密码建立
+Development 身份，再在工作台设置中创建 LLM Provider 并绑定 Agent。该兼容登录不校验真实密码，仅适合
+本地联调，不应直接暴露到公网。
+
+重复部署实际代码时，只执行应用 Compose：
+
+```bash
+OPENAGENT_INFRA_NETWORK=openagent-infrastructure \
+docker compose -p openagent-app \
+  -f docker-compose.yml \
+  up --build -d
+```
+
+如需停止应用，不会删除基础设施数据：
+
+```bash
+docker compose -p openagent-app -f docker-compose.yml down
+```
+
+如需清理本地基础设施及其数据卷，必须明确执行：
+
+```bash
+docker compose -p openagent-infrastructure \
+  -f docker-compose.storage.yml \
+  down -v
+```
+
+需要验证真实 OIDC 登录时，基础设施 Compose 会导入本地 Realm、SPA Client 和租户 Claim Mapper；
+用户与租户组织需要在 Keycloak 管理台中手动创建，详细命令参见 [Keycloak 本地认证集成](docs/integrations/keycloak/README.md)。
 
 默认使用 Compose 内置的 MinIO（bucket `openagent-files`）。接入外部 S3/MinIO 时，可覆盖
 `OPENAGENT_S3_SERVICE_URL`、`OPENAGENT_S3_BUCKET`、`OPENAGENT_S3_ACCESS_KEY`、

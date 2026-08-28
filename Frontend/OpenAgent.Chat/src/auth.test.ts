@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { getAccessToken, setConnectionMode, setRouterBaseUrl } from './api'
-import { beginOidcLogin, clearAuthState, completeOidcLogin, sanitizeReturnHash, WORKSPACE_HASH } from './auth'
+import { beginOidcLogin, buildOidcLogoutUrl, clearAuthState, completeOidcLogin, markReauthenticationRequired, sanitizeReturnHash, WORKSPACE_HASH } from './auth'
 import type { AuthConfig } from './types'
 
 class MemoryStorage implements Storage {
@@ -57,6 +57,7 @@ describe('authentication flow', () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({
         authorization_endpoint: 'https://idp.example/authorize',
         token_endpoint: 'https://idp.example/token',
+        end_session_endpoint: 'https://idp.example/logout',
       }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({
         authorization_endpoint: 'https://idp.example/authorize',
@@ -64,6 +65,7 @@ describe('authentication flow', () => {
       }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({
         access_token: 'verified-access-token',
+        id_token: 'verified-id-token',
         refresh_token: 'ignored-refresh-token',
         token_type: 'Bearer',
         expires_in: 300,
@@ -84,6 +86,7 @@ describe('authentication flow', () => {
 
     expect(returnHash).toBe('#/conversation/123')
     expect(getAccessToken()).toBe('verified-access-token')
+    expect(sessionStorage.getItem('openagent.auth.oidc-id-token')).toBe('verified-id-token')
     expect(localStorage.getItem('openagent.auth.access-token')).toBeNull()
     expect(sessionStorage.getItem('openagent.auth.refresh-token')).toBeNull()
     const tokenRequest = fetchMock.mock.calls[2]?.[1] as RequestInit
@@ -116,10 +119,38 @@ describe('authentication flow', () => {
 
   it('clears tokens and transient login state on logout', () => {
     sessionStorage.setItem('openagent.auth.access-token', 'secret')
+    sessionStorage.setItem('openagent.auth.oidc-id-token', 'id-token')
     sessionStorage.setItem('openagent.auth.oidc-state', 'state')
     sessionStorage.setItem('openagent.auth.pkce-verifier', 'verifier')
     clearAuthState()
 
     expect(sessionStorage.length).toBe(0)
+  })
+
+  it('builds provider logout and forces a fresh login after logout', async () => {
+    let assignedUrl = ''
+    vi.stubGlobal('window', {
+      location: {
+        origin: 'https://chat.example',
+        pathname: '/',
+        assign: (value: string) => { assignedUrl = value },
+      },
+    })
+    sessionStorage.setItem('openagent.auth.oidc-id-token', 'id-token')
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify({
+      authorization_endpoint: 'https://idp.example/authorize',
+      token_endpoint: 'https://idp.example/token',
+      end_session_endpoint: 'https://idp.example/logout',
+    }), { status: 200 }))))
+
+    const logoutUrl = await buildOidcLogoutUrl(config)
+    const logout = new URL(logoutUrl || '')
+    expect(logout.searchParams.get('id_token_hint')).toBe('id-token')
+    expect(logout.searchParams.get('client_id')).toBe('openagent-chat')
+    expect(logout.searchParams.get('post_logout_redirect_uri')).toBe('https://chat.example/#/login')
+
+    markReauthenticationRequired()
+    await beginOidcLogin(config)
+    expect(new URL(assignedUrl).searchParams.get('prompt')).toBe('login')
   })
 })

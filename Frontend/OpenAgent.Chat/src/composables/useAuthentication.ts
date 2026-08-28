@@ -18,10 +18,12 @@ import {
 } from '../api'
 import {
   beginOidcLogin,
+  buildOidcLogoutUrl,
   cleanAuthorizationCallbackUrl,
   clearAuthState,
   completeOidcLogin,
   LOGIN_HASH,
+  markReauthenticationRequired,
   sanitizeReturnHash,
   WORKSPACE_HASH,
 } from '../auth'
@@ -209,13 +211,27 @@ export function useAuthentication(options: AuthenticationOptions) {
 
   async function logout(): Promise<void> {
     await options.cancelStreams('logout')
+    let oidcLogoutUrl: string | null = null
+    if (authConfig.value?.mode === 'JwtBearer') {
+      try {
+        oidcLogoutUrl = await buildOidcLogoutUrl(authConfig.value)
+      } catch {
+        // Local cleanup and prompt=login still protect the next login when
+        // the identity provider's logout metadata is unavailable.
+      }
+    }
     clearAuthState()
+    markReauthenticationRequired()
     authConfig.value = null
     authError.value = ''
     token.value = ''
     options.currentUser.value = null
     statusText.value = '未连接'
     showLogin('你已安全退出，当前会话中的敏感信息已清理。')
+    if (oidcLogoutUrl) {
+      window.location.assign(oidcLogoutUrl)
+      return
+    }
     void detectAuthentication(false)
   }
 

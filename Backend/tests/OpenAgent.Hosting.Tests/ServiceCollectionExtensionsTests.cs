@@ -62,6 +62,7 @@ public class ServiceCollectionExtensionsTests
             {
                 ["Authentication:Mode"] = "JwtBearer",
                 ["Authentication:Authority"] = "https://identity.example",
+                ["Authentication:MetadataAddress"] = "http://keycloak:8080/realms/openagent/.well-known/openid-configuration",
                 ["Authentication:Audience"] = "openagent-api",
                 ["Authentication:ClientId"] = "openagent-chat"
             })
@@ -80,6 +81,9 @@ public class ServiceCollectionExtensionsTests
 
         Assert.NotNull(await schemes.GetSchemeAsync("Bearer"));
         Assert.Null(await schemes.GetSchemeAsync("Basic"));
+        Assert.Equal(
+            "http://keycloak:8080/realms/openagent/.well-known/openid-configuration",
+            provider.GetRequiredService<IOptions<AgentAuthenticationOptions>>().Value.MetadataAddress);
     }
 
     [Fact]

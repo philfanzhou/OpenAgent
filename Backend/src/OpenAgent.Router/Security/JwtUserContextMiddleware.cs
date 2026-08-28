@@ -10,7 +10,6 @@ public class JwtUserContextMiddleware
 {
     private readonly RequestDelegate _next;
     private readonly ILogger<JwtUserContextMiddleware> _logger;
-
     public JwtUserContextMiddleware(
         RequestDelegate next,
         ILogger<JwtUserContextMiddleware> logger,

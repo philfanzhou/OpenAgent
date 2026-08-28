@@ -12,3 +12,4 @@
 | MCP Server | 外部工具协议（Model Context Protocol） | [mcp-server/](./mcp-server/) |
 | RAG Service | 知识检索（Qdrant/RagFlow） | [rag-service/](./rag-service/) |
 | Redis（Engine 视角）| 可选注册中心、Pub/Sub 与短生命周期协调 | [redis-engine/](./redis-engine/) |
+| Keycloak | 本地 OIDC/JWT、Realm、SPA Client 与测试用户 | [keycloak/](./keycloak/) |
