@@ -9,7 +9,7 @@ internal sealed class UserProfileCapabilitySource : ICapabilitySource
 {
     private const string Name = "get_current_user_profile";
     private const string Description =
-        "Get the username and email of the current authenticated user. This function takes no arguments and cannot query another user.";
+        "Get the username, email, and tenant of the current authenticated user. This function takes no arguments and cannot query another user.";
     private const string ParametersJsonSchema =
         """{"type":"object","properties":{},"additionalProperties":false}""";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -45,7 +45,8 @@ internal sealed class UserProfileCapabilitySource : ICapabilitySource
                 "username",
                 "name",
                 ClaimTypes.Name),
-            Email = ReadClaim(user.Claims, "email", ClaimTypes.Email)
+            Email = ReadClaim(user.Claims, "email", ClaimTypes.Email),
+            TenantId = user.TenantId
         };
         return JsonSerializer.Serialize(profile, JsonOptions);
     }

@@ -2,7 +2,7 @@
   "realm": "openagent",
   "enabled": true,
   "organizationsEnabled": true,
-  "displayName": "OpenAgent Local",
+  "displayName": "OpenAgent",
   "sslRequired": "NONE",
   "registrationAllowed": false,
   "resetPasswordAllowed": true,
@@ -12,7 +12,7 @@
     "realm": [
       {
         "name": "user",
-        "description": "Local OpenAgent user"
+        "description": "OpenAgent user"
       }
     ]
   },
@@ -26,10 +26,12 @@
       "standardFlowEnabled": true,
       "redirectUris": [
         "http://localhost:8080/*",
+        "http://localhost:8090/*",
         "http://localhost:58090/*"
       ],
       "webOrigins": [
         "http://localhost:8080",
+        "http://localhost:8090",
         "http://localhost:58090"
       ],
       "attributes": {
