@@ -1,6 +1,7 @@
 import { computed, ref, shallowReactive, type Ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '../api'
+import { randomUuid } from '../browserCrypto'
 import { mergeConversationRecords, replaceConversationRecord, selectionMatchesConversation } from '../conversationCollection'
 import { summarizeConversationUsage } from '../tokenUsage'
 import type { ConversationRecord } from '../types'
@@ -82,7 +83,7 @@ export function useConversationState(options: ConversationStateOptions) {
       await options.hydrateFilePreviews(item)
       return
     }
-    const requestId = crypto.randomUUID()
+    const requestId = randomUuid()
     conversationDetailRequests.set(item.conversationId, requestId)
     try {
       const detail = await api.getConversation(item.conversationId)

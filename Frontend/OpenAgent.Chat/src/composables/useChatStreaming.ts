@@ -1,6 +1,7 @@
 import { ref, type ComputedRef, type Ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { api, makeLocalConversation } from '../api'
+import { randomUuid } from '../browserCrypto'
 import { appendStreamingReasoning, appendStreamingTool, mergeAssistantSnapshot } from '../messagePresentation'
 import { createStreamingAssistantContentState, enqueueAssistantContent, markAssistantPhaseBoundary } from '../streamingAssistantContent'
 import { createTypewriterQueue, type TypewriterQueue } from '../typewriterQueue'
@@ -86,7 +87,7 @@ export function useChatStreaming(options: ChatStreamingOptions) {
         (max, item) => Math.max(max, item.sequence || 0), 0)
       const messageFiles = await Promise.all(options.pendingFiles.value.map(toMessageFile))
       conversation.messages.push({
-        messageId: crypto.randomUUID(), sequence: baseSequence + 1,
+        messageId: randomUuid(), sequence: baseSequence + 1,
         role: 'user', content: content || '已上传文件', timestamp: new Date().toISOString(),
         files: messageFiles,
       })
@@ -98,7 +99,7 @@ export function useChatStreaming(options: ChatStreamingOptions) {
       let reasoning = ''
       let lastFlush = 0
       conversation.messages.push({
-        messageId: crypto.randomUUID(), sequence: baseSequence + 2,
+        messageId: randomUuid(), sequence: baseSequence + 2,
         role: 'assistant', content: '', timestamp: new Date().toISOString(),
       })
       const assistantMessage = conversation.messages[conversation.messages.length - 1]!

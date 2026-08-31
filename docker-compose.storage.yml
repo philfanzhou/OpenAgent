@@ -59,13 +59,14 @@ services:
 
   keycloak:
     image: quay.io/keycloak/keycloak:26.7.2
-    command: start-dev --import-realm
+    command: ${OPENAGENT_KEYCLOAK_COMMAND:-start-dev --import-realm}
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: ${OPENAGENT_KEYCLOAK_ADMIN_USERNAME:-admin}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${OPENAGENT_KEYCLOAK_ADMIN_PASSWORD:-admin}
-      KC_HOSTNAME: http://localhost:${OPENAGENT_KEYCLOAK_PORT:-58081}
-      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
-      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME: ${OPENAGENT_KEYCLOAK_PUBLIC_URL:-http://localhost:58081}
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: ${OPENAGENT_KEYCLOAK_BACKCHANNEL_DYNAMIC:-true}
+      KC_PROXY_HEADERS: ${OPENAGENT_KEYCLOAK_PROXY_HEADERS:-}
+      KC_HTTP_ENABLED: ${OPENAGENT_KEYCLOAK_HTTP_ENABLED:-true}
       OPENAGENT_CHAT_PORT: ${OPENAGENT_CHAT_PORT:-8080}
     volumes:
       - ./docker/keycloak/realm:/opt/keycloak/data/import:ro

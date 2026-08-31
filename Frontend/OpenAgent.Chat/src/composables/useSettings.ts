@@ -1,6 +1,7 @@
 import { computed, ref, type Ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '../api'
+import { randomUuid } from '../browserCrypto'
 import {
   AUTO_AGENT_ID,
   type AgentConfigEntity,
@@ -605,7 +606,7 @@ export function useSettings(options: SettingsOptions) {
   }
 
   async function createAgent(): Promise<void> {
-    const agentId = `agent-${crypto.randomUUID().slice(0, 8)}`
+    const agentId = `agent-${randomUuid().slice(0, 8)}`
     options.selectedAgentId.value = agentId
     handleAgentChange()
     config.value = createDefaultAgent(agentId, '')

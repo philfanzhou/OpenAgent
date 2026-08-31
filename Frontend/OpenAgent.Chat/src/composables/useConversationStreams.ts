@@ -1,4 +1,5 @@
 import { shallowReactive } from 'vue'
+import { randomUuid } from '../browserCrypto'
 
 export type StreamCancelReason = 'user' | 'delete' | 'logout' | 'unload' | 'network'
 
@@ -15,7 +16,7 @@ interface MutableConversationStreamState extends ConversationStreamState {
 }
 
 export function useConversationStreams(
-  createRequestId: () => string = () => crypto.randomUUID(),
+  createRequestId: () => string = () => randomUuid(),
 ): {
   start: (conversationId: string) => ConversationStreamState
   remap: (requestId: string, conversationId: string) => void

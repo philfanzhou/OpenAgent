@@ -166,8 +166,10 @@ export function useAuthentication(options: AuthenticationOptions) {
     authError.value = ''
     try {
       await beginOidcLogin(authConfig.value, authReturnHash.value)
-    } catch {
-      authError.value = '无法启动企业登录，请检查身份提供方配置。'
+    } catch (error) {
+      authError.value = error instanceof Error
+        ? error.message
+        : '无法启动企业登录，请检查身份提供方配置。'
       authLoading.value = false
     }
   }

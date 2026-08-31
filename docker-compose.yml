@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: Backend/src/OpenAgent.Engine.Host/Dockerfile
     environment:
-      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_ENVIRONMENT: ${OPENAGENT_ASPNETCORE_ENVIRONMENT:-Development}
       ASPNETCORE_URLS: http://+:5208
       ConnectionStrings__OpenAgentDatabase: Host=postgres;Port=5432;Database=openagent;Username=openagent;Password=openagent
       ConnectionStrings__Redis: redis:6379
@@ -20,18 +20,19 @@ services:
       FileAssets__ObjectStorage__BucketName: ${OPENAGENT_S3_BUCKET:-openagent-files}
       FileAssets__ObjectStorage__AccessKey: ${OPENAGENT_S3_ACCESS_KEY:-openagent}
       FileAssets__ObjectStorage__SecretKey: ${OPENAGENT_S3_SECRET_KEY:-openagent-secret}
-      Engine__AllowMockAgent: "true"
+      Engine__AllowMockAgent: ${OPENAGENT_ALLOW_MOCK_AGENT:-true}
       Heartbeat__AdvertisedHost: engine
       Heartbeat__AdvertisedPort: "5208"
       Authentication__AllowDevelopmentAnonymous: "false"
       Authentication__Mode: JwtBearer
       Authentication__EnableKeycloak: "true"
-      Authentication__Authority: http://localhost:${OPENAGENT_KEYCLOAK_PORT:-58081}/realms/openagent
-      Authentication__MetadataAddress: http://keycloak:8080/realms/openagent/.well-known/openid-configuration
+      Authentication__Authority: ${OPENAGENT_KEYCLOAK_PUBLIC_URL:-http://localhost:58081}/realms/openagent
+      Authentication__MetadataAddress: ${OPENAGENT_KEYCLOAK_METADATA_ADDRESS:-http://keycloak:8080/realms/openagent/.well-known/openid-configuration}
       Authentication__Audience: openagent-api
       Authentication__ClientId: openagent-chat
-      Authentication__RequireHttpsMetadata: "false"
-      Cors__AllowedOrigins__0: http://localhost:${OPENAGENT_CHAT_PORT:-8080}
+      Authentication__RequireHttpsMetadata: ${OPENAGENT_AUTH_REQUIRE_HTTPS_METADATA:-false}
+      Authentication__ClockSkewSeconds: ${OPENAGENT_AUTH_CLOCK_SKEW_SECONDS:-60}
+      Cors__AllowedOrigins__0: ${OPENAGENT_PUBLIC_CHAT_URL:-http://localhost:8080}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
@@ -49,7 +50,7 @@ services:
       context: .
       dockerfile: Backend/src/OpenAgent.Router/Dockerfile
     environment:
-      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_ENVIRONMENT: ${OPENAGENT_ASPNETCORE_ENVIRONMENT:-Development}
       ASPNETCORE_URLS: http://+:5001
       ConnectionStrings__Redis: redis:6379
       OpenTelemetry__OtlpEndpoint: ${OPENAGENT_OTLP_ENDPOINT:-http://host.docker.internal:4317}
@@ -60,12 +61,13 @@ services:
       Authentication__AllowDevelopmentAnonymous: "false"
       Authentication__Mode: JwtBearer
       Authentication__EnableKeycloak: "true"
-      Authentication__Authority: http://localhost:${OPENAGENT_KEYCLOAK_PORT:-58081}/realms/openagent
-      Authentication__MetadataAddress: http://keycloak:8080/realms/openagent/.well-known/openid-configuration
+      Authentication__Authority: ${OPENAGENT_KEYCLOAK_PUBLIC_URL:-http://localhost:58081}/realms/openagent
+      Authentication__MetadataAddress: ${OPENAGENT_KEYCLOAK_METADATA_ADDRESS:-http://keycloak:8080/realms/openagent/.well-known/openid-configuration}
       Authentication__Audience: openagent-api
       Authentication__ClientId: openagent-chat
-      Authentication__RequireHttpsMetadata: "false"
-      Cors__AllowedOrigins__0: http://localhost:${OPENAGENT_CHAT_PORT:-8080}
+      Authentication__RequireHttpsMetadata: ${OPENAGENT_AUTH_REQUIRE_HTTPS_METADATA:-false}
+      Authentication__ClockSkewSeconds: ${OPENAGENT_AUTH_CLOCK_SKEW_SECONDS:-60}
+      Cors__AllowedOrigins__0: ${OPENAGENT_PUBLIC_CHAT_URL:-http://localhost:8080}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -86,8 +88,8 @@ services:
       context: .
       dockerfile: Frontend/OpenAgent.Chat/Dockerfile
       args:
-        VITE_OPENAGENT_ROUTER_BASE_URL: http://localhost:${OPENAGENT_ROUTER_PORT:-5001}
-        VITE_OPENAGENT_ENGINE_BASE_URL: http://localhost:${OPENAGENT_ENGINE_PORT:-5208}
+        VITE_OPENAGENT_ROUTER_BASE_URL: ${OPENAGENT_PUBLIC_ROUTER_URL:-http://localhost:5001}
+        VITE_OPENAGENT_ENGINE_BASE_URL: ${OPENAGENT_PUBLIC_ENGINE_URL:-http://localhost:5208}
         VITE_OPENAGENT_TENANT_ID: development
     depends_on:
       router:

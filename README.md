@@ -46,7 +46,31 @@ docker compose -p openagent-app \
 
 启动后访问 `http://localhost:8080`。工作台默认使用 Router `http://localhost:5001`、直连
 Engine `http://localhost:5208`、租户 `development`。服务间通过共享 Docker 网络访问 PostgreSQL、
-Redis、MinIO 和其他应用服务；浏览器仍使用 localhost 地址。端口可通过 `OPENAGENT_*_PORT` 环境变量覆盖。
+Redis、MinIO 和其他应用服务。服务器部署时必须设置下面的公开地址变量；这些地址会在前端构建时
+写入静态资源，不能只修改运行中的容器环境变量：
+
+```bash
+export OPENAGENT_PUBLIC_CHAT_URL=https://chat.example.com
+export OPENAGENT_PUBLIC_ROUTER_URL=https://api.example.com
+export OPENAGENT_PUBLIC_ENGINE_URL=https://engine.example.com
+export OPENAGENT_KEYCLOAK_PUBLIC_URL=https://sso.example.com
+export OPENAGENT_KEYCLOAK_METADATA_ADDRESS=https://sso.example.com/realms/openagent/.well-known/openid-configuration
+export OPENAGENT_ASPNETCORE_ENVIRONMENT=Production
+export OPENAGENT_AUTH_REQUIRE_HTTPS_METADATA=true
+export OPENAGENT_ALLOW_MOCK_AGENT=false
+```
+
+前端和 Keycloak 的公开地址必须使用 HTTPS；OIDC PKCE 和 Web Crypto 在普通服务器 HTTP 页面中不可用。
+反向代理终止 TLS 时，Router、Engine 和 Keycloak 容器之间仍可使用内部 HTTP，但对浏览器公布的
+`PUBLIC_*`/`KEYCLOAK_PUBLIC_URL` 必须是 HTTPS，并且 `MetadataAddress` 要使用服务端可访问的 HTTPS
+地址（或配置内部 HTTPS Keycloak 地址）。如果只通过服务器 IP/HTTP 访问，至少把
+`OPENAGENT_PUBLIC_ROUTER_URL`、`OPENAGENT_PUBLIC_ENGINE_URL` 改成服务器可访问地址，不能保留
+`localhost`，但生产 OIDC 仍应配置 TLS。端口可通过 `OPENAGENT_*_PORT` 环境变量覆盖。
+
+Keycloak `KC_HOSTNAME` 由 `OPENAGENT_KEYCLOAK_PUBLIC_URL` 注入，不要在服务器上保留默认的
+`http://localhost:58081`。Keycloak 生产模式应使用 `OPENAGENT_KEYCLOAK_COMMAND` 配置为生产启动命令，
+并按反向代理方式设置 TLS/转发头（例如 `OPENAGENT_KEYCLOAK_PROXY_HEADERS=xforwarded`）；
+Compose 默认的 `start-dev` 仅用于本地联调。
 Compose 不包含任何模型凭据或已发布 Agent；首次执行聊天前，请先在登录页使用任意非空账号密码建立
 Development 身份，再在工作台设置中创建 LLM Provider 并绑定 Agent。该兼容登录不校验真实密码，仅适合
 本地联调，不应直接暴露到公网。
@@ -66,6 +90,11 @@ docker compose -p openagent-app \
 docker compose -p openagent-app -f docker-compose.yml down
 ```
 
+Gina 是可选 Provider，后续请按实际环境手动配置 Router 的 Provider 设置。Gina 的
+`GET /api/agentlist` 必须返回数组或包含 `agents`/`data` 数组的 JSON；聊天使用 `POST /api/chat`。
+若 Router 日志显示 Provider 不可用，先从 Router 容器内验证 `BaseUrl`、TLS、Token 和这两个路径，
+再检查 Gina 返回的 JSON 字段是否至少包含 `id`/`agent_id` 或 `agentId`。
+
 如需清理本地基础设施及其数据卷，必须明确执行：
 
 ```bash
@@ -73,6 +102,11 @@ docker compose -p openagent-infrastructure \
   -f docker-compose.storage.yml \
   down -v
 ```
+
+服务器时间必须由宿主机的 NTP/chrony/systemd-timesyncd 同步；容器的 `TZ` 只影响日志显示，不能
+修复 JWT 的有效期判断。可在服务器执行 `timedatectl status`、`timedatectl timesync-status`，
+确认 `System clock synchronized: yes` 后再重启应用。不要通过大幅增加 `ClockSkewSeconds` 掩盖小时级
+时钟偏差；当前默认容差为 60 秒，仅用于网络抖动。
 
 需要验证真实 OIDC 登录时，基础设施 Compose 会导入本地 Realm、SPA Client 和租户 Claim Mapper；
 用户与租户组织需要在 Keycloak 管理台中手动创建，详细命令参见 [Keycloak 本地认证集成](docs/integrations/keycloak/README.md)。
