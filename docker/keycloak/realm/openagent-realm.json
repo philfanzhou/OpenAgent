@@ -49,7 +49,7 @@
         {
           "name": "tenant-id",
           "protocol": "openid-connect",
-          "protocolMapper": "oidc-hardcoded-clamim-mapper",
+          "protocolMapper": "oidc-hardcoded-claim-mapper",
           "config": {
             "claim.name": "tenant_id",
             "claim.value": "development",

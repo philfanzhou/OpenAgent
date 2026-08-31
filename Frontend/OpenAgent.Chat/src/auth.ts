@@ -1,4 +1,5 @@
 import { clearAuthentication, setAccessToken } from './api'
+import { randomUrlSafe, sha256 } from './browserCrypto'
 import type { AuthConfig } from './types'
 
 const stateKey = 'openagent.auth.oidc-state'
@@ -20,23 +21,6 @@ interface OidcTokenResponse {
   id_token?: string
   token_type?: string
   expires_in?: number
-}
-
-function randomUrlSafe(bytes: number): string {
-  const value = new Uint8Array(bytes)
-  crypto.getRandomValues(value)
-  return toBase64Url(value)
-}
-
-function toBase64Url(value: Uint8Array): string {
-  let binary = ''
-  for (const byte of value) binary += String.fromCharCode(byte)
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-}
-
-async function sha256(value: string): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))
-  return toBase64Url(new Uint8Array(digest))
 }
 
 function isSecureEndpoint(value: string): boolean {

@@ -27,6 +27,7 @@ import type {
   SkillTestResult,
   StreamEvent,
 } from './types'
+import { randomUuid } from './browserCrypto'
 
 const legacyBaseUrlStorageKey = 'openagent.engine.base-url'
 const routerStorageKey = 'openagent.router.base-url'
@@ -38,8 +39,18 @@ const tokenExpiryStorageKey = 'openagent.auth.expires-at'
 const tokenEndpointStorageKey = 'openagent.auth.endpoint'
 const tenantStorageKey = 'openagent.auth.tenant-id'
 export const AUTH_FAILURE_EVENT = 'openagent:auth-failure'
-const defaultRouterBaseUrl = import.meta.env.VITE_OPENAGENT_ROUTER_BASE_URL || 'http://localhost:5001'
-const defaultEngineBaseUrl = import.meta.env.VITE_OPENAGENT_ENGINE_BASE_URL || 'http://localhost:5208'
+function defaultServiceUrl(port: number): string {
+  if (typeof window !== 'undefined'
+    && window.location.hostname
+    && window.location.hostname !== 'localhost'
+    && window.location.hostname !== '127.0.0.1') {
+    return `${window.location.protocol}//${window.location.hostname}:${port}`
+  }
+  return `http://localhost:${port}`
+}
+
+const defaultRouterBaseUrl = import.meta.env.VITE_OPENAGENT_ROUTER_BASE_URL || defaultServiceUrl(5001)
+const defaultEngineBaseUrl = import.meta.env.VITE_OPENAGENT_ENGINE_BASE_URL || defaultServiceUrl(5208)
 const defaultTenantId = import.meta.env.VITE_OPENAGENT_TENANT_ID || 'development'
 
 function normalizeBaseUrl(value: string): string {
@@ -133,7 +144,7 @@ function headers(extra: HeadersInit = {}): Headers {
   const token = getAccessToken()
   const tokenType = getTokenType() || 'Basic'
   if (token) result.set('Authorization', `${tokenType} ${token}`)
-  result.set('X-Trace-Id', crypto.randomUUID())
+  result.set('X-Trace-Id', randomUuid())
   return result
 }
 
@@ -542,14 +553,14 @@ export const api = {
 export function makeLocalConversation(agentId: string, message: string): ConversationRecord {
   const now = new Date().toISOString()
   const userMessage: ConversationMessage = {
-    messageId: crypto.randomUUID(),
+    messageId: randomUuid(),
     sequence: 1,
     role: 'user',
     content: message,
     timestamp: now,
   }
   return {
-    conversationId: crypto.randomUUID(),
+    conversationId: randomUuid(),
     tenantId: getTenantId(),
     userId: 'local',
     agentId,

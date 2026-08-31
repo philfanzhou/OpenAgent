@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
 import { ref } from 'vue'
+import { randomUuid } from '../browserCrypto'
 import { formatFileSize } from '../messagePresentation'
 import type { PendingFile } from '../types'
 
@@ -48,7 +49,7 @@ function addFiles(files: File[]): void {
       break
     }
     totalSize += file.size
-    accepted.push({ id: crypto.randomUUID(), file, state: 'uploading' })
+    accepted.push({ id: randomUuid(), file, state: 'uploading' })
   }
   if (accepted.length) emit('files-change', [...props.pendingFiles, ...accepted])
 }

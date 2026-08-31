@@ -82,6 +82,7 @@ internal sealed class GinaProvider : IAgentProvider, IDisposable
     }
 
     public Task<IntentRecognitionResult?> RecognizeIntentAsync(
+        AgentProviderRequestContext requestContext,
         string intentAgentId,
         IReadOnlyList<AgentSummary> agents,
         string message,
