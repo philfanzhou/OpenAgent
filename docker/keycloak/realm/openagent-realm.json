@@ -25,18 +25,14 @@
       "publicClient": true,
       "standardFlowEnabled": true,
       "redirectUris": [
-        "http://localhost:8080/*",
-        "http://localhost:8090/*",
-        "http://localhost:58090/*"
+        "http://localhost:${OPENAGENT_CHAT_PORT}/*"
       ],
       "webOrigins": [
-        "http://localhost:8080",
-        "http://localhost:8090",
-        "http://localhost:58090"
+        "http://localhost:${OPENAGENT_CHAT_PORT}"
       ],
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "http://localhost:58090/*"
+        "post.logout.redirect.uris": "http://localhost:${OPENAGENT_CHAT_PORT}/*"
       },
       "protocolMappers": [
         {
@@ -53,10 +49,10 @@
         {
           "name": "tenant-id",
           "protocol": "openid-connect",
-          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "protocolMapper": "oidc-hardcoded-clamim-mapper",
           "config": {
-            "user.attribute": "tenant_id",
             "claim.name": "tenant_id",
+            "claim.value": "development",
             "jsonType.label": "String",
             "id.token.claim": "true",
             "access.token.claim": "true",

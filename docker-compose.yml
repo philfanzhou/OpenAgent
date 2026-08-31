@@ -10,7 +10,7 @@ services:
       ConnectionStrings__Redis: redis:6379
       Database__ApplyMigrationsOnStartup: "true"
       ConversationCache__Enabled: "true"
-      FileAssets__Enabled: "true"
+      FileAssets__Enabled: ${OPENAGENT_FILE_ASSETS_ENABLED:-true}
       OpenTelemetry__OtlpEndpoint: ${OPENAGENT_OTLP_ENDPOINT:-http://host.docker.internal:4317}
       OpenTelemetry__ServiceName: agent-engine
       OpenTelemetry__ServiceVersion: development
