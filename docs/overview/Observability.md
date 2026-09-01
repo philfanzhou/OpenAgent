@@ -24,7 +24,8 @@ Meter / ASP.NET Core Metrics -> OpenTelemetry
                                 `-> /metrics（Prometheus Pull）
 ```
 
-仓库不绑定 Loki、Tempo、Grafana、Prometheus Server 或特定 Collector。部署可以选择这些组件，但不能把部署侧可用性当作应用代码的默认能力。
+仓库不绑定 Loki、Tempo、Grafana、Prometheus Server 或 OpenTelemetry Collector。Collector 由部署环境
+单独提供；持久化、索引和查询后端也由部署环境选择。
 
 ## 服务标识与配置
 
@@ -40,13 +41,15 @@ Meter / ASP.NET Core Metrics -> OpenTelemetry
   "OpenTelemetry": {
     "ServiceName": "agent-router",
     "ServiceVersion": "1.0.0",
-    "OtlpEndpoint": "http://otel-collector:4317"
+    "OtlpEndpoint": "https://otel-collector.intra.example:4317"
   }
 }
 ```
 
 - `OpenTelemetry:OtlpEndpoint` 可省略；省略时不注册 OTLP logs、traces 和 metrics exporter，Console 与 `/metrics` 仍可用。
 - 也可以使用标准环境变量 `OTEL_EXPORTER_OTLP_ENDPOINT`。
+- 应用 Compose 通过 `OPENAGENT_OTLP_ENDPOINT` 配置外部 Collector，统一汇集 Engine 与 Router 的 Logs、
+  Traces 和 Metrics；本项目不创建或管理 Collector 容器。
 - OTLP 地址存在但不是绝对 HTTP(S) URI 时启动失败，避免服务看似正常但遥测静默丢失。
 - `OpenTelemetry:ServiceName` 与 `ServiceVersion` 可以覆盖应用默认值。
 - Serilog 的输出和最小级别由各服务 `appsettings*.json` 中的 `Serilog` 节控制。

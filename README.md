@@ -37,51 +37,74 @@ dotnet test Backend/OpenAgent.sln
 docker compose -p openagent-infrastructure \
   -f docker-compose.storage.yml \
   up -d
-
-OPENAGENT_INFRA_NETWORK=openagent-infrastructure \
-docker compose -p openagent-app \
-  -f docker-compose.yml \
-  up --build -d
 ```
 
-启动后访问 `http://localhost:8080`。工作台默认使用 Router `http://localhost:5001`、直连
-Engine `http://localhost:5208`、租户 `development`。服务间通过共享 Docker 网络访问 PostgreSQL、
-Redis、MinIO 和其他应用服务。服务器部署时必须设置下面的公开地址变量；这些地址会在前端构建时
-写入静态资源，不能只修改运行中的容器环境变量：
+应用 Compose 只引用已构建或已拉取的镜像，绝不包含 `build` 定义；Nginx 是唯一对宿主机公开 80 和 443
+的服务；Chat、Router 与 Engine 不直接映射宿主机端口，分别由 Nginx 的 8081、8082、8083 HTTPS 端口代理。
+部署前请将内部 CA
+签发的证书和私钥放入 `docker/nginx/certs/tls.crt` 与 `docker/nginx/certs/tls.key`，并确保用户终端信任
+该 CA。证书 SAN 必须包含实际访问的内网域名。
 
-```bash
-export OPENAGENT_PUBLIC_CHAT_URL=https://chat.example.com
-export OPENAGENT_PUBLIC_ROUTER_URL=https://api.example.com
-export OPENAGENT_PUBLIC_ENGINE_URL=https://engine.example.com
-export OPENAGENT_KEYCLOAK_PUBLIC_URL=https://sso.example.com
-export OPENAGENT_KEYCLOAK_METADATA_ADDRESS=https://sso.example.com/realms/openagent/.well-known/openid-configuration
-export OPENAGENT_ASPNETCORE_ENVIRONMENT=Production
-export OPENAGENT_AUTH_REQUIRE_HTTPS_METADATA=true
-export OPENAGENT_ALLOW_MOCK_AGENT=false
+前端与 Keycloak 的公开地址必须使用 HTTPS；OIDC PKCE 和 Web Crypto 在普通 HTTP 页面中不可用。Nginx
+终止 TLS 后，Router、Engine 与 Keycloak 容器之间仍可使用内部 HTTP；但浏览器可见的
+`PUBLIC_*`/`KEYCLOAK_PUBLIC_URL` 必须为 HTTPS，`MetadataAddress` 也必须是服务端可访问的 HTTPS 地址。
+Keycloak `KC_HOSTNAME` 由 `OPENAGENT_KEYCLOAK_PUBLIC_URL` 注入；生产模式需配置
+`OPENAGENT_KEYCLOAK_COMMAND` 与反向代理转发头，内置 `start-dev` 仅用于本地联调。
+
+以下示例以 `openagent.intra.example` 为公开入口。Nginx 为 Chat、Router、Engine 分别提供 8081、8082、
+8083 的 HTTPS 端口；应用容器本身不映射宿主机端口：
+
+将变量保存为受保护且 shell 兼容的 `.env` 文件（不要提交），例如：
+
+```dotenv
+OPENAGENT_PUBLIC_CHAT_URL=https://openagent.intra.example:8081
+OPENAGENT_PUBLIC_ROUTER_URL=https://openagent.intra.example:8082
+OPENAGENT_PUBLIC_ENGINE_URL=https://openagent.intra.example:8083
+OPENAGENT_CHAT_PORT=8081
+OPENAGENT_ENGINE_PORT=8083
+OPENAGENT_ROUTER_PORT=8082
+OPENAGENT_NGINX_SERVER_NAME=openagent.intra.example
+OPENAGENT_ASPNETCORE_ENVIRONMENT=Production
+OPENAGENT_SERVICE_VERSION=2026.09.01
+OPENAGENT_AUTH_REQUIRE_HTTPS_METADATA=true
+OPENAGENT_KEYCLOAK_PUBLIC_URL=https://sso.intra.example
+OPENAGENT_KEYCLOAK_METADATA_ADDRESS=https://sso.intra.example/realms/openagent/.well-known/openid-configuration
+OPENAGENT_OTLP_ENDPOINT=https://otel-collector.intra.example:4317
+OPENAGENT_INFRA_NETWORK=openagent-infrastructure
 ```
 
-前端和 Keycloak 的公开地址必须使用 HTTPS；OIDC PKCE 和 Web Crypto 在普通服务器 HTTP 页面中不可用。
-反向代理终止 TLS 时，Router、Engine 和 Keycloak 容器之间仍可使用内部 HTTP，但对浏览器公布的
-`PUBLIC_*`/`KEYCLOAK_PUBLIC_URL` 必须是 HTTPS，并且 `MetadataAddress` 要使用服务端可访问的 HTTPS
-地址（或配置内部 HTTPS Keycloak 地址）。如果只通过服务器 IP/HTTP 访问，至少把
-`OPENAGENT_PUBLIC_ROUTER_URL`、`OPENAGENT_PUBLIC_ENGINE_URL` 改成服务器可访问地址，不能保留
-`localhost`，但生产 OIDC 仍应配置 TLS。端口可通过 `OPENAGENT_*_PORT` 环境变量覆盖。
-
-Keycloak `KC_HOSTNAME` 由 `OPENAGENT_KEYCLOAK_PUBLIC_URL` 注入，不要在服务器上保留默认的
-`http://localhost:58081`。Keycloak 生产模式应使用 `OPENAGENT_KEYCLOAK_COMMAND` 配置为生产启动命令，
-并按反向代理方式设置 TLS/转发头（例如 `OPENAGENT_KEYCLOAK_PROXY_HEADERS=xforwarded`）；
-Compose 默认的 `start-dev` 仅用于本地联调。
-Compose 不包含任何模型凭据或已发布 Agent；首次执行聊天前，请先在登录页使用任意非空账号密码建立
-Development 身份，再在工作台设置中创建 LLM Provider 并绑定 Agent。该兼容登录不校验真实密码，仅适合
-本地联调，不应直接暴露到公网。
-
-重复部署实际代码时，只执行应用 Compose：
+构建脚本支持本机 Docker 和 WSL Docker。默认使用当前环境中的 `docker` 命令；在 WSL 终端中使用
+`--docker-mode wsl-docker`，脚本会使用 WSL Docker daemon。部署也使用同一模式，确保镜像位于同一个
+Docker daemon：
 
 ```bash
-OPENAGENT_INFRA_NETWORK=openagent-infrastructure \
-docker compose -p openagent-app \
-  -f docker-compose.yml \
-  up --build -d
+# 本机 Docker
+scripts/build-images.sh --env-file .env --docker-mode docker
+scripts/deploy.sh --env-file .env --docker-mode docker
+
+# WSL Docker（在 WSL 终端中执行）
+scripts/build-images.sh --env-file .env --docker-mode wsl-docker
+scripts/deploy.sh --env-file .env --docker-mode wsl-docker
+```
+
+先构建镜像，再部署；构建脚本不会启动容器，部署脚本不会执行构建。也可以在 `.env` 中设置
+`OPENAGENT_DOCKER_MODE=docker` 或 `OPENAGENT_DOCKER_MODE=wsl-docker`，省略命令行参数。
+
+浏览器访问 `https://openagent.intra.example:8081`；Router 与 Engine 分别使用 `https://openagent.intra.example:8082`
+和 `https://openagent.intra.example:8083`。Nginx 的默认
+请求体限制为 64 MB（可用 `OPENAGENT_NGINX_CLIENT_MAX_BODY_SIZE` 调整），允许通过 Router 上传文件；
+后端仍会按 FileAssets 与 Skill 包自身的大小限制校验请求。
+
+Compose 不包含任何模型凭据或已发布 Agent。Development Basic 兼容登录只适合受控联调，不应直接暴露到
+内网或公网；生产环境请使用 HTTPS 的企业 IdP 与 OIDC。
+
+镜像更新时依次执行构建与部署；仅修改运行时变量（例如 OTLP 地址）时只执行部署。三个应用镜像标签可分别由
+`OPENAGENT_ENGINE_IMAGE`、`OPENAGENT_ROUTER_IMAGE` 与 `OPENAGENT_CHAT_IMAGE` 覆盖，因而也可改为私有镜像仓库
+已经推送的标签：
+
+```bash
+scripts/build-images.sh --env-file .env
+scripts/deploy.sh --env-file .env
 ```
 
 如需停止应用，不会删除基础设施数据：
@@ -115,6 +138,21 @@ docker compose -p openagent-infrastructure \
 `OPENAGENT_S3_SERVICE_URL`、`OPENAGENT_S3_BUCKET`、`OPENAGENT_S3_ACCESS_KEY`、
 `OPENAGENT_S3_SECRET_KEY`；仅在自签名证书场景显式设置
 `OPENAGENT_S3_ALLOW_INSECURE_TLS=true`。
+
+## OpenTelemetry 日志中心
+
+OpenTelemetry Collector 由部署环境单独提供，本项目不创建、不升级也不管理 Collector 容器。将外部
+Collector 的 OTLP 地址配置到 `OPENAGENT_OTLP_ENDPOINT`，该变量同时驱动 Engine 和 Router 的 Logs、
+Traces 与 Metrics exporter；不配置时保留 Console 与 `/metrics` 本地出口。
+
+```bash
+# 在 .env 中设置外部 Collector 地址后，仅需重启应用
+OPENAGENT_OTLP_ENDPOINT=https://otel-collector.intra.example:4317 \
+scripts/deploy.sh --env-file .env
+```
+
+Nginx 访问日志以 JSON 输出到容器 stdout，并保留 `traceparent` 与 `X-Trace-Id`，便于部署侧日志中心与
+OTLP 信号关联。
 
 ## 文档
 
