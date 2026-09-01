@@ -2,17 +2,30 @@
 set -euo pipefail
 
 # 构建应用镜像；不启动或修改任何容器。
-# 用法：scripts/build-images.sh [--env-file path/to/.env] [--docker-mode docker|wsl-docker]
+# 用法：scripts/build-images.sh [--env-file path/to/.env] [--docker-mode auto|docker|wsl-docker]
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd -- "$script_dir/.." && pwd)"
 env_file=""
-docker_mode="${OPENAGENT_DOCKER_MODE:-docker}"
+docker_mode="${OPENAGENT_DOCKER_MODE:-auto}"
 docker_cmd=()
 
 die() {
   echo "error: $*" >&2
   exit 1
+}
+
+to_wsl_path() {
+  local path="$1"
+  local windows_path="$path"
+
+  if command -v cygpath >/dev/null 2>&1; then
+    windows_path="$(cygpath -w "$path")"
+  elif [[ "$path" =~ ^/([[:alpha:]])/(.*)$ ]]; then
+    windows_path="${BASH_REMATCH[1]^^}:\\${BASH_REMATCH[2]//\//\\}"
+  fi
+
+  wsl.exe wslpath -a -u "$windows_path" | tr -d '\r'
 }
 
 load_env_file() {
@@ -34,7 +47,7 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --docker-mode)
-      [[ $# -ge 2 ]] || die "--docker-mode requires docker or wsl-docker"
+      [[ $# -ge 2 ]] || die "--docker-mode requires auto, docker, or wsl-docker"
       docker_mode="$2"
       shift 2
       ;;
@@ -50,6 +63,19 @@ if [[ -n "$env_file" ]]; then
 fi
 
 case "$docker_mode" in
+  auto)
+    if [[ -n "${WSL_DISTRO_NAME:-}" && -x "$(command -v docker 2>/dev/null || true)" ]]; then
+      docker_cmd=(docker)
+    elif command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+      docker_cmd=(docker)
+    elif command -v wsl.exe >/dev/null 2>&1; then
+      docker_cmd=(wsl.exe docker)
+    elif command -v docker >/dev/null 2>&1; then
+      docker_cmd=(docker)
+    else
+      die "auto docker mode could not find a usable docker or wsl.exe command"
+    fi
+    ;;
   docker|local)
     docker_cmd=(docker)
     ;;
@@ -63,9 +89,15 @@ case "$docker_mode" in
     fi
     ;;
   *)
-    die "unsupported docker mode '$docker_mode' (use docker or wsl-docker)"
+    die "unsupported docker mode '$docker_mode' (use auto, docker, or wsl-docker)"
     ;;
 esac
+
+docker_root="$repo_root"
+if [[ "${docker_cmd[0]}" == "wsl.exe" ]]; then
+  docker_root="$(to_wsl_path "$repo_root")"
+  [[ -n "$docker_root" ]] || die "failed to convert repository path for WSL Docker"
+fi
 
 engine_image="${OPENAGENT_ENGINE_IMAGE:-openagent-engine:latest}"
 router_image="${OPENAGENT_ROUTER_IMAGE:-openagent-router:latest}"
@@ -79,18 +111,18 @@ tenant_id="${OPENAGENT_TENANT_ID:-development}"
 
 "${docker_cmd[@]}" build \
   --tag "$engine_image" \
-  --file "$repo_root/Backend/src/OpenAgent.Engine.Host/Dockerfile" \
-  "$repo_root"
+  --file "$docker_root/Backend/src/OpenAgent.Engine.Host/Dockerfile" \
+  "$docker_root"
 
 "${docker_cmd[@]}" build \
   --tag "$router_image" \
-  --file "$repo_root/Backend/src/OpenAgent.Router/Dockerfile" \
-  "$repo_root"
+  --file "$docker_root/Backend/src/OpenAgent.Router/Dockerfile" \
+  "$docker_root"
 
 "${docker_cmd[@]}" build \
   --tag "$chat_image" \
   --build-arg "VITE_OPENAGENT_ROUTER_BASE_URL=$router_url" \
   --build-arg "VITE_OPENAGENT_ENGINE_BASE_URL=$engine_url" \
   --build-arg "VITE_OPENAGENT_TENANT_ID=$tenant_id" \
-  --file "$repo_root/Frontend/OpenAgent.Chat/Dockerfile" \
-  "$repo_root"
+  --file "$docker_root/Frontend/OpenAgent.Chat/Dockerfile" \
+  "$docker_root"

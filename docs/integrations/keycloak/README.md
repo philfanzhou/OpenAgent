@@ -25,7 +25,7 @@ OPENAGENT_ROUTER_PORT=55011 \
 OPENAGENT_ENGINE_PORT=55218 \
 OPENAGENT_KEYCLOAK_PORT=58091 \
 OPENAGENT_INFRA_NETWORK=openagent-keycloak-infrastructure \
-scripts/build-images.sh --env-file .env --docker-mode docker
+scripts/build-images.sh --env-file .env
 
 OPENAGENT_PUBLIC_HOST=localhost \
 OPENAGENT_CHAT_PORT=58090 \
