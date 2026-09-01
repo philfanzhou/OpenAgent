@@ -24,7 +24,7 @@ services:
       Authentication__AllowDevelopmentAnonymous: "false"
       Authentication__Mode: JwtBearer
       Authentication__EnableKeycloak: "true"
-      Authentication__Authority: https://${OPENAGENT_PUBLIC_HOST:-localhost}:${OPENAGENT_KEYCLOAK_PORT:-58081}/realms/openagent
+      Authentication__Authority: ${OPENAGENT_KEYCLOAK_PUBLIC_URL:-https://localhost:58081}/realms/openagent
       Authentication__MetadataAddress: ${OPENAGENT_KEYCLOAK_METADATA_ADDRESS:-http://keycloak:8080/realms/openagent/.well-known/openid-configuration}
       Authentication__Audience: openagent-api
       Authentication__ClientId: openagent-chat
@@ -53,7 +53,7 @@ services:
       Authentication__AllowDevelopmentAnonymous: "false"
       Authentication__Mode: JwtBearer
       Authentication__EnableKeycloak: "true"
-      Authentication__Authority: https://${OPENAGENT_PUBLIC_HOST:-localhost}:${OPENAGENT_KEYCLOAK_PORT:-58081}/realms/openagent
+      Authentication__Authority: ${OPENAGENT_KEYCLOAK_PUBLIC_URL:-https://localhost:58081}/realms/openagent
       Authentication__MetadataAddress: ${OPENAGENT_KEYCLOAK_METADATA_ADDRESS:-http://keycloak:8080/realms/openagent/.well-known/openid-configuration}
       Authentication__Audience: openagent-api
       Authentication__ClientId: openagent-chat

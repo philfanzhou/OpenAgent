@@ -47,8 +47,9 @@ docker compose -p openagent-infrastructure \
 
 前端与 Keycloak 的公开地址必须使用 HTTPS；OIDC PKCE 和 Web Crypto 在普通 HTTP 页面中不可用。Nginx
 终止 TLS 后，Router、Engine 与 Keycloak 容器之间仍可使用内部 HTTP；浏览器可见的公开地址固定为 HTTPS，
-`MetadataAddress` 使用服务端可访问的内部 discovery 地址。Keycloak `KC_HOSTNAME` 与 Realm 地址由
-`OPENAGENT_PUBLIC_HOST` 和端口变量生成；生产模式需配置
+`MetadataAddress` 使用服务端可访问的内部 discovery 地址。Chat/Router/Engine 的公开地址由
+`OPENAGENT_PUBLIC_HOST` 和端口变量生成；Keycloak 公开地址独立由 `OPENAGENT_KEYCLOAK_PUBLIC_URL` 配置。
+生产模式需配置
 `OPENAGENT_KEYCLOAK_COMMAND` 与反向代理转发头，内置 `start-dev` 仅用于本地联调。
 
 以下示例以 `openagent.intra.example` 为公开入口。Nginx 为 Chat、Router、Engine 分别提供 8081、8082、
@@ -66,6 +67,7 @@ OPENAGENT_ASPNETCORE_ENVIRONMENT=Production
 OPENAGENT_SERVICE_VERSION=2026.09.01
 OPENAGENT_AUTH_REQUIRE_HTTPS_METADATA=false
 OPENAGENT_KEYCLOAK_PORT=58081
+OPENAGENT_KEYCLOAK_PUBLIC_URL=https://sso.intra.example:58081
 OPENAGENT_KEYCLOAK_METADATA_ADDRESS=http://keycloak:8080/realms/openagent/.well-known/openid-configuration
 OPENAGENT_OTLP_ENDPOINT=https://otel-collector.intra.example:4317
 OPENAGENT_INFRA_NETWORK=openagent-infrastructure
