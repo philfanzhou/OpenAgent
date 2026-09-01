@@ -10,12 +10,21 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $dockerCommand = @()
 
+function Test-LocalDocker {
+    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+        return $false
+    }
+
+    & docker info --format '{{.ServerVersion}}' *> $null
+    return $LASTEXITCODE -eq 0
+}
+
 function Resolve-DockerCommand {
     if ($DockerMode -eq 'auto') {
-        if (-not [string]::IsNullOrWhiteSpace($env:WSL_DISTRO_NAME) -and (Get-Command docker -ErrorAction SilentlyContinue)) {
+        if (-not [string]::IsNullOrWhiteSpace($env:WSL_DISTRO_NAME) -and (Test-LocalDocker)) {
             $script:dockerCommand = @('docker')
         }
-        elseif (Get-Command docker -ErrorAction SilentlyContinue) {
+        elseif (Test-LocalDocker) {
             $script:dockerCommand = @('docker')
         }
         elseif (Get-Command wsl.exe -ErrorAction SilentlyContinue) {
@@ -115,6 +124,14 @@ try {
 
     Resolve-DockerCommand
 
+    $dockerRepoRoot = $repoRoot
+    if ($script:dockerCommand[0] -eq 'wsl.exe') {
+        $dockerRepoRoot = (& wsl.exe wslpath -a -u $repoRoot).Trim()
+        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($dockerRepoRoot)) {
+            throw "failed to convert repository path for WSL Docker: $repoRoot"
+        }
+    }
+
     $engineImage = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_ENGINE_IMAGE)) { 'openagent-engine:latest' } else { $env:OPENAGENT_ENGINE_IMAGE }
     $routerImage = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_ROUTER_IMAGE)) { 'openagent-router:latest' } else { $env:OPENAGENT_ROUTER_IMAGE }
     $chatImage = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_CHAT_IMAGE)) { 'openagent-chat:latest' } else { $env:OPENAGENT_CHAT_IMAGE }
@@ -128,21 +145,21 @@ try {
     # 构建应用镜像；不启动或修改任何容器。
     Invoke-Docker -Arguments @(
         'build', '--tag', $engineImage,
-        '--file', (Join-Path $repoRoot 'Backend/src/OpenAgent.Engine.Host/Dockerfile'),
-        $repoRoot
+        '--file', (Join-Path $dockerRepoRoot 'Backend/src/OpenAgent.Engine.Host/Dockerfile'),
+        $dockerRepoRoot
     )
     Invoke-Docker -Arguments @(
         'build', '--tag', $routerImage,
-        '--file', (Join-Path $repoRoot 'Backend/src/OpenAgent.Router/Dockerfile'),
-        $repoRoot
+        '--file', (Join-Path $dockerRepoRoot 'Backend/src/OpenAgent.Router/Dockerfile'),
+        $dockerRepoRoot
     )
     Invoke-Docker -Arguments @(
         'build', '--tag', $chatImage,
         '--build-arg', "VITE_OPENAGENT_ROUTER_BASE_URL=$routerUrl",
         '--build-arg', "VITE_OPENAGENT_ENGINE_BASE_URL=$engineUrl",
         '--build-arg', "VITE_OPENAGENT_TENANT_ID=$tenantId",
-        '--file', (Join-Path $repoRoot 'Frontend/OpenAgent.Chat/Dockerfile'),
-        $repoRoot
+        '--file', (Join-Path $dockerRepoRoot 'Frontend/OpenAgent.Chat/Dockerfile'),
+        $dockerRepoRoot
     )
 }
 catch {

@@ -15,6 +15,19 @@ die() {
   exit 1
 }
 
+to_wsl_path() {
+  local path="$1"
+  local windows_path="$path"
+
+  if command -v cygpath >/dev/null 2>&1; then
+    windows_path="$(cygpath -w "$path")"
+  elif [[ "$path" =~ ^/([[:alpha:]])/(.*)$ ]]; then
+    windows_path="${BASH_REMATCH[1]^^}:\\${BASH_REMATCH[2]//\//\\}"
+  fi
+
+  wsl.exe wslpath -a -u "$windows_path" | tr -d '\r'
+}
+
 load_env_file() {
   local file="$1"
   [[ -f "$file" ]] || die "environment file does not exist: $file"
@@ -80,6 +93,12 @@ case "$docker_mode" in
     ;;
 esac
 
+docker_root="$repo_root"
+if [[ "${docker_cmd[0]}" == "wsl.exe" ]]; then
+  docker_root="$(to_wsl_path "$repo_root")"
+  [[ -n "$docker_root" ]] || die "failed to convert repository path for WSL Docker"
+fi
+
 engine_image="${OPENAGENT_ENGINE_IMAGE:-openagent-engine:latest}"
 router_image="${OPENAGENT_ROUTER_IMAGE:-openagent-router:latest}"
 chat_image="${OPENAGENT_CHAT_IMAGE:-openagent-chat:latest}"
@@ -92,18 +111,18 @@ tenant_id="${OPENAGENT_TENANT_ID:-development}"
 
 "${docker_cmd[@]}" build \
   --tag "$engine_image" \
-  --file "$repo_root/Backend/src/OpenAgent.Engine.Host/Dockerfile" \
-  "$repo_root"
+  --file "$docker_root/Backend/src/OpenAgent.Engine.Host/Dockerfile" \
+  "$docker_root"
 
 "${docker_cmd[@]}" build \
   --tag "$router_image" \
-  --file "$repo_root/Backend/src/OpenAgent.Router/Dockerfile" \
-  "$repo_root"
+  --file "$docker_root/Backend/src/OpenAgent.Router/Dockerfile" \
+  "$docker_root"
 
 "${docker_cmd[@]}" build \
   --tag "$chat_image" \
   --build-arg "VITE_OPENAGENT_ROUTER_BASE_URL=$router_url" \
   --build-arg "VITE_OPENAGENT_ENGINE_BASE_URL=$engine_url" \
   --build-arg "VITE_OPENAGENT_TENANT_ID=$tenant_id" \
-  --file "$repo_root/Frontend/OpenAgent.Chat/Dockerfile" \
-  "$repo_root"
+  --file "$docker_root/Frontend/OpenAgent.Chat/Dockerfile" \
+  "$docker_root"
