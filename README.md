@@ -73,8 +73,8 @@ OPENAGENT_OTLP_ENDPOINT=https://otel-collector.intra.example:4317
 OPENAGENT_INFRA_NETWORK=openagent-infrastructure
 ```
 
-构建脚本支持本机 Docker 和 WSL Docker。默认使用当前环境中的 `docker` 命令；在 WSL 终端中使用
-`--docker-mode wsl-docker`，脚本会使用 WSL Docker daemon。部署也使用同一模式，确保镜像位于同一个
+构建脚本支持本机 Docker 和 WSL Docker。未指定模式时会自动检测当前可用的 Docker；也可以使用
+`--docker-mode docker` 或 `--docker-mode wsl-docker` 强制选择。部署也使用同一模式，确保镜像位于同一个
 Docker daemon：
 
 ```bash
@@ -88,7 +88,13 @@ scripts/deploy.sh --env-file .env --docker-mode wsl-docker
 ```
 
 先构建镜像，再部署；构建脚本不会启动容器，部署脚本不会执行构建。也可以在 `.env` 中设置
-`OPENAGENT_DOCKER_MODE=docker` 或 `OPENAGENT_DOCKER_MODE=wsl-docker`，省略命令行参数。
+`OPENAGENT_DOCKER_MODE=auto`、`docker` 或 `wsl-docker`，省略命令行参数。
+
+Windows PowerShell 可使用等价的 `scripts/build-images.ps1`；未指定 `-DockerMode` 时同样自动检测：
+
+```powershell
+pwsh -File ./scripts/build-images.ps1 -EnvFile ./.env
+```
 
 浏览器访问 `https://openagent.intra.example:8081`；Router 与 Engine 分别使用 `https://openagent.intra.example:8082`
 和 `https://openagent.intra.example:8083`。Nginx 的默认

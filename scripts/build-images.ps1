@@ -8,6 +8,48 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$dockerCommand = @()
+
+function Resolve-DockerCommand {
+    if ($DockerMode -eq 'auto') {
+        if (-not [string]::IsNullOrWhiteSpace($env:WSL_DISTRO_NAME) -and (Get-Command docker -ErrorAction SilentlyContinue)) {
+            $script:dockerCommand = @('docker')
+        }
+        elseif (Get-Command docker -ErrorAction SilentlyContinue) {
+            $script:dockerCommand = @('docker')
+        }
+        elseif (Get-Command wsl.exe -ErrorAction SilentlyContinue) {
+            $script:dockerCommand = @('wsl.exe', 'docker')
+        }
+        else {
+            throw 'auto docker mode could not find docker or wsl.exe'
+        }
+        return
+    }
+
+    if ($DockerMode -in @('docker', 'local')) {
+        if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+            throw 'docker mode requires the docker command'
+        }
+        $script:dockerCommand = @('docker')
+        return
+    }
+
+    if ($DockerMode -in @('wsl', 'wsl-docker')) {
+        if (-not [string]::IsNullOrWhiteSpace($env:WSL_DISTRO_NAME) -and (Get-Command docker -ErrorAction SilentlyContinue)) {
+            $script:dockerCommand = @('docker')
+        }
+        elseif (Get-Command wsl.exe -ErrorAction SilentlyContinue) {
+            $script:dockerCommand = @('wsl.exe', 'docker')
+        }
+        else {
+            throw 'wsl-docker mode requires WSL or wsl.exe'
+        }
+        return
+    }
+
+    throw "unsupported docker mode '$DockerMode' (use auto, docker, or wsl-docker)"
+}
 
 function Import-EnvironmentFile {
     param([Parameter(Mandatory = $true)][string]$Path)
@@ -39,11 +81,11 @@ function Import-EnvironmentFile {
 function Invoke-Docker {
     param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments)
 
-    if ($DockerMode -in @('wsl', 'wsl-docker') -and [string]::IsNullOrWhiteSpace($env:WSL_DISTRO_NAME)) {
-        & wsl.exe docker @Arguments
+    if ($script:dockerCommand.Count -eq 1) {
+        & $script:dockerCommand[0] @Arguments
     }
     else {
-        & docker @Arguments
+        & $script:dockerCommand[0] $script:dockerCommand[1] @Arguments
     }
 
     if ($LASTEXITCODE -ne 0) {
@@ -64,22 +106,23 @@ try {
 
     if ([string]::IsNullOrWhiteSpace($DockerMode)) {
         $DockerMode = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_DOCKER_MODE)) {
-            'docker'
+            'auto'
         }
         else {
             $env:OPENAGENT_DOCKER_MODE
         }
     }
 
-    if ($DockerMode -notin @('docker', 'local', 'wsl', 'wsl-docker')) {
-        throw "unsupported docker mode '$DockerMode' (use docker or wsl-docker)"
-    }
+    Resolve-DockerCommand
 
     $engineImage = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_ENGINE_IMAGE)) { 'openagent-engine:latest' } else { $env:OPENAGENT_ENGINE_IMAGE }
     $routerImage = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_ROUTER_IMAGE)) { 'openagent-router:latest' } else { $env:OPENAGENT_ROUTER_IMAGE }
     $chatImage = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_CHAT_IMAGE)) { 'openagent-chat:latest' } else { $env:OPENAGENT_CHAT_IMAGE }
-    $routerUrl = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_PUBLIC_ROUTER_URL)) { 'https://localhost:8082' } else { $env:OPENAGENT_PUBLIC_ROUTER_URL }
-    $engineUrl = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_PUBLIC_ENGINE_URL)) { 'https://localhost:8083' } else { $env:OPENAGENT_PUBLIC_ENGINE_URL }
+    $publicHost = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_PUBLIC_HOST)) { 'localhost' } else { $env:OPENAGENT_PUBLIC_HOST }
+    $routerPort = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_ROUTER_PORT)) { '8082' } else { $env:OPENAGENT_ROUTER_PORT }
+    $enginePort = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_ENGINE_PORT)) { '8083' } else { $env:OPENAGENT_ENGINE_PORT }
+    $routerUrl = "https://$publicHost`:$routerPort"
+    $engineUrl = "https://$publicHost`:$enginePort"
     $tenantId = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_TENANT_ID)) { 'development' } else { $env:OPENAGENT_TENANT_ID }
 
     # 构建应用镜像；不启动或修改任何容器。
