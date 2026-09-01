@@ -68,6 +68,8 @@ docker/nginx/certs/*
 
 # ── Misc ──
 
+dist/
+
 *.bak
 *.cache
 *.DS_Store

@@ -30,7 +30,7 @@ services:
       Authentication__ClientId: openagent-chat
       Authentication__RequireHttpsMetadata: ${OPENAGENT_AUTH_REQUIRE_HTTPS_METADATA:-false}
       Authentication__ClockSkewSeconds: ${OPENAGENT_AUTH_CLOCK_SKEW_SECONDS:-60}
-      Cors__AllowedOrigins__0: ${OPENAGENT_PUBLIC_CHAT_URL:-https://localhost}
+      Cors__AllowedOrigins__0: https://${OPENAGENT_PUBLIC_HOST:-localhost}:${OPENAGENT_CHAT_PORT:-8081}
     networks:
       - infrastructure
     healthcheck:
@@ -59,7 +59,7 @@ services:
       Authentication__ClientId: openagent-chat
       Authentication__RequireHttpsMetadata: ${OPENAGENT_AUTH_REQUIRE_HTTPS_METADATA:-false}
       Authentication__ClockSkewSeconds: ${OPENAGENT_AUTH_CLOCK_SKEW_SECONDS:-60}
-      Cors__AllowedOrigins__0: ${OPENAGENT_PUBLIC_CHAT_URL:-https://localhost}
+      Cors__AllowedOrigins__0: https://${OPENAGENT_PUBLIC_HOST:-localhost}:${OPENAGENT_CHAT_PORT:-8081}
     depends_on:
       engine:
         condition: service_healthy
@@ -90,7 +90,7 @@ services:
         condition: service_healthy
     environment:
       OPENAGENT_NGINX_CLIENT_MAX_BODY_SIZE: ${OPENAGENT_NGINX_CLIENT_MAX_BODY_SIZE:-64m}
-      OPENAGENT_NGINX_SERVER_NAME: ${OPENAGENT_NGINX_SERVER_NAME:-_}
+      OPENAGENT_NGINX_SERVER_NAME: ${OPENAGENT_PUBLIC_HOST:-_}
       OPENAGENT_CHAT_PORT: ${OPENAGENT_CHAT_PORT:-8081}
       OPENAGENT_ROUTER_PORT: ${OPENAGENT_ROUTER_PORT:-8082}
       OPENAGENT_ENGINE_PORT: ${OPENAGENT_ENGINE_PORT:-8083}
@@ -100,7 +100,7 @@ services:
       - "${OPENAGENT_ENGINE_PORT:-8083}:${OPENAGENT_ENGINE_PORT:-8083}"
     volumes:
       - ./docker/nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
-      - ${OPENAGENT_TLS_CERT_DIR:-./docker/nginx/certs}:/etc/nginx/tls:ro
+      - ./docker/nginx/certs:/etc/nginx/tls:ro
     networks:
       - infrastructure
 

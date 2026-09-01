@@ -1,0 +1,108 @@
+[CmdletBinding()]
+param(
+    [string]$EnvFile = '',
+    [string]$DockerMode = ''
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+
+function Import-EnvironmentFile {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        throw "environment file does not exist: $Path"
+    }
+
+    foreach ($line in Get-Content -LiteralPath $Path) {
+        if ($line -match '^\s*(?:#.*)?$') {
+            continue
+        }
+
+        if ($line -notmatch '^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$') {
+            throw "invalid environment file entry: $line"
+        }
+
+        $name = $Matches[1]
+        $value = $Matches[2].Trim()
+        if (($value.StartsWith('"') -and $value.EndsWith('"')) -or
+            ($value.StartsWith("'") -and $value.EndsWith("'"))) {
+            $value = $value.Substring(1, $value.Length - 2)
+        }
+
+        [Environment]::SetEnvironmentVariable($name, $value, 'Process')
+    }
+}
+
+function Invoke-Docker {
+    param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments)
+
+    if ($DockerMode -in @('wsl', 'wsl-docker') -and [string]::IsNullOrWhiteSpace($env:WSL_DISTRO_NAME)) {
+        & wsl.exe docker @Arguments
+    }
+    else {
+        & docker @Arguments
+    }
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "docker command failed with exit code $LASTEXITCODE"
+    }
+}
+
+try {
+    if (-not [string]::IsNullOrWhiteSpace($EnvFile)) {
+        $resolvedEnvFile = if ([IO.Path]::IsPathRooted($EnvFile)) {
+            $EnvFile
+        }
+        else {
+            Join-Path (Get-Location) $EnvFile
+        }
+        Import-EnvironmentFile -Path $resolvedEnvFile
+    }
+
+    if ([string]::IsNullOrWhiteSpace($DockerMode)) {
+        $DockerMode = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_DOCKER_MODE)) {
+            'docker'
+        }
+        else {
+            $env:OPENAGENT_DOCKER_MODE
+        }
+    }
+
+    if ($DockerMode -notin @('docker', 'local', 'wsl', 'wsl-docker')) {
+        throw "unsupported docker mode '$DockerMode' (use docker or wsl-docker)"
+    }
+
+    $engineImage = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_ENGINE_IMAGE)) { 'openagent-engine:latest' } else { $env:OPENAGENT_ENGINE_IMAGE }
+    $routerImage = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_ROUTER_IMAGE)) { 'openagent-router:latest' } else { $env:OPENAGENT_ROUTER_IMAGE }
+    $chatImage = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_CHAT_IMAGE)) { 'openagent-chat:latest' } else { $env:OPENAGENT_CHAT_IMAGE }
+    $routerUrl = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_PUBLIC_ROUTER_URL)) { 'https://localhost:8082' } else { $env:OPENAGENT_PUBLIC_ROUTER_URL }
+    $engineUrl = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_PUBLIC_ENGINE_URL)) { 'https://localhost:8083' } else { $env:OPENAGENT_PUBLIC_ENGINE_URL }
+    $tenantId = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_TENANT_ID)) { 'development' } else { $env:OPENAGENT_TENANT_ID }
+
+    # 构建应用镜像；不启动或修改任何容器。
+    Invoke-Docker -Arguments @(
+        'build', '--tag', $engineImage,
+        '--file', (Join-Path $repoRoot 'Backend/src/OpenAgent.Engine.Host/Dockerfile'),
+        $repoRoot
+    )
+    Invoke-Docker -Arguments @(
+        'build', '--tag', $routerImage,
+        '--file', (Join-Path $repoRoot 'Backend/src/OpenAgent.Router/Dockerfile'),
+        $repoRoot
+    )
+    Invoke-Docker -Arguments @(
+        'build', '--tag', $chatImage,
+        '--build-arg', "VITE_OPENAGENT_ROUTER_BASE_URL=$routerUrl",
+        '--build-arg', "VITE_OPENAGENT_ENGINE_BASE_URL=$engineUrl",
+        '--build-arg', "VITE_OPENAGENT_TENANT_ID=$tenantId",
+        '--file', (Join-Path $repoRoot 'Frontend/OpenAgent.Chat/Dockerfile'),
+        $repoRoot
+    )
+}
+catch {
+    Write-Error $_
+    exit 1
+}

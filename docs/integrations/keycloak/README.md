@@ -9,7 +9,10 @@
 ```bash
 export OPENAGENT_INFRA_NETWORK=openagent-keycloak-infrastructure
 
+OPENAGENT_PUBLIC_HOST=localhost \
+OPENAGENT_CHAT_PORT=58090 \
 OPENAGENT_KEYCLOAK_PORT=58091 \
+OPENAGENT_KEYCLOAK_PUBLIC_URL=https://localhost:58091 \
 OPENAGENT_POSTGRES_PORT=55442 \
 OPENAGENT_REDIS_PORT=56389 \
 OPENAGENT_MINIO_PORT=59010 \
@@ -18,33 +21,42 @@ docker compose -p openagent-keycloak-infrastructure \
   -f docker-compose.storage.yml \
   up -d
 
+OPENAGENT_ROUTER_PORT=55011 \
+OPENAGENT_ENGINE_PORT=55218 \
+OPENAGENT_KEYCLOAK_PORT=58091 \
+OPENAGENT_INFRA_NETWORK=openagent-keycloak-infrastructure \
+scripts/build-images.sh --env-file .env --docker-mode docker
+
+OPENAGENT_PUBLIC_HOST=localhost \
 OPENAGENT_CHAT_PORT=58090 \
 OPENAGENT_ROUTER_PORT=55011 \
 OPENAGENT_ENGINE_PORT=55218 \
 OPENAGENT_KEYCLOAK_PORT=58091 \
 OPENAGENT_INFRA_NETWORK=openagent-keycloak-infrastructure \
-docker compose -p openagent-keycloak-app \
-  -f docker-compose.yml \
-  up --build -d
+scripts/deploy.sh --env-file .env --docker-mode docker
 ```
 
-访问：
+访问（证书已被系统信任时）：
 
-- 工作台：`http://localhost:58090`
-- Keycloak 管理台：`http://localhost:58091/admin/`
+- 工作台：`https://localhost:58090`
+- Keycloak 管理台：`https://localhost:58091/admin/`
 - Keycloak Realm：`openagent`
 - 管理员：由 `OPENAGENT_KEYCLOAK_ADMIN_USERNAME` / `OPENAGENT_KEYCLOAK_ADMIN_PASSWORD` 提供，默认值仅适用于本地临时环境
 - 用户和租户组织：不在 Realm 文件中预置，需要在管理台手动创建
+
+公开地址固定使用 HTTPS。将 PEM 证书 `tls.crt`、私钥 `tls.key` 放入与 Nginx 共用的
+`docker/nginx/certs/` 目录；应用 Nginx 和 Keycloak 共用该目录，不需要单独的证书路径环境变量。
+Keycloak 容器内 HTTPS 端口固定为 `8443`，Router/Engine 仍通过容器网络内 HTTP discovery 访问 Keycloak。
 
 Realm、SPA Client、API audience、`tenant_id` claim 和 Organization 能力由 [openagent-realm.json](../../../docker/keycloak/realm/openagent-realm.json) 导入；用户、密码、邮箱和租户组织由业务管理员手动维护。
 
 声明式 User Profile（含 `tenant_id` 属性声明）不随 Realm 文件导入——Realm 导入目录中的每个文件都会按 Realm 解析，顶层 `userProfile` 键会导致启动失败。声明单独维护在 [openagent-user-profile.json](../../../docker/keycloak/openagent-user-profile.json)，需要通过 Admin API 应用：
 
 ```bash
-TOKEN=$(curl -fsS -d 'client_id=admin-cli' -d "username=$OPENAGENT_KEYCLOAK_ADMIN_USERNAME" -d "password=$OPENAGENT_KEYCLOAK_ADMIN_PASSWORD" -d 'grant_type=password' http://localhost:58081/realms/master/protocol/openid-connect/token | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
+TOKEN=$(curl -kfsS -d 'client_id=admin-cli' -d "username=$OPENAGENT_KEYCLOAK_ADMIN_USERNAME" -d "password=$OPENAGENT_KEYCLOAK_ADMIN_PASSWORD" -d 'grant_type=password' https://localhost:58091/realms/master/protocol/openid-connect/token | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
 curl -fsS -X PUT -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d @docker/keycloak/openagent-user-profile.json \
-  http://localhost:58081/admin/realms/openagent/users/profile
+  https://localhost:58091/admin/realms/openagent/users/profile
 ```
 
 未在 Profile 中声明的用户属性会被静默丢弃（API 返回成功但不生效），所以新建 Realm 或清理数据卷后必须重新执行上述 PUT。
