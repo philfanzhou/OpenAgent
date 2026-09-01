@@ -59,20 +59,25 @@ services:
 
   keycloak:
     image: quay.io/keycloak/keycloak:26.7.2
-    command: ${OPENAGENT_KEYCLOAK_COMMAND:-start-dev --import-realm}
+    command: ${OPENAGENT_KEYCLOAK_COMMAND:-start --import-realm}
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: ${OPENAGENT_KEYCLOAK_ADMIN_USERNAME:-admin}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${OPENAGENT_KEYCLOAK_ADMIN_PASSWORD:-admin}
-      KC_HOSTNAME: ${OPENAGENT_KEYCLOAK_PUBLIC_URL:-http://localhost:58081}
+      KC_HOSTNAME: https://${OPENAGENT_PUBLIC_HOST:-localhost}:${OPENAGENT_KEYCLOAK_PORT:-58081}
       KC_HOSTNAME_BACKCHANNEL_DYNAMIC: ${OPENAGENT_KEYCLOAK_BACKCHANNEL_DYNAMIC:-true}
       KC_PROXY_HEADERS: ${OPENAGENT_KEYCLOAK_PROXY_HEADERS:-}
       KC_HTTP_ENABLED: ${OPENAGENT_KEYCLOAK_HTTP_ENABLED:-true}
-      OPENAGENT_CHAT_PORT: ${OPENAGENT_CHAT_PORT:-8080}
+      KC_HTTPS_CERTIFICATE_FILE: /opt/keycloak/conf/certs/tls.crt
+      KC_HTTPS_CERTIFICATE_KEY_FILE: /opt/keycloak/conf/certs/tls.key
+      KC_HTTPS_PORT: "8443"
+      OPENAGENT_PUBLIC_HOST: ${OPENAGENT_PUBLIC_HOST:-localhost}
+      OPENAGENT_CHAT_PORT: ${OPENAGENT_CHAT_PORT:-8081}
     volumes:
       - ./docker/keycloak/realm:/opt/keycloak/data/import:ro
+      - ./docker/nginx/certs:/opt/keycloak/conf/certs:ro
       - keycloak-data:/opt/keycloak/data
     ports:
-      - "${OPENAGENT_KEYCLOAK_PORT:-58081}:8080"
+      - "${OPENAGENT_KEYCLOAK_PORT:-58081}:8443"
 
 volumes:
   postgres-data:
