@@ -29,15 +29,15 @@ services:
       Engine__AllowMockAgent: "true"
       Heartbeat__AdvertisedHost: engine
       Heartbeat__AdvertisedPort: "5208"
-      Authentication__AllowDevelopmentAnonymous: "${OPENAGENT_AUTH_ALLOW_DEVELOPMENT_ANONYMOUS:-false}"
+      Authentication__AllowDevelopmentAnonymous: "false"
       Authentication__Mode: ${OPENAGENT_AUTH_MODE:-JwtBearer}
-      Authentication__EnableKeycloak: "${OPENAGENT_AUTH_ENABLE_KEYCLOAK:-true}"
-      Authentication__Authority: ${OPENAGENT_KEYCLOAK_PUBLIC_URL:-http://localhost:${OPENAGENT_KEYCLOAK_PORT:-58081}}/realms/openagent
-      Authentication__MetadataAddress: ${OPENAGENT_KEYCLOAK_METADATA_ADDRESS:-http://host.docker.internal:${OPENAGENT_KEYCLOAK_PORT:-58081}/realms/openagent/.well-known/openid-configuration}
-      Authentication__Audience: ${OPENAGENT_AUTH_AUDIENCE:-openagent-api}
-      Authentication__ClientId: ${OPENAGENT_AUTH_CLIENT_ID:-openagent-chat}
-      Authentication__RequireHttpsMetadata: "${OPENAGENT_AUTH_REQUIRE_HTTPS_METADATA:-false}"
-      Authentication__ClockSkewSeconds: "${OPENAGENT_AUTH_CLOCK_SKEW_SECONDS:-60}"
+      Authentication__EnableKeycloak: "true"
+      Authentication__Authority: http://localhost:${OPENAGENT_KEYCLOAK_PORT:-58081}/realms/openagent
+      Authentication__MetadataAddress: http://host.docker.internal:${OPENAGENT_KEYCLOAK_PORT:-58081}/realms/openagent/.well-known/openid-configuration
+      Authentication__Audience: openagent-api
+      Authentication__ClientId: openagent-chat
+      Authentication__RequireHttpsMetadata: "false"
+      Authentication__ClockSkewSeconds: "60"
       Cors__AllowedOrigins__0: http://localhost:${PREVIEW_CHAT_PORT:-8090}
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -62,15 +62,15 @@ services:
       OpenTelemetry__ServiceVersion: preview-${PREVIEW_SLUG:-dev}
       RouterSettings__Routing__EngineEndpoint: http://engine:5208
       RouterSettings__IntentRecognition__TimeoutMs: "30000"
-      Authentication__AllowDevelopmentAnonymous: "${OPENAGENT_AUTH_ALLOW_DEVELOPMENT_ANONYMOUS:-false}"
+      Authentication__AllowDevelopmentAnonymous: "false"
       Authentication__Mode: ${OPENAGENT_AUTH_MODE:-JwtBearer}
-      Authentication__EnableKeycloak: "${OPENAGENT_AUTH_ENABLE_KEYCLOAK:-true}"
-      Authentication__Authority: ${OPENAGENT_KEYCLOAK_PUBLIC_URL:-http://localhost:${OPENAGENT_KEYCLOAK_PORT:-58081}}/realms/openagent
-      Authentication__MetadataAddress: ${OPENAGENT_KEYCLOAK_METADATA_ADDRESS:-http://host.docker.internal:${OPENAGENT_KEYCLOAK_PORT:-58081}/realms/openagent/.well-known/openid-configuration}
-      Authentication__Audience: ${OPENAGENT_AUTH_AUDIENCE:-openagent-api}
-      Authentication__ClientId: ${OPENAGENT_AUTH_CLIENT_ID:-openagent-chat}
-      Authentication__RequireHttpsMetadata: "${OPENAGENT_AUTH_REQUIRE_HTTPS_METADATA:-false}"
-      Authentication__ClockSkewSeconds: "${OPENAGENT_AUTH_CLOCK_SKEW_SECONDS:-60}"
+      Authentication__EnableKeycloak: "true"
+      Authentication__Authority: http://localhost:${OPENAGENT_KEYCLOAK_PORT:-58081}/realms/openagent
+      Authentication__MetadataAddress: http://host.docker.internal:${OPENAGENT_KEYCLOAK_PORT:-58081}/realms/openagent/.well-known/openid-configuration
+      Authentication__Audience: openagent-api
+      Authentication__ClientId: openagent-chat
+      Authentication__RequireHttpsMetadata: "false"
+      Authentication__ClockSkewSeconds: "60"
       Cors__AllowedOrigins__0: http://localhost:${PREVIEW_CHAT_PORT:-8090}
     extra_hosts:
       - "host.docker.internal:host-gateway"
