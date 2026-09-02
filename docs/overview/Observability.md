@@ -31,15 +31,15 @@ Meter / ASP.NET Core Metrics -> OpenTelemetry
 
 | 服务 | Serilog `ServiceName` | OpenTelemetry service name | 自定义 source/meter |
 |------|-----------------------|----------------------------|---------------------|
-| Router | `agent-router` | `agent-router` | `OpenAgent.Router` |
-| Engine | `agent-engine` | `agent-engine` | `OpenAgent.Engine` |
+| Router | `agent-router` | `openagent-router` | `OpenAgent.Router` |
+| Engine | `agent-engine` | `openagent-engine` | `OpenAgent.Engine` |
 
 基础配置：
 
 ```json
 {
   "OpenTelemetry": {
-    "ServiceName": "agent-router",
+    "ServiceName": "openagent-router",
     "ServiceVersion": "1.0.0",
     "OtlpEndpoint": "https://otel-collector.intra.example:4317"
   }

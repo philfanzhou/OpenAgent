@@ -11,7 +11,7 @@ public class AgentHostOptions
     public string[] CorsAllowedOrigins { get; set; } = ["http://localhost:5173"];
     public string HealthCheckLivePath { get; set; } = "/health";
     public string HealthCheckReadyPath { get; set; } = "/ready";
-    public string ServiceName { get; set; } = "agent-service";
+    public string ServiceName { get; set; } = "openagent-service";
     public string ServiceVersion { get; set; } = "1.0.0";
     public string OpenTelemetrySource { get; set; } = "OpenAgent";
 }

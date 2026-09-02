@@ -11,6 +11,12 @@ namespace OpenAgent.Hosting.Tests;
 public class ServiceCollectionExtensionsTests
 {
     [Fact]
+    public void AgentHostOptions_DefaultServiceNameUsesOpenAgentPrefix()
+    {
+        Assert.Equal("openagent-service", new AgentHostOptions().ServiceName);
+    }
+
+    [Fact]
     public void AddAgentHost_RegistersConfiguredOptions()
     {
         using var provider = CreateServices(options =>

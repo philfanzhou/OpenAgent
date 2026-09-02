@@ -10,7 +10,7 @@ services:
       ConversationCache__Enabled: "true"
       FileAssets__Enabled: ${OPENAGENT_FILE_ASSETS_ENABLED:-true}
       OpenTelemetry__OtlpEndpoint: ${OPENAGENT_OTLP_ENDPOINT:-}
-      OpenTelemetry__ServiceName: agent-engine
+      OpenTelemetry__ServiceName: openagent-engine
       OpenTelemetry__ServiceVersion: ${OPENAGENT_SERVICE_VERSION:-development}
       FileAssets__ObjectStorage__ServiceUrl: ${OPENAGENT_S3_SERVICE_URL:-http://minio:9000}
       FileAssets__ObjectStorage__ForcePathStyle: "true"
@@ -46,7 +46,7 @@ services:
       ASPNETCORE_URLS: http://+:5001
       ConnectionStrings__Redis: redis:6379
       OpenTelemetry__OtlpEndpoint: ${OPENAGENT_OTLP_ENDPOINT:-}
-      OpenTelemetry__ServiceName: agent-router
+      OpenTelemetry__ServiceName: openagent-router
       OpenTelemetry__ServiceVersion: ${OPENAGENT_SERVICE_VERSION:-development}
       RouterSettings__Routing__EngineEndpoint: http://engine:5208
       RouterSettings__IntentRecognition__TimeoutMs: "30000"
