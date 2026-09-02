@@ -83,7 +83,7 @@ Provider 由 `AgentChatClientFactory` 构造 `IChatClient`；新增能力只产�
 
 ## 已完成
 
-- [x] MAF 成为唯一生产 Agent 引擎；保留 MockAgent 降级解析器。
+- [x] MAF 成为唯一生产 Agent 引擎；删除 MockAgent 配置降级路径。
 - [x] `RunAsync` 与 `RunStreamingAsync` 真实执行。
 - [x] `FunctionInvokingChatClient` 接管函数调用循环和最大迭代次数。
 - [x] 精确 JSON Schema 的可执行 `AIFunction` 适配器。

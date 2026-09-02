@@ -71,12 +71,16 @@ public class AgentConfigRepositoryTests
     }
 
     [Fact]
-    public async Task UpsertAsync_InlineApiKey_RejectsPersistence()
+    public async Task UpsertAsync_InlineRagApiKey_RejectsPersistence()
     {
         await using ServiceProvider services = CreateServices();
         IAgentConfigRepository repository = CreateRepository(services);
         AgentConfigEntity entity = CreateEntity("secret");
-        entity.Config.Llm.ApiKey = "must-not-be-stored";
+        entity.Config.Rag.Instances.Add(new RagInstanceConfig
+        {
+            Id = "knowledge",
+            ApiKey = "must-not-be-stored"
+        });
 
         ArgumentException exception = await Assert.ThrowsAsync<ArgumentException>(() =>
             repository.UpsertAsync(

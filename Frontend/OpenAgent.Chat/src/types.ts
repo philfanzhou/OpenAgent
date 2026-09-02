@@ -9,9 +9,6 @@ export interface AgentSummary {
   description: string
   status: number
   currentVersion: string
-  apiFormat: string
-  llmProvider?: string
-  llmModel?: string
 }
 
 export interface CurrentUserContext {
@@ -169,23 +166,13 @@ export interface SkillsConfig {
   instances: SkillInstanceConfig[]
 }
 
-export interface LlmConfig {
-  provider: string
-  format: 'OpenAIChatCompletions' | 'OpenAIResponses' | 'AnthropicMessages' | string
-  modelId: string
-  apiKeySecretRef: string
-  apiKey: string
-  endpoint: string
-  temperature: number
-}
-
 export interface LlmProviderProfile {
   id: string
   name: string
   format: 'OpenAIChatCompletions' | 'OpenAIResponses' | 'AnthropicMessages' | string
-  modelId?: string | null
+  modelId: string
+  contextWindowTokens: number
   endpoint: string
-  apiKeySecretRef: string
   apiKey: string
   temperature: number
 }
@@ -260,7 +247,6 @@ export interface AgentConfigEntity {
   currentVersion: string
   config: {
     instructions: string
-    llm: LlmConfig
     mcp: { enabledServerIds?: string[]; servers: McpServerConfig[] }
     rag: RagConfig
     skills: SkillsConfig

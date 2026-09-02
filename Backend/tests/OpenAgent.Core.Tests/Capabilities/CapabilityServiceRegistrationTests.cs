@@ -23,6 +23,7 @@ public class CapabilityServiceRegistrationTests
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton<IAgentConfigProvider, StaticConfigProvider>();
+        services.AddSingleton<ILlmConfigProvider, StaticLlmConfigProvider>();
         services.AddSingleton<ICurrentUserContext, TestUserContext>();
         services.AddSingleton<IConversationStore, InMemoryConversationStore>();
         services.AddSingleton<IFileAssetRepository, EmptyFileAssetRepository>();
@@ -67,6 +68,20 @@ public class CapabilityServiceRegistrationTests
             string tenantId,
             CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<AgentSummary>>([]);
+    }
+
+    private sealed class StaticLlmConfigProvider : ILlmConfigProvider
+    {
+        public Task<LlmProviderProfile?> GetAsync(
+            string tenantId,
+            string profileId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<LlmProviderProfile?>(null);
+
+        public Task<IReadOnlyList<LlmProviderProfile>> ListAsync(
+            string tenantId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<LlmProviderProfile>>([]);
     }
 
     private sealed class EmptyFileAssetRepository : IFileAssetRepository

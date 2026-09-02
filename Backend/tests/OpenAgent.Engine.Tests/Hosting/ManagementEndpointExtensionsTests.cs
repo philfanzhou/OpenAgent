@@ -8,20 +8,33 @@ namespace OpenAgent.Engine.Tests.Hosting;
 public class ManagementEndpointExtensionsTests
 {
     [Fact]
-    public void Redact_RemovesEmbeddedLlmSecret()
+    public void Redact_RemovesEmbeddedRagSecret()
     {
         var entity = new AgentConfigEntity
         {
             AgentId = "finance",
             Config = new AgentConfig
             {
-                Llm = new LlmConfig { ApiKey = "llm-secret" }
+                Rag = new RagConfig
+                {
+                    Instances =
+                    [
+                        new RagInstanceConfig
+                        {
+                            Id = "knowledge",
+                            ApiKey = "rag-secret",
+                            ApiKeySecretRef = "rag:knowledge"
+                        }
+                    ]
+                }
             }
         };
 
         AgentConfigEntity redacted = ManagementEndpointExtensions.Redact(entity);
 
-        Assert.Empty(redacted.Config.Llm.ApiKey);
+        RagInstanceConfig rag = Assert.Single(redacted.Config.Rag.Instances);
+        Assert.Empty(rag.ApiKey);
+        Assert.Equal("rag:knowledge", rag.ApiKeySecretRef);
     }
 
     [Fact]

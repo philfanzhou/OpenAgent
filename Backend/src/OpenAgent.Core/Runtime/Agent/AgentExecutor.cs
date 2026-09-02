@@ -45,6 +45,7 @@ public sealed class AgentExecutor
             cancellationToken).ConfigureAwait(false);
         AgentRuntimeProfile profile = await _runtime.ResolveAsync(
             agentId,
+            RequireLlmProfileId(request),
             user,
             cancellationToken).ConfigureAwait(false);
         AgentRequest executionRequest = CopyWithResolvedValues(
@@ -110,6 +111,7 @@ public sealed class AgentExecutor
             cancellationToken).ConfigureAwait(false);
         AgentRuntimeProfile profile = await _runtime.ResolveAsync(
             agentId,
+            RequireLlmProfileId(request),
             user,
             cancellationToken).ConfigureAwait(false);
         AgentRequest executionRequest = CopyWithResolvedValues(
@@ -171,7 +173,7 @@ public sealed class AgentExecutor
                 }
             }
 
-            // 工具执行完成后立即下发结果，客户端无需等整轮结束重载历史即可看到工具输出。
+            // Emit tool results immediately so clients do not need to reload history.
             foreach (FunctionResultContent result in contents.OfType<FunctionResultContent>())
             {
                 yield return new AgentStreamEvent
@@ -186,7 +188,7 @@ public sealed class AgentExecutor
             {
                 if (!string.IsNullOrEmpty(reasoning.Text))
                 {
-                    // 累积思考内容，保证流式中止（暂停）时也能把思考过程持久化进会话历史。
+                    // Preserve partial reasoning when a streaming request is interrupted.
                     scope.AppendPartialReasoning(reasoning.Text);
                     yield return new AgentStreamEvent
                     {
@@ -256,6 +258,7 @@ public sealed class AgentExecutor
         {
             Query = request.Query,
             AgentId = agentId,
+            LlmProfileId = request.LlmProfileId,
             ConversationId = conversationId,
             ConversationType = request.ConversationType,
             TraceId = traceId,
@@ -264,6 +267,13 @@ public sealed class AgentExecutor
             ExternalContext = request.ExternalContext,
             FileIds = request.FileIds
         };
+
+    private static string RequireLlmProfileId(AgentRequest request) =>
+        !string.IsNullOrWhiteSpace(request.LlmProfileId)
+            ? request.LlmProfileId
+            : throw new AgentException(
+                AgentErrorCode.MissingRequiredField,
+                "LlmProfileId is required");
 
     private static string? ResolveConversationId(AgentRequest request)
     {

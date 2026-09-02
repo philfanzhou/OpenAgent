@@ -12,6 +12,7 @@ public sealed class OpenAgentDbContext(DbContextOptions<OpenAgentDbContext> opti
     internal DbSet<MessageFileReferenceEntity> MessageFileReferences => Set<MessageFileReferenceEntity>();
     internal DbSet<SkillDefinitionEntity> SkillDefinitions => Set<SkillDefinitionEntity>();
     internal DbSet<AgentConfigurationEntity> AgentConfigurations => Set<AgentConfigurationEntity>();
+    internal DbSet<LlmConfigurationEntity> LlmConfigurations => Set<LlmConfigurationEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -105,6 +106,16 @@ public sealed class OpenAgentDbContext(DbContextOptions<OpenAgentDbContext> opti
             entity.Property(item => item.TenantId).HasMaxLength(256);
             entity.Property(item => item.ConfigurationJson).HasColumnType("jsonb");
             entity.Property(item => item.Version).IsConcurrencyToken();
+            entity.HasIndex(item => new { item.TenantId, item.UpdatedAt });
+        });
+
+        modelBuilder.Entity<LlmConfigurationEntity>(entity =>
+        {
+            entity.ToTable("llm_configurations");
+            entity.HasKey(item => new { item.TenantId, item.ProfileId });
+            entity.Property(item => item.TenantId).HasMaxLength(256);
+            entity.Property(item => item.ProfileId).HasMaxLength(256);
+            entity.Property(item => item.ConfigurationJson).HasColumnType("jsonb");
             entity.HasIndex(item => new { item.TenantId, item.UpdatedAt });
         });
     }

@@ -5,7 +5,6 @@ using OpenAgent.Contracts.Configuration;
 using OpenAgent.Core.Abstract;
 using OpenAgent.Core.Conversation;
 using OpenAgent.Core.Files;
-using OpenAgent.Core.Models;
 using OpenAgent.Core.Runtime.Agent;
 using OpenAgent.Core.Security;
 
@@ -15,7 +14,6 @@ internal static class RuntimeServiceExtensions
 {
     internal static IServiceCollection AddRuntimeServices(this IServiceCollection services)
     {
-        services.AddSingleton<ILlmRegistry, LlmRegistry>();
         services.AddSingleton<IAgentChatClientFactory, AgentChatClientFactory>();
         services.TryAddSingleton<IAgentSecretResolver, MissingAgentSecretResolver>();
 

@@ -182,8 +182,7 @@ internal sealed class EfCoreAgentConfigRepository(
 
     private static void ValidateNoInlineSecrets(AgentConfigEntity entity)
     {
-        if (!string.IsNullOrWhiteSpace(entity.Config.Llm.ApiKey)
-            || entity.Config.Rag.Instances.Any(instance =>
+        if (entity.Config.Rag.Instances.Any(instance =>
                 !string.IsNullOrWhiteSpace(instance.ApiKey)))
         {
             throw new ArgumentException(

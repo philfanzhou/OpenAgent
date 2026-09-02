@@ -172,7 +172,10 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
                 Message = BuildIntentPrompt(message, agents),
                 Context = new Dictionary<string, object>
                 {
-                    ["agentId"] = intentAgentId
+                    ["agentId"] = intentAgentId,
+                    ["llmProfileId"] = requestContext.LlmProfileId
+                        ?? throw new InvalidOperationException(
+                            "LLM profile id is required for intent recognition.")
                 }
             }, JsonOptions),
             Encoding.UTF8,

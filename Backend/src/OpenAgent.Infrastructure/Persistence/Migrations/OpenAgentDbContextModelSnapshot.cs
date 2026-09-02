@@ -121,6 +121,30 @@ namespace OpenAgent.Infrastructure.Migrations
                     b.ToTable("conversations", "openagent");
                 });
 
+            modelBuilder.Entity("OpenAgent.Infrastructure.Entities.LlmConfigurationEntity", b =>
+                {
+                    b.Property<string>("TenantId")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("ProfileId")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("ConfigurationJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("TenantId", "ProfileId");
+
+                    b.HasIndex("TenantId", "UpdatedAt");
+
+                    b.ToTable("llm_configurations", "openagent");
+                });
+
             modelBuilder.Entity("OpenAgent.Infrastructure.Entities.ConversationFileReferenceEntity", b =>
                 {
                     b.Property<string>("ConversationId")

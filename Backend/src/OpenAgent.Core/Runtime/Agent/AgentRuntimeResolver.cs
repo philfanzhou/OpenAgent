@@ -6,26 +6,16 @@ using OpenAgent.Core.Security;
 namespace OpenAgent.Core.Runtime.Agent;
 
 /// <summary>
-/// Resolves the effective runtime profile before an Agent is constructed.
+/// Resolves the Agent and independently selected LLM profile for one execution.
 /// </summary>
-internal sealed class AgentRuntimeResolver : IAgentRuntimeResolver
+internal sealed class AgentRuntimeResolver(
+    IAgentConfigProvider configs,
+    ILlmConfigProvider models,
+    AgentAuthorizationGate authorization) : IAgentRuntimeResolver
 {
-    private readonly IAgentConfigProvider _configs;
-    private readonly AgentAuthorizationGate _authorization;
-    private readonly IAgentSecretResolver _secrets;
-
-    public AgentRuntimeResolver(
-        IAgentConfigProvider configs,
-        AgentAuthorizationGate authorization,
-        IAgentSecretResolver? secrets = null)
-    {
-        _configs = configs;
-        _authorization = authorization;
-        _secrets = secrets ?? new MissingAgentSecretResolver();
-    }
-
     public async Task<AgentRuntimeProfile> ResolveAsync(
         string agentId,
+        string llmProfileId,
         IAgentUserContext userContext,
         CancellationToken cancellationToken = default)
     {
@@ -33,31 +23,40 @@ internal sealed class AgentRuntimeResolver : IAgentRuntimeResolver
         {
             throw new ArgumentException("Agent id is required.", nameof(agentId));
         }
+        if (string.IsNullOrWhiteSpace(llmProfileId))
+        {
+            throw new ArgumentException("LLM profile id is required.", nameof(llmProfileId));
+        }
 
-        AgentConfig config = await _configs.GetConfigAsync(
+        string tenantId = userContext.TenantId
+            ?? throw new TenantDataIsolationException(
+                null,
+                null,
+                "TenantId is required but not provided");
+        AgentConfig config = await configs.GetConfigAsync(
                 agentId,
-                userContext.TenantId
-                    ?? throw new TenantDataIsolationException(
-                        null,
-                        null,
-                        "TenantId is required but not provided"),
+                tenantId,
                 cancellationToken)
             .ConfigureAwait(false)
             ?? throw new InvalidOperationException($"Agent configuration not found: {agentId}");
-
         ValidateSkillTenant(agentId, config, userContext);
-
-        LlmConfig authorizedModel = await _authorization.ResolveAuthorizedModelAsync(
+        await authorization.EnsureAgentAuthorizedAsync(
                 agentId,
-                config.Llm,
                 userContext,
                 cancellationToken)
             .ConfigureAwait(false);
-        LlmConfig model = CloneForExecution(authorizedModel);
 
-        await ResolveApiKeyAsync(
+        LlmProviderProfile profile = await models.GetAsync(
+                tenantId,
+                llmProfileId,
+                cancellationToken)
+            .ConfigureAwait(false)
+            ?? throw new InvalidOperationException($"LLM profile not found: {llmProfileId}");
+        LlmConfig model = CreateExecutionModel(profile);
+        await authorization.EnsureModelAuthorizedAsync(
+                agentId,
                 model,
-                userContext.TenantId!,
+                userContext,
                 cancellationToken)
             .ConfigureAwait(false);
 
@@ -66,54 +65,59 @@ internal sealed class AgentRuntimeResolver : IAgentRuntimeResolver
         {
             AgentId = agentId,
             Config = config,
-            Model = model
+            Model = model,
+            ContextPolicy = CreateContextPolicy(config.ContextPolicy, model.ContextWindowTokens)
         };
     }
 
-    private static LlmConfig CloneForExecution(LlmConfig model) => new()
+    private static LlmConfig CreateExecutionModel(LlmProviderProfile profile) => new()
     {
-        TenantId = model.TenantId,
-        Provider = model.Provider,
-        Format = model.Format,
-        ModelId = model.ModelId,
-        ApiKeySecretRef = model.ApiKeySecretRef,
-        ApiKey = model.ApiKey,
-        Endpoint = model.Endpoint,
-        Temperature = model.Temperature
+        TenantId = profile.TenantId,
+        Provider = profile.Id,
+        Format = profile.Format,
+        ModelId = profile.ModelId,
+        ApiKey = profile.ApiKey,
+        Endpoint = profile.Endpoint,
+        Temperature = profile.Temperature,
+        ContextWindowTokens = profile.ContextWindowTokens
     };
 
-    private async Task ResolveApiKeyAsync(
-        LlmConfig model,
-        string tenantId,
-        CancellationToken cancellationToken)
+    private static ContextPolicy? CreateContextPolicy(
+        ContextPolicy? agentPolicy,
+        int contextWindowTokens)
     {
-        if (!string.IsNullOrWhiteSpace(model.ApiKey)
-            || string.IsNullOrWhiteSpace(model.ApiKeySecretRef))
+        if (agentPolicy == null && contextWindowTokens <= 0)
         {
-            return;
+            return null;
         }
 
-        model.ApiKey = await _secrets.ResolveAsync(
-                tenantId,
-                model.ApiKeySecretRef,
-                cancellationToken)
-            .ConfigureAwait(false)
-            ?? throw new InvalidOperationException(
-                $"LLM secret reference '{model.ApiKeySecretRef}' is not configured for tenant '{tenantId}'.");
+        return new ContextPolicy
+        {
+            MaxTokens = contextWindowTokens > 0
+                ? contextWindowTokens
+                : agentPolicy?.MaxTokens ?? 0,
+            PreserveRecentTurns = agentPolicy?.PreserveRecentTurns ?? 2,
+            SummarizeOptions = agentPolicy?.SummarizeOptions
+        };
     }
 
     private static void Validate(string agentId, AgentConfig config, LlmConfig model)
     {
         if (string.IsNullOrWhiteSpace(model.ModelId))
         {
-            throw new InvalidOperationException(
-                $"LLM model id is empty for agent '{agentId}'.");
+            throw new InvalidOperationException($"LLM model id is empty for agent '{agentId}'.");
         }
-
+        if (string.IsNullOrWhiteSpace(model.Endpoint))
+        {
+            throw new InvalidOperationException($"LLM endpoint is empty for agent '{agentId}'.");
+        }
+        if (model.ContextWindowTokens <= 0)
+        {
+            throw new InvalidOperationException($"LLM context window must be greater than zero for agent '{agentId}'.");
+        }
         if (config.MaxTurns < 0)
         {
-            throw new InvalidOperationException(
-                $"MaxTurns cannot be negative for agent '{agentId}'.");
+            throw new InvalidOperationException($"MaxTurns cannot be negative for agent '{agentId}'.");
         }
 
         ValidateContextPolicy(agentId, config.ContextPolicy);
@@ -126,9 +130,7 @@ internal sealed class AgentRuntimeResolver : IAgentRuntimeResolver
     {
         bool hasSkillBinding = config.Skills.EnabledSkills.Count > 0
             || config.Skills.Instances.Count > 0;
-        // 调试用：空租户（存量）agent 的技能绑定不参与跨租户校验。
         if (hasSkillBinding
-            && !string.IsNullOrWhiteSpace(config.TenantId)
             && !string.Equals(config.TenantId, userContext.TenantId, StringComparison.Ordinal))
         {
             throw new TenantDataIsolationException(
@@ -144,13 +146,11 @@ internal sealed class AgentRuntimeResolver : IAgentRuntimeResolver
         {
             return;
         }
-
-        if (policy.MaxTokens < 0 || policy.PreserveRecentTurns < 0)
+        if (policy.PreserveRecentTurns < 0)
         {
             throw new InvalidOperationException(
                 $"ContextPolicy limits cannot be negative for agent '{agentId}'.");
         }
-
         if (policy.SummarizeOptions?.MaxSummaryTokens < 1)
         {
             throw new InvalidOperationException(

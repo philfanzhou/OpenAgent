@@ -22,6 +22,7 @@ internal sealed class ConversationCompactionService(
     public async Task<ContextSummary> CompactAsync(
         string tenantId,
         string conversationId,
+        string llmProfileId,
         IAgentUserContext user,
         CancellationToken cancellationToken = default)
     {
@@ -53,13 +54,14 @@ internal sealed class ConversationCompactionService(
 
         AgentRuntimeProfile profile = await runtime.ResolveAsync(
             record.AgentId,
+            llmProfileId,
             user,
             cancellationToken).ConfigureAwait(false);
         IChatClient summarizationClient = chatClients.CreateSummarizationClient(
             profile.Model,
-            profile.Config.ContextPolicy);
+            profile.ContextPolicy);
         SummarizationCompactionStrategy strategy = histories.CreateStrategy(
-            profile.Config.ContextPolicy,
+            profile.ContextPolicy,
             summarizationClient,
             force: true,
             out CompactionTrigger trigger);

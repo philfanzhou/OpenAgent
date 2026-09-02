@@ -26,5 +26,5 @@ public enum AgentPublishStatus
 {
     Draft,
     PendingReview,
-    Snapshot
+    Published
 }

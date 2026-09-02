@@ -44,6 +44,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IFileAssetRepository, EfCoreFileAssetRepository>();
         services.AddSingleton<ISkillDefinitionRepository, EfCoreSkillDefinitionRepository>();
         services.AddSingleton<IAgentConfigRepository, EfCoreAgentConfigRepository>();
+        services.AddSingleton<ILlmConfigRepository, EfCoreLlmConfigRepository>();
 
         ConversationCacheOptions cache = configuration.GetSection(ConversationCacheOptions.SectionName)
             .Get<ConversationCacheOptions>() ?? new();

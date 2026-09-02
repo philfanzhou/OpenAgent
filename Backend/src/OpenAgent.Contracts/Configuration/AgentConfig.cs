@@ -12,7 +12,6 @@ public class AgentConfig
 {
     public string TenantId { get; set; } = string.Empty;
     public string Instructions { get; set; } = string.Empty;
-    public LlmConfig Llm { get; set; } = new();
     public McpConfig Mcp { get; set; } = new();
     public RagConfig Rag { get; set; } = new();
     public SkillsConfig Skills { get; set; } = new();
@@ -27,14 +26,10 @@ public class LlmConfig
     public string Provider { get; set; } = string.Empty;
     public ApiFormat Format { get; set; } = ApiFormat.OpenAIChatCompletions;
     public string ModelId { get; set; } = "gpt-4o";
-    /// <summary>
-    /// Tenant-relative reference resolved by the execution host at runtime.
-    /// The referenced secret value must never be persisted with this configuration.
-    /// </summary>
-    public string ApiKeySecretRef { get; set; } = string.Empty;
     public string ApiKey { get; set; } = string.Empty;
     public string Endpoint { get; set; } = string.Empty;
     public double Temperature { get; set; } = 0.7;
+    public int ContextWindowTokens { get; set; }
 }
 
 public class LlmProviderProfile
@@ -43,12 +38,11 @@ public class LlmProviderProfile
     public string Id { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public ApiFormat Format { get; set; } = ApiFormat.OpenAIChatCompletions;
-    // Kept for deserializing old provider profiles; new profiles select a model per Agent.
-    public string? ModelId { get; set; }
+    public string ModelId { get; set; } = string.Empty;
     public string Endpoint { get; set; } = string.Empty;
-    public string ApiKeySecretRef { get; set; } = string.Empty;
     public string ApiKey { get; set; } = string.Empty;
     public double Temperature { get; set; } = 0.7;
+    public int ContextWindowTokens { get; set; }
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter))]

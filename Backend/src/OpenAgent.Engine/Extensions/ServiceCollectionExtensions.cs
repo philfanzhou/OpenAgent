@@ -9,7 +9,6 @@ using OpenAgent.Engine.Config;
 using OpenAgent.Engine.Models;
 using OpenAgent.Engine.Redis;
 using OpenAgent.Engine.Registry;
-using OpenAgent.Engine.Reload;
 using OpenAgent.Engine.Runtime;
 using StackExchange.Redis;
 
@@ -20,7 +19,6 @@ internal static class ServiceCollectionExtensions
     public static IServiceCollection AddAgentEngine(this IServiceCollection services, IConfiguration configuration)
     {
         services.Configure<HeartbeatOptions>(configuration.GetSection("Heartbeat"));
-        services.Configure<ConfigSnapshotOptions>(configuration.GetSection("ConfigSnapshot"));
         services.Configure<AgentConfigSourceOptions>(
             configuration.GetSection(AgentConfigSourceOptions.SectionName));
 
@@ -29,14 +27,12 @@ internal static class ServiceCollectionExtensions
         services.AddSingleton<IRedisConnectionProvider>(sp =>
             new RedisConnectionProvider(sp.GetService<IConnectionMultiplexer>()));
 
-        // ConfigProvider helpers — were hand-newed inside ConfigProvider; now injected.
         services.Replace(ServiceDescriptor.Singleton<IAgentSecretResolver, ConfigurationSecretResolver>());
-        services.AddSingleton<MockAgentResolver>();
-        services.AddSingleton<AgentConfigLocalStore>();
         services.AddSingleton<AgentConfigDatabaseStore>();
-        services.AddSingleton<AgentListQuery>();
         services.AddSingleton<AgentConfigManagementService>();
         services.AddSingleton<LlmProfileManagementService>();
+        services.AddSingleton<ILlmConfigProvider>(serviceProvider =>
+            serviceProvider.GetRequiredService<LlmProfileManagementService>());
         services.AddSingleton<McpProfileManagementService>();
         services.AddSingleton<RedisSkillCatalogStore>();
         services.AddSingleton<ISkillCatalogStore>(serviceProvider =>
@@ -47,26 +43,15 @@ internal static class ServiceCollectionExtensions
         services.AddSingleton<IAgentConfigProvider, ConfigProvider>();
 
         services.AddHostedService<RedisRagRegistrar>();
-        services.AddHostedService<RedisLlmRegistrar>();
         services.AddHostedService<RedisMcpRegistrar>();
 
         services.AddHealthChecks()
             .AddCheck<RedisHealthCheck>("redis", tags: new[] { "infrastructure", "ready", "live" })
-            .AddCheck<ConfigHealthCheck>("agent-config", tags: new[] { "ready" })
-            .AddCheck<LlmHealthCheck>("llm-connectivity", tags: new[] { "live" });
+            .AddCheck<ConfigHealthCheck>("agent-config", tags: new[] { "ready" });
 
         services.AddSingleton<IEngineRegistry, RedisRegistry>();
         services.AddHostedService<HeartbeatService>();
 
-        // Container-owned IMemoryCache (Engine-wide). ConfigSnapshot consumes it;
-        // key namespace "agent:{id}:config:{type}" is unique within Engine.
-        services.AddMemoryCache();
-        services.AddSingleton<ConfigSnapshot>();
-        services.AddSingleton<FullConfigRefresher>();
-        services.AddSingleton<LlmProfileRefresher>();
-        services.AddSingleton<LegacyMessageHandler>();
-        services.AddSingleton<ConfigUpdateDispatcher>();
-        services.AddHostedService<HotReloadService>();
         services.AddHostedService<AgentConfigCacheWarmupService>();
 
         services.AddSingleton<ShutdownService>();

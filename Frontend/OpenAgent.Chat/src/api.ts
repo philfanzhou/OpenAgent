@@ -379,8 +379,8 @@ export const api = {
     return request<void>(`/api/v1/agent/conversations/${encodeURIComponent(id)}`, { method: 'DELETE' })
   },
 
-  compactConversation(id: string): Promise<ContextSummary> {
-    return request<ContextSummary>(`/api/v1/agent/conversations/${encodeURIComponent(id)}/compact`, { method: 'POST' })
+  compactConversation(id: string, llmProfileId: string): Promise<ContextSummary> {
+    return request<ContextSummary>(`/api/v1/agent/conversations/${encodeURIComponent(id)}/compact?llmProfileId=${encodeURIComponent(llmProfileId)}`, { method: 'POST' })
   },
 
   getAgentConfig(id: string): Promise<AgentConfigEntity> {
@@ -526,6 +526,7 @@ export const api = {
   async *streamChat(
     message: string,
     agentId?: string,
+    llmProfileId?: string,
     conversationId?: string,
     fileIds: string[] = [],
     routingConversationId?: string,
@@ -539,7 +540,7 @@ export const api = {
       body: JSON.stringify({
         message,
         fileIds,
-        context: { ...(agentId ? { agentId } : {}), ...(conversationId ? { conversationId } : {}) },
+        context: { ...(agentId ? { agentId } : {}), ...(llmProfileId ? { llmProfileId } : {}), ...(conversationId ? { conversationId } : {}) },
       }),
       signal,
     })

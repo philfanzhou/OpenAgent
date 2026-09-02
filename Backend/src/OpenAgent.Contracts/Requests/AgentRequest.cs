@@ -7,6 +7,7 @@ public class AgentRequest
 {
     public required string Query { get; init; }
     public string? AgentId { get; init; }
+    public string? LlmProfileId { get; init; }
     public string? ConversationId { get; init; }
     public ConversationType ConversationType { get; init; } = ConversationType.User;
     public string? TraceId { get; init; }
