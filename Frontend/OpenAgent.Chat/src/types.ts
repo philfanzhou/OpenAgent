@@ -15,6 +15,8 @@ export interface AgentSummary {
 
 export interface CurrentUserContext {
   userId: string
+  username?: string
+  email?: string
   tenantId?: string
   roles: string[]
   groups: string[]
