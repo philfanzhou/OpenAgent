@@ -21,7 +21,7 @@ public class ManagementEndpointExtensionsTests
 
         AgentConfigEntity redacted = ManagementEndpointExtensions.Redact(entity);
 
-        Assert.Equal("***", redacted.Config.Llm.ApiKey);
+        Assert.Empty(redacted.Config.Llm.ApiKey);
     }
 
     [Fact]
@@ -35,7 +35,7 @@ public class ManagementEndpointExtensionsTests
 
         LlmProviderProfile redacted = ManagementEndpointExtensions.RedactLlm(profile);
 
-        Assert.Equal("***", redacted.ApiKey);
+        Assert.Empty(redacted.ApiKey);
         Assert.Equal("provider-secret", profile.ApiKey);
     }
 }

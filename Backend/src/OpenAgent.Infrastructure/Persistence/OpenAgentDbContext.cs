@@ -100,7 +100,7 @@ public sealed class OpenAgentDbContext(DbContextOptions<OpenAgentDbContext> opti
         modelBuilder.Entity<AgentConfigurationEntity>(entity =>
         {
             entity.ToTable("agent_configurations");
-            entity.HasKey(item => item.AgentId);
+            entity.HasKey(item => new { item.TenantId, item.AgentId });
             entity.Property(item => item.AgentId).HasMaxLength(256);
             entity.Property(item => item.TenantId).HasMaxLength(256);
             entity.Property(item => item.ConfigurationJson).HasColumnType("jsonb");

@@ -27,7 +27,9 @@ internal static class ManagementEndpointExtensions
         {
             if (!HasScope(context, "agent.read"))
                 return Results.Forbid();
-            return Results.Ok(await provider.ListAgentsAsync(cancellationToken).ConfigureAwait(false));
+            return Results.Ok(await provider
+                .ListAgentsAsync(RequireTenant(context), cancellationToken)
+                .ConfigureAwait(false));
         });
 
         group.MapGet("/agents/{agentId}", async (
@@ -38,9 +40,9 @@ internal static class ManagementEndpointExtensions
         {
             if (!HasScope(context, "agent.config.read"))
                 return Results.Forbid();
-            AgentConfigEntity? entity = await manager.GetAsync(agentId, cancellationToken).ConfigureAwait(false);
-            if (entity != null && !CanAccessAgent(entity, RequireTenant(context)))
-                return Results.Forbid();
+            AgentConfigEntity? entity = await manager
+                .GetAsync(agentId, RequireTenant(context), cancellationToken)
+                .ConfigureAwait(false);
             return entity == null ? Results.NotFound() : Results.Ok(Redact(entity));
         });
 
@@ -51,7 +53,9 @@ internal static class ManagementEndpointExtensions
         {
             if (!HasScope(context, "agent.config.read"))
                 return Results.Forbid();
-            IReadOnlyList<LlmProviderProfile> profiles = await manager.ListAsync(cancellationToken).ConfigureAwait(false);
+            IReadOnlyList<LlmProviderProfile> profiles = await manager
+                .ListAsync(RequireTenant(context), cancellationToken)
+                .ConfigureAwait(false);
             return Results.Ok(profiles.Select(RedactLlm));
         });
 
@@ -63,7 +67,9 @@ internal static class ManagementEndpointExtensions
         {
             if (!HasScope(context, "agent.config.read"))
                 return Results.Forbid();
-            LlmProviderProfile? profile = await manager.GetAsync(id, cancellationToken).ConfigureAwait(false);
+            LlmProviderProfile? profile = await manager
+                .GetAsync(id, RequireTenant(context), cancellationToken)
+                .ConfigureAwait(false);
             return profile == null ? Results.NotFound() : Results.Ok(RedactLlm(profile));
         });
 
@@ -83,14 +89,21 @@ internal static class ManagementEndpointExtensions
             }
 
             profile.Id = id;
-            LlmProviderProfile? existing = await manager.GetAsync(id, cancellationToken).ConfigureAwait(false);
-            if (existing != null && (string.IsNullOrWhiteSpace(profile.ApiKey)
-                || profile.ApiKey.StartsWith("***", StringComparison.Ordinal)))
+            if (!string.IsNullOrWhiteSpace(profile.ApiKey)
+                && !profile.ApiKey.StartsWith("***", StringComparison.Ordinal))
             {
-                profile.ApiKey = existing.ApiKey;
+                return Results.BadRequest(new { error = "Inline API keys are not persisted. Configure apiKeySecretRef instead." });
             }
 
-            LlmProviderProfile saved = await manager.SaveAsync(profile, cancellationToken).ConfigureAwait(false);
+            LlmProviderProfile? existing = await manager
+                .GetAsync(id, RequireTenant(context), cancellationToken)
+                .ConfigureAwait(false);
+            if (existing != null && string.IsNullOrWhiteSpace(profile.ApiKeySecretRef))
+                profile.ApiKeySecretRef = existing.ApiKeySecretRef;
+            profile.ApiKey = string.Empty;
+            LlmProviderProfile saved = await manager
+                .SaveAsync(profile, RequireTenant(context), cancellationToken)
+                .ConfigureAwait(false);
             return Results.Ok(RedactLlm(saved));
         });
 
@@ -102,13 +115,14 @@ internal static class ManagementEndpointExtensions
         {
             if (!HasScope(context, "agent.config.write"))
                 return Results.Forbid();
-            return await manager.DeleteAsync(id, cancellationToken).ConfigureAwait(false)
+            return await manager.DeleteAsync(id, RequireTenant(context), cancellationToken).ConfigureAwait(false)
                 ? Results.NoContent()
                 : Results.NotFound();
         });
 
         group.MapPost("/llm/test-connection", async (
             [FromServices] IHttpClientFactory httpClientFactory,
+            [FromServices] IAgentSecretResolver secrets,
             [FromBody] LlmConnectionTestRequest request,
             HttpContext context,
             CancellationToken cancellationToken) =>
@@ -116,6 +130,15 @@ internal static class ManagementEndpointExtensions
             if (!HasScope(context, "capability.test"))
                 return Results.Forbid();
             LlmProviderProfile profile = request.Profile;
+            if (string.IsNullOrWhiteSpace(profile.ApiKey)
+                && !string.IsNullOrWhiteSpace(profile.ApiKeySecretRef))
+            {
+                profile.ApiKey = await secrets.ResolveAsync(
+                        RequireTenant(context),
+                        profile.ApiKeySecretRef,
+                        cancellationToken)
+                    .ConfigureAwait(false) ?? string.Empty;
+            }
             string traceId = context.GetAgentRequest().TraceId ?? string.Empty;
             if (string.IsNullOrWhiteSpace(profile.Endpoint))
             {
@@ -189,9 +212,9 @@ internal static class ManagementEndpointExtensions
             if (!HasScope(context, "agent.config.write"))
                 return Results.Forbid();
             string tenantId = RequireTenant(context);
-            AgentConfigEntity? existing = await manager.GetAsync(agentId, cancellationToken).ConfigureAwait(false);
-            if (existing != null && !CanAccessAgent(existing, tenantId))
-                return Results.Forbid();
+            AgentConfigEntity? existing = await manager
+                .GetAsync(agentId, tenantId, cancellationToken)
+                .ConfigureAwait(false);
             if (!string.IsNullOrWhiteSpace(entity.TenantId)
                 && !string.Equals(entity.TenantId, tenantId, StringComparison.Ordinal))
                 return Results.Forbid();
@@ -219,9 +242,12 @@ internal static class ManagementEndpointExtensions
                 if (packageSkill == null)
                     return Results.BadRequest(new { error = $"Skill '{skillId}' is not available to this tenant." });
             }
-            AgentConfigEntity merged = MergeSecrets(existing, entity);
+            if (HasInlineSecrets(entity))
+                return Results.BadRequest(new { error = "Inline API keys are not persisted. Configure apiKeySecretRef instead." });
+            AgentConfigEntity merged = MergeSecretReferences(existing, entity);
             AgentConfigEntity? saved = await manager.SaveAsync(
                 agentId,
+                tenantId,
                 merged,
                 context.Request.Headers.IfMatch.FirstOrDefault() ?? entity.CurrentVersion,
                 cancellationToken).ConfigureAwait(false);
@@ -251,7 +277,9 @@ internal static class ManagementEndpointExtensions
         {
             if (!HasScope(context, "agent.config.read"))
                 return Results.Forbid();
-            IReadOnlyList<McpServerConfig> servers = await manager.ListAsync(cancellationToken).ConfigureAwait(false);
+            IReadOnlyList<McpServerConfig> servers = await manager
+                .ListAsync(RequireTenant(context), cancellationToken)
+                .ConfigureAwait(false);
             return Results.Ok(servers.Select(RedactMcpServer));
         });
 
@@ -263,7 +291,9 @@ internal static class ManagementEndpointExtensions
         {
             if (!HasScope(context, "agent.config.read"))
                 return Results.Forbid();
-            McpServerConfig? server = await manager.GetAsync(id, cancellationToken).ConfigureAwait(false);
+            McpServerConfig? server = await manager
+                .GetAsync(id, RequireTenant(context), cancellationToken)
+                .ConfigureAwait(false);
             return server == null ? Results.NotFound() : Results.Ok(RedactMcpServer(server));
         });
 
@@ -282,7 +312,9 @@ internal static class ManagementEndpointExtensions
                 return Results.BadRequest(new { error = "MCP requires a URL." });
 
             server.Name = id;
-            McpServerConfig saved = await manager.SaveAsync(server, cancellationToken).ConfigureAwait(false);
+            McpServerConfig saved = await manager
+                .SaveAsync(server, RequireTenant(context), cancellationToken)
+                .ConfigureAwait(false);
             return Results.Ok(RedactMcpServer(saved));
         });
 
@@ -294,7 +326,7 @@ internal static class ManagementEndpointExtensions
         {
             if (!HasScope(context, "agent.config.write"))
                 return Results.Forbid();
-            return await manager.DeleteAsync(id, cancellationToken).ConfigureAwait(false)
+            return await manager.DeleteAsync(id, RequireTenant(context), cancellationToken).ConfigureAwait(false)
                 ? Results.NoContent()
                 : Results.NotFound();
         });
@@ -307,7 +339,9 @@ internal static class ManagementEndpointExtensions
         {
             if (!HasScope(context, "agent.config.read"))
                 return Results.Forbid();
-            AgentConfigEntity? entity = await manager.GetAsync(agentId, cancellationToken).ConfigureAwait(false);
+            AgentConfigEntity? entity = await manager
+                .GetAsync(agentId, RequireTenant(context), cancellationToken)
+                .ConfigureAwait(false);
             return entity == null
                 ? Results.NotFound()
                 : Results.Ok(new RagConfig
@@ -328,17 +362,24 @@ internal static class ManagementEndpointExtensions
         {
             if (!HasScope(context, "agent.config.write"))
                 return Results.Forbid();
-            AgentConfigEntity? existing = await manager.GetAsync(agentId, cancellationToken).ConfigureAwait(false);
+            string tenantId = RequireTenant(context);
+            AgentConfigEntity? existing = await manager
+                .GetAsync(agentId, tenantId, cancellationToken)
+                .ConfigureAwait(false);
             if (existing == null)
                 return Results.NotFound();
 
             instance.Id = id;
             RagInstanceConfig? current = existing.Config.Rag.Instances.FirstOrDefault(item =>
                 string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
-            if (current != null && (string.IsNullOrWhiteSpace(instance.ApiKey) || instance.ApiKey.StartsWith("***", StringComparison.Ordinal)))
+            if (!string.IsNullOrWhiteSpace(instance.ApiKey)
+                && !instance.ApiKey.StartsWith("***", StringComparison.Ordinal))
+                return Results.BadRequest(new { error = "Inline API keys are not persisted. Configure apiKeySecretRef instead." });
+            if (current != null && string.IsNullOrWhiteSpace(instance.ApiKeySecretRef))
             {
-                instance.ApiKey = current.ApiKey;
+                instance.ApiKeySecretRef = current.ApiKeySecretRef;
             }
+            instance.ApiKey = string.Empty;
 
             int index = existing.Config.Rag.Instances.FindIndex(item =>
                 string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
@@ -353,6 +394,7 @@ internal static class ManagementEndpointExtensions
 
             AgentConfigEntity? saved = await manager.SaveAsync(
                 agentId,
+                tenantId,
                 existing,
                 context.Request.Headers.IfMatch.FirstOrDefault(),
                 cancellationToken).ConfigureAwait(false);
@@ -368,7 +410,10 @@ internal static class ManagementEndpointExtensions
         {
             if (!HasScope(context, "agent.config.write"))
                 return Results.Forbid();
-            AgentConfigEntity? existing = await manager.GetAsync(agentId, cancellationToken).ConfigureAwait(false);
+            string tenantId = RequireTenant(context);
+            AgentConfigEntity? existing = await manager
+                .GetAsync(agentId, tenantId, cancellationToken)
+                .ConfigureAwait(false);
             if (existing == null)
                 return Results.NotFound();
             int removed = existing.Config.Rag.Instances.RemoveAll(item =>
@@ -379,6 +424,7 @@ internal static class ManagementEndpointExtensions
                 string.Equals(item, id, StringComparison.OrdinalIgnoreCase));
             AgentConfigEntity? saved = await manager.SaveAsync(
                 agentId,
+                tenantId,
                 existing,
                 context.Request.Headers.IfMatch.FirstOrDefault(),
                 cancellationToken).ConfigureAwait(false);
@@ -387,6 +433,7 @@ internal static class ManagementEndpointExtensions
 
         group.MapPost("/rag/test-connection", async (
             [FromServices] IHttpClientFactory httpClientFactory,
+            [FromServices] IAgentSecretResolver secrets,
             [FromBody] RagConnectionTestRequest request,
             HttpContext context,
             CancellationToken cancellationToken) =>
@@ -400,6 +447,16 @@ internal static class ManagementEndpointExtensions
                     Error = "RAG endpoint is required.",
                     TraceId = context.GetAgentRequest().TraceId
                 });
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Instance.ApiKey)
+                && !string.IsNullOrWhiteSpace(request.Instance.ApiKeySecretRef))
+            {
+                request.Instance.ApiKey = await secrets.ResolveAsync(
+                        RequireTenant(context),
+                        request.Instance.ApiKeySecretRef,
+                        cancellationToken)
+                    .ConfigureAwait(false) ?? string.Empty;
             }
 
             var stopwatch = System.Diagnostics.Stopwatch.StartNew();
@@ -638,31 +695,33 @@ internal static class ManagementEndpointExtensions
         context.GetAgentRequest().User.TenantId
         ?? throw new InvalidOperationException("TenantId is required.");
 
-    // 调试用：空租户（存量）agent 视为全局可见，不限制其 skills 是否为空。
-    private static bool CanAccessAgent(AgentConfigEntity entity, string tenantId) =>
-        string.Equals(entity.TenantId, tenantId, StringComparison.Ordinal)
-        || string.IsNullOrWhiteSpace(entity.TenantId);
+    private static bool HasInlineSecrets(AgentConfigEntity entity) =>
+        IsInlineSecret(entity.Config.Llm.ApiKey)
+        || entity.Config.Rag.Instances.Any(instance => IsInlineSecret(instance.ApiKey));
 
-    private static AgentConfigEntity MergeSecrets(AgentConfigEntity? existing, AgentConfigEntity requested)
+    private static bool IsInlineSecret(string? value) =>
+        !string.IsNullOrWhiteSpace(value)
+        && !value.StartsWith("***", StringComparison.Ordinal);
+
+    private static AgentConfigEntity MergeSecretReferences(
+        AgentConfigEntity? existing,
+        AgentConfigEntity requested)
     {
-        if (existing == null)
-            return requested;
-        if (string.IsNullOrWhiteSpace(requested.Config.Llm.ApiKey)
-            || requested.Config.Llm.ApiKey.StartsWith("***", StringComparison.Ordinal))
+        if (existing != null && string.IsNullOrWhiteSpace(requested.Config.Llm.ApiKeySecretRef))
         {
-            requested.Config.Llm.ApiKey = existing.Config.Llm.ApiKey;
+            requested.Config.Llm.ApiKeySecretRef = existing.Config.Llm.ApiKeySecretRef;
         }
+        requested.Config.Llm.ApiKey = string.Empty;
 
         foreach (RagInstanceConfig requestedRag in requested.Config.Rag.Instances)
         {
-            RagInstanceConfig? existingRag = existing.Config.Rag.Instances.FirstOrDefault(item =>
+            RagInstanceConfig? existingRag = existing?.Config.Rag.Instances.FirstOrDefault(item =>
                 string.Equals(item.Id, requestedRag.Id, StringComparison.OrdinalIgnoreCase));
-            if (existingRag != null
-                && (string.IsNullOrWhiteSpace(requestedRag.ApiKey)
-                    || requestedRag.ApiKey.StartsWith("***", StringComparison.Ordinal)))
+            if (existingRag != null && string.IsNullOrWhiteSpace(requestedRag.ApiKeySecretRef))
             {
-                requestedRag.ApiKey = existingRag.ApiKey;
+                requestedRag.ApiKeySecretRef = existingRag.ApiKeySecretRef;
             }
+            requestedRag.ApiKey = string.Empty;
         }
 
         return requested;
@@ -670,9 +729,7 @@ internal static class ManagementEndpointExtensions
 
     internal static AgentConfigEntity Redact(AgentConfigEntity entity)
     {
-        entity.Config.Llm.ApiKey = string.IsNullOrWhiteSpace(entity.Config.Llm.ApiKey)
-            ? string.Empty
-            : "***";
+        entity.Config.Llm.ApiKey = string.Empty;
         entity.Config.Mcp = RedactMcp(entity.Config.Mcp);
         entity.Config.Rag.Instances = entity.Config.Rag.Instances.Select(RedactRag).ToList();
         return entity;
@@ -702,7 +759,8 @@ internal static class ManagementEndpointExtensions
             Type = instance.Type,
             CollectionName = instance.CollectionName,
             ApiEndpoint = instance.ApiEndpoint,
-            ApiKey = string.IsNullOrWhiteSpace(instance.ApiKey) ? string.Empty : "***",
+            ApiKeySecretRef = instance.ApiKeySecretRef,
+            ApiKey = string.Empty,
             AdapterConfig = instance.AdapterConfig,
             AllowedUserIds = [.. instance.AllowedUserIds],
             AllowedGroups = [.. instance.AllowedGroups],
@@ -715,12 +773,14 @@ internal static class ManagementEndpointExtensions
     {
         return new LlmProviderProfile
         {
+            TenantId = profile.TenantId,
             Id = profile.Id,
             Name = profile.Name,
             Format = profile.Format,
             ModelId = profile.ModelId,
             Endpoint = profile.Endpoint,
-            ApiKey = string.IsNullOrWhiteSpace(profile.ApiKey) ? string.Empty : "***",
+            ApiKeySecretRef = profile.ApiKeySecretRef,
+            ApiKey = string.Empty,
             Temperature = profile.Temperature
         };
     }

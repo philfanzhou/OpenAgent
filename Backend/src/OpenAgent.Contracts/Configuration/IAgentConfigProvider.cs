@@ -20,6 +20,7 @@ public interface IAgentConfigProvider
 
 public sealed class AgentSummary
 {
+    public string TenantId { get; init; } = string.Empty;
     public string AgentId { get; init; } = string.Empty;
     public string Name { get; init; } = string.Empty;
     public string Description { get; init; } = string.Empty;

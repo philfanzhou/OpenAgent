@@ -27,6 +27,11 @@ public class LlmConfig
     public string Provider { get; set; } = string.Empty;
     public ApiFormat Format { get; set; } = ApiFormat.OpenAIChatCompletions;
     public string ModelId { get; set; } = "gpt-4o";
+    /// <summary>
+    /// Tenant-relative reference resolved by the execution host at runtime.
+    /// The referenced secret value must never be persisted with this configuration.
+    /// </summary>
+    public string ApiKeySecretRef { get; set; } = string.Empty;
     public string ApiKey { get; set; } = string.Empty;
     public string Endpoint { get; set; } = string.Empty;
     public double Temperature { get; set; } = 0.7;
@@ -41,6 +46,7 @@ public class LlmProviderProfile
     // Kept for deserializing old provider profiles; new profiles select a model per Agent.
     public string? ModelId { get; set; }
     public string Endpoint { get; set; } = string.Empty;
+    public string ApiKeySecretRef { get; set; } = string.Empty;
     public string ApiKey { get; set; } = string.Empty;
     public double Temperature { get; set; } = 0.7;
 }
@@ -130,6 +136,7 @@ public class RagInstanceConfig
     public string Type { get; set; } = RagAdapterType.RagFlow;
     public string CollectionName { get; set; } = "default";
     public string ApiEndpoint { get; set; } = string.Empty;
+    public string ApiKeySecretRef { get; set; } = string.Empty;
     public string ApiKey { get; set; } = string.Empty;
     public Dictionary<string, string>? AdapterConfig { get; set; }
 

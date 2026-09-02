@@ -10,6 +10,8 @@ internal sealed class FakeRedisConnectionProvider : IRedisConnectionProvider
 
     public bool IsAvailable { get; set; } = true;
 
+    internal TimeSpan? LastStringExpiry { get; private set; }
+
     public IServer? GetServer(int database = 0) => null;
 
     public IDatabase GetDatabase(int database = 0) => throw new NotSupportedException();
@@ -19,6 +21,7 @@ internal sealed class FakeRedisConnectionProvider : IRedisConnectionProvider
     public Task<bool> StringSetAsync(RedisKey key, RedisValue value, TimeSpan? expiry = null, CommandFlags flags = CommandFlags.None)
     {
         _strings[key!] = value.ToString();
+        LastStringExpiry = expiry;
         return Task.FromResult(true);
     }
 

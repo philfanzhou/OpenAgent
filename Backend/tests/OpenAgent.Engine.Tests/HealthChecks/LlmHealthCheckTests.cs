@@ -14,9 +14,8 @@ public class LlmHealthCheckTests
     [Fact]
     public async Task Returns_degraded_when_no_published_agents()
     {
-        var redis = new FakeRedisConnectionProvider();
         var configProvider = new FakeAgentConfigProvider();
-        var check = new LlmHealthCheck(configProvider, redis, NullLogger<LlmHealthCheck>.Instance);
+        var check = new LlmHealthCheck(configProvider, NullLogger<LlmHealthCheck>.Instance);
 
         var result = await check.CheckHealthAsync(new HealthCheckContext());
 
@@ -26,12 +25,9 @@ public class LlmHealthCheckTests
     [Fact]
     public async Task Returns_unhealthy_when_llm_config_missing()
     {
-        var redis = new FakeRedisConnectionProvider();
-        redis.AddSetMember("agent:published:index", "agent-no-llm");
-
         var configWithNullLlm = new AgentConfig { Llm = null! };
         var configProvider = new FakeAgentConfigProvider(configWithNullLlm);
-        var check = new LlmHealthCheck(configProvider, redis, NullLogger<LlmHealthCheck>.Instance);
+        var check = new LlmHealthCheck(configProvider, NullLogger<LlmHealthCheck>.Instance);
 
         var result = await check.CheckHealthAsync(new HealthCheckContext());
 
@@ -41,15 +37,12 @@ public class LlmHealthCheckTests
     [Fact]
     public async Task Returns_healthy_when_llm_config_available()
     {
-        var redis = new FakeRedisConnectionProvider();
-        redis.AddSetMember("agent:published:index", "agent-llm-ok");
-
         var configWithLlm = new AgentConfig
         {
             Llm = new LlmConfig { Provider = "openai", Format = ApiFormat.OpenAIChatCompletions, ModelId = "gpt-4o" }
         };
         var configProvider = new FakeAgentConfigProvider(configWithLlm);
-        var check = new LlmHealthCheck(configProvider, redis, NullLogger<LlmHealthCheck>.Instance);
+        var check = new LlmHealthCheck(configProvider, NullLogger<LlmHealthCheck>.Instance);
 
         var result = await check.CheckHealthAsync(new HealthCheckContext());
 
@@ -143,7 +136,10 @@ public class LlmHealthCheckTests
             CancellationToken cancellationToken = default) => Task.FromResult(_config);
 
         public Task<IReadOnlyList<AgentSummary>> ListAgentsAsync(CancellationToken cancellationToken = default)
-            => Task.FromResult<IReadOnlyList<AgentSummary>>(Array.Empty<AgentSummary>());
+            => Task.FromResult<IReadOnlyList<AgentSummary>>(
+                _config == null
+                    ? []
+                    : [new AgentSummary { TenantId = "tenant-a", AgentId = "agent-1" }]);
 
         public Task<IReadOnlyList<AgentSummary>> ListAgentsAsync(
             string tenantId,

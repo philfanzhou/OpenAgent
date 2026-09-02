@@ -18,16 +18,20 @@ internal sealed class EfCoreAgentConfigRepository(
     };
 
     public async Task<AgentConfigEntity?> GetAsync(
+        string tenantId,
         string agentId,
         CancellationToken cancellationToken = default)
     {
+        ValidateTenantId(tenantId);
         ValidateAgentId(agentId);
         await using OpenAgentDbContext database = await contexts
             .CreateDbContextAsync(cancellationToken)
             .ConfigureAwait(false);
         AgentConfigurationEntity? entity = await database.AgentConfigurations
             .AsNoTracking()
-            .SingleOrDefaultAsync(item => item.AgentId == agentId, cancellationToken)
+            .SingleOrDefaultAsync(
+                item => item.TenantId == tenantId && item.AgentId == agentId,
+                cancellationToken)
             .ConfigureAwait(false);
         return entity == null ? null : Map(entity);
     }
@@ -53,30 +57,31 @@ internal sealed class EfCoreAgentConfigRepository(
     }
 
     public async Task<AgentConfigEntity?> UpsertAsync(
+        string tenantId,
         string agentId,
         AgentConfigEntity entity,
         string? expectedVersion,
         CancellationToken cancellationToken = default)
     {
+        ValidateTenantId(tenantId);
         ValidateAgentId(agentId);
         ArgumentNullException.ThrowIfNull(entity);
-        string tenantId = ResolveTenant(entity);
-        if (string.IsNullOrWhiteSpace(tenantId))
+        ValidateNoInlineSecrets(entity);
+        string entityTenantId = ResolveTenant(entity);
+        if (!string.IsNullOrWhiteSpace(entityTenantId)
+            && !string.Equals(entityTenantId, tenantId, StringComparison.Ordinal))
         {
-            throw new ArgumentException("Agent tenant id is required.", nameof(entity));
+            throw new ArgumentException("Agent tenant id does not match the storage scope.", nameof(entity));
         }
 
         await using OpenAgentDbContext database = await contexts
             .CreateDbContextAsync(cancellationToken)
             .ConfigureAwait(false);
         AgentConfigurationEntity? current = await database.AgentConfigurations
-            .SingleOrDefaultAsync(item => item.AgentId == agentId, cancellationToken)
+            .SingleOrDefaultAsync(
+                item => item.TenantId == tenantId && item.AgentId == agentId,
+                cancellationToken)
             .ConfigureAwait(false);
-        if (current != null
-            && !string.Equals(current.TenantId, tenantId, StringComparison.Ordinal))
-        {
-            return null;
-        }
 
         string? currentVersion = current?.Version.ToString(
             System.Globalization.CultureInfo.InvariantCulture);
@@ -131,6 +136,7 @@ internal sealed class EfCoreAgentConfigRepository(
             entity.ConfigurationJson,
             JsonOptions) ?? throw new InvalidOperationException(
                 $"Agent configuration '{entity.AgentId}' is invalid.");
+        ValidateNoInlineSecrets(config);
         Stamp(config, entity.AgentId, entity.TenantId, entity.Version);
         return config;
     }
@@ -163,6 +169,26 @@ internal sealed class EfCoreAgentConfigRepository(
         if (string.IsNullOrWhiteSpace(agentId))
         {
             throw new ArgumentException("Agent id is required.", nameof(agentId));
+        }
+    }
+
+    private static void ValidateTenantId(string tenantId)
+    {
+        if (string.IsNullOrWhiteSpace(tenantId))
+        {
+            throw new ArgumentException("Tenant id is required.", nameof(tenantId));
+        }
+    }
+
+    private static void ValidateNoInlineSecrets(AgentConfigEntity entity)
+    {
+        if (!string.IsNullOrWhiteSpace(entity.Config.Llm.ApiKey)
+            || entity.Config.Rag.Instances.Any(instance =>
+                !string.IsNullOrWhiteSpace(instance.ApiKey)))
+        {
+            throw new ArgumentException(
+                "Agent configuration cannot persist inline API keys. Use ApiKeySecretRef.",
+                nameof(entity));
         }
     }
 }

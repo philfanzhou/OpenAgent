@@ -83,6 +83,44 @@ public sealed class AgentRuntimeResolverTests
     }
 
     [Fact]
+    public async Task ResolveAsync_SecretReference_ResolvesForAuthenticatedTenantAfterAuthorization()
+    {
+        AgentConfig config = new()
+        {
+            Llm = new LlmConfig
+            {
+                Provider = "profile-1",
+                ModelId = "model-1"
+            }
+        };
+        LlmRegistry models = new();
+        models.Register(new LlmProviderProfile
+        {
+            TenantId = "tenant-1",
+            Id = "profile-1",
+            Endpoint = "https://llm.example.test",
+            ApiKeySecretRef = "llm:production"
+        });
+        var secrets = new RecordingSecretResolver("resolved-key");
+        AgentRuntimeResolver resolver = new(
+            new StaticConfigProvider(config),
+            new AgentAuthorizationGate(
+                new AllowAllAgentAuthorizationService(),
+                models),
+            secrets);
+
+        AgentRuntimeProfile result = await resolver.ResolveAsync(
+            "agent-1",
+            User(),
+            CancellationToken.None);
+
+        Assert.Equal("resolved-key", result.Model.ApiKey);
+        Assert.Equal("tenant-1", secrets.TenantId);
+        Assert.Equal("llm:production", secrets.SecretReference);
+        Assert.Empty(config.Llm.ApiKey);
+    }
+
+    [Fact]
     public async Task ResolveAsync_MissingConfig_Throws()
     {
         AgentRuntimeResolver resolver = new(
@@ -164,5 +202,21 @@ public sealed class AgentRuntimeResolverTests
             string tenantId,
             CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<AgentSummary>>([]);
+    }
+
+    private sealed class RecordingSecretResolver(string value) : IAgentSecretResolver
+    {
+        internal string? TenantId { get; private set; }
+        internal string? SecretReference { get; private set; }
+
+        public Task<string?> ResolveAsync(
+            string tenantId,
+            string secretReference,
+            CancellationToken cancellationToken = default)
+        {
+            TenantId = tenantId;
+            SecretReference = secretReference;
+            return Task.FromResult<string?>(value);
+        }
     }
 }

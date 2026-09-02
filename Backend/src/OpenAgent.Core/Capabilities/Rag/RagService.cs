@@ -8,7 +8,8 @@ namespace OpenAgent.Core.Capabilities.Rag;
 internal sealed class RagService(
     IHttpClientFactory httpClientFactory,
     IRagRegistry ragRegistry,
-    IEnumerable<IRagAdapter> adapters) : IRagService
+    IEnumerable<IRagAdapter> adapters,
+    IAgentSecretResolver secrets) : IRagService
 {
     public async Task IndexDocumentAsync(
         string content,
@@ -37,9 +38,15 @@ internal sealed class RagService(
 
         var enrichedMetadata = EnrichMetadata(metadata, userContext);
 
-        foreach (var config in targetConfigs)
+        foreach (RagInstanceConfig config in targetConfigs)
         {
-            await IndexToExternalAsync(content, enrichedMetadata, config, cancellationToken);
+            RagInstanceConfig resolved = await ResolveSecretAsync(
+                    config,
+                    userContext.TenantId,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            await IndexToExternalAsync(content, enrichedMetadata, resolved, cancellationToken)
+                .ConfigureAwait(false);
         }
     }
 
@@ -77,10 +84,15 @@ internal sealed class RagService(
 
         foreach (RagInstanceConfig config in configs)
         {
+            RagInstanceConfig resolved = await ResolveSecretAsync(
+                    config,
+                    userContext.TenantId,
+                    cancellationToken)
+                .ConfigureAwait(false);
             List<SearchResult> instanceResults = await SearchExternalDetailedAsync(
                 query,
                 limit,
-                config,
+                resolved,
                 userContext,
                 cancellationToken).ConfigureAwait(false);
             allResults.AddRange(instanceResults);
@@ -90,6 +102,47 @@ internal sealed class RagService(
             .OrderByDescending(r => r.RelevanceScore)
             .Take(limit)
             .ToList();
+    }
+
+    private async Task<RagInstanceConfig> ResolveSecretAsync(
+        RagInstanceConfig config,
+        string? tenantId,
+        CancellationToken cancellationToken)
+    {
+        if (!string.IsNullOrWhiteSpace(config.ApiKey)
+            || string.IsNullOrWhiteSpace(config.ApiKeySecretRef))
+        {
+            return config;
+        }
+
+        if (string.IsNullOrWhiteSpace(tenantId))
+        {
+            throw new InvalidOperationException("TenantId is required to resolve a RAG secret.");
+        }
+
+        string apiKey = await secrets.ResolveAsync(
+                tenantId,
+                config.ApiKeySecretRef,
+                cancellationToken)
+            .ConfigureAwait(false)
+            ?? throw new InvalidOperationException(
+                $"RAG secret reference '{config.ApiKeySecretRef}' is not configured for tenant '{tenantId}'.");
+        return new RagInstanceConfig
+        {
+            Id = config.Id,
+            Name = config.Name,
+            Enabled = config.Enabled,
+            Type = config.Type,
+            CollectionName = config.CollectionName,
+            ApiEndpoint = config.ApiEndpoint,
+            ApiKeySecretRef = config.ApiKeySecretRef,
+            ApiKey = apiKey,
+            AdapterConfig = config.AdapterConfig,
+            AllowedUserIds = [.. config.AllowedUserIds],
+            AllowedGroups = [.. config.AllowedGroups],
+            AllowedTenantIds = [.. config.AllowedTenantIds],
+            AllowedRoles = [.. config.AllowedRoles]
+        };
     }
 
     private List<RagInstanceConfig> GetAllowedRagConfigs(

@@ -29,7 +29,9 @@ internal sealed class SkillPackageManagementService(
         string? expectedVersion,
         CancellationToken cancellationToken)
     {
-        AgentConfigEntity? entity = await agentConfigs.GetAsync(agentId, cancellationToken).ConfigureAwait(false);
+        AgentConfigEntity? entity = await agentConfigs
+            .GetAsync(agentId, tenantId, cancellationToken)
+            .ConfigureAwait(false);
         if (entity == null)
         {
             return SkillPackageInstallResult.NotFound();
@@ -72,6 +74,7 @@ internal sealed class SkillPackageManagementService(
         {
             saved = await agentConfigs.SaveAsync(
                 agentId,
+                tenantId,
                 entity,
                 expectedVersion,
                 cancellationToken).ConfigureAwait(false);
@@ -281,7 +284,9 @@ internal sealed class SkillPackageManagementService(
         string? expectedVersion,
         CancellationToken cancellationToken)
     {
-        AgentConfigEntity? entity = await agentConfigs.GetAsync(agentId, cancellationToken).ConfigureAwait(false);
+        AgentConfigEntity? entity = await agentConfigs
+            .GetAsync(agentId, tenantId, cancellationToken)
+            .ConfigureAwait(false);
         if (entity == null)
         {
             return SkillPackageDeleteResult.AgentNotFound;
@@ -303,6 +308,7 @@ internal sealed class SkillPackageManagementService(
             string.Equals(item, skillId, StringComparison.OrdinalIgnoreCase));
         AgentConfigEntity? saved = await agentConfigs.SaveAsync(
             agentId,
+            tenantId,
             entity,
             expectedVersion,
             cancellationToken).ConfigureAwait(false);

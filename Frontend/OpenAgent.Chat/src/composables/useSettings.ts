@@ -1,6 +1,6 @@
 import { computed, ref, type Ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { api } from '../api'
+import { api, getTenantId } from '../api'
 import { randomUuid } from '../browserCrypto'
 import {
   AUTO_AGENT_ID,
@@ -54,6 +54,7 @@ function createDefaultLlm(): LlmProviderProfile {
     name: '',
     format: 'OpenAIChatCompletions',
     endpoint: 'https://api.openai.com/v1',
+    apiKeySecretRef: '',
     apiKey: '',
     temperature: 0.7,
   }
@@ -64,7 +65,7 @@ function createDefaultMcp(): McpServerConfig {
 }
 
 function createDefaultRag(): RagInstanceConfig {
-  return { id: '', name: '', enabled: true, type: 'ragflow', collectionName: 'default', apiEndpoint: '', apiKey: '' }
+  return { id: '', name: '', enabled: true, type: 'ragflow', collectionName: 'default', apiEndpoint: '', apiKeySecretRef: '', apiKey: '' }
 }
 
 function createDefaultAgent(agentId: string, name: string): AgentConfigEntity {
@@ -80,6 +81,7 @@ function createDefaultAgent(agentId: string, name: string): AgentConfigEntity {
         provider: '',
         format: 'OpenAIChatCompletions',
         modelId: 'gpt-4o',
+        apiKeySecretRef: '',
         apiKey: '',
         endpoint: '',
         temperature: 0.7,
@@ -643,7 +645,7 @@ export function useSettings(options: SettingsOptions) {
       options.selectedAgentId.value = agentId
       options.agents.value = [
         ...options.agents.value.filter(item => item.agentId !== agentId),
-        { agentId, name: saved.name, description: saved.description, status: saved.status, currentVersion: saved.currentVersion, apiFormat: String(saved.config.llm.format || ''), llmProvider: saved.config.llm.provider, llmModel: saved.config.llm.modelId },
+        { tenantId: getTenantId(), agentId, name: saved.name, description: saved.description, status: saved.status, currentVersion: saved.currentVersion, apiFormat: String(saved.config.llm.format || ''), llmProvider: saved.config.llm.provider, llmModel: saved.config.llm.modelId },
       ]
       isNewAgent.value = false
       showAgentEditor.value = false

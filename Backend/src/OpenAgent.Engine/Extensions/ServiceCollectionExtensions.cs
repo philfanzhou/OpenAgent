@@ -30,7 +30,7 @@ internal static class ServiceCollectionExtensions
             new RedisConnectionProvider(sp.GetService<IConnectionMultiplexer>()));
 
         // ConfigProvider helpers — were hand-newed inside ConfigProvider; now injected.
-        services.AddSingleton<SecretInjector>();
+        services.Replace(ServiceDescriptor.Singleton<IAgentSecretResolver, ConfigurationSecretResolver>());
         services.AddSingleton<MockAgentResolver>();
         services.AddSingleton<AgentConfigLocalStore>();
         services.AddSingleton<AgentConfigDatabaseStore>();

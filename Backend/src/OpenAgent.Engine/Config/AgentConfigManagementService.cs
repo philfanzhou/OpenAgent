@@ -27,11 +27,10 @@ internal sealed class AgentConfigManagementService(
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (databaseStore?.IsEnabled == true)
+        if (databaseStore != null)
         {
-            return await databaseStore
-                .GetAuthoritativeAsync(agentId, cancellationToken)
-                .ConfigureAwait(false);
+            throw new InvalidOperationException(
+                "TenantId is required to load PostgreSQL-backed Agent configuration.");
         }
 
         if (!redis.IsAvailable)
@@ -57,6 +56,13 @@ internal sealed class AgentConfigManagementService(
         string tenantId,
         CancellationToken cancellationToken = default)
     {
+        if (databaseStore != null)
+        {
+            return await databaseStore
+                .GetAuthoritativeAsync(tenantId, agentId, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         AgentConfigEntity? entity = await GetAsync(agentId, cancellationToken).ConfigureAwait(false);
         return entity != null
             && string.Equals(ResolveTenant(entity), tenantId, StringComparison.Ordinal)
@@ -71,11 +77,10 @@ internal sealed class AgentConfigManagementService(
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (databaseStore?.IsEnabled == true)
+        if (databaseStore != null)
         {
-            return await databaseStore
-                .SaveAsync(agentId, entity, expectedVersion, cancellationToken)
-                .ConfigureAwait(false);
+            throw new InvalidOperationException(
+                "TenantId is required to save PostgreSQL-backed Agent configuration.");
         }
 
         if (!redis.IsAvailable)
@@ -105,6 +110,14 @@ internal sealed class AgentConfigManagementService(
         string? expectedVersion,
         CancellationToken cancellationToken = default)
     {
+        if (databaseStore != null)
+        {
+            StampTenant(entity, tenantId);
+            return await databaseStore
+                .SaveAsync(tenantId, agentId, entity, expectedVersion, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         AgentConfigEntity? current = await GetAsync(agentId, cancellationToken).ConfigureAwait(false);
         if (current != null
             && !string.Equals(ResolveTenant(current), tenantId, StringComparison.Ordinal))

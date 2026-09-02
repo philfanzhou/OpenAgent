@@ -21,7 +21,6 @@ internal class ConfigProvider : IAgentConfigProvider
     private readonly ILogger<ConfigProvider> _logger;
     private readonly ConfigSnapshot _snapshot;
     private readonly MockAgentResolver _mockAgentResolver;
-    private readonly SecretInjector _secretInjector;
     private readonly AgentListQuery _agentListQuery;
     private readonly AgentConfigLocalStore _localStore;
     private readonly AgentConfigDatabaseStore? _databaseStore;
@@ -31,7 +30,6 @@ internal class ConfigProvider : IAgentConfigProvider
         ILogger<ConfigProvider> logger,
         ConfigSnapshot snapshot,
         MockAgentResolver mockAgentResolver,
-        SecretInjector secretInjector,
         AgentListQuery agentListQuery,
         AgentConfigLocalStore localStore,
         AgentConfigDatabaseStore? databaseStore = null)
@@ -40,7 +38,6 @@ internal class ConfigProvider : IAgentConfigProvider
         _logger = logger;
         _snapshot = snapshot;
         _mockAgentResolver = mockAgentResolver;
-        _secretInjector = secretInjector;
         _agentListQuery = agentListQuery;
         _localStore = localStore;
         _databaseStore = databaseStore;
@@ -50,7 +47,8 @@ internal class ConfigProvider : IAgentConfigProvider
     {
         return Task.FromException<AgentConfig>(
             new InvalidOperationException(
-                "GetConfigAsync() without agentId is not supported. Use GetConfigAsync(string agentId) instead."));
+                "GetConfigAsync() without agentId and tenantId is not supported. "
+                + "Use GetConfigAsync(string agentId, string tenantId) instead."));
     }
 
     public async Task<AgentConfig?> GetConfigAsync(string agentId, CancellationToken cancellationToken = default)
@@ -68,38 +66,27 @@ internal class ConfigProvider : IAgentConfigProvider
             return null;
         }
 
+        if (_databaseStore != null)
+        {
+            throw new InvalidOperationException(
+                "TenantId is required to load PostgreSQL-backed Agent configuration.");
+        }
+
         if (_mockAgentResolver.IsEnabled)
         {
             AgentConfigEntity? localEntity = _localStore.Get(agentId);
             if (localEntity?.Config != null)
             {
                 ApplyTenant(localEntity);
-                _secretInjector.Enrich(localEntity.Config);
                 return localEntity.Config;
             }
         }
 
-        var snapshotConfig = LoadFromSnapshot(agentId);
+        AgentConfig? snapshotConfig = LoadFromSnapshot(agentId);
         if (snapshotConfig != null)
         {
             EngineLog.ConfigLoadedFromSnapshot(_logger, agentId);
             return snapshotConfig;
-        }
-
-        if (_databaseStore?.IsEnabled == true)
-        {
-            AgentConfigEntity? databaseEntity = await _databaseStore
-                .GetRuntimeAsync(agentId, cancellationToken)
-                .ConfigureAwait(false);
-            if (databaseEntity?.Config != null)
-            {
-                ApplyTenant(databaseEntity);
-                _snapshot.SetFullConfig(agentId, databaseEntity.Config);
-                _secretInjector.Enrich(databaseEntity.Config);
-                return databaseEntity.Config;
-            }
-
-            return ResolveMissingConfig(agentId);
         }
 
         if (_redis.IsAvailable)
@@ -150,16 +137,17 @@ internal class ConfigProvider : IAgentConfigProvider
             }
         }
 
-        AgentConfig? snapshotConfig = LoadFromSnapshot(agentId);
+        string snapshotScope = AgentConfigDatabaseStore.BuildSnapshotScope(tenantId, agentId);
+        AgentConfig? snapshotConfig = LoadFromSnapshot(snapshotScope);
         if (snapshotConfig != null)
         {
             return ResolveForTenant(snapshotConfig, tenantId);
         }
 
-        if (_databaseStore?.IsEnabled == true)
+        if (_databaseStore != null)
         {
             AgentConfigEntity? databaseEntity = await _databaseStore
-                .GetRuntimeAsync(agentId, cancellationToken)
+                .GetRuntimeAsync(tenantId, agentId, cancellationToken)
                 .ConfigureAwait(false);
             if (databaseEntity?.Config == null)
             {
@@ -170,7 +158,7 @@ internal class ConfigProvider : IAgentConfigProvider
             AgentConfig? config = ResolveForTenant(databaseEntity.Config, tenantId);
             if (config != null)
             {
-                _snapshot.SetFullConfig(agentId, config);
+                _snapshot.SetFullConfig(snapshotScope, config);
             }
             return config;
         }
@@ -201,7 +189,6 @@ internal class ConfigProvider : IAgentConfigProvider
         {
             if (_snapshot.TryGetConfig<AgentConfig>(agentId, "FullAgentConfig", out var fullConfig) && fullConfig != null)
             {
-                _secretInjector.Enrich(fullConfig);
                 return fullConfig;
             }
 
@@ -237,7 +224,6 @@ internal class ConfigProvider : IAgentConfigProvider
                 return null;
             }
 
-            _secretInjector.Enrich(config);
             return config;
         }
         catch (Exception ex)
@@ -314,7 +300,6 @@ internal class ConfigProvider : IAgentConfigProvider
             return null;
         }
 
-        _secretInjector.Enrich(config);
         return config;
     }
 

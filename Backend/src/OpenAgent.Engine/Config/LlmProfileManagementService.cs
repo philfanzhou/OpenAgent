@@ -98,6 +98,12 @@ internal sealed class LlmProfileManagementService(
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (!string.IsNullOrWhiteSpace(profile.ApiKey))
+        {
+            throw new ArgumentException(
+                "LLM profiles cannot persist inline API keys. Use ApiKeySecretRef.",
+                nameof(profile));
+        }
         if (!redis.IsAvailable)
         {
             registry.Register(profile);

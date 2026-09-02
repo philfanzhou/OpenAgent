@@ -63,6 +63,6 @@ internal sealed class FullConfigRefresher
         }
     }
 
-    internal bool RefreshPostgreSql(string agentId) =>
-        _databaseStore?.RefreshFromCache(agentId) == true;
+    internal bool RefreshPostgreSql(string tenantId, string agentId) =>
+        _databaseStore?.RefreshFromCache(tenantId, agentId) == true;
 }

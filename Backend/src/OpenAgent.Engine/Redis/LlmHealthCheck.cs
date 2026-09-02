@@ -9,13 +9,11 @@ namespace OpenAgent.Engine.Redis;
 internal class LlmHealthCheck : IHealthCheck
 {
     private readonly IAgentConfigProvider _configProvider;
-    private readonly IRedisConnectionProvider _redis;
     private readonly ILogger<LlmHealthCheck> _logger;
 
-    public LlmHealthCheck(IAgentConfigProvider configProvider, IRedisConnectionProvider redis, ILogger<LlmHealthCheck> logger)
+    public LlmHealthCheck(IAgentConfigProvider configProvider, ILogger<LlmHealthCheck> logger)
     {
         _configProvider = configProvider;
-        _redis = redis;
         _logger = logger;
     }
 
@@ -25,25 +23,31 @@ internal class LlmHealthCheck : IHealthCheck
     {
         try
         {
-            var agentKeys = await _redis.SetMembersAsync("agent:published:index");
+            IReadOnlyList<AgentSummary> agents = await _configProvider
+                .ListAgentsAsync(cancellationToken)
+                .ConfigureAwait(false);
 
-            if (agentKeys.Length == 0)
+            if (agents.Count == 0)
             {
                 return HealthCheckResult.Degraded(
-                    "No published agents found in Redis.");
+                    "No Agent configurations found in PostgreSQL.");
             }
 
-            var sampleAgentId = agentKeys.First().ToString();
-            var config = await _configProvider.GetConfigAsync(sampleAgentId, cancellationToken);
+            AgentSummary sample = agents[0];
+            AgentConfig? config = await _configProvider.GetConfigAsync(
+                    sample.AgentId,
+                    sample.TenantId,
+                    cancellationToken)
+                .ConfigureAwait(false);
 
             if (config?.Llm == null)
             {
                 return HealthCheckResult.Unhealthy(
-                    $"No LLM configuration available for agent '{sampleAgentId}'.");
+                    $"No LLM configuration available for agent '{sample.AgentId}'.");
             }
 
             return HealthCheckResult.Healthy(
-                $"ApiFormat: {config.Llm.Format}, Model: {config.Llm.ModelId} (verified via agent '{sampleAgentId}')");
+                $"ApiFormat: {config.Llm.Format}, Model: {config.Llm.ModelId} (verified via agent '{sample.AgentId}')");
         }
         catch (Exception ex)
         {

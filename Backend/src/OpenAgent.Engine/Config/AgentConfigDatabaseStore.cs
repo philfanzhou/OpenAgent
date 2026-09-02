@@ -14,12 +14,11 @@ using StackExchange.Redis;
 namespace OpenAgent.Engine.Config;
 
 /// <summary>
-/// Opt-in proof of concept for PostgreSQL-owned Agent configuration with a
-/// disposable Redis cache. The legacy Redis source remains untouched.
+/// PostgreSQL-owned Agent configuration with a tenant-scoped, disposable Redis cache.
 /// </summary>
 internal sealed class AgentConfigDatabaseStore
 {
-    internal const string CacheIndexKey = "agent:config-cache:index";
+    internal const string CacheIndexKeyPrefix = "agent:config-cache:index:";
     internal const string CacheKeyPrefix = "agent:config-cache:";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -32,14 +31,14 @@ internal sealed class AgentConfigDatabaseStore
     private readonly ConfigSnapshot _snapshot;
     private readonly AgentConfigSourceOptions _options;
     private readonly ILogger _logger;
-    private readonly IAgentConfigRepository? _repository;
+    private readonly IAgentConfigRepository _repository;
 
     public AgentConfigDatabaseStore(
         IRedisConnectionProvider redis,
         ConfigSnapshot snapshot,
         IOptions<AgentConfigSourceOptions> options,
         ILogger<AgentConfigDatabaseStore> logger,
-        IAgentConfigRepository? repository = null)
+        IAgentConfigRepository repository)
     {
         _redis = redis;
         _snapshot = snapshot;
@@ -47,32 +46,42 @@ internal sealed class AgentConfigDatabaseStore
         _logger = logger;
         _repository = repository;
 
-        if (_options.UsePostgreSqlForAgents && _options.RedisCacheTtlSeconds <= 0)
+        if (_options.RedisCacheTtlSeconds <= 0)
         {
             throw new ArgumentOutOfRangeException(
                 AgentConfigSourceOptions.SectionName,
                 _options.RedisCacheTtlSeconds,
                 "ConfigurationStore:RedisCacheTtlSeconds must be greater than zero.");
         }
+        if (_options.RedisCacheReconciliationSeconds <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                AgentConfigSourceOptions.SectionName,
+                _options.RedisCacheReconciliationSeconds,
+                "ConfigurationStore:RedisCacheReconciliationSeconds must be greater than zero.");
+        }
     }
 
-    internal bool IsEnabled => _options.UsePostgreSqlForAgents;
+    internal TimeSpan ReconciliationInterval =>
+        TimeSpan.FromSeconds(_options.RedisCacheReconciliationSeconds);
 
     internal async Task<AgentConfigEntity?> GetAuthoritativeAsync(
+        string tenantId,
         string agentId,
         CancellationToken cancellationToken)
     {
-        return await GetRepository().GetAsync(agentId, cancellationToken).ConfigureAwait(false);
+        return await _repository.GetAsync(tenantId, agentId, cancellationToken).ConfigureAwait(false);
     }
 
     internal async Task<IReadOnlyList<AgentConfigEntity>> ListAuthoritativeAsync(
         string? tenantId,
         CancellationToken cancellationToken)
     {
-        return await GetRepository().ListAsync(tenantId, cancellationToken).ConfigureAwait(false);
+        return await _repository.ListAsync(tenantId, cancellationToken).ConfigureAwait(false);
     }
 
     internal async Task<AgentConfigEntity?> GetRuntimeAsync(
+        string tenantId,
         string agentId,
         CancellationToken cancellationToken)
     {
@@ -81,7 +90,7 @@ internal sealed class AgentConfigDatabaseStore
         {
             try
             {
-                AgentConfigEntity? cached = await ReadCacheAsync(agentId).ConfigureAwait(false);
+                AgentConfigEntity? cached = await ReadCacheAsync(tenantId, agentId).ConfigureAwait(false);
                 if (cached != null)
                 {
                     return cached;
@@ -93,8 +102,8 @@ internal sealed class AgentConfigDatabaseStore
             }
         }
 
-        AgentConfigEntity? entity = await GetRepository()
-            .GetAsync(agentId, cancellationToken)
+        AgentConfigEntity? entity = await _repository
+            .GetAsync(tenantId, agentId, cancellationToken)
             .ConfigureAwait(false);
         if (entity == null)
         {
@@ -107,6 +116,7 @@ internal sealed class AgentConfigDatabaseStore
     }
 
     internal async Task<AgentConfigEntity?> SaveAsync(
+        string tenantId,
         string agentId,
         AgentConfigEntity entity,
         string? expectedVersion,
@@ -115,8 +125,8 @@ internal sealed class AgentConfigDatabaseStore
         string? effectiveVersion = string.IsNullOrWhiteSpace(expectedVersion)
             ? entity.CurrentVersion
             : expectedVersion;
-        AgentConfigEntity? saved = await GetRepository()
-            .UpsertAsync(agentId, entity, effectiveVersion, cancellationToken)
+        AgentConfigEntity? saved = await _repository
+            .UpsertAsync(tenantId, agentId, entity, effectiveVersion, cancellationToken)
             .ConfigureAwait(false);
         if (saved == null)
         {
@@ -125,36 +135,30 @@ internal sealed class AgentConfigDatabaseStore
 
         AgentConfigEntity snapshotEntity = Clone(saved);
         ApplyTenant(snapshotEntity);
-        _snapshot.SetFullConfig(agentId, snapshotEntity.Config);
+        _snapshot.SetFullConfig(BuildSnapshotScope(tenantId, agentId), snapshotEntity.Config);
         await TryWriteCacheAsync(saved, publish: true, CancellationToken.None).ConfigureAwait(false);
         return saved;
     }
 
-    internal bool RefreshFromCache(string agentId)
+    internal bool RefreshFromCache(string tenantId, string agentId)
     {
-        if (!IsEnabled)
-        {
-            return false;
-        }
-
         try
         {
-            RedisValue value = _redis.StringGet(BuildCacheKey(agentId));
+            RedisValue value = _redis.StringGet(BuildCacheKey(tenantId, agentId));
             if (value.IsNullOrEmpty)
             {
-                _snapshot.Evict(agentId);
+                _snapshot.Evict(BuildSnapshotScope(tenantId, agentId));
                 return false;
             }
 
             AgentConfigEntity? entity = Deserialize(value.ToString());
-            if (entity?.Config == null
-                || !string.Equals(entity.AgentId, agentId, StringComparison.OrdinalIgnoreCase))
+            if (!MatchesAgent(entity, tenantId, agentId))
             {
                 return false;
             }
 
-            ApplyTenant(entity);
-            _snapshot.SetFullConfig(agentId, entity.Config);
+            ApplyTenant(entity!);
+            _snapshot.SetFullConfig(BuildSnapshotScope(tenantId, agentId), entity!.Config);
             EngineLog.AgentConfigPostgreSqlHotReloaded(
                 _logger,
                 agentId,
@@ -170,12 +174,12 @@ internal sealed class AgentConfigDatabaseStore
 
     internal async Task<bool> TryWarmupAsync(CancellationToken cancellationToken)
     {
-        if (!IsEnabled || !_redis.IsAvailable)
+        if (!_redis.IsAvailable)
         {
-            return !IsEnabled;
+            return false;
         }
 
-        IReadOnlyList<AgentConfigEntity> agents = await GetRepository()
+        IReadOnlyList<AgentConfigEntity> agents = await _repository
             .ListAsync(tenantId: null, cancellationToken)
             .ConfigureAwait(false);
         int cached = 0;
@@ -192,10 +196,10 @@ internal sealed class AgentConfigDatabaseStore
         return cached == agents.Count;
     }
 
-    private async Task<AgentConfigEntity?> ReadCacheAsync(string agentId)
+    private async Task<AgentConfigEntity?> ReadCacheAsync(string tenantId, string agentId)
     {
         RedisValue value = await _redis
-            .StringGetAsync(BuildCacheKey(agentId))
+            .StringGetAsync(BuildCacheKey(tenantId, agentId))
             .ConfigureAwait(false);
         if (value.IsNullOrEmpty)
         {
@@ -203,7 +207,7 @@ internal sealed class AgentConfigDatabaseStore
         }
 
         AgentConfigEntity? entity = Deserialize(value.ToString());
-        return MatchesAgent(entity, agentId) ? entity : null;
+        return MatchesAgent(entity, tenantId, agentId) ? entity : null;
     }
 
     private async Task<bool> TryWriteCacheAsync(
@@ -243,12 +247,14 @@ internal sealed class AgentConfigDatabaseStore
         if (!publish)
         {
             bool stored = await _redis.StringSetAsync(
-                BuildCacheKey(entity.AgentId),
+                BuildCacheKey(entity.TenantId, entity.AgentId),
                 payload,
                 expiry).ConfigureAwait(false);
             if (stored)
             {
-                await _redis.SetAddAsync(CacheIndexKey, entity.AgentId).ConfigureAwait(false);
+                await _redis.SetAddAsync(
+                    BuildCacheIndexKey(entity.TenantId),
+                    entity.AgentId).ConfigureAwait(false);
             }
             return stored;
         }
@@ -256,6 +262,7 @@ internal sealed class AgentConfigDatabaseStore
         string notification = JsonSerializer.Serialize(new ConfigUpdate
         {
             ResourceType = ConfigUpdate.PostgreSqlAgentResourceType,
+            TenantId = entity.TenantId,
             ResourceId = entity.AgentId,
             Operation = ConfigUpdate.UpsertOperation,
             Version = entity.CurrentVersion,
@@ -263,10 +270,12 @@ internal sealed class AgentConfigDatabaseStore
         }, ConfigUpdateDispatcher.JsonOptions);
         ITransaction transaction = _redis.GetDatabase().CreateTransaction();
         Task<bool> setTask = transaction.StringSetAsync(
-            BuildCacheKey(entity.AgentId),
+            BuildCacheKey(entity.TenantId, entity.AgentId),
             payload,
             expiry);
-        Task<bool> indexTask = transaction.SetAddAsync(CacheIndexKey, entity.AgentId);
+        Task<bool> indexTask = transaction.SetAddAsync(
+            BuildCacheIndexKey(entity.TenantId),
+            entity.AgentId);
         Task<long> publishTask = transaction.PublishAsync(
             RedisChannel.Literal(HotReloadService.CurrentUpdatesChannel),
             notification);
@@ -281,15 +290,28 @@ internal sealed class AgentConfigDatabaseStore
         return true;
     }
 
-    private IAgentConfigRepository GetRepository() =>
-        _repository ?? throw new InvalidOperationException(
-            "ConfigurationStore:UsePostgreSqlForAgents requires IAgentConfigRepository.");
+    private static AgentConfigEntity? Deserialize(string payload)
+    {
+        AgentConfigEntity? entity = JsonSerializer.Deserialize<AgentConfigEntity>(payload, JsonOptions);
+        if (entity != null && HasInlineSecrets(entity.Config))
+        {
+            throw new JsonException(
+                "Cached Agent configuration contains an inline API key. Use ApiKeySecretRef.");
+        }
 
-    private static AgentConfigEntity? Deserialize(string payload) =>
-        JsonSerializer.Deserialize<AgentConfigEntity>(payload, JsonOptions);
+        return entity;
+    }
 
-    private static bool MatchesAgent(AgentConfigEntity? entity, string agentId) =>
+    private static bool HasInlineSecrets(AgentConfig config) =>
+        !string.IsNullOrWhiteSpace(config.Llm.ApiKey)
+        || config.Rag.Instances.Any(instance => !string.IsNullOrWhiteSpace(instance.ApiKey));
+
+    private static bool MatchesAgent(
+        AgentConfigEntity? entity,
+        string tenantId,
+        string agentId) =>
         entity?.Config != null
+        && string.Equals(entity.TenantId, tenantId, StringComparison.Ordinal)
         && string.Equals(entity.AgentId, agentId, StringComparison.OrdinalIgnoreCase);
 
     private static AgentConfigEntity Clone(AgentConfigEntity entity) =>
@@ -305,5 +327,12 @@ internal sealed class AgentConfigDatabaseStore
         }
     }
 
-    private static string BuildCacheKey(string agentId) => $"{CacheKeyPrefix}{agentId}";
+    internal static string BuildCacheKey(string tenantId, string agentId) =>
+        $"{CacheKeyPrefix}{Uri.EscapeDataString(tenantId)}:{Uri.EscapeDataString(agentId)}";
+
+    internal static string BuildCacheIndexKey(string tenantId) =>
+        $"{CacheIndexKeyPrefix}{Uri.EscapeDataString(tenantId)}";
+
+    internal static string BuildSnapshotScope(string tenantId, string agentId) =>
+        $"{Uri.EscapeDataString(tenantId)}:{Uri.EscapeDataString(agentId)}";
 }

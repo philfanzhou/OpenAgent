@@ -11,19 +11,11 @@ internal sealed class AgentConfigCacheWarmupService(
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if (!store.IsEnabled)
-        {
-            return;
-        }
-
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                if (await store.TryWarmupAsync(stoppingToken).ConfigureAwait(false))
-                {
-                    return;
-                }
+                await store.TryWarmupAsync(stoppingToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -34,7 +26,7 @@ internal sealed class AgentConfigCacheWarmupService(
                 EngineLog.AgentConfigCacheWarmupFailed(logger, exception);
             }
 
-            await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken).ConfigureAwait(false);
+            await Task.Delay(store.ReconciliationInterval, stoppingToken).ConfigureAwait(false);
         }
     }
 }

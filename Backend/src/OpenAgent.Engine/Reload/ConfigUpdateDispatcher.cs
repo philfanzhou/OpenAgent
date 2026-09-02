@@ -119,7 +119,10 @@ internal sealed class ConfigUpdateDispatcher
                 ConfigUpdate.PostgreSqlAgentResourceType,
                 StringComparison.OrdinalIgnoreCase))
         {
-            return _fullConfigRefresher.RefreshPostgreSql(update.ResourceId);
+            return !string.IsNullOrWhiteSpace(update.TenantId)
+                && _fullConfigRefresher.RefreshPostgreSql(
+                    update.TenantId,
+                    update.ResourceId);
         }
 
         if (string.Equals(

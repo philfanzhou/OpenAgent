@@ -12,13 +12,16 @@ internal sealed class AgentRuntimeResolver : IAgentRuntimeResolver
 {
     private readonly IAgentConfigProvider _configs;
     private readonly AgentAuthorizationGate _authorization;
+    private readonly IAgentSecretResolver _secrets;
 
     public AgentRuntimeResolver(
         IAgentConfigProvider configs,
-        AgentAuthorizationGate authorization)
+        AgentAuthorizationGate authorization,
+        IAgentSecretResolver? secrets = null)
     {
         _configs = configs;
         _authorization = authorization;
+        _secrets = secrets ?? new MissingAgentSecretResolver();
     }
 
     public async Task<AgentRuntimeProfile> ResolveAsync(
@@ -51,6 +54,12 @@ internal sealed class AgentRuntimeResolver : IAgentRuntimeResolver
                 cancellationToken)
             .ConfigureAwait(false);
 
+        await ResolveApiKeyAsync(
+                model,
+                userContext.TenantId!,
+                cancellationToken)
+            .ConfigureAwait(false);
+
         Validate(agentId, config, model);
         return new AgentRuntimeProfile
         {
@@ -58,6 +67,26 @@ internal sealed class AgentRuntimeResolver : IAgentRuntimeResolver
             Config = config,
             Model = model
         };
+    }
+
+    private async Task ResolveApiKeyAsync(
+        LlmConfig model,
+        string tenantId,
+        CancellationToken cancellationToken)
+    {
+        if (!string.IsNullOrWhiteSpace(model.ApiKey)
+            || string.IsNullOrWhiteSpace(model.ApiKeySecretRef))
+        {
+            return;
+        }
+
+        model.ApiKey = await _secrets.ResolveAsync(
+                tenantId,
+                model.ApiKeySecretRef,
+                cancellationToken)
+            .ConfigureAwait(false)
+            ?? throw new InvalidOperationException(
+                $"LLM secret reference '{model.ApiKeySecretRef}' is not configured for tenant '{tenantId}'.");
     }
 
     private static void Validate(string agentId, AgentConfig config, LlmConfig model)

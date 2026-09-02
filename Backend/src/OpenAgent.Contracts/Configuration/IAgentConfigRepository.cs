@@ -8,6 +8,7 @@ namespace OpenAgent.Contracts.Configuration;
 public interface IAgentConfigRepository
 {
     Task<AgentConfigEntity?> GetAsync(
+        string tenantId,
         string agentId,
         CancellationToken cancellationToken = default);
 
@@ -21,6 +22,7 @@ public interface IAgentConfigRepository
     /// Agent belongs to another tenant, or a concurrent create wins the race.
     /// </summary>
     Task<AgentConfigEntity?> UpsertAsync(
+        string tenantId,
         string agentId,
         AgentConfigEntity entity,
         string? expectedVersion,

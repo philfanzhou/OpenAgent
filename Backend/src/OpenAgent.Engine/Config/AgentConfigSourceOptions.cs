@@ -4,6 +4,6 @@ internal sealed class AgentConfigSourceOptions
 {
     internal const string SectionName = "ConfigurationStore";
 
-    public bool UsePostgreSqlForAgents { get; set; }
     public int RedisCacheTtlSeconds { get; set; } = 300;
+    public int RedisCacheReconciliationSeconds { get; set; } = 60;
 }

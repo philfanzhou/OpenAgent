@@ -24,7 +24,7 @@ namespace OpenAgent.Infrastructure.Persistence.Migrations
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_agent_configurations", x => x.AgentId);
+                    table.PrimaryKey("PK_agent_configurations", x => new { x.TenantId, x.AgentId });
                 });
 
             migrationBuilder.CreateIndex(

@@ -17,6 +17,7 @@ internal static class RuntimeServiceExtensions
     {
         services.AddSingleton<ILlmRegistry, LlmRegistry>();
         services.AddSingleton<IAgentChatClientFactory, AgentChatClientFactory>();
+        services.TryAddSingleton<IAgentSecretResolver, MissingAgentSecretResolver>();
 
         services.TryAddScoped<IAgentAuthorizationService>(serviceProvider =>
         {

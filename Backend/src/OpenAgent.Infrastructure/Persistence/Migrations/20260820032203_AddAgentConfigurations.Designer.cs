@@ -48,7 +48,7 @@ namespace OpenAgent.Infrastructure.Persistence.Migrations
                         .IsConcurrencyToken()
                         .HasColumnType("bigint");
 
-                    b.HasKey("AgentId");
+                    b.HasKey("TenantId", "AgentId");
 
                     b.HasIndex("TenantId", "UpdatedAt");
 

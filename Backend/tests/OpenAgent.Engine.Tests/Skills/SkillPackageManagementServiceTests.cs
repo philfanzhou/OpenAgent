@@ -132,7 +132,7 @@ public class SkillPackageManagementServiceTests
     }
 
     [Fact]
-    public async Task InstallAsync_AgentOwnedByAnotherTenant_ReturnsTenantMismatch()
+    public async Task InstallAsync_AgentOwnedByAnotherTenant_ReturnsNotFound()
     {
         (SkillPackageManagementService service, AgentConfigManagementService configs, RecordingObjectStore store) =
             await CreateServiceAsync("tenant-a");
@@ -147,7 +147,7 @@ public class SkillPackageManagementServiceTests
             expectedVersion: null,
             default);
 
-        Assert.True(result.HasTenantMismatch);
+        Assert.False(result.AgentExists);
         Assert.Empty(store.Objects);
         Assert.Equal("tenant-a", (await configs.GetAsync(AgentId))!.TenantId);
     }

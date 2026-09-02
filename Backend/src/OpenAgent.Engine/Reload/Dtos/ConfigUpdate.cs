@@ -11,6 +11,7 @@ internal sealed class ConfigUpdate
     internal const string DeleteOperation = "Delete";
 
     public string? ResourceType { get; set; }
+    public string? TenantId { get; set; }
     public string? ResourceId { get; set; }
     public string? Operation { get; set; }
     public string? AgentId { get; set; }

@@ -3,6 +3,7 @@ export type ConnectionMode = 'router' | 'engine'
 export const AUTO_AGENT_ID = '__auto__'
 
 export interface AgentSummary {
+  tenantId: string
   agentId: string
   name: string
   description: string
@@ -172,6 +173,7 @@ export interface LlmConfig {
   provider: string
   format: 'OpenAIChatCompletions' | 'OpenAIResponses' | 'AnthropicMessages' | string
   modelId: string
+  apiKeySecretRef: string
   apiKey: string
   endpoint: string
   temperature: number
@@ -183,6 +185,7 @@ export interface LlmProviderProfile {
   format: 'OpenAIChatCompletions' | 'OpenAIResponses' | 'AnthropicMessages' | string
   modelId?: string | null
   endpoint: string
+  apiKeySecretRef: string
   apiKey: string
   temperature: number
 }
@@ -204,6 +207,7 @@ export interface RagInstanceConfig {
   type: string
   collectionName: string
   apiEndpoint: string
+  apiKeySecretRef?: string
   apiKey?: string
   adapterConfig?: Record<string, string> | null
   allowedUserIds?: string[]

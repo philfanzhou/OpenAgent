@@ -27,12 +27,41 @@ public class AgentConfigDatabaseStoreTests
         AgentConfigDatabaseStore store = CreateStore(redis, repository, snapshot);
         ConfigProvider provider = CreateProvider(redis, snapshot, store);
 
-        AgentConfig? result = await provider.GetConfigAsync("support");
-        RedisValue cached = redis.StringGet($"{AgentConfigDatabaseStore.CacheKeyPrefix}support");
+        AgentConfig? result = await provider.GetConfigAsync("support", "tenant-a");
+        RedisValue cached = redis.StringGet(
+            AgentConfigDatabaseStore.BuildCacheKey("tenant-a", "support"));
 
         Assert.Equal("database", result?.Instructions);
         Assert.False(cached.IsNullOrEmpty);
         Assert.Contains("database", cached.ToString(), StringComparison.Ordinal);
+        Assert.Equal(TimeSpan.FromSeconds(300), redis.LastStringExpiry);
+    }
+
+    [Fact]
+    public async Task GetConfigAsync_SameAgentId_UsesTenantScopedCacheEntries()
+    {
+        var redis = new FakeRedisConnectionProvider();
+        var repository = new MultiTenantRepository(
+            CreateEntity("tenant-a"),
+            CreateEntity("tenant-b", "tenant-b"));
+        ConfigSnapshot snapshot = CreateSnapshot();
+        ConfigProvider provider = CreateProvider(
+            redis,
+            snapshot,
+            CreateStore(redis, repository, snapshot));
+
+        AgentConfig? tenantA = await provider.GetConfigAsync("support", "tenant-a");
+        AgentConfig? tenantB = await provider.GetConfigAsync("support", "tenant-b");
+
+        Assert.Equal("tenant-a", tenantA?.Instructions);
+        Assert.Equal("tenant-b", tenantB?.Instructions);
+        Assert.False(redis.StringGet(
+            AgentConfigDatabaseStore.BuildCacheKey("tenant-a", "support")).IsNullOrEmpty);
+        Assert.False(redis.StringGet(
+            AgentConfigDatabaseStore.BuildCacheKey("tenant-b", "support")).IsNullOrEmpty);
+        Assert.NotEqual(
+            AgentConfigDatabaseStore.BuildSnapshotScope("tenant-a", "support"),
+            AgentConfigDatabaseStore.BuildSnapshotScope("tenant-b", "support"));
     }
 
     [Fact]
@@ -46,10 +75,11 @@ public class AgentConfigDatabaseStoreTests
 
         AgentConfigEntity? saved = await manager.SaveAsync(
             "support",
+            "tenant-a",
             CreateEntity("committed"),
             expectedVersion: null);
         bool found = snapshot.TryGetConfig(
-            "support",
+            AgentConfigDatabaseStore.BuildSnapshotScope("tenant-a", "support"),
             "FullAgentConfig",
             out AgentConfig? cached);
 
@@ -70,7 +100,7 @@ public class AgentConfigDatabaseStoreTests
         AgentConfigEntity entity = CreateEntity("reloaded");
         entity.CurrentVersion = "7";
         redis.SetString(
-            $"{AgentConfigDatabaseStore.CacheKeyPrefix}support",
+            AgentConfigDatabaseStore.BuildCacheKey("tenant-a", "support"),
             JsonSerializer.Serialize(entity));
 
         var llmRegistry = new Mock<ILlmRegistry>();
@@ -95,9 +125,9 @@ public class AgentConfigDatabaseStoreTests
 
         bool refreshed = dispatcher.Process(
             HotReloadService.CurrentUpdatesChannel,
-            """{"resourceType":"PostgreSqlAgent","resourceId":"support","operation":"Upsert","version":"7"}""");
+            """{"resourceType":"PostgreSqlAgent","tenantId":"tenant-a","resourceId":"support","operation":"Upsert","version":"7"}""");
         bool found = snapshot.TryGetConfig(
-            "support",
+            AgentConfigDatabaseStore.BuildSnapshotScope("tenant-a", "support"),
             "FullAgentConfig",
             out AgentConfig? cached);
 
@@ -114,8 +144,10 @@ public class AgentConfigDatabaseStoreTests
         AgentConfigDatabaseStore store = CreateStore(redis, repository, CreateSnapshot());
 
         bool completed = await store.TryWarmupAsync(CancellationToken.None);
-        RedisValue cached = redis.StringGet($"{AgentConfigDatabaseStore.CacheKeyPrefix}support");
-        RedisValue[] index = await redis.SetMembersAsync(AgentConfigDatabaseStore.CacheIndexKey);
+        RedisValue cached = redis.StringGet(
+            AgentConfigDatabaseStore.BuildCacheKey("tenant-a", "support"));
+        RedisValue[] index = await redis.SetMembersAsync(
+            AgentConfigDatabaseStore.BuildCacheIndexKey("tenant-a"));
 
         Assert.True(completed);
         Assert.False(cached.IsNullOrEmpty);
@@ -130,8 +162,8 @@ public class AgentConfigDatabaseStoreTests
             snapshot,
             Options.Create(new AgentConfigSourceOptions
             {
-                UsePostgreSqlForAgents = true,
-                RedisCacheTtlSeconds = 300
+                RedisCacheTtlSeconds = 300,
+                RedisCacheReconciliationSeconds = 60
             }),
             NullLogger<AgentConfigDatabaseStore>.Instance,
             repository);
@@ -153,7 +185,6 @@ public class AgentConfigDatabaseStoreTests
             NullLogger<ConfigProvider>.Instance,
             snapshot,
             mock,
-            new SecretInjector(),
             list,
             local,
             store);
@@ -185,22 +216,53 @@ public class AgentConfigDatabaseStoreTests
         new MemoryCache(new MemoryCacheOptions()),
         NullLogger<ConfigSnapshot>.Instance);
 
-    private static AgentConfigEntity CreateEntity(string instructions) => new()
+    private static AgentConfigEntity CreateEntity(
+        string instructions,
+        string tenantId = "tenant-a") => new()
     {
         AgentId = "support",
-        TenantId = "tenant-a",
+        TenantId = tenantId,
         Config = new AgentConfig
         {
-            TenantId = "tenant-a",
+            TenantId = tenantId,
             Instructions = instructions
         }
     };
+
+    private sealed class MultiTenantRepository(params AgentConfigEntity[] entities)
+        : IAgentConfigRepository
+    {
+        private readonly Dictionary<(string TenantId, string AgentId), AgentConfigEntity> _entities =
+            entities.ToDictionary(entity => (entity.TenantId, entity.AgentId));
+
+        public Task<AgentConfigEntity?> GetAsync(
+            string tenantId,
+            string agentId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(_entities.GetValueOrDefault((tenantId, agentId)));
+
+        public Task<IReadOnlyList<AgentConfigEntity>> ListAsync(
+            string? tenantId = null,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<AgentConfigEntity>>(_entities.Values
+                .Where(entity => tenantId == null || entity.TenantId == tenantId)
+                .ToArray());
+
+        public Task<AgentConfigEntity?> UpsertAsync(
+            string tenantId,
+            string agentId,
+            AgentConfigEntity entity,
+            string? expectedVersion,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+    }
 
     private sealed class RecordingRepository(AgentConfigEntity? current = null) : IAgentConfigRepository
     {
         internal AgentConfigEntity? Current { get; private set; } = current;
 
         public Task<AgentConfigEntity?> GetAsync(
+            string tenantId,
             string agentId,
             CancellationToken cancellationToken = default) =>
             Task.FromResult(Current);
@@ -212,11 +274,14 @@ public class AgentConfigDatabaseStoreTests
                 Current == null ? [] : [Current]);
 
         public Task<AgentConfigEntity?> UpsertAsync(
+            string tenantId,
             string agentId,
             AgentConfigEntity entity,
             string? expectedVersion,
             CancellationToken cancellationToken = default)
         {
+            entity.TenantId = tenantId;
+            entity.Config.TenantId = tenantId;
             entity.AgentId = agentId;
             entity.CurrentVersion = Current == null
                 ? "1"

@@ -16,21 +16,24 @@ public class AgentConfigRepositoryTests
         IAgentConfigRepository repository = CreateRepository(services);
         AgentConfigEntity created = Assert.IsType<AgentConfigEntity>(
             await repository.UpsertAsync(
+                "tenant-a",
                 "support",
                 CreateEntity("initial"),
                 expectedVersion: null));
         AgentConfigEntity updated = Assert.IsType<AgentConfigEntity>(
             await repository.UpsertAsync(
+                "tenant-a",
                 "support",
                 CreateEntity("updated"),
                 created.CurrentVersion));
 
         AgentConfigEntity? stale = await repository.UpsertAsync(
+            "tenant-a",
             "support",
             CreateEntity("stale"),
             created.CurrentVersion);
         AgentConfigEntity stored = Assert.IsType<AgentConfigEntity>(
-            await repository.GetAsync("support"));
+            await repository.GetAsync("tenant-a", "support"));
 
         Assert.Equal("1", created.CurrentVersion);
         Assert.Equal("2", updated.CurrentVersion);
@@ -39,11 +42,12 @@ public class AgentConfigRepositoryTests
     }
 
     [Fact]
-    public async Task UpsertAsync_DifferentTenant_DoesNotOverwriteConfiguration()
+    public async Task UpsertAsync_SameAgentId_IsolatedByTenant()
     {
         await using ServiceProvider services = CreateServices();
         IAgentConfigRepository repository = CreateRepository(services);
         await repository.UpsertAsync(
+            "tenant-a",
             "support",
             CreateEntity("tenant-a"),
             expectedVersion: null);
@@ -52,15 +56,37 @@ public class AgentConfigRepositoryTests
         foreign.Config.TenantId = "tenant-b";
 
         AgentConfigEntity? result = await repository.UpsertAsync(
+            "tenant-b",
             "support",
             foreign,
             expectedVersion: null);
-        AgentConfigEntity stored = Assert.IsType<AgentConfigEntity>(
-            await repository.GetAsync("support"));
+        AgentConfigEntity tenantA = Assert.IsType<AgentConfigEntity>(
+            await repository.GetAsync("tenant-a", "support"));
+        AgentConfigEntity tenantB = Assert.IsType<AgentConfigEntity>(
+            await repository.GetAsync("tenant-b", "support"));
 
-        Assert.Null(result);
-        Assert.Equal("tenant-a", stored.TenantId);
-        Assert.Equal("tenant-a", stored.Config.Instructions);
+        Assert.NotNull(result);
+        Assert.Equal("tenant-a", tenantA.Config.Instructions);
+        Assert.Equal("tenant-b", tenantB.Config.Instructions);
+    }
+
+    [Fact]
+    public async Task UpsertAsync_InlineApiKey_RejectsPersistence()
+    {
+        await using ServiceProvider services = CreateServices();
+        IAgentConfigRepository repository = CreateRepository(services);
+        AgentConfigEntity entity = CreateEntity("secret");
+        entity.Config.Llm.ApiKey = "must-not-be-stored";
+
+        ArgumentException exception = await Assert.ThrowsAsync<ArgumentException>(() =>
+            repository.UpsertAsync(
+                "tenant-a",
+                "support",
+                entity,
+                expectedVersion: null));
+
+        Assert.Contains("ApiKeySecretRef", exception.Message, StringComparison.Ordinal);
+        Assert.Null(await repository.GetAsync("tenant-a", "support"));
     }
 
     private static ServiceProvider CreateServices()

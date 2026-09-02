@@ -23,6 +23,7 @@ public class ConfigUpdateRegistrationTests
         services.AddLogging();
         services.AddAgentEngine(new ConfigurationBuilder().Build());
         services.AddSingleton<IRedisConnectionProvider, FakeRedisConnectionProvider>();
+        services.AddSingleton(Mock.Of<IAgentConfigRepository>());
         services.AddSingleton(Mock.Of<ILlmRegistry>());
 
         using var provider = services.BuildServiceProvider(validateScopes: true);
@@ -47,6 +48,7 @@ public class ConfigUpdateRegistrationTests
         services.AddLogging();
         services.AddAgentEngine(new ConfigurationBuilder().Build());
         services.AddSingleton<IRedisConnectionProvider, FakeRedisConnectionProvider>();
+        services.AddSingleton(Mock.Of<IAgentConfigRepository>());
         services.AddSingleton(Mock.Of<ILlmRegistry>());
 
         using var provider = services.BuildServiceProvider(validateScopes: true);

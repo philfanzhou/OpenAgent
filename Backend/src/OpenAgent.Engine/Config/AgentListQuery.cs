@@ -36,7 +36,7 @@ internal sealed class AgentListQuery(
         string? tenantId,
         CancellationToken cancellationToken)
     {
-        if (databaseStore?.IsEnabled == true)
+        if (databaseStore != null)
         {
             IReadOnlyList<AgentConfigEntity> databaseAgents = await databaseStore
                 .ListAuthoritativeAsync(tenantId, cancellationToken)
@@ -116,9 +116,12 @@ internal sealed class AgentListQuery(
             return;
         }
 
-        result.RemoveAll(item => string.Equals(item.AgentId, entity.AgentId, StringComparison.OrdinalIgnoreCase));
+        result.RemoveAll(item =>
+            string.Equals(item.TenantId, ownerTenantId, StringComparison.Ordinal)
+            && string.Equals(item.AgentId, entity.AgentId, StringComparison.OrdinalIgnoreCase));
         result.Add(new AgentSummary
         {
+            TenantId = ownerTenantId,
             AgentId = entity.AgentId,
             Name = entity.Name,
             Description = entity.Description,
