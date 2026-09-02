@@ -26,6 +26,12 @@ internal static class AgentAuthenticationExtensions
                         && !string.IsNullOrWhiteSpace(value.ClientId)),
                 "JWT Bearer authentication requires Authority, Audience, and ClientId.")
             .Validate(
+                value => value.Mode != AgentAuthenticationMode.ApiKey
+                    || (!string.IsNullOrWhiteSpace(value.ApiKeyHash)
+                        && !string.IsNullOrWhiteSpace(value.ApiKeyTenantId)
+                        && !string.IsNullOrWhiteSpace(value.ApiKeyClientId)),
+                "API key authentication requires ApiKeyHash, ApiKeyTenantId, and ApiKeyClientId.")
+            .Validate(
                 value => value.ClockSkewSeconds is >= 0 and <= 300,
                 "Authentication ClockSkewSeconds must be between 0 and 300.")
             .ValidateOnStart();
@@ -37,6 +43,12 @@ internal static class AgentAuthenticationExtensions
             services.AddAuthentication(BasicAuthenticationHandler.SchemeName)
                 .AddScheme<AuthenticationSchemeOptions, BasicAuthenticationHandler>(
                     BasicAuthenticationHandler.SchemeName, _ => { });
+        }
+        else if (options.Mode == AgentAuthenticationMode.ApiKey)
+        {
+            services.AddAuthentication(ApiKeyAuthenticationHandler.SchemeName)
+                .AddScheme<AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>(
+                    ApiKeyAuthenticationHandler.SchemeName, _ => { });
         }
         else
         {

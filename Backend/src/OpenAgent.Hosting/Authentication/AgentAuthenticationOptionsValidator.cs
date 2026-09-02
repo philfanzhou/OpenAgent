@@ -72,6 +72,18 @@ internal sealed class AgentAuthenticationOptionsValidator(IHostEnvironment? envi
             }
         }
 
+        if (options.Mode == AgentAuthenticationMode.ApiKey
+            && !string.IsNullOrWhiteSpace(options.ApiKeyHash))
+        {
+            bool isSha256Hex = options.ApiKeyHash.Length == 64
+                && options.ApiKeyHash.All(Uri.IsHexDigit);
+            if (!isSha256Hex)
+            {
+                return ValidateOptionsResult.Fail(
+                    "API key ApiKeyHash must be a 64-character SHA-256 hex digest.");
+            }
+        }
+
         return ValidateOptionsResult.Success;
     }
 }

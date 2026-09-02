@@ -70,6 +70,32 @@ public class AuthenticationEndpointTests
         Assert.Equal(HttpStatusCode.NotFound, login.StatusCode);
     }
 
+    [Fact]
+    public async Task ProductionApiKeyEndpoints_ExposeApiKeyModeWithoutKeycloak()
+    {
+        await using WebApplication app = await StartApplicationAsync(
+            Environments.Production,
+            new Dictionary<string, string?>
+            {
+                ["Authentication:Mode"] = "ApiKey",
+                ["Authentication:ApiKeyHash"] = new string('a', 64),
+                ["Authentication:ApiKeyTenantId"] = "tenant-a",
+                ["Authentication:ApiKeyClientId"] = "partner-a"
+            });
+        using HttpClient client = CreateClient(app);
+
+        JsonDocument config = await client.GetFromJsonAsync<JsonDocument>("/api/v1/auth/config")
+            ?? throw new InvalidOperationException("Authentication config was empty.");
+
+        Assert.Equal("ApiKey", config.RootElement.GetProperty("mode").GetString());
+        Assert.False(config.RootElement.GetProperty("keycloak").GetProperty("enabled").GetBoolean());
+        Assert.Equal(
+            "X-API-Key",
+            config.RootElement.GetProperty("apiKey").GetProperty("header").GetString());
+        Assert.False(config.RootElement.GetProperty("password").GetProperty("enabled").GetBoolean());
+        Assert.True(config.RootElement.GetProperty("oidc").ValueKind == JsonValueKind.Null);
+    }
+
     private static async Task<WebApplication> StartApplicationAsync(
         string environment,
         IReadOnlyDictionary<string, string?> settings)

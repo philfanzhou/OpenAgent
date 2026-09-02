@@ -26,6 +26,7 @@ public static class AuthenticationEndpointExtensions
             keycloak = new
             {
                 enabled = options.EnableKeycloak
+                    && options.Mode == AgentAuthenticationMode.JwtBearer
             },
             password = new
             {
@@ -47,6 +48,13 @@ public static class AuthenticationEndpointExtensions
                     scopes = options.Scopes.Length == 0
                         ? ["openid", "profile"]
                         : options.Scopes
+                }
+                : null,
+            apiKey = options.Mode == AgentAuthenticationMode.ApiKey
+                ? new
+                {
+                    header = "X-API-Key",
+                    authorizationScheme = "Bearer"
                 }
                 : null
         })).AllowAnonymous();

@@ -93,6 +93,59 @@ public class ServiceCollectionExtensionsTests
     }
 
     [Fact]
+    public async Task AddAgentHost_WithApiKeyMode_RegistersApiKeyScheme()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Authentication:Mode"] = "ApiKey",
+                ["Authentication:ApiKeyHash"] = new string('a', 64),
+                ["Authentication:ApiKeyTenantId"] = "tenant-a",
+                ["Authentication:ApiKeyClientId"] = "partner-a"
+            })
+            .Build();
+        var services = new ServiceCollection();
+        services.AddLogging();
+
+        services.AddAgentHost(configuration, options =>
+        {
+            DisableOptionalFeatures(options);
+            options.EnableJwtAuth = true;
+        });
+
+        using ServiceProvider provider = services.BuildServiceProvider();
+        var schemes = provider.GetRequiredService<IAuthenticationSchemeProvider>();
+
+        Assert.NotNull(await schemes.GetSchemeAsync("ApiKey"));
+        Assert.Null(await schemes.GetSchemeAsync("Bearer"));
+        Assert.Null(await schemes.GetSchemeAsync("Basic"));
+    }
+
+    [Fact]
+    public void AddAgentHost_WithIncompleteApiKeyConfiguration_FailsValidation()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Authentication:Mode"] = "ApiKey",
+                ["Authentication:ApiKeyTenantId"] = "tenant-a"
+            })
+            .Build();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddAgentHost(configuration, options =>
+        {
+            DisableOptionalFeatures(options);
+            options.EnableJwtAuth = true;
+        });
+
+        using ServiceProvider provider = services.BuildServiceProvider();
+
+        Assert.Throws<OptionsValidationException>(() =>
+            provider.GetRequiredService<IOptions<AgentAuthenticationOptions>>().Value);
+    }
+
+    [Fact]
     public void AddAgentHost_WithIncompleteJwtBearerConfiguration_FailsValidation()
     {
         var configuration = new ConfigurationBuilder()
