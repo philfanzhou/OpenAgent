@@ -7,7 +7,7 @@ namespace OpenAgent.Router.Observability;
 
 /// <summary>
 /// Centralized logging definitions for the Router project using [LoggerMessage] source generators.
-/// EventId range: 3000–3034.
+/// EventId range: 3000–3048.
 /// </summary>
 internal static partial class RouterLog
 {
@@ -174,6 +174,58 @@ internal static partial class RouterLog
 
     [LoggerMessage(EventId = 3030, Level = LogLevel.Warning, Message = "Failed to release idempotency placeholder. StorageKey={StorageKey}")]
     public static partial void IdempotencyReleaseFailed(ILogger logger, Exception exception, string storageKey);
+
+    #endregion
+
+    #region --- Intent recognition and Provider HTTP ---
+
+    [LoggerMessage(EventId = 3035, Level = LogLevel.Information, Message = "Intent recognition started. ProviderId={ProviderId}, IntentAgentId={IntentAgentId}, CandidateCount={CandidateCount}, MessageLength={MessageLength}")]
+    public static partial void IntentRecognitionStarted(ILogger logger, string providerId, string intentAgentId, int candidateCount, int messageLength);
+
+    [LoggerMessage(EventId = 3036, Level = LogLevel.Information, Message = "Intent recognition completed. ProviderId={ProviderId}, IntentAgentId={IntentAgentId}, ProviderAgentId={ProviderAgentId}, Confidence={Confidence}, SelectedAgentId={SelectedAgentId}")]
+    public static partial void IntentRecognitionCompleted(ILogger logger, string providerId, string intentAgentId, string? providerAgentId, double confidence, string? selectedAgentId);
+
+    [LoggerMessage(EventId = 3037, Level = LogLevel.Warning, Message = "Intent recognition provider is unavailable. ProviderId={ProviderId}, IntentAgentId={IntentAgentId}")]
+    public static partial void IntentRecognitionProviderUnavailable(ILogger logger, string providerId, string intentAgentId);
+
+    [LoggerMessage(EventId = 3038, Level = LogLevel.Warning, Message = "Intent recognition timed out. ProviderId={ProviderId}, IntentAgentId={IntentAgentId}")]
+    public static partial void IntentRecognitionTimedOut(ILogger logger, string providerId, string intentAgentId);
+
+    public static void IntentRecognitionFailed(ILogger logger, Exception exception, string providerId, string intentAgentId) =>
+        IntentRecognitionFailedCore(logger, exception, providerId, intentAgentId, exception.GetType().FullName ?? "unknown");
+
+    [LoggerMessage(EventId = 3040, Level = LogLevel.Information, Message = "Provider HTTP request. ProviderId={ProviderId}, Operation={Operation}, Method={Method}, Uri={Uri}, Headers={Headers}")]
+    public static partial void ProviderHttpRequest(ILogger logger, string providerId, string operation, string method, string uri, string headers);
+
+    [LoggerMessage(EventId = 3041, Level = LogLevel.Debug, Message = "Provider HTTP request body. ProviderId={ProviderId}, Operation={Operation}, Body={Body}")]
+    public static partial void ProviderHttpRequestBody(ILogger logger, string providerId, string operation, string body);
+
+    [LoggerMessage(EventId = 3042, Level = LogLevel.Information, Message = "Provider HTTP response. ProviderId={ProviderId}, Operation={Operation}, StatusCode={StatusCode}, Headers={Headers}")]
+    public static partial void ProviderHttpResponse(ILogger logger, string providerId, string operation, int statusCode, string headers);
+
+    [LoggerMessage(EventId = 3043, Level = LogLevel.Debug, Message = "Provider HTTP response body. ProviderId={ProviderId}, Operation={Operation}, Body={Body}")]
+    public static partial void ProviderHttpResponseBody(ILogger logger, string providerId, string operation, string body);
+
+    [LoggerMessage(EventId = 3044, Level = LogLevel.Information, Message = "Provider forwarding request. ProviderId={ProviderId}, Action={Action}, Method={Method}, Uri={Uri}, Headers={Headers}, TraceId={TraceId}")]
+    public static partial void ProviderForwardingRequest(ILogger logger, string providerId, string action, string method, string uri, string headers, string traceId);
+
+    [LoggerMessage(EventId = 3045, Level = LogLevel.Information, Message = "Provider forwarding response. ProviderId={ProviderId}, Action={Action}, StatusCode={StatusCode}, Headers={Headers}, TraceId={TraceId}")]
+    public static partial void ProviderForwardingResponse(ILogger logger, string providerId, string action, int statusCode, string headers, string traceId);
+
+    [LoggerMessage(EventId = 3046, Level = LogLevel.Information, Message = "Gina deterministic intent selection. ProviderId={ProviderId}, IntentAgentId={IntentAgentId}, SelectedAgentId={SelectedAgentId}, CandidateCount={CandidateCount}")]
+    public static partial void GinaIntentSelection(ILogger logger, string providerId, string intentAgentId, string? selectedAgentId, int candidateCount);
+
+    [LoggerMessage(EventId = 3047, Level = LogLevel.Debug, Message = "Provider forwarding target resolved. ProviderId={ProviderId}, Action={Action}, Uri={Uri}, TenantId={TenantId}, ConversationId={ConversationId}")]
+    public static partial void ProviderForwardingTargetResolved(ILogger logger, string providerId, string? action, string uri, string? tenantId, string? conversationId);
+
+    public static void ProviderForwardingFailed(ILogger logger, Exception exception, string providerId, string? action, string uri, string traceId) =>
+        ProviderForwardingFailedCore(logger, exception, providerId, action, uri, traceId, exception.GetType().FullName ?? "unknown");
+
+    [LoggerMessage(EventId = 3039, Level = LogLevel.Error, Message = "Intent recognition provider failed unexpectedly. ProviderId={ProviderId}, IntentAgentId={IntentAgentId}, ExceptionType={ExceptionType}")]
+    private static partial void IntentRecognitionFailedCore(ILogger logger, Exception exception, string providerId, string intentAgentId, string exceptionType);
+
+    [LoggerMessage(EventId = 3048, Level = LogLevel.Error, Message = "Provider forwarding failed unexpectedly. ProviderId={ProviderId}, Action={Action}, Uri={Uri}, TraceId={TraceId}, ExceptionType={ExceptionType}")]
+    private static partial void ProviderForwardingFailedCore(ILogger logger, Exception exception, string providerId, string? action, string uri, string traceId, string exceptionType);
 
     #endregion
 

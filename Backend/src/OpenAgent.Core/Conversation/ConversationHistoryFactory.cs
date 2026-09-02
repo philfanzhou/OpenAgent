@@ -63,7 +63,7 @@ internal sealed class ConversationHistoryFactory
         string modelId,
         AgentRequest request,
         IAgentUserContext user,
-        IReadOnlyList<FileAssetContent> files)
+        IReadOnlyList<FileAsset> files)
     {
         ConversationContext context = new(
             request.ConversationId,
@@ -77,7 +77,7 @@ internal sealed class ConversationHistoryFactory
             agentId,
             modelId,
             request.Query,
-            files.Select(item => item.Asset).ToList().AsReadOnly(),
+            files.ToList().AsReadOnly(),
             _fileExecution,
             _conversationLock,
             _store,
@@ -153,6 +153,13 @@ internal sealed class ConversationHistoryFactory
 
     internal int ResolveAutomaticTokenThreshold(ContextPolicy? policy)
     {
+        // A configured fixed threshold wins over the ratio heuristic, so deployments can
+        // pin the automatic trigger regardless of per-agent context policies.
+        if (_options.AutomaticCompactionTokenThreshold is > 0)
+        {
+            return _options.AutomaticCompactionTokenThreshold.Value;
+        }
+
         int contextTokens = policy?.MaxTokens > 0
             ? policy.MaxTokens
             : Math.Max(1, _options.DefaultModelContextTokens);

@@ -22,6 +22,8 @@ internal static class EndpointExtensions
             return Results.Ok(new
             {
                 userId = user.UserId,
+                username = user.Username,
+                email = user.Email,
                 tenantId = user.TenantId,
                 roles = user.Roles,
                 groups = user.Groups,

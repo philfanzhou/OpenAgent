@@ -1,93 +1,38 @@
 services:
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_DB: openagent
-      POSTGRES_USER: openagent
-      POSTGRES_PASSWORD: openagent
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    ports:
-      - "${OPENAGENT_POSTGRES_PORT:-5432}:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U openagent -d openagent"]
-      interval: 2s
-      timeout: 3s
-      retries: 30
-
-  redis:
-    image: redis:7-alpine
-    volumes:
-      - redis-data:/data
-    ports:
-      - "${OPENAGENT_REDIS_PORT:-6379}:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 2s
-      timeout: 3s
-      retries: 30
-
-  minio:
-    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: openagent
-      MINIO_ROOT_PASSWORD: openagent-secret
-    volumes:
-      - minio-data:/data
-    ports:
-      - "${OPENAGENT_MINIO_PORT:-9000}:9000"
-      - "${OPENAGENT_MINIO_CONSOLE_PORT:-9001}:9001"
-    healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
-      interval: 2s
-      timeout: 3s
-      retries: 30
-
-  minio-init:
-    image: minio/mc:RELEASE.2025-05-21T01-59-54Z
-    depends_on:
-      minio:
-        condition: service_healthy
-    entrypoint: >-
-      /bin/sh -c "mc alias set local http://minio:9000 openagent openagent-secret &&
-      mc mb --ignore-existing local/openagent-files"
-
   engine:
-    build:
-      context: .
-      dockerfile: Backend/src/OpenAgent.Engine.Host/Dockerfile
+    image: ${OPENAGENT_ENGINE_IMAGE:-openagent-engine:latest}
     environment:
-      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_ENVIRONMENT: ${OPENAGENT_ASPNETCORE_ENVIRONMENT:-Development}
       ASPNETCORE_URLS: http://+:5208
       ConnectionStrings__OpenAgentDatabase: Host=postgres;Port=5432;Database=openagent;Username=openagent;Password=openagent
       ConnectionStrings__Redis: redis:6379
       Database__ApplyMigrationsOnStartup: "true"
       ConversationCache__Enabled: "true"
-      FileAssets__Enabled: "true"
-      OpenTelemetry__OtlpEndpoint: ${OPENAGENT_OTLP_ENDPOINT:-http://host.docker.internal:4317}
-      OpenTelemetry__ServiceName: agent-engine
-      OpenTelemetry__ServiceVersion: development
-      FileAssets__ObjectStorage__ServiceUrl: http://minio:9000
+      FileAssets__Enabled: ${OPENAGENT_FILE_ASSETS_ENABLED:-true}
+      OpenTelemetry__OtlpEndpoint: ${OPENAGENT_OTLP_ENDPOINT:-}
+      OpenTelemetry__ServiceName: openagent-engine
+      OpenTelemetry__ServiceVersion: ${OPENAGENT_SERVICE_VERSION:-development}
+      FileAssets__ObjectStorage__ServiceUrl: ${OPENAGENT_S3_SERVICE_URL:-http://minio:9000}
       FileAssets__ObjectStorage__ForcePathStyle: "true"
-      FileAssets__ObjectStorage__AccessKey: openagent
-      FileAssets__ObjectStorage__SecretKey: openagent-secret
-      Engine__AllowMockAgent: "true"
+      OPENAGENT_S3_ALLOW_INSECURE_TLS: ${OPENAGENT_S3_ALLOW_INSECURE_TLS:-false}
+      FileAssets__ObjectStorage__BucketName: ${OPENAGENT_S3_BUCKET:-openagent-files}
+      FileAssets__ObjectStorage__AccessKey: ${OPENAGENT_S3_ACCESS_KEY:-openagent}
+      FileAssets__ObjectStorage__SecretKey: ${OPENAGENT_S3_SECRET_KEY:-openagent-secret}
+      Engine__AllowMockAgent: ${OPENAGENT_ALLOW_MOCK_AGENT:-true}
       Heartbeat__AdvertisedHost: engine
       Heartbeat__AdvertisedPort: "5208"
-      Authentication__AllowDevelopmentAnonymous: "false"
-      Cors__AllowedOrigins__0: http://localhost:${OPENAGENT_CHAT_PORT:-8080}
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      minio-init:
-        condition: service_completed_successfully
-    ports:
-      - "${OPENAGENT_ENGINE_PORT:-5208}:5208"
+      Authentication__AllowDevelopmentAnonymous: "${OPENAGENT_AUTH_ALLOW_DEVELOPMENT_ANONYMOUS:-false}"
+      Authentication__Mode: ${OPENAGENT_AUTH_MODE:-JwtBearer}
+      Authentication__EnableKeycloak: "${OPENAGENT_AUTH_ENABLE_KEYCLOAK:-true}"
+      Authentication__Authority: ${OPENAGENT_KEYCLOAK_PUBLIC_URL:-https://localhost:58081}/realms/openagent
+      Authentication__MetadataAddress: ${OPENAGENT_KEYCLOAK_METADATA_ADDRESS:-http://keycloak:8080/realms/openagent/.well-known/openid-configuration}
+      Authentication__Audience: ${OPENAGENT_AUTH_AUDIENCE:-openagent-api}
+      Authentication__ClientId: ${OPENAGENT_AUTH_CLIENT_ID:-openagent-chat}
+      Authentication__RequireHttpsMetadata: ${OPENAGENT_AUTH_REQUIRE_HTTPS_METADATA:-false}
+      Authentication__ClockSkewSeconds: ${OPENAGENT_AUTH_CLOCK_SKEW_SECONDS:-60}
+      Cors__AllowedOrigins__0: https://${OPENAGENT_PUBLIC_HOST:-localhost}:${OPENAGENT_CHAT_PORT:-8081}
+    networks:
+      - infrastructure
     healthcheck:
       test: ["CMD-SHELL", "curl --fail --silent http://localhost:5208/health >/dev/null"]
       interval: 5s
@@ -95,29 +40,31 @@ services:
       retries: 30
 
   router:
-    build:
-      context: .
-      dockerfile: Backend/src/OpenAgent.Router/Dockerfile
+    image: ${OPENAGENT_ROUTER_IMAGE:-openagent-router:latest}
     environment:
-      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_ENVIRONMENT: ${OPENAGENT_ASPNETCORE_ENVIRONMENT:-Development}
       ASPNETCORE_URLS: http://+:5001
       ConnectionStrings__Redis: redis:6379
-      OpenTelemetry__OtlpEndpoint: ${OPENAGENT_OTLP_ENDPOINT:-http://host.docker.internal:4317}
-      OpenTelemetry__ServiceName: agent-router
-      OpenTelemetry__ServiceVersion: development
+      OpenTelemetry__OtlpEndpoint: ${OPENAGENT_OTLP_ENDPOINT:-}
+      OpenTelemetry__ServiceName: openagent-router
+      OpenTelemetry__ServiceVersion: ${OPENAGENT_SERVICE_VERSION:-development}
       RouterSettings__Routing__EngineEndpoint: http://engine:5208
       RouterSettings__IntentRecognition__TimeoutMs: "30000"
-      Authentication__AllowDevelopmentAnonymous: "false"
-      Cors__AllowedOrigins__0: http://localhost:${OPENAGENT_CHAT_PORT:-8080}
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      Authentication__AllowDevelopmentAnonymous: "${OPENAGENT_AUTH_ALLOW_DEVELOPMENT_ANONYMOUS:-false}"
+      Authentication__Mode: ${OPENAGENT_AUTH_MODE:-JwtBearer}
+      Authentication__EnableKeycloak: "${OPENAGENT_AUTH_ENABLE_KEYCLOAK:-true}"
+      Authentication__Authority: ${OPENAGENT_KEYCLOAK_PUBLIC_URL:-https://localhost:58081}/realms/openagent
+      Authentication__MetadataAddress: ${OPENAGENT_KEYCLOAK_METADATA_ADDRESS:-http://keycloak:8080/realms/openagent/.well-known/openid-configuration}
+      Authentication__Audience: ${OPENAGENT_AUTH_AUDIENCE:-openagent-api}
+      Authentication__ClientId: ${OPENAGENT_AUTH_CLIENT_ID:-openagent-chat}
+      Authentication__RequireHttpsMetadata: ${OPENAGENT_AUTH_REQUIRE_HTTPS_METADATA:-false}
+      Authentication__ClockSkewSeconds: ${OPENAGENT_AUTH_CLOCK_SKEW_SECONDS:-60}
+      Cors__AllowedOrigins__0: https://${OPENAGENT_PUBLIC_HOST:-localhost}:${OPENAGENT_CHAT_PORT:-8081}
     depends_on:
-      redis:
-        condition: service_healthy
       engine:
         condition: service_healthy
-    ports:
-      - "${OPENAGENT_ROUTER_PORT:-5001}:5001"
+    networks:
+      - infrastructure
     healthcheck:
       test: ["CMD-SHELL", "curl --fail --silent http://localhost:5001/health >/dev/null"]
       interval: 5s
@@ -125,20 +72,39 @@ services:
       retries: 30
 
   chat:
-    build:
-      context: .
-      dockerfile: Frontend/OpenAgent.Chat/Dockerfile
-      args:
-        VITE_OPENAGENT_ROUTER_BASE_URL: http://localhost:${OPENAGENT_ROUTER_PORT:-5001}
-        VITE_OPENAGENT_ENGINE_BASE_URL: http://localhost:${OPENAGENT_ENGINE_PORT:-5208}
-        VITE_OPENAGENT_TENANT_ID: development
+    image: ${OPENAGENT_CHAT_IMAGE:-openagent-chat:latest}
     depends_on:
       router:
         condition: service_healthy
-    ports:
-      - "${OPENAGENT_CHAT_PORT:-8080}:80"
+    networks:
+      - infrastructure
 
-volumes:
-  postgres-data:
-  redis-data:
-  minio-data:
+  nginx:
+    image: nginx:latest
+    depends_on:
+      chat:
+        condition: service_started
+      router:
+        condition: service_healthy
+      engine:
+        condition: service_healthy
+    environment:
+      OPENAGENT_NGINX_CLIENT_MAX_BODY_SIZE: ${OPENAGENT_NGINX_CLIENT_MAX_BODY_SIZE:-64m}
+      OPENAGENT_NGINX_SERVER_NAME: ${OPENAGENT_PUBLIC_HOST:-_}
+      OPENAGENT_CHAT_PORT: ${OPENAGENT_CHAT_PORT:-8081}
+      OPENAGENT_ROUTER_PORT: ${OPENAGENT_ROUTER_PORT:-8082}
+      OPENAGENT_ENGINE_PORT: ${OPENAGENT_ENGINE_PORT:-8083}
+    ports:
+      - "${OPENAGENT_CHAT_PORT:-8081}:${OPENAGENT_CHAT_PORT:-8081}"
+      - "${OPENAGENT_ROUTER_PORT:-8082}:${OPENAGENT_ROUTER_PORT:-8082}"
+      - "${OPENAGENT_ENGINE_PORT:-8083}:${OPENAGENT_ENGINE_PORT:-8083}"
+    volumes:
+      - ./docker/nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./docker/nginx/certs:/etc/nginx/tls:ro
+    networks:
+      - infrastructure
+
+networks:
+  infrastructure:
+    external: true
+    name: ${OPENAGENT_INFRA_NETWORK:-openagent-infrastructure}

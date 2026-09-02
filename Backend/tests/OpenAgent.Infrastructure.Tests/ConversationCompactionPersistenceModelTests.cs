@@ -10,7 +10,8 @@ public sealed class ConversationCompactionPersistenceModelTests
     public void ConversationModel_ContextSummaries_UsesRequiredJsonbColumn()
     {
         var options = new DbContextOptionsBuilder<OpenAgentDbContext>()
-            .UseNpgsql("Host=localhost;Database=model-only;Username=model;Password=model")
+            // This test only inspects EF metadata; it never opens a database connection.
+            .UseNpgsql("Host=unit-test;Database=model-only;Username=model;Password=model")
             .Options;
         using var context = new OpenAgentDbContext(options);
 

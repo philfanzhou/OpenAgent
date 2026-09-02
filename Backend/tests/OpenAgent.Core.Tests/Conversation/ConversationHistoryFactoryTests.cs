@@ -45,6 +45,21 @@ public sealed class ConversationHistoryFactoryTests
     }
 
     [Fact]
+    public void ResolveAutomaticTokenThreshold_ConfiguredOverrideWinsOverRatioHeuristic()
+    {
+        ConversationHistoryFactory factory = CreateFactory(
+            defaultContextTokens: 1_000,
+            automaticCompactionTokenThreshold: 800_000);
+
+        Assert.Equal(800_000, factory.ResolveAutomaticTokenThreshold(null));
+        Assert.Equal(800_000, factory.ResolveAutomaticTokenThreshold(
+            new ContextPolicy { MaxTokens = 100 }));
+
+        // Target and summary budget remain proportional to the context, not the trigger.
+        Assert.Equal(500, factory.ResolveCompactionTargetTokens(null));
+    }
+
+    [Fact]
     public async Task CreateStrategy_ManualSummarization_CompactsShortHistory()
     {
         ConversationHistoryFactory factory = CreateFactory();
@@ -106,13 +121,16 @@ public sealed class ConversationHistoryFactoryTests
         Assert.Contains("no summary text", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static ConversationHistoryFactory CreateFactory(int defaultContextTokens = 1_000) =>
+    private static ConversationHistoryFactory CreateFactory(
+        int defaultContextTokens = 1_000,
+        int? automaticCompactionTokenThreshold = null) =>
         new(
             conversationLock: null!,
             store: null!,
             Options.Create(new ConversationStoreOptions
             {
-                DefaultModelContextTokens = defaultContextTokens
+                DefaultModelContextTokens = defaultContextTokens,
+                AutomaticCompactionTokenThreshold = automaticCompactionTokenThreshold
             }),
             fileExecution: null!,
             logger: NullLogger<PlatformChatHistory>.Instance,

@@ -65,6 +65,29 @@ public class JwtUserContextMiddlewareTests
         Assert.Equal(StatusCodes.Status400BadRequest, context.Response.StatusCode);
     }
 
+    [Fact]
+    public async Task InvokeAsync_AuthenticatedClaims_PopulatesIdentityProfile()
+    {
+        JwtUserContextMiddleware middleware = CreateMiddleware(
+            Environments.Production,
+            _ => Task.CompletedTask);
+        DefaultHttpContext context = CreateContext("trusted-tenant");
+        context.User = new ClaimsPrincipal(new ClaimsIdentity(
+        [
+            new Claim("sub", "keycloak-user-id"),
+            new Claim("preferred_username", "alice"),
+            new Claim("email", "alice@example.com"),
+            new Claim("tenant_id", "trusted-tenant")
+        ], "Test"));
+
+        await middleware.InvokeAsync(context);
+
+        AgentUserContext user = Assert.IsType<AgentUserContext>(context.Items["AgentUserContext"]);
+        Assert.Equal("keycloak-user-id", user.UserId);
+        Assert.Equal("alice", user.Username);
+        Assert.Equal("alice@example.com", user.Email);
+    }
+
     private static JwtUserContextMiddleware CreateMiddleware(
         string environmentName,
         RequestDelegate next)

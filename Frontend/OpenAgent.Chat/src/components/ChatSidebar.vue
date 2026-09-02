@@ -52,7 +52,7 @@ function formatTime(value: string): string {
 </script>
 
 <template>
-  <el-aside width="240px" class="sidebar">
+  <el-aside width="300px" class="sidebar">
     <div class="brand">
       <span class="brand-mark">
         <svg width="18" height="18" viewBox="0 0 32 32" fill="none" aria-hidden="true">
@@ -85,7 +85,7 @@ function formatTime(value: string): string {
         <div v-for="item in group.items" :key="item.conversationId" class="conversation-item" :class="{ active: props.selectedConversationId === item.conversationId, streaming: props.streamingConversationIds.includes(item.conversationId) }" @click="emit('select', item)">
           <div class="conversation-icon">{{ (item.title || '新').slice(0, 1) }}</div>
           <div class="conversation-content"><div class="conversation-title">{{ item.title || '未命名会话' }}</div><div class="conversation-meta"><span v-if="props.streamingConversationIds.includes(item.conversationId)" class="conversation-streaming"><i />生成中</span><span v-else>{{ item.agentId || '自动路由' }}</span><time>{{ formatTime(item.updatedAt || item.lastMessageAt) }}</time></div></div>
-          <el-button text class="conversation-more" @click.stop="emit('delete', item)">×</el-button>
+          <el-button text class="conversation-more" aria-label="删除会话" title="删除会话" @click.stop="emit('delete', item)">×</el-button>
         </div>
       </div>
       <div v-if="!filteredConversations.length" class="empty-conversations"><div class="empty-orb">✦</div><strong>还没有对话</strong><span>新建一个对话开始吧</span></div>

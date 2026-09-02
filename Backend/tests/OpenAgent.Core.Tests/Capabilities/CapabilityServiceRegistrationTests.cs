@@ -75,6 +75,10 @@ public class CapabilityServiceRegistrationTests
         public Task UpdateAsync(FileAsset asset, CancellationToken cancellationToken) => Task.CompletedTask;
         public Task<FileAsset?> GetAsync(string fileId, CancellationToken cancellationToken) =>
             Task.FromResult<FileAsset?>(null);
+        public Task<IReadOnlyList<FileAsset>> ListReferencedAsync(
+            string conversationId,
+            CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<FileAsset>>([]);
         public Task EnsureConversationReferencesAsync(
             string conversationId,
             IReadOnlyList<string> fileIds,

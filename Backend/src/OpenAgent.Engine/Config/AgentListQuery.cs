@@ -108,7 +108,9 @@ internal sealed class AgentListQuery(
         string ownerTenantId = string.IsNullOrWhiteSpace(entity.TenantId)
             ? entity.Config?.TenantId ?? string.Empty
             : entity.TenantId;
+        // 调试用：空租户（存量/未迁移）数据视为全局可见，不再被租户过滤。
         if (tenantId != null
+            && !string.IsNullOrWhiteSpace(ownerTenantId)
             && !string.Equals(ownerTenantId, tenantId, StringComparison.Ordinal))
         {
             return;

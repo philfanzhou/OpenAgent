@@ -10,7 +10,6 @@ public class JwtUserContextMiddleware
 {
     private readonly RequestDelegate _next;
     private readonly ILogger<JwtUserContextMiddleware> _logger;
-
     public JwtUserContextMiddleware(
         RequestDelegate next,
         ILogger<JwtUserContextMiddleware> logger,
@@ -29,6 +28,11 @@ public class JwtUserContextMiddleware
             var userId = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value
                 ?? context.User.FindFirst("sub")?.Value
                 ?? "unknown";
+            string? username = context.User.FindFirst("preferred_username")?.Value
+                ?? context.User.FindFirst("username")?.Value
+                ?? context.User.Identity?.Name;
+            string? email = context.User.FindFirst("email")?.Value
+                ?? context.User.FindFirst(ClaimTypes.Email)?.Value;
 
             string? tenantId = TenantIdentityResolver.ResolveClaimsOnly(context.User);
 
@@ -61,6 +65,8 @@ public class JwtUserContextMiddleware
             userContext = new AgentUserContext
             {
                 UserId = userId,
+                Username = username,
+                Email = email,
                 TenantId = tenantId,
                 Groups = groups,
                 Roles = roles,

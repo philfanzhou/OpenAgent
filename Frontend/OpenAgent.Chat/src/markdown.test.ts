@@ -1,9 +1,26 @@
 import { describe, expect, it } from 'vitest'
 import { renderMarkdown } from './markdown'
-import { buildConversationTimeline, buildDisplayMessages, fileLabel, formatFileSize, mergeAssistantSnapshot, parseToolArguments, toolPresentation } from './messagePresentation'
+import { appendStreamingReasoning, appendStreamingTool, buildConversationTimeline, buildDisplayMessages, fileLabel, formatFileSize, mergeAssistantSnapshot, parseToolArguments, toolPresentation } from './messagePresentation'
 import type { ContextSummary, ConversationMessage } from './types'
 
 describe('message presentation', () => {
+  it('keeps live reasoning split around an interleaved tool call', () => {
+    const message: ConversationMessage = { messageId: 'stream', sequence: 1, role: 'assistant', content: '', timestamp: '' }
+
+    appendStreamingReasoning(message, 'first ')
+    appendStreamingReasoning(message, 'thought')
+    appendStreamingTool(message, { name: 'search', callId: 'call-1' })
+    appendStreamingTool(message, { name: 'search', callId: 'call-1', result: 'found' })
+    appendStreamingReasoning(message, 'second thought')
+
+    expect(message.processActivities).toEqual([
+      { kind: 'reasoning', content: 'first thought' },
+      { kind: 'tool', tool: { name: 'search', callId: 'call-1', result: 'found' } },
+      { kind: 'reasoning', content: 'second thought' },
+    ])
+    expect(message.toolActivities).toEqual([{ name: 'search', callId: 'call-1', result: 'found' }])
+  })
+
   it('renders common markdown while escaping raw HTML', () => {
     const html = renderMarkdown('# Result\n\n- **ready**\n\n```ts\nconst ok = true\n```\n\n<script>alert(1)</script>')
 
@@ -20,6 +37,12 @@ describe('message presentation', () => {
     expect(html).toContain('target="_blank"')
     expect(html).toContain('rel="noopener noreferrer"')
     expect(html).not.toContain('href="javascript:')
+  })
+
+  it('renders authenticated blob image URLs used by file previews', () => {
+    const html = renderMarkdown('![chart](blob:preview-image)')
+
+    expect(html).toContain('<img src="blob:preview-image" alt="chart">')
   })
 
   it('blocks dangerous link protocols and keeps safe relative links', () => {
@@ -196,6 +219,25 @@ describe('message presentation', () => {
       ? item.message.messageId
       : item.summary.compressionId)).toEqual([
       'user-1', 'assistant-1', 'compression-1', 'user-2', 'assistant-2',
+    ])
+  })
+
+  it('keeps optimistic messages last when stored sequences have gaps from merged tool rows', () => {
+    // 回答完成后本地只保留合并后的展示消息（tool 行被折叠、序号有空洞），
+    // 乐观追加的新消息序号可能小于历史最大序号，排序必须保证其仍排在最后。
+    const messages: ConversationMessage[] = [
+      { messageId: 'user-new', sequence: 6, role: 'user', content: 'Third question', timestamp: '2026-08-20T02:00:00Z' },
+      { messageId: 'user-2', sequence: 4, role: 'user', content: 'Second question', timestamp: '2026-08-20T01:05:00Z' },
+      { messageId: 'assistant-merged', sequence: 2, role: 'assistant', content: 'First answer', timestamp: '2026-08-20T01:01:00Z' },
+      { messageId: 'user-1', sequence: 1, role: 'user', content: 'First question', timestamp: '2026-08-20T01:00:00Z' },
+      { messageId: 'assistant-new', sequence: 7, role: 'assistant', content: '', timestamp: '2026-08-20T02:00:01Z' },
+      { messageId: 'assistant-2', sequence: 5, role: 'assistant', content: 'Second answer', timestamp: '2026-08-20T01:06:00Z' },
+    ]
+
+    expect(buildConversationTimeline(messages, []).map(item => item.kind === 'message'
+      ? item.message.messageId
+      : '')).toEqual([
+      'user-1', 'assistant-merged', 'user-2', 'assistant-2', 'user-new', 'assistant-new',
     ])
   })
 })

@@ -24,29 +24,32 @@ Meter / ASP.NET Core Metrics -> OpenTelemetry
                                 `-> /metrics（Prometheus Pull）
 ```
 
-仓库不绑定 Loki、Tempo、Grafana、Prometheus Server 或特定 Collector。部署可以选择这些组件，但不能把部署侧可用性当作应用代码的默认能力。
+仓库不绑定 Loki、Tempo、Grafana、Prometheus Server 或 OpenTelemetry Collector。Collector 由部署环境
+单独提供；持久化、索引和查询后端也由部署环境选择。
 
 ## 服务标识与配置
 
 | 服务 | Serilog `ServiceName` | OpenTelemetry service name | 自定义 source/meter |
 |------|-----------------------|----------------------------|---------------------|
-| Router | `agent-router` | `agent-router` | `OpenAgent.Router` |
-| Engine | `agent-engine` | `agent-engine` | `OpenAgent.Engine` |
+| Router | `agent-router` | `openagent-router` | `OpenAgent.Router` |
+| Engine | `agent-engine` | `openagent-engine` | `OpenAgent.Engine` |
 
 基础配置：
 
 ```json
 {
   "OpenTelemetry": {
-    "ServiceName": "agent-router",
+    "ServiceName": "openagent-router",
     "ServiceVersion": "1.0.0",
-    "OtlpEndpoint": "http://otel-collector:4317"
+    "OtlpEndpoint": "https://otel-collector.intra.example:4317"
   }
 }
 ```
 
 - `OpenTelemetry:OtlpEndpoint` 可省略；省略时不注册 OTLP logs、traces 和 metrics exporter，Console 与 `/metrics` 仍可用。
 - 也可以使用标准环境变量 `OTEL_EXPORTER_OTLP_ENDPOINT`。
+- 应用 Compose 通过 `OPENAGENT_OTLP_ENDPOINT` 配置外部 Collector，统一汇集 Engine 与 Router 的 Logs、
+  Traces 和 Metrics；本项目不创建或管理 Collector 容器。
 - OTLP 地址存在但不是绝对 HTTP(S) URI 时启动失败，避免服务看似正常但遥测静默丢失。
 - `OpenTelemetry:ServiceName` 与 `ServiceVersion` 可以覆盖应用默认值。
 - Serilog 的输出和最小级别由各服务 `appsettings*.json` 中的 `Serilog` 节控制。
@@ -75,7 +78,9 @@ Router 当前提供以下业务指标：
 
 ## EventId 与日志封装
 
-各模块继续通过 `LoggerMessage` 目录维护有语义的领域日志，调用处不改为重复的 `ILogger` 模板。仅删除零调用事件，并合并消息模板、级别和参数完全一致的事件。当前连续编号区间为：Router `3000–3028`、Engine（含 Host）`4000–4069`。
+各模块继续通过 `LoggerMessage` 目录维护有语义的领域日志，调用处不改为重复的 `ILogger` 模板。仅删除零调用事件，并合并消息模板、级别和参数完全一致的事件。当前事件编号范围为：Router `3000–3048`、Engine（含 Host）`4000–4069`。
+
+Router 的 Provider 可观测性事件在 Information 级别记录请求/响应方法、URI、状态码和 Header；请求/响应体为 Debug 级别、限长并对敏感 Header 脱敏。YARP 转发记录最终发送到 Provider 的请求 Header 和下游响应 Header，不缓冲流式响应体。
 
 ## 扩展原则
 

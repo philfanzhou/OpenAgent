@@ -9,7 +9,7 @@
 | Production 登录 | 前端通过企业 IdP 执行 OIDC Authorization Code + PKCE |
 | Production API | JWT Bearer 校验 issuer、audience、签名和 lifetime，不接受 URL token |
 | Development 登录 | `/api/v1/auth/password/token` 返回 Basic 凭据，仅用于联调且不校验真实密码 |
-| 登录态 | token、PKCE verifier/state 仅存于 `sessionStorage`，不进入 `localStorage` |
+| 登录态 | access token、refresh token、PKCE verifier/state 仅存于 `sessionStorage`，不进入 `localStorage`；OIDC 会在 access token 到期前自动续期 |
 | 租户 | Production 仅信任 `tenant_id`/`tid` claim；客户端 tenant header 不覆盖 claim，不一致返回 403 |
 | Development 兼容 | 仅 Development 的 Basic 认证允许 `X-Tenant-Id` 作为 claim 缺失时的回退，并由 Router 净化后转发 |
 | 失败 | 401 清理会话并重新登录；403 保留身份并交由授权界面处理 |
@@ -42,7 +42,7 @@
 向 Engine 转发从认证上下文解析并净化后的租户值，Production 转发始终移除租户 header。
 
 `GET /api/v1/auth/config` 可匿名读取公开登录参数；Basic 密码端点只在 Development + Basic 模式映射。
-前端交换 OIDC code 后立即清理回调查询参数，不保存 refresh token，也不会把 token 放入 URL、日志或错误详情。
+前端交换 OIDC code 后立即清理回调查询参数；OIDC refresh token 仅用于当前标签页的自动续期，不会进入 `localStorage`、URL、日志或错误详情。退出登录或 refresh token 失效后才要求重新进行交互式登录。
 
 ## Source
 

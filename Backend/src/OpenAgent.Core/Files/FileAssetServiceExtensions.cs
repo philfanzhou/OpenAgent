@@ -21,6 +21,17 @@ internal static class FileAssetServiceExtensions
         services.AddScoped<IFileAssetService, FileAssetService>();
         services.AddScoped<FileAssetExecutionContext>();
         services.AddScoped<FileAssetRequestResolver>();
+        services.AddHttpClient("AgentFileDownload", client =>
+            {
+                client.Timeout = TimeSpan.FromSeconds(FileAssetUrlDownloader.DefaultTimeoutSeconds);
+                client.DefaultRequestHeaders.UserAgent.ParseAdd("OpenAgent-FileDownloader/1.0");
+            })
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+            {
+                AllowAutoRedirect = false,
+                UseProxy = false
+            });
+        services.AddScoped<FileAssetUrlDownloader>();
         services.AddScoped<ICapabilitySource, FileAssetCapabilitySource>();
         return services;
     }
