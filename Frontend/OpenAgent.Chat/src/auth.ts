@@ -1,4 +1,4 @@
-import { clearAuthentication, setAccessToken } from './api'
+import { clearAuthentication, getRefreshToken, setAccessToken, setRefreshToken } from './api'
 import { randomUrlSafe, sha256 } from './browserCrypto'
 import type { AuthConfig } from './types'
 
@@ -21,6 +21,7 @@ interface OidcTokenResponse {
   id_token?: string
   token_type?: string
   expires_in?: number
+  refresh_token?: string
 }
 
 function isSecureEndpoint(value: string): boolean {
@@ -168,5 +169,34 @@ export async function completeOidcLogin(
   if (!result.access_token) throw new Error('身份提供方未返回访问 token')
   if (result.id_token) sessionStorage.setItem(idTokenKey, result.id_token)
   setAccessToken(result.access_token, result.token_type || 'Bearer', result.expires_in)
+  setRefreshToken(result.refresh_token || '')
   return takeReturnHash()
+}
+
+export async function refreshOidcSession(config: AuthConfig): Promise<boolean> {
+  if (!config.oidc?.authority || !config.oidc.clientId) return false
+  const refreshToken = getRefreshToken()
+  if (!refreshToken) return false
+
+  const metadata = await loadMetadata(config.oidc.authority)
+  const body = new URLSearchParams({
+    grant_type: 'refresh_token',
+    client_id: config.oidc.clientId,
+    refresh_token: refreshToken,
+  })
+  const response = await fetch(metadata.token_endpoint, {
+    method: 'POST',
+    credentials: 'omit',
+    referrerPolicy: 'no-referrer',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+    body,
+  })
+  if (!response.ok) return false
+
+  const result = await response.json() as OidcTokenResponse
+  if (!result.access_token) return false
+  if (result.id_token) sessionStorage.setItem(idTokenKey, result.id_token)
+  setAccessToken(result.access_token, result.token_type || 'Bearer', result.expires_in)
+  if (result.refresh_token) setRefreshToken(result.refresh_token)
+  return true
 }
