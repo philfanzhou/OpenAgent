@@ -65,13 +65,31 @@ OPENAGENT_ROUTER_PORT=8082
 OPENAGENT_NGINX_SERVER_NAME=openagent.intra.example
 OPENAGENT_ASPNETCORE_ENVIRONMENT=Production
 OPENAGENT_SERVICE_VERSION=2026.09.01
+OPENAGENT_AUTH_MODE=JwtBearer
+OPENAGENT_AUTH_ENABLE_KEYCLOAK=true
+OPENAGENT_AUTH_ALLOW_DEVELOPMENT_ANONYMOUS=false
+OPENAGENT_AUTH_AUDIENCE=openagent-api
+OPENAGENT_AUTH_CLIENT_ID=openagent-chat
 OPENAGENT_AUTH_REQUIRE_HTTPS_METADATA=false
+OPENAGENT_AUTH_CLOCK_SKEW_SECONDS=60
 OPENAGENT_KEYCLOAK_PORT=58081
+OPENAGENT_KEYCLOAK_REALM=openagent
 OPENAGENT_KEYCLOAK_PUBLIC_URL=https://sso.intra.example:58081
 OPENAGENT_KEYCLOAK_METADATA_ADDRESS=http://keycloak:8080/realms/openagent/.well-known/openid-configuration
 OPENAGENT_OTLP_ENDPOINT=https://otel-collector.intra.example:4317
 OPENAGENT_INFRA_NETWORK=openagent-infrastructure
 ```
+
+Compose 会把 `OPENAGENT_AUTH_*` 和 `OPENAGENT_KEYCLOAK_*` 认证变量同时注入 Engine 与 Router。需要本地使用 Basic 登录调试时，保持环境为 Development，并在 `.env` 中改为：
+
+```dotenv
+OPENAGENT_ASPNETCORE_ENVIRONMENT=Development
+OPENAGENT_AUTH_MODE=Basic
+OPENAGENT_AUTH_ENABLE_KEYCLOAK=false
+OPENAGENT_AUTH_ALLOW_DEVELOPMENT_ANONYMOUS=false
+```
+
+Basic 模式仅允许 Development 环境，开发账号为 `admin/admin` 或 `test/test`；生产环境必须使用 `JwtBearer`。`OPENAGENT_AUTH_REQUIRE_HTTPS_METADATA`、`OPENAGENT_AUTH_CLOCK_SKEW_SECONDS`、`OPENAGENT_AUTH_SCOPE_0` 至 `OPENAGENT_AUTH_SCOPE_3`、`OPENAGENT_KEYCLOAK_PUBLIC_URL` 和 `OPENAGENT_KEYCLOAK_METADATA_ADDRESS` 分别控制 OIDC 元数据校验、时钟容差、OIDC scope、浏览器公开 Issuer 和服务端 discovery 地址。
 
 构建脚本支持本机 Docker 和 WSL Docker。未指定模式时会自动检测当前可用的 Docker；也可以使用
 `--docker-mode docker` 或 `--docker-mode wsl-docker` 强制选择。部署也使用同一模式，确保镜像位于同一个
