@@ -47,12 +47,13 @@ internal sealed class AgentRuntimeResolver : IAgentRuntimeResolver
 
         ValidateSkillTenant(agentId, config, userContext);
 
-        LlmConfig model = await _authorization.ResolveAuthorizedModelAsync(
+        LlmConfig authorizedModel = await _authorization.ResolveAuthorizedModelAsync(
                 agentId,
                 config.Llm,
                 userContext,
                 cancellationToken)
             .ConfigureAwait(false);
+        LlmConfig model = CloneForExecution(authorizedModel);
 
         await ResolveApiKeyAsync(
                 model,
@@ -68,6 +69,18 @@ internal sealed class AgentRuntimeResolver : IAgentRuntimeResolver
             Model = model
         };
     }
+
+    private static LlmConfig CloneForExecution(LlmConfig model) => new()
+    {
+        TenantId = model.TenantId,
+        Provider = model.Provider,
+        Format = model.Format,
+        ModelId = model.ModelId,
+        ApiKeySecretRef = model.ApiKeySecretRef,
+        ApiKey = model.ApiKey,
+        Endpoint = model.Endpoint,
+        Temperature = model.Temperature
+    };
 
     private async Task ResolveApiKeyAsync(
         LlmConfig model,

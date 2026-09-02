@@ -121,6 +121,35 @@ public sealed class AgentRuntimeResolverTests
     }
 
     [Fact]
+    public async Task ResolveAsync_DirectLlmConfig_DoesNotWriteSecretIntoCachedAgentConfig()
+    {
+        AgentConfig config = new()
+        {
+            Llm = new LlmConfig
+            {
+                Endpoint = "https://llm.example.test",
+                ModelId = "model-1",
+                ApiKeySecretRef = "llm:direct"
+            }
+        };
+        AgentRuntimeResolver resolver = new(
+            new StaticConfigProvider(config),
+            new AgentAuthorizationGate(
+                new AllowAllAgentAuthorizationService(),
+                new LlmRegistry()),
+            new RecordingSecretResolver("resolved-key"));
+
+        AgentRuntimeProfile result = await resolver.ResolveAsync(
+            "agent-1",
+            User(),
+            CancellationToken.None);
+
+        Assert.Equal("resolved-key", result.Model.ApiKey);
+        Assert.NotSame(config.Llm, result.Model);
+        Assert.Empty(config.Llm.ApiKey);
+    }
+
+    [Fact]
     public async Task ResolveAsync_MissingConfig_Throws()
     {
         AgentRuntimeResolver resolver = new(
