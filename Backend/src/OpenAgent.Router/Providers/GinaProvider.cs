@@ -1,7 +1,9 @@
 using System.Diagnostics;
 using System.Text.Json;
+using Microsoft.Extensions.Logging.Abstractions;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Router.Models;
+using OpenAgent.Router.Observability;
 
 namespace OpenAgent.Router.Providers;
 
@@ -17,11 +19,13 @@ internal sealed class GinaProvider : IAgentProvider, IDisposable
     private readonly string? _serverToken;
     private readonly IReadOnlyDictionary<string, string> _serviceHeaders;
     private readonly HttpMessageInvoker _httpClient;
+    private readonly ILogger<GinaProvider> _logger;
 
     internal GinaProvider(
         string id,
         IConfiguration settings,
-        HttpMessageHandler? handler = null)
+        HttpMessageHandler? handler = null,
+        ILogger<GinaProvider>? logger = null)
     {
         Id = id;
         _agentListPath = NormalizePath(settings["AgentListPath"], "/api/agentlist");
@@ -39,6 +43,7 @@ internal sealed class GinaProvider : IAgentProvider, IDisposable
                 header => header.Value!,
                 StringComparer.OrdinalIgnoreCase);
         _httpClient = new HttpMessageInvoker(handler ?? CreateHandler());
+        _logger = logger ?? NullLogger<GinaProvider>.Instance;
     }
 
     public string Id { get; }
@@ -57,17 +62,37 @@ internal sealed class GinaProvider : IAgentProvider, IDisposable
             HttpMethod.Get,
             $"{endpoint.TrimEnd('/')}{_agentListPath}",
             requestContext);
+        RouterLog.ProviderHttpRequest(
+            _logger,
+            Id,
+            "get_agents",
+            request.Method.Method,
+            request.RequestUri?.ToString() ?? string.Empty,
+            RouterHttpLog.FormatRequestHeaders(request));
         using HttpResponseMessage response = await _httpClient.SendAsync(
             request,
             cancellationToken).ConfigureAwait(false);
+        RouterLog.ProviderHttpResponse(
+            _logger,
+            Id,
+            "get_agents",
+            (int)response.StatusCode,
+            RouterHttpLog.FormatResponseHeaders(response));
+        string responseBody = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        if (_logger.IsEnabled(LogLevel.Debug))
+        {
+            RouterLog.ProviderHttpResponseBody(
+                _logger,
+                Id,
+                "get_agents",
+                RouterHttpLog.FormatBody(responseBody));
+        }
         if (!response.IsSuccessStatusCode)
         {
             return new AgentProviderCatalog([], false);
         }
 
-        using JsonDocument document = await JsonDocument.ParseAsync(
-            await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false),
-            cancellationToken: cancellationToken).ConfigureAwait(false);
+        using JsonDocument document = JsonDocument.Parse(responseBody);
         return new AgentProviderCatalog(ParseAgents(document.RootElement));
     }
 
@@ -99,6 +124,12 @@ internal sealed class GinaProvider : IAgentProvider, IDisposable
             : agents.Count == 1
                 ? agents[0]
                 : null;
+        RouterLog.GinaIntentSelection(
+            _logger,
+            Id,
+            intentAgentId,
+            selected?.AgentId,
+            agents.Count);
         return Task.FromResult<IntentRecognitionResult?>(selected == null
             ? null
             : new IntentRecognitionResult(selected.AgentId, 1));
@@ -119,9 +150,17 @@ internal sealed class GinaProvider : IAgentProvider, IDisposable
 
         // Gina has one chat endpoint; Router stream/sse actions are transport details.
         string targetUrl = $"{endpoint.TrimEnd('/')}{_chatPath}";
-        return Task.FromResult<AgentForwardingTarget?>(new(
+        AgentForwardingTarget target = new(
             endpoint.TrimEnd('/'),
-            new Uri(targetUrl)));
+            new Uri(targetUrl));
+        RouterLog.ProviderForwardingTargetResolved(
+            _logger,
+            Id,
+            action,
+            target.RequestUri.ToString(),
+            tenantId,
+            conversationId);
+        return Task.FromResult<AgentForwardingTarget?>(target);
     }
 
     public ValueTask ConfigureRequestAsync(

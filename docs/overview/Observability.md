@@ -78,7 +78,9 @@ Router 当前提供以下业务指标：
 
 ## EventId 与日志封装
 
-各模块继续通过 `LoggerMessage` 目录维护有语义的领域日志，调用处不改为重复的 `ILogger` 模板。仅删除零调用事件，并合并消息模板、级别和参数完全一致的事件。当前连续编号区间为：Router `3000–3028`、Engine（含 Host）`4000–4069`。
+各模块继续通过 `LoggerMessage` 目录维护有语义的领域日志，调用处不改为重复的 `ILogger` 模板。仅删除零调用事件，并合并消息模板、级别和参数完全一致的事件。当前事件编号范围为：Router `3000–3048`、Engine（含 Host）`4000–4069`。
+
+Router 的 Provider 可观测性事件在 Information 级别记录请求/响应方法、URI、状态码和 Header；请求/响应体为 Debug 级别、限长并对敏感 Header 脱敏。YARP 转发记录最终发送到 Provider 的请求 Header 和下游响应 Header，不缓冲流式响应体。
 
 ## 扩展原则
 
