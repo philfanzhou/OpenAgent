@@ -96,6 +96,16 @@ Windows PowerShell 可使用等价的 `scripts/build-images.ps1`；未指定 `-D
 pwsh -File ./scripts/build-images.ps1 -EnvFile ./.env
 ```
 
+需要将构建好的镜像导出为 TAR 时，可指定目录；目录不存在会自动创建，三个镜像分别导出为
+`openagent-engine.tar`、`openagent-router.tar` 和 `openagent-chat.tar`：
+
+```bash
+scripts/build-images.sh --env-file .env --tar-dir ./dist/images
+```
+
+PowerShell 使用 `-TarDirectory`，也可以在环境文件中设置 `OPENAGENT_IMAGE_TAR_DIR`。WSL Docker 模式会将
+仓库和导出目录转换为 WSL 正斜杠路径后再执行构建与导出。
+
 浏览器访问 `https://openagent.intra.example:8081`；Router 与 Engine 分别使用 `https://openagent.intra.example:8082`
 和 `https://openagent.intra.example:8083`。Nginx 的默认
 请求体限制为 64 MB（可用 `OPENAGENT_NGINX_CLIENT_MAX_BODY_SIZE` 调整），允许通过 Router 上传文件；
