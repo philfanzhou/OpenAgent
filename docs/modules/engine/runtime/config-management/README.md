@@ -24,7 +24,8 @@ Agent 与 LLM 配置均以 PostgreSQL 为唯一事实源，Redis 只保存可删
 
 - Agent 只保存指令、上下文策略、轮次限制和 MCP/Skill/RAG 绑定，不保存 LLM 绑定。
 - 执行请求必须显式提供 `llmProfileId`。
-- LLM Profile 保存 Model ID、上下文窗口、协议、Endpoint、Temperature 和明文 API Key。
+- LLM Profile 保存 Model ID、文本/多模态能力、上下文窗口、协议、Endpoint、Temperature 和明文 API Key。
+- 多模态当前只允许图片直接内联到模型请求；音频、视频和其他二进制模态暂不开放。
 - API Key 可在 PostgreSQL 与 Redis 服务端缓存中出现，但管理 API 永不返回，日志也不得输出。
 - 编辑已有 LLM 时提交空 Key 表示保留数据库中的原 Key；连接测试会按租户加载真实 Key。
 - RAG 仍使用 `ApiKeySecretRef`，不接受内联明文 Key。

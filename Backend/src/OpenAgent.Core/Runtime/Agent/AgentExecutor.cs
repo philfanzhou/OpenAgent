@@ -64,7 +64,8 @@ public sealed class AgentExecutor
         ResolvedFileRequest resolvedFiles = await _files.ResolveAsync(
             executionRequest,
             user,
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken,
+            profile.Model.Modality == ModelModality.Multimodal).ConfigureAwait(false);
 
         await using AgentExecutionScope scope = await _agents.CreateAsync(
             profile,
@@ -75,7 +76,8 @@ public sealed class AgentExecutor
         AgentSession session = await scope.Agent.CreateSessionAsync(cancellationToken).ConfigureAwait(false);
         ChatMessage userMessage = AgentMessageAdapter.CreateUser(
             executionRequest.Query,
-            resolvedFiles.Files);
+            resolvedFiles.Files,
+            resolvedFiles.InlineImages);
         Microsoft.Agents.AI.AgentResponse response = await scope.Agent.RunAsync(
             userMessage,
             session,
@@ -130,7 +132,8 @@ public sealed class AgentExecutor
         ResolvedFileRequest resolvedFiles = await _files.ResolveAsync(
             executionRequest,
             user,
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken,
+            profile.Model.Modality == ModelModality.Multimodal).ConfigureAwait(false);
 
         await using AgentExecutionScope scope = await _agents.CreateAsync(
             profile,
@@ -141,7 +144,8 @@ public sealed class AgentExecutor
         AgentSession session = await scope.Agent.CreateSessionAsync(cancellationToken).ConfigureAwait(false);
         ChatMessage userMessage = AgentMessageAdapter.CreateUser(
             executionRequest.Query,
-            resolvedFiles.Files);
+            resolvedFiles.Files,
+            resolvedFiles.InlineImages);
         HashSet<string> announcedToolCalls = new(StringComparer.Ordinal);
         TokenUsage? usage = null;
         string modelId = profile.Model.ModelId;

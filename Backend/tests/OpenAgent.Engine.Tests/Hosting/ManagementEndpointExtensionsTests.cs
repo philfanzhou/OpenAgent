@@ -43,12 +43,14 @@ public class ManagementEndpointExtensionsTests
         var profile = new LlmProviderProfile
         {
             Id = "primary",
-            ApiKey = "provider-secret"
+            ApiKey = "provider-secret",
+            Modality = ModelModality.Multimodal
         };
 
         LlmProviderProfile redacted = ManagementEndpointExtensions.RedactLlm(profile);
 
         Assert.Empty(redacted.ApiKey);
+        Assert.Equal(ModelModality.Multimodal, redacted.Modality);
         Assert.Equal("provider-secret", profile.ApiKey);
     }
 }

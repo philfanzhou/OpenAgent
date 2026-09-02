@@ -7,6 +7,7 @@
 `LlmProviderProfile` 是租户级独立资源，保存：
 
 - Model ID
+- Modality (`Text` 或 `Multimodal`；当前多模态只支持图片)
 - Context Window Tokens
 - API Format
 - Endpoint
@@ -14,6 +15,8 @@
 - API Key（服务端明文存储）
 
 Agent 不再绑定 Provider 或 Model。执行请求携带 `llmProfileId`，`AgentRuntimeResolver` 按已验证的 tenantId 分别加载 Agent 与 LLM Profile，完成资源授权后创建本次执行的 `LlmConfig`。模型上下文窗口覆盖 Agent 旧的 `ContextPolicy.MaxTokens`，其余压缩策略仍来自 Agent。
+
+当 Profile 的 Modality 为 `Multimodal` 时，受控大小的 `image/*` 文件会以内联二进制内容发送给模型；文本模型、超出限制的图片或读取失败时只保留 fileId manifest，由文件工具按需读取。默认每张图片最多 4 MiB，每次最多 4 张。
 
 ```text
 AgentRequest(agentId, llmProfileId, tenantId)

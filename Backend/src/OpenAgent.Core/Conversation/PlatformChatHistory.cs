@@ -29,6 +29,9 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
     private readonly ConversationSessionStore _store;
     private readonly ILogger<PlatformChatHistory> _logger;
     private readonly IFileAssetService _fileService;
+    private readonly bool _supportsMultimodal;
+    private readonly long _maxInlineImageBytes;
+    private readonly int _maxInlineImageCount;
     private readonly List<ConversationMessage> _pending = [];
     private readonly StringBuilder _partialAssistant = new();
     private readonly StringBuilder _partialReasoning = new();
@@ -52,7 +55,10 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         IConversationLock conversationLock,
         ConversationSessionStore store,
         ILogger<PlatformChatHistory> logger,
-        IFileAssetService fileService)
+        IFileAssetService fileService,
+        bool supportsMultimodal = false,
+        long maxInlineImageBytes = 4 * 1024 * 1024,
+        int maxInlineImageCount = 4)
     {
         _conversation = conversation;
         _agentId = agentId;
@@ -64,6 +70,9 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         _store = store;
         _logger = logger;
         _fileService = fileService;
+        _supportsMultimodal = supportsMultimodal;
+        _maxInlineImageBytes = maxInlineImageBytes;
+        _maxInlineImageCount = maxInlineImageCount;
     }
 
     internal void AppendPartial(string content)
@@ -153,8 +162,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
     }
 
     /// <summary>
-    /// 把存储的会话消息转成模型输入，并为每条带文件引用的历史消息重建文件附件
-    /// （用户上传和 assistant 发布的文件都属于模型上下文）。
+    /// Converts stored messages to model input and rebuilds referenced attachments.
     /// </summary>
     internal async Task<List<ChatMessage>> BuildHistoryAsync(
         IReadOnlyList<ConversationMessage> stored,
@@ -188,6 +196,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
             UserId = _conversation.UserId ?? string.Empty,
             ConversationId = _conversation.ConversationId
         };
+        int inlineImageCount = 0;
         foreach (string fileId in fileIds.Distinct(StringComparer.Ordinal))
         {
             try
@@ -196,7 +205,32 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
                     fileId, scope, cancellationToken).ConfigureAwait(false);
                 if (asset != null)
                 {
-                    AgentMessageAdapter.AttachFile(chatMessage, asset);
+                    FileAssetContent? inlineImage = null;
+                    if (_supportsMultimodal
+                        && inlineImageCount < _maxInlineImageCount
+                        && IsImage(asset.MediaType)
+                        && asset.Length <= _maxInlineImageBytes)
+                    {
+                        try
+                        {
+                            inlineImage = await _fileService.ReadAsync(
+                                fileId,
+                                scope,
+                                cancellationToken,
+                                _maxInlineImageBytes).ConfigureAwait(false);
+                            inlineImageCount++;
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            throw;
+                        }
+                        catch
+                        {
+                            // Keep the metadata manifest when an optional inline read fails.
+                        }
+                    }
+
+                    AgentMessageAdapter.AttachFile(chatMessage, asset, inlineImage);
                 }
             }
             catch (OperationCanceledException)
@@ -205,10 +239,13 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
             }
             catch
             {
-                // 历史中的文件已删除或无权限时忽略，不阻断续接。
+                // Ignore deleted or unauthorized historical files so continuation can proceed.
             }
         }
     }
+
+    private static bool IsImage(string mediaType) =>
+        mediaType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Normalizes stored history into the tool-call contract providers expect.

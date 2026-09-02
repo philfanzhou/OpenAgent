@@ -59,6 +59,7 @@ function createDefaultLlm(): LlmProviderProfile {
     endpoint: 'https://api.openai.com/v1',
     apiKey: '',
     temperature: 0.7,
+    modality: 'Text',
   }
 }
 

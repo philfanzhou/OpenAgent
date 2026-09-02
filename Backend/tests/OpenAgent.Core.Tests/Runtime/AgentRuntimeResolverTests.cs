@@ -25,6 +25,7 @@ public sealed class AgentRuntimeResolverTests
         Assert.Same(config, result.Config);
         Assert.Equal("model-1", result.Model.ModelId);
         Assert.Equal("test-key", result.Model.ApiKey);
+        Assert.Equal(ModelModality.Multimodal, result.Model.Modality);
         Assert.Equal(128_000, result.ContextPolicy?.MaxTokens);
         Assert.Equal(4, result.ContextPolicy?.PreserveRecentTurns);
     }
@@ -77,7 +78,8 @@ public sealed class AgentRuntimeResolverTests
         ModelId = "model-1",
         ContextWindowTokens = 128_000,
         Endpoint = "https://llm.example.test",
-        ApiKey = "test-key"
+        ApiKey = "test-key",
+        Modality = ModelModality.Multimodal
     };
 
     private static AgentUserContext User() => new() { UserId = "user-1", TenantId = "tenant-1" };

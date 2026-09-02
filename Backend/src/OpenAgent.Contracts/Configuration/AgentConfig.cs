@@ -30,6 +30,7 @@ public class LlmConfig
     public string Endpoint { get; set; } = string.Empty;
     public double Temperature { get; set; } = 0.7;
     public int ContextWindowTokens { get; set; }
+    public ModelModality Modality { get; set; } = ModelModality.Text;
 }
 
 public class LlmProviderProfile
@@ -43,6 +44,7 @@ public class LlmProviderProfile
     public string ApiKey { get; set; } = string.Empty;
     public double Temperature { get; set; } = 0.7;
     public int ContextWindowTokens { get; set; }
+    public ModelModality Modality { get; set; } = ModelModality.Text;
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
@@ -51,6 +53,13 @@ public enum ApiFormat
     OpenAIChatCompletions,
     OpenAIResponses,
     AnthropicMessages
+}
+
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum ModelModality
+{
+    Text,
+    Multimodal
 }
 
 public class McpConfig

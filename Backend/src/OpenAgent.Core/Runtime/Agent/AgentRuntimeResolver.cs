@@ -79,7 +79,8 @@ internal sealed class AgentRuntimeResolver(
         ApiKey = profile.ApiKey,
         Endpoint = profile.Endpoint,
         Temperature = profile.Temperature,
-        ContextWindowTokens = profile.ContextWindowTokens
+        ContextWindowTokens = profile.ContextWindowTokens,
+        Modality = profile.Modality
     };
 
     private static ContextPolicy? CreateContextPolicy(

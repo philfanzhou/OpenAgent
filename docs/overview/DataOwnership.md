@@ -26,6 +26,7 @@
 - 文件字节只写入 S3 兼容对象存储；对象存储不拥有用户、租户或会话事实。
 - Skill 元数据先写入 PostgreSQL；Redis 只作为可删除、可重建的派生缓存。Skill 文件对象必须落在租户共享分区 `files/tenants/{tenant-hash}/skill-packages/...`，不能进入 `users/{user-hash}`；普通用户文件仍使用租户下的用户分区。
 - Agent 与 LLM 配置先提交 PostgreSQL，再更新租户隔离且带 TTL 的 Redis 缓存；Redis 失败不影响已提交的事实数据。
+- LLM Profile 的 `Modality` 决定执行期是否允许图片内联；多模态输入当前仅限受控大小的 `image/*`，图片字节只在服务端请求作用域读取。
 - LLM API Key 以明文保存在 PostgreSQL，并可能进入服务端 Redis TTL 缓存；管理 API 永不返回该字段。RAG 仍只持久化 `ApiKeySecretRef`，执行端通过 `IAgentSecretResolver` 按租户解析。
 - Redis 可以保存可过期的会话热副本和分布式锁令牌，但不拥有会话或资产事实；数据库提交成功后才更新热副本，缓存可由数据库回填。
 

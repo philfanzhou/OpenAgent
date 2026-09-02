@@ -770,7 +770,8 @@ internal static class ManagementEndpointExtensions
             Endpoint = profile.Endpoint,
             ApiKey = string.Empty,
             Temperature = profile.Temperature,
-            ContextWindowTokens = profile.ContextWindowTokens
+            ContextWindowTokens = profile.ContextWindowTokens,
+            Modality = profile.Modality
         };
     }
 }

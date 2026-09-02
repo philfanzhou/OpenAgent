@@ -175,6 +175,7 @@ export interface LlmProviderProfile {
   endpoint: string
   apiKey: string
   temperature: number
+  modality: 'Text' | 'Multimodal' | string
 }
 
 export interface LlmTestResult {

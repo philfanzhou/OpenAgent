@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.Extensions.AI;
 using Microsoft.Agents.AI.Compaction;
 using OpenAgent.Contracts.Conversation;
+using OpenAgent.Contracts.Files;
 using OpenAgent.Core.Conversation;
 using OpenAgent.Core.Tests.TestDoubles;
 using Xunit;
@@ -135,7 +136,8 @@ public sealed class ConversationHistoryFactoryTests
             fileExecution: null!,
             logger: NullLogger<PlatformChatHistory>.Instance,
             loggerFactory: NullLoggerFactory.Instance,
-            fileService: null!);
+            fileService: null!,
+            fileOptions: Options.Create(new FileAssetOptions()));
 
     private sealed class CapturingChatClient(string responseText = "summary") : IChatClient
     {

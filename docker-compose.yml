@@ -18,7 +18,6 @@ services:
       FileAssets__ObjectStorage__BucketName: ${OPENAGENT_S3_BUCKET:-openagent-files}
       FileAssets__ObjectStorage__AccessKey: ${OPENAGENT_S3_ACCESS_KEY:-openagent}
       FileAssets__ObjectStorage__SecretKey: ${OPENAGENT_S3_SECRET_KEY:-openagent-secret}
-      Engine__AllowMockAgent: ${OPENAGENT_ALLOW_MOCK_AGENT:-true}
       Heartbeat__AdvertisedHost: engine
       Heartbeat__AdvertisedPort: "5208"
       Authentication__AllowDevelopmentAnonymous: "${OPENAGENT_AUTH_ALLOW_DEVELOPMENT_ANONYMOUS:-false}"
