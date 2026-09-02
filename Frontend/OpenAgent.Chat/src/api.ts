@@ -37,6 +37,7 @@ const tokenStorageKey = 'openagent.auth.access-token'
 const tokenTypeStorageKey = 'openagent.auth.token-type'
 const tokenExpiryStorageKey = 'openagent.auth.expires-at'
 const tokenEndpointStorageKey = 'openagent.auth.endpoint'
+const refreshTokenStorageKey = 'openagent.auth.refresh-token'
 const tenantStorageKey = 'openagent.auth.tenant-id'
 export const AUTH_FAILURE_EVENT = 'openagent:auth-failure'
 function defaultServiceUrl(port: number): string {
@@ -87,7 +88,7 @@ export function setEngineBaseUrl(value: string): void {
 export function getAccessToken(): string {
   const expiresAt = Number(sessionStorage.getItem(tokenExpiryStorageKey) || 0)
   if (expiresAt > 0 && Date.now() >= expiresAt) {
-    clearAuthentication()
+    clearExpiredAccessToken()
     return ''
   }
   const tokenEndpoint = sessionStorage.getItem(tokenEndpointStorageKey)
@@ -97,6 +98,21 @@ export function getAccessToken(): string {
 
 export function getTokenType(): string {
   return sessionStorage.getItem(tokenTypeStorageKey) || ''
+}
+
+export function getAccessTokenExpiresAt(): number {
+  return Number(sessionStorage.getItem(tokenExpiryStorageKey) || 0)
+}
+
+export function getRefreshToken(): string {
+  const tokenEndpoint = sessionStorage.getItem(tokenEndpointStorageKey)
+  if (tokenEndpoint && tokenEndpoint !== normalizeBaseUrl(requireBaseUrl())) return ''
+  return sessionStorage.getItem(refreshTokenStorageKey) || ''
+}
+
+export function setRefreshToken(value: string): void {
+  if (value.trim()) sessionStorage.setItem(refreshTokenStorageKey, value.trim())
+  else sessionStorage.removeItem(refreshTokenStorageKey)
 }
 
 export function setAccessToken(value: string, tokenType = 'Basic', expiresIn?: number): void {
@@ -115,10 +131,14 @@ export function setAccessToken(value: string, tokenType = 'Basic', expiresIn?: n
 }
 
 export function clearAuthentication(): void {
+  clearExpiredAccessToken()
+  sessionStorage.removeItem(refreshTokenStorageKey)
+}
+
+function clearExpiredAccessToken(): void {
   sessionStorage.removeItem(tokenStorageKey)
   sessionStorage.removeItem(tokenTypeStorageKey)
   sessionStorage.removeItem(tokenExpiryStorageKey)
-  sessionStorage.removeItem(tokenEndpointStorageKey)
 }
 
 export function getTenantId(): string {

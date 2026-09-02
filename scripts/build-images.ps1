@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
     [string]$EnvFile = '',
-    [string]$DockerMode = ''
+    [string]$DockerMode = '',
+    [string]$TarDirectory = ''
 )
 
 Set-StrictMode -Version Latest
@@ -102,6 +103,28 @@ function Invoke-Docker {
     }
 }
 
+function Convert-ToWslPath {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    $converted = (& wsl.exe wslpath -a -u $Path).Trim()
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($converted)) {
+        throw "failed to convert path for WSL Docker: $Path"
+    }
+    return $converted.Replace('\', '/')
+}
+
+function Export-ImageTar {
+    param(
+        [Parameter(Mandatory = $true)][string]$Image,
+        [Parameter(Mandatory = $true)][string]$FileName,
+        [Parameter(Mandatory = $true)][string]$OutputDirectory
+    )
+
+    Invoke-Docker -Arguments @(
+        'save', '--output', (Join-Path $OutputDirectory $FileName), $Image
+    )
+}
+
 try {
     if (-not [string]::IsNullOrWhiteSpace($EnvFile)) {
         $resolvedEnvFile = if ([IO.Path]::IsPathRooted($EnvFile)) {
@@ -126,9 +149,22 @@ try {
 
     $dockerRepoRoot = $repoRoot
     if ($script:dockerCommand[0] -eq 'wsl.exe') {
-        $dockerRepoRoot = (& wsl.exe wslpath -a -u $repoRoot).Trim()
-        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($dockerRepoRoot)) {
-            throw "failed to convert repository path for WSL Docker: $repoRoot"
+        $dockerRepoRoot = Convert-ToWslPath -Path $repoRoot
+    }
+
+    if ([string]::IsNullOrWhiteSpace($TarDirectory)) {
+        $TarDirectory = $env:OPENAGENT_IMAGE_TAR_DIR
+    }
+
+    $dockerTarDirectory = ''
+    if (-not [string]::IsNullOrWhiteSpace($TarDirectory)) {
+        New-Item -ItemType Directory -Force -Path $TarDirectory | Out-Null
+        $TarDirectory = (Resolve-Path -LiteralPath $TarDirectory).Path
+        $dockerTarDirectory = if ($script:dockerCommand[0] -eq 'wsl.exe') {
+            Convert-ToWslPath -Path $TarDirectory
+        }
+        else {
+            $TarDirectory
         }
     }
 
@@ -161,6 +197,12 @@ try {
         '--file', (Join-Path $dockerRepoRoot 'Frontend/OpenAgent.Chat/Dockerfile'),
         $dockerRepoRoot
     )
+
+    if (-not [string]::IsNullOrWhiteSpace($dockerTarDirectory)) {
+        Export-ImageTar -Image $engineImage -FileName 'openagent-engine.tar' -OutputDirectory $dockerTarDirectory
+        Export-ImageTar -Image $routerImage -FileName 'openagent-router.tar' -OutputDirectory $dockerTarDirectory
+        Export-ImageTar -Image $chatImage -FileName 'openagent-chat.tar' -OutputDirectory $dockerTarDirectory
+    }
 }
 catch {
     Write-Error $_

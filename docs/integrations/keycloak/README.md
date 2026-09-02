@@ -81,17 +81,23 @@ docker compose -p openagent-keycloak-infrastructure \
 
 ## 功能开关
 
-认证开关位于 `Authentication` 配置节，Engine 和 Router 应保持一致：
+认证配置由 Compose 通过环境变量同时注入 Engine 和 Router，Engine 和 Router 应保持一致。生产环境示例：
 
-```json
-{
-  "Authentication": {
-    "EnableKeycloak": true
-  }
-}
+```dotenv
+OPENAGENT_ASPNETCORE_ENVIRONMENT=Production
+OPENAGENT_AUTH_MODE=JwtBearer
+OPENAGENT_AUTH_ENABLE_KEYCLOAK=true
+OPENAGENT_AUTH_ALLOW_DEVELOPMENT_ANONYMOUS=false
+OPENAGENT_AUTH_AUDIENCE=openagent-api
+OPENAGENT_AUTH_CLIENT_ID=openagent-chat
+OPENAGENT_KEYCLOAK_PUBLIC_URL=https://sso.intra.example:58081
+OPENAGENT_KEYCLOAK_METADATA_ADDRESS=http://keycloak:8080/realms/openagent/.well-known/openid-configuration
 ```
 
-- `EnableKeycloak` 控制 Keycloak/OIDC 登录入口。AD 只是 Keycloak 的一种身份源；接入真实 AD 时，需要在 Keycloak 中配置 LDAP/AD User Federation。本地 Realm 没有真实域控，因此只验证开关和登录链路。
+- `OPENAGENT_AUTH_MODE` 支持 `JwtBearer` 和仅限 Development 的 `Basic`。本地 Basic 调试时设置 `OPENAGENT_ASPNETCORE_ENVIRONMENT=Development`、`OPENAGENT_AUTH_MODE=Basic`，并可将 `OPENAGENT_AUTH_ENABLE_KEYCLOAK=false`；开发账号为 `admin/admin` 或 `test/test`。
+- `OPENAGENT_AUTH_ENABLE_KEYCLOAK` 控制 Keycloak/OIDC 登录入口。AD 只是 Keycloak 的一种身份源；接入真实 AD 时，需要在 Keycloak 中配置 LDAP/AD User Federation。本地 Realm 没有真实域控，因此只验证开关和登录链路。
+- `OPENAGENT_AUTH_AUDIENCE`、`OPENAGENT_AUTH_CLIENT_ID`、`OPENAGENT_AUTH_REQUIRE_HTTPS_METADATA` 和 `OPENAGENT_AUTH_CLOCK_SKEW_SECONDS` 分别控制 JWT audience、OIDC client、元数据 HTTPS 要求和时钟容差。
+- `OPENAGENT_KEYCLOAK_PUBLIC_URL` 是浏览器使用的公开 Issuer 地址；`OPENAGENT_KEYCLOAK_METADATA_ADDRESS` 是 Engine/Router 访问 discovery 的服务端地址。
 - Engine 和 Router 固定解析认证 token 中的租户 claim，并在 Agent/管理接口缺少租户时拒绝请求，不提供关闭租户隔离的配置。
 - 本地 Realm 已启用 Keycloak Organization。创建用户时，需要在用户属性中设置 `tenant_id`，并将用户加入同名 Organization；申请 `organization` scope 后，访问令牌会包含对应的 `tenant_id` 和 `organization` claim。
 - 邮箱由 Keycloak 用户资料维护，并通过 OIDC `email` scope 返回。

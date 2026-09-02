@@ -2,12 +2,13 @@
 set -euo pipefail
 
 # 构建应用镜像；不启动或修改任何容器。
-# 用法：scripts/build-images.sh [--env-file path/to/.env] [--docker-mode auto|docker|wsl-docker]
+# 用法：scripts/build-images.sh [--env-file path/to/.env] [--docker-mode auto|docker|wsl-docker] [--tar-dir directory]
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd -- "$script_dir/.." && pwd)"
 env_file=""
-docker_mode="${OPENAGENT_DOCKER_MODE:-auto}"
+docker_mode_arg=""
+tar_directory_arg=""
 docker_cmd=()
 
 die() {
@@ -48,7 +49,12 @@ while [[ $# -gt 0 ]]; do
       ;;
     --docker-mode)
       [[ $# -ge 2 ]] || die "--docker-mode requires auto, docker, or wsl-docker"
-      docker_mode="$2"
+      docker_mode_arg="$2"
+      shift 2
+      ;;
+    --tar-dir)
+      [[ $# -ge 2 ]] || die "--tar-dir requires a directory"
+      tar_directory_arg="$2"
       shift 2
       ;;
     *)
@@ -61,6 +67,9 @@ if [[ -n "$env_file" ]]; then
   [[ "$env_file" = /* ]] || env_file="$PWD/$env_file"
   load_env_file "$env_file"
 fi
+
+docker_mode="${docker_mode_arg:-${OPENAGENT_DOCKER_MODE:-auto}}"
+tar_directory="${tar_directory_arg:-${OPENAGENT_IMAGE_TAR_DIR:-}}"
 
 case "$docker_mode" in
   auto)
@@ -99,6 +108,17 @@ if [[ "${docker_cmd[0]}" == "wsl.exe" ]]; then
   [[ -n "$docker_root" ]] || die "failed to convert repository path for WSL Docker"
 fi
 
+docker_tar_directory=""
+if [[ -n "$tar_directory" ]]; then
+  mkdir -p "$tar_directory"
+  tar_directory="$(cd "$tar_directory" && pwd)"
+  if [[ "${docker_cmd[0]}" == "wsl.exe" ]]; then
+    docker_tar_directory="$(to_wsl_path "$tar_directory")"
+  else
+    docker_tar_directory="$tar_directory"
+  fi
+fi
+
 engine_image="${OPENAGENT_ENGINE_IMAGE:-openagent-engine:latest}"
 router_image="${OPENAGENT_ROUTER_IMAGE:-openagent-router:latest}"
 chat_image="${OPENAGENT_CHAT_IMAGE:-openagent-chat:latest}"
@@ -126,3 +146,9 @@ tenant_id="${OPENAGENT_TENANT_ID:-development}"
   --build-arg "VITE_OPENAGENT_TENANT_ID=$tenant_id" \
   --file "$docker_root/Frontend/OpenAgent.Chat/Dockerfile" \
   "$docker_root"
+
+if [[ -n "$docker_tar_directory" ]]; then
+  "${docker_cmd[@]}" save --output "$docker_tar_directory/openagent-engine.tar" "$engine_image"
+  "${docker_cmd[@]}" save --output "$docker_tar_directory/openagent-router.tar" "$router_image"
+  "${docker_cmd[@]}" save --output "$docker_tar_directory/openagent-chat.tar" "$chat_image"
+fi

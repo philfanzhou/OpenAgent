@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Router.Models;
+using OpenAgent.Router.Observability;
 using Yarp.ReverseProxy.Forwarder;
 
 namespace OpenAgent.Router.Endpoints;
@@ -74,13 +75,20 @@ internal sealed class AgentForwarder(
                     proxyRequest,
                     target,
                     provider,
-                    tenantId,
-                    conversationId,
                     traceId,
+                    action,
+                    logger,
                     cancellationToken)).ConfigureAwait(false);
         }
-        catch
+        catch (Exception exception)
         {
+            RouterLog.ProviderForwardingFailed(
+                logger,
+                exception,
+                provider.Id,
+                action,
+                target.RequestUri.ToString(),
+                traceId);
             RouterMeter.RecordForward(action, succeeded: false);
             if (isStreaming)
             {
@@ -91,6 +99,13 @@ internal sealed class AgentForwarder(
             }
             throw;
         }
+        RouterLog.ProviderForwardingResponse(
+            logger,
+            provider.Id,
+            action ?? "chat",
+            context.Response.StatusCode,
+            RouterHttpLog.FormatResponseHeaders(context.Response.Headers),
+            traceId);
         bool succeeded = error == ForwarderError.None;
         RouterMeter.RecordForward(action, succeeded);
         if (isStreaming)
@@ -129,9 +144,9 @@ internal sealed class AgentForwarder(
         HttpRequestMessage request,
         AgentForwardingTarget target,
         IAgentProvider provider,
-        string? tenantId,
-        string? conversationId,
         string traceId,
+        string? action,
+        ILogger logger,
         CancellationToken cancellationToken)
     {
         await ForwardingContextBuilder.ApplyAsync(
@@ -142,6 +157,14 @@ internal sealed class AgentForwarder(
             request,
             target,
             cancellationToken).ConfigureAwait(false);
+        RouterLog.ProviderForwardingRequest(
+            logger,
+            provider.Id,
+            action ?? "chat",
+            request.Method.Method,
+            request.RequestUri?.ToString() ?? string.Empty,
+            RouterHttpLog.FormatRequestHeaders(request),
+            traceId);
     }
 
     private static SocketsHttpHandler CreateHandler() => new()

@@ -11,7 +11,7 @@ pnpm dev
 
 登录页默认连接 Router `http://localhost:5001`。Development 可填写任意非空账号密码建立 Basic 联调身份；该方式不校验真实密码，不能用于生产。Production 使用企业 IdP 的 OIDC Authorization Code + PKCE，API 仅接受经过 issuer、audience、签名和有效期校验的 JWT Bearer token。
 
-连接地址、模式与租户配置可保存在 `localStorage`；凭据、OIDC 临时参数和 token 只进入当前标签页的 `sessionStorage`。token 绑定到登录时的服务地址，切换地址必须重新登录；退出会清除 token、OIDC state/PKCE verifier、会话数据与未发送内容。
+连接地址、模式与租户配置可保存在 `localStorage`；凭据、OIDC 临时参数、access token 和 refresh token 只进入当前标签页的 `sessionStorage`。OIDC 会在 access token 到期前自动续期，token 绑定到登录时的服务地址，切换地址必须重新登录；退出会清除 token、OIDC state/PKCE verifier、会话数据与未发送内容。
 
 ## 验证
 

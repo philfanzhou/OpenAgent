@@ -12,7 +12,7 @@ builder.Host.UseAgentSerilog("agent-router");
 
 builder.Services.AddAgentHost(builder.Configuration, options =>
 {
-    options.ServiceName = "agent-router";
+    options.ServiceName = "openagent-router";
     options.OpenTelemetrySource = "OpenAgent.Router";
 });
 

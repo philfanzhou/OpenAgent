@@ -25,6 +25,28 @@ Router 使用 Redis Engine 注册索引发现动态实例，并以静态 `Router
 
 指标 `openagent_router_rate_limit_decisions_total` 按 outcome、source 与 degraded 标签区分 Redis、local、fail-open 和 fail-closed 路径。
 
+## Provider 请求日志
+
+Router 会在 `Information` 级别记录 Provider 的请求方法、目标 URI、请求头，以及下游响应状态码和响应头；YARP 转发会记录经过 Router 和 Provider 映射后的最终请求头。意图识别还会记录 Provider、意图 Agent、候选数量和最终选择结果，Gina 会记录确定性 Agent 选择结果。
+
+请求/响应体只在 `Debug` 级别记录，并限制长度。`Authorization`、`Cookie`、`Set-Cookie`、API Key、Token、Secret、Password 等敏感 Header 的值会脱敏为 `[REDACTED]`。
+
+生产环境如需查看意图识别请求体，可仅将 Router 调整为 Debug：
+
+```json
+{
+  "Serilog": {
+    "MinimumLevel": {
+      "Override": {
+        "OpenAgent.Router": "Debug"
+      }
+    }
+  }
+}
+```
+
+对应环境变量为 `Serilog__MinimumLevel__Override__OpenAgent.Router=Debug`。
+
 ## 关键配置
 
 | 配置 | 默认值 | 说明 |

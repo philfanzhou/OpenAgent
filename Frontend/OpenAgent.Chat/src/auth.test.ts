@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { getAccessToken, setConnectionMode, setRouterBaseUrl } from './api'
-import { beginOidcLogin, buildOidcLogoutUrl, clearAuthState, completeOidcLogin, markReauthenticationRequired, sanitizeReturnHash, WORKSPACE_HASH } from './auth'
+import { getAccessToken, setAccessToken, setConnectionMode, setRefreshToken, setRouterBaseUrl } from './api'
+import { beginOidcLogin, buildOidcLogoutUrl, clearAuthState, completeOidcLogin, markReauthenticationRequired, refreshOidcSession, sanitizeReturnHash, WORKSPACE_HASH } from './auth'
 import type { AuthConfig } from './types'
 
 class MemoryStorage implements Storage {
@@ -44,7 +44,7 @@ describe('authentication flow', () => {
     expect(sanitizeReturnHash('#/conversation/123')).toBe('#/conversation/123')
   })
 
-  it('uses authorization code with PKCE and stores only the access token in sessionStorage', async () => {
+  it('uses authorization code with PKCE and stores OIDC tokens in sessionStorage', async () => {
     let assignedUrl = ''
     vi.stubGlobal('window', {
       location: {
@@ -88,10 +88,35 @@ describe('authentication flow', () => {
     expect(getAccessToken()).toBe('verified-access-token')
     expect(sessionStorage.getItem('openagent.auth.oidc-id-token')).toBe('verified-id-token')
     expect(localStorage.getItem('openagent.auth.access-token')).toBeNull()
-    expect(sessionStorage.getItem('openagent.auth.refresh-token')).toBeNull()
+    expect(sessionStorage.getItem('openagent.auth.refresh-token')).toBe('ignored-refresh-token')
     const tokenRequest = fetchMock.mock.calls[2]?.[1] as RequestInit
     expect(String(tokenRequest.body)).toContain('code_verifier=')
     expect(String(tokenRequest.body)).not.toContain('client_secret')
+  })
+
+  it('silently renews an access token with the refresh token', async () => {
+    setAccessToken('expired-access-token', 'Bearer', 1)
+    setRefreshToken('refresh-token')
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        authorization_endpoint: 'https://idp.example/authorize',
+        token_endpoint: 'https://idp.example/token',
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        access_token: 'renewed-access-token',
+        refresh_token: 'rotated-refresh-token',
+        token_type: 'Bearer',
+        expires_in: 300,
+      }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(refreshOidcSession(config)).resolves.toBe(true)
+
+    expect(getAccessToken()).toBe('renewed-access-token')
+    expect(sessionStorage.getItem('openagent.auth.refresh-token')).toBe('rotated-refresh-token')
+    const request = fetchMock.mock.calls[1]?.[1] as RequestInit
+    expect(String(request.body)).toContain('grant_type=refresh_token')
+    expect(String(request.body)).toContain('refresh_token=refresh-token')
   })
 
   it('rejects an OIDC callback with the wrong state and clears transient values', async () => {
