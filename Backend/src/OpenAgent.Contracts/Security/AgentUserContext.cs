@@ -1,6 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
-
 namespace OpenAgent.Contracts.Security;
 
 public sealed class ThirdPartyApiKeyIdentity
@@ -21,12 +18,6 @@ public interface IThirdPartyApiKeyIdentityResolver
     Task<ThirdPartyApiKeyIdentity?> ResolveAsync(
         string apiKey,
         CancellationToken cancellationToken = default);
-}
-
-public static class ThirdPartyApiKeyHashing
-{
-    public static string Compute(string apiKey) =>
-        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(apiKey)));
 }
 
 public interface IAgentUserContext

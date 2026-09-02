@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.EntityFrameworkCore;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Infrastructure.Entities;
@@ -12,7 +14,8 @@ public sealed class EfThirdPartyApiKeyIdentityResolver(
         string apiKey,
         CancellationToken cancellationToken = default)
     {
-        string keyHash = ThirdPartyApiKeyHashing.Compute(apiKey);
+        string keyHash = Convert.ToHexString(
+            SHA256.HashData(Encoding.UTF8.GetBytes(apiKey)));
         await using OpenAgentDbContext database = await contexts
             .CreateDbContextAsync(cancellationToken)
             .ConfigureAwait(false);
