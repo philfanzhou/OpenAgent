@@ -21,25 +21,29 @@ public static class AuthenticationEndpointExtensions
 
         group.MapGet("/config", () => Results.Ok(new
         {
-            mode = options.Mode.ToString(),
+            mode = options.EnableApiKey ? "ApiKey" : options.Mode.ToString(),
             development = environment.IsDevelopment(),
             keycloak = new
             {
                 enabled = options.EnableKeycloak
+                    && !options.EnableApiKey
                     && options.Mode == AgentAuthenticationMode.JwtBearer
             },
             password = new
             {
-                enabled = environment.IsDevelopment() && options.Mode == AgentAuthenticationMode.Basic,
+                enabled = environment.IsDevelopment()
+                    && !options.EnableApiKey
+                    && options.Mode == AgentAuthenticationMode.Basic,
                 endpoint = "/api/v1/auth/password/token"
             },
             anonymous = new
             {
                 enabled = environment.IsDevelopment()
+                    && !options.EnableApiKey
                     && options.Mode == AgentAuthenticationMode.Basic
                     && options.AllowDevelopmentAnonymous
             },
-            oidc = options.Mode == AgentAuthenticationMode.JwtBearer
+            oidc = !options.EnableApiKey && options.Mode == AgentAuthenticationMode.JwtBearer
                 ? new
                 {
                     authority = options.Authority,
@@ -50,16 +54,17 @@ public static class AuthenticationEndpointExtensions
                         : options.Scopes
                 }
                 : null,
-            apiKey = options.Mode == AgentAuthenticationMode.ApiKey
+            apiKey = options.EnableApiKey
                 ? new
                 {
-                    header = "X-API-Key",
                     authorizationScheme = "Bearer"
                 }
                 : null
         })).AllowAnonymous();
 
-        if (environment.IsDevelopment() && options.Mode == AgentAuthenticationMode.Basic)
+        if (environment.IsDevelopment()
+            && !options.EnableApiKey
+            && options.Mode == AgentAuthenticationMode.Basic)
         {
             group.MapPost("/password/token", (PasswordLoginRequest request) =>
             {

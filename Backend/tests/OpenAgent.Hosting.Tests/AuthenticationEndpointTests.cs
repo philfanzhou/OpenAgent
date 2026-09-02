@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using OpenAgent.Contracts.Security;
 using OpenAgent.Hosting.Authentication;
 using Xunit;
 
@@ -77,10 +78,8 @@ public class AuthenticationEndpointTests
             Environments.Production,
             new Dictionary<string, string?>
             {
-                ["Authentication:Mode"] = "ApiKey",
-                ["Authentication:ApiKeyHash"] = new string('a', 64),
-                ["Authentication:ApiKeyTenantId"] = "tenant-a",
-                ["Authentication:ApiKeyClientId"] = "partner-a"
+                ["Authentication:Mode"] = "JwtBearer",
+                ["Authentication:EnableApiKey"] = "true"
             });
         using HttpClient client = CreateClient(app);
 
@@ -90,8 +89,8 @@ public class AuthenticationEndpointTests
         Assert.Equal("ApiKey", config.RootElement.GetProperty("mode").GetString());
         Assert.False(config.RootElement.GetProperty("keycloak").GetProperty("enabled").GetBoolean());
         Assert.Equal(
-            "X-API-Key",
-            config.RootElement.GetProperty("apiKey").GetProperty("header").GetString());
+            "Bearer",
+            config.RootElement.GetProperty("apiKey").GetProperty("authorizationScheme").GetString());
         Assert.False(config.RootElement.GetProperty("password").GetProperty("enabled").GetBoolean());
         Assert.True(config.RootElement.GetProperty("oidc").ValueKind == JsonValueKind.Null);
     }
@@ -113,6 +112,7 @@ public class AuthenticationEndpointTests
             options.EnableHealthChecks = false;
             options.EnableOpenTelemetry = false;
         });
+        builder.Services.AddSingleton<IThirdPartyApiKeyIdentityResolver, NullApiKeyIdentityResolver>();
         WebApplication app = builder.Build();
         app.UseAuthentication();
         app.UseAuthorization();
@@ -127,5 +127,13 @@ public class AuthenticationEndpointTests
         string address = server.Features.Get<IServerAddressesFeature>()?.Addresses.Single()
             ?? throw new InvalidOperationException("Server address was unavailable.");
         return new HttpClient { BaseAddress = new Uri(address) };
+    }
+
+    private sealed class NullApiKeyIdentityResolver : IThirdPartyApiKeyIdentityResolver
+    {
+        public Task<ThirdPartyApiKeyIdentity?> ResolveAsync(
+            string apiKey,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<ThirdPartyApiKeyIdentity?>(null);
     }
 }

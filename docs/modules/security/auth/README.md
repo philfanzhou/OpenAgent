@@ -7,7 +7,7 @@
 | 能力 | 行为 |
 |---|---|
 | Production 登录 | 前端通过企业 IdP 执行 OIDC Authorization Code + PKCE |
-| Production API | JWT Bearer 校验 issuer、audience、签名和 lifetime，不接受 URL token；第三方 API Key 模式不访问 Keycloak |
+| Production API | JWT Bearer 校验 issuer、audience、签名和 lifetime，不接受 URL token；启用第三方 API Key 时由数据库校验 Bearer 凭据，不访问 Keycloak |
 | Development 登录 | `/api/v1/auth/password/token` 返回 Basic 凭据，仅用于联调且不校验真实密码 |
 | 登录态 | access token、refresh token、PKCE verifier/state 仅存于 `sessionStorage`，不进入 `localStorage`；OIDC 会在 access token 到期前自动续期 |
 | 租户 | Production 仅信任 `tenant_id`/`tid` claim；客户端 tenant header 不覆盖 claim，不一致返回 403 |
@@ -35,30 +35,28 @@
 
 ## 第三方 API Key 模式
 
-不需要 Keycloak 的第三方集成可以将 Router 和 Engine 的认证模式都设置为
-`ApiKey`。服务端只保存 API Key 的 SHA-256 十六进制摘要，明文 Key 不进入配置文件或代码库：
+不需要 Keycloak 的第三方集成可以只开启 `Authentication:EnableApiKey`。API Key
+和其绑定的用户、租户、权限全部保存在 PostgreSQL 的 `openagent.third_party_api_keys`
+表中；Router 将 Bearer 凭据交给内部 Engine 查询，明文 Key 不进入配置文件或代码库：
 
 ```bash
-export OPENAGENT_AUTH_MODE=ApiKey
+export OPENAGENT_AUTH_ENABLE_API_KEY=true
 export OPENAGENT_AUTH_ENABLE_KEYCLOAK=false
-export OPENAGENT_AUTH_API_KEY_HASH="$(printf '%s' "$OPENAGENT_API_KEY" | shasum -a 256 | cut -d ' ' -f 1)"
-export OPENAGENT_AUTH_API_KEY_TENANT_ID=tenant-a
-export OPENAGENT_AUTH_API_KEY_CLIENT_ID=partner-a
-export OPENAGENT_AUTH_API_KEY_SCOPE_0=agent.execute
-export OPENAGENT_AUTH_API_KEY_SCOPE_1=model.invoke
 ```
 
-生成 API Key 时使用密码管理器或高熵随机值，例如 `openssl rand -hex 32`，并通过
-`X-API-Key` 发送。`Authorization: Bearer <api-key>` 也受支持。API Key 映射的
-`tenant_id`、subject 和 scope 由服务端配置建立，调用方不能通过租户 Header 覆盖。
+请求只支持 `Authorization: Bearer <api-key>`。当前迁移包含两个仅用于本地演示的种子：
+`oa_demo_tenant_a_2026` 和 `oa_demo_tenant_b_2026`，分别绑定 `tenant-a` 和 `tenant-b`，
+权限为 `agent.execute model.invoke`。生产部署必须替换种子凭据或将其禁用。
+
+API Key 的启用状态、租户和 scope 由数据库记录决定，调用方不能通过租户 Header 覆盖。
+轮换时新增记录、切换调用方凭据，再将旧记录的 `IsEnabled` 设置为 `false`。
 
 API Key 模式仍然执行 Agent ACL、能力权限、租户隔离、限流和审计。生产环境应将 Engine
-保持为内网服务，并通过密钥管理系统注入 `ApiKeyHash`；轮换时生成新 Key、更新摘要并撤销旧 Key。
+保持为内网服务；Router 与 Engine 必须使用同一个数据库。
 
 生产环境缺少 `Authority`、`Audience` 或 `ClientId` 时启动校验失败；启用 HTTPS metadata 时 Authority
 必须为 HTTPS。`Basic` 模式在非 Development 环境同样启动失败。Development 可显式启用匿名兼容，
-但默认关闭。`ApiKey` 模式要求 `ApiKeyHash`、`ApiKeyTenantId` 和 `ApiKeyClientId`，其中
-`ApiKeyHash` 必须是 64 位 SHA-256 十六进制摘要。
+但默认关闭。`EnableApiKey` 默认关闭；开启后使用数据库中的启用记录认证。
 
 `X-Tenant-Id` 只用于 Development 的 Basic 联调。Production 中该 header 不能建立或覆盖租户身份；
 缺少租户 claim 的受保护资源请求会被拒绝，header 与 claim 不一致时返回 403。Router 仅在 Development
@@ -71,6 +69,7 @@ API Key 模式仍然执行 Agent ACL、能力权限、租户隔离、限流和�
 
 - Handler: `Backend/src/OpenAgent.Hosting/Security/BasicAuthenticationHandler.cs`
 - Third-party handler: `Backend/src/OpenAgent.Hosting/Security/ApiKeyAuthenticationHandler.cs`
+- Third-party identity store: `Backend/src/OpenAgent.Infrastructure/Security/EfThirdPartyApiKeyIdentityResolver.cs`
 - Registration: `Backend/src/OpenAgent.Hosting/Authentication/AgentAuthenticationExtensions.cs`
 - Public config and Development login: `Backend/src/OpenAgent.Hosting/Authentication/AuthenticationEndpointExtensions.cs`
 - Context mapping: `Backend/src/OpenAgent.Engine.Host/Middleware/AgentUserContextMiddleware.cs`

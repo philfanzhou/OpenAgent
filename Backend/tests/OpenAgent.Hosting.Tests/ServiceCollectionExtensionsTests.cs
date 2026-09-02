@@ -98,10 +98,7 @@ public class ServiceCollectionExtensionsTests
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["Authentication:Mode"] = "ApiKey",
-                ["Authentication:ApiKeyHash"] = new string('a', 64),
-                ["Authentication:ApiKeyTenantId"] = "tenant-a",
-                ["Authentication:ApiKeyClientId"] = "partner-a"
+                ["Authentication:EnableApiKey"] = "true"
             })
             .Build();
         var services = new ServiceCollection();
@@ -122,13 +119,12 @@ public class ServiceCollectionExtensionsTests
     }
 
     [Fact]
-    public void AddAgentHost_WithIncompleteApiKeyConfiguration_FailsValidation()
+    public void AddAgentHost_WithApiKeyEnabled_DoesNotRequireApiKeyConfiguration()
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["Authentication:Mode"] = "ApiKey",
-                ["Authentication:ApiKeyTenantId"] = "tenant-a"
+                ["Authentication:EnableApiKey"] = "true"
             })
             .Build();
         var services = new ServiceCollection();
@@ -141,8 +137,7 @@ public class ServiceCollectionExtensionsTests
 
         using ServiceProvider provider = services.BuildServiceProvider();
 
-        Assert.Throws<OptionsValidationException>(() =>
-            provider.GetRequiredService<IOptions<AgentAuthenticationOptions>>().Value);
+        Assert.True(provider.GetRequiredService<IOptions<AgentAuthenticationOptions>>().Value.EnableApiKey);
     }
 
     [Fact]

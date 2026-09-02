@@ -32,12 +32,7 @@ services:
       Authentication__AllowDevelopmentAnonymous: "false"
       Authentication__Mode: ${OPENAGENT_AUTH_MODE:-JwtBearer}
       Authentication__EnableKeycloak: "true"
-      Authentication__ApiKeyHash: ${OPENAGENT_AUTH_API_KEY_HASH:-}
-      Authentication__ApiKeyTenantId: ${OPENAGENT_AUTH_API_KEY_TENANT_ID:-}
-      Authentication__ApiKeyClientId: ${OPENAGENT_AUTH_API_KEY_CLIENT_ID:-third-party}
-      Authentication__ApiKeyScopes__0: ${OPENAGENT_AUTH_API_KEY_SCOPE_0:-}
-      Authentication__ApiKeyScopes__1: ${OPENAGENT_AUTH_API_KEY_SCOPE_1:-}
-      Authentication__ApiKeyAudience: ${OPENAGENT_AUTH_API_KEY_AUDIENCE:-openagent-api}
+      Authentication__EnableApiKey: "${OPENAGENT_AUTH_ENABLE_API_KEY:-false}"
       Authentication__Authority: http://localhost:${OPENAGENT_KEYCLOAK_PORT:-58081}/realms/openagent
       Authentication__MetadataAddress: http://host.docker.internal:${OPENAGENT_KEYCLOAK_PORT:-58081}/realms/openagent/.well-known/openid-configuration
       Authentication__Audience: openagent-api
@@ -71,12 +66,7 @@ services:
       Authentication__AllowDevelopmentAnonymous: "false"
       Authentication__Mode: ${OPENAGENT_AUTH_MODE:-JwtBearer}
       Authentication__EnableKeycloak: "true"
-      Authentication__ApiKeyHash: ${OPENAGENT_AUTH_API_KEY_HASH:-}
-      Authentication__ApiKeyTenantId: ${OPENAGENT_AUTH_API_KEY_TENANT_ID:-}
-      Authentication__ApiKeyClientId: ${OPENAGENT_AUTH_API_KEY_CLIENT_ID:-third-party}
-      Authentication__ApiKeyScopes__0: ${OPENAGENT_AUTH_API_KEY_SCOPE_0:-}
-      Authentication__ApiKeyScopes__1: ${OPENAGENT_AUTH_API_KEY_SCOPE_1:-}
-      Authentication__ApiKeyAudience: ${OPENAGENT_AUTH_API_KEY_AUDIENCE:-openagent-api}
+      Authentication__EnableApiKey: "${OPENAGENT_AUTH_ENABLE_API_KEY:-false}"
       Authentication__Authority: http://localhost:${OPENAGENT_KEYCLOAK_PORT:-58081}/realms/openagent
       Authentication__MetadataAddress: http://host.docker.internal:${OPENAGENT_KEYCLOAK_PORT:-58081}/realms/openagent/.well-known/openid-configuration
       Authentication__Audience: openagent-api

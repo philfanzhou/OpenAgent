@@ -1,11 +1,10 @@
-using System.Security.Cryptography;
-using System.Text;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
+using OpenAgent.Contracts.Security;
 using OpenAgent.Hosting.Authentication;
 using OpenAgent.Hosting.Security;
 using Xunit;
@@ -21,14 +20,13 @@ public class ApiKeyAuthenticationHandlerTests
     {
         using ServiceProvider provider = CreateProvider();
         var context = new DefaultHttpContext { RequestServices = provider };
-        context.Request.Headers["X-API-Key"] = ApiKey;
+        context.Request.Headers.Authorization = $"Bearer {ApiKey}";
 
         AuthenticateResult result = await context.AuthenticateAsync(
             ApiKeyAuthenticationHandler.SchemeName);
 
         Assert.True(result.Succeeded);
         Assert.Equal("integration:partner-a", result.Principal?.FindFirst("sub")?.Value);
-        Assert.Equal("partner-a", result.Principal?.FindFirst("client_id")?.Value);
         Assert.Equal("tenant-a", result.Principal?.FindFirst("tenant_id")?.Value);
         Assert.Equal("tenant-a", result.Principal?.FindFirst("tid")?.Value);
         Assert.Equal("agent.read conversation.write", result.Principal?.FindFirst("scope")?.Value);
@@ -36,24 +34,11 @@ public class ApiKeyAuthenticationHandlerTests
     }
 
     [Fact]
-    public async Task AuthenticateAsync_BearerApiKey_IsAccepted()
+    public async Task AuthenticateAsync_NonBearerApiKey_IsIgnored()
     {
         using ServiceProvider provider = CreateProvider();
         var context = new DefaultHttpContext { RequestServices = provider };
-        context.Request.Headers.Authorization = $"Bearer {ApiKey}";
-
-        AuthenticateResult result = await context.AuthenticateAsync(
-            ApiKeyAuthenticationHandler.SchemeName);
-
-        Assert.True(result.Succeeded);
-    }
-
-    [Fact]
-    public async Task AuthenticateAsync_InvalidApiKey_FailsAuthentication()
-    {
-        using ServiceProvider provider = CreateProvider();
-        var context = new DefaultHttpContext { RequestServices = provider };
-        context.Request.Headers["X-API-Key"] = "oa_live_wrong";
+        context.Request.Headers["X-API-Key"] = ApiKey;
 
         AuthenticateResult result = await context.AuthenticateAsync(
             ApiKeyAuthenticationHandler.SchemeName);
@@ -62,12 +47,24 @@ public class ApiKeyAuthenticationHandlerTests
     }
 
     [Fact]
-    public async Task AuthenticateAsync_ConflictingHeaders_FailsAuthentication()
+    public async Task AuthenticateAsync_InvalidApiKey_FailsAuthentication()
     {
         using ServiceProvider provider = CreateProvider();
         var context = new DefaultHttpContext { RequestServices = provider };
-        context.Request.Headers["X-API-Key"] = ApiKey;
-        context.Request.Headers.Authorization = "Bearer oa_live_other";
+        context.Request.Headers.Authorization = "Bearer oa_live_wrong";
+
+        AuthenticateResult result = await context.AuthenticateAsync(
+            ApiKeyAuthenticationHandler.SchemeName);
+
+        Assert.False(result.Succeeded);
+    }
+
+    [Fact]
+    public async Task AuthenticateAsync_EmptyBearerToken_FailsAuthentication()
+    {
+        using ServiceProvider provider = CreateProvider();
+        var context = new DefaultHttpContext { RequestServices = provider };
+        context.Request.Headers.Authorization = "Bearer ";
 
         AuthenticateResult result = await context.AuthenticateAsync(
             ApiKeyAuthenticationHandler.SchemeName);
@@ -80,17 +77,13 @@ public class ApiKeyAuthenticationHandlerTests
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["Authentication:Mode"] = "ApiKey",
-                ["Authentication:ApiKeyHash"] = Hash(ApiKey),
-                ["Authentication:ApiKeyTenantId"] = "tenant-a",
-                ["Authentication:ApiKeyClientId"] = "partner-a",
-                ["Authentication:ApiKeyScopes:0"] = "agent.read",
-                ["Authentication:ApiKeyScopes:1"] = "conversation.write"
+                ["Authentication:EnableApiKey"] = "true"
             })
             .Build();
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton<IHostEnvironment>(new TestEnvironment());
+        services.AddSingleton<IThirdPartyApiKeyIdentityResolver, FakeIdentityResolver>();
         services.AddAgentHost(configuration, options =>
         {
             options.EnableCors = false;
@@ -101,8 +94,26 @@ public class ApiKeyAuthenticationHandlerTests
         return services.BuildServiceProvider();
     }
 
-    private static string Hash(string value) =>
-        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
+    private sealed class FakeIdentityResolver : IThirdPartyApiKeyIdentityResolver
+    {
+        public Task<ThirdPartyApiKeyIdentity?> ResolveAsync(
+            string apiKey,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<ThirdPartyApiKeyIdentity?>(
+                apiKey == ApiKey
+                    ? new ThirdPartyApiKeyIdentity
+                    {
+                        UserId = "integration:partner-a",
+                        Username = "partner-a",
+                        TenantId = "tenant-a",
+                        Claims = new Dictionary<string, string>
+                        {
+                            ["scope"] = "agent.read conversation.write"
+                        },
+                        Audience = ["openagent-api"]
+                    }
+                    : null);
+    }
 
     private sealed class TestEnvironment : IHostEnvironment
     {

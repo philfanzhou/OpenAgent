@@ -24,12 +24,7 @@ services:
       Authentication__AllowDevelopmentAnonymous: "${OPENAGENT_AUTH_ALLOW_DEVELOPMENT_ANONYMOUS:-false}"
       Authentication__Mode: ${OPENAGENT_AUTH_MODE:-JwtBearer}
       Authentication__EnableKeycloak: "${OPENAGENT_AUTH_ENABLE_KEYCLOAK:-true}"
-      Authentication__ApiKeyHash: ${OPENAGENT_AUTH_API_KEY_HASH:-}
-      Authentication__ApiKeyTenantId: ${OPENAGENT_AUTH_API_KEY_TENANT_ID:-}
-      Authentication__ApiKeyClientId: ${OPENAGENT_AUTH_API_KEY_CLIENT_ID:-third-party}
-      Authentication__ApiKeyScopes__0: ${OPENAGENT_AUTH_API_KEY_SCOPE_0:-}
-      Authentication__ApiKeyScopes__1: ${OPENAGENT_AUTH_API_KEY_SCOPE_1:-}
-      Authentication__ApiKeyAudience: ${OPENAGENT_AUTH_API_KEY_AUDIENCE:-openagent-api}
+      Authentication__EnableApiKey: "${OPENAGENT_AUTH_ENABLE_API_KEY:-false}"
       Authentication__Authority: ${OPENAGENT_KEYCLOAK_PUBLIC_URL:-https://localhost:58081}/realms/openagent
       Authentication__MetadataAddress: ${OPENAGENT_KEYCLOAK_METADATA_ADDRESS:-http://keycloak:8080/realms/openagent/.well-known/openid-configuration}
       Authentication__Audience: ${OPENAGENT_AUTH_AUDIENCE:-openagent-api}
@@ -59,12 +54,7 @@ services:
       Authentication__AllowDevelopmentAnonymous: "${OPENAGENT_AUTH_ALLOW_DEVELOPMENT_ANONYMOUS:-false}"
       Authentication__Mode: ${OPENAGENT_AUTH_MODE:-JwtBearer}
       Authentication__EnableKeycloak: "${OPENAGENT_AUTH_ENABLE_KEYCLOAK:-true}"
-      Authentication__ApiKeyHash: ${OPENAGENT_AUTH_API_KEY_HASH:-}
-      Authentication__ApiKeyTenantId: ${OPENAGENT_AUTH_API_KEY_TENANT_ID:-}
-      Authentication__ApiKeyClientId: ${OPENAGENT_AUTH_API_KEY_CLIENT_ID:-third-party}
-      Authentication__ApiKeyScopes__0: ${OPENAGENT_AUTH_API_KEY_SCOPE_0:-}
-      Authentication__ApiKeyScopes__1: ${OPENAGENT_AUTH_API_KEY_SCOPE_1:-}
-      Authentication__ApiKeyAudience: ${OPENAGENT_AUTH_API_KEY_AUDIENCE:-openagent-api}
+      Authentication__EnableApiKey: "${OPENAGENT_AUTH_ENABLE_API_KEY:-false}"
       Authentication__Authority: ${OPENAGENT_KEYCLOAK_PUBLIC_URL:-https://localhost:58081}/realms/openagent
       Authentication__MetadataAddress: ${OPENAGENT_KEYCLOAK_METADATA_ADDRESS:-http://keycloak:8080/realms/openagent/.well-known/openid-configuration}
       Authentication__Audience: ${OPENAGENT_AUTH_AUDIENCE:-openagent-api}

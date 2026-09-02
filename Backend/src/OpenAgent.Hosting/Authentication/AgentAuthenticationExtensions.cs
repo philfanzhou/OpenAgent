@@ -20,17 +20,12 @@ internal static class AgentAuthenticationExtensions
             .Get<AgentAuthenticationOptions>() ?? new AgentAuthenticationOptions();
         services.AddOptions<AgentAuthenticationOptions>()
             .Validate(
-                value => value.Mode != AgentAuthenticationMode.JwtBearer
+                value => value.EnableApiKey
+                    || value.Mode != AgentAuthenticationMode.JwtBearer
                     || (!string.IsNullOrWhiteSpace(value.Authority)
                         && !string.IsNullOrWhiteSpace(value.Audience)
                         && !string.IsNullOrWhiteSpace(value.ClientId)),
                 "JWT Bearer authentication requires Authority, Audience, and ClientId.")
-            .Validate(
-                value => value.Mode != AgentAuthenticationMode.ApiKey
-                    || (!string.IsNullOrWhiteSpace(value.ApiKeyHash)
-                        && !string.IsNullOrWhiteSpace(value.ApiKeyTenantId)
-                        && !string.IsNullOrWhiteSpace(value.ApiKeyClientId)),
-                "API key authentication requires ApiKeyHash, ApiKeyTenantId, and ApiKeyClientId.")
             .Validate(
                 value => value.ClockSkewSeconds is >= 0 and <= 300,
                 "Authentication ClockSkewSeconds must be between 0 and 300.")
@@ -38,17 +33,17 @@ internal static class AgentAuthenticationExtensions
         services.AddSingleton<IValidateOptions<AgentAuthenticationOptions>>(provider =>
             new AgentAuthenticationOptionsValidator(provider.GetService<IHostEnvironment>()));
 
-        if (options.Mode == AgentAuthenticationMode.Basic)
-        {
-            services.AddAuthentication(BasicAuthenticationHandler.SchemeName)
-                .AddScheme<AuthenticationSchemeOptions, BasicAuthenticationHandler>(
-                    BasicAuthenticationHandler.SchemeName, _ => { });
-        }
-        else if (options.Mode == AgentAuthenticationMode.ApiKey)
+        if (options.EnableApiKey)
         {
             services.AddAuthentication(ApiKeyAuthenticationHandler.SchemeName)
                 .AddScheme<AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>(
                     ApiKeyAuthenticationHandler.SchemeName, _ => { });
+        }
+        else if (options.Mode == AgentAuthenticationMode.Basic)
+        {
+            services.AddAuthentication(BasicAuthenticationHandler.SchemeName)
+                .AddScheme<AuthenticationSchemeOptions, BasicAuthenticationHandler>(
+                    BasicAuthenticationHandler.SchemeName, _ => { });
         }
         else
         {

@@ -8,7 +8,8 @@ internal sealed class AgentAuthenticationOptionsValidator(IHostEnvironment? envi
 {
     public ValidateOptionsResult Validate(string? name, AgentAuthenticationOptions options)
     {
-        if (options.Mode == AgentAuthenticationMode.Basic
+        if (!options.EnableApiKey
+            && options.Mode == AgentAuthenticationMode.Basic
             && environment != null
             && !environment.IsDevelopment())
         {
@@ -16,7 +17,7 @@ internal sealed class AgentAuthenticationOptionsValidator(IHostEnvironment? envi
                 "Basic authentication is restricted to the Development environment.");
         }
 
-        if (options.Mode == AgentAuthenticationMode.JwtBearer)
+        if (!options.EnableApiKey && options.Mode == AgentAuthenticationMode.JwtBearer)
         {
             if (!Uri.TryCreate(options.Authority, UriKind.Absolute, out Uri? authority))
             {
@@ -69,18 +70,6 @@ internal sealed class AgentAuthenticationOptionsValidator(IHostEnvironment? envi
             {
                 return ValidateOptionsResult.Fail(
                     "Production JWT MetadataAddress must use HTTPS.");
-            }
-        }
-
-        if (options.Mode == AgentAuthenticationMode.ApiKey
-            && !string.IsNullOrWhiteSpace(options.ApiKeyHash))
-        {
-            bool isSha256Hex = options.ApiKeyHash.Length == 64
-                && options.ApiKeyHash.All(Uri.IsHexDigit);
-            if (!isSha256Hex)
-            {
-                return ValidateOptionsResult.Fail(
-                    "API key ApiKeyHash must be a 64-character SHA-256 hex digest.");
             }
         }
 
