@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -37,12 +38,13 @@ public class ServiceCollectionExtensionsTests
     }
 
     [Fact]
-    public async Task AddAgentHost_WithJwtAuthEnabled_RegistersBasicScheme()
+    public async Task AddAgentHost_WithBasicModeAndApiKeyEnabled_RegistersBothSchemes()
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["Authentication:Mode"] = "Basic"
+                ["Authentication:Mode"] = "Basic",
+                ["Authentication:EnableApiKey"] = "true"
             })
             .Build();
         var services = new ServiceCollection();
@@ -58,6 +60,7 @@ public class ServiceCollectionExtensionsTests
         var schemes = provider.GetRequiredService<IAuthenticationSchemeProvider>();
 
         Assert.NotNull(await schemes.GetSchemeAsync("Basic"));
+        Assert.NotNull(await schemes.GetSchemeAsync("ApiKey"));
     }
 
     [Fact]
@@ -93,12 +96,16 @@ public class ServiceCollectionExtensionsTests
     }
 
     [Fact]
-    public async Task AddAgentHost_WithApiKeyMode_RegistersApiKeyScheme()
+    public async Task AddAgentHost_WithApiKeyEnabled_RegistersApiKeyAlongsideJwtBearerScheme()
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["Authentication:EnableApiKey"] = "true"
+                ["Authentication:Mode"] = "JwtBearer",
+                ["Authentication:EnableApiKey"] = "true",
+                ["Authentication:Authority"] = "https://identity.example",
+                ["Authentication:Audience"] = "openagent-api",
+                ["Authentication:ClientId"] = "openagent-chat"
             })
             .Build();
         var services = new ServiceCollection();
@@ -114,8 +121,15 @@ public class ServiceCollectionExtensionsTests
         var schemes = provider.GetRequiredService<IAuthenticationSchemeProvider>();
 
         Assert.NotNull(await schemes.GetSchemeAsync("ApiKey"));
-        Assert.Null(await schemes.GetSchemeAsync("Bearer"));
+        Assert.NotNull(await schemes.GetSchemeAsync("Bearer"));
         Assert.Null(await schemes.GetSchemeAsync("Basic"));
+
+        AuthorizationPolicy policy = provider
+            .GetRequiredService<IOptions<AuthorizationOptions>>()
+            .Value
+            .DefaultPolicy;
+        Assert.Contains("Bearer", policy.AuthenticationSchemes);
+        Assert.Contains("ApiKey", policy.AuthenticationSchemes);
     }
 
     [Fact]

@@ -95,7 +95,7 @@ OPENAGENT_KEYCLOAK_METADATA_ADDRESS=http://keycloak:8080/realms/openagent/.well-
 ```
 
 - `OPENAGENT_AUTH_MODE` 支持 `JwtBearer` 和仅限 Development 的 `Basic`。本地 Basic 调试时设置 `OPENAGENT_ASPNETCORE_ENVIRONMENT=Development`、`OPENAGENT_AUTH_MODE=Basic`，并可将 `OPENAGENT_AUTH_ENABLE_KEYCLOAK=false`；开发账号为 `admin/admin` 或 `test/test`。
-- `OPENAGENT_AUTH_ENABLE_API_KEY=true` 时，Router 和 Engine 使用数据库中的第三方 Bearer API Key 认证，不访问 Keycloak；该开关优先于 `OPENAGENT_AUTH_MODE`，API Key 记录位于 `openagent.third_party_api_keys`。
+- `OPENAGENT_AUTH_ENABLE_API_KEY=true` 时，Router 和 Engine 增加数据库中的第三方 Bearer API Key 认证，不访问 Keycloak；该开关与 `OPENAGENT_AUTH_MODE` 并存，不替换 Basic/JWT Bearer 方案。API Key 记录位于 `openagent.third_party_api_keys`。
 - `OPENAGENT_AUTH_ENABLE_KEYCLOAK` 控制 Keycloak/OIDC 登录入口。AD 只是 Keycloak 的一种身份源；接入真实 AD 时，需要在 Keycloak 中配置 LDAP/AD User Federation。本地 Realm 没有真实域控，因此只验证开关和登录链路。
 - `OPENAGENT_AUTH_AUDIENCE`、`OPENAGENT_AUTH_CLIENT_ID`、`OPENAGENT_AUTH_REQUIRE_HTTPS_METADATA` 和 `OPENAGENT_AUTH_CLOCK_SKEW_SECONDS` 分别控制 JWT audience、OIDC client、元数据 HTTPS 要求和时钟容差。
 - `OPENAGENT_KEYCLOAK_PUBLIC_URL` 是浏览器使用的公开 Issuer 地址；`OPENAGENT_KEYCLOAK_METADATA_ADDRESS` 是 Engine/Router 访问 discovery 的服务端地址。
