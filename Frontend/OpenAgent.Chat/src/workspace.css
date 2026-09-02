@@ -709,9 +709,8 @@ html[data-theme='dark'] .message-row ::selection { background: rgba(16, 163, 127
 .process-step[open] .process-step-chevron { transform: rotate(90deg); }
 .process-step-body { padding: 7px 8px 8px 31px; border-top: 1px solid var(--border); }
 .process-reasoning {
-  max-height: 180px;
   margin: 0;
-  overflow: auto;
+  overflow: visible;
   color: var(--text-muted);
   font-family: inherit;
   font-size: 13px;
@@ -804,10 +803,9 @@ html[data-theme='dark'] .message-row ::selection { background: rgba(16, 163, 127
 .tool-section > span { display: block; margin-bottom: 5px; color: var(--text-faint); font-size: 10px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; }
 .tool-args,
 .tool-result {
-  max-height: 160px;
   margin: 0;
   padding: 8px 10px;
-  overflow: auto;
+  overflow: visible;
   border: 1px solid var(--border);
   border-radius: var(--r-xs);
   color: var(--text-muted);

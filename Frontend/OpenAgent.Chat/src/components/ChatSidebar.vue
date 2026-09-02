@@ -43,6 +43,11 @@ const conversationGroups = computed(() => {
   return Array.from(groups, ([label, items]) => ({ label, items }))
 })
 
+const displayUserName = computed(() => {
+  const username = props.currentUser?.username?.trim()
+  return username || props.currentUser?.userId || 'Guest'
+})
+
 function formatTime(value: string): string {
   const date = new Date(value)
   return Number.isNaN(date.getTime())
@@ -92,8 +97,8 @@ function formatTime(value: string): string {
     </el-scrollbar>
     <footer class="sidebar-footer">
       <button class="identity-button" type="button" @click="emit('settings')">
-        <span class="identity-avatar">{{ (props.currentUser?.userId || 'G').slice(0, 1).toUpperCase() }}</span>
-        <span class="identity-info"><strong>{{ props.currentUser?.userId || 'Guest' }}</strong><small>{{ props.currentUser?.tenantId || '未设置租户' }}</small></span>
+        <span class="identity-avatar">{{ displayUserName.slice(0, 1).toUpperCase() }}</span>
+        <span class="identity-info"><strong>{{ displayUserName }}</strong><small>{{ props.currentUser?.tenantId || '未设置租户' }}</small></span>
         <i class="status-dot" :class="{ connected: props.statusText === '已连接' }" />
       </button>
       <button class="sidebar-logout" type="button" aria-label="退出登录" title="退出登录" @click="emit('logout')">
