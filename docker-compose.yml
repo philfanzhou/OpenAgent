@@ -24,16 +24,10 @@ services:
       Authentication__AllowDevelopmentAnonymous: "${OPENAGENT_AUTH_ALLOW_DEVELOPMENT_ANONYMOUS:-false}"
       Authentication__Mode: ${OPENAGENT_AUTH_MODE:-JwtBearer}
       Authentication__EnableKeycloak: "${OPENAGENT_AUTH_ENABLE_KEYCLOAK:-true}"
-      Authentication__Authority: ${OPENAGENT_KEYCLOAK_PUBLIC_URL:-https://localhost:58081}/realms/${OPENAGENT_KEYCLOAK_REALM:-openagent}
-      Authentication__MetadataAddress: ${OPENAGENT_KEYCLOAK_METADATA_ADDRESS:-http://keycloak:8080/realms/${OPENAGENT_KEYCLOAK_REALM:-openagent}/.well-known/openid-configuration}
+      Authentication__Authority: ${OPENAGENT_KEYCLOAK_PUBLIC_URL:-https://localhost:58081}/realms/openagent
+      Authentication__MetadataAddress: ${OPENAGENT_KEYCLOAK_METADATA_ADDRESS:-http://keycloak:8080/realms/openagent/.well-known/openid-configuration}
       Authentication__Audience: ${OPENAGENT_AUTH_AUDIENCE:-openagent-api}
       Authentication__ClientId: ${OPENAGENT_AUTH_CLIENT_ID:-openagent-chat}
-      Authentication__DevelopmentUserId: ${OPENAGENT_AUTH_DEVELOPMENT_USER_ID:-development-user}
-      Authentication__DevelopmentTenantId: ${OPENAGENT_AUTH_DEVELOPMENT_TENANT_ID:-development}
-      Authentication__Scopes__0: ${OPENAGENT_AUTH_SCOPE_0:-openid}
-      Authentication__Scopes__1: ${OPENAGENT_AUTH_SCOPE_1:-profile}
-      Authentication__Scopes__2: ${OPENAGENT_AUTH_SCOPE_2:-email}
-      Authentication__Scopes__3: ${OPENAGENT_AUTH_SCOPE_3:-organization}
       Authentication__RequireHttpsMetadata: ${OPENAGENT_AUTH_REQUIRE_HTTPS_METADATA:-false}
       Authentication__ClockSkewSeconds: ${OPENAGENT_AUTH_CLOCK_SKEW_SECONDS:-60}
       Cors__AllowedOrigins__0: https://${OPENAGENT_PUBLIC_HOST:-localhost}:${OPENAGENT_CHAT_PORT:-8081}
@@ -59,16 +53,10 @@ services:
       Authentication__AllowDevelopmentAnonymous: "${OPENAGENT_AUTH_ALLOW_DEVELOPMENT_ANONYMOUS:-false}"
       Authentication__Mode: ${OPENAGENT_AUTH_MODE:-JwtBearer}
       Authentication__EnableKeycloak: "${OPENAGENT_AUTH_ENABLE_KEYCLOAK:-true}"
-      Authentication__Authority: ${OPENAGENT_KEYCLOAK_PUBLIC_URL:-https://localhost:58081}/realms/${OPENAGENT_KEYCLOAK_REALM:-openagent}
-      Authentication__MetadataAddress: ${OPENAGENT_KEYCLOAK_METADATA_ADDRESS:-http://keycloak:8080/realms/${OPENAGENT_KEYCLOAK_REALM:-openagent}/.well-known/openid-configuration}
+      Authentication__Authority: ${OPENAGENT_KEYCLOAK_PUBLIC_URL:-https://localhost:58081}/realms/openagent
+      Authentication__MetadataAddress: ${OPENAGENT_KEYCLOAK_METADATA_ADDRESS:-http://keycloak:8080/realms/openagent/.well-known/openid-configuration}
       Authentication__Audience: ${OPENAGENT_AUTH_AUDIENCE:-openagent-api}
       Authentication__ClientId: ${OPENAGENT_AUTH_CLIENT_ID:-openagent-chat}
-      Authentication__DevelopmentUserId: ${OPENAGENT_AUTH_DEVELOPMENT_USER_ID:-development-user}
-      Authentication__DevelopmentTenantId: ${OPENAGENT_AUTH_DEVELOPMENT_TENANT_ID:-development}
-      Authentication__Scopes__0: ${OPENAGENT_AUTH_SCOPE_0:-openid}
-      Authentication__Scopes__1: ${OPENAGENT_AUTH_SCOPE_1:-profile}
-      Authentication__Scopes__2: ${OPENAGENT_AUTH_SCOPE_2:-email}
-      Authentication__Scopes__3: ${OPENAGENT_AUTH_SCOPE_3:-organization}
       Authentication__RequireHttpsMetadata: ${OPENAGENT_AUTH_REQUIRE_HTTPS_METADATA:-false}
       Authentication__ClockSkewSeconds: ${OPENAGENT_AUTH_CLOCK_SKEW_SECONDS:-60}
       Cors__AllowedOrigins__0: https://${OPENAGENT_PUBLIC_HOST:-localhost}:${OPENAGENT_CHAT_PORT:-8081}

@@ -1,7 +1,7 @@
 namespace OpenAgent.Router.Providers;
 
 internal sealed class GinaProviderFactory(
-    ILoggerFactory loggerFactory) : IAgentProviderFactory
+    ILogger<GinaProvider> logger) : IAgentProviderFactory
 {
     internal const string ProviderType = "Gina";
 
@@ -13,5 +13,5 @@ internal sealed class GinaProviderFactory(
         new GinaProvider(
             providerId,
             settings,
-            logger: loggerFactory.CreateLogger<GinaProvider>());
+            logger: logger);
 }

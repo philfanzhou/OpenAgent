@@ -2,7 +2,7 @@ namespace OpenAgent.Router.Providers;
 
 internal sealed class OpenAgentEngineProviderFactory(
     IRouteTable routeTable,
-    ILoggerFactory loggerFactory) : IAgentProviderFactory
+    ILogger<OpenAgentEngineProvider> logger) : IAgentProviderFactory
 {
     internal const string ProviderType = "OpenAgentEngine";
 
@@ -15,5 +15,5 @@ internal sealed class OpenAgentEngineProviderFactory(
             providerId,
             settings,
             routeTable,
-            logger: loggerFactory.CreateLogger<OpenAgentEngineProvider>());
+            logger: logger);
 }
