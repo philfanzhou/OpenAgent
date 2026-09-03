@@ -190,9 +190,7 @@ internal sealed class ConversationHistoryFactory
             : Math.Max(1, policy?.PreserveRecentTurns ?? 2);
         string prompt = $"{SummarizationPrompt.Trim()}\nHARD LIMIT: the summary must not exceed {summaryBudget} tokens.";
         return new SummarizationCompactionStrategy(
-            new OutputTokenLimitedChatClient(
-                chatClient,
-                summaryBudget),
+            new OutputTokenLimitedChatClient(chatClient, summaryBudget),
             trigger,
             minimumPreservedGroups,
             summarizationPrompt: prompt,

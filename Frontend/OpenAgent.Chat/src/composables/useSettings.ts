@@ -263,7 +263,7 @@ export function useSettings(options: SettingsOptions) {
     const profile = llmProfiles.value[index]
     if (!profile) return
     selectedLlmIndex.value = index
-    llmDraft.value = { ...createDefaultLlm(), ...profile }
+    llmDraft.value = { ...profile }
     llmResult.value = null
   }
 

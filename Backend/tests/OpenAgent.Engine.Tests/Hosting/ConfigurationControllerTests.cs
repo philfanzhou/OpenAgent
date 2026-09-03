@@ -76,8 +76,6 @@ public class ConfigurationControllerTests
         Assert.DoesNotContain("server-secret", payload, StringComparison.Ordinal);
         using JsonDocument json = JsonDocument.Parse(payload);
         Assert.Equal(8192, json.RootElement.GetProperty("contextTokens").GetInt32());
-        profile.Id = "primary";
-
         profile.ApiKey = string.Empty;
         profile.ContextTokens = 16384;
         using HttpResponseMessage edited = await client.PutAsJsonAsync("/api/v1/admin/llm/primary", profile);
