@@ -172,10 +172,11 @@ try {
     $routerImage = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_ROUTER_IMAGE)) { 'openagent-router:latest' } else { $env:OPENAGENT_ROUTER_IMAGE }
     $chatImage = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_CHAT_IMAGE)) { 'openagent-chat:latest' } else { $env:OPENAGENT_CHAT_IMAGE }
     $publicHost = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_PUBLIC_HOST)) { 'localhost' } else { $env:OPENAGENT_PUBLIC_HOST }
+    $publicScheme = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_PUBLIC_SCHEME)) { 'https' } else { $env:OPENAGENT_PUBLIC_SCHEME }
     $routerPort = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_ROUTER_PORT)) { '8082' } else { $env:OPENAGENT_ROUTER_PORT }
     $enginePort = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_ENGINE_PORT)) { '8083' } else { $env:OPENAGENT_ENGINE_PORT }
-    $routerUrl = "https://$publicHost`:$routerPort"
-    $engineUrl = "https://$publicHost`:$enginePort"
+    $routerUrl = "${publicScheme}://$publicHost`:$routerPort"
+    $engineUrl = "${publicScheme}://$publicHost`:$enginePort"
     $tenantId = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_TENANT_ID)) { 'development' } else { $env:OPENAGENT_TENANT_ID }
 
     # 构建应用镜像；不启动或修改任何容器。

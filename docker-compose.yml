@@ -18,7 +18,6 @@ services:
       FileAssets__ObjectStorage__BucketName: ${OPENAGENT_S3_BUCKET:-openagent-files}
       FileAssets__ObjectStorage__AccessKey: ${OPENAGENT_S3_ACCESS_KEY:-openagent}
       FileAssets__ObjectStorage__SecretKey: ${OPENAGENT_S3_SECRET_KEY:-openagent-secret}
-      Engine__AllowMockAgent: ${OPENAGENT_ALLOW_MOCK_AGENT:-true}
       Heartbeat__AdvertisedHost: engine
       Heartbeat__AdvertisedPort: "5208"
       Authentication__AllowDevelopmentAnonymous: "${OPENAGENT_AUTH_ALLOW_DEVELOPMENT_ANONYMOUS:-false}"
@@ -31,9 +30,11 @@ services:
       Authentication__ClientId: ${OPENAGENT_AUTH_CLIENT_ID:-openagent-chat}
       Authentication__RequireHttpsMetadata: ${OPENAGENT_AUTH_REQUIRE_HTTPS_METADATA:-false}
       Authentication__ClockSkewSeconds: ${OPENAGENT_AUTH_CLOCK_SKEW_SECONDS:-60}
-      Cors__AllowedOrigins__0: https://${OPENAGENT_PUBLIC_HOST:-localhost}:${OPENAGENT_CHAT_PORT:-8081}
+      Cors__AllowedOrigins__0: ${OPENAGENT_PUBLIC_SCHEME:-https}://${OPENAGENT_PUBLIC_HOST:-localhost}:${OPENAGENT_CHAT_PORT:-8081}
     networks:
       - infrastructure
+    volumes:
+      - engine-data-protection:/root/.aspnet/DataProtection-Keys
     healthcheck:
       test: ["CMD-SHELL", "curl --fail --silent http://localhost:5208/health >/dev/null"]
       interval: 5s
@@ -61,7 +62,7 @@ services:
       Authentication__ClientId: ${OPENAGENT_AUTH_CLIENT_ID:-openagent-chat}
       Authentication__RequireHttpsMetadata: ${OPENAGENT_AUTH_REQUIRE_HTTPS_METADATA:-false}
       Authentication__ClockSkewSeconds: ${OPENAGENT_AUTH_CLOCK_SKEW_SECONDS:-60}
-      Cors__AllowedOrigins__0: https://${OPENAGENT_PUBLIC_HOST:-localhost}:${OPENAGENT_CHAT_PORT:-8081}
+      Cors__AllowedOrigins__0: ${OPENAGENT_PUBLIC_SCHEME:-https}://${OPENAGENT_PUBLIC_HOST:-localhost}:${OPENAGENT_CHAT_PORT:-8081}
     depends_on:
       engine:
         condition: service_healthy
@@ -110,3 +111,6 @@ networks:
   infrastructure:
     external: true
     name: ${OPENAGENT_INFRA_NETWORK:-openagent-infrastructure}
+
+volumes:
+  engine-data-protection:

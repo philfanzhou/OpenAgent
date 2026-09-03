@@ -9,10 +9,13 @@ internal static class AgentMessageAdapter
 {
     internal static ChatMessage CreateUser(
         string input,
-        IReadOnlyList<FileAsset> files)
+        IReadOnlyList<FileAsset> files,
+        IReadOnlyList<FileAssetContent>? inlineImages = null)
     {
-        var message = new ChatMessage(Microsoft.Extensions.AI.ChatRole.User, input);
-        AddFiles(message, files);
+        ChatMessage message = new(Microsoft.Extensions.AI.ChatRole.User, input);
+        Dictionary<string, FileAssetContent> images = (inlineImages ?? [])
+            .ToDictionary(item => item.Asset.FileId, StringComparer.Ordinal);
+        AddFiles(message, files, images);
         return message;
     }
 
@@ -326,27 +329,40 @@ internal static class AgentMessageAdapter
 
     private static void AddFiles(
         ChatMessage chatMessage,
-        IReadOnlyList<FileAsset> files)
+        IReadOnlyList<FileAsset> files,
+        IReadOnlyDictionary<string, FileAssetContent> inlineImages)
     {
         foreach (FileAsset file in files)
         {
-            AttachFile(chatMessage, file);
+            AttachFile(chatMessage, file, inlineImages.GetValueOrDefault(file.FileId));
         }
     }
 
-    /// <summary>只把文件元数据挂到消息上；内容由模型按需调用 read_file 等工具获取。</summary>
-    internal static void AttachFile(ChatMessage chatMessage, FileAsset file)
+    /// <summary>Attach file metadata and optionally inline a permitted image.</summary>
+    internal static void AttachFile(
+        ChatMessage chatMessage,
+        FileAsset file,
+        FileAssetContent? inlineContent = null)
     {
         string descriptor =
             $"[File: {file.FileName}] fileId={file.FileId} "
             + $"({file.MediaType}, {file.Length} bytes)";
-        string instruction = IsTextFile(file.MediaType)
-            ? $"Use the read_file tool with fileId=\"{file.FileId}\" when you need to inspect it."
-            : $"Use a file-aware analysis tool with fileId=\"{file.FileId}\" when you need to inspect it.";
+        string instruction = inlineContent != null
+            ? "Image content is attached for visual analysis."
+            : IsTextFile(file.MediaType)
+                ? $"Use the read_file tool with fileId=\"{file.FileId}\" when you need to inspect it."
+                : $"Use a file-aware analysis tool with fileId=\"{file.FileId}\" when you need to inspect it.";
         instruction += $" If an external MCP tool requires a file URL, use create_file_transfer_url with fileId=\"{file.FileId}\" immediately before calling that tool; if you instead share that URL with the user as a download link, tell them when it expires.";
         chatMessage.Contents.Add(new TextContent(
-            $"{descriptor}. Content is not included in this message. "
+            $"{descriptor}. {(inlineContent == null ? "Content is not included in this message. " : string.Empty)}"
             + instruction));
+        if (inlineContent != null)
+        {
+            chatMessage.Contents.Add(new DataContent(inlineContent.Data, file.MediaType)
+            {
+                Name = file.FileName
+            });
+        }
     }
 
     private static bool IsTextFile(string mediaType) =>

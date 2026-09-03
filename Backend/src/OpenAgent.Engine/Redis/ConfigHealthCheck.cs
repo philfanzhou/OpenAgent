@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using OpenAgent.Contracts.Configuration;
 using OpenAgent.Engine.Abstractions;
 
 namespace OpenAgent.Engine.Redis;
@@ -6,10 +7,14 @@ namespace OpenAgent.Engine.Redis;
 internal class ConfigHealthCheck : IHealthCheck
 {
     private readonly IRedisConnectionProvider _redis;
+    private readonly IAgentConfigRepository _repository;
 
-    public ConfigHealthCheck(IRedisConnectionProvider redis)
+    public ConfigHealthCheck(
+        IRedisConnectionProvider redis,
+        IAgentConfigRepository repository)
     {
         _redis = redis;
+        _repository = repository;
     }
 
     public async Task<HealthCheckResult> CheckHealthAsync(
@@ -18,20 +23,22 @@ internal class ConfigHealthCheck : IHealthCheck
     {
         try
         {
+            IReadOnlyList<OpenAgent.Contracts.Models.AgentConfigEntity> agents = await _repository
+                .ListAsync(tenantId: null, cancellationToken)
+                .ConfigureAwait(false);
             if (!_redis.IsAvailable)
             {
                 return HealthCheckResult.Degraded(
-                    "Redis is not available; running in fallback mode. In-memory configuration cache is optional.");
+                    $"PostgreSQL configuration store is available with {agents.Count} agents; Redis cache is unavailable.");
             }
 
-            var agentKeys = await _redis.SetMembersAsync("agent:published:index");
             return HealthCheckResult.Healthy(
-                $"Configuration store is available. Published agents: {agentKeys.Length}. In-memory configuration cache is optional.");
+                $"PostgreSQL configuration store and Redis cache are available. Agents: {agents.Count}.");
         }
         catch (Exception ex)
         {
             return HealthCheckResult.Unhealthy(
-                "Failed to check config snapshot health.", ex);
+                "Failed to check configuration store health.", ex);
         }
     }
 }

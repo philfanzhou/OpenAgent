@@ -11,6 +11,7 @@ const selectedConversationStorageKey = 'openagent.chat.selected-conversation-id'
 
 interface ConversationStateOptions {
   selectedAgentId: Ref<string>
+  selectedLlmProfileId: Ref<string>
   streams: ReturnType<typeof useConversationStreams>
   hydrateFilePreviews: (conversation: ConversationRecord) => Promise<void>
   notifyError: (error: unknown) => void
@@ -122,10 +123,10 @@ export function useConversationState(options: ConversationStateOptions) {
 
   async function compactConversation(): Promise<void> {
     const conversation = selectedConversation.value
-    if (!conversation || selectedConversationStreaming.value) return
+    if (!conversation || !options.selectedLlmProfileId.value || selectedConversationStreaming.value) return
     compactingConversation.value = true
     try {
-      const summary = await api.compactConversation(conversation.conversationId)
+      const summary = await api.compactConversation(conversation.conversationId, options.selectedLlmProfileId.value)
       conversation.contextSummaries = [...(conversation.contextSummaries || []), summary]
       if (summary.status === 'Succeeded') ElMessage.success('会话上下文压缩已完成')
       else if (summary.status === 'Skipped') ElMessage.info('本次压缩未执行，原始会话保持不变')

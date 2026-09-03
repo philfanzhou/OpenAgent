@@ -1,10 +1,8 @@
 using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
-using Microsoft.Extensions.Caching.Memory;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 using Moq;
 using OpenAgent.Contracts.Configuration;
@@ -13,12 +11,9 @@ using OpenAgent.Contracts.Models;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Skills;
 using OpenAgent.Contracts.Security;
-using OpenAgent.Core.Abstract;
 using OpenAgent.Engine.Abstractions;
 using OpenAgent.Engine.Config;
 using OpenAgent.Engine.Host.Skills;
-using OpenAgent.Engine.Models;
-using OpenAgent.Engine.Reload;
 using StackExchange.Redis;
 using Xunit;
 
@@ -41,7 +36,7 @@ public class SkillPackageManagementServiceTests
     [Fact]
     public async Task InstallAsync_WritesPackageToObjectStorageAndUpdatesAgent()
     {
-        (SkillPackageManagementService service, AgentConfigManagementService configs, RecordingObjectStore store) =
+        (SkillPackageManagementService service, ConfigurationService configs, RecordingObjectStore store) =
             await CreateServiceAsync();
 
         byte[] content = CreatePackage();
@@ -63,7 +58,7 @@ public class SkillPackageManagementServiceTests
         SkillPackageStorageIndex storage = store.ReadIndex(result.Skill!.ObjectKey!);
         Assert.Equal(content.Length > 0, storage.Files.Count == 1);
         Assert.Equal(SkillMarkdown, Encoding.UTF8.GetString(store.Objects[storage.Files[0].ObjectKey]).TrimStart('\uFEFF'));
-        AgentConfigEntity? saved = await configs.GetAsync(AgentId);
+        AgentConfigEntity? saved = await configs.GetAgentAsync(AgentId, "tenant");
         SkillInstanceConfig skill = Assert.Single(saved!.Config.Skills.Instances);
         Assert.Equal("customer-lookup", skill.Id);
         Assert.Equal("tenant", skill.TenantId);
@@ -104,7 +99,7 @@ public class SkillPackageManagementServiceTests
     [Fact]
     public async Task DeleteAsync_RemovesAgentBindingAndStoredObject()
     {
-        (SkillPackageManagementService service, AgentConfigManagementService configs, RecordingObjectStore store) =
+        (SkillPackageManagementService service, ConfigurationService configs, RecordingObjectStore store) =
             await CreateServiceAsync();
         await using var package = new MemoryStream(CreatePackage());
         await service.InstallAsync(
@@ -126,15 +121,15 @@ public class SkillPackageManagementServiceTests
 
         Assert.Equal(SkillPackageDeleteResult.Deleted, result);
         Assert.True(store.DeletedObjectKeys.Count >= 2);
-        AgentConfigEntity? saved = await configs.GetAsync(AgentId);
+        AgentConfigEntity? saved = await configs.GetAgentAsync(AgentId, "tenant");
         Assert.Empty(saved!.Config.Skills.Instances);
         Assert.Empty(saved.Config.Skills.EnabledSkills);
     }
 
     [Fact]
-    public async Task InstallAsync_AgentOwnedByAnotherTenant_ReturnsTenantMismatch()
+    public async Task InstallAsync_AgentOwnedByAnotherTenant_ReturnsNotFound()
     {
-        (SkillPackageManagementService service, AgentConfigManagementService configs, RecordingObjectStore store) =
+        (SkillPackageManagementService service, ConfigurationService configs, RecordingObjectStore store) =
             await CreateServiceAsync("tenant-a");
 
         SkillPackageInstallResult result = await service.InstallAsync(
@@ -147,9 +142,9 @@ public class SkillPackageManagementServiceTests
             expectedVersion: null,
             default);
 
-        Assert.True(result.HasTenantMismatch);
+        Assert.False(result.AgentExists);
         Assert.Empty(store.Objects);
-        Assert.Equal("tenant-a", (await configs.GetAsync(AgentId))!.TenantId);
+        Assert.Equal("tenant-a", (await configs.GetAgentAsync(AgentId, "tenant-a"))!.TenantId);
     }
 
     [Fact]
@@ -248,28 +243,20 @@ public class SkillPackageManagementServiceTests
 
     private static async Task<(
         SkillPackageManagementService Service,
-        AgentConfigManagementService Configs,
+        ConfigurationService Configs,
         RecordingObjectStore Store)> CreateServiceAsync(string tenantId = "tenant")
     {
-        var environment = new Mock<IHostEnvironment>();
-        IConfiguration configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["Engine:AllowMockAgent"] = "true"
-            })
-            .Build();
-        var snapshot = new ConfigSnapshot(
-            Options.Create(new ConfigSnapshotOptions()),
-            new MemoryCache(new MemoryCacheOptions()),
-            NullLogger<ConfigSnapshot>.Instance);
         var redis = new UnavailableRedisConnectionProvider();
-        var configs = new AgentConfigManagementService(
+        var configs = new ConfigurationService(
+            new InMemoryAgentConfigRepository(),
+            new Moq.Mock<ILlmConfigRepository>().Object,
             redis,
-            new MockAgentResolver(environment.Object, configuration),
-            new AgentConfigLocalStore(),
-            CreateDispatcher(redis, snapshot));
-        await configs.SaveAsync(
+            Options.Create(new AgentConfigSourceOptions()),
+            new ConfigurationSecretResolver(new ConfigurationBuilder().Build()),
+            NullLogger<ConfigurationService>.Instance);
+        await configs.SaveAgentAsync(
             AgentId,
+            tenantId,
             new AgentConfigEntity { AgentId = AgentId, TenantId = tenantId },
             expectedVersion: null);
         var store = new RecordingObjectStore();
@@ -277,30 +264,6 @@ public class SkillPackageManagementServiceTests
             configs,
             store,
             NullLogger<SkillPackageManagementService>.Instance), configs, store);
-    }
-
-    private static ConfigUpdateDispatcher CreateDispatcher(
-        IRedisConnectionProvider redis,
-        ConfigSnapshot snapshot)
-    {
-        var llmRegistry = new Mock<ILlmRegistry>();
-        var fullConfig = new FullConfigRefresher(
-            redis,
-            snapshot,
-            NullLogger<FullConfigRefresher>.Instance);
-        var llmProfiles = new LlmProfileRefresher(
-            redis,
-            llmRegistry.Object,
-            NullLogger<LlmProfileRefresher>.Instance);
-        return new ConfigUpdateDispatcher(
-            fullConfig,
-            llmProfiles,
-            new LegacyMessageHandler(
-                fullConfig,
-                llmProfiles,
-                NullLogger<LegacyMessageHandler>.Instance),
-            snapshot,
-            NullLogger<ConfigUpdateDispatcher>.Instance);
     }
 
     private static byte[] CreatePackage(Action<ZipArchive>? addEntries = null)
@@ -423,6 +386,41 @@ public class SkillPackageManagementServiceTests
 
         public void Dispose()
         {
+        }
+    }
+
+    private sealed class InMemoryAgentConfigRepository : IAgentConfigRepository
+    {
+        private readonly Dictionary<(string TenantId, string AgentId), AgentConfigEntity> _entities = [];
+
+        public Task<AgentConfigEntity?> GetAsync(
+            string tenantId,
+            string agentId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(_entities.GetValueOrDefault((tenantId, agentId)));
+
+        public Task<IReadOnlyList<AgentConfigEntity>> ListAsync(
+            string? tenantId = null,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<AgentConfigEntity>>(_entities.Values
+                .Where(entity => tenantId == null || entity.TenantId == tenantId)
+                .ToArray());
+
+        public Task<AgentConfigEntity?> UpsertAsync(
+            string tenantId,
+            string agentId,
+            AgentConfigEntity entity,
+            string? expectedVersion,
+            CancellationToken cancellationToken = default)
+        {
+            entity.TenantId = tenantId;
+            entity.AgentId = agentId;
+            entity.CurrentVersion = (long.TryParse(entity.CurrentVersion, out long version)
+                    ? version + 1
+                    : 1)
+                .ToString(System.Globalization.CultureInfo.InvariantCulture);
+            _entities[(tenantId, agentId)] = entity;
+            return Task.FromResult<AgentConfigEntity?>(entity);
         }
     }
 }

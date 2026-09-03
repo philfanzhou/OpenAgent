@@ -4,11 +4,13 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Infrastructure;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Contracts.Skills;
+using OpenAgent.Infrastructure.Configuration;
 using OpenAgent.Infrastructure.Skills;
 using OpenAgent.Infrastructure.Security;
 using StackExchange.Redis;
@@ -44,6 +46,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IThirdPartyApiKeyIdentityResolver, EfThirdPartyApiKeyIdentityResolver>();
         services.AddSingleton<IFileAssetRepository, EfCoreFileAssetRepository>();
         services.AddSingleton<ISkillDefinitionRepository, EfCoreSkillDefinitionRepository>();
+        services.AddSingleton<IAgentConfigRepository, AgentConfigRepository>();
+        services.AddSingleton<ILlmConfigRepository, LlmConfigRepository>();
 
         ConversationCacheOptions cache = configuration.GetSection(ConversationCacheOptions.SectionName)
             .Get<ConversationCacheOptions>() ?? new();

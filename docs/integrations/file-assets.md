@@ -9,6 +9,8 @@ POST /chat/stream { fileIds } -> read ready files -> model -> message and file r
 
 `FileAssetService` 是上传、读取和模型函数的唯一入口，`S3FileObjectStore` 是对象存储适配器。未配置对象存储时文件端点返回依赖不可用；不存在旧的 multipart 聊天降级路径。
 
+LLM Profile 选择 `Multimodal` 时，聊天请求中的 `image/*` 资产会在执行期以内联图片内容发送给模型；默认每次最多 4 张、每张不超过 4 MiB，可通过 `FileAssets:MaxInlineImageCount` 和 `FileAssets:MaxInlineImageBytes` 调整。`Text` Profile、非图片文件、超限图片和对象读取失败均不会发送二进制，只保留 fileId manifest。当前未开放音频、视频等其他多模态输入。
+
 模型通过 `write_file` 或 `compress_files` 生成文件时，产物会登记为 `FileAsset`，但不会自动出现在 assistant 消息中。模型调用 `publish_files` 并传入一个或多个 `fileId` 后，选中的资产才会关联到当前 assistant 消息；这允许模型保留中间产物、批量发布 Markdown 与图片，或先压缩再发布 ZIP。消息只要带有文件引用，续接会话时都会把对应文件重新注入原消息的模型上下文（user、assistant 均适用）；模型还可以调用 `list_files` 发现当前会话引用的文件，再按需 `read_file` 或 `publish_files`。是否向用户交付仍由消息级发布引用决定。首条消息也必须沿用前端创建的 conversationId，确保上传文件引用和本次模型请求使用同一会话范围。前端可使用消息中的 `fileId` 调用认证下载端点；模型不应直接输出未经授权的 MinIO URL。
 
 启用文件资产后，模型还可以调用 `download_file`。该函数只接收公开的 HTTP(S) 地址，下载结果写入当前租户、用户和会话范围，并建立会话引用；工具返回 `fileId`、文件名、MIME 和长度。下载器会限制响应大小、超时和重定向次数，并拒绝回环、链路本地、私有网段及多播地址。

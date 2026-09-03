@@ -49,7 +49,8 @@ internal sealed class AgentSelectionFilter(
                 routingConversationId,
                 explicitAgentId,
                 context.RequestAborted,
-                context.Request.Headers.Authorization.FirstOrDefault()).ConfigureAwait(false);
+                context.Request.Headers.Authorization.FirstOrDefault(),
+                request.LlmProfileId).ConfigureAwait(false);
         }
         catch (AgentRoutingException exception)
         {

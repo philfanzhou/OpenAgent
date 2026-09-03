@@ -187,6 +187,35 @@ describe('message presentation', () => {
     ])
   })
 
+  it('preserves token usage and model metadata when merging a streamed snapshot', () => {
+    const persisted: ConversationMessage[] = [
+      { messageId: 'assistant-1', sequence: 1, role: 'assistant', content: 'Answer', timestamp: '' },
+    ]
+    const streamed: ConversationMessage = {
+      messageId: 'stream', sequence: 1, role: 'assistant', content: 'Answer', timestamp: '',
+      modelId: 'test-model', tokenUsage: { promptTokens: 12, completionTokens: 4, totalTokens: 16 },
+    }
+
+    expect(mergeAssistantSnapshot(persisted, streamed)[0]).toMatchObject({
+      modelId: 'test-model',
+      tokenUsage: { promptTokens: 12, completionTokens: 4, totalTokens: 16 },
+    })
+  })
+
+  it('keeps metadata from the final assistant message after tool-call merging', () => {
+    const result = buildDisplayMessages([
+      { messageId: 'call', sequence: 1, role: 'assistant', content: '', timestamp: '', toolName: 'lookup' },
+      { messageId: 'result', sequence: 2, role: 'tool', content: 'ok', timestamp: '', toolCallId: 'call-1' },
+      { messageId: 'answer', sequence: 3, role: 'assistant', content: '最终答案', timestamp: '', modelId: 'test-model', tokenUsage: { promptTokens: 20, completionTokens: 5, totalTokens: 25 } },
+    ])
+
+    expect(result[0]).toMatchObject({
+      modelId: 'test-model',
+      tokenUsage: { promptTokens: 20, completionTokens: 5, totalTokens: 25 },
+    })
+    expect(result[0]?.toolName).toBeUndefined()
+  })
+
   it('keeps malformed tool arguments visible and formats file metadata', () => {
     expect(parseToolArguments('{bad json')).toBe('{bad json')
     expect(formatFileSize(1536)).toBe('2 KB')

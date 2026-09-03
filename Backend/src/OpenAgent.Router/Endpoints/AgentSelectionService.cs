@@ -20,7 +20,8 @@ internal sealed class AgentSelectionService(
         string? conversationId,
         string? explicitAgentId,
         CancellationToken cancellationToken,
-        string? authenticationToken = null)
+        string? authenticationToken = null,
+        string? llmProfileId = null)
     {
         if (string.IsNullOrWhiteSpace(userContext.TenantId))
         {
@@ -32,7 +33,8 @@ internal sealed class AgentSelectionService(
 
         AgentProviderRequestContext requestContext = new(
             userContext,
-            authenticationToken);
+            authenticationToken,
+            llmProfileId);
         ConversationProviderAffinity? affinity = string.IsNullOrWhiteSpace(conversationId)
             ? null
             : await conversations.ResolveAsync(

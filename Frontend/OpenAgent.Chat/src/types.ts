@@ -3,14 +3,12 @@ export type ConnectionMode = 'router' | 'engine'
 export const AUTO_AGENT_ID = '__auto__'
 
 export interface AgentSummary {
+  tenantId: string
   agentId: string
   name: string
   description: string
   status: number
   currentVersion: string
-  apiFormat: string
-  llmProvider?: string
-  llmModel?: string
 }
 
 export interface CurrentUserContext {
@@ -168,23 +166,16 @@ export interface SkillsConfig {
   instances: SkillInstanceConfig[]
 }
 
-export interface LlmConfig {
-  provider: string
-  format: 'OpenAIChatCompletions' | 'OpenAIResponses' | 'AnthropicMessages' | string
-  modelId: string
-  apiKey: string
-  endpoint: string
-  temperature: number
-}
-
 export interface LlmProviderProfile {
   id: string
   name: string
   format: 'OpenAIChatCompletions' | 'OpenAIResponses' | 'AnthropicMessages' | string
-  modelId?: string | null
+  modelId: string
+  contextTokens: number
   endpoint: string
   apiKey: string
   temperature: number
+  modality: 'Text' | 'Multimodal' | string
 }
 
 export interface LlmTestResult {
@@ -204,6 +195,7 @@ export interface RagInstanceConfig {
   type: string
   collectionName: string
   apiEndpoint: string
+  apiKeySecretRef?: string
   apiKey?: string
   adapterConfig?: Record<string, string> | null
   allowedUserIds?: string[]
@@ -256,7 +248,6 @@ export interface AgentConfigEntity {
   currentVersion: string
   config: {
     instructions: string
-    llm: LlmConfig
     mcp: { enabledServerIds?: string[]; servers: McpServerConfig[] }
     rag: RagConfig
     skills: SkillsConfig

@@ -709,9 +709,8 @@ html[data-theme='dark'] .message-row ::selection { background: rgba(16, 163, 127
 .process-step[open] .process-step-chevron { transform: rotate(90deg); }
 .process-step-body { padding: 7px 8px 8px 31px; border-top: 1px solid var(--border); }
 .process-reasoning {
-  max-height: 180px;
   margin: 0;
-  overflow: auto;
+  overflow: visible;
   color: var(--text-muted);
   font-family: inherit;
   font-size: 13px;
@@ -804,10 +803,9 @@ html[data-theme='dark'] .message-row ::selection { background: rgba(16, 163, 127
 .tool-section > span { display: block; margin-bottom: 5px; color: var(--text-faint); font-size: 10px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; }
 .tool-args,
 .tool-result {
-  max-height: 160px;
   margin: 0;
   padding: 8px 10px;
-  overflow: auto;
+  overflow: visible;
   border: 1px solid var(--border);
   border-radius: var(--r-xs);
   color: var(--text-muted);
@@ -1086,12 +1084,13 @@ html[data-theme='dark'] .context-panel { background: #1f1f1f; }
   word-break: break-word;
 }
 .inspector-actions { margin: 0; padding: 11px 5px 13px !important; border-bottom: 0 !important; }
-.inspector-action-grid { display: grid; gap: 7px; }
+.inspector-action-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
 .inspector-actions .el-button + .el-button { margin-left: 0; }
 .inspector-action { box-sizing: border-box; width: 100%; min-height: 34px; justify-content: flex-start; margin: 0; border-color: var(--border); color: var(--text); background: var(--bg); }
 .inspector-action:hover, .inspector-action:focus-visible { border-color: var(--accent); color: var(--accent); background: var(--bg); }
 .inspector-action-primary { border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--bg)); }
 .inspector-action-mark { display: inline-grid; width: 18px; height: 18px; place-items: center; border: 1px solid currentColor; border-radius: 50%; font-size: 12px; line-height: 1; }
+.inspector-action-mark svg { width: 12px; height: 12px; }
 
 /* Context resize handle */
 .context-resize {

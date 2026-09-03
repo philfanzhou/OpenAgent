@@ -1,5 +1,8 @@
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Moq;
+using OpenAgent.Contracts.Configuration;
+using OpenAgent.Contracts.Models;
 using OpenAgent.Engine.Abstractions;
 using OpenAgent.Engine.Redis;
 using StackExchange.Redis;
@@ -13,12 +16,12 @@ public class ConfigHealthCheckTests
     public async Task Returns_healthy_when_no_published_agents()
     {
         var redis = new FakeRedisConnectionProvider();
-        var check = new ConfigHealthCheck(redis);
+        var check = new ConfigHealthCheck(redis, Repository());
 
         var result = await check.CheckHealthAsync(new HealthCheckContext());
 
         Assert.Equal(HealthStatus.Healthy, result.Status);
-        Assert.Contains("Published agents: 0", result.Description);
+        Assert.Contains("Agents: 0", result.Description);
     }
 
     [Fact]
@@ -27,12 +30,12 @@ public class ConfigHealthCheckTests
         var redis = new FakeRedisConnectionProvider();
         redis.AddSetMember("agent:published:index", "agent-ok");
 
-        var check = new ConfigHealthCheck(redis);
+        var check = new ConfigHealthCheck(redis, Repository(1));
 
         var result = await check.CheckHealthAsync(new HealthCheckContext());
 
         Assert.Equal(HealthStatus.Healthy, result.Status);
-        Assert.Contains("optional", result.Description);
+        Assert.Contains("Redis cache", result.Description);
     }
 
     [Fact]
@@ -41,7 +44,7 @@ public class ConfigHealthCheckTests
         var redis = new FakeRedisConnectionProvider();
         redis.AddSetMember("agent:published:index", "agent-missing");
 
-        var check = new ConfigHealthCheck(redis);
+        var check = new ConfigHealthCheck(redis, Repository(1));
 
         var result = await check.CheckHealthAsync(new HealthCheckContext());
 
@@ -55,7 +58,7 @@ public class ConfigHealthCheckTests
         redis.AddSetMember("agent:published:index", "agent-ok");
         redis.AddSetMember("agent:published:index", "agent-missing");
 
-        var check = new ConfigHealthCheck(redis);
+        var check = new ConfigHealthCheck(redis, Repository(2));
 
         var result = await check.CheckHealthAsync(new HealthCheckContext());
 
@@ -66,12 +69,24 @@ public class ConfigHealthCheckTests
     public async Task Returns_degraded_when_redis_not_available()
     {
         var redis = new FakeRedisConnectionProvider(available: false);
-        var check = new ConfigHealthCheck(redis);
+        var check = new ConfigHealthCheck(redis, Repository(1));
 
         var result = await check.CheckHealthAsync(new HealthCheckContext());
 
         Assert.Equal(HealthStatus.Degraded, result.Status);
-        Assert.Contains("cache is optional", result.Description);
+        Assert.Contains("Redis cache is unavailable", result.Description);
+    }
+
+    private static IAgentConfigRepository Repository(int count = 0)
+    {
+        var repository = new Mock<IAgentConfigRepository>();
+        repository.Setup(item => item.ListAsync(null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Enumerable.Range(0, count).Select(index => new AgentConfigEntity
+            {
+                TenantId = "tenant-a",
+                AgentId = $"agent-{index}"
+            }).ToArray());
+        return repository.Object;
     }
 
     private sealed class FakeRedisConnectionProvider : IRedisConnectionProvider

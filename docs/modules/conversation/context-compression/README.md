@@ -42,7 +42,7 @@ PlatformChatHistory -> MAF ChatMessage history
 
 | 字段 | 用途 |
 |---|---|
-| `MaxTokens` | 可选的模型上下文 token 上限；自动压缩在其 80% 处触发，压缩目标为其 50%，未配置时临时使用 1000 token |
+| `ContextTokens`（LLM 配置） | 模型上下文 token 上限；自动压缩在其 80% 处触发，压缩目标为其 50%，未配置时临时使用 1000 token |
 | `PreserveRecentTurns` | 摘要压缩时保留的最近消息组数 |
 | `SummarizeOptions` | 摘要模型调用的专用预算和模型配置；摘要 prompt 与普通对话上下文隔离 |
 

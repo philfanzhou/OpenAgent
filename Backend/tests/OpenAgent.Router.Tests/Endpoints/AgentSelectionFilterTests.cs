@@ -148,7 +148,8 @@ public class AgentSelectionFilterTests
             string? conversationId,
             string? explicitAgentId,
             CancellationToken cancellationToken,
-            string? authenticationToken = null)
+            string? authenticationToken = null,
+            string? llmProfileId = null)
         {
             Message = message;
             ConversationId = conversationId;

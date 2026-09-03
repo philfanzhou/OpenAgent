@@ -20,7 +20,11 @@ internal sealed class FileAssetRequestResolver
     {
         if (request.FileIds.Count == 0)
         {
-            return new ResolvedFileRequest { Request = request, Files = Array.Empty<FileAsset>() };
+            return new ResolvedFileRequest
+            {
+                Request = request,
+                Files = Array.Empty<FileAsset>()
+            };
         }
 
         FileAssetScope scope = new()
@@ -42,6 +46,10 @@ internal sealed class FileAssetRequestResolver
             files.Add(asset);
         }
 
-        return new ResolvedFileRequest { Request = request, Files = files.AsReadOnly() };
+        return new ResolvedFileRequest
+        {
+            Request = request,
+            Files = files.AsReadOnly()
+        };
     }
 }
