@@ -19,7 +19,6 @@ internal static class ConversationServiceExtensions
         services.TryAddSingleton<IConversationLock, InMemoryConversationLock>();
         services.AddScoped<ConversationSessionStore>();
         services.AddScoped<ConversationAgentResolver>();
-        services.AddScoped<PlatformChatHistoryDependencies>();
         services.AddScoped<PlatformChatHistoryFactory>();
         services.AddScoped<IPlatformChatHistoryFactory>(serviceProvider =>
             serviceProvider.GetRequiredService<PlatformChatHistoryFactory>());

@@ -1,8 +1,10 @@
+using Microsoft.Extensions.DependencyInjection;
+
 namespace OpenAgent.Core.Conversation;
 
 internal sealed class PlatformChatHistoryFactory(
-    PlatformChatHistoryDependencies dependencies) : IPlatformChatHistoryFactory
+    IServiceProvider services) : IPlatformChatHistoryFactory
 {
     public PlatformChatHistory Create(PlatformChatHistoryContext context) =>
-        new PlatformChatHistory(context, dependencies);
+        ActivatorUtilities.CreateInstance<PlatformChatHistory>(services, context);
 }

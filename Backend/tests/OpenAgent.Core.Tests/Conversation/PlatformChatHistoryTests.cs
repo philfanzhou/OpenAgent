@@ -56,13 +56,12 @@ public sealed class PlatformChatHistoryTests
                 "continue",
                 [],
                 SupportsMultimodal: false),
-            new PlatformChatHistoryDependencies(
-                new FileAssetExecutionContext(),
-                conversationLock: null!,
-                store: null!,
-                NullLogger<PlatformChatHistory>.Instance,
-                service,
-                Options.Create(new FileAssetOptions())));
+            new FileAssetExecutionContext(),
+            conversationLock: null!,
+            store: null!,
+            NullLogger<PlatformChatHistory>.Instance,
+            service,
+            Options.Create(new FileAssetOptions()));
         ConversationMessage stored = ConversationSessionStore.Message(
             1,
             "assistant",
@@ -123,17 +122,16 @@ public sealed class PlatformChatHistoryTests
                 "continue",
                 [asset],
                 SupportsMultimodal: true),
-            new PlatformChatHistoryDependencies(
-                new FileAssetExecutionContext(),
-                conversationLock: null!,
-                store: null!,
-                NullLogger<PlatformChatHistory>.Instance,
-                service,
-                Options.Create(new FileAssetOptions
-                {
-                    MaxInlineImageBytes = 16,
-                    MaxInlineImageCount = 1
-                })));
+            new FileAssetExecutionContext(),
+            conversationLock: null!,
+            store: null!,
+            NullLogger<PlatformChatHistory>.Instance,
+            service,
+            Options.Create(new FileAssetOptions
+            {
+                MaxInlineImageBytes = 16,
+                MaxInlineImageCount = 1
+            }));
 
         ConversationMessage stored = ConversationSessionStore.Message(
             1,

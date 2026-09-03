@@ -2,6 +2,7 @@ using System.Text;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Requests;
@@ -45,23 +46,28 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
     private bool _finalized;
     private bool _completionStaged;
 
-    internal PlatformChatHistory(
+    public PlatformChatHistory(
         PlatformChatHistoryContext context,
-        PlatformChatHistoryDependencies dependencies)
+        FileAssetExecutionContext fileExecution,
+        IConversationLock conversationLock,
+        ConversationSessionStore store,
+        ILogger<PlatformChatHistory> logger,
+        IFileAssetService fileService,
+        IOptions<FileAssetOptions> fileOptions)
     {
         _conversation = context.Conversation;
         _agentId = context.Conversation.AgentId ?? string.Empty;
         _modelId = context.ModelId;
         _input = context.Input;
         _files = context.Files;
-        _fileExecution = dependencies.FileExecution;
-        _conversationLock = dependencies.ConversationLock;
-        _store = dependencies.Store;
-        _logger = dependencies.Logger;
-        _fileService = dependencies.FileService;
+        _fileExecution = fileExecution;
+        _conversationLock = conversationLock;
+        _store = store;
+        _logger = logger;
+        _fileService = fileService;
         _supportsMultimodal = context.SupportsMultimodal;
-        _maxInlineImageBytes = dependencies.FileOptions.MaxInlineImageBytes;
-        _maxInlineImageCount = dependencies.FileOptions.MaxInlineImageCount;
+        _maxInlineImageBytes = fileOptions.Value.MaxInlineImageBytes;
+        _maxInlineImageCount = fileOptions.Value.MaxInlineImageCount;
     }
 
     internal void AppendPartial(string content)
