@@ -29,7 +29,7 @@ services:
       Authentication__ClientId: ${OPENAGENT_AUTH_CLIENT_ID:-openagent-chat}
       Authentication__RequireHttpsMetadata: ${OPENAGENT_AUTH_REQUIRE_HTTPS_METADATA:-false}
       Authentication__ClockSkewSeconds: ${OPENAGENT_AUTH_CLOCK_SKEW_SECONDS:-60}
-      Cors__AllowedOrigins__0: https://${OPENAGENT_PUBLIC_HOST:-localhost}:${OPENAGENT_CHAT_PORT:-8081}
+      Cors__AllowedOrigins__0: ${OPENAGENT_PUBLIC_SCHEME:-https}://${OPENAGENT_PUBLIC_HOST:-localhost}:${OPENAGENT_CHAT_PORT:-8081}
     networks:
       - infrastructure
     volumes:
@@ -60,7 +60,7 @@ services:
       Authentication__ClientId: ${OPENAGENT_AUTH_CLIENT_ID:-openagent-chat}
       Authentication__RequireHttpsMetadata: ${OPENAGENT_AUTH_REQUIRE_HTTPS_METADATA:-false}
       Authentication__ClockSkewSeconds: ${OPENAGENT_AUTH_CLOCK_SKEW_SECONDS:-60}
-      Cors__AllowedOrigins__0: https://${OPENAGENT_PUBLIC_HOST:-localhost}:${OPENAGENT_CHAT_PORT:-8081}
+      Cors__AllowedOrigins__0: ${OPENAGENT_PUBLIC_SCHEME:-https}://${OPENAGENT_PUBLIC_HOST:-localhost}:${OPENAGENT_CHAT_PORT:-8081}
     depends_on:
       engine:
         condition: service_healthy

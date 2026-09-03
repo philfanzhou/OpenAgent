@@ -63,6 +63,7 @@ Engine 使用 ASP.NET Data Protection 保护 PostgreSQL/Redis 中的 LLM 和 RAG
 
 ```dotenv
 OPENAGENT_PUBLIC_HOST=openagent.intra.example
+OPENAGENT_PUBLIC_SCHEME=https
 OPENAGENT_CHAT_PORT=8081
 OPENAGENT_ENGINE_PORT=8083
 OPENAGENT_ROUTER_PORT=8082
@@ -82,6 +83,8 @@ OPENAGENT_KEYCLOAK_METADATA_ADDRESS=http://keycloak:8080/realms/openagent/.well-
 OPENAGENT_OTLP_ENDPOINT=https://otel-collector.intra.example:4317
 OPENAGENT_INFRA_NETWORK=openagent-infrastructure
 ```
+
+开发环境若不经过 TLS 反向代理，可将 `OPENAGENT_PUBLIC_SCHEME` 设为 `http`，并使用 Development Basic；生产环境应保持 `https`。
 
 Compose 会把 `OPENAGENT_AUTH_*` 和 `OPENAGENT_KEYCLOAK_*` 认证变量同时注入 Engine 与 Router。需要本地使用 Basic 登录调试时，保持环境为 Development，并在 `.env` 中改为：
 
