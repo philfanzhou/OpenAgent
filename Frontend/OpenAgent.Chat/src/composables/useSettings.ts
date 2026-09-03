@@ -83,6 +83,7 @@ function createDefaultAgent(agentId: string, name: string): AgentConfigEntity {
       mcp: { servers: [] },
       rag: { enabled: false, enabledRagInstanceIds: [], instances: [] },
       skills: { enabledSkills: [], instances: [] },
+      codeExecution: { enabled: false },
       maxTurns: 50,
     },
   }

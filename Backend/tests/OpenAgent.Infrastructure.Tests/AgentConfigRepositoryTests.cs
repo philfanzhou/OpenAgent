@@ -22,6 +22,7 @@ public class AgentConfigRepositoryTests
         entity.Config.ContextPolicy = new() { PreserveRecentTurns = 3 };
         entity.Config.Mcp.EnabledServerIds = ["tools"];
         entity.Config.Skills.EnabledSkills = ["search"];
+        entity.Config.CodeExecution.Enabled = true;
         entity.Config.Rag.Instances = [new() { Id = "knowledge", ApiKeySecretRef = "rag:knowledge" }];
 
         await repository.UpsertAsync("tenant-a", "support", entity, null);
@@ -35,6 +36,7 @@ public class AgentConfigRepositoryTests
         Assert.Equal(3, stored.Config.ContextPolicy?.PreserveRecentTurns);
         Assert.Equal("tools", Assert.Single(stored.Config.Mcp.EnabledServerIds));
         Assert.Equal("search", Assert.Single(stored.Config.Skills.EnabledSkills));
+        Assert.True(stored.Config.CodeExecution.Enabled);
         Assert.Equal("rag:knowledge", Assert.Single(stored.Config.Rag.Instances).ApiKeySecretRef);
     }
 

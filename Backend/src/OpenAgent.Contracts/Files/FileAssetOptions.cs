@@ -17,10 +17,12 @@ public sealed class FileAssetOptions
         "application/pdf",
         "application/json",
         "application/zip",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         "text/plain",
         "text/csv",
         "text/markdown"
     ];
     public IReadOnlyList<string> AllowedExtensions { get; init; } =
-    [".png", ".jpg", ".jpeg", ".gif", ".webp", ".pdf", ".json", ".txt", ".csv", ".md", ".zip"];
+    [".png", ".jpg", ".jpeg", ".gif", ".webp", ".pdf", ".json", ".txt", ".csv", ".md", ".zip", ".pptx", ".xlsx"];
 }
