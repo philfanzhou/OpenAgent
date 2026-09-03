@@ -1,11 +1,12 @@
 using System.Diagnostics;
-using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Logging.Abstractions;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Routing;
 using OpenAgent.Router.Models;
+using OpenAgent.Router.Observability;
 
 namespace OpenAgent.Router.Providers;
 
@@ -23,12 +24,14 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
     private readonly IReadOnlyDictionary<string, string> _serviceHeaders;
     private readonly IRouteTable _routeTable;
     private readonly HttpMessageInvoker _httpClient;
+    private readonly ILogger<OpenAgentEngineProvider> _logger;
 
     internal OpenAgentEngineProvider(
         string id,
         IConfiguration settings,
         IRouteTable routeTable,
-        HttpMessageHandler? handler = null)
+        HttpMessageHandler? handler = null,
+        ILogger<OpenAgentEngineProvider>? logger = null)
     {
         Id = id;
         _agentListPath = NormalizePath(settings["AgentListPath"], "/api/v1/agent/agents");
@@ -48,6 +51,7 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
                 StringComparer.OrdinalIgnoreCase);
         _routeTable = routeTable;
         _httpClient = new HttpMessageInvoker(handler ?? CreateHandler());
+        _logger = logger ?? NullLogger<OpenAgentEngineProvider>.Instance;
     }
 
     public string Id { get; }
@@ -66,17 +70,39 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
             HttpMethod.Get,
             $"{endpoint.TrimEnd('/')}{_agentListPath}",
             requestContext);
+        RouterLog.ProviderHttpRequest(
+            _logger,
+            Id,
+            "get_agents",
+            request.Method.Method,
+            request.RequestUri?.ToString() ?? string.Empty,
+            RouterHttpLog.FormatRequestHeaders(request));
         using HttpResponseMessage response = await _httpClient.SendAsync(
             request,
             cancellationToken).ConfigureAwait(false);
+        RouterLog.ProviderHttpResponse(
+            _logger,
+            Id,
+            "get_agents",
+            (int)response.StatusCode,
+            RouterHttpLog.FormatResponseHeaders(response));
+        string responseBody = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        if (_logger.IsEnabled(LogLevel.Debug))
+        {
+            RouterLog.ProviderHttpResponseBody(
+                _logger,
+                Id,
+                "get_agents",
+                RouterHttpLog.FormatBody(responseBody));
+        }
         if (!response.IsSuccessStatusCode)
         {
             return new AgentProviderCatalog([], false);
         }
 
-        IReadOnlyList<AgentSummary> agents = await response.Content.ReadFromJsonAsync<List<AgentSummary>>(
-            JsonOptions,
-            cancellationToken).ConfigureAwait(false) ?? [];
+        IReadOnlyList<AgentSummary> agents = string.IsNullOrWhiteSpace(responseBody)
+            ? []
+            : JsonSerializer.Deserialize<List<AgentSummary>>(responseBody, JsonOptions) ?? [];
         return new AgentProviderCatalog(agents);
     }
 
@@ -95,9 +121,22 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
             HttpMethod.Get,
             $"{endpoint.TrimEnd('/')}{_conversationPath}/{Uri.EscapeDataString(conversationId)}",
             requestContext);
+        RouterLog.ProviderHttpRequest(
+            _logger,
+            Id,
+            "resolve_conversation",
+            request.Method.Method,
+            request.RequestUri?.ToString() ?? string.Empty,
+            RouterHttpLog.FormatRequestHeaders(request));
         using HttpResponseMessage response = await _httpClient.SendAsync(
             request,
             cancellationToken).ConfigureAwait(false);
+        RouterLog.ProviderHttpResponse(
+            _logger,
+            Id,
+            "resolve_conversation",
+            (int)response.StatusCode,
+            RouterHttpLog.FormatResponseHeaders(response));
         return response.StatusCode switch
         {
             System.Net.HttpStatusCode.OK or System.Net.HttpStatusCode.NoContent =>
@@ -111,6 +150,7 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
     }
 
     public async Task<IntentRecognitionResult?> RecognizeIntentAsync(
+        AgentProviderRequestContext requestContext,
         string intentAgentId,
         IReadOnlyList<AgentSummary> agents,
         string message,
@@ -124,25 +164,60 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
 
         using HttpRequestMessage request = CreateServiceRequest(
             HttpMethod.Post,
-            $"{endpoint.TrimEnd('/')}{_chatPath.TrimEnd('/')}/intent");
+            $"{endpoint.TrimEnd('/')}{_chatPath.TrimEnd('/')}/intent",
+            requestContext);
         request.Content = new StringContent(
             JsonSerializer.Serialize(new ChatRequest
             {
                 Message = BuildIntentPrompt(message, agents),
                 Context = new Dictionary<string, object>
                 {
-                    ["agentId"] = intentAgentId
+                    ["agentId"] = intentAgentId,
+                    ["llmProfileId"] = requestContext.LlmProfileId
+                        ?? throw new InvalidOperationException(
+                            "LLM profile id is required for intent recognition.")
                 }
             }, JsonOptions),
             Encoding.UTF8,
             "application/json");
+        string requestBody = await request.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        RouterLog.ProviderHttpRequest(
+            _logger,
+            Id,
+            "recognize_intent",
+            request.Method.Method,
+            request.RequestUri?.ToString() ?? string.Empty,
+            RouterHttpLog.FormatRequestHeaders(request));
+        if (_logger.IsEnabled(LogLevel.Debug))
+        {
+            RouterLog.ProviderHttpRequestBody(
+                _logger,
+                Id,
+                "recognize_intent",
+                RouterHttpLog.FormatBody(requestBody));
+        }
         using HttpResponseMessage response = await _httpClient.SendAsync(
             request,
             cancellationToken).ConfigureAwait(false);
+        RouterLog.ProviderHttpResponse(
+            _logger,
+            Id,
+            "recognize_intent",
+            (int)response.StatusCode,
+            RouterHttpLog.FormatResponseHeaders(response));
+        string responseBody = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        if (_logger.IsEnabled(LogLevel.Debug))
+        {
+            RouterLog.ProviderHttpResponseBody(
+                _logger,
+                Id,
+                "recognize_intent",
+                RouterHttpLog.FormatBody(responseBody));
+        }
         response.EnsureSuccessStatusCode();
-        ChatResponse? body = await response.Content.ReadFromJsonAsync<ChatResponse>(
-            JsonOptions,
-            cancellationToken).ConfigureAwait(false);
+        ChatResponse? body = string.IsNullOrWhiteSpace(responseBody)
+            ? null
+            : JsonSerializer.Deserialize<ChatResponse>(responseBody, JsonOptions);
         return ParseIntentResult(body?.Message);
     }
 
@@ -164,9 +239,17 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
 
         string actionSuffix = string.IsNullOrWhiteSpace(action) ? string.Empty : $"/{action}";
         string targetUrl = $"{endpoint.TrimEnd('/')}{_chatPath}{actionSuffix}";
-        return Task.FromResult<AgentForwardingTarget?>(new(
+        AgentForwardingTarget target = new(
             endpoint.TrimEnd('/'),
-            new Uri(targetUrl)));
+            new Uri(targetUrl));
+        RouterLog.ProviderForwardingTargetResolved(
+            _logger,
+            Id,
+            action,
+            target.RequestUri.ToString(),
+            tenantId,
+            conversationId);
+        return Task.FromResult<AgentForwardingTarget?>(target);
     }
 
     public ValueTask ConfigureRequestAsync(

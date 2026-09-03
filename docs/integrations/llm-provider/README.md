@@ -1,122 +1,34 @@
+# LLM Provider
 
-## 概述
+所有生产模型调用通过 `AgentChatClientFactory` 创建 `IChatClient`，支持 OpenAI Chat Completions、OpenAI Responses 与 Anthropic Messages。
 
-所有生产模型调用通过 `AgentChatClientFactory` 创建 `IChatClient`。平台的 `ILlmRegistry` 仍负责 Profile 注册、密钥/端点解析和 Agent 配置引用；不再存在 OpenAIDriver 或 Semantic Kernel 并行引擎。
+配置优先级、输出能力开关和压缩预算见 [模型 Token 限制](TOKEN-LIMITS.md)。
 
-## 支持格式
+## 配置与选择
 
-- OpenAI Chat Completions
-- OpenAI Responses
-- Anthropic Messages
+`LlmProviderProfile` 是租户级独立资源，保存：
 
-函数调用、流式响应、多模态内容和 usage 统一通过 Microsoft.Extensions.AI / MAF 类型进入平台。
+- Model ID
+- Modality (`Text` 或 `Multimodal`；当前多模态只支持图片)
+- Context Tokens (`ContextTokens`，HTTP JSON 为 `contextTokens`)
+- API Format
+- Endpoint
+- Temperature
+- API Key（服务端租户绑定加密存储）
 
-## Usage 语义
+Agent 不再绑定 Provider 或 Model。执行请求携带 `llmProfileId`，`AgentRuntimeResolver` 按已验证的 tenantId 分别加载 Agent 与 LLM Profile，完成资源授权后创建本次执行的 `LlmConfig`。模型上限由 LLM Profile 声明，Agent 可设置默认执行预算，压缩策略来自 Agent 的 `ContextPolicy`。
 
-Provider 经 SDK 返回的 `UsageDetails` 是 Token 用量唯一权威来源。平台只在 input、output、total 三项均存在且有效时生成 `TokenUsage`；缺少任一核心字段时返回 `null`，前端显示“暂不可用”，不使用本地 tokenizer 或字符数估算补齐。`promptTokens`/`completionTokens` 是 input/output 的兼容线名称。
-
-`cachedInputTokens` 与 `reasoningTokens` 是可选细分项，分别属于 Provider 报告的 input/output 子集，不能再次加到 total。`AdditionalCounts` 可能包含请求数、计费单位等非 Token 指标，当前不进入 `TokenUsage`，避免跨 Provider 误合并。
-
-## 关键文件
-
-| 文件 | 职责 |
-|---|---|
-| `Backend/src/OpenAgent.Core/Models/LlmRegistry.cs` | Profile 注册与配置解析 |
-| `Backend/src/OpenAgent.Core/Runtime/Agent/AgentChatClientFactory.cs` | API 格式到 Provider client |
-| `Backend/src/OpenAgent.Core/Runtime/Agent/AgentFactory.cs` | 创建 ChatClientAgent、AgentSession 扩展和函数循环配置 |
-| `Backend/src/OpenAgent.Core/Runtime/Agent/AgentResponseAdapter.cs` | Provider usage 与模型标识映射 |
-
-## 配置解析
-
-`AgentFactory` 创建 AIAgent、`AgentExecutor` 驱动执行；读取 `AgentConfig.Llm`，调用 `ILlmRegistry.ResolveConfig` 合并 Profile 与 Agent 局部覆盖，再传给 `AgentChatClientFactory.Create`。
-
-解析后的 `LlmConfig` 必须有 `Format`、`ModelId`；配置页保存的 `LlmProviderProfile` 不再要求默认 Model ID，Agent 选择 Provider 后填写具体 Model ID。旧 Profile 中的 `ModelId` 只作为历史配置的兼容 fallback。三个云 Provider 都需要 API key，Endpoint 为空时 OpenAI 使用官方默认地址，Anthropic 使用 SDK 默认地址。密钥不得进入日志。
-
-Token 限制的解析优先级固定为：**单次请求 > Agent 默认值 > 模型 Profile**。`LlmProviderProfile.ContextWindowTokens` 与 `MaxOutputTokens` 描述模型能力上限并作为 Agent 未配置时的默认值；Agent 可配置更小的默认值；`ChatRequest` 可在单次调用中覆盖，但任何覆盖都不得超过模型 Profile 上限，且最大输出必须小于有效上下文窗口。非法 Agent 配置返回 `ConfigurationError`，非法请求覆盖返回 `InvalidRequest`，均在 Provider 调用前失败。
-
-`SupportsMaxOutputTokens=false` 表示该 Provider 协议不接受最大输出参数。此时模型 Profile 的输出上限仍用于上下文预算预留，但不会写入 `ChatOptions.MaxOutputTokens`；Agent 或请求若显式要求该参数会提前失败，避免假装已限制输出。
-
-## 格式映射
-
-| ApiFormat | SDK 边界 |
-|---|---|
-| OpenAIChatCompletions | OpenAI Chat client |
-| OpenAIResponses | OpenAI Responses client |
-| AnthropicMessages | MAF Anthropic provider |
-
-## 失败语义
-
-配置缺失或格式不支持在发出网络请求前失败；Provider HTTP、限流、模型和内容策略错误保持原异常进入平台失败路径。权限校验在 client 请求之前完成。
-
-模型上下文窗口配置存在时，运行时按“上下文窗口 - 有效最大输出”计算输入预算，并在每次模型调用前执行安全压缩。模型/Agent/请求配置超出硬能力时不会依赖 Provider 的 400 响应兜底。
-
-## 数据流
+当 Profile 的 Modality 为 `Multimodal` 时，受控大小的 `image/*` 文件会以内联二进制内容发送给模型；文本模型、超出限制的图片或读取失败时只保留 fileId manifest，由文件工具按需读取。默认每张图片最多 4 MiB，每次最多 4 张。
 
 ```text
-AgentConfig.Llm
-  -> ILlmRegistry.ResolveConfig
+AgentRequest(agentId, llmProfileId, tenantId)
+  -> IAgentConfigProvider
+  -> ILlmConfigProvider
+  -> AgentAuthorizationGate
   -> AgentChatClientFactory
-       -> protocol-specific official SDK
-       -> IChatClient
   -> ChatClientAgent
-  -> FunctionInvokingChatClient
 ```
 
-API 格式按协议分支，不共享自研 HTTP body 或 SSE parser。Responses 使用 Responses client；Anthropic 使用 Messages provider；仅明确兼容 Chat Completions 的端点复用 OpenAI Chat client。
+管理 API 对 API Key 只写不读：GET/PUT 响应均返回空 Key；编辑时空 Key 保留旧值；连接测试按租户和 Profile ID 读取已保存的真实 Key。密钥不得进入前端状态、日志或错误响应。
 
-## 配置热更新
-
-`AgentFactory` 不缓存 `AIAgent`。每次调用读取当前 Agent 配置并创建轻量 `ChatClientAgent`，从而与现有 ConfigProvider 热更新保持一致。
-
-## 能力边界
-
-平台将图片/PDF/文本、工具 Schema 和历史转换为 MEAI 内容。具体模型是否支持视觉、PDF、函数或 reasoning 由 Provider 返回明确结果；工厂不伪造能力。
-
-## 已完成
-
-- [x] LLM Profile 注册、解析和 Agent 覆盖。
-- [x] 生产调用统一到 MAF。
-- [x] 三种 ApiFormat 的独立 client 构造。
-- [x] OpenAI Responses 使用 Responses client。
-- [x] Anthropic Messages 官方 SDK 适配。
-- [x] 真流式、函数调用、多模态和 usage 统一映射。
-- [x] 删除自研 OpenAI HTTP/SSE/重试实现和 Semantic Kernel 引擎。
-
-## 后续维护
-
-- [ ] Provider SDK 升级时运行在线合约测试。
-- [ ] Anthropic 集成稳定版发布后替换预览包。
-
-## Tests
-
-
-旧 Engine DTO 和委托替身测试已失效。新测试应直接使用 fake `IChatClient` 验证：
-
-- `AgentChatClientFactory` 的 Provider 构造；
-- `ChatClientAgent` 非流式/流式调用；
-- `CapabilityToolFactory` 返回原生 `AITool`；
-- `PlatformChatHistory` 的 MAF history 生命周期；
-- `CompactionProvider` 策略选择；
-- `AgentSession` 内的函数循环、usage 和失败传播。
-
-真实 Provider、Redis、MCP E2E 与本地替身分开报告。
-
-## 配置约定
-
-- Provider Profile 保存共享 endpoint/key/format，Agent 保存 provider 引用、model 和必要覆盖。
-- 禁止日志输出 API key、Authorization header、附件字节和完整提示内容。
-- 每次执行把模型能力、Agent 默认、请求覆盖、有效值以及输出参数是否实际应用写入用户消息 metadata；Provider 返回的实际 `TokenUsage` 仍只写入 assistant 消息。
-- 新 Provider 格式必须扩展 `ApiFormat`、工厂、RedisTool 类型和测试。
-
-## 协议约定
-
-- 优先使用协议所有者或 MAF 官方集成。
-- 不把 Responses、Messages、generateContent 伪装成 Chat Completions。
-- OpenAI-compatible 只用于明确兼容其请求与流事件语义的服务。
-- Provider 错误保留原始异常链，不返回虚假的成功回答。
-
-## 版本约定
-
-- MAF 稳定包保持同一版本。
-- Anthropic 预览包与 MAF 稳定版本成组升级。
-- SDK 升级必须验证构造、函数循环、流式、多模态和 usage。
+Provider 返回的 `UsageDetails` 是 Token 用量唯一权威来源；缺失核心字段时不做本地估算。

@@ -43,12 +43,17 @@ public sealed class AgentExecutor
             request,
             user,
             cancellationToken).ConfigureAwait(false);
-        AgentRuntimeProfile configuredProfile = await _runtime.ResolveAsync(
+        AgentRuntimeProfile profile = await _runtime.ResolveAsync(
             agentId,
+            RequireLlmProfileId(request),
             user,
             cancellationToken).ConfigureAwait(false);
-        AgentRuntimeProfile profile = ModelTokenLimitResolver.Apply(configuredProfile, request);
-        AgentRequest executionRequest = CopyWithResolvedValues(request, agentId, traceId);
+        profile = ModelTokenLimitResolver.Apply(profile, request);
+        AgentRequest executionRequest = CopyWithResolvedValues(
+            request,
+            agentId,
+            traceId,
+            ResolveConversationId(request));
         if (executionRequest.FileIds.Count > 0)
         {
             await _agents.EnsureConversationAsync(
@@ -69,9 +74,7 @@ public sealed class AgentExecutor
             resolvedFiles.Files,
             cancellationToken).ConfigureAwait(false);
         AgentSession session = await scope.Agent.CreateSessionAsync(cancellationToken).ConfigureAwait(false);
-        ChatMessage userMessage = AgentMessageAdapter.CreateUser(
-            executionRequest.Query,
-            resolvedFiles.Files);
+        ChatMessage userMessage = await scope.CreateUserMessageAsync(cancellationToken).ConfigureAwait(false);
         Microsoft.Agents.AI.AgentResponse response = await scope.Agent.RunAsync(
             userMessage,
             session,
@@ -105,12 +108,17 @@ public sealed class AgentExecutor
             request,
             user,
             cancellationToken).ConfigureAwait(false);
-        AgentRuntimeProfile configuredProfile = await _runtime.ResolveAsync(
+        AgentRuntimeProfile profile = await _runtime.ResolveAsync(
             agentId,
+            RequireLlmProfileId(request),
             user,
             cancellationToken).ConfigureAwait(false);
-        AgentRuntimeProfile profile = ModelTokenLimitResolver.Apply(configuredProfile, request);
-        AgentRequest executionRequest = CopyWithResolvedValues(request, agentId, traceId);
+        profile = ModelTokenLimitResolver.Apply(profile, request);
+        AgentRequest executionRequest = CopyWithResolvedValues(
+            request,
+            agentId,
+            traceId,
+            ResolveConversationId(request));
         if (executionRequest.FileIds.Count > 0)
         {
             await _agents.EnsureConversationAsync(
@@ -131,9 +139,7 @@ public sealed class AgentExecutor
             resolvedFiles.Files,
             cancellationToken).ConfigureAwait(false);
         AgentSession session = await scope.Agent.CreateSessionAsync(cancellationToken).ConfigureAwait(false);
-        ChatMessage userMessage = AgentMessageAdapter.CreateUser(
-            executionRequest.Query,
-            resolvedFiles.Files);
+        ChatMessage userMessage = await scope.CreateUserMessageAsync(cancellationToken).ConfigureAwait(false);
         HashSet<string> announcedToolCalls = new(StringComparer.Ordinal);
         TokenUsage? usage = null;
         string modelId = profile.Model.ModelId;
@@ -165,11 +171,22 @@ public sealed class AgentExecutor
                 }
             }
 
+            // Emit tool results immediately so clients do not need to reload history.
+            foreach (FunctionResultContent result in contents.OfType<FunctionResultContent>())
+            {
+                yield return new AgentStreamEvent
+                {
+                    Type = AgentStreamEventType.ToolResult,
+                    ToolCallId = result.CallId,
+                    Content = result.Result?.ToString()
+                };
+            }
+
             foreach (TextReasoningContent reasoning in contents.OfType<TextReasoningContent>())
             {
                 if (!string.IsNullOrEmpty(reasoning.Text))
                 {
-                    // 累积思考内容，保证流式中止（暂停）时也能把思考过程持久化进会话历史。
+                    // Preserve partial reasoning when a streaming request is interrupted.
                     scope.AppendPartialReasoning(reasoning.Text);
                     yield return new AgentStreamEvent
                     {
@@ -234,18 +251,41 @@ public sealed class AgentExecutor
     private static AgentRequest CopyWithResolvedValues(
         AgentRequest request,
         string agentId,
-        string traceId) => new()
+        string traceId,
+        string? conversationId) => new()
         {
             Query = request.Query,
             AgentId = agentId,
-            ConversationId = request.ConversationId,
+            LlmProfileId = request.LlmProfileId,
+            ContextWindowTokens = request.ContextWindowTokens,
+            MaxOutputTokens = request.MaxOutputTokens,
+            ConversationId = conversationId,
             ConversationType = request.ConversationType,
             TraceId = traceId,
             ClientType = request.ClientType,
             IdempotencyKey = request.IdempotencyKey,
-            ContextWindowTokens = request.ContextWindowTokens,
-            MaxOutputTokens = request.MaxOutputTokens,
             ExternalContext = request.ExternalContext,
             FileIds = request.FileIds
         };
+
+    private static string RequireLlmProfileId(AgentRequest request) =>
+        !string.IsNullOrWhiteSpace(request.LlmProfileId)
+            ? request.LlmProfileId
+            : throw new AgentException(
+                AgentErrorCode.MissingRequiredField,
+                "LlmProfileId is required");
+
+    private static string? ResolveConversationId(AgentRequest request)
+    {
+        if (!string.IsNullOrWhiteSpace(request.ConversationId))
+        {
+            return request.ConversationId;
+        }
+
+        // Direct callers may omit a conversation id on the first request. Files
+        // still need a conversation-scoped reference before they can be read.
+        return request.FileIds.Count > 0
+            ? Guid.NewGuid().ToString("N")
+            : null;
+    }
 }

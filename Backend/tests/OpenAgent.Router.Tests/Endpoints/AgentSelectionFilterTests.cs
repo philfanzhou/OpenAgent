@@ -49,6 +49,23 @@ public class AgentSelectionFilterTests
     }
 
     [Fact]
+    public async Task InvokeAsync_GinaAgentHeader_IsUsedForExplicitSelection()
+    {
+        var selectionService = new StubSelectionService(
+            new AgentSelection("general", "gina"));
+        AgentSelectionFilter filter = CreateFilter(selectionService);
+        DefaultHttpContext context = CreateContext("{\"message\":\"hello\"}");
+        context.Request.Headers["X-Gina-Agent-Id"] = "general";
+
+        await filter.InvokeAsync(
+            new DefaultEndpointFilterInvocationContext(context),
+            _ => ValueTask.FromResult<object?>(Results.Ok()));
+
+        Assert.Equal("general", selectionService.ExplicitAgentId);
+        Assert.Equal("general", context.Request.Headers["X-Agent-Id"]);
+    }
+
+    [Fact]
     public async Task InvokeAsync_ConversationHeader_IsPassedToSelection()
     {
         var selectionService = new StubSelectionService(
@@ -131,7 +148,8 @@ public class AgentSelectionFilterTests
             string? conversationId,
             string? explicitAgentId,
             CancellationToken cancellationToken,
-            string? authenticationToken = null)
+            string? authenticationToken = null,
+            string? llmProfileId = null)
         {
             Message = message;
             ConversationId = conversationId;

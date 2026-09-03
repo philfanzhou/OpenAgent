@@ -25,6 +25,16 @@ public class ContractSerializationTests
     }
 
     [Fact]
+    public void LlmTlsRelaxation_IsNotPartOfPersistedContracts()
+    {
+        string configJson = JsonSerializer.Serialize(new LlmConfig(), JsonOptions);
+        string profileJson = JsonSerializer.Serialize(new LlmProviderProfile(), JsonOptions);
+
+        Assert.DoesNotContain("AllowInsecureTls", configJson, StringComparison.Ordinal);
+        Assert.DoesNotContain("AllowInsecureTls", profileJson, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AgentRequest_FileIds_AreNotSerialized()
     {
         AgentRequest request = new()
@@ -52,7 +62,7 @@ public class ContractSerializationTests
     {
         LlmConfig config = new()
         {
-            ContextWindowTokens = 64_000,
+            ContextTokens = 64_000,
             MaxOutputTokens = 4_000,
             TokenCapabilities = new LlmTokenCapabilities
             {
@@ -63,7 +73,7 @@ public class ContractSerializationTests
 
         string json = JsonSerializer.Serialize(config, JsonOptions);
 
-        Assert.Contains("\"contextWindowTokens\":64000", json, StringComparison.Ordinal);
+        Assert.Contains("\"contextTokens\":64000", json, StringComparison.Ordinal);
         Assert.Contains("\"maxOutputTokens\":4000", json, StringComparison.Ordinal);
         Assert.DoesNotContain("tokenCapabilities", json, StringComparison.OrdinalIgnoreCase);
     }

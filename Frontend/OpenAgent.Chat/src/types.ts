@@ -3,18 +3,18 @@ export type ConnectionMode = 'router' | 'engine'
 export const AUTO_AGENT_ID = '__auto__'
 
 export interface AgentSummary {
+  tenantId: string
   agentId: string
   name: string
   description: string
   status: number
   currentVersion: string
-  apiFormat: string
-  llmProvider?: string
-  llmModel?: string
 }
 
 export interface CurrentUserContext {
   userId: string
+  username?: string
+  email?: string
   tenantId?: string
   roles: string[]
   groups: string[]
@@ -59,6 +59,8 @@ export interface MessageFile {
   fileName: string
   mediaType: string
   length: number
+  /** 对象存储键，用于 markdown 预览时相对解析同批 S3 图片。 */
+  objectKey?: string
   previewUrl?: string
   previewText?: string
 }
@@ -71,6 +73,7 @@ export interface FileAsset {
   mediaType: string
   length: number
   sha256: string
+  objectKey?: string
   source: 'UserUpload' | 'Agent' | 'Skill' | number
   state: 'Pending' | 'Ready' | 'Failed' | number
   createdAt: string
@@ -163,28 +166,18 @@ export interface SkillsConfig {
   instances: SkillInstanceConfig[]
 }
 
-export interface LlmConfig {
-  provider: string
-  format: 'OpenAIChatCompletions' | 'OpenAIResponses' | 'AnthropicMessages' | string
-  modelId: string
-  apiKey: string
-  endpoint: string
-  temperature: number
-  contextWindowTokens?: number | null
-  maxOutputTokens?: number | null
-}
-
 export interface LlmProviderProfile {
   id: string
   name: string
   format: 'OpenAIChatCompletions' | 'OpenAIResponses' | 'AnthropicMessages' | string
-  modelId?: string | null
+  modelId: string
+  contextTokens: number
+  maxOutputTokens?: number | null
+  supportsMaxOutputTokens?: boolean
   endpoint: string
   apiKey: string
   temperature: number
-  contextWindowTokens?: number | null
-  maxOutputTokens?: number | null
-  supportsMaxOutputTokens: boolean
+  modality: 'Text' | 'Multimodal' | string
 }
 
 export interface LlmTestResult {
@@ -204,6 +197,7 @@ export interface RagInstanceConfig {
   type: string
   collectionName: string
   apiEndpoint: string
+  apiKeySecretRef?: string
   apiKey?: string
   adapterConfig?: Record<string, string> | null
   allowedUserIds?: string[]
@@ -230,6 +224,7 @@ export interface RagTestResult {
 export interface AuthConfig {
   mode: 'Basic' | 'JwtBearer' | string
   development: boolean
+  keycloak?: { enabled: boolean }
   password: { enabled: boolean; endpoint: string }
   anonymous: { enabled: boolean }
   oidc?: {
@@ -255,11 +250,12 @@ export interface AgentConfigEntity {
   currentVersion: string
   config: {
     instructions: string
-    llm: LlmConfig
     mcp: { enabledServerIds?: string[]; servers: McpServerConfig[] }
     rag: RagConfig
     skills: SkillsConfig
     maxTurns: number
+    contextWindowTokens?: number | null
+    maxOutputTokens?: number | null
   }
 }
 

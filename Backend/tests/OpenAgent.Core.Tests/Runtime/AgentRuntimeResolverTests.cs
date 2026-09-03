@@ -1,8 +1,6 @@
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Conversation;
-using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
-using OpenAgent.Core.Models;
 using OpenAgent.Core.Runtime.Agent;
 using OpenAgent.Core.Security;
 using Xunit;
@@ -12,189 +10,129 @@ namespace OpenAgent.Core.Tests.Runtime;
 public sealed class AgentRuntimeResolverTests
 {
     [Fact]
-    public async Task ResolveAsync_ReturnsAuthorizedProfileAndConversationPolicy()
+    public async Task ResolveAsync_CombinesAgentWithSelectedTenantModel()
     {
         AgentConfig config = new()
         {
-            Llm = new LlmConfig
-            {
-                Provider = "profile-1",
-                ModelId = "model-1",
-                Temperature = 0.2
-            },
-            ContextPolicy = new ContextPolicy
-            {
-                MaxTokens = 2_000
-            },
+            ContextPolicy = new ContextPolicy { PreserveRecentTurns = 4 },
             MaxTurns = 8
         };
-        StaticConfigProvider configs = new(config);
-        LlmRegistry models = new();
-        models.Register(new LlmProviderProfile
-        {
-            TenantId = "tenant-1",
-            Id = "profile-1",
-            Endpoint = "https://llm.example.test",
-            ApiKey = "test-key"
-        });
-        AgentRuntimeResolver resolver = new(
-            configs,
-            new AgentAuthorizationGate(
-                new AllowAllAgentAuthorizationService(),
-                models));
+        AgentRuntimeResolver resolver = CreateResolver(config, Profile());
 
         AgentRuntimeProfile result = await resolver.ResolveAsync(
-            "agent-1",
-            User(),
-            CancellationToken.None);
+            "agent-1", "profile-1", User(), CancellationToken.None);
 
-        Assert.Equal("agent-1", result.AgentId);
         Assert.Same(config, result.Config);
-        Assert.Same(config.ContextPolicy, result.Config.ContextPolicy);
-        Assert.Equal("https://llm.example.test", result.Model.Endpoint);
+        Assert.Equal("model-1", result.Model.ModelId);
         Assert.Equal("test-key", result.Model.ApiKey);
+        Assert.Equal(ModelModality.Multimodal, result.Model.Modality);
+        Assert.Equal(4, result.Config.ContextPolicy?.PreserveRecentTurns);
     }
 
     [Fact]
-    public async Task ResolveAsync_InvalidMaxTurns_ThrowsBeforeAgentCreation()
+    public async Task ResolveAsync_MissingSelectedModel_Throws()
     {
-        AgentConfig config = new()
-        {
-            MaxTurns = -1,
-            Llm = new LlmConfig { Provider = "profile-1" }
-        };
-        LlmRegistry models = new();
-        models.Register(new LlmProviderProfile
-        {
-            TenantId = "tenant-1",
-            Id = "profile-1",
-            Endpoint = "https://llm.example.test",
-            ApiKey = "test-key"
-        });
-        AgentRuntimeResolver resolver = new(
-            new StaticConfigProvider(config),
-            new AgentAuthorizationGate(
-                new AllowAllAgentAuthorizationService(),
-                models));
+        AgentRuntimeResolver resolver = CreateResolver(new AgentConfig(), null);
 
         InvalidOperationException exception = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => resolver.ResolveAsync("agent-1", User(), CancellationToken.None));
-
-        Assert.Contains("MaxTurns", exception.Message, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task ResolveAsync_MissingConfig_Throws()
-    {
-        AgentRuntimeResolver resolver = new(
-            new StaticConfigProvider(null),
-            new AgentAuthorizationGate(
-                new AllowAllAgentAuthorizationService(),
-                new LlmRegistry()));
-
-        InvalidOperationException exception = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => resolver.ResolveAsync("missing", User(), CancellationToken.None));
+            () => resolver.ResolveAsync("agent-1", "missing", User(), CancellationToken.None));
 
         Assert.Contains("missing", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task ResolveAsync_AgentTokenDefaultExceedsModelCapability_ThrowsConfigurationError()
+    public async Task ResolveAsync_InvalidMaxTurns_Throws()
     {
-        AgentConfig config = new()
-        {
-            Llm = new LlmConfig
-            {
-                Provider = "profile-1",
-                ContextWindowTokens = 129_000
-            }
-        };
-        AgentRuntimeResolver resolver = CreateResolver(config, new LlmProviderProfile
-        {
-            Id = "profile-1",
-            TenantId = "tenant-1",
-            Endpoint = "https://llm.example.test",
-            ApiKey = "test-key",
-            ContextWindowTokens = 128_000,
-            MaxOutputTokens = 16_000
-        });
-
-        AgentException exception = await Assert.ThrowsAsync<AgentException>(() =>
-            resolver.ResolveAsync("agent-1", User(), CancellationToken.None));
-
-        Assert.Equal(AgentErrorCode.ConfigurationError, exception.ErrorCode);
-        Assert.Contains("exceeds model capability", exception.Message, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
-    public async Task ResolveAsync_ProviderDoesNotSupportAgentOutputDefault_ThrowsConfigurationError()
-    {
-        AgentConfig config = new()
-        {
-            Llm = new LlmConfig
-            {
-                Provider = "profile-1",
-                MaxOutputTokens = 4_000
-            }
-        };
-        AgentRuntimeResolver resolver = CreateResolver(config, new LlmProviderProfile
-        {
-            Id = "profile-1",
-            TenantId = "tenant-1",
-            Endpoint = "https://llm.example.test",
-            ApiKey = "test-key",
-            ContextWindowTokens = 128_000,
-            MaxOutputTokens = 16_000,
-            SupportsMaxOutputTokens = false
-        });
-
-        AgentException exception = await Assert.ThrowsAsync<AgentException>(() =>
-            resolver.ResolveAsync("agent-1", User(), CancellationToken.None));
-
-        Assert.Equal(AgentErrorCode.ConfigurationError, exception.ErrorCode);
-        Assert.Contains("does not support", exception.Message, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
-    public async Task ResolveAsync_SkillBindingOwnedByAnotherTenant_HidesAgentConfiguration()
-    {
-        var config = new AgentConfig
-        {
-            TenantId = "tenant-a",
-            Skills = new SkillsConfig { EnabledSkills = ["lookup"] }
-        };
-        AgentRuntimeResolver resolver = new(
-            new StaticConfigProvider(config),
-            new AgentAuthorizationGate(
-                new AllowAllAgentAuthorizationService(),
-                new LlmRegistry()));
+        AgentRuntimeResolver resolver = CreateResolver(new AgentConfig { MaxTurns = -1 }, Profile());
 
         InvalidOperationException exception = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => resolver.ResolveAsync(
-                "agent-a",
-                new AgentUserContext { UserId = "user-b", TenantId = "tenant-b" },
-                CancellationToken.None));
-        Assert.Contains("agent-a", exception.Message, StringComparison.Ordinal);
+            () => resolver.ResolveAsync("agent-1", "profile-1", User(), CancellationToken.None));
+
+        Assert.Contains("MaxTurns", exception.Message, StringComparison.Ordinal);
     }
 
-    private static AgentUserContext User() => new()
+    [Fact]
+    public async Task ResolveAsync_DifferentTenant_DoesNotExposeAgent()
     {
-        UserId = "user-1",
-        TenantId = "tenant-1"
-    };
+        AgentRuntimeResolver resolver = CreateResolver(new AgentConfig(), Profile());
+        AgentUserContext foreignUser = new() { UserId = "user-2", TenantId = "tenant-2" };
+
+        InvalidOperationException exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => resolver.ResolveAsync("agent-1", "profile-1", foreignUser, CancellationToken.None));
+
+        Assert.Contains("agent-1", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(null, null, 128000, 16000)]
+    [InlineData(64000, 4000, 64000, 4000)]
+    [InlineData(null, 4000, 128000, 4000)]
+    public async Task ResolveAsync_AppliesAgentDefaultsWithoutChangingSelectedProfile(
+        int? context, int? output, int expectedContext, int expectedOutput)
+    {
+        LlmProviderProfile model = Profile();
+        model.MaxOutputTokens = 16000;
+        AgentRuntimeResolver resolver = CreateResolver(new AgentConfig
+        {
+            ContextWindowTokens = context,
+            MaxOutputTokens = output
+        }, model);
+
+        AgentRuntimeProfile result = await resolver.ResolveAsync("agent-1", "profile-1", User());
+
+        Assert.Equal(expectedContext, result.Model.ContextTokens);
+        Assert.Equal(expectedOutput, result.Model.MaxOutputTokens);
+        Assert.Equal(128000, result.Model.TokenCapabilities.ContextWindowTokens);
+        Assert.Equal(16000, result.Model.TokenCapabilities.MaxOutputTokens);
+        Assert.Equal(128000, model.ContextTokens);
+        Assert.Equal(16000, model.MaxOutputTokens);
+        Assert.Equal(ModelModality.Multimodal, result.Model.Modality);
+    }
+
+    [Theory]
+    [InlineData(0, null, true)]
+    [InlineData(null, -1, true)]
+    [InlineData(128001, null, true)]
+    [InlineData(null, 16001, true)]
+    [InlineData(16000, null, true)]
+    [InlineData(null, 4000, false)]
+    public async Task ResolveAsync_InvalidAgentDefaults_ThrowsConfigurationError(
+        int? context, int? output, bool supported)
+    {
+        LlmProviderProfile model = Profile();
+        model.MaxOutputTokens = 16000;
+        model.SupportsMaxOutputTokens = supported;
+        AgentRuntimeResolver resolver = CreateResolver(new AgentConfig
+        {
+            ContextWindowTokens = context,
+            MaxOutputTokens = output
+        }, model);
+
+        AgentException exception = await Assert.ThrowsAsync<AgentException>(() =>
+            resolver.ResolveAsync("agent-1", "profile-1", User()));
+
+        Assert.Equal(OpenAgent.Contracts.Requests.AgentErrorCode.ConfigurationError, exception.ErrorCode);
+    }
 
     private static AgentRuntimeResolver CreateResolver(
-        AgentConfig config,
-        LlmProviderProfile profile)
+        AgentConfig? config,
+        LlmProviderProfile? profile) => new(
+        new StaticConfigProvider(config),
+        new StaticLlmConfigProvider(profile),
+        new AgentAuthorizationGate(new AllowAllAgentAuthorizationService()));
+
+    private static LlmProviderProfile Profile() => new()
     {
-        LlmRegistry models = new();
-        models.Register(profile);
-        return new AgentRuntimeResolver(
-            new StaticConfigProvider(config),
-            new AgentAuthorizationGate(
-                new AllowAllAgentAuthorizationService(),
-                models));
-    }
+        TenantId = "tenant-1",
+        Id = "profile-1",
+        ModelId = "model-1",
+        ContextTokens = 128_000,
+        Endpoint = "https://llm.example.test",
+        ApiKey = "test-key",
+        Modality = ModelModality.Multimodal
+    };
+
+    private static AgentUserContext User() => new() { UserId = "user-1", TenantId = "tenant-1" };
 
     private sealed class StaticConfigProvider : IAgentConfigProvider
     {
@@ -203,37 +141,38 @@ public sealed class AgentRuntimeResolverTests
         public StaticConfigProvider(AgentConfig? config)
         {
             _config = config;
-            if (_config != null)
-            {
-                _config.TenantId = "tenant-1";
-            }
+            if (_config != null) _config.TenantId = "tenant-1";
         }
 
-        public Task<AgentConfig> GetConfigAsync(CancellationToken cancellationToken = default) =>
-            Task.FromResult(_config ?? new AgentConfig());
-
-        public Task<AgentConfig?> GetConfigAsync(
-            string agentId,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult(_config);
-
         public Task<AgentConfig?> GetConfigAsync(
             string agentId,
             string tenantId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(string.Equals(tenantId, _config?.TenantId, StringComparison.Ordinal)
+                ? _config
+                : null);
+
+        public Task<IReadOnlyList<AgentSummary>> ListAgentsAsync(
+            string tenantId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<AgentSummary>>([]);
+    }
+
+    private sealed class StaticLlmConfigProvider(LlmProviderProfile? profile) : ILlmConfigProvider
+    {
+        public Task<LlmProviderProfile?> GetAsync(
+            string tenantId,
+            string profileId,
             CancellationToken cancellationToken = default) =>
             Task.FromResult(
-                _config != null
-                && string.Equals(_config.TenantId, tenantId, StringComparison.Ordinal)
-                    ? _config
+                string.Equals(tenantId, profile?.TenantId, StringComparison.Ordinal)
+                && string.Equals(profileId, profile!.Id, StringComparison.Ordinal)
+                    ? profile
                     : null);
 
-        public Task<IReadOnlyList<AgentSummary>> ListAgentsAsync(
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyList<AgentSummary>>([]);
-
-        public Task<IReadOnlyList<AgentSummary>> ListAgentsAsync(
+        public Task<IReadOnlyList<LlmProviderProfile>> ListAsync(
             string tenantId,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyList<AgentSummary>>([]);
+            Task.FromResult<IReadOnlyList<LlmProviderProfile>>([]);
     }
 }

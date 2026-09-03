@@ -27,6 +27,8 @@ internal static class AgentEndpointRequestMapper
             Query = request.Message,
             AgentId = ReadContextValue(request.Context, "agentId")
                 ?? context.Request.Headers["X-Agent-Id"].FirstOrDefault(),
+            LlmProfileId = ReadContextValue(request.Context, "llmProfileId")
+                ?? context.Request.Headers["X-OpenAgent-Llm-Profile-Id"].FirstOrDefault(),
             ConversationId = conversationId,
             ConversationType = ReadContextEnum(
                 request.Context,
@@ -82,6 +84,7 @@ internal static class AgentEndpointRequestMapper
 
     private static bool IsReservedChatContextKey(string key) =>
         key.Equals("agentId", StringComparison.OrdinalIgnoreCase)
+        || key.Equals("llmProfileId", StringComparison.OrdinalIgnoreCase)
         || key.Equals("conversationId", StringComparison.OrdinalIgnoreCase)
         || key.Equals("conversationType", StringComparison.OrdinalIgnoreCase)
         || key.Equals("clientType", StringComparison.OrdinalIgnoreCase)

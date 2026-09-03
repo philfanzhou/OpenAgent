@@ -24,8 +24,11 @@ public sealed class ModelTokenLimitResolverTests
             MaxOutputTokens = 8_000
         });
 
-        Assert.Equal(96_000, result.Model.ContextWindowTokens);
+        Assert.Equal(96_000, result.Model.ContextTokens);
         Assert.Equal(8_000, result.Model.MaxOutputTokens);
+        Assert.Equal(64_000, profile.Model.ContextTokens);
+        Assert.Equal(4_000, profile.Model.MaxOutputTokens);
+        Assert.Equal(ModelModality.Multimodal, result.Model.Modality);
     }
 
     [Theory]
@@ -108,16 +111,14 @@ public sealed class ModelTokenLimitResolverTests
             AgentId = "agent-1",
             Config = new AgentConfig
             {
-                Llm = new LlmConfig
-                {
-                    ContextWindowTokens = agentContext,
-                    MaxOutputTokens = agentOutput
-                }
+                ContextWindowTokens = agentContext,
+                MaxOutputTokens = agentOutput
             },
             Model = new LlmConfig
             {
                 ModelId = "model-1",
-                ContextWindowTokens = agentContext,
+                Modality = ModelModality.Multimodal,
+                ContextTokens = agentContext,
                 MaxOutputTokens = agentOutput,
                 TokenCapabilities = new LlmTokenCapabilities
                 {

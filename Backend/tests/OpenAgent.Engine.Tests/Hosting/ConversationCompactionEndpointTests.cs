@@ -36,6 +36,7 @@ public sealed class ConversationCompactionEndpointTests
             compaction,
             context,
             "conversation-1",
+            "profile-1",
             CancellationToken.None);
 
         int? status = result is Microsoft.AspNetCore.Http.HttpResults.ForbidHttpResult
@@ -66,6 +67,7 @@ public sealed class ConversationCompactionEndpointTests
         public Task<ContextSummary> CompactAsync(
             string tenantId,
             string conversationId,
+            string llmProfileId,
             IAgentUserContext user,
             CancellationToken cancellationToken = default)
         {

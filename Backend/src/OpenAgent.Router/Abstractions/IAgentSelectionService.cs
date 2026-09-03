@@ -9,5 +9,6 @@ internal interface IAgentSelectionService
         string? conversationId,
         string? explicitAgentId,
         CancellationToken cancellationToken,
-        string? authenticationToken = null);
+        string? authenticationToken = null,
+        string? llmProfileId = null);
 }

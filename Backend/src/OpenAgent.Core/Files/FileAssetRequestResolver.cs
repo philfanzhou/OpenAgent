@@ -20,7 +20,11 @@ internal sealed class FileAssetRequestResolver
     {
         if (request.FileIds.Count == 0)
         {
-            return new ResolvedFileRequest { Request = request, Files = Array.Empty<FileAssetContent>() };
+            return new ResolvedFileRequest
+            {
+                Request = request,
+                Files = Array.Empty<FileAsset>()
+            };
         }
 
         FileAssetScope scope = new()
@@ -30,13 +34,22 @@ internal sealed class FileAssetRequestResolver
             ConversationId = request.ConversationId
         };
         await _files.EnsureReferencesAsync(request.FileIds, scope, cancellationToken).ConfigureAwait(false);
-        List<FileAssetContent> files = [];
+        List<FileAsset> files = [];
         foreach (string fileId in request.FileIds.Distinct(StringComparer.Ordinal))
         {
-            FileAssetContent content = await _files.ReadAsync(fileId, scope, cancellationToken).ConfigureAwait(false);
-            files.Add(content);
+            FileAsset? asset = await _files.GetReferencedAsync(fileId, scope, cancellationToken).ConfigureAwait(false);
+            if (asset == null)
+            {
+                throw new AgentException(AgentErrorCode.InvalidRequest, $"File '{fileId}' was not found.");
+            }
+
+            files.Add(asset);
         }
 
-        return new ResolvedFileRequest { Request = request, Files = files.AsReadOnly() };
+        return new ResolvedFileRequest
+        {
+            Request = request,
+            Files = files.AsReadOnly()
+        };
     }
 }

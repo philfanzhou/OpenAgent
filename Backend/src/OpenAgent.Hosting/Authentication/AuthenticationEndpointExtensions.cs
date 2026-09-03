@@ -23,6 +23,10 @@ public static class AuthenticationEndpointExtensions
         {
             mode = options.Mode.ToString(),
             development = environment.IsDevelopment(),
+            keycloak = new
+            {
+                enabled = options.EnableKeycloak
+            },
             password = new
             {
                 enabled = environment.IsDevelopment() && options.Mode == AgentAuthenticationMode.Basic,
@@ -40,7 +44,9 @@ public static class AuthenticationEndpointExtensions
                     authority = options.Authority,
                     clientId = options.ClientId,
                     audience = options.Audience,
-                    scopes = options.Scopes
+                    scopes = options.Scopes.Length == 0
+                        ? ["openid", "profile"]
+                        : options.Scopes
                 }
                 : null
         })).AllowAnonymous();

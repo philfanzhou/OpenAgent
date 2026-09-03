@@ -6,6 +6,8 @@ import {
   AUTH_FAILURE_EVENT,
   clearAuthentication,
   getAccessToken,
+  getAccessTokenExpiresAt,
+  getRefreshToken,
   getConnectionMode,
   getEngineBaseUrl,
   getRouterBaseUrl,
@@ -18,10 +20,13 @@ import {
 } from '../api'
 import {
   beginOidcLogin,
+  buildOidcLogoutUrl,
   cleanAuthorizationCallbackUrl,
   clearAuthState,
   completeOidcLogin,
   LOGIN_HASH,
+  markReauthenticationRequired,
+  refreshOidcSession,
   sanitizeReturnHash,
   WORKSPACE_HASH,
 } from '../auth'
@@ -49,6 +54,8 @@ export function useAuthentication(options: AuthenticationOptions) {
   const authError = ref('')
   const authReason = ref('')
   const authReturnHash = ref(sanitizeReturnHash(window.location.hash))
+  let renewTimer: number | null = null
+  let renewInFlight: Promise<boolean> | null = null
 
   const activeEndpointUrl = computed(() => connectionMode.value === 'router' ? routerUrl.value : engineUrl.value)
   const activeEndpointLabel = computed(() => connectionMode.value === 'router' ? 'Router' : 'Engine')
@@ -69,11 +76,67 @@ export function useAuthentication(options: AuthenticationOptions) {
     statusText.value = '未连接'
   }
 
+  function clearRenewTimer(): void {
+    if (renewTimer !== null) {
+      window.clearTimeout(renewTimer)
+      renewTimer = null
+    }
+  }
+
+  function scheduleSilentRenew(): void {
+    clearRenewTimer()
+    if (authConfig.value?.mode !== 'JwtBearer' || !getRefreshToken()) return
+
+    const expiresAt = getAccessTokenExpiresAt()
+    const delay = expiresAt > 0
+      ? Math.max(5_000, expiresAt - Date.now() - 60_000)
+      : 5 * 60_000
+    renewTimer = window.setTimeout(() => {
+      void runScheduledRenew()
+    }, delay)
+  }
+
+  async function runScheduledRenew(): Promise<void> {
+    const renewed = await renewAccessToken()
+    if (renewed) return
+
+    const expiresAt = getAccessTokenExpiresAt()
+    if (expiresAt === 0 || expiresAt > Date.now()) {
+      scheduleSilentRenew()
+      return
+    }
+
+    clearAuthState()
+    showLogin('登录已过期，请重新登录。')
+  }
+
+  async function renewAccessToken(): Promise<boolean> {
+    if (renewInFlight) return renewInFlight
+    renewInFlight = (async () => {
+      try {
+        const config = authConfig.value
+        if (!config) return false
+        const renewed = await refreshOidcSession(config)
+        if (renewed) {
+          token.value = getAccessToken()
+          scheduleSilentRenew()
+        }
+        return renewed
+      } catch {
+        return false
+      } finally {
+        renewInFlight = null
+      }
+    })()
+    return renewInFlight
+  }
+
   function showLogin(reason = ''): void {
     if (window.location.hash && window.location.hash !== LOGIN_HASH && window.location.hash !== '#/forbidden') {
       authReturnHash.value = sanitizeReturnHash(window.location.hash)
     }
     resetSessionWorkspace()
+    clearRenewTimer()
     authView.value = 'login'
     authReason.value = reason
     window.history.replaceState(null, document.title, `${window.location.pathname}${LOGIN_HASH}`)
@@ -88,6 +151,7 @@ export function useAuthentication(options: AuthenticationOptions) {
       setTenantId(user.tenantId)
     }
     token.value = getAccessToken()
+    scheduleSilentRenew()
     authError.value = ''
     authReason.value = ''
     authView.value = 'workspace'
@@ -164,8 +228,10 @@ export function useAuthentication(options: AuthenticationOptions) {
     authError.value = ''
     try {
       await beginOidcLogin(authConfig.value, authReturnHash.value)
-    } catch {
-      authError.value = '无法启动企业登录，请检查身份提供方配置。'
+    } catch (error) {
+      authError.value = error instanceof Error
+        ? error.message
+        : '无法启动企业登录，请检查身份提供方配置。'
       authLoading.value = false
     }
   }
@@ -178,8 +244,12 @@ export function useAuthentication(options: AuthenticationOptions) {
   function handleAuthenticationFailure(event: Event): void {
     const status = (event as CustomEvent<{ status: number }>).detail?.status
     if (status === 401) {
-      clearAuthState()
-      showLogin('登录已过期，请重新登录。')
+      void renewAccessToken().then(renewed => {
+        if (!renewed) {
+          clearAuthState()
+          showLogin('登录已过期，请重新登录。')
+        }
+      })
     } else if (status === 403 && authView.value === 'workspace') {
       authView.value = 'forbidden'
       window.history.replaceState(null, document.title, `${window.location.pathname}#/forbidden`)
@@ -196,6 +266,13 @@ export function useAuthentication(options: AuthenticationOptions) {
         await establishSession(authReturnHash.value)
         return
       }
+      if (restoreSession && authConfig.value?.mode === 'JwtBearer' && getRefreshToken()) {
+        authView.value = 'restoring'
+        if (await renewAccessToken()) {
+          await establishSession(authReturnHash.value)
+          return
+        }
+      }
       showLogin(authReason.value)
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) return
@@ -208,14 +285,29 @@ export function useAuthentication(options: AuthenticationOptions) {
   }
 
   async function logout(): Promise<void> {
+    clearRenewTimer()
     await options.cancelStreams('logout')
+    let oidcLogoutUrl: string | null = null
+    if (authConfig.value?.mode === 'JwtBearer') {
+      try {
+        oidcLogoutUrl = await buildOidcLogoutUrl(authConfig.value)
+      } catch {
+        // Local cleanup and prompt=login still protect the next login when
+        // the identity provider's logout metadata is unavailable.
+      }
+    }
     clearAuthState()
+    markReauthenticationRequired()
     authConfig.value = null
     authError.value = ''
     token.value = ''
     options.currentUser.value = null
     statusText.value = '未连接'
     showLogin('你已安全退出，当前会话中的敏感信息已清理。')
+    if (oidcLogoutUrl) {
+      window.location.assign(oidcLogoutUrl)
+      return
+    }
     void detectAuthentication(false)
   }
 
@@ -255,6 +347,7 @@ export function useAuthentication(options: AuthenticationOptions) {
   }
 
   function disposeAuthentication(): void {
+    clearRenewTimer()
     window.removeEventListener(AUTH_FAILURE_EVENT, handleAuthenticationFailure)
   }
 

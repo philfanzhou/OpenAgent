@@ -10,6 +10,7 @@ public interface IAgentRuntimeResolver
 {
     Task<AgentRuntimeProfile> ResolveAsync(
         string agentId,
+        string llmProfileId,
         IAgentUserContext userContext,
         CancellationToken cancellationToken = default);
 }

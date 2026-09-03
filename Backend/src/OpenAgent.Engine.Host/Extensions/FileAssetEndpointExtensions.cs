@@ -17,6 +17,9 @@ internal static class FileAssetEndpointExtensions
         group.MapGet("/files/{fileId}", GetAsync)
             .WithName("GetFileAsset")
             .WithTags("File");
+        group.MapGet("/files/object", ObjectContentAsync)
+            .WithName("GetObjectAssetContent")
+            .WithTags("File");
         group.MapGet("/files/{fileId}/content", ContentAsync)
             .WithName("GetFileAssetContent")
             .WithTags("File");
@@ -78,6 +81,45 @@ internal static class FileAssetEndpointExtensions
         return Results.File(content.Data, content.Asset.MediaType, enableRangeProcessing: false);
     }
 
+    private static async Task<IResult> ObjectContentAsync(
+        [FromServices] IFileAssetService files,
+        HttpContext context,
+        [FromQuery] string? path,
+        [FromQuery] string? conversationId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            throw new AgentException(AgentErrorCode.InvalidRequest, "Path query parameter is required.");
+        }
+        byte[] content = await files.ReadObjectAsync(
+            path,
+            CreateScope(context, conversationId),
+            cancellationToken).ConfigureAwait(false);
+        return Results.File(content, InferContentType(path), enableRangeProcessing: false);
+    }
+
+    private static string InferContentType(string objectKey)
+    {
+        string extension = Path.GetExtension(objectKey).ToLowerInvariant();
+        return extension switch
+        {
+            ".png" => "image/png",
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".gif" => "image/gif",
+            ".webp" => "image/webp",
+            ".svg" => "image/svg+xml",
+            ".pdf" => "application/pdf",
+            ".json" => "application/json",
+            ".txt" => "text/plain; charset=utf-8",
+            ".csv" => "text/csv; charset=utf-8",
+            ".md" => "text/markdown; charset=utf-8",
+            ".html" or ".htm" => "text/html; charset=utf-8",
+            ".zip" => "application/zip",
+            _ => "application/octet-stream"
+        };
+    }
+
     private static async Task<IResult> DownloadAsync(
         [FromServices] IFileAssetService files,
         HttpContext context,
@@ -112,6 +154,7 @@ internal static class FileAssetEndpointExtensions
         asset.MediaType,
         asset.Length,
         asset.Sha256,
+        asset.ObjectKey,
         asset.Source,
         asset.State,
         asset.CreatedAt

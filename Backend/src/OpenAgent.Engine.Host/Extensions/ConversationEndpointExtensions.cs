@@ -71,6 +71,7 @@ internal static class ConversationEndpointExtensions
         [FromServices] IConversationQueryService queryService,
         HttpContext context,
         string conversationId,
+        [FromQuery] string llmProfileId,
         CancellationToken cancellationToken = default)
     {
         string tenantId = AgentEndpointRequestMapper.RequireTenant(context);
@@ -122,6 +123,7 @@ internal static class ConversationEndpointExtensions
         [FromServices] IConversationCompactionService compactionService,
         HttpContext context,
         string conversationId,
+        [FromQuery] string llmProfileId,
         CancellationToken cancellationToken = default)
     {
         string tenantId = AgentEndpointRequestMapper.RequireTenant(context);
@@ -144,6 +146,7 @@ internal static class ConversationEndpointExtensions
         ContextSummary result = await compactionService.CompactAsync(
             tenantId,
             conversationId,
+            llmProfileId,
             user,
             cancellationToken).ConfigureAwait(false);
         return Results.Ok(result);

@@ -42,7 +42,7 @@ internal sealed class AgentFactory
         AgentRuntimeProfile profile,
         AgentRequest request,
         IAgentUserContext user,
-        IReadOnlyList<FileAssetContent> files,
+        IReadOnlyList<FileAsset> files,
         CancellationToken cancellationToken)
     {
         IChatClient modelClient = _chatClients.Create(profile.Model);
@@ -58,10 +58,11 @@ internal sealed class AgentFactory
         PlatformChatHistory history = _conversations.Create(
             profile.AgentId,
             profile.Model.ModelId,
-            CreateExecutionMetadata(profile, request),
             request,
             user,
-            files);
+            files,
+            profile.Model.Modality == ModelModality.Multimodal,
+            CreateExecutionMetadata(profile, request));
         IReadOnlyList<AITool> tools = await _capabilities.CreateAsync(
             profile.AgentId,
             profile.Config,
@@ -150,8 +151,8 @@ internal sealed class AgentFactory
         LlmTokenCapabilities capabilities = profile.Model.TokenCapabilities;
         bool hasTokenConfiguration = capabilities.ContextWindowTokens.HasValue
             || capabilities.MaxOutputTokens.HasValue
-            || profile.Config.Llm.ContextWindowTokens.HasValue
-            || profile.Config.Llm.MaxOutputTokens.HasValue
+            || profile.Config.ContextWindowTokens.HasValue
+            || profile.Config.MaxOutputTokens.HasValue
             || request.ContextWindowTokens.HasValue
             || request.MaxOutputTokens.HasValue;
         if (!hasTokenConfiguration)
@@ -162,11 +163,11 @@ internal sealed class AgentFactory
         var metadata = new Dictionary<string, string>(StringComparer.Ordinal);
         AddTokenValue(metadata, "LlmModelContextWindowTokens", capabilities.ContextWindowTokens);
         AddTokenValue(metadata, "LlmModelMaxOutputTokens", capabilities.MaxOutputTokens);
-        AddTokenValue(metadata, "LlmAgentContextWindowTokens", profile.Config.Llm.ContextWindowTokens);
-        AddTokenValue(metadata, "LlmAgentMaxOutputTokens", profile.Config.Llm.MaxOutputTokens);
+        AddTokenValue(metadata, "LlmAgentContextWindowTokens", profile.Config.ContextWindowTokens);
+        AddTokenValue(metadata, "LlmAgentMaxOutputTokens", profile.Config.MaxOutputTokens);
         AddTokenValue(metadata, "LlmRequestContextWindowTokens", request.ContextWindowTokens);
         AddTokenValue(metadata, "LlmRequestMaxOutputTokens", request.MaxOutputTokens);
-        AddTokenValue(metadata, "LlmEffectiveContextWindowTokens", profile.Model.ContextWindowTokens);
+        AddTokenValue(metadata, "LlmEffectiveContextWindowTokens", profile.Model.ContextTokens);
         AddTokenValue(metadata, "LlmEffectiveMaxOutputTokens", profile.Model.MaxOutputTokens);
         metadata["LlmMaxOutputTokensSupported"] = capabilities.SupportsMaxOutputTokens.ToString();
         metadata["LlmMaxOutputTokensApplied"] = (

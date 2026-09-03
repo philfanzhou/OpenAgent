@@ -7,10 +7,16 @@ using StackExchange.Redis;
 
 namespace OpenAgent.Engine.Config;
 
-internal sealed class McpProfileManagementService(
-    IRedisConnectionProvider redis,
-    IMcpRegistry registry)
+public sealed class McpProfileManagementService
 {
+    private readonly IRedisConnectionProvider redis;
+    private readonly IMcpRegistry registry;
+
+    public McpProfileManagementService(IRedisConnectionProvider redis, IMcpRegistry registry)
+    {
+        this.redis = redis;
+        this.registry = registry;
+    }
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true

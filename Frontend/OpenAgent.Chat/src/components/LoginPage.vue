@@ -30,7 +30,8 @@ const tenant = ref(props.tenantId)
 const showConnection = ref(false)
 const usernameInput = ref<HTMLInputElement>()
 const isBasic = computed(() => props.authConfig?.mode === 'Basic')
-const isOidc = computed(() => props.authConfig?.mode === 'JwtBearer')
+const isJwtBearer = computed(() => props.authConfig?.mode === 'JwtBearer')
+const isOidc = computed(() => isJwtBearer.value && props.authConfig?.keycloak?.enabled !== false)
 
 watch(() => props.loading, async (loading, wasLoading) => {
   if (!loading && wasLoading && isBasic.value) {
@@ -127,6 +128,11 @@ function submit(): void {
           <span v-if="props.loading" class="button-spinner" aria-hidden="true" />
           {{ props.loading ? '正在跳转…' : '使用企业账号继续' }}
         </button>
+      </div>
+
+      <div v-else-if="isJwtBearer" class="login-unavailable">
+        <p>Keycloak 未启用，请在服务端 Authentication:EnableKeycloak 中开启。</p>
+        <button class="primary-action" type="button" :disabled="props.loading" @click="emit('retry')">重新检测</button>
       </div>
 
       <div v-else class="login-unavailable">

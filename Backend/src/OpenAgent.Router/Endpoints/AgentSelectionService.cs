@@ -20,7 +20,8 @@ internal sealed class AgentSelectionService(
         string? conversationId,
         string? explicitAgentId,
         CancellationToken cancellationToken,
-        string? authenticationToken = null)
+        string? authenticationToken = null,
+        string? llmProfileId = null)
     {
         if (string.IsNullOrWhiteSpace(userContext.TenantId))
         {
@@ -32,7 +33,8 @@ internal sealed class AgentSelectionService(
 
         AgentProviderRequestContext requestContext = new(
             userContext,
-            authenticationToken);
+            authenticationToken,
+            llmProfileId);
         ConversationProviderAffinity? affinity = string.IsNullOrWhiteSpace(conversationId)
             ? null
             : await conversations.ResolveAsync(
@@ -85,6 +87,7 @@ internal sealed class AgentSelectionService(
                 requestContext,
                 timeout.Token).ConfigureAwait(false);
             (AgentCatalogEntry? Entry, string Source) selection = await SelectNewAsync(
+                requestContext,
                 message,
                 entries,
                 timeout.Token).ConfigureAwait(false);
@@ -116,6 +119,7 @@ internal sealed class AgentSelectionService(
     }
 
     private async Task<(AgentCatalogEntry? Entry, string Source)> SelectNewAsync(
+        AgentProviderRequestContext requestContext,
         string message,
         IReadOnlyList<AgentCatalogEntry> entries,
         CancellationToken cancellationToken)
@@ -129,6 +133,7 @@ internal sealed class AgentSelectionService(
         if (_options.Enabled)
         {
             string? selectedAgentId = await intentAgentSelector.SelectAsync(
+                requestContext,
                 message,
                 candidates.Select(entry => entry.Agent).ToArray(),
                 cancellationToken).ConfigureAwait(false);

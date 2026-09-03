@@ -4,6 +4,8 @@ using Microsoft.Extensions.Options;
 using Microsoft.Extensions.AI;
 using Microsoft.Agents.AI.Compaction;
 using OpenAgent.Contracts.Conversation;
+using OpenAgent.Contracts.Configuration;
+using OpenAgent.Contracts.Files;
 using OpenAgent.Core.Conversation;
 using OpenAgent.Core.Tests.TestDoubles;
 using Xunit;
@@ -18,6 +20,7 @@ public sealed class ConversationHistoryFactoryTests
         ConversationHistoryFactory factory = CreateFactory();
 
         SummarizationCompactionStrategy strategy = factory.CreateStrategy(
+            contextTokens: 1_000,
             policy: null,
             summarizationClient: new FakeChatProvider(new InvalidOperationException("not called")),
             force: false,
@@ -33,15 +36,26 @@ public sealed class ConversationHistoryFactoryTests
     {
         ConversationHistoryFactory factory = CreateFactory(defaultContextTokens: 1_000);
 
-        Assert.Equal(800, factory.ResolveAutomaticTokenThreshold(null));
-        Assert.Equal(80, factory.ResolveAutomaticTokenThreshold(
-            new ContextPolicy { MaxTokens = 100 }));
-        Assert.Equal(500, factory.ResolveCompactionTargetTokens(null));
-        Assert.Equal(50, factory.ResolveCompactionTargetTokens(
-            new ContextPolicy { MaxTokens = 100 }));
-        Assert.Equal(200, factory.ResolveSummaryTokenBudget(null));
-        Assert.Equal(32, factory.ResolveSummaryTokenBudget(
-            new ContextPolicy { MaxTokens = 100 }));
+        Assert.Equal(800, factory.ResolveAutomaticTokenThreshold(1_000));
+        Assert.Equal(80, factory.ResolveAutomaticTokenThreshold(100));
+        Assert.Equal(500, factory.ResolveCompactionTargetTokens(1_000));
+        Assert.Equal(50, factory.ResolveCompactionTargetTokens(100));
+        Assert.Equal(200, factory.ResolveSummaryTokenBudget(1_000, null));
+        Assert.Equal(32, factory.ResolveSummaryTokenBudget(100, null));
+    }
+
+    [Fact]
+    public void ResolveAutomaticTokenThreshold_ConfiguredOverrideWinsOverRatioHeuristic()
+    {
+        ConversationHistoryFactory factory = CreateFactory(
+            defaultContextTokens: 1_000,
+            automaticCompactionTokenThreshold: 800_000);
+
+        Assert.Equal(800_000, factory.ResolveAutomaticTokenThreshold(1_000));
+        Assert.Equal(800_000, factory.ResolveAutomaticTokenThreshold(100));
+
+        // Target and summary budget remain proportional to the context, not the trigger.
+        Assert.Equal(500, factory.ResolveCompactionTargetTokens(1_000));
     }
 
     [Fact]
@@ -50,6 +64,7 @@ public sealed class ConversationHistoryFactoryTests
         ConversationHistoryFactory factory = CreateFactory();
         var client = new CapturingChatClient("short summary");
         SummarizationCompactionStrategy strategy = factory.CreateStrategy(
+            contextTokens: 1_000,
             policy: null,
             summarizationClient: client,
             force: true,
@@ -106,18 +121,42 @@ public sealed class ConversationHistoryFactoryTests
         Assert.Contains("no summary text", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static ConversationHistoryFactory CreateFactory(int defaultContextTokens = 1_000) =>
+    [Theory]
+    [InlineData(false, true, 128)]
+    [InlineData(true, true, 128)]
+    [InlineData(false, false, null)]
+    [InlineData(true, false, null)]
+    public async Task CreateStrategy_SummaryRespectsModelOutputCapability(
+        bool manual, bool supported, int? expected)
+    {
+        var inner = new CapturingChatClient();
+        SummarizationCompactionStrategy strategy = CreateFactory().CreateStrategy(
+            1000, null, inner, manual, out _, new LlmConfig
+            {
+                TokenCapabilities = new LlmTokenCapabilities
+                {
+                    MaxOutputTokens = 128, SupportsMaxOutputTokens = supported
+                }
+            });
+
+        await strategy.ChatClient.GetResponseAsync(
+            [new ChatMessage(ChatRole.User, "summarize")], new ChatOptions { MaxOutputTokens = 4096 });
+
+        Assert.Equal(expected, inner.Options?.MaxOutputTokens);
+    }
+
+    private static ConversationHistoryFactory CreateFactory(
+        int defaultContextTokens = 1_000,
+        int? automaticCompactionTokenThreshold = null) =>
         new(
-            conversationLock: null!,
             store: null!,
             Options.Create(new ConversationStoreOptions
             {
-                DefaultModelContextTokens = defaultContextTokens
+                DefaultModelContextTokens = defaultContextTokens,
+                AutomaticCompactionTokenThreshold = automaticCompactionTokenThreshold
             }),
-            fileExecution: null!,
-            logger: NullLogger<PlatformChatHistory>.Instance,
             loggerFactory: NullLoggerFactory.Instance,
-            fileService: null!);
+            historyFactory: null!);
 
     private sealed class CapturingChatClient(string responseText = "summary") : IChatClient
     {

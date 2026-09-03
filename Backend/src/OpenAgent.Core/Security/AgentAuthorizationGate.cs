@@ -1,67 +1,41 @@
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
-using OpenAgent.Core.Abstract;
 
 namespace OpenAgent.Core.Security;
 
 internal sealed class AgentAuthorizationGate
 {
     private readonly IAgentAuthorizationService _authorizationService;
-    private readonly ILlmRegistry _models;
-
-    public AgentAuthorizationGate(
-        IAgentAuthorizationService authorizationService,
-        ILlmRegistry models)
+    public AgentAuthorizationGate(IAgentAuthorizationService authorizationService)
     {
         _authorizationService = authorizationService;
-        _models = models;
     }
 
-    internal async Task<LlmConfig> ResolveAuthorizedModelAsync(
+    internal Task EnsureAgentAuthorizedAsync(
         string agentId,
-        LlmConfig configuredModel,
         IAgentUserContext userContext,
-        CancellationToken cancellationToken)
-    {
-        await EnsureAuthorizedAsync(
+        CancellationToken cancellationToken) =>
+        EnsureAuthorizedAsync(
             agentId,
             AgentResourceType.Agent,
             agentId,
             "execute",
             userContext,
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken);
 
-        LlmConfig model = _models.ResolveConfig(configuredModel);
-        // 调试用：空租户（存量）LLM profile 视为全局可用。
-        if (!string.IsNullOrWhiteSpace(configuredModel.Provider)
-            && !string.IsNullOrWhiteSpace(model.TenantId)
-            && !string.Equals(model.TenantId, userContext.TenantId, StringComparison.Ordinal))
-        {
-            throw new TenantDataIsolationException(
-                userContext.TenantId,
-                model.TenantId,
-                "LLM profile does not belong to the authenticated tenant.");
-        }
-        string provider = string.IsNullOrWhiteSpace(model.Provider)
-            ? model.Format.ToString()
-            : model.Provider;
-        await EnsureAuthorizedAsync(
+    internal Task EnsureModelAuthorizedAsync(
+        string agentId,
+        LlmConfig model,
+        IAgentUserContext userContext,
+        CancellationToken cancellationToken) =>
+        EnsureAuthorizedAsync(
             agentId,
             AgentResourceType.Model,
-            $"{provider}/{model.ModelId}",
+            $"{model.Provider}/{model.ModelId}",
             "invoke",
             userContext,
-            cancellationToken).ConfigureAwait(false);
-
-        if (string.IsNullOrWhiteSpace(model.Endpoint))
-        {
-            throw new InvalidOperationException(
-                $"LLM endpoint is empty after resolving config for agent '{agentId}'.");
-        }
-
-        return model;
-    }
+            cancellationToken);
 
     internal async Task EnsureAuthorizedAsync(
         string agentId,

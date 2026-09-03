@@ -27,6 +27,7 @@ import type {
   SkillTestResult,
   StreamEvent,
 } from './types'
+import { randomUuid } from './browserCrypto'
 
 const legacyBaseUrlStorageKey = 'openagent.engine.base-url'
 const routerStorageKey = 'openagent.router.base-url'
@@ -36,10 +37,21 @@ const tokenStorageKey = 'openagent.auth.access-token'
 const tokenTypeStorageKey = 'openagent.auth.token-type'
 const tokenExpiryStorageKey = 'openagent.auth.expires-at'
 const tokenEndpointStorageKey = 'openagent.auth.endpoint'
+const refreshTokenStorageKey = 'openagent.auth.refresh-token'
 const tenantStorageKey = 'openagent.auth.tenant-id'
 export const AUTH_FAILURE_EVENT = 'openagent:auth-failure'
-const defaultRouterBaseUrl = import.meta.env.VITE_OPENAGENT_ROUTER_BASE_URL || 'http://localhost:5001'
-const defaultEngineBaseUrl = import.meta.env.VITE_OPENAGENT_ENGINE_BASE_URL || 'http://localhost:5208'
+function defaultServiceUrl(port: number): string {
+  if (typeof window !== 'undefined'
+    && window.location.hostname
+    && window.location.hostname !== 'localhost'
+    && window.location.hostname !== '127.0.0.1') {
+    return `${window.location.protocol}//${window.location.hostname}:${port}`
+  }
+  return `http://localhost:${port}`
+}
+
+const defaultRouterBaseUrl = import.meta.env.VITE_OPENAGENT_ROUTER_BASE_URL || defaultServiceUrl(5001)
+const defaultEngineBaseUrl = import.meta.env.VITE_OPENAGENT_ENGINE_BASE_URL || defaultServiceUrl(5208)
 const defaultTenantId = import.meta.env.VITE_OPENAGENT_TENANT_ID || 'development'
 
 function normalizeBaseUrl(value: string): string {
@@ -76,7 +88,7 @@ export function setEngineBaseUrl(value: string): void {
 export function getAccessToken(): string {
   const expiresAt = Number(sessionStorage.getItem(tokenExpiryStorageKey) || 0)
   if (expiresAt > 0 && Date.now() >= expiresAt) {
-    clearAuthentication()
+    clearExpiredAccessToken()
     return ''
   }
   const tokenEndpoint = sessionStorage.getItem(tokenEndpointStorageKey)
@@ -86,6 +98,21 @@ export function getAccessToken(): string {
 
 export function getTokenType(): string {
   return sessionStorage.getItem(tokenTypeStorageKey) || ''
+}
+
+export function getAccessTokenExpiresAt(): number {
+  return Number(sessionStorage.getItem(tokenExpiryStorageKey) || 0)
+}
+
+export function getRefreshToken(): string {
+  const tokenEndpoint = sessionStorage.getItem(tokenEndpointStorageKey)
+  if (tokenEndpoint && tokenEndpoint !== normalizeBaseUrl(requireBaseUrl())) return ''
+  return sessionStorage.getItem(refreshTokenStorageKey) || ''
+}
+
+export function setRefreshToken(value: string): void {
+  if (value.trim()) sessionStorage.setItem(refreshTokenStorageKey, value.trim())
+  else sessionStorage.removeItem(refreshTokenStorageKey)
 }
 
 export function setAccessToken(value: string, tokenType = 'Basic', expiresIn?: number): void {
@@ -104,10 +131,14 @@ export function setAccessToken(value: string, tokenType = 'Basic', expiresIn?: n
 }
 
 export function clearAuthentication(): void {
+  clearExpiredAccessToken()
+  sessionStorage.removeItem(refreshTokenStorageKey)
+}
+
+function clearExpiredAccessToken(): void {
   sessionStorage.removeItem(tokenStorageKey)
   sessionStorage.removeItem(tokenTypeStorageKey)
   sessionStorage.removeItem(tokenExpiryStorageKey)
-  sessionStorage.removeItem(tokenEndpointStorageKey)
 }
 
 export function getTenantId(): string {
@@ -133,7 +164,7 @@ function headers(extra: HeadersInit = {}): Headers {
   const token = getAccessToken()
   const tokenType = getTokenType() || 'Basic'
   if (token) result.set('Authorization', `${tokenType} ${token}`)
-  result.set('X-Trace-Id', crypto.randomUUID())
+  result.set('X-Trace-Id', randomUuid())
   return result
 }
 
@@ -226,6 +257,9 @@ function normalizeConversation(record: ConversationRecord): ConversationRecord {
           fileName: String(file.fileName ?? file.FileName ?? ''),
           mediaType: String(file.mediaType ?? file.MediaType ?? 'application/octet-stream'),
           length: Number(file.length ?? file.Length ?? 0),
+          ...(file.objectKey || file.ObjectKey
+            ? { objectKey: String(file.objectKey ?? file.ObjectKey) }
+            : {}),
         })) satisfies MessageFile[]
         return { ...message, files, ...(reasoning ? { reasoning } : {}) }
       } catch {
@@ -307,6 +341,17 @@ export const api = {
     return URL.createObjectURL(await response.blob())
   },
 
+  async loadObjectPreview(objectKey: string, conversationId?: string): Promise<string> {
+    const query = new URLSearchParams({ path: objectKey })
+    if (conversationId) query.set('conversationId', conversationId)
+    const response = await fetch(
+      `${requireBaseUrl()}/api/v1/agent/files/object?${query.toString()}`,
+      { headers: headers() },
+    )
+    if (!response.ok) throw await readError(response)
+    return URL.createObjectURL(await response.blob())
+  },
+
   async readFileText(fileId: string, conversationId: string): Promise<string> {
     const response = await fetch(
       `${requireBaseUrl()}/api/v1/agent/files/${encodeURIComponent(fileId)}/content?conversationId=${encodeURIComponent(conversationId)}`,
@@ -334,8 +379,8 @@ export const api = {
     return request<void>(`/api/v1/agent/conversations/${encodeURIComponent(id)}`, { method: 'DELETE' })
   },
 
-  compactConversation(id: string): Promise<ContextSummary> {
-    return request<ContextSummary>(`/api/v1/agent/conversations/${encodeURIComponent(id)}/compact`, { method: 'POST' })
+  compactConversation(id: string, llmProfileId: string): Promise<ContextSummary> {
+    return request<ContextSummary>(`/api/v1/agent/conversations/${encodeURIComponent(id)}/compact?llmProfileId=${encodeURIComponent(llmProfileId)}`, { method: 'POST' })
   },
 
   getAgentConfig(id: string): Promise<AgentConfigEntity> {
@@ -370,7 +415,7 @@ export const api = {
     return request<LlmTestResult>('/api/v1/admin/llm/test-connection', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ profile }),
+      body: JSON.stringify(profile),
     })
   },
 
@@ -474,13 +519,14 @@ export const api = {
     return request<RagTestResult>('/api/v1/admin/rag/test-connection', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ instance }),
+      body: JSON.stringify(instance),
     })
   },
 
   async *streamChat(
     message: string,
     agentId?: string,
+    llmProfileId?: string,
     conversationId?: string,
     fileIds: string[] = [],
     routingConversationId?: string,
@@ -494,7 +540,7 @@ export const api = {
       body: JSON.stringify({
         message,
         fileIds,
-        context: { ...(agentId ? { agentId } : {}), ...(conversationId ? { conversationId } : {}) },
+        context: { ...(agentId ? { agentId } : {}), ...(llmProfileId ? { llmProfileId } : {}), ...(conversationId ? { conversationId } : {}) },
       }),
       signal,
     })
@@ -528,14 +574,14 @@ export const api = {
 export function makeLocalConversation(agentId: string, message: string): ConversationRecord {
   const now = new Date().toISOString()
   const userMessage: ConversationMessage = {
-    messageId: crypto.randomUUID(),
+    messageId: randomUuid(),
     sequence: 1,
     role: 'user',
     content: message,
     timestamp: now,
   }
   return {
-    conversationId: crypto.randomUUID(),
+    conversationId: randomUuid(),
     tenantId: getTenantId(),
     userId: 'local',
     agentId,

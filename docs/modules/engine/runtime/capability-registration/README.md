@@ -1,37 +1,14 @@
 # 能力注册（Engine Runtime）
 
-Engine 启动时从 Redis 加载 LLM/RAG/Skill/MCP 目录；MCP 与 Skill 按 Agent 配置中的 ID 在每次 Agent 执行时创建官方 SDK 资源。
+LLM 不再通过启动期 Registrar 或内存 Registry 注册，而是在每次执行时按租户和 `llmProfileId` 从 PostgreSQL/Redis TTL 缓存解析。
 
-## 核心能力
+RAG 与 MCP 仍使用现有目录边界；MCP 和 Skill 按 Agent 保存的 ID 在执行时创建官方 SDK 资源。
 
-- **LLM 注册**：从 `llm:published:index` 加载 LlmProviderProfile
-- **RAG 注册**：从 `rag:published:index` 加载 RagInstanceConfig
-- **Redis 不可用跳过**：所有 Registrar 在 Redis 不可用时静默跳过
-- **官方 Skill 包**：Web 接收 ZIP/MD，OSS 保存解压后的目录文件与索引；内容使用官方 `SKILL.md` 格式
-- **官方 MCP 工具**：使用 MCP C# SDK 的 `McpClientTool`，不复制协议调用层
-
-## 架构
-
-```
-IHostedService (启动时)
-  ├─ RedisLlmRegistrar      → ILlmRegistry
-  ├─ RedisRagRegistrar      → IRagRegistry
-  ├─ RedisSkillRegistrar    → ISkillCatalog
-  └─ RedisMcpRegistrar      → IMcpRegistry
-
-AgentFactory（按 AgentConfig）
-  ├─ McpToolFactory              → official McpClientTool → ChatOptions.Tools
-  └─ AgentSkillsProviderFactory  → official AgentSkillsProvider → AIContextProviders
+```text
+AgentFactory
+  ├─ ILlmConfigProvider          → selected model profile
+  ├─ McpToolFactory              → official McpClientTool
+  └─ AgentSkillsProviderFactory  → official AgentSkillsProvider
 ```
 
-## 当前状态
-
-**已实现** — LLM/RAG/Skill/MCP 目录由 Redis Registrar 加载；MCP/Skill 的绑定来源是前端保存到 Redis 的 Agent 配置中的 ID，执行资源按请求释放。
-
-## 源码位置
-
-- 接口：`Backend/src/OpenAgent.Engine/Abstractions/`
-- 实现：`Backend/src/OpenAgent.Engine/Redis/`（RedisLlmRegistrar、RedisRagRegistrar）
-- 官方 Skill 适配：`Backend/src/OpenAgent.Core/Capabilities/Skill/`
-- 官方 MCP 适配：`Backend/src/OpenAgent.Core/Capabilities/Mcp/`
-- 测试替身：`Backend/tests/OpenAgent.Engine.Tests/TestDoubles/`
+LLM Profile 的租户隔离由持久化主键、Redis key 和执行时的已验证 tenantId 三层共同约束。

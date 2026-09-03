@@ -17,4 +17,5 @@ public enum AgentProviderConversationStatus
 
 public sealed record AgentProviderRequestContext(
     IAgentUserContext UserContext,
-    string? AuthenticationToken = null);
+    string? AuthenticationToken = null,
+    string? LlmProfileId = null);

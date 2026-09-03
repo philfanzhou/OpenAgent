@@ -62,6 +62,34 @@ public class AgentExecutorUsageTests
     }
 
     [Fact]
+    public async Task ExecuteStreamingAsync_ToolInvocation_EmitsToolResultAfterItsCall()
+    {
+        var provider = new FakeChatProvider(
+        [
+            new ChatResponseUpdate(ChatRole.Assistant,
+                [new FunctionCallContent("call-1", "get_current_user_profile")]),
+            new ChatResponseUpdate(ChatRole.Assistant, "tool finished")
+        ]);
+        await using TestRuntime runtime = CreateRuntime(provider);
+
+        List<AgentStreamEvent> events = [];
+        await foreach (AgentStreamEvent streamEvent in runtime.Executor.ExecuteStreamingAsync(
+            CreateRequest("tool-result-conversation"),
+            User,
+            CancellationToken.None))
+        {
+            events.Add(streamEvent);
+        }
+
+        AgentStreamEvent call = Assert.Single(events, item => item.Type == AgentStreamEventType.ToolCall);
+        Assert.Equal("get_current_user_profile", call.ToolName);
+        AgentStreamEvent result = Assert.Single(events, item => item.Type == AgentStreamEventType.ToolResult);
+        Assert.Equal("call-1", result.ToolCallId);
+        Assert.NotNull(result.Content);
+        Assert.True(events.IndexOf(result) > events.IndexOf(call), "Tool result must be streamed after its call");
+    }
+
+    [Fact]
     public async Task ExecuteStreamingAsync_TerminalProviderUsage_EmitsTerminalEventAndPersistsCounts()
     {
         UsageDetails providerUsage = CreateUsage();
@@ -158,134 +186,129 @@ public class AgentExecutorUsageTests
         Assert.Null(assistant.TokenUsage);
     }
 
-    [Fact]
-    public async Task ExecuteAsync_RequestTokenOverrides_AppliesProviderOptionAndPersistsEffectiveValues()
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    public async Task Execute_TokenLimits_AreAppliedAndRecorded(bool streaming, bool supported)
     {
-        var provider = new FakeChatProvider(new Microsoft.Extensions.AI.ChatResponse(
-            new ChatMessage(ChatRole.Assistant, "provider response"))
+        var provider = streaming
+            ? new FakeChatProvider([new ChatResponseUpdate(ChatRole.Assistant, "response")])
+            : new FakeChatProvider(new Microsoft.Extensions.AI.ChatResponse(new ChatMessage(ChatRole.Assistant, "response")));
+        AgentRuntimeProfile profile = TokenProfile(supported);
+        await using TestRuntime runtime = CreateRuntime(provider, profile);
+        AgentRequest request = new()
         {
-            Usage = CreateUsage()
-        });
-        AgentRuntimeProfile profile = CreateProfile(
-            agentContext: 80,
-            agentOutput: 10,
-            modelContext: 100,
-            modelOutput: 20);
-        await using TestRuntime runtime = CreateRuntime(provider, profile);
-        AgentRequest request = CreateRequest("token-override-conversation", 90, 15);
+            Query = "hello", AgentId = "test-agent", LlmProfileId = "test-model",
+            ConversationId = "token-limits", ContextWindowTokens = 96000,
+            MaxOutputTokens = supported ? 8000 : null
+        };
 
-        await runtime.Executor.ExecuteAsync(request, User, CancellationToken.None);
+        await ExecuteAsync(runtime, request, streaming);
 
+        Assert.Equal(supported ? 8000 : null, provider.LastOptions?.MaxOutputTokens);
         ConversationRecord record = Assert.IsType<ConversationRecord>(
-            await runtime.Store.GetRecordAsync("tenant-1", "token-override-conversation"));
-        ConversationMessage user = Assert.Single(record.Messages, message => message.Role == "user");
-        ConversationMessage assistant = Assert.Single(record.Messages, message => message.Role == "assistant");
-        Assert.Equal(15, provider.LastOptions?.MaxOutputTokens);
-        Assert.Equal("100", user.Metadata?["LlmModelContextWindowTokens"]);
-        Assert.Equal("80", user.Metadata?["LlmAgentContextWindowTokens"]);
-        Assert.Equal("90", user.Metadata?["LlmRequestContextWindowTokens"]);
-        Assert.Equal("90", user.Metadata?["LlmEffectiveContextWindowTokens"]);
-        Assert.Equal("15", user.Metadata?["LlmEffectiveMaxOutputTokens"]);
-        Assert.Equal("True", user.Metadata?["LlmMaxOutputTokensApplied"]);
-        AssertUsage(assistant.TokenUsage);
+            await runtime.Store.GetRecordAsync("tenant-1", "token-limits"));
+        var metadata = Assert.Single(record.Messages, message => message.Role == "user").Metadata!;
+        Assert.Equal("128000", metadata["LlmModelContextWindowTokens"]);
+        Assert.Equal("64000", metadata["LlmAgentContextWindowTokens"]);
+        Assert.Equal("96000", metadata["LlmRequestContextWindowTokens"]);
+        Assert.Equal("96000", metadata["LlmEffectiveContextWindowTokens"]);
+        Assert.Equal(supported ? "8000" : "16000", metadata["LlmEffectiveMaxOutputTokens"]);
+        Assert.Equal(supported.ToString(), metadata["LlmMaxOutputTokensApplied"]);
+        Assert.Null(Assert.Single(record.Messages, message => message.Role == "assistant").TokenUsage);
     }
 
-    [Fact]
-    public async Task ExecuteAsync_ProviderDoesNotSupportOutputParameter_UsesModelFallbackWithoutSendingIt()
+    [Theory]
+    [InlineData(false, 0)]
+    [InlineData(true, 0)]
+    [InlineData(false, 16001)]
+    [InlineData(true, 16001)]
+    public async Task Execute_InvalidTokenOverrideWithAttachment_FailsBeforeConversationCreation(
+        bool streaming, int output)
     {
-        var provider = new FakeChatProvider(new Microsoft.Extensions.AI.ChatResponse(
-            new ChatMessage(ChatRole.Assistant, "provider response")));
-        AgentRuntimeProfile profile = CreateProfile(
-            agentContext: null,
-            agentOutput: null,
-            modelContext: 100,
-            modelOutput: 20,
-            supportsMaxOutputTokens: false);
-        await using TestRuntime runtime = CreateRuntime(provider, profile);
-
-        await runtime.Executor.ExecuteAsync(
-            CreateRequest("unsupported-output-conversation"),
-            User,
-            CancellationToken.None);
-
-        ConversationRecord record = Assert.IsType<ConversationRecord>(
-            await runtime.Store.GetRecordAsync("tenant-1", "unsupported-output-conversation"));
-        ConversationMessage user = Assert.Single(record.Messages, message => message.Role == "user");
-        Assert.Null(provider.LastOptions?.MaxOutputTokens);
-        Assert.Equal("20", user.Metadata?["LlmEffectiveMaxOutputTokens"]);
-        Assert.Equal("False", user.Metadata?["LlmMaxOutputTokensSupported"]);
-        Assert.Equal("False", user.Metadata?["LlmMaxOutputTokensApplied"]);
-    }
-
-    [Fact]
-    public async Task ExecuteAsync_ProviderDoesNotSupportRequestOverride_FailsBeforeProviderCall()
-    {
-        var provider = new FakeChatProvider(new Microsoft.Extensions.AI.ChatResponse(
-            new ChatMessage(ChatRole.Assistant, "provider response")));
-        AgentRuntimeProfile profile = CreateProfile(
-            agentContext: null,
-            agentOutput: null,
-            modelContext: 100,
-            modelOutput: 20,
-            supportsMaxOutputTokens: false);
-        await using TestRuntime runtime = CreateRuntime(provider, profile);
+        var provider = new FakeChatProvider(new InvalidOperationException("must not call provider"));
+        await using TestRuntime runtime = CreateRuntime(provider, TokenProfile(true));
+        AgentRequest request = new()
+        {
+            Query = "hello", AgentId = "test-agent", LlmProfileId = "test-model",
+            ConversationId = "invalid-limits", MaxOutputTokens = output, FileIds = ["missing-file"]
+        };
 
         AgentException exception = await Assert.ThrowsAsync<AgentException>(() =>
-            runtime.Executor.ExecuteAsync(
-                CreateRequest("unsupported-output-request", maxOutputTokens: 10),
-                User,
-                CancellationToken.None));
+            ExecuteAsync(runtime, request, streaming));
 
         Assert.Equal(AgentErrorCode.InvalidRequest, exception.ErrorCode);
         Assert.Equal(0, provider.CallCount);
+        Assert.Null(await runtime.Store.GetRecordAsync("tenant-1", "invalid-limits"));
     }
 
-    [Fact]
-    public async Task ExecuteAsync_HistoryExceedsEffectiveContext_CompactsProviderInputAndPreservesAuditHistory()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Execute_ReservesOutputBudgetWithoutDeletingAuditHistory(bool streaming)
     {
-        var provider = new FakeChatProvider(new Microsoft.Extensions.AI.ChatResponse(
-            new ChatMessage(ChatRole.Assistant, "provider response")));
-        AgentRuntimeProfile profile = CreateProfile(
-            agentContext: 100,
-            agentOutput: 20,
-            modelContext: 100,
-            modelOutput: 20,
-            contextPolicy: new ContextPolicy
+        var provider = streaming
+            ? new FakeChatProvider([new ChatResponseUpdate(ChatRole.Assistant, "response")])
+            : new FakeChatProvider(new Microsoft.Extensions.AI.ChatResponse(new ChatMessage(ChatRole.Assistant, "response")));
+        AgentRuntimeProfile profile = new()
+        {
+            AgentId = "test-agent", Config = new AgentConfig(),
+            Model = new LlmConfig
             {
-                MaxTokens = 60,
-                PreserveRecentTurns = 1
-            });
-        await using TestRuntime runtime = CreateRuntime(provider, profile);
-        List<ConversationMessage> history = Enumerable.Range(1, 8)
-            .Select(index => new ConversationMessage
-            {
-                MessageId = $"message-{index}",
-                Sequence = index,
-                Role = index % 2 == 0 ? "assistant" : "user",
-                Content = new string((char)('a' + index), 400)
-            })
-            .ToList();
-        int historyCount = history.Count;
+                ModelId = "configured-model", ContextTokens = 2000, MaxOutputTokens = 1400,
+                TokenCapabilities = new LlmTokenCapabilities { ContextWindowTokens = 2000, MaxOutputTokens = 1400 }
+            }
+        };
+        await using TestRuntime runtime = CreateRuntime(provider, profile, automaticCompactionTokenThreshold: 1000000);
+        var messages = Enumerable.Range(1, 12).Select(sequence => new ConversationMessage
+        {
+            MessageId = $"seed-{sequence}", Sequence = sequence, Role = sequence % 2 == 1 ? "user" : "assistant",
+            Content = new string('x', 400)
+        }).ToList();
         await runtime.Store.CreateAsync(new ConversationRecord
         {
-            ConversationId = "compaction-conversation",
-            TenantId = "tenant-1",
-            UserId = "user-1",
-            AgentId = "test-agent",
-            MessageCount = history.Count,
-            Messages = history
+            ConversationId = "budget", TenantId = "tenant-1", UserId = "user-1",
+            AgentId = "test-agent", Messages = messages, MessageCount = messages.Count
         });
 
-        await runtime.Executor.ExecuteAsync(
-            CreateRequest("compaction-conversation"),
-            User,
-            CancellationToken.None);
+        await ExecuteAsync(runtime, CreateRequest("budget"), streaming);
 
-        ConversationRecord record = Assert.IsType<ConversationRecord>(
-            await runtime.Store.GetRecordAsync("tenant-1", "compaction-conversation"));
-        Assert.True(provider.LastMessages.Count < historyCount + 1);
-        Assert.Equal(historyCount + 2, record.Messages.Count);
+        Assert.Equal(1, provider.CallCount);
+        Assert.True(provider.LastMessages.Count < 13);
+        Assert.Contains(provider.LastMessages, message => message.Role == ChatRole.User && message.Text == "hello");
+        Assert.Equal(1400, provider.LastOptions?.MaxOutputTokens);
+        ConversationRecord record = Assert.IsType<ConversationRecord>(await runtime.Store.GetRecordAsync("tenant-1", "budget"));
+        Assert.Equal(14, record.Messages.Count);
+        Assert.Equal(12, record.Messages.Count(message => message.Content == new string('x', 400)));
     }
+
+    private static async Task ExecuteAsync(TestRuntime runtime, AgentRequest request, bool streaming)
+    {
+        if (streaming)
+        {
+            await foreach (AgentStreamEvent _ in runtime.Executor.ExecuteStreamingAsync(request, User, CancellationToken.None)) { }
+        }
+        else
+        {
+            await runtime.Executor.ExecuteAsync(request, User, CancellationToken.None);
+        }
+    }
+
+    private static AgentRuntimeProfile TokenProfile(bool supported) => new()
+    {
+        AgentId = "test-agent",
+        Config = new AgentConfig { ContextWindowTokens = 64000, MaxOutputTokens = supported ? 4000 : null },
+        Model = new LlmConfig
+        {
+            ModelId = "configured-model", ContextTokens = 64000, MaxOutputTokens = supported ? 4000 : 16000,
+            TokenCapabilities = new LlmTokenCapabilities
+            {
+                ContextWindowTokens = 128000, MaxOutputTokens = 16000, SupportsMaxOutputTokens = supported
+            }
+        }
+    };
 
     private static readonly AgentUserContext User = new()
     {
@@ -293,17 +316,13 @@ public class AgentExecutorUsageTests
         TenantId = "tenant-1"
     };
 
-    private static AgentRequest CreateRequest(
-        string conversationId,
-        int? contextWindowTokens = null,
-        int? maxOutputTokens = null) => new()
+    private static AgentRequest CreateRequest(string conversationId) => new()
     {
         Query = "hello",
         AgentId = "test-agent",
+        LlmProfileId = "test-model",
         ConversationId = conversationId,
-        TraceId = $"trace-{conversationId}",
-        ContextWindowTokens = contextWindowTokens,
-        MaxOutputTokens = maxOutputTokens
+        TraceId = $"trace-{conversationId}"
     };
 
     private static UsageDetails CreateUsage() => new()
@@ -326,9 +345,8 @@ public class AgentExecutorUsageTests
         Assert.Equal(3, actual.ReasoningTokens);
     }
 
-    private static TestRuntime CreateRuntime(
-        IChatClient provider,
-        AgentRuntimeProfile? profile = null)
+    internal static TestRuntime CreateRuntime(
+        IChatClient provider, AgentRuntimeProfile? profile = null, int? automaticCompactionTokenThreshold = null)
     {
         var services = new ServiceCollection();
         services.AddLogging();
@@ -338,10 +356,14 @@ public class AgentExecutorUsageTests
         IConfiguration configuration = new ConfigurationBuilder().Build();
         services.AddSingleton(configuration);
         services.AddAgentCore(configuration);
+        if (automaticCompactionTokenThreshold.HasValue)
+        {
+            services.Configure<ConversationStoreOptions>(options =>
+                options.AutomaticCompactionTokenThreshold = automaticCompactionTokenThreshold);
+        }
         services.RemoveAll<IAgentRuntimeResolver>();
         services.RemoveAll<AgentRuntimeResolver>();
-        services.AddSingleton<IAgentRuntimeResolver>(new StaticRuntimeResolver(
-            profile ?? CreateProfile()));
+        services.AddSingleton<IAgentRuntimeResolver>(new StaticRuntimeResolver(profile));
         services.RemoveAll<IAgentChatClientFactory>();
         services.AddSingleton<IAgentChatClientFactory>(new FakeChatClientFactory(provider));
 
@@ -365,46 +387,19 @@ public class AgentExecutorUsageTests
         public bool IsInRole(string role) => false;
     }
 
-    private static AgentRuntimeProfile CreateProfile(
-        int? agentContext = null,
-        int? agentOutput = null,
-        int? modelContext = null,
-        int? modelOutput = null,
-        bool supportsMaxOutputTokens = true,
-        ContextPolicy? contextPolicy = null) => new()
-        {
-            AgentId = "test-agent",
-            Config = new AgentConfig
-            {
-                MaxTurns = 2,
-                ContextPolicy = contextPolicy,
-                Llm = new LlmConfig
-                {
-                    ContextWindowTokens = agentContext,
-                    MaxOutputTokens = agentOutput
-                }
-            },
-            Model = new LlmConfig
-            {
-                ModelId = "configured-model",
-                ContextWindowTokens = agentContext ?? modelContext,
-                MaxOutputTokens = agentOutput ?? modelOutput,
-                TokenCapabilities = new LlmTokenCapabilities
-                {
-                    ContextWindowTokens = modelContext,
-                    MaxOutputTokens = modelOutput,
-                    SupportsMaxOutputTokens = supportsMaxOutputTokens
-                }
-            }
-        };
-
-    private sealed class StaticRuntimeResolver(AgentRuntimeProfile profile) : IAgentRuntimeResolver
+    private sealed class StaticRuntimeResolver(AgentRuntimeProfile? profile) : IAgentRuntimeResolver
     {
         public Task<AgentRuntimeProfile> ResolveAsync(
             string agentId,
+            string llmProfileId,
             IAgentUserContext userContext,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult(profile);
+            Task.FromResult(profile ?? new AgentRuntimeProfile
+            {
+                AgentId = agentId,
+                Config = new AgentConfig { MaxTurns = 2 },
+                Model = new LlmConfig { ModelId = "configured-model", ContextTokens = 128000 }
+            });
     }
 
     private sealed class FakeChatClientFactory(IChatClient provider) : IAgentChatClientFactory
@@ -422,6 +417,10 @@ public class AgentExecutorUsageTests
         public Task UpdateAsync(FileAsset asset, CancellationToken cancellationToken) => Task.CompletedTask;
         public Task<FileAsset?> GetAsync(string fileId, CancellationToken cancellationToken) =>
             Task.FromResult<FileAsset?>(null);
+        public Task<IReadOnlyList<FileAsset>> ListReferencedAsync(
+            string conversationId,
+            CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<FileAsset>>([]);
         public Task EnsureConversationReferencesAsync(
             string conversationId,
             IReadOnlyList<string> fileIds,
@@ -433,7 +432,7 @@ public class AgentExecutorUsageTests
             CancellationToken cancellationToken) => Task.FromResult(false);
     }
 
-    private sealed class TestRuntime(
+    internal sealed class TestRuntime(
         ServiceProvider serviceProvider,
         AsyncServiceScope scope,
         AgentExecutor executor,

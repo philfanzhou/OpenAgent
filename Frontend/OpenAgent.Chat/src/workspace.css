@@ -392,7 +392,7 @@ html[data-theme='dark'] .route-strip { background: #1f1f1f; }
 /* ---------- Messages ---------- */
 .messages {
   width: 100%;
-  height: auto;
+  height: 100%;
   min-height: 0 !important;
   padding: 20px 14px;
   overflow: hidden;
@@ -403,6 +403,7 @@ html[data-theme='dark'] .route-strip { background: #1f1f1f; }
 }
 .messages .el-scrollbar__wrap,
 .messages-wrap { overflow-x: hidden !important; }
+.messages .el-scrollbar__wrap { height: 100%; overflow-y: auto; }
 
 .welcome {
   display: flex;
@@ -708,9 +709,8 @@ html[data-theme='dark'] .message-row ::selection { background: rgba(16, 163, 127
 .process-step[open] .process-step-chevron { transform: rotate(90deg); }
 .process-step-body { padding: 7px 8px 8px 31px; border-top: 1px solid var(--border); }
 .process-reasoning {
-  max-height: 180px;
   margin: 0;
-  overflow: auto;
+  overflow: visible;
   color: var(--text-muted);
   font-family: inherit;
   font-size: 13px;
@@ -803,10 +803,9 @@ html[data-theme='dark'] .message-row ::selection { background: rgba(16, 163, 127
 .tool-section > span { display: block; margin-bottom: 5px; color: var(--text-faint); font-size: 10px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; }
 .tool-args,
 .tool-result {
-  max-height: 160px;
   margin: 0;
   padding: 8px 10px;
-  overflow: auto;
+  overflow: visible;
   border: 1px solid var(--border);
   border-radius: var(--r-xs);
   color: var(--text-muted);
@@ -853,7 +852,23 @@ html[data-theme='dark'] .message-row ::selection { background: rgba(16, 163, 127
 .message-file-meta strong { overflow: hidden; color: var(--text); font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .message-file-meta small { margin-top: 2px; color: var(--text-faint); font-size: 10px; }
 .message-file-action { display: grid; width: 24px; height: 24px; place-items: center; border-radius: var(--r-pill); color: var(--text-muted); background: var(--bg-subtle); font-size: 14px; }
-.message-file-preview { grid-column: 1 / -1; max-height: 80px; margin: 2px -2px -2px; padding: 7px 8px; overflow: auto; border-top: 1px solid var(--border); color: var(--text-muted); background: transparent; font-family: var(--font-mono); font-size: 10px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
+
+/* File card preview icon button (opens the preview dialog) */
+.message-file-preview-btn { display: grid; flex: 0 0 auto; width: 24px; height: 24px; place-items: center; padding: 0; border: 1px solid transparent; border-radius: var(--r-pill); color: var(--text-muted); background: var(--bg-subtle); cursor: pointer; transition: color var(--dur) var(--ease), background-color var(--dur) var(--ease); }
+.message-file-preview-btn:hover { color: var(--accent-hover); background: var(--accent-soft); }
+.message-file-preview-btn svg { width: 14px; height: 14px; stroke: currentColor; stroke-width: 1.7; }
+
+/* File preview dialog */
+.el-dialog.file-preview-dialog .el-dialog__header { padding-right: 14px; }
+.file-preview-head { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
+.file-preview-head strong { overflow: hidden; color: var(--text); font-size: 14px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.file-preview-head small { color: var(--text-faint); font-size: 11px; }
+.file-preview-body { min-height: 140px; max-height: calc(100vh - 240px); overflow: auto; }
+.file-preview-body > img { display: block; max-width: 100%; margin: 0 auto; border-radius: var(--r-xs); }
+.file-preview-body .markdown-content img { max-width: 100%; height: auto; border-radius: var(--r-xs); }
+.file-preview-text { margin: 0; color: var(--text-muted); font-family: var(--font-mono); font-size: 12px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
+.file-preview-hint { padding: 40px 0; color: var(--text-faint); font-size: 12px; text-align: center; }
+.file-preview-footer { display: flex; justify-content: flex-end; }
 
 /* Message error */
 .message-error {
@@ -908,6 +923,7 @@ html[data-theme='dark'] .message-row ::selection { background: rgba(16, 163, 127
   box-shadow: none;
 }
 .composer-box {
+  position: relative;
   max-width: 820px;
   margin: 0 auto;
   padding: 5px 6px 5px 12px;
@@ -918,6 +934,25 @@ html[data-theme='dark'] .message-row ::selection { background: rgba(16, 163, 127
   transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
 }
 .composer-box:focus-within { border-color: var(--text-faint); box-shadow: 0 8px 30px rgba(0, 0, 0, .1); }
+
+/* Drag-over upload highlight */
+.composer.drag-over .composer-box { border-color: var(--accent-hover); background: var(--accent-soft); }
+.composer-drop-hint {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border-radius: inherit;
+  color: var(--accent-hover);
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  font-size: 13px;
+  font-weight: 600;
+  pointer-events: none;
+}
+.composer-drop-hint svg { width: 17px; height: 17px; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .composer .el-textarea__inner {
   min-height: 54px !important;
   padding: 8px 4px 5px;
@@ -1049,12 +1084,13 @@ html[data-theme='dark'] .context-panel { background: #1f1f1f; }
   word-break: break-word;
 }
 .inspector-actions { margin: 0; padding: 11px 5px 13px !important; border-bottom: 0 !important; }
-.inspector-action-grid { display: grid; gap: 7px; }
+.inspector-action-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
 .inspector-actions .el-button + .el-button { margin-left: 0; }
 .inspector-action { box-sizing: border-box; width: 100%; min-height: 34px; justify-content: flex-start; margin: 0; border-color: var(--border); color: var(--text); background: var(--bg); }
 .inspector-action:hover, .inspector-action:focus-visible { border-color: var(--accent); color: var(--accent); background: var(--bg); }
 .inspector-action-primary { border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--bg)); }
 .inspector-action-mark { display: inline-grid; width: 18px; height: 18px; place-items: center; border: 1px solid currentColor; border-radius: 50%; font-size: 12px; line-height: 1; }
+.inspector-action-mark svg { width: 12px; height: 12px; }
 
 /* Context resize handle */
 .context-resize {

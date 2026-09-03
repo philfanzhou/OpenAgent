@@ -28,6 +28,7 @@ public class UserProfileCapabilitySourceTests
         using JsonDocument profile = JsonDocument.Parse(Assert.IsType<string>(result));
         Assert.Equal("alice", profile.RootElement.GetProperty("username").GetString());
         Assert.Equal("alice@example.com", profile.RootElement.GetProperty("email").GetString());
+        Assert.Equal("current-tenant", profile.RootElement.GetProperty("tenantId").GetString());
     }
 
     [Fact]
@@ -37,12 +38,13 @@ public class UserProfileCapabilitySourceTests
 
         AIFunction function = await CreateFunctionAsync(
             factory,
-            CreateUser(new Dictionary<string, string>()));
+            CreateUser(new Dictionary<string, string>(), tenantId: null));
         object? result = await function.InvokeAsync(new AIFunctionArguments(), default);
 
         using JsonDocument profile = JsonDocument.Parse(Assert.IsType<string>(result));
         Assert.Equal(JsonValueKind.Null, profile.RootElement.GetProperty("username").ValueKind);
         Assert.Equal(JsonValueKind.Null, profile.RootElement.GetProperty("email").ValueKind);
+        Assert.Equal(JsonValueKind.Null, profile.RootElement.GetProperty("tenantId").ValueKind);
     }
 
     [Fact]
@@ -123,7 +125,7 @@ public class UserProfileCapabilitySourceTests
         string[] propertyNames = profile.RootElement.EnumerateObject()
             .Select(property => property.Name)
             .ToArray();
-        Assert.Equal(new[] { "username", "email" }, propertyNames);
+        Assert.Equal(new[] { "username", "email", "tenantId" }, propertyNames);
         Assert.DoesNotContain("secret", json, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -131,8 +133,7 @@ public class UserProfileCapabilitySourceTests
         IAgentAuthorizationService? authorization = null)
     {
         AgentAuthorizationGate gate = new(
-            authorization ?? new AllowAllAgentAuthorizationService(),
-            new Core.Models.LlmRegistry());
+            authorization ?? new AllowAllAgentAuthorizationService());
         return new CapabilityToolFactory([new UserProfileCapabilitySource()], gate);
     }
 
@@ -150,10 +151,11 @@ public class UserProfileCapabilitySourceTests
 
     private static AgentUserContext CreateUser(
         IReadOnlyDictionary<string, string> claims,
-        bool isAuthenticated = true) => new()
+        bool isAuthenticated = true,
+        string? tenantId = "current-tenant") => new()
         {
             UserId = "current-user-id",
-            TenantId = "current-tenant",
+            TenantId = tenantId,
             Claims = claims,
             IsAuthenticated = isAuthenticated
         };

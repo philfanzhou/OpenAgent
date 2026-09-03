@@ -12,15 +12,17 @@ public class AgentConfig
 {
     public string TenantId { get; set; } = string.Empty;
     public string Instructions { get; set; } = string.Empty;
-    public LlmConfig Llm { get; set; } = new();
     public McpConfig Mcp { get; set; } = new();
     public RagConfig Rag { get; set; } = new();
     public SkillsConfig Skills { get; set; } = new();
     public ContextPolicy? ContextPolicy { get; set; }
 
     public int MaxTurns { get; set; } = 50;
+    public int? ContextWindowTokens { get; set; }
+    public int? MaxOutputTokens { get; set; }
 }
 
+/// <summary>The effective model connection used by one execution.</summary>
 public class LlmConfig
 {
     public string TenantId { get; set; } = string.Empty;
@@ -30,30 +32,35 @@ public class LlmConfig
     public string ApiKey { get; set; } = string.Empty;
     public string Endpoint { get; set; } = string.Empty;
     public double Temperature { get; set; } = 0.7;
-    public int? ContextWindowTokens { get; set; }
+    public int ContextTokens { get; set; }
     public int? MaxOutputTokens { get; set; }
-
     [JsonIgnore]
     public LlmTokenCapabilities TokenCapabilities { get; set; } = new();
+    public ModelModality Modality { get; set; } = ModelModality.Text;
 }
 
+/// <summary>
+/// A tenant-owned, selectable model connection saved by configuration management.
+/// The profile is independent of Agents; API responses must redact its API key.
+/// </summary>
 public class LlmProviderProfile
 {
     public string TenantId { get; set; } = string.Empty;
     public string Id { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public ApiFormat Format { get; set; } = ApiFormat.OpenAIChatCompletions;
-    // Kept for deserializing old provider profiles; new profiles select a model per Agent.
-    public string? ModelId { get; set; }
+    public string ModelId { get; set; } = string.Empty;
     public string Endpoint { get; set; } = string.Empty;
     public string ApiKey { get; set; } = string.Empty;
     public double Temperature { get; set; } = 0.7;
-    public int? ContextWindowTokens { get; set; }
+    public int ContextTokens { get; set; }
     public int? MaxOutputTokens { get; set; }
     public bool SupportsMaxOutputTokens { get; set; } = true;
+    public ModelModality Modality { get; set; } = ModelModality.Text;
 }
 
-public sealed class LlmTokenCapabilities
+/// <summary>Model limits before Agent and request defaults are applied.</summary>
+public sealed record LlmTokenCapabilities
 {
     public int? ContextWindowTokens { get; init; }
     public int? MaxOutputTokens { get; init; }
@@ -66,6 +73,13 @@ public enum ApiFormat
     OpenAIChatCompletions,
     OpenAIResponses,
     AnthropicMessages
+}
+
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum ModelModality
+{
+    Text,
+    Multimodal
 }
 
 public class McpConfig
@@ -145,6 +159,7 @@ public class RagInstanceConfig
     public string Type { get; set; } = RagAdapterType.RagFlow;
     public string CollectionName { get; set; } = "default";
     public string ApiEndpoint { get; set; } = string.Empty;
+    public string ApiKeySecretRef { get; set; } = string.Empty;
     public string ApiKey { get; set; } = string.Empty;
     public Dictionary<string, string>? AdapterConfig { get; set; }
 

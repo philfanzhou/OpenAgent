@@ -21,6 +21,7 @@ import { AUTO_AGENT_ID, type AgentSummary, type CurrentUserContext } from './typ
 const agents = ref<AgentSummary[]>([])
 const currentUser = ref<CurrentUserContext | null>(null)
 const selectedAgentId = ref(AUTO_AGENT_ID)
+const selectedLlmProfileId = ref('')
 const search = ref('')
 const workspaceLoading = ref(false)
 const themeMode = ref<'light' | 'dark'>(localStorage.getItem('openagent.ui.theme') === 'dark' ? 'dark' : 'light')
@@ -68,6 +69,7 @@ const {
 const settings = useSettings({
   agents,
   selectedAgentId,
+  selectedLlmProfileId,
   connectionMode,
   routerUrl,
   engineUrl,
@@ -75,9 +77,10 @@ const settings = useSettings({
 })
 const {
   showSettings,
-  refreshingAgents,
+  refreshingCatalog,
   config,
-  refreshAgents,
+  llmProfiles,
+  refreshCatalog,
   handleAgentChange,
   openSettings,
   resetSettings,
@@ -112,10 +115,13 @@ const {
   hydrateFilePreviews,
   downloadFile,
   clearPendingFiles,
+  clearMarkdownImageCache,
+  markdownImageUrls,
 } = files
 
 const conversationState = useConversationState({
   selectedAgentId,
+  selectedLlmProfileId,
   streams: conversationStreams,
   hydrateFilePreviews,
   notifyError,
@@ -144,6 +150,7 @@ const {
 
 const chatStreaming = useChatStreaming({
   selectedAgentId,
+  selectedLlmProfileId,
   agents,
   conversations,
   selectedConversation,
@@ -203,8 +210,10 @@ function newConversation(): void {
 function resetWorkspace(): void {
   currentUser.value = null
   agents.value = []
+  selectedLlmProfileId.value = ''
   resetConversations()
   clearPendingFiles()
+  clearMarkdownImageCache()
   message.value = ''
   resetSettings()
 }
@@ -212,13 +221,18 @@ function resetWorkspace(): void {
 async function loadWorkspace(): Promise<void> {
   workspaceLoading.value = true
   try {
-    const [agentResult, conversationResult, userResult] = await Promise.allSettled([
+    const [agentResult, llmResult, conversationResult, userResult] = await Promise.allSettled([
       api.listAgents(),
+      api.listLlmProfiles(),
       api.listConversations(),
       api.getCurrentUser(),
     ])
     if (agentResult.status === 'fulfilled') agents.value = agentResult.value
     else notifyError(agentResult.reason)
+    if (llmResult.status === 'fulfilled') {
+      llmProfiles.value = llmResult.value
+      if (!llmProfiles.value.some(item => item.id === selectedLlmProfileId.value)) selectedLlmProfileId.value = llmProfiles.value[0]?.id || ''
+    } else notifyError(llmResult.reason)
     if (conversationResult.status === 'fulfilled') mergeConversationList(conversationResult.value)
     else if (!conversationStreams.activeConversationIds().length) conversations.value = []
     if (userResult.status === 'fulfilled') currentUser.value = userResult.value
@@ -261,19 +275,19 @@ onBeforeUnmount(() => {
     <button v-if="sidebarCollapsed" class="panel-restore sidebar-restore" type="button" aria-label="展开侧栏" title="展开侧栏" @click="toggleSidebar">›</button>
 
     <el-main class="main-panel">
-      <ChatHeader :status-text="statusText" :agents="agents" :selected-agent-id="selectedAgentId" :allow-auto="connectionMode === 'router'" :refreshing-agents="refreshingAgents" :title="selectedConversation?.title || '新对话'" :theme-mode="themeMode" @update:selected-agent-id="selectedAgentId = $event" @agent-change="handleAgentChange" @refresh-agents="refreshAgents" @settings="openSettings('gateway')" @toggle-theme="toggleTheme" />
+      <ChatHeader :status-text="statusText" :agents="agents" :selected-agent-id="selectedAgentId" :llm-profiles="llmProfiles" :selected-llm-profile-id="selectedLlmProfileId" :allow-auto="connectionMode === 'router'" :refreshing-agents="refreshingCatalog" :title="selectedConversation?.title || '新对话'" :theme-mode="themeMode" @update:selected-agent-id="selectedAgentId = $event" @update:selected-llm-profile-id="selectedLlmProfileId = $event" @agent-change="handleAgentChange" @refresh-agents="refreshCatalog" @settings="openSettings('gateway')" @toggle-theme="toggleTheme" />
 
       <div class="workspace-grid" :class="{ 'context-collapsed': contextCollapsed }">
         <section class="chat-card">
-          <ChatMessages ref="chatMessagesRef" :messages="currentMessages" :context-summaries="selectedConversation?.contextSummaries" :loading="loadingConversation" :current-user="currentUser" :streaming="selectedConversationStreaming" @suggest="message = $event" @download="downloadFile" />
-          <MessageComposer :model-value="message" :endpoint-url="activeEndpointUrl" :endpoint-label="activeEndpointLabel" :selected-agent-id="selectedAgentId" :loading="selectedConversationStreaming" :pending-files="pendingFiles" @update:model-value="message = $event" @files-change="handleFilesChange" @retry-file="retryPendingFile" @send="handleSend" @stop="stopStreaming" />
+          <ChatMessages ref="chatMessagesRef" :messages="currentMessages" :context-summaries="selectedConversation?.contextSummaries" :loading="loadingConversation" :current-user="currentUser" :streaming="selectedConversationStreaming" :conversation-id="selectedConversation?.conversationId" :markdown-image-urls="markdownImageUrls" @suggest="message = $event" @download="downloadFile" />
+          <MessageComposer :model-value="message" :endpoint-url="activeEndpointUrl" :endpoint-label="activeEndpointLabel" :selected-agent-id="selectedAgentId" :selected-llm-profile-id="selectedLlmProfileId" :loading="selectedConversationStreaming" :pending-files="pendingFiles" @update:model-value="message = $event" @files-change="handleFilesChange" @retry-file="retryPendingFile" @send="handleSend" @stop="stopStreaming" />
         </section>
         <aside class="context-panel">
           <div class="context-panel-head"><span class="context-label">INSPECTOR</span><button class="panel-collapse-btn" type="button" aria-label="收起上下文面板" title="收起" @click="toggleContext">›</button></div>
-          <section><span class="context-label">ROUTING</span><strong>{{ routeMode }}</strong><p>{{ connectionMode === 'router' && selectedAgentId === AUTO_AGENT_ID ? '由意图识别 Agent 分析请求并选择目标。' : (selectedAgent?.description || selectedAgentId) }}</p><dl><div><dt>Agent</dt><dd>{{ connectionMode === 'router' && selectedAgentId === AUTO_AGENT_ID ? '由模型选择' : (selectedAgent?.name || selectedAgentId) }}</dd></div><div><dt>协议</dt><dd>{{ selectedAgent?.apiFormat || (connectionMode === 'router' ? '自动' : '—') }}</dd></div></dl></section>
-          <section><span class="context-label">IDENTITY</span><dl><div><dt>用户</dt><dd>{{ currentUser?.userId || 'Guest' }}</dd></div><div><dt>租户</dt><dd>{{ currentUser?.tenantId || tenantId || '—' }}</dd></div><div><dt>{{ activeEndpointLabel }}</dt><dd :title="activeEndpointUrl">{{ activeEndpointHost }}</dd></div></dl></section>
+          <section><span class="context-label">ROUTING</span><strong>{{ routeMode }}</strong><p>{{ connectionMode === 'router' && selectedAgentId === AUTO_AGENT_ID ? '由意图识别 Agent 分析请求并选择目标。' : (selectedAgent?.description || selectedAgentId) }}</p><dl><div><dt>Agent</dt><dd>{{ connectionMode === 'router' && selectedAgentId === AUTO_AGENT_ID ? '自动选择' : (selectedAgent?.name || selectedAgentId) }}</dd></div><div><dt>模型</dt><dd>{{ llmProfiles.find(item => item.id === selectedLlmProfileId)?.modelId || '未选择' }}</dd></div></dl></section>
+          <section><span class="context-label">IDENTITY</span><dl><div><dt>用户名</dt><dd>{{ currentUser?.username || '未设置' }}</dd></div><div><dt>邮箱</dt><dd :title="currentUser?.email">{{ currentUser?.email || '未设置' }}</dd></div><div><dt>ID</dt><dd :title="currentUser?.userId">{{ currentUser?.userId || 'Guest' }}</dd></div><div><dt>租户</dt><dd>{{ currentUser?.tenantId || tenantId || '—' }}</dd></div><div><dt>{{ activeEndpointLabel }}</dt><dd :title="activeEndpointUrl">{{ activeEndpointHost }}</dd></div></dl></section>
           <section><span class="context-label">CONVERSATION</span><dl><div><dt>消息</dt><dd>{{ currentMessages.length }}</dd></div><div><dt>状态</dt><dd>{{ conversationStatusText }}</dd></div><div><dt>ID</dt><dd class="conversation-id" :title="selectedConversation?.conversationId">{{ selectedConversation?.conversationId || '尚未创建' }}</dd></div></dl><div class="conversation-usage"><div class="token-usage-head"><span>Token</span><span class="token-usage-status" :class="{ unavailable: !currentUsageSummary.available }">{{ currentUsageSummary.available ? (currentUsageSummary.estimated ? '预估' : '完整') : '部分' }}</span></div><template v-if="currentUsageSummary.available && currentUsageSummary.usage"><div class="token-usage-total"><strong>{{ currentUsageSummary.estimated ? '≈' : '' }}{{ formatTokenCount(currentUsageSummary.usage.totalTokens) }}</strong><small>总计</small></div><dl class="token-usage-grid"><div><dt>输入</dt><dd>{{ formatTokenCount(currentUsageSummary.usage.promptTokens) }}</dd></div><div><dt>输出</dt><dd>{{ currentUsageSummary.estimated ? '≈' : '' }}{{ formatTokenCount(currentUsageSummary.usage.completionTokens) }}</dd></div><div><dt>缓存命中</dt><dd>{{ currentUsageSummary.usage.cachedInputTokens != null ? formatTokenCount(currentUsageSummary.usage.cachedInputTokens) : '—' }}</dd></div><div><dt>命中率</dt><dd>{{ formatCacheHitRate(currentUsageSummary.usage.cachedInputTokens, currentUsageSummary.usage.promptTokens) ?? '—' }}</dd></div><div class="grid-span-two"><dt>思考</dt><dd>{{ currentUsageSummary.usage.reasoningTokens != null ? formatTokenCount(currentUsageSummary.usage.reasoningTokens) : '—' }}</dd></div></dl></template><template v-else><strong class="unavailable">—</strong><small>Provider usage 不完整</small></template></div></section>
-          <section class="inspector-actions"><span class="context-label">OPERATIONS</span><div class="inspector-action-grid"><el-button class="inspector-action inspector-action-primary" size="small" :loading="compactingConversation" :disabled="!selectedConversation || selectedConversationStreaming" @click="compactConversation"><span class="inspector-action-mark" aria-hidden="true">↻</span><span>手动压缩</span></el-button><el-button class="inspector-action" size="small" @click="openSettings('health')"><span class="inspector-action-mark" aria-hidden="true">✓</span><span>平台健康检查</span></el-button></div></section>
+          <section class="inspector-actions"><span class="context-label">OPERATIONS</span><div class="inspector-action-grid"><el-button class="inspector-action inspector-action-primary" size="small" :loading="compactingConversation" :disabled="!selectedConversation || !selectedLlmProfileId || selectedConversationStreaming" @click="compactConversation"><span class="inspector-action-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h7m-7 0 3-3m-3 3 3 3M21 16h-7m7 0-3-3m3 3-3 3" /></svg></span><span>手动压缩</span></el-button><el-button class="inspector-action" size="small" @click="openSettings('health')"><span class="inspector-action-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2-5 4 10 2-5h6" /></svg></span><span>健康检查</span></el-button></div></section>
           <div class="context-resize" @pointerdown="startContextResize" />
         </aside>
       </div>

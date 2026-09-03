@@ -8,7 +8,8 @@ export function buildConversationTimeline(
   messages: ConversationMessage[],
   summaries: ContextSummary[],
 ): ConversationTimelineItem[] {
-  const orderedMessages = [...messages].sort((left, right) => left.sequence - right.sequence)
+  // 序号缺失时按 0 处理：NaN 比较结果会让整个排序顺序错乱。
+  const orderedMessages = [...messages].sort((left, right) => (left.sequence || 0) - (right.sequence || 0))
   const orderedSummaries = summaries
     .map(summary => ({ summary, boundary: summaryBoundary(summary, orderedMessages) }))
     .sort((left, right) => left.boundary - right.boundary
@@ -91,6 +92,8 @@ export function mergeAssistantSnapshot(
     toolActivities: mergeToolActivities(stored.toolActivities, snapshot.toolActivities),
     processActivities: mergeProcessActivities(stored.processActivities, snapshotProcesses),
     files: stored.files?.length ? stored.files : snapshot.files,
+    tokenUsage: snapshot.tokenUsage || stored.tokenUsage,
+    modelId: snapshot.modelId || stored.modelId,
     error: snapshot.error || stored.error,
   }
   return merged
@@ -104,11 +107,15 @@ function mergeAssistantMessage(
     ? {
         ...current,
         content: appendText(current.content, message.content),
+        toolCallId: message.toolCallId,
+        toolName: message.toolName,
         reasoning: appendText(current.reasoning, message.reasoning) || undefined,
         files: current.files?.length || message.files?.length
           ? [...(current.files || []), ...(message.files || [])]
           : undefined,
         processActivities: cloneProcessActivities(current.processActivities),
+        tokenUsage: message.tokenUsage || current.tokenUsage,
+        modelId: message.modelId || current.modelId,
         error: message.error || current.error,
       }
     : {
@@ -157,6 +164,25 @@ function createAssistantMessage(message: ConversationMessage): ConversationMessa
 }
 
 function mergeToolIntoAssistant(message: ConversationMessage, tool: ToolActivity): void {
+  message.toolActivities = mergeToolActivity(message.toolActivities, tool)
+  message.processActivities = mergeToolProcess(message.processActivities, tool)
+}
+
+/** Append live stream phases without waiting for the persisted conversation snapshot. */
+export function appendStreamingReasoning(message: ConversationMessage, content: string): void {
+  if (!content) return
+  const activities = message.processActivities || []
+  const last = activities[activities.length - 1]
+  if (last?.kind === 'reasoning') {
+    last.content += content
+  } else {
+    activities.push({ kind: 'reasoning', content })
+  }
+  message.processActivities = activities
+}
+
+/** Keep live tool calls in the same ordered process trace as streamed reasoning. */
+export function appendStreamingTool(message: ConversationMessage, tool: ToolActivity): void {
   message.toolActivities = mergeToolActivity(message.toolActivities, tool)
   message.processActivities = mergeToolProcess(message.processActivities, tool)
 }

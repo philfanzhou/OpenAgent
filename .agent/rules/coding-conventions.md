@@ -212,15 +212,11 @@ Contracts ← Core ← {Engine, Infrastructure, Router} ← {Engine.Host, Hostin
 
 ### 6.2 注释和字符串
 
-- 所有注释**必须**使用**英文**
-- 所有输出/显示的字符串字面量**必须**使用**英文**
-- 代码注释和输出消息中**禁止**出现中文字符
+- 注释可以使用中文或英文，以清晰说明设计和约束为准
+- 面向用户的输出、日志和异常消息使用英文，说明性内容不要放进运行时字符串
 
 ```csharp
-// ✅ Correct: Initialize the agent service
-var agent = new AgentService();
-
-// ❌ Incorrect: 初始化代理服务
+// 初始化代理服务
 var agent = new AgentService();
 ```
 
@@ -516,4 +512,4 @@ Agent 修改代码后应自主决定验证策略（改 `.cs` → `dotnet build` 
 - ❌ 使用浮动版本或版本范围的 PackageReference
 - ❌ 重复引用项目已传递依赖的 NuGet 包
 - ❌ 使用 .NET 6.0 或其他已过期版本
-- ❌ 注释和字符串使用中文
+- ❌ 将说明性注释写进面向用户的运行时字符串

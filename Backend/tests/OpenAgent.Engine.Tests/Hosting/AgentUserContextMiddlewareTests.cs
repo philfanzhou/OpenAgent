@@ -46,6 +46,27 @@ public class AgentUserContextMiddlewareTests
             middleware.InvokeAsync(context));
     }
 
+    [Fact]
+    public async Task InvokeAsync_AuthenticatedClaims_PopulatesIdentityProfile()
+    {
+        AgentUserContextMiddleware middleware = CreateMiddleware(Environments.Production);
+        DefaultHttpContext context = CreateContext("trusted-tenant");
+        context.User = new ClaimsPrincipal(new ClaimsIdentity(
+        [
+            new Claim("sub", "keycloak-user-id"),
+            new Claim("preferred_username", "alice"),
+            new Claim("email", "alice@example.com"),
+            new Claim("tid", "trusted-tenant")
+        ], "Test"));
+
+        await middleware.InvokeAsync(context);
+
+        AgentRequestFeature request = context.Features.Get<AgentRequestFeature>()!;
+        Assert.Equal("keycloak-user-id", request.User.UserId);
+        Assert.Equal("alice", request.User.Username);
+        Assert.Equal("alice@example.com", request.User.Email);
+    }
+
     private static AgentUserContextMiddleware CreateMiddleware(string environmentName)
     {
         var environment = new Mock<IHostEnvironment>();

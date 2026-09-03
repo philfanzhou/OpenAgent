@@ -8,7 +8,6 @@ internal sealed class AgentUserContextMiddleware
 {
     private readonly RequestDelegate _next;
     private readonly ILogger<AgentUserContextMiddleware> _logger;
-
     public AgentUserContextMiddleware(
         RequestDelegate next,
         ILogger<AgentUserContextMiddleware> logger,
@@ -47,9 +46,12 @@ internal sealed class AgentUserContextMiddleware
         string? userId = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value
             ?? context.User.FindFirst("sub")?.Value
             ?? context.User.Identity?.Name;
-        string? tenantId = TenantIdentityResolver.Resolve(
-            context.User,
-            context.Request.Headers);
+        string? username = context.User.FindFirst("preferred_username")?.Value
+            ?? context.User.FindFirst("username")?.Value
+            ?? context.User.Identity?.Name;
+        string? email = context.User.FindFirst("email")?.Value
+            ?? context.User.FindFirst(ClaimTypes.Email)?.Value;
+        string? tenantId = TenantIdentityResolver.Resolve(context.User, context.Request.Headers);
         List<string> roles = context.User.Claims
             .Where(claim => claim.Type == ClaimTypes.Role || claim.Type is "roles" or "role")
             .Select(claim => claim.Value)
@@ -70,6 +72,8 @@ internal sealed class AgentUserContextMiddleware
         return new AgentUserContext
         {
             UserId = userId ?? "anonymous",
+            Username = username,
+            Email = email,
             TenantId = tenantId,
             Groups = groups.AsReadOnly(),
             Roles = roles.AsReadOnly(),

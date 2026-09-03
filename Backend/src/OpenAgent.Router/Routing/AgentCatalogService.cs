@@ -15,6 +15,7 @@ internal sealed class AgentCatalogService(
         CancellationToken cancellationToken)
     {
         List<AgentCatalogEntry> entries = [];
+        bool hasAvailableProvider = false;
         foreach (IAgentProvider provider in providers.Providers)
         {
             AgentProviderCatalog catalog;
@@ -27,13 +28,16 @@ internal sealed class AgentCatalogService(
             catch (Exception exception) when (
                 exception is HttpRequestException or JsonException)
             {
-                throw ProviderUnavailable();
+                // A failed provider must not hide agents published by healthy providers.
+                continue;
             }
 
             if (!catalog.IsAvailable)
             {
-                throw ProviderUnavailable();
+                continue;
             }
+
+            hasAvailableProvider = true;
 
             IReadOnlyList<AgentSummary> authorized = catalog.Agents
                 .Where(agent => !string.IsNullOrWhiteSpace(agent.AgentId))
@@ -49,6 +53,11 @@ internal sealed class AgentCatalogService(
             entries.AddRange(authorized.Select(agent => new AgentCatalogEntry(
                 agent,
                 provider.Id)));
+        }
+
+        if (!hasAvailableProvider)
+        {
+            throw ProviderUnavailable();
         }
 
         string? conflict = entries

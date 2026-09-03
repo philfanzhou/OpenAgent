@@ -8,7 +8,6 @@ using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
-using OpenAgent.Core.Files;
 
 namespace OpenAgent.Core.Conversation;
 
@@ -32,39 +31,31 @@ internal sealed class ConversationHistoryFactory
         - Open items and next action
         """;
 
-    private readonly IConversationLock _conversationLock;
     private readonly ConversationSessionStore _store;
     private readonly ConversationStoreOptions _options;
-    private readonly FileAssetExecutionContext _fileExecution;
-    private readonly ILogger<PlatformChatHistory> _logger;
     private readonly ILoggerFactory _loggerFactory;
-    private readonly IFileAssetService _fileService;
+    private readonly IPlatformChatHistoryFactory _historyFactory;
 
     public ConversationHistoryFactory(
-        IConversationLock conversationLock,
         ConversationSessionStore store,
         IOptions<ConversationStoreOptions> options,
-        FileAssetExecutionContext fileExecution,
-        ILogger<PlatformChatHistory> logger,
         ILoggerFactory loggerFactory,
-        IFileAssetService fileService)
+        IPlatformChatHistoryFactory historyFactory)
     {
-        _conversationLock = conversationLock;
         _store = store;
         _options = options.Value;
-        _fileExecution = fileExecution;
-        _logger = logger;
         _loggerFactory = loggerFactory;
-        _fileService = fileService;
+        _historyFactory = historyFactory;
     }
 
     internal PlatformChatHistory Create(
         string agentId,
         string modelId,
-        IReadOnlyDictionary<string, string> executionMetadata,
         AgentRequest request,
         IAgentUserContext user,
-        IReadOnlyList<FileAssetContent> files)
+        IReadOnlyList<FileAsset> files,
+        bool supportsMultimodal,
+        IReadOnlyDictionary<string, string>? executionMetadata = null)
     {
         ConversationContext context = new(
             request.ConversationId,
@@ -73,18 +64,13 @@ internal sealed class ConversationHistoryFactory
             agentId,
             request.TraceId,
             request.ConversationType);
-        return new PlatformChatHistory(
+        return _historyFactory.Create(new PlatformChatHistoryContext(
             context,
-            agentId,
             modelId,
-            executionMetadata,
             request.Query,
-            files.Select(item => item.Asset).ToList().AsReadOnly(),
-            _fileExecution,
-            _conversationLock,
-            _store,
-            _logger,
-            _fileService);
+            files.ToList().AsReadOnly(),
+            supportsMultimodal,
+            executionMetadata));
     }
 
     internal async Task EnsureConversationAsync(
@@ -114,13 +100,16 @@ internal sealed class ConversationHistoryFactory
         string? tenantId,
         string? conversationId)
     {
-        SummarizationCompactionStrategy summaryStrategy = CreateStrategy(
+        int inputBudget = model.ContextTokens - (model.MaxOutputTokens ?? 0);
+        SummarizationCompactionStrategy strategy = CreateStrategy(
+            inputBudget,
             policy,
             summarizationClient,
             force: false,
-            out CompactionTrigger trigger);
+            out CompactionTrigger trigger,
+            model);
         var audited = new AuditedCompactionStrategy(
-            summaryStrategy,
+            strategy,
             trigger,
             "Automatic",
             tenantId,
@@ -128,29 +117,27 @@ internal sealed class ConversationHistoryFactory
             _store.Store,
             _loggerFactory.CreateLogger<AuditedCompactionStrategy>(),
             recordUnchanged: false);
-        CompactionStrategy compactionStrategy = model.ContextWindowTokens.HasValue
-            ? new PipelineCompactionStrategy(
-                [audited, CreateContextWindowSafety(model)])
+        CompactionStrategy pipeline = model.ContextTokens > 0
+            ? new PipelineCompactionStrategy([
+                audited,
+                new ContextWindowCompactionStrategy(model.ContextTokens, model.MaxOutputTokens ?? 0)])
             : audited;
-        return new CompactionProvider(compactionStrategy);
+        return new CompactionProvider(pipeline);
     }
 
-    private static ContextWindowCompactionStrategy CreateContextWindowSafety(
-        LlmConfig model) => new(
-            model.ContextWindowTokens!.Value,
-            model.MaxOutputTokens ?? 0);
-
     internal SummarizationCompactionStrategy CreateStrategy(
+        int contextTokens,
         ContextPolicy? policy,
         IChatClient summarizationClient,
         bool force,
-        out CompactionTrigger trigger)
+        out CompactionTrigger trigger,
+        LlmConfig? model = null)
     {
-        trigger = ResolveTrigger(policy, force);
-        return CreateSummarization(policy, summarizationClient, trigger, force);
+        trigger = ResolveTrigger(contextTokens, force);
+        return CreateSummarization(contextTokens, policy, summarizationClient, trigger, force, model);
     }
 
-    private CompactionTrigger ResolveTrigger(ContextPolicy? policy, bool force)
+    private CompactionTrigger ResolveTrigger(int contextTokens, bool force)
     {
         if (force)
         {
@@ -160,23 +147,30 @@ internal sealed class ConversationHistoryFactory
             return CompactionTriggers.Always;
         }
 
-        return CompactionTriggers.TokensExceed(ResolveAutomaticTokenThreshold(policy));
+        return CompactionTriggers.TokensExceed(ResolveAutomaticTokenThreshold(contextTokens));
     }
 
-    internal int ResolveAutomaticTokenThreshold(ContextPolicy? policy)
+    internal int ResolveAutomaticTokenThreshold(int contextTokens)
     {
-        int contextTokens = policy?.MaxTokens > 0
-            ? policy.MaxTokens
+        // A configured fixed threshold wins over the ratio heuristic, so deployments can
+        // pin the automatic trigger regardless of per-agent context policies.
+        if (_options.AutomaticCompactionTokenThreshold is > 0)
+        {
+            return _options.AutomaticCompactionTokenThreshold.Value;
+        }
+
+        contextTokens = contextTokens > 0
+            ? contextTokens
             : Math.Max(1, _options.DefaultModelContextTokens);
 
         // Automatic compaction starts at 80% of the available model context.
         return Math.Max(1, (int)Math.Floor(contextTokens * AutomaticTriggerRatio));
     }
 
-    internal int ResolveCompactionTargetTokens(ContextPolicy? policy)
+    internal int ResolveCompactionTargetTokens(int contextTokens)
     {
-        int contextTokens = policy?.MaxTokens > 0
-            ? policy.MaxTokens
+        contextTokens = contextTokens > 0
+            ? contextTokens
             : Math.Max(1, _options.DefaultModelContextTokens);
 
         // Keep a reserve for the next user turn and model response. Tune this with
@@ -184,10 +178,10 @@ internal sealed class ConversationHistoryFactory
         return Math.Max(1, (int)Math.Floor(contextTokens * CompactionTargetRatio));
     }
 
-    internal int ResolveSummaryTokenBudget(ContextPolicy? policy)
+    internal int ResolveSummaryTokenBudget(int contextTokens, ContextPolicy? policy)
     {
-        int contextTokens = policy?.MaxTokens > 0
-            ? policy.MaxTokens
+        contextTokens = contextTokens > 0
+            ? contextTokens
             : Math.Max(1, _options.DefaultModelContextTokens);
         int proportionalBudget = Math.Max(
             MinimumSummaryTokens,
@@ -200,19 +194,27 @@ internal sealed class ConversationHistoryFactory
     }
 
     private SummarizationCompactionStrategy CreateSummarization(
+        int contextTokens,
         ContextPolicy? policy,
         IChatClient chatClient,
         CompactionTrigger trigger,
-        bool force)
+        bool force,
+        LlmConfig? model)
     {
-        int targetTokens = ResolveCompactionTargetTokens(policy);
-        int summaryBudget = ResolveSummaryTokenBudget(policy);
+        int targetTokens = ResolveCompactionTargetTokens(contextTokens);
+        int summaryBudget = ResolveSummaryTokenBudget(contextTokens, policy);
         int minimumPreservedGroups = force
             ? 0
             : Math.Max(1, policy?.PreserveRecentTurns ?? 2);
         string prompt = $"{SummarizationPrompt.Trim()}\nHARD LIMIT: the summary must not exceed {summaryBudget} tokens.";
         return new SummarizationCompactionStrategy(
-            new OutputTokenLimitedChatClient(chatClient, summaryBudget),
+            new OutputTokenLimitedChatClient(
+                chatClient,
+                summaryBudget,
+                string.IsNullOrWhiteSpace(policy?.SummarizeOptions?.SummaryModel)
+                    || policy.SummarizeOptions.SummaryModel == model?.ModelId
+                    ? model?.TokenCapabilities.MaxOutputTokens : null,
+                model?.TokenCapabilities.SupportsMaxOutputTokens ?? true),
             trigger,
             minimumPreservedGroups,
             summarizationPrompt: prompt,

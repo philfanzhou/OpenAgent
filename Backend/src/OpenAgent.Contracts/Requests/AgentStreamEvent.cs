@@ -5,6 +5,7 @@ public enum AgentStreamEventType
     Content,
     Reasoning,
     ToolCall,
+    ToolResult,
     Usage
 }
 

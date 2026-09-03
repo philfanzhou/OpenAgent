@@ -1,6 +1,8 @@
+import { validateTokenLimits } from '../tokenLimits'
 import { computed, ref, type Ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { api } from '../api'
+import { api, getTenantId } from '../api'
+import { randomUuid } from '../browserCrypto'
 import {
   AUTO_AGENT_ID,
   type AgentConfigEntity,
@@ -22,6 +24,7 @@ export type SettingsPanel = 'gateway' | 'health' | 'llm' | 'mcp' | 'skill' | 'ag
 interface SettingsOptions {
   agents: Ref<AgentSummary[]>
   selectedAgentId: Ref<string>
+  selectedLlmProfileId: Ref<string>
   connectionMode: Ref<ConnectionMode>
   routerUrl: Ref<string>
   engineUrl: Ref<string>
@@ -52,25 +55,15 @@ function createDefaultLlm(): LlmProviderProfile {
     id: '',
     name: '',
     format: 'OpenAIChatCompletions',
+    modelId: 'gpt-4o',
+    contextTokens: 128000,
+    maxOutputTokens: null,
+    supportsMaxOutputTokens: true,
     endpoint: 'https://api.openai.com/v1',
     apiKey: '',
     temperature: 0.7,
-    contextWindowTokens: null,
-    maxOutputTokens: null,
-    supportsMaxOutputTokens: true,
+    modality: 'Text',
   }
-}
-
-function validateTokenLimits(
-  contextWindowTokens?: number | null,
-  maxOutputTokens?: number | null,
-): string | null {
-  if (contextWindowTokens != null && contextWindowTokens <= 0) return '上下文窗口 Token 必须为正整数'
-  if (maxOutputTokens != null && maxOutputTokens <= 0) return '最大输出 Token 必须为正整数'
-  if (contextWindowTokens != null && maxOutputTokens != null && maxOutputTokens >= contextWindowTokens) {
-    return '最大输出 Token 必须小于上下文窗口'
-  }
-  return null
 }
 
 function createDefaultMcp(): McpServerConfig {
@@ -78,7 +71,7 @@ function createDefaultMcp(): McpServerConfig {
 }
 
 function createDefaultRag(): RagInstanceConfig {
-  return { id: '', name: '', enabled: true, type: 'ragflow', collectionName: 'default', apiEndpoint: '', apiKey: '' }
+  return { id: '', name: '', enabled: true, type: 'ragflow', collectionName: 'default', apiEndpoint: '', apiKeySecretRef: '', apiKey: '' }
 }
 
 function createDefaultAgent(agentId: string, name: string): AgentConfigEntity {
@@ -90,20 +83,12 @@ function createDefaultAgent(agentId: string, name: string): AgentConfigEntity {
     currentVersion: '',
     config: {
       instructions: '',
-      llm: {
-        provider: '',
-        format: 'OpenAIChatCompletions',
-        modelId: 'gpt-4o',
-        apiKey: '',
-        endpoint: '',
-        temperature: 0.7,
-        contextWindowTokens: null,
-        maxOutputTokens: null,
-      },
       mcp: { servers: [] },
       rag: { enabled: false, enabledRagInstanceIds: [], instances: [] },
       skills: { enabledSkills: [], instances: [] },
       maxTurns: 50,
+      contextWindowTokens: null,
+      maxOutputTokens: null,
     },
   }
 }
@@ -113,6 +98,7 @@ export function useSettings(options: SettingsOptions) {
   const activeSettings = ref<SettingsPanel>('gateway')
   const savingConfig = ref(false)
   const refreshingAgents = ref(false)
+  const refreshingCatalog = ref(false)
   const testingMcp = ref(false)
   const uploadingSkill = ref(false)
   const testingRag = ref(false)
@@ -254,6 +240,9 @@ export function useSettings(options: SettingsOptions) {
   async function loadLlmProfiles(): Promise<void> {
     try {
       llmProfiles.value = await api.listLlmProfiles()
+      if (!llmProfiles.value.some(item => item.id === options.selectedLlmProfileId.value)) {
+        options.selectedLlmProfileId.value = llmProfiles.value[0]?.id || ''
+      }
     } catch (error) {
       options.notifyError(error)
     }
@@ -279,7 +268,7 @@ export function useSettings(options: SettingsOptions) {
     const profile = llmProfiles.value[index]
     if (!profile) return
     selectedLlmIndex.value = index
-    llmDraft.value = { ...profile }
+    llmDraft.value = { ...createDefaultLlm(), ...profile }
     llmResult.value = null
   }
 
@@ -301,9 +290,12 @@ export function useSettings(options: SettingsOptions) {
     const profile = llmProfiles.value[selectedLlmIndex.value]
     if (!profile) return
     try {
-      await ElMessageBox.confirm(`确认删除大模型配置「${profile.name}」吗？删除后绑定它的 Agent 将无法执行。`, '删除大模型配置', { type: 'warning' })
+      await ElMessageBox.confirm(`确认删除大模型配置「${profile.name}」吗？删除后执行请求将无法再选择该配置。`, '删除大模型配置', { type: 'warning' })
       await api.deleteLlmProfile(profile.id)
       llmProfiles.value.splice(selectedLlmIndex.value, 1)
+      if (options.selectedLlmProfileId.value === profile.id) {
+        options.selectedLlmProfileId.value = llmProfiles.value[0]?.id || ''
+      }
       selectedLlmIndex.value = llmProfiles.value.length ? 0 : -1
       if (selectedLlmIndex.value >= 0) selectLlm(selectedLlmIndex.value)
       ElMessage.success('大模型配置已删除')
@@ -316,16 +308,17 @@ export function useSettings(options: SettingsOptions) {
     const profile = llmDraft.value
     const id = profile.id.trim()
     if (!id || !/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(id)) return options.notifyError(new Error('LLM ID 只能使用字母、数字、点、下划线或短横线'))
-    if (!profile.name.trim() || !profile.endpoint.trim()) return options.notifyError(new Error('请填写名称和 Endpoint'))
-    const tokenLimitError = validateTokenLimits(profile.contextWindowTokens, profile.maxOutputTokens)
-    if (tokenLimitError) return options.notifyError(new Error(tokenLimitError))
+    if (!profile.name.trim() || !profile.endpoint.trim() || !profile.modelId.trim() || profile.contextTokens <= 0) return options.notifyError(new Error('请填写名称、Endpoint、模型 ID 和有效的上下文大小'))
     profile.id = id
+    const tokenError = validateTokenLimits(profile.contextTokens, profile.maxOutputTokens, true)
+    if (tokenError) return options.notifyError(new Error(tokenError))
     savingLlm.value = true
     try {
       const saved = await api.saveLlmProfile(id, profile)
       const existingIndex = llmProfiles.value.findIndex(item => item.id === saved.id)
       if (existingIndex >= 0) llmProfiles.value[existingIndex] = saved
       else llmProfiles.value.push(saved)
+      if (!options.selectedLlmProfileId.value) options.selectedLlmProfileId.value = saved.id
       selectLlm(existingIndex >= 0 ? existingIndex : llmProfiles.value.length - 1)
       showLlmEditor.value = false
       ElMessage.success('大模型配置已保存')
@@ -347,15 +340,7 @@ export function useSettings(options: SettingsOptions) {
     }
   }
 
-  function applyLlmProfile(providerId: string): void {
-    const profile = llmProfiles.value.find(item => item.id === providerId)
-    if (!profile || !config.value) return
-    config.value.config.llm.format = profile.format
-    config.value.config.llm.endpoint = profile.endpoint
-    config.value.config.llm.temperature = profile.temperature
-  }
-
-  async function refreshAgents(): Promise<void> {
+  async function refreshAgents(showSuccess = true): Promise<void> {
     refreshingAgents.value = true
     try {
       const refreshed = await api.listAgents()
@@ -368,11 +353,21 @@ export function useSettings(options: SettingsOptions) {
       if (options.selectedAgentId.value && options.selectedAgentId.value !== AUTO_AGENT_ID && activeSettings.value === 'agent') {
         await loadConfig()
       }
-      ElMessage.success('Agent 列表已刷新')
+      if (showSuccess) ElMessage.success('Agent 列表已刷新')
     } catch (error) {
       options.notifyError(error)
     } finally {
       refreshingAgents.value = false
+    }
+  }
+
+  async function refreshCatalog(): Promise<void> {
+    refreshingCatalog.value = true
+    try {
+      await Promise.all([refreshAgents(false), loadLlmProfiles()])
+      ElMessage.success('Agent 和模型列表已刷新')
+    } finally {
+      refreshingCatalog.value = false
     }
   }
 
@@ -443,8 +438,7 @@ export function useSettings(options: SettingsOptions) {
   async function editAgent(agentId: string): Promise<void> {
     options.selectedAgentId.value = agentId
     handleAgentChange()
-    await Promise.all([loadConfig(agentId), loadLlmProfiles()])
-    if (config.value?.config.llm.provider) applyLlmProfile(config.value.config.llm.provider)
+    await loadConfig(agentId)
     isNewAgent.value = false
     showAgentEditor.value = true
   }
@@ -624,7 +618,7 @@ export function useSettings(options: SettingsOptions) {
   }
 
   async function createAgent(): Promise<void> {
-    const agentId = `agent-${crypto.randomUUID().slice(0, 8)}`
+    const agentId = `agent-${randomUuid().slice(0, 8)}`
     options.selectedAgentId.value = agentId
     handleAgentChange()
     config.value = createDefaultAgent(agentId, '')
@@ -632,7 +626,6 @@ export function useSettings(options: SettingsOptions) {
     mcpServers.value = []
     skillDraft.value = { enabledSkills: [], instances: [] }
     ragInstances.value = []
-    await loadLlmProfiles()
     showAgentEditor.value = true
   }
 
@@ -647,14 +640,8 @@ export function useSettings(options: SettingsOptions) {
       options.notifyError(new Error('请输入 Agent 名称'))
       return
     }
-    const tokenLimitError = validateTokenLimits(
-      config.value.config.llm.contextWindowTokens,
-      config.value.config.llm.maxOutputTokens,
-    )
-    if (tokenLimitError) {
-      options.notifyError(new Error(tokenLimitError))
-      return
-    }
+    const tokenError = validateTokenLimits(config.value.config.contextWindowTokens, config.value.config.maxOutputTokens)
+    if (tokenError) return options.notifyError(new Error(tokenError))
     config.value.agentId = agentId
     syncCapabilityDraftsToAgent()
     config.value.config.rag = {
@@ -669,7 +656,7 @@ export function useSettings(options: SettingsOptions) {
       options.selectedAgentId.value = agentId
       options.agents.value = [
         ...options.agents.value.filter(item => item.agentId !== agentId),
-        { agentId, name: saved.name, description: saved.description, status: saved.status, currentVersion: saved.currentVersion, apiFormat: String(saved.config.llm.format || ''), llmProvider: saved.config.llm.provider, llmModel: saved.config.llm.modelId },
+        { tenantId: getTenantId(), agentId, name: saved.name, description: saved.description, status: saved.status, currentVersion: saved.currentVersion },
       ]
       isNewAgent.value = false
       showAgentEditor.value = false
@@ -740,18 +727,6 @@ export function useSettings(options: SettingsOptions) {
     selectedRagIndex.value = -1
   }
 
-  function llmName(agent: AgentSummary): string {
-    if (agent.llmProvider) {
-      const profile = llmProfiles.value.find(item => item.id === agent.llmProvider)
-      return profile?.name || agent.llmProvider
-    }
-    return agent.llmModel || '未配置模型'
-  }
-
-  function llmId(agent: AgentSummary): string {
-    return agent.llmModel || ''
-  }
-
   function selectAgent(agentId: string): void {
     if (options.selectedAgentId.value === agentId) return
     options.selectedAgentId.value = agentId
@@ -767,7 +742,6 @@ export function useSettings(options: SettingsOptions) {
     if (panel === 'skill') void loadSkillCatalog()
     if (panel === 'agent') {
       void loadConfig()
-      void loadLlmProfiles()
     }
     if (panel === 'rag') void loadConfig()
   }
@@ -778,7 +752,6 @@ export function useSettings(options: SettingsOptions) {
     if (name === 'skill') void loadSkillCatalog()
     if (name === 'agent') {
       void loadConfig()
-      void loadLlmProfiles()
     }
     if (name === 'rag') void loadConfig()
   }
@@ -806,6 +779,7 @@ export function useSettings(options: SettingsOptions) {
     activeSettings,
     savingConfig,
     refreshingAgents,
+    refreshingCatalog,
     testingMcp,
     uploadingSkill,
     testingRag,
@@ -868,8 +842,8 @@ export function useSettings(options: SettingsOptions) {
     deleteLlm,
     saveLlm,
     testLlm,
-    applyLlmProfile,
     refreshAgents,
+    refreshCatalog,
     loadConfig,
     selectMcp,
     newMcp,
@@ -894,8 +868,6 @@ export function useSettings(options: SettingsOptions) {
     saveMcp,
     testMcp,
     handleAgentChange,
-    llmName,
-    llmId,
     selectAgent,
     openSettings,
     handleSettingsTabChange,

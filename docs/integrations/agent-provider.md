@@ -68,6 +68,17 @@ Router 通过 `IAgentProvider` 统一调用自有 Engine 和第三方 Agent 服�
             "BaseUrl": "https://partner.example",
             "ServiceHeaders": { "Authorization": "use-a-secret-provider" }
           }
+        },
+        {
+          "Id": "gina",
+          "Type": "Gina",
+          "Settings": {
+            "BaseUrl": "https://gina.example",
+            "AgentListPath": "/api/agentlist",
+            "ChatPath": "/api/chat",
+            "DefaultAgentId": "general",
+            "ServerToken": "use-a-secret-provider-token"
+          }
         }
       ]
     }
@@ -75,7 +86,9 @@ Router 通过 `IAgentProvider` 统一调用自有 Engine 和第三方 Agent 服�
 }
 ```
 
-`BaseUrl` 存在时 Provider 直接使用该地址；否则内置 Provider 使用 `IRouteTable` 发现 Engine 实例。`Settings` 对 Registry 保持不透明，敏感凭据应由环境变量或密钥配置源注入。`DefaultProviderId` 仍是必填的注册表兼容配置，但不会覆盖显式 Agent 映射或会话亲和。Fallback Agent 也必须存在于完整、已授权的目录中。
+The `Gina` provider supports the Gina `GET /api/agentlist` and `POST /api/chat` endpoints. It maps the selected Router agent to `X-Gina-Agent-Id`, maps `X-Conversation-Id` to `X-Gina-Session-Id` when the Gina session header is absent, and preserves the caller's `Accept: text/event-stream` header for streaming responses. Gina's opaque session ID is passed through; because the two-endpoint contract has no session-owner probe or intent endpoint, the provider does not claim conversation ownership or perform provider-side intent recognition.
+
+`OpenAgentEngine` 在没有 `BaseUrl` 时使用 `IRouteTable` 发现 Engine 实例；`Gina` 必须配置 `BaseUrl`，不会回退到 Engine 地址。`Settings` 对 Registry 保持不透明，敏感凭据应由环境变量或密钥配置源注入。`DefaultProviderId` 仍是必填的注册表兼容配置，但不会覆盖显式 Agent 映射或会话亲和。Fallback Agent 也必须存在于完整、已授权的目录中。
 
 实际渠道会话统一使用 `ConversationType.Channel`，具体渠道通过已有的 `ClientType` 区分；意图识别的会话分类和会话 ID 由 Engine 入口内部生成，不由 Provider 请求携带。
 

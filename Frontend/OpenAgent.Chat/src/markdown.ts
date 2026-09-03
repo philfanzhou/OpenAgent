@@ -1,12 +1,13 @@
 import MarkdownIt from 'markdown-it'
 
-/** 链接协议白名单：仅允许 http/https/mailto 与相对/锚点链接，拒绝 javascript:/data:/vbscript: 等危险协议。 */
+/** 链接协议白名单：仅允许 http/https/mailto/blob 与相对/锚点链接，拒绝 javascript:/data:/vbscript: 等危险协议。
+ *  blob: 为本页面为已鉴权拉取的图片/文件创建的同源对象 URL，markdown 图片渲染依赖它。 */
 function isSafeLink(url: string): boolean {
   const candidate = url.trim().toLowerCase()
   if (candidate.startsWith('#') || candidate.startsWith('/')) return true
   const protocol = candidate.match(/^([a-z][a-z0-9+.-]*):/)?.[1]
   if (!protocol) return true
-  return protocol === 'http' || protocol === 'https' || protocol === 'mailto'
+  return protocol === 'http' || protocol === 'https' || protocol === 'mailto' || protocol === 'blob'
 }
 
 const renderer = new MarkdownIt({

@@ -1,5 +1,11 @@
 import { ref } from 'vue'
 import { api } from '../api'
+import {
+  clearImagePreviewCache,
+  createImageResolver,
+  extractImageRefs,
+  isSelfContainedImageRef,
+} from '../markdownAssets'
 import type { ConversationRecord, MessageFile, PendingFile } from '../types'
 
 interface FileHandlingOptions {
@@ -9,6 +15,54 @@ interface FileHandlingOptions {
 
 export function isTextPreview(mediaType: string): boolean {
   return mediaType.startsWith('text/') || mediaType === 'application/json'
+}
+
+export function isMarkdownFile(mediaType: string, fileName?: string): boolean {
+  return mediaType === 'text/markdown'
+    || (!!fileName && mediaType === 'text/plain' && fileName.toLowerCase().endsWith('.md'))
+}
+
+/**
+ * 已解析的 markdown 图片 blob URL。键为 `${messageId}|${selfObjectKey ?? ''}|${src}`：
+ * messageId 全局唯一可省 conversationId；selfObjectKey 区分同一引用在不同 md 基准下的解析结果。
+ */
+const markdownImageUrls = ref(new Map<string, string>())
+
+function imageCacheKey(messageId: string, selfObjectKey: string | undefined, src: string): string {
+  return `${messageId}|${selfObjectKey ?? ''}|${src}`
+}
+
+/** 解析会话内 markdown（消息正文 + md 文件预览）引用的图片并缓存为 blob URL。 */
+async function resolveConversationImages(conversation: ConversationRecord): Promise<void> {
+  const messages = conversation.messages || []
+  const conversationFiles = messages.flatMap(item => item.files || [])
+  for (const message of messages) {
+    const sources: Array<{ text: string; selfObjectKey?: string }> = [
+      ...(message.content ? [{ text: message.content }] : []),
+      ...(message.files || [])
+        .filter(file => isMarkdownFile(file.mediaType, file.fileName) && file.previewText)
+        .map(file => ({ text: file.previewText!, selfObjectKey: file.objectKey })),
+    ]
+    for (const source of sources) {
+      const refs = extractImageRefs(source.text).filter(ref => !isSelfContainedImageRef(ref))
+      if (!refs.length) continue
+      const resolver = createImageResolver({
+        conversationId: conversation.conversationId,
+        selfObjectKey: source.selfObjectKey,
+        siblingFiles: [...(message.files || []), ...conversationFiles],
+      })
+      await Promise.all(refs.map(async ref => {
+        const key = imageCacheKey(message.messageId, source.selfObjectKey, ref)
+        if (markdownImageUrls.value.has(key)) return
+        try {
+          const url = await resolver.resolve(ref)
+          if (url) markdownImageUrls.value.set(key, url)
+        } catch {
+          // 解析失败保留原引用，文件仍可下载。
+        }
+      }))
+    }
+  }
 }
 
 export async function toMessageFile(item: PendingFile): Promise<MessageFile> {
@@ -75,6 +129,7 @@ export function useFileHandling(options: FileHandlingOptions) {
         // The file remains downloadable even when preview loading fails.
       }
     }))
+    await resolveConversationImages(conversation)
   }
 
   async function downloadFile(file: MessageFile): Promise<void> {
@@ -91,6 +146,12 @@ export function useFileHandling(options: FileHandlingOptions) {
     pendingFiles.value = []
   }
 
+  function clearMarkdownImageCache(): void {
+    for (const url of markdownImageUrls.value.values()) URL.revokeObjectURL(url)
+    markdownImageUrls.value = new Map()
+    clearImagePreviewCache()
+  }
+
   return {
     pendingFiles,
     handleFilesChange,
@@ -98,5 +159,7 @@ export function useFileHandling(options: FileHandlingOptions) {
     hydrateFilePreviews,
     downloadFile,
     clearPendingFiles,
+    clearMarkdownImageCache,
+    markdownImageUrls,
   }
 }

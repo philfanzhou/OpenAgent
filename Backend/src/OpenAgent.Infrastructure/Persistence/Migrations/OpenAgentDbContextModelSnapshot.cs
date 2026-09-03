@@ -23,6 +23,72 @@ namespace OpenAgent.Infrastructure.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("OpenAgent.Infrastructure.Entities.AgentConfigurationEntity", b =>
+                {
+                    b.Property<string>("AgentId")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("Instructions")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int?>("ContextWindowTokens")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("MaxOutputTokens")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("MaxTurns")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ContextPolicyJson")
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("McpJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("RagJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("SkillsJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("TenantId", "AgentId");
+
+                    b.HasIndex("TenantId", "UpdatedAt");
+
+                    b.ToTable("agent_configurations", "openagent");
+                });
+
             modelBuilder.Entity("OpenAgent.Infrastructure.Entities.ConversationEntity", b =>
                 {
                     b.Property<string>("ConversationId")
@@ -90,6 +156,64 @@ namespace OpenAgent.Infrastructure.Migrations
                     b.HasIndex("TenantId", "IsDeletedByUser", "LastMessageAt");
 
                     b.ToTable("conversations", "openagent");
+                });
+
+            modelBuilder.Entity("OpenAgent.Infrastructure.Entities.LlmConfigurationEntity", b =>
+                {
+                    b.Property<string>("TenantId")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("ProfileId")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Format")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("ModelId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Endpoint")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ApiKey")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<double>("Temperature")
+                        .HasColumnType("double precision");
+
+                    b.Property<int?>("MaxOutputTokens")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("SupportsMaxOutputTokens")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("ContextTokens")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Modality")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("TenantId", "ProfileId");
+
+                    b.HasIndex("TenantId", "UpdatedAt");
+
+                    b.ToTable("llm_configurations", "openagent");
                 });
 
             modelBuilder.Entity("OpenAgent.Infrastructure.Entities.ConversationFileReferenceEntity", b =>

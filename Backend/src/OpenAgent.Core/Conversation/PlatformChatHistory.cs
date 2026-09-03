@@ -2,6 +2,7 @@ using System.Text;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Requests;
@@ -22,14 +23,17 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
     private readonly ConversationContext _conversation;
     private readonly string _agentId;
     private readonly string _modelId;
-    private readonly IReadOnlyDictionary<string, string> _executionMetadata;
     private readonly string _input;
+    private readonly IReadOnlyDictionary<string, string>? _executionMetadata;
     private readonly IReadOnlyList<FileAsset> _files;
     private readonly FileAssetExecutionContext _fileExecution;
     private readonly IConversationLock _conversationLock;
     private readonly ConversationSessionStore _store;
     private readonly ILogger<PlatformChatHistory> _logger;
     private readonly IFileAssetService _fileService;
+    private readonly bool _supportsMultimodal;
+    private readonly long _maxInlineImageBytes;
+    private readonly int _maxInlineImageCount;
     private readonly List<ConversationMessage> _pending = [];
     private readonly StringBuilder _partialAssistant = new();
     private readonly StringBuilder _partialReasoning = new();
@@ -43,30 +47,44 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
     private bool _finalized;
     private bool _completionStaged;
 
-    internal PlatformChatHistory(
-        ConversationContext conversation,
-        string agentId,
-        string modelId,
-        IReadOnlyDictionary<string, string> executionMetadata,
-        string input,
-        IReadOnlyList<FileAsset> files,
+    public PlatformChatHistory(
+        PlatformChatHistoryContext context,
         FileAssetExecutionContext fileExecution,
         IConversationLock conversationLock,
         ConversationSessionStore store,
         ILogger<PlatformChatHistory> logger,
-        IFileAssetService fileService)
+        IFileAssetService fileService,
+        IOptions<FileAssetOptions> fileOptions)
     {
-        _conversation = conversation;
-        _agentId = agentId;
-        _modelId = modelId;
-        _executionMetadata = executionMetadata;
-        _input = input;
-        _files = files;
+        _conversation = context.Conversation;
+        _agentId = context.Conversation.AgentId ?? string.Empty;
+        _modelId = context.ModelId;
+        _input = context.Input;
+        _executionMetadata = context.ExecutionMetadata;
+        _files = context.Files;
         _fileExecution = fileExecution;
         _conversationLock = conversationLock;
         _store = store;
         _logger = logger;
         _fileService = fileService;
+        _supportsMultimodal = context.SupportsMultimodal;
+        _maxInlineImageBytes = fileOptions.Value.MaxInlineImageBytes;
+        _maxInlineImageCount = fileOptions.Value.MaxInlineImageCount;
+    }
+
+    private Dictionary<string, string> BuildUserMetadata()
+    {
+        var metadata = new Dictionary<string, string>(
+            AgentMessageAdapter.BuildFileMetadata(_files) ?? new Dictionary<string, string>(),
+            StringComparer.Ordinal);
+        if (_executionMetadata != null)
+        {
+            foreach ((string key, string value) in _executionMetadata)
+            {
+                metadata[key] = value;
+            }
+        }
+        return metadata;
     }
 
     internal void AppendPartial(string content)
@@ -83,6 +101,19 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         {
             _partialReasoning.Append(reasoning);
         }
+    }
+
+    internal async Task<ChatMessage> CreateUserMessageAsync(CancellationToken cancellationToken)
+    {
+        ChatMessage message = AgentMessageAdapter.CreateUser(_input, _files);
+        if (_files.Count > 0)
+        {
+            await AttachFilesAsync(
+                message,
+                _files.Select(file => file.FileId).ToArray(),
+                cancellationToken).ConfigureAwait(false);
+        }
+        return message;
     }
 
     /// <summary>把中止/失败时已产生的部分正文与思考内容组装成一条 assistant 消息（含 reasoning 元数据）。</summary>
@@ -156,10 +187,9 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
     }
 
     /// <summary>
-    /// 把存储的会话消息转成模型输入，并为历史用户消息重建文件附件
-    /// （否则续接会话时模型看不到上一次上传的图片等文件）。
+    /// Converts stored messages to model input and rebuilds referenced attachments.
     /// </summary>
-    private async Task<List<ChatMessage>> BuildHistoryAsync(
+    internal async Task<List<ChatMessage>> BuildHistoryAsync(
         IReadOnlyList<ConversationMessage> stored,
         CancellationToken cancellationToken)
     {
@@ -171,8 +201,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
             {
                 continue;
             }
-            if (string.Equals(message.Role, "user", StringComparison.OrdinalIgnoreCase)
-                && message.FileIds.Count > 0)
+            if (message.FileIds.Count > 0)
             {
                 await AttachFilesAsync(chatMessage, message.FileIds, cancellationToken).ConfigureAwait(false);
             }
@@ -192,13 +221,42 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
             UserId = _conversation.UserId ?? string.Empty,
             ConversationId = _conversation.ConversationId
         };
+        int inlineImageCount = 0;
         foreach (string fileId in fileIds.Distinct(StringComparer.Ordinal))
         {
             try
             {
-                FileAssetContent content = await _fileService.ReadAsync(
+                FileAsset? asset = await _fileService.GetReferencedAsync(
                     fileId, scope, cancellationToken).ConfigureAwait(false);
-                AgentMessageAdapter.AttachFile(chatMessage, content);
+                if (asset != null)
+                {
+                    FileAssetContent? inlineImage = null;
+                    if (_supportsMultimodal
+                        && inlineImageCount < _maxInlineImageCount
+                        && IsImage(asset.MediaType)
+                        && asset.Length <= _maxInlineImageBytes)
+                    {
+                        try
+                        {
+                            inlineImage = await _fileService.ReadAsync(
+                                fileId,
+                                scope,
+                                cancellationToken,
+                                _maxInlineImageBytes).ConfigureAwait(false);
+                            inlineImageCount++;
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            throw;
+                        }
+                        catch
+                        {
+                            // Keep the metadata manifest when an optional inline read fails.
+                        }
+                    }
+
+                    AgentMessageAdapter.AttachFile(chatMessage, asset, inlineImage);
+                }
             }
             catch (OperationCanceledException)
             {
@@ -206,14 +264,21 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
             }
             catch
             {
-                // 历史中的文件已删除或无权限时忽略，不阻断续接。
+                // Ignore deleted or unauthorized historical files so continuation can proceed.
             }
         }
     }
 
+    private static bool IsImage(string mediaType) =>
+        mediaType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
+
     /// <summary>
-    /// 修复会话历史中的工具调用契约：丢弃重复声明或没有对应 tool 响应的 assistant tool_call，
-    /// 避免发给模型时出现 "tool_calls must be followed by tool messages" 的 400。
+    /// Normalizes stored history into the tool-call contract providers expect.
+    /// Storage expands one turn's parallel calls into separate assistant rows with
+    /// their responses only after the last row, and strict gateways reject the
+    /// reloaded blocks with "tool_calls must be followed by tool messages"; so
+    /// consecutive assistant rows are folded back into one call block, duplicate or
+    /// unanswered calls are dropped, and every retained call keeps its responses.
     /// </summary>
     private static List<ChatMessage> RepairToolHistory(IReadOnlyList<ChatMessage> messages)
     {
@@ -234,37 +299,64 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         foreach (ChatMessage message in messages)
         {
             List<FunctionCallContent> calls = message.Contents.OfType<FunctionCallContent>().ToList();
-            if (message.Role == ChatRole.Assistant && calls.Count > 0)
+            if (message.Role != ChatRole.Assistant || calls.Count == 0)
             {
-                List<FunctionCallContent> retained = calls
-                    .Where(call => !string.IsNullOrWhiteSpace(call.CallId)
-                        && announced.Add(call.CallId)
-                        && responded.Contains(call.CallId))
-                    .ToList();
-                if (retained.Count == 0)
+                repaired.Add(message);
+                continue;
+            }
+
+            List<FunctionCallContent> retained = calls
+                .Where(call => !string.IsNullOrWhiteSpace(call.CallId)
+                    && announced.Add(call.CallId)
+                    && responded.Contains(call.CallId))
+                .ToList();
+
+            // Consecutive assistant rows are fragments of one turn's parallel calls;
+            // fold each fragment's non-call contents and retained calls into the block
+            // emitted before it so the responses that follow apply to all of them.
+            if (repaired.Count > 0
+                && repaired[^1].Role == ChatRole.Assistant
+                && repaired[^1].Contents.OfType<FunctionCallContent>().Any())
+            {
+                var merged = new List<AIContent>(repaired[^1].Contents);
+                foreach (AIContent content in message.Contents)
                 {
-                    continue;
+                    if (content is not FunctionCallContent)
+                    {
+                        merged.Add(content);
+                    }
+                }
+                foreach (FunctionCallContent call in retained)
+                {
+                    merged.Add(call);
+                }
+                repaired[^1] = new ChatMessage(ChatRole.Assistant, merged);
+                continue;
+            }
+
+            if (retained.Count == 0)
+            {
+                continue;
+            }
+
+            if (retained.Count < calls.Count)
+            {
+                ChatMessage rebuilt = new(message.Role, Array.Empty<AIContent>());
+                foreach (AIContent content in message.Contents)
+                {
+                    if (content is not FunctionCallContent)
+                    {
+                        rebuilt.Contents.Add(content);
+                    }
                 }
 
-                if (retained.Count < calls.Count)
+                foreach (FunctionCallContent call in retained)
                 {
-                    ChatMessage rebuilt = new(message.Role, Array.Empty<AIContent>());
-                    foreach (AIContent content in message.Contents)
-                    {
-                        if (content is not FunctionCallContent)
-                        {
-                            rebuilt.Contents.Add(content);
-                        }
-                    }
-
-                    foreach (FunctionCallContent call in retained)
-                    {
-                        rebuilt.Contents.Add(call);
-                    }
-
-                    repaired.Add(rebuilt);
-                    continue;
+                    rebuilt.Contents.Add(call);
                 }
+
+                repaired.Add(rebuilt);
+                continue;
             }
 
             repaired.Add(message);
@@ -296,7 +388,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         List<ConversationMessage> responses = AgentMessageAdapter.ToStored(
             context.ResponseMessages ?? [],
             ref _nextSequence).ToList();
-        AssociateCreatedFiles(responses);
+        AssociatePublishedFiles(responses);
         foreach (ConversationMessage message in responses)
         {
             _pending.Add(message);
@@ -425,27 +517,18 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         }
 
         _userRecorded = true;
-        var metadata = new Dictionary<string, string>(_executionMetadata, StringComparer.Ordinal);
-        IReadOnlyDictionary<string, string>? fileMetadata = AgentMessageAdapter.BuildFileMetadata(_files);
-        if (fileMetadata != null)
-        {
-            foreach ((string key, string value) in fileMetadata)
-            {
-                metadata[key] = value;
-            }
-        }
         _pending.Add(ConversationSessionStore.Message(
             _nextSequence++,
             "user",
             _input,
-            metadata: metadata.Count == 0 ? null : metadata,
+            metadata: BuildUserMetadata(),
             fileIds: _files.Select(item => item.FileId).ToArray()));
     }
 
-    private void AssociateCreatedFiles(List<ConversationMessage> responses)
+    private void AssociatePublishedFiles(List<ConversationMessage> responses)
     {
-        IReadOnlyList<FileAsset> created = _fileExecution.Created;
-        if (created.Count == 0)
+        IReadOnlyList<FileAsset> published = _fileExecution.Published;
+        if (published.Count == 0)
         {
             return;
         }
@@ -456,16 +539,16 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         {
             responses[assistantIndex] = AgentMessageAdapter.AssociateFiles(
                 responses[assistantIndex],
-                created);
+                published);
             return;
         }
 
         responses.Add(ConversationSessionStore.Message(
             _nextSequence++,
             "assistant",
-            "Created file assets.",
-            metadata: AgentMessageAdapter.BuildFileMetadata(created),
-            fileIds: created.Select(file => file.FileId).ToArray()));
+            "Published file assets.",
+            metadata: AgentMessageAdapter.BuildFileMetadata(published),
+            fileIds: published.Select(file => file.FileId).ToArray()));
     }
 
     private static ConversationMessage WithCompletion(

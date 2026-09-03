@@ -21,6 +21,22 @@ internal sealed class FileAssetOptionsValidator : IValidateOptions<FileAssetOpti
         {
             failures.Add("FileAssets:MaxFunctionReadBytes must be greater than zero.");
         }
+        if (options.MaxInlineImageBytes <= 0)
+        {
+            failures.Add("FileAssets:MaxInlineImageBytes must be greater than zero.");
+        }
+        if (options.MaxInlineImageCount <= 0)
+        {
+            failures.Add("FileAssets:MaxInlineImageCount must be greater than zero.");
+        }
+        if (options.MaxArchiveInputBytes <= 0)
+        {
+            failures.Add("FileAssets:MaxArchiveInputBytes must be greater than zero.");
+        }
+        if (options.MaxArchiveFileCount <= 0)
+        {
+            failures.Add("FileAssets:MaxArchiveFileCount must be greater than zero.");
+        }
 
         return failures.Count == 0
             ? ValidateOptionsResult.Success

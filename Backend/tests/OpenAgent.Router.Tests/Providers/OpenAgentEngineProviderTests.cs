@@ -42,17 +42,20 @@ public class OpenAgentEngineProviderTests
                 TenantId = "tenant-1",
                 IsAuthenticated = true
             },
-            "Basic forwarded-token");
+            "Basic forwarded-token",
+            "openai-gpt4o");
         AgentProviderCatalog catalog = await provider.GetAgentsAsync(
             requestContext,
             CancellationToken.None);
         IReadOnlyList<AgentSummary> agents = catalog.Agents;
         IntentRecognitionResult? response = await provider.RecognizeIntentAsync(
+            requestContext,
             "intent-router",
             agents,
             "select an agent",
             CancellationToken.None);
         IntentRecognitionResult? secondResponse = await provider.RecognizeIntentAsync(
+            requestContext,
             "intent-router",
             agents,
             "select another agent",
@@ -80,7 +83,7 @@ public class OpenAgentEngineProviderTests
             ],
             handler.RequestUris);
         Assert.Equal(
-            ["Basic forwarded-token", "Basic service-token", "Basic service-token", "Basic forwarded-token"],
+            ["Basic forwarded-token", "Basic forwarded-token", "Basic forwarded-token", "Basic forwarded-token"],
             handler.Authorizations);
         Assert.All(handler.IdentityHeaders, present => Assert.True(present));
         Assert.Equal(AgentProviderConversationStatus.Found, conversation);
@@ -149,7 +152,7 @@ public class OpenAgentEngineProviderTests
         using JsonDocument document = JsonDocument.Parse(body);
         JsonElement context = document.RootElement.GetProperty("context");
         Assert.Equal("intent-router", context.GetProperty("agentId").GetString());
-        Assert.Single(context.EnumerateObject());
+        Assert.Equal("openai-gpt4o", context.GetProperty("llmProfileId").GetString());
     }
 
     private sealed class StubRouteTable : IRouteTable

@@ -16,7 +16,7 @@ builder.Host.UseAgentSerilog("agent-engine");
 
 builder.Services.AddAgentHost(builder.Configuration, options =>
 {
-    options.ServiceName = "agent-engine";
+    options.ServiceName = "openagent-engine";
     options.OpenTelemetrySource = "OpenAgent.Engine";
 });
 
@@ -48,6 +48,7 @@ app.MapAgentAuthenticationEndpoints();
 if (app.Environment.IsDevelopment())
 {
     app.MapManagementEndpoints();
+    app.MapControllers();
 }
 app.MapAgentEndpoints();
 app.MapHealthReport();

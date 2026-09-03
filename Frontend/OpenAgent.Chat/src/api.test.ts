@@ -132,7 +132,7 @@ describe('workspace API', () => {
     })))
 
     const events = []
-    for await (const event of api.streamChat('hello', 'support')) events.push(event)
+    for await (const event of api.streamChat('hello', 'support', 'openai-gpt4o')) events.push(event)
 
     expect(events).toEqual([
       { type: 'reasoning', content: 'inspect first' },
@@ -145,6 +145,10 @@ describe('workspace API', () => {
       },
     ])
     expect(vi.mocked(fetch).mock.calls[0]?.[0]).toBe('http://engine.example/api/v1/agent/chat/stream')
+    const init = vi.mocked(fetch).mock.calls[0]?.[1] as RequestInit
+    expect(JSON.parse(String(init.body))).toMatchObject({
+      context: { agentId: 'support', llmProfileId: 'openai-gpt4o' },
+    })
   })
 
   it('emits the router-selected agent before reading the SSE body', async () => {
@@ -164,18 +168,21 @@ describe('workspace API', () => {
     })))
 
     const events = []
-    for await (const event of api.streamChat('hello')) events.push(event)
+    for await (const event of api.streamChat('hello', undefined, 'openai-gpt4o')) events.push(event)
 
     expect(events[0]).toEqual({ type: 'agent_selected', agentId: 'support' })
     expect(events[1]).toEqual({ type: 'content', content: 'hello' })
   })
 
-  it('preserves streamed tool arguments and problem details for the message UI', async () => {
+  it('preserves streamed tool calls, results, and problem details for the message UI', async () => {
     setConnectionMode('engine')
     setEngineBaseUrl('http://engine.example/')
     const stream = [
       'event: tool_call',
       'data: {"toolName":"write_file","toolCallId":"call-1","toolArguments":{"path":"report.md"}}',
+      '',
+      'event: tool_result',
+      'data: {"content":"created","toolCallId":"call-1"}',
       '',
       'event: error',
       'data: {"title":"Execution failed","detail":"Tool unavailable","traceId":"trace-1"}',
@@ -187,10 +194,11 @@ describe('workspace API', () => {
     })))
 
     const events = []
-    for await (const event of api.streamChat('create a report', 'support')) events.push(event)
+    for await (const event of api.streamChat('create a report', 'support', 'openai-gpt4o')) events.push(event)
 
     expect(events).toEqual([
       { type: 'tool_call', toolName: 'write_file', toolCallId: 'call-1', toolArguments: { path: 'report.md' } },
+      { type: 'tool_result', content: 'created', toolCallId: 'call-1' },
       { type: 'error', error: { title: 'Execution failed', detail: 'Tool unavailable', traceId: 'trace-1' } },
     ])
   })
@@ -204,7 +212,7 @@ describe('workspace API', () => {
     }))
     vi.stubGlobal('fetch', fetchMock)
 
-    const nextEvent = api.streamChat('hello', 'support', 'conversation-a', [], 'conversation-a', controller.signal).next()
+    const nextEvent = api.streamChat('hello', 'support', 'openai-gpt4o', 'conversation-a', [], 'conversation-a', controller.signal).next()
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
     controller.abort()
 
@@ -296,7 +304,6 @@ describe('workspace API', () => {
       currentVersion: '1',
       config: {
         instructions: '',
-        llm: { provider: '', format: 'OpenAIChatCompletions', modelId: 'gpt-4o', apiKey: '', endpoint: '', temperature: 0.7 },
         mcp: {
           servers: [{ name: 'tools', url: 'https://mcp.example.test/mcp', type: 'Http', protocolVersion: '2025-06-18' }],
         },
@@ -354,11 +361,11 @@ describe('workspace API', () => {
     }))
     vi.stubGlobal('fetch', fetchMock)
 
-    const result = await api.compactConversation('conversation/1')
+    const result = await api.compactConversation('conversation/1', 'openai-gpt4o')
 
     expect(result.trigger).toBe('Manual')
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
-      'http://engine.example/api/v1/agent/conversations/conversation%2F1/compact',
+      'http://engine.example/api/v1/agent/conversations/conversation%2F1/compact?llmProfileId=openai-gpt4o',
     )
     expect((fetchMock.mock.calls[0]?.[1] as RequestInit).method).toBe('POST')
   })
