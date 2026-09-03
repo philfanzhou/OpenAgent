@@ -4,7 +4,6 @@ using Microsoft.Extensions.Options;
 using Microsoft.Extensions.AI;
 using Microsoft.Agents.AI.Compaction;
 using OpenAgent.Contracts.Conversation;
-using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Files;
 using OpenAgent.Core.Conversation;
 using OpenAgent.Core.Tests.TestDoubles;
@@ -119,30 +118,6 @@ public sealed class ConversationHistoryFactoryTests
             client.GetResponseAsync([new ChatMessage(ChatRole.User, "summarize")]));
 
         Assert.Contains("no summary text", exception.Message, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Theory]
-    [InlineData(false, true, 128)]
-    [InlineData(true, true, 128)]
-    [InlineData(false, false, null)]
-    [InlineData(true, false, null)]
-    public async Task CreateStrategy_SummaryRespectsModelOutputCapability(
-        bool manual, bool supported, int? expected)
-    {
-        var inner = new CapturingChatClient();
-        SummarizationCompactionStrategy strategy = CreateFactory().CreateStrategy(
-            1000, null, inner, manual, out _, new LlmConfig
-            {
-                TokenCapabilities = new LlmTokenCapabilities
-                {
-                    MaxOutputTokens = 128, SupportsMaxOutputTokens = supported
-                }
-            });
-
-        await strategy.ChatClient.GetResponseAsync(
-            [new ChatMessage(ChatRole.User, "summarize")], new ChatOptions { MaxOutputTokens = 4096 });
-
-        Assert.Equal(expected, inner.Options?.MaxOutputTokens);
     }
 
     private static ConversationHistoryFactory CreateFactory(

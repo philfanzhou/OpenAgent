@@ -172,8 +172,6 @@ export interface LlmProviderProfile {
   format: 'OpenAIChatCompletions' | 'OpenAIResponses' | 'AnthropicMessages' | string
   modelId: string
   contextTokens: number
-  maxOutputTokens?: number | null
-  supportsMaxOutputTokens?: boolean
   endpoint: string
   apiKey: string
   temperature: number
@@ -254,8 +252,6 @@ export interface AgentConfigEntity {
     rag: RagConfig
     skills: SkillsConfig
     maxTurns: number
-    contextWindowTokens?: number | null
-    maxOutputTokens?: number | null
   }
 }
 

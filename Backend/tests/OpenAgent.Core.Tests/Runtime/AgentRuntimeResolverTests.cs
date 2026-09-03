@@ -63,57 +63,6 @@ public sealed class AgentRuntimeResolverTests
         Assert.Contains("agent-1", exception.Message, StringComparison.Ordinal);
     }
 
-    [Theory]
-    [InlineData(null, null, 128000, 16000)]
-    [InlineData(64000, 4000, 64000, 4000)]
-    [InlineData(null, 4000, 128000, 4000)]
-    public async Task ResolveAsync_AppliesAgentDefaultsWithoutChangingSelectedProfile(
-        int? context, int? output, int expectedContext, int expectedOutput)
-    {
-        LlmProviderProfile model = Profile();
-        model.MaxOutputTokens = 16000;
-        AgentRuntimeResolver resolver = CreateResolver(new AgentConfig
-        {
-            ContextWindowTokens = context,
-            MaxOutputTokens = output
-        }, model);
-
-        AgentRuntimeProfile result = await resolver.ResolveAsync("agent-1", "profile-1", User());
-
-        Assert.Equal(expectedContext, result.Model.ContextTokens);
-        Assert.Equal(expectedOutput, result.Model.MaxOutputTokens);
-        Assert.Equal(128000, result.Model.TokenCapabilities.ContextWindowTokens);
-        Assert.Equal(16000, result.Model.TokenCapabilities.MaxOutputTokens);
-        Assert.Equal(128000, model.ContextTokens);
-        Assert.Equal(16000, model.MaxOutputTokens);
-        Assert.Equal(ModelModality.Multimodal, result.Model.Modality);
-    }
-
-    [Theory]
-    [InlineData(0, null, true)]
-    [InlineData(null, -1, true)]
-    [InlineData(128001, null, true)]
-    [InlineData(null, 16001, true)]
-    [InlineData(16000, null, true)]
-    [InlineData(null, 4000, false)]
-    public async Task ResolveAsync_InvalidAgentDefaults_ThrowsConfigurationError(
-        int? context, int? output, bool supported)
-    {
-        LlmProviderProfile model = Profile();
-        model.MaxOutputTokens = 16000;
-        model.SupportsMaxOutputTokens = supported;
-        AgentRuntimeResolver resolver = CreateResolver(new AgentConfig
-        {
-            ContextWindowTokens = context,
-            MaxOutputTokens = output
-        }, model);
-
-        AgentException exception = await Assert.ThrowsAsync<AgentException>(() =>
-            resolver.ResolveAsync("agent-1", "profile-1", User()));
-
-        Assert.Equal(OpenAgent.Contracts.Requests.AgentErrorCode.ConfigurationError, exception.ErrorCode);
-    }
-
     private static AgentRuntimeResolver CreateResolver(
         AgentConfig? config,
         LlmProviderProfile? profile) => new(

@@ -19,8 +19,6 @@ public class AgentConfigRepositoryTests
         entity.Description = "Customer support";
         entity.Status = AgentPublishStatus.Published;
         entity.Config.MaxTurns = 12;
-        entity.Config.ContextWindowTokens = 64000;
-        entity.Config.MaxOutputTokens = 4000;
         entity.Config.ContextPolicy = new() { PreserveRecentTurns = 3 };
         entity.Config.Mcp.EnabledServerIds = ["tools"];
         entity.Config.Skills.EnabledSkills = ["search"];
@@ -34,8 +32,6 @@ public class AgentConfigRepositoryTests
         Assert.Equal(entity.Description, stored.Description);
         Assert.Equal(entity.Status, stored.Status);
         Assert.Equal(12, stored.Config.MaxTurns);
-        Assert.Equal(64000, stored.Config.ContextWindowTokens);
-        Assert.Equal(4000, stored.Config.MaxOutputTokens);
         Assert.Equal(3, stored.Config.ContextPolicy?.PreserveRecentTurns);
         Assert.Equal("tools", Assert.Single(stored.Config.Mcp.EnabledServerIds));
         Assert.Equal("search", Assert.Single(stored.Config.Skills.EnabledSkills));

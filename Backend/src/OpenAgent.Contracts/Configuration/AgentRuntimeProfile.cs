@@ -10,7 +10,7 @@ public sealed class AgentRuntimeProfile
 
     /// <summary>
     /// The effective model configuration. Model profile values are overridden by
-    /// Agent defaults, then by request values before the Agent is created.
+    /// The selected LLM profile is resolved before the Agent is created.
     /// </summary>
     public required LlmConfig Model { get; init; }
 }

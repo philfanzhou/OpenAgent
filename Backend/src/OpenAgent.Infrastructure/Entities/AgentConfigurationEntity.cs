@@ -11,8 +11,6 @@ internal sealed class AgentConfigurationEntity
     public AgentPublishStatus Status { get; set; }
     public string Instructions { get; set; } = string.Empty;
     public int MaxTurns { get; set; } = 50;
-    public int? ContextWindowTokens { get; set; }
-    public int? MaxOutputTokens { get; set; }
     public string? ContextPolicyJson { get; set; }
     public string McpJson { get; set; } = "{}";
     public string RagJson { get; set; } = "{}";

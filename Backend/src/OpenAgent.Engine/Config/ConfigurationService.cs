@@ -4,8 +4,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Models;
-using OpenAgent.Contracts.Requests;
-using OpenAgent.Core.Configuration;
 using OpenAgent.Engine.Abstractions;
 using OpenAgent.Engine.Observability;
 using StackExchange.Redis;
@@ -95,8 +93,6 @@ public sealed class ConfigurationService : IAgentConfigProvider, ILlmConfigProvi
         string agentId, string tenantId, AgentConfigEntity entity, string? expectedVersion,
         CancellationToken cancellationToken = default)
     {
-        TokenLimitValidator.ValidateConfiguration(
-            entity.Config.ContextWindowTokens, entity.Config.MaxOutputTokens, AgentErrorCode.InvalidRequest);
         await ProtectAgentSecretsAsync(entity, tenantId, cancellationToken).ConfigureAwait(false);
         entity.AgentId = agentId;
         entity.TenantId = tenantId;
@@ -151,7 +147,6 @@ public sealed class ConfigurationService : IAgentConfigProvider, ILlmConfigProvi
     internal async Task<LlmProviderProfile> SaveLlmAsync(
         LlmProviderProfile profile, string tenantId, CancellationToken cancellationToken = default)
     {
-        TokenLimitValidator.ValidateConfiguration(profile.ContextTokens, profile.MaxOutputTokens, AgentErrorCode.InvalidRequest);
         LlmProviderProfile? existing = await _models
             .GetAsync(tenantId, profile.Id, cancellationToken).ConfigureAwait(false);
         LlmProviderProfile toPersist = CopyProfile(profile);
@@ -229,8 +224,6 @@ public sealed class ConfigurationService : IAgentConfigProvider, ILlmConfigProvi
         ApiKey = profile.ApiKey,
         Temperature = profile.Temperature,
         ContextTokens = profile.ContextTokens,
-        MaxOutputTokens = profile.MaxOutputTokens,
-        SupportsMaxOutputTokens = profile.SupportsMaxOutputTokens,
         Modality = profile.Modality
     };
 
@@ -254,7 +247,7 @@ public sealed class ConfigurationService : IAgentConfigProvider, ILlmConfigProvi
 
     // A schema version prevents older cache payloads from dropping renamed fields.
     internal static string BuildCacheKey(string kind, string tenantId, string id) =>
-        $"{kind}:config-cache:v3:{Uri.EscapeDataString(tenantId)}:{Uri.EscapeDataString(id)}";
+        $"{kind}:config-cache:v2:{Uri.EscapeDataString(tenantId)}:{Uri.EscapeDataString(id)}";
 
     private async Task<T?> ReadCachedAsync<T>(
         string key, Func<Task<T?>> load, Func<T, bool> matches,

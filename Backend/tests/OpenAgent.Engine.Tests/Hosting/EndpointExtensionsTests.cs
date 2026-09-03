@@ -32,8 +32,6 @@ public class EndpointExtensionsTests
         var request = new ChatRequest
         {
             Message = "hello",
-            ContextWindowTokens = 64_000,
-            MaxOutputTokens = 4_000,
             Context = new Dictionary<string, object>
             {
                 ["agentId"] = "body-agent",
@@ -51,8 +49,6 @@ public class EndpointExtensionsTests
         Assert.Equal("body-conv", agentRequest.ConversationId);
         Assert.Equal(ConversationType.Channel, agentRequest.ConversationType);
         Assert.Equal(ClientType.Teams, agentRequest.ClientType);
-        Assert.Equal(64_000, agentRequest.ContextWindowTokens);
-        Assert.Equal(4_000, agentRequest.MaxOutputTokens);
         Assert.Equal("trace-1", agentRequest.TraceId);
         Assert.NotNull(agentRequest.ExternalContext);
         Assert.Equal("custom-value", agentRequest.ExternalContext!["customKey"]);

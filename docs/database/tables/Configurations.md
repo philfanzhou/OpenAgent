@@ -16,8 +16,6 @@ Agent 与 LLM 配置以 PostgreSQL 为事实源，共用 `OpenAgentDbContext`，
 | ApiKey | text | 租户绑定的服务端加密密钥；管理响应清空 |
 | Temperature | double precision | 生成温度 |
 | ContextTokens | integer | 模型上下文 token 上限 |
-| MaxOutputTokens | integer，可空 | 模型输出硬上限，同时作为默认值和输入预留预算 |
-| SupportsMaxOutputTokens | boolean | 是否支持发送最大输出参数，默认 true |
 | Modality | varchar(32) | Text / Multimodal；目前只开放图片输入 |
 | UpdatedAt | timestamptz | 最近保存时间 |
 
@@ -27,16 +25,14 @@ Agent 与 LLM 配置以 PostgreSQL 为事实源，共用 `OpenAgentDbContext`，
 
 `openagent.agent_configurations` 的 TenantId、AgentId 为复合主键；Name、Description、Status、Instructions、MaxTurns、Version、UpdatedAt 都是独立列，Version 用于乐观并发控制。
 
-`ContextWindowTokens`、`MaxOutputTokens` 为可空 integer 列，保存 Agent 默认执行预算，不绑定模型；执行时与所选模型能力交叉校验。
-
 只有嵌套结构使用 JSONB：ContextPolicyJson（可空）、McpJson、RagJson、SkillsJson。它们包含选项、ID 集合及兼容旧格式的嵌套实例，当前按整个 Agent 配置读取和更新；没有跨 Agent 查询这些子属性的用例。后续若需要独立查询或管理绑定关系，应再拆为关联表。
 
 ## 升级
 
 `20260903090000_UseConfigurationColumns` 先增加字段、从旧 ConfigurationJson 回填，再删除整份 JSON 列；旧 `ContextWindowTokens` 迁为 `ContextTokens`，旧 Agent `Snapshot` 状态迁为 `Published`。Down 可将字段重建为旧格式 JSON。
 
-部署时先停止旧版本配置写入、应用迁移，再切换应用；旧版本 Repository 不兼容删除 ConfigurationJson 后的表结构。`20260903100000_AddModelTokenLimits` 增加模型输出上限/支持开关和 Agent 默认预算列，已有模型默认支持参数且输出上限为空，已有 Agent 默认继承模型。应先应用迁移再启动新版应用；该迁移的 Down 仅删除新增字段。
+部署时先停止旧版本配置写入、应用迁移，再切换应用；旧版本 Repository 不兼容删除 ConfigurationJson 后的表结构。
 
-新版本 Redis key 使用 `v3` 命名空间，避免旧应用缓存覆盖新增能力字段。模型 Profile 的 HTTP 字段沿用 `contextTokens`；Agent 默认和单次请求覆盖使用 `contextWindowTokens`。
+新版本 Redis key 使用 `v2` 命名空间。模型 Profile 的 HTTP 字段使用 `contextTokens`。
 
 实现：`Backend/src/OpenAgent.Infrastructure/Configuration/`、`Backend/src/OpenAgent.Infrastructure/Persistence/OpenAgentDbContext.cs`。

@@ -39,8 +39,6 @@ internal static class AgentEndpointRequestMapper
                 request.Context,
                 "clientType",
                 ClientType.Web),
-            ContextWindowTokens = request.ContextWindowTokens,
-            MaxOutputTokens = request.MaxOutputTokens,
             ExternalContext = externalContext,
             FileIds = request.FileIds
                 .Where(fileId => !string.IsNullOrWhiteSpace(fileId))

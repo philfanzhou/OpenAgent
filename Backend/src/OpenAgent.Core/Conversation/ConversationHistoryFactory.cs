@@ -54,8 +54,7 @@ internal sealed class ConversationHistoryFactory
         AgentRequest request,
         IAgentUserContext user,
         IReadOnlyList<FileAsset> files,
-        bool supportsMultimodal,
-        IReadOnlyDictionary<string, string>? executionMetadata = null)
+        bool supportsMultimodal)
     {
         ConversationContext context = new(
             request.ConversationId,
@@ -69,8 +68,7 @@ internal sealed class ConversationHistoryFactory
             modelId,
             request.Query,
             files.ToList().AsReadOnly(),
-            supportsMultimodal,
-            executionMetadata));
+            supportsMultimodal));
     }
 
     internal async Task EnsureConversationAsync(
@@ -100,14 +98,13 @@ internal sealed class ConversationHistoryFactory
         string? tenantId,
         string? conversationId)
     {
-        int inputBudget = model.ContextTokens - (model.MaxOutputTokens ?? 0);
+        int inputBudget = model.ContextTokens;
         SummarizationCompactionStrategy strategy = CreateStrategy(
             inputBudget,
             policy,
             summarizationClient,
             force: false,
-            out CompactionTrigger trigger,
-            model);
+            out CompactionTrigger trigger);
         var audited = new AuditedCompactionStrategy(
             strategy,
             trigger,
@@ -120,7 +117,7 @@ internal sealed class ConversationHistoryFactory
         CompactionStrategy pipeline = model.ContextTokens > 0
             ? new PipelineCompactionStrategy([
                 audited,
-                new ContextWindowCompactionStrategy(model.ContextTokens, model.MaxOutputTokens ?? 0)])
+                new ContextWindowCompactionStrategy(model.ContextTokens, 0)])
             : audited;
         return new CompactionProvider(pipeline);
     }
@@ -130,11 +127,10 @@ internal sealed class ConversationHistoryFactory
         ContextPolicy? policy,
         IChatClient summarizationClient,
         bool force,
-        out CompactionTrigger trigger,
-        LlmConfig? model = null)
+        out CompactionTrigger trigger)
     {
         trigger = ResolveTrigger(contextTokens, force);
-        return CreateSummarization(contextTokens, policy, summarizationClient, trigger, force, model);
+        return CreateSummarization(contextTokens, policy, summarizationClient, trigger, force);
     }
 
     private CompactionTrigger ResolveTrigger(int contextTokens, bool force)
@@ -198,8 +194,7 @@ internal sealed class ConversationHistoryFactory
         ContextPolicy? policy,
         IChatClient chatClient,
         CompactionTrigger trigger,
-        bool force,
-        LlmConfig? model)
+        bool force)
     {
         int targetTokens = ResolveCompactionTargetTokens(contextTokens);
         int summaryBudget = ResolveSummaryTokenBudget(contextTokens, policy);
@@ -210,11 +205,7 @@ internal sealed class ConversationHistoryFactory
         return new SummarizationCompactionStrategy(
             new OutputTokenLimitedChatClient(
                 chatClient,
-                summaryBudget,
-                string.IsNullOrWhiteSpace(policy?.SummarizeOptions?.SummaryModel)
-                    || policy.SummarizeOptions.SummaryModel == model?.ModelId
-                    ? model?.TokenCapabilities.MaxOutputTokens : null,
-                model?.TokenCapabilities.SupportsMaxOutputTokens ?? true),
+                summaryBudget),
             trigger,
             minimumPreservedGroups,
             summarizationPrompt: prompt,

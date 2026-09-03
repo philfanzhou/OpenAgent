@@ -1,4 +1,3 @@
-using System.Globalization;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using OpenAgent.Core.Capabilities;
@@ -61,8 +60,7 @@ internal sealed class AgentFactory
             request,
             user,
             files,
-            profile.Model.Modality == ModelModality.Multimodal,
-            CreateExecutionMetadata(profile, request));
+            profile.Model.Modality == ModelModality.Multimodal);
         IReadOnlyList<AITool> tools = await _capabilities.CreateAsync(
             profile.AgentId,
             profile.Config,
@@ -117,9 +115,6 @@ internal sealed class AgentFactory
                         ? null
                         : profile.Config.Instructions,
                     Temperature = (float?)profile.Model.Temperature,
-                    MaxOutputTokens = profile.Model.TokenCapabilities.SupportsMaxOutputTokens
-                        ? profile.Model.MaxOutputTokens
-                        : null,
                     Tools = tools.Concat(mcpRuntime.Tools).ToList()
                 },
                 ChatHistoryProvider = history,
@@ -144,46 +139,4 @@ internal sealed class AgentFactory
         CancellationToken cancellationToken) =>
         _conversations.EnsureConversationAsync(agentId, request, user, cancellationToken);
 
-    private static IReadOnlyDictionary<string, string> CreateExecutionMetadata(
-        AgentRuntimeProfile profile,
-        AgentRequest request)
-    {
-        LlmTokenCapabilities capabilities = profile.Model.TokenCapabilities;
-        bool hasTokenConfiguration = capabilities.ContextWindowTokens.HasValue
-            || capabilities.MaxOutputTokens.HasValue
-            || profile.Config.ContextWindowTokens.HasValue
-            || profile.Config.MaxOutputTokens.HasValue
-            || request.ContextWindowTokens.HasValue
-            || request.MaxOutputTokens.HasValue;
-        if (!hasTokenConfiguration)
-        {
-            return new Dictionary<string, string>();
-        }
-
-        var metadata = new Dictionary<string, string>(StringComparer.Ordinal);
-        AddTokenValue(metadata, "LlmModelContextWindowTokens", capabilities.ContextWindowTokens);
-        AddTokenValue(metadata, "LlmModelMaxOutputTokens", capabilities.MaxOutputTokens);
-        AddTokenValue(metadata, "LlmAgentContextWindowTokens", profile.Config.ContextWindowTokens);
-        AddTokenValue(metadata, "LlmAgentMaxOutputTokens", profile.Config.MaxOutputTokens);
-        AddTokenValue(metadata, "LlmRequestContextWindowTokens", request.ContextWindowTokens);
-        AddTokenValue(metadata, "LlmRequestMaxOutputTokens", request.MaxOutputTokens);
-        AddTokenValue(metadata, "LlmEffectiveContextWindowTokens", profile.Model.ContextTokens);
-        AddTokenValue(metadata, "LlmEffectiveMaxOutputTokens", profile.Model.MaxOutputTokens);
-        metadata["LlmMaxOutputTokensSupported"] = capabilities.SupportsMaxOutputTokens.ToString();
-        metadata["LlmMaxOutputTokensApplied"] = (
-            capabilities.SupportsMaxOutputTokens
-            && profile.Model.MaxOutputTokens.HasValue).ToString();
-        return metadata;
-    }
-
-    private static void AddTokenValue(
-        Dictionary<string, string> metadata,
-        string name,
-        int? value)
-    {
-        if (value.HasValue)
-        {
-            metadata[name] = value.Value.ToString(CultureInfo.InvariantCulture);
-        }
-    }
 }

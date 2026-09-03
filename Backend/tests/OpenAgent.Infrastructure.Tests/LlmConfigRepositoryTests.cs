@@ -19,16 +19,11 @@ public class LlmConfigRepositoryTests
         Assert.Null(llm.FindProperty("ConfigurationJson"));
         Assert.Equal("integer", llm.FindProperty("ContextTokens")!.GetColumnType());
         Assert.Equal("text", llm.FindProperty("ApiKey")!.GetColumnType());
-        Assert.Equal("integer", llm.FindProperty("MaxOutputTokens")!.GetColumnType());
-        Assert.Equal("boolean", llm.FindProperty("SupportsMaxOutputTokens")!.GetColumnType());
-        Assert.Equal("integer", agent.FindProperty("ContextWindowTokens")!.GetColumnType());
-        Assert.Equal("integer", agent.FindProperty("MaxOutputTokens")!.GetColumnType());
         Assert.Null(agent.FindProperty("ConfigurationJson"));
         Assert.Equal("text", agent.FindProperty("Instructions")!.GetColumnType());
         Assert.Equal("jsonb", agent.FindProperty("SkillsJson")!.GetColumnType());
         Assert.False(context.Database.HasPendingModelChanges());
         Assert.Contains("20260903090000_UseConfigurationColumns", context.Database.GetMigrations());
-        Assert.Contains("20260903100000_AddModelTokenLimits", context.Database.GetMigrations());
     }
 
     [Fact]
@@ -56,8 +51,6 @@ public class LlmConfigRepositoryTests
             Name = "OpenAI",
             ModelId = "gpt-4o",
             ContextTokens = 128_000,
-            MaxOutputTokens = 16000,
-            SupportsMaxOutputTokens = false,
             Endpoint = "https://api.openai.com/v1",
             ApiKey = "sk-plaintext",
             Format = ApiFormat.OpenAIResponses,
@@ -71,8 +64,6 @@ public class LlmConfigRepositoryTests
         Assert.Equal("openai", stored.Id);
         Assert.Equal("sk-plaintext", stored.ApiKey);
         Assert.Equal(128_000, stored.ContextTokens);
-        Assert.Equal(16000, stored.MaxOutputTokens);
-        Assert.False(stored.SupportsMaxOutputTokens);
         Assert.Equal(ApiFormat.OpenAIResponses, stored.Format);
         Assert.Equal(0.2, stored.Temperature);
         Assert.Equal(ModelModality.Multimodal, stored.Modality);

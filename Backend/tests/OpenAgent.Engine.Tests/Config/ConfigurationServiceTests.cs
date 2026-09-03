@@ -49,26 +49,6 @@ public class ConfigurationServiceTests
         Assert.Null(foreign);
     }
 
-    [Theory]
-    [InlineData(0, null)]
-    [InlineData(null, 0)]
-    [InlineData(4096, 4096)]
-    public async Task SaveAgentAsync_InvalidTokenDefaults_DoesNotPersist(int? context, int? output)
-    {
-        var repository = new RecordingRepository();
-        ConfigurationService manager = CreateManager(repository);
-        AgentConfigEntity entity = new()
-        {
-            Config = new AgentConfig { ContextWindowTokens = context, MaxOutputTokens = output }
-        };
-
-        AgentException exception = await Assert.ThrowsAsync<AgentException>(() =>
-            manager.SaveAgentAsync("support", "tenant-a", entity, null));
-
-        Assert.Equal(AgentErrorCode.InvalidRequest, exception.ErrorCode);
-        Assert.Null(await repository.GetAsync("tenant-a", "support"));
-    }
-
     private static ConfigurationService CreateManager(IAgentConfigRepository repository) => new(
         repository,
         new Moq.Mock<ILlmConfigRepository>().Object,

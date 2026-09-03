@@ -18,8 +18,6 @@ public class AgentConfig
     public ContextPolicy? ContextPolicy { get; set; }
 
     public int MaxTurns { get; set; } = 50;
-    public int? ContextWindowTokens { get; set; }
-    public int? MaxOutputTokens { get; set; }
 }
 
 /// <summary>The effective model connection used by one execution.</summary>
@@ -33,9 +31,6 @@ public class LlmConfig
     public string Endpoint { get; set; } = string.Empty;
     public double Temperature { get; set; } = 0.7;
     public int ContextTokens { get; set; }
-    public int? MaxOutputTokens { get; set; }
-    [JsonIgnore]
-    public LlmTokenCapabilities TokenCapabilities { get; set; } = new();
     public ModelModality Modality { get; set; } = ModelModality.Text;
 }
 
@@ -54,18 +49,9 @@ public class LlmProviderProfile
     public string ApiKey { get; set; } = string.Empty;
     public double Temperature { get; set; } = 0.7;
     public int ContextTokens { get; set; }
-    public int? MaxOutputTokens { get; set; }
-    public bool SupportsMaxOutputTokens { get; set; } = true;
     public ModelModality Modality { get; set; } = ModelModality.Text;
 }
 
-/// <summary>Model limits before Agent and request defaults are applied.</summary>
-public sealed record LlmTokenCapabilities
-{
-    public int? ContextWindowTokens { get; init; }
-    public int? MaxOutputTokens { get; init; }
-    public bool SupportsMaxOutputTokens { get; init; } = true;
-}
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum ApiFormat

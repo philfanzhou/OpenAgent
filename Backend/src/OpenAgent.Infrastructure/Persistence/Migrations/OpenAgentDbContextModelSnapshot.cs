@@ -46,12 +46,6 @@ namespace OpenAgent.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<int?>("ContextWindowTokens")
-                        .HasColumnType("integer");
-
-                    b.Property<int?>("MaxOutputTokens")
-                        .HasColumnType("integer");
-
                     b.Property<int>("MaxTurns")
                         .HasColumnType("integer");
 
@@ -191,12 +185,6 @@ namespace OpenAgent.Infrastructure.Migrations
 
                     b.Property<double>("Temperature")
                         .HasColumnType("double precision");
-
-                    b.Property<int?>("MaxOutputTokens")
-                        .HasColumnType("integer");
-
-                    b.Property<bool>("SupportsMaxOutputTokens")
-                        .HasColumnType("boolean");
 
                     b.Property<int>("ContextTokens")
                         .HasColumnType("integer");

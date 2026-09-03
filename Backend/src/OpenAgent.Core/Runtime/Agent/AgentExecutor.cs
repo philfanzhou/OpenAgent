@@ -48,7 +48,6 @@ public sealed class AgentExecutor
             RequireLlmProfileId(request),
             user,
             cancellationToken).ConfigureAwait(false);
-        profile = ModelTokenLimitResolver.Apply(profile, request);
         AgentRequest executionRequest = CopyWithResolvedValues(
             request,
             agentId,
@@ -113,7 +112,6 @@ public sealed class AgentExecutor
             RequireLlmProfileId(request),
             user,
             cancellationToken).ConfigureAwait(false);
-        profile = ModelTokenLimitResolver.Apply(profile, request);
         AgentRequest executionRequest = CopyWithResolvedValues(
             request,
             agentId,
@@ -257,8 +255,6 @@ public sealed class AgentExecutor
             Query = request.Query,
             AgentId = agentId,
             LlmProfileId = request.LlmProfileId,
-            ContextWindowTokens = request.ContextWindowTokens,
-            MaxOutputTokens = request.MaxOutputTokens,
             ConversationId = conversationId,
             ConversationType = request.ConversationType,
             TraceId = traceId,

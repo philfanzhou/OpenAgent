@@ -8,5 +8,4 @@ internal sealed record PlatformChatHistoryContext(
     string ModelId,
     string Input,
     IReadOnlyList<FileAsset> Files,
-    bool SupportsMultimodal,
-    IReadOnlyDictionary<string, string>? ExecutionMetadata = null);
+    bool SupportsMultimodal);

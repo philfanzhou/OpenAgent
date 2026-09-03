@@ -10,7 +10,7 @@
 压缩发生在 MAF 模型调用前，保持函数调用与函数结果的原子消息组，并可覆盖同一 Agent
 run 内的后续工具迭代。
 
-摘要策略之后追加 MAF `ContextWindowCompactionStrategy`，按最终上下文减去最大输出得到输入预算，收缩旧工具结果和历史消息组。该过程使用框架估算，并非供应商 tokenizer 的精确保证；配置优先级、输出参数支持能力和限制见 [模型 Token 限制](../../../integrations/llm-provider/TOKEN-LIMITS.md)。
+摘要策略之后追加 MAF `ContextWindowCompactionStrategy`，按模型上下文窗口收缩旧工具结果和历史消息组。该过程使用框架估算，并非供应商 tokenizer 的精确保证。
 
 ## Architecture
 
@@ -45,14 +45,13 @@ PlatformChatHistory -> MAF ChatMessage history
 
 | 字段 | 用途 |
 |---|---|
-| `ContextTokens`（LLM 配置） | 模型上下文硬上限；覆盖解析并预留最大输出后，自动摘要默认在有效输入预算的 80% 处触发，目标为其 50%；部署级固定触发阈值仍优先 |
+| `ContextTokens`（LLM 配置） | 模型上下文硬上限；自动摘要默认在其 80% 处触发，目标为其 50%；部署级固定触发阈值仍优先 |
 | `PreserveRecentTurns` | 摘要压缩时保留的最近消息组数 |
 | `SummarizeOptions` | 摘要模型调用的专用预算和模型配置；摘要 prompt 与普通对话上下文隔离 |
 
 摘要策略直接使用 MAF 的 `SummarizationCompactionStrategy`，由框架选择并替换较旧的原子消息组，不再维护平台自定义摘要算法
 或预处理 pipeline。摘要模型使用专用
-压缩 prompt，`MaxSummaryTokens` 作为上限，同时受输入预算 20% 的比例预算约束；生成额度通过 `ChatOptions.MaxOutputTokens`
-发送给支持该参数的模型，同模型摘要还受模型输出上限约束；返回后按 MAF 的 token 估算边界再次裁定。推理模型的生成上限会包含独立的 reasoning 余量，避免推理 token
+压缩 prompt，`MaxSummaryTokens` 作为上限，同时受输入预算 20% 的比例预算约束；返回后按 MAF 的 token 估算边界再次裁定。推理模型的生成上限会包含独立的 reasoning 余量，避免推理 token
 耗尽上限后只留下空摘要。`PreserveRecentTurns` 直接映射为 MAF 的 `MinimumPreservedGroups`；这是硬性下限，因此最近消息组本身超过
 目标预算时，框架不会继续压缩它们。生成的 summary assistant 消息写入当前会话的压缩投影，后续模型
 调用使用“最近一次 summary + 之后新增消息”。
@@ -66,5 +65,3 @@ PlatformChatHistory -> MAF ChatMessage history
 
 每次实际自动压缩和每次手动尝试以 `ContextSummary` 追加到会话的数据库记录。Chat Inspector 展示压缩次数、最近策略、
 触发方式、原始范围、摘要或结果；失败记录同时标识原始上下文是否已恢复。
-
-单次请求可以降低或提高本次有效上下文窗口，但不得超过模型 Profile 声明的能力；其优先级高于 Agent 默认值。压缩使用最终有效值计算输入预算。

@@ -1,4 +1,3 @@
-import { validateTokenLimits } from '../tokenLimits'
 import { computed, ref, type Ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, getTenantId } from '../api'
@@ -57,8 +56,6 @@ function createDefaultLlm(): LlmProviderProfile {
     format: 'OpenAIChatCompletions',
     modelId: 'gpt-4o',
     contextTokens: 128000,
-    maxOutputTokens: null,
-    supportsMaxOutputTokens: true,
     endpoint: 'https://api.openai.com/v1',
     apiKey: '',
     temperature: 0.7,
@@ -87,8 +84,6 @@ function createDefaultAgent(agentId: string, name: string): AgentConfigEntity {
       rag: { enabled: false, enabledRagInstanceIds: [], instances: [] },
       skills: { enabledSkills: [], instances: [] },
       maxTurns: 50,
-      contextWindowTokens: null,
-      maxOutputTokens: null,
     },
   }
 }
@@ -310,8 +305,6 @@ export function useSettings(options: SettingsOptions) {
     if (!id || !/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(id)) return options.notifyError(new Error('LLM ID 只能使用字母、数字、点、下划线或短横线'))
     if (!profile.name.trim() || !profile.endpoint.trim() || !profile.modelId.trim() || profile.contextTokens <= 0) return options.notifyError(new Error('请填写名称、Endpoint、模型 ID 和有效的上下文大小'))
     profile.id = id
-    const tokenError = validateTokenLimits(profile.contextTokens, profile.maxOutputTokens, true)
-    if (tokenError) return options.notifyError(new Error(tokenError))
     savingLlm.value = true
     try {
       const saved = await api.saveLlmProfile(id, profile)
@@ -640,8 +633,6 @@ export function useSettings(options: SettingsOptions) {
       options.notifyError(new Error('请输入 Agent 名称'))
       return
     }
-    const tokenError = validateTokenLimits(config.value.config.contextWindowTokens, config.value.config.maxOutputTokens)
-    if (tokenError) return options.notifyError(new Error(tokenError))
     config.value.agentId = agentId
     syncCapabilityDraftsToAgent()
     config.value.config.rag = {

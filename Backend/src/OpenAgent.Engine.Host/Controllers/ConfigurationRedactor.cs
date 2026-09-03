@@ -59,8 +59,6 @@ internal static class ConfigurationRedactor
             ApiKey = string.Empty,
             Temperature = profile.Temperature,
             ContextTokens = profile.ContextTokens,
-            MaxOutputTokens = profile.MaxOutputTokens,
-            SupportsMaxOutputTokens = profile.SupportsMaxOutputTokens,
             Modality = profile.Modality
         };
     }

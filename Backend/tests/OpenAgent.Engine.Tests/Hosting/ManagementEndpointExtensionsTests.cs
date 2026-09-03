@@ -44,16 +44,12 @@ public class ManagementEndpointExtensionsTests
         {
             Id = "primary",
             ApiKey = "provider-secret",
-            MaxOutputTokens = 4096,
-            SupportsMaxOutputTokens = false,
             Modality = ModelModality.Multimodal
         };
 
         LlmProviderProfile redacted = ConfigurationRedactor.RedactLlm(profile);
 
         Assert.Empty(redacted.ApiKey);
-        Assert.Equal(4096, redacted.MaxOutputTokens);
-        Assert.False(redacted.SupportsMaxOutputTokens);
         Assert.Equal(ModelModality.Multimodal, redacted.Modality);
         Assert.Equal("provider-secret", profile.ApiKey);
     }

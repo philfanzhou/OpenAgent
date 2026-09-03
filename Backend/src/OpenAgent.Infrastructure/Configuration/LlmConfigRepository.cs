@@ -58,8 +58,6 @@ internal sealed class LlmConfigRepository(
         entity.ApiKey = profile.ApiKey;
         entity.Temperature = profile.Temperature;
         entity.ContextTokens = profile.ContextTokens;
-        entity.MaxOutputTokens = profile.MaxOutputTokens;
-        entity.SupportsMaxOutputTokens = profile.SupportsMaxOutputTokens;
         entity.Modality = profile.Modality;
         entity.UpdatedAt = DateTimeOffset.UtcNow;
         await context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
@@ -90,8 +88,6 @@ internal sealed class LlmConfigRepository(
         ApiKey = entity.ApiKey,
         Temperature = entity.Temperature,
         ContextTokens = entity.ContextTokens,
-        MaxOutputTokens = entity.MaxOutputTokens,
-        SupportsMaxOutputTokens = entity.SupportsMaxOutputTokens,
         Modality = entity.Modality
     };
 }

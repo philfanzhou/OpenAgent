@@ -9,9 +9,7 @@ namespace OpenAgent.Core.Conversation;
 /// </summary>
 internal sealed class OutputTokenLimitedChatClient(
     IChatClient innerClient,
-    int maxOutputTokens,
-    int? modelMaxOutputTokens = null,
-    bool supportsMaxOutputTokens = true) : DelegatingChatClient(innerClient)
+    int maxOutputTokens) : DelegatingChatClient(innerClient)
 {
     // Reasoning models may consume the request's generation allowance before
     // emitting visible summary text. This is generation headroom only; the
@@ -22,9 +20,7 @@ internal sealed class OutputTokenLimitedChatClient(
         ? maxOutputTokens
         : throw new ArgumentOutOfRangeException(nameof(maxOutputTokens));
 
-    internal int GenerationTokenLimit => (int)Math.Min(
-        modelMaxOutputTokens ?? int.MaxValue,
-        Math.Max(MinimumGenerationTokens, (long)MaxOutputTokens * 4));
+    internal int GenerationTokenLimit => Math.Max(MinimumGenerationTokens, MaxOutputTokens * 4);
 
     public override async Task<ChatResponse> GetResponseAsync(
         IEnumerable<ChatMessage> messages,
@@ -32,11 +28,9 @@ internal sealed class OutputTokenLimitedChatClient(
         CancellationToken cancellationToken = default)
     {
         ChatOptions boundedOptions = options?.Clone() ?? new ChatOptions();
-        boundedOptions.MaxOutputTokens = supportsMaxOutputTokens
-            ? boundedOptions.MaxOutputTokens is > 0
-                ? Math.Min(boundedOptions.MaxOutputTokens.Value, GenerationTokenLimit)
-                : GenerationTokenLimit
-            : null;
+        boundedOptions.MaxOutputTokens = boundedOptions.MaxOutputTokens is > 0
+            ? Math.Min(boundedOptions.MaxOutputTokens.Value, GenerationTokenLimit)
+            : GenerationTokenLimit;
         ChatResponse response = await base.GetResponseAsync(
             messages,
             boundedOptions,

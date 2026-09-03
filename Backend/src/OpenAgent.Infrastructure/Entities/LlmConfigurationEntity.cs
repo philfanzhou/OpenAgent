@@ -13,8 +13,6 @@ internal sealed class LlmConfigurationEntity
     public string ApiKey { get; set; } = string.Empty;
     public double Temperature { get; set; } = 0.7;
     public int ContextTokens { get; set; }
-    public int? MaxOutputTokens { get; set; }
-    public bool SupportsMaxOutputTokens { get; set; } = true;
     public ModelModality Modality { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
 }

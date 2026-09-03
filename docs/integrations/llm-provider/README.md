@@ -2,7 +2,7 @@
 
 所有生产模型调用通过 `AgentChatClientFactory` 创建 `IChatClient`，支持 OpenAI Chat Completions、OpenAI Responses 与 Anthropic Messages。
 
-配置优先级、输出能力开关和压缩预算见 [模型 Token 限制](TOKEN-LIMITS.md)。
+模型上下文窗口由 LLM Profile 的 `ContextTokens` 控制，压缩预算来自 Agent 的 `ContextPolicy`。
 
 ## 配置与选择
 
@@ -16,7 +16,7 @@
 - Temperature
 - API Key（服务端租户绑定加密存储）
 
-Agent 不再绑定 Provider 或 Model。执行请求携带 `llmProfileId`，`AgentRuntimeResolver` 按已验证的 tenantId 分别加载 Agent 与 LLM Profile，完成资源授权后创建本次执行的 `LlmConfig`。模型上限由 LLM Profile 声明，Agent 可设置默认执行预算，压缩策略来自 Agent 的 `ContextPolicy`。
+Agent 不再绑定 Provider 或 Model。执行请求携带 `llmProfileId`，`AgentRuntimeResolver` 按已验证的 tenantId 分别加载 Agent 与 LLM Profile，完成资源授权后创建本次执行的 `LlmConfig`。模型上下文上限由 LLM Profile 声明，压缩策略来自 Agent 的 `ContextPolicy`。
 
 当 Profile 的 Modality 为 `Multimodal` 时，受控大小的 `image/*` 文件会以内联二进制内容发送给模型；文本模型、超出限制的图片或读取失败时只保留 fileId manifest，由文件工具按需读取。默认每张图片最多 4 MiB，每次最多 4 张。
 

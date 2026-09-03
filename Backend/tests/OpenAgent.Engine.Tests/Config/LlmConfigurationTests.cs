@@ -18,8 +18,6 @@ public class LlmConfigurationTests
         ConfigurationService service = CreateService(redis, repository);
 
         LlmProviderProfile submitted = Profile("secret-a");
-        submitted.MaxOutputTokens = 4096;
-        submitted.SupportsMaxOutputTokens = false;
         await service.SaveLlmAsync(submitted, "tenant-a");
         RedisValue cached = redis.StringGet(
             ConfigurationService.BuildCacheKey("llm", "tenant-a", "primary"));
@@ -30,11 +28,7 @@ public class LlmConfigurationTests
         Assert.Equal("secret-a", submitted.ApiKey);
         Assert.Equal(TimeSpan.FromMinutes(5), redis.LastStringExpiry);
         LlmProviderProfile loaded = Assert.IsType<LlmProviderProfile>(await service.GetAsync("tenant-a", "primary"));
-        Assert.Equal(4096, loaded.MaxOutputTokens);
-        Assert.False(loaded.SupportsMaxOutputTokens);
         LlmProviderProfile listed = Assert.Single(await service.ListAsync("tenant-a"));
-        Assert.Equal(4096, listed.MaxOutputTokens);
-        Assert.False(listed.SupportsMaxOutputTokens);
     }
 
     [Fact]

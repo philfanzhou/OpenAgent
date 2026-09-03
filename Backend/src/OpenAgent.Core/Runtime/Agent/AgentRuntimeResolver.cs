@@ -66,7 +66,7 @@ internal sealed class AgentRuntimeResolver(
         {
             AgentId = agentId,
             Config = config,
-            Model = ModelTokenLimitResolver.ApplyDefaults(model, config),
+            Model = model,
         };
     }
 
@@ -80,13 +80,6 @@ internal sealed class AgentRuntimeResolver(
         Endpoint = profile.Endpoint,
         Temperature = profile.Temperature,
         ContextTokens = profile.ContextTokens,
-        MaxOutputTokens = profile.MaxOutputTokens,
-        TokenCapabilities = new LlmTokenCapabilities
-        {
-            ContextWindowTokens = profile.ContextTokens,
-            MaxOutputTokens = profile.MaxOutputTokens,
-            SupportsMaxOutputTokens = profile.SupportsMaxOutputTokens
-        },
         Modality = profile.Modality
     };
 

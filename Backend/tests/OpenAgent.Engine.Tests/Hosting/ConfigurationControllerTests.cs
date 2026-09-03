@@ -71,7 +71,7 @@ public class ConfigurationControllerTests
         var profile = new LlmProviderProfile
         {
             Id = "primary", Name = "Primary", ModelId = "model", Endpoint = "https://model.test/v1",
-            ApiKey = "server-secret", ContextTokens = 8192, MaxOutputTokens = 4096, SupportsMaxOutputTokens = false, Modality = ModelModality.Multimodal
+            ApiKey = "server-secret", ContextTokens = 8192, Modality = ModelModality.Multimodal
         };
         using HttpResponseMessage saved = await client.PutAsJsonAsync("/api/v1/admin/llm/primary", profile);
         saved.EnsureSuccessStatusCode();
@@ -79,19 +79,7 @@ public class ConfigurationControllerTests
         Assert.DoesNotContain("server-secret", payload, StringComparison.Ordinal);
         using JsonDocument json = JsonDocument.Parse(payload);
         Assert.Equal(8192, json.RootElement.GetProperty("contextTokens").GetInt32());
-        Assert.False(json.RootElement.TryGetProperty("contextWindowTokens", out _));
-        Assert.Equal(4096, json.RootElement.GetProperty("maxOutputTokens").GetInt32());
-        Assert.False(json.RootElement.GetProperty("supportsMaxOutputTokens").GetBoolean());
-
-        foreach (int invalidOutput in new[] { 0, -1, 8192, 8193 })
-        {
-            profile.MaxOutputTokens = invalidOutput;
-            using HttpResponseMessage invalid = await client.PutAsJsonAsync("/api/v1/admin/llm/invalid", profile);
-            Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
-            Assert.False(profiles.ContainsKey(("tenant-a", "invalid")));
-        }
         profile.Id = "primary";
-        profile.MaxOutputTokens = 2048;
 
         profile.ApiKey = string.Empty;
         profile.ContextTokens = 16384;
@@ -99,8 +87,6 @@ public class ConfigurationControllerTests
         edited.EnsureSuccessStatusCode();
         Assert.NotEqual("server-secret", profiles[("tenant-a", "primary")].ApiKey);
         Assert.Equal(16384, profiles[("tenant-a", "primary")].ContextTokens);
-        Assert.Equal(2048, profiles[("tenant-a", "primary")].MaxOutputTokens);
-        Assert.False(profiles[("tenant-a", "primary")].SupportsMaxOutputTokens);
         using HttpResponseMessage tested = await client.PostAsJsonAsync(
             "/api/v1/admin/llm/test-connection", profile);
         tested.EnsureSuccessStatusCode();

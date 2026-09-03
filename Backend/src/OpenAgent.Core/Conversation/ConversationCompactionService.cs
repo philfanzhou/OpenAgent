@@ -61,12 +61,11 @@ internal sealed class ConversationCompactionService(
             profile.Model,
             profile.Config.ContextPolicy);
         SummarizationCompactionStrategy strategy = histories.CreateStrategy(
-            profile.Model.ContextTokens - (profile.Model.MaxOutputTokens ?? 0),
+            profile.Model.ContextTokens,
             profile.Config.ContextPolicy,
             summarizationClient,
             force: true,
-            out CompactionTrigger trigger,
-            profile.Model);
+            out CompactionTrigger trigger);
         var audited = new AuditedCompactionStrategy(
             strategy,
             trigger,

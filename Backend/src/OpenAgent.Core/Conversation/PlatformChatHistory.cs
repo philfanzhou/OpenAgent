@@ -24,7 +24,6 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
     private readonly string _agentId;
     private readonly string _modelId;
     private readonly string _input;
-    private readonly IReadOnlyDictionary<string, string>? _executionMetadata;
     private readonly IReadOnlyList<FileAsset> _files;
     private readonly FileAssetExecutionContext _fileExecution;
     private readonly IConversationLock _conversationLock;
@@ -60,7 +59,6 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         _agentId = context.Conversation.AgentId ?? string.Empty;
         _modelId = context.ModelId;
         _input = context.Input;
-        _executionMetadata = context.ExecutionMetadata;
         _files = context.Files;
         _fileExecution = fileExecution;
         _conversationLock = conversationLock;
@@ -70,21 +68,6 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         _supportsMultimodal = context.SupportsMultimodal;
         _maxInlineImageBytes = fileOptions.Value.MaxInlineImageBytes;
         _maxInlineImageCount = fileOptions.Value.MaxInlineImageCount;
-    }
-
-    private Dictionary<string, string> BuildUserMetadata()
-    {
-        var metadata = new Dictionary<string, string>(
-            AgentMessageAdapter.BuildFileMetadata(_files) ?? new Dictionary<string, string>(),
-            StringComparer.Ordinal);
-        if (_executionMetadata != null)
-        {
-            foreach ((string key, string value) in _executionMetadata)
-            {
-                metadata[key] = value;
-            }
-        }
-        return metadata;
     }
 
     internal void AppendPartial(string content)
@@ -521,7 +504,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
             _nextSequence++,
             "user",
             _input,
-            metadata: BuildUserMetadata(),
+            metadata: AgentMessageAdapter.BuildFileMetadata(_files),
             fileIds: _files.Select(item => item.FileId).ToArray()));
     }
 
