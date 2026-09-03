@@ -48,7 +48,7 @@ export OPENAGENT_AUTH_ENABLE_API_KEY=true
 
 请求只支持 `Authorization: Bearer <api-key>`。当前迁移包含两个仅用于本地演示的种子：
 `oa_demo_tenant_a_2026` 和 `oa_demo_tenant_b_2026`，分别绑定 `tenant-a` 和 `tenant-b`，
-权限为 `agent.execute model.invoke`。生产部署必须替换种子凭据或将其禁用。
+权限为 `agent.execute model.invoke`，且默认 `IsEnabled=false`；本地联调时需在数据库中显式启用。生产部署必须替换种子凭据或保持禁用。
 
 API Key 的启用状态、租户和 scope 由数据库记录决定，调用方不能通过租户 Header 覆盖。
 轮换时新增记录、切换调用方凭据，再将旧记录的 `IsEnabled` 设置为 `false`。

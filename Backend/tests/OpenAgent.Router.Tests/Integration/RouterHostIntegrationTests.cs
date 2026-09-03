@@ -20,6 +20,7 @@ public sealed class RouterHostIntegrationTests : IClassFixture<RouterHostFixture
     {
         using RouterApplicationFactory factory = _fixture.CreateFactory();
         using HttpClient client = factory.CreateClient();
+
         using HttpResponseMessage response = await client.PostAsJsonAsync(
             "/api/v1/agent/chat",
             new { message = "hello" });
