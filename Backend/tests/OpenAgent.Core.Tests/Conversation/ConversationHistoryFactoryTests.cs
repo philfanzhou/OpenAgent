@@ -44,20 +44,6 @@ public sealed class ConversationHistoryFactoryTests
     }
 
     [Fact]
-    public void ResolveAutomaticTokenThreshold_ConfiguredOverrideWinsOverRatioHeuristic()
-    {
-        ConversationHistoryFactory factory = CreateFactory(
-            defaultContextTokens: 1_000,
-            automaticCompactionTokenThreshold: 800_000);
-
-        Assert.Equal(800_000, factory.ResolveAutomaticTokenThreshold(1_000));
-        Assert.Equal(800_000, factory.ResolveAutomaticTokenThreshold(100));
-
-        // Target and summary budget remain proportional to the context, not the trigger.
-        Assert.Equal(500, factory.ResolveCompactionTargetTokens(1_000));
-    }
-
-    [Fact]
     public async Task CreateStrategy_ManualSummarization_CompactsShortHistory()
     {
         ConversationHistoryFactory factory = CreateFactory();
@@ -121,14 +107,12 @@ public sealed class ConversationHistoryFactoryTests
     }
 
     private static ConversationHistoryFactory CreateFactory(
-        int defaultContextTokens = 1_000,
-        int? automaticCompactionTokenThreshold = null) =>
+        int defaultContextTokens = 1_000) =>
         new(
             store: null!,
             Options.Create(new ConversationStoreOptions
             {
-                DefaultModelContextTokens = defaultContextTokens,
-                AutomaticCompactionTokenThreshold = automaticCompactionTokenThreshold
+                DefaultModelContextTokens = defaultContextTokens
             }),
             loggerFactory: NullLoggerFactory.Instance,
             historyFactory: null!);

@@ -142,13 +142,6 @@ internal sealed class ConversationHistoryFactory
 
     internal int ResolveAutomaticTokenThreshold(int contextTokens)
     {
-        // A configured fixed threshold wins over the ratio heuristic, so deployments can
-        // pin the automatic trigger regardless of per-agent context policies.
-        if (_options.AutomaticCompactionTokenThreshold is > 0)
-        {
-            return _options.AutomaticCompactionTokenThreshold.Value;
-        }
-
         contextTokens = contextTokens > 0
             ? contextTokens
             : Math.Max(1, _options.DefaultModelContextTokens);

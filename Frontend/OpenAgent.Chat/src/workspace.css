@@ -1068,6 +1068,9 @@ html[data-theme='dark'] .context-panel { background: #1f1f1f; }
 .token-usage-total { display: flex; align-items: baseline; gap: 6px; }
 .token-usage-total strong { color: var(--text); font-family: var(--font-mono); font-size: 16px; letter-spacing: -.03em; }
 .token-usage-total small { color: var(--text-muted); font-size: 10px; }
+.context-usage-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 4px 0 6px; }
+.context-usage-row span { color: var(--text-muted); font-size: 10px; }
+.context-usage-row strong { color: var(--text); font-family: var(--font-mono); font-size: 11px; white-space: nowrap; }
 .token-usage-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px 14px; margin: 0; }
 .token-usage-grid > div { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 .token-usage-grid > .grid-span-two { grid-column: span 2; }
