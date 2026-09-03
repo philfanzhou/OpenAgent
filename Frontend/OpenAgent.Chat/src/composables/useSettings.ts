@@ -93,6 +93,7 @@ export function useSettings(options: SettingsOptions) {
   const activeSettings = ref<SettingsPanel>('gateway')
   const savingConfig = ref(false)
   const refreshingAgents = ref(false)
+  const refreshingCatalog = ref(false)
   const testingMcp = ref(false)
   const uploadingSkill = ref(false)
   const testingRag = ref(false)
@@ -332,7 +333,7 @@ export function useSettings(options: SettingsOptions) {
     }
   }
 
-  async function refreshAgents(): Promise<void> {
+  async function refreshAgents(showSuccess = true): Promise<void> {
     refreshingAgents.value = true
     try {
       const refreshed = await api.listAgents()
@@ -345,11 +346,21 @@ export function useSettings(options: SettingsOptions) {
       if (options.selectedAgentId.value && options.selectedAgentId.value !== AUTO_AGENT_ID && activeSettings.value === 'agent') {
         await loadConfig()
       }
-      ElMessage.success('Agent 列表已刷新')
+      if (showSuccess) ElMessage.success('Agent 列表已刷新')
     } catch (error) {
       options.notifyError(error)
     } finally {
       refreshingAgents.value = false
+    }
+  }
+
+  async function refreshCatalog(): Promise<void> {
+    refreshingCatalog.value = true
+    try {
+      await Promise.all([refreshAgents(false), loadLlmProfiles()])
+      ElMessage.success('Agent 和模型列表已刷新')
+    } finally {
+      refreshingCatalog.value = false
     }
   }
 
@@ -759,6 +770,7 @@ export function useSettings(options: SettingsOptions) {
     activeSettings,
     savingConfig,
     refreshingAgents,
+    refreshingCatalog,
     testingMcp,
     uploadingSkill,
     testingRag,
@@ -822,6 +834,7 @@ export function useSettings(options: SettingsOptions) {
     saveLlm,
     testLlm,
     refreshAgents,
+    refreshCatalog,
     loadConfig,
     selectMcp,
     newMcp,

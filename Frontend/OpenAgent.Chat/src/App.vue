@@ -77,10 +77,10 @@ const settings = useSettings({
 })
 const {
   showSettings,
-  refreshingAgents,
+  refreshingCatalog,
   config,
   llmProfiles,
-  refreshAgents,
+  refreshCatalog,
   handleAgentChange,
   openSettings,
   resetSettings,
@@ -275,7 +275,7 @@ onBeforeUnmount(() => {
     <button v-if="sidebarCollapsed" class="panel-restore sidebar-restore" type="button" aria-label="展开侧栏" title="展开侧栏" @click="toggleSidebar">›</button>
 
     <el-main class="main-panel">
-      <ChatHeader :status-text="statusText" :agents="agents" :selected-agent-id="selectedAgentId" :llm-profiles="llmProfiles" :selected-llm-profile-id="selectedLlmProfileId" :allow-auto="connectionMode === 'router'" :refreshing-agents="refreshingAgents" :title="selectedConversation?.title || '新对话'" :theme-mode="themeMode" @update:selected-agent-id="selectedAgentId = $event" @update:selected-llm-profile-id="selectedLlmProfileId = $event" @agent-change="handleAgentChange" @refresh-agents="refreshAgents" @settings="openSettings('gateway')" @toggle-theme="toggleTheme" />
+      <ChatHeader :status-text="statusText" :agents="agents" :selected-agent-id="selectedAgentId" :llm-profiles="llmProfiles" :selected-llm-profile-id="selectedLlmProfileId" :allow-auto="connectionMode === 'router'" :refreshing-agents="refreshingCatalog" :title="selectedConversation?.title || '新对话'" :theme-mode="themeMode" @update:selected-agent-id="selectedAgentId = $event" @update:selected-llm-profile-id="selectedLlmProfileId = $event" @agent-change="handleAgentChange" @refresh-agents="refreshCatalog" @settings="openSettings('gateway')" @toggle-theme="toggleTheme" />
 
       <div class="workspace-grid" :class="{ 'context-collapsed': contextCollapsed }">
         <section class="chat-card">
@@ -287,7 +287,7 @@ onBeforeUnmount(() => {
           <section><span class="context-label">ROUTING</span><strong>{{ routeMode }}</strong><p>{{ connectionMode === 'router' && selectedAgentId === AUTO_AGENT_ID ? '由意图识别 Agent 分析请求并选择目标。' : (selectedAgent?.description || selectedAgentId) }}</p><dl><div><dt>Agent</dt><dd>{{ connectionMode === 'router' && selectedAgentId === AUTO_AGENT_ID ? '自动选择' : (selectedAgent?.name || selectedAgentId) }}</dd></div><div><dt>模型</dt><dd>{{ llmProfiles.find(item => item.id === selectedLlmProfileId)?.modelId || '未选择' }}</dd></div></dl></section>
           <section><span class="context-label">IDENTITY</span><dl><div><dt>用户名</dt><dd>{{ currentUser?.username || '未设置' }}</dd></div><div><dt>邮箱</dt><dd :title="currentUser?.email">{{ currentUser?.email || '未设置' }}</dd></div><div><dt>ID</dt><dd :title="currentUser?.userId">{{ currentUser?.userId || 'Guest' }}</dd></div><div><dt>租户</dt><dd>{{ currentUser?.tenantId || tenantId || '—' }}</dd></div><div><dt>{{ activeEndpointLabel }}</dt><dd :title="activeEndpointUrl">{{ activeEndpointHost }}</dd></div></dl></section>
           <section><span class="context-label">CONVERSATION</span><dl><div><dt>消息</dt><dd>{{ currentMessages.length }}</dd></div><div><dt>状态</dt><dd>{{ conversationStatusText }}</dd></div><div><dt>ID</dt><dd class="conversation-id" :title="selectedConversation?.conversationId">{{ selectedConversation?.conversationId || '尚未创建' }}</dd></div></dl><div class="conversation-usage"><div class="token-usage-head"><span>Token</span><span class="token-usage-status" :class="{ unavailable: !currentUsageSummary.available }">{{ currentUsageSummary.available ? (currentUsageSummary.estimated ? '预估' : '完整') : '部分' }}</span></div><template v-if="currentUsageSummary.available && currentUsageSummary.usage"><div class="token-usage-total"><strong>{{ currentUsageSummary.estimated ? '≈' : '' }}{{ formatTokenCount(currentUsageSummary.usage.totalTokens) }}</strong><small>总计</small></div><dl class="token-usage-grid"><div><dt>输入</dt><dd>{{ formatTokenCount(currentUsageSummary.usage.promptTokens) }}</dd></div><div><dt>输出</dt><dd>{{ currentUsageSummary.estimated ? '≈' : '' }}{{ formatTokenCount(currentUsageSummary.usage.completionTokens) }}</dd></div><div><dt>缓存命中</dt><dd>{{ currentUsageSummary.usage.cachedInputTokens != null ? formatTokenCount(currentUsageSummary.usage.cachedInputTokens) : '—' }}</dd></div><div><dt>命中率</dt><dd>{{ formatCacheHitRate(currentUsageSummary.usage.cachedInputTokens, currentUsageSummary.usage.promptTokens) ?? '—' }}</dd></div><div class="grid-span-two"><dt>思考</dt><dd>{{ currentUsageSummary.usage.reasoningTokens != null ? formatTokenCount(currentUsageSummary.usage.reasoningTokens) : '—' }}</dd></div></dl></template><template v-else><strong class="unavailable">—</strong><small>Provider usage 不完整</small></template></div></section>
-          <section class="inspector-actions"><span class="context-label">OPERATIONS</span><div class="inspector-action-grid"><el-button class="inspector-action inspector-action-primary" size="small" :loading="compactingConversation" :disabled="!selectedConversation || !selectedLlmProfileId || selectedConversationStreaming" @click="compactConversation"><span class="inspector-action-mark" aria-hidden="true">↻</span><span>手动压缩</span></el-button><el-button class="inspector-action" size="small" @click="openSettings('health')"><span class="inspector-action-mark" aria-hidden="true">✓</span><span>平台健康检查</span></el-button></div></section>
+          <section class="inspector-actions"><span class="context-label">OPERATIONS</span><div class="inspector-action-grid"><el-button class="inspector-action" size="small" @click="openSettings('health')"><span class="inspector-action-mark" aria-hidden="true">✓</span><span>健康检查</span></el-button><el-button class="inspector-action inspector-action-primary" size="small" :loading="compactingConversation" :disabled="!selectedConversation || !selectedLlmProfileId || selectedConversationStreaming" @click="compactConversation"><span class="inspector-action-mark" aria-hidden="true">↻</span><span>手动压缩</span></el-button></div></section>
           <div class="context-resize" @pointerdown="startContextResize" />
         </aside>
       </div>
