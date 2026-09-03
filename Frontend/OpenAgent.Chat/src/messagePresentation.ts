@@ -92,6 +92,8 @@ export function mergeAssistantSnapshot(
     toolActivities: mergeToolActivities(stored.toolActivities, snapshot.toolActivities),
     processActivities: mergeProcessActivities(stored.processActivities, snapshotProcesses),
     files: stored.files?.length ? stored.files : snapshot.files,
+    tokenUsage: snapshot.tokenUsage || stored.tokenUsage,
+    modelId: snapshot.modelId || stored.modelId,
     error: snapshot.error || stored.error,
   }
   return merged
@@ -105,11 +107,15 @@ function mergeAssistantMessage(
     ? {
         ...current,
         content: appendText(current.content, message.content),
+        toolCallId: message.toolCallId,
+        toolName: message.toolName,
         reasoning: appendText(current.reasoning, message.reasoning) || undefined,
         files: current.files?.length || message.files?.length
           ? [...(current.files || []), ...(message.files || [])]
           : undefined,
         processActivities: cloneProcessActivities(current.processActivities),
+        tokenUsage: message.tokenUsage || current.tokenUsage,
+        modelId: message.modelId || current.modelId,
         error: message.error || current.error,
       }
     : {

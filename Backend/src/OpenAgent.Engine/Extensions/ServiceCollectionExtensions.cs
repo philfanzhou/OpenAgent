@@ -2,6 +2,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Core.Abstract;
 using OpenAgent.Engine.Abstractions;
@@ -9,7 +11,6 @@ using OpenAgent.Engine.Config;
 using OpenAgent.Engine.Models;
 using OpenAgent.Engine.Redis;
 using OpenAgent.Engine.Registry;
-using OpenAgent.Engine.Reload;
 using OpenAgent.Engine.Runtime;
 using StackExchange.Redis;
 
@@ -20,20 +21,28 @@ internal static class ServiceCollectionExtensions
     public static IServiceCollection AddAgentEngine(this IServiceCollection services, IConfiguration configuration)
     {
         services.Configure<HeartbeatOptions>(configuration.GetSection("Heartbeat"));
-        services.Configure<ConfigSnapshotOptions>(configuration.GetSection("ConfigSnapshot"));
+        services.Configure<AgentConfigSourceOptions>(
+            configuration.GetSection(AgentConfigSourceOptions.SectionName));
 
         // Factory uses GetService so island mode works even when IConnectionMultiplexer
         // is not registered (e.g. Core's Redis connection string is empty).
         services.AddSingleton<IRedisConnectionProvider>(sp =>
             new RedisConnectionProvider(sp.GetService<IConnectionMultiplexer>()));
 
-        // ConfigProvider helpers — were hand-newed inside ConfigProvider; now injected.
-        services.AddSingleton<SecretInjector>();
-        services.AddSingleton<MockAgentResolver>();
-        services.AddSingleton<AgentConfigLocalStore>();
-        services.AddSingleton<AgentListQuery>();
-        services.AddSingleton<AgentConfigManagementService>();
-        services.AddSingleton<LlmProfileManagementService>();
+        services.AddDataProtection();
+        services.Replace(ServiceDescriptor.Singleton<IAgentSecretResolver>(serviceProvider =>
+            new ConfigurationSecretResolver(
+                configuration,
+                serviceProvider.GetRequiredService<Microsoft.AspNetCore.DataProtection.IDataProtectionProvider>())));
+        services.AddSingleton(serviceProvider => new ConfigurationService(
+            serviceProvider.GetRequiredService<IAgentConfigRepository>(),
+            serviceProvider.GetRequiredService<ILlmConfigRepository>(),
+            serviceProvider.GetRequiredService<IRedisConnectionProvider>(),
+            serviceProvider.GetRequiredService<IOptions<AgentConfigSourceOptions>>(),
+            serviceProvider.GetRequiredService<IAgentSecretResolver>(),
+            serviceProvider.GetRequiredService<ILogger<ConfigurationService>>()));
+        services.AddSingleton<ILlmConfigProvider>(serviceProvider =>
+            serviceProvider.GetRequiredService<ConfigurationService>());
         services.AddSingleton<McpProfileManagementService>();
         services.AddSingleton<RedisSkillCatalogStore>();
         services.AddSingleton<ISkillCatalogStore>(serviceProvider =>
@@ -41,29 +50,18 @@ internal static class ServiceCollectionExtensions
         services.Replace(ServiceDescriptor.Singleton<ISkillCatalog>(serviceProvider =>
             serviceProvider.GetRequiredService<RedisSkillCatalogStore>()));
 
-        services.AddSingleton<IAgentConfigProvider, ConfigProvider>();
+        services.AddSingleton<IAgentConfigProvider>(serviceProvider =>
+            serviceProvider.GetRequiredService<ConfigurationService>());
 
         services.AddHostedService<RedisRagRegistrar>();
-        services.AddHostedService<RedisLlmRegistrar>();
         services.AddHostedService<RedisMcpRegistrar>();
 
         services.AddHealthChecks()
             .AddCheck<RedisHealthCheck>("redis", tags: new[] { "infrastructure", "ready", "live" })
-            .AddCheck<ConfigHealthCheck>("agent-config", tags: new[] { "ready" })
-            .AddCheck<LlmHealthCheck>("llm-connectivity", tags: new[] { "live" });
+            .AddCheck<ConfigHealthCheck>("agent-config", tags: new[] { "ready" });
 
         services.AddSingleton<IEngineRegistry, RedisRegistry>();
         services.AddHostedService<HeartbeatService>();
-
-        // Container-owned IMemoryCache (Engine-wide). ConfigSnapshot consumes it;
-        // key namespace "agent:{id}:config:{type}" is unique within Engine.
-        services.AddMemoryCache();
-        services.AddSingleton<ConfigSnapshot>();
-        services.AddSingleton<FullConfigRefresher>();
-        services.AddSingleton<LlmProfileRefresher>();
-        services.AddSingleton<LegacyMessageHandler>();
-        services.AddSingleton<ConfigUpdateDispatcher>();
-        services.AddHostedService<HotReloadService>();
 
         services.AddSingleton<ShutdownService>();
         services.AddHostedService(sp => sp.GetRequiredService<ShutdownService>());

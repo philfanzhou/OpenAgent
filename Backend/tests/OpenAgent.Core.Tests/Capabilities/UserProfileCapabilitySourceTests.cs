@@ -133,8 +133,7 @@ public class UserProfileCapabilitySourceTests
         IAgentAuthorizationService? authorization = null)
     {
         AgentAuthorizationGate gate = new(
-            authorization ?? new AllowAllAgentAuthorizationService(),
-            new Core.Models.LlmRegistry());
+            authorization ?? new AllowAllAgentAuthorizationService());
         return new CapabilityToolFactory([new UserProfileCapabilitySource()], gate);
     }
 

@@ -234,6 +234,7 @@ public class AgentExecutorToolLoopTests
     {
         Query = "hello",
         AgentId = "test-agent",
+        LlmProfileId = "test-model",
         ConversationId = conversationId,
         TraceId = $"trace-{conversationId}"
     };

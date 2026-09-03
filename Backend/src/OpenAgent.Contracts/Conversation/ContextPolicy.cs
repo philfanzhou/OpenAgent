@@ -6,11 +6,6 @@ namespace OpenAgent.Contracts.Conversation;
 public sealed class ContextPolicy
 {
     /// <summary>
-    /// Target token limit for compressed context (0 = no limit).
-    /// </summary>
-    public int MaxTokens { get; init; }
-
-    /// <summary>
     /// Number of recent turns to preserve uncompressed (default 2).
     /// </summary>
     public int PreserveRecentTurns { get; init; } = 2;

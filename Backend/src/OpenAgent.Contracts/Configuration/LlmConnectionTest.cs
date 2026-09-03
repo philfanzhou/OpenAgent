@@ -1,10 +1,5 @@
 namespace OpenAgent.Contracts.Configuration;
 
-public sealed class LlmConnectionTestRequest
-{
-    public LlmProviderProfile Profile { get; init; } = new();
-}
-
 public sealed class LlmConnectionTestResult
 {
     public bool Success { get; init; }

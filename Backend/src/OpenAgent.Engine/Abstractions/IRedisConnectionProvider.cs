@@ -2,7 +2,7 @@ using StackExchange.Redis;
 
 namespace OpenAgent.Engine.Abstractions;
 
-internal interface IRedisConnectionProvider : IDisposable
+public interface IRedisConnectionProvider : IDisposable
 {
     bool IsAvailable { get; }
     IServer? GetServer(int database = 0);

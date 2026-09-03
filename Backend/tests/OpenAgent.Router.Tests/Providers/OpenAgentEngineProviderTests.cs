@@ -42,7 +42,8 @@ public class OpenAgentEngineProviderTests
                 TenantId = "tenant-1",
                 IsAuthenticated = true
             },
-            "Basic forwarded-token");
+            "Basic forwarded-token",
+            "openai-gpt4o");
         AgentProviderCatalog catalog = await provider.GetAgentsAsync(
             requestContext,
             CancellationToken.None);
@@ -151,7 +152,7 @@ public class OpenAgentEngineProviderTests
         using JsonDocument document = JsonDocument.Parse(body);
         JsonElement context = document.RootElement.GetProperty("context");
         Assert.Equal("intent-router", context.GetProperty("agentId").GetString());
-        Assert.Single(context.EnumerateObject());
+        Assert.Equal("openai-gpt4o", context.GetProperty("llmProfileId").GetString());
     }
 
     private sealed class StubRouteTable : IRouteTable

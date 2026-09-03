@@ -41,8 +41,7 @@ public class CapabilityToolFactoryTests
         IAgentAuthorizationService? auth = null)
     {
         var gate = new AgentAuthorizationGate(
-            auth ?? new AllowAllAgentAuthorizationService(),
-            new Core.Models.LlmRegistry());
+            auth ?? new AllowAllAgentAuthorizationService());
         return new CapabilityToolFactory(new[] { source }, gate);
     }
 

@@ -4,7 +4,7 @@
 
 | # | 需求 | 详细文档 |
 |---|------|----------|
-| R-01 | 生产推理统一使用 MAF，并保留 MockAgent 降级解析器（AllowMockAgent）和旧配置兼容 | [modules/engine/](../modules/engine/) |
+| R-01 | 生产推理统一使用 MAF；Agent 与执行时选择的 LLM Profile 均来自 PostgreSQL 事实源 | [modules/engine/](../modules/engine/) |
 | R-02 | Pipeline 中间件链（认证、租户校验、追踪、审计） | [modules/execution/pipeline/](../modules/execution/pipeline/) |
 | R-03 | Skill 技能注册与执行 | [modules/capabilities/skill/](../modules/capabilities/skill/) |
 | R-04 | MCP Server 工具发现与调用 | [modules/capabilities/mcp/](../modules/capabilities/mcp/) |

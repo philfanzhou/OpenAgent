@@ -196,7 +196,7 @@ onMounted(() => {
 <template>
   <div class="health-check">
     <div class="section-heading">
-      <div><span class="eyebrow">SYSTEM CHECK</span><h3>平台健康检查</h3><p>从浏览器逐项验证 Engine、基础设施与数据面状态，结果可直接用于联调报告。</p></div>
+      <div><span class="eyebrow">SYSTEM CHECK</span><h3>健康检查</h3><p>从浏览器逐项验证 Engine、基础设施与数据面状态，结果可直接用于联调报告。</p></div>
       <el-button type="primary" :loading="running" @click="run">运行全部</el-button>
     </div>
 

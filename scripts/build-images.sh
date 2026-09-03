@@ -123,10 +123,11 @@ engine_image="${OPENAGENT_ENGINE_IMAGE:-openagent-engine:latest}"
 router_image="${OPENAGENT_ROUTER_IMAGE:-openagent-router:latest}"
 chat_image="${OPENAGENT_CHAT_IMAGE:-openagent-chat:latest}"
 public_host="${OPENAGENT_PUBLIC_HOST:-localhost}"
+public_scheme="${OPENAGENT_PUBLIC_SCHEME:-https}"
 router_port="${OPENAGENT_ROUTER_PORT:-8082}"
 engine_port="${OPENAGENT_ENGINE_PORT:-8083}"
-router_url="https://${public_host}:${router_port}"
-engine_url="https://${public_host}:${engine_port}"
+router_url="${public_scheme}://${public_host}:${router_port}"
+engine_url="${public_scheme}://${public_host}:${engine_port}"
 tenant_id="${OPENAGENT_TENANT_ID:-development}"
 
 "${docker_cmd[@]}" build \

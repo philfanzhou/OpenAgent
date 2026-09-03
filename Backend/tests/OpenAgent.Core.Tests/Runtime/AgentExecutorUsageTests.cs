@@ -196,6 +196,7 @@ public class AgentExecutorUsageTests
     {
         Query = "hello",
         AgentId = "test-agent",
+        LlmProfileId = "test-model",
         ConversationId = conversationId,
         TraceId = $"trace-{conversationId}"
     };
@@ -260,6 +261,7 @@ public class AgentExecutorUsageTests
     {
         public Task<AgentRuntimeProfile> ResolveAsync(
             string agentId,
+            string llmProfileId,
             IAgentUserContext userContext,
             CancellationToken cancellationToken = default) =>
             Task.FromResult(new AgentRuntimeProfile

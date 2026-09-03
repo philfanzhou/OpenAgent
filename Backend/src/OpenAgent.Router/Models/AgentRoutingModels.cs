@@ -9,7 +9,8 @@ internal sealed record AgentCatalogEntry(
 internal sealed record ParsedChatRequest(
     string Query,
     string? ConversationId,
-    string? AgentId);
+    string? AgentId,
+    string? LlmProfileId = null);
 
 internal sealed record AgentRoutingFeature(
     string? ConversationId,

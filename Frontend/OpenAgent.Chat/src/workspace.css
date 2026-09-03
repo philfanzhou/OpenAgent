@@ -1084,12 +1084,13 @@ html[data-theme='dark'] .context-panel { background: #1f1f1f; }
   word-break: break-word;
 }
 .inspector-actions { margin: 0; padding: 11px 5px 13px !important; border-bottom: 0 !important; }
-.inspector-action-grid { display: grid; gap: 7px; }
+.inspector-action-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
 .inspector-actions .el-button + .el-button { margin-left: 0; }
 .inspector-action { box-sizing: border-box; width: 100%; min-height: 34px; justify-content: flex-start; margin: 0; border-color: var(--border); color: var(--text); background: var(--bg); }
 .inspector-action:hover, .inspector-action:focus-visible { border-color: var(--accent); color: var(--accent); background: var(--bg); }
 .inspector-action-primary { border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--bg)); }
 .inspector-action-mark { display: inline-grid; width: 18px; height: 18px; place-items: center; border: 1px solid currentColor; border-radius: 50%; font-size: 12px; line-height: 1; }
+.inspector-action-mark svg { width: 12px; height: 12px; }
 
 /* Context resize handle */
 .context-resize {

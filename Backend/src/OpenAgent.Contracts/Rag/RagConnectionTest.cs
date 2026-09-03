@@ -2,11 +2,6 @@ using OpenAgent.Contracts.Configuration;
 
 namespace OpenAgent.Contracts.Rag;
 
-public sealed class RagConnectionTestRequest
-{
-    public RagInstanceConfig Instance { get; init; } = new();
-}
-
 public sealed class RagConnectionTestResult
 {
     public bool Success { get; init; }

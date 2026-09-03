@@ -59,7 +59,8 @@ internal sealed class AgentFactory
             profile.Model.ModelId,
             request,
             user,
-            files);
+            files,
+            profile.Model.Modality == ModelModality.Multimodal);
         IReadOnlyList<AITool> tools = await _capabilities.CreateAsync(
             profile.AgentId,
             profile.Config,
@@ -81,6 +82,7 @@ internal sealed class AgentFactory
                 cancellationToken).ConfigureAwait(false);
 
             AIContextProvider compaction = _conversations.CreateCompaction(
+                profile.Model.ContextTokens,
                 profile.Config.ContextPolicy,
                 summarizationClient,
                 user.TenantId,

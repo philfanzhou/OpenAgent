@@ -4,7 +4,6 @@ using ModelContextProtocol.Client;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Capabilities.Mcp;
-using OpenAgent.Core.Models;
 using OpenAgent.Core.Security;
 using Xunit;
 
@@ -34,9 +33,7 @@ public sealed class McpToolFactoryTests
         var httpClients = new Mock<IHttpClientFactory>();
         var factory = new McpToolFactory(
             new McpTransportFactory(httpClients.Object, NullLoggerFactory.Instance),
-            new AgentAuthorizationGate(
-                new AllowAllAgentAuthorizationService(),
-                new LlmRegistry()),
+            new AgentAuthorizationGate(new AllowAllAgentAuthorizationService()),
             new McpRegistry(),
             NullLoggerFactory.Instance,
             NullLogger<McpToolFactory>.Instance);
@@ -74,9 +71,7 @@ public sealed class McpToolFactoryTests
         var httpClients = new Mock<IHttpClientFactory>();
         var factory = new McpToolFactory(
             new McpTransportFactory(httpClients.Object, NullLoggerFactory.Instance),
-            new AgentAuthorizationGate(
-                new AllowAllAgentAuthorizationService(),
-                new LlmRegistry()),
+            new AgentAuthorizationGate(new AllowAllAgentAuthorizationService()),
             new McpRegistry(),
             NullLoggerFactory.Instance,
             NullLogger<McpToolFactory>.Instance);

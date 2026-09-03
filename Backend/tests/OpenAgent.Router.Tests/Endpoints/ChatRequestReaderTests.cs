@@ -18,7 +18,8 @@ public class ChatRequestReaderTests
               "Message": "find the invoice",
               "Context": {
                 "ConversationId": "conversation-1",
-                "AgentId": "finance"
+                "AgentId": "finance",
+                "LlmProfileId": "openai-gpt4o"
               }
             }
             """);
@@ -30,6 +31,7 @@ public class ChatRequestReaderTests
         Assert.Equal("find the invoice", request.Query);
         Assert.Equal("conversation-1", request.ConversationId);
         Assert.Equal("finance", request.AgentId);
+        Assert.Equal("openai-gpt4o", request.LlmProfileId);
         Assert.Equal(0, context.Request.Body.Position);
     }
 

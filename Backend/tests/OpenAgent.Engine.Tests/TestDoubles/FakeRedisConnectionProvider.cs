@@ -8,7 +8,9 @@ internal sealed class FakeRedisConnectionProvider : IRedisConnectionProvider
     private readonly Dictionary<string, string> _strings = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, HashSet<string>> _sets = new(StringComparer.OrdinalIgnoreCase);
 
-    public bool IsAvailable => true;
+    public bool IsAvailable { get; set; } = true;
+
+    internal TimeSpan? LastStringExpiry { get; private set; }
 
     public IServer? GetServer(int database = 0) => null;
 
@@ -19,6 +21,7 @@ internal sealed class FakeRedisConnectionProvider : IRedisConnectionProvider
     public Task<bool> StringSetAsync(RedisKey key, RedisValue value, TimeSpan? expiry = null, CommandFlags flags = CommandFlags.None)
     {
         _strings[key!] = value.ToString();
+        LastStringExpiry = expiry;
         return Task.FromResult(true);
     }
 

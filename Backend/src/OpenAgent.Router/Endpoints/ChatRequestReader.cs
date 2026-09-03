@@ -24,7 +24,8 @@ internal static class ChatRequestReader
                         ?? form["query"].FirstOrDefault()
                         ?? string.Empty,
                     form["conversationId"].FirstOrDefault(),
-                    form["agentId"].FirstOrDefault());
+                    form["agentId"].FirstOrDefault(),
+                    form["llmProfileId"].FirstOrDefault());
             }
 
             if (RequestBodySnapshot.TryGet(request.HttpContext, out Task<RequestBodySnapshot> snapshotTask))
@@ -62,7 +63,8 @@ internal static class ChatRequestReader
         return new ParsedChatRequest(
             body.Message,
             ReadContextString(body.Context, "conversationId"),
-            ReadContextString(body.Context, "agentId"));
+            ReadContextString(body.Context, "agentId"),
+            ReadContextString(body.Context, "llmProfileId"));
     }
 
     private static string? ReadContextString(
