@@ -44,22 +44,25 @@ public sealed class PlatformChatHistoryTests
                 MaxFunctionReadBytes = 128
             }));
         var history = new PlatformChatHistory(
-            new ConversationContext(
-                "conversation-a",
-                "tenant-a",
-                "user-a",
-                "agent-a",
-                null,
-                ConversationType.User),
-            "agent-a",
-            "model-a",
-            "continue",
-            [],
-            new FileAssetExecutionContext(),
-            conversationLock: null!,
-            store: null!,
-            NullLogger<PlatformChatHistory>.Instance,
-            service);
+            new PlatformChatHistoryContext(
+                new ConversationContext(
+                    "conversation-a",
+                    "tenant-a",
+                    "user-a",
+                    "agent-a",
+                    null,
+                    ConversationType.User),
+                "model-a",
+                "continue",
+                [],
+                SupportsMultimodal: false),
+            new PlatformChatHistoryDependencies(
+                new FileAssetExecutionContext(),
+                conversationLock: null!,
+                store: null!,
+                NullLogger<PlatformChatHistory>.Instance,
+                service,
+                Options.Create(new FileAssetOptions())));
         ConversationMessage stored = ConversationSessionStore.Message(
             1,
             "assistant",
@@ -114,19 +117,23 @@ public sealed class PlatformChatHistoryTests
                 MaxInlineImageCount = 1
             }));
         PlatformChatHistory history = new(
-            new ConversationContext("conversation-a", "tenant-a", "user-a", "agent-a", null, ConversationType.User),
-            "agent-a",
-            "model-a",
-            "continue",
-            [asset],
-            new FileAssetExecutionContext(),
-            conversationLock: null!,
-            store: null!,
-            NullLogger<PlatformChatHistory>.Instance,
-            service,
-            supportsMultimodal: true,
-            maxInlineImageBytes: 16,
-            maxInlineImageCount: 1);
+            new PlatformChatHistoryContext(
+                new ConversationContext("conversation-a", "tenant-a", "user-a", "agent-a", null, ConversationType.User),
+                "model-a",
+                "continue",
+                [asset],
+                SupportsMultimodal: true),
+            new PlatformChatHistoryDependencies(
+                new FileAssetExecutionContext(),
+                conversationLock: null!,
+                store: null!,
+                NullLogger<PlatformChatHistory>.Instance,
+                service,
+                Options.Create(new FileAssetOptions
+                {
+                    MaxInlineImageBytes = 16,
+                    MaxInlineImageCount = 1
+                })));
 
         ConversationMessage stored = ConversationSessionStore.Message(
             1,

@@ -46,33 +46,22 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
     private bool _completionStaged;
 
     internal PlatformChatHistory(
-        ConversationContext conversation,
-        string agentId,
-        string modelId,
-        string input,
-        IReadOnlyList<FileAsset> files,
-        FileAssetExecutionContext fileExecution,
-        IConversationLock conversationLock,
-        ConversationSessionStore store,
-        ILogger<PlatformChatHistory> logger,
-        IFileAssetService fileService,
-        bool supportsMultimodal = false,
-        long maxInlineImageBytes = 4 * 1024 * 1024,
-        int maxInlineImageCount = 4)
+        PlatformChatHistoryContext context,
+        PlatformChatHistoryDependencies dependencies)
     {
-        _conversation = conversation;
-        _agentId = agentId;
-        _modelId = modelId;
-        _input = input;
-        _files = files;
-        _fileExecution = fileExecution;
-        _conversationLock = conversationLock;
-        _store = store;
-        _logger = logger;
-        _fileService = fileService;
-        _supportsMultimodal = supportsMultimodal;
-        _maxInlineImageBytes = maxInlineImageBytes;
-        _maxInlineImageCount = maxInlineImageCount;
+        _conversation = context.Conversation;
+        _agentId = context.Conversation.AgentId ?? string.Empty;
+        _modelId = context.ModelId;
+        _input = context.Input;
+        _files = context.Files;
+        _fileExecution = dependencies.FileExecution;
+        _conversationLock = dependencies.ConversationLock;
+        _store = dependencies.Store;
+        _logger = dependencies.Logger;
+        _fileService = dependencies.FileService;
+        _supportsMultimodal = context.SupportsMultimodal;
+        _maxInlineImageBytes = dependencies.FileOptions.MaxInlineImageBytes;
+        _maxInlineImageCount = dependencies.FileOptions.MaxInlineImageCount;
     }
 
     internal void AppendPartial(string content)

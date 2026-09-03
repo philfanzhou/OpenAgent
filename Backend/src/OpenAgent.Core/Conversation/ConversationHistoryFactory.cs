@@ -8,7 +8,6 @@ using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
-using OpenAgent.Core.Files;
 
 namespace OpenAgent.Core.Conversation;
 
@@ -32,33 +31,21 @@ internal sealed class ConversationHistoryFactory
         - Open items and next action
         """;
 
-    private readonly IConversationLock _conversationLock;
     private readonly ConversationSessionStore _store;
     private readonly ConversationStoreOptions _options;
-    private readonly FileAssetExecutionContext _fileExecution;
-    private readonly ILogger<PlatformChatHistory> _logger;
     private readonly ILoggerFactory _loggerFactory;
-    private readonly IFileAssetService _fileService;
-    private readonly FileAssetOptions _fileOptions;
+    private readonly IPlatformChatHistoryFactory _historyFactory;
 
     public ConversationHistoryFactory(
-        IConversationLock conversationLock,
         ConversationSessionStore store,
         IOptions<ConversationStoreOptions> options,
-        FileAssetExecutionContext fileExecution,
-        ILogger<PlatformChatHistory> logger,
         ILoggerFactory loggerFactory,
-        IFileAssetService fileService,
-        IOptions<FileAssetOptions> fileOptions)
+        IPlatformChatHistoryFactory historyFactory)
     {
-        _conversationLock = conversationLock;
         _store = store;
         _options = options.Value;
-        _fileExecution = fileExecution;
-        _logger = logger;
         _loggerFactory = loggerFactory;
-        _fileService = fileService;
-        _fileOptions = fileOptions.Value;
+        _historyFactory = historyFactory;
     }
 
     internal PlatformChatHistory Create(
@@ -76,20 +63,12 @@ internal sealed class ConversationHistoryFactory
             agentId,
             request.TraceId,
             request.ConversationType);
-        return new PlatformChatHistory(
+        return _historyFactory.Create(new PlatformChatHistoryContext(
             context,
-            agentId,
             modelId,
             request.Query,
             files.ToList().AsReadOnly(),
-            _fileExecution,
-            _conversationLock,
-            _store,
-            _logger,
-            _fileService,
-            supportsMultimodal,
-            _fileOptions.MaxInlineImageBytes,
-            _fileOptions.MaxInlineImageCount);
+            supportsMultimodal));
     }
 
     internal async Task EnsureConversationAsync(

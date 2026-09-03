@@ -124,18 +124,14 @@ public sealed class ConversationHistoryFactoryTests
         int defaultContextTokens = 1_000,
         int? automaticCompactionTokenThreshold = null) =>
         new(
-            conversationLock: null!,
             store: null!,
             Options.Create(new ConversationStoreOptions
             {
                 DefaultModelContextTokens = defaultContextTokens,
                 AutomaticCompactionTokenThreshold = automaticCompactionTokenThreshold
             }),
-            fileExecution: null!,
-            logger: NullLogger<PlatformChatHistory>.Instance,
             loggerFactory: NullLoggerFactory.Instance,
-            fileService: null!,
-            fileOptions: Options.Create(new FileAssetOptions()));
+            historyFactory: null!);
 
     private sealed class CapturingChatClient(string responseText = "summary") : IChatClient
     {
