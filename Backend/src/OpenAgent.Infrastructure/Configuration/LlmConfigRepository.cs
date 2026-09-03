@@ -4,7 +4,7 @@ using OpenAgent.Infrastructure.Entities;
 
 namespace OpenAgent.Infrastructure.Configuration;
 
-internal sealed class EfCoreLlmConfigRepository(
+internal sealed class LlmConfigRepository(
     IDbContextFactory<OpenAgentDbContext> contexts) : ILlmConfigRepository
 {
     public async Task<LlmProviderProfile?> GetAsync(

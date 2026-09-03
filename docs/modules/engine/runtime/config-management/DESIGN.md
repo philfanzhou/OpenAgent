@@ -41,7 +41,7 @@ ChatRequest(agentId, llmProfileId, fileIds)
   -> AIAgent.Run[Streaming]Async
 ```
 
-Agent 保存指令、轮次、上下文压缩策略及能力绑定；LLM 保存模型连接、ContextTokens、Modality 和明文密钥。执行时才组合两者；LLM 的 ContextTokens 决定有效上下文上限。
+Agent 保存指令、轮次、上下文压缩策略及能力绑定；LLM 保存模型连接、ContextTokens、Modality 和加密密钥。执行时才组合两者；LLM 的 ContextTokens 决定有效上下文上限。
 
 图片上传继续使用现有 FileAssetService、PostgreSQL 文件元数据和对象存储。Multimodal 仅控制当前消息和历史消息中图片二进制的受限读取与内联，不新增配置与文件存储的依赖。音频、视频输入暂不开放。
 
@@ -49,7 +49,7 @@ MCP/RAG/Skill 管理接口留在已有能力模块。会话、文件、服务发
 
 ## 密钥
 
-LLM API Key 以明文存储在数据库和服务端 Redis 缓存；GET/PUT 响应通过 ConfigurationRedactor 清空 Key。编辑时空 Key 或掩码保留数据库值，连接测试按已认证租户和 Profile ID 补齐保存的 Key。RAG 仍使用 ApiKeySecretRef。
+LLM 和 RAG API Key 使用租户绑定的服务端加密值存储在数据库和 Redis 缓存；GET/PUT 响应通过 ConfigurationRedactor 清空 Key。编辑时空 Key 或掩码保留数据库值，连接测试按已认证租户和 Profile ID 补齐并解密保存的 Key。RAG 仍兼容旧的 ApiKeySecretRef。
 
 ## 源码
 

@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Configuration;
 using OpenAgent.Contracts.Configuration;
 
@@ -8,20 +10,78 @@ namespace OpenAgent.Engine.Config;
 /// Production deployments can replace this registration with a Vault or
 /// cloud secret-manager adapter without changing persisted Agent documents.
 /// </summary>
-internal sealed class ConfigurationSecretResolver(IConfiguration configuration)
-    : IAgentSecretResolver
+internal sealed class ConfigurationSecretResolver : IAgentSecretResolver
 {
-    public Task<string?> ResolveAsync(
+    private const string Prefix = "v1.";
+    private readonly IConfiguration _configuration;
+    private readonly IDataProtectionProvider _provider;
+
+    public ConfigurationSecretResolver(
+        IConfiguration configuration,
+        IDataProtectionProvider? provider = null)
+    {
+        _configuration = configuration;
+        _provider = provider ?? new EphemeralDataProtectionProvider();
+    }
+
+    public Task<string> ProtectAsync(
         string tenantId,
-        string secretReference,
+        string secret,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         ValidateSegment(tenantId, nameof(tenantId));
-        ValidateReference(secretReference);
-        string? secret = configuration[$"Secrets:{tenantId}:{secretReference}"];
-        return Task.FromResult(string.IsNullOrWhiteSpace(secret) ? null : secret);
+        ArgumentException.ThrowIfNullOrEmpty(secret);
+        return Task.FromResult(Prefix + Protector(tenantId).Protect(secret));
     }
+
+    public Task<string?> ResolveAsync(
+        string tenantId,
+        string protectedSecret,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        ValidateSegment(tenantId, nameof(tenantId));
+        if (string.IsNullOrWhiteSpace(protectedSecret))
+        {
+            return Task.FromResult<string?>(null);
+        }
+
+        if (protectedSecret.StartsWith(Prefix, StringComparison.Ordinal))
+        {
+            try
+            {
+                return Task.FromResult<string?>(Protector(tenantId).Unprotect(protectedSecret[Prefix.Length..]));
+            }
+            catch (Exception exception) when (exception is FormatException or CryptographicException)
+            {
+                return Task.FromResult<string?>(null);
+            }
+        }
+
+        string? legacy = null;
+        try
+        {
+            ValidateReference(protectedSecret);
+            legacy = _configuration[$"Secrets:{tenantId}:{protectedSecret}"];
+        }
+        catch (ArgumentException)
+        {
+            return Task.FromResult<string?>(protectedSecret);
+        }
+        if (!string.IsNullOrWhiteSpace(legacy))
+        {
+            return Task.FromResult<string?>(legacy);
+        }
+
+        // Accept legacy plaintext rows once so they can be re-encrypted on the next write.
+        return Task.FromResult<string?>(protectedSecret.Contains(':', StringComparison.Ordinal)
+            ? null
+            : protectedSecret);
+    }
+
+    private IDataProtector Protector(string tenantId) =>
+        _provider.CreateProtector("OpenAgent", "AgentSecrets", tenantId);
 
     private static void ValidateReference(string secretReference)
     {

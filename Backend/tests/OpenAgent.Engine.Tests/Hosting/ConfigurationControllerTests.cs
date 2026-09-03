@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -38,6 +39,7 @@ public class ConfigurationControllerTests
         var configuration = new ConfigurationService(
             new Mock<IAgentConfigRepository>().Object, repository.Object,
             new FakeRedisConnectionProvider(), Options.Create(new AgentConfigSourceOptions()),
+            new ConfigurationSecretResolver(new ConfigurationBuilder().Build()),
             NullLogger<ConfigurationService>.Instance);
         using var provider = new RecordingModelHandler();
         using var providerClient = new HttpClient(provider);
@@ -80,10 +82,10 @@ public class ConfigurationControllerTests
         profile.ContextTokens = 16384;
         using HttpResponseMessage edited = await client.PutAsJsonAsync("/api/v1/admin/llm/primary", profile);
         edited.EnsureSuccessStatusCode();
-        Assert.Equal("server-secret", profiles[("tenant-a", "primary")].ApiKey);
+        Assert.NotEqual("server-secret", profiles[("tenant-a", "primary")].ApiKey);
         Assert.Equal(16384, profiles[("tenant-a", "primary")].ContextTokens);
         using HttpResponseMessage tested = await client.PostAsJsonAsync(
-            "/api/v1/admin/llm/test-connection", new { profile });
+            "/api/v1/admin/llm/test-connection", profile);
         tested.EnsureSuccessStatusCode();
         Assert.Equal("server-secret", provider.ApiKey);
         string listed = await client.GetStringAsync("/api/v1/admin/llm");

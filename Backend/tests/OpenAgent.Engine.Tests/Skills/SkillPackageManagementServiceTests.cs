@@ -2,6 +2,7 @@ using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 using Moq;
 using OpenAgent.Contracts.Configuration;
@@ -251,6 +252,7 @@ public class SkillPackageManagementServiceTests
             new Moq.Mock<ILlmConfigRepository>().Object,
             redis,
             Options.Create(new AgentConfigSourceOptions()),
+            new ConfigurationSecretResolver(new ConfigurationBuilder().Build()),
             NullLogger<ConfigurationService>.Instance);
         await configs.SaveAgentAsync(
             AgentId,

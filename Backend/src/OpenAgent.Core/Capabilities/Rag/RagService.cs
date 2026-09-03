@@ -9,7 +9,7 @@ internal sealed class RagService(
     IHttpClientFactory httpClientFactory,
     IRagRegistry ragRegistry,
     IEnumerable<IRagAdapter> adapters,
-    IAgentSecretResolver secrets) : IRagService
+    IAgentSecretResolver? secrets = null) : IRagService
 {
     public async Task IndexDocumentAsync(
         string content,
@@ -118,6 +118,11 @@ internal sealed class RagService(
         if (string.IsNullOrWhiteSpace(tenantId))
         {
             throw new InvalidOperationException("TenantId is required to resolve a RAG secret.");
+        }
+
+        if (secrets == null)
+        {
+            throw new InvalidOperationException("A secret resolver is required for RAG secret references.");
         }
 
         string apiKey = await secrets.ResolveAsync(

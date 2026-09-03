@@ -29,12 +29,17 @@ internal static class ServiceCollectionExtensions
         services.AddSingleton<IRedisConnectionProvider>(sp =>
             new RedisConnectionProvider(sp.GetService<IConnectionMultiplexer>()));
 
-        services.Replace(ServiceDescriptor.Singleton<IAgentSecretResolver, ConfigurationSecretResolver>());
+        services.AddDataProtection();
+        services.Replace(ServiceDescriptor.Singleton<IAgentSecretResolver>(serviceProvider =>
+            new ConfigurationSecretResolver(
+                configuration,
+                serviceProvider.GetRequiredService<Microsoft.AspNetCore.DataProtection.IDataProtectionProvider>())));
         services.AddSingleton(serviceProvider => new ConfigurationService(
             serviceProvider.GetRequiredService<IAgentConfigRepository>(),
             serviceProvider.GetRequiredService<ILlmConfigRepository>(),
             serviceProvider.GetRequiredService<IRedisConnectionProvider>(),
             serviceProvider.GetRequiredService<IOptions<AgentConfigSourceOptions>>(),
+            serviceProvider.GetRequiredService<IAgentSecretResolver>(),
             serviceProvider.GetRequiredService<ILogger<ConfigurationService>>()));
         services.AddSingleton<ILlmConfigProvider>(serviceProvider =>
             serviceProvider.GetRequiredService<ConfigurationService>());

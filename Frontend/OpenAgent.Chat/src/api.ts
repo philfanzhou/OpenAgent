@@ -415,7 +415,7 @@ export const api = {
     return request<LlmTestResult>('/api/v1/admin/llm/test-connection', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ profile }),
+      body: JSON.stringify(profile),
     })
   },
 
@@ -519,7 +519,7 @@ export const api = {
     return request<RagTestResult>('/api/v1/admin/rag/test-connection', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ instance }),
+      body: JSON.stringify(instance),
     })
   },
 

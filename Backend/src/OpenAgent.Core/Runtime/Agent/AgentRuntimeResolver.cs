@@ -66,7 +66,6 @@ internal sealed class AgentRuntimeResolver(
             AgentId = agentId,
             Config = config,
             Model = model,
-            ContextPolicy = CreateContextPolicy(config.ContextPolicy, model.ContextTokens)
         };
     }
 
@@ -82,25 +81,6 @@ internal sealed class AgentRuntimeResolver(
         ContextTokens = profile.ContextTokens,
         Modality = profile.Modality
     };
-
-    private static ContextPolicy? CreateContextPolicy(
-        ContextPolicy? agentPolicy,
-        int contextTokens)
-    {
-        if (agentPolicy == null && contextTokens <= 0)
-        {
-            return null;
-        }
-
-        return new ContextPolicy
-        {
-            MaxTokens = contextTokens > 0
-                ? contextTokens
-                : agentPolicy?.MaxTokens ?? 0,
-            PreserveRecentTurns = agentPolicy?.PreserveRecentTurns ?? 2,
-            SummarizeOptions = agentPolicy?.SummarizeOptions
-        };
-    }
 
     private static void Validate(string agentId, AgentConfig config, LlmConfig model)
     {
@@ -121,7 +101,6 @@ internal sealed class AgentRuntimeResolver(
             throw new InvalidOperationException($"MaxTurns cannot be negative for agent '{agentId}'.");
         }
 
-        ValidateContextPolicy(agentId, config.ContextPolicy);
     }
 
     private static void ValidateSkillTenant(
@@ -141,21 +120,4 @@ internal sealed class AgentRuntimeResolver(
         }
     }
 
-    private static void ValidateContextPolicy(string agentId, ContextPolicy? policy)
-    {
-        if (policy == null)
-        {
-            return;
-        }
-        if (policy.PreserveRecentTurns < 0)
-        {
-            throw new InvalidOperationException(
-                $"ContextPolicy limits cannot be negative for agent '{agentId}'.");
-        }
-        if (policy.SummarizeOptions?.MaxSummaryTokens < 1)
-        {
-            throw new InvalidOperationException(
-                $"ContextPolicy summary token limit must be positive for agent '{agentId}'.");
-        }
-    }
 }

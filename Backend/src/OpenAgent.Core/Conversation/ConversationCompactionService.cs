@@ -59,9 +59,10 @@ internal sealed class ConversationCompactionService(
             cancellationToken).ConfigureAwait(false);
         IChatClient summarizationClient = chatClients.CreateSummarizationClient(
             profile.Model,
-            profile.ContextPolicy);
+            profile.Config.ContextPolicy);
         SummarizationCompactionStrategy strategy = histories.CreateStrategy(
-            profile.ContextPolicy,
+            profile.Model.ContextTokens,
+            profile.Config.ContextPolicy,
             summarizationClient,
             force: true,
             out CompactionTrigger trigger);

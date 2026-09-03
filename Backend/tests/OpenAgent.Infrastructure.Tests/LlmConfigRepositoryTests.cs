@@ -104,6 +104,6 @@ public class LlmConfigRepositoryTests
     }
 
     private static ILlmConfigRepository CreateRepository(ServiceProvider services) =>
-        new EfCoreLlmConfigRepository(
+        new LlmConfigRepository(
             services.GetRequiredService<IDbContextFactory<OpenAgentDbContext>>());
 }

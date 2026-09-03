@@ -47,7 +47,7 @@ internal sealed class AgentFactory
         IChatClient modelClient = _chatClients.Create(profile.Model);
         IChatClient summarizationClient = _chatClients.CreateSummarizationClient(
             profile.Model,
-            profile.ContextPolicy);
+            profile.Config.ContextPolicy);
         _files.Set(new OpenAgent.Contracts.Files.FileAssetScope
         {
             TenantId = user.TenantId ?? string.Empty,
@@ -82,7 +82,8 @@ internal sealed class AgentFactory
                 cancellationToken).ConfigureAwait(false);
 
             AIContextProvider compaction = _conversations.CreateCompaction(
-                profile.ContextPolicy,
+                profile.Model.ContextTokens,
+                profile.Config.ContextPolicy,
                 summarizationClient,
                 user.TenantId,
                 request.ConversationId);

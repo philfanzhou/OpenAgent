@@ -9,7 +9,7 @@ using OpenAgent.Infrastructure.Entities;
 
 namespace OpenAgent.Infrastructure.Configuration;
 
-internal sealed class EfCoreAgentConfigRepository(
+internal sealed class AgentConfigRepository(
     IDbContextFactory<OpenAgentDbContext> contexts) : IAgentConfigRepository
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -191,10 +191,11 @@ internal sealed class EfCoreAgentConfigRepository(
     private static void ValidateNoInlineSecrets(AgentConfigEntity entity)
     {
         if (entity.Config.Rag.Instances.Any(instance =>
-                !string.IsNullOrWhiteSpace(instance.ApiKey)))
+                !string.IsNullOrWhiteSpace(instance.ApiKey)
+                && !instance.ApiKey.StartsWith("v1.", StringComparison.Ordinal)))
         {
             throw new ArgumentException(
-                "Agent configuration cannot persist inline API keys. Use ApiKeySecretRef.",
+                "Agent configuration must persist API keys through the encrypted configuration service.",
                 nameof(entity));
         }
     }

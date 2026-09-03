@@ -24,6 +24,7 @@ public sealed class ConfigurationService : IAgentConfigProvider, ILlmConfigProvi
     private readonly IAgentConfigRepository _agents;
     private readonly ILlmConfigRepository _models;
     private readonly IRedisConnectionProvider _redis;
+    private readonly IAgentSecretResolver _secrets;
     private readonly ILogger<ConfigurationService> _logger;
     private readonly TimeSpan _cacheTtl;
 
@@ -32,12 +33,14 @@ public sealed class ConfigurationService : IAgentConfigProvider, ILlmConfigProvi
         ILlmConfigRepository models,
         IRedisConnectionProvider redis,
         IOptions<AgentConfigSourceOptions> options,
+        IAgentSecretResolver secrets,
         ILogger<ConfigurationService> logger)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.Value.RedisCacheTtlSeconds);
         _agents = agents;
         _models = models;
         _redis = redis;
+        _secrets = secrets;
         _logger = logger;
         _cacheTtl = TimeSpan.FromSeconds(options.Value.RedisCacheTtlSeconds);
     }
@@ -50,7 +53,12 @@ public sealed class ConfigurationService : IAgentConfigProvider, ILlmConfigProvi
             () => _agents.GetAsync(tenantId, agentId, cancellationToken),
             cached => cached.TenantId == tenantId && cached.AgentId == agentId,
             cancellationToken).ConfigureAwait(false);
-        return entity?.Config;
+        if (entity == null)
+        {
+            return null;
+        }
+        await ResolveAgentSecretsAsync(entity, cancellationToken).ConfigureAwait(false);
+        return entity.Config;
     }
 
     public async Task<IReadOnlyList<AgentSummary>> ListAgentsAsync(
@@ -69,14 +77,23 @@ public sealed class ConfigurationService : IAgentConfigProvider, ILlmConfigProvi
         }).ToArray();
     }
 
-    internal Task<AgentConfigEntity?> GetAgentAsync(
-        string agentId, string tenantId, CancellationToken cancellationToken = default) =>
-        _agents.GetAsync(tenantId, agentId, cancellationToken);
+    internal async Task<AgentConfigEntity?> GetAgentAsync(
+        string agentId, string tenantId, CancellationToken cancellationToken = default)
+    {
+        AgentConfigEntity? entity = await _agents
+            .GetAsync(tenantId, agentId, cancellationToken).ConfigureAwait(false);
+        if (entity != null)
+        {
+            await ResolveAgentSecretsAsync(entity, cancellationToken).ConfigureAwait(false);
+        }
+        return entity;
+    }
 
     internal async Task<AgentConfigEntity?> SaveAgentAsync(
         string agentId, string tenantId, AgentConfigEntity entity, string? expectedVersion,
         CancellationToken cancellationToken = default)
     {
+        await ProtectAgentSecretsAsync(entity, tenantId, cancellationToken).ConfigureAwait(false);
         entity.AgentId = agentId;
         entity.TenantId = tenantId;
         entity.Config.TenantId = tenantId;
@@ -99,33 +116,128 @@ public sealed class ConfigurationService : IAgentConfigProvider, ILlmConfigProvi
         return saved;
     }
 
-    public Task<IReadOnlyList<LlmProviderProfile>> ListAsync(
-        string tenantId, CancellationToken cancellationToken = default) =>
-        _models.ListAsync(tenantId, cancellationToken);
+    public async Task<IReadOnlyList<LlmProviderProfile>> ListAsync(
+        string tenantId, CancellationToken cancellationToken = default)
+    {
+        IReadOnlyList<LlmProviderProfile> profiles = await _models
+            .ListAsync(tenantId, cancellationToken).ConfigureAwait(false);
+        var resolved = new List<LlmProviderProfile>(profiles.Count);
+        foreach (LlmProviderProfile profile in profiles)
+        {
+            resolved.Add(await ResolveLlmSecretAsync(profile, tenantId, cancellationToken).ConfigureAwait(false));
+        }
+        return resolved.AsReadOnly();
+    }
 
-    public Task<LlmProviderProfile?> GetAsync(
-        string tenantId, string profileId, CancellationToken cancellationToken = default) =>
-        ReadCachedAsync(
+    public async Task<LlmProviderProfile?> GetAsync(
+        string tenantId, string profileId, CancellationToken cancellationToken = default)
+    {
+        LlmProviderProfile? profile = await ReadCachedAsync(
             BuildCacheKey("llm", tenantId, profileId),
             () => _models.GetAsync(tenantId, profileId, cancellationToken),
             cached => cached.TenantId == tenantId && cached.Id == profileId,
-            cancellationToken);
+            cancellationToken).ConfigureAwait(false);
+        if (profile != null)
+        {
+            profile = await ResolveLlmSecretAsync(profile, tenantId, cancellationToken).ConfigureAwait(false);
+        }
+        return profile;
+    }
 
     internal async Task<LlmProviderProfile> SaveLlmAsync(
         LlmProviderProfile profile, string tenantId, CancellationToken cancellationToken = default)
     {
         LlmProviderProfile? existing = await _models
             .GetAsync(tenantId, profile.Id, cancellationToken).ConfigureAwait(false);
-        profile.TenantId = tenantId;
-        if (existing != null && (string.IsNullOrWhiteSpace(profile.ApiKey)
-            || profile.ApiKey.StartsWith("***", StringComparison.Ordinal)))
-            profile.ApiKey = existing.ApiKey;
+        LlmProviderProfile toPersist = CopyProfile(profile);
+        toPersist.TenantId = tenantId;
+        bool retainExisting = existing != null && (string.IsNullOrWhiteSpace(toPersist.ApiKey)
+            || toPersist.ApiKey.StartsWith("***", StringComparison.Ordinal));
+        if (retainExisting)
+            toPersist.ApiKey = existing!.ApiKey;
+        else if (!string.IsNullOrWhiteSpace(toPersist.ApiKey))
+            toPersist.ApiKey = await _secrets
+                .ProtectAsync(tenantId, toPersist.ApiKey, cancellationToken).ConfigureAwait(false);
 
         LlmProviderProfile saved = await _models
-            .UpsertAsync(tenantId, profile.Id, profile, cancellationToken).ConfigureAwait(false);
-        await WriteCacheAsync(BuildCacheKey("llm", tenantId, profile.Id), saved).ConfigureAwait(false);
-        return saved;
+            .UpsertAsync(tenantId, toPersist.Id, toPersist, cancellationToken).ConfigureAwait(false);
+        await WriteCacheAsync(BuildCacheKey("llm", tenantId, toPersist.Id), saved).ConfigureAwait(false);
+        return await ResolveLlmSecretAsync(saved, tenantId, cancellationToken).ConfigureAwait(false);
     }
+
+    private async Task ProtectAgentSecretsAsync(
+        AgentConfigEntity entity,
+        string tenantId,
+        CancellationToken cancellationToken)
+    {
+        foreach (RagInstanceConfig instance in entity.Config.Rag.Instances)
+        {
+            if (string.IsNullOrWhiteSpace(instance.ApiKey)
+                || instance.ApiKey.StartsWith("v1.", StringComparison.Ordinal))
+            {
+                continue;
+            }
+            instance.ApiKey = await _secrets
+                .ProtectAsync(tenantId, instance.ApiKey, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private async Task ResolveAgentSecretsAsync(
+        AgentConfigEntity entity,
+        CancellationToken cancellationToken)
+    {
+        foreach (RagInstanceConfig instance in entity.Config.Rag.Instances)
+        {
+            if (string.IsNullOrWhiteSpace(instance.ApiKey))
+            {
+                continue;
+            }
+            instance.ApiKey = await _secrets
+                .ResolveAsync(entity.TenantId, instance.ApiKey, cancellationToken)
+                .ConfigureAwait(false) ?? string.Empty;
+        }
+    }
+
+    private async Task<LlmProviderProfile> ResolveLlmSecretAsync(
+        LlmProviderProfile profile,
+        string tenantId,
+        CancellationToken cancellationToken)
+    {
+        LlmProviderProfile resolved = new()
+        {
+            TenantId = profile.TenantId,
+            Id = profile.Id,
+            Name = profile.Name,
+            Format = profile.Format,
+            ModelId = profile.ModelId,
+            Endpoint = profile.Endpoint,
+            ApiKey = profile.ApiKey,
+            Temperature = profile.Temperature,
+            ContextTokens = profile.ContextTokens,
+            Modality = profile.Modality
+        };
+        if (!string.IsNullOrWhiteSpace(resolved.ApiKey))
+        {
+            resolved.ApiKey = await _secrets
+                .ResolveAsync(tenantId, resolved.ApiKey, cancellationToken)
+                .ConfigureAwait(false) ?? string.Empty;
+        }
+        return resolved;
+    }
+
+    private static LlmProviderProfile CopyProfile(LlmProviderProfile profile) => new()
+    {
+        TenantId = profile.TenantId,
+        Id = profile.Id,
+        Name = profile.Name,
+        Format = profile.Format,
+        ModelId = profile.ModelId,
+        Endpoint = profile.Endpoint,
+        ApiKey = profile.ApiKey,
+        Temperature = profile.Temperature,
+        ContextTokens = profile.ContextTokens,
+        Modality = profile.Modality
+    };
 
     internal async Task<bool> DeleteLlmAsync(
         string profileId, string tenantId, CancellationToken cancellationToken = default)

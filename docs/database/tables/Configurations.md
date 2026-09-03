@@ -13,7 +13,7 @@ Agent 与 LLM 配置以 PostgreSQL 为事实源，共用 `OpenAgentDbContext`，
 | Format | varchar(32) | OpenAIChatCompletions / OpenAIResponses / AnthropicMessages |
 | ModelId | text | 供应商的模型标识 |
 | Endpoint | text | 模型 API 地址 |
-| ApiKey | text | 服务端明文密钥；管理响应清空 |
+| ApiKey | text | 租户绑定的服务端加密密钥；管理响应清空 |
 | Temperature | double precision | 生成温度 |
 | ContextTokens | integer | 模型上下文 token 上限 |
 | Modality | varchar(32) | Text / Multimodal；目前只开放图片输入 |

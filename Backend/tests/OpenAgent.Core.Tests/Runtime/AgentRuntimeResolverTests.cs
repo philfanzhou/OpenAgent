@@ -14,7 +14,7 @@ public sealed class AgentRuntimeResolverTests
     {
         AgentConfig config = new()
         {
-            ContextPolicy = new ContextPolicy { MaxTokens = 2_000, PreserveRecentTurns = 4 },
+            ContextPolicy = new ContextPolicy { PreserveRecentTurns = 4 },
             MaxTurns = 8
         };
         AgentRuntimeResolver resolver = CreateResolver(config, Profile());
@@ -26,8 +26,7 @@ public sealed class AgentRuntimeResolverTests
         Assert.Equal("model-1", result.Model.ModelId);
         Assert.Equal("test-key", result.Model.ApiKey);
         Assert.Equal(ModelModality.Multimodal, result.Model.Modality);
-        Assert.Equal(128_000, result.ContextPolicy?.MaxTokens);
-        Assert.Equal(4, result.ContextPolicy?.PreserveRecentTurns);
+        Assert.Equal(4, result.Config.ContextPolicy?.PreserveRecentTurns);
     }
 
     [Fact]

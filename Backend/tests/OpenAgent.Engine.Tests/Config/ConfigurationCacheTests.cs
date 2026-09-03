@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Models;
@@ -84,6 +85,7 @@ public class ConfigurationCacheTests
             new Moq.Mock<ILlmConfigRepository>().Object,
             redis,
             Options.Create(new AgentConfigSourceOptions()),
+            new ConfigurationSecretResolver(new ConfigurationBuilder().Build()),
             NullLogger<ConfigurationService>.Instance);
 
 

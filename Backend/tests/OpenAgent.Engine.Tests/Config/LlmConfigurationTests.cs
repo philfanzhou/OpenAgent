@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Engine.Config;
@@ -16,12 +17,15 @@ public class LlmConfigurationTests
         var repository = new InMemoryRepository();
         ConfigurationService service = CreateService(redis, repository);
 
-        await service.SaveLlmAsync(Profile("secret-a"), "tenant-a");
+        LlmProviderProfile submitted = Profile("secret-a");
+        await service.SaveLlmAsync(submitted, "tenant-a");
         RedisValue cached = redis.StringGet(
             ConfigurationService.BuildCacheKey("llm", "tenant-a", "primary"));
 
-        Assert.Equal("secret-a", (await repository.GetAsync("tenant-a", "primary"))?.ApiKey);
-        Assert.Contains("secret-a", cached.ToString(), StringComparison.Ordinal);
+        string? stored = (await repository.GetAsync("tenant-a", "primary"))?.ApiKey;
+        Assert.NotEqual("secret-a", stored);
+        Assert.DoesNotContain("secret-a", cached.ToString(), StringComparison.Ordinal);
+        Assert.Equal("secret-a", submitted.ApiKey);
         Assert.Equal(TimeSpan.FromMinutes(5), redis.LastStringExpiry);
     }
 
@@ -78,6 +82,7 @@ public class LlmConfigurationTests
             {
                 RedisCacheTtlSeconds = 300,
             }),
+            new ConfigurationSecretResolver(new ConfigurationBuilder().Build()),
             NullLogger<ConfigurationService>.Instance);
 
     private sealed class InMemoryRepository : ILlmConfigRepository

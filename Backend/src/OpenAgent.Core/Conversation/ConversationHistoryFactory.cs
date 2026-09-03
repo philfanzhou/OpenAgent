@@ -113,12 +113,14 @@ internal sealed class ConversationHistoryFactory
     }
 
     internal AIContextProvider CreateCompaction(
+        int contextTokens,
         ContextPolicy? policy,
         IChatClient summarizationClient,
         string? tenantId,
         string? conversationId)
     {
         SummarizationCompactionStrategy strategy = CreateStrategy(
+            contextTokens,
             policy,
             summarizationClient,
             force: false,
@@ -136,16 +138,17 @@ internal sealed class ConversationHistoryFactory
     }
 
     internal SummarizationCompactionStrategy CreateStrategy(
+        int contextTokens,
         ContextPolicy? policy,
         IChatClient summarizationClient,
         bool force,
         out CompactionTrigger trigger)
     {
-        trigger = ResolveTrigger(policy, force);
-        return CreateSummarization(policy, summarizationClient, trigger, force);
+        trigger = ResolveTrigger(contextTokens, force);
+        return CreateSummarization(contextTokens, policy, summarizationClient, trigger, force);
     }
 
-    private CompactionTrigger ResolveTrigger(ContextPolicy? policy, bool force)
+    private CompactionTrigger ResolveTrigger(int contextTokens, bool force)
     {
         if (force)
         {
@@ -155,10 +158,10 @@ internal sealed class ConversationHistoryFactory
             return CompactionTriggers.Always;
         }
 
-        return CompactionTriggers.TokensExceed(ResolveAutomaticTokenThreshold(policy));
+        return CompactionTriggers.TokensExceed(ResolveAutomaticTokenThreshold(contextTokens));
     }
 
-    internal int ResolveAutomaticTokenThreshold(ContextPolicy? policy)
+    internal int ResolveAutomaticTokenThreshold(int contextTokens)
     {
         // A configured fixed threshold wins over the ratio heuristic, so deployments can
         // pin the automatic trigger regardless of per-agent context policies.
@@ -167,18 +170,18 @@ internal sealed class ConversationHistoryFactory
             return _options.AutomaticCompactionTokenThreshold.Value;
         }
 
-        int contextTokens = policy?.MaxTokens > 0
-            ? policy.MaxTokens
+        contextTokens = contextTokens > 0
+            ? contextTokens
             : Math.Max(1, _options.DefaultModelContextTokens);
 
         // Automatic compaction starts at 80% of the available model context.
         return Math.Max(1, (int)Math.Floor(contextTokens * AutomaticTriggerRatio));
     }
 
-    internal int ResolveCompactionTargetTokens(ContextPolicy? policy)
+    internal int ResolveCompactionTargetTokens(int contextTokens)
     {
-        int contextTokens = policy?.MaxTokens > 0
-            ? policy.MaxTokens
+        contextTokens = contextTokens > 0
+            ? contextTokens
             : Math.Max(1, _options.DefaultModelContextTokens);
 
         // Keep a reserve for the next user turn and model response. Tune this with
@@ -186,10 +189,10 @@ internal sealed class ConversationHistoryFactory
         return Math.Max(1, (int)Math.Floor(contextTokens * CompactionTargetRatio));
     }
 
-    internal int ResolveSummaryTokenBudget(ContextPolicy? policy)
+    internal int ResolveSummaryTokenBudget(int contextTokens, ContextPolicy? policy)
     {
-        int contextTokens = policy?.MaxTokens > 0
-            ? policy.MaxTokens
+        contextTokens = contextTokens > 0
+            ? contextTokens
             : Math.Max(1, _options.DefaultModelContextTokens);
         int proportionalBudget = Math.Max(
             MinimumSummaryTokens,
@@ -202,13 +205,14 @@ internal sealed class ConversationHistoryFactory
     }
 
     private SummarizationCompactionStrategy CreateSummarization(
+        int contextTokens,
         ContextPolicy? policy,
         IChatClient chatClient,
         CompactionTrigger trigger,
         bool force)
     {
-        int targetTokens = ResolveCompactionTargetTokens(policy);
-        int summaryBudget = ResolveSummaryTokenBudget(policy);
+        int targetTokens = ResolveCompactionTargetTokens(contextTokens);
+        int summaryBudget = ResolveSummaryTokenBudget(contextTokens, policy);
         int minimumPreservedGroups = force
             ? 0
             : Math.Max(1, policy?.PreserveRecentTurns ?? 2);

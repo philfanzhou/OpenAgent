@@ -19,7 +19,7 @@ public class AgentConfigRepositoryTests
         entity.Description = "Customer support";
         entity.Status = AgentPublishStatus.Published;
         entity.Config.MaxTurns = 12;
-        entity.Config.ContextPolicy = new() { MaxTokens = 1000, PreserveRecentTurns = 3 };
+        entity.Config.ContextPolicy = new() { PreserveRecentTurns = 3 };
         entity.Config.Mcp.EnabledServerIds = ["tools"];
         entity.Config.Skills.EnabledSkills = ["search"];
         entity.Config.Rag.Instances = [new() { Id = "knowledge", ApiKeySecretRef = "rag:knowledge" }];
@@ -118,7 +118,7 @@ public class AgentConfigRepositoryTests
                 entity,
                 expectedVersion: null));
 
-        Assert.Contains("ApiKeySecretRef", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("encrypted", exception.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Null(await repository.GetAsync("tenant-a", "support"));
     }
 
@@ -131,7 +131,7 @@ public class AgentConfigRepositoryTests
     }
 
     private static IAgentConfigRepository CreateRepository(ServiceProvider services) =>
-        new EfCoreAgentConfigRepository(
+        new AgentConfigRepository(
             services.GetRequiredService<IDbContextFactory<OpenAgentDbContext>>());
 
     private static AgentConfigEntity CreateEntity(string instructions) => new()

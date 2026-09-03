@@ -43,8 +43,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<EfCoreConversationStore>();
         services.AddSingleton<IFileAssetRepository, EfCoreFileAssetRepository>();
         services.AddSingleton<ISkillDefinitionRepository, EfCoreSkillDefinitionRepository>();
-        services.AddSingleton<IAgentConfigRepository, EfCoreAgentConfigRepository>();
-        services.AddSingleton<ILlmConfigRepository, EfCoreLlmConfigRepository>();
+        services.AddSingleton<IAgentConfigRepository, AgentConfigRepository>();
+        services.AddSingleton<ILlmConfigRepository, LlmConfigRepository>();
 
         ConversationCacheOptions cache = configuration.GetSection(ConversationCacheOptions.SectionName)
             .Get<ConversationCacheOptions>() ?? new();
