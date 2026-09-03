@@ -203,7 +203,19 @@ public sealed class ConfigurationService : IAgentConfigProvider, ILlmConfigProvi
         string tenantId,
         CancellationToken cancellationToken)
     {
-        LlmProviderProfile resolved = CopyProfile(profile);
+        LlmProviderProfile resolved = new()
+        {
+            TenantId = profile.TenantId,
+            Id = profile.Id,
+            Name = profile.Name,
+            Format = profile.Format,
+            ModelId = profile.ModelId,
+            Endpoint = profile.Endpoint,
+            ApiKey = profile.ApiKey,
+            Temperature = profile.Temperature,
+            ContextTokens = profile.ContextTokens,
+            Modality = profile.Modality
+        };
         if (!string.IsNullOrWhiteSpace(resolved.ApiKey))
         {
             resolved.ApiKey = await _secrets

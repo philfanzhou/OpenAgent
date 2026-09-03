@@ -29,10 +29,8 @@ Agent 与 LLM 配置以 PostgreSQL 为事实源，共用 `OpenAgentDbContext`，
 
 ## 升级
 
-`20260903090000_UseConfigurationColumns` 先增加字段、从旧 ConfigurationJson 回填，再删除整份 JSON 列；旧 Agent `Snapshot` 状态迁为 `Published`。Down 可将字段重建为旧格式 JSON。
+`20260903090000_UseConfigurationColumns` 先增加字段、从旧 ConfigurationJson 回填，再删除整份 JSON 列；旧 `ContextWindowTokens` 迁为 `ContextTokens`，旧 Agent `Snapshot` 状态迁为 `Published`。Down 可将字段重建为旧格式 JSON。
 
-部署时先停止旧版本配置写入、应用迁移，再切换应用；旧版本 Repository 不兼容删除 ConfigurationJson 后的表结构。
-
-新版本 Redis key 使用 `v2` 命名空间。模型 Profile 的 HTTP 字段使用 `contextTokens`。
+部署时先停止旧版本配置写入、应用迁移，再切换应用；旧版本 Repository 不兼容删除 ConfigurationJson 后的表结构。新版本 Redis key 使用 `v2` 命名空间，避免读取旧字段名的缓存。HTTP 和前端统一使用 `contextTokens`。
 
 实现：`Backend/src/OpenAgent.Infrastructure/Configuration/`、`Backend/src/OpenAgent.Infrastructure/Persistence/OpenAgentDbContext.cs`。

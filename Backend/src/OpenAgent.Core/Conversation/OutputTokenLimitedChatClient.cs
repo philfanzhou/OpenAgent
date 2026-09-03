@@ -20,7 +20,9 @@ internal sealed class OutputTokenLimitedChatClient(
         ? maxOutputTokens
         : throw new ArgumentOutOfRangeException(nameof(maxOutputTokens));
 
-    internal int GenerationTokenLimit => Math.Max(MinimumGenerationTokens, MaxOutputTokens * 4);
+    internal int GenerationTokenLimit => Math.Max(
+        MinimumGenerationTokens,
+        MaxOutputTokens * 4);
 
     public override async Task<ChatResponse> GetResponseAsync(
         IEnumerable<ChatMessage> messages,
