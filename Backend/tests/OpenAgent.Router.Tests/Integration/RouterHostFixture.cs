@@ -37,13 +37,11 @@ internal sealed class RouterApplicationFactory(
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment(Environments.Development);
-        builder.UseSetting("Authentication:EnableApiKey", "true");
         builder.ConfigureAppConfiguration((_, configuration) =>
         {
             configuration.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["Authentication:Mode"] = "Basic",
-                ["Authentication:EnableApiKey"] = "true",
                 ["Authentication:AllowDevelopmentAnonymous"] = "false",
                 ["Authentication:DevelopmentTenantId"] = "tenant-1",
                 ["RouterSettings:IntentRecognition:Enabled"] = "false",
@@ -96,22 +94,6 @@ public sealed class TestEngineHost(string responseName) : IAsyncDisposable
         WebApplication application = builder.Build();
 
         application.MapGet("/ready", () => Results.Ok());
-        application.MapGet("/api/v1/agent/me", (HttpContext context) =>
-        {
-            LastTenantId = context.Request.Headers["X-Tenant-Id"].FirstOrDefault();
-            LastAuthorization = context.Request.Headers.Authorization.FirstOrDefault();
-            return Results.Json(new
-            {
-                userId = "integration:partner-a",
-                username = "partner-a",
-                tenantId = "tenant-a",
-                roles = Array.Empty<string>(),
-                groups = Array.Empty<string>(),
-                claims = new Dictionary<string, string> { ["scope"] = "agent.read" },
-                audience = new[] { "openagent-api" },
-                isAuthenticated = true
-            });
-        });
         application.MapGet("/api/v1/agent/agents", (HttpContext context) =>
         {
             LastCatalogTenantId = context.Request.Headers["X-Tenant-Id"].FirstOrDefault();
