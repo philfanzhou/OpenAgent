@@ -32,6 +32,8 @@ services:
       Cors__AllowedOrigins__0: https://${OPENAGENT_PUBLIC_HOST:-localhost}:${OPENAGENT_CHAT_PORT:-8081}
     networks:
       - infrastructure
+    volumes:
+      - engine-data-protection:/root/.aspnet/DataProtection-Keys
     healthcheck:
       test: ["CMD-SHELL", "curl --fail --silent http://localhost:5208/health >/dev/null"]
       interval: 5s
@@ -107,3 +109,6 @@ networks:
   infrastructure:
     external: true
     name: ${OPENAGENT_INFRA_NETWORK:-openagent-infrastructure}
+
+volumes:
+  engine-data-protection:

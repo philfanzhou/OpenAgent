@@ -55,6 +55,10 @@ docker compose -p openagent-infrastructure \
 以下示例以 `openagent.intra.example` 为公开入口。Nginx 为 Chat、Router、Engine 分别提供 8081、8082、
 8083 的 HTTPS 端口；应用容器本身不映射宿主机端口：
 
+Engine 使用 ASP.NET Data Protection 保护 PostgreSQL/Redis 中的 LLM 和 RAG 密钥，应用 Compose 会将
+`/root/.aspnet/DataProtection-Keys` 挂载到独立的 `engine-data-protection` 数据卷。该卷必须和数据库卷
+一样保留；删除它会导致历史密钥无法解密，需重新录入密钥。
+
 将变量保存为受保护且 shell 兼容的 `.env` 文件（不要提交），例如：
 
 ```dotenv
