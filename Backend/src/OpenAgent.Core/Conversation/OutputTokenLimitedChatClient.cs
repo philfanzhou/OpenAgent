@@ -52,7 +52,7 @@ internal sealed class OutputTokenLimitedChatClient(
     {
         // MAF estimates tokens as UTF-8 byte count / 4 when the provider does not
         // expose a tokenizer. Apply the same boundary to the persisted summary.
-        int maxBytes = (int)Math.Min(int.MaxValue, (long)maxTokens * 4);
+        int maxBytes = checked(maxTokens * 4);
         if (Encoding.UTF8.GetByteCount(text) <= maxBytes)
         {
             return text;

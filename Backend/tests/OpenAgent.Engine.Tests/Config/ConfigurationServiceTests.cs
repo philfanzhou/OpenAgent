@@ -3,8 +3,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Models;
-using OpenAgent.Contracts.Security;
-using OpenAgent.Contracts.Requests;
 using OpenAgent.Engine.Config;
 using Xunit;
 

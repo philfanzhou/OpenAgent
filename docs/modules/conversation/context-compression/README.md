@@ -45,7 +45,7 @@ PlatformChatHistory -> MAF ChatMessage history
 
 | 字段 | 用途 |
 |---|---|
-| `ContextTokens`（LLM 配置） | 模型上下文硬上限；自动摘要默认在其 80% 处触发，目标为其 50%；部署级固定触发阈值仍优先 |
+| `ContextTokens`（LLM 配置） | 模型上下文硬上限；自动摘要在其 80% 处触发，目标为其 50% |
 | `PreserveRecentTurns` | 摘要压缩时保留的最近消息组数 |
 | `SummarizeOptions` | 摘要模型调用的专用预算和模型配置；摘要 prompt 与普通对话上下文隔离 |
 

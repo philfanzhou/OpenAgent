@@ -82,8 +82,8 @@ internal sealed class AgentFactory
                 cancellationToken).ConfigureAwait(false);
 
             AIContextProvider compaction = _conversations.CreateCompaction(
+                profile.Model.ContextTokens,
                 profile.Config.ContextPolicy,
-                profile.Model,
                 summarizationClient,
                 user.TenantId,
                 request.ConversationId);
@@ -138,5 +138,4 @@ internal sealed class AgentFactory
         IAgentUserContext user,
         CancellationToken cancellationToken) =>
         _conversations.EnsureConversationAsync(agentId, request, user, cancellationToken);
-
 }

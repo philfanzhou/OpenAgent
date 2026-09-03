@@ -221,8 +221,7 @@ public class AgentExecutorUsageTests
         Assert.Equal(3, actual.ReasoningTokens);
     }
 
-    internal static TestRuntime CreateRuntime(
-        IChatClient provider, AgentRuntimeProfile? profile = null)
+    internal static TestRuntime CreateRuntime(IChatClient provider)
     {
         var services = new ServiceCollection();
         services.AddLogging();
@@ -234,7 +233,7 @@ public class AgentExecutorUsageTests
         services.AddAgentCore(configuration);
         services.RemoveAll<IAgentRuntimeResolver>();
         services.RemoveAll<AgentRuntimeResolver>();
-        services.AddSingleton<IAgentRuntimeResolver>(new StaticRuntimeResolver(profile));
+        services.AddSingleton<IAgentRuntimeResolver>(new StaticRuntimeResolver());
         services.RemoveAll<IAgentChatClientFactory>();
         services.AddSingleton<IAgentChatClientFactory>(new FakeChatClientFactory(provider));
 
@@ -258,18 +257,18 @@ public class AgentExecutorUsageTests
         public bool IsInRole(string role) => false;
     }
 
-    private sealed class StaticRuntimeResolver(AgentRuntimeProfile? profile) : IAgentRuntimeResolver
+    private sealed class StaticRuntimeResolver : IAgentRuntimeResolver
     {
         public Task<AgentRuntimeProfile> ResolveAsync(
             string agentId,
             string llmProfileId,
             IAgentUserContext userContext,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult(profile ?? new AgentRuntimeProfile
+            Task.FromResult(new AgentRuntimeProfile
             {
                 AgentId = agentId,
                 Config = new AgentConfig { MaxTurns = 2 },
-                Model = new LlmConfig { ModelId = "configured-model", ContextTokens = 128000 }
+                Model = new LlmConfig { ModelId = "configured-model" }
             });
     }
 

@@ -52,7 +52,6 @@ public class LlmProviderProfile
     public ModelModality Modality { get; set; } = ModelModality.Text;
 }
 
-
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum ApiFormat
 {

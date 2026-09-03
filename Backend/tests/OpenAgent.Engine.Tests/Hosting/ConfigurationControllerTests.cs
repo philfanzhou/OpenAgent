@@ -51,13 +51,10 @@ public class ConfigurationControllerTests
         builder.Logging.ClearProviders();
         builder.Services.AddControllers().AddApplicationPart(typeof(ConfigurationController).Assembly);
         builder.Services.AddSingleton(configuration);
-        builder.Services.AddSingleton<ErrorMapper>();
-        builder.Services.AddSingleton<ProblemDetailsFactory>();
         builder.Services.AddSingleton(clients.Object);
         builder.Services.AddAuthentication("Test").AddScheme<AuthenticationSchemeOptions, TenantAuthenticationHandler>("Test", _ => { });
         builder.Services.AddAuthorization();
         await using WebApplication app = builder.Build();
-        app.UseMiddleware<AgentExceptionHandlerMiddleware>();
         app.UseAuthentication();
         app.UseAuthorization();
         app.UseMiddleware<AgentUserContextMiddleware>();

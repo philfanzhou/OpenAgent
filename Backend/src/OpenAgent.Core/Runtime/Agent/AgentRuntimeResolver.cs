@@ -1,7 +1,6 @@
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Security;
-using OpenAgent.Contracts.Requests;
 using OpenAgent.Core.Security;
 
 namespace OpenAgent.Core.Runtime.Agent;
@@ -95,7 +94,7 @@ internal sealed class AgentRuntimeResolver(
         }
         if (model.ContextTokens <= 0)
         {
-            throw new AgentException(AgentErrorCode.ConfigurationError, "LLM context window must be positive.");
+            throw new InvalidOperationException($"LLM context window must be greater than zero for agent '{agentId}'.");
         }
         if (config.MaxTurns < 0)
         {

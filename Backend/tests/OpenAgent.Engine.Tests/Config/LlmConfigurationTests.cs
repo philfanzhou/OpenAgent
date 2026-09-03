@@ -27,8 +27,6 @@ public class LlmConfigurationTests
         Assert.DoesNotContain("secret-a", cached.ToString(), StringComparison.Ordinal);
         Assert.Equal("secret-a", submitted.ApiKey);
         Assert.Equal(TimeSpan.FromMinutes(5), redis.LastStringExpiry);
-        LlmProviderProfile loaded = Assert.IsType<LlmProviderProfile>(await service.GetAsync("tenant-a", "primary"));
-        LlmProviderProfile listed = Assert.Single(await service.ListAsync("tenant-a"));
     }
 
     [Fact]

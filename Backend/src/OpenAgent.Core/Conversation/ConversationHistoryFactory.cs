@@ -92,15 +92,14 @@ internal sealed class ConversationHistoryFactory
     }
 
     internal AIContextProvider CreateCompaction(
+        int contextTokens,
         ContextPolicy? policy,
-        LlmConfig model,
         IChatClient summarizationClient,
         string? tenantId,
         string? conversationId)
     {
-        int inputBudget = model.ContextTokens;
         SummarizationCompactionStrategy strategy = CreateStrategy(
-            inputBudget,
+            contextTokens,
             policy,
             summarizationClient,
             force: false,
@@ -114,12 +113,7 @@ internal sealed class ConversationHistoryFactory
             _store.Store,
             _loggerFactory.CreateLogger<AuditedCompactionStrategy>(),
             recordUnchanged: false);
-        CompactionStrategy pipeline = model.ContextTokens > 0
-            ? new PipelineCompactionStrategy([
-                audited,
-                new ContextWindowCompactionStrategy(model.ContextTokens, 0)])
-            : audited;
-        return new CompactionProvider(pipeline);
+        return new CompactionProvider(audited);
     }
 
     internal SummarizationCompactionStrategy CreateStrategy(
@@ -148,13 +142,6 @@ internal sealed class ConversationHistoryFactory
 
     internal int ResolveAutomaticTokenThreshold(int contextTokens)
     {
-        // A configured fixed threshold wins over the ratio heuristic, so deployments can
-        // pin the automatic trigger regardless of per-agent context policies.
-        if (_options.AutomaticCompactionTokenThreshold is > 0)
-        {
-            return _options.AutomaticCompactionTokenThreshold.Value;
-        }
-
         contextTokens = contextTokens > 0
             ? contextTokens
             : Math.Max(1, _options.DefaultModelContextTokens);
