@@ -43,8 +43,8 @@ namespace OpenAgent.Infrastructure.Persistence.Migrations
                 columns: new[] { "ApiKeyId", "CreatedAt", "Email", "ExpiresAt", "Groups", "IsEnabled", "KeyHash", "Name", "Roles", "Scopes", "TenantId", "UserId", "Username" },
                 values: new object[,]
                 {
-                    { "demo-partner-a", new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), null, null, "", true, "1F0EDBABFE0BDAF41574D36AA8530D39233A8C832A5AF7B975E7784D6939C5A7", "Demo Partner A", "", "agent.execute model.invoke", "tenant-a", "integration:partner-a", "partner-a" },
-                    { "demo-partner-b", new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), null, null, "", true, "46504FDCB1197B4268C79C2594C72B5FC02A0D03F7795F6B96B2B56386C0426F", "Demo Partner B", "", "agent.execute model.invoke", "tenant-b", "integration:partner-b", "partner-b" }
+                    { "demo-partner-a", new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), null, null, "", false, "1F0EDBABFE0BDAF41574D36AA8530D39233A8C832A5AF7B975E7784D6939C5A7", "Demo Partner A", "", "agent.execute model.invoke", "tenant-a", "integration:partner-a", "partner-a" },
+                    { "demo-partner-b", new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), null, null, "", false, "46504FDCB1197B4268C79C2594C72B5FC02A0D03F7795F6B96B2B56386C0426F", "Demo Partner B", "", "agent.execute model.invoke", "tenant-b", "integration:partner-b", "partner-b" }
                 });
 
             migrationBuilder.CreateIndex(

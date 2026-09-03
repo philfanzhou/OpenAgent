@@ -8,8 +8,7 @@ internal sealed class AgentAuthenticationOptionsValidator(IHostEnvironment? envi
 {
     public ValidateOptionsResult Validate(string? name, AgentAuthenticationOptions options)
     {
-        if (!options.EnableApiKey
-            && options.Mode == AgentAuthenticationMode.Basic
+        if (options.Mode == AgentAuthenticationMode.Basic
             && environment != null
             && !environment.IsDevelopment())
         {
@@ -17,7 +16,7 @@ internal sealed class AgentAuthenticationOptionsValidator(IHostEnvironment? envi
                 "Basic authentication is restricted to the Development environment.");
         }
 
-        if (!options.EnableApiKey && options.Mode == AgentAuthenticationMode.JwtBearer)
+        if (options.Mode == AgentAuthenticationMode.JwtBearer)
         {
             if (!Uri.TryCreate(options.Authority, UriKind.Absolute, out Uri? authority))
             {

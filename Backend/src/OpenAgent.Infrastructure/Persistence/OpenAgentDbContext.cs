@@ -125,7 +125,7 @@ public sealed class OpenAgentDbContext(DbContextOptions<OpenAgentDbContext> opti
                     TenantId = "tenant-a",
                     Username = "partner-a",
                     Scopes = "agent.execute model.invoke",
-                    IsEnabled = true,
+                    IsEnabled = false,
                     CreatedAt = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero)
                 },
                 new ThirdPartyApiKeyEntity
@@ -137,7 +137,7 @@ public sealed class OpenAgentDbContext(DbContextOptions<OpenAgentDbContext> opti
                     TenantId = "tenant-b",
                     Username = "partner-b",
                     Scopes = "agent.execute model.invoke",
-                    IsEnabled = true,
+                    IsEnabled = false,
                     CreatedAt = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero)
                 });
         });

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using System.IdentityModel.Tokens.Jwt;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -21,8 +22,7 @@ internal static class AgentAuthenticationExtensions
             .Get<AgentAuthenticationOptions>() ?? new AgentAuthenticationOptions();
         services.AddOptions<AgentAuthenticationOptions>()
             .Validate(
-                value => value.EnableApiKey
-                    || value.Mode != AgentAuthenticationMode.JwtBearer
+                value => value.Mode != AgentAuthenticationMode.JwtBearer
                     || (!string.IsNullOrWhiteSpace(value.Authority)
                         && !string.IsNullOrWhiteSpace(value.Audience)
                         && !string.IsNullOrWhiteSpace(value.ClientId)),
@@ -37,7 +37,8 @@ internal static class AgentAuthenticationExtensions
         string primaryScheme = options.Mode == AgentAuthenticationMode.Basic
             ? BasicAuthenticationHandler.SchemeName
             : JwtBearerDefaults.AuthenticationScheme;
-        AuthenticationBuilder authentication = services.AddAuthentication(primaryScheme);
+        string defaultScheme = options.EnableApiKey ? "Agent" : primaryScheme;
+        AuthenticationBuilder authentication = services.AddAuthentication(defaultScheme);
         if (options.Mode == AgentAuthenticationMode.Basic)
         {
             authentication
@@ -77,6 +78,23 @@ internal static class AgentAuthenticationExtensions
             authentication
                 .AddScheme<AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>(
                     ApiKeyAuthenticationHandler.SchemeName, _ => { });
+            authentication.AddPolicyScheme("Agent", null, policy =>
+            {
+                policy.ForwardDefaultSelector = context =>
+                {
+                    string? authorization = context.Request.Headers.Authorization.FirstOrDefault();
+                    if (authorization?.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) == true)
+                    {
+                        string token = authorization["Bearer ".Length..].Trim();
+                        return options.Mode == AgentAuthenticationMode.JwtBearer
+                            && new JwtSecurityTokenHandler().CanReadToken(token)
+                            ? JwtBearerDefaults.AuthenticationScheme
+                            : ApiKeyAuthenticationHandler.SchemeName;
+                    }
+
+                    return primaryScheme;
+                };
+            });
             authenticationSchemes.Add(ApiKeyAuthenticationHandler.SchemeName);
         }
 

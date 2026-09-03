@@ -133,11 +133,12 @@ public class ServiceCollectionExtensionsTests
     }
 
     [Fact]
-    public void AddAgentHost_WithApiKeyEnabled_DoesNotRequireApiKeyConfiguration()
+    public void AddAgentHost_WithApiKeyEnabled_StillRequiresPrimaryJwtConfiguration()
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
+                ["Authentication:Mode"] = "JwtBearer",
                 ["Authentication:EnableApiKey"] = "true"
             })
             .Build();
@@ -151,7 +152,8 @@ public class ServiceCollectionExtensionsTests
 
         using ServiceProvider provider = services.BuildServiceProvider();
 
-        Assert.True(provider.GetRequiredService<IOptions<AgentAuthenticationOptions>>().Value.EnableApiKey);
+        Assert.Throws<OptionsValidationException>(() =>
+            provider.GetRequiredService<IOptions<AgentAuthenticationOptions>>().Value);
     }
 
     [Fact]

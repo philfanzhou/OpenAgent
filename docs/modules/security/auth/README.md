@@ -56,7 +56,7 @@ API Key 的启用状态、租户和 scope 由数据库记录决定，调用方�
 API Key 模式仍然执行 Agent ACL、能力权限、租户隔离、限流和审计。生产环境应将 Engine
 保持为内网服务；Router 与 Engine 必须使用同一个数据库。
 
-未启用 API Key 时，生产环境缺少 `Authority`、`Audience` 或 `ClientId` 会启动校验失败；启用 HTTPS metadata 时 Authority
+生产环境缺少 `Authority`、`Audience` 或 `ClientId` 会启动校验失败；启用 HTTPS metadata 时 Authority
 必须为 HTTPS。`Basic` 模式在非 Development 环境同样启动失败。启用 API Key 后，API Key 仍可独立工作，
 已配置的 Basic/JWT Bearer 方案仍按原规则处理。Development 可显式启用匿名兼容，
 但默认关闭。`EnableApiKey` 默认关闭；开启后使用数据库中的启用记录认证。

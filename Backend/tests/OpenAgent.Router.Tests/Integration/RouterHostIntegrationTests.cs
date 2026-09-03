@@ -20,12 +20,27 @@ public sealed class RouterHostIntegrationTests : IClassFixture<RouterHostFixture
     {
         using RouterApplicationFactory factory = _fixture.CreateFactory();
         using HttpClient client = factory.CreateClient();
-
         using HttpResponseMessage response = await client.PostAsJsonAsync(
             "/api/v1/agent/chat",
             new { message = "hello" });
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task CurrentUser_WithApiKey_ForwardsThroughRouter()
+    {
+        using RouterApplicationFactory factory = _fixture.CreateFactory();
+        using HttpClient client = factory.CreateClient();
+        using HttpRequestMessage request = new(HttpMethod.Get, "/api/v1/agent/me");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", "oa_test_router_key");
+
+        using HttpResponseMessage response = await client.SendAsync(request);
+        string body = await response.Content.ReadAsStringAsync();
+
+        Assert.True(response.StatusCode == HttpStatusCode.OK, body);
+        Assert.Contains("integration:partner-a", body, StringComparison.Ordinal);
+        Assert.Equal("Bearer oa_test_router_key", _fixture.PrimaryEngine.LastAuthorization);
     }
 
     [Fact]
