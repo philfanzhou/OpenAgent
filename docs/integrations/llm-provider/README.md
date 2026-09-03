@@ -8,7 +8,7 @@
 
 - Model ID
 - Modality (`Text` 或 `Multimodal`；当前多模态只支持图片)
-- Context Window Tokens
+- Context Tokens (`ContextTokens`，HTTP JSON 为 `contextTokens`)
 - API Format
 - Endpoint
 - Temperature

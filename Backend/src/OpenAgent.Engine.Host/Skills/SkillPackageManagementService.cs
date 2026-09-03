@@ -12,7 +12,7 @@ using OpenAgent.Engine.Abstractions;
 namespace OpenAgent.Engine.Host.Skills;
 
 internal sealed class SkillPackageManagementService(
-    AgentConfigManagementService agentConfigs,
+    ConfigurationService agentConfigs,
     IFileObjectStore objectStore,
     ILogger<SkillPackageManagementService> logger,
     ISkillCatalogStore? skillCatalog = null)
@@ -30,7 +30,7 @@ internal sealed class SkillPackageManagementService(
         CancellationToken cancellationToken)
     {
         AgentConfigEntity? entity = await agentConfigs
-            .GetAsync(agentId, tenantId, cancellationToken)
+            .GetAgentAsync(agentId, tenantId, cancellationToken)
             .ConfigureAwait(false);
         if (entity == null)
         {
@@ -72,7 +72,7 @@ internal sealed class SkillPackageManagementService(
         AgentConfigEntity? saved;
         try
         {
-            saved = await agentConfigs.SaveAsync(
+            saved = await agentConfigs.SaveAgentAsync(
                 agentId,
                 tenantId,
                 entity,
@@ -285,7 +285,7 @@ internal sealed class SkillPackageManagementService(
         CancellationToken cancellationToken)
     {
         AgentConfigEntity? entity = await agentConfigs
-            .GetAsync(agentId, tenantId, cancellationToken)
+            .GetAgentAsync(agentId, tenantId, cancellationToken)
             .ConfigureAwait(false);
         if (entity == null)
         {
@@ -306,7 +306,7 @@ internal sealed class SkillPackageManagementService(
         entity.Config.Skills.Instances.Remove(instance);
         entity.Config.Skills.EnabledSkills.RemoveAll(item =>
             string.Equals(item, skillId, StringComparison.OrdinalIgnoreCase));
-        AgentConfigEntity? saved = await agentConfigs.SaveAsync(
+        AgentConfigEntity? saved = await agentConfigs.SaveAgentAsync(
             agentId,
             tenantId,
             entity,

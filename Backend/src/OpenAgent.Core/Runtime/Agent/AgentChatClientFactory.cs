@@ -65,7 +65,7 @@ internal sealed class AgentChatClientFactory : IAgentChatClientFactory
             ApiKey = llm.ApiKey,
             Endpoint = llm.Endpoint,
             Temperature = llm.Temperature,
-            ContextWindowTokens = llm.ContextWindowTokens
+            ContextTokens = llm.ContextTokens
         });
     }
 

@@ -1,3 +1,4 @@
+using static OpenAgent.Engine.Host.Controllers.ConfigurationRedactor;
 using Microsoft.AspNetCore.Mvc;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Mcp;
@@ -19,237 +20,6 @@ internal static class ManagementEndpointExtensions
         string pattern = "/api/v1/admin")
     {
         RouteGroupBuilder group = endpoints.MapGroup(pattern).RequireAuthorization();
-
-        group.MapGet("/agents", async (
-            [FromServices] IAgentConfigProvider provider,
-            HttpContext context,
-            CancellationToken cancellationToken) =>
-        {
-            if (!HasScope(context, "agent.read"))
-                return Results.Forbid();
-            return Results.Ok(await provider
-                .ListAgentsAsync(RequireTenant(context), cancellationToken)
-                .ConfigureAwait(false));
-        });
-
-        group.MapGet("/agents/{agentId}", async (
-            [FromServices] AgentConfigManagementService manager,
-            HttpContext context,
-            string agentId,
-            CancellationToken cancellationToken) =>
-        {
-            if (!HasScope(context, "agent.config.read"))
-                return Results.Forbid();
-            AgentConfigEntity? entity = await manager
-                .GetAsync(agentId, RequireTenant(context), cancellationToken)
-                .ConfigureAwait(false);
-            return entity == null ? Results.NotFound() : Results.Ok(Redact(entity));
-        });
-
-        group.MapGet("/llm", async (
-            [FromServices] LlmProfileManagementService manager,
-            HttpContext context,
-            CancellationToken cancellationToken) =>
-        {
-            if (!HasScope(context, "agent.config.read"))
-                return Results.Forbid();
-            IReadOnlyList<LlmProviderProfile> profiles = await manager
-                .ListAsync(RequireTenant(context), cancellationToken)
-                .ConfigureAwait(false);
-            return Results.Ok(profiles.Select(RedactLlm));
-        });
-
-        group.MapGet("/llm/{id}", async (
-            [FromServices] LlmProfileManagementService manager,
-            HttpContext context,
-            string id,
-            CancellationToken cancellationToken) =>
-        {
-            if (!HasScope(context, "agent.config.read"))
-                return Results.Forbid();
-            LlmProviderProfile? profile = await manager
-                .GetAsync(RequireTenant(context), id, cancellationToken)
-                .ConfigureAwait(false);
-            return profile == null ? Results.NotFound() : Results.Ok(RedactLlm(profile));
-        });
-
-        group.MapPut("/llm/{id}", async (
-            [FromServices] LlmProfileManagementService manager,
-            HttpContext context,
-            string id,
-            [FromBody] LlmProviderProfile profile,
-            CancellationToken cancellationToken) =>
-        {
-            if (!HasScope(context, "agent.config.write"))
-                return Results.Forbid();
-            if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(profile.Name)
-                || string.IsNullOrWhiteSpace(profile.Endpoint)
-                || string.IsNullOrWhiteSpace(profile.ModelId)
-                || profile.ContextWindowTokens <= 0)
-            {
-                return Results.BadRequest(new
-                {
-                    error = "LLM requires id, name, endpoint, modelId and a positive contextWindowTokens value."
-                });
-            }
-
-            profile.Id = id;
-            LlmProviderProfile saved = await manager
-                .SaveAsync(profile, RequireTenant(context), cancellationToken)
-                .ConfigureAwait(false);
-            return Results.Ok(RedactLlm(saved));
-        });
-
-        group.MapDelete("/llm/{id}", async (
-            [FromServices] LlmProfileManagementService manager,
-            HttpContext context,
-            string id,
-            CancellationToken cancellationToken) =>
-        {
-            if (!HasScope(context, "agent.config.write"))
-                return Results.Forbid();
-            return await manager.DeleteAsync(id, RequireTenant(context), cancellationToken).ConfigureAwait(false)
-                ? Results.NoContent()
-                : Results.NotFound();
-        });
-
-        group.MapPost("/llm/test-connection", async (
-            [FromServices] IHttpClientFactory httpClientFactory,
-            [FromServices] LlmProfileManagementService manager,
-            [FromBody] LlmConnectionTestRequest request,
-            HttpContext context,
-            CancellationToken cancellationToken) =>
-        {
-            if (!HasScope(context, "capability.test"))
-                return Results.Forbid();
-            LlmProviderProfile profile = request.Profile;
-            if (!string.IsNullOrWhiteSpace(profile.Id)
-                && (string.IsNullOrWhiteSpace(profile.ApiKey)
-                    || profile.ApiKey.StartsWith("***", StringComparison.Ordinal)))
-            {
-                LlmProviderProfile? stored = await manager.GetAsync(
-                    RequireTenant(context),
-                    profile.Id,
-                    cancellationToken).ConfigureAwait(false);
-                if (stored != null)
-                {
-                    profile.ApiKey = stored.ApiKey;
-                }
-            }
-            string traceId = context.GetAgentRequest().TraceId ?? string.Empty;
-            if (string.IsNullOrWhiteSpace(profile.Endpoint))
-            {
-                return Results.Ok(new LlmConnectionTestResult
-                {
-                    ModelId = profile.ModelId,
-                    Error = "LLM endpoint is required.",
-                    TraceId = traceId
-                });
-            }
-
-            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-            try
-            {
-                string endpoint = profile.Endpoint.TrimEnd('/');
-                if (!endpoint.EndsWith("/models", StringComparison.OrdinalIgnoreCase))
-                    endpoint += "/models";
-                using HttpRequestMessage httpRequest = new(HttpMethod.Get, endpoint);
-                if (!string.IsNullOrWhiteSpace(profile.ApiKey) && !profile.ApiKey.StartsWith("***", StringComparison.Ordinal))
-                {
-                    if (profile.Format == ApiFormat.AnthropicMessages)
-                    {
-                        httpRequest.Headers.TryAddWithoutValidation("x-api-key", profile.ApiKey);
-                        httpRequest.Headers.TryAddWithoutValidation("anthropic-version", "2023-06-01");
-                    }
-                    else
-                    {
-                        httpRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", profile.ApiKey);
-                    }
-                }
-
-                using HttpResponseMessage response = await httpClientFactory
-                    .CreateClient("AgentLogin")
-                    .SendAsync(httpRequest, cancellationToken)
-                    .ConfigureAwait(false);
-                stopwatch.Stop();
-                return Results.Ok(new LlmConnectionTestResult
-                {
-                    Success = response.IsSuccessStatusCode,
-                    Connected = true,
-                    StatusCode = (int)response.StatusCode,
-                    LatencyMs = stopwatch.ElapsedMilliseconds,
-                    ModelId = profile.ModelId,
-                    Error = response.IsSuccessStatusCode ? null : $"HTTP {(int)response.StatusCode} {response.ReasonPhrase}",
-                    TraceId = traceId
-                });
-            }
-            catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
-            {
-                stopwatch.Stop();
-                return Results.Ok(new LlmConnectionTestResult
-                {
-                    Success = false,
-                    Connected = false,
-                    LatencyMs = stopwatch.ElapsedMilliseconds,
-                    ModelId = profile.ModelId,
-                    Error = exception.Message,
-                    TraceId = traceId
-                });
-            }
-        });
-
-        group.MapPut("/agents/{agentId}/config", async (
-            [FromServices] AgentConfigManagementService manager,
-            [FromServices] ISkillCatalogStore skillCatalog,
-            HttpContext context,
-            string agentId,
-            [FromBody] AgentConfigEntity entity,
-            CancellationToken cancellationToken) =>
-        {
-            if (!HasScope(context, "agent.config.write"))
-                return Results.Forbid();
-            string tenantId = RequireTenant(context);
-            AgentConfigEntity? existing = await manager
-                .GetAsync(agentId, tenantId, cancellationToken)
-                .ConfigureAwait(false);
-            if (!string.IsNullOrWhiteSpace(entity.TenantId)
-                && !string.Equals(entity.TenantId, tenantId, StringComparison.Ordinal))
-                return Results.Forbid();
-            entity.TenantId = tenantId;
-            entity.Config.TenantId = tenantId;
-            foreach (SkillInstanceConfig skill in entity.Config.Skills.Instances)
-            {
-                if (!string.IsNullOrWhiteSpace(skill.TenantId)
-                    && !string.Equals(skill.TenantId, tenantId, StringComparison.Ordinal))
-                    return Results.Forbid();
-                skill.TenantId = tenantId;
-            }
-            foreach (string skillId in entity.Config.Skills.EnabledSkills)
-            {
-                bool isEmbedded = entity.Config.Skills.Instances.Any(skill =>
-                    string.Equals(skill.Id, skillId, StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(skill.Name, skillId, StringComparison.OrdinalIgnoreCase));
-                if (isEmbedded)
-                    continue;
-
-                SkillInstanceConfig? packageSkill = await skillCatalog.GetAsync(
-                    tenantId,
-                    skillId,
-                    cancellationToken).ConfigureAwait(false);
-                if (packageSkill == null)
-                    return Results.BadRequest(new { error = $"Skill '{skillId}' is not available to this tenant." });
-            }
-            if (HasInlineSecrets(entity))
-                return Results.BadRequest(new { error = "Inline API keys are not persisted. Configure apiKeySecretRef instead." });
-            AgentConfigEntity merged = MergeSecretReferences(existing, entity);
-            AgentConfigEntity? saved = await manager.SaveAsync(
-                agentId,
-                tenantId,
-                merged,
-                context.Request.Headers.IfMatch.FirstOrDefault() ?? entity.CurrentVersion,
-                cancellationToken).ConfigureAwait(false);
-            return saved == null ? Results.Conflict() : Results.Ok(Redact(saved));
-        });
 
         group.MapPost("/mcp/test-connection", async (
             [FromServices] IMcpConnectionTester tester,
@@ -329,7 +99,7 @@ internal static class ManagementEndpointExtensions
         });
 
         group.MapGet("/rag", async (
-            [FromServices] AgentConfigManagementService manager,
+            [FromServices] ConfigurationService manager,
             HttpContext context,
             [FromQuery] string agentId,
             CancellationToken cancellationToken) =>
@@ -337,7 +107,7 @@ internal static class ManagementEndpointExtensions
             if (!HasScope(context, "agent.config.read"))
                 return Results.Forbid();
             AgentConfigEntity? entity = await manager
-                .GetAsync(agentId, RequireTenant(context), cancellationToken)
+                .GetAgentAsync(agentId, RequireTenant(context), cancellationToken)
                 .ConfigureAwait(false);
             return entity == null
                 ? Results.NotFound()
@@ -350,7 +120,7 @@ internal static class ManagementEndpointExtensions
         });
 
         group.MapPut("/rag/{id}", async (
-            [FromServices] AgentConfigManagementService manager,
+            [FromServices] ConfigurationService manager,
             HttpContext context,
             string id,
             [FromQuery] string agentId,
@@ -361,7 +131,7 @@ internal static class ManagementEndpointExtensions
                 return Results.Forbid();
             string tenantId = RequireTenant(context);
             AgentConfigEntity? existing = await manager
-                .GetAsync(agentId, tenantId, cancellationToken)
+                .GetAgentAsync(agentId, tenantId, cancellationToken)
                 .ConfigureAwait(false);
             if (existing == null)
                 return Results.NotFound();
@@ -389,7 +159,7 @@ internal static class ManagementEndpointExtensions
                 existing.Config.Rag.EnabledRagInstanceIds.Add(id);
             }
 
-            AgentConfigEntity? saved = await manager.SaveAsync(
+            AgentConfigEntity? saved = await manager.SaveAgentAsync(
                 agentId,
                 tenantId,
                 existing,
@@ -399,7 +169,7 @@ internal static class ManagementEndpointExtensions
         });
 
         group.MapDelete("/rag/{id}", async (
-            [FromServices] AgentConfigManagementService manager,
+            [FromServices] ConfigurationService manager,
             HttpContext context,
             string id,
             [FromQuery] string agentId,
@@ -409,7 +179,7 @@ internal static class ManagementEndpointExtensions
                 return Results.Forbid();
             string tenantId = RequireTenant(context);
             AgentConfigEntity? existing = await manager
-                .GetAsync(agentId, tenantId, cancellationToken)
+                .GetAgentAsync(agentId, tenantId, cancellationToken)
                 .ConfigureAwait(false);
             if (existing == null)
                 return Results.NotFound();
@@ -419,7 +189,7 @@ internal static class ManagementEndpointExtensions
                 return Results.NotFound();
             existing.Config.Rag.EnabledRagInstanceIds.RemoveAll(item =>
                 string.Equals(item, id, StringComparison.OrdinalIgnoreCase));
-            AgentConfigEntity? saved = await manager.SaveAsync(
+            AgentConfigEntity? saved = await manager.SaveAgentAsync(
                 agentId,
                 tenantId,
                 existing,
@@ -692,86 +462,4 @@ internal static class ManagementEndpointExtensions
         context.GetAgentRequest().User.TenantId
         ?? throw new InvalidOperationException("TenantId is required.");
 
-    private static bool HasInlineSecrets(AgentConfigEntity entity) =>
-        entity.Config.Rag.Instances.Any(instance => IsInlineSecret(instance.ApiKey));
-
-    private static bool IsInlineSecret(string? value) =>
-        !string.IsNullOrWhiteSpace(value)
-        && !value.StartsWith("***", StringComparison.Ordinal);
-
-    private static AgentConfigEntity MergeSecretReferences(
-        AgentConfigEntity? existing,
-        AgentConfigEntity requested)
-    {
-        foreach (RagInstanceConfig requestedRag in requested.Config.Rag.Instances)
-        {
-            RagInstanceConfig? existingRag = existing?.Config.Rag.Instances.FirstOrDefault(item =>
-                string.Equals(item.Id, requestedRag.Id, StringComparison.OrdinalIgnoreCase));
-            if (existingRag != null && string.IsNullOrWhiteSpace(requestedRag.ApiKeySecretRef))
-            {
-                requestedRag.ApiKeySecretRef = existingRag.ApiKeySecretRef;
-            }
-            requestedRag.ApiKey = string.Empty;
-        }
-
-        return requested;
-    }
-
-    internal static AgentConfigEntity Redact(AgentConfigEntity entity)
-    {
-        entity.Config.Mcp = RedactMcp(entity.Config.Mcp);
-        entity.Config.Rag.Instances = entity.Config.Rag.Instances.Select(RedactRag).ToList();
-        return entity;
-    }
-
-    internal static McpConfig RedactMcp(McpConfig config) => new()
-    {
-        EnabledServerIds = [.. config.EnabledServerIds],
-        Servers = config.Servers.Select(RedactMcpServer).ToList()
-    };
-
-    private static McpServerConfig RedactMcpServer(McpServerConfig server) => new()
-    {
-        Name = server.Name,
-        Url = server.Url,
-        Type = server.Type,
-        ProtocolVersion = server.ProtocolVersion
-    };
-
-    private static RagInstanceConfig RedactRag(RagInstanceConfig instance)
-    {
-        return new RagInstanceConfig
-        {
-            Id = instance.Id,
-            Name = instance.Name,
-            Enabled = instance.Enabled,
-            Type = instance.Type,
-            CollectionName = instance.CollectionName,
-            ApiEndpoint = instance.ApiEndpoint,
-            ApiKeySecretRef = instance.ApiKeySecretRef,
-            ApiKey = string.Empty,
-            AdapterConfig = instance.AdapterConfig,
-            AllowedUserIds = [.. instance.AllowedUserIds],
-            AllowedGroups = [.. instance.AllowedGroups],
-            AllowedTenantIds = [.. instance.AllowedTenantIds],
-            AllowedRoles = [.. instance.AllowedRoles]
-        };
-    }
-
-    internal static LlmProviderProfile RedactLlm(LlmProviderProfile profile)
-    {
-        return new LlmProviderProfile
-        {
-            TenantId = profile.TenantId,
-            Id = profile.Id,
-            Name = profile.Name,
-            Format = profile.Format,
-            ModelId = profile.ModelId,
-            Endpoint = profile.Endpoint,
-            ApiKey = string.Empty,
-            Temperature = profile.Temperature,
-            ContextWindowTokens = profile.ContextWindowTokens,
-            Modality = profile.Modality
-        };
-    }
 }

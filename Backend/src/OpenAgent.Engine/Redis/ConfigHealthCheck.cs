@@ -38,7 +38,7 @@ internal class ConfigHealthCheck : IHealthCheck
         catch (Exception ex)
         {
             return HealthCheckResult.Unhealthy(
-                "Failed to check config snapshot health.", ex);
+                "Failed to check configuration store health.", ex);
         }
     }
 }

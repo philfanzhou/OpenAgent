@@ -20,6 +20,7 @@ public class AgentConfig
     public int MaxTurns { get; set; } = 50;
 }
 
+/// <summary>The effective model connection used by one execution.</summary>
 public class LlmConfig
 {
     public string TenantId { get; set; } = string.Empty;
@@ -29,10 +30,14 @@ public class LlmConfig
     public string ApiKey { get; set; } = string.Empty;
     public string Endpoint { get; set; } = string.Empty;
     public double Temperature { get; set; } = 0.7;
-    public int ContextWindowTokens { get; set; }
+    public int ContextTokens { get; set; }
     public ModelModality Modality { get; set; } = ModelModality.Text;
 }
 
+/// <summary>
+/// A tenant-owned, selectable model connection saved by configuration management.
+/// The profile is independent of Agents; API responses must redact its API key.
+/// </summary>
 public class LlmProviderProfile
 {
     public string TenantId { get; set; } = string.Empty;
@@ -43,7 +48,7 @@ public class LlmProviderProfile
     public string Endpoint { get; set; } = string.Empty;
     public string ApiKey { get; set; } = string.Empty;
     public double Temperature { get; set; } = 0.7;
-    public int ContextWindowTokens { get; set; }
+    public int ContextTokens { get; set; }
     public ModelModality Modality { get; set; } = ModelModality.Text;
 }
 

@@ -1,6 +1,6 @@
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Models;
-using OpenAgent.Engine.Host.Extensions;
+using OpenAgent.Engine.Host.Controllers;
 using Xunit;
 
 namespace OpenAgent.Engine.Tests.Hosting;
@@ -30,7 +30,7 @@ public class ManagementEndpointExtensionsTests
             }
         };
 
-        AgentConfigEntity redacted = ManagementEndpointExtensions.Redact(entity);
+        AgentConfigEntity redacted = ConfigurationRedactor.Redact(entity);
 
         RagInstanceConfig rag = Assert.Single(redacted.Config.Rag.Instances);
         Assert.Empty(rag.ApiKey);
@@ -47,7 +47,7 @@ public class ManagementEndpointExtensionsTests
             Modality = ModelModality.Multimodal
         };
 
-        LlmProviderProfile redacted = ManagementEndpointExtensions.RedactLlm(profile);
+        LlmProviderProfile redacted = ConfigurationRedactor.RedactLlm(profile);
 
         Assert.Empty(redacted.ApiKey);
         Assert.Equal(ModelModality.Multimodal, redacted.Modality);

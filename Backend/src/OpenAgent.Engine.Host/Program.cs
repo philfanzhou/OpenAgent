@@ -48,6 +48,7 @@ app.MapAgentAuthenticationEndpoints();
 if (app.Environment.IsDevelopment())
 {
     app.MapManagementEndpoints();
+    app.MapControllers();
 }
 app.MapAgentEndpoints();
 app.MapHealthReport();

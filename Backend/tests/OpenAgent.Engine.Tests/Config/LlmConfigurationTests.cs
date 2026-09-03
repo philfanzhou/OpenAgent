@@ -7,18 +7,18 @@ using Xunit;
 
 namespace OpenAgent.Engine.Tests.Config;
 
-public class LlmProfileManagementServiceTests
+public class LlmConfigurationTests
 {
     [Fact]
     public async Task SaveAsync_CommitsDatabaseThenRefreshesTenantCacheWithTtl()
     {
         var redis = new FakeRedisConnectionProvider();
         var repository = new InMemoryRepository();
-        LlmProfileManagementService service = CreateService(redis, repository);
+        ConfigurationService service = CreateService(redis, repository);
 
-        await service.SaveAsync(Profile("secret-a"), "tenant-a");
+        await service.SaveLlmAsync(Profile("secret-a"), "tenant-a");
         RedisValue cached = redis.StringGet(
-            LlmProfileManagementService.BuildKey("tenant-a", "primary"));
+            ConfigurationService.BuildCacheKey("llm", "tenant-a", "primary"));
 
         Assert.Equal("secret-a", (await repository.GetAsync("tenant-a", "primary"))?.ApiKey);
         Assert.Contains("secret-a", cached.ToString(), StringComparison.Ordinal);
@@ -29,13 +29,13 @@ public class LlmProfileManagementServiceTests
     public async Task SaveAsync_BlankKey_PreservesExistingPlaintextKey()
     {
         var repository = new InMemoryRepository();
-        LlmProfileManagementService service = CreateService(
+        ConfigurationService service = CreateService(
             new FakeRedisConnectionProvider(), repository);
-        await service.SaveAsync(Profile("secret-a"), "tenant-a");
+        await service.SaveLlmAsync(Profile("secret-a"), "tenant-a");
         LlmProviderProfile edited = Profile(string.Empty);
         edited.Name = "Renamed";
 
-        LlmProviderProfile saved = await service.SaveAsync(edited, "tenant-a");
+        LlmProviderProfile saved = await service.SaveLlmAsync(edited, "tenant-a");
 
         Assert.Equal("secret-a", saved.ApiKey);
         Assert.Equal("Renamed", saved.Name);
@@ -47,7 +47,7 @@ public class LlmProfileManagementServiceTests
         var redis = new FakeRedisConnectionProvider();
         var repository = new InMemoryRepository();
         await repository.UpsertAsync("tenant-a", "primary", Profile("secret-a"));
-        LlmProfileManagementService service = CreateService(redis, repository);
+        ConfigurationService service = CreateService(redis, repository);
 
         LlmProviderProfile? own = await service.GetAsync("tenant-a", "primary");
         LlmProviderProfile? foreign = await service.GetAsync("tenant-b", "primary");
@@ -55,7 +55,7 @@ public class LlmProfileManagementServiceTests
         Assert.Equal("secret-a", own?.ApiKey);
         Assert.Null(foreign);
         Assert.False(redis.StringGet(
-            LlmProfileManagementService.BuildKey("tenant-a", "primary")).IsNullOrEmpty);
+            ConfigurationService.BuildCacheKey("llm", "tenant-a", "primary")).IsNullOrEmpty);
     }
 
     private static LlmProviderProfile Profile(string key) => new()
@@ -63,22 +63,22 @@ public class LlmProfileManagementServiceTests
         Id = "primary",
         Name = "Primary",
         ModelId = "model-1",
-        ContextWindowTokens = 32_000,
+        ContextTokens = 32_000,
         Endpoint = "https://llm.example.test",
         ApiKey = key
     };
 
-    private static LlmProfileManagementService CreateService(
+    private static ConfigurationService CreateService(
         FakeRedisConnectionProvider redis,
         ILlmConfigRepository repository) => new(
-            redis,
+            new Moq.Mock<IAgentConfigRepository>().Object,
             repository,
+            redis,
             Options.Create(new AgentConfigSourceOptions
             {
                 RedisCacheTtlSeconds = 300,
-                RedisCacheReconciliationSeconds = 60
             }),
-            NullLogger<LlmProfileManagementService>.Instance);
+            NullLogger<ConfigurationService>.Instance);
 
     private sealed class InMemoryRepository : ILlmConfigRepository
     {

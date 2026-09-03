@@ -4,9 +4,8 @@ Redis 用于可重建缓存、服务注册/心跳、分布式锁，以及尚未�
 
 | Key | 用途 | 生命周期 |
 |---|---|---|
-| `agent:config-cache:{tenantId}:{agentId}` | PostgreSQL Agent 派生缓存 | 默认 300 秒 |
-| `agent:config-cache:index:{tenantId}` | Agent 缓存诊断索引 | 可重建 |
-| `llm:config-cache:{tenantId}:{profileId}` | PostgreSQL LLM 派生缓存，含服务端 API Key | 默认 300 秒 |
+| `agent:config-cache:v2:{tenantId}:{agentId}` | PostgreSQL Agent 派生缓存 | 默认 300 秒 |
+| `llm:config-cache:v2:{tenantId}:{profileId}` | PostgreSQL LLM 派生缓存，含服务端 API Key | 默认 300 秒 |
 | `engine:registry:{engineId}` | Engine 服务发现 | 心跳 TTL |
 | `openagent:conversation-lock:{tenantId}:{conversationId}` | 会话分布式锁 | 短 TTL |
 

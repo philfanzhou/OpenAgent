@@ -104,7 +104,11 @@ public sealed class OpenAgentDbContext(DbContextOptions<OpenAgentDbContext> opti
             entity.HasKey(item => new { item.TenantId, item.AgentId });
             entity.Property(item => item.AgentId).HasMaxLength(256);
             entity.Property(item => item.TenantId).HasMaxLength(256);
-            entity.Property(item => item.ConfigurationJson).HasColumnType("jsonb");
+            entity.Property(item => item.Status).HasConversion<string>().HasMaxLength(32);
+            entity.Property(item => item.ContextPolicyJson).HasColumnType("jsonb");
+            entity.Property(item => item.McpJson).HasColumnType("jsonb");
+            entity.Property(item => item.RagJson).HasColumnType("jsonb");
+            entity.Property(item => item.SkillsJson).HasColumnType("jsonb");
             entity.Property(item => item.Version).IsConcurrencyToken();
             entity.HasIndex(item => new { item.TenantId, item.UpdatedAt });
         });
@@ -115,7 +119,8 @@ public sealed class OpenAgentDbContext(DbContextOptions<OpenAgentDbContext> opti
             entity.HasKey(item => new { item.TenantId, item.ProfileId });
             entity.Property(item => item.TenantId).HasMaxLength(256);
             entity.Property(item => item.ProfileId).HasMaxLength(256);
-            entity.Property(item => item.ConfigurationJson).HasColumnType("jsonb");
+            entity.Property(item => item.Format).HasConversion<string>().HasMaxLength(32);
+            entity.Property(item => item.Modality).HasConversion<string>().HasMaxLength(32);
             entity.HasIndex(item => new { item.TenantId, item.UpdatedAt });
         });
     }

@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using OpenAgent.Contracts.Configuration;
+using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Models;
 using OpenAgent.Infrastructure.Entities;
 
@@ -93,30 +94,28 @@ internal sealed class EfCoreAgentConfigRepository(
 
         long nextVersion = current == null ? 1 : checked(current.Version + 1);
         Stamp(entity, agentId, tenantId, nextVersion);
-        string payload = JsonSerializer.Serialize(entity, JsonOptions);
         if (current == null)
         {
-            database.AgentConfigurations.Add(new AgentConfigurationEntity
-            {
-                AgentId = agentId,
-                TenantId = tenantId,
-                ConfigurationJson = payload,
-                Version = nextVersion,
-                UpdatedAt = DateTimeOffset.UtcNow
-            });
+            current = new AgentConfigurationEntity { AgentId = agentId, TenantId = tenantId };
+            database.AgentConfigurations.Add(current);
         }
-        else
-        {
-            current.TenantId = tenantId;
-            current.ConfigurationJson = payload;
-            current.Version = nextVersion;
-            current.UpdatedAt = DateTimeOffset.UtcNow;
-        }
+        current.Name = entity.Name;
+        current.Description = entity.Description;
+        current.Status = entity.Status;
+        current.Instructions = entity.Config.Instructions;
+        current.MaxTurns = entity.Config.MaxTurns;
+        current.ContextPolicyJson = entity.Config.ContextPolicy == null
+            ? null : JsonSerializer.Serialize(entity.Config.ContextPolicy, JsonOptions);
+        current.McpJson = JsonSerializer.Serialize(entity.Config.Mcp, JsonOptions);
+        current.RagJson = JsonSerializer.Serialize(entity.Config.Rag, JsonOptions);
+        current.SkillsJson = JsonSerializer.Serialize(entity.Config.Skills, JsonOptions);
+        current.Version = nextVersion;
+        current.UpdatedAt = DateTimeOffset.UtcNow;
 
         try
         {
             await database.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-            return Clone(entity);
+            return Map(current);
         }
         catch (DbUpdateConcurrencyException)
         {
@@ -132,20 +131,29 @@ internal sealed class EfCoreAgentConfigRepository(
 
     private static AgentConfigEntity Map(AgentConfigurationEntity entity)
     {
-        AgentConfigEntity config = JsonSerializer.Deserialize<AgentConfigEntity>(
-            entity.ConfigurationJson,
-            JsonOptions) ?? throw new InvalidOperationException(
-                $"Agent configuration '{entity.AgentId}' is invalid.");
+        AgentConfigEntity config = new()
+        {
+            AgentId = entity.AgentId,
+            TenantId = entity.TenantId,
+            Name = entity.Name,
+            Description = entity.Description,
+            Status = entity.Status,
+            CurrentVersion = entity.Version.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            Config = new AgentConfig
+            {
+                TenantId = entity.TenantId,
+                Instructions = entity.Instructions,
+                MaxTurns = entity.MaxTurns,
+                ContextPolicy = entity.ContextPolicyJson == null ? null
+                    : JsonSerializer.Deserialize<ContextPolicy>(entity.ContextPolicyJson, JsonOptions),
+                Mcp = JsonSerializer.Deserialize<McpConfig>(entity.McpJson, JsonOptions) ?? new(),
+                Rag = JsonSerializer.Deserialize<RagConfig>(entity.RagJson, JsonOptions) ?? new(),
+                Skills = JsonSerializer.Deserialize<SkillsConfig>(entity.SkillsJson, JsonOptions) ?? new()
+            }
+        };
         ValidateNoInlineSecrets(config);
-        Stamp(config, entity.AgentId, entity.TenantId, entity.Version);
         return config;
     }
-
-    private static AgentConfigEntity Clone(AgentConfigEntity entity) =>
-        JsonSerializer.Deserialize<AgentConfigEntity>(
-            JsonSerializer.Serialize(entity, JsonOptions),
-            JsonOptions) ?? throw new InvalidOperationException(
-                $"Agent configuration '{entity.AgentId}' could not be cloned.");
 
     private static void Stamp(
         AgentConfigEntity entity,

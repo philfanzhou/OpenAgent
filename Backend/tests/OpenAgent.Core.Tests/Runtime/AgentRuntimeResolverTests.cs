@@ -76,7 +76,7 @@ public sealed class AgentRuntimeResolverTests
         TenantId = "tenant-1",
         Id = "profile-1",
         ModelId = "model-1",
-        ContextWindowTokens = 128_000,
+        ContextTokens = 128_000,
         Endpoint = "https://llm.example.test",
         ApiKey = "test-key",
         Modality = ModelModality.Multimodal

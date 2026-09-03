@@ -35,7 +35,7 @@ public class SkillPackageManagementServiceTests
     [Fact]
     public async Task InstallAsync_WritesPackageToObjectStorageAndUpdatesAgent()
     {
-        (SkillPackageManagementService service, AgentConfigManagementService configs, RecordingObjectStore store) =
+        (SkillPackageManagementService service, ConfigurationService configs, RecordingObjectStore store) =
             await CreateServiceAsync();
 
         byte[] content = CreatePackage();
@@ -57,7 +57,7 @@ public class SkillPackageManagementServiceTests
         SkillPackageStorageIndex storage = store.ReadIndex(result.Skill!.ObjectKey!);
         Assert.Equal(content.Length > 0, storage.Files.Count == 1);
         Assert.Equal(SkillMarkdown, Encoding.UTF8.GetString(store.Objects[storage.Files[0].ObjectKey]).TrimStart('\uFEFF'));
-        AgentConfigEntity? saved = await configs.GetAsync(AgentId, "tenant");
+        AgentConfigEntity? saved = await configs.GetAgentAsync(AgentId, "tenant");
         SkillInstanceConfig skill = Assert.Single(saved!.Config.Skills.Instances);
         Assert.Equal("customer-lookup", skill.Id);
         Assert.Equal("tenant", skill.TenantId);
@@ -98,7 +98,7 @@ public class SkillPackageManagementServiceTests
     [Fact]
     public async Task DeleteAsync_RemovesAgentBindingAndStoredObject()
     {
-        (SkillPackageManagementService service, AgentConfigManagementService configs, RecordingObjectStore store) =
+        (SkillPackageManagementService service, ConfigurationService configs, RecordingObjectStore store) =
             await CreateServiceAsync();
         await using var package = new MemoryStream(CreatePackage());
         await service.InstallAsync(
@@ -120,7 +120,7 @@ public class SkillPackageManagementServiceTests
 
         Assert.Equal(SkillPackageDeleteResult.Deleted, result);
         Assert.True(store.DeletedObjectKeys.Count >= 2);
-        AgentConfigEntity? saved = await configs.GetAsync(AgentId, "tenant");
+        AgentConfigEntity? saved = await configs.GetAgentAsync(AgentId, "tenant");
         Assert.Empty(saved!.Config.Skills.Instances);
         Assert.Empty(saved.Config.Skills.EnabledSkills);
     }
@@ -128,7 +128,7 @@ public class SkillPackageManagementServiceTests
     [Fact]
     public async Task InstallAsync_AgentOwnedByAnotherTenant_ReturnsNotFound()
     {
-        (SkillPackageManagementService service, AgentConfigManagementService configs, RecordingObjectStore store) =
+        (SkillPackageManagementService service, ConfigurationService configs, RecordingObjectStore store) =
             await CreateServiceAsync("tenant-a");
 
         SkillPackageInstallResult result = await service.InstallAsync(
@@ -143,7 +143,7 @@ public class SkillPackageManagementServiceTests
 
         Assert.False(result.AgentExists);
         Assert.Empty(store.Objects);
-        Assert.Equal("tenant-a", (await configs.GetAsync(AgentId, "tenant-a"))!.TenantId);
+        Assert.Equal("tenant-a", (await configs.GetAgentAsync(AgentId, "tenant-a"))!.TenantId);
     }
 
     [Fact]
@@ -242,21 +242,17 @@ public class SkillPackageManagementServiceTests
 
     private static async Task<(
         SkillPackageManagementService Service,
-        AgentConfigManagementService Configs,
+        ConfigurationService Configs,
         RecordingObjectStore Store)> CreateServiceAsync(string tenantId = "tenant")
     {
         var redis = new UnavailableRedisConnectionProvider();
-        var database = new AgentConfigDatabaseStore(
+        var configs = new ConfigurationService(
+            new InMemoryAgentConfigRepository(),
+            new Moq.Mock<ILlmConfigRepository>().Object,
             redis,
-            Options.Create(new AgentConfigSourceOptions
-            {
-                RedisCacheTtlSeconds = 300,
-                RedisCacheReconciliationSeconds = 60
-            }),
-            NullLogger<AgentConfigDatabaseStore>.Instance,
-            new InMemoryAgentConfigRepository());
-        var configs = new AgentConfigManagementService(database);
-        await configs.SaveAsync(
+            Options.Create(new AgentConfigSourceOptions()),
+            NullLogger<ConfigurationService>.Instance);
+        await configs.SaveAgentAsync(
             AgentId,
             tenantId,
             new AgentConfigEntity { AgentId = AgentId, TenantId = tenantId },

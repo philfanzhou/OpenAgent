@@ -1,5 +1,3 @@
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Infrastructure.Entities;
@@ -9,12 +7,6 @@ namespace OpenAgent.Infrastructure.Configuration;
 internal sealed class EfCoreLlmConfigRepository(
     IDbContextFactory<OpenAgentDbContext> contexts) : ILlmConfigRepository
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true,
-        Converters = { new JsonStringEnumConverter() }
-    };
-
     public async Task<LlmProviderProfile?> GetAsync(
         string tenantId,
         string profileId,
@@ -26,7 +18,7 @@ internal sealed class EfCoreLlmConfigRepository(
             .AsNoTracking()
             .SingleOrDefaultAsync(item => item.TenantId == tenantId && item.ProfileId == profileId,
                 cancellationToken).ConfigureAwait(false);
-        return entity == null ? null : Deserialize(entity.ConfigurationJson, tenantId, profileId);
+        return entity == null ? null : Map(entity);
     }
 
     public async Task<IReadOnlyList<LlmProviderProfile>> ListAsync(
@@ -40,10 +32,7 @@ internal sealed class EfCoreLlmConfigRepository(
             .Where(item => item.TenantId == tenantId)
             .OrderBy(item => item.ProfileId)
             .ToArrayAsync(cancellationToken).ConfigureAwait(false);
-        return entities.Select(entity => Deserialize(
-            entity.ConfigurationJson,
-            entity.TenantId,
-            entity.ProfileId)).ToArray();
+        return entities.Select(Map).ToArray();
     }
 
     public async Task<LlmProviderProfile> UpsertAsync(
@@ -52,11 +41,6 @@ internal sealed class EfCoreLlmConfigRepository(
         LlmProviderProfile profile,
         CancellationToken cancellationToken = default)
     {
-        LlmProviderProfile persisted = Clone(profile);
-        persisted.TenantId = tenantId;
-        persisted.Id = profileId;
-        string json = JsonSerializer.Serialize(persisted, JsonOptions);
-
         await using OpenAgentDbContext context = await contexts
             .CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         LlmConfigurationEntity? entity = await context.LlmConfigurations
@@ -64,21 +48,20 @@ internal sealed class EfCoreLlmConfigRepository(
                 cancellationToken).ConfigureAwait(false);
         if (entity == null)
         {
-            context.LlmConfigurations.Add(new LlmConfigurationEntity
-            {
-                TenantId = tenantId,
-                ProfileId = profileId,
-                ConfigurationJson = json,
-                UpdatedAt = DateTimeOffset.UtcNow
-            });
+            entity = new LlmConfigurationEntity { TenantId = tenantId, ProfileId = profileId };
+            context.LlmConfigurations.Add(entity);
         }
-        else
-        {
-            entity.ConfigurationJson = json;
-            entity.UpdatedAt = DateTimeOffset.UtcNow;
-        }
+        entity.Name = profile.Name;
+        entity.Format = profile.Format;
+        entity.ModelId = profile.ModelId;
+        entity.Endpoint = profile.Endpoint;
+        entity.ApiKey = profile.ApiKey;
+        entity.Temperature = profile.Temperature;
+        entity.ContextTokens = profile.ContextTokens;
+        entity.Modality = profile.Modality;
+        entity.UpdatedAt = DateTimeOffset.UtcNow;
         await context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-        return persisted;
+        return Map(entity);
     }
 
     public async Task<bool> DeleteAsync(
@@ -94,17 +77,17 @@ internal sealed class EfCoreLlmConfigRepository(
         return deleted > 0;
     }
 
-    private static LlmProviderProfile Deserialize(string json, string tenantId, string profileId)
+    private static LlmProviderProfile Map(LlmConfigurationEntity entity) => new()
     {
-        LlmProviderProfile profile = JsonSerializer.Deserialize<LlmProviderProfile>(json, JsonOptions)
-            ?? throw new InvalidOperationException($"LLM profile '{profileId}' is invalid.");
-        profile.TenantId = tenantId;
-        profile.Id = profileId;
-        return profile;
-    }
-
-    private static LlmProviderProfile Clone(LlmProviderProfile profile) =>
-        JsonSerializer.Deserialize<LlmProviderProfile>(
-            JsonSerializer.Serialize(profile, JsonOptions),
-            JsonOptions)!;
+        TenantId = entity.TenantId,
+        Id = entity.ProfileId,
+        Name = entity.Name,
+        Format = entity.Format,
+        ModelId = entity.ModelId,
+        Endpoint = entity.Endpoint,
+        ApiKey = entity.ApiKey,
+        Temperature = entity.Temperature,
+        ContextTokens = entity.ContextTokens,
+        Modality = entity.Modality
+    };
 }

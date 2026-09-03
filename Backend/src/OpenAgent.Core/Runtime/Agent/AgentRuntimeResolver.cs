@@ -66,7 +66,7 @@ internal sealed class AgentRuntimeResolver(
             AgentId = agentId,
             Config = config,
             Model = model,
-            ContextPolicy = CreateContextPolicy(config.ContextPolicy, model.ContextWindowTokens)
+            ContextPolicy = CreateContextPolicy(config.ContextPolicy, model.ContextTokens)
         };
     }
 
@@ -79,23 +79,23 @@ internal sealed class AgentRuntimeResolver(
         ApiKey = profile.ApiKey,
         Endpoint = profile.Endpoint,
         Temperature = profile.Temperature,
-        ContextWindowTokens = profile.ContextWindowTokens,
+        ContextTokens = profile.ContextTokens,
         Modality = profile.Modality
     };
 
     private static ContextPolicy? CreateContextPolicy(
         ContextPolicy? agentPolicy,
-        int contextWindowTokens)
+        int contextTokens)
     {
-        if (agentPolicy == null && contextWindowTokens <= 0)
+        if (agentPolicy == null && contextTokens <= 0)
         {
             return null;
         }
 
         return new ContextPolicy
         {
-            MaxTokens = contextWindowTokens > 0
-                ? contextWindowTokens
+            MaxTokens = contextTokens > 0
+                ? contextTokens
                 : agentPolicy?.MaxTokens ?? 0,
             PreserveRecentTurns = agentPolicy?.PreserveRecentTurns ?? 2,
             SummarizeOptions = agentPolicy?.SummarizeOptions
@@ -112,7 +112,7 @@ internal sealed class AgentRuntimeResolver(
         {
             throw new InvalidOperationException($"LLM endpoint is empty for agent '{agentId}'.");
         }
-        if (model.ContextWindowTokens <= 0)
+        if (model.ContextTokens <= 0)
         {
             throw new InvalidOperationException($"LLM context window must be greater than zero for agent '{agentId}'.");
         }

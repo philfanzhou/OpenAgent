@@ -9,6 +9,24 @@ namespace OpenAgent.Infrastructure.Tests;
 public class LlmConfigRepositoryTests
 {
     [Fact]
+    public void PersistenceModel_UsesTypedConfigurationColumnsAndMatchesSnapshot()
+    {
+        using OpenAgentDbContext context = new(new DbContextOptionsBuilder<OpenAgentDbContext>()
+            .UseNpgsql("Host=unit-test;Database=model-only;Username=model;Password=model").Options);
+        var llm = context.Model.FindEntityType("OpenAgent.Infrastructure.Entities.LlmConfigurationEntity")!;
+        var agent = context.Model.FindEntityType("OpenAgent.Infrastructure.Entities.AgentConfigurationEntity")!;
+
+        Assert.Null(llm.FindProperty("ConfigurationJson"));
+        Assert.Equal("integer", llm.FindProperty("ContextTokens")!.GetColumnType());
+        Assert.Equal("text", llm.FindProperty("ApiKey")!.GetColumnType());
+        Assert.Null(agent.FindProperty("ConfigurationJson"));
+        Assert.Equal("text", agent.FindProperty("Instructions")!.GetColumnType());
+        Assert.Equal("jsonb", agent.FindProperty("SkillsJson")!.GetColumnType());
+        Assert.False(context.Database.HasPendingModelChanges());
+        Assert.Contains("20260903090000_UseConfigurationColumns", context.Database.GetMigrations());
+    }
+
+    [Fact]
     public void PersistenceModel_RegistersLlmConfigurationMigration()
     {
         DbContextOptions<OpenAgentDbContext> options = new DbContextOptionsBuilder<OpenAgentDbContext>()
@@ -32,9 +50,12 @@ public class LlmConfigRepositoryTests
             Id = "ignored",
             Name = "OpenAI",
             ModelId = "gpt-4o",
-            ContextWindowTokens = 128_000,
+            ContextTokens = 128_000,
             Endpoint = "https://api.openai.com/v1",
-            ApiKey = "sk-plaintext"
+            ApiKey = "sk-plaintext",
+            Format = ApiFormat.OpenAIResponses,
+            Temperature = 0.2,
+            Modality = ModelModality.Multimodal
         });
         LlmProviderProfile stored = Assert.IsType<LlmProviderProfile>(
             await repository.GetAsync("tenant-a", "openai"));
@@ -42,7 +63,10 @@ public class LlmConfigRepositoryTests
         Assert.Equal("tenant-a", stored.TenantId);
         Assert.Equal("openai", stored.Id);
         Assert.Equal("sk-plaintext", stored.ApiKey);
-        Assert.Equal(128_000, stored.ContextWindowTokens);
+        Assert.Equal(128_000, stored.ContextTokens);
+        Assert.Equal(ApiFormat.OpenAIResponses, stored.Format);
+        Assert.Equal(0.2, stored.Temperature);
+        Assert.Equal(ModelModality.Multimodal, stored.Modality);
     }
 
     [Fact]
@@ -66,7 +90,7 @@ public class LlmConfigRepositoryTests
     {
         Name = "Primary",
         ModelId = "model",
-        ContextWindowTokens = 32_000,
+        ContextTokens = 32_000,
         Endpoint = "https://llm.example.test",
         ApiKey = key
     };

@@ -7,13 +7,13 @@ using Xunit;
 
 namespace OpenAgent.Engine.Tests.Config;
 
-public class AgentConfigManagementServiceTests
+public class ConfigurationServiceTests
 {
     [Fact]
     public async Task SaveAsync_StampsTenantOwnershipOnNestedBindings()
     {
         var repository = new RecordingRepository();
-        AgentConfigManagementService manager = CreateManager(repository);
+        ConfigurationService manager = CreateManager(repository);
         AgentConfigEntity entity = new()
         {
             Config = new AgentConfig
@@ -24,7 +24,7 @@ public class AgentConfigManagementServiceTests
             }
         };
 
-        AgentConfigEntity? saved = await manager.SaveAsync(
+        AgentConfigEntity? saved = await manager.SaveAgentAsync(
             "support", "tenant-a", entity, null);
 
         Assert.Equal("tenant-a", saved?.TenantId);
@@ -38,27 +38,20 @@ public class AgentConfigManagementServiceTests
     public async Task GetAsync_DifferentTenant_ReturnsNull()
     {
         var repository = new RecordingRepository();
-        AgentConfigManagementService manager = CreateManager(repository);
-        await manager.SaveAsync("support", "tenant-a", new AgentConfigEntity(), null);
+        ConfigurationService manager = CreateManager(repository);
+        await manager.SaveAgentAsync("support", "tenant-a", new AgentConfigEntity(), null);
 
-        AgentConfigEntity? foreign = await manager.GetAsync("support", "tenant-b");
+        AgentConfigEntity? foreign = await manager.GetAgentAsync("support", "tenant-b");
 
         Assert.Null(foreign);
     }
 
-    private static AgentConfigManagementService CreateManager(IAgentConfigRepository repository)
-    {
-        var store = new AgentConfigDatabaseStore(
-            new FakeRedisConnectionProvider { IsAvailable = false },
-            Options.Create(new AgentConfigSourceOptions
-            {
-                RedisCacheTtlSeconds = 300,
-                RedisCacheReconciliationSeconds = 60
-            }),
-            NullLogger<AgentConfigDatabaseStore>.Instance,
-            repository);
-        return new AgentConfigManagementService(store);
-    }
+    private static ConfigurationService CreateManager(IAgentConfigRepository repository) => new(
+        repository,
+        new Moq.Mock<ILlmConfigRepository>().Object,
+        new FakeRedisConnectionProvider { IsAvailable = false },
+        Options.Create(new AgentConfigSourceOptions()),
+        NullLogger<ConfigurationService>.Instance);
 
     private sealed class RecordingRepository : IAgentConfigRepository
     {

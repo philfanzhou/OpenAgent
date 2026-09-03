@@ -171,7 +171,7 @@ export interface LlmProviderProfile {
   name: string
   format: 'OpenAIChatCompletions' | 'OpenAIResponses' | 'AnthropicMessages' | string
   modelId: string
-  contextWindowTokens: number
+  contextTokens: number
   endpoint: string
   apiKey: string
   temperature: number

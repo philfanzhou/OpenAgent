@@ -8,7 +8,7 @@
 | ConversationMessage | PostgreSQL | 独立有序消息和消息级文件引用 |
 | FileAsset | PostgreSQL | 用户文件元数据、归属、状态与会话引用 |
 | File Object | S3 兼容对象存储 | 文件原始字节；不保存授权和会话事实 |
-| AgentConfiguration | PostgreSQL | 按 `(TenantId, AgentId)` 保存 Agent JSONB 与乐观并发版本，是 Agent 配置唯一事实源 |
+| AgentConfiguration | PostgreSQL | 按 `(TenantId, AgentId)` 保存基础字段、嵌套能力配置和乐观并发版本，是 Agent 配置唯一事实源 |
 | LlmConfiguration | PostgreSQL | 按 `(TenantId, ProfileId)` 保存模型、上下文窗口、连接参数与明文 API Key，是 LLM 配置唯一事实源 |
 
 ## 引用的外部数据（只读）

@@ -2,6 +2,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Core.Abstract;
 using OpenAgent.Engine.Abstractions;
@@ -28,11 +30,14 @@ internal static class ServiceCollectionExtensions
             new RedisConnectionProvider(sp.GetService<IConnectionMultiplexer>()));
 
         services.Replace(ServiceDescriptor.Singleton<IAgentSecretResolver, ConfigurationSecretResolver>());
-        services.AddSingleton<AgentConfigDatabaseStore>();
-        services.AddSingleton<AgentConfigManagementService>();
-        services.AddSingleton<LlmProfileManagementService>();
+        services.AddSingleton(serviceProvider => new ConfigurationService(
+            serviceProvider.GetRequiredService<IAgentConfigRepository>(),
+            serviceProvider.GetRequiredService<ILlmConfigRepository>(),
+            serviceProvider.GetRequiredService<IRedisConnectionProvider>(),
+            serviceProvider.GetRequiredService<IOptions<AgentConfigSourceOptions>>(),
+            serviceProvider.GetRequiredService<ILogger<ConfigurationService>>()));
         services.AddSingleton<ILlmConfigProvider>(serviceProvider =>
-            serviceProvider.GetRequiredService<LlmProfileManagementService>());
+            serviceProvider.GetRequiredService<ConfigurationService>());
         services.AddSingleton<McpProfileManagementService>();
         services.AddSingleton<RedisSkillCatalogStore>();
         services.AddSingleton<ISkillCatalogStore>(serviceProvider =>
@@ -40,7 +45,8 @@ internal static class ServiceCollectionExtensions
         services.Replace(ServiceDescriptor.Singleton<ISkillCatalog>(serviceProvider =>
             serviceProvider.GetRequiredService<RedisSkillCatalogStore>()));
 
-        services.AddSingleton<IAgentConfigProvider, ConfigProvider>();
+        services.AddSingleton<IAgentConfigProvider>(serviceProvider =>
+            serviceProvider.GetRequiredService<ConfigurationService>());
 
         services.AddHostedService<RedisRagRegistrar>();
         services.AddHostedService<RedisMcpRegistrar>();
@@ -51,8 +57,6 @@ internal static class ServiceCollectionExtensions
 
         services.AddSingleton<IEngineRegistry, RedisRegistry>();
         services.AddHostedService<HeartbeatService>();
-
-        services.AddHostedService<AgentConfigCacheWarmupService>();
 
         services.AddSingleton<ShutdownService>();
         services.AddHostedService(sp => sp.GetRequiredService<ShutdownService>());

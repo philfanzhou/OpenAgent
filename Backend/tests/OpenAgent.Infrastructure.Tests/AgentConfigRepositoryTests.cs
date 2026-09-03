@@ -10,6 +10,35 @@ namespace OpenAgent.Infrastructure.Tests;
 public class AgentConfigRepositoryTests
 {
     [Fact]
+    public async Task UpsertAsync_RoundTripsColumnsAndNestedConfiguration()
+    {
+        await using ServiceProvider services = CreateServices();
+        IAgentConfigRepository repository = CreateRepository(services);
+        AgentConfigEntity entity = CreateEntity("Instructions");
+        entity.Name = "Support";
+        entity.Description = "Customer support";
+        entity.Status = AgentPublishStatus.Published;
+        entity.Config.MaxTurns = 12;
+        entity.Config.ContextPolicy = new() { MaxTokens = 1000, PreserveRecentTurns = 3 };
+        entity.Config.Mcp.EnabledServerIds = ["tools"];
+        entity.Config.Skills.EnabledSkills = ["search"];
+        entity.Config.Rag.Instances = [new() { Id = "knowledge", ApiKeySecretRef = "rag:knowledge" }];
+
+        await repository.UpsertAsync("tenant-a", "support", entity, null);
+        AgentConfigEntity stored = Assert.IsType<AgentConfigEntity>(
+            await repository.GetAsync("tenant-a", "support"));
+
+        Assert.Equal(entity.Name, stored.Name);
+        Assert.Equal(entity.Description, stored.Description);
+        Assert.Equal(entity.Status, stored.Status);
+        Assert.Equal(12, stored.Config.MaxTurns);
+        Assert.Equal(3, stored.Config.ContextPolicy?.PreserveRecentTurns);
+        Assert.Equal("tools", Assert.Single(stored.Config.Mcp.EnabledServerIds));
+        Assert.Equal("search", Assert.Single(stored.Config.Skills.EnabledSkills));
+        Assert.Equal("rag:knowledge", Assert.Single(stored.Config.Rag.Instances).ApiKeySecretRef);
+    }
+
+    [Fact]
     public async Task UpsertAsync_StaleVersion_PreservesCurrentConfiguration()
     {
         await using ServiceProvider services = CreateServices();

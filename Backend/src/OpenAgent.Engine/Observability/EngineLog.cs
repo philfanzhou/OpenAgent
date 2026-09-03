@@ -4,6 +4,9 @@ namespace OpenAgent.Engine.Observability;
 
 internal static partial class EngineLog
 {
+    [LoggerMessage(EventId = 4079, Level = LogLevel.Warning, Message = "Configuration cache operation failed. Operation={Operation}, Key={Key}, ExceptionType={ExceptionType}")]
+    public static partial void ConfigurationCacheFailed(ILogger logger, string operation, string key, string exceptionType);
+
     [LoggerMessage(EventId = 4034, Level = LogLevel.Information, Message = "Initiating graceful shutdown with timeout: {TimeoutSeconds}s")]
     public static partial void ShutdownInitiated(ILogger logger, double timeoutSeconds);
 
@@ -123,42 +126,6 @@ internal static partial class EngineLog
 
     [LoggerMessage(EventId = 4063, Level = LogLevel.Error, Message = "SSE endpoint error occurred. Method={Method}, Path={Path}, TraceId={TraceId}, ResponseStarted={ResponseStarted}, ExceptionType={ExceptionType}")]
     private static partial void SseEndpointErrorOccurredCore(ILogger logger, Exception exception, string method, string path, string traceId, bool responseStarted, string exceptionType);
-
-    [LoggerMessage(EventId = 4070, Level = LogLevel.Information, Message = "Loaded Agent configuration from PostgreSQL. AgentId={AgentId}, Version={Version}")]
-    public static partial void AgentConfigLoadedFromPostgreSql(ILogger logger, string agentId, string version);
-
-    public static void AgentConfigCacheReadFailed(ILogger logger, Exception exception, string agentId) =>
-        AgentConfigCacheReadFailedCore(logger, exception, agentId, exception.GetType().FullName ?? "unknown");
-
-    [LoggerMessage(EventId = 4071, Level = LogLevel.Warning, Message = "Failed to read Agent configuration Redis cache. AgentId={AgentId}, ExceptionType={ExceptionType}")]
-    private static partial void AgentConfigCacheReadFailedCore(ILogger logger, Exception exception, string agentId, string exceptionType);
-
-    public static void AgentConfigCacheWriteFailed(ILogger logger, Exception exception, string agentId) =>
-        AgentConfigCacheWriteFailedCore(logger, exception, agentId, exception.GetType().FullName ?? "unknown");
-
-    [LoggerMessage(EventId = 4072, Level = LogLevel.Warning, Message = "PostgreSQL committed Agent configuration but Redis cache refresh failed. AgentId={AgentId}, ExceptionType={ExceptionType}")]
-    private static partial void AgentConfigCacheWriteFailedCore(ILogger logger, Exception exception, string agentId, string exceptionType);
-
-    [LoggerMessage(EventId = 4074, Level = LogLevel.Information, Message = "Agent configuration cache warmup completed. Cached={CachedCount}, Total={TotalCount}")]
-    public static partial void AgentConfigCacheWarmupCompleted(ILogger logger, int cachedCount, int totalCount);
-
-    public static void AgentConfigCacheWarmupFailed(ILogger logger, Exception exception) =>
-        AgentConfigCacheWarmupFailedCore(logger, exception, exception.GetType().FullName ?? "unknown");
-
-    [LoggerMessage(EventId = 4075, Level = LogLevel.Warning, Message = "Agent configuration cache warmup failed and will retry. ExceptionType={ExceptionType}")]
-    private static partial void AgentConfigCacheWarmupFailedCore(ILogger logger, Exception exception, string exceptionType);
-
-    public static void LlmConfigCacheReadFailed(ILogger logger, Exception exception, string profileId) =>
-        LlmConfigCacheReadFailedCore(logger, exception, profileId, exception.GetType().FullName ?? "unknown");
-
-    [LoggerMessage(EventId = 4076, Level = LogLevel.Warning, Message = "Failed to read LLM configuration Redis cache. ProfileId={ProfileId}, ExceptionType={ExceptionType}")]
-    private static partial void LlmConfigCacheReadFailedCore(ILogger logger, Exception exception, string profileId, string exceptionType);
-
-    public static void LlmConfigCacheWriteFailed(ILogger logger, Exception exception, string profileId) =>
-        LlmConfigCacheWriteFailedCore(logger, exception, profileId, exception.GetType().FullName ?? "unknown");
-
-    [LoggerMessage(EventId = 4077, Level = LogLevel.Warning, Message = "PostgreSQL committed LLM configuration but Redis cache refresh failed. ProfileId={ProfileId}, ExceptionType={ExceptionType}")]
-    private static partial void LlmConfigCacheWriteFailedCore(ILogger logger, Exception exception, string profileId, string exceptionType);
 
     public static void LlmConfigCacheEvictionFailed(ILogger logger, Exception exception, string profileId) =>
         LlmConfigCacheEvictionFailedCore(logger, exception, profileId, exception.GetType().FullName ?? "unknown");

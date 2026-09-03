@@ -55,7 +55,7 @@ function createDefaultLlm(): LlmProviderProfile {
     name: '',
     format: 'OpenAIChatCompletions',
     modelId: 'gpt-4o',
-    contextWindowTokens: 128000,
+    contextTokens: 128000,
     endpoint: 'https://api.openai.com/v1',
     apiKey: '',
     temperature: 0.7,
@@ -302,7 +302,7 @@ export function useSettings(options: SettingsOptions) {
     const profile = llmDraft.value
     const id = profile.id.trim()
     if (!id || !/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(id)) return options.notifyError(new Error('LLM ID 只能使用字母、数字、点、下划线或短横线'))
-    if (!profile.name.trim() || !profile.endpoint.trim() || !profile.modelId.trim() || profile.contextWindowTokens <= 0) return options.notifyError(new Error('请填写名称、Endpoint、模型 ID 和有效的上下文大小'))
+    if (!profile.name.trim() || !profile.endpoint.trim() || !profile.modelId.trim() || profile.contextTokens <= 0) return options.notifyError(new Error('请填写名称、Endpoint、模型 ID 和有效的上下文大小'))
     profile.id = id
     savingLlm.value = true
     try {
