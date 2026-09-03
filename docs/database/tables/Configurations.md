@@ -25,7 +25,9 @@ Agent 与 LLM 配置以 PostgreSQL 为事实源，共用 `OpenAgentDbContext`，
 
 `openagent.agent_configurations` 的 TenantId、AgentId 为复合主键；Name、Description、Status、Instructions、MaxTurns、Version、UpdatedAt 都是独立列，Version 用于乐观并发控制。
 
-只有嵌套结构使用 JSONB：ContextPolicyJson（可空）、McpJson、RagJson、SkillsJson。它们包含选项、ID 集合及兼容旧格式的嵌套实例，当前按整个 Agent 配置读取和更新；没有跨 Agent 查询这些子属性的用例。后续若需要独立查询或管理绑定关系，应再拆为关联表。
+只有嵌套结构使用 JSONB：ContextPolicyJson（可空）、McpJson、RagJson、SkillsJson、CodeExecutionJson。它们包含选项、ID 集合及兼容旧格式的嵌套实例，当前按整个 Agent 配置读取和更新；没有跨 Agent 查询这些子属性的用例。后续若需要独立查询或管理绑定关系，应再拆为关联表。
+
+CodeExecutionJson 保存 `{ "enabled": false }` 形式的 Agent 代码执行开关；新增列迁移为已有记录填充 `{}`，读取时默认关闭。Runner 服务地址、令牌、镜像和资源限额属于部署配置，不存入 Agent 配置。参见 [CodeAct](../../modules/capabilities/code-execution/DESIGN.md)。
 
 ## 升级
 

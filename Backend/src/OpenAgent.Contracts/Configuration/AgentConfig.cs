@@ -15,6 +15,7 @@ public class AgentConfig
     public McpConfig Mcp { get; set; } = new();
     public RagConfig Rag { get; set; } = new();
     public SkillsConfig Skills { get; set; } = new();
+    public CodeExecutionConfig CodeExecution { get; set; } = new();
     public ContextPolicy? ContextPolicy { get; set; }
 
     public int MaxTurns { get; set; } = 50;

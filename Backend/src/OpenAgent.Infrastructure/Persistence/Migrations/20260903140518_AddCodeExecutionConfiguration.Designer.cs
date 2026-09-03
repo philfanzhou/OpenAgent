@@ -2,18 +2,21 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using OpenAgent.Infrastructure;
 
 #nullable disable
 
-namespace OpenAgent.Infrastructure.Migrations
+namespace OpenAgent.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(OpenAgentDbContext))]
-    partial class OpenAgentDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260903140518_AddCodeExecutionConfiguration")]
+    partial class AddCodeExecutionConfiguration
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -25,26 +28,24 @@ namespace OpenAgent.Infrastructure.Migrations
 
             modelBuilder.Entity("OpenAgent.Infrastructure.Entities.AgentConfigurationEntity", b =>
                 {
-                    b.Property<string>("CodeExecutionJson")
-                        .IsRequired()
-                        .HasColumnType("jsonb");
+                    b.Property<string>("TenantId")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
 
                     b.Property<string>("AgentId")
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
 
-                    b.Property<string>("Name")
+                    b.Property<string>("CodeExecutionJson")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("ContextPolicyJson")
+                        .HasColumnType("jsonb");
 
                     b.Property<string>("Description")
                         .IsRequired()
                         .HasColumnType("text");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)");
 
                     b.Property<string>("Instructions")
                         .IsRequired()
@@ -53,12 +54,13 @@ namespace OpenAgent.Infrastructure.Migrations
                     b.Property<int>("MaxTurns")
                         .HasColumnType("integer");
 
-                    b.Property<string>("ContextPolicyJson")
-                        .HasColumnType("jsonb");
-
                     b.Property<string>("McpJson")
                         .IsRequired()
                         .HasColumnType("jsonb");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<string>("RagJson")
                         .IsRequired()
@@ -68,10 +70,10 @@ namespace OpenAgent.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("jsonb");
 
-                    b.Property<string>("TenantId")
+                    b.Property<string>("Status")
                         .IsRequired()
-                        .HasMaxLength(256)
-                        .HasColumnType("character varying(256)");
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -154,58 +156,6 @@ namespace OpenAgent.Infrastructure.Migrations
                     b.HasIndex("TenantId", "IsDeletedByUser", "LastMessageAt");
 
                     b.ToTable("conversations", "openagent");
-                });
-
-            modelBuilder.Entity("OpenAgent.Infrastructure.Entities.LlmConfigurationEntity", b =>
-                {
-                    b.Property<string>("TenantId")
-                        .HasMaxLength(256)
-                        .HasColumnType("character varying(256)");
-
-                    b.Property<string>("ProfileId")
-                        .HasMaxLength(256)
-                        .HasColumnType("character varying(256)");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("Format")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)");
-
-                    b.Property<string>("ModelId")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("Endpoint")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("ApiKey")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<double>("Temperature")
-                        .HasColumnType("double precision");
-
-                    b.Property<int>("ContextTokens")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Modality")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("TenantId", "ProfileId");
-
-                    b.HasIndex("TenantId", "UpdatedAt");
-
-                    b.ToTable("llm_configurations", "openagent");
                 });
 
             modelBuilder.Entity("OpenAgent.Infrastructure.Entities.ConversationFileReferenceEntity", b =>
@@ -349,6 +299,58 @@ namespace OpenAgent.Infrastructure.Migrations
                     b.HasIndex("TenantId", "OwnerUserId", "CreatedAt");
 
                     b.ToTable("file_assets", "openagent");
+                });
+
+            modelBuilder.Entity("OpenAgent.Infrastructure.Entities.LlmConfigurationEntity", b =>
+                {
+                    b.Property<string>("TenantId")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("ProfileId")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("ApiKey")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("ContextTokens")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Endpoint")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Format")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("Modality")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("ModelId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<double>("Temperature")
+                        .HasColumnType("double precision");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("TenantId", "ProfileId");
+
+                    b.HasIndex("TenantId", "UpdatedAt");
+
+                    b.ToTable("llm_configurations", "openagent");
                 });
 
             modelBuilder.Entity("OpenAgent.Infrastructure.Entities.MessageFileReferenceEntity", b =>

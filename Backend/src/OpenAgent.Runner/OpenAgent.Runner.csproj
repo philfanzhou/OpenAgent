@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <ItemGroup>
+    <ProjectReference Include="../OpenAgent.Contracts/OpenAgent.Contracts.csproj" />
+    <InternalsVisibleTo Include="OpenAgent.Runner.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="sandbox/**" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>
