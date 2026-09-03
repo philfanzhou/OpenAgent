@@ -7,5 +7,4 @@ internal sealed class ResolvedFileRequest
 {
     public required AgentRequest Request { get; init; }
     public required IReadOnlyList<FileAsset> Files { get; init; }
-    public required IReadOnlyList<FileAssetContent> InlineImages { get; init; }
 }

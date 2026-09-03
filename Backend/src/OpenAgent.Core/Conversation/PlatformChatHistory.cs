@@ -91,6 +91,19 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         }
     }
 
+    internal async Task<ChatMessage> CreateUserMessageAsync(CancellationToken cancellationToken)
+    {
+        ChatMessage message = AgentMessageAdapter.CreateUser(_input, _files);
+        if (_files.Count > 0)
+        {
+            await AttachFilesAsync(
+                message,
+                _files.Select(file => file.FileId).ToArray(),
+                cancellationToken).ConfigureAwait(false);
+        }
+        return message;
+    }
+
     /// <summary>把中止/失败时已产生的部分正文与思考内容组装成一条 assistant 消息（含 reasoning 元数据）。</summary>
     private ConversationMessage BuildPartialMessage(ConversationStatus status)
     {

@@ -118,7 +118,7 @@ public sealed class PlatformChatHistoryTests
             "agent-a",
             "model-a",
             "continue",
-            [],
+            [asset],
             new FileAssetExecutionContext(),
             conversationLock: null!,
             store: null!,
@@ -142,5 +142,10 @@ public sealed class PlatformChatHistoryTests
         DataContent image = Assert.Single(message.Contents.OfType<DataContent>());
         Assert.Equal("image/png", image.MediaType);
         Assert.Equal(1, objects.ReadCount);
+
+        ChatMessage current = await history.CreateUserMessageAsync(CancellationToken.None);
+        DataContent currentImage = Assert.Single(current.Contents.OfType<DataContent>());
+        Assert.Equal("image/png", currentImage.MediaType);
+        Assert.Equal(2, objects.ReadCount);
     }
 }

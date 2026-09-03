@@ -1,16 +1,11 @@
 using System.Runtime.ExceptionServices;
 using Microsoft.Agents.AI;
+using Microsoft.Extensions.AI;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Core.Conversation;
 
 namespace OpenAgent.Core.Runtime.Agent;
 
-/// <summary>
-/// Owns per-request resources created by <see cref="AgentFactory"/>: conversation
-/// history, MCP client runtimes, and Skill providers with their temporary package
-/// directories. Disposal is reverse-order and best-effort so one cleanup failure
-/// does not leak the remaining resources.
-/// </summary>
 internal sealed class AgentExecutionScope : IAsyncDisposable
 {
     private readonly PlatformChatHistory _history;
@@ -27,6 +22,9 @@ internal sealed class AgentExecutionScope : IAsyncDisposable
     }
 
     internal AIAgent Agent { get; }
+
+    internal Task<ChatMessage> CreateUserMessageAsync(CancellationToken cancellationToken) =>
+        _history.CreateUserMessageAsync(cancellationToken);
 
     internal void AppendPartial(string content)
     {
