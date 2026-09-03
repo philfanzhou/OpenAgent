@@ -17,6 +17,8 @@ builder.Services.AddAgentHost(builder.Configuration, options =>
 });
 
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddHttpClient("ThirdPartyApiKeyEngine");
+builder.Services.AddScoped<IThirdPartyApiKeyIdentityResolver, EngineApiKeyIdentityResolver>();
 builder.Services.AddAuthorization();
 
 // IAgentUserContext is populated by JwtUserContextMiddleware (registered below in the pipeline).

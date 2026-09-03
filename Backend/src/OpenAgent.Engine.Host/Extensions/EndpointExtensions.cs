@@ -27,6 +27,7 @@ internal static class EndpointExtensions
                 tenantId = user.TenantId,
                 roles = user.Roles,
                 groups = user.Groups,
+                claims = user.Claims,
                 audience = user.Audience,
                 isAuthenticated = user.IsAuthenticated
             });

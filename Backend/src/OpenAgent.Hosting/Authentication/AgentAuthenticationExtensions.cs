@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
+using System.IdentityModel.Tokens.Jwt;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -32,15 +34,20 @@ internal static class AgentAuthenticationExtensions
         services.AddSingleton<IValidateOptions<AgentAuthenticationOptions>>(provider =>
             new AgentAuthenticationOptionsValidator(provider.GetService<IHostEnvironment>()));
 
+        string primaryScheme = options.Mode == AgentAuthenticationMode.Basic
+            ? BasicAuthenticationHandler.SchemeName
+            : JwtBearerDefaults.AuthenticationScheme;
+        string defaultScheme = options.EnableApiKey ? "Agent" : primaryScheme;
+        AuthenticationBuilder authentication = services.AddAuthentication(defaultScheme);
         if (options.Mode == AgentAuthenticationMode.Basic)
         {
-            services.AddAuthentication(BasicAuthenticationHandler.SchemeName)
+            authentication
                 .AddScheme<AuthenticationSchemeOptions, BasicAuthenticationHandler>(
                     BasicAuthenticationHandler.SchemeName, _ => { });
         }
         else
         {
-            services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+            authentication
                 .AddJwtBearer(jwt =>
                 {
                     jwt.Authority = options.Authority;
@@ -65,17 +72,52 @@ internal static class AgentAuthenticationExtensions
                 });
         }
 
+        var authenticationSchemes = new List<string> { primaryScheme };
+        if (options.EnableApiKey)
+        {
+            authentication
+                .AddScheme<AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>(
+                    ApiKeyAuthenticationHandler.SchemeName, _ => { });
+            authentication.AddPolicyScheme("Agent", null, policy =>
+            {
+                policy.ForwardDefaultSelector = context =>
+                {
+                    string? authorization = context.Request.Headers.Authorization.FirstOrDefault();
+                    if (authorization?.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) == true)
+                    {
+                        string token = authorization["Bearer ".Length..].Trim();
+                        return options.Mode == AgentAuthenticationMode.JwtBearer
+                            && new JwtSecurityTokenHandler().CanReadToken(token)
+                            ? JwtBearerDefaults.AuthenticationScheme
+                            : ApiKeyAuthenticationHandler.SchemeName;
+                    }
+
+                    return primaryScheme;
+                };
+            });
+            authenticationSchemes.Add(ApiKeyAuthenticationHandler.SchemeName);
+        }
+
         // Authentication only establishes an identity for now. Resource and
         // capability authorization will be implemented separately.
         services.AddAuthorization(authorization =>
         {
+            AuthorizationPolicy defaultPolicy = new AuthorizationPolicyBuilder(authenticationSchemes.ToArray())
+                .RequireAuthenticatedUser()
+                .Build();
+            authorization.DefaultPolicy = defaultPolicy;
+
             foreach (string policyName in new[]
             {
                 "agent.read", "agent.config.read", "agent.config.write", "mcp.config.write",
                 "skill.config.write", "capability.test", "conversation.read", "conversation.delete"
             })
             {
-                authorization.AddPolicy(policyName, policy => policy.RequireAuthenticatedUser());
+                authorization.AddPolicy(policyName, policy =>
+                {
+                    policy.AddAuthenticationSchemes(authenticationSchemes.ToArray());
+                    policy.RequireAuthenticatedUser();
+                });
             }
         });
 

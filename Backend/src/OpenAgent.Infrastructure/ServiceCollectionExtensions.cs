@@ -8,9 +8,11 @@ using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Infrastructure;
+using OpenAgent.Contracts.Security;
 using OpenAgent.Contracts.Skills;
 using OpenAgent.Infrastructure.Configuration;
 using OpenAgent.Infrastructure.Skills;
+using OpenAgent.Infrastructure.Security;
 using StackExchange.Redis;
 
 namespace OpenAgent.Infrastructure;
@@ -41,6 +43,7 @@ public static class ServiceCollectionExtensions
         // the request-scoped current-user context, so it must not be captured
         // by a singleton registration.
         services.AddScoped<EfCoreConversationStore>();
+        services.AddScoped<IThirdPartyApiKeyIdentityResolver, EfThirdPartyApiKeyIdentityResolver>();
         services.AddSingleton<IFileAssetRepository, EfCoreFileAssetRepository>();
         services.AddSingleton<ISkillDefinitionRepository, EfCoreSkillDefinitionRepository>();
         services.AddSingleton<IAgentConfigRepository, AgentConfigRepository>();

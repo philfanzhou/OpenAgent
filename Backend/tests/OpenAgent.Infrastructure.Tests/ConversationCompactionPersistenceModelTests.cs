@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Xunit;
 
@@ -25,5 +26,26 @@ public sealed class ConversationCompactionPersistenceModelTests
         Assert.Contains(
             "20260819090000_AddConversationContextSummaries",
             context.Database.GetMigrations());
+    }
+
+    [Fact]
+    public void ThirdPartyApiKeyModel_ContainsSeededCredentials()
+    {
+        var options = new DbContextOptionsBuilder<OpenAgentDbContext>()
+            .UseNpgsql("Host=unit-test;Database=model-only;Username=model;Password=model")
+            .Options;
+        using var context = new OpenAgentDbContext(options);
+
+        IEntityType entity = Assert.IsAssignableFrom<IEntityType>(
+            context.Model.FindEntityType("OpenAgent.Infrastructure.Entities.ThirdPartyApiKeyEntity"));
+        Assert.False(entity.FindProperty("KeyHash")!.IsNullable);
+        Assert.False(entity.FindProperty("IsEnabled")!.IsNullable);
+        Assert.Contains(
+            "20260902090016_AddThirdPartyApiKeys",
+            context.Database.GetMigrations());
+        IEntityType designTimeEntity = Assert.IsAssignableFrom<IEntityType>(
+            context.GetService<IDesignTimeModel>().Model.FindEntityType(
+                "OpenAgent.Infrastructure.Entities.ThirdPartyApiKeyEntity"));
+        Assert.Equal(2, designTimeEntity.GetSeedData().Count());
     }
 }
