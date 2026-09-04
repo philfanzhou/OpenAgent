@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [string]$EnvFile = '',
     [string]$DockerMode = '',
@@ -106,22 +106,42 @@ function Invoke-Docker {
 function Convert-ToWslPath {
     param([Parameter(Mandatory = $true)][string]$Path)
 
-    $converted = (& wsl.exe wslpath -a -u $Path).Trim()
+    # wsl.exe 转发参数时会吞掉反斜杠，先统一成正斜杠（wslpath 同样接受 D:/ 形式）。
+    $normalized = $Path.Replace('\', '/')
+    $converted = (& wsl.exe wslpath -a -u $normalized).Trim()
     if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($converted)) {
         throw "failed to convert path for WSL Docker: $Path"
     }
     return $converted.Replace('\', '/')
 }
 
+function Join-WslPath {
+    # Join-Path 会把 WSL 路径里的 '/' 重写成 '\'，再经 wsl.exe 转发就被吞掉；
+    # WSL 侧路径必须用纯正斜杠手工拼接。
+    param(
+        [Parameter(Mandatory = $true)][string]$Base,
+        [Parameter(Mandatory = $true)][string]$Child
+    )
+    return ($Base.TrimEnd('/') + '/' + $Child).Replace('\', '/')
+}
+
 function Export-ImageTar {
     param(
         [Parameter(Mandatory = $true)][string]$Image,
         [Parameter(Mandatory = $true)][string]$FileName,
-        [Parameter(Mandatory = $true)][string]$OutputDirectory
+        [Parameter(Mandatory = $true)][string]$OutputDirectory,
+        [switch]$Wsl
     )
 
+    $outputPath = if ($Wsl) {
+        Join-WslPath -Base $OutputDirectory -Child $FileName
+    }
+    else {
+        Join-Path $OutputDirectory $FileName
+    }
+
     Invoke-Docker -Arguments @(
-        'save', '--output', (Join-Path $OutputDirectory $FileName), $Image
+        'save', '--output', $outputPath, $Image
     )
 }
 
@@ -182,12 +202,12 @@ try {
     # 构建应用镜像；不启动或修改任何容器。
     Invoke-Docker -Arguments @(
         'build', '--tag', $engineImage,
-        '--file', (Join-Path $dockerRepoRoot 'Backend/src/OpenAgent.Engine.Host/Dockerfile'),
+        '--file', (Join-WslPath -Base $dockerRepoRoot -Child 'Backend/src/OpenAgent.Engine.Host/Dockerfile'),
         $dockerRepoRoot
     )
     Invoke-Docker -Arguments @(
         'build', '--tag', $routerImage,
-        '--file', (Join-Path $dockerRepoRoot 'Backend/src/OpenAgent.Router/Dockerfile'),
+        '--file', (Join-WslPath -Base $dockerRepoRoot -Child 'Backend/src/OpenAgent.Router/Dockerfile'),
         $dockerRepoRoot
     )
     Invoke-Docker -Arguments @(
@@ -195,14 +215,15 @@ try {
         '--build-arg', "VITE_OPENAGENT_ROUTER_BASE_URL=$routerUrl",
         '--build-arg', "VITE_OPENAGENT_ENGINE_BASE_URL=$engineUrl",
         '--build-arg', "VITE_OPENAGENT_TENANT_ID=$tenantId",
-        '--file', (Join-Path $dockerRepoRoot 'Frontend/OpenAgent.Chat/Dockerfile'),
+        '--file', (Join-WslPath -Base $dockerRepoRoot -Child 'Frontend/OpenAgent.Chat/Dockerfile'),
         $dockerRepoRoot
     )
 
     if (-not [string]::IsNullOrWhiteSpace($dockerTarDirectory)) {
-        Export-ImageTar -Image $engineImage -FileName 'openagent-engine.tar' -OutputDirectory $dockerTarDirectory
-        Export-ImageTar -Image $routerImage -FileName 'openagent-router.tar' -OutputDirectory $dockerTarDirectory
-        Export-ImageTar -Image $chatImage -FileName 'openagent-chat.tar' -OutputDirectory $dockerTarDirectory
+        $exportWsl = $script:dockerCommand[0] -eq 'wsl.exe'
+        Export-ImageTar -Image $engineImage -FileName 'openagent-engine.tar' -OutputDirectory $dockerTarDirectory -Wsl:$exportWsl
+        Export-ImageTar -Image $routerImage -FileName 'openagent-router.tar' -OutputDirectory $dockerTarDirectory -Wsl:$exportWsl
+        Export-ImageTar -Image $chatImage -FileName 'openagent-chat.tar' -OutputDirectory $dockerTarDirectory -Wsl:$exportWsl
     }
 }
 catch {
