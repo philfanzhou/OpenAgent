@@ -58,7 +58,7 @@ CodeExecution__RequestTimeoutSeconds=180
 | Runner `Runner:MemoryMiB` | 1536 | 每个沙箱进程的地址空间上限；为 LibreOffice 预留虚拟地址空间 |
 | Runner `Runner:MaxProcesses` | 64 | 沙箱进程上限，建议结合 systemd `TasksMax` |
 | Runner `Runner:WorkspaceMiB` | 128 | `/work` tmpfs 上限 |
-| Runner `Runner:WorkspaceRoot` | /var/lib/openagent-runner | 请求输入暂存目录，仅 Runner 可读写 |
+| Runner `Runner:WorkspaceRoot` | /var/lib/openagent-runner/workspaces | 独立于服务用户主目录的请求输入暂存目录，仅 Runner 可读写 |
 
 固定协议限制：代码 128 KiB；输入/输出各最多 8 个文件，单文件 10 MiB、合计 20 MiB；stdout/stderr 各 32 KiB；`/output` tmpfs 32 MiB，`/tmp` 64 MiB。FileAsset 仍执行自身策略，两层限制取更严格者。
 
