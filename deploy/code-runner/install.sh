@@ -35,11 +35,11 @@ if [[ $(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null || tr
 fi
 
 if ! id openagent-runner >/dev/null 2>&1; then
-  useradd --system --home-dir /var/lib/openagent-runner --create-home --shell /usr/sbin/nologin openagent-runner
+  useradd --system --home-dir /var/lib/openagent-runner --no-create-home --shell /usr/sbin/nologin openagent-runner
 fi
 
 install -d -m 0755 /opt/openagent-runner/app /opt/openagent-code
-install -d -o openagent-runner -g openagent-runner -m 0700 /var/lib/openagent-runner
+install -d -o openagent-runner -g openagent-runner -m 0700 /var/lib/openagent-runner /var/lib/openagent-runner/workspaces
 python3 -m venv /opt/openagent-code/venv
 /opt/openagent-code/venv/bin/pip install --disable-pip-version-check --no-cache-dir \
   --requirement "${repository_root}/Backend/src/OpenAgent.Runner/sandbox/requirements.txt"
@@ -62,7 +62,7 @@ if [[ ! -f /etc/openagent-runner.env ]]; then
   {
     echo 'ASPNETCORE_URLS=http://127.0.0.1:5088'
     echo "Runner__ApiKey=${runner_key}"
-    echo 'Runner__WorkspaceRoot=/var/lib/openagent-runner'
+    echo 'Runner__WorkspaceRoot=/var/lib/openagent-runner/workspaces'
     echo 'Runner__BubblewrapPath=/usr/bin/bwrap'
     echo 'Runner__PythonPath=/opt/openagent-code/venv/bin/python'
   } > /etc/openagent-runner.env
