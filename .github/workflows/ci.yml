@@ -46,6 +46,15 @@ jobs:
         run: |
           sudo --preserve-env=PATH bash deploy/code-runner/install.sh "$GITHUB_WORKSPACE"
           sudo python3 scripts/test-codeact-runner.py --environment-file /etc/openagent-runner.env
+      - name: Test MAF through installed Runner and artifact publication
+        run: |
+          sudo --preserve-env=PATH bash -c '
+            source /etc/openagent-runner.env
+            export RUN_CODEACT_RUNNER_TESTS=1
+            export CODEACT_TEST_RUNNER_ENDPOINT="$ASPNETCORE_URLS"
+            export CODEACT_TEST_RUNNER_KEY="$Runner__ApiKey"
+            dotnet test Backend/tests/OpenAgent.Core.Tests/OpenAgent.Core.Tests.csproj --configuration Release --filter FullyQualifiedName~MafLoop_RealRunner --nologo --verbosity normal
+          '
       - name: Show Runner service diagnostics on failure
         if: failure()
         run: sudo journalctl --unit openagent-runner.service --no-pager --lines 100

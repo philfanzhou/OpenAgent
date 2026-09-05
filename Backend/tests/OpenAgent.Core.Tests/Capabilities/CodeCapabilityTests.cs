@@ -134,6 +134,80 @@ public class CodeCapabilityTests
             result => result.CallId == "code-2" && result.Result?.ToString()?.Contains("42", StringComparison.Ordinal) == true);
     }
 
+    [RunnerIntegrationFact]
+    public async Task MafLoop_RealRunnerGeneratesEditsAndPublishesAuthorizedArtifact()
+    {
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(180) };
+        var executor = new RunnerClient(http, Options.Create(new CodeExecutionOptions
+        {
+            Enabled = true,
+            Endpoint = Environment.GetEnvironmentVariable("CODEACT_TEST_RUNNER_ENDPOINT") ?? string.Empty,
+            ApiKey = Environment.GetEnvironmentVariable("CODEACT_TEST_RUNNER_KEY") ?? string.Empty
+        }));
+        var fixture = new Fixture(executor: executor);
+        FileAsset input = await fixture.Files.UploadAsync(new FileAssetCreateRequest
+        {
+            FileName = "sales.csv", MediaType = "text/csv", Source = FileAssetSource.UserUpload
+        }, new MemoryStream("region,quantity\nEast,42\n"u8.ToArray()), fixture.Context.Scope!, CancellationToken.None);
+        await fixture.Files.EnsureReferencesAsync([input.FileId], fixture.Context.Scope!, CancellationToken.None);
+        AIFunction function = await fixture.GetFunctionAsync();
+        string code = """
+            import csv, os
+            from openpyxl import Workbook
+            assert os.getuid() == 65532
+            assert 'Runner__ApiKey' not in os.environ
+            with open('/input/sales.csv') as source:
+                row = next(csv.DictReader(source))
+            book = Workbook()
+            book.active['A1'] = row['region']
+            book.active['B1'] = int(row['quantity'])
+            book.save('/output/report.xlsx')
+            print('generated 42')
+            """;
+        var provider = new SequenceChatProvider([
+            [new ChatResponseUpdate(ChatRole.Assistant, [new FunctionCallContent("bad", "execute_code", new Dictionary<string, object?> { ["code"] = "misspelled()" })])],
+            [new ChatResponseUpdate(ChatRole.Assistant, [new FunctionCallContent("generate", "execute_code", new Dictionary<string, object?>
+            {
+                ["code"] = code, ["inputFiles"] = new[] { new { fileId = input.FileId, name = "sales.csv" } }
+            })])],
+            [new ChatResponseUpdate(ChatRole.Assistant, "Generated the workbook.")]
+        ]);
+        var agent = new ChatClientAgent(provider, new ChatClientAgentOptions { ChatOptions = new() { Tools = [function] } });
+        await foreach (AgentResponseUpdate _ in agent.RunStreamingAsync("Read the CSV and create an Excel workbook.")) { }
+        Assert.Contains(provider.Requests[1].SelectMany(message => message.Contents).OfType<FunctionResultContent>(),
+            result => result.CallId == "bad" && result.Result?.ToString()?.Contains("NameError", StringComparison.Ordinal) == true);
+        FunctionResultContent generated = Assert.Single(provider.Requests[2].SelectMany(message => message.Contents)
+            .OfType<FunctionResultContent>(), result => result.CallId == "generate");
+        using JsonDocument generation = JsonDocument.Parse(generated.Result!.ToString()!);
+        Assert.Equal(0, generation.RootElement.GetProperty("exitCode").GetInt32());
+        string fileId = generation.RootElement.GetProperty("files")[0].GetProperty("fileId").GetString()!;
+        FileAsset asset = fixture.Repository.Assets[fileId];
+        Assert.Equal("tenant", asset.TenantId);
+        Assert.Equal("user", asset.OwnerUserId);
+        Assert.Contains("conversation:" + fileId, fixture.Repository.References);
+
+        object? edited = await function.InvokeAsync(new AIFunctionArguments
+        {
+            ["inputFiles"] = new[] { new { fileId, name = "report.xlsx" } },
+            ["code"] = "from openpyxl import load_workbook\nw=load_workbook('/input/report.xlsx')\nassert w.active['B1'].value == 42\nw.active['B1']=84\nw.save('/output/updated.xlsx')\nassert load_workbook('/output/updated.xlsx').active['B1'].value == 84\nprint('verified 84')"
+        });
+        using JsonDocument edit = JsonDocument.Parse(edited!.ToString()!);
+        Assert.Equal(0, edit.RootElement.GetProperty("exitCode").GetInt32());
+        string editedId = edit.RootElement.GetProperty("files")[0].GetProperty("fileId").GetString()!;
+        IReadOnlyList<AITool> tools = await fixture.Factory.CreateAsync("agent", new AgentConfig
+        {
+            CodeExecution = new() { Enabled = true }
+        }, fixture.User, CancellationToken.None);
+        AIFunction publish = Assert.IsAssignableFrom<AIFunction>(Assert.Single(tools, tool => tool.Name == "publish_files"));
+        await publish.InvokeAsync(new AIFunctionArguments { ["fileIds"] = new[] { editedId } });
+        Assert.Equal(editedId, Assert.Single(fixture.Context.Published).FileId);
+        FileAssetContent content = await fixture.Files.ReadAsync(editedId, fixture.Context.Scope!, CancellationToken.None);
+        using var archive = new System.IO.Compression.ZipArchive(new MemoryStream(content.Data));
+        Assert.NotNull(archive.GetEntry("xl/workbook.xml"));
+        using var sheet = new StreamReader(archive.GetEntry("xl/worksheets/sheet1.xml")!.Open());
+        Assert.Contains("<v>84</v>", await sheet.ReadToEndAsync());
+    }
+
     private sealed class Fixture
     {
         internal bool Authorized { get; set; } = true;
@@ -145,7 +219,7 @@ public class CodeCapabilityTests
         internal FileAssetService Files { get; }
         internal CapabilityToolFactory Factory { get; }
 
-        internal Fixture(bool enabled = true)
+        internal Fixture(bool enabled = true, ICodeExecutor? executor = null)
         {
             Files = new FileAssetService(Repository, Objects, Options.Create(new FileAssetOptions { Enabled = true }));
             Context.Set(new FileAssetScope { TenantId = "tenant", UserId = "user", ConversationId = "conversation" });
@@ -153,13 +227,21 @@ public class CodeCapabilityTests
             auth.Setup(service => service.IsAuthorizedAsync(It.IsAny<AgentAuthorizationRequest>(), It.IsAny<IAgentUserContext>(), It.IsAny<CancellationToken>()))
                 .Returns(() => Task.FromResult(Authorized));
             var gate = new AgentAuthorizationGate(auth.Object);
-            var source = new CodeCapabilitySource(Executor, Files, Context, gate,
+            var source = new CodeCapabilitySource(executor ?? Executor, Files, Context, gate,
                 Options.Create(new CodeExecutionOptions { Enabled = enabled }));
-            Factory = new CapabilityToolFactory([source], gate);
+            var sources = new List<ICapabilitySource> { source };
+            if (executor != null)
+            {
+                var fileOptions = Options.Create(new FileAssetOptions { Enabled = true });
+                sources.Add(new FileAssetCapabilitySource(Files, Context, fileOptions,
+                    new FileAssetUrlDownloader(Mock.Of<IHttpClientFactory>(), fileOptions)));
+            }
+            Factory = new CapabilityToolFactory(sources, gate);
         }
 
         internal async Task<AIFunction> GetFunctionAsync() => Assert.IsAssignableFrom<AIFunction>(Assert.Single(
-            await Factory.CreateAsync("agent", new AgentConfig { CodeExecution = new() { Enabled = true } }, User, CancellationToken.None)));
+            await Factory.CreateAsync("agent", new AgentConfig { CodeExecution = new() { Enabled = true } }, User, CancellationToken.None),
+            tool => tool.Name == "execute_code"));
     }
 
     private sealed class FakeExecutor : ICodeExecutor
@@ -170,6 +252,17 @@ public class CodeCapabilityTests
         {
             Requests.Add(request);
             return Task.FromResult(Results.TryDequeue(out CodeExecutionResult? result) ? result : new CodeExecutionResult());
+        }
+    }
+}
+
+internal sealed class RunnerIntegrationFactAttribute : FactAttribute
+{
+    public RunnerIntegrationFactAttribute()
+    {
+        if (Environment.GetEnvironmentVariable("RUN_CODEACT_RUNNER_TESTS") != "1")
+        {
+            Skip = "Set RUN_CODEACT_RUNNER_TESTS=1 and CODEACT_TEST_RUNNER_ENDPOINT/KEY to test an installed Runner.";
         }
     }
 }
