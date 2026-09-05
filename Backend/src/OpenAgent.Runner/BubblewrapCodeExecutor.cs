@@ -186,7 +186,9 @@ internal sealed class BubblewrapCodeExecutor(
     [
         "--unshare-user", "--unshare-ipc", "--unshare-pid", "--unshare-net", "--unshare-uts",
         "--unshare-cgroup-try", "--disable-userns", "--new-session", "--die-with-parent",
+        "--uid", "65532", "--gid", "65532",
         "--clearenv", "--ro-bind", "/usr", "/usr", "--symlink", "usr/bin", "/bin",
+        "--symlink", "usr/lib", "/lib", "--symlink", "usr/lib64", "/lib64",
         "--proc", "/proc", "--dev", "/dev", "--", "/bin/true"
     ];
 
