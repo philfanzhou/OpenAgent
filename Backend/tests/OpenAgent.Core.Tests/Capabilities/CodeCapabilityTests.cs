@@ -82,6 +82,28 @@ public class CodeCapabilityTests
     }
 
     [Fact]
+    public async Task Invoke_ReadsAuthorizedInputBeforeRunnerCall()
+    {
+        var fixture = new Fixture();
+        FileAsset input = await fixture.Files.UploadAsync(new FileAssetCreateRequest
+        {
+            FileName = "data.csv", MediaType = "text/csv", Source = FileAssetSource.UserUpload
+        }, new MemoryStream("quantity\n42\n"u8.ToArray()), fixture.Context.Scope!, CancellationToken.None);
+        await fixture.Files.EnsureReferencesAsync([input.FileId], fixture.Context.Scope!, CancellationToken.None);
+        AIFunction function = await fixture.GetFunctionAsync();
+        object? result = await function.InvokeAsync(new AIFunctionArguments
+        {
+            ["code"] = "print('read input')",
+            ["inputFiles"] = new[] { new { fileId = input.FileId, name = "data.csv" } }
+        });
+        Assert.Contains("exitCode", result?.ToString());
+        ExecutionFile file = Assert.Single(Assert.Single(fixture.Executor.Requests).Files);
+        Assert.Equal("data.csv", file.Name);
+        Assert.Equal("quantity\n42\n"u8.ToArray(), file.Content);
+        Assert.Equal(1, fixture.Objects.ReadCount);
+    }
+
+    [Fact]
     public async Task Invoke_RechecksAuthorizationAfterDiscovery()
     {
         var fixture = new Fixture();
@@ -179,6 +201,7 @@ public class CodeCapabilityTests
         FunctionResultContent generated = Assert.Single(provider.Requests[2].SelectMany(message => message.Contents)
             .OfType<FunctionResultContent>(), result => result.CallId == "generate");
         using JsonDocument generation = JsonDocument.Parse(generated.Result!.ToString()!);
+        Assert.True(generation.RootElement.TryGetProperty("exitCode", out _), generation.RootElement.ToString());
         Assert.Equal(0, generation.RootElement.GetProperty("exitCode").GetInt32());
         string fileId = generation.RootElement.GetProperty("files")[0].GetProperty("fileId").GetString()!;
         FileAsset asset = fixture.Repository.Assets[fileId];
@@ -192,6 +215,7 @@ public class CodeCapabilityTests
             ["code"] = "from openpyxl import load_workbook\nw=load_workbook('/input/report.xlsx')\nassert w.active['B1'].value == 42\nw.active['B1']=84\nw.save('/output/updated.xlsx')\nassert load_workbook('/output/updated.xlsx').active['B1'].value == 84\nprint('verified 84')"
         });
         using JsonDocument edit = JsonDocument.Parse(edited!.ToString()!);
+        Assert.True(edit.RootElement.TryGetProperty("exitCode", out _), edit.RootElement.ToString());
         Assert.Equal(0, edit.RootElement.GetProperty("exitCode").GetInt32());
         string editedId = edit.RootElement.GetProperty("files")[0].GetProperty("fileId").GetString()!;
         IReadOnlyList<AITool> tools = await fixture.Factory.CreateAsync("agent", new AgentConfig

@@ -79,9 +79,11 @@ internal sealed class RecordingFileObjectStore : IFileObjectStore
         await content.CopyToAsync(buffer, cancellationToken);
         LastContent = buffer.ToArray();
         Content = LastContent;
+        string objectKey = $"files/tenants/{FileObjectTenantScope.CreatePartition(request.TenantId)}/users/{request.UserId}/{request.FileId}";
+        ContentsByKey[objectKey] = LastContent;
         return new FileObjectReference
         {
-            ObjectKey = $"files/{request.TenantId}/{request.UserId}/{request.FileId}"
+            ObjectKey = objectKey
         };
     }
 

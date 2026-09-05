@@ -38,7 +38,7 @@ public class FileAssetServiceTests
         Assert.Equal(FileAssetState.Ready, asset.State);
         Assert.Equal("tenant-a", asset.TenantId);
         Assert.Equal("user-a", asset.OwnerUserId);
-        Assert.Equal($"files/tenant-a/user-a/{asset.FileId}", asset.ObjectKey);
+        Assert.Equal(TenantObjectKey(asset.FileId), asset.ObjectKey);
         Assert.Equal("tenant-a", objects.LastRequest?.TenantId);
         Assert.Equal("user-a", objects.LastRequest?.UserId);
         Assert.Equal("# Hello", System.Text.Encoding.UTF8.GetString(objects.LastContent));
