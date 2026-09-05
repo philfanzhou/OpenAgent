@@ -4,7 +4,7 @@ using Microsoft.Extensions.Options;
 
 namespace OpenAgent.Runner;
 
-internal sealed class BubblewrapProcess(IOptions<RunnerOptions> options)
+internal sealed class BubblewrapProcess(IOptions<RunnerOptions> options, ILogger<BubblewrapProcess> logger)
 {
     private int _activeProcesses;
 
@@ -60,6 +60,7 @@ internal sealed class BubblewrapProcess(IOptions<RunnerOptions> options)
             || !File.Exists("/usr/bin/prlimit")
             || !File.Exists(Path.Combine(sandboxFilesDirectory, "execute.py")))
         {
+            RunnerLog.EnvironmentFailed(logger, "health", "prerequisites", "Linux, bwrap, Python, prlimit, or sandbox entry point is unavailable.");
             return false;
         }
 
@@ -67,11 +68,16 @@ internal sealed class BubblewrapProcess(IOptions<RunnerOptions> options)
         {
             var probe = await RunAsync(BubblewrapCodeExecutor.BuildProbeArguments(), 4096, cancellationToken)
                 .ConfigureAwait(false);
+            if (probe.ExitCode != 0)
+            {
+                RunnerLog.EnvironmentFailed(logger, "health", "probe", probe.Stderr);
+            }
             return probe.ExitCode == 0;
         }
         catch (Exception exception) when (exception is InvalidOperationException
             or System.ComponentModel.Win32Exception or OperationCanceledException)
         {
+            RunnerLog.EnvironmentFailed(logger, "health", "probe", exception.Message);
             return false;
         }
     }
