@@ -66,6 +66,8 @@ CodeExecution__RequestTimeoutSeconds=180
 
 服务允许 `AF_NETLINK`，供 Bubblewrap 初始化隔离网络命名空间；这不打开沙箱外网。LibreOffice 固定使用 `svp` 无界面后端，不需要 X11 或桌面会话。
 
+unit 不启用 `ProtectKernelTunables` / `ProtectKernelLogs` 的 procfs 遮蔽挂载：它们会使 Linux 拒绝 Bubblewrap 在新 PID namespace 中挂载 `/proc`（`Can't mount proc ... Operation not permitted`）。Runner 仍以专用非 root 用户、空 capabilities 和 `NoNewPrivileges` 运行，内核参数和日志受内核权限检查保护；真实测试检查沙箱 capabilities 为零且无法改写内核参数。
+
 ## 验证与故障定位
 
 在已安装依赖的 Linux 主机运行真实隔离测试：

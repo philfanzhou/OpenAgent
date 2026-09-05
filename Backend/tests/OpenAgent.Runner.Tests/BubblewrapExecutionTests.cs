@@ -40,13 +40,17 @@ public class BubblewrapExecutionTests
         string code = """
             import os, pathlib, socket, subprocess, time
             assert os.getuid() == 65532
+            status = dict(line.split(':', 1) for line in pathlib.Path('/proc/self/status').read_text().splitlines())
+            assert int(status['CapEff'], 16) == 0
+            assert int(status['CapPrm'], 16) == 0
+            assert int(status['NoNewPrivs']) == 1
             assert os.uname().nodename == 'openagent-sandbox'
             assert not pathlib.Path('/var/run/docker.sock').exists()
             assert 'Runner__ApiKey' not in os.environ
             assert 'ConnectionStrings__OpenAgentDatabase' not in os.environ
             assert not pathlib.Path(HOST_MARKER).exists()
             assert pathlib.Path('/input/data.txt').read_text() == 'input value'
-            for target in ['/input/data.txt', '/usr/codeact-write-test', '/etc/codeact-write-test']:
+            for target in ['/input/data.txt', '/usr/codeact-write-test', '/etc/codeact-write-test', '/proc/sys/kernel/hostname']:
                 try:
                     pathlib.Path(target).write_text('escape')
                 except OSError:
