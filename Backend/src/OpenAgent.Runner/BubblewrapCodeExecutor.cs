@@ -153,7 +153,7 @@ internal sealed class BubblewrapCodeExecutor(
             "--setenv", "PYTHONDONTWRITEBYTECODE", "1",
             "--setenv", "MPLBACKEND", "Agg",
             "--setenv", "MPLCONFIGDIR", "/tmp/matplotlib",
-            "--setenv", "SAL_USE_VCLPLUGIN", "gen",
+            "--setenv", "SAL_USE_VCLPLUGIN", "svp",
             "--setenv", "OMP_NUM_THREADS", "1",
             "--setenv", "OPENBLAS_NUM_THREADS", "1",
             "--setenv", "MKL_NUM_THREADS", "1",

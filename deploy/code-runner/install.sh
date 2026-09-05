@@ -19,7 +19,7 @@ fi
 apt-get update
 apt-get install --yes --no-install-recommends \
   bubblewrap apparmor-profiles apparmor-utils python3 python3-venv \
-  libreoffice-impress libreoffice-calc fonts-noto-cjk openssl
+  libreoffice-impress libreoffice-calc fonts-noto-cjk openssl curl
 
 if [[ $(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null || true) == 1 ]]; then
   apparmor_profile=/etc/apparmor.d/bwrap-userns-restrict
@@ -69,5 +69,14 @@ if [[ ! -f /etc/openagent-runner.env ]]; then
 fi
 
 systemctl daemon-reload
-systemctl enable --now openagent-runner.service
-echo "Runner installed. Configure Engine with the endpoint and API key in /etc/openagent-runner.env."
+systemctl enable openagent-runner.service
+systemctl restart openagent-runner.service
+for attempt in {1..30}; do
+  if curl --fail --silent --output /dev/null http://127.0.0.1:5088/health; then
+    echo "Runner healthy. Configure Engine with the endpoint and API key in /etc/openagent-runner.env."
+    exit 0
+  fi
+  sleep 1
+done
+echo "Runner did not become healthy. Check journalctl -u openagent-runner.service." >&2
+exit 1
