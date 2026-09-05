@@ -21,7 +21,7 @@ sudo systemctl status openagent-runner --no-pager
 curl --fail http://127.0.0.1:5088/health
 ```
 
-脚本完成以下工作：安装 Bubblewrap、LibreOffice 和中文字体；在 Ubuntu AppArmor 限制启用时加载发行版提供的 `bwrap-userns-restrict` 策略；创建固定版本的 Python venv；创建无登录权限的 `openagent-runner` 用户；发布 Runner；安装并启动强化的 systemd 服务。首次安装会在 `/etc/openagent-runner.env` 生成随机服务令牌，该文件权限为 `0600`。
+脚本完成以下工作：安装 Bubblewrap、LibreOffice 和中文字体；在 Ubuntu AppArmor 限制启用时加载发行版提供的 `bwrap-userns-restrict` 策略；创建固定版本的 Python venv；创建无登录权限的 `openagent-runner` 用户；发布 Runner；安装并重启强化的 systemd 服务，最后等待健康检查成功。首次安装会在 `/etc/openagent-runner.env` 生成随机服务令牌，该文件权限为 `0600`。
 
 默认只监听 `127.0.0.1:5088`。同机 Engine 配置如下，并使用 `/etc/openagent-runner.env` 中同一个 API key：
 
@@ -64,6 +64,8 @@ CodeExecution__RequestTimeoutSeconds=180
 
 默认 systemd unit 同时给整个 Runner 设置 `MemoryMax=2G`、`TasksMax=256`、`CPUQuota=200%`。这是总量保护；`prlimit` 则负责每次执行的地址空间、CPU 时间、进程、打开文件、产物大小和 core dump 限制。
 
+服务允许 `AF_NETLINK`，供 Bubblewrap 初始化隔离网络命名空间；这不打开沙箱外网。LibreOffice 固定使用 `svp` 无界面后端，不需要 X11 或桌面会话。
+
 ## 验证与故障定位
 
 在已安装依赖的 Linux 主机运行真实隔离测试：
@@ -77,9 +79,14 @@ dotnet publish Backend/src/OpenAgent.Runner/OpenAgent.Runner.csproj -c Release -
 CODEACT_RUNNER_DLL=/tmp/openagent-runner-test/OpenAgent.Runner.dll \
 CODEACT_TEST_PYTHON=/opt/openagent-code/venv/bin/python \
 python3 scripts/test-codeact-runner.py
+
+# 对正式安装的 systemd 服务执行同样的鉴权、Office/PDF 与清理验收
+sudo python3 scripts/test-codeact-runner.py --environment-file /etc/openagent-runner.env
 ```
 
 真实测试覆盖 user/PID/IPC/UTS/network namespace、嵌套 user namespace 禁用、只读运行时与输入、宿主文件不可见、环境变量清除、tmpfs 容量、内存耗尽、超时/取消、符号链接拒绝、任务间清理，以及 PPT/XLSX/PDF 的生成和再次编辑。
+
+CI 还实际运行安装脚本和 systemd 服务，并启用 `MafLoop_RealRunnerGeneratesEditsAndPublishesAuthorizedArtifact`：通过 MAF 处理一次真实 Python 错误，再读取授权 CSV、生成 Excel、按 fileId 重新编辑并调用 `publish_files`。该联测使用真实 HTTP/Runner/Bubblewrap；模型响应与文件存储使用确定性测试替身，不代表已验证外部模型、生产对象存储和浏览器聊天。
 
 若 `/health` 返回 503，先检查 `journalctl -u openagent-runner`。常见原因是 `bwrap` 或 venv 路径错误，以及云主机/发行版禁用了非特权 user namespace。Ubuntu 的 AppArmor 限制由安装脚本加载发行版 `bwrap-userns-restrict` 策略；不要通过 `kernel.apparmor_restrict_unprivileged_userns=0` 全局关闭保护。
 

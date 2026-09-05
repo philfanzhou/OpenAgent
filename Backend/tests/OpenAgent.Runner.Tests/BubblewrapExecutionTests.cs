@@ -254,7 +254,7 @@ public class BubblewrapExecutionTests
                 TimeoutSeconds = timeoutSeconds,
                 MemoryMiB = memoryMiB
             });
-            Bubblewrap = new BubblewrapProcess(settings);
+            Bubblewrap = new BubblewrapProcess(settings, NullLogger<BubblewrapProcess>.Instance);
             Executor = new BubblewrapCodeExecutor(Bubblewrap, settings, NullLogger<BubblewrapCodeExecutor>.Instance);
         }
 

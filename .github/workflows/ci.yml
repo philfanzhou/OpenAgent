@@ -57,7 +57,9 @@ jobs:
           '
       - name: Show Runner service diagnostics on failure
         if: failure()
-        run: sudo journalctl --unit openagent-runner.service --no-pager --lines 100
+        run: |
+          sudo journalctl --unit openagent-runner.service --no-pager --lines 150
+          sudo journalctl --dmesg --no-pager --lines 80
 
   backend:
     name: Backend build and test
