@@ -24,9 +24,12 @@ PrivateDevices=yes
 ProtectSystem=strict
 ProtectHome=yes
 ProtectControlGroups=yes
-ProtectKernelTunables=yes
+# Masking procfs submounts prevents unprivileged Bubblewrap from mounting its
+# own PID-scoped procfs (EPERM). The service is non-root with no capabilities;
+# kernel settings/logs remain protected by normal kernel permission checks.
+ProtectKernelTunables=no
 ProtectKernelModules=yes
-ProtectKernelLogs=yes
+ProtectKernelLogs=no
 ProtectClock=yes
 LockPersonality=yes
 RestrictRealtime=yes

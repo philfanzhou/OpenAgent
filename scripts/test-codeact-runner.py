@@ -88,6 +88,10 @@ from pathlib import Path
 from openpyxl import Workbook
 from pptx import Presentation
 assert os.getuid() == 65532
+status = dict(line.split(':', 1) for line in Path('/proc/self/status').read_text().splitlines())
+assert int(status['CapEff'], 16) == 0
+assert int(status['CapPrm'], 16) == 0
+assert int(status['NoNewPrivs']) == 1
 assert 'Runner__ApiKey' not in os.environ
 assert not os.path.exists('/var/run/docker.sock')
 w = Workbook()
