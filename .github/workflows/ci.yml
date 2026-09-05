@@ -42,6 +42,13 @@ jobs:
           dotnet publish Backend/src/OpenAgent.Runner/OpenAgent.Runner.csproj --configuration Release --output "$RUNNER_TEMP/openagent-runner"
           export CODEACT_RUNNER_DLL="$RUNNER_TEMP/openagent-runner/OpenAgent.Runner.dll"
           python3 scripts/test-codeact-runner.py
+      - name: Install and smoke-test hardened systemd service
+        run: |
+          sudo --preserve-env=PATH bash deploy/code-runner/install.sh "$GITHUB_WORKSPACE"
+          sudo python3 scripts/test-codeact-runner.py --environment-file /etc/openagent-runner.env
+      - name: Show Runner service diagnostics on failure
+        if: failure()
+        run: sudo journalctl --unit openagent-runner.service --no-pager --lines 100
 
   backend:
     name: Backend build and test
