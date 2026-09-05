@@ -606,6 +606,8 @@ internal sealed class FileAssetService : IFileAssetService
         ".md" => mediaType.Equals("text/markdown", StringComparison.OrdinalIgnoreCase) || mediaType.Equals("text/plain", StringComparison.OrdinalIgnoreCase),
         ".html" or ".htm" => mediaType.Equals("text/html", StringComparison.OrdinalIgnoreCase),
         ".zip" => mediaType.Equals("application/zip", StringComparison.OrdinalIgnoreCase),
+        ".pptx" => mediaType.Equals("application/vnd.openxmlformats-officedocument.presentationml.presentation", StringComparison.OrdinalIgnoreCase),
+        ".xlsx" => mediaType.Equals("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", StringComparison.OrdinalIgnoreCase),
         _ => false
     };
 

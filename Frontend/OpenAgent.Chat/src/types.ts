@@ -251,6 +251,7 @@ export interface AgentConfigEntity {
     mcp: { enabledServerIds?: string[]; servers: McpServerConfig[] }
     rag: RagConfig
     skills: SkillsConfig
+    codeExecution?: { enabled: boolean }
     maxTurns: number
   }
 }

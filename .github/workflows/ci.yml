@@ -12,6 +12,55 @@ permissions:
   contents: read
 
 jobs:
+  codeact:
+    name: Isolated code execution
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      RUN_CODEACT_BWRAP_TESTS: "1"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Install Bubblewrap and document runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends bubblewrap apparmor-profiles apparmor-utils python3-venv libreoffice-impress libreoffice-calc fonts-noto-cjk
+          sudo install --mode 0644 /usr/share/apparmor/extra-profiles/bwrap-userns-restrict /etc/apparmor.d/bwrap-userns-restrict
+          sudo apparmor_parser --replace /etc/apparmor.d/bwrap-userns-restrict
+          python3 -m venv "$RUNNER_TEMP/openagent-code-venv"
+          "$RUNNER_TEMP/openagent-code-venv/bin/pip" install --disable-pip-version-check --no-cache-dir \
+            --requirement Backend/src/OpenAgent.Runner/sandbox/requirements.txt
+          echo "CODEACT_TEST_PYTHON=$RUNNER_TEMP/openagent-code-venv/bin/python" >> "$GITHUB_ENV"
+      - name: Test real Bubblewrap isolation and document generation
+        run: dotnet test Backend/tests/OpenAgent.Runner.Tests/OpenAgent.Runner.Tests.csproj --configuration Release --nologo --verbosity normal
+      - name: Publish and smoke-test Runner service
+        run: |
+          dotnet publish Backend/src/OpenAgent.Runner/OpenAgent.Runner.csproj --configuration Release --output "$RUNNER_TEMP/openagent-runner"
+          export CODEACT_RUNNER_DLL="$RUNNER_TEMP/openagent-runner/OpenAgent.Runner.dll"
+          python3 scripts/test-codeact-runner.py
+      - name: Install and smoke-test hardened systemd service
+        run: |
+          sudo --preserve-env=PATH bash deploy/code-runner/install.sh "$GITHUB_WORKSPACE"
+          sudo python3 scripts/test-codeact-runner.py --environment-file /etc/openagent-runner.env
+      - name: Test MAF through installed Runner and artifact publication
+        run: |
+          sudo --preserve-env=PATH bash -c '
+            source /etc/openagent-runner.env
+            export RUN_CODEACT_RUNNER_TESTS=1
+            export CODEACT_TEST_RUNNER_ENDPOINT="$ASPNETCORE_URLS"
+            export CODEACT_TEST_RUNNER_KEY="$Runner__ApiKey"
+            dotnet test Backend/tests/OpenAgent.Core.Tests/OpenAgent.Core.Tests.csproj --configuration Release --filter FullyQualifiedName~MafLoop_RealRunner --nologo --verbosity normal
+          '
+      - name: Show Runner service diagnostics on failure
+        if: failure()
+        run: |
+          sudo journalctl --unit openagent-runner.service --no-pager --lines 150
+          sudo journalctl --dmesg --no-pager --lines 80
+
   backend:
     name: Backend build and test
     runs-on: ubuntu-latest
