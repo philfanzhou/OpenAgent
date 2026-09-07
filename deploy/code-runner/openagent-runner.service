@@ -1,5 +1,5 @@
 [Unit]
-Description=OpenAgent Bubblewrap Code Runner
+Description=OpenAgent gVisor Code Runner
 After=network-online.target
 Wants=network-online.target
 
@@ -24,9 +24,8 @@ PrivateDevices=yes
 ProtectSystem=strict
 ProtectHome=yes
 ProtectControlGroups=yes
-# Masking procfs submounts prevents unprivileged Bubblewrap from mounting its
-# own PID-scoped procfs (EPERM). The service is non-root with no capabilities;
-# kernel settings/logs remain protected by normal kernel permission checks.
+# The service only controls the preconfigured rootless Docker daemon. The
+# one-shot child containers provide the gVisor boundary for untrusted code.
 ProtectKernelTunables=no
 ProtectKernelModules=yes
 ProtectKernelLogs=no
@@ -35,7 +34,7 @@ LockPersonality=yes
 RestrictRealtime=yes
 RestrictSUIDSGID=yes
 RemoveIPC=yes
-RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 ReadWritePaths=/var/lib/openagent-runner
 
 TasksMax=256

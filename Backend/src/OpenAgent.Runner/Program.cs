@@ -12,24 +12,27 @@ builder.Services.AddOptions<RunnerOptions>().Bind(builder.Configuration.GetSecti
     .Validate(options => Path.IsPathFullyQualified(options.WorkspaceRoot)
         && !options.WorkspaceRoot.Contains(',') && options.WorkspaceRoot != "/"
         && !options.WorkspaceRoot.Contains('\n'), "Runner:WorkspaceRoot must be a dedicated absolute directory.")
-    .Validate(options => Path.IsPathFullyQualified(options.BubblewrapPath)
-        && Path.IsPathFullyQualified(options.PythonPath), "Runner executable paths must be absolute.")
+    .Validate(options => Path.IsPathFullyQualified(options.DockerPath)
+        && Path.IsPathFullyQualified(options.SandboxPythonPath), "Runner executable paths must be absolute.")
+    .Validate(options => options.Runtime == "runsc"
+        && !string.IsNullOrWhiteSpace(options.SandboxImage)
+        && !options.SandboxImage.Any(char.IsWhiteSpace), "Runner must use the registered gVisor runtime 'runsc'.")
     .Validate(options => options.TimeoutSeconds is >= 1 and <= 600
         && options.MaxConcurrentExecutions is >= 1 and <= 16
         && options.MemoryMiB is >= 128 and <= 8192
         && options.WorkspaceMiB is >= 16 and <= 1024
-        && options.MaxProcesses is >= 16 and <= 512, "Invalid Runner resource limits.")
+        && options.MaxProcesses is >= 16 and <= 512
+        && options.CpuLimit is >= 0.1 and <= 16, "Invalid Runner resource limits.")
     .ValidateOnStart();
-builder.Services.AddSingleton<BubblewrapProcess>();
-builder.Services.AddSingleton<ICodeExecutor, BubblewrapCodeExecutor>();
+builder.Services.AddSingleton<DockerProcess>();
+builder.Services.AddSingleton<ICodeExecutor, GVisorCodeExecutor>();
 builder.Services.AddHostedService<WorkspaceReaper>();
 WebApplication app = builder.Build();
-app.MapGet("/health", async (BubblewrapProcess bubblewrap, CancellationToken cancellationToken) =>
+app.MapGet("/health", async (DockerProcess docker, CancellationToken cancellationToken) =>
 {
-    string sandboxFiles = Path.Combine(AppContext.BaseDirectory, "sandbox");
-    return await bubblewrap.IsAvailableAsync(sandboxFiles, cancellationToken)
+    return await docker.IsAvailableAsync(cancellationToken)
         ? Results.Ok(new { status = "ready" })
-        : Results.Problem("The Bubblewrap execution environment is unavailable.", statusCode: 503);
+        : Results.Problem("The gVisor execution environment is unavailable.", statusCode: 503);
 });
 app.Use(async (context, next) =>
 {

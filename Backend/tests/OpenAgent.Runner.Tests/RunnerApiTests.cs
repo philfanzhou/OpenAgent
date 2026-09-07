@@ -13,7 +13,7 @@ namespace OpenAgent.Runner.Tests;
 
 public class RunnerApiTests
 {
-    [BubblewrapFact]
+    [GVisorFact]
     public async Task Execute_RealHttpContractReturnsIsolatedBinaryArtifact()
     {
         using var factory = new RealFactory();
@@ -82,8 +82,11 @@ public class RunnerApiTests
         {
             builder.UseSetting("Runner:ApiKey", Factory.Key);
             builder.UseSetting("Runner:WorkspaceRoot", _root);
-            builder.UseSetting("Runner:BubblewrapPath", Environment.GetEnvironmentVariable("CODEACT_TEST_BWRAP") ?? "/usr/bin/bwrap");
-            builder.UseSetting("Runner:PythonPath", Environment.GetEnvironmentVariable("CODEACT_TEST_PYTHON") ?? "/opt/openagent-code/venv/bin/python");
+            builder.UseSetting("Runner:DockerPath", Environment.GetEnvironmentVariable("CODEACT_TEST_DOCKER") ?? "/usr/bin/docker");
+            builder.UseSetting("Runner:DockerHost", Environment.GetEnvironmentVariable("CODEACT_TEST_DOCKER_HOST") ?? string.Empty);
+            builder.UseSetting("Runner:Runtime", "runsc");
+            builder.UseSetting("Runner:SandboxImage", Environment.GetEnvironmentVariable("CODEACT_TEST_GVISOR_IMAGE") ?? "openagent-codeact:local");
+            builder.UseSetting("Runner:SandboxPythonPath", Environment.GetEnvironmentVariable("CODEACT_TEST_SANDBOX_PYTHON") ?? "/opt/openagent-code/venv/bin/python");
         }
         protected override void Dispose(bool disposing)
         {

@@ -157,7 +157,7 @@ public class CodeCapabilityTests
     }
 
     [RunnerIntegrationFact]
-    public async Task MafLoop_RealRunnerGeneratesEditsAndPublishesAuthorizedArtifact()
+    public async Task MafLoop_RealRunnerGeneratesThreeRowExcelThenPublishesPptFromUploadedFile()
     {
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(180) };
         var executor = new RunnerClient(http, Options.Create(new CodeExecutionOptions
@@ -167,35 +167,33 @@ public class CodeCapabilityTests
             ApiKey = Environment.GetEnvironmentVariable("CODEACT_TEST_RUNNER_KEY") ?? string.Empty
         }));
         var fixture = new Fixture(executor: executor);
-        FileAsset input = await fixture.Files.UploadAsync(new FileAssetCreateRequest
-        {
-            FileName = "sales.csv", MediaType = "text/csv", Source = FileAssetSource.UserUpload
-        }, new MemoryStream("region,quantity\nEast,42\n"u8.ToArray()), fixture.Context.Scope!, CancellationToken.None);
-        await fixture.Files.EnsureReferencesAsync([input.FileId], fixture.Context.Scope!, CancellationToken.None);
         AIFunction function = await fixture.GetFunctionAsync();
         string code = """
-            import csv, os
-            from openpyxl import Workbook
+            import os
+            from openpyxl import Workbook, load_workbook
             assert os.getuid() == 65532
             assert 'Runner__ApiKey' not in os.environ
-            with open('/input/sales.csv') as source:
-                row = next(csv.DictReader(source))
             book = Workbook()
-            book.active['A1'] = row['region']
-            book.active['B1'] = int(row['quantity'])
+            sheet = book.active
+            sheet.append(['地区', '数量'])
+            sheet.append(['华东', 42])
+            sheet.append(['华南', 17])
+            sheet.append(['华北', 29])
             book.save('/output/report.xlsx')
-            print('generated 42')
+            rows = list(load_workbook('/output/report.xlsx', read_only=True).active.iter_rows(values_only=True))
+            assert rows == [('地区', '数量'), ('华东', 42), ('华南', 17), ('华北', 29)]
+            print('generated three-row Excel')
             """;
         var provider = new SequenceChatProvider([
             [new ChatResponseUpdate(ChatRole.Assistant, [new FunctionCallContent("bad", "execute_code", new Dictionary<string, object?> { ["code"] = "misspelled()" })])],
             [new ChatResponseUpdate(ChatRole.Assistant, [new FunctionCallContent("generate", "execute_code", new Dictionary<string, object?>
             {
-                ["code"] = code, ["inputFiles"] = new[] { new { fileId = input.FileId, name = "sales.csv" } }
+                ["code"] = code
             })])],
-            [new ChatResponseUpdate(ChatRole.Assistant, "Generated the workbook.")]
+            [new ChatResponseUpdate(ChatRole.Assistant, "Generated the three-row workbook.")]
         ]);
         var agent = new ChatClientAgent(provider, new ChatClientAgentOptions { ChatOptions = new() { Tools = [function] } });
-        await foreach (AgentResponseUpdate _ in agent.RunStreamingAsync("Read the CSV and create an Excel workbook.")) { }
+        await foreach (AgentResponseUpdate _ in agent.RunStreamingAsync("Create an Excel workbook with three data rows.")) { }
         Assert.Contains(provider.Requests[1].SelectMany(message => message.Contents).OfType<FunctionResultContent>(),
             result => result.CallId == "bad" && result.Result?.ToString()?.Contains("NameError", StringComparison.Ordinal) == true);
         FunctionResultContent generated = Assert.Single(provider.Requests[2].SelectMany(message => message.Contents)
@@ -209,12 +207,25 @@ public class CodeCapabilityTests
         Assert.Equal("user", asset.OwnerUserId);
         Assert.Contains("conversation:" + fileId, fixture.Repository.References);
 
-        object? edited = await function.InvokeAsync(new AIFunctionArguments
+        object? converted = await function.InvokeAsync(new AIFunctionArguments
         {
             ["inputFiles"] = new[] { new { fileId, name = "report.xlsx" } },
-            ["code"] = "from openpyxl import load_workbook\nw=load_workbook('/input/report.xlsx')\nassert w.active['B1'].value == 42\nw.active['B1']=84\nw.save('/output/updated.xlsx')\nassert load_workbook('/output/updated.xlsx').active['B1'].value == 84\nprint('verified 84')"
+            ["code"] = """
+                from openpyxl import load_workbook
+                from pptx import Presentation
+                rows = list(load_workbook('/input/report.xlsx', read_only=True).active.iter_rows(values_only=True))
+                assert rows == [('地区', '数量'), ('华东', 42), ('华南', 17), ('华北', 29)]
+                slides = Presentation()
+                slide = slides.slides.add_slide(slides.slide_layouts[1])
+                slide.shapes.title.text = '销售汇报'
+                slide.placeholders[1].text = '\n'.join(f'{region}：{quantity}' for region, quantity in rows[1:])
+                slides.save('/output/report.pptx')
+                verified = Presentation('/output/report.pptx')
+                assert '华南：17' in verified.slides[0].placeholders[1].text
+                print('converted uploaded Excel to editable PPT')
+                """
         });
-        using JsonDocument edit = JsonDocument.Parse(edited!.ToString()!);
+        using JsonDocument edit = JsonDocument.Parse(converted!.ToString()!);
         Assert.True(edit.RootElement.TryGetProperty("exitCode", out _), edit.RootElement.ToString());
         Assert.Equal(0, edit.RootElement.GetProperty("exitCode").GetInt32());
         string editedId = edit.RootElement.GetProperty("files")[0].GetProperty("fileId").GetString()!;
@@ -227,9 +238,7 @@ public class CodeCapabilityTests
         Assert.Equal(editedId, Assert.Single(fixture.Context.Published).FileId);
         FileAssetContent content = await fixture.Files.ReadAsync(editedId, fixture.Context.Scope!, CancellationToken.None);
         using var archive = new System.IO.Compression.ZipArchive(new MemoryStream(content.Data));
-        Assert.NotNull(archive.GetEntry("xl/workbook.xml"));
-        using var sheet = new StreamReader(archive.GetEntry("xl/worksheets/sheet1.xml")!.Open());
-        Assert.Contains("<v>84</v>", await sheet.ReadToEndAsync());
+        Assert.NotNull(archive.GetEntry("ppt/presentation.xml"));
     }
 
     private sealed class Fixture

@@ -1,119 +1,77 @@
-# Bubblewrap 代码 Runner 部署
+# gVisor CodeAct Runner 部署
 
-架构、工具参数和安全边界见 [CodeAct 设计](../modules/capabilities/code-execution/DESIGN.md)。Runner 默认直接运行在 Linux 主机上，也提供单独的 Docker 部署文件；两种方式都由 Runner 为每次请求启动新的 Bubblewrap namespace，不依赖宿主机 Docker daemon。
+架构和安全边界见 [CodeAct 设计](../modules/capabilities/code-execution/DESIGN.md)。Runner 是一个可信 HTTP 控制面，负责为每个 `execute_code` 请求启动一次性 Docker 容器；真正执行 Python 的容器固定使用 gVisor `runsc` runtime。
 
-## 支持环境
+## 前置条件
 
-- Ubuntu 24.04 LTS 或同等能力的现代 Linux，支持非特权 user namespace。
-- 主机安装发行版提供的 Bubblewrap；不要自行授予 Runner root、sudo 或 Docker Socket 权限。
-- .NET 8 SDK 仅在安装脚本发布 Runner 时需要，服务使用自包含产物运行。
-- Engine 与 Runner 可以同机部署，也可以通过受防火墙保护的私网 HTTP(S) 通信。
-
-`/health` 会实际创建最小 Bubblewrap namespace。缺少 Bubblewrap、Python 运行时或 user namespace 被禁用时返回 503；执行请求不会回退到宿主 Python。
-
-## 一键安装
-
-在 Ubuntu/Debian 主机的仓库根目录执行：
+gVisor 官方 Docker 流程要求先安装 `runsc`、执行 `runsc install` 注册 Docker runtime，然后重启 Docker daemon。Linux 主机需要支持 gVisor 的架构和内核。开发机可先检查：
 
 ```bash
-sudo deploy/code-runner/install.sh "$(pwd)"
-sudo systemctl status openagent-runner --no-pager
-curl --fail http://127.0.0.1:5088/health
+docker info --format '{{json .Runtimes}}'
+docker run --rm --runtime=runsc hello-world
 ```
 
-脚本完成以下工作：安装 Bubblewrap、LibreOffice 和中文字体；在 Ubuntu AppArmor 限制启用时加载发行版提供的 `bwrap-userns-restrict` 策略；创建固定版本的 Python venv；创建无登录权限的 `openagent-runner` 用户；发布 Runner；安装并重启强化的 systemd 服务，最后等待健康检查成功。首次安装会在 `/etc/openagent-runner.env` 生成随机服务令牌，该文件权限为 `0600`。
+输出中必须存在 `runsc`。macOS/Windows 上的 Docker Desktop 只有在其 Linux Docker daemon 已提供并注册 `runsc` 时才可用；宿主机有 Docker CLI 不代表 gVisor 已就绪。
 
-默认只监听 `127.0.0.1:5088`。同机 Engine 配置如下，并使用 `/etc/openagent-runner.env` 中同一个 API key：
+## 本地 Compose
 
-```text
-CodeExecution__Enabled=true
-CodeExecution__Endpoint=http://127.0.0.1:5088
-CodeExecution__ApiKey=<Runner__ApiKey>
-CodeExecution__RequestTimeoutSeconds=180
-```
-
-若 Engine 位于其他主机，将 `ASPNETCORE_URLS` 改为 Runner 的私网地址，并用主机防火墙仅允许 Engine 访问。不要把 Runner 直接暴露到公网。修改后执行 `sudo systemctl restart openagent-runner`。
-
-在 Agent 编辑界面打开“代码执行”，或通过现有 Agent 配置 API 保存：
-
-```json
-{"codeExecution":{"enabled":true}}
-```
-
-这是 Agent `config` 中的新增片段，保存时需保留其他配置。部署还需应用 `AddCodeExecutionConfiguration` migration；旧 Agent 默认关闭代码执行。
-
-## 配置
-
-| 配置 | 默认 | 含义 |
-|---|---|---|
-| Engine `CodeExecution:Enabled` | false | 全局执行开关 |
-| Engine `CodeExecution:Endpoint` | 空 | Runner 内部 HTTP(S) 地址 |
-| Engine `CodeExecution:ApiKey` | 空 | 至少 32 字符的服务令牌 |
-| Engine `CodeExecution:RequestTimeoutSeconds` | 180 | 大于 Runner 执行时限和清理余量 |
-| Engine `CodeExecution:MaxExecutionsPerRequest` | 8 | 每个聊天请求的代码调用上限 |
-| Runner `Runner:BubblewrapPath` | /usr/bin/bwrap | 主机 Bubblewrap 绝对路径 |
-| Runner `Runner:PythonPath` | /opt/openagent-code/venv/bin/python | 沙箱 Python venv 绝对路径 |
-| Runner `Runner:TimeoutSeconds` | 120 | 单次执行墙钟时限，最大 600 秒 |
-| Runner `Runner:MaxConcurrentExecutions` | 2 | Runner 并发上限；超额返回 429 |
-| Runner `Runner:MemoryMiB` | 1536 | 每个沙箱进程的地址空间上限；为 LibreOffice 预留虚拟地址空间 |
-| Runner `Runner:MaxProcesses` | 64 | 沙箱进程上限，建议结合 systemd `TasksMax` |
-| Runner `Runner:WorkspaceMiB` | 128 | `/work` tmpfs 上限 |
-| Runner `Runner:WorkspaceRoot` | /var/lib/openagent-runner/workspaces | 独立于服务用户主目录的请求输入暂存目录，仅 Runner 可读写 |
-
-固定协议限制：代码 128 KiB；输入/输出各最多 8 个文件，单文件 10 MiB、合计 20 MiB；stdout/stderr 各 32 KiB；`/output` tmpfs 32 MiB，`/tmp` 64 MiB。FileAsset 仍执行自身策略，两层限制取更严格者。
-
-默认 systemd unit 同时给整个 Runner 设置 `MemoryMax=2G`、`TasksMax=256`、`CPUQuota=200%`。这是总量保护；`prlimit` 则负责每次执行的地址空间、CPU 时间、进程、打开文件、产物大小和 core dump 限制。
-
-服务允许 `AF_NETLINK`，供 Bubblewrap 初始化隔离网络命名空间；这不打开沙箱外网。LibreOffice 固定使用 `svp` 无界面后端，不需要 X11 或桌面会话。
-
-unit 不启用 `ProtectKernelTunables` / `ProtectKernelLogs` 的 procfs 遮蔽挂载：它们会使 Linux 拒绝 Bubblewrap 在新 PID namespace 中挂载 `/proc`（`Can't mount proc ... Operation not permitted`）。Runner 仍以专用非 root 用户、空 capabilities 和 `NoNewPrivileges` 运行，内核参数和日志受内核权限检查保护；真实测试检查沙箱 capabilities 为零且无法改写内核参数。
-
-## 验证与故障定位
-
-在已安装依赖的 Linux 主机运行真实隔离测试：
-
-```bash
-RUN_CODEACT_BWRAP_TESTS=1 \
-CODEACT_TEST_PYTHON=/opt/openagent-code/venv/bin/python \
-dotnet test Backend/tests/OpenAgent.Runner.Tests/OpenAgent.Runner.Tests.csproj
-
-dotnet publish Backend/src/OpenAgent.Runner/OpenAgent.Runner.csproj -c Release -o /tmp/openagent-runner-test
-CODEACT_RUNNER_DLL=/tmp/openagent-runner-test/OpenAgent.Runner.dll \
-CODEACT_TEST_PYTHON=/opt/openagent-code/venv/bin/python \
-python3 scripts/test-codeact-runner.py
-
-# 对正式安装的 systemd 服务执行同样的鉴权、Office/PDF 与清理验收
-sudo python3 scripts/test-codeact-runner.py --environment-file /etc/openagent-runner.env
-```
-
-## 单独 Docker 容器部署
-
-如果部署环境只能提供应用容器，可以使用 `docker-compose.codeact.yml` 单独构建 Runner。它包含固定的 .NET Runner、Bubblewrap、Python Office 依赖、LibreOffice 和中文字体，不挂载 Docker Socket；Engine 与 Runner 通过外部 `openagent-infrastructure` 网络通信：
+本地专用开发环境需要让 Runner 控制面访问 Docker daemon，并让该 daemon 能看到构建的 `openagent-codeact:local` 镜像：
 
 ```bash
 export OPENAGENT_RUNNER_API_KEY="$(openssl rand -hex 32)"
-docker compose -f docker-compose.codeact.yml up -d --build code-runner
-docker compose -f docker-compose.codeact.yml ps
+docker build -t openagent-codeact:local -f docker/codeact/Dockerfile .
+docker compose -f docker-compose.storage.yml up -d
+docker compose -f docker/preview.compose.yml -f docker/preview.codeact.compose.yml up -d --build
+curl --fail http://127.0.0.1:5089/health
 ```
 
-Engine 在同一 Docker 网络中使用 `http://code-runner:5088` 作为 `CodeExecution__Endpoint`。Compose 默认只把 Runner 的 5088 端口发布到宿主机 `127.0.0.1`，用于本地验收；生产 Engine 应使用容器网络地址，不应把 Runner 暴露到公网。
+Compose 默认把 `127.0.0.1:5089` 发布为 Runner 健康端点，并挂载 `/var/run/docker.sock` 供可信 Runner 控制面创建 `runsc` 容器。共享环境应改用专用 rootless daemon：设置 `OPENAGENT_RUNNER_DOCKER_HOST` 和对应的 `DOCKER_SOCKET_GID`，不要把宿主 Docker Socket 暴露给普通业务容器。
 
-当前 Compose 配置显式使用 `privileged` 与 `seccomp=unconfined`，因为目标 Docker Desktop/Linux runtime 的默认 seccomp/user namespace 边界会阻止 Bubblewrap 挂载隔离后的 `/proc`。这不是与原生 systemd 等价的最小权限配置：该容器必须是专用 Runner 容器，并部署在专用节点或 VM，不能与不可信服务共用。若平台禁止这两个运行时权限，应采用本文前面的原生 Linux/systemd 方案或独立 VM；不能通过宿主 Docker Socket 绕过。
+健康检查会依次确认 Docker CLI、`runsc` runtime、固定沙箱镜像，并实际启动一个最小 `runsc` 容器。缺一项返回 503；执行请求不会降级为 runc 或宿主 Python。
 
-容器内的 `read_only` 根文件系统、独立工作卷、2 GiB 内存、2 CPU、256 PID 和 Runner 每请求限制仍然生效；这些是容器总量保护，`Runner__MaxConcurrentExecutions` 才是任务并发闸门。需要更强的每任务硬资源边界时，应由宿主编排器拆分 Worker/VM，而不是复用一个容器内的 Python 进程。
+## 配置
 
-用本地发布端口执行完整验收（包含并发和三行 Excel → PPT/PDF）：
+| 配置 | 默认值 | 作用 |
+|------|--------|------|
+| `Runner:Runtime` | `runsc` | 唯一允许的 Docker runtime |
+| `Runner:SandboxImage` | `openagent-codeact:local` | 预装 Office 依赖的固定镜像 |
+| `Runner:DockerPath` | `/usr/bin/docker` | Runner 使用的 Docker CLI |
+| `Runner:DockerHost` | 空 | 可选的 rootless Docker endpoint |
+| `Runner:SandboxPythonPath` | `/opt/openagent-code/venv/bin/python` | 镜像内固定 Python |
+| `Runner:TimeoutSeconds` | `120` | 单次 Python 墙钟上限 |
+| `Runner:MemoryMiB` | `1536` | 单次容器内存上限 |
+| `Runner:WorkspaceMiB` | `128` | `/work` tmpfs 大小 |
+| `Runner:MaxProcesses` | `64` | PID 和进程资源上限 |
+| `Runner:MaxConcurrentExecutions` | `2` | Runner 并发闸门 |
+
+Engine 侧还需开启 `CodeExecution:Enabled`，并在 Agent 设置中开启“代码执行”。二者缺一时前端仍可聊天，但不会发现 `execute_code` 工具。
+
+## 前端两条验收用例
+
+在工作台选择已开启代码执行的 Agent 和可用模型：
+
+1. 新建会话，点击“生成三行 Excel”示例动作并发送。模型应调用 `execute_code`，生成包含表头和三行数据的 `.xlsx`，重新打开校验后调用 `publish_files`。
+2. 上传第一步返回的 `.xlsx`。点击“读取 Excel 生成 PPT”并发送。模型应通过当前会话的 `fileId` 读取 Excel，生成可编辑 `.pptx`，重新打开校验后发布 PPT。
+
+前端上传组件允许 `.xlsx`/`.pptx`，首条消息会复用上传文件所属的 conversationId，Engine 才能执行租户、用户和会话范围校验。
+
+## 验证命令
+
+CI 和 Linux 主机验收：
 
 ```bash
-python3 scripts/test-codeact-runner.py \
-  --endpoint http://127.0.0.1:5088 \
-  --key "$OPENAGENT_RUNNER_API_KEY"
+RUN_CODEACT_GVISOR_TESTS=1 \
+CODEACT_TEST_GVISOR_IMAGE=openagent-codeact:local \
+dotnet test Backend/tests/OpenAgent.Runner.Tests/OpenAgent.Runner.Tests.csproj
+
+dotnet publish Backend/src/OpenAgent.Runner/OpenAgent.Runner.csproj \
+  -c Release -o /tmp/openagent-runner
+CODEACT_RUNNER_DLL=/tmp/openagent-runner/OpenAgent.Runner.dll \
+CODEACT_TEST_GVISOR_IMAGE=openagent-codeact:local \
+python3 scripts/test-codeact-runner.py
+
+dotnet test Backend/tests/OpenAgent.Core.Tests/OpenAgent.Core.Tests.csproj \
+  --filter FullyQualifiedName~MafLoop_RealRunner
 ```
 
-真实测试覆盖 user/PID/IPC/UTS/network namespace、嵌套 user namespace 禁用、只读运行时与输入、宿主文件不可见、环境变量清除、tmpfs 容量、内存耗尽、超时/取消、符号链接拒绝、任务间清理，以及 PPT/XLSX/PDF 的生成和再次编辑。
-
-CI 还实际运行安装脚本和 systemd 服务，并启用 `MafLoop_RealRunnerGeneratesEditsAndPublishesAuthorizedArtifact`：通过 MAF 处理一次真实 Python 错误，再读取授权 CSV、生成 Excel、按 fileId 重新编辑并调用 `publish_files`。该联测使用真实 HTTP/Runner/Bubblewrap；模型响应与文件存储使用确定性测试替身，不代表已验证外部模型、生产对象存储和浏览器聊天。
-
-若 `/health` 返回 503，先检查 `journalctl -u openagent-runner`。常见原因是 `bwrap` 或 venv 路径错误，以及云主机/发行版禁用了非特权 user namespace。Ubuntu 的 AppArmor 限制由安装脚本加载发行版 `bwrap-userns-restrict` 策略；不要通过 `kernel.apparmor_restrict_unprivileged_userns=0` 全局关闭保护。
-
-建议初次启用后，再用实际模型执行一次“读取上传 CSV，生成 Excel 和 PPT”，检查聊天附件、内容质量和取消行为。确定性模型测试与 Runner 测试不能替代真实模型端到端验收。
+没有 `runsc` 的平台会跳过真实隔离测试，不能将编译、Mock 测试或健康检查失败当作 gVisor E2E 通过。停止本地预览可执行 `docker compose -f docker/preview.compose.yml -f docker/preview.codeact.compose.yml down`；不要删除共享数据库、Redis 或对象存储卷。

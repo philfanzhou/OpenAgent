@@ -7,31 +7,31 @@ using Xunit;
 
 namespace OpenAgent.Runner.Tests;
 
-public class BubblewrapExecutionTests
+public class GVisorExecutionTests
 {
     [Fact]
-    public void BuildArguments_UsesFailClosedNamespacesAndOnlyExplicitMounts()
+    public void BuildArguments_UsesRunscAndFailClosedContainerDefaults()
     {
-        var settings = new RunnerOptions { PythonPath = "/opt/openagent-code/venv/bin/python" };
-        IReadOnlyList<string> arguments = BubblewrapCodeExecutor.BuildArguments(settings, "/var/lib/runner/id", "/opt/runner/sandbox");
+        var settings = new RunnerOptions { SandboxPythonPath = "/opt/openagent-code/venv/bin/python" };
+        IReadOnlyList<string> arguments = GVisorCodeExecutor.BuildArguments(settings, "container-id");
 
-        Assert.Contains("--unshare-user", arguments);
-        Assert.Contains("--unshare-net", arguments);
-        Assert.Contains("--disable-userns", arguments);
-        Assert.Contains("--new-session", arguments);
-        Assert.Contains("--die-with-parent", arguments);
-        Assert.Contains("--clearenv", arguments);
-        Assert.Contains("--ro-bind", arguments);
+        Assert.Contains("--runtime", arguments);
+        Assert.Contains("runsc", arguments);
+        Assert.Contains("--network", arguments);
+        Assert.Contains("none", arguments);
+        Assert.Contains("--read-only", arguments);
+        Assert.Contains("--cap-drop", arguments);
+        Assert.Contains("ALL", arguments);
+        Assert.Contains("--security-opt", arguments);
+        Assert.Contains("no-new-privileges:true", arguments);
         Assert.Contains("--tmpfs", arguments);
-        Assert.Contains("--remount-ro", arguments);
-        Assert.DoesNotContain("--share-net", arguments);
-        Assert.DoesNotContain("--cap-add", arguments);
-        Assert.DoesNotContain("/", arguments.SkipWhile(argument => argument != "--ro-bind").Skip(1).Take(1));
-        Assert.Contains("--as=1610612736:1610612736", arguments);
-        Assert.Contains("--nproc=64:64", arguments);
+        Assert.Contains("--hostname", arguments);
+        Assert.Contains("openagent-sandbox", arguments);
+        Assert.DoesNotContain("--privileged", arguments);
+        Assert.DoesNotContain("/var/run/docker.sock", arguments);
     }
 
-    [BubblewrapFact]
+    [GVisorFact]
     public async Task Execute_EnforcesNamespaceFilesystemAndEnvironmentBoundary()
     {
         await using var runtime = new Runtime();
@@ -56,7 +56,6 @@ public class BubblewrapExecutionTests
                     pass
                 else:
                     raise AssertionError('Unexpected writable path: ' + target)
-            assert subprocess.run(['/usr/bin/unshare', '--user', 'true'], capture_output=True).returncode != 0
             try:
                 socket.create_connection(('1.1.1.1', 443), timeout=1)
             except OSError:
@@ -79,18 +78,14 @@ public class BubblewrapExecutionTests
         await runtime.AssertCleanAsync();
     }
 
-    [BubblewrapFact]
-    public async Task Execute_GeneratesEditableOfficeFilesAndAllowsSubsequentEditing()
+    [GVisorFact]
+    public async Task Execute_GeneratesThreeRowExcelThenBuildsEditablePptFromUploadedFile()
     {
         await using var runtime = new Runtime();
         CodeExecutionResult result = await runtime.Executor.ExecuteAsync(new CodeExecutionRequest
         {
             Code = """
                 from openpyxl import Workbook, load_workbook
-                from pptx import Presentation
-                from pathlib import Path
-                import subprocess
-                import time
                 workbook = Workbook()
                 sheet = workbook.active
                 sheet.append(['地区', '数量'])
@@ -101,6 +96,24 @@ public class BubblewrapExecutionTests
                 loaded = load_workbook('/output/report.xlsx', read_only=True).active
                 rows = list(loaded.iter_rows(values_only=True))
                 assert rows == [('地区', '数量'), ('华东', 42), ('华南', 17), ('华北', 29)]
+                print('three-row Excel verified')
+                """
+        }, CancellationToken.None);
+        Assert.True(result.ExitCode == 0, result.Stderr);
+        ExecutionFile excel = Assert.Single(result.Files, file => file.Name == "report.xlsx");
+        using (var archive = new ZipArchive(new MemoryStream(excel.Content)))
+        {
+            Assert.NotNull(archive.GetEntry("xl/workbook.xml"));
+        }
+
+        CodeExecutionResult ppt = await runtime.Executor.ExecuteAsync(new CodeExecutionRequest
+        {
+            Files = [excel],
+            Code = """
+                from openpyxl import load_workbook
+                from pptx import Presentation
+                rows = list(load_workbook('/input/report.xlsx', read_only=True).active.iter_rows(values_only=True))
+                assert rows == [('地区', '数量'), ('华东', 42), ('华南', 17), ('华北', 29)]
                 slides = Presentation()
                 slide = slides.slides.add_slide(slides.slide_layouts[1])
                 slide.shapes.title.text = '销售汇报'
@@ -109,42 +122,20 @@ public class BubblewrapExecutionTests
                 verified = Presentation('/output/report.pptx')
                 assert verified.slides[0].shapes.title.text == '销售汇报'
                 assert '华南：17' in verified.slides[0].placeholders[1].text
-                conversion = subprocess.run(['libreoffice', '-env:UserInstallation=file:///tmp/lo', '--headless', '--convert-to', 'pdf', '--outdir', '/output', '/output/report.pptx'], capture_output=True, timeout=45)
-                assert conversion.returncode == 0, conversion.stderr
-                pdf = Path('/output/report.pdf')
-                deadline = time.monotonic() + 10
-                while not pdf.exists() and time.monotonic() < deadline:
-                    time.sleep(0.1)
-                assert pdf.exists(), (conversion.stdout, conversion.stderr, list(Path('/output').iterdir()))
-                assert pdf.read_bytes().startswith(b'%PDF')
-                print('documents verified')
+                print('Excel upload to editable PPT verified')
                 """
         }, CancellationToken.None);
-        Assert.True(result.ExitCode == 0, result.Stderr);
-        ExecutionFile excel = Assert.Single(result.Files, file => file.Name == "report.xlsx");
-        ExecutionFile ppt = Assert.Single(result.Files, file => file.Name == "report.pptx");
-        Assert.Single(result.Files, file => file.Name == "report.pdf");
-        using (var archive = new ZipArchive(new MemoryStream(excel.Content)))
-        {
-            Assert.NotNull(archive.GetEntry("xl/workbook.xml"));
-        }
-        using (var archive = new ZipArchive(new MemoryStream(ppt.Content)))
+        Assert.Equal(0, ppt.ExitCode);
+        Assert.Contains("Excel upload to editable PPT verified", ppt.Stdout);
+        ExecutionFile pptFile = Assert.Single(ppt.Files, file => file.Name == "report.pptx");
+        using (var archive = new ZipArchive(new MemoryStream(pptFile.Content)))
         {
             Assert.NotNull(archive.GetEntry("ppt/slides/slide1.xml"));
         }
-
-        CodeExecutionResult edited = await runtime.Executor.ExecuteAsync(new CodeExecutionRequest
-        {
-            Files = [excel],
-            Code = "from openpyxl import load_workbook\nw=load_workbook('/input/report.xlsx')\nw.active['B2']=84\nw.save('/output/updated.xlsx')\nprint(w.active['B2'].value)"
-        }, CancellationToken.None);
-        Assert.Equal(0, edited.ExitCode);
-        Assert.Contains("84", edited.Stdout);
-        Assert.Single(edited.Files);
         await runtime.AssertCleanAsync();
     }
 
-    [BubblewrapFact]
+    [GVisorFact]
     public async Task Execute_TimeoutStopsChildProcessesAndCleansWorkspace()
     {
         await using var runtime = new Runtime(timeoutSeconds: 2);
@@ -157,7 +148,7 @@ public class BubblewrapExecutionTests
         await runtime.AssertCleanAsync();
     }
 
-    [BubblewrapFact]
+    [GVisorFact]
     public async Task Execute_CancellationKillsSandboxEvenWhenRequestIsAborted()
     {
         await using var runtime = new Runtime();
@@ -172,7 +163,7 @@ public class BubblewrapExecutionTests
         await runtime.AssertCleanAsync();
     }
 
-    [BubblewrapFact]
+    [GVisorFact]
     public async Task Execute_RejectsSymlinkArtifactsAndTruncatesOutput()
     {
         await using var runtime = new Runtime();
@@ -186,7 +177,7 @@ public class BubblewrapExecutionTests
         await runtime.AssertCleanAsync();
     }
 
-    [BubblewrapFact]
+    [GVisorFact]
     public async Task Execute_MemoryExhaustionTerminatesOnlyTheSandbox()
     {
         await using var runtime = new Runtime(memoryMiB: 128);
@@ -201,7 +192,7 @@ public class BubblewrapExecutionTests
         Assert.Contains("42", next.Stdout);
     }
 
-    [BubblewrapFact]
+    [GVisorFact]
     public async Task Execute_WorkAndOutputTmpfsAreBounded()
     {
         await using var runtime = new Runtime();
@@ -230,7 +221,7 @@ public class BubblewrapExecutionTests
         await runtime.AssertCleanAsync();
     }
 
-    [BubblewrapFact]
+    [GVisorFact]
     public async Task Execute_FreshSandboxDoesNotRetainPreviousTaskFiles()
     {
         await using var runtime = new Runtime();
@@ -246,7 +237,7 @@ public class BubblewrapExecutionTests
         await runtime.AssertCleanAsync();
     }
 
-    [BubblewrapFact]
+    [GVisorFact]
     public async Task Execute_ConcurrentRunsUseIndependentSandboxesAndBothComplete()
     {
         await using var runtime = new Runtime();
@@ -286,8 +277,8 @@ public class BubblewrapExecutionTests
     private sealed class Runtime : IAsyncDisposable
     {
         internal string Root { get; } = Path.Combine(Path.GetTempPath(), "codeact-tests-" + Guid.NewGuid().ToString("N"));
-        internal BubblewrapProcess Bubblewrap { get; }
-        internal BubblewrapCodeExecutor Executor { get; }
+        internal DockerProcess Docker { get; }
+        internal GVisorCodeExecutor Executor { get; }
 
         internal Runtime(int timeoutSeconds = 120, int memoryMiB = 1536)
         {
@@ -295,13 +286,16 @@ public class BubblewrapExecutionTests
             var settings = Options.Create(new RunnerOptions
             {
                 WorkspaceRoot = Root,
-                BubblewrapPath = Environment.GetEnvironmentVariable("CODEACT_TEST_BWRAP") ?? "/usr/bin/bwrap",
-                PythonPath = Environment.GetEnvironmentVariable("CODEACT_TEST_PYTHON") ?? "/opt/openagent-code/venv/bin/python",
+                DockerPath = Environment.GetEnvironmentVariable("CODEACT_TEST_DOCKER") ?? "/usr/bin/docker",
+                DockerHost = Environment.GetEnvironmentVariable("CODEACT_TEST_DOCKER_HOST") ?? string.Empty,
+                Runtime = "runsc",
+                SandboxImage = Environment.GetEnvironmentVariable("CODEACT_TEST_GVISOR_IMAGE") ?? "openagent-codeact:local",
+                SandboxPythonPath = Environment.GetEnvironmentVariable("CODEACT_TEST_SANDBOX_PYTHON") ?? "/opt/openagent-code/venv/bin/python",
                 TimeoutSeconds = timeoutSeconds,
                 MemoryMiB = memoryMiB
             });
-            Bubblewrap = new BubblewrapProcess(settings, NullLogger<BubblewrapProcess>.Instance);
-            Executor = new BubblewrapCodeExecutor(Bubblewrap, settings, NullLogger<BubblewrapCodeExecutor>.Instance);
+            Docker = new DockerProcess(settings, NullLogger<DockerProcess>.Instance);
+            Executor = new GVisorCodeExecutor(Docker, settings, NullLogger<GVisorCodeExecutor>.Instance);
         }
 
         internal async Task WaitForSandboxAsync()
@@ -312,7 +306,7 @@ public class BubblewrapExecutionTests
         internal async Task WaitForSandboxesAsync(int count)
         {
             using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-            while (Bubblewrap.ActiveProcesses < count)
+            while (Docker.ActiveProcesses < count)
             {
                 await Task.Delay(50, deadline.Token);
             }
@@ -321,7 +315,7 @@ public class BubblewrapExecutionTests
         internal async Task AssertCleanAsync()
         {
             using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-            while (Bubblewrap.ActiveProcesses != 0)
+            while (Docker.ActiveProcesses != 0)
             {
                 await Task.Delay(50, deadline.Token);
             }

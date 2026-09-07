@@ -13,13 +13,14 @@ WORKDIR /app
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        bubblewrap \
+        docker.io \
         ca-certificates \
         curl \
         fonts-noto-cjk \
         libreoffice-calc \
         libreoffice-impress \
         python3 \
+        python-is-python3 \
         python3-pip \
         python3-venv \
         util-linux \
@@ -29,6 +30,7 @@ RUN groupadd --system --gid 65532 openagent-runner \
     && useradd --system --uid 65532 --gid 65532 \
         --home-dir /var/lib/openagent-runner --no-create-home \
         --shell /usr/sbin/nologin openagent-runner \
+    && install -d -m 0777 /input /work /output /tmp /run \
     && install -d -o 65532 -g 65532 -m 0700 /var/lib/openagent-runner/workspaces \
     && python3 -m venv /opt/openagent-code/venv
 
@@ -43,8 +45,10 @@ RUN chown -R root:root /app /opt/openagent-code \
     && chmod -R go-w /app /opt/openagent-code
 
 ENV ASPNETCORE_URLS=http://+:5088 \
-    Runner__BubblewrapPath=/usr/bin/bwrap \
-    Runner__PythonPath=/opt/openagent-code/venv/bin/python \
+    Runner__DockerPath=/usr/bin/docker \
+    Runner__Runtime=runsc \
+    Runner__SandboxImage=openagent-codeact:local \
+    Runner__SandboxPythonPath=/opt/openagent-code/venv/bin/python \
     Runner__WorkspaceRoot=/var/lib/openagent-runner/workspaces
 
 USER 65532:65532

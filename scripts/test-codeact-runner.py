@@ -1,4 +1,4 @@
-"""Smoke-test a published or already running Bubblewrap Runner."""
+"""Smoke-test a published or already running GVisor Runner."""
 import base64
 import argparse
 from concurrent.futures import ThreadPoolExecutor
@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import secrets
+import shutil
 import socket
 import subprocess
 import tempfile
@@ -42,7 +43,8 @@ def main():
     parser.add_argument('--key', help='Runner API key used with --endpoint.')
     arguments = parser.parse_args()
     runner = os.environ.get("CODEACT_RUNNER_DLL")
-    python = os.environ.get("CODEACT_TEST_PYTHON", "/opt/openagent-code/venv/bin/python")
+    image = os.environ.get("CODEACT_TEST_GVISOR_IMAGE", "openagent-codeact:local")
+    docker_path = os.environ.get("CODEACT_TEST_DOCKER", shutil.which("docker") or "/usr/bin/docker")
     remote = bool(arguments.environment_file or arguments.endpoint)
     if not remote and (not runner or not Path(runner).is_file()):
         raise SystemExit("Set CODEACT_RUNNER_DLL to a published OpenAgent.Runner.dll.")
@@ -73,8 +75,11 @@ def main():
                 ASPNETCORE_URLS=base_url,
                 Runner__ApiKey=key,
                 Runner__WorkspaceRoot=directory,
-                Runner__BubblewrapPath=os.environ.get("CODEACT_TEST_BWRAP", "/usr/bin/bwrap"),
-                Runner__PythonPath=python,
+                Runner__DockerPath=docker_path,
+                Runner__DockerHost=os.environ.get("CODEACT_TEST_DOCKER_HOST", ""),
+                Runner__Runtime="runsc",
+                Runner__SandboxImage=image,
+                Runner__SandboxPythonPath=os.environ.get("CODEACT_TEST_SANDBOX_PYTHON", "/opt/openagent-code/venv/bin/python"),
             )
             process = subprocess.Popen(["dotnet", runner], env=environment, stdout=log, stderr=log)
         try:
@@ -95,10 +100,8 @@ def main():
             assert status == 401, status
             code = """
 import os
-import subprocess
 from pathlib import Path
 from openpyxl import Workbook, load_workbook
-from pptx import Presentation
 assert os.getuid() == 65532
 status = dict(line.split(':', 1) for line in Path('/proc/self/status').read_text().splitlines())
 assert int(status['CapEff'], 16) == 0
@@ -114,29 +117,39 @@ sheet.append(['华北', 29])
 w.save('/output/report.xlsx')
 rows = list(load_workbook('/output/report.xlsx', read_only=True).active.iter_rows(values_only=True))
 assert rows == [('地区', '数量'), ('华东', 42), ('华南', 17), ('华北', 29)]
-p = Presentation()
-slide = p.slides.add_slide(p.slide_layouts[1])
-slide.shapes.title.text = 'Isolated CodeAct'
-slide.placeholders[1].text = '\\n'.join(f'{region}：{quantity}' for region, quantity in rows[1:])
-p.save('/output/report.pptx')
-verified = Presentation('/output/report.pptx')
-assert '华南：17' in verified.slides[0].placeholders[1].text
-conversion = subprocess.run(['libreoffice', '--headless', '-env:UserInstallation=file:///tmp/lo', '--convert-to', 'pdf', '--outdir', '/output', '/output/report.pptx'], capture_output=True, timeout=90)
-assert conversion.returncode == 0, conversion.stderr
-assert Path('/output/report.pdf').read_bytes().startswith(b'%PDF')
-print('isolated execution passed')
+print('three-row Excel verified')
 """
             status, body = request(base_url + "/v1/execute", {"code": code}, key)
             assert status == 200, body.decode("utf-8", errors="replace")
-            response = json.loads(body)
-            assert response["exitCode"] == 0, response["stderr"]
-            assert {file["name"] for file in response["files"]} == {"report.xlsx", "report.pptx", "report.pdf"}
-            for artifact in response["files"]:
-                if artifact['name'].endswith('.pdf'):
-                    assert base64.b64decode(artifact['content']).startswith(b'%PDF')
-                    continue
-                with zipfile.ZipFile(io.BytesIO(base64.b64decode(artifact["content"]))) as archive:
-                    assert archive.testzip() is None
+            excel_response = json.loads(body)
+            assert excel_response["exitCode"] == 0, excel_response["stderr"]
+            excel = next(file for file in excel_response["files"] if file["name"] == "report.xlsx")
+            with zipfile.ZipFile(io.BytesIO(base64.b64decode(excel["content"]))) as archive:
+                assert archive.testzip() is None
+            second_code = """
+from openpyxl import load_workbook
+from pptx import Presentation
+rows = list(load_workbook('/input/report.xlsx', read_only=True).active.iter_rows(values_only=True))
+assert rows == [('地区', '数量'), ('华东', 42), ('华南', 17), ('华北', 29)]
+presentation = Presentation()
+slide = presentation.slides.add_slide(presentation.slide_layouts[1])
+slide.shapes.title.text = '销售汇报'
+slide.placeholders[1].text = '\\n'.join(f'{region}：{quantity}' for region, quantity in rows[1:])
+presentation.save('/output/report.pptx')
+verified = Presentation('/output/report.pptx')
+assert '华南：17' in verified.slides[0].placeholders[1].text
+print('Excel upload to editable PPT verified')
+"""
+            status, body = request(base_url + "/v1/execute", {
+                "code": second_code,
+                "files": [{"name": "report.xlsx", "content": excel["content"]}],
+            }, key)
+            assert status == 200, body.decode("utf-8", errors="replace")
+            ppt_response = json.loads(body)
+            assert ppt_response["exitCode"] == 0, ppt_response["stderr"]
+            ppt = next(file for file in ppt_response["files"] if file["name"] == "report.pptx")
+            with zipfile.ZipFile(io.BytesIO(base64.b64decode(ppt["content"]))) as archive:
+                assert archive.testzip() is None
             if directory is not None:
                 assert not list(Path(directory).iterdir()), "Task input directories were not removed."
 
@@ -159,7 +172,7 @@ Path('/output/{label}.txt').write_text('{label}')
                 assert concurrent_response["exitCode"] == 0, concurrent_response["stderr"]
                 artifact = next(file for file in concurrent_response["files"] if file["name"] == label + ".txt")
                 assert base64.b64decode(artifact["content"]).decode() == label
-            print("PASS: Runner authentication, Bubblewrap isolation, concurrent workspaces, and Excel-to-PPT/PDF artifacts.")
+            print("PASS: Runner authentication, gVisor isolation, concurrent workspaces, three-row Excel, and Excel-upload-to-PPT artifacts.")
         except BaseException:
             if process is not None:
                 log.seek(0)

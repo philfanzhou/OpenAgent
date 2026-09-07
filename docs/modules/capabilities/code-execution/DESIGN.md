@@ -1,75 +1,54 @@
-# CodeAct 与 Bubblewrap 隔离执行
+# CodeAct 与 gVisor 隔离执行
 
 ## 范围
 
-Engine 通过 MAF `AIFunction` 暴露 `execute_code`。模型生成 Python，读取执行结果，并在原有 MAF 工具循环中修正代码。沙箱运行时支持 PPT、Excel、图表和 PDF 生成。
+Engine 通过 MAF `AIFunction` 暴露 `execute_code`。模型生成 Python，读取执行结果，并在原有 MAF 工具循环中修正代码。沙箱预装 Office Python 依赖，可生成并重新打开 Excel、PPT 和 PDF。
 
-本实现使用独立 Runner 和 Bubblewrap；Runner 可以原生运行在 Linux 主机，也可以作为单独 Docker 容器部署，不依赖宿主机 Docker daemon、containerd、KVM 或 Hyperlight，也没有添加第二套 Agent 循环。Bubblewrap 是低层沙箱构造器，隔离强度取决于调用参数，因此参数由 Runner 固定生成，模型和请求均不能覆盖。Docker 部署需要额外的 namespace 运行时权限，边界与原生 systemd 不等价，详见 [Runner 部署说明](../../../integrations/code-runner.md)。
+隔离执行由独立 Runner 控制面负责。Runner 为每个请求创建一次性 Docker 容器，并固定使用 `runsc` runtime。请求不能选择 runtime、镜像、挂载、网络或资源参数；Runner 发现 gVisor runtime、沙箱镜像或 Docker daemon 不可用时会失败，不会回退到宿主 Python 或 runc。
 
 ## 调用链
 
 ```text
 AgentExecutor → AgentFactory → CapabilityToolFactory → execute_code
   → RunnerClient → authenticated Runner /v1/execute
-    → BubblewrapCodeExecutor → bwrap process sandbox → restricted Python
+    → GVisorCodeExecutor → docker create --runtime=runsc
+      → one-shot Office Python container
   ← bounded logs + binary artifacts
   → FileAssetService.UploadAsync / EnsureReferencesAsync
-  → model selects publish_files → assistant attachments
+  → model calls publish_files → assistant attachments
 ```
 
 实现入口：
 
 - `Backend/src/OpenAgent.Core/Capabilities/Code/CodeCapabilitySource.cs`
-- `Backend/src/OpenAgent.Runner/BubblewrapCodeExecutor.cs`
+- `Backend/src/OpenAgent.Runner/GVisorCodeExecutor.cs`
+- `Backend/src/OpenAgent.Runner/DockerProcess.cs`
 - `Backend/src/OpenAgent.Runner/sandbox/execute.py`
 
-必须同时启用 Engine `CodeExecution:Enabled` 与 Agent `config.codeExecution.enabled`。发现和执行工具均经过平台授权。Runner 的运行时、配额和宿主目录只接受管理员配置，不是模型参数。
+Engine `CodeExecution:Enabled` 和 Agent `config.codeExecution.enabled` 必须同时为 `true`。发现和执行工具都经过服务端授权。Runner runtime、镜像、Docker endpoint 和配额属于部署配置，不能由模型传入。
 
-## 工具契约
+## 工具和文件资产
 
-`execute_code(code, inputFiles?)` 的每个输入项为 `{fileId, name}`，文件在沙箱中位于 `/input/<name>`。输入必须属于当前租户、当前用户并已被当前会话引用。不可传对象存储键、宿主路径、环境变量或任意 Bubblewrap 参数。`main.py` 为保留名。
+`execute_code(code, inputFiles?)` 的输入项为 `{fileId, name}`。Engine 只读取当前租户、当前用户且已由当前会话引用的 `FileAsset`，然后以只读语义复制到容器 `/input/<name>`。`main.py` 是保留名。
 
-返回 `executionId`、`exitCode`、`timedOut`、`stdout`、`stderr` 和文件元数据数组。成功文件登记为当前用户的 FileAsset，并关联当前会话；只有模型调用 `publish_files` 后才发布到 assistant 消息。二进制字节只在 Runner 与 Engine 之间传输，不进入模型上下文。
+沙箱包装脚本将 `/output` 中的普通文件编码到有大小上限的 JSON。Engine 校验文件名、扩展名、数量、字节数和日志后，把产物登记为当前会话的 Agent `FileAsset`。二进制内容不会进入模型上下文，只有模型调用 `publish_files` 后才出现在 assistant 消息中。下一次编辑必须显式传入上一次返回的 `fileId`。
 
-每次调用创建全新的 namespace、tmpfs 工作区和 Python 进程。`/work` 保存临时工作，`/output` 保存交付文件；沙箱退出前由可信包装脚本验证并编码输出。继续修改文件时，显式将前次返回的 fileId 作为新调用输入。任务间不保留变量、后台进程或可写磁盘。输出只接受普通文件，拒绝符号链接、目录、特殊文件及危险名称。
+## gVisor 边界
 
-## 隔离边界
+每次容器固定启用：
 
-每次执行固定启用：
+- Docker `--runtime runsc`、`--network none`、只读根文件系统和非 root UID/GID 65532。
+- `--cap-drop ALL`、`no-new-privileges`、PID/内存/CPU/文件大小/打开文件限制。
+- 仅有临时的 `/input`、`/work`、`/output`、`/tmp` 和 `/run` tmpfs。不会挂载宿主源码、home、凭据、设备、D-Bus 或 Docker Socket。
+- 镜像内固定 Python venv、LibreOffice 和 Office 库。容器不继承 Runner 的环境变量，不允许安装包或访问互联网。
+- Runner 和 Docker CLI 同时校验响应上限，并在请求结束后删除容器和暂存目录。
 
-- 独立 user、PID、IPC、network、UTS namespace；cgroup namespace 在内核支持时启用。
-- 沙箱 UID/GID 为 65532；Bubblewrap 的非特权模式默认不向沙箱进程保留 capabilities；同时禁止继续创建 user namespace，并创建新会话。
-- 根文件系统从空 tmpfs 构造并整体重挂为只读，只读暴露 `/usr`、固定 Python venv、最小 passwd/group 和字体配置。
-- 当前请求输入只读挂载到 `/input`；`/work`、`/output`、`/tmp` 使用独立、限额、退出即销毁的 tmpfs。
-- 不挂载宿主 home、源码、服务配置、凭据、设备、Docker Socket、D-Bus socket 或网络。
-- `--clearenv` 后只注入固定的 Python/locale/时限变量。
-- `prlimit` 限制地址空间、CPU 时间、进程数、打开文件数、单文件大小和 core dump；Runner 并发及 systemd cgroup 再限制节点总量。
-- 无宿主 Python 回退；Bubblewrap、user namespace 或 Python venv 不可用时健康检查和执行均失败。
+Runner 本身是可信控制面，连接 Docker daemon 的权限不能授予不可信代码。共享部署应为 Runner 配置专用 rootless Docker daemon 的 socket；本地 Compose 示例默认挂载 Docker socket，仅用于专用开发环境，不能与不可信服务共用。
 
-Runner 控制服务属于可信控制面，只允许 Engine 经私网和服务令牌访问，并使用无登录、无 sudo、无 capabilities 的专用用户。systemd 进一步只开放工作目录写权限。
+gVisor 仍运行在 Linux 主机内核之上，不能等同于 MicroVM，也不能抵御宿主内核或 Docker daemon 的失陷。公开多租户部署应将 Runner 放在专用 VM 或进一步采用 MicroVM 后端。
 
-Bubblewrap 与 Docker 一样共享宿主 Linux 内核，不能视为抵御未知内核漏洞的 MicroVM 强边界。它适合受控用户或中等信任的代码执行；若要承载公开、恶意、多租户代码，应把 Runner 节点放进独立 VM，或改用 MicroVM 后端。
+## 验收
 
-沙箱返回的 JSON 同样是不可信输出，Runner 和 Engine 都校验协议大小、文件数量、文件名和字节限额。不能把脚本自行打印的“校验通过”当成隔离证明；集成测试必须检查实际 namespace、挂载、网络、环境和资源限制行为。
+Linux 主机必须先注册 gVisor 的 `runsc` runtime 并构建固定镜像。真实 Runner 测试覆盖认证、文件输入、环境清理、无网络、只读根、并发隔离、超时清理，以及三行 Excel 生成和 Excel → PPT/PDF 生成。MAF 测试再覆盖错误反馈、授权文件读取、产物登记、按 fileId 编辑和 `publish_files`。
 
-## 超时、取消与故障
-
-沙箱包装脚本限制 Python 子进程墙钟时间，Runner 另有外部总截止时间。请求取消或外部截止时间到达时，Runner 终止 bwrap 进程树；`--die-with-parent` 确保 Runner 异常退出时沙箱同时退出。mount namespace 和 tmpfs 由内核自动清理，后台回收器只删除 Runner 崩溃遗留且超过一小时的请求输入目录。
-
-Engine 每请求默认最多执行 8 次代码，MAF 的 MaxTurns 继续约束模型循环。普通脚本错误通过 stderr 返回供模型修正。网络错误、Runner 不可用、超时和取消不会降级为宿主执行。
-
-Runner 请求目前与聊天请求共同存活；不提供断线后继续运行、进程重启后的 Agent 恢复或跨节点调度。
-
-## 文档能力
-
-固定 Python venv 安装 python-pptx、openpyxl、XlsxWriter、pandas、matplotlib、Pillow 和 defusedxml；主机只读运行时提供 LibreOffice 和中文字体。支持生成可编辑 Office 文件，也可在沙箱内调用 LibreOffice 渲染 PDF 后交付。
-
-原有 Skill 指令/资源读取保持可用。文件 Skill 的自动脚本 runner 仍保持禁用；本 PR 不把 Skill 脚本、MCP 服务或业务工具迁入沙箱，也不提供 `call_tool` 回调桥接。文档生成应通过 `execute_code` 完成。
-
-## 验证
-
-Core 测试验证双重开关、授权撤销、跨租户/用户文件拒绝、二进制资产归属，以及确定性 MAF 循环在错误后再次调用执行工具。
-
-Runner 的 Linux 真实测试验证 Bubblewrap 参数与实际边界、网络禁用、宿主文件不可见、任务隔离、内存限制、超时/取消清理、符号链接拒绝、输出截断、tmpfs 容量，以及 PPT/Excel 的生成、重新打开、再次编辑和 PPT 转 PDF。CI 显式安装 Bubblewrap 和固定 Python venv；其他平台会明确跳过真实沙箱测试。
-
-CI 随后发布 Runner 进行真实 HTTP 冒烟，并执行部署脚本、启动强化的 systemd 服务再验收。MAF 联测连接该已安装服务，覆盖 Python 错误反馈、授权 CSV 输入、Excel 生成与再次编辑、文件登记和 `publish_files`。模型与文件存储在此联测中使用确定性替身；不将它标记为外部模型与浏览器聊天端到端验证。
+当前前端文件选择器支持 `.xlsx` 和 `.pptx`，并提供两个 CodeAct 示例动作。点击动作只会填入自然语言请求，真正执行仍经过前端聊天流、Engine MAF 工具循环和 gVisor Runner。

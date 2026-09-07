@@ -1,16 +1,20 @@
-# 在现有 engine/router/chat 预览中加入本地 Bubblewrap Runner。
+# 在现有 engine/router/chat 预览中加入本地 GVisor Runner。
 # 用法：
 #   docker compose -f docker/preview.compose.yml -f docker/preview.codeact.compose.yml ...
 #
 # Runner 只用于本地预览，必须使用独立 API key；不要把这个编排用于生产。
 services:
   code-runner:
+    image: ${OPENAGENT_CODEACT_IMAGE:-openagent-codeact:local}
     build:
       context: ..
       dockerfile: docker/codeact/Dockerfile
     environment:
       ASPNETCORE_URLS: http://+:5088
       Runner__ApiKey: ${OPENAGENT_RUNNER_API_KEY:?set OPENAGENT_RUNNER_API_KEY to a random 32+ character secret}
+      Runner__Runtime: runsc
+      Runner__SandboxImage: ${OPENAGENT_CODEACT_IMAGE:-openagent-codeact:local}
+      Runner__DockerHost: ${OPENAGENT_RUNNER_DOCKER_HOST:-}
       Runner__MaxConcurrentExecutions: ${OPENAGENT_RUNNER_MAX_CONCURRENT_EXECUTIONS:-2}
       Runner__TimeoutSeconds: ${OPENAGENT_RUNNER_TIMEOUT_SECONDS:-120}
       Runner__MemoryMiB: ${OPENAGENT_RUNNER_MEMORY_MIB:-1536}
@@ -24,10 +28,12 @@ services:
       - /run:rw,nosuid,nodev,noexec,size=16m
     volumes:
       - preview-code-runner-workspaces:/var/lib/openagent-runner/workspaces
-    privileged: true
+      - ${OPENAGENT_DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
+    cap_drop: [ALL]
     security_opt:
       - no-new-privileges:true
-      - seccomp=unconfined
+    group_add:
+      - ${DOCKER_SOCKET_GID:-0}
     pids_limit: 256
     mem_limit: 2g
     cpus: 2.0

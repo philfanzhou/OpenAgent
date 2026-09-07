@@ -34,7 +34,7 @@ internal sealed class CodeCapabilitySource(
         return Task.FromResult<IReadOnlyList<CapabilityDefinition>>([
             new CapabilityDefinition(
                 "execute_code",
-                "Execute Python in an isolated, non-root Bubblewrap sandbox with no network. "
+                "Execute Python in an isolated, non-root gVisor sandbox with no network. "
                 + "Available libraries: python-pptx, openpyxl, XlsxWriter, pandas, matplotlib, Pillow. "
                 + "Use inputFiles to mount authorized conversation files read-only at /input/<name>; main.py is reserved. "
                 + "Write deliverables directly under /output (up to 8 files, 10 MiB each, 20 MiB total). "
