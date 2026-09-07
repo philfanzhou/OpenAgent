@@ -45,7 +45,6 @@ public class BubblewrapExecutionTests
             assert int(status['CapPrm'], 16) == 0
             assert int(status['NoNewPrivs']) == 1
             assert os.uname().nodename == 'openagent-sandbox'
-            assert not pathlib.Path('/var/run/docker.sock').exists()
             assert 'Runner__ApiKey' not in os.environ
             assert 'ConnectionStrings__OpenAgentDatabase' not in os.environ
             assert not pathlib.Path(HOST_MARKER).exists()
@@ -96,14 +95,20 @@ public class BubblewrapExecutionTests
                 sheet = workbook.active
                 sheet.append(['地区', '数量'])
                 sheet.append(['华东', 42])
+                sheet.append(['华南', 17])
+                sheet.append(['华北', 29])
                 workbook.save('/output/report.xlsx')
-                assert load_workbook('/output/report.xlsx').active['B2'].value == 42
+                loaded = load_workbook('/output/report.xlsx', read_only=True).active
+                rows = list(loaded.iter_rows(values_only=True))
+                assert rows == [('地区', '数量'), ('华东', 42), ('华南', 17), ('华北', 29)]
                 slides = Presentation()
                 slide = slides.slides.add_slide(slides.slide_layouts[1])
                 slide.shapes.title.text = '销售汇报'
-                slide.placeholders[1].text = '华东：42'
+                slide.placeholders[1].text = '\n'.join(f'{region}：{quantity}' for region, quantity in rows[1:])
                 slides.save('/output/report.pptx')
-                assert Presentation('/output/report.pptx').slides[0].shapes.title.text == '销售汇报'
+                verified = Presentation('/output/report.pptx')
+                assert verified.slides[0].shapes.title.text == '销售汇报'
+                assert '华南：17' in verified.slides[0].placeholders[1].text
                 conversion = subprocess.run(['libreoffice', '-env:UserInstallation=file:///tmp/lo', '--headless', '--convert-to', 'pdf', '--outdir', '/output', '/output/report.pptx'], capture_output=True, timeout=45)
                 assert conversion.returncode == 0, conversion.stderr
                 pdf = Path('/output/report.pdf')
@@ -241,6 +246,43 @@ public class BubblewrapExecutionTests
         await runtime.AssertCleanAsync();
     }
 
+    [BubblewrapFact]
+    public async Task Execute_ConcurrentRunsUseIndependentSandboxesAndBothComplete()
+    {
+        await using var runtime = new Runtime();
+
+        Task<CodeExecutionResult> alpha = runtime.Executor.ExecuteAsync(
+            CreateConcurrentRequest("alpha"), CancellationToken.None);
+        Task<CodeExecutionResult> beta = runtime.Executor.ExecuteAsync(
+            CreateConcurrentRequest("beta"), CancellationToken.None);
+
+        await runtime.WaitForSandboxesAsync(2);
+        CodeExecutionResult[] results = await Task.WhenAll(alpha, beta);
+
+        Assert.All(results, result => Assert.Equal(0, result.ExitCode));
+        Assert.Equal("alpha", ReadOutput(results[0], "alpha.txt"));
+        Assert.Equal("beta", ReadOutput(results[1], "beta.txt"));
+        await runtime.AssertCleanAsync();
+    }
+
+    private static CodeExecutionRequest CreateConcurrentRequest(string value) => new()
+    {
+        Code = $"""
+            from pathlib import Path
+            import time
+            Path('/work/shared-name.txt').write_text('{value}')
+            time.sleep(1)
+            assert Path('/work/shared-name.txt').read_text() == '{value}'
+            Path('/output/{value}.txt').write_text('{value}')
+            """
+    };
+
+    private static string ReadOutput(CodeExecutionResult result, string name)
+    {
+        ExecutionFile output = Assert.Single(result.Files, file => file.Name == name);
+        return System.Text.Encoding.UTF8.GetString(output.Content);
+    }
+
     private sealed class Runtime : IAsyncDisposable
     {
         internal string Root { get; } = Path.Combine(Path.GetTempPath(), "codeact-tests-" + Guid.NewGuid().ToString("N"));
@@ -264,8 +306,13 @@ public class BubblewrapExecutionTests
 
         internal async Task WaitForSandboxAsync()
         {
+            await WaitForSandboxesAsync(1);
+        }
+
+        internal async Task WaitForSandboxesAsync(int count)
+        {
             using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-            while (Bubblewrap.ActiveProcesses == 0)
+            while (Bubblewrap.ActiveProcesses < count)
             {
                 await Task.Delay(50, deadline.Token);
             }

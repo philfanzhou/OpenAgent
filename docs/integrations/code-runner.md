@@ -1,6 +1,6 @@
 # Bubblewrap 代码 Runner 部署
 
-架构、工具参数和安全边界见 [CodeAct 设计](../modules/capabilities/code-execution/DESIGN.md)。Runner 直接运行在 Linux 主机上，不需要 Docker、containerd、KVM 或虚拟机镜像。
+架构、工具参数和安全边界见 [CodeAct 设计](../modules/capabilities/code-execution/DESIGN.md)。Runner 默认直接运行在 Linux 主机上，也提供单独的 Docker 部署文件；两种方式都由 Runner 为每次请求启动新的 Bubblewrap namespace，不依赖宿主机 Docker daemon。
 
 ## 支持环境
 
@@ -84,6 +84,30 @@ python3 scripts/test-codeact-runner.py
 
 # 对正式安装的 systemd 服务执行同样的鉴权、Office/PDF 与清理验收
 sudo python3 scripts/test-codeact-runner.py --environment-file /etc/openagent-runner.env
+```
+
+## 单独 Docker 容器部署
+
+如果部署环境只能提供应用容器，可以使用 `docker-compose.codeact.yml` 单独构建 Runner。它包含固定的 .NET Runner、Bubblewrap、Python Office 依赖、LibreOffice 和中文字体，不挂载 Docker Socket；Engine 与 Runner 通过外部 `openagent-infrastructure` 网络通信：
+
+```bash
+export OPENAGENT_RUNNER_API_KEY="$(openssl rand -hex 32)"
+docker compose -f docker-compose.codeact.yml up -d --build code-runner
+docker compose -f docker-compose.codeact.yml ps
+```
+
+Engine 在同一 Docker 网络中使用 `http://code-runner:5088` 作为 `CodeExecution__Endpoint`。Compose 默认只把 Runner 的 5088 端口发布到宿主机 `127.0.0.1`，用于本地验收；生产 Engine 应使用容器网络地址，不应把 Runner 暴露到公网。
+
+当前 Compose 配置显式使用 `privileged` 与 `seccomp=unconfined`，因为目标 Docker Desktop/Linux runtime 的默认 seccomp/user namespace 边界会阻止 Bubblewrap 挂载隔离后的 `/proc`。这不是与原生 systemd 等价的最小权限配置：该容器必须是专用 Runner 容器，并部署在专用节点或 VM，不能与不可信服务共用。若平台禁止这两个运行时权限，应采用本文前面的原生 Linux/systemd 方案或独立 VM；不能通过宿主 Docker Socket 绕过。
+
+容器内的 `read_only` 根文件系统、独立工作卷、2 GiB 内存、2 CPU、256 PID 和 Runner 每请求限制仍然生效；这些是容器总量保护，`Runner__MaxConcurrentExecutions` 才是任务并发闸门。需要更强的每任务硬资源边界时，应由宿主编排器拆分 Worker/VM，而不是复用一个容器内的 Python 进程。
+
+用本地发布端口执行完整验收（包含并发和三行 Excel → PPT/PDF）：
+
+```bash
+python3 scripts/test-codeact-runner.py \
+  --endpoint http://127.0.0.1:5088 \
+  --key "$OPENAGENT_RUNNER_API_KEY"
 ```
 
 真实测试覆盖 user/PID/IPC/UTS/network namespace、嵌套 user namespace 禁用、只读运行时与输入、宿主文件不可见、环境变量清除、tmpfs 容量、内存耗尽、超时/取消、符号链接拒绝、任务间清理，以及 PPT/XLSX/PDF 的生成和再次编辑。
