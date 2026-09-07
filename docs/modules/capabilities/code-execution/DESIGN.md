@@ -4,7 +4,7 @@
 
 Engine 通过 MAF `AIFunction` 暴露 `execute_code`。模型生成 Python，读取执行结果，并在原有 MAF 工具循环中修正代码。沙箱运行时支持 PPT、Excel、图表和 PDF 生成。
 
-本实现使用独立 Runner 和 Bubblewrap；Runner 可以原生运行在 Linux 主机，也可以作为单独 Docker 容器部署，不依赖宿主机 Docker daemon、containerd、KVM 或 Hyperlight，也没有添加第二套 Agent 循环。Bubblewrap 是低层沙箱构造器，隔离强度取决于调用参数，因此参数由 Runner 固定生成，模型和请求均不能覆盖。Docker 部署需要额外的 namespace 运行时权限，边界与原生 systemd 不等价，详见 [Runner 部署说明](../../../integrations/code-runner.md)。
+本实现使用独立 Runner 和 Bubblewrap，原生运行在 Linux 主机，不依赖 Docker daemon、containerd、KVM 或 Hyperlight，也没有添加第二套 Agent 循环。Bubblewrap 的隔离参数由 Runner 固定生成，模型和请求均不能覆盖。安装与 systemd 配置见 [Runner 部署说明](../../../integrations/code-runner.md)。
 
 ## 调用链
 
