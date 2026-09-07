@@ -45,6 +45,7 @@ jobs:
       - name: Install and smoke-test hardened systemd service
         run: |
           sudo --preserve-env=PATH bash deploy/code-runner/install.sh "$GITHUB_WORKSPACE"
+          sudo -u openagent-runner bash scripts/check-codeact-permissions.sh --host
           sudo python3 scripts/test-codeact-runner.py --environment-file /etc/openagent-runner.env
       - name: Test MAF through installed Runner and artifact publication
         run: |

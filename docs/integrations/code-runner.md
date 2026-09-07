@@ -70,6 +70,23 @@ unit 不启用 `ProtectKernelTunables` / `ProtectKernelLogs` 的 procfs 遮蔽�
 
 ## 验证与故障定位
 
+安装前可单独拷贝 `scripts/check-codeact-permissions.sh` 到离线服务器，使用预定的非 root Runner 用户执行：
+
+```bash
+bash check-codeact-permissions.sh --host
+# 若专用用户已存在：
+sudo -u openagent-runner bash /可读取路径/check-codeact-permissions.sh --host
+
+# 仅测试已导入的本地镜像；不拉取镜像，不挂载宿主目录或 Docker Socket
+sudo bash check-codeact-permissions.sh --image <本地镜像名:标签>
+# 检查已运行容器的实际配置及默认用户
+sudo bash check-codeact-permissions.sh --container <容器名>
+```
+
+宿主模式要求已安装 Bash、Bubblewrap、coreutils 和 util-linux；缺少依赖时只能报告未验证。镜像模式使用非 root UID/GID 65532、只读根、无 capabilities、`no-new-privileges` 和 Docker 默认 seccomp。容器模式使用现有容器配置，输出是否 privileged；在特权容器中通过不代表普通容器也可运行。脚本不安装依赖、不改系统策略，测试临时文件退出时清理。
+
+退出码：`0` 为基础权限探针通过，`1` 为探针失败，`2` 为依赖或访问条件缺失，`3` 为非 Linux/root 等不适用环境；Docker 自身启动错误也会以非零退出码返回。探针验证 namespace、procfs、只读输入/根目录、可写 tmpfs 和 prlimit 启动，不验证全部 Runner 挂载路径、Python/Office 依赖、资源耗尽或 HTTP 文件发布。宿主模式通过也不能证明 systemd 或 Docker 的额外策略兼容，部署后仍需执行下面的真实服务验收。
+
 在已安装依赖的 Linux 主机运行真实隔离测试：
 
 ```bash
