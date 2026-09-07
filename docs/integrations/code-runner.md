@@ -70,6 +70,8 @@ unit 不启用 `ProtectKernelTunables` / `ProtectKernelLogs` 的 procfs 遮蔽�
 
 ## 验证与故障定位
 
+仅需判断旧版 Bubblewrap（例如 EL8 上的 0.4.0）能否执行基础代码时，可单独拷贝 `scripts/test-bubblewrap-basic.sh`，以普通用户执行 `sh test-bubblewrap-basic.sh`。脚本只使用 0.4.0 已有参数，实际执行 shell 算术和系统 Python（存在时），验证只读输入、输出文件往返、独立 namespace 及基础权限。它不替代下面的 PR80 严格探针：基础测试通过不能证明嵌套 user namespace 禁用、资源限额、Office 依赖及完整 Runner 可用。没有 Python 时明确输出 SKIP，shell 通过仍返回 0；依赖缺失返回 2，执行失败返回 1，不适用环境返回 3。脚本不安装软件、不联网、不改权限。
+
 安装前可单独拷贝 `scripts/check-codeact-permissions.sh` 到离线服务器，使用预定的非 root Runner 用户执行：
 
 ```bash
