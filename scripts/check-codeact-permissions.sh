@@ -47,7 +47,7 @@ esac
 printf 'Context: kernel=%s arch=%s uid=%s\n' "$(uname -r)" "$(uname -m)" "$EUID"
 [[ $(uname -s) == Linux ]] || stop 3 'UNSUPPORTED: Linux is required; use --image for a Linux Docker environment.'
 [[ $EUID != 0 ]] || stop 3 'UNSUPPORTED: root does not test the non-root Runner identity. Use sudo -u openagent-runner bash SCRIPT --host.'
-for dependency in bwrap timeout mktemp readlink awk rm mkdir cat id; do
+for dependency in bwrap timeout mktemp readlink rm mkdir cat id; do
   command -v "$dependency" >/dev/null || stop 2 "MISSING: $dependency. Prepare offline dependencies; permissions remain untested."
 done
 [[ -x /usr/bin/prlimit && -x /usr/bin/unshare && -x /bin/sh ]] || stop 2 'MISSING: /usr/bin/prlimit, /usr/bin/unshare or /bin/sh.'
@@ -91,9 +91,18 @@ arguments=(
     test "$(id -u)" = 65532
     test "$(id -g)" = 65532
     test "$(uname -n)" = openagent-sandbox
-    awk "/^CapEff:|^CapPrm:/ { if (\$2 !~ /^0+$/) exit 1; caps++ }
-         /^NoNewPrivs:/ { if (\$2 != 1) exit 1; nnp++ }
-         END { if (caps != 2 || nnp != 1) exit 1 }" /proc/self/status
+    caps=0
+    nnp=0
+    while read -r field value rest; do
+      case "$field" in
+        CapEff:|CapPrm:)
+          case "$value" in ""|*[!0]*) exit 1 ;; esac
+          caps=$((caps + 1)) ;;
+        NoNewPrivs:) test "$value" = 1; nnp=1 ;;
+      esac
+    done < /proc/self/status
+    test "$caps" = 2
+    test "$nnp" = 1
     test -z "${OPENAGENT_PROBE_SENTINEL+x}"
     printf "CHECK: input and namespace isolation\n"
     test "$(cat /input/data.txt)" = probe-input
