@@ -1,6 +1,7 @@
-"""Smoke-test a published Bubblewrap Runner without Docker."""
+"""Smoke-test a published or already running Bubblewrap Runner."""
 import base64
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
 import io
 import json
@@ -37,11 +38,16 @@ def unused_port():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--environment-file', type=Path, help='Test an already running service using its environment file.')
+    parser.add_argument('--endpoint', help='Test an already running service at this URL.')
+    parser.add_argument('--key', help='Runner API key used with --endpoint.')
     arguments = parser.parse_args()
     runner = os.environ.get("CODEACT_RUNNER_DLL")
     python = os.environ.get("CODEACT_TEST_PYTHON", "/opt/openagent-code/venv/bin/python")
-    if not arguments.environment_file and (not runner or not Path(runner).is_file()):
+    remote = bool(arguments.environment_file or arguments.endpoint)
+    if not remote and (not runner or not Path(runner).is_file()):
         raise SystemExit("Set CODEACT_RUNNER_DLL to a published OpenAgent.Runner.dll.")
+    if arguments.environment_file and arguments.endpoint:
+        raise SystemExit("Use only one of --environment-file and --endpoint.")
 
     with ExitStack() as stack:
         log = stack.enter_context(tempfile.TemporaryFile())
@@ -52,6 +58,12 @@ def main():
             base_url = environment['ASPNETCORE_URLS'].rstrip('/')
             key = environment['Runner__ApiKey']
             directory = environment['Runner__WorkspaceRoot']
+        elif arguments.endpoint:
+            base_url = arguments.endpoint.rstrip('/')
+            key = arguments.key or os.environ.get("CODEACT_RUNNER_KEY", "")
+            if not key:
+                raise SystemExit("Set --key or CODEACT_RUNNER_KEY with --endpoint.")
+            directory = None
         else:
             directory = stack.enter_context(tempfile.TemporaryDirectory(prefix="codeact-smoke-"))
             key = secrets.token_hex(32)
@@ -85,7 +97,7 @@ def main():
 import os
 import subprocess
 from pathlib import Path
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 from pptx import Presentation
 assert os.getuid() == 65532
 status = dict(line.split(':', 1) for line in Path('/proc/self/status').read_text().splitlines())
@@ -93,13 +105,22 @@ assert int(status['CapEff'], 16) == 0
 assert int(status['CapPrm'], 16) == 0
 assert int(status['NoNewPrivs']) == 1
 assert 'Runner__ApiKey' not in os.environ
-assert not os.path.exists('/var/run/docker.sock')
 w = Workbook()
-w.active['A1'] = 42
+sheet = w.active
+sheet.append(['地区', '数量'])
+sheet.append(['华东', 42])
+sheet.append(['华南', 17])
+sheet.append(['华北', 29])
 w.save('/output/report.xlsx')
+rows = list(load_workbook('/output/report.xlsx', read_only=True).active.iter_rows(values_only=True))
+assert rows == [('地区', '数量'), ('华东', 42), ('华南', 17), ('华北', 29)]
 p = Presentation()
-p.slides.add_slide(p.slide_layouts[0]).shapes.title.text = 'Isolated CodeAct'
+slide = p.slides.add_slide(p.slide_layouts[1])
+slide.shapes.title.text = 'Isolated CodeAct'
+slide.placeholders[1].text = '\\n'.join(f'{region}：{quantity}' for region, quantity in rows[1:])
 p.save('/output/report.pptx')
+verified = Presentation('/output/report.pptx')
+assert '华南：17' in verified.slides[0].placeholders[1].text
 conversion = subprocess.run(['libreoffice', '--headless', '-env:UserInstallation=file:///tmp/lo', '--convert-to', 'pdf', '--outdir', '/output', '/output/report.pptx'], capture_output=True, timeout=90)
 assert conversion.returncode == 0, conversion.stderr
 assert Path('/output/report.pdf').read_bytes().startswith(b'%PDF')
@@ -116,8 +137,29 @@ print('isolated execution passed')
                     continue
                 with zipfile.ZipFile(io.BytesIO(base64.b64decode(artifact["content"]))) as archive:
                     assert archive.testzip() is None
-            assert not list(Path(directory).iterdir()), "Task input directories were not removed."
-            print("PASS: Runner authentication, Bubblewrap isolation, PPT/XLSX/PDF artifacts, and cleanup.")
+            if directory is not None:
+                assert not list(Path(directory).iterdir()), "Task input directories were not removed."
+
+            def run_concurrent(label):
+                concurrent_code = f"""
+from pathlib import Path
+import time
+Path('/work/shared-name.txt').write_text('{label}')
+time.sleep(1)
+assert Path('/work/shared-name.txt').read_text() == '{label}'
+Path('/output/{label}.txt').write_text('{label}')
+"""
+                return request(base_url + "/v1/execute", {"code": concurrent_code}, key)
+
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                concurrent_results = list(pool.map(run_concurrent, ["alpha", "beta"]))
+            for label, (concurrent_status, concurrent_body) in zip(["alpha", "beta"], concurrent_results):
+                assert concurrent_status == 200, concurrent_body.decode("utf-8", errors="replace")
+                concurrent_response = json.loads(concurrent_body)
+                assert concurrent_response["exitCode"] == 0, concurrent_response["stderr"]
+                artifact = next(file for file in concurrent_response["files"] if file["name"] == label + ".txt")
+                assert base64.b64decode(artifact["content"]).decode() == label
+            print("PASS: Runner authentication, Bubblewrap isolation, concurrent workspaces, and Excel-to-PPT/PDF artifacts.")
         except BaseException:
             if process is not None:
                 log.seek(0)

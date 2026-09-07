@@ -25,14 +25,17 @@
       "publicClient": true,
       "standardFlowEnabled": true,
       "redirectUris": [
-        "https://${OPENAGENT_PUBLIC_HOST}:${OPENAGENT_CHAT_PORT}/*"
+        "https://${OPENAGENT_PUBLIC_HOST}:${OPENAGENT_CHAT_PORT}/*",
+        "http://localhost:8090/",
+        "http://localhost:8090/*"
       ],
       "webOrigins": [
-        "https://${OPENAGENT_PUBLIC_HOST}:${OPENAGENT_CHAT_PORT}"
+        "https://${OPENAGENT_PUBLIC_HOST}:${OPENAGENT_CHAT_PORT}",
+        "http://localhost:8090"
       ],
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "https://${OPENAGENT_PUBLIC_HOST}:${OPENAGENT_CHAT_PORT}/*"
+        "post.logout.redirect.uris": "https://${OPENAGENT_PUBLIC_HOST}:${OPENAGENT_CHAT_PORT}/*##http://localhost:8090/*"
       },
       "protocolMappers": [
         {
