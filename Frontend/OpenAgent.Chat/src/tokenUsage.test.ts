@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { estimateTokens, formatCacheHitRate, formatTokenBreakdown, formatTokenUsage, summarizeConversationUsage } from './tokenUsage'
+import { estimateTokens, formatCacheHitRate, formatContextUsage, formatTokenBreakdown, formatTokenUsage, summarizeConversationUsage } from './tokenUsage'
 import type { ConversationMessage } from './types'
 
 describe('token usage presentation', () => {
@@ -18,6 +18,13 @@ describe('token usage presentation', () => {
 
   it('shows unavailable instead of estimating missing provider usage', () => {
     expect(formatTokenUsage(undefined)).toBe('暂不可用')
+  })
+
+  it('uses provider total input plus output for the current context window', () => {
+    expect(formatContextUsage({ promptTokens: 1200, completionTokens: 34, totalTokens: 1234 }, 4000))
+      .toBe('1,234 / 4,000 (30.9%)')
+    expect(formatContextUsage({ promptTokens: 1200, completionTokens: 34, totalTokens: 1234 }, 0))
+      .toBeUndefined()
   })
 
   it('sums each persisted assistant response once', () => {

@@ -15,7 +15,7 @@ import { useConversationStreams } from './composables/useConversationStreams'
 import { useFileHandling } from './composables/useFileHandling'
 import { usePanelLayout } from './composables/usePanelLayout'
 import { useSettings } from './composables/useSettings'
-import { formatCacheHitRate, formatTokenCount } from './tokenUsage'
+import { formatCacheHitRate, formatContextUsage, formatTokenCount } from './tokenUsage'
 import { AUTO_AGENT_ID, type AgentSummary, type CurrentUserContext } from './types'
 
 const agents = ref<AgentSummary[]>([])
@@ -182,9 +182,7 @@ const routeMode = computed(() => connectionMode.value === 'engine'
 const currentContextUsage = computed(() => {
   const contextLimit = llmProfiles.value.find(item => item.id === selectedLlmProfileId.value)?.contextTokens
   const latestResponse = [...currentMessages.value].reverse().find(message => message.role === 'assistant' && message.tokenUsage)
-  const usedTokens = latestResponse?.tokenUsage?.promptTokens
-  if (!contextLimit || contextLimit <= 0 || usedTokens == null) return null
-  return `${formatTokenCount(usedTokens)} / ${formatTokenCount(contextLimit)} (${Math.min(100, (usedTokens / contextLimit) * 100).toFixed(1)}%)`
+  return formatContextUsage(latestResponse?.tokenUsage, contextLimit)
 })
 
 watch(connectionMode, mode => {
