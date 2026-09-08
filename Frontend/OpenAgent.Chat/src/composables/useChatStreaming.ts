@@ -40,6 +40,10 @@ export function useChatStreaming(options: ChatStreamingOptions) {
   }
 
   async function send(): Promise<void> {
+    if (options.selectedConversation.value?.replayOnly) {
+      options.notifyError(new Error('导入的会话日志为只读重放，不能继续发送'))
+      return
+    }
     const content = message.value.trim()
     const hasFiles = options.pendingFiles.value.length > 0
     if ((!content && !hasFiles) || !options.selectedAgentId.value || !options.selectedLlmProfileId.value || options.selectedConversationStreaming.value) return

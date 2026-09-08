@@ -15,6 +15,7 @@ import { useConversationStreams } from './composables/useConversationStreams'
 import { useFileHandling } from './composables/useFileHandling'
 import { usePanelLayout } from './composables/usePanelLayout'
 import { useSettings } from './composables/useSettings'
+import { createSessionLog, parseSessionLog } from './sessionLog'
 import { formatCacheHitRate, formatTokenCount } from './tokenUsage'
 import { AUTO_AGENT_ID, type AgentSummary, type CurrentUserContext } from './types'
 
@@ -25,6 +26,7 @@ const selectedLlmProfileId = ref('')
 const search = ref('')
 const workspaceLoading = ref(false)
 const themeMode = ref<'light' | 'dark'>(localStorage.getItem('openagent.ui.theme') === 'dark' ? 'dark' : 'light')
+const sessionLogInput = ref<HTMLInputElement | null>(null)
 const conversationStreams = useConversationStreams()
 const { sidebarCollapsed, contextCollapsed, toggleSidebar, toggleContext, startSidebarResize, startContextResize } = usePanelLayout()
 
@@ -143,6 +145,7 @@ const {
   restoreSelectedConversation,
   selectConversation,
   clearSelectedConversation,
+  importReplayConversation,
   deleteConversation,
   compactConversation,
   resetConversations,
@@ -165,6 +168,43 @@ const chatStreaming = useChatStreaming({
 const { message, send, stopStreaming, clearDraft } = chatStreaming
 
 const chatMessagesRef = ref<InstanceType<typeof ChatMessages> | null>(null)
+
+function exportSessionLog(): void {
+  const conversation = selectedConversation.value
+  if (!conversation) {
+    notifyError(new Error('请先选择一个会话'))
+    return
+  }
+
+  const content = JSON.stringify(createSessionLog(conversation), null, 2)
+  const url = URL.createObjectURL(new Blob([content], { type: 'application/json' }))
+  const anchor = document.createElement('a')
+  const name = (conversation.title || conversation.conversationId)
+    .replace(/[^\p{L}\p{N}._-]+/gu, '-')
+    .slice(0, 60) || 'conversation'
+  anchor.href = url
+  anchor.download = `openagent-session-${name}.json`
+  anchor.click()
+  URL.revokeObjectURL(url)
+}
+
+function openSessionLogPicker(): void {
+  sessionLogInput.value?.click()
+}
+
+async function importSessionLog(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+
+  try {
+    importReplayConversation(parseSessionLog(await file.text()))
+    ElMessage.success('会话日志已导入，可在只读模式下重放')
+  } catch (error) {
+    notifyError(error)
+  }
+}
 
 function handleSend(): void {
   // 发送后强制回到底部并恢复自动跟随；流式期间用户上滑阅读不会被拉回。
@@ -288,14 +328,14 @@ onBeforeUnmount(() => {
       <div class="workspace-grid" :class="{ 'context-collapsed': contextCollapsed }">
         <section class="chat-card">
           <ChatMessages ref="chatMessagesRef" :messages="currentMessages" :context-summaries="selectedConversation?.contextSummaries" :loading="loadingConversation" :current-user="currentUser" :streaming="selectedConversationStreaming" :conversation-id="selectedConversation?.conversationId" :markdown-image-urls="markdownImageUrls" @suggest="message = $event" @download="downloadFile" />
-          <MessageComposer :model-value="message" :endpoint-url="activeEndpointUrl" :endpoint-label="activeEndpointLabel" :selected-agent-id="selectedAgentId" :selected-llm-profile-id="selectedLlmProfileId" :loading="selectedConversationStreaming" :pending-files="pendingFiles" @update:model-value="message = $event" @files-change="handleFilesChange" @retry-file="retryPendingFile" @send="handleSend" @stop="stopStreaming" />
+          <MessageComposer :model-value="message" :endpoint-url="activeEndpointUrl" :endpoint-label="activeEndpointLabel" :selected-agent-id="selectedAgentId" :selected-llm-profile-id="selectedLlmProfileId" :loading="selectedConversationStreaming" :pending-files="pendingFiles" :read-only="selectedConversation?.replayOnly" @update:model-value="message = $event" @files-change="handleFilesChange" @retry-file="retryPendingFile" @send="handleSend" @stop="stopStreaming" />
         </section>
         <aside class="context-panel">
           <div class="context-panel-head"><span class="context-label">INSPECTOR</span><button class="panel-collapse-btn" type="button" aria-label="收起上下文面板" title="收起" @click="toggleContext">›</button></div>
           <section><span class="context-label">ROUTING</span><strong>{{ routeMode }}</strong><p>{{ connectionMode === 'router' && selectedAgentId === AUTO_AGENT_ID ? '由意图识别 Agent 分析请求并选择目标。' : (selectedAgent?.description || selectedAgentId) }}</p><dl><div><dt>Agent</dt><dd>{{ connectionMode === 'router' && selectedAgentId === AUTO_AGENT_ID ? '自动选择' : (selectedAgent?.name || selectedAgentId) }}</dd></div><div><dt>模型</dt><dd>{{ llmProfiles.find(item => item.id === selectedLlmProfileId)?.modelId || '未选择' }}</dd></div></dl></section>
           <section><span class="context-label">IDENTITY</span><dl><div><dt>用户名</dt><dd>{{ currentUser?.username || '未设置' }}</dd></div><div><dt>邮箱</dt><dd :title="currentUser?.email">{{ currentUser?.email || '未设置' }}</dd></div><div><dt>ID</dt><dd :title="currentUser?.userId">{{ currentUser?.userId || 'Guest' }}</dd></div><div><dt>租户</dt><dd>{{ currentUser?.tenantId || tenantId || '—' }}</dd></div><div><dt>{{ activeEndpointLabel }}</dt><dd :title="activeEndpointUrl">{{ activeEndpointHost }}</dd></div></dl></section>
           <section><span class="context-label">CONVERSATION</span><dl><div><dt>消息</dt><dd>{{ currentMessages.length }}</dd></div><div><dt>状态</dt><dd>{{ conversationStatusText }}</dd></div><div><dt>ID</dt><dd class="conversation-id" :title="selectedConversation?.conversationId">{{ selectedConversation?.conversationId || '尚未创建' }}</dd></div></dl><div class="conversation-usage"><div class="token-usage-head"><span>Token</span><span class="token-usage-status" :class="{ unavailable: !currentUsageSummary.available }">{{ currentUsageSummary.available ? (currentUsageSummary.estimated ? '预估' : '完整') : '部分' }}</span></div><div class="context-usage-row"><span>本轮上下文</span><strong>{{ currentContextUsage || '—' }}</strong></div><template v-if="currentUsageSummary.available && currentUsageSummary.usage"><div class="token-usage-total"><strong>{{ currentUsageSummary.estimated ? '≈' : '' }}{{ formatTokenCount(currentUsageSummary.usage.totalTokens) }}</strong><small>累计总计</small></div><dl class="token-usage-grid"><div><dt>输入累计</dt><dd>{{ formatTokenCount(currentUsageSummary.usage.promptTokens) }}</dd></div><div><dt>输出累计</dt><dd>{{ currentUsageSummary.estimated ? '≈' : '' }}{{ formatTokenCount(currentUsageSummary.usage.completionTokens) }}</dd></div><div><dt>缓存命中</dt><dd>{{ currentUsageSummary.usage.cachedInputTokens != null ? formatTokenCount(currentUsageSummary.usage.cachedInputTokens) : '—' }}</dd></div><div><dt>命中率</dt><dd>{{ formatCacheHitRate(currentUsageSummary.usage.cachedInputTokens, currentUsageSummary.usage.promptTokens) ?? '—' }}</dd></div><div class="grid-span-two"><dt>思考</dt><dd>{{ currentUsageSummary.usage.reasoningTokens != null ? formatTokenCount(currentUsageSummary.usage.reasoningTokens) : '—' }}</dd></div></dl></template><template v-else><strong class="unavailable">—</strong><small>Provider usage 不完整</small></template></div></section>
-          <section class="inspector-actions"><span class="context-label">OPERATIONS</span><div class="inspector-action-grid"><el-button class="inspector-action inspector-action-primary" size="small" :loading="compactingConversation" :disabled="!selectedConversation || !selectedLlmProfileId || selectedConversationStreaming" @click="compactConversation"><span class="inspector-action-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h7m-7 0 3-3m-3 3 3 3M21 16h-7m7 0-3-3m3 3-3 3" /></svg></span><span>手动压缩</span></el-button><el-button class="inspector-action" size="small" @click="openSettings('health')"><span class="inspector-action-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2-5 4 10 2-5h6" /></svg></span><span>健康检查</span></el-button></div></section>
+          <section class="inspector-actions"><span class="context-label">OPERATIONS</span><input ref="sessionLogInput" class="file-input" type="file" accept=".json,application/json" @change="importSessionLog" /><div class="inspector-action-grid"><el-button class="inspector-action inspector-action-primary" size="small" :loading="compactingConversation" :disabled="!selectedConversation || !selectedLlmProfileId || selectedConversationStreaming || selectedConversation?.replayOnly" @click="compactConversation"><span class="inspector-action-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h7m-7 0 3-3m-3 3 3 3M21 16h-7m7-3-3-3m3 3-3 3" /></svg></span><span>手动压缩</span></el-button><el-button class="inspector-action" size="small" @click="openSettings('health')"><span class="inspector-action-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2-5 4 10 2-5h6" /></svg></span><span>健康检查</span></el-button><el-button class="inspector-action" size="small" :disabled="!selectedConversation" @click="exportSessionLog"><span class="inspector-action-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14" /></svg></span><span>导出日志</span></el-button><el-button class="inspector-action" size="small" @click="openSessionLogPicker"><span class="inspector-action-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21V9m0 0 4 4m-4-4-4 4M5 3h14" /></svg></span><span>导入日志</span></el-button></div></section>
           <div class="context-resize" @pointerdown="startContextResize" />
         </aside>
       </div>
