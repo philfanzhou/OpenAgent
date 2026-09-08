@@ -100,6 +100,10 @@ export interface ConversationRecord {
   title?: string
   messages?: ConversationMessage[]
   contextSummaries?: ContextSummary[]
+  /** UI-only marker for imported investigation logs; these conversations are read-only. */
+  replayOnly?: boolean
+  /** Original server conversation id for an imported replay. */
+  sourceConversationId?: string
 }
 
 export interface ContextSummary {

@@ -107,6 +107,21 @@ export function useConversationState(options: ConversationStateOptions) {
     sessionStorage.removeItem(selectedConversationStorageKey)
   }
 
+  function importReplayConversation(source: ConversationRecord): void {
+    const replay: ConversationRecord = {
+      ...source,
+      conversationId: `replay-${randomUuid()}`,
+      title: `重放 · ${source.title || source.conversationId}`,
+      replayOnly: true,
+      sourceConversationId: source.conversationId,
+      messages: source.messages?.map(message => ({ ...message })),
+    }
+    conversations.value = [replay, ...conversations.value]
+    selectedConversation.value = replay
+    sessionStorage.setItem(selectedConversationStorageKey, replay.conversationId)
+    options.selectedAgentId.value = replay.agentId || options.selectedAgentId.value
+  }
+
   async function deleteConversation(item: ConversationRecord): Promise<void> {
     try {
       await ElMessageBox.confirm('确认删除这个会话吗？', '删除会话', { type: 'warning' })
@@ -167,6 +182,7 @@ export function useConversationState(options: ConversationStateOptions) {
     restoreSelectedConversation,
     selectConversation,
     clearSelectedConversation,
+    importReplayConversation,
     deleteConversation,
     compactConversation,
     resetConversations,
