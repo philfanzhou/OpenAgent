@@ -50,6 +50,14 @@ describe('conversation collection', () => {
     expect(result).toEqual([live])
   })
 
+  it('retains imported replay conversations across server list refreshes', () => {
+    const replay = { ...conversation('replay-a', 'Completed', [message('captured')]), replayOnly: true }
+
+    const result = mergeConversationRecords([replay], [], new Set())
+
+    expect(result).toEqual([replay])
+  })
+
   it('preserves loaded compaction details when list metadata refreshes', () => {
     const detail = conversation('conversation-a', 'Completed')
     detail.contextSummaries = [{

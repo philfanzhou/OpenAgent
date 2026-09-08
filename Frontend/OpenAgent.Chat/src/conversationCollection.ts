@@ -27,7 +27,9 @@ export function mergeConversationRecords(
     return existing
   })
   const retained = Array.from(existingById.values()).filter(item =>
-    streamingConversationIds.has(item.conversationId) || selectedConversationId === item.conversationId)
+    item.replayOnly
+    || streamingConversationIds.has(item.conversationId)
+    || selectedConversationId === item.conversationId)
   return [...merged, ...retained]
 }
 
