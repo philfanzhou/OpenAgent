@@ -85,6 +85,28 @@ public class McpServerConfig
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public McpServerType Type { get; set; } = McpServerType.Http;
     public string? ProtocolVersion { get; set; }
+
+    /// <summary>
+    /// Opt-in mappings for MCP tools that accept an inline file payload instead of a URL.
+    /// The model supplies the OpenAgent fileId in <see cref="ArgumentName"/> and the
+    /// MCP adapter replaces it with the configured wire representation.
+    /// </summary>
+    public List<McpFileTransferBinding> FileTransferBindings { get; set; } = new();
+}
+
+public sealed class McpFileTransferBinding
+{
+    public string ToolName { get; set; } = string.Empty;
+    public string ArgumentName { get; set; } = "file";
+    public McpFileInputMode InputMode { get; set; } = McpFileInputMode.Base64;
+    public bool CaptureBinaryResults { get; set; } = true;
+}
+
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum McpFileInputMode
+{
+    Base64,
+    Resource
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
