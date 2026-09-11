@@ -115,6 +115,17 @@ public class CapabilityToolFactoryTests
         Assert.Empty(tools);
     }
 
+    [Fact]
+    public async Task CreateAsync_CodeExecutionRequiresApproval()
+    {
+        var factory = Factory(new FakeCapabilitySource(new[] { Tool("execute_code") }));
+
+        IReadOnlyList<AITool> tools = await factory.CreateAsync(
+            "a1", new AgentConfig(), Context(), default);
+
+        Assert.IsType<ApprovalRequiredAIFunction>(Assert.Single(tools));
+    }
+
     private class DenyAuthorizationService : IAgentAuthorizationService
     {
         public Task<bool> IsAuthorizedAsync(

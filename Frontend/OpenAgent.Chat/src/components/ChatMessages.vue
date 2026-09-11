@@ -7,7 +7,7 @@ import { isMarkdownFile, isTextPreview } from '../composables/useFileHandling'
 import { isSelfContainedImageRef } from '../markdownAssets'
 import { buildConversationTimeline, fileLabel, formatFileSize, toolArgumentsText, toolPresentation } from '../messagePresentation'
 import { formatTokenBreakdown, formatTokenCount, formatTokenUsage } from '../tokenUsage'
-import type { ContextSummary, ConversationMessage, CurrentUserContext, MessageFile, ProcessActivity, ToolActivity } from '../types'
+import type { ContextSummary, ConversationMessage, CurrentUserContext, HumanApprovalRequest, MessageFile, ProcessActivity, ToolActivity } from '../types'
 import MarkdownContent from './MarkdownContent.vue'
 
 const props = defineProps<{
@@ -25,6 +25,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   suggest: [value: string]
   download: [file: MessageFile]
+  approvalDecision: [approval: HumanApprovalRequest, approved: boolean]
 }>()
 
 const suggestions = [
@@ -120,6 +121,10 @@ function formatTimestamp(value: string): string {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return ''
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+}
+
+function approvalArguments(approval: HumanApprovalRequest): string {
+  try { return JSON.stringify(JSON.parse(approval.redactedArgumentsJson), null, 2) } catch { return approval.redactedArgumentsJson }
 }
 
 function compactionDisplay(summary: ContextSummary) {
@@ -407,6 +412,17 @@ defineExpose({ scrollToBottom })
         </div>
 
         <div v-if="item.content || isStreamingItem(item)" class="message-bubble"><MarkdownContent :content="item.content" :streaming="isStreamingItem(item) && Boolean(item.content)" :resolve-image="imageLookup(item.messageId)" /></div>
+
+        <div v-if="item.approval" class="approval-card" :class="`is-${item.approval.status.toLowerCase()}`">
+          <strong>代码执行需要审批</strong>
+          <span>动作：{{ item.approval.action }}</span>
+          <pre>{{ approvalArguments(item.approval) }}</pre>
+          <div v-if="item.approval.status === 'Pending'" class="approval-actions">
+            <el-button size="small" type="primary" @click="emit('approvalDecision', item.approval, true)">批准并继续</el-button>
+            <el-button size="small" @click="emit('approvalDecision', item.approval, false)">拒绝</el-button>
+          </div>
+          <small v-else>审批状态：{{ item.approval.status }}</small>
+        </div>
 
         <div v-if="shouldShowUsage(item)" class="message-usage" aria-label="当前响应 Token 用量">
           <span v-if="item.modelId" class="message-model">{{ item.modelId }}</span>

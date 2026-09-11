@@ -110,7 +110,8 @@ internal static class AgentAuthenticationExtensions
             foreach (string policyName in new[]
             {
                 "agent.read", "agent.config.read", "agent.config.write", "mcp.config.write",
-                "skill.config.write", "capability.test", "conversation.read", "conversation.delete"
+                "skill.config.write", "capability.test", "conversation.read", "conversation.delete",
+                "approval.decide"
             })
             {
                 authorization.AddPolicy(policyName, policy =>

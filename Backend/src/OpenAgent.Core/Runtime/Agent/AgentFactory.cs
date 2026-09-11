@@ -42,7 +42,8 @@ internal sealed class AgentFactory
         AgentRequest request,
         IAgentUserContext user,
         IReadOnlyList<FileAsset> files,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool recordUserInput = true)
     {
         IChatClient modelClient = _chatClients.Create(profile.Model);
         IChatClient summarizationClient = _chatClients.CreateSummarizationClient(
@@ -60,7 +61,8 @@ internal sealed class AgentFactory
             request,
             user,
             files,
-            profile.Model.Modality == ModelModality.Multimodal);
+            profile.Model.Modality == ModelModality.Multimodal,
+            recordUserInput);
         IReadOnlyList<AITool> tools = await _capabilities.CreateAsync(
             profile.AgentId,
             profile.Config,
@@ -131,6 +133,19 @@ internal sealed class AgentFactory
             throw;
         }
     }
+
+    internal Task<AgentExecutionScope> CreateForResumeAsync(
+        AgentRuntimeProfile profile,
+        AgentRequest request,
+        IAgentUserContext user,
+        CancellationToken cancellationToken) =>
+        CreateAsync(
+            profile,
+            request,
+            user,
+            Array.Empty<FileAsset>(),
+            cancellationToken,
+            recordUserInput: false);
 
     internal Task EnsureConversationAsync(
         string agentId,

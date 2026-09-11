@@ -42,6 +42,12 @@ internal sealed class AgentExecutionScope : IAsyncDisposable
         CancellationToken cancellationToken) =>
         _history.CompleteAsync(usage, modelId, cancellationToken);
 
+    internal Task PauseAsync(
+        string approvalId,
+        ToolApprovalRequestContent approval,
+        CancellationToken cancellationToken) =>
+        _history.PauseAsync(approvalId, approval, cancellationToken);
+
     public async ValueTask DisposeAsync()
     {
         Exception? failure = null;

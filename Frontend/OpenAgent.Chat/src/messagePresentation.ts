@@ -95,6 +95,7 @@ export function mergeAssistantSnapshot(
     tokenUsage: snapshot.tokenUsage || stored.tokenUsage,
     modelId: snapshot.modelId || stored.modelId,
     error: snapshot.error || stored.error,
+    approval: snapshot.approval || stored.approval,
   }
   return merged
 }
@@ -117,6 +118,7 @@ function mergeAssistantMessage(
         tokenUsage: message.tokenUsage || current.tokenUsage,
         modelId: message.modelId || current.modelId,
         error: message.error || current.error,
+        approval: message.approval || current.approval,
       }
     : {
         ...message,

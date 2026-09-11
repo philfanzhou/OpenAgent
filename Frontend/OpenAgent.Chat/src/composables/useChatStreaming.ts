@@ -168,6 +168,10 @@ export function useChatStreaming(options: ChatStreamingOptions) {
             callId: event.toolCallId,
             result: event.content ?? '',
           })
+        } else if (event.type === 'approval') {
+          flushStream?.()
+          if (event.approval) assistantMessage.approval = event.approval
+          conversation.status = 'AwaitingApproval'
         } else if (event.type === 'done') {
           flushStream?.()
           receivedDone = true
