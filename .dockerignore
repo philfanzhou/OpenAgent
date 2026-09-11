@@ -8,3 +8,10 @@
 TestResults
 .env
 .env.*
+**/.env
+**/.env.*
+**/certs
+**/*.pem
+**/*.key
+**/*.pfx
+**/*.p12

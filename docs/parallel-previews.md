@@ -5,7 +5,7 @@
 
 ## 机制
 
-- `docker/preview.compose.yml` — 预览 compose：仅 engine/router/chat，经 `host.docker.internal` 直连主栈共享基础设施。
+- `deploy/openagent/preview.compose.yml` — 预览 compose：仅 engine/router/chat，经 `host.docker.internal` 直连主栈共享基础设施。
 - `scripts/preview.sh` — 生命周期管理（`up`/`down`/`status`/`cleanup`），flock 原子分配端口与 Redis DB 序号。
 - `.claude/skills/preview-instance/SKILL.md` — 给 agent 的操作说明（部署→报地址→等确认→销毁）。
 - 隔离方式：
@@ -17,6 +17,9 @@
 ## 使用（WSL）
 
 ```bash
+# 先加载受保护的部署变量（至少包含 PostgreSQL/MinIO 凭据）
+set -a; source .env; set +a
+
 # 部署预览（在当前 worktree 根目录）
 wsl -e bash -lc 'cd /mnt/d/Code/Agent.Matrix && bash scripts/preview.sh up <slug>'
 

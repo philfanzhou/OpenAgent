@@ -37,7 +37,7 @@
 | PostgreSQL 集成 | Testcontainers PostgreSQL | 通过 | migration、独立文件资产、同一文件的会话/消息复用关联均通过 |
 | EF migration 管理 | PostgreSQL Testcontainers 中 `Database.MigrateAsync()` | 通过 | 当前 Infrastructure migration 与模型快照均已实际应用；本机未安装 `dotnet-ef` 全局工具，因此未把 CLI 列表命令作为本轮通过项 |
 | 前端生产构建 | `pnpm --dir Frontend/OpenAgent.Chat build` | 通过 | `vue-tsc` 与 Vite 构建完成 |
-| Docker 依赖 | `docker compose -f docker-compose.storage.yml ps` | 通过 | PostgreSQL 16、MinIO、Redis 7 均为 `healthy` |
+| Docker 依赖 | `docker compose -f deploy/infrastructure/docker-compose.yml ps` | 通过 | PostgreSQL 16、MinIO、Redis 7 均为 `healthy` |
 | 实际上传与下载 | 宿主启动后 `POST /api/v1/agent/files`，再 `GET /content` | 通过 | 上传后的 `state=1 (Ready)`，下载内容哈希匹配 |
 | 变更完整性 | `git diff --check` | 通过 | 无空白错误 |
 

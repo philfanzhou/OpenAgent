@@ -80,7 +80,7 @@ for image in "${images[@]}"; do
 done
 
 cd "$repo_root"
-compose_args=(--project-name "${OPENAGENT_COMPOSE_PROJECT:-openagent-app}" --file docker-compose.yml)
+compose_args=(--project-name "${OPENAGENT_COMPOSE_PROJECT:-openagent-app}" --file deploy/openagent/docker-compose.yml)
 if [[ -n "$env_file" ]]; then
   compose_args+=(--env-file "$env_file")
 fi

@@ -1,11 +1,12 @@
+name: ${OPENAGENT_COMPOSE_PROJECT:-openagent-app}
 services:
   engine:
     image: ${OPENAGENT_ENGINE_IMAGE:-openagent-engine:latest}
     environment:
       ASPNETCORE_ENVIRONMENT: ${OPENAGENT_ASPNETCORE_ENVIRONMENT:-Development}
       ASPNETCORE_URLS: http://+:5208
-      ConnectionStrings__OpenAgentDatabase: Host=postgres;Port=5432;Database=openagent;Username=openagent;Password=openagent
-      ConnectionStrings__Redis: redis:6379
+      ConnectionStrings__OpenAgentDatabase: Host=${OPENAGENT_POSTGRES_HOST:-postgres};Port=${OPENAGENT_POSTGRES_INTERNAL_PORT:-5432};Database=${OPENAGENT_POSTGRES_DB:-openagent};Username=${OPENAGENT_POSTGRES_USER:-openagent};Password=${OPENAGENT_POSTGRES_PASSWORD:-openagent}
+      ConnectionStrings__Redis: ${OPENAGENT_REDIS_HOST:-redis}:${OPENAGENT_REDIS_INTERNAL_PORT:-6379}
       Database__ApplyMigrationsOnStartup: "true"
       ConversationCache__Enabled: "true"
       FileAssets__Enabled: ${OPENAGENT_FILE_ASSETS_ENABLED:-true}
@@ -28,14 +29,15 @@ services:
       Authentication__Mode: ${OPENAGENT_AUTH_MODE:-JwtBearer}
       Authentication__EnableKeycloak: "${OPENAGENT_AUTH_ENABLE_KEYCLOAK:-true}"
       Authentication__EnableApiKey: "${OPENAGENT_AUTH_ENABLE_API_KEY:-false}"
-      Authentication__Authority: ${OPENAGENT_KEYCLOAK_PUBLIC_URL:-https://localhost:58081}/realms/openagent
+      Authentication__Authority: ${OPENAGENT_KEYCLOAK_PUBLIC_URL:-https://${OPENAGENT_PUBLIC_HOST:-localhost}:${OPENAGENT_KEYCLOAK_PORT:-58081}}/realms/openagent
       Authentication__MetadataAddress: ${OPENAGENT_KEYCLOAK_METADATA_ADDRESS:-http://keycloak:8080/realms/openagent/.well-known/openid-configuration}
       Authentication__Audience: ${OPENAGENT_AUTH_AUDIENCE:-openagent-api}
       Authentication__ClientId: ${OPENAGENT_AUTH_CLIENT_ID:-openagent-chat}
       Authentication__RequireHttpsMetadata: ${OPENAGENT_AUTH_REQUIRE_HTTPS_METADATA:-false}
       Authentication__ClockSkewSeconds: ${OPENAGENT_AUTH_CLOCK_SKEW_SECONDS:-60}
-      Cors__AllowedOrigins__0: ${OPENAGENT_PUBLIC_SCHEME:-https}://${OPENAGENT_PUBLIC_HOST:-localhost}:${OPENAGENT_CHAT_PORT:-8081}
+      Cors__AllowedOrigins__0: ${OPENAGENT_CHAT_PUBLIC_URL:-${OPENAGENT_PUBLIC_SCHEME:-https}://${OPENAGENT_PUBLIC_HOST:-localhost}:${OPENAGENT_CHAT_PORT:-8081}}
     networks:
+      - openagent
       - infrastructure
     depends_on:
       runner:
@@ -54,7 +56,7 @@ services:
       ASPNETCORE_URLS: http://+:5209
       Runner__ApiKey: ${OPENAGENT_RUNNER_API_KEY:?Set a random Runner API key of at least 32 characters}
     networks:
-      - infrastructure
+      - openagent
     # Nested Bubblewrap requires a dedicated trusted host/VM.
     privileged: true
     security_opt:
@@ -73,7 +75,7 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: ${OPENAGENT_ASPNETCORE_ENVIRONMENT:-Development}
       ASPNETCORE_URLS: http://+:5001
-      ConnectionStrings__Redis: redis:6379
+      ConnectionStrings__Redis: ${OPENAGENT_REDIS_HOST:-redis}:${OPENAGENT_REDIS_INTERNAL_PORT:-6379}
       OpenTelemetry__OtlpEndpoint: ${OPENAGENT_OTLP_ENDPOINT:-}
       OpenTelemetry__ServiceName: openagent-router
       OpenTelemetry__ServiceVersion: ${OPENAGENT_SERVICE_VERSION:-development}
@@ -84,17 +86,18 @@ services:
       Authentication__Mode: ${OPENAGENT_AUTH_MODE:-JwtBearer}
       Authentication__EnableKeycloak: "${OPENAGENT_AUTH_ENABLE_KEYCLOAK:-true}"
       Authentication__EnableApiKey: "${OPENAGENT_AUTH_ENABLE_API_KEY:-false}"
-      Authentication__Authority: ${OPENAGENT_KEYCLOAK_PUBLIC_URL:-https://localhost:58081}/realms/openagent
+      Authentication__Authority: ${OPENAGENT_KEYCLOAK_PUBLIC_URL:-https://${OPENAGENT_PUBLIC_HOST:-localhost}:${OPENAGENT_KEYCLOAK_PORT:-58081}}/realms/openagent
       Authentication__MetadataAddress: ${OPENAGENT_KEYCLOAK_METADATA_ADDRESS:-http://keycloak:8080/realms/openagent/.well-known/openid-configuration}
       Authentication__Audience: ${OPENAGENT_AUTH_AUDIENCE:-openagent-api}
       Authentication__ClientId: ${OPENAGENT_AUTH_CLIENT_ID:-openagent-chat}
       Authentication__RequireHttpsMetadata: ${OPENAGENT_AUTH_REQUIRE_HTTPS_METADATA:-false}
       Authentication__ClockSkewSeconds: ${OPENAGENT_AUTH_CLOCK_SKEW_SECONDS:-60}
-      Cors__AllowedOrigins__0: ${OPENAGENT_PUBLIC_SCHEME:-https}://${OPENAGENT_PUBLIC_HOST:-localhost}:${OPENAGENT_CHAT_PORT:-8081}
+      Cors__AllowedOrigins__0: ${OPENAGENT_CHAT_PUBLIC_URL:-${OPENAGENT_PUBLIC_SCHEME:-https}://${OPENAGENT_PUBLIC_HOST:-localhost}:${OPENAGENT_CHAT_PORT:-8081}}
     depends_on:
       engine:
         condition: service_healthy
     networks:
+      - openagent
       - infrastructure
     healthcheck:
       test: ["CMD-SHELL", "curl --fail --silent http://localhost:5001/health >/dev/null"]
@@ -108,7 +111,7 @@ services:
       router:
         condition: service_healthy
     networks:
-      - infrastructure
+      - openagent
 
   nginx:
     image: nginx:latest
@@ -121,7 +124,7 @@ services:
         condition: service_healthy
     environment:
       OPENAGENT_NGINX_CLIENT_MAX_BODY_SIZE: ${OPENAGENT_NGINX_CLIENT_MAX_BODY_SIZE:-64m}
-      OPENAGENT_NGINX_SERVER_NAME: ${OPENAGENT_PUBLIC_HOST:-_}
+      OPENAGENT_NGINX_SERVER_NAME: ${OPENAGENT_PUBLIC_HOST:-localhost}
       OPENAGENT_CHAT_PORT: ${OPENAGENT_CHAT_PORT:-8081}
       OPENAGENT_ROUTER_PORT: ${OPENAGENT_ROUTER_PORT:-8082}
       OPENAGENT_ENGINE_PORT: ${OPENAGENT_ENGINE_PORT:-8083}
@@ -130,12 +133,14 @@ services:
       - "${OPENAGENT_ROUTER_PORT:-8082}:${OPENAGENT_ROUTER_PORT:-8082}"
       - "${OPENAGENT_ENGINE_PORT:-8083}:${OPENAGENT_ENGINE_PORT:-8083}"
     volumes:
-      - ./docker/nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
-      - ./docker/nginx/certs:/etc/nginx/tls:ro
+      - ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ${OPENAGENT_TLS_CERT_DIR:-./nginx/certs}:/etc/nginx/tls:ro
     networks:
-      - infrastructure
+      - openagent
 
 networks:
+  openagent:
+    name: ${OPENAGENT_APP_NETWORK:-openagent}
   infrastructure:
     external: true
     name: ${OPENAGENT_INFRA_NETWORK:-openagent-infrastructure}
