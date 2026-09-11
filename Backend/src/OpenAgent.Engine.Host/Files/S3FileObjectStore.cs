@@ -159,6 +159,7 @@ internal sealed class S3FileObjectStore : IFileObjectStore
             BucketName = _options.BucketName,
             Key = objectKey,
             Verb = HttpVerb.GET,
+            Protocol = GetPreSignedUrlProtocol(),
             Expires = expiresAt.UtcDateTime
         });
         return Task.FromResult(new FileObjectAccessReference
@@ -203,6 +204,15 @@ internal sealed class S3FileObjectStore : IFileObjectStore
 
         string extension = Path.GetExtension(request.FileName).ToLowerInvariant();
         return $"{root}/{request.FileId}{extension}";
+    }
+
+    private Amazon.S3.Protocol GetPreSignedUrlProtocol()
+    {
+        string? endpoint = _options.PublicServiceUrl ?? _options.ServiceUrl;
+        return Uri.TryCreate(endpoint, UriKind.Absolute, out Uri? uri)
+            && uri.Scheme == Uri.UriSchemeHttp
+            ? Amazon.S3.Protocol.HTTP
+            : Amazon.S3.Protocol.HTTPS;
     }
 
     private static string NormalizePath(string value)

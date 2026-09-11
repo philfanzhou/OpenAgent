@@ -164,7 +164,7 @@ public class S3FileObjectStoreTests
             new BasicAWSCredentials("access-key", "secret-key"),
             new AmazonS3Config
             {
-                ServiceURL = "https://s3.example.com",
+                ServiceURL = "http://s3.example.com",
                 ForcePathStyle = true,
                 AuthenticationRegion = "us-east-1"
             });
@@ -174,7 +174,7 @@ public class S3FileObjectStoreTests
             Options.Create(new FileObjectStorageOptions
             {
                 BucketName = "files-test",
-                PublicServiceUrl = "https://s3.example.com"
+                PublicServiceUrl = "http://s3.example.com"
             }),
             presigner);
 
@@ -185,6 +185,7 @@ public class S3FileObjectStoreTests
 
         Uri signedUrl = new(result.Url);
         Assert.Equal("s3.example.com", signedUrl.Host);
+        Assert.Equal("http", signedUrl.Scheme);
         Assert.Contains("X-Amz-Signature=", signedUrl.Query, StringComparison.Ordinal);
     }
 }
