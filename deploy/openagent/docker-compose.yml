@@ -5,7 +5,7 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: ${OPENAGENT_ASPNETCORE_ENVIRONMENT:-Development}
       ASPNETCORE_URLS: http://+:5208
-      ConnectionStrings__OpenAgentDatabase: Host=${OPENAGENT_POSTGRES_HOST:-postgres};Port=${OPENAGENT_POSTGRES_INTERNAL_PORT:-5432};Database=${OPENAGENT_POSTGRES_DB:-openagent};Username=${OPENAGENT_POSTGRES_USER:-openagent};Password=${OPENAGENT_POSTGRES_PASSWORD:?Set OPENAGENT_POSTGRES_PASSWORD}
+      ConnectionStrings__OpenAgentDatabase: Host=${OPENAGENT_POSTGRES_HOST:-postgres};Port=${OPENAGENT_POSTGRES_INTERNAL_PORT:-5432};Database=${OPENAGENT_POSTGRES_DB:-openagent};Username=${OPENAGENT_POSTGRES_USER:-openagent};Password=${OPENAGENT_POSTGRES_PASSWORD:-openagent}
       ConnectionStrings__Redis: ${OPENAGENT_REDIS_HOST:-redis}:${OPENAGENT_REDIS_INTERNAL_PORT:-6379}
       Database__ApplyMigrationsOnStartup: "true"
       ConversationCache__Enabled: "true"
@@ -17,8 +17,8 @@ services:
       FileAssets__ObjectStorage__ForcePathStyle: "true"
       OPENAGENT_S3_ALLOW_INSECURE_TLS: ${OPENAGENT_S3_ALLOW_INSECURE_TLS:-false}
       FileAssets__ObjectStorage__BucketName: ${OPENAGENT_S3_BUCKET:-openagent-files}
-      FileAssets__ObjectStorage__AccessKey: ${OPENAGENT_S3_ACCESS_KEY:?Set OPENAGENT_S3_ACCESS_KEY}
-      FileAssets__ObjectStorage__SecretKey: ${OPENAGENT_S3_SECRET_KEY:?Set OPENAGENT_S3_SECRET_KEY}
+      FileAssets__ObjectStorage__AccessKey: ${OPENAGENT_S3_ACCESS_KEY:-openagent}
+      FileAssets__ObjectStorage__SecretKey: ${OPENAGENT_S3_SECRET_KEY:-openagent-secret}
       Heartbeat__AdvertisedHost: engine
       CodeExecution__Enabled: "true"
       CodeExecution__Endpoint: http://runner:5209
@@ -37,6 +37,7 @@ services:
       Authentication__ClockSkewSeconds: ${OPENAGENT_AUTH_CLOCK_SKEW_SECONDS:-60}
       Cors__AllowedOrigins__0: ${OPENAGENT_CHAT_PUBLIC_URL:-${OPENAGENT_PUBLIC_SCHEME:-https}://${OPENAGENT_PUBLIC_HOST:-localhost}:${OPENAGENT_CHAT_PORT:-8081}}
     networks:
+      - openagent
       - infrastructure
     depends_on:
       runner:
@@ -55,7 +56,7 @@ services:
       ASPNETCORE_URLS: http://+:5209
       Runner__ApiKey: ${OPENAGENT_RUNNER_API_KEY:?Set a random Runner API key of at least 32 characters}
     networks:
-      - infrastructure
+      - openagent
     # Nested Bubblewrap requires a dedicated trusted host/VM.
     privileged: true
     security_opt:
@@ -95,6 +96,7 @@ services:
       engine:
         condition: service_healthy
     networks:
+      - openagent
       - infrastructure
     healthcheck:
       test: ["CMD-SHELL", "curl --fail --silent http://localhost:5001/health >/dev/null"]
@@ -108,7 +110,7 @@ services:
       router:
         condition: service_healthy
     networks:
-      - infrastructure
+      - openagent
 
   nginx:
     image: nginx:latest
@@ -133,9 +135,11 @@ services:
       - ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
       - ${OPENAGENT_TLS_CERT_DIR:-./nginx/certs}:/etc/nginx/tls:ro
     networks:
-      - infrastructure
+      - openagent
 
 networks:
+  openagent:
+    name: ${OPENAGENT_APP_NETWORK:-openagent}
   infrastructure:
     external: true
     name: ${OPENAGENT_INFRA_NETWORK:-openagent-infrastructure}

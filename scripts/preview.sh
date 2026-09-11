@@ -94,9 +94,6 @@ used_ports() { awk -F'\t' -v c="$1" 'NR>0 {print $c}' "$ALLOC_FILE" 2>/dev/null 
 cmd_up() {
   local slug="$2"
   validate_slug "$slug"
-  : "${OPENAGENT_POSTGRES_PASSWORD:?Set OPENAGENT_POSTGRES_PASSWORD before starting a preview}"
-  : "${OPENAGENT_S3_ACCESS_KEY:?Set OPENAGENT_S3_ACCESS_KEY before starting a preview}"
-  : "${OPENAGENT_S3_SECRET_KEY:?Set OPENAGENT_S3_SECRET_KEY before starting a preview}"
   ensure_preview_dir
   read_infra_ports
 

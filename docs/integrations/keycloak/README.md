@@ -42,7 +42,7 @@ scripts/deploy.sh --env-file .env --docker-mode docker
 - 工作台：`https://localhost:58090`
 - Keycloak 管理台：`https://localhost:58091/admin/`
 - Keycloak Realm：`openagent`
-- 管理员：必须由 `OPENAGENT_KEYCLOAK_ADMIN_USERNAME` / `OPENAGENT_KEYCLOAK_ADMIN_PASSWORD` 提供
+- 管理员：默认值为 `admin/admin`，仅适用于本地临时环境；生产环境请覆盖 `OPENAGENT_KEYCLOAK_ADMIN_USERNAME` / `OPENAGENT_KEYCLOAK_ADMIN_PASSWORD`
 - 用户和租户组织：不在 Realm 文件中预置，需要在管理台手动创建
 
 公开地址固定使用 HTTPS。将 PEM 证书 `tls.crt`、私钥 `tls.key` 放入与 Nginx 共用的

@@ -13,11 +13,6 @@ def config(relative, overrides=None):
            if not key.startswith(('OPENAGENT_', 'COMPOSE_'))}
     env.update({
         'OPENAGENT_RUNNER_API_KEY': 'layout-test-runner-key-32-characters',
-        'OPENAGENT_POSTGRES_PASSWORD': 'layout-test-postgres-password',
-        'OPENAGENT_S3_ACCESS_KEY': 'layout-test-s3-user',
-        'OPENAGENT_S3_SECRET_KEY': 'layout-test-s3-secret',
-        'OPENAGENT_KEYCLOAK_ADMIN_USERNAME': 'layout-test-admin',
-        'OPENAGENT_KEYCLOAK_ADMIN_PASSWORD': 'layout-test-admin-password',
     })
     env.update(overrides or {})
     output = subprocess.check_output(
@@ -51,7 +46,14 @@ class DeploymentLayoutTests(unittest.TestCase):
         app = config('deploy/openagent/docker-compose.yml')
         self.assertEqual(infra['name'], 'openagent-infrastructure')
         self.assertEqual(app['name'], 'openagent-app')
+        self.assertEqual(app['networks']['openagent']['name'], 'openagent')
         self.assertEqual(infra['networks']['default']['name'], app['networks']['infrastructure']['name'])
+        self.assertEqual(app['services']['engine']['networks'],
+                         {'openagent': None, 'infrastructure': None})
+        self.assertEqual(app['services']['router']['networks'],
+                         {'openagent': None, 'infrastructure': None})
+        for name in ('runner', 'chat', 'nginx'):
+            self.assertEqual(app['services'][name]['networks'], {'openagent': None})
         for document in (infra, app):
             for service in document['services'].values():
                 for mount in service.get('volumes', []):
