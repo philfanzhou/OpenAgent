@@ -122,7 +122,7 @@ pwsh -File ./scripts/build-images.ps1 -EnvFile ./.env
 
 需要将构建好的镜像导出为 TAR 时，可指定目录；目录不存在会自动创建，四个镜像分别导出为
 `openagent-engine.tar`、`openagent-router.tar`、`openagent-chat.tar` 和 `openagent-runner.tar`。
-Runner 容器为可选服务；启用方式和原生 Linux 安装见 [Runner 部署](docs/integrations/code-runner.md)：
+Runner 随应用一起部署，部署环境文件必须设置 `OPENAGENT_RUNNER_API_KEY`（至少 32 字符）；详见 [Runner 部署](docs/integrations/code-runner.md)：
 
 ```bash
 scripts/build-images.sh --env-file .env --tar-dir ./dist/images

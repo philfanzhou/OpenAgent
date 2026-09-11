@@ -43,30 +43,30 @@ if sys.argv[1:3] == ['image', 'inspect'] and sys.argv[3] == os.environ.get('MISS
         self.assertEqual({call[-1] for call in calls if call[0] == 'save'},
                          {'openagent-' + name + ':latest' for name in ('engine', 'router', 'chat', 'runner')})
 
-    def test_default_deployment_does_not_require_runner(self):
+    def test_default_deployment_includes_runner(self):
+        self.env['OPENAGENT_RUNNER_API_KEY'] = 'x' * 32
         result, calls = self.run_script('deploy.sh')
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(len([call for call in calls if call[:2] == ['image', 'inspect']]), 3)
-        self.assertNotIn('deploy/openagent/docker-compose.codeact.yml', calls[-1])
+        self.assertEqual(len([call for call in calls if call[:2] == ['image', 'inspect']]), 4)
+        self.assertEqual(calls[-1].count('--file'), 1)
         self.assertEqual(calls[-1][-5:], ['up', '--detach', '--no-build', '--pull', 'never'])
 
-    def test_enabled_runner_requires_key_before_docker(self):
-        self.env['OPENAGENT_CODEACT_ENABLED'] = 'true'
+    def test_runner_requires_key_before_docker(self):
         result, calls = self.run_script('deploy.sh')
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('Runner API key', result.stderr)
         self.assertEqual(calls, [])
 
-    def test_enabled_runner_checks_image_and_adds_overlay(self):
-        self.env.update(OPENAGENT_CODEACT_ENABLED='true', OPENAGENT_RUNNER_API_KEY='x' * 32)
+    def test_runner_checks_image_and_validates_compose(self):
+        self.env.update(OPENAGENT_RUNNER_API_KEY='x' * 32)
         result, calls = self.run_script('deploy.sh')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn(['image', 'inspect', 'openagent-runner:latest'], calls)
-        self.assertIn('deploy/openagent/docker-compose.codeact.yml', calls[-1])
+        self.assertEqual(calls[-1].count('--file'), 1)
         self.assertEqual(calls[-2][-2:], ['config', '--quiet'])
 
     def test_missing_runner_never_starts_compose(self):
-        self.env.update(OPENAGENT_CODEACT_ENABLED='true', OPENAGENT_RUNNER_API_KEY='x' * 32,
+        self.env.update(OPENAGENT_RUNNER_API_KEY='x' * 32,
                         MISSING_IMAGE='openagent-runner:latest')
         result, calls = self.run_script('deploy.sh')
         self.assertNotEqual(result.returncode, 0)
