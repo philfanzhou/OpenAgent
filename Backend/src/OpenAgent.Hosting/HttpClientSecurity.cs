@@ -12,8 +12,7 @@ namespace OpenAgent.Hosting;
 public static class HttpClientSecurity
 {
     public static bool AllowInsecureTls(IConfiguration configuration) =>
-        configuration.GetValue("OPENAGENT_ALLOW_INSECURE_TLS", false)
-        || configuration.GetValue("Http:AllowInsecureTls", false);
+        configuration.GetValue("OPENAGENT_ALLOW_INSECURE_TLS", false);
 
     public static HttpClientHandler CreateHttpClientHandler(
         IConfiguration configuration,

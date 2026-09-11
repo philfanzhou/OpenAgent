@@ -15,7 +15,6 @@ services:
       OPENAGENT_ALLOW_INSECURE_TLS: ${OPENAGENT_ALLOW_INSECURE_TLS:-false}
       FileAssets__ObjectStorage__ServiceUrl: ${OPENAGENT_S3_SERVICE_URL:-http://minio:9000}
       FileAssets__ObjectStorage__ForcePathStyle: "true"
-      OPENAGENT_S3_ALLOW_INSECURE_TLS: ${OPENAGENT_S3_ALLOW_INSECURE_TLS:-false}
       FileAssets__ObjectStorage__BucketName: ${OPENAGENT_S3_BUCKET:-openagent-files}
       FileAssets__ObjectStorage__AccessKey: ${OPENAGENT_S3_ACCESS_KEY:-openagent}
       FileAssets__ObjectStorage__SecretKey: ${OPENAGENT_S3_SECRET_KEY:-openagent-secret}

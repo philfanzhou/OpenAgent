@@ -178,12 +178,11 @@ docker compose -p openagent-infrastructure \
 默认使用 Compose 内置的 MinIO（bucket `openagent-files`）。接入外部 S3/MinIO 时，可覆盖
 `OPENAGENT_S3_SERVICE_URL`、`OPENAGENT_S3_BUCKET`、`OPENAGENT_S3_ACCESS_KEY`、
 `OPENAGENT_S3_SECRET_KEY`；仅在自签名证书场景显式设置
-`OPENAGENT_S3_ALLOW_INSECURE_TLS=true`。
+`OPENAGENT_ALLOW_INSECURE_TLS=true`。
 
 如果服务器容器没有正确安装内部 CA，可在确认所有出站地址可信的前提下设置
 `OPENAGENT_ALLOW_INSECURE_TLS=true`，让 LLM、S3、MCP、RAG 及其他平台 HTTP 请求跳过 TLS 证书校验。
-该选项默认关闭，生产环境优先安装并信任内部 CA；原有的
-`OPENAGENT_LLM_ALLOW_INSECURE_TLS` 和 `OPENAGENT_S3_ALLOW_INSECURE_TLS` 仍可单独兼容使用。
+该选项默认关闭，生产环境优先安装并信任内部 CA；它同时覆盖平台 HTTP 客户端和 JWT/OIDC 认证回调。
 
 ## OpenTelemetry 日志中心
 

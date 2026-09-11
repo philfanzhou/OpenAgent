@@ -27,8 +27,7 @@ public static class CoreServiceExtensions
                     && options.MaxExecutionsPerRequest is >= 1 and <= 32),
                 "CodeExecution requires an HTTP(S) Runner endpoint, a 32-character API key, and a bounded timeout.")
             .ValidateOnStart();
-        bool allowInsecureTls = configuration.GetValue("OPENAGENT_ALLOW_INSECURE_TLS", false)
-            || configuration.GetValue("Http:AllowInsecureTls", false);
+        bool allowInsecureTls = configuration.GetValue("OPENAGENT_ALLOW_INSECURE_TLS", false);
         services.AddHttpClient<ICodeExecutor, RunnerClient>(client => client.Timeout = Timeout.InfiniteTimeSpan)
             .ConfigurePrimaryHttpMessageHandler(() =>
             {

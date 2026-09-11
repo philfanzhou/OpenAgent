@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Configuration;
 using OpenAgent.Contracts.Configuration;
 
 namespace OpenAgent.Engine.Redis;
@@ -7,7 +8,9 @@ namespace OpenAgent.Engine.Redis;
 /// Checks that at least one structurally valid LLM provider profile is readable.
 /// It deliberately does not call an external model endpoint from a health probe.
 /// </summary>
-internal sealed class LlmHealthCheck(ILlmConfigRepository repository) : IHealthCheck
+internal sealed class LlmHealthCheck(
+    ILlmConfigRepository repository,
+    IConfiguration configuration) : IHealthCheck
 {
     public async Task<HealthCheckResult> CheckHealthAsync(
         HealthCheckContext context,
@@ -15,8 +18,12 @@ internal sealed class LlmHealthCheck(ILlmConfigRepository repository) : IHealthC
     {
         try
         {
+            string? configuredTenantId = configuration["Authentication:DevelopmentTenantId"];
+            string tenantId = string.IsNullOrWhiteSpace(configuredTenantId)
+                ? "development"
+                : configuredTenantId;
             IReadOnlyList<LlmProviderProfile> profiles = await repository
-                .ListAsync(null, cancellationToken)
+                .ListAsync(tenantId, cancellationToken)
                 .ConfigureAwait(false);
             int configuredCount = profiles.Count(IsConfigured);
             if (configuredCount == 0)

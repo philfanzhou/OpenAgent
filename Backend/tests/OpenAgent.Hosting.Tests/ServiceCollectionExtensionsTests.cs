@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Configuration;
@@ -21,7 +22,7 @@ public class ServiceCollectionExtensionsTests
         IConfiguration insecureConfiguration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["Http:AllowInsecureTls"] = "true"
+                ["OPENAGENT_ALLOW_INSECURE_TLS"] = "true"
             })
             .Build();
         using HttpClientHandler insecure = HttpClientSecurity.CreateHttpClientHandler(insecureConfiguration);
@@ -110,6 +111,38 @@ public class ServiceCollectionExtensionsTests
         Assert.Equal(
             "http://keycloak:8080/realms/openagent/.well-known/openid-configuration",
             provider.GetRequiredService<IOptions<AgentAuthenticationOptions>>().Value.MetadataAddress);
+    }
+
+    [Fact]
+    public void AddAgentHost_WithGlobalInsecureTls_UsesItForJwtBackchannel()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["OPENAGENT_ALLOW_INSECURE_TLS"] = "true",
+                ["Authentication:Mode"] = "JwtBearer",
+                ["Authentication:Authority"] = "https://identity.example",
+                ["Authentication:Audience"] = "openagent-api",
+                ["Authentication:ClientId"] = "openagent-chat"
+            })
+            .Build();
+        var services = new ServiceCollection();
+        services.AddLogging();
+
+        services.AddAgentHost(configuration, options =>
+        {
+            DisableOptionalFeatures(options);
+            options.EnableJwtAuth = true;
+        });
+
+        using ServiceProvider provider = services.BuildServiceProvider();
+        HttpMessageHandler? handler = provider
+            .GetRequiredService<IOptionsMonitor<JwtBearerOptions>>()
+            .Get(JwtBearerDefaults.AuthenticationScheme)
+            .BackchannelHttpHandler;
+
+        Assert.NotNull(handler);
+        Assert.NotNull(((HttpClientHandler)handler).ServerCertificateCustomValidationCallback);
     }
 
     [Fact]

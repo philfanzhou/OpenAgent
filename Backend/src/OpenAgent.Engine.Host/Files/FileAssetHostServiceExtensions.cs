@@ -24,9 +24,7 @@ internal static class FileAssetHostServiceExtensions
         services.AddOptions<FileObjectStorageOptions>()
             .Bind(configuration.GetSection(FileObjectStorageOptions.SectionName))
             .ValidateOnStart();
-        bool allowInsecureTls = HttpClientSecurity.AllowInsecureTls(configuration)
-            || configuration.GetValue("OPENAGENT_S3_ALLOW_INSECURE_TLS", false)
-            || configuration.GetValue($"{FileObjectStorageOptions.SectionName}:AllowInsecureTls", false);
+        bool allowInsecureTls = HttpClientSecurity.AllowInsecureTls(configuration);
         services.TryAddSingleton<IAmazonS3>(serviceProvider =>
         {
             FileObjectStorageOptions options = serviceProvider

@@ -22,18 +22,14 @@ internal sealed class LlmConfigRepository(
     }
 
     public async Task<IReadOnlyList<LlmProviderProfile>> ListAsync(
-        string? tenantId,
+        string tenantId,
         CancellationToken cancellationToken = default)
     {
         await using OpenAgentDbContext context = await contexts
             .CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
-        IQueryable<LlmConfigurationEntity> query = context.LlmConfigurations.AsNoTracking();
-        if (tenantId != null)
-        {
-            query = query.Where(item => item.TenantId == tenantId);
-        }
-
-        LlmConfigurationEntity[] entities = await query
+        LlmConfigurationEntity[] entities = await context.LlmConfigurations
+            .AsNoTracking()
+            .Where(item => item.TenantId == tenantId)
             .OrderBy(item => item.ProfileId)
             .ToArrayAsync(cancellationToken).ConfigureAwait(false);
         return entities.Select(Map).ToArray();
