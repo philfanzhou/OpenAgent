@@ -36,7 +36,6 @@ services:
       Authentication__ClockSkewSeconds: ${OPENAGENT_AUTH_CLOCK_SKEW_SECONDS:-60}
       Cors__AllowedOrigins__0: ${OPENAGENT_PUBLIC_SCHEME:-https}://${OPENAGENT_PUBLIC_HOST:-localhost}:${OPENAGENT_CHAT_PORT:-8081}
     networks:
-      - codeact
       - infrastructure
     depends_on:
       runner:
@@ -55,7 +54,7 @@ services:
       ASPNETCORE_URLS: http://+:5209
       Runner__ApiKey: ${OPENAGENT_RUNNER_API_KEY:?Set a random Runner API key of at least 32 characters}
     networks:
-      - codeact
+      - infrastructure
     # Nested Bubblewrap requires a dedicated trusted host/VM.
     privileged: true
     security_opt:
@@ -136,8 +135,6 @@ services:
       - infrastructure
 
 networks:
-  codeact:
-    internal: true
   infrastructure:
     external: true
     name: ${OPENAGENT_INFRA_NETWORK:-openagent-infrastructure}

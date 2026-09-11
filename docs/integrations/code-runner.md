@@ -10,7 +10,7 @@
 在受保护的部署环境文件中设置随机生成的
 `OPENAGENT_RUNNER_API_KEY`（至少 32 字符），再运行 `scripts/deploy.sh --env-file .env`。
 Runner 已直接包含在应用 Compose 中，随应用一起启动。脚本先检查镜像和配置，不拉取镜像或执行构建。
-Runner 仅与 Engine 共享独立内部网络，不接入数据库网络，不发布宿主端口。
+Runner 使用应用内部网络与 Engine 通信，不发布宿主端口；Runner 镜像自身不配置数据库、Redis 或 Keycloak 连接。
 
 嵌套 Bubblewrap 使用 privileged 容器和 unconfined seccomp，必须使用专用受信任节点/VM；
 不应将其视为宿主级低权限隔离。容器整体限制为 2 GiB、2 CPU 和 256 PID。
