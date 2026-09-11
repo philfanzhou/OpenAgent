@@ -25,6 +25,8 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
+      - name: Test image build and offline deployment commands
+        run: python3 scripts/test-deployment-scripts.py
       - name: Install Bubblewrap and document runtime
         run: |
           sudo apt-get update

@@ -191,6 +191,7 @@ try {
     $engineImage = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_ENGINE_IMAGE)) { 'openagent-engine:latest' } else { $env:OPENAGENT_ENGINE_IMAGE }
     $routerImage = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_ROUTER_IMAGE)) { 'openagent-router:latest' } else { $env:OPENAGENT_ROUTER_IMAGE }
     $chatImage = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_CHAT_IMAGE)) { 'openagent-chat:latest' } else { $env:OPENAGENT_CHAT_IMAGE }
+    $runnerImage = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_RUNNER_IMAGE)) { 'openagent-runner:latest' } else { $env:OPENAGENT_RUNNER_IMAGE }
     $publicHost = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_PUBLIC_HOST)) { 'localhost' } else { $env:OPENAGENT_PUBLIC_HOST }
     $publicScheme = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_PUBLIC_SCHEME)) { 'https' } else { $env:OPENAGENT_PUBLIC_SCHEME }
     $routerPort = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_ROUTER_PORT)) { '8082' } else { $env:OPENAGENT_ROUTER_PORT }
@@ -219,8 +220,15 @@ try {
         $dockerRepoRoot
     )
 
+    Invoke-Docker -Arguments @(
+        'build', '--tag', $runnerImage,
+        '--file', (Join-WslPath -Base $dockerRepoRoot -Child 'Backend/src/OpenAgent.Runner/Dockerfile'),
+        $dockerRepoRoot
+    )
+
     if (-not [string]::IsNullOrWhiteSpace($dockerTarDirectory)) {
         $exportWsl = $script:dockerCommand[0] -eq 'wsl.exe'
+        Export-ImageTar -Image $runnerImage -FileName 'openagent-runner.tar' -OutputDirectory $dockerTarDirectory -Wsl:$exportWsl
         Export-ImageTar -Image $engineImage -FileName 'openagent-engine.tar' -OutputDirectory $dockerTarDirectory -Wsl:$exportWsl
         Export-ImageTar -Image $routerImage -FileName 'openagent-router.tar' -OutputDirectory $dockerTarDirectory -Wsl:$exportWsl
         Export-ImageTar -Image $chatImage -FileName 'openagent-chat.tar' -OutputDirectory $dockerTarDirectory -Wsl:$exportWsl

@@ -4,6 +4,19 @@
 
 ## 支持环境
 
+### 可选 Docker 部署
+
+`scripts/build-images.sh` 和 `scripts/build-images.ps1` 同时构建 Runner；TAR 导出包含 `openagent-runner.tar`。
+在受保护的部署环境文件中设置 `OPENAGENT_CODEACT_ENABLED=true` 和随机生成的
+`OPENAGENT_RUNNER_API_KEY`（至少 32 字符），再运行 `scripts/deploy.sh --env-file .env`。
+脚本叠加 `deploy/openagent/docker-compose.codeact.yml`，先检查镜像和配置，不拉取镜像或执行构建。
+Runner 仅与 Engine 共享独立内部网络，不接入数据库网络，不发布宿主端口。
+
+嵌套 Bubblewrap 使用 privileged 容器和 unconfined seccomp，必须使用专用受信任节点/VM；
+不应将其视为宿主级低权限隔离。容器整体限制为 2 GiB、2 CPU 和 256 PID。
+具体主机仍需通过 `/health` 和真实执行测试；不要仅凭 Dockerfile 构建成功判断隔离可用。
+`deploy/code-runner` 仍提供原生 Linux/systemd 安装，也用于 CI 安装验收，因此保留。
+
 - Ubuntu 24.04 LTS 或同等能力的现代 Linux，支持非特权 user namespace。
 - 主机安装发行版提供的 Bubblewrap；不要自行授予 Runner root、sudo 或 Docker Socket 权限。
 - .NET 8 SDK 仅在安装脚本发布 Runner 时需要，服务使用自包含产物运行。
