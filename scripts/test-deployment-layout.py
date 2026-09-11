@@ -69,7 +69,8 @@ class DeploymentLayoutTests(unittest.TestCase):
         env = app['services']['engine']['environment']
         self.assertIn('Host=postgres;Port=5432;', env['ConnectionStrings__OpenAgentDatabase'])
         self.assertEqual(env['ConnectionStrings__Redis'], 'redis:6379')
-        self.assertEqual(env['OPENAGENT_S3_ALLOW_INSECURE_TLS'], 'false')
+        self.assertEqual(env['OPENAGENT_ALLOW_INSECURE_TLS'], 'false')
+        self.assertNotIn('OPENAGENT_S3_ALLOW_INSECURE_TLS', env)
         self.assertNotIn('FileAssets__ObjectStorage__PublicServiceUrl', env)
         self.assertEqual(env['FileAssets__ObjectStorage__ServiceUrl'], 'http://minio:9000')
 

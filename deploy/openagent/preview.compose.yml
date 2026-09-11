@@ -23,6 +23,7 @@ services:
       OpenTelemetry__ServiceName: openagent-engine
       OpenTelemetry__ServiceVersion: preview-${PREVIEW_SLUG:-dev}
       FileAssets__ObjectStorage__ServiceUrl: http://host.docker.internal:${OPENAGENT_MINIO_PORT:-9000}
+      FileAssets__ObjectStorage__PublicServiceUrl: ${OPENAGENT_S3_PUBLIC_SERVICE_URL:-}
       FileAssets__ObjectStorage__ForcePathStyle: "true"
       FileAssets__ObjectStorage__AccessKey: ${OPENAGENT_S3_ACCESS_KEY:-openagent}
       FileAssets__ObjectStorage__SecretKey: ${OPENAGENT_S3_SECRET_KEY:-openagent-secret}

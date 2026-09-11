@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using OpenAgent.Hosting;
 using OpenAgent.Router.Observability;
 
 namespace OpenAgent.Router;
@@ -19,14 +20,9 @@ internal sealed class EngineReadinessProbe : IEngineReadinessProbe, IDisposable
             "RouterSettings:ServiceDiscovery:ReadinessPath"] ?? "/ready");
         _timeout = TimeSpan.FromMilliseconds(Math.Max(configuration.GetValue(
             "RouterSettings:ServiceDiscovery:ReadinessTimeoutMs", 2000), 100));
-        _client = new HttpMessageInvoker(new SocketsHttpHandler
-        {
-            UseProxy = false,
-            AllowAutoRedirect = false,
-            UseCookies = false,
-            ActivityHeadersPropagator = DistributedContextPropagator.Current,
-            ConnectTimeout = _timeout
-        });
+        _client = new HttpMessageInvoker(HttpClientSecurity.CreateSocketsHttpHandler(
+            configuration,
+            _timeout));
     }
 
     public async Task<bool> IsReadyAsync(

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using OpenAgent.Contracts.Security;
+using OpenAgent.Hosting;
 using OpenAgent.Router.Endpoints;
 using OpenAgent.Router.Security;
 using Yarp.ReverseProxy.Forwarder;
@@ -10,16 +11,9 @@ public static class RouterEndpointExtensions
 {
     public static IEndpointRouteBuilder MapRouterEndpoints(this IEndpointRouteBuilder app)
     {
-        var httpClient = new HttpMessageInvoker(new SocketsHttpHandler
-        {
-            UseProxy = false,
-            AllowAutoRedirect = false,
-            AutomaticDecompression = System.Net.DecompressionMethods.None,
-            UseCookies = false,
-            EnableMultipleHttp2Connections = true,
-            ActivityHeadersPropagator = DistributedContextPropagator.Current,
-            ConnectTimeout = TimeSpan.FromSeconds(15)
-        });
+        var httpClient = new HttpMessageInvoker(HttpClientSecurity.CreateSocketsHttpHandler(
+            app.ServiceProvider.GetRequiredService<IConfiguration>(),
+            TimeSpan.FromSeconds(15)));
         var requestConfig = new ForwarderRequestConfig { ActivityTimeout = TimeSpan.FromSeconds(100) };
 
         app.MapPost("/api/v1/agent/chat/{*action}", (

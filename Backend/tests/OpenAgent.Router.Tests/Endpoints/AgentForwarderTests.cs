@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Security;
@@ -32,7 +33,8 @@ public class AgentForwarderTests
         using var forwarder = new AgentForwarder(
             null!,
             NullLogger<AgentForwarder>.Instance,
-            new StubEndpointHealthTracker());
+            new StubEndpointHealthTracker(),
+            new ConfigurationBuilder().Build());
 
         await forwarder.ForwardAsync(
             context,

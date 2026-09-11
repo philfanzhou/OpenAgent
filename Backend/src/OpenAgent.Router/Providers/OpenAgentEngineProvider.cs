@@ -7,6 +7,7 @@ using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Routing;
 using OpenAgent.Router.Models;
 using OpenAgent.Router.Observability;
+using OpenAgent.Hosting;
 
 namespace OpenAgent.Router.Providers;
 
@@ -31,7 +32,8 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
         IConfiguration settings,
         IRouteTable routeTable,
         HttpMessageHandler? handler = null,
-        ILogger<OpenAgentEngineProvider>? logger = null)
+        ILogger<OpenAgentEngineProvider>? logger = null,
+        bool allowInsecureTls = false)
     {
         Id = id;
         _agentListPath = NormalizePath(settings["AgentListPath"], "/api/v1/agent/agents");
@@ -50,7 +52,7 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
                 header => header.Value!,
                 StringComparer.OrdinalIgnoreCase);
         _routeTable = routeTable;
-        _httpClient = new HttpMessageInvoker(handler ?? CreateHandler());
+        _httpClient = new HttpMessageInvoker(handler ?? CreateHandler(settings, allowInsecureTls));
         _logger = logger ?? NullLogger<OpenAgentEngineProvider>.Instance;
     }
 
@@ -263,16 +265,12 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
 
     public void Dispose() => _httpClient.Dispose();
 
-    private static SocketsHttpHandler CreateHandler() => new()
-    {
-        UseProxy = false,
-        AllowAutoRedirect = false,
-        AutomaticDecompression = System.Net.DecompressionMethods.None,
-        UseCookies = false,
-        EnableMultipleHttp2Connections = true,
-        ActivityHeadersPropagator = DistributedContextPropagator.Current,
-        ConnectTimeout = TimeSpan.FromSeconds(15)
-    };
+    private static SocketsHttpHandler CreateHandler(
+        IConfiguration settings,
+        bool allowInsecureTls) => HttpClientSecurity.CreateSocketsHttpHandler(
+            settings,
+            TimeSpan.FromSeconds(15),
+            allowInsecureTls);
 
     private HttpRequestMessage CreateServiceRequest(
         HttpMethod method,

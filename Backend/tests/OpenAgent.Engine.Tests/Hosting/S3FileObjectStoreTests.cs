@@ -1,5 +1,6 @@
 using Amazon.S3;
 using Amazon.S3.Model;
+using Amazon.Runtime;
 using Microsoft.Extensions.Options;
 using Moq;
 using OpenAgent.Contracts.Files;
@@ -153,5 +154,37 @@ public class S3FileObjectStoreTests
         Assert.Equal("files-test", request.BucketName);
         Assert.Equal(result.ObjectKey, request.Key);
         Assert.Equal(HttpVerb.GET, request.Verb);
+    }
+
+    [Fact]
+    public async Task CreateReadUrlAsync_WithPublicServiceUrlSignsThePublicHost()
+    {
+        var storage = new Mock<IAmazonS3>();
+        var publicClient = new AmazonS3Client(
+            new BasicAWSCredentials("access-key", "secret-key"),
+            new AmazonS3Config
+            {
+                ServiceURL = "https://s3.example.com",
+                ForcePathStyle = true,
+                AuthenticationRegion = "us-east-1"
+            });
+        using var presigner = new S3Presigner(publicClient, ownsClient: true);
+        var store = new S3FileObjectStore(
+            storage.Object,
+            Options.Create(new FileObjectStorageOptions
+            {
+                BucketName = "files-test",
+                PublicServiceUrl = "https://s3.example.com"
+            }),
+            presigner);
+
+        FileObjectAccessReference result = await store.CreateReadUrlAsync(
+            "files/tenants/tenant-hash/file-a.pdf",
+            DateTimeOffset.UtcNow.AddMinutes(10),
+            CancellationToken.None);
+
+        Uri signedUrl = new(result.Url);
+        Assert.Equal("s3.example.com", signedUrl.Host);
+        Assert.Contains("X-Amz-Signature=", signedUrl.Query, StringComparison.Ordinal);
     }
 }

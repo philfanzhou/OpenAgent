@@ -20,15 +20,13 @@ internal sealed class FileObjectStorageOptionsValidator : IValidateOptions<FileO
         {
             failures.Add("FileAssets:ObjectStorage:KeyPrefix must contain safe path segments.");
         }
-        if (!string.IsNullOrWhiteSpace(options.ServiceUrl)
-            && (!Uri.TryCreate(options.ServiceUrl, UriKind.Absolute, out Uri? serviceUrl)
-                || (serviceUrl.Scheme != Uri.UriSchemeHttp && serviceUrl.Scheme != Uri.UriSchemeHttps)
-                || string.IsNullOrWhiteSpace(serviceUrl.Host)
-                || !string.IsNullOrEmpty(serviceUrl.UserInfo)
-                || !string.IsNullOrEmpty(serviceUrl.Query)
-                || !string.IsNullOrEmpty(serviceUrl.Fragment)))
+        if (!IsHttpOrigin(options.ServiceUrl))
         {
             failures.Add("FileAssets:ObjectStorage:ServiceUrl must be an HTTP(S) origin without credentials, query, or fragment.");
+        }
+        if (!IsHttpOrigin(options.PublicServiceUrl))
+        {
+            failures.Add("FileAssets:ObjectStorage:PublicServiceUrl must be an HTTP(S) origin without credentials, query, or fragment.");
         }
 
         bool hasAccessKey = !string.IsNullOrWhiteSpace(options.AccessKey);
@@ -42,4 +40,13 @@ internal sealed class FileObjectStorageOptionsValidator : IValidateOptions<FileO
             ? ValidateOptionsResult.Success
             : ValidateOptionsResult.Fail(failures);
     }
+
+    private static bool IsHttpOrigin(string? value) =>
+        string.IsNullOrWhiteSpace(value)
+        || (Uri.TryCreate(value, UriKind.Absolute, out Uri? uri)
+            && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)
+            && !string.IsNullOrWhiteSpace(uri.Host)
+            && string.IsNullOrEmpty(uri.UserInfo)
+            && string.IsNullOrEmpty(uri.Query)
+            && string.IsNullOrEmpty(uri.Fragment));
 }

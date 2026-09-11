@@ -48,4 +48,9 @@ LLM Profile 选择 `Multimodal` 时，聊天请求中的 `image/*` 资产会在�
 
 `fileId` 是 OpenAgent 的业务资产 ID；`objectKey` 是 S3 对象的实际键，不能把二者混称为“S3 ID”。S3 对象由 bucket 与 `objectKey` 定位。`url` 是模型调用 `create_file_transfer_url` 时才生成的、有效期 15 分钟的只读签名 URL，可用于 MCP 读取或作为用户临时分享链接（分享时必须告知有效期），接收方不应保存 S3 凭据或依赖租户/用户路径。
 
-签名 URL 使用对象存储客户端配置的 S3 endpoint 生成；如果部署 MinIO 或其他 S3-compatible 存储，`ServiceUrl` 必须是第三方能够访问的地址，而不能是仅 Engine 容器可访问的内部地址。
+签名 URL 必须按最终访问者使用的 S3 endpoint 生成，因为签名包含请求 Host。默认使用
+`ServiceUrl`；如果 Engine 通过内部地址访问 S3/MinIO，而 MCP 或用户通过公网域名访问，
+请配置 `PublicServiceUrl`（部署环境变量为 `OPENAGENT_S3_PUBLIC_SERVICE_URL`）。该地址只用于
+生成预签名 URL，必须与访问者实际使用的 HTTP(S) origin 完全一致；`ForcePathStyle` 也必须与
+公网入口的路由方式一致。这样上传/读取可以继续走内部地址，同时避免把 URL 的域名替换后造成
+`SignatureDoesNotMatch`。

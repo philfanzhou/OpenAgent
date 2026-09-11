@@ -57,6 +57,7 @@ internal static class AgentAuthenticationExtensions
                     }
                     jwt.Audience = options.Audience;
                     jwt.RequireHttpsMetadata = options.RequireHttpsMetadata;
+                    jwt.BackchannelHttpHandler = HttpClientSecurity.CreateHttpClientHandler(configuration);
                     jwt.MapInboundClaims = false;
                     jwt.SaveToken = false;
                     jwt.TokenValidationParameters = new TokenValidationParameters

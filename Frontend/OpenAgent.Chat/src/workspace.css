@@ -601,6 +601,13 @@ html[data-theme='dark'] .message-row ::selection { background: rgba(16, 163, 127
 .markdown-content blockquote { margin: .8em 0; padding: 2px 0 2px 13px; border-left: 3px solid var(--border-strong); color: var(--text-muted); }
 .markdown-content a { color: var(--accent-hover); text-decoration: underline; text-decoration-color: var(--accent-border); text-underline-offset: 3px; }
 .markdown-content code { padding: 2px 5px; border-radius: 5px; color: var(--text); background: var(--bg-subtle); font-family: var(--font-mono); font-size: .88em; }
+.markdown-code-block { margin: .8em 0; }
+.markdown-code-toolbar { display: flex; align-items: center; justify-content: space-between; min-height: 34px; padding: 0 8px 0 13px; border: 1px solid var(--border); border-bottom: 0; border-radius: var(--r-sm) var(--r-sm) 0 0; color: var(--text-muted); background: var(--bg-subtle); font-size: 11px; }
+.markdown-code-language { font-family: var(--font-mono); text-transform: uppercase; letter-spacing: .04em; }
+.markdown-code-actions { display: flex; gap: 4px; }
+.markdown-code-action { padding: 4px 7px; border: 0; border-radius: 4px; color: inherit; background: transparent; font: inherit; cursor: pointer; }
+.markdown-code-action:hover,
+.markdown-code-action[aria-pressed="true"] { color: var(--accent-hover); background: var(--accent-soft); }
 .markdown-content pre {
   max-width: 100%;
   margin: .8em 0;
@@ -614,6 +621,9 @@ html[data-theme='dark'] .message-row ::selection { background: rgba(16, 163, 127
   font-size: 13px;
   line-height: 1.55;
 }
+.markdown-code-block pre { margin: 0; border-radius: 0 0 var(--r-sm) var(--r-sm); }
+.markdown-code-block.is-wrapped pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.markdown-code-block.is-wrapped pre code { white-space: inherit; overflow-wrap: inherit; }
 .markdown-content pre code { padding: 0; color: inherit; background: transparent; font-size: inherit; }
 .markdown-content table { display: block; max-width: 100%; margin: .8em 0; overflow-x: auto; border-spacing: 0; border-collapse: collapse; }
 .markdown-content th,
