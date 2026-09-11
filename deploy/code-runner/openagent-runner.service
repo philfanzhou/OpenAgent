@@ -1,0 +1,46 @@
+[Unit]
+Description=OpenAgent Bubblewrap Code Runner
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=openagent-runner
+Group=openagent-runner
+WorkingDirectory=/opt/openagent-runner/app
+EnvironmentFile=/etc/openagent-runner.env
+ExecStart=/opt/openagent-runner/app/OpenAgent.Runner
+Restart=on-failure
+RestartSec=3
+KillMode=control-group
+TimeoutStopSec=20
+UMask=0077
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectControlGroups=yes
+# Masking procfs submounts prevents unprivileged Bubblewrap from mounting its
+# own PID-scoped procfs (EPERM). The service is non-root with no capabilities;
+# kernel settings/logs remain protected by normal kernel permission checks.
+ProtectKernelTunables=no
+ProtectKernelModules=yes
+ProtectKernelLogs=no
+ProtectClock=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RemoveIPC=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+ReadWritePaths=/var/lib/openagent-runner
+
+TasksMax=256
+MemoryMax=2G
+CPUQuota=200%
+
+[Install]
+WantedBy=multi-user.target

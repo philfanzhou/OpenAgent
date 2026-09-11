@@ -153,6 +153,7 @@ public sealed class OpenAgentDbContext(DbContextOptions<OpenAgentDbContext> opti
             entity.Property(item => item.McpJson).HasColumnType("jsonb");
             entity.Property(item => item.RagJson).HasColumnType("jsonb");
             entity.Property(item => item.SkillsJson).HasColumnType("jsonb");
+            entity.Property(item => item.CodeExecutionJson).HasColumnType("jsonb");
             entity.Property(item => item.Version).IsConcurrencyToken();
             entity.HasIndex(item => new { item.TenantId, item.UpdatedAt });
         });

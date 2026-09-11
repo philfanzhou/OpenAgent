@@ -25,6 +25,10 @@ namespace OpenAgent.Infrastructure.Migrations
 
             modelBuilder.Entity("OpenAgent.Infrastructure.Entities.AgentConfigurationEntity", b =>
                 {
+                    b.Property<string>("CodeExecutionJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
                     b.Property<string>("AgentId")
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
