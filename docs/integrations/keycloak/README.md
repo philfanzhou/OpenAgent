@@ -19,6 +19,7 @@ OPENAGENT_MINIO_PORT=59010 \
 OPENAGENT_MINIO_CONSOLE_PORT=59011 \
 docker compose -p openagent-keycloak-infrastructure \
   -f deploy/infrastructure/docker-compose.yml \
+  --env-file .env \
   --profile storage up -d
 
 OPENAGENT_ROUTER_PORT=55011 \
@@ -41,7 +42,7 @@ scripts/deploy.sh --env-file .env --docker-mode docker
 - 工作台：`https://localhost:58090`
 - Keycloak 管理台：`https://localhost:58091/admin/`
 - Keycloak Realm：`openagent`
-- 管理员：由 `OPENAGENT_KEYCLOAK_ADMIN_USERNAME` / `OPENAGENT_KEYCLOAK_ADMIN_PASSWORD` 提供，默认值仅适用于本地临时环境
+- 管理员：必须由 `OPENAGENT_KEYCLOAK_ADMIN_USERNAME` / `OPENAGENT_KEYCLOAK_ADMIN_PASSWORD` 提供
 - 用户和租户组织：不在 Realm 文件中预置，需要在管理台手动创建
 
 公开地址固定使用 HTTPS。将 PEM 证书 `tls.crt`、私钥 `tls.key` 放入与 Nginx 共用的
@@ -51,16 +52,8 @@ Keycloak 容器内 HTTPS 端口固定为 `8443`，Router/Engine 仍通过容器�
 
 Realm、SPA Client、API audience、`tenant_id` claim 和 Organization 能力由 [openagent-realm.json](../../../deploy/infrastructure/keycloak/realm/openagent-realm.json) 导入；用户、密码、邮箱和租户组织由业务管理员手动维护。
 
-声明式 User Profile（含 `tenant_id` 属性声明）不随 Realm 文件导入——Realm 导入目录中的每个文件都会按 Realm 解析，顶层 `userProfile` 键会导致启动失败。声明单独维护在 [openagent-user-profile.json](../../../deploy/infrastructure/keycloak/openagent-user-profile.json)，需要通过 Admin API 应用：
+当前仓库没有独立的 User Profile JSON；Realm 导入文件只负责 Realm、Client、Claim Mapper 和 Organization 能力。用户属性与租户组织由业务管理员按实际 Keycloak 策略维护。
 
-```bash
-TOKEN=$(curl -kfsS -d 'client_id=admin-cli' -d "username=$OPENAGENT_KEYCLOAK_ADMIN_USERNAME" -d "password=$OPENAGENT_KEYCLOAK_ADMIN_PASSWORD" -d 'grant_type=password' https://localhost:58091/realms/master/protocol/openid-connect/token | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
-curl -fsS -X PUT -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  -d @deploy/infrastructure/keycloak/openagent-user-profile.json \
-  https://localhost:58091/admin/realms/openagent/users/profile
-```
-
-未在 Profile 中声明的用户属性会被静默丢弃（API 返回成功但不生效），所以新建 Realm 或清理数据卷后必须重新执行上述 PUT。
 停止应用时只删除应用容器，不影响 PostgreSQL、Redis、MinIO 数据：
 
 ```bash

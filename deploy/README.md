@@ -2,7 +2,7 @@
 
 - `infrastructure/docker-compose.yml`：PostgreSQL、Redis、MinIO、Keycloak。
 - `infrastructure/keycloak/realm/`：Keycloak Realm 导入配置。
-- `openagent/docker-compose.yml`：Engine、Router、Chat、Nginx。
+- `openagent/docker-compose.yml`：Engine、Runner、Router、Chat、Nginx。
 - `openagent/nginx/`：代理模板和本地证书目录。
 - `openagent/preview.compose.yml`：并行预览；由 `scripts/preview.sh` 管理。
 
@@ -32,7 +32,7 @@ Engine/Router 使用同一值作为 Authority。已有 Realm 的 Client 地址�
 
 默认证书为 `deploy/openagent/nginx/certs/tls.crt` 和 `tls.key`，两套服务共用。
 自定义时给 `OPENAGENT_TLS_CERT_DIR` 设置绝对路径。证书和私钥不应进入 Git 或镜像。
-生产环境另行配置密码；示例不包含实际部署域名、私钥、API key 或服务器目录。
+部署前必须填写 `.env` 中的数据库、MinIO、Keycloak 管理员和 Runner API key；示例不包含实际部署域名、私钥、API key 或服务器目录。
 
 对象存储只配置应用支持的 `OPENAGENT_S3_SERVICE_URL`，不提供无效的 PublicServiceUrl。
 需要对外预签名链接时，该地址必须对链接消费者可达；本次不新增双 endpoint 签名逻辑

@@ -17,6 +17,9 @@
 ## 使用（WSL）
 
 ```bash
+# 先加载受保护的部署变量（至少包含 PostgreSQL/MinIO 凭据）
+set -a; source .env; set +a
+
 # 部署预览（在当前 worktree 根目录）
 wsl -e bash -lc 'cd /mnt/d/Code/Agent.Matrix && bash scripts/preview.sh up <slug>'
 

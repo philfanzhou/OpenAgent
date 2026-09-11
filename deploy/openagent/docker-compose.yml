@@ -5,7 +5,7 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: ${OPENAGENT_ASPNETCORE_ENVIRONMENT:-Development}
       ASPNETCORE_URLS: http://+:5208
-      ConnectionStrings__OpenAgentDatabase: Host=${OPENAGENT_POSTGRES_HOST:-postgres};Port=${OPENAGENT_POSTGRES_INTERNAL_PORT:-5432};Database=openagent;Username=openagent;Password=openagent
+      ConnectionStrings__OpenAgentDatabase: Host=${OPENAGENT_POSTGRES_HOST:-postgres};Port=${OPENAGENT_POSTGRES_INTERNAL_PORT:-5432};Database=${OPENAGENT_POSTGRES_DB:-openagent};Username=${OPENAGENT_POSTGRES_USER:-openagent};Password=${OPENAGENT_POSTGRES_PASSWORD:?Set OPENAGENT_POSTGRES_PASSWORD}
       ConnectionStrings__Redis: ${OPENAGENT_REDIS_HOST:-redis}:${OPENAGENT_REDIS_INTERNAL_PORT:-6379}
       Database__ApplyMigrationsOnStartup: "true"
       ConversationCache__Enabled: "true"
@@ -17,8 +17,8 @@ services:
       FileAssets__ObjectStorage__ForcePathStyle: "true"
       OPENAGENT_S3_ALLOW_INSECURE_TLS: ${OPENAGENT_S3_ALLOW_INSECURE_TLS:-false}
       FileAssets__ObjectStorage__BucketName: ${OPENAGENT_S3_BUCKET:-openagent-files}
-      FileAssets__ObjectStorage__AccessKey: ${OPENAGENT_S3_ACCESS_KEY:-openagent}
-      FileAssets__ObjectStorage__SecretKey: ${OPENAGENT_S3_SECRET_KEY:-openagent-secret}
+      FileAssets__ObjectStorage__AccessKey: ${OPENAGENT_S3_ACCESS_KEY:?Set OPENAGENT_S3_ACCESS_KEY}
+      FileAssets__ObjectStorage__SecretKey: ${OPENAGENT_S3_SECRET_KEY:?Set OPENAGENT_S3_SECRET_KEY}
       Heartbeat__AdvertisedHost: engine
       CodeExecution__Enabled: "true"
       CodeExecution__Endpoint: http://runner:5209

@@ -11,6 +11,14 @@ ROOT = Path(__file__).resolve().parents[1]
 def config(relative, overrides=None):
     env = {key: value for key, value in os.environ.items()
            if not key.startswith(('OPENAGENT_', 'COMPOSE_'))}
+    env.update({
+        'OPENAGENT_RUNNER_API_KEY': 'layout-test-runner-key-32-characters',
+        'OPENAGENT_POSTGRES_PASSWORD': 'layout-test-postgres-password',
+        'OPENAGENT_S3_ACCESS_KEY': 'layout-test-s3-user',
+        'OPENAGENT_S3_SECRET_KEY': 'layout-test-s3-secret',
+        'OPENAGENT_KEYCLOAK_ADMIN_USERNAME': 'layout-test-admin',
+        'OPENAGENT_KEYCLOAK_ADMIN_PASSWORD': 'layout-test-admin-password',
+    })
     env.update(overrides or {})
     output = subprocess.check_output(
         ['docker', 'compose', '--env-file', os.devnull, '-f', str(ROOT / relative),

@@ -14,7 +14,7 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:5208
-      ConnectionStrings__OpenAgentDatabase: Host=host.docker.internal;Port=${OPENAGENT_POSTGRES_PORT:-5432};Database=openagent;Username=openagent;Password=openagent
+      ConnectionStrings__OpenAgentDatabase: Host=host.docker.internal;Port=${OPENAGENT_POSTGRES_PORT:-5432};Database=${OPENAGENT_POSTGRES_DB:-openagent};Username=${OPENAGENT_POSTGRES_USER:-openagent};Password=${OPENAGENT_POSTGRES_PASSWORD:?Set OPENAGENT_POSTGRES_PASSWORD}
       ConnectionStrings__Redis: host.docker.internal:${OPENAGENT_REDIS_PORT:-6379},defaultDatabase=0
       Database__ApplyMigrationsOnStartup: "true"
       ConversationCache__Enabled: "true"
@@ -24,8 +24,8 @@ services:
       OpenTelemetry__ServiceVersion: preview-${PREVIEW_SLUG:-dev}
       FileAssets__ObjectStorage__ServiceUrl: http://host.docker.internal:${OPENAGENT_MINIO_PORT:-9000}
       FileAssets__ObjectStorage__ForcePathStyle: "true"
-      FileAssets__ObjectStorage__AccessKey: openagent
-      FileAssets__ObjectStorage__SecretKey: openagent-secret
+      FileAssets__ObjectStorage__AccessKey: ${OPENAGENT_S3_ACCESS_KEY:?Set OPENAGENT_S3_ACCESS_KEY}
+      FileAssets__ObjectStorage__SecretKey: ${OPENAGENT_S3_SECRET_KEY:?Set OPENAGENT_S3_SECRET_KEY}
       Engine__AllowMockAgent: "true"
       Heartbeat__AdvertisedHost: engine
       Heartbeat__AdvertisedPort: "5208"
