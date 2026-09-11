@@ -16,7 +16,7 @@ set -euo pipefail
 PREVIEW_DIR=".preview"
 LOCK_FILE="$PREVIEW_DIR/lock"
 ALLOC_FILE="$PREVIEW_DIR/allocations"
-COMPOSE_FILE="docker/preview.compose.yml"
+COMPOSE_FILE="deploy/openagent/preview.compose.yml"
 
 # 端口区间（避开主实例 engine 5208 / router 5001 / chat 8081）
 ENGINE_BASE=5210

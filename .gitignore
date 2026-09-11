@@ -63,8 +63,12 @@ TestResults/
 
 # ── Nginx TLS 私钥 ──
 
-docker/nginx/certs/*
-!docker/nginx/certs/.gitkeep
+**/certs/*
+!**/certs/.gitkeep
+*.pem
+*.key
+*.pfx
+*.p12
 
 # ── Misc ──
 

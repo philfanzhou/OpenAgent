@@ -1,4 +1,8 @@
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.DependencyInjection;
+using Moq;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Engine.Host.Extensions;
@@ -9,6 +13,36 @@ namespace OpenAgent.Engine.Tests.Hosting;
 
 public sealed class ConversationCompactionEndpointTests
 {
+    [Fact]
+    public async Task Delete_WithoutLlmProfileQuery_DeletesOwnedConversation()
+    {
+        var query = new Mock<IConversationQueryService>();
+        query.Setup(value => value.GetRecordAsync("tenant-1", "conversation-1", Moq.It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ConversationRecord
+            {
+                ConversationId = "conversation-1", TenantId = "tenant-1",
+                UserId = "user-1", AgentId = "agent-1", Type = ConversationType.User
+            });
+        query.Setup(value => value.SoftDeleteAsync("tenant-1", "conversation-1", Moq.It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        WebApplicationBuilder builder = WebApplication.CreateBuilder();
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
+        builder.Services.AddSingleton(query.Object);
+        builder.Services.AddSingleton(new Moq.Mock<IConversationCompactionService>().Object);
+        await using WebApplication app = builder.Build();
+        app.Use(async (context, next) =>
+        {
+            context.Features.Set(CreateContext("tenant-1", "user-1").Features.Get<AgentRequestFeature>());
+            await next(context);
+        });
+        app.MapGroup("/api/v1/agent").MapConversations();
+        await app.StartAsync();
+        using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
+        using HttpResponseMessage response = await client.DeleteAsync("/api/v1/agent/conversations/conversation-1");
+        Assert.Equal(System.Net.HttpStatusCode.NoContent, response.StatusCode);
+        query.Verify(value => value.SoftDeleteAsync("tenant-1", "conversation-1", Moq.It.IsAny<CancellationToken>()), Moq.Times.Once);
+    }
+
     [Theory]
     [InlineData("tenant-1", "user-1", "tenant-1", "user-1", StatusCodes.Status200OK, 1)]
     [InlineData("tenant-1", "user-2", "tenant-1", "user-1", StatusCodes.Status403Forbidden, 0)]

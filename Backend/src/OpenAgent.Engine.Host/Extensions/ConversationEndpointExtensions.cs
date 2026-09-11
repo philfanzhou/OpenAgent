@@ -71,7 +71,6 @@ internal static class ConversationEndpointExtensions
         [FromServices] IConversationQueryService queryService,
         HttpContext context,
         string conversationId,
-        [FromQuery] string llmProfileId,
         CancellationToken cancellationToken = default)
     {
         string tenantId = AgentEndpointRequestMapper.RequireTenant(context);
