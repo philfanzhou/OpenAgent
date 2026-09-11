@@ -30,32 +30,53 @@ internal static class FileAssetHostServiceExtensions
             FileObjectStorageOptions options = serviceProvider
                 .GetRequiredService<IOptions<FileObjectStorageOptions>>()
                 .Value;
-            var config = new AmazonS3Config
+            return CreateS3Client(options, options.ServiceUrl, allowInsecureTls);
+        });
+        services.TryAddSingleton<IS3Presigner>(serviceProvider =>
+        {
+            FileObjectStorageOptions options = serviceProvider
+                .GetRequiredService<IOptions<FileObjectStorageOptions>>()
+                .Value;
+            if (string.IsNullOrWhiteSpace(options.PublicServiceUrl))
             {
-                ForcePathStyle = options.ForcePathStyle,
-                AuthenticationRegion = options.Region,
-                RequestChecksumCalculation = RequestChecksumCalculation.WHEN_REQUIRED,
-                ResponseChecksumValidation = ResponseChecksumValidation.WHEN_REQUIRED,
-                HttpClientFactory = new S3HttpClientFactory(allowInsecureTls)
-            };
-            if (string.IsNullOrWhiteSpace(options.ServiceUrl))
-            {
-                config.RegionEndpoint = RegionEndpoint.GetBySystemName(options.Region);
-            }
-            else
-            {
-                config.ServiceURL = options.ServiceUrl;
+                return new S3Presigner(serviceProvider.GetRequiredService<IAmazonS3>());
             }
 
-            return string.IsNullOrWhiteSpace(options.AccessKey)
-                ? new AmazonS3Client(config)
-                : new AmazonS3Client(new BasicAWSCredentials(options.AccessKey, options.SecretKey), config);
+            IAmazonS3 client = CreateS3Client(options, options.PublicServiceUrl, allowInsecureTls);
+            return new S3Presigner(client, ownsClient: true);
         });
         services.Replace(ServiceDescriptor.Singleton<IFileObjectStore, S3FileObjectStore>());
         services.AddHealthChecks().AddCheck<FileObjectStorageHealthCheck>(
             "file-object-storage",
             tags: ["infrastructure", "ready"]);
         return services;
+    }
+
+    private static IAmazonS3 CreateS3Client(
+        FileObjectStorageOptions options,
+        string? serviceUrl,
+        bool allowInsecureTls)
+    {
+        var config = new AmazonS3Config
+        {
+            ForcePathStyle = options.ForcePathStyle,
+            AuthenticationRegion = options.Region,
+            RequestChecksumCalculation = RequestChecksumCalculation.WHEN_REQUIRED,
+            ResponseChecksumValidation = ResponseChecksumValidation.WHEN_REQUIRED,
+            HttpClientFactory = new S3HttpClientFactory(allowInsecureTls)
+        };
+        if (string.IsNullOrWhiteSpace(serviceUrl))
+        {
+            config.RegionEndpoint = RegionEndpoint.GetBySystemName(options.Region);
+        }
+        else
+        {
+            config.ServiceURL = serviceUrl;
+        }
+
+        return string.IsNullOrWhiteSpace(options.AccessKey)
+            ? new AmazonS3Client(config)
+            : new AmazonS3Client(new BasicAWSCredentials(options.AccessKey, options.SecretKey), config);
     }
 
     private sealed class S3HttpClientFactory(bool allowInsecureTls) : HttpClientFactory

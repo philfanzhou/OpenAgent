@@ -8,6 +8,7 @@ internal sealed class FileObjectStorageOptions
     public string KeyPrefix { get; init; } = "files";
     public string Region { get; init; } = "us-east-1";
     public string? ServiceUrl { get; init; }
+    public string? PublicServiceUrl { get; init; }
     public bool ForcePathStyle { get; init; }
     public string? AccessKey { get; init; }
     public string? SecretKey { get; init; }

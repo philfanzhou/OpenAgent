@@ -11,11 +11,21 @@ namespace OpenAgent.Engine.Host.Files;
 internal sealed class S3FileObjectStore : IFileObjectStore
 {
     private readonly IAmazonS3 _s3;
+    private readonly IS3Presigner _presigner;
     private readonly FileObjectStorageOptions _options;
 
     public S3FileObjectStore(IAmazonS3 s3, IOptions<FileObjectStorageOptions> options)
+        : this(s3, options, new S3Presigner(s3))
+    {
+    }
+
+    public S3FileObjectStore(
+        IAmazonS3 s3,
+        IOptions<FileObjectStorageOptions> options,
+        IS3Presigner presigner)
     {
         _s3 = s3;
+        _presigner = presigner;
         _options = options.Value;
     }
 
@@ -144,7 +154,7 @@ internal sealed class S3FileObjectStore : IFileObjectStore
             throw new ArgumentException("Object URL expiration must be in the future.", nameof(expiresAt));
         }
 
-        string url = _s3.GetPreSignedURL(new GetPreSignedUrlRequest
+        string url = _presigner.GetPreSignedURL(new GetPreSignedUrlRequest
         {
             BucketName = _options.BucketName,
             Key = objectKey,

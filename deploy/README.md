@@ -36,6 +36,7 @@ Engine/Router 使用同一值作为 Authority。已有 Realm 的 Client 地址�
 自定义时给 `OPENAGENT_TLS_CERT_DIR` 设置绝对路径。证书和私钥不应进入 Git 或镜像。
 本地部署可直接使用示例中的默认凭据；生产环境应覆盖数据库、MinIO 和 Keycloak 凭据。Runner API key 仍必须单独生成，示例不包含实际部署域名、私钥、API key 或服务器目录。
 
-对象存储只配置应用支持的 `OPENAGENT_S3_SERVICE_URL`，不提供无效的 PublicServiceUrl。
-需要对外预签名链接时，该地址必须对链接消费者可达；本次不新增双 endpoint 签名逻辑
-或自动公开 MinIO 代理。默认保持 TLS 校验，不通过关闭校验修复域名/证书问题。
+对象存储内部访问地址使用 `OPENAGENT_S3_SERVICE_URL`。如果预签名 URL 的消费者通过不同的
+公网域名访问 S3/MinIO，再配置 `OPENAGENT_S3_PUBLIC_SERVICE_URL`；它只用于签名，必须与消费
+者实际访问的 HTTP(S) origin 完全一致。未配置时预签名 URL 继续使用内部服务地址。默认保持
+TLS 校验，不通过关闭校验修复域名/证书问题。
