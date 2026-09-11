@@ -2,6 +2,7 @@ import { ref, type ComputedRef, type Ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { api, makeLocalConversation } from '../api'
 import { randomUuid } from '../browserCrypto'
+import { mergeOptimisticUserMessages } from '../conversationCollection'
 import { appendStreamingReasoning, appendStreamingTool, mergeAssistantSnapshot } from '../messagePresentation'
 import { createStreamingAssistantContentState, enqueueAssistantContent, markAssistantPhaseBoundary } from '../streamingAssistantContent'
 import { createTypewriterQueue, type TypewriterQueue } from '../typewriterQueue'
@@ -188,7 +189,10 @@ export function useChatStreaming(options: ChatStreamingOptions) {
       try {
         const persisted = await api.getConversation(conversationId)
         await options.hydrateFilePreviews(persisted)
-        persisted.messages = mergeAssistantSnapshot(persisted.messages || [], assistantMessage)
+        persisted.messages = mergeAssistantSnapshot(
+          mergeOptimisticUserMessages(persisted.messages || [], conversation.messages || []),
+          assistantMessage,
+        )
         completedAgentId = persisted.agentId
         options.replaceConversation(persisted, conversationId)
       } catch (error) {
@@ -213,7 +217,10 @@ export function useChatStreaming(options: ChatStreamingOptions) {
             const persisted = await api.getConversation(conversationId)
             await options.hydrateFilePreviews(persisted)
             if (streamedAssistant) {
-              persisted.messages = mergeAssistantSnapshot(persisted.messages || [], streamedAssistant)
+              persisted.messages = mergeAssistantSnapshot(
+                mergeOptimisticUserMessages(persisted.messages || [], conversation.messages || []),
+                streamedAssistant,
+              )
             }
             if (persisted.messages?.length && persisted.status !== 'Running') {
               options.replaceConversation(persisted, conversationId)
@@ -238,7 +245,10 @@ export function useChatStreaming(options: ChatStreamingOptions) {
           const persisted = await api.getConversation(conversationId)
           await options.hydrateFilePreviews(persisted)
           if (streamedAssistant) {
-            persisted.messages = mergeAssistantSnapshot(persisted.messages || [], streamedAssistant)
+            persisted.messages = mergeAssistantSnapshot(
+              mergeOptimisticUserMessages(persisted.messages || [], conversation.messages || []),
+              streamedAssistant,
+            )
           }
           if (persisted.messages?.length && persisted.status !== 'Running') {
             options.replaceConversation(persisted, conversationId)

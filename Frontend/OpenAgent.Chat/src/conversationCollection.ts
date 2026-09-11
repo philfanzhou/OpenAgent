@@ -1,4 +1,33 @@
 import type { ConversationRecord } from './types'
+import type { ConversationMessage } from './types'
+
+/**
+ * The server can return a stale first-turn snapshot while a cancelled stream
+ * is still being finalized. Keep optimistic user messages until the durable
+ * snapshot contains the same turn, otherwise the user bubble disappears and
+ * only comes back after the next full reload.
+ */
+export function mergeOptimisticUserMessages(
+  persisted: ConversationMessage[],
+  optimistic: ConversationMessage[] = [],
+): ConversationMessage[] {
+  const merged = [...persisted]
+  for (const message of optimistic.filter(item => item.role === 'user')) {
+    const existing = merged.find(item =>
+      item.role === 'user'
+      && (item.messageId === message.messageId
+        || (item.sequence === message.sequence && item.content === message.content)))
+    if (existing) {
+      if (!existing.files?.length && message.files?.length) existing.files = message.files
+      continue
+    }
+
+    const insertAt = merged.findIndex(item => (item.sequence || 0) > (message.sequence || 0))
+    if (insertAt < 0) merged.push(message)
+    else merged.splice(insertAt, 0, message)
+  }
+  return merged
+}
 
 export function mergeConversationRecords(
   current: ConversationRecord[],

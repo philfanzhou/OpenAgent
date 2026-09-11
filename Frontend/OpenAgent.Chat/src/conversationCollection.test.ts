@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mergeConversationRecords, replaceConversationRecord, selectionMatchesConversation } from './conversationCollection'
+import { mergeConversationRecords, mergeOptimisticUserMessages, replaceConversationRecord, selectionMatchesConversation } from './conversationCollection'
 import type { ContextSummary, ConversationMessage, ConversationRecord } from './types'
 
 function conversation(conversationId: string, status: ConversationRecord['status'], messages?: ConversationMessage[]): ConversationRecord {
@@ -29,6 +29,28 @@ function message(content: string): ConversationMessage {
 }
 
 describe('conversation collection', () => {
+  it('keeps the optimistic first user turn when cancellation reads a stale server snapshot', () => {
+    const user: ConversationMessage = {
+      messageId: 'optimistic-user', sequence: 1, role: 'user', content: 'first question', timestamp: '',
+    }
+    const persistedAssistant: ConversationMessage = {
+      messageId: 'persisted-assistant', sequence: 2, role: 'assistant', content: '', timestamp: '',
+    }
+
+    expect(mergeOptimisticUserMessages([persistedAssistant], [user])).toEqual([user, persistedAssistant])
+  })
+
+  it('does not duplicate a user turn already persisted with a different message id', () => {
+    const persistedUser: ConversationMessage = {
+      messageId: 'persisted-user', sequence: 1, role: 'user', content: 'first question', timestamp: '',
+    }
+    const optimisticUser: ConversationMessage = {
+      messageId: 'optimistic-user', sequence: 1, role: 'user', content: 'first question', timestamp: '',
+    }
+
+    expect(mergeOptimisticUserMessages([persistedUser], [optimisticUser])).toEqual([persistedUser])
+  })
+
   it('preserves live messages and status when a stale list refresh arrives', () => {
     const live = conversation('conversation-a', 'Running', [message('latest streamed text')])
     live.messageCount = 2
