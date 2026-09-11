@@ -1,10 +1,13 @@
 using System.Runtime.CompilerServices;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
+using OpenAgent.Contracts.Approvals;
+using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Conversation;
+using OpenAgent.Core.Approvals;
 using OpenAgent.Core.Files;
 using PlatformAgentResponse = OpenAgent.Contracts.Requests.AgentResponse;
 
@@ -18,17 +21,20 @@ public sealed class AgentExecutor
     private readonly AgentFactory _agents;
     private readonly ConversationAgentResolver _conversationAgents;
     private readonly FileAssetRequestResolver _files;
+    private readonly HumanApprovalService _approvals;
 
     internal AgentExecutor(
         IAgentRuntimeResolver runtime,
         AgentFactory agents,
         ConversationAgentResolver conversationAgents,
-        FileAssetRequestResolver files)
+        FileAssetRequestResolver files,
+        HumanApprovalService approvals)
     {
         _runtime = runtime;
         _agents = agents;
         _conversationAgents = conversationAgents;
         _files = files;
+        _approvals = approvals;
     }
 
     public async Task<PlatformAgentResponse> ExecuteAsync(
@@ -83,6 +89,32 @@ public sealed class AgentExecutor
         string modelId = AgentResponseAdapter.ReadModelId(
             response.RawRepresentation,
             profile.Model.ModelId);
+        ToolApprovalRequestContent? approvalContent = response.Messages
+            .SelectMany(message => message.Contents)
+            .OfType<ToolApprovalRequestContent>()
+            .FirstOrDefault();
+        HumanApprovalRequest? approval = approvalContent == null
+            ? null
+            : await _approvals.SuspendAsync(
+                scope,
+                session,
+                approvalContent,
+                executionRequest,
+                user,
+                cancellationToken).ConfigureAwait(false);
+        if (approval != null)
+        {
+            measurement.Complete(usage);
+            return new PlatformAgentResponse
+            {
+                Content = "等待用户批准后继续执行。",
+                TokenUsage = usage,
+                ModelId = modelId,
+                TraceId = traceId,
+                Approval = approval,
+                Success = true
+            };
+        }
         await scope.CompleteAsync(usage, modelId, cancellationToken).ConfigureAwait(false);
         measurement.Complete(usage);
         return new PlatformAgentResponse
@@ -141,6 +173,7 @@ public sealed class AgentExecutor
         HashSet<string> announcedToolCalls = new(StringComparer.Ordinal);
         TokenUsage? usage = null;
         string modelId = profile.Model.ModelId;
+        ToolApprovalRequestContent? pendingApproval = null;
         IAsyncEnumerable<AgentResponseUpdate> updates = scope.Agent.RunStreamingAsync(
             userMessage,
             session,
@@ -149,6 +182,11 @@ public sealed class AgentExecutor
         await foreach (AgentResponseUpdate update in updates.WithCancellation(cancellationToken))
         {
             IList<AIContent> contents = update.Contents ?? [];
+            pendingApproval ??= contents.OfType<ToolApprovalRequestContent>().FirstOrDefault();
+            if (pendingApproval != null)
+            {
+                continue;
+            }
             foreach (FunctionCallContent call in contents.OfType<FunctionCallContent>())
             {
                 if (call.Exception != null || string.IsNullOrWhiteSpace(call.Name))
@@ -209,13 +247,35 @@ public sealed class AgentExecutor
             modelId = AgentResponseAdapter.ReadModelId(update.RawRepresentation, modelId);
         }
 
+        HumanApprovalRequest? approval = pendingApproval == null
+            ? null
+            : await _approvals.SuspendAsync(
+                scope,
+                session,
+                pendingApproval,
+                executionRequest,
+                user,
+                cancellationToken).ConfigureAwait(false);
+        if (approval != null)
+        {
+            measurement.Complete(usage);
+            yield return new AgentStreamEvent
+            {
+                Type = AgentStreamEventType.Approval,
+                Approval = approval,
+                Status = ConversationStatus.AwaitingApproval.ToString()
+            };
+            yield break;
+        }
+
         await scope.CompleteAsync(usage, modelId, cancellationToken).ConfigureAwait(false);
         measurement.Complete(usage);
         yield return new AgentStreamEvent
         {
             Type = AgentStreamEventType.Usage,
             Usage = usage,
-            ModelId = modelId
+            ModelId = modelId,
+            Status = ConversationStatus.Completed.ToString()
         };
     }
 

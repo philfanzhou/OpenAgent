@@ -54,7 +54,8 @@ internal sealed class ConversationHistoryFactory
         AgentRequest request,
         IAgentUserContext user,
         IReadOnlyList<FileAsset> files,
-        bool supportsMultimodal)
+        bool supportsMultimodal,
+        bool recordUserInput = true)
     {
         ConversationContext context = new(
             request.ConversationId,
@@ -68,7 +69,8 @@ internal sealed class ConversationHistoryFactory
             modelId,
             request.Query,
             files.ToList().AsReadOnly(),
-            supportsMultimodal));
+            supportsMultimodal,
+            recordUserInput));
     }
 
     internal async Task EnsureConversationAsync(

@@ -519,6 +519,19 @@ html[data-theme='dark'] .welcome-icon { background: #ececec; color: #1d1d1f; }
   font-size: 15px;
   line-height: 1.7;
 }
+
+.approval-card {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  display: grid;
+  gap: 6px;
+}
+.approval-card pre { margin: 2px 0; max-height: 180px; overflow: auto; white-space: pre-wrap; font-size: 12px; }
+.approval-card small { color: var(--text-muted); }
+.approval-actions { display: flex; gap: 8px; margin-top: 4px; }
 .user .message-bubble { padding: 9px 14px; border-radius: 18px; background: var(--bg-subtle); }
 .message-usage {
   display: flex;
