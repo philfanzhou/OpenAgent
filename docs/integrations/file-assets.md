@@ -49,3 +49,25 @@ LLM Profile 选择 `Multimodal` 时，聊天请求中的 `image/*` 资产会在�
 `fileId` 是 OpenAgent 的业务资产 ID；`objectKey` 是 S3 对象的实际键，不能把二者混称为“S3 ID”。S3 对象由 bucket 与 `objectKey` 定位。`url` 是模型调用 `create_file_transfer_url` 时才生成的、有效期 15 分钟的只读签名 URL，可用于 MCP 读取或作为用户临时分享链接（分享时必须告知有效期），接收方不应保存 S3 凭据或依赖租户/用户路径。
 
 签名 URL 使用对象存储客户端配置的 S3 endpoint 生成；如果部署 MinIO 或其他 S3-compatible 存储，`ServiceUrl` 必须是第三方能够访问的地址，而不能是仅 Engine 容器可访问的内部地址。
+
+## 原生 MCP 文件传输
+
+对于不接受 URL、而是在 JSON 工具参数中接收文件内容的 MCP 工具，可以在 MCP profile 上配置文件参数映射。模型传入的是当前会话的 `fileId`，Engine 会在调用前按 `inputMode` 转换为 base64 或 MCP embedded resource；MCP 返回的 image/audio/blob resource 会登记为当前会话的 `FileAsset`，并关联到 assistant 消息。
+
+```json
+{
+  "name": "document-mcp",
+  "url": "https://mcp.example/tools",
+  "type": "Http",
+  "fileTransferBindings": [
+    {
+      "toolName": "convert_document",
+      "argumentName": "file",
+      "inputMode": "Base64",
+      "captureBinaryResults": true
+    }
+  ]
+}
+```
+
+这是显式的工具契约映射：`argumentName` 必须是 MCP 工具输入 schema 中的属性名；`Resource` 模式发送 MCP `resource` 对象。MCP 工具参数仍然必须是 JSON，任意第三方 multipart HTTP API 仍需单独的 MCP 工具适配器。二进制结果会遵守 FileAsset 的租户、会话、大小和媒体类型校验。

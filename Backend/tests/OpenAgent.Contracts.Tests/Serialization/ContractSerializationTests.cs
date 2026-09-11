@@ -25,6 +25,34 @@ public class ContractSerializationTests
     }
 
     [Fact]
+    public void McpFileTransferBinding_SerializesAsConfiguredStringContract()
+    {
+        McpServerConfig server = new()
+        {
+            Name = "document-mcp",
+            FileTransferBindings =
+            [
+                new McpFileTransferBinding
+                {
+                    ToolName = "convert_document",
+                    ArgumentName = "file",
+                    InputMode = McpFileInputMode.Resource
+                }
+            ]
+        };
+
+        string json = JsonSerializer.Serialize(server, JsonOptions);
+        McpServerConfig roundTrip = Assert.IsType<McpServerConfig>(
+            JsonSerializer.Deserialize<McpServerConfig>(json, JsonOptions));
+
+        McpFileTransferBinding binding = Assert.Single(roundTrip.FileTransferBindings);
+        Assert.Equal("convert_document", binding.ToolName);
+        Assert.Equal("file", binding.ArgumentName);
+        Assert.Equal(McpFileInputMode.Resource, binding.InputMode);
+        Assert.True(binding.CaptureBinaryResults);
+    }
+
+    [Fact]
     public void LlmTlsRelaxation_IsNotPartOfPersistedContracts()
     {
         string configJson = JsonSerializer.Serialize(new LlmConfig(), JsonOptions);

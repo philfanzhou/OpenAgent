@@ -3,8 +3,10 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
 using OpenAgent.Contracts.Configuration;
+using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Abstract;
+using OpenAgent.Core.Files;
 using OpenAgent.Core.Security;
 
 namespace OpenAgent.Core.Capabilities.Mcp;
@@ -18,7 +20,9 @@ internal sealed class McpToolFactory(
     AgentAuthorizationGate authorization,
     IMcpRegistry registry,
     ILoggerFactory loggerFactory,
-    ILogger<McpToolFactory> logger)
+    ILogger<McpToolFactory> logger,
+    IFileAssetService files,
+    FileAssetExecutionContext fileExecutionContext)
 {
     internal async Task<McpToolRuntime> CreateAsync(
         string agentId,
@@ -82,9 +86,27 @@ internal sealed class McpToolFactory(
                             string runtimeName = CreateRuntimeName(serverName, tool.Name, names);
                             // WithName/WithDescription are official SDK projections. The
                             // underlying invocation still calls the original MCP tool.
-                            tools.Add(tool
+                            McpClientTool projected = tool
                                 .WithName(runtimeName)
-                                .WithDescription($"[MCP:{serverName}] {tool.Description}"));
+                                .WithDescription($"[MCP:{serverName}] {tool.Description}");
+                            IReadOnlyList<McpFileTransferBinding> bindings = (server.FileTransferBindings ?? [])
+                                .Where(binding => string.Equals(
+                                    binding.ToolName,
+                                    tool.Name,
+                                    StringComparison.OrdinalIgnoreCase))
+                                .ToArray();
+                            if (bindings.Count > 0)
+                            {
+                                tools.Add(McpFileTransferTool.Create(
+                                    projected,
+                                    bindings,
+                                    files,
+                                    fileExecutionContext));
+                            }
+                            else
+                            {
+                                tools.Add(projected);
+                            }
                         }
                     }
                     catch
