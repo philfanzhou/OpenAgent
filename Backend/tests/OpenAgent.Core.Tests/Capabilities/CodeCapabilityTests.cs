@@ -135,25 +135,23 @@ public class CodeCapabilityTests
     }
 
     [Fact]
-    public async Task MafLoop_ReceivesExecutionErrorAndExecutesCorrectedCode()
+    public async Task MafLoop_RequiresApprovalBeforeExecutingCode()
     {
         var fixture = new Fixture();
-        fixture.Executor.Results.Enqueue(new CodeExecutionResult { ExitCode = 1, Stderr = "NameError: misspelled" });
-        fixture.Executor.Results.Enqueue(new CodeExecutionResult { ExitCode = 0, Stdout = "42" });
-        AIFunction function = await fixture.GetFunctionAsync();
+        AIFunction function = new ApprovalRequiredAIFunction(await fixture.GetFunctionAsync());
         var provider = new SequenceChatProvider([
-            [new ChatResponseUpdate(ChatRole.Assistant, [new FunctionCallContent("code-1", "execute_code", new Dictionary<string, object?> { ["code"] = "misspelled()" })])],
-            [new ChatResponseUpdate(ChatRole.Assistant, [new FunctionCallContent("code-2", "execute_code", new Dictionary<string, object?> { ["code"] = "print(6*7)" })])],
-            [new ChatResponseUpdate(ChatRole.Assistant, "42")]
+            [new ChatResponseUpdate(ChatRole.Assistant, [new FunctionCallContent("code-1", "execute_code", new Dictionary<string, object?> { ["code"] = "misspelled()" })])]
         ]);
         var agent = new ChatClientAgent(provider, new ChatClientAgentOptions { ChatOptions = new() { Tools = [function] } });
-        await foreach (AgentResponseUpdate _ in agent.RunStreamingAsync("Calculate using code")) { }
-        Assert.Equal(2, fixture.Executor.Requests.Count);
-        Assert.Equal("print(6*7)", fixture.Executor.Requests[1].Code);
-        Assert.Contains(provider.Requests[1].SelectMany(message => message.Contents).OfType<FunctionResultContent>(),
-            result => result.Result?.ToString()?.Contains("NameError", StringComparison.Ordinal) == true);
-        Assert.Contains(provider.Requests[2].SelectMany(message => message.Contents).OfType<FunctionResultContent>(),
-            result => result.CallId == "code-2" && result.Result?.ToString()?.Contains("42", StringComparison.Ordinal) == true);
+        List<AgentResponseUpdate> updates = [];
+        await foreach (AgentResponseUpdate update in agent.RunStreamingAsync("Calculate using code"))
+        {
+            updates.Add(update);
+        }
+        Assert.Empty(fixture.Executor.Requests);
+        Assert.Contains(
+            updates.SelectMany(update => update.Contents ?? []).OfType<ToolApprovalRequestContent>(),
+            approval => approval.ToolCall is FunctionCallContent call && call.Name == "execute_code");
     }
 
     [RunnerIntegrationFact]

@@ -41,7 +41,8 @@ internal static class AgentChatEndpointExtensions
         {
             Message = response.Content,
             Usage = response.TokenUsage,
-            ModelId = response.ModelId
+            ModelId = response.ModelId,
+            Approval = response.Approval
         });
     }
 
@@ -63,7 +64,8 @@ internal static class AgentChatEndpointExtensions
         {
             Message = response.Content,
             Usage = response.TokenUsage,
-            ModelId = response.ModelId
+            ModelId = response.ModelId,
+            Approval = response.Approval
         });
     }
 

@@ -1,11 +1,14 @@
 namespace OpenAgent.Contracts.Requests;
 
+using OpenAgent.Contracts.Approvals;
+
 public enum AgentStreamEventType
 {
     Content,
     Reasoning,
     ToolCall,
     ToolResult,
+    Approval,
     Usage
 }
 
@@ -18,4 +21,6 @@ public sealed record AgentStreamEvent
     public object? ToolArguments { get; init; }
     public TokenUsage? Usage { get; init; }
     public string? ModelId { get; init; }
+    public string? Status { get; init; }
+    public HumanApprovalRequest? Approval { get; init; }
 }

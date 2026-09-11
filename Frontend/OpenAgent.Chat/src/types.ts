@@ -1,4 +1,4 @@
-export type ConversationStatus = 'Running' | 'Completed' | 'Failed' | 'Cancelled' | number
+export type ConversationStatus = 'Running' | 'Completed' | 'Failed' | 'Cancelled' | 'AwaitingApproval' | number
 export type ConnectionMode = 'router' | 'engine'
 export const AUTO_AGENT_ID = '__auto__'
 
@@ -40,6 +40,18 @@ export interface ConversationMessage {
   modelId?: string
   /** 执行失败的独立展示，不写入会话历史。 */
   error?: { title?: string; detail?: string; traceId?: string }
+  approval?: HumanApprovalRequest
+}
+
+export interface HumanApprovalRequest {
+  approvalId: string
+  tenantId: string
+  conversationId: string
+  action: string
+  redactedArgumentsJson: string
+  requestedBy: string
+  expiresAt: string
+  status: 'Pending' | 'Approved' | 'Rejected' | string
 }
 
 export interface ToolActivity {
@@ -269,6 +281,7 @@ export interface StreamEvent {
   error?: { title?: string; detail?: string; traceId?: string }
   usage?: TokenUsage | null
   modelId?: string | null
+  approval?: HumanApprovalRequest
 }
 
 export interface McpTestResult {

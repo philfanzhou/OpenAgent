@@ -12,6 +12,7 @@ import type {
   HealthEntry,
   HealthReport,
   HealthReportItem,
+  HumanApprovalRequest,
   LlmProviderProfile,
   LlmTestResult,
   MessageFile,
@@ -250,7 +251,8 @@ function normalizeConversation(record: ConversationRecord): ConversationRecord {
     messages: record.messages?.map(message => {
       const raw = message.metadata?.Files
       const reasoning = message.metadata?.Reasoning
-      if (!raw) return reasoning ? { ...message, reasoning } : message
+      const approval = approvalFromMetadata(record, message)
+      if (!raw) return reasoning || approval ? { ...message, ...(reasoning ? { reasoning } : {}), ...(approval ? { approval } : {}) } : message
       try {
         const files = (JSON.parse(raw) as Record<string, unknown>[]).map(file => ({
           fileId: String(file.fileId ?? file.FileId ?? ''),
@@ -261,11 +263,28 @@ function normalizeConversation(record: ConversationRecord): ConversationRecord {
             ? { objectKey: String(file.objectKey ?? file.ObjectKey) }
             : {}),
         })) satisfies MessageFile[]
-        return { ...message, files, ...(reasoning ? { reasoning } : {}) }
+        return { ...message, files, ...(reasoning ? { reasoning } : {}), ...(approval ? { approval } : {}) }
       } catch {
-        return reasoning ? { ...message, reasoning } : message
+        return reasoning || approval ? { ...message, ...(reasoning ? { reasoning } : {}), ...(approval ? { approval } : {}) } : message
       }
     }),
+  }
+}
+
+function approvalFromMetadata(record: ConversationRecord, message: ConversationMessage): HumanApprovalRequest | undefined {
+  const approvalId = message.metadata?.ApprovalId
+  if (!approvalId) return undefined
+  return {
+    approvalId,
+    tenantId: record.tenantId,
+    conversationId: record.conversationId,
+    action: message.metadata?.ApprovalTarget || 'execute_code',
+    redactedArgumentsJson: message.metadata?.ApprovalArguments || '{}',
+    requestedBy: record.userId,
+    expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(),
+    status: record.status === 'Completed' || record.status === 1 ? 'Approved'
+      : record.status === 'Cancelled' || record.status === 3 ? 'Rejected'
+        : message.metadata?.ApprovalStatus || 'Pending',
   }
 }
 
@@ -310,6 +329,14 @@ export const api = {
 
   getCurrentUser(): Promise<CurrentUserContext> {
     return request<CurrentUserContext>('/api/v1/agent/me')
+  },
+
+  decideHumanApproval(approvalId: string, approved: boolean, reason?: string): Promise<{ approval: HumanApprovalRequest; nextApproval?: HumanApprovalRequest }> {
+    return request(`/api/v1/agent/approvals/${encodeURIComponent(approvalId)}/decision`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ approved, reason }),
+    })
   },
 
   listConversations(): Promise<ConversationRecord[]> {

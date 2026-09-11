@@ -16,7 +16,7 @@ import { useFileHandling } from './composables/useFileHandling'
 import { usePanelLayout } from './composables/usePanelLayout'
 import { useSettings } from './composables/useSettings'
 import { formatCacheHitRate, formatContextUsage, formatTokenCount } from './tokenUsage'
-import { AUTO_AGENT_ID, type AgentSummary, type CurrentUserContext } from './types'
+import { AUTO_AGENT_ID, type AgentSummary, type CurrentUserContext, type HumanApprovalRequest } from './types'
 
 const agents = ref<AgentSummary[]>([])
 const currentUser = ref<CurrentUserContext | null>(null)
@@ -196,6 +196,19 @@ function notifyError(error: unknown): void {
   ElMessage.error(error instanceof Error ? error.message : '请求失败')
 }
 
+async function decideHumanApproval(approval: HumanApprovalRequest, approved: boolean): Promise<void> {
+  try {
+    const result = await api.decideHumanApproval(approval.approvalId, approved)
+    if (selectedConversation.value?.conversationId === approval.conversationId) {
+      replaceConversation(await api.getConversation(approval.conversationId), approval.conversationId)
+    }
+    await refreshConversations(false)
+    if (result.nextApproval) ElMessage.info('下一项代码执行仍需要审批')
+  } catch (error) {
+    notifyError(error)
+  }
+}
+
 function applyTheme(): void {
   document.documentElement.dataset.theme = themeMode.value
   // Element Plus dark mode depends on both the data attribute and the dark class.
@@ -285,7 +298,7 @@ onBeforeUnmount(() => {
 
       <div class="workspace-grid" :class="{ 'context-collapsed': contextCollapsed }">
         <section class="chat-card">
-          <ChatMessages ref="chatMessagesRef" :messages="currentMessages" :context-summaries="selectedConversation?.contextSummaries" :loading="loadingConversation" :current-user="currentUser" :streaming="selectedConversationStreaming" :conversation-id="selectedConversation?.conversationId" :markdown-image-urls="markdownImageUrls" @suggest="message = $event" @download="downloadFile" />
+          <ChatMessages ref="chatMessagesRef" :messages="currentMessages" :context-summaries="selectedConversation?.contextSummaries" :loading="loadingConversation" :current-user="currentUser" :streaming="selectedConversationStreaming" :conversation-id="selectedConversation?.conversationId" :markdown-image-urls="markdownImageUrls" @suggest="message = $event" @download="downloadFile" @approval-decision="decideHumanApproval" />
           <MessageComposer :model-value="message" :endpoint-url="activeEndpointUrl" :endpoint-label="activeEndpointLabel" :selected-agent-id="selectedAgentId" :selected-llm-profile-id="selectedLlmProfileId" :loading="selectedConversationStreaming" :pending-files="pendingFiles" @update:model-value="message = $event" @files-change="handleFilesChange" @retry-file="retryPendingFile" @send="handleSend" @stop="stopStreaming" />
         </section>
         <aside class="context-panel">

@@ -78,6 +78,26 @@ public class AgentStreamWriterTests
         Assert.Contains("\"content\":\"sunny\"", payload, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task WriteSseStreamAsync_Approval_PreservesAwaitingStatus()
+    {
+        var context = new DefaultHttpContext();
+        context.Response.Body = new MemoryStream();
+
+        await AgentStreamWriter.WriteSseStreamAsync(
+            context,
+            ApprovalEvents(),
+            "trace-1",
+            "conversation-1",
+            NullLogger.Instance,
+            CancellationToken.None);
+
+        string payload = await ReadBodyAsync(context);
+        Assert.Contains("event: approval", payload, StringComparison.Ordinal);
+        Assert.Contains("\"status\":\"AwaitingApproval\"", payload, StringComparison.Ordinal);
+        Assert.Contains("\"done\":true", payload, StringComparison.Ordinal);
+    }
+
     private static async IAsyncEnumerable<AgentStreamEvent> ToolResultEvents()
     {
         yield return new AgentStreamEvent
@@ -105,6 +125,16 @@ public class AgentStreamWriterTests
             Usage = usage,
             ModelId = modelId
         };
+    }
+
+    private static async IAsyncEnumerable<AgentStreamEvent> ApprovalEvents()
+    {
+        yield return new AgentStreamEvent
+        {
+            Type = AgentStreamEventType.Approval,
+            Status = "AwaitingApproval"
+        };
+        await Task.Yield();
     }
 
     private static async Task<string> ReadBodyAsync(HttpContext context)

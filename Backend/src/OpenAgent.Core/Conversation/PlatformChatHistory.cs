@@ -3,6 +3,7 @@ using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using OpenAgent.Contracts.Approvals;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Requests;
@@ -31,6 +32,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
     private readonly ILogger<PlatformChatHistory> _logger;
     private readonly IFileAssetService _fileService;
     private readonly bool _supportsMultimodal;
+    private readonly bool _recordUserInput;
     private readonly long _maxInlineImageBytes;
     private readonly int _maxInlineImageCount;
     private readonly List<ConversationMessage> _pending = [];
@@ -66,6 +68,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         _logger = logger;
         _fileService = fileService;
         _supportsMultimodal = context.SupportsMultimodal;
+        _recordUserInput = context.RecordUserInput;
         _maxInlineImageBytes = fileOptions.Value.MaxInlineImageBytes;
         _maxInlineImageCount = fileOptions.Value.MaxInlineImageCount;
     }
@@ -413,6 +416,64 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         _stored = true;
     }
 
+    internal async Task PauseAsync(
+        string approvalId,
+        ToolApprovalRequestContent approval,
+        CancellationToken cancellationToken)
+    {
+        if (_stored)
+        {
+            return;
+        }
+
+        RecordUser();
+        int assistantIndex = _pending.FindLastIndex(message =>
+            string.Equals(message.Role, "assistant", StringComparison.OrdinalIgnoreCase));
+        if (assistantIndex < 0)
+        {
+            _pending.Add(ConversationSessionStore.Message(
+                _nextSequence++,
+                "assistant",
+                "等待用户批准后继续执行。"));
+            assistantIndex = _pending.Count - 1;
+        }
+
+        ConversationMessage message = _pending[assistantIndex];
+        Dictionary<string, string> metadata = message.Metadata == null
+            ? new(StringComparer.Ordinal)
+            : new(message.Metadata, StringComparer.Ordinal);
+        metadata["ApprovalId"] = approvalId;
+        metadata["ApprovalTarget"] = approval.ToolCall is FunctionCallContent call
+            ? call.Name
+            : "execute_code";
+        metadata["ApprovalStatus"] = HumanApprovalStatus.Pending.ToString();
+        metadata["ApprovalArguments"] = approval.ToolCall is FunctionCallContent approvalCall
+            ? OpenAgent.Core.Approvals.ApprovalArgumentRedactor.Serialize(approvalCall.Arguments)
+            : "{}";
+        _pending[assistantIndex] = new ConversationMessage
+        {
+            MessageId = message.MessageId,
+            Sequence = message.Sequence,
+            Role = message.Role,
+            Content = message.Content,
+            ToolCallId = message.ToolCallId,
+            ToolName = message.ToolName,
+            IdempotencyKey = message.IdempotencyKey,
+            Timestamp = message.Timestamp,
+            Metadata = metadata,
+            FileIds = message.FileIds,
+            TokenUsage = message.TokenUsage,
+            ModelId = message.ModelId
+        };
+        await _store.SaveAsync(
+            _conversation,
+            _currentVersion,
+            _pending,
+            ConversationStatus.AwaitingApproval,
+            cancellationToken).ConfigureAwait(false);
+        _stored = true;
+    }
+
     protected override async ValueTask InvokedCoreAsync(
         InvokedContext context,
         CancellationToken cancellationToken)
@@ -494,7 +555,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
 
     private void RecordUser()
     {
-        if (_userRecorded)
+        if (_userRecorded || !_recordUserInput)
         {
             return;
         }
