@@ -11,7 +11,7 @@ public interface ILlmConfigRepository
         CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<LlmProviderProfile>> ListAsync(
-        string tenantId,
+        string? tenantId,
         CancellationToken cancellationToken = default);
 
     Task<LlmProviderProfile> UpsertAsync(

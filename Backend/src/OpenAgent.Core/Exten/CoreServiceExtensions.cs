@@ -16,13 +16,6 @@ public static class CoreServiceExtensions
         IConfiguration configuration)
     {
         services.TryAddSingleton<IConfiguration>(configuration);
-        services.ConfigureHttpClientDefaults(builder =>
-        {
-            builder.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
-            {
-                ServerCertificateCustomValidationCallback = (_, _, _, _) => true
-            });
-        });
         services.AddHttpContextAccessor();
         services.Configure<McpExecutionOptions>(configuration.GetSection("Mcp"));
         services.Configure<AgentAuthorizationOptions>(configuration.GetSection("Authorization"));
@@ -34,8 +27,20 @@ public static class CoreServiceExtensions
                     && options.MaxExecutionsPerRequest is >= 1 and <= 32),
                 "CodeExecution requires an HTTP(S) Runner endpoint, a 32-character API key, and a bounded timeout.")
             .ValidateOnStart();
+        bool allowInsecureTls = configuration.GetValue("OPENAGENT_ALLOW_INSECURE_TLS", false)
+            || configuration.GetValue("Http:AllowInsecureTls", false);
         services.AddHttpClient<ICodeExecutor, RunnerClient>(client => client.Timeout = Timeout.InfiniteTimeSpan)
-            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+            .ConfigurePrimaryHttpMessageHandler(() =>
+            {
+                var handler = new HttpClientHandler { AllowAutoRedirect = false };
+                if (allowInsecureTls)
+                {
+                    handler.ServerCertificateCustomValidationCallback =
+                        HttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
+                }
+
+                return handler;
+            });
         services.AddScoped<OpenAgent.Core.Capabilities.ICapabilitySource, CodeCapabilitySource>();
 
         return services

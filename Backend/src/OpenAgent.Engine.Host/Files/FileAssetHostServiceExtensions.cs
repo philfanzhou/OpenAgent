@@ -4,6 +4,7 @@ using Amazon.S3;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Files;
+using OpenAgent.Hosting;
 
 namespace OpenAgent.Engine.Host.Files;
 
@@ -23,7 +24,8 @@ internal static class FileAssetHostServiceExtensions
         services.AddOptions<FileObjectStorageOptions>()
             .Bind(configuration.GetSection(FileObjectStorageOptions.SectionName))
             .ValidateOnStart();
-        bool allowInsecureTls = configuration.GetValue("OPENAGENT_S3_ALLOW_INSECURE_TLS", false)
+        bool allowInsecureTls = HttpClientSecurity.AllowInsecureTls(configuration)
+            || configuration.GetValue("OPENAGENT_S3_ALLOW_INSECURE_TLS", false)
             || configuration.GetValue($"{FileObjectStorageOptions.SectionName}:AllowInsecureTls", false);
         services.TryAddSingleton<IAmazonS3>(serviceProvider =>
         {

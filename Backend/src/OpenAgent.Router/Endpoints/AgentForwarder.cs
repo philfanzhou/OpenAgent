@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using OpenAgent.Contracts.Security;
+using OpenAgent.Hosting;
 using OpenAgent.Router.Models;
 using OpenAgent.Router.Observability;
 using Yarp.ReverseProxy.Forwarder;
@@ -9,7 +10,8 @@ namespace OpenAgent.Router.Endpoints;
 internal sealed class AgentForwarder(
     IHttpForwarder forwarder,
     ILogger<AgentForwarder> logger,
-    IEndpointHealthTracker healthTracker) : IAgentForwarder, IDisposable
+    IEndpointHealthTracker healthTracker,
+    IConfiguration configuration) : IAgentForwarder, IDisposable
 {
     private static readonly ForwarderRequestConfig DefaultRequestConfig = new()
     {
@@ -21,7 +23,8 @@ internal sealed class AgentForwarder(
         ActivityTimeout = Timeout.InfiniteTimeSpan
     };
 
-    private readonly HttpMessageInvoker _httpClient = new(CreateHandler());
+    private readonly HttpMessageInvoker _httpClient = new(
+        HttpClientSecurity.CreateSocketsHttpHandler(configuration, TimeSpan.FromSeconds(15)));
 
     public async Task ForwardAsync(
         HttpContext context,
@@ -167,14 +170,4 @@ internal sealed class AgentForwarder(
             traceId);
     }
 
-    private static SocketsHttpHandler CreateHandler() => new()
-    {
-        UseProxy = false,
-        AllowAutoRedirect = false,
-        AutomaticDecompression = System.Net.DecompressionMethods.None,
-        UseCookies = false,
-        EnableMultipleHttp2Connections = true,
-        ActivityHeadersPropagator = DistributedContextPropagator.Current,
-        ConnectTimeout = TimeSpan.FromSeconds(15)
-    };
 }

@@ -21,6 +21,33 @@ const renderer = new MarkdownIt({
 
 const defaultLinkOpen = renderer.renderer.rules.link_open
 const defaultAutolink = renderer.renderer.rules.autolink
+const defaultFence = renderer.renderer.rules.fence
+
+function escapeHtml(text: string): string {
+  return text.replace(/[&<>"']/g, character => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  })[character]!)
+}
+
+renderer.renderer.rules.fence = (tokens, index, options, environment, self) => {
+  const token = tokens[index]
+  if (!token) return ''
+  const language = token.info.trim().split(/\s+/, 1)[0] || 'code'
+  const codeHtml = defaultFence
+    ? defaultFence(tokens, index, options, environment, self)
+    : self.renderToken(tokens, index, options)
+  return `<div class="markdown-code-block" data-code-block>`
+    + `<div class="markdown-code-toolbar">`
+    + `<span class="markdown-code-language">${escapeHtml(language)}</span>`
+    + `<div class="markdown-code-actions">`
+    + `<button type="button" class="markdown-code-action" data-code-action="wrap" aria-pressed="false">自动换行</button>`
+    + `<button type="button" class="markdown-code-action" data-code-action="copy">复制</button>`
+    + `</div></div>${codeHtml}</div>`
+}
 
 // 渲染层防御：即使 validateLink 被绕过/移除，也绝不把危险协议渲染成 href。
 renderer.renderer.rules.link_open = (tokens, index, options, environment, self) => {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { renderMarkdown } from '../markdown'
 import { rewriteMarkdownImages } from '../markdownAssets'
 
@@ -9,6 +9,8 @@ const props = defineProps<{
   /** 同步查找已解析的图片 blob URL；未命中返回 undefined，渲染保留原引用。 */
   resolveImage?: (src: string) => string | undefined
 }>()
+
+const contentElement = ref<HTMLElement | null>(null)
 
 function escapeHtml(text: string): string {
   return text.replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]!)
@@ -37,8 +39,56 @@ const renderedContent = computed(() => {
     : ''
   return `${collapseNote}${stableHtml}<span class="stream-tail">${escapeHtml(tail)}<span class="stream-caret"></span></span>`
 })
+
+async function copyCode(text: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text)
+    return
+  }
+
+  const input = document.createElement('textarea')
+  input.value = text
+  input.setAttribute('readonly', '')
+  input.style.position = 'fixed'
+  input.style.opacity = '0'
+  document.body.appendChild(input)
+  input.select()
+  const copied = document.execCommand('copy')
+  input.remove()
+  if (!copied) throw new Error('Clipboard is unavailable')
+}
+
+async function onCodeAction(event: MouseEvent): Promise<void> {
+  const target = event.target instanceof Element ? event.target : null
+  const button = target?.closest<HTMLButtonElement>('[data-code-action]')
+  if (!button || !contentElement.value?.contains(button)) return
+  const block = button.closest<HTMLElement>('[data-code-block]')
+  if (!block) return
+
+  if (button.dataset.codeAction === 'wrap') {
+    const wrapped = block.classList.toggle('is-wrapped')
+    button.setAttribute('aria-pressed', String(wrapped))
+    button.textContent = wrapped ? '取消换行' : '自动换行'
+    return
+  }
+
+  if (button.dataset.codeAction !== 'copy') return
+  const code = block.querySelector('pre code')?.textContent ?? ''
+  try {
+    await copyCode(code)
+    button.textContent = '已复制'
+    window.setTimeout(() => {
+      if (button.isConnected) button.textContent = '复制'
+    }, 1500)
+  } catch {
+    button.textContent = '复制失败'
+    window.setTimeout(() => {
+      if (button.isConnected) button.textContent = '复制'
+    }, 1500)
+  }
+}
 </script>
 
 <template>
-  <div class="markdown-content" v-html="renderedContent" />
+  <div ref="contentElement" class="markdown-content" v-html="renderedContent" @click="onCodeAction" />
 </template>

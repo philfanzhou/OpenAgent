@@ -1,6 +1,9 @@
+using OpenAgent.Hosting;
+
 namespace OpenAgent.Router.Providers;
 
 internal sealed class OpenAgentEngineProviderFactory(
+    IConfiguration configuration,
     IRouteTable routeTable,
     ILogger<OpenAgentEngineProvider> logger) : IAgentProviderFactory
 {
@@ -15,5 +18,6 @@ internal sealed class OpenAgentEngineProviderFactory(
             providerId,
             settings,
             routeTable,
-            logger: logger);
+            logger: logger,
+            allowInsecureTls: HttpClientSecurity.AllowInsecureTls(configuration));
 }

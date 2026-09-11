@@ -72,6 +72,11 @@ public static class ServiceCollectionExtensions
         services.AddControllers();
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentUserContext, HttpCurrentUserContext>();
+        services.ConfigureHttpClientDefaults(builder =>
+        {
+            builder.ConfigurePrimaryHttpMessageHandler(() =>
+                HttpClientSecurity.CreateHttpClientHandler(configuration));
+        });
         services.AddHttpClient("AgentLogin", client =>
         {
             client.Timeout = TimeSpan.FromSeconds(30);

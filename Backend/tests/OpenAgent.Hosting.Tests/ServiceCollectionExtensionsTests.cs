@@ -12,6 +12,23 @@ namespace OpenAgent.Hosting.Tests;
 public class ServiceCollectionExtensionsTests
 {
     [Fact]
+    public void HttpClientSecurity_RequiresExplicitOptInForInsecureTls()
+    {
+        IConfiguration secureConfiguration = new ConfigurationBuilder().Build();
+        using HttpClientHandler secure = HttpClientSecurity.CreateHttpClientHandler(secureConfiguration);
+        Assert.Null(secure.ServerCertificateCustomValidationCallback);
+
+        IConfiguration insecureConfiguration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Http:AllowInsecureTls"] = "true"
+            })
+            .Build();
+        using HttpClientHandler insecure = HttpClientSecurity.CreateHttpClientHandler(insecureConfiguration);
+        Assert.NotNull(insecure.ServerCertificateCustomValidationCallback);
+    }
+
+    [Fact]
     public void AgentHostOptions_DefaultServiceNameUsesOpenAgentPrefix()
     {
         Assert.Equal("openagent-service", new AgentHostOptions().ServiceName);

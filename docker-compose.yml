@@ -12,6 +12,7 @@ services:
       OpenTelemetry__OtlpEndpoint: ${OPENAGENT_OTLP_ENDPOINT:-}
       OpenTelemetry__ServiceName: openagent-engine
       OpenTelemetry__ServiceVersion: ${OPENAGENT_SERVICE_VERSION:-development}
+      OPENAGENT_ALLOW_INSECURE_TLS: ${OPENAGENT_ALLOW_INSECURE_TLS:-false}
       FileAssets__ObjectStorage__ServiceUrl: ${OPENAGENT_S3_SERVICE_URL:-http://minio:9000}
       FileAssets__ObjectStorage__ForcePathStyle: "true"
       OPENAGENT_S3_ALLOW_INSECURE_TLS: ${OPENAGENT_S3_ALLOW_INSECURE_TLS:-false}
@@ -77,6 +78,7 @@ services:
       OpenTelemetry__OtlpEndpoint: ${OPENAGENT_OTLP_ENDPOINT:-}
       OpenTelemetry__ServiceName: openagent-router
       OpenTelemetry__ServiceVersion: ${OPENAGENT_SERVICE_VERSION:-development}
+      OPENAGENT_ALLOW_INSECURE_TLS: ${OPENAGENT_ALLOW_INSECURE_TLS:-false}
       RouterSettings__Routing__EngineEndpoint: http://engine:5208
       RouterSettings__IntentRecognition__TimeoutMs: "30000"
       Authentication__AllowDevelopmentAnonymous: "${OPENAGENT_AUTH_ALLOW_DEVELOPMENT_ANONYMOUS:-false}"

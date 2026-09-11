@@ -33,7 +33,9 @@ internal sealed class AgentChatClientFactory : IAgentChatClientFactory
             : TimeSpan.FromSeconds(seconds);
         // This is a deployment-only escape hatch. It intentionally does not belong
         // to AgentConfig or persisted LLM provider profiles.
-        _allowInsecureTls = configuration.GetValue("OPENAGENT_LLM_ALLOW_INSECURE_TLS", false)
+        _allowInsecureTls = configuration.GetValue("OPENAGENT_ALLOW_INSECURE_TLS", false)
+            || configuration.GetValue("Http:AllowInsecureTls", false)
+            || configuration.GetValue("OPENAGENT_LLM_ALLOW_INSECURE_TLS", false)
             || configuration.GetValue("Llm:AllowInsecureTls", false);
     }
 

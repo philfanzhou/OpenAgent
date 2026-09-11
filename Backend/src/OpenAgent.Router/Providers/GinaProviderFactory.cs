@@ -1,6 +1,9 @@
+using OpenAgent.Hosting;
+
 namespace OpenAgent.Router.Providers;
 
 internal sealed class GinaProviderFactory(
+    IConfiguration configuration,
     ILogger<GinaProvider> logger) : IAgentProviderFactory
 {
     internal const string ProviderType = "Gina";
@@ -13,5 +16,6 @@ internal sealed class GinaProviderFactory(
         new GinaProvider(
             providerId,
             settings,
-            logger: logger);
+            logger: logger,
+            allowInsecureTls: HttpClientSecurity.AllowInsecureTls(configuration));
 }

@@ -94,9 +94,9 @@ public class LlmConfigurationTests
             Task.FromResult(_profiles.GetValueOrDefault((tenantId, profileId)));
 
         public Task<IReadOnlyList<LlmProviderProfile>> ListAsync(
-            string tenantId, CancellationToken cancellationToken = default) =>
+            string? tenantId, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<LlmProviderProfile>>(_profiles.Values
-                .Where(profile => profile.TenantId == tenantId).ToArray());
+                .Where(profile => tenantId == null || profile.TenantId == tenantId).ToArray());
 
         public Task<LlmProviderProfile> UpsertAsync(
             string tenantId, string profileId, LlmProviderProfile profile,

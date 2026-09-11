@@ -27,6 +27,8 @@ describe('message presentation', () => {
     expect(html).toContain('<h1>Result</h1>')
     expect(html).toContain('<strong>ready</strong>')
     expect(html).toContain('<code class="language-ts">')
+    expect(html).toContain('data-code-action="wrap"')
+    expect(html).toContain('data-code-action="copy"')
     expect(html).not.toContain('<script>')
     expect(html).toContain('&lt;script&gt;')
   })

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using OpenAgent.Contracts.Configuration;
+using OpenAgent.Hosting;
 using OpenAgent.Router.Models;
 using OpenAgent.Router.Observability;
 
@@ -25,7 +26,8 @@ internal sealed class GinaProvider : IAgentProvider, IDisposable
         string id,
         IConfiguration settings,
         HttpMessageHandler? handler = null,
-        ILogger<GinaProvider>? logger = null)
+        ILogger<GinaProvider>? logger = null,
+        bool allowInsecureTls = false)
     {
         Id = id;
         _agentListPath = NormalizePath(settings["AgentListPath"], "/api/agentlist");
@@ -42,7 +44,7 @@ internal sealed class GinaProvider : IAgentProvider, IDisposable
                 header => header.Key,
                 header => header.Value!,
                 StringComparer.OrdinalIgnoreCase);
-        _httpClient = new HttpMessageInvoker(handler ?? CreateHandler());
+        _httpClient = new HttpMessageInvoker(handler ?? CreateHandler(settings, allowInsecureTls));
         _logger = logger ?? NullLogger<GinaProvider>.Instance;
     }
 
@@ -197,16 +199,12 @@ internal sealed class GinaProvider : IAgentProvider, IDisposable
 
     public void Dispose() => _httpClient.Dispose();
 
-    private static SocketsHttpHandler CreateHandler() => new()
-    {
-        UseProxy = false,
-        AllowAutoRedirect = false,
-        AutomaticDecompression = System.Net.DecompressionMethods.None,
-        UseCookies = false,
-        EnableMultipleHttp2Connections = true,
-        ActivityHeadersPropagator = DistributedContextPropagator.Current,
-        ConnectTimeout = TimeSpan.FromSeconds(15)
-    };
+    private static SocketsHttpHandler CreateHandler(
+        IConfiguration settings,
+        bool allowInsecureTls) => HttpClientSecurity.CreateSocketsHttpHandler(
+            settings,
+            TimeSpan.FromSeconds(15),
+            allowInsecureTls);
 
     private HttpRequestMessage CreateServiceRequest(
         HttpMethod method,
