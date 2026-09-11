@@ -18,8 +18,8 @@ OPENAGENT_REDIS_PORT=56389 \
 OPENAGENT_MINIO_PORT=59010 \
 OPENAGENT_MINIO_CONSOLE_PORT=59011 \
 docker compose -p openagent-keycloak-infrastructure \
-  -f docker-compose.storage.yml \
-  up -d
+  -f deploy/infrastructure/docker-compose.yml \
+  --profile storage up -d
 
 OPENAGENT_ROUTER_PORT=55011 \
 OPENAGENT_ENGINE_PORT=55218 \
@@ -45,17 +45,18 @@ scripts/deploy.sh --env-file .env --docker-mode docker
 - 用户和租户组织：不在 Realm 文件中预置，需要在管理台手动创建
 
 公开地址固定使用 HTTPS。将 PEM 证书 `tls.crt`、私钥 `tls.key` 放入与 Nginx 共用的
-`docker/nginx/certs/` 目录；应用 Nginx 和 Keycloak 共用该目录，不需要单独的证书路径环境变量。
+`deploy/openagent/nginx/certs/` 目录；应用 Nginx 和 Keycloak 共用该目录。
+自定义位置时使用绝对路径 `OPENAGENT_TLS_CERT_DIR`，两套 Compose 传入同一环境文件。
 Keycloak 容器内 HTTPS 端口固定为 `8443`，Router/Engine 仍通过容器网络内 HTTP discovery 访问 Keycloak。
 
-Realm、SPA Client、API audience、`tenant_id` claim 和 Organization 能力由 [openagent-realm.json](../../../docker/keycloak/realm/openagent-realm.json) 导入；用户、密码、邮箱和租户组织由业务管理员手动维护。
+Realm、SPA Client、API audience、`tenant_id` claim 和 Organization 能力由 [openagent-realm.json](../../../deploy/infrastructure/keycloak/realm/openagent-realm.json) 导入；用户、密码、邮箱和租户组织由业务管理员手动维护。
 
-声明式 User Profile（含 `tenant_id` 属性声明）不随 Realm 文件导入——Realm 导入目录中的每个文件都会按 Realm 解析，顶层 `userProfile` 键会导致启动失败。声明单独维护在 [openagent-user-profile.json](../../../docker/keycloak/openagent-user-profile.json)，需要通过 Admin API 应用：
+声明式 User Profile（含 `tenant_id` 属性声明）不随 Realm 文件导入——Realm 导入目录中的每个文件都会按 Realm 解析，顶层 `userProfile` 键会导致启动失败。声明单独维护在 [openagent-user-profile.json](../../../deploy/infrastructure/keycloak/openagent-user-profile.json)，需要通过 Admin API 应用：
 
 ```bash
 TOKEN=$(curl -kfsS -d 'client_id=admin-cli' -d "username=$OPENAGENT_KEYCLOAK_ADMIN_USERNAME" -d "password=$OPENAGENT_KEYCLOAK_ADMIN_PASSWORD" -d 'grant_type=password' https://localhost:58091/realms/master/protocol/openid-connect/token | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
 curl -fsS -X PUT -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  -d @docker/keycloak/openagent-user-profile.json \
+  -d @deploy/infrastructure/keycloak/openagent-user-profile.json \
   https://localhost:58091/admin/realms/openagent/users/profile
 ```
 
@@ -64,7 +65,7 @@ curl -fsS -X PUT -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application
 
 ```bash
 docker compose -p openagent-keycloak-app \
-  -f docker-compose.yml \
+  -f deploy/openagent/docker-compose.yml \
   down
 ```
 
@@ -72,12 +73,12 @@ docker compose -p openagent-keycloak-app \
 
 ```bash
 docker compose -p openagent-keycloak-infrastructure \
-  -f docker-compose.storage.yml \
+  -f deploy/infrastructure/docker-compose.yml \
   down -v
 ```
 
-不要对正在运行的其他 Compose 项目执行 `down -v`。基础设施项目由 [docker-compose.storage.yml](../../../docker-compose.storage.yml)
-提供，应用代码镜像由 [docker-compose.yml](../../../docker-compose.yml) 提供。
+不要对正在运行的其他 Compose 项目执行 `down -v`。基础设施项目由 [deploy/infrastructure/docker-compose.yml](../../../deploy/infrastructure/docker-compose.yml)
+提供，应用代码镜像由 [deploy/openagent/docker-compose.yml](../../../deploy/openagent/docker-compose.yml) 提供。
 
 ## 功能开关
 
@@ -90,7 +91,7 @@ OPENAGENT_AUTH_ENABLE_KEYCLOAK=true
 OPENAGENT_AUTH_ALLOW_DEVELOPMENT_ANONYMOUS=false
 OPENAGENT_AUTH_AUDIENCE=openagent-api
 OPENAGENT_AUTH_CLIENT_ID=openagent-chat
-OPENAGENT_KEYCLOAK_PUBLIC_URL=https://sso.intra.example:58081
+OPENAGENT_KEYCLOAK_PUBLIC_URL=https://localhost:58081
 OPENAGENT_KEYCLOAK_METADATA_ADDRESS=http://keycloak:8080/realms/openagent/.well-known/openid-configuration
 ```
 

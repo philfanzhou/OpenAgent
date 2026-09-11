@@ -31,18 +31,21 @@ dotnet test Backend/OpenAgent.sln
 
 ## Docker 本地部署
 
+目录与迁移说明见 [部署说明](deploy/README.md)，共享变量模板见
+[deployment.env.example](deploy/deployment.env.example)。已有部署必须保留原来的 Compose 项目名和数据卷。
+
 基础设施和实际代码镜像分开部署。基础设施 Compose 同时包含 PostgreSQL、Redis、MinIO 和 Keycloak；它只需要首次启动或基础设施变更时操作，数据卷不会随着应用镜像重复构建而被重建：
 
 ```bash
 docker compose -p openagent-infrastructure \
-  -f docker-compose.storage.yml \
-  up -d
+  -f deploy/infrastructure/docker-compose.yml \
+  --env-file .env --profile storage up -d
 ```
 
-应用 Compose 只引用已构建或已拉取的镜像，绝不包含 `build` 定义；Nginx 是唯一对宿主机公开 80 和 443
-的服务；Chat、Router 与 Engine 不直接映射宿主机端口，分别由 Nginx 的 8081、8082、8083 HTTPS 端口代理。
+应用 Compose 只引用已构建或已拉取的镜像，绝不包含 `build` 定义；
+Chat、Router 与 Engine 不直接映射宿主机端口，分别由 Nginx 的 8081、8082、8083 HTTPS 端口代理。
 部署前请将内部 CA
-签发的证书和私钥放入 `docker/nginx/certs/tls.crt` 与 `docker/nginx/certs/tls.key`，并确保用户终端信任
+签发的证书和私钥放入 `deploy/openagent/nginx/certs/tls.crt` 与 `deploy/openagent/nginx/certs/tls.key`，并确保用户终端信任
 该 CA。证书 SAN 必须包含实际访问的内网域名。
 
 前端与 Keycloak 的公开地址必须使用 HTTPS；OIDC PKCE 和 Web Crypto 在普通 HTTP 页面中不可用。Nginx
@@ -52,7 +55,7 @@ docker compose -p openagent-infrastructure \
 生产模式需配置
 `OPENAGENT_KEYCLOAK_COMMAND` 与反向代理转发头，内置 `start-dev` 仅用于本地联调。
 
-以下示例以 `openagent.intra.example` 为公开入口。Nginx 为 Chat、Router、Engine 分别提供 8081、8082、
+以下示例以 `localhost` 为公开入口。Nginx 为 Chat、Router、Engine 分别提供 8081、8082、
 8083 的 HTTPS 端口；应用容器本身不映射宿主机端口：
 
 Engine 使用 ASP.NET Data Protection 保护 PostgreSQL/Redis 中的 LLM 和 RAG 密钥，应用 Compose 会将
@@ -62,12 +65,12 @@ Engine 使用 ASP.NET Data Protection 保护 PostgreSQL/Redis 中的 LLM 和 RAG
 将变量保存为受保护且 shell 兼容的 `.env` 文件（不要提交），例如：
 
 ```dotenv
-OPENAGENT_PUBLIC_HOST=openagent.intra.example
+OPENAGENT_PUBLIC_HOST=localhost
 OPENAGENT_PUBLIC_SCHEME=https
 OPENAGENT_CHAT_PORT=8081
 OPENAGENT_ENGINE_PORT=8083
 OPENAGENT_ROUTER_PORT=8082
-OPENAGENT_NGINX_SERVER_NAME=openagent.intra.example
+OPENAGENT_CHAT_PUBLIC_URL=https://localhost:8081
 OPENAGENT_ASPNETCORE_ENVIRONMENT=Production
 OPENAGENT_SERVICE_VERSION=2026.09.01
 OPENAGENT_AUTH_MODE=JwtBearer
@@ -78,9 +81,9 @@ OPENAGENT_AUTH_CLIENT_ID=openagent-chat
 OPENAGENT_AUTH_REQUIRE_HTTPS_METADATA=false
 OPENAGENT_AUTH_CLOCK_SKEW_SECONDS=60
 OPENAGENT_KEYCLOAK_PORT=58081
-OPENAGENT_KEYCLOAK_PUBLIC_URL=https://sso.intra.example:58081
+OPENAGENT_KEYCLOAK_PUBLIC_URL=https://localhost:58081
 OPENAGENT_KEYCLOAK_METADATA_ADDRESS=http://keycloak:8080/realms/openagent/.well-known/openid-configuration
-OPENAGENT_OTLP_ENDPOINT=https://otel-collector.intra.example:4317
+OPENAGENT_OTLP_ENDPOINT=
 OPENAGENT_INFRA_NETWORK=openagent-infrastructure
 ```
 
@@ -151,7 +154,7 @@ scripts/deploy.sh --env-file .env
 如需停止应用，不会删除基础设施数据：
 
 ```bash
-docker compose -p openagent-app -f docker-compose.yml down
+docker compose -p openagent-app -f deploy/openagent/docker-compose.yml down
 ```
 
 Gina 是可选 Provider，后续请按实际环境手动配置 Router 的 Provider 设置。Gina 的
@@ -163,7 +166,7 @@ Gina 是可选 Provider，后续请按实际环境手动配置 Router 的 Provid
 
 ```bash
 docker compose -p openagent-infrastructure \
-  -f docker-compose.storage.yml \
+  -f deploy/infrastructure/docker-compose.yml \
   down -v
 ```
 

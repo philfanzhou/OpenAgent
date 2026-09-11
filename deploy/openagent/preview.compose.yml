@@ -9,7 +9,7 @@
 services:
   engine:
     build:
-      context: ..
+      context: ../..
       dockerfile: Backend/src/OpenAgent.Engine.Host/Dockerfile
     environment:
       ASPNETCORE_ENVIRONMENT: Development
@@ -52,7 +52,7 @@ services:
 
   router:
     build:
-      context: ..
+      context: ../..
       dockerfile: Backend/src/OpenAgent.Router/Dockerfile
     environment:
       ASPNETCORE_ENVIRONMENT: Development
@@ -89,7 +89,7 @@ services:
 
   chat:
     build:
-      context: ..
+      context: ../..
       dockerfile: Frontend/OpenAgent.Chat/Dockerfile
       args:
         VITE_OPENAGENT_ROUTER_BASE_URL: http://localhost:${PREVIEW_ROUTER_PORT:-5010}
