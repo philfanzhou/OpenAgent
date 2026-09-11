@@ -14,6 +14,16 @@ export function formatTokenUsage(usage?: TokenUsage | null): string {
   return `输入 ${formatTokenCount(usage.promptTokens)} · 输出 ${formatTokenCount(usage.completionTokens)} · 总计 ${formatTokenCount(usage.totalTokens)}`
 }
 
+/** Context windows cover the provider-reported input plus output total. */
+export function formatContextUsage(
+  usage?: TokenUsage | null,
+  contextLimit?: number,
+): string | undefined {
+  const usedTokens = usage?.totalTokens
+  if (!contextLimit || contextLimit <= 0 || usedTokens == null || usedTokens < 0) return undefined
+  return `${formatTokenCount(usedTokens)} / ${formatTokenCount(contextLimit)} (${Math.min(100, (usedTokens / contextLimit) * 100).toFixed(1)}%)`
+}
+
 export function formatTokenBreakdown(usage?: TokenUsage | null): string | undefined {
   if (!usage) return undefined
   const details: string[] = []
