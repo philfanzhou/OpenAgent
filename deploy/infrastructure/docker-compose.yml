@@ -70,7 +70,7 @@ services:
       KC_HTTPS_CERTIFICATE_FILE: /opt/keycloak/conf/certs/tls.crt
       KC_HTTPS_CERTIFICATE_KEY_FILE: /opt/keycloak/conf/certs/tls.key
       KC_HTTPS_PORT: "8443"
-      OPENAGENT_CHAT_PUBLIC_URL: ${OPENAGENT_CHAT_PUBLIC_URL:-https://${OPENAGENT_PUBLIC_HOST:-localhost}:${OPENAGENT_CHAT_PORT:-8081}}
+      OPENAGENT_CHAT_PUBLIC_URL: ${OPENAGENT_CHAT_PUBLIC_URL:-${OPENAGENT_PUBLIC_SCHEME:-https}://${OPENAGENT_PUBLIC_HOST:-localhost}:${OPENAGENT_CHAT_PORT:-8081}}
     volumes:
       - ./keycloak/realm:/opt/keycloak/data/import:ro
       - ${OPENAGENT_TLS_CERT_DIR:-../openagent/nginx/certs}:/opt/keycloak/conf/certs:ro
