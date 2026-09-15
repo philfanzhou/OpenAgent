@@ -41,6 +41,7 @@ public static class CoreServiceExtensions
                 return handler;
             });
         services.AddScoped<OpenAgent.Core.Capabilities.ICapabilitySource, CodeCapabilitySource>();
+        services.AddScoped<OpenAgent.Core.Capabilities.Code.CodeExecutionBudget>();
 
         return services
             .AddConversationServices(configuration)

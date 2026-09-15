@@ -15,10 +15,10 @@ internal sealed class CodeCapabilitySource(
     IFileAssetService files,
     FileAssetExecutionContext context,
     AgentAuthorizationGate authorization,
+    CodeExecutionBudget budget,
     IOptions<CodeExecutionOptions> options) : ICapabilitySource
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-    private int _executions;
 
     public Task<IReadOnlyList<CapabilityDefinition>> DiscoverAsync(
         string agentId, AgentConfig config, IAgentUserContext user, CancellationToken cancellationToken)
@@ -69,7 +69,7 @@ internal sealed class CodeCapabilitySource(
         }
         try
         {
-            if (Interlocked.Increment(ref _executions) > options.Value.MaxExecutionsPerRequest)
+            if (!budget.TryConsume(options.Value.MaxExecutionsPerRequest))
             {
                 return "{\"error\":\"Code execution budget exhausted for this request.\"}";
             }
@@ -110,27 +110,8 @@ internal sealed class CodeCapabilitySource(
             ExecutionLimits.Validate(request);
             CodeExecutionResult result = await executor.ExecuteAsync(request, cancellationToken).ConfigureAwait(false);
             ExecutionLimits.ValidateFiles(result.Files);
-            foreach (ExecutionFile output in result.Files)
-            {
-                _ = GetMediaType(output.Name);
-                if (output.Content.Length == 0)
-                {
-                    throw new ArgumentException("Generated files must not be empty.");
-                }
-            }
-            var artifacts = new List<object>();
-            foreach (ExecutionFile output in result.Files)
-            {
-                await using var stream = new MemoryStream(output.Content, writable: false);
-                FileAsset asset = await files.UploadAsync(new FileAssetCreateRequest
-                {
-                    FileName = output.Name,
-                    MediaType = GetMediaType(output.Name),
-                    Source = FileAssetSource.Agent
-                }, stream, scope, cancellationToken).ConfigureAwait(false);
-                await files.EnsureReferencesAsync([asset.FileId], scope, cancellationToken).ConfigureAwait(false);
-                artifacts.Add(new { fileId = asset.FileId, fileName = asset.FileName, length = asset.Length });
-            }
+            List<object> artifacts = await CodeExecutionArtifacts.PublishAsync(
+                result, files, scope, cancellationToken).ConfigureAwait(false);
             return JsonSerializer.Serialize(new
             {
                 result.ExecutionId, result.ExitCode, result.TimedOut, result.Stdout, result.Stderr, files = artifacts
@@ -149,20 +130,6 @@ internal sealed class CodeCapabilitySource(
             return "{\"error\":\"The Runner request timed out.\"}";
         }
     }
-
-    private static string GetMediaType(string name) => Path.GetExtension(name).ToLowerInvariant() switch
-    {
-        ".pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        ".png" => "image/png",
-        ".jpg" or ".jpeg" => "image/jpeg",
-        ".pdf" => "application/pdf",
-        ".csv" => "text/csv",
-        ".json" => "application/json",
-        ".md" => "text/markdown",
-        ".txt" => "text/plain",
-        _ => throw new ArgumentException("Unsupported generated file type.")
-    };
 
     private sealed class InputFile
     {
