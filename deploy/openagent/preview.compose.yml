@@ -15,6 +15,8 @@ services:
     build:
       context: ../..
       dockerfile: Backend/src/OpenAgent.Engine.Host/Dockerfile
+    # WSL 空闲关机后，下次启动 Docker 时自动拉回预览。
+    restart: unless-stopped
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:5208
@@ -65,6 +67,8 @@ services:
     build:
       context: ../..
       dockerfile: Backend/src/OpenAgent.Runner/Dockerfile
+    # WSL 空闲关机后，下次启动 Docker 时自动拉回预览。
+    restart: unless-stopped
     environment:
       ASPNETCORE_URLS: http://+:5209
       Runner__ApiKey: ${OPENAGENT_RUNNER_API_KEY:?managed by scripts/preview.sh}
@@ -85,6 +89,8 @@ services:
     build:
       context: ../..
       dockerfile: Backend/src/OpenAgent.Router/Dockerfile
+    # WSL 空闲关机后，下次启动 Docker 时自动拉回预览。
+    restart: unless-stopped
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:5001
@@ -126,6 +132,8 @@ services:
         VITE_OPENAGENT_ROUTER_BASE_URL: http://localhost:${PREVIEW_ROUTER_PORT:-5010}
         VITE_OPENAGENT_ENGINE_BASE_URL: http://localhost:${PREVIEW_ENGINE_PORT:-5210}
         VITE_OPENAGENT_TENANT_ID: development
+    # WSL 空闲关机后，下次启动 Docker 时自动拉回预览。
+    restart: unless-stopped
     depends_on:
       router:
         condition: service_healthy
