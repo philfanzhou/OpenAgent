@@ -126,3 +126,37 @@ internal sealed class RecordingFileObjectStore : IFileObjectStore
 
     public Task DeleteAsync(string objectKey, CancellationToken cancellationToken) => Task.CompletedTask;
 }
+
+/// <summary>
+/// In-memory share link repository mirroring redemption semantics:
+/// a redeem only succeeds before expiry and below the download cap.
+/// </summary>
+internal sealed class RecordingFileShareRepository : IFileShareRepository
+{
+    public Dictionary<string, FileShareLinkRecord> Records { get; } = new(StringComparer.Ordinal);
+    public int RedeemAttempts { get; private set; }
+
+    public Task CreateAsync(FileShareLinkRecord record, CancellationToken cancellationToken)
+    {
+        Records.Add(record.ShareIdHash, record);
+        return Task.CompletedTask;
+    }
+
+    public Task<FileShareLinkRecord?> GetAsync(string shareIdHash, CancellationToken cancellationToken) =>
+        Task.FromResult(Records.GetValueOrDefault(shareIdHash));
+
+    public Task<bool> TryRedeemAsync(string shareIdHash, CancellationToken cancellationToken)
+    {
+        RedeemAttempts++;
+        FileShareLinkRecord? record = Records.GetValueOrDefault(shareIdHash);
+        if (record == null
+            || record.ExpiresAt <= DateTimeOffset.UtcNow
+            || (record.MaxDownloads != null && record.DownloadCount >= record.MaxDownloads.Value))
+        {
+            return Task.FromResult(false);
+        }
+
+        record.DownloadCount++;
+        return Task.FromResult(true);
+    }
+}

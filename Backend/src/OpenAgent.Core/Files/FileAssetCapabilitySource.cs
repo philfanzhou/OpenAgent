@@ -11,6 +11,7 @@ namespace OpenAgent.Core.Files;
 
 internal sealed class FileAssetCapabilitySource(
     IFileAssetService files,
+    IFileShareService shares,
     FileAssetExecutionContext executionContext,
     IOptions<FileAssetOptions> options,
     FileAssetUrlDownloader downloader) : ICapabilitySource
@@ -38,15 +39,18 @@ internal sealed class FileAssetCapabilitySource(
                 ReadAsync),
             new CapabilityDefinition(
                 "create_file_transfer_url",
-                "Create a short-lived signed read URL for a file. Two intended uses: hand it to an external "
+                "Create a download/share link for a file, served by this platform's file sharing endpoint; "
+                + "the underlying object storage (S3) address is never exposed. Two intended uses: hand it to an external "
                 + "MCP tool that requires a file URL (call this immediately before that tool), or give it to the "
-                + "user as a temporary download/share link. When sharing the link with the user, always state the "
-                + "validity period from expiresAt so they know it stops working; never present it as a permanent "
-                + "link, and do not use it for model-side file reading.",
-                """{"type":"object","properties":{"fileId":{"type":"string","description":"Referenced file asset ID"}},"required":["fileId"]}""",
+                + "user as a download/share link. Modes: 'temporary' (default; short-lived, unlimited downloads while "
+                + "valid), 'singleUse' (exactly one download, then the link is dead), 'longTerm' (long validity window). "
+                + "Use expiresInSeconds to override the mode default for a custom expiry date. When sharing the link with "
+                + "the user, always state the validity from expiresAt and any download limit; never present it as a "
+                + "permanent link, and do not use it for model-side file reading.",
+                """{"type":"object","properties":{"fileId":{"type":"string","description":"Referenced file asset ID"},"mode":{"type":"string","enum":["temporary","singleUse","longTerm"],"description":"Share policy; defaults to temporary"},"expiresInSeconds":{"type":"number","description":"Optional custom lifetime in seconds, overriding the mode default"}},"required":["fileId"]}""",
                 AgentResourceType.Tool,
                 "file-assets",
-                CreateTransferUrlAsync),
+                CreateShareLinkAsync),
             new CapabilityDefinition(
                 "list_files",
                 "List file assets referenced by the current conversation. Returns fileId and safe metadata only; "
@@ -161,18 +165,27 @@ internal sealed class FileAssetCapabilitySource(
         }
     }
 
-    private async Task<string> CreateTransferUrlAsync(
+    private async Task<string> CreateShareLinkAsync(
         IReadOnlyDictionary<string, object?> arguments,
         CancellationToken cancellationToken)
     {
         string? fileId = ReadString(arguments, "fileId");
         if (string.IsNullOrWhiteSpace(fileId))
         {
-            return "文件传输链接生成失败：'fileId' 是必填参数。";
+            return "文件分享链接生成失败：'fileId' 是必填参数。";
         }
         if (executionContext.Scope == null)
         {
-            return "文件传输链接生成失败：文件执行上下文不可用。";
+            return "文件分享链接生成失败：文件执行上下文不可用。";
+        }
+        if (ReadMode(arguments) is not { } mode)
+        {
+            return "文件分享链接生成失败：'mode' 只支持 temporary、singleUse 或 longTerm。";
+        }
+        int? expiresInSeconds = ReadInt32(arguments, "expiresInSeconds");
+        if (expiresInSeconds is < 1)
+        {
+            return "文件分享链接生成失败：'expiresInSeconds' 必须是正整数（秒）。";
         }
 
         try
@@ -183,25 +196,36 @@ internal sealed class FileAssetCapabilitySource(
                 cancellationToken).ConfigureAwait(false);
             if (asset == null || asset.State != FileAssetState.Ready)
             {
-                return "文件传输链接生成失败：文件不存在、未就绪或未关联到当前会话。";
+                return "文件分享链接生成失败：文件不存在、未就绪或未关联到当前会话。";
             }
 
-            FileObjectAccessReference access = await files.CreateTransferUrlAsync(
+            FileShareLink share = await shares.CreateAsync(
                 fileId,
                 executionContext.Scope,
+                new FileShareRequest { Mode = mode, ExpiresInSeconds = expiresInSeconds },
                 cancellationToken).ConfigureAwait(false);
             return JsonSerializer.Serialize(new
             {
                 fileId,
-                objectKey = access.ObjectKey,
-                url = access.Url,
-                expiresAt = access.ExpiresAt
+                url = share.Url,
+                mode = share.Mode.ToString(),
+                expiresAt = share.ExpiresAt,
+                maxDownloads = share.MaxDownloads
             });
         }
         catch (OpenAgent.Contracts.Security.AgentException exception)
         {
-            return $"文件传输链接生成失败：{exception.Message}";
+            return $"文件分享链接生成失败：{exception.Message}";
         }
+    }
+
+    private static FileShareMode? ReadMode(IReadOnlyDictionary<string, object?> arguments) =>
+        FileShareModeParser.Parse(ReadString(arguments, "mode"));
+
+    private static int? ReadInt32(IReadOnlyDictionary<string, object?> arguments, string name)
+    {
+        string? value = ReadString(arguments, name);
+        return value != null && int.TryParse(value, out int parsed) ? parsed : null;
     }
 
     private async Task<string> WriteAsync(

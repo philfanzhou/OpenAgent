@@ -46,7 +46,7 @@ public class FileAssetCapabilitySourceTests
     }
 
     [Fact]
-    public async Task InvokeAsync_CreateTransferUrl_ReturnsUrlOnlyForReferencedReadyFile()
+    public async Task InvokeAsync_CreateTransferUrl_ReturnsShareLinkOnlyForReferencedReadyFile()
     {
         TestHarness harness = CreateHarness();
         FileAsset asset = CreateAsset("report.pdf", "application/pdf");
@@ -60,9 +60,41 @@ public class FileAssetCapabilitySourceTests
 
         using JsonDocument document = JsonDocument.Parse(result);
         Assert.Equal(asset.FileId, document.RootElement.GetProperty("fileId").GetString());
-        Assert.Equal(asset.ObjectKey, document.RootElement.GetProperty("objectKey").GetString());
-        Assert.Equal($"https://storage.example/{asset.ObjectKey}", document.RootElement.GetProperty("url").GetString());
-        Assert.Equal(asset.ObjectKey, harness.Objects.LastAccessObjectKey);
+        string url = document.RootElement.GetProperty("url").GetString()!;
+        Assert.StartsWith($"{IFileShareService.RoutePrefix}/", url, StringComparison.Ordinal);
+        Assert.Equal("Temporary", document.RootElement.GetProperty("mode").GetString());
+        Assert.Equal(JsonValueKind.Null, document.RootElement.GetProperty("maxDownloads").ValueKind);
+        Assert.True(document.RootElement.GetProperty("expiresAt").GetDateTimeOffset()
+            > DateTimeOffset.UtcNow.AddMinutes(10));
+        // 链接由平台分享服务核销，不暴露对象存储地址或键。
+        Assert.DoesNotContain(asset.ObjectKey, url, StringComparison.Ordinal);
+        Assert.Single(harness.Shares.Records.Values, record => record.FileId == asset.FileId);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_CreateTransferUrl_SingleUseModeLimitsDownloads()
+    {
+        TestHarness harness = CreateHarness();
+        FileAsset asset = CreateAsset("report.pdf", "application/pdf");
+        harness.Repository.Assets[asset.FileId] = asset;
+        harness.Repository.References.Add($"conversation-a:{asset.FileId}");
+
+        string result = await InvokeAsync(
+            harness.Source,
+            "create_file_transfer_url",
+            new Dictionary<string, object?>
+            {
+                ["fileId"] = asset.FileId,
+                ["mode"] = "singleUse",
+                ["expiresInSeconds"] = 3600
+            });
+
+        using JsonDocument document = JsonDocument.Parse(result);
+        Assert.Equal("SingleUse", document.RootElement.GetProperty("mode").GetString());
+        Assert.Equal(1, document.RootElement.GetProperty("maxDownloads").GetInt32());
+        FileShareLinkRecord record = Assert.Single(harness.Shares.Records.Values);
+        Assert.Equal(1, record.MaxDownloads);
+        Assert.InRange((record.ExpiresAt - DateTimeOffset.UtcNow).TotalSeconds, 3590, 3605);
     }
 
     [Fact]
@@ -77,8 +109,8 @@ public class FileAssetCapabilitySourceTests
             "create_file_transfer_url",
             new Dictionary<string, object?> { ["fileId"] = asset.FileId });
 
-        Assert.StartsWith("文件传输链接生成失败：", result, StringComparison.Ordinal);
-        Assert.Null(harness.Objects.LastAccessObjectKey);
+        Assert.StartsWith("文件分享链接生成失败：", result, StringComparison.Ordinal);
+        Assert.Empty(harness.Shares.Records);
     }
 
     [Fact]
@@ -386,6 +418,12 @@ public class FileAssetCapabilitySourceTests
             repository,
             objects,
             Options.Create(effective));
+        var shares = new RecordingFileShareRepository();
+        IFileShareService shareService = new FileShareService(
+            service,
+            shares,
+            objects,
+            Options.Create(new FileShareOptions()));
         var context = new FileAssetExecutionContext();
         if (setScope)
         {
@@ -396,8 +434,9 @@ public class FileAssetCapabilitySourceTests
                 ConversationId = "conversation-a"
             });
         }
-        return new TestHarness(repository, objects, context, new FileAssetCapabilitySource(
+        return new TestHarness(repository, objects, shares, context, new FileAssetCapabilitySource(
             service,
+            shareService,
             context,
             Options.Create(effective),
             new FileAssetUrlDownloader(
@@ -409,6 +448,7 @@ public class FileAssetCapabilitySourceTests
     private sealed record TestHarness(
         RecordingFileAssetRepository Repository,
         RecordingFileObjectStore Objects,
+        RecordingFileShareRepository Shares,
         FileAssetExecutionContext Context,
         FileAssetCapabilitySource Source);
 

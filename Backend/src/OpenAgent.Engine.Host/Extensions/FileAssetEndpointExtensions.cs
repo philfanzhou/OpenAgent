@@ -26,6 +26,7 @@ internal static class FileAssetEndpointExtensions
         group.MapGet("/files/{fileId}/download", DownloadAsync)
             .WithName("DownloadFileAsset")
             .WithTags("File");
+        group.MapFileShareLinks();
     }
 
     private static async Task<IResult> UploadAsync(

@@ -23,34 +23,53 @@ LLM Profile 选择 `Multimodal` 时，聊天请求中的 `image/*` 资产会在�
 | `GET /api/v1/agent/files/{fileId}` | 读取资产元数据 |
 | `GET /api/v1/agent/files/{fileId}/content` | 认证预览内容 |
 | `GET /api/v1/agent/files/{fileId}/download` | 认证下载 |
+| `POST /api/v1/agent/files/{fileId}/share` | 创建分享链接（认证，body 指定 `mode`/`expiresInSeconds`） |
+| `GET /api/v1/share/{token}` | 匿名分享下载；令牌即凭证，过期或超次数统一 404 |
 
 权限校验通过 `FileAssetScope` 的 TenantId/OwnerUserId 边界在 `FileAssetService` 内强制执行（缺失时抛 `TenantDataIsolationException`）。
 
-## 短期签名 URL（MCP 传输 / 用户分享）
+## 文件分享链接（MCP 传输 / 用户分享）
 
-短期 URL 不提供独立的 HTTP 生成端点，由大模型调用 Agent 内部工具 `create_file_transfer_url` 生成，有两个用途：
+分享链接由平台自身的文件分享服务签发与核销（`FileShareService` + `openagent.file_share_links` 表），对外只暴露
+`/api/v1/share/{token}` 这个不透明地址，不再生成 S3 预签名 URL，因此不会泄露对象存储 endpoint、bucket、
+对象键布局或 Access Key。数据库只保存令牌的 SHA-256 哈希，与第三方 API Key 的存储约定一致；下载计数通过
+条件 `UPDATE` 原子核销，多实例部署下“单次下载”仍然严格。
+
+链接策略（`mode`）：
+
+| 模式 | 有效期默认值 | 下载限制 |
+|---|---|---|
+| `temporary`（默认） | 15 分钟 | 有效期内不限次数 |
+| `singleUse` | 24 小时 | 仅 1 次，下载后立即失效 |
+| `longTerm` | 30 天 | 有效期内不限次数 |
+
+`expiresInSeconds` 可覆盖所选模式的默认时长，实现自定义失效日期，上限受
+`FileAssets:Share:MaxLifetimeSeconds`（默认 1 年）约束。各默认时长通过 `FileAssets:Share` 配置：
+`TemporaryLifetimeSeconds`、`SingleUseLifetimeSeconds`、`LongTermLifetimeSeconds`；
+绝对地址基地址配置 `FileAssets:Share:PublicBaseUrl`（未配置时 REST 创建按请求 origin 拼接，
+模型工具返回相对路径）。
+
+模型侧由大模型调用内部工具 `create_file_transfer_url` 生成（保持原工具名），新增可选参数 `mode` 与
+`expiresInSeconds`；REST 侧前端可调用 `POST /api/v1/agent/files/{fileId}/share`。两个场景不变：
 
 - **MCP 跨系统传输**：大模型判断某个第三方 MCP 工具需要文件 URL 时调用，并把返回的 URL 作为参数传给该 MCP 工具。
-- **用户临时分享链接**：用户需要直接下载链接时调用，把 URL 作为分享链接交给用户；此时必须同时告知有效期（`expiresAt`，15 分钟），不得表述为永久链接。
-
-普通上传、查询、预览、下载和聊天流程不会生成临时 URL。
+- **用户下载/分享链接**：用户需要直接下载链接时调用，把 URL 作为分享链接交给用户；必须同时告知有效期（`expiresAt`）与下载限制（`singleUse` 链接下载一次后失效），不得表述为永久链接。
 
 响应示例：
 
 ```json
 {
   "fileId": "c745f86af1e44857ac63d463f0bc0495",
-  "objectKey": "files/tenants/{tenant-sha256}/users/{user-sha256}/c745f86af1e44857ac63d463f0bc0495.pdf",
-  "url": "https://s3.example.com/openagent-files?...",
-  "expiresAt": "2026-08-26T12:00:00Z"
+  "url": "https://engine.example.com/api/v1/share/0d9a2b7c4e5f6a8b9c0d1e2f3a4b5c6d",
+  "mode": "Temporary",
+  "expiresAt": "2026-08-26T12:00:00Z",
+  "maxDownloads": null
 }
 ```
 
-`fileId` 是 OpenAgent 的业务资产 ID；`objectKey` 是 S3 对象的实际键，不能把二者混称为“S3 ID”。S3 对象由 bucket 与 `objectKey` 定位。`url` 是模型调用 `create_file_transfer_url` 时才生成的、有效期 15 分钟的只读签名 URL，可用于 MCP 读取或作为用户临时分享链接（分享时必须告知有效期），接收方不应保存 S3 凭据或依赖租户/用户路径。
+`fileId` 是 OpenAgent 的业务资产 ID；`url` 指向本平台分享端点，不包含 `objectKey` 或任何 S3 定位信息；
+接收方无需对象存储凭据。普通上传、查询、预览、认证下载和聊天流程不生成分享链接。
 
-签名 URL 必须按最终访问者使用的 S3 endpoint 生成，因为签名包含请求 Host。默认使用
-`ServiceUrl`；如果 Engine 通过内部地址访问 S3/MinIO，而 MCP 或用户通过公网域名访问，
-请配置 `PublicServiceUrl`（部署环境变量为 `OPENAGENT_S3_PUBLIC_SERVICE_URL`）。该地址只用于
-生成预签名 URL，必须与访问者实际使用的 HTTP(S) origin 完全一致；`ForcePathStyle` 也必须与
-公网入口的路由方式一致。这样上传/读取可以继续走内部地址，同时避免把 URL 的域名替换后造成
-`SignatureDoesNotMatch`。
+> 兼容说明：对象存储层的 `CreateReadUrlAsync`（S3 预签名）与 `FileAssets:ObjectStorage:PublicServiceUrl`
+> 仍作为底层能力保留，但当前对外链路（模型工具与 REST 分享）已不再使用预签名 URL；公网入口无需再为
+> 预签名 Host 一致性做特殊配置。

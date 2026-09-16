@@ -45,6 +45,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<EfCoreConversationStore>();
         services.AddScoped<IThirdPartyApiKeyIdentityResolver, EfThirdPartyApiKeyIdentityResolver>();
         services.AddSingleton<IFileAssetRepository, EfCoreFileAssetRepository>();
+        services.AddSingleton<IFileShareRepository, EfCoreFileShareRepository>();
         services.AddSingleton<ISkillDefinitionRepository, EfCoreSkillDefinitionRepository>();
         services.AddSingleton<IAgentConfigRepository, AgentConfigRepository>();
         services.AddSingleton<ILlmConfigRepository, LlmConfigRepository>();

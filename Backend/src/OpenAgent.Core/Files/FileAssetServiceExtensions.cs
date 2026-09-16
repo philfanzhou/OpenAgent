@@ -17,8 +17,14 @@ internal static class FileAssetServiceExtensions
         services.AddOptions<FileAssetOptions>()
             .Bind(configuration.GetSection(FileAssetOptions.SectionName))
             .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<FileShareOptions>, FileShareOptionsValidator>();
+        services.AddOptions<FileShareOptions>()
+            .Bind(configuration.GetSection(FileShareOptions.SectionName))
+            .ValidateOnStart();
         services.TryAddSingleton<IFileObjectStore, UnconfiguredFileObjectStore>();
+        services.TryAddSingleton<IFileShareRepository, UnconfiguredFileShareRepository>();
         services.AddScoped<IFileAssetService, FileAssetService>();
+        services.AddScoped<IFileShareService, FileShareService>();
         services.AddScoped<FileAssetExecutionContext>();
         services.AddScoped<FileAssetRequestResolver>();
         bool allowInsecureTls = configuration.GetValue("OPENAGENT_ALLOW_INSECURE_TLS", false);
