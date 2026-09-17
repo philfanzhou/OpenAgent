@@ -16,7 +16,11 @@ internal static class ConversationServiceExtensions
     {
         services.Configure<ConversationStoreOptions>(
             configuration.GetSection(ConversationStoreOptions.SectionName));
+        services.Configure<LlmInteractionOptions>(
+            configuration.GetSection(LlmInteractionOptions.SectionName));
         services.TryAddSingleton<IConversationLock, InMemoryConversationLock>();
+        // 默认进程内实现，生产环境由 Infrastructure 的 EF Core 实现替换。
+        services.TryAddSingleton<ILlmInteractionStore, InMemoryLlmInteractionStore>();
         services.AddScoped<ConversationSessionStore>();
         services.AddScoped<ConversationAgentResolver>();
         services.AddScoped<PlatformChatHistoryFactory>();

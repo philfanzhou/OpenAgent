@@ -11,6 +11,7 @@ internal sealed class ConversationMessageEntity
     public string? ToolName { get; init; }
     public string? IdempotencyKey { get; init; }
     public DateTimeOffset Timestamp { get; init; }
+    public string? TraceId { get; init; }
     public string? MetadataJson { get; init; }
     public int? PromptTokens { get; init; }
     public int? CompletionTokens { get; init; }

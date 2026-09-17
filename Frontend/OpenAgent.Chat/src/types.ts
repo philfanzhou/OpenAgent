@@ -30,6 +30,8 @@ export interface ConversationMessage {
   toolCallId?: string
   toolName?: string
   timestamp: string
+  /** 产生该消息的轮次追溯键（前端 X-Trace-Id），旧会话可能缺失。 */
+  traceId?: string
   metadata?: Record<string, string>
   reasoning?: string
   toolActivities?: ToolActivity[]
@@ -100,6 +102,36 @@ export interface ConversationRecord {
   title?: string
   messages?: ConversationMessage[]
   contextSummaries?: ContextSummary[]
+  /** UI-only marker for imported investigation logs; these conversations are read-only. */
+  replayOnly?: boolean
+  /** Original server conversation id for an imported replay. */
+  sourceConversationId?: string
+  /** UI-only: interaction logs embedded in an imported replay. */
+  interactions?: LlmInteraction[]
+}
+
+/** 一次大模型交互的完整请求/响应日志（后端已脱敏）。 */
+export interface LlmInteraction {
+  interactionId: string
+  tenantId: string
+  userId: string
+  conversationId?: string | null
+  /** 轮次追溯键，与消息上的 traceId 对齐。 */
+  traceId: string
+  agentId?: string | null
+  source: 'AgentTurn' | 'Compaction' | number
+  provider?: string | null
+  apiFormat?: string | null
+  modelId: string
+  streamed: boolean
+  callIndex: number
+  requestJson?: string | null
+  responseJson?: string | null
+  tokenUsage?: TokenUsage | null
+  status: 'Succeeded' | 'Failed' | 'Cancelled' | number
+  errorMessage?: string | null
+  startedAt: string
+  durationMs: number
 }
 
 export interface ContextSummary {

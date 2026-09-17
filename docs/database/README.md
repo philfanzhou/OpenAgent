@@ -15,6 +15,7 @@ PostgreSQL 是当前 OpenAgent 持久化业务数据的唯一事实源；EF Core
 | `openagent.message_file_references` | 文件在具体消息中的引用，用于预览和治理 |
 | `openagent.agent_configurations` | Agent 基础字段、嵌套能力配置与乐观并发版本；主键 `(TenantId, AgentId)` |
 | `openagent.llm_configurations` | LLM 模型连接、ContextTokens、Modality 和服务端加密 Key；主键 `(TenantId, ProfileId)` |
+| `openagent.llm_interaction_logs` | 大模型交互请求/响应审计日志（已脱敏），按会话与轮次 TraceId 检索 |
 
 文件字节保存在 S3/MinIO；对象存储不保存租户、用户、会话或生命周期事实。Redis 如被部署，保存
 可过期的会话热副本、派生配置缓存并提供分布式锁与 Pub/Sub；这些派生数据均可由数据库回填。
@@ -30,4 +31,4 @@ Conversation * --- * FileAsset (conversation_file_references)
 ConversationMessage * --- * FileAsset (message_file_references)
 ```
 
-详细字段见 [ConversationRecords](./tables/ConversationRecords.md)、[FileAssets](./tables/FileAssets.md) 和 [Configurations](./tables/Configurations.md)。
+详细字段见 [ConversationRecords](./tables/ConversationRecords.md)、[LlmInteractionLogs](./tables/LlmInteractionLogs.md)、[FileAssets](./tables/FileAssets.md) 和 [Configurations](./tables/Configurations.md)。

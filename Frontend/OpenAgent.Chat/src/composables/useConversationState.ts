@@ -4,7 +4,7 @@ import { api } from '../api'
 import { randomUuid } from '../browserCrypto'
 import { mergeConversationRecords, replaceConversationRecord, selectionMatchesConversation } from '../conversationCollection'
 import { summarizeConversationUsage } from '../tokenUsage'
-import type { ConversationRecord } from '../types'
+import type { ConversationRecord, LlmInteraction } from '../types'
 import type { useConversationStreams } from './useConversationStreams'
 
 const selectedConversationStorageKey = 'openagent.chat.selected-conversation-id'
@@ -107,6 +107,22 @@ export function useConversationState(options: ConversationStateOptions) {
     sessionStorage.removeItem(selectedConversationStorageKey)
   }
 
+  function importReplayConversation(source: ConversationRecord, interactions: LlmInteraction[] = []): void {
+    const replay: ConversationRecord = {
+      ...source,
+      conversationId: `replay-${randomUuid()}`,
+      title: `重放 · ${source.title || source.conversationId}`,
+      replayOnly: true,
+      sourceConversationId: source.conversationId,
+      messages: source.messages?.map(message => ({ ...message })),
+      interactions,
+    }
+    conversations.value = [replay, ...conversations.value]
+    selectedConversation.value = replay
+    sessionStorage.setItem(selectedConversationStorageKey, replay.conversationId)
+    options.selectedAgentId.value = replay.agentId || options.selectedAgentId.value
+  }
+
   async function deleteConversation(item: ConversationRecord): Promise<void> {
     try {
       await ElMessageBox.confirm('确认删除这个会话吗？', '删除会话', { type: 'warning' })
@@ -167,6 +183,7 @@ export function useConversationState(options: ConversationStateOptions) {
     restoreSelectedConversation,
     selectConversation,
     clearSelectedConversation,
+    importReplayConversation,
     deleteConversation,
     compactConversation,
     resetConversations,

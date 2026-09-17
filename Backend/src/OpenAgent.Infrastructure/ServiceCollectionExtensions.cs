@@ -11,6 +11,7 @@ using OpenAgent.Contracts.Infrastructure;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Contracts.Skills;
 using OpenAgent.Infrastructure.Configuration;
+using OpenAgent.Infrastructure.Conversations;
 using OpenAgent.Infrastructure.Skills;
 using OpenAgent.Infrastructure.Security;
 using StackExchange.Redis;
@@ -44,6 +45,8 @@ public static class ServiceCollectionExtensions
         // by a singleton registration.
         services.AddScoped<EfCoreConversationStore>();
         services.AddScoped<IThirdPartyApiKeyIdentityResolver, EfThirdPartyApiKeyIdentityResolver>();
+        // 替换 Core 注册的进程内默认实现（同 Redis 锁的替换模式）。
+        services.Replace(ServiceDescriptor.Singleton<ILlmInteractionStore, EfCoreLlmInteractionStore>());
         services.AddSingleton<IFileAssetRepository, EfCoreFileAssetRepository>();
         services.AddSingleton<ISkillDefinitionRepository, EfCoreSkillDefinitionRepository>();
         services.AddSingleton<IAgentConfigRepository, AgentConfigRepository>();

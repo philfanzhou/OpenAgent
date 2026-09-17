@@ -12,6 +12,7 @@ import type {
   HealthEntry,
   HealthReport,
   HealthReportItem,
+  LlmInteraction,
   LlmProviderProfile,
   LlmTestResult,
   MessageFile,
@@ -318,6 +319,23 @@ export const api = {
 
   getConversation(id: string): Promise<ConversationRecord> {
     return request<ConversationRecord>(`/api/v1/agent/conversations/${encodeURIComponent(id)}`).then(normalizeConversation)
+  },
+
+  listLlmInteractions(id: string, skip = 0, take = 100): Promise<LlmInteraction[]> {
+    return request<LlmInteraction[]>(
+      `/api/v1/agent/conversations/${encodeURIComponent(id)}/llm-interactions?skip=${skip}&take=${take}`,
+    )
+  },
+
+  /** 分页取全该会话的交互日志；上限 max 防止超大会话拖垮导出。 */
+  async getAllLlmInteractions(id: string, max = 1000): Promise<LlmInteraction[]> {
+    const all: LlmInteraction[] = []
+    while (all.length < max) {
+      const page = await this.listLlmInteractions(id, all.length, 100)
+      all.push(...page)
+      if (page.length < 100) break
+    }
+    return all.slice(0, max)
   },
 
   async uploadFile(file: File): Promise<FileAsset> {

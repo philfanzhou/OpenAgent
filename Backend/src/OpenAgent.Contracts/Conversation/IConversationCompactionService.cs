@@ -9,5 +9,6 @@ public interface IConversationCompactionService
         string conversationId,
         string llmProfileId,
         IAgentUserContext user,
+        string? traceId = null,
         CancellationToken cancellationToken = default);
 }
