@@ -14,10 +14,11 @@ public sealed class FileShareLinkRecord
     public required string FileName { get; init; }
     public required string MediaType { get; init; }
     public long Length { get; init; }
+    public FileShareMode Mode { get; init; }
     public required DateTimeOffset ExpiresAt { get; set; }
 
     /// <summary>最大下载次数；null 表示有效期内不限次数。</summary>
     public int? MaxDownloads { get; init; }
     public int DownloadCount { get; set; }
-    public required DateTimeOffset CreatedAt { get; init; }
+    public required DateTimeOffset CreatedAt { get; set; }
 }

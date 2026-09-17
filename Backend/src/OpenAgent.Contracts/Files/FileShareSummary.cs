@@ -1,18 +1,23 @@
 namespace OpenAgent.Contracts.Files;
 
-/// <summary>创建分享链接后返回给所有者的结果。Url 是唯一的下载凭证，不暴露对象存储地址。</summary>
-public sealed class FileShareLink
+/// <summary>
+/// 分享链接的查询视图。明文令牌只在创建响应中出现，这里不返回 Url，
+/// 仅提供用于撤销的 <see cref="ShareId"/> 与运行状态。
+/// </summary>
+public sealed class FileShareSummary
 {
-    /// <summary>分享的持久化标识（令牌哈希），用于查询与撤销；凭它不能兑换下载。</summary>
     public required string ShareId { get; init; }
     public required string FileId { get; init; }
     public required string FileName { get; init; }
     public required string MediaType { get; init; }
     public long Length { get; init; }
     public required FileShareMode Mode { get; init; }
-    public required string Url { get; init; }
     public required DateTimeOffset ExpiresAt { get; init; }
     public int? MaxDownloads { get; init; }
     public int DownloadCount { get; init; }
     public required DateTimeOffset CreatedAt { get; init; }
+
+    /// <summary>未过期且未达到下载次数上限时为 true；撤销后的记录不再出现于查询结果。</summary>
+    public bool IsActive => ExpiresAt > DateTimeOffset.UtcNow
+        && (MaxDownloads == null || DownloadCount < MaxDownloads);
 }

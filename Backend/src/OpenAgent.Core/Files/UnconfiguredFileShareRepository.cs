@@ -15,6 +15,19 @@ internal sealed class UnconfiguredFileShareRepository : IFileShareRepository
     public Task<bool> TryRedeemAsync(string shareIdHash, CancellationToken cancellationToken) =>
         Task.FromException<bool>(CreateException());
 
+    public Task<IReadOnlyList<FileShareLinkRecord>> ListByOwnerAsync(
+        string tenantId,
+        string ownerId,
+        CancellationToken cancellationToken) =>
+        Task.FromException<IReadOnlyList<FileShareLinkRecord>>(CreateException());
+
+    public Task<bool> DeleteAsync(
+        string shareIdHash,
+        string tenantId,
+        string ownerId,
+        CancellationToken cancellationToken) =>
+        Task.FromException<bool>(CreateException());
+
     private static AgentException CreateException() => new(
         AgentErrorCode.DependencyUnavailable,
         "File share persistence is not configured.");

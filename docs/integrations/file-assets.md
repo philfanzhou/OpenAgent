@@ -24,6 +24,8 @@ LLM Profile 选择 `Multimodal` 时，聊天请求中的 `image/*` 资产会在�
 | `GET /api/v1/agent/files/{fileId}/content` | 认证预览内容 |
 | `GET /api/v1/agent/files/{fileId}/download` | 认证下载 |
 | `POST /api/v1/agent/files/{fileId}/share` | 创建分享链接（认证，body 指定 `mode`/`expiresInSeconds`） |
+| `GET /api/v1/agent/files/shares` | 查询当前用户在该租户下的全部分享链接（认证，按创建时间倒序，含 `isActive`） |
+| `DELETE /api/v1/agent/files/shares/{shareId}` | 撤销一条分享链接（认证）；删除后令牌立即失效，不存在/非本人统一 404 |
 | `GET /api/v1/share/{token}` | 匿名分享下载；令牌即凭证，过期或超次数统一 404 |
 
 权限校验通过 `FileAssetScope` 的 TenantId/OwnerUserId 边界在 `FileAssetService` 内强制执行（缺失时抛 `TenantDataIsolationException`）。
@@ -43,11 +45,13 @@ LLM Profile 选择 `Multimodal` 时，聊天请求中的 `image/*` 资产会在�
 | `singleUse` | 24 小时 | 仅 1 次，下载后立即失效 |
 | `longTerm` | 30 天 | 有效期内不限次数 |
 
-`expiresInSeconds` 可覆盖所选模式的默认时长，实现自定义失效日期，上限受
-`FileAssets:Share:MaxLifetimeSeconds`（默认 1 年）约束。各默认时长通过 `FileAssets:Share` 配置：
-`TemporaryLifetimeSeconds`、`SingleUseLifetimeSeconds`、`LongTermLifetimeSeconds`；
-绝对地址基地址配置 `FileAssets:Share:PublicBaseUrl`（未配置时 REST 创建按请求 origin 拼接，
-模型工具返回相对路径）。
+`expiresInSeconds` 可覆盖所选模式的默认时长，实现自定义失效日期；必须为正数，上限受
+`FileAssets:Share:MaxLifetimeSeconds` 约束，而该配置本身有 **365 天硬上限**
+（`FileShareOptions.MaxLifetimeLimitSeconds`，配置超过会在启动校验时失败），因此不存在永久有效的分享。
+各默认时长通过 `FileAssets:Share` 配置：`TemporaryLifetimeSeconds`、`SingleUseLifetimeSeconds`、
+`LongTermLifetimeSeconds`；绝对地址基地址配置 `FileAssets:Share:PublicBaseUrl`（未配置时 REST
+创建按请求 origin 拼接，模型工具返回相对路径——部署时应配置该值，例如环境变量
+`OPENAGENT_SHARE_PUBLIC_BASE_URL`，保证返回的 URL 始终是可直达的绝对地址）。
 
 模型侧由大模型调用内部工具 `create_file_transfer_url` 生成（保持原工具名），新增可选参数 `mode` 与
 `expiresInSeconds`；REST 侧前端可调用 `POST /api/v1/agent/files/{fileId}/share`。两个场景不变：
@@ -55,10 +59,16 @@ LLM Profile 选择 `Multimodal` 时，聊天请求中的 `image/*` 资产会在�
 - **MCP 跨系统传输**：大模型判断某个第三方 MCP 工具需要文件 URL 时调用，并把返回的 URL 作为参数传给该 MCP 工具。
 - **用户下载/分享链接**：用户需要直接下载链接时调用，把 URL 作为分享链接交给用户；必须同时告知有效期（`expiresAt`）与下载限制（`singleUse` 链接下载一次后失效），不得表述为永久链接。
 
+创建响应与列表项都带 `shareId`（令牌哈希），用户可通过
+`GET /api/v1/agent/files/shares` 查询自己的全部分享（含已过期/已用尽的，`isActive` 标识当前可用性），
+并用 `DELETE /api/v1/agent/files/shares/{shareId}` 撤销；撤销即删除记录，令牌立即 404。
+明文令牌只在创建响应的 `url` 中出现一次，列表不返回 URL。
+
 响应示例：
 
 ```json
 {
+  "shareId": "267ed5e832a60f49d48508f763de6c546b09c51f4c3be9993b4f0cafe5600de5",
   "fileId": "c745f86af1e44857ac63d463f0bc0495",
   "url": "https://engine.example.com/api/v1/share/0d9a2b7c4e5f6a8b9c0d1e2f3a4b5c6d",
   "mode": "Temporary",

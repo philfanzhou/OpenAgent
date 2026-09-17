@@ -33,6 +33,7 @@ services:
       FileAssets__ObjectStorage__ForcePathStyle: "true"
       FileAssets__ObjectStorage__AccessKey: ${OPENAGENT_S3_ACCESS_KEY:-openagent}
       FileAssets__ObjectStorage__SecretKey: ${OPENAGENT_S3_SECRET_KEY:-openagent-secret}
+      FileAssets__Share__PublicBaseUrl: ${OPENAGENT_SHARE_PUBLIC_BASE_URL:-}
       Engine__AllowMockAgent: "true"
       Heartbeat__AdvertisedHost: engine
       Heartbeat__AdvertisedPort: "5208"

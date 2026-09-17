@@ -78,7 +78,7 @@ public sealed class OpenAgentDbContext(DbContextOptions<OpenAgentDbContext> opti
             entity.Property(item => item.ObjectKey).HasMaxLength(2048);
             entity.Property(item => item.FileName).HasMaxLength(1024);
             entity.Property(item => item.MediaType).HasMaxLength(256);
-            entity.HasIndex(item => new { item.TenantId, item.CreatedAt });
+            entity.HasIndex(item => new { item.TenantId, item.OwnerUserId, item.CreatedAt });
             entity.HasOne<FileAssetEntity>().WithMany().HasForeignKey(item => item.FileId).OnDelete(DeleteBehavior.Restrict);
         });
 

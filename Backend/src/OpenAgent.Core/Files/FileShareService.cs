@@ -37,10 +37,11 @@ internal sealed class FileShareService(
         int? maxDownloads = request.Mode == FileShareMode.SingleUse ? 1 : null;
         string token = FileShareTokens.NewToken();
         DateTimeOffset createdAt = DateTimeOffset.UtcNow;
+        string shareIdHash = FileShareTokens.Hash(token);
         await shares.CreateAsync(
             new FileShareLinkRecord
             {
-                ShareIdHash = FileShareTokens.Hash(token),
+                ShareIdHash = shareIdHash,
                 FileId = asset.FileId,
                 TenantId = asset.TenantId,
                 OwnerUserId = asset.OwnerUserId,
@@ -48,6 +49,7 @@ internal sealed class FileShareService(
                 FileName = asset.FileName,
                 MediaType = asset.MediaType,
                 Length = asset.Length,
+                Mode = request.Mode,
                 ExpiresAt = expiresAt,
                 MaxDownloads = maxDownloads,
                 DownloadCount = 0,
@@ -57,6 +59,7 @@ internal sealed class FileShareService(
 
         return new FileShareLink
         {
+            ShareId = shareIdHash,
             FileId = asset.FileId,
             FileName = asset.FileName,
             MediaType = asset.MediaType,
@@ -103,6 +106,46 @@ internal sealed class FileShareService(
         };
     }
 
+    public async Task<IReadOnlyList<FileShareSummary>> ListAsync(
+        FileAssetScope scope,
+        CancellationToken cancellationToken)
+    {
+        IReadOnlyList<FileShareLinkRecord> records = await shares.ListByOwnerAsync(
+            scope.TenantId,
+            scope.UserId,
+            cancellationToken).ConfigureAwait(false);
+        return records
+            .Select(ToSummary)
+            .ToList();
+    }
+
+    public Task<bool> RevokeAsync(
+        string shareIdHash,
+        FileAssetScope scope,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(shareIdHash))
+        {
+            return Task.FromResult(false);
+        }
+
+        return shares.DeleteAsync(shareIdHash, scope.TenantId, scope.UserId, cancellationToken);
+    }
+
+    private static FileShareSummary ToSummary(FileShareLinkRecord record) => new()
+    {
+        ShareId = record.ShareIdHash,
+        FileId = record.FileId,
+        FileName = record.FileName,
+        MediaType = record.MediaType,
+        Length = record.Length,
+        Mode = record.Mode,
+        ExpiresAt = record.ExpiresAt,
+        MaxDownloads = record.MaxDownloads,
+        DownloadCount = record.DownloadCount,
+        CreatedAt = record.CreatedAt
+    };
+
     private DateTimeOffset ResolveExpiryAt(FileShareRequest request)
     {
         FileShareOptions settings = options.Value;
@@ -112,8 +155,15 @@ internal sealed class FileShareService(
             FileShareMode.LongTerm => settings.LongTermLifetimeSeconds,
             _ => settings.TemporaryLifetimeSeconds
         };
-        if (request.ExpiresInSeconds is > 0)
+        if (request.ExpiresInSeconds is not null)
         {
+            if (request.ExpiresInSeconds.Value <= 0)
+            {
+                throw new AgentException(
+                    AgentErrorCode.InvalidRequest,
+                    "ExpiresInSeconds must be greater than zero; permanent shares are not supported.");
+            }
+
             if (request.ExpiresInSeconds.Value > settings.MaxLifetimeSeconds)
             {
                 throw new AgentException(

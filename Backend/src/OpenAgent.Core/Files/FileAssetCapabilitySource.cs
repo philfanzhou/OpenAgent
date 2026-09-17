@@ -44,7 +44,8 @@ internal sealed class FileAssetCapabilitySource(
                 + "MCP tool that requires a file URL (call this immediately before that tool), or give it to the "
                 + "user as a download/share link. Modes: 'temporary' (default; short-lived, unlimited downloads while "
                 + "valid), 'singleUse' (exactly one download, then the link is dead), 'longTerm' (long validity window). "
-                + "Use expiresInSeconds to override the mode default for a custom expiry date. When sharing the link with "
+                + "Use expiresInSeconds to override the mode default for a custom expiry date. Lifetimes are hard-capped "
+                + "at 365 days; permanent links do not exist. When sharing the link with "
                 + "the user, always state the validity from expiresAt and any download limit; never present it as a "
                 + "permanent link, and do not use it for model-side file reading.",
                 """{"type":"object","properties":{"fileId":{"type":"string","description":"Referenced file asset ID"},"mode":{"type":"string","enum":["temporary","singleUse","longTerm"],"description":"Share policy; defaults to temporary"},"expiresInSeconds":{"type":"number","description":"Optional custom lifetime in seconds, overriding the mode default"}},"required":["fileId"]}""",
@@ -207,6 +208,7 @@ internal sealed class FileAssetCapabilitySource(
             return JsonSerializer.Serialize(new
             {
                 fileId,
+                shareId = share.ShareId,
                 url = share.Url,
                 mode = share.Mode.ToString(),
                 expiresAt = share.ExpiresAt,

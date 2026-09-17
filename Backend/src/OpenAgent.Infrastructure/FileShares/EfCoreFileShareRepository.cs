@@ -36,6 +36,34 @@ internal sealed class EfCoreFileShareRepository(IDbContextFactory<OpenAgentDbCon
         return redeemed == 1;
     }
 
+    public async Task<IReadOnlyList<FileShareLinkRecord>> ListByOwnerAsync(
+        string tenantId,
+        string ownerId,
+        CancellationToken cancellationToken)
+    {
+        await using OpenAgentDbContext context = await contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        List<FileShareLinkEntity> entities = await context.FileShareLinks.AsNoTracking()
+            .Where(item => item.TenantId == tenantId && item.OwnerUserId == ownerId)
+            .OrderByDescending(item => item.CreatedAt)
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+        return entities.Select(ToRecord).ToList();
+    }
+
+    public async Task<bool> DeleteAsync(
+        string shareIdHash,
+        string tenantId,
+        string ownerId,
+        CancellationToken cancellationToken)
+    {
+        await using OpenAgentDbContext context = await contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        int deleted = await context.FileShareLinks
+            .Where(item => item.ShareIdHash == shareIdHash
+                && item.TenantId == tenantId
+                && item.OwnerUserId == ownerId)
+            .ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
+        return deleted == 1;
+    }
+
     private static FileShareLinkEntity ToEntity(FileShareLinkRecord record) => new()
     {
         ShareIdHash = record.ShareIdHash,
@@ -46,6 +74,7 @@ internal sealed class EfCoreFileShareRepository(IDbContextFactory<OpenAgentDbCon
         FileName = record.FileName,
         MediaType = record.MediaType,
         Length = record.Length,
+        Mode = (int)record.Mode,
         ExpiresAt = record.ExpiresAt,
         MaxDownloads = record.MaxDownloads,
         DownloadCount = record.DownloadCount,
@@ -62,6 +91,7 @@ internal sealed class EfCoreFileShareRepository(IDbContextFactory<OpenAgentDbCon
         FileName = entity.FileName,
         MediaType = entity.MediaType,
         Length = entity.Length,
+        Mode = (FileShareMode)entity.Mode,
         ExpiresAt = entity.ExpiresAt,
         MaxDownloads = entity.MaxDownloads,
         DownloadCount = entity.DownloadCount,

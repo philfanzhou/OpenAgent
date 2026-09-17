@@ -39,6 +39,12 @@ internal static class FileShareEndpointExtensions
             .DisableAntiforgery()
             .WithName("CreateFileShareLink")
             .WithTags("File");
+        group.MapGet("/files/shares", ListAsync)
+            .WithName("ListFileShareLinks")
+            .WithTags("File");
+        group.MapDelete("/files/shares/{shareId}", RevokeAsync)
+            .WithName("RevokeFileShareLink")
+            .WithTags("File");
     }
 
     private static async Task<IResult> CreateAsync(
@@ -67,6 +73,7 @@ internal static class FileShareEndpointExtensions
             cancellationToken).ConfigureAwait(false);
         return Results.Ok(new
         {
+            shareId = share.ShareId,
             share.FileId,
             share.FileName,
             share.MediaType,
@@ -77,6 +84,52 @@ internal static class FileShareEndpointExtensions
             share.MaxDownloads,
             share.DownloadCount
         });
+    }
+
+    private static async Task<IResult> ListAsync(
+        [FromServices] IFileShareService shares,
+        HttpContext context,
+        CancellationToken cancellationToken)
+    {
+        IReadOnlyList<FileShareSummary> items = await shares.ListAsync(
+            new FileAssetScope
+            {
+                TenantId = AgentEndpointRequestMapper.RequireTenant(context),
+                UserId = context.GetAgentRequest().User.UserId
+            },
+            cancellationToken).ConfigureAwait(false);
+        return Results.Ok(items.Select(share => new
+        {
+            shareId = share.ShareId,
+            share.FileId,
+            share.FileName,
+            share.MediaType,
+            share.Length,
+            mode = share.Mode.ToString(),
+            share.ExpiresAt,
+            share.MaxDownloads,
+            share.DownloadCount,
+            share.CreatedAt,
+            isActive = share.IsActive
+        }));
+    }
+
+    private static async Task<IResult> RevokeAsync(
+        [FromServices] IFileShareService shares,
+        HttpContext context,
+        string shareId,
+        CancellationToken cancellationToken)
+    {
+        bool revoked = await shares.RevokeAsync(
+            shareId,
+            new FileAssetScope
+            {
+                TenantId = AgentEndpointRequestMapper.RequireTenant(context),
+                UserId = context.GetAgentRequest().User.UserId
+            },
+            cancellationToken).ConfigureAwait(false);
+        // 不存在与不属于当前用户统一 404，避免分享 ID 被探测。
+        return revoked ? Results.NoContent() : Results.NotFound();
     }
 
     /// <summary>未配置 PublicBaseUrl 时用当前请求 origin 拼出绝对地址（反向代理场景以配置为准）。</summary>

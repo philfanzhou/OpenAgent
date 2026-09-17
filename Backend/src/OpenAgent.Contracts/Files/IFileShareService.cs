@@ -22,4 +22,18 @@ public interface IFileShareService
     Task<FileShareRedemption?> RedeemAsync(
         string token,
         CancellationToken cancellationToken);
+
+    /// <summary>查询当前用户在某租户下的全部分享链接（含已过期/已用尽的），按创建时间倒序。</summary>
+    Task<IReadOnlyList<FileShareSummary>> ListAsync(
+        FileAssetScope scope,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// 撤销（删除）当前用户的一条分享链接。链接不存在或不属于该用户/租户时返回 false；
+    /// 撤销成功后令牌立即失效。
+    /// </summary>
+    Task<bool> RevokeAsync(
+        string shareIdHash,
+        FileAssetScope scope,
+        CancellationToken cancellationToken);
 }

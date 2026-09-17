@@ -10,6 +10,7 @@ internal sealed class FileShareLinkEntity
     public required string FileName { get; init; }
     public required string MediaType { get; init; }
     public long Length { get; init; }
+    public int Mode { get; init; }
     public required DateTimeOffset ExpiresAt { get; init; }
     public int? MaxDownloads { get; init; }
     public int DownloadCount { get; set; }

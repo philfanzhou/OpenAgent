@@ -105,6 +105,123 @@ public class FileShareServiceTests
     }
 
     [Theory]
+    [InlineData(0)]
+    [InlineData(-5)]
+    public async Task CreateAsync_NonPositiveExpiry_Rejects(int expiresInSeconds)
+    {
+        var repository = new RecordingFileAssetRepository();
+        FileAsset asset = CreateAsset();
+        repository.Assets[asset.FileId] = asset;
+        Harness harness = CreateHarness(repository);
+
+        await Assert.ThrowsAsync<AgentException>(() => harness.Service.CreateAsync(
+            asset.FileId,
+            Scope(),
+            new FileShareRequest { ExpiresInSeconds = expiresInSeconds },
+            CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task CreateAsync_PersistsModeAndReturnsShareId()
+    {
+        var repository = new RecordingFileAssetRepository();
+        FileAsset asset = CreateAsset();
+        repository.Assets[asset.FileId] = asset;
+        Harness harness = CreateHarness(repository);
+
+        FileShareLink link = await harness.Service.CreateAsync(
+            asset.FileId,
+            Scope(),
+            new FileShareRequest { Mode = FileShareMode.LongTerm },
+            CancellationToken.None);
+
+        FileShareLinkRecord record = Assert.Single(harness.Shares.Records.Values);
+        Assert.Equal(FileShareMode.LongTerm, record.Mode);
+        Assert.Equal(record.ShareIdHash, link.ShareId);
+    }
+
+    [Fact]
+    public async Task ListAsync_ReturnsOnlyOwnerShares_NewestFirst()
+    {
+        var repository = new RecordingFileAssetRepository();
+        FileAsset asset = CreateAsset();
+        FileAsset otherOwnerAsset = CreateAsset(fileId: "file-b", ownerUserId: "user-b");
+        repository.Assets[asset.FileId] = asset;
+        repository.Assets[otherOwnerAsset.FileId] = otherOwnerAsset;
+        Harness harness = CreateHarness(repository);
+
+        FileShareLink older = await harness.Service.CreateAsync(
+            asset.FileId, Scope(), new FileShareRequest(), CancellationToken.None);
+        FileShareLink newer = await harness.Service.CreateAsync(
+            asset.FileId,
+            Scope(),
+            new FileShareRequest { Mode = FileShareMode.SingleUse },
+            CancellationToken.None);
+        await harness.Service.CreateAsync(
+            otherOwnerAsset.FileId,
+            new FileAssetScope { TenantId = "tenant-a", UserId = "user-b" },
+            new FileShareRequest(),
+            CancellationToken.None);
+        // 拉开创建时间，验证按创建时间倒序。
+        harness.Shares.Records[older.ShareId].CreatedAt = DateTimeOffset.UtcNow.AddHours(-1);
+        harness.Shares.Records[newer.ShareId].CreatedAt = DateTimeOffset.UtcNow;
+
+        IReadOnlyList<FileShareSummary> summaries = await harness.Service.ListAsync(
+            Scope(), CancellationToken.None);
+
+        Assert.Equal(2, summaries.Count);
+        Assert.Equal(newer.ShareId, summaries[0].ShareId);
+        Assert.Equal(FileShareMode.SingleUse, summaries[0].Mode);
+        Assert.True(summaries[0].IsActive);
+        Assert.Equal(older.ShareId, summaries[1].ShareId);
+        Assert.True(summaries[1].IsActive);
+    }
+
+    [Fact]
+    public async Task RevokeAsync_RemovesLinkAndKillsRedemption()
+    {
+        var repository = new RecordingFileAssetRepository();
+        var objects = new RecordingFileObjectStore();
+        FileAsset asset = CreateAsset();
+        repository.Assets[asset.FileId] = asset;
+        objects.ContentsByKey[asset.ObjectKey] = "data"u8.ToArray();
+        Harness harness = CreateHarness(repository, objects);
+
+        FileShareLink link = await harness.Service.CreateAsync(
+            asset.FileId, Scope(), new FileShareRequest(), CancellationToken.None);
+        Assert.True(await harness.Service.RevokeAsync(link.ShareId, Scope(), CancellationToken.None));
+
+        Assert.Null(await harness.Service.RedeemAsync(TokenFromUrl(link.Url), CancellationToken.None));
+        Assert.Empty(await harness.Service.ListAsync(Scope(), CancellationToken.None));
+        Assert.False(await harness.Service.RevokeAsync(link.ShareId, Scope(), CancellationToken.None));
+    }
+
+    [Theory]
+    [InlineData("tenant-b", "user-a")]
+    [InlineData("tenant-a", "user-b")]
+    public async Task RevokeAsync_NotOwnerOrUnknown_ReturnsFalse(string tenantId, string userId)
+    {
+        var repository = new RecordingFileAssetRepository();
+        FileAsset asset = CreateAsset();
+        repository.Assets[asset.FileId] = asset;
+        Harness harness = CreateHarness(repository);
+
+        FileShareLink link = await harness.Service.CreateAsync(
+            asset.FileId, Scope(), new FileShareRequest(), CancellationToken.None);
+
+        Assert.False(await harness.Service.RevokeAsync(
+            link.ShareId,
+            new FileAssetScope { TenantId = tenantId, UserId = userId },
+            CancellationToken.None));
+        Assert.False(await harness.Service.RevokeAsync(
+            FileShareTokens.Hash(FileShareTokens.NewToken()),
+            Scope(),
+            CancellationToken.None));
+        // 非本人撤销不影响原链接。
+        Assert.True(harness.Shares.Records.ContainsKey(link.ShareId));
+    }
+
+    [Theory]
     [InlineData("tenant-b", "user-a")]
     [InlineData("tenant-a", "user-b")]
     public async Task CreateAsync_NotOwner_Rejects(string tenantId, string userId)
@@ -283,16 +400,19 @@ public class FileShareServiceTests
         return new Harness(service, shares);
     }
 
-    private static FileAsset CreateAsset(FileAssetState state = FileAssetState.Ready) => new()
+    private static FileAsset CreateAsset(
+        FileAssetState state = FileAssetState.Ready,
+        string fileId = "file-a",
+        string ownerUserId = "user-a") => new()
     {
-        FileId = "file-a",
+        FileId = fileId,
         TenantId = "tenant-a",
-        OwnerUserId = "user-a",
+        OwnerUserId = ownerUserId,
         FileName = "report.md",
         MediaType = "text/markdown",
         Length = 8,
         Sha256 = "sha",
-        ObjectKey = $"files/tenants/{FileObjectTenantScope.CreatePartition("tenant-a")}/users/user-a/file-a",
+        ObjectKey = $"files/tenants/{FileObjectTenantScope.CreatePartition("tenant-a")}/users/{ownerUserId}/{fileId}",
         Source = FileAssetSource.UserUpload,
         State = state,
         CreatedAt = DateTimeOffset.UtcNow

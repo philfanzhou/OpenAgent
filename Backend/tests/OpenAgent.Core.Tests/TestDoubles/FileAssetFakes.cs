@@ -159,4 +159,30 @@ internal sealed class RecordingFileShareRepository : IFileShareRepository
         record.DownloadCount++;
         return Task.FromResult(true);
     }
+
+    public Task<IReadOnlyList<FileShareLinkRecord>> ListByOwnerAsync(
+        string tenantId,
+        string ownerId,
+        CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<FileShareLinkRecord>>(
+            Records.Values
+                .Where(item => item.TenantId == tenantId && item.OwnerUserId == ownerId)
+                .OrderByDescending(item => item.CreatedAt)
+                .ToList());
+
+    public Task<bool> DeleteAsync(
+        string shareIdHash,
+        string tenantId,
+        string ownerId,
+        CancellationToken cancellationToken)
+    {
+        FileShareLinkRecord? record = Records.GetValueOrDefault(shareIdHash);
+        if (record == null || record.TenantId != tenantId || record.OwnerUserId != ownerId)
+        {
+            return Task.FromResult(false);
+        }
+
+        Records.Remove(shareIdHash);
+        return Task.FromResult(true);
+    }
 }
