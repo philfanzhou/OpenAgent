@@ -51,7 +51,8 @@ Chat、Router 与 Engine 不直接映射宿主机端口，分别由 Nginx 的 80
 前端与 Keycloak 的公开地址必须使用 HTTPS；OIDC PKCE 和 Web Crypto 在普通 HTTP 页面中不可用。Nginx
 终止 TLS 后，Router、Engine 与 Keycloak 容器之间仍可使用内部 HTTP；浏览器可见的公开地址固定为 HTTPS，
 `MetadataAddress` 使用服务端可访问的内部 discovery 地址。Chat/Router/Engine 的公开地址由
-`OPENAGENT_PUBLIC_HOST` 和端口变量生成；Keycloak 公开地址独立由 `OPENAGENT_KEYCLOAK_PUBLIC_URL` 配置。
+`OPENAGENT_PUBLIC_HOST` 和端口变量生成；Keycloak 公开地址默认同样由 `OPENAGENT_PUBLIC_HOST` 与
+`OPENAGENT_KEYCLOAK_PORT` 生成，需要覆盖时设置 `OPENAGENT_KEYCLOAK_PUBLIC_URL`。
 生产模式需配置
 `OPENAGENT_KEYCLOAK_COMMAND` 与反向代理转发头，内置 `start-dev` 仅用于本地联调。
 
@@ -70,7 +71,6 @@ OPENAGENT_PUBLIC_SCHEME=https
 OPENAGENT_CHAT_PORT=8081
 OPENAGENT_ENGINE_PORT=8083
 OPENAGENT_ROUTER_PORT=8082
-OPENAGENT_CHAT_PUBLIC_URL=https://localhost:8081
 OPENAGENT_ASPNETCORE_ENVIRONMENT=Production
 OPENAGENT_SERVICE_VERSION=2026.09.01
 OPENAGENT_AUTH_MODE=JwtBearer
@@ -81,7 +81,6 @@ OPENAGENT_AUTH_CLIENT_ID=openagent-chat
 OPENAGENT_AUTH_REQUIRE_HTTPS_METADATA=false
 OPENAGENT_AUTH_CLOCK_SKEW_SECONDS=60
 OPENAGENT_KEYCLOAK_PORT=58081
-OPENAGENT_KEYCLOAK_PUBLIC_URL=https://localhost:58081
 OPENAGENT_KEYCLOAK_METADATA_ADDRESS=http://keycloak:8080/realms/openagent/.well-known/openid-configuration
 OPENAGENT_OTLP_ENDPOINT=
 OPENAGENT_INFRA_NETWORK=openagent-infrastructure
@@ -114,7 +113,9 @@ scripts/build-images.sh --env-file .env --docker-mode wsl-docker
 scripts/deploy.sh --env-file .env --docker-mode wsl-docker
 ```
 
-先构建镜像，再部署；构建脚本不会启动容器，部署脚本不会执行构建。也可以在 `.env` 中设置
+先构建镜像，再部署；构建脚本不会启动容器，部署脚本不会执行构建。Chat 镜像的构建参数与部署环境文件
+同名（`OPENAGENT_PUBLIC_SCHEME`/`OPENAGENT_PUBLIC_HOST` 与 Router/Engine 端口），浏览器端地址在镜像内派生；
+不经过脚本直接 `docker build` 时也使用同一组变量。也可以在 `.env` 中设置
 `OPENAGENT_DOCKER_MODE=auto`、`docker` 或 `wsl-docker`，省略命令行参数。
 
 Windows PowerShell 可使用等价的 `scripts/build-images.ps1`；未指定 `-DockerMode` 时同样自动检测：

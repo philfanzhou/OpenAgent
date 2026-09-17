@@ -127,8 +127,6 @@ public_host="${OPENAGENT_PUBLIC_HOST:-localhost}"
 public_scheme="${OPENAGENT_PUBLIC_SCHEME:-https}"
 router_port="${OPENAGENT_ROUTER_PORT:-8082}"
 engine_port="${OPENAGENT_ENGINE_PORT:-8083}"
-router_url="${public_scheme}://${public_host}:${router_port}"
-engine_url="${public_scheme}://${public_host}:${engine_port}"
 tenant_id="${OPENAGENT_TENANT_ID:-development}"
 
 "${docker_cmd[@]}" build \
@@ -141,11 +139,14 @@ tenant_id="${OPENAGENT_TENANT_ID:-development}"
   --file "$docker_root/Backend/src/OpenAgent.Router/Dockerfile" \
   "$docker_root"
 
+# Chat 镜像的浏览器端地址由 Dockerfile 从统一变量派生，与直接 docker build 的接口一致。
 "${docker_cmd[@]}" build \
   --tag "$chat_image" \
-  --build-arg "VITE_OPENAGENT_ROUTER_BASE_URL=$router_url" \
-  --build-arg "VITE_OPENAGENT_ENGINE_BASE_URL=$engine_url" \
-  --build-arg "VITE_OPENAGENT_TENANT_ID=$tenant_id" \
+  --build-arg "OPENAGENT_PUBLIC_SCHEME=$public_scheme" \
+  --build-arg "OPENAGENT_PUBLIC_HOST=$public_host" \
+  --build-arg "OPENAGENT_ROUTER_PORT=$router_port" \
+  --build-arg "OPENAGENT_ENGINE_PORT=$engine_port" \
+  --build-arg "OPENAGENT_TENANT_ID=$tenant_id" \
   --file "$docker_root/Frontend/OpenAgent.Chat/Dockerfile" \
   "$docker_root"
 
