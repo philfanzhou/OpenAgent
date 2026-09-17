@@ -86,6 +86,21 @@ public class McpServerConfig
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public McpServerType Type { get; set; } = McpServerType.Http;
     public string? ProtocolVersion { get; set; }
+
+    /// <summary>
+    /// Opt-in tool names whose JSON arguments may carry OpenAgent file payloads inline.
+    /// For these tools, any string argument whose value matches a file referenced by the
+    /// current conversation is replaced with the MCP embedded-resource representation
+    /// (or a raw base64 string when <see cref="InlineFileLegacyBase64"/> is set).
+    /// Binary blocks in tool results are registered as downloadable FileAssets.
+    /// </summary>
+    public List<string> InlineFileTools { get; set; } = new();
+
+    /// <summary>
+    /// Send raw base64 strings instead of MCP embedded-resource objects for the tools
+    /// listed in <see cref="InlineFileTools"/>, for servers that only accept the former.
+    /// </summary>
+    public bool InlineFileLegacyBase64 { get; set; }
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter))]

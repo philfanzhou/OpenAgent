@@ -54,3 +54,34 @@ LLM Profile 选择 `Multimodal` 时，聊天请求中的 `image/*` 资产会在�
 生成预签名 URL，必须与访问者实际使用的 HTTP(S) origin 完全一致；`ForcePathStyle` 也必须与
 公网入口的路由方式一致。这样上传/读取可以继续走内部地址，同时避免把 URL 的域名替换后造成
 `SignatureDoesNotMatch`。
+
+## MCP 内联文件传输
+
+MCP 规范没有标准的“工具入参携带文件”编码，官方建议大文件走 URL（即上一节的
+`create_file_transfer_url` 路径）。少数第三方 MCP 工具不接受 URL、要求在 JSON 参数中
+直接携带文件内容，这类工具可在 MCP profile 上按工具名白名单开启内联传输：
+
+```json
+{
+  "name": "document-mcp",
+  "url": "https://mcp.example/tools",
+  "type": "Http",
+  "inlineFileTools": ["convert_document"]
+}
+```
+
+开启后 Engine 对白名单工具做两件事：
+
+- **入参**：调用前扫描所有字符串参数，值恰好等于当前会话已引用的 `fileId` 时，替换为
+  MCP embedded resource 对象（`{type:"resource", resource:{uri, mimeType, blob}}`，规范中
+  唯一的标准 bytes-in-JSON 容器）。`fileId` 是高熵 GUID，普通字符串不会误命中；命中与否
+  都受租户、所有者和会话引用校验约束。只认裸 base64 字符串的非规范服务端可加
+  `"inlineFileLegacyBase64": true` 改发原始 base64。
+- **结果**：image/audio/blob resource 块登记为当前租户/用户/会话的 `FileAsset` 并关联到
+  assistant 消息（与 `publish_files` 同一发布链路）；内容块原地替换为
+  `{type:"file", fileId, fileName, mediaType, length}` 描述符，顶层附加 `files` 数组，
+  模型上下文不会被内联 base64 撑爆。text、resource_link 及未知块类型原样透传。
+
+工具的输入 schema 不做改写，模型通过工具描述得知文件参数可传 `fileId`；未进白名单的
+工具行为不变。配置的白名单名称未被服务端列出时会在日志中告警。MCP 工具参数仍然必须是
+JSON，任意第三方 multipart HTTP API 仍需单独的 MCP 工具适配器。

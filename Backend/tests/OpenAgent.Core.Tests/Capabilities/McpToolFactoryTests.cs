@@ -2,8 +2,10 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using ModelContextProtocol.Client;
 using OpenAgent.Contracts.Configuration;
+using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Capabilities.Mcp;
+using OpenAgent.Core.Files;
 using OpenAgent.Core.Security;
 using Xunit;
 
@@ -36,7 +38,9 @@ public sealed class McpToolFactoryTests
             new AgentAuthorizationGate(new AllowAllAgentAuthorizationService()),
             new McpRegistry(),
             NullLoggerFactory.Instance,
-            NullLogger<McpToolFactory>.Instance);
+            NullLogger<McpToolFactory>.Instance,
+            new Mock<IFileAssetService>().Object,
+            new FileAssetExecutionContext());
         var config = new McpConfig
         {
             Servers =
@@ -74,7 +78,9 @@ public sealed class McpToolFactoryTests
             new AgentAuthorizationGate(new AllowAllAgentAuthorizationService()),
             new McpRegistry(),
             NullLoggerFactory.Instance,
-            NullLogger<McpToolFactory>.Instance);
+            NullLogger<McpToolFactory>.Instance,
+            new Mock<IFileAssetService>().Object,
+            new FileAssetExecutionContext());
         var config = new McpConfig
         {
             Servers =

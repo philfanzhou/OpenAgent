@@ -25,6 +25,24 @@ public class ContractSerializationTests
     }
 
     [Fact]
+    public void McpServerConfig_InlineFileTools_RoundTripsAsConfiguredContract()
+    {
+        McpServerConfig server = new()
+        {
+            Name = "document-mcp",
+            InlineFileTools = ["convert_document"],
+            InlineFileLegacyBase64 = true
+        };
+
+        string json = JsonSerializer.Serialize(server, JsonOptions);
+        McpServerConfig roundTrip = Assert.IsType<McpServerConfig>(
+            JsonSerializer.Deserialize<McpServerConfig>(json, JsonOptions));
+
+        Assert.Equal(["convert_document"], roundTrip.InlineFileTools);
+        Assert.True(roundTrip.InlineFileLegacyBase64);
+    }
+
+    [Fact]
     public void LlmTlsRelaxation_IsNotPartOfPersistedContracts()
     {
         string configJson = JsonSerializer.Serialize(new LlmConfig(), JsonOptions);
