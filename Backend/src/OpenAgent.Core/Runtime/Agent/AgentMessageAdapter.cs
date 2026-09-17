@@ -264,6 +264,37 @@ internal static class AgentMessageAdapter
         }
     }
 
+    /// <summary>
+    /// 无参调用在 wire 上常表现为 "arguments":"" 或缺省，解析后 Arguments 为 null；
+    /// 出站序列化会把 null 写成 "arguments":"null"，被严格网关（如 Moonshot/Kimi）拒绝，
+    /// 导致模型传入空参数时整轮执行终止。出站前统一把 null 规格化为空对象。
+    /// </summary>
+    internal static IEnumerable<ChatMessage> NormalizeEmptyToolArguments(
+        IEnumerable<ChatMessage> messages)
+    {
+        foreach (ChatMessage message in messages)
+        {
+            if (message.Role != Microsoft.Extensions.AI.ChatRole.Assistant
+                || message.Contents.OfType<FunctionCallContent>().All(call =>
+                    call.Arguments != null))
+            {
+                yield return message;
+                continue;
+            }
+
+            ChatMessage normalized = message.Clone();
+            normalized.Contents = normalized.Contents
+                .Select(content => content is FunctionCallContent { Arguments: null } call
+                    ? new FunctionCallContent(
+                        call.CallId,
+                        call.Name,
+                        new Dictionary<string, object?>())
+                    : content)
+                .ToList();
+            yield return normalized;
+        }
+    }
+
     private static ConversationMessage CreateStored(
         int sequence,
         string role,

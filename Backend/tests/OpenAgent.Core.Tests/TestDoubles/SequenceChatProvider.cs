@@ -6,8 +6,12 @@ namespace OpenAgent.Core.Tests.TestDoubles;
 /// <summary>
 /// Replays one scripted list of streaming updates per invocation and records every
 /// request message list it receives, so tests can assert on followup request contents.
+/// When <paramref name="failOnLastTurn"/> is set, the final scripted turn throws it
+/// after its updates are replayed, simulating a provider failure mid-run.
 /// </summary>
-internal sealed class SequenceChatProvider(IReadOnlyList<IReadOnlyList<ChatResponseUpdate>> turns) : IChatClient
+internal sealed class SequenceChatProvider(
+    IReadOnlyList<IReadOnlyList<ChatResponseUpdate>> turns,
+    Exception? failOnLastTurn = null) : IChatClient
 {
     internal List<IReadOnlyList<ChatMessage>> Requests { get; } = [];
 
@@ -18,12 +22,17 @@ internal sealed class SequenceChatProvider(IReadOnlyList<IReadOnlyList<ChatRespo
     {
         cancellationToken.ThrowIfCancellationRequested();
         Requests.Add(messages.ToList());
-        IReadOnlyList<ChatResponseUpdate> turn = turns[Math.Min(Requests.Count - 1, turns.Count - 1)];
+        int index = Requests.Count - 1;
+        IReadOnlyList<ChatResponseUpdate> turn = turns[Math.Min(index, turns.Count - 1)];
         foreach (ChatResponseUpdate update in turn)
         {
             cancellationToken.ThrowIfCancellationRequested();
             yield return update;
             await Task.Yield();
+        }
+        if (failOnLastTurn != null && index >= turns.Count - 1)
+        {
+            throw failOnLastTurn;
         }
     }
 

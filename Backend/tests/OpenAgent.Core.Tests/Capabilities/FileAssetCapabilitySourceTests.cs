@@ -41,7 +41,7 @@ public class FileAssetCapabilitySourceTests
 
         IReadOnlyList<CapabilityDefinition> definitions = await DiscoverAsync(source);
 
-        string[] names = ["read_file", "create_file_transfer_url", "list_share_links", "revoke_share_link", "list_files", "write_file", "compress_files", "publish_files", "download_file"];
+        string[] names = ["read_file", "create_file_transfer_url", "list_files", "write_file", "compress_files", "publish_files", "download_file"];
         Assert.Equal(names, definitions.Select(definition => definition.Name).ToArray());
     }
 
@@ -116,79 +116,6 @@ public class FileAssetCapabilitySourceTests
 
         Assert.Contains("audience", result, StringComparison.Ordinal);
         Assert.Empty(harness.Shares.Records);
-    }
-
-    [Fact]
-    public async Task InvokeAsync_ListShareLinks_ReturnsCurrentUserSharesWithStatus()
-    {
-        TestHarness harness = CreateHarness();
-        FileAsset asset = CreateAsset("report.pdf", "application/pdf");
-        harness.Repository.Assets[asset.FileId] = asset;
-        harness.Repository.References.Add($"conversation-a:{asset.FileId}");
-        await InvokeAsync(
-            harness.Source,
-            "create_file_transfer_url",
-            new Dictionary<string, object?> { ["fileId"] = asset.FileId, ["audience"] = "mcp" });
-
-        string result = await InvokeAsync(harness.Source, "list_share_links", new Dictionary<string, object?>());
-
-        using JsonDocument document = JsonDocument.Parse(result);
-        Assert.Equal(1, document.RootElement.GetProperty("count").GetInt32());
-        JsonElement item = document.RootElement.GetProperty("shares").EnumerateArray().Single();
-        Assert.Equal("Custom", item.GetProperty("mode").GetString());
-        Assert.Equal(2, item.GetProperty("maxDownloads").GetInt32());
-        Assert.Equal(64, item.GetProperty("shareId").GetString()!.Length);
-    }
-
-    [Fact]
-    public async Task InvokeAsync_RevokeShareLink_MarksInvalidAndHidesFromList()
-    {
-        TestHarness harness = CreateHarness();
-        FileAsset asset = CreateAsset("report.pdf", "application/pdf");
-        harness.Repository.Assets[asset.FileId] = asset;
-        harness.Repository.References.Add($"conversation-a:{asset.FileId}");
-        string created = await InvokeAsync(
-            harness.Source,
-            "create_file_transfer_url",
-            new Dictionary<string, object?> { ["fileId"] = asset.FileId });
-        string shareId = JsonDocument.Parse(created).RootElement.GetProperty("shareId").GetString()!;
-
-        string revoked = await InvokeAsync(
-            harness.Source,
-            "revoke_share_link",
-            new Dictionary<string, object?> { ["shareId"] = shareId });
-
-        Assert.Equal(shareId, JsonDocument.Parse(revoked).RootElement.GetProperty("shareId").GetString());
-        Assert.True(JsonDocument.Parse(revoked).RootElement.GetProperty("revoked").GetBoolean());
-        // 软删除：记录保留但已失效，列表不再出现。
-        Assert.True(harness.Shares.Records.ContainsKey(shareId));
-        Assert.True(harness.Shares.Records[shareId].ExpiresAt <= DateTimeOffset.UtcNow);
-
-        string listed = await InvokeAsync(harness.Source, "list_share_links", new Dictionary<string, object?>());
-        Assert.Equal(0, JsonDocument.Parse(listed).RootElement.GetProperty("count").GetInt32());
-    }
-
-    [Fact]
-    public async Task InvokeAsync_RevokeShareLink_UnknownOrForeignIdFailsWithoutSideEffects()
-    {
-        TestHarness harness = CreateHarness();
-        FileAsset asset = CreateAsset("report.pdf", "application/pdf");
-        harness.Repository.Assets[asset.FileId] = asset;
-        harness.Repository.References.Add($"conversation-a:{asset.FileId}");
-        string created = await InvokeAsync(
-            harness.Source,
-            "create_file_transfer_url",
-            new Dictionary<string, object?> { ["fileId"] = asset.FileId });
-        string shareId = JsonDocument.Parse(created).RootElement.GetProperty("shareId").GetString()!;
-
-        string unknown = await InvokeAsync(
-            harness.Source,
-            "revoke_share_link",
-            new Dictionary<string, object?> { ["shareId"] = FileShareTokens.Hash(FileShareTokens.NewToken()) });
-
-        Assert.Contains("撤销分享链接失败", unknown, StringComparison.Ordinal);
-        Assert.Single(harness.Shares.Records);
-        Assert.True(harness.Shares.Records.ContainsKey(shareId));
     }
 
     [Fact]

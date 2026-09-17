@@ -36,6 +36,16 @@ internal sealed class AgentExecutionScope : IAsyncDisposable
         _history.AppendPartialReasoning(reasoning);
     }
 
+    internal void AppendToolCall(string name, string callId, IDictionary<string, object?>? arguments)
+    {
+        _history.AppendToolCall(name, callId, arguments);
+    }
+
+    internal void AppendToolResult(string? callId, string? result)
+    {
+        _history.AppendToolResult(callId, result);
+    }
+
     internal Task CompleteAsync(
         TokenUsage? usage,
         string modelId,

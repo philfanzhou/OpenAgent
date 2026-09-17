@@ -76,7 +76,8 @@ internal sealed class AgentChatClientFactory : IAgentChatClientFactory
             .AsBuilder()
             .Use(static (messages, options, next, cancellationToken) =>
                 next(
-                    AgentMessageAdapter.RemoveEmptyOpenAIToolCallText(messages),
+                    AgentMessageAdapter.NormalizeEmptyToolArguments(
+                        AgentMessageAdapter.RemoveEmptyOpenAIToolCallText(messages)),
                     options,
                     cancellationToken))
             .Build();
@@ -85,7 +86,8 @@ internal sealed class AgentChatClientFactory : IAgentChatClientFactory
     private IChatClient CreateOpenAIResponses(LlmConfig llm)
     {
         OpenAIClient client = CreateOpenAIClient(llm, "https://api.openai.com/v1");
-        return client.GetResponsesClient().AsIChatClientWithStoredOutputDisabled(llm.ModelId);
+        return WithToolArgumentNormalization(
+            client.GetResponsesClient().AsIChatClientWithStoredOutputDisabled(llm.ModelId));
     }
 
     private IChatClient CreateAnthropic(LlmConfig llm)
@@ -109,8 +111,22 @@ internal sealed class AgentChatClientFactory : IAgentChatClientFactory
                 ? new AnthropicClient { ApiKey = llm.ApiKey }
                 : new AnthropicClient { ApiKey = llm.ApiKey, BaseUrl = llm.Endpoint.TrimEnd('/') };
         }
-        return client.AsAIAgent(model: llm.ModelId, name: "openagent-anthropic-provider").ChatClient;
+        return WithToolArgumentNormalization(
+            client.AsAIAgent(model: llm.ModelId, name: "openagent-anthropic-provider").ChatClient);
     }
+
+    /// <summary>
+    /// 出站统一把空参数工具调用规格化为 {}：null 参数会被序列化成 "null"/null，
+    /// 被严格网关拒绝后模型传入空参数就会导致整轮执行终止。
+    /// </summary>
+    private static IChatClient WithToolArgumentNormalization(IChatClient client) =>
+        client.AsBuilder()
+            .Use(static (messages, options, next, cancellationToken) =>
+                next(
+                    AgentMessageAdapter.NormalizeEmptyToolArguments(messages),
+                    options,
+                    cancellationToken))
+            .Build();
 
     private OpenAIClient CreateOpenAIClient(LlmConfig llm, string defaultEndpoint)
     {

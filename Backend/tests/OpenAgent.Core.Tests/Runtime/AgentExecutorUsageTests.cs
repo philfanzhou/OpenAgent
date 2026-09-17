@@ -221,7 +221,10 @@ public class AgentExecutorUsageTests
         Assert.Equal(3, actual.ReasoningTokens);
     }
 
-    internal static TestRuntime CreateRuntime(IChatClient provider)
+    internal static TestRuntime CreateRuntime(
+        IChatClient provider,
+        OpenAgent.Core.Capabilities.ICapabilitySource? extraSource = null,
+        int maxTurns = 2)
     {
         var services = new ServiceCollection();
         services.AddLogging();
@@ -231,9 +234,13 @@ public class AgentExecutorUsageTests
         IConfiguration configuration = new ConfigurationBuilder().Build();
         services.AddSingleton(configuration);
         services.AddAgentCore(configuration);
+        if (extraSource != null)
+        {
+            services.AddSingleton(extraSource);
+        }
         services.RemoveAll<IAgentRuntimeResolver>();
         services.RemoveAll<AgentRuntimeResolver>();
-        services.AddSingleton<IAgentRuntimeResolver>(new StaticRuntimeResolver());
+        services.AddSingleton<IAgentRuntimeResolver>(new StaticRuntimeResolver(maxTurns));
         services.RemoveAll<IAgentChatClientFactory>();
         services.AddSingleton<IAgentChatClientFactory>(new FakeChatClientFactory(provider));
 
@@ -257,7 +264,7 @@ public class AgentExecutorUsageTests
         public bool IsInRole(string role) => false;
     }
 
-    private sealed class StaticRuntimeResolver : IAgentRuntimeResolver
+    private sealed class StaticRuntimeResolver(int maxTurns) : IAgentRuntimeResolver
     {
         public Task<AgentRuntimeProfile> ResolveAsync(
             string agentId,
@@ -267,7 +274,7 @@ public class AgentExecutorUsageTests
             Task.FromResult(new AgentRuntimeProfile
             {
                 AgentId = agentId,
-                Config = new AgentConfig { MaxTurns = 2 },
+                Config = new AgentConfig { MaxTurns = maxTurns },
                 Model = new LlmConfig { ModelId = "configured-model" }
             });
     }
