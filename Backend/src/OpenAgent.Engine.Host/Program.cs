@@ -51,6 +51,7 @@ if (app.Environment.IsDevelopment())
     app.MapControllers();
 }
 app.MapAgentEndpoints();
+app.MapFileShareDownloads();
 app.MapHealthReport();
 
 app.Run();

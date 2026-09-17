@@ -41,12 +41,12 @@ public class FileAssetCapabilitySourceTests
 
         IReadOnlyList<CapabilityDefinition> definitions = await DiscoverAsync(source);
 
-        string[] names = ["read_file", "create_file_transfer_url", "list_files", "write_file", "compress_files", "publish_files", "download_file"];
+        string[] names = ["read_file", "create_file_transfer_url", "list_share_links", "revoke_share_link", "list_files", "write_file", "compress_files", "publish_files", "download_file"];
         Assert.Equal(names, definitions.Select(definition => definition.Name).ToArray());
     }
 
     [Fact]
-    public async Task InvokeAsync_CreateTransferUrl_ReturnsUrlOnlyForReferencedReadyFile()
+    public async Task InvokeAsync_CreateTransferUrl_ReturnsShareLinkOnlyForReferencedReadyFile()
     {
         TestHarness harness = CreateHarness();
         FileAsset asset = CreateAsset("report.pdf", "application/pdf");
@@ -60,9 +60,161 @@ public class FileAssetCapabilitySourceTests
 
         using JsonDocument document = JsonDocument.Parse(result);
         Assert.Equal(asset.FileId, document.RootElement.GetProperty("fileId").GetString());
-        Assert.Equal(asset.ObjectKey, document.RootElement.GetProperty("objectKey").GetString());
-        Assert.Equal($"https://storage.example/{asset.ObjectKey}", document.RootElement.GetProperty("url").GetString());
-        Assert.Equal(asset.ObjectKey, harness.Objects.LastAccessObjectKey);
+        string url = document.RootElement.GetProperty("url").GetString()!;
+        Assert.StartsWith($"{IFileShareService.RoutePrefix}/", url, StringComparison.Ordinal);
+        // 未指定 mode/audience：默认 user 策略（3 天、不限次），列表模式显示 Custom。
+        Assert.Equal("Custom", document.RootElement.GetProperty("mode").GetString());
+        Assert.Equal(JsonValueKind.Null, document.RootElement.GetProperty("maxDownloads").ValueKind);
+        Assert.True(document.RootElement.GetProperty("expiresAt").GetDateTimeOffset()
+            > DateTimeOffset.UtcNow.AddDays(2.9));
+        // 链接由平台分享服务核销，不暴露对象存储地址或键。
+        Assert.DoesNotContain(asset.ObjectKey, url, StringComparison.Ordinal);
+        Assert.Single(harness.Shares.Records.Values, record => record.FileId == asset.FileId);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_CreateTransferUrl_McpAudienceDefaultsToShortAndLimited()
+    {
+        TestHarness harness = CreateHarness();
+        FileAsset asset = CreateAsset("report.pdf", "application/pdf");
+        harness.Repository.Assets[asset.FileId] = asset;
+        harness.Repository.References.Add($"conversation-a:{asset.FileId}");
+
+        string result = await InvokeAsync(
+            harness.Source,
+            "create_file_transfer_url",
+            new Dictionary<string, object?>
+            {
+                ["fileId"] = asset.FileId,
+                ["audience"] = "mcp"
+            });
+
+        using JsonDocument document = JsonDocument.Parse(result);
+        Assert.Equal("Custom", document.RootElement.GetProperty("mode").GetString());
+        Assert.Equal(2, document.RootElement.GetProperty("maxDownloads").GetInt32());
+        FileShareLinkRecord record = Assert.Single(harness.Shares.Records.Values);
+        Assert.Equal(2, record.MaxDownloads);
+        Assert.InRange((record.ExpiresAt - DateTimeOffset.UtcNow).TotalHours, 1.99, 2.01);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_CreateTransferUrl_RejectsUnknownAudience()
+    {
+        TestHarness harness = CreateHarness();
+        FileAsset asset = CreateAsset("report.pdf", "application/pdf");
+        harness.Repository.Assets[asset.FileId] = asset;
+        harness.Repository.References.Add($"conversation-a:{asset.FileId}");
+
+        string result = await InvokeAsync(
+            harness.Source,
+            "create_file_transfer_url",
+            new Dictionary<string, object?>
+            {
+                ["fileId"] = asset.FileId,
+                ["audience"] = "everyone"
+            });
+
+        Assert.Contains("audience", result, StringComparison.Ordinal);
+        Assert.Empty(harness.Shares.Records);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_ListShareLinks_ReturnsCurrentUserSharesWithStatus()
+    {
+        TestHarness harness = CreateHarness();
+        FileAsset asset = CreateAsset("report.pdf", "application/pdf");
+        harness.Repository.Assets[asset.FileId] = asset;
+        harness.Repository.References.Add($"conversation-a:{asset.FileId}");
+        await InvokeAsync(
+            harness.Source,
+            "create_file_transfer_url",
+            new Dictionary<string, object?> { ["fileId"] = asset.FileId, ["audience"] = "mcp" });
+
+        string result = await InvokeAsync(harness.Source, "list_share_links", new Dictionary<string, object?>());
+
+        using JsonDocument document = JsonDocument.Parse(result);
+        Assert.Equal(1, document.RootElement.GetProperty("count").GetInt32());
+        JsonElement item = document.RootElement.GetProperty("shares").EnumerateArray().Single();
+        Assert.Equal("Custom", item.GetProperty("mode").GetString());
+        Assert.Equal(2, item.GetProperty("maxDownloads").GetInt32());
+        Assert.Equal(64, item.GetProperty("shareId").GetString()!.Length);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_RevokeShareLink_MarksInvalidAndHidesFromList()
+    {
+        TestHarness harness = CreateHarness();
+        FileAsset asset = CreateAsset("report.pdf", "application/pdf");
+        harness.Repository.Assets[asset.FileId] = asset;
+        harness.Repository.References.Add($"conversation-a:{asset.FileId}");
+        string created = await InvokeAsync(
+            harness.Source,
+            "create_file_transfer_url",
+            new Dictionary<string, object?> { ["fileId"] = asset.FileId });
+        string shareId = JsonDocument.Parse(created).RootElement.GetProperty("shareId").GetString()!;
+
+        string revoked = await InvokeAsync(
+            harness.Source,
+            "revoke_share_link",
+            new Dictionary<string, object?> { ["shareId"] = shareId });
+
+        Assert.Equal(shareId, JsonDocument.Parse(revoked).RootElement.GetProperty("shareId").GetString());
+        Assert.True(JsonDocument.Parse(revoked).RootElement.GetProperty("revoked").GetBoolean());
+        // 软删除：记录保留但已失效，列表不再出现。
+        Assert.True(harness.Shares.Records.ContainsKey(shareId));
+        Assert.True(harness.Shares.Records[shareId].ExpiresAt <= DateTimeOffset.UtcNow);
+
+        string listed = await InvokeAsync(harness.Source, "list_share_links", new Dictionary<string, object?>());
+        Assert.Equal(0, JsonDocument.Parse(listed).RootElement.GetProperty("count").GetInt32());
+    }
+
+    [Fact]
+    public async Task InvokeAsync_RevokeShareLink_UnknownOrForeignIdFailsWithoutSideEffects()
+    {
+        TestHarness harness = CreateHarness();
+        FileAsset asset = CreateAsset("report.pdf", "application/pdf");
+        harness.Repository.Assets[asset.FileId] = asset;
+        harness.Repository.References.Add($"conversation-a:{asset.FileId}");
+        string created = await InvokeAsync(
+            harness.Source,
+            "create_file_transfer_url",
+            new Dictionary<string, object?> { ["fileId"] = asset.FileId });
+        string shareId = JsonDocument.Parse(created).RootElement.GetProperty("shareId").GetString()!;
+
+        string unknown = await InvokeAsync(
+            harness.Source,
+            "revoke_share_link",
+            new Dictionary<string, object?> { ["shareId"] = FileShareTokens.Hash(FileShareTokens.NewToken()) });
+
+        Assert.Contains("撤销分享链接失败", unknown, StringComparison.Ordinal);
+        Assert.Single(harness.Shares.Records);
+        Assert.True(harness.Shares.Records.ContainsKey(shareId));
+    }
+
+    [Fact]
+    public async Task InvokeAsync_CreateTransferUrl_SingleUseModeLimitsDownloads()
+    {
+        TestHarness harness = CreateHarness();
+        FileAsset asset = CreateAsset("report.pdf", "application/pdf");
+        harness.Repository.Assets[asset.FileId] = asset;
+        harness.Repository.References.Add($"conversation-a:{asset.FileId}");
+
+        string result = await InvokeAsync(
+            harness.Source,
+            "create_file_transfer_url",
+            new Dictionary<string, object?>
+            {
+                ["fileId"] = asset.FileId,
+                ["mode"] = "singleUse",
+                ["expiresInSeconds"] = 3600
+            });
+
+        using JsonDocument document = JsonDocument.Parse(result);
+        Assert.Equal("SingleUse", document.RootElement.GetProperty("mode").GetString());
+        Assert.Equal(1, document.RootElement.GetProperty("maxDownloads").GetInt32());
+        FileShareLinkRecord record = Assert.Single(harness.Shares.Records.Values);
+        Assert.Equal(1, record.MaxDownloads);
+        Assert.InRange((record.ExpiresAt - DateTimeOffset.UtcNow).TotalSeconds, 3590, 3605);
     }
 
     [Fact]
@@ -77,8 +229,8 @@ public class FileAssetCapabilitySourceTests
             "create_file_transfer_url",
             new Dictionary<string, object?> { ["fileId"] = asset.FileId });
 
-        Assert.StartsWith("文件传输链接生成失败：", result, StringComparison.Ordinal);
-        Assert.Null(harness.Objects.LastAccessObjectKey);
+        Assert.StartsWith("文件分享链接生成失败：", result, StringComparison.Ordinal);
+        Assert.Empty(harness.Shares.Records);
     }
 
     [Fact]
@@ -386,6 +538,12 @@ public class FileAssetCapabilitySourceTests
             repository,
             objects,
             Options.Create(effective));
+        var shares = new RecordingFileShareRepository();
+        IFileShareService shareService = new FileShareService(
+            service,
+            shares,
+            objects,
+            Options.Create(new FileShareOptions()));
         var context = new FileAssetExecutionContext();
         if (setScope)
         {
@@ -396,8 +554,9 @@ public class FileAssetCapabilitySourceTests
                 ConversationId = "conversation-a"
             });
         }
-        return new TestHarness(repository, objects, context, new FileAssetCapabilitySource(
+        return new TestHarness(repository, objects, shares, context, new FileAssetCapabilitySource(
             service,
+            shareService,
             context,
             Options.Create(effective),
             new FileAssetUrlDownloader(
@@ -409,6 +568,7 @@ public class FileAssetCapabilitySourceTests
     private sealed record TestHarness(
         RecordingFileAssetRepository Repository,
         RecordingFileObjectStore Objects,
+        RecordingFileShareRepository Shares,
         FileAssetExecutionContext Context,
         FileAssetCapabilitySource Source);
 

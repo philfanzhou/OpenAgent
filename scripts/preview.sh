@@ -102,6 +102,7 @@ OPENAGENT_REDIS_PORT=$redis_port
 OPENAGENT_MINIO_PORT=$minio_port
 OPENAGENT_RUNNER_API_KEY=$(ensure_runner_key "$slug")
 OPENAGENT_OTLP_ENDPOINT=http://host.docker.internal:4317
+OPENAGENT_SHARE_PUBLIC_BASE_URL=http://localhost:$engine_port
 EOF
 }
 

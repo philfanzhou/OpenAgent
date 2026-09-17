@@ -11,6 +11,7 @@ namespace OpenAgent.Core.Files;
 
 internal sealed class FileAssetCapabilitySource(
     IFileAssetService files,
+    IFileShareService shares,
     FileAssetExecutionContext executionContext,
     IOptions<FileAssetOptions> options,
     FileAssetUrlDownloader downloader) : ICapabilitySource
@@ -38,15 +39,42 @@ internal sealed class FileAssetCapabilitySource(
                 ReadAsync),
             new CapabilityDefinition(
                 "create_file_transfer_url",
-                "Create a short-lived signed read URL for a file. Two intended uses: hand it to an external "
-                + "MCP tool that requires a file URL (call this immediately before that tool), or give it to the "
-                + "user as a temporary download/share link. When sharing the link with the user, always state the "
-                + "validity period from expiresAt so they know it stops working; never present it as a permanent "
-                + "link, and do not use it for model-side file reading.",
-                """{"type":"object","properties":{"fileId":{"type":"string","description":"Referenced file asset ID"}},"required":["fileId"]}""",
+                "Create a download/share link for a file, served by this platform's file sharing endpoint; "
+                + "the underlying object storage (S3) address is never exposed. Two intended uses: hand it to an external "
+                + "MCP tool that requires a file URL (call this immediately before that tool, with audience=\"mcp\"), "
+                + "or give it to the user as a download/share link (audience=\"user\"). Defaults depend on the audience: "
+                + "mcp links live 2 hours and allow 2 downloads; user links live 3 days with unlimited downloads. "
+                + "Explicit modes override audience defaults: 'temporary' (short-lived, unlimited downloads while "
+                + "valid), 'singleUse' (exactly one download, then the link is dead), 'longTerm' (long validity window). "
+                + "Use expiresInSeconds to override any default lifetime. Lifetimes are hard-capped "
+                + "at 365 days; permanent links do not exist. When sharing the link with "
+                + "the user, always state the validity from expiresAt and any download limit; never present it as a "
+                + "permanent link, and do not use it for model-side file reading.",
+                """{"type":"object","properties":{"fileId":{"type":"string","description":"Referenced file asset ID"},"audience":{"type":"string","enum":["mcp","user"],"description":"Who consumes the link; sets default lifetime/download limits when mode is omitted (mcp: 2h/2 downloads, user: 3d/unlimited)"},"mode":{"type":"string","enum":["temporary","singleUse","longTerm"],"description":"Explicit share policy overriding audience defaults"},"expiresInSeconds":{"type":"number","description":"Optional custom lifetime in seconds, overriding any default"}},"required":["fileId"]}""",
                 AgentResourceType.Tool,
                 "file-assets",
-                CreateTransferUrlAsync),
+                CreateShareLinkAsync),
+            new CapabilityDefinition(
+                "list_share_links",
+                "List the current user's still-valid share links (across all conversations), newest first. "
+                + "Expired, exhausted or revoked links are not returned. Each item carries shareId, fileName, "
+                + "mode, expiresAt, maxDownloads and downloadCount. Use it when the user asks which links exist; "
+                + "revoke with revoke_share_link.",
+                """{"type":"object","properties":{}}""",
+                AgentResourceType.Tool,
+                "file-assets",
+                ListShareLinksAsync),
+            new CapabilityDefinition(
+                "revoke_share_link",
+                "Revoke one of the current user's share links by shareId — the ID returned when the link "
+                + "was created (create_file_transfer_url) or listed (list_share_links). Revoking marks the link "
+                + "invalid: it disappears from list_share_links and further downloads return 404. Only links "
+                + "owned by the current user can be revoked; unknown, foreign or already-invalid IDs fail "
+                + "without side effects.",
+                """{"type":"object","properties":{"shareId":{"type":"string","description":"Share ID (token hash) of the link to revoke"}},"required":["shareId"]}""",
+                AgentResourceType.Tool,
+                "file-assets",
+                RevokeShareLinkAsync),
             new CapabilityDefinition(
                 "list_files",
                 "List file assets referenced by the current conversation. Returns fileId and safe metadata only; "
@@ -161,18 +189,33 @@ internal sealed class FileAssetCapabilitySource(
         }
     }
 
-    private async Task<string> CreateTransferUrlAsync(
+    private async Task<string> CreateShareLinkAsync(
         IReadOnlyDictionary<string, object?> arguments,
         CancellationToken cancellationToken)
     {
         string? fileId = ReadString(arguments, "fileId");
         if (string.IsNullOrWhiteSpace(fileId))
         {
-            return "文件传输链接生成失败：'fileId' 是必填参数。";
+            return "文件分享链接生成失败：'fileId' 是必填参数。";
         }
         if (executionContext.Scope == null)
         {
-            return "文件传输链接生成失败：文件执行上下文不可用。";
+            return "文件分享链接生成失败：文件执行上下文不可用。";
+        }
+        string? modeRaw = ReadString(arguments, "mode");
+        if (modeRaw != null && !FileShareModeParser.TryParse(modeRaw, out _))
+        {
+            return "文件分享链接生成失败：'mode' 只支持 temporary、singleUse 或 longTerm。";
+        }
+        string? audienceRaw = ReadString(arguments, "audience");
+        if (audienceRaw != null && !FileShareAudienceParser.TryParse(audienceRaw, out _))
+        {
+            return "文件分享链接生成失败：'audience' 只支持 mcp 或 user。";
+        }
+        int? expiresInSeconds = ReadInt32(arguments, "expiresInSeconds");
+        if (expiresInSeconds is < 1)
+        {
+            return "文件分享链接生成失败：'expiresInSeconds' 必须是正整数（秒）。";
         }
 
         try
@@ -183,25 +226,97 @@ internal sealed class FileAssetCapabilitySource(
                 cancellationToken).ConfigureAwait(false);
             if (asset == null || asset.State != FileAssetState.Ready)
             {
-                return "文件传输链接生成失败：文件不存在、未就绪或未关联到当前会话。";
+                return "文件分享链接生成失败：文件不存在、未就绪或未关联到当前会话。";
             }
 
-            FileObjectAccessReference access = await files.CreateTransferUrlAsync(
+            FileShareMode? mode = null;
+            if (modeRaw != null && FileShareModeParser.TryParse(modeRaw, out FileShareMode parsedMode))
+            {
+                mode = parsedMode;
+            }
+            FileShareAudience? audience = null;
+            if (audienceRaw != null && FileShareAudienceParser.TryParse(audienceRaw, out FileShareAudience parsedAudience))
+            {
+                audience = parsedAudience;
+            }
+
+            FileShareLink share = await shares.CreateAsync(
                 fileId,
                 executionContext.Scope,
+                new FileShareRequest { Mode = mode, Audience = audience, ExpiresInSeconds = expiresInSeconds },
                 cancellationToken).ConfigureAwait(false);
             return JsonSerializer.Serialize(new
             {
                 fileId,
-                objectKey = access.ObjectKey,
-                url = access.Url,
-                expiresAt = access.ExpiresAt
+                shareId = share.ShareId,
+                url = share.Url,
+                mode = share.Mode.ToString(),
+                expiresAt = share.ExpiresAt,
+                maxDownloads = share.MaxDownloads
             });
         }
         catch (OpenAgent.Contracts.Security.AgentException exception)
         {
-            return $"文件传输链接生成失败：{exception.Message}";
+            return $"文件分享链接生成失败：{exception.Message}";
         }
+    }
+
+    private async Task<string> ListShareLinksAsync(
+        IReadOnlyDictionary<string, object?> arguments,
+        CancellationToken cancellationToken)
+    {
+        if (executionContext.Scope == null)
+        {
+            return "查询分享链接失败：文件执行上下文不可用。";
+        }
+
+        IReadOnlyList<FileShareSummary> items = await shares.ListAsync(
+            executionContext.Scope,
+            cancellationToken).ConfigureAwait(false);
+        return JsonSerializer.Serialize(new
+        {
+            count = items.Count,
+            shares = items.Select(item => new
+            {
+                shareId = item.ShareId,
+                fileId = item.FileId,
+                fileName = item.FileName,
+                mode = item.Mode.ToString(),
+                expiresAt = item.ExpiresAt,
+                maxDownloads = item.MaxDownloads,
+                downloadCount = item.DownloadCount,
+                createdAt = item.CreatedAt
+            })
+        });
+    }
+
+    private async Task<string> RevokeShareLinkAsync(
+        IReadOnlyDictionary<string, object?> arguments,
+        CancellationToken cancellationToken)
+    {
+        string? shareId = ReadString(arguments, "shareId");
+        if (string.IsNullOrWhiteSpace(shareId))
+        {
+            return "撤销分享链接失败：'shareId' 是必填参数。";
+        }
+        if (executionContext.Scope == null)
+        {
+            return "撤销分享链接失败：文件执行上下文不可用。";
+        }
+
+        bool revoked = await shares.RevokeAsync(
+            shareId,
+            executionContext.Scope,
+            cancellationToken).ConfigureAwait(false);
+        return revoked
+            ? JsonSerializer.Serialize(new { shareId, revoked = true })
+            : "撤销分享链接失败：分享不存在或不属于当前用户。";
+    }
+
+    private static int? ReadInt32(IReadOnlyDictionary<string, object?> arguments, string name)
+    {
+        string? value = ReadString(arguments, name);
+        return value != null && int.TryParse(value, out int parsed) ? parsed : null;
     }
 
     private async Task<string> WriteAsync(

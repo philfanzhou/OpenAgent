@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
+using OpenAgent.Contracts.Files;
 using OpenAgent.Engine.Host.Extensions;
 using OpenAgent.Hosting;
 using Xunit;
@@ -92,7 +93,10 @@ public class HostingTests
             ("/api/v1/agent/files/{fileId}", "GET", "GetFileAsset", "File"),
             ("/api/v1/agent/files/{fileId}/content", "GET", "GetFileAssetContent", "File"),
             ("/api/v1/agent/files/{fileId}/download", "GET", "DownloadFileAsset", "File"),
+            ("/api/v1/agent/files/{fileId}/share", "POST", "CreateFileShareLink", "File"),
             ("/api/v1/agent/files/object", "GET", "GetObjectAssetContent", "File"),
+            ("/api/v1/agent/files/shares", "GET", "ListFileShareLinks", "File"),
+            ("/api/v1/agent/files/shares/{shareId}", "DELETE", "RevokeFileShareLink", "File"),
             ("/api/v1/agent/agents", "GET", "ListAgents", "Agent"),
             ("/api/v1/agent/provider/conversations/{conversationId}", "GET", "ResolveProviderConversation", "Agent Provider"),
             ("/api/v1/agent/me", "GET", "CurrentAgentUser", "Agent"),
@@ -127,5 +131,27 @@ public class HostingTests
             endpoint => endpoint.RoutePattern.RawText?.StartsWith(
                 "/api/v1/admin",
                 StringComparison.Ordinal) == true);
+    }
+
+    [Fact]
+    public void MapFileShareDownloads_MapsAnonymousShareRoute()
+    {
+        var builder = WebApplication.CreateBuilder();
+        builder.Services.AddRouting();
+
+        var app = builder.Build();
+        app.MapFileShareDownloads();
+
+        var shareEndpoints = ((IEndpointRouteBuilder)app).DataSources
+            .SelectMany(source => source.Endpoints)
+            .OfType<RouteEndpoint>()
+            .Where(endpoint => endpoint.RoutePattern.RawText?
+                .StartsWith(IFileShareService.RoutePrefix, StringComparison.Ordinal) == true)
+            .ToList();
+
+        RouteEndpoint route = Assert.Single(shareEndpoints);
+        Assert.Equal($"{IFileShareService.RoutePrefix}/{{token}}", route.RoutePattern.RawText);
+        // 分享链接令牌本身就是凭证：下载端点不挂授权，也不进入租户上下文。
+        Assert.Null(route.Metadata.GetMetadata<IAuthorizeData>());
     }
 }

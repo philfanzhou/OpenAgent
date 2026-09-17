@@ -11,6 +11,7 @@ PostgreSQL 是当前 OpenAgent 持久化业务数据的唯一事实源；EF Core
 | `openagent.conversations` | 会话头、所有者、状态与乐观并发版本 |
 | `openagent.conversation_messages` | 独立的有序会话消息，元数据使用 `jsonb` |
 | `openagent.file_assets` | 用户文件资产元数据与对象键 |
+| `openagent.file_share_links` | 文件分享链接（令牌哈希主键、过期与下载计数），详见 [FileShareLinks](./tables/FileShareLinks.md) |
 | `openagent.conversation_file_references` | 文件在会话中的引用 |
 | `openagent.message_file_references` | 文件在具体消息中的引用，用于预览和治理 |
 | `openagent.agent_configurations` | Agent 基础字段、嵌套能力配置与乐观并发版本；主键 `(TenantId, AgentId)` |
@@ -28,6 +29,7 @@ RAG 和 LLM Key 均由服务端加密保存，管理 API 返回时脱敏。
 Conversation 1 --- * ConversationMessage
 Conversation * --- * FileAsset (conversation_file_references)
 ConversationMessage * --- * FileAsset (message_file_references)
+FileAsset 1 --- * FileShareLink
 ```
 
 详细字段见 [ConversationRecords](./tables/ConversationRecords.md)、[FileAssets](./tables/FileAssets.md) 和 [Configurations](./tables/Configurations.md)。

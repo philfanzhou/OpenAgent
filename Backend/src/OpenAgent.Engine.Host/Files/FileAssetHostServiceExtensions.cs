@@ -33,18 +33,7 @@ internal static class FileAssetHostServiceExtensions
             return CreateS3Client(options, options.ServiceUrl, allowInsecureTls);
         });
         services.TryAddSingleton<IS3Presigner>(serviceProvider =>
-        {
-            FileObjectStorageOptions options = serviceProvider
-                .GetRequiredService<IOptions<FileObjectStorageOptions>>()
-                .Value;
-            if (string.IsNullOrWhiteSpace(options.PublicServiceUrl))
-            {
-                return new S3Presigner(serviceProvider.GetRequiredService<IAmazonS3>());
-            }
-
-            IAmazonS3 client = CreateS3Client(options, options.PublicServiceUrl, allowInsecureTls);
-            return new S3Presigner(client, ownsClient: true);
-        });
+            new S3Presigner(serviceProvider.GetRequiredService<IAmazonS3>()));
         services.Replace(ServiceDescriptor.Singleton<IFileObjectStore, S3FileObjectStore>());
         services.AddHealthChecks().AddCheck<FileObjectStorageHealthCheck>(
             "file-object-storage",

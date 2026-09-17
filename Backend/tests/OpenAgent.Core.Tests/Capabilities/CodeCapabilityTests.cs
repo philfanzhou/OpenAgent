@@ -295,7 +295,15 @@ public class CodeCapabilityTests
             if (executor != null)
             {
                 var fileOptions = Options.Create(new FileAssetOptions { Enabled = true });
-                sources.Add(new FileAssetCapabilitySource(Files, Context, fileOptions,
+                sources.Add(new FileAssetCapabilitySource(
+                    Files,
+                    new FileShareService(
+                        Files,
+                        new RecordingFileShareRepository(),
+                        Objects,
+                        Options.Create(new FileShareOptions())),
+                    Context,
+                    fileOptions,
                     new FileAssetUrlDownloader(Mock.Of<IHttpClientFactory>(), fileOptions)));
             }
             Factory = new CapabilityToolFactory(sources, gate);

@@ -19,7 +19,7 @@ Browser
 ```
 
 - 文件先作为用户资产创建；发送聊天消息时仅提交 `fileIds`。
-- 需要 `create_file_transfer_url` 的两个场景：第三方 MCP 要文件链接时把生成的短期签名 URL 传给 MCP；用户要直接下载链接时把该 URL 作为分享链接给出并告知 15 分钟有效期。其他文件流程不生成临时 URL。
+- 需要 `create_file_transfer_url` 的两个场景：第三方 MCP 要文件链接时把生成的平台分享链接传给 MCP（`audience="mcp"`，默认 2 小时/2 次下载）；用户要直接下载链接时把该链接给出并告知有效期与下载限制（`audience="user"`，默认 3 天/不限次；`mode` temporary/singleUse/longTerm 可显式覆盖，`expiresInSeconds` 自定义失效日期）。其他文件流程不生成分享链接；链接由 `/api/v1/share/{token}` 匿名核销，不暴露 S3 地址。
 - 文件原始字节只在对象存储中；PostgreSQL 保存资产元数据、会话和引用关系。
 - 同一资产可被多条消息引用。会话追加通过 `Version` 并发令牌和 `expectedVersion` 防止写覆盖。
 - 删除会话为软删除，不删除用户资产或对象存储中的原始文件。

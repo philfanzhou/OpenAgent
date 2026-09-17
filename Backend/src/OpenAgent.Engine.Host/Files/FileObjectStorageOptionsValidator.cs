@@ -24,10 +24,6 @@ internal sealed class FileObjectStorageOptionsValidator : IValidateOptions<FileO
         {
             failures.Add("FileAssets:ObjectStorage:ServiceUrl must be an HTTP(S) origin without credentials, query, or fragment.");
         }
-        if (!IsHttpOrigin(options.PublicServiceUrl))
-        {
-            failures.Add("FileAssets:ObjectStorage:PublicServiceUrl must be an HTTP(S) origin without credentials, query, or fragment.");
-        }
 
         bool hasAccessKey = !string.IsNullOrWhiteSpace(options.AccessKey);
         bool hasSecretKey = !string.IsNullOrWhiteSpace(options.SecretKey);
