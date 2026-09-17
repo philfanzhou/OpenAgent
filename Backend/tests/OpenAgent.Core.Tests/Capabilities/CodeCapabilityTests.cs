@@ -104,6 +104,43 @@ public class CodeCapabilityTests
     }
 
     [Fact]
+    public async Task Invoke_PassesRequestedLanguageToRunner()
+    {
+        var fixture = new Fixture();
+        AIFunction function = await fixture.GetFunctionAsync();
+        object? result = await function.InvokeAsync(new AIFunctionArguments
+        {
+            ["code"] = "console.log('hi')",
+            ["language"] = "javascript"
+        });
+        Assert.Contains("exitCode", result?.ToString());
+        Assert.Equal(ExecutionLanguage.JavaScript, Assert.Single(fixture.Executor.Requests).Language);
+    }
+
+    [Fact]
+    public async Task Invoke_DefaultsToPythonLanguage()
+    {
+        var fixture = new Fixture();
+        AIFunction function = await fixture.GetFunctionAsync();
+        await function.InvokeAsync(new AIFunctionArguments { ["code"] = "print(1)" });
+        Assert.Equal(ExecutionLanguage.Python, Assert.Single(fixture.Executor.Requests).Language);
+    }
+
+    [Fact]
+    public async Task Invoke_RejectsUnsupportedLanguageBeforeRunnerCall()
+    {
+        var fixture = new Fixture();
+        AIFunction function = await fixture.GetFunctionAsync();
+        object? result = await function.InvokeAsync(new AIFunctionArguments
+        {
+            ["code"] = "puts 1",
+            ["language"] = "ruby"
+        });
+        Assert.Contains("Unsupported code execution language", result?.ToString());
+        Assert.Empty(fixture.Executor.Requests);
+    }
+
+    [Fact]
     public async Task Invoke_RechecksAuthorizationAfterDiscovery()
     {
         var fixture = new Fixture();

@@ -43,6 +43,7 @@ def main():
     arguments = parser.parse_args()
     runner = os.environ.get("CODEACT_RUNNER_DLL")
     python = os.environ.get("CODEACT_TEST_PYTHON", "/opt/openagent-code/venv/bin/python")
+    node = os.environ.get("CODEACT_TEST_NODE", "/usr/bin/node")
     remote = bool(arguments.environment_file or arguments.endpoint)
     if not remote and (not runner or not Path(runner).is_file()):
         raise SystemExit("Set CODEACT_RUNNER_DLL to a published OpenAgent.Runner.dll.")
@@ -75,6 +76,7 @@ def main():
                 Runner__WorkspaceRoot=directory,
                 Runner__BubblewrapPath=os.environ.get("CODEACT_TEST_BWRAP", "/usr/bin/bwrap"),
                 Runner__PythonPath=python,
+                Runner__NodePath=node,
             )
             process = subprocess.Popen(["dotnet", runner], env=environment, stdout=log, stderr=log)
         try:
@@ -140,6 +142,31 @@ print('isolated execution passed')
             if directory is not None:
                 assert not list(Path(directory).iterdir()), "Task input directories were not removed."
 
+            javascript = """
+import assert from 'node:assert/strict';
+import { readFile, writeFile } from 'node:fs/promises';
+assert.strictEqual(process.getuid?.() ?? 65532, 65532);
+assert.strictEqual('Runner__ApiKey' in process.env, false);
+const input = await readFile('/input/data.txt', 'utf8');
+assert.strictEqual(input.trim(), 'node input');
+await writeFile('/output/node-result.txt', input.trim() + ' ok');
+console.log('javascript passed', process.version);
+"""
+            status, body = request(base_url + "/v1/execute", {
+                "code": javascript,
+                "language": "javascript",
+                "files": [{"name": "data.txt", "content": base64.b64encode(b"node input").decode("ascii")}],
+            }, key)
+            assert status == 200, body.decode("utf-8", errors="replace")
+            response = json.loads(body)
+            assert response["exitCode"] == 0, response["stderr"]
+            assert "javascript passed" in response["stdout"], response["stdout"]
+            artifact = next(file for file in response["files"] if file["name"] == "node-result.txt")
+            assert base64.b64decode(artifact["content"]).decode() == "node input ok"
+            if directory is not None:
+                assert not list(Path(directory).iterdir()), "Task input directories were not removed."
+            print("javascript execution passed")
+
             def run_concurrent(label):
                 concurrent_code = f"""
 from pathlib import Path
@@ -159,7 +186,7 @@ Path('/output/{label}.txt').write_text('{label}')
                 assert concurrent_response["exitCode"] == 0, concurrent_response["stderr"]
                 artifact = next(file for file in concurrent_response["files"] if file["name"] == label + ".txt")
                 assert base64.b64decode(artifact["content"]).decode() == label
-            print("PASS: Runner authentication, Bubblewrap isolation, concurrent workspaces, and Excel-to-PPT/PDF artifacts.")
+            print("PASS: Runner authentication, Bubblewrap isolation, Python and JavaScript execution, concurrent workspaces, and Excel-to-PPT/PDF artifacts.")
         except BaseException:
             if process is not None:
                 log.seek(0)

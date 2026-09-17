@@ -7,7 +7,7 @@ RUN dotnet publish Backend/src/OpenAgent.Runner/OpenAgent.Runner.csproj -c Relea
 FROM mcr.microsoft.com/dotnet/aspnet:8.0-bookworm-slim AS runtime
 WORKDIR /app
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends bubblewrap python3 python3-venv util-linux \
+    && apt-get install -y --no-install-recommends bubblewrap python3 python3-venv nodejs util-linux \
        libreoffice-impress libreoffice-calc fonts-noto-cjk curl \
     && bwrap --help | grep -q -- --disable-userns \
     && rm -rf /var/lib/apt/lists/*

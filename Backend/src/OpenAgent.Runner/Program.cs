@@ -13,7 +13,8 @@ builder.Services.AddOptions<RunnerOptions>().Bind(builder.Configuration.GetSecti
         && !options.WorkspaceRoot.Contains(',') && options.WorkspaceRoot != "/"
         && !options.WorkspaceRoot.Contains('\n'), "Runner:WorkspaceRoot must be a dedicated absolute directory.")
     .Validate(options => Path.IsPathFullyQualified(options.BubblewrapPath)
-        && Path.IsPathFullyQualified(options.PythonPath), "Runner executable paths must be absolute.")
+        && Path.IsPathFullyQualified(options.PythonPath)
+        && Path.IsPathFullyQualified(options.NodePath), "Runner executable paths must be absolute.")
     .Validate(options => options.TimeoutSeconds is >= 1 and <= 600
         && options.MaxConcurrentExecutions is >= 1 and <= 16
         && options.MemoryMiB is >= 128 and <= 8192

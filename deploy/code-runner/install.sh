@@ -18,7 +18,7 @@ fi
 
 apt-get update
 apt-get install --yes --no-install-recommends \
-  bubblewrap apparmor-profiles apparmor-utils python3 python3-venv \
+  bubblewrap apparmor-profiles apparmor-utils python3 python3-venv nodejs \
   libreoffice-impress libreoffice-calc fonts-noto-cjk openssl curl
 
 if [[ $(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null || true) == 1 ]]; then
@@ -65,6 +65,7 @@ if [[ ! -f /etc/openagent-runner.env ]]; then
     echo 'Runner__WorkspaceRoot=/var/lib/openagent-runner/workspaces'
     echo 'Runner__BubblewrapPath=/usr/bin/bwrap'
     echo 'Runner__PythonPath=/opt/openagent-code/venv/bin/python'
+    echo 'Runner__NodePath=/usr/bin/node'
   } > /etc/openagent-runner.env
 fi
 
