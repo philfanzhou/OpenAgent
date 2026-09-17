@@ -16,6 +16,7 @@ public sealed class OpenAgentDbContext(DbContextOptions<OpenAgentDbContext> opti
     internal DbSet<ThirdPartyApiKeyEntity> ThirdPartyApiKeys => Set<ThirdPartyApiKeyEntity>();
     internal DbSet<AgentConfigurationEntity> AgentConfigurations => Set<AgentConfigurationEntity>();
     internal DbSet<LlmConfigurationEntity> LlmConfigurations => Set<LlmConfigurationEntity>();
+    internal DbSet<LlmInteractionEntity> LlmInteractions => Set<LlmInteractionEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -48,8 +49,30 @@ public sealed class OpenAgentDbContext(DbContextOptions<OpenAgentDbContext> opti
             entity.Property(item => item.ToolName).HasMaxLength(256);
             entity.Property(item => item.IdempotencyKey).HasMaxLength(256);
             entity.Property(item => item.ModelId).HasMaxLength(256);
+            entity.Property(item => item.TraceId).HasMaxLength(256);
             entity.Property(item => item.MetadataJson).HasColumnType("jsonb");
             entity.HasIndex(item => new { item.ConversationId, item.Sequence }).IsUnique();
+            entity.HasOne<ConversationEntity>().WithMany().HasForeignKey(item => item.ConversationId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<LlmInteractionEntity>(entity =>
+        {
+            entity.ToTable("llm_interaction_logs");
+            entity.HasKey(item => item.InteractionId);
+            entity.Property(item => item.InteractionId).HasMaxLength(64);
+            entity.Property(item => item.TenantId).HasMaxLength(256);
+            entity.Property(item => item.UserId).HasMaxLength(256);
+            entity.Property(item => item.ConversationId).HasMaxLength(64);
+            entity.Property(item => item.TraceId).HasMaxLength(256);
+            entity.Property(item => item.AgentId).HasMaxLength(256);
+            entity.Property(item => item.Provider).HasMaxLength(256);
+            entity.Property(item => item.ApiFormat).HasMaxLength(32);
+            entity.Property(item => item.ModelId).HasMaxLength(256);
+            entity.Property(item => item.RequestJson).HasColumnType("jsonb");
+            entity.Property(item => item.ResponseJson).HasColumnType("jsonb");
+            entity.Property(item => item.ErrorMessage).HasMaxLength(1024);
+            entity.HasIndex(item => new { item.TenantId, item.ConversationId, item.StartedAt });
+            entity.HasIndex(item => item.TraceId);
             entity.HasOne<ConversationEntity>().WithMany().HasForeignKey(item => item.ConversationId).OnDelete(DeleteBehavior.Cascade);
         });
 

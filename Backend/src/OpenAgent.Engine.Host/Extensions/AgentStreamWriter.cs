@@ -21,6 +21,7 @@ internal static class AgentStreamWriter
         StreamingResponseHeaders.ApplySse(context);
         TokenUsage? usage = null;
         string? modelId = null;
+        string? turnTraceId = null;
         await using StreamingHeartbeat heartbeat = StreamingHeartbeat.Start(
             token => WriteHeartbeatAsync(context, token),
             StreamHeartbeatInterval,
@@ -41,6 +42,7 @@ internal static class AgentStreamWriter
             {
                 usage = streamEvent.Usage;
                 modelId = streamEvent.ModelId;
+                turnTraceId = streamEvent.TraceId;
                 continue;
             }
 
@@ -64,7 +66,7 @@ internal static class AgentStreamWriter
         }
 
         string done = JsonSerializer.Serialize(
-            new { done = true, usage, modelId, conversationId },
+            new { done = true, usage, modelId, conversationId, traceId = turnTraceId ?? traceId },
             JsonOptions);
         await WriteSseEventAsync(context, "done", done, cancellationToken).ConfigureAwait(false);
     }

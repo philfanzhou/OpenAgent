@@ -15,4 +15,5 @@
 | ToolName | string? | 关联的工具名称（最大长度 256） |
 | IdempotencyKey | string? | 幂等键（最大长度 256） |
 | Timestamp | DateTimeOffset | 消息时间戳（timestamptz） |
+| TraceId | string? | 产生该消息的轮次追溯键（前端 X-Trace-Id；最大长度 256；历史消息为空） |
 | MetadataJson | string? | 扩展元数据（jsonb） |

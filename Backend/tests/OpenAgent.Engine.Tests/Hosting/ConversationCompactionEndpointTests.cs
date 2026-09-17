@@ -103,6 +103,7 @@ public sealed class ConversationCompactionEndpointTests
             string conversationId,
             string llmProfileId,
             IAgentUserContext user,
+            string? traceId = null,
             CancellationToken cancellationToken = default)
         {
             Calls++;

@@ -139,6 +139,14 @@ internal sealed class ConversationSessionStore
             return;
         }
 
+        // 本轮所有落库消息统一盖章轮次追溯键，前端消息与 LLM 交互日志按 TraceId 对齐。
+        if (messages.Count > 0 && !string.IsNullOrWhiteSpace(context.TraceId))
+        {
+            messages = messages
+                .Select(message => message.TraceId == null ? WithTraceId(message, context.TraceId) : message)
+                .ToList();
+        }
+
         if (messages.Count > 0)
         {
             AppendResult append = await _store.AppendMessagesAsync(
@@ -186,20 +194,39 @@ internal sealed class ConversationSessionStore
         IReadOnlyDictionary<string, string>? metadata = null,
         IReadOnlyList<string>? fileIds = null,
         TokenUsage? tokenUsage = null,
-        string? modelId = null) => new()
-        {
-            MessageId = Guid.NewGuid().ToString("N"),
-            Sequence = sequence,
-            Role = role,
-            Content = content,
-            ToolCallId = toolCallId,
-            ToolName = toolName,
-            Timestamp = DateTimeOffset.UtcNow,
-            Metadata = metadata,
-            FileIds = fileIds ?? Array.Empty<string>(),
-            TokenUsage = tokenUsage,
-            ModelId = modelId
-        };
+        string? modelId = null,
+        string? traceId = null) => new()
+    {
+        MessageId = Guid.NewGuid().ToString("N"),
+        Sequence = sequence,
+        Role = role,
+        Content = content,
+        ToolCallId = toolCallId,
+        ToolName = toolName,
+        Timestamp = DateTimeOffset.UtcNow,
+        TraceId = traceId,
+        Metadata = metadata,
+        FileIds = fileIds ?? Array.Empty<string>(),
+        TokenUsage = tokenUsage,
+        ModelId = modelId
+    };
+
+    private static ConversationMessage WithTraceId(ConversationMessage message, string traceId) => new()
+    {
+        MessageId = message.MessageId,
+        Sequence = message.Sequence,
+        Role = message.Role,
+        Content = message.Content,
+        ToolCallId = message.ToolCallId,
+        ToolName = message.ToolName,
+        IdempotencyKey = message.IdempotencyKey,
+        Timestamp = message.Timestamp,
+        TraceId = traceId,
+        Metadata = message.Metadata,
+        FileIds = message.FileIds,
+        TokenUsage = message.TokenUsage,
+        ModelId = message.ModelId
+    };
 
     private ConversationRecord CreateRecord(
         ConversationContext context,
@@ -249,7 +276,8 @@ internal sealed class ConversationSessionStore
                 message.Metadata,
                 message.FileIds,
                 message.TokenUsage,
-                message.ModelId))
+                message.ModelId,
+                message.TraceId ?? context.TraceId))
             .ToList();
         return await _store.AppendMessagesAsync(
             context.TenantId!,
