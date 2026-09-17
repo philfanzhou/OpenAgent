@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.DataProtection.KeyManagement;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -30,6 +31,18 @@ internal static class ServiceCollectionExtensions
             new RedisConnectionProvider(sp.GetService<IConnectionMultiplexer>()));
 
         services.AddDataProtection();
+        // Tenant secrets must decrypt across every engine instance sharing one
+        // database, so persist the key ring to the shared Redis when available.
+        services.AddSingleton<IConfigureOptions<KeyManagementOptions>>(serviceProvider =>
+            new ConfigureOptions<KeyManagementOptions>(options =>
+            {
+                if (serviceProvider.GetService<IConnectionMultiplexer>() is null)
+                {
+                    return;
+                }
+                options.XmlRepository = new SharedRedisXmlRepository(
+                    serviceProvider.GetRequiredService<IRedisConnectionProvider>());
+            }));
         services.Replace(ServiceDescriptor.Singleton<IAgentSecretResolver>(serviceProvider =>
             new ConfigurationSecretResolver(
                 configuration,
