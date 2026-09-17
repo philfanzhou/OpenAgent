@@ -6,7 +6,7 @@ import { mergeOptimisticUserMessages } from '../conversationCollection'
 import { appendStreamingReasoning, appendStreamingTool, mergeAssistantSnapshot } from '../messagePresentation'
 import { createStreamingAssistantContentState, enqueueAssistantContent, markAssistantPhaseBoundary } from '../streamingAssistantContent'
 import { createTypewriterQueue, type TypewriterQueue } from '../typewriterQueue'
-import { AUTO_AGENT_ID, type AgentSummary, type ConversationMessage, type ConversationRecord, type PendingFile } from '../types'
+import { AUTO_AGENT_ID, normalizeApprovalStatus, type AgentSummary, type ConversationMessage, type ConversationRecord, type PendingFile } from '../types'
 import { toMessageFile } from './useFileHandling'
 import type { useConversationStreams } from './useConversationStreams'
 
@@ -168,6 +168,12 @@ export function useChatStreaming(options: ChatStreamingOptions) {
             callId: event.toolCallId,
             result: event.content ?? '',
           })
+        } else if (event.type === 'approval') {
+          flushStream?.()
+          if (event.approval) {
+            assistantMessage.approval = { ...event.approval, status: normalizeApprovalStatus(event.approval.status as string | number) }
+          }
+          conversation.status = 'AwaitingApproval'
         } else if (event.type === 'done') {
           flushStream?.()
           receivedDone = true

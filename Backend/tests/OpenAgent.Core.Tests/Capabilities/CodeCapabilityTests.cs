@@ -172,25 +172,23 @@ public class CodeCapabilityTests
     }
 
     [Fact]
-    public async Task MafLoop_ReceivesExecutionErrorAndExecutesCorrectedCode()
+    public async Task MafLoop_RequiresApprovalBeforeExecutingCode()
     {
         var fixture = new Fixture();
-        fixture.Executor.Results.Enqueue(new CodeExecutionResult { ExitCode = 1, Stderr = "NameError: misspelled" });
-        fixture.Executor.Results.Enqueue(new CodeExecutionResult { ExitCode = 0, Stdout = "42" });
-        AIFunction function = await fixture.GetFunctionAsync();
+        AIFunction function = new ApprovalRequiredAIFunction(await fixture.GetFunctionAsync());
         var provider = new SequenceChatProvider([
-            [new ChatResponseUpdate(ChatRole.Assistant, [new FunctionCallContent("code-1", "execute_code", new Dictionary<string, object?> { ["code"] = "misspelled()" })])],
-            [new ChatResponseUpdate(ChatRole.Assistant, [new FunctionCallContent("code-2", "execute_code", new Dictionary<string, object?> { ["code"] = "print(6*7)" })])],
-            [new ChatResponseUpdate(ChatRole.Assistant, "42")]
+            [new ChatResponseUpdate(ChatRole.Assistant, [new FunctionCallContent("code-1", "execute_code", new Dictionary<string, object?> { ["code"] = "misspelled()" })])]
         ]);
         var agent = new ChatClientAgent(provider, new ChatClientAgentOptions { ChatOptions = new() { Tools = [function] } });
-        await foreach (AgentResponseUpdate _ in agent.RunStreamingAsync("Calculate using code")) { }
-        Assert.Equal(2, fixture.Executor.Requests.Count);
-        Assert.Equal("print(6*7)", fixture.Executor.Requests[1].Code);
-        Assert.Contains(provider.Requests[1].SelectMany(message => message.Contents).OfType<FunctionResultContent>(),
-            result => result.Result?.ToString()?.Contains("NameError", StringComparison.Ordinal) == true);
-        Assert.Contains(provider.Requests[2].SelectMany(message => message.Contents).OfType<FunctionResultContent>(),
-            result => result.CallId == "code-2" && result.Result?.ToString()?.Contains("42", StringComparison.Ordinal) == true);
+        List<AgentResponseUpdate> updates = [];
+        await foreach (AgentResponseUpdate update in agent.RunStreamingAsync("Calculate using code"))
+        {
+            updates.Add(update);
+        }
+        Assert.Empty(fixture.Executor.Requests);
+        Assert.Contains(
+            updates.SelectMany(update => update.Contents ?? []).OfType<ToolApprovalRequestContent>(),
+            approval => approval.ToolCall is FunctionCallContent call && call.Name == "execute_code");
     }
 
     [RunnerIntegrationFact]
@@ -232,9 +230,34 @@ public class CodeCapabilityTests
             [new ChatResponseUpdate(ChatRole.Assistant, "Generated the workbook.")]
         ]);
         var agent = new ChatClientAgent(provider, new ChatClientAgentOptions { ChatOptions = new() { Tools = [function] } });
-        await foreach (AgentResponseUpdate _ in agent.RunStreamingAsync("Read the CSV and create an Excel workbook.")) { }
+        // 工厂给 execute_code 包了审批：先挂起拿到审批请求，再用 CreateResponse 批准并续跑会话。
+        AgentSession session = await agent.CreateSessionAsync();
+        List<AgentResponseUpdate> firstRun = [];
+        await foreach (AgentResponseUpdate update in agent.RunStreamingAsync(
+            "Read the CSV and create an Excel workbook.",
+            session))
+        {
+            firstRun.Add(update);
+        }
+        ToolApprovalRequestContent firstApproval = Assert.Single(
+            firstRun.SelectMany(update => update.Contents ?? []).OfType<ToolApprovalRequestContent>());
+        Assert.Empty(fixture.Executor.Requests);
+
+        List<AgentResponseUpdate> secondRun = [];
+        await foreach (AgentResponseUpdate update in agent.RunStreamingAsync(
+            new ChatMessage(ChatRole.User, [firstApproval.CreateResponse(true, "Approved by integration test.")]),
+            session))
+        {
+            secondRun.Add(update);
+        }
+        ToolApprovalRequestContent secondApproval = Assert.Single(
+            secondRun.SelectMany(update => update.Contents ?? []).OfType<ToolApprovalRequestContent>());
         Assert.Contains(provider.Requests[1].SelectMany(message => message.Contents).OfType<FunctionResultContent>(),
             result => result.CallId == "bad" && result.Result?.ToString()?.Contains("NameError", StringComparison.Ordinal) == true);
+
+        await foreach (AgentResponseUpdate _ in agent.RunStreamingAsync(
+            new ChatMessage(ChatRole.User, [secondApproval.CreateResponse(true, "Approved by integration test.")]),
+            session)) { }
         FunctionResultContent generated = Assert.Single(provider.Requests[2].SelectMany(message => message.Contents)
             .OfType<FunctionResultContent>(), result => result.CallId == "generate");
         using JsonDocument generation = JsonDocument.Parse(generated.Result!.ToString()!);

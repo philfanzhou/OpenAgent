@@ -47,7 +47,10 @@ internal sealed class CapabilityToolFactory
                         throw new InvalidOperationException(
                             $"Duplicate capability runtime name: {definition.Name}");
                     }
-                    tools.Add(new CapabilityAIFunction(definition));
+                AIFunction function = new CapabilityAIFunction(definition);
+                tools.Add(string.Equals(definition.Name, "execute_code", StringComparison.Ordinal)
+                    ? new ApprovalRequiredAIFunction(function)
+                    : function);
                 }
             }
         }

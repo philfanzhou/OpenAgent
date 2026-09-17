@@ -1,4 +1,4 @@
-export type ConversationStatus = 'Running' | 'Completed' | 'Failed' | 'Cancelled' | number
+export type ConversationStatus = 'Running' | 'Completed' | 'Failed' | 'Cancelled' | 'AwaitingApproval' | number
 export type ConnectionMode = 'router' | 'engine'
 export const AUTO_AGENT_ID = '__auto__'
 
@@ -40,6 +40,30 @@ export interface ConversationMessage {
   modelId?: string
   /** 执行失败的独立展示，不写入会话历史。 */
   error?: { title?: string; detail?: string; traceId?: string }
+  approval?: HumanApprovalRequest
+}
+
+export interface HumanApprovalRequest {
+  approvalId: string
+  tenantId: string
+  conversationId: string
+  action: string
+  redactedArgumentsJson: string
+  requestedBy: string
+  expiresAt: string
+  status: 'Pending' | 'Approved' | 'Rejected' | string
+  /** 瞬时 UI 状态：决策请求进行中，不落库。 */
+  deciding?: boolean
+}
+
+/** 兼容数字枚举与字符串两种下发形态，统一归一为可比较的状态文本。 */
+export function normalizeApprovalStatus(status: string | number | undefined | null): HumanApprovalRequest['status'] {
+  if (typeof status === 'number') {
+    if (status === 1) return 'Approved'
+    if (status === 2) return 'Rejected'
+    return 'Pending'
+  }
+  return status || 'Pending'
 }
 
 export interface ToolActivity {
@@ -53,6 +77,7 @@ export interface ToolActivity {
 export type ProcessActivity =
   | { kind: 'reasoning'; content: string }
   | { kind: 'tool'; tool: ToolActivity }
+  | { kind: 'approval'; approval: HumanApprovalRequest }
 
 export interface MessageFile {
   fileId?: string
@@ -269,6 +294,7 @@ export interface StreamEvent {
   error?: { title?: string; detail?: string; traceId?: string }
   usage?: TokenUsage | null
   modelId?: string | null
+  approval?: HumanApprovalRequest
 }
 
 export interface McpTestResult {

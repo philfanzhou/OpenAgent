@@ -1,5 +1,7 @@
+using System.Globalization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
+using OpenAgent.Contracts.Approvals;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Engine.Host.Extensions;
 using Xunit;
@@ -78,6 +80,30 @@ public class AgentStreamWriterTests
         Assert.Contains("\"content\":\"sunny\"", payload, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task WriteSseStreamAsync_Approval_PreservesAwaitingStatus()
+    {
+        var context = new DefaultHttpContext();
+        context.Response.Body = new MemoryStream();
+
+        await AgentStreamWriter.WriteSseStreamAsync(
+            context,
+            ApprovalEvents(),
+            "trace-1",
+            "conversation-1",
+            NullLogger.Instance,
+            CancellationToken.None);
+
+        string payload = await ReadBodyAsync(context);
+        Assert.Contains("event: approval", payload, StringComparison.Ordinal);
+        Assert.Contains("\"status\":\"AwaitingApproval\"", payload, StringComparison.Ordinal);
+        Assert.Contains("\"approval\":{", payload, StringComparison.Ordinal);
+        // 状态必须是字符串：前端直接执行 status.toLowerCase()，数字枚举会让渲染崩溃。
+        Assert.Contains("\"status\":\"Pending\"", payload, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"status\":0", payload, StringComparison.Ordinal);
+        Assert.Contains("\"done\":true", payload, StringComparison.Ordinal);
+    }
+
     private static async IAsyncEnumerable<AgentStreamEvent> ToolResultEvents()
     {
         yield return new AgentStreamEvent
@@ -105,6 +131,26 @@ public class AgentStreamWriterTests
             Usage = usage,
             ModelId = modelId
         };
+    }
+
+    private static async IAsyncEnumerable<AgentStreamEvent> ApprovalEvents()
+    {
+        yield return new AgentStreamEvent
+        {
+            Type = AgentStreamEventType.Approval,
+            Status = "AwaitingApproval",
+            Approval = new HumanApprovalRequest
+            {
+                ApprovalId = "approval-1",
+                TenantId = "tenant-1",
+                ConversationId = "conversation-1",
+                Action = "execute_code",
+                RedactedArgumentsJson = "{\"code\":\"1+1\"}",
+                RequestedBy = "tester",
+                ExpiresAt = DateTimeOffset.Parse("2026-09-17T00:00:00Z", CultureInfo.InvariantCulture)
+            }
+        };
+        await Task.Yield();
     }
 
     private static async Task<string> ReadBodyAsync(HttpContext context)

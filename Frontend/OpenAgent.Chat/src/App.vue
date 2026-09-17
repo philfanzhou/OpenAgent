@@ -15,8 +15,9 @@ import { useConversationStreams } from './composables/useConversationStreams'
 import { useFileHandling } from './composables/useFileHandling'
 import { usePanelLayout } from './composables/usePanelLayout'
 import { useSettings } from './composables/useSettings'
+import { approvalPreview } from './messagePresentation'
 import { formatCacheHitRate, formatContextUsage, formatTokenCount } from './tokenUsage'
-import { AUTO_AGENT_ID, type AgentSummary, type CurrentUserContext } from './types'
+import { AUTO_AGENT_ID, type AgentSummary, type CurrentUserContext, type HumanApprovalRequest } from './types'
 
 const agents = ref<AgentSummary[]>([])
 const currentUser = ref<CurrentUserContext | null>(null)
@@ -196,6 +197,34 @@ function notifyError(error: unknown): void {
   ElMessage.error(error instanceof Error ? error.message : '请求失败')
 }
 
+/** 当前会话待决策（或决策进行中）的审批：操作条固定在消息输入框上方。 */
+const pendingApproval = computed<HumanApprovalRequest | null>(() => {
+  for (let index = currentMessages.value.length - 1; index >= 0; index -= 1) {
+    const approval = currentMessages.value[index]?.approval
+    if (!approval) continue
+    return approval.deciding || String(approval.status) === 'Pending' ? approval : null
+  }
+  return null
+})
+
+async function decideHumanApproval(approval: HumanApprovalRequest, approved: boolean): Promise<void> {
+  // 决策接口会同步驱动整轮执行，先乐观更新给出即时反馈，失败再回滚。
+  approval.status = approved ? 'Approved' : 'Rejected'
+  approval.deciding = true
+  try {
+    const result = await api.decideHumanApproval(approval.approvalId, approved)
+    if (selectedConversation.value?.conversationId === approval.conversationId) {
+      replaceConversation(await api.getConversation(approval.conversationId), approval.conversationId)
+    }
+    await refreshConversations(false)
+    if (result.nextApproval) ElMessage.info('下一项代码执行仍需要审批')
+  } catch (error) {
+    approval.status = 'Pending'
+    approval.deciding = false
+    notifyError(error)
+  }
+}
+
 function applyTheme(): void {
   document.documentElement.dataset.theme = themeMode.value
   // Element Plus dark mode depends on both the data attribute and the dark class.
@@ -286,6 +315,16 @@ onBeforeUnmount(() => {
       <div class="workspace-grid" :class="{ 'context-collapsed': contextCollapsed }">
         <section class="chat-card">
           <ChatMessages ref="chatMessagesRef" :messages="currentMessages" :context-summaries="selectedConversation?.contextSummaries" :loading="loadingConversation" :current-user="currentUser" :streaming="selectedConversationStreaming" :conversation-id="selectedConversation?.conversationId" :markdown-image-urls="markdownImageUrls" @suggest="message = $event" @download="downloadFile" />
+          <div v-if="pendingApproval" class="composer-approval" role="alert">
+            <span class="activity-icon thinking-icon"><i /><i /><i /></span>
+            <strong>代码执行审批</strong>
+            <code class="composer-approval-preview" :title="approvalPreview(pendingApproval)">{{ approvalPreview(pendingApproval) }}</code>
+            <div v-if="!pendingApproval.deciding && String(pendingApproval.status) === 'Pending'" class="composer-approval-actions">
+              <el-button size="small" type="primary" @click="decideHumanApproval(pendingApproval, true)">批准并继续</el-button>
+              <el-button size="small" @click="decideHumanApproval(pendingApproval, false)">拒绝</el-button>
+            </div>
+            <small v-else class="approval-deciding"><span class="status-spinner" />{{ pendingApproval.status === 'Approved' ? '已批准，正在继续执行…' : '正在取消会话…' }}</small>
+          </div>
           <MessageComposer :model-value="message" :endpoint-url="activeEndpointUrl" :endpoint-label="activeEndpointLabel" :selected-agent-id="selectedAgentId" :selected-llm-profile-id="selectedLlmProfileId" :loading="selectedConversationStreaming" :pending-files="pendingFiles" @update:model-value="message = $event" @files-change="handleFilesChange" @retry-file="retryPendingFile" @send="handleSend" @stop="stopStreaming" />
         </section>
         <aside class="context-panel">

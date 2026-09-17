@@ -15,6 +15,7 @@ internal static class EndpointExtensions
         group.MapAgentCatalog();
         group.MapAgentProviderContract();
         group.MapConversations();
+        group.MapHumanApprovals();
 
         group.MapGet("/me", (HttpContext context) =>
         {

@@ -5,7 +5,7 @@ import { api } from '../api'
 import { buildCompactionDisplay, buildCompactionTokenDisplay } from '../compactionPresentation'
 import { isMarkdownFile, isTextPreview } from '../composables/useFileHandling'
 import { isSelfContainedImageRef } from '../markdownAssets'
-import { buildConversationTimeline, fileLabel, formatFileSize, toolArgumentsText, toolPresentation } from '../messagePresentation'
+import { approvalArguments, approvalStatusText, buildConversationTimeline, fileLabel, formatFileSize, toolArgumentsText, toolPresentation } from '../messagePresentation'
 import { formatTokenBreakdown, formatTokenCount, formatTokenUsage } from '../tokenUsage'
 import type { ContextSummary, ConversationMessage, CurrentUserContext, MessageFile, ProcessActivity, ToolActivity } from '../types'
 import MarkdownContent from './MarkdownContent.vue'
@@ -70,7 +70,12 @@ function hasMessageContent(message: ConversationMessage): boolean {
 
 function isStreamingItem(message: ConversationMessage): boolean {
   const last = displayMessages.value[displayMessages.value.length - 1]
-  return props.streaming && message.role === 'assistant' && last?.messageId === message.messageId
+  return (props.streaming || isAwaitingApproval(message)) && message.role === 'assistant' && last?.messageId === message.messageId
+}
+
+/** 审批挂起中：本轮未结束，按钮待决策，不能当作已完成的响应展示。 */
+function isAwaitingApproval(message: ConversationMessage): boolean {
+  return message.role === 'assistant' && String(message.approval?.status ?? '') === 'Pending'
 }
 
 /** 思考阶段：消息正在流式生成，且尚未输出正文内容。 */
@@ -78,16 +83,27 @@ function isThinking(message: ConversationMessage): boolean {
   return isStreamingItem(message) && !message.content
 }
 
+/** 过程折叠包标题：审批挂起优先于流式生成提示。 */
+function processTitleText(message: ConversationMessage): string {
+  if (isAwaitingApproval(message)) return '等待审批'
+  return isThinking(message) ? '正在执行' : '执行过程'
+}
+
 function shouldShowUsage(message: ConversationMessage): boolean {
-  return message.role === 'assistant' && !message.toolName && !isStreamingItem(message)
+  return message.role === 'assistant' && !message.toolName && !isStreamingItem(message) && !isAwaitingApproval(message)
 }
 
 function processActivities(message: ConversationMessage): ProcessActivity[] {
-  if (message.processActivities?.length) return message.processActivities
-  return [
-    ...(message.reasoning ? [{ kind: 'reasoning' as const, content: message.reasoning }] : []),
-    ...(message.toolActivities || []).map(tool => ({ kind: 'tool' as const, tool })),
-  ]
+  const base = message.processActivities?.length
+    ? message.processActivities
+    : [
+        ...(message.reasoning ? [{ kind: 'reasoning' as const, content: message.reasoning }] : []),
+        ...(message.toolActivities || []).map(tool => ({ kind: 'tool' as const, tool })),
+      ]
+  // 审批作为执行过程的收尾步骤展示，操作入口在消息输入框上方的审批条。
+  return message.approval
+    ? [...base, { kind: 'approval' as const, approval: message.approval }]
+    : base
 }
 
 function processSummary(message: ConversationMessage): string {
@@ -361,29 +377,36 @@ defineExpose({ scrollToBottom })
         >
           <summary>
             <span class="activity-icon thinking-icon"><i /><i /><i /></span>
-            <span class="process-title">{{ isThinking(item) ? '正在执行' : '执行过程' }}</span>
-            <small>{{ processSummary(item) }} · {{ isThinking(item) ? '进行中' : '已折叠' }}</small>
+            <span class="process-title">{{ processTitleText(item) }}</span>
+            <small>{{ processSummary(item) }} · {{ processTitleText(item) === '正在执行' ? '进行中' : processTitleText(item) === '等待审批' ? '待人工决策' : '已折叠' }}</small>
           </summary>
           <div class="process-bundle-body">
             <details
               v-for="(activity, activityIndex) in processActivities(item)"
-              :key="activity.kind === 'tool' ? activity.tool.callId || `${activity.tool.name}-${activityIndex}` : `reasoning-${activityIndex}`"
+              :key="activity.kind === 'tool' ? activity.tool.callId || `${activity.tool.name}-${activityIndex}` : activity.kind === 'approval' ? `approval-${activity.approval.approvalId}` : `reasoning-${activityIndex}`"
               class="process-step"
-              :class="{ running: activity.kind === 'tool' && !activity.tool.result && isStreamingItem(item) }"
+              :class="{ running: (activity.kind === 'tool' && !activity.tool.result || activity.kind === 'approval') && isStreamingItem(item) }"
             >
               <summary class="process-step-head">
                 <span class="process-step-index">{{ activityIndex + 1 }}</span>
                 <span class="process-step-copy">
-                  <strong>{{ activity.kind === 'reasoning' ? '思考' : toolPresentation(activity.tool.name).displayName }}</strong>
-                  <small>{{ activity.kind === 'reasoning' ? '模型推理' : toolPresentation(activity.tool.name).kind }}</small>
+                  <strong>{{ activity.kind === 'reasoning' ? '思考' : activity.kind === 'approval' ? '代码执行审批' : toolPresentation(activity.tool.name).displayName }}</strong>
+                  <small>{{ activity.kind === 'reasoning' ? '模型推理' : activity.kind === 'approval' ? '人工决策' : toolPresentation(activity.tool.name).kind }}</small>
                 </span>
                 <span v-if="activity.kind === 'tool'" class="process-step-status" :class="{ done: activity.tool.result != null, running: isStreamingItem(item) && activity.tool.result == null }">
                   {{ toolStatusText(activity.tool, isStreamingItem(item)) }}
+                </span>
+                <span v-else-if="activity.kind === 'approval'" class="process-step-status" :class="{ running: activity.approval.deciding || String(activity.approval.status) === 'Pending' }">
+                  {{ approvalStatusText(activity.approval) }}
                 </span>
                 <span class="process-step-chevron">›</span>
               </summary>
               <div class="process-step-body">
                 <pre v-if="activity.kind === 'reasoning'" class="process-reasoning">{{ activity.content }}</pre>
+                <div v-else-if="activity.kind === 'approval'" class="process-approval-body">
+                  <div class="tool-section"><span>申请参数</span><pre class="tool-args">{{ approvalArguments(activity.approval) }}</pre></div>
+                  <small v-if="activity.approval.deciding" class="approval-deciding"><span class="status-spinner" />{{ activity.approval.status === 'Approved' ? '已批准，正在继续执行…' : '正在取消会话…' }}</small>
+                </div>
                 <div v-else class="process-tool-body">
                   <div v-if="toolArgumentsText(activity.tool)" class="tool-section"><span>输入</span><pre class="tool-args">{{ toolArgumentsText(activity.tool) }}</pre></div>
                   <div v-if="toolResultText(activity.tool)" class="tool-section"><span>输出</span><pre class="tool-result">{{ toolResultText(activity.tool) }}</pre></div>

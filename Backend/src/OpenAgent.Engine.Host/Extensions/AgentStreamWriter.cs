@@ -21,6 +21,7 @@ internal static class AgentStreamWriter
         StreamingResponseHeaders.ApplySse(context);
         TokenUsage? usage = null;
         string? modelId = null;
+        string status = "Completed";
         await using StreamingHeartbeat heartbeat = StreamingHeartbeat.Start(
             token => WriteHeartbeatAsync(context, token),
             StreamHeartbeatInterval,
@@ -37,6 +38,7 @@ internal static class AgentStreamWriter
             cancellationToken).ConfigureAwait(false);
         await foreach (AgentStreamEvent streamEvent in events.WithCancellation(cancellationToken))
         {
+            status = streamEvent.Status ?? status;
             if (streamEvent.Type == AgentStreamEventType.Usage)
             {
                 usage = streamEvent.Usage;
@@ -49,6 +51,7 @@ internal static class AgentStreamWriter
                 AgentStreamEventType.Reasoning => "reasoning",
                 AgentStreamEventType.ToolCall => "tool_call",
                 AgentStreamEventType.ToolResult => "tool_result",
+                AgentStreamEventType.Approval => "approval",
                 _ => "content"
             };
             string data = JsonSerializer.Serialize(new
@@ -56,7 +59,9 @@ internal static class AgentStreamWriter
                 content = streamEvent.Content,
                 toolName = streamEvent.ToolName,
                 toolCallId = streamEvent.ToolCallId,
-                toolArguments = streamEvent.ToolArguments
+                toolArguments = streamEvent.ToolArguments,
+                approval = streamEvent.Approval,
+                status = streamEvent.Status
             }, JsonOptions);
             await heartbeat.WriteAsync(
                 token => WriteSseEventAsync(context, eventName, data, token),
@@ -64,7 +69,7 @@ internal static class AgentStreamWriter
         }
 
         string done = JsonSerializer.Serialize(
-            new { done = true, usage, modelId, conversationId },
+            new { done = true, usage, modelId, conversationId, status },
             JsonOptions);
         await WriteSseEventAsync(context, "done", done, cancellationToken).ConfigureAwait(false);
     }
