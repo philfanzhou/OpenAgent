@@ -77,7 +77,7 @@ internal sealed class AgentFactory
                 cancellationToken).ConfigureAwait(false);
             skillsRuntime = await _skills.CreateAsync(
                 profile.AgentId,
-                profile.Config.Skills,
+                profile.Config,
                 user,
                 cancellationToken).ConfigureAwait(false);
 

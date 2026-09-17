@@ -187,6 +187,13 @@ public class SkillInstanceConfig
     public string? Sha256 { get; set; }
     public int ResourceCount { get; set; }
 
+    /// <summary>
+    /// Per-instance opt-in for executing package scripts through the isolated
+    /// Runner. Requires the host CodeExecution switch and the Agent's
+    /// CodeExecution binding to be enabled as well.
+    /// </summary>
+    public bool ScriptExecutionEnabled { get; set; }
+
     public List<string> AllowedUserIds { get; set; } = new();
     public List<string> AllowedGroups { get; set; } = new();
     public List<string> AllowedTenantIds { get; set; } = new();

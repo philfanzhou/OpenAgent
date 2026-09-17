@@ -329,6 +329,7 @@ export function toolPresentation(name: string): { kind: string; displayName: str
 
   if (name === 'load_skill') return { kind: 'SKILL', displayName: '加载 Skill 指令' }
   if (name === 'read_skill_resource') return { kind: 'SKILL', displayName: '读取 Skill 资源' }
+  if (name === 'run_skill_script') return { kind: 'SKILL', displayName: '运行 Skill 脚本' }
   return { kind: '工具', displayName: name }
 }
 

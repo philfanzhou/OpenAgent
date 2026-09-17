@@ -7,7 +7,7 @@
 |-----------|-------------|
 | 统一工具集合 | 模型看到 RAG 与官方 MCP `AITool`，无需感知来源差异 |
 | 原生 Function Calling | 引擎返回 ToolCall → ExecuteToolAsync → 继续推理 |
-| 工具路由 | `search_knowledge_base`→RAG，`mcp_*`→官方 MCP，`load_skill` / `read_skill_resource`→MAF Skill Provider |
+| 工具路由 | `search_knowledge_base`→RAG，`mcp_*`→官方 MCP，`load_skill` / `read_skill_resource`→MAF Skill Provider，`run_skill_script`→隔离 Runner（经 `SkillScriptRunner`，需三层开关） |
 | 最大轮次控制 | 默认 50 轮（`AgentConfig.MaxTurns`） |
 
 ## Architecture

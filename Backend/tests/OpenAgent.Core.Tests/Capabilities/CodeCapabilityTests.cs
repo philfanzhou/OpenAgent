@@ -275,6 +275,7 @@ public class CodeCapabilityTests
         internal RecordingFileAssetRepository Repository { get; } = new();
         internal RecordingFileObjectStore Objects { get; } = new();
         internal FakeExecutor Executor { get; } = new();
+        internal CodeExecutionBudget Budget { get; } = new();
         internal FileAssetExecutionContext Context { get; } = new();
         internal AgentUserContext User { get; } = new() { TenantId = "tenant", UserId = "user" };
         internal FileAssetService Files { get; }
@@ -288,7 +289,7 @@ public class CodeCapabilityTests
             auth.Setup(service => service.IsAuthorizedAsync(It.IsAny<AgentAuthorizationRequest>(), It.IsAny<IAgentUserContext>(), It.IsAny<CancellationToken>()))
                 .Returns(() => Task.FromResult(Authorized));
             var gate = new AgentAuthorizationGate(auth.Object);
-            var source = new CodeCapabilitySource(executor ?? Executor, Files, Context, gate,
+            var source = new CodeCapabilitySource(executor ?? Executor, Files, Context, gate, Budget,
                 Options.Create(new CodeExecutionOptions { Enabled = enabled }));
             var sources = new List<ICapabilitySource> { source };
             if (executor != null)

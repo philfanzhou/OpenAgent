@@ -2,11 +2,15 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Configuration;
+using OpenAgent.Contracts.Execution;
 using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Contracts.Skills;
 using OpenAgent.Core.Abstract;
+using OpenAgent.Core.Capabilities.Code;
+using OpenAgent.Core.Files;
 using OpenAgent.Core.Security;
 
 namespace OpenAgent.Core.Capabilities.Skill;
@@ -20,29 +24,35 @@ internal sealed class AgentSkillsProviderFactory(
     IFileObjectStore objectStore,
     ISkillCatalog catalog,
     AgentAuthorizationGate authorization,
+    ICodeExecutor executor,
+    IFileAssetService files,
+    FileAssetExecutionContext fileContext,
+    CodeExecutionBudget budget,
+    IOptions<CodeExecutionOptions> codeOptions,
     ILoggerFactory loggerFactory)
 {
     internal async Task<AgentSkillsRuntime> CreateAsync(
         string agentId,
-        SkillsConfig config,
+        AgentConfig config,
         IAgentUserContext user,
         CancellationToken cancellationToken)
     {
         string temporaryRoot = Path.Combine(Path.GetTempPath(), "openagent-skills", Guid.NewGuid().ToString("N"));
         var packagePaths = new List<string>();
         var allowedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var scriptSkillNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         try
         {
             Directory.CreateDirectory(temporaryRoot);
             IReadOnlyList<SkillInstanceConfig> instances = await ResolveInstancesAsync(
-                config,
+                config.Skills,
                 catalog,
                 user.TenantId,
                 cancellationToken).ConfigureAwait(false);
             foreach (SkillInstanceConfig instance in instances.Where(IsEnabledObjectPackage))
             {
-                if (!IsSelected(config, instance)
+                if (!IsSelected(config.Skills, instance)
                     || !await authorization.IsAvailableAsync(
                         agentId,
                         AgentResourceType.Skill,
@@ -66,6 +76,10 @@ internal sealed class AgentSkillsProviderFactory(
                 {
                     allowedNames.Add(instance.Id);
                 }
+                if (instance.ScriptExecutionEnabled && !string.IsNullOrWhiteSpace(instance.Name))
+                {
+                    scriptSkillNames.Add(instance.Name);
+                }
             }
 
             if (packagePaths.Count == 0)
@@ -74,23 +88,36 @@ internal sealed class AgentSkillsProviderFactory(
                 return AgentSkillsRuntime.Empty;
             }
 
+            bool scriptsEnabled = IsScriptExecutionEnabled(config, fileContext.Scope);
+            var runner = new SkillScriptRunner(executor, files, fileContext, authorization, budget, codeOptions);
             AgentSkillsProvider provider = new AgentSkillsProviderBuilder()
                 .UseFileSkills(
                     packagePaths,
                     new AgentFileSkillsSourceOptions
                     {
-                        ScriptFilter = _ => false
+                        // The sandbox language surface is Python only; shell and other
+                        // interpreters are deliberately not disclosed or executable.
+                        AllowedScriptExtensions = [".py"],
+                        ScriptFilter = scriptsEnabled
+                            ? context =>
+                                Path.GetExtension(context.RelativeFilePath).Equals(".py", StringComparison.OrdinalIgnoreCase)
+                                && scriptSkillNames.Contains(context.SkillName)
+                            : static _ => false
                     })
-                .UseFileScriptRunner((_, _, _, _, _) =>
-                    throw new InvalidOperationException(
+                .UseFileScriptRunner(scriptsEnabled
+                    ? (skill, script, arguments, _, token) =>
+                        runner.RunAsync(agentId, user, skill, script, arguments, token)
+                    : static (_, _, _, _, _) => throw new InvalidOperationException(
                         "Skill scripts are disabled until an isolated script runner is configured."))
                 // The current chat contract cannot round-trip MAF approval requests.
-                // Loading Skill instructions and reading resources remain constrained by
-                // the Agent binding and OpenAgent authorization checks above.
+                // Loading Skill instructions, reading resources, and running scripts
+                // remain constrained by the Agent binding and OpenAgent authorization
+                // checks; script runs additionally pass through the isolated Runner.
                 .UseOptions(options =>
                 {
                     options.DisableLoadSkillApproval = true;
                     options.DisableReadSkillResourceApproval = true;
+                    options.DisableRunSkillScriptApproval = true;
                     options.IncludeDetailedErrors = false;
                 })
                 .UseFilter((skill, _) =>
@@ -107,6 +134,17 @@ internal sealed class AgentSkillsProviderFactory(
             throw;
         }
     }
+
+    /// <summary>
+    /// Script execution needs the same double opt-in as execute_code — the host
+    /// Runner configuration and the Agent's CodeExecution binding — plus an
+    /// identified conversation so artifacts can be registered as FileAssets.
+    /// The per-instance ScriptExecutionEnabled flag is applied on top.
+    /// </summary>
+    private bool IsScriptExecutionEnabled(AgentConfig config, FileAssetScope? scope) =>
+        codeOptions.Value.Enabled
+        && config.CodeExecution?.Enabled == true
+        && scope is { TenantId: not null and not "", UserId: not null and not "", ConversationId: not null and not "" };
 
     private static bool IsEnabledObjectPackage(SkillInstanceConfig instance) =>
         instance.Enabled
