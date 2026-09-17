@@ -197,6 +197,9 @@ function notifyError(error: unknown): void {
 }
 
 async function decideHumanApproval(approval: HumanApprovalRequest, approved: boolean): Promise<void> {
+  // 决策接口会同步驱动整轮执行，先乐观更新卡片给出即时反馈，失败再回滚。
+  approval.status = approved ? 'Approved' : 'Rejected'
+  approval.deciding = true
   try {
     const result = await api.decideHumanApproval(approval.approvalId, approved)
     if (selectedConversation.value?.conversationId === approval.conversationId) {
@@ -205,6 +208,8 @@ async function decideHumanApproval(approval: HumanApprovalRequest, approved: boo
     await refreshConversations(false)
     if (result.nextApproval) ElMessage.info('下一项代码执行仍需要审批')
   } catch (error) {
+    approval.status = 'Pending'
+    approval.deciding = false
     notifyError(error)
   }
 }

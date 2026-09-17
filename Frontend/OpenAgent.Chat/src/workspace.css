@@ -521,17 +521,25 @@ html[data-theme='dark'] .welcome-icon { background: #ececec; color: #1d1d1f; }
 }
 
 .approval-card {
-  margin-top: 12px;
-  padding: 12px;
+  margin-top: 6px;
+  padding: 7px 9px;
   border: 1px solid var(--accent);
-  border-radius: 10px;
+  border-radius: 8px;
   background: color-mix(in srgb, var(--accent) 8%, transparent);
-  display: grid;
-  gap: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
 }
-.approval-card pre { margin: 2px 0; max-height: 180px; overflow: auto; white-space: pre-wrap; font-size: 12px; }
+.approval-head { display: flex; align-items: center; gap: 8px; }
+.approval-head strong { font-size: 12px; }
+.approval-action { color: var(--text-muted); font-family: var(--font-mono); font-size: 10px; padding: 1px 6px; border: 1px solid var(--border); border-radius: var(--r-pill); }
+.approval-card .approval-args > summary { cursor: pointer; color: var(--text-muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.approval-card .approval-args > summary code { font-family: var(--font-mono); color: var(--text-secondary); }
+.approval-card pre { margin: 2px 0 0; max-height: 120px; overflow: auto; white-space: pre-wrap; font-size: 11px; }
 .approval-card small { color: var(--text-muted); }
-.approval-actions { display: flex; gap: 8px; margin-top: 4px; }
+.approval-actions { display: flex; gap: 8px; }
+.approval-deciding { display: inline-flex; align-items: center; gap: 6px; }
 .user .message-bubble { padding: 9px 14px; border-radius: 18px; background: var(--bg-subtle); }
 .message-usage {
   display: flex;

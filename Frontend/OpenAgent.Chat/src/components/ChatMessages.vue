@@ -138,6 +138,17 @@ function approvalArguments(approval: HumanApprovalRequest): string {
   try { return JSON.stringify(JSON.parse(approval.redactedArgumentsJson), null, 2) } catch { return approval.redactedArgumentsJson }
 }
 
+/** 卡片折叠态的单行参数预览，完整参数在展开后查看。 */
+function approvalPreview(approval: HumanApprovalRequest): string {
+  let code = approval.redactedArgumentsJson
+  try {
+    const parsed = JSON.parse(approval.redactedArgumentsJson) as Record<string, unknown>
+    if (typeof parsed.code === 'string') code = parsed.code
+  } catch { /* 保留原始文本 */ }
+  const oneLine = code.replace(/\s+/g, ' ').trim()
+  return oneLine.length > 72 ? `${oneLine.slice(0, 72)}…` : oneLine
+}
+
 function compactionDisplay(summary: ContextSummary) {
   return buildCompactionDisplay(summary)
 }
@@ -370,6 +381,23 @@ defineExpose({ scrollToBottom })
           <span v-if="formatTimestamp(item.timestamp)">{{ formatTimestamp(item.timestamp) }}</span>
         </div>
 
+        <div v-if="item.approval" class="approval-card" :class="`is-${String(item.approval.status).toLowerCase()}`">
+          <div class="approval-head">
+            <strong>代码执行审批</strong>
+            <span class="approval-action">{{ item.approval.action }}</span>
+          </div>
+          <details class="approval-args">
+            <summary><code>{{ approvalPreview(item.approval) }}</code></summary>
+            <pre>{{ approvalArguments(item.approval) }}</pre>
+          </details>
+          <div v-if="isAwaitingApproval(item)" class="approval-actions">
+            <el-button size="small" type="primary" @click="emit('approvalDecision', item.approval, true)">批准并继续</el-button>
+            <el-button size="small" @click="emit('approvalDecision', item.approval, false)">拒绝</el-button>
+          </div>
+          <small v-else-if="item.approval.deciding" class="approval-deciding"><span class="status-spinner" />{{ item.approval.status === 'Approved' ? '已批准，正在继续执行…' : '正在取消会话…' }}</small>
+          <small v-else>审批状态：{{ item.approval.status }}</small>
+        </div>
+
         <details
           v-if="processActivities(item).length"
           class="process-activity process-bundle"
@@ -423,17 +451,6 @@ defineExpose({ scrollToBottom })
         </div>
 
         <div v-if="item.content || isStreamingItem(item)" class="message-bubble"><MarkdownContent :content="item.content" :streaming="isStreamingItem(item) && Boolean(item.content)" :resolve-image="imageLookup(item.messageId)" /></div>
-
-        <div v-if="item.approval" class="approval-card" :class="`is-${String(item.approval.status).toLowerCase()}`">
-          <strong>代码执行需要审批</strong>
-          <span>动作：{{ item.approval.action }}</span>
-          <pre>{{ approvalArguments(item.approval) }}</pre>
-          <div v-if="isAwaitingApproval(item)" class="approval-actions">
-            <el-button size="small" type="primary" @click="emit('approvalDecision', item.approval, true)">批准并继续</el-button>
-            <el-button size="small" @click="emit('approvalDecision', item.approval, false)">拒绝</el-button>
-          </div>
-          <small v-else>审批状态：{{ item.approval.status }}</small>
-        </div>
 
         <div v-if="shouldShowUsage(item)" class="message-usage" aria-label="当前响应 Token 用量">
           <span v-if="item.modelId" class="message-model">{{ item.modelId }}</span>

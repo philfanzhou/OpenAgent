@@ -52,6 +52,8 @@ export interface HumanApprovalRequest {
   requestedBy: string
   expiresAt: string
   status: 'Pending' | 'Approved' | 'Rejected' | string
+  /** 瞬时 UI 状态：决策请求进行中，不落库。 */
+  deciding?: boolean
 }
 
 /** 兼容数字枚举与字符串两种下发形态，统一归一为可比较的状态文本。 */
