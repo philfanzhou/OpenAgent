@@ -15,6 +15,7 @@ import { useConversationStreams } from './composables/useConversationStreams'
 import { useFileHandling } from './composables/useFileHandling'
 import { usePanelLayout } from './composables/usePanelLayout'
 import { useSettings } from './composables/useSettings'
+import { approvalPreview } from './messagePresentation'
 import { formatCacheHitRate, formatContextUsage, formatTokenCount } from './tokenUsage'
 import { AUTO_AGENT_ID, type AgentSummary, type CurrentUserContext, type HumanApprovalRequest } from './types'
 
@@ -196,8 +197,18 @@ function notifyError(error: unknown): void {
   ElMessage.error(error instanceof Error ? error.message : '请求失败')
 }
 
+/** 当前会话待决策（或决策进行中）的审批：操作条固定在消息输入框上方。 */
+const pendingApproval = computed<HumanApprovalRequest | null>(() => {
+  for (let index = currentMessages.value.length - 1; index >= 0; index -= 1) {
+    const approval = currentMessages.value[index]?.approval
+    if (!approval) continue
+    return approval.deciding || String(approval.status) === 'Pending' ? approval : null
+  }
+  return null
+})
+
 async function decideHumanApproval(approval: HumanApprovalRequest, approved: boolean): Promise<void> {
-  // 决策接口会同步驱动整轮执行，先乐观更新卡片给出即时反馈，失败再回滚。
+  // 决策接口会同步驱动整轮执行，先乐观更新给出即时反馈，失败再回滚。
   approval.status = approved ? 'Approved' : 'Rejected'
   approval.deciding = true
   try {
@@ -303,7 +314,19 @@ onBeforeUnmount(() => {
 
       <div class="workspace-grid" :class="{ 'context-collapsed': contextCollapsed }">
         <section class="chat-card">
-          <ChatMessages ref="chatMessagesRef" :messages="currentMessages" :context-summaries="selectedConversation?.contextSummaries" :loading="loadingConversation" :current-user="currentUser" :streaming="selectedConversationStreaming" :conversation-id="selectedConversation?.conversationId" :markdown-image-urls="markdownImageUrls" @suggest="message = $event" @download="downloadFile" @approval-decision="decideHumanApproval" />
+          <ChatMessages ref="chatMessagesRef" :messages="currentMessages" :context-summaries="selectedConversation?.contextSummaries" :loading="loadingConversation" :current-user="currentUser" :streaming="selectedConversationStreaming" :conversation-id="selectedConversation?.conversationId" :markdown-image-urls="markdownImageUrls" @suggest="message = $event" @download="downloadFile" />
+          <div v-if="pendingApproval" class="composer-approval" role="alert">
+            <span class="activity-icon thinking-icon"><i /><i /><i /></span>
+            <div class="composer-approval-copy">
+              <strong>代码执行审批 · {{ pendingApproval.action }}</strong>
+              <small><code>{{ approvalPreview(pendingApproval) }}</code></small>
+            </div>
+            <div v-if="!pendingApproval.deciding && String(pendingApproval.status) === 'Pending'" class="composer-approval-actions">
+              <el-button size="small" type="primary" @click="decideHumanApproval(pendingApproval, true)">批准并继续</el-button>
+              <el-button size="small" @click="decideHumanApproval(pendingApproval, false)">拒绝</el-button>
+            </div>
+            <small v-else class="approval-deciding"><span class="status-spinner" />{{ pendingApproval.status === 'Approved' ? '已批准，正在继续执行…' : '正在取消会话…' }}</small>
+          </div>
           <MessageComposer :model-value="message" :endpoint-url="activeEndpointUrl" :endpoint-label="activeEndpointLabel" :selected-agent-id="selectedAgentId" :selected-llm-profile-id="selectedLlmProfileId" :loading="selectedConversationStreaming" :pending-files="pendingFiles" @update:model-value="message = $event" @files-change="handleFilesChange" @retry-file="retryPendingFile" @send="handleSend" @stop="stopStreaming" />
         </section>
         <aside class="context-panel">

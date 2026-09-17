@@ -1,4 +1,4 @@
-import type { ContextSummary, ConversationMessage, MessageFile, ProcessActivity, ToolActivity } from './types'
+import type { ContextSummary, ConversationMessage, HumanApprovalRequest, MessageFile, ProcessActivity, ToolActivity } from './types'
 
 export type ConversationTimelineItem =
   | { kind: 'message'; message: ConversationMessage }
@@ -238,8 +238,10 @@ function mergeProcessActivities(
         ? activity.content.slice(existingReasoning.length).trimStart()
         : activity.content
       merged = appendReasoningProcess(merged, content)
-    } else {
+    } else if (activity.kind === 'tool') {
       merged = mergeToolProcess(merged, activity.tool)
+    } else {
+      merged.push({ kind: 'approval', approval: { ...activity.approval } })
     }
   }
   return merged
@@ -248,7 +250,9 @@ function mergeProcessActivities(
 function cloneProcessActivities(activities?: ProcessActivity[]): ProcessActivity[] {
   return (activities || []).map(activity => activity.kind === 'reasoning'
     ? { ...activity }
-    : { kind: 'tool', tool: { ...activity.tool } })
+    : activity.kind === 'approval'
+      ? { kind: 'approval', approval: { ...activity.approval } }
+      : { kind: 'tool', tool: { ...activity.tool } })
 }
 
 function mergeToolActivities(
@@ -347,4 +351,29 @@ export function fileLabel(file: MessageFile): string {
   if (file.mediaType.startsWith('image/')) return 'IMG'
   if (file.mediaType === 'application/pdf') return 'PDF'
   return 'FILE'
+}
+
+export function approvalArguments(approval: HumanApprovalRequest): string {
+  try { return JSON.stringify(JSON.parse(approval.redactedArgumentsJson), null, 2) } catch { return approval.redactedArgumentsJson }
+}
+
+/** 审批步骤/操作条的单行参数预览，完整参数在展开后查看。 */
+export function approvalPreview(approval: HumanApprovalRequest): string {
+  let code = approval.redactedArgumentsJson
+  try {
+    const parsed = JSON.parse(approval.redactedArgumentsJson) as Record<string, unknown>
+    if (typeof parsed.code === 'string') code = parsed.code
+  } catch { /* 保留原始文本 */ }
+  const oneLine = code.replace(/\s+/g, ' ').trim()
+  return oneLine.length > 72 ? `${oneLine.slice(0, 72)}…` : oneLine
+}
+
+/** 审批步骤状态文案：与工具步骤的状态徽标语义对齐。 */
+export function approvalStatusText(approval: HumanApprovalRequest): string {
+  if (approval.deciding) return approval.status === 'Approved' ? '执行中' : '取消中'
+  switch (String(approval.status)) {
+    case 'Approved': return '已批准'
+    case 'Rejected': return '已拒绝'
+    default: return '待决策'
+  }
 }

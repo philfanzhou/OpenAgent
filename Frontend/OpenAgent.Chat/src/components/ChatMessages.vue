@@ -5,9 +5,9 @@ import { api } from '../api'
 import { buildCompactionDisplay, buildCompactionTokenDisplay } from '../compactionPresentation'
 import { isMarkdownFile, isTextPreview } from '../composables/useFileHandling'
 import { isSelfContainedImageRef } from '../markdownAssets'
-import { buildConversationTimeline, fileLabel, formatFileSize, toolArgumentsText, toolPresentation } from '../messagePresentation'
+import { approvalArguments, approvalStatusText, buildConversationTimeline, fileLabel, formatFileSize, toolArgumentsText, toolPresentation } from '../messagePresentation'
 import { formatTokenBreakdown, formatTokenCount, formatTokenUsage } from '../tokenUsage'
-import type { ContextSummary, ConversationMessage, CurrentUserContext, HumanApprovalRequest, MessageFile, ProcessActivity, ToolActivity } from '../types'
+import type { ContextSummary, ConversationMessage, CurrentUserContext, MessageFile, ProcessActivity, ToolActivity } from '../types'
 import MarkdownContent from './MarkdownContent.vue'
 
 const props = defineProps<{
@@ -25,7 +25,6 @@ const props = defineProps<{
 const emit = defineEmits<{
   suggest: [value: string]
   download: [file: MessageFile]
-  approvalDecision: [approval: HumanApprovalRequest, approved: boolean]
 }>()
 
 const suggestions = [
@@ -95,11 +94,16 @@ function shouldShowUsage(message: ConversationMessage): boolean {
 }
 
 function processActivities(message: ConversationMessage): ProcessActivity[] {
-  if (message.processActivities?.length) return message.processActivities
-  return [
-    ...(message.reasoning ? [{ kind: 'reasoning' as const, content: message.reasoning }] : []),
-    ...(message.toolActivities || []).map(tool => ({ kind: 'tool' as const, tool })),
-  ]
+  const base = message.processActivities?.length
+    ? message.processActivities
+    : [
+        ...(message.reasoning ? [{ kind: 'reasoning' as const, content: message.reasoning }] : []),
+        ...(message.toolActivities || []).map(tool => ({ kind: 'tool' as const, tool })),
+      ]
+  // 审批作为执行过程的收尾步骤展示，操作入口在消息输入框上方的审批条。
+  return message.approval
+    ? [...base, { kind: 'approval' as const, approval: message.approval }]
+    : base
 }
 
 function processSummary(message: ConversationMessage): string {
@@ -132,21 +136,6 @@ function formatTimestamp(value: string): string {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return ''
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-}
-
-function approvalArguments(approval: HumanApprovalRequest): string {
-  try { return JSON.stringify(JSON.parse(approval.redactedArgumentsJson), null, 2) } catch { return approval.redactedArgumentsJson }
-}
-
-/** 卡片折叠态的单行参数预览，完整参数在展开后查看。 */
-function approvalPreview(approval: HumanApprovalRequest): string {
-  let code = approval.redactedArgumentsJson
-  try {
-    const parsed = JSON.parse(approval.redactedArgumentsJson) as Record<string, unknown>
-    if (typeof parsed.code === 'string') code = parsed.code
-  } catch { /* 保留原始文本 */ }
-  const oneLine = code.replace(/\s+/g, ' ').trim()
-  return oneLine.length > 72 ? `${oneLine.slice(0, 72)}…` : oneLine
 }
 
 function compactionDisplay(summary: ContextSummary) {
@@ -381,23 +370,6 @@ defineExpose({ scrollToBottom })
           <span v-if="formatTimestamp(item.timestamp)">{{ formatTimestamp(item.timestamp) }}</span>
         </div>
 
-        <div v-if="item.approval" class="approval-card" :class="`is-${String(item.approval.status).toLowerCase()}`">
-          <div class="approval-head">
-            <strong>代码执行审批</strong>
-            <span class="approval-action">{{ item.approval.action }}</span>
-          </div>
-          <details class="approval-args">
-            <summary><code>{{ approvalPreview(item.approval) }}</code></summary>
-            <pre>{{ approvalArguments(item.approval) }}</pre>
-          </details>
-          <div v-if="isAwaitingApproval(item)" class="approval-actions">
-            <el-button size="small" type="primary" @click="emit('approvalDecision', item.approval, true)">批准并继续</el-button>
-            <el-button size="small" @click="emit('approvalDecision', item.approval, false)">拒绝</el-button>
-          </div>
-          <small v-else-if="item.approval.deciding" class="approval-deciding"><span class="status-spinner" />{{ item.approval.status === 'Approved' ? '已批准，正在继续执行…' : '正在取消会话…' }}</small>
-          <small v-else>审批状态：{{ item.approval.status }}</small>
-        </div>
-
         <details
           v-if="processActivities(item).length"
           class="process-activity process-bundle"
@@ -411,23 +383,30 @@ defineExpose({ scrollToBottom })
           <div class="process-bundle-body">
             <details
               v-for="(activity, activityIndex) in processActivities(item)"
-              :key="activity.kind === 'tool' ? activity.tool.callId || `${activity.tool.name}-${activityIndex}` : `reasoning-${activityIndex}`"
+              :key="activity.kind === 'tool' ? activity.tool.callId || `${activity.tool.name}-${activityIndex}` : activity.kind === 'approval' ? `approval-${activity.approval.approvalId}` : `reasoning-${activityIndex}`"
               class="process-step"
-              :class="{ running: activity.kind === 'tool' && !activity.tool.result && isStreamingItem(item) }"
+              :class="{ running: (activity.kind === 'tool' && !activity.tool.result || activity.kind === 'approval') && isStreamingItem(item) }"
             >
               <summary class="process-step-head">
                 <span class="process-step-index">{{ activityIndex + 1 }}</span>
                 <span class="process-step-copy">
-                  <strong>{{ activity.kind === 'reasoning' ? '思考' : toolPresentation(activity.tool.name).displayName }}</strong>
-                  <small>{{ activity.kind === 'reasoning' ? '模型推理' : toolPresentation(activity.tool.name).kind }}</small>
+                  <strong>{{ activity.kind === 'reasoning' ? '思考' : activity.kind === 'approval' ? '代码执行审批' : toolPresentation(activity.tool.name).displayName }}</strong>
+                  <small>{{ activity.kind === 'reasoning' ? '模型推理' : activity.kind === 'approval' ? '人工决策' : toolPresentation(activity.tool.name).kind }}</small>
                 </span>
                 <span v-if="activity.kind === 'tool'" class="process-step-status" :class="{ done: activity.tool.result != null, running: isStreamingItem(item) && activity.tool.result == null }">
                   {{ toolStatusText(activity.tool, isStreamingItem(item)) }}
+                </span>
+                <span v-else-if="activity.kind === 'approval'" class="process-step-status" :class="{ running: activity.approval.deciding || String(activity.approval.status) === 'Pending' }">
+                  {{ approvalStatusText(activity.approval) }}
                 </span>
                 <span class="process-step-chevron">›</span>
               </summary>
               <div class="process-step-body">
                 <pre v-if="activity.kind === 'reasoning'" class="process-reasoning">{{ activity.content }}</pre>
+                <div v-else-if="activity.kind === 'approval'" class="process-approval-body">
+                  <div class="tool-section"><span>申请参数</span><pre class="tool-args">{{ approvalArguments(activity.approval) }}</pre></div>
+                  <small v-if="activity.approval.deciding" class="approval-deciding"><span class="status-spinner" />{{ activity.approval.status === 'Approved' ? '已批准，正在继续执行…' : '正在取消会话…' }}</small>
+                </div>
                 <div v-else class="process-tool-body">
                   <div v-if="toolArgumentsText(activity.tool)" class="tool-section"><span>输入</span><pre class="tool-args">{{ toolArgumentsText(activity.tool) }}</pre></div>
                   <div v-if="toolResultText(activity.tool)" class="tool-section"><span>输出</span><pre class="tool-result">{{ toolResultText(activity.tool) }}</pre></div>

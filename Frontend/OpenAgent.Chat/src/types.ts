@@ -77,6 +77,7 @@ export interface ToolActivity {
 export type ProcessActivity =
   | { kind: 'reasoning'; content: string }
   | { kind: 'tool'; tool: ToolActivity }
+  | { kind: 'approval'; approval: HumanApprovalRequest }
 
 export interface MessageFile {
   fileId?: string
