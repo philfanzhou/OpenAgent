@@ -230,9 +230,34 @@ public class CodeCapabilityTests
             [new ChatResponseUpdate(ChatRole.Assistant, "Generated the workbook.")]
         ]);
         var agent = new ChatClientAgent(provider, new ChatClientAgentOptions { ChatOptions = new() { Tools = [function] } });
-        await foreach (AgentResponseUpdate _ in agent.RunStreamingAsync("Read the CSV and create an Excel workbook.")) { }
+        // 工厂给 execute_code 包了审批：先挂起拿到审批请求，再用 CreateResponse 批准并续跑会话。
+        AgentSession session = await agent.CreateSessionAsync();
+        List<AgentResponseUpdate> firstRun = [];
+        await foreach (AgentResponseUpdate update in agent.RunStreamingAsync(
+            "Read the CSV and create an Excel workbook.",
+            session))
+        {
+            firstRun.Add(update);
+        }
+        ToolApprovalRequestContent firstApproval = Assert.Single(
+            firstRun.SelectMany(update => update.Contents ?? []).OfType<ToolApprovalRequestContent>());
+        Assert.Empty(fixture.Executor.Requests);
+
+        List<AgentResponseUpdate> secondRun = [];
+        await foreach (AgentResponseUpdate update in agent.RunStreamingAsync(
+            new ChatMessage(ChatRole.User, [firstApproval.CreateResponse(true, "Approved by integration test.")]),
+            session))
+        {
+            secondRun.Add(update);
+        }
+        ToolApprovalRequestContent secondApproval = Assert.Single(
+            secondRun.SelectMany(update => update.Contents ?? []).OfType<ToolApprovalRequestContent>());
         Assert.Contains(provider.Requests[1].SelectMany(message => message.Contents).OfType<FunctionResultContent>(),
             result => result.CallId == "bad" && result.Result?.ToString()?.Contains("NameError", StringComparison.Ordinal) == true);
+
+        await foreach (AgentResponseUpdate _ in agent.RunStreamingAsync(
+            new ChatMessage(ChatRole.User, [secondApproval.CreateResponse(true, "Approved by integration test.")]),
+            session)) { }
         FunctionResultContent generated = Assert.Single(provider.Requests[2].SelectMany(message => message.Contents)
             .OfType<FunctionResultContent>(), result => result.CallId == "generate");
         using JsonDocument generation = JsonDocument.Parse(generated.Result!.ToString()!);
