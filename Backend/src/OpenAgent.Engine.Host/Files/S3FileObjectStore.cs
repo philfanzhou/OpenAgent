@@ -208,8 +208,7 @@ internal sealed class S3FileObjectStore : IFileObjectStore
 
     private Amazon.S3.Protocol GetPreSignedUrlProtocol()
     {
-        string? endpoint = _options.PublicServiceUrl ?? _options.ServiceUrl;
-        return Uri.TryCreate(endpoint, UriKind.Absolute, out Uri? uri)
+        return Uri.TryCreate(_options.ServiceUrl, UriKind.Absolute, out Uri? uri)
             && uri.Scheme == Uri.UriSchemeHttp
             ? Amazon.S3.Protocol.HTTP
             : Amazon.S3.Protocol.HTTPS;

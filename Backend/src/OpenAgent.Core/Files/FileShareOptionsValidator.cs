@@ -29,6 +29,18 @@ internal sealed class FileShareOptionsValidator : IValidateOptions<FileShareOpti
             // 硬上限 365 天：配置也不能放开，杜绝永久有效的分享链接。
             failures.Add($"FileAssets:Share:MaxLifetimeSeconds cannot exceed {FileShareOptions.MaxLifetimeLimitSeconds} seconds (365 days).");
         }
+        if (options.UserAudienceLifetimeSeconds <= 0 || options.UserAudienceLifetimeSeconds > options.MaxLifetimeSeconds)
+        {
+            failures.Add("FileAssets:Share:UserAudienceLifetimeSeconds must be within (0, MaxLifetimeSeconds].");
+        }
+        if (options.McpAudienceLifetimeSeconds <= 0 || options.McpAudienceLifetimeSeconds > options.MaxLifetimeSeconds)
+        {
+            failures.Add("FileAssets:Share:McpAudienceLifetimeSeconds must be within (0, MaxLifetimeSeconds].");
+        }
+        if (options.McpAudienceMaxDownloads < 1)
+        {
+            failures.Add("FileAssets:Share:McpAudienceMaxDownloads must be at least 1.");
+        }
         if (Uri.TryCreate(options.PublicBaseUrl, UriKind.Absolute, out Uri? uri)
             && uri.Scheme != Uri.UriSchemeHttp
             && uri.Scheme != Uri.UriSchemeHttps)

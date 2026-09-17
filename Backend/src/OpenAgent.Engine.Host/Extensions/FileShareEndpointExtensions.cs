@@ -54,12 +54,31 @@ internal static class FileShareEndpointExtensions
         string fileId,
         CancellationToken cancellationToken)
     {
-        FileShareMode? mode = FileShareModeParser.Parse(request?.Mode);
-        if (mode == null)
+        // mode/audience 均可选：不指定时走 audience 默认策略（REST 是用户入口，默认 user：3 天、不限次）。
+        FileShareMode? mode = null;
+        string? modeText = request?.Mode;
+        if (!string.IsNullOrWhiteSpace(modeText))
         {
-            throw new AgentException(
-                AgentErrorCode.InvalidRequest,
-                "Mode must be one of: temporary, singleUse, longTerm.");
+            if (!FileShareModeParser.TryParse(modeText, out FileShareMode parsedMode))
+            {
+                throw new AgentException(
+                    AgentErrorCode.InvalidRequest,
+                    "Mode must be one of: temporary, singleUse, longTerm.");
+            }
+            mode = parsedMode;
+        }
+
+        FileShareAudience? audience = null;
+        string? audienceText = request?.Audience;
+        if (!string.IsNullOrWhiteSpace(audienceText))
+        {
+            if (!FileShareAudienceParser.TryParse(audienceText, out FileShareAudience parsedAudience))
+            {
+                throw new AgentException(
+                    AgentErrorCode.InvalidRequest,
+                    "Audience must be one of: mcp, user.");
+            }
+            audience = parsedAudience;
         }
 
         FileShareLink share = await shares.CreateAsync(
@@ -69,7 +88,7 @@ internal static class FileShareEndpointExtensions
                 TenantId = AgentEndpointRequestMapper.RequireTenant(context),
                 UserId = context.GetAgentRequest().User.UserId
             },
-            new FileShareRequest { Mode = mode.Value, ExpiresInSeconds = request?.ExpiresInSeconds },
+            new FileShareRequest { Mode = mode, Audience = audience, ExpiresInSeconds = request?.ExpiresInSeconds },
             cancellationToken).ConfigureAwait(false);
         return Results.Ok(new
         {
@@ -138,5 +157,5 @@ internal static class FileShareEndpointExtensions
             ? $"{context.Request.Scheme}://{context.Request.Host}{url}"
             : url;
 
-    internal sealed record FileShareCreateRequest(string? Mode, int? ExpiresInSeconds);
+    internal sealed record FileShareCreateRequest(string? Mode, int? ExpiresInSeconds, string? Audience);
 }

@@ -37,26 +37,41 @@ LLM Profile 选择 `Multimodal` 时，聊天请求中的 `image/*` 资产会在�
 对象键布局或 Access Key。数据库只保存令牌的 SHA-256 哈希，与第三方 API Key 的存储约定一致；下载计数通过
 条件 `UPDATE` 原子核销，多实例部署下“单次下载”仍然严格。
 
-链接策略（`mode`）：
+链接策略有两层：**消费方默认**（`audience`，未显式指定 `mode` 时生效）与**显式模式**（`mode`）。
+
+消费方默认策略（`audience`）：
+
+| 消费方 | 默认有效期 | 默认下载限制 |
+|---|---|---|
+| `mcp`（交给第三方 MCP 工具拉取） | 2 小时 | 最多 2 次 |
+| `user`（交给最终用户；默认值） | 3 天 | 不限次数 |
+
+显式模式（`mode`，指定后覆盖 audience 默认）：
 
 | 模式 | 有效期默认值 | 下载限制 |
 |---|---|---|
-| `temporary`（默认） | 15 分钟 | 有效期内不限次数 |
+| `temporary` | 15 分钟 | 有效期内不限次数 |
 | `singleUse` | 24 小时 | 仅 1 次，下载后立即失效 |
 | `longTerm` | 30 天 | 有效期内不限次数 |
 
-`expiresInSeconds` 可覆盖所选模式的默认时长，实现自定义失效日期；必须为正数，上限受
+按 audience 默认生成的分享在查询列表中显示为 `Custom` 模式，实际有效期/次数以
+`ExpiresAt`/`MaxDownloads` 为准。REST 创建端点（`POST /files/{fileId}/share`，body 也可带
+`audience`）不指定任何参数时按 `user` 默认策略生成。
+
+`expiresInSeconds` 可覆盖模式或消费方的默认时长，实现自定义失效日期；必须为正数，上限受
 `FileAssets:Share:MaxLifetimeSeconds` 约束，而该配置本身有 **365 天硬上限**
 （`FileShareOptions.MaxLifetimeLimitSeconds`，配置超过会在启动校验时失败），因此不存在永久有效的分享。
 各默认时长通过 `FileAssets:Share` 配置：`TemporaryLifetimeSeconds`、`SingleUseLifetimeSeconds`、
-`LongTermLifetimeSeconds`；绝对地址基地址配置 `FileAssets:Share:PublicBaseUrl`（未配置时 REST
+`LongTermLifetimeSeconds`、`UserAudienceLifetimeSeconds`、`McpAudienceLifetimeSeconds`、
+`McpAudienceMaxDownloads`；绝对地址基地址配置 `FileAssets:Share:PublicBaseUrl`（未配置时 REST
 创建按请求 origin 拼接，模型工具返回相对路径——部署时应配置该值，例如环境变量
 `OPENAGENT_SHARE_PUBLIC_BASE_URL`，保证返回的 URL 始终是可直达的绝对地址）。
 
-模型侧由大模型调用内部工具 `create_file_transfer_url` 生成（保持原工具名），新增可选参数 `mode` 与
-`expiresInSeconds`；REST 侧前端可调用 `POST /api/v1/agent/files/{fileId}/share`。两个场景不变：
+模型侧由大模型调用内部工具 `create_file_transfer_url` 生成（保持原工具名），可选参数 `audience`、`mode` 与
+`expiresInSeconds`；REST 侧前端可调用 `POST /api/v1/agent/files/{fileId}/share`（body 同样支持
+`audience`）。两个场景不变：
 
-- **MCP 跨系统传输**：大模型判断某个第三方 MCP 工具需要文件 URL 时调用，并把返回的 URL 作为参数传给该 MCP 工具。
+- **MCP 跨系统传输**：大模型判断某个第三方 MCP 工具需要文件 URL 时调用（传 `audience="mcp"`，默认 2 小时/2 次下载），并把返回的 URL 作为参数传给该 MCP 工具。
 - **用户下载/分享链接**：用户需要直接下载链接时调用，把 URL 作为分享链接交给用户；必须同时告知有效期（`expiresAt`）与下载限制（`singleUse` 链接下载一次后失效），不得表述为永久链接。
 
 创建响应与列表项都带 `shareId`（令牌哈希），用户可通过
@@ -80,6 +95,7 @@ LLM Profile 选择 `Multimodal` 时，聊天请求中的 `image/*` 资产会在�
 `fileId` 是 OpenAgent 的业务资产 ID；`url` 指向本平台分享端点，不包含 `objectKey` 或任何 S3 定位信息；
 接收方无需对象存储凭据。普通上传、查询、预览、认证下载和聊天流程不生成分享链接。
 
-> 兼容说明：对象存储层的 `CreateReadUrlAsync`（S3 预签名）与 `FileAssets:ObjectStorage:PublicServiceUrl`
-> 仍作为底层能力保留，但当前对外链路（模型工具与 REST 分享）已不再使用预签名 URL；公网入口无需再为
-> 预签名 Host 一致性做特殊配置。
+> 兼容说明：对象存储层的 `CreateReadUrlAsync`（S3 预签名）仍作为底层能力保留，但所有对外链路
+>（模型工具与 REST 分享）不再使用预签名 URL；`PublicServiceUrl` 配置与
+> `OPENAGENT_S3_PUBLIC_SERVICE_URL` 环境变量已移除，S3 只需配置内部服务地址
+> `ServiceUrl`，无需公网域名。

@@ -33,8 +33,7 @@ internal sealed class FileShareService(
         }
         EnsureTenantObjectKey(asset.ObjectKey, scope.TenantId);
 
-        DateTimeOffset expiresAt = ResolveExpiryAt(request);
-        int? maxDownloads = request.Mode == FileShareMode.SingleUse ? 1 : null;
+        (DateTimeOffset expiresAt, int? maxDownloads, FileShareMode mode) = ResolvePolicy(request);
         string token = FileShareTokens.NewToken();
         DateTimeOffset createdAt = DateTimeOffset.UtcNow;
         string shareIdHash = FileShareTokens.Hash(token);
@@ -49,7 +48,7 @@ internal sealed class FileShareService(
                 FileName = asset.FileName,
                 MediaType = asset.MediaType,
                 Length = asset.Length,
-                Mode = request.Mode,
+                Mode = mode,
                 ExpiresAt = expiresAt,
                 MaxDownloads = maxDownloads,
                 DownloadCount = 0,
@@ -64,7 +63,7 @@ internal sealed class FileShareService(
             FileName = asset.FileName,
             MediaType = asset.MediaType,
             Length = asset.Length,
-            Mode = request.Mode,
+            Mode = mode,
             Url = BuildUrl(token),
             ExpiresAt = expiresAt,
             MaxDownloads = maxDownloads,
@@ -146,15 +145,41 @@ internal sealed class FileShareService(
         CreatedAt = record.CreatedAt
     };
 
-    private DateTimeOffset ResolveExpiryAt(FileShareRequest request)
+    /// <summary>
+    /// 解析最终策略：显式 mode 优先（含其默认时长与下载限制）；未指定 mode 时按
+    /// audience 默认策略（MCP：短有效期限次；User：较长有效期不限次）生成 Custom 分享。
+    /// expiresInSeconds 在两种来源下都覆盖默认时长。
+    /// </summary>
+    private (DateTimeOffset ExpiresAt, int? MaxDownloads, FileShareMode Mode) ResolvePolicy(
+        FileShareRequest request)
     {
         FileShareOptions settings = options.Value;
-        int lifetimeSeconds = request.Mode switch
+        int lifetimeSeconds;
+        int? maxDownloads;
+        FileShareMode mode;
+        if (request.Mode is { } explicitMode)
         {
-            FileShareMode.SingleUse => settings.SingleUseLifetimeSeconds,
-            FileShareMode.LongTerm => settings.LongTermLifetimeSeconds,
-            _ => settings.TemporaryLifetimeSeconds
-        };
+            mode = explicitMode;
+            (lifetimeSeconds, maxDownloads) = explicitMode switch
+            {
+                FileShareMode.SingleUse => (settings.SingleUseLifetimeSeconds, (int?)1),
+                FileShareMode.LongTerm => (settings.LongTermLifetimeSeconds, null),
+                _ => (settings.TemporaryLifetimeSeconds, null)
+            };
+        }
+        else if (request.Audience == FileShareAudience.Mcp)
+        {
+            mode = FileShareMode.Custom;
+            lifetimeSeconds = settings.McpAudienceLifetimeSeconds;
+            maxDownloads = settings.McpAudienceMaxDownloads;
+        }
+        else
+        {
+            mode = FileShareMode.Custom;
+            lifetimeSeconds = settings.UserAudienceLifetimeSeconds;
+            maxDownloads = null;
+        }
+
         if (request.ExpiresInSeconds is not null)
         {
             if (request.ExpiresInSeconds.Value <= 0)
@@ -174,7 +199,7 @@ internal sealed class FileShareService(
             lifetimeSeconds = request.ExpiresInSeconds.Value;
         }
 
-        return DateTimeOffset.UtcNow.AddSeconds(lifetimeSeconds);
+        return (DateTimeOffset.UtcNow.AddSeconds(lifetimeSeconds), maxDownloads, mode);
     }
 
     private string BuildUrl(string token)

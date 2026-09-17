@@ -21,13 +21,93 @@ public class FileShareServiceTests
         FileShareLink link = await harness.Service.CreateAsync(
             asset.FileId,
             Scope(),
-            new FileShareRequest(),
+            new FileShareRequest { Mode = FileShareMode.Temporary },
             CancellationToken.None);
 
         Assert.Null(link.MaxDownloads);
         Assert.InRange((link.ExpiresAt - DateTimeOffset.UtcNow).TotalSeconds, 890, 900);
         Assert.StartsWith($"{IFileShareService.RoutePrefix}/", link.Url, StringComparison.Ordinal);
         Assert.DoesNotContain(asset.ObjectKey, link.Url, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task CreateAsync_McpAudience_DefaultsTo2HoursAnd2Downloads()
+    {
+        var repository = new RecordingFileAssetRepository();
+        FileAsset asset = CreateAsset();
+        repository.Assets[asset.FileId] = asset;
+        Harness harness = CreateHarness(repository);
+
+        FileShareLink link = await harness.Service.CreateAsync(
+            asset.FileId,
+            Scope(),
+            new FileShareRequest { Audience = FileShareAudience.Mcp },
+            CancellationToken.None);
+
+        Assert.Equal(2, link.MaxDownloads);
+        Assert.Equal(FileShareMode.Custom, link.Mode);
+        Assert.InRange((link.ExpiresAt - DateTimeOffset.UtcNow).TotalHours, 1.99, 2.01);
+        FileShareLinkRecord record = Assert.Single(harness.Shares.Records.Values);
+        Assert.Equal(2, record.MaxDownloads);
+        Assert.Equal(FileShareMode.Custom, record.Mode);
+    }
+
+    [Theory]
+    [InlineData(FileShareAudience.User)]
+    [InlineData(null)]
+    public async Task CreateAsync_UserAudienceOrDefault_DefaultsTo3DaysUnlimited(FileShareAudience? audience)
+    {
+        var repository = new RecordingFileAssetRepository();
+        FileAsset asset = CreateAsset();
+        repository.Assets[asset.FileId] = asset;
+        Harness harness = CreateHarness(repository);
+
+        FileShareLink link = await harness.Service.CreateAsync(
+            asset.FileId,
+            Scope(),
+            new FileShareRequest { Audience = audience },
+            CancellationToken.None);
+
+        Assert.Null(link.MaxDownloads);
+        Assert.Equal(FileShareMode.Custom, link.Mode);
+        Assert.InRange((link.ExpiresAt - DateTimeOffset.UtcNow).TotalDays, 2.99, 3.01);
+    }
+
+    [Fact]
+    public async Task CreateAsync_ExplicitMode_OverridesAudienceDefaults()
+    {
+        var repository = new RecordingFileAssetRepository();
+        FileAsset asset = CreateAsset();
+        repository.Assets[asset.FileId] = asset;
+        Harness harness = CreateHarness(repository);
+
+        FileShareLink link = await harness.Service.CreateAsync(
+            asset.FileId,
+            Scope(),
+            new FileShareRequest { Mode = FileShareMode.Temporary, Audience = FileShareAudience.Mcp },
+            CancellationToken.None);
+
+        Assert.Equal(FileShareMode.Temporary, link.Mode);
+        Assert.Null(link.MaxDownloads);
+        Assert.InRange((link.ExpiresAt - DateTimeOffset.UtcNow).TotalSeconds, 890, 900);
+    }
+
+    [Fact]
+    public async Task CreateAsync_McpAudienceWithCustomExpiry_OverridesLifetimeOnly()
+    {
+        var repository = new RecordingFileAssetRepository();
+        FileAsset asset = CreateAsset();
+        repository.Assets[asset.FileId] = asset;
+        Harness harness = CreateHarness(repository);
+
+        FileShareLink link = await harness.Service.CreateAsync(
+            asset.FileId,
+            Scope(),
+            new FileShareRequest { Audience = FileShareAudience.Mcp, ExpiresInSeconds = 600 },
+            CancellationToken.None);
+
+        Assert.Equal(2, link.MaxDownloads);
+        Assert.InRange((link.ExpiresAt - DateTimeOffset.UtcNow).TotalSeconds, 590, 605);
     }
 
     [Fact]

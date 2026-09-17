@@ -58,4 +58,40 @@ public class FileShareOptionsValidatorTests
 
         Assert.False(result.Succeeded);
     }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void Validate_NonPositiveAudienceLifetimes_Fail(int lifetimeSeconds)
+    {
+        ValidateOptionsResult result = _validator.Validate(
+            null,
+            new FileShareOptions { McpAudienceLifetimeSeconds = lifetimeSeconds });
+
+        Assert.False(result.Succeeded);
+    }
+
+    [Fact]
+    public void Validate_AudienceLifetimeAboveMaxLifetime_Fails()
+    {
+        ValidateOptionsResult result = _validator.Validate(
+            null,
+            new FileShareOptions
+            {
+                MaxLifetimeSeconds = 600,
+                UserAudienceLifetimeSeconds = 3600
+            });
+
+        Assert.False(result.Succeeded);
+    }
+
+    [Fact]
+    public void Validate_McpAudienceMaxDownloadsBelowOne_Fails()
+    {
+        ValidateOptionsResult result = _validator.Validate(
+            null,
+            new FileShareOptions { McpAudienceMaxDownloads = 0 });
+
+        Assert.False(result.Succeeded);
+    }
 }

@@ -62,13 +62,60 @@ public class FileAssetCapabilitySourceTests
         Assert.Equal(asset.FileId, document.RootElement.GetProperty("fileId").GetString());
         string url = document.RootElement.GetProperty("url").GetString()!;
         Assert.StartsWith($"{IFileShareService.RoutePrefix}/", url, StringComparison.Ordinal);
-        Assert.Equal("Temporary", document.RootElement.GetProperty("mode").GetString());
+        // 未指定 mode/audience：默认 user 策略（3 天、不限次），列表模式显示 Custom。
+        Assert.Equal("Custom", document.RootElement.GetProperty("mode").GetString());
         Assert.Equal(JsonValueKind.Null, document.RootElement.GetProperty("maxDownloads").ValueKind);
         Assert.True(document.RootElement.GetProperty("expiresAt").GetDateTimeOffset()
-            > DateTimeOffset.UtcNow.AddMinutes(10));
+            > DateTimeOffset.UtcNow.AddDays(2.9));
         // 链接由平台分享服务核销，不暴露对象存储地址或键。
         Assert.DoesNotContain(asset.ObjectKey, url, StringComparison.Ordinal);
         Assert.Single(harness.Shares.Records.Values, record => record.FileId == asset.FileId);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_CreateTransferUrl_McpAudienceDefaultsToShortAndLimited()
+    {
+        TestHarness harness = CreateHarness();
+        FileAsset asset = CreateAsset("report.pdf", "application/pdf");
+        harness.Repository.Assets[asset.FileId] = asset;
+        harness.Repository.References.Add($"conversation-a:{asset.FileId}");
+
+        string result = await InvokeAsync(
+            harness.Source,
+            "create_file_transfer_url",
+            new Dictionary<string, object?>
+            {
+                ["fileId"] = asset.FileId,
+                ["audience"] = "mcp"
+            });
+
+        using JsonDocument document = JsonDocument.Parse(result);
+        Assert.Equal("Custom", document.RootElement.GetProperty("mode").GetString());
+        Assert.Equal(2, document.RootElement.GetProperty("maxDownloads").GetInt32());
+        FileShareLinkRecord record = Assert.Single(harness.Shares.Records.Values);
+        Assert.Equal(2, record.MaxDownloads);
+        Assert.InRange((record.ExpiresAt - DateTimeOffset.UtcNow).TotalHours, 1.99, 2.01);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_CreateTransferUrl_RejectsUnknownAudience()
+    {
+        TestHarness harness = CreateHarness();
+        FileAsset asset = CreateAsset("report.pdf", "application/pdf");
+        harness.Repository.Assets[asset.FileId] = asset;
+        harness.Repository.References.Add($"conversation-a:{asset.FileId}");
+
+        string result = await InvokeAsync(
+            harness.Source,
+            "create_file_transfer_url",
+            new Dictionary<string, object?>
+            {
+                ["fileId"] = asset.FileId,
+                ["audience"] = "everyone"
+            });
+
+        Assert.Contains("audience", result, StringComparison.Ordinal);
+        Assert.Empty(harness.Shares.Records);
     }
 
     [Fact]

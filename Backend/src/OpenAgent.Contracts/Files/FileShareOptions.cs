@@ -22,6 +22,15 @@ public sealed class FileShareOptions
 
     public int LongTermLifetimeSeconds { get; init; } = 2_592_000;
 
+    /// <summary>交给最终用户（未显式指定 mode）时的默认有效期：3 天。</summary>
+    public int UserAudienceLifetimeSeconds { get; init; } = 259_200;
+
+    /// <summary>交给第三方 MCP 工具时的默认有效期：2 小时。</summary>
+    public int McpAudienceLifetimeSeconds { get; init; } = 7_200;
+
+    /// <summary>交给第三方 MCP 工具时的默认下载次数上限。</summary>
+    public int McpAudienceMaxDownloads { get; init; } = 2;
+
     /// <summary>自定义有效期的上限，防止长期链接被无限延长；最大不能超过 <see cref="MaxLifetimeLimitSeconds"/>（365 天）。</summary>
     public int MaxLifetimeSeconds { get; init; } = MaxLifetimeLimitSeconds;
 }
