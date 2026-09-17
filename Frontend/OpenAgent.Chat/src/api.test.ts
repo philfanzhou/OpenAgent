@@ -370,6 +370,48 @@ describe('workspace API', () => {
     expect((fetchMock.mock.calls[0]?.[1] as RequestInit).method).toBe('POST')
   })
 
+  it('pages through llm interaction logs for a conversation', async () => {
+    setConnectionMode('router')
+    setRouterBaseUrl('http://router.example/')
+    const interaction = {
+      interactionId: 'interaction-1',
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      conversationId: 'conversation/1',
+      traceId: 'trace-1',
+      source: 'AgentTurn',
+      modelId: 'test-model',
+      streamed: true,
+      callIndex: 0,
+      requestJson: null,
+      responseJson: null,
+      status: 'Succeeded',
+      startedAt: '2026-09-17T00:00:00Z',
+      durationMs: 100,
+    }
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(Array.from({ length: 100 }, (_, index) => ({ ...interaction, interactionId: `interaction-${index}` }))), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([interaction]), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await api.getAllLlmInteractions('conversation/1')
+
+    expect(result).toHaveLength(101)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      'http://router.example/api/v1/agent/conversations/conversation%2F1/llm-interactions?skip=0&take=100',
+    )
+    expect(fetchMock.mock.calls[1]?.[0]).toBe(
+      'http://router.example/api/v1/agent/conversations/conversation%2F1/llm-interactions?skip=100&take=100',
+    )
+  })
+
   it('parses the engine health report into typed items', async () => {
     const report = {
       status: 'Healthy',

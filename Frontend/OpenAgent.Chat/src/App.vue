@@ -5,6 +5,7 @@ import { api } from './api'
 import ChatHeader from './components/ChatHeader.vue'
 import ChatMessages from './components/ChatMessages.vue'
 import ChatSidebar from './components/ChatSidebar.vue'
+import InteractionTimeline from './components/InteractionTimeline.vue'
 import LoginPage from './components/LoginPage.vue'
 import MessageComposer from './components/MessageComposer.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
@@ -17,7 +18,7 @@ import { usePanelLayout } from './composables/usePanelLayout'
 import { useSettings } from './composables/useSettings'
 import { createSessionLog, parseSessionLog } from './sessionLog'
 import { formatCacheHitRate, formatContextUsage, formatTokenCount } from './tokenUsage'
-import { AUTO_AGENT_ID, type AgentSummary, type CurrentUserContext } from './types'
+import { AUTO_AGENT_ID, type AgentSummary, type CurrentUserContext, type LlmInteraction } from './types'
 
 const agents = ref<AgentSummary[]>([])
 const currentUser = ref<CurrentUserContext | null>(null)
@@ -169,14 +170,55 @@ const { message, send, stopStreaming, clearDraft } = chatStreaming
 
 const chatMessagesRef = ref<InstanceType<typeof ChatMessages> | null>(null)
 
-function exportSessionLog(): void {
+const conversationInteractions = ref<LlmInteraction[]>([])
+const interactionsLoading = ref(false)
+const interactionsLoadedFor = ref('')
+
+const currentInteractions = computed<LlmInteraction[]>(() => {
+  const conversation = selectedConversation.value
+  if (!conversation) return []
+  return conversation.replayOnly ? (conversation.interactions || []) : conversationInteractions.value
+})
+
+async function loadInteractions(force = false): Promise<void> {
+  const conversation = selectedConversation.value
+  if (!conversation || conversation.replayOnly || interactionsLoading.value) return
+  if (!force && interactionsLoadedFor.value === conversation.conversationId) return
+  interactionsLoading.value = true
+  try {
+    conversationInteractions.value = await api.getAllLlmInteractions(conversation.conversationId)
+    interactionsLoadedFor.value = conversation.conversationId
+  } catch (error) {
+    notifyError(error)
+  } finally {
+    interactionsLoading.value = false
+  }
+}
+
+watch(() => selectedConversation.value?.conversationId, () => {
+  conversationInteractions.value = []
+  interactionsLoadedFor.value = ''
+})
+
+async function exportSessionLog(): Promise<void> {
   const conversation = selectedConversation.value
   if (!conversation) {
     notifyError(new Error('请先选择一个会话'))
     return
   }
 
-  const content = JSON.stringify(createSessionLog(conversation), null, 2)
+  let interactions: LlmInteraction[] = []
+  if (conversation.replayOnly) {
+    interactions = conversation.interactions || []
+  } else {
+    try {
+      interactions = await api.getAllLlmInteractions(conversation.conversationId)
+    } catch (error) {
+      ElMessage.warning('交互日志获取失败，导出仅包含前端时间线')
+    }
+  }
+
+  const content = JSON.stringify(createSessionLog(conversation, interactions), null, 2)
   const url = URL.createObjectURL(new Blob([content], { type: 'application/json' }))
   const anchor = document.createElement('a')
   const name = (conversation.title || conversation.conversationId)
@@ -199,8 +241,11 @@ async function importSessionLog(event: Event): Promise<void> {
   if (!file) return
 
   try {
-    importReplayConversation(parseSessionLog(await file.text()))
-    ElMessage.success('会话日志已导入，可在只读模式下重放')
+    const parsed = parseSessionLog(await file.text())
+    importReplayConversation(parsed.conversation, parsed.interactions)
+    ElMessage.success(parsed.interactions.length
+      ? '会话日志已导入，可在只读模式下重放并对照交互日志'
+      : '会话日志已导入（未包含交互日志），可在只读模式下重放')
   } catch (error) {
     notifyError(error)
   }
@@ -333,6 +378,7 @@ onBeforeUnmount(() => {
           <section><span class="context-label">ROUTING</span><strong>{{ routeMode }}</strong><p>{{ connectionMode === 'router' && selectedAgentId === AUTO_AGENT_ID ? '由意图识别 Agent 分析请求并选择目标。' : (selectedAgent?.description || selectedAgentId) }}</p><dl><div><dt>Agent</dt><dd>{{ connectionMode === 'router' && selectedAgentId === AUTO_AGENT_ID ? '自动选择' : (selectedAgent?.name || selectedAgentId) }}</dd></div><div><dt>模型</dt><dd>{{ llmProfiles.find(item => item.id === selectedLlmProfileId)?.modelId || '未选择' }}</dd></div></dl></section>
           <section><span class="context-label">IDENTITY</span><dl><div><dt>用户名</dt><dd>{{ currentUser?.username || '未设置' }}</dd></div><div><dt>邮箱</dt><dd :title="currentUser?.email">{{ currentUser?.email || '未设置' }}</dd></div><div><dt>ID</dt><dd :title="currentUser?.userId">{{ currentUser?.userId || 'Guest' }}</dd></div><div><dt>租户</dt><dd>{{ currentUser?.tenantId || tenantId || '—' }}</dd></div><div><dt>{{ activeEndpointLabel }}</dt><dd :title="activeEndpointUrl">{{ activeEndpointHost }}</dd></div></dl></section>
           <section><span class="context-label">CONVERSATION</span><dl><div><dt>消息</dt><dd>{{ currentMessages.length }}</dd></div><div><dt>状态</dt><dd>{{ conversationStatusText }}</dd></div><div><dt>ID</dt><dd class="conversation-id" :title="selectedConversation?.conversationId">{{ selectedConversation?.conversationId || '尚未创建' }}</dd></div></dl><div class="conversation-usage"><div class="token-usage-head"><span>Token</span><span class="token-usage-status" :class="{ unavailable: !currentUsageSummary.available }">{{ currentUsageSummary.available ? (currentUsageSummary.estimated ? '预估' : '完整') : '部分' }}</span></div><div class="context-usage-row"><span>本轮上下文</span><strong>{{ currentContextUsage || '—' }}</strong></div><template v-if="currentUsageSummary.available && currentUsageSummary.usage"><div class="token-usage-total"><strong>{{ currentUsageSummary.estimated ? '≈' : '' }}{{ formatTokenCount(currentUsageSummary.usage.totalTokens) }}</strong><small>累计总计</small></div><dl class="token-usage-grid"><div><dt>输入累计</dt><dd>{{ formatTokenCount(currentUsageSummary.usage.promptTokens) }}</dd></div><div><dt>输出累计</dt><dd>{{ currentUsageSummary.estimated ? '≈' : '' }}{{ formatTokenCount(currentUsageSummary.usage.completionTokens) }}</dd></div><div><dt>缓存命中</dt><dd>{{ currentUsageSummary.usage.cachedInputTokens != null ? formatTokenCount(currentUsageSummary.usage.cachedInputTokens) : '—' }}</dd></div><div><dt>命中率</dt><dd>{{ formatCacheHitRate(currentUsageSummary.usage.cachedInputTokens, currentUsageSummary.usage.promptTokens) ?? '—' }}</dd></div><div class="grid-span-two"><dt>思考</dt><dd>{{ currentUsageSummary.usage.reasoningTokens != null ? formatTokenCount(currentUsageSummary.usage.reasoningTokens) : '—' }}</dd></div></dl></template><template v-else><strong class="unavailable">—</strong><small>Provider usage 不完整</small></template></div></section>
+          <section v-if="selectedConversation" class="inspector-interactions"><span class="context-label">INTERACTIONS</span><InteractionTimeline :interactions="currentInteractions" :conversation="selectedConversation" :loading="interactionsLoading" :replay="!!selectedConversation.replayOnly" @load="loadInteractions()" @refresh="loadInteractions(true)" /></section>
           <section class="inspector-actions"><span class="context-label">OPERATIONS</span><input ref="sessionLogInput" class="file-input" type="file" accept=".json,application/json" @change="importSessionLog" /><div class="inspector-action-grid"><el-button class="inspector-action inspector-action-primary" size="small" :loading="compactingConversation" :disabled="!selectedConversation || !selectedLlmProfileId || selectedConversationStreaming || selectedConversation?.replayOnly" @click="compactConversation"><span class="inspector-action-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h7m-7 0 3-3m-3 3 3 3M21 16h-7m7-3-3-3m3 3-3 3" /></svg></span><span>手动压缩</span></el-button><el-button class="inspector-action" size="small" @click="openSettings('health')"><span class="inspector-action-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2-5 4 10 2-5h6" /></svg></span><span>健康检查</span></el-button><el-button class="inspector-action" size="small" :disabled="!selectedConversation" @click="exportSessionLog"><span class="inspector-action-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14" /></svg></span><span>导出日志</span></el-button><el-button class="inspector-action" size="small" @click="openSessionLogPicker"><span class="inspector-action-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21V9m0 0 4 4m-4-4-4 4M5 3h14" /></svg></span><span>导入日志</span></el-button></div></section>
           <div class="context-resize" @pointerdown="startContextResize" />
         </aside>

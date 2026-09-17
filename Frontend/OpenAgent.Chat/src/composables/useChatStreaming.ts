@@ -178,6 +178,7 @@ export function useChatStreaming(options: ChatStreamingOptions) {
           conversation.status = (event.status || 'Completed') as ConversationRecord['status']
           assistantMessage.tokenUsage = event.usage ?? undefined
           assistantMessage.modelId = event.modelId ?? undefined
+          assistantMessage.traceId = event.traceId ?? undefined
         } else if (event.type === 'error') {
           flushStream?.()
           streamError = {
