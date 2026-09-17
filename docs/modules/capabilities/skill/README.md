@@ -13,6 +13,7 @@ OpenAgent 使用 MAF 官方 `AgentSkillsProvider` 提供 Agent Skills。Web 端�
 | 权限过滤 | 在创建 provider 前按 Agent、Skill 和用户 ACL 过滤 |
 | 生命周期 | `AgentExecutionScope` 释放 provider 并删除临时目录 |
 | 脚本执行 | 默认禁用。宿主 `CodeExecution.Enabled` + Agent `CodeExecution` 绑定 + `SkillInstanceConfig.ScriptExecutionEnabled` 全部开启后，仅 `.py` 脚本经隔离 Runner 执行（详见下文） |
+| 脚本清单 | 上传时扫描包内 `.py` 文件，把相对路径记录到 `SkillInstanceConfig.ScriptNames`（`ScriptCount` 为派生值）；供管理端展示与开启前审阅 |
 
 ## Architecture
 
@@ -36,6 +37,12 @@ ChatClientAgent.AIContextProviders
 
 Skill 指令加载与资源读取默认启用；包内脚本默认完全不可执行。脚本执行需要三层开关同时开启：宿主 `CodeExecution.Enabled`（隔离 Runner 已部署）、Agent 配置的 `CodeExecution` 绑定、以及 `SkillInstanceConfig.ScriptExecutionEnabled`（按 Skill 实例，默认 false）。未全部开启时 `ScriptFilter` 不披露任何脚本，runner 显式拒绝执行。
 
+### 上传 Skill 与脚本执行配置
+
+上传的包被视为不可信代码：上传接口（`POST /api/v1/admin/skills/packages` 与 `POST /api/v1/admin/skills/{agentId}/packages`）接受可选 multipart 字段 `scriptExecutionEnabled`，缺省为 false；即使显式传 true，包内没有 `.py` 脚本也会被 400 拒绝。上传时扫描出的脚本相对路径记入 `ScriptNames` 随实例保存。重新上传（覆盖同名 Skill）会把开关重置为 false——新代码需要重新审阅开启。
+
+已上传的 Skill 通过 `PATCH /api/v1/admin/skills/{skillId}`（body `{ "scriptExecutionEnabled": bool }`）开启或关闭：服务端从对象存储重新读取包清单校验脚本存在（旧包没有 `ScriptNames` 记录也能正确处理），刷新清单后写回目录。Chat 前端在 Skill 目录表格中展示脚本数量与清单，并在开启时弹出信任确认；Agent 绑定选择器同时展示脚本数。该开关只管理披露面；运行时仍受上述三层开关、沙箱约束与授权复核限制。
+
 开启后脚本也绝不在 Engine 进程内执行：`SkillScriptRunner` 将脚本与其同目录文件挂载为沙箱 `/input` 输入，经生成的 wrapper `main.py` 以 `runpy` 在 Bubblewrap 沙箱内启动（无网络、非 root、固定 venv）。约束与 `execute_code` 完全一致：
 
 - 仅 `.py` 脚本；shell 与其他解释器不披露、不执行；
@@ -52,5 +59,5 @@ Skill 只允许本地持久化来源：数据库中的目录元数据和租户�
 ## Source
 
 - Core: `Backend/src/OpenAgent.Core/Capabilities/Skill/AgentSkillsProviderFactory.cs`、`SkillScriptRunner.cs`
-- Host: `Backend/src/OpenAgent.Engine.Host/Skills/SkillPackageManagementService.cs`
-- Tests: `Backend/tests/OpenAgent.Core.Tests/Capabilities/AgentSkillPackageArchiveTests.cs`、`SkillScriptRunnerTests.cs`、`AgentSkillsProviderFactoryTests.cs`
+- Host: `Backend/src/OpenAgent.Engine.Host/Skills/SkillPackageManagementService.cs`、`Backend/src/OpenAgent.Engine.Host/Extensions/ManagementEndpointExtensions.cs`
+- Tests: `Backend/tests/OpenAgent.Core.Tests/Capabilities/AgentSkillPackageArchiveTests.cs`、`SkillScriptRunnerTests.cs`、`AgentSkillsProviderFactoryTests.cs`、`Backend/tests/OpenAgent.Engine.Tests/Skills/SkillPackageManagementServiceTests.cs`

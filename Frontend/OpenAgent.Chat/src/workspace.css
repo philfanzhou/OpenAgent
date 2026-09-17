@@ -1290,6 +1290,8 @@ html[data-theme='dark'] .health-banner, html[data-theme='dark'] .health-detail {
 .capability-table .el-table__row td { padding: 8px 0; color: var(--text); font-size: 13px; }
 .capability-table .el-table__body-wrapper { overflow-x: auto; }
 .table-subtext { display: block; margin-top: 4px; color: var(--text-faint); font-size: 12px; }
+.skill-script-cell { display: flex; align-items: center; gap: 8px; }
+.skill-script-cell .table-subtext { margin-top: 0; white-space: nowrap; }
 .capability-summary {
   display: flex;
   align-items: center;

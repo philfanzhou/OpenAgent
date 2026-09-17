@@ -54,6 +54,35 @@ public sealed class AgentSkillPackageArchiveTests
     }
 
     [Fact]
+    public void InspectAsync_InventoriesPythonScripts()
+    {
+        byte[] package = CreateArchive(archive =>
+        {
+            WriteEntry(archive, "analysis/SKILL.md", "---\nname: analysis\ndescription: Analyze data\n---\n");
+            WriteEntry(archive, "analysis/scripts/run.py", "print('run')");
+            WriteEntry(archive, "analysis/scripts/helper.PY", "print('helper')");
+            WriteEntry(archive, "analysis/resources/sample.csv", "value\n42\n");
+            WriteEntry(archive, "analysis/scripts/run.py.txt", "not a script");
+        });
+
+        AgentSkillPackageMetadata metadata = AgentSkillPackageArchive.Inspect(package, default);
+
+        Assert.Equal(
+            ["analysis/scripts/helper.PY", "analysis/scripts/run.py"],
+            metadata.ScriptNames);
+    }
+
+    [Fact]
+    public void InspectMarkdown_HasNoScriptInventory()
+    {
+        AgentSkillPackageMetadata metadata = AgentSkillPackageArchive.InspectMarkdown(
+            Encoding.UTF8.GetBytes("---\nname: text-only\ndescription: No scripts\n---\n# Instructions\n"),
+            default);
+
+        Assert.Empty(metadata.ScriptNames);
+    }
+
+    [Fact]
     public void ReadZipFiles_RejectsTooManyFiles()
     {
         byte[] package = CreateArchive(archive =>

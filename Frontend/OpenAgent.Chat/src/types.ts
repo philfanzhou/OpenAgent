@@ -153,6 +153,9 @@ export interface SkillInstanceConfig {
   objectKey?: string | null
   sha256?: string | null
   resourceCount?: number
+  scriptExecutionEnabled?: boolean
+  scriptNames?: string[]
+  scriptCount?: number
   allowedUserIds?: string[]
   allowedGroups?: string[]
   allowedTenantIds?: string[]

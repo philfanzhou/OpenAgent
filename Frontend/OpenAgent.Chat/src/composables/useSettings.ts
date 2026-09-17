@@ -498,7 +498,11 @@ export function useSettings(options: SettingsOptions) {
     if (file.size === 0 || file.size > 4 * 1024 * 1024) throw new Error('Skill 文件必须在 1B 到 4MB 之间')
     const installed = await api.uploadSkillCatalog(file)
     skillCatalog.value = [installed.skill, ...skillCatalog.value.filter(item => item.skillId.toLowerCase() !== installed.skill.skillId.toLowerCase())]
-    ElMessage.success('Skill 已校验并写入 OSS 解压目录；请在 Agent 中选择绑定')
+    if (installed.skill.scriptCount) {
+      ElMessage.success(`Skill 已保存；检测到 ${installed.skill.scriptCount} 个 Python 脚本，脚本执行默认关闭，请在列表中审阅后开启`)
+    } else {
+      ElMessage.success('Skill 已校验并写入 OSS 解压目录；请在 Agent 中选择绑定')
+    }
   }
 
   async function uploadSkillPackage(event: Event): Promise<void> {
@@ -525,6 +529,35 @@ export function useSettings(options: SettingsOptions) {
       ElMessage.success('Skill 已从目录删除')
     } catch (error) {
       if (error !== 'cancel' && error !== 'close') options.notifyError(error)
+    }
+  }
+
+  async function toggleSkillScriptExecution(skill: SkillCatalogItem): Promise<void> {
+    const enabling = !(skill.scriptExecutionEnabled ?? false)
+    const scriptCount = skill.scriptCount ?? skill.scriptNames?.length ?? 0
+    if (enabling) {
+      if (scriptCount === 0) {
+        ElMessage.info('该 Skill 包内没有可执行的 Python 脚本，无法启用脚本执行')
+        return
+      }
+      try {
+        await ElMessageBox.confirm(
+          `启用后，绑定的 Agent 可通过 run_skill_script 在隔离沙箱中运行该 Skill 包内的 ${scriptCount} 个 Python 脚本：${(skill.scriptNames ?? []).join('、')}。请确认你信任该 Skill 的来源。`,
+          '启用脚本执行',
+          { type: 'warning', confirmButtonText: '启用', cancelButtonText: '取消' },
+        )
+      } catch {
+        return
+      }
+    }
+    try {
+      const updated = await api.updateSkillScriptExecution(skill.skillId, enabling)
+      skillCatalog.value = skillCatalog.value.map(item =>
+        item.skillId.toLowerCase() === updated.skillId.toLowerCase() ? updated : item)
+      ElMessage.success(enabling ? '已启用该 Skill 的脚本执行' : '已停用该 Skill 的脚本执行')
+    } catch (error) {
+      options.notifyError(error)
+      void loadSkillCatalog()
     }
   }
 
@@ -828,6 +861,7 @@ export function useSettings(options: SettingsOptions) {
     loadLlmProfiles,
     loadMcpProfiles,
     loadSkillCatalog,
+    toggleSkillScriptExecution,
     selectLlm,
     newLlm,
     editLlm,

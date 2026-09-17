@@ -447,6 +447,14 @@ export const api = {
     return request<void>(`/api/v1/admin/skills/${encodeURIComponent(skillId)}`, { method: 'DELETE' })
   },
 
+  updateSkillScriptExecution(skillId: string, scriptExecutionEnabled: boolean): Promise<SkillCatalogItem> {
+    return request<SkillCatalogItem>(`/api/v1/admin/skills/${encodeURIComponent(skillId)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scriptExecutionEnabled }),
+    })
+  },
+
   listSkills(): Promise<SkillCatalogItem[]> {
     return request<SkillCatalogItem[]>('/api/v1/admin/skills')
   },
