@@ -520,12 +520,14 @@ html[data-theme='dark'] .welcome-icon { background: #ececec; color: #1d1d1f; }
   line-height: 1.7;
 }
 
-/* 审批操作条：固定在消息输入框上方，单行布局，高度与输入框相当。 */
+/* 审批操作条：固定在消息输入框上方，宽度与输入框（.composer-box）对齐。 */
 .composer-approval {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 0 0 6px;
+  width: calc(100% - 28px);
+  max-width: 820px;
+  margin: 0 auto 6px;
   padding: 4px 10px;
   border: 1px solid var(--accent);
   border-radius: var(--r-sm);
@@ -1532,6 +1534,7 @@ html[data-theme='dark'] .health-banner, html[data-theme='dark'] .health-detail {
   .message-file { width: 100%; }
   .composer { padding: 7px 8px 9px; }
   .composer-box { border-radius: 17px; }
+  .composer-approval { width: calc(100% - 16px); }
   .composer-hints > span { display: none; }
 }
 
