@@ -26,7 +26,8 @@ Keycloak 直接提供 HTTPS，内部 HTTP 8080 不发布到宿主机。
 应用栈创建独立的 `openagent` 网络；Engine 和 Router 额外加入基础设施网络以访问数据库、Redis、MinIO 和 Keycloak，
 Runner、Chat、Nginx 不直接加入基础设施网络。
 
-`OPENAGENT_CHAT_PUBLIC_URL` 同时用于 CORS、Keycloak 回调、Web Origin 和退出回调。
+`OPENAGENT_CHAT_PUBLIC_URL` 同时用于 CORS、Keycloak 回调、Web Origin 和退出回调，
+默认由 `OPENAGENT_PUBLIC_SCHEME`/`OPENAGENT_PUBLIC_HOST` 与 `OPENAGENT_CHAT_PORT` 派生，无需重复配置。
 切换到 443 时设 `OPENAGENT_CHAT_PORT=443`、`OPENAGENT_CHAT_PUBLIC_URL=https://localhost`；
 域名替换时同时更新公开 URL。Keycloak 的公开 URL 必须匹配其 HTTPS 对外入口，
 Engine/Router 使用同一值作为 Authority。已有 Realm 的 Client 地址需通过管理台更新，
