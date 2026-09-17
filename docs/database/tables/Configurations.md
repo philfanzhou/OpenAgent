@@ -29,6 +29,17 @@ Agent 与 LLM 配置以 PostgreSQL 为事实源，共用 `OpenAgentDbContext`，
 
 CodeExecutionJson 保存 `{ "enabled": false }` 形式的 Agent 代码执行开关；新增列迁移为已有记录填充 `{}`，读取时默认关闭。Runner 服务地址、令牌、镜像和资源限额属于部署配置，不存入 Agent 配置。参见 [CodeAct](../../modules/capabilities/code-execution/DESIGN.md)。
 
+## 种子数据
+
+`20260916022059_SeedDefaultAgents` 为 `development` 租户种子两个 `Published` 初始 Agent（Version 1、空能力配置），让未配置任何 Agent 的全新部署开箱即可路由与意图识别：
+
+| AgentId | 用途 |
+|---|---|
+| `default` | 通用助手。Router 意图识别的 Fallback Agent（`RouterSettings:IntentRecognition:FallbackAgentId` 默认 `default`），也是 Engine 在会话未绑定 Agent 时的兜底 AgentId |
+| `intent-router` | 意图分类 Agent。意图识别默认开启，Router 将候选 Agent 列表交给它分类选择 |
+
+租户与 `Authentication:DevelopmentTenantId` 默认值一致，对应开发/Basic 认证链路；其他租户仍需通过管理 API 创建 Agent。种子行只在首次应用迁移时写入，之后被修改或删除不会被迁移恢复。
+
 ## 升级
 
 `20260903090000_UseConfigurationColumns` 先增加字段、从旧 ConfigurationJson 回填，再删除整份 JSON 列；旧 `ContextWindowTokens` 迁为 `ContextTokens`，旧 Agent `Snapshot` 状态迁为 `Published`。Down 可将字段重建为旧格式 JSON。
