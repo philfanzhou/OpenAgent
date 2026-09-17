@@ -3,26 +3,35 @@ using System.ClientModel.Primitives;
 using Anthropic;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Configuration;
+using OpenAgent.Contracts.Conversation;
 using OpenAI;
 using OpenAI.Responses;
-using OpenAgent.Contracts.Conversation;
 
 namespace OpenAgent.Core.Runtime.Agent;
 
 internal interface IAgentChatClientFactory
 {
-    IChatClient Create(LlmConfig llm);
+    IChatClient Create(LlmConfig llm, LlmInteractionCapture? capture = null);
 
-    IChatClient CreateSummarizationClient(LlmConfig llm, ContextPolicy? policy);
+    IChatClient CreateSummarizationClient(LlmConfig llm, ContextPolicy? policy, LlmInteractionCapture? capture = null);
 }
 
 internal sealed class AgentChatClientFactory : IAgentChatClientFactory
 {
     private readonly TimeSpan _networkTimeout;
     private readonly bool _allowInsecureTls;
+    private readonly ILlmInteractionStore _interactionStore;
+    private readonly LlmInteractionOptions _interactionOptions;
+    private readonly ILoggerFactory _loggerFactory;
 
-    public AgentChatClientFactory(IConfiguration configuration)
+    public AgentChatClientFactory(
+        IConfiguration configuration,
+        ILlmInteractionStore interactionStore,
+        IOptions<LlmInteractionOptions> interactionOptions,
+        ILoggerFactory loggerFactory)
     {
         // OpenAI SDK 默认网络读超时为 100s，对推理模型流式输出（两次数据之间可能停顿更久）太短，
         // 会触发 ReadTimeoutStream 在会话中途掐断。默认放宽到 15 分钟；
@@ -34,25 +43,32 @@ internal sealed class AgentChatClientFactory : IAgentChatClientFactory
         // This is a deployment-only escape hatch. It intentionally does not belong
         // to AgentConfig or persisted LLM provider profiles.
         _allowInsecureTls = configuration.GetValue("OPENAGENT_ALLOW_INSECURE_TLS", false);
+        _interactionStore = interactionStore;
+        _interactionOptions = interactionOptions.Value;
+        _loggerFactory = loggerFactory;
     }
 
-    public IChatClient Create(LlmConfig llm)
+    public IChatClient Create(LlmConfig llm, LlmInteractionCapture? capture = null)
     {
-        return llm.Format switch
+        IChatClient client = llm.Format switch
         {
             ApiFormat.OpenAIChatCompletions => CreateOpenAIChatCompletions(llm),
             ApiFormat.OpenAIResponses => CreateOpenAIResponses(llm),
             ApiFormat.AnthropicMessages => CreateAnthropic(llm),
             _ => throw new NotSupportedException($"Unsupported API format: {llm.Format}")
         };
+        return WrapWithRecorder(client, llm, capture);
     }
 
-    public IChatClient CreateSummarizationClient(LlmConfig llm, ContextPolicy? policy)
+    public IChatClient CreateSummarizationClient(
+        LlmConfig llm,
+        ContextPolicy? policy,
+        LlmInteractionCapture? capture = null)
     {
         string? summaryModel = policy?.SummarizeOptions?.SummaryModel;
         if (string.IsNullOrWhiteSpace(summaryModel))
         {
-            return Create(llm);
+            return Create(llm, capture);
         }
 
         return Create(new LlmConfig
@@ -65,7 +81,27 @@ internal sealed class AgentChatClientFactory : IAgentChatClientFactory
             Endpoint = llm.Endpoint,
             Temperature = llm.Temperature,
             ContextTokens = llm.ContextTokens
-        });
+        }, capture);
+    }
+
+    /// <summary>
+    /// 记录器包在 provider client 最外层，位于上下文压缩与工具循环之下，
+    /// 捕获的是真正发往 provider 的最终 wire 请求。
+    /// </summary>
+    private IChatClient WrapWithRecorder(IChatClient client, LlmConfig llm, LlmInteractionCapture? capture)
+    {
+        if (capture == null || !_interactionOptions.Enabled)
+        {
+            return client;
+        }
+
+        return new LlmInteractionRecorder(
+            client,
+            capture,
+            llm,
+            _interactionStore,
+            _interactionOptions,
+            _loggerFactory.CreateLogger("OpenAgent.LlmInteraction"));
     }
 
     private IChatClient CreateOpenAIChatCompletions(LlmConfig llm)

@@ -4,6 +4,7 @@ using OpenAgent.Core.Capabilities;
 using OpenAgent.Core.Capabilities.Mcp;
 using OpenAgent.Core.Capabilities.Skill;
 using OpenAgent.Contracts.Configuration;
+using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
@@ -44,10 +45,24 @@ internal sealed class AgentFactory
         IReadOnlyList<FileAsset> files,
         CancellationToken cancellationToken)
     {
-        IChatClient modelClient = _chatClients.Create(profile.Model);
+        string traceId = string.IsNullOrWhiteSpace(request.TraceId)
+            ? Guid.NewGuid().ToString("N")
+            : request.TraceId;
+        var turnCapture = new LlmInteractionCapture
+        {
+            TenantId = user.TenantId ?? string.Empty,
+            UserId = user.UserId,
+            ConversationId = request.ConversationId,
+            TraceId = traceId,
+            AgentId = profile.AgentId,
+            Source = LlmInteractionSource.AgentTurn
+        };
+        var compactionCapture = turnCapture with { Source = LlmInteractionSource.Compaction };
+        IChatClient modelClient = _chatClients.Create(profile.Model, turnCapture);
         IChatClient summarizationClient = _chatClients.CreateSummarizationClient(
             profile.Model,
-            profile.Config.ContextPolicy);
+            profile.Config.ContextPolicy,
+            compactionCapture);
         _files.Set(new OpenAgent.Contracts.Files.FileAssetScope
         {
             TenantId = user.TenantId ?? string.Empty,

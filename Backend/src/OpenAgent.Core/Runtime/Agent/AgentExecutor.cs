@@ -215,7 +215,8 @@ public sealed class AgentExecutor
         {
             Type = AgentStreamEventType.Usage,
             Usage = usage,
-            ModelId = modelId
+            ModelId = modelId,
+            TraceId = traceId
         };
     }
 

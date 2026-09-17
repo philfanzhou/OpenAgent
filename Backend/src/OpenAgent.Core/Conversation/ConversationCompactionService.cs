@@ -24,6 +24,7 @@ internal sealed class ConversationCompactionService(
         string conversationId,
         string llmProfileId,
         IAgentUserContext user,
+        string? traceId = null,
         CancellationToken cancellationToken = default)
     {
         EnsureTenant(tenantId, user);
@@ -57,9 +58,19 @@ internal sealed class ConversationCompactionService(
             llmProfileId,
             user,
             cancellationToken).ConfigureAwait(false);
+        var capture = new LlmInteractionCapture
+        {
+            TenantId = tenantId,
+            UserId = user.UserId,
+            ConversationId = conversationId,
+            TraceId = string.IsNullOrWhiteSpace(traceId) ? Guid.NewGuid().ToString("N") : traceId,
+            AgentId = record.AgentId,
+            Source = LlmInteractionSource.Compaction
+        };
         IChatClient summarizationClient = chatClients.CreateSummarizationClient(
             profile.Model,
-            profile.Config.ContextPolicy);
+            profile.Config.ContextPolicy,
+            capture);
         SummarizationCompactionStrategy strategy = histories.CreateStrategy(
             profile.Model.ContextTokens,
             profile.Config.ContextPolicy,
