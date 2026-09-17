@@ -32,6 +32,23 @@ public class RunnerApiTests
         Assert.True(Guid.TryParseExact(result.ExecutionId, "N", out _));
     }
 
+    [BubblewrapFact]
+    public async Task Execute_JavaScriptHttpContractRunsNode()
+    {
+        using var factory = new RealFactory();
+        using HttpClient client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Factory.Key);
+        using HttpResponseMessage response = await client.PostAsJsonAsync("/v1/execute", new CodeExecutionRequest
+        {
+            Language = ExecutionLanguage.JavaScript,
+            Code = "import { writeFile } from 'node:fs/promises';\nawait writeFile('/output/result.txt', 'node ok');\nconsole.log('done')"
+        });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        CodeExecutionResult result = Assert.IsType<CodeExecutionResult>(await response.Content.ReadFromJsonAsync<CodeExecutionResult>());
+        Assert.True(result.ExitCode == 0, result.Stderr);
+        Assert.Equal("result.txt", Assert.Single(result.Files).Name);
+    }
+
     [Theory]
     [InlineData(false, HttpStatusCode.Unauthorized)]
     [InlineData(true, HttpStatusCode.OK)]
@@ -56,6 +73,15 @@ public class RunnerApiTests
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseSetting("Runner:ApiKey", Key);
+            if (!OperatingSystem.IsLinux())
+            {
+                // Options validation rejects the Linux default paths on Windows hosts.
+                string root = Path.Combine(Path.GetTempPath(), "codeact-api-tests");
+                builder.UseSetting("Runner:WorkspaceRoot", root);
+                builder.UseSetting("Runner:BubblewrapPath", Path.Combine(root, "bwrap"));
+                builder.UseSetting("Runner:PythonPath", Path.Combine(root, "python"));
+                builder.UseSetting("Runner:NodePath", Path.Combine(root, "node"));
+            }
             builder.ConfigureServices(services =>
             {
                 services.RemoveAll<IHostedService>();
@@ -84,6 +110,7 @@ public class RunnerApiTests
             builder.UseSetting("Runner:WorkspaceRoot", _root);
             builder.UseSetting("Runner:BubblewrapPath", Environment.GetEnvironmentVariable("CODEACT_TEST_BWRAP") ?? "/usr/bin/bwrap");
             builder.UseSetting("Runner:PythonPath", Environment.GetEnvironmentVariable("CODEACT_TEST_PYTHON") ?? "/opt/openagent-code/venv/bin/python");
+            builder.UseSetting("Runner:NodePath", Environment.GetEnvironmentVariable("CODEACT_TEST_NODE") ?? "/usr/bin/node");
         }
         protected override void Dispose(bool disposing)
         {

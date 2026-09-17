@@ -18,6 +18,8 @@ internal sealed class BubblewrapCodeExecutor(
     public async Task<CodeExecutionResult> ExecuteAsync(CodeExecutionRequest request, CancellationToken cancellationToken)
     {
         ExecutionLimits.Validate(request);
+        string language = ExecutionLanguage.Normalize(request.Language)
+            ?? throw new ArgumentException("The requested execution language is not supported.");
         if (!OperatingSystem.IsLinux())
         {
             throw new PlatformNotSupportedException("Bubblewrap code execution requires Linux.");
@@ -41,7 +43,8 @@ internal sealed class BubblewrapCodeExecutor(
             {
                 File.SetUnixFileMode(directory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
             }
-            await File.WriteAllTextAsync(Path.Combine(directory, "main.py"), request.Code, deadline.Token).ConfigureAwait(false);
+            await File.WriteAllTextAsync(Path.Combine(directory, ExecutionLanguage.EntryFileName(language)),
+                request.Code, deadline.Token).ConfigureAwait(false);
             foreach (ExecutionFile file in request.Files)
             {
                 await File.WriteAllBytesAsync(Path.Combine(directory, file.Name), file.Content, deadline.Token).ConfigureAwait(false);
@@ -52,7 +55,7 @@ internal sealed class BubblewrapCodeExecutor(
             }
 
             var executed = await bubblewrap.RunAsync(
-                BuildArguments(settings, directory, _sandboxFilesDirectory), ExecutionLimits.MaxWireBytes, deadline.Token)
+                BuildArguments(settings, directory, _sandboxFilesDirectory, language), ExecutionLimits.MaxWireBytes, deadline.Token)
                 .ConfigureAwait(false);
             CodeExecutionResult result;
             if (executed.ExitCode != 0)
@@ -113,11 +116,14 @@ internal sealed class BubblewrapCodeExecutor(
     }
 
     internal static IReadOnlyList<string> BuildArguments(
-        RunnerOptions settings, string inputDirectory, string sandboxFilesDirectory)
+        RunnerOptions settings, string inputDirectory, string sandboxFilesDirectory, string language)
     {
-        string pythonRoot = Directory.GetParent(Path.GetDirectoryName(settings.PythonPath)
-            ?? throw new InvalidOperationException("Python path has no parent directory."))?.FullName
-            ?? throw new InvalidOperationException("Python path has no runtime root.");
+        string pythonRoot = RuntimeRoot(settings.PythonPath, "Python");
+        string nodeRoot = RuntimeRoot(settings.NodePath, "Node");
+        string path = string.Join(":", new[] { pythonRoot, nodeRoot, "/usr" }
+            .Distinct(StringComparer.Ordinal)
+            .Select(root => root == "/usr" ? "/usr/bin" : root + "/bin")
+            .Append("/bin"));
         var arguments = new List<string>
         {
             "--unshare-user", "--unshare-ipc", "--unshare-pid", "--unshare-net", "--unshare-uts",
@@ -145,7 +151,7 @@ internal sealed class BubblewrapCodeExecutor(
             "--perms", "1777", "--tmpfs", "/run",
             "--dir", "/var", "--symlink", "../tmp", "/var/tmp", "--dir", "/home",
             "--proc", "/proc", "--dev", "/dev", "--chdir", "/work",
-            "--setenv", "PATH", $"{pythonRoot}/bin:/usr/bin:/bin",
+            "--setenv", "PATH", path,
             "--setenv", "HOME", "/tmp/home",
             "--setenv", "TMPDIR", "/tmp",
             "--setenv", "XDG_RUNTIME_DIR", "/tmp/runtime",
@@ -158,13 +164,18 @@ internal sealed class BubblewrapCodeExecutor(
             "--setenv", "OPENBLAS_NUM_THREADS", "1",
             "--setenv", "MKL_NUM_THREADS", "1",
             "--setenv", "NUMEXPR_NUM_THREADS", "1",
+            "--setenv", "EXECUTION_LANGUAGE", language,
+            "--setenv", "EXECUTION_NODE", settings.NodePath,
             "--setenv", "EXECUTION_TIMEOUT", settings.TimeoutSeconds.ToString(CultureInfo.InvariantCulture)
         };
 
-        if (!pythonRoot.Equals("/usr", StringComparison.Ordinal)
-            && !pythonRoot.StartsWith("/usr/", StringComparison.Ordinal))
+        foreach (string root in new[] { pythonRoot, nodeRoot }.Distinct(StringComparer.Ordinal))
         {
-            arguments.AddRange(["--ro-bind", pythonRoot, pythonRoot]);
+            if (!root.Equals("/usr", StringComparison.Ordinal)
+                && !root.StartsWith("/usr/", StringComparison.Ordinal))
+            {
+                arguments.AddRange(["--ro-bind", root, root]);
+            }
         }
 
         // Seal the synthetic root only after every optional parent path has
@@ -191,6 +202,11 @@ internal sealed class BubblewrapCodeExecutor(
         "--symlink", "usr/lib", "/lib", "--symlink", "usr/lib64", "/lib64",
         "--proc", "/proc", "--dev", "/dev", "--", "/bin/true"
     ];
+
+    private static string RuntimeRoot(string executablePath, string name) =>
+        Directory.GetParent(Path.GetDirectoryName(executablePath)
+            ?? throw new InvalidOperationException($"{name} path has no parent directory."))?.FullName
+        ?? throw new InvalidOperationException($"{name} path has no runtime root.");
 
     private static string ToBytes(int mebibytes) =>
         checked((mebibytes * 1024L * 1024L)).ToString(CultureInfo.InvariantCulture);

@@ -13,7 +13,8 @@ public class BubblewrapExecutionTests
     public void BuildArguments_UsesFailClosedNamespacesAndOnlyExplicitMounts()
     {
         var settings = new RunnerOptions { PythonPath = "/opt/openagent-code/venv/bin/python" };
-        IReadOnlyList<string> arguments = BubblewrapCodeExecutor.BuildArguments(settings, "/var/lib/runner/id", "/opt/runner/sandbox");
+        IReadOnlyList<string> arguments = BubblewrapCodeExecutor.BuildArguments(
+            settings, "/var/lib/runner/id", "/opt/runner/sandbox", ExecutionLanguage.Python);
 
         Assert.Contains("--unshare-user", arguments);
         Assert.Contains("--unshare-net", arguments);
@@ -29,6 +30,125 @@ public class BubblewrapExecutionTests
         Assert.DoesNotContain("/", arguments.SkipWhile(argument => argument != "--ro-bind").Skip(1).Take(1));
         Assert.Contains("--as=1610612736:1610612736", arguments);
         Assert.Contains("--nproc=64:64", arguments);
+        Assert.Equal(ExecutionLanguage.Python, EnvironmentValue(arguments, "EXECUTION_LANGUAGE"));
+    }
+
+    [Fact]
+    public void BuildArguments_RoutesLanguageAndNodeRuntime()
+    {
+        var settings = new RunnerOptions
+        {
+            PythonPath = "/opt/openagent-code/venv/bin/python",
+            NodePath = "/opt/node/bin/node"
+        };
+        IReadOnlyList<string> javascript = BubblewrapCodeExecutor.BuildArguments(
+            settings, "/var/lib/runner/id", "/opt/runner/sandbox", ExecutionLanguage.JavaScript);
+
+        Assert.Equal(ExecutionLanguage.JavaScript, EnvironmentValue(javascript, "EXECUTION_LANGUAGE"));
+        Assert.Equal("/opt/node/bin/node", EnvironmentValue(javascript, "EXECUTION_NODE"));
+        Assert.Contains(RuntimeBin(settings.NodePath), EnvironmentValue(javascript, "PATH"));
+        Assert.Contains(RuntimeBin(settings.PythonPath), EnvironmentValue(javascript, "PATH"));
+        Assert.Contains("/usr/bin", EnvironmentValue(javascript, "PATH"));
+        Assert.True(BindsSource(javascript, RuntimeRootOf(settings.NodePath)));
+        Assert.True(BindsSource(javascript, RuntimeRootOf(settings.PythonPath)));
+
+        IReadOnlyList<string> python = BubblewrapCodeExecutor.BuildArguments(
+            settings, "/var/lib/runner/id", "/opt/runner/sandbox", ExecutionLanguage.Python);
+        Assert.Equal(ExecutionLanguage.Python, EnvironmentValue(python, "EXECUTION_LANGUAGE"));
+    }
+
+    [Fact]
+    public void BuildArguments_DefaultNodeInUsrNeedsNoExtraMount()
+    {
+        var settings = new RunnerOptions
+        {
+            PythonPath = "/opt/openagent-code/venv/bin/python",
+            NodePath = "/usr/bin/node"
+        };
+        IReadOnlyList<string> arguments = BubblewrapCodeExecutor.BuildArguments(
+            settings, "/var/lib/runner/id", "/opt/runner/sandbox", ExecutionLanguage.JavaScript);
+
+        string? path = EnvironmentValue(arguments, "PATH");
+        Assert.NotNull(path);
+        Assert.Equal(1, path.Split(':').Count(entry => entry == "/usr/bin"));
+        Assert.Equal(1, BindCount(arguments, "/usr"));
+    }
+
+    // Mirrors the runtime-root derivation in BubblewrapCodeExecutor so the
+    // assertions stay meaningful on hosts where System.IO rewrites Unix paths.
+    private static string RuntimeRootOf(string executable) =>
+        Directory.GetParent(Path.GetDirectoryName(executable)
+            ?? throw new InvalidOperationException("Path has no parent directory."))!.FullName;
+
+    private static string RuntimeBin(string executable) => RuntimeRootOf(executable) + "/bin";
+
+    private static string? EnvironmentValue(IReadOnlyList<string> arguments, string name)
+    {
+        for (int index = 0; index < arguments.Count - 2; index++)
+        {
+            if (arguments[index] == "--setenv" && arguments[index + 1] == name)
+            {
+                return arguments[index + 2];
+            }
+        }
+        return null;
+    }
+
+    private static bool BindsSource(IReadOnlyList<string> arguments, string source) => BindCount(arguments, source) > 0;
+
+    private static int BindCount(IReadOnlyList<string> arguments, string source)
+    {
+        int count = 0;
+        for (int index = 0; index < arguments.Count - 1; index++)
+        {
+            if (arguments[index] == "--ro-bind" && arguments[index + 1] == source)
+            {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    [Fact]
+    public async Task Execute_RejectsUnsupportedLanguageAndReservedEntryName()
+    {
+        await using var runtime = new Runtime();
+        await Assert.ThrowsAsync<ArgumentException>(() => runtime.Executor.ExecuteAsync(
+            new CodeExecutionRequest { Code = "print(1)", Language = "ruby" }, CancellationToken.None));
+        await Assert.ThrowsAsync<ArgumentException>(() => runtime.Executor.ExecuteAsync(new CodeExecutionRequest
+        {
+            Code = "print(1)",
+            Files = [new ExecutionFile { Name = "main.mjs", Content = [1, 2, 3] }]
+        }, CancellationToken.None));
+        Assert.Empty(Directory.EnumerateDirectories(runtime.Root));
+    }
+
+    [BubblewrapFact]
+    public async Task Execute_JavaScriptRunsNodeInIsolatedSandbox()
+    {
+        await using var runtime = new Runtime();
+        CodeExecutionResult result = await runtime.Executor.ExecuteAsync(new CodeExecutionRequest
+        {
+            Language = ExecutionLanguage.JavaScript,
+            Code = """
+                import assert from 'node:assert/strict';
+                import { readFile, writeFile } from 'node:fs/promises';
+                assert.strictEqual(process.getuid?.() ?? 65532, 65532);
+                assert.strictEqual('Runner__ApiKey' in process.env, false);
+                const input = await readFile('/input/data.txt', 'utf8');
+                assert.strictEqual(input.trim(), 'node input');
+                await writeFile('/output/result.txt', input.trim() + ' verified');
+                console.log('javascript executed', process.version);
+                """,
+            Files = [new ExecutionFile { Name = "data.txt", Content = "node input"u8.ToArray() }]
+        }, CancellationToken.None);
+
+        Assert.True(result.ExitCode == 0, result.Stderr);
+        Assert.Contains("javascript executed", result.Stdout);
+        ExecutionFile output = Assert.Single(result.Files);
+        Assert.Equal("result.txt", output.Name);
+        Assert.Equal("node input verified", System.Text.Encoding.UTF8.GetString(output.Content));
+        await runtime.AssertCleanAsync();
     }
 
     [BubblewrapFact]
@@ -297,6 +417,7 @@ public class BubblewrapExecutionTests
                 WorkspaceRoot = Root,
                 BubblewrapPath = Environment.GetEnvironmentVariable("CODEACT_TEST_BWRAP") ?? "/usr/bin/bwrap",
                 PythonPath = Environment.GetEnvironmentVariable("CODEACT_TEST_PYTHON") ?? "/opt/openagent-code/venv/bin/python",
+                NodePath = Environment.GetEnvironmentVariable("CODEACT_TEST_NODE") ?? "/usr/bin/node",
                 TimeoutSeconds = timeoutSeconds,
                 MemoryMiB = memoryMiB
             });

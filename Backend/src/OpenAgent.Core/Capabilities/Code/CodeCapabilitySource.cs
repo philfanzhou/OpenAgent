@@ -34,16 +34,18 @@ internal sealed class CodeCapabilitySource(
         return Task.FromResult<IReadOnlyList<CapabilityDefinition>>([
             new CapabilityDefinition(
                 "execute_code",
-                "Execute Python in an isolated, non-root Bubblewrap sandbox with no network. "
-                + "Available libraries: python-pptx, openpyxl, XlsxWriter, pandas, matplotlib, Pillow. "
-                + "Use inputFiles to mount authorized conversation files read-only at /input/<name>; main.py is reserved. "
+                "Execute Python or JavaScript in an isolated, non-root Bubblewrap sandbox with no network. "
+                + "Use \"language\":\"javascript\" for JavaScript (Node, ESM, entry main.mjs, built-in modules only, no npm packages); "
+                + "Python is the default. "
+                + "Python libraries: python-pptx, openpyxl, XlsxWriter, pandas, matplotlib, Pillow. "
+                + "Use inputFiles to mount authorized conversation files read-only at /input/<name>; main.py and main.mjs are reserved. "
                 + "Write deliverables directly under /output (up to 8 files, 10 MiB each, 20 MiB total). "
                 + "Print concise results. Inspect exitCode and stderr, then fix failures with another call. "
                 + "Each call starts fresh: pass previous output fileIds as inputFiles to continue editing. "
                 + "Returned files are registered; use publish_files to deliver selected fileIds. "
                 + "Use fixed templates where possible. Reopen generated documents to validate contents. "
-                + "No host tools, credentials, pip installs, or internet access are available inside Python.",
-                """{"type":"object","properties":{"code":{"type":"string"},"inputFiles":{"type":"array","maxItems":8,"items":{"type":"object","properties":{"fileId":{"type":"string"},"name":{"type":"string"}},"required":["fileId","name"],"additionalProperties":false}}},"required":["code"],"additionalProperties":false}""",
+                + "No host tools, credentials, package installs, or internet access are available inside the sandbox.",
+                """{"type":"object","properties":{"code":{"type":"string"},"language":{"type":"string","enum":["python","javascript"],"description":"Execution language; defaults to python."},"inputFiles":{"type":"array","maxItems":8,"items":{"type":"object","properties":{"fileId":{"type":"string"},"name":{"type":"string"}},"required":["fileId","name"],"additionalProperties":false}}},"required":["code"],"additionalProperties":false}""",
                 AgentResourceType.Tool,
                 "code-execution",
                 (arguments, token) => ExecuteAsync(agentId, user, scope, arguments, token))]);
@@ -72,9 +74,13 @@ internal sealed class CodeCapabilitySource(
                 return "{\"error\":\"Code execution budget exhausted for this request.\"}";
             }
             string code = arguments.TryGetValue("code", out object? value) ? value?.ToString() ?? string.Empty : string.Empty;
+            string language = arguments.TryGetValue("language", out object? languageValue)
+                ? ExecutionLanguage.Normalize(languageValue?.ToString())
+                    ?? throw new ArgumentException("Unsupported code execution language.")
+                : ExecutionLanguage.Python;
             List<InputFile> inputs = arguments.TryGetValue("inputFiles", out object? input)
                 ? JsonSerializer.Deserialize<List<InputFile>>(JsonSerializer.Serialize(input), JsonOptions) ?? [] : [];
-            var request = new CodeExecutionRequest { Code = code };
+            var request = new CodeExecutionRequest { Code = code, Language = language };
             ExecutionLimits.Validate(request);
             if (inputs.Count > ExecutionLimits.MaxFiles)
             {

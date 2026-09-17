@@ -26,10 +26,17 @@ public static class ExecutionLimits
         {
             throw new ArgumentException("Code is empty or exceeds the execution limit.");
         }
-        ValidateFiles(request.Files);
-        if (request.Files.Any(file => file.Name.Equals("main.py", StringComparison.OrdinalIgnoreCase)))
+        if (ExecutionLanguage.Normalize(request.Language) == null)
         {
-            throw new ArgumentException("The input name main.py is reserved.");
+            throw new ArgumentException("The requested execution language is not supported.");
+        }
+        ValidateFiles(request.Files);
+        foreach (string entryName in ExecutionLanguage.Supported.Select(ExecutionLanguage.EntryFileName))
+        {
+            if (request.Files.Any(file => file.Name.Equals(entryName, StringComparison.OrdinalIgnoreCase)))
+            {
+                throw new ArgumentException($"The input name {entryName} is reserved.");
+            }
         }
     }
 

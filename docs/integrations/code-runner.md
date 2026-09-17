@@ -22,7 +22,7 @@ Runner 使用应用内部网络与 Engine 通信，不发布宿主端口；Runne
 - .NET 8 SDK 仅在安装脚本发布 Runner 时需要，服务使用自包含产物运行。
 - Engine 与 Runner 可以同机部署，也可以通过受防火墙保护的私网 HTTP(S) 通信。
 
-`/health` 会实际创建最小 Bubblewrap namespace。缺少 Bubblewrap、Python 运行时或 user namespace 被禁用时返回 503；执行请求不会回退到宿主 Python。
+`/health` 会实际创建最小 Bubblewrap namespace。缺少 Bubblewrap、Python/Node 运行时或 user namespace 被禁用时返回 503；执行请求不会回退到宿主解释器。
 
 ## 一键安装
 
@@ -34,7 +34,7 @@ sudo systemctl status openagent-runner --no-pager
 curl --fail http://127.0.0.1:5088/health
 ```
 
-脚本完成以下工作：安装 Bubblewrap、LibreOffice 和中文字体；在 Ubuntu AppArmor 限制启用时加载发行版提供的 `bwrap-userns-restrict` 策略；创建固定版本的 Python venv；创建无登录权限的 `openagent-runner` 用户；发布 Runner；安装并重启强化的 systemd 服务，最后等待健康检查成功。首次安装会在 `/etc/openagent-runner.env` 生成随机服务令牌，该文件权限为 `0600`。
+脚本完成以下工作：安装 Bubblewrap、Node.js、LibreOffice 和中文字体；在 Ubuntu AppArmor 限制启用时加载发行版提供的 `bwrap-userns-restrict` 策略；创建固定版本的 Python venv；创建无登录权限的 `openagent-runner` 用户；发布 Runner；安装并重启强化的 systemd 服务，最后等待健康检查成功。首次安装会在 `/etc/openagent-runner.env` 生成随机服务令牌，该文件权限为 `0600`。
 
 默认只监听 `127.0.0.1:5088`。同机 Engine 配置如下，并使用 `/etc/openagent-runner.env` 中同一个 API key：
 
@@ -66,6 +66,7 @@ CodeExecution__RequestTimeoutSeconds=180
 | Engine `CodeExecution:MaxExecutionsPerRequest` | 8 | 每个聊天请求的代码调用上限 |
 | Runner `Runner:BubblewrapPath` | /usr/bin/bwrap | 主机 Bubblewrap 绝对路径 |
 | Runner `Runner:PythonPath` | /opt/openagent-code/venv/bin/python | 沙箱 Python venv 绝对路径 |
+| Runner `Runner:NodePath` | /usr/bin/node | 沙箱 Node.js 绝对路径（JavaScript 入口 `main.mjs`，仅内置模块） |
 | Runner `Runner:TimeoutSeconds` | 120 | 单次执行墙钟时限，最大 600 秒 |
 | Runner `Runner:MaxConcurrentExecutions` | 2 | Runner 并发上限；超额返回 429 |
 | Runner `Runner:MemoryMiB` | 1536 | 每个沙箱进程的地址空间上限；为 LibreOffice 预留虚拟地址空间 |

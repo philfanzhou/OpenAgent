@@ -57,10 +57,11 @@ internal sealed class BubblewrapProcess(IOptions<RunnerOptions> options, ILogger
         if (!OperatingSystem.IsLinux()
             || !File.Exists(settings.BubblewrapPath)
             || !File.Exists(settings.PythonPath)
+            || !File.Exists(settings.NodePath)
             || !File.Exists("/usr/bin/prlimit")
             || !File.Exists(Path.Combine(sandboxFilesDirectory, "execute.py")))
         {
-            RunnerLog.EnvironmentFailed(logger, "health", "prerequisites", "Linux, bwrap, Python, prlimit, or sandbox entry point is unavailable.");
+            RunnerLog.EnvironmentFailed(logger, "health", "prerequisites", "Linux, bwrap, Python, Node, prlimit, or sandbox entry point is unavailable.");
             return false;
         }
 

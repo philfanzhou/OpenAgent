@@ -52,9 +52,13 @@ def collect_files():
 def main():
     for directory in ("/tmp/home", "/tmp/runtime", "/tmp/matplotlib"):
         Path(directory).mkdir(mode=0o700, parents=True, exist_ok=True)
+    if os.environ.get("EXECUTION_LANGUAGE", "python") == "javascript":
+        command = [os.environ.get("EXECUTION_NODE", "/usr/bin/node"), "/input/main.mjs"]
+    else:
+        command = [sys.executable, "-I", "-u", "/input/main.py"]
     output, errors = bytearray(), bytearray()
     process = subprocess.Popen(
-        [sys.executable, "-I", "-u", "/input/main.py"], cwd="/work",
+        command, cwd="/work",
         stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         start_new_session=True,
     )
