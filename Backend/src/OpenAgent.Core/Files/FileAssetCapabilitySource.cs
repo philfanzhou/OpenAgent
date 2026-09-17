@@ -56,20 +56,21 @@ internal sealed class FileAssetCapabilitySource(
                 CreateShareLinkAsync),
             new CapabilityDefinition(
                 "list_share_links",
-                "List every share link the current user has created (across all conversations), newest first, "
-                + "including expired or exhausted ones. Each item carries shareId, fileName, mode, expiresAt, "
-                + "maxDownloads, downloadCount and whether it is still active. Use it when the user asks which "
-                + "links exist or wants an inventory before cleanup; revoke with revoke_share_link.",
+                "List the current user's still-valid share links (across all conversations), newest first. "
+                + "Expired, exhausted or revoked links are not returned. Each item carries shareId, fileName, "
+                + "mode, expiresAt, maxDownloads and downloadCount. Use it when the user asks which links exist; "
+                + "revoke with revoke_share_link.",
                 """{"type":"object","properties":{}}""",
                 AgentResourceType.Tool,
                 "file-assets",
                 ListShareLinksAsync),
             new CapabilityDefinition(
                 "revoke_share_link",
-                "Revoke (delete) one of the current user's share links by shareId — the ID returned when the link "
-                + "was created (create_file_transfer_url) or listed (list_share_links). The link stops working "
-                + "immediately: further downloads return 404. Only links owned by the current user can be revoked; "
-                + "unknown or foreign IDs fail without side effects.",
+                "Revoke one of the current user's share links by shareId — the ID returned when the link "
+                + "was created (create_file_transfer_url) or listed (list_share_links). Revoking marks the link "
+                + "invalid: it disappears from list_share_links and further downloads return 404. Only links "
+                + "owned by the current user can be revoked; unknown, foreign or already-invalid IDs fail "
+                + "without side effects.",
                 """{"type":"object","properties":{"shareId":{"type":"string","description":"Share ID (token hash) of the link to revoke"}},"required":["shareId"]}""",
                 AgentResourceType.Tool,
                 "file-assets",
@@ -284,8 +285,7 @@ internal sealed class FileAssetCapabilitySource(
                 expiresAt = item.ExpiresAt,
                 maxDownloads = item.MaxDownloads,
                 downloadCount = item.DownloadCount,
-                createdAt = item.CreatedAt,
-                isActive = item.IsActive
+                createdAt = item.CreatedAt
             })
         });
     }

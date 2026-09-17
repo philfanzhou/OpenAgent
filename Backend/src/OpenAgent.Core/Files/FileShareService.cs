@@ -128,7 +128,7 @@ internal sealed class FileShareService(
             return Task.FromResult(false);
         }
 
-        return shares.DeleteAsync(shareIdHash, scope.TenantId, scope.UserId, cancellationToken);
+        return shares.TryRevokeAsync(shareIdHash, scope.TenantId, scope.UserId, cancellationToken);
     }
 
     private static FileShareSummary ToSummary(FileShareLinkRecord record) => new()

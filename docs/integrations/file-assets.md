@@ -24,8 +24,8 @@ LLM Profile 选择 `Multimodal` 时，聊天请求中的 `image/*` 资产会在�
 | `GET /api/v1/agent/files/{fileId}/content` | 认证预览内容 |
 | `GET /api/v1/agent/files/{fileId}/download` | 认证下载 |
 | `POST /api/v1/agent/files/{fileId}/share` | 创建分享链接（认证，body 指定 `mode`/`expiresInSeconds`） |
-| `GET /api/v1/agent/files/shares` | 查询当前用户在该租户下的全部分享链接（认证，按创建时间倒序，含 `isActive`） |
-| `DELETE /api/v1/agent/files/shares/{shareId}` | 撤销一条分享链接（认证）；删除后令牌立即失效，不存在/非本人统一 404 |
+| `GET /api/v1/agent/files/shares` | 查询当前用户在该租户下仍有效的分享链接（认证，按创建时间倒序；已过期/已用尽/已撤销的不返回） |
+| `DELETE /api/v1/agent/files/shares/{shareId}` | 撤销一条分享链接（认证，软删除）；标记失效后令牌立即 404，不存在/已失效/非本人统一 404 |
 | `GET /api/v1/share/{token}` | 匿名分享下载；令牌即凭证，过期或超次数统一 404 |
 
 权限校验通过 `FileAssetScope` 的 TenantId/OwnerUserId 边界在 `FileAssetService` 内强制执行（缺失时抛 `TenantDataIsolationException`）。
@@ -68,7 +68,7 @@ LLM Profile 选择 `Multimodal` 时，聊天请求中的 `image/*` 资产会在�
 `OPENAGENT_SHARE_PUBLIC_BASE_URL`，保证返回的 URL 始终是可直达的绝对地址）。
 
 模型侧由大模型调用内部工具 `create_file_transfer_url` 生成（保持原工具名），可选参数 `audience`、`mode` 与
-`expiresInSeconds`；配套工具 `list_share_links`（查询当前用户的全部分享）与
+`expiresInSeconds`；配套工具 `list_share_links`（查询当前用户仍有效的分享）与
 `revoke_share_link`（按 `shareId` 撤销，仅限本人链接）让模型可直接代用户管理与清理链接。
 REST 侧前端可调用 `POST /api/v1/agent/files/{fileId}/share`（body 同样支持
 `audience`）。两个场景不变：
@@ -77,9 +77,9 @@ REST 侧前端可调用 `POST /api/v1/agent/files/{fileId}/share`（body 同样�
 - **用户下载/分享链接**：用户需要直接下载链接时调用，把 URL 作为分享链接交给用户；必须同时告知有效期（`expiresAt`）与下载限制（`singleUse` 链接下载一次后失效），不得表述为永久链接。
 
 创建响应与列表项都带 `shareId`（令牌哈希），用户可通过
-`GET /api/v1/agent/files/shares` 查询自己的全部分享（含已过期/已用尽的，`isActive` 标识当前可用性），
-并用 `DELETE /api/v1/agent/files/shares/{shareId}` 撤销；撤销即删除记录，令牌立即 404。
-明文令牌只在创建响应的 `url` 中出现一次，列表不返回 URL。
+`GET /api/v1/agent/files/shares` 查询自己仍有效的分享（已过期、已用尽或已撤销的不返回），
+并用 `DELETE /api/v1/agent/files/shares/{shareId}` 撤销；撤销为软删除（把失效时间改写为当前时刻），
+令牌立即 404、记录保留作审计。明文令牌只在创建响应的 `url` 中出现一次，列表不返回 URL。
 
 响应示例：
 

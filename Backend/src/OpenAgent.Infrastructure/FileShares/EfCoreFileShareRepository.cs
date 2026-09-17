@@ -42,26 +42,34 @@ internal sealed class EfCoreFileShareRepository(IDbContextFactory<OpenAgentDbCon
         CancellationToken cancellationToken)
     {
         await using OpenAgentDbContext context = await contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        DateTimeOffset now = DateTimeOffset.UtcNow;
         List<FileShareLinkEntity> entities = await context.FileShareLinks.AsNoTracking()
-            .Where(item => item.TenantId == tenantId && item.OwnerUserId == ownerId)
+            .Where(item => item.TenantId == tenantId
+                && item.OwnerUserId == ownerId
+                && item.ExpiresAt > now
+                && (item.MaxDownloads == null || item.DownloadCount < item.MaxDownloads))
             .OrderByDescending(item => item.CreatedAt)
             .ToListAsync(cancellationToken).ConfigureAwait(false);
         return entities.Select(ToRecord).ToList();
     }
 
-    public async Task<bool> DeleteAsync(
+    public async Task<bool> TryRevokeAsync(
         string shareIdHash,
         string tenantId,
         string ownerId,
         CancellationToken cancellationToken)
     {
         await using OpenAgentDbContext context = await contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
-        int deleted = await context.FileShareLinks
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        int revoked = await context.FileShareLinks
             .Where(item => item.ShareIdHash == shareIdHash
                 && item.TenantId == tenantId
-                && item.OwnerUserId == ownerId)
-            .ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
-        return deleted == 1;
+                && item.OwnerUserId == ownerId
+                && item.ExpiresAt > now)
+            .ExecuteUpdateAsync(
+                update => update.SetProperty(item => item.ExpiresAt, now),
+                cancellationToken).ConfigureAwait(false);
+        return revoked == 1;
     }
 
     private static FileShareLinkEntity ToEntity(FileShareLinkRecord record) => new()

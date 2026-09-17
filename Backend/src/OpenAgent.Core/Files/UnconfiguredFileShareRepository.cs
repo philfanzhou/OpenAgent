@@ -21,7 +21,7 @@ internal sealed class UnconfiguredFileShareRepository : IFileShareRepository
         CancellationToken cancellationToken) =>
         Task.FromException<IReadOnlyList<FileShareLinkRecord>>(CreateException());
 
-    public Task<bool> DeleteAsync(
+    public Task<bool> TryRevokeAsync(
         string shareIdHash,
         string tenantId,
         string ownerId,

@@ -163,26 +163,36 @@ internal sealed class RecordingFileShareRepository : IFileShareRepository
     public Task<IReadOnlyList<FileShareLinkRecord>> ListByOwnerAsync(
         string tenantId,
         string ownerId,
-        CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<FileShareLinkRecord>>(
+        CancellationToken cancellationToken)
+    {
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        return Task.FromResult<IReadOnlyList<FileShareLinkRecord>>(
             Records.Values
-                .Where(item => item.TenantId == tenantId && item.OwnerUserId == ownerId)
+                .Where(item => item.TenantId == tenantId
+                    && item.OwnerUserId == ownerId
+                    && item.ExpiresAt > now
+                    && (item.MaxDownloads == null || item.DownloadCount < item.MaxDownloads))
                 .OrderByDescending(item => item.CreatedAt)
                 .ToList());
+    }
 
-    public Task<bool> DeleteAsync(
+    public Task<bool> TryRevokeAsync(
         string shareIdHash,
         string tenantId,
         string ownerId,
         CancellationToken cancellationToken)
     {
         FileShareLinkRecord? record = Records.GetValueOrDefault(shareIdHash);
-        if (record == null || record.TenantId != tenantId || record.OwnerUserId != ownerId)
+        if (record == null
+            || record.TenantId != tenantId
+            || record.OwnerUserId != ownerId
+            || record.ExpiresAt <= DateTimeOffset.UtcNow)
         {
             return Task.FromResult(false);
         }
 
-        Records.Remove(shareIdHash);
+        // 软删除：改写失效时间为当前时刻，记录保留。
+        record.ExpiresAt = DateTimeOffset.UtcNow;
         return Task.FromResult(true);
     }
 }

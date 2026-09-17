@@ -6,5 +6,5 @@
 - 核销使用条件 `UPDATE`（未过期且未超次数才 `DownloadCount + 1`）保证原子性，多实例下“单次下载”语义严格。
 - 链接不存在、已过期或已用尽下载次数时下载端点统一返回 404，不暴露链接状态。
 - 有效期硬上限 365 天（`FileShareOptions.MaxLifetimeLimitSeconds`），不存在永久有效的分享。
-- 用户撤销分享即按 `(ShareIdHash, TenantId, OwnerUserId)` 条件删除记录，删除后令牌立即 404。
-- 治理应以 `FileId` 外键（Restrict）与租户边界为准；自然到期未撤销的记录可按 `ExpiresAt` 清理。
+- 用户撤销分享为软删除：按 `(ShareIdHash, TenantId, OwnerUserId)` 条件把 `ExpiresAt` 改写为当前时刻（仅对仍有效的记录生效），记录保留、令牌立即 404，且不再出现于查询结果。
+- 治理应以 `FileId` 外键（Restrict）与租户边界为准；已失效（过期、用尽或撤销）的记录可按 `ExpiresAt` 清理。

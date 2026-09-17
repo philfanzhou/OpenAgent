@@ -137,12 +137,11 @@ public class FileAssetCapabilitySourceTests
         JsonElement item = document.RootElement.GetProperty("shares").EnumerateArray().Single();
         Assert.Equal("Custom", item.GetProperty("mode").GetString());
         Assert.Equal(2, item.GetProperty("maxDownloads").GetInt32());
-        Assert.True(item.GetProperty("isActive").GetBoolean());
         Assert.Equal(64, item.GetProperty("shareId").GetString()!.Length);
     }
 
     [Fact]
-    public async Task InvokeAsync_RevokeShareLink_RemovesLinkAndKillsIt()
+    public async Task InvokeAsync_RevokeShareLink_MarksInvalidAndHidesFromList()
     {
         TestHarness harness = CreateHarness();
         FileAsset asset = CreateAsset("report.pdf", "application/pdf");
@@ -161,7 +160,9 @@ public class FileAssetCapabilitySourceTests
 
         Assert.Equal(shareId, JsonDocument.Parse(revoked).RootElement.GetProperty("shareId").GetString());
         Assert.True(JsonDocument.Parse(revoked).RootElement.GetProperty("revoked").GetBoolean());
-        Assert.Empty(harness.Shares.Records);
+        // 软删除：记录保留但已失效，列表不再出现。
+        Assert.True(harness.Shares.Records.ContainsKey(shareId));
+        Assert.True(harness.Shares.Records[shareId].ExpiresAt <= DateTimeOffset.UtcNow);
 
         string listed = await InvokeAsync(harness.Source, "list_share_links", new Dictionary<string, object?>());
         Assert.Equal(0, JsonDocument.Parse(listed).RootElement.GetProperty("count").GetInt32());

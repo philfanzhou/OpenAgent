@@ -128,8 +128,7 @@ internal static class FileShareEndpointExtensions
             share.ExpiresAt,
             share.MaxDownloads,
             share.DownloadCount,
-            share.CreatedAt,
-            isActive = share.IsActive
+            share.CreatedAt
         }));
     }
 
@@ -147,7 +146,7 @@ internal static class FileShareEndpointExtensions
                 UserId = context.GetAgentRequest().User.UserId
             },
             cancellationToken).ConfigureAwait(false);
-        // 不存在与不属于当前用户统一 404，避免分享 ID 被探测。
+        // 不存在、已失效与不属于当前用户统一 404，避免分享 ID 被探测。
         return revoked ? Results.NoContent() : Results.NotFound();
     }
 

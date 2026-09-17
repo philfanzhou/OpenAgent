@@ -221,7 +221,7 @@ public class FileShareServiceTests
     }
 
     [Fact]
-    public async Task ListAsync_ReturnsOnlyOwnerShares_NewestFirst()
+    public async Task ListAsync_ReturnsOnlyOwnerActiveShares_NewestFirst()
     {
         var repository = new RecordingFileAssetRepository();
         FileAsset asset = CreateAsset();
@@ -237,14 +237,23 @@ public class FileShareServiceTests
             Scope(),
             new FileShareRequest { Mode = FileShareMode.SingleUse },
             CancellationToken.None);
+        FileShareLink expired = await harness.Service.CreateAsync(
+            asset.FileId, Scope(), new FileShareRequest(), CancellationToken.None);
+        FileShareLink exhausted = await harness.Service.CreateAsync(
+            asset.FileId,
+            Scope(),
+            new FileShareRequest { Mode = FileShareMode.SingleUse },
+            CancellationToken.None);
         await harness.Service.CreateAsync(
             otherOwnerAsset.FileId,
             new FileAssetScope { TenantId = "tenant-a", UserId = "user-b" },
             new FileShareRequest(),
             CancellationToken.None);
-        // 拉开创建时间，验证按创建时间倒序。
+        // 拉开创建时间，验证按创建时间倒序；并制造两条无效链接。
         harness.Shares.Records[older.ShareId].CreatedAt = DateTimeOffset.UtcNow.AddHours(-1);
         harness.Shares.Records[newer.ShareId].CreatedAt = DateTimeOffset.UtcNow;
+        harness.Shares.Records[expired.ShareId].ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-1);
+        harness.Shares.Records[exhausted.ShareId].DownloadCount = 1;
 
         IReadOnlyList<FileShareSummary> summaries = await harness.Service.ListAsync(
             Scope(), CancellationToken.None);
@@ -252,13 +261,11 @@ public class FileShareServiceTests
         Assert.Equal(2, summaries.Count);
         Assert.Equal(newer.ShareId, summaries[0].ShareId);
         Assert.Equal(FileShareMode.SingleUse, summaries[0].Mode);
-        Assert.True(summaries[0].IsActive);
         Assert.Equal(older.ShareId, summaries[1].ShareId);
-        Assert.True(summaries[1].IsActive);
     }
 
     [Fact]
-    public async Task RevokeAsync_RemovesLinkAndKillsRedemption()
+    public async Task RevokeAsync_SoftDeletes_KillsRedemptionAndKeepsRecord()
     {
         var repository = new RecordingFileAssetRepository();
         var objects = new RecordingFileObjectStore();
@@ -271,6 +278,9 @@ public class FileShareServiceTests
             asset.FileId, Scope(), new FileShareRequest(), CancellationToken.None);
         Assert.True(await harness.Service.RevokeAsync(link.ShareId, Scope(), CancellationToken.None));
 
+        // 软删除：记录保留但立即失效，不再列出，也不能再兑换。
+        Assert.True(harness.Shares.Records.ContainsKey(link.ShareId));
+        Assert.True(harness.Shares.Records[link.ShareId].ExpiresAt <= DateTimeOffset.UtcNow);
         Assert.Null(await harness.Service.RedeemAsync(TokenFromUrl(link.Url), CancellationToken.None));
         Assert.Empty(await harness.Service.ListAsync(Scope(), CancellationToken.None));
         Assert.False(await harness.Service.RevokeAsync(link.ShareId, Scope(), CancellationToken.None));
@@ -298,7 +308,7 @@ public class FileShareServiceTests
             Scope(),
             CancellationToken.None));
         // 非本人撤销不影响原链接。
-        Assert.True(harness.Shares.Records.ContainsKey(link.ShareId));
+        Assert.True(harness.Shares.Records[link.ShareId].ExpiresAt > DateTimeOffset.UtcNow);
     }
 
     [Theory]
