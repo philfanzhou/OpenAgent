@@ -317,10 +317,8 @@ onBeforeUnmount(() => {
           <ChatMessages ref="chatMessagesRef" :messages="currentMessages" :context-summaries="selectedConversation?.contextSummaries" :loading="loadingConversation" :current-user="currentUser" :streaming="selectedConversationStreaming" :conversation-id="selectedConversation?.conversationId" :markdown-image-urls="markdownImageUrls" @suggest="message = $event" @download="downloadFile" />
           <div v-if="pendingApproval" class="composer-approval" role="alert">
             <span class="activity-icon thinking-icon"><i /><i /><i /></span>
-            <div class="composer-approval-copy">
-              <strong>代码执行审批 · {{ pendingApproval.action }}</strong>
-              <small><code>{{ approvalPreview(pendingApproval) }}</code></small>
-            </div>
+            <strong>代码执行审批</strong>
+            <code class="composer-approval-preview" :title="approvalPreview(pendingApproval)">{{ approvalPreview(pendingApproval) }}</code>
             <div v-if="!pendingApproval.deciding && String(pendingApproval.status) === 'Pending'" class="composer-approval-actions">
               <el-button size="small" type="primary" @click="decideHumanApproval(pendingApproval, true)">批准并继续</el-button>
               <el-button size="small" @click="decideHumanApproval(pendingApproval, false)">拒绝</el-button>
