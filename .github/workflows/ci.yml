@@ -30,7 +30,7 @@ jobs:
       - name: Install Bubblewrap and document runtime
         run: |
           sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends bubblewrap apparmor-profiles apparmor-utils python3-venv libreoffice-impress libreoffice-calc fonts-noto-cjk
+          sudo apt-get install --yes --no-install-recommends bubblewrap apparmor-profiles apparmor-utils python3-venv nodejs libreoffice-impress libreoffice-calc fonts-noto-cjk
           sudo install --mode 0644 /usr/share/apparmor/extra-profiles/bwrap-userns-restrict /etc/apparmor.d/bwrap-userns-restrict
           sudo apparmor_parser --replace /etc/apparmor.d/bwrap-userns-restrict
           python3 -m venv "$RUNNER_TEMP/openagent-code-venv"
