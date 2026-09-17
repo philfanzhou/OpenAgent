@@ -71,7 +71,12 @@ function hasMessageContent(message: ConversationMessage): boolean {
 
 function isStreamingItem(message: ConversationMessage): boolean {
   const last = displayMessages.value[displayMessages.value.length - 1]
-  return props.streaming && message.role === 'assistant' && last?.messageId === message.messageId
+  return (props.streaming || isAwaitingApproval(message)) && message.role === 'assistant' && last?.messageId === message.messageId
+}
+
+/** 审批挂起中：本轮未结束，按钮待决策，不能当作已完成的响应展示。 */
+function isAwaitingApproval(message: ConversationMessage): boolean {
+  return message.role === 'assistant' && String(message.approval?.status ?? '') === 'Pending'
 }
 
 /** 思考阶段：消息正在流式生成，且尚未输出正文内容。 */
@@ -79,8 +84,14 @@ function isThinking(message: ConversationMessage): boolean {
   return isStreamingItem(message) && !message.content
 }
 
+/** 过程折叠包标题：审批挂起优先于流式生成提示。 */
+function processTitleText(message: ConversationMessage): string {
+  if (isAwaitingApproval(message)) return '等待审批'
+  return isThinking(message) ? '正在执行' : '执行过程'
+}
+
 function shouldShowUsage(message: ConversationMessage): boolean {
-  return message.role === 'assistant' && !message.toolName && !isStreamingItem(message)
+  return message.role === 'assistant' && !message.toolName && !isStreamingItem(message) && !isAwaitingApproval(message)
 }
 
 function processActivities(message: ConversationMessage): ProcessActivity[] {
@@ -366,8 +377,8 @@ defineExpose({ scrollToBottom })
         >
           <summary>
             <span class="activity-icon thinking-icon"><i /><i /><i /></span>
-            <span class="process-title">{{ isThinking(item) ? '正在执行' : '执行过程' }}</span>
-            <small>{{ processSummary(item) }} · {{ isThinking(item) ? '进行中' : '已折叠' }}</small>
+            <span class="process-title">{{ processTitleText(item) }}</span>
+            <small>{{ processSummary(item) }} · {{ processTitleText(item) === '正在执行' ? '进行中' : processTitleText(item) === '等待审批' ? '待人工决策' : '已折叠' }}</small>
           </summary>
           <div class="process-bundle-body">
             <details
@@ -413,11 +424,11 @@ defineExpose({ scrollToBottom })
 
         <div v-if="item.content || isStreamingItem(item)" class="message-bubble"><MarkdownContent :content="item.content" :streaming="isStreamingItem(item) && Boolean(item.content)" :resolve-image="imageLookup(item.messageId)" /></div>
 
-        <div v-if="item.approval" class="approval-card" :class="`is-${item.approval.status.toLowerCase()}`">
+        <div v-if="item.approval" class="approval-card" :class="`is-${String(item.approval.status).toLowerCase()}`">
           <strong>代码执行需要审批</strong>
           <span>动作：{{ item.approval.action }}</span>
           <pre>{{ approvalArguments(item.approval) }}</pre>
-          <div v-if="item.approval.status === 'Pending'" class="approval-actions">
+          <div v-if="isAwaitingApproval(item)" class="approval-actions">
             <el-button size="small" type="primary" @click="emit('approvalDecision', item.approval, true)">批准并继续</el-button>
             <el-button size="small" @click="emit('approvalDecision', item.approval, false)">拒绝</el-button>
           </div>

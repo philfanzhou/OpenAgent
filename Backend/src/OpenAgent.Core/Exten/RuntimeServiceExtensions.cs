@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
+using OpenAgent.Contracts.Approvals;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Core.Abstract;
 using OpenAgent.Core.Approvals;
@@ -32,6 +33,8 @@ internal static class RuntimeServiceExtensions
         services.AddScoped<AgentFactory>();
         services.AddSingleton<InMemoryHumanApprovalStore>();
         services.AddScoped<HumanApprovalService>();
+        services.AddScoped<IHumanApprovalService>(serviceProvider =>
+            serviceProvider.GetRequiredService<HumanApprovalService>());
         services.AddScoped(serviceProvider => new AgentExecutor(
             serviceProvider.GetRequiredService<IAgentRuntimeResolver>(),
             serviceProvider.GetRequiredService<AgentFactory>(),

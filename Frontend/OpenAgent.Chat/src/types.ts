@@ -54,6 +54,16 @@ export interface HumanApprovalRequest {
   status: 'Pending' | 'Approved' | 'Rejected' | string
 }
 
+/** 兼容数字枚举与字符串两种下发形态，统一归一为可比较的状态文本。 */
+export function normalizeApprovalStatus(status: string | number | undefined | null): HumanApprovalRequest['status'] {
+  if (typeof status === 'number') {
+    if (status === 1) return 'Approved'
+    if (status === 2) return 'Rejected'
+    return 'Pending'
+  }
+  return status || 'Pending'
+}
+
 export interface ToolActivity {
   name: string
   callId?: string

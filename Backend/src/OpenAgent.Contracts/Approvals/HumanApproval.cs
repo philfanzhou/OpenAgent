@@ -1,7 +1,10 @@
+using System.Text.Json.Serialization;
 using OpenAgent.Contracts.Security;
 
 namespace OpenAgent.Contracts.Approvals;
 
+// 序列化为字符串：SSE 与 HTTP 响应都直接被前端消费，数字枚举会让前端状态判断失效。
+[JsonConverter(typeof(JsonStringEnumConverter<HumanApprovalStatus>))]
 public enum HumanApprovalStatus
 {
     Pending = 0,

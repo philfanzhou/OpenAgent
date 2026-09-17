@@ -74,6 +74,10 @@ public sealed class TestEngineHost(string responseName) : IAsyncDisposable
 
     public string? LastCompactedConversationId { get; private set; }
 
+    public string? LastDecidedApprovalId { get; private set; }
+
+    public string? LastApprovalDecisionBody { get; private set; }
+
     public string? LastCatalogTenantId { get; private set; }
 
     public string? UploadedFileName { get; private set; }
@@ -139,6 +143,16 @@ public sealed class TestEngineHost(string responseName) : IAsyncDisposable
                 LastCompactedConversationId = conversationId;
                 LastAuthorization = context.Request.Headers.Authorization.FirstOrDefault();
                 return Results.Json(new { status = "Succeeded", trigger = "Manual" });
+            });
+        application.MapPost(
+            "/api/v1/agent/approvals/{approvalId}/decision",
+            async (HttpContext context, string approvalId) =>
+            {
+                LastDecidedApprovalId = approvalId;
+                LastAuthorization = context.Request.Headers.Authorization.FirstOrDefault();
+                LastApprovalDecisionBody = await new StreamReader(context.Request.Body)
+                    .ReadToEndAsync(context.RequestAborted).ConfigureAwait(false);
+                return Results.Json(new { approval = new { approvalId, status = "Approved" } });
             });
         application.MapPost("/api/v1/agent/files", async context =>
         {

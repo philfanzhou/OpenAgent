@@ -1,5 +1,7 @@
+using System.Globalization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
+using OpenAgent.Contracts.Approvals;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Engine.Host.Extensions;
 using Xunit;
@@ -95,6 +97,10 @@ public class AgentStreamWriterTests
         string payload = await ReadBodyAsync(context);
         Assert.Contains("event: approval", payload, StringComparison.Ordinal);
         Assert.Contains("\"status\":\"AwaitingApproval\"", payload, StringComparison.Ordinal);
+        Assert.Contains("\"approval\":{", payload, StringComparison.Ordinal);
+        // 状态必须是字符串：前端直接执行 status.toLowerCase()，数字枚举会让渲染崩溃。
+        Assert.Contains("\"status\":\"Pending\"", payload, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"status\":0", payload, StringComparison.Ordinal);
         Assert.Contains("\"done\":true", payload, StringComparison.Ordinal);
     }
 
@@ -132,7 +138,17 @@ public class AgentStreamWriterTests
         yield return new AgentStreamEvent
         {
             Type = AgentStreamEventType.Approval,
-            Status = "AwaitingApproval"
+            Status = "AwaitingApproval",
+            Approval = new HumanApprovalRequest
+            {
+                ApprovalId = "approval-1",
+                TenantId = "tenant-1",
+                ConversationId = "conversation-1",
+                Action = "execute_code",
+                RedactedArgumentsJson = "{\"code\":\"1+1\"}",
+                RequestedBy = "tester",
+                ExpiresAt = DateTimeOffset.Parse("2026-09-17T00:00:00Z", CultureInfo.InvariantCulture)
+            }
         };
         await Task.Yield();
     }
