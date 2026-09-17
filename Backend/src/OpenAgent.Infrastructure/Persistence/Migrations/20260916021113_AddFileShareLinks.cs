@@ -24,6 +24,7 @@ namespace OpenAgent.Infrastructure.Persistence.Migrations
                     FileName = table.Column<string>(type: "character varying(1024)", maxLength: 1024, nullable: false),
                     MediaType = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: false),
                     Length = table.Column<long>(type: "bigint", nullable: false),
+                    Mode = table.Column<int>(type: "integer", nullable: false),
                     ExpiresAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     MaxDownloads = table.Column<int>(type: "integer", nullable: true),
                     DownloadCount = table.Column<int>(type: "integer", nullable: false),
@@ -48,10 +49,10 @@ namespace OpenAgent.Infrastructure.Persistence.Migrations
                 column: "FileId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_file_share_links_TenantId_CreatedAt",
+                name: "IX_file_share_links_TenantId_OwnerUserId_CreatedAt",
                 schema: "openagent",
                 table: "file_share_links",
-                columns: new[] { "TenantId", "CreatedAt" });
+                columns: new[] { "TenantId", "OwnerUserId", "CreatedAt" });
         }
 
         /// <inheritdoc />
