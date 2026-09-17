@@ -68,7 +68,9 @@ LLM Profile 选择 `Multimodal` 时，聊天请求中的 `image/*` 资产会在�
 `OPENAGENT_SHARE_PUBLIC_BASE_URL`，保证返回的 URL 始终是可直达的绝对地址）。
 
 模型侧由大模型调用内部工具 `create_file_transfer_url` 生成（保持原工具名），可选参数 `audience`、`mode` 与
-`expiresInSeconds`；REST 侧前端可调用 `POST /api/v1/agent/files/{fileId}/share`（body 同样支持
+`expiresInSeconds`；配套工具 `list_share_links`（查询当前用户的全部分享）与
+`revoke_share_link`（按 `shareId` 撤销，仅限本人链接）让模型可直接代用户管理与清理链接。
+REST 侧前端可调用 `POST /api/v1/agent/files/{fileId}/share`（body 同样支持
 `audience`）。两个场景不变：
 
 - **MCP 跨系统传输**：大模型判断某个第三方 MCP 工具需要文件 URL 时调用（传 `audience="mcp"`，默认 2 小时/2 次下载），并把返回的 URL 作为参数传给该 MCP 工具。

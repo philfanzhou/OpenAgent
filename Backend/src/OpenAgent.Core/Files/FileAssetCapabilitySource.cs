@@ -55,6 +55,26 @@ internal sealed class FileAssetCapabilitySource(
                 "file-assets",
                 CreateShareLinkAsync),
             new CapabilityDefinition(
+                "list_share_links",
+                "List every share link the current user has created (across all conversations), newest first, "
+                + "including expired or exhausted ones. Each item carries shareId, fileName, mode, expiresAt, "
+                + "maxDownloads, downloadCount and whether it is still active. Use it when the user asks which "
+                + "links exist or wants an inventory before cleanup; revoke with revoke_share_link.",
+                """{"type":"object","properties":{}}""",
+                AgentResourceType.Tool,
+                "file-assets",
+                ListShareLinksAsync),
+            new CapabilityDefinition(
+                "revoke_share_link",
+                "Revoke (delete) one of the current user's share links by shareId — the ID returned when the link "
+                + "was created (create_file_transfer_url) or listed (list_share_links). The link stops working "
+                + "immediately: further downloads return 404. Only links owned by the current user can be revoked; "
+                + "unknown or foreign IDs fail without side effects.",
+                """{"type":"object","properties":{"shareId":{"type":"string","description":"Share ID (token hash) of the link to revoke"}},"required":["shareId"]}""",
+                AgentResourceType.Tool,
+                "file-assets",
+                RevokeShareLinkAsync),
+            new CapabilityDefinition(
                 "list_files",
                 "List file assets referenced by the current conversation. Returns fileId and safe metadata only; "
                 + "use read_file to inspect text or publish_files to deliver selected files to the user.",
@@ -238,6 +258,59 @@ internal sealed class FileAssetCapabilitySource(
         {
             return $"文件分享链接生成失败：{exception.Message}";
         }
+    }
+
+    private async Task<string> ListShareLinksAsync(
+        IReadOnlyDictionary<string, object?> arguments,
+        CancellationToken cancellationToken)
+    {
+        if (executionContext.Scope == null)
+        {
+            return "查询分享链接失败：文件执行上下文不可用。";
+        }
+
+        IReadOnlyList<FileShareSummary> items = await shares.ListAsync(
+            executionContext.Scope,
+            cancellationToken).ConfigureAwait(false);
+        return JsonSerializer.Serialize(new
+        {
+            count = items.Count,
+            shares = items.Select(item => new
+            {
+                shareId = item.ShareId,
+                fileId = item.FileId,
+                fileName = item.FileName,
+                mode = item.Mode.ToString(),
+                expiresAt = item.ExpiresAt,
+                maxDownloads = item.MaxDownloads,
+                downloadCount = item.DownloadCount,
+                createdAt = item.CreatedAt,
+                isActive = item.IsActive
+            })
+        });
+    }
+
+    private async Task<string> RevokeShareLinkAsync(
+        IReadOnlyDictionary<string, object?> arguments,
+        CancellationToken cancellationToken)
+    {
+        string? shareId = ReadString(arguments, "shareId");
+        if (string.IsNullOrWhiteSpace(shareId))
+        {
+            return "撤销分享链接失败：'shareId' 是必填参数。";
+        }
+        if (executionContext.Scope == null)
+        {
+            return "撤销分享链接失败：文件执行上下文不可用。";
+        }
+
+        bool revoked = await shares.RevokeAsync(
+            shareId,
+            executionContext.Scope,
+            cancellationToken).ConfigureAwait(false);
+        return revoked
+            ? JsonSerializer.Serialize(new { shareId, revoked = true })
+            : "撤销分享链接失败：分享不存在或不属于当前用户。";
     }
 
     private static int? ReadInt32(IReadOnlyDictionary<string, object?> arguments, string name)
