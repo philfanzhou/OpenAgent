@@ -45,20 +45,6 @@ public class CodeCapabilityTests
         }, fixture.User, CancellationToken.None));
     }
 
-    [Fact]
-    public async Task Invoke_StopsExecutingWhenRequestBudgetIsExhausted()
-    {
-        var fixture = new Fixture();
-        AIFunction function = await fixture.GetFunctionAsync();
-        for (int index = 0; index < 8; index++)
-        {
-            await function.InvokeAsync(new AIFunctionArguments { ["code"] = "print(1)" });
-        }
-        object? result = await function.InvokeAsync(new AIFunctionArguments { ["code"] = "print(2)" });
-        Assert.Contains("budget exhausted", result?.ToString());
-        Assert.Equal(8, fixture.Executor.Requests.Count);
-    }
-
     [Theory]
     [InlineData("other-tenant", "user")]
     [InlineData("tenant", "other-user")]
@@ -275,7 +261,6 @@ public class CodeCapabilityTests
         internal RecordingFileAssetRepository Repository { get; } = new();
         internal RecordingFileObjectStore Objects { get; } = new();
         internal FakeExecutor Executor { get; } = new();
-        internal CodeExecutionBudget Budget { get; } = new();
         internal FileAssetExecutionContext Context { get; } = new();
         internal AgentUserContext User { get; } = new() { TenantId = "tenant", UserId = "user" };
         internal FileAssetService Files { get; }
@@ -289,7 +274,7 @@ public class CodeCapabilityTests
             auth.Setup(service => service.IsAuthorizedAsync(It.IsAny<AgentAuthorizationRequest>(), It.IsAny<IAgentUserContext>(), It.IsAny<CancellationToken>()))
                 .Returns(() => Task.FromResult(Authorized));
             var gate = new AgentAuthorizationGate(auth.Object);
-            var source = new CodeCapabilitySource(executor ?? Executor, Files, Context, gate, Budget,
+            var source = new CodeCapabilitySource(executor ?? Executor, Files, Context, gate,
                 Options.Create(new CodeExecutionOptions { Enabled = enabled }));
             var sources = new List<ICapabilitySource> { source };
             if (executor != null)

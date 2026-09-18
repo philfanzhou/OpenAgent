@@ -42,7 +42,6 @@ public class CapabilityServiceRegistrationTests
         Assert.DoesNotContain(sources, source => source.GetType().Name.Contains("HttpSkill", StringComparison.Ordinal));
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<AgentSkillsProviderFactory>());
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<McpToolFactory>());
-        Assert.NotNull(scope.ServiceProvider.GetRequiredService<OpenAgent.Core.Capabilities.Code.CodeExecutionBudget>());
     }
 
     private sealed class StaticConfigProvider : IAgentConfigProvider

@@ -196,19 +196,6 @@ public class SkillScriptRunnerTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task RunAsync_ExhaustedSharedBudget_ReturnsErrorWithoutRunnerCall()
-    {
-        string scriptPath = await WriteScriptAsync("analyze.py", "print('analyze ran')\n");
-        for (int index = 0; index < 8; index++)
-        {
-            Assert.True(_fixture.Budget.TryConsume(8));
-        }
-        object? result = await _fixture.RunAsync(scriptPath, null);
-        Assert.Contains("budget exhausted", result?.ToString(), StringComparison.Ordinal);
-        Assert.Empty(_fixture.Executor.Requests);
-    }
-
-    [Fact]
     public async Task RunAsync_RegistersArtifactsWithConversationOwnership()
     {
         string scriptPath = await WriteScriptAsync("analyze.py", "print('analyze ran')\n");
@@ -278,7 +265,6 @@ public class SkillScriptRunnerTests : IAsyncLifetime
         internal RecordingFileAssetRepository Repository { get; } = new();
         internal RecordingFileObjectStore Objects { get; } = new();
         internal FakeCodeExecutor Executor { get; } = new();
-        internal CodeExecutionBudget Budget { get; } = new();
         internal FileAssetExecutionContext Context { get; } = new();
         internal AgentUserContext User { get; } = new() { TenantId = "tenant", UserId = "user" };
 
@@ -292,7 +278,7 @@ public class SkillScriptRunnerTests : IAsyncLifetime
                 .Returns(() => Task.FromResult(Authorized));
             var gate = new AgentAuthorizationGate(auth.Object);
             Runner = new SkillScriptRunner(
-                executor ?? Executor, Files, Context, gate, Budget,
+                executor ?? Executor, Files, Context, gate,
                 Options.Create(new CodeExecutionOptions { Enabled = enabled }));
         }
 

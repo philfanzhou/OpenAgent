@@ -23,8 +23,7 @@ public static class CoreServiceExtensions
             .Validate(options => !options.Enabled ||
                 (Uri.TryCreate(options.Endpoint, UriKind.Absolute, out Uri? uri)
                     && uri.Scheme is "http" or "https" && string.IsNullOrEmpty(uri.UserInfo)
-                    && options.ApiKey.Length >= 32 && options.RequestTimeoutSeconds is >= 10 and <= 900
-                    && options.MaxExecutionsPerRequest is >= 1 and <= 32),
+                    && options.ApiKey.Length >= 32 && options.RequestTimeoutSeconds is >= 10 and <= 900),
                 "CodeExecution requires an HTTP(S) Runner endpoint, a 32-character API key, and a bounded timeout.")
             .ValidateOnStart();
         bool allowInsecureTls = configuration.GetValue("OPENAGENT_ALLOW_INSECURE_TLS", false);
@@ -41,7 +40,6 @@ public static class CoreServiceExtensions
                 return handler;
             });
         services.AddScoped<OpenAgent.Core.Capabilities.ICapabilitySource, CodeCapabilitySource>();
-        services.AddScoped<OpenAgent.Core.Capabilities.Code.CodeExecutionBudget>();
 
         return services
             .AddConversationServices(configuration)

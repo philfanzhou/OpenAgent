@@ -66,7 +66,7 @@ Runner 请求目前与聊天请求共同存活；不提供断线后继续运行�
 
 固定 Python venv 安装 python-pptx、openpyxl、XlsxWriter、pandas、matplotlib、Pillow 和 defusedxml；主机只读运行时提供 LibreOffice、中文字体和 Node.js。支持生成可编辑 Office 文件，也可在沙箱内调用 LibreOffice 渲染 PDF 后交付。JavaScript 侧当前只提供 Node 内置模块（ESM 入口 `main.mjs`），不预装 npm 包；后续按需将固定版本包只读挂入沙箱。
 
-原有 Skill 指令/资源读取保持可用。Skill 包脚本可在双开关（宿主 `CodeExecution.Enabled` + Agent `CodeExecution` 绑定）与 `SkillInstanceConfig.ScriptExecutionEnabled`（按实例，默认关闭）全部开启后，经 `run_skill_script` 工具在同一 Bubblewrap 沙箱内执行：整个 Skill 包按相对路径全量挂载为 `/input` 输入（包根与脚本目录进入 `sys.path`，包内相互依赖可解析），由生成的 wrapper 入口 `openagent_skill_entry__.py` 以 `runpy` 启动（包内自带 `main.py` 不再冲突），并按会话复用工作区；产物登记与预算扣减与 `execute_code` 共享（`CodeExecutionBudget`）。仅支持 `.py` 脚本；MCP 服务与业务工具不迁入沙箱，也不提供 `call_tool` 回调桥接。
+原有 Skill 指令/资源读取保持可用。Skill 包脚本可在双开关（宿主 `CodeExecution.Enabled` + Agent `CodeExecution` 绑定）与 `SkillInstanceConfig.ScriptExecutionEnabled`（按实例，默认关闭）全部开启后，经 `run_skill_script` 工具在同一 Bubblewrap 沙箱内执行：整个 Skill 包按相对路径全量挂载为 `/input` 输入（包根与脚本目录进入 `sys.path`，包内相互依赖可解析），由生成的 wrapper 入口 `openagent_skill_entry__.py` 以 `runpy` 启动（包内自带 `main.py` 不再冲突），并按会话复用工作区；产物登记流程与 `execute_code` 共享。仅支持 `.py` 脚本；MCP 服务与业务工具不迁入沙箱，也不提供 `call_tool` 回调桥接。
 
 ## 验证
 

@@ -100,7 +100,6 @@ public class AgentSkillsProviderFactoryTests
         internal RecordingFileObjectStore Objects { get; } = new();
         internal SkillCatalog Catalog { get; } = new();
         internal FakeCodeExecutor Executor { get; } = new();
-        internal CodeExecutionBudget Budget { get; } = new();
         internal FileAssetExecutionContext Context { get; } = new();
         internal AgentUserContext User { get; } = new() { TenantId = "tenant", UserId = "user" };
         internal AgentSkillsProviderFactory Factory { get; }
@@ -118,7 +117,6 @@ public class AgentSkillsProviderFactoryTests
                 Executor,
                 new FileAssetService(Repository, Objects, Options.Create(new FileAssetOptions { Enabled = true })),
                 Context,
-                Budget,
                 Options.Create(new CodeExecutionOptions { Enabled = hostCodeExecutionEnabled }),
                 NullLoggerFactory.Instance);
         }
