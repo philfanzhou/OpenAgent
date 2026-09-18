@@ -254,6 +254,107 @@ public class FileAssetServiceTests
         Assert.Equal("<mxfile><diagram /></mxfile>", System.Text.Encoding.UTF8.GetString(objects.LastContent));
     }
 
+    [Theory]
+    [InlineData("doc.xml", "application/xml")]
+    [InlineData("doc.xml", "text/xml")]
+    [InlineData("logo.svg", "image/svg+xml")]
+    [InlineData("circuit.drawio", "application/vnd.jgraph.mxfile")]
+    [InlineData("photo.jps", "image/jpeg")]
+    [InlineData("data.json", "text/json")]
+    public async Task UploadAsync_NewFormats_AcceptedWithDefaultWhitelist(string fileName, string mediaType)
+    {
+        var repository = new RecordingFileAssetRepository();
+        var objects = new RecordingFileObjectStore();
+        IFileAssetService service = CreateService(repository, objects);
+        await using var content = new MemoryStream("payload"u8.ToArray());
+
+        FileAsset asset = await service.UploadAsync(
+            new FileAssetCreateRequest
+            {
+                FileName = fileName,
+                MediaType = mediaType,
+                Source = FileAssetSource.UserUpload
+            },
+            content,
+            Scope("conversation-a"),
+            CancellationToken.None);
+
+        Assert.Equal(FileAssetState.Ready, asset.State);
+        Assert.Equal(fileName, asset.FileName);
+        Assert.Equal(mediaType, asset.MediaType);
+    }
+
+    [Theory]
+    [InlineData("data.json", null, "application/json")]
+    [InlineData("data.json", "application/octet-stream", "application/json")]
+    [InlineData("doc.xml", "application/octet-stream", "application/xml")]
+    [InlineData("logo.svg", "application/octet-stream", "image/svg+xml")]
+    [InlineData("circuit.drawio", "application/octet-stream", "application/vnd.jgraph.mxfile")]
+    [InlineData("photo.jps", "application/octet-stream", "image/jpeg")]
+    public async Task UploadAsync_GenericClientMediaType_InfersCanonicalTypeFromExtension(
+        string fileName,
+        string? requestedMediaType,
+        string expectedMediaType)
+    {
+        var repository = new RecordingFileAssetRepository();
+        var objects = new RecordingFileObjectStore();
+        IFileAssetService service = CreateService(repository, objects);
+        await using var content = new MemoryStream("payload"u8.ToArray());
+
+        FileAsset asset = await service.UploadAsync(
+            new FileAssetCreateRequest
+            {
+                FileName = fileName,
+                MediaType = requestedMediaType,
+                Source = FileAssetSource.UserUpload
+            },
+            content,
+            Scope("conversation-a"),
+            CancellationToken.None);
+
+        Assert.Equal(FileAssetState.Ready, asset.State);
+        Assert.Equal(expectedMediaType, asset.MediaType);
+    }
+
+    [Fact]
+    public async Task UploadAsync_UnknownExtensionWithGenericMediaType_Rejects()
+    {
+        var repository = new RecordingFileAssetRepository();
+        var objects = new RecordingFileObjectStore();
+        IFileAssetService service = CreateService(repository, objects);
+        await using var content = new MemoryStream("payload"u8.ToArray());
+
+        await Assert.ThrowsAsync<AgentException>(() => service.UploadAsync(
+            new FileAssetCreateRequest
+            {
+                FileName = "macro.xlsm",
+                MediaType = "application/octet-stream",
+                Source = FileAssetSource.UserUpload
+            },
+            content,
+            Scope("conversation-a"),
+            CancellationToken.None));
+    }
+
+    [Theory]
+    [InlineData("doc.xml", "application/xml")]
+    [InlineData("logo.svg", "image/svg+xml")]
+    [InlineData("circuit.drawio", "application/vnd.jgraph.mxfile")]
+    public async Task ReadTextAsync_XmlLikeTextFormats_ReturnsContent(string fileName, string mediaType)
+    {
+        var repository = new RecordingFileAssetRepository();
+        var objects = new RecordingFileObjectStore();
+        FileAsset asset = CreateAsset(fileName, mediaType);
+        objects.ContentsByKey[asset.ObjectKey] = "<payload>ok</payload>"u8.ToArray();
+        repository.Assets[asset.FileId] = asset;
+        repository.References.Add($"conversation-a:{asset.FileId}");
+        IFileAssetService service = CreateService(repository, objects);
+
+        string text = await service.ReadTextAsync(asset.FileId, Scope("conversation-a"), CancellationToken.None);
+
+        Assert.Equal("<payload>ok</payload>", text);
+    }
+
     [Fact]
     public async Task ReadObjectTextAsync_TenantScopedKey_ReturnsDecodedText()
     {

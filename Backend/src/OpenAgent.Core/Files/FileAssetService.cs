@@ -32,7 +32,7 @@ internal sealed class FileAssetService : IFileAssetService
     {
         EnsureEnabled();
         ValidateScope(scope);
-        byte[] data = await ReadAndValidateAsync(request, content, cancellationToken).ConfigureAwait(false);
+        (byte[] data, string mediaType) = await ReadAndValidateAsync(request, content, cancellationToken).ConfigureAwait(false);
         string fileId = Guid.NewGuid().ToString("N");
         string sha256 = Convert.ToHexString(SHA256.HashData(data)).ToLowerInvariant();
         FileAsset pending = new()
@@ -41,7 +41,7 @@ internal sealed class FileAssetService : IFileAssetService
             TenantId = scope.TenantId,
             OwnerUserId = scope.UserId,
             FileName = Path.GetFileName(request.FileName),
-            MediaType = NormalizeMediaType(request.MediaType),
+            MediaType = mediaType,
             Length = data.LongLength,
             Sha256 = sha256,
             ObjectKey = string.Empty,
@@ -483,7 +483,7 @@ internal sealed class FileAssetService : IFileAssetService
         CancellationToken cancellationToken) =>
         _repository.IsReferencedAsync(scope.ConversationId!, asset.FileId, cancellationToken);
 
-    private async Task<byte[]> ReadAndValidateAsync(
+    private async Task<(byte[] Data, string MediaType)> ReadAndValidateAsync(
         FileAssetCreateRequest request,
         Stream content,
         CancellationToken cancellationToken)
@@ -495,7 +495,10 @@ internal sealed class FileAssetService : IFileAssetService
 
         string fileName = Path.GetFileName(request.FileName);
         string extension = Path.GetExtension(fileName);
-        string mediaType = NormalizeMediaType(request.MediaType);
+        // Clients frequently report "application/octet-stream" for formats the OS has no
+        // MIME mapping for (.json, .drawio, .jps, ...). Fall back to the canonical media
+        // type for the extension so the whitelist still applies to a concrete type.
+        string mediaType = ResolveMediaType(extension, request.MediaType);
         if (!_options.AllowedExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase)
             || !IsAllowedMediaType(mediaType)
             || !MediaTypeMatchesExtension(extension, mediaType))
@@ -513,7 +516,7 @@ internal sealed class FileAssetService : IFileAssetService
             throw new AgentException(AgentErrorCode.InvalidRequest, "File size is outside the configured limit.");
         }
 
-        return buffer.ToArray();
+        return (buffer.ToArray(), mediaType);
     }
 
     private void EnsureEnabled()
@@ -558,6 +561,17 @@ internal sealed class FileAssetService : IFileAssetService
         return normalized;
     }
 
+    private static string ResolveMediaType(string extension, string? requestedMediaType)
+    {
+        string normalized = NormalizeMediaType(requestedMediaType);
+        return IsGenericMediaType(normalized) && ExtensionMediaTypes.TryGetValue(extension, out string? inferred)
+            ? inferred
+            : normalized;
+    }
+
+    private static bool IsGenericMediaType(string mediaType) =>
+        mediaType.Equals("application/octet-stream", StringComparison.OrdinalIgnoreCase);
+
     private bool IsAllowedMediaType(string mediaType) => _options.AllowedMediaTypes.Any(allowed =>
         allowed.EndsWith("/*", StringComparison.Ordinal)
             ? mediaType.StartsWith(allowed[..^1], StringComparison.OrdinalIgnoreCase)
@@ -565,9 +579,12 @@ internal sealed class FileAssetService : IFileAssetService
 
     private static bool MediaTypeMatchesExtension(string extension, string mediaType) => extension.ToLowerInvariant() switch
     {
-        ".png" or ".jpg" or ".jpeg" or ".gif" or ".webp" or ".svg" => mediaType.StartsWith("image/", StringComparison.OrdinalIgnoreCase),
+        ".png" or ".jpg" or ".jpeg" or ".jps" or ".gif" or ".webp" or ".svg" => mediaType.StartsWith("image/", StringComparison.OrdinalIgnoreCase),
         ".pdf" => mediaType.Equals("application/pdf", StringComparison.OrdinalIgnoreCase),
-        ".json" => mediaType.Equals("application/json", StringComparison.OrdinalIgnoreCase),
+        ".json" => mediaType.Equals("application/json", StringComparison.OrdinalIgnoreCase)
+            || mediaType.Equals("text/json", StringComparison.OrdinalIgnoreCase),
+        ".xml" => mediaType.Equals("application/xml", StringComparison.OrdinalIgnoreCase)
+            || mediaType.Equals("text/xml", StringComparison.OrdinalIgnoreCase),
         ".drawio" => mediaType.Equals("application/vnd.jgraph.mxfile", StringComparison.OrdinalIgnoreCase),
         ".txt" => mediaType.Equals("text/plain", StringComparison.OrdinalIgnoreCase),
         ".csv" => mediaType.Equals("text/csv", StringComparison.OrdinalIgnoreCase),
@@ -579,9 +596,36 @@ internal sealed class FileAssetService : IFileAssetService
         _ => false
     };
 
+    private static readonly IReadOnlyDictionary<string, string> ExtensionMediaTypes =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            [".png"] = "image/png",
+            [".jpg"] = "image/jpeg",
+            [".jpeg"] = "image/jpeg",
+            [".jps"] = "image/jpeg",
+            [".gif"] = "image/gif",
+            [".webp"] = "image/webp",
+            [".svg"] = "image/svg+xml",
+            [".pdf"] = "application/pdf",
+            [".json"] = "application/json",
+            [".xml"] = "application/xml",
+            [".txt"] = "text/plain",
+            [".csv"] = "text/csv",
+            [".md"] = "text/markdown",
+            [".html"] = "text/html",
+            [".htm"] = "text/html",
+            [".zip"] = "application/zip",
+            [".pptx"] = "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            [".xlsx"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            [".drawio"] = "application/vnd.jgraph.mxfile"
+        };
+
     private static bool IsTextMediaType(string mediaType) =>
         mediaType.StartsWith("text/", StringComparison.OrdinalIgnoreCase)
-        || mediaType.Equals("application/json", StringComparison.OrdinalIgnoreCase);
+            || mediaType.Equals("application/json", StringComparison.OrdinalIgnoreCase)
+            || mediaType.Equals("application/xml", StringComparison.OrdinalIgnoreCase)
+            || mediaType.Equals("image/svg+xml", StringComparison.OrdinalIgnoreCase)
+            || mediaType.Equals("application/vnd.jgraph.mxfile", StringComparison.OrdinalIgnoreCase);
 
     private static string NormalizeMediaType(string? mediaType) => string.IsNullOrWhiteSpace(mediaType)
         ? "application/octet-stream"

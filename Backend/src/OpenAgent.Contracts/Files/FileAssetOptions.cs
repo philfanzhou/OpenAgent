@@ -16,7 +16,11 @@ public sealed class FileAssetOptions
         "image/*",
         "application/pdf",
         "application/json",
+        "text/json",
+        "application/xml",
+        "text/xml",
         "application/zip",
+        "application/vnd.jgraph.mxfile",
         "application/vnd.openxmlformats-officedocument.presentationml.presentation",
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         "text/plain",
@@ -24,5 +28,9 @@ public sealed class FileAssetOptions
         "text/markdown"
     ];
     public IReadOnlyList<string> AllowedExtensions { get; init; } =
-    [".png", ".jpg", ".jpeg", ".gif", ".webp", ".pdf", ".json", ".txt", ".csv", ".md", ".zip", ".pptx", ".xlsx"];
+    [
+        ".png", ".jpg", ".jpeg", ".jps", ".gif", ".webp", ".svg",
+        ".pdf", ".json", ".xml", ".txt", ".csv", ".md",
+        ".zip", ".pptx", ".xlsx", ".drawio"
+    ];
 }

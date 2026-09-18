@@ -221,10 +221,14 @@ public class AgentExecutorUsageTests
         Assert.Equal(3, actual.ReasoningTokens);
     }
 
+    internal static TestRuntime CreateRuntime(IChatClient provider) =>
+        CreateRuntime(provider, configure: null);
+
     internal static TestRuntime CreateRuntime(
         IChatClient provider,
         OpenAgent.Core.Capabilities.ICapabilitySource? extraSource = null,
-        int maxTurns = 2)
+        int maxTurns = 2,
+        Action<IServiceCollection>? configure = null)
     {
         var services = new ServiceCollection();
         services.AddLogging();
@@ -243,6 +247,7 @@ public class AgentExecutorUsageTests
         services.AddSingleton<IAgentRuntimeResolver>(new StaticRuntimeResolver(maxTurns));
         services.RemoveAll<IAgentChatClientFactory>();
         services.AddSingleton<IAgentChatClientFactory>(new FakeChatClientFactory(provider));
+        configure?.Invoke(services);
 
         ServiceProvider serviceProvider = services.BuildServiceProvider(
             new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
