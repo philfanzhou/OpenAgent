@@ -36,10 +36,10 @@ ChatClientAgent.AIContextProviders
 
 Skill 指令加载与资源读取默认启用；包内脚本默认完全不可执行。脚本执行需要三层开关同时开启：宿主 `CodeExecution.Enabled`（隔离 Runner 已部署）、Agent 配置的 `CodeExecution` 绑定、以及 `SkillInstanceConfig.ScriptExecutionEnabled`（按 Skill 实例，默认 false）。未全部开启时 `ScriptFilter` 不披露任何脚本，runner 显式拒绝执行。
 
-开启后脚本也绝不在 Engine 进程内执行：`SkillScriptRunner` 将脚本与其同目录文件挂载为沙箱 `/input` 输入，经生成的 wrapper `main.py` 以 `runpy` 在 Bubblewrap 沙箱内启动（无网络、非 root、固定 venv）。约束与 `execute_code` 完全一致：
+开启后脚本也绝不在 Engine 进程内执行：`SkillScriptRunner` 将整个 Skill 包按相对路径全量挂载为沙箱 `/input` 输入（保留包内目录结构，包根与脚本目录进入 `sys.path`，跨目录 import 可解析），经生成的专用 wrapper 入口 `openagent_skill_entry__.py` 以 `runpy` 在 Bubblewrap 沙箱内启动（无网络、非 root、固定 venv），并按会话（conversation）复用 Runner 工作区。约束与 `execute_code` 完全一致：
 
 - 仅 `.py` 脚本；shell 与其他解释器不披露、不执行；
-- `ExecutionLimits` 输入文件上限（8 个、单文件 10 MiB、总 20 MiB、`main.py` 保留名、安全文件名）；
+- `ExecutionLimits` 输入文件上限（100 个、单文件 10 MiB、总 20 MiB、安全相对路径名）；包可自带 `main.py`，wrapper 使用专用入口不与之冲突；
 - 与 `execute_code` 共享每请求预算（`CodeExecutionBudget`），两条通道无法互相绕过限额；
 - 调用时按 `(Tool, run_skill_script)`、`(Function, run_skill_script)` 与 `(Skill, name)` 复核授权；
 - 产物经 `FileAssetService` 登记为会话资产，由 `publish_files` 发布；

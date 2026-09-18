@@ -17,4 +17,10 @@ public static class ExecutionLanguage
         JavaScript => "main.mjs",
         _ => "main.py"
     };
+
+    public static string EntryFileExtension(string language) => language switch
+    {
+        JavaScript => ".mjs",
+        _ => ".py"
+    };
 }

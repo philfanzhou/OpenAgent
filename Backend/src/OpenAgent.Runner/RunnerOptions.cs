@@ -12,4 +12,10 @@ internal sealed class RunnerOptions
     public int MemoryMiB { get; set; } = 1536;
     public int WorkspaceMiB { get; set; } = 128;
     public int MaxProcesses { get; set; } = 64;
+
+    /// <summary>
+    /// Conversation workspaces (session-*) are reused across executions; after this
+    /// idle period WorkspaceReaper deletes them, together with their mounted inputs.
+    /// </summary>
+    public int SessionWorkspaceIdleMinutes { get; set; } = 120;
 }

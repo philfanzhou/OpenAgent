@@ -13,9 +13,10 @@ namespace OpenAgent.Core.Capabilities.Skill;
 
 /// <summary>
 /// Bridges MAF's run_skill_script tool to the isolated Runner. Package scripts
-/// never execute in the Engine process: they are mounted as sandbox inputs and
-/// launched through a generated wrapper main.py, sharing the same Bubblewrap
-/// isolation, budget, and artifact pipeline as execute_code.
+/// never execute in the Engine process: the whole materialized package is
+/// mounted as sandbox inputs (preserving its directory layout, so intra-package
+/// imports resolve) and launched through a generated wrapper entry file, sharing
+/// the same Bubblewrap isolation, budget, and artifact pipeline as execute_code.
 /// </summary>
 internal sealed class SkillScriptRunner(
     ICodeExecutor executor,
@@ -36,20 +37,48 @@ internal sealed class SkillScriptRunner(
         Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
 
+    /// <summary>
+    /// Skill packages may legitimately ship their own main.py, so the wrapper
+    /// uses a dedicated entry name instead of the language default.
+    /// </summary>
+    internal const string WrapperEntryFileName = "openagent_skill_entry__.py";
+
     internal Task<object?> RunAsync(
         string agentId,
         IAgentUserContext user,
         AgentFileSkill skill,
         AgentFileSkillScript script,
         JsonElement? arguments,
-        CancellationToken cancellationToken) =>
-        RunAsync(agentId, user, skill.Frontmatter.Name, script.FullPath, arguments, cancellationToken);
+        CancellationToken cancellationToken) => RunAsync(
+            agentId,
+            user,
+            skill.Frontmatter.Name,
+            script.FullPath,
+            ResolveSkillRoot(skill),
+            arguments,
+            cancellationToken);
 
     internal async Task<object?> RunAsync(
         string agentId,
         IAgentUserContext user,
         string skillName,
         string scriptFullPath,
+        JsonElement? arguments,
+        CancellationToken cancellationToken) => await RunAsync(
+            agentId,
+            user,
+            skillName,
+            scriptFullPath,
+            FindSkillRoot(scriptFullPath),
+            arguments,
+            cancellationToken).ConfigureAwait(false);
+
+    private async Task<object?> RunAsync(
+        string agentId,
+        IAgentUserContext user,
+        string skillName,
+        string scriptFullPath,
+        string skillRoot,
         JsonElement? arguments,
         CancellationToken cancellationToken)
     {
@@ -77,7 +106,8 @@ internal sealed class SkillScriptRunner(
             {
                 return "{\"error\":\"Code execution budget exhausted for this request.\"}";
             }
-            CodeExecutionRequest request = await BuildRequestAsync(scriptFullPath, arguments, cancellationToken).ConfigureAwait(false);
+            CodeExecutionRequest request = await BuildRequestAsync(
+                skillRoot, scriptFullPath, scope, arguments, cancellationToken).ConfigureAwait(false);
             CodeExecutionResult result = await executor.ExecuteAsync(request, cancellationToken).ConfigureAwait(false);
             ExecutionLimits.ValidateFiles(result.Files);
             List<object> artifacts = await CodeExecutionArtifacts.PublishAsync(
@@ -101,34 +131,74 @@ internal sealed class SkillScriptRunner(
         }
     }
 
+    /// <summary>MAF reports the skill's own directory path.</summary>
+    private static string ResolveSkillRoot(AgentFileSkill skill) => skill.Path;
+
+    /// <summary>Walks up from the script to the nearest directory holding SKILL.md.</summary>
+    private static string FindSkillRoot(string scriptFullPath)
+    {
+        string? directory = Path.GetDirectoryName(Path.GetFullPath(scriptFullPath));
+        for (int depth = 0; !string.IsNullOrWhiteSpace(directory) && depth < 8; depth++)
+        {
+            if (File.Exists(Path.Combine(directory, "SKILL.md")))
+            {
+                return directory;
+            }
+            directory = Path.GetDirectoryName(directory);
+        }
+        return FindSkillRootFallback(scriptFullPath);
+    }
+
+    private static string FindSkillRootFallback(string path) =>
+        Path.GetDirectoryName(Path.GetFullPath(path))
+            ?? throw new ArgumentException("Skill script is no longer available.");
+
     /// <summary>
-    /// Mounts the target script and its sibling files from the materialized
-    /// package directory as flat sandbox inputs. Names are validated by
-    /// <see cref="ExecutionLimits"/>, which also enforces the file count and
-    /// size limits and the reserved main.py name.
+    /// Mounts the entire skill package — not just the script's flat neighbours —
+    /// with names relative to the package root, so scripts importing sibling
+    /// modules or package data resolve inside the sandbox. Names are validated by
+    /// <see cref="ExecutionLimits"/>, which also enforces the file count and size
+    /// limits; the conversation-scoped session key keeps one workspace mounted
+    /// across the runs of a single conversation.
     /// </summary>
     private static async Task<CodeExecutionRequest> BuildRequestAsync(
+        string skillRoot,
         string scriptFullPath,
+        FileAssetScope scope,
         JsonElement? arguments,
         CancellationToken cancellationToken)
     {
-        string scriptName = Path.GetFileName(scriptFullPath);
-        string? scriptDirectory = Path.GetDirectoryName(scriptFullPath);
-        if (string.IsNullOrWhiteSpace(scriptDirectory)
-            || !File.Exists(scriptFullPath)
-            || !Directory.Exists(scriptDirectory))
+        string fullScriptPath = Path.GetFullPath(scriptFullPath);
+        string fullRoot = Path.GetFullPath(skillRoot);
+        string? scriptRelative = Path.GetRelativePath(fullRoot, fullScriptPath).Replace('\\', '/');
+        if (!File.Exists(fullScriptPath)
+            || !Directory.Exists(fullRoot)
+            || scriptRelative.StartsWith("../", StringComparison.Ordinal)
+            || !ExecutionLimits.IsSafeFileName(scriptRelative))
         {
             throw new ArgumentException("Skill script is no longer available.");
         }
         var request = new CodeExecutionRequest
         {
-            Code = BuildWrapperCode(scriptName, arguments)
+            Code = BuildWrapperCode(scriptRelative, arguments),
+            EntryFileName = WrapperEntryFileName,
+            // Reuse one sandbox workspace across the runs of a conversation so the
+            // mounted package survives; ids outside the safe charset run stateless.
+            SessionKey = ExecutionLimits.IsSafeSessionKey(scope.ConversationId)
+                ? scope.ConversationId
+                : null
         };
-        foreach (string path in Directory.EnumerateFiles(scriptDirectory).OrderBy(path => path, StringComparer.Ordinal))
+        foreach (string path in Directory.EnumerateFiles(fullRoot, "*", SearchOption.AllDirectories)
+            .OrderBy(path => path, StringComparer.Ordinal))
         {
+            string relative = Path.GetRelativePath(fullRoot, path).Replace('\\', '/');
+            if (!ExecutionLimits.IsSafeFileName(relative))
+            {
+                continue;
+            }
             request.Files.Add(new ExecutionFile
             {
-                Name = Path.GetFileName(path),
+                Name = relative,
                 Content = await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false)
             });
         }
@@ -137,23 +207,27 @@ internal sealed class SkillScriptRunner(
     }
 
     /// <summary>
-    /// Generates the wrapper main.py: the working directory becomes /input and
-    /// the target script runs as __main__ via runpy. A JSON object or array of
-    /// arguments is surfaced to the script as sys.argv (string values are
-    /// passed through, others are JSON-encoded). JSON escaping produces a
-    /// Python-safe string literal, and script names are restricted to
-    /// letter-or-digit characters with a safe punctuation set, so neither can
-    /// inject code into the wrapper.
+    /// Generates the wrapper entry: the package root becomes both the working
+    /// directory and the first sys.path entry, and the target script runs as
+    /// __main__ via runpy. A JSON object or array of arguments is surfaced to the
+    /// script as sys.argv (string values are passed through, others are
+    /// JSON-encoded). JSON escaping produces a Python-safe string literal, and
+    /// script names are restricted by <see cref="ExecutionLimits.IsSafeFileName"/>,
+    /// so neither can inject code into the wrapper.
     /// </summary>
-    private static string BuildWrapperCode(string scriptName, JsonElement? arguments)
+    private static string BuildWrapperCode(string scriptRelativeName, JsonElement? arguments)
     {
-        string scriptLiteral = JsonSerializer.Serialize(scriptName, LiteralOptions);
+        string scriptLiteral = JsonSerializer.Serialize($"/input/{scriptRelativeName}", LiteralOptions);
         string rawAssignment = arguments.HasValue
             ? $"raw = json.loads({JsonSerializer.Serialize(arguments.Value.GetRawText(), LiteralOptions)})"
             : "raw = None";
         return $"""
             import json, os, runpy, sys
             os.chdir("/input")
+            sys.path.insert(0, "/input")
+            _script_dir = os.path.dirname({scriptLiteral})
+            if _script_dir not in sys.path:
+                sys.path.insert(0, _script_dir)
             {rawAssignment}
             extra = []
             if isinstance(raw, dict):
@@ -163,7 +237,7 @@ internal sealed class SkillScriptRunner(
             elif raw is not None:
                 extra = [json.dumps(raw)]
             sys.argv = [{scriptLiteral}, *extra]
-            runpy.run_path("/input/{scriptName}", run_name="__main__")
+            runpy.run_path({scriptLiteral}, run_name="__main__")
             """;
     }
 }

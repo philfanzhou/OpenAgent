@@ -58,8 +58,10 @@ public class AgentSkillsProviderFactoryTests
             _output.WriteLine($"function result: {diagnostic?.Result}");
         }
         CodeExecutionRequest request = Assert.Single(fixture.Executor.Requests);
-        Assert.Contains("runpy.run_path(\"/input/analyze.py\"", request.Code, StringComparison.Ordinal);
-        Assert.Contains("analyze.py", request.Files.Select(file => file.Name), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("runpy.run_path(\"/input/scripts/analyze.py\"", request.Code, StringComparison.Ordinal);
+        Assert.Contains("sys.path.insert(0, \"/input\")", request.Code, StringComparison.Ordinal);
+        Assert.Contains(request.Files, file => file.Name.EndsWith("analyze.py", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("SKILL.md", request.Files.Select(file => file.Name), StringComparer.OrdinalIgnoreCase);
         FunctionResultContent result = Assert.Single(chat.Requests[1].SelectMany(message => message.Contents)
             .OfType<FunctionResultContent>(), content => content.CallId == "call-1");
         Assert.Contains("exitCode", result.Result?.ToString(), StringComparison.Ordinal);

@@ -41,7 +41,7 @@ internal sealed class CodeCapabilitySource(
                 + "Use inputFiles to mount authorized conversation files read-only at /input/<name>; main.py and main.mjs are reserved. "
                 + "Write deliverables directly under /output (up to 8 files, 10 MiB each, 20 MiB total). "
                 + "Print concise results. Inspect exitCode and stderr, then fix failures with another call. "
-                + "Each call starts fresh: pass previous output fileIds as inputFiles to continue editing. "
+                + "Calls in one conversation share a sandbox workspace: mounted inputs stay available across calls, but /output and /work are not persisted between calls. "
                 + "Returned files are registered; use publish_files to deliver selected fileIds. "
                 + "Use fixed templates where possible. Reopen generated documents to validate contents. "
                 + "No host tools, credentials, package installs, or internet access are available inside the sandbox.",
@@ -80,7 +80,16 @@ internal sealed class CodeCapabilitySource(
                 : ExecutionLanguage.Python;
             List<InputFile> inputs = arguments.TryGetValue("inputFiles", out object? input)
                 ? JsonSerializer.Deserialize<List<InputFile>>(JsonSerializer.Serialize(input), JsonOptions) ?? [] : [];
-            var request = new CodeExecutionRequest { Code = code, Language = language };
+            var request = new CodeExecutionRequest
+            {
+                Code = code,
+                Language = language,
+                // Same conversation reuses one sandbox workspace (mounted inputs
+                // persist); unsafe ids fall back to a stateless workspace.
+                SessionKey = ExecutionLimits.IsSafeSessionKey(scope.ConversationId)
+                    ? scope.ConversationId
+                    : null
+            };
             ExecutionLimits.Validate(request);
             if (inputs.Count > ExecutionLimits.MaxFiles)
             {
