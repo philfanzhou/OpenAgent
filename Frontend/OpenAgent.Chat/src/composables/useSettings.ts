@@ -570,7 +570,15 @@ export function useSettings(options: SettingsOptions) {
     }
     uploadingSkill.value = true
     try {
-      await uploadSkillFile(new File([skillMarkdownDraft.value], `${frontmatter.name}.md`, { type: 'text/markdown' }))
+      if (editingSkillId.value) {
+        // 编辑已有 Skill 时原地替换 SKILL.md：包内脚本与脚本执行开关保持不变。
+        const updated = await api.updateSkillSource(editingSkillId.value, skillMarkdownDraft.value)
+        skillCatalog.value = skillCatalog.value.map(item =>
+          item.skillId.toLowerCase() === updated.skillId.toLowerCase() ? updated : item)
+        ElMessage.success('Skill 内容已更新，包内脚本保持不变')
+      } else {
+        await uploadSkillFile(new File([skillMarkdownDraft.value], `${frontmatter.name}.md`, { type: 'text/markdown' }))
+      }
       showSkillTextEditor.value = false
     } catch (error) {
       options.notifyError(error)

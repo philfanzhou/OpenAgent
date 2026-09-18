@@ -118,7 +118,7 @@ public static class AgentSkillPackageArchive
         int resourceCount = files.Count(file => HasPathSegment(file.RelativePath, "resources"));
         List<string> scriptNames = files
             .Select(file => file.RelativePath)
-            .Where(IsPythonScript)
+            .Where(IsExecutableScript)
             .Order(StringComparer.OrdinalIgnoreCase)
             .ToList();
         return new AgentSkillPackageMetadata(
@@ -130,11 +130,14 @@ public static class AgentSkillPackageArchive
     }
 
     /// <summary>
-    /// The sandbox language surface is Python only, so the script inventory — and the
-    /// runtime script filter — is defined by the .py extension alone.
+    /// Script extensions the skill channel can execute through the isolated
+    /// Runner; mirrors the Runner's Python and JavaScript entrypoints. Shell
+    /// and other interpreters stay undisclosed.
     /// </summary>
-    public static bool IsPythonScript(string relativePath) =>
-        string.Equals(Path.GetExtension(relativePath), ".py", StringComparison.OrdinalIgnoreCase);
+    public static readonly IReadOnlyList<string> ExecutableScriptExtensions = [".py", ".js", ".mjs"];
+
+    public static bool IsExecutableScript(string relativePath) =>
+        ExecutableScriptExtensions.Contains(Path.GetExtension(relativePath), StringComparer.OrdinalIgnoreCase);
 
     private static AgentSkillFrontmatter ReadFrontmatter(byte[] content)
     {

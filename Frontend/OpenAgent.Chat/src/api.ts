@@ -467,6 +467,14 @@ export const api = {
     return request<{ markdown: string }>(`/api/v1/admin/skills/${encodeURIComponent(skillId)}/source`)
   },
 
+  updateSkillSource(skillId: string, markdown: string): Promise<SkillCatalogItem> {
+    return request<SkillCatalogItem>(`/api/v1/admin/skills/${encodeURIComponent(skillId)}/source`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ markdown }),
+    })
+  },
+
   deleteSkillPackage(agentId: string, skillId: string): Promise<void> {
     return request<void>(`/api/v1/admin/skills/${encodeURIComponent(agentId)}/${encodeURIComponent(skillId)}`, { method: 'DELETE' })
   },

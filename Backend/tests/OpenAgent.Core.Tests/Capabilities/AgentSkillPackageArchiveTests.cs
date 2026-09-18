@@ -73,6 +73,25 @@ public sealed class AgentSkillPackageArchiveTests
     }
 
     [Fact]
+    public void InspectAsync_InventoriesJavaScriptScripts()
+    {
+        byte[] package = CreateArchive(archive =>
+        {
+            WriteEntry(archive, "report/SKILL.md", "---\nname: report\ndescription: Report writer\n---\n");
+            WriteEntry(archive, "report/scripts/run.js", "console.log('run')");
+            WriteEntry(archive, "report/scripts/helper.mjs", "export const x = 1;");
+            WriteEntry(archive, "report/scripts/run.js.txt", "not a script");
+            WriteEntry(archive, "report/scripts/greet.sh", "echo nope");
+        });
+
+        AgentSkillPackageMetadata metadata = AgentSkillPackageArchive.Inspect(package, default);
+
+        Assert.Equal(
+            ["report/scripts/helper.mjs", "report/scripts/run.js"],
+            metadata.ScriptNames);
+    }
+
+    [Fact]
     public void InspectMarkdown_HasNoScriptInventory()
     {
         AgentSkillPackageMetadata metadata = AgentSkillPackageArchive.InspectMarkdown(

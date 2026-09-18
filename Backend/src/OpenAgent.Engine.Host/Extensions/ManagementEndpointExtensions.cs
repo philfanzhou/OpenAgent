@@ -44,6 +44,31 @@ internal static class ManagementEndpointExtensions
             return markdown == null ? Results.NotFound() : Results.Ok(new { markdown });
         });
 
+        group.MapPut("/skills/{skillId}/source", async (
+            [FromServices] SkillPackageManagementService packages,
+            [FromBody] SkillMarkdownUpdateRequest request,
+            HttpContext context,
+            string skillId,
+            CancellationToken cancellationToken) =>
+        {
+            if (!HasScope(context, "agent.config.write"))
+                return Results.Forbid();
+            try
+            {
+                SkillInstanceConfig? skill = await packages.UpdateMarkdownAsync(
+                    RequireTenant(context),
+                    context.GetAgentRequest().User.UserId,
+                    skillId,
+                    request.Markdown,
+                    cancellationToken).ConfigureAwait(false);
+                return skill == null ? Results.NotFound() : Results.Ok(skill);
+            }
+            catch (InvalidOperationException exception)
+            {
+                return Results.BadRequest(new { error = exception.Message });
+            }
+        });
+
         group.MapGet("/skills/{skillId}", async (
             [FromServices] ISkillCatalogStore catalog,
             HttpContext context,

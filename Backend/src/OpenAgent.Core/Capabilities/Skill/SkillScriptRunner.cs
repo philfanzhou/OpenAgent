@@ -11,12 +11,13 @@ using OpenAgent.Core.Security;
 
 namespace OpenAgent.Core.Capabilities.Skill;
 
-/// <summary>
-/// Bridges MAF's run_skill_script tool to the isolated Runner. Package scripts
-/// never execute in the Engine process: they are mounted as sandbox inputs and
-/// launched through a generated wrapper main.py, sharing the same Bubblewrap
-/// isolation, budget, and artifact pipeline as execute_code.
-/// </summary>
+    /// <summary>
+    /// Bridges MAF's run_skill_script tool to the isolated Runner. Package scripts
+    /// never execute in the Engine process: they are mounted as sandbox inputs and
+    /// launched through a generated wrapper (main.py via runpy, or main.mjs via a
+    /// dynamic import), sharing the same Bubblewrap isolation, budget, and
+    /// artifact pipeline as execute_code.
+    /// </summary>
 internal sealed class SkillScriptRunner(
     ICodeExecutor executor,
     IFileAssetService files,
@@ -105,7 +106,7 @@ internal sealed class SkillScriptRunner(
     /// Mounts the target script and its sibling files from the materialized
     /// package directory as flat sandbox inputs. Names are validated by
     /// <see cref="ExecutionLimits"/>, which also enforces the file count and
-    /// size limits and the reserved main.py name.
+    /// size limits and the reserved main.py / main.mjs entrypoint names.
     /// </summary>
     private static async Task<CodeExecutionRequest> BuildRequestAsync(
         string scriptFullPath,
@@ -120,9 +121,13 @@ internal sealed class SkillScriptRunner(
         {
             throw new ArgumentException("Skill script is no longer available.");
         }
+        bool isJavaScript = IsJavaScriptScript(scriptFullPath);
         var request = new CodeExecutionRequest
         {
-            Code = BuildWrapperCode(scriptName, arguments)
+            Code = isJavaScript
+                ? BuildJavaScriptWrapperCode(scriptName, arguments)
+                : BuildWrapperCode(scriptName, arguments),
+            Language = isJavaScript ? ExecutionLanguage.JavaScript : ExecutionLanguage.Python
         };
         foreach (string path in Directory.EnumerateFiles(scriptDirectory).OrderBy(path => path, StringComparer.Ordinal))
         {
@@ -135,6 +140,9 @@ internal sealed class SkillScriptRunner(
         ExecutionLimits.Validate(request);
         return request;
     }
+
+    internal static bool IsJavaScriptScript(string scriptPath) =>
+        Path.GetExtension(scriptPath) is ".js" or ".mjs";
 
     /// <summary>
     /// Generates the wrapper main.py: the working directory becomes /input and
@@ -164,6 +172,36 @@ internal sealed class SkillScriptRunner(
                 extra = [json.dumps(raw)]
             sys.argv = [{scriptLiteral}, *extra]
             runpy.run_path("/input/{scriptName}", run_name="__main__")
+            """;
+    }
+
+    /// <summary>
+    /// Generates the wrapper main.mjs: the target script is imported by its
+    /// absolute /input URL (so both CommonJS .js and ESM .mjs work regardless
+    /// of the sandbox working directory) and arguments are surfaced as
+    /// process.argv with the same string-pass-through / JSON-encode rules as
+    /// the Python wrapper. The default JSON encoder escapes non-ASCII, which
+    /// keeps the embedded literals valid JavaScript.
+    /// </summary>
+    private static string BuildJavaScriptWrapperCode(string scriptName, JsonElement? arguments)
+    {
+        string scriptLiteral = JsonSerializer.Serialize(scriptName, JsonOptions);
+        string rawAssignment = arguments.HasValue
+            ? $"const raw = {JsonSerializer.Serialize(arguments.Value, JsonOptions)};"
+            : "const raw = null;";
+        return $$"""
+            import { pathToFileURL } from "node:url";
+            {{rawAssignment}}
+            let extra = [];
+            if (Array.isArray(raw)) {
+              extra = raw.map(value => typeof value === "string" ? value : JSON.stringify(value));
+            } else if (raw !== null && typeof raw === "object") {
+              extra = Object.values(raw).map(value => typeof value === "string" ? value : JSON.stringify(value));
+            } else if (raw !== null) {
+              extra = [JSON.stringify(raw)];
+            }
+            process.argv = [process.argv[0], {{scriptLiteral}}, ...extra];
+            await import(pathToFileURL("/input/{{scriptName}}").href);
             """;
     }
 }

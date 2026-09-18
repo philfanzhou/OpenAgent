@@ -352,6 +352,95 @@ public class SkillPackageManagementServiceTests
         Assert.Null(result);
     }
 
+    [Fact]
+    public async Task UpdateMarkdownAsync_ReplacesMarkdownPreservingScriptsAndFlag()
+    {
+        var catalog = new RecordingSkillCatalogStore();
+        (SkillPackageManagementService service, _, RecordingObjectStore store) = await CreateServiceAsync(catalog: catalog);
+        byte[] content = CreatePackage(archive =>
+        {
+            WriteEntry(archive, "customer-lookup/scripts/lookup.py", "print('lookup')");
+            WriteEntry(archive, "customer-lookup/scripts/report.js", "console.log('report')");
+        });
+        await service.UploadAsync(
+            "tenant", "user", "customer.zip", "application/zip", new MemoryStream(content), default);
+        await service.UpdateScriptExecutionAsync("tenant", "customer-lookup", scriptExecutionEnabled: true, default);
+        string oldObjectKey = catalog.Published.Last().ObjectKey!;
+
+        string updatedMarkdown = """
+            ---
+            name: customer-lookup
+            description: Refreshed description
+            ---
+
+            # Instructions
+
+            Updated instructions.
+            """;
+        SkillInstanceConfig? updated = await service.UpdateMarkdownAsync(
+            "tenant", "user", "customer-lookup", updatedMarkdown, default);
+
+        Assert.NotNull(updated);
+        Assert.Equal("Refreshed description", updated.Description);
+        Assert.True(updated.ScriptExecutionEnabled);
+        Assert.Equal(
+            ["customer-lookup/scripts/lookup.py", "customer-lookup/scripts/report.js"],
+            updated.ScriptNames);
+        Assert.Equal(2, updated.ScriptCount);
+        Assert.NotEqual(oldObjectKey, updated.ObjectKey);
+        Assert.Contains("Refreshed description", await service.ReadMarkdownAsync("tenant", "customer-lookup", default));
+        Assert.Equal(updated, catalog.Published.Last());
+        // 旧包对象（文件 + 索引）被清理：2 个文件 + 1 个索引 = 至少 3 个删除记录
+        Assert.True(store.DeletedObjectKeys.Count >= 3);
+    }
+
+    [Fact]
+    public async Task UpdateMarkdownAsync_RejectsNameChange()
+    {
+        var catalog = new RecordingSkillCatalogStore();
+        (SkillPackageManagementService service, _, _) = await CreateServiceAsync(catalog: catalog);
+        await service.UploadAsync(
+            "tenant", "user", "customer.md", "text/markdown",
+            new MemoryStream(Encoding.UTF8.GetBytes(SkillMarkdown)), default);
+
+        string renamed = SkillMarkdown.Replace("name: customer-lookup", "name: renamed-skill");
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.UpdateMarkdownAsync("tenant", "user", "customer-lookup", renamed, default));
+    }
+
+    [Fact]
+    public async Task UpdateMarkdownAsync_UnknownSkill_ReturnsNull()
+    {
+        var catalog = new RecordingSkillCatalogStore();
+        (SkillPackageManagementService service, _, _) = await CreateServiceAsync(catalog: catalog);
+
+        SkillInstanceConfig? result = await service.UpdateMarkdownAsync(
+            "tenant", "user", "missing-skill", SkillMarkdown, default);
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task UploadAsync_RecordsJavaScriptScriptInventory()
+    {
+        (SkillPackageManagementService service, _, _) = await CreateServiceAsync();
+        byte[] content = CreatePackage(archive =>
+        {
+            WriteEntry(archive, "customer-lookup/scripts/lookup.py", "print('lookup')");
+            WriteEntry(archive, "customer-lookup/scripts/report.js", "console.log('report')");
+            WriteEntry(archive, "customer-lookup/scripts/helper.mjs", "export const x = 1;");
+        });
+
+        SkillPackageUploadResult result = await service.UploadAsync(
+            "tenant", "user", "customer.zip", "application/zip",
+            new MemoryStream(content), default, publishCatalog: false);
+
+        Assert.Equal(
+            ["customer-lookup/scripts/helper.mjs", "customer-lookup/scripts/lookup.py", "customer-lookup/scripts/report.js"],
+            result.Skill.ScriptNames);
+        Assert.Equal(3, result.Skill.ScriptCount);
+    }
+
     private static async Task<(
         SkillPackageManagementService Service,
         ConfigurationService Configs,
