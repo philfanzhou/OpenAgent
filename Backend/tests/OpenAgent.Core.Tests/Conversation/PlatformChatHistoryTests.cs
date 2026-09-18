@@ -153,4 +153,118 @@ public sealed class PlatformChatHistoryTests
         Assert.Equal("image/png", currentImage.MediaType);
         Assert.Equal(2, objects.ReadCount);
     }
+
+    [Fact]
+    public async Task CreateUserMessageAsync_MultimodalImage_SingleDescriptorWithoutNotIncludedText()
+    {
+        RecordingFileAssetRepository repository = new();
+        RecordingFileObjectStore objects = new();
+        FileAsset asset = new()
+        {
+            FileId = "user-image",
+            TenantId = "tenant-a",
+            OwnerUserId = "user-a",
+            FileName = "photo.png",
+            MediaType = "image/png",
+            Length = 2,
+            Sha256 = "sha",
+            ObjectKey = $"files/tenants/{FileObjectTenantScope.CreatePartition("tenant-a")}/users/user-a/user-image",
+            Source = FileAssetSource.UserUpload,
+            State = FileAssetState.Ready,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        repository.Assets[asset.FileId] = asset;
+        repository.References.Add("conversation-a:user-image");
+        objects.ContentsByKey[asset.ObjectKey] = [0x89, 0x50];
+        FileAssetService service = new(
+            repository,
+            objects,
+            Options.Create(new FileAssetOptions
+            {
+                Enabled = true,
+                MaxFileSizeBytes = 1024,
+                MaxInlineImageBytes = 16,
+                MaxInlineImageCount = 1
+            }));
+        PlatformChatHistory history = new(
+            new PlatformChatHistoryContext(
+                new ConversationContext("conversation-a", "tenant-a", "user-a", "agent-a", null, ConversationType.User),
+                "model-a",
+                "describe the image",
+                [asset],
+                SupportsMultimodal: true),
+            new FileAssetExecutionContext(),
+            conversationLock: null!,
+            store: null!,
+            NullLogger<PlatformChatHistory>.Instance,
+            service,
+            Options.Create(new FileAssetOptions()));
+
+        ChatMessage message = await history.CreateUserMessageAsync(CancellationToken.None);
+
+        DataContent image = Assert.Single(message.Contents.OfType<DataContent>());
+        Assert.Equal("image/png", image.MediaType);
+        TextContent descriptor = Assert.Single(
+            message.Contents.OfType<TextContent>(),
+            content => content.Text.Contains("[File:", StringComparison.Ordinal));
+        Assert.Contains("Image content is attached", descriptor.Text);
+        Assert.DoesNotContain(
+            message.Contents.OfType<TextContent>(),
+            content => content.Text.Contains("Content is not included", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task CreateUserMessageAsync_TextModel_KeepsSingleToolInstructionDescriptor()
+    {
+        RecordingFileAssetRepository repository = new();
+        RecordingFileObjectStore objects = new();
+        FileAsset asset = new()
+        {
+            FileId = "user-image",
+            TenantId = "tenant-a",
+            OwnerUserId = "user-a",
+            FileName = "photo.png",
+            MediaType = "image/png",
+            Length = 2,
+            Sha256 = "sha",
+            ObjectKey = $"files/tenants/{FileObjectTenantScope.CreatePartition("tenant-a")}/users/user-a/user-image",
+            Source = FileAssetSource.UserUpload,
+            State = FileAssetState.Ready,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        repository.Assets[asset.FileId] = asset;
+        repository.References.Add("conversation-a:user-image");
+        FileAssetService service = new(
+            repository,
+            objects,
+            Options.Create(new FileAssetOptions
+            {
+                Enabled = true,
+                MaxFileSizeBytes = 1024,
+                MaxInlineImageBytes = 16,
+                MaxInlineImageCount = 1
+            }));
+        PlatformChatHistory history = new(
+            new PlatformChatHistoryContext(
+                new ConversationContext("conversation-a", "tenant-a", "user-a", "agent-a", null, ConversationType.User),
+                "model-a",
+                "describe the image",
+                [asset],
+                SupportsMultimodal: false),
+            new FileAssetExecutionContext(),
+            conversationLock: null!,
+            store: null!,
+            NullLogger<PlatformChatHistory>.Instance,
+            service,
+            Options.Create(new FileAssetOptions()));
+
+        ChatMessage message = await history.CreateUserMessageAsync(CancellationToken.None);
+
+        Assert.Empty(message.Contents.OfType<DataContent>());
+        TextContent descriptor = Assert.Single(
+            message.Contents.OfType<TextContent>(),
+            content => content.Text.Contains("[File:", StringComparison.Ordinal));
+        Assert.Contains("Content is not included", descriptor.Text);
+        Assert.Equal(0, objects.ReadCount);
+    }
 }
