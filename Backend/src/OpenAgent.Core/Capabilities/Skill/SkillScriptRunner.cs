@@ -121,13 +121,16 @@ internal sealed class SkillScriptRunner(
         {
             throw new ArgumentException("Skill script is no longer available.");
         }
-        bool isJavaScript = IsJavaScriptScript(scriptFullPath);
+        string language = ResolveLanguage(scriptFullPath);
         var request = new CodeExecutionRequest
         {
-            Code = isJavaScript
-                ? BuildJavaScriptWrapperCode(scriptName, arguments)
-                : BuildWrapperCode(scriptName, arguments),
-            Language = isJavaScript ? ExecutionLanguage.JavaScript : ExecutionLanguage.Python
+            Code = language switch
+            {
+                ExecutionLanguage.JavaScript => BuildJavaScriptWrapperCode(scriptName, arguments),
+                ExecutionLanguage.Shell => BuildShellWrapperCode(scriptName, arguments),
+                _ => BuildWrapperCode(scriptName, arguments)
+            },
+            Language = language
         };
         foreach (string path in Directory.EnumerateFiles(scriptDirectory).OrderBy(path => path, StringComparer.Ordinal))
         {
@@ -141,8 +144,13 @@ internal sealed class SkillScriptRunner(
         return request;
     }
 
-    internal static bool IsJavaScriptScript(string scriptPath) =>
-        Path.GetExtension(scriptPath) is ".js" or ".mjs";
+    internal static string ResolveLanguage(string scriptPath) =>
+        Path.GetExtension(scriptPath) switch
+        {
+            ".js" or ".mjs" => ExecutionLanguage.JavaScript,
+            ".sh" => ExecutionLanguage.Shell,
+            _ => ExecutionLanguage.Python
+        };
 
     /// <summary>
     /// Generates the wrapper main.py: the working directory becomes /input and
@@ -174,6 +182,45 @@ internal sealed class SkillScriptRunner(
             runpy.run_path("/input/{scriptName}", run_name="__main__")
             """;
     }
+
+    /// <summary>
+    /// Generates the wrapper main.sh: the working directory becomes /input and
+    /// the target script runs under bash via exec. Arguments follow the same
+    /// string-pass-through / JSON-encode rules as the other wrappers and are
+    /// embedded as single-quoted shell literals with embedded quotes escaped,
+    /// so argument values cannot inject commands into the wrapper.
+    /// </summary>
+    private static string BuildShellWrapperCode(string scriptName, JsonElement? arguments)
+    {
+        var extra = new List<string>();
+        if (arguments.HasValue)
+        {
+            JsonElement raw = arguments.Value;
+            IEnumerable<JsonElement> values = raw.ValueKind switch
+            {
+                JsonValueKind.Object => raw.EnumerateObject().Select(property => property.Value),
+                JsonValueKind.Array => raw.EnumerateArray(),
+                _ => [raw]
+            };
+            foreach (JsonElement value in values)
+            {
+                extra.Add(value.ValueKind == JsonValueKind.String
+                    ? value.GetString() ?? string.Empty
+                    : JsonSerializer.Serialize(value, JsonOptions));
+            }
+        }
+        string invocation = new[] { $"/input/{scriptName}" }
+            .Concat(extra)
+            .Select(ShellQuote)
+            .Aggregate((left, right) => $"{left} {right}");
+        return $"""
+            cd /input
+            exec /bin/bash {invocation}
+            """;
+    }
+
+    private static string ShellQuote(string value) =>
+        "'" + value.Replace("'", "'\"'\"'") + "'";
 
     /// <summary>
     /// Generates the wrapper main.mjs: the target script is imported by its

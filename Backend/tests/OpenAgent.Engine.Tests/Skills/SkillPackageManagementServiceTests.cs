@@ -429,6 +429,7 @@ public class SkillPackageManagementServiceTests
             WriteEntry(archive, "customer-lookup/scripts/lookup.py", "print('lookup')");
             WriteEntry(archive, "customer-lookup/scripts/report.js", "console.log('report')");
             WriteEntry(archive, "customer-lookup/scripts/helper.mjs", "export const x = 1;");
+            WriteEntry(archive, "customer-lookup/scripts/batch.sh", "echo batch");
         });
 
         SkillPackageUploadResult result = await service.UploadAsync(
@@ -436,9 +437,9 @@ public class SkillPackageManagementServiceTests
             new MemoryStream(content), default, publishCatalog: false);
 
         Assert.Equal(
-            ["customer-lookup/scripts/helper.mjs", "customer-lookup/scripts/lookup.py", "customer-lookup/scripts/report.js"],
+            ["customer-lookup/scripts/batch.sh", "customer-lookup/scripts/helper.mjs", "customer-lookup/scripts/lookup.py", "customer-lookup/scripts/report.js"],
             result.Skill.ScriptNames);
-        Assert.Equal(3, result.Skill.ScriptCount);
+        Assert.Equal(4, result.Skill.ScriptCount);
     }
 
     private static async Task<(

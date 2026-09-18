@@ -131,10 +131,9 @@ public static class AgentSkillPackageArchive
 
     /// <summary>
     /// Script extensions the skill channel can execute through the isolated
-    /// Runner; mirrors the Runner's Python and JavaScript entrypoints. Shell
-    /// and other interpreters stay undisclosed.
+    /// Runner; mirrors the Runner's Python, JavaScript, and shell entrypoints.
     /// </summary>
-    public static readonly IReadOnlyList<string> ExecutableScriptExtensions = [".py", ".js", ".mjs"];
+    public static readonly IReadOnlyList<string> ExecutableScriptExtensions = [".py", ".js", ".mjs", ".sh"];
 
     public static bool IsExecutableScript(string relativePath) =>
         ExecutableScriptExtensions.Contains(Path.GetExtension(relativePath), StringComparer.OrdinalIgnoreCase);

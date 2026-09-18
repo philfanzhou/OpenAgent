@@ -152,6 +152,38 @@ public class SkillScriptRunnerTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task RunAsync_ShellScript_UsesShellWrapperAndLanguage()
+    {
+        string scriptPath = await WriteScriptAsync("analyze.sh", "echo 'analyze ran'\n");
+        await _fixture.RunAsync(scriptPath, null);
+        CodeExecutionRequest request = Assert.Single(_fixture.Executor.Requests);
+        Assert.Equal(ExecutionLanguage.Shell, request.Language);
+        Assert.Contains("cd /input", request.Code, StringComparison.Ordinal);
+        Assert.Contains("exec /bin/bash '/input/analyze.sh'", request.Code, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task RunAsync_ShellArguments_QuotedIntoWrapper()
+    {
+        string scriptPath = await WriteScriptAsync("analyze.sh", "echo 'analyze ran'\n");
+        using var document = JsonDocument.Parse("{\"name\":\"O'Brien\",\"count\":2}");
+        JsonElement? arguments = document.RootElement;
+        await _fixture.RunAsync(scriptPath, arguments);
+        string code = Assert.Single(_fixture.Executor.Requests).Code;
+        Assert.Contains("'O'\"'\"'Brien'", code, StringComparison.Ordinal);
+        Assert.Contains("'2'", code, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task RunAsync_ReservedMainShScript_RejectedWithoutRunnerCall()
+    {
+        string scriptPath = await WriteScriptAsync("main.sh", "echo 'never runs'\n");
+        object? result = await _fixture.RunAsync(scriptPath, null);
+        Assert.Contains("reserved", result?.ToString(), StringComparison.Ordinal);
+        Assert.Empty(_fixture.Executor.Requests);
+    }
+
+    [Fact]
     public async Task RunAsync_ReservedMainPyScript_RejectedWithoutRunnerCall()
     {
         string scriptPath = await WriteScriptAsync("main.py", "print('never runs')\n");

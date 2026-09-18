@@ -52,8 +52,11 @@ def collect_files():
 def main():
     for directory in ("/tmp/home", "/tmp/runtime", "/tmp/matplotlib"):
         Path(directory).mkdir(mode=0o700, parents=True, exist_ok=True)
-    if os.environ.get("EXECUTION_LANGUAGE", "python") == "javascript":
+    language = os.environ.get("EXECUTION_LANGUAGE", "python")
+    if language == "javascript":
         command = [os.environ.get("EXECUTION_NODE", "/usr/bin/node"), "/input/main.mjs"]
+    elif language == "shell":
+        command = ["/bin/bash", "/input/main.sh"]
     else:
         command = [sys.executable, "-I", "-u", "/input/main.py"]
     output, errors = bytearray(), bytearray()

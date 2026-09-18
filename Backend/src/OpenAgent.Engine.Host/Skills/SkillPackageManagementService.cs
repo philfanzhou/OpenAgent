@@ -125,7 +125,7 @@ internal sealed class SkillPackageManagementService(
 
         AgentSkillPackageMetadata metadata = AgentSkillPackageArchive.InspectFiles(files, cancellationToken);
         if (scriptExecutionEnabled == true && metadata.ScriptNames.Count == 0)
-            throw new InvalidOperationException("Skill package contains no executable Python or JavaScript scripts.");
+            throw new InvalidOperationException("Skill package contains no executable scripts.");
         SkillInstanceConfig? previous = !publishCatalog || skillCatalog == null
             ? null
             : await skillCatalog.GetAsync(
@@ -377,7 +377,7 @@ internal sealed class SkillPackageManagementService(
 
         List<string> scripts = await ReadScriptNamesAsync(tenantId, skill, cancellationToken).ConfigureAwait(false);
         if (scriptExecutionEnabled && scripts.Count == 0)
-            throw new InvalidOperationException("Skill package contains no executable Python or JavaScript scripts.");
+            throw new InvalidOperationException("Skill package contains no executable scripts.");
 
         skill.ScriptExecutionEnabled = scriptExecutionEnabled;
         skill.ScriptNames = scripts;
