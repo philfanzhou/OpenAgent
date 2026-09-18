@@ -31,7 +31,11 @@ internal sealed class FileAssetCapabilitySource(
         [
             new CapabilityDefinition(
                 "read_file",
-                "Read a UTF-8 text file owned by the current user or conversation, by fileId or by an objectKey inside the current tenant partition.",
+                "Read a UTF-8 text file owned by the current user or conversation, by fileId or by an objectKey inside the current tenant partition. "
+                + "Text files only (.txt, .md, .csv, .json, .xml, .svg, .drawio and other UTF-8 text); "
+                + "binary files such as images, PDF, zip, or office documents cannot be read as text — "
+                + "deliver those to the user via publish_files or create_file_transfer_url instead. "
+                + "Files exceeding the read size limit are rejected with an error.",
                 """{"type":"object","properties":{"fileId":{"type":"string"},"objectKey":{"type":"string"}}}""",
                 AgentResourceType.Tool,
                 "file-assets",
