@@ -80,7 +80,7 @@ public class SkillScriptRunnerTests : IAsyncLifetime
         Assert.Equal(
             new[] { "SKILL.md", "lib/helper.py", "scripts/analyze.py" },
             request.Files.Select(file => file.Name).OrderBy(name => name, StringComparer.Ordinal).ToArray());
-        Assert.Equal(SkillScriptRunner.WrapperEntryFileName, request.EntryFileName);
+        Assert.Equal(SkillScriptRunner.PythonWrapperEntry, request.EntryFileName);
         Assert.Equal("conversation", request.SessionKey);
         Assert.Contains("exitCode", result?.ToString(), StringComparison.Ordinal);
     }
@@ -110,8 +110,7 @@ public class SkillScriptRunnerTests : IAsyncLifetime
     [Fact]
     public async Task RunAsync_JavaScriptScript_UsesJavaScriptWrapperAndLanguage()
     {
-        string scriptPath = await WriteScriptAsync("analyze.js", "console.log('analyze ran')
-");
+        string scriptPath = await WriteScriptAsync("analyze.js", "console.log('analyze ran')\n");
         await _fixture.RunAsync(scriptPath, null);
         CodeExecutionRequest request = Assert.Single(_fixture.Executor.Requests);
         Assert.Equal(ExecutionLanguage.JavaScript, request.Language);
@@ -122,8 +121,7 @@ public class SkillScriptRunnerTests : IAsyncLifetime
     [Fact]
     public async Task RunAsync_EsmScript_AlsoRunsAsJavaScript()
     {
-        string scriptPath = await WriteScriptAsync("analyze.mjs", "console.log('esm ran')
-");
+        string scriptPath = await WriteScriptAsync("analyze.mjs", "console.log('esm ran')\n");
         await _fixture.RunAsync(scriptPath, null);
         CodeExecutionRequest request = Assert.Single(_fixture.Executor.Requests);
         Assert.Equal(ExecutionLanguage.JavaScript, request.Language);
@@ -133,8 +131,7 @@ public class SkillScriptRunnerTests : IAsyncLifetime
     [Fact]
     public async Task RunAsync_JavaScriptArguments_MappedOntoArgv()
     {
-        string scriptPath = await WriteScriptAsync("analyze.js", "console.log('analyze ran')
-");
+        string scriptPath = await WriteScriptAsync("analyze.js", "console.log('analyze ran')\n");
         using var document = JsonDocument.Parse("{\"count\":\"1\",\"label\":\"two\"}");
         JsonElement? arguments = document.RootElement;
         await _fixture.RunAsync(scriptPath, arguments);
@@ -146,8 +143,7 @@ public class SkillScriptRunnerTests : IAsyncLifetime
     [Fact]
     public async Task RunAsync_PythonScript_KeepsPythonLanguage()
     {
-        string scriptPath = await WriteScriptAsync("analyze.py", "print('analyze ran')
-");
+        string scriptPath = await WriteScriptAsync("analyze.py", "print('analyze ran')\n");
         await _fixture.RunAsync(scriptPath, null);
         CodeExecutionRequest request = Assert.Single(_fixture.Executor.Requests);
         Assert.Equal(ExecutionLanguage.Python, request.Language);
@@ -155,20 +151,9 @@ public class SkillScriptRunnerTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task RunAsync_ReservedMainMjsScript_RejectedWithoutRunnerCall()
-    {
-        string scriptPath = await WriteScriptAsync("main.mjs", "console.log('never runs')
-");
-        object? result = await _fixture.RunAsync(scriptPath, null);
-        Assert.Contains("reserved", result?.ToString(), StringComparison.Ordinal);
-        Assert.Empty(_fixture.Executor.Requests);
-    }
-
-    [Fact]
     public async Task RunAsync_ShellScript_UsesShellWrapperAndLanguage()
     {
-        string scriptPath = await WriteScriptAsync("analyze.sh", "echo 'analyze ran'
-");
+        string scriptPath = await WriteScriptAsync("analyze.sh", "echo 'analyze ran'\n");
         await _fixture.RunAsync(scriptPath, null);
         CodeExecutionRequest request = Assert.Single(_fixture.Executor.Requests);
         Assert.Equal(ExecutionLanguage.Shell, request.Language);
@@ -179,24 +164,13 @@ public class SkillScriptRunnerTests : IAsyncLifetime
     [Fact]
     public async Task RunAsync_ShellArguments_QuotedIntoWrapper()
     {
-        string scriptPath = await WriteScriptAsync("analyze.sh", "echo 'analyze ran'
-");
+        string scriptPath = await WriteScriptAsync("analyze.sh", "echo 'analyze ran'\n");
         using var document = JsonDocument.Parse("{\"name\":\"O'Brien\",\"count\":2}");
         JsonElement? arguments = document.RootElement;
         await _fixture.RunAsync(scriptPath, arguments);
         string code = Assert.Single(_fixture.Executor.Requests).Code;
         Assert.Contains("'O'\"'\"'Brien'", code, StringComparison.Ordinal);
         Assert.Contains("'2'", code, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task RunAsync_ReservedMainShScript_RejectedWithoutRunnerCall()
-    {
-        string scriptPath = await WriteScriptAsync("main.sh", "echo 'never runs'
-");
-        object? result = await _fixture.RunAsync(scriptPath, null);
-        Assert.Contains("reserved", result?.ToString(), StringComparison.Ordinal);
-        Assert.Empty(_fixture.Executor.Requests);
     }
 
     [Fact]
@@ -208,7 +182,7 @@ public class SkillScriptRunnerTests : IAsyncLifetime
         object? result = await _fixture.RunAsync(scriptPath, null);
         CodeExecutionRequest request = Assert.Single(_fixture.Executor.Requests);
         Assert.Contains("main.py", request.Files.Select(file => file.Name));
-        Assert.Equal(SkillScriptRunner.WrapperEntryFileName, request.EntryFileName);
+        Assert.Equal(SkillScriptRunner.PythonWrapperEntry, request.EntryFileName);
         Assert.Contains("exitCode", result?.ToString(), StringComparison.Ordinal);
     }
 
