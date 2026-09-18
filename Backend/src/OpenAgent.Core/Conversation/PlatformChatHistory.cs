@@ -109,17 +109,54 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
             [new FunctionResultContent(callId, result)]));
     }
 
+    /// <summary>
+    /// 当轮用户消息的文件描述符必须与内联图片在同一次附加中生成：
+    /// 若先写入"内容未包含、请用工具读取"再补内联图片，模型会服从前一句指令
+    /// 而拒绝识别已经注入的图片。
+    /// </summary>
     internal async Task<ChatMessage> CreateUserMessageAsync(CancellationToken cancellationToken)
     {
-        ChatMessage message = AgentMessageAdapter.CreateUser(_input, _files);
-        if (_files.Count > 0)
+        List<FileAssetContent>? inlineImages = _files.Count == 0 || !_supportsMultimodal
+            ? null
+            : await ReadInlineImagesAsync(cancellationToken).ConfigureAwait(false);
+        return AgentMessageAdapter.CreateUser(_input, _files, inlineImages);
+    }
+
+    private async Task<List<FileAssetContent>?> ReadInlineImagesAsync(CancellationToken cancellationToken)
+    {
+        FileAssetScope scope = CreateFileScope();
+        List<FileAssetContent>? inline = null;
+        int inlineImageCount = 0;
+        foreach (FileAsset file in _files)
         {
-            await AttachFilesAsync(
-                message,
-                _files.Select(file => file.FileId).ToArray(),
-                cancellationToken).ConfigureAwait(false);
+            if (inlineImageCount >= _maxInlineImageCount
+                || !IsImage(file.MediaType)
+                || file.Length > _maxInlineImageBytes)
+            {
+                continue;
+            }
+
+            try
+            {
+                inline ??= [];
+                inline.Add(await _fileService.ReadAsync(
+                    file.FileId,
+                    scope,
+                    cancellationToken,
+                    _maxInlineImageBytes).ConfigureAwait(false));
+                inlineImageCount++;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                // 内联读取失败时保留元数据描述符，模型仍可通过工具读取该文件。
+            }
         }
-        return message;
+
+        return inline;
     }
 
     /// <summary>把中止/失败时已产生的部分正文与思考内容组装成一条 assistant 消息（含 reasoning 元数据）。</summary>
@@ -221,12 +258,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         IReadOnlyList<string> fileIds,
         CancellationToken cancellationToken)
     {
-        FileAssetScope scope = new()
-        {
-            TenantId = _conversation.TenantId ?? string.Empty,
-            UserId = _conversation.UserId ?? string.Empty,
-            ConversationId = _conversation.ConversationId
-        };
+        FileAssetScope scope = CreateFileScope();
         int inlineImageCount = 0;
         foreach (string fileId in fileIds.Distinct(StringComparer.Ordinal))
         {
@@ -274,6 +306,13 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
             }
         }
     }
+
+    private FileAssetScope CreateFileScope() => new()
+    {
+        TenantId = _conversation.TenantId ?? string.Empty,
+        UserId = _conversation.UserId ?? string.Empty,
+        ConversationId = _conversation.ConversationId
+    };
 
     private static bool IsImage(string mediaType) =>
         mediaType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
@@ -601,7 +640,6 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
             TokenUsage = usage,
             ModelId = modelId
         };
-
 
     private async ValueTask ReleaseLockAsync()
     {
