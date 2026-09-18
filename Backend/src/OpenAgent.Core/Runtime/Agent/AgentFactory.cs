@@ -48,9 +48,6 @@ internal sealed class AgentFactory
         CancellationToken cancellationToken)
     {
         IChatClient modelClient = _chatClients.Create(profile.Model);
-        IChatClient summarizationClient = _chatClients.CreateSummarizationClient(
-            profile.Model,
-            profile.Config.ContextPolicy);
         _files.Set(new OpenAgent.Contracts.Files.FileAssetScope
         {
             TenantId = user.TenantId ?? string.Empty,
@@ -84,16 +81,25 @@ internal sealed class AgentFactory
                 user,
                 cancellationToken).ConfigureAwait(false);
 
-            AIContextProvider compaction = _conversations.CreateCompaction(
-                profile.Model.ContextTokens,
-                profile.Config.ContextPolicy,
-                summarizationClient,
-                user.TenantId,
-                request.ConversationId);
-            IChatClient compactingClient = modelClient
-                .AsBuilder()
-                .UseAIContextProviders(compaction)
-                .Build();
+            // 自动压缩暂时禁用（ConversationStore:EnableAutoCompaction，默认 false）：
+            // 压缩可能把当前轮 user query 一并摘要，Qwen 系服务端模板会拒绝无 user 消息的请求。
+            IChatClient compactingClient = modelClient;
+            if (_conversations.AutoCompactionEnabled)
+            {
+                IChatClient summarizationClient = _chatClients.CreateSummarizationClient(
+                    profile.Model,
+                    profile.Config.ContextPolicy);
+                AIContextProvider compaction = _conversations.CreateCompaction(
+                    profile.Model.ContextTokens,
+                    profile.Config.ContextPolicy,
+                    summarizationClient,
+                    user.TenantId,
+                    request.ConversationId);
+                compactingClient = modelClient
+                    .AsBuilder()
+                    .UseAIContextProviders(compaction)
+                    .Build();
+            }
             // MAF-registered tools (e.g. read_skill_resource) declare required
             // IServiceProvider parameters; without function invocation services the
             // call fails at argument binding with "Services are required for
