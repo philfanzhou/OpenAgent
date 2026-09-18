@@ -570,7 +570,10 @@ internal sealed class FileAssetService : IFileAssetService
     }
 
     private static bool IsGenericMediaType(string mediaType) =>
-        mediaType.Equals("application/octet-stream", StringComparison.OrdinalIgnoreCase);
+        mediaType.Equals("application/octet-stream", StringComparison.OrdinalIgnoreCase)
+            // Windows browsers report x-zip-compressed for .zip uploads instead of
+            // the canonical type or octet-stream.
+            || mediaType.Equals("application/x-zip-compressed", StringComparison.OrdinalIgnoreCase);
 
     private bool IsAllowedMediaType(string mediaType) => _options.AllowedMediaTypes.Any(allowed =>
         allowed.EndsWith("/*", StringComparison.Ordinal)

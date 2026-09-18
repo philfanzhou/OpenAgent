@@ -291,6 +291,7 @@ public class FileAssetServiceTests
     [InlineData("logo.svg", "application/octet-stream", "image/svg+xml")]
     [InlineData("circuit.drawio", "application/octet-stream", "application/vnd.jgraph.mxfile")]
     [InlineData("photo.jps", "application/octet-stream", "image/jpeg")]
+    [InlineData("bundle.zip", "application/x-zip-compressed", "application/zip")]
     public async Task UploadAsync_GenericClientMediaType_InfersCanonicalTypeFromExtension(
         string fileName,
         string? requestedMediaType,
