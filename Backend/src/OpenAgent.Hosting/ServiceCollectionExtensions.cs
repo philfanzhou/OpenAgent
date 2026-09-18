@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Hosting.Authentication;
 using OpenAgent.Hosting.Security;
+using OpenTelemetry.Exporter;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
@@ -95,17 +96,7 @@ public static class ServiceCollectionExtensions
 
         if (options.EnableOpenTelemetry)
         {
-            string? configuredEndpoint = configuration["OpenTelemetry:OtlpEndpoint"]
-                ?? Environment.GetEnvironmentVariable("OTEL_EXPORTER_OTLP_ENDPOINT");
-            Uri? otlpEndpoint = null;
-            if (!string.IsNullOrWhiteSpace(configuredEndpoint)
-                && (!Uri.TryCreate(configuredEndpoint, UriKind.Absolute, out otlpEndpoint)
-                    || (otlpEndpoint.Scheme != Uri.UriSchemeHttp
-                        && otlpEndpoint.Scheme != Uri.UriSchemeHttps)))
-            {
-                throw new InvalidOperationException(
-                    $"OpenTelemetry:OtlpEndpoint must be an absolute HTTP(S) URI. Value: '{configuredEndpoint}'.");
-            }
+            Uri? otlpEndpoint = ResolveOtlpEndpoint(configuration);
 
             string serviceName = configuration["OpenTelemetry:ServiceName"] ?? options.ServiceName;
             string serviceVersion = configuration["OpenTelemetry:ServiceVersion"] ?? options.ServiceVersion;
@@ -122,7 +113,7 @@ public static class ServiceCollectionExtensions
                 logs.ParseStateValues = true;
                 if (otlpEndpoint != null)
                 {
-                    logs.AddOtlpExporter(exporter => exporter.Endpoint = otlpEndpoint);
+                    logs.AddOtlpExporter(exporter => ApplyOtlpEndpoint(exporter, otlpEndpoint, "v1/logs"));
                 }
             }));
 
@@ -137,7 +128,7 @@ public static class ServiceCollectionExtensions
 
                 if (otlpEndpoint != null)
                 {
-                    tracing.AddOtlpExporter(exporter => exporter.Endpoint = otlpEndpoint);
+                    tracing.AddOtlpExporter(exporter => ApplyOtlpEndpoint(exporter, otlpEndpoint, "v1/traces"));
                 }
             });
 
@@ -150,11 +141,55 @@ public static class ServiceCollectionExtensions
 
                 if (otlpEndpoint != null)
                 {
-                    metrics.AddOtlpExporter(exporter => exporter.Endpoint = otlpEndpoint);
+                    metrics.AddOtlpExporter(exporter => ApplyOtlpEndpoint(exporter, otlpEndpoint, "v1/metrics"));
                 }
             });
         }
 
         return services;
+    }
+
+    /// <summary>
+    /// Resolves the OTLP endpoint. A blank <c>OpenTelemetry:OtlpEndpoint</c> value (deployments set the
+    /// environment variable to an empty string by default) must not shadow the standard
+    /// <c>OTEL_EXPORTER_OTLP_ENDPOINT</c> fallback. Returns <c>null</c> when no endpoint is configured.
+    /// </summary>
+    internal static Uri? ResolveOtlpEndpoint(IConfiguration configuration)
+    {
+        string? configuredEndpoint = configuration["OpenTelemetry:OtlpEndpoint"];
+        if (string.IsNullOrWhiteSpace(configuredEndpoint))
+        {
+            configuredEndpoint = Environment.GetEnvironmentVariable("OTEL_EXPORTER_OTLP_ENDPOINT");
+        }
+
+        if (string.IsNullOrWhiteSpace(configuredEndpoint))
+        {
+            return null;
+        }
+
+        if (!Uri.TryCreate(configuredEndpoint, UriKind.Absolute, out Uri? endpoint)
+            || (endpoint.Scheme != Uri.UriSchemeHttp
+                && endpoint.Scheme != Uri.UriSchemeHttps))
+        {
+            throw new InvalidOperationException(
+                $"OpenTelemetry:OtlpEndpoint / OTEL_EXPORTER_OTLP_ENDPOINT must be an absolute HTTP(S) URI. Value: '{configuredEndpoint}'.");
+        }
+
+        return endpoint;
+    }
+
+    /// <summary>
+    /// Assigning <see cref="OtlpExporterOptions.Endpoint"/> programmatically disables the SDK's
+    /// signal-path appending, so with the http/protobuf protocol requests would go to the bare
+    /// endpoint (for example <c>POST /</c>) and be rejected by spec-conformant collectors.
+    /// Append the signal path ourselves when the endpoint carries none.
+    /// </summary>
+    internal static void ApplyOtlpEndpoint(OtlpExporterOptions exporter, Uri endpoint, string signalPath)
+    {
+        exporter.Endpoint = endpoint;
+        if (exporter.Protocol == OtlpExportProtocol.HttpProtobuf && endpoint.AbsolutePath == "/")
+        {
+            exporter.Endpoint = new UriBuilder(endpoint) { Path = $"/{signalPath}" }.Uri;
+        }
     }
 }
