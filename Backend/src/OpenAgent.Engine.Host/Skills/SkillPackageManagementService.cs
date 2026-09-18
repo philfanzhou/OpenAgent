@@ -27,7 +27,8 @@ internal sealed class SkillPackageManagementService(
         string mediaType,
         Stream package,
         string? expectedVersion,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool? scriptExecutionEnabled = null)
     {
         AgentConfigEntity? entity = await agentConfigs
             .GetAgentAsync(agentId, tenantId, cancellationToken)
@@ -50,7 +51,9 @@ internal sealed class SkillPackageManagementService(
         entity.Config.TenantId = tenantId;
 
         SkillPackageUploadResult uploaded = await UploadAsync(
-            tenantId, userId, fileName, mediaType, package, cancellationToken, publishCatalog: false).ConfigureAwait(false);
+            tenantId, userId, fileName, mediaType, package, cancellationToken,
+            publishCatalog: false,
+            scriptExecutionEnabled: scriptExecutionEnabled).ConfigureAwait(false);
         SkillInstanceConfig instance = uploaded.Skill;
 
         int index = entity.Config.Skills.Instances.FindIndex(item =>
@@ -106,7 +109,8 @@ internal sealed class SkillPackageManagementService(
         string mediaType,
         Stream package,
         CancellationToken cancellationToken,
-        bool publishCatalog = true)
+        bool publishCatalog = true,
+        bool? scriptExecutionEnabled = null)
     {
         byte[] content = await ReadPackageAsync(package, cancellationToken).ConfigureAwait(false);
         bool isMarkdown = string.Equals(Path.GetExtension(fileName), ".md", StringComparison.OrdinalIgnoreCase);
@@ -120,17 +124,69 @@ internal sealed class SkillPackageManagementService(
             throw new InvalidOperationException("Expanded Skill package exceeds the 4 MB limit.");
 
         AgentSkillPackageMetadata metadata = AgentSkillPackageArchive.InspectFiles(files, cancellationToken);
+        if (scriptExecutionEnabled == true && metadata.ScriptNames.Count == 0)
+            throw new InvalidOperationException("Skill package contains no executable scripts.");
         SkillInstanceConfig? previous = !publishCatalog || skillCatalog == null
             ? null
             : await skillCatalog.GetAsync(
                 tenantId,
                 metadata.Name,
                 cancellationToken).ConfigureAwait(false);
+        (FileObjectReference stored, string storedIndexHash) = await StorePackageAsync(
+            tenantId, userId, mediaType, files, cancellationToken).ConfigureAwait(false);
+
+        var instance = new SkillInstanceConfig
+        {
+            Id = metadata.Name,
+            TenantId = tenantId,
+            Name = metadata.Name,
+            Enabled = true,
+            Description = metadata.Description,
+            Type = SkillTypes.AgentSkill,
+            Source = SkillSourceTypes.ObjectStorage,
+            SourceType = SkillSourceTypes.ObjectStorage,
+            SourceId = metadata.Name,
+            PackageFileName = fileName,
+            PackageFormat = "directory",
+            ObjectKey = stored.ObjectKey,
+            Sha256 = storedIndexHash,
+            ResourceCount = metadata.ResourceCount,
+            ScriptExecutionEnabled = scriptExecutionEnabled == true,
+            ScriptNames = metadata.ScriptNames.ToList()
+        };
+        if (publishCatalog && skillCatalog != null)
+        {
+            try
+            {
+                await skillCatalog.PublishAsync(instance, cancellationToken).ConfigureAwait(false);
+            }
+            catch
+            {
+                await DeletePackageBestEffortAsync(tenantId, instance.ObjectKey, instance.PackageFormat).ConfigureAwait(false);
+                throw;
+            }
+
+            if (previous?.ObjectKey != null && !string.Equals(previous.ObjectKey, instance.ObjectKey, StringComparison.Ordinal))
+                await DeletePackageBestEffortAsync(tenantId, previous.ObjectKey, previous.PackageFormat).ConfigureAwait(false);
+        }
+
+        return new SkillPackageUploadResult(instance);
+    }
+
+    /// <summary>
+    /// Writes one object per package file plus the storage index object under a
+    /// fresh package id. On failure every written object is deleted again.
+    /// </summary>
+    private async Task<(FileObjectReference IndexObject, string IndexSha256)> StorePackageAsync(
+        string tenantId,
+        string userId,
+        string mediaType,
+        IReadOnlyList<SkillPackageFile> files,
+        CancellationToken cancellationToken)
+    {
         string packageId = $"skill-{Guid.NewGuid():N}";
         const string packagePrefixRoot = "skill-packages";
         var storedKeys = new List<string>();
-        FileObjectReference stored;
-        string storedIndexHash;
         try
         {
             var storedFiles = new List<SkillPackageStorageFile>(files.Count);
@@ -167,9 +223,9 @@ internal sealed class SkillPackageManagementService(
                 TenantId = tenantId,
                 Files = storedFiles
             });
-            storedIndexHash = Convert.ToHexString(SHA256.HashData(indexContent)).ToLowerInvariant();
+            string storedIndexHash = Convert.ToHexString(SHA256.HashData(indexContent)).ToLowerInvariant();
             await using var indexStream = new MemoryStream(indexContent, writable: false);
-            stored = await objectStore.WriteAsync(
+            FileObjectReference stored = await objectStore.WriteAsync(
                 new FileObjectWriteRequest
                 {
                     FileId = packageId,
@@ -184,6 +240,7 @@ internal sealed class SkillPackageManagementService(
                 indexStream,
                 cancellationToken).ConfigureAwait(false);
             storedKeys.Add(stored.ObjectKey);
+            return (stored, storedIndexHash);
         }
         catch
         {
@@ -191,41 +248,96 @@ internal sealed class SkillPackageManagementService(
                 await DeleteObjectBestEffortAsync(objectKey).ConfigureAwait(false);
             throw;
         }
+    }
 
-        var instance = new SkillInstanceConfig
+    /// <summary>
+    /// Replaces the SKILL.md of an existing catalog Skill in place: the package
+    /// files — including scripts — are re-stored unchanged under a new package
+    /// id, so package scripts and the per-instance script execution opt-in
+    /// survive an online description edit. The frontmatter name must stay the
+    /// same to keep Agent bindings and the catalog id stable.
+    /// </summary>
+    internal async Task<SkillInstanceConfig?> UpdateMarkdownAsync(
+        string tenantId,
+        string userId,
+        string skillId,
+        string markdown,
+        CancellationToken cancellationToken)
+    {
+        if (skillCatalog == null) return null;
+        SkillInstanceConfig? skill = await skillCatalog.GetAsync(
+            tenantId,
+            skillId,
+            cancellationToken).ConfigureAwait(false);
+        if (skill == null || string.IsNullOrWhiteSpace(skill.ObjectKey)) return null;
+        EnsureTenantSharedObjectKey(skill.ObjectKey, tenantId);
+
+        byte[] markdownBytes = System.Text.Encoding.UTF8.GetBytes(markdown);
+        AgentSkillPackageMetadata markdownMetadata = AgentSkillPackageArchive.InspectFiles(
+            [new SkillPackageFile("SKILL.md", markdownBytes)], cancellationToken);
+        if (!string.Equals(markdownMetadata.Name, skill.Id, StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(markdownMetadata.Name, skill.Name, StringComparison.OrdinalIgnoreCase))
         {
-            Id = metadata.Name,
-            TenantId = tenantId,
-            Name = metadata.Name,
-            Enabled = true,
+            throw new InvalidOperationException(
+                "Skill name cannot change when updating the package in place; re-upload a package to rename it.");
+        }
+
+        byte[] indexContent = await objectStore.ReadAsync(skill.ObjectKey, cancellationToken).ConfigureAwait(false);
+        IReadOnlyList<SkillPackageFile> files = string.Equals(skill.PackageFormat, "directory", StringComparison.OrdinalIgnoreCase)
+            ? await ReadStoredFilesAsync(tenantId, indexContent, cancellationToken).ConfigureAwait(false)
+            : AgentSkillPackageArchive.ReadZipFiles(indexContent, cancellationToken);
+        if (files.All(file => !string.Equals(Path.GetFileName(file.RelativePath), "SKILL.md", StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidOperationException($"Skill package '{skillId}' has no SKILL.md to replace.");
+
+        var merged = new List<SkillPackageFile>(files.Count);
+        foreach (SkillPackageFile file in files)
+        {
+            merged.Add(string.Equals(Path.GetFileName(file.RelativePath), "SKILL.md", StringComparison.OrdinalIgnoreCase)
+                ? new SkillPackageFile(file.RelativePath, markdownBytes)
+                : file);
+        }
+        if (merged.Sum(file => file.Content.LongLength) > MaxPackageBytes)
+            throw new InvalidOperationException("Updated Skill package exceeds the 4 MB limit.");
+        AgentSkillPackageMetadata metadata = AgentSkillPackageArchive.InspectFiles(merged, cancellationToken);
+
+        (FileObjectReference stored, string storedIndexHash) = await StorePackageAsync(
+            tenantId, userId, "text/markdown", merged, cancellationToken).ConfigureAwait(false);
+        var updated = new SkillInstanceConfig
+        {
+            Id = skill.Id,
+            TenantId = skill.TenantId,
+            Name = skill.Name,
+            Enabled = skill.Enabled,
             Description = metadata.Description,
-            Type = SkillTypes.AgentSkill,
-            Source = SkillSourceTypes.ObjectStorage,
-            SourceType = SkillSourceTypes.ObjectStorage,
-            SourceId = metadata.Name,
-            PackageFileName = fileName,
+            ParametersJsonSchema = skill.ParametersJsonSchema,
+            Type = skill.Type,
+            Source = skill.Source,
+            SourceType = skill.SourceType,
+            SourceId = skill.SourceId,
+            PackageFileName = skill.PackageFileName,
             PackageFormat = "directory",
             ObjectKey = stored.ObjectKey,
             Sha256 = storedIndexHash,
-            ResourceCount = metadata.ResourceCount
+            ResourceCount = metadata.ResourceCount,
+            ScriptExecutionEnabled = skill.ScriptExecutionEnabled,
+            ScriptNames = metadata.ScriptNames.ToList(),
+            AllowedUserIds = skill.AllowedUserIds,
+            AllowedGroups = skill.AllowedGroups,
+            AllowedTenantIds = skill.AllowedTenantIds,
+            AllowedRoles = skill.AllowedRoles
         };
-        if (publishCatalog && skillCatalog != null)
+        try
         {
-            try
-            {
-                await skillCatalog.PublishAsync(instance, cancellationToken).ConfigureAwait(false);
-            }
-            catch
-            {
-                await DeletePackageBestEffortAsync(tenantId, instance.ObjectKey, instance.PackageFormat).ConfigureAwait(false);
-                throw;
-            }
-
-            if (previous?.ObjectKey != null && !string.Equals(previous.ObjectKey, instance.ObjectKey, StringComparison.Ordinal))
-                await DeletePackageBestEffortAsync(tenantId, previous.ObjectKey, previous.PackageFormat).ConfigureAwait(false);
+            await skillCatalog.PublishAsync(updated, cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            await DeletePackageBestEffortAsync(tenantId, updated.ObjectKey, updated.PackageFormat).ConfigureAwait(false);
+            throw;
         }
 
-        return new SkillPackageUploadResult(instance);
+        await DeletePackageBestEffortAsync(tenantId, skill.ObjectKey, skill.PackageFormat).ConfigureAwait(false);
+        return updated;
     }
 
     internal async Task<bool> DeleteCatalogAsync(
@@ -242,6 +354,65 @@ internal sealed class SkillPackageManagementService(
         await DeletePackageBestEffortAsync(tenantId, skill.ObjectKey, skill.PackageFormat).ConfigureAwait(false);
         await skillCatalog.RemoveAsync(tenantId, skillId, cancellationToken).ConfigureAwait(false);
         return true;
+    }
+
+    /// <summary>
+    /// Toggles script execution for a catalog Skill. The package inventory is
+    /// re-read from object storage so the recorded script list stays accurate —
+    /// including for packages published before script metadata existed — and
+    /// enabling is refused when the package holds no Python scripts.
+    /// </summary>
+    internal async Task<SkillInstanceConfig?> UpdateScriptExecutionAsync(
+        string tenantId,
+        string skillId,
+        bool scriptExecutionEnabled,
+        CancellationToken cancellationToken)
+    {
+        if (skillCatalog == null) return null;
+        SkillInstanceConfig? skill = await skillCatalog.GetAsync(
+            tenantId,
+            skillId,
+            cancellationToken).ConfigureAwait(false);
+        if (skill == null) return null;
+
+        List<string> scripts = await ReadScriptNamesAsync(tenantId, skill, cancellationToken).ConfigureAwait(false);
+        if (scriptExecutionEnabled && scripts.Count == 0)
+            throw new InvalidOperationException("Skill package contains no executable scripts.");
+
+        skill.ScriptExecutionEnabled = scriptExecutionEnabled;
+        skill.ScriptNames = scripts;
+        await skillCatalog.PublishAsync(skill, cancellationToken).ConfigureAwait(false);
+        return skill;
+    }
+
+    private async Task<List<string>> ReadScriptNamesAsync(
+        string tenantId,
+        SkillInstanceConfig skill,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(skill.ObjectKey)) return [];
+        EnsureTenantSharedObjectKey(skill.ObjectKey, tenantId);
+
+        IEnumerable<string> relativePaths;
+        if (string.Equals(skill.PackageFormat, "directory", StringComparison.OrdinalIgnoreCase))
+        {
+            byte[] indexContent = await objectStore.ReadAsync(skill.ObjectKey, cancellationToken).ConfigureAwait(false);
+            SkillPackageStorageIndex index = JsonSerializer.Deserialize<SkillPackageStorageIndex>(indexContent)
+                ?? throw new InvalidOperationException($"Skill package '{skill.Id}' has an invalid storage index.");
+            EnsureTenantIndex(index, tenantId);
+            relativePaths = index.Files.Select(file => file.RelativePath);
+        }
+        else
+        {
+            byte[] package = await objectStore.ReadAsync(skill.ObjectKey, cancellationToken).ConfigureAwait(false);
+            relativePaths = AgentSkillPackageArchive.ReadZipFiles(package, cancellationToken)
+                .Select(file => file.RelativePath);
+        }
+
+        return relativePaths
+            .Where(AgentSkillPackageArchive.IsExecutableScript)
+            .Order(StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     internal async Task<string?> ReadMarkdownAsync(
@@ -494,6 +665,10 @@ internal sealed class SkillPackageManagementService(
         }
     }
 }
+
+internal sealed record SkillScriptSettingsRequest(bool ScriptExecutionEnabled);
+
+internal sealed record SkillMarkdownUpdateRequest(string Markdown);
 
 internal sealed record SkillPackageInstallResult(
     SkillInstanceConfig? Skill,

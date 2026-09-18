@@ -280,6 +280,63 @@ describe('workspace API', () => {
     expect(result.storage).toBe('object-storage')
   })
 
+  it('patches the script execution switch of a catalog skill', async () => {
+    setConnectionMode('engine')
+    setEngineBaseUrl('http://engine.example')
+    const responseBody = {
+      skillId: 'weather',
+      name: 'weather',
+      enabled: true,
+      scriptExecutionEnabled: true,
+      scriptNames: ['weather/scripts/report.py'],
+      scriptCount: 1,
+    }
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(responseBody), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await api.updateSkillScriptExecution('weather', true)
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('http://engine.example/api/v1/admin/skills/weather')
+    expect(init.method).toBe('PATCH')
+    expect((init.headers as Headers).get('Content-Type')).toBe('application/json')
+    expect(JSON.parse(String(init.body))).toEqual({ scriptExecutionEnabled: true })
+    expect(result.scriptExecutionEnabled).toBe(true)
+    expect(result.scriptNames).toEqual(['weather/scripts/report.py'])
+  })
+
+  it('updates skill markdown in place through the source endpoint', async () => {
+    setConnectionMode('engine')
+    setEngineBaseUrl('http://engine.example')
+    const markdown = '---\nname: weather\ndescription: Refreshed\n---\n\n# Instructions\n'
+    const responseBody = {
+      skillId: 'weather',
+      name: 'weather',
+      enabled: true,
+      description: 'Refreshed',
+      scriptExecutionEnabled: true,
+      scriptNames: ['weather/scripts/report.py'],
+      scriptCount: 1,
+    }
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(responseBody), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await api.updateSkillSource('weather', markdown)
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('http://engine.example/api/v1/admin/skills/weather/source')
+    expect(init.method).toBe('PUT')
+    expect(JSON.parse(String(init.body))).toEqual({ markdown })
+    expect(result.description).toBe('Refreshed')
+    expect(result.scriptExecutionEnabled).toBe(true)
+  })
+
   it('sends MCP and Skill bindings inside the Agent configuration', async () => {
     setConnectionMode('engine')
     setEngineBaseUrl('http://engine.example')
