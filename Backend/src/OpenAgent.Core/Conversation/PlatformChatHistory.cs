@@ -36,6 +36,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
     private readonly List<ConversationMessage> _pending = [];
     private readonly StringBuilder _partialAssistant = new();
     private readonly StringBuilder _partialReasoning = new();
+    private readonly List<ChatMessage> _streamedToolMessages = [];
     private IConversationLockHandle? _lockHandle;
     private int _currentVersion;
     private int _nextSequence = 1;
@@ -84,6 +85,28 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         {
             _partialReasoning.Append(reasoning);
         }
+    }
+
+    /// <summary>
+    /// 记录本轮已流出的工具调用。失败/取消时随 partial assistant 一并持久化，
+    /// 保证刷新后前端重建的时间线与实时看到的工具过程一致。
+    /// </summary>
+    internal void AppendToolCall(string name, string callId, IDictionary<string, object?>? arguments)
+    {
+        _streamedToolMessages.Add(new ChatMessage(
+            ChatRole.Assistant,
+            [new FunctionCallContent(callId, name, arguments)]));
+    }
+
+    internal void AppendToolResult(string? callId, string? result)
+    {
+        if (string.IsNullOrWhiteSpace(callId))
+        {
+            return;
+        }
+        _streamedToolMessages.Add(new ChatMessage(
+            ChatRole.Tool,
+            [new FunctionResultContent(callId, result)]));
     }
 
     internal async Task<ChatMessage> CreateUserMessageAsync(CancellationToken cancellationToken)
@@ -448,6 +471,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
             ConversationStatus status = context.InvokeException is OperationCanceledException
                 ? ConversationStatus.Cancelled
                 : ConversationStatus.Failed;
+            StageStreamedToolMessages();
             _pending.Add(BuildPartialMessage(status));
             await _store.SaveAsync(
                 _conversation,
@@ -475,6 +499,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
                     _finalized = true;
                     RecordUser();
                     status = ConversationStatus.Cancelled;
+                    StageStreamedToolMessages();
                     _pending.Add(BuildPartialMessage(status));
                 }
                 await _store.SaveAsync(
@@ -489,6 +514,20 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         finally
         {
             await ReleaseLockAsync().ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>把已流出的工具事件转换为存储行，仅在失败/取消路径补充持久化。</summary>
+    private void StageStreamedToolMessages()
+    {
+        if (_streamedToolMessages.Count == 0)
+        {
+            return;
+        }
+        foreach (ConversationMessage message in AgentMessageAdapter.ToStored(
+            _streamedToolMessages, ref _nextSequence))
+        {
+            _pending.Add(message);
         }
     }
 

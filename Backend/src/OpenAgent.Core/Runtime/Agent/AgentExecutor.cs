@@ -159,6 +159,7 @@ public sealed class AgentExecutor
                 string key = string.IsNullOrWhiteSpace(call.CallId) ? call.Name : call.CallId;
                 if (announcedToolCalls.Add(key))
                 {
+                    scope.AppendToolCall(call.Name, call.CallId, call.Arguments);
                     yield return new AgentStreamEvent
                     {
                         Type = AgentStreamEventType.ToolCall,
@@ -172,6 +173,7 @@ public sealed class AgentExecutor
             // Emit tool results immediately so clients do not need to reload history.
             foreach (FunctionResultContent result in contents.OfType<FunctionResultContent>())
             {
+                scope.AppendToolResult(result.CallId, result.Result?.ToString());
                 yield return new AgentStreamEvent
                 {
                     Type = AgentStreamEventType.ToolResult,

@@ -160,6 +160,40 @@ public sealed class AgentMessageAdapterTests
     }
 
     [Fact]
+    public void NormalizeEmptyToolArguments_NullArguments_ReplacedWithEmptyObject()
+    {
+        ChatMessage message = new(
+            ChatRole.Assistant,
+            [new FunctionCallContent("call-1", "revoke_share_link", null)]);
+
+        ChatMessage normalized = Assert.Single(
+            AgentMessageAdapter.NormalizeEmptyToolArguments([message]));
+
+        Assert.NotSame(message, normalized);
+        FunctionCallContent call = Assert.Single(normalized.Contents.OfType<FunctionCallContent>());
+        Assert.NotNull(call.Arguments);
+        Assert.Empty(call.Arguments);
+        // 原消息保持不变：序列化规格化只作用于出站克隆。
+        Assert.Null(Assert.Single(message.Contents.OfType<FunctionCallContent>()).Arguments);
+    }
+
+    [Fact]
+    public void NormalizeEmptyToolArguments_WithArguments_PreservesMessage()
+    {
+        ChatMessage message = new(
+            ChatRole.Assistant,
+            [new FunctionCallContent(
+                "call-1",
+                "read_file",
+                new Dictionary<string, object?> { ["fileId"] = "f-1" })]);
+
+        ChatMessage normalized = Assert.Single(
+            AgentMessageAdapter.NormalizeEmptyToolArguments([message]));
+
+        Assert.Same(message, normalized);
+    }
+
+    [Fact]
     public void AttachFile_PdfBinary_AddsMetadataOnlyPlaceholder()
     {
         var message = new ChatMessage(ChatRole.User, "解析这个文件");

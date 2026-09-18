@@ -73,6 +73,33 @@ public class OpenAIWireSerializationTests
         Assert.True(paired, "The serialized request must answer read_file:0 with a tool message.");
     }
 
+    [Fact]
+    public async Task FollowupRequest_EmptyToolArguments_SerializedAsEmptyObject()
+    {
+        // 模型对无参调用会下发 "arguments":""（或缺省），解析后 Arguments 为 null；
+        // 直接序列化会得到 "arguments":"null" 被严格网关拒绝。出站必须规格化为 {}。
+        CaptureHandler capture = new();
+        using IChatClient client = CreateClient(capture);
+        await client.GetResponseAsync(
+        [
+            new MEAChatMessage(MEAChatRole.User, "撤销分享链接"),
+            new MEAChatMessage(MEAChatRole.Assistant,
+                [new FunctionCallContent("call-1", "revoke_share_link", null)]),
+            new MEAChatMessage(MEAChatRole.Tool,
+                [new FunctionResultContent("call-1", "error: shareId required")]),
+        ]);
+
+        Assert.NotNull(capture.RequestBody);
+        string? arguments = JsonDocument.Parse(capture.RequestBody!)
+            .RootElement.GetProperty("messages")
+            .EnumerateArray()
+            .Where(message => message.TryGetProperty("tool_calls", out _))
+            .SelectMany(message => message.GetProperty("tool_calls").EnumerateArray())
+            .Select(call => call.GetProperty("function").GetProperty("arguments").GetString())
+            .FirstOrDefault();
+        Assert.Equal("{}", arguments);
+    }
+
     private static IEnumerable<MEAChatMessage> CreateStoredTurnHistory()
     {
         List<ConversationMessage> rows = [CreateRow("user", "hi", null, null, null)];
@@ -126,7 +153,8 @@ public class OpenAIWireSerializationTests
             .AsBuilder()
             .Use(static (messages, options, next, cancellationToken) =>
                 next(
-                    AgentMessageAdapter.RemoveEmptyOpenAIToolCallText(messages),
+                    AgentMessageAdapter.NormalizeEmptyToolArguments(
+                        AgentMessageAdapter.RemoveEmptyOpenAIToolCallText(messages)),
                     options,
                     cancellationToken))
             .Build();
