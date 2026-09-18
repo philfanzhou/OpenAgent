@@ -26,8 +26,8 @@ const emit = defineEmits<{
 const fileInput = ref<HTMLInputElement | null>(null)
 
 const maxFileCount = 10
-const maxFileSize = 50 * 1024 * 1024
-const maxFileTotalSize = 100 * 1024 * 1024
+const maxFileSize = 100 * 1024 * 1024
+const maxFileTotalSize = 1000 * 1024 * 1024
 
 function addFiles(files: File[]): void {
   if (!files.length) return
