@@ -221,7 +221,10 @@ public class AgentExecutorUsageTests
         Assert.Equal(3, actual.ReasoningTokens);
     }
 
-    internal static TestRuntime CreateRuntime(IChatClient provider)
+    internal static TestRuntime CreateRuntime(IChatClient provider) =>
+        CreateRuntime(provider, configure: null);
+
+    internal static TestRuntime CreateRuntime(IChatClient provider, Action<IServiceCollection>? configure)
     {
         var services = new ServiceCollection();
         services.AddLogging();
@@ -236,6 +239,7 @@ public class AgentExecutorUsageTests
         services.AddSingleton<IAgentRuntimeResolver>(new StaticRuntimeResolver());
         services.RemoveAll<IAgentChatClientFactory>();
         services.AddSingleton<IAgentChatClientFactory>(new FakeChatClientFactory(provider));
+        configure?.Invoke(services);
 
         ServiceProvider serviceProvider = services.BuildServiceProvider(
             new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });

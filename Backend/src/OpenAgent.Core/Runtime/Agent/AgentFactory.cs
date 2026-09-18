@@ -20,6 +20,7 @@ internal sealed class AgentFactory
     private readonly McpToolFactory _mcpTools;
     private readonly AgentSkillsProviderFactory _skills;
     private readonly FileAssetExecutionContext _files;
+    private readonly IServiceProvider _services;
 
     public AgentFactory(
         IAgentChatClientFactory chatClients,
@@ -27,7 +28,8 @@ internal sealed class AgentFactory
         CapabilityToolFactory capabilities,
         McpToolFactory mcpTools,
         AgentSkillsProviderFactory skills,
-        FileAssetExecutionContext files)
+        FileAssetExecutionContext files,
+        IServiceProvider services)
     {
         _chatClients = chatClients;
         _conversations = conversations;
@@ -35,6 +37,7 @@ internal sealed class AgentFactory
         _mcpTools = mcpTools;
         _skills = skills;
         _files = files;
+        _services = services;
     }
 
     internal async Task<AgentExecutionScope> CreateAsync(
@@ -91,7 +94,13 @@ internal sealed class AgentFactory
                 .AsBuilder()
                 .UseAIContextProviders(compaction)
                 .Build();
-            IChatClient chatClient = new FunctionInvokingChatClient(compactingClient)
+            // MAF-registered tools (e.g. read_skill_resource) declare required
+            // IServiceProvider parameters; without function invocation services the
+            // call fails at argument binding with "Services are required for
+            // parameter 'serviceProvider'" and surfaces as a 500.
+            IChatClient chatClient = new FunctionInvokingChatClient(
+                compactingClient,
+                functionInvocationServices: _services)
             {
                 AllowConcurrentInvocation = false,
                 IncludeDetailedErrors = false,
