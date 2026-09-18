@@ -46,8 +46,8 @@ Meter / ASP.NET Core Metrics -> OpenTelemetry
 }
 ```
 
-- `OpenTelemetry:OtlpEndpoint` 可省略；省略时不注册 OTLP logs、traces 和 metrics exporter，Console 与 `/metrics` 仍可用。
-- 也可以使用标准环境变量 `OTEL_EXPORTER_OTLP_ENDPOINT`。
+- `OpenTelemetry:OtlpEndpoint` 可省略；省略或留空时不注册 OTLP logs、traces 和 metrics exporter，Console 与 `/metrics` 仍可用。留空时回退到标准环境变量 `OTEL_EXPORTER_OTLP_ENDPOINT`（部署注入该变量时无需额外配置）。
+- 导出协议由 SDK 标准变量 `OTEL_EXPORTER_OTLP_PROTOCOL` 控制，未设置时默认 gRPC（Collector 端口 4317）；设为 `http/protobuf` 时（通常配合 4318 端口），若地址不含路径，会自动追加 `/v1/logs`、`/v1/traces`、`/v1/metrics` 信号路径。
 - 应用 Compose 通过 `OPENAGENT_OTLP_ENDPOINT` 配置外部 Collector，统一汇集 Engine 与 Router 的 Logs、
   Traces 和 Metrics；本项目不创建或管理 Collector 容器。
 - OTLP 地址存在但不是绝对 HTTP(S) URI 时启动失败，避免服务看似正常但遥测静默丢失。

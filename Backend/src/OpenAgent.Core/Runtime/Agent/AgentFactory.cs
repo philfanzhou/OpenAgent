@@ -106,7 +106,10 @@ internal sealed class AgentFactory
                 IncludeDetailedErrors = false,
                 MaximumConsecutiveErrorsPerRequest = 3,
                 MaximumIterationsPerRequest = profile.Config.MaxTurns > 0 ? profile.Config.MaxTurns : 5,
-                TerminateOnUnknownCalls = true
+                // 未知工具调用（如某次运行中 MCP server 连接失败、工具未注册，或模型
+                // 幻觉出名字）必须以 "tool not found" 结果回传给模型，让它自行调整；
+                // 终止循环会让模型在没有任何回复的情况下直接停止。
+                TerminateOnUnknownCalls = false
             };
 
             List<AIContextProvider> providers = [];
@@ -124,7 +127,11 @@ internal sealed class AgentFactory
                         ? null
                         : profile.Config.Instructions,
                     Temperature = (float?)profile.Model.Temperature,
-                    Tools = tools.Concat(mcpRuntime.Tools).ToList()
+                    // 工具（MCP/能力）异常在调用处被隔离成错误结果回传给模型，
+                    // 避免 FunctionInvokingChatClient 连续失败后重抛导致整轮执行终止。
+                    Tools = tools.Concat(mcpRuntime.Tools)
+                        .Select(IsolatedToolFunction.Wrap)
+                        .ToList()
                 },
                 ChatHistoryProvider = history,
                 AIContextProviders = providers,

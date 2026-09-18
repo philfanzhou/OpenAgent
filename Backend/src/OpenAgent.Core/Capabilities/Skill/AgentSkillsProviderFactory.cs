@@ -95,12 +95,12 @@ internal sealed class AgentSkillsProviderFactory(
                     packagePaths,
                     new AgentFileSkillsSourceOptions
                     {
-                        // The sandbox language surface is Python only; shell and other
-                        // interpreters are deliberately not disclosed or executable.
-                        AllowedScriptExtensions = [".py"],
+                        // The sandbox language surface is Python, JavaScript, and
+                        // bash; other interpreters stay undisclosed.
+                        AllowedScriptExtensions = [".py", ".js", ".mjs", ".sh"],
                         ScriptFilter = scriptsEnabled
                             ? context =>
-                                Path.GetExtension(context.RelativeFilePath).Equals(".py", StringComparison.OrdinalIgnoreCase)
+                                AgentSkillPackageArchive.IsExecutableScript(context.RelativeFilePath)
                                 && scriptSkillNames.Contains(context.SkillName)
                             : static _ => false
                     })
