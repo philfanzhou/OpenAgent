@@ -57,8 +57,8 @@ public class AgentExecutorUsageTests
 
         AssertUsage(response.TokenUsage);
         AssertUsage(assistant.TokenUsage);
-        Assert.Equal("provider-model-2026", response.ModelId);
-        Assert.Equal("provider-model-2026", assistant.ModelId);
+        Assert.Equal("configured-model", response.ModelId);
+        Assert.Equal("configured-model", assistant.ModelId);
     }
 
     [Fact]
@@ -121,8 +121,8 @@ public class AgentExecutorUsageTests
 
         AssertUsage(terminal.Usage);
         AssertUsage(assistant.TokenUsage);
-        Assert.Equal("provider-stream-model", terminal.ModelId);
-        Assert.Equal("provider-stream-model", assistant.ModelId);
+        Assert.Equal("configured-model", terminal.ModelId);
+        Assert.Equal("configured-model", assistant.ModelId);
     }
 
     [Fact]
@@ -145,7 +145,7 @@ public class AgentExecutorUsageTests
 
         Assert.Null(response.TokenUsage);
         Assert.Null(assistant.TokenUsage);
-        Assert.Equal("provider-model", assistant.ModelId);
+        Assert.Equal("configured-model", assistant.ModelId);
     }
 
     [Fact]

@@ -12,6 +12,12 @@ using OpenAgent.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// 文件上传直连 Engine 时（或经 Router 转发到 Engine 时），Kestrel 默认 30 MB 请求体上限
+// 会在进入端点校验前拒绝更大的附件；与 FileAssets:MaxFileSizeBytes（默认 100 MB，
+// 单请求单文件）对齐放开，并留出 multipart 开销余量。
+builder.WebHost.ConfigureKestrel(options =>
+    options.Limits.MaxRequestBodySize = 256L * 1024 * 1024);
+
 builder.Host.UseAgentSerilog("agent-engine");
 
 builder.Services.AddAgentHost(builder.Configuration, options =>

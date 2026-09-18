@@ -49,16 +49,20 @@ def collect_files():
     return files
 
 
+def entry_command():
+    language = os.environ.get("EXECUTION_LANGUAGE", "python")
+    entry = os.environ.get("EXECUTION_ENTRY") or ("main.sh" if language == "shell" else "main.mjs" if language == "javascript" else "main.py")
+    if language == "javascript":
+        return [os.environ.get("EXECUTION_NODE", "/usr/bin/node"), f"/input/{entry}"]
+    if language == "shell":
+        return ["/bin/bash", f"/input/{entry}"]
+    return [sys.executable, "-I", "-u", f"/input/{entry}"]
+
+
 def main():
     for directory in ("/tmp/home", "/tmp/runtime", "/tmp/matplotlib"):
         Path(directory).mkdir(mode=0o700, parents=True, exist_ok=True)
-    language = os.environ.get("EXECUTION_LANGUAGE", "python")
-    if language == "javascript":
-        command = [os.environ.get("EXECUTION_NODE", "/usr/bin/node"), "/input/main.mjs"]
-    elif language == "shell":
-        command = ["/bin/bash", "/input/main.sh"]
-    else:
-        command = [sys.executable, "-I", "-u", "/input/main.py"]
+    command = entry_command()
     output, errors = bytearray(), bytearray()
     process = subprocess.Popen(
         command, cwd="/work",

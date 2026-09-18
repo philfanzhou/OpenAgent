@@ -6,18 +6,34 @@ namespace OpenAgent.Contracts.Execution;
 public static class ExecutionLimits
 {
     public const int MaxCodeBytes = 128 * 1024;
-    public const int MaxFiles = 8;
+    public const int MaxFiles = 100;
     public const int MaxFileBytes = 10 * 1024 * 1024;
     public const int MaxTotalFileBytes = 20 * 1024 * 1024;
     public const int MaxLogCharacters = 32 * 1024;
     public const int MaxWireBytes = 32 * 1024 * 1024;
+    public const int MaxSessionKeyBytes = 64;
 
     public static bool IsSafeFileName(string? name) =>
         !string.IsNullOrWhiteSpace(name)
-        && name.Length <= 120
-        && name is not "." and not ".."
-        && char.IsLetterOrDigit(name[0])
-        && name.All(character => char.IsLetterOrDigit(character) || character is '.' or '_' or '-' or ' ');
+        && name.Length <= 160
+        && name.Split('/').All(IsSafeNameSegment)
+        && !name.EndsWith("/", StringComparison.Ordinal);
+
+    private static bool IsSafeNameSegment(string? segment) =>
+        !string.IsNullOrWhiteSpace(segment)
+        && segment.Length <= 120
+        && segment is not "." and not ".."
+        && char.IsLetterOrDigit(segment[0])
+        && segment.All(character => char.IsLetterOrDigit(character) || character is '.' or '_' or '-' or ' ');
+
+    /// <summary>
+    /// Conversation-scoped workspaces are reused across executions, so the key is
+    /// restricted to a small character set and length; it never reaches a shell.
+    /// </summary>
+    public static bool IsSafeSessionKey(string? key) =>
+        !string.IsNullOrWhiteSpace(key)
+        && key.Length <= MaxSessionKeyBytes
+        && key.All(character => char.IsLetterOrDigit(character) || character is '-' or '_');
 
     public static void Validate(CodeExecutionRequest request)
     {
@@ -26,17 +42,33 @@ public static class ExecutionLimits
         {
             throw new ArgumentException("Code is empty or exceeds the execution limit.");
         }
-        if (ExecutionLanguage.Normalize(request.Language) == null)
+        string language = ExecutionLanguage.Normalize(request.Language)
+            ?? throw new ArgumentException("The requested execution language is not supported.");
+        if (!string.IsNullOrWhiteSpace(request.SessionKey) && !IsSafeSessionKey(request.SessionKey))
         {
-            throw new ArgumentException("The requested execution language is not supported.");
+            throw new ArgumentException("The session key contains unsupported characters.");
         }
         ValidateFiles(request.Files);
-        foreach (string entryName in ExecutionLanguage.Supported.Select(ExecutionLanguage.EntryFileName))
+        // A custom entry replaces the language default, so only the effective entry
+        // name stays reserved; packages may then legitimately ship their own main.py.
+        IEnumerable<string> reservedEntries = string.IsNullOrWhiteSpace(request.EntryFileName)
+            ? ExecutionLanguage.Supported.Select(ExecutionLanguage.EntryFileName)
+            : [request.EntryFileName];
+        foreach (string entryName in reservedEntries)
         {
             if (request.Files.Any(file => file.Name.Equals(entryName, StringComparison.OrdinalIgnoreCase)))
             {
                 throw new ArgumentException($"The input name {entryName} is reserved.");
             }
+        }
+        if (!string.IsNullOrWhiteSpace(request.EntryFileName)
+            && (!IsSafeFileName(request.EntryFileName)
+                || request.EntryFileName.Contains('/', StringComparison.Ordinal)
+                || !request.EntryFileName.EndsWith(
+                    ExecutionLanguage.EntryFileExtension(language),
+                    StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new ArgumentException("The entry file name is invalid for the requested language.");
         }
     }
 

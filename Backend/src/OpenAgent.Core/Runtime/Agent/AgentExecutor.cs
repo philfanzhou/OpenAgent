@@ -80,9 +80,11 @@ public sealed class AgentExecutor
             options: null,
             cancellationToken).ConfigureAwait(false);
         TokenUsage? usage = AgentResponseAdapter.ConvertUsage(response.Usage);
-        string modelId = AgentResponseAdapter.ReadModelId(
-            response.RawRepresentation,
-            profile.Model.ModelId);
+        // Report the model selected for this message; only fall back to the
+        // provider echo when the resolved profile carries no model id.
+        string modelId = string.IsNullOrWhiteSpace(profile.Model.ModelId)
+            ? AgentResponseAdapter.ReadModelId(response.RawRepresentation, profile.Model.ModelId)
+            : profile.Model.ModelId;
         await scope.CompleteAsync(usage, modelId, cancellationToken).ConfigureAwait(false);
         measurement.Complete(usage);
         return new PlatformAgentResponse
@@ -139,6 +141,7 @@ public sealed class AgentExecutor
         AgentSession session = await scope.Agent.CreateSessionAsync(cancellationToken).ConfigureAwait(false);
         ChatMessage userMessage = await scope.CreateUserMessageAsync(cancellationToken).ConfigureAwait(false);
         HashSet<string> announcedToolCalls = new(StringComparer.Ordinal);
+        Dictionary<string, string> toolCallNames = new(StringComparer.Ordinal);
         TokenUsage? usage = null;
         string modelId = profile.Model.ModelId;
         IAsyncEnumerable<AgentResponseUpdate> updates = scope.Agent.RunStreamingAsync(
@@ -159,6 +162,10 @@ public sealed class AgentExecutor
                 string key = string.IsNullOrWhiteSpace(call.CallId) ? call.Name : call.CallId;
                 if (announcedToolCalls.Add(key))
                 {
+                    if (!string.IsNullOrWhiteSpace(call.CallId))
+                    {
+                        toolCallNames[call.CallId] = call.Name;
+                    }
                     scope.AppendToolCall(call.Name, call.CallId, call.Arguments);
                     yield return new AgentStreamEvent
                     {
@@ -178,6 +185,12 @@ public sealed class AgentExecutor
                 {
                     Type = AgentStreamEventType.ToolResult,
                     ToolCallId = result.CallId,
+                    // Not every provider pairs a result with a streamed call announcement;
+                    // carry the name so clients can label the activity instead of a
+                    // generic placeholder.
+                    ToolName = string.IsNullOrWhiteSpace(result.CallId)
+                        ? null
+                        : toolCallNames.GetValueOrDefault(result.CallId),
                     Content = result.Result?.ToString()
                 };
             }
@@ -208,7 +221,13 @@ public sealed class AgentExecutor
             }
 
             usage = AgentResponseAdapter.ReadUsage(contents) ?? usage;
-            modelId = AgentResponseAdapter.ReadModelId(update.RawRepresentation, modelId);
+            // Show the model selected for this message (the resolved profile) rather
+            // than provider-echoed aliases; fall back to the echo only if the profile
+            // carries no model id.
+            if (string.IsNullOrWhiteSpace(modelId))
+            {
+                modelId = AgentResponseAdapter.ReadModelId(update.RawRepresentation, modelId);
+            }
         }
 
         await scope.CompleteAsync(usage, modelId, cancellationToken).ConfigureAwait(false);

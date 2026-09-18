@@ -27,13 +27,13 @@ AgentExecutor → AgentFactory → CapabilityToolFactory → execute_code
 
 ## 工具契约
 
-`execute_code(code, inputFiles?, language?)` 的每个输入项为 `{fileId, name}`，文件在沙箱中位于 `/input/<name>`。输入必须属于当前租户、当前用户并已被当前会话引用。不可传对象存储键、宿主路径、环境变量或任意 Bubblewrap 参数。`main.py` 与 `main.mjs` 为保留名。
+`execute_code(code, inputFiles?, language?)` 的每个输入项为 `{fileId, name}`，文件在沙箱中位于 `/input/<name>`（`name` 允许 `/` 分隔的相对子路径，逐段校验）。输入必须属于当前租户、当前用户并已被当前会话引用。不可传对象存储键、宿主路径、环境变量或任意 Bubblewrap 参数。未指定自定义入口时 `main.py` 与 `main.mjs` 为保留名；`EntryFileName` 可将入口替换为其他同扩展名文件，此时仅保留新入口名。
 
 `language` 支持 `python`（默认）和 `javascript`。JavaScript 由固定 Node 运行时执行，入口为 `main.mjs`（ESM），仅提供 Node 内置模块，没有 npm 包，按需另行预装。Python 由固定 venv 执行，入口为 `main.py`。两种语言共享同一沙箱边界、资源限额和输入/输出协议。
 
 返回 `executionId`、`exitCode`、`timedOut`、`stdout`、`stderr` 和文件元数据数组。成功文件登记为当前用户的 FileAsset，并关联当前会话；只有模型调用 `publish_files` 后才发布到 assistant 消息。二进制字节只在 Runner 与 Engine 之间传输，不进入模型上下文。
 
-每次调用创建全新的 namespace、tmpfs 工作区和解释器进程。`/work` 保存临时工作，`/output` 保存交付文件；沙箱退出前由可信包装脚本验证并编码输出。继续修改文件时，显式将前次返回的 fileId 作为新调用输入。任务间不保留变量、后台进程或可写磁盘。输出只接受普通文件，拒绝符号链接、目录、特殊文件及危险名称。
+每次调用创建全新的 namespace、tmpfs 工作区和解释器进程。`/work` 保存临时工作，`/output` 保存交付文件；沙箱退出前由可信包装脚本验证并编码输出。携带 `SessionKey`（当前为会话 ID）的调用复用同一会话工作区：`/input` 挂载内容跨调用保留，`/work`、`/output` 与内存态仍按调用隔离；空闲超过 `SessionWorkspaceIdleMinutes`（默认 120 分钟）后由 `WorkspaceReaper` 清理。继续编辑产物时，仍显式将前次返回的 fileId 作为新调用输入。任务间不保留变量、后台进程或可写磁盘。输出只接受普通文件，拒绝符号链接、目录、特殊文件及危险名称。
 
 ## 隔离边界
 
@@ -66,7 +66,7 @@ Runner 请求目前与聊天请求共同存活；不提供断线后继续运行�
 
 固定 Python venv 安装 python-pptx、openpyxl、XlsxWriter、pandas、matplotlib、Pillow 和 defusedxml；主机只读运行时提供 LibreOffice、中文字体和 Node.js。支持生成可编辑 Office 文件，也可在沙箱内调用 LibreOffice 渲染 PDF 后交付。JavaScript 侧当前只提供 Node 内置模块（ESM 入口 `main.mjs`），不预装 npm 包；后续按需将固定版本包只读挂入沙箱。
 
-原有 Skill 指令/资源读取保持可用。Skill 包脚本可在双开关（宿主 `CodeExecution.Enabled` + Agent `CodeExecution` 绑定）与 `SkillInstanceConfig.ScriptExecutionEnabled`（按实例，默认关闭）全部开启后，经 `run_skill_script` 工具在同一 Bubblewrap 沙箱内执行：脚本与其同目录文件作为 `/input` 输入挂载，由生成的 wrapper `main.py` 以 `runpy` 启动，产物登记与预算扣减与 `execute_code` 共享（`CodeExecutionBudget`）。仅支持 `.py` 脚本；MCP 服务与业务工具不迁入沙箱，也不提供 `call_tool` 回调桥接。
+原有 Skill 指令/资源读取保持可用。Skill 包脚本可在双开关（宿主 `CodeExecution.Enabled` + Agent `CodeExecution` 绑定）与 `SkillInstanceConfig.ScriptExecutionEnabled`（按实例，默认关闭）全部开启后，经 `run_skill_script` 工具在同一 Bubblewrap 沙箱内执行：整个 Skill 包按相对路径全量挂载为 `/input` 输入（包根与脚本目录进入 `sys.path`，包内相互依赖可解析），由生成的 wrapper 入口 `openagent_skill_entry__.py` 以 `runpy` 启动（包内自带 `main.py` 不再冲突），并按会话复用工作区；产物登记与预算扣减与 `execute_code` 共享（`CodeExecutionBudget`）。仅支持 `.py` 脚本；MCP 服务与业务工具不迁入沙箱，也不提供 `call_tool` 回调桥接。
 
 ## 验证
 

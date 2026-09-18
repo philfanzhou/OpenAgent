@@ -1,5 +1,7 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Globalization;
+using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Execution;
@@ -11,8 +13,10 @@ internal sealed class BubblewrapCodeExecutor(
 {
     private const int OutputMiB = 32;
     private const int TempMiB = 64;
+    private const string SessionWorkspacePrefix = "session-";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly SemaphoreSlim _slots = new(options.Value.MaxConcurrentExecutions);
+    private readonly ConcurrentDictionary<string, SemaphoreSlim> _sessionLocks = new(StringComparer.Ordinal);
     private readonly string _sandboxFilesDirectory = Path.Combine(AppContext.BaseDirectory, "sandbox");
 
     public async Task<CodeExecutionResult> ExecuteAsync(CodeExecutionRequest request, CancellationToken cancellationToken)
@@ -29,9 +33,32 @@ internal sealed class BubblewrapCodeExecutor(
             throw new RunnerBusyException();
         }
 
+        // Same-session executions serialize on one workspace so mounted inputs are
+        // never overwritten mid-run; the global slots cap total sandbox concurrency.
+        SemaphoreSlim? sessionLock = null;
+        if (!string.IsNullOrWhiteSpace(request.SessionKey))
+        {
+            sessionLock = _sessionLocks.GetOrAdd(request.SessionKey, _ => new SemaphoreSlim(1, 1));
+            if (!await sessionLock.WaitAsync(0, cancellationToken).ConfigureAwait(false))
+            {
+                _slots.Release();
+                throw new RunnerBusyException();
+            }
+        }
+
         RunnerOptions settings = options.Value;
         string executionId = Guid.NewGuid().ToString("N");
-        string directory = Path.Combine(settings.WorkspaceRoot, executionId);
+        // Session-keyed workspaces survive between executions of one conversation;
+        // WorkspaceReaper removes them after the configured idle period. Everything
+        // else gets a fresh directory that is torn down immediately.
+        bool reusableWorkspace = !string.IsNullOrWhiteSpace(request.SessionKey);
+        string workspaceName = reusableWorkspace
+            ? SessionWorkspacePrefix + request.SessionKey
+            : executionId;
+        string directory = Path.Combine(settings.WorkspaceRoot, workspaceName);
+        string entryFileName = string.IsNullOrWhiteSpace(request.EntryFileName)
+            ? ExecutionLanguage.EntryFileName(language)
+            : request.EntryFileName!;
         Stopwatch watch = Stopwatch.StartNew();
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(TimeSpan.FromSeconds(settings.TimeoutSeconds + 15));
@@ -43,19 +70,21 @@ internal sealed class BubblewrapCodeExecutor(
             {
                 File.SetUnixFileMode(directory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
             }
-            await File.WriteAllTextAsync(Path.Combine(directory, ExecutionLanguage.EntryFileName(language)),
-                request.Code, deadline.Token).ConfigureAwait(false);
+            await WriteWorkspaceFileAsync(
+                Path.Combine(directory, entryFileName),
+                Encoding.UTF8.GetBytes(request.Code), deadline.Token).ConfigureAwait(false);
             foreach (ExecutionFile file in request.Files)
             {
-                await File.WriteAllBytesAsync(Path.Combine(directory, file.Name), file.Content, deadline.Token).ConfigureAwait(false);
+                await WriteWorkspaceFileAsync(
+                    Path.Combine(directory, file.Name), file.Content, deadline.Token).ConfigureAwait(false);
             }
-            foreach (string file in Directory.EnumerateFiles(directory))
+            foreach (string file in Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories))
             {
                 File.SetUnixFileMode(file, UnixFileMode.UserRead | UnixFileMode.UserWrite);
             }
 
             var executed = await bubblewrap.RunAsync(
-                BuildArguments(settings, directory, _sandboxFilesDirectory, language), ExecutionLimits.MaxWireBytes, deadline.Token)
+                BuildArguments(settings, directory, _sandboxFilesDirectory, language, entryFileName), ExecutionLimits.MaxWireBytes, deadline.Token)
                 .ConfigureAwait(false);
             CodeExecutionResult result;
             if (executed.ExitCode != 0)
@@ -98,7 +127,7 @@ internal sealed class BubblewrapCodeExecutor(
         {
             try
             {
-                if (Directory.Exists(directory))
+                if (!reusableWorkspace && Directory.Exists(directory))
                 {
                     Directory.Delete(directory, recursive: true);
                 }
@@ -110,13 +139,25 @@ internal sealed class BubblewrapCodeExecutor(
             }
             finally
             {
+                sessionLock?.Release();
                 _slots.Release();
             }
         }
     }
 
+    private static async Task WriteWorkspaceFileAsync(string path, byte[] content, CancellationToken cancellationToken)
+    {
+        string? parent = Path.GetDirectoryName(path);
+        if (!string.IsNullOrWhiteSpace(parent))
+        {
+            Directory.CreateDirectory(parent);
+        }
+        await File.WriteAllBytesAsync(path, content, cancellationToken).ConfigureAwait(false);
+    }
+
     internal static IReadOnlyList<string> BuildArguments(
-        RunnerOptions settings, string inputDirectory, string sandboxFilesDirectory, string language)
+        RunnerOptions settings, string inputDirectory, string sandboxFilesDirectory, string language,
+        string? entryFileName = null)
     {
         string pythonRoot = RuntimeRoot(settings.PythonPath, "Python");
         string nodeRoot = RuntimeRoot(settings.NodePath, "Node");
@@ -166,7 +207,8 @@ internal sealed class BubblewrapCodeExecutor(
             "--setenv", "NUMEXPR_NUM_THREADS", "1",
             "--setenv", "EXECUTION_LANGUAGE", language,
             "--setenv", "EXECUTION_NODE", settings.NodePath,
-            "--setenv", "EXECUTION_TIMEOUT", settings.TimeoutSeconds.ToString(CultureInfo.InvariantCulture)
+            "--setenv", "EXECUTION_TIMEOUT", settings.TimeoutSeconds.ToString(CultureInfo.InvariantCulture),
+            "--setenv", "EXECUTION_ENTRY", entryFileName ?? ExecutionLanguage.EntryFileName(language)
         };
 
         foreach (string root in new[] { pythonRoot, nodeRoot }.Distinct(StringComparer.Ordinal))

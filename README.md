@@ -137,8 +137,8 @@ PowerShell 使用 `-TarDirectory`，也可以在环境文件中设置 `OPENAGENT
 
 浏览器访问 `https://openagent.intra.example:8081`；Router 与 Engine 分别使用 `https://openagent.intra.example:8082`
 和 `https://openagent.intra.example:8083`。Nginx 的默认
-请求体限制为 64 MB（可用 `OPENAGENT_NGINX_CLIENT_MAX_BODY_SIZE` 调整），允许通过 Router 上传文件；
-后端仍会按 FileAssets 与 Skill 包自身的大小限制校验请求。
+请求体限制为 1100 MB（可用 `OPENAGENT_NGINX_CLIENT_MAX_BODY_SIZE` 调整），允许通过 Router 上传大文件
+（前端单文件上限 100 MB、单次会话附件总量 1000 MB）；后端仍会按 FileAssets 与 Skill 包自身的大小限制校验请求。
 
 Compose 不包含任何模型凭据或已发布 Agent。Development Basic 兼容登录只适合受控联调，不应直接暴露到
 内网或公网；生产环境请使用 HTTPS 的企业 IdP 与 OIDC。

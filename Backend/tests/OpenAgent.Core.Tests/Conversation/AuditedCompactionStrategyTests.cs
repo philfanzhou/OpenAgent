@@ -206,6 +206,33 @@ public sealed class AuditedCompactionStrategyTests
         Assert.True(audited.LastAuditRecorded);
     }
 
+    [Fact]
+    public async Task CompactAsync_FirstTurnRecordHasNoMessages_SourceEndSequenceFallsBack()
+    {
+        // First-turn auto compaction audits while the record exists but holds no
+        // persisted rows yet (MessageCount 0). The summary must anchor after the
+        // compacted messages instead of sorting to the very top of the timeline.
+        InMemoryConversationStore store = await CreateStoreAsync(messageCount: 0);
+        var audited = CreateAudited(
+            store,
+            SummaryStrategy("compressed summary"),
+            recordUnchanged: false,
+            CompactionTriggers.MessagesExceed(2));
+
+        IEnumerable<ChatMessage> result = await CompactionProvider.CompactAsync(
+            audited,
+            Messages(6),
+            NullLogger.Instance,
+            CancellationToken.None);
+        ContextSummary summary = Assert.Single(Assert.IsType<ConversationRecord>(
+            await store.GetRecordAsync("tenant-1", "conversation-1")).ContextSummaries);
+
+        Assert.True(result.Count() < 6);
+        Assert.Equal("Succeeded", summary.Status);
+        Assert.True(summary.SourceEndSequence >= 6,
+            $"Expected a non-zero boundary, got {summary.SourceEndSequence}.");
+    }
+
     private static AuditedCompactionStrategy CreateAudited(
         IConversationStore store,
         SummarizationCompactionStrategy strategy,

@@ -62,18 +62,26 @@ public class SkillScriptRunnerTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task RunAsync_MountsScriptAndSiblingsThroughWrapper()
+    public async Task RunAsync_MountsWholePackageRecursivelyThroughWrapper()
     {
-        string scriptPath = await WriteScriptAsync("analyze.py", "print('analyze ran')\n");
-        await File.WriteAllTextAsync(Path.Combine(_packageRoot, "helper.py"), "SUPPORT = 42\n");
-        await File.WriteAllTextAsync(Path.Combine(_packageRoot, "notes.txt"), "sibling data is mounted too\n");
+        string scriptDirectory = Path.Combine(_packageRoot, "scripts");
+        string libDirectory = Path.Combine(_packageRoot, "lib");
+        Directory.CreateDirectory(scriptDirectory);
+        Directory.CreateDirectory(libDirectory);
+        string scriptPath = await WriteScriptAsync(Path.Combine("scripts", "analyze.py"), "from lib.helper import SUPPORT\n");
+        await File.WriteAllTextAsync(Path.Combine(libDirectory, "helper.py"), "SUPPORT = 42\n");
+        await File.WriteAllTextAsync(Path.Combine(_packageRoot, "SKILL.md"), "---\nname: report-writer\n---\n");
         object? result = await _fixture.RunAsync(scriptPath, null);
         CodeExecutionRequest request = Assert.Single(_fixture.Executor.Requests);
-        Assert.Contains("runpy.run_path(\"/input/analyze.py\"", request.Code, StringComparison.Ordinal);
+        // The wrapper targets the script relative to the package root and puts the
+        // root (plus the script's own directory) on sys.path so package imports resolve.
+        Assert.Contains("runpy.run_path(\"/input/scripts/analyze.py\"", request.Code, StringComparison.Ordinal);
+        Assert.Contains("sys.path.insert(0, \"/input\")", request.Code, StringComparison.Ordinal);
         Assert.Equal(
-            new[] { "analyze.py", "helper.py", "notes.txt" },
+            new[] { "SKILL.md", "lib/helper.py", "scripts/analyze.py" },
             request.Files.Select(file => file.Name).OrderBy(name => name, StringComparer.Ordinal).ToArray());
-        Assert.DoesNotContain(request.Files, file => file.Name.Equals("main.py", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(SkillScriptRunner.PythonWrapperEntry, request.EntryFileName);
+        Assert.Equal("conversation", request.SessionKey);
         Assert.Contains("exitCode", result?.ToString(), StringComparison.Ordinal);
     }
 
@@ -143,15 +151,6 @@ public class SkillScriptRunnerTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task RunAsync_ReservedMainMjsScript_RejectedWithoutRunnerCall()
-    {
-        string scriptPath = await WriteScriptAsync("main.mjs", "console.log('never runs')\n");
-        object? result = await _fixture.RunAsync(scriptPath, null);
-        Assert.Contains("reserved", result?.ToString(), StringComparison.Ordinal);
-        Assert.Empty(_fixture.Executor.Requests);
-    }
-
-    [Fact]
     public async Task RunAsync_ShellScript_UsesShellWrapperAndLanguage()
     {
         string scriptPath = await WriteScriptAsync("analyze.sh", "echo 'analyze ran'\n");
@@ -175,21 +174,16 @@ public class SkillScriptRunnerTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task RunAsync_ReservedMainShScript_RejectedWithoutRunnerCall()
+    public async Task RunAsync_PackageMainPyScript_RunsThroughCustomEntry()
     {
-        string scriptPath = await WriteScriptAsync("main.sh", "echo 'never runs'\n");
+        // The dedicated wrapper entry frees main.py from the reserved list, so
+        // packages shipping their own main.py mount and run normally.
+        string scriptPath = await WriteScriptAsync("main.py", "print('package entry')\n");
         object? result = await _fixture.RunAsync(scriptPath, null);
-        Assert.Contains("reserved", result?.ToString(), StringComparison.Ordinal);
-        Assert.Empty(_fixture.Executor.Requests);
-    }
-
-    [Fact]
-    public async Task RunAsync_ReservedMainPyScript_RejectedWithoutRunnerCall()
-    {
-        string scriptPath = await WriteScriptAsync("main.py", "print('never runs')\n");
-        object? result = await _fixture.RunAsync(scriptPath, null);
-        Assert.Contains("reserved", result?.ToString(), StringComparison.Ordinal);
-        Assert.Empty(_fixture.Executor.Requests);
+        CodeExecutionRequest request = Assert.Single(_fixture.Executor.Requests);
+        Assert.Contains("main.py", request.Files.Select(file => file.Name));
+        Assert.Equal(SkillScriptRunner.PythonWrapperEntry, request.EntryFileName);
+        Assert.Contains("exitCode", result?.ToString(), StringComparison.Ordinal);
     }
 
     [Fact]

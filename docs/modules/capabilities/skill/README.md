@@ -48,11 +48,11 @@ Skill 指令加载与资源读取默认启用；包内脚本默认完全不可�
 
 `PUT /api/v1/admin/skills/{skillId}/source`（body `{ "markdown": string }`）原地替换已有 Skill 的 `SKILL.md`：包内其余文件（含脚本）原样重存到新包，`ScriptExecutionEnabled` 与脚本清单保持不变——改描述不需要重新授权脚本。frontmatter `name` 不允许改变（改名需重新上传），否则 400。Chat 前端编辑已有 Skill 保存时即走该端点，不再整包重传。
 
-开启后脚本也绝不在 Engine 进程内执行：`SkillScriptRunner` 将脚本与其同目录文件挂载为沙箱 `/input` 输入，经生成的 wrapper（`.py` 生成 `main.py` 以 `runpy` 启动；`.js` / `.mjs` 生成 `main.mjs` 以动态 `import` 启动；`.sh` 生成 `main.sh` 以 `exec /bin/bash` 启动）在 Bubblewrap 沙箱内运行（无网络、非 root、固定 venv / Node / bash）。约束与 `execute_code` 完全一致：
+开启后脚本也绝不在 Engine 进程内执行：`SkillScriptRunner` 将整个 Skill 包按相对路径全量挂载为沙箱 `/input` 输入（保留包内目录结构，Python 包根与脚本目录进入 `sys.path`，跨目录 import 可解析），经生成的专用 wrapper 入口（`.py` → `openagent_skill_entry__.py` 以 `runpy` 启动；`.js` / `.mjs` → `openagent_skill_entry__.mjs` 以动态 `import` 启动；`.sh` → `openagent_skill_entry__.sh` 以 `exec /bin/bash` 启动）在 Bubblewrap 沙箱内运行（无网络、非 root、固定 venv / Node / bash），并按会话（conversation）复用 Runner 工作区（挂载输入跨调用保留，`/work`、`/output` 按调用隔离）。约束与 `execute_code` 完全一致：
 
 - 仅 `.py`、`.js`、`.mjs`、`.sh` 脚本（与 Runner 的 Python / JavaScript / shell 入口一致）；其他解释器不披露、不执行；
   `execute_code` 工具的 schema 仍只声明 python / javascript，shell 目前仅经 skill 脚本通道使用；
-- `ExecutionLimits` 输入文件上限（8 个、单文件 10 MiB、总 20 MiB、`main.py` / `main.mjs` / `main.sh` 保留名、安全文件名）；
+- `ExecutionLimits` 输入文件上限（100 个、单文件 10 MiB、总 20 MiB、安全相对路径名）；包可自带 `main.py` / `main.mjs` / `main.sh`，wrapper 使用专用入口不与之冲突；
 - 与 `execute_code` 共享每请求预算（`CodeExecutionBudget`），两条通道无法互相绕过限额；
 - 调用时按 `(Tool, run_skill_script)`、`(Function, run_skill_script)` 与 `(Skill, name)` 复核授权；
 - 产物经 `FileAssetService` 登记为会话资产，由 `publish_files` 发布；

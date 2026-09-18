@@ -19,4 +19,11 @@ public static class ExecutionLanguage
         Shell => "main.sh",
         _ => "main.py"
     };
+
+    public static string EntryFileExtension(string language) => language switch
+    {
+        JavaScript => ".mjs",
+        Shell => ".sh",
+        _ => ".py"
+    };
 }

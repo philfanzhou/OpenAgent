@@ -34,6 +34,20 @@ public class BubblewrapExecutionTests
     }
 
     [Fact]
+    public void BuildArguments_PassesCustomEntryToSandbox()
+    {
+        var settings = new RunnerOptions { PythonPath = "/opt/openagent-code/venv/bin/python" };
+        IReadOnlyList<string> custom = BubblewrapCodeExecutor.BuildArguments(
+            settings, "/var/lib/runner/id", "/opt/runner/sandbox", ExecutionLanguage.Python,
+            "openagent_skill_entry__.py");
+        IReadOnlyList<string> fallback = BubblewrapCodeExecutor.BuildArguments(
+            settings, "/var/lib/runner/id", "/opt/runner/sandbox", ExecutionLanguage.Python);
+
+        Assert.Equal("openagent_skill_entry__.py", EnvironmentValue(custom, "EXECUTION_ENTRY"));
+        Assert.Equal("main.py", EnvironmentValue(fallback, "EXECUTION_ENTRY"));
+    }
+
+    [Fact]
     public void BuildArguments_RoutesLanguageAndNodeRuntime()
     {
         var settings = new RunnerOptions

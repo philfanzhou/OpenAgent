@@ -376,9 +376,21 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         CancellationToken cancellationToken)
     {
         _finalized = true;
+        StageResponses(context.ResponseMessages);
+        _completionStaged = true;
+        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>
+    /// Converts the run's response messages into stored rows. Also used on the
+    /// interrupted path so a cancelled or failed turn keeps its tool calls and
+    /// partial text instead of collapsing into a bare "in progress" marker.
+    /// </summary>
+    private void StageResponses(IEnumerable<ChatMessage>? responseMessages)
+    {
         RecordUser();
         HashSet<string> recordedCallIds = new(StringComparer.Ordinal);
-        foreach (FunctionCallContent call in (context.ResponseMessages ?? [])
+        foreach (FunctionCallContent call in (responseMessages ?? [])
             .SelectMany(message => message.Contents.OfType<FunctionCallContent>()))
         {
             if (call.Exception != null || string.IsNullOrWhiteSpace(call.Name))
@@ -392,15 +404,13 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
             EngineMeter.RecordCapabilityCall(call.Name);
         }
         List<ConversationMessage> responses = AgentMessageAdapter.ToStored(
-            context.ResponseMessages ?? [],
+            responseMessages ?? [],
             ref _nextSequence).ToList();
         AssociatePublishedFiles(responses);
         foreach (ConversationMessage message in responses)
         {
             _pending.Add(message);
         }
-        _completionStaged = true;
-        return ValueTask.CompletedTask;
     }
 
     internal async Task CompleteAsync(
@@ -591,6 +601,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
             TokenUsage = usage,
             ModelId = modelId
         };
+
 
     private async ValueTask ReleaseLockAsync()
     {
