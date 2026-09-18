@@ -15,7 +15,6 @@ internal sealed class CodeCapabilitySource(
     IFileAssetService files,
     FileAssetExecutionContext context,
     AgentAuthorizationGate authorization,
-    CodeExecutionBudget budget,
     IOptions<CodeExecutionOptions> options) : ICapabilitySource
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -66,10 +65,6 @@ internal sealed class CodeCapabilitySource(
         }
         try
         {
-            if (!budget.TryConsume(options.Value.MaxExecutionsPerRequest))
-            {
-                return "{\"error\":\"Code execution budget exhausted for this request.\"}";
-            }
             string code = arguments.TryGetValue("code", out object? value) ? value?.ToString() ?? string.Empty : string.Empty;
             string language = arguments.TryGetValue("language", out object? languageValue)
                 ? ExecutionLanguage.Normalize(languageValue?.ToString())

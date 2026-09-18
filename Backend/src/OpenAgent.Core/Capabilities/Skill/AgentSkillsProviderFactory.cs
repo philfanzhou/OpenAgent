@@ -27,7 +27,6 @@ internal sealed class AgentSkillsProviderFactory(
     ICodeExecutor executor,
     IFileAssetService files,
     FileAssetExecutionContext fileContext,
-    CodeExecutionBudget budget,
     IOptions<CodeExecutionOptions> codeOptions,
     ILoggerFactory loggerFactory)
 {
@@ -89,7 +88,7 @@ internal sealed class AgentSkillsProviderFactory(
             }
 
             bool scriptsEnabled = IsScriptExecutionEnabled(config, fileContext.Scope);
-            var runner = new SkillScriptRunner(executor, files, fileContext, authorization, budget, codeOptions);
+            var runner = new SkillScriptRunner(executor, files, fileContext, authorization, codeOptions);
             AgentSkillsProvider provider = new AgentSkillsProviderBuilder()
                 .UseFileSkills(
                     packagePaths,

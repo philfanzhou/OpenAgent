@@ -63,7 +63,6 @@ CodeExecution__RequestTimeoutSeconds=180
 | Engine `CodeExecution:Endpoint` | 空 | Runner 内部 HTTP(S) 地址 |
 | Engine `CodeExecution:ApiKey` | 空 | 至少 32 字符的服务令牌 |
 | Engine `CodeExecution:RequestTimeoutSeconds` | 180 | 大于 Runner 执行时限和清理余量 |
-| Engine `CodeExecution:MaxExecutionsPerRequest` | 8 | 每个聊天请求的代码调用上限 |
 | Runner `Runner:BubblewrapPath` | /usr/bin/bwrap | 主机 Bubblewrap 绝对路径 |
 | Runner `Runner:PythonPath` | /opt/openagent-code/venv/bin/python | 沙箱 Python venv 绝对路径 |
 | Runner `Runner:NodePath` | /usr/bin/node | 沙箱 Node.js 绝对路径（JavaScript 入口 `main.mjs`，仅内置模块） |

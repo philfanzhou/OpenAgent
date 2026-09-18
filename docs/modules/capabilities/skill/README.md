@@ -53,7 +53,6 @@ Skill 指令加载与资源读取默认启用；包内脚本默认完全不可�
 - 仅 `.py`、`.js`、`.mjs`、`.sh` 脚本（与 Runner 的 Python / JavaScript / shell 入口一致）；其他解释器不披露、不执行；
   `execute_code` 工具的 schema 仍只声明 python / javascript，shell 目前仅经 skill 脚本通道使用；
 - `ExecutionLimits` 输入文件上限（100 个、单文件 10 MiB、总 20 MiB、安全相对路径名）；包可自带 `main.py` / `main.mjs` / `main.sh`，wrapper 使用专用入口不与之冲突；
-- 与 `execute_code` 共享每请求预算（`CodeExecutionBudget`），两条通道无法互相绕过限额；
 - 调用时按 `(Tool, run_skill_script)`、`(Function, run_skill_script)` 与 `(Skill, name)` 复核授权；
 - 产物经 `FileAssetService` 登记为会话资产，由 `publish_files` 发布；
 - 参数以 JSON 传入 wrapper：Python 映射为 `sys.argv`、JavaScript 映射为 `process.argv`、shell 映射为位置参数（单引号安全转义；字符串直传，其余 JSON 编码）。`.js` 以 CommonJS 语义加载，ESM 请使用 `.mjs`；`.sh` 以 bash 运行。

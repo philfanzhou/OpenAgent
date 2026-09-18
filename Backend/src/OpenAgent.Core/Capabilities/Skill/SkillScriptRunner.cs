@@ -17,14 +17,13 @@ namespace OpenAgent.Core.Capabilities.Skill;
 /// mounted as sandbox inputs (preserving its directory layout, so intra-package
 /// imports resolve) and launched through a generated wrapper entry file —
 /// Python via runpy, JavaScript via a dynamic import, shell via bash — sharing
-/// the same Bubblewrap isolation, budget, and artifact pipeline as execute_code.
+/// the same Bubblewrap isolation and artifact pipeline as execute_code.
 /// </summary>
 internal sealed class SkillScriptRunner(
     ICodeExecutor executor,
     IFileAssetService files,
     FileAssetExecutionContext fileContext,
     AgentAuthorizationGate authorization,
-    CodeExecutionBudget budget,
     IOptions<CodeExecutionOptions> options)
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -106,10 +105,6 @@ internal sealed class SkillScriptRunner(
         }
         try
         {
-            if (!budget.TryConsume(options.Value.MaxExecutionsPerRequest))
-            {
-                return "{\"error\":\"Code execution budget exhausted for this request.\"}";
-            }
             CodeExecutionRequest request = await BuildRequestAsync(
                 skillRoot, scriptFullPath, scope, arguments, cancellationToken).ConfigureAwait(false);
             CodeExecutionResult result = await executor.ExecuteAsync(request, cancellationToken).ConfigureAwait(false);
