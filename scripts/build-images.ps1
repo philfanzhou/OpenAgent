@@ -196,8 +196,6 @@ try {
     $publicScheme = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_PUBLIC_SCHEME)) { 'https' } else { $env:OPENAGENT_PUBLIC_SCHEME }
     $routerPort = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_ROUTER_PORT)) { '8082' } else { $env:OPENAGENT_ROUTER_PORT }
     $enginePort = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_ENGINE_PORT)) { '8083' } else { $env:OPENAGENT_ENGINE_PORT }
-    $routerUrl = "${publicScheme}://$publicHost`:$routerPort"
-    $engineUrl = "${publicScheme}://$publicHost`:$enginePort"
     $tenantId = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_TENANT_ID)) { 'development' } else { $env:OPENAGENT_TENANT_ID }
 
     # 构建应用镜像；不启动或修改任何容器。
@@ -211,11 +209,14 @@ try {
         '--file', (Join-WslPath -Base $dockerRepoRoot -Child 'Backend/src/OpenAgent.Router/Dockerfile'),
         $dockerRepoRoot
     )
+    # Chat 镜像的浏览器端地址由 Dockerfile 从统一变量派生，与直接 docker build 的接口一致。
     Invoke-Docker -Arguments @(
         'build', '--tag', $chatImage,
-        '--build-arg', "VITE_OPENAGENT_ROUTER_BASE_URL=$routerUrl",
-        '--build-arg', "VITE_OPENAGENT_ENGINE_BASE_URL=$engineUrl",
-        '--build-arg', "VITE_OPENAGENT_TENANT_ID=$tenantId",
+        '--build-arg', "OPENAGENT_PUBLIC_SCHEME=$publicScheme",
+        '--build-arg', "OPENAGENT_PUBLIC_HOST=$publicHost",
+        '--build-arg', "OPENAGENT_ROUTER_PORT=$routerPort",
+        '--build-arg', "OPENAGENT_ENGINE_PORT=$enginePort",
+        '--build-arg', "OPENAGENT_TENANT_ID=$tenantId",
         '--file', (Join-WslPath -Base $dockerRepoRoot -Child 'Frontend/OpenAgent.Chat/Dockerfile'),
         $dockerRepoRoot
     )

@@ -34,17 +34,14 @@ internal sealed class CodeCapabilitySource(
         return Task.FromResult<IReadOnlyList<CapabilityDefinition>>([
             new CapabilityDefinition(
                 "execute_code",
-                "Execute Python or JavaScript in an isolated, non-root Bubblewrap sandbox with no network. "
-                + "Use \"language\":\"javascript\" for JavaScript (Node, ESM, entry main.mjs, built-in modules only, no npm packages); "
-                + "Python is the default. "
-                + "Python libraries: python-pptx, openpyxl, XlsxWriter, pandas, matplotlib, Pillow. "
-                + "Use inputFiles to mount authorized conversation files read-only at /input/<name>; main.py and main.mjs are reserved. "
-                + "Write deliverables directly under /output (up to 8 files, 10 MiB each, 20 MiB total). "
-                + "Print concise results. Inspect exitCode and stderr, then fix failures with another call. "
-                + "Calls in one conversation share a sandbox workspace: mounted inputs stay available across calls, but /output and /work are not persisted between calls. "
-                + "Returned files are registered; use publish_files to deliver selected fileIds. "
-                + "Use fixed templates where possible. Reopen generated documents to validate contents. "
-                + "No host tools, credentials, package installs, or internet access are available inside the sandbox.",
+                "Execute Python (default) or JavaScript (\"language\":\"javascript\", ESM entry main.mjs, "
+                + "built-in Node modules only) in an isolated sandbox: no network, no package installs, no credentials. "
+                + "Python ships pandas, matplotlib, openpyxl, XlsxWriter, python-pptx and Pillow. "
+                + "Mount conversation files read-only via inputFiles at /input/<name>; main.py/main.mjs are reserved. "
+                + "Write deliverables under /output (max 8 files, 10 MiB each, 20 MiB total) and print concise results. "
+                + "On failure inspect exitCode/stderr and retry with fixes; calls in one conversation share a sandbox "
+                + "workspace (mounted inputs persist across calls, /output and /work do not). "
+                + "Deliver returned files with publish_files.",
                 """{"type":"object","properties":{"code":{"type":"string"},"language":{"type":"string","enum":["python","javascript"],"description":"Execution language; defaults to python."},"inputFiles":{"type":"array","maxItems":8,"items":{"type":"object","properties":{"fileId":{"type":"string"},"name":{"type":"string"}},"required":["fileId","name"],"additionalProperties":false}}},"required":["code"],"additionalProperties":false}""",
                 AgentResourceType.Tool,
                 "code-execution",

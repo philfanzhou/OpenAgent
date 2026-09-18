@@ -224,7 +224,11 @@ public class AgentExecutorUsageTests
     internal static TestRuntime CreateRuntime(IChatClient provider) =>
         CreateRuntime(provider, configure: null);
 
-    internal static TestRuntime CreateRuntime(IChatClient provider, Action<IServiceCollection>? configure)
+    internal static TestRuntime CreateRuntime(
+        IChatClient provider,
+        OpenAgent.Core.Capabilities.ICapabilitySource? extraSource = null,
+        int maxTurns = 2,
+        Action<IServiceCollection>? configure = null)
     {
         var services = new ServiceCollection();
         services.AddLogging();
@@ -234,9 +238,13 @@ public class AgentExecutorUsageTests
         IConfiguration configuration = new ConfigurationBuilder().Build();
         services.AddSingleton(configuration);
         services.AddAgentCore(configuration);
+        if (extraSource != null)
+        {
+            services.AddSingleton(extraSource);
+        }
         services.RemoveAll<IAgentRuntimeResolver>();
         services.RemoveAll<AgentRuntimeResolver>();
-        services.AddSingleton<IAgentRuntimeResolver>(new StaticRuntimeResolver());
+        services.AddSingleton<IAgentRuntimeResolver>(new StaticRuntimeResolver(maxTurns));
         services.RemoveAll<IAgentChatClientFactory>();
         services.AddSingleton<IAgentChatClientFactory>(new FakeChatClientFactory(provider));
         configure?.Invoke(services);
@@ -261,7 +269,7 @@ public class AgentExecutorUsageTests
         public bool IsInRole(string role) => false;
     }
 
-    private sealed class StaticRuntimeResolver : IAgentRuntimeResolver
+    private sealed class StaticRuntimeResolver(int maxTurns) : IAgentRuntimeResolver
     {
         public Task<AgentRuntimeProfile> ResolveAsync(
             string agentId,
@@ -271,7 +279,7 @@ public class AgentExecutorUsageTests
             Task.FromResult(new AgentRuntimeProfile
             {
                 AgentId = agentId,
-                Config = new AgentConfig { MaxTurns = 2 },
+                Config = new AgentConfig { MaxTurns = maxTurns },
                 Model = new LlmConfig { ModelId = "configured-model" }
             });
     }

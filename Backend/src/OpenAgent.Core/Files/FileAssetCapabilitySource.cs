@@ -31,82 +31,51 @@ internal sealed class FileAssetCapabilitySource(
         [
             new CapabilityDefinition(
                 "read_file",
-                "Read a UTF-8 text file that belongs to the current user or conversation, "
-                + "either by fileId or by an object storage key inside the current tenant partition.",
+                "Read a UTF-8 text file owned by the current user or conversation, by fileId or by an objectKey inside the current tenant partition.",
                 """{"type":"object","properties":{"fileId":{"type":"string"},"objectKey":{"type":"string"}}}""",
                 AgentResourceType.Tool,
                 "file-assets",
                 ReadAsync),
             new CapabilityDefinition(
                 "create_file_transfer_url",
-                "Create a download/share link for a file, served by this platform's file sharing endpoint; "
-                + "the underlying object storage (S3) address is never exposed. Two intended uses: hand it to an external "
-                + "MCP tool that requires a file URL (call this immediately before that tool, with audience=\"mcp\"), "
-                + "or give it to the user as a download/share link (audience=\"user\"). Defaults depend on the audience: "
-                + "mcp links live 2 hours and allow 2 downloads; user links live 3 days with unlimited downloads. "
-                + "Explicit modes override audience defaults: 'temporary' (short-lived, unlimited downloads while "
-                + "valid), 'singleUse' (exactly one download, then the link is dead), 'longTerm' (long validity window). "
-                + "Use expiresInSeconds to override any default lifetime. Lifetimes are hard-capped "
-                + "at 365 days; permanent links do not exist. When sharing the link with "
-                + "the user, always state the validity from expiresAt and any download limit; never present it as a "
-                + "permanent link, and do not use it for model-side file reading.",
-                """{"type":"object","properties":{"fileId":{"type":"string","description":"Referenced file asset ID"},"audience":{"type":"string","enum":["mcp","user"],"description":"Who consumes the link; sets default lifetime/download limits when mode is omitted (mcp: 2h/2 downloads, user: 3d/unlimited)"},"mode":{"type":"string","enum":["temporary","singleUse","longTerm"],"description":"Explicit share policy overriding audience defaults"},"expiresInSeconds":{"type":"number","description":"Optional custom lifetime in seconds, overriding any default"}},"required":["fileId"]}""",
+                "Create a platform-served download link for a file (the storage address is never exposed). "
+                + "audience=\"mcp\" hands the URL to an external MCP tool (2h validity, 2 downloads); "
+                + "audience=\"user\" gives the user a download link (3 days, unlimited). "
+                + "Optional mode temporary|singleUse|longTerm or expiresInSeconds override the defaults; "
+                + "lifetimes cap at 365 days and permanent links do not exist. "
+                + "Always tell the user the expiry and download limit. "
+                + "You cannot revoke a link once created, so prefer the shortest lifetime that suffices.",
+                """{"type":"object","properties":{"fileId":{"type":"string","description":"Referenced file asset ID"},"audience":{"type":"string","enum":["mcp","user"],"description":"Consumer of the link; sets defaults when mode is omitted (mcp: 2h/2 downloads, user: 3d/unlimited)"},"mode":{"type":"string","enum":["temporary","singleUse","longTerm"],"description":"Share policy overriding audience defaults"},"expiresInSeconds":{"type":"number","description":"Custom lifetime in seconds"}},"required":["fileId"]}""",
                 AgentResourceType.Tool,
                 "file-assets",
                 CreateShareLinkAsync),
             new CapabilityDefinition(
-                "list_share_links",
-                "List the current user's still-valid share links (across all conversations), newest first. "
-                + "Expired, exhausted or revoked links are not returned. Each item carries shareId, fileName, "
-                + "mode, expiresAt, maxDownloads and downloadCount. Use it when the user asks which links exist; "
-                + "revoke with revoke_share_link.",
-                """{"type":"object","properties":{}}""",
-                AgentResourceType.Tool,
-                "file-assets",
-                ListShareLinksAsync),
-            new CapabilityDefinition(
-                "revoke_share_link",
-                "Revoke one of the current user's share links by shareId — the ID returned when the link "
-                + "was created (create_file_transfer_url) or listed (list_share_links). Revoking marks the link "
-                + "invalid: it disappears from list_share_links and further downloads return 404. Only links "
-                + "owned by the current user can be revoked; unknown, foreign or already-invalid IDs fail "
-                + "without side effects.",
-                """{"type":"object","properties":{"shareId":{"type":"string","description":"Share ID (token hash) of the link to revoke"}},"required":["shareId"]}""",
-                AgentResourceType.Tool,
-                "file-assets",
-                RevokeShareLinkAsync),
-            new CapabilityDefinition(
                 "list_files",
-                "List file assets referenced by the current conversation. Returns fileId and safe metadata only; "
-                + "use read_file to inspect text or publish_files to deliver selected files to the user.",
+                "List files referenced by the current conversation; returns fileId and safe metadata only. "
+                + "Use read_file to inspect one, publish_files to deliver files to the user.",
                 """{"type":"object","properties":{}}""",
                 AgentResourceType.Tool,
                 "file-assets",
                 ListAsync),
             new CapabilityDefinition(
                 "write_file",
-                "Create and register a UTF-8 text file for the current user and conversation. "
-                + "The returned fileId can be passed to publish_files when it should be delivered to the user.",
+                "Create and register a UTF-8 text file for the current user and conversation; returns its fileId for use with publish_files.",
                 """{"type":"object","properties":{"fileName":{"type":"string"},"content":{"type":"string"},"mediaType":{"type":"string"}},"required":["fileName","content"]}""",
                 AgentResourceType.Tool,
                 "file-assets",
                 WriteAsync),
             new CapabilityDefinition(
                 "compress_files",
-                "Compress files into one zip archive, register it as a downloadable file asset, and return its fileId. "
-                + "The archive is not added to the assistant message until publish_files is called. "
-                + "Each item targets a file by fileId (conversation-referenced) or by objectKey with fileName. "
-                + "Returns the fileId, objectKey, length, and file count.",
-                """{"type":"object","properties":{"outputName":{"type":"string","description":"zip file name, e.g. report.zip"},"items":{"type":"array","items":{"type":"object","properties":{"fileId":{"type":"string"},"objectKey":{"type":"string"},"fileName":{"type":"string"}}}}},"required":["outputName","items"]}""",
+                "Zip files into one archive, register it as a file asset and return its fileId. "
+                + "Each item targets a fileId, or an objectKey with fileName. Publish the archive with publish_files to deliver it.",
+                """{"type":"object","properties":{"outputName":{"type":"string","description":"zip name, e.g. report.zip"},"items":{"type":"array","items":{"type":"object","properties":{"fileId":{"type":"string"},"objectKey":{"type":"string"},"fileName":{"type":"string"}}}}},"required":["outputName","items"]}""",
                 AgentResourceType.Tool,
                 "file-assets",
                 CompressAsync),
             new CapabilityDefinition(
                 "publish_files",
-                "Publish one or more existing file assets to the current assistant message for user download or preview. "
-                + "Use fileIds returned by write_file, compress_files, or earlier file operations. "
-                + "Publishing does not copy file bytes; it only associates the selected assets with this message.",
-                """{"type":"object","properties":{"fileIds":{"type":"array","items":{"type":"string"},"description":"Existing file asset IDs to deliver to the user"}},"required":["fileIds"]}""",
+                "Attach existing file assets (by fileId, from write_file/compress_files/earlier operations) to this assistant message for user download or preview. No bytes are copied.",
+                """{"type":"object","properties":{"fileIds":{"type":"array","items":{"type":"string"},"description":"Existing file asset IDs to deliver"}},"required":["fileIds"]}""",
                 AgentResourceType.Tool,
                 "file-assets",
                 PublishAsync)
@@ -115,7 +84,7 @@ internal sealed class FileAssetCapabilitySource(
         {
             definitions.Add(new CapabilityDefinition(
                 "download_file",
-                "Download a public HTTP(S) file into the current conversation's file storage and return its fileId.",
+                "Download a public HTTP(S) file into the conversation's file storage; returns its fileId.",
                 """{"type":"object","properties":{"url":{"type":"string","description":"The public HTTP(S) URL of the file to download."}},"required":["url"],"additionalProperties":false}""",
                 AgentResourceType.Tool,
                 "file-assets",
@@ -259,58 +228,6 @@ internal sealed class FileAssetCapabilitySource(
         {
             return $"文件分享链接生成失败：{exception.Message}";
         }
-    }
-
-    private async Task<string> ListShareLinksAsync(
-        IReadOnlyDictionary<string, object?> arguments,
-        CancellationToken cancellationToken)
-    {
-        if (executionContext.Scope == null)
-        {
-            return "查询分享链接失败：文件执行上下文不可用。";
-        }
-
-        IReadOnlyList<FileShareSummary> items = await shares.ListAsync(
-            executionContext.Scope,
-            cancellationToken).ConfigureAwait(false);
-        return JsonSerializer.Serialize(new
-        {
-            count = items.Count,
-            shares = items.Select(item => new
-            {
-                shareId = item.ShareId,
-                fileId = item.FileId,
-                fileName = item.FileName,
-                mode = item.Mode.ToString(),
-                expiresAt = item.ExpiresAt,
-                maxDownloads = item.MaxDownloads,
-                downloadCount = item.DownloadCount,
-                createdAt = item.CreatedAt
-            })
-        });
-    }
-
-    private async Task<string> RevokeShareLinkAsync(
-        IReadOnlyDictionary<string, object?> arguments,
-        CancellationToken cancellationToken)
-    {
-        string? shareId = ReadString(arguments, "shareId");
-        if (string.IsNullOrWhiteSpace(shareId))
-        {
-            return "撤销分享链接失败：'shareId' 是必填参数。";
-        }
-        if (executionContext.Scope == null)
-        {
-            return "撤销分享链接失败：文件执行上下文不可用。";
-        }
-
-        bool revoked = await shares.RevokeAsync(
-            shareId,
-            executionContext.Scope,
-            cancellationToken).ConfigureAwait(false);
-        return revoked
-            ? JsonSerializer.Serialize(new { shareId, revoked = true })
-            : "撤销分享链接失败：分享不存在或不属于当前用户。";
     }
 
     private static int? ReadInt32(IReadOnlyDictionary<string, object?> arguments, string name)

@@ -51,9 +51,11 @@ def collect_files():
 
 def entry_command():
     language = os.environ.get("EXECUTION_LANGUAGE", "python")
-    entry = os.environ.get("EXECUTION_ENTRY") or ("main.mjs" if language == "javascript" else "main.py")
+    entry = os.environ.get("EXECUTION_ENTRY") or ("main.sh" if language == "shell" else "main.mjs" if language == "javascript" else "main.py")
     if language == "javascript":
         return [os.environ.get("EXECUTION_NODE", "/usr/bin/node"), f"/input/{entry}"]
+    if language == "shell":
+        return ["/bin/bash", f"/input/{entry}"]
     return [sys.executable, "-I", "-u", f"/input/{entry}"]
 
 

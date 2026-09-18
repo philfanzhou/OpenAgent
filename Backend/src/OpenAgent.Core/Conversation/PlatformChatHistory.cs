@@ -36,6 +36,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
     private readonly List<ConversationMessage> _pending = [];
     private readonly StringBuilder _partialAssistant = new();
     private readonly StringBuilder _partialReasoning = new();
+    private readonly List<ChatMessage> _streamedToolMessages = [];
     private IConversationLockHandle? _lockHandle;
     private int _currentVersion;
     private int _nextSequence = 1;
@@ -84,6 +85,28 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         {
             _partialReasoning.Append(reasoning);
         }
+    }
+
+    /// <summary>
+    /// 记录本轮已流出的工具调用。失败/取消时随 partial assistant 一并持久化，
+    /// 保证刷新后前端重建的时间线与实时看到的工具过程一致。
+    /// </summary>
+    internal void AppendToolCall(string name, string callId, IDictionary<string, object?>? arguments)
+    {
+        _streamedToolMessages.Add(new ChatMessage(
+            ChatRole.Assistant,
+            [new FunctionCallContent(callId, name, arguments)]));
+    }
+
+    internal void AppendToolResult(string? callId, string? result)
+    {
+        if (string.IsNullOrWhiteSpace(callId))
+        {
+            return;
+        }
+        _streamedToolMessages.Add(new ChatMessage(
+            ChatRole.Tool,
+            [new FunctionResultContent(callId, result)]));
     }
 
     internal async Task<ChatMessage> CreateUserMessageAsync(CancellationToken cancellationToken)
@@ -458,35 +481,8 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
             ConversationStatus status = context.InvokeException is OperationCanceledException
                 ? ConversationStatus.Cancelled
                 : ConversationStatus.Failed;
-            // Persist the tool calls / partial results the run already produced so
-            // the turn keeps its process trace; only fall back to the accumulated
-            // streamed text when the responses hold no assistant text of their own.
-            try
-            {
-                StageResponses(context.ResponseMessages);
-            }
-            catch (Exception exception)
-            {
-                _logger.LogWarning(
-                    exception,
-                    "Staging interrupted responses failed for conversation '{ConversationId}'",
-                    _conversation.ConversationId);
-            }
-            if (_partialAssistant.Length > 0
-                && !_pending.Any(message =>
-                    string.Equals(message.Role, "assistant", StringComparison.OrdinalIgnoreCase)
-                    && !string.IsNullOrWhiteSpace(message.Content)))
-            {
-                _pending.Add(BuildPartialMessage(status));
-            }
-            else if (_pending.Any(message => string.Equals(message.Role, "assistant", StringComparison.OrdinalIgnoreCase)))
-            {
-                MarkLastAssistantExecutionStatus(status);
-            }
-            else
-            {
-                _pending.Add(BuildPartialMessage(status));
-            }
+            StageStreamedToolMessages();
+            _pending.Add(BuildPartialMessage(status));
             await _store.SaveAsync(
                 _conversation,
                 _currentVersion,
@@ -513,6 +509,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
                     _finalized = true;
                     RecordUser();
                     status = ConversationStatus.Cancelled;
+                    StageStreamedToolMessages();
                     _pending.Add(BuildPartialMessage(status));
                 }
                 await _store.SaveAsync(
@@ -527,6 +524,20 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         finally
         {
             await ReleaseLockAsync().ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>把已流出的工具事件转换为存储行，仅在失败/取消路径补充持久化。</summary>
+    private void StageStreamedToolMessages()
+    {
+        if (_streamedToolMessages.Count == 0)
+        {
+            return;
+        }
+        foreach (ConversationMessage message in AgentMessageAdapter.ToStored(
+            _streamedToolMessages, ref _nextSequence))
+        {
+            _pending.Add(message);
         }
     }
 
@@ -591,31 +602,6 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
             ModelId = modelId
         };
 
-    /// <summary>Stamps an interrupted run's outcome onto its last stored assistant row.</summary>
-    private void MarkLastAssistantExecutionStatus(ConversationStatus status)
-    {
-        int assistantIndex = _pending.FindLastIndex(message =>
-            string.Equals(message.Role, "assistant", StringComparison.OrdinalIgnoreCase));
-        if (assistantIndex < 0)
-        {
-            return;
-        }
-        ConversationMessage message = _pending[assistantIndex];
-        Dictionary<string, string> metadata = message.Metadata == null
-            ? []
-            : new Dictionary<string, string>(message.Metadata, StringComparer.Ordinal);
-        metadata["ExecutionStatus"] = status.ToString();
-        _pending[assistantIndex] = ConversationSessionStore.Message(
-            message.Sequence,
-            message.Role,
-            message.Content,
-            message.ToolCallId,
-            message.ToolName,
-            metadata,
-            message.FileIds,
-            message.TokenUsage,
-            message.ModelId);
-    }
 
     private async ValueTask ReleaseLockAsync()
     {

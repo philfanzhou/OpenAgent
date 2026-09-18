@@ -25,7 +25,7 @@ ChatApi 提供 Agent.Engine 的核心 HTTP 端点；聊天使用 JSON，文件�
 - **流式响应**：SSE 事件流
 - **多模态输入**：聊天以 `fileIds` 引用已上传文件，执行时按需读取，不在会话中保存字节。
 - **MCP 跨系统传输 / 用户分享链接**：大模型调用 `create_file_transfer_url` 返回平台分享链接 `/api/v1/share/{token}`（`audience` 决定默认策略：mcp 2 小时/2 次下载、user 3 天/不限次；可选 `mode`：temporary/singleUse/longTerm 显式覆盖，`expiresInSeconds` 自定义失效日期，全量上限 365 天、不存在永久链接）——既可传给需要文件 URL 的第三方 MCP，也可作为下载链接交给用户（须告知 `expiresAt` 有效期与下载限制）；链接不暴露 S3 地址、`objectKey` 或对象存储凭据。
-- **分享链接管理**：`GET /api/v1/agent/files/shares` 查询当前用户仍有效的分享链接（已过期/已用尽/已撤销的不返回，按创建时间倒序），`DELETE /api/v1/agent/files/shares/{shareId}` 撤销指定分享（软删除：标记失效、令牌立即 404）；模型侧亦有 `list_share_links` / `revoke_share_link` 工具，可由大模型代用户查询与撤销。
+- **分享链接管理**：`GET /api/v1/agent/files/shares` 查询当前用户仍有效的分享链接（已过期/已用尽/已撤销的不返回，按创建时间倒序），`DELETE /api/v1/agent/files/shares/{shareId}` 撤销指定分享（软删除：标记失效、令牌立即 404）。查询与撤销仅保留 REST 端点（模型侧不暴露分享管理工具，避免模型误传 shareId 空参数）。
 - **上传防护**：数量、大小、MIME 类型校验
 - **请求追踪**：Header / Activity 自动生成 TraceId
 - **优雅中断**：客户端断开时正确释放资源

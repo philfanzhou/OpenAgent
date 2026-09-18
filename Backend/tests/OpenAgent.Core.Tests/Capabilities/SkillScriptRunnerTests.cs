@@ -108,6 +108,98 @@ public class SkillScriptRunnerTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task RunAsync_JavaScriptScript_UsesJavaScriptWrapperAndLanguage()
+    {
+        string scriptPath = await WriteScriptAsync("analyze.js", "console.log('analyze ran')
+");
+        await _fixture.RunAsync(scriptPath, null);
+        CodeExecutionRequest request = Assert.Single(_fixture.Executor.Requests);
+        Assert.Equal(ExecutionLanguage.JavaScript, request.Language);
+        Assert.Contains("await import(pathToFileURL(\"/input/analyze.js\")", request.Code, StringComparison.Ordinal);
+        Assert.Contains("const raw = null", request.Code, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task RunAsync_EsmScript_AlsoRunsAsJavaScript()
+    {
+        string scriptPath = await WriteScriptAsync("analyze.mjs", "console.log('esm ran')
+");
+        await _fixture.RunAsync(scriptPath, null);
+        CodeExecutionRequest request = Assert.Single(_fixture.Executor.Requests);
+        Assert.Equal(ExecutionLanguage.JavaScript, request.Language);
+        Assert.Contains("/input/analyze.mjs", request.Code, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task RunAsync_JavaScriptArguments_MappedOntoArgv()
+    {
+        string scriptPath = await WriteScriptAsync("analyze.js", "console.log('analyze ran')
+");
+        using var document = JsonDocument.Parse("{\"count\":\"1\",\"label\":\"two\"}");
+        JsonElement? arguments = document.RootElement;
+        await _fixture.RunAsync(scriptPath, arguments);
+        string code = Assert.Single(_fixture.Executor.Requests).Code;
+        Assert.Contains("\"count\":\"1\"", code, StringComparison.Ordinal);
+        Assert.Contains("Object.values(raw)", code, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task RunAsync_PythonScript_KeepsPythonLanguage()
+    {
+        string scriptPath = await WriteScriptAsync("analyze.py", "print('analyze ran')
+");
+        await _fixture.RunAsync(scriptPath, null);
+        CodeExecutionRequest request = Assert.Single(_fixture.Executor.Requests);
+        Assert.Equal(ExecutionLanguage.Python, request.Language);
+        Assert.Contains("runpy.run_path", request.Code, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task RunAsync_ReservedMainMjsScript_RejectedWithoutRunnerCall()
+    {
+        string scriptPath = await WriteScriptAsync("main.mjs", "console.log('never runs')
+");
+        object? result = await _fixture.RunAsync(scriptPath, null);
+        Assert.Contains("reserved", result?.ToString(), StringComparison.Ordinal);
+        Assert.Empty(_fixture.Executor.Requests);
+    }
+
+    [Fact]
+    public async Task RunAsync_ShellScript_UsesShellWrapperAndLanguage()
+    {
+        string scriptPath = await WriteScriptAsync("analyze.sh", "echo 'analyze ran'
+");
+        await _fixture.RunAsync(scriptPath, null);
+        CodeExecutionRequest request = Assert.Single(_fixture.Executor.Requests);
+        Assert.Equal(ExecutionLanguage.Shell, request.Language);
+        Assert.Contains("cd /input", request.Code, StringComparison.Ordinal);
+        Assert.Contains("exec /bin/bash '/input/analyze.sh'", request.Code, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task RunAsync_ShellArguments_QuotedIntoWrapper()
+    {
+        string scriptPath = await WriteScriptAsync("analyze.sh", "echo 'analyze ran'
+");
+        using var document = JsonDocument.Parse("{\"name\":\"O'Brien\",\"count\":2}");
+        JsonElement? arguments = document.RootElement;
+        await _fixture.RunAsync(scriptPath, arguments);
+        string code = Assert.Single(_fixture.Executor.Requests).Code;
+        Assert.Contains("'O'\"'\"'Brien'", code, StringComparison.Ordinal);
+        Assert.Contains("'2'", code, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task RunAsync_ReservedMainShScript_RejectedWithoutRunnerCall()
+    {
+        string scriptPath = await WriteScriptAsync("main.sh", "echo 'never runs'
+");
+        object? result = await _fixture.RunAsync(scriptPath, null);
+        Assert.Contains("reserved", result?.ToString(), StringComparison.Ordinal);
+        Assert.Empty(_fixture.Executor.Requests);
+    }
+
+    [Fact]
     public async Task RunAsync_PackageMainPyScript_RunsThroughCustomEntry()
     {
         // The dedicated wrapper entry frees main.py from the reserved list, so

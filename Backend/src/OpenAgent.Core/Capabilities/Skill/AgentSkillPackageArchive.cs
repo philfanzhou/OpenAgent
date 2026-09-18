@@ -116,12 +116,27 @@ public static class AgentSkillPackageArchive
 
         AgentSkillFrontmatter frontmatter = ReadFrontmatter(skillFiles[0].Content);
         int resourceCount = files.Count(file => HasPathSegment(file.RelativePath, "resources"));
+        List<string> scriptNames = files
+            .Select(file => file.RelativePath)
+            .Where(IsExecutableScript)
+            .Order(StringComparer.OrdinalIgnoreCase)
+            .ToList();
         return new AgentSkillPackageMetadata(
             frontmatter.Name,
             frontmatter.Description,
             1,
-            resourceCount);
+            resourceCount,
+            scriptNames);
     }
+
+    /// <summary>
+    /// Script extensions the skill channel can execute through the isolated
+    /// Runner; mirrors the Runner's Python, JavaScript, and shell entrypoints.
+    /// </summary>
+    public static readonly IReadOnlyList<string> ExecutableScriptExtensions = [".py", ".js", ".mjs", ".sh"];
+
+    public static bool IsExecutableScript(string relativePath) =>
+        ExecutableScriptExtensions.Contains(Path.GetExtension(relativePath), StringComparer.OrdinalIgnoreCase);
 
     private static AgentSkillFrontmatter ReadFrontmatter(byte[] content)
     {
@@ -199,6 +214,7 @@ public sealed record AgentSkillPackageMetadata(
     string Name,
     string Description,
     int SkillCount,
-    int ResourceCount);
+    int ResourceCount,
+    IReadOnlyList<string> ScriptNames);
 
 public sealed record SkillPackageFile(string RelativePath, byte[] Content);

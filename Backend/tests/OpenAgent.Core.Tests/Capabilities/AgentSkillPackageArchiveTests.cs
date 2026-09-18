@@ -54,6 +54,55 @@ public sealed class AgentSkillPackageArchiveTests
     }
 
     [Fact]
+    public void InspectAsync_InventoriesPythonScripts()
+    {
+        byte[] package = CreateArchive(archive =>
+        {
+            WriteEntry(archive, "analysis/SKILL.md", "---\nname: analysis\ndescription: Analyze data\n---\n");
+            WriteEntry(archive, "analysis/scripts/run.py", "print('run')");
+            WriteEntry(archive, "analysis/scripts/helper.PY", "print('helper')");
+            WriteEntry(archive, "analysis/resources/sample.csv", "value\n42\n");
+            WriteEntry(archive, "analysis/scripts/run.py.txt", "not a script");
+        });
+
+        AgentSkillPackageMetadata metadata = AgentSkillPackageArchive.Inspect(package, default);
+
+        Assert.Equal(
+            ["analysis/scripts/helper.PY", "analysis/scripts/run.py"],
+            metadata.ScriptNames);
+    }
+
+    [Fact]
+    public void InspectAsync_InventoriesJavaScriptScripts()
+    {
+        byte[] package = CreateArchive(archive =>
+        {
+            WriteEntry(archive, "report/SKILL.md", "---\nname: report\ndescription: Report writer\n---\n");
+            WriteEntry(archive, "report/scripts/run.js", "console.log('run')");
+            WriteEntry(archive, "report/scripts/helper.mjs", "export const x = 1;");
+            WriteEntry(archive, "report/scripts/run.js.txt", "not a script");
+            WriteEntry(archive, "report/scripts/greet.sh", "echo hello");
+            WriteEntry(archive, "report/scripts/batch.SH", "echo upper");
+        });
+
+        AgentSkillPackageMetadata metadata = AgentSkillPackageArchive.Inspect(package, default);
+
+        Assert.Equal(
+            ["report/scripts/batch.SH", "report/scripts/greet.sh", "report/scripts/helper.mjs", "report/scripts/run.js"],
+            metadata.ScriptNames);
+    }
+
+    [Fact]
+    public void InspectMarkdown_HasNoScriptInventory()
+    {
+        AgentSkillPackageMetadata metadata = AgentSkillPackageArchive.InspectMarkdown(
+            Encoding.UTF8.GetBytes("---\nname: text-only\ndescription: No scripts\n---\n# Instructions\n"),
+            default);
+
+        Assert.Empty(metadata.ScriptNames);
+    }
+
+    [Fact]
     public void ReadZipFiles_RejectsTooManyFiles()
     {
         byte[] package = CreateArchive(archive =>

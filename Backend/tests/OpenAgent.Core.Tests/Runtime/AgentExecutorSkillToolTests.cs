@@ -49,7 +49,7 @@ public class AgentExecutorSkillToolTests
 
         await using AgentExecutorUsageTests.TestRuntime runtime = AgentExecutorUsageTests.CreateRuntime(
             provider,
-            services =>
+            configure: services =>
             {
                 services.RemoveAll<IFileObjectStore>();
                 services.AddSingleton<IFileObjectStore>(objects);
