@@ -5,7 +5,7 @@ public sealed class FileAssetOptions
     public const string SectionName = "FileAssets";
 
     public bool Enabled { get; init; }
-    public long MaxFileSizeBytes { get; init; } = 10 * 1024 * 1024;
+    public long MaxFileSizeBytes { get; init; } = 50 * 1024 * 1024;
     public long MaxFunctionReadBytes { get; init; } = 128 * 1024;
     public long MaxInlineImageBytes { get; init; } = 4 * 1024 * 1024;
     public int MaxInlineImageCount { get; init; } = 4;

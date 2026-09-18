@@ -8,6 +8,11 @@ using System.Security.Claims;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// 上传请求先过 Router 再转发 Engine；Kestrel 默认 30 MB 请求体上限会在转发前拒绝
+// 更大的附件，这里与 Engine 侧的 FileAssets 上限（默认 50 MB）对齐放开。
+builder.WebHost.ConfigureKestrel(options =>
+    options.Limits.MaxRequestBodySize = 128 * 1024 * 1024);
+
 builder.Host.UseAgentSerilog("agent-router");
 
 builder.Services.AddAgentHost(builder.Configuration, options =>
