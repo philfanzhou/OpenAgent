@@ -106,17 +106,19 @@ internal static class FileAssetEndpointExtensions
         return extension switch
         {
             ".png" => "image/png",
-            ".jpg" or ".jpeg" => "image/jpeg",
+            ".jpg" or ".jpeg" or ".jps" => "image/jpeg",
             ".gif" => "image/gif",
             ".webp" => "image/webp",
             ".svg" => "image/svg+xml",
             ".pdf" => "application/pdf",
             ".json" => "application/json",
+            ".xml" => "application/xml; charset=utf-8",
             ".txt" => "text/plain; charset=utf-8",
             ".csv" => "text/csv; charset=utf-8",
             ".md" => "text/markdown; charset=utf-8",
             ".html" or ".htm" => "text/html; charset=utf-8",
             ".zip" => "application/zip",
+            ".drawio" => "application/vnd.jgraph.mxfile",
             _ => "application/octet-stream"
         };
     }

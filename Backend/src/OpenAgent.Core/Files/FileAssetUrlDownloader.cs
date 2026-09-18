@@ -269,16 +269,19 @@ internal sealed class FileAssetUrlDownloader
             [".png"] = "image/png",
             [".jpg"] = "image/jpeg",
             [".jpeg"] = "image/jpeg",
+            [".jps"] = "image/jpeg",
             [".gif"] = "image/gif",
             [".webp"] = "image/webp",
             [".svg"] = "image/svg+xml",
             [".pdf"] = "application/pdf",
             [".json"] = "application/json",
+            [".xml"] = "application/xml",
             [".txt"] = "text/plain",
             [".csv"] = "text/csv",
             [".md"] = "text/markdown",
             [".html"] = "text/html",
-            [".htm"] = "text/html"
+            [".htm"] = "text/html",
+            [".drawio"] = "application/vnd.jgraph.mxfile"
         };
 
     private static readonly IReadOnlyDictionary<string, string> MediaTypeToExtension =

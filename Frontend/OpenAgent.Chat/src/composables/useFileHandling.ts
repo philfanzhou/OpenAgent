@@ -13,8 +13,16 @@ interface FileHandlingOptions {
   notifyError: (error: unknown) => void
 }
 
+const textPreviewMediaTypes = new Set([
+  'application/json',
+  'application/xml',
+  'text/xml',
+  'image/svg+xml',
+  'application/vnd.jgraph.mxfile',
+])
+
 export function isTextPreview(mediaType: string): boolean {
-  return mediaType.startsWith('text/') || mediaType === 'application/json'
+  return mediaType.startsWith('text/') || textPreviewMediaTypes.has(mediaType)
 }
 
 export function isMarkdownFile(mediaType: string, fileName?: string): boolean {

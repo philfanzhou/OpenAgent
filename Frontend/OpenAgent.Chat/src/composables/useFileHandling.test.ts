@@ -27,6 +27,10 @@ describe('file handling', () => {
   it.each([
     ['text/plain', true],
     ['application/json', true],
+    ['application/xml', true],
+    ['text/xml', true],
+    ['image/svg+xml', true],
+    ['application/vnd.jgraph.mxfile', true],
     ['application/pdf', false],
     ['image/png', false],
   ])('classifies %s preview support', (mediaType, expected) => {
