@@ -22,4 +22,12 @@ public sealed class ConversationStoreOptions
     /// 是否启用 LLM 异步生成会话摘要标题。默认 true。
     /// </summary>
     public bool EnableTitleSummarization { get; set; } = true;
+
+    /// <summary>
+    /// 是否启用执行中的自动上下文压缩（上下文超过模型窗口 80% 时摘要旧消息）。默认 false。
+    /// 临时禁用：压缩可能把当前轮 user query 一并摘要，Qwen 系服务端 chat template
+    /// 会以 "No user query found in messages." 拒绝请求；修复压缩保留策略后改回 true。
+    /// 手动压缩端点（POST /conversations/{id}/compact）不受此开关影响。
+    /// </summary>
+    public bool EnableAutoCompaction { get; set; } = false;
 }
