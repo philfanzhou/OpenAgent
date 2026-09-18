@@ -34,7 +34,8 @@ internal sealed class AuditedCompactionStrategy : CompactionStrategy
         return RecordSkippedAsync(
             "The conversation does not contain a completed message group that MAF can compact.",
             tokenCount,
-            originalHistoryRestored: false);
+            originalHistoryRestored: false,
+            sourceEndSequence: messages.Count);
     }
 
     internal AuditedCompactionStrategy(
@@ -67,23 +68,25 @@ internal sealed class AuditedCompactionStrategy : CompactionStrategy
             .Select(group => new GroupSnapshot(group, group.IsExcluded, group.ExcludeReason))
             .ToList();
         List<ChatMessage> before = index.GetIncludedMessages().ToList();
+        int sourceEndSequence = before.Count;
         int originalTokenCount = GetIncludedTokenCount(index);
         bool triggerFired = _triggerCondition(index);
         bool canCompact = CanCompact(index);
-        if (!triggerFired || !canCompact)
-        {
-            if (_recordUnchanged)
+            if (!triggerFired || !canCompact)
             {
-                string reason = !triggerFired
-                    ? "Context is already within the compaction target budget."
-                    : "There is not enough older context to compact while preserving recent messages.";
-                await RecordSkippedAsync(
-                    reason,
-                    originalTokenCount,
-                    originalHistoryRestored: false).ConfigureAwait(false);
+                if (_recordUnchanged)
+                {
+                    string reason = !triggerFired
+                        ? "Context is already within the compaction target budget."
+                        : "There is not enough older context to compact while preserving recent messages.";
+                    await RecordSkippedAsync(
+                        reason,
+                        originalTokenCount,
+                        originalHistoryRestored: false,
+                        sourceEndSequence).ConfigureAwait(false);
+                }
+                return false;
             }
-            return false;
-        }
 
         try
         {
@@ -99,7 +102,8 @@ internal sealed class AuditedCompactionStrategy : CompactionStrategy
                 await RecordFailureAsync(
                     "Compaction strategy did not produce a compacted context.",
                     originalTokenCount,
-                    GetIncludedTokenCount(index)).ConfigureAwait(false);
+                    GetIncludedTokenCount(index),
+                    sourceEndSequence).ConfigureAwait(false);
                 ConversationCompactionLog.CompactionRecovered(
                     _logger,
                     _conversationId ?? string.Empty,
@@ -118,7 +122,8 @@ internal sealed class AuditedCompactionStrategy : CompactionStrategy
                 await RecordFailureAsync(
                     "Summarization model did not return usable summary text.",
                     originalTokenCount,
-                    originalTokenCount).ConfigureAwait(false);
+                    originalTokenCount,
+                    sourceEndSequence).ConfigureAwait(false);
                 return false;
             }
 
@@ -153,6 +158,7 @@ internal sealed class AuditedCompactionStrategy : CompactionStrategy
                 tokenCount: compactedTokenCount,
                 originalHistoryRestored: false,
                 compactedMessages: after,
+                sourceEndSequence: sourceEndSequence,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
             return true;
         }
@@ -164,7 +170,7 @@ internal sealed class AuditedCompactionStrategy : CompactionStrategy
         catch (Exception exception)
         {
             Restore(index, originalGroups);
-            await RecordFailureAsync(exception.Message, originalTokenCount, GetIncludedTokenCount(index)).ConfigureAwait(false);
+            await RecordFailureAsync(exception.Message, originalTokenCount, GetIncludedTokenCount(index), sourceEndSequence).ConfigureAwait(false);
             ConversationCompactionLog.CompactionRecovered(
                 _logger,
                 _conversationId ?? string.Empty,
@@ -173,7 +179,11 @@ internal sealed class AuditedCompactionStrategy : CompactionStrategy
         }
     }
 
-    private Task RecordFailureAsync(string error, int originalTokenCount, int tokenCount) => TryRecordAsync(
+    private Task RecordFailureAsync(
+        string error,
+        int originalTokenCount,
+        int tokenCount,
+        int sourceEndSequence = 0) => TryRecordAsync(
         status: "Failed",
         summary: null,
         result: "Original history restored for model invocation.",
@@ -183,12 +193,14 @@ internal sealed class AuditedCompactionStrategy : CompactionStrategy
         tokenCount: tokenCount,
         originalHistoryRestored: true,
         compactedMessages: null,
+        sourceEndSequence: sourceEndSequence,
         cancellationToken: CancellationToken.None);
 
     private Task RecordSkippedAsync(
         string result,
         int tokenCount,
-        bool originalHistoryRestored) => TryRecordAsync(
+        bool originalHistoryRestored,
+        int sourceEndSequence = 0) => TryRecordAsync(
             status: "Skipped",
             summary: null,
             result,
@@ -210,7 +222,8 @@ internal sealed class AuditedCompactionStrategy : CompactionStrategy
         int tokenCount,
         bool originalHistoryRestored,
         IReadOnlyList<ChatMessage>? compactedMessages,
-        CancellationToken cancellationToken)
+        int sourceEndSequence = 0,
+        CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(_tenantId)
             || string.IsNullOrWhiteSpace(_conversationId))
@@ -248,7 +261,12 @@ internal sealed class AuditedCompactionStrategy : CompactionStrategy
                 OriginalTokenCount = originalTokenCount,
                 TokenCount = tokenCount,
                 OriginalHistoryRestored = originalHistoryRestored,
-                SourceEndSequence = conversation?.MessageCount ?? 0,
+                // Mid-run audits of a first turn read a record that is not persisted
+                // yet (MessageCount 0); without the fallback the summary would sort to
+                // the very top of the timeline.
+                SourceEndSequence = conversation?.MessageCount > 0
+                    ? conversation.MessageCount
+                    : sourceEndSequence,
                 CompactedMessages = ToStored(compactedMessages)
             };
             LastAudit = audit;

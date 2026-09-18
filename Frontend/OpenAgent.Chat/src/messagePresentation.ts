@@ -297,6 +297,11 @@ function summaryBoundary(summary: ContextSummary, messages: ConversationMessage[
 function appendText(current?: string, incoming?: string): string {
   if (!current) return incoming || ''
   if (!incoming) return current
+  // 中断重试会把“部分正文”和“完整正文”各存一行；两行拼接会让片段显示两遍。
+  // 一方是另一方子串时保留更完整的一方，不做重复拼接。
+  if (current.includes(incoming) || incoming.includes(current)) {
+    return current.length >= incoming.length ? current : incoming
+  }
   if (current.endsWith('\n') || incoming.startsWith('\n')) return `${current}${incoming}`
   return `${current}\n${incoming}`
 }

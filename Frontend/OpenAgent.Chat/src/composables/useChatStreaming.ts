@@ -164,7 +164,9 @@ export function useChatStreaming(options: ChatStreamingOptions) {
           // 工具结果随流即时回填到对应调用行，无需等整轮结束重载历史。
           const tool = assistantMessage.toolActivities?.find(item => item.callId === event.toolCallId)
           appendStreamingTool(assistantMessage, {
-            name: tool?.name || '工具',
+            // 并非所有提供方都会先下发调用事件；结果事件自带的工具名兜底，
+            // 避免调用行退化成占位的“工具”。
+            name: tool?.name || event.toolName || '工具',
             callId: event.toolCallId,
             result: event.content ?? '',
           })
