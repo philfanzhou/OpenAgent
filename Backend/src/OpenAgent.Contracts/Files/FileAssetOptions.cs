@@ -9,6 +9,11 @@ public sealed class FileAssetOptions
     public long MaxFunctionReadBytes { get; init; } = 1024 * 1024;
     public long MaxInlineImageBytes { get; init; } = 4 * 1024 * 1024;
     public int MaxInlineImageCount { get; init; } = 4;
+    /// <summary>内联图片注入模型请求前的长边上限（像素）；超出则等比降采样。
+    /// 0 表示禁用压缩。原始文件不受影响，仅影响发送给模型的字节。</summary>
+    public int InlineImageMaxLongEdge { get; init; } = 1568;
+    /// <summary>降采样后 JPEG/WebP 的编码质量（1-100）。</summary>
+    public int InlineImageQuality { get; init; } = 85;
     public long MaxArchiveInputBytes { get; init; } = 64 * 1024 * 1024;
     public int MaxArchiveFileCount { get; init; } = 100;
     public IReadOnlyList<string> AllowedMediaTypes { get; init; } =

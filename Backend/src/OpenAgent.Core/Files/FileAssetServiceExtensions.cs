@@ -23,6 +23,7 @@ internal static class FileAssetServiceExtensions
             .ValidateOnStart();
         services.TryAddSingleton<IFileObjectStore, UnconfiguredFileObjectStore>();
         services.TryAddSingleton<IFileShareRepository, UnconfiguredFileShareRepository>();
+        services.TryAddSingleton<IInlineImageOptimizer, InlineImageOptimizer>();
         services.AddScoped<IFileAssetService, FileAssetService>();
         services.AddScoped<IFileShareService, FileShareService>();
         services.AddScoped<FileAssetExecutionContext>();

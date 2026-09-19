@@ -15,6 +15,7 @@
 
     <!-- 基础设施 -->
     <PackageVersion Include="AWSSDK.S3" Version="4.0.102" />
+    <PackageVersion Include="SixLabors.ImageSharp" Version="3.1.12" />
     <PackageVersion Include="StackExchange.Redis" Version="2.9.11" />
     <PackageVersion Include="Microsoft.Data.Sqlite" Version="8.0.29" />
     <PackageVersion Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.12" />
