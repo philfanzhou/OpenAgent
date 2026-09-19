@@ -61,6 +61,7 @@ public sealed class PlatformChatHistoryTests
             store: null!,
             NullLogger<PlatformChatHistory>.Instance,
             service,
+            new NoopImageOptimizer(),
             Options.Create(new FileAssetOptions()));
         ConversationMessage stored = ConversationSessionStore.Message(
             1,
@@ -127,6 +128,7 @@ public sealed class PlatformChatHistoryTests
             store: null!,
             NullLogger<PlatformChatHistory>.Instance,
             service,
+            new NoopImageOptimizer(),
             Options.Create(new FileAssetOptions
             {
                 MaxInlineImageBytes = 16,
@@ -198,6 +200,7 @@ public sealed class PlatformChatHistoryTests
             store: null!,
             NullLogger<PlatformChatHistory>.Instance,
             service,
+            new NoopImageOptimizer(),
             Options.Create(new FileAssetOptions()));
 
         ChatMessage message = await history.CreateUserMessageAsync(CancellationToken.None);
@@ -256,6 +259,7 @@ public sealed class PlatformChatHistoryTests
             store: null!,
             NullLogger<PlatformChatHistory>.Instance,
             service,
+            new NoopImageOptimizer(),
             Options.Create(new FileAssetOptions()));
 
         ChatMessage message = await history.CreateUserMessageAsync(CancellationToken.None);
@@ -266,5 +270,82 @@ public sealed class PlatformChatHistoryTests
             content => content.Text.Contains("[File:", StringComparison.Ordinal));
         Assert.Contains("Content is not included", descriptor.Text);
         Assert.Equal(0, objects.ReadCount);
+    }
+
+    [Fact]
+    public async Task InlineReads_BothPaths_RouteThroughImageOptimizer()
+    {
+        RecordingFileAssetRepository repository = new();
+        RecordingFileObjectStore objects = new();
+        FileAsset asset = new()
+        {
+            FileId = "user-image",
+            TenantId = "tenant-a",
+            OwnerUserId = "user-a",
+            FileName = "photo.png",
+            MediaType = "image/png",
+            Length = 2,
+            Sha256 = "sha",
+            ObjectKey = $"files/tenants/{FileObjectTenantScope.CreatePartition("tenant-a")}/users/user-a/user-image",
+            Source = FileAssetSource.UserUpload,
+            State = FileAssetState.Ready,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        repository.Assets[asset.FileId] = asset;
+        repository.References.Add("conversation-a:user-image");
+        objects.ContentsByKey[asset.ObjectKey] = [0x89, 0x50];
+        FileAssetService service = new(
+            repository,
+            objects,
+            Options.Create(new FileAssetOptions
+            {
+                Enabled = true,
+                MaxFileSizeBytes = 1024,
+                MaxInlineImageBytes = 16,
+                MaxInlineImageCount = 1
+            }));
+        var optimizer = new RecordingImageOptimizer();
+        PlatformChatHistory history = new(
+            new PlatformChatHistoryContext(
+                new ConversationContext("conversation-a", "tenant-a", "user-a", "agent-a", null, ConversationType.User),
+                "model-a",
+                "describe the image",
+                [asset],
+                SupportsMultimodal: true),
+            new FileAssetExecutionContext(),
+            conversationLock: null!,
+            store: null!,
+            NullLogger<PlatformChatHistory>.Instance,
+            service,
+            optimizer,
+            Options.Create(new FileAssetOptions()));
+
+        ConversationMessage stored = ConversationSessionStore.Message(
+            1,
+            "user",
+            "look at this",
+            fileIds: [asset.FileId]);
+        await history.BuildHistoryAsync([stored], CancellationToken.None);
+        await history.CreateUserMessageAsync(CancellationToken.None);
+
+        Assert.Equal(2, optimizer.OptimizedFileIds.Count(fileId => fileId == asset.FileId));
+    }
+
+    private sealed class NoopImageOptimizer : IInlineImageOptimizer
+    {
+        public byte[] Optimize(FileAsset asset, byte[] data) => data;
+    }
+
+    private sealed class RecordingImageOptimizer : IInlineImageOptimizer
+    {
+        private readonly List<string> _fileIds = [];
+
+        public IEnumerable<string> OptimizedFileIds => _fileIds;
+
+        public byte[] Optimize(FileAsset asset, byte[] data)
+        {
+            _fileIds.Add(asset.FileId);
+            return data;
+        }
     }
 }
