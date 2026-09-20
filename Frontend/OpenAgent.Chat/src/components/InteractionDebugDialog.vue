@@ -88,6 +88,7 @@ function notifyFailure(): void {
       class="capability-table interaction-debug-table"
       empty-text="暂无交互记录"
       size="small"
+      max-height="calc(88vh - 150px)"
     >
       <el-table-column type="expand">
         <template #default="scope">
