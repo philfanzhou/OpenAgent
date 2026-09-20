@@ -154,7 +154,7 @@ async function copyPayload(kind: 'request' | 'response', payload: string | null 
       <el-table-column label="轮次 TraceId" min-width="200">
         <template #default="scope"><code :title="`点击复制 ${scope.row.traceId}`" role="button" tabindex="0" @click="copyTraceId(scope.row.traceId)" @keydown.enter="copyTraceId(scope.row.traceId)">{{ scope.row.traceId }}</code></template>
       </el-table-column>
-      <el-table-column label="类别" width="100">
+      <el-table-column label="类别" min-width="130">
         <template #default="scope"><span class="interaction-category" :title="categoryTooltip(categoryAt(scope.$index))">{{ categoryText(categoryAt(scope.$index)) }}</span></template>
       </el-table-column>
       <el-table-column label="模型" width="96" show-overflow-tooltip>
