@@ -6,6 +6,9 @@ using OpenAgent.Contracts.Execution;
 using OpenAgent.Runner;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+// /health 被编排器高频轮询；Runner 未接入 OTel，压掉 ASP.NET Core 默认的请求生命周期
+// Information 日志，避免健康探测淹没 stdout 中的业务日志（异常仍以 Warning+ 输出）。
+builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
 builder.WebHost.ConfigureKestrel(server => server.Limits.MaxRequestBodySize = ExecutionLimits.MaxWireBytes);
 builder.Services.AddOptions<RunnerOptions>().Bind(builder.Configuration.GetSection("Runner"))
     .Validate(options => options.ApiKey.Length >= 32, "Runner:ApiKey must contain at least 32 characters.")

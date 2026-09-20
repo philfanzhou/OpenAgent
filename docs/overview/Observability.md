@@ -76,6 +76,10 @@ Router 当前提供以下业务指标：
 
 `X-Trace-Id` 是 OpenAgent 的请求关联标识；W3C `traceparent` 中的 Activity Trace ID 是分布式追踪标识。两者都应在排障证据中保留，但不能假设它们始终相同。
 
+## 高频探测降噪
+
+Prometheus 抓取（`/metrics`）与健康探针（`/health`、`/ready`、`/health/live`、`/health/ready`、`/health/report`）被编排器和 Router 按秒级高频访问，但本身不携带业务语义。Hosting 层统一将这类路径排除出请求完成日志、trace tag 与 ASP.NET Core / HttpClient instrumentation 生成的 span；出站方向同样过滤 Router 对下游 readiness 端点的轮询 span。健康探针仅在返回 4xx/5xx 或抛异常时保留日志，故障信号不丢失。业务端点不受影响。
+
 ## EventId 与日志封装
 
 各模块继续通过 `LoggerMessage` 目录维护有语义的领域日志，调用处不改为重复的 `ILogger` 模板。仅删除零调用事件，并合并消息模板、级别和参数完全一致的事件。当前事件编号范围为：Router `3000–3048`、Engine（含 Host）`4000–4069`、Core 会话域 `1450–1461`

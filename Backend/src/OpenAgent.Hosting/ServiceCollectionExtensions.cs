@@ -122,8 +122,11 @@ public static class ServiceCollectionExtensions
                 tracing
                     .AddAspNetCoreInstrumentation(instrumentation =>
                         instrumentation.Filter = httpContext =>
-                            !RequestTelemetryMiddleware.IsMetricsScrapePath(httpContext.Request.Path))
-                    .AddHttpClientInstrumentation()
+                            !RequestTelemetryMiddleware.IsMetricsScrapePath(httpContext.Request.Path)
+                            && !RequestTelemetryMiddleware.IsHealthProbePath(httpContext.Request.Path, options))
+                    .AddHttpClientInstrumentation(instrumentation =>
+                        instrumentation.FilterHttpRequestMessage = request =>
+                            !RequestTelemetryMiddleware.IsHealthProbeUri(request.RequestUri, options))
                     .AddSource(options.OpenTelemetrySource);
 
                 if (otlpEndpoint != null)
