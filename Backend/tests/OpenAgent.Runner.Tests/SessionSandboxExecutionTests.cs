@@ -48,13 +48,15 @@ public class SessionSandboxExecutionTests
     public async Task Execute_SessionsAreIsolated()
     {
         await using var runtime = new SessionRuntime();
-        await runtime.ExecuteAsync("conv-a", "from pathlib import Path\nPath('/work/a.txt').write_text('alpha')");
+        CodeExecutionResult setup = await runtime.ExecuteAsync("conv-a",
+            "from pathlib import Path\nPath('/work/a.txt').write_text('alpha')");
+        Assert.True(setup.ExitCode == 0, setup.Stderr);
         CodeExecutionResult probe = await runtime.ExecuteAsync("conv-b",
             "from pathlib import Path\nassert not Path('/work/a.txt').exists()\nPath('/work/b.txt').write_text('beta')\nprint('isolated')");
         Assert.True(probe.ExitCode == 0, probe.Stderr);
         CodeExecutionResult back = await runtime.ExecuteAsync("conv-a",
             "from pathlib import Path\nassert Path('/work/a.txt').read_text() == 'alpha'\nassert not Path('/work/b.txt').exists()\nprint('own-state')");
-        Assert.True(back.ExitCode == 0, back.Stderr);
+        Assert.True(back.ExitCode == 0, back.Stderr + " (sandboxReset=" + back.SandboxReset + ")");
         Assert.Equal(2, runtime.Manager.LiveCount);
     }
 

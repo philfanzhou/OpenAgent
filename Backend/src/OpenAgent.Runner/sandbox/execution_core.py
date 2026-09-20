@@ -29,15 +29,29 @@ def drain(pipe, target):
         target.extend(chunk[:max(0, LOG_LIMIT - len(target))])
 
 
-def collect_files(since=None):
-    """Return validated /output files, optionally only those written at or after `since`."""
+def snapshot_output():
+    """Deterministic pre-run snapshot of /output entry identities."""
+    entries = {}
+    for path in Path("/output").iterdir():
+        try:
+            metadata = path.lstat()
+        except OSError:
+            continue
+        entries[path.name] = (metadata.st_ino, metadata.st_mtime_ns, metadata.st_size)
+    return entries
+
+
+def collect_files(changed_since=None):
+    """Return validated /output files, optionally only entries that are new or
+    changed relative to a `snapshot_output()` result (no clock assumptions)."""
     files = []
     total = 0
     for path in sorted(Path("/output").iterdir()):
         metadata = path.lstat()
         if not stat.S_ISREG(metadata.st_mode):
             raise ValueError("Outputs must be regular files, without directories or symbolic links.")
-        if since is not None and metadata.st_mtime < since:
+        if changed_since is not None and changed_since.get(path.name) == (
+                metadata.st_ino, metadata.st_mtime_ns, metadata.st_size):
             continue
         name = path.name
         if not name or len(name) > 120 or not name[0].isalnum() or not all(c.isalnum() or c in "._- " for c in name):

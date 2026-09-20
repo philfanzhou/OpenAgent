@@ -96,7 +96,7 @@ def handle(connection):
     env["EXECUTION_ENTRY"] = entry
     env["EXECUTION_TIMEOUT"] = str(TIMEOUT_SECONDS)
     peer = disconnect_watcher(connection)
-    started = time.time()
+    before = core.snapshot_output()
     result = core.run_child(command, env=env, timeout=TIMEOUT_SECONDS,
                             preexec=limits_preexec(), disconnected=lambda: peer["gone"])
     if peer["gone"]:
@@ -105,7 +105,7 @@ def handle(connection):
         result["stderr"] = "Execution exceeded its deadline."
     elif result["exitCode"] == 0:
         try:
-            result["files"] = core.collect_files(since=started - 0.01)
+            result["files"] = core.collect_files(changed_since=before)
         except (ValueError, OSError) as error:
             result["exitCode"] = 1
             result["stderr"] = str(error)[:core.LOG_LIMIT]
@@ -136,7 +136,11 @@ def main():
             server.settimeout(max(idle_left, 0.05))
             try:
                 connection, _ = server.accept()
-            except (socket.timeout, OSError):
+            except socket.timeout:
+                break
+            except ConnectionError:
+                continue  # A transient aborted connection must not kill the sandbox.
+            except OSError:
                 break
             last_used = time.time()
             try:
