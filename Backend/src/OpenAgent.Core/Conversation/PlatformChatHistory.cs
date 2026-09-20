@@ -30,6 +30,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
     private readonly ConversationSessionStore _store;
     private readonly ILogger<PlatformChatHistory> _logger;
     private readonly IFileAssetService _fileService;
+    private readonly IInlineImageOptimizer _imageOptimizer;
     private readonly bool _supportsMultimodal;
     private readonly long _maxInlineImageBytes;
     private readonly int _maxInlineImageCount;
@@ -54,6 +55,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         ConversationSessionStore store,
         ILogger<PlatformChatHistory> logger,
         IFileAssetService fileService,
+        IInlineImageOptimizer imageOptimizer,
         IOptions<FileAssetOptions> fileOptions)
     {
         _conversation = context.Conversation;
@@ -66,6 +68,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         _store = store;
         _logger = logger;
         _fileService = fileService;
+        _imageOptimizer = imageOptimizer;
         _supportsMultimodal = context.SupportsMultimodal;
         _maxInlineImageBytes = fileOptions.Value.MaxInlineImageBytes;
         _maxInlineImageCount = fileOptions.Value.MaxInlineImageCount;
@@ -139,11 +142,10 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
             try
             {
                 inline ??= [];
-                inline.Add(await _fileService.ReadAsync(
+                inline.Add(await ReadInlineContentAsync(
                     file.FileId,
                     scope,
-                    cancellationToken,
-                    _maxInlineImageBytes).ConfigureAwait(false));
+                    cancellationToken).ConfigureAwait(false));
                 inlineImageCount++;
             }
             catch (OperationCanceledException)
@@ -276,11 +278,10 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
                     {
                         try
                         {
-                            inlineImage = await _fileService.ReadAsync(
+                            inlineImage = await ReadInlineContentAsync(
                                 fileId,
                                 scope,
-                                cancellationToken,
-                                _maxInlineImageBytes).ConfigureAwait(false);
+                                cancellationToken).ConfigureAwait(false);
                             inlineImageCount++;
                         }
                         catch (OperationCanceledException)
@@ -313,6 +314,24 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         UserId = _conversation.UserId ?? string.Empty,
         ConversationId = _conversation.ConversationId
     };
+
+    /// <summary>读取内联图片并降采样：两条路径（当轮/历史重放）共用同一优化缓存。</summary>
+    private async Task<FileAssetContent> ReadInlineContentAsync(
+        string fileId,
+        FileAssetScope scope,
+        CancellationToken cancellationToken)
+    {
+        FileAssetContent content = await _fileService.ReadAsync(
+            fileId,
+            scope,
+            cancellationToken,
+            _maxInlineImageBytes).ConfigureAwait(false);
+        return new FileAssetContent
+        {
+            Asset = content.Asset,
+            Data = _imageOptimizer.Optimize(content.Asset, content.Data)
+        };
+    }
 
     private static bool IsImage(string mediaType) =>
         mediaType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
