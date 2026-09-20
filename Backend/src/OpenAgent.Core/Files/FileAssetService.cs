@@ -499,14 +499,20 @@ internal sealed class FileAssetService : IFileAssetService
         // MIME mapping for (.json, .drawio, .jps, ...). Fall back to the canonical media
         // type for the extension so the whitelist still applies to a concrete type.
         string mediaType = ResolveMediaType(extension, request.MediaType);
-        if (!_options.AllowedExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase)
-            || !IsAllowedMediaType(mediaType)
-            || !MediaTypeMatchesExtension(extension, mediaType))
+        if (!_options.AllowedExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
         {
             throw new AgentException(
                 AgentErrorCode.InvalidRequest,
                 $"File type is not allowed. Supported extensions: " +
                 $"{string.Join(", ", _options.AllowedExtensions.Distinct(StringComparer.OrdinalIgnoreCase))}.");
+        }
+        if (!IsAllowedMediaType(mediaType) || !MediaTypeMatchesExtension(extension, mediaType))
+        {
+            // 扩展名在白名单内但媒体类型不匹配：明确指出冲突点，模型才能省略 mediaType 重试。
+            throw new AgentException(
+                AgentErrorCode.InvalidRequest,
+                $"Media type '{mediaType}' does not match file extension '{extension}'. " +
+                "Omit the media type (it is inferred from the file name) or use the canonical type for this extension.");
         }
 
         await using var buffer = new MemoryStream();

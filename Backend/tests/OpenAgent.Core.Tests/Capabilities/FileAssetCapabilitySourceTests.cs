@@ -239,6 +239,48 @@ public class FileAssetCapabilitySourceTests
     }
 
     [Theory]
+    [InlineData("data.json", "application/json")]
+    [InlineData("notes.txt", "text/plain")]
+    [InlineData("table.csv", "text/csv")]
+    [InlineData("diagram.drawio", "application/vnd.jgraph.mxfile")]
+    public async Task InvokeAsync_WriteFileWithoutMediaType_InfersCanonicalTypeFromExtension(
+        string fileName,
+        string expectedMediaType)
+    {
+        TestHarness harness = CreateHarness();
+        var arguments = new Dictionary<string, object?>
+        {
+            ["fileName"] = fileName,
+            ["content"] = "{}"
+        };
+
+        string result = await InvokeAsync(harness.Source, "write_file", arguments);
+
+        using JsonDocument document = JsonDocument.Parse(result);
+        Assert.Equal(expectedMediaType, document.RootElement.GetProperty("mediaType").GetString());
+        Assert.Equal(expectedMediaType, harness.Objects.LastRequest?.MediaType);
+        Assert.True(harness.Repository.Assets.ContainsKey(document.RootElement.GetProperty("fileId").GetString()!));
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WriteFileWithMismatchedMediaType_ReturnsActionableError()
+    {
+        TestHarness harness = CreateHarness();
+        var arguments = new Dictionary<string, object?>
+        {
+            ["fileName"] = "data.json",
+            ["content"] = "{}",
+            ["mediaType"] = "text/plain"
+        };
+
+        string result = await InvokeAsync(harness.Source, "write_file", arguments);
+
+        Assert.StartsWith("文件写入失败：", result, StringComparison.Ordinal);
+        Assert.Contains("does not match", result, StringComparison.Ordinal);
+        Assert.Null(harness.Objects.LastRequest);
+    }
+
+    [Theory]
     [InlineData(true, true)]
     [InlineData(false, false)]
     public async Task InvokeAsync_ReadFileWithoutExactlyOneIdentifier_ReturnsSanitizedError(

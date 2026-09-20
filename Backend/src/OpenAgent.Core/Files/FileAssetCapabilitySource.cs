@@ -64,7 +64,7 @@ internal sealed class FileAssetCapabilitySource(
             new CapabilityDefinition(
                 "write_file",
                 "Create and register a UTF-8 text file for the current user and conversation; returns its fileId for use with publish_files.",
-                """{"type":"object","properties":{"fileName":{"type":"string"},"content":{"type":"string"},"mediaType":{"type":"string"}},"required":["fileName","content"]}""",
+                """{"type":"object","properties":{"fileName":{"type":"string"},"content":{"type":"string"},"mediaType":{"type":"string","description":"Optional MIME type; inferred from the fileName extension when omitted — omit it unless you have a specific reason"}},"required":["fileName","content"]}""",
                 AgentResourceType.Tool,
                 "file-assets",
                 WriteAsync),
@@ -254,7 +254,9 @@ internal sealed class FileAssetCapabilitySource(
         {
             return "文件写入失败：'content' 是必填参数，请提供文件内容后重试。";
         }
-        string mediaType = ReadString(arguments, "mediaType") ?? "text/plain";
+        // 不默认 text/plain：伪造的具体类型会与扩展名一致性校验冲突（如 .json + text/plain 被拒）。
+        // 留空让服务端按扩展名推断规范化类型。
+        string? mediaType = ReadString(arguments, "mediaType");
         if (executionContext.Scope == null)
         {
             return "文件写入失败：文件执行上下文不可用。";
