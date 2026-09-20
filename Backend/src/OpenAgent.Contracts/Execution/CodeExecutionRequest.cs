@@ -15,9 +15,10 @@ public sealed class CodeExecutionRequest
     public string? EntryFileName { get; init; }
 
     /// <summary>
-    /// Conversation-scoped workspace key. Executions that share a key reuse one
-    /// workspace (mounted inputs persist between calls) instead of a fresh
-    /// directory per request; restricted to letters, digits, '-' and '_'.
+    /// Conversation-scoped sandbox key. Executions that share a key reuse one
+    /// persistent sandbox (files under /work, /tmp, /input and /output survive
+    /// between calls until the sandbox is reclaimed after its idle period);
+    /// restricted to letters, digits, '-' and '_'.
     /// </summary>
     public string? SessionKey { get; init; }
 }

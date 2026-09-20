@@ -3,22 +3,23 @@ using Microsoft.Extensions.Options;
 namespace OpenAgent.Runner;
 
 /// <summary>
-/// Removes abandoned request inputs after a Runner crash, and reaps
-/// conversation workspaces once they have been idle past the configured period.
+/// Reaps idle session sandboxes through the manager, removes abandoned request
+/// inputs after a Runner crash, and sweeps leftover session directories once they
+/// have been idle past the configured period.
 /// </summary>
-internal sealed class WorkspaceReaper(IOptions<RunnerOptions> options, ILogger<WorkspaceReaper> logger) : BackgroundService
+internal sealed class WorkspaceReaper(
+    SessionSandboxManager sessions, IOptions<RunnerOptions> options, ILogger<WorkspaceReaper> logger) : BackgroundService
 {
-    private const string SessionWorkspacePrefix = "session-";
-
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
+                TimeSpan sessionIdle = TimeSpan.FromMinutes(Math.Max(1, options.Value.SessionIdleMinutes));
+                await sessions.ReapIdleAsync(sessionIdle).ConfigureAwait(false);
                 if (Directory.Exists(options.Value.WorkspaceRoot))
                 {
-                    TimeSpan sessionIdle = TimeSpan.FromMinutes(Math.Max(1, options.Value.SessionWorkspaceIdleMinutes));
                     foreach (string directory in Directory.EnumerateDirectories(options.Value.WorkspaceRoot))
                     {
                         string name = Path.GetFileName(directory);
@@ -33,8 +34,9 @@ internal sealed class WorkspaceReaper(IOptions<RunnerOptions> options, ILogger<W
                                 Directory.Delete(directory, recursive: true);
                             }
                         }
-                        else if (name.StartsWith(SessionWorkspacePrefix, StringComparison.Ordinal)
-                            && Directory.GetLastWriteTimeUtc(directory) < DateTime.UtcNow - sessionIdle)
+                        else if (name.StartsWith(SessionSandboxManager.SessionDirectoryPrefix, StringComparison.Ordinal)
+                            && Directory.GetLastWriteTimeUtc(directory) < DateTime.UtcNow - sessionIdle
+                            && !sessions.IsLive(name[SessionSandboxManager.SessionDirectoryPrefix.Length..]))
                         {
                             Directory.Delete(directory, recursive: true);
                         }

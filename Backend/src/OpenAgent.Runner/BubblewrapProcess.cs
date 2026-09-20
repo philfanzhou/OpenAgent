@@ -51,17 +51,38 @@ internal sealed class BubblewrapProcess(IOptions<RunnerOptions> options, ILogger
         }
     }
 
-    internal async Task<bool> IsAvailableAsync(string sandboxFilesDirectory, CancellationToken cancellationToken)
+    /// <summary>
+    /// Starts a Bubblewrap sandbox the caller keeps alive (session sandboxes); its
+    /// stderr flows to the service journal and it must be disposed by the caller.
+    /// </summary>
+    internal Process StartDetached(IEnumerable<string> arguments)
     {
+        var start = new ProcessStartInfo(options.Value.BubblewrapPath)
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+        foreach (string argument in arguments)
+        {
+            start.ArgumentList.Add(argument);
+        }
+        var process = new Process { StartInfo = start };
+        process.Start();
+        return process;
+    }
+
+    internal async Task<bool> IsAvailableAsync(string sandboxFilesDirectory, CancellationToken cancellationToken)    {
         RunnerOptions settings = options.Value;
         if (!OperatingSystem.IsLinux()
             || !File.Exists(settings.BubblewrapPath)
             || !File.Exists(settings.PythonPath)
             || !File.Exists(settings.NodePath)
             || !File.Exists("/usr/bin/prlimit")
-            || !File.Exists(Path.Combine(sandboxFilesDirectory, "execute.py")))
+            || !File.Exists(Path.Combine(sandboxFilesDirectory, "execute.py"))
+            || !File.Exists(Path.Combine(sandboxFilesDirectory, "supervisor.py"))
+            || !File.Exists(Path.Combine(sandboxFilesDirectory, "execution_core.py")))
         {
-            RunnerLog.EnvironmentFailed(logger, "health", "prerequisites", "Linux, bwrap, Python, Node, prlimit, or sandbox entry point is unavailable.");
+            RunnerLog.EnvironmentFailed(logger, "health", "prerequisites", "Linux, bwrap, Python, Node, prlimit, or sandbox entry points are unavailable.");
             return false;
         }
 

@@ -22,9 +22,12 @@ builder.Services.AddOptions<RunnerOptions>().Bind(builder.Configuration.GetSecti
         && options.MaxConcurrentExecutions is >= 1 and <= 16
         && options.MemoryMiB is >= 128 and <= 8192
         && options.WorkspaceMiB is >= 16 and <= 1024
-        && options.MaxProcesses is >= 16 and <= 512, "Invalid Runner resource limits.")
+        && options.MaxProcesses is >= 16 and <= 512
+        && options.MaxSessionSandboxes is >= 1 and <= 256
+        && options.SessionIdleMinutes is >= 1, "Invalid Runner resource limits.")
     .ValidateOnStart();
 builder.Services.AddSingleton<BubblewrapProcess>();
+builder.Services.AddSingleton<SessionSandboxManager>();
 builder.Services.AddSingleton<ICodeExecutor, BubblewrapCodeExecutor>();
 builder.Services.AddHostedService<WorkspaceReaper>();
 WebApplication app = builder.Build();

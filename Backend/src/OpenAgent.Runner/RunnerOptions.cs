@@ -14,8 +14,14 @@ internal sealed class RunnerOptions
     public int MaxProcesses { get; set; } = 64;
 
     /// <summary>
-    /// Conversation workspaces (session-*) are reused across executions; after this
-    /// idle period WorkspaceReaper deletes them, together with their mounted inputs.
+    /// Session sandboxes stay alive between executions of one conversation and are
+    /// torn down by <see cref="WorkspaceReaper"/> after this idle period.
     /// </summary>
-    public int SessionWorkspaceIdleMinutes { get; set; } = 120;
+    public int SessionIdleMinutes { get; set; } = 120;
+
+    /// <summary>
+    /// Upper bound on simultaneously live session sandboxes. When full, the
+    /// longest-idle sandbox is evicted; busy sandboxes are never evicted.
+    /// </summary>
+    public int MaxSessionSandboxes { get; set; } = 64;
 }

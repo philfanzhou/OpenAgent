@@ -1,6 +1,6 @@
 # Bubblewrap 代码 Runner 部署
 
-架构、工具参数和安全边界见 [CodeAct 设计](../modules/capabilities/code-execution/DESIGN.md)。Runner 直接运行在 Linux 主机上，为每次请求启动新的 Bubblewrap namespace，不依赖 Docker daemon。
+架构、工具参数和安全边界见 [CodeAct 设计](../modules/capabilities/code-execution/DESIGN.md)。Runner 直接运行在 Linux 主机上，不依赖 Docker daemon；无会话键的请求每次启动新的 Bubblewrap namespace，携带会话键的请求复用一个常驻会话沙箱（空闲超过 `Runner:SessionIdleMinutes` 后回收）。
 
 ## 支持环境
 
@@ -71,11 +71,15 @@ CodeExecution__RequestTimeoutSeconds=180
 | Runner `Runner:MemoryMiB` | 1536 | 每个沙箱进程的地址空间上限；为 LibreOffice 预留虚拟地址空间 |
 | Runner `Runner:MaxProcesses` | 64 | 沙箱进程上限，建议结合 systemd `TasksMax` |
 | Runner `Runner:WorkspaceMiB` | 128 | `/work` tmpfs 上限 |
-| Runner `Runner:WorkspaceRoot` | /var/lib/openagent-runner/workspaces | 独立于服务用户主目录的请求输入暂存目录，仅 Runner 可读写 |
+| Runner `Runner:SessionIdleMinutes` | 120 | 会话沙箱空闲多久后被回收（销毁进程并删除目录） |
+| Runner `Runner:MaxSessionSandboxes` | 64 | 同时存活的会话沙箱上限；满时驱逐最久空闲者，全部在执行则返回 429 |
+| Runner `Runner:WorkspaceRoot` | /var/lib/openagent-runner/workspaces | 独立于服务用户主目录的会话沙箱控制通道目录，仅 Runner 可读写 |
 
-固定协议限制：代码 128 KiB；输入/输出各最多 8 个文件，单文件 10 MiB、合计 20 MiB；stdout/stderr 各 32 KiB；`/output` tmpfs 32 MiB，`/tmp` 64 MiB。FileAsset 仍执行自身策略，两层限制取更严格者。
+固定协议限制：代码 128 KiB；输入/输出各最多 8 个文件，单文件 10 MiB、合计 20 MiB；stdout/stderr 各 32 KiB；`/output` tmpfs 32 MiB，`/tmp` 64 MiB，会话沙箱另有 64 MiB 的 `/input` tmpfs。FileAsset 仍执行自身策略，两层限制取更严格者。
 
-默认 systemd unit 同时给整个 Runner 设置 `MemoryMax=2G`、`TasksMax=256`、`CPUQuota=200%`。这是总量保护；`prlimit` 则负责每次执行的地址空间、CPU 时间、进程、打开文件、产物大小和 core dump 限制。
+默认 systemd unit 同时给整个 Runner 设置 `MemoryMax=8G`、`TasksMax=512`、`CPUQuota=200%`。这是总量保护；单次执行的地址空间、CPU 时间、进程、打开文件、产物大小和 core dump 限制由沙箱内 wrapper（一次性执行走 `prlimit`，会话执行走 supervisor 的 `setrlimit`）逐次施加。
+
+会话沙箱内存换算：每个空闲沙箱 = supervisor 进程 RSS（约 15–25 MiB）+ tmpfs 实际写入量（`/work`+`/input`+`/output`+`/tmp` 合计上限约 288 MiB），空闲期不消耗 CPU；典型会话 25–50 MiB，最坏约 310 MiB。默认 `MaxSessionSandboxes=64` 对应典型约 3.2 GiB、最坏显著超出，因此 unit/compose 限额设为 8G；小节点应按公式调低 `MaxSessionSandboxes`（或调短 `SessionIdleMinutes`），而不是依赖 OOM 兜底。
 
 服务允许 `AF_NETLINK`，供 Bubblewrap 初始化隔离网络命名空间；这不打开沙箱外网。LibreOffice 固定使用 `svp` 无界面后端，不需要 X11 或桌面会话。
 
