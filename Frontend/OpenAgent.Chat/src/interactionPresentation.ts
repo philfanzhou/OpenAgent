@@ -53,12 +53,16 @@ export function prettyInteractionPayload(payload?: string | null): string {
   }
 }
 
-/** 复制到剪贴板；无 Clipboard API 时降级为隐藏 textarea + execCommand。 */
+/** 复制到剪贴板；Clipboard API 缺失或被拒绝（无焦点/无权限）时降级为 execCommand。 */
 export async function copyInteractionText(text: string): Promise<void> {
-  const clipboard = globalThis.navigator?.clipboard
-  if (clipboard?.writeText) {
-    await clipboard.writeText(text)
-    return
+  try {
+    const clipboard = globalThis.navigator?.clipboard
+    if (clipboard?.writeText) {
+      await clipboard.writeText(text)
+      return
+    }
+  } catch {
+    // API 被拒绝时继续尝试 execCommand 降级路径。
   }
 
   const doc = globalThis.document

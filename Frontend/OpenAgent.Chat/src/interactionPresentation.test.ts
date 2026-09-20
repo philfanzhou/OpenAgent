@@ -109,6 +109,26 @@ describe('copyInteractionText', () => {
     expect(writeText).toHaveBeenCalledExactlyOnceWith('trace-1')
   })
 
+  it('falls back to execCommand when the Clipboard API rejects', async () => {
+    const writeText = vi.fn().mockRejectedValue(new Error('Document is not focused'))
+    vi.stubGlobal('navigator', { clipboard: { writeText } })
+    const fakeDocument = {
+      createElement: () => ({
+        value: '', style: {}, removed: false,
+        setAttribute: vi.fn(), select: vi.fn(),
+        remove: vi.fn(function (this: { removed: boolean }) { this.removed = true }),
+      }),
+      body: { appendChild: vi.fn() },
+      execCommand: vi.fn(() => true),
+    }
+    vi.stubGlobal('document', fakeDocument)
+
+    await copyInteractionText('trace-2')
+
+    expect(writeText).toHaveBeenCalledOnce()
+    expect(fakeDocument.execCommand).toHaveBeenCalledWith('copy')
+  })
+
   it('falls back to a hidden textarea with execCommand when the API is missing', async () => {
     const textareas: Array<{ value: string; removed: boolean }> = []
     const fakeDocument = {
