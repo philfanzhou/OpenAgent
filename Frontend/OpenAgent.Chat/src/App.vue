@@ -5,6 +5,7 @@ import { api } from './api'
 import ChatHeader from './components/ChatHeader.vue'
 import ChatMessages from './components/ChatMessages.vue'
 import ChatSidebar from './components/ChatSidebar.vue'
+import InteractionDebugDialog from './components/InteractionDebugDialog.vue'
 import LoginPage from './components/LoginPage.vue'
 import MessageComposer from './components/MessageComposer.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
@@ -165,6 +166,7 @@ const chatStreaming = useChatStreaming({
 const { message, send, stopStreaming, clearDraft } = chatStreaming
 
 const chatMessagesRef = ref<InstanceType<typeof ChatMessages> | null>(null)
+const showInteractionDebug = ref(false)
 
 function handleSend(): void {
   // 发送后强制回到底部并恢复自动跟随；流式期间用户上滑阅读不会被拉回。
@@ -299,7 +301,19 @@ onBeforeUnmount(() => {
       </div>
       <button v-if="contextCollapsed" class="panel-restore context-restore" type="button" aria-label="展开上下文面板" title="展开上下文面板" @click="toggleContext">‹</button>
     </el-main>
+
+    <button
+      class="interaction-debug-launcher"
+      type="button"
+      :disabled="!selectedConversation"
+      :title="selectedConversation ? '查看本次会话的全部 LLM 交互记录' : '发送首条消息创建会话后可用'"
+      @click="showInteractionDebug = true"
+    >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h10M4 18h7" /></svg>
+      <span>会话记录</span>
+    </button>
   </el-container>
 
   <SettingsDialog :context="settingsDialogContext" />
+  <InteractionDebugDialog v-model:open="showInteractionDebug" :conversation-id="selectedConversation?.conversationId ?? null" :conversation-title="selectedConversation?.title" />
 </template>

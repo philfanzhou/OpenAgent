@@ -1152,6 +1152,30 @@ html[data-theme='dark'] .context-panel { background: #1f1f1f; }
 .app-shell:not(.sidebar-collapsed) .sidebar-restore { display: none; }
 .workspace-grid:not(.context-collapsed) .context-restore { display: none; }
 
+/* Session interaction log launcher — fixed bottom-right debug entry */
+.interaction-debug-launcher {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 30;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  background: var(--bg);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+.interaction-debug-launcher svg { width: 14px; height: 14px; }
+.interaction-debug-launcher:hover:not(:disabled) { background: var(--bg-subtle); color: var(--text); border-color: var(--border-strong); }
+.interaction-debug-launcher:disabled { opacity: 0.45; cursor: not-allowed; }
+
 /* Collapse toggle buttons inside panels */
 .panel-collapse-btn {
   width: 26px;
