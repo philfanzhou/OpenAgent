@@ -286,11 +286,12 @@ public class AgentExecutorUsageTests
 
     private sealed class FakeChatClientFactory(IChatClient provider) : IAgentChatClientFactory
     {
-        public IChatClient Create(LlmConfig llm) => provider;
+        public IChatClient Create(LlmConfig llm, LlmInteractionCapture? capture = null) => provider;
 
         public IChatClient CreateSummarizationClient(
             LlmConfig llm,
-            ContextPolicy? policy) => provider;
+            ContextPolicy? policy,
+            LlmInteractionCapture? capture = null) => provider;
     }
 
     private sealed class EmptyFileAssetRepository : IFileAssetRepository

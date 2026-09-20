@@ -28,6 +28,10 @@ internal static class ConversationEndpointExtensions
         group.MapPost("/conversations/{conversationId}/compact", CompactAsync)
             .WithName("CompactConversation")
             .WithTags("Conversation");
+
+        group.MapGet("/conversations/{conversationId}/llm-interactions", ListInteractionsAsync)
+            .WithName("ListConversationLlmInteractions")
+            .WithTags("Conversation");
     }
 
     private static async Task<IResult> ListAsync(
@@ -147,8 +151,38 @@ internal static class ConversationEndpointExtensions
             conversationId,
             llmProfileId,
             user,
+            context.GetAgentRequest().TraceId,
             cancellationToken).ConfigureAwait(false);
         return Results.Ok(result);
+    }
+
+    internal static async Task<IResult> ListInteractionsAsync(
+        [FromServices] IConversationQueryService queryService,
+        [FromServices] ILlmInteractionStore interactions,
+        HttpContext context,
+        string conversationId,
+        [FromQuery] int skip = 0,
+        [FromQuery] int take = 50,
+        CancellationToken cancellationToken = default)
+    {
+        ConversationRecord? record = await queryService.GetRecordAsync(
+            AgentEndpointRequestMapper.RequireTenant(context),
+            conversationId,
+            cancellationToken).ConfigureAwait(false);
+        if (record == null || record.Type != ConversationType.User)
+            return Results.NotFound();
+
+        string userId = context.GetAgentRequest().User.UserId;
+        if (!string.Equals(record.UserId, userId, StringComparison.OrdinalIgnoreCase))
+            return Results.Forbid();
+
+        IReadOnlyList<LlmInteractionRecord> logs = await interactions.ListAsync(
+            record.TenantId,
+            conversationId,
+            skip,
+            Math.Clamp(take, 1, 200),
+            cancellationToken).ConfigureAwait(false);
+        return Results.Ok(logs);
     }
 
 }

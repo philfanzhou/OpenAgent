@@ -129,6 +129,33 @@ export interface TokenUsage {
   reasoningTokens?: number | null
 }
 
+/** 一次大模型交互的完整脱敏日志（后端 llm_interaction_logs 记录）。 */
+export interface LlmInteractionRecord {
+  interactionId: string
+  tenantId: string
+  userId: string
+  conversationId?: string | null
+  traceId: string
+  agentId?: string | null
+  /** 0=AgentTurn（对话轮次），1=Compaction（压缩摘要）。 */
+  source: number
+  provider?: string | null
+  apiFormat?: string | null
+  modelId: string
+  streamed: boolean
+  callIndex: number
+  /** 脱敏后的请求载荷 JSON 字符串（messages + options）。 */
+  requestJson?: string | null
+  /** 脱敏后的响应载荷 JSON 字符串（contents + usage）；失败时可能为空。 */
+  responseJson?: string | null
+  tokenUsage?: TokenUsage | null
+  /** 0=Succeeded，1=Failed，2=Cancelled。 */
+  status: number
+  errorMessage?: string | null
+  startedAt: string
+  durationMs: number
+}
+
 export interface McpServerConfig {
   name: string
   url: string

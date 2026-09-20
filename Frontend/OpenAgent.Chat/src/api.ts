@@ -12,6 +12,7 @@ import type {
   HealthEntry,
   HealthReport,
   HealthReportItem,
+  LlmInteractionRecord,
   LlmProviderProfile,
   LlmTestResult,
   MessageFile,
@@ -314,6 +315,10 @@ export const api = {
 
   listConversations(): Promise<ConversationRecord[]> {
     return request<ConversationRecord[]>('/api/v1/agent/conversations?skip=0&take=1000')
+  },
+
+  listLlmInteractions(conversationId: string, skip = 0, take = 200): Promise<LlmInteractionRecord[]> {
+    return request<LlmInteractionRecord[]>(`/api/v1/agent/conversations/${encodeURIComponent(conversationId)}/llm-interactions?skip=${skip}&take=${take}`)
   },
 
   getConversation(id: string): Promise<ConversationRecord> {

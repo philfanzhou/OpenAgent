@@ -16,6 +16,8 @@ internal static class ConversationServiceExtensions
     {
         services.Configure<ConversationStoreOptions>(
             configuration.GetSection(ConversationStoreOptions.SectionName));
+        services.Configure<LlmInteractionOptions>(
+            configuration.GetSection(LlmInteractionOptions.SectionName));
         services.TryAddSingleton<IConversationLock, InMemoryConversationLock>();
         services.AddScoped<ConversationSessionStore>();
         services.AddScoped<ConversationAgentResolver>();

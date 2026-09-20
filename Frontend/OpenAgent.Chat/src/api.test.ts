@@ -395,6 +395,23 @@ describe('workspace API', () => {
     )
   })
 
+  it('pages llm interactions with an encoded conversation id', async () => {
+    setConnectionMode('router')
+    setRouterBaseUrl('http://router.example/')
+    const fetchMock = vi.fn().mockResolvedValue(new Response('[]', {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(api.listLlmInteractions('conversation/1', 40, 100)).resolves.toEqual([])
+
+    expect(fetchMock).toHaveBeenCalledOnce()
+    expect(vi.mocked(fetch).mock.calls[0]?.[0]).toBe(
+      'http://router.example/api/v1/agent/conversations/conversation%2F1/llm-interactions?skip=40&take=100',
+    )
+  })
+
   it('manually triggers conversation compaction with an encoded conversation id', async () => {
     setConnectionMode('engine')
     setEngineBaseUrl('http://engine.example/')

@@ -98,6 +98,23 @@ public static class RouterEndpointExtensions
                     httpClient,
                     requestConfig,
                     requireAuthentication: true));
+        app.MapGet(
+            "/api/v1/agent/conversations/{conversationId}/llm-interactions",
+            (
+                HttpContext context,
+                IHttpForwarder forwarder,
+                IAgentUserContext userContext,
+                IRouteTable routeTable,
+                ILogger<Program> logger) =>
+                GatewayProxyHandler.HandleAsync(
+                    context,
+                    forwarder,
+                    userContext,
+                    routeTable,
+                    logger,
+                    httpClient,
+                    requestConfig,
+                    requireAuthentication: true));
         app.MapGet("/api/v1/agent/me", (
             HttpContext context,
             IHttpForwarder forwarder,

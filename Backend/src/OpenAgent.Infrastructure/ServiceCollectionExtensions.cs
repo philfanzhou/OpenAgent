@@ -11,6 +11,7 @@ using OpenAgent.Contracts.Infrastructure;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Contracts.Skills;
 using OpenAgent.Infrastructure.Configuration;
+using OpenAgent.Infrastructure.Conversations;
 using OpenAgent.Infrastructure.Skills;
 using OpenAgent.Infrastructure.Security;
 using StackExchange.Redis;
@@ -44,6 +45,8 @@ public static class ServiceCollectionExtensions
         // by a singleton registration.
         services.AddScoped<EfCoreConversationStore>();
         services.AddScoped<IThirdPartyApiKeyIdentityResolver, EfThirdPartyApiKeyIdentityResolver>();
+        // 交互日志只有持久化实现：与 conversation_messages 一样落 PostgreSQL，无进程内降级。
+        services.AddSingleton<ILlmInteractionStore, EfCoreLlmInteractionStore>();
         services.AddSingleton<IFileAssetRepository, EfCoreFileAssetRepository>();
         services.AddSingleton<IFileShareRepository, EfCoreFileShareRepository>();
         services.AddSingleton<ISkillDefinitionRepository, EfCoreSkillDefinitionRepository>();
