@@ -27,6 +27,7 @@ public class CapabilityServiceRegistrationTests
         services.AddSingleton<ICurrentUserContext, TestUserContext>();
         services.AddSingleton<IConversationStore, InMemoryConversationStore>();
         services.AddSingleton<IFileAssetRepository, EmptyFileAssetRepository>();
+        services.AddSingleton<ILlmInteractionStore, EmptyInteractionStore>();
         IConfiguration configuration = new ConfigurationBuilder().Build();
         services.AddSingleton(configuration);
         services.AddAgentCore(configuration);
@@ -82,6 +83,20 @@ public class CapabilityServiceRegistrationTests
             string tenantId,
             CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<LlmProviderProfile>>([]);
+    }
+
+    private sealed class EmptyInteractionStore : ILlmInteractionStore
+    {
+        public Task RecordAsync(LlmInteractionRecord record, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+
+        public Task<IReadOnlyList<LlmInteractionRecord>> ListAsync(
+            string tenantId,
+            string conversationId,
+            int skip,
+            int take,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<LlmInteractionRecord>>([]);
     }
 
     private sealed class EmptyFileAssetRepository : IFileAssetRepository
