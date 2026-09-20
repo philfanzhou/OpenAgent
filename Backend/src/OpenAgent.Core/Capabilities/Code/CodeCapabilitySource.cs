@@ -38,8 +38,10 @@ internal sealed class CodeCapabilitySource(
                 + "Python ships pandas, matplotlib, openpyxl, XlsxWriter, python-pptx and Pillow. "
                 + "Mount conversation files read-only via inputFiles at /input/<name>; main.py/main.mjs are reserved. "
                 + "Write deliverables under /output (max 8 files, 10 MiB each, 20 MiB total) and print concise results. "
-                + "On failure inspect exitCode/stderr and retry with fixes; calls in one conversation share a sandbox "
-                + "workspace (mounted inputs persist across calls, /output and /work do not). "
+                + "Calls in one conversation share a persistent sandbox: files you write under /work, /tmp and /input "
+                + "survive between calls until roughly two hours of inactivity, when the sandbox is reclaimed "
+                + "(the result then carries sandboxReset=true and earlier files are gone). "
+                + "On failure inspect exitCode/stderr and retry with fixes. "
                 + "Deliver returned files with publish_files.",
                 """{"type":"object","properties":{"code":{"type":"string"},"language":{"type":"string","enum":["python","javascript"],"description":"Execution language; defaults to python."},"inputFiles":{"type":"array","maxItems":8,"items":{"type":"object","properties":{"fileId":{"type":"string"},"name":{"type":"string"}},"required":["fileId","name"],"additionalProperties":false}}},"required":["code"],"additionalProperties":false}""",
                 AgentResourceType.Tool,
@@ -115,7 +117,8 @@ internal sealed class CodeCapabilitySource(
                 result, files, scope, cancellationToken).ConfigureAwait(false);
             return JsonSerializer.Serialize(new
             {
-                result.ExecutionId, result.ExitCode, result.TimedOut, result.Stdout, result.Stderr, files = artifacts
+                result.ExecutionId, result.ExitCode, result.TimedOut, result.Stdout, result.Stderr,
+                result.SandboxReset, files = artifacts
             }, JsonOptions);
         }
         catch (Exception exception) when (exception is ArgumentException or JsonException or AgentException)

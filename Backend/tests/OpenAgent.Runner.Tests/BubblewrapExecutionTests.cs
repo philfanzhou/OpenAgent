@@ -421,6 +421,7 @@ public class BubblewrapExecutionTests
     {
         internal string Root { get; } = Path.Combine(Path.GetTempPath(), "codeact-tests-" + Guid.NewGuid().ToString("N"));
         internal BubblewrapProcess Bubblewrap { get; }
+        internal SessionSandboxManager Manager { get; }
         internal BubblewrapCodeExecutor Executor { get; }
 
         internal Runtime(int timeoutSeconds = 120, int memoryMiB = 1536)
@@ -436,7 +437,8 @@ public class BubblewrapExecutionTests
                 MemoryMiB = memoryMiB
             });
             Bubblewrap = new BubblewrapProcess(settings, NullLogger<BubblewrapProcess>.Instance);
-            Executor = new BubblewrapCodeExecutor(Bubblewrap, settings, NullLogger<BubblewrapCodeExecutor>.Instance);
+            Manager = new SessionSandboxManager(Bubblewrap, settings, NullLogger<SessionSandboxManager>.Instance);
+            Executor = new BubblewrapCodeExecutor(Bubblewrap, Manager, settings, NullLogger<BubblewrapCodeExecutor>.Instance);
         }
 
         internal async Task WaitForSandboxAsync()

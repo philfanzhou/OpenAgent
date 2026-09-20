@@ -200,8 +200,8 @@ internal sealed class SkillScriptRunner(
             },
             Language = language,
             EntryFileName = WrapperEntry(language),
-            // Reuse one sandbox workspace across the runs of a conversation so the
-            // mounted package survives; ids outside the safe charset run stateless.
+            // Reuse one persistent sandbox across the runs of a conversation so the
+            // package survives; ids outside the safe charset run stateless.
             SessionKey = ExecutionLimits.IsSafeSessionKey(scope.ConversationId)
                 ? scope.ConversationId
                 : null

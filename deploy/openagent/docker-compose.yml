@@ -59,12 +59,13 @@ services:
     networks:
       - openagent
     # Nested Bubblewrap requires a dedicated trusted host/VM.
+    # Limits sized for the default MaxSessionSandboxes=64 persistent session sandboxes.
     privileged: true
     security_opt:
       - seccomp:unconfined
-    mem_limit: 2g
+    mem_limit: 8g
     cpus: 2
-    pids_limit: 256
+    pids_limit: 512
     healthcheck:
       test: ["CMD", "curl", "--fail", "--silent", "http://localhost:5209/health"]
       interval: 5s

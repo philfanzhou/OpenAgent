@@ -38,8 +38,10 @@ RemoveIPC=yes
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 ReadWritePaths=/var/lib/openagent-runner
 
-TasksMax=256
-MemoryMax=2G
+# Sized for the default MaxSessionSandboxes=64 persistent session sandboxes
+# (~15-25 MiB supervisor RSS each, plus tmpfs usage; idle sandboxes cost no CPU).
+TasksMax=512
+MemoryMax=8G
 CPUQuota=200%
 
 [Install]

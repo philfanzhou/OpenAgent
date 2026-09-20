@@ -11,7 +11,9 @@ Engine 通过 MAF `AIFunction` 暴露 `execute_code`。模型生成 Python（默
 ```text
 AgentExecutor → AgentFactory → CapabilityToolFactory → execute_code
   → RunnerClient → authenticated Runner /v1/execute
-    → BubblewrapCodeExecutor → bwrap process sandbox → restricted Python / Node
+    → BubblewrapCodeExecutor
+      ├─ 无会话键: bwrap 一次性进程沙箱 → execute.py（prlimit 包装）
+      └─ 会话键: SessionSandboxManager → 常驻 bwrap 沙箱 → supervisor.py（UDS 逐次执行）
   ← bounded logs + binary artifacts
   → FileAssetService.UploadAsync / EnsureReferencesAsync
   → model selects publish_files → assistant attachments
@@ -21,7 +23,8 @@ AgentExecutor → AgentFactory → CapabilityToolFactory → execute_code
 
 - `Backend/src/OpenAgent.Core/Capabilities/Code/CodeCapabilitySource.cs`
 - `Backend/src/OpenAgent.Runner/BubblewrapCodeExecutor.cs`
-- `Backend/src/OpenAgent.Runner/sandbox/execute.py`
+- `Backend/src/OpenAgent.Runner/SessionSandboxManager.cs`、`SessionSandbox.cs`
+- `Backend/src/OpenAgent.Runner/sandbox/execute.py`、`supervisor.py`、`execution_core.py`
 
 必须同时启用 Engine `CodeExecution:Enabled` 与 Agent `config.codeExecution.enabled`。发现和执行工具均经过平台授权。Runner 的运行时、配额和宿主目录只接受管理员配置，不是模型参数。
 
@@ -33,7 +36,7 @@ AgentExecutor → AgentFactory → CapabilityToolFactory → execute_code
 
 返回 `executionId`、`exitCode`、`timedOut`、`stdout`、`stderr` 和文件元数据数组。成功文件登记为当前用户的 FileAsset，并关联当前会话；只有模型调用 `publish_files` 后才发布到 assistant 消息。二进制字节只在 Runner 与 Engine 之间传输，不进入模型上下文。
 
-每次调用创建全新的 namespace、tmpfs 工作区和解释器进程。`/work` 保存临时工作，`/output` 保存交付文件；沙箱退出前由可信包装脚本验证并编码输出。携带 `SessionKey`（当前为会话 ID）的调用复用同一会话工作区：`/input` 挂载内容跨调用保留，`/work`、`/output` 与内存态仍按调用隔离；空闲超过 `SessionWorkspaceIdleMinutes`（默认 120 分钟）后由 `WorkspaceReaper` 清理。继续编辑产物时，仍显式将前次返回的 fileId 作为新调用输入。任务间不保留变量、后台进程或可写磁盘。输出只接受普通文件，拒绝符号链接、目录、特殊文件及危险名称。
+无 `SessionKey` 的调用每次创建全新的 namespace、tmpfs 工作区和解释器进程，退出即销毁。携带 `SessionKey`（当前为会话 ID）的调用复用一个常驻会话沙箱：沙箱内由可信 supervisor（UDS 单连接单请求）串行执行每次调用，`/work`、`/tmp`、`/input` 的文件与 `pip install --user` 安装的包跨调用保留；`/output` 中每次调用只返回新写入的文件（旧产物保留可读但不重复返回）。变量与后台进程不跨调用保留——每次调用结束即 kill 整个子进程组。空闲超过 `SessionIdleMinutes`（默认 120 分钟）后沙箱被回收；沙箱死亡或被回收后下一次调用自动重建全新沙箱，结果携带 `sandboxReset=true` 提示状态已丢失。容量由 `MaxSessionSandboxes`（默认 64）限制，满时驱逐最久空闲的沙箱。继续编辑历史产物时，仍显式将前次返回的 fileId 作为新调用输入。输出只接受普通文件，拒绝符号链接、目录、特殊文件及危险名称。
 
 ## 隔离边界
 
@@ -42,10 +45,10 @@ AgentExecutor → AgentFactory → CapabilityToolFactory → execute_code
 - 独立 user、PID、IPC、network、UTS namespace；cgroup namespace 在内核支持时启用。
 - 沙箱 UID/GID 为 65532；Bubblewrap 的非特权模式默认不向沙箱进程保留 capabilities；同时禁止继续创建 user namespace，并创建新会话。
 - 根文件系统从空 tmpfs 构造并整体重挂为只读，只读暴露 `/usr`、固定 Python venv 与 Node 运行时、最小 passwd/group 和字体配置。
-- 当前请求输入只读挂载到 `/input`；`/work`、`/output`、`/tmp` 使用独立、限额、退出即销毁的 tmpfs。
+- 一次性执行将请求输入只读挂载到 `/input`，tmpfs 退出即销毁；会话沙箱将请求输入经控制通道写入持久 `/input` tmpfs，并把仅含 supervisor socket 的通道目录以读写 bind 进沙箱（`/channel`），`/work`、`/output`、`/tmp` 同样为限额 tmpfs 但随沙箱存活。
 - 不挂载宿主 home、源码、服务配置、凭据、设备、Docker Socket、D-Bus socket 或网络。
-- `--clearenv` 后只注入固定的解释器/locale/语言/时限变量。
-- `prlimit` 限制地址空间、CPU 时间、进程数、打开文件数、单文件大小和 core dump；Runner 并发及 systemd cgroup 再限制节点总量。
+- `--clearenv` 后只注入固定的解释器/locale/语言/时限变量（会话模式下语言/入口/时限按次由 supervisor 注入子进程）。
+- 资源限制逐次施加：一次性执行由 `prlimit` 包装，会话执行由 supervisor 对每次调用的子进程 `setrlimit`（地址空间、CPU 时间、进程数、打开文件数、单文件大小、core dump 等价）；Runner 并发及 systemd cgroup 再限制节点总量。
 - 无宿主解释器回退；Bubblewrap、user namespace、Python venv 或 Node 运行时不可用时健康检查和执行均失败。
 
 Runner 控制服务属于可信控制面，只允许 Engine 经私网和服务令牌访问，并使用无登录、无 sudo、无 capabilities 的专用用户。systemd 进一步只开放工作目录写权限。
@@ -56,7 +59,7 @@ Bubblewrap 与 Docker 一样共享宿主 Linux 内核，不能视为抵御未知
 
 ## 超时、取消与故障
 
-沙箱包装脚本限制用户子进程墙钟时间，Runner 另有外部总截止时间。请求取消或外部截止时间到达时，Runner 终止 bwrap 进程树；`--die-with-parent` 确保 Runner 异常退出时沙箱同时退出。mount namespace 和 tmpfs 由内核自动清理，后台回收器只删除 Runner 崩溃遗留且超过一小时的请求输入目录。
+沙箱包装脚本限制用户子进程墙钟时间，Runner 另有外部总截止时间。一次性执行的请求取消或外部截止时间到达时，Runner 终止 bwrap 进程树；会话沙箱只终止当次调用的子进程组（客户端断开即提前终止），沙箱本身存活，仅在外部截止（supervisor 失去响应）时销毁重建并在下一次调用报告 `sandboxReset`。`--die-with-parent` 确保 Runner 异常退出时全部沙箱同时退出；mount namespace 和 tmpfs 由内核自动清理，后台回收器按空闲期回收会话沙箱，并清扫 Runner 崩溃遗留且超过一小时的请求输入目录。
 
 Engine 每请求默认最多执行 8 次代码，MAF 的 MaxTurns 继续约束模型循环。普通脚本错误通过 stderr 返回供模型修正。网络错误、Runner 不可用、超时和取消不会降级为宿主执行。
 

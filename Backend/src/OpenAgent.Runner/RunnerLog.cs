@@ -16,4 +16,16 @@ internal static partial class RunnerLog
 
     [LoggerMessage(5304, LogLevel.Error, "Code execution {ExecutionId} sandbox {Phase} failed. Detail={Detail}")]
     internal static partial void EnvironmentFailed(ILogger logger, string executionId, string phase, string detail);
+
+    [LoggerMessage(5305, LogLevel.Information, "Session sandbox {SessionKey} spawned.")]
+    internal static partial void SandboxSpawned(ILogger logger, string sessionKey);
+
+    [LoggerMessage(5306, LogLevel.Information, "Session sandbox {SessionKey} released. Reason={Reason}")]
+    internal static partial void SandboxReleased(ILogger logger, string sessionKey, string reason);
+
+    [LoggerMessage(5307, LogLevel.Warning, "Session sandbox {SessionKey} died and was respawned.")]
+    internal static partial void SandboxReset(ILogger logger, string sessionKey);
+
+    [LoggerMessage(5308, LogLevel.Information, "Session sandbox {SessionKey} evicted for capacity (limit {Limit}).")]
+    internal static partial void SandboxEvicted(ILogger logger, string sessionKey, int limit);
 }

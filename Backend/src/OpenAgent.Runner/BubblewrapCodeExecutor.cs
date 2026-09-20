@@ -9,14 +9,14 @@ using OpenAgent.Contracts.Execution;
 namespace OpenAgent.Runner;
 
 internal sealed class BubblewrapCodeExecutor(
-    BubblewrapProcess bubblewrap, IOptions<RunnerOptions> options, ILogger<BubblewrapCodeExecutor> logger) : ICodeExecutor
+    BubblewrapProcess bubblewrap, SessionSandboxManager sessions, IOptions<RunnerOptions> options,
+    ILogger<BubblewrapCodeExecutor> logger) : ICodeExecutor
 {
     private const int OutputMiB = 32;
     private const int TempMiB = 64;
-    private const string SessionWorkspacePrefix = "session-";
+    private const int InputMiB = 64;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly SemaphoreSlim _slots = new(options.Value.MaxConcurrentExecutions);
-    private readonly ConcurrentDictionary<string, SemaphoreSlim> _sessionLocks = new(StringComparer.Ordinal);
     private readonly string _sandboxFilesDirectory = Path.Combine(AppContext.BaseDirectory, "sandbox");
 
     public async Task<CodeExecutionResult> ExecuteAsync(CodeExecutionRequest request, CancellationToken cancellationToken)
@@ -32,30 +32,38 @@ internal sealed class BubblewrapCodeExecutor(
         {
             throw new RunnerBusyException();
         }
-
-        // Same-session executions serialize on one workspace so mounted inputs are
-        // never overwritten mid-run; the global slots cap total sandbox concurrency.
-        SemaphoreSlim? sessionLock = null;
-        if (!string.IsNullOrWhiteSpace(request.SessionKey))
-        {
-            sessionLock = _sessionLocks.GetOrAdd(request.SessionKey, _ => new SemaphoreSlim(1, 1));
-            if (!await sessionLock.WaitAsync(0, cancellationToken).ConfigureAwait(false))
-            {
-                _slots.Release();
-                throw new RunnerBusyException();
-            }
-        }
-
-        RunnerOptions settings = options.Value;
         string executionId = Guid.NewGuid().ToString("N");
-        // Session-keyed workspaces survive between executions of one conversation;
-        // WorkspaceReaper removes them after the configured idle period. Everything
-        // else gets a fresh directory that is torn down immediately.
-        bool reusableWorkspace = !string.IsNullOrWhiteSpace(request.SessionKey);
-        string workspaceName = reusableWorkspace
-            ? SessionWorkspacePrefix + request.SessionKey
-            : executionId;
-        string directory = Path.Combine(settings.WorkspaceRoot, workspaceName);
+        try
+        {
+            // Session-keyed requests reuse one persistent sandbox owned by the manager;
+            // everything else runs in a fresh sandbox that is torn down immediately.
+            return string.IsNullOrWhiteSpace(request.SessionKey)
+                ? await ExecuteEphemerallyAsync(request, language, executionId, cancellationToken).ConfigureAwait(false)
+                : await ExecuteInSessionAsync(request, executionId, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _slots.Release();
+        }
+    }
+
+    private async Task<CodeExecutionResult> ExecuteInSessionAsync(
+        CodeExecutionRequest request, string executionId, CancellationToken cancellationToken)
+    {
+        RunnerLog.Started(logger, executionId, Activity.Current?.TraceId.ToString() ?? string.Empty);
+        Stopwatch watch = Stopwatch.StartNew();
+        CodeExecutionResult result = await sessions.ExecuteAsync(request.SessionKey!, request, cancellationToken)
+            .ConfigureAwait(false);
+        result.ExecutionId = executionId;
+        RunnerLog.Completed(logger, executionId, result.ExitCode, watch.ElapsedMilliseconds);
+        return result;
+    }
+
+    private async Task<CodeExecutionResult> ExecuteEphemerallyAsync(
+        CodeExecutionRequest request, string language, string executionId, CancellationToken cancellationToken)
+    {
+        RunnerOptions settings = options.Value;
+        string directory = Path.Combine(settings.WorkspaceRoot, executionId);
         string entryFileName = string.IsNullOrWhiteSpace(request.EntryFileName)
             ? ExecutionLanguage.EntryFileName(language)
             : request.EntryFileName!;
@@ -66,7 +74,7 @@ internal sealed class BubblewrapCodeExecutor(
         try
         {
             Directory.CreateDirectory(directory);
-            if (!OperatingSystem.IsWindows())
+            if (OperatingSystem.IsLinux())
             {
                 File.SetUnixFileMode(directory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
             }
@@ -127,7 +135,7 @@ internal sealed class BubblewrapCodeExecutor(
         {
             try
             {
-                if (!reusableWorkspace && Directory.Exists(directory))
+                if (Directory.Exists(directory))
                 {
                     Directory.Delete(directory, recursive: true);
                 }
@@ -136,11 +144,6 @@ internal sealed class BubblewrapCodeExecutor(
             {
                 RunnerLog.CleanupFailed(logger, executionId);
                 throw new InvalidOperationException("Sandbox workspace teardown could not be confirmed; recovery is pending.");
-            }
-            finally
-            {
-                sessionLock?.Release();
-                _slots.Release();
             }
         }
     }
@@ -161,10 +164,7 @@ internal sealed class BubblewrapCodeExecutor(
     {
         string pythonRoot = RuntimeRoot(settings.PythonPath, "Python");
         string nodeRoot = RuntimeRoot(settings.NodePath, "Node");
-        string path = string.Join(":", new[] { pythonRoot, nodeRoot, "/usr" }
-            .Distinct(StringComparer.Ordinal)
-            .Select(root => root == "/usr" ? "/usr/bin" : root + "/bin")
-            .Append("/bin"));
+        string path = RuntimePath(pythonRoot, nodeRoot);
         var arguments = new List<string>
         {
             "--unshare-user", "--unshare-ipc", "--unshare-pid", "--unshare-net", "--unshare-uts",
@@ -211,14 +211,7 @@ internal sealed class BubblewrapCodeExecutor(
             "--setenv", "EXECUTION_ENTRY", entryFileName ?? ExecutionLanguage.EntryFileName(language)
         };
 
-        foreach (string root in new[] { pythonRoot, nodeRoot }.Distinct(StringComparer.Ordinal))
-        {
-            if (!root.Equals("/usr", StringComparison.Ordinal)
-                && !root.StartsWith("/usr/", StringComparison.Ordinal))
-            {
-                arguments.AddRange(["--ro-bind", root, root]);
-            }
-        }
+        AddRuntimeBinds(arguments, pythonRoot, nodeRoot);
 
         // Seal the synthetic root only after every optional parent path has
         // been created by Bubblewrap for the explicit mounts above.
@@ -235,6 +228,91 @@ internal sealed class BubblewrapCodeExecutor(
         return arguments;
     }
 
+    /// <summary>
+    /// Arguments for a persistent session sandbox: same namespaces and hardening as the
+    /// ephemeral variant, but with a read-write control channel, a persistent /input
+    /// tmpfs and the long-lived supervisor instead of the one-shot entry point.
+    /// </summary>
+    internal static IReadOnlyList<string> BuildSessionArguments(
+        RunnerOptions settings, string channelDirectory, string sandboxFilesDirectory)
+    {
+        string pythonRoot = RuntimeRoot(settings.PythonPath, "Python");
+        string nodeRoot = RuntimeRoot(settings.NodePath, "Node");
+        var arguments = new List<string>
+        {
+            "--unshare-user", "--unshare-ipc", "--unshare-pid", "--unshare-net", "--unshare-uts",
+            "--unshare-cgroup-try", "--disable-userns", "--new-session", "--die-with-parent",
+            "--uid", "65532", "--gid", "65532", "--hostname", "openagent-sandbox",
+            "--clearenv",
+            "--ro-bind", "/usr", "/usr",
+            "--symlink", "usr/bin", "/bin",
+            "--symlink", "usr/lib", "/lib",
+            "--symlink", "usr/lib64", "/lib64",
+            "--symlink", "usr/sbin", "/sbin",
+            "--ro-bind-try", "/etc/fonts", "/etc/fonts",
+            "--ro-bind-try", "/etc/libreoffice", "/etc/libreoffice",
+            "--ro-bind-try", "/etc/ld.so.cache", "/etc/ld.so.cache",
+            "--ro-bind-try", "/etc/localtime", "/etc/localtime",
+            "--ro-bind", Path.Combine(sandboxFilesDirectory, "passwd"), "/etc/passwd",
+            "--ro-bind", Path.Combine(sandboxFilesDirectory, "group"), "/etc/group",
+            "--ro-bind", Path.Combine(sandboxFilesDirectory, "hosts"), "/etc/hosts",
+            "--ro-bind", Path.Combine(sandboxFilesDirectory, "nsswitch.conf"), "/etc/nsswitch.conf",
+            "--bind", channelDirectory, "/channel",
+            "--ro-bind", sandboxFilesDirectory, "/sandbox",
+            "--size", ToBytes(settings.WorkspaceMiB), "--perms", "1777", "--tmpfs", "/work",
+            "--size", ToBytes(OutputMiB), "--perms", "1777", "--tmpfs", "/output",
+            "--size", ToBytes(TempMiB), "--perms", "1777", "--tmpfs", "/tmp",
+            "--size", ToBytes(InputMiB), "--perms", "1777", "--tmpfs", "/input",
+            "--perms", "1777", "--tmpfs", "/run",
+            "--dir", "/var", "--symlink", "../tmp", "/var/tmp", "--dir", "/home",
+            "--proc", "/proc", "--dev", "/dev", "--chdir", "/work",
+            "--setenv", "PATH", RuntimePath(pythonRoot, nodeRoot),
+            "--setenv", "HOME", "/tmp/home",
+            "--setenv", "TMPDIR", "/tmp",
+            "--setenv", "XDG_RUNTIME_DIR", "/tmp/runtime",
+            "--setenv", "LANG", "C.UTF-8",
+            "--setenv", "PYTHONDONTWRITEBYTECODE", "1",
+            "--setenv", "MPLBACKEND", "Agg",
+            "--setenv", "MPLCONFIGDIR", "/tmp/matplotlib",
+            "--setenv", "SAL_USE_VCLPLUGIN", "svp",
+            "--setenv", "OMP_NUM_THREADS", "1",
+            "--setenv", "OPENBLAS_NUM_THREADS", "1",
+            "--setenv", "MKL_NUM_THREADS", "1",
+            "--setenv", "NUMEXPR_NUM_THREADS", "1",
+            "--setenv", "EXECUTION_NODE", settings.NodePath,
+            "--setenv", "SANDBOX_AS_BYTES", ToBytes(settings.MemoryMiB),
+            "--setenv", "SANDBOX_NPROC", settings.MaxProcesses.ToString(CultureInfo.InvariantCulture),
+            "--setenv", "SANDBOX_NOFILE", "256",
+            "--setenv", "SANDBOX_FSIZE", ToBytes(ExecutionLimits.MaxTotalFileBytes / 1024 / 1024),
+            "--setenv", "SANDBOX_TIMEOUT", settings.TimeoutSeconds.ToString(CultureInfo.InvariantCulture),
+            "--setenv", "SANDBOX_MAX_IDLE_SECONDS",
+            (settings.SessionIdleMinutes * 60 + 300).ToString(CultureInfo.InvariantCulture)
+        };
+
+        AddRuntimeBinds(arguments, pythonRoot, nodeRoot);
+        arguments.AddRange(["--remount-ro", "/"]);
+        arguments.AddRange(["--", settings.PythonPath, "-I", "/sandbox/supervisor.py"]);
+        return arguments;
+    }
+
+    private static string RuntimePath(string pythonRoot, string nodeRoot) =>
+        string.Join(":", new[] { pythonRoot, nodeRoot, "/usr" }
+            .Distinct(StringComparer.Ordinal)
+            .Select(root => root == "/usr" ? "/usr/bin" : root + "/bin")
+            .Append("/bin"));
+
+    private static void AddRuntimeBinds(List<string> arguments, string pythonRoot, string nodeRoot)
+    {
+        foreach (string root in new[] { pythonRoot, nodeRoot }.Distinct(StringComparer.Ordinal))
+        {
+            if (!root.Equals("/usr", StringComparison.Ordinal)
+                && !root.StartsWith("/usr/", StringComparison.Ordinal))
+            {
+                arguments.AddRange(["--ro-bind", root, root]);
+            }
+        }
+    }
+
     internal static IReadOnlyList<string> BuildProbeArguments() =>
     [
         "--unshare-user", "--unshare-ipc", "--unshare-pid", "--unshare-net", "--unshare-uts",
@@ -242,7 +320,7 @@ internal sealed class BubblewrapCodeExecutor(
         "--uid", "65532", "--gid", "65532",
         "--clearenv", "--ro-bind", "/usr", "/usr", "--symlink", "usr/bin", "/bin",
         "--symlink", "usr/lib", "/lib", "--symlink", "usr/lib64", "/lib64",
-        "--proc", "/proc", "--dev", "/dev", "--", "/bin/true"
+        "--symlink", "usr/sbin", "/sbin", "--proc", "/proc", "--dev", "/dev", "--", "/bin/true"
     ];
 
     private static string RuntimeRoot(string executablePath, string name) =>
