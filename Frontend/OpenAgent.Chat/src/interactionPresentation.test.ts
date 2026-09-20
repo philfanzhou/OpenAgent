@@ -1,13 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  classifyInteraction,
   collectAllInteractions,
   copyInteractionText,
   formatInteractionTime,
-  interactionSourceLabel,
   interactionStatusLabel,
   interactionStatusTagType,
   prettyInteractionPayload,
   shortTraceId,
+  toolCategory,
 } from './interactionPresentation'
 import type { LlmInteractionRecord } from './types'
 
@@ -59,15 +60,95 @@ describe('collectAllInteractions', () => {
 })
 
 describe('interaction labels', () => {
-  it('maps source and status enums to display text', () => {
-    expect(interactionSourceLabel(0)).toBe('对话轮次')
-    expect(interactionSourceLabel(1)).toBe('压缩摘要')
+  it('maps status enums to display text', () => {
     expect(interactionStatusLabel(0)).toBe('成功')
     expect(interactionStatusLabel(1)).toBe('失败')
     expect(interactionStatusLabel(2)).toBe('已取消')
     expect(interactionStatusTagType(0)).toBe('success')
     expect(interactionStatusTagType(1)).toBe('danger')
     expect(interactionStatusTagType(2)).toBe('info')
+  })
+})
+
+describe('toolCategory', () => {
+  it('maps builtin tools to fine-grained categories and MCP tools to their server', () => {
+    expect(toolCategory('execute_code')).toBe('代码执行')
+    expect(toolCategory('read_file')).toBe('文件')
+    expect(toolCategory('create_file_transfer_url')).toBe('文件')
+    expect(toolCategory('load_skill')).toBe('技能')
+    expect(toolCategory('run_skill_script')).toBe('技能')
+    expect(toolCategory('get_current_user_profile')).toBe('用户信息')
+    expect(toolCategory('search_knowledge_base')).toBe('知识库')
+    expect(toolCategory('mcp__github__create_issue')).toBe('MCP·github')
+    expect(toolCategory('mcp__x')).toBe('MCP')
+    expect(toolCategory('custom_unknown')).toBe('其他')
+  })
+})
+
+describe('classifyInteraction', () => {
+  function payloadRecord(fields: { source?: number; request?: unknown; response?: unknown }): LlmInteractionRecord {
+    return {
+      ...record('c-1'),
+      source: fields.source ?? 0,
+      requestJson: fields.request === undefined ? undefined : JSON.stringify(fields.request),
+      responseJson: fields.response === undefined ? undefined : JSON.stringify(fields.response),
+    }
+  }
+
+  it('classifies compaction source as its own category', () => {
+    const result = classifyInteraction(payloadRecord({ source: 1 }))
+    expect(result.primary).toBe('压缩摘要')
+    expect(result.tags).toEqual([])
+  })
+
+  it('classifies model tool calls with deduped fine-grained tags', () => {
+    const result = classifyInteraction(payloadRecord({
+      response: { messages: [{ contents: [
+        { kind: 'functionCall', name: 'load_skill' },
+        { kind: 'functionCall', name: 'run_skill_script' },
+        { kind: 'functionCall', name: 'read_file' },
+        { kind: 'functionCall', name: 'mcp__github__create_issue' },
+      ] }] },
+    }))
+    expect(result.primary).toBe('工具调用')
+    expect(result.tags).toEqual(['技能', '文件', 'MCP·github'])
+    expect(result.toolNames).toEqual(['load_skill', 'run_skill_script', 'read_file', 'mcp__github__create_issue'])
+  })
+
+  it('classifies follow-up calls fed with tool results', () => {
+    const result = classifyInteraction(payloadRecord({
+      request: { messages: [
+        { contents: [{ kind: 'text', text: 'q' }] },
+        { contents: [{ kind: 'functionResult', callId: 'c1', result: 'ok' }] },
+      ] },
+      response: { messages: [{ contents: [{ kind: 'text', text: 'answer' }] }] },
+    }))
+    expect(result.primary).toBe('工具结果')
+  })
+
+  it('classifies plain turns as chat and flags image data contents', () => {
+    const plain = classifyInteraction(payloadRecord({
+      request: { messages: [{ contents: [{ kind: 'text', text: 'hi' }] }] },
+      response: { messages: [{ contents: [{ kind: 'text', text: 'ok' }] }] },
+    }))
+    expect(plain.primary).toBe('会话')
+    expect(plain.tags).toEqual([])
+
+    const withImage = classifyInteraction(payloadRecord({
+      request: { messages: [{ contents: [
+        { kind: 'text', text: 'look' },
+        { kind: 'data', mediaType: 'image/png', bytes: 70 },
+      ] }] },
+      response: { messages: [{ contents: [{ kind: 'text', text: 'ok' }] }] },
+    }))
+    expect(withImage.primary).toBe('会话')
+    expect(withImage.tags).toEqual(['图片'])
+  })
+
+  it('degrades to source-based classification when payloads are truncated', () => {
+    const result = classifyInteraction({ ...record('c-9'), requestJson: '{"a":"…', responseJson: '{"b":"…' })
+    expect(result.primary).toBe('会话')
+    expect(result.tags).toEqual([])
   })
 })
 

@@ -1,16 +1,17 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { api } from '../api'
 import {
+  classifyInteraction,
   collectAllInteractions,
   copyInteractionText,
   formatInteractionTime,
-  interactionSourceLabel,
   interactionStatusLabel,
   interactionStatusTagType,
   prettyInteractionPayload,
   shortTraceId,
+  type InteractionCategory,
 } from '../interactionPresentation'
 import type { LlmInteractionRecord } from '../types'
 
@@ -25,6 +26,23 @@ const emit = defineEmits<{ 'update:open': [value: boolean] }>()
 const loading = ref(false)
 const records = ref<LlmInteractionRecord[]>([])
 const loadError = ref('')
+
+/** 与 records 索引对齐的逐行分类，加载时一次算好。 */
+const categories = computed<InteractionCategory[]>(() => records.value.map(classifyInteraction))
+
+function categoryText(category: InteractionCategory): string {
+  return category.tags.length > 0 ? `${category.primary}·${category.tags.join('·')}` : category.primary
+}
+
+function categoryTooltip(category: InteractionCategory): string {
+  const parts = [categoryText(category)]
+  if (category.toolNames.length > 0) parts.push(`工具: ${category.toolNames.join(', ')}`)
+  return parts.join('\n')
+}
+
+function categoryAt(index: number): InteractionCategory {
+  return categories.value[index] ?? { primary: '—', tags: [], toolNames: [] }
+}
 
 async function load(): Promise<void> {
   if (!props.conversationId) return
@@ -137,10 +155,10 @@ async function copyPayload(kind: 'request' | 'response', payload: string | null 
       <el-table-column label="轮次 TraceId" width="130">
         <template #default="scope"><code :title="`点击复制 ${scope.row.traceId}`" role="button" tabindex="0" @click="copyTraceId(scope.row.traceId)" @keydown.enter="copyTraceId(scope.row.traceId)">{{ shortTraceId(scope.row.traceId) }}</code></template>
       </el-table-column>
-      <el-table-column label="来源" width="96">
-        <template #default="scope">{{ interactionSourceLabel(scope.row.source) }}</template>
+      <el-table-column label="类别" min-width="130">
+        <template #default="scope"><span :title="categoryTooltip(categoryAt(scope.$index))">{{ categoryText(categoryAt(scope.$index)) }}</span></template>
       </el-table-column>
-      <el-table-column label="模型" min-width="130" show-overflow-tooltip>
+      <el-table-column label="模型" width="96" show-overflow-tooltip>
         <template #default="scope">{{ scope.row.modelId }}</template>
       </el-table-column>
       <el-table-column label="状态" width="90">
