@@ -152,11 +152,11 @@ async function copyPayload(kind: 'request' | 'response', payload: string | null 
       <el-table-column label="时间" width="96">
         <template #default="scope">{{ formatInteractionTime(scope.row.startedAt) }}</template>
       </el-table-column>
-      <el-table-column label="轮次 TraceId" width="130">
+      <el-table-column label="轮次 TraceId" min-width="180">
         <template #default="scope"><code :title="`点击复制 ${scope.row.traceId}`" role="button" tabindex="0" @click="copyTraceId(scope.row.traceId)" @keydown.enter="copyTraceId(scope.row.traceId)">{{ shortTraceId(scope.row.traceId) }}</code></template>
       </el-table-column>
-      <el-table-column label="类别" min-width="130">
-        <template #default="scope"><span :title="categoryTooltip(categoryAt(scope.$index))">{{ categoryText(categoryAt(scope.$index)) }}</span></template>
+      <el-table-column label="类别" width="100">
+        <template #default="scope"><span class="interaction-category" :title="categoryTooltip(categoryAt(scope.$index))">{{ categoryText(categoryAt(scope.$index)) }}</span></template>
       </el-table-column>
       <el-table-column label="模型" width="96" show-overflow-tooltip>
         <template #default="scope">{{ scope.row.modelId }}</template>
@@ -206,6 +206,13 @@ async function copyPayload(kind: 'request' | 'response', payload: string | null 
 .interaction-debug-table code:hover {
   color: var(--text);
   text-decoration: underline;
+}
+
+.interaction-category {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .interaction-detail {

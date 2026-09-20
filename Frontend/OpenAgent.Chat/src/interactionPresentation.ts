@@ -114,9 +114,9 @@ export function interactionStatusTagType(status: number): 'success' | 'danger' |
   return 'success'
 }
 
-/** TraceId 通常较长，表格内只显示前 8 位，完整值放 title 提示。 */
+/** TraceId 通常较长，表格内只显示前 16 位，完整值放 title 提示。 */
 export function shortTraceId(traceId: string): string {
-  return traceId.length > 8 ? `${traceId.slice(0, 8)}…` : traceId
+  return traceId.length > 16 ? `${traceId.slice(0, 16)}…` : traceId
 }
 
 export function formatInteractionTime(startedAt: string): string {

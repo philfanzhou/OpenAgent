@@ -154,7 +154,7 @@ describe('classifyInteraction', () => {
 
 describe('trace and time formatting', () => {
   it('shortens long trace ids but keeps short ones intact', () => {
-    expect(shortTraceId('pr85-verify-turn-002')).toBe('pr85-ver…')
+    expect(shortTraceId('pr85-verify-turn-002')).toBe('pr85-verify-turn…')
     expect(shortTraceId('short')).toBe('short')
   })
 
