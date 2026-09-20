@@ -7,7 +7,6 @@ import {
   interactionStatusLabel,
   interactionStatusTagType,
   prettyInteractionPayload,
-  shortTraceId,
   toolCategory,
 } from './interactionPresentation'
 import type { LlmInteractionRecord } from './types'
@@ -115,7 +114,7 @@ describe('classifyInteraction', () => {
     expect(result.toolNames).toEqual(['load_skill', 'run_skill_script', 'read_file', 'mcp__github__create_issue'])
   })
 
-  it('classifies follow-up calls fed with tool results', () => {
+  it('classifies answer calls fed with tool results as chat after tools', () => {
     const result = classifyInteraction(payloadRecord({
       request: { messages: [
         { contents: [{ kind: 'text', text: 'q' }] },
@@ -123,7 +122,8 @@ describe('classifyInteraction', () => {
       ] },
       response: { messages: [{ contents: [{ kind: 'text', text: 'answer' }] }] },
     }))
-    expect(result.primary).toBe('工具结果')
+    expect(result.primary).toBe('会话')
+    expect(result.tags).toEqual(['工具后'])
   })
 
   it('classifies plain turns as chat and flags image data contents', () => {
@@ -153,11 +153,6 @@ describe('classifyInteraction', () => {
 })
 
 describe('trace and time formatting', () => {
-  it('shortens long trace ids but keeps short ones intact', () => {
-    expect(shortTraceId('pr85-verify-turn-002')).toBe('pr85-verify-turn…')
-    expect(shortTraceId('short')).toBe('short')
-  })
-
   it('formats interaction timestamps as local time', () => {
     expect(formatInteractionTime('2026-09-20T01:47:00Z')).toMatch(/^\d{2}:\d{2}:\d{2}$/)
     expect(formatInteractionTime('not-a-date')).toBe('not-a-date')

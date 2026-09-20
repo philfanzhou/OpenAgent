@@ -68,7 +68,8 @@ function parsePayload(payload?: string | null): { messages?: PayloadMessage[] | 
  * 按记录的实际载荷分类：
  * 1. source=Compaction → 压缩摘要；
  * 2. 响应含 functionCall → 工具调用，细分各工具类别（模型本轮要调的工具）；
- * 3. 请求末条消息是 functionResult → 工具结果（带着工具产物再次调用模型的续轮）；
+ * 3. 请求末条消息是 functionResult 且本次未再发起调用 → 会话·工具后
+ *    （模型消化工具结果后向用户作答的续轮）；
  * 4. 其余 → 会话。请求中出现二进制内容时追加"图片"标签。
  * 载荷被截断或不可解析时降级为按 source 的粗分类，绝不抛错。
  */
@@ -100,23 +101,17 @@ export function classifyInteraction(record: Pick<LlmInteractionRecord, 'source' 
     return { primary: '工具调用', tags, toolNames }
   }
 
+  const tags: string[] = []
   const lastMessage = messages[messages.length - 1]
-  if (lastMessage?.contents?.some(content => content?.kind === 'functionResult')) {
-    return { primary: '工具结果', tags: hasImage ? ['图片'] : [], toolNames }
-  }
-
-  return { primary: '会话', tags: hasImage ? ['图片'] : [], toolNames }
+  if (lastMessage?.contents?.some(content => content?.kind === 'functionResult')) tags.push('工具后')
+  if (hasImage) tags.push('图片')
+  return { primary: '会话', tags, toolNames }
 }
 
 export function interactionStatusTagType(status: number): 'success' | 'danger' | 'info' {
   if (status === 1) return 'danger'
   if (status === 2) return 'info'
   return 'success'
-}
-
-/** TraceId 通常较长，表格内只显示前 16 位，完整值放 title 提示。 */
-export function shortTraceId(traceId: string): string {
-  return traceId.length > 16 ? `${traceId.slice(0, 16)}…` : traceId
 }
 
 export function formatInteractionTime(startedAt: string): string {

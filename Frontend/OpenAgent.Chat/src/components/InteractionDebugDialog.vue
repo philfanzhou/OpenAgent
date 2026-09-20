@@ -10,7 +10,6 @@ import {
   interactionStatusLabel,
   interactionStatusTagType,
   prettyInteractionPayload,
-  shortTraceId,
   type InteractionCategory,
 } from '../interactionPresentation'
 import type { LlmInteractionRecord } from '../types'
@@ -152,8 +151,8 @@ async function copyPayload(kind: 'request' | 'response', payload: string | null 
       <el-table-column label="时间" width="96">
         <template #default="scope">{{ formatInteractionTime(scope.row.startedAt) }}</template>
       </el-table-column>
-      <el-table-column label="轮次 TraceId" min-width="180">
-        <template #default="scope"><code :title="`点击复制 ${scope.row.traceId}`" role="button" tabindex="0" @click="copyTraceId(scope.row.traceId)" @keydown.enter="copyTraceId(scope.row.traceId)">{{ shortTraceId(scope.row.traceId) }}</code></template>
+      <el-table-column label="轮次 TraceId" min-width="200">
+        <template #default="scope"><code :title="`点击复制 ${scope.row.traceId}`" role="button" tabindex="0" @click="copyTraceId(scope.row.traceId)" @keydown.enter="copyTraceId(scope.row.traceId)">{{ scope.row.traceId }}</code></template>
       </el-table-column>
       <el-table-column label="类别" width="100">
         <template #default="scope"><span class="interaction-category" :title="categoryTooltip(categoryAt(scope.$index))">{{ categoryText(categoryAt(scope.$index)) }}</span></template>
@@ -201,6 +200,7 @@ async function copyPayload(kind: 'request' | 'response', payload: string | null 
   font-family: var(--font-mono);
   font-size: 12px;
   cursor: pointer;
+  word-break: break-all;
 }
 
 .interaction-debug-table code:hover {
