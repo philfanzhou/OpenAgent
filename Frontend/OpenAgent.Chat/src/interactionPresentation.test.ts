@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   collectAllInteractions,
+  copyInteractionText,
   formatInteractionTime,
   interactionSourceLabel,
   interactionStatusLabel,
@@ -91,5 +92,56 @@ describe('prettyInteractionPayload', () => {
     expect(prettyInteractionPayload('{"a":"…')).toBe('{"a":"…')
     expect(prettyInteractionPayload(null)).toBe('')
     expect(prettyInteractionPayload(undefined)).toBe('')
+  })
+})
+
+describe('copyInteractionText', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('uses the Clipboard API when available', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal('navigator', { clipboard: { writeText } })
+
+    await copyInteractionText('trace-1')
+
+    expect(writeText).toHaveBeenCalledExactlyOnceWith('trace-1')
+  })
+
+  it('falls back to a hidden textarea with execCommand when the API is missing', async () => {
+    const textareas: Array<{ value: string; removed: boolean }> = []
+    const fakeDocument = {
+      createElement: () => {
+        const area = {
+          value: '',
+          removed: false,
+          style: {},
+          setAttribute: vi.fn(),
+          select: vi.fn(),
+          remove: vi.fn(function (this: { removed: boolean }) { this.removed = true }),
+        }
+        textareas.push(area)
+        return area
+      },
+      body: { appendChild: vi.fn() },
+      execCommand: vi.fn(() => true),
+    }
+    vi.stubGlobal('navigator', {})
+    vi.stubGlobal('document', fakeDocument)
+
+    await copyInteractionText('payload')
+
+    expect(fakeDocument.body.appendChild).toHaveBeenCalledOnce()
+    expect(fakeDocument.execCommand).toHaveBeenCalledWith('copy')
+    expect(textareas[0]?.value).toBe('payload')
+    expect(textareas[0]?.removed).toBe(true)
+  })
+
+  it('rejects when both clipboard paths are unavailable', async () => {
+    vi.stubGlobal('navigator', {})
+    vi.stubGlobal('document', { createElement: undefined })
+
+    await expect(copyInteractionText('x')).rejects.toThrow('Clipboard is unavailable')
   })
 })

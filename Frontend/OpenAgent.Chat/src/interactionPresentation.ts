@@ -52,3 +52,25 @@ export function prettyInteractionPayload(payload?: string | null): string {
     return payload
   }
 }
+
+/** 复制到剪贴板；无 Clipboard API 时降级为隐藏 textarea + execCommand。 */
+export async function copyInteractionText(text: string): Promise<void> {
+  const clipboard = globalThis.navigator?.clipboard
+  if (clipboard?.writeText) {
+    await clipboard.writeText(text)
+    return
+  }
+
+  const doc = globalThis.document
+  if (!doc?.createElement) throw new Error('Clipboard is unavailable')
+  const input = doc.createElement('textarea')
+  input.value = text
+  input.setAttribute('readonly', '')
+  input.style.position = 'fixed'
+  input.style.opacity = '0'
+  doc.body.appendChild(input)
+  input.select()
+  const copied = doc.execCommand('copy')
+  input.remove()
+  if (!copied) throw new Error('Clipboard is unavailable')
+}

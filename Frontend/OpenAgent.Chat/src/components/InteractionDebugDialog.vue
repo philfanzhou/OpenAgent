@@ -4,6 +4,7 @@ import { ElMessage } from 'element-plus'
 import { api } from '../api'
 import {
   collectAllInteractions,
+  copyInteractionText,
   formatInteractionTime,
   interactionSourceLabel,
   interactionStatusLabel,
@@ -55,6 +56,24 @@ watch(
 function notifyFailure(): void {
   if (loadError.value) ElMessage.error(loadError.value)
 }
+
+async function copyTraceId(traceId: string): Promise<void> {
+  try {
+    await copyInteractionText(traceId)
+    ElMessage.success('TraceId 已复制')
+  } catch {
+    ElMessage.warning('无法复制，请手动选择 TraceId')
+  }
+}
+
+async function copyPayload(kind: 'request' | 'response', payload: string | null | undefined): Promise<void> {
+  try {
+    await copyInteractionText(prettyInteractionPayload(payload))
+    ElMessage.success(kind === 'request' ? '请求载荷已复制' : '响应载荷已复制')
+  } catch {
+    ElMessage.warning('无法复制，请手动选择内容')
+  }
+}
 </script>
 
 <template>
@@ -95,24 +114,28 @@ function notifyFailure(): void {
           <div class="interaction-detail">
             <p v-if="scope.row.errorMessage" class="interaction-detail-error">错误：{{ scope.row.errorMessage }}</p>
             <div class="interaction-detail-block">
-              <span class="context-label">REQUEST</span>
+              <div class="interaction-detail-block-head">
+                <span class="context-label">REQUEST</span>
+                <el-button size="small" text :disabled="!scope.row.requestJson" @click="copyPayload('request', scope.row.requestJson)">复制</el-button>
+              </div>
               <pre>{{ prettyInteractionPayload(scope.row.requestJson) || '（未记录）' }}</pre>
             </div>
             <div class="interaction-detail-block">
-              <span class="context-label">RESPONSE</span>
+              <div class="interaction-detail-block-head">
+                <span class="context-label">RESPONSE</span>
+                <el-button size="small" text :disabled="!scope.row.responseJson" @click="copyPayload('response', scope.row.responseJson)">复制</el-button>
+              </div>
               <pre>{{ prettyInteractionPayload(scope.row.responseJson) || '（未记录）' }}</pre>
             </div>
           </div>
         </template>
       </el-table-column>
-      <el-table-column label="#" width="52">
-        <template #default="scope">{{ scope.row.callIndex }}</template>
-      </el-table-column>
+      <el-table-column type="index" label="#" width="52" />
       <el-table-column label="时间" width="96">
         <template #default="scope">{{ formatInteractionTime(scope.row.startedAt) }}</template>
       </el-table-column>
       <el-table-column label="轮次 TraceId" width="130">
-        <template #default="scope"><code :title="scope.row.traceId">{{ shortTraceId(scope.row.traceId) }}</code></template>
+        <template #default="scope"><code :title="`点击复制 ${scope.row.traceId}`" role="button" tabindex="0" @click="copyTraceId(scope.row.traceId)" @keydown.enter="copyTraceId(scope.row.traceId)">{{ shortTraceId(scope.row.traceId) }}</code></template>
       </el-table-column>
       <el-table-column label="来源" width="96">
         <template #default="scope">{{ interactionSourceLabel(scope.row.source) }}</template>
@@ -159,6 +182,12 @@ function notifyFailure(): void {
 .interaction-debug-table code {
   font-family: var(--font-mono);
   font-size: 12px;
+  cursor: pointer;
+}
+
+.interaction-debug-table code:hover {
+  color: var(--text);
+  text-decoration: underline;
 }
 
 .interaction-detail {
@@ -176,6 +205,13 @@ function notifyFailure(): void {
 .interaction-detail-block {
   display: grid;
   gap: 4px;
+}
+
+.interaction-detail-block-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .interaction-detail-block pre {
