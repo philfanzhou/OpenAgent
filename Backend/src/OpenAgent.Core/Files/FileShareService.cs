@@ -25,7 +25,7 @@ internal sealed class FileShareService(
         FileAsset? asset = await files.GetAsync(fileId, scope, cancellationToken).ConfigureAwait(false);
         if (asset == null)
         {
-            throw new AgentException(AgentErrorCode.InvalidRequest, $"File '{fileId}' was not found.");
+            throw new AgentException(AgentErrorCode.NotFound, $"File '{fileId}' was not found.");
         }
         if (asset.State != FileAssetState.Ready)
         {
