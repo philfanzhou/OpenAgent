@@ -18,6 +18,8 @@ public static class CoreServiceExtensions
         services.TryAddSingleton<IConfiguration>(configuration);
         services.AddHttpContextAccessor();
         services.Configure<McpExecutionOptions>(configuration.GetSection("Mcp"));
+        services.Configure<OpenAgent.Core.Runtime.Agent.AgentExecutionOptions>(
+            configuration.GetSection("AgentExecution"));
         services.Configure<AgentAuthorizationOptions>(configuration.GetSection("Authorization"));
         services.AddOptions<CodeExecutionOptions>().Bind(configuration.GetSection("CodeExecution"))
             .Validate(options => !options.Enabled ||

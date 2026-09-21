@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.DependencyInjection;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Requests;
@@ -177,6 +178,113 @@ public class ToolFailureIsolationTests
     }
 
     [Fact]
+    public async Task Wrap_TransportCancellation_ReturnsTimeoutMarkerToModel()
+    {
+        // 传输层超时（如 MCP HttpClient.Timeout 5 分钟触发）抛 TaskCanceledException，
+        // 但外层运行并未取消——必须转成带 timedOut 标记的明确超时结果，
+        // 模型才能分辨"这是超时"并决定重试还是绕开，而不是看到模糊的失败。
+        AITool wrapped = IsolatedToolFunction.Wrap(new StubFunction(
+            "slow_mcp_tool",
+            _ => ValueTask.FromException<object?>(new TaskCanceledException("A task was canceled."))));
+
+        object? result = await Assert.IsAssignableFrom<AIFunction>(wrapped)
+            .InvokeAsync(new AIFunctionArguments(), CancellationToken.None);
+
+        string json = Assert.IsType<string>(result);
+        using JsonDocument document = JsonDocument.Parse(json);
+        Assert.True(document.RootElement.GetProperty("timedOut").GetBoolean());
+        Assert.Contains("timed out", document.RootElement.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task Wrap_ToolExceedsCallTimeout_ReturnsTimeoutErrorAndCancelsCall()
+    {
+        // 挂起的工具调用必须被单次调用上限主动取消，不能等到传输层兜底；
+        // 模型收到 "timed out after Ns" 才能判断等多久、要不要重试。
+        bool observedCancellation = false;
+        AITool wrapped = IsolatedToolFunction.Wrap(
+            new StubFunction(
+                "slow_mcp_tool",
+                token => DelayObservingCancellationAsync(
+                    TimeSpan.FromSeconds(30),
+                    token,
+                    () => observedCancellation = true)),
+            TimeSpan.FromMilliseconds(150));
+
+        object? result = await Assert.IsAssignableFrom<AIFunction>(wrapped)
+            .InvokeAsync(new AIFunctionArguments(), CancellationToken.None);
+
+        string json = Assert.IsType<string>(result);
+        using JsonDocument document = JsonDocument.Parse(json);
+        Assert.True(document.RootElement.GetProperty("timedOut").GetBoolean());
+        Assert.Contains("timed out after", document.RootElement.GetProperty("error").GetString());
+        Assert.True(observedCancellation, "the in-flight call must observe cancellation");
+    }
+
+    [Fact]
+    public async Task Wrap_OuterRunCancelled_PropagatesCancellation()
+    {
+        // 运行级取消（用户中止/停机）不是工具超时，必须照常向上传播。
+        using var cancelled = new CancellationTokenSource();
+        await cancelled.CancelAsync();
+        AITool wrapped = IsolatedToolFunction.Wrap(
+            new StubFunction(
+                "slow_mcp_tool",
+                token => ValueTask.FromException<object?>(new OperationCanceledException(token))),
+            TimeSpan.FromMinutes(5));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+            await Assert.IsAssignableFrom<AIFunction>(wrapped)
+                .InvokeAsync(new AIFunctionArguments(), cancelled.Token));
+    }
+
+    [Fact]
+    public async Task ExecuteStreamingAsync_ToolTimesOut_RunContinuesWithFinalAnswer()
+    {
+        // 会话中工具调用超过上限：调用被取消、模型收到 timedOut 结果并继续对话，
+        // 会话不能被终止（旧行为：挂到传输层超时，报错文本无法分辨超时）。
+        var provider = new SequenceChatProvider(
+        [
+            [new ChatResponseUpdate(ChatRole.Assistant,
+                [new FunctionCallContent("call-1", "slow_mcp_tool")])],
+            [new ChatResponseUpdate(ChatRole.Assistant, "工具超时了，我改为直接回答")]
+        ]);
+        await using AgentExecutorUsageTests.TestRuntime runtime = AgentExecutorUsageTests.CreateRuntime(
+            provider,
+            new SlowCapabilitySource(),
+            maxTurns: 4,
+            configure: services => services.PostConfigure<AgentExecutionOptions>(
+                options => options.ToolCallTimeoutSeconds = 1));
+
+        List<AgentStreamEvent> events = [];
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        await foreach (AgentStreamEvent streamEvent in runtime.Executor.ExecuteStreamingAsync(
+            CreateRequest("tool-timeout-conversation"),
+            User,
+            CancellationToken.None))
+        {
+            events.Add(streamEvent);
+        }
+        stopwatch.Stop();
+        Assert.True(
+            stopwatch.Elapsed >= TimeSpan.FromMilliseconds(900),
+            $"timeout must elapse before cancellation, took {stopwatch.ElapsedMilliseconds}ms");
+
+        Assert.Equal(2, provider.Requests.Count);
+        Assert.Contains(
+            provider.Requests[1].SelectMany(message => message.Contents).OfType<FunctionResultContent>(),
+            result => result.CallId == "call-1");
+        AgentStreamEvent toolResult = Assert.Single(events, item =>
+            item.Type == AgentStreamEventType.ToolResult && item.ToolCallId == "call-1");
+        Assert.Contains("timed out", toolResult.Content);
+        Assert.Contains(events, item => item.Type == AgentStreamEventType.Content
+            && item.Content == "工具超时了，我改为直接回答");
+        ConversationRecord record = Assert.IsType<ConversationRecord>(
+            await runtime.Store.GetRecordAsync("tenant-1", "tool-timeout-conversation"));
+        Assert.Equal(ConversationStatus.Completed, record.Status);
+    }
+
+    [Fact]
     public async Task Wrap_InvocationSucceeds_PassesResultThrough()
     {
         AITool wrapped = IsolatedToolFunction.Wrap(new StubFunction(
@@ -228,6 +336,47 @@ public class ToolFailureIsolationTests
                             ? "{\"fileId\":\"ok\"}"
                             : "调用失败：'fileId' 是必填参数，请提供后重试。"))
             ]);
+    }
+
+    /// <summary>执行超过单次调用上限的工具，模拟长时间无响应的 MCP 调用。</summary>
+    private sealed class SlowCapabilitySource : ICapabilitySource
+    {
+        public Task<IReadOnlyList<CapabilityDefinition>> DiscoverAsync(
+            string agentId,
+            AgentConfig config,
+            IAgentUserContext user,
+            CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<CapabilityDefinition>>([
+                new CapabilityDefinition(
+                    "slow_mcp_tool",
+                    "Simulates an MCP tool that runs past the call timeout.",
+                    "{\"type\":\"object\"}",
+                    AgentResourceType.Tool,
+                    "test/slow_mcp_tool",
+                    async (_, token) =>
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(30), token);
+                        return "late";
+                    })
+            ]);
+    }
+
+    /// <summary>等待指定时长并观察取消：被取消时先回调再抛出，模拟长跑工具对令牌的响应。</summary>
+    private static async ValueTask<object?> DelayObservingCancellationAsync(
+        TimeSpan delay,
+        CancellationToken cancellationToken,
+        Action cancelled)
+    {
+        try
+        {
+            await Task.Delay(delay, cancellationToken);
+            return "late";
+        }
+        catch (OperationCanceledException)
+        {
+            cancelled();
+            throw;
+        }
     }
 
     private sealed class StubFunction(
