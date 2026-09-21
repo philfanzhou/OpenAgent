@@ -28,11 +28,11 @@
 | PR-7（#118） | TurnContext 统一轮次上下文 | Contracts 新增 `TurnContext`（Tenant/User/Conversation/Trace/Agent 一次构造），AgentExecutor 唯一构造点；AgentFactory/ConversationHistoryFactory/FileAssetExecutionContext 消费派生投影（ToFileAssetScope/ToCapture/ToConversationContext）；删除 AgentFactory 内重复 traceId 兜底（主链路死代码）与双份 tenant 归一化。**明确不用 AsyncLocal**（工具并行化后语义风险）；FileAssetExecutionContext 保持 Scoped ambient。新横切字段 = 只改 TurnContext 一处 | 待评审 |
 | PR-8（#119） | 会话消息 Metadata 类型化 | `ConversationMessageMetadata`（Files 强类型/Reasoning/ExecutionStatus/ToolArguments/Extensions 逃生舱）取代 string-dict；EF jsonb 双形态读取（旧 PascalCase dict 兼容、解析失败降级 Extensions+告警而非静默 null）、写统一 camelCase（EF/Redis 同语义）；前端删除 JSON.parse 与双命名兼容。**P0 门禁：EF/Redis/InMemory 三存储 round-trip 深相等测试矩阵** | 待评审 |
 | PR-9（#120，堆叠于 #118） | AgentConfig 依赖拆分（CapabilityContext） | 债务实测：`ICapabilitySource` 整只传 AgentConfig，而 UserProfile/FileAsset 两个 source 根本不用 config，Mcp/ContextPolicy 已窄化。引入 `CapabilityContext`（AgentId/TenantId + Mcp/Rag/Skills/CodeExecution 节）；无依赖参数删除；EF 已按关注点分列（5 jsonb）→ **零 migration**。9c 文件拆分（LlmConfig 等移出 AgentConfig.cs）可选 | 待评审 |
-| PR-10（#121，堆叠于 #119） | 前端契约类型代码生成 | 路线 b：dotnet 工具反射导出 Contracts 白名单类型 → `types.generated.ts`（camelCase 对齐 wire，NRT 可空性解析）；types.ts 收缩为 UI 类型+re-export；CI 门禁 `gen:types && git diff --exit-code`（生成物提交进库）。动机实锤：后端 `ConversationMessage.TraceId` 在 types.ts 至今缺失。StreamEvent(SSE)/AuthTokenResponse(snake_case) 留手写层 | 待评审 |
+| PR-10（#121，堆叠于 #119） | 前端契约类型手工对齐 | 原规划的代码生成方案（工具导出+CI 门禁）经评审否决——前端类型无需自动化生成。重写为手工清偿既有漂移：补齐 `ConversationMessage.traceId/idempotencyKey/fileIds`、`ConversationRecord.type/version/isDeletedByUser/deletedAt/traceId`、`FileAsset.objectKey` 必填化，修 3 处消费端 | 待评审 |
 
 ## 约定
 
 - 第二波起的新横切字段（租户配额、审计开关等）一律走 TurnContext，不逐层穿参（兑现
   ADR-0003 的"内部调用元数据"待办）。
-- 前端契约类型只从 `types.generated.ts` 消费；改 Contracts 后必须重新生成，CI 拦截漂移。
+- 前端契约类型手工维护于 `types.ts`（自动化生成方案经评审否决）；改 Contracts 时同步镜像，依赖 review 约定。
 - 已完成 PR 的详细动机/改动清单/验证证据见对应 PR 描述（#110~#115），不再另存文档。
