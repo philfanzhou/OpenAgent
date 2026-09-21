@@ -88,6 +88,97 @@ public class BubblewrapExecutionTests
         Assert.Equal(1, BindCount(arguments, "/usr"));
     }
 
+    // The guards below pin the single-source hardening contract shared by the
+    // ephemeral and session sandbox builders: identical isolation/root-filesystem
+    // prefix and a root that is only sealed read-only after every mount.
+    [Fact]
+    public void BuildArguments_SessionAndEphemeral_ShareHardeningPrefix()
+    {
+        IReadOnlyList<string> ephemeral = BuildVariantArguments("ephemeral");
+        IReadOnlyList<string> session = BuildVariantArguments("session");
+
+        int shared = 0;
+        while (shared < ephemeral.Count && shared < session.Count && ephemeral[shared] == session[shared])
+        {
+            shared++;
+        }
+
+        // The shared head must cover the full isolation and root-filesystem
+        // hardening, i.e. everything up to and including /etc/nsswitch.conf.
+        Assert.True(shared > IndexOf(ephemeral, "/etc/nsswitch.conf"));
+        // The variants diverge exactly at their input mount: the one-shot
+        // read-only /input bind versus the session read-write /channel bind.
+        Assert.Equal("--ro-bind", ephemeral[shared]);
+        Assert.Equal("/input", ephemeral[shared + 2]);
+        Assert.Equal("--bind", session[shared]);
+        Assert.Equal("/channel", session[shared + 2]);
+    }
+
+    [Theory]
+    [InlineData("ephemeral")]
+    [InlineData("session")]
+    public void BuildArguments_EachVariant_RemountsRootReadOnlyAfterAllMounts(string variant)
+    {
+        IReadOnlyList<string> arguments = BuildVariantArguments(variant);
+
+        int seal = IndexOf(arguments, "--remount-ro");
+        Assert.True(seal > 0);
+        Assert.Equal("/", arguments[seal + 1]);
+
+        // Bubblewrap applies mounts in argument order: every mount must precede
+        // the read-only seal, and the entry point must only follow the seal.
+        foreach (string mount in new[]
+                 {
+                     "--ro-bind", "--ro-bind-try", "--bind", "--symlink", "--tmpfs",
+                     "--dir", "--proc", "--dev", "--chdir"
+                 })
+        {
+            Assert.True(LastIndexOf(arguments, mount) < seal, $"{mount} must precede the seal");
+        }
+        Assert.True(seal < IndexOf(arguments, "--"));
+    }
+
+    private static IReadOnlyList<string> BuildVariantArguments(string variant)
+    {
+        var settings = new RunnerOptions
+        {
+            PythonPath = "/opt/openagent-code/venv/bin/python",
+            NodePath = "/opt/node/bin/node"
+        };
+        return variant switch
+        {
+            "ephemeral" => BubblewrapCodeExecutor.BuildArguments(
+                settings, "/var/lib/runner/id", "/opt/runner/sandbox", ExecutionLanguage.Python),
+            "session" => BubblewrapCodeExecutor.BuildSessionArguments(
+                settings, "/var/lib/runner/session-demo/channel", "/opt/runner/sandbox"),
+            _ => throw new ArgumentOutOfRangeException(nameof(variant), variant, "Unknown sandbox variant.")
+        };
+    }
+
+    private static int IndexOf(IReadOnlyList<string> arguments, string value)
+    {
+        for (int index = 0; index < arguments.Count; index++)
+        {
+            if (arguments[index] == value)
+            {
+                return index;
+            }
+        }
+        return -1;
+    }
+
+    private static int LastIndexOf(IReadOnlyList<string> arguments, string value)
+    {
+        for (int index = arguments.Count - 1; index >= 0; index--)
+        {
+            if (arguments[index] == value)
+            {
+                return index;
+            }
+        }
+        return -1;
+    }
+
     // Mirrors the runtime-root derivation in BubblewrapCodeExecutor so the
     // assertions stay meaningful on hosts where System.IO rewrites Unix paths.
     private static string RuntimeRootOf(string executable) =>
