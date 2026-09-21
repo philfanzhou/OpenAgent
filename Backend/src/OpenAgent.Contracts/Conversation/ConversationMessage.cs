@@ -2,7 +2,7 @@ using OpenAgent.Contracts.Requests;
 
 namespace OpenAgent.Contracts.Conversation;
 
-public sealed class ConversationMessage
+public sealed record ConversationMessage
 {
     public required string MessageId { get; init; }
     public required int Sequence { get; init; }

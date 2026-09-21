@@ -489,10 +489,11 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
             string.Equals(message.Role, "assistant", StringComparison.OrdinalIgnoreCase));
         if (assistantIndex >= 0)
         {
-            _pending[assistantIndex] = WithCompletion(
-                _pending[assistantIndex],
-                usage,
-                modelId);
+            _pending[assistantIndex] = _pending[assistantIndex] with
+            {
+                TokenUsage = usage,
+                ModelId = modelId
+            };
         }
 
         await _store.SaveAsync(
@@ -640,25 +641,6 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
             metadata: AgentMessageAdapter.BuildFileMetadata(published),
             fileIds: published.Select(file => file.FileId).ToArray()));
     }
-
-    private static ConversationMessage WithCompletion(
-        ConversationMessage message,
-        TokenUsage? usage,
-        string modelId) => new()
-        {
-            MessageId = message.MessageId,
-            Sequence = message.Sequence,
-            Role = message.Role,
-            Content = message.Content,
-            ToolCallId = message.ToolCallId,
-            ToolName = message.ToolName,
-            IdempotencyKey = message.IdempotencyKey,
-            Timestamp = message.Timestamp,
-            Metadata = message.Metadata,
-            FileIds = message.FileIds,
-            TokenUsage = usage,
-            ModelId = modelId
-        };
 
     private async ValueTask ReleaseLockAsync()
     {

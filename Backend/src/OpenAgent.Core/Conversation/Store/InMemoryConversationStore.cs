@@ -197,23 +197,8 @@ internal sealed class InMemoryConversationStore : IConversationStore
         return Task.FromResult(true);
     }
 
-    private static ConversationRecord StripMessages(ConversationRecord r) => new()
+    private static ConversationRecord StripMessages(ConversationRecord r) => r with
     {
-        ConversationId = r.ConversationId,
-        TenantId = r.TenantId,
-        UserId = r.UserId,
-        Type = r.Type,
-        AgentId = r.AgentId,
-        TraceId = r.TraceId,
-        Version = r.Version,
-        Status = r.Status,
-        CreatedAt = r.CreatedAt,
-        UpdatedAt = r.UpdatedAt,
-        LastMessageAt = r.LastMessageAt,
-        MessageCount = r.MessageCount,
-        Title = r.Title,
-        IsDeletedByUser = r.IsDeletedByUser,
-        DeletedAt = r.DeletedAt,
         Messages = [],
         ContextSummaries = []
     };

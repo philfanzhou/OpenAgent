@@ -1,6 +1,6 @@
 namespace OpenAgent.Contracts.Conversation;
 
-public sealed class ConversationRecord
+public sealed record ConversationRecord
 {
     public required string ConversationId { get; init; }
     public required string TenantId { get; init; }
