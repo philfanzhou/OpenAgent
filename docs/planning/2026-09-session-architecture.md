@@ -21,14 +21,14 @@
 评审准则：除测试外代码净缩减。第一波终态：#110 +6、#111 +2、#112 −6、#113 −63、
 #114 +16、#115 +84（后两者为接口/文件拆分的结构性脚手架，逻辑零新增，已在各 PR 描述核算）。
 
-## 第二波：实施中（本轮，PR 号创建后回填）
+## 第二波：已提交评审（#118→#120、#119→#121 两条堆叠链）
 
 | PR | 主题 | 方案要点 | 状态 |
 |----|------|----------|------|
-| PR-7 | TurnContext 统一轮次上下文 | Contracts 新增 `TurnContext`（Tenant/User/Conversation/Trace/Agent 一次构造），AgentExecutor 唯一构造点；AgentFactory/ConversationHistoryFactory/FileAssetExecutionContext 消费派生投影（ToFileAssetScope/ToCapture/ToConversationContext）；删除 AgentFactory 内重复 traceId 兜底（主链路死代码）与双份 tenant 归一化。**明确不用 AsyncLocal**（工具并行化后语义风险）；FileAssetExecutionContext 保持 Scoped ambient。新横切字段 = 只改 TurnContext 一处 | 实施中 |
-| PR-8 | 会话消息 Metadata 类型化 | `ConversationMessageMetadata`（Files 强类型/Reasoning/ExecutionStatus/ToolArguments/Extensions 逃生舱）取代 string-dict；EF jsonb 双形态读取（旧 PascalCase dict 兼容、解析失败降级 Extensions+告警而非静默 null）、写统一 camelCase（EF/Redis 同语义）；前端删除 JSON.parse 与双命名兼容。**P0 门禁：EF/Redis/InMemory 三存储 round-trip 深相等测试矩阵** | 实施中 |
-| PR-9 | AgentConfig 依赖拆分（CapabilityContext） | 债务实测：`ICapabilitySource` 整只传 AgentConfig，而 UserProfile/FileAsset 两个 source 根本不用 config，Mcp/ContextPolicy 已窄化。引入 `CapabilityContext`（AgentId/TenantId + Mcp/Rag/Skills/CodeExecution 节）；无依赖参数删除；EF 已按关注点分列（5 jsonb）→ **零 migration**。9c 文件拆分（LlmConfig 等移出 AgentConfig.cs）可选 | 实施中 |
-| PR-10 | 前端契约类型代码生成 | 路线 b：dotnet 工具反射导出 Contracts 白名单类型 → `types.generated.ts`（camelCase 对齐 wire，NRT 可空性解析）；types.ts 收缩为 UI 类型+re-export；CI 门禁 `gen:types && git diff --exit-code`（生成物提交进库）。动机实锤：后端 `ConversationMessage.TraceId` 在 types.ts 至今缺失。StreamEvent(SSE)/AuthTokenResponse(snake_case) 留手写层 | 实施中 |
+| PR-7（#118） | TurnContext 统一轮次上下文 | Contracts 新增 `TurnContext`（Tenant/User/Conversation/Trace/Agent 一次构造），AgentExecutor 唯一构造点；AgentFactory/ConversationHistoryFactory/FileAssetExecutionContext 消费派生投影（ToFileAssetScope/ToCapture/ToConversationContext）；删除 AgentFactory 内重复 traceId 兜底（主链路死代码）与双份 tenant 归一化。**明确不用 AsyncLocal**（工具并行化后语义风险）；FileAssetExecutionContext 保持 Scoped ambient。新横切字段 = 只改 TurnContext 一处 | 待评审 |
+| PR-8（#119） | 会话消息 Metadata 类型化 | `ConversationMessageMetadata`（Files 强类型/Reasoning/ExecutionStatus/ToolArguments/Extensions 逃生舱）取代 string-dict；EF jsonb 双形态读取（旧 PascalCase dict 兼容、解析失败降级 Extensions+告警而非静默 null）、写统一 camelCase（EF/Redis 同语义）；前端删除 JSON.parse 与双命名兼容。**P0 门禁：EF/Redis/InMemory 三存储 round-trip 深相等测试矩阵** | 待评审 |
+| PR-9（#120，堆叠于 #118） | AgentConfig 依赖拆分（CapabilityContext） | 债务实测：`ICapabilitySource` 整只传 AgentConfig，而 UserProfile/FileAsset 两个 source 根本不用 config，Mcp/ContextPolicy 已窄化。引入 `CapabilityContext`（AgentId/TenantId + Mcp/Rag/Skills/CodeExecution 节）；无依赖参数删除；EF 已按关注点分列（5 jsonb）→ **零 migration**。9c 文件拆分（LlmConfig 等移出 AgentConfig.cs）可选 | 待评审 |
+| PR-10（#121，堆叠于 #119） | 前端契约类型代码生成 | 路线 b：dotnet 工具反射导出 Contracts 白名单类型 → `types.generated.ts`（camelCase 对齐 wire，NRT 可空性解析）；types.ts 收缩为 UI 类型+re-export；CI 门禁 `gen:types && git diff --exit-code`（生成物提交进库）。动机实锤：后端 `ConversationMessage.TraceId` 在 types.ts 至今缺失。StreamEvent(SSE)/AuthTokenResponse(snake_case) 留手写层 | 待评审 |
 
 ## 约定
 
