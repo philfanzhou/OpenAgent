@@ -4,6 +4,9 @@
     <InternalsVisibleTo Include="OpenAgent.Runner.Tests" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="Swashbuckle.AspNetCore" />
+  </ItemGroup>
+  <ItemGroup>
     <Content Include="sandbox/**" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

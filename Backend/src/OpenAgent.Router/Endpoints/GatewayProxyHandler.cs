@@ -1,5 +1,7 @@
 using System.Diagnostics;
+using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
+using OpenAgent.Hosting.Errors;
 using OpenAgent.Router.Observability;
 using Yarp.ReverseProxy.Forwarder;
 
@@ -19,7 +21,8 @@ internal static class GatewayProxyHandler
     {
         if (requireAuthentication && !userContext.IsAuthenticated)
         {
-            return Results.Unauthorized();
+            return TypedResults.Problem(AgentProblemDetails.AuthenticationRequired(
+                "Authentication is required.", context));
         }
 
         string? tenantId = userContext.IsAuthenticated
@@ -35,9 +38,14 @@ internal static class GatewayProxyHandler
             conversationId);
         if (string.IsNullOrWhiteSpace(targetEndpoint))
         {
-            return Results.Problem(
-                statusCode: StatusCodes.Status503ServiceUnavailable,
-                title: "No Engine is available");
+            return TypedResults.Problem(AgentProblemDetails.Create(
+                $"{AgentProblemDetails.TypePrefix}/no-engine-available",
+                "NoEngineAvailable",
+                StatusCodes.Status503ServiceUnavailable,
+                "No Engine is available to serve this request.",
+                context.Request.Path,
+                AgentProblemDetails.ResolveTraceId(context),
+                ("errorCode", (int)AgentErrorCode.DependencyUnavailable)));
         }
 
         string targetUrl = $"{targetEndpoint.TrimEnd('/')}{context.Request.Path}{context.Request.QueryString}";
@@ -83,7 +91,14 @@ internal static class GatewayProxyHandler
             tenantId,
             traceId);
         RouterMeter.RecordForwardingFailure("other", error.ToString());
-        return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+        return TypedResults.Problem(AgentProblemDetails.Create(
+            $"{AgentProblemDetails.TypePrefix}/forwarding-failed",
+            "ForwardingFailed",
+            StatusCodes.Status503ServiceUnavailable,
+            $"Forwarding to the Engine failed ({error}).",
+            context.Request.Path,
+            AgentProblemDetails.ResolveTraceId(context),
+            ("errorCode", (int)AgentErrorCode.DependencyUnavailable)));
     }
 
     private static ValueTask ApplyAuthenticatedAsync(

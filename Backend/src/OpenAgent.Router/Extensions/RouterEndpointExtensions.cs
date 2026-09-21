@@ -26,7 +26,9 @@ public static class RouterEndpointExtensions
             CancellationToken cancellationToken) =>
             ChatEndpointHandler.HandleAsync(
                 action, context, providers, agentForwarder, userContext, logger, cancellationToken))
-            .AddEndpointFilter<AgentSelectionFilter>();
+            .AddEndpointFilter<AgentSelectionFilter>()
+            .WithName("RouterChat")
+            .WithTags("Chat");
 
         app.MapGet("/api/v1/agent/agents", (
             IAgentCatalogService catalog,
@@ -37,8 +39,11 @@ public static class RouterEndpointExtensions
                 catalog,
                 userContext,
                 context,
-                cancellationToken));
-        // Compatibility alias retained for clients that predate /api/v1/agent/agents.
+                cancellationToken))
+            .WithName("RouterListAgents")
+            .WithTags("Agent Catalog");
+        // Compatibility alias retained for clients that predate /api/v1/agent/agents;
+        // hidden from OpenAPI docs to avoid a duplicate operation.
         app.MapGet("/api/v1/agents", (
             IAgentCatalogService catalog,
             IAgentUserContext userContext,
@@ -48,13 +53,16 @@ public static class RouterEndpointExtensions
                 catalog,
                 userContext,
                 context,
-                cancellationToken));
+                cancellationToken))
+            .ExcludeFromDescription();
         app.MapGet("/api/v1/agent/conversations", (
             HttpContext context, IHttpForwarder forwarder, IAgentUserContext userContext,
             IRouteTable routeTable, ILogger<Program> logger, int skip = 0, int take = 20) =>
             GetEndpointHandler.HandleAsync(
                 context, forwarder, userContext, routeTable, logger, httpClient, requestConfig,
-                $"/api/v1/agent/conversations?skip={skip}&take={take}", conversationIdFromHeader: true));
+                $"/api/v1/agent/conversations?skip={skip}&take={take}", conversationIdFromHeader: true))
+            .WithName("RouterListConversations")
+            .WithTags("Conversations");
         app.MapGet("/api/v1/agent/conversations/search", (
             HttpContext context, IHttpForwarder forwarder, IAgentUserContext userContext,
             IRouteTable routeTable, ILogger<Program> logger,
@@ -62,7 +70,9 @@ public static class RouterEndpointExtensions
             GetEndpointHandler.HandleAsync(
                 context, forwarder, userContext, routeTable, logger, httpClient, requestConfig,
                 $"/api/v1/agent/conversations/search?keyword={Uri.EscapeDataString(keyword)}&skip={skip}&take={take}",
-                conversationIdFromHeader: true));
+                conversationIdFromHeader: true))
+            .WithName("RouterSearchConversations")
+            .WithTags("Conversations");
         app.MapMethods(
             "/api/v1/agent/conversations/{conversationId}",
             [HttpMethods.Get, HttpMethods.Delete],
@@ -80,7 +90,9 @@ public static class RouterEndpointExtensions
                     logger,
                     httpClient,
                     requestConfig,
-                    requireAuthentication: true));
+                    requireAuthentication: true))
+            .WithName("RouterGetOrDeleteConversation")
+            .WithTags("Conversations");
         app.MapPost(
             "/api/v1/agent/conversations/{conversationId}/compact",
             (
@@ -97,7 +109,9 @@ public static class RouterEndpointExtensions
                     logger,
                     httpClient,
                     requestConfig,
-                    requireAuthentication: true));
+                    requireAuthentication: true))
+            .WithName("RouterCompactConversation")
+            .WithTags("Conversations");
         app.MapGet(
             "/api/v1/agent/conversations/{conversationId}/llm-interactions",
             (
@@ -114,7 +128,9 @@ public static class RouterEndpointExtensions
                     logger,
                     httpClient,
                     requestConfig,
-                    requireAuthentication: true));
+                    requireAuthentication: true))
+            .WithName("RouterListLlmInteractions")
+            .WithTags("Conversations");
         app.MapGet("/api/v1/agent/me", (
             HttpContext context,
             IHttpForwarder forwarder,
@@ -129,7 +145,9 @@ public static class RouterEndpointExtensions
                 logger,
                 httpClient,
                 requestConfig,
-                requireAuthentication: true));
+                requireAuthentication: true))
+            .WithName("RouterCurrentUser")
+            .WithTags("Agent Catalog");
         // File assets are owned by Engine, but clients use the Router as their
         // single API origin. Preserve multipart request bodies and binary
         // responses by forwarding every file method through YARP.
@@ -150,7 +168,9 @@ public static class RouterEndpointExtensions
                     logger,
                     httpClient,
                     requestConfig,
-                    requireAuthentication: true));
+                    requireAuthentication: true))
+            .WithName("RouterFiles")
+            .WithTags("Files");
         IHostEnvironment environment = app.ServiceProvider.GetRequiredService<IHostEnvironment>();
         if (environment.IsDevelopment())
         {
@@ -174,7 +194,9 @@ public static class RouterEndpointExtensions
                         logger,
                         httpClient,
                         requestConfig,
-                        requireAuthentication: true));
+                        requireAuthentication: true))
+                .WithName("RouterAdminProxy")
+                .WithTags("Admin");
         }
         return app;
     }

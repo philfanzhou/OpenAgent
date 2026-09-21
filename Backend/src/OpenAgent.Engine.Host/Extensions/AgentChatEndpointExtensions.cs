@@ -26,7 +26,7 @@ internal static class AgentChatEndpointExtensions
 
     }
 
-    private static async Task<IResult> ExecuteAsync(
+    private static async Task<ChatResponse> ExecuteAsync(
         [FromBody] ChatRequest request,
         [FromServices] AgentExecutor executor,
         HttpContext context,
@@ -37,15 +37,15 @@ internal static class AgentChatEndpointExtensions
             executionRequest,
             context.GetAgentRequest().User,
             cancellationToken).ConfigureAwait(false);
-        return Results.Ok(new ChatResponse
+        return new ChatResponse
         {
             Message = response.Content,
             Usage = response.TokenUsage,
             ModelId = response.ModelId
-        });
+        };
     }
 
-    private static async Task<IResult> ExecuteIntentAsync(
+    private static async Task<ChatResponse> ExecuteIntentAsync(
         [FromBody] ChatRequest request,
         [FromServices] AgentExecutor executor,
         HttpContext context,
@@ -59,12 +59,12 @@ internal static class AgentChatEndpointExtensions
             executionRequest,
             context.GetAgentRequest().User,
             cancellationToken).ConfigureAwait(false);
-        return Results.Ok(new ChatResponse
+        return new ChatResponse
         {
             Message = response.Content,
             Usage = response.TokenUsage,
             ModelId = response.ModelId
-        });
+        };
     }
 
     private static async Task ExecuteStreamAsync(

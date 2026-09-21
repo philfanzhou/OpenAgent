@@ -1,5 +1,7 @@
 using System.Diagnostics;
+using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
+using OpenAgent.Hosting.Errors;
 using OpenAgent.Router.Observability;
 using Yarp.ReverseProxy.Forwarder;
 
@@ -21,7 +23,8 @@ internal static class GetEndpointHandler
     {
         if (userContext == null || !userContext.IsAuthenticated)
         {
-            return Results.Unauthorized();
+            return TypedResults.Problem(AgentProblemDetails.AuthenticationRequired(
+                "Authentication is required.", context));
         }
 
         var tenantId = userContext.TenantId;
@@ -31,7 +34,14 @@ internal static class GetEndpointHandler
         var targetEndpoint = routeTable.GetTargetEndpoint(intent, tenantId, conversationId);
         if (string.IsNullOrEmpty(targetEndpoint))
         {
-            return Results.BadRequest(new { Error = "Unable to determine target service" });
+            return TypedResults.Problem(AgentProblemDetails.Create(
+                $"{AgentProblemDetails.TypePrefix}/no-engine-available",
+                "NoEngineAvailable",
+                StatusCodes.Status503ServiceUnavailable,
+                "Unable to determine a target Engine endpoint for this request.",
+                context.Request.Path,
+                AgentProblemDetails.ResolveTraceId(context),
+                ("errorCode", (int)AgentErrorCode.DependencyUnavailable)));
         }
 
         var normalizedPath = targetPath.StartsWith('/') ? targetPath : "/" + targetPath;
@@ -73,6 +83,13 @@ internal static class GetEndpointHandler
             logger, context.GetForwarderErrorFeature()?.Exception, error, targetPath,
             targetEndpoint, targetUrl, userContext.UserId, tenantId, traceId);
         RouterMeter.RecordForwardingFailure("other", error.ToString());
-        return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+        return TypedResults.Problem(AgentProblemDetails.Create(
+            $"{AgentProblemDetails.TypePrefix}/forwarding-failed",
+            "ForwardingFailed",
+            StatusCodes.Status503ServiceUnavailable,
+            $"Forwarding to the Engine failed ({error}).",
+            context.Request.Path,
+            AgentProblemDetails.ResolveTraceId(context),
+            ("errorCode", (int)AgentErrorCode.DependencyUnavailable)));
     }
 }

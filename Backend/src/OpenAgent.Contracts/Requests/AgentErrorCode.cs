@@ -45,6 +45,12 @@ public enum AgentErrorCode : int
     MissingRequiredField = 8002,
     InvalidIdempotencyKey = 8003,
 
+    // 通用 HTTP 语义错误码：端点直接构造错误响应（资源不存在、未认证、限流）时使用，
+    // 与上面的请求校验错误码共用 8xxx 段，不与领域错误码（1xxx-7xxx）混用。
+    NotFound = 8004,
+    AuthenticationRequired = 8005,
+    RateLimited = 8006,
+
     Conflict = 8101,
 
     InternalError = 9001,

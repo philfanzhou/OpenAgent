@@ -1,4 +1,5 @@
 using OpenAgent.Contracts.Security;
+using OpenAgent.Hosting.Errors;
 using OpenAgent.Router.Models;
 
 namespace OpenAgent.Router.Endpoints;
@@ -13,15 +14,16 @@ internal static class AgentCatalogEndpointHandler
     {
         if (!userContext.IsAuthenticated)
         {
-            return Results.Unauthorized();
+            return TypedResults.Problem(AgentProblemDetails.AuthenticationRequired(
+                "Authentication is required to list agents.", context));
         }
 
         if (string.IsNullOrWhiteSpace(userContext.TenantId))
         {
-            return RouterProblem.From(new AgentRoutingException(
+            return TypedResults.Problem(RouterProblem.From(new AgentRoutingException(
                 StatusCodes.Status400BadRequest,
                 RouterErrorCodes.InvalidTenant,
-                "Tenant ID is required"));
+                "Tenant ID is required"), context));
         }
 
         try
@@ -31,11 +33,11 @@ internal static class AgentCatalogEndpointHandler
                     userContext,
                     context.Request.Headers.Authorization.FirstOrDefault()),
                 cancellationToken).ConfigureAwait(false);
-            return Results.Ok(entries.Select(entry => entry.Agent));
+            return TypedResults.Ok(entries.Select(entry => entry.Agent).ToList());
         }
         catch (AgentRoutingException exception)
         {
-            return RouterProblem.From(exception);
+            return TypedResults.Problem(RouterProblem.From(exception, context));
         }
     }
 }

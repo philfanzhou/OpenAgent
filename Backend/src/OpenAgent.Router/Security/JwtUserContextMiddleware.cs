@@ -39,8 +39,10 @@ public class JwtUserContextMiddleware
             if (RequiresTenant(context.Request.Path)
                 && string.IsNullOrWhiteSpace(tenantId))
             {
-                context.Response.StatusCode = StatusCodes.Status400BadRequest;
-                return;
+                // 交给共享的全局异常处理中间件，输出统一 ProblemDetails（含 traceId）。
+                throw new AgentException(
+                    AgentErrorCode.TenantNotFound,
+                    "A tenant identifier is required for this request.");
             }
 
             var roles = context.User.Claims

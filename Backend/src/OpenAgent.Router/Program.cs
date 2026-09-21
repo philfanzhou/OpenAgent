@@ -53,6 +53,7 @@ builder.Services.AddScoped<IAgentUserContext>(sp =>
 builder.Services.AddRouterRuntime(builder.Configuration);
 builder.Services.AddSingleton<IAgentVisibilityService, AgentVisibilityService>();
 builder.Services.AddSingleton<IAgentAccessControl, AgentAccessControl>();
+builder.Services.AddAgentErrorHandling();
 
 builder.Services.AddHttpForwarder();
 
@@ -63,6 +64,7 @@ builder.Services.AddHealthChecks()
 var app = builder.Build();
 
 app.UseAgentHost(builder.Configuration);
+app.UseAgentErrorHandling();
 app.UseMiddleware<JwtUserContextMiddleware>();
 app.UseWhen(
     context => context.Request.Path.StartsWithSegments("/api/v1/agent/chat"),
@@ -72,7 +74,6 @@ app.UseWhen(
         branch.UseMiddleware<IdempotencyMiddleware>();
         branch.UseMiddleware<QueryCacheMiddleware>();
     });
-app.MapControllers();
 app.MapAgentAuthenticationEndpoints();
 app.MapRouterEndpoints();
 

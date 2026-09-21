@@ -43,7 +43,9 @@ data: {"done":true,"usage":{"promptTokens":21,"completionTokens":8,"totalTokens"
 
 ## 当前状态
 
-**已实现** — 所有端点均已落地。
+**已实现** — 所有端点均已落地。全部端点为 Minimal API + `TypedResults`，响应为具名 DTO；错误统一
+为 ProblemDetails（见 `docs/overview/API.md`），原 `ConfigurationController` 已迁移为
+`Extensions/ConfigurationEndpointExtensions.cs`。开发环境 `/swagger` 提供完整 OpenAPI 文档。
 
 ## 源码位置
 
@@ -51,6 +53,9 @@ data: {"done":true,"usage":{"promptTokens":21,"completionTokens":8,"totalTokens"
 - 聊天端点：`Backend/src/OpenAgent.Engine.Host/Extensions/AgentChatEndpointExtensions.cs`
 - 会话端点：`Backend/src/OpenAgent.Engine.Host/Extensions/ConversationEndpointExtensions.cs`
 - 文件端点：`Backend/src/OpenAgent.Engine.Host/Extensions/FileAssetEndpointExtensions.cs`
+- 配置管理端点（dev）：`Backend/src/OpenAgent.Engine.Host/Extensions/ConfigurationEndpointExtensions.cs`
+- 技能管理端点（dev）：`Backend/src/OpenAgent.Engine.Host/Extensions/ManagementEndpointExtensions.cs`
 - 流式响应：`Backend/src/OpenAgent.Engine.Host/Extensions/AgentStreamWriter.cs`
-- 中间件：`Backend/src/OpenAgent.Engine.Host/Middleware/`
+- 中间件：`Backend/src/OpenAgent.Engine.Host/Middleware/`（全局异常处理在 `OpenAgent.Hosting/Errors/`）
 - 流式处理：`Backend/src/OpenAgent.Engine.Host/StreamingPayloadFactory.cs`
+- 响应 DTO：`Backend/src/OpenAgent.Contracts/Responses/`

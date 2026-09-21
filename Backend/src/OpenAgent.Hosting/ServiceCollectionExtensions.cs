@@ -67,10 +67,41 @@ public static class ServiceCollectionExtensions
         if (options.EnableSwagger)
         {
             services.AddEndpointsApiExplorer();
-            services.AddSwaggerGen();
+            // 仅保留最小必要配置：文档标题与 Bearer 安全定义（Authorize 按钮可用）。
+            // 响应 schema 由端点的 TypedResults 返回类型自动推导，无需侵入端点代码。
+            services.AddSwaggerGen(swaggerOptions =>
+            {
+                swaggerOptions.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo
+                {
+                    Title = $"{options.ServiceName} API",
+                    Version = "v1"
+                });
+                swaggerOptions.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+                {
+                    Name = "Authorization",
+                    Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
+                    Scheme = "bearer",
+                    BearerFormat = "JWT",
+                    In = Microsoft.OpenApi.Models.ParameterLocation.Header,
+                    Description = "输入 JWT 访问令牌或 Bearer API Key（开发环境 Basic 模式同样经 Authorization 头发送）。"
+                });
+                swaggerOptions.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
+                {
+                    {
+                        new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+                        {
+                            Reference = new Microsoft.OpenApi.Models.OpenApiReference
+                            {
+                                Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
+                                Id = "Bearer"
+                            }
+                        },
+                        Array.Empty<string>()
+                    }
+                });
+            });
         }
 
-        services.AddControllers();
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentUserContext, HttpCurrentUserContext>();
         services.ConfigureHttpClientDefaults(builder =>

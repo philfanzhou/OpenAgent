@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
@@ -65,7 +66,7 @@ public sealed class ConversationCompactionEndpointTests
         var compaction = new CompactionService();
         DefaultHttpContext context = CreateContext(requestTenant, requestUser);
 
-        IResult result = await ConversationEndpointExtensions.CompactAsync(
+        Results<Ok<ContextSummary>, NotFound, ForbidHttpResult> result = await ConversationEndpointExtensions.CompactAsync(
             query,
             compaction,
             context,
@@ -73,9 +74,9 @@ public sealed class ConversationCompactionEndpointTests
             "profile-1",
             CancellationToken.None);
 
-        int? status = result is Microsoft.AspNetCore.Http.HttpResults.ForbidHttpResult
+        int? status = result.Result is ForbidHttpResult
             ? StatusCodes.Status403Forbidden
-            : Assert.IsAssignableFrom<IStatusCodeHttpResult>(result).StatusCode;
+            : Assert.IsAssignableFrom<IStatusCodeHttpResult>(result.Result).StatusCode;
         Assert.Equal(expectedStatus, status);
         Assert.Equal(expectedCalls, compaction.Calls);
     }

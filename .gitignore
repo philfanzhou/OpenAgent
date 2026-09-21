@@ -84,3 +84,7 @@ dist/
 *.tmp_proj
 *.ncxb
 Thumbs.db
+
+# Python bytecode (Runner sandbox scripts)
+__pycache__/
+*.pyc

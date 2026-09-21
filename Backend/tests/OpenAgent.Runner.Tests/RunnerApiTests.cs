@@ -19,7 +19,7 @@ public class RunnerApiTests
         using var factory = new RealFactory();
         using HttpClient client = factory.CreateClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Factory.Key);
-        using HttpResponseMessage response = await client.PostAsJsonAsync("/v1/execute", new CodeExecutionRequest
+        using HttpResponseMessage response = await client.PostAsJsonAsync("/api/v1/execute", new CodeExecutionRequest
         {
             Code = "from openpyxl import Workbook\nw=Workbook()\nw.active['A1']=42\nw.save('/output/report.xlsx')"
         });
@@ -38,7 +38,7 @@ public class RunnerApiTests
         using var factory = new RealFactory();
         using HttpClient client = factory.CreateClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Factory.Key);
-        using HttpResponseMessage response = await client.PostAsJsonAsync("/v1/execute", new CodeExecutionRequest
+        using HttpResponseMessage response = await client.PostAsJsonAsync("/api/v1/execute", new CodeExecutionRequest
         {
             Language = ExecutionLanguage.JavaScript,
             Code = "import { writeFile } from 'node:fs/promises';\nawait writeFile('/output/result.txt', 'node ok');\nconsole.log('done')"
@@ -60,7 +60,7 @@ public class RunnerApiTests
         {
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Factory.Key);
         }
-        using HttpResponseMessage response = await client.PostAsJsonAsync("/v1/execute", new CodeExecutionRequest { Code = "print(42)" });
+        using HttpResponseMessage response = await client.PostAsJsonAsync("/api/v1/execute", new CodeExecutionRequest { Code = "print(42)" });
         Assert.Equal(expected, response.StatusCode);
         Assert.Equal(authorized ? 1 : 0, factory.Executor.Calls);
     }

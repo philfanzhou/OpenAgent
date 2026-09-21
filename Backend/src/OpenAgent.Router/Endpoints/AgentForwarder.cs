@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Hosting;
+using OpenAgent.Hosting.Errors;
 using OpenAgent.Router.Models;
 using OpenAgent.Router.Observability;
 using Yarp.ReverseProxy.Forwarder;
@@ -56,10 +57,12 @@ internal sealed class AgentForwarder(
                     Stopwatch.GetElapsedTime(forwardingStarted),
                     succeeded: false);
             }
-            await RouterProblem.From(new AgentRoutingException(
-                StatusCodes.Status503ServiceUnavailable,
-                RouterErrorCodes.AgentProviderUnavailable,
-                "Agent Provider is unavailable")).ExecuteAsync(context).ConfigureAwait(false);
+            await AgentProblemDetails.WriteAsync(
+                context,
+                RouterProblem.From(new AgentRoutingException(
+                    StatusCodes.Status503ServiceUnavailable,
+                    RouterErrorCodes.AgentProviderUnavailable,
+                    "Agent Provider is unavailable"), context)).ConfigureAwait(false);
             return;
         }
 

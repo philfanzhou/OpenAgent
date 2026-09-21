@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Security;
@@ -14,7 +15,7 @@ internal static class AgentProviderEndpointExtensions
             .WithTags("Agent Provider");
     }
 
-    internal static async Task<IResult> ResolveConversationAsync(
+    internal static async Task<Results<NoContent, NotFound, UnauthorizedHttpResult>> ResolveConversationAsync(
         [FromServices] IConversationQueryService queryService,
         HttpContext context,
         string conversationId,
@@ -23,12 +24,12 @@ internal static class AgentProviderEndpointExtensions
         IAgentUserContext serviceUser = context.GetAgentRequest().User;
         if (!serviceUser.IsAuthenticated)
         {
-            return Results.Unauthorized();
+            return TypedResults.Unauthorized();
         }
 
         if (string.IsNullOrWhiteSpace(serviceUser.TenantId))
         {
-            return Results.Unauthorized();
+            return TypedResults.Unauthorized();
         }
 
         ConversationRecord? record = await queryService.GetRecordAsync(
@@ -39,7 +40,7 @@ internal static class AgentProviderEndpointExtensions
             && !record.IsDeletedByUser
             && record.Type == ConversationType.User
             && string.Equals(record.UserId, serviceUser.UserId, StringComparison.Ordinal)
-            ? Results.NoContent()
-            : Results.NotFound();
+            ? TypedResults.NoContent()
+            : TypedResults.NotFound();
     }
 }

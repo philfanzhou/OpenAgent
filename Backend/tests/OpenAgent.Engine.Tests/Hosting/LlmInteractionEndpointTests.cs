@@ -38,7 +38,7 @@ public sealed class LlmInteractionEndpointTests
             .ReturnsAsync((IReadOnlyList<LlmInteractionRecord>)[]);
         DefaultHttpContext context = CreateContext("tenant-1", requestUser);
 
-        IResult result = await ConversationEndpointExtensions.ListInteractionsAsync(
+        Results<Ok<IReadOnlyList<LlmInteractionRecord>>, NotFound, ForbidHttpResult> result = await ConversationEndpointExtensions.ListInteractionsAsync(
             query.Object,
             interactions.Object,
             context,
@@ -46,9 +46,9 @@ public sealed class LlmInteractionEndpointTests
             skip: 0,
             take: 50);
 
-        int? status = result is ForbidHttpResult
+        int? status = result.Result is ForbidHttpResult
             ? StatusCodes.Status403Forbidden
-            : Assert.IsAssignableFrom<IStatusCodeHttpResult>(result).StatusCode;
+            : Assert.IsAssignableFrom<IStatusCodeHttpResult>(result.Result).StatusCode;
         Assert.Equal(expectedStatus, status);
         interactions.Verify(
             value => value.ListAsync(

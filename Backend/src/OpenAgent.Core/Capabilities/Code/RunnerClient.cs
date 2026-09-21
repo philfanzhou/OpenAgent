@@ -21,7 +21,7 @@ internal sealed class RunnerClient(HttpClient http, IOptions<CodeExecutionOption
         }
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(TimeSpan.FromSeconds(settings.RequestTimeoutSeconds));
-        using var message = new HttpRequestMessage(HttpMethod.Post, new Uri(endpoint, "/v1/execute"));
+        using var message = new HttpRequestMessage(HttpMethod.Post, new Uri(endpoint, "/api/v1/execute"));
         message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", settings.ApiKey);
         message.Content = JsonContent.Create(request);
         using HttpResponseMessage response = await http.SendAsync(

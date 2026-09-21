@@ -1,6 +1,8 @@
+using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Requests;
+using OpenAgent.Contracts.Responses;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Engine.Host.Middleware;
 
@@ -16,14 +18,14 @@ internal static class FileShareEndpointExtensions
     {
         return endpoints.MapGet(
             $"{IFileShareService.RoutePrefix}/{{token}}",
-            async ([FromServices] IFileShareService shares, string token, CancellationToken cancellationToken) =>
+            async Task<Results<FileContentHttpResult, NotFound>> ([FromServices] IFileShareService shares, string token, CancellationToken cancellationToken) =>
             {
                 FileShareRedemption? redemption = await shares.RedeemAsync(token, cancellationToken)
                     .ConfigureAwait(false);
                 // 链接不存在、已过期或已用尽下载次数统一返回 404，避免暴露链接状态。
                 return redemption == null
-                    ? Results.NotFound()
-                    : Results.File(
+                    ? TypedResults.NotFound()
+                    : TypedResults.File(
                         redemption.Data,
                         redemption.MediaType,
                         redemption.FileName,
@@ -47,7 +49,7 @@ internal static class FileShareEndpointExtensions
             .WithTags("File");
     }
 
-    private static async Task<IResult> CreateAsync(
+    private static async Task<Ok<FileShareLinkResponse>> CreateAsync(
         [FromServices] IFileShareService shares,
         [FromBody] FileShareCreateRequest? request,
         HttpContext context,
@@ -86,22 +88,22 @@ internal static class FileShareEndpointExtensions
             CreateScope(context),
             new FileShareRequest { Mode = mode, Audience = audience, ExpiresInSeconds = request?.ExpiresInSeconds },
             cancellationToken).ConfigureAwait(false);
-        return Results.Ok(new
+        return TypedResults.Ok(new FileShareLinkResponse
         {
-            shareId = share.ShareId,
-            share.FileId,
-            share.FileName,
-            share.MediaType,
-            share.Length,
-            mode = share.Mode.ToString(),
-            url = ResolveAbsoluteUrl(share.Url, context),
-            share.ExpiresAt,
-            share.MaxDownloads,
-            share.DownloadCount
+            ShareId = share.ShareId,
+            FileId = share.FileId,
+            FileName = share.FileName,
+            MediaType = share.MediaType,
+            Length = share.Length,
+            Mode = share.Mode.ToString(),
+            Url = ResolveAbsoluteUrl(share.Url, context),
+            ExpiresAt = share.ExpiresAt,
+            MaxDownloads = share.MaxDownloads,
+            DownloadCount = share.DownloadCount
         });
     }
 
-    private static async Task<IResult> ListAsync(
+    private static async Task<IReadOnlyList<FileShareLinkResponse>> ListAsync(
         [FromServices] IFileShareService shares,
         HttpContext context,
         CancellationToken cancellationToken)
@@ -109,22 +111,22 @@ internal static class FileShareEndpointExtensions
         IReadOnlyList<FileShareSummary> items = await shares.ListAsync(
             CreateScope(context),
             cancellationToken).ConfigureAwait(false);
-        return Results.Ok(items.Select(share => new
+        return items.Select(share => new FileShareLinkResponse
         {
-            shareId = share.ShareId,
-            share.FileId,
-            share.FileName,
-            share.MediaType,
-            share.Length,
-            mode = share.Mode.ToString(),
-            share.ExpiresAt,
-            share.MaxDownloads,
-            share.DownloadCount,
-            share.CreatedAt
-        }));
+            ShareId = share.ShareId,
+            FileId = share.FileId,
+            FileName = share.FileName,
+            MediaType = share.MediaType,
+            Length = share.Length,
+            Mode = share.Mode.ToString(),
+            ExpiresAt = share.ExpiresAt,
+            MaxDownloads = share.MaxDownloads,
+            DownloadCount = share.DownloadCount,
+            CreatedAt = share.CreatedAt
+        }).ToList();
     }
 
-    private static async Task<IResult> RevokeAsync(
+    private static async Task<Results<NoContent, NotFound>> RevokeAsync(
         [FromServices] IFileShareService shares,
         HttpContext context,
         string shareId,
@@ -135,7 +137,7 @@ internal static class FileShareEndpointExtensions
             CreateScope(context),
             cancellationToken).ConfigureAwait(false);
         // 不存在、已失效与不属于当前用户统一 404，避免分享 ID 被探测。
-        return revoked ? Results.NoContent() : Results.NotFound();
+        return revoked ? TypedResults.NoContent() : TypedResults.NotFound();
     }
 
     private static FileAssetScope CreateScope(HttpContext context) => new()

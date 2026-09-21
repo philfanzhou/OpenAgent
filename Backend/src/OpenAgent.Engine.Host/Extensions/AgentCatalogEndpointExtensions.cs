@@ -13,14 +13,13 @@ internal static class AgentCatalogEndpointExtensions
             .WithTags("Agent");
     }
 
-    private static async Task<IResult> ExecuteAsync(
+    private static async Task<IReadOnlyList<AgentSummary>> ExecuteAsync(
         [FromServices] IAgentConfigProvider configProvider,
         HttpContext context,
         CancellationToken cancellationToken)
     {
-        IReadOnlyList<AgentSummary> agents = await configProvider.ListAgentsAsync(
+        return await configProvider.ListAgentsAsync(
             AgentEndpointRequestMapper.RequireTenant(context),
             cancellationToken).ConfigureAwait(false);
-        return Results.Ok(agents);
     }
 }
