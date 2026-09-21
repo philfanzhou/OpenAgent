@@ -16,6 +16,7 @@ function readyFile(mediaType: string, content = 'hello'): PendingFile {
       mediaType,
       length: file.size,
       sha256: 'hash',
+      objectKey: 'tenant-1/file-1',
       source: 'UserUpload',
       state: 'Ready',
       createdAt: '2026-08-20T00:00:00.000Z',
