@@ -34,7 +34,7 @@ AgentExecutor → AgentFactory → CapabilityToolFactory → execute_code
 
 `language` 支持 `python`（默认）和 `javascript`。JavaScript 由固定 Node 运行时执行，入口为 `main.mjs`（ESM），仅提供 Node 内置模块，没有 npm 包，按需另行预装。Python 由固定 venv 执行，入口为 `main.py`。两种语言共享同一沙箱边界、资源限额和输入/输出协议。
 
-返回 `executionId`、`exitCode`、`timedOut`、`stdout`、`stderr` 和文件元数据数组。成功文件登记为当前用户的 FileAsset，并关联当前会话；只有模型调用 `publish_files` 后才发布到 assistant 消息。二进制字节只在 Runner 与 Engine 之间传输，不进入模型上下文。
+返回 `executionId`、`exitCode`、`timedOut`、`stdout`、`stderr` 和文件元数据数组。成功文件登记为当前用户的 FileAsset，并关联当前会话；只有模型调用 `publish_files` 后才发布到 assistant 消息。二进制字节只在 Runner 与 Engine 之间传输，不进入模型上下文。沙箱不按类型过滤输出文件（尺寸/数量/文件名安全检查保留）；能否入库由存储层依据 `FileMediaTypeCatalog`（或运维收窄后的配置）裁决——不可入库的产物被跳过并在结果的 `skippedFiles` 中给出原因，整个执行不因此失败，模型可改名或转换格式后重试。
 
 无 `SessionKey` 的调用每次创建全新的 namespace、tmpfs 工作区和解释器进程，退出即销毁。携带 `SessionKey`（当前为会话 ID）的调用复用一个常驻会话沙箱：沙箱内由可信 supervisor（UDS 单连接单请求）串行执行每次调用，`/work`、`/tmp`、`/input` 的文件与 `pip install --user` 安装的包跨调用保留；`/output` 中每次调用只返回新写入的文件（旧产物保留可读但不重复返回）。变量与后台进程不跨调用保留——每次调用结束即 kill 整个子进程组。空闲超过 `SessionIdleMinutes`（默认 120 分钟）后沙箱被回收；沙箱死亡或被回收后下一次调用自动重建全新沙箱，结果携带 `sandboxReset=true` 提示状态已丢失。容量由 `MaxSessionSandboxes`（默认 64）限制，满时驱逐最久空闲的沙箱。继续编辑历史产物时，仍显式将前次返回的 fileId 作为新调用输入。输出只接受普通文件，拒绝符号链接、目录、特殊文件及危险名称。
 
