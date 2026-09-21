@@ -202,7 +202,7 @@ internal sealed class FileAssetUrlDownloader
 
         string mediaType = response.Content.Headers.ContentType?.MediaType ?? string.Empty;
         if (string.IsNullOrWhiteSpace(Path.GetExtension(candidate))
-            && MediaTypeToExtension.TryGetValue(mediaType, out string? extension))
+            && FileMediaTypeCatalog.TryGetExtensionForMediaType(mediaType, out string extension))
         {
             candidate += extension;
         }
@@ -218,7 +218,7 @@ internal sealed class FileAssetUrlDownloader
             return mediaType;
         }
 
-        return MediaTypeExtensions.TryGetValue(Path.GetExtension(fileName), out string? inferred)
+        return FileMediaTypeCatalog.TryGetMediaType(Path.GetExtension(fileName), out string inferred)
             ? inferred
             : mediaType ?? "application/octet-stream";
     }
@@ -262,33 +262,4 @@ internal sealed class FileAssetUrlDownloader
 
         return (bytes[0] & 0xFE) == 0xFC;
     }
-
-    private static readonly IReadOnlyDictionary<string, string> MediaTypeExtensions =
-        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            [".png"] = "image/png",
-            [".jpg"] = "image/jpeg",
-            [".jpeg"] = "image/jpeg",
-            [".jps"] = "image/jpeg",
-            [".gif"] = "image/gif",
-            [".webp"] = "image/webp",
-            [".svg"] = "image/svg+xml",
-            [".pdf"] = "application/pdf",
-            [".json"] = "application/json",
-            [".xml"] = "application/xml",
-            [".txt"] = "text/plain",
-            [".csv"] = "text/csv",
-            [".md"] = "text/markdown",
-            [".html"] = "text/html",
-            [".htm"] = "text/html",
-            [".drawio"] = "application/vnd.jgraph.mxfile"
-        };
-
-    private static readonly IReadOnlyDictionary<string, string> MediaTypeToExtension =
-        MediaTypeExtensions
-            .GroupBy(item => item.Value, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(
-            group => group.Key,
-            group => group.First().Key,
-            StringComparer.OrdinalIgnoreCase);
 }

@@ -18,18 +18,22 @@ internal static class FileShareEndpointExtensions
     {
         return endpoints.MapGet(
             $"{IFileShareService.RoutePrefix}/{{token}}",
-            async Task<Results<FileContentHttpResult, NotFound>> ([FromServices] IFileShareService shares, string token, CancellationToken cancellationToken) =>
+            async Task<Results<FileContentHttpResult, NotFound>> ([FromServices] IFileShareService shares, HttpContext context, string token, CancellationToken cancellationToken) =>
             {
                 FileShareRedemption? redemption = await shares.RedeemAsync(token, cancellationToken)
                     .ConfigureAwait(false);
-                // 链接不存在、已过期或已用尽下载次数统一返回 404，避免暴露链接状态。
-                return redemption == null
-                    ? TypedResults.NotFound()
-                    : TypedResults.File(
-                        redemption.Data,
-                        redemption.MediaType,
-                        redemption.FileName,
-                        enableRangeProcessing: false);
+                if (redemption == null)
+                {
+                    // 链接不存在、已过期或已用尽下载次数统一返回 404，避免暴露链接状态。
+                    return TypedResults.NotFound();
+                }
+                // 分享内容可能被浏览器嗅探执行；禁用 MIME 嗅探只按声明的 Content-Type 处理。
+                context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+                return TypedResults.File(
+                    redemption.Data,
+                    redemption.MediaType,
+                    redemption.FileName,
+                    enableRangeProcessing: false);
             })
             .WithName("DownloadSharedFile")
             .WithTags("File");

@@ -83,6 +83,7 @@ internal static class FileAssetEndpointExtensions
             fileId,
             CreateScope(context, conversationId),
             cancellationToken).ConfigureAwait(false);
+        AddNoSniff(context);
         return TypedResults.File(content.Data, content.Asset.MediaType, enableRangeProcessing: false);
     }
 
@@ -101,30 +102,19 @@ internal static class FileAssetEndpointExtensions
             path,
             CreateScope(context, conversationId),
             cancellationToken).ConfigureAwait(false);
+        AddNoSniff(context);
         return TypedResults.File(content, InferContentType(path), enableRangeProcessing: false);
     }
 
     private static string InferContentType(string objectKey)
     {
-        string extension = Path.GetExtension(objectKey).ToLowerInvariant();
-        return extension switch
+        if (!FileMediaTypeCatalog.TryGetMediaType(Path.GetExtension(objectKey), out string mediaType))
         {
-            ".png" => "image/png",
-            ".jpg" or ".jpeg" or ".jps" => "image/jpeg",
-            ".gif" => "image/gif",
-            ".webp" => "image/webp",
-            ".svg" => "image/svg+xml",
-            ".pdf" => "application/pdf",
-            ".json" => "application/json",
-            ".xml" => "application/xml; charset=utf-8",
-            ".txt" => "text/plain; charset=utf-8",
-            ".csv" => "text/csv; charset=utf-8",
-            ".md" => "text/markdown; charset=utf-8",
-            ".html" or ".htm" => "text/html; charset=utf-8",
-            ".zip" => "application/zip",
-            ".drawio" => "application/vnd.jgraph.mxfile",
-            _ => "application/octet-stream"
-        };
+            return "application/octet-stream";
+        }
+        return FileMediaTypeCatalog.IsTextMediaType(mediaType)
+            ? $"{mediaType}; charset=utf-8"
+            : mediaType;
     }
 
     private static async Task<FileContentHttpResult> DownloadAsync(
@@ -138,12 +128,17 @@ internal static class FileAssetEndpointExtensions
             fileId,
             CreateScope(context, conversationId),
             cancellationToken).ConfigureAwait(false);
+        AddNoSniff(context);
         return TypedResults.File(
             content.Data,
             content.Asset.MediaType,
             content.Asset.FileName,
             enableRangeProcessing: false);
     }
+
+    /// <summary>内容来自用户/模型的文件可能被浏览器嗅探执行；禁用 MIME 嗅探只按声明的 Content-Type 处理。</summary>
+    private static void AddNoSniff(HttpContext context) =>
+        context.Response.Headers["X-Content-Type-Options"] = "nosniff";
 
     private static FileAssetScope CreateScope(HttpContext context, string? conversationId) => new()
     {
