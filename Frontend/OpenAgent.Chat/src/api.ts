@@ -198,43 +198,59 @@ async function readError(response: Response): Promise<ApiError> {
   if (!raw.trim()) return new ApiError(fallback, response.status)
 
   try {
-    const body = JSON.parse(raw) as {
-      detail?: string
-      title?: string
-      message?: string
-      error?: string | { detail?: string; message?: string }
-      traceId?: string
-      trace_id?: string
-    }
-    const nestedError = typeof body.error === 'string' ? body.error : body.error?.detail || body.error?.message
-    const message = safeErrorMessage(body.detail || body.message || nestedError || body.title || fallback, fallback)
-    const rawTraceId = body.traceId || body.trace_id
-    const traceId = rawTraceId ? safeErrorMessage(rawTraceId, '') : ''
+    // 后端统一返回 ProblemDetails：detail（兜底 title）+ camelCase traceId。
+    const body = JSON.parse(raw) as { detail?: string; title?: string; traceId?: string }
+    const message = safeErrorMessage(body.detail || body.title || fallback, fallback)
+    const traceId = body.traceId ? safeErrorMessage(body.traceId, '') : ''
     return new ApiError(`${message}${traceId ? ` (TraceId: ${traceId})` : ''}`, response.status)
   } catch {
     return new ApiError(fallback, response.status)
   }
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${requireBaseUrl()}${path}`, {
-    ...init,
-    headers: headers(init.headers),
-  })
+/** 绝对 URL 的统一请求入口：注入认证头与 X-Trace-Id，非 2xx 一律抛 ApiError。 */
+async function requestUrl(url: string, init: RequestInit = {}): Promise<Response> {
+  const response = await fetch(url, { ...init, headers: headers(init.headers) })
   if (!response.ok) throw await readError(response)
+  return response
+}
+
+/** 相对当前服务（Router/Engine）路径的请求。 */
+function send(path: string, init: RequestInit = {}): Promise<Response> {
+  return requestUrl(`${requireBaseUrl()}${path}`, init)
+}
+
+/** JSON 请求体样板（POST/PUT/PATCH）。 */
+function jsonInit(method: string, body: unknown): RequestInit {
+  return { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
+}
+
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const response = await send(path, init)
   if (response.status === 204) return undefined as T
   return await response.json() as T
 }
 
+/** 单文件 multipart 上传（'file' 字段）。 */
+function uploadForm<T>(path: string, file: File): Promise<T> {
+  const form = new FormData()
+  form.set('file', file, file.name)
+  return request<T>(path, { method: 'POST', body: form })
+}
+
+/** 拉取二进制并转为对象 URL（预览用）。 */
+async function fetchObjectUrl(path: string): Promise<string> {
+  const response = await send(path)
+  return URL.createObjectURL(await response.blob())
+}
+
 export async function fetchHealthReport(baseUrl: string): Promise<HealthReport> {
-  const response = await fetch(`${normalizeBaseUrl(baseUrl)}/health/report`, { headers: headers() })
-  if (!response.ok) throw await readError(response)
+  const response = await requestUrl(`${normalizeBaseUrl(baseUrl)}/health/report`)
   return await response.json() as HealthReport
 }
 
 export async function fetchHealth(baseUrl: string, path: '/health' | '/ready'): Promise<NativeHealthReport> {
-  const response = await fetch(`${normalizeBaseUrl(baseUrl)}${path}`, { headers: headers() })
-  if (!response.ok) throw await readError(response)
+  const response = await requestUrl(`${normalizeBaseUrl(baseUrl)}${path}`)
   // Router 的健康端点以纯文本返回 "Healthy"/"Degraded"/"Unhealthy"，
   // Engine 返回 JSON HealthReport；统一做兜底解析。
   const text = await response.text()
@@ -293,16 +309,11 @@ export const api = {
   },
 
   passwordLogin(username: string, password: string): Promise<AuthTokenResponse> {
-    return request<AuthTokenResponse>('/api/v1/auth/password/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
-    })
+    return request<AuthTokenResponse>('/api/v1/auth/password/token', jsonInit('POST', { username, password }))
   },
 
   async health(path: '/health' | '/ready'): Promise<void> {
-    const response = await fetch(`${requireBaseUrl()}${path}`, { headers: headers() })
-    if (!response.ok) throw await readError(response)
+    await send(path)
   },
 
   listAgents(): Promise<AgentSummary[]> {
@@ -325,53 +336,33 @@ export const api = {
     return request<ConversationRecord>(`/api/v1/agent/conversations/${encodeURIComponent(id)}`).then(normalizeConversation)
   },
 
-  async uploadFile(file: File): Promise<FileAsset> {
-    const form = new FormData()
-    form.set('file', file, file.name)
-    const response = await fetch(`${requireBaseUrl()}/api/v1/agent/files`, {
-      method: 'POST',
-      headers: headers(),
-      body: form,
-    })
-    if (!response.ok) throw await readError(response)
-    return await response.json() as FileAsset
+  uploadFile(file: File): Promise<FileAsset> {
+    return uploadForm<FileAsset>('/api/v1/agent/files', file)
   },
 
-  async loadFilePreview(fileId: string, conversationId: string): Promise<string> {
-    const response = await fetch(
-      `${requireBaseUrl()}/api/v1/agent/files/${encodeURIComponent(fileId)}/content?conversationId=${encodeURIComponent(conversationId)}`,
-      { headers: headers() },
+  loadFilePreview(fileId: string, conversationId: string): Promise<string> {
+    return fetchObjectUrl(
+      `/api/v1/agent/files/${encodeURIComponent(fileId)}/content?conversationId=${encodeURIComponent(conversationId)}`,
     )
-    if (!response.ok) throw await readError(response)
-    return URL.createObjectURL(await response.blob())
   },
 
   async loadObjectPreview(objectKey: string, conversationId?: string): Promise<string> {
     const query = new URLSearchParams({ path: objectKey })
     if (conversationId) query.set('conversationId', conversationId)
-    const response = await fetch(
-      `${requireBaseUrl()}/api/v1/agent/files/object?${query.toString()}`,
-      { headers: headers() },
-    )
-    if (!response.ok) throw await readError(response)
-    return URL.createObjectURL(await response.blob())
+    return fetchObjectUrl(`/api/v1/agent/files/object?${query.toString()}`)
   },
 
   async readFileText(fileId: string, conversationId: string): Promise<string> {
-    const response = await fetch(
-      `${requireBaseUrl()}/api/v1/agent/files/${encodeURIComponent(fileId)}/content?conversationId=${encodeURIComponent(conversationId)}`,
-      { headers: headers() },
+    const response = await send(
+      `/api/v1/agent/files/${encodeURIComponent(fileId)}/content?conversationId=${encodeURIComponent(conversationId)}`,
     )
-    if (!response.ok) throw await readError(response)
     return await response.text()
   },
 
   async downloadFile(fileId: string, fileName: string, conversationId: string): Promise<void> {
-    const response = await fetch(
-      `${requireBaseUrl()}/api/v1/agent/files/${encodeURIComponent(fileId)}/download?conversationId=${encodeURIComponent(conversationId)}`,
-      { headers: headers() },
+    const response = await send(
+      `/api/v1/agent/files/${encodeURIComponent(fileId)}/download?conversationId=${encodeURIComponent(conversationId)}`,
     )
-    if (!response.ok) throw await readError(response)
     const url = URL.createObjectURL(await response.blob())
     const anchor = document.createElement('a')
     anchor.href = url
@@ -393,11 +384,7 @@ export const api = {
   },
 
   saveAgentConfig(id: string, config: AgentConfigEntity): Promise<AgentConfigEntity> {
-    return request<AgentConfigEntity>(`/api/v1/admin/agents/${encodeURIComponent(id)}/config`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(config),
-    })
+    return request<AgentConfigEntity>(`/api/v1/admin/agents/${encodeURIComponent(id)}/config`, jsonInit('PUT', config))
   },
 
   listLlmProfiles(): Promise<LlmProviderProfile[]> {
@@ -405,11 +392,7 @@ export const api = {
   },
 
   saveLlmProfile(id: string, profile: LlmProviderProfile): Promise<LlmProviderProfile> {
-    return request<LlmProviderProfile>(`/api/v1/admin/llm/${encodeURIComponent(id)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(profile),
-    })
+    return request<LlmProviderProfile>(`/api/v1/admin/llm/${encodeURIComponent(id)}`, jsonInit('PUT', profile))
   },
 
   deleteLlmProfile(id: string): Promise<void> {
@@ -417,35 +400,15 @@ export const api = {
   },
 
   testLlmProfile(profile: LlmProviderProfile): Promise<LlmTestResult> {
-    return request<LlmTestResult>('/api/v1/admin/llm/test-connection', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(profile),
-    })
+    return request<LlmTestResult>('/api/v1/admin/llm/test-connection', jsonInit('POST', profile))
   },
 
-  async uploadSkillPackage(agentId: string, file: File): Promise<SkillPackageInstallResponse> {
-    const form = new FormData()
-    form.set('file', file, file.name)
-    const response = await fetch(`${requireBaseUrl()}/api/v1/admin/skills/${encodeURIComponent(agentId)}/packages`, {
-      method: 'POST',
-      headers: headers(),
-      body: form,
-    })
-    if (!response.ok) throw await readError(response)
-    return response.json() as Promise<SkillPackageInstallResponse>
+  uploadSkillPackage(agentId: string, file: File): Promise<SkillPackageInstallResponse> {
+    return uploadForm<SkillPackageInstallResponse>(`/api/v1/admin/skills/${encodeURIComponent(agentId)}/packages`, file)
   },
 
-  async uploadSkillCatalog(file: File): Promise<{ skill: SkillInstanceConfig; storage: string }> {
-    const form = new FormData()
-    form.set('file', file, file.name)
-    const response = await fetch(`${requireBaseUrl()}/api/v1/admin/skills/packages`, {
-      method: 'POST',
-      headers: headers(),
-      body: form,
-    })
-    if (!response.ok) throw await readError(response)
-    return response.json() as Promise<{ skill: SkillInstanceConfig; storage: string }>
+  uploadSkillCatalog(file: File): Promise<{ skill: SkillInstanceConfig; storage: string }> {
+    return uploadForm<{ skill: SkillInstanceConfig; storage: string }>('/api/v1/admin/skills/packages', file)
   },
 
   deleteSkillCatalog(skillId: string): Promise<void> {
@@ -453,11 +416,7 @@ export const api = {
   },
 
   updateSkillScriptExecution(skillId: string, scriptExecutionEnabled: boolean): Promise<SkillCatalogItem> {
-    return request<SkillCatalogItem>(`/api/v1/admin/skills/${encodeURIComponent(skillId)}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ scriptExecutionEnabled }),
-    })
+    return request<SkillCatalogItem>(`/api/v1/admin/skills/${encodeURIComponent(skillId)}`, jsonInit('PATCH', { scriptExecutionEnabled }))
   },
 
   listSkills(): Promise<SkillCatalogItem[]> {
@@ -473,11 +432,7 @@ export const api = {
   },
 
   updateSkillSource(skillId: string, markdown: string): Promise<SkillCatalogItem> {
-    return request<SkillCatalogItem>(`/api/v1/admin/skills/${encodeURIComponent(skillId)}/source`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ markdown }),
-    })
+    return request<SkillCatalogItem>(`/api/v1/admin/skills/${encodeURIComponent(skillId)}/source`, jsonInit('PUT', { markdown }))
   },
 
   deleteSkillPackage(agentId: string, skillId: string): Promise<void> {
@@ -485,19 +440,11 @@ export const api = {
   },
 
   testSkills(skills: AgentConfigEntity['config']['skills']): Promise<SkillTestResult> {
-    return request<SkillTestResult>('/api/v1/admin/skills/test', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(skills),
-    })
+    return request<SkillTestResult>('/api/v1/admin/skills/test', jsonInit('POST', skills))
   },
 
   testMcp(server: McpServerConfig, agentId?: string): Promise<McpTestResult> {
-    return request<McpTestResult>('/api/v1/admin/mcp/test-connection', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ agentId, server, action: 'discover' }),
-    })
+    return request<McpTestResult>('/api/v1/admin/mcp/test-connection', jsonInit('POST', { agentId, server, action: 'discover' }))
   },
 
   listMcpProfiles(): Promise<McpServerConfig[]> {
@@ -509,11 +456,7 @@ export const api = {
   },
 
   saveMcpProfile(id: string, server: McpServerConfig): Promise<McpServerConfig> {
-    return request<McpServerConfig>(`/api/v1/admin/mcp/${encodeURIComponent(id)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(server),
-    })
+    return request<McpServerConfig>(`/api/v1/admin/mcp/${encodeURIComponent(id)}`, jsonInit('PUT', server))
   },
 
   deleteMcpProfile(id: string): Promise<void> {
@@ -525,11 +468,7 @@ export const api = {
   },
 
   saveRag(id: string, agentId: string, instance: RagInstanceConfig): Promise<RagInstanceConfig> {
-    return request<RagInstanceConfig>(`/api/v1/admin/rag/${encodeURIComponent(id)}?agentId=${encodeURIComponent(agentId)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(instance),
-    })
+    return request<RagInstanceConfig>(`/api/v1/admin/rag/${encodeURIComponent(id)}?agentId=${encodeURIComponent(agentId)}`, jsonInit('PUT', instance))
   },
 
   deleteRag(id: string, agentId: string): Promise<void> {
@@ -537,11 +476,7 @@ export const api = {
   },
 
   testRag(instance: RagInstanceConfig): Promise<RagTestResult> {
-    return request<RagTestResult>('/api/v1/admin/rag/test-connection', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(instance),
-    })
+    return request<RagTestResult>('/api/v1/admin/rag/test-connection', jsonInit('POST', instance))
   },
 
   async *streamChat(
@@ -553,11 +488,12 @@ export const api = {
     routingConversationId?: string,
     signal?: AbortSignal,
   ): AsyncGenerator<StreamEvent> {
-    const requestHeaders = headers({ 'Content-Type': 'application/json' })
-    if (routingConversationId) requestHeaders.set('X-Conversation-Id', routingConversationId)
-    const response = await fetch(`${requireBaseUrl()}/api/v1/agent/chat/stream`, {
+    const response = await send('/api/v1/agent/chat/stream', {
       method: 'POST',
-      headers: requestHeaders,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(routingConversationId ? { 'X-Conversation-Id': routingConversationId } : {}),
+      },
       body: JSON.stringify({
         message,
         fileIds,
@@ -565,7 +501,6 @@ export const api = {
       }),
       signal,
     })
-    if (!response.ok) throw await readError(response)
     if (!response.body) throw new Error('Engine 未返回流式响应')
     const selectedAgentId = response.headers.get('X-OpenAgent-Selected-Agent-Id')
     if (selectedAgentId) yield { type: 'agent_selected', agentId: selectedAgentId }
