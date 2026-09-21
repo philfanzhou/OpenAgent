@@ -9,11 +9,11 @@ Browser ---------------------> Engine
 
 ## 功能
 
-- 三栏工作区：会话列表、SSE 聊天、路由与身份上下文；
-- `Auto` 意图路由和显式 Agent 选择；
-- 附件上传、会话搜索、详情读取和删除；
-- Router/Engine 连接、诊断、LLM、Agent、MCP、Skill、RAG 设置；
-- 独立登录页、登录态恢复、OIDC PKCE、登出、401/403 状态和受保护页面跳转；
+- 三栏工作区：会话列表、SSE 聊天、路由与身份上下文。
+- `Auto` 意图路由和显式 Agent 选择。
+- 附件上传、会话搜索、详情读取和删除。
+- Router/Engine 连接、诊断、LLM、Agent、MCP、Skill、RAG 设置。
+- 独立登录页、登录态恢复、OIDC PKCE、登出、401/403 状态和受保护页面跳转。
 - 深浅主题和响应式布局。
 - 每条 assistant 响应展示模型与 input/output/total Token；右侧 Inspector 展示当前会话累计。
 
@@ -30,16 +30,13 @@ Token 仅取服务端 Provider usage。流式生成期间等待 `done` 事件更
 - `GET|POST|PUT|DELETE|PATCH /api/v1/admin/{**path}`；
 - `GET /api/v1/auth/config` 与 Development-only `POST /api/v1/auth/password/token` 由 Router 本地提供。
 
-实现入口：
-
-- `Backend/src/OpenAgent.Router/Endpoints/GatewayProxyHandler.cs`；
-- `Backend/src/OpenAgent.Router/Extensions/RouterEndpointExtensions.cs`。
+实现入口：`Backend/src/OpenAgent.Router/Endpoints/GatewayProxyHandler.cs`；`Backend/src/OpenAgent.Router/Extensions/RouterEndpointExtensions.cs`。
 
 Router 是浏览器流量的信任边界。转发前会清除客户端提交的 Agent、用户、租户、会话和 Trace 内部 Header，再根据认证上下文写入可信值。
 
 ## 开发与安全边界
 
-当前 Basic 认证只用于 Development 联调，它不校验真实密码，且在非 Development 环境启动失败。生产环境必须配置 OIDC/OAuth2 企业 IdP，Router 和 Engine 验证 JWT issuer、audience、签名与有效期。管理接口仍只在 Development 映射。
+当前 Basic 认证只用于 Development 联调，它不校验真实密码，且在非 Development 环境启动失败。生产环境必须配置 OIDC/OAuth2 企业 IdP，Router 和 Engine 验证 JWT issuer、audience、签名与有效期（见 [security.md](./security.md)）。管理接口仍只在 Development 映射。
 
 凭据不会持久化；token 与 OIDC 临时参数仅保存在当前标签页的 `sessionStorage`，连接模式、地址和租户配置可保存在 `localStorage`。token 绑定登录端点，退出或 401 会清理敏感会话信息；Bearer 模式的租户来自服务端 claim。直连 Engine 会绕过 Router 权限边界，只适合受控网络或开发联调。
 

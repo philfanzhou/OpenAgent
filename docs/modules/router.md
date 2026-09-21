@@ -1,6 +1,6 @@
-# Router 服务发现、限流与就绪
+# Router — 服务发现、限流与就绪
 
-Router 使用 Redis Engine 注册索引发现动态实例，并以静态 `RouterSettings:Routing` 作为明确的回退路径。实现位于 `Backend/src/OpenAgent.Router/`；Engine 注册协议见 [service-registration](../engine/runtime/service-registration/)。
+Router 使用 Redis Engine 注册索引发现动态实例，并以静态 `RouterSettings:Routing` 作为明确的回退路径。实现位于 `Backend/src/OpenAgent.Router/`；Engine 注册协议见 [engine.md](./engine.md) 的服务注册。
 
 ## 服务发现
 
@@ -27,7 +27,7 @@ Router 使用 Redis Engine 注册索引发现动态实例，并以静态 `Router
 
 ## Provider 请求日志
 
-Router 会在 `Information` 级别记录 Provider 的请求方法、目标 URI、请求头，以及下游响应状态码和响应头；YARP 转发会记录经过 Router 和 Provider 映射后的最终请求头。意图识别还会记录 Provider、意图 Agent、候选数量和最终选择结果，Gina 会记录确定性 Agent 选择结果。
+Router 在 `Information` 级别记录 Provider 的请求方法、目标 URI、请求头，以及下游响应状态码和响应头；YARP 转发会记录经过 Router 和 Provider 映射后的最终请求头。意图识别还会记录 Provider、意图 Agent、候选数量和最终选择结果，Gina 会记录确定性 Agent 选择结果。
 
 请求/响应体只在 `Debug` 级别记录，并限制长度。`Authorization`、`Cookie`、`Set-Cookie`、API Key、Token、Secret、Password 等敏感 Header 的值会脱敏为 `[REDACTED]`。
 

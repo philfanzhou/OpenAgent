@@ -16,7 +16,8 @@ Backend/
 │   ├── OpenAgent.Engine.Host/     ASP.NET Core 宿主（端点、中间件、流式传输）
 │   ├── OpenAgent.Hosting/         共享 DI、认证、Redis 与 OpenTelemetry 注册扩展
 │   ├── OpenAgent.Infrastructure/  持久化实现（PostgreSQL+EF Core、Redis 写穿缓存、分布式锁）
-│   └── OpenAgent.Router/          网关服务（路由、意图识别、限流、租户隔离）
+│   ├── OpenAgent.Router/          网关服务（路由、意图识别、限流、租户隔离）
+│   └── OpenAgent.Runner/          Bubblewrap 隔离代码执行 Runner（独立部署）
 └── tests/
     ├── OpenAgent.Architecture.Tests/
     ├── OpenAgent.Contracts.Tests/
@@ -41,15 +42,16 @@ Backend/
 
 ## 文档中心
 
-所有正式文档统一位于 `docs/`：
+所有正式文档统一位于 `docs/`（扁平结构，一域一文件，总导航见 `docs/README.md`）：
 
-| 目录 | 内容 |
+| 路径 | 内容 |
 |------|------|
-| `docs/overview/` | 系统上下文、设计、流程、数据所有权 |
-| `docs/modules/` | 功能域详细文档（execution、conversation、capabilities、security、engine） |
-| `docs/integrations/` | 外部依赖集成（LLM、Redis、PostgreSQL、MCP、RAG） |
-| `docs/database/` | 数据存储唯一事实源 |
+| `docs/overview/` | 全局总览（系统上下文、设计、流程、数据所有权、可观测性） |
+| `docs/modules/` | 功能域文档，一域一文件：engine、capabilities、execution、security、conversation、router、chat-workspace |
+| `docs/integrations/` | 外部依赖集成，扁平 md：llm-provider、mcp、rag、redis-engine、keycloak、matrix、agent-provider、file-assets、code-runner |
+| `docs/database.md` | 数据存储唯一事实源（表、字段、索引、迁移） |
 | `docs/decisions/` | 架构决策归档（ADR） |
+| `docs/planning/` | 进行中的规划（已完成工作不留单独文档） |
 
 ## 关键约定
 

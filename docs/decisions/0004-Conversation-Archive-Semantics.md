@@ -16,7 +16,7 @@
 
 ## 决策
 
-1. **删除 `ConversationRecord.ArchivedAt` 属性**及其全部复制点。会话生命周期以已实现的机制为准：软删除（`IsDeletedByUser` + `DeletedAt`，见 `docs/database/tables/ConversationRecords.md`）与 Redis 热副本 TTL 过期。
+1. **删除 `ConversationRecord.ArchivedAt` 属性**及其全部复制点。会话生命周期以已实现的机制为准：软删除（`IsDeletedByUser` + `DeletedAt`，见 `docs/database.md`）与 Redis 热副本 TTL 过期。
 2. **归档/数据分层能力遵循 YAGNI，不预留字段**。当真实需求出现（合规保留期、冷数据分层、存储成本控制）时，按以下原则重新设计：
    - 时间戳必须可空、仅由归档动作写入（与 `DeletedAt` 同构），不得带"创建即赋值"的默认值；
    - 先设计归档任务与目标存储，再引入字段——字段是实现的投影，不是实现的承诺；

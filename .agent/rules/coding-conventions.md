@@ -196,7 +196,7 @@ Contracts ← Core ← {Engine, Infrastructure, Router} ← {Engine.Host, Hostin
 - 必须使用业务前缀（`openagent:conversation-lock:`）以便 SCAN 排查
 - 禁止直接用裸 `conversationId` 作为 Redis key
 - Owner token 格式：`Guid.NewGuid().ToString("N")`（32 位无连字符）
-- 详见 `docs/modules/execution/conversation-lock.md`
+- 详见 `docs/modules/execution.md`
 
 ---
 

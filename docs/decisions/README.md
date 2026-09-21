@@ -8,7 +8,3 @@
 | [0002-Logging-Label-Design.md](./0002-Logging-Label-Design.md) | 历史日志字段与索引标签设计 | 已取代 |
 | [0003-Agent-Runtime-Profile-Resolution.md](./0003-Agent-Runtime-Profile-Resolution.md) | 集中解析 Agent 运行配置与请求边界 | 已决策，第一版已实现 |
 | [0004-Conversation-Archive-Semantics.md](./0004-Conversation-Archive-Semantics.md) | 移除会话 ArchivedAt 预留字段，归档语义延后设计 | 已决策，已实现 |
-| [0000-Agent.Hosting-Design-Archive.md](./0000-Agent.Hosting-Design-Archive.md) | Agent.Hosting 设计（已整合到 overview/Design.md） | 归档 |
-| [0000-Agent.Hosting-Requirements-Archive.md](./0000-Agent.Hosting-Requirements-Archive.md) | Agent.Hosting 需求（已整合） | 归档 |
-| [0000-Agent.Contracts-Design-Archive.md](./0000-Agent.Contracts-Design-Archive.md) | Agent.Contracts 设计（已整合） | 归档 |
-| [0000-Agent.Contracts-Requirements-Archive.md](./0000-Agent.Contracts-Requirements-Archive.md) | Agent.Contracts 需求（已整合） | 归档 |

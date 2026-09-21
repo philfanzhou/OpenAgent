@@ -177,7 +177,7 @@ docker compose -p openagent-infrastructure \
 时钟偏差；当前默认容差为 60 秒，仅用于网络抖动。
 
 需要验证真实 OIDC 登录时，基础设施 Compose 会导入本地 Realm、SPA Client 和租户 Claim Mapper；
-用户与租户组织需要在 Keycloak 管理台中手动创建，详细命令参见 [Keycloak 本地认证集成](docs/integrations/keycloak/README.md)。
+用户与租户组织需要在 Keycloak 管理台中手动创建，详细命令参见 [Keycloak 本地认证集成](docs/integrations/keycloak.md)。
 
 默认使用 Compose 内置的 MinIO（bucket `openagent-files`）。接入外部 S3/MinIO 时，可覆盖
 `OPENAGENT_S3_SERVICE_URL`、`OPENAGENT_S3_BUCKET`、`OPENAGENT_S3_ACCESS_KEY`、
@@ -213,4 +213,4 @@ OTLP 信号关联。
 生产认证使用可配置的 OIDC/OAuth2 身份提供方与 JWT Bearer 校验，验证 issuer、audience、签名和有效期。
 Basic 兼容登录严格限制在 Development；它只解析凭据，不查询用户目录，也不校验真实密码。
 认证只负责建立身份，角色、Agent ACL、能力权限与租户授权由独立的服务端授权层判断。
-详见 [安全设计文档](docs/modules/security/README.md)。
+详见 [安全设计文档](docs/modules/security.md)。
