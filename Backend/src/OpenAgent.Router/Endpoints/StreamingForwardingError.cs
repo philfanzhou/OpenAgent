@@ -75,7 +75,7 @@ internal static class StreamingForwardingError
                 "The request to the AI engine timed out. Please try again later.",
                 context.Request.Path,
                 traceId,
-                AgentErrorCode.DependencyUnavailable));
+                ("errorCode", (int)AgentErrorCode.DependencyUnavailable)));
         }
 
         return TypedResults.Problem(AgentProblemDetails.Create(
@@ -85,7 +85,7 @@ internal static class StreamingForwardingError
             "The AI engine is temporarily unavailable.",
             context.Request.Path,
             traceId,
-            AgentErrorCode.DependencyUnavailable));
+            ("errorCode", (int)AgentErrorCode.DependencyUnavailable)));
     }
 
     private static async Task WriteSseErrorAsync(

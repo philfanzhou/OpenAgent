@@ -54,14 +54,13 @@ TypedResults 已满足 OpenAPI 类型推导需求，团队无需维护两套心�
   "instance": "/api/v1/agent/conversations/xxx",
   "traceId": "00-...-01",
   "timestamp": "2026-09-21T02:00:12Z",
-  "errorCode": 8004,
-  "code": "not-found"
+  "errorCode": 8004
 }
 ```
 
 扩展字段约定：`traceId`（X-Trace-Id → Activity → TraceIdentifier 的统一解析顺序）、`timestamp`、
-`errorCode`（`AgentErrorCode` 整数，唯一错误码体系）、`code`（kebab-case 可读符号名；Router 的
-snake_case 字符串码统一转 kebab-case）。新增通用错误码：`NotFound=8004`、
+`errorCode`（`AgentErrorCode` 整数，唯一错误码体系；符号名以 kebab-case 呈现在 `type` URI 中，
+不单独设字符串字段）。新增通用错误码：`NotFound=8004`、
 `AuthenticationRequired=8005`、`RateLimited=8006`。
 
 - **SSE 错误事件**统一为 camelCase `{type,title,detail,traceId}` + `event: done` 的
@@ -73,7 +72,7 @@ snake_case 字符串码统一转 kebab-case）。新增通用错误码：`NotFou
 
 `ProblemDetailsFactory`、`ErrorMapper`、`AgentExceptionHandlerMiddleware` 从 Engine.Host 的
 internal 类提升为 Hosting 的公共设施（`AgentProblemDetails` 静态构造器 + `AgentExceptionMapper`
-+ 共享中间件 + `AgentProblemDetailsWriter`）。服务特定行为通过
++ 共享中间件，收敛为 `Errors/AgentProblem.cs` 与 `Errors/AgentExceptionHandling.cs` 两个文件）。服务特定行为通过
 `AgentExceptionHandlingOptions` 注入：
 
 - Engine 注册 `ClientResultException`（OpenAI/Azure SDK）映射与中文 SSE 错误文案；
@@ -103,7 +102,7 @@ Runner `/v1/execute` → `/api/v1/execute`（`RunnerClient` 同步修改）；`/
 
 - 前端零改动（`detail/title/traceId` 与 SSE `detail` 全保留；Router 错误向 Engine 形态收敛）。
 - `AgentException` 的 ProblemDetails `type` URI 从全小写拼接改为 kebab-case
-  （`tenantdataisolationviolation` → `tenant-data-isolation-violation`），并新增 `code` 字段。
+  （`tenantdataisolationviolation` → `tenant-data-isolation-violation`）。
 - 测试改动：`ConfigurationControllerTests` 重写为端点测试；直接调用 handler 的测试改为解包
   `Results<...>.Result`；中间件测试随迁移移至 `OpenAgent.Hosting.Tests`。
 

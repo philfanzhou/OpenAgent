@@ -44,8 +44,8 @@ internal static class GatewayProxyHandler
                 StatusCodes.Status503ServiceUnavailable,
                 "No Engine is available to serve this request.",
                 context.Request.Path,
-                AgentTraceIds.Resolve(context),
-                AgentErrorCode.DependencyUnavailable));
+                AgentProblemDetails.ResolveTraceId(context),
+                ("errorCode", (int)AgentErrorCode.DependencyUnavailable)));
         }
 
         string targetUrl = $"{targetEndpoint.TrimEnd('/')}{context.Request.Path}{context.Request.QueryString}";
@@ -97,8 +97,8 @@ internal static class GatewayProxyHandler
             StatusCodes.Status503ServiceUnavailable,
             $"Forwarding to the Engine failed ({error}).",
             context.Request.Path,
-            AgentTraceIds.Resolve(context),
-            AgentErrorCode.DependencyUnavailable));
+            AgentProblemDetails.ResolveTraceId(context),
+            ("errorCode", (int)AgentErrorCode.DependencyUnavailable)));
     }
 
     private static ValueTask ApplyAuthenticatedAsync(

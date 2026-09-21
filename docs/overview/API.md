@@ -46,17 +46,15 @@ private static async Task<Results<Ok<ConversationRecord>, NotFound, ForbidHttpRe
   "instance": "/api/v1/agent/files/xxx",
   "traceId": "00-0767a68...-01",
   "timestamp": "2026-09-21T02:00:12Z",
-  "errorCode": 8004,
-  "code": "not-found"
+  "errorCode": 8004
 }
 ```
 
 | 字段 | 说明 |
 |------|------|
-| `type` | `https://error.agent.com/{code}` 符号名 URI |
+| `type` | `https://error.agent.com/{符号名}`；符号名为 kebab-case（`AgentErrorCode` 枚举名或 Router 路由错误名） |
 | `traceId` | 统一解析顺序：`X-Trace-Id` 头 → `Activity.Current.Id` → `TraceIdentifier` |
-| `errorCode` | `AgentErrorCode` 整数（`OpenAgent.Contracts/Requests/AgentErrorCode.cs`），唯一错误码体系 |
-| `code` | kebab-case 可读符号名（枚举名或 Router 路由错误名） |
+| `errorCode` | `AgentErrorCode` 整数（`OpenAgent.Contracts/Requests/AgentErrorCode.cs`），唯一错误码体系；Router 路由错误无对应整数时不携带此字段 |
 
 实现方式（按场景选择，禁止手拼 JSON）：
 
@@ -64,7 +62,7 @@ private static async Task<Results<Ok<ConversationRecord>, NotFound, ForbidHttpRe
 |------|------|
 | 端点内直接返回错误 | `TypedResults.Problem(AgentProblemDetails.Invalid("keyword is required", context))`（`Hosting/Errors`） |
 | 领域错误 | 抛 `AgentException(AgentErrorCode.X, message)`，由全局中间件转换 |
-| 中间件内（无 IResult） | `AgentProblemDetailsWriter.WriteAsync(context, problem)` |
+| 中间件内（无 IResult） | `AgentProblemDetails.WriteAsync(context, problem)` |
 | Router 路由错误 | `TypedResults.Problem(RouterProblem.From(exception, context))` |
 | Runner（轻依赖） | 本地 `RunnerProblem.Create` 复刻同一契约 |
 

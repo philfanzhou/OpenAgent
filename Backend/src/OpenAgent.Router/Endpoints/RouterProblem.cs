@@ -18,5 +18,5 @@ internal static class RouterProblem
             exception.StatusCode,
             exception.Message,
             context.Request.Path,
-            AgentTraceIds.Resolve(context));
+            AgentProblemDetails.ResolveTraceId(context));
 }

@@ -16,7 +16,7 @@ internal static class EngineErrorHandling
     internal static IServiceCollection AddEngineErrorHandling(this IServiceCollection services) =>
         services.AddAgentErrorHandling(options =>
         {
-            options.ExtraExceptionMappers.Add(MapClientResultException);
+            options.ExtraExceptionMapper = MapClientResultException;
             options.CreateStreamingErrorPayload = (exception, traceId, _) =>
                 StreamingPayloadFactory.CreateErrorPayload(exception, traceId);
         });
@@ -36,7 +36,7 @@ internal static class EngineErrorHandling
             StreamingPayloadFactory.FormatProviderError(clientException.Status, clientException.Message),
             clientException.Message,
             traceId,
-            AgentErrorCode.DependencyUnavailable);
+            ("errorCode", (int)AgentErrorCode.DependencyUnavailable));
         return new AgentMappedError(statusCode, problem);
     }
 }

@@ -35,7 +35,7 @@ internal static class ChatEndpointHandler
                 StatusCodes.Status500InternalServerError,
                 "Agent routing was not resolved for this request.",
                 context.Request.Path,
-                AgentTraceIds.Resolve(context)));
+                AgentProblemDetails.ResolveTraceId(context)));
         }
 
         if (!providers.TryGet(routing.ProviderId, out IAgentProvider? provider)

@@ -40,8 +40,8 @@ internal static class GetEndpointHandler
                 StatusCodes.Status503ServiceUnavailable,
                 "Unable to determine a target Engine endpoint for this request.",
                 context.Request.Path,
-                AgentTraceIds.Resolve(context),
-                AgentErrorCode.DependencyUnavailable));
+                AgentProblemDetails.ResolveTraceId(context),
+                ("errorCode", (int)AgentErrorCode.DependencyUnavailable)));
         }
 
         var normalizedPath = targetPath.StartsWith('/') ? targetPath : "/" + targetPath;
@@ -89,7 +89,7 @@ internal static class GetEndpointHandler
             StatusCodes.Status503ServiceUnavailable,
             $"Forwarding to the Engine failed ({error}).",
             context.Request.Path,
-            AgentTraceIds.Resolve(context),
-            AgentErrorCode.DependencyUnavailable));
+            AgentProblemDetails.ResolveTraceId(context),
+            ("errorCode", (int)AgentErrorCode.DependencyUnavailable)));
     }
 }

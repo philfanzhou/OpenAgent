@@ -8,7 +8,7 @@ ErrorHandling 模块提供全平台共享的全局异常处理机制，确保所
 | 全局异常捕获 | `AgentExceptionHandlerMiddleware`（Hosting 共享）捕获常规 HTTP 异常，返回统一 ProblemDetails |
 | 流式错误载荷 | Engine 的 `StreamingPayloadFactory` 构造中文 SSE 错误载荷；默认载荷从 ProblemDetails 投影 |
 | AgentErrorCode 映射 | 按 ErrorCode 分组映射 HTTP 状态码（401/403/404/409/429/400/503/500）|
-| 统一错误契约 | 扩展字段 `traceId`/`timestamp`/`errorCode`/`code`，见 `docs/overview/API.md` |
+| 统一错误契约 | 扩展字段 `traceId`/`timestamp`/`errorCode`，见 `docs/overview/API.md` |
 
 ## Architecture
 ```text
@@ -37,7 +37,7 @@ HTTP 请求
 - 响应已开始时重新抛出异常，不写入 ProblemDetails（仅流式端点发 error/done 事件）
 
 ## Source
-- 共享设施：`Backend/src/OpenAgent.Hosting/Errors/`（中间件、映射器、ProblemDetails 构造器、Writer）
+- 共享设施：`Backend/src/OpenAgent.Hosting/Errors/`（`AgentProblem.cs` 构造器 + `AgentExceptionHandling.cs` 映射器/中间件/注册）
 - Engine 接入：`Backend/src/OpenAgent.Engine.Host/EngineErrorHandling.cs`
 - SSE 载荷：`Backend/src/OpenAgent.Engine.Host/StreamingPayloadFactory.cs`
 - Orchestration: `Backend/src/OpenAgent.Engine.Host/Program.cs`

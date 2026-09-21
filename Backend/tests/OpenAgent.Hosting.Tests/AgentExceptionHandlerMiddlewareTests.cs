@@ -89,7 +89,7 @@ public class AgentExceptionHandlerMiddlewareTests
         context.Response.Body.Seek(0, SeekOrigin.Begin);
         var payload = await new StreamReader(context.Response.Body).ReadToEndAsync();
         Assert.Contains("\"errorCode\":5001", payload);
-        Assert.Contains("\"code\":\"tenant-mismatch\"", payload);
+        Assert.Contains("tenant-mismatch", payload);
     }
 
     [Fact]
