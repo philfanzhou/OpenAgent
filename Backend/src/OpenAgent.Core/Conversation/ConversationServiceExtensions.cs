@@ -19,6 +19,11 @@ internal static class ConversationServiceExtensions
         services.Configure<LlmInteractionOptions>(
             configuration.GetSection(LlmInteractionOptions.SectionName));
         services.TryAddSingleton<IConversationLock, InMemoryConversationLock>();
+        // 窄契约转发到组合契约的同一 scope 实例（惰性解析，注册顺序无关）。
+        services.TryAddScoped<IConversationReader>(serviceProvider =>
+            serviceProvider.GetRequiredService<IConversationStore>());
+        services.TryAddScoped<IConversationWriter>(serviceProvider =>
+            serviceProvider.GetRequiredService<IConversationStore>());
         services.AddScoped<ConversationSessionStore>();
         services.AddScoped<ConversationAgentResolver>();
         services.AddScoped<PlatformChatHistoryFactory>();

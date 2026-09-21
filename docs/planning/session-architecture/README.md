@@ -21,8 +21,8 @@ main ─┬─ PR-1 统一 ChatRequest.Context 解析（Router/Engine，修复�
 | PR-1 | [PR1-unify-conversation-id-parsing.md](./PR1-unify-conversation-id-parsing.md) | 已合并（#110） |
 | PR-2 | [PR2-bwrap-args-single-source.md](./PR2-bwrap-args-single-source.md) | 已合并（#111） |
 | PR-3 | [PR3-remove-conversation-archived-at.md](./PR3-remove-conversation-archived-at.md) | 已合并（#112） |
-| PR-4 | [PR4-conversation-record-dtos.md](./PR4-conversation-record-dtos.md) | 本 PR（#113） |
-| PR-5 | [PR5-split-conversation-store.md](./PR5-split-conversation-store.md) | 待合并（#114） |
+| PR-4 | [PR4-conversation-record-dtos.md](./PR4-conversation-record-dtos.md) | 待合并（#113） |
+| PR-5 | [PR5-split-conversation-store.md](./PR5-split-conversation-store.md) | 本 PR（#114） |
 | PR-6 | [PR6-split-platform-chat-history.md](./PR6-split-platform-chat-history.md) | 待合并（#115） |
 
 > 本 README 为系列导航索引；各 PR 报告包含动机、改动清单、行为变化、测试证据与回滚方案。

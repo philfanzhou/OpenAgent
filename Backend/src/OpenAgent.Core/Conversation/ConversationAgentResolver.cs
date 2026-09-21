@@ -4,7 +4,7 @@ using OpenAgent.Contracts.Security;
 
 namespace OpenAgent.Core.Conversation;
 
-internal sealed class ConversationAgentResolver(IConversationStore store)
+internal sealed class ConversationAgentResolver(IConversationReader store)
 {
     internal async Task<string?> ResolveAsync(
         AgentRequest request,
