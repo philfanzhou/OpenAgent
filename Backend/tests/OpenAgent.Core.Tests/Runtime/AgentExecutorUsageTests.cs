@@ -294,27 +294,6 @@ public class AgentExecutorUsageTests
             LlmInteractionCapture? capture = null) => provider;
     }
 
-    private sealed class EmptyFileAssetRepository : IFileAssetRepository
-    {
-        public Task CreateAsync(FileAsset asset, CancellationToken cancellationToken) => Task.CompletedTask;
-        public Task UpdateAsync(FileAsset asset, CancellationToken cancellationToken) => Task.CompletedTask;
-        public Task<FileAsset?> GetAsync(string fileId, CancellationToken cancellationToken) =>
-            Task.FromResult<FileAsset?>(null);
-        public Task<IReadOnlyList<FileAsset>> ListReferencedAsync(
-            string conversationId,
-            CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<FileAsset>>([]);
-        public Task EnsureConversationReferencesAsync(
-            string conversationId,
-            IReadOnlyList<string> fileIds,
-            DateTimeOffset createdAt,
-            CancellationToken cancellationToken) => Task.CompletedTask;
-        public Task<bool> IsReferencedAsync(
-            string conversationId,
-            string fileId,
-            CancellationToken cancellationToken) => Task.FromResult(false);
-    }
-
     internal sealed class TestRuntime(
         ServiceProvider serviceProvider,
         AsyncServiceScope scope,

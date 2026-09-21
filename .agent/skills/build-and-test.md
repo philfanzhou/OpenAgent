@@ -9,11 +9,10 @@
 
 ## 输入参数
 - `module`: 要测试的模块，可选值：
-  - `core` — Agent.Core（类库 + xunit 单元测试）
-  - `engine` — Agent.Engine（引擎 + xunit 单元测试）
-  - `router` — Agent.Router（网关 + xunit 单元测试）
-  - `hosting` — Agent.Hosting（共享宿主 + xunit 单元测试）
-  - `integration` — 集成测试（xUnit + Testcontainers，无需外部服务）
+  - `core` — OpenAgent.Core（类库 + xunit 单元测试）
+  - `engine` — OpenAgent.Engine（引擎 + xunit 单元测试）
+  - `router` — OpenAgent.Router（网关 + xunit 单元测试）
+  - `hosting` — OpenAgent.Hosting（共享宿主 + xunit 单元测试）
   - `all`（默认）— 全部模块
 
 ## 工作流程
@@ -45,33 +44,30 @@ dotnet test <sln-path> --no-build
 
 报告每个项目的测试结果（通过/失败/跳过数）。
 
-#### 3b. 集成测试（Backend/OpenAgent.sln）
+#### 3b. 环境门控测试
 
-集成测试使用 xUnit + Testcontainers（PostgreSQL/Redis），Engine 以 ASP.NET Core 宿主运行并通过 HTTP 调用。
-**不需要任何外部服务或 API Key**，可直接运行：
+默认测试套件不依赖任何外部服务。两批测试默认跳过，仅由环境变量开启：
 
-```powershell
-dotnet test Backend/OpenAgent.sln --no-build
-```
+- `OpenAgent.Runner.Tests` 的 `[BubblewrapFact]`（Bubblewrap 沙箱执行）需 Linux + `RUN_CODEACT_BWRAP_TESTS=1`，CI 的 codeact job 在 Linux 上运行；
+- `OpenAgent.Core.Tests` 的 `[RunnerIntegrationFact]`（连接真实 Runner）需 `RUN_CODEACT_RUNNER_TESTS=1` + `CODEACT_TEST_RUNNER_ENDPOINT/KEY`。
 
-集成测试位于 `Backend/tests/OpenAgent.Infrastructure.Tests/`、`Backend/tests/OpenAgent.Engine.Tests/`，
-覆盖 Engine 端点（chat、streaming、SSE）、MCP 协议、Skill 调用、Agent 配置热加载等。
+容器级/发布产物级验证由 `scripts/` 下的冒烟脚本承担（`test-codeact-runner.py`、`test-bubblewrap-basic.sh`），不属于 `dotnet test` 范围。
 
 ### 步骤 4: 如有测试失败
 - 提取失败测试名称和错误信息
 - 不要自动修复，先报告给用户
 
 ## 注意
-- Core / Engine / Router / Hosting 使用 **xunit**，集成测试使用 **xUnit + Testcontainers**（PostgreSQL/Redis）
-- 集成测试使用 Testcontainers 启动真实 PostgreSQL/Redis 容器 — **无需外部服务或 API Key**
+- 全部测试项目使用 **xunit + Moq**；默认 `dotnet test Backend/OpenAgent.sln` 无需 Docker、PostgreSQL、Redis 等外部服务
+- 依赖真实容器的集成测试已移除（见 `Backend/tests/README.md`）；沙箱/真 Runner 测试由环境变量门控（见 3b）
 - **真 E2E 测试**（连接真实 Redis + LLM）需要单独配置，见 `e2e-test` 技能
 - Agent 根据改动范围自主决定调用哪些模块（改 `.cs` → 单测；改 Contracts → 全量）
 - 所有路径相对于仓库根目录 `<repository-root>`
 
 ## 参考文件
 - 测试规范：`.agent/rules/coding-conventions.md`（第 5 节）
+- 测试分层说明：`Backend/tests/README.md`
 - 项目架构：`AGENTS.md`
-- 集成测试项目：`Backend/tests/OpenAgent.Infrastructure.Tests/`、`Backend/tests/OpenAgent.Engine.Tests/`
 
 ## 验证方法
 - 所有 solution 构建成功（exit code 0）

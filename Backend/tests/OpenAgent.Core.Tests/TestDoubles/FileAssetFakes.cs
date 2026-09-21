@@ -55,6 +55,30 @@ internal sealed class RecordingFileAssetRepository : IFileAssetRepository
 }
 
 /// <summary>
+/// Minimal no-op repository for DI wiring tests that never touch file assets.
+/// </summary>
+internal sealed class EmptyFileAssetRepository : IFileAssetRepository
+{
+    public Task CreateAsync(FileAsset asset, CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task UpdateAsync(FileAsset asset, CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task<FileAsset?> GetAsync(string fileId, CancellationToken cancellationToken) =>
+        Task.FromResult<FileAsset?>(null);
+    public Task<IReadOnlyList<FileAsset>> ListReferencedAsync(
+        string conversationId,
+        CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<FileAsset>>([]);
+    public Task EnsureConversationReferencesAsync(
+        string conversationId,
+        IReadOnlyList<string> fileIds,
+        DateTimeOffset createdAt,
+        CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task<bool> IsReferencedAsync(
+        string conversationId,
+        string fileId,
+        CancellationToken cancellationToken) => Task.FromResult(false);
+}
+
+/// <summary>
 /// In-memory object store keeping the last write and read count for assertions.
 /// </summary>
 internal sealed class RecordingFileObjectStore : IFileObjectStore
@@ -67,7 +91,6 @@ internal sealed class RecordingFileObjectStore : IFileObjectStore
     public byte[] LastContent { get; private set; } = [];
     public FileObjectWriteRequest? LastRequest { get; private set; }
     public int ReadCount { get; private set; }
-    public string? LastAccessObjectKey { get; private set; }
 
     public async Task<FileObjectReference> WriteAsync(
         FileObjectWriteRequest request,
@@ -115,7 +138,6 @@ internal sealed class RecordingFileObjectStore : IFileObjectStore
         DateTimeOffset expiresAt,
         CancellationToken cancellationToken)
     {
-        LastAccessObjectKey = objectKey;
         return Task.FromResult(new FileObjectAccessReference
         {
             ObjectKey = objectKey,
@@ -134,7 +156,6 @@ internal sealed class RecordingFileObjectStore : IFileObjectStore
 internal sealed class RecordingFileShareRepository : IFileShareRepository
 {
     public Dictionary<string, FileShareLinkRecord> Records { get; } = new(StringComparer.Ordinal);
-    public int RedeemAttempts { get; private set; }
 
     public Task CreateAsync(FileShareLinkRecord record, CancellationToken cancellationToken)
     {
@@ -147,7 +168,6 @@ internal sealed class RecordingFileShareRepository : IFileShareRepository
 
     public Task<bool> TryRedeemAsync(string shareIdHash, CancellationToken cancellationToken)
     {
-        RedeemAttempts++;
         FileShareLinkRecord? record = Records.GetValueOrDefault(shareIdHash);
         if (record == null
             || record.ExpiresAt <= DateTimeOffset.UtcNow

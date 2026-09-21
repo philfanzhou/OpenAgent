@@ -11,6 +11,7 @@ using OpenAgent.Core.Capabilities.Skill;
 using OpenAgent.Core.Capabilities.UserProfile;
 using OpenAgent.Core.Exten;
 using OpenAgent.Core.Conversation.Store;
+using OpenAgent.Core.Tests.TestDoubles;
 using Xunit;
 
 namespace OpenAgent.Core.Tests.Capabilities;
@@ -97,27 +98,6 @@ public class CapabilityServiceRegistrationTests
             int take,
             CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<LlmInteractionRecord>>([]);
-    }
-
-    private sealed class EmptyFileAssetRepository : IFileAssetRepository
-    {
-        public Task CreateAsync(FileAsset asset, CancellationToken cancellationToken) => Task.CompletedTask;
-        public Task UpdateAsync(FileAsset asset, CancellationToken cancellationToken) => Task.CompletedTask;
-        public Task<FileAsset?> GetAsync(string fileId, CancellationToken cancellationToken) =>
-            Task.FromResult<FileAsset?>(null);
-        public Task<IReadOnlyList<FileAsset>> ListReferencedAsync(
-            string conversationId,
-            CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<FileAsset>>([]);
-        public Task EnsureConversationReferencesAsync(
-            string conversationId,
-            IReadOnlyList<string> fileIds,
-            DateTimeOffset createdAt,
-            CancellationToken cancellationToken) => Task.CompletedTask;
-        public Task<bool> IsReferencedAsync(
-            string conversationId,
-            string fileId,
-            CancellationToken cancellationToken) => Task.FromResult(false);
     }
 
     private sealed class TestUserContext : ICurrentUserContext

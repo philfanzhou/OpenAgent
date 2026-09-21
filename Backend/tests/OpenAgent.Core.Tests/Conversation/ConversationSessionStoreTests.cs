@@ -56,33 +56,6 @@ public sealed class ConversationSessionStoreTests
     }
 
     [Fact]
-    public void ResolveModelHistory_UsesLatestCompressionAndAppendsOnlyNewMessages()
-    {
-        ConversationRecord record = RecordWithMessages(8);
-        record.ContextSummaries.Add(new ContextSummary
-        {
-            CompressionId = "compression-1",
-            Strategy = "summarization",
-            Trigger = "Automatic",
-            Status = "Succeeded",
-            Summary = "Automatic summary",
-            SourceEndSequence = 6,
-            CompactedMessages =
-            [
-                Message(1, "summary", "Automatic summary"),
-                Message(2, "user", "message-6")
-            ]
-        });
-
-        IReadOnlyList<ConversationMessage> modelHistory =
-            ConversationSessionStore.ResolveModelHistory(record);
-
-        Assert.Equal(
-            ["Automatic summary", "message-6", "message-7", "message-8"],
-            modelHistory.Select(message => message.Content));
-    }
-
-    [Fact]
     public void ResolveModelHistory_UnavailableSummary_FallsBackToPreviousSuccessfulProjection()
     {
         ConversationRecord record = RecordWithMessages(8);

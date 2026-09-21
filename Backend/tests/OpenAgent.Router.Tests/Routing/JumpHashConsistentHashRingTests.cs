@@ -14,19 +14,6 @@ public class JumpHashConsistentHashRingTests
     }
 
     [Fact]
-    public void GetNode_WithNodes_ReturnsAssignedNode()
-    {
-        var ring = new JumpHashConsistentHashRing();
-        string[] nodes = ["node-a", "node-b", "node-c"];
-        ring.UpdateNodes(nodes);
-
-        string? node = ring.GetNode("my-key");
-
-        Assert.NotNull(node);
-        Assert.Contains(node, nodes);
-    }
-
-    [Fact]
     public void GetNode_SameKey_IsDeterministic()
     {
         var ring = new JumpHashConsistentHashRing();

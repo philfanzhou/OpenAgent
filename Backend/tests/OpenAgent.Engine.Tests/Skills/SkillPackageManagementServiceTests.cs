@@ -56,7 +56,7 @@ public class SkillPackageManagementServiceTests
         Assert.Equal("directory", result.Skill?.PackageFormat);
         Assert.NotNull(result.Skill?.ObjectKey);
         SkillPackageStorageIndex storage = store.ReadIndex(result.Skill!.ObjectKey!);
-        Assert.Equal(content.Length > 0, storage.Files.Count == 1);
+        Assert.Single(storage.Files);
         Assert.Equal(SkillMarkdown, Encoding.UTF8.GetString(store.Objects[storage.Files[0].ObjectKey]).TrimStart('\uFEFF'));
         AgentConfigEntity? saved = await configs.GetAgentAsync(AgentId, "tenant");
         SkillInstanceConfig skill = Assert.Single(saved!.Config.Skills.Instances);
@@ -530,8 +530,6 @@ public class SkillPackageManagementServiceTests
         public List<FileObjectWriteRequest> WriteRequests { get; } = [];
         public string? LastReadObjectKey { get; private set; }
         public List<string> DeletedObjectKeys { get; } = [];
-        public string? DeletedObjectKey => DeletedObjectKeys.LastOrDefault();
-        private int WriteCount { get; set; }
 
         public async Task<FileObjectReference> WriteAsync(
             FileObjectWriteRequest request,
@@ -549,7 +547,6 @@ public class SkillPackageManagementServiceTests
 
             objectKey += $"/skills/{request.FileId}{Path.GetExtension(request.FileName)}";
             Objects[objectKey] = buffer.ToArray();
-            WriteCount++;
             return new FileObjectReference { ObjectKey = objectKey };
         }
 

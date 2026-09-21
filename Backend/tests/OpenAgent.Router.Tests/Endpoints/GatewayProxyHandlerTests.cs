@@ -168,12 +168,6 @@ public class GatewayProxyHandlerTests
         return Assert.Single(request.Headers.GetValues(headerName));
     }
 
-    private static void AssertHeaderMissing(HttpRequestMessage? request, string headerName)
-    {
-        Assert.NotNull(request);
-        Assert.False(request.Headers.Contains(headerName));
-    }
-
     private sealed class StubRouteTable(string? endpoint) : IRouteTable
     {
         public string? Intent { get; private set; }
