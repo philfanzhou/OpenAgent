@@ -50,13 +50,17 @@ export interface ConversationMessage {
   content: string
   toolCallId?: string
   toolName?: string
+  idempotencyKey?: string
   timestamp: string
+  /** 产生该消息的轮次追溯键（X-Trace-Id），历史消息可能缺失。 */
+  traceId?: string
   metadata?: ConversationMessageMetadata
   reasoning?: string
   toolActivities?: ToolActivity[]
   /** UI-only ordered execution trace assembled from reasoning and tool messages. */
   processActivities?: ProcessActivity[]
   files?: MessageFile[]
+  fileIds?: string[]
   tokenUsage?: TokenUsage
   modelId?: string
   /** 执行失败的独立展示，不写入会话历史。 */
@@ -95,7 +99,7 @@ export interface FileAsset {
   mediaType: string
   length: number
   sha256: string
-  objectKey?: string
+  objectKey: string
   source: 'UserUpload' | 'Agent' | 'Skill' | number
   state: 'Pending' | 'Ready' | 'Failed' | number
   createdAt: string
@@ -114,7 +118,14 @@ export interface ConversationRecord {
   tenantId: string
   userId: string
   agentId?: string
+  /** ConversationType 数值形态（0=User），始终序列化。 */
+  type: number
   status: ConversationStatus
+  /** 乐观并发版本，始终序列化。 */
+  version: number
+  isDeletedByUser: boolean
+  deletedAt?: string | null
+  traceId?: string | null
   createdAt: string
   updatedAt: string
   lastMessageAt: string
