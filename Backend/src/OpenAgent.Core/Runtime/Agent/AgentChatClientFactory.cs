@@ -41,7 +41,7 @@ internal sealed class AgentChatClientFactory : IAgentChatClientFactory
             ? Timeout.InfiniteTimeSpan
             : TimeSpan.FromSeconds(seconds);
         // This is a deployment-only escape hatch. It intentionally does not belong
-        // to AgentConfig or persisted LLM provider profiles.
+        // to persisted agent or LLM provider configuration.
         _allowInsecureTls = configuration.GetValue("OPENAGENT_ALLOW_INSECURE_TLS", false);
         _interactionStore = interactionStore;
         _interactionOptions = interactionOptions.Value;

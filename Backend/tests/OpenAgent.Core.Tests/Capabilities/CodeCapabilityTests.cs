@@ -25,10 +25,8 @@ public class CodeCapabilityTests
     public async Task Discover_RequiresBothHostAndAgentOptIn(bool hostEnabled, bool agentEnabled)
     {
         var fixture = new Fixture(hostEnabled);
-        IReadOnlyList<AITool> tools = await fixture.Factory.CreateAsync("agent", new AgentConfig
-        {
-            CodeExecution = new() { Enabled = agentEnabled }
-        }, fixture.User, CancellationToken.None);
+        IReadOnlyList<AITool> tools = await fixture.Factory.CreateAsync(
+            Profile(agentCodeExecution: agentEnabled), fixture.User, CancellationToken.None);
         Assert.Empty(tools);
     }
 
@@ -41,10 +39,8 @@ public class CodeCapabilityTests
         // 一个 FileAssetExecutionContext 只承载一轮：残缺坐标在构造轮次时给出，
         // 而不是在默认轮次上二次 Set 覆盖（那会被防并发防御拒绝）。
         var fixture = new Fixture(turn: TurnContexts.Create(tenant, user, conversation));
-        Assert.Empty(await fixture.Factory.CreateAsync("agent", new AgentConfig
-        {
-            CodeExecution = new() { Enabled = true }
-        }, fixture.User, CancellationToken.None));
+        Assert.Empty(await fixture.Factory.CreateAsync(
+            Profile(), fixture.User, CancellationToken.None));
     }
 
     [Theory]
@@ -243,10 +239,8 @@ public class CodeCapabilityTests
         Assert.True(edit.RootElement.TryGetProperty("exitCode", out _), edit.RootElement.ToString());
         Assert.Equal(0, edit.RootElement.GetProperty("exitCode").GetInt32());
         string editedId = edit.RootElement.GetProperty("files")[0].GetProperty("fileId").GetString()!;
-        IReadOnlyList<AITool> tools = await fixture.Factory.CreateAsync("agent", new AgentConfig
-        {
-            CodeExecution = new() { Enabled = true }
-        }, fixture.User, CancellationToken.None);
+        IReadOnlyList<AITool> tools = await fixture.Factory.CreateAsync(
+            Profile(), fixture.User, CancellationToken.None);
         AIFunction publish = Assert.IsAssignableFrom<AIFunction>(Assert.Single(tools, tool => tool.Name == "publish_files"));
         await publish.InvokeAsync(new AIFunctionArguments { ["fileIds"] = new[] { editedId } });
         Assert.Equal(editedId, Assert.Single(fixture.Context.Published).FileId);
@@ -256,6 +250,13 @@ public class CodeCapabilityTests
         using var sheet = new StreamReader(archive.GetEntry("xl/worksheets/sheet1.xml")!.Open());
         Assert.Contains("<v>84</v>", await sheet.ReadToEndAsync());
     }
+
+    private static AgentRuntimeProfile Profile(bool agentCodeExecution = true) => new()
+    {
+        AgentId = "agent",
+        Config = new AgentConfig { CodeExecution = new() { Enabled = agentCodeExecution } },
+        Model = new LlmConfig()
+    };
 
     private sealed class Fixture
     {
@@ -297,7 +298,7 @@ public class CodeCapabilityTests
         }
 
         internal async Task<AIFunction> GetFunctionAsync() => Assert.IsAssignableFrom<AIFunction>(Assert.Single(
-            await Factory.CreateAsync("agent", new AgentConfig { CodeExecution = new() { Enabled = true } }, User, CancellationToken.None),
+            await Factory.CreateAsync(Profile(), User, CancellationToken.None),
             tool => tool.Name == "execute_code"));
     }
 

@@ -1,6 +1,5 @@
 using System.Text.Json;
 using Microsoft.Extensions.Options;
-using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Execution;
 using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Requests;
@@ -13,23 +12,23 @@ namespace OpenAgent.Core.Capabilities.Code;
 internal sealed class CodeCapabilitySource(
     ICodeExecutor executor,
     IFileAssetService files,
-    FileAssetExecutionContext context,
+    FileAssetExecutionContext executionContext,
     AgentAuthorizationGate authorization,
     IOptions<CodeExecutionOptions> options) : ICapabilitySource
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     public Task<IReadOnlyList<CapabilityDefinition>> DiscoverAsync(
-        string agentId, AgentConfig config, IAgentUserContext user, CancellationToken cancellationToken)
+        string agentId, CapabilityContext context, IAgentUserContext user, CancellationToken cancellationToken)
     {
-        if (!options.Value.Enabled || config.CodeExecution?.Enabled != true || context.Scope == null
-            || string.IsNullOrWhiteSpace(context.Scope.TenantId)
-            || string.IsNullOrWhiteSpace(context.Scope.UserId)
-            || string.IsNullOrWhiteSpace(context.Scope.ConversationId))
+        if (!options.Value.Enabled || context.CodeExecution?.Enabled != true || executionContext.Scope == null
+            || string.IsNullOrWhiteSpace(executionContext.Scope.TenantId)
+            || string.IsNullOrWhiteSpace(executionContext.Scope.UserId)
+            || string.IsNullOrWhiteSpace(executionContext.Scope.ConversationId))
         {
             return Task.FromResult<IReadOnlyList<CapabilityDefinition>>([]);
         }
-        FileAssetScope scope = context.Scope;
+        FileAssetScope scope = executionContext.Scope;
         return Task.FromResult<IReadOnlyList<CapabilityDefinition>>([
             new CapabilityDefinition(
                 "execute_code",

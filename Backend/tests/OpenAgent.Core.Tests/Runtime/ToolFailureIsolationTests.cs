@@ -1,6 +1,5 @@
 using System.Text.Json;
 using Microsoft.Extensions.AI;
-using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
@@ -194,7 +193,7 @@ public class ToolFailureIsolationTests
     {
         public Task<IReadOnlyList<CapabilityDefinition>> DiscoverAsync(
             string agentId,
-            AgentConfig config,
+            CapabilityContext context,
             IAgentUserContext user,
             CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<CapabilityDefinition>>([
@@ -213,7 +212,7 @@ public class ToolFailureIsolationTests
     {
         public Task<IReadOnlyList<CapabilityDefinition>> DiscoverAsync(
             string agentId,
-            AgentConfig config,
+            CapabilityContext context,
             IAgentUserContext user,
             CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<CapabilityDefinition>>([

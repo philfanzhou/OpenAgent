@@ -1,4 +1,3 @@
-using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Security;
 
 namespace OpenAgent.Core.Capabilities;
@@ -7,7 +6,7 @@ internal interface ICapabilitySource
 {
     Task<IReadOnlyList<CapabilityDefinition>> DiscoverAsync(
         string agentId,
-        AgentConfig config,
+        CapabilityContext context,
         IAgentUserContext user,
         CancellationToken cancellationToken);
 }

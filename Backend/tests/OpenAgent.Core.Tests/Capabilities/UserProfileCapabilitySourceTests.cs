@@ -56,8 +56,7 @@ public class UserProfileCapabilitySourceTests
             isAuthenticated: false);
 
         IReadOnlyList<AITool> tools = await factory.CreateAsync(
-            "agent-1",
-            new AgentConfig(),
+            Profile(),
             user,
             default);
 
@@ -74,8 +73,7 @@ public class UserProfileCapabilitySourceTests
             new SelectiveAuthorizationService(deniedResourceType));
 
         IReadOnlyList<AITool> tools = await factory.CreateAsync(
-            "agent-1",
-            new AgentConfig(),
+            Profile(),
             CreateUser(new Dictionary<string, string>()),
             default);
 
@@ -142,12 +140,18 @@ public class UserProfileCapabilitySourceTests
         AgentUserContext user)
     {
         IReadOnlyList<AITool> tools = await factory.CreateAsync(
-            "agent-1",
-            new AgentConfig(),
+            Profile(),
             user,
             default);
         return Assert.IsAssignableFrom<AIFunction>(Assert.Single(tools));
     }
+
+    private static AgentRuntimeProfile Profile() => new()
+    {
+        AgentId = "agent-1",
+        Config = new AgentConfig(),
+        Model = new LlmConfig()
+    };
 
     private static AgentUserContext CreateUser(
         IReadOnlyDictionary<string, string> claims,

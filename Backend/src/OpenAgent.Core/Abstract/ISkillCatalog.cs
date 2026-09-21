@@ -4,7 +4,7 @@ namespace OpenAgent.Core.Abstract;
 
 /// <summary>
 /// Available Skill metadata loaded from the platform catalog.
-/// It is not an Agent binding; bindings come from AgentConfig.Skills.
+/// It is not an Agent binding; bindings come from the agent's Skills configuration.
 /// </summary>
 public interface ISkillCatalog
 {
