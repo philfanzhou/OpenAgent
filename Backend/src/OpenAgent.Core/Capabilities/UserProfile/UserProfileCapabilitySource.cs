@@ -1,6 +1,5 @@
 using System.Security.Claims;
 using System.Text.Json;
-using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Security;
 
 namespace OpenAgent.Core.Capabilities.UserProfile;
@@ -16,7 +15,7 @@ internal sealed class UserProfileCapabilitySource : ICapabilitySource
 
     public Task<IReadOnlyList<CapabilityDefinition>> DiscoverAsync(
         string agentId,
-        AgentConfig config,
+        CapabilityContext context,
         IAgentUserContext user,
         CancellationToken cancellationToken)
     {

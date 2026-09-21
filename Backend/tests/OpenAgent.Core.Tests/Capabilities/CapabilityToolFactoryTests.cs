@@ -20,7 +20,7 @@ public class CapabilityToolFactoryTests
 
         public Task<IReadOnlyList<CapabilityDefinition>> DiscoverAsync(
             string agentId,
-            AgentConfig config,
+            CapabilityContext context,
             IAgentUserContext user,
             CancellationToken cancellationToken)
             => Task.FromResult<IReadOnlyList<CapabilityDefinition>>(_definitions);
@@ -35,6 +35,13 @@ public class CapabilityToolFactoryTests
         Invoke: (_, _) => Task.FromResult("ok"));
 
     private static AgentUserContext Context() => new() { UserId = "u1" };
+
+    private static AgentRuntimeProfile Profile() => new()
+    {
+        AgentId = "a1",
+        Config = new AgentConfig(),
+        Model = new LlmConfig()
+    };
 
     private static CapabilityToolFactory Factory(
         ICapabilitySource source,
@@ -51,7 +58,7 @@ public class CapabilityToolFactoryTests
         var source = new FakeCapabilitySource(new[] { Tool("search"), Tool("calc") });
         var factory = Factory(source);
 
-        var tools = await factory.CreateAsync("a1", new AgentConfig(), Context(), default);
+        var tools = await factory.CreateAsync(Profile(), Context(), default);
 
         Assert.Equal(2, tools.Count);
         Assert.Contains(tools, t => t.Name == "search");
@@ -65,7 +72,7 @@ public class CapabilityToolFactoryTests
         var factory = Factory(source);
 
         await Assert.ThrowsAsync<InvalidOperationException>(
-            () => factory.CreateAsync("a1", new AgentConfig(), Context(), default));
+            () => factory.CreateAsync(Profile(), Context(), default));
     }
 
     [Fact]
@@ -75,7 +82,7 @@ public class CapabilityToolFactoryTests
         var source = new FakeCapabilitySource(new[] { Tool("secret") });
         var factory = Factory(source, denyService);
 
-        var tools = await factory.CreateAsync("a1", new AgentConfig(), Context(), default);
+        var tools = await factory.CreateAsync(Profile(), Context(), default);
 
         Assert.Empty(tools);
     }
@@ -88,8 +95,7 @@ public class CapabilityToolFactoryTests
         var factory = Factory(source, authorization);
 
         IReadOnlyList<AITool> tools = await factory.CreateAsync(
-            "a1",
-            new AgentConfig(),
+            Profile(),
             Context(),
             default);
 
@@ -110,7 +116,7 @@ public class CapabilityToolFactoryTests
     {
         var factory = Factory(new FakeCapabilitySource(Enumerable.Empty<CapabilityDefinition>()));
 
-        var tools = await factory.CreateAsync("a1", new AgentConfig(), Context(), default);
+        var tools = await factory.CreateAsync(Profile(), Context(), default);
 
         Assert.Empty(tools);
     }

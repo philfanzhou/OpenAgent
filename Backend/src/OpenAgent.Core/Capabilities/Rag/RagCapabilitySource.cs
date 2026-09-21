@@ -31,11 +31,11 @@ internal sealed class RagCapabilitySource(IRagService ragService) : ICapabilityS
 
     public Task<IReadOnlyList<CapabilityDefinition>> DiscoverAsync(
         string agentId,
-        AgentConfig config,
+        CapabilityContext context,
         IAgentUserContext user,
         CancellationToken cancellationToken)
     {
-        IReadOnlyList<CapabilityDefinition> result = !config.Rag.Enabled
+        IReadOnlyList<CapabilityDefinition> result = !context.Rag.Enabled
             ? []
             : [new CapabilityDefinition(
                 Name,
@@ -46,7 +46,7 @@ internal sealed class RagCapabilitySource(IRagService ragService) : ICapabilityS
                 (arguments, invocationCancellation) => SearchAsync(
                     arguments,
                     user,
-                    config.Rag,
+                    context.Rag,
                     invocationCancellation))];
         return Task.FromResult(result);
     }

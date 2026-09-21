@@ -447,9 +447,17 @@ public class FileAssetCapabilitySourceTests
     private static async Task<IReadOnlyList<CapabilityDefinition>> DiscoverAsync(
         ICapabilitySource source) => await source.DiscoverAsync(
             "agent-1",
-            new AgentConfig(),
+            Context(),
             UserContext(),
             CancellationToken.None);
+
+    private static CapabilityContext Context() => new(
+        "agent-1",
+        TenantId: string.Empty,
+        Mcp: new McpConfig(),
+        Rag: new RagConfig(),
+        Skills: new SkillsConfig(),
+        CodeExecution: new CodeExecutionConfig());
 
     private static async Task<string> InvokeAsync(
         FileAssetCapabilitySource source,

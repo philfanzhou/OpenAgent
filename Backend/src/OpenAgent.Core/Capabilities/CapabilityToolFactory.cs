@@ -20,18 +20,20 @@ internal sealed class CapabilityToolFactory
     }
 
     internal async Task<IReadOnlyList<AITool>> CreateAsync(
-        string agentId,
-        AgentConfig config,
+        AgentRuntimeProfile profile,
         IAgentUserContext user,
         CancellationToken cancellationToken)
     {
+        // AgentConfig 在这里一次性收窄为 CapabilityContext，能力源只见小节不见全量配置。
+        string agentId = profile.AgentId;
+        CapabilityContext context = CapabilityContext.From(profile, user);
         List<AITool> tools = [];
         HashSet<string> names = new(StringComparer.OrdinalIgnoreCase);
         foreach (ICapabilitySource source in _sources)
         {
             IReadOnlyList<CapabilityDefinition> definitions = await source.DiscoverAsync(
                 agentId,
-                config,
+                context,
                 user,
                 cancellationToken).ConfigureAwait(false);
             foreach (CapabilityDefinition definition in definitions)

@@ -32,7 +32,7 @@ internal sealed class AgentSkillsProviderFactory(
 {
     internal async Task<AgentSkillsRuntime> CreateAsync(
         string agentId,
-        AgentConfig config,
+        CapabilityContext context,
         IAgentUserContext user,
         CancellationToken cancellationToken)
     {
@@ -45,13 +45,13 @@ internal sealed class AgentSkillsProviderFactory(
         {
             Directory.CreateDirectory(temporaryRoot);
             IReadOnlyList<SkillInstanceConfig> instances = await ResolveInstancesAsync(
-                config.Skills,
+                context.Skills,
                 catalog,
                 user.TenantId,
                 cancellationToken).ConfigureAwait(false);
             foreach (SkillInstanceConfig instance in instances.Where(IsEnabledObjectPackage))
             {
-                if (!IsSelected(config.Skills, instance)
+                if (!IsSelected(context.Skills, instance)
                     || !await authorization.IsAvailableAsync(
                         agentId,
                         AgentResourceType.Skill,
@@ -87,7 +87,7 @@ internal sealed class AgentSkillsProviderFactory(
                 return AgentSkillsRuntime.Empty;
             }
 
-            bool scriptsEnabled = IsScriptExecutionEnabled(config, fileContext.Scope);
+            bool scriptsEnabled = IsScriptExecutionEnabled(context, fileContext.Scope);
             var runner = new SkillScriptRunner(executor, files, fileContext, authorization, codeOptions);
             AgentSkillsProvider provider = new AgentSkillsProviderBuilder()
                 .UseFileSkills(
@@ -140,9 +140,9 @@ internal sealed class AgentSkillsProviderFactory(
     /// identified conversation so artifacts can be registered as FileAssets.
     /// The per-instance ScriptExecutionEnabled flag is applied on top.
     /// </summary>
-    private bool IsScriptExecutionEnabled(AgentConfig config, FileAssetScope? scope) =>
+    private bool IsScriptExecutionEnabled(CapabilityContext context, FileAssetScope? scope) =>
         codeOptions.Value.Enabled
-        && config.CodeExecution?.Enabled == true
+        && context.CodeExecution?.Enabled == true
         && scope is { TenantId: not null and not "", UserId: not null and not "", ConversationId: not null and not "" };
 
     private static bool IsEnabledObjectPackage(SkillInstanceConfig instance) =>

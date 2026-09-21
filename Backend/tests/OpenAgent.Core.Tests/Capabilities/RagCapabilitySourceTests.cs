@@ -18,7 +18,7 @@ public class RagCapabilitySourceTests
 
         IReadOnlyList<CapabilityDefinition> capabilities = await source.DiscoverAsync(
             "agent",
-            new AgentConfig { Rag = new RagConfig { Enabled = true } },
+            Context(ragEnabled: true),
             User(),
             default);
         CapabilityDefinition capability = Assert.Single(capabilities);
@@ -40,12 +40,20 @@ public class RagCapabilitySourceTests
 
         IReadOnlyList<CapabilityDefinition> capabilities = await source.DiscoverAsync(
             "agent",
-            new AgentConfig { Rag = new RagConfig { Enabled = false } },
+            Context(ragEnabled: false),
             User(),
             default);
 
         Assert.Empty(capabilities);
     }
+
+    private static CapabilityContext Context(bool ragEnabled) => new(
+        "agent",
+        TenantId: string.Empty,
+        Mcp: new McpConfig(),
+        Rag: new RagConfig { Enabled = ragEnabled },
+        Skills: new SkillsConfig(),
+        CodeExecution: new CodeExecutionConfig());
 
     private static AgentUserContext User() => new() { UserId = "user" };
 

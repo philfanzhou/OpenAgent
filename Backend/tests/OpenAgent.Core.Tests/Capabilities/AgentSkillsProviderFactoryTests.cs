@@ -12,6 +12,7 @@ using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Contracts.Skills;
+using OpenAgent.Core.Capabilities;
 using OpenAgent.Core.Capabilities.Code;
 using OpenAgent.Core.Capabilities.Skill;
 using OpenAgent.Core.Files;
@@ -127,14 +128,16 @@ public class AgentSkillsProviderFactoryTests
             RegisterPackage();
             return await Factory.CreateAsync(
                 "agent",
-                new AgentConfig
-                {
-                    CodeExecution = new CodeExecutionConfig { Enabled = agentCodeExecution },
-                    Skills = new SkillsConfig
+                new CapabilityContext(
+                    "agent",
+                    TenantId: "tenant",
+                    Mcp: new McpConfig(),
+                    Rag: new RagConfig(),
+                    Skills: new SkillsConfig
                     {
                         Instances = [NewInstance(scriptExecutionEnabled)]
-                    }
-                },
+                    },
+                    CodeExecution: new CodeExecutionConfig { Enabled = agentCodeExecution }),
                 User,
                 CancellationToken.None);
         }

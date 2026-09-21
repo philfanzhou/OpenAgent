@@ -64,8 +64,7 @@ internal sealed class AgentFactory
             files,
             profile.Model.Modality == ModelModality.Multimodal);
         IReadOnlyList<AITool> tools = await _capabilities.CreateAsync(
-            profile.AgentId,
-            profile.Config,
+            profile,
             user,
             cancellationToken).ConfigureAwait(false);
         McpToolRuntime mcpRuntime = McpToolRuntime.Empty;
@@ -79,7 +78,7 @@ internal sealed class AgentFactory
                 cancellationToken).ConfigureAwait(false);
             skillsRuntime = await _skills.CreateAsync(
                 profile.AgentId,
-                profile.Config,
+                CapabilityContext.From(profile, user),
                 user,
                 cancellationToken).ConfigureAwait(false);
 

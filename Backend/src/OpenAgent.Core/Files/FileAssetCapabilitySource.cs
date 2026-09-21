@@ -2,7 +2,6 @@ using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
-using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Capabilities;
@@ -18,7 +17,7 @@ internal sealed class FileAssetCapabilitySource(
 {
     public Task<IReadOnlyList<CapabilityDefinition>> DiscoverAsync(
         string agentId,
-        AgentConfig config,
+        CapabilityContext context,
         IAgentUserContext user,
         CancellationToken cancellationToken)
     {
