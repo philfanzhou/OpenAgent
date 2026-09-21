@@ -19,26 +19,7 @@ public sealed class FileAssetOptions
     public int InlineImageHistoryTurns { get; init; } = 2;
     public long MaxArchiveInputBytes { get; init; } = 64 * 1024 * 1024;
     public int MaxArchiveFileCount { get; init; } = 100;
-    public IReadOnlyList<string> AllowedMediaTypes { get; init; } =
-    [
-        "image/*",
-        "application/pdf",
-        "application/json",
-        "text/json",
-        "application/xml",
-        "text/xml",
-        "application/zip",
-        "application/vnd.jgraph.mxfile",
-        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "text/plain",
-        "text/csv",
-        "text/markdown"
-    ];
-    public IReadOnlyList<string> AllowedExtensions { get; init; } =
-    [
-        ".png", ".jpg", ".jpeg", ".jps", ".gif", ".webp", ".svg",
-        ".pdf", ".json", ".xml", ".txt", ".csv", ".md",
-        ".zip", ".pptx", ".xlsx", ".drawio"
-    ];
+    /// <summary>默认白名单由 FileMediaTypeCatalog 派生（目录=事实源，本配置=策略，可收窄不可隐式放宽）。</summary>
+    public IReadOnlyList<string> AllowedMediaTypes { get; init; } = FileMediaTypeCatalog.AllMediaTypes;
+    public IReadOnlyList<string> AllowedExtensions { get; init; } = FileMediaTypeCatalog.AllExtensions;
 }
