@@ -88,33 +88,66 @@ public sealed class AgentExceptionMapper
 
         return exception switch
         {
+            // 请求体解析失败（非法 JSON / 格式错误）按 400 返回，而非落入兜底 500；
+            // BadHttpRequestException.Message 不含密钥类内容，可安全呈现给客户端。
+            BadHttpRequestException badRequest => (400, AgentProblemDetails.Create(
+                $"{AgentProblemDetails.TypePrefix}/invalid-request", "InvalidRequest", 400,
+                badRequest.Message, instance, traceId,
+                ("errorCode", (int)AgentErrorCode.InvalidRequest))),
             UnauthorizedAccessException => (403, AgentProblemDetails.Create(
                 $"{AgentProblemDetails.TypePrefix}/unauthorized", "Unauthorized", 403,
-                "Access denied due to insufficient permissions", exception.Message, traceId)),
+                string.IsNullOrWhiteSpace(exception.Message)
+                    ? "Access denied due to insufficient permissions"
+                    : $"Access denied due to insufficient permissions: {exception.Message}",
+                instance, traceId)),
             HumanApprovalRequiredException approval => (202, AgentProblemDetails.Create(
                 $"{AgentProblemDetails.TypePrefix}/approval-required", "HumanApprovalRequired", 202,
-                "Action requires human approval", approval.Message, traceId,
+                string.IsNullOrWhiteSpace(approval.Message)
+                    ? "Action requires human approval"
+                    : $"Action requires human approval: {approval.Message}",
+                instance, traceId,
                 ("approvalToken", approval.ApprovalToken ?? string.Empty),
                 ("actionDescription", approval.ActionDescription))),
             AgentException agent => (MapAgentErrorCode(agent.ErrorCode), AgentProblemDetails.Create(
                 $"{AgentProblemDetails.TypePrefix}/{AgentProblemDetails.ToSymbolicName(agent.ErrorCode)}",
                 agent.ErrorCode.ToString(), MapAgentErrorCode(agent.ErrorCode), agent.Message,
-                agent.Details ?? agent.Message, traceId, ("errorCode", (int)agent.ErrorCode))),
+                instance, traceId, ("errorCode", (int)agent.ErrorCode))),
             TimeoutException => (504, AgentProblemDetails.Create(
                 $"{AgentProblemDetails.TypePrefix}/timeout", "GatewayTimeout", 504,
-                "The request timed out", exception.Message, traceId)),
-            HttpRequestException httpException => MapHttpRequestException(httpException, traceId),
-            _ => (500, AgentProblemDetails.Create(
-                $"{AgentProblemDetails.TypePrefix}/internal-error", "InternalServerError", 500,
-                string.IsNullOrWhiteSpace(exception.Message) ? "An unexpected error occurred" : exception.Message,
-                includeExceptionDetails ? exception.ToString() : "Please contact support if the problem persists",
-                traceId))
+                string.IsNullOrWhiteSpace(exception.Message)
+                    ? "The request timed out"
+                    : $"The request timed out: {exception.Message}",
+                instance, traceId)),
+            HttpRequestException httpException => MapHttpRequestException(httpException, traceId, instance),
+            _ => MapInternalError(exception, traceId, instance, includeExceptionDetails)
         };
+    }
+
+    /// <summary>
+    /// 兜底 500：instance 固定为请求路径；Development 环境额外以 exception 扩展字段
+    /// 携带堆栈用于诊断，避免把异常文本塞进标准字段（instance 语义为 URI）。
+    /// </summary>
+    private static (int StatusCode, ProblemDetails ProblemDetails) MapInternalError(
+        Exception exception,
+        string traceId,
+        string? instance,
+        bool includeExceptionDetails)
+    {
+        (string, object)[] extensions = includeExceptionDetails
+            ? [("exception", exception.ToString())]
+            : [];
+        return (500, AgentProblemDetails.Create(
+            $"{AgentProblemDetails.TypePrefix}/internal-error", "InternalServerError", 500,
+            string.IsNullOrWhiteSpace(exception.Message) ? "An unexpected error occurred" : exception.Message,
+            instance,
+            traceId,
+            extensions));
     }
 
     private static (int StatusCode, ProblemDetails ProblemDetails) MapHttpRequestException(
         HttpRequestException exception,
-        string traceId)
+        string traceId,
+        string? instance)
     {
         int statusCode = exception.StatusCode switch
         {
@@ -133,12 +166,17 @@ public sealed class AgentExceptionMapper
             429 => "ProviderRateLimited",
             _ => "DependencyUnavailable"
         };
+        // provider 的 HttpRequestException.Message 不含密钥类内容，保留在 detail 供排查；
+        // instance 统一为请求路径（RFC 7807 语义）。
+        string detail = string.IsNullOrWhiteSpace(exception.Message)
+            ? "The model provider request failed."
+            : $"The model provider request failed. {exception.Message}";
         return (statusCode, AgentProblemDetails.Create(
             $"{AgentProblemDetails.TypePrefix}/{title.ToLowerInvariant()}",
             title,
             statusCode,
-            "The model provider request failed.",
-            exception.Message,
+            detail,
+            instance,
             traceId,
             ("errorCode", (int)AgentErrorCode.DependencyUnavailable)));
     }

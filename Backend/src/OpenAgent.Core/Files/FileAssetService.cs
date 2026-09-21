@@ -463,7 +463,7 @@ internal sealed class FileAssetService : IFileAssetService
             || !IsOwner(asset, scope)
             || !await IsReferencedAsync(asset, scope, cancellationToken).ConfigureAwait(false))
         {
-            throw new AgentException(AgentErrorCode.InvalidRequest, $"File '{fileId}' was not found.");
+            throw new AgentException(AgentErrorCode.NotFound, $"File '{fileId}' was not found.");
         }
         if (asset.State != FileAssetState.Ready)
         {

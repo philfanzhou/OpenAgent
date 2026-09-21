@@ -54,7 +54,8 @@ public class FileAssetServiceTests
         repository.Assets[asset.FileId] = asset;
         IFileAssetService service = CreateService(repository, objects);
 
-        await Assert.ThrowsAsync<OpenAgent.Contracts.Security.AgentException>(() => service.ReadAsync(
+        // 作用域外/未引用的文件按 NotFound（404）语义拒绝，避免存在性泄露。
+        var exception = await Assert.ThrowsAsync<OpenAgent.Contracts.Security.AgentException>(() => service.ReadAsync(
             asset.FileId,
             new FileAssetScope
             {
@@ -64,6 +65,28 @@ public class FileAssetServiceTests
             },
             CancellationToken.None));
 
+        Assert.Equal(OpenAgent.Contracts.Requests.AgentErrorCode.NotFound, exception.ErrorCode);
+        Assert.Equal(0, objects.ReadCount);
+    }
+
+    [Fact]
+    public async Task ReadAsync_MissingFile_ThrowsNotFound()
+    {
+        var repository = new RecordingFileAssetRepository();
+        var objects = new RecordingFileObjectStore { Content = [1, 2, 3] };
+        IFileAssetService service = CreateService(repository, objects);
+
+        var exception = await Assert.ThrowsAsync<OpenAgent.Contracts.Security.AgentException>(() => service.ReadAsync(
+            "missing-file-id",
+            new FileAssetScope
+            {
+                TenantId = "tenant-a",
+                UserId = "user-a",
+                ConversationId = "conversation-a"
+            },
+            CancellationToken.None));
+
+        Assert.Equal(OpenAgent.Contracts.Requests.AgentErrorCode.NotFound, exception.ErrorCode);
         Assert.Equal(0, objects.ReadCount);
     }
 
@@ -99,7 +122,7 @@ public class FileAssetServiceTests
         repository.References.Add($"conversation-a:{asset.FileId}");
         IFileAssetService service = CreateService(repository, objects);
 
-        await Assert.ThrowsAsync<OpenAgent.Contracts.Security.AgentException>(() => service.ReadAsync(
+        var exception = await Assert.ThrowsAsync<OpenAgent.Contracts.Security.AgentException>(() => service.ReadAsync(
             asset.FileId,
             new FileAssetScope
             {
@@ -109,6 +132,7 @@ public class FileAssetServiceTests
             },
             CancellationToken.None));
 
+        Assert.Equal(OpenAgent.Contracts.Requests.AgentErrorCode.NotFound, exception.ErrorCode);
         Assert.Equal(0, objects.ReadCount);
     }
 

@@ -29,13 +29,15 @@ internal static class EngineErrorHandling
         }
 
         int statusCode = clientException.Status is >= 400 and < 500 ? clientException.Status : 502;
+        // clientException.Message 是 provider 原始错误体，可能包含账户标识或密钥材料，
+        // 仅用于 FormatProviderError 的脱敏摘要与服务端日志，绝不进入 ProblemDetails 载荷。
         ProblemDetails problem = AgentProblemDetails.Create(
             $"{AgentProblemDetails.TypePrefix}/provider-request-error",
             "ProviderRequestFailed",
             statusCode,
             StreamingPayloadFactory.FormatProviderError(clientException.Status, clientException.Message),
-            clientException.Message,
-            traceId,
+            instance: null,
+            traceId: traceId,
             ("errorCode", (int)AgentErrorCode.DependencyUnavailable));
         return new AgentMappedError(statusCode, problem);
     }

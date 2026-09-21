@@ -74,6 +74,68 @@ public class AgentExceptionHandlerMiddlewareTests
     }
 
     [Fact]
+    public async Task InvokeAsync_BadHttpRequestException_Returns400ProblemDetails()
+    {
+        var context = new DefaultHttpContext();
+        context.Request.Path = "/api/v1/agent/chat";
+        context.Response.Body = new MemoryStream();
+
+        var middleware = CreateMiddleware(_ => throw new BadHttpRequestException(
+            "Failed to read parameter \"ChatRequest request\" from the request body as JSON."));
+
+        await middleware.InvokeAsync(context);
+
+        Assert.Equal(StatusCodes.Status400BadRequest, context.Response.StatusCode);
+        Assert.Equal("application/problem+json", context.Response.ContentType);
+        context.Response.Body.Seek(0, SeekOrigin.Begin);
+        var payload = await new StreamReader(context.Response.Body).ReadToEndAsync();
+        Assert.Contains("invalid-request", payload);
+        Assert.Contains("\"errorCode\":8001", payload);
+        // instance 按 RFC 7807 语义携带请求路径，而非异常文本。
+        Assert.Contains("\"instance\":\"/api/v1/agent/chat\"", payload);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_AgentException_InstanceCarriesRequestPathNotMessage()
+    {
+        var context = new DefaultHttpContext();
+        context.Request.Path = "/api/v1/agent/files/missing";
+        context.Response.Body = new MemoryStream();
+
+        var middleware = CreateMiddleware(_ => throw new OpenAgent.Contracts.Security.AgentException(
+            OpenAgent.Contracts.Requests.AgentErrorCode.NotFound, "File 'missing' was not found."));
+
+        await middleware.InvokeAsync(context);
+
+        Assert.Equal(StatusCodes.Status404NotFound, context.Response.StatusCode);
+        context.Response.Body.Seek(0, SeekOrigin.Begin);
+        var payload = await new StreamReader(context.Response.Body).ReadToEndAsync();
+        Assert.Contains("\"instance\":\"/api/v1/agent/files/missing\"", payload);
+        // 详情文本只出现在 detail，不再复制进 instance。
+        Assert.Equal(2, payload.Split("was not found").Length);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_InternalError_InstanceIsRequestPathWithoutExceptionText()
+    {
+        var context = new DefaultHttpContext();
+        context.Request.Path = "/chat";
+        context.Response.Body = new MemoryStream();
+
+        var middleware = CreateMiddleware(_ => throw new InvalidOperationException("boom"));
+
+        await middleware.InvokeAsync(context);
+
+        Assert.Equal(StatusCodes.Status500InternalServerError, context.Response.StatusCode);
+        context.Response.Body.Seek(0, SeekOrigin.Begin);
+        var payload = await new StreamReader(context.Response.Body).ReadToEndAsync();
+        Assert.Contains("\"instance\":\"/chat\"", payload);
+        // 非 Development 环境不携带堆栈/异常类型等诊断文本。
+        Assert.DoesNotContain("InvalidOperationException", payload);
+        Assert.DoesNotContain("at ", payload);
+    }
+
+    [Fact]
     public async Task InvokeAsync_AgentException_ErrorBodyCarriesErrorCodeAndSymbolicCode()
     {
         var context = new DefaultHttpContext();

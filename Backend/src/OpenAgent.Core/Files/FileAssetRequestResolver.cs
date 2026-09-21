@@ -40,7 +40,7 @@ internal sealed class FileAssetRequestResolver
             FileAsset? asset = await _files.GetReferencedAsync(fileId, scope, cancellationToken).ConfigureAwait(false);
             if (asset == null)
             {
-                throw new AgentException(AgentErrorCode.InvalidRequest, $"File '{fileId}' was not found.");
+                throw new AgentException(AgentErrorCode.NotFound, $"File '{fileId}' was not found.");
             }
 
             files.Add(asset);

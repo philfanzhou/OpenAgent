@@ -5,6 +5,7 @@ using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Responses;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Engine.Host.Middleware;
+using OpenAgent.Hosting.Errors;
 
 namespace OpenAgent.Engine.Host.Extensions;
 
@@ -59,7 +60,7 @@ internal static class FileAssetEndpointExtensions
         return TypedResults.Created($"/api/v1/agent/files/{asset.FileId}", ToResponse(asset));
     }
 
-    private static async Task<Results<Ok<FileAssetResponse>, NotFound>> GetAsync(
+    private static async Task<Results<Ok<FileAssetResponse>, ProblemHttpResult>> GetAsync(
         [FromServices] IFileAssetService files,
         HttpContext context,
         string fileId,
@@ -69,7 +70,10 @@ internal static class FileAssetEndpointExtensions
             fileId,
             CreateScope(context, conversationId: null),
             cancellationToken).ConfigureAwait(false);
-        return asset == null ? TypedResults.NotFound() : TypedResults.Ok(ToResponse(asset));
+        // 404 同样走统一 ProblemDetails 契约，不返回空 body 的裸 NotFound。
+        return asset == null
+            ? TypedResults.Problem(AgentProblemDetails.NotFound($"File '{fileId}' was not found.", context))
+            : TypedResults.Ok(ToResponse(asset));
     }
 
     private static async Task<FileContentHttpResult> ContentAsync(
