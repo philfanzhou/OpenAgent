@@ -1,5 +1,6 @@
 using System.Text.Json;
 using OpenAgent.Contracts.Requests;
+using OpenAgent.Hosting;
 using OpenAgent.Router.Middleware;
 using OpenAgent.Router.Models;
 
@@ -23,9 +24,9 @@ internal static class ChatRequestReader
                     form["message"].FirstOrDefault()
                         ?? form["query"].FirstOrDefault()
                         ?? string.Empty,
-                    form["conversationId"].FirstOrDefault(),
-                    form["agentId"].FirstOrDefault(),
-                    form["llmProfileId"].FirstOrDefault());
+                    form[ChatRequestContext.ConversationIdKey].FirstOrDefault(),
+                    form[ChatRequestContext.AgentIdKey].FirstOrDefault(),
+                    form[ChatRequestContext.LlmProfileIdKey].FirstOrDefault());
             }
 
             if (RequestBodySnapshot.TryGet(request.HttpContext, out Task<RequestBodySnapshot> snapshotTask))
@@ -62,29 +63,8 @@ internal static class ChatRequestReader
     {
         return new ParsedChatRequest(
             body.Message,
-            ReadContextString(body.Context, "conversationId"),
-            ReadContextString(body.Context, "agentId"),
-            ReadContextString(body.Context, "llmProfileId"));
-    }
-
-    private static string? ReadContextString(
-        IReadOnlyDictionary<string, object>? context,
-        string key)
-    {
-        KeyValuePair<string, object> entry = context?.FirstOrDefault(item =>
-            item.Key.Equals(key, StringComparison.OrdinalIgnoreCase)) ?? default;
-        if (entry.Value == null)
-        {
-            return null;
-        }
-
-        return entry.Value switch
-        {
-            JsonElement { ValueKind: JsonValueKind.String } element => element.GetString(),
-            JsonElement { ValueKind: JsonValueKind.Null } => null,
-            string value => value,
-            _ => throw new JsonException(
-                $"The chat request context property '{key}' must be a string.")
-        };
+            ChatRequestContext.ReadString(body.Context, ChatRequestContext.ConversationIdKey),
+            ChatRequestContext.ReadString(body.Context, ChatRequestContext.AgentIdKey),
+            ChatRequestContext.ReadString(body.Context, ChatRequestContext.LlmProfileIdKey));
     }
 }
