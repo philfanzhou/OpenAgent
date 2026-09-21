@@ -7,3 +7,4 @@
 | [Agent.Workflow.md](./Agent.Workflow.md) | Agent.Workflow 服务状态与兼容行为说明 | 规划中 |
 | [2026-08-03-engine-core-agent-runtime-redesign.md](./2026-08-03-engine-core-agent-runtime-redesign.md) | Engine/Core Agent Runtime 扁平化重构基线 | Implementation Baseline v5 |
 | [2026-09-18-product-roadmap.md](./2026-09-18-product-roadmap.md) | 产品里程碑规划（M1 安全收口 → M2 Matrix 治理中枢 → M3 新前端 → M4 能力纵深 → M5 平台化） | 提案 |
+| [session-architecture/PR1-unify-conversation-id-parsing.md](./session-architecture/PR1-unify-conversation-id-parsing.md) | PR-1 统一 ChatRequest.Context 解析（消除 Router/Engine 重复 + 修复大小写不一致导致的会话分裂） | 已实施 |
