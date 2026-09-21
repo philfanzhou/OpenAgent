@@ -21,55 +21,45 @@ internal static class ManagementEndpointExtensions
 
         group.MapGet("/skills", ListSkillsAsync)
             .WithName("ListSkills")
-            .WithTags("Admin Skills")
-            .WithSummary("列出租户技能目录");
+            .WithTags("Admin Skills");
 
         group.MapGet("/skills/{skillId}/source", ReadSkillSourceAsync)
             .WithName("ReadSkillSource")
-            .WithTags("Admin Skills")
-            .WithSummary("读取技能 Markdown 源码");
+            .WithTags("Admin Skills");
 
         group.MapPut("/skills/{skillId}/source", UpdateSkillSourceAsync)
             .WithName("UpdateSkillSource")
-            .WithTags("Admin Skills")
-            .WithSummary("更新技能 Markdown 源码");
+            .WithTags("Admin Skills");
 
         group.MapGet("/skills/{skillId}", GetSkillAsync)
             .WithName("GetSkill")
-            .WithTags("Admin Skills")
-            .WithSummary("获取单个技能配置");
+            .WithTags("Admin Skills");
 
         group.MapPost("/skills/packages", UploadSkillPackageAsync)
             .DisableAntiforgery()
             .WithName("UploadSkillPackage")
-            .WithTags("Admin Skills")
-            .WithSummary("上传技能包到租户目录");
+            .WithTags("Admin Skills");
 
         group.MapPatch("/skills/{skillId}", UpdateSkillScriptExecutionAsync)
             .WithName("UpdateSkillScriptExecution")
-            .WithTags("Admin Skills")
-            .WithSummary("更新技能脚本执行开关");
+            .WithTags("Admin Skills");
 
         group.MapDelete("/skills/{skillId}", DeleteSkillAsync)
             .WithName("DeleteSkill")
-            .WithTags("Admin Skills")
-            .WithSummary("从租户目录删除技能");
+            .WithTags("Admin Skills");
 
         group.MapPost("/skills/{agentId}/packages", InstallSkillPackageAsync)
             .DisableAntiforgery()
             .WithName("InstallSkillPackage")
-            .WithTags("Admin Skills")
-            .WithSummary("为指定 Agent 安装技能包");
+            .WithTags("Admin Skills");
 
         group.MapDelete("/skills/{agentId}/{skillId}", DeleteAgentSkillAsync)
             .WithName("DeleteAgentSkill")
-            .WithTags("Admin Skills")
-            .WithSummary("从 Agent 卸载技能");
+            .WithTags("Admin Skills");
 
         group.MapPost("/skills/test", ValidateSkillsAsync)
             .WithName("ValidateSkills")
-            .WithTags("Admin Skills")
-            .WithSummary("校验技能配置");
+            .WithTags("Admin Skills");
 
         return group;
     }

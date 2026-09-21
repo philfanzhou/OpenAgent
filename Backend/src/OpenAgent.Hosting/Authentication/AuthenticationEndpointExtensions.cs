@@ -51,8 +51,7 @@ public static class AuthenticationEndpointExtensions
         }))
             .AllowAnonymous()
             .WithName("GetAuthConfig")
-            .WithTags("Authentication")
-            .WithSummary("获取认证配置");
+            .WithTags("Authentication");
 
         if (environment.IsDevelopment() && options.Mode == AgentAuthenticationMode.Basic)
         {
@@ -82,8 +81,7 @@ public static class AuthenticationEndpointExtensions
             })
                 .AllowAnonymous()
                 .WithName("IssuePasswordToken")
-                .WithTags("Authentication")
-                .WithSummary("开发环境密码登录换发令牌");
+                .WithTags("Authentication");
         }
 
         return endpoints;

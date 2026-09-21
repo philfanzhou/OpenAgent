@@ -4,9 +4,6 @@ public class AgentHostOptions
 {
     public bool EnableCors { get; set; } = true;
     public bool EnableSwagger { get; set; } = true;
-
-    /// <summary>是否在非 Development 环境暴露 Swagger UI（测试/预发环境用，生产保持关闭）。</summary>
-    public bool SwaggerExposeInNonDevelopment { get; set; }
     public bool EnableHealthChecks { get; set; } = true;
     public bool EnableJwtAuth { get; set; } = true;
     public bool EnableOpenTelemetry { get; set; } = true;

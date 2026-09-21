@@ -15,26 +15,21 @@ internal static class FileAssetEndpointExtensions
         group.MapPost("/files", UploadAsync)
             .DisableAntiforgery()
             .WithName("UploadFileAsset")
-            .WithTags("File")
-            .WithSummary("上传文件资产");
+            .WithTags("File");
         // 字面路由 /files/object 必须先于参数路由 /files/{fileId} 注册，
         // 不依赖路由优先级兜底。
         group.MapGet("/files/object", ObjectContentAsync)
             .WithName("GetObjectAssetContent")
-            .WithTags("File")
-            .WithSummary("按对象路径读取资产内容");
+            .WithTags("File");
         group.MapGet("/files/{fileId}", GetAsync)
             .WithName("GetFileAsset")
-            .WithTags("File")
-            .WithSummary("获取文件资产元数据");
+            .WithTags("File");
         group.MapGet("/files/{fileId}/content", ContentAsync)
             .WithName("GetFileAssetContent")
-            .WithTags("File")
-            .WithSummary("读取文件资产内容");
+            .WithTags("File");
         group.MapGet("/files/{fileId}/download", DownloadAsync)
             .WithName("DownloadFileAsset")
-            .WithTags("File")
-            .WithSummary("下载文件资产（附件）");
+            .WithTags("File");
         group.MapFileShareLinks();
     }
 

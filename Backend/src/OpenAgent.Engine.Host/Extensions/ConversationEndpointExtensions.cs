@@ -13,33 +13,27 @@ internal static class ConversationEndpointExtensions
     {
         group.MapGet("/conversations", ListAsync)
             .WithName("ListConversations")
-            .WithTags("Conversation")
-            .WithSummary("列出会话");
+            .WithTags("Conversation");
 
         group.MapGet("/conversations/search", SearchAsync)
             .WithName("SearchConversations")
-            .WithTags("Conversation")
-            .WithSummary("按关键词搜索会话");
+            .WithTags("Conversation");
 
         group.MapGet("/conversations/{conversationId}", GetAsync)
             .WithName("GetConversation")
-            .WithTags("Conversation")
-            .WithSummary("获取会话详情");
+            .WithTags("Conversation");
 
         group.MapDelete("/conversations/{conversationId}", DeleteAsync)
             .WithName("DeleteConversation")
-            .WithTags("Conversation")
-            .WithSummary("软删除会话");
+            .WithTags("Conversation");
 
         group.MapPost("/conversations/{conversationId}/compact", CompactAsync)
             .WithName("CompactConversation")
-            .WithTags("Conversation")
-            .WithSummary("压缩会话上下文");
+            .WithTags("Conversation");
 
         group.MapGet("/conversations/{conversationId}/llm-interactions", ListInteractionsAsync)
             .WithName("ListConversationLlmInteractions")
-            .WithTags("Conversation")
-            .WithSummary("列出会话的 LLM 交互记录");
+            .WithTags("Conversation");
     }
 
     private static async Task<IReadOnlyList<ConversationRecord>> ListAsync(

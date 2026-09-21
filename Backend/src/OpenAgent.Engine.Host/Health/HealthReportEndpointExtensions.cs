@@ -35,7 +35,6 @@ internal static class HealthReportEndpointExtensions
             });
         })
         .WithName("GetHealthReport")
-        .WithTags("Health")
-        .WithSummary("健康检查聚合报告");
+        .WithTags("Health");
     }
 }

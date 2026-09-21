@@ -11,8 +11,8 @@
 | 版本前缀 | `/api/v1/...`（所有业务端点，含 Runner） |
 | 成功响应 | 直接返回业务 DTO（camelCase JSON），不做 `{code,message,data}` 信封 |
 | 错误响应 | 统一 RFC 7807 ProblemDetails（见下），`application/problem+json` |
-| 文档 | 每个端点必须有 `.WithName`（operationId，全服务唯一）+ `.WithTags` + `.WithSummary` |
-| Swagger | Development 默认开启；测试/预发用 `AgentHostOptions.SwaggerExposeInNonDevelopment` |
+| 文档 | 每个端点建议 `.WithName`（operationId，全服务唯一）+ `.WithTags`（分组）；不要求更多元数据 |
+| Swagger | 仅 Development 环境开启；响应 schema 由 TypedResults 返回类型自动推导，零端点侵入 |
 | 认证 | `Authorization` 头：生产 JWT Bearer 或 Bearer API Key；开发环境另有 Basic |
 
 ## 成功响应
@@ -98,5 +98,6 @@ private static async Task<Results<Ok<ConversationRecord>, NotFound, ForbidHttpRe
 | Router | `/swagger` | 网关本地端点 + 转发端点 |
 | Runner | `/swagger` | 沙箱执行 sidecar（内联配置，不依赖 Hosting） |
 
-DTO schema 描述来自 `OpenAgent.Contracts` 的 XML 注释（唯一开启 XML 文档生成的项目）；
-端点描述来自 `WithSummary/WithDescription`。认证统一用 Bearer 安全定义（Authorize 按钮可用）。
+响应 schema 由端点的 TypedResults 返回类型自动推导，端点代码不含任何 Swagger 专属元数据
+（`WithName`/`WithTags` 除外，它们同时服务于路由标识与分组）。认证统一用 Bearer 安全定义
+（Authorize 按钮可用）。

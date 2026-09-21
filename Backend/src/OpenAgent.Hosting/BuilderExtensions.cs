@@ -30,7 +30,7 @@ public static class ApplicationBuilderExtensions
         }
 
         var env = app.ApplicationServices.GetRequiredService<IHostEnvironment>();
-        if (options.EnableSwagger && (env.IsDevelopment() || options.SwaggerExposeInNonDevelopment))
+        if (options.EnableSwagger && env.IsDevelopment())
         {
             app.UseSwagger();
             app.UseSwaggerUI();

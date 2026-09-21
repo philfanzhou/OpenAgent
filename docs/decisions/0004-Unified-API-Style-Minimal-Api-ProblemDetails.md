@@ -34,7 +34,7 @@ SSE 解析读取 error 事件的 `detail` 字段——任何统一方案必须�
   无需手写 `Produces`。
 - 匿名响应对象全部替换为 `OpenAgent.Contracts/Responses/` 下的具名 DTO（`MeResponse`、
   `FileAssetResponse`、`FileShareLinkResponse`、`HealthReportResponse`、`AuthConfigResponse`、
-  `TokenResponse` 等）；端点用 `.WithName/.WithTags/.WithSummary` 提供文档元数据。
+  `TokenResponse` 等）；端点用 `.WithName/.WithTags` 提供最小文档元数据（operationId 与分组）。
 
 选择 Minimal API 而非 Controller 的理由：95% 代码已是 Minimal API（反向改写量约 20+ 文件），
 TypedResults 已满足 OpenAPI 类型推导需求，团队无需维护两套心智模型。
@@ -83,13 +83,13 @@ Router 同时接入共享全局异常中间件（原先未处理异常返回 Kes
 `JwtUserContextMiddleware` 缺租户改为抛 `AgentException(TenantNotFound)`、
 `RateLimitingMiddleware` 429 补 ProblemDetails body。
 
-### 4. Swagger 完善
+### 4. Swagger 保持最小侵入
 
-- `AddAgentHost` 中 `AddSwaggerGen` 配置：文档标题 = `{ServiceName} API`、Bearer 安全定义
-  （JWT/API Key/Basic 共用 Authorization 头）、引入 Contracts 的 XML 注释作为 schema 描述
-  （XML 文档生成仅在 Contracts 开启，CS1591 仅在该项目压制）。
-- 端点级描述用 `WithSummary/WithDescription` 元数据，避免全解决方案 XML 注释噪音。
-- 新增 `AgentHostOptions.SwaggerExposeInNonDevelopment`（默认 false）供测试/预发开启。
+- `AddAgentHost` 中 `AddSwaggerGen` 仅配置文档标题与 Bearer 安全定义（JWT/API Key/Basic 共用
+  Authorization 头，Authorize 按钮可用）。
+- 响应 schema 完全由端点的 TypedResults 返回类型自动推导，**不需要任何端点级 Swagger 元数据**
+  （无 WithSummary/XML 注释/Produces）。不在非 Development 环境暴露。
+- Runner 内联最小配置（`AddSwaggerGen()`，dev-only），不引入 Hosting。
 - Runner 内联同构配置（不引入 Hosting）；遗留别名 `/api/v1/agents` 保留但
   `ExcludeFromDescription()` 隐藏出文档。
 

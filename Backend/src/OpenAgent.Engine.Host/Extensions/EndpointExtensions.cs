@@ -34,8 +34,7 @@ internal static class EndpointExtensions
             });
         })
         .WithName("CurrentAgentUser")
-        .WithTags("Agent")
-        .WithSummary("当前认证用户信息");
+        .WithTags("Agent");
 
         return group;
     }

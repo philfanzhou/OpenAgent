@@ -14,18 +14,15 @@ internal static class AgentChatEndpointExtensions
     {
         group.MapPost("/chat", ExecuteAsync)
             .WithName("Chat")
-            .WithTags("Agent")
-            .WithSummary("同步对话");
+            .WithTags("Agent");
 
         group.MapPost("/chat/intent", ExecuteIntentAsync)
             .WithName("IntentRecognition")
-            .WithTags("Agent")
-            .WithSummary("意图识别对话");
+            .WithTags("Agent");
 
         group.MapPost("/chat/stream", ExecuteStreamAsync)
             .WithName("ChatStream")
-            .WithTags("Agent")
-            .WithSummary("流式对话（SSE）");
+            .WithTags("Agent");
 
     }
 

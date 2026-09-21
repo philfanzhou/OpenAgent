@@ -32,8 +32,7 @@ internal static class FileShareEndpointExtensions
                         enableRangeProcessing: false);
             })
             .WithName("DownloadSharedFile")
-            .WithTags("File")
-            .WithSummary("凭分享令牌下载文件（匿名）");
+            .WithTags("File");
     }
 
     internal static void MapFileShareLinks(this RouteGroupBuilder group)
@@ -41,16 +40,13 @@ internal static class FileShareEndpointExtensions
         group.MapPost("/files/{fileId}/share", CreateAsync)
             .DisableAntiforgery()
             .WithName("CreateFileShareLink")
-            .WithTags("File")
-            .WithSummary("创建文件分享链接");
+            .WithTags("File");
         group.MapGet("/files/shares", ListAsync)
             .WithName("ListFileShareLinks")
-            .WithTags("File")
-            .WithSummary("列出当前用户的有效分享链接");
+            .WithTags("File");
         group.MapDelete("/files/shares/{shareId}", RevokeAsync)
             .WithName("RevokeFileShareLink")
-            .WithTags("File")
-            .WithSummary("撤销分享链接");
+            .WithTags("File");
     }
 
     private static async Task<Ok<FileShareLinkResponse>> CreateAsync(

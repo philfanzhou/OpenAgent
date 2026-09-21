@@ -43,7 +43,6 @@ public static class ServiceCollectionExtensions
             opt.ServiceName = options.ServiceName;
             opt.ServiceVersion = options.ServiceVersion;
             opt.OpenTelemetrySource = options.OpenTelemetrySource;
-            opt.SwaggerExposeInNonDevelopment = options.SwaggerExposeInNonDevelopment;
         });
         services.AddOptions<AgentAuthenticationOptions>()
             .Bind(configuration.GetSection("Authentication"));
@@ -68,16 +67,15 @@ public static class ServiceCollectionExtensions
         if (options.EnableSwagger)
         {
             services.AddEndpointsApiExplorer();
+            // 仅保留最小必要配置：文档标题与 Bearer 安全定义（Authorize 按钮可用）。
+            // 响应 schema 由端点的 TypedResults 返回类型自动推导，无需侵入端点代码。
             services.AddSwaggerGen(swaggerOptions =>
             {
                 swaggerOptions.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo
                 {
                     Title = $"{options.ServiceName} API",
-                    Version = "v1",
-                    Description = "OpenAgent HTTP API. 成功响应返回裸业务 DTO；所有错误统一返回 RFC 7807 ProblemDetails" +
-                                  "（扩展字段 traceId / timestamp / errorCode / code）。"
+                    Version = "v1"
                 });
-
                 swaggerOptions.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
                 {
                     Name = "Authorization",
@@ -101,8 +99,6 @@ public static class ServiceCollectionExtensions
                         Array.Empty<string>()
                     }
                 });
-
-                IncludeContractsXmlComments(swaggerOptions);
             });
         }
 
@@ -185,22 +181,6 @@ public static class ServiceCollectionExtensions
         }
 
         return services;
-    }
-
-    /// <summary>
-    /// 引入 OpenAgent.Contracts 的 XML 注释作为 DTO schema 描述。Contracts 是唯一开启
-    /// XML 文档生成的项目（NoWarn 1591 仅限该项目），端点级说明用 WithSummary/WithDescription 提供。
-    /// </summary>
-    private static void IncludeContractsXmlComments(Swashbuckle.AspNetCore.SwaggerGen.SwaggerGenOptions options)
-    {
-        string xmlPath = Path.Combine(
-            Path.GetDirectoryName(typeof(OpenAgent.Contracts.Security.AgentUserContext).Assembly.Location)
-                ?? AppContext.BaseDirectory,
-            "OpenAgent.Contracts.xml");
-        if (File.Exists(xmlPath))
-        {
-            options.IncludeXmlComments(xmlPath, includeControllerXmlComments: false);
-        }
     }
 
     /// <summary>

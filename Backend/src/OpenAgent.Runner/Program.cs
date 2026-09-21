@@ -11,43 +11,11 @@ WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 // Information 日志，避免健康探测淹没 stdout 中的业务日志（异常仍以 Warning+ 输出）。
 builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
 builder.WebHost.ConfigureKestrel(server => server.Limits.MaxRequestBodySize = ExecutionLimits.MaxWireBytes);
-// Swagger 仅在开发环境暴露；Runner 刻意不引用 OpenAgent.Hosting，保持沙箱 sidecar 的轻依赖，
-// 因此这里内联与 Hosting 相同的 Bearer 安全定义。
+// Swagger 仅在开发环境暴露；Runner 刻意不引用 OpenAgent.Hosting，保持沙箱 sidecar 的轻依赖。
 if (builder.Environment.IsDevelopment())
 {
     builder.Services.AddEndpointsApiExplorer();
-    builder.Services.AddSwaggerGen(options =>
-    {
-        options.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo
-        {
-            Title = "openagent-runner API",
-            Version = "v1",
-            Description = "沙箱代码执行 sidecar。所有错误统一返回 RFC 7807 ProblemDetails。"
-        });
-        options.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
-        {
-            Name = "Authorization",
-            Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
-            Scheme = "bearer",
-            BearerFormat = "opaque",
-            In = Microsoft.OpenApi.Models.ParameterLocation.Header,
-            Description = "输入编排器分配的 Runner API Key。"
-        });
-        options.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
-        {
-            {
-                new Microsoft.OpenApi.Models.OpenApiSecurityScheme
-                {
-                    Reference = new Microsoft.OpenApi.Models.OpenApiReference
-                    {
-                        Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
-                        Id = "Bearer"
-                    }
-                },
-                Array.Empty<string>()
-            }
-        });
-    });
+    builder.Services.AddSwaggerGen();
 }
 builder.Services.AddOptions<RunnerOptions>().Bind(builder.Configuration.GetSection("Runner"))
     .Validate(options => options.ApiKey.Length >= 32, "Runner:ApiKey must contain at least 32 characters.")
@@ -86,8 +54,7 @@ app.MapGet("/health", async (BubblewrapProcess bubblewrap, CancellationToken can
             statusCode: 503);
 })
     .WithName("RunnerHealth")
-    .WithTags("Runner")
-    .WithSummary("Runner 就绪检查");
+    .WithTags("Runner");
 app.Use(async (context, next) =>
 {
     if (context.Request.Path == "/health")
@@ -151,8 +118,7 @@ app.MapPost("/api/v1/execute",
     }
 })
     .WithName("ExecuteCode")
-    .WithTags("Runner")
-    .WithSummary("在 Bubblewrap 沙箱中执行代码");
+    .WithTags("Runner");
 app.Run();
 
 public partial class Program;

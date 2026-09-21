@@ -36,97 +36,80 @@ internal static class ConfigurationEndpointExtensions
     {
         group.MapPost("/mcp/test-connection", TestMcpAsync)
             .WithName("TestMcpConnection")
-            .WithTags("Admin MCP")
-            .WithSummary("测试 MCP 服务器连通性");
+            .WithTags("Admin MCP");
 
         group.MapGet("/mcp", ListMcpAsync)
             .WithName("ListMcpServers")
-            .WithTags("Admin MCP")
-            .WithSummary("列出 MCP 服务器配置");
+            .WithTags("Admin MCP");
 
         group.MapGet("/mcp/{id}", GetMcpAsync)
             .WithName("GetMcpServer")
-            .WithTags("Admin MCP")
-            .WithSummary("获取单个 MCP 服务器配置");
+            .WithTags("Admin MCP");
 
         group.MapPut("/mcp/{id}", SaveMcpAsync)
             .WithName("SaveMcpServer")
-            .WithTags("Admin MCP")
-            .WithSummary("保存 MCP 服务器配置");
+            .WithTags("Admin MCP");
 
         group.MapDelete("/mcp/{id}", DeleteMcpAsync)
             .WithName("DeleteMcpServer")
-            .WithTags("Admin MCP")
-            .WithSummary("删除 MCP 服务器配置");
+            .WithTags("Admin MCP");
     }
 
     private static void MapRagEndpoints(RouteGroupBuilder group)
     {
         group.MapGet("/rag", GetRagAsync)
             .WithName("GetRagConfig")
-            .WithTags("Admin RAG")
-            .WithSummary("获取 Agent 的 RAG 配置");
+            .WithTags("Admin RAG");
 
         group.MapPut("/rag/{id}", SaveRagAsync)
             .WithName("SaveRagInstance")
-            .WithTags("Admin RAG")
-            .WithSummary("保存 RAG 实例配置");
+            .WithTags("Admin RAG");
 
         group.MapDelete("/rag/{id}", DeleteRagAsync)
             .WithName("DeleteRagInstance")
-            .WithTags("Admin RAG")
-            .WithSummary("删除 RAG 实例");
+            .WithTags("Admin RAG");
 
         group.MapPost("/rag/test-connection", TestRagAsync)
             .WithName("TestRagConnection")
-            .WithTags("Admin RAG")
-            .WithSummary("测试 RAG 端点连通性");
+            .WithTags("Admin RAG");
     }
 
     private static void MapLlmEndpoints(RouteGroupBuilder group)
     {
         group.MapGet("/llm", ListModelsAsync)
             .WithName("ListLlmProfiles")
-            .WithTags("Admin LLM")
-            .WithSummary("列出 LLM 提供商配置");
+            .WithTags("Admin LLM");
 
         group.MapGet("/llm/{id}", GetModelAsync)
             .WithName("GetLlmProfile")
-            .WithTags("Admin LLM")
-            .WithSummary("获取单个 LLM 提供商配置");
+            .WithTags("Admin LLM");
 
         group.MapPut("/llm/{id}", SaveModelAsync)
             .WithName("SaveLlmProfile")
-            .WithTags("Admin LLM")
-            .WithSummary("保存 LLM 提供商配置");
+            .WithTags("Admin LLM");
 
         group.MapDelete("/llm/{id}", DeleteModelAsync)
             .WithName("DeleteLlmProfile")
-            .WithTags("Admin LLM")
-            .WithSummary("删除 LLM 提供商配置");
+            .WithTags("Admin LLM");
 
         group.MapPost("/llm/test-connection", TestModelAsync)
             .WithName("TestLlmConnection")
-            .WithTags("Admin LLM")
-            .WithSummary("测试 LLM 端点连通性");
+            .WithTags("Admin LLM");
     }
 
     private static void MapAgentEndpoints(RouteGroupBuilder group)
     {
         group.MapGet("/agents", ListAgentsAsync)
             .WithName("ListAgentConfigs")
-            .WithTags("Admin Agents")
-            .WithSummary("列出 Agent 配置");
+            .WithTags("Admin Agents");
 
         group.MapGet("/agents/{agentId}", GetAgentAsync)
             .WithName("GetAgentConfig")
-            .WithTags("Admin Agents")
-            .WithSummary("获取单个 Agent 配置");
+            .WithTags("Admin Agents");
 
         group.MapPut("/agents/{agentId}/config", SaveAgentAsync)
             .WithName("SaveAgentConfig")
-            .WithTags("Admin Agents")
-            .WithSummary("保存 Agent 配置");
+            .WithTags("Admin Agents");
     }
 
     private static async Task<Results<Ok<McpConnectionTestResult>, ProblemHttpResult>> TestMcpAsync(

@@ -12,8 +12,7 @@ internal static class AgentProviderEndpointExtensions
     {
         group.MapGet("/provider/conversations/{conversationId}", ResolveConversationAsync)
             .WithName("ResolveProviderConversation")
-            .WithTags("Agent Provider")
-            .WithSummary("校验 Provider 会话归属");
+            .WithTags("Agent Provider");
     }
 
     internal static async Task<Results<NoContent, NotFound, UnauthorizedHttpResult>> ResolveConversationAsync(

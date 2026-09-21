@@ -10,8 +10,7 @@ internal static class AgentCatalogEndpointExtensions
     {
         group.MapGet("/agents", ExecuteAsync)
             .WithName("ListAgents")
-            .WithTags("Agent")
-            .WithSummary("列出可用 Agent");
+            .WithTags("Agent");
     }
 
     private static async Task<IReadOnlyList<AgentSummary>> ExecuteAsync(
