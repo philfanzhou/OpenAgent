@@ -24,19 +24,7 @@ public class LlmConfigRepositoryTests
         Assert.Equal("jsonb", agent.FindProperty("SkillsJson")!.GetColumnType());
         Assert.False(context.Database.HasPendingModelChanges());
         Assert.Contains("20260903090000_UseConfigurationColumns", context.Database.GetMigrations());
-    }
-
-    [Fact]
-    public void PersistenceModel_RegistersLlmConfigurationMigration()
-    {
-        DbContextOptions<OpenAgentDbContext> options = new DbContextOptionsBuilder<OpenAgentDbContext>()
-            .UseNpgsql("Host=unit-test;Database=model-only;Username=model;Password=model")
-            .Options;
-        using OpenAgentDbContext context = new(options);
-
-        Assert.Contains(
-            "20260902160000_AddLlmConfigurations",
-            context.Database.GetMigrations());
+        Assert.Contains("20260902160000_AddLlmConfigurations", context.Database.GetMigrations());
     }
 
     [Fact]

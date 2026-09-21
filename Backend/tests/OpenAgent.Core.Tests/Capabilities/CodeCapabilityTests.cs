@@ -262,7 +262,7 @@ public class CodeCapabilityTests
         internal bool Authorized { get; set; } = true;
         internal RecordingFileAssetRepository Repository { get; } = new();
         internal RecordingFileObjectStore Objects { get; } = new();
-        internal FakeExecutor Executor { get; } = new();
+        internal FakeCodeExecutor Executor { get; } = new();
         internal FileAssetExecutionContext Context { get; } = new();
         internal AgentUserContext User { get; } = new() { TenantId = "tenant", UserId = "user" };
         internal FileAssetService Files { get; }
@@ -301,16 +301,6 @@ public class CodeCapabilityTests
             tool => tool.Name == "execute_code"));
     }
 
-    private sealed class FakeExecutor : ICodeExecutor
-    {
-        internal List<CodeExecutionRequest> Requests { get; } = [];
-        internal Queue<CodeExecutionResult> Results { get; } = new();
-        public Task<CodeExecutionResult> ExecuteAsync(CodeExecutionRequest request, CancellationToken cancellationToken)
-        {
-            Requests.Add(request);
-            return Task.FromResult(Results.TryDequeue(out CodeExecutionResult? result) ? result : new CodeExecutionResult());
-        }
-    }
 }
 
 internal sealed class RunnerIntegrationFactAttribute : FactAttribute

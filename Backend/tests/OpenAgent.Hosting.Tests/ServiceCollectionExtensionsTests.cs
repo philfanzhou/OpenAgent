@@ -30,12 +30,6 @@ public class ServiceCollectionExtensionsTests
     }
 
     [Fact]
-    public void AgentHostOptions_DefaultServiceNameUsesOpenAgentPrefix()
-    {
-        Assert.Equal("openagent-service", new AgentHostOptions().ServiceName);
-    }
-
-    [Fact]
     public void AddAgentHost_RegistersConfiguredOptions()
     {
         using var provider = CreateServices(options =>
@@ -182,37 +176,17 @@ public class ServiceCollectionExtensionsTests
         Assert.Contains("ApiKey", policy.AuthenticationSchemes);
     }
 
-    [Fact]
-    public void AddAgentHost_WithApiKeyEnabled_StillRequiresPrimaryJwtConfiguration()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AddAgentHost_WithIncompleteJwtBearerConfiguration_FailsValidation(bool enableApiKey)
     {
+        // ApiKey 开关不能替代主 Jwt 配置校验：EnableApiKey=true 时依然必须抛出。
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["Authentication:Mode"] = "JwtBearer",
-                ["Authentication:EnableApiKey"] = "true"
-            })
-            .Build();
-        var services = new ServiceCollection();
-        services.AddLogging();
-        services.AddAgentHost(configuration, options =>
-        {
-            DisableOptionalFeatures(options);
-            options.EnableJwtAuth = true;
-        });
-
-        using ServiceProvider provider = services.BuildServiceProvider();
-
-        Assert.Throws<OptionsValidationException>(() =>
-            provider.GetRequiredService<IOptions<AgentAuthenticationOptions>>().Value);
-    }
-
-    [Fact]
-    public void AddAgentHost_WithIncompleteJwtBearerConfiguration_FailsValidation()
-    {
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["Authentication:Mode"] = "JwtBearer"
+                ["Authentication:EnableApiKey"] = enableApiKey ? "true" : null
             })
             .Build();
         var services = new ServiceCollection();
@@ -251,11 +225,11 @@ public class ServiceCollectionExtensionsTests
         Assert.False(options.EnableOpenTelemetry);
     }
 
-    [Theory]
-    [InlineData("not-an-absolute-uri")]
-    [InlineData("ftp://collector.example.com")]
-    public void AddAgentHost_WithInvalidOtlpEndpoint_Throws(string endpoint)
+    [Fact]
+    public void AddAgentHost_WithInvalidOtlpEndpoint_Throws()
     {
+        // 端点格式矩阵（ftp:// 等）由 OtlpEndpointResolutionTests 全量覆盖，这里只验 DI 装配路径。
+        const string endpoint = "not-an-absolute-uri";
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {

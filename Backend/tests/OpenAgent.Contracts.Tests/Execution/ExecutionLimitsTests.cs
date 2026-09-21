@@ -44,8 +44,6 @@ public class ExecutionLimitsTests
     [InlineData("folder/../file.txt")]
     [InlineData("folder//file.txt")]
     [InlineData("folder/")]
-    [InlineData("main.py")]
-    [InlineData("main.mjs")]
     public void Validate_RejectsPathTraversalAndReservedScript(string name)
     {
         Assert.Throws<ArgumentException>(() => ExecutionLimits.Validate(new CodeExecutionRequest

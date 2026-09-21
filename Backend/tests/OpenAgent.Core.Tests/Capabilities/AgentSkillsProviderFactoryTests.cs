@@ -37,7 +37,7 @@ public class AgentSkillsProviderFactoryTests
         await using AgentSkillsRuntime runtime = await fixture.CreateRuntimeAsync(agentCodeExecution: true, scriptExecutionEnabled: true);
         Assert.NotNull(runtime.Provider);
 
-        var chat = new RecordingChatClient(
+        var chat = new SequenceChatProvider(
         [
             [new ChatResponseUpdate(ChatRole.Assistant, [new FunctionCallContent("call-1", "run_skill_script",
                 new Dictionary<string, object?> { ["skillName"] = SkillName, ["scriptName"] = "scripts/analyze.py" })])],
@@ -77,7 +77,7 @@ public class AgentSkillsProviderFactoryTests
         await using AgentSkillsRuntime runtime = await fixture.CreateRuntimeAsync(agentCodeExecution, scriptExecutionEnabled);
         Assert.NotNull(runtime.Provider);
 
-        var chat = new RecordingChatClient(
+        var chat = new SequenceChatProvider(
         [
             [new ChatResponseUpdate(ChatRole.Assistant, [new FunctionCallContent("call-1", "run_skill_script",
                 new Dictionary<string, object?> { ["skillName"] = SkillName, ["scriptName"] = "scripts/analyze.py" })])],
@@ -189,39 +189,6 @@ public class AgentSkillsProviderFactoryTests
             Objects.ContentsByKey[baseKey + "/0"] = skillMd;
             Objects.ContentsByKey[baseKey + "/1"] = script;
             Catalog.Register(instance);
-        }
-    }
-
-    private sealed class RecordingChatClient(IReadOnlyList<IReadOnlyList<ChatResponseUpdate>> turns) : IChatClient
-    {
-        internal List<IReadOnlyList<ChatMessage>> Requests { get; } = [];
-
-        public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
-            IEnumerable<ChatMessage> messages,
-            ChatOptions? options = null,
-            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
-        {
-            Requests.Add(messages.ToList());
-            IReadOnlyList<ChatResponseUpdate> turn = turns[Math.Min(Requests.Count - 1, turns.Count - 1)];
-            foreach (ChatResponseUpdate update in turn)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                yield return update;
-                await Task.Yield();
-            }
-        }
-
-        public Task<Microsoft.Extensions.AI.ChatResponse> GetResponseAsync(
-            IEnumerable<ChatMessage> messages,
-            ChatOptions? options = null,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException("RecordingChatClient only supports streaming responses.");
-
-        public object? GetService(Type serviceType, object? serviceKey = null) =>
-            serviceKey == null && serviceType.IsInstanceOfType(this) ? this : null;
-
-        public void Dispose()
-        {
         }
     }
 }

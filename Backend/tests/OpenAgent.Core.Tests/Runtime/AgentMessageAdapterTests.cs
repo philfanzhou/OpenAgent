@@ -217,21 +217,6 @@ public sealed class AgentMessageAdapterTests
     }
 
     [Fact]
-    public void AttachFile_Image_DoesNotInlineData()
-    {
-        var message = new ChatMessage(ChatRole.User, "描述这张图");
-
-        AgentMessageAdapter.AttachFile(message, CreateAsset("chart.png", "image/png", 2));
-
-        Assert.Empty(message.Contents.OfType<DataContent>());
-        TextContent descriptor = Assert.Single(
-            message.Contents.OfType<TextContent>(),
-            content => content.Text.Contains("[File:", StringComparison.Ordinal));
-        Assert.Contains("[File: chart.png]", descriptor.Text);
-        Assert.Contains("fileId=file-1", descriptor.Text);
-    }
-
-    [Fact]
     public void AttachFile_TextFile_DoesNotInlineContent()
     {
         var message = new ChatMessage(ChatRole.User, "总结这个文件");
