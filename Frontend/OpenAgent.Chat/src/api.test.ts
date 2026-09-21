@@ -466,4 +466,89 @@ describe('workspace API', () => {
     expect(result.items[0].key).toBe('redis')
     expect(vi.mocked(fetch).mock.calls[0]?.[0]).toBe('http://engine.example/health/report')
   })
+
+  it('projects typed message metadata into top-level UI fields on conversation load', async () => {
+    setConnectionMode('router')
+    setRouterBaseUrl('http://router.example/')
+    const responseBody = {
+      conversationId: 'c1',
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      status: 'Completed',
+      createdAt: '2026-09-21T00:00:00Z',
+      updatedAt: '2026-09-21T00:00:00Z',
+      lastMessageAt: '2026-09-21T00:00:00Z',
+      messageCount: 2,
+      messages: [
+        {
+          messageId: 'm1',
+          sequence: 1,
+          role: 'assistant',
+          content: 'partial',
+          timestamp: '2026-09-21T00:00:00Z',
+          metadata: {
+            files: [{ fileId: 'file-1', fileName: 'notes.md', mediaType: 'text/markdown', length: 12, objectKey: 'files/t/f-1' }],
+            reasoning: 'thinking',
+            executionStatus: 'Cancelled',
+            toolArguments: '{"a":1}',
+            extensions: { Custom: 'kept' },
+          },
+        },
+        { messageId: 'm2', sequence: 2, role: 'user', content: 'plain', timestamp: '2026-09-21T00:01:00Z' },
+      ],
+    }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify(responseBody), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })))
+
+    const conversation = await api.getConversation('c1')
+
+    const assistant = conversation.messages?.[0]
+    expect(assistant?.files).toEqual([
+      { fileId: 'file-1', fileName: 'notes.md', mediaType: 'text/markdown', length: 12, objectKey: 'files/t/f-1' },
+    ])
+    expect(assistant?.reasoning).toBe('thinking')
+    expect(assistant?.metadata?.executionStatus).toBe('Cancelled')
+    expect(assistant?.metadata?.toolArguments).toBe('{"a":1}')
+    expect(assistant?.metadata?.extensions).toEqual({ Custom: 'kept' })
+    const plain = conversation.messages?.[1]
+    expect(plain?.files).toBeUndefined()
+    expect(plain?.reasoning).toBeUndefined()
+  })
+
+  it('omits file projection when metadata carries only reasoning', async () => {
+    setConnectionMode('router')
+    setRouterBaseUrl('http://router.example/')
+    const responseBody = {
+      conversationId: 'c1',
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      status: 'Completed',
+      createdAt: '2026-09-21T00:00:00Z',
+      updatedAt: '2026-09-21T00:00:00Z',
+      lastMessageAt: '2026-09-21T00:00:00Z',
+      messageCount: 1,
+      messages: [
+        {
+          messageId: 'm1',
+          sequence: 1,
+          role: 'assistant',
+          content: 'answer',
+          timestamp: '2026-09-21T00:00:00Z',
+          metadata: { reasoning: 'only reasoning' },
+        },
+      ],
+    }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify(responseBody), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })))
+
+    const conversation = await api.getConversation('c1')
+
+    const assistant = conversation.messages?.[0]
+    expect(assistant?.reasoning).toBe('only reasoning')
+    expect(assistant?.files).toBeUndefined()
+  })
 })

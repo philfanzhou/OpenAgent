@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Infrastructure.Entities;
@@ -8,7 +9,8 @@ namespace OpenAgent.Infrastructure;
 
 internal sealed class EfCoreConversationStore(
     IDbContextFactory<OpenAgentDbContext> contexts,
-    ICurrentUserContext currentUser) : IConversationStore
+    ICurrentUserContext currentUser,
+    ILogger<EfCoreConversationStore> logger) : IConversationStore
 {
     public async Task<IReadOnlyList<ConversationMessage>> GetMessagesAsync(
         string tenantId,
@@ -36,7 +38,7 @@ internal sealed class EfCoreConversationStore(
             .Take(maxMessages)
             .OrderBy(item => item.Sequence)
             .ToListAsync(cancellationToken).ConfigureAwait(false);
-        return await ToMessagesAsync(context, entities, cancellationToken).ConfigureAwait(false);
+        return await ToMessagesAsync(context, entities, logger, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<IReadOnlyList<ConversationMessage>> GetMessagesPagedAsync(
@@ -66,7 +68,7 @@ internal sealed class EfCoreConversationStore(
             .Skip(Math.Max(skip, 0))
             .Take(take)
             .ToListAsync(cancellationToken).ConfigureAwait(false);
-        return await ToMessagesAsync(context, entities, cancellationToken).ConfigureAwait(false);
+        return await ToMessagesAsync(context, entities, logger, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<ConversationRecord?> GetRecordAsync(
@@ -87,7 +89,7 @@ internal sealed class EfCoreConversationStore(
             .Where(item => item.ConversationId == conversationId)
             .OrderBy(item => item.Sequence)
             .ToListAsync(cancellationToken).ConfigureAwait(false);
-        return ToRecord(entity, await ToMessagesAsync(context, messages, cancellationToken).ConfigureAwait(false));
+        return ToRecord(entity, await ToMessagesAsync(context, messages, logger, cancellationToken).ConfigureAwait(false));
     }
 
     public async Task<bool> CreateAsync(ConversationRecord record, CancellationToken cancellationToken = default)
@@ -357,7 +359,7 @@ internal sealed class EfCoreConversationStore(
         IdempotencyKey = message.IdempotencyKey,
         Timestamp = message.Timestamp,
         TraceId = message.TraceId,
-        MetadataJson = message.Metadata == null ? null : JsonSerializer.Serialize(message.Metadata),
+        MetadataJson = ConversationMessageMetadataJson.Serialize(message.Metadata),
         PromptTokens = message.TokenUsage?.PromptTokens,
         CompletionTokens = message.TokenUsage?.CompletionTokens,
         TotalTokens = message.TokenUsage?.TotalTokens,
@@ -398,6 +400,7 @@ internal sealed class EfCoreConversationStore(
     private static async Task<IReadOnlyList<ConversationMessage>> ToMessagesAsync(
         OpenAgentDbContext context,
         IReadOnlyList<ConversationMessageEntity> entities,
+        ILogger logger,
         CancellationToken cancellationToken)
     {
         if (entities.Count == 0)
@@ -425,7 +428,7 @@ internal sealed class EfCoreConversationStore(
             IdempotencyKey = entity.IdempotencyKey,
             Timestamp = entity.Timestamp,
             TraceId = entity.TraceId,
-            Metadata = DeserializeMetadata(entity.MetadataJson),
+            Metadata = ConversationMessageMetadataJson.Deserialize(entity.MetadataJson, logger),
             FileIds = fileIds.GetValueOrDefault(entity.MessageId, Array.Empty<string>()),
             TokenUsage = CreateTokenUsage(entity),
             ModelId = entity.ModelId
@@ -450,22 +453,5 @@ internal sealed class EfCoreConversationStore(
             CachedInputTokens = entity.CachedInputTokens,
             ReasoningTokens = entity.ReasoningTokens
         };
-    }
-
-    private static IReadOnlyDictionary<string, string>? DeserializeMetadata(string? json)
-    {
-        if (string.IsNullOrWhiteSpace(json))
-        {
-            return null;
-        }
-
-        try
-        {
-            return JsonSerializer.Deserialize<Dictionary<string, string>>(json);
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
     }
 }

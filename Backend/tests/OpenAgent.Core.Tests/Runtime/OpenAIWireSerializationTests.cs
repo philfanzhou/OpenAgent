@@ -108,9 +108,9 @@ public class OpenAIWireSerializationTests
             string callId = $"read_file_{index}";
             rows.Add(CreateRow(
                 "assistant", string.Empty, callId, "read_file",
-                new Dictionary<string, string>
+                new ConversationMessageMetadata
                 {
-                    ["ToolArguments"] = JsonSerializer.Serialize(
+                    ToolArguments = JsonSerializer.Serialize(
                         new Dictionary<string, object?> { ["fileId"] = "f-1" })
                 }));
             rows.Add(CreateRow("tool", "file body", callId, null, null));
@@ -127,7 +127,7 @@ public class OpenAIWireSerializationTests
         string content,
         string? toolCallId,
         string? toolName,
-        Dictionary<string, string>? metadata) => new()
+        ConversationMessageMetadata? metadata) => new()
     {
         MessageId = Guid.NewGuid().ToString("N"),
         Sequence = 0,

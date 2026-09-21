@@ -139,7 +139,7 @@ function mergeAssistantMessage(
     const tool = {
       name: message.toolName,
       callId: message.toolCallId,
-      arguments: parseToolArguments(message.metadata?.ToolArguments),
+      arguments: parseToolArguments(message.metadata?.toolArguments),
     }
     merged.toolActivities = mergeToolActivity(merged.toolActivities, tool)
     if (!hasOrderedProcesses) merged.processActivities = mergeToolProcess(merged.processActivities, tool)
@@ -313,7 +313,7 @@ function preferCompleteText(stored?: string, streamed?: string): string {
   return stored
 }
 
-export function parseToolArguments(json?: string): unknown {
+export function parseToolArguments(json?: string | null): unknown {
   if (!json) return undefined
   try { return JSON.parse(json) } catch { return json }
 }

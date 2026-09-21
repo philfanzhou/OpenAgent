@@ -165,19 +165,15 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
     private ConversationMessage BuildPartialMessage(ConversationStatus status)
     {
         string reasoning = _partialReasoning.ToString();
-        var metadata = new Dictionary<string, string>(StringComparer.Ordinal)
-        {
-            ["ExecutionStatus"] = status.ToString()
-        };
-        if (reasoning.Length > 0)
-        {
-            metadata["Reasoning"] = reasoning;
-        }
         return ConversationSessionStore.Message(
             _nextSequence++,
             "assistant",
             _partialAssistant.ToString(),
-            metadata: metadata,
+            metadata: new ConversationMessageMetadata
+            {
+                ExecutionStatus = status.ToString(),
+                Reasoning = reasoning.Length > 0 ? reasoning : null
+            },
             modelId: _modelId);
     }
 

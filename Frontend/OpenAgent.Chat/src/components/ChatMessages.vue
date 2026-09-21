@@ -101,8 +101,8 @@ function processSummary(message: ConversationMessage): string {
 }
 
 function incompleteResponseText(message: ConversationMessage): string {
-  if (message.metadata?.ExecutionStatus === 'Cancelled') return '响应已取消'
-  if (message.metadata?.ExecutionStatus === 'Failed') return '响应失败'
+  if (message.metadata?.executionStatus === 'Cancelled') return '响应已取消'
+  if (message.metadata?.executionStatus === 'Failed') return '响应失败'
   return '响应未完成'
 }
 

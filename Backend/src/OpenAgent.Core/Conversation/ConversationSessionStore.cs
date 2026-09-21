@@ -193,7 +193,7 @@ internal sealed class ConversationSessionStore
         string content,
         string? toolCallId = null,
         string? toolName = null,
-        IReadOnlyDictionary<string, string>? metadata = null,
+        ConversationMessageMetadata? metadata = null,
         IReadOnlyList<string>? fileIds = null,
         TokenUsage? tokenUsage = null,
         string? modelId = null,

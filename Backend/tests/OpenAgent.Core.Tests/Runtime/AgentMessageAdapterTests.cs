@@ -21,7 +21,7 @@ public sealed class AgentMessageAdapterTests
 
         Assert.Equal("assistant", stored.Role);
         Assert.Equal(string.Empty, stored.Content);
-        Assert.Equal("Inspect the uploaded file before answering.", stored.Metadata!["Reasoning"]);
+        Assert.Equal("Inspect the uploaded file before answering.", stored.Metadata!.Reasoning);
     }
 
     [Fact]
@@ -72,7 +72,12 @@ public sealed class AgentMessageAdapterTests
         ConversationMessage associated = AgentMessageAdapter.AssociateFiles(message, [file]);
 
         Assert.Equal([file.FileId], associated.FileIds);
-        Assert.Contains(file.FileName, associated.Metadata!["Files"]);
+        MessageFileMetadata entry = Assert.Single(associated.Metadata!.Files!);
+        Assert.Equal(file.FileId, entry.FileId);
+        Assert.Equal(file.FileName, entry.FileName);
+        Assert.Equal(file.MediaType, entry.MediaType);
+        Assert.Equal(file.Length, entry.Length);
+        Assert.Equal(file.ObjectKey, entry.ObjectKey);
     }
 
     [Fact]
@@ -108,9 +113,9 @@ public sealed class AgentMessageAdapterTests
             Content = string.Empty,
             ToolCallId = "call-1",
             ToolName = "load_skill",
-            Metadata = new Dictionary<string, string>
+            Metadata = new ConversationMessageMetadata
             {
-                ["Reasoning"] = "Inspect the skill first."
+                Reasoning = "Inspect the skill first."
             }
         };
 

@@ -60,7 +60,7 @@ internal static class AgentMessageAdapter
             && !string.IsNullOrEmpty(message.ToolName))
         {
             IDictionary<string, object?>? arguments = ParseArguments(
-                message.Metadata?.GetValueOrDefault("ToolArguments"));
+                message.Metadata?.ToolArguments);
             chatMessage.Contents.Add(new FunctionCallContent(
                 message.ToolCallId,
                 message.ToolName,
@@ -75,7 +75,7 @@ internal static class AgentMessageAdapter
         }
 
         if (role == Microsoft.Extensions.AI.ChatRole.Assistant
-            && message.Metadata?.GetValueOrDefault("Reasoning") is string reasoning
+            && message.Metadata?.Reasoning is string reasoning
             && !string.IsNullOrWhiteSpace(reasoning))
         {
             chatMessage.Contents.Add(new TextReasoningContent(reasoning));
@@ -187,7 +187,7 @@ internal static class AgentMessageAdapter
         return result;
     }
 
-    internal static IReadOnlyDictionary<string, string>? BuildFileMetadata(
+    internal static ConversationMessageMetadata? BuildFileMetadata(
         IReadOnlyList<FileAsset> files)
     {
         if (files.Count == 0)
@@ -195,16 +195,14 @@ internal static class AgentMessageAdapter
             return null;
         }
 
-        return new Dictionary<string, string>
+        return new ConversationMessageMetadata
         {
-            ["Files"] = JsonSerializer.Serialize(files.Select(file => new
-            {
-                fileId = file.FileId,
-                fileName = file.FileName,
-                mediaType = file.MediaType,
-                length = file.Length,
-                objectKey = file.ObjectKey
-            }))
+            Files = files.Select(file => new MessageFileMetadata(
+                file.FileId,
+                file.FileName,
+                file.MediaType,
+                file.Length,
+                file.ObjectKey)).ToList()
         };
     }
 
@@ -217,10 +215,20 @@ internal static class AgentMessageAdapter
             return message;
         }
 
-        Dictionary<string, string> metadata = message.Metadata == null
-            ? []
-            : new Dictionary<string, string>(message.Metadata, StringComparer.Ordinal);
-        metadata["Files"] = BuildFileMetadata(files)!["Files"];
+        // 与旧字典行为一致：附件清单整体替换，其余元数据字段原样保留。
+        ConversationMessageMetadata fileMetadata = BuildFileMetadata(files)!;
+        ConversationMessageMetadata metadata = message.Metadata == null
+            ? new ConversationMessageMetadata()
+            : new ConversationMessageMetadata
+            {
+                Reasoning = message.Metadata.Reasoning,
+                ExecutionStatus = message.Metadata.ExecutionStatus,
+                ToolArguments = message.Metadata.ToolArguments,
+                Extensions = message.Metadata.Extensions == null
+                    ? null
+                    : new Dictionary<string, string>(message.Metadata.Extensions, StringComparer.Ordinal)
+            };
+        metadata.Files = fileMetadata.Files;
         return message with
         {
             Metadata = metadata,
@@ -291,7 +299,7 @@ internal static class AgentMessageAdapter
         string content,
         string? toolCallId,
         string? toolName,
-        IReadOnlyDictionary<string, string>? metadata) =>
+        ConversationMessageMetadata? metadata) =>
         new()
         {
             MessageId = Guid.NewGuid().ToString("N"),
@@ -304,30 +312,28 @@ internal static class AgentMessageAdapter
             Metadata = metadata
         };
 
-    private static IReadOnlyDictionary<string, string>? CreateToolMetadata(
+    private static ConversationMessageMetadata? CreateToolMetadata(
         FunctionCallContent? call) =>
         call == null
             ? null
-            : new Dictionary<string, string>
+            : new ConversationMessageMetadata
             {
-                ["ToolArguments"] = JsonSerializer.Serialize(
+                ToolArguments = JsonSerializer.Serialize(
                     call.Arguments ?? new Dictionary<string, object?>())
             };
 
-    private static IReadOnlyDictionary<string, string>? CreateMessageMetadata(
+    private static ConversationMessageMetadata? CreateMessageMetadata(
         FunctionCallContent? call,
         string reasoning)
     {
-        IReadOnlyDictionary<string, string>? toolMetadata = CreateToolMetadata(call);
+        ConversationMessageMetadata? metadata = CreateToolMetadata(call);
         if (string.IsNullOrEmpty(reasoning))
         {
-            return toolMetadata;
+            return metadata;
         }
 
-        Dictionary<string, string> metadata = toolMetadata == null
-            ? []
-            : new Dictionary<string, string>(toolMetadata, StringComparer.Ordinal);
-        metadata["Reasoning"] = reasoning;
+        metadata ??= new ConversationMessageMetadata();
+        metadata.Reasoning = reasoning;
         return metadata;
     }
 

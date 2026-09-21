@@ -163,7 +163,7 @@ public class AgentExecutorUsageTests
         ConversationMessage assistant = Assert.Single(record.Messages, message => message.Role == "assistant");
 
         Assert.Equal(ConversationStatus.Failed, record.Status);
-        Assert.Equal("Failed", assistant.Metadata?["ExecutionStatus"]);
+        Assert.Equal("Failed", assistant.Metadata?.ExecutionStatus);
         Assert.DoesNotContain(record.Messages, message => message.TokenUsage != null);
     }
 
@@ -182,7 +182,7 @@ public class AgentExecutorUsageTests
         ConversationMessage assistant = Assert.Single(record.Messages, message => message.Role == "assistant");
 
         Assert.Equal(ConversationStatus.Cancelled, record.Status);
-        Assert.Equal("Cancelled", assistant.Metadata?["ExecutionStatus"]);
+        Assert.Equal("Cancelled", assistant.Metadata?.ExecutionStatus);
         Assert.Null(assistant.TokenUsage);
     }
 

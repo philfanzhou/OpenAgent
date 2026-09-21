@@ -22,6 +22,27 @@ export interface CurrentUserContext {
   isAuthenticated: boolean
 }
 
+/** 会话消息元数据（后端 ConversationMessageMetadata 的 wire 形态，camelCase）。 */
+export interface ConversationMessageMetadata {
+  files?: MessageFileMetadata[] | null
+  reasoning?: string | null
+  /** 中止/失败状态：ConversationStatus 的字符串名（'Cancelled' / 'Failed'）。 */
+  executionStatus?: string | null
+  /** 工具调用参数的原始 JSON 字符串，展示时按需解析。 */
+  toolArguments?: string | null
+  /** 未知键逃生舱（含载荷解析失败时保留的原始键值）。 */
+  extensions?: Record<string, string> | null
+}
+
+/** 消息附件的持久化描述（后端 MessageFileMetadata）。 */
+export interface MessageFileMetadata {
+  fileId: string
+  fileName: string
+  mediaType: string
+  length: number
+  objectKey?: string | null
+}
+
 export interface ConversationMessage {
   messageId: string
   sequence: number
@@ -30,7 +51,7 @@ export interface ConversationMessage {
   toolCallId?: string
   toolName?: string
   timestamp: string
-  metadata?: Record<string, string>
+  metadata?: ConversationMessageMetadata
   reasoning?: string
   toolActivities?: ToolActivity[]
   /** UI-only ordered execution trace assembled from reasoning and tool messages. */
@@ -46,7 +67,7 @@ export interface ToolActivity {
   name: string
   callId?: string
   result?: string
-  /** 工具调用参数（流式下发或从历史 metadata.ToolArguments 解析）。 */
+  /** 工具调用参数（流式下发或从历史 metadata.toolArguments 解析）。 */
   arguments?: unknown
 }
 
@@ -54,6 +75,7 @@ export type ProcessActivity =
   | { kind: 'reasoning'; content: string }
   | { kind: 'tool'; tool: ToolActivity }
 
+/** 附件的 UI 投影：wire 形态为 MessageFileMetadata，预览字段由前端运行时补充。 */
 export interface MessageFile {
   fileId?: string
   fileName: string
