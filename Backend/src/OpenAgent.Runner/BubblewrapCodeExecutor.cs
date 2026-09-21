@@ -164,59 +164,21 @@ internal sealed class BubblewrapCodeExecutor(
     {
         string pythonRoot = RuntimeRoot(settings.PythonPath, "Python");
         string nodeRoot = RuntimeRoot(settings.NodePath, "Node");
-        string path = RuntimePath(pythonRoot, nodeRoot);
-        var arguments = new List<string>
-        {
-            "--unshare-user", "--unshare-ipc", "--unshare-pid", "--unshare-net", "--unshare-uts",
-            "--unshare-cgroup-try", "--disable-userns", "--new-session", "--die-with-parent",
-            "--uid", "65532", "--gid", "65532", "--hostname", "openagent-sandbox",
-            "--clearenv",
-            "--ro-bind", "/usr", "/usr",
-            "--symlink", "usr/bin", "/bin",
-            "--symlink", "usr/lib", "/lib",
-            "--symlink", "usr/lib64", "/lib64",
-            "--symlink", "usr/sbin", "/sbin",
-            "--ro-bind-try", "/etc/fonts", "/etc/fonts",
-            "--ro-bind-try", "/etc/libreoffice", "/etc/libreoffice",
-            "--ro-bind-try", "/etc/ld.so.cache", "/etc/ld.so.cache",
-            "--ro-bind-try", "/etc/localtime", "/etc/localtime",
-            "--ro-bind", Path.Combine(sandboxFilesDirectory, "passwd"), "/etc/passwd",
-            "--ro-bind", Path.Combine(sandboxFilesDirectory, "group"), "/etc/group",
-            "--ro-bind", Path.Combine(sandboxFilesDirectory, "hosts"), "/etc/hosts",
-            "--ro-bind", Path.Combine(sandboxFilesDirectory, "nsswitch.conf"), "/etc/nsswitch.conf",
-            "--ro-bind", inputDirectory, "/input",
-            "--ro-bind", sandboxFilesDirectory, "/sandbox",
-            "--size", ToBytes(settings.WorkspaceMiB), "--perms", "1777", "--tmpfs", "/work",
-            "--size", ToBytes(OutputMiB), "--perms", "1777", "--tmpfs", "/output",
-            "--size", ToBytes(TempMiB), "--perms", "1777", "--tmpfs", "/tmp",
-            "--perms", "1777", "--tmpfs", "/run",
-            "--dir", "/var", "--symlink", "../tmp", "/var/tmp", "--dir", "/home",
-            "--proc", "/proc", "--dev", "/dev", "--chdir", "/work",
-            "--setenv", "PATH", path,
-            "--setenv", "HOME", "/tmp/home",
-            "--setenv", "TMPDIR", "/tmp",
-            "--setenv", "XDG_RUNTIME_DIR", "/tmp/runtime",
-            "--setenv", "LANG", "C.UTF-8",
-            "--setenv", "PYTHONDONTWRITEBYTECODE", "1",
-            "--setenv", "MPLBACKEND", "Agg",
-            "--setenv", "MPLCONFIGDIR", "/tmp/matplotlib",
-            "--setenv", "SAL_USE_VCLPLUGIN", "svp",
-            "--setenv", "OMP_NUM_THREADS", "1",
-            "--setenv", "OPENBLAS_NUM_THREADS", "1",
-            "--setenv", "MKL_NUM_THREADS", "1",
-            "--setenv", "NUMEXPR_NUM_THREADS", "1",
+        var arguments = new List<string>();
+        AddIsolation(arguments);
+        AddRootFilesystem(arguments, sandboxFilesDirectory);
+        arguments.AddRange(["--ro-bind", inputDirectory, "/input"]);
+        arguments.AddRange(["--ro-bind", sandboxFilesDirectory, "/sandbox"]);
+        AddScratchMounts(arguments, settings);
+        AddSystemMounts(arguments);
+        AddBaseEnvironment(arguments, RuntimePath(pythonRoot, nodeRoot));
+        arguments.AddRange([
             "--setenv", "EXECUTION_LANGUAGE", language,
             "--setenv", "EXECUTION_NODE", settings.NodePath,
             "--setenv", "EXECUTION_TIMEOUT", settings.TimeoutSeconds.ToString(CultureInfo.InvariantCulture),
             "--setenv", "EXECUTION_ENTRY", entryFileName ?? ExecutionLanguage.EntryFileName(language)
-        };
-
-        AddRuntimeBinds(arguments, pythonRoot, nodeRoot);
-
-        // Seal the synthetic root only after every optional parent path has
-        // been created by Bubblewrap for the explicit mounts above.
-        arguments.AddRange(["--remount-ro", "/"]);
-
+        ]);
+        SealRoot(arguments, pythonRoot, nodeRoot);
         arguments.AddRange([
             "--", "/usr/bin/prlimit",
             $"--as={ToBytes(settings.MemoryMiB)}:{ToBytes(settings.MemoryMiB)}",
@@ -238,12 +200,45 @@ internal sealed class BubblewrapCodeExecutor(
     {
         string pythonRoot = RuntimeRoot(settings.PythonPath, "Python");
         string nodeRoot = RuntimeRoot(settings.NodePath, "Node");
-        var arguments = new List<string>
-        {
-            "--unshare-user", "--unshare-ipc", "--unshare-pid", "--unshare-net", "--unshare-uts",
-            "--unshare-cgroup-try", "--disable-userns", "--new-session", "--die-with-parent",
-            "--uid", "65532", "--gid", "65532", "--hostname", "openagent-sandbox",
-            "--clearenv",
+        var arguments = new List<string>();
+        AddIsolation(arguments);
+        AddRootFilesystem(arguments, sandboxFilesDirectory);
+        arguments.AddRange(["--bind", channelDirectory, "/channel"]);
+        arguments.AddRange(["--ro-bind", sandboxFilesDirectory, "/sandbox"]);
+        AddScratchMounts(arguments, settings);
+        arguments.AddRange(["--size", ToBytes(InputMiB), "--perms", "1777", "--tmpfs", "/input"]);
+        AddSystemMounts(arguments);
+        AddBaseEnvironment(arguments, RuntimePath(pythonRoot, nodeRoot));
+        arguments.AddRange([
+            "--setenv", "EXECUTION_NODE", settings.NodePath,
+            "--setenv", "SANDBOX_AS_BYTES", ToBytes(settings.MemoryMiB),
+            "--setenv", "SANDBOX_NPROC", settings.MaxProcesses.ToString(CultureInfo.InvariantCulture),
+            "--setenv", "SANDBOX_NOFILE", "256",
+            "--setenv", "SANDBOX_FSIZE", ToBytes(ExecutionLimits.MaxTotalFileBytes / 1024 / 1024),
+            "--setenv", "SANDBOX_TIMEOUT", settings.TimeoutSeconds.ToString(CultureInfo.InvariantCulture),
+            "--setenv", "SANDBOX_MAX_IDLE_SECONDS",
+            (settings.SessionIdleMinutes * 60 + 300).ToString(CultureInfo.InvariantCulture)
+        ]);
+        SealRoot(arguments, pythonRoot, nodeRoot);
+        arguments.AddRange(["--", settings.PythonPath, "-I", "/sandbox/supervisor.py"]);
+        return arguments;
+    }
+
+    // The Add*/Seal methods below are the single source of truth for the security
+    // hardening arguments: both sandbox shapes are assembled exclusively from these
+    // segments, so a hardening change can never be applied to only one variant.
+
+    /// <summary>Fail-closed isolation: unshared namespaces, fixed uid/gid, wiped env.</summary>
+    private static void AddIsolation(List<string> arguments) => arguments.AddRange([
+        "--unshare-user", "--unshare-ipc", "--unshare-pid", "--unshare-net", "--unshare-uts",
+        "--unshare-cgroup-try", "--disable-userns", "--new-session", "--die-with-parent",
+        "--uid", "65532", "--gid", "65532", "--hostname", "openagent-sandbox",
+        "--clearenv"
+    ]);
+
+    /// <summary>Read-only host slice: /usr tree, compat symlinks and synthetic /etc files.</summary>
+    private static void AddRootFilesystem(List<string> arguments, string sandboxFilesDirectory) =>
+        arguments.AddRange([
             "--ro-bind", "/usr", "/usr",
             "--symlink", "usr/bin", "/bin",
             "--symlink", "usr/lib", "/lib",
@@ -256,43 +251,46 @@ internal sealed class BubblewrapCodeExecutor(
             "--ro-bind", Path.Combine(sandboxFilesDirectory, "passwd"), "/etc/passwd",
             "--ro-bind", Path.Combine(sandboxFilesDirectory, "group"), "/etc/group",
             "--ro-bind", Path.Combine(sandboxFilesDirectory, "hosts"), "/etc/hosts",
-            "--ro-bind", Path.Combine(sandboxFilesDirectory, "nsswitch.conf"), "/etc/nsswitch.conf",
-            "--bind", channelDirectory, "/channel",
-            "--ro-bind", sandboxFilesDirectory, "/sandbox",
+            "--ro-bind", Path.Combine(sandboxFilesDirectory, "nsswitch.conf"), "/etc/nsswitch.conf"
+        ]);
+
+    /// <summary>Bounded writable scratch tmpfs mounts shared by both sandbox shapes.</summary>
+    private static void AddScratchMounts(List<string> arguments, RunnerOptions settings) =>
+        arguments.AddRange([
             "--size", ToBytes(settings.WorkspaceMiB), "--perms", "1777", "--tmpfs", "/work",
             "--size", ToBytes(OutputMiB), "--perms", "1777", "--tmpfs", "/output",
-            "--size", ToBytes(TempMiB), "--perms", "1777", "--tmpfs", "/tmp",
-            "--size", ToBytes(InputMiB), "--perms", "1777", "--tmpfs", "/input",
-            "--perms", "1777", "--tmpfs", "/run",
-            "--dir", "/var", "--symlink", "../tmp", "/var/tmp", "--dir", "/home",
-            "--proc", "/proc", "--dev", "/dev", "--chdir", "/work",
-            "--setenv", "PATH", RuntimePath(pythonRoot, nodeRoot),
-            "--setenv", "HOME", "/tmp/home",
-            "--setenv", "TMPDIR", "/tmp",
-            "--setenv", "XDG_RUNTIME_DIR", "/tmp/runtime",
-            "--setenv", "LANG", "C.UTF-8",
-            "--setenv", "PYTHONDONTWRITEBYTECODE", "1",
-            "--setenv", "MPLBACKEND", "Agg",
-            "--setenv", "MPLCONFIGDIR", "/tmp/matplotlib",
-            "--setenv", "SAL_USE_VCLPLUGIN", "svp",
-            "--setenv", "OMP_NUM_THREADS", "1",
-            "--setenv", "OPENBLAS_NUM_THREADS", "1",
-            "--setenv", "MKL_NUM_THREADS", "1",
-            "--setenv", "NUMEXPR_NUM_THREADS", "1",
-            "--setenv", "EXECUTION_NODE", settings.NodePath,
-            "--setenv", "SANDBOX_AS_BYTES", ToBytes(settings.MemoryMiB),
-            "--setenv", "SANDBOX_NPROC", settings.MaxProcesses.ToString(CultureInfo.InvariantCulture),
-            "--setenv", "SANDBOX_NOFILE", "256",
-            "--setenv", "SANDBOX_FSIZE", ToBytes(ExecutionLimits.MaxTotalFileBytes / 1024 / 1024),
-            "--setenv", "SANDBOX_TIMEOUT", settings.TimeoutSeconds.ToString(CultureInfo.InvariantCulture),
-            "--setenv", "SANDBOX_MAX_IDLE_SECONDS",
-            (settings.SessionIdleMinutes * 60 + 300).ToString(CultureInfo.InvariantCulture)
-        };
+            "--size", ToBytes(TempMiB), "--perms", "1777", "--tmpfs", "/tmp"
+        ]);
 
+    /// <summary>Runtime state tmpfs, standard directories, pseudo filesystems and workdir.</summary>
+    private static void AddSystemMounts(List<string> arguments) => arguments.AddRange([
+        "--perms", "1777", "--tmpfs", "/run",
+        "--dir", "/var", "--symlink", "../tmp", "/var/tmp", "--dir", "/home",
+        "--proc", "/proc", "--dev", "/dev", "--chdir", "/work"
+    ]);
+
+    /// <summary>Deterministic baseline environment; variants append EXECUTION_*/SANDBOX_* after it.</summary>
+    private static void AddBaseEnvironment(List<string> arguments, string path) => arguments.AddRange([
+        "--setenv", "PATH", path,
+        "--setenv", "HOME", "/tmp/home",
+        "--setenv", "TMPDIR", "/tmp",
+        "--setenv", "XDG_RUNTIME_DIR", "/tmp/runtime",
+        "--setenv", "LANG", "C.UTF-8",
+        "--setenv", "PYTHONDONTWRITEBYTECODE", "1",
+        "--setenv", "MPLBACKEND", "Agg",
+        "--setenv", "MPLCONFIGDIR", "/tmp/matplotlib",
+        "--setenv", "SAL_USE_VCLPLUGIN", "svp",
+        "--setenv", "OMP_NUM_THREADS", "1",
+        "--setenv", "OPENBLAS_NUM_THREADS", "1",
+        "--setenv", "MKL_NUM_THREADS", "1",
+        "--setenv", "NUMEXPR_NUM_THREADS", "1"
+    ]);
+
+    /// <summary>Binds the runtime trees and seals the root; mounts apply in order, so this stays last.</summary>
+    private static void SealRoot(List<string> arguments, string pythonRoot, string nodeRoot)
+    {
         AddRuntimeBinds(arguments, pythonRoot, nodeRoot);
         arguments.AddRange(["--remount-ro", "/"]);
-        arguments.AddRange(["--", settings.PythonPath, "-I", "/sandbox/supervisor.py"]);
-        return arguments;
     }
 
     private static string RuntimePath(string pythonRoot, string nodeRoot) =>
@@ -313,6 +311,10 @@ internal sealed class BubblewrapCodeExecutor(
         }
     }
 
+    /// <summary>
+    /// Deliberately minimal, standalone probe for the availability health check: it
+    /// does not share the sandbox segments above.
+    /// </summary>
     internal static IReadOnlyList<string> BuildProbeArguments() =>
     [
         "--unshare-user", "--unshare-ipc", "--unshare-pid", "--unshare-net", "--unshare-uts",
