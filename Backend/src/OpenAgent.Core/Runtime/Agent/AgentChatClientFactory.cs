@@ -50,14 +50,16 @@ internal sealed class AgentChatClientFactory : IAgentChatClientFactory
 
     public IChatClient Create(LlmConfig llm, LlmInteractionCapture? capture = null)
     {
-        IChatClient client = llm.Format switch
+        IChatClient provider = llm.Format switch
         {
             ApiFormat.OpenAIChatCompletions => CreateOpenAIChatCompletions(llm),
             ApiFormat.OpenAIResponses => CreateOpenAIResponses(llm),
             ApiFormat.AnthropicMessages => CreateAnthropic(llm),
             _ => throw new NotSupportedException($"Unsupported API format: {llm.Format}")
         };
-        return WrapWithRecorder(client, llm, capture);
+        // 记录器紧贴 provider、出站规格化包在记录器外层：
+        // 交互日志捕获的就是规格化后真正发往 provider 的最终消息。
+        return NormalizeOutbound(WrapWithRecorder(provider, llm, capture));
     }
 
     public IChatClient CreateSummarizationClient(
@@ -85,8 +87,21 @@ internal sealed class AgentChatClientFactory : IAgentChatClientFactory
     }
 
     /// <summary>
-    /// 记录器包在 provider client 最外层，位于上下文压缩与工具循环之下，
-    /// 捕获的是真正发往 provider 的最终 wire 请求。
+    /// 出站规格化层：空工具结果、空 assistant 文本、null 工具参数统一在此处理，
+    /// 全部 API 格式共用。它位于交互记录器外层，使日志与 wire 请求一致。
+    /// </summary>
+    private static IChatClient NormalizeOutbound(IChatClient client) =>
+        client.AsBuilder()
+            .Use(static (messages, options, next, cancellationToken) =>
+                next(
+                    AgentMessageAdapter.NormalizeOutbound(messages),
+                    options,
+                    cancellationToken))
+            .Build();
+
+    /// <summary>
+    /// 记录器紧贴 provider，位于出站规格化与上下文压缩、工具循环之下，
+    /// 捕获规格化后真正发往大模型的最终 wire 请求。
     /// </summary>
     private IChatClient WrapWithRecorder(IChatClient client, LlmConfig llm, LlmInteractionCapture? capture)
     {
@@ -107,23 +122,13 @@ internal sealed class AgentChatClientFactory : IAgentChatClientFactory
     private IChatClient CreateOpenAIChatCompletions(LlmConfig llm)
     {
         OpenAIClient client = CreateOpenAIClient(llm, "https://api.openai.com/v1");
-        return client.GetChatClient(llm.ModelId)
-            .AsIChatClient()
-            .AsBuilder()
-            .Use(static (messages, options, next, cancellationToken) =>
-                next(
-                    AgentMessageAdapter.NormalizeEmptyToolArguments(
-                        AgentMessageAdapter.RemoveEmptyOpenAIToolCallText(messages)),
-                    options,
-                    cancellationToken))
-            .Build();
+        return client.GetChatClient(llm.ModelId).AsIChatClient();
     }
 
     private IChatClient CreateOpenAIResponses(LlmConfig llm)
     {
         OpenAIClient client = CreateOpenAIClient(llm, "https://api.openai.com/v1");
-        return WithToolArgumentNormalization(
-            client.GetResponsesClient().AsIChatClientWithStoredOutputDisabled(llm.ModelId));
+        return client.GetResponsesClient().AsIChatClientWithStoredOutputDisabled(llm.ModelId);
     }
 
     private IChatClient CreateAnthropic(LlmConfig llm)
@@ -147,22 +152,8 @@ internal sealed class AgentChatClientFactory : IAgentChatClientFactory
                 ? new AnthropicClient { ApiKey = llm.ApiKey }
                 : new AnthropicClient { ApiKey = llm.ApiKey, BaseUrl = llm.Endpoint.TrimEnd('/') };
         }
-        return WithToolArgumentNormalization(
-            client.AsAIAgent(model: llm.ModelId, name: "openagent-anthropic-provider").ChatClient);
+        return client.AsAIAgent(model: llm.ModelId, name: "openagent-anthropic-provider").ChatClient;
     }
-
-    /// <summary>
-    /// 出站统一把空参数工具调用规格化为 {}：null 参数会被序列化成 "null"/null，
-    /// 被严格网关拒绝后模型传入空参数就会导致整轮执行终止。
-    /// </summary>
-    private static IChatClient WithToolArgumentNormalization(IChatClient client) =>
-        client.AsBuilder()
-            .Use(static (messages, options, next, cancellationToken) =>
-                next(
-                    AgentMessageAdapter.NormalizeEmptyToolArguments(messages),
-                    options,
-                    cancellationToken))
-            .Build();
 
     private OpenAIClient CreateOpenAIClient(LlmConfig llm, string defaultEndpoint)
     {

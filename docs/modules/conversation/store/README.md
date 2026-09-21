@@ -16,7 +16,8 @@
 ## 交互日志与轮次追溯
 
 所有发往大模型的交互（Agent 轮次内的每次调用，含工具循环迭代；自动/手动压缩摘要调用）由
-`LlmInteractionRecorder`（挂在 `AgentChatClientFactory` 产出的 provider client 最外层）捕获，
+`LlmInteractionRecorder`（紧贴 `AgentChatClientFactory` 产出的 provider client，出站消息规格化层在其外层）捕获，
+记录的是规格化（空 assistant 文本剥离、空工具结果占位、null 工具参数规格化为 `{}`）后真正发往 provider 的最终消息，
 写入 `openagent.llm_interaction_logs`（见 [LlmInteractionLogs](../../../database/tables/LlmInteractionLogs.md)），
 同时输出一条摘要结构化日志（EventId 1460/1461）。载荷经过脱敏投影：API Key 永不落日志，
 二进制内容仅记录占位符，超长字段按 `LlmInteraction:MaxContentLength` 截断。记录失败只降级为警告，

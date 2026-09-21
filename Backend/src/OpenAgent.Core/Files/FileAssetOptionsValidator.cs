@@ -37,6 +37,10 @@ internal sealed class FileAssetOptionsValidator : IValidateOptions<FileAssetOpti
         {
             failures.Add("FileAssets:InlineImageQuality must be between 1 and 100.");
         }
+        if (options.InlineImageHistoryTurns < 0)
+        {
+            failures.Add("FileAssets:InlineImageHistoryTurns must be greater than or equal to zero.");
+        }
         if (options.MaxArchiveInputBytes <= 0)
         {
             failures.Add("FileAssets:MaxArchiveInputBytes must be greater than zero.");
