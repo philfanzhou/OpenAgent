@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Execution;
@@ -7,6 +8,65 @@ namespace OpenAgent.Runner.Tests;
 
 public class SessionSandboxExecutionTests
 {
+    [BubblewrapFact]
+    public async Task StartDetached_SandboxSurvivesCreatorThreadExit()
+    {
+        // 回归：bwrap --die-with-parent 的 PR_SET_PDEATHSIG 在"创建者线程"退出时触发。
+        // 修复前 fork 发生在可回收的线程池线程上，线程退役即 SIGKILL 存活沙箱；
+        // 修复后所有 bwrap fork 都经由专用常驻 launcher 线程，创建者线程退出无影响。
+        string root = Path.Combine(Path.GetTempPath(), "codeact-session-tests-" + Guid.NewGuid().ToString("N"));
+        string channelDirectory = Path.Combine(root, SessionSandboxManager.SessionDirectoryPrefix + "thread-exit", "channel");
+        Directory.CreateDirectory(channelDirectory);
+        var settings = Options.Create(new RunnerOptions
+        {
+            WorkspaceRoot = root,
+            BubblewrapPath = Environment.GetEnvironmentVariable("CODEACT_TEST_BWRAP") ?? "/usr/bin/bwrap",
+            PythonPath = Environment.GetEnvironmentVariable("CODEACT_TEST_PYTHON") ?? "/opt/openagent-code/venv/bin/python",
+            NodePath = Environment.GetEnvironmentVariable("CODEACT_TEST_NODE") ?? "/usr/bin/node"
+        });
+        var bubblewrap = new BubblewrapProcess(settings, NullLogger<BubblewrapProcess>.Instance);
+
+        Process? process = null;
+        var creator = new Thread(() =>
+        {
+            process = bubblewrap.StartDetached(BubblewrapCodeExecutor.BuildSessionArguments(
+                settings.Value, channelDirectory, Path.Combine(AppContext.BaseDirectory, "sandbox")));
+            // 给 bwrap 留出完成自身初始化并设置 PDEATHSIG 的时间，随后创建者线程退出。
+            Thread.Sleep(TimeSpan.FromMilliseconds(300));
+        })
+        { IsBackground = true };
+        creator.Start();
+        creator.Join();
+
+        Assert.NotNull(process);
+        try
+        {
+            for (int i = 0; i < 30 && !File.Exists(Path.Combine(channelDirectory, "supervisor.sock")); i++)
+            {
+                await Task.Delay(100);
+            }
+            // PDEATHSIG 若被错误触发（修复前）会在此窗口内以 SIGKILL（exit 137）终结沙箱。
+            await Task.Delay(TimeSpan.FromMilliseconds(500));
+            Assert.False(process.HasExited);
+        }
+        finally
+        {
+            try
+            {
+                process.Kill(entireProcessTree: true);
+                process.WaitForExit(5000);
+            }
+            catch (Exception)
+            {
+                // 进程可能已退出；尽力清理即可。
+            }
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
     [BubblewrapFact]
     public async Task Execute_SessionSandboxPersistsFilesAcrossCalls()
     {

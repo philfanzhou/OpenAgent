@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text;
 using Microsoft.Extensions.Options;
@@ -25,8 +26,7 @@ internal sealed class BubblewrapProcess(IOptions<RunnerOptions> options, ILogger
             start.ArgumentList.Add(argument);
         }
 
-        using var process = new Process { StartInfo = start };
-        process.Start();
+        using var process = BwrapLauncher.Start(start);
         Interlocked.Increment(ref _activeProcesses);
         Task<string> stdout = ReadBoundedAsync(process.StandardOutput, maxOutputCharacters);
         Task<string> stderr = ReadBoundedAsync(process.StandardError, 4096);
@@ -66,9 +66,64 @@ internal sealed class BubblewrapProcess(IOptions<RunnerOptions> options, ILogger
         {
             start.ArgumentList.Add(argument);
         }
-        var process = new Process { StartInfo = start };
-        process.Start();
-        return process;
+        return BwrapLauncher.Start(start);
+    }
+
+    /// <summary>
+    /// bwrap 通过 PR_SET_PDEATHSIG 实现 --die-with-parent，而该信号在创建子进程的
+    /// "父线程"退出时触发——并非父进程退出。若 fork 发生在线程池线程上，线程回收
+    /// 会立即 SIGKILL 尚在存活的沙箱（长寿命会话沙箱被随机击杀、状态丢失）。
+    /// 所有 bwrap fork 固定路由到这条专用常驻线程：该线程不退役，die-with-parent
+    /// 语义即回归"宿主进程退出"；进程退出时后台线程随之销毁，孤儿沙箱仍会被清理。
+    /// </summary>
+    private static class BwrapLauncher
+    {
+        private static readonly BlockingCollection<Action> Work = [];
+
+        static BwrapLauncher()
+        {
+            var thread = new Thread(Loop)
+            {
+                IsBackground = true,
+                Name = "bwrap-launcher"
+            };
+            thread.Start();
+        }
+
+        internal static Process Start(ProcessStartInfo start)
+        {
+            using var done = new ManualResetEventSlim(false);
+            Process? started = null;
+            Exception? failure = null;
+            Work.Add(() =>
+            {
+                try
+                {
+                    var process = new Process { StartInfo = start };
+                    process.Start();
+                    Volatile.Write(ref started, process);
+                }
+                catch (Exception exception)
+                {
+                    Volatile.Write(ref failure, exception);
+                }
+                finally
+                {
+                    done.Set();
+                }
+            });
+            done.Wait();
+            return Volatile.Read(ref started)
+                ?? throw new InvalidOperationException("Failed to start the sandbox process.", Volatile.Read(ref failure));
+        }
+
+        private static void Loop()
+        {
+            foreach (Action work in Work.GetConsumingEnumerable())
+            {
+                work();
+            }
+        }
     }
 
     internal async Task<bool> IsAvailableAsync(string sandboxFilesDirectory, CancellationToken cancellationToken)    {
