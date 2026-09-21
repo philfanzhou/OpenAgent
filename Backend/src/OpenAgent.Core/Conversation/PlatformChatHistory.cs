@@ -34,6 +34,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
     private readonly bool _supportsMultimodal;
     private readonly long _maxInlineImageBytes;
     private readonly int _maxInlineImageCount;
+    private readonly int _inlineImageHistoryTurns;
     private readonly List<ConversationMessage> _pending = [];
     private readonly StringBuilder _partialAssistant = new();
     private readonly StringBuilder _partialReasoning = new();
@@ -72,6 +73,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         _supportsMultimodal = context.SupportsMultimodal;
         _maxInlineImageBytes = fileOptions.Value.MaxInlineImageBytes;
         _maxInlineImageCount = fileOptions.Value.MaxInlineImageCount;
+        _inlineImageHistoryTurns = fileOptions.Value.InlineImageHistoryTurns;
     }
 
     internal void AppendPartial(string content)
@@ -229,14 +231,17 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
 
     /// <summary>
     /// Converts stored messages to model input and rebuilds referenced attachments.
+    /// Historical images are only inlined within the recent-turn window.
     /// </summary>
     internal async Task<List<ChatMessage>> BuildHistoryAsync(
         IReadOnlyList<ConversationMessage> stored,
         CancellationToken cancellationToken)
     {
         var history = new List<ChatMessage>(stored.Count);
-        foreach (ConversationMessage message in stored)
+        bool[] inlineWindow = ComputeInlineImageWindow(stored, _inlineImageHistoryTurns);
+        for (int index = 0; index < stored.Count; index++)
         {
+            ConversationMessage message = stored[index];
             ChatMessage? chatMessage = AgentMessageAdapter.FromStored(message);
             if (chatMessage == null)
             {
@@ -244,16 +249,50 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
             }
             if (message.FileIds.Count > 0)
             {
-                await AttachFilesAsync(chatMessage, message.FileIds, cancellationToken).ConfigureAwait(false);
+                await AttachFilesAsync(
+                    chatMessage,
+                    message.FileIds,
+                    inlineWindow[index],
+                    cancellationToken).ConfigureAwait(false);
             }
             history.Add(chatMessage);
         }
         return history;
     }
 
+    /// <summary>
+    /// 历史图片内联窗口：只有最近 N 个用户轮次（N=InlineImageHistoryTurns）重放内联图片，
+    /// 更早轮次只保留文件描述符。内联图片每张约上千 token，全量重放会让长会话的
+    /// 输入 token 随轮次线性膨胀；当轮用户消息不受此窗口限制。
+    /// </summary>
+    private static bool[] ComputeInlineImageWindow(
+        IReadOnlyList<ConversationMessage> stored,
+        int turns)
+    {
+        var allow = new bool[stored.Count];
+        if (turns <= 0)
+        {
+            return allow;
+        }
+
+        // 自后向前统计该消息之后的 user 轮数：最后一条 user 行及其后的消息属于最近轮次。
+        int userTurnsAfter = 0;
+        for (int index = stored.Count - 1; index >= 0; index--)
+        {
+            allow[index] = userTurnsAfter < turns;
+            if (string.Equals(stored[index].Role, "user", StringComparison.OrdinalIgnoreCase))
+            {
+                userTurnsAfter++;
+            }
+        }
+
+        return allow;
+    }
+
     private async Task AttachFilesAsync(
         ChatMessage chatMessage,
         IReadOnlyList<string> fileIds,
+        bool allowInlineImages,
         CancellationToken cancellationToken)
     {
         FileAssetScope scope = CreateFileScope();
@@ -267,7 +306,8 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
                 if (asset != null)
                 {
                     FileAssetContent? inlineImage = null;
-                    if (_supportsMultimodal
+                    if (allowInlineImages
+                        && _supportsMultimodal
                         && inlineImageCount < _maxInlineImageCount
                         && IsImage(asset.MediaType)
                         && asset.Length <= _maxInlineImageBytes)

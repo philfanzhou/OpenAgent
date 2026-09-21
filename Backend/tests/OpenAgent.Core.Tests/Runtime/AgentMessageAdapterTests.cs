@@ -128,7 +128,7 @@ public sealed class AgentMessageAdapterTests
     }
 
     [Fact]
-    public void RemoveEmptyOpenAIToolCallText_EmptyText_RemovesTextFromClone()
+    public void RemoveEmptyAssistantText_EmptyText_RemovesTextFromClone()
     {
         ChatMessage message = new(
             ChatRole.Assistant,
@@ -139,7 +139,7 @@ public sealed class AgentMessageAdapterTests
             ]);
 
         ChatMessage normalized = Assert.Single(
-            AgentMessageAdapter.RemoveEmptyOpenAIToolCallText([message]));
+            AgentMessageAdapter.RemoveEmptyAssistantText([message]));
 
         Assert.NotSame(message, normalized);
         Assert.Empty(normalized.Contents.OfType<TextContent>());
@@ -149,7 +149,31 @@ public sealed class AgentMessageAdapterTests
     }
 
     [Fact]
-    public void RemoveEmptyOpenAIToolCallText_NonEmptyText_PreservesMessage()
+    public void RemoveEmptyAssistantText_EmptyTextWithoutCalls_AlsoStripped()
+    {
+        // 没有 FunctionCallContent 的 assistant 消息同样会被网关序列化为 content:""，
+        // 空文本剥离不应以是否带调用为前提。
+        ChatMessage message = new(ChatRole.Assistant, [new TextContent(string.Empty)]);
+
+        ChatMessage normalized = Assert.Single(
+            AgentMessageAdapter.RemoveEmptyAssistantText([message]));
+
+        Assert.Empty(normalized.Contents);
+    }
+
+    [Fact]
+    public void RemoveEmptyAssistantText_NonAssistantEmptyText_PreservesMessage()
+    {
+        ChatMessage message = new(ChatRole.User, string.Empty);
+
+        ChatMessage normalized = Assert.Single(
+            AgentMessageAdapter.RemoveEmptyAssistantText([message]));
+
+        Assert.Same(message, normalized);
+    }
+
+    [Fact]
+    public void RemoveEmptyAssistantText_NonEmptyText_PreservesMessage()
     {
         ChatMessage message = new(
             ChatRole.Assistant,
@@ -159,9 +183,88 @@ public sealed class AgentMessageAdapterTests
             ]);
 
         ChatMessage normalized = Assert.Single(
-            AgentMessageAdapter.RemoveEmptyOpenAIToolCallText([message]));
+            AgentMessageAdapter.RemoveEmptyAssistantText([message]));
 
         Assert.Same(message, normalized);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void NormalizeEmptyToolResults_EmptyResult_ReplacedWithPlaceholder(string? result)
+    {
+        ChatMessage message = new(
+            ChatRole.Tool,
+            [new FunctionResultContent("call-1", result)]);
+
+        ChatMessage normalized = Assert.Single(
+            AgentMessageAdapter.NormalizeEmptyToolResults([message]));
+
+        FunctionResultContent normalizedResult = Assert.Single(
+            normalized.Contents.OfType<FunctionResultContent>());
+        Assert.Equal(AgentMessageAdapter.EmptyToolResultPlaceholder, normalizedResult.Result);
+        // 原消息保持不变：规格化只作用于出站克隆，存储保留真实空值。
+        Assert.Equal(
+            result,
+            Assert.Single(message.Contents.OfType<FunctionResultContent>()).Result);
+    }
+
+    [Fact]
+    public void NormalizeEmptyToolResults_WithPayload_PreservesMessage()
+    {
+        ChatMessage message = new(
+            ChatRole.Tool,
+            [new FunctionResultContent("call-1", "{\"rows\":3}")]);
+
+        ChatMessage normalized = Assert.Single(
+            AgentMessageAdapter.NormalizeEmptyToolResults([message]));
+
+        Assert.Same(message, normalized);
+    }
+
+    [Fact]
+    public void FromStored_EmptyUserRow_Skipped()
+    {
+        ConversationMessage stored = new()
+        {
+            MessageId = "message-1",
+            Sequence = 1,
+            Role = "user",
+            Content = string.Empty
+        };
+
+        Assert.Null(AgentMessageAdapter.FromStored(stored));
+    }
+
+    [Fact]
+    public void FromStored_EmptySummaryRow_Skipped()
+    {
+        ConversationMessage stored = new()
+        {
+            MessageId = "message-1",
+            Sequence = 1,
+            Role = "summary",
+            Content = "   "
+        };
+
+        Assert.Null(AgentMessageAdapter.FromStored(stored));
+    }
+
+    [Fact]
+    public void FromStored_ToolRowWithoutCallId_Skipped()
+    {
+        // 缺失 CallId 的 tool 行无法在 wire 上表达，provider 映射会整条丢弃。
+        ConversationMessage stored = new()
+        {
+            MessageId = "message-1",
+            Sequence = 1,
+            Role = "tool",
+            Content = "orphan result",
+            ToolCallId = null
+        };
+
+        Assert.Null(AgentMessageAdapter.FromStored(stored));
     }
 
     [Fact]

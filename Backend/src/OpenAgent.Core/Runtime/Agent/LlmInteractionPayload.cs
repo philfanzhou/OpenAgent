@@ -301,7 +301,11 @@ internal sealed class LlmStreamedResponse
         }
         contents.AddRange(_calls);
         contents.AddRange(_results);
-        contents.Add(new TextContent(_text.ToString()));
+        // 纯工具调用迭代没有正文文本，输出空 TextContent 只会在日志里制造空对象。
+        if (_text.Length > 0)
+        {
+            contents.Add(new TextContent(_text.ToString()));
+        }
         Usage = new LlmInteractionPayload.LlmPayloadUsage
         {
             InputTokens = _usage?.InputTokenCount,

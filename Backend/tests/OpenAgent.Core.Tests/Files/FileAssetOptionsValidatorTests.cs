@@ -52,4 +52,28 @@ public sealed class FileAssetOptionsValidatorTests
 
         Assert.True(result.Succeeded);
     }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(4)]
+    public void Validate_NonNegativeInlineImageHistoryTurns_Passes(int turns)
+    {
+        ValidateOptionsResult result = _validator.Validate(
+            null,
+            new FileAssetOptions { Enabled = true, InlineImageHistoryTurns = turns });
+
+        Assert.True(result.Succeeded);
+    }
+
+    [Fact]
+    public void Validate_NegativeInlineImageHistoryTurns_Fails()
+    {
+        ValidateOptionsResult result = _validator.Validate(
+            null,
+            new FileAssetOptions { Enabled = true, InlineImageHistoryTurns = -1 });
+
+        Assert.False(result.Succeeded);
+        Assert.Contains(result.Failures, failure =>
+            failure.Contains("InlineImageHistoryTurns", StringComparison.Ordinal));
+    }
 }

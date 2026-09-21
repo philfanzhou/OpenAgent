@@ -34,7 +34,7 @@ public sealed class OpenAIChatMessageSerializationTests
         ChatMessage tool = new(
             ChatRole.Tool,
             [new FunctionResultContent("call-1", "loaded")]);
-        IEnumerable<ChatMessage> messages = AgentMessageAdapter.RemoveEmptyOpenAIToolCallText(
+        IEnumerable<ChatMessage> messages = AgentMessageAdapter.NormalizeOutbound(
             [new ChatMessage(ChatRole.User, "Load the skill."), assistant, tool]);
 
         await client.GetResponseAsync(messages);

@@ -34,6 +34,21 @@ internal static class AgentMessageAdapter
             return null;
         }
 
+        // 空 user/summary 行在 wire 上只能序列化为 content:""（部分网关拒绝）；
+        // 缺失 CallId 的 tool 行会被 provider 映射整条丢弃并破坏 tool_calls 配对。
+        // 两者都无法构成有效请求消息，加载时直接跳过。
+        if (string.IsNullOrWhiteSpace(message.Content)
+            && (role == Microsoft.Extensions.AI.ChatRole.User
+                || string.Equals(message.Role, "summary", StringComparison.OrdinalIgnoreCase)))
+        {
+            return null;
+        }
+        if (role == Microsoft.Extensions.AI.ChatRole.Tool
+            && string.IsNullOrWhiteSpace(message.ToolCallId))
+        {
+            return null;
+        }
+
         string content = string.Equals(
             message.Role,
             "summary",
@@ -239,13 +254,16 @@ internal static class AgentMessageAdapter
         };
     }
 
-    internal static IEnumerable<ChatMessage> RemoveEmptyOpenAIToolCallText(
+    /// <summary>
+    /// assistant 消息里的空 TextContent 会被部分网关序列化为 content:"" 并拒绝
+    /// （Anthropic 空 text 块、Moonshot/Kimi 等）；出站前统一剥离。
+    /// </summary>
+    internal static IEnumerable<ChatMessage> RemoveEmptyAssistantText(
         IEnumerable<ChatMessage> messages)
     {
         foreach (ChatMessage message in messages)
         {
             if (message.Role != Microsoft.Extensions.AI.ChatRole.Assistant
-                || !message.Contents.OfType<FunctionCallContent>().Any()
                 || !message.Contents.OfType<TextContent>().Any(content =>
                     string.IsNullOrEmpty(content.Text)))
             {
@@ -261,6 +279,51 @@ internal static class AgentMessageAdapter
             yield return normalized;
         }
     }
+
+    /// <summary>
+    /// 空工具结果（工具返回 null/空白）在 wire 上序列化为 content:""，严格网关会拒绝；
+    /// 出站统一替换为占位符，存储仍保留真实空值。
+    /// </summary>
+    internal static IEnumerable<ChatMessage> NormalizeEmptyToolResults(
+        IEnumerable<ChatMessage> messages)
+    {
+        foreach (ChatMessage message in messages)
+        {
+            if (message.Role != Microsoft.Extensions.AI.ChatRole.Tool
+                || message.Contents.OfType<FunctionResultContent>()
+                    .All(HasResultPayload))
+            {
+                yield return message;
+                continue;
+            }
+
+            ChatMessage normalized = message.Clone();
+            normalized.Contents = normalized.Contents
+                .Select(content =>
+                    content is FunctionResultContent { Exception: null } result
+                        && !HasResultPayload(result)
+                        ? new FunctionResultContent(result.CallId, EmptyToolResultPlaceholder)
+                        : content)
+                .ToList();
+            yield return normalized;
+        }
+    }
+
+    internal const string EmptyToolResultPlaceholder = "(tool returned no output)";
+
+    private static bool HasResultPayload(FunctionResultContent result) =>
+        result.Result is not null
+        && (result.Result is not string text || !string.IsNullOrWhiteSpace(text));
+
+    /// <summary>
+    /// 出站消息规格化入口：空工具结果、空 assistant 文本、null 工具参数依次处理。
+    /// 所有 API 格式共用，且位于交互记录器外层——记录器捕获的就是最终 wire 消息。
+    /// </summary>
+    internal static IEnumerable<ChatMessage> NormalizeOutbound(
+        IEnumerable<ChatMessage> messages) =>
+        NormalizeEmptyToolArguments(
+            RemoveEmptyAssistantText(
+                NormalizeEmptyToolResults(messages)));
 
     /// <summary>
     /// 无参调用在 wire 上常表现为 "arguments":"" 或缺省，解析后 Arguments 为 null；

@@ -138,10 +138,36 @@ public class OpenAIWireSerializationTests
         Metadata = metadata
     };
 
+    [Fact]
+    public async Task FollowupRequest_EmptyToolResult_SerializedWithPlaceholderContent()
+    {
+        // 空工具结果直接上 wire 会得到 "content":""，严格网关（Moonshot/Kimi、Anthropic
+        // 空 tool_result）会拒绝；出站必须替换为占位符。
+        CaptureHandler capture = new();
+        using IChatClient client = CreateClient(capture);
+        await client.GetResponseAsync(
+        [
+            new MEAChatMessage(MEAChatRole.User, "执行清理"),
+            new MEAChatMessage(MEAChatRole.Assistant,
+                [new FunctionCallContent("call-1", "cleanup", null)]),
+            new MEAChatMessage(MEAChatRole.Tool,
+                [new FunctionResultContent("call-1", string.Empty)]),
+        ]);
+
+        Assert.NotNull(capture.RequestBody);
+        string? toolContent = JsonDocument.Parse(capture.RequestBody!)
+            .RootElement.GetProperty("messages")
+            .EnumerateArray()
+            .Where(message => message.TryGetProperty("tool_call_id", out _))
+            .Select(message => message.GetProperty("content").GetString())
+            .FirstOrDefault();
+        Assert.Equal(AgentMessageAdapter.EmptyToolResultPlaceholder, toolContent);
+    }
+
     private static IChatClient CreateClient(CaptureHandler capture)
     {
-        // Mirrors AgentChatClientFactory.CreateOpenAIChatCompletions, swapping only
-        // the transport so the outgoing payload can be captured.
+        // Mirrors the outbound normalization layer of AgentChatClientFactory.Create,
+        // swapping only the transport so the outgoing payload can be captured.
         var options = new OpenAIClientOptions
         {
             Endpoint = new Uri("http://localhost/v1"),
@@ -153,8 +179,7 @@ public class OpenAIWireSerializationTests
             .AsBuilder()
             .Use(static (messages, options, next, cancellationToken) =>
                 next(
-                    AgentMessageAdapter.NormalizeEmptyToolArguments(
-                        AgentMessageAdapter.RemoveEmptyOpenAIToolCallText(messages)),
+                    AgentMessageAdapter.NormalizeOutbound(messages),
                     options,
                     cancellationToken))
             .Build();
