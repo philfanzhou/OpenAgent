@@ -143,7 +143,9 @@ internal sealed class ConversationSessionStore
         if (messages.Count > 0 && !string.IsNullOrWhiteSpace(context.TraceId))
         {
             messages = messages
-                .Select(message => message.TraceId == null ? WithTraceId(message, context.TraceId) : message)
+                .Select(message => message.TraceId == null
+                    ? message with { TraceId = context.TraceId }
+                    : message)
                 .ToList();
         }
 
@@ -211,23 +213,6 @@ internal sealed class ConversationSessionStore
         ModelId = modelId
     };
 
-    private static ConversationMessage WithTraceId(ConversationMessage message, string traceId) => new()
-    {
-        MessageId = message.MessageId,
-        Sequence = message.Sequence,
-        Role = message.Role,
-        Content = message.Content,
-        ToolCallId = message.ToolCallId,
-        ToolName = message.ToolName,
-        IdempotencyKey = message.IdempotencyKey,
-        Timestamp = message.Timestamp,
-        TraceId = traceId,
-        Metadata = message.Metadata,
-        FileIds = message.FileIds,
-        TokenUsage = message.TokenUsage,
-        ModelId = message.ModelId
-    };
-
     private ConversationRecord CreateRecord(
         ConversationContext context,
         string resolvedAgentId,
@@ -266,18 +251,14 @@ internal sealed class ConversationSessionStore
             return AppendResult.Conflict("conversation-not-found");
         }
 
+        // 保留原 MessageId/Timestamp/IdempotencyKey：重试是同一批逻辑消息的重排序，
+        // 重新生成标识会让幂等去重失效。
         List<ConversationMessage> resequenced = messages
-            .Select((message, index) => Message(
-                current.MessageCount + index + 1,
-                message.Role,
-                message.Content,
-                message.ToolCallId,
-                message.ToolName,
-                message.Metadata,
-                message.FileIds,
-                message.TokenUsage,
-                message.ModelId,
-                message.TraceId ?? context.TraceId))
+            .Select((message, index) => message with
+            {
+                Sequence = current.MessageCount + index + 1,
+                TraceId = message.TraceId ?? context.TraceId
+            })
             .ToList();
         return await _store.AppendMessagesAsync(
             context.TenantId!,

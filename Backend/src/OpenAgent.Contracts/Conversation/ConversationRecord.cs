@@ -1,6 +1,6 @@
 namespace OpenAgent.Contracts.Conversation;
 
-public sealed class ConversationRecord
+public sealed record ConversationRecord
 {
     public required string ConversationId { get; init; }
     public required string TenantId { get; init; }
@@ -31,11 +31,6 @@ public sealed class ConversationRecord
     /// 用户软删除时间，UTC。null 表示未删除。
     /// </summary>
     public DateTimeOffset? DeletedAt { get; set; }
-
-    /// <summary>
-    /// 归档入库时间，UTC。用于数据分层迁移判断（超过保留周期则迁移到归档表）。
-    /// </summary>
-    public DateTimeOffset ArchivedAt { get; set; } = DateTimeOffset.UtcNow;
 }
 
 public enum ConversationType

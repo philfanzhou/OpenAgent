@@ -221,23 +221,13 @@ internal static class AgentMessageAdapter
             ? []
             : new Dictionary<string, string>(message.Metadata, StringComparer.Ordinal);
         metadata["Files"] = BuildFileMetadata(files)!["Files"];
-        return new ConversationMessage
+        return message with
         {
-            MessageId = message.MessageId,
-            Sequence = message.Sequence,
-            Role = message.Role,
-            Content = message.Content,
-            ToolCallId = message.ToolCallId,
-            ToolName = message.ToolName,
-            IdempotencyKey = message.IdempotencyKey,
-            Timestamp = message.Timestamp,
             Metadata = metadata,
             FileIds = message.FileIds
                 .Concat(files.Select(file => file.FileId))
                 .Distinct(StringComparer.Ordinal)
-                .ToArray(),
-            TokenUsage = message.TokenUsage,
-            ModelId = message.ModelId
+                .ToArray()
         };
     }
 

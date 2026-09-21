@@ -153,6 +153,63 @@ public sealed class ConversationSessionStoreTests
         Assert.All(stored, message => Assert.Equal("trace-42", message.TraceId));
     }
 
+    [Fact]
+    public async Task SaveAsync_VersionConflictRetry_PreservesMessageIdentityAndIdempotencyKey()
+    {
+        var store = new OpenAgent.Core.Conversation.Store.InMemoryConversationStore(new FakeUserContext());
+        var sessionStore = new ConversationSessionStore(
+            store,
+            Microsoft.Extensions.Options.Options.Create(new ConversationStoreOptions()));
+        await store.CreateAsync(new ConversationRecord
+        {
+            ConversationId = "conversation-1",
+            TenantId = "tenant-1",
+            UserId = "user-1",
+            Type = ConversationType.User,
+            Version = 1
+        });
+        // 并发写入使版本前进，触发本侧追加的乐观锁冲突重试。
+        await store.AppendMessagesAsync(
+            "tenant-1",
+            "conversation-1",
+            expectedVersion: 1,
+            [Message(1, "user", "concurrent")]);
+        var timestamp = new DateTimeOffset(2026, 9, 21, 8, 0, 0, TimeSpan.Zero);
+        var retryMessage = new ConversationMessage
+        {
+            MessageId = "message-retry-1",
+            Sequence = 1,
+            Role = "assistant",
+            Content = "retried",
+            IdempotencyKey = "idem-1",
+            Timestamp = timestamp
+        };
+        var context = new ConversationContext(
+            "conversation-1",
+            "tenant-1",
+            "user-1",
+            "agent-1",
+            "trace-42",
+            ConversationType.User);
+
+        await sessionStore.SaveAsync(
+            context,
+            expectedVersion: 1,
+            [retryMessage],
+            ConversationStatus.Completed,
+            CancellationToken.None);
+
+        IReadOnlyList<ConversationMessage> stored = await store.GetMessagesAsync(
+            "tenant-1",
+            "conversation-1",
+            maxMessages: 10);
+        ConversationMessage retried = Assert.Single(stored, message => message.MessageId == "message-retry-1");
+        Assert.Equal(2, retried.Sequence);
+        Assert.Equal("idem-1", retried.IdempotencyKey);
+        Assert.Equal(timestamp, retried.Timestamp);
+        Assert.Equal("trace-42", retried.TraceId);
+    }
+
     private sealed class FakeUserContext : Contracts.Security.ICurrentUserContext
     {
         public string UserId => "user-1";
