@@ -516,12 +516,7 @@ public class FileAssetCapabilitySourceTests
         var context = new FileAssetExecutionContext();
         if (setScope)
         {
-            context.Set(new FileAssetScope
-            {
-                TenantId = "tenant-a",
-                UserId = "user-a",
-                ConversationId = "conversation-a"
-            });
+            context.Set(TurnContexts.Create("tenant-a", "user-a", "conversation-a"));
         }
         return new TestHarness(repository, objects, shares, context, new FileAssetCapabilitySource(
             service,

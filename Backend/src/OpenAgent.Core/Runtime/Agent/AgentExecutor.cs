@@ -3,6 +3,7 @@ using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Requests;
+using OpenAgent.Contracts.Runtime;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Conversation;
 using OpenAgent.Core.Files;
@@ -38,27 +39,22 @@ public sealed class AgentExecutor
     {
         using EngineMeter.EngineExecutionMeasurement measurement = EngineMeter.StartAgentCall("sync");
         EnsureRequest(request);
-        string traceId = ResolveTraceId(request.TraceId);
         string agentId = await ResolveAgentIdAsync(
             request,
             user,
             cancellationToken).ConfigureAwait(false);
+        TurnContext turn = CreateTurn(request, user, agentId);
         AgentRuntimeProfile profile = await _runtime.ResolveAsync(
             agentId,
             RequireLlmProfileId(request),
             user,
             cancellationToken).ConfigureAwait(false);
-        AgentRequest executionRequest = CopyWithResolvedValues(
-            request,
-            agentId,
-            traceId,
-            ResolveConversationId(request));
+        AgentRequest executionRequest = CopyWithResolvedValues(request, turn);
         if (executionRequest.FileIds.Count > 0)
         {
             await _agents.EnsureConversationAsync(
-                agentId,
-                executionRequest,
-                user,
+                turn,
+                executionRequest.Query,
                 cancellationToken).ConfigureAwait(false);
         }
         ResolvedFileRequest resolvedFiles = await _files.ResolveAsync(
@@ -68,8 +64,9 @@ public sealed class AgentExecutor
 
         await using AgentExecutionScope scope = await _agents.CreateAsync(
             profile,
-            executionRequest,
+            turn,
             user,
+            executionRequest.Query,
             resolvedFiles.Files,
             cancellationToken).ConfigureAwait(false);
         AgentSession session = await scope.Agent.CreateSessionAsync(cancellationToken).ConfigureAwait(false);
@@ -92,7 +89,7 @@ public sealed class AgentExecutor
             Content = response.Text ?? string.Empty,
             TokenUsage = usage,
             ModelId = modelId,
-            TraceId = traceId,
+            TraceId = turn.TraceId,
             Success = true
         };
     }
@@ -104,27 +101,22 @@ public sealed class AgentExecutor
     {
         using EngineMeter.EngineExecutionMeasurement measurement = EngineMeter.StartAgentCall("stream");
         EnsureRequest(request);
-        string traceId = ResolveTraceId(request.TraceId);
         string agentId = await ResolveAgentIdAsync(
             request,
             user,
             cancellationToken).ConfigureAwait(false);
+        TurnContext turn = CreateTurn(request, user, agentId);
         AgentRuntimeProfile profile = await _runtime.ResolveAsync(
             agentId,
             RequireLlmProfileId(request),
             user,
             cancellationToken).ConfigureAwait(false);
-        AgentRequest executionRequest = CopyWithResolvedValues(
-            request,
-            agentId,
-            traceId,
-            ResolveConversationId(request));
+        AgentRequest executionRequest = CopyWithResolvedValues(request, turn);
         if (executionRequest.FileIds.Count > 0)
         {
             await _agents.EnsureConversationAsync(
-                agentId,
-                executionRequest,
-                user,
+                turn,
+                executionRequest.Query,
                 cancellationToken).ConfigureAwait(false);
         }
         ResolvedFileRequest resolvedFiles = await _files.ResolveAsync(
@@ -134,8 +126,9 @@ public sealed class AgentExecutor
 
         await using AgentExecutionScope scope = await _agents.CreateAsync(
             profile,
-            executionRequest,
+            turn,
             user,
+            executionRequest.Query,
             resolvedFiles.Files,
             cancellationToken).ConfigureAwait(false);
         AgentSession session = await scope.Agent.CreateSessionAsync(cancellationToken).ConfigureAwait(false);
@@ -237,7 +230,7 @@ public sealed class AgentExecutor
             Type = AgentStreamEventType.Usage,
             Usage = usage,
             ModelId = modelId,
-            TraceId = traceId
+            TraceId = turn.TraceId
         };
     }
 
@@ -265,26 +258,35 @@ public sealed class AgentExecutor
             : resolvedAgentId;
     }
 
-    private static string ResolveTraceId(string? traceId) =>
-        string.IsNullOrWhiteSpace(traceId) ? Guid.NewGuid().ToString("N") : traceId;
+    /// <summary>
+    /// TurnContext 的唯一构造点：这里完成 traceId 兜底与租户归一化，
+    /// 下游（AgentFactory/历史/文件）一律消费已解析的值，不再各自兜底。
+    /// </summary>
+    private static TurnContext CreateTurn(AgentRequest request, IAgentUserContext user, string agentId) => new()
+    {
+        TraceId = string.IsNullOrWhiteSpace(request.TraceId)
+            ? Guid.NewGuid().ToString("N")
+            : request.TraceId,
+        TenantId = user.TenantId ?? string.Empty,
+        UserId = user.UserId,
+        ConversationId = ResolveConversationId(request),
+        AgentId = agentId,
+        ConversationType = request.ConversationType
+    };
 
-    private static AgentRequest CopyWithResolvedValues(
-        AgentRequest request,
-        string agentId,
-        string traceId,
-        string? conversationId) => new()
-        {
-            Query = request.Query,
-            AgentId = agentId,
-            LlmProfileId = request.LlmProfileId,
-            ConversationId = conversationId,
-            ConversationType = request.ConversationType,
-            TraceId = traceId,
-            ClientType = request.ClientType,
-            IdempotencyKey = request.IdempotencyKey,
-            ExternalContext = request.ExternalContext,
-            FileIds = request.FileIds
-        };
+    private static AgentRequest CopyWithResolvedValues(AgentRequest request, TurnContext turn) => new()
+    {
+        Query = request.Query,
+        AgentId = turn.AgentId,
+        LlmProfileId = request.LlmProfileId,
+        ConversationId = turn.ConversationId,
+        ConversationType = request.ConversationType,
+        TraceId = turn.TraceId,
+        ClientType = request.ClientType,
+        IdempotencyKey = request.IdempotencyKey,
+        ExternalContext = request.ExternalContext,
+        FileIds = request.FileIds
+    };
 
     private static string RequireLlmProfileId(AgentRequest request) =>
         !string.IsNullOrWhiteSpace(request.LlmProfileId)

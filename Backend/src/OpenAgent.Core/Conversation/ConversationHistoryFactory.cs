@@ -6,8 +6,8 @@ using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Files;
-using OpenAgent.Contracts.Requests;
-using OpenAgent.Contracts.Security;
+using OpenAgent.Contracts.Runtime;
+using OpenAgent.Core.Runtime.Agent;
 
 namespace OpenAgent.Core.Conversation;
 
@@ -54,45 +54,31 @@ internal sealed class ConversationHistoryFactory
     internal bool AutoCompactionEnabled => _options.EnableAutoCompaction;
 
     internal PlatformChatHistory Create(
-        string agentId,
+        TurnContext turn,
         string modelId,
-        AgentRequest request,
-        IAgentUserContext user,
+        string input,
         IReadOnlyList<FileAsset> files,
         bool supportsMultimodal)
     {
-        ConversationContext context = new(
-            request.ConversationId,
-            user.TenantId,
-            user.UserId,
-            agentId,
-            request.TraceId,
-            request.ConversationType);
+        ConversationContext context = turn.ToConversationContext();
         return _historyFactory.Create(new PlatformChatHistoryContext(
             context,
             modelId,
-            request.Query,
+            input,
             files.ToList().AsReadOnly(),
             supportsMultimodal));
     }
 
     internal async Task EnsureConversationAsync(
-        string agentId,
-        AgentRequest request,
-        IAgentUserContext user,
+        TurnContext turn,
+        string input,
         CancellationToken cancellationToken)
     {
-        ConversationContext context = new(
-            request.ConversationId,
-            user.TenantId,
-            user.UserId,
-            agentId,
-            request.TraceId,
-            request.ConversationType);
+        ConversationContext context = turn.ToConversationContext();
         await _store.OpenAsync(
             context,
-            agentId,
-            request.Query,
+            turn.AgentId ?? string.Empty,
+            input,
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -100,8 +86,7 @@ internal sealed class ConversationHistoryFactory
         int contextTokens,
         ContextPolicy? policy,
         IChatClient summarizationClient,
-        string? tenantId,
-        string? conversationId)
+        TurnContext turn)
     {
         SummarizationCompactionStrategy strategy = CreateStrategy(
             contextTokens,
@@ -113,8 +98,8 @@ internal sealed class ConversationHistoryFactory
             strategy,
             trigger,
             "Automatic",
-            tenantId,
-            conversationId,
+            turn.TenantId,
+            turn.ConversationId,
             _store.Store,
             _loggerFactory.CreateLogger<AuditedCompactionStrategy>(),
             recordUnchanged: false);
