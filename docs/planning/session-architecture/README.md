@@ -23,7 +23,7 @@ main ─┬─ PR-1 统一 ChatRequest.Context 解析（Router/Engine，修复�
 | PR-3 | [PR3-remove-conversation-archived-at.md](./PR3-remove-conversation-archived-at.md) | 已完成 |
 | PR-4 | [PR4-conversation-record-dtos.md](./PR4-conversation-record-dtos.md) | 已完成 |
 | PR-5 | [PR5-split-conversation-store.md](./PR5-split-conversation-store.md) | 已完成 |
-| PR-6 | [PR6-split-platform-chat-history.md](./PR6-split-platform-chat-history.md) | 待开始 |
+| PR-6 | [PR6-split-platform-chat-history.md](./PR6-split-platform-chat-history.md) | 已完成 |
 
 > 本 README 为系列导航索引；各 PR 报告包含动机、改动清单、行为变化、测试证据与回滚方案。
 > 注意：PR-1/2/3 从 main 分叉并行实施，本索引由各分支各自维护，合并时按行取并集。
