@@ -18,7 +18,6 @@ LOG_LIMIT = 32768
 FILE_LIMIT = 10 * 1024 * 1024
 TOTAL_LIMIT = 20 * 1024 * 1024
 REQUEST_LIMIT = 33 * 1024 * 1024
-ALLOWED = {".pptx", ".xlsx", ".png", ".jpg", ".jpeg", ".pdf", ".csv", ".json", ".md", ".txt"}
 
 
 def drain(pipe, target):
@@ -56,8 +55,7 @@ def collect_files(changed_since=None):
         name = path.name
         if not name or len(name) > 120 or not name[0].isalnum() or not all(c.isalnum() or c in "._- " for c in name):
             raise ValueError("Invalid output file name.")
-        if path.suffix.lower() not in ALLOWED:
-            raise ValueError("Unsupported output file extension.")
+        # 输出类型不在沙箱侧过滤：可入库与否由存储层（媒体类型目录/白名单）裁决并跳过报告。
         if metadata.st_size == 0 or metadata.st_size > FILE_LIMIT or len(files) >= 8:
             raise ValueError("Output file count or size exceeds the limit.")
         descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)

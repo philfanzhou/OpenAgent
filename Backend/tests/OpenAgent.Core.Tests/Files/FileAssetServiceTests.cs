@@ -699,6 +699,80 @@ public class FileAssetServiceTests
             CancellationToken.None));
     }
 
+    [Fact]
+    public async Task UploadAsync_HtmlWithoutMediaType_InfersCanonicalType()
+    {
+        var repository = new RecordingFileAssetRepository();
+        var objects = new RecordingFileObjectStore();
+        IFileAssetService service = CreateService(repository, objects);
+        await using var content = new MemoryStream("<h1>hi</h1>"u8.ToArray());
+
+        FileAsset asset = await service.UploadAsync(
+            new FileAssetCreateRequest { FileName = "report.html", Source = FileAssetSource.Agent },
+            content,
+            Scope("conversation-a"),
+            CancellationToken.None);
+
+        Assert.Equal(FileAssetState.Ready, asset.State);
+        Assert.Equal("text/html", asset.MediaType);
+    }
+
+    [Fact]
+    public async Task UploadAsync_CssWithCanonicalMediaType_Succeeds()
+    {
+        var repository = new RecordingFileAssetRepository();
+        var objects = new RecordingFileObjectStore();
+        IFileAssetService service = CreateService(repository, objects);
+        await using var content = new MemoryStream("body{}"u8.ToArray());
+
+        FileAsset asset = await service.UploadAsync(
+            new FileAssetCreateRequest { FileName = "site.css", MediaType = "text/css", Source = FileAssetSource.Agent },
+            content,
+            Scope("conversation-a"),
+            CancellationToken.None);
+
+        Assert.Equal("text/css", asset.MediaType);
+    }
+
+    [Fact]
+    public async Task UploadAsync_HtmlWithMismatchedMediaType_Rejects()
+    {
+        var repository = new RecordingFileAssetRepository();
+        var objects = new RecordingFileObjectStore();
+        IFileAssetService service = CreateService(repository, objects);
+        await using var content = new MemoryStream("<h1>hi</h1>"u8.ToArray());
+
+        await Assert.ThrowsAsync<AgentException>(() => service.UploadAsync(
+            new FileAssetCreateRequest { FileName = "report.html", MediaType = "text/plain", Source = FileAssetSource.Agent },
+            content,
+            Scope("conversation-a"),
+            CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task UploadAsync_ConfigurationNarrowsWhitelist_RejectsCatalogType()
+    {
+        var repository = new RecordingFileAssetRepository();
+        var objects = new RecordingFileObjectStore();
+        IFileAssetService service = new FileAssetService(
+            repository,
+            objects,
+            Options.Create(new FileAssetOptions
+            {
+                Enabled = true,
+                MaxFileSizeBytes = 1024,
+                MaxFunctionReadBytes = 128,
+                AllowedExtensions = [".txt"]
+            }));
+        await using var content = new MemoryStream("<h1>hi</h1>"u8.ToArray());
+
+        await Assert.ThrowsAsync<AgentException>(() => service.UploadAsync(
+            new FileAssetCreateRequest { FileName = "report.html", Source = FileAssetSource.Agent },
+            content,
+            Scope("conversation-a"),
+            CancellationToken.None));
+    }
+
     private static FileAssetScope Scope(string conversationId) => new()
     {
         TenantId = "tenant-a",

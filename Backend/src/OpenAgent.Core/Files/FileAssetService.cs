@@ -570,7 +570,7 @@ internal sealed class FileAssetService : IFileAssetService
     private static string ResolveMediaType(string extension, string? requestedMediaType)
     {
         string normalized = NormalizeMediaType(requestedMediaType);
-        return IsGenericMediaType(normalized) && ExtensionMediaTypes.TryGetValue(extension, out string? inferred)
+        return IsGenericMediaType(normalized) && FileMediaTypeCatalog.TryGetMediaType(extension, out string inferred)
             ? inferred
             : normalized;
     }
@@ -586,55 +586,10 @@ internal sealed class FileAssetService : IFileAssetService
             ? mediaType.StartsWith(allowed[..^1], StringComparison.OrdinalIgnoreCase)
             : mediaType.Equals(allowed, StringComparison.OrdinalIgnoreCase));
 
-    private static bool MediaTypeMatchesExtension(string extension, string mediaType) => extension.ToLowerInvariant() switch
-    {
-        ".png" or ".jpg" or ".jpeg" or ".jps" or ".gif" or ".webp" or ".svg" => mediaType.StartsWith("image/", StringComparison.OrdinalIgnoreCase),
-        ".pdf" => mediaType.Equals("application/pdf", StringComparison.OrdinalIgnoreCase),
-        ".json" => mediaType.Equals("application/json", StringComparison.OrdinalIgnoreCase)
-            || mediaType.Equals("text/json", StringComparison.OrdinalIgnoreCase),
-        ".xml" => mediaType.Equals("application/xml", StringComparison.OrdinalIgnoreCase)
-            || mediaType.Equals("text/xml", StringComparison.OrdinalIgnoreCase),
-        ".drawio" => mediaType.Equals("application/vnd.jgraph.mxfile", StringComparison.OrdinalIgnoreCase),
-        ".txt" => mediaType.Equals("text/plain", StringComparison.OrdinalIgnoreCase),
-        ".csv" => mediaType.Equals("text/csv", StringComparison.OrdinalIgnoreCase),
-        ".md" => mediaType.Equals("text/markdown", StringComparison.OrdinalIgnoreCase) || mediaType.Equals("text/plain", StringComparison.OrdinalIgnoreCase),
-        ".html" or ".htm" => mediaType.Equals("text/html", StringComparison.OrdinalIgnoreCase),
-        ".zip" => mediaType.Equals("application/zip", StringComparison.OrdinalIgnoreCase),
-        ".pptx" => mediaType.Equals("application/vnd.openxmlformats-officedocument.presentationml.presentation", StringComparison.OrdinalIgnoreCase),
-        ".xlsx" => mediaType.Equals("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", StringComparison.OrdinalIgnoreCase),
-        _ => false
-    };
+    private static bool MediaTypeMatchesExtension(string extension, string mediaType) =>
+        FileMediaTypeCatalog.MatchesMediaType(extension, mediaType);
 
-    private static readonly IReadOnlyDictionary<string, string> ExtensionMediaTypes =
-        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            [".png"] = "image/png",
-            [".jpg"] = "image/jpeg",
-            [".jpeg"] = "image/jpeg",
-            [".jps"] = "image/jpeg",
-            [".gif"] = "image/gif",
-            [".webp"] = "image/webp",
-            [".svg"] = "image/svg+xml",
-            [".pdf"] = "application/pdf",
-            [".json"] = "application/json",
-            [".xml"] = "application/xml",
-            [".txt"] = "text/plain",
-            [".csv"] = "text/csv",
-            [".md"] = "text/markdown",
-            [".html"] = "text/html",
-            [".htm"] = "text/html",
-            [".zip"] = "application/zip",
-            [".pptx"] = "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-            [".xlsx"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            [".drawio"] = "application/vnd.jgraph.mxfile"
-        };
-
-    private static bool IsTextMediaType(string mediaType) =>
-        mediaType.StartsWith("text/", StringComparison.OrdinalIgnoreCase)
-            || mediaType.Equals("application/json", StringComparison.OrdinalIgnoreCase)
-            || mediaType.Equals("application/xml", StringComparison.OrdinalIgnoreCase)
-            || mediaType.Equals("image/svg+xml", StringComparison.OrdinalIgnoreCase)
-            || mediaType.Equals("application/vnd.jgraph.mxfile", StringComparison.OrdinalIgnoreCase);
+    private static bool IsTextMediaType(string mediaType) => FileMediaTypeCatalog.IsTextMediaType(mediaType);
 
     private static string NormalizeMediaType(string? mediaType) => string.IsNullOrWhiteSpace(mediaType)
         ? "application/octet-stream"

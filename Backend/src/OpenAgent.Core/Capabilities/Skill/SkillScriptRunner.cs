@@ -109,11 +109,13 @@ internal sealed class SkillScriptRunner(
                 skillRoot, scriptFullPath, scope, arguments, cancellationToken).ConfigureAwait(false);
             CodeExecutionResult result = await executor.ExecuteAsync(request, cancellationToken).ConfigureAwait(false);
             ExecutionLimits.ValidateFiles(result.Files);
-            List<object> artifacts = await CodeExecutionArtifacts.PublishAsync(
+            CodeExecutionArtifacts.PublishResult publish = await CodeExecutionArtifacts.PublishAsync(
                 result, files, scope, cancellationToken).ConfigureAwait(false);
             return JsonSerializer.Serialize(new
             {
-                result.ExecutionId, result.ExitCode, result.TimedOut, result.Stdout, result.Stderr, files = artifacts
+                result.ExecutionId, result.ExitCode, result.TimedOut, result.Stdout, result.Stderr,
+                files = publish.Files,
+                skippedFiles = publish.Skipped.Select(skipped => new { skipped.Name, skipped.Reason }).ToArray()
             }, JsonOptions);
         }
         catch (Exception exception) when (exception is ArgumentException or JsonException or AgentException)

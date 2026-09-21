@@ -215,17 +215,27 @@ public class SkillScriptRunnerTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task RunAsync_UnsupportedArtifactExtension_ReturnsError()
+    public async Task RunAsync_UnsupportedArtifactExtension_SkipsAndReports()
     {
         string scriptPath = await WriteScriptAsync("analyze.py", "print('analyze ran')\n");
         _fixture.Executor.Results.Enqueue(new CodeExecutionResult
         {
             ExecutionId = "run-1",
             ExitCode = 0,
-            Files = [new ExecutionFile { Name = "payload.exe", Content = new byte[] { 1, 2, 3 } }]
+            Files =
+            [
+                new ExecutionFile { Name = "payload.exe", Content = new byte[] { 1, 2, 3 } },
+                new ExecutionFile { Name = "report.html", Content = "<h1>ok</h1>"u8.ToArray() }
+            ]
         });
         object? result = await _fixture.RunAsync(scriptPath, null);
-        Assert.Contains("Unsupported generated file type", result?.ToString(), StringComparison.Ordinal);
+        // 沙箱/执行结果不因不可入库类型失败：exe 跳过并报告，html 正常注册。
+        Assert.Contains("skippedFiles", result?.ToString(), StringComparison.Ordinal);
+        Assert.Contains("payload.exe", result?.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("\"error\"", result?.ToString(), StringComparison.Ordinal);
+        FileAsset artifact = Assert.Single(_fixture.Repository.Assets.Values);
+        Assert.Equal("report.html", artifact.FileName);
+        Assert.Equal("text/html", artifact.MediaType);
     }
 
     [RunnerIntegrationFact]
