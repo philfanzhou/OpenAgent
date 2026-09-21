@@ -1,6 +1,6 @@
 # Bubblewrap 代码 Runner 部署
 
-架构、工具参数和安全边界见 [CodeAct 设计](../modules/capabilities/code-execution/DESIGN.md)。Runner 直接运行在 Linux 主机上，不依赖 Docker daemon；无会话键的请求每次启动新的 Bubblewrap namespace，携带会话键的请求复用一个常驻会话沙箱（空闲超过 `Runner:SessionIdleMinutes` 后回收）。
+架构、工具参数和安全边界见 [CodeAct 设计](../modules/capabilities.md)。Runner 直接运行在 Linux 主机上，不依赖 Docker daemon；无会话键的请求每次启动新的 Bubblewrap namespace，携带会话键的请求复用一个常驻会话沙箱（空闲超过 `Runner:SessionIdleMinutes` 后回收）。
 
 ## 支持环境
 

@@ -20,7 +20,7 @@ pnpm test
 pnpm build
 ```
 
-工作台内的“健康检查”页会从浏览器验证当前 Router 或 Engine 的 Live、Ready、Agent Catalog、Identity 和 Conversations。架构、接口和安全边界见 [`docs/modules/chat-workspace/`](../../docs/modules/chat-workspace/README.md)。
+工作台内的“健康检查”页会从浏览器验证当前 Router 或 Engine 的 Live、Ready、Agent Catalog、Identity 和 Conversations。架构、接口和安全边界见 [`docs/modules/chat-workspace.md`](../../docs/modules/chat-workspace.md)。
 
 ## 生产边界
 
