@@ -6,7 +6,9 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\OpenAgent.Core\OpenAgent.Core.csproj" />
     <ProjectReference Include="..\..\src\OpenAgent.Hosting\OpenAgent.Hosting.csproj" />
+    <ProjectReference Include="..\..\src\OpenAgent.Infrastructure\OpenAgent.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>
