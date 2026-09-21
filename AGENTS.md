@@ -24,7 +24,8 @@ Backend/
     ├── OpenAgent.Engine.Tests/
     ├── OpenAgent.Hosting.Tests/
     ├── OpenAgent.Infrastructure.Tests/
-    └── OpenAgent.Router.Tests/
+    ├── OpenAgent.Router.Tests/
+    └── OpenAgent.Runner.Tests/      Runner 沙箱执行测试（BubblewrapFact 环境门控）
 ```
 
 > 项目名前缀 `OpenAgent.*` 与文件夹前缀对齐。依赖方向：Contracts ← Core ← {Engine, Infrastructure, Router} ← {Engine.Host, Hosting}（不可反向）。

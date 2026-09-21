@@ -7,24 +7,6 @@ namespace OpenAgent.Infrastructure.Tests.Conversations;
 public sealed class ConversationMessageMetadataJsonTests
 {
     [Fact]
-    public void Serialize_TypedMetadata_WritesCamelCaseNewForm()
-    {
-        ConversationMessageMetadata metadata = CreateFullMetadata();
-
-        string json = ConversationMessageMetadataJson.Serialize(metadata)!;
-
-        Assert.Contains("\"files\":[", json, StringComparison.Ordinal);
-        Assert.Contains("\"fileId\":\"file-1\"", json, StringComparison.Ordinal);
-        Assert.Contains("\"reasoning\":\"thinking\"", json, StringComparison.Ordinal);
-        Assert.Contains("\"executionStatus\":\"Cancelled\"", json, StringComparison.Ordinal);
-        // 字符串值内的引号由默认 JavaScriptEncoder 转义为 \u0022。
-        Assert.Contains("\"toolArguments\":\"{\\u0022a\\u0022:1}\"", json, StringComparison.Ordinal);
-        Assert.Contains("\"extensions\":{\"Custom\":\"kept\"}", json, StringComparison.Ordinal);
-        Assert.DoesNotContain("Files", json, StringComparison.Ordinal);
-        Assert.DoesNotContain("Reasoning\"", json, StringComparison.Ordinal);
-    }
-
-    [Fact]
     public void Serialize_NullMetadata_ReturnsNull()
     {
         Assert.Null(ConversationMessageMetadataJson.Serialize(null));

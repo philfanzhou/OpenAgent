@@ -3,7 +3,6 @@
   <ItemGroup>
     <InternalsVisibleTo Include="OpenAgent.Engine.Tests" />
     <InternalsVisibleTo Include="OpenAgent.Engine.Host" />
-    <InternalsVisibleTo Include="OpenAgent.TestFramework" />
   </ItemGroup>
 
   <ItemGroup>

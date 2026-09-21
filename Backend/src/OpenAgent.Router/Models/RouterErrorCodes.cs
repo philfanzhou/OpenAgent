@@ -1,7 +1,7 @@
 namespace OpenAgent.Router.Models;
 
 /// <summary>
-/// 路由层特有错误的符号名（kebab-case），作为统一 ProblemDetails 契约的 code 扩展字段。
+/// 路由层特有错误的符号名（kebab-case），拼入统一 ProblemDetails 契约的 type URI（{TypePrefix}/{code}）。
 /// 与引擎侧 AgentErrorCode 派生的符号名共用同一命名风格。
 /// </summary>
 internal static class RouterErrorCodes
