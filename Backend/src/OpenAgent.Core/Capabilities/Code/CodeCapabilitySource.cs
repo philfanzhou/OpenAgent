@@ -38,6 +38,8 @@ internal sealed class CodeCapabilitySource(
                 + "Python ships pandas, matplotlib, openpyxl, XlsxWriter, python-pptx and Pillow. "
                 + "Mount conversation files read-only via inputFiles at /input/<name>; main.py/main.mjs are reserved. "
                 + "Write deliverables under /output (max 8 files, 10 MiB each, 20 MiB total) and print concise results. "
+                + "Outputs of any type are collected; only storable types (e.g. html, css, md, csv, json, png, pdf, pptx, xlsx) "
+                + "are registered as files — others are listed under skippedFiles with a reason, so rename or convert them. "
                 + "Calls in one conversation share a persistent sandbox: files you write under /work, /tmp and /input "
                 + "survive between calls until roughly two hours of inactivity, when the sandbox is reclaimed "
                 + "(the result then carries sandboxReset=true and earlier files are gone). "
@@ -113,12 +115,13 @@ internal sealed class CodeCapabilitySource(
             ExecutionLimits.Validate(request);
             CodeExecutionResult result = await executor.ExecuteAsync(request, cancellationToken).ConfigureAwait(false);
             ExecutionLimits.ValidateFiles(result.Files);
-            List<object> artifacts = await CodeExecutionArtifacts.PublishAsync(
+            CodeExecutionArtifacts.PublishResult publish = await CodeExecutionArtifacts.PublishAsync(
                 result, files, scope, cancellationToken).ConfigureAwait(false);
             return JsonSerializer.Serialize(new
             {
                 result.ExecutionId, result.ExitCode, result.TimedOut, result.Stdout, result.Stderr,
-                result.SandboxReset, files = artifacts
+                result.SandboxReset, files = publish.Files,
+                skippedFiles = publish.Skipped.Select(skipped => new { skipped.Name, skipped.Reason }).ToArray()
             }, JsonOptions);
         }
         catch (Exception exception) when (exception is ArgumentException or JsonException or AgentException)
