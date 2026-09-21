@@ -271,7 +271,7 @@ public class SkillScriptRunnerTests : IAsyncLifetime
         internal Fixture(bool enabled = true, ICodeExecutor? executor = null)
         {
             Files = new FileAssetService(Repository, Objects, Options.Create(new FileAssetOptions { Enabled = true }));
-            Context.Set(new FileAssetScope { TenantId = "tenant", UserId = "user", ConversationId = "conversation" });
+            Context.Set(TurnContexts.Create());
             var auth = new Mock<IAgentAuthorizationService>();
             auth.Setup(service => service.IsAuthorizedAsync(
                     It.IsAny<AgentAuthorizationRequest>(), It.IsAny<IAgentUserContext>(), It.IsAny<CancellationToken>()))

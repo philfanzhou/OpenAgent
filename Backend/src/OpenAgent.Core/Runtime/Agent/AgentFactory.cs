@@ -6,7 +6,7 @@ using OpenAgent.Core.Capabilities.Skill;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Files;
-using OpenAgent.Contracts.Requests;
+using OpenAgent.Contracts.Runtime;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Conversation;
 using OpenAgent.Core.Files;
@@ -41,38 +41,26 @@ internal sealed class AgentFactory
         _services = services;
     }
 
+    /// <summary>
+    /// 轮次身份坐标（租户/用户/会话/TraceId/AgentId）统一由 TurnContext 携带，
+    /// 此处只负责投影；轮内剩余输入（query/文件）仍以参数显式传递。
+    /// </summary>
     internal async Task<AgentExecutionScope> CreateAsync(
         AgentRuntimeProfile profile,
-        AgentRequest request,
+        TurnContext turn,
         IAgentUserContext user,
+        string input,
         IReadOnlyList<FileAsset> files,
         CancellationToken cancellationToken)
     {
-        string traceId = string.IsNullOrWhiteSpace(request.TraceId)
-            ? Guid.NewGuid().ToString("N")
-            : request.TraceId;
-        var turnCapture = new LlmInteractionCapture
-        {
-            TenantId = user.TenantId ?? string.Empty,
-            UserId = user.UserId,
-            ConversationId = request.ConversationId,
-            TraceId = traceId,
-            AgentId = profile.AgentId,
-            Source = LlmInteractionSource.AgentTurn
-        };
-        var compactionCapture = turnCapture with { Source = LlmInteractionSource.Compaction };
-        IChatClient modelClient = _chatClients.Create(profile.Model, turnCapture);
-        _files.Set(new OpenAgent.Contracts.Files.FileAssetScope
-        {
-            TenantId = user.TenantId ?? string.Empty,
-            UserId = user.UserId,
-            ConversationId = request.ConversationId
-        });
+        IChatClient modelClient = _chatClients.Create(
+            profile.Model,
+            turn.ToCapture(LlmInteractionSource.AgentTurn));
+        _files.Set(turn);
         PlatformChatHistory history = _conversations.Create(
-            profile.AgentId,
+            turn,
             profile.Model.ModelId,
-            request,
-            user,
+            input,
             files,
             profile.Model.Modality == ModelModality.Multimodal);
         IReadOnlyList<AITool> tools = await _capabilities.CreateAsync(
@@ -103,13 +91,12 @@ internal sealed class AgentFactory
                 IChatClient summarizationClient = _chatClients.CreateSummarizationClient(
                     profile.Model,
                     profile.Config.ContextPolicy,
-                    compactionCapture);
+                    turn.ToCapture(LlmInteractionSource.Compaction));
                 AIContextProvider compaction = _conversations.CreateCompaction(
                     profile.Model.ContextTokens,
                     profile.Config.ContextPolicy,
                     summarizationClient,
-                    user.TenantId,
-                    request.ConversationId);
+                    turn);
                 compactingClient = modelClient
                     .AsBuilder()
                     .UseAIContextProviders(compaction)
@@ -170,9 +157,8 @@ internal sealed class AgentFactory
     }
 
     internal Task EnsureConversationAsync(
-        string agentId,
-        AgentRequest request,
-        IAgentUserContext user,
+        TurnContext turn,
+        string input,
         CancellationToken cancellationToken) =>
-        _conversations.EnsureConversationAsync(agentId, request, user, cancellationToken);
+        _conversations.EnsureConversationAsync(turn, input, cancellationToken);
 }

@@ -6,6 +6,7 @@ using Moq;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Execution;
 using OpenAgent.Contracts.Files;
+using OpenAgent.Contracts.Runtime;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Capabilities;
 using OpenAgent.Core.Capabilities.Code;
@@ -37,8 +38,9 @@ public class CodeCapabilityTests
     [InlineData("tenant", "user", "")]
     public async Task Discover_RequiresIdentifiedConversation(string tenant, string user, string conversation)
     {
-        var fixture = new Fixture();
-        fixture.Context.Set(new FileAssetScope { TenantId = tenant, UserId = user, ConversationId = conversation });
+        // 一个 FileAssetExecutionContext 只承载一轮：残缺坐标在构造轮次时给出，
+        // 而不是在默认轮次上二次 Set 覆盖（那会被防并发防御拒绝）。
+        var fixture = new Fixture(turn: TurnContexts.Create(tenant, user, conversation));
         Assert.Empty(await fixture.Factory.CreateAsync("agent", new AgentConfig
         {
             CodeExecution = new() { Enabled = true }
@@ -266,10 +268,10 @@ public class CodeCapabilityTests
         internal FileAssetService Files { get; }
         internal CapabilityToolFactory Factory { get; }
 
-        internal Fixture(bool enabled = true, ICodeExecutor? executor = null)
+        internal Fixture(bool enabled = true, ICodeExecutor? executor = null, TurnContext? turn = null)
         {
             Files = new FileAssetService(Repository, Objects, Options.Create(new FileAssetOptions { Enabled = true }));
-            Context.Set(new FileAssetScope { TenantId = "tenant", UserId = "user", ConversationId = "conversation" });
+            Context.Set(turn ?? TurnContexts.Create());
             var auth = new Mock<IAgentAuthorizationService>();
             auth.Setup(service => service.IsAuthorizedAsync(It.IsAny<AgentAuthorizationRequest>(), It.IsAny<IAgentUserContext>(), It.IsAny<CancellationToken>()))
                 .Returns(() => Task.FromResult(Authorized));

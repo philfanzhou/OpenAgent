@@ -123,7 +123,7 @@ public class AgentSkillsProviderFactoryTests
 
         internal async Task<AgentSkillsRuntime> CreateRuntimeAsync(bool agentCodeExecution, bool scriptExecutionEnabled)
         {
-            Context.Set(new FileAssetScope { TenantId = "tenant", UserId = "user", ConversationId = "conversation" });
+            Context.Set(TurnContexts.Create());
             RegisterPackage();
             return await Factory.CreateAsync(
                 "agent",
