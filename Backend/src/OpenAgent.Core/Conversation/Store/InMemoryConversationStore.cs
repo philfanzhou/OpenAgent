@@ -214,7 +214,6 @@ internal sealed class InMemoryConversationStore : IConversationStore
         Title = r.Title,
         IsDeletedByUser = r.IsDeletedByUser,
         DeletedAt = r.DeletedAt,
-        ArchivedAt = r.ArchivedAt,
         Messages = [],
         ContextSummaries = []
     };
