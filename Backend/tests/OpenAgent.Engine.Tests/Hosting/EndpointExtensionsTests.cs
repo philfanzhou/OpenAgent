@@ -59,6 +59,35 @@ public class EndpointExtensionsTests
     }
 
     [Fact]
+    public void CreateAgentRequest_CaseVariantContextKeys_ReadsBodyValues()
+    {
+        var context = CreateContext();
+        context.Request.Headers["X-Agent-Id"] = "header-agent";
+        context.Request.Headers["X-Conversation-Id"] = "header-conv";
+
+        var request = new ChatRequest
+        {
+            Message = "hello",
+            Context = new Dictionary<string, object>
+            {
+                ["ConversationId"] = "body-conv",
+                ["AgentId"] = "body-agent",
+                ["LlmProfileId"] = "body-profile",
+                ["ClientType"] = "Teams"
+            }
+        };
+
+        var agentRequest = AgentEndpointRequestMapper.CreateAgentRequest(request, context);
+
+        Assert.Equal("body-conv", agentRequest.ConversationId);
+        Assert.Equal("body-agent", agentRequest.AgentId);
+        Assert.Equal("body-profile", agentRequest.LlmProfileId);
+        Assert.Equal(ClientType.Teams, agentRequest.ClientType);
+        Assert.NotNull(agentRequest.ExternalContext);
+        Assert.Empty(agentRequest.ExternalContext!);
+    }
+
+    [Fact]
     public void CreateAgentRequest_NoChatContext_ExternalContextNull()
     {
         var context = CreateContext(traceId: "trace-2");
