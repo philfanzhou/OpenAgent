@@ -16,6 +16,7 @@ import type {
   LlmProviderProfile,
   LlmTestResult,
   MessageFile,
+  MessageFileMetadata,
   McpServerConfig,
   McpTestResult,
   NativeHealthReport,
@@ -248,25 +249,26 @@ export async function fetchHealth(baseUrl: string, path: '/health' | '/ready'): 
 function normalizeConversation(record: ConversationRecord): ConversationRecord {
   return {
     ...record,
+    // 附件清单与思考链已由后端以强类型 metadata 下发，这里仅做顶层 UI 投影。
     messages: record.messages?.map(message => {
-      const raw = message.metadata?.Files
-      const reasoning = message.metadata?.Reasoning
-      if (!raw) return reasoning ? { ...message, reasoning } : message
-      try {
-        const files = (JSON.parse(raw) as Record<string, unknown>[]).map(file => ({
-          fileId: String(file.fileId ?? file.FileId ?? ''),
-          fileName: String(file.fileName ?? file.FileName ?? ''),
-          mediaType: String(file.mediaType ?? file.MediaType ?? 'application/octet-stream'),
-          length: Number(file.length ?? file.Length ?? 0),
-          ...(file.objectKey || file.ObjectKey
-            ? { objectKey: String(file.objectKey ?? file.ObjectKey) }
-            : {}),
-        })) satisfies MessageFile[]
-        return { ...message, files, ...(reasoning ? { reasoning } : {}) }
-      } catch {
-        return reasoning ? { ...message, reasoning } : message
+      const { files, reasoning } = message.metadata ?? {}
+      if (!files?.length && !reasoning) return message
+      return {
+        ...message,
+        ...(files?.length ? { files: files.map(toMessageFile) } : {}),
+        ...(reasoning ? { reasoning } : {}),
       }
     }),
+  }
+}
+
+function toMessageFile(file: MessageFileMetadata): MessageFile {
+  return {
+    fileId: file.fileId,
+    fileName: file.fileName,
+    mediaType: file.mediaType,
+    length: file.length,
+    ...(file.objectKey ? { objectKey: file.objectKey } : {}),
   }
 }
 

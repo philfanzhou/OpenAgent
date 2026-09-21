@@ -113,7 +113,7 @@ public class ToolFailureIsolationTests
             message.Role == "tool" && message.ToolCallId == "call-1"));
         ConversationMessage partial = record.Messages[^1];
         Assert.Equal("assistant", partial.Role);
-        Assert.Equal("Failed", partial.Metadata?["ExecutionStatus"]);
+        Assert.Equal("Failed", partial.Metadata?.ExecutionStatus);
     }
 
     [Fact]

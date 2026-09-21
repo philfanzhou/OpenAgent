@@ -61,7 +61,7 @@ describe('message presentation', () => {
 
   it('groups stored tool calls and results into the next assistant message', () => {
     const messages: ConversationMessage[] = [
-      { messageId: '1', sequence: 1, role: 'assistant', content: '', timestamp: '', toolName: 'write_file', toolCallId: 'call-1', metadata: { ToolArguments: '{"path":"report.md"}' } },
+      { messageId: '1', sequence: 1, role: 'assistant', content: '', timestamp: '', toolName: 'write_file', toolCallId: 'call-1', metadata: { toolArguments: '{"path":"report.md"}' } },
       { messageId: '2', sequence: 2, role: 'tool', content: 'created', timestamp: '', toolCallId: 'call-1' },
       { messageId: '3', sequence: 3, role: 'assistant', content: 'Done', timestamp: '' },
     ]
@@ -77,12 +77,12 @@ describe('message presentation', () => {
       { messageId: 'user-1', sequence: 1, role: 'user', content: 'Prepare the report', timestamp: '2026-08-19T01:00:00Z' },
       {
         messageId: 'assistant-1', sequence: 2, role: 'assistant', content: 'I will inspect the source.', timestamp: '2026-08-19T01:00:01Z',
-        reasoning: 'Find the source.', toolName: 'load_skill', toolCallId: 'call-1', metadata: { ToolArguments: '{"name":"reports"}' },
+        reasoning: 'Find the source.', toolName: 'load_skill', toolCallId: 'call-1', metadata: { toolArguments: '{"name":"reports"}' },
       },
       { messageId: 'tool-1', sequence: 3, role: 'tool', content: 'Skill loaded', timestamp: '2026-08-19T01:00:02Z', toolCallId: 'call-1' },
       {
         messageId: 'assistant-2', sequence: 4, role: 'assistant', content: '', timestamp: '2026-08-19T01:00:03Z',
-        reasoning: 'Write the report.', toolName: 'write_file', toolCallId: 'call-2', metadata: { ToolArguments: '{"path":"report.md"}' },
+        reasoning: 'Write the report.', toolName: 'write_file', toolCallId: 'call-2', metadata: { toolArguments: '{"path":"report.md"}' },
       },
       { messageId: 'tool-2', sequence: 5, role: 'tool', content: '{"created":true}', timestamp: '2026-08-19T01:00:04Z', toolCallId: 'call-2' },
       { messageId: 'assistant-3', sequence: 6, role: 'assistant', content: 'The report is ready.', timestamp: '2026-08-19T01:00:05Z' },
@@ -149,7 +149,7 @@ describe('message presentation', () => {
 
   it('keeps incomplete tool history in one assistant message after cancellation', () => {
     const messages: ConversationMessage[] = [
-      { messageId: 'call', sequence: 1, role: 'assistant', content: '', timestamp: '2026-08-19T01:00:00Z', toolName: 'read_file', toolCallId: 'call-1', metadata: { ToolArguments: '{bad json' } },
+      { messageId: 'call', sequence: 1, role: 'assistant', content: '', timestamp: '2026-08-19T01:00:00Z', toolName: 'read_file', toolCallId: 'call-1', metadata: { toolArguments: '{bad json' } },
       { messageId: 'result', sequence: 2, role: 'tool', content: 'Cancelled by caller', timestamp: '2026-08-19T01:00:01Z', toolCallId: 'call-1' },
     ]
 
@@ -165,7 +165,7 @@ describe('message presentation', () => {
     const persisted: ConversationMessage[] = [
       {
         messageId: 'call', sequence: 1, role: 'assistant', content: '', timestamp: '', reasoning: 'Trying the write.',
-        toolName: 'write_file', toolCallId: 'call-1', metadata: { ToolArguments: '{"path":"report.md"}' },
+        toolName: 'write_file', toolCallId: 'call-1', metadata: { toolArguments: '{"path":"report.md"}' },
       },
       { messageId: 'result', sequence: 2, role: 'tool', content: 'Permission denied', timestamp: '', toolCallId: 'call-1' },
     ]
