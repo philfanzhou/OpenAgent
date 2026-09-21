@@ -14,13 +14,13 @@ using Microsoft.Extensions.Options;
 using Moq;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Engine.Config;
-using OpenAgent.Engine.Host.Controllers;
+using OpenAgent.Engine.Host.Extensions;
 using OpenAgent.Engine.Host.Middleware;
 using Xunit;
 
 namespace OpenAgent.Engine.Tests.Hosting;
 
-public class ConfigurationControllerTests
+public class ConfigurationEndpointTests
 {
     [Fact]
     public async Task ModelRoutes_PreserveTenantIsolationSecretsAndContextTokensContract()
@@ -49,7 +49,6 @@ public class ConfigurationControllerTests
         WebApplicationBuilder builder = WebApplication.CreateBuilder();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Logging.ClearProviders();
-        builder.Services.AddControllers().AddApplicationPart(typeof(ConfigurationController).Assembly);
         builder.Services.AddSingleton(configuration);
         builder.Services.AddSingleton(clients.Object);
         builder.Services.AddAuthentication("Test").AddScheme<AuthenticationSchemeOptions, TenantAuthenticationHandler>("Test", _ => { });
@@ -58,7 +57,7 @@ public class ConfigurationControllerTests
         app.UseAuthentication();
         app.UseAuthorization();
         app.UseMiddleware<AgentUserContextMiddleware>();
-        app.MapControllers();
+        app.MapConfigurationEndpoints();
         await app.StartAsync();
         using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
 

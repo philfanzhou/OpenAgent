@@ -1,7 +1,7 @@
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Models;
 
-namespace OpenAgent.Engine.Host.Controllers;
+namespace OpenAgent.Engine.Host.Extensions;
 
 internal static class ConfigurationRedactor
 {

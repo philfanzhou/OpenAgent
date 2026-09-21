@@ -10,17 +10,17 @@ internal static class AgentCatalogEndpointExtensions
     {
         group.MapGet("/agents", ExecuteAsync)
             .WithName("ListAgents")
-            .WithTags("Agent");
+            .WithTags("Agent")
+            .WithSummary("列出可用 Agent");
     }
 
-    private static async Task<IResult> ExecuteAsync(
+    private static async Task<IReadOnlyList<AgentSummary>> ExecuteAsync(
         [FromServices] IAgentConfigProvider configProvider,
         HttpContext context,
         CancellationToken cancellationToken)
     {
-        IReadOnlyList<AgentSummary> agents = await configProvider.ListAgentsAsync(
+        return await configProvider.ListAgentsAsync(
             AgentEndpointRequestMapper.RequireTenant(context),
             cancellationToken).ConfigureAwait(false);
-        return Results.Ok(agents);
     }
 }

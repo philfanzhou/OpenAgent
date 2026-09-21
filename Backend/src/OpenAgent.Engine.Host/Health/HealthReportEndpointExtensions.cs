@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Hosting;
+using OpenAgent.Contracts.Responses;
 
 namespace OpenAgent.Engine.Host.Health;
 
@@ -18,20 +19,23 @@ internal static class HealthReportEndpointExtensions
         {
             HealthReport report = await service.CheckHealthAsync(cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
-            return Results.Ok(new
+            return TypedResults.Ok(new HealthReportResponse
             {
-                status = report.Status.ToString(),
-                service = environment.ApplicationName,
-                totalDurationMs = Math.Round(report.TotalDuration.TotalMilliseconds),
-                items = report.Entries.Select(entry => new
+                Status = report.Status.ToString(),
+                Service = environment.ApplicationName,
+                TotalDurationMs = Math.Round(report.TotalDuration.TotalMilliseconds),
+                Items = report.Entries.Select(entry => new HealthReportItemResponse
                 {
-                    key = entry.Key,
-                    status = entry.Value.Status.ToString(),
-                    detail = entry.Value.Description,
-                    latencyMs = Math.Round(entry.Value.Duration.TotalMilliseconds),
-                    data = entry.Value.Data
-                })
+                    Key = entry.Key,
+                    Status = entry.Value.Status.ToString(),
+                    Detail = entry.Value.Description,
+                    LatencyMs = Math.Round(entry.Value.Duration.TotalMilliseconds),
+                    Data = entry.Value.Data
+                }).ToList()
             });
-        });
+        })
+        .WithName("GetHealthReport")
+        .WithTags("Health")
+        .WithSummary("健康检查聚合报告");
     }
 }

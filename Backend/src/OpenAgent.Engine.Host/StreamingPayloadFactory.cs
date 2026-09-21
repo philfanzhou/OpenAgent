@@ -2,6 +2,7 @@ using System.ClientModel;
 using System.Net.Http;
 using System.Net.Sockets;
 using OpenAgent.Contracts.Security;
+using OpenAgent.Hosting.Errors;
 
 namespace OpenAgent.Engine.Host;
 
@@ -78,12 +79,4 @@ internal static class StreamingPayloadFactory
             ? $"模型服务返回错误（{core}）。请检查模型配置后重试。"
             : $"模型服务返回错误（{core}）：{detail}";
     }
-}
-
-internal sealed class StreamingErrorPayload
-{
-    public required string Type { get; init; }
-    public required string Title { get; init; }
-    public required string Detail { get; init; }
-    public required string TraceId { get; init; }
 }

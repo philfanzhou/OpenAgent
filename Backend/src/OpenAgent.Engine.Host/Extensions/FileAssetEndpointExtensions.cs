@@ -1,6 +1,8 @@
+using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Requests;
+using OpenAgent.Contracts.Responses;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Engine.Host.Middleware;
 
@@ -13,23 +15,30 @@ internal static class FileAssetEndpointExtensions
         group.MapPost("/files", UploadAsync)
             .DisableAntiforgery()
             .WithName("UploadFileAsset")
-            .WithTags("File");
-        group.MapGet("/files/{fileId}", GetAsync)
-            .WithName("GetFileAsset")
-            .WithTags("File");
+            .WithTags("File")
+            .WithSummary("上传文件资产");
+        // 字面路由 /files/object 必须先于参数路由 /files/{fileId} 注册，
+        // 不依赖路由优先级兜底。
         group.MapGet("/files/object", ObjectContentAsync)
             .WithName("GetObjectAssetContent")
-            .WithTags("File");
+            .WithTags("File")
+            .WithSummary("按对象路径读取资产内容");
+        group.MapGet("/files/{fileId}", GetAsync)
+            .WithName("GetFileAsset")
+            .WithTags("File")
+            .WithSummary("获取文件资产元数据");
         group.MapGet("/files/{fileId}/content", ContentAsync)
             .WithName("GetFileAssetContent")
-            .WithTags("File");
+            .WithTags("File")
+            .WithSummary("读取文件资产内容");
         group.MapGet("/files/{fileId}/download", DownloadAsync)
             .WithName("DownloadFileAsset")
-            .WithTags("File");
+            .WithTags("File")
+            .WithSummary("下载文件资产（附件）");
         group.MapFileShareLinks();
     }
 
-    private static async Task<IResult> UploadAsync(
+    private static async Task<Created<FileAssetResponse>> UploadAsync(
         [FromServices] IFileAssetService files,
         HttpContext context,
         CancellationToken cancellationToken)
@@ -52,10 +61,10 @@ internal static class FileAssetEndpointExtensions
             content,
             CreateScope(context, conversationId: null),
             cancellationToken).ConfigureAwait(false);
-        return Results.Created($"/api/v1/agent/files/{asset.FileId}", ToResponse(asset));
+        return TypedResults.Created($"/api/v1/agent/files/{asset.FileId}", ToResponse(asset));
     }
 
-    private static async Task<IResult> GetAsync(
+    private static async Task<Results<Ok<FileAssetResponse>, NotFound>> GetAsync(
         [FromServices] IFileAssetService files,
         HttpContext context,
         string fileId,
@@ -65,10 +74,10 @@ internal static class FileAssetEndpointExtensions
             fileId,
             CreateScope(context, conversationId: null),
             cancellationToken).ConfigureAwait(false);
-        return asset == null ? Results.NotFound() : Results.Ok(ToResponse(asset));
+        return asset == null ? TypedResults.NotFound() : TypedResults.Ok(ToResponse(asset));
     }
 
-    private static async Task<IResult> ContentAsync(
+    private static async Task<FileContentHttpResult> ContentAsync(
         [FromServices] IFileAssetService files,
         HttpContext context,
         string fileId,
@@ -79,10 +88,10 @@ internal static class FileAssetEndpointExtensions
             fileId,
             CreateScope(context, conversationId),
             cancellationToken).ConfigureAwait(false);
-        return Results.File(content.Data, content.Asset.MediaType, enableRangeProcessing: false);
+        return TypedResults.File(content.Data, content.Asset.MediaType, enableRangeProcessing: false);
     }
 
-    private static async Task<IResult> ObjectContentAsync(
+    private static async Task<FileContentHttpResult> ObjectContentAsync(
         [FromServices] IFileAssetService files,
         HttpContext context,
         [FromQuery] string? path,
@@ -97,7 +106,7 @@ internal static class FileAssetEndpointExtensions
             path,
             CreateScope(context, conversationId),
             cancellationToken).ConfigureAwait(false);
-        return Results.File(content, InferContentType(path), enableRangeProcessing: false);
+        return TypedResults.File(content, InferContentType(path), enableRangeProcessing: false);
     }
 
     private static string InferContentType(string objectKey)
@@ -123,7 +132,7 @@ internal static class FileAssetEndpointExtensions
         };
     }
 
-    private static async Task<IResult> DownloadAsync(
+    private static async Task<FileContentHttpResult> DownloadAsync(
         [FromServices] IFileAssetService files,
         HttpContext context,
         string fileId,
@@ -134,7 +143,7 @@ internal static class FileAssetEndpointExtensions
             fileId,
             CreateScope(context, conversationId),
             cancellationToken).ConfigureAwait(false);
-        return Results.File(
+        return TypedResults.File(
             content.Data,
             content.Asset.MediaType,
             content.Asset.FileName,
@@ -148,18 +157,18 @@ internal static class FileAssetEndpointExtensions
         ConversationId = conversationId
     };
 
-    private static object ToResponse(FileAsset asset) => new
+    private static FileAssetResponse ToResponse(FileAsset asset) => new()
     {
-        asset.FileId,
-        asset.TenantId,
-        asset.OwnerUserId,
-        asset.FileName,
-        asset.MediaType,
-        asset.Length,
-        asset.Sha256,
-        asset.ObjectKey,
-        asset.Source,
-        asset.State,
-        asset.CreatedAt
+        FileId = asset.FileId,
+        TenantId = asset.TenantId,
+        OwnerUserId = asset.OwnerUserId,
+        FileName = asset.FileName,
+        MediaType = asset.MediaType,
+        Length = asset.Length,
+        Sha256 = asset.Sha256,
+        ObjectKey = asset.ObjectKey,
+        Source = asset.Source,
+        State = asset.State,
+        CreatedAt = asset.CreatedAt
     };
 }

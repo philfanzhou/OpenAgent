@@ -12,7 +12,7 @@ namespace OpenAgent.Router.Tests.Security;
 public class JwtUserContextMiddlewareTests
 {
     [Fact]
-    public async Task InvokeAsync_ProductionHeaderWithoutTenantClaim_ReturnsBadRequest()
+    public async Task InvokeAsync_ProductionHeaderWithoutTenantClaim_ThrowsTenantNotFound()
     {
         bool called = false;
         JwtUserContextMiddleware middleware = CreateMiddleware(
@@ -25,9 +25,11 @@ public class JwtUserContextMiddlewareTests
         DefaultHttpContext context = CreateContext();
         context.Request.Headers["X-Tenant-Id"] = "spoofed-tenant";
 
-        await middleware.InvokeAsync(context);
+        // 缺租户声明时抛领域异常，由共享全局异常中间件统一转换为 ProblemDetails 400。
+        var exception = await Assert.ThrowsAsync<AgentException>(
+            () => middleware.InvokeAsync(context));
 
-        Assert.Equal(StatusCodes.Status400BadRequest, context.Response.StatusCode);
+        Assert.Equal(OpenAgent.Contracts.Requests.AgentErrorCode.TenantNotFound, exception.ErrorCode);
         Assert.False(called);
     }
 
@@ -52,7 +54,7 @@ public class JwtUserContextMiddlewareTests
     }
 
     [Fact]
-    public async Task InvokeAsync_DevelopmentHeaderWithoutClaim_ReturnsBadRequest()
+    public async Task InvokeAsync_DevelopmentHeaderWithoutClaim_ThrowsTenantNotFound()
     {
         JwtUserContextMiddleware middleware = CreateMiddleware(
             Environments.Development,
@@ -60,9 +62,10 @@ public class JwtUserContextMiddlewareTests
         DefaultHttpContext context = CreateContext();
         context.Request.Headers["X-Tenant-Id"] = "development-tenant";
 
-        await middleware.InvokeAsync(context);
+        var exception = await Assert.ThrowsAsync<AgentException>(
+            () => middleware.InvokeAsync(context));
 
-        Assert.Equal(StatusCodes.Status400BadRequest, context.Response.StatusCode);
+        Assert.Equal(OpenAgent.Contracts.Requests.AgentErrorCode.TenantNotFound, exception.ErrorCode);
     }
 
     [Fact]

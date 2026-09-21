@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Execution;
 using OpenAgent.Runner;
@@ -10,6 +11,44 @@ WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 // Information 日志，避免健康探测淹没 stdout 中的业务日志（异常仍以 Warning+ 输出）。
 builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
 builder.WebHost.ConfigureKestrel(server => server.Limits.MaxRequestBodySize = ExecutionLimits.MaxWireBytes);
+// Swagger 仅在开发环境暴露；Runner 刻意不引用 OpenAgent.Hosting，保持沙箱 sidecar 的轻依赖，
+// 因此这里内联与 Hosting 相同的 Bearer 安全定义。
+if (builder.Environment.IsDevelopment())
+{
+    builder.Services.AddEndpointsApiExplorer();
+    builder.Services.AddSwaggerGen(options =>
+    {
+        options.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo
+        {
+            Title = "openagent-runner API",
+            Version = "v1",
+            Description = "沙箱代码执行 sidecar。所有错误统一返回 RFC 7807 ProblemDetails。"
+        });
+        options.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+        {
+            Name = "Authorization",
+            Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
+            Scheme = "bearer",
+            BearerFormat = "opaque",
+            In = Microsoft.OpenApi.Models.ParameterLocation.Header,
+            Description = "输入编排器分配的 Runner API Key。"
+        });
+        options.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
+        {
+            {
+                new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+                {
+                    Reference = new Microsoft.OpenApi.Models.OpenApiReference
+                    {
+                        Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
+                        Id = "Bearer"
+                    }
+                },
+                Array.Empty<string>()
+            }
+        });
+    });
+}
 builder.Services.AddOptions<RunnerOptions>().Bind(builder.Configuration.GetSection("Runner"))
     .Validate(options => options.ApiKey.Length >= 32, "Runner:ApiKey must contain at least 32 characters.")
     .Validate(options => Path.IsPathFullyQualified(options.WorkspaceRoot)
@@ -31,13 +70,24 @@ builder.Services.AddSingleton<SessionSandboxManager>();
 builder.Services.AddSingleton<ICodeExecutor, BubblewrapCodeExecutor>();
 builder.Services.AddHostedService<WorkspaceReaper>();
 WebApplication app = builder.Build();
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
 app.MapGet("/health", async (BubblewrapProcess bubblewrap, CancellationToken cancellationToken) =>
 {
     string sandboxFiles = Path.Combine(AppContext.BaseDirectory, "sandbox");
     return await bubblewrap.IsAvailableAsync(sandboxFiles, cancellationToken)
         ? Results.Ok(new { status = "ready" })
-        : Results.Problem("The Bubblewrap execution environment is unavailable.", statusCode: 503);
-});
+        : Results.Problem(
+            title: "ExecutionEnvironmentUnavailable",
+            detail: "The Bubblewrap execution environment is unavailable.",
+            statusCode: 503);
+})
+    .WithName("RunnerHealth")
+    .WithTags("Runner")
+    .WithSummary("Runner 就绪检查");
 app.Use(async (context, next) =>
 {
     if (context.Request.Path == "/health")
@@ -51,31 +101,58 @@ app.Use(async (context, next) =>
     byte[] suppliedHash = SHA256.HashData(Encoding.UTF8.GetBytes(supplied));
     if (!CryptographicOperations.FixedTimeEquals(expectedHash, suppliedHash))
     {
+        // 与全平台一致的 ProblemDetails 错误契约（含 traceId/timestamp/code）。
         context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+        context.Response.ContentType = "application/problem+json";
+        await context.Response.WriteAsync(RunnerProblem.Serialize(RunnerProblem.Create(
+            "https://error.agent.com/authentication-required",
+            "AuthenticationRequired",
+            StatusCodes.Status401Unauthorized,
+            "A valid Runner API key is required.",
+            context)));
         return;
     }
     await next(context);
 });
-app.MapPost("/v1/execute", async (CodeExecutionRequest request, ICodeExecutor executor, HttpContext context) =>
+app.MapPost("/api/v1/execute",
+    async Task<Results<Ok<CodeExecutionResult>, ProblemHttpResult>> (CodeExecutionRequest request, ICodeExecutor executor, HttpContext context) =>
 {
     try
     {
-        return Results.Ok(await executor.ExecuteAsync(request, context.RequestAborted));
+        return TypedResults.Ok(await executor.ExecuteAsync(request, context.RequestAborted));
     }
     catch (ArgumentException)
     {
-        return Results.Problem("Invalid code or input files.", statusCode: 400);
+        return TypedResults.Problem(RunnerProblem.Create(
+            "https://error.agent.com/invalid-request",
+            "InvalidRequest",
+            StatusCodes.Status400BadRequest,
+            "Invalid code or input files.",
+            context));
     }
     catch (RunnerBusyException)
     {
-        return Results.Problem("Runner concurrency limit reached.", statusCode: 429);
+        return TypedResults.Problem(RunnerProblem.Create(
+            "https://error.agent.com/rate-limited",
+            "RateLimited",
+            StatusCodes.Status429TooManyRequests,
+            "Runner concurrency limit reached.",
+            context));
     }
     catch (Exception exception) when (exception is InvalidOperationException or JsonException
         or PlatformNotSupportedException or System.ComponentModel.Win32Exception)
     {
-        return Results.Problem("The isolated execution environment is unavailable or returned an invalid result.", statusCode: 503);
+        return TypedResults.Problem(RunnerProblem.Create(
+            "https://error.agent.com/dependency-unavailable",
+            "DependencyUnavailable",
+            StatusCodes.Status503ServiceUnavailable,
+            "The isolated execution environment is unavailable or returned an invalid result.",
+            context));
     }
-});
+})
+    .WithName("ExecuteCode")
+    .WithTags("Runner")
+    .WithSummary("在 Bubblewrap 沙箱中执行代码");
 app.Run();
 
 public partial class Program;

@@ -1,3 +1,4 @@
+using OpenAgent.Contracts.Responses;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Engine.Host.Middleware;
 
@@ -19,21 +20,22 @@ internal static class EndpointExtensions
         group.MapGet("/me", (HttpContext context) =>
         {
             IAgentUserContext user = context.GetAgentRequest().User;
-            return Results.Ok(new
+            return TypedResults.Ok(new MeResponse
             {
-                userId = user.UserId,
-                username = user.Username,
-                email = user.Email,
-                tenantId = user.TenantId,
-                roles = user.Roles,
-                groups = user.Groups,
-                claims = user.Claims,
-                audience = user.Audience,
-                isAuthenticated = user.IsAuthenticated
+                UserId = user.UserId,
+                Username = user.Username,
+                Email = user.Email,
+                TenantId = user.TenantId,
+                Roles = user.Roles,
+                Groups = user.Groups,
+                Claims = user.Claims,
+                Audience = user.Audience,
+                IsAuthenticated = user.IsAuthenticated
             });
         })
         .WithName("CurrentAgentUser")
-        .WithTags("Agent");
+        .WithTags("Agent")
+        .WithSummary("当前认证用户信息");
 
         return group;
     }

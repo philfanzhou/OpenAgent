@@ -1,5 +1,6 @@
 using System.Text.Json;
 using OpenAgent.Contracts.Security;
+using OpenAgent.Hosting.Errors;
 using OpenAgent.Router.Models;
 
 namespace OpenAgent.Router.Endpoints;
@@ -29,10 +30,8 @@ internal sealed class AgentSelectionFilter(
         catch (Exception exception) when (
             exception is JsonException or InvalidDataException or BadHttpRequestException)
         {
-            return Results.Problem(
-                statusCode: StatusCodes.Status400BadRequest,
-                title: "Invalid chat request",
-                detail: "The request body must contain valid JSON.");
+            return TypedResults.Problem(AgentProblemDetails.Invalid(
+                "The request body must contain valid JSON.", context));
         }
 
         string? routingConversationId = request.ConversationId
@@ -54,14 +53,14 @@ internal sealed class AgentSelectionFilter(
         }
         catch (AgentRoutingException exception)
         {
-            return RouterProblem.From(exception);
+            return TypedResults.Problem(RouterProblem.From(exception, context));
         }
         if (selection == null)
         {
-            return RouterProblem.From(new AgentRoutingException(
+            return TypedResults.Problem(RouterProblem.From(new AgentRoutingException(
                 StatusCodes.Status503ServiceUnavailable,
                 RouterErrorCodes.NoAgentAvailable,
-                "No Agent could be selected"));
+                "No Agent could be selected"), context));
         }
 
         context.Features.Set(new AgentRoutingFeature(

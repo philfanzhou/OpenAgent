@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.HttpResults;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Engine.Host.Extensions;
@@ -29,13 +30,13 @@ public class AgentProviderEndpointTests
         });
         DefaultHttpContext context = CreateContext(authenticated: true, tenantId, userId);
 
-        IResult result = await AgentProviderEndpointExtensions.ResolveConversationAsync(
+        Results<NoContent, NotFound, UnauthorizedHttpResult> result = await AgentProviderEndpointExtensions.ResolveConversationAsync(
             query,
             context,
             "conversation-1",
             CancellationToken.None);
 
-        IStatusCodeHttpResult status = Assert.IsAssignableFrom<IStatusCodeHttpResult>(result);
+        IStatusCodeHttpResult status = Assert.IsAssignableFrom<IStatusCodeHttpResult>(result.Result);
         Assert.Equal(expectedStatus, status.StatusCode);
         Assert.Equal(tenantId, query.TenantId);
     }
@@ -48,13 +49,13 @@ public class AgentProviderEndpointTests
             "tenant-1",
             "user-1");
 
-        IResult result = await AgentProviderEndpointExtensions.ResolveConversationAsync(
+        Results<NoContent, NotFound, UnauthorizedHttpResult> result = await AgentProviderEndpointExtensions.ResolveConversationAsync(
             new StubConversationQueryService(null),
             context,
             "conversation-1",
             CancellationToken.None);
 
-        IStatusCodeHttpResult status = Assert.IsAssignableFrom<IStatusCodeHttpResult>(result);
+        IStatusCodeHttpResult status = Assert.IsAssignableFrom<IStatusCodeHttpResult>(result.Result);
         Assert.Equal(StatusCodes.Status401Unauthorized, status.StatusCode);
     }
 
@@ -73,13 +74,13 @@ public class AgentProviderEndpointTests
         });
         DefaultHttpContext context = CreateContext(true, "tenant-1", "user-1");
 
-        IResult result = await AgentProviderEndpointExtensions.ResolveConversationAsync(
+        Results<NoContent, NotFound, UnauthorizedHttpResult> result = await AgentProviderEndpointExtensions.ResolveConversationAsync(
             query,
             context,
             "conversation-1",
             CancellationToken.None);
 
-        IStatusCodeHttpResult status = Assert.IsAssignableFrom<IStatusCodeHttpResult>(result);
+        IStatusCodeHttpResult status = Assert.IsAssignableFrom<IStatusCodeHttpResult>(result.Result);
         Assert.Equal(StatusCodes.Status404NotFound, status.StatusCode);
     }
 

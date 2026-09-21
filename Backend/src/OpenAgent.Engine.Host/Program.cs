@@ -1,6 +1,7 @@
 using OpenAgent.Core.Exten;
 using Microsoft.EntityFrameworkCore;
 using OpenAgent.Engine.Extensions;
+using OpenAgent.Engine.Host;
 using OpenAgent.Engine.Host.Files;
 using OpenAgent.Engine.Host.Extensions;
 using OpenAgent.Engine.Host.Health;
@@ -34,8 +35,7 @@ builder.Services.AddSingleton<SkillPackageManagementService>();
 builder.Services.AddAgentEngine(builder.Configuration);
 builder.Services.AddHealthChecks()
     .AddCheck<DatabaseHealthCheck>("database", tags: ["infrastructure", "ready"]);
-builder.Services.AddSingleton<ProblemDetailsFactory>();
-builder.Services.AddSingleton<ErrorMapper>();
+builder.Services.AddEngineErrorHandling();
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment() && app.Configuration.GetValue<bool>("Database:ApplyMigrationsOnStartup"))
@@ -47,14 +47,14 @@ if (app.Environment.IsDevelopment() && app.Configuration.GetValue<bool>("Databas
 }
 
 app.UseAgentHost(builder.Configuration);
-app.UseMiddleware<AgentExceptionHandlerMiddleware>();
+app.UseAgentErrorHandling();
 app.UseMiddleware<AgentUserContextMiddleware>();
 app.UseMiddleware<EngineAdmissionMiddleware>();
 app.MapAgentAuthenticationEndpoints();
 if (app.Environment.IsDevelopment())
 {
     app.MapManagementEndpoints();
-    app.MapControllers();
+    app.MapConfigurationEndpoints();
 }
 app.MapAgentEndpoints();
 app.MapFileShareDownloads();
