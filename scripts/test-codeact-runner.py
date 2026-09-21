@@ -93,7 +93,7 @@ def main():
             else:
                 raise AssertionError("Runner did not become ready.")
 
-            status, _ = request(base_url + "/v1/execute", {"code": "print(42)"})
+            status, _ = request(base_url + "/api/v1/execute", {"code": "print(42)"})
             assert status == 401, status
             code = """
 import os
@@ -128,7 +128,7 @@ assert conversion.returncode == 0, conversion.stderr
 assert Path('/output/report.pdf').read_bytes().startswith(b'%PDF')
 print('isolated execution passed')
 """
-            status, body = request(base_url + "/v1/execute", {"code": code}, key)
+            status, body = request(base_url + "/api/v1/execute", {"code": code}, key)
             assert status == 200, body.decode("utf-8", errors="replace")
             response = json.loads(body)
             assert response["exitCode"] == 0, response["stderr"]
@@ -152,7 +152,7 @@ assert.strictEqual(input.trim(), 'node input');
 await writeFile('/output/node-result.txt', input.trim() + ' ok');
 console.log('javascript passed', process.version);
 """
-            status, body = request(base_url + "/v1/execute", {
+            status, body = request(base_url + "/api/v1/execute", {
                 "code": javascript,
                 "language": "javascript",
                 "files": [{"name": "data.txt", "content": base64.b64encode(b"node input").decode("ascii")}],
@@ -176,7 +176,7 @@ time.sleep(1)
 assert Path('/work/shared-name.txt').read_text() == '{label}'
 Path('/output/{label}.txt').write_text('{label}')
 """
-                return request(base_url + "/v1/execute", {"code": concurrent_code}, key)
+                return request(base_url + "/api/v1/execute", {"code": concurrent_code}, key)
 
             with ThreadPoolExecutor(max_workers=2) as pool:
                 concurrent_results = list(pool.map(run_concurrent, ["alpha", "beta"]))

@@ -10,7 +10,7 @@ Engine 通过 MAF `AIFunction` 暴露 `execute_code`。模型生成 Python（默
 
 ```text
 AgentExecutor → AgentFactory → CapabilityToolFactory → execute_code
-  → RunnerClient → authenticated Runner /v1/execute
+  → RunnerClient → authenticated Runner /api/v1/execute
     → BubblewrapCodeExecutor
       ├─ 无会话键: bwrap 一次性进程沙箱 → execute.py（prlimit 包装）
       └─ 会话键: SessionSandboxManager → 常驻 bwrap 沙箱 → supervisor.py（UDS 逐次执行）
