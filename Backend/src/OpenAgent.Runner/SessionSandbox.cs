@@ -62,17 +62,22 @@ internal sealed class SessionSandbox : ISessionSandbox
         }
         string directory = Path.Combine(settings.WorkspaceRoot,
             SessionSandboxManager.SessionDirectoryPrefix + sessionKey);
-        bool recovered = Directory.Exists(directory);
+        string workDirectory = Path.Combine(directory, "work");
+        // 会话目录存在但工作区已消失：此前的工作区被回收（reset 信号）。
+        // 工作区目录存在则是常态（宿主持久状态跨沙箱重启存活），不再视为 reset。
+        bool recovered = Directory.Exists(directory) && !Directory.Exists(workDirectory);
         string channelDirectory = Path.Combine(directory, "channel");
         Directory.CreateDirectory(channelDirectory);
+        Directory.CreateDirectory(workDirectory);
         if (!OperatingSystem.IsWindows())
         {
             File.SetUnixFileMode(directory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
             File.SetUnixFileMode(channelDirectory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            File.SetUnixFileMode(workDirectory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         }
         string socketPath = Path.Combine(channelDirectory, "supervisor.sock");
         Process process = bubblewrap.StartDetached(
-            BubblewrapCodeExecutor.BuildSessionArguments(settings, channelDirectory, sandboxFilesDirectory));
+            BubblewrapCodeExecutor.BuildSessionArguments(settings, channelDirectory, sandboxFilesDirectory, workDirectory));
         try
         {
             using var startup = new CancellationTokenSource(TimeSpan.FromSeconds(30));

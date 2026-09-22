@@ -36,7 +36,7 @@ AgentExecutor → AgentFactory → CapabilityToolFactory → execute_code
 
 返回 `executionId`、`exitCode`、`timedOut`、`stdout`、`stderr` 和文件元数据数组。成功文件登记为当前用户的 FileAsset，并关联当前会话；只有模型调用 `publish_files` 后才发布到 assistant 消息。二进制字节只在 Runner 与 Engine 之间传输，不进入模型上下文。沙箱不按类型过滤输出文件（尺寸/数量/文件名安全检查保留）；能否入库由存储层依据 `FileMediaTypeCatalog`（或运维收窄后的配置）裁决——不可入库的产物被跳过并在结果的 `skippedFiles` 中给出原因，整个执行不因此失败，模型可改名或转换格式后重试。
 
-无 `SessionKey` 的调用每次创建全新的 namespace、tmpfs 工作区和解释器进程，退出即销毁。携带 `SessionKey`（当前为会话 ID）的调用复用一个常驻会话沙箱：沙箱内由可信 supervisor（UDS 单连接单请求）串行执行每次调用，`/work`、`/tmp`、`/input` 的文件与 `pip install --user` 安装的包跨调用保留；`/output` 中每次调用只返回新写入的文件（旧产物保留可读但不重复返回）。变量与后台进程不跨调用保留——每次调用结束即 kill 整个子进程组。空闲超过 `SessionIdleMinutes`（默认 120 分钟）后沙箱被回收；沙箱死亡或被回收后下一次调用自动重建全新沙箱，结果携带 `sandboxReset=true` 提示状态已丢失。容量由 `MaxSessionSandboxes`（默认 64）限制，满时驱逐最久空闲的沙箱。继续编辑历史产物时，仍显式将前次返回的 fileId 作为新调用输入。输出只接受普通文件，拒绝符号链接、目录、特殊文件及危险名称。
+无 `SessionKey` 的调用每次创建全新的 namespace、tmpfs 工作区和解释器进程，退出即销毁。携带 `SessionKey`（当前为会话 ID）的调用复用一个常驻会话沙箱：沙箱内由可信 supervisor（UDS 单连接单请求）串行执行每次调用，`/work`、`/tmp`、`/input` 的文件与 `pip install --user` 安装的包跨调用保留（`/work` 为宿主侧 `session-<key>/work` 目录的 bind-mount，跨沙箱重启存活，并与 workspace 文件工具共享同一状态）；`/output` 中每次调用只返回新写入的文件（旧产物保留可读但不重复返回）。变量与后台进程不跨调用保留——每次调用结束即 kill 整个子进程组。空闲超过 `SessionIdleMinutes`（默认 120 分钟）后沙箱被回收；沙箱死亡或被回收后下一次调用自动重建全新沙箱，结果携带 `sandboxReset=true` 提示状态已丢失。容量由 `MaxSessionSandboxes`（默认 64）限制，满时驱逐最久空闲的沙箱。继续编辑历史产物时，仍显式将前次返回的 fileId 作为新调用输入。输出只接受普通文件，拒绝符号链接、目录、特殊文件及危险名称。
 
 ## 隔离边界
 
@@ -45,7 +45,7 @@ AgentExecutor → AgentFactory → CapabilityToolFactory → execute_code
 - 独立 user、PID、IPC、network、UTS namespace；cgroup namespace 在内核支持时启用。
 - 沙箱 UID/GID 为 65532；Bubblewrap 的非特权模式默认不向沙箱进程保留 capabilities；同时禁止继续创建 user namespace，并创建新会话。
 - 根文件系统从空 tmpfs 构造并整体重挂为只读，只读暴露 `/usr`、固定 Python venv 与 Node 运行时、最小 passwd/group 和字体配置。
-- 一次性执行将请求输入只读挂载到 `/input`，tmpfs 退出即销毁；会话沙箱将请求输入经控制通道写入持久 `/input` tmpfs，并把仅含 supervisor socket 的通道目录以读写 bind 进沙箱（`/channel`），`/work`、`/output`、`/tmp` 同样为限额 tmpfs 但随沙箱存活。
+- 一次性执行将请求输入只读挂载到 `/input`，tmpfs 退出即销毁；会话沙箱将请求输入经控制通道写入持久 `/input` tmpfs，并把仅含 supervisor socket 的通道目录以读写 bind 进沙箱（`/channel`）；`/work` 是宿主侧会话工作区目录的 bind-mount（Engine 的 workspace 文件工具经 Runner `/api/v1/workspace/*` 端点直接读写同一目录，大小由宿主磁盘与 prlimit FSIZE 约束，空闲回收由 WorkspaceReaper 扫描负责），`/output`、`/tmp` 仍为限额 tmpfs。
 - 不挂载宿主 home、源码、服务配置、凭据、设备、Docker Socket、D-Bus socket 或网络。
 - `--clearenv` 后只注入固定的解释器/locale/语言/时限变量（会话模式下语言/入口/时限按次由 supervisor 注入子进程）。
 - 资源限制逐次施加：一次性执行由 `prlimit` 包装，会话执行由 supervisor 对每次调用的子进程 `setrlimit`（地址空间、CPU 时间、进程数、打开文件数、单文件大小、core dump 等价）；Runner 并发及 systemd cgroup 再限制节点总量。

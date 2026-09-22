@@ -15,7 +15,8 @@ internal sealed class FileAssetCapabilitySource(
     IFileShareService shares,
     FileAssetExecutionContext executionContext,
     IOptions<FileAssetOptions> options,
-    FileAssetUrlDownloader downloader) : ICapabilitySource
+    FileAssetUrlDownloader downloader,
+    OpenAgent.Core.Capabilities.Code.IWorkspaceClient? workspaceClient = null) : ICapabilitySource
 {
     // 错误信封约定：code 稳定供程序判别，error/hint 面向模型给出可行动的修正路径。
     private const string InvalidArguments = "invalid_arguments";
@@ -105,9 +106,12 @@ internal sealed class FileAssetCapabilitySource(
         {
             definitions.Add(new CapabilityDefinition(
                 "download_file",
-                "Download a public HTTP(S) file into the conversation's file storage; returns its fileId. "
+                "Download a public HTTP(S) file. By default it is registered in the conversation's file storage and returns a fileId. "
+                + "Provide workspacePath instead to land the bytes directly in the sandbox workspace "
+                + "(shared with execute_code /work and the workspace tools) and get back {path} — "
+                + "use that form for files you plan to process with execute_code. "
                 + "Only public direct file URLs are supported — this is not a general web fetch.",
-                """{"type":"object","properties":{"url":{"type":"string","description":"The public HTTP(S) URL of the file to download."}},"required":["url"],"additionalProperties":false}""",
+                """{"type":"object","properties":{"url":{"type":"string","description":"The public HTTP(S) URL of the file to download."},"workspacePath":{"type":"string","description":"Optional workspace-relative path; when set, the bytes are written to the sandbox workspace instead of file storage"}},"required":["url"],"additionalProperties":false}""",
                 AgentResourceType.Tool,
                 "file-assets",
                 DownloadAsync));
@@ -349,6 +353,7 @@ internal sealed class FileAssetCapabilitySource(
                 "'url' is a required argument; provide the public HTTP(S) address of the file.",
                 InvalidArguments);
         }
+        string? workspacePath = ReadString(arguments, "workspacePath");
         FileAssetScope? scope = executionContext.Scope;
         if (scope == null || string.IsNullOrWhiteSpace(scope.ConversationId))
         {
@@ -360,6 +365,11 @@ internal sealed class FileAssetCapabilitySource(
         try
         {
             DownloadedFile downloaded = await downloader.DownloadAsync(url, cancellationToken).ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(workspacePath))
+            {
+                return await DownloadToWorkspaceAsync(
+                    scope, workspacePath, downloaded, cancellationToken).ConfigureAwait(false);
+            }
             await using var input = new MemoryStream(downloaded.Content, writable: false);
             FileAsset asset = await files.UploadAsync(
                 new FileAssetCreateRequest
@@ -402,6 +412,39 @@ internal sealed class FileAssetCapabilitySource(
                 "The remote address timed out.",
                 DownloadFailed,
                 hint: "Retry, or point at a faster mirror of the file.");
+        }
+    }
+
+    private async Task<ToolResult> DownloadToWorkspaceAsync(
+        FileAssetScope scope,
+        string workspacePath,
+        DownloadedFile downloaded,
+        CancellationToken cancellationToken)
+    {
+        if (workspaceClient == null
+            || scope.ConversationId is not { } conversationId
+            || !OpenAgent.Contracts.Execution.ExecutionLimits.IsSafeSessionKey(conversationId))
+        {
+            return ToolResult.Error(
+                "workspacePath requires the isolated Runner workspace, which is unavailable for this request.",
+                UnavailableContext);
+        }
+        try
+        {
+            OpenAgent.Contracts.Execution.WorkspaceWriteResult written = await workspaceClient.UploadAsync(
+                conversationId, workspacePath, downloaded.Content, cancellationToken).ConfigureAwait(false);
+            return JsonSerializer.Serialize(new
+            {
+                path = written.Path,
+                fileName = downloaded.FileName,
+                mediaType = downloaded.MediaType,
+                length = written.LengthBytes,
+                location = "workspace"
+            });
+        }
+        catch (OpenAgent.Core.Capabilities.Code.WorkspaceOperationException exception)
+        {
+            return ToolResult.Error(exception.Message, $"workspace_{exception.StatusCode}");
         }
     }
 

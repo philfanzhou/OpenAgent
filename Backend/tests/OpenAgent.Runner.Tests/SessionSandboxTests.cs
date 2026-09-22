@@ -42,6 +42,41 @@ public class SessionSandboxTests
     }
 
     [Fact]
+    public void BuildSessionArguments_WithWorkDirectory_BindsHostWorkInsteadOfTmpfs()
+    {
+        // 会话形态：/work 来自宿主目录（workspace 文件操作与 execute_code 共享状态），
+        // 其余隔离参数与无工作区形态保持一致。
+        var settings = new RunnerOptions
+        {
+            PythonPath = "/opt/openagent-code/venv/bin/python",
+            SessionIdleMinutes = 120,
+            TimeoutSeconds = 120
+        };
+        IReadOnlyList<string> arguments = BubblewrapCodeExecutor.BuildSessionArguments(
+            settings,
+            "/var/lib/runner/session-demo/channel",
+            "/opt/runner/sandbox",
+            "/var/lib/runner/session-demo/work");
+
+        Assert.True(ContainsSequence(
+            arguments, ["--bind", "/var/lib/runner/session-demo/work", "/work"]));
+        // /work 不再出现在任何 tmpfs 挂载里（通过检查 tmpfs 后随目标非 /work 保证）。
+        for (int index = 0; index + 1 < arguments.Count; index++)
+        {
+            if (arguments[index] == "--tmpfs")
+            {
+                Assert.NotEqual("/work", arguments[index + 1]);
+            }
+        }
+        // /output 与 /tmp 仍是受限 tmpfs。
+        Assert.True(ContainsSequence(arguments, ["--perms", "1777", "--tmpfs", "/output"]));
+        Assert.True(ContainsSequence(arguments, ["--perms", "1777", "--tmpfs", "/tmp"]));
+        Assert.Contains("--unshare-net", arguments);
+        Assert.Contains("--die-with-parent", arguments);
+        Assert.Contains("/sandbox/supervisor.py", arguments);
+    }
+
+    [Fact]
     public async Task Manager_SerializesSameSessionAndReportsBusy()
     {
         using var blocker = new SemaphoreSlim(0, 1);

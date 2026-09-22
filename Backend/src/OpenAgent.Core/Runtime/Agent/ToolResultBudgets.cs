@@ -33,6 +33,8 @@ internal static class ToolResultBudgets
     {
         "read_file",
         "list_files",
+        "read_workspace_file",
+        "list_workspace_files",
         "search_knowledge_base",
         "get_current_user_profile",
         "load_skill",

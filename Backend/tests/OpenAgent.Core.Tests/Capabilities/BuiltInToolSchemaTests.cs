@@ -180,6 +180,18 @@ public class BuiltInToolSchemaTests
             new PlanCapabilitySource(),
             new AgentConfig(),
             ["update_plan"]);
+
+        var workspaceContext = new FileAssetExecutionContext();
+        workspaceContext.Set(TurnContexts.Create("tenant-a", "user-a", "conversation-a"));
+        yield return new CapabilityDefinitionHarness(
+            new OpenAgent.Core.Capabilities.Workspace.WorkspaceCapabilitySource(
+                null!,
+                null!,
+                workspaceContext,
+                new AgentAuthorizationGate(new AllowAllAgentAuthorizationService()),
+                Options.Create(new CodeExecutionOptions { Enabled = true })),
+            new AgentConfig { CodeExecution = new CodeExecutionConfig { Enabled = true } },
+            ["list_workspace_files", "read_workspace_file", "write_workspace_file", "edit_workspace_file", "export_workspace_file"]);
     }
 
     private static AgentUserContext User() => new()

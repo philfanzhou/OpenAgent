@@ -43,8 +43,10 @@ internal sealed class CodeCapabilitySource(
                 + "Outputs of any type are collected; only storable types (e.g. html, css, md, csv, json, png, pdf, pptx, xlsx) "
                 + "are registered as files — others are listed under skippedFiles with a reason, so rename or convert them. "
                 + "Calls in one conversation share a persistent sandbox: files you write under /work, /tmp and /input "
-                + "survive between calls until roughly two hours of inactivity, when the sandbox is reclaimed "
-                + "(the result then carries sandboxReset=true and earlier files are gone). "
+                + "survive between calls and even sandbox restarts until roughly two hours of inactivity, when the "
+                + "workspace is reclaimed (the result then carries sandboxReset=true and earlier files are gone). "
+                + "/work is the conversation workspace: read/edit/write/list_workspace_file tools operate on the same "
+                + "files — prefer them for inspection and small edits, use code for computation. "
                 + "On failure inspect exitCode/stderr and retry with fixes. "
                 + "Deliver returned files with publish_files.",
                 """{"type":"object","properties":{"code":{"type":"string","description":"Full source code to execute; entry point is the code itself (main.py/main.mjs are reserved names)"},"language":{"type":"string","enum":["python","javascript"],"description":"Execution language; defaults to python."},"inputFiles":{"type":"array","maxItems":8,"items":{"type":"object","properties":{"fileId":{"type":"string","description":"File asset to mount read-only"},"name":{"type":"string","description":"Mount name under /input"}},"required":["fileId","name"],"additionalProperties":false}}},"required":["code"],"additionalProperties":false}""",
