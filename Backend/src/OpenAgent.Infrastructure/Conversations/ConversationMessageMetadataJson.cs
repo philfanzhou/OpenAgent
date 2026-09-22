@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using OpenAgent.Contracts.Conversation;
 
 namespace OpenAgent.Infrastructure;
@@ -43,6 +44,8 @@ internal static partial class ConversationMessageMetadataJson
         {
             return null;
         }
+        // LoggerMessage 生成代码假定非空 logger；解析告警不能因调用方省略 logger 而崩。
+        logger ??= NullLogger.Instance;
 
         JsonDocument parsed;
         try
@@ -105,7 +108,7 @@ internal static partial class ConversationMessageMetadataJson
     private static List<MessageFileMetadata>? ReadFiles(
         JsonProperty property,
         ConversationMessageMetadata metadata,
-        ILogger? logger)
+        ILogger logger)
     {
         // 旧形态把附件数组二次序列化成字符串；新形态直接是数组。
         string payload = property.Value.ValueKind == JsonValueKind.String
@@ -126,7 +129,7 @@ internal static partial class ConversationMessageMetadataJson
     private static string? ReadString(
         JsonProperty property,
         ConversationMessageMetadata metadata,
-        ILogger? logger)
+        ILogger logger)
     {
         if (property.Value.ValueKind is JsonValueKind.String or JsonValueKind.Null)
         {
@@ -168,9 +171,9 @@ internal static partial class ConversationMessageMetadataJson
 
     [LoggerMessage(EventId = 5001, Level = LogLevel.Warning,
         Message = "Conversation message metadata payload is not a parsable JSON object; preserved raw payload in extensions")]
-    internal static partial void LogPayloadParseFailure(ILogger? logger, Exception? exception);
+    internal static partial void LogPayloadParseFailure(ILogger logger, Exception? exception);
 
     [LoggerMessage(EventId = 5002, Level = LogLevel.Warning,
         Message = "Conversation message metadata key '{Key}' could not be parsed into its typed shape; preserved raw value in extensions")]
-    internal static partial void LogValueParseFailure(ILogger? logger, Exception? exception, string key);
+    internal static partial void LogValueParseFailure(ILogger logger, Exception? exception, string key);
 }

@@ -53,7 +53,7 @@ public sealed class MessageMetadataInMemoryStoreTests
         ConversationMessage message = Assert.Single(record!.Messages);
 
         Assert.Same(metadata, message.Metadata);
-        Assert.Equal("file-1", Assert.Single(message.Metadata.Files!).FileId);
+        Assert.Equal("file-1", Assert.Single(message.Metadata!.Files!).FileId);
         Assert.Equal("thinking", message.Metadata.Reasoning);
         Assert.Equal("Cancelled", message.Metadata.ExecutionStatus);
         Assert.Equal("{\"a\":1}", message.Metadata.ToolArguments);

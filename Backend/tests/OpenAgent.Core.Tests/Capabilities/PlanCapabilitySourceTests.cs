@@ -121,12 +121,12 @@ public class PlanCapabilitySourceTests
         int toolResultIndex = events.FindIndex(item =>
             item.Type == AgentStreamEventType.ToolResult && item.ToolCallId == "call-1");
         Assert.True(toolResultIndex >= 0, "tool result event must be emitted");
-        AgentStreamEvent planEvent = events
+        AgentStreamEvent? planEvent = events
             .Where(item => item.Type == AgentStreamEventType.PlanUpdated)
             .SingleOrDefault();
         Assert.NotNull(planEvent);
-        Assert.True(events.IndexOf(planEvent) > toolResultIndex, "plan event must follow the tool result");
-        using JsonDocument document = JsonDocument.Parse(planEvent.Content!);
+        Assert.True(events.IndexOf(planEvent!) > toolResultIndex, "plan event must follow the tool result");
+        using JsonDocument document = JsonDocument.Parse(planEvent!.Content!);
         Assert.Equal(2, document.RootElement.GetProperty("total").GetInt32());
         Assert.Equal(1, document.RootElement.GetProperty("completed").GetInt32());
     }

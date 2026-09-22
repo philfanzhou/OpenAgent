@@ -68,7 +68,7 @@ public class OtlpLogExportIntegrationTests
                 var received = await Task.WhenAny(requestTask, Task.Delay(TimeSpan.FromSeconds(15))) == requestTask;
 
                 Assert.True(received, "No OTLP export request reached the endpoint within the timeout.");
-                HttpListenerContext context = requestTask.Result;
+                HttpListenerContext context = await requestTask;
                 Assert.Equal(
                     $"/v1/logs",
                     context.Request.Url?.AbsolutePath,

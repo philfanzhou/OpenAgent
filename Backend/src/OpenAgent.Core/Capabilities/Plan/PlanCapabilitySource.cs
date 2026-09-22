@@ -13,6 +13,8 @@ namespace OpenAgent.Core.Capabilities.Plan;
 /// </summary>
 internal sealed class PlanCapabilitySource : ICapabilitySource
 {
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
     private const string Name = "update_plan";
     private const string Description =
         "Record or update the task plan for the current run. "
@@ -160,6 +162,6 @@ internal sealed class PlanCapabilitySource : ICapabilitySource
             plan = steps.Select(item => new { item.Step, item.Status }).ToArray(),
             completed = steps.Count(item => item.Status == "completed"),
             total = steps.Count
-        })));
+        }, JsonOptions)));
     }
 }

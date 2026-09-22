@@ -19,7 +19,6 @@ internal sealed class McpToolFactory(
     McpClientPool clients,
     AgentAuthorizationGate authorization,
     IMcpRegistry registry,
-    ILoggerFactory loggerFactory,
     ILogger<McpToolFactory> logger)
 {
     internal async Task<McpToolRuntime> CreateAsync(

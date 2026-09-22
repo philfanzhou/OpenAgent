@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildConversationTimeline, buildDisplayMessages } from './messagePresentation'
+import { buildConversationTimeline, buildDisplayMessages, mergeAssistantSnapshot, parsePlanSnapshot } from './messagePresentation'
 import type { ContextSummary, ConversationMessage } from './types'
 
 function message(partial: Partial<ConversationMessage> & { role: ConversationMessage['role'] }): ConversationMessage {
@@ -62,5 +62,80 @@ describe('messagePresentation', () => {
     const timeline = buildConversationTimeline(messages, [summary])
 
     expect(timeline.map(item => item.kind)).toEqual(['message', 'message', 'summary', 'message', 'message'])
+  })
+})
+
+describe('plan snapshot', () => {
+  const camelPayload = JSON.stringify({
+    plan: [
+      { step: 'collect', status: 'completed' },
+      { step: 'analyze', status: 'in_progress' },
+      { step: 'report', status: 'pending' },
+    ],
+    completed: 1,
+    total: 3,
+  })
+
+  it('parses camelCase plan snapshots from live events', () => {
+    const snapshot = parsePlanSnapshot(camelPayload)
+    expect(snapshot?.total).toBe(3)
+    expect(snapshot?.completed).toBe(1)
+    expect(snapshot?.plan.map(item => item.status)).toEqual(['completed', 'in_progress', 'pending'])
+  })
+
+  it('parses legacy PascalCase snapshots from stored history rows', () => {
+    const snapshot = parsePlanSnapshot(JSON.stringify({
+      plan: [{ Step: 'collect', Status: 'in_progress' }],
+    }))
+    expect(snapshot?.plan).toEqual([{ step: 'collect', status: 'in_progress' }])
+    expect(snapshot?.completed).toBe(0)
+    expect(snapshot?.total).toBe(1)
+  })
+
+  it('returns undefined for malformed or plan-less payloads', () => {
+    expect(parsePlanSnapshot(undefined)).toBeUndefined()
+    expect(parsePlanSnapshot('not json')).toBeUndefined()
+    expect(parsePlanSnapshot(JSON.stringify({ plan: [] }))).toBeUndefined()
+    expect(parsePlanSnapshot(JSON.stringify({ total: 3 }))).toBeUndefined()
+  })
+
+  it('projects update_plan history tool rows onto the assistant plan', () => {
+    const rows = [
+      message({ sequence: 1, role: 'user', content: 'hi' }),
+      message({ sequence: 2, role: 'assistant', content: '', toolCallId: 'call-1', toolName: 'update_plan' }),
+      message({ sequence: 3, role: 'tool', content: camelPayload, toolCallId: 'call-1', toolName: 'update_plan' }),
+      message({ sequence: 4, role: 'assistant', content: 'done' }),
+    ]
+
+    const display = buildDisplayMessages(rows)
+    const assistant = display[1]!
+    expect(assistant.plan?.total).toBe(3)
+    expect(assistant.plan?.plan[1]).toEqual({ step: 'analyze', status: 'in_progress' })
+  })
+
+  it('keeps the streamed plan when the persisted history replaces the optimistic message', () => {
+    const history = [
+      message({ sequence: 1, role: 'user', content: 'hi' }),
+      message({ sequence: 2, role: 'assistant', content: 'final answer' }),
+    ]
+    const snapshot = message({ sequence: 2, role: 'assistant', content: '' })
+    snapshot.plan = parsePlanSnapshot(camelPayload)
+
+    const merged = mergeAssistantSnapshot(history, snapshot)
+    const assistant = merged[1]!
+    expect(assistant.plan?.total).toBe(3)
+  })
+
+  it('keeps the stored plan when the streamed snapshot carries none', () => {
+    const storedRow = message({ sequence: 2, role: 'assistant', content: 'final answer' })
+    storedRow.plan = parsePlanSnapshot(camelPayload)
+    const history = [
+      message({ sequence: 1, role: 'user', content: 'hi' }),
+      storedRow,
+    ]
+    const snapshot = message({ sequence: 2, role: 'assistant', content: '' })
+
+    const merged = mergeAssistantSnapshot(history, snapshot)
+    expect(merged[1]!.plan?.total).toBe(3)
   })
 })

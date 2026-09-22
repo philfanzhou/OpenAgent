@@ -88,7 +88,10 @@ internal sealed class BubblewrapCodeExecutor(
             }
             foreach (string file in Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories))
             {
-                File.SetUnixFileMode(file, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+                if (OperatingSystem.IsLinux())
+                {
+                    File.SetUnixFileMode(file, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+                }
             }
 
             var executed = await bubblewrap.RunAsync(

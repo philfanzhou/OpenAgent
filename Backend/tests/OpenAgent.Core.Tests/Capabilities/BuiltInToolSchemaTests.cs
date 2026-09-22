@@ -117,7 +117,7 @@ public class BuiltInToolSchemaTests
         {
             foreach (JsonElement requiredName in required.EnumerateArray())
             {
-                Assert.Contains(requiredName.GetString(), declared);
+                Assert.Contains(requiredName.GetString()!, declared);
             }
         }
         foreach (JsonProperty property in properties.EnumerateObject())
@@ -210,6 +210,6 @@ public class BuiltInToolSchemaTests
         public string ApplicationName { get; set; } = "tests";
         public string EnvironmentName { get; set; } = Environments.Production;
         public string ContentRootPath { get; set; } = ".";
-        public IFileProvider? ContentRootFileProvider { get; set; }
+        public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
     }
 }

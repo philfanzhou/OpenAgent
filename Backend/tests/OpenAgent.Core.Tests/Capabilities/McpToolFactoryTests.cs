@@ -39,7 +39,6 @@ public sealed class McpToolFactoryTests
                 Options.Create(new McpExecutionOptions())),
             new AgentAuthorizationGate(new AllowAllAgentAuthorizationService()),
             new McpRegistry(),
-            NullLoggerFactory.Instance,
             NullLogger<McpToolFactory>.Instance);
         var config = new McpConfig
         {
@@ -80,7 +79,6 @@ public sealed class McpToolFactoryTests
                 Options.Create(new McpExecutionOptions())),
             new AgentAuthorizationGate(new AllowAllAgentAuthorizationService()),
             new McpRegistry(),
-            NullLoggerFactory.Instance,
             NullLogger<McpToolFactory>.Instance);
         var config = new McpConfig
         {

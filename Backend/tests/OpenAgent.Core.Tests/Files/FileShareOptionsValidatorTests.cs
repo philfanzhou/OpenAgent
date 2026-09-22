@@ -24,7 +24,7 @@ public class FileShareOptionsValidatorTests
             new FileShareOptions { MaxLifetimeSeconds = FileShareOptions.MaxLifetimeLimitSeconds + 1 });
 
         Assert.False(result.Succeeded);
-        Assert.Contains(result.Failures, failure => failure.Contains("365 days", StringComparison.Ordinal));
+        Assert.Contains(result.Failures!, failure => failure.Contains("365 days", StringComparison.Ordinal));
     }
 
     [Fact]

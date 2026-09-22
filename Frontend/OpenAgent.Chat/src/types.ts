@@ -43,11 +43,25 @@ export interface MessageFileMetadata {
   objectKey?: string | null
 }
 
+export interface PlanStep {
+  step: string
+  status: 'pending' | 'in_progress' | 'completed'
+}
+
+/** update_plan 工具结果 / plan_updated 事件的计划快照（模型每次全量重发）。 */
+export interface PlanSnapshot {
+  plan: PlanStep[]
+  completed: number
+  total: number
+}
+
 export interface ConversationMessage {
   messageId: string
   sequence: number
   role: string
   content: string
+  /** UI-only 任务计划快照：从 update_plan 工具结果 / plan_updated 事件投影。 */
+  plan?: PlanSnapshot
   toolCallId?: string
   toolName?: string
   idempotencyKey?: string
