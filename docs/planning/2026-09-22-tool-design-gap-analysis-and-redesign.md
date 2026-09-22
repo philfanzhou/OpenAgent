@@ -26,6 +26,11 @@
 > - MCP 延迟加载（原 P3 计划提前）：可见 MCP 工具 > `Mcp:DeferredToolThreshold`（默认 20）时改为单个 `search_tools` 检索入口，命中即激活并经 DeferredToolInjector（FICC 内层）逐轮注入（对标 Codex tool_search/defer_loading）。
 > - ~~`AgentConfig.Tools.Disabled` 每代理工具裁剪~~：曾实现（含 EF 持久化与端到端验证，实测 1624→55 tokens/-97%），**后按维护者决定移除**——不在数据库存储工具选择、不做按代理禁用，留待以后需要时恢复（实现记录在 git 历史与本 PR）。
 > 验证：841 测试通过；延迟加载已对真实 mock MCP server（25 工具）端到端验证（检索→激活→调用→执行）。
+> **实施记录（2026-09-22，P3 第一批：web + 上下文管理）**：
+> - `web_fetch`：HTML→纯文本提取（无新依赖），复用 SSRF 防护下载器，15 分钟缓存，ReadOnly。
+> - `get_context_remaining`：窗口 + 已完成轮用量求和 + chars/4 估算（在途轮不计入）。
+> - 自动压缩开启：摘要链路加 UserMessageEnsuringChatClient（无 user 消息时补占位），解除 Qwen 系模板阻塞；appsettings 默认 true。
+> 验证：851 测试通过（新增 WebAndContextCapabilityTests 9 项 + schema lint 纳入）；clean 构建 0 警告。P3 余项：spawn_task 子代理、审批环、transcript 评测。
 
 ## 0. 结论先行
 

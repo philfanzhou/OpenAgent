@@ -179,8 +179,11 @@ internal sealed class ConversationHistoryFactory
             ? 0
             : Math.Max(1, policy?.PreserveRecentTurns ?? 2);
         string prompt = $"{SummarizationPrompt.Trim()}\nHARD LIMIT: the summary must not exceed {summaryBudget} tokens.";
+        // 摘要请求只有系统/助手侧指令时，Qwen 系服务端模板会拒绝；补一条占位
+        // user 消息后再限输出预算。
         return new SummarizationCompactionStrategy(
-            new OutputTokenLimitedChatClient(chatClient, summaryBudget),
+            new OutputTokenLimitedChatClient(
+                new UserMessageEnsuringChatClient(chatClient), summaryBudget),
             trigger,
             minimumPreservedGroups,
             summarizationPrompt: prompt,

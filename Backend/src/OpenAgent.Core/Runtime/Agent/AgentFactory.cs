@@ -82,6 +82,13 @@ internal sealed class AgentFactory
             input,
             files,
             profile.Model.Modality == ModelModality.Multimodal);
+        // 本轮模型上下文窗口：get_context_remaining 工具的输入（0 = 未配置）。
+        var runModel = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions
+            .GetService<OpenAgent.Core.Capabilities.Context.RunModelContext>(_services);
+        if (runModel != null)
+        {
+            runModel.ContextTokens = profile.Model.ContextTokens;
+        }
         IReadOnlyList<AITool> tools = await _capabilities.CreateAsync(
             profile.AgentId,
             profile.Config,
@@ -102,8 +109,8 @@ internal sealed class AgentFactory
                 user,
                 cancellationToken).ConfigureAwait(false);
 
-            // 自动压缩暂时禁用（ConversationStore:EnableAutoCompaction，默认 false）：
-            // 压缩可能把当前轮 user query 一并摘要，Qwen 系服务端模板会拒绝无 user 消息的请求。
+            // 自动压缩（ConversationStore:EnableAutoCompaction，appsettings 默认开启）：
+            // 摘要请求经 UserMessageEnsuringChatClient 兜底 user 消息，Qwen 系模板兼容。
             IChatClient compactingClient = modelClient;
             if (_conversations.AutoCompactionEnabled)
             {

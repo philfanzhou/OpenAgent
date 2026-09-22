@@ -181,6 +181,16 @@ public class BuiltInToolSchemaTests
             new AgentConfig(),
             ["update_plan"]);
 
+        yield return new CapabilityDefinitionHarness(
+            new OpenAgent.Core.Capabilities.Web.WebCapabilitySource(null!),
+            new AgentConfig(),
+            ["web_fetch"]);
+
+        yield return new CapabilityDefinitionHarness(
+            new OpenAgent.Core.Capabilities.Context.ContextCapabilitySource(null!, null!, new()),
+            new AgentConfig(),
+            ["get_context_remaining"]);
+
         var workspaceContext = new FileAssetExecutionContext();
         workspaceContext.Set(TurnContexts.Create("tenant-a", "user-a", "conversation-a"));
         yield return new CapabilityDefinitionHarness(
