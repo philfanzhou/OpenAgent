@@ -1,5 +1,6 @@
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Options;
 using OpenAgent.Core.Capabilities;
 using OpenAgent.Core.Capabilities.Mcp;
 using OpenAgent.Core.Capabilities.Skill;
@@ -22,6 +23,7 @@ internal sealed class AgentFactory
     private readonly AgentSkillsProviderFactory _skills;
     private readonly FileAssetExecutionContext _files;
     private readonly IServiceProvider _services;
+    private readonly TimeSpan _toolCallTimeout;
 
     public AgentFactory(
         IAgentChatClientFactory chatClients,
@@ -30,7 +32,8 @@ internal sealed class AgentFactory
         McpToolFactory mcpTools,
         AgentSkillsProviderFactory skills,
         FileAssetExecutionContext files,
-        IServiceProvider services)
+        IServiceProvider services,
+        IOptions<AgentExecutionOptions> executionOptions)
     {
         _chatClients = chatClients;
         _conversations = conversations;
@@ -39,6 +42,9 @@ internal sealed class AgentFactory
         _skills = skills;
         _files = files;
         _services = services;
+        // 小于等于 0 视为不限时；正数作为所有工具（能力+MCP）单次调用的统一上限。
+        int seconds = executionOptions.Value.ToolCallTimeoutSeconds;
+        _toolCallTimeout = seconds <= 0 ? Timeout.InfiniteTimeSpan : TimeSpan.FromSeconds(seconds);
     }
 
     /// <summary>
@@ -135,10 +141,11 @@ internal sealed class AgentFactory
                         ? null
                         : profile.Config.Instructions,
                     Temperature = (float?)profile.Model.Temperature,
-                    // 工具（MCP/能力）异常在调用处被隔离成错误结果回传给模型，
-                    // 避免 FunctionInvokingChatClient 连续失败后重抛导致整轮执行终止。
+                    // 工具（MCP/能力）异常与超时在调用处被隔离成错误结果回传给模型
+                    // （超时带 timedOut 标记），避免 FunctionInvokingChatClient
+                    // 连续失败后重抛导致整轮执行终止。
                     Tools = tools.Concat(mcpRuntime.Tools)
-                        .Select(IsolatedToolFunction.Wrap)
+                        .Select(tool => IsolatedToolFunction.Wrap(tool, _toolCallTimeout))
                         .ToList()
                 },
                 ChatHistoryProvider = history,
