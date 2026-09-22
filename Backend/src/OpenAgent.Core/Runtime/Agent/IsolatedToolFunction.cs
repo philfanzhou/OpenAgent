@@ -156,6 +156,10 @@ internal sealed class IsolatedToolFunction : AIFunction
         ToolResult { IsError: true } toolResult => toolResult.Content,
         ToolResult toolResult => Truncate(toolResult.Content),
         string text => Truncate(text),
+        // MCP 工具多内容块返回 AIContent（或其数组）：这里就是工具回传模型的
+        // 唯一出口，必须落成字符串，否则下游 ToString 只剩类型名。
+        AIContent single => Truncate(ToolResultText.Render(single) ?? string.Empty),
+        IEnumerable<AIContent> contents => Truncate(ToolResultText.JoinContents(contents)),
         _ => result
     };
 

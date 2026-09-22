@@ -25,6 +25,24 @@ public sealed class AgentMessageAdapterTests
     }
 
     [Fact]
+    public void ToStored_McpMultiContentResult_PersistsReadableTextNotTypeName()
+    {
+        // MCP 多内容块结果为 AIContent 数组：持久化必须落成展平文本，
+        // 否则下一轮历史回喂 "Microsoft.Extensions.AI.AIContent[]"，
+        // 模型看到无意义输出后会反复空参重试同一工具。
+        ChatMessage response = new(
+            ChatRole.Tool,
+            [new FunctionResultContent("call-1",
+                new AIContent[] { new TextContent("part-1"), new TextContent("part-2") })]);
+        int sequence = 1;
+
+        ConversationMessage stored = Assert.Single(AgentMessageAdapter.ToStored([response], ref sequence));
+
+        Assert.Equal("tool", stored.Role);
+        Assert.Equal("part-1\npart-2", stored.Content);
+    }
+
+    [Fact]
     public void ToStored_CompactionSummary_PersistsSummaryRole()
     {
         var response = new ChatMessage(ChatRole.Assistant, "Earlier conversation summary")
