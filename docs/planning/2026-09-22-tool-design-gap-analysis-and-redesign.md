@@ -23,9 +23,9 @@
 > 验证：clean 构建 0 警告 0 错误；全解决方案 824 测试通过（新增 `WorkspaceStoreTests` 16 项、`WorkspaceCapabilitySourceTests` 6 项、会话参数 bind 断言与 schema lint 纳入）。bwrap 真机路径（挂载/uid 映射/重置）依赖 Linux，由环境门控测试与部署验证覆盖。
 > **实施记录（2026-09-22，P3 提前项：工具 token 成本治理，基于 #131）**：
 > - 量化：16 个内置工具定义 ≈ 11.3k 字符（~2.8k tokens/请求，不含 provider 序列化开销）；AgentFactory 每轮 Info 日志记录实际水位。
-> - `AgentConfig.Tools.Disabled`：每代理按运行时名禁用工具（`mcp__server__*` 前缀通配），发现阶段过滤（内置+MCP），ACL 不变——简单代理可裁掉整套文件/工作区/执行工具。
-> - MCP 延迟加载（原 P3 计划提前）：可见 MCP 工具 > `Mcp:DeferredToolThreshold`（默认 20）时改为单个 `search_tools` 检索入口，命中即激活并经一致隔离包装注入后续请求（对标 Codex tool_search/defer_loading）。
-> 验证：838 测试通过（新增 ToolTokenControlTests 14 项 + 工厂裁剪测试）。
+> - MCP 延迟加载（原 P3 计划提前）：可见 MCP 工具 > `Mcp:DeferredToolThreshold`（默认 20）时改为单个 `search_tools` 检索入口，命中即激活并经 DeferredToolInjector（FICC 内层）逐轮注入（对标 Codex tool_search/defer_loading）。
+> - ~~`AgentConfig.Tools.Disabled` 每代理工具裁剪~~：曾实现（含 EF 持久化与端到端验证，实测 1624→55 tokens/-97%），**后按维护者决定移除**——不在数据库存储工具选择、不做按代理禁用，留待以后需要时恢复（实现记录在 git 历史与本 PR）。
+> 验证：841 测试通过；延迟加载已对真实 mock MCP server（25 工具）端到端验证（检索→激活→调用→执行）。
 
 ## 0. 结论先行
 

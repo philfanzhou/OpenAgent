@@ -16,7 +16,6 @@ internal sealed class AgentConfigurationEntity
     public string RagJson { get; set; } = "{}";
     public string SkillsJson { get; set; } = "{}";
     public string CodeExecutionJson { get; set; } = "{}";
-    public string ToolsJson { get; set; } = "{}";
     public long Version { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
 }

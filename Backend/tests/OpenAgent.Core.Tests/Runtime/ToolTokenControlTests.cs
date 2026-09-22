@@ -9,27 +9,6 @@ namespace OpenAgent.Core.Tests.Runtime;
 
 public class ToolTokenControlTests
 {
-    // ---- 每代理工具裁剪 ----
-
-    [Theory]
-    [InlineData("write_file", true)]
-    [InlineData("WRITE_FILE", true)]
-    [InlineData("mcp__github__create_issue", true)]
-    [InlineData("mcp__slack__post", false)]
-    [InlineData("read_file", false)]
-    public void IsDisabled_MatchesExactNameOrPrefixWildcard(string name, bool expected)
-    {
-        IReadOnlyList<string> patterns = ["write_file", "mcp__github__*"];
-
-        Assert.Equal(expected, ToolSelection.IsDisabled(patterns, name));
-    }
-
-    [Fact]
-    public void IsDisabled_EmptyOrBlankPatterns_NeverDisable()
-    {
-        Assert.False(ToolSelection.IsDisabled(["", "  "], "anything"));
-    }
-
     // ---- 延迟目录：检索与激活 ----
 
     [Fact]
@@ -145,7 +124,7 @@ public class ToolTokenControlTests
         // 未激活时不改写。
         await injector.GetResponseAsync([new ChatMessage(ChatRole.User, "hi")], options, CancellationToken.None);
         ChatOptions first = ((CapturingChatClient)injector.GetService(typeof(CapturingChatClient))!).LastOptions!;
-        Assert.Equal(1, first.Tools!.Count);
+        Assert.Single(first.Tools!);
 
         // 激活后每轮请求都带上（经 wrap 工厂），且幂等不重复。
         catalog.Activate(["mcp__cal__create_event"]);

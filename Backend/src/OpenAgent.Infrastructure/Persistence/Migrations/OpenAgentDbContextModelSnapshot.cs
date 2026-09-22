@@ -72,10 +72,6 @@ namespace OpenAgent.Infrastructure.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
 
-                    b.Property<string>("ToolsJson")
-                        .IsRequired()
-                        .HasColumnType("text");
-
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -103,7 +99,6 @@ namespace OpenAgent.Infrastructure.Migrations
                             RagJson = "{}",
                             SkillsJson = "{}",
                             Status = "Published",
-                            ToolsJson = "{}",
                             UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             Version = 1L
                         },
@@ -120,7 +115,6 @@ namespace OpenAgent.Infrastructure.Migrations
                             RagJson = "{}",
                             SkillsJson = "{}",
                             Status = "Published",
-                            ToolsJson = "{}",
                             UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             Version = 1L
                         });

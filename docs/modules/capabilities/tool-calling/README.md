@@ -15,7 +15,6 @@
 | 并行工具调用 | 同一条 assistant 消息里的多个调用并发执行；仅能力源显式声明 ReadOnly 的工具真正并行（read_file/list_files/search_knowledge_base/get_current_user_profile/update_plan），其余（写入/执行/MCP/Skill）由每轮共享信号量串行化；排队等待计入单次调用超时 |
 | 会话工作区 | 五个 workspace 工具操作宿主侧 session-\<key\>/work（bind-mount 进会话沙箱 /work，与 execute_code 共享状态）：`list_workspace_files`（ReadOnly）/`read_workspace_file`（cat -n 行号 + offset/limit 分页，ReadOnly）/`write_workspace_file`/`edit_workspace_file`（精确字符串替换 + 唯一性校验）/`export_workspace_file`（工作区→file asset→publish 交付桥）；`download_file` 可选 workspacePath 直落工作区 |
 | 计划工具 | `update_plan`（对标 Claude Code TodoWrite / Codex update_plan）：全量重发步骤列表，≤1 个 in_progress；结果快照落进会话时间线，SSE 附加 `plan_updated` 事件 |
-| 每代理工具裁剪 | `AgentConfig.Tools.Disabled` 按运行时名禁用工具（支持 `mcp__server__*` 前缀通配），内置与 MCP 一致生效；仅影响模型可见性，ACL 语义不变 |
 | MCP 延迟加载 | 可见 MCP 工具超过 `Mcp:DeferredToolThreshold`（默认 20，≤0 关闭）时不整体注入，改由单个 `search_tools` 入口按需检索激活（对标 Codex defer_loading）；激活的工具经与内联一致的隔离包装注入后续请求 |
 | 工具体量观测 | AgentFactory 每轮记录 `Agent tool definitions: N tools, X chars (~Y tokens per request)`，追踪工具吃上下文的实际水位 |
 | MCP 连接池化 | `McpClientPool` 按（租户, 服务器地址）缓存客户端跨轮复用；每轮 ListTools 兼作健康探测，坏连接淘汰后立即重连一次；空闲超过 `Mcp:ClientIdleTimeoutSeconds`（默认 600s）惰性淘汰 |
@@ -48,8 +47,8 @@ AgentFactory
 - 无工具调用结果缓存
 - 池化连接的复用/空闲淘汰路径无自动化测试（MCP SDK 无公开内存传输），当前靠失败路径单测 + 代码审查保障
 - 预算按字符计（≈4 字符/token），非精确 token 计数
-- 16 个内置工具全开时定义体量 ≈ 11.3k 字符（~2.8k tokens/请求）；用每代理裁剪按需收敛，MCP 大目录交给延迟加载
-- Skill 工具（load_skill/read_skill_resource/run_skill_script）由 MAF provider 注册，暂不参与每代理裁剪
+- 16 个内置工具全开时定义体量 ≈ 11.3k 字符（~2.8k tokens/请求）；按环境/代理关功能开关（FileAssets、CodeExecution、Rag、Mcp 绑定）收敛，MCP 大目录交给延迟加载
+- 每代理按工具名的可见性裁剪曾实现后按维护者决定移除（推迟；如需恢复见方案文档记录）
 
 ## Source
 - Core: `Backend/src/OpenAgent.Core/Capabilities/`（CapabilityToolFactory、Plan/PlanCapabilitySource、Mcp/McpClientPool 等）、`Runtime/Agent/IsolatedToolFunction.cs`、`Runtime/Agent/ToolResultBudgets.cs`、`Runtime/Agent/ToolConcurrencyRules.cs`

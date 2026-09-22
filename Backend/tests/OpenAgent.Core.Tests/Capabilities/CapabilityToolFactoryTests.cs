@@ -111,20 +111,6 @@ public class CapabilityToolFactoryTests
     }
 
     [Fact]
-    public async Task CreateAsync_PerAgentDisabledTools_AreExcluded()
-    {
-        var source = new FakeCapabilitySource(new[] { Tool("write_file"), Tool("read_file") });
-        var factory = Factory(source);
-        var config = new AgentConfig();
-        config.Tools.Disabled.Add("write_file");
-
-        var tools = await factory.CreateAsync("a1", config, Context(), default);
-
-        string[] visible = ["read_file"];
-        Assert.Equal(visible, tools.Select(tool => tool.Name).ToArray());
-    }
-
-    [Fact]
     public async Task CreateAsync_EmptySource_ReturnsEmpty()
     {
         var factory = Factory(new FakeCapabilitySource(Enumerable.Empty<CapabilityDefinition>()));

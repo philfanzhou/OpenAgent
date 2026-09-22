@@ -25,8 +25,7 @@ internal sealed class McpToolFactory(
         string agentId,
         McpConfig config,
         IAgentUserContext user,
-        CancellationToken cancellationToken,
-        IReadOnlyList<string>? disabledTools = null)
+        CancellationToken cancellationToken)
     {
         var tools = new List<AITool>();
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -86,12 +85,6 @@ internal sealed class McpToolFactory(
                     }
 
                     string runtimeName = CreateRuntimeName(serverName, tool.Name, names);
-                    // 每代理工具裁剪对 MCP 同样生效（支持 "mcp__server__*" 整服务器禁用）。
-                    if (disabledTools != null
-                            && OpenAgent.Core.Capabilities.ToolSelection.IsDisabled(disabledTools, runtimeName))
-                    {
-                        continue;
-                    }
                     // WithName/WithDescription are official SDK projections. The
                     // underlying invocation still calls the original MCP tool.
                     tools.Add(tool

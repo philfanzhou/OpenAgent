@@ -45,11 +45,6 @@ internal sealed class CapabilityToolFactory
                 cancellationToken).ConfigureAwait(false);
             foreach (CapabilityDefinition definition in definitions)
             {
-                // 每代理工具裁剪：禁用项不进入模型可见集合（ACL 语义不变）。
-                if (ToolSelection.IsDisabled(config.Tools.Disabled, definition.Name))
-                {
-                    continue;
-                }
                 if (await IsAvailableAsync(
                     agentId,
                     definition,
