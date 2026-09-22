@@ -86,17 +86,15 @@ public class ToolTokenControlTests
         Assert.Equal(["mcp__a__x", "mcp__b__y"], catalog.Activated);
     }
 
-    // ---- search_tools：激活即注入 + 信封语义 ----
+    // ---- search_tools：检索登记 + 注入器逐轮合并 ----
 
     [Fact]
-    public async Task SearchTools_InvokeActivatesWrappedToolsIntoTargetList()
+    public async Task SearchTools_InvokeRegistersActivationAndReturnsMatches()
     {
         var catalog = new DeferredToolCatalog([
             Stub("mcp__cal__create_event", "Creates a calendar event")
         ]);
-        List<AITool> target = [];
-        // wrap 用可识别的标记类型，验证激活走了包装工厂（生产中是 IsolatedToolFunction）。
-        var search = new ToolSearchFunction(catalog, target, tool => new TaggedTool(tool.Name));
+        var search = new ToolSearchFunction(catalog);
 
         string result = await InvokeAsync(search, new Dictionary<string, object?>
         {
@@ -106,20 +104,15 @@ public class ToolTokenControlTests
         using JsonDocument document = JsonDocument.Parse(result);
         Assert.Equal("mcp__cal__create_event",
             document.RootElement.GetProperty("newlyActivated")[0].GetString());
-        AITool injected = Assert.Single(target);
-        Assert.IsType<TaggedTool>(injected);
-        Assert.Equal("mcp__cal__create_event", injected.Name);
-
-        // 幂等：重复检索不重复注入。
+        // 目录登记激活（幂等），注入由 DeferredToolInjector 在请求边界完成。
         await InvokeAsync(search, new Dictionary<string, object?> { ["query"] = "calendar" });
-        Assert.Single(target);
+        Assert.Equal(["mcp__cal__create_event"], catalog.Activated);
     }
 
     [Fact]
     public async Task SearchTools_NoMatch_ReturnsEmptyListWithHint()
     {
-        var catalog = new DeferredToolCatalog([Stub("mcp__a__x", "irrelevant")]);
-        var search = new ToolSearchFunction(catalog, [], _ => throw new InvalidOperationException());
+        var search = new ToolSearchFunction(new DeferredToolCatalog([Stub("mcp__a__x", "irrelevant")]));
 
         string result = await InvokeAsync(search, new Dictionary<string, object?> { ["query"] = "nothing" });
 
@@ -132,12 +125,54 @@ public class ToolTokenControlTests
     [Fact]
     public async Task SearchTools_MissingQuery_ReturnsInvalidArgumentsEnvelope()
     {
-        var search = new ToolSearchFunction(new DeferredToolCatalog([]), [], _ => throw new InvalidOperationException());
+        var search = new ToolSearchFunction(new DeferredToolCatalog([]));
 
         string result = await InvokeAsync(search, new Dictionary<string, object?>());
 
         using JsonDocument document = JsonDocument.Parse(result);
         Assert.Equal("invalid_arguments", document.RootElement.GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task Injector_MergesActivatedToolsIntoEachRequestOptions()
+    {
+        AITool deferred = Stub("mcp__cal__create_event", "Creates a calendar event");
+        var catalog = new DeferredToolCatalog([deferred]);
+        var injector = new DeferredToolInjector(new CapturingChatClient(), catalog, tool => new TaggedTool(tool.Name));
+        var options = new ChatOptions();
+        options.Tools = [Stub("read_file", "inline")];
+
+        // 未激活时不改写。
+        await injector.GetResponseAsync([new ChatMessage(ChatRole.User, "hi")], options, CancellationToken.None);
+        ChatOptions first = ((CapturingChatClient)injector.GetService(typeof(CapturingChatClient))!).LastOptions!;
+        Assert.Equal(1, first.Tools!.Count);
+
+        // 激活后每轮请求都带上（经 wrap 工厂），且幂等不重复。
+        catalog.Activate(["mcp__cal__create_event"]);
+        await injector.GetResponseAsync([new ChatMessage(ChatRole.User, "hi")], options, CancellationToken.None);
+        await injector.GetResponseAsync([new ChatMessage(ChatRole.User, "hi")], options, CancellationToken.None);
+        Assert.Equal(2, first.Tools!.Count);
+        Assert.Contains(first.Tools!, tool => tool is TaggedTool && tool.Name == "mcp__cal__create_event");
+    }
+
+    private sealed class CapturingChatClient : IChatClient
+    {
+        public ChatOptions? LastOptions { get; private set; }
+
+        public Task<ChatResponse> GetResponseAsync(
+            IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default)
+        {
+            LastOptions = options;
+            return Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, "ok")));
+        }
+
+        public IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
+            IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public object? GetService(Type serviceType, object? serviceKey = null) => this;
+
+        public void Dispose() { }
     }
 
     private static async Task<string> InvokeAsync(AIFunction function, IReadOnlyDictionary<string, object?> arguments)

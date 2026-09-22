@@ -63,6 +63,15 @@ internal sealed class DeferredToolCatalog
             .ToList();
     }
 
+    /// <summary>已激活工具的原始 AITool 视图（注入器每轮合并用）。</summary>
+    internal IReadOnlyList<AITool> ActivatedTools()
+    {
+        lock (_lock)
+        {
+            return _tools.Where(tool => Activated.Contains(tool.Name)).ToList();
+        }
+    }
+
     /// <summary>标记一批工具为已激活（幂等），返回本轮新增激活的原始 AITool。</summary>
     internal IReadOnlyList<AITool> Activate(IEnumerable<string> names)
     {
@@ -85,24 +94,18 @@ internal sealed class DeferredToolCatalog
 }
 
 /// <summary>
-/// search_tools 工具本体：检索延迟目录并即时把命中工具（经 wrap 工厂包装后）
-/// 注入 ChatOptions.Tools 的共享列表——FICC 在下一轮请求序列化前可见。
-/// wrap 工厂与其它工具一致（超时/预算/独占信号量），保证延迟激活的工具不绕过
-/// 任何隔离策略。
+/// search_tools 工具本体：检索延迟目录并登记激活。真正的注入发生在请求边界
+/// （<see cref="DeferredToolInjector"/>）——向 ChatOptions.Tools 共享列表追加对
+/// MAF 的每轮 options 克隆不可见，必须逐轮合并。
 /// </summary>
 internal sealed class ToolSearchFunction : AIFunction
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly DeferredToolCatalog _catalog;
-    private readonly List<AITool> _target;
-    private readonly Func<AITool, AITool> _wrap;
-    private readonly object _lock = new();
 
-    internal ToolSearchFunction(DeferredToolCatalog catalog, List<AITool> target, Func<AITool, AITool> wrap)
+    internal ToolSearchFunction(DeferredToolCatalog catalog)
     {
         _catalog = catalog;
-        _target = target;
-        _wrap = wrap;
     }
 
     public override string Name => "search_tools";
@@ -150,20 +153,63 @@ internal sealed class ToolSearchFunction : AIFunction
             }, JsonOptions));
         }
 
-        List<string> activatedNames = [];
-        lock (_lock)
-        {
-            foreach (AITool tool in _catalog.Activate(matches.Select(match => match.Name)))
-            {
-                _target.Add(_wrap(tool));
-                activatedNames.Add(tool.Name);
-            }
-        }
+        List<string> activatedNames = _catalog.Activate(matches.Select(match => match.Name))
+            .Select(tool => tool.Name)
+            .ToList();
         return ValueTask.FromResult<object?>(JsonSerializer.Serialize(new
         {
             tools = matches.Select(match => new { name = match.Name, description = match.Description }).ToArray(),
             newlyActivated = activatedNames,
             hint = "These tools are now callable for the rest of this run; invoke them directly by name."
         }, JsonOptions));
+    }
+}
+
+/// <summary>
+/// 请求边界的激活工具注入器：包在 FunctionInvokingChatClient 外层，把已激活的
+/// 延迟工具（经 wrap 工厂包装，超时/预算/独占信号量与内联工具一致）合并进
+/// 当轮 options.Tools——既影响发往 provider 的定义序列化，也让 FICC 能解析
+/// 模型对这些工具的调用。幂等：已在列表中的不重复追加。
+/// </summary>
+internal sealed class DeferredToolInjector(
+    IChatClient inner,
+    DeferredToolCatalog catalog,
+    Func<AITool, AITool> wrap) : IChatClient
+{
+    public Task<ChatResponse> GetResponseAsync(
+        IEnumerable<ChatMessage> messages,
+        ChatOptions? options = null,
+        CancellationToken cancellationToken = default) =>
+        inner.GetResponseAsync(messages, WithActivatedTools(options), cancellationToken);
+
+    public IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
+        IEnumerable<ChatMessage> messages,
+        ChatOptions? options = null,
+        CancellationToken cancellationToken = default) =>
+        inner.GetStreamingResponseAsync(messages, WithActivatedTools(options), cancellationToken);
+
+    public object? GetService(Type serviceType, object? serviceKey = null) =>
+        inner.GetService(serviceType, serviceKey);
+
+    public void Dispose() => inner.Dispose();
+
+    private ChatOptions? WithActivatedTools(ChatOptions? options)
+    {
+        IReadOnlyList<string> activated = catalog.Activated;
+        if (activated.Count == 0 || options == null)
+        {
+            return options;
+        }
+        List<AITool> tools = [.. (options.Tools ?? [])];
+        HashSet<string> present = new(tools.Select(tool => tool.Name), StringComparer.Ordinal);
+        foreach (AITool tool in catalog.ActivatedTools())
+        {
+            if (present.Add(tool.Name))
+            {
+                tools.Add(wrap(tool));
+            }
+        }
+        options.Tools = tools;
+        return options;
     }
 }
