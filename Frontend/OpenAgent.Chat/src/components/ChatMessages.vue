@@ -9,6 +9,7 @@ import { buildConversationTimeline, fileLabel, formatFileSize, toolArgumentsText
 import { formatTokenBreakdown, formatTokenCount, formatTokenUsage } from '../tokenUsage'
 import type { ContextSummary, ConversationMessage, CurrentUserContext, MessageFile, ProcessActivity, ToolActivity } from '../types'
 import MarkdownContent from './MarkdownContent.vue'
+import PlanChecklist from './PlanChecklist.vue'
 
 const props = defineProps<{
   messages: ConversationMessage[]
@@ -353,6 +354,12 @@ defineExpose({ scrollToBottom })
           <strong>OpenAgent</strong>
           <span v-if="formatTimestamp(item.timestamp)">{{ formatTimestamp(item.timestamp) }}</span>
         </div>
+
+        <PlanChecklist
+          v-if="item.plan"
+          :plan="item.plan"
+          :streaming="isStreamingItem(item)"
+        />
 
         <details
           v-if="processActivities(item).length"

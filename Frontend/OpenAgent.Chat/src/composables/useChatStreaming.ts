@@ -3,7 +3,7 @@ import { ElMessage } from 'element-plus'
 import { api, makeLocalConversation } from '../api'
 import { randomUuid } from '../browserCrypto'
 import { mergeOptimisticUserMessages } from '../conversationCollection'
-import { appendStreamingReasoning, appendStreamingTool, mergeAssistantSnapshot } from '../messagePresentation'
+import { appendStreamingReasoning, appendStreamingTool, mergeAssistantSnapshot, parsePlanSnapshot } from '../messagePresentation'
 import { createStreamingAssistantContentState, enqueueAssistantContent, markAssistantPhaseBoundary } from '../streamingAssistantContent'
 import { createTypewriterQueue, type TypewriterQueue } from '../typewriterQueue'
 import { AUTO_AGENT_ID, type AgentSummary, type ConversationMessage, type ConversationRecord, type PendingFile } from '../types'
@@ -170,6 +170,10 @@ export function useChatStreaming(options: ChatStreamingOptions) {
             callId: event.toolCallId,
             result: event.content ?? '',
           })
+        } else if (event.type === 'plan_updated') {
+          // 每次事件携带完整计划快照，直接整体替换即可就位更新。
+          const snapshot = parsePlanSnapshot(event.content)
+          if (snapshot) assistantMessage.plan = snapshot
         } else if (event.type === 'done') {
           flushStream?.()
           receivedDone = true

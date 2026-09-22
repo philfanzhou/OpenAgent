@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using OpenAgent.Contracts.Capabilities;
+using OpenAgent.Core.Capabilities;
 
 namespace OpenAgent.Core.Runtime.Agent;
 
@@ -11,9 +12,10 @@ namespace OpenAgent.Core.Runtime.Agent;
 /// would rethrow after repeated failures and abort the whole agent run.
 /// 超时同样不中断运行：单次调用超过上限（或传输层先行取消）时，调用被取消，
 /// 以带 timedOut 标记的结果告知模型，由它决定重试还是绕开。
-/// 该包装器是所有工具回传模型的唯一出口，因此也承担结果预算（头尾保留截断）
-/// 与统一错误信封渲染：CapabilityDefinition 返回的 <see cref="ToolResult"/>
-/// 在这里落成最终字符串，MCP/MAF 工具的裸字符串同样过预算管道。
+/// 该包装器是所有工具回传模型的唯一出口，因此也承担三件事：
+/// 1) Exclusive 工具经每轮共享的信号量串行化（并发调用只放行 ReadOnly 白名单）；
+/// 2) 结果预算（头尾保留截断）与统一错误信封渲染——CapabilityDefinition 返回的
+///    <see cref="ToolResult"/> 在这里落成最终字符串，MCP/MAF 工具的裸字符串同样过预算管道。
 /// </summary>
 internal sealed class IsolatedToolFunction : AIFunction
 {
@@ -23,17 +25,23 @@ internal sealed class IsolatedToolFunction : AIFunction
     private readonly AIFunction _inner;
     private readonly TimeSpan _callTimeout;
     private readonly ToolResultBudget _budget;
+    private readonly ToolConcurrency _concurrency;
+    private readonly SemaphoreSlim? _exclusiveGate;
     private readonly ILogger? _logger;
 
     private IsolatedToolFunction(
         AIFunction inner,
         TimeSpan callTimeout,
         ToolResultBudget budget,
+        ToolConcurrency concurrency,
+        SemaphoreSlim? exclusiveGate,
         ILogger? logger)
     {
         _inner = inner;
         _callTimeout = callTimeout;
         _budget = budget;
+        _concurrency = concurrency;
+        _exclusiveGate = exclusiveGate;
         _logger = logger;
     }
 
@@ -46,14 +54,21 @@ internal sealed class IsolatedToolFunction : AIFunction
     /// 仅保留对传输层取消的超时归类。
     /// </param>
     /// <param name="budget">结果字符预算；0 表示不限。</param>
+    /// <param name="concurrency">并发类别；Exclusive 工具经 gate 串行化。</param>
+    /// <param name="exclusiveGate">
+    /// 同一轮执行共享的独占信号量；并发等待计入单次调用超时预算，
+    /// 避免慢调用后面排起无限长的队。
+    /// </param>
     /// <param name="logger">记录被脱敏的原始异常（errorId 关联），可空便于单测。</param>
     internal static AITool Wrap(
         AITool tool,
         TimeSpan toolCallTimeout = default,
         ToolResultBudget budget = default,
+        ToolConcurrency concurrency = ToolConcurrency.Exclusive,
+        SemaphoreSlim? exclusiveGate = null,
         ILogger? logger = null) =>
         tool is AIFunction function
-            ? new IsolatedToolFunction(function, toolCallTimeout, budget, logger)
+            ? new IsolatedToolFunction(function, toolCallTimeout, budget, concurrency, exclusiveGate, logger)
             : tool;
 
     protected override async ValueTask<object?> InvokeCoreAsync(
@@ -66,12 +81,24 @@ internal sealed class IsolatedToolFunction : AIFunction
             callTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             callTimeout.CancelAfter(_callTimeout);
         }
+        CancellationToken effectiveToken = callTimeout?.Token ?? cancellationToken;
 
+        // acquired 标志区分超时发生在"排队等独占锁"还是"自己执行中"：
+        // catch 时无法从信号量状态可靠判断（两种情况 CurrentCount 都是 0）。
+        // 等锁必须放在 try 内：排队期间被截止时间取消同样要转成超时信封，
+        // 不能让 OperationCanceledException 逸出到 FunctionInvokingChatClient。
+        bool acquired = false;
         try
         {
+            if (_concurrency == ToolConcurrency.Exclusive && _exclusiveGate != null)
+            {
+                await _exclusiveGate.WaitAsync(effectiveToken).ConfigureAwait(false);
+                acquired = true;
+            }
+
             object? result = await _inner.InvokeAsync(
                 arguments,
-                callTimeout?.Token ?? cancellationToken).ConfigureAwait(false);
+                effectiveToken).ConfigureAwait(false);
             return Render(result);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -80,12 +107,15 @@ internal sealed class IsolatedToolFunction : AIFunction
         }
         catch (OperationCanceledException)
         {
-            // 外层运行未取消却被取消：要么是本包装器的单次调用上限触发，
-            // 要么是传输层超时（如 MCP HttpClient.Timeout）。统一归类为超时，
+            // 外层运行未取消却被取消：单次调用上限触发、排队等待超限，
+            // 或传输层超时（如 MCP HttpClient.Timeout）。统一归类为超时，
             // 模型才能分辨"等太久了"，而不是看到模糊的 "A task was canceled"。
             bool ownDeadline = callTimeout?.IsCancellationRequested == true;
+            bool queued = _concurrency == ToolConcurrency.Exclusive && !acquired;
             string error = ownDeadline
-                ? $"Tool '{_inner.Name}' timed out after {(int)_callTimeout.TotalSeconds}s and was cancelled"
+                ? queued
+                    ? $"Tool '{_inner.Name}' timed out after {(int)_callTimeout.TotalSeconds}s while waiting for another exclusive tool call to finish"
+                    : $"Tool '{_inner.Name}' timed out after {(int)_callTimeout.TotalSeconds}s and was cancelled"
                 : $"Tool '{_inner.Name}' timed out: the transport layer cancelled the call";
             return ToolResult.Error(
                 error,
@@ -112,6 +142,10 @@ internal sealed class IsolatedToolFunction : AIFunction
         }
         finally
         {
+            if (acquired)
+            {
+                _exclusiveGate!.Release();
+            }
             callTimeout?.Dispose();
         }
     }

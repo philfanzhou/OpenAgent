@@ -9,6 +9,7 @@ using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Capabilities;
 using OpenAgent.Core.Capabilities.Code;
+using OpenAgent.Core.Capabilities.Plan;
 using OpenAgent.Core.Capabilities.Rag;
 using OpenAgent.Core.Capabilities.UserProfile;
 using OpenAgent.Core.Files;
@@ -116,7 +117,7 @@ public class BuiltInToolSchemaTests
         {
             foreach (JsonElement requiredName in required.EnumerateArray())
             {
-                Assert.Contains(requiredName.GetString(), declared);
+                Assert.Contains(requiredName.GetString()!, declared);
             }
         }
         foreach (JsonProperty property in properties.EnumerateObject())
@@ -174,6 +175,11 @@ public class BuiltInToolSchemaTests
             new UserProfileCapabilitySource(),
             new AgentConfig(),
             ["get_current_user_profile"]);
+
+        yield return new CapabilityDefinitionHarness(
+            new PlanCapabilitySource(),
+            new AgentConfig(),
+            ["update_plan"]);
     }
 
     private static AgentUserContext User() => new()
@@ -204,6 +210,6 @@ public class BuiltInToolSchemaTests
         public string ApplicationName { get; set; } = "tests";
         public string EnvironmentName { get; set; } = Environments.Production;
         public string ContentRootPath { get; set; } = ".";
-        public IFileProvider? ContentRootFileProvider { get; set; }
+        public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
     }
 }

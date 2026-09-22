@@ -10,6 +10,11 @@
 > - 内置工具描述按"新员工手册"标准重写（write_file 不可修改已有文件等行为契约显式化）；
 > - 漂移修复：`MaxTurns` fallback 5→`AgentConfig.DefaultMaxTurns`(50)；tool-calling/errors 文档更新。
 > 验证：`dotnet build` 0 警告 0 错误；全解决方案 780 测试通过（新增 `ToolResultBudgetTests`、`BuiltInToolSchemaTests`）。
+> **实施记录（2026-09-22，阶段 1 执行编排已落地）**：
+> - 并行工具调用：`AllowConcurrentInvocation=true`；`CapabilityDefinition` 新增 `Concurrency`（ReadOnly/Exclusive，默认 Exclusive），ReadOnly 白名单（read_file/list_files/search_knowledge_base/get_current_user_profile/update_plan）真正并行，其余经每轮共享独占信号量串行（排队计入单次调用超时，错误文案可区分）；前置完成了 scoped DI 线程安全审查（仓储全走 IDbContextFactory，能力服务无状态）。
+> - `update_plan` 计划工具：全量重发步骤（≤1 in_progress 校验），结果快照随工具结果落会话时间线；SSE 新增 `plan_updated` 事件（Host 帧名 plan_updated）。
+> - MCP 连接池化：`McpClientPool` 按（租户,服务器）缓存客户端跨轮复用，每轮 ListTools 兼作健康探测，坏连接淘汰后重连一次，空闲惰性淘汰（`Mcp:ClientIdleTimeoutSeconds` 默认 600s）；作用域释放不再断开连接。
+> 验证：`dotnet build` 0 错误；全解决方案 797 测试通过（新增 `ToolConcurrencyTests`、`PlanCapabilitySourceTests`、`McpClientPoolTests`；两处真 bug 被新测试拦截修复：非数组 plan 输入的未捕获异常、排队超时异常逸出隔离层）。
 
 ## 0. 结论先行
 

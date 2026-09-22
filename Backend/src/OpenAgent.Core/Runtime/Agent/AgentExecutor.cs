@@ -174,6 +174,9 @@ public sealed class AgentExecutor
             foreach (FunctionResultContent result in contents.OfType<FunctionResultContent>())
             {
                 scope.AppendToolResult(result.CallId, result.Result?.ToString());
+                string? toolName = string.IsNullOrWhiteSpace(result.CallId)
+                    ? null
+                    : toolCallNames.GetValueOrDefault(result.CallId);
                 yield return new AgentStreamEvent
                 {
                     Type = AgentStreamEventType.ToolResult,
@@ -181,11 +184,19 @@ public sealed class AgentExecutor
                     // Not every provider pairs a result with a streamed call announcement;
                     // carry the name so clients can label the activity instead of a
                     // generic placeholder.
-                    ToolName = string.IsNullOrWhiteSpace(result.CallId)
-                        ? null
-                        : toolCallNames.GetValueOrDefault(result.CallId),
+                    ToolName = toolName,
                     Content = result.Result?.ToString()
                 };
+                // update_plan 的结果就是最新计划快照：附加 PlanUpdated 事件让前端
+                // 直接渲染任务清单，无需解析通用工具结果。
+                if (toolName == "update_plan" && result.Result != null)
+                {
+                    yield return new AgentStreamEvent
+                    {
+                        Type = AgentStreamEventType.PlanUpdated,
+                        Content = result.Result.ToString()
+                    };
+                }
             }
 
             foreach (TextReasoningContent reasoning in contents.OfType<TextReasoningContent>())

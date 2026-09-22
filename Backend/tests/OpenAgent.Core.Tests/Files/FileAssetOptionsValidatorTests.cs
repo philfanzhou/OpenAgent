@@ -25,7 +25,7 @@ public sealed class FileAssetOptionsValidatorTests
             new FileAssetOptions { Enabled = true, InlineImageMaxLongEdge = -1 });
 
         Assert.False(result.Succeeded);
-        Assert.Contains(result.Failures, failure =>
+        Assert.Contains(result.Failures!, failure =>
             failure.Contains("InlineImageMaxLongEdge", StringComparison.Ordinal));
     }
 
@@ -39,7 +39,7 @@ public sealed class FileAssetOptionsValidatorTests
             new FileAssetOptions { Enabled = true, InlineImageQuality = quality });
 
         Assert.False(result.Succeeded);
-        Assert.Contains(result.Failures, failure =>
+        Assert.Contains(result.Failures!, failure =>
             failure.Contains("InlineImageQuality", StringComparison.Ordinal));
     }
 
@@ -73,7 +73,7 @@ public sealed class FileAssetOptionsValidatorTests
             new FileAssetOptions { Enabled = true, InlineImageHistoryTurns = -1 });
 
         Assert.False(result.Succeeded);
-        Assert.Contains(result.Failures, failure =>
+        Assert.Contains(result.Failures!, failure =>
             failure.Contains("InlineImageHistoryTurns", StringComparison.Ordinal));
     }
 }

@@ -105,7 +105,7 @@ internal sealed class CapabilityToolFactory
                 cancellationToken).ConfigureAwait(false);
     }
 
-    private sealed class CapabilityAIFunction : AIFunction
+    private sealed class CapabilityAIFunction : AIFunction, IToolConcurrencyProvider
     {
         private readonly CapabilityDefinition _definition;
         private readonly JsonElement _schema;
@@ -127,6 +127,7 @@ internal sealed class CapabilityToolFactory
         public override string Name => _definition.Name;
         public override string Description => _definition.Description;
         public override JsonElement JsonSchema => _schema;
+        public ToolConcurrency Concurrency => _definition.Concurrency;
 
         protected override async ValueTask<object?> InvokeCoreAsync(
             AIFunctionArguments arguments,

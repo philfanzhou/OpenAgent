@@ -716,6 +716,84 @@ html[data-theme='dark'] .message-row ::selection { background: rgba(16, 163, 127
 .process-step-status.done::before { background: var(--accent); }
 .process-step-status.running::before { background: var(--warn); }
 .process-step-chevron { flex: 0 0 auto; color: var(--text-faint); font-size: 18px; line-height: 1; transition: transform var(--dur) var(--ease); }
+
+/* 任务计划清单：update_plan 工具/plan_updated 事件的进度投影，视觉词表沿用执行过程。 */
+.plan-card {
+  width: 100%;
+  margin: 0 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  font-size: 14px;
+}
+.plan-card[open] .plan-card-chevron { transform: rotate(90deg); }
+.plan-card-head {
+  display: flex;
+  min-height: 36px;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.plan-card-head::-webkit-details-marker { display: none; }
+.plan-card-head:hover { background: var(--bg-subtle); }
+.plan-card-title { color: var(--text); font-weight: 600; }
+.plan-card-progress { margin-left: auto; color: var(--text-faint); font-size: 12px; }
+.plan-card-chevron { flex: 0 0 auto; color: var(--text-faint); font-size: 18px; line-height: 1; transition: transform var(--dur) var(--ease); }
+.plan-steps {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 2px 12px 10px;
+  list-style: none;
+}
+.plan-step {
+  display: flex;
+  min-width: 0;
+  min-height: 28px;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 4px;
+  border-radius: var(--r-xs);
+}
+.plan-step:hover { background: var(--bg-subtle); }
+.plan-step-index {
+  display: inline-grid;
+  flex: 0 0 auto;
+  width: 17px;
+  height: 17px;
+  place-items: center;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+.plan-step.is-completed .plan-step-index { border-color: var(--accent); background: var(--accent); color: #fff; }
+.plan-step-text {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.plan-step.is-pending .plan-step-text { color: var(--text-muted); }
+.plan-step.is-completed .plan-step-text { color: var(--text-muted); text-decoration: line-through; text-decoration-color: var(--border-strong); }
+.plan-step-status {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+.plan-step-status::before { width: 6px; height: 6px; border-radius: 50%; background: var(--text-faint); content: ''; }
+.plan-step-status.done::before { background: var(--accent); }
+.plan-step-status.running::before { background: var(--warn); }
 .process-step[open] .process-step-chevron { transform: rotate(90deg); }
 .process-step-body { padding: 7px 8px 8px 31px; border-top: 1px solid var(--border); }
 .process-reasoning {

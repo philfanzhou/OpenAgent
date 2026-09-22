@@ -122,7 +122,11 @@ internal sealed class AgentFactory
                 compactingClient,
                 functionInvocationServices: _services)
             {
-                AllowConcurrentInvocation = false,
+                // 同一条 assistant 消息里的多个工具调用并发执行；只有能力源显式
+                // 声明 ReadOnly 的工具真正并行（读取类、无可变共享状态），其余
+                // （写入/执行/MCP/Skill）由 IsolatedToolFunction 内每轮共享的信号量
+                // 串行化，行为与旧版一致。
+                AllowConcurrentInvocation = true,
                 IncludeDetailedErrors = false,
                 MaximumConsecutiveErrorsPerRequest = 3,
                 MaximumIterationsPerRequest = profile.Config.MaxTurns > 0
@@ -139,6 +143,9 @@ internal sealed class AgentFactory
             {
                 providers.Add(skillsRuntime.Provider);
             }
+            // Exclusive 工具的每轮共享信号量：与 ChatClientAgent 同生命周期，
+            // 作用域释放时一并销毁。
+            SemaphoreSlim exclusiveGate = new(1, 1);
             AIAgent agent = new ChatClientAgent(chatClient, new ChatClientAgentOptions
             {
                 Id = profile.AgentId,
@@ -152,12 +159,15 @@ internal sealed class AgentFactory
                     // 工具（MCP/能力）异常与超时在调用处被隔离成错误结果回传给模型
                     // （超时带 timedOut 标记），避免 FunctionInvokingChatClient
                     // 连续失败后重抛导致整轮执行终止；结果同时过分级字符预算
-                    // （头尾保留截断），防止超长输出吃穿上下文。
+                    // （头尾保留截断），防止超长输出吃穿上下文；Exclusive 工具经
+                    // exclusiveGate 串行，ReadOnly 工具随 FICC 并发执行。
                     Tools = tools.Concat(mcpRuntime.Tools)
                         .Select(tool => IsolatedToolFunction.Wrap(
                             tool,
                             _toolCallTimeout,
                             ToolResultBudgets.Resolve(_executionOptions, tool.Name),
+                            ToolConcurrencyRules.Resolve(tool),
+                            exclusiveGate,
                             _toolLogger))
                         .ToList()
                 },

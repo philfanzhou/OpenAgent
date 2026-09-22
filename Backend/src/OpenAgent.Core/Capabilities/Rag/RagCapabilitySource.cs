@@ -55,7 +55,8 @@ internal sealed class RagCapabilitySource(
                     arguments,
                     user,
                     config.Rag,
-                    invocationCancellation))];
+                    invocationCancellation),
+                Concurrency: ToolConcurrency.ReadOnly)];
         return Task.FromResult(result);
     }
 

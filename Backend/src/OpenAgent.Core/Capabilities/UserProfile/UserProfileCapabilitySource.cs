@@ -32,7 +32,8 @@ internal sealed class UserProfileCapabilitySource : ICapabilitySource
                     ParametersJsonSchema,
                     AgentResourceType.Function,
                     Name,
-                    (_, _) => Task.FromResult<ToolResult>(SerializeProfile(user)))
+                    (_, _) => Task.FromResult<ToolResult>(SerializeProfile(user)),
+                    Concurrency: ToolConcurrency.ReadOnly)
             ];
         return Task.FromResult(definitions);
     }

@@ -49,7 +49,8 @@ internal sealed class FileAssetCapabilitySource(
                 """{"type":"object","properties":{"fileId":{"type":"string","description":"ID of the file asset to read; exactly one of fileId/objectKey"},"objectKey":{"type":"string","description":"Object key inside the current tenant partition; exactly one of fileId/objectKey"}},"additionalProperties":false}""",
                 AgentResourceType.Tool,
                 "file-assets",
-                ReadAsync),
+                ReadAsync,
+                Concurrency: ToolConcurrency.ReadOnly),
             new CapabilityDefinition(
                 "create_file_transfer_url",
                 "Create a platform-served download link for a file (the storage address is never exposed). "
@@ -71,7 +72,8 @@ internal sealed class FileAssetCapabilitySource(
                 """{"type":"object","properties":{},"additionalProperties":false}""",
                 AgentResourceType.Tool,
                 "file-assets",
-                ListAsync),
+                ListAsync,
+                Concurrency: ToolConcurrency.ReadOnly),
             new CapabilityDefinition(
                 "write_file",
                 "Create and register a NEW UTF-8 text file for the current user and conversation; returns its fileId for use with publish_files. "

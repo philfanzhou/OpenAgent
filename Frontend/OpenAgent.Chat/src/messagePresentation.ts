@@ -1,4 +1,4 @@
-import type { ContextSummary, ConversationMessage, MessageFile, ProcessActivity, ToolActivity } from './types'
+import type { ContextSummary, ConversationMessage, MessageFile, PlanSnapshot, PlanStep, ProcessActivity, ToolActivity } from './types'
 
 export type ConversationTimelineItem =
   | { kind: 'message'; message: ConversationMessage }
@@ -91,6 +91,7 @@ export function mergeAssistantSnapshot(
     reasoning: preferCompleteText(stored.reasoning, snapshot.reasoning) || undefined,
     toolActivities: mergeToolActivities(stored.toolActivities, snapshot.toolActivities),
     processActivities: mergeProcessActivities(stored.processActivities, snapshotProcesses),
+    plan: snapshot.plan || stored.plan,
     files: stored.files?.length ? stored.files : snapshot.files,
     tokenUsage: snapshot.tokenUsage || stored.tokenUsage,
     modelId: snapshot.modelId || stored.modelId,
@@ -147,8 +148,52 @@ function mergeAssistantMessage(
   for (const tool of message.toolActivities || []) {
     merged.toolActivities = mergeToolActivity(merged.toolActivities, tool)
     if (!hasOrderedProcesses) merged.processActivities = mergeToolProcess(merged.processActivities, tool)
+    applyPlanTool(merged, tool)
   }
+  if (!merged.plan) merged.plan = message.plan
   return merged
+}
+
+/**
+ * 解析 update_plan 工具结果 / plan_updated 事件载荷为计划快照。
+ * 历史行可能来自旧版 PascalCase 序列化（Step/Status），宽容两种键形；
+ * 解析失败或空计划返回 undefined，调用方保持原快照不变。
+ */
+export function parsePlanSnapshot(raw?: string | null): PlanSnapshot | undefined {
+  if (!raw) return undefined
+  try {
+    const parsed = JSON.parse(raw) as {
+      plan?: Array<{ step?: unknown, Step?: unknown, status?: unknown, Status?: unknown }>
+      completed?: unknown
+      total?: unknown
+    }
+    const steps = (parsed.plan || [])
+      .map(item => ({
+        step: String(item.step ?? item.Step ?? ''),
+        status: item.status ?? item.Status,
+      }))
+      .filter(item => item.step)
+      .map(item => ({ step: item.step, status: normalizePlanStatus(item.status) }))
+    if (!steps.length) return undefined
+    return {
+      plan: steps,
+      completed: typeof parsed.completed === 'number' ? parsed.completed : steps.filter(item => item.status === 'completed').length,
+      total: typeof parsed.total === 'number' ? parsed.total : steps.length,
+    }
+  } catch {
+    return undefined
+  }
+}
+
+function normalizePlanStatus(value: unknown): PlanStep['status'] {
+  return value === 'completed' || value === 'in_progress' ? value : 'pending'
+}
+
+/** update_plan 的工具结果即最新计划快照；其他工具不影响已展示的计划。 */
+function applyPlanTool(message: ConversationMessage, tool: ToolActivity): void {
+  if (tool.name !== 'update_plan') return
+  const snapshot = parsePlanSnapshot(tool.result)
+  if (snapshot) message.plan = snapshot
 }
 
 function createAssistantMessage(message: ConversationMessage): ConversationMessage {
@@ -166,6 +211,7 @@ function createAssistantMessage(message: ConversationMessage): ConversationMessa
 function mergeToolIntoAssistant(message: ConversationMessage, tool: ToolActivity): void {
   message.toolActivities = mergeToolActivity(message.toolActivities, tool)
   message.processActivities = mergeToolProcess(message.processActivities, tool)
+  applyPlanTool(message, tool)
 }
 
 /** Append live stream phases without waiting for the persisted conversation snapshot. */
@@ -332,6 +378,7 @@ export function toolPresentation(name: string): { kind: string; displayName: str
     return { kind: 'MCP', displayName: `${server} / ${tool}` }
   }
 
+  if (name === 'update_plan') return { kind: '计划', displayName: '更新任务计划' }
   if (name === 'load_skill') return { kind: 'SKILL', displayName: '加载 Skill 指令' }
   if (name === 'read_skill_resource') return { kind: 'SKILL', displayName: '读取 Skill 资源' }
   if (name === 'run_skill_script') return { kind: 'SKILL', displayName: '运行 Skill 脚本' }
