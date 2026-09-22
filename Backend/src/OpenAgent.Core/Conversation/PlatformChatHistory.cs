@@ -98,6 +98,14 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
     /// </summary>
     internal void AppendToolCall(string name, string callId, IDictionary<string, object?>? arguments)
     {
+        // 同一调用可能随流式更新重播以补全参数：按 callId 覆盖而非追加，
+        // 避免失败/取消路径把同一调用重复持久化成多行。
+        if (!string.IsNullOrWhiteSpace(callId))
+        {
+            _streamedToolMessages.RemoveAll(message =>
+                message.Contents.OfType<FunctionCallContent>().Any(call =>
+                    string.Equals(call.CallId, callId, StringComparison.Ordinal)));
+        }
         _streamedToolMessages.Add(new ChatMessage(
             ChatRole.Assistant,
             [new FunctionCallContent(callId, name, arguments)]));
@@ -554,7 +562,16 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
             }
 
             // 记录 agent/工具执行失败，避免被框架吞掉（此前 AgentException 不会被任何日志记录）。
-            if (context.InvokeException is AgentException)
+            // 用户停止/断开产生的取消是正常路径：Debug 记录即可，Error 会让日志被取消事件淹没。
+            if (context.InvokeException is OperationCanceledException)
+            {
+                _logger.LogDebug(
+                    context.InvokeException,
+                    "Agent '{AgentId}' execution cancelled for conversation '{ConversationId}'",
+                    _agentId,
+                    _conversation.ConversationId);
+            }
+            else if (context.InvokeException is AgentException)
             {
                 _logger.LogWarning(
                     context.InvokeException,
