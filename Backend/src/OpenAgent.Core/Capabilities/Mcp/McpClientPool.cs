@@ -55,7 +55,9 @@ internal sealed class McpClientPool : IAsyncDisposable
             if (entry.Client != null
                 && DateTimeOffset.UtcNow - entry.LastUsed > _idleTimeout)
             {
-                _logger.LogInformation(
+                // 周期性空转淘汰属正常回收，降为 Debug 避免刷屏；
+                // 紧随其后的重连失败已由 McpToolFactory 的 Warning 覆盖。
+                _logger.LogDebug(
                     "Evicting idle MCP client. Server={ServerUrl}", server.Url);
                 await DisposeClientAsync(entry.Client).ConfigureAwait(false);
                 entry.Client = null;
