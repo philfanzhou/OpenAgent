@@ -1,4 +1,6 @@
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging.Abstractions;
+using OpenAgent.Contracts.Capabilities;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Capabilities;
@@ -32,7 +34,7 @@ public class CapabilityToolFactoryTests
         ParametersJsonSchema: "{\"type\":\"object\"}",
         ResourceType: AgentResourceType.Tool,
         ResourceId: name,
-        Invoke: (_, _) => Task.FromResult("ok"));
+        Invoke: (_, _) => Task.FromResult<ToolResult>("ok"));
 
     private static AgentUserContext Context() => new() { UserId = "u1" };
 
@@ -42,7 +44,10 @@ public class CapabilityToolFactoryTests
     {
         var gate = new AgentAuthorizationGate(
             auth ?? new AllowAllAgentAuthorizationService());
-        return new CapabilityToolFactory(new[] { source }, gate);
+        return new CapabilityToolFactory(
+            new[] { source },
+            gate,
+            NullLogger<CapabilityToolFactory>.Instance);
     }
 
     [Fact]

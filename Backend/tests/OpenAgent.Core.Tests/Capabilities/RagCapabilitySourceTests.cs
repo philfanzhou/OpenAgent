@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Logging.Abstractions;
+using OpenAgent.Contracts.Capabilities;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Models;
 using OpenAgent.Contracts.Security;
@@ -14,7 +16,7 @@ public class RagCapabilitySourceTests
     public async Task DiscoverAsync_EnabledRag_ExposesSearchCapability()
     {
         var service = new FakeRagService { Results = ["First", "Second"] };
-        var source = new RagCapabilitySource(service);
+        var source = new RagCapabilitySource(service, NullLogger<RagCapabilitySource>.Instance);
 
         IReadOnlyList<CapabilityDefinition> capabilities = await source.DiscoverAsync(
             "agent",
@@ -22,21 +24,21 @@ public class RagCapabilitySourceTests
             User(),
             default);
         CapabilityDefinition capability = Assert.Single(capabilities);
-        string result = await capability.Invoke(
+        ToolResult result = await capability.Invoke(
             new Dictionary<string, object?> { ["query"] = "policy", ["limit"] = 2 },
             default);
 
         Assert.Equal("search_knowledge_base", capability.Name);
         Assert.Equal("policy", service.LastQuery);
         Assert.Equal(2, service.LastLimit);
-        Assert.Contains("1. First", result);
-        Assert.Contains("2. Second", result);
+        Assert.Contains("1. First", result.Content);
+        Assert.Contains("2. Second", result.Content);
     }
 
     [Fact]
     public async Task DiscoverAsync_DisabledRag_DoesNotExposeCapability()
     {
-        var source = new RagCapabilitySource(new FakeRagService());
+        var source = new RagCapabilitySource(new FakeRagService(), NullLogger<RagCapabilitySource>.Instance);
 
         IReadOnlyList<CapabilityDefinition> capabilities = await source.DiscoverAsync(
             "agent",

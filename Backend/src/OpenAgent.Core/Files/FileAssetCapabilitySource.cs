@@ -2,6 +2,7 @@ using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
+using OpenAgent.Contracts.Capabilities;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Security;
@@ -16,6 +17,13 @@ internal sealed class FileAssetCapabilitySource(
     IOptions<FileAssetOptions> options,
     FileAssetUrlDownloader downloader) : ICapabilitySource
 {
+    // 错误信封约定：code 稳定供程序判别，error/hint 面向模型给出可行动的修正路径。
+    private const string InvalidArguments = "invalid_arguments";
+    private const string UnavailableContext = "unavailable_context";
+    private const string InvalidRequest = "invalid_request";
+    private const string NotFound = "not_found";
+    private const string DownloadFailed = "download_failed";
+
     public Task<IReadOnlyList<CapabilityDefinition>> DiscoverAsync(
         string agentId,
         AgentConfig config,
@@ -31,12 +39,14 @@ internal sealed class FileAssetCapabilitySource(
         [
             new CapabilityDefinition(
                 "read_file",
-                "Read a UTF-8 text file owned by the current user or conversation, by fileId or by an objectKey inside the current tenant partition. "
+                "Read a UTF-8 text file by fileId or by an objectKey inside the current tenant partition — provide exactly one of the two, never both. "
+                + "Call list_files first when you do not know the fileId. "
                 + "Text files only (.txt, .md, .csv, .json, .xml, .svg, .html, .css, .drawio and other UTF-8 text); "
                 + "binary files such as images, PDF, zip, or office documents cannot be read as text — "
                 + "deliver those to the user via publish_files or create_file_transfer_url instead. "
-                + "Files exceeding the read size limit are rejected with an error.",
-                """{"type":"object","properties":{"fileId":{"type":"string"},"objectKey":{"type":"string"}}}""",
+                + "The result is JSON {fileId|objectKey, content}; oversized results are truncated with a marker, "
+                + "so ask for specific sections instead of re-reading the whole file.",
+                """{"type":"object","properties":{"fileId":{"type":"string","description":"ID of the file asset to read; exactly one of fileId/objectKey"},"objectKey":{"type":"string","description":"Object key inside the current tenant partition; exactly one of fileId/objectKey"}},"additionalProperties":false}""",
                 AgentResourceType.Tool,
                 "file-assets",
                 ReadAsync),
@@ -49,37 +59,42 @@ internal sealed class FileAssetCapabilitySource(
                 + "lifetimes cap at 365 days and permanent links do not exist. "
                 + "Always tell the user the expiry and download limit. "
                 + "You cannot revoke a link once created, so prefer the shortest lifetime that suffices.",
-                """{"type":"object","properties":{"fileId":{"type":"string","description":"Referenced file asset ID"},"audience":{"type":"string","enum":["mcp","user"],"description":"Consumer of the link; sets defaults when mode is omitted (mcp: 2h/2 downloads, user: 3d/unlimited)"},"mode":{"type":"string","enum":["temporary","singleUse","longTerm"],"description":"Share policy overriding audience defaults"},"expiresInSeconds":{"type":"number","description":"Custom lifetime in seconds"}},"required":["fileId"]}""",
+                """{"type":"object","properties":{"fileId":{"type":"string","description":"Referenced file asset ID"},"audience":{"type":"string","enum":["mcp","user"],"description":"Consumer of the link; sets defaults when mode is omitted (mcp: 2h/2 downloads, user: 3d/unlimited)"},"mode":{"type":"string","enum":["temporary","singleUse","longTerm"],"description":"Share policy overriding audience defaults"},"expiresInSeconds":{"type":"number","description":"Custom lifetime in seconds; must be a positive integer"}},"required":["fileId"],"additionalProperties":false}""",
                 AgentResourceType.Tool,
                 "file-assets",
                 CreateShareLinkAsync),
             new CapabilityDefinition(
                 "list_files",
                 "List files referenced by the current conversation; returns fileId and safe metadata only. "
+                + "Call this before read_file/publish_files when unsure which files exist. "
                 + "Use read_file to inspect one, publish_files to deliver files to the user.",
-                """{"type":"object","properties":{}}""",
+                """{"type":"object","properties":{},"additionalProperties":false}""",
                 AgentResourceType.Tool,
                 "file-assets",
                 ListAsync),
             new CapabilityDefinition(
                 "write_file",
-                "Create and register a UTF-8 text file for the current user and conversation; returns its fileId for use with publish_files.",
-                """{"type":"object","properties":{"fileName":{"type":"string"},"content":{"type":"string"},"mediaType":{"type":"string","description":"Optional MIME type; inferred from the fileName extension when omitted — omit it unless you have a specific reason"}},"required":["fileName","content"]}""",
+                "Create and register a NEW UTF-8 text file for the current user and conversation; returns its fileId for use with publish_files. "
+                + "This tool cannot modify, append to, or overwrite an existing file — to produce a revised version, call it again with the complete new content (every call creates a new file). "
+                + "Send the full final content in one call; there is no partial update.",
+                """{"type":"object","properties":{"fileName":{"type":"string","description":"Target file name, e.g. report.txt or circuit.drawio"},"content":{"type":"string","description":"Complete UTF-8 text content of the file"},"mediaType":{"type":"string","description":"Optional MIME type; inferred from the fileName extension when omitted — omit it unless you have a specific reason"}},"required":["fileName","content"],"additionalProperties":false}""",
                 AgentResourceType.Tool,
                 "file-assets",
                 WriteAsync),
             new CapabilityDefinition(
                 "compress_files",
                 "Zip files into one archive, register it as a file asset and return its fileId. "
-                + "Each item targets a fileId, or an objectKey with fileName. Publish the archive with publish_files to deliver it.",
-                """{"type":"object","properties":{"outputName":{"type":"string","description":"zip name, e.g. report.zip"},"items":{"type":"array","items":{"type":"object","properties":{"fileId":{"type":"string"},"objectKey":{"type":"string"},"fileName":{"type":"string"}}}}},"required":["outputName","items"]}""",
+                + "Each item targets a fileId, or an objectKey with fileName. "
+                + "Publish the archive with publish_files to deliver it.",
+                """{"type":"object","properties":{"outputName":{"type":"string","description":"Output zip name, e.g. report.zip"},"items":{"type":"array","minItems":1,"items":{"type":"object","properties":{"fileId":{"type":"string","description":"Referenced file asset ID"},"objectKey":{"type":"string","description":"Object key inside the current tenant partition (pair with fileName)"},"fileName":{"type":"string","description":"Name recorded in the archive for an objectKey item"}},"additionalProperties":false}}},"required":["outputName","items"],"additionalProperties":false}""",
                 AgentResourceType.Tool,
                 "file-assets",
                 CompressAsync),
             new CapabilityDefinition(
                 "publish_files",
-                "Attach existing file assets (by fileId, from write_file/compress_files/earlier operations) to this assistant message for user download or preview. No bytes are copied.",
-                """{"type":"object","properties":{"fileIds":{"type":"array","items":{"type":"string"},"description":"Existing file asset IDs to deliver"}},"required":["fileIds"]}""",
+                "Attach existing file assets (by fileId, from write_file/compress_files/earlier operations) to this assistant message for user download or preview. No bytes are copied. "
+                + "This is the only way to hand files to the user — content written by tools alone is invisible to them.",
+                """{"type":"object","properties":{"fileIds":{"type":"array","items":{"type":"string"},"description":"Existing file asset IDs to deliver"}},"required":["fileIds"],"additionalProperties":false}""",
                 AgentResourceType.Tool,
                 "file-assets",
                 PublishAsync)
@@ -88,7 +103,8 @@ internal sealed class FileAssetCapabilitySource(
         {
             definitions.Add(new CapabilityDefinition(
                 "download_file",
-                "Download a public HTTP(S) file into the conversation's file storage; returns its fileId.",
+                "Download a public HTTP(S) file into the conversation's file storage; returns its fileId. "
+                + "Only public direct file URLs are supported — this is not a general web fetch.",
                 """{"type":"object","properties":{"url":{"type":"string","description":"The public HTTP(S) URL of the file to download."}},"required":["url"],"additionalProperties":false}""",
                 AgentResourceType.Tool,
                 "file-assets",
@@ -97,7 +113,7 @@ internal sealed class FileAssetCapabilitySource(
         return Task.FromResult<IReadOnlyList<CapabilityDefinition>>(definitions);
     }
 
-    private async Task<string> ReadAsync(
+    private async Task<ToolResult> ReadAsync(
         IReadOnlyDictionary<string, object?> arguments,
         CancellationToken cancellationToken)
     {
@@ -105,11 +121,16 @@ internal sealed class FileAssetCapabilitySource(
         string? objectKey = ReadString(arguments, "objectKey");
         if (string.IsNullOrWhiteSpace(fileId) == string.IsNullOrWhiteSpace(objectKey))
         {
-            return "文件读取失败：请提供 'fileId' 或 'objectKey' 之一（不可同时提供或同时缺失）。";
+            return ToolResult.Error(
+                "Provide exactly one of 'fileId' or 'objectKey' — not both, not neither.",
+                InvalidArguments,
+                hint: "Call list_files to discover fileIds.");
         }
         if (executionContext.Scope == null)
         {
-            return "文件读取失败：文件执行上下文不可用。";
+            return ToolResult.Error(
+                "The file execution context is unavailable for this request.",
+                UnavailableContext);
         }
         try
         {
@@ -124,17 +145,19 @@ internal sealed class FileAssetCapabilitySource(
         catch (OpenAgent.Contracts.Security.AgentException exception)
         {
             // 返回净化后的校验错误文本，供模型修正后重试，不把原始异常泄露给模型。
-            return $"文件读取失败：{exception.Message}";
+            return ToolResult.Error(exception.Message, InvalidRequest);
         }
     }
 
-    private async Task<string> ListAsync(
+    private async Task<ToolResult> ListAsync(
         IReadOnlyDictionary<string, object?> arguments,
         CancellationToken cancellationToken)
     {
         if (executionContext.Scope == null)
         {
-            return "文件列表获取失败：文件执行上下文不可用。";
+            return ToolResult.Error(
+                "The file execution context is unavailable for this request.",
+                UnavailableContext);
         }
 
         try
@@ -158,37 +181,50 @@ internal sealed class FileAssetCapabilitySource(
         }
         catch (OpenAgent.Contracts.Security.AgentException exception)
         {
-            return $"文件列表获取失败：{exception.Message}";
+            return ToolResult.Error(exception.Message, InvalidRequest);
         }
     }
 
-    private async Task<string> CreateShareLinkAsync(
+    private async Task<ToolResult> CreateShareLinkAsync(
         IReadOnlyDictionary<string, object?> arguments,
         CancellationToken cancellationToken)
     {
         string? fileId = ReadString(arguments, "fileId");
         if (string.IsNullOrWhiteSpace(fileId))
         {
-            return "文件分享链接生成失败：'fileId' 是必填参数。";
+            return ToolResult.Error(
+                "'fileId' is a required argument.",
+                InvalidArguments,
+                hint: "Call list_files to discover fileIds.");
         }
         if (executionContext.Scope == null)
         {
-            return "文件分享链接生成失败：文件执行上下文不可用。";
+            return ToolResult.Error(
+                "The file execution context is unavailable for this request.",
+                UnavailableContext);
         }
         string? modeRaw = ReadString(arguments, "mode");
         if (modeRaw != null && !FileShareModeParser.TryParse(modeRaw, out _))
         {
-            return "文件分享链接生成失败：'mode' 只支持 temporary、singleUse 或 longTerm。";
+            return ToolResult.Error(
+                $"'mode' does not allow the value '{modeRaw}'.",
+                InvalidArguments,
+                hint: "Allowed values: temporary, singleUse, longTerm.");
         }
         string? audienceRaw = ReadString(arguments, "audience");
         if (audienceRaw != null && !FileShareAudienceParser.TryParse(audienceRaw, out _))
         {
-            return "文件分享链接生成失败：'audience' 只支持 mcp 或 user。";
+            return ToolResult.Error(
+                $"'audience' does not allow the value '{audienceRaw}'.",
+                InvalidArguments,
+                hint: "Allowed values: mcp, user.");
         }
         int? expiresInSeconds = ReadInt32(arguments, "expiresInSeconds");
         if (expiresInSeconds is < 1)
         {
-            return "文件分享链接生成失败：'expiresInSeconds' 必须是正整数（秒）。";
+            return ToolResult.Error(
+                "'expiresInSeconds' must be a positive integer (seconds).",
+                InvalidArguments);
         }
 
         try
@@ -199,7 +235,10 @@ internal sealed class FileAssetCapabilitySource(
                 cancellationToken).ConfigureAwait(false);
             if (asset == null || asset.State != FileAssetState.Ready)
             {
-                return "文件分享链接生成失败：文件不存在、未就绪或未关联到当前会话。";
+                return ToolResult.Error(
+                    "The file does not exist, is not ready, or is not referenced by the current conversation.",
+                    NotFound,
+                    hint: "Call list_files to check which files are available.");
             }
 
             FileShareMode? mode = null;
@@ -230,7 +269,7 @@ internal sealed class FileAssetCapabilitySource(
         }
         catch (OpenAgent.Contracts.Security.AgentException exception)
         {
-            return $"文件分享链接生成失败：{exception.Message}";
+            return ToolResult.Error(exception.Message, InvalidRequest);
         }
     }
 
@@ -240,7 +279,7 @@ internal sealed class FileAssetCapabilitySource(
         return value != null && int.TryParse(value, out int parsed) ? parsed : null;
     }
 
-    private async Task<string> WriteAsync(
+    private async Task<ToolResult> WriteAsync(
         IReadOnlyDictionary<string, object?> arguments,
         CancellationToken cancellationToken)
     {
@@ -248,18 +287,24 @@ internal sealed class FileAssetCapabilitySource(
         string? content = ReadString(arguments, "content");
         if (string.IsNullOrWhiteSpace(fileName))
         {
-            return "文件写入失败：'fileName' 是必填参数，请提供目标文件名（如 report.txt 或 circuit.drawio）后重试。";
+            return ToolResult.Error(
+                "'fileName' is a required argument; provide the target file name (e.g. report.txt or circuit.drawio).",
+                InvalidArguments);
         }
         if (string.IsNullOrWhiteSpace(content))
         {
-            return "文件写入失败：'content' 是必填参数，请提供文件内容后重试。";
+            return ToolResult.Error(
+                "'content' is a required argument; provide the full file content.",
+                InvalidArguments);
         }
         // 不默认 text/plain：伪造的具体类型会与扩展名一致性校验冲突（如 .json + text/plain 被拒）。
         // 留空让服务端按扩展名推断规范化类型。
         string? mediaType = ReadString(arguments, "mediaType");
         if (executionContext.Scope == null)
         {
-            return "文件写入失败：文件执行上下文不可用。";
+            return ToolResult.Error(
+                "The file execution context is unavailable for this request.",
+                UnavailableContext);
         }
         try
         {
@@ -287,23 +332,27 @@ internal sealed class FileAssetCapabilitySource(
         catch (OpenAgent.Contracts.Security.AgentException exception)
         {
             // 类型/大小等校验失败：返回净化后的错误文本，供模型修正后重试，不把原始异常泄露给模型。
-            return $"文件写入失败：{exception.Message}";
+            return ToolResult.Error(exception.Message, InvalidRequest);
         }
     }
 
-    private async Task<string> DownloadAsync(
+    private async Task<ToolResult> DownloadAsync(
         IReadOnlyDictionary<string, object?> arguments,
         CancellationToken cancellationToken)
     {
         string? url = ReadString(arguments, "url");
         if (string.IsNullOrWhiteSpace(url))
         {
-            return "文件下载失败：'url' 是必填参数，请提供公开的 HTTP(S) 文件地址后重试。";
+            return ToolResult.Error(
+                "'url' is a required argument; provide the public HTTP(S) address of the file.",
+                InvalidArguments);
         }
         FileAssetScope? scope = executionContext.Scope;
         if (scope == null || string.IsNullOrWhiteSpace(scope.ConversationId))
         {
-            return "文件下载失败：当前请求没有可绑定的会话。";
+            return ToolResult.Error(
+                "This request has no conversation to bind the downloaded file to.",
+                UnavailableContext);
         }
 
         try
@@ -336,30 +385,40 @@ internal sealed class FileAssetCapabilitySource(
         }
         catch (OpenAgent.Contracts.Security.AgentException exception)
         {
-            return $"文件下载失败：{exception.Message}";
+            return ToolResult.Error(exception.Message, InvalidRequest);
         }
         catch (HttpRequestException)
         {
-            return "文件下载失败：远程地址不可访问。";
+            return ToolResult.Error(
+                "The remote address is unreachable.",
+                DownloadFailed,
+                hint: "Verify the URL is public and reachable, then retry.");
         }
         catch (TaskCanceledException)
         {
-            return "文件下载失败：远程地址响应超时。";
+            return ToolResult.Error(
+                "The remote address timed out.",
+                DownloadFailed,
+                hint: "Retry, or point at a faster mirror of the file.");
         }
     }
 
-    private async Task<string> CompressAsync(
+    private async Task<ToolResult> CompressAsync(
         IReadOnlyDictionary<string, object?> arguments,
         CancellationToken cancellationToken)
     {
         string? outputName = ReadString(arguments, "outputName");
         if (string.IsNullOrWhiteSpace(outputName))
         {
-            return "文件压缩失败：'outputName' 是必填参数，请提供输出 zip 文件名（如 report.zip）后重试。";
+            return ToolResult.Error(
+                "'outputName' is a required argument; provide the output zip name (e.g. report.zip).",
+                InvalidArguments);
         }
         if (!arguments.TryGetValue("items", out object? itemsValue) || itemsValue == null)
         {
-            return "文件压缩失败：'items' 是必填参数，请提供至少一个待打包文件（fileId 或 objectKey+fileName）。";
+            return ToolResult.Error(
+                "'items' is a required argument; provide at least one file to pack (fileId, or objectKey+fileName).",
+                InvalidArguments);
         }
         IReadOnlyList<FileArchiveItem> items;
         try
@@ -371,15 +430,22 @@ internal sealed class FileAssetCapabilitySource(
         }
         catch (JsonException)
         {
-            return "文件压缩失败：'items' 格式无效，请按 [{\"fileId\":\"...\"}] 或 [{\"objectKey\":\"...\",\"fileName\":\"...\"}] 提供。";
+            return ToolResult.Error(
+                "'items' is not a valid array of pack entries.",
+                InvalidArguments,
+                hint: "Use [{\"fileId\":\"...\"}] or [{\"objectKey\":\"...\",\"fileName\":\"...\"}].");
         }
         if (items.Count == 0)
         {
-            return "文件压缩失败：'items' 至少需要一个待打包文件。";
+            return ToolResult.Error(
+                "'items' must contain at least one file to pack.",
+                InvalidArguments);
         }
         if (executionContext.Scope == null)
         {
-            return "文件压缩失败：文件执行上下文不可用。";
+            return ToolResult.Error(
+                "The file execution context is unavailable for this request.",
+                UnavailableContext);
         }
         try
         {
@@ -407,23 +473,28 @@ internal sealed class FileAssetCapabilitySource(
         }
         catch (OpenAgent.Contracts.Security.AgentException exception)
         {
-            // 返回净化后的校验错误文本，供模型修正后重试，不把原始异常泄露给模型。
-            return $"文件压缩失败：{exception.Message}";
+            // 返回净化后的错误文本，供模型修正后重试，不把原始异常泄露给模型。
+            return ToolResult.Error(exception.Message, InvalidRequest);
         }
     }
 
-    private async Task<string> PublishAsync(
+    private async Task<ToolResult> PublishAsync(
         IReadOnlyDictionary<string, object?> arguments,
         CancellationToken cancellationToken)
     {
         IReadOnlyList<string> fileIds = ReadStrings(arguments, "fileIds");
         if (fileIds.Count == 0)
         {
-            return "文件发布失败：'fileIds' 是必填参数，请提供至少一个文件 ID。";
+            return ToolResult.Error(
+                "'fileIds' is a required argument; provide at least one file ID.",
+                InvalidArguments,
+                hint: "Call list_files to discover fileIds.");
         }
         if (executionContext.Scope == null)
         {
-            return "文件发布失败：文件执行上下文不可用。";
+            return ToolResult.Error(
+                "The file execution context is unavailable for this request.",
+                UnavailableContext);
         }
 
         try
@@ -437,7 +508,11 @@ internal sealed class FileAssetCapabilitySource(
                     cancellationToken).ConfigureAwait(false);
                 if (asset == null || asset.State != FileAssetState.Ready)
                 {
-                    return "文件发布失败：文件不存在、未就绪或不属于当前用户。";
+                    // 不回显调用方传入的 fileId：保持与旧契约一致的净化口径。
+                    return ToolResult.Error(
+                        "One or more files do not exist, are not ready, or do not belong to the current user.",
+                        NotFound,
+                        hint: "Call list_files to check which files are available.");
                 }
                 assets.Add(asset);
             }
@@ -465,7 +540,7 @@ internal sealed class FileAssetCapabilitySource(
         }
         catch (OpenAgent.Contracts.Security.AgentException exception)
         {
-            return $"文件发布失败：{exception.Message}";
+            return ToolResult.Error(exception.Message, InvalidRequest);
         }
     }
 

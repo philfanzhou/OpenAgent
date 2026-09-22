@@ -18,7 +18,10 @@ public class AgentConfig
     public CodeExecutionConfig CodeExecution { get; set; } = new();
     public ContextPolicy? ContextPolicy { get; set; }
 
-    public int MaxTurns { get; set; } = 50;
+    /// <summary>Documented default turn limit; also the fallback when MaxTurns is unset.</summary>
+    public const int DefaultMaxTurns = 50;
+
+    public int MaxTurns { get; set; } = DefaultMaxTurns;
 }
 
 /// <summary>The effective model connection used by one execution.</summary>

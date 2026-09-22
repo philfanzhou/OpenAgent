@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.Extensions.Options;
+using OpenAgent.Contracts.Capabilities;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Execution;
 using OpenAgent.Contracts.Files;
@@ -37,7 +38,8 @@ internal sealed class CodeCapabilitySource(
                 + "built-in Node modules only) in an isolated sandbox: no network, no package installs, no credentials. "
                 + "Python ships pandas, matplotlib, openpyxl, XlsxWriter, python-pptx and Pillow. "
                 + "Mount conversation files read-only via inputFiles at /input/<name>; main.py/main.mjs are reserved. "
-                + "Write deliverables under /output (max 8 files, 10 MiB each, 20 MiB total) and print concise results. "
+                + "Write deliverables under /output (max 8 files, 10 MiB each, 20 MiB total) and print concise results — "
+                + "very verbose output is truncated with a marker, so print only what matters. "
                 + "Outputs of any type are collected; only storable types (e.g. html, css, md, csv, json, png, pdf, pptx, xlsx) "
                 + "are registered as files — others are listed under skippedFiles with a reason, so rename or convert them. "
                 + "Calls in one conversation share a persistent sandbox: files you write under /work, /tmp and /input "
@@ -45,13 +47,13 @@ internal sealed class CodeCapabilitySource(
                 + "(the result then carries sandboxReset=true and earlier files are gone). "
                 + "On failure inspect exitCode/stderr and retry with fixes. "
                 + "Deliver returned files with publish_files.",
-                """{"type":"object","properties":{"code":{"type":"string"},"language":{"type":"string","enum":["python","javascript"],"description":"Execution language; defaults to python."},"inputFiles":{"type":"array","maxItems":8,"items":{"type":"object","properties":{"fileId":{"type":"string"},"name":{"type":"string"}},"required":["fileId","name"],"additionalProperties":false}}},"required":["code"],"additionalProperties":false}""",
+                """{"type":"object","properties":{"code":{"type":"string","description":"Full source code to execute; entry point is the code itself (main.py/main.mjs are reserved names)"},"language":{"type":"string","enum":["python","javascript"],"description":"Execution language; defaults to python."},"inputFiles":{"type":"array","maxItems":8,"items":{"type":"object","properties":{"fileId":{"type":"string","description":"File asset to mount read-only"},"name":{"type":"string","description":"Mount name under /input"}},"required":["fileId","name"],"additionalProperties":false}}},"required":["code"],"additionalProperties":false}""",
                 AgentResourceType.Tool,
                 "code-execution",
                 (arguments, token) => ExecuteAsync(agentId, user, scope, arguments, token))]);
     }
 
-    private async Task<string> ExecuteAsync(string agentId, IAgentUserContext user, FileAssetScope scope,
+    private async Task<ToolResult> ExecuteAsync(string agentId, IAgentUserContext user, FileAssetScope scope,
         IReadOnlyDictionary<string, object?> arguments, CancellationToken cancellationToken)
     {
         // Recheck authorization at invocation, including calls after a long model turn.
@@ -126,15 +128,18 @@ internal sealed class CodeCapabilitySource(
         }
         catch (Exception exception) when (exception is ArgumentException or JsonException or AgentException)
         {
-            return JsonSerializer.Serialize(new { error = exception.Message }, JsonOptions);
+            return ToolResult.Error(exception.Message, "invalid_arguments");
         }
         catch (Exception exception) when (exception is HttpRequestException or InvalidOperationException)
         {
-            return "{\"error\":\"The isolated Runner is unavailable or returned an invalid result. No host execution fallback is permitted.\"}";
+            return ToolResult.Error(
+                "The isolated Runner is unavailable or returned an invalid result. No host execution fallback is permitted.",
+                "runner_unavailable",
+                hint: "Retry after a short wait; if it persists, finish without code execution.");
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            return "{\"error\":\"The Runner request timed out.\"}";
+            return ToolResult.Error("The Runner request timed out.", "tool_timeout", timedOut: true);
         }
     }
 
@@ -144,3 +149,4 @@ internal sealed class CodeCapabilitySource(
         public string Name { get; set; } = string.Empty;
     }
 }
+

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
+using OpenAgent.Contracts.Capabilities;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Requests;
@@ -144,7 +145,7 @@ public class ToolFailureIsolationTests
         Assert.Equal(2, provider.Requests.Count);
         AgentStreamEvent result = Assert.Single(events, item =>
             item.Type == AgentStreamEventType.ToolResult && item.ToolCallId == "call-1");
-        Assert.Contains("必填参数", result.Content);
+        Assert.Contains("required argument", result.Content);
         Assert.Contains(events, item => item.Type == AgentStreamEventType.Content
             && item.Content == "请告诉我要分享哪个文件");
     }
@@ -162,8 +163,10 @@ public class ToolFailureIsolationTests
     }
 
     [Fact]
-    public async Task Wrap_InvocationThrows_ReturnsErrorJsonInsteadOfPropagating()
+    public async Task Wrap_InvocationThrows_ReturnsSanitizedErrorJsonInsteadOfPropagating()
     {
+        // 原始异常文本（可能含内部地址/堆栈细节）不得透传给模型：
+        // 信封只带通用失败描述 + code + errorId（日志关联），异常本体只进日志。
         AITool wrapped = IsolatedToolFunction.Wrap(new StubFunction(
             "always_failing_tool",
             _ => ValueTask.FromException<object?>(new InvalidOperationException("mcp server unreachable"))));
@@ -173,8 +176,12 @@ public class ToolFailureIsolationTests
 
         string json = Assert.IsType<string>(result);
         using JsonDocument document = JsonDocument.Parse(json);
-        Assert.Equal($"Tool 'always_failing_tool' failed: mcp server unreachable",
+        Assert.Equal(
+            "Tool 'always_failing_tool' failed with an unexpected error.",
             document.RootElement.GetProperty("error").GetString());
+        Assert.Equal("tool_error", document.RootElement.GetProperty("code").GetString());
+        Assert.NotNull(document.RootElement.GetProperty("errorId").GetString());
+        Assert.DoesNotContain("mcp server unreachable", json, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -331,10 +338,12 @@ public class ToolFailureIsolationTests
                     "{\"type\":\"object\",\"properties\":{\"fileId\":{\"type\":\"string\"}},\"required\":[\"fileId\"]}",
                     AgentResourceType.Tool,
                     "test/hinting_tool",
-                    (arguments, _) => Task.FromResult(
+                    (arguments, _) => Task.FromResult<ToolResult>(
                         arguments.ContainsKey("fileId")
                             ? "{\"fileId\":\"ok\"}"
-                            : "调用失败：'fileId' 是必填参数，请提供后重试。"))
+                            : ToolResult.Error(
+                                "'fileId' is a required argument; provide it and retry.",
+                                "invalid_arguments")))
             ]);
     }
 

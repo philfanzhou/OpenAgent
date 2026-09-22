@@ -1,5 +1,8 @@
 using System.Text.Json;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using OpenAgent.Contracts.Capabilities;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Security;
@@ -10,13 +13,19 @@ internal sealed class CapabilityToolFactory
 {
     private readonly IReadOnlyList<ICapabilitySource> _sources;
     private readonly AgentAuthorizationGate _authorization;
+    private readonly ILogger<CapabilityToolFactory> _logger;
+    private readonly IHostEnvironment? _environment;
 
     public CapabilityToolFactory(
         IEnumerable<ICapabilitySource> sources,
-        AgentAuthorizationGate authorization)
+        AgentAuthorizationGate authorization,
+        ILogger<CapabilityToolFactory> logger,
+        IHostEnvironment? environment = null)
     {
         _sources = sources.ToList().AsReadOnly();
         _authorization = authorization;
+        _logger = logger;
+        _environment = environment;
     }
 
     internal async Task<IReadOnlyList<AITool>> CreateAsync(
@@ -47,7 +56,7 @@ internal sealed class CapabilityToolFactory
                         throw new InvalidOperationException(
                             $"Duplicate capability runtime name: {definition.Name}");
                     }
-                    tools.Add(new CapabilityAIFunction(definition));
+                    tools.Add(new CapabilityAIFunction(definition, _logger, _environment));
                 }
             }
         }
@@ -100,10 +109,17 @@ internal sealed class CapabilityToolFactory
     {
         private readonly CapabilityDefinition _definition;
         private readonly JsonElement _schema;
+        private readonly ILogger<CapabilityToolFactory> _logger;
+        private readonly IHostEnvironment? _environment;
 
-        internal CapabilityAIFunction(CapabilityDefinition definition)
+        internal CapabilityAIFunction(
+            CapabilityDefinition definition,
+            ILogger<CapabilityToolFactory> logger,
+            IHostEnvironment? environment)
         {
             _definition = definition;
+            _logger = logger;
+            _environment = environment;
             using JsonDocument schema = JsonDocument.Parse(NormalizeSchema(definition.ParametersJsonSchema));
             _schema = schema.RootElement.Clone();
         }
@@ -119,13 +135,20 @@ internal sealed class CapabilityToolFactory
             IReadOnlyDictionary<string, object?> values = arguments.ToDictionary(
                 item => item.Key,
                 item => item.Value);
-            return await _definition.Invoke(values, cancellationToken).ConfigureAwait(false);
+            // 错误信封已在 ToolResult.Error 构造时渲染成 Content；此处直接落成
+            // 字符串，保证任何调用路径（含未包 IsolatedToolFunction 的测试/诊断
+            // 路径）拿到的都是模型可读文本而不是 record 序列化。
+            ToolResult result = await _definition.Invoke(values, cancellationToken).ConfigureAwait(false);
+            return result.Content;
         }
 
-        private static string NormalizeSchema(string? schema)
+        private string NormalizeSchema(string? schema)
         {
             if (string.IsNullOrWhiteSpace(schema))
             {
+                _logger.LogWarning(
+                    "Capability {CapabilityName} has no parameter schema; falling back to {{\"type\":\"object\"}}",
+                    _definition.Name);
                 return "{\"type\":\"object\"}";
             }
 
@@ -134,8 +157,19 @@ internal sealed class CapabilityToolFactory
                 using JsonDocument document = JsonDocument.Parse(schema);
                 return document.RootElement.GetRawText();
             }
-            catch (JsonException)
+            catch (JsonException exception)
             {
+                // 非法 schema 是开发期缺陷：生产环境降级为无参工具并告警，
+                // 开发环境直接失败，避免带病上线。
+                _logger.LogError(
+                    exception,
+                    "Capability {CapabilityName} has an invalid parameter schema; falling back to {{\"type\":\"object\"}}",
+                    _definition.Name);
+                if (_environment?.IsDevelopment() == true)
+                {
+                    throw new InvalidOperationException(
+                        $"Capability '{_definition.Name}' has an invalid ParametersJsonSchema.", exception);
+                }
                 return "{\"type\":\"object\"}";
             }
         }

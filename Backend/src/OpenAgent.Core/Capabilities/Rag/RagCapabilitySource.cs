@@ -1,15 +1,22 @@
 using System.Text;
+using Microsoft.Extensions.Logging;
 using OpenAgent.Core.Abstract;
+using OpenAgent.Contracts.Capabilities;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Security;
 
 namespace OpenAgent.Core.Capabilities.Rag;
 
-internal sealed class RagCapabilitySource(IRagService ragService) : ICapabilitySource
+internal sealed class RagCapabilitySource(
+    IRagService ragService,
+    ILogger<RagCapabilitySource> logger) : ICapabilitySource
 {
     private const string Name = "search_knowledge_base";
     private const string Description =
-        "Search internal knowledge base for relevant information to answer user questions about policies, procedures, and company information.";
+        "Search the internal knowledge base for policies, procedures and company information. "
+        + "Use it before answering questions about internal topics; do not use it for general knowledge "
+        + "or questions the conversation already answers. "
+        + "Results are numbered excerpts; cite them in the answer instead of paraphrasing blindly.";
     private const string ParametersJsonSchema = """
         {
           "type": "object",
@@ -25,7 +32,8 @@ internal sealed class RagCapabilitySource(IRagService ragService) : ICapabilityS
               "maximum": 10
             }
           },
-          "required": ["query"]
+          "required": ["query"],
+          "additionalProperties": false
         }
         """;
 
@@ -51,7 +59,7 @@ internal sealed class RagCapabilitySource(IRagService ragService) : ICapabilityS
         return Task.FromResult(result);
     }
 
-    private async Task<string> SearchAsync(
+    private async Task<ToolResult> SearchAsync(
         IReadOnlyDictionary<string, object?> arguments,
         IAgentUserContext user,
         RagConfig config,
@@ -67,7 +75,10 @@ internal sealed class RagCapabilitySource(IRagService ragService) : ICapabilityS
 
         if (string.IsNullOrEmpty(query))
         {
-            return "Error: Query parameter is required";
+            return ToolResult.Error(
+                "The 'query' parameter is required.",
+                "invalid_arguments",
+                hint: "Provide a non-empty search query.");
         }
 
         try
@@ -99,7 +110,12 @@ internal sealed class RagCapabilitySource(IRagService ragService) : ICapabilityS
         }
         catch (Exception exception)
         {
-            return $"Error searching knowledge base: {exception.Message}";
+            // 原始异常只进日志；模型拿到的是可行动的净化错误，而不是底层堆栈细节。
+            logger.LogError(exception, "Knowledge base search failed for query {Query}", query);
+            return ToolResult.Error(
+                "Knowledge base search failed.",
+                "search_failed",
+                hint: "Retry with a narrower query; if it keeps failing, answer without the knowledge base and say so.");
         }
     }
 }
