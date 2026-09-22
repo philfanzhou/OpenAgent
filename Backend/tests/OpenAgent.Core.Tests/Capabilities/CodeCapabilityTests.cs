@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
 using OpenAgent.Contracts.Configuration;
@@ -293,7 +294,7 @@ public class CodeCapabilityTests
                     fileOptions,
                     new FileAssetUrlDownloader(Mock.Of<IHttpClientFactory>(), fileOptions)));
             }
-            Factory = new CapabilityToolFactory(sources, gate);
+            Factory = new CapabilityToolFactory(sources, gate, NullLogger<CapabilityToolFactory>.Instance);
         }
 
         internal async Task<AIFunction> GetFunctionAsync() => Assert.IsAssignableFrom<AIFunction>(Assert.Single(

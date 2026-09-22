@@ -1,5 +1,6 @@
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OpenAgent.Core.Capabilities;
 using OpenAgent.Core.Capabilities.Mcp;
@@ -23,6 +24,8 @@ internal sealed class AgentFactory
     private readonly AgentSkillsProviderFactory _skills;
     private readonly FileAssetExecutionContext _files;
     private readonly IServiceProvider _services;
+    private readonly ILogger<IsolatedToolFunction> _toolLogger;
+    private readonly AgentExecutionOptions _executionOptions;
     private readonly TimeSpan _toolCallTimeout;
 
     public AgentFactory(
@@ -33,6 +36,7 @@ internal sealed class AgentFactory
         AgentSkillsProviderFactory skills,
         FileAssetExecutionContext files,
         IServiceProvider services,
+        ILogger<IsolatedToolFunction> toolLogger,
         IOptions<AgentExecutionOptions> executionOptions)
     {
         _chatClients = chatClients;
@@ -42,8 +46,10 @@ internal sealed class AgentFactory
         _skills = skills;
         _files = files;
         _services = services;
+        _toolLogger = toolLogger;
+        _executionOptions = executionOptions.Value;
         // 小于等于 0 视为不限时；正数作为所有工具（能力+MCP）单次调用的统一上限。
-        int seconds = executionOptions.Value.ToolCallTimeoutSeconds;
+        int seconds = _executionOptions.ToolCallTimeoutSeconds;
         _toolCallTimeout = seconds <= 0 ? Timeout.InfiniteTimeSpan : TimeSpan.FromSeconds(seconds);
     }
 
@@ -119,7 +125,9 @@ internal sealed class AgentFactory
                 AllowConcurrentInvocation = false,
                 IncludeDetailedErrors = false,
                 MaximumConsecutiveErrorsPerRequest = 3,
-                MaximumIterationsPerRequest = profile.Config.MaxTurns > 0 ? profile.Config.MaxTurns : 5,
+                MaximumIterationsPerRequest = profile.Config.MaxTurns > 0
+                    ? profile.Config.MaxTurns
+                    : AgentConfig.DefaultMaxTurns,
                 // 未知工具调用（如某次运行中 MCP server 连接失败、工具未注册，或模型
                 // 幻觉出名字）必须以 "tool not found" 结果回传给模型，让它自行调整；
                 // 终止循环会让模型在没有任何回复的情况下直接停止。
@@ -143,9 +151,14 @@ internal sealed class AgentFactory
                     Temperature = (float?)profile.Model.Temperature,
                     // 工具（MCP/能力）异常与超时在调用处被隔离成错误结果回传给模型
                     // （超时带 timedOut 标记），避免 FunctionInvokingChatClient
-                    // 连续失败后重抛导致整轮执行终止。
+                    // 连续失败后重抛导致整轮执行终止；结果同时过分级字符预算
+                    // （头尾保留截断），防止超长输出吃穿上下文。
                     Tools = tools.Concat(mcpRuntime.Tools)
-                        .Select(tool => IsolatedToolFunction.Wrap(tool, _toolCallTimeout))
+                        .Select(tool => IsolatedToolFunction.Wrap(
+                            tool,
+                            _toolCallTimeout,
+                            ToolResultBudgets.Resolve(_executionOptions, tool.Name),
+                            _toolLogger))
                         .ToList()
                 },
                 ChatHistoryProvider = history,

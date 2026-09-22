@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using System.Text.Json;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging.Abstractions;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Capabilities;
@@ -134,7 +135,7 @@ public class UserProfileCapabilitySourceTests
     {
         AgentAuthorizationGate gate = new(
             authorization ?? new AllowAllAgentAuthorizationService());
-        return new CapabilityToolFactory([new UserProfileCapabilitySource()], gate);
+        return new CapabilityToolFactory([new UserProfileCapabilitySource()], gate, NullLogger<CapabilityToolFactory>.Instance);
     }
 
     private static async Task<AIFunction> CreateFunctionAsync(

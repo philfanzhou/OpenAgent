@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text.Json;
+using OpenAgent.Contracts.Capabilities;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Security;
 
@@ -9,7 +10,8 @@ internal sealed class UserProfileCapabilitySource : ICapabilitySource
 {
     private const string Name = "get_current_user_profile";
     private const string Description =
-        "Get the username, email, and tenant of the current authenticated user. This function takes no arguments and cannot query another user.";
+        "Get the username, email, and tenant of the current authenticated user. "
+        + "This function takes no arguments and cannot query another user.";
     private const string ParametersJsonSchema =
         """{"type":"object","properties":{},"additionalProperties":false}""";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -30,7 +32,7 @@ internal sealed class UserProfileCapabilitySource : ICapabilitySource
                     ParametersJsonSchema,
                     AgentResourceType.Function,
                     Name,
-                    (_, _) => Task.FromResult(SerializeProfile(user)))
+                    (_, _) => Task.FromResult<ToolResult>(SerializeProfile(user)))
             ];
         return Task.FromResult(definitions);
     }

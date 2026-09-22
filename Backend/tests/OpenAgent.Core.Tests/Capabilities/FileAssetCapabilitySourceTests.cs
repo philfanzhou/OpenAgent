@@ -156,7 +156,10 @@ public class FileAssetCapabilitySourceTests
             "create_file_transfer_url",
             new Dictionary<string, object?> { ["fileId"] = asset.FileId });
 
-        Assert.StartsWith("文件分享链接生成失败：", result, StringComparison.Ordinal);
+        using (JsonDocument document = JsonDocument.Parse(result))
+        {
+            Assert.Equal("not_found", document.RootElement.GetProperty("code").GetString());
+        }
         Assert.Empty(harness.Shares.Records);
     }
 
@@ -275,8 +278,12 @@ public class FileAssetCapabilitySourceTests
 
         string result = await InvokeAsync(harness.Source, "write_file", arguments);
 
-        Assert.StartsWith("文件写入失败：", result, StringComparison.Ordinal);
-        Assert.Contains("does not match", result, StringComparison.Ordinal);
+        using (JsonDocument document = JsonDocument.Parse(result))
+        {
+            Assert.Equal("invalid_request", document.RootElement.GetProperty("code").GetString());
+            Assert.Contains("does not match",
+                document.RootElement.GetProperty("error").GetString(), StringComparison.Ordinal);
+        }
         Assert.Null(harness.Objects.LastRequest);
     }
 
@@ -296,7 +303,10 @@ public class FileAssetCapabilitySourceTests
 
         string result = await InvokeAsync(harness.Source, "read_file", arguments);
 
-        Assert.StartsWith("文件读取失败：", result, StringComparison.Ordinal);
+        using (JsonDocument document = JsonDocument.Parse(result))
+        {
+            Assert.Equal("invalid_arguments", document.RootElement.GetProperty("code").GetString());
+        }
     }
 
     [Fact]
@@ -310,7 +320,10 @@ public class FileAssetCapabilitySourceTests
 
         string result = await InvokeAsync(harness.Source, "read_file", arguments);
 
-        Assert.StartsWith("文件读取失败：", result, StringComparison.Ordinal);
+        using (JsonDocument document = JsonDocument.Parse(result))
+        {
+            Assert.Equal("invalid_request", document.RootElement.GetProperty("code").GetString());
+        }
         Assert.DoesNotContain("# secret", result, StringComparison.Ordinal);
         Assert.Equal(0, harness.Objects.ReadCount);
     }
@@ -380,7 +393,10 @@ public class FileAssetCapabilitySourceTests
 
         string result = await InvokeAsync(harness.Source, "publish_files", arguments);
 
-        Assert.StartsWith("文件发布失败：", result, StringComparison.Ordinal);
+        using (JsonDocument document = JsonDocument.Parse(result))
+        {
+            Assert.Equal("not_found", document.RootElement.GetProperty("code").GetString());
+        }
         Assert.DoesNotContain("missing-file", result, StringComparison.Ordinal);
         Assert.Empty(harness.Context.Published);
     }
@@ -395,7 +411,10 @@ public class FileAssetCapabilitySourceTests
             "compress_files",
             new Dictionary<string, object?>());
 
-        Assert.StartsWith("文件压缩失败：", result, StringComparison.Ordinal);
+        using (JsonDocument document = JsonDocument.Parse(result))
+        {
+            Assert.Equal("invalid_arguments", document.RootElement.GetProperty("code").GetString());
+        }
         Assert.Contains("'outputName'", result, StringComparison.Ordinal);
     }
 
@@ -407,7 +426,10 @@ public class FileAssetCapabilitySourceTests
 
         string result = await InvokeAsync(harness.Source, "compress_files", arguments);
 
-        Assert.StartsWith("文件压缩失败：", result, StringComparison.Ordinal);
+        using (JsonDocument document = JsonDocument.Parse(result))
+        {
+            Assert.Equal("invalid_arguments", document.RootElement.GetProperty("code").GetString());
+        }
         Assert.Contains("'items'", result, StringComparison.Ordinal);
     }
 
@@ -423,7 +445,10 @@ public class FileAssetCapabilitySourceTests
 
         string result = await InvokeAsync(harness.Source, "compress_files", arguments);
 
-        Assert.StartsWith("文件压缩失败：", result, StringComparison.Ordinal);
+        using (JsonDocument document = JsonDocument.Parse(result))
+        {
+            Assert.Equal("invalid_arguments", document.RootElement.GetProperty("code").GetString());
+        }
     }
 
     [Fact]
@@ -440,7 +465,10 @@ public class FileAssetCapabilitySourceTests
 
         string result = await InvokeAsync(harness.Source, "compress_files", arguments);
 
-        Assert.StartsWith("文件压缩失败：", result, StringComparison.Ordinal);
+        using (JsonDocument document = JsonDocument.Parse(result))
+        {
+            Assert.Equal("invalid_request", document.RootElement.GetProperty("code").GetString());
+        }
         Assert.Contains(".zip", result, StringComparison.Ordinal);
     }
 
@@ -458,7 +486,7 @@ public class FileAssetCapabilitySourceTests
     {
         IReadOnlyList<CapabilityDefinition> definitions = await DiscoverAsync(source);
         CapabilityDefinition definition = definitions.Single(item => item.Name == toolName);
-        return await definition.Invoke(arguments, CancellationToken.None);
+        return (await definition.Invoke(arguments, CancellationToken.None)).Content;
     }
 
     private static AgentUserContext UserContext() => new()
