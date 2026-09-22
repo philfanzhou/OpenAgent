@@ -3,6 +3,7 @@ using OpenAgent.Contracts.Models;
 using OpenAgent.Core.Capabilities;
 using OpenAgent.Core.Abstract;
 using OpenAgent.Core.Capabilities.Mcp;
+using OpenAgent.Core.Capabilities.Plan;
 using OpenAgent.Core.Capabilities.Rag;
 using OpenAgent.Core.Capabilities.Skill;
 using OpenAgent.Core.Capabilities.UserProfile;
@@ -18,11 +19,13 @@ internal static class CapabilityServiceExtensions
         services.AddSingleton<ISkillCatalog, SkillCatalog>();
         services.AddSingleton<IMcpRegistry, McpRegistry>();
         services.AddSingleton<McpTransportFactory>();
+        services.AddSingleton<McpClientPool>();
         services.AddScoped<McpToolFactory>();
         services.AddScoped<AgentSkillsProviderFactory>();
         services.AddScoped<IMcpConnectionTester, McpConnectionTester>();
         services.AddScoped<ICapabilitySource, RagCapabilitySource>();
         services.AddScoped<ICapabilitySource, UserProfileCapabilitySource>();
+        services.AddScoped<ICapabilitySource, PlanCapabilitySource>();
         services.AddScoped<CapabilityToolFactory>();
 
         services.AddScoped<IRagService, RagService>();

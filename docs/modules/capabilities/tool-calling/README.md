@@ -12,6 +12,9 @@
 | 异常脱敏 | 未捕获异常不透传给模型：原始异常进日志（errorId 关联），模型只看到通用失败信封 + hint |
 | 工具路由 | `search_knowledge_base`→RAG，`mcp_*`→官方 MCP，`load_skill` / `read_skill_resource`→MAF Skill Provider，`run_skill_script`→隔离 Runner（经 `SkillScriptRunner`，需三层开关） |
 | Schema 硬化 | 内置工具 schema 全部封闭（`additionalProperties:false`、参数带 type、required 引用校验）；非法 schema 生产降级+Error 日志、Development 直接抛错；`BuiltInToolSchemaTests` 在 CI 兜底 |
+| 并行工具调用 | 同一条 assistant 消息里的多个调用并发执行；仅能力源显式声明 ReadOnly 的工具真正并行（read_file/list_files/search_knowledge_base/get_current_user_profile/update_plan），其余（写入/执行/MCP/Skill）由每轮共享信号量串行化；排队等待计入单次调用超时 |
+| 计划工具 | `update_plan`（对标 Claude Code TodoWrite / Codex update_plan）：全量重发步骤列表，≤1 个 in_progress；结果快照落进会话时间线，SSE 附加 `plan_updated` 事件 |
+| MCP 连接池化 | `McpClientPool` 按（租户, 服务器地址）缓存客户端跨轮复用；每轮 ListTools 兼作健康探测，坏连接淘汰后立即重连一次；空闲超过 `Mcp:ClientIdleTimeoutSeconds`（默认 600s）惰性淘汰 |
 | 最大轮次控制 | 默认 50 轮（`AgentConfig.MaxTurns`，fallback 同为 `DefaultMaxTurns=50`） |
 
 ## Architecture
@@ -20,11 +23,12 @@ AgentFactory
   ├─ CapabilityToolFactory: 授权过滤 → AIFunction（schema 校验/降级）
   ├─ McpToolFactory: official McpClientTool（mcp__{server}__{tool}）
   ├─ AgentSkillsProviderFactory: official AgentSkillsProvider
-  └─ ChatClientAgent / FunctionInvokingChatClient
-       Tools = 全部工具 × IsolatedToolFunction.Wrap(超时, 分级预算, logger)
+  └─ ChatClientAgent / FunctionInvokingChatClient（AllowConcurrentInvocation=true）
+       Tools = 全部工具 × IsolatedToolFunction.Wrap(超时, 分级预算, 并发类别, 独占信号量, logger)
          ├─ ToolResult(IsError) → 错误信封原样回传
          ├─ 成功内容 → 预算截断（头尾保留 + 收窄提示）
-         ├─ 超时 → {"error","code":"tool_timeout","timedOut":true}
+         ├─ Exclusive → 每轮共享信号量串行（排队计入超时）；ReadOnly → 并发执行
+         ├─ 超时 → {"error","code":"tool_timeout","timedOut":true}（排队超时文案可区分）
          └─ 异常 → 脱敏信封（errorId 关联日志）
 ```
 
@@ -36,11 +40,12 @@ AgentFactory
 **Implemented** — 原生 Function Calling、结构化结果契约、统一错误信封、分级结果预算、异常脱敏已落地。
 
 ## Limits
-- 无并行工具调用（逐个串行执行）
+- ReadOnly 并行白名单当前为内置读取类工具；MCP/Skill 工具一律按独占串行（保守口径，待逐类审查后再放开）
 - 无工具调用结果缓存
+- 池化连接的复用/空闲淘汰路径无自动化测试（MCP SDK 无公开内存传输），当前靠失败路径单测 + 代码审查保障
 - 预算按字符计（≈4 字符/token），非精确 token 计数
 
 ## Source
-- Core: `Backend/src/OpenAgent.Core/Capabilities/`（CapabilityToolFactory 等）、`Runtime/Agent/IsolatedToolFunction.cs`、`Runtime/Agent/ToolResultBudgets.cs`
+- Core: `Backend/src/OpenAgent.Core/Capabilities/`（CapabilityToolFactory、Plan/PlanCapabilitySource、Mcp/McpClientPool 等）、`Runtime/Agent/IsolatedToolFunction.cs`、`Runtime/Agent/ToolResultBudgets.cs`、`Runtime/Agent/ToolConcurrencyRules.cs`
 - Contracts: `Backend/src/OpenAgent.Contracts/Capabilities/ToolResult.cs`
 - Tests: `Backend/tests/OpenAgent.Core.Tests/Capabilities/CapabilityToolFactoryTests.cs`、`BuiltInToolSchemaTests.cs`、`Runtime/ToolResultBudgetTests.cs` 等

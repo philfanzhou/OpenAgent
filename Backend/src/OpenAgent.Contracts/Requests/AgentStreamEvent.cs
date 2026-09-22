@@ -6,7 +6,9 @@ public enum AgentStreamEventType
     Reasoning,
     ToolCall,
     ToolResult,
-    Usage
+    Usage,
+    /// <summary>update_plan 工具结果后的计划快照事件，Content 为计划 JSON，前端据此渲染任务清单。</summary>
+    PlanUpdated
 }
 
 public sealed record AgentStreamEvent
