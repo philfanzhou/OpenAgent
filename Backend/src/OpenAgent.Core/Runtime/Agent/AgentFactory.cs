@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OpenAgent.Core.Capabilities;
 using OpenAgent.Core.Capabilities.Mcp;
+using OpenAgent.Contracts.Execution;
 using OpenAgent.Core.Capabilities.Skill;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Conversation;
@@ -25,7 +26,9 @@ internal sealed class AgentFactory
     private readonly FileAssetExecutionContext _files;
     private readonly IServiceProvider _services;
     private readonly ILogger<IsolatedToolFunction> _toolLogger;
+    private readonly ILogger<AgentFactory> _logger;
     private readonly AgentExecutionOptions _executionOptions;
+    private readonly McpExecutionOptions _mcpOptions;
     private readonly TimeSpan _toolCallTimeout;
 
     public AgentFactory(
@@ -37,7 +40,9 @@ internal sealed class AgentFactory
         FileAssetExecutionContext files,
         IServiceProvider services,
         ILogger<IsolatedToolFunction> toolLogger,
-        IOptions<AgentExecutionOptions> executionOptions)
+        ILogger<AgentFactory> logger,
+        IOptions<AgentExecutionOptions> executionOptions,
+        IOptions<McpExecutionOptions> mcpOptions)
     {
         _chatClients = chatClients;
         _conversations = conversations;
@@ -47,7 +52,9 @@ internal sealed class AgentFactory
         _files = files;
         _services = services;
         _toolLogger = toolLogger;
+        _logger = logger;
         _executionOptions = executionOptions.Value;
+        _mcpOptions = mcpOptions.Value;
         // 小于等于 0 视为不限时；正数作为所有工具（能力+MCP）单次调用的统一上限。
         int seconds = _executionOptions.ToolCallTimeoutSeconds;
         _toolCallTimeout = seconds <= 0 ? Timeout.InfiniteTimeSpan : TimeSpan.FromSeconds(seconds);
@@ -114,12 +121,55 @@ internal sealed class AgentFactory
                     .UseAIContextProviders(compaction)
                     .Build();
             }
+            // Exclusive 工具的每轮共享信号量：与 ChatClientAgent 同生命周期，
+            // 作用域释放时一并销毁。
+            SemaphoreSlim exclusiveGate = new(1, 1);
+            AITool WrapTool(AITool tool) => IsolatedToolFunction.Wrap(
+                tool,
+                _toolCallTimeout,
+                ToolResultBudgets.Resolve(_executionOptions, tool.Name),
+                ToolConcurrencyRules.Resolve(tool),
+                exclusiveGate,
+                _toolLogger);
+
+            // MCP 工具延迟加载：超过阈值时不整体注入（省每轮上下文），模型经
+            // search_tools 检索并激活。阈值 ≤0 时保持全量内联。
+            List<AITool> chatTools = [.. tools, .. mcpRuntime.Tools];
+            DeferredToolCatalog? deferredCatalog = null;
+            if (_mcpOptions.DeferredToolThreshold > 0
+                && mcpRuntime.Tools.Count > _mcpOptions.DeferredToolThreshold)
+            {
+                deferredCatalog = new DeferredToolCatalog(mcpRuntime.Tools);
+                chatTools = [.. tools];
+                chatTools.Add(new ToolSearchFunction(deferredCatalog));
+                _logger.LogInformation(
+                    "MCP tools deferred: {Deferred} tools hidden behind search_tools (threshold {Threshold})",
+                    mcpRuntime.Tools.Count,
+                    _mcpOptions.DeferredToolThreshold);
+            }
+
+            // 每轮可见工具定义体量观测：名称+描述+schema 字符数（≈4 字符/token），
+            // 用于追踪"工具吃上下文"的实际水位。
+            int definitionChars = chatTools.Sum(DefinitionChars);
+            _logger.LogInformation(
+                "Agent tool definitions: {Count} tools, {Chars} chars (~{Tokens} tokens per request)",
+                chatTools.Count,
+                definitionChars,
+                definitionChars / 4);
+
+            // 延迟激活注入在 FICC 内层：工具调用的迭代循环发生在 FICC 内部，
+            // 外层包装只覆盖第一轮请求。注入器逐轮把激活工具（经 WrapTool，
+            // 与内联工具完全一致的隔离包装）合并进 options，FICC 的函数解析与
+            // provider 序列化同轮可见。
+            IChatClient innerClient = deferredCatalog != null
+                ? new DeferredToolInjector(compactingClient, deferredCatalog, WrapTool)
+                : compactingClient;
             // MAF-registered tools (e.g. read_skill_resource) declare required
             // IServiceProvider parameters; without function invocation services the
             // call fails at argument binding with "Services are required for
             // parameter 'serviceProvider'" and surfaces as a 500.
             IChatClient chatClient = new FunctionInvokingChatClient(
-                compactingClient,
+                innerClient,
                 functionInvocationServices: _services)
             {
                 // 同一条 assistant 消息里的多个工具调用并发执行；只有能力源显式
@@ -143,9 +193,7 @@ internal sealed class AgentFactory
             {
                 providers.Add(skillsRuntime.Provider);
             }
-            // Exclusive 工具的每轮共享信号量：与 ChatClientAgent 同生命周期，
-            // 作用域释放时一并销毁。
-            SemaphoreSlim exclusiveGate = new(1, 1);
+
             AIAgent agent = new ChatClientAgent(chatClient, new ChatClientAgentOptions
             {
                 Id = profile.AgentId,
@@ -161,14 +209,8 @@ internal sealed class AgentFactory
                     // 连续失败后重抛导致整轮执行终止；结果同时过分级字符预算
                     // （头尾保留截断），防止超长输出吃穿上下文；Exclusive 工具经
                     // exclusiveGate 串行，ReadOnly 工具随 FICC 并发执行。
-                    Tools = tools.Concat(mcpRuntime.Tools)
-                        .Select(tool => IsolatedToolFunction.Wrap(
-                            tool,
-                            _toolCallTimeout,
-                            ToolResultBudgets.Resolve(_executionOptions, tool.Name),
-                            ToolConcurrencyRules.Resolve(tool),
-                            exclusiveGate,
-                            _toolLogger))
+                    Tools = chatTools
+                        .Select(tool => tool is ToolSearchFunction ? tool : WrapTool(tool))
                         .ToList()
                 },
                 ChatHistoryProvider = history,
@@ -185,6 +227,12 @@ internal sealed class AgentFactory
             throw;
         }
     }
+
+    /// <summary>工具定义体量：名称 + 描述 + schema 原文的字符数（近似 token 成本）。</summary>
+    private static int DefinitionChars(AITool tool) =>
+        tool.Name.Length
+        + (tool.Description?.Length ?? 0)
+        + (tool is AIFunction function ? function.JsonSchema.GetRawText().Length : 0);
 
     internal Task EnsureConversationAsync(
         TurnContext turn,
