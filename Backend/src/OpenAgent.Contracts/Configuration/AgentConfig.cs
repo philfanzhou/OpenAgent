@@ -22,6 +22,18 @@ public class AgentConfig
     public const int DefaultMaxTurns = 50;
 
     public int MaxTurns { get; set; } = DefaultMaxTurns;
+
+    /// <summary>按代理粒度裁剪可见工具：简单代理可禁用整套文件/工作区/执行工具，</summary>
+    public ToolSelectionConfig Tools { get; set; } = new();
+}
+
+/// <summary>
+/// 工具可见性选择：Disabled 按运行时名匹配（如 "write_file"、"mcp__github__*"），
+/// 仅影响模型可见性，不撤销已授权资源的 ACL（发现阶段过滤 + MCP 命名阶段过滤）。
+/// </summary>
+public class ToolSelectionConfig
+{
+    public List<string> Disabled { get; set; } = [];
 }
 
 /// <summary>The effective model connection used by one execution.</summary>
