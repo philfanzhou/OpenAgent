@@ -42,6 +42,41 @@ public class SessionSandboxTests
     }
 
     [Fact]
+    public void BuildSessionArguments_WithWorkDirectory_BindsHostWorkInsteadOfTmpfs()
+    {
+        // 会话形态：/work 来自宿主目录（workspace 文件操作与 execute_code 共享状态），
+        // 其余隔离参数与无工作区形态保持一致。
+        var settings = new RunnerOptions
+        {
+            PythonPath = "/opt/openagent-code/venv/bin/python",
+            SessionIdleMinutes = 120,
+            TimeoutSeconds = 120
+        };
+        IReadOnlyList<string> arguments = BubblewrapCodeExecutor.BuildSessionArguments(
+            settings,
+            "/var/lib/runner/session-demo/channel",
+            "/opt/runner/sandbox",
+            "/var/lib/runner/session-demo/work");
+
+        Assert.True(ContainsSequence(
+            arguments, ["--bind", "/var/lib/runner/session-demo/work", "/work"]));
+        // /work 不再出现在任何 tmpfs 挂载里（通过检查 tmpfs 后随目标非 /work 保证）。
+        for (int index = 0; index + 1 < arguments.Count; index++)
+        {
+            if (arguments[index] == "--tmpfs")
+            {
+                Assert.NotEqual("/work", arguments[index + 1]);
+            }
+        }
+        // /output 与 /tmp 仍是受限 tmpfs。
+        Assert.True(ContainsSequence(arguments, ["--perms", "1777", "--tmpfs", "/output"]));
+        Assert.True(ContainsSequence(arguments, ["--perms", "1777", "--tmpfs", "/tmp"]));
+        Assert.Contains("--unshare-net", arguments);
+        Assert.Contains("--die-with-parent", arguments);
+        Assert.Contains("/sandbox/supervisor.py", arguments);
+    }
+
+    [Fact]
     public async Task Manager_SerializesSameSessionAndReportsBusy()
     {
         using var blocker = new SemaphoreSlim(0, 1);
@@ -106,7 +141,7 @@ public class SessionSandboxTests
     }
 
     [Fact]
-    public async Task Manager_ReportsSandboxResetWhenSandboxDied()
+    public async Task Manager_ReportsSandboxResetWhenSandboxDiedAndWorkspaceGone()
     {
         FakeSandbox initial = new("alpha");
         FakeSandbox respawned = new("alpha");
@@ -123,6 +158,40 @@ public class SessionSandboxTests
         Assert.True(second.SandboxReset);
         Assert.Equal("dead", initial.ReleasedReason);
         Assert.Null(respawned.ReleasedReason);
+    }
+
+    [Fact]
+    public async Task Manager_DoesNotReportResetWhenWorkspaceSurvivesRespawn()
+    {
+        // 宿主工作区跨沙箱重建存活（bind-mount 特性）：重建本身不构成 reset。
+        FakeSandbox initial = new("alpha");
+        FakeSandbox respawned = new("alpha") { WorkspacePreserved = true };
+        var spawns = new Queue<Func<ISessionSandbox>>([() => initial, () => respawned]);
+        SessionSandboxManager manager = new(Options.Create(new RunnerOptions()),
+            NullLogger<SessionSandboxManager>.Instance,
+            _ => Task.FromResult(spawns.Dequeue()()));
+
+        await manager.ExecuteAsync("alpha", Request(), CancellationToken.None);
+
+        initial.IsAlive = false;
+        CodeExecutionResult second = await manager.ExecuteAsync("alpha", Request(), CancellationToken.None);
+        Assert.False(second.SandboxReset);
+    }
+
+    [Fact]
+    public async Task Manager_MarkedSweptWorkspace_ReportsResetOnce()
+    {
+        FakeSandbox sandbox = new("alpha");
+        SessionSandboxManager manager = CreateManager(new RunnerOptions(), "alpha", () => sandbox);
+
+        await manager.ExecuteAsync("alpha", Request(), CancellationToken.None);
+        manager.MarkSwept("alpha");
+        CodeExecutionResult afterSweep = await manager.ExecuteAsync("alpha", Request(), CancellationToken.None);
+        CodeExecutionResult afterAgain = await manager.ExecuteAsync("alpha", Request(), CancellationToken.None);
+
+        Assert.True(afterSweep.SandboxReset);
+        // 标记一次性消费：后续执行不再误报。
+        Assert.False(afterAgain.SandboxReset);
     }
 
     [Fact]
@@ -203,6 +272,7 @@ public class SessionSandboxTests
         public DateTimeOffset LastUsedUtc { get; set; } = DateTimeOffset.UtcNow;
         public bool IsAlive { get; set; } = true;
         public bool Recovered { get; set; }
+        public bool WorkspacePreserved { get; set; }
 
         public Task<CodeExecutionResult> ExecuteAsync(CodeExecutionRequest request, CancellationToken cancellationToken)
         {

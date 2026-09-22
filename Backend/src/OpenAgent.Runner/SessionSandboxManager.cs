@@ -17,6 +17,10 @@ internal interface ISessionSandbox
     /// from an earlier reclaimed sandbox is gone (reported as SandboxReset).</summary>
     bool Recovered { get; }
 
+    /// <summary>True when the spawn found a pre-existing host work directory:
+    /// 会话工作区跨沙箱重建存活（bind-mount 特性），不再视为 reset。</summary>
+    bool WorkspacePreserved { get; }
+
     Task<CodeExecutionResult> ExecuteAsync(CodeExecutionRequest request, CancellationToken cancellationToken);
 
     ValueTask ReleaseAsync(string reason);
@@ -36,6 +40,8 @@ internal sealed class SessionSandboxManager
     private readonly ILogger<SessionSandboxManager> _logger;
     private readonly Func<string, Task<ISessionSandbox>> _spawn;
     private readonly ConcurrentDictionary<string, Entry> _sandboxes = new(StringComparer.Ordinal);
+    // 工作区被后台清扫删除的会话标记：下一次执行报告 sandboxReset（一次性消费）。
+    private readonly ConcurrentDictionary<string, bool> _sweptWorkspaces = new(StringComparer.Ordinal);
 
     public SessionSandboxManager(BubblewrapProcess bubblewrap, IOptions<RunnerOptions> options,
         ILogger<SessionSandboxManager> logger)
@@ -67,6 +73,9 @@ internal sealed class SessionSandboxManager
         {
             Entry entry = await AcquireEntryAsync(sessionKey, attempt == 0, cancellationToken).ConfigureAwait(false);
             bool reset = false;
+            // 后台清扫标记在进入执行时一次性消费：无论沙箱是否重建，工作区丢失
+            // 都必须让本轮结果可见。
+            bool swept = _sweptWorkspaces.TryRemove(sessionKey, out _);
             try
             {
                 // The entry may have been replaced (eviction) while this request
@@ -86,9 +95,11 @@ internal sealed class SessionSandboxManager
                 if (entry.Sandbox is null)
                 {
                     entry.Sandbox = await SpawnWithCapacityAsync(sessionKey).ConfigureAwait(false);
-                    // A reset means this session previously had a sandbox whose state is now gone:
-                    // either this entry's sandbox died, or a reclaimed directory marker survived.
-                    reset = entry.HadSandbox || entry.Sandbox.Recovered;
+                    // Reset 的语义是"会话工作区状态丢失"：后台清扫（显式标记）、
+                    // 此前有沙箱但工作区目录不在，或遗留目录标记；沙箱进程重建
+                    // 本身不再触发——/work 是宿主持久状态，跨重建存活。
+                    reset = (entry.HadSandbox && !entry.Sandbox.WorkspacePreserved)
+                        || entry.Sandbox.Recovered;
                     entry.HadSandbox = true;
                     if (reset)
                     {
@@ -99,7 +110,7 @@ internal sealed class SessionSandboxManager
                 {
                     CodeExecutionResult result = await entry.Sandbox.ExecuteAsync(request, cancellationToken)
                         .ConfigureAwait(false);
-                    result.SandboxReset = reset;
+                    result.SandboxReset = reset || swept;
                     return result;
                 }
                 catch (SessionSandboxUnavailableException)
@@ -179,6 +190,9 @@ internal sealed class SessionSandboxManager
         }
         return false;
     }
+
+    /// <summary>标记某会话的工作区已被清扫删除；其下一次执行将报告 SandboxReset。</summary>
+    public void MarkSwept(string sessionKey) => _sweptWorkspaces[sessionKey] = true;
 
     /// <summary>Kills and unregisters every sandbox that has been idle past the cutoff.</summary>
     public async Task ReapIdleAsync(TimeSpan idle)

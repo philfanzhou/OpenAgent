@@ -199,7 +199,7 @@ internal sealed class BubblewrapCodeExecutor(
     /// tmpfs and the long-lived supervisor instead of the one-shot entry point.
     /// </summary>
     internal static IReadOnlyList<string> BuildSessionArguments(
-        RunnerOptions settings, string channelDirectory, string sandboxFilesDirectory)
+        RunnerOptions settings, string channelDirectory, string sandboxFilesDirectory, string? workDirectory = null)
     {
         string pythonRoot = RuntimeRoot(settings.PythonPath, "Python");
         string nodeRoot = RuntimeRoot(settings.NodePath, "Node");
@@ -208,7 +208,18 @@ internal sealed class BubblewrapCodeExecutor(
         AddRootFilesystem(arguments, sandboxFilesDirectory);
         arguments.AddRange(["--bind", channelDirectory, "/channel"]);
         arguments.AddRange(["--ro-bind", sandboxFilesDirectory, "/sandbox"]);
-        AddScratchMounts(arguments, settings);
+        if (workDirectory != null)
+        {
+            // 会话形态：/work 是宿主侧目录（与 workspace 文件操作共享同一状态），
+            // 大小改由宿主磁盘 + prlimit FSIZE 约束，空闲回收仍由 WorkspaceReaper 扫描负责。
+            arguments.AddRange(["--bind", workDirectory, "/work"]);
+            arguments.AddRange(["--size", ToBytes(OutputMiB), "--perms", "1777", "--tmpfs", "/output"]);
+            arguments.AddRange(["--size", ToBytes(TempMiB), "--perms", "1777", "--tmpfs", "/tmp"]);
+        }
+        else
+        {
+            AddScratchMounts(arguments, settings);
+        }
         arguments.AddRange(["--size", ToBytes(InputMiB), "--perms", "1777", "--tmpfs", "/input"]);
         AddSystemMounts(arguments);
         AddBaseEnvironment(arguments, RuntimePath(pythonRoot, nodeRoot));

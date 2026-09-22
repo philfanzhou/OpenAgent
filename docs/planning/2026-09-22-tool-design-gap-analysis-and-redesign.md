@@ -15,6 +15,12 @@
 > - `update_plan` 计划工具：全量重发步骤（≤1 in_progress 校验），结果快照随工具结果落会话时间线；SSE 新增 `plan_updated` 事件（Host 帧名 plan_updated）。
 > - MCP 连接池化：`McpClientPool` 按（租户,服务器）缓存客户端跨轮复用，每轮 ListTools 兼作健康探测，坏连接淘汰后重连一次，空闲惰性淘汰（`Mcp:ClientIdleTimeoutSeconds` 默认 600s）；作用域释放不再断开连接。
 > 验证：`dotnet build` 0 错误；全解决方案 797 测试通过（新增 `ToolConcurrencyTests`、`PlanCapabilitySourceTests`、`McpClientPoolTests`；两处真 bug 被新测试拦截修复：非数组 plan 输入的未捕获异常、排队超时异常逸出隔离层）。
+> **实施记录（2026-09-22，阶段 2 工作区与编辑范式已落地）**：
+> - 会话沙箱 /work 从 tmpfs 改为宿主目录 bind-mount（`session-<key>/work`）：工作区状态跨沙箱重启存活，空闲回收仍由 WorkspaceReaper 扫描；SandboxReset 语义同步收紧（工作区仍在即不再误报 reset）。
+> - Runner 新增 `/api/v1/workspace/{sessionKey}/list|read|write|edit|bytes/read|bytes/upload` 六端点（`WorkspaceStore`）：路径三层校验（字符规则 + 全路径包含 + 逐级符号链接拒绝），编辑语义为精确字符串替换（0 次未找到 / >1 次未允许全量替换均返回可行动错误），读取 cat -n 行号 + offset/limit 分页；同会话信号量串行。
+> - Engine 新增 `WorkspaceCapabilitySource` 五工具（与代码执行同 gating、发现+调用双重 ACL）；`download_file` 可选 `workspacePath` 直落工作区；`export_workspace_file` 打通工作区→file asset→publish_files 交付闭环；workspace 读取类进 ReadOnly 白名单与读预算分类。
+> - 选型维持 Claude 式 str_replace（跨 provider），未引入 patch 文法。
+> 验证：clean 构建 0 警告 0 错误；全解决方案 824 测试通过（新增 `WorkspaceStoreTests` 16 项、`WorkspaceCapabilitySourceTests` 6 项、会话参数 bind 断言与 schema lint 纳入）。bwrap 真机路径（挂载/uid 映射/重置）依赖 Linux，由环境门控测试与部署验证覆盖。
 
 ## 0. 结论先行
 

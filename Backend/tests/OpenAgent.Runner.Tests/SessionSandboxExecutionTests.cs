@@ -136,7 +136,7 @@ public class SessionSandboxExecutionTests
     }
 
     [BubblewrapFact]
-    public async Task Execute_SandboxDeathRespawnsFreshSandboxWithReset()
+    public async Task Execute_SandboxDeathRespawnsSandboxAndPreservesWorkspace()
     {
         await using var runtime = new SessionRuntime();
         await runtime.ExecuteAsync("conv", "from pathlib import Path\nPath('/work/state.txt').write_text('gone-soon')");
@@ -146,16 +146,17 @@ public class SessionSandboxExecutionTests
 
         CodeExecutionResult respawned = await runtime.ExecuteAsync("conv", """
             from pathlib import Path
-            assert not Path('/work/state.txt').exists()
-            print('fresh')
+            assert Path('/work/state.txt').read_text() == 'gone-soon'
+            print('workspace-survived')
             """);
         Assert.True(respawned.ExitCode == 0, respawned.Stderr);
-        Assert.True(respawned.SandboxReset);
+        // /work 是宿主 bind-mount：沙箱进程死亡重建后状态仍在，不报告 reset。
+        Assert.False(respawned.SandboxReset);
         Assert.Equal(1, runtime.Manager.LiveCount);
     }
 
     [BubblewrapFact]
-    public async Task Execute_EvictsAtCapacityAndNextRunReportsReset()
+    public async Task Execute_EvictsAtCapacityAndPreservesWorkspace()
     {
         await using var runtime = new SessionRuntime(maxSessionSandboxes: 1);
         await runtime.ExecuteAsync("alpha", "from pathlib import Path\nPath('/work/a.txt').write_text('a')");
@@ -165,13 +166,14 @@ public class SessionSandboxExecutionTests
         Assert.False(runtime.Manager.IsLive("alpha"));
 
         CodeExecutionResult alphaAgain = await runtime.ExecuteAsync("alpha",
-            "from pathlib import Path\nassert not Path('/work/a.txt').exists()\nprint('alpha-back')");
+            "from pathlib import Path\nassert Path('/work/a.txt').read_text() == 'a'\nprint('alpha-back')");
         Assert.True(alphaAgain.ExitCode == 0, alphaAgain.Stderr);
-        Assert.True(alphaAgain.SandboxReset);
+        // 驱逐只回收沙箱进程；宿主工作区存活，不报告 reset。
+        Assert.False(alphaAgain.SandboxReset);
     }
 
     [BubblewrapFact]
-    public async Task Execute_ReapReleasesIdleSandboxAndNextRunReportsReset()
+    public async Task Execute_ReapReleasesIdleSandboxWithoutWorkspaceReset()
     {
         await using var runtime = new SessionRuntime();
         await runtime.ExecuteAsync("conv", "print('warm')");
@@ -185,6 +187,26 @@ public class SessionSandboxExecutionTests
         Assert.False(Directory.Exists(Path.Combine(runtime.Root, "session-conv", "channel")));
 
         CodeExecutionResult after = await runtime.ExecuteAsync("conv", "print('back')");
+        Assert.True(after.ExitCode == 0, after.Stderr);
+        // 释放只回收沙箱进程；工作区目录仍在，不报告 reset。
+        Assert.False(after.SandboxReset);
+    }
+
+    [BubblewrapFact]
+    public async Task Execute_SweptWorkspaceNextRunReportsReset()
+    {
+        // 后台清扫删除整个会话目录（工作区状态真正丢失）：下一次执行必须以
+        // sandboxReset 告知模型此前的文件已不在。
+        await using var runtime = new SessionRuntime();
+        await runtime.ExecuteAsync("conv", "from pathlib import Path\nPath('/work/state.txt').write_text('swept-soon')");
+        runtime.Manager.MarkSwept("conv");
+        Directory.Delete(Path.Combine(runtime.Root, "session-conv"), recursive: true);
+
+        CodeExecutionResult after = await runtime.ExecuteAsync("conv", """
+            from pathlib import Path
+            assert not Path('/work/state.txt').exists()
+            print('fresh')
+            """);
         Assert.True(after.ExitCode == 0, after.Stderr);
         Assert.True(after.SandboxReset);
     }

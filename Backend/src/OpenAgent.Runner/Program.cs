@@ -35,6 +35,7 @@ builder.Services.AddOptions<RunnerOptions>().Bind(builder.Configuration.GetSecti
     .ValidateOnStart();
 builder.Services.AddSingleton<BubblewrapProcess>();
 builder.Services.AddSingleton<SessionSandboxManager>();
+builder.Services.AddSingleton<WorkspaceStore>();
 builder.Services.AddSingleton<ICodeExecutor, BubblewrapCodeExecutor>();
 builder.Services.AddHostedService<WorkspaceReaper>();
 WebApplication app = builder.Build();
@@ -119,6 +120,142 @@ app.MapPost("/api/v1/execute",
 })
     .WithName("ExecuteCode")
     .WithTags("Runner");
+
+// 会话工作区文件操作：直接作用于宿主侧 session-<key>/work（bind-mount 进沙箱 /work），
+// 不需要沙箱进程存活；错误经 ProblemDetails 携带 traceId 回传 Engine。
+app.MapPost("/api/v1/workspace/{sessionKey}/list",
+    async Task<Results<Ok<WorkspaceListResult>, ProblemHttpResult>> (
+        string sessionKey, WorkspaceListRequest request, WorkspaceStore store, HttpContext context) =>
+{
+    try
+    {
+        return TypedResults.Ok(await store.WithSessionAsync(
+            sessionKey,
+            work => store.ListAsync(work, request.Path, request.Pattern),
+            context.RequestAborted));
+    }
+    catch (Exception exception)
+    {
+        return WorkspaceProblem(exception, context);
+    }
+})
+    .WithName("WorkspaceList")
+    .WithTags("Runner");
+
+app.MapPost("/api/v1/workspace/{sessionKey}/read",
+    async Task<Results<Ok<WorkspaceReadResult>, ProblemHttpResult>> (
+        string sessionKey, WorkspaceReadRequest request, WorkspaceStore store, HttpContext context) =>
+{
+    try
+    {
+        return TypedResults.Ok(await store.WithSessionAsync(
+            sessionKey,
+            work => store.ReadAsync(work, request.Path, request.OffsetLine, request.LimitLines),
+            context.RequestAborted));
+    }
+    catch (Exception exception)
+    {
+        return WorkspaceProblem(exception, context);
+    }
+})
+    .WithName("WorkspaceRead")
+    .WithTags("Runner");
+
+app.MapPost("/api/v1/workspace/{sessionKey}/write",
+    async Task<Results<Ok<WorkspaceWriteResult>, ProblemHttpResult>> (
+        string sessionKey, WorkspaceWriteRequest request, WorkspaceStore store, HttpContext context) =>
+{
+    try
+    {
+        return TypedResults.Ok(await store.WithSessionAsync(
+            sessionKey,
+            work => store.WriteAsync(work, request.Path, request.Content),
+            context.RequestAborted));
+    }
+    catch (Exception exception)
+    {
+        return WorkspaceProblem(exception, context);
+    }
+})
+    .WithName("WorkspaceWrite")
+    .WithTags("Runner");
+
+app.MapPost("/api/v1/workspace/{sessionKey}/edit",
+    async Task<Results<Ok<WorkspaceEditResult>, ProblemHttpResult>> (
+        string sessionKey, WorkspaceEditRequest request, WorkspaceStore store, HttpContext context) =>
+{
+    try
+    {
+        return TypedResults.Ok(await store.WithSessionAsync(
+            sessionKey,
+            work => store.EditAsync(work, request.Path, request.OldString, request.NewString, request.ReplaceAll),
+            context.RequestAborted));
+    }
+    catch (Exception exception)
+    {
+        return WorkspaceProblem(exception, context);
+    }
+})
+    .WithName("WorkspaceEdit")
+    .WithTags("Runner");
+
+app.MapPost("/api/v1/workspace/{sessionKey}/bytes/read",
+    async Task<Results<Ok<WorkspaceBytesResult>, ProblemHttpResult>> (
+        string sessionKey, WorkspaceBytesRequest request, WorkspaceStore store, HttpContext context) =>
+{
+    try
+    {
+        return TypedResults.Ok(await store.WithSessionAsync(
+            sessionKey,
+            work => store.ReadBytesAsync(work, request.Path),
+            context.RequestAborted));
+    }
+    catch (Exception exception)
+    {
+        return WorkspaceProblem(exception, context);
+    }
+})
+    .WithName("WorkspaceReadBytes")
+    .WithTags("Runner");
+
+app.MapPost("/api/v1/workspace/{sessionKey}/bytes/upload",
+    async Task<Results<Ok<WorkspaceWriteResult>, ProblemHttpResult>> (
+        string sessionKey, WorkspaceUploadRequest request, WorkspaceStore store, HttpContext context) =>
+{
+    try
+    {
+        return TypedResults.Ok(await store.WithSessionAsync(
+            sessionKey,
+            work => store.UploadAsync(work, request.Path, request.ContentBase64),
+            context.RequestAborted));
+    }
+    catch (Exception exception)
+    {
+        return WorkspaceProblem(exception, context);
+    }
+})
+    .WithName("WorkspaceUploadBytes")
+    .WithTags("Runner");
+
 app.Run();
+
+static ProblemHttpResult WorkspaceProblem(Exception exception, HttpContext context)
+{
+    // 意外异常不回传原始消息（可能含宿主路径细节），只给领域错误携带 detail。
+    (int status, string detail) = exception switch
+    {
+        WorkspacePathException error => (StatusCodes.Status400BadRequest, error.Message),
+        WorkspaceFileNotFoundException error => (StatusCodes.Status404NotFound, error.Message),
+        WorkspaceEditConflictException error => (StatusCodes.Status409Conflict, error.Message),
+        WorkspaceTooLargeException error => (StatusCodes.Status413RequestEntityTooLarge, error.Message),
+        _ => (StatusCodes.Status500InternalServerError, "The workspace operation failed unexpectedly.")
+    };
+    return TypedResults.Problem(RunnerProblem.Create(
+        "https://error.agent.com/workspace-error",
+        "WorkspaceError",
+        status,
+        detail,
+        context));
+}
 
 public partial class Program;
