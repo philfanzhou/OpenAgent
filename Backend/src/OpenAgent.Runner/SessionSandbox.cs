@@ -28,7 +28,7 @@ internal sealed class SessionSandbox : ISessionSandbox
     private bool _released;
 
     private SessionSandbox(RunnerOptions settings, ILogger logger, string sessionKey,
-        Process process, string directory, string socketPath, bool recovered)
+        Process process, string directory, string socketPath, bool recovered, bool workspacePreserved)
     {
         _settings = settings;
         _logger = logger;
@@ -37,6 +37,7 @@ internal sealed class SessionSandbox : ISessionSandbox
         _directory = directory;
         _socketPath = socketPath;
         Recovered = recovered;
+        WorkspacePreserved = workspacePreserved;
     }
 
     public string SessionKey { get; }
@@ -48,9 +49,13 @@ internal sealed class SessionSandbox : ISessionSandbox
 
     public bool IsAlive => !_process.HasExited;
 
-    /// <summary>True when a sandbox directory already existed at spawn time, meaning an
-    /// earlier sandbox for this session was reclaimed and its state is gone.</summary>
+    /// <summary>True when a sandbox directory already existed at spawn time without its
+    /// work directory: an earlier sandbox's workspace was reclaimed (reset signal).</summary>
     public bool Recovered { get; }
+
+    /// <summary>True when the host work directory already existed at spawn time:
+    /// /work 状态跨沙箱重建存活（bind-mount 特性）。</summary>
+    public bool WorkspacePreserved { get; }
 
     /// <summary>Starts the sandbox and waits for its supervisor socket to become connectable.</summary>
     public static async Task<SessionSandbox> SpawnAsync(BubblewrapProcess bubblewrap, RunnerOptions settings,
@@ -65,7 +70,8 @@ internal sealed class SessionSandbox : ISessionSandbox
         string workDirectory = Path.Combine(directory, "work");
         // 会话目录存在但工作区已消失：此前的工作区被回收（reset 信号）。
         // 工作区目录存在则是常态（宿主持久状态跨沙箱重启存活），不再视为 reset。
-        bool recovered = Directory.Exists(directory) && !Directory.Exists(workDirectory);
+        bool workspacePreserved = Directory.Exists(workDirectory);
+        bool recovered = Directory.Exists(directory) && !workspacePreserved;
         string channelDirectory = Path.Combine(directory, "channel");
         Directory.CreateDirectory(channelDirectory);
         Directory.CreateDirectory(workDirectory);
@@ -104,7 +110,7 @@ internal sealed class SessionSandbox : ISessionSandbox
             throw;
         }
         RunnerLog.SandboxSpawned(logger, sessionKey);
-        return new SessionSandbox(settings, logger, sessionKey, process, directory, socketPath, recovered);
+        return new SessionSandbox(settings, logger, sessionKey, process, directory, socketPath, recovered, workspacePreserved);
     }
 
     public async Task<CodeExecutionResult> ExecuteAsync(CodeExecutionRequest request, CancellationToken cancellationToken)

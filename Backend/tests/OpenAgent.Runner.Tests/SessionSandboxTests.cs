@@ -141,7 +141,7 @@ public class SessionSandboxTests
     }
 
     [Fact]
-    public async Task Manager_ReportsSandboxResetWhenSandboxDied()
+    public async Task Manager_ReportsSandboxResetWhenSandboxDiedAndWorkspaceGone()
     {
         FakeSandbox initial = new("alpha");
         FakeSandbox respawned = new("alpha");
@@ -158,6 +158,40 @@ public class SessionSandboxTests
         Assert.True(second.SandboxReset);
         Assert.Equal("dead", initial.ReleasedReason);
         Assert.Null(respawned.ReleasedReason);
+    }
+
+    [Fact]
+    public async Task Manager_DoesNotReportResetWhenWorkspaceSurvivesRespawn()
+    {
+        // 宿主工作区跨沙箱重建存活（bind-mount 特性）：重建本身不构成 reset。
+        FakeSandbox initial = new("alpha");
+        FakeSandbox respawned = new("alpha") { WorkspacePreserved = true };
+        var spawns = new Queue<Func<ISessionSandbox>>([() => initial, () => respawned]);
+        SessionSandboxManager manager = new(Options.Create(new RunnerOptions()),
+            NullLogger<SessionSandboxManager>.Instance,
+            _ => Task.FromResult(spawns.Dequeue()()));
+
+        await manager.ExecuteAsync("alpha", Request(), CancellationToken.None);
+
+        initial.IsAlive = false;
+        CodeExecutionResult second = await manager.ExecuteAsync("alpha", Request(), CancellationToken.None);
+        Assert.False(second.SandboxReset);
+    }
+
+    [Fact]
+    public async Task Manager_MarkedSweptWorkspace_ReportsResetOnce()
+    {
+        FakeSandbox sandbox = new("alpha");
+        SessionSandboxManager manager = CreateManager(new RunnerOptions(), "alpha", () => sandbox);
+
+        await manager.ExecuteAsync("alpha", Request(), CancellationToken.None);
+        manager.MarkSwept("alpha");
+        CodeExecutionResult afterSweep = await manager.ExecuteAsync("alpha", Request(), CancellationToken.None);
+        CodeExecutionResult afterAgain = await manager.ExecuteAsync("alpha", Request(), CancellationToken.None);
+
+        Assert.True(afterSweep.SandboxReset);
+        // 标记一次性消费：后续执行不再误报。
+        Assert.False(afterAgain.SandboxReset);
     }
 
     [Fact]
@@ -238,6 +272,7 @@ public class SessionSandboxTests
         public DateTimeOffset LastUsedUtc { get; set; } = DateTimeOffset.UtcNow;
         public bool IsAlive { get; set; } = true;
         public bool Recovered { get; set; }
+        public bool WorkspacePreserved { get; set; }
 
         public Task<CodeExecutionResult> ExecuteAsync(CodeExecutionRequest request, CancellationToken cancellationToken)
         {

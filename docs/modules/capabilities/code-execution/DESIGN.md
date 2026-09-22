@@ -36,7 +36,7 @@ AgentExecutor → AgentFactory → CapabilityToolFactory → execute_code
 
 返回 `executionId`、`exitCode`、`timedOut`、`stdout`、`stderr` 和文件元数据数组。成功文件登记为当前用户的 FileAsset，并关联当前会话；只有模型调用 `publish_files` 后才发布到 assistant 消息。二进制字节只在 Runner 与 Engine 之间传输，不进入模型上下文。沙箱不按类型过滤输出文件（尺寸/数量/文件名安全检查保留）；能否入库由存储层依据 `FileMediaTypeCatalog`（或运维收窄后的配置）裁决——不可入库的产物被跳过并在结果的 `skippedFiles` 中给出原因，整个执行不因此失败，模型可改名或转换格式后重试。
 
-无 `SessionKey` 的调用每次创建全新的 namespace、tmpfs 工作区和解释器进程，退出即销毁。携带 `SessionKey`（当前为会话 ID）的调用复用一个常驻会话沙箱：沙箱内由可信 supervisor（UDS 单连接单请求）串行执行每次调用，`/work`、`/tmp`、`/input` 的文件与 `pip install --user` 安装的包跨调用保留（`/work` 为宿主侧 `session-<key>/work` 目录的 bind-mount，跨沙箱重启存活，并与 workspace 文件工具共享同一状态）；`/output` 中每次调用只返回新写入的文件（旧产物保留可读但不重复返回）。变量与后台进程不跨调用保留——每次调用结束即 kill 整个子进程组。空闲超过 `SessionIdleMinutes`（默认 120 分钟）后沙箱被回收；沙箱死亡或被回收后下一次调用自动重建全新沙箱，结果携带 `sandboxReset=true` 提示状态已丢失。容量由 `MaxSessionSandboxes`（默认 64）限制，满时驱逐最久空闲的沙箱。继续编辑历史产物时，仍显式将前次返回的 fileId 作为新调用输入。输出只接受普通文件，拒绝符号链接、目录、特殊文件及危险名称。
+无 `SessionKey` 的调用每次创建全新的 namespace、tmpfs 工作区和解释器进程，退出即销毁。携带 `SessionKey`（当前为会话 ID）的调用复用一个常驻会话沙箱：沙箱内由可信 supervisor（UDS 单连接单请求）串行执行每次调用，`/work`、`/tmp`、`/input` 的文件与 `pip install --user` 安装的包跨调用保留（`/work` 为宿主侧 `session-<key>/work` 目录的 bind-mount，跨沙箱重启存活，并与 workspace 文件工具共享同一状态）；`/output` 中每次调用只返回新写入的文件（旧产物保留可读但不重复返回）。变量与后台进程不跨调用保留——每次调用结束即 kill 整个子进程组。空闲超过 `SessionIdleMinutes`（默认 120 分钟）后沙箱与工作区目录被回收；`sandboxReset=true` 的语义是**会话工作区状态丢失**（后台清扫显式标记、遗留目录无工作区）：沙箱进程死亡/驱逐后重建时宿主工作区仍存活，不报告 reset（`/tmp`、`/input` 为进程级 tmpfs，重建即清空，不以此信号表达）。容量由 `MaxSessionSandboxes`（默认 64）限制，满时驱逐最久空闲的沙箱。继续编辑历史产物时，仍显式将前次返回的 fileId 作为新调用输入。输出只接受普通文件，拒绝符号链接、目录、特殊文件及危险名称。
 
 ## 隔离边界
 

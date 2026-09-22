@@ -39,6 +39,9 @@ internal sealed class WorkspaceReaper(
                             && !sessions.IsLive(name[SessionSandboxManager.SessionDirectoryPrefix.Length..]))
                         {
                             Directory.Delete(directory, recursive: true);
+                            // 工作区（/work 宿主状态）随目录一起被清扫：标记该会话，
+                            // 下一次执行以 sandboxReset 告知模型此前的文件已丢失。
+                            sessions.MarkSwept(name[SessionSandboxManager.SessionDirectoryPrefix.Length..]);
                         }
                     }
                 }
