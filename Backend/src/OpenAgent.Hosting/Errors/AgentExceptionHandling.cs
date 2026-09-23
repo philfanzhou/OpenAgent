@@ -239,6 +239,16 @@ public sealed class AgentExceptionHandlerMiddleware
         {
             await _next(context);
         }
+        catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
+        {
+            // 客户端断开（用户停止生成、页面关闭）触发的取消是正常结束：
+            // 响应已不可写，按 Debug 记录即可，不应产生 Error 堆栈或错误帧。
+            _logger.LogDebug(
+                "Client aborted the request. Method: {Method}, Path: {Path}, TraceId: {TraceId}",
+                context.Request.Method,
+                context.Request.Path,
+                AgentProblemDetails.ResolveTraceId(context));
+        }
         catch (Exception exception)
         {
             if (_options.IsStreamingRequest(context))
@@ -254,13 +264,14 @@ public sealed class AgentExceptionHandlerMiddleware
 
     private async Task HandleStreamingErrorAsync(HttpContext context, Exception exception)
     {
-        string traceId = AgentProblemDetails.ResolveTraceId(context);
-        LogMappedException(context, exception, traceId, statusCode: null);
-
+        // 先判取消再记日志：客户端断开时静默返回，避免每次停止生成都留下一条 Error。
         if (context.RequestAborted.IsCancellationRequested)
         {
             return;
         }
+
+        string traceId = AgentProblemDetails.ResolveTraceId(context);
+        LogMappedException(context, exception, traceId, statusCode: null);
 
         if (!context.Response.HasStarted)
         {
@@ -289,6 +300,12 @@ public sealed class AgentExceptionHandlerMiddleware
 
     private async Task HandleExceptionAsync(HttpContext context, Exception exception)
     {
+        // 客户端已断开时响应不可写，写 ProblemDetails 只会再抛一次。
+        if (context.RequestAborted.IsCancellationRequested)
+        {
+            return;
+        }
+
         string traceId = AgentProblemDetails.ResolveTraceId(context);
 
         if (context.Response.HasStarted)

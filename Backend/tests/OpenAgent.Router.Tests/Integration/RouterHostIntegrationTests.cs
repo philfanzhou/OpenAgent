@@ -164,6 +164,46 @@ public sealed class RouterHostIntegrationTests : IClassFixture<RouterHostFixture
     }
 
     [Fact]
+    public async Task Chat_AfterSseClientCancellation_DownstreamNotQuarantined()
+    {
+        // 用户停止生成（客户端断开 SSE）是正常取消：一次断开不得把下游 Engine
+        // 计为故障并隔离 30 秒（FailureThreshold=1），否则紧随其后的请求被 503，
+        // 表现为“会话失败”。断开后立即再发一次普通对话必须成功。
+        using RouterApplicationFactory factory = _fixture.CreateFactory();
+        using HttpClient client = factory.CreateClient();
+
+        using (HttpRequestMessage aborting = CreateChatRequest(
+            "to be cancelled",
+            "/api/v1/agent/chat/sse"))
+        using (var requestCancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10)))
+        {
+            using HttpResponseMessage response = await client.SendAsync(
+                aborting,
+                HttpCompletionOption.ResponseHeadersRead,
+                requestCancellation.Token);
+            await using Stream stream = await response.Content.ReadAsStreamAsync(
+                requestCancellation.Token);
+            using var reader = new StreamReader(stream);
+            await reader.ReadLineAsync(requestCancellation.Token);
+            await reader.ReadLineAsync(requestCancellation.Token);
+
+            requestCancellation.Cancel();
+            response.Dispose();
+            using var propagationTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await _fixture.PrimaryEngine.WaitForSseCancellationAsync(propagationTimeout.Token);
+        }
+
+        using (HttpRequestMessage followup = CreateChatRequest("after cancellation"))
+        using (HttpResponseMessage next = await client.SendAsync(followup))
+        {
+            string body = await next.Content.ReadAsStringAsync();
+
+            Assert.Equal(HttpStatusCode.OK, next.StatusCode);
+            Assert.Contains("primary-engine", body, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
     public async Task File_UnreachableEngine_MapsForwardingFailureMetric()
     {
         using RouterApplicationFactory factory = _fixture.CreateFactory("http://127.0.0.1:1");

@@ -192,7 +192,9 @@ internal static class AgentMessageAdapter
                 result.Add(CreateStored(
                     nextSequence++,
                     "tool",
-                    functionResult.Result?.ToString() ?? string.Empty,
+                    // MCP 多内容块结果是 AIContent 集合：直接 ToString 只剩类型名，
+                    // 持久化后下一轮会原样回喂模型，触发空参重试循环。
+                    ToolResultText.Render(functionResult.Result) ?? string.Empty,
                     functionResult.CallId,
                     toolName,
                     metadata: null));

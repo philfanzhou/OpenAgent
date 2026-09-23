@@ -113,6 +113,13 @@ internal sealed class AgentForwarder(
             RouterHttpLog.FormatResponseHeaders(context.Response.Headers),
             traceId);
         bool succeeded = error == ForwarderError.None;
+        // 客户端主动断开 SSE（用户停止生成、页面关闭）表现为各类 *Canceled 且
+        // RequestAborted 触发：这是正常结束，不应计为下游故障——否则一次断开就把
+        // Engine 隔离 30 秒（FailureThreshold=1），后续请求被错误地 503。
+        if (!succeeded && IsClientCancellation(error) && context.RequestAborted.IsCancellationRequested)
+        {
+            return;
+        }
         RouterMeter.RecordForward(action, succeeded);
         if (isStreaming)
         {
@@ -145,6 +152,15 @@ internal sealed class AgentForwarder(
     }
 
     public void Dispose() => _httpClient.Dispose();
+
+    /// <summary>
+    /// YARP 的取消类错误既可能来自客户端断开，也可能来自下游取消；
+    /// 仅取消类错误 + RequestAborted 才判定为客户端主动断开。
+    /// </summary>
+    private static bool IsClientCancellation(ForwarderError error) =>
+        error is ForwarderError.RequestCanceled
+            or ForwarderError.RequestBodyCanceled
+            or ForwarderError.ResponseBodyCanceled;
 
     private static async ValueTask ConfigureRequestAsync(
         HttpRequestMessage request,

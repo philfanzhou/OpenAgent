@@ -43,6 +43,29 @@ describe('messagePresentation', () => {
     expect(display[1]!.content).toBe('The first half and the second half')
   })
 
+  it('backfills a callId-less tool result onto the open call activity', () => {
+    // 部分提供方/旧数据不带 callId：调用行（有参无果）与结果行（有果无参）
+    // 必须合成一条活动，而不是拆成两条、结果行退化为“工具”占位。
+    const rows = [
+      message({ sequence: 1, role: 'user', content: 'hi' }),
+      message({
+        sequence: 2, role: 'assistant', content: '',
+        toolName: 'read_file', metadata: { toolArguments: '{"fileId":"f-1"}' },
+      }),
+      message({ sequence: 3, role: 'tool', content: 'file body' }),
+    ]
+
+    const display = buildDisplayMessages(rows)
+
+    const assistant = display[1]!
+    expect(assistant.toolActivities).toHaveLength(1)
+    expect(assistant.toolActivities?.[0]).toMatchObject({
+      name: 'read_file',
+      result: 'file body',
+    })
+    expect(assistant.toolActivities?.[0]?.arguments).toEqual({ fileId: 'f-1' })
+  })
+
   it('places a context summary after the messages it compacted', () => {
     const messages = [
       message({ sequence: 1, role: 'user', content: 'first' }),

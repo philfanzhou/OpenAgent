@@ -253,15 +253,21 @@ function mergeToolProcess(
   incoming: ToolActivity,
 ): ProcessActivity[] {
   const merged = cloneProcessActivities(current)
-  const index = incoming.callId
-    ? merged.findIndex(activity => activity.kind === 'tool' && activity.tool.callId === incoming.callId)
-    : -1
-  if (index < 0) {
+  const tools: ToolActivity[] = []
+  const positions: number[] = []
+  merged.forEach((item, index) => {
+    if (item.kind === 'tool') {
+      tools.push(item.tool)
+      positions.push(index)
+    }
+  })
+  const matched = matchToolActivity(tools, incoming)
+  if (matched < 0) {
     merged.push({ kind: 'tool', tool: { ...incoming } })
     return merged
   }
 
-  const existing = merged[index]
+  const existing = merged[positions[matched]!]
   if (existing?.kind === 'tool') existing.tool = mergeTool(existing.tool, incoming)
   return merged
 }
@@ -306,9 +312,7 @@ function mergeToolActivities(
 
 function mergeToolActivity(current: ToolActivity[] | undefined, incoming: ToolActivity): ToolActivity[] {
   const merged = current ? [...current] : []
-  const index = incoming.callId
-    ? merged.findIndex(tool => tool.callId === incoming.callId)
-    : -1
+  const index = matchToolActivity(merged, incoming)
   if (index < 0) {
     merged.push({ ...incoming })
     return merged
@@ -317,6 +321,20 @@ function mergeToolActivity(current: ToolActivity[] | undefined, incoming: ToolAc
   const existing = merged[index]!
   merged[index] = mergeTool(existing, incoming)
   return merged
+}
+
+/**
+ * 工具行配对规则：优先按 callId 精确匹配。部分提供方与旧数据不带 callId，
+ * 此时"只有结果"的行回填到第一个还没有结果的调用上——否则同一次调用会被
+ * 拆成"有参无果"与"有果无参（名为工具）"两条活动。
+ */
+function matchToolActivity(tools: ToolActivity[], incoming: ToolActivity): number {
+  if (incoming.callId) {
+    return tools.findIndex(tool => tool.callId === incoming.callId)
+  }
+  if (incoming.result == null) return -1
+  return tools.findIndex(tool => tool.result == null
+    && (incoming.name === '工具' || tool.name === '工具' || tool.name === incoming.name))
 }
 
 function mergeTool(existing: ToolActivity, incoming: ToolActivity): ToolActivity {

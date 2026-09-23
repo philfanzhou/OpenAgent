@@ -108,6 +108,41 @@ public class AgentExecutorToolLoopTests
         Assert.Contains(events, item => item.Type == AgentStreamEventType.ToolResult);
     }
 
+    [Fact]
+    public async Task ExecuteStreamingAsync_ProviderOmitsCallId_ResultStillCarriesNameAndStableId()
+    {
+        // 部分提供方不下发调用编号：调用与结果必须拿到稳定的合成 id 与工具名，
+        // 前端才能把参数与结果合到同一行，而不是退化成只显示响应的“工具”占位。
+        var provider = new SequenceChatProvider(
+        [
+            [
+                new ChatResponseUpdate(ChatRole.Assistant,
+                    [new FunctionCallContent(string.Empty, "get_current_user_profile")])
+            ],
+            [
+                new ChatResponseUpdate(ChatRole.Assistant, "finished")
+            ]
+        ]);
+        await using AgentExecutorUsageTests.TestRuntime runtime =
+            AgentExecutorUsageTests.CreateRuntime(provider);
+
+        List<AgentStreamEvent> events = [];
+        await foreach (AgentStreamEvent streamEvent in runtime.Executor.ExecuteStreamingAsync(
+            CreateRequest("no-call-id-conversation"),
+            User,
+            CancellationToken.None))
+        {
+            events.Add(streamEvent);
+        }
+
+        AgentStreamEvent call = Assert.Single(events, item => item.Type == AgentStreamEventType.ToolCall);
+        Assert.Equal("get_current_user_profile", call.ToolName);
+        Assert.False(string.IsNullOrWhiteSpace(call.ToolCallId), "The streamed call must carry a stable id.");
+        AgentStreamEvent result = Assert.Single(events, item => item.Type == AgentStreamEventType.ToolResult);
+        Assert.Equal(call.ToolCallId, result.ToolCallId);
+        Assert.Equal("get_current_user_profile", result.ToolName);
+    }
+
     private static bool HasToolCalls(ChatMessage message) =>
         message.Role == ChatRole.Assistant
         && message.Contents.OfType<FunctionCallContent>().Any();

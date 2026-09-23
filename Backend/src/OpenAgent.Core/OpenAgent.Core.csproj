@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="OpenAgent.Core.Tests" />
+    <InternalsVisibleTo Include="OpenAgent.Engine.Tests" />
     <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
   </ItemGroup>
 

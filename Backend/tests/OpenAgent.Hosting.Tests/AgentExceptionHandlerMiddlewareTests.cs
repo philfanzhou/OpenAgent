@@ -52,6 +52,30 @@ public class AgentExceptionHandlerMiddlewareTests
     }
 
     [Fact]
+    public async Task InvokeAsync_ClientAbortCancellation_SwallowsWithoutErrorResponse()
+    {
+        // 用户停止生成触发 OperationCanceledException + RequestAborted：
+        // 属正常取消，不应改写状态码、不写错误载荷、不再抛出。
+        using var aborted = new CancellationTokenSource();
+        aborted.Cancel();
+
+        var context = new DefaultHttpContext();
+        context.Request.Path = "/api/v1/agent/chat/stream";
+        context.Response.Body = new MemoryStream();
+        context.RequestAborted = aborted.Token;
+
+        var middleware = CreateMiddleware(
+            _ => throw new OperationCanceledException(aborted.Token));
+
+        await middleware.InvokeAsync(context);
+
+        Assert.Equal(StatusCodes.Status200OK, context.Response.StatusCode);
+        context.Response.Body.Seek(0, SeekOrigin.Begin);
+        var payload = await new StreamReader(context.Response.Body).ReadToEndAsync();
+        Assert.Empty(payload);
+    }
+
+    [Fact]
     public async Task InvokeAsync_EndpointThrows_WritesProblemDetailsWithUnifiedExtensions()
     {
         var context = new DefaultHttpContext();
