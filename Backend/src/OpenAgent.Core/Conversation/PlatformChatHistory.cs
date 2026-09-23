@@ -8,6 +8,7 @@ using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Files;
+using OpenAgent.Core.Runtime;
 using OpenAgent.Core.Runtime.Agent;
 
 namespace OpenAgent.Core.Conversation;
@@ -174,8 +175,8 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         return inline;
     }
 
-    /// <summary>把中止/失败时已产生的部分正文与思考内容组装成一条 assistant 消息（含 reasoning 元数据）。</summary>
-    private ConversationMessage BuildPartialMessage(ConversationStatus status)
+    /// <summary>把中止/失败时已产生的部分正文与思考内容组装成一条 assistant 消息（含 reasoning 元数据）；失败时附失败原因。</summary>
+    private ConversationMessage BuildPartialMessage(ConversationStatus status, MessageErrorMetadata? error = null)
     {
         string reasoning = _partialReasoning.ToString();
         return ConversationSessionStore.Message(
@@ -185,7 +186,8 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
             metadata: new ConversationMessageMetadata
             {
                 ExecutionStatus = status.ToString(),
-                Reasoning = reasoning.Length > 0 ? reasoning : null
+                Reasoning = reasoning.Length > 0 ? reasoning : null,
+                Error = error
             },
             modelId: _modelId);
     }
@@ -597,7 +599,13 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
                 ? ConversationStatus.Cancelled
                 : ConversationStatus.Failed;
             StageStreamedToolMessages();
-            _pending.Add(BuildPartialMessage(status));
+            // 失败原因随消息持久化：SSE error 事件只存活一次流式连接，前端刷新后
+            // 只剩"响应未完成"占位；取消是用户主动行为，不携带错误。
+            _pending.Add(BuildPartialMessage(
+                status,
+                status == ConversationStatus.Failed
+                    ? ExecutionFailureDescriptor.Describe(context.InvokeException, _conversation.TraceId)
+                    : null));
             await _store.SaveAsync(
                 _conversation,
                 _currentVersion,

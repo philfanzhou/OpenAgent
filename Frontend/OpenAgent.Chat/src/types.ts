@@ -28,10 +28,19 @@ export interface ConversationMessageMetadata {
   reasoning?: string | null
   /** 中止/失败状态：ConversationStatus 的字符串名（'Cancelled' / 'Failed'）。 */
   executionStatus?: string | null
+  /** 持久化的执行失败原因（刷新重载后错误卡片的数据来源）。 */
+  error?: MessageErrorMetadata | null
   /** 工具调用参数的原始 JSON 字符串，展示时按需解析。 */
   toolArguments?: string | null
   /** 未知键逃生舱（含载荷解析失败时保留的原始键值）。 */
   extensions?: Record<string, string> | null
+}
+
+/** 后端 MessageErrorMetadata：失败标题 + 可执行建议 + 排查用 TraceId。 */
+export interface MessageErrorMetadata {
+  title?: string | null
+  detail?: string | null
+  traceId?: string | null
 }
 
 /** 消息附件的持久化描述（后端 MessageFileMetadata）。 */

@@ -2,16 +2,35 @@ using System.ClientModel;
 using System.Net.Http;
 using System.Net.Sockets;
 using OpenAgent.Contracts.Security;
+using OpenAgent.Core.Runtime;
 using OpenAgent.Hosting.Errors;
 
 namespace OpenAgent.Engine.Host;
 
 internal static class StreamingPayloadFactory
 {
+    private const string ContextOverflowType = "https://error.agent.com/context-length-exceeded";
+
     public static StreamingErrorPayload CreateErrorPayload(
         Exception exception,
         string traceId)
     {
+        // 上下文超限优先于一切通用映射：provider 原文对用户无行动价值，且异常常被
+        // MAF/FICC 包装，必须按 InnerException 链识别，而不是只认 ClientResultException。
+        ClientResultException? providerException = FindClientResultException(exception);
+        if (ExecutionFailureDescriptor.IsContextLengthExceeded(exception))
+        {
+            return new StreamingErrorPayload
+            {
+                Type = ContextOverflowType,
+                Title = ExecutionFailureDescriptor.ContextOverflowTitle,
+                Detail = ExecutionFailureDescriptor.BuildContextOverflowDetail(
+                    providerException?.Status,
+                    providerException?.Message),
+                TraceId = traceId
+            };
+        }
+
         var message = exception switch
         {
             AgentException ae => ae.Message,
@@ -48,6 +67,18 @@ internal static class StreamingPayloadFactory
             Detail = message,
             TraceId = traceId
         };
+    }
+
+    private static ClientResultException? FindClientResultException(Exception exception)
+    {
+        for (Exception? current = exception; current != null; current = current.InnerException)
+        {
+            if (current is ClientResultException provider)
+            {
+                return provider;
+            }
+        }
+        return null;
     }
 
     internal static string FormatProviderError(int status, string message)

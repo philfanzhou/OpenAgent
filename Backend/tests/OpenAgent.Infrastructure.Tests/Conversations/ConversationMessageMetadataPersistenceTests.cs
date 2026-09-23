@@ -72,7 +72,10 @@ public sealed class ConversationMessageMetadataPersistenceTests
         IReadOnlyList<ConversationMessage> messages = await store.GetMessagesAsync(
             "tenant-1", "conversation-1", 10);
 
-        AssertMetadataEqual(CreateFullMetadata(), Assert.Single(messages).Metadata);
+        // 旧形态载荷没有 Error 键（该字段随失败原因持久化特性引入）：期望为 null。
+        ConversationMessageMetadata expected = CreateFullMetadata();
+        expected.Error = null;
+        AssertMetadataEqual(expected, Assert.Single(messages).Metadata);
     }
 
     [Fact]
