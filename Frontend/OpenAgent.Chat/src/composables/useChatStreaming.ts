@@ -90,7 +90,9 @@ export function useChatStreaming(options: ChatStreamingOptions) {
       const messageFiles = await Promise.all(options.pendingFiles.value.map(toMessageFile))
       conversation.messages.push({
         messageId: randomUuid(), sequence: baseSequence + 1,
-        role: 'user', content: content || '已上传文件', timestamp: new Date().toISOString(),
+        // 与服务端落库的 _input 完全一致（含纯文件兜底文案），停止/完成后的
+        // 历史合并按 messageId 或 (sequence, content) 匹配才能命中同一条消息。
+        role: 'user', content: requestContent, timestamp: new Date().toISOString(),
         files: messageFiles,
       })
       conversation.messageCount = conversation.messages.length
@@ -165,8 +167,11 @@ export function useChatStreaming(options: ChatStreamingOptions) {
           const tool = assistantMessage.toolActivities?.find(item => item.callId === event.toolCallId)
           appendStreamingTool(assistantMessage, {
             // 并非所有提供方都会先下发调用事件；结果事件自带的工具名兜底，
-            // 避免调用行退化成占位的“工具”。
-            name: tool?.name || event.toolName || '工具',
+            // 避免调用行退化成占位的“工具”。调用行已带占位名时同样让位给真实名。
+            name: (tool?.name && tool.name !== '工具' ? tool.name : undefined)
+              || event.toolName
+              || tool?.name
+              || '工具',
             callId: event.toolCallId,
             result: event.content ?? '',
           })
