@@ -14,6 +14,9 @@
   <ItemGroup>
     <PackageReference Include="AWSSDK.S3" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" />
+    <!-- 进程内真实 MCP 服务端（StreamableHttp），用于多内容块结果的端到端复现 -->
+    <PackageReference Include="ModelContextProtocol" />
+    <PackageReference Include="ModelContextProtocol.AspNetCore" />
   </ItemGroup>
 
   <ItemGroup>

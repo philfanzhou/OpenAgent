@@ -228,7 +228,10 @@ public sealed class SseToolStreamingTests
             .GetRequiredService<IServer>()
             .Features.Get<IServerAddressesFeature>()!.Addresses.Single();
 
-        public static async Task<StreamingHost> StartAsync(ScriptedChatClient provider)
+        public static async Task<StreamingHost> StartAsync(
+            ScriptedChatClient provider,
+            AgentConfig? agentConfig = null,
+            Dictionary<string, string?>? settings = null)
         {
             var builder = WebApplication.CreateBuilder(new WebApplicationOptions
             {
@@ -240,14 +243,17 @@ public sealed class SseToolStreamingTests
             builder.Services.AddSingleton<ILoggerProvider>(capture);
             builder.Services.AddSingleton(capture);
 
-            IConfiguration configuration = new ConfigurationBuilder().Build();
-            builder.Services.AddSingleton(configuration);
+            IConfigurationRoot configuration = settings == null
+                ? new ConfigurationBuilder().Build()
+                : new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
+            builder.Services.AddSingleton<IConfiguration>(configuration);
             builder.Services.AddSingleton<ICurrentUserContext>(new FixedCurrentUserContext());
             builder.Services.AddAgentCore(configuration);
             // 与生产一致的替身注入位置：运行时解析与 LLM 客户端工厂替换为固定实现。
             builder.Services.RemoveAll<IAgentRuntimeResolver>();
             builder.Services.RemoveAll<AgentRuntimeResolver>();
-            builder.Services.AddSingleton<IAgentRuntimeResolver>(new StaticRuntimeResolver());
+            builder.Services.AddSingleton<IAgentRuntimeResolver>(
+                new StaticRuntimeResolver(agentConfig ?? new AgentConfig { MaxTurns = 4 }));
             builder.Services.RemoveAll<IAgentChatClientFactory>();
             builder.Services.AddSingleton<IAgentChatClientFactory>(new Factory(provider));
             builder.Services.RemoveAll<IConversationStore>();
@@ -257,6 +263,10 @@ public sealed class SseToolStreamingTests
             builder.Services.AddAgentErrorHandling();
 
             WebApplication application = builder.Build();
+            // 本测试宿主环境下 WebHost.UseUrls 会被默认地址（localhost:5000）覆盖，
+            // 并发跑多个宿主时必然端口冲突；Build 后显式写 Urls 才稳定生效。
+            application.Urls.Clear();
+            application.Urls.Add("http://127.0.0.1:0");
             application.UseAgentErrorHandling();
             application.MapPost("/api/v1/agent/chat/stream",
                 async (HttpContext context, AgentExecutor executor, CancellationToken ct) =>
@@ -330,7 +340,7 @@ public sealed class SseToolStreamingTests
             await _application.DisposeAsync().ConfigureAwait(false);
         }
 
-        private sealed class StaticRuntimeResolver : IAgentRuntimeResolver
+        private sealed class StaticRuntimeResolver(AgentConfig config) : IAgentRuntimeResolver
         {
             public Task<AgentRuntimeProfile> ResolveAsync(
                 string agentId,
@@ -340,7 +350,7 @@ public sealed class SseToolStreamingTests
                 Task.FromResult(new AgentRuntimeProfile
                 {
                     AgentId = agentId,
-                    Config = new AgentConfig { MaxTurns = 4 },
+                    Config = config,
                     Model = new LlmConfig { ModelId = "local-scripted-model" }
                 });
         }
