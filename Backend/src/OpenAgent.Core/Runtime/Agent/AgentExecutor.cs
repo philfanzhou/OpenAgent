@@ -20,6 +20,9 @@ public sealed class AgentExecutor
     private readonly ConversationAgentResolver _conversationAgents;
     private readonly FileAssetRequestResolver _files;
 
+    /// <summary>null 参数的统一替代形态：所有工具调用播报至少是空对象。</summary>
+    private static readonly IDictionary<string, object?> EmptyToolArguments = new Dictionary<string, object?>();
+
     internal AgentExecutor(
         IAgentRuntimeResolver runtime,
         AgentFactory agents,
@@ -163,35 +166,38 @@ public sealed class AgentExecutor
                 string callId = string.IsNullOrWhiteSpace(call.CallId)
                     ? $"stream_{syntheticCallCounter++}_{call.Name}"
                     : call.CallId;
+                // 部分 LLM 返回的工具调用 arguments 为 null 而非空对象：统一规格化为
+                // 空字典，播报与持久化都不再出现 null 参数形态。
+                IDictionary<string, object?> arguments = call.Arguments ?? EmptyToolArguments;
                 string key = string.IsNullOrWhiteSpace(call.CallId) ? call.Name : call.CallId;
                 if (announcedToolCalls.Add(key))
                 {
                     toolCallNames[callId] = call.Name;
                     announcedCallOrder.Add(callId);
-                    announcedArgumentCounts[callId] = call.Arguments?.Count ?? 0;
-                    scope.AppendToolCall(call.Name, callId, call.Arguments);
+                    announcedArgumentCounts[callId] = arguments.Count;
+                    scope.AppendToolCall(call.Name, callId, arguments);
                     yield return new AgentStreamEvent
                     {
                         Type = AgentStreamEventType.ToolCall,
                         ToolName = call.Name,
                         ToolCallId = callId,
-                        ToolArguments = call.Arguments
+                        ToolArguments = arguments
                     };
                 }
                 else if (string.Equals(callId, key, StringComparison.Ordinal)
-                    && call.Arguments is { Count: > 0 }
+                    && arguments is { Count: > 0 }
                     && announcedArgumentCounts.GetValueOrDefault(callId) is not > 0)
                 {
                     // 同一调用的后续更新补全了参数（部分提供方增量流出工具调用）：
                     // 重播同一 callId 的调用事件，前端按 id 合并即可补上参数。
-                    announcedArgumentCounts[callId] = call.Arguments.Count;
-                    scope.AppendToolCall(call.Name, callId, call.Arguments);
+                    announcedArgumentCounts[callId] = arguments.Count;
+                    scope.AppendToolCall(call.Name, callId, arguments);
                     yield return new AgentStreamEvent
                     {
                         Type = AgentStreamEventType.ToolCall,
                         ToolName = call.Name,
                         ToolCallId = callId,
-                        ToolArguments = call.Arguments
+                        ToolArguments = arguments
                     };
                 }
             }

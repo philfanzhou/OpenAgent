@@ -98,6 +98,9 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
     /// </summary>
     internal void AppendToolCall(string name, string callId, IDictionary<string, object?>? arguments)
     {
+        // 部分 LLM 返回的工具调用 arguments 为 null 而非空对象：规格化为空字典，
+        // 保证持久化与刷新后重建的形态一致。
+        arguments ??= new Dictionary<string, object?>();
         // 同一调用可能随流式更新重播以补全参数：按 callId 覆盖而非追加，
         // 避免失败/取消路径把同一调用重复持久化成多行。
         if (!string.IsNullOrWhiteSpace(callId))

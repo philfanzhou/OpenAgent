@@ -74,6 +74,79 @@ public class AgentExecutorSkillToolTests
         Assert.Contains("Q3 revenue", result.Result?.ToString(), StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task ExecuteStreamingAsync_SkillsConfigured_SkillToolsAreOfferedToModel()
+    {
+        // "工具列表是不是我们给错了"的回归验证：配置了 Agent Skill 后，实际发往
+        // 模型的请求 options.Tools 必须包含 MAF skills 三件套。模型只会照着请求
+        // 里的工具定义抄名字；列表缺了哪个，模型就只能凭上下文猜哪个。
+        var provider = new OptionsRecordingClient(new SequenceChatProvider(
+        [
+            [new ChatResponseUpdate(ChatRole.Assistant, "ok")]
+        ]));
+        var objects = new RecordingFileObjectStore();
+        var catalog = new SkillCatalog();
+        RegisterSkillPackage(objects, catalog);
+
+        await using AgentExecutorUsageTests.TestRuntime runtime = AgentExecutorUsageTests.CreateRuntime(
+            provider,
+            configure: services =>
+            {
+                services.RemoveAll<IFileObjectStore>();
+                services.AddSingleton<IFileObjectStore>(objects);
+                services.RemoveAll<ISkillCatalog>();
+                services.AddSingleton<ISkillCatalog>(catalog);
+                services.RemoveAll<IAgentRuntimeResolver>();
+                services.AddSingleton<IAgentRuntimeResolver>(new SkillRuntimeResolver());
+            });
+
+        await foreach (AgentStreamEvent _ in runtime.Executor.ExecuteStreamingAsync(
+            CreateRequest("skill-tools-offered-conversation"),
+            User,
+            CancellationToken.None))
+        {
+        }
+
+        IReadOnlyList<string> offered = provider.LastToolNames
+            ?? throw new InvalidOperationException("No outgoing request captured options.Tools.");
+        Assert.Contains("load_skill", offered);
+        Assert.Contains("read_skill_resource", offered);
+        Assert.Contains("run_skill_script", offered);
+    }
+
+    private sealed class OptionsRecordingClient(IChatClient inner) : IChatClient
+    {
+        public IReadOnlyList<string>? LastToolNames { get; private set; }
+
+        public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            LastToolNames = options?.Tools?.OfType<AIFunction>()
+                .Select(tool => tool.Name)
+                .ToList();
+            await foreach (ChatResponseUpdate update in inner.GetStreamingResponseAsync(
+                messages,
+                options,
+                cancellationToken))
+            {
+                yield return update;
+            }
+        }
+
+        public Task<Microsoft.Extensions.AI.ChatResponse> GetResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            inner.GetResponseAsync(messages, options, cancellationToken);
+
+        public object? GetService(Type serviceType, object? serviceKey = null) =>
+            inner.GetService(serviceType, serviceKey);
+
+        public void Dispose() => inner.Dispose();
+    }
+
     private static void RegisterSkillPackage(RecordingFileObjectStore objects, SkillCatalog catalog)
     {
         var instance = new SkillInstanceConfig
