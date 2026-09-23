@@ -24,6 +24,7 @@ internal static partial class ConversationMessageMetadataJson
     private const string FilesKey = "files";
     private const string ReasoningKey = "reasoning";
     private const string ExecutionStatusKey = "executionstatus";
+    private const string ErrorKey = "error";
     private const string ToolArgumentsKey = "toolarguments";
     private const string ExtensionsKey = "extensions";
 
@@ -79,6 +80,9 @@ internal static partial class ConversationMessageMetadataJson
                         break;
                     case ExecutionStatusKey:
                         metadata.ExecutionStatus = ReadString(property, metadata, logger);
+                        break;
+                    case ErrorKey:
+                        metadata.Error = ReadError(property, metadata, logger);
                         break;
                     case ToolArgumentsKey:
                         metadata.ToolArguments = ReadString(property, metadata, logger);
@@ -137,6 +141,37 @@ internal static partial class ConversationMessageMetadataJson
         }
 
         LogValueParseFailure(logger, null, property.Name);
+        PreserveUnknown(property, metadata);
+        return null;
+    }
+
+    /// <summary>失败原因对象（title/detail/traceId）；null 透传，无法解析时降级进 Extensions。</summary>
+    private static MessageErrorMetadata? ReadError(
+        JsonProperty property,
+        ConversationMessageMetadata metadata,
+        ILogger logger)
+    {
+        if (property.Value.ValueKind == JsonValueKind.Null)
+        {
+            return null;
+        }
+        if (property.Value.ValueKind == JsonValueKind.Object)
+        {
+            try
+            {
+                return JsonSerializer.Deserialize<MessageErrorMetadata>(
+                    property.Value.GetRawText(), Options);
+            }
+            catch (JsonException exception)
+            {
+                LogValueParseFailure(logger, exception, property.Name);
+            }
+        }
+        else
+        {
+            LogValueParseFailure(logger, null, property.Name);
+        }
+
         PreserveUnknown(property, metadata);
         return null;
     }

@@ -107,6 +107,14 @@ function incompleteResponseText(message: ConversationMessage): string {
   return '响应未完成'
 }
 
+/**
+ * 消息级失败原因：优先流式期间即时写入的内存错误，其次持久化元数据里的错误
+ * （后端把失败原因随消息落库，刷新重载后错误卡片仍可展示）。
+ */
+function messageError(message: ConversationMessage) {
+  return message.error ?? message.metadata?.error ?? undefined
+}
+
 function toolResultText(tool: ToolActivity): string | undefined {
   if (tool.result == null) return undefined
   try { return JSON.stringify(JSON.parse(tool.result), null, 2) } catch { return tool.result }
@@ -437,18 +445,18 @@ defineExpose({ scrollToBottom })
           </div>
         </div>
 
-        <div v-if="!hasMessageContent(item) && !processActivities(item).length && !item.error" class="message-thinking-placeholder" aria-live="polite">
+        <div v-if="!hasMessageContent(item) && !processActivities(item).length && !messageError(item)" class="message-thinking-placeholder" aria-live="polite">
           <span v-if="isStreamingItem(item)" class="thinking-dots"><i /><i /><i /></span><span>{{ isStreamingItem(item) ? '正在生成回复' : incompleteResponseText(item) }}</span>
         </div>
 
-        <div v-if="item.error" class="message-error" role="alert">
+        <div v-if="messageError(item)" class="message-error" role="alert">
           <span class="message-error-icon">
             <svg viewBox="0 0 20 20" fill="none"><path d="M10 6v4.5M10 14h.01" /><circle cx="10" cy="10" r="7.5" /></svg>
           </span>
           <div class="message-error-body">
-            <strong>{{ item.error.title || 'Agent 执行失败' }}</strong>
-            <p>{{ item.error.detail }}</p>
-            <button v-if="item.error.traceId" type="button" class="message-error-trace" title="复制 TraceId" @click="copyTraceId(item.error.traceId)">TraceId · {{ item.error.traceId }}</button>
+            <strong>{{ messageError(item)?.title || 'Agent 执行失败' }}</strong>
+            <p>{{ messageError(item)?.detail }}</p>
+            <button v-if="messageError(item)?.traceId" type="button" class="message-error-trace" title="复制 TraceId" @click="copyTraceId(messageError(item)!.traceId!)">TraceId · {{ messageError(item)?.traceId }}</button>
           </div>
         </div>
       </div>

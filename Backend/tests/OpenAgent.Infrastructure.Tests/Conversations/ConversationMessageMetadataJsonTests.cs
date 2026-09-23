@@ -40,7 +40,10 @@ public sealed class ConversationMessageMetadataJsonTests
 
         ConversationMessageMetadata? result = ConversationMessageMetadataJson.Deserialize(json);
 
-        MessageFileMetadata file = Assert.Single(AssertMetadataEqual(CreateFullMetadata(), result).Files!);
+        // 旧形态载荷没有 Error 键（该字段随失败原因持久化特性引入）：期望为 null。
+        ConversationMessageMetadata expected = CreateFullMetadata();
+        expected.Error = null;
+        MessageFileMetadata file = Assert.Single(AssertMetadataEqual(expected, result).Files!);
         Assert.Equal("files/t/f-1", file.ObjectKey);
     }
 
@@ -179,6 +182,7 @@ public sealed class ConversationMessageMetadataJsonTests
         ],
         Reasoning = "thinking",
         ExecutionStatus = "Cancelled",
+        Error = new MessageErrorMetadata("超出模型上下文窗口", "请求内容超出当前模型的上下文窗口上限。请开启新会话，或精简历史消息与附件后重试。", "trace-1"),
         ToolArguments = "{\"a\":1}",
         Extensions = new Dictionary<string, string>(StringComparer.Ordinal)
         {
@@ -194,6 +198,7 @@ public sealed class ConversationMessageMetadataJsonTests
         Assert.Equal(expected.Files ?? [], actual!.Files ?? []);
         Assert.Equal(expected.Reasoning, actual.Reasoning);
         Assert.Equal(expected.ExecutionStatus, actual.ExecutionStatus);
+        Assert.Equal(expected.Error, actual.Error);
         Assert.Equal(expected.ToolArguments, actual.ToolArguments);
         Assert.Equal(
             expected.Extensions ?? new Dictionary<string, string>(),

@@ -20,6 +20,7 @@ using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Conversation.Store;
 using OpenAgent.Core.Exten;
 using OpenAgent.Core.Runtime.Agent;
+using OpenAgent.Engine.Host;
 using OpenAgent.Engine.Host.Extensions;
 using OpenAgent.Hosting;
 using Xunit;
@@ -229,7 +230,7 @@ public sealed class SseToolStreamingTests
             .Features.Get<IServerAddressesFeature>()!.Addresses.Single();
 
         public static async Task<StreamingHost> StartAsync(
-            ScriptedChatClient provider,
+            IChatClient provider,
             AgentConfig? agentConfig = null,
             Dictionary<string, string?>? settings = null)
         {
@@ -260,7 +261,10 @@ public sealed class SseToolStreamingTests
             builder.Services.AddSingleton<IConversationStore, InMemoryConversationStore>();
             builder.Services.RemoveAll<IFileAssetRepository>();
             builder.Services.AddSingleton<IFileAssetRepository>(new EmptyFileAssetRepository());
-            builder.Services.AddAgentErrorHandling();
+            // 与生产 Program 一致注册 Engine 的错误装配（ClientResultException 映射 +
+            // 中文 SSE 文案）；此前用无参 AddAgentErrorHandling 导致流式错误帧走默认
+            // ProblemDetails 投影，测试宿主与生产行为不一致。
+            builder.Services.AddEngineErrorHandling();
 
             WebApplication application = builder.Build();
             // 本测试宿主环境下 WebHost.UseUrls 会被默认地址（localhost:5000）覆盖，
