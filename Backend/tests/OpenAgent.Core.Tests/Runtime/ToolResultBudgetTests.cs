@@ -76,6 +76,42 @@ public class ToolResultBudgetTests
     }
 
     [Fact]
+    public async Task Wrap_McpStructuredJsonElement_ExceedingBudget_IsTruncated()
+    {
+        // MCP SDK 在结果带 structuredContent/isError/meta 时把整个 CallToolResult
+        // 序列化为 JsonElement 返回：这是超长第三方输出的常见形态，必须与文本结果
+        // 一样过预算管道，否则未截断的原始 JSON 直接回喂模型吃穿上下文，
+        // 下一轮 provider 因请求超限报错，整轮执行中止。
+        object structured = JsonSerializer.SerializeToElement(new
+        {
+            content = new[] { new { type = "text", text = new string('d', 5_000) } },
+            structuredContent = new { payload = new string('d', 5_000) },
+            isError = false
+        });
+        AITool wrapped = IsolatedToolFunction.Wrap(
+            new StubTool("mcp__srv__structured", _ => ValueTask.FromResult<object?>(structured)),
+            budget: new ToolResultBudget(1_000, "narrow the query"));
+
+        string result = await InvokeAsync(wrapped);
+
+        Assert.True(result.Length <= 1_000, $"truncated length {result.Length} must not exceed the budget");
+        Assert.StartsWith("{", result, StringComparison.Ordinal);
+        Assert.Contains("characters omitted", result, StringComparison.Ordinal);
+        Assert.Contains("narrow the query", result, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Wrap_JsonElementWithinBudget_IsRenderedAsRawJsonText()
+    {
+        JsonElement structured = JsonSerializer.SerializeToElement(new { status = "ok", count = 3 });
+        AITool wrapped = IsolatedToolFunction.Wrap(
+            new StubTool("mcp__srv__structured", _ => ValueTask.FromResult<object?>(structured)),
+            budget: new ToolResultBudget(1_000, "hint"));
+
+        Assert.Equal(structured.GetRawText(), await InvokeAsync(wrapped));
+    }
+
+    [Fact]
     public void Resolve_ClassifiesToolsByKind()
     {
         var options = new AgentExecutionOptions();

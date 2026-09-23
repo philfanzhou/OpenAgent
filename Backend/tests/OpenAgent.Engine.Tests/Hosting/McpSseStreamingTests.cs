@@ -175,6 +175,132 @@ public sealed class McpSseStreamingTests
         Assert.Single(frames, frame => frame.Event == "done");
     }
 
+    [Fact]
+    public async Task Stream_McpStructuredOutputTool_ExceedingBudget_IsTruncatedAndRunCompletes()
+    {
+        // 生产缺陷形态：MCP 工具返回普通对象（非字符串/内容块数组）时，服务端生成
+        // structuredContent，客户端 McpClientTool 不再返回 AIContent，而是把整个
+        // CallToolResult 序列化成 JsonElement。该形状曾绕过结果预算管道：未截断的
+        // 原始 JSON 直接回喂模型，provider 请求超限后整轮中止、会话退出。
+        // 这里用真实 StreamableHttp MCP 服务端验证完整链路（含持久化与 wire）。
+        int budget = 2_000;
+        var provider = new ScriptedChatClient(
+        [
+            [
+                new ChatResponseUpdate(ChatRole.Assistant,
+                    [new FunctionCallContent("call-structured-1", StructuredRuntimeToolName,
+                        new Dictionary<string, object?> { ["query"] = "big dump" })])
+            ],
+            [
+                new ChatResponseUpdate(ChatRole.Assistant, "已收窄处理。"),
+                new ChatResponseUpdate(ChatRole.Assistant,
+                    [new UsageContent(new UsageDetails
+                    {
+                        InputTokenCount = 5,
+                        OutputTokenCount = 3,
+                        TotalTokenCount = 8
+                    })])
+            ]
+        ]);
+        await using McpServerHandle mcpServer = await StartStructuredOutputServerAsync();
+        AgentConfig agentConfig = new()
+        {
+            MaxTurns = 6,
+            Mcp = new McpConfig
+            {
+                Servers =
+                [
+                    new McpServerConfig
+                    {
+                        Name = ServerName,
+                        Url = $"{mcpServer.Endpoint}/mcp",
+                        Type = McpServerType.Http
+                    }
+                ]
+            }
+        };
+        await using StreamingHost host = await StreamingHost.StartAsync(
+            provider,
+            agentConfig,
+            new Dictionary<string, string?>
+            {
+                ["Mcp:DeferredToolThreshold"] = "0",
+                ["AgentExecution:McpToolResultCharBudget"] = budget.ToString()
+            });
+
+        List<(string Event, JsonElement Data)> frames =
+            await host.PostStreamAsync("mcp-structured-conversation");
+
+        (string _, JsonElement resultData) = Assert.Single(
+            frames,
+            frame => frame.Event == "tool_result"
+                && frame.Data.GetProperty("toolName").GetString() == StructuredRuntimeToolName);
+        string? content = resultData.GetProperty("content").GetString();
+        Assert.NotNull(content);
+        Assert.True(content.Length <= budget, $"tool result {content.Length} chars must not exceed the {budget}-char budget");
+        Assert.Contains("characters omitted", content, StringComparison.Ordinal);
+        Assert.Contains("narrow the query", content, StringComparison.Ordinal);
+
+        Assert.Single(frames, frame => frame.Event == "done");
+
+        // 回喂模型的下一轮请求：结果必须是截断后的字符串，而不是未 bounded 的 JsonElement。
+        Assert.Equal(2, provider.Requests.Count);
+        FunctionResultContent wireResult = Assert.Single(
+            provider.Requests[1].SelectMany(message => message.Contents)
+                .OfType<FunctionResultContent>());
+        string wire = Assert.IsType<string>(wireResult.Result);
+        Assert.True(wire.Length <= budget, $"wire result {wire.Length} chars must not exceed the {budget}-char budget");
+
+        // 持久化的 tool 行同样有界，历史不会随轮次膨胀。
+        ConversationRecord? record = await host.Store.GetRecordAsync(
+            "tenant-1", "mcp-structured-conversation");
+        Assert.NotNull(record);
+        ConversationMessage? toolRow = record.Messages?.LastOrDefault(
+            row => row.Role == "tool");
+        Assert.NotNull(toolRow);
+        Assert.True(toolRow!.Content.Length <= budget, $"persisted result {toolRow.Content.Length} chars must not exceed the {budget}-char budget");
+    }
+
+    /// <summary>进程内真实 StreamableHttp MCP 服务端：结构化输出工具返回普通对象，
+    /// 服务端生成 structuredContent，客户端走 CallToolResult → JsonElement 路径。</summary>
+    private static async Task<McpServerHandle> StartStructuredOutputServerAsync()
+    {
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+        {
+            EnvironmentName = Environments.Production
+        });
+        builder.WebHost.UseKestrel().UseUrls("http://127.0.0.1:0");
+        builder.Services.AddMcpServer(options => options.ServerInfo = new()
+        {
+            Name = ServerName,
+            Version = "1.0.0"
+        }).WithHttpTransport();
+        builder.Services.AddSingleton(McpServerTool.Create(
+            (string query) => new StructuredDump(
+                $"[dump] {query}",
+                new string('p', 50_000)),
+            new McpServerToolCreateOptions
+            {
+                Name = StructuredToolName,
+                UseStructuredContent = true
+            }));
+
+        WebApplication application = builder.Build();
+        application.Urls.Clear();
+        application.Urls.Add("http://127.0.0.1:0");
+        application.MapMcp("/mcp");
+        await application.StartAsync().ConfigureAwait(false);
+        string endpoint = application.Services
+            .GetRequiredService<IServer>()
+            .Features.Get<IServerAddressesFeature>()!.Addresses.Single();
+        return new McpServerHandle(application, endpoint);
+    }
+
+    private const string StructuredToolName = "structured_dump";
+    private const string StructuredRuntimeToolName = $"mcp__{ServerName}__{StructuredToolName}";
+
+    private sealed record StructuredDump(string Summary, string Payload);
+
     /// <summary>进程内真实 StreamableHttp MCP 服务端：报表工具按 section 返回多个内容块。</summary>
     private static async Task<McpServerHandle> StartMcpServerAsync()
     {
