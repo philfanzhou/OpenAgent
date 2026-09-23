@@ -16,6 +16,7 @@
 | 会话工作区 | 五个 workspace 工具操作宿主侧 session-\<key\>/work（bind-mount 进会话沙箱 /work，与 execute_code 共享状态）：`list_workspace_files`（ReadOnly）/`read_workspace_file`（cat -n 行号 + offset/limit 分页，ReadOnly）/`write_workspace_file`/`edit_workspace_file`（精确字符串替换 + 唯一性校验）/`export_workspace_file`（工作区→file asset→publish 交付桥）；`download_file` 可选 workspacePath 直落工作区 |
 | 计划工具 | `update_plan`（对标 Claude Code TodoWrite / Codex update_plan）：全量重发步骤列表，≤1 个 in_progress；结果快照落进会话时间线，SSE 附加 `plan_updated` 事件 |
 | MCP 延迟加载 | 可见 MCP 工具超过 `Mcp:DeferredToolThreshold`（默认 20，≤0 关闭）时不整体注入，改由单个 `search_tools` 入口按需检索激活（对标 Codex defer_loading）；激活的工具经与内联一致的隔离包装注入后续请求 |
+| 工具列表回归验证 | `AgentExecutorSkillToolTests.SkillsConfigured_SkillToolsAreOfferedToModel` 捕获实际发往模型的 options.Tools，断言 skills 三件套（load_skill/read_skill_resource/run_skill_script）在场——排查"模型调了不存在的工具"时先确认列表没给错 |
 | 工具体量观测 | AgentFactory 每轮记录 `Agent tool definitions: N tools, X chars (~Y tokens per request)`，追踪工具吃上下文的实际水位 |
 | MCP 连接池化 | `McpClientPool` 按（租户, 服务器地址）缓存客户端跨轮复用；每轮 ListTools 兼作健康探测，坏连接淘汰后立即重连一次；空闲超过 `Mcp:ClientIdleTimeoutSeconds`（默认 600s）惰性淘汰 |
 | 最大轮次控制 | 默认 50 轮（`AgentConfig.MaxTurns`，fallback 同为 `DefaultMaxTurns=50`） |
@@ -27,6 +28,7 @@ AgentFactory
   ├─ McpToolFactory: official McpClientTool（mcp__{server}__{tool}）
   ├─ AgentSkillsProviderFactory: official AgentSkillsProvider
   └─ ChatClientAgent / FunctionInvokingChatClient（AllowConcurrentInvocation=true）
+       │  DeferredToolInjector（激活的延迟 MCP 工具并入当轮 options.Tools）
        Tools = 全部工具 × IsolatedToolFunction.Wrap(超时, 分级预算, 并发类别, 独占信号量, logger)
          ├─ ToolResult(IsError) → 错误信封原样回传
          ├─ 成功内容 → 预算截断（头尾保留 + 收窄提示）
@@ -53,4 +55,4 @@ AgentFactory
 ## Source
 - Core: `Backend/src/OpenAgent.Core/Capabilities/`（CapabilityToolFactory、Plan/PlanCapabilitySource、Mcp/McpClientPool 等）、`Runtime/Agent/IsolatedToolFunction.cs`、`Runtime/Agent/ToolResultBudgets.cs`、`Runtime/Agent/ToolConcurrencyRules.cs`
 - Contracts: `Backend/src/OpenAgent.Contracts/Capabilities/ToolResult.cs`
-- Tests: `Backend/tests/OpenAgent.Core.Tests/Capabilities/CapabilityToolFactoryTests.cs`、`BuiltInToolSchemaTests.cs`、`Runtime/ToolResultBudgetTests.cs` 等
+- Tests: `Backend/tests/OpenAgent.Core.Tests/Capabilities/CapabilityToolFactoryTests.cs`、`BuiltInToolSchemaTests.cs`、`Runtime/ToolResultBudgetTests.cs`、`Runtime/AgentExecutorSkillToolTests.cs`（工具列表在场验证）等

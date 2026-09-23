@@ -143,6 +143,38 @@ public class AgentExecutorToolLoopTests
         Assert.Equal("get_current_user_profile", result.ToolName);
     }
 
+    [Fact]
+    public async Task ExecuteStreamingAsync_NullArguments_AreNormalizedToEmptyObject()
+    {
+        // 部分 LLM 返回的工具调用 arguments 为 null 而非空对象：播报与持久化都
+        // 必须统一成空字典，前端才能渲染统一的参数区，下游元数据形态一致。
+        var provider = new SequenceChatProvider(
+        [
+            [
+                new ChatResponseUpdate(ChatRole.Assistant,
+                    [new FunctionCallContent("call-1", "get_current_user_profile")])
+            ],
+            [
+                new ChatResponseUpdate(ChatRole.Assistant, [new UsageContent(CreateUsage())]),
+                new ChatResponseUpdate(ChatRole.Assistant, "finished")
+            ]
+        ]);
+        await using AgentExecutorUsageTests.TestRuntime runtime =
+            AgentExecutorUsageTests.CreateRuntime(provider);
+
+        List<AgentStreamEvent> events = [];
+        await foreach (AgentStreamEvent streamEvent in runtime.Executor.ExecuteStreamingAsync(
+            CreateRequest("null-arguments-conversation"),
+            User,
+            CancellationToken.None))
+        {
+            events.Add(streamEvent);
+        }
+
+        AgentStreamEvent call = Assert.Single(events, item => item.Type == AgentStreamEventType.ToolCall);
+        Assert.NotNull(call.ToolArguments);
+    }
+
     private static bool HasToolCalls(ChatMessage message) =>
         message.Role == ChatRole.Assistant
         && message.Contents.OfType<FunctionCallContent>().Any();
