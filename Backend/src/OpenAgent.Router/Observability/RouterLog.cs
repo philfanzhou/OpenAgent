@@ -127,9 +127,6 @@ internal static partial class RouterLog
     [LoggerMessage(EventId = 3024, Level = LogLevel.Debug, Message = "Authenticated user context created. UserId={UserId}, TenantId={TenantId}, RoleCount={RoleCount}, GroupCount={GroupCount}, AudienceCount={AudienceCount}")]
     public static partial void AuthenticatedUserContextCreated(ILogger logger, string userId, string? tenantId, int roleCount, int groupCount, int audienceCount);
 
-    [LoggerMessage(EventId = 3025, Level = LogLevel.Debug, Message = "Anonymous user context created. Path={Path}, TraceId={TraceId}")]
-    public static partial void AnonymousUserContextCreated(ILogger logger, PathString path, string traceId);
-
     #endregion
 
     #region --- Rate Limiter ---

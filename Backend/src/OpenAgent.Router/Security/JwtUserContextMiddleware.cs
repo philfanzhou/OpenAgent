@@ -91,8 +91,6 @@ public class JwtUserContextMiddleware
                 Audience = new List<string> { "router" },
                 IsAuthenticated = false
             };
-
-            RouterLog.AnonymousUserContextCreated(_logger, context.Request.Path, context.TraceIdentifier);
         }
 
         context.Items["AgentUserContext"] = userContext;
