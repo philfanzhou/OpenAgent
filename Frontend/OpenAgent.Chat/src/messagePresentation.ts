@@ -38,6 +38,10 @@ export function buildDisplayMessages(messages: ConversationMessage[]): Conversat
   let assistant: ConversationMessage | undefined
 
   for (const message of messages) {
+    // 压缩摘要行是模型上下文的产物，对用户由 contextSummaries 的压缩分隔条呈现；
+    // 这里跳过可避免同一段摘要以无样式普通消息重复渲染、并把 assistant 组拆散。
+    if (message.role === 'summary') continue
+
     if (message.role === 'assistant') {
       assistant = mergeAssistantMessage(assistant, message)
       continue
@@ -45,6 +49,9 @@ export function buildDisplayMessages(messages: ConversationMessage[]): Conversat
 
     if (message.role === 'tool') {
       assistant ||= createAssistantMessage(message)
+      // 合并组携带最后一行的序号：乐观消息的序号基于内存消息推算，折叠组若停在
+      // 首行序号，推算值会小于服务端真实行号，停止/完成后的历史合并就会错位。
+      assistant.sequence = message.sequence
       mergeToolIntoAssistant(assistant, {
         name: message.toolName || '工具',
         callId: message.toolCallId,
@@ -108,6 +115,9 @@ function mergeAssistantMessage(
     ? {
         ...current,
         content: appendText(current.content, message.content),
+        // 携带末行序号：乐观消息序号从内存最大序号推算，合并组停在首行序号
+        // 会让推算值落后于服务端行号，历史合并时错插/漏配（见 buildDisplayMessages）。
+        sequence: message.sequence,
         toolCallId: message.toolCallId,
         toolName: message.toolName,
         reasoning: appendText(current.reasoning, message.reasoning) || undefined,

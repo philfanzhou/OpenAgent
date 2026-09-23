@@ -66,6 +66,40 @@ describe('messagePresentation', () => {
     expect(assistant.toolActivities?.[0]?.arguments).toEqual({ fileId: 'f-1' })
   })
 
+  it('carries the last source sequence on a merged display assistant', () => {
+    // 乐观消息的序号从内存最大序号推算：折叠组若停在首行序号（2），推算出的
+    // 下一行会小于服务端真实行号（5），停止/完成后的历史合并随之错位。
+    const rows = [
+      message({ sequence: 1, role: 'user', content: 'hi' }),
+      message({ sequence: 2, role: 'assistant', content: '', toolCallId: 'call-1', toolName: 'search' }),
+      message({ sequence: 3, role: 'tool', content: 'hits', toolCallId: 'call-1', toolName: 'search' }),
+      message({ sequence: 4, role: 'assistant', content: 'answer' }),
+    ]
+
+    const display = buildDisplayMessages(rows)
+
+    expect(display.map(item => item.role)).toEqual(['user', 'assistant'])
+    expect(display[1]!.sequence).toBe(4)
+  })
+
+  it('skips persisted compaction summary rows from display messages', () => {
+    // 自动压缩会把摘要落成 role="summary" 的消息行；对用户它由 contextSummaries
+    // 的压缩分隔条呈现，直接展示会把同一段摘要渲染成无样式普通消息并拆散
+    // assistant 组。
+    const rows = [
+      message({ sequence: 1, role: 'user', content: 'question' }),
+      message({ sequence: 2, role: 'summary', content: 'Earlier conversation summary' }),
+      message({ sequence: 3, role: 'assistant', content: 'answer' }),
+    ]
+
+    const display = buildDisplayMessages(rows)
+
+    expect(display.map(item => `${item.role}:${item.content}`)).toEqual([
+      'user:question',
+      'assistant:answer',
+    ])
+  })
+
   it('places a context summary after the messages it compacted', () => {
     const messages = [
       message({ sequence: 1, role: 'user', content: 'first' }),
