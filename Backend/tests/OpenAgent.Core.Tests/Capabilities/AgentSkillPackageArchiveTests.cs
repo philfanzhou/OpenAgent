@@ -9,6 +9,25 @@ namespace OpenAgent.Core.Tests.Capabilities;
 public sealed class AgentSkillPackageArchiveTests
 {
     [Fact]
+    public void Inspect_DataPptxCasePackage_IsInstallable()
+    {
+        const string relativePath = "examples/skills/data-pptx/data-pptx-skill.zip";
+        DirectoryInfo? directory = new(AppContext.BaseDirectory);
+        while (directory != null && !File.Exists(Path.Combine(directory.FullName, relativePath)))
+        {
+            directory = directory.Parent;
+        }
+        Assert.NotNull(directory);
+
+        byte[] package = File.ReadAllBytes(Path.Combine(directory.FullName, relativePath));
+        AgentSkillPackageMetadata metadata = AgentSkillPackageArchive.Inspect(package, default);
+
+        Assert.Equal("data-pptx", metadata.Name);
+        Assert.Equal(["scripts/generate.py"], metadata.ScriptNames);
+        Assert.Equal(2, metadata.ResourceCount);
+    }
+
+    [Fact]
     public void InspectAsync_UsesOfficialSkillFrontmatter()
     {
         byte[] package = CreatePackage("customer-lookup", "Looks up customers");
