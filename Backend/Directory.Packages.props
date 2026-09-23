@@ -41,6 +41,9 @@
     <PackageVersion Include="Microsoft.Extensions.AI.OpenAI" Version="10.7.0" />
     <PackageVersion Include="OpenAI" Version="2.11.0" />
     <PackageVersion Include="ModelContextProtocol.Core" Version="1.4.1" />
+    <!-- 仅测试使用：进程内起真实 MCP 服务端做端到端复现 -->
+    <PackageVersion Include="ModelContextProtocol" Version="1.4.1" />
+    <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="1.4.1" />
 
     <!-- OpenTelemetry -->
     <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.15.3" />
