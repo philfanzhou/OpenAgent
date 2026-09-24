@@ -90,6 +90,8 @@ public sealed class WriteThroughConversationStoreTests
 
     private sealed class FakeConversationStore : IConversationStore
     {
+        private AgentSessionSnapshot? _sessionSnapshot;
+
         public ConversationRecord Record { get; private set; } = new()
         {
             ConversationId = "uninitialized",
@@ -118,6 +120,31 @@ public sealed class WriteThroughConversationStoreTests
         {
             GetRecordCalls += 1;
             return Task.FromResult<ConversationRecord?>(Clone(Record));
+        }
+
+        public Task<AgentSessionSnapshot?> GetAgentSessionSnapshotAsync(
+            string tenantId,
+            string userId,
+            string conversationId,
+            string agentId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(_sessionSnapshot);
+
+        public Task<AppendResult> CommitTurnAsync(
+            string tenantId,
+            string conversationId,
+            int expectedVersion,
+            IReadOnlyList<ConversationMessage> messages,
+            ConversationStatus status,
+            AgentSessionSnapshot? sessionSnapshot,
+            CancellationToken cancellationToken = default)
+        {
+            Record.Messages.AddRange(messages);
+            Record.Version += 1;
+            Record.MessageCount = Record.Messages.Count;
+            Record.Status = status;
+            _sessionSnapshot = sessionSnapshot ?? _sessionSnapshot;
+            return Task.FromResult(AppendResult.Ok(Record.Version, Record.MessageCount));
         }
 
         public Task<IReadOnlyList<ConversationMessage>> GetMessagesAsync(string tenantId, string conversationId, int maxMessages, CancellationToken cancellationToken = default) =>

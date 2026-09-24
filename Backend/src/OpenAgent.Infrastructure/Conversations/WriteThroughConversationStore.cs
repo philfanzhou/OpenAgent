@@ -83,6 +83,43 @@ internal sealed class WriteThroughConversationStore(
         return result;
     }
 
+    public Task<AgentSessionSnapshot?> GetAgentSessionSnapshotAsync(
+        string tenantId,
+        string userId,
+        string conversationId,
+        string agentId,
+        CancellationToken cancellationToken = default) =>
+        durable.GetAgentSessionSnapshotAsync(
+            tenantId,
+            userId,
+            conversationId,
+            agentId,
+            cancellationToken);
+
+    public async Task<AppendResult> CommitTurnAsync(
+        string tenantId,
+        string conversationId,
+        int expectedVersion,
+        IReadOnlyList<ConversationMessage> messages,
+        ConversationStatus status,
+        AgentSessionSnapshot? sessionSnapshot,
+        CancellationToken cancellationToken = default)
+    {
+        AppendResult result = await durable.CommitTurnAsync(
+            tenantId,
+            conversationId,
+            expectedVersion,
+            messages,
+            status,
+            sessionSnapshot,
+            cancellationToken).ConfigureAwait(false);
+        if (result.Success)
+        {
+            await WarmAsync(tenantId, conversationId, cancellationToken).ConfigureAwait(false);
+        }
+        return result;
+    }
+
     public async Task<bool> UpdateStatusAsync(
         string tenantId, string conversationId, ConversationStatus status, int expectedVersion,
         CancellationToken cancellationToken = default)

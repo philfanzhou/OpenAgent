@@ -112,7 +112,68 @@ internal sealed class EfCoreConversationStore(
         string conversationId,
         int expectedVersion,
         IReadOnlyList<ConversationMessage> messages,
+        CancellationToken cancellationToken = default) =>
+        await AppendMessagesCoreAsync(
+            tenantId,
+            conversationId,
+            expectedVersion,
+            messages,
+            status: null,
+            sessionSnapshot: null,
+            cancellationToken).ConfigureAwait(false);
+
+    public async Task<AgentSessionSnapshot?> GetAgentSessionSnapshotAsync(
+        string tenantId,
+        string userId,
+        string conversationId,
+        string agentId,
         CancellationToken cancellationToken = default)
+    {
+        await using OpenAgentDbContext context = await contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        ConversationEntity? conversation = await context.Conversations.AsNoTracking().SingleOrDefaultAsync(
+            item => item.ConversationId == conversationId
+                && item.TenantId == tenantId
+                && item.UserId == userId
+                && item.AgentId == agentId
+                && !item.IsDeletedByUser,
+            cancellationToken).ConfigureAwait(false);
+        if (conversation?.AgentSessionStateJson is not { Length: > 0 } stateJson
+            || string.IsNullOrWhiteSpace(conversation.AgentSessionConfigFingerprint))
+        {
+            return null;
+        }
+
+        return new AgentSessionSnapshot(
+            stateJson,
+            conversation.AgentSessionConfigFingerprint,
+            conversation.AgentSessionFormatVersion);
+    }
+
+    public async Task<AppendResult> CommitTurnAsync(
+        string tenantId,
+        string conversationId,
+        int expectedVersion,
+        IReadOnlyList<ConversationMessage> messages,
+        ConversationStatus status,
+        AgentSessionSnapshot? sessionSnapshot,
+        CancellationToken cancellationToken = default) =>
+        await AppendMessagesCoreAsync(
+            tenantId,
+            conversationId,
+            expectedVersion,
+            messages,
+            status,
+            sessionSnapshot,
+            cancellationToken).ConfigureAwait(false);
+
+    private async Task<AppendResult> AppendMessagesCoreAsync(
+        string tenantId,
+        string conversationId,
+        int expectedVersion,
+        IReadOnlyList<ConversationMessage> messages,
+        ConversationStatus? status,
+        AgentSessionSnapshot? sessionSnapshot,
+        CancellationToken cancellationToken)
     {
         await using OpenAgentDbContext context = await contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
@@ -170,16 +231,31 @@ internal sealed class EfCoreConversationStore(
             }
         }
 
-        if (additions.Count == 0)
+        bool updateSession = sessionSnapshot != null;
+        bool updateStatus = status != null;
+        if (additions.Count == 0 && !updateSession && !updateStatus)
         {
             await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
             return AppendResult.Ok(conversation.Version, conversation.MessageCount, messages.Count);
         }
 
         conversation.Version++;
-        conversation.MessageCount += additions.Count;
         conversation.UpdatedAt = DateTimeOffset.UtcNow;
-        conversation.LastMessageAt = additions.Max(item => item.Timestamp);
+        if (additions.Count > 0)
+        {
+            conversation.MessageCount += additions.Count;
+            conversation.LastMessageAt = additions.Max(item => item.Timestamp);
+        }
+        if (status is { } committedStatus)
+        {
+            conversation.Status = (int)committedStatus;
+        }
+        if (sessionSnapshot is { } snapshot)
+        {
+            conversation.AgentSessionStateJson = snapshot.StateJson;
+            conversation.AgentSessionConfigFingerprint = snapshot.ConfigFingerprint;
+            conversation.AgentSessionFormatVersion = snapshot.FormatVersion;
+        }
         try
         {
             await context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);

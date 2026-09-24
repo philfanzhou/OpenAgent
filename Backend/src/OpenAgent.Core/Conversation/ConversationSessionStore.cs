@@ -1,4 +1,6 @@
+using System.Text.Json;
 using Microsoft.Extensions.Options;
+using Microsoft.Agents.AI;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Requests;
@@ -25,6 +27,68 @@ internal sealed class ConversationSessionStore
     }
 
     internal IConversationStore Store => _store;
+
+    internal async Task<AgentSession?> RestoreAgentSessionAsync(
+        AIAgent agent,
+        ConversationContext context,
+        string agentId,
+        string userId,
+        string configFingerprint,
+        CancellationToken cancellationToken)
+    {
+        if (!context.IsValid)
+        {
+            return null;
+        }
+
+        ConversationRecord? record = await _store.GetRecordAsync(
+            context.TenantId!,
+            context.ConversationId!,
+            cancellationToken).ConfigureAwait(false);
+        if (record == null
+            || !string.Equals(record.UserId, userId, StringComparison.Ordinal)
+            || (!string.IsNullOrWhiteSpace(record.AgentId)
+                && !string.Equals(record.AgentId, agentId, StringComparison.Ordinal))
+            || record.IsDeletedByUser)
+        {
+            throw new AgentException(
+                AgentErrorCode.PermissionDenied,
+                "Conversation does not belong to the current user or agent");
+        }
+
+        AgentSessionSnapshot? snapshot = await _store.GetAgentSessionSnapshotAsync(
+            context.TenantId!,
+            userId,
+            context.ConversationId!,
+            agentId,
+            cancellationToken).ConfigureAwait(false);
+        if (snapshot == null
+            || snapshot.FormatVersion != 1
+            || !string.Equals(snapshot.ConfigFingerprint, configFingerprint, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(snapshot.StateJson);
+            return await agent.DeserializeSessionAsync(
+                document.RootElement,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception) when (
+            exception is JsonException
+                or ArgumentException
+                or InvalidOperationException
+                or NotSupportedException)
+        {
+            return null;
+        }
+    }
 
     internal async Task<ConversationSession> OpenAsync(
         ConversationContext context,
@@ -132,6 +196,21 @@ internal sealed class ConversationSessionStore
         int expectedVersion,
         IReadOnlyList<ConversationMessage> messages,
         ConversationStatus status,
+        CancellationToken cancellationToken) =>
+        await SaveAsync(
+            context,
+            expectedVersion,
+            messages,
+            status,
+            sessionSnapshot: null,
+            cancellationToken).ConfigureAwait(false);
+
+    internal async Task SaveAsync(
+        ConversationContext context,
+        int expectedVersion,
+        IReadOnlyList<ConversationMessage> messages,
+        ConversationStatus status,
+        AgentSessionSnapshot? sessionSnapshot,
         CancellationToken cancellationToken)
     {
         if (!context.IsValid)
@@ -149,41 +228,43 @@ internal sealed class ConversationSessionStore
                 .ToList();
         }
 
-        if (messages.Count > 0)
+        AppendResult commit = await _store.CommitTurnAsync(
+            context.TenantId!,
+            context.ConversationId!,
+            expectedVersion,
+            messages,
+            status,
+            sessionSnapshot,
+            cancellationToken).ConfigureAwait(false);
+        if (!commit.Success && sessionSnapshot == null)
         {
-            AppendResult append = await _store.AppendMessagesAsync(
+            ConversationRecord? current = await _store.GetRecordAsync(
                 context.TenantId!,
                 context.ConversationId!,
-                expectedVersion,
-                messages,
                 cancellationToken).ConfigureAwait(false);
-            if (!append.Success)
+            if (current != null)
             {
-                append = await RetryAppendAsync(context, messages, cancellationToken).ConfigureAwait(false);
+                IReadOnlyList<ConversationMessage> resequenced = messages
+                    .Select((message, index) => message with
+                    {
+                        Sequence = current.MessageCount + index + 1
+                    })
+                    .ToList()
+                    .AsReadOnly();
+                commit = await _store.CommitTurnAsync(
+                    context.TenantId!,
+                    context.ConversationId!,
+                    current.Version,
+                    resequenced,
+                    status,
+                    sessionSnapshot: null,
+                    cancellationToken: cancellationToken).ConfigureAwait(false);
             }
-
-            if (!append.Success)
-            {
-                throw new InvalidOperationException(
-                    $"Conversation append failed: {append.ConflictReason}");
-            }
-
-            expectedVersion = append.NewVersion;
         }
 
-        if (status != ConversationStatus.Running)
+        if (!commit.Success)
         {
-            bool updated = await _store.UpdateStatusAsync(
-                context.TenantId!,
-                context.ConversationId!,
-                status,
-                expectedVersion,
-                cancellationToken).ConfigureAwait(false);
-            if (!updated)
-            {
-                throw new InvalidOperationException(
-                    $"Conversation status update failed: {status}");
-            }
+            throw new InvalidOperationException($"Conversation turn commit failed: {commit.ConflictReason}");
         }
     }
 
