@@ -40,13 +40,13 @@ internal sealed class FileAssetCapabilitySource(
         [
             new CapabilityDefinition(
                 "read_file",
-                "Read a UTF-8 text file by fileId or by an objectKey inside the current tenant partition — provide exactly one of the two, never both. "
+                "Read a file by fileId or by an objectKey inside the current tenant partition — provide exactly one of the two, never both. "
                 + "Call list_files first when you do not know the fileId. "
-                + "Text files only (.txt, .md, .csv, .json, .xml, .svg, .html, .css, .drawio and other UTF-8 text); "
-                + "binary files such as images, PDF, zip, or office documents cannot be read as text — "
-                + "deliver those to the user via publish_files or create_file_transfer_url instead. "
-                + "The result is JSON {fileId|objectKey, content}; oversized results are truncated with a marker, "
-                + "so ask for specific sections instead of re-reading the whole file.",
+                + "UTF-8 text files within the size limit return JSON {fileId|objectKey, content}. "
+                + "Any other file — binary formats (images, PDF, zip, office documents) or text exceeding the inline read limit — "
+                + "does not fail: it returns metadata (fileName, mediaType, length) with content=null and a notice instead. "
+                + "Parse or chunk-read such files with execute_code (files mount at /input/<name>), "
+                + "deliver them via publish_files, or share via create_file_transfer_url.",
                 """{"type":"object","properties":{"fileId":{"type":"string","description":"ID of the file asset to read; exactly one of fileId/objectKey"},"objectKey":{"type":"string","description":"Object key inside the current tenant partition; exactly one of fileId/objectKey"}},"additionalProperties":false}""",
                 AgentResourceType.Tool,
                 "file-assets",
@@ -142,8 +142,50 @@ internal sealed class FileAssetCapabilitySource(
         {
             if (!string.IsNullOrWhiteSpace(objectKey))
             {
-                string objectContent = await files.ReadObjectTextAsync(objectKey, executionContext.Scope, cancellationToken).ConfigureAwait(false);
-                return JsonSerializer.Serialize(new { objectKey, content = objectContent });
+                try
+                {
+                    string objectContent = await files.ReadObjectTextAsync(objectKey, executionContext.Scope, cancellationToken).ConfigureAwait(false);
+                    return JsonSerializer.Serialize(new { objectKey, content = objectContent });
+                }
+                catch (OpenAgent.Contracts.Security.TenantDataIsolationException)
+                {
+                    // 跨租户键是安全拒绝，维持错误信封，不降级为通知。
+                    throw;
+                }
+                catch (OpenAgent.Contracts.Security.AgentException exception)
+                {
+                    // 超限/非 UTF-8：不给内容也不报错，返回降级信封引导分段读取。
+                    return JsonSerializer.Serialize(new
+                    {
+                        objectKey,
+                        content = (string?)null,
+                        notice = exception.Message,
+                        hint = ChunkedReadHint
+                    });
+                }
+            }
+
+            // 先取元数据再决定是否读内容：二进制/超限文件返回信息而不是失败，
+            // 模型据此改用 execute_code 解析或分段读取。
+            FileAsset? asset = await files.GetReferencedAsync(
+                fileId!, executionContext.Scope, cancellationToken).ConfigureAwait(false);
+            if (asset == null || asset.State != FileAssetState.Ready)
+            {
+                return ToolResult.Error(
+                    "The file does not exist, is not ready, or is not referenced by the current conversation.",
+                    NotFound,
+                    hint: "Call list_files to check which files are available.");
+            }
+            if (!FileMediaTypeCatalog.IsTextMediaType(asset.MediaType))
+            {
+                return MetadataEnvelope(asset, "is not UTF-8 text; read_file does not return binary content.", BinaryReadHint);
+            }
+            if (asset.Length > options.Value.MaxFunctionReadBytes)
+            {
+                return MetadataEnvelope(
+                    asset,
+                    $"exceeds the inline read limit ({options.Value.MaxFunctionReadBytes} bytes); content is not returned.",
+                    ChunkedReadHint);
             }
             string content = await files.ReadTextAsync(fileId!, executionContext.Scope, cancellationToken).ConfigureAwait(false);
             return JsonSerializer.Serialize(new { fileId, content });
@@ -154,6 +196,27 @@ internal sealed class FileAssetCapabilitySource(
             return ToolResult.Error(exception.Message, InvalidRequest);
         }
     }
+
+    /// <summary>无内容元数据信封：fileName/mediaType/length + 原因 + 可行动出路。</summary>
+    private static string MetadataEnvelope(FileAsset asset, string reason, string hint) =>
+        JsonSerializer.Serialize(new
+        {
+            fileId = asset.FileId,
+            fileName = asset.FileName,
+            mediaType = asset.MediaType,
+            length = asset.Length,
+            content = (string?)null,
+            notice = $"{asset.FileName} ({asset.MediaType}, {asset.Length} bytes) {reason}",
+            hint
+        });
+
+    private const string BinaryReadHint =
+        "Use execute_code with the file mounted at /input/<name> to parse it; "
+        + "hand it to an external tool via create_file_transfer_url, or deliver it to the user via publish_files.";
+
+    private const string ChunkedReadHint =
+        "Use execute_code with the file mounted at /input/<name> to read it in chunks "
+        + "(e.g. by line ranges or byte offsets) and print only the relevant part.";
 
     private async Task<ToolResult> ListAsync(
         IReadOnlyDictionary<string, object?> arguments,

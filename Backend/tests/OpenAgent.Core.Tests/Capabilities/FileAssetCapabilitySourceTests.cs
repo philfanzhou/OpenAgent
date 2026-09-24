@@ -198,6 +198,78 @@ public class FileAssetCapabilitySourceTests
     }
 
     [Fact]
+    public async Task InvokeAsync_ReadFileBinary_ReturnsMetadataWithoutContent()
+    {
+        // 二进制文件不再报错：返回 fileName/mediaType/length 元数据信封 + 引导，
+        // 模型据此改用 execute_code 挂载解析或发布/外链。
+        TestHarness harness = CreateHarness();
+        FileAsset asset = CreateAsset("photo.png", "image/png", length: 4);
+        harness.Repository.Assets[asset.FileId] = asset;
+        harness.Repository.References.Add($"conversation-a:{asset.FileId}");
+        harness.Objects.ContentsByKey[asset.ObjectKey] = [0x89, 0x50, 0x4E, 0x47];
+        var arguments = new Dictionary<string, object?> { ["fileId"] = asset.FileId };
+
+        string result = await InvokeAsync(harness.Source, "read_file", arguments);
+
+        using JsonDocument document = JsonDocument.Parse(result);
+        Assert.Equal(asset.FileId, document.RootElement.GetProperty("fileId").GetString());
+        Assert.Equal("photo.png", document.RootElement.GetProperty("fileName").GetString());
+        Assert.Equal("image/png", document.RootElement.GetProperty("mediaType").GetString());
+        Assert.Equal(4, document.RootElement.GetProperty("length").GetInt64());
+        Assert.Equal(JsonValueKind.Null, document.RootElement.GetProperty("content").ValueKind);
+        // 元数据信封不是错误信封：没有 code 字段；notice/hint 指明非文本与出路。
+        Assert.False(document.RootElement.TryGetProperty("code", out _));
+        Assert.Contains("not UTF-8 text",
+            document.RootElement.GetProperty("notice").GetString(), StringComparison.Ordinal);
+        Assert.Contains("execute_code",
+            document.RootElement.GetProperty("hint").GetString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_ReadFileOversizedText_ReturnsMetadataAndChunkHint()
+    {
+        // 超限文本同样给元数据信封：内容不返回，引导模型用 execute_code 分段读取。
+        TestHarness harness = CreateHarness();
+        FileAsset asset = CreateAsset("big.csv", "text/csv", length: 4096);
+        harness.Repository.Assets[asset.FileId] = asset;
+        harness.Repository.References.Add($"conversation-a:{asset.FileId}");
+        var arguments = new Dictionary<string, object?> { ["fileId"] = asset.FileId };
+
+        string result = await InvokeAsync(harness.Source, "read_file", arguments);
+
+        using JsonDocument document = JsonDocument.Parse(result);
+        Assert.Equal(4096, document.RootElement.GetProperty("length").GetInt64());
+        Assert.Equal(JsonValueKind.Null, document.RootElement.GetProperty("content").ValueKind);
+        Assert.False(document.RootElement.TryGetProperty("code", out _));
+        Assert.Contains("exceeds the inline read limit",
+            document.RootElement.GetProperty("notice").GetString(), StringComparison.Ordinal);
+        Assert.Contains("chunks",
+            document.RootElement.GetProperty("hint").GetString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_ReadFileByObjectKeyNonText_ReturnsNoticeWithoutContent()
+    {
+        TestHarness harness = CreateHarness();
+        harness.Objects.ContentsByKey[TenantObjectKey("docs/blob.bin")] = [0xFF, 0xFE, 0x00];
+        var arguments = new Dictionary<string, object?>
+        {
+            ["objectKey"] = TenantObjectKey("docs/blob.bin")
+        };
+
+        string result = await InvokeAsync(harness.Source, "read_file", arguments);
+
+        using JsonDocument document = JsonDocument.Parse(result);
+        Assert.Equal(TenantObjectKey("docs/blob.bin"), document.RootElement.GetProperty("objectKey").GetString());
+        Assert.Equal(JsonValueKind.Null, document.RootElement.GetProperty("content").ValueKind);
+        Assert.False(document.RootElement.TryGetProperty("code", out _));
+        Assert.Contains("UTF-8",
+            document.RootElement.GetProperty("notice").GetString(), StringComparison.Ordinal);
+        Assert.Contains("execute_code",
+            document.RootElement.GetProperty("hint").GetString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task InvokeAsync_ListFiles_ReturnsReferencedMetadataOnly()
     {
         TestHarness harness = CreateHarness();
@@ -510,14 +582,15 @@ public class FileAssetCapabilitySourceTests
     private static FileAsset CreateAsset(
         string fileName,
         string mediaType,
-        string fileId = "file-a") => new()
+        string fileId = "file-a",
+        long length = 3) => new()
     {
         FileId = fileId,
         TenantId = "tenant-a",
         OwnerUserId = "user-a",
         FileName = fileName,
         MediaType = mediaType,
-        Length = 3,
+        Length = length,
         Sha256 = "sha",
         ObjectKey = $"files/tenants/{FileObjectTenantScope.CreatePartition("tenant-a")}" +
             $"/users/user-a/{fileId}",
