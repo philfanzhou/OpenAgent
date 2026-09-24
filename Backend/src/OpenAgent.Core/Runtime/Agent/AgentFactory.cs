@@ -217,7 +217,9 @@ internal sealed class AgentFactory
                 AIContextProviders = providers,
                 UseProvidedChatClientAsIs = true,
                 RequirePerServiceCallChatHistoryPersistence = false
-            });
+            }).AsBuilder()
+                .UseOpenTelemetry("OpenAgent.AgentFramework", telemetry => telemetry.EnableSensitiveData = false)
+                .Build();
             return new AgentExecutionScope(agent, history, mcpRuntime, skillsRuntime);
         }
         catch
