@@ -19,6 +19,7 @@ internal sealed class McpToolFactory(
     McpClientPool clients,
     AgentAuthorizationGate authorization,
     IMcpRegistry registry,
+    IMcpResourceStore resourceStore,
     ILogger<McpToolFactory> logger)
 {
     internal async Task<McpToolRuntime> CreateAsync(
@@ -29,6 +30,8 @@ internal sealed class McpToolFactory(
     {
         var tools = new List<AITool>();
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // 桥接工具可见的服务器集合（已过租户过滤 + 授权），键为模型看到的显示名。
+        var accessibleServers = new Dictionary<string, McpServerConfig>(StringComparer.OrdinalIgnoreCase);
 
         IEnumerable<McpServerConfig> servers = config.EnabledServerIds.Count > 0
             ? config.EnabledServerIds.Select(registry.Get).Where(server => server != null).Select(server => server!)
@@ -48,6 +51,7 @@ internal sealed class McpToolFactory(
             {
                 continue;
             }
+            accessibleServers[serverName] = server;
 
             try
             {
@@ -103,7 +107,13 @@ internal sealed class McpToolFactory(
         }
 
         // 客户端由池持有，运行时只携带工具清单；作用域释放不再断开连接。
-        return new McpToolRuntime(tools.AsReadOnly());
+        // read_mcp_resource 桥接工具：只要有可见服务器就注册（常驻内联、不进延迟目录），
+        // 让 resource URI / resource_link 真正可按需读回。
+        return new McpToolRuntime(
+            tools.AsReadOnly(),
+            accessibleServers.Count > 0
+                ? new McpResourceReaderTool(accessibleServers, clients, user, resourceStore)
+                : null);
     }
 
     internal static McpClientOptions CreateClientOptions(McpServerConfig server) => new()
@@ -170,11 +180,15 @@ internal sealed class McpToolFactory(
 }
 
 internal sealed class McpToolRuntime(
-    IReadOnlyList<AITool> tools) : IAsyncDisposable
+    IReadOnlyList<AITool> tools,
+    AITool? resourceReader = null) : IAsyncDisposable
 {
     internal static McpToolRuntime Empty { get; } = new([]);
 
     internal IReadOnlyList<AITool> Tools { get; } = tools;
+
+    /// <summary>read_mcp_resource 桥接工具；无可见 MCP 服务器时为 null。</summary>
+    internal AITool? ResourceReader { get; } = resourceReader;
 
     // 连接由 McpClientPool 持有并跨轮次复用；运行时本身没有需要释放的资源。
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;

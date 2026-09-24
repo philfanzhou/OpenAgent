@@ -6,6 +6,7 @@ using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Capabilities.Mcp;
 using OpenAgent.Core.Security;
+using OpenAgent.Contracts.Files;
 using Xunit;
 
 namespace OpenAgent.Core.Tests.Capabilities;
@@ -39,6 +40,7 @@ public sealed class McpToolFactoryTests
                 Options.Create(new McpExecutionOptions())),
             new AgentAuthorizationGate(new AllowAllAgentAuthorizationService()),
             new McpRegistry(),
+            new NullResourceStore(),
             NullLogger<McpToolFactory>.Instance);
         var config = new McpConfig
         {
@@ -79,6 +81,7 @@ public sealed class McpToolFactoryTests
                 Options.Create(new McpExecutionOptions())),
             new AgentAuthorizationGate(new AllowAllAgentAuthorizationService()),
             new McpRegistry(),
+            new NullResourceStore(),
             NullLogger<McpToolFactory>.Instance);
         var config = new McpConfig
         {
@@ -108,5 +111,14 @@ public sealed class McpToolFactoryTests
         // 通过 transport 创建时是否调用了 HttpClient 工厂来断言。
         Assert.Empty(runtime.Tools);
         httpClients.Verify(client => client.CreateClient(It.IsAny<string>()), Times.Once);
+    }
+
+    private sealed class NullResourceStore : IMcpResourceStore
+    {
+        public ValueTask<FileAsset?> TryStoreAsync(
+            string fileName,
+            string? mediaType,
+            ReadOnlyMemory<byte> data,
+            CancellationToken cancellationToken) => ValueTask.FromResult<FileAsset?>(null);
     }
 }

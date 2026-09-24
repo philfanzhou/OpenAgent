@@ -20,6 +20,7 @@ internal static class CapabilityServiceExtensions
         services.AddSingleton<IMcpRegistry, McpRegistry>();
         services.AddSingleton<McpTransportFactory>();
         services.AddSingleton<McpClientPool>();
+        services.AddScoped<IMcpResourceStore, McpResourceStore>();
         services.AddScoped<McpToolFactory>();
         services.AddScoped<AgentSkillsProviderFactory>();
         services.AddScoped<IMcpConnectionTester, McpConnectionTester>();

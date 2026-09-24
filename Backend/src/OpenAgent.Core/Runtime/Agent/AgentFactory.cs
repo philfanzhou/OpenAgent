@@ -24,6 +24,7 @@ internal sealed class AgentFactory
     private readonly McpToolFactory _mcpTools;
     private readonly AgentSkillsProviderFactory _skills;
     private readonly FileAssetExecutionContext _files;
+    private readonly IMcpResourceStore _mcpResourceStore;
     private readonly IServiceProvider _services;
     private readonly ILogger<IsolatedToolFunction> _toolLogger;
     private readonly ILogger<AgentFactory> _logger;
@@ -38,6 +39,7 @@ internal sealed class AgentFactory
         McpToolFactory mcpTools,
         AgentSkillsProviderFactory skills,
         FileAssetExecutionContext files,
+        IMcpResourceStore mcpResourceStore,
         IServiceProvider services,
         ILogger<IsolatedToolFunction> toolLogger,
         ILogger<AgentFactory> logger,
@@ -50,6 +52,7 @@ internal sealed class AgentFactory
         _mcpTools = mcpTools;
         _skills = skills;
         _files = files;
+        _mcpResourceStore = mcpResourceStore;
         _services = services;
         _toolLogger = toolLogger;
         _logger = logger;
@@ -124,8 +127,13 @@ internal sealed class AgentFactory
             // Exclusive 工具的每轮共享信号量：与 ChatClientAgent 同生命周期，
             // 作用域释放时一并销毁。
             SemaphoreSlim exclusiveGate = new(1, 1);
+            // MCP 工具（mcp__ 前缀）在内层加资源落盘装饰：结果里的内嵌二进制资源
+            // 写入对象存储并替换为 fileId 描述符，再进 IsolatedToolFunction 的
+            // 隔离/预算管道（落盘耗时计入单次调用超时）。
             AITool WrapTool(AITool tool) => IsolatedToolFunction.Wrap(
-                tool,
+                tool.Name.StartsWith("mcp__", StringComparison.Ordinal)
+                    ? McpResourcePersistingFunction.Wrap(tool, _mcpResourceStore, _toolLogger)
+                    : tool,
                 _toolCallTimeout,
                 ToolResultBudgets.Resolve(_executionOptions, tool.Name),
                 ToolConcurrencyRules.Resolve(tool),
@@ -135,6 +143,12 @@ internal sealed class AgentFactory
             // MCP 工具延迟加载：超过阈值时不整体注入（省每轮上下文），模型经
             // search_tools 检索并激活。阈值 ≤0 时保持全量内联。
             List<AITool> chatTools = [.. tools, .. mcpRuntime.Tools];
+            // read_mcp_resource 桥接工具常驻内联：单个工具不占上下文，且它正是
+            // 延迟模式下模型取回 resource URI 内容的唯一途径。
+            if (mcpRuntime.ResourceReader is { } resourceReader)
+            {
+                chatTools.Add(WrapTool(resourceReader));
+            }
             DeferredToolCatalog? deferredCatalog = null;
             if (_mcpOptions.DeferredToolThreshold > 0
                 && mcpRuntime.Tools.Count > _mcpOptions.DeferredToolThreshold)

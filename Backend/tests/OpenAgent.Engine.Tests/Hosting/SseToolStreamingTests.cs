@@ -231,7 +231,8 @@ public sealed class SseToolStreamingTests
         public static async Task<StreamingHost> StartAsync(
             ScriptedChatClient provider,
             AgentConfig? agentConfig = null,
-            Dictionary<string, string?>? settings = null)
+            Dictionary<string, string?>? settings = null,
+            Action<IServiceCollection>? configure = null)
         {
             var builder = WebApplication.CreateBuilder(new WebApplicationOptions
             {
@@ -262,6 +263,8 @@ public sealed class SseToolStreamingTests
             builder.Services.AddSingleton<IFileAssetRepository>(new EmptyFileAssetRepository());
             builder.Services.AddAgentErrorHandling();
 
+            // 附加替换位于全部默认注册之后（RemoveAll 类替换才能生效）。
+            configure?.Invoke(builder.Services);
             WebApplication application = builder.Build();
             // 本测试宿主环境下 WebHost.UseUrls 会被默认地址（localhost:5000）覆盖，
             // 并发跑多个宿主时必然端口冲突；Build 后显式写 Urls 才稳定生效。
