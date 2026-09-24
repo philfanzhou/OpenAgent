@@ -37,7 +37,7 @@ MAF 是 Agent.Core 唯一生产运行时。运行时代码位于
 ## Specification
 
 
-- 每个 turn 使用授权后的 `LlmConfig` 创建 `IChatClient` 和 `ChatClientAgent`。
+- 每个 turn 使用授权后的 `LlmConfig` 创建 `IChatClient` 和 `ChatClientAgent`，并接入 MAF Agent 与模型调用的 OpenTelemetry spans；默认关闭敏感内容采集。
 - `UseProvidedChatClientAsIs = true`。
 - 每个 run 用 `FunctionInvokingChatClient` 包装 client。
 - `MaximumIterationsPerRequest = AgentConfig.MaxTurns > 0 ? AgentConfig.MaxTurns : 5`。
@@ -74,7 +74,9 @@ AgentExecutor
 ```
 
 `PlatformChatHistory` 在 MAF 请求历史时加载 PostgreSQL 消息，并在 MAF
-结束通知中写回成功、失败或取消状态。`CapabilityToolFactory` 发现并筛选可用能力，
+结束通知中写回成功、失败或取消状态。MAF `AIAgent` 自动关联 `IChatClient` spans，
+由 Engine Host 的 OpenTelemetry provider 导出，且明确关闭 prompt/completion 内容采集。
+`CapabilityToolFactory` 发现并筛选可用能力，
 直接提供携带执行体的 `AIFunction`。工具名称、描述与 schema 不再复制到
 system prompt。
 
@@ -94,6 +96,7 @@ Provider 由 `AgentChatClientFactory` 构造 `IChatClient`；新增能力只产�
 - [x] 图片、PDF 和 UTF-8 文本文件输入。
 - [x] 独立文件上传、会话预览和模型文件输入。
 - [x] Agent、Model、Tool、Function、MCP、Skill 六维授权扩展点。
+- [x] 接入 MAF Agent 与模型调用 OpenTelemetry spans，默认关闭敏感内容采集。
 
 ## 后续可选增强
 

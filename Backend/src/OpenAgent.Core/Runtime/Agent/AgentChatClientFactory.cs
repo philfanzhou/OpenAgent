@@ -59,6 +59,8 @@ internal sealed class AgentChatClientFactory : IAgentChatClientFactory
         };
         // 记录器紧贴 provider、出站规格化包在记录器外层：
         // 交互日志捕获的就是规格化后真正发往 provider 的最终消息。
+        // MAF's OpenTelemetryAgent auto-wires below-FICC chat telemetry and
+        // propagates its privacy setting, keeping Agent and model spans linked.
         return NormalizeOutbound(WrapWithRecorder(provider, llm, capture));
     }
 
