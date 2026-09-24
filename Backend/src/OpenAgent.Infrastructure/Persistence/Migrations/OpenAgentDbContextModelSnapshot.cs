@@ -33,6 +33,16 @@ namespace OpenAgent.Infrastructure.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
 
+                    b.Property<string>("AgentSessionConfigFingerprint")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<int>("AgentSessionFormatVersion")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("AgentSessionStateJson")
+                        .HasColumnType("jsonb");
+
                     b.Property<string>("CodeExecutionJson")
                         .IsRequired()
                         .HasColumnType("jsonb");

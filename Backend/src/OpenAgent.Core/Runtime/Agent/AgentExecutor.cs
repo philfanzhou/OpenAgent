@@ -1,7 +1,9 @@
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using OpenAgent.Contracts.Configuration;
+using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Runtime;
 using OpenAgent.Contracts.Security;
@@ -53,13 +55,6 @@ public sealed class AgentExecutor
             user,
             cancellationToken).ConfigureAwait(false);
         AgentRequest executionRequest = CopyWithResolvedValues(request, turn);
-        if (executionRequest.FileIds.Count > 0)
-        {
-            await _agents.EnsureConversationAsync(
-                turn,
-                executionRequest.Query,
-                cancellationToken).ConfigureAwait(false);
-        }
         ResolvedFileRequest resolvedFiles = await _files.ResolveAsync(
             executionRequest,
             user,
@@ -72,7 +67,9 @@ public sealed class AgentExecutor
             executionRequest.Query,
             resolvedFiles.Files,
             cancellationToken).ConfigureAwait(false);
-        AgentSession session = await scope.Agent.CreateSessionAsync(cancellationToken).ConfigureAwait(false);
+        await scope.PrepareForAgentSessionAsync(cancellationToken).ConfigureAwait(false);
+        AgentSession session = await _agents.CreateSessionAsync(
+            scope.Agent, turn, profile, user, cancellationToken).ConfigureAwait(false);
         ChatMessage userMessage = await scope.CreateUserMessageAsync(cancellationToken).ConfigureAwait(false);
         Microsoft.Agents.AI.AgentResponse response = await scope.Agent.RunAsync(
             userMessage,
@@ -85,7 +82,16 @@ public sealed class AgentExecutor
         string modelId = string.IsNullOrWhiteSpace(profile.Model.ModelId)
             ? AgentResponseAdapter.ReadModelId(response.RawRepresentation, profile.Model.ModelId)
             : profile.Model.ModelId;
-        await scope.CompleteAsync(usage, modelId, cancellationToken).ConfigureAwait(false);
+        JsonElement serializedSession = await scope.Agent.SerializeSessionAsync(
+            session,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+        await scope.CompleteAsync(
+            usage,
+            modelId,
+            new AgentSessionSnapshot(
+                serializedSession.GetRawText(),
+                AgentSessionFingerprint.Create(profile)),
+            cancellationToken).ConfigureAwait(false);
         measurement.Complete(usage);
         return new PlatformAgentResponse
         {
@@ -115,13 +121,6 @@ public sealed class AgentExecutor
             user,
             cancellationToken).ConfigureAwait(false);
         AgentRequest executionRequest = CopyWithResolvedValues(request, turn);
-        if (executionRequest.FileIds.Count > 0)
-        {
-            await _agents.EnsureConversationAsync(
-                turn,
-                executionRequest.Query,
-                cancellationToken).ConfigureAwait(false);
-        }
         ResolvedFileRequest resolvedFiles = await _files.ResolveAsync(
             executionRequest,
             user,
@@ -134,7 +133,9 @@ public sealed class AgentExecutor
             executionRequest.Query,
             resolvedFiles.Files,
             cancellationToken).ConfigureAwait(false);
-        AgentSession session = await scope.Agent.CreateSessionAsync(cancellationToken).ConfigureAwait(false);
+        await scope.PrepareForAgentSessionAsync(cancellationToken).ConfigureAwait(false);
+        AgentSession session = await _agents.CreateSessionAsync(
+            scope.Agent, turn, profile, user, cancellationToken).ConfigureAwait(false);
         ChatMessage userMessage = await scope.CreateUserMessageAsync(cancellationToken).ConfigureAwait(false);
         HashSet<string> announcedToolCalls = new(StringComparer.Ordinal);
         Dictionary<string, string> toolCallNames = new(StringComparer.Ordinal);
@@ -277,7 +278,16 @@ public sealed class AgentExecutor
             }
         }
 
-        await scope.CompleteAsync(usage, modelId, cancellationToken).ConfigureAwait(false);
+        JsonElement serializedSession = await scope.Agent.SerializeSessionAsync(
+            session,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+        await scope.CompleteAsync(
+            usage,
+            modelId,
+            new AgentSessionSnapshot(
+                serializedSession.GetRawText(),
+                AgentSessionFingerprint.Create(profile)),
+            cancellationToken).ConfigureAwait(false);
         measurement.Complete(usage);
         yield return new AgentStreamEvent
         {
