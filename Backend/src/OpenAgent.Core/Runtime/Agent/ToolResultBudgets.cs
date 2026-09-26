@@ -38,7 +38,8 @@ internal static class ToolResultBudgets
         "search_knowledge_base",
         "get_current_user_profile",
         "load_skill",
-        "read_skill_resource"
+        "read_skill_resource",
+        "get_context_remaining"
     };
 
     private static readonly HashSet<string> ExecutionTools = new(StringComparer.Ordinal)

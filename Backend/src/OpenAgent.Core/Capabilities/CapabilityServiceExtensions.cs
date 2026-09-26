@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using OpenAgent.Contracts.Models;
 using OpenAgent.Core.Capabilities;
 using OpenAgent.Core.Abstract;
@@ -26,6 +27,13 @@ internal static class CapabilityServiceExtensions
         services.AddScoped<ICapabilitySource, RagCapabilitySource>();
         services.AddScoped<ICapabilitySource, UserProfileCapabilitySource>();
         services.AddScoped<ICapabilitySource, PlanCapabilitySource>();
+        services.AddScoped<OpenAgent.Core.Capabilities.Context.RunModelContext>();
+        services.AddScoped<ICapabilitySource, OpenAgent.Core.Capabilities.Context.ContextCapabilitySource>();
+        services.AddScoped<ICapabilitySource, OpenAgent.Core.Capabilities.Web.WebCapabilitySource>();
+        services.TryAddScoped<OpenAgent.Core.Files.FileAssetUrlDownloader>();
+        services.AddScoped<OpenAgent.Core.Capabilities.Web.IWebFetcher>(
+            provider => new OpenAgent.Core.Capabilities.Web.UrlDownloaderWebFetcher(
+                provider.GetRequiredService<OpenAgent.Core.Files.FileAssetUrlDownloader>()));
         services.AddScoped<CapabilityToolFactory>();
 
         services.AddScoped<IRagService, RagService>();

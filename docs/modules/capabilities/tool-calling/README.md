@@ -13,6 +13,9 @@
 | 工具路由 | `search_knowledge_base`→RAG，`mcp_*`→官方 MCP，`load_skill` / `read_skill_resource`→MAF Skill Provider，`run_skill_script`→隔离 Runner（经 `SkillScriptRunner`，需三层开关） |
 | Schema 硬化 | 内置工具 schema 全部封闭（`additionalProperties:false`、参数带 type、required 引用校验）；非法 schema 生产降级+Error 日志、Development 直接抛错；`BuiltInToolSchemaTests` 在 CI 兜底 |
 | 并行工具调用 | 同一条 assistant 消息里的多个调用并发执行；仅能力源显式声明 ReadOnly 的工具真正并行（read_file/list_files/search_knowledge_base/get_current_user_profile/update_plan），其余（写入/执行/MCP/Skill）由每轮共享信号量串行化；排队等待计入单次调用超时 |
+| web_fetch | 抓取公开 HTTP(S) 页面并转为可读文本（HTML→纯文本，script/style 剥离；text/json/xml 直通；二进制指引 download_file）；复用 FileAssetUrlDownloader 的 SSRF 防护（禁环回/内网、限重定向与大小）；15 分钟进程内缓存；ReadOnly |
+| get_context_remaining | 上下文余量近似值（窗口大小 + 已完成轮用量求和 + chars/4 估算，不含在途轮）；窗口未配置时返回不可用 |
+| 上下文压缩 | 自动压缩默认开启（`ConversationStore:EnableAutoCompaction`）：80% 阈值触发摘要压缩，摘要请求经 UserMessageEnsuringChatClient 兜底 user 消息（Qwen 系模板兼容） |
 | 会话工作区 | 五个 workspace 工具操作宿主侧 session-\<key\>/work（bind-mount 进会话沙箱 /work，与 execute_code 共享状态）：`list_workspace_files`（ReadOnly）/`read_workspace_file`（cat -n 行号 + offset/limit 分页，ReadOnly）/`write_workspace_file`/`edit_workspace_file`（精确字符串替换 + 唯一性校验）/`export_workspace_file`（工作区→file asset→publish 交付桥）；`download_file` 可选 workspacePath 直落工作区 |
 | 计划工具 | `update_plan`（对标 Claude Code TodoWrite / Codex update_plan）：全量重发步骤列表，≤1 个 in_progress；结果快照落进会话时间线，SSE 附加 `plan_updated` 事件 |
 | MCP 延迟加载 | 可见 MCP 工具超过 `Mcp:DeferredToolThreshold`（默认 20，≤0 关闭）时不整体注入，改由单个 `search_tools` 入口按需检索激活（对标 Codex defer_loading）；激活的工具经与内联一致的隔离包装注入后续请求 |
@@ -46,7 +49,7 @@ AgentFactory
 
 ## Limits
 - ReadOnly 并行白名单当前为内置读取类工具（含 workspace 读取）；MCP/Skill 工具一律按独占串行（保守口径，待逐类审查后再放开）
-- 无工具调用结果缓存
+- 无工具调用结果缓存（web_fetch 的 15 分钟页面缓存除外）
 - 池化连接的复用/空闲淘汰路径无自动化测试（MCP SDK 无公开内存传输），当前靠失败路径单测 + 代码审查保障
 - 预算按字符计（≈4 字符/token），非精确 token 计数
 - 16 个内置工具全开时定义体量 ≈ 11.3k 字符（~2.8k tokens/请求）；按环境/代理关功能开关（FileAssets、CodeExecution、Rag、Mcp 绑定）收敛，MCP 大目录交给延迟加载
