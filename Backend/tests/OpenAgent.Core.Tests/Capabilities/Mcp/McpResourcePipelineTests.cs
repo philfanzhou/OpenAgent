@@ -92,7 +92,7 @@ public class McpResourcePipelineTests
     }
 
     [Fact]
-    public async Task Rewrite_CallToolResultJson_BlobReplacedDescriptorRestPreserved()
+    public async Task Rewrite_CallToolResultJson_BlobReplacedRendersText()
     {
         var store = new RecordingStore();
         JsonElement json = JsonSerializer.SerializeToElement(new CallToolResult
@@ -113,11 +113,44 @@ public class McpResourcePipelineTests
         object? rewritten = await McpResourcePipeline.RewriteAsync(
             json, store, logger: null, CancellationToken.None);
 
+        // JsonElement 形态在管道内归一成文本：落盘的 blob 换描述符、resource_link
+        // 保留 URI、isError 加前缀，JsonElement 不再外泄。
         Assert.Equal(
             "[tool error] done\n"
             + "[File: report.pdf] fileId=fa-mcp-1 (application/pdf, 3 bytes) from mem://files/report.pdf\n"
             + "mem://spec",
-            ToolResultText.Render(rewritten));
+            Assert.IsType<string>(rewritten));
+    }
+
+    [Fact]
+    public async Task Rewrite_CallToolResultJson_TextOnly_RendersTextWithoutStore()
+    {
+        var store = new RecordingStore();
+        JsonElement json = JsonSerializer.SerializeToElement(new CallToolResult
+        {
+            Content = [new TextContentBlock { Text = "report body" }],
+            StructuredContent = JsonDocument.Parse("{\"rows\":2}").RootElement.Clone()
+        }, McpJsonUtilities.DefaultOptions);
+
+        object? rewritten = await McpResourcePipeline.RewriteAsync(
+            json, store, logger: null, CancellationToken.None);
+
+        Assert.Equal("report body\n{\"rows\":2}", Assert.IsType<string>(rewritten));
+        Assert.Empty(store.FileNames);
+    }
+
+    [Fact]
+    public async Task Rewrite_NonCallToolResultJson_ReturnedUnchanged()
+    {
+        var store = new RecordingStore();
+        using JsonDocument document = JsonDocument.Parse("{\"items\":[1,2]}");
+        JsonElement json = document.RootElement.Clone();
+
+        object? rewritten = await McpResourcePipeline.RewriteAsync(
+            json, store, logger: null, CancellationToken.None);
+
+        Assert.Equal(json.GetRawText(), Assert.IsType<JsonElement>(rewritten).GetRawText());
+        Assert.Empty(store.FileNames);
     }
 
     [Fact]
@@ -182,7 +215,10 @@ public class McpResourcePipelineTests
     [Theory]
     [InlineData("https://srv/dl/report%20final.pdf?token=1", null, "report final.pdf")]
     [InlineData("mem://res/manifest", "application/pdf", "manifest.pdf")]
-    [InlineData("mem://res/", null, "mcp-resource.bin")]
+    // 扩展名经 FileMediaTypeCatalog 反查：目录覆盖 .xlsx 等全部白名单类型。
+    [InlineData("mem://res/sheet", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "sheet.xlsx")]
+    // 无 URI 段也无可反查 MIME：不强行补后缀，由存储层白名单裁决（回退占位符）。
+    [InlineData("mem://res/", null, "mcp-resource")]
     [InlineData("mem://res/notes.md", null, "notes.md")]
     public void DeriveFileName_FromUriAndMimeType_ProducesStorableName(
         string uri,

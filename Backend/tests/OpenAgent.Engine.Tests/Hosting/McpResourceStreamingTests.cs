@@ -142,6 +142,60 @@ public sealed class McpResourceStreamingTests
         Assert.Contains("resource body text for e2e", content, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task Stream_ReadMcpResource_DeferredToolMode_StillAvailable()
+    {
+        // 回归：延迟目录重建 chatTools 时必须保留 read_mcp_resource——延迟模式下
+        // 它是模型取回 resource URI 内容的唯一途径。
+        var provider = new ScriptedChatClient(
+        [
+            [
+                new ChatResponseUpdate(ChatRole.Assistant,
+                    [new FunctionCallContent("call-resource-1", "read_mcp_resource",
+                        new Dictionary<string, object?>
+                        {
+                            ["server"] = ServerName,
+                            ["uri"] = ResourceUri
+                        })])
+            ],
+            [
+                new ChatResponseUpdate(ChatRole.Assistant, "已读取资源。")
+            ]
+        ]);
+        await using McpServerHandle mcpServer = await StartMcpServerAsync();
+        AgentConfig agentConfig = new()
+        {
+            MaxTurns = 6,
+            Mcp = new McpConfig
+            {
+                Servers =
+                [
+                    new McpServerConfig
+                    {
+                        Name = ServerName,
+                        Url = $"{mcpServer.Endpoint}/mcp",
+                        Type = McpServerType.Http
+                    }
+                ]
+            }
+        };
+        // 服务端有 2 个工具，阈值取 1 → 进入延迟模式（工具隐藏到 search_tools 后面）。
+        await using StreamingHost host = await StreamingHost.StartAsync(
+            provider,
+            agentConfig,
+            new Dictionary<string, string?> { ["Mcp:DeferredToolThreshold"] = "1" });
+
+        List<(string Event, JsonElement Data)> frames =
+            await host.PostStreamAsync("mcp-deferred-resource-conversation");
+
+        (string _, JsonElement resultData) = Assert.Single(
+            frames, frame => frame.Event == "tool_result");
+        Assert.Equal("read_mcp_resource", resultData.GetProperty("toolName").GetString());
+        string? content = resultData.GetProperty("content").GetString();
+        Assert.NotNull(content);
+        Assert.Contains("resource body text for e2e", content, StringComparison.Ordinal);
+    }
+
     /// <summary>进程内真实 StreamableHttp MCP 服务端：导出工具返回 文本 + 内嵌 blob 资源 + 资源链接。</summary>
     private static async Task<McpServerHandle> StartMcpServerAsync()
     {

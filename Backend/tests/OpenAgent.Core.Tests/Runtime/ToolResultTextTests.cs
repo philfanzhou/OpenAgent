@@ -2,6 +2,8 @@ using System.Text.Json;
 using Microsoft.Extensions.AI;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
+using OpenAgent.Contracts.Files;
+using OpenAgent.Core.Capabilities.Mcp;
 using OpenAgent.Core.Runtime.Agent;
 using Xunit;
 
@@ -104,26 +106,27 @@ public class ToolResultTextTests
     }
 
     [Fact]
-    public void Render_CallToolResultJson_TextBlocks_ExtractBodies()
+    public void Render_CallToolResult_TextBlocks_ExtractBodies()
     {
         // 带 _meta/isError/structuredContent 的结果由 McpClientTool 序列化成
-        // CallToolResult JSON：按内容块规则展平，而不是把原始 JSON 灌给模型。
-        JsonElement json = Serialize(new CallToolResult
+        // JsonElement，经落盘管道反序列化后走此渲染：按内容块规则展平，
+        // 而不是把原始 JSON 灌给模型。
+        var result = new CallToolResult
         {
             Content =
             [
                 new TextContentBlock { Text = "first" },
                 new TextContentBlock { Text = "second" }
             ]
-        });
+        };
 
-        Assert.Equal("first\nsecond", ToolResultText.Render(json));
+        Assert.Equal("first\nsecond", ToolResultText.RenderCallToolResult(result));
     }
 
     [Fact]
-    public void Render_CallToolResultJson_TextResource_ExtractsBody()
+    public void Render_CallToolResult_TextResource_ExtractsBody()
     {
-        JsonElement json = Serialize(new CallToolResult
+        var result = new CallToolResult
         {
             Content =
             [
@@ -132,15 +135,15 @@ public class ToolResultTextTests
                     Resource = new TextResourceContents { Uri = "file:///notes.md", Text = "resource body" }
                 }
             ]
-        });
+        };
 
-        Assert.Equal("resource body", ToolResultText.Render(json));
+        Assert.Equal("resource body", ToolResultText.RenderCallToolResult(result));
     }
 
     [Fact]
-    public void Render_CallToolResultJson_BlobResource_KeepsUriAndPlaceholder()
+    public void Render_CallToolResult_BlobResource_KeepsUriAndPlaceholder()
     {
-        JsonElement json = Serialize(new CallToolResult
+        var result = new CallToolResult
         {
             Content =
             [
@@ -149,67 +152,66 @@ public class ToolResultTextTests
                     Resource = BlobResourceContents.FromBytes(new byte[] { 1, 2, 3 }, "file:///report.pdf", "application/pdf")
                 }
             ]
-        });
+        };
 
         Assert.Equal(
             "file:///report.pdf [binary content: application/pdf, 3 bytes]",
-            ToolResultText.Render(json));
+            ToolResultText.RenderCallToolResult(result));
     }
 
     [Fact]
-    public void Render_CallToolResultJson_ImageBlock_RendersBinaryPlaceholder()
+    public void Render_CallToolResult_ImageBlock_RendersBinaryPlaceholder()
     {
-        JsonElement json = Serialize(new CallToolResult
+        var result = new CallToolResult
         {
             Content = [ImageContentBlock.FromBytes(new byte[] { 1, 2, 3 }, "image/png")]
-        });
+        };
 
-        Assert.Equal("[binary content: image/png, 3 bytes]", ToolResultText.Render(json));
+        Assert.Equal("[binary content: image/png, 3 bytes]", ToolResultText.RenderCallToolResult(result));
     }
 
     [Fact]
-    public void Render_CallToolResultJson_ResourceLink_KeepsUri()
+    public void Render_CallToolResult_ResourceLink_KeepsUri()
     {
-        // resource_link 无法投影成 AIContent，是触发 CallToolResult JSON 形态的
-        // 典型块：渲染时保留 URI。
-        JsonElement json = Serialize(new CallToolResult
+        // resource_link 无法投影成 AIContent，是触发 JsonElement 兜底形态的典型块。
+        var result = new CallToolResult
         {
             Content = [new ResourceLinkBlock { Uri = "mem://spec", Name = "spec" }]
-        });
+        };
 
-        Assert.Equal("mem://spec", ToolResultText.Render(json));
+        Assert.Equal("mem://spec", ToolResultText.RenderCallToolResult(result));
     }
 
     [Fact]
-    public void Render_CallToolResultJson_ErrorResult_PrefixesToolError()
+    public void Render_CallToolResult_ErrorResult_PrefixesToolError()
     {
         // MCP 的 isError 结果不抛异常，靠渲染层标注，模型才能与正常结果区分。
-        JsonElement json = Serialize(new CallToolResult
+        var result = new CallToolResult
         {
             Content = [new TextContentBlock { Text = "invalid date range" }],
             IsError = true
-        });
+        };
 
-        Assert.Equal("[tool error] invalid date range", ToolResultText.Render(json));
+        Assert.Equal("[tool error] invalid date range", ToolResultText.RenderCallToolResult(result));
     }
 
     [Fact]
-    public void Render_CallToolResultJson_StructuredContent_AppendsJson()
+    public void Render_CallToolResult_StructuredContent_AppendsJson()
     {
-        JsonElement json = Serialize(new CallToolResult
+        var result = new CallToolResult
         {
             Content = [new TextContentBlock { Text = "done" }],
             StructuredContent = JsonDocument.Parse("{\"rows\":2}").RootElement.Clone()
-        });
+        };
 
-        Assert.Equal("done\n{\"rows\":2}", ToolResultText.Render(json));
+        Assert.Equal("done\n{\"rows\":2}", ToolResultText.RenderCallToolResult(result));
     }
 
     [Fact]
     public async Task Wrap_McpErrorResultJson_RendersBlocksAndAppliesBudget()
     {
-        // isError/structuredContent/_meta 形态的结果此前以 JsonElement 原样放行，
-        // 既绕过字符预算、又不是可读文本：必须落成字符串并过预算管道。
+        // isError/structuredContent/_meta 形态的 JsonElement 由落盘装饰器归一成
+        // 文本，再进隔离/预算管道：可读且不超预算。
         string longText = new('x', 3_000);
         JsonElement json = Serialize(new CallToolResult
         {
@@ -217,7 +219,9 @@ public class ToolResultTextTests
             IsError = true
         });
         AITool wrapped = IsolatedToolFunction.Wrap(
-            new StubTool("mcp__srv__report", _ => ValueTask.FromResult<object?>(json)),
+            McpResourcePersistingFunction.Wrap(
+                new StubTool("mcp__srv__report", _ => ValueTask.FromResult<object?>(json)),
+                new NullStore()),
             budget: new ToolResultBudget(1_000, "narrow the query"));
 
         string result = Assert.IsType<string>(await InvokeAsync(wrapped));
@@ -263,6 +267,15 @@ public class ToolResultTextTests
     /// <summary>按 McpClientTool 的兜底路径把结果序列化成 CallToolResult JSON。</summary>
     private static JsonElement Serialize(CallToolResult result) =>
         JsonSerializer.SerializeToElement(result, McpJsonUtilities.DefaultOptions);
+
+    private sealed class NullStore : IMcpResourceStore
+    {
+        public ValueTask<FileAsset?> TryStoreAsync(
+            string fileName,
+            string? mediaType,
+            ReadOnlyMemory<byte> data,
+            CancellationToken cancellationToken) => ValueTask.FromResult<FileAsset?>(null);
+    }
 
     private sealed class StubTool(string name, Func<AIFunctionArguments, ValueTask<object?>> invoke) : AIFunction
     {

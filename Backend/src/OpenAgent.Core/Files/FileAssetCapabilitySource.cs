@@ -154,7 +154,7 @@ internal sealed class FileAssetCapabilitySource(
                 }
                 catch (OpenAgent.Contracts.Security.AgentException exception)
                 {
-                    // 超限/非 UTF-8：不给内容也不报错，返回降级信封引导分段读取。
+                    // 超限/非 UTF-8：降级为元数据信封，引导分段读取。
                     return JsonSerializer.Serialize(new
                     {
                         objectKey,
@@ -165,8 +165,6 @@ internal sealed class FileAssetCapabilitySource(
                 }
             }
 
-            // 先取元数据再决定是否读内容：二进制/超限文件返回信息而不是失败，
-            // 模型据此改用 execute_code 解析或分段读取。
             FileAsset? asset = await files.GetReferencedAsync(
                 fileId!, executionContext.Scope, cancellationToken).ConfigureAwait(false);
             if (asset == null || asset.State != FileAssetState.Ready)

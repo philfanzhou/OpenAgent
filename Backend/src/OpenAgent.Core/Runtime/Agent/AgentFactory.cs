@@ -143,23 +143,22 @@ internal sealed class AgentFactory
             // MCP 工具延迟加载：超过阈值时不整体注入（省每轮上下文），模型经
             // search_tools 检索并激活。阈值 ≤0 时保持全量内联。
             List<AITool> chatTools = [.. tools, .. mcpRuntime.Tools];
-            // read_mcp_resource 桥接工具常驻内联：单个工具不占上下文，且它正是
-            // 延迟模式下模型取回 resource URI 内容的唯一途径。
-            if (mcpRuntime.ResourceReader is { } resourceReader)
-            {
-                chatTools.Add(WrapTool(resourceReader));
-            }
             DeferredToolCatalog? deferredCatalog = null;
             if (_mcpOptions.DeferredToolThreshold > 0
                 && mcpRuntime.Tools.Count > _mcpOptions.DeferredToolThreshold)
             {
                 deferredCatalog = new DeferredToolCatalog(mcpRuntime.Tools);
-                chatTools = [.. tools];
-                chatTools.Add(new ToolSearchFunction(deferredCatalog));
+                chatTools = [.. tools, new ToolSearchFunction(deferredCatalog)];
                 _logger.LogInformation(
                     "MCP tools deferred: {Deferred} tools hidden behind search_tools (threshold {Threshold})",
                     mcpRuntime.Tools.Count,
                     _mcpOptions.DeferredToolThreshold);
+            }
+            // read_mcp_resource 桥接工具常驻内联：必须在延迟分支重建 chatTools
+            // 之后追加——延迟模式下它是模型取回 resource URI 内容的唯一途径。
+            if (mcpRuntime.ResourceReader is { } resourceReader)
+            {
+                chatTools.Add(WrapTool(resourceReader));
             }
 
             // 每轮可见工具定义体量观测：名称+描述+schema 字符数（≈4 字符/token），

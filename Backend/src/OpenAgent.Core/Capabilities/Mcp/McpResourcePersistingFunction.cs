@@ -7,8 +7,8 @@ namespace OpenAgent.Core.Capabilities.Mcp;
 /// <summary>
 /// MCP 工具的落盘装饰器：调用原工具后，把结果里的内嵌二进制资源经
 /// <see cref="McpResourcePipeline"/> 重写为文件描述符。位于
-/// <see cref="OpenAgent.Core.Runtime.Agent.IsolatedToolFunction"/> 内层，落盘耗时计入
-/// 单次调用超时、失败不外抛（存储层已降级为 null 回退）。
+/// <see cref="OpenAgent.Core.Runtime.Agent.IsolatedToolFunction"/> 内层，
+/// 落盘耗时计入单次调用超时。
 /// </summary>
 internal sealed class McpResourcePersistingFunction : AIFunction
 {

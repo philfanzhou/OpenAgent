@@ -10,13 +10,14 @@ using OpenAgent.Core.Runtime.Agent;
 namespace OpenAgent.Core.Capabilities.Mcp;
 
 /// <summary>
-/// MCP 工具结果里内嵌二进制资源（<see cref="EmbeddedResourceBlock"/> 包裹的
-/// <see cref="BlobResourceContents"/>）的落盘重写管道：字节经
-/// <see cref="IMcpResourceStore"/> 写入对象存储并登记会话引用，内容块原地替换为
-/// <c>[File: ...] fileId=...</c> 描述符——模型不读 base64，拿到内链后用既有的
-/// read_file / publish_files / create_file_transfer_url 继续操作。文本块、资源链接、
-/// isError/structuredContent 的渲染规则不变，仍由 <see cref="ToolResultText"/> 承担；
-/// 这里只做"二进制资源块 → 描述符文本块"的重写，落盘失败时保留原块（回退占位符）。
+/// MCP 工具结果的落盘重写管道：内嵌二进制资源（<see cref="EmbeddedResourceBlock"/>
+/// 包裹的 <see cref="BlobResourceContents"/>）经 <see cref="IMcpResourceStore"/> 写入
+/// 对象存储并登记会话引用，内容块原地替换为 <c>[File: ...] fileId=...</c> 描述符
+/// ——模型不读 base64，拿到内链后用既有的 read_file / publish_files /
+/// create_file_transfer_url 继续操作，落盘失败时保留原块（回退占位符）。
+/// McpClientTool 在结果带 isError/structuredContent/_meta 或含 resource_link 时
+/// 把整个 CallToolResult 序列化成 JsonElement 返回；此处反序列化一次、落盘并直接
+/// 渲染成文本，JsonElement 不再外泄给渲染层二次解读。
 /// </summary>
 internal static class McpResourcePipeline
 {
@@ -29,7 +30,6 @@ internal static class McpResourcePipeline
         ILogger? logger,
         CancellationToken cancellationToken)
     {
-        // async 方法不能携带 ref 计数，经持有对象在多次落盘间共享上限。
         var quota = new PersistQuota();
         switch (result)
         {
@@ -68,7 +68,8 @@ internal static class McpResourcePipeline
 
     /// <summary>
     /// 从资源 URI 推导可存储的文件名：取最后一段路径、去 query、URL 解码、字符消毒；
-    /// 无扩展名时按声明的 MIME 补全（对齐存储层白名单），仍无信息则退化为 mcp-resource.bin。
+    /// 无扩展名时按声明的 MIME 经 <see cref="FileMediaTypeCatalog"/> 反查补全（与
+    /// 存储层白名单同一事实源），仍无信息则不强行补后缀，由存储层裁决去留。
     /// </summary>
     internal static string DeriveFileName(string uri, string? mimeType)
     {
@@ -102,9 +103,11 @@ internal static class McpResourcePipeline
         {
             name = "mcp-resource";
         }
-        if (name.IndexOf('.', 1) < 0)
+        if (name.IndexOf('.', 1) < 0
+            && !string.IsNullOrEmpty(mimeType)
+            && FileMediaTypeCatalog.TryGetExtensionForMediaType(mimeType, out string extension))
         {
-            name += ExtensionFromMimeType(mimeType) ?? ".bin";
+            name += extension;
         }
         return name;
     }
@@ -116,8 +119,7 @@ internal static class McpResourcePipeline
         PersistQuota quota,
         CancellationToken cancellationToken)
     {
-        if (!TryGetBlobResource(content, out string? uri, out string? mimeType, out ReadOnlyMemory<byte> data)
-            || data.Length == 0
+        if (!TryGetBlobResource(content, out string uri, out string? mimeType, out ReadOnlyMemory<byte> data)
             || !quota.TryConsume())
         {
             return null;
@@ -135,15 +137,6 @@ internal static class McpResourcePipeline
         return new TextContent(Describe(asset, uri));
     }
 
-    /// <summary>单次结果内的落盘名额：达到 <see cref="MaxPersistedBlobsPerResult"/> 后不再尝试。</summary>
-    private sealed class PersistQuota
-    {
-        private int consumed;
-
-        public bool TryConsume() =>
-            Interlocked.Increment(ref consumed) <= MaxPersistedBlobsPerResult;
-    }
-
     private static bool TryGetBlobResource(
         AIContent content,
         out string uri,
@@ -153,8 +146,8 @@ internal static class McpResourcePipeline
         uri = string.Empty;
         mimeType = null;
         data = default;
-        // SDK 把内嵌二进制资源投影成 DataContent（字节在 Data 上，URI 只在
-        // RawRepresentation 里）；普通 image/audio 块没有资源 URI，不落盘。
+        // 内嵌二进制资源投影成 DataContent（字节在 Data 上，URI 只在 RawRepresentation
+        // 里）；普通 image/audio 块没有资源 URI，不落盘。
         if (content is not DataContent { Data.Length: > 0 } block
             || block.RawRepresentation is not EmbeddedResourceBlock { Resource: BlobResourceContents blob }
             || string.IsNullOrEmpty(blob.Uri))
@@ -174,7 +167,7 @@ internal static class McpResourcePipeline
         PersistQuota quota,
         CancellationToken cancellationToken)
     {
-        if (!ToolResultText.LooksLikeCallToolResult(json))
+        if (!LooksLikeCallToolResult(json))
         {
             return json;
         }
@@ -188,6 +181,7 @@ internal static class McpResourcePipeline
         }
         catch (JsonException)
         {
+            // 形似 CallToolResult 但结构损坏：原样放行，不吞数据。
             return json;
         }
         if (result == null)
@@ -195,7 +189,25 @@ internal static class McpResourcePipeline
             return json;
         }
 
-        bool changed = false;
+        await TryRewriteBlocksAsync(result, store, logger, quota, cancellationToken).ConfigureAwait(false);
+        return ToolResultText.RenderCallToolResult(result);
+    }
+
+    // JsonElement 形态由 McpClientTool 兜底产生，但任意工具都可能返回 JSON：
+    // 形似 CallToolResult（三特征属性居一）才解读，其余原样放行。
+    private static bool LooksLikeCallToolResult(JsonElement json) =>
+        json.ValueKind == JsonValueKind.Object
+        && ((json.TryGetProperty("content", out JsonElement content) && content.ValueKind == JsonValueKind.Array)
+            || json.TryGetProperty("structuredContent", out _)
+            || json.TryGetProperty("isError", out _));
+
+    private static async Task TryRewriteBlocksAsync(
+        CallToolResult result,
+        IMcpResourceStore store,
+        ILogger? logger,
+        PersistQuota quota,
+        CancellationToken cancellationToken)
+    {
         for (int index = 0; index < result.Content.Count; index++)
         {
             if (result.Content[index] is not EmbeddedResourceBlock { Resource: BlobResourceContents blob }
@@ -212,32 +224,18 @@ internal static class McpResourcePipeline
                 cancellationToken).ConfigureAwait(false);
             if (asset == null)
             {
-                logger?.LogDebug(
-                    "MCP blob resource not persisted; keeping placeholder. Uri={Uri}", blob.Uri);
+                logger?.LogDebug("MCP blob resource not persisted; keeping placeholder. Uri={Uri}", blob.Uri);
                 continue;
             }
             result.Content[index] = new TextContentBlock { Text = Describe(asset, blob.Uri) };
-            changed = true;
         }
-        return changed
-            ? JsonSerializer.SerializeToElement(result, McpJsonUtilities.DefaultOptions)
-            : json;
     }
 
-    private static string? ExtensionFromMimeType(string? mimeType) => mimeType?.ToLowerInvariant() switch
+    /// <summary>单次结果内的落盘名额（顺序消费）：达到上限后不再尝试。</summary>
+    private sealed class PersistQuota
     {
-        "application/pdf" => ".pdf",
-        "application/zip" => ".zip",
-        "application/json" => ".json",
-        "image/png" => ".png",
-        "image/jpeg" => ".jpg",
-        "image/gif" => ".gif",
-        "image/webp" => ".webp",
-        "image/svg+xml" => ".svg",
-        "text/plain" => ".txt",
-        "text/markdown" => ".md",
-        "text/csv" => ".csv",
-        "text/html" => ".html",
-        _ => null
-    };
+        private int consumed;
+
+        public bool TryConsume() => ++consumed <= MaxPersistedBlobsPerResult;
+    }
 }

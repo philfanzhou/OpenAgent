@@ -107,8 +107,7 @@ internal sealed class McpToolFactory(
         }
 
         // 客户端由池持有，运行时只携带工具清单；作用域释放不再断开连接。
-        // read_mcp_resource 桥接工具：只要有可见服务器就注册（常驻内联、不进延迟目录），
-        // 让 resource URI / resource_link 真正可按需读回。
+        // read_mcp_resource 桥接工具：有可见服务器就注册，resource URI 才可按需读回。
         return new McpToolRuntime(
             tools.AsReadOnly(),
             accessibleServers.Count > 0
