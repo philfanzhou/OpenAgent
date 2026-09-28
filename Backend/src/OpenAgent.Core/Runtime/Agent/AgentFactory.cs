@@ -218,7 +218,7 @@ internal sealed class AgentFactory
                 UseProvidedChatClientAsIs = true,
                 RequirePerServiceCallChatHistoryPersistence = false
             }).AsBuilder()
-                .UseOpenTelemetry("OpenAgent.AgentFramework", telemetry => telemetry.EnableSensitiveData = false)
+                .UseOpenTelemetry("OpenAgent.AgentFramework", telemetry => telemetry.EnableSensitiveData = true)
                 .Build();
             return new AgentExecutionScope(agent, history, mcpRuntime, skillsRuntime);
         }
