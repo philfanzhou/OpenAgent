@@ -7,6 +7,7 @@ using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Runtime;
+using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Runtime.Agent;
 
 namespace OpenAgent.Core.Conversation;
@@ -69,17 +70,22 @@ internal sealed class ConversationHistoryFactory
             supportsMultimodal));
     }
 
-    internal async Task EnsureConversationAsync(
+    internal async Task<AgentSession> CreateSessionAsync(
+        AIAgent agent,
         TurnContext turn,
-        string input,
+        AgentRuntimeProfile profile,
+        IAgentUserContext user,
         CancellationToken cancellationToken)
     {
-        ConversationContext context = turn.ToConversationContext();
-        await _store.OpenAsync(
-            context,
-            turn.AgentId ?? string.Empty,
-            input,
+        string fingerprint = AgentSessionFingerprint.Create(profile);
+        AgentSession? restored = await _store.RestoreAgentSessionAsync(
+            agent,
+            turn.ToConversationContext(),
+            profile.AgentId,
+            user.UserId ?? string.Empty,
+            fingerprint,
             cancellationToken).ConfigureAwait(false);
+        return restored ?? await agent.CreateSessionAsync(cancellationToken).ConfigureAwait(false);
     }
 
     internal AIContextProvider CreateCompaction(

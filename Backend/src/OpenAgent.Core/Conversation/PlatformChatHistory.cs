@@ -41,6 +41,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
     private readonly StringBuilder _partialReasoning = new();
     private readonly List<ChatMessage> _streamedToolMessages = [];
     private IConversationLockHandle? _lockHandle;
+    private ConversationSession? _openedSession;
     private int _currentVersion;
     private int _nextSequence = 1;
     private bool _loaded;
@@ -82,6 +83,31 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         if (!string.IsNullOrEmpty(content))
         {
             _partialAssistant.Append(content);
+        }
+    }
+
+    internal async Task PrepareForAgentSessionAsync(CancellationToken cancellationToken)
+    {
+        if (!_conversation.IsValid || _lockHandle != null)
+        {
+            return;
+        }
+
+        await AcquireConversationLockAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            _openedSession = await _store.OpenAsync(
+                _conversation,
+                _agentId,
+                _input,
+                cancellationToken).ConfigureAwait(false);
+            _currentVersion = _openedSession.CurrentVersion;
+            _nextSequence = _openedSession.NextSequence;
+        }
+        catch
+        {
+            await ReleaseLockAsync().ConfigureAwait(false);
+            throw;
         }
     }
 
@@ -204,17 +230,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         ConversationContext conversation = _conversation;
         if (conversation.IsValid)
         {
-            _lockHandle = await _conversationLock.TryAcquireAsync(
-                conversation.TenantId!,
-                conversation.ConversationId!,
-                DefaultLockTtl,
-                cancellationToken).ConfigureAwait(false);
-            if (_lockHandle == null)
-            {
-                throw new AgentException(
-                    AgentErrorCode.Conflict,
-                    "Conversation is being processed by another request");
-            }
+            await AcquireConversationLockAsync(cancellationToken).ConfigureAwait(false);
         }
 
         try
@@ -225,11 +241,12 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
                 return [];
             }
 
-            ConversationSession loaded = await _store.OpenAsync(
-                conversation,
-                _agentId,
-                _input,
-                cancellationToken).ConfigureAwait(false);
+            ConversationSession loaded = _openedSession ?? await _store.OpenAsync(
+                    conversation,
+                    _agentId,
+                    _input,
+                    cancellationToken).ConfigureAwait(false);
+            _openedSession = loaded;
             _currentVersion = loaded.CurrentVersion;
             _nextSequence = loaded.NextSequence;
             List<ChatMessage> history = await BuildHistoryAsync(loaded.History, cancellationToken).ConfigureAwait(false);
@@ -239,6 +256,26 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         {
             await ReleaseLockAsync().ConfigureAwait(false);
             throw;
+        }
+    }
+
+    private async Task AcquireConversationLockAsync(CancellationToken cancellationToken)
+    {
+        if (_lockHandle != null)
+        {
+            return;
+        }
+
+        _lockHandle = await _conversationLock.TryAcquireAsync(
+            _conversation.TenantId!,
+            _conversation.ConversationId!,
+            DefaultLockTtl,
+            cancellationToken).ConfigureAwait(false);
+        if (_lockHandle == null)
+        {
+            throw new AgentException(
+                AgentErrorCode.Conflict,
+                "Conversation is being processed by another request");
         }
     }
 
@@ -523,6 +560,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
     internal async Task CompleteAsync(
         TokenUsage? usage,
         string modelId,
+        AgentSessionSnapshot sessionSnapshot,
         CancellationToken cancellationToken)
     {
         if (_stored)
@@ -550,6 +588,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
             _currentVersion,
             _pending,
             ConversationStatus.Completed,
+            sessionSnapshot,
             cancellationToken).ConfigureAwait(false);
         _stored = true;
     }
@@ -611,7 +650,8 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
                 _currentVersion,
                 _pending,
                 status,
-                CancellationToken.None).ConfigureAwait(false);
+                sessionSnapshot: null,
+                cancellationToken: CancellationToken.None).ConfigureAwait(false);
             _stored = true;
         }
         finally
@@ -640,7 +680,8 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
                     _currentVersion,
                     _pending,
                     status,
-                    CancellationToken.None).ConfigureAwait(false);
+                    sessionSnapshot: null,
+                    cancellationToken: CancellationToken.None).ConfigureAwait(false);
                 _stored = true;
             }
         }

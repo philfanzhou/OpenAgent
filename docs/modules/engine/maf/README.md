@@ -41,10 +41,10 @@ MAF 是 Agent.Core 唯一生产运行时。运行时代码位于
 - `UseProvidedChatClientAsIs = true`。
 - 每个 run 用 `FunctionInvokingChatClient` 包装 client。
 - `MaximumIterationsPerRequest = AgentConfig.MaxTurns > 0 ? AgentConfig.MaxTurns : 5`。
-- 未知函数终止运行；函数连续错误阈值为 3（`MaximumConsecutiveErrorsPerRequest = 3`）。
+- 未知函数以 `tool not found` 结果回传模型；函数连续错误阈值为 3（`MaximumConsecutiveErrorsPerRequest = 3`）。
 - 不可用能力在构建 Agent 前被过滤，不进入 MAF 工具列表。
 - 工具由携带原始 `ToolDefinition` 的 `AIFunction` 执行。
-- 平台 PostgreSQL 会话是唯一持久历史；对象存储保存文件原始字节。
+- 平台 PostgreSQL 消息历史是唯一持久对话记录；MAF `AgentSession` 的 JSON snapshot 与配置指纹存放在会话记录中，并与本轮消息、状态在同一事务提交。恢复时校验用户、租户、Agent、格式版本及配置指纹；不匹配时从平台消息历史创建新 session。对象存储保存文件原始字节。
 - `AddAgentCore` 是唯一 DI 注册入口。
 
 支持的 `ApiFormat`：
@@ -74,7 +74,10 @@ AgentExecutor
 ```
 
 `PlatformChatHistory` 在 MAF 请求历史时加载 PostgreSQL 消息，并在 MAF
-结束通知中写回成功、失败或取消状态。`CapabilityToolFactory` 发现并筛选可用能力，
+结束通知中写回成功、失败或取消状态。成功轮次会在同一提交中持久化可恢复的
+`AgentSession` snapshot；失败或取消只保存已产生的消息和状态，不覆盖最近一次成功
+snapshot。`AgentSession` 与 Agent/模型配置指纹不一致时会重新创建，而不会加载不兼容状态。
+`CapabilityToolFactory` 发现并筛选可用能力，
 直接提供携带执行体的 `AIFunction`。工具名称、描述与 schema 不再复制到
 system prompt。
 
@@ -94,6 +97,7 @@ Provider 由 `AgentChatClientFactory` 构造 `IChatClient`；新增能力只产�
 - [x] 图片、PDF 和 UTF-8 文本文件输入。
 - [x] 独立文件上传、会话预览和模型文件输入。
 - [x] Agent、Model、Tool、Function、MCP、Skill 六维授权扩展点。
+- [x] 使用 MAF session serialization 持久化与恢复 Agent session；平台消息历史仍为唯一永久对话记录。
 
 ## 后续可选增强
 

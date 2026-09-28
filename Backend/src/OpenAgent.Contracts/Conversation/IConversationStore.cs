@@ -47,6 +47,27 @@ public interface IConversationStore
         IReadOnlyList<ConversationMessage> messages,
         CancellationToken cancellationToken = default);
 
+    /// <summary>Loads opaque Agent Framework session state for an authorized conversation.</summary>
+    Task<AgentSessionSnapshot?> GetAgentSessionSnapshotAsync(
+        string tenantId,
+        string userId,
+        string conversationId,
+        string agentId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Commits a completed/failed turn and optional successful Agent session snapshot
+    /// atomically with its messages, guarded by the conversation version.
+    /// </summary>
+    Task<AppendResult> CommitTurnAsync(
+        string tenantId,
+        string conversationId,
+        int expectedVersion,
+        IReadOnlyList<ConversationMessage> messages,
+        ConversationStatus status,
+        AgentSessionSnapshot? sessionSnapshot,
+        CancellationToken cancellationToken = default);
+
     /// <summary>
     /// 更新会话状态（Running/Completed/Failed/Cancelled）。
     /// </summary>

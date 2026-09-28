@@ -7,6 +7,7 @@ namespace OpenAgent.Core.Conversation.Store;
 internal sealed class InMemoryConversationStore : IConversationStore
 {
     private readonly ConcurrentDictionary<string, ConversationRecord> _store = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, AgentSessionSnapshot> _agentSessions = new(StringComparer.OrdinalIgnoreCase);
     private readonly ICurrentUserContext _currentUser;
 
     public InMemoryConversationStore(ICurrentUserContext currentUser) => _currentUser = currentUser;
@@ -99,6 +100,71 @@ internal sealed class InMemoryConversationStore : IConversationStore
         }
     }
 
+    public Task<AgentSessionSnapshot?> GetAgentSessionSnapshotAsync(
+        string tenantId,
+        string userId,
+        string conversationId,
+        string agentId,
+        CancellationToken cancellationToken = default)
+    {
+        string key = BuildKey(tenantId, conversationId);
+        if (!_store.TryGetValue(key, out ConversationRecord? record)
+            || !string.Equals(record.UserId, userId, StringComparison.Ordinal)
+            || !string.Equals(record.AgentId, agentId, StringComparison.Ordinal)
+            || !_agentSessions.TryGetValue(key, out AgentSessionSnapshot? snapshot))
+        {
+            return Task.FromResult<AgentSessionSnapshot?>(null);
+        }
+        return Task.FromResult<AgentSessionSnapshot?>(snapshot);
+    }
+
+    public Task<AppendResult> CommitTurnAsync(
+        string tenantId,
+        string conversationId,
+        int expectedVersion,
+        IReadOnlyList<ConversationMessage> messages,
+        ConversationStatus status,
+        AgentSessionSnapshot? sessionSnapshot,
+        CancellationToken cancellationToken = default)
+    {
+        string key = BuildKey(tenantId, conversationId);
+        if (!_store.TryGetValue(key, out ConversationRecord? record))
+        {
+            return Task.FromResult(AppendResult.Conflict("conversation-not-found"));
+        }
+
+        lock (record)
+        {
+            if (record.Version != expectedVersion)
+            {
+                return Task.FromResult(AppendResult.Conflict("version-conflict"));
+            }
+
+            HashSet<string> messageIds = record.Messages.Select(message => message.MessageId)
+                .ToHashSet(StringComparer.Ordinal);
+            List<ConversationMessage> additions = messages
+                .Where(message => messageIds.Add(message.MessageId))
+                .ToList();
+            record.Messages.AddRange(additions);
+            record.MessageCount = record.Messages.Count;
+            record.Status = status;
+            record.Version++;
+            record.UpdatedAt = DateTimeOffset.UtcNow;
+            if (additions.Count > 0)
+            {
+                record.LastMessageAt = additions.Max(message => message.Timestamp);
+            }
+            if (sessionSnapshot != null)
+            {
+                _agentSessions[key] = sessionSnapshot;
+            }
+            return Task.FromResult(AppendResult.Ok(
+                record.Version,
+                record.MessageCount,
+                messages.Count - additions.Count));
+        }
+    }
+
     public Task<bool> UpdateStatusAsync(
         string tenantId, string conversationId, ConversationStatus status,
         int expectedVersion, CancellationToken cancellationToken = default)
@@ -173,6 +239,7 @@ internal sealed class InMemoryConversationStore : IConversationStore
         record.IsDeletedByUser = true;
         record.DeletedAt = DateTimeOffset.UtcNow;
         record.UpdatedAt = DateTimeOffset.UtcNow;
+        _agentSessions.TryRemove(key, out _);
 
         return Task.FromResult(true);
     }

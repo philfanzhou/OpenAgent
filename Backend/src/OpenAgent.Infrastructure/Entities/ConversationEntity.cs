@@ -18,4 +18,7 @@ internal sealed class ConversationEntity
     public bool IsDeletedByUser { get; set; }
     public DateTimeOffset? DeletedAt { get; set; }
     public string ContextSummariesJson { get; set; } = "[]";
+    public string? AgentSessionStateJson { get; set; }
+    public string? AgentSessionConfigFingerprint { get; set; }
+    public int AgentSessionFormatVersion { get; set; }
 }

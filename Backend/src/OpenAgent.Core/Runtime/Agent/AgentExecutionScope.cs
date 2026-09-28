@@ -1,6 +1,7 @@
 using System.Runtime.ExceptionServices;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
+using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Core.Conversation;
 
@@ -26,6 +27,9 @@ internal sealed class AgentExecutionScope : IAsyncDisposable
     internal Task<ChatMessage> CreateUserMessageAsync(CancellationToken cancellationToken) =>
         _history.CreateUserMessageAsync(cancellationToken);
 
+    internal Task PrepareForAgentSessionAsync(CancellationToken cancellationToken) =>
+        _history.PrepareForAgentSessionAsync(cancellationToken);
+
     internal void AppendPartial(string content)
     {
         _history.AppendPartial(content);
@@ -49,8 +53,9 @@ internal sealed class AgentExecutionScope : IAsyncDisposable
     internal Task CompleteAsync(
         TokenUsage? usage,
         string modelId,
+        AgentSessionSnapshot sessionSnapshot,
         CancellationToken cancellationToken) =>
-        _history.CompleteAsync(usage, modelId, cancellationToken);
+        _history.CompleteAsync(usage, modelId, sessionSnapshot, cancellationToken);
 
     public async ValueTask DisposeAsync()
     {

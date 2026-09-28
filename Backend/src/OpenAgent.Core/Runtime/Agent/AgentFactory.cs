@@ -228,15 +228,18 @@ internal sealed class AgentFactory
         }
     }
 
+    internal Task<AgentSession> CreateSessionAsync(
+        AIAgent agent,
+        TurnContext turn,
+        AgentRuntimeProfile profile,
+        IAgentUserContext user,
+        CancellationToken cancellationToken) =>
+        _conversations.CreateSessionAsync(agent, turn, profile, user, cancellationToken);
+
     /// <summary>工具定义体量：名称 + 描述 + schema 原文的字符数（近似 token 成本）。</summary>
     private static int DefinitionChars(AITool tool) =>
         tool.Name.Length
         + (tool.Description?.Length ?? 0)
         + (tool is AIFunction function ? function.JsonSchema.GetRawText().Length : 0);
 
-    internal Task EnsureConversationAsync(
-        TurnContext turn,
-        string input,
-        CancellationToken cancellationToken) =>
-        _conversations.EnsureConversationAsync(turn, input, cancellationToken);
 }
