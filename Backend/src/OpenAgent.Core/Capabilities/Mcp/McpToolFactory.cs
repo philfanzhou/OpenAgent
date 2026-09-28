@@ -3,8 +3,10 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
 using OpenAgent.Contracts.Configuration;
+using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Abstract;
+using OpenAgent.Core.Files;
 using OpenAgent.Core.Security;
 
 namespace OpenAgent.Core.Capabilities.Mcp;
@@ -19,7 +21,8 @@ internal sealed class McpToolFactory(
     McpClientPool clients,
     AgentAuthorizationGate authorization,
     IMcpRegistry registry,
-    IMcpResourceStore resourceStore,
+    IFileAssetService fileAssets,
+    FileAssetExecutionContext filesContext,
     ILogger<McpToolFactory> logger)
 {
     internal async Task<McpToolRuntime> CreateAsync(
@@ -111,7 +114,7 @@ internal sealed class McpToolFactory(
         return new McpToolRuntime(
             tools.AsReadOnly(),
             accessibleServers.Count > 0
-                ? new McpResourceReaderTool(accessibleServers, clients, user, resourceStore)
+                ? new McpResourceReaderTool(accessibleServers, clients, user, fileAssets, filesContext)
                 : null);
     }
 

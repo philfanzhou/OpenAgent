@@ -3,7 +3,11 @@ using Microsoft.Extensions.AI;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using OpenAgent.Contracts.Files;
+using OpenAgent.Contracts.Runtime;
+using OpenAgent.Contracts.Security;
+using OpenAgent.Contracts.Requests;
 using OpenAgent.Core.Capabilities.Mcp;
+using OpenAgent.Core.Files;
 using OpenAgent.Core.Runtime.Agent;
 using Xunit;
 
@@ -11,6 +15,13 @@ namespace OpenAgent.Core.Tests.Capabilities.Mcp;
 
 public class McpResourcePipelineTests
 {
+    private static readonly FileAssetScope Scope = new()
+    {
+        TenantId = "tenant-1",
+        UserId = "user-1",
+        ConversationId = "conversation-1"
+    };
+
     private static readonly FileAsset SampleAsset = new()
     {
         FileId = "fa-mcp-1",
@@ -38,27 +49,59 @@ public class McpResourcePipelineTests
             }
         };
 
-    private sealed class RecordingStore : IMcpResourceStore
+    /// <summary>可控的文件服务替身：记录上传文件名，Result=null 模拟存储拒绝。</summary>
+    private sealed class RecordingFileService : IFileAssetService
     {
         public List<string> FileNames { get; } = [];
 
         public FileAsset? Result { get; set; } = SampleAsset;
 
-        public ValueTask<FileAsset?> TryStoreAsync(
-            string fileName,
-            string? mediaType,
-            ReadOnlyMemory<byte> data,
+        public Task<FileAsset> UploadAsync(
+            FileAssetCreateRequest request,
+            Stream content,
+            FileAssetScope scope,
             CancellationToken cancellationToken)
         {
-            FileNames.Add(fileName);
-            return ValueTask.FromResult(Result);
+            FileNames.Add(request.FileName);
+            return Result is { } asset
+                ? Task.FromResult(asset)
+                : throw new AgentException(AgentErrorCode.InvalidRequest, "storage declined");
         }
+
+        public Task EnsureReferencesAsync(
+            IReadOnlyList<string> fileIds,
+            FileAssetScope scope,
+            CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task<FileAsset?> GetAsync(string fileId, FileAssetScope scope, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<FileAsset?> GetReferencedAsync(string fileId, FileAssetScope scope, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<IReadOnlyList<FileAsset>> ListAsync(FileAssetScope scope, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<FileAssetContent> ReadAsync(string fileId, FileAssetScope scope, CancellationToken cancellationToken, long? maxBytes = null) =>
+            throw new NotSupportedException();
+
+        public Task<string> ReadTextAsync(string fileId, FileAssetScope scope, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<byte[]> ReadObjectAsync(string objectKey, FileAssetScope scope, CancellationToken cancellationToken, long? maxBytes = null) =>
+            throw new NotSupportedException();
+
+        public Task<string> ReadObjectTextAsync(string objectKey, FileAssetScope scope, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<FileArchiveResult> CompressAsync(FileArchiveRequest request, FileAssetScope scope, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
     }
 
     [Fact]
     public async Task Rewrite_ArrayWithBlobResource_PersistsAndReplacesWithDescriptor()
     {
-        var store = new RecordingStore();
+        var files = new RecordingFileService();
         AIContent[] contents =
         [
             new TextContent("caption"),
@@ -66,23 +109,24 @@ public class McpResourcePipelineTests
         ];
 
         object? rewritten = await McpResourcePipeline.RewriteAsync(
-            contents, store, logger: null, CancellationToken.None);
+            contents, files, Scope, logger: null, CancellationToken.None);
 
         var rewrittenContents = Assert.IsAssignableFrom<IEnumerable<AIContent>>(rewritten);
         Assert.Equal(
             "caption\n[File: report.pdf] fileId=fa-mcp-1 (application/pdf, 3 bytes) from mem://files/report.pdf",
             ToolResultText.JoinContents(rewrittenContents));
-        Assert.Equal(["report.pdf"], store.FileNames);
+        Assert.Equal(["report.pdf"], files.FileNames);
     }
 
     [Fact]
     public async Task Rewrite_SingleBlobDataContent_PersistsAndReplaces()
     {
-        var store = new RecordingStore();
+        var files = new RecordingFileService();
 
         object? rewritten = await McpResourcePipeline.RewriteAsync(
             BlobDataContent("mem://files/report.pdf", [1, 2, 3]),
-            store,
+            files,
+            Scope,
             logger: null,
             CancellationToken.None);
 
@@ -94,7 +138,7 @@ public class McpResourcePipelineTests
     [Fact]
     public async Task Rewrite_CallToolResultJson_BlobReplacedRendersText()
     {
-        var store = new RecordingStore();
+        var files = new RecordingFileService();
         JsonElement json = JsonSerializer.SerializeToElement(new CallToolResult
         {
             Content =
@@ -111,7 +155,7 @@ public class McpResourcePipelineTests
         }, McpJsonUtilities.DefaultOptions);
 
         object? rewritten = await McpResourcePipeline.RewriteAsync(
-            json, store, logger: null, CancellationToken.None);
+            json, files, Scope, logger: null, CancellationToken.None);
 
         // JsonElement 形态在管道内归一成文本：落盘的 blob 换描述符、resource_link
         // 保留 URI、isError 加前缀，JsonElement 不再外泄。
@@ -125,7 +169,7 @@ public class McpResourcePipelineTests
     [Fact]
     public async Task Rewrite_CallToolResultJson_TextOnly_RendersTextWithoutStore()
     {
-        var store = new RecordingStore();
+        var files = new RecordingFileService();
         JsonElement json = JsonSerializer.SerializeToElement(new CallToolResult
         {
             Content = [new TextContentBlock { Text = "report body" }],
@@ -133,34 +177,34 @@ public class McpResourcePipelineTests
         }, McpJsonUtilities.DefaultOptions);
 
         object? rewritten = await McpResourcePipeline.RewriteAsync(
-            json, store, logger: null, CancellationToken.None);
+            json, files, Scope, logger: null, CancellationToken.None);
 
         Assert.Equal("report body\n{\"rows\":2}", Assert.IsType<string>(rewritten));
-        Assert.Empty(store.FileNames);
+        Assert.Empty(files.FileNames);
     }
 
     [Fact]
     public async Task Rewrite_NonCallToolResultJson_ReturnedUnchanged()
     {
-        var store = new RecordingStore();
+        var files = new RecordingFileService();
         using JsonDocument document = JsonDocument.Parse("{\"items\":[1,2]}");
         JsonElement json = document.RootElement.Clone();
 
         object? rewritten = await McpResourcePipeline.RewriteAsync(
-            json, store, logger: null, CancellationToken.None);
+            json, files, Scope, logger: null, CancellationToken.None);
 
         Assert.Equal(json.GetRawText(), Assert.IsType<JsonElement>(rewritten).GetRawText());
-        Assert.Empty(store.FileNames);
+        Assert.Empty(files.FileNames);
     }
 
     [Fact]
     public async Task Rewrite_StoreDeclines_FallsBackToBinaryPlaceholder()
     {
-        var store = new RecordingStore { Result = null };
+        var files = new RecordingFileService { Result = null };
         AIContent[] contents = [BlobDataContent("mem://files/report.pdf", [1, 2, 3])];
 
         object? rewritten = await McpResourcePipeline.RewriteAsync(
-            contents, store, logger: null, CancellationToken.None);
+            contents, files, Scope, logger: null, CancellationToken.None);
 
         Assert.Equal(
             "mem://files/report.pdf [binary content: application/pdf, 3 bytes]",
@@ -168,22 +212,35 @@ public class McpResourcePipelineTests
     }
 
     [Fact]
+    public async Task Rewrite_NoScope_SkipsPersistence()
+    {
+        var files = new RecordingFileService();
+        AIContent[] contents = [BlobDataContent("mem://files/report.pdf", [1, 2, 3])];
+
+        object? rewritten = await McpResourcePipeline.RewriteAsync(
+            contents, files, scope: null, logger: null, CancellationToken.None);
+
+        Assert.Same(contents, rewritten);
+        Assert.Empty(files.FileNames);
+    }
+
+    [Fact]
     public async Task Rewrite_MoreBlobsThanCap_OnlyPersistsUpToCap()
     {
-        var store = new RecordingStore();
+        var files = new RecordingFileService();
         AIContent[] contents = Enumerable.Range(0, 10)
             .Select(index => BlobDataContent($"mem://files/report-{index}.pdf", [1, 2, 3]))
             .ToArray();
 
-        await McpResourcePipeline.RewriteAsync(contents, store, logger: null, CancellationToken.None);
+        await McpResourcePipeline.RewriteAsync(contents, files, Scope, logger: null, CancellationToken.None);
 
-        Assert.Equal(McpResourcePipeline.MaxPersistedBlobsPerResult, store.FileNames.Count);
+        Assert.Equal(McpResourcePipeline.MaxPersistedBlobsPerResult, files.FileNames.Count);
     }
 
     [Fact]
     public async Task Rewrite_PlainBinaryContent_NotPersisted()
     {
-        var store = new RecordingStore();
+        var files = new RecordingFileService();
         AIContent[] contents =
         [
             new TextContent("caption"),
@@ -191,25 +248,25 @@ public class McpResourcePipelineTests
         ];
 
         object? rewritten = await McpResourcePipeline.RewriteAsync(
-            contents, store, logger: null, CancellationToken.None);
+            contents, files, Scope, logger: null, CancellationToken.None);
 
         Assert.Equal(
             "caption\n[binary content: image/png, 3 bytes]",
             ToolResultText.Render(rewritten));
-        Assert.Empty(store.FileNames);
+        Assert.Empty(files.FileNames);
     }
 
     [Fact]
     public async Task Rewrite_TextOnlyResult_ReturnedUnchanged()
     {
-        var store = new RecordingStore();
+        var files = new RecordingFileService();
         AIContent[] contents = [new TextContent("plain")];
 
         object? rewritten = await McpResourcePipeline.RewriteAsync(
-            contents, store, logger: null, CancellationToken.None);
+            contents, files, Scope, logger: null, CancellationToken.None);
 
         Assert.Same(contents, rewritten);
-        Assert.Empty(store.FileNames);
+        Assert.Empty(files.FileNames);
     }
 
     [Theory]
@@ -231,7 +288,15 @@ public class McpResourcePipelineTests
     [Fact]
     public async Task Wrap_McpBlobTool_RendersDescriptorThroughIsolatedPipeline()
     {
-        var store = new RecordingStore();
+        var files = new RecordingFileService();
+        var filesContext = new FileAssetExecutionContext();
+        filesContext.Set(new TurnContext
+        {
+            TenantId = "tenant-1",
+            UserId = "user-1",
+            ConversationId = "conversation-1",
+            TraceId = "trace-1"
+        });
         AITool tool = new StubTool("mcp__srv__report", _ => ValueTask.FromResult<object?>(
             new AIContent[]
             {
@@ -239,7 +304,7 @@ public class McpResourcePipelineTests
                 BlobDataContent("mem://files/report.pdf", [1, 2, 3])
             }));
         AITool wrapped = IsolatedToolFunction.Wrap(
-            McpResourcePersistingFunction.Wrap(tool, store, logger: null),
+            McpResourcePipeline.Wrap(tool, files, filesContext, logger: null),
             budget: ToolResultBudget.Unlimited);
 
         object? result = await Assert.IsAssignableFrom<AIFunction>(wrapped)

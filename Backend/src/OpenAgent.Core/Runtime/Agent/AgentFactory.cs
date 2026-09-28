@@ -24,7 +24,7 @@ internal sealed class AgentFactory
     private readonly McpToolFactory _mcpTools;
     private readonly AgentSkillsProviderFactory _skills;
     private readonly FileAssetExecutionContext _files;
-    private readonly IMcpResourceStore _mcpResourceStore;
+    private readonly IFileAssetService _fileAssets;
     private readonly IServiceProvider _services;
     private readonly ILogger<IsolatedToolFunction> _toolLogger;
     private readonly ILogger<AgentFactory> _logger;
@@ -39,7 +39,7 @@ internal sealed class AgentFactory
         McpToolFactory mcpTools,
         AgentSkillsProviderFactory skills,
         FileAssetExecutionContext files,
-        IMcpResourceStore mcpResourceStore,
+        IFileAssetService fileAssets,
         IServiceProvider services,
         ILogger<IsolatedToolFunction> toolLogger,
         ILogger<AgentFactory> logger,
@@ -52,7 +52,7 @@ internal sealed class AgentFactory
         _mcpTools = mcpTools;
         _skills = skills;
         _files = files;
-        _mcpResourceStore = mcpResourceStore;
+        _fileAssets = fileAssets;
         _services = services;
         _toolLogger = toolLogger;
         _logger = logger;
@@ -132,7 +132,7 @@ internal sealed class AgentFactory
             // 隔离/预算管道（落盘耗时计入单次调用超时）。
             AITool WrapTool(AITool tool) => IsolatedToolFunction.Wrap(
                 tool.Name.StartsWith("mcp__", StringComparison.Ordinal)
-                    ? McpResourcePersistingFunction.Wrap(tool, _mcpResourceStore, _toolLogger)
+                    ? McpResourcePipeline.Wrap(tool, _fileAssets, _files, _toolLogger)
                     : tool,
                 _toolCallTimeout,
                 ToolResultBudgets.Resolve(_executionOptions, tool.Name),

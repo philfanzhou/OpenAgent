@@ -5,28 +5,62 @@ using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using OpenAgent.Contracts.Files;
+using OpenAgent.Contracts.Security;
+using OpenAgent.Core.Files;
 using OpenAgent.Core.Runtime.Agent;
 
 namespace OpenAgent.Core.Capabilities.Mcp;
 
 /// <summary>
-/// MCP 工具结果的落盘重写管道：内嵌二进制资源（<see cref="EmbeddedResourceBlock"/>
-/// 包裹的 <see cref="BlobResourceContents"/>）经 <see cref="IMcpResourceStore"/> 写入
-/// 对象存储并登记会话引用，内容块原地替换为 <c>[File: ...] fileId=...</c> 描述符
-/// ——模型不读 base64，拿到内链后用既有的 read_file / publish_files /
-/// create_file_transfer_url 继续操作，落盘失败时保留原块（回退占位符）。
-/// McpClientTool 在结果带 isError/structuredContent/_meta 或含 resource_link 时
-/// 把整个 CallToolResult 序列化成 JsonElement 返回；此处反序列化一次、落盘并直接
-/// 渲染成文本，JsonElement 不再外泄给渲染层二次解读。
+/// MCP 工具结果的资源落盘管道，职责就是"处理 → 上传 → 替换"：结果里的内嵌
+/// 二进制资源（<see cref="EmbeddedResourceBlock"/> 包裹的 <see cref="BlobResourceContents"/>）
+/// 经 <see cref="IFileAssetService"/> 写入对象存储并登记会话引用，内容块原地替换为
+/// <c>[File: ...] fileId=...</c> 描述符——模型不读 base64，拿到内链后用既有的
+/// read_file / publish_files / create_file_transfer_url 继续操作。
+/// McpClientTool 在结果带 isError/structuredContent/_meta 或含 resource_link 时把
+/// 整个 CallToolResult 序列化成 JsonElement 返回；此处反序列化一次、落盘并直接渲染
+/// 成文本（规则与 <see cref="ToolResultText"/> 一致），JsonElement 不再外泄。
 /// </summary>
 internal static class McpResourcePipeline
 {
     /// <summary>单次工具结果最多落盘的资源数：防止恶意 server 用海量小 blob 拖垮存储。</summary>
     internal const int MaxPersistedBlobsPerResult = 8;
 
+    /// <summary>
+    /// 给 MCP 工具（mcp__ 前缀）套上落盘装饰。位于 IsolatedToolFunction 内层，
+    /// 落盘耗时计入单次调用超时；非 AIFunction 的工具原样返回。
+    /// </summary>
+    internal static AITool Wrap(
+        AITool tool,
+        IFileAssetService files,
+        FileAssetExecutionContext context,
+        ILogger? logger = null) =>
+        tool is AIFunction function ? new PersistingFunction(function, files, context, logger) : tool;
+
+    private sealed class PersistingFunction(
+        AIFunction inner,
+        IFileAssetService files,
+        FileAssetExecutionContext context,
+        ILogger? logger) : AIFunction
+    {
+        public override string Name => inner.Name;
+        public override string Description => inner.Description;
+        public override JsonElement JsonSchema => inner.JsonSchema;
+
+        protected override async ValueTask<object?> InvokeCoreAsync(
+            AIFunctionArguments arguments,
+            CancellationToken cancellationToken)
+        {
+            object? result = await inner.InvokeAsync(arguments, cancellationToken).ConfigureAwait(false);
+            return await RewriteAsync(result, files, context.Scope, logger, cancellationToken)
+                .ConfigureAwait(false);
+        }
+    }
+
     internal static async ValueTask<object?> RewriteAsync(
         object? result,
-        IMcpResourceStore store,
+        IFileAssetService files,
+        FileAssetScope? scope,
         ILogger? logger,
         CancellationToken cancellationToken)
     {
@@ -40,7 +74,7 @@ internal static class McpResourcePipeline
                 for (int index = 0; index < source.Count; index++)
                 {
                     AIContent? replacement = await TryRewriteContentAsync(
-                        source[index], store, logger, quota, cancellationToken).ConfigureAwait(false);
+                        source[index], files, scope, logger, quota, cancellationToken).ConfigureAwait(false);
                     if (replacement == null)
                     {
                         continue;
@@ -52,13 +86,58 @@ internal static class McpResourcePipeline
             }
             case AIContent single:
                 return await TryRewriteContentAsync(
-                    single, store, logger, quota, cancellationToken).ConfigureAwait(false)
+                    single, files, scope, logger, quota, cancellationToken).ConfigureAwait(false)
                     ?? result;
             case JsonElement json:
-                return await RewriteJsonAsync(json, store, logger, quota, cancellationToken)
+                return await RewriteJsonAsync(json, files, scope, logger, quota, cancellationToken)
                     .ConfigureAwait(false);
             default:
                 return result;
+        }
+    }
+
+    /// <summary>
+    /// 上传字节并登记会话引用（read_file / publish_files / create_file_transfer_url
+    /// 依赖引用）。失败一律返回 null，由调用方回退为占位符渲染——存储不可用
+    /// 不应拖垮整个工具结果。
+    /// </summary>
+    internal static async ValueTask<FileAsset?> TryStoreAsync(
+        IFileAssetService files,
+        FileAssetScope? scope,
+        string fileName,
+        string? mediaType,
+        ReadOnlyMemory<byte> data,
+        CancellationToken cancellationToken)
+    {
+        if (scope == null || data.Length == 0)
+        {
+            return null;
+        }
+
+        try
+        {
+            await using var input = new MemoryStream(data.ToArray(), writable: false);
+            FileAsset asset = await files.UploadAsync(
+                new FileAssetCreateRequest
+                {
+                    FileName = fileName,
+                    MediaType = mediaType,
+                    Source = FileAssetSource.Agent
+                },
+                input,
+                scope,
+                cancellationToken).ConfigureAwait(false);
+            await files.EnsureReferencesAsync(
+                [asset.FileId],
+                scope,
+                cancellationToken).ConfigureAwait(false);
+            return asset;
+        }
+        catch (Exception exception) when (
+            exception is AgentException or InvalidOperationException or NotSupportedException)
+        {
+            // 存储层拒绝（白名单、超限、功能停用等）：静默降级为占位符。
+            return null;
         }
     }
 
@@ -114,7 +193,8 @@ internal static class McpResourcePipeline
 
     private static async Task<AIContent?> TryRewriteContentAsync(
         AIContent content,
-        IMcpResourceStore store,
+        IFileAssetService files,
+        FileAssetScope? scope,
         ILogger? logger,
         PersistQuota quota,
         CancellationToken cancellationToken)
@@ -124,11 +204,9 @@ internal static class McpResourcePipeline
         {
             return null;
         }
-        FileAsset? asset = await store.TryStoreAsync(
-            DeriveFileName(uri, mimeType),
-            mimeType,
-            data,
-            cancellationToken).ConfigureAwait(false);
+        FileAsset? asset = await TryStoreAsync(
+            files, scope, DeriveFileName(uri, mimeType), mimeType, data, cancellationToken)
+            .ConfigureAwait(false);
         if (asset == null)
         {
             logger?.LogDebug("MCP blob resource not persisted; keeping placeholder. Uri={Uri}", uri);
@@ -162,7 +240,8 @@ internal static class McpResourcePipeline
 
     private static async ValueTask<object?> RewriteJsonAsync(
         JsonElement json,
-        IMcpResourceStore store,
+        IFileAssetService files,
+        FileAssetScope? scope,
         ILogger? logger,
         PersistQuota quota,
         CancellationToken cancellationToken)
@@ -189,7 +268,8 @@ internal static class McpResourcePipeline
             return json;
         }
 
-        await TryRewriteBlocksAsync(result, store, logger, quota, cancellationToken).ConfigureAwait(false);
+        await TryRewriteBlocksAsync(result, files, scope, logger, quota, cancellationToken)
+            .ConfigureAwait(false);
         return ToolResultText.RenderCallToolResult(result);
     }
 
@@ -203,7 +283,8 @@ internal static class McpResourcePipeline
 
     private static async Task TryRewriteBlocksAsync(
         CallToolResult result,
-        IMcpResourceStore store,
+        IFileAssetService files,
+        FileAssetScope? scope,
         ILogger? logger,
         PersistQuota quota,
         CancellationToken cancellationToken)
@@ -217,7 +298,9 @@ internal static class McpResourcePipeline
             {
                 continue;
             }
-            FileAsset? asset = await store.TryStoreAsync(
+            FileAsset? asset = await TryStoreAsync(
+                files,
+                scope,
                 DeriveFileName(blob.Uri, blob.MimeType),
                 blob.MimeType,
                 blob.DecodedData,

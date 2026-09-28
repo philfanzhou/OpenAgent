@@ -2,8 +2,8 @@ using System.Text.Json;
 using Microsoft.Extensions.AI;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
-using OpenAgent.Contracts.Files;
 using OpenAgent.Core.Capabilities.Mcp;
+using OpenAgent.Core.Files;
 using OpenAgent.Core.Runtime.Agent;
 using Xunit;
 
@@ -218,10 +218,13 @@ public class ToolResultTextTests
             Content = [new TextContentBlock { Text = $"HEAD-{longText}-TAIL" }],
             IsError = true
         });
+        // scope 为 null 时落盘短路，文件服务不会被调用；此处只验证渲染与预算。
         AITool wrapped = IsolatedToolFunction.Wrap(
-            McpResourcePersistingFunction.Wrap(
+            McpResourcePipeline.Wrap(
                 new StubTool("mcp__srv__report", _ => ValueTask.FromResult<object?>(json)),
-                new NullStore()),
+                files: null!,
+                context: new FileAssetExecutionContext(),
+                logger: null),
             budget: new ToolResultBudget(1_000, "narrow the query"));
 
         string result = Assert.IsType<string>(await InvokeAsync(wrapped));
@@ -267,15 +270,6 @@ public class ToolResultTextTests
     /// <summary>按 McpClientTool 的兜底路径把结果序列化成 CallToolResult JSON。</summary>
     private static JsonElement Serialize(CallToolResult result) =>
         JsonSerializer.SerializeToElement(result, McpJsonUtilities.DefaultOptions);
-
-    private sealed class NullStore : IMcpResourceStore
-    {
-        public ValueTask<FileAsset?> TryStoreAsync(
-            string fileName,
-            string? mediaType,
-            ReadOnlyMemory<byte> data,
-            CancellationToken cancellationToken) => ValueTask.FromResult<FileAsset?>(null);
-    }
 
     private sealed class StubTool(string name, Func<AIFunctionArguments, ValueTask<object?>> invoke) : AIFunction
     {

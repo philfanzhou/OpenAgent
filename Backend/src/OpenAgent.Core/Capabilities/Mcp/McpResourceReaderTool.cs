@@ -6,13 +6,15 @@ using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Capabilities;
+using OpenAgent.Core.Files;
 
 namespace OpenAgent.Core.Capabilities.Mcp;
 
 /// <summary>
 /// MCP resources/read 的平台桥：模型拿工具结果里的 resource URI（或 resource_link）
-/// 按需读回资源。文本资源直接回正文；二进制资源经 <see cref="IMcpResourceStore"/>
-/// 落盘为文件资产并返回 [File: ...] 描述符，与内嵌 blob 的出口一致。
+/// 按需读回资源。文本资源直接回正文；二进制资源经
+/// <see cref="McpResourcePipeline.TryStoreAsync"/> 落盘为文件资产并返回
+/// [File: ...] 描述符，与内嵌 blob 的出口一致。
 /// 只暴露当前 agent 已启用且通过鉴权的服务器（可见名即 [MCP:...] 前缀里的名字）；
 /// 连接复用 <see cref="McpClientPool"/>。与 search_tools 相同，本工具不单独走
 /// AgentAuthorizationGate 的 Tool/Function 门（服务器可见性已是授权结果）。
@@ -24,18 +26,21 @@ internal sealed class McpResourceReaderTool : AIFunction, IToolConcurrencyProvid
     private readonly IReadOnlyDictionary<string, McpServerConfig> _servers;
     private readonly McpClientPool _clients;
     private readonly IAgentUserContext _user;
-    private readonly IMcpResourceStore _store;
+    private readonly IFileAssetService _files;
+    private readonly FileAssetExecutionContext _filesContext;
 
     internal McpResourceReaderTool(
         IReadOnlyDictionary<string, McpServerConfig> servers,
         McpClientPool clients,
         IAgentUserContext user,
-        IMcpResourceStore store)
+        IFileAssetService files,
+        FileAssetExecutionContext filesContext)
     {
         _servers = servers;
         _clients = clients;
         _user = user;
-        _store = store;
+        _files = files;
+        _filesContext = filesContext;
     }
 
     public override string Name => ToolName;
@@ -121,7 +126,9 @@ internal sealed class McpResourceReaderTool : AIFunction, IToolConcurrencyProvid
                     lines.Add(text.Text);
                     break;
                 case BlobResourceContents blob when blob.DecodedData.Length > 0:
-                    FileAsset? asset = await _store.TryStoreAsync(
+                    FileAsset? asset = await McpResourcePipeline.TryStoreAsync(
+                        _files,
+                        _filesContext.Scope,
                         McpResourcePipeline.DeriveFileName(blob.Uri, blob.MimeType),
                         blob.MimeType,
                         blob.DecodedData,
