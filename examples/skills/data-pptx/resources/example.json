@@ -1,0 +1,67 @@
+{
+  "title": "2026 年第二季度经营报告",
+  "subtitle": "演示数据 · 可编辑图表",
+  "template": "resources/report-template.pptx",
+  "layouts": { "title": 0, "content": 6 },
+  "theme": {
+    "accent": "#215B87",
+    "palette": ["#3278BD", "#E7A23B", "#54A582", "#9A72B0"]
+  },
+  "slides": [
+    {
+      "kind": "bullets",
+      "title": "核心结论",
+      "items": [
+        "营收逐月增长，第二季度累计 1,360 万元",
+        "新客户占比持续提升",
+        "产品组合向订阅服务倾斜"
+      ]
+    },
+    {
+      "kind": "chart",
+      "title": "月度营收及成本",
+      "note": "单位：万元；数据仅用于功能演示",
+      "chart": {
+        "type": "column",
+        "categories": ["4 月", "5 月", "6 月"],
+        "series": [
+          { "name": "营收", "values": [390, 450, 520], "color": "#3278BD" },
+          { "name": "成本", "values": [250, 278, 301], "color": "#E7A23B" }
+        ],
+        "show_legend": true,
+        "legend_position": "bottom",
+        "show_data_labels": true,
+        "number_format": "0",
+        "axis_min": 0,
+        "axis_max": 600
+      }
+    },
+    {
+      "kind": "chart",
+      "title": "新增客户趋势",
+      "note": "单位：户；折线及颜色均可调整",
+      "chart": {
+        "type": "line",
+        "categories": ["4 月", "5 月", "6 月"],
+        "series": [
+          { "name": "新增客户", "values": [86, 111, 139], "color": "#54A582" }
+        ],
+        "show_legend": false,
+        "show_data_labels": true,
+        "axis_min": 0
+      }
+    },
+    {
+      "kind": "chart",
+      "title": "收入结构",
+      "note": "扇区使用 theme.palette 配色",
+      "chart": {
+        "type": "pie",
+        "categories": ["订阅", "项目", "服务"],
+        "series": [{ "name": "收入占比", "values": [55, 30, 15] }],
+        "show_legend": true,
+        "show_data_labels": true
+      }
+    }
+  ]
+}

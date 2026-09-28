@@ -66,3 +66,7 @@ Skill 只允许本地持久化来源：数据库中的目录元数据和租户�
 - Core: `Backend/src/OpenAgent.Core/Capabilities/Skill/AgentSkillsProviderFactory.cs`、`SkillScriptRunner.cs`
 - Host: `Backend/src/OpenAgent.Engine.Host/Skills/SkillPackageManagementService.cs`、`Backend/src/OpenAgent.Engine.Host/Extensions/ManagementEndpointExtensions.cs`
 - Tests: `Backend/tests/OpenAgent.Core.Tests/Capabilities/AgentSkillPackageArchiveTests.cs`、`SkillScriptRunnerTests.cs`、`AgentSkillsProviderFactoryTests.cs`、`Backend/tests/OpenAgent.Engine.Tests/Skills/SkillPackageManagementServiceTests.cs`
+
+## 可运行案例
+
+- [数据生成 PPTX](../../../../examples/skills/data-pptx/README.md)：可上传的 Skill ZIP、JSON 样例、PPTX 模板和演示文件；生成可编辑的 PowerPoint 原生图表，并支持图表配置与自有模板。
