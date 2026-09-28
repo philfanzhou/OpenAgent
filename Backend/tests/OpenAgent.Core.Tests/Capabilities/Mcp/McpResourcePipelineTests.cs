@@ -49,12 +49,15 @@ public class McpResourcePipelineTests
             }
         };
 
-    /// <summary>可控的文件服务替身：记录上传文件名，Result=null 模拟存储拒绝。</summary>
+    /// <summary>可控的文件服务替身：记录上传文件名，Result=null 模拟存储拒绝，
+    /// InfrastructureFailure 模拟 S3 网络等基础设施故障。</summary>
     private sealed class RecordingFileService : IFileAssetService
     {
         public List<string> FileNames { get; } = [];
 
         public FileAsset? Result { get; set; } = SampleAsset;
+
+        public Exception? InfrastructureFailure { get; set; }
 
         public Task<FileAsset> UploadAsync(
             FileAssetCreateRequest request,
@@ -63,6 +66,10 @@ public class McpResourcePipelineTests
             CancellationToken cancellationToken)
         {
             FileNames.Add(request.FileName);
+            if (InfrastructureFailure is { } failure)
+            {
+                throw failure;
+            }
             return Result is { } asset
                 ? Task.FromResult(asset)
                 : throw new AgentException(AgentErrorCode.InvalidRequest, "storage declined");
@@ -222,6 +229,25 @@ public class McpResourcePipelineTests
 
         Assert.Same(contents, rewritten);
         Assert.Empty(files.FileNames);
+    }
+
+    [Fact]
+    public async Task Rewrite_StorageInfrastructureFailure_FallsBackWithoutThrowing()
+    {
+        // S3 网络故障等基础设施异常不在旧的窄捕获面内：曾会击穿到隔离层，
+        // 把本已成功的 MCP 调用整体变成 tool error。必须回退占位符。
+        var files = new RecordingFileService
+        {
+            InfrastructureFailure = new HttpRequestException("S3 unreachable")
+        };
+        AIContent[] contents = [BlobDataContent("mem://files/report.pdf", [1, 2, 3])];
+
+        object? rewritten = await McpResourcePipeline.RewriteAsync(
+            contents, files, Scope, logger: null, CancellationToken.None);
+
+        Assert.Equal(
+            "mem://files/report.pdf [binary content: application/pdf, 3 bytes]",
+            ToolResultText.Render(rewritten));
     }
 
     [Fact]

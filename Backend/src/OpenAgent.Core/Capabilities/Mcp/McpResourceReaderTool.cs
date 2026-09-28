@@ -1,5 +1,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Protocol;
 using OpenAgent.Contracts.Capabilities;
 using OpenAgent.Contracts.Configuration;
@@ -28,19 +30,22 @@ internal sealed class McpResourceReaderTool : AIFunction, IToolConcurrencyProvid
     private readonly IAgentUserContext _user;
     private readonly IFileAssetService _files;
     private readonly FileAssetExecutionContext _filesContext;
+    private readonly ILogger _logger;
 
     internal McpResourceReaderTool(
         IReadOnlyDictionary<string, McpServerConfig> servers,
         McpClientPool clients,
         IAgentUserContext user,
         IFileAssetService files,
-        FileAssetExecutionContext filesContext)
+        FileAssetExecutionContext filesContext,
+        ILogger? logger = null)
     {
         _servers = servers;
         _clients = clients;
         _user = user;
         _files = files;
         _filesContext = filesContext;
+        _logger = logger ?? NullLogger.Instance;
     }
 
     public override string Name => ToolName;
@@ -132,7 +137,8 @@ internal sealed class McpResourceReaderTool : AIFunction, IToolConcurrencyProvid
                         McpResourcePipeline.DeriveFileName(blob.Uri, blob.MimeType),
                         blob.MimeType,
                         blob.DecodedData,
-                        cancellationToken).ConfigureAwait(false);
+                        cancellationToken,
+                        _logger).ConfigureAwait(false);
                     lines.Add(asset != null
                         ? McpResourcePipeline.Describe(asset, blob.Uri)
                         : $"{blob.Uri} [binary content: {blob.MimeType ?? "application/octet-stream"}, {blob.DecodedData.Length} bytes]");

@@ -99,7 +99,8 @@ internal static class McpResourcePipeline
     /// <summary>
     /// 上传字节并登记会话引用（read_file / publish_files / create_file_transfer_url
     /// 依赖引用）。失败一律返回 null，由调用方回退为占位符渲染——存储不可用
-    /// 不应拖垮整个工具结果。
+    /// 不应拖垮整个工具结果；基础设施故障记 Warning（静默降级无法排查），
+    /// 存储层拒绝（白名单/限额/停用）属预期降级，记 Debug。
     /// </summary>
     internal static async ValueTask<FileAsset?> TryStoreAsync(
         IFileAssetService files,
@@ -107,7 +108,8 @@ internal static class McpResourcePipeline
         string fileName,
         string? mediaType,
         ReadOnlyMemory<byte> data,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ILogger? logger = null)
     {
         if (scope == null || data.Length == 0)
         {
@@ -133,10 +135,22 @@ internal static class McpResourcePipeline
                 cancellationToken).ConfigureAwait(false);
             return asset;
         }
-        catch (Exception exception) when (
-            exception is AgentException or InvalidOperationException or NotSupportedException)
+        catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            // 存储层拒绝（白名单、超限、功能停用等）：静默降级为占位符。
+            if (exception is AgentException or InvalidOperationException or NotSupportedException)
+            {
+                logger?.LogDebug(
+                    exception,
+                    "MCP blob resource rejected by file storage; keeping placeholder. FileName={FileName}",
+                    fileName);
+            }
+            else
+            {
+                logger?.LogWarning(
+                    exception,
+                    "MCP blob resource persistence failed; keeping placeholder. FileName={FileName}",
+                    fileName);
+            }
             return null;
         }
     }
@@ -205,11 +219,10 @@ internal static class McpResourcePipeline
             return null;
         }
         FileAsset? asset = await TryStoreAsync(
-            files, scope, DeriveFileName(uri, mimeType), mimeType, data, cancellationToken)
+            files, scope, DeriveFileName(uri, mimeType), mimeType, data, cancellationToken, logger)
             .ConfigureAwait(false);
         if (asset == null)
         {
-            logger?.LogDebug("MCP blob resource not persisted; keeping placeholder. Uri={Uri}", uri);
             return null;
         }
         return new TextContent(Describe(asset, uri));
@@ -304,10 +317,10 @@ internal static class McpResourcePipeline
                 DeriveFileName(blob.Uri, blob.MimeType),
                 blob.MimeType,
                 blob.DecodedData,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken,
+                logger).ConfigureAwait(false);
             if (asset == null)
             {
-                logger?.LogDebug("MCP blob resource not persisted; keeping placeholder. Uri={Uri}", blob.Uri);
                 continue;
             }
             result.Content[index] = new TextContentBlock { Text = Describe(asset, blob.Uri) };

@@ -185,8 +185,21 @@ internal sealed class FileAssetCapabilitySource(
                     $"exceeds the inline read limit ({options.Value.MaxFunctionReadBytes} bytes); content is not returned.",
                     ChunkedReadHint);
             }
-            string content = await files.ReadTextAsync(fileId!, executionContext.Scope, cancellationToken).ConfigureAwait(false);
-            return JsonSerializer.Serialize(new { fileId, content });
+            try
+            {
+                string content = await files.ReadTextAsync(fileId!, executionContext.Scope, cancellationToken).ConfigureAwait(false);
+                return JsonSerializer.Serialize(new { fileId, content });
+            }
+            catch (OpenAgent.Contracts.Security.TenantDataIsolationException)
+            {
+                throw;
+            }
+            catch (OpenAgent.Contracts.Security.AgentException exception)
+            {
+                // 声明 text/* 但字节非法 UTF-8 等读取期失败：与预判路径一致降级为
+                // 元数据信封，兑现 "Any other file does not fail" 的工具描述。
+                return MetadataEnvelope(asset, exception.Message, ChunkedReadHint);
+            }
         }
         catch (OpenAgent.Contracts.Security.AgentException exception)
         {

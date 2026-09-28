@@ -226,6 +226,30 @@ public class FileAssetCapabilitySourceTests
     }
 
     [Fact]
+    public async Task InvokeAsync_ReadFileDeclaredTextWithInvalidUtf8_ReturnsMetadataEnvelope()
+    {
+        // 声明 text/* 但字节非法 UTF-8：fileId 路径在读取期才暴露，同样降级为
+        // 元数据信封（而非错误信封），兑现工具描述 "Any other file does not fail"。
+        TestHarness harness = CreateHarness();
+        FileAsset asset = CreateAsset("notes.txt", "text/plain", length: 3);
+        harness.Repository.Assets[asset.FileId] = asset;
+        harness.Repository.References.Add($"conversation-a:{asset.FileId}");
+        harness.Objects.ContentsByKey[asset.ObjectKey] = [0xFF, 0xFE, 0x00];
+        var arguments = new Dictionary<string, object?> { ["fileId"] = asset.FileId };
+
+        string result = await InvokeAsync(harness.Source, "read_file", arguments);
+
+        using JsonDocument document = JsonDocument.Parse(result);
+        Assert.Equal(asset.FileId, document.RootElement.GetProperty("fileId").GetString());
+        Assert.Equal(JsonValueKind.Null, document.RootElement.GetProperty("content").ValueKind);
+        Assert.False(document.RootElement.TryGetProperty("code", out _));
+        Assert.Contains("not valid UTF-8",
+            document.RootElement.GetProperty("notice").GetString(), StringComparison.Ordinal);
+        Assert.Contains("chunks",
+            document.RootElement.GetProperty("hint").GetString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task InvokeAsync_ReadFileOversizedText_ReturnsMetadataAndChunkHint()
     {
         // 超限文本同样给元数据信封：内容不返回，引导模型用 execute_code 分段读取。

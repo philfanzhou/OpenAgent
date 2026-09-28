@@ -68,9 +68,15 @@ internal sealed class McpToolFactory(
                         options: null,
                         cancellationToken).ConfigureAwait(false);
                 }
-                catch (Exception exception) when (exception is not OperationCanceledException)
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception exception)
                 {
                     // 池化连接可能已被服务端单方面断开：淘汰缓存并重连一次。
+                    // 超时（TaskCanceledException）是 OperationCanceledException 的子类，
+                    // 但并非调用方取消——死连接的典型症状就是它，同样必须重连。
                     logger.LogWarning(exception, "MCP client appears broken, reconnecting. Server={Server}", serverName);
                     await clients.InvalidateAsync(server, user).ConfigureAwait(false);
                     client = (await clients.AcquireAsync(server, user, cancellationToken).ConfigureAwait(false)).Client;
@@ -114,7 +120,7 @@ internal sealed class McpToolFactory(
         return new McpToolRuntime(
             tools.AsReadOnly(),
             accessibleServers.Count > 0
-                ? new McpResourceReaderTool(accessibleServers, clients, user, fileAssets, filesContext)
+                ? new McpResourceReaderTool(accessibleServers, clients, user, fileAssets, filesContext, logger)
                 : null);
     }
 
