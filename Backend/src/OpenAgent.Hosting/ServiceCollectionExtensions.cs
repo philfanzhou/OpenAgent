@@ -158,7 +158,8 @@ public static class ServiceCollectionExtensions
                     .AddHttpClientInstrumentation(instrumentation =>
                         instrumentation.FilterHttpRequestMessage = request =>
                             !RequestTelemetryMiddleware.IsHealthProbeUri(request.RequestUri, options))
-                    .AddSource(options.OpenTelemetrySource);
+                    .AddSource(options.OpenTelemetrySource)
+                    .AddSource("OpenAgent.AgentFramework");
 
                 if (otlpEndpoint != null)
                 {
