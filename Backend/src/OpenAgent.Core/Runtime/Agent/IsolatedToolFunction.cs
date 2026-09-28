@@ -160,6 +160,9 @@ internal sealed class IsolatedToolFunction : AIFunction
         // 唯一出口，必须落成字符串，否则下游 ToString 只剩类型名。
         AIContent single => Truncate(ToolResultText.Render(single) ?? string.Empty),
         IEnumerable<AIContent> contents => Truncate(ToolResultText.JoinContents(contents)),
+        // JsonElement 结果同样落成文本并过预算（MCP 的 CallToolResult 形态已在
+        // 落盘装饰器内渲染，此处只见普通 JSON），避免超长结果未截断进入上下文。
+        JsonElement json => Truncate(ToolResultText.Render(json) ?? string.Empty),
         _ => result
     };
 

@@ -6,6 +6,7 @@ using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Capabilities.Mcp;
 using OpenAgent.Core.Security;
+using OpenAgent.Core.Files;
 using Xunit;
 
 namespace OpenAgent.Core.Tests.Capabilities;
@@ -39,6 +40,8 @@ public sealed class McpToolFactoryTests
                 Options.Create(new McpExecutionOptions())),
             new AgentAuthorizationGate(new AllowAllAgentAuthorizationService()),
             new McpRegistry(),
+            null!,
+            new FileAssetExecutionContext(),
             NullLogger<McpToolFactory>.Instance);
         var config = new McpConfig
         {
@@ -79,6 +82,8 @@ public sealed class McpToolFactoryTests
                 Options.Create(new McpExecutionOptions())),
             new AgentAuthorizationGate(new AllowAllAgentAuthorizationService()),
             new McpRegistry(),
+            null!,
+            new FileAssetExecutionContext(),
             NullLogger<McpToolFactory>.Instance);
         var config = new McpConfig
         {

@@ -3,8 +3,10 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
 using OpenAgent.Contracts.Configuration;
+using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Abstract;
+using OpenAgent.Core.Files;
 using OpenAgent.Core.Security;
 
 namespace OpenAgent.Core.Capabilities.Mcp;
@@ -19,6 +21,8 @@ internal sealed class McpToolFactory(
     McpClientPool clients,
     AgentAuthorizationGate authorization,
     IMcpRegistry registry,
+    IFileAssetService fileAssets,
+    FileAssetExecutionContext filesContext,
     ILogger<McpToolFactory> logger)
 {
     internal async Task<McpToolRuntime> CreateAsync(
@@ -29,6 +33,8 @@ internal sealed class McpToolFactory(
     {
         var tools = new List<AITool>();
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // 桥接工具可见的服务器集合（已过租户过滤 + 授权），键为模型看到的显示名。
+        var accessibleServers = new Dictionary<string, McpServerConfig>(StringComparer.OrdinalIgnoreCase);
 
         IEnumerable<McpServerConfig> servers = config.EnabledServerIds.Count > 0
             ? config.EnabledServerIds.Select(registry.Get).Where(server => server != null).Select(server => server!)
@@ -48,6 +54,7 @@ internal sealed class McpToolFactory(
             {
                 continue;
             }
+            accessibleServers[serverName] = server;
 
             try
             {
@@ -61,9 +68,15 @@ internal sealed class McpToolFactory(
                         options: null,
                         cancellationToken).ConfigureAwait(false);
                 }
-                catch (Exception exception) when (exception is not OperationCanceledException)
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception exception)
                 {
                     // 池化连接可能已被服务端单方面断开：淘汰缓存并重连一次。
+                    // 超时（TaskCanceledException）是 OperationCanceledException 的子类，
+                    // 但并非调用方取消——死连接的典型症状就是它，同样必须重连。
                     logger.LogWarning(exception, "MCP client appears broken, reconnecting. Server={Server}", serverName);
                     await clients.InvalidateAsync(server, user).ConfigureAwait(false);
                     client = (await clients.AcquireAsync(server, user, cancellationToken).ConfigureAwait(false)).Client;
@@ -103,7 +116,12 @@ internal sealed class McpToolFactory(
         }
 
         // 客户端由池持有，运行时只携带工具清单；作用域释放不再断开连接。
-        return new McpToolRuntime(tools.AsReadOnly());
+        // read_mcp_resource 桥接工具：有可见服务器就注册，resource URI 才可按需读回。
+        return new McpToolRuntime(
+            tools.AsReadOnly(),
+            accessibleServers.Count > 0
+                ? new McpResourceReaderTool(accessibleServers, clients, user, fileAssets, filesContext, logger)
+                : null);
     }
 
     internal static McpClientOptions CreateClientOptions(McpServerConfig server) => new()
@@ -170,11 +188,15 @@ internal sealed class McpToolFactory(
 }
 
 internal sealed class McpToolRuntime(
-    IReadOnlyList<AITool> tools) : IAsyncDisposable
+    IReadOnlyList<AITool> tools,
+    AITool? resourceReader = null) : IAsyncDisposable
 {
     internal static McpToolRuntime Empty { get; } = new([]);
 
     internal IReadOnlyList<AITool> Tools { get; } = tools;
+
+    /// <summary>read_mcp_resource 桥接工具；无可见 MCP 服务器时为 null。</summary>
+    internal AITool? ResourceReader { get; } = resourceReader;
 
     // 连接由 McpClientPool 持有并跨轮次复用；运行时本身没有需要释放的资源。
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;

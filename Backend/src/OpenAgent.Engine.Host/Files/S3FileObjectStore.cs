@@ -55,6 +55,7 @@ internal sealed class S3FileObjectStore : IFileObjectStore
             throw new AgentException(
                 AgentErrorCode.DependencyUnavailable,
                 "File object storage is unavailable.",
+                details: exception.Message,
                 innerException: exception);
         }
     }
@@ -135,6 +136,7 @@ internal sealed class S3FileObjectStore : IFileObjectStore
             throw new AgentException(
                 AgentErrorCode.DependencyUnavailable,
                 "File object storage is unavailable.",
+                details: exception.Message,
                 innerException: exception);
         }
     }
@@ -181,6 +183,7 @@ internal sealed class S3FileObjectStore : IFileObjectStore
             throw new AgentException(
                 AgentErrorCode.DependencyUnavailable,
                 "File object cleanup failed.",
+                details: exception.Message,
                 innerException: exception);
         }
     }
