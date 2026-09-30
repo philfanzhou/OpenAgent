@@ -59,7 +59,9 @@ async function setup() {
   ], 'Completed'))
   conversations.value = [selectedConversation.value!]
 
+  const compacting = ref(false)
   const streaming = useChatStreaming({
+    isCompactingConversation: () => compacting.value,
     selectedAgentId: ref('agent-1'),
     selectedLlmProfileId: ref('profile-1'),
     agents: ref([]),
@@ -80,12 +82,21 @@ async function setup() {
     refreshConversations: async () => {},
     notifyError: () => {},
   })
-  return { streams, selectedConversation, streaming }
+  return { streams, selectedConversation, streaming, compacting }
 }
 
 describe('useChatStreaming', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+  })
+
+  it('keeps the draft and makes no stream request while manual compaction is running', async () => {
+    const { streaming, compacting } = await setup()
+    compacting.value = true
+    streaming.message.value = 'continue the task'
+    await streaming.send()
+    expect(api.streamChat).not.toHaveBeenCalled()
+    expect(streaming.message.value).toBe('continue the task')
   })
 
   it('keeps every turn intact after a user stop once the server persisted the cancelled turn', async () => {

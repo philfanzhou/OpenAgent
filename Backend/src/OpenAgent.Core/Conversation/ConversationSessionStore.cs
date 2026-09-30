@@ -80,7 +80,7 @@ internal sealed class ConversationSessionStore
         IReadOnlyList<ConversationMessage> tail = record.Messages
             .Where(message => message.Sequence > latest.SourceEndSequence)
             .ToList();
-        int overlap = FindProjectionOverlap(latest.CompactedMessages, tail);
+        int overlap = latest.ProjectionVersion == 0 ? FindLegacyOverlap(latest.CompactedMessages, tail) : 0;
         return latest.CompactedMessages
             .Concat(tail.Skip(overlap))
             .ToList()
@@ -93,39 +93,24 @@ internal sealed class ConversationSessionStore
             "[Summary unavailable]",
             StringComparison.OrdinalIgnoreCase);
 
-    private static int FindProjectionOverlap(
-        IReadOnlyList<ConversationMessage> projection,
-        IReadOnlyList<ConversationMessage> tail)
+    // Old automatic projections used the persisted count while retaining some
+    // uncommitted turn messages. Keep their compatibility repair isolated from
+    // current projections, where repeated user text must never be deduplicated.
+    private static int FindLegacyOverlap(IReadOnlyList<ConversationMessage> projection, IReadOnlyList<ConversationMessage> tail)
     {
-        int maximum = Math.Min(projection.Count, tail.Count);
-        for (int candidate = maximum; candidate > 0; candidate--)
+        for (int count = Math.Min(projection.Count, tail.Count); count > 0; count--)
         {
-            bool matches = true;
-            for (int index = 0; index < candidate; index++)
+            bool matches = Enumerable.Range(0, count).All(index =>
             {
-                if (!Equivalent(
-                        projection[projection.Count - candidate + index],
-                        tail[index]))
-                {
-                    matches = false;
-                    break;
-                }
-            }
-
-            if (matches)
-            {
-                return candidate;
-            }
+                ConversationMessage left = projection[projection.Count - count + index];
+                ConversationMessage right = tail[index];
+                return string.Equals(left.Role, right.Role, StringComparison.OrdinalIgnoreCase)
+                    && left.Content == right.Content && left.ToolCallId == right.ToolCallId && left.ToolName == right.ToolName;
+            });
+            if (matches) return count;
         }
-
         return 0;
     }
-
-    private static bool Equivalent(ConversationMessage left, ConversationMessage right) =>
-        string.Equals(left.Role, right.Role, StringComparison.OrdinalIgnoreCase)
-        && string.Equals(left.Content, right.Content, StringComparison.Ordinal)
-        && string.Equals(left.ToolCallId, right.ToolCallId, StringComparison.Ordinal)
-        && string.Equals(left.ToolName, right.ToolName, StringComparison.Ordinal);
 
     internal async Task SaveAsync(
         ConversationContext context,

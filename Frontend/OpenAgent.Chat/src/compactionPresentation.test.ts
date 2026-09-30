@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { buildCompactionDisplay, buildCompactionTokenDisplay } from './compactionPresentation'
+import { buildCompactionDisplay, buildCompactionTokenDisplay, latestCompactedContextTokens } from './compactionPresentation'
 import type { ContextSummary } from './types'
+import type { ConversationMessage } from './types'
 
 function summary(overrides: Partial<ContextSummary> = {}): ContextSummary {
   return {
@@ -39,6 +40,7 @@ describe('buildCompactionDisplay', () => {
       status: 'Failed',
       summary: null,
       result: 'Original history restored for model invocation.',
+      error: 'Summary model unavailable.',
       originalHistoryRestored: true,
     }))
 
@@ -48,6 +50,7 @@ describe('buildCompactionDisplay', () => {
       status: '失败',
       tagType: 'danger',
       recovered: true,
+      detail: 'Summary model unavailable.\n\nOriginal history restored for model invocation.',
     })
   })
 
@@ -69,6 +72,12 @@ describe('buildCompactionDisplay', () => {
 })
 
 describe('buildCompactionTokenDisplay', () => {
+  it('uses the manual projection until another original message is appended', () => {
+    const messages = [{ sequence: 8, role: 'assistant' }] as ConversationMessage[]
+    expect(latestCompactedContextTokens(messages, [summary()])).toBe(120)
+    expect(latestCompactedContextTokens([...messages, { sequence: 9 } as ConversationMessage], [summary()])).toBeUndefined()
+    expect(latestCompactedContextTokens(messages, [summary({ status: 'Failed' })])).toBeUndefined()
+  })
   it('shows exact before and after counts with retained ratio', () => {
     expect(buildCompactionTokenDisplay(summary())).toEqual({ before: 240, after: 120, retainedPercent: '50%' })
   })

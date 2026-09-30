@@ -174,6 +174,7 @@ export interface ContextSummary {
   tokenCount: number
   originalHistoryRestored: boolean
   sourceEndSequence: number
+  projectionVersion?: number
   compactedMessages?: ConversationMessage[]
 }
 

@@ -49,6 +49,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
     private bool _stored;
     private bool _finalized;
     private bool _completionStaged;
+    private ChatMessage? _userMessage;
 
     public PlatformChatHistory(
         PlatformChatHistoryContext context,
@@ -136,7 +137,8 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         List<FileAssetContent>? inlineImages = _files.Count == 0 || !_supportsMultimodal
             ? null
             : await ReadInlineImagesAsync(cancellationToken).ConfigureAwait(false);
-        return AgentMessageAdapter.CreateUser(_input, _files, inlineImages);
+        _userMessage = AgentMessageAdapter.CreateUser(_input, _files, inlineImages);
+        return _userMessage;
     }
 
     private async Task<List<FileAssetContent>?> ReadInlineImagesAsync(CancellationToken cancellationToken)
@@ -232,6 +234,8 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
                 cancellationToken).ConfigureAwait(false);
             _currentVersion = loaded.CurrentVersion;
             _nextSequence = loaded.NextSequence;
+            if (_userMessage != null)
+                (_userMessage.AdditionalProperties ??= [])[CompactionMessageMetadata.SourceSequenceKey] = loaded.NextSequence;
             List<ChatMessage> history = await BuildHistoryAsync(loaded.History, cancellationToken).ConfigureAwait(false);
             return RepairToolHistory(history);
         }
@@ -393,7 +397,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
     /// consecutive assistant rows are folded back into one call block, duplicate or
     /// unanswered calls are dropped, and every retained call keeps its responses.
     /// </summary>
-    private static List<ChatMessage> RepairToolHistory(IReadOnlyList<ChatMessage> messages)
+    internal static List<ChatMessage> RepairToolHistory(IReadOnlyList<ChatMessage> messages)
     {
         HashSet<string> responded = [];
         foreach (ChatMessage message in messages)
@@ -443,7 +447,10 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
                 {
                     merged.Add(call);
                 }
-                repaired[^1] = new ChatMessage(ChatRole.Assistant, merged);
+                ChatMessage mergedMessage = new(ChatRole.Assistant, merged);
+                CompactionMessageMetadata.Copy(repaired[^1], mergedMessage);
+                CompactionMessageMetadata.Copy(message, mergedMessage);
+                repaired[^1] = mergedMessage;
                 continue;
             }
 
@@ -455,6 +462,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
             if (retained.Count < calls.Count)
             {
                 ChatMessage rebuilt = new(message.Role, Array.Empty<AIContent>());
+                CompactionMessageMetadata.Copy(message, rebuilt);
                 foreach (AIContent content in message.Contents)
                 {
                     if (content is not FunctionCallContent)

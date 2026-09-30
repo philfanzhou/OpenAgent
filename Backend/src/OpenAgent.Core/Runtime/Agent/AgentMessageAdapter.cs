@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.Extensions.AI;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Files;
+using OpenAgent.Core.Conversation;
 
 namespace OpenAgent.Core.Runtime.Agent;
 
@@ -13,6 +14,10 @@ internal static class AgentMessageAdapter
         IReadOnlyList<FileAssetContent>? inlineImages = null)
     {
         ChatMessage message = new(Microsoft.Extensions.AI.ChatRole.User, input);
+        message.AdditionalProperties = new()
+        {
+            [CompactionMessageMetadata.FileIdsKey] = files.Select(file => file.FileId).ToList()
+        };
         Dictionary<string, FileAssetContent> images = (inlineImages ?? [])
             .ToDictionary(item => item.Asset.FileId, StringComparer.Ordinal);
         AddFiles(message, files, images);
@@ -49,12 +54,11 @@ internal static class AgentMessageAdapter
             return null;
         }
 
-        string content = string.Equals(
-            message.Role,
-            "summary",
-            StringComparison.OrdinalIgnoreCase)
-                ? $"[Conversation summary]\n{message.Content}"
-                : message.Content;
+        string content = message.Content;
+        if (string.Equals(message.Role, "summary", StringComparison.OrdinalIgnoreCase)
+            && !content.StartsWith("[Conversation summary]", StringComparison.Ordinal)
+            && !content.StartsWith("[Summary]", StringComparison.Ordinal))
+            content = $"[Conversation summary]\n{content}";
         var contents = new List<AIContent>();
         if (!string.IsNullOrEmpty(content))
         {
@@ -62,6 +66,15 @@ internal static class AgentMessageAdapter
         }
 
         var chatMessage = new ChatMessage(role.Value, contents);
+        chatMessage.AdditionalProperties = new()
+        {
+            [CompactionMessageMetadata.SourceSequenceKey] = message.Sequence,
+            [CompactionMessageMetadata.FileIdsKey] = message.FileIds
+        };
+        if (string.Equals(message.Role, "summary", StringComparison.OrdinalIgnoreCase))
+        {
+            chatMessage.AdditionalProperties[Microsoft.Agents.AI.Compaction.CompactionMessageGroup.SummaryPropertyKey] = true;
+        }
         if (role == Microsoft.Extensions.AI.ChatRole.Tool
             && !string.IsNullOrEmpty(message.ToolCallId))
         {

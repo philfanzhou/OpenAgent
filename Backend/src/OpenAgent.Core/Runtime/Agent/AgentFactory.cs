@@ -105,8 +105,7 @@ internal sealed class AgentFactory
                 user,
                 cancellationToken).ConfigureAwait(false);
 
-            // 自动压缩暂时禁用（ConversationStore:EnableAutoCompaction，默认 false）：
-            // 压缩可能把当前轮 user query 一并摘要，Qwen 系服务端模板会拒绝无 user 消息的请求。
+            // Compaction runs inside the function loop before every provider call.
             IChatClient compactingClient = modelClient;
             if (_conversations.AutoCompactionEnabled)
             {
@@ -114,15 +113,12 @@ internal sealed class AgentFactory
                     profile.Model,
                     profile.Config.ContextPolicy,
                     turn.ToCapture(LlmInteractionSource.Compaction));
-                AIContextProvider compaction = _conversations.CreateCompaction(
+                compactingClient = _conversations.CreateCompactingClient(
+                    modelClient,
                     profile.Model.ContextTokens,
                     profile.Config.ContextPolicy,
                     summarizationClient,
                     turn);
-                compactingClient = modelClient
-                    .AsBuilder()
-                    .UseAIContextProviders(compaction)
-                    .Build();
             }
             // Exclusive 工具的每轮共享信号量：与 ChatClientAgent 同生命周期，
             // 作用域释放时一并销毁。

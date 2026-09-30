@@ -10,6 +10,8 @@ internal sealed class FakeChatProvider : IChatClient
     private readonly Exception? _exception;
 
     internal ChatOptions? LastOptions { get; private set; }
+    internal IReadOnlyList<ChatMessage>? LastMessages { get; private set; }
+    internal List<IReadOnlyList<ChatMessage>> Requests { get; } = [];
 
     internal FakeChatProvider(ChatResponse response)
     {
@@ -35,6 +37,8 @@ internal sealed class FakeChatProvider : IChatClient
     {
         cancellationToken.ThrowIfCancellationRequested();
         LastOptions = options;
+        LastMessages = messages.ToList();
+        Requests.Add(LastMessages);
         return _exception != null
             ? Task.FromException<ChatResponse>(_exception)
             : Task.FromResult(_response ?? throw new InvalidOperationException("No fake response was configured."));

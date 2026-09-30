@@ -15,7 +15,7 @@ internal sealed class AuditedCompactionStrategy : CompactionStrategy
 {
     private const string StrategyName = "summarization";
     private const double MinimumTokenSavingsRatio = 0.1;
-    private readonly SummarizationCompactionStrategy _strategy;
+    private readonly CompactionStrategy _strategy;
     private readonly CompactionTrigger _triggerCondition;
     private readonly string _trigger;
     private readonly string? _tenantId;
@@ -23,6 +23,9 @@ internal sealed class AuditedCompactionStrategy : CompactionStrategy
     private readonly IConversationStore _store;
     private readonly ILogger<AuditedCompactionStrategy> _logger;
     private readonly bool _recordUnchanged;
+    private int _lastAttemptBoundary = -1;
+    private int _originalStartSequence;
+    private int _originalEndSequence;
 
     internal ContextSummary? LastAudit { get; private set; }
     internal bool LastAuditRecorded { get; private set; }
@@ -35,11 +38,11 @@ internal sealed class AuditedCompactionStrategy : CompactionStrategy
             "The conversation does not contain a completed message group that MAF can compact.",
             tokenCount,
             originalHistoryRestored: false,
-            sourceEndSequence: messages.Count);
+            sourceEndSequence: Math.Max(messages.Count, messages.Select(CompactionMessageMetadata.SourceSequence).DefaultIfEmpty().Max()));
     }
 
     internal AuditedCompactionStrategy(
-        SummarizationCompactionStrategy strategy,
+        CompactionStrategy strategy,
         CompactionTrigger triggerCondition,
         string trigger,
         string? tenantId,
@@ -68,28 +71,29 @@ internal sealed class AuditedCompactionStrategy : CompactionStrategy
             .Select(group => new GroupSnapshot(group, group.IsExcluded, group.ExcludeReason))
             .ToList();
         List<ChatMessage> before = index.GetIncludedMessages().ToList();
-        int sourceEndSequence = before.Count;
+        int sourceEndSequence = CompactionMessageMetadata.StampNewMessages(index);
+        _originalStartSequence = 0;
+        _originalEndSequence = 0;
         int originalTokenCount = GetIncludedTokenCount(index);
         bool triggerFired = _triggerCondition(index);
         bool canCompact = CanCompact(index);
-            if (!triggerFired || !canCompact)
+        if (!_recordUnchanged && _lastAttemptBoundary == sourceEndSequence) return false;
+        if (!triggerFired || !canCompact)
+        {
+            if (_recordUnchanged)
             {
-                if (_recordUnchanged)
-                {
-                    string reason = !triggerFired
-                        ? "Context is already within the compaction target budget."
-                        : "There is not enough older context to compact while preserving recent messages.";
-                    await RecordSkippedAsync(
-                        reason,
-                        originalTokenCount,
-                        originalHistoryRestored: false,
-                        sourceEndSequence).ConfigureAwait(false);
-                }
-                return false;
+                string reason = !triggerFired
+                    ? "Context is already within the compaction target budget."
+                    : "There is not enough older context to compact while preserving recent messages.";
+                await RecordSkippedAsync(reason, originalTokenCount,
+                    originalHistoryRestored: false, sourceEndSequence).ConfigureAwait(false);
             }
+            return false;
+        }
 
         try
         {
+            _lastAttemptBoundary = sourceEndSequence;
             bool compacted = await _strategy.CompactAsync(
                 index,
                 logger,
@@ -138,7 +142,8 @@ internal sealed class AuditedCompactionStrategy : CompactionStrategy
                     $"Generated context was rejected because it saved {Math.Max(0, tokenSavings)} tokens; "
                     + $"at least {minimumSavings} tokens (10%) are required.",
                     originalTokenCount,
-                    originalHistoryRestored: true).ConfigureAwait(false);
+                    originalHistoryRestored: true,
+                    sourceEndSequence).ConfigureAwait(false);
                 ConversationCompactionLog.CompactionRejected(
                     _logger,
                     _conversationId ?? string.Empty,
@@ -148,6 +153,22 @@ internal sealed class AuditedCompactionStrategy : CompactionStrategy
             }
 
             string summary = generatedSummary;
+            List<ChatMessage> removed = before.Where(message => !after.Contains(message)).ToList();
+            _originalStartSequence = removed.Min(message =>
+            {
+                int sequence = 1;
+                bool wasSummary = message.AdditionalProperties?.TryGetValue(CompactionMessageGroup.SummaryPropertyKey, out object? value) == true && value is true;
+                return wasSummary ? 1 : Math.Max(1, CompactionMessageMetadata.SourceSequence(message)
+                    - AgentMessageAdapter.ToStored([message], ref sequence).Count() + 1);
+            });
+            _originalEndSequence = removed.Select(CompactionMessageMetadata.SourceSequence).Max();
+            foreach (CompactionMessageGroup group in index.Groups.Where(group =>
+                !group.IsExcluded && group.Kind == CompactionGroupKind.Summary
+                && !originalGroups.Any(snapshot => ReferenceEquals(snapshot.Group, group))))
+            {
+                foreach (ChatMessage message in group.Messages)
+                    (message.AdditionalProperties ??= [])[CompactionMessageMetadata.SourceSequenceKey] = _originalEndSequence;
+            }
             await TryRecordAsync(
                 status: "Succeeded",
                 summary,
@@ -160,6 +181,12 @@ internal sealed class AuditedCompactionStrategy : CompactionStrategy
                 compactedMessages: after,
                 sourceEndSequence: sourceEndSequence,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
+            if (!LastAuditRecorded)
+            {
+                // A transient projection must never advance past the durable one.
+                Restore(index, originalGroups);
+                return false;
+            }
             return true;
         }
         catch (OperationCanceledException)
@@ -210,6 +237,7 @@ internal sealed class AuditedCompactionStrategy : CompactionStrategy
             tokenCount: tokenCount,
             originalHistoryRestored,
             compactedMessages: null,
+            sourceEndSequence: sourceEndSequence,
             cancellationToken: CancellationToken.None);
 
     private async Task TryRecordAsync(
@@ -225,6 +253,8 @@ internal sealed class AuditedCompactionStrategy : CompactionStrategy
         int sourceEndSequence = 0,
         CancellationToken cancellationToken = default)
     {
+        LastAudit = null;
+        LastAuditRecorded = false;
         if (string.IsNullOrWhiteSpace(_tenantId)
             || string.IsNullOrWhiteSpace(_conversationId))
         {
@@ -256,17 +286,15 @@ internal sealed class AuditedCompactionStrategy : CompactionStrategy
                 Error = error,
                 LastCompressedAt = DateTimeOffset.UtcNow,
                 CompressedMessageCount = compressedMessageCount,
-                OriginalStartSequence = rangeCount > 0 ? 1 : 0,
-                OriginalEndSequence = rangeCount,
+                OriginalStartSequence = _originalStartSequence > 0 ? _originalStartSequence : rangeCount > 0 ? 1 : 0,
+                OriginalEndSequence = _originalEndSequence > 0 ? _originalEndSequence : rangeCount,
                 OriginalTokenCount = originalTokenCount,
                 TokenCount = tokenCount,
                 OriginalHistoryRestored = originalHistoryRestored,
-                // Mid-run audits of a first turn read a record that is not persisted
-                // yet (MessageCount 0); without the fallback the summary would sort to
-                // the very top of the timeline.
-                SourceEndSequence = conversation?.MessageCount > 0
-                    ? conversation.MessageCount
-                    : sourceEndSequence,
+                // Raw storage positions include messages produced during this run,
+                // even before the final append commits them.
+                SourceEndSequence = sourceEndSequence,
+                ProjectionVersion = 1,
                 CompactedMessages = ToStored(compactedMessages)
             };
             LastAudit = audit;
@@ -300,8 +328,18 @@ internal sealed class AuditedCompactionStrategy : CompactionStrategy
             return [];
         }
 
+        List<ConversationMessage> result = [];
         int sequence = 1;
-        return AgentMessageAdapter.ToStored(messages, ref sequence).ToList();
+        foreach (ChatMessage message in messages)
+        {
+            IReadOnlyList<string> fileIds = message.AdditionalProperties?.TryGetValue(
+                CompactionMessageMetadata.FileIdsKey, out object? ids) == true
+                && ids is IReadOnlyList<string> files ? files : [];
+            int source = CompactionMessageMetadata.SourceSequence(message);
+            result.AddRange(AgentMessageAdapter.ToStored([message], ref sequence)
+                .Select(row => row with { Sequence = source > 0 ? source : row.Sequence, FileIds = fileIds }));
+        }
+        return result;
     }
 
     private static int CountRemoved(
@@ -309,15 +347,23 @@ internal sealed class AuditedCompactionStrategy : CompactionStrategy
         IReadOnlyList<ChatMessage> after)
     {
         var retained = new HashSet<ChatMessage>(after, ReferenceComparer.Instance);
-        return before.Count(message => !retained.Contains(message));
+        return before.Where(message => !retained.Contains(message)).Sum(message =>
+        {
+            int sequence = 1;
+            return AgentMessageAdapter.ToStored([message], ref sequence).Count();
+        });
     }
 
     private static int GetIncludedTokenCount(CompactionMessageIndex index) => index.Groups
         .Where(group => !group.IsExcluded)
         .Sum(group => group.TokenCount);
 
-    private bool CanCompact(CompactionMessageIndex index) =>
-        index.IncludedNonSystemGroupCount > _strategy.MinimumPreservedGroups;
+    private bool CanCompact(CompactionMessageIndex index) => _strategy switch
+    {
+        TurnCompactionStrategy turns => turns.CanCompact(index),
+        SummarizationCompactionStrategy summary => index.IncludedNonSystemGroupCount > summary.MinimumPreservedGroups,
+        _ => index.IncludedNonSystemGroupCount > 1
+    };
 
     private static string? ReadSummary(CompactionMessageIndex index) =>
         index.Groups

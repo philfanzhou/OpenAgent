@@ -22,7 +22,9 @@ export function useConversationState(options: ConversationStateOptions) {
   const conversations = ref<ConversationRecord[]>([])
   const selectedConversation = ref<ConversationRecord | null>(null)
   const conversationDetailRequests = shallowReactive(new Map<string, string>())
-  const compactingConversation = ref(false)
+  const compactingConversationIds = shallowReactive(new Set<string>())
+  const isCompactingConversation = (id?: string) => !!id && compactingConversationIds.has(id)
+  const compactingConversation = computed(() => isCompactingConversation(selectedConversation.value?.conversationId))
 
   const currentMessages = computed(() => selectedConversation.value?.messages || [])
   const streamingConversationIds = computed(() => options.streams.activeConversationIds())
@@ -123,11 +125,25 @@ export function useConversationState(options: ConversationStateOptions) {
 
   async function compactConversation(): Promise<void> {
     const conversation = selectedConversation.value
-    if (!conversation || !options.selectedLlmProfileId.value || selectedConversationStreaming.value) return
-    compactingConversation.value = true
+    if (!conversation || !options.selectedLlmProfileId.value || selectedConversationStreaming.value
+      || isCompactingConversation(conversation.conversationId)
+      || conversationDetailRequests.has(conversation.conversationId)) return
+    const conversationId = conversation.conversationId
+    compactingConversationIds.add(conversationId)
     try {
       const summary = await api.compactConversation(conversation.conversationId, options.selectedLlmProfileId.value)
-      conversation.contextSummaries = [...(conversation.contextSummaries || []), summary]
+      // Selection/list refresh may replace the object while the request is in flight.
+      // Merge by stable compression ID into the currently retained record.
+      const current = selectedConversation.value?.conversationId === conversationId ? selectedConversation.value
+        : conversations.value.find(item => item.conversationId === conversationId)
+      if (current) replaceConversation({ ...current, contextSummaries: [...(current.contextSummaries || [])
+        .filter(item => item.compressionId !== summary.compressionId), summary] }, conversationId)
+      try {
+        const persisted = await api.getConversation(conversationId)
+        if (conversations.value.some(item => item.conversationId === conversationId)) replaceConversation(persisted, conversationId)
+      } catch (error) {
+        options.notifyError(error)
+      }
       if (summary.status === 'Succeeded') ElMessage.success('会话上下文压缩已完成')
       else if (summary.status === 'Skipped') ElMessage.info('本次压缩未执行，原始会话保持不变')
       else ElMessage.warning('压缩失败，原始会话历史已恢复')
@@ -135,12 +151,12 @@ export function useConversationState(options: ConversationStateOptions) {
       options.notifyError(error)
       try {
         const persisted = await api.getConversation(conversation.conversationId)
-        replaceConversation(persisted, conversation.conversationId)
+        if (conversations.value.some(item => item.conversationId === conversationId)) replaceConversation(persisted, conversationId)
       } catch {
         // The original error remains the actionable result.
       }
     } finally {
-      compactingConversation.value = false
+      compactingConversationIds.delete(conversationId)
     }
   }
 
@@ -159,6 +175,7 @@ export function useConversationState(options: ConversationStateOptions) {
     loadingConversation,
     selectedConversationStreaming,
     compactingConversation,
+    isCompactingConversation,
     conversationStatusText,
     currentUsageSummary,
     mergeConversationList,

@@ -19,6 +19,7 @@ interface ChatStreamingOptions {
   conversations: Ref<ConversationRecord[]>
   selectedConversation: Ref<ConversationRecord | null>
   selectedConversationStreaming: ComputedRef<boolean>
+  isCompactingConversation?: (id?: string) => boolean
   pendingFiles: Ref<PendingFile[]>
   streams: ReturnType<typeof useConversationStreams>
   hydrateFilePreviews: (conversation: ConversationRecord) => Promise<void>
@@ -43,6 +44,7 @@ export function useChatStreaming(options: ChatStreamingOptions) {
   async function send(): Promise<void> {
     const content = message.value.trim()
     const hasFiles = options.pendingFiles.value.length > 0
+    if (options.isCompactingConversation?.(options.selectedConversation.value?.conversationId)) return
     if ((!content && !hasFiles) || !options.selectedAgentId.value || !options.selectedLlmProfileId.value || options.selectedConversationStreaming.value) return
     if (options.pendingFiles.value.some(item => item.state !== 'ready' || !item.asset)) {
       options.notifyError(new Error('请等待文件上传完成，或移除上传失败的文件后再发送'))

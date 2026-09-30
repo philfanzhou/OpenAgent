@@ -7,6 +7,34 @@ namespace OpenAgent.Core.Tests.Conversation;
 public sealed class ConversationSessionStoreTests
 {
     [Fact]
+    public void ResolveModelHistory_LegacyAutomaticProjection_RemovesPreviouslyUncommittedOverlap()
+    {
+        ConversationRecord record = RecordWithMessages(4);
+        record.ContextSummaries.Add(new ContextSummary
+        {
+            CompressionId = "legacy", Strategy = "summarization", Trigger = "Automatic",
+            Status = "Succeeded", Summary = "legacy state", SourceEndSequence = 2,
+            CompactedMessages = [Message(1, "summary", "legacy state"), record.Messages[2]]
+        });
+        Assert.Equal(["legacy state", "message-3", "message-4"],
+            ConversationSessionStore.ResolveModelHistory(record).Select(message => message.Content));
+    }
+
+    [Fact]
+    public void ResolveModelHistory_RepeatedTextAfterBoundary_PreservesNewMessage()
+    {
+        ConversationRecord record = RecordWithMessages(4);
+        record.Messages[2] = Message(3, "user", "repeat");
+        record.ContextSummaries.Add(new ContextSummary
+        {
+            CompressionId = "compressed", Strategy = "summarization", Trigger = "Automatic",
+            Status = "Succeeded", Summary = "state", SourceEndSequence = 2, ProjectionVersion = 1,
+            CompactedMessages = [Message(2, "summary", "state"), Message(2, "user", "repeat")]
+        });
+        Assert.Equal(2, ConversationSessionStore.ResolveModelHistory(record).Count(message => message.Content == "repeat"));
+    }
+
+    [Fact]
     public void ResolveModelHistory_ManualCompression_UsesProjectionAndAppendsNewMessages()
     {
         ConversationRecord record = RecordWithMessages(8);
