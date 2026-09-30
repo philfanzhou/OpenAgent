@@ -9,7 +9,8 @@ namespace OpenAgent.Core.Conversation;
 /// </summary>
 internal sealed class OutputTokenLimitedChatClient(
     IChatClient innerClient,
-    int maxOutputTokens) : DelegatingChatClient(innerClient)
+    int maxOutputTokens,
+    int maxGenerationTokens = int.MaxValue) : DelegatingChatClient(innerClient)
 {
     // Reasoning models may consume the request's generation allowance before
     // emitting visible summary text. This is generation headroom only; the
@@ -20,9 +21,9 @@ internal sealed class OutputTokenLimitedChatClient(
         ? maxOutputTokens
         : throw new ArgumentOutOfRangeException(nameof(maxOutputTokens));
 
-    internal int GenerationTokenLimit => Math.Max(
+    internal int GenerationTokenLimit => Math.Min(maxGenerationTokens, Math.Max(
         MinimumGenerationTokens,
-        MaxOutputTokens * 4);
+        MaxOutputTokens * 4));
 
     public override async Task<ChatResponse> GetResponseAsync(
         IEnumerable<ChatMessage> messages,

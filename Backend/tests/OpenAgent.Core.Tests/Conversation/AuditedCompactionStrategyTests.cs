@@ -7,11 +7,42 @@ using OpenAgent.Core.Conversation;
 using OpenAgent.Core.Conversation.Store;
 using OpenAgent.Core.Tests.TestDoubles;
 using Xunit;
+using Moq;
 
 namespace OpenAgent.Core.Tests.Conversation;
 
 public sealed class AuditedCompactionStrategyTests
 {
+    [Fact]
+    public async Task CompactAsync_AuditWriteFails_RestoresOriginalProjection()
+    {
+        var store = new Mock<IConversationStore>();
+        store.Setup(value => value.GetRecordAsync("tenant-1", "conversation-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ConversationRecord { ConversationId = "conversation-1", TenantId = "tenant-1", UserId = "user-1", MessageCount = 6 });
+        store.Setup(value => value.RecordCompressionAsync("tenant-1", "conversation-1", It.IsAny<ContextSummary>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+        var audited = CreateAudited(store.Object, SummaryStrategy("small state"), recordUnchanged: false);
+        List<ChatMessage> original = Messages(6);
+
+        IEnumerable<ChatMessage> result = await CompactionProvider.CompactAsync(audited, original);
+
+        Assert.Equal(original, result);
+        Assert.False(audited.LastAuditRecorded);
+    }
+
+    [Fact]
+    public async Task CompactAsync_CancelledSummary_PropagatesCancellationWithoutSuccessAudit()
+    {
+        InMemoryConversationStore store = await CreateStoreAsync(messageCount: 6);
+        var strategy = new SummarizationCompactionStrategy(new FakeChatProvider(new OperationCanceledException()),
+            CompactionTriggers.Always, minimumPreservedGroups: 1);
+        var audited = CreateAudited(store, strategy, recordUnchanged: false);
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() => CompactionProvider.CompactAsync(audited, Messages(6)));
+
+        Assert.Empty((await store.GetRecordAsync("tenant-1", "conversation-1"))!.ContextSummaries);
+    }
+
     [Fact]
     public async Task CompactAsync_TriggerFires_RecordsSuccessfulAutomaticCompression()
     {

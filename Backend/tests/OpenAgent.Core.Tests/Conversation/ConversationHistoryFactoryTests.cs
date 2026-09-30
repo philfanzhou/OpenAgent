@@ -18,13 +18,13 @@ public sealed class ConversationHistoryFactoryTests
     {
         ConversationHistoryFactory factory = CreateFactory();
 
-        SummarizationCompactionStrategy strategy = factory.CreateStrategy(
+        TurnCompactionStrategy strategy = factory.CreateStrategy(
             contextTokens: 1_000,
             policy: null,
             summarizationClient: new FakeChatProvider(new InvalidOperationException("not called")),
             force: false,
             trigger: out _);
-        Assert.Equal(2, strategy.MinimumPreservedGroups);
+        Assert.Equal(2, strategy.PreserveRecentTurns);
         Assert.IsType<OutputTokenLimitedChatClient>(strategy.ChatClient);
         Assert.Contains("dedicated compression call", strategy.SummarizationPrompt, StringComparison.Ordinal);
         Assert.Contains("HARD LIMIT: the summary must not exceed 200 tokens", strategy.SummarizationPrompt, StringComparison.Ordinal);
@@ -48,7 +48,7 @@ public sealed class ConversationHistoryFactoryTests
     {
         ConversationHistoryFactory factory = CreateFactory();
         var client = new CapturingChatClient("short summary");
-        SummarizationCompactionStrategy strategy = factory.CreateStrategy(
+        TurnCompactionStrategy strategy = factory.CreateStrategy(
             contextTokens: 1_000,
             policy: null,
             summarizationClient: client,
@@ -58,13 +58,17 @@ public sealed class ConversationHistoryFactoryTests
         IEnumerable<ChatMessage> result = await CompactionProvider.CompactAsync(
             strategy,
             [
+                new ChatMessage(ChatRole.User, "older request"),
+                new ChatMessage(ChatRole.Assistant, "older response"),
+                new ChatMessage(ChatRole.User, "second request"),
+                new ChatMessage(ChatRole.Assistant, "second response"),
                 new ChatMessage(ChatRole.User, "short conversation that the user explicitly requested to compact"),
                 new ChatMessage(ChatRole.Assistant, "short completed reply")
             ],
             NullLogger.Instance,
             CancellationToken.None);
 
-        Assert.Equal(0, strategy.MinimumPreservedGroups);
+        Assert.Equal(2, strategy.PreserveRecentTurns);
         Assert.NotNull(client.Options);
         Assert.Contains(result, message => message.Text.Contains("short summary", StringComparison.Ordinal));
     }
@@ -107,12 +111,12 @@ public sealed class ConversationHistoryFactoryTests
     }
 
     [Fact]
-    public void AutoCompaction_DisabledByDefault()
+    public void AutoCompaction_EnabledByDefault()
     {
         ConversationHistoryFactory factory = CreateFactory();
 
-        Assert.False(new ConversationStoreOptions().EnableAutoCompaction);
-        Assert.False(factory.AutoCompactionEnabled);
+        Assert.True(new ConversationStoreOptions().EnableAutoCompaction);
+        Assert.True(factory.AutoCompactionEnabled);
     }
 
     [Fact]
@@ -125,7 +129,7 @@ public sealed class ConversationHistoryFactoryTests
 
     private static ConversationHistoryFactory CreateFactory(
         int defaultContextTokens = 1_000,
-        bool enableAutoCompaction = false) =>
+        bool enableAutoCompaction = true) =>
         new(
             store: null!,
             Options.Create(new ConversationStoreOptions

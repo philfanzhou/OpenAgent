@@ -71,7 +71,7 @@ internal sealed class ConversationCompactionService(
             profile.Model,
             profile.Config.ContextPolicy,
             capture);
-        SummarizationCompactionStrategy strategy = histories.CreateStrategy(
+        TurnCompactionStrategy strategy = histories.CreateStrategy(
             profile.Model.ContextTokens,
             profile.Config.ContextPolicy,
             summarizationClient,
@@ -91,6 +91,7 @@ internal sealed class ConversationCompactionService(
             .Where(message => message != null)
             .Cast<ChatMessage>()
             .ToList();
+        messages = PlatformChatHistory.RepairToolHistory(messages);
         await CompactionProvider.CompactAsync(
             audited,
             messages,

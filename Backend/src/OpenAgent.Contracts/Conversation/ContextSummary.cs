@@ -80,6 +80,9 @@ public sealed class ContextSummary
     /// </summary>
     public int SourceEndSequence { get; init; }
 
+    /// <summary>1 uses raw storage sequences; 0 denotes legacy projections with inferred boundaries.</summary>
+    public int ProjectionVersion { get; init; }
+
     /// <summary>
     /// Compacted model-context projection. Full conversation messages remain authoritative.
     /// </summary>

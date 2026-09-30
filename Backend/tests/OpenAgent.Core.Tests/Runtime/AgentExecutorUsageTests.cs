@@ -302,6 +302,8 @@ public class AgentExecutorUsageTests
     {
         internal AgentExecutor Executor { get; } = executor;
         internal InMemoryConversationStore Store { get; } = store;
+        internal T Resolve<T>() where T : notnull => scope.ServiceProvider.GetRequiredService<T>();
+        internal AsyncServiceScope CreateScope() => serviceProvider.CreateAsyncScope();
 
         public async ValueTask DisposeAsync()
         {
