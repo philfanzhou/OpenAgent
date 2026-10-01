@@ -1,3 +1,4 @@
+using OpenAgent.Contracts.Capabilities;
 using System.Text.Json;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.Options;
@@ -108,27 +109,17 @@ internal sealed class SkillScriptRunner(
             CodeExecutionRequest request = await BuildRequestAsync(
                 skillRoot, scriptFullPath, scope, arguments, cancellationToken).ConfigureAwait(false);
             CodeExecutionResult result = await executor.ExecuteAsync(request, cancellationToken).ConfigureAwait(false);
-            ExecutionLimits.ValidateFiles(result.Files);
-            CodeExecutionArtifacts.PublishResult publish = await CodeExecutionArtifacts.PublishAsync(
-                result, files, scope, cancellationToken).ConfigureAwait(false);
-            return JsonSerializer.Serialize(new
-            {
-                result.ExecutionId, result.ExitCode, result.TimedOut, result.Stdout, result.Stderr,
-                files = publish.Files,
-                skippedFiles = publish.Skipped.Select(skipped => new { skipped.Name, skipped.Reason }).ToArray()
-            }, JsonOptions);
+            ToolResult outcome = await RunnerToolResult.CreateAsync(result, files, scope, cancellationToken).ConfigureAwait(false);
+            return outcome.Content;
         }
-        catch (Exception exception) when (exception is ArgumentException or JsonException or AgentException)
+        catch (Exception exception) when (exception is ArgumentException or JsonException or AgentException
+            or HttpRequestException or InvalidOperationException)
         {
-            return JsonSerializer.Serialize(new { error = exception.Message }, JsonOptions);
+            return RunnerToolResult.FromException(exception).Content;
         }
-        catch (Exception exception) when (exception is HttpRequestException or InvalidOperationException)
+        catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
         {
-            return "{\"error\":\"The isolated Runner is unavailable or returned an invalid result. No host execution fallback is permitted.\"}";
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            return "{\"error\":\"The Runner request timed out.\"}";
+            return RunnerToolResult.FromException(exception).Content;
         }
     }
 

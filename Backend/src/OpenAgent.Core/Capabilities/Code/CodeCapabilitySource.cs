@@ -119,30 +119,19 @@ internal sealed class CodeCapabilitySource(
             }
             ExecutionLimits.Validate(request);
             CodeExecutionResult result = await executor.ExecuteAsync(request, cancellationToken).ConfigureAwait(false);
-            ExecutionLimits.ValidateFiles(result.Files);
-            CodeExecutionArtifacts.PublishResult publish = await CodeExecutionArtifacts.PublishAsync(
-                result, files, scope, cancellationToken).ConfigureAwait(false);
-            return JsonSerializer.Serialize(new
-            {
-                result.ExecutionId, result.ExitCode, result.TimedOut, result.Stdout, result.Stderr,
-                result.SandboxReset, files = publish.Files,
-                skippedFiles = publish.Skipped.Select(skipped => new { skipped.Name, skipped.Reason }).ToArray()
-            }, JsonOptions);
+            return await RunnerToolResult.CreateAsync(result, files, scope, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is ArgumentException or JsonException or AgentException)
         {
-            return ToolResult.Error(exception.Message, "invalid_arguments");
+            return RunnerToolResult.FromException(exception);
         }
         catch (Exception exception) when (exception is HttpRequestException or InvalidOperationException)
         {
-            return ToolResult.Error(
-                "The isolated Runner is unavailable or returned an invalid result. No host execution fallback is permitted.",
-                "runner_unavailable",
-                hint: "Retry after a short wait; if it persists, finish without code execution.");
+            return RunnerToolResult.FromException(exception);
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
         {
-            return ToolResult.Error("The Runner request timed out.", "tool_timeout", timedOut: true);
+            return RunnerToolResult.FromException(exception);
         }
     }
 

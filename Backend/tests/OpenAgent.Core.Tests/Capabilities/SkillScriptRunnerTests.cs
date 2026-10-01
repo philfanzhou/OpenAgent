@@ -41,6 +41,16 @@ public class SkillScriptRunnerTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task RunAsync_ReportsSandboxResetFromRunner()
+    {
+        _fixture.Executor.Results.Enqueue(new CodeExecutionResult { SandboxReset = true });
+        string scriptPath = await WriteScriptAsync("analyze.py", "print(1)\n");
+        object? result = await _fixture.RunAsync(scriptPath, null);
+        using JsonDocument document = JsonDocument.Parse(Assert.IsType<string>(result));
+        Assert.True(document.RootElement.GetProperty("sandboxReset").GetBoolean());
+    }
+
+    [Fact]
     public async Task RunAsync_HostOptionDisabled_ThrowsWithoutRunnerCall()
     {
         var fixture = new Fixture(enabled: false);
