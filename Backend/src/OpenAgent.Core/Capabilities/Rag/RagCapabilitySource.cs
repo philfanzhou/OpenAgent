@@ -1,4 +1,5 @@
 using System.Text;
+using System.Globalization;
 using Microsoft.Extensions.Logging;
 using OpenAgent.Core.Abstract;
 using OpenAgent.Contracts.Capabilities;
@@ -69,17 +70,23 @@ internal sealed class RagCapabilitySource(
         string query = arguments.TryGetValue("query", out object? queryValue)
             ? queryValue?.ToString() ?? string.Empty
             : string.Empty;
-        int limit = arguments.TryGetValue("limit", out object? limitValue)
-            && int.TryParse(limitValue?.ToString(), out int parsedLimit)
-                ? parsedLimit
-                : 3;
-
-        if (string.IsNullOrEmpty(query))
+        if (string.IsNullOrWhiteSpace(query))
         {
             return ToolResult.Error(
                 "The 'query' parameter is required.",
                 "invalid_arguments",
                 hint: "Provide a non-empty search query.");
+        }
+
+        int limit = 3;
+        if (arguments.TryGetValue("limit", out object? limitValue)
+            && (!int.TryParse(limitValue?.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out limit)
+                || limit is < 1 or > 10))
+        {
+            return ToolResult.Error(
+                "The 'limit' parameter must be an integer between 1 and 10.",
+                "invalid_arguments",
+                hint: "Omit limit to use 3 results, or provide an integer from 1 to 10.");
         }
 
         try
