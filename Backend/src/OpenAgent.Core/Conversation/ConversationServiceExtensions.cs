@@ -19,14 +19,14 @@ internal static class ConversationServiceExtensions
         services.Configure<LlmInteractionOptions>(
             configuration.GetSection(LlmInteractionOptions.SectionName));
         services.TryAddSingleton<IConversationLock, InMemoryConversationLock>();
-        services.AddScoped<ConversationSessionStore>();
-        services.AddScoped<ConversationAgentResolver>();
-        services.AddScoped<PlatformChatHistoryFactory>();
-        services.AddScoped<IPlatformChatHistoryFactory>(serviceProvider =>
+        services.TryAddScoped<ConversationSessionStore>();
+        services.TryAddScoped<ConversationAgentResolver>();
+        services.TryAddScoped<PlatformChatHistoryFactory>();
+        services.TryAddScoped<IPlatformChatHistoryFactory>(serviceProvider =>
             serviceProvider.GetRequiredService<PlatformChatHistoryFactory>());
-        services.AddScoped<ConversationHistoryFactory>();
-        services.AddScoped<IConversationCompactionService, ConversationCompactionService>();
-        services.AddScoped<IConversationQueryService>(CreateQueryService);
+        services.TryAddScoped<ConversationHistoryFactory>();
+        services.TryAddScoped<IConversationCompactionService, ConversationCompactionService>();
+        services.TryAddScoped<IConversationQueryService>(CreateQueryService);
         return services;
     }
 

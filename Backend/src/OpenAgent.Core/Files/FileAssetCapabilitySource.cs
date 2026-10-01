@@ -123,8 +123,8 @@ internal sealed class FileAssetCapabilitySource(
         IReadOnlyDictionary<string, object?> arguments,
         CancellationToken cancellationToken)
     {
-        string? fileId = ReadString(arguments, "fileId");
-        string? objectKey = ReadString(arguments, "objectKey");
+        string? fileId = ToolArguments.ReadString(arguments, "fileId");
+        string? objectKey = ToolArguments.ReadString(arguments, "objectKey");
         if (string.IsNullOrWhiteSpace(fileId) == string.IsNullOrWhiteSpace(objectKey))
         {
             return ToolResult.Error(
@@ -269,7 +269,7 @@ internal sealed class FileAssetCapabilitySource(
         IReadOnlyDictionary<string, object?> arguments,
         CancellationToken cancellationToken)
     {
-        string? fileId = ReadString(arguments, "fileId");
+        string? fileId = ToolArguments.ReadString(arguments, "fileId");
         if (string.IsNullOrWhiteSpace(fileId))
         {
             return ToolResult.Error(
@@ -283,7 +283,7 @@ internal sealed class FileAssetCapabilitySource(
                 "The file execution context is unavailable for this request.",
                 UnavailableContext);
         }
-        string? modeRaw = ReadString(arguments, "mode");
+        string? modeRaw = ToolArguments.ReadString(arguments, "mode");
         if (modeRaw != null && !FileShareModeParser.TryParse(modeRaw, out _))
         {
             return ToolResult.Error(
@@ -291,7 +291,7 @@ internal sealed class FileAssetCapabilitySource(
                 InvalidArguments,
                 hint: "Allowed values: temporary, singleUse, longTerm.");
         }
-        string? audienceRaw = ReadString(arguments, "audience");
+        string? audienceRaw = ToolArguments.ReadString(arguments, "audience");
         if (audienceRaw != null && !FileShareAudienceParser.TryParse(audienceRaw, out _))
         {
             return ToolResult.Error(
@@ -299,7 +299,7 @@ internal sealed class FileAssetCapabilitySource(
                 InvalidArguments,
                 hint: "Allowed values: mcp, user.");
         }
-        int? expiresInSeconds = ReadInt32(arguments, "expiresInSeconds");
+        int? expiresInSeconds = ToolArguments.ReadInt(arguments, "expiresInSeconds");
         if (expiresInSeconds is < 1)
         {
             return ToolResult.Error(
@@ -353,18 +353,12 @@ internal sealed class FileAssetCapabilitySource(
         }
     }
 
-    private static int? ReadInt32(IReadOnlyDictionary<string, object?> arguments, string name)
-    {
-        string? value = ReadString(arguments, name);
-        return value != null && int.TryParse(value, out int parsed) ? parsed : null;
-    }
-
     private async Task<ToolResult> WriteAsync(
         IReadOnlyDictionary<string, object?> arguments,
         CancellationToken cancellationToken)
     {
-        string? fileName = ReadString(arguments, "fileName");
-        string? content = ReadString(arguments, "content");
+        string? fileName = ToolArguments.ReadString(arguments, "fileName");
+        string? content = ToolArguments.ReadString(arguments, "content");
         if (string.IsNullOrWhiteSpace(fileName))
         {
             return ToolResult.Error(
@@ -379,7 +373,7 @@ internal sealed class FileAssetCapabilitySource(
         }
         // 不默认 text/plain：伪造的具体类型会与扩展名一致性校验冲突（如 .json + text/plain 被拒）。
         // 留空让服务端按扩展名推断规范化类型。
-        string? mediaType = ReadString(arguments, "mediaType");
+        string? mediaType = ToolArguments.ReadString(arguments, "mediaType");
         if (executionContext.Scope == null)
         {
             return ToolResult.Error(
@@ -420,14 +414,14 @@ internal sealed class FileAssetCapabilitySource(
         IReadOnlyDictionary<string, object?> arguments,
         CancellationToken cancellationToken)
     {
-        string? url = ReadString(arguments, "url");
+        string? url = ToolArguments.ReadString(arguments, "url");
         if (string.IsNullOrWhiteSpace(url))
         {
             return ToolResult.Error(
                 "'url' is a required argument; provide the public HTTP(S) address of the file.",
                 InvalidArguments);
         }
-        string? workspacePath = ReadString(arguments, "workspacePath");
+        string? workspacePath = ToolArguments.ReadString(arguments, "workspacePath");
         FileAssetScope? scope = executionContext.Scope;
         if (scope == null || string.IsNullOrWhiteSpace(scope.ConversationId))
         {
@@ -526,7 +520,7 @@ internal sealed class FileAssetCapabilitySource(
         IReadOnlyDictionary<string, object?> arguments,
         CancellationToken cancellationToken)
     {
-        string? outputName = ReadString(arguments, "outputName");
+        string? outputName = ToolArguments.ReadString(arguments, "outputName");
         if (string.IsNullOrWhiteSpace(outputName))
         {
             return ToolResult.Error(
@@ -662,9 +656,6 @@ internal sealed class FileAssetCapabilitySource(
             return ToolResult.Error(exception.Message, InvalidRequest);
         }
     }
-
-    private static string? ReadString(IReadOnlyDictionary<string, object?> arguments, string name) =>
-        arguments.TryGetValue(name, out object? value) ? value?.ToString() : null;
 
     private static IReadOnlyList<string> ReadStrings(
         IReadOnlyDictionary<string, object?> arguments,
