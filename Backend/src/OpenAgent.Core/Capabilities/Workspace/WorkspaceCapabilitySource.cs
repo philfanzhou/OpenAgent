@@ -338,21 +338,7 @@ internal sealed class WorkspaceCapabilitySource(
             "unavailable_context");
 
     /// <summary>Runner 领域错误 → 可行动信封：409/404/400 的 detail 本身就是修正指引。</summary>
-    private static ToolResult MapRunnerError(Exception exception) => exception switch
-    {
-        WorkspaceOperationException error when error.StatusCode is 400 or 404 or 409 or 413 =>
-            ToolResult.Error(error.Message, $"workspace_{error.StatusCode}"),
-        WorkspaceOperationException => ToolResult.Error(
-            "The isolated Runner rejected the workspace operation.",
-            "runner_unavailable",
-            hint: "Retry after a short wait; if it persists, finish without workspace access."),
-        OperationCanceledException => ToolResult.Error(
-            "The Runner workspace request timed out.", "tool_timeout", timedOut: true),
-        _ => ToolResult.Error(
-            "The isolated Runner is unavailable; no host fallback is permitted.",
-            "runner_unavailable",
-            hint: "Retry after a short wait; if it persists, finish without workspace access.")
-    };
+    private static ToolResult MapRunnerError(Exception exception) => RunnerToolResult.FromException(exception);
 
     private static string? ReadString(IReadOnlyDictionary<string, object?> arguments, string name) =>
         arguments.TryGetValue(name, out object? value) ? value?.ToString() : null;

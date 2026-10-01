@@ -14,35 +14,8 @@ internal sealed class RunnerClient(HttpClient http, IOptions<CodeExecutionOption
     public async Task<CodeExecutionResult> ExecuteAsync(CodeExecutionRequest request, CancellationToken cancellationToken)
     {
         ExecutionLimits.Validate(request);
-        CodeExecutionOptions settings = options.Value;
-        if (!settings.Enabled || !Uri.TryCreate(settings.Endpoint, UriKind.Absolute, out Uri? endpoint)
-            || endpoint.Scheme is not ("http" or "https") || string.IsNullOrWhiteSpace(settings.ApiKey))
-        {
-            throw new InvalidOperationException("The isolated code Runner is not configured.");
-        }
-        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        deadline.CancelAfter(TimeSpan.FromSeconds(settings.RequestTimeoutSeconds));
-        using var message = new HttpRequestMessage(HttpMethod.Post, new Uri(endpoint, "/api/v1/execute"));
-        message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", settings.ApiKey);
-        message.Content = JsonContent.Create(request);
-        using HttpResponseMessage response = await http.SendAsync(
-            message, HttpCompletionOption.ResponseHeadersRead, deadline.Token).ConfigureAwait(false);
-        response.EnsureSuccessStatusCode();
-        await using Stream source = await response.Content.ReadAsStreamAsync(deadline.Token).ConfigureAwait(false);
-        await using var buffer = new MemoryStream();
-        byte[] chunk = new byte[8192];
-        int count;
-        while ((count = await source.ReadAsync(chunk, deadline.Token).ConfigureAwait(false)) > 0)
-        {
-            if (buffer.Length + count > ExecutionLimits.MaxWireBytes)
-            {
-                throw new InvalidOperationException("The code Runner response exceeds the wire limit.");
-            }
-            await buffer.WriteAsync(chunk.AsMemory(0, count), deadline.Token).ConfigureAwait(false);
-        }
-        CodeExecutionResult result = JsonSerializer.Deserialize<CodeExecutionResult>(
-            buffer.ToArray(), JsonOptions)
-            ?? throw new InvalidOperationException("The code Runner returned an empty result.");
+        CodeExecutionResult result = await PostAsync<CodeExecutionResult>(
+            "execute", request, workspace: false, cancellationToken).ConfigureAwait(false);
         ExecutionLimits.ValidateFiles(result.Files);
         if (result.Stdout == null || result.Stderr == null
             || result.Stdout.Length > ExecutionLimits.MaxLogCharacters || result.Stderr.Length > ExecutionLimits.MaxLogCharacters)
@@ -97,10 +70,12 @@ internal sealed class RunnerClient(HttpClient http, IOptions<CodeExecutionOption
             new WorkspaceUploadRequest { Path = path, ContentBase64 = Convert.ToBase64String(content) },
             cancellationToken);
 
-    private async Task<TResult> PostWorkspaceAsync<TResult>(
-        string relativeUrl,
-        object request,
-        CancellationToken cancellationToken)
+    private Task<TResult> PostWorkspaceAsync<TResult>(
+        string relativeUrl, object request, CancellationToken cancellationToken) =>
+        PostAsync<TResult>(relativeUrl, request, workspace: true, cancellationToken);
+
+    private async Task<TResult> PostAsync<TResult>(
+        string relativeUrl, object request, bool workspace, CancellationToken cancellationToken)
     {
         CodeExecutionOptions settings = options.Value;
         if (!settings.Enabled || !Uri.TryCreate(settings.Endpoint, UriKind.Absolute, out Uri? endpoint)
@@ -108,36 +83,54 @@ internal sealed class RunnerClient(HttpClient http, IOptions<CodeExecutionOption
         {
             throw new InvalidOperationException("The isolated Runner is not configured.");
         }
-        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(TimeSpan.FromSeconds(settings.RequestTimeoutSeconds));
-        using var message = new HttpRequestMessage(HttpMethod.Post, new Uri(endpoint, $"/api/v1/{relativeUrl}"));
+        using HttpRequestMessage message = new(HttpMethod.Post, new Uri(endpoint, $"/api/v1/{relativeUrl}"));
         message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", settings.ApiKey);
         message.Content = JsonContent.Create(request);
         using HttpResponseMessage response = await http.SendAsync(
             message, HttpCompletionOption.ResponseHeadersRead, deadline.Token).ConfigureAwait(false);
+        if (!workspace)
+        {
+            response.EnsureSuccessStatusCode();
+        }
+        byte[] content = await ReadBoundedAsync(response, deadline.Token).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
         {
-            string detail = await ReadProblemDetailAsync(response, deadline.Token).ConfigureAwait(false);
-            throw new WorkspaceOperationException((int)response.StatusCode, detail);
+            throw new WorkspaceOperationException((int)response.StatusCode, ReadProblemDetail(content));
         }
-        return await response.Content.ReadFromJsonAsync<TResult>(JsonOptions, deadline.Token).ConfigureAwait(false)
-            ?? throw new InvalidOperationException("The Runner returned an empty workspace result.");
+        return JsonSerializer.Deserialize<TResult>(content, JsonOptions)
+            ?? throw new InvalidOperationException("The Runner returned an empty result.");
     }
 
-    private static async Task<string> ReadProblemDetailAsync(
-        HttpResponseMessage response, CancellationToken cancellationToken)
+    private static async Task<byte[]> ReadBoundedAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        await using Stream source = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        await using MemoryStream buffer = new();
+        byte[] chunk = new byte[8192];
+        int count;
+        while ((count = await source.ReadAsync(chunk, cancellationToken).ConfigureAwait(false)) > 0)
+        {
+            if (buffer.Length + count > ExecutionLimits.MaxWireBytes)
+            {
+                throw new InvalidOperationException("The Runner response exceeds the wire limit.");
+            }
+            await buffer.WriteAsync(chunk.AsMemory(0, count), cancellationToken).ConfigureAwait(false);
+        }
+        return buffer.ToArray();
+    }
+
+    private static string ReadProblemDetail(byte[] content)
     {
         try
         {
-            using JsonDocument document = await JsonDocument.ParseAsync(
-                await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false),
-                cancellationToken: cancellationToken).ConfigureAwait(false);
+            using JsonDocument document = JsonDocument.Parse(content);
             return document.RootElement.TryGetProperty("detail", out JsonElement detail)
                 && detail.ValueKind == JsonValueKind.String
                 ? detail.GetString() ?? string.Empty
                 : string.Empty;
         }
-        catch (Exception exception) when (exception is JsonException or IOException)
+        catch (JsonException)
         {
             return string.Empty;
         }

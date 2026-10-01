@@ -41,6 +41,16 @@ public class SkillScriptRunnerTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task RunAsync_ReportsSandboxResetFromRunner()
+    {
+        _fixture.Executor.Results.Enqueue(new CodeExecutionResult { SandboxReset = true });
+        string scriptPath = await WriteScriptAsync("analyze.py", "print(1)\n");
+        object? result = await _fixture.RunAsync(scriptPath, null);
+        using JsonDocument document = JsonDocument.Parse(Assert.IsType<string>(result));
+        Assert.True(document.RootElement.GetProperty("sandboxReset").GetBoolean());
+    }
+
+    [Fact]
     public async Task RunAsync_HostOptionDisabled_ThrowsWithoutRunnerCall()
     {
         var fixture = new Fixture(enabled: false);
@@ -248,7 +258,7 @@ public class SkillScriptRunnerTests : IAsyncLifetime
             Endpoint = Environment.GetEnvironmentVariable("CODEACT_TEST_RUNNER_ENDPOINT") ?? string.Empty,
             ApiKey = Environment.GetEnvironmentVariable("CODEACT_TEST_RUNNER_KEY") ?? string.Empty
         }));
-        Fixture fixture = new(executor: executor);
+        Fixture fixture = new(executor: executor, conversationId: "skill-integration-" + Guid.NewGuid().ToString("N"));
         string scriptPath = await WriteScriptAsync("verify.py", """
             import sys
             assert sys.argv[1:] == ["1", "two"], sys.argv
@@ -262,7 +272,9 @@ public class SkillScriptRunnerTests : IAsyncLifetime
         using JsonDocument parsed = JsonDocument.Parse(result!.ToString()!);
         Assert.True(parsed.RootElement.TryGetProperty("exitCode", out _), parsed.RootElement.ToString());
         Assert.Equal(0, parsed.RootElement.GetProperty("exitCode").GetInt32());
-        Assert.Equal("script completed", parsed.RootElement.GetProperty("stdout").GetString());
+        Assert.Equal("script completed\n", parsed.RootElement.GetProperty("stdout").GetString());
+        Assert.Contains(parsed.RootElement.GetProperty("sandboxReset").ValueKind,
+            new[] { JsonValueKind.True, JsonValueKind.False });
         string fileId = parsed.RootElement.GetProperty("files")[0].GetProperty("fileId").GetString()!;
         FileAsset asset = fixture.Repository.Assets[fileId];
         Assert.Equal("tenant", asset.TenantId);
@@ -278,10 +290,10 @@ public class SkillScriptRunnerTests : IAsyncLifetime
         internal FileAssetExecutionContext Context { get; } = new();
         internal AgentUserContext User { get; } = new() { TenantId = "tenant", UserId = "user" };
 
-        internal Fixture(bool enabled = true, ICodeExecutor? executor = null)
+        internal Fixture(bool enabled = true, ICodeExecutor? executor = null, string conversationId = "conversation")
         {
             Files = new FileAssetService(Repository, Objects, Options.Create(new FileAssetOptions { Enabled = true }));
-            Context.Set(TurnContexts.Create());
+            Context.Set(TurnContexts.Create(conversationId: conversationId));
             var auth = new Mock<IAgentAuthorizationService>();
             auth.Setup(service => service.IsAuthorizedAsync(
                     It.IsAny<AgentAuthorizationRequest>(), It.IsAny<IAgentUserContext>(), It.IsAny<CancellationToken>()))
