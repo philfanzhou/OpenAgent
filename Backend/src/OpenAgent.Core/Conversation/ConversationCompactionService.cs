@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Requests;
+using OpenAgent.Contracts.Runtime;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Runtime.Agent;
 
@@ -71,21 +72,18 @@ internal sealed class ConversationCompactionService(
             profile.Model,
             profile.Config.ContextPolicy,
             capture);
-        SummarizationCompactionStrategy strategy = histories.CreateStrategy(
+        AuditedCompactionStrategy audited = histories.CreateAuditedStrategy(
             profile.Model.ContextTokens,
             profile.Config.ContextPolicy,
             summarizationClient,
-            force: true,
-            out CompactionTrigger trigger);
-        var audited = new AuditedCompactionStrategy(
-            strategy,
-            trigger,
-            "Manual",
-            tenantId,
-            conversationId,
-            store,
-            loggerFactory.CreateLogger<AuditedCompactionStrategy>(),
-            recordUnchanged: true);
+            new TurnContext
+            {
+                TenantId = tenantId,
+                UserId = user.UserId,
+                ConversationId = conversationId,
+                AgentId = record.AgentId,
+                TraceId = capture.TraceId
+            }, force: true);
         List<ChatMessage> messages = ConversationSessionStore.ResolveModelHistory(record)
             .Select(AgentMessageAdapter.FromStored)
             .Where(message => message != null)

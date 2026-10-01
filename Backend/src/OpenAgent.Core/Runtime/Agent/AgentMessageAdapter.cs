@@ -1,3 +1,4 @@
+using OpenAgent.Core.Conversation;
 using System.Text.Json;
 using Microsoft.Extensions.AI;
 using OpenAgent.Contracts.Conversation;
@@ -365,17 +366,7 @@ internal static class AgentMessageAdapter
         string? toolCallId,
         string? toolName,
         ConversationMessageMetadata? metadata) =>
-        new()
-        {
-            MessageId = Guid.NewGuid().ToString("N"),
-            Sequence = sequence,
-            Role = role,
-            Content = content,
-            ToolCallId = toolCallId,
-            ToolName = toolName,
-            Timestamp = DateTimeOffset.UtcNow,
-            Metadata = metadata
-        };
+        ConversationSessionStore.Message(sequence, role, content, toolCallId, toolName, metadata);
 
     private static ConversationMessageMetadata? CreateToolMetadata(
         FunctionCallContent? call) =>
