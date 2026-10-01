@@ -136,11 +136,8 @@ internal sealed class CapabilityToolFactory
             IReadOnlyDictionary<string, object?> values = arguments.ToDictionary(
                 item => item.Key,
                 item => item.Value);
-            // 错误信封已在 ToolResult.Error 构造时渲染成 Content；此处直接落成
-            // 字符串，保证任何调用路径（含未包 IsolatedToolFunction 的测试/诊断
-            // 路径）拿到的都是模型可读文本而不是 record 序列化。
-            ToolResult result = await _definition.Invoke(values, cancellationToken).ConfigureAwait(false);
-            return result.Content;
+            // Preserve IsError until the invocation policy renders the result.
+            return await _definition.Invoke(values, cancellationToken).ConfigureAwait(false);
         }
 
         private string NormalizeSchema(string? schema)

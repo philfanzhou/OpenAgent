@@ -56,3 +56,11 @@ AgentFactory
 - Core: `Backend/src/OpenAgent.Core/Capabilities/`（CapabilityToolFactory、Plan/PlanCapabilitySource、Mcp/McpClientPool 等）、`Runtime/Agent/IsolatedToolFunction.cs`、`Runtime/Agent/ToolResultBudgets.cs`、`Runtime/Agent/ToolConcurrencyRules.cs`
 - Contracts: `Backend/src/OpenAgent.Contracts/Capabilities/ToolResult.cs`
 - Tests: `Backend/tests/OpenAgent.Core.Tests/Capabilities/CapabilityToolFactoryTests.cs`、`BuiltInToolSchemaTests.cs`、`Runtime/ToolResultBudgetTests.cs`、`Runtime/AgentExecutorSkillToolTests.cs`（工具列表在场验证）等
+
+## 统一函数调用策略
+
+`AgentFactory` 在 `FunctionInvokingChatClient.FunctionInvoker` 安装每轮的
+`ToolInvocationPolicy`。平台能力、内联/延迟 MCP、资源读取以及 Skill Provider 动态
+提供的函数都在实际调用时应用一次超时、并发分类与结果预算；工具列表不预先套隔离装饰器。
+MCP 资源转换仍在超时内部执行，平台错误结果保留 `ToolResult.IsError` 至最终渲染。
+请求取消向上传播；单次调用和排队超时返回工具错误；信号量随执行作用域释放。

@@ -17,7 +17,7 @@ namespace OpenAgent.Core.Runtime.Agent;
 /// 2) 结果预算（头尾保留截断）与统一错误信封渲染——CapabilityDefinition 返回的
 ///    <see cref="ToolResult"/> 在这里落成最终字符串，MCP/MAF 工具的裸字符串同样过预算管道。
 /// </summary>
-internal sealed class IsolatedToolFunction : AIFunction
+internal sealed class IsolatedToolFunction : AIFunction, IToolConcurrencyProvider
 {
     // 头尾保留比例：开头多为元信息、结尾多为结论/退出状态，中间折叠损失最小。
     private const double HeadRatio = 0.6;
@@ -44,6 +44,8 @@ internal sealed class IsolatedToolFunction : AIFunction
         _exclusiveGate = exclusiveGate;
         _logger = logger;
     }
+
+    public ToolConcurrency Concurrency => _concurrency;
 
     public override string Name => _inner.Name;
     public override string Description => _inner.Description;

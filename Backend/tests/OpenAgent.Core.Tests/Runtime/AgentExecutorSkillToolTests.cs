@@ -23,8 +23,10 @@ public class AgentExecutorSkillToolTests
     private const string SkillName = "report-writer";
     private const string ResourcePath = "references/summary.md";
 
-    [Fact]
-    public async Task ExecuteStreamingAsync_SkillResourceTool_InvokedWithServices()
+    [Theory]
+    [InlineData(80_000)]
+    [InlineData(256)]
+    public async Task ExecuteStreamingAsync_SkillResourceTool_InvokedWithServicesAndBudget(int budget)
     {
         // MAF's read_skill_resource tool declares a required IServiceProvider parameter.
         // Without function invocation services on FunctionInvokingChatClient, argument
@@ -45,12 +47,13 @@ public class AgentExecutorSkillToolTests
         ]);
         var objects = new RecordingFileObjectStore();
         var catalog = new SkillCatalog();
-        RegisterSkillPackage(objects, catalog);
+        RegisterSkillPackage(objects, catalog, "Q3 revenue: 42\n" + new string('x', 10_000));
 
         await using AgentExecutorUsageTests.TestRuntime runtime = AgentExecutorUsageTests.CreateRuntime(
             provider,
             configure: services =>
             {
+                services.Configure<AgentExecutionOptions>(options => options.ReadToolResultCharBudget = budget);
                 services.RemoveAll<IFileObjectStore>();
                 services.AddSingleton<IFileObjectStore>(objects);
                 services.RemoveAll<ISkillCatalog>();
@@ -71,6 +74,7 @@ public class AgentExecutorSkillToolTests
             provider.Requests[1].SelectMany(message => message.Contents).OfType<FunctionResultContent>());
         Assert.Equal("call-1", result.CallId);
         Assert.Null(result.Exception);
+        Assert.True(Assert.IsType<string>(result.Result).Length <= budget);
         Assert.Contains("Q3 revenue", result.Result?.ToString(), StringComparison.Ordinal);
     }
 
@@ -147,7 +151,7 @@ public class AgentExecutorSkillToolTests
         public void Dispose() => inner.Dispose();
     }
 
-    private static void RegisterSkillPackage(RecordingFileObjectStore objects, SkillCatalog catalog)
+    private static void RegisterSkillPackage(RecordingFileObjectStore objects, SkillCatalog catalog, string resourceText = "Q3 revenue: 42\n")
     {
         var instance = new SkillInstanceConfig
         {
@@ -171,7 +175,7 @@ public class AgentExecutorSkillToolTests
 
             Read {ResourcePath} for the numbers.
             """);
-        byte[] resource = Encoding.UTF8.GetBytes("Q3 revenue: 42\n");
+        byte[] resource = Encoding.UTF8.GetBytes(resourceText);
         string baseKey = instance.ObjectKey!;
         var index = new SkillPackageStorageIndex
         {

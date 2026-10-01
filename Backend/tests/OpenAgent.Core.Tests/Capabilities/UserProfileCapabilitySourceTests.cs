@@ -1,3 +1,4 @@
+using OpenAgent.Contracts.Capabilities;
 using System.Security.Claims;
 using System.Text.Json;
 using Microsoft.Extensions.AI;
@@ -26,7 +27,7 @@ public class UserProfileCapabilitySourceTests
         AIFunction function = await CreateFunctionAsync(factory, user);
         object? result = await function.InvokeAsync(new AIFunctionArguments(), default);
 
-        using JsonDocument profile = JsonDocument.Parse(Assert.IsType<string>(result));
+        using JsonDocument profile = JsonDocument.Parse(Assert.IsType<ToolResult>(result).Content);
         Assert.Equal("alice", profile.RootElement.GetProperty("username").GetString());
         Assert.Equal("alice@example.com", profile.RootElement.GetProperty("email").GetString());
         Assert.Equal("current-tenant", profile.RootElement.GetProperty("tenantId").GetString());
@@ -42,7 +43,7 @@ public class UserProfileCapabilitySourceTests
             CreateUser(new Dictionary<string, string>(), tenantId: null));
         object? result = await function.InvokeAsync(new AIFunctionArguments(), default);
 
-        using JsonDocument profile = JsonDocument.Parse(Assert.IsType<string>(result));
+        using JsonDocument profile = JsonDocument.Parse(Assert.IsType<ToolResult>(result).Content);
         Assert.Equal(JsonValueKind.Null, profile.RootElement.GetProperty("username").ValueKind);
         Assert.Equal(JsonValueKind.Null, profile.RootElement.GetProperty("email").ValueKind);
         Assert.Equal(JsonValueKind.Null, profile.RootElement.GetProperty("tenantId").ValueKind);
@@ -99,7 +100,7 @@ public class UserProfileCapabilitySourceTests
 
         object? result = await function.InvokeAsync(arguments, default);
 
-        using JsonDocument profile = JsonDocument.Parse(Assert.IsType<string>(result));
+        using JsonDocument profile = JsonDocument.Parse(Assert.IsType<ToolResult>(result).Content);
         Assert.Equal("current-user", profile.RootElement.GetProperty("username").GetString());
         Assert.Equal("current@example.com", profile.RootElement.GetProperty("email").GetString());
         Assert.False(function.JsonSchema.GetProperty("properties").TryGetProperty("userId", out _));
@@ -120,7 +121,7 @@ public class UserProfileCapabilitySourceTests
         AIFunction function = await CreateFunctionAsync(CreateFactory(), user);
 
         object? result = await function.InvokeAsync(new AIFunctionArguments(), default);
-        string json = Assert.IsType<string>(result);
+        string json = Assert.IsType<ToolResult>(result).Content;
 
         using JsonDocument profile = JsonDocument.Parse(json);
         string[] propertyNames = profile.RootElement.EnumerateObject()

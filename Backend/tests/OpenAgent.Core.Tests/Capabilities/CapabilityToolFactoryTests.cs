@@ -106,7 +106,7 @@ public class CapabilityToolFactoryTests
         AIFunction tool = Assert.IsAssignableFrom<AIFunction>(tools[0]);
         object? result = await tool.InvokeAsync(new AIFunctionArguments(), default);
 
-        Assert.Equal("ok", result);
+        Assert.Equal("ok", Assert.IsType<ToolResult>(result).Content);
         Assert.Equal(availabilityChecks, authorization.Actions.Count);
     }
 

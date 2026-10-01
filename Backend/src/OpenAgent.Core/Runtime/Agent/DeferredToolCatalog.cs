@@ -166,15 +166,14 @@ internal sealed class ToolSearchFunction : AIFunction
 }
 
 /// <summary>
-/// 请求边界的激活工具注入器：包在 FunctionInvokingChatClient 外层，把已激活的
-/// 延迟工具（经 wrap 工厂包装，超时/预算/独占信号量与内联工具一致）合并进
+/// 请求边界的激活工具注入器：包在 FunctionInvokingChatClient 内层，把已激活的
+/// 延迟工具（统一调用策略在 FICC 调用边界应用）合并进
 /// 当轮 options.Tools——既影响发往 provider 的定义序列化，也让 FICC 能解析
 /// 模型对这些工具的调用。幂等：已在列表中的不重复追加。
 /// </summary>
 internal sealed class DeferredToolInjector(
     IChatClient inner,
-    DeferredToolCatalog catalog,
-    Func<AITool, AITool> wrap) : IChatClient
+    DeferredToolCatalog catalog) : IChatClient
 {
     public Task<ChatResponse> GetResponseAsync(
         IEnumerable<ChatMessage> messages,
@@ -206,7 +205,7 @@ internal sealed class DeferredToolInjector(
         {
             if (present.Add(tool.Name))
             {
-                tools.Add(wrap(tool));
+                tools.Add(tool);
             }
         }
         options.Tools = tools;

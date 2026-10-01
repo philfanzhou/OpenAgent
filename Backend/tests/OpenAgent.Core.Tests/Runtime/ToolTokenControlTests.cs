@@ -117,7 +117,7 @@ public class ToolTokenControlTests
     {
         AITool deferred = Stub("mcp__cal__create_event", "Creates a calendar event");
         var catalog = new DeferredToolCatalog([deferred]);
-        var injector = new DeferredToolInjector(new CapturingChatClient(), catalog, tool => new TaggedTool(tool.Name));
+        var injector = new DeferredToolInjector(new CapturingChatClient(), catalog);
         var options = new ChatOptions();
         options.Tools = [Stub("read_file", "inline")];
 
@@ -126,12 +126,12 @@ public class ToolTokenControlTests
         ChatOptions first = ((CapturingChatClient)injector.GetService(typeof(CapturingChatClient))!).LastOptions!;
         Assert.Single(first.Tools!);
 
-        // 激活后每轮请求都带上（经 wrap 工厂），且幂等不重复。
+        // Activation preserves the original function; invocation policy is applied by FICC.
         catalog.Activate(["mcp__cal__create_event"]);
         await injector.GetResponseAsync([new ChatMessage(ChatRole.User, "hi")], options, CancellationToken.None);
         await injector.GetResponseAsync([new ChatMessage(ChatRole.User, "hi")], options, CancellationToken.None);
         Assert.Equal(2, first.Tools!.Count);
-        Assert.Contains(first.Tools!, tool => tool is TaggedTool && tool.Name == "mcp__cal__create_event");
+        Assert.Contains(first.Tools!, tool => ReferenceEquals(tool, deferred));
     }
 
     private sealed class CapturingChatClient : IChatClient

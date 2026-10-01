@@ -81,15 +81,14 @@ internal sealed class McpResourceReaderTool : AIFunction, IToolConcurrencyProvid
             return ToolResult.Error(
                 "'server' and 'uri' are required arguments.",
                 "invalid_arguments",
-                hint: "Use the exact URI a tool returned (resource link).").Content;
+                hint: "Use the exact URI a tool returned (resource link).");
         }
         if (!_servers.TryGetValue(server, out McpServerConfig? config))
         {
             return ToolResult.Error(
                 $"MCP server '{server}' is not available to this agent.",
                 "not_found",
-                hint: $"Available servers: {string.Join(", ", _servers.Keys.OrderBy(name => name, StringComparer.Ordinal))}.")
-                .Content;
+                hint: $"Available servers: {string.Join(", ", _servers.Keys.OrderBy(name => name, StringComparer.Ordinal))}.");
         }
 
         try
@@ -112,12 +111,11 @@ internal sealed class McpResourceReaderTool : AIFunction, IToolConcurrencyProvid
             return ToolResult.Error(
                 $"Reading resource '{uri}' from MCP server '{server}' failed.",
                 "mcp_error",
-                hint: "Check the URI against the resource link; the server may also be temporarily unavailable.")
-                .Content;
+                hint: "Check the URI against the resource link; the server may also be temporarily unavailable.");
         }
     }
 
-    private async ValueTask<string> RenderAsync(
+    private async ValueTask<object?> RenderAsync(
         ReadResourceResult resource,
         string uri,
         CancellationToken cancellationToken)
@@ -149,7 +147,7 @@ internal sealed class McpResourceReaderTool : AIFunction, IToolConcurrencyProvid
         {
             return ToolResult.Error(
                 $"The resource '{uri}' returned no readable content.",
-                "mcp_error").Content;
+                "mcp_error");
         }
         // 单一文本资源直接给正文（与 read_file 的 content 契约对齐）；
         // 多块（或含二进制）逐行给出，模型按行取用。
