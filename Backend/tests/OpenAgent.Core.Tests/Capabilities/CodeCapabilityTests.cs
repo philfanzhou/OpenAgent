@@ -12,6 +12,7 @@ using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Capabilities;
 using OpenAgent.Core.Capabilities.Code;
 using OpenAgent.Core.Files;
+using OpenAgent.Core.Runtime.Agent;
 using OpenAgent.Core.Security;
 using OpenAgent.Core.Tests.TestDoubles;
 using Xunit;
@@ -172,7 +173,14 @@ public class CodeCapabilityTests
             [new ChatResponseUpdate(ChatRole.Assistant, [new FunctionCallContent("code-2", "execute_code", new Dictionary<string, object?> { ["code"] = "print(6*7)" })])],
             [new ChatResponseUpdate(ChatRole.Assistant, "42")]
         ]);
-        var agent = new ChatClientAgent(provider, new ChatClientAgentOptions { ChatOptions = new() { Tools = [function] } });
+        await using ToolInvocationPolicy policy = new(new AgentExecutionOptions(), [], fixture.Files, fixture.Context,
+            NullLogger<IsolatedToolFunction>.Instance);
+        using FunctionInvokingChatClient invoking = new(provider) { FunctionInvoker = policy.InvokeAsync };
+        var agent = new ChatClientAgent(invoking, new ChatClientAgentOptions
+        {
+            ChatOptions = new() { Tools = [function] },
+            UseProvidedChatClientAsIs = true
+        });
         await foreach (AgentResponseUpdate _ in agent.RunStreamingAsync("Calculate using code")) { }
         Assert.Equal(2, fixture.Executor.Requests.Count);
         Assert.Equal("print(6*7)", fixture.Executor.Requests[1].Code);
@@ -220,7 +228,14 @@ public class CodeCapabilityTests
             })])],
             [new ChatResponseUpdate(ChatRole.Assistant, "Generated the workbook.")]
         ]);
-        var agent = new ChatClientAgent(provider, new ChatClientAgentOptions { ChatOptions = new() { Tools = [function] } });
+        await using ToolInvocationPolicy policy = new(new AgentExecutionOptions(), [], fixture.Files, fixture.Context,
+            NullLogger<IsolatedToolFunction>.Instance);
+        using FunctionInvokingChatClient invoking = new(provider) { FunctionInvoker = policy.InvokeAsync };
+        var agent = new ChatClientAgent(invoking, new ChatClientAgentOptions
+        {
+            ChatOptions = new() { Tools = [function] },
+            UseProvidedChatClientAsIs = true
+        });
         await foreach (AgentResponseUpdate _ in agent.RunStreamingAsync("Read the CSV and create an Excel workbook.")) { }
         Assert.Contains(provider.Requests[1].SelectMany(message => message.Contents).OfType<FunctionResultContent>(),
             result => result.CallId == "bad" && result.Result?.ToString()?.Contains("NameError", StringComparison.Ordinal) == true);
@@ -240,7 +255,7 @@ public class CodeCapabilityTests
             ["inputFiles"] = new[] { new { fileId, name = "report.xlsx" } },
             ["code"] = "from openpyxl import load_workbook\nw=load_workbook('/input/report.xlsx')\nassert w.active['B1'].value == 42\nw.active['B1']=84\nw.save('/output/updated.xlsx')\nassert load_workbook('/output/updated.xlsx').active['B1'].value == 84\nprint('verified 84')"
         });
-        using JsonDocument edit = JsonDocument.Parse(edited!.ToString()!);
+        using JsonDocument edit = JsonDocument.Parse(ToolResultText.Render(edited)!);
         Assert.True(edit.RootElement.TryGetProperty("exitCode", out _), edit.RootElement.ToString());
         Assert.Equal(0, edit.RootElement.GetProperty("exitCode").GetInt32());
         string editedId = edit.RootElement.GetProperty("files")[0].GetProperty("fileId").GetString()!;

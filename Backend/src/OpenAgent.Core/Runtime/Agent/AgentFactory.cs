@@ -30,7 +30,6 @@ internal sealed class AgentFactory
     private readonly ILogger<AgentFactory> _logger;
     private readonly AgentExecutionOptions _executionOptions;
     private readonly McpExecutionOptions _mcpOptions;
-    private readonly TimeSpan _toolCallTimeout;
 
     public AgentFactory(
         IAgentChatClientFactory chatClients,
@@ -58,9 +57,6 @@ internal sealed class AgentFactory
         _logger = logger;
         _executionOptions = executionOptions.Value;
         _mcpOptions = mcpOptions.Value;
-        // 小于等于 0 视为不限时；正数作为所有工具（能力+MCP）单次调用的统一上限。
-        int seconds = _executionOptions.ToolCallTimeoutSeconds;
-        _toolCallTimeout = seconds <= 0 ? Timeout.InfiniteTimeSpan : TimeSpan.FromSeconds(seconds);
     }
 
     /// <summary>
@@ -92,6 +88,7 @@ internal sealed class AgentFactory
             cancellationToken).ConfigureAwait(false);
         McpToolRuntime mcpRuntime = McpToolRuntime.Empty;
         AgentSkillsRuntime skillsRuntime = AgentSkillsRuntime.Empty;
+        ToolInvocationPolicy? toolPolicy = null;
         try
         {
             mcpRuntime = await _mcpTools.CreateAsync(
@@ -124,21 +121,8 @@ internal sealed class AgentFactory
                     .UseAIContextProviders(compaction)
                     .Build();
             }
-            // Exclusive 工具的每轮共享信号量：与 ChatClientAgent 同生命周期，
-            // 作用域释放时一并销毁。
-            SemaphoreSlim exclusiveGate = new(1, 1);
-            // MCP 工具（mcp__ 前缀）在内层加资源落盘装饰：结果里的内嵌二进制资源
-            // 写入对象存储并替换为 fileId 描述符，再进 IsolatedToolFunction 的
-            // 隔离/预算管道（落盘耗时计入单次调用超时）。
-            AITool WrapTool(AITool tool) => IsolatedToolFunction.Wrap(
-                tool.Name.StartsWith("mcp__", StringComparison.Ordinal)
-                    ? McpResourcePipeline.Wrap(tool, _fileAssets, _files, _toolLogger)
-                    : tool,
-                _toolCallTimeout,
-                ToolResultBudgets.Resolve(_executionOptions, tool.Name),
-                ToolConcurrencyRules.Resolve(tool),
-                exclusiveGate,
-                _toolLogger);
+            toolPolicy = new ToolInvocationPolicy(
+                _executionOptions, mcpRuntime.Tools, _fileAssets, _files, _toolLogger);
 
             // MCP 工具延迟加载：超过阈值时不整体注入（省每轮上下文），模型经
             // search_tools 检索并激活。阈值 ≤0 时保持全量内联。
@@ -158,7 +142,7 @@ internal sealed class AgentFactory
             // 之后追加——延迟模式下它是模型取回 resource URI 内容的唯一途径。
             if (mcpRuntime.ResourceReader is { } resourceReader)
             {
-                chatTools.Add(WrapTool(resourceReader));
+                chatTools.Add(resourceReader);
             }
 
             // 每轮可见工具定义体量观测：名称+描述+schema 字符数（≈4 字符/token），
@@ -171,11 +155,10 @@ internal sealed class AgentFactory
                 definitionChars / 4);
 
             // 延迟激活注入在 FICC 内层：工具调用的迭代循环发生在 FICC 内部，
-            // 外层包装只覆盖第一轮请求。注入器逐轮把激活工具（经 WrapTool，
-            // 与内联工具完全一致的隔离包装）合并进 options，FICC 的函数解析与
+            // 外层包装只覆盖第一轮请求。注入器逐轮把激活工具合并进 options，FICC 的函数解析与
             // provider 序列化同轮可见。
             IChatClient innerClient = deferredCatalog != null
-                ? new DeferredToolInjector(compactingClient, deferredCatalog, WrapTool)
+                ? new DeferredToolInjector(compactingClient, deferredCatalog)
                 : compactingClient;
             // MAF-registered tools (e.g. read_skill_resource) declare required
             // IServiceProvider parameters; without function invocation services the
@@ -187,9 +170,10 @@ internal sealed class AgentFactory
             {
                 // 同一条 assistant 消息里的多个工具调用并发执行；只有能力源显式
                 // 声明 ReadOnly 的工具真正并行（读取类、无可变共享状态），其余
-                // （写入/执行/MCP/Skill）由 IsolatedToolFunction 内每轮共享的信号量
+                // （写入/执行/MCP/Skill）由 ToolInvocationPolicy 内每轮共享的信号量
                 // 串行化，行为与旧版一致。
                 AllowConcurrentInvocation = true,
+                FunctionInvoker = toolPolicy.InvokeAsync,
                 IncludeDetailedErrors = false,
                 MaximumConsecutiveErrorsPerRequest = 3,
                 MaximumIterationsPerRequest = profile.Config.MaxTurns > 0
@@ -217,14 +201,9 @@ internal sealed class AgentFactory
                         ? null
                         : profile.Config.Instructions,
                     Temperature = (float?)profile.Model.Temperature,
-                    // 工具（MCP/能力）异常与超时在调用处被隔离成错误结果回传给模型
-                    // （超时带 timedOut 标记），避免 FunctionInvokingChatClient
-                    // 连续失败后重抛导致整轮执行终止；结果同时过分级字符预算
-                    // （头尾保留截断），防止超长输出吃穿上下文；Exclusive 工具经
-                    // exclusiveGate 串行，ReadOnly 工具随 FICC 并发执行。
+                    // All functions, including provider-added Skill tools, pass
+                    // through FunctionInvoker at invocation time.
                     Tools = chatTools
-                        .Select(tool => tool is ToolSearchFunction ? tool : WrapTool(tool))
-                        .ToList()
                 },
                 ChatHistoryProvider = history,
                 AIContextProviders = providers,
@@ -233,10 +212,14 @@ internal sealed class AgentFactory
             }).AsBuilder()
                 .UseOpenTelemetry("OpenAgent.AgentFramework", telemetry => telemetry.EnableSensitiveData = true)
                 .Build();
-            return new AgentExecutionScope(agent, history, mcpRuntime, skillsRuntime);
+            return new AgentExecutionScope(agent, history, mcpRuntime, skillsRuntime, toolPolicy);
         }
         catch
         {
+            if (toolPolicy != null)
+            {
+                await toolPolicy.DisposeAsync().ConfigureAwait(false);
+            }
             await mcpRuntime.DisposeAsync().ConfigureAwait(false);
             await skillsRuntime.DisposeAsync().ConfigureAwait(false);
             throw;
