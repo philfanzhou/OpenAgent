@@ -88,22 +88,27 @@ internal sealed class ConversationHistoryFactory
         IChatClient summarizationClient,
         TurnContext turn)
     {
+        return new CompactionProvider(CreateAuditedStrategy(contextTokens, policy, summarizationClient, turn, force: false));
+    }
+
+    internal AuditedCompactionStrategy CreateAuditedStrategy(
+        int contextTokens,
+        ContextPolicy? policy,
+        IChatClient summarizationClient,
+        TurnContext turn,
+        bool force)
+    {
         SummarizationCompactionStrategy strategy = CreateStrategy(
-            contextTokens,
-            policy,
-            summarizationClient,
-            force: false,
-            out CompactionTrigger trigger);
-        var audited = new AuditedCompactionStrategy(
+            contextTokens, policy, summarizationClient, force, out CompactionTrigger trigger);
+        return new AuditedCompactionStrategy(
             strategy,
             trigger,
-            "Automatic",
+            force ? "Manual" : "Automatic",
             turn.TenantId,
             turn.ConversationId,
             _store.Store,
             _loggerFactory.CreateLogger<AuditedCompactionStrategy>(),
-            recordUnchanged: false);
-        return new CompactionProvider(audited);
+            recordUnchanged: force);
     }
 
     internal SummarizationCompactionStrategy CreateStrategy(

@@ -30,12 +30,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
     private readonly IConversationLock _conversationLock;
     private readonly ConversationSessionStore _store;
     private readonly ILogger<PlatformChatHistory> _logger;
-    private readonly IFileAssetService _fileService;
-    private readonly IInlineImageOptimizer _imageOptimizer;
-    private readonly bool _supportsMultimodal;
-    private readonly long _maxInlineImageBytes;
-    private readonly int _maxInlineImageCount;
-    private readonly int _inlineImageHistoryTurns;
+    private readonly HistoryAttachments _attachments;
     private readonly List<ConversationMessage> _pending = [];
     private readonly StringBuilder _partialAssistant = new();
     private readonly StringBuilder _partialReasoning = new();
@@ -69,12 +64,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         _conversationLock = conversationLock;
         _store = store;
         _logger = logger;
-        _fileService = fileService;
-        _imageOptimizer = imageOptimizer;
-        _supportsMultimodal = context.SupportsMultimodal;
-        _maxInlineImageBytes = fileOptions.Value.MaxInlineImageBytes;
-        _maxInlineImageCount = fileOptions.Value.MaxInlineImageCount;
-        _inlineImageHistoryTurns = fileOptions.Value.InlineImageHistoryTurns;
+        _attachments = new HistoryAttachments(context, fileService, imageOptimizer, fileOptions.Value);
     }
 
     internal void AppendPartial(string content)
@@ -131,49 +121,8 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
     /// 若先写入"内容未包含、请用工具读取"再补内联图片，模型会服从前一句指令
     /// 而拒绝识别已经注入的图片。
     /// </summary>
-    internal async Task<ChatMessage> CreateUserMessageAsync(CancellationToken cancellationToken)
-    {
-        List<FileAssetContent>? inlineImages = _files.Count == 0 || !_supportsMultimodal
-            ? null
-            : await ReadInlineImagesAsync(cancellationToken).ConfigureAwait(false);
-        return AgentMessageAdapter.CreateUser(_input, _files, inlineImages);
-    }
-
-    private async Task<List<FileAssetContent>?> ReadInlineImagesAsync(CancellationToken cancellationToken)
-    {
-        FileAssetScope scope = CreateFileScope();
-        List<FileAssetContent>? inline = null;
-        int inlineImageCount = 0;
-        foreach (FileAsset file in _files)
-        {
-            if (inlineImageCount >= _maxInlineImageCount
-                || !IsImage(file.MediaType)
-                || file.Length > _maxInlineImageBytes)
-            {
-                continue;
-            }
-
-            try
-            {
-                inline ??= [];
-                inline.Add(await ReadInlineContentAsync(
-                    file.FileId,
-                    scope,
-                    cancellationToken).ConfigureAwait(false));
-                inlineImageCount++;
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch
-            {
-                // 内联读取失败时保留元数据描述符，模型仍可通过工具读取该文件。
-            }
-        }
-
-        return inline;
-    }
+    internal Task<ChatMessage> CreateUserMessageAsync(CancellationToken cancellationToken) =>
+        _attachments.CreateUserMessageAsync(cancellationToken);
 
     /// <summary>把中止/失败时已产生的部分正文与思考内容组装成一条 assistant 消息（含 reasoning 元数据）；失败时附失败原因。</summary>
     private ConversationMessage BuildPartialMessage(ConversationStatus status, MessageErrorMetadata? error = null)
@@ -233,7 +182,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
             _currentVersion = loaded.CurrentVersion;
             _nextSequence = loaded.NextSequence;
             List<ChatMessage> history = await BuildHistoryAsync(loaded.History, cancellationToken).ConfigureAwait(false);
-            return RepairToolHistory(history);
+            return ToolHistoryRepair.Repair(history);
         }
         catch
         {
@@ -242,241 +191,9 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         }
     }
 
-    /// <summary>
-    /// Converts stored messages to model input and rebuilds referenced attachments.
-    /// Historical images are only inlined within the recent-turn window.
-    /// </summary>
-    internal async Task<List<ChatMessage>> BuildHistoryAsync(
-        IReadOnlyList<ConversationMessage> stored,
-        CancellationToken cancellationToken)
-    {
-        var history = new List<ChatMessage>(stored.Count);
-        bool[] inlineWindow = ComputeInlineImageWindow(stored, _inlineImageHistoryTurns);
-        for (int index = 0; index < stored.Count; index++)
-        {
-            ConversationMessage message = stored[index];
-            ChatMessage? chatMessage = AgentMessageAdapter.FromStored(message);
-            if (chatMessage == null)
-            {
-                continue;
-            }
-            if (message.FileIds.Count > 0)
-            {
-                await AttachFilesAsync(
-                    chatMessage,
-                    message.FileIds,
-                    inlineWindow[index],
-                    cancellationToken).ConfigureAwait(false);
-            }
-            history.Add(chatMessage);
-        }
-        return history;
-    }
-
-    /// <summary>
-    /// 历史图片内联窗口：只有最近 N 个用户轮次（N=InlineImageHistoryTurns）重放内联图片，
-    /// 更早轮次只保留文件描述符。内联图片每张约上千 token，全量重放会让长会话的
-    /// 输入 token 随轮次线性膨胀；当轮用户消息不受此窗口限制。
-    /// </summary>
-    private static bool[] ComputeInlineImageWindow(
-        IReadOnlyList<ConversationMessage> stored,
-        int turns)
-    {
-        var allow = new bool[stored.Count];
-        if (turns <= 0)
-        {
-            return allow;
-        }
-
-        // 自后向前统计该消息之后的 user 轮数：最后一条 user 行及其后的消息属于最近轮次。
-        int userTurnsAfter = 0;
-        for (int index = stored.Count - 1; index >= 0; index--)
-        {
-            allow[index] = userTurnsAfter < turns;
-            if (string.Equals(stored[index].Role, "user", StringComparison.OrdinalIgnoreCase))
-            {
-                userTurnsAfter++;
-            }
-        }
-
-        return allow;
-    }
-
-    private async Task AttachFilesAsync(
-        ChatMessage chatMessage,
-        IReadOnlyList<string> fileIds,
-        bool allowInlineImages,
-        CancellationToken cancellationToken)
-    {
-        FileAssetScope scope = CreateFileScope();
-        int inlineImageCount = 0;
-        foreach (string fileId in fileIds.Distinct(StringComparer.Ordinal))
-        {
-            try
-            {
-                FileAsset? asset = await _fileService.GetReferencedAsync(
-                    fileId, scope, cancellationToken).ConfigureAwait(false);
-                if (asset != null)
-                {
-                    FileAssetContent? inlineImage = null;
-                    if (allowInlineImages
-                        && _supportsMultimodal
-                        && inlineImageCount < _maxInlineImageCount
-                        && IsImage(asset.MediaType)
-                        && asset.Length <= _maxInlineImageBytes)
-                    {
-                        try
-                        {
-                            inlineImage = await ReadInlineContentAsync(
-                                fileId,
-                                scope,
-                                cancellationToken).ConfigureAwait(false);
-                            inlineImageCount++;
-                        }
-                        catch (OperationCanceledException)
-                        {
-                            throw;
-                        }
-                        catch
-                        {
-                            // Keep the metadata manifest when an optional inline read fails.
-                        }
-                    }
-
-                    AgentMessageAdapter.AttachFile(chatMessage, asset, inlineImage);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch
-            {
-                // Ignore deleted or unauthorized historical files so continuation can proceed.
-            }
-        }
-    }
-
-    private FileAssetScope CreateFileScope() => new()
-    {
-        TenantId = _conversation.TenantId ?? string.Empty,
-        UserId = _conversation.UserId ?? string.Empty,
-        ConversationId = _conversation.ConversationId
-    };
-
-    /// <summary>读取内联图片并降采样：两条路径（当轮/历史重放）共用同一优化缓存。</summary>
-    private async Task<FileAssetContent> ReadInlineContentAsync(
-        string fileId,
-        FileAssetScope scope,
-        CancellationToken cancellationToken)
-    {
-        FileAssetContent content = await _fileService.ReadAsync(
-            fileId,
-            scope,
-            cancellationToken,
-            _maxInlineImageBytes).ConfigureAwait(false);
-        return new FileAssetContent
-        {
-            Asset = content.Asset,
-            Data = _imageOptimizer.Optimize(content.Asset, content.Data)
-        };
-    }
-
-    private static bool IsImage(string mediaType) =>
-        mediaType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
-
-    /// <summary>
-    /// Normalizes stored history into the tool-call contract providers expect.
-    /// Storage expands one turn's parallel calls into separate assistant rows with
-    /// their responses only after the last row, and strict gateways reject the
-    /// reloaded blocks with "tool_calls must be followed by tool messages"; so
-    /// consecutive assistant rows are folded back into one call block, duplicate or
-    /// unanswered calls are dropped, and every retained call keeps its responses.
-    /// </summary>
-    private static List<ChatMessage> RepairToolHistory(IReadOnlyList<ChatMessage> messages)
-    {
-        HashSet<string> responded = [];
-        foreach (ChatMessage message in messages)
-        {
-            foreach (FunctionResultContent result in message.Contents.OfType<FunctionResultContent>())
-            {
-                if (!string.IsNullOrWhiteSpace(result.CallId))
-                {
-                    responded.Add(result.CallId);
-                }
-            }
-        }
-
-        HashSet<string> announced = new(StringComparer.Ordinal);
-        var repaired = new List<ChatMessage>(messages.Count);
-        foreach (ChatMessage message in messages)
-        {
-            List<FunctionCallContent> calls = message.Contents.OfType<FunctionCallContent>().ToList();
-            if (message.Role != ChatRole.Assistant || calls.Count == 0)
-            {
-                repaired.Add(message);
-                continue;
-            }
-
-            List<FunctionCallContent> retained = calls
-                .Where(call => !string.IsNullOrWhiteSpace(call.CallId)
-                    && announced.Add(call.CallId)
-                    && responded.Contains(call.CallId))
-                .ToList();
-
-            // Consecutive assistant rows are fragments of one turn's parallel calls;
-            // fold each fragment's non-call contents and retained calls into the block
-            // emitted before it so the responses that follow apply to all of them.
-            if (repaired.Count > 0
-                && repaired[^1].Role == ChatRole.Assistant
-                && repaired[^1].Contents.OfType<FunctionCallContent>().Any())
-            {
-                var merged = new List<AIContent>(repaired[^1].Contents);
-                foreach (AIContent content in message.Contents)
-                {
-                    if (content is not FunctionCallContent)
-                    {
-                        merged.Add(content);
-                    }
-                }
-                foreach (FunctionCallContent call in retained)
-                {
-                    merged.Add(call);
-                }
-                repaired[^1] = new ChatMessage(ChatRole.Assistant, merged);
-                continue;
-            }
-
-            if (retained.Count == 0)
-            {
-                continue;
-            }
-
-            if (retained.Count < calls.Count)
-            {
-                ChatMessage rebuilt = new(message.Role, Array.Empty<AIContent>());
-                foreach (AIContent content in message.Contents)
-                {
-                    if (content is not FunctionCallContent)
-                    {
-                        rebuilt.Contents.Add(content);
-                    }
-                }
-
-                foreach (FunctionCallContent call in retained)
-                {
-                    rebuilt.Contents.Add(call);
-                }
-
-                repaired.Add(rebuilt);
-                continue;
-            }
-
-            repaired.Add(message);
-        }
-
-        return repaired;
-    }
+    internal Task<List<ChatMessage>> BuildHistoryAsync(
+        IReadOnlyList<ConversationMessage> stored, CancellationToken cancellationToken) =>
+        _attachments.BuildHistoryAsync(stored, cancellationToken);
 
     protected override ValueTask StoreChatHistoryAsync(
         InvokedContext context,
