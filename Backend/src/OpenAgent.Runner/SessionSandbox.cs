@@ -132,7 +132,8 @@ internal sealed class SessionSandbox : ISessionSandbox
         try
         {
             using var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
-            await socket.ConnectAsync(new UnixDomainSocketEndPoint(_socketPath), deadline.Token).ConfigureAwait(false);
+            using UnixSocketPath connectionPath = UnixSocketPath.Create(_socketPath);
+            await socket.ConnectAsync(new UnixDomainSocketEndPoint(connectionPath.Path), deadline.Token).ConfigureAwait(false);
             byte[] payload = JsonSerializer.SerializeToUtf8Bytes(wire, JsonOptions);
             Array.Resize(ref payload, payload.Length + 1);
             payload[^1] = (byte)'\n';

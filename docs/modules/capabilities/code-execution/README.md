@@ -13,3 +13,7 @@ Code 与 Skill 脚本共用 `RunnerToolResult` 完成输出校验、产物登记
 
 `RunnerClient` 的执行与文件操作共用配置校验、Bearer、deadline、POST 和限长读取。
 两类响应均受 `MaxWireBytes` 约束；执行响应额外校验日志长度和产物，Workspace 保留领域异常。
+
+持久沙箱的宿主 socket 连接在路径过长时使用仅当前用户可访问的临时目录别名，
+避免 Linux `sockaddr_un` 长度上限；会话键、原工作区路径及持久文件保持原有布局。
+连接结束删除别名，不删除真实工作区。
