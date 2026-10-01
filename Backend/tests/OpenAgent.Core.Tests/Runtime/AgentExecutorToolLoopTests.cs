@@ -144,6 +144,32 @@ public class AgentExecutorToolLoopTests
     }
 
     [Fact]
+    public async Task ExecuteStreamingAsync_RepeatedToolWithoutCallId_AnnouncesDistinctCalls()
+    {
+        var provider = new SequenceChatProvider(
+        [
+            [new ChatResponseUpdate(Microsoft.Extensions.AI.ChatRole.Assistant,
+                [new FunctionCallContent(string.Empty, "get_current_user_profile")])],
+            [new ChatResponseUpdate(Microsoft.Extensions.AI.ChatRole.Assistant,
+                [new FunctionCallContent(string.Empty, "get_current_user_profile")])],
+            [new ChatResponseUpdate(Microsoft.Extensions.AI.ChatRole.Assistant, "done")]
+        ]);
+        await using AgentExecutorUsageTests.TestRuntime runtime = AgentExecutorUsageTests.CreateRuntime(provider, maxTurns: 4);
+        List<AgentStreamEvent> events = [];
+        await foreach (AgentStreamEvent item in runtime.Executor.ExecuteStreamingAsync(
+            CreateRequest("repeat-missing-call-id"), User, CancellationToken.None))
+        {
+            events.Add(item);
+        }
+        AgentStreamEvent[] calls = events.Where(item => item.Type == AgentStreamEventType.ToolCall).ToArray();
+        AgentStreamEvent[] results = events.Where(item => item.Type == AgentStreamEventType.ToolResult).ToArray();
+        Assert.Equal(2, calls.Length);
+        Assert.Equal(2, calls.Select(item => item.ToolCallId).Distinct().Count());
+        Assert.Equal(calls.Select(item => item.ToolCallId), results.Select(item => item.ToolCallId));
+        Assert.All(results, item => Assert.Equal("get_current_user_profile", item.ToolName));
+    }
+
+    [Fact]
     public async Task ExecuteStreamingAsync_NullArguments_AreNormalizedToEmptyObject()
     {
         // 部分 LLM 返回的工具调用 arguments 为 null 而非空对象：播报与持久化都
