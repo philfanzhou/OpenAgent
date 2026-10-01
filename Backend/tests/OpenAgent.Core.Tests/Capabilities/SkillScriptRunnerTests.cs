@@ -272,7 +272,7 @@ public class SkillScriptRunnerTests : IAsyncLifetime
         using JsonDocument parsed = JsonDocument.Parse(result!.ToString()!);
         Assert.True(parsed.RootElement.TryGetProperty("exitCode", out _), parsed.RootElement.ToString());
         Assert.Equal(0, parsed.RootElement.GetProperty("exitCode").GetInt32());
-        Assert.Equal("script completed", parsed.RootElement.GetProperty("stdout").GetString());
+        Assert.Equal("script completed\n", parsed.RootElement.GetProperty("stdout").GetString());
         Assert.Contains(parsed.RootElement.GetProperty("sandboxReset").ValueKind,
             new[] { JsonValueKind.True, JsonValueKind.False });
         string fileId = parsed.RootElement.GetProperty("files")[0].GetProperty("fileId").GetString()!;
