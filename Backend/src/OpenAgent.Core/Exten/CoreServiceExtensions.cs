@@ -29,23 +29,26 @@ public static class CoreServiceExtensions
                 "CodeExecution requires an HTTP(S) Runner endpoint, a 32-character API key, and a bounded timeout.")
             .ValidateOnStart();
         bool allowInsecureTls = configuration.GetValue("OPENAGENT_ALLOW_INSECURE_TLS", false);
-        services.AddHttpClient<RunnerClient>(client => client.Timeout = Timeout.InfiniteTimeSpan)
-            .ConfigurePrimaryHttpMessageHandler(() =>
-            {
-                var handler = new HttpClientHandler { AllowAutoRedirect = false };
-                if (allowInsecureTls)
+        if (!services.Any(descriptor => descriptor.ServiceType == typeof(RunnerClient)))
+        {
+            services.AddHttpClient<RunnerClient>(client => client.Timeout = Timeout.InfiniteTimeSpan)
+                .ConfigurePrimaryHttpMessageHandler(() =>
                 {
-                    handler.ServerCertificateCustomValidationCallback =
-                        HttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
-                }
+                    var handler = new HttpClientHandler { AllowAutoRedirect = false };
+                    if (allowInsecureTls)
+                    {
+                        handler.ServerCertificateCustomValidationCallback =
+                            HttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
+                    }
 
-                return handler;
-            });
+                    return handler;
+                });
+        }
         // 同一个 RunnerClient typed client 同时满足两个接口（代码执行 + 工作区文件操作）。
-        services.AddScoped<ICodeExecutor>(provider => provider.GetRequiredService<RunnerClient>());
-        services.AddScoped<IWorkspaceClient>(provider => provider.GetRequiredService<RunnerClient>());
-        services.AddScoped<OpenAgent.Core.Capabilities.ICapabilitySource, CodeCapabilitySource>();
-        services.AddScoped<OpenAgent.Core.Capabilities.ICapabilitySource, OpenAgent.Core.Capabilities.Workspace.WorkspaceCapabilitySource>();
+        services.TryAddScoped<ICodeExecutor>(provider => provider.GetRequiredService<RunnerClient>());
+        services.TryAddScoped<IWorkspaceClient>(provider => provider.GetRequiredService<RunnerClient>());
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<OpenAgent.Core.Capabilities.ICapabilitySource, CodeCapabilitySource>());
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<OpenAgent.Core.Capabilities.ICapabilitySource, OpenAgent.Core.Capabilities.Workspace.WorkspaceCapabilitySource>());
 
         return services
             .AddConversationServices(configuration)

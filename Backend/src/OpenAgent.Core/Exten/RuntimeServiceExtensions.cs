@@ -14,7 +14,7 @@ internal static class RuntimeServiceExtensions
 {
     internal static IServiceCollection AddRuntimeServices(this IServiceCollection services)
     {
-        services.AddSingleton<IAgentChatClientFactory, AgentChatClientFactory>();
+        services.TryAddSingleton<IAgentChatClientFactory, AgentChatClientFactory>();
         services.TryAddScoped<IAgentAuthorizationService>(serviceProvider =>
         {
             AgentAuthorizationMode mode = serviceProvider
@@ -24,12 +24,12 @@ internal static class RuntimeServiceExtensions
                 ? new ClaimsAgentAuthorizationService()
                 : new AllowAllAgentAuthorizationService();
         });
-        services.AddScoped<AgentAuthorizationGate>();
-        services.AddScoped<AgentRuntimeResolver>();
-        services.AddScoped<IAgentRuntimeResolver>(serviceProvider =>
+        services.TryAddScoped<AgentAuthorizationGate>();
+        services.TryAddScoped<AgentRuntimeResolver>();
+        services.TryAddScoped<IAgentRuntimeResolver>(serviceProvider =>
             serviceProvider.GetRequiredService<AgentRuntimeResolver>());
-        services.AddScoped<AgentFactory>();
-        services.AddScoped(serviceProvider => new AgentExecutor(
+        services.TryAddScoped<AgentFactory>();
+        services.TryAddScoped(serviceProvider => new AgentExecutor(
             serviceProvider.GetRequiredService<IAgentRuntimeResolver>(),
             serviceProvider.GetRequiredService<AgentFactory>(),
             serviceProvider.GetRequiredService<ConversationAgentResolver>(),

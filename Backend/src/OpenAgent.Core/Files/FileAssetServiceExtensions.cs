@@ -13,44 +13,47 @@ internal static class FileAssetServiceExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        services.AddSingleton<IValidateOptions<FileAssetOptions>, FileAssetOptionsValidator>();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<FileAssetOptions>, FileAssetOptionsValidator>());
         services.AddOptions<FileAssetOptions>()
             .Bind(configuration.GetSection(FileAssetOptions.SectionName))
             .ValidateOnStart();
-        services.AddSingleton<IValidateOptions<FileShareOptions>, FileShareOptionsValidator>();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<FileShareOptions>, FileShareOptionsValidator>());
         services.AddOptions<FileShareOptions>()
             .Bind(configuration.GetSection(FileShareOptions.SectionName))
             .ValidateOnStart();
         services.TryAddSingleton<IFileObjectStore, UnconfiguredFileObjectStore>();
         services.TryAddSingleton<IFileShareRepository, UnconfiguredFileShareRepository>();
         services.TryAddSingleton<IInlineImageOptimizer, InlineImageOptimizer>();
-        services.AddScoped<IFileAssetService, FileAssetService>();
-        services.AddScoped<IFileShareService, FileShareService>();
-        services.AddScoped<FileAssetExecutionContext>();
-        services.AddScoped<FileAssetRequestResolver>();
+        services.TryAddScoped<IFileAssetService, FileAssetService>();
+        services.TryAddScoped<IFileShareService, FileShareService>();
+        services.TryAddScoped<FileAssetExecutionContext>();
+        services.TryAddScoped<FileAssetRequestResolver>();
         bool allowInsecureTls = configuration.GetValue("OPENAGENT_ALLOW_INSECURE_TLS", false);
-        services.AddHttpClient("AgentFileDownload", client =>
-            {
-                client.Timeout = TimeSpan.FromSeconds(FileAssetUrlDownloader.DefaultTimeoutSeconds);
-                client.DefaultRequestHeaders.UserAgent.ParseAdd("OpenAgent-FileDownloader/1.0");
-            })
-            .ConfigurePrimaryHttpMessageHandler(() =>
-            {
-                var handler = new HttpClientHandler
+        if (!services.Any(descriptor => descriptor.ServiceType == typeof(FileAssetUrlDownloader)))
+        {
+            services.AddHttpClient("AgentFileDownload", client =>
                 {
-                    AllowAutoRedirect = false,
-                    UseProxy = false
-                };
-                if (allowInsecureTls)
+                    client.Timeout = TimeSpan.FromSeconds(FileAssetUrlDownloader.DefaultTimeoutSeconds);
+                    client.DefaultRequestHeaders.UserAgent.ParseAdd("OpenAgent-FileDownloader/1.0");
+                })
+                .ConfigurePrimaryHttpMessageHandler(() =>
                 {
-                    handler.ServerCertificateCustomValidationCallback =
-                        HttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
-                }
+                    var handler = new HttpClientHandler
+                    {
+                        AllowAutoRedirect = false,
+                        UseProxy = false
+                    };
+                    if (allowInsecureTls)
+                    {
+                        handler.ServerCertificateCustomValidationCallback =
+                            HttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
+                    }
 
-                return handler;
-            });
-        services.AddScoped<FileAssetUrlDownloader>();
-        services.AddScoped<ICapabilitySource, FileAssetCapabilitySource>();
+                    return handler;
+                });
+        }
+        services.TryAddScoped<FileAssetUrlDownloader>();
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<ICapabilitySource, FileAssetCapabilitySource>());
         return services;
     }
 }

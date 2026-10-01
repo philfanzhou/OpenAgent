@@ -1,10 +1,12 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using OpenAgent.Contracts.Configuration;
+using OpenAgent.Contracts.Execution;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Capabilities;
+using OpenAgent.Core.Abstract;
 using OpenAgent.Core.Capabilities.Mcp;
 using OpenAgent.Core.Capabilities.Rag;
 using OpenAgent.Core.Capabilities.Skill;
@@ -19,7 +21,27 @@ namespace OpenAgent.Core.Tests.Capabilities;
 public class CapabilityServiceRegistrationTests
 {
     [Fact]
-    public async Task AddAgentCore_ResolvesConsolidatedCapabilitySources()
+    public void AddAgentCore_PreservesPreRegisteredImplementations()
+    {
+        var services = new ServiceCollection();
+        var registry = new RagRegistry();
+        var executor = new FakeCodeExecutor();
+        services.AddSingleton<IRagRegistry>(registry);
+        services.AddSingleton<ICodeExecutor>(executor);
+        IConfiguration configuration = new ConfigurationBuilder().Build();
+        services.AddAgentCore(configuration);
+        services.AddAgentCore(configuration);
+
+        Assert.Same(registry, Assert.Single(services, descriptor =>
+            descriptor.ServiceType == typeof(IRagRegistry)).ImplementationInstance);
+        Assert.Same(executor, Assert.Single(services, descriptor =>
+            descriptor.ServiceType == typeof(ICodeExecutor)).ImplementationInstance);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    public async Task AddAgentCore_ResolvesConsolidatedCapabilitySources(int registrations)
     {
         var services = new ServiceCollection();
         services.AddLogging();
@@ -31,7 +53,10 @@ public class CapabilityServiceRegistrationTests
         services.AddSingleton<ILlmInteractionStore, EmptyInteractionStore>();
         IConfiguration configuration = new ConfigurationBuilder().Build();
         services.AddSingleton(configuration);
-        services.AddAgentCore(configuration);
+        for (int index = 0; index < registrations; index++)
+        {
+            services.AddAgentCore(configuration);
+        }
 
         await using ServiceProvider provider = services.BuildServiceProvider(
             new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
@@ -39,6 +64,11 @@ public class CapabilityServiceRegistrationTests
         IEnumerable<ICapabilitySource> sources = scope.ServiceProvider
             .GetRequiredService<IEnumerable<ICapabilitySource>>();
 
+        Assert.Equal(6, sources.Count());
+        Assert.Equal(6, sources.Select(source => source.GetType()).Distinct().Count());
+        Assert.Single(services, descriptor => descriptor.ServiceType == typeof(IRagRegistry));
+        using HttpClient downloadClient = provider.GetRequiredService<IHttpClientFactory>().CreateClient("AgentFileDownload");
+        Assert.Single(downloadClient.DefaultRequestHeaders.UserAgent);
         Assert.Contains(sources, source => source is RagCapabilitySource);
         Assert.Contains(sources, source => source is UserProfileCapabilitySource);
         Assert.DoesNotContain(sources, source => source.GetType().Name.Contains("HttpSkill", StringComparison.Ordinal));

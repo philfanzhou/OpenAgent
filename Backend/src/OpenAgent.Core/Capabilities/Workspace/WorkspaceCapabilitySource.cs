@@ -143,7 +143,7 @@ internal sealed class WorkspaceCapabilitySource(
         try
         {
             WorkspaceListResult result = await workspace.ListAsync(
-                sessionKey, ReadString(arguments, "path"), ReadString(arguments, "pattern"), cancellationToken)
+                sessionKey, ToolArguments.ReadString(arguments, "path"), ToolArguments.ReadString(arguments, "pattern"), cancellationToken)
                 .ConfigureAwait(false);
             return JsonSerializer.Serialize(new
             {
@@ -166,7 +166,7 @@ internal sealed class WorkspaceCapabilitySource(
         IReadOnlyDictionary<string, object?> arguments,
         CancellationToken cancellationToken)
     {
-        string? path = ReadString(arguments, "path");
+        string? path = ToolArguments.ReadString(arguments, "path");
         if (string.IsNullOrWhiteSpace(path))
         {
             return ToolResult.Error("'path' is a required argument.", "invalid_arguments");
@@ -176,8 +176,8 @@ internal sealed class WorkspaceCapabilitySource(
         {
             return ContextUnavailable();
         }
-        int offset = ReadInt(arguments, "offset") ?? 1;
-        int limit = ReadInt(arguments, "limit") ?? 500;
+        int offset = ToolArguments.ReadInt(arguments, "offset") ?? 1;
+        int limit = ToolArguments.ReadInt(arguments, "limit") ?? 500;
         if (offset < 1 || limit < 1 || limit > 2_000)
         {
             return ToolResult.Error(
@@ -208,8 +208,8 @@ internal sealed class WorkspaceCapabilitySource(
         IReadOnlyDictionary<string, object?> arguments,
         CancellationToken cancellationToken)
     {
-        string? path = ReadString(arguments, "path");
-        string? content = ReadString(arguments, "content");
+        string? path = ToolArguments.ReadString(arguments, "path");
+        string? content = ToolArguments.ReadString(arguments, "content");
         if (string.IsNullOrWhiteSpace(path))
         {
             return ToolResult.Error("'path' is a required argument.", "invalid_arguments");
@@ -244,10 +244,10 @@ internal sealed class WorkspaceCapabilitySource(
         IReadOnlyDictionary<string, object?> arguments,
         CancellationToken cancellationToken)
     {
-        string? path = ReadString(arguments, "path");
-        string? oldString = ReadString(arguments, "old_string");
-        string? newString = ReadString(arguments, "new_string");
-        bool replaceAll = ReadBool(arguments, "replace_all");
+        string? path = ToolArguments.ReadString(arguments, "path");
+        string? oldString = ToolArguments.ReadString(arguments, "old_string");
+        string? newString = ToolArguments.ReadString(arguments, "new_string");
+        bool replaceAll = ToolArguments.ReadBool(arguments, "replace_all");
         if (string.IsNullOrWhiteSpace(path) || oldString == null || newString == null)
         {
             return ToolResult.Error(
@@ -280,8 +280,8 @@ internal sealed class WorkspaceCapabilitySource(
         IReadOnlyDictionary<string, object?> arguments,
         CancellationToken cancellationToken)
     {
-        string? path = ReadString(arguments, "path");
-        string? fileName = ReadString(arguments, "fileName");
+        string? path = ToolArguments.ReadString(arguments, "path");
+        string? fileName = ToolArguments.ReadString(arguments, "fileName");
         if (string.IsNullOrWhiteSpace(path))
         {
             return ToolResult.Error("'path' is a required argument.", "invalid_arguments");
@@ -354,18 +354,4 @@ internal sealed class WorkspaceCapabilitySource(
             hint: "Retry after a short wait; if it persists, finish without workspace access.")
     };
 
-    private static string? ReadString(IReadOnlyDictionary<string, object?> arguments, string name) =>
-        arguments.TryGetValue(name, out object? value) ? value?.ToString() : null;
-
-    private static int? ReadInt(IReadOnlyDictionary<string, object?> arguments, string name)
-    {
-        string? value = ReadString(arguments, name);
-        return value != null && int.TryParse(value, out int parsed) ? parsed : null;
-    }
-
-    private static bool ReadBool(IReadOnlyDictionary<string, object?> arguments, string name) =>
-        arguments.TryGetValue(name, out object? value)
-            && value?.ToString() is { } text
-            && bool.TryParse(text, out bool parsed)
-            && parsed;
 }

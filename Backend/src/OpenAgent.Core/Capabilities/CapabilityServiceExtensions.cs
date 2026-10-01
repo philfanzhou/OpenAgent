@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using OpenAgent.Contracts.Models;
 using OpenAgent.Core.Capabilities;
 using OpenAgent.Core.Abstract;
@@ -15,22 +16,22 @@ internal static class CapabilityServiceExtensions
 {
     internal static IServiceCollection AddCapabilityServices(this IServiceCollection services)
     {
-        services.AddSingleton<IRagRegistry, RagRegistry>();
-        services.AddSingleton<ISkillCatalog, SkillCatalog>();
-        services.AddSingleton<IMcpRegistry, McpRegistry>();
-        services.AddSingleton<McpTransportFactory>();
-        services.AddSingleton<McpClientPool>();
-        services.AddScoped<McpToolFactory>();
-        services.AddScoped<AgentSkillsProviderFactory>();
-        services.AddScoped<IMcpConnectionTester, McpConnectionTester>();
-        services.AddScoped<ICapabilitySource, RagCapabilitySource>();
-        services.AddScoped<ICapabilitySource, UserProfileCapabilitySource>();
-        services.AddScoped<ICapabilitySource, PlanCapabilitySource>();
-        services.AddScoped<CapabilityToolFactory>();
+        services.TryAddSingleton<IRagRegistry, RagRegistry>();
+        services.TryAddSingleton<ISkillCatalog, SkillCatalog>();
+        services.TryAddSingleton<IMcpRegistry, McpRegistry>();
+        services.TryAddSingleton<McpTransportFactory>();
+        services.TryAddSingleton<McpClientPool>();
+        services.TryAddScoped<McpToolFactory>();
+        services.TryAddScoped<AgentSkillsProviderFactory>();
+        services.TryAddScoped<IMcpConnectionTester, McpConnectionTester>();
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<ICapabilitySource, RagCapabilitySource>());
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<ICapabilitySource, UserProfileCapabilitySource>());
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<ICapabilitySource, PlanCapabilitySource>());
+        services.TryAddScoped<CapabilityToolFactory>();
 
-        services.AddScoped<IRagService, RagService>();
-        services.AddScoped<IRagAdapter, RagFlowAdapter>();
-        services.AddScoped<IRagAdapter, QdrantAdapter>();
+        services.TryAddScoped<IRagService, RagService>();
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<IRagAdapter, RagFlowAdapter>());
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<IRagAdapter, QdrantAdapter>());
         return services;
     }
 }
