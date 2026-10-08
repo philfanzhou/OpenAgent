@@ -9,8 +9,8 @@ using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Contracts.Skills;
 using OpenAgent.Core.Abstract;
-using OpenAgent.Core.Capabilities.Code;
-using OpenAgent.Core.Files;
+using OpenAgent.Core.Files.Requests;
+using OpenAgent.Core.Integrations.Runner;
 using OpenAgent.Core.Security;
 
 namespace OpenAgent.Core.Capabilities.Skill;
@@ -310,36 +310,5 @@ internal sealed class AgentSkillsProviderFactory(
         {
             // Cleanup is best effort; the original exception is more useful to the caller.
         }
-    }
-}
-
-internal sealed class AgentSkillsRuntime : IAsyncDisposable
-{
-    internal static AgentSkillsRuntime Empty { get; } = new(null, null);
-
-    internal AgentSkillsRuntime(AgentSkillsProvider? provider, string? temporaryRoot)
-    {
-        Provider = provider;
-        TemporaryRoot = temporaryRoot;
-    }
-
-    internal AgentSkillsProvider? Provider { get; }
-    private string? TemporaryRoot { get; }
-
-    public ValueTask DisposeAsync()
-    {
-        Provider?.Dispose();
-        try
-        {
-            if (!string.IsNullOrWhiteSpace(TemporaryRoot) && Directory.Exists(TemporaryRoot))
-            {
-                Directory.Delete(TemporaryRoot, recursive: true);
-            }
-        }
-        catch
-        {
-            // Temporary package cleanup must not hide the agent result.
-        }
-        return ValueTask.CompletedTask;
     }
 }

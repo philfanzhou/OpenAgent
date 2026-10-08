@@ -15,6 +15,14 @@ public class AssemblyDependencyTests
             assemblyName == "OpenAgent.Hosting" ? ["OpenAgent.Contracts"] : []);
     }
 
+    [Theory]
+    [InlineData("OpenAgent.Infrastructure")]
+    [InlineData("OpenAgent.Runner")]
+    public void StorageAndSandbox_ReferenceOnlyContracts(string assemblyName)
+    {
+        AssertOpenAgentReferences(assemblyName, ["OpenAgent.Contracts"]);
+    }
+
     [Fact]
     public void Core_ReferencesOnlyContracts()
     {

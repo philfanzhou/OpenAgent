@@ -1,14 +1,15 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using ModelContextProtocol.Server;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Conversation;
+using OpenAgent.Core.Tooling.Invocation;
 using Xunit;
 using static OpenAgent.Engine.Tests.Hosting.SseToolStreamingTests;
 

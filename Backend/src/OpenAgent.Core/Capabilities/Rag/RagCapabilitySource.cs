@@ -1,9 +1,10 @@
 using System.Text;
 using Microsoft.Extensions.Logging;
-using OpenAgent.Core.Abstract;
 using OpenAgent.Contracts.Capabilities;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Security;
+using OpenAgent.Core.Abstract;
+using OpenAgent.Core.Tooling.Abstractions;
 
 namespace OpenAgent.Core.Capabilities.Rag;
 

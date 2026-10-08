@@ -5,8 +5,9 @@ using OpenAgent.Contracts.Execution;
 using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
-using OpenAgent.Core.Capabilities.Code;
-using OpenAgent.Core.Files;
+using OpenAgent.Core.Files.Artifacts;
+using OpenAgent.Core.Files.Requests;
+using OpenAgent.Core.Integrations.Runner;
 using OpenAgent.Core.Security;
 
 namespace OpenAgent.Core.Capabilities.Skill;

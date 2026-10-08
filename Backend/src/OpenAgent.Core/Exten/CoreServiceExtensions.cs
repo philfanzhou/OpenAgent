@@ -1,56 +1,35 @@
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using OpenAgent.Core.Capabilities.Mcp;
-using OpenAgent.Core.Files;
-using OpenAgent.Core.Security;
-using OpenAgent.Core.Capabilities.Code;
-using OpenAgent.Contracts.Execution;
+using Microsoft.Extensions.DependencyInjection;
+using OpenAgent.Core.Extensions;
 
 namespace OpenAgent.Core.Exten;
 
 public static class CoreServiceExtensions
 {
-    public static IServiceCollection AddAgentCore(
-        this IServiceCollection services,
-        IConfiguration configuration)
+    public static IServiceCollection AddAgentCore(this IServiceCollection services, IConfiguration configuration)
     {
+        // Repeated calls must not append Options bindings or collection values.
+        if (services.Any(descriptor => descriptor.ServiceType == typeof(CoreRegistration)))
+        {
+            return services;
+        }
+        services.AddSingleton(new CoreRegistration());
         services.TryAddSingleton<IConfiguration>(configuration);
         services.AddHttpContextAccessor();
-        services.Configure<McpExecutionOptions>(configuration.GetSection("Mcp"));
-        services.Configure<OpenAgent.Core.Runtime.Agent.AgentExecutionOptions>(
-            configuration.GetSection("AgentExecution"));
-        services.Configure<AgentAuthorizationOptions>(configuration.GetSection("Authorization"));
-        services.AddOptions<CodeExecutionOptions>().Bind(configuration.GetSection("CodeExecution"))
-            .Validate(options => !options.Enabled ||
-                (Uri.TryCreate(options.Endpoint, UriKind.Absolute, out Uri? uri)
-                    && uri.Scheme is "http" or "https" && string.IsNullOrEmpty(uri.UserInfo)
-                    && options.ApiKey.Length >= 32 && options.RequestTimeoutSeconds is >= 10 and <= 900),
-                "CodeExecution requires an HTTP(S) Runner endpoint, a 32-character API key, and a bounded timeout.")
-            .ValidateOnStart();
-        bool allowInsecureTls = configuration.GetValue("OPENAGENT_ALLOW_INSECURE_TLS", false);
-        services.AddHttpClient<RunnerClient>(client => client.Timeout = Timeout.InfiniteTimeSpan)
-            .ConfigurePrimaryHttpMessageHandler(() =>
-            {
-                var handler = new HttpClientHandler { AllowAutoRedirect = false };
-                if (allowInsecureTls)
-                {
-                    handler.ServerCertificateCustomValidationCallback =
-                        HttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
-                }
-
-                return handler;
-            });
-        // 同一个 RunnerClient typed client 同时满足两个接口（代码执行 + 工作区文件操作）。
-        services.AddScoped<ICodeExecutor>(provider => provider.GetRequiredService<RunnerClient>());
-        services.AddScoped<IWorkspaceClient>(provider => provider.GetRequiredService<RunnerClient>());
-        services.AddScoped<OpenAgent.Core.Capabilities.ICapabilitySource, CodeCapabilitySource>();
-        services.AddScoped<OpenAgent.Core.Capabilities.ICapabilitySource, OpenAgent.Core.Capabilities.Workspace.WorkspaceCapabilitySource>();
-
         return services
+            .AddSecurityServices(configuration)
+            .AddModelProviderServices(configuration)
+            .AddRunnerServices(configuration)
+            .AddToolingServices(configuration)
+            .AddBuiltinCapabilityServices()
             .AddConversationServices(configuration)
             .AddFileAssetServices(configuration)
-            .AddCapabilityServices()
+            .AddMcpServices(configuration)
+            .AddSkillServices()
+            .AddRagServices()
             .AddRuntimeServices();
     }
+
+    private sealed class CoreRegistration;
 }

@@ -1,14 +1,15 @@
 using System.Text.Json;
 using Microsoft.Extensions.AI;
-using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
+using ModelContextProtocol;
 using OpenAgent.Contracts.Files;
+using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Runtime;
 using OpenAgent.Contracts.Security;
-using OpenAgent.Contracts.Requests;
 using OpenAgent.Core.Capabilities.Mcp;
-using OpenAgent.Core.Files;
-using OpenAgent.Core.Runtime.Agent;
+using OpenAgent.Core.Files.Requests;
+using OpenAgent.Core.Mapping;
+using OpenAgent.Core.Tooling.Invocation;
 using Xunit;
 
 namespace OpenAgent.Core.Tests.Capabilities.Mcp;

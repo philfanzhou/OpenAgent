@@ -2,6 +2,7 @@ using System.Text.Json;
 using OpenAgent.Contracts.Capabilities;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Security;
+using OpenAgent.Core.Tooling.Abstractions;
 
 namespace OpenAgent.Core.Capabilities.Plan;
 
