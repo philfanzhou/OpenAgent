@@ -1,5 +1,7 @@
 # Agent.Hosting 详细设计文档
 
+> 历史归档：保留原方案、当时的状态与验证记录，不作为当前实现或待办依据。当前架构见 [系统上下文](../../overview/SystemContext.md)，任务状态统一见 [任务清单](../../planning/TODO.md)。
+
 ## 1. 架构概览
 `Agent.Hosting` 是 ASP.NET Core 的宿主封装层。它负责将 `Agent.Core` 的纯逻辑通过 HTTP/gRPC 端点暴露出去，处理请求管线、全局异常、CORS、Swagger 生成以及依赖注入（DI）。
 

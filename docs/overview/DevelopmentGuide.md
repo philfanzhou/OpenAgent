@@ -4,7 +4,7 @@
 
 ## 开发流程
 
-1. 从根 [README](../../README.md) 确认启动方式，再按下表确定所属模块。
+1. 从 [任务清单](../planning/TODO.md) 领取任务，按下表确定所属模块；启动方式见 [部署指南](../deployment.md)。
 2. 阅读对应 [功能域文档](../modules/README.md) 与 [集成文档](../integrations/README.md)，从已有用例追踪接口、注册与测试。
 3. 任务卡写明基线、目标行为、拥有目录、共享文件、接口输入输出、前置任务、验收与回退；指定模块负责人和集成人。
 4. 跨域需求先确定 Contracts 协议，再分派实现。模块负责人改本域；公共 DTO、数据库迁移、包/项目引用、Host Program 和前端 app 由集成人协调。
@@ -69,7 +69,7 @@ Execution 不引用具体能力实现；ModelProviders 不引用会话或执行�
 | app/useSettings.ts、SettingsDialog.vue | Agent 草稿、编辑与跨域设置组合 |
 | 根 api.ts、types.ts、browserCrypto.ts、composables/useSettings.ts | 旧调用方兼容导出；新 feature 不引用这些门面 |
 
-修改模型保存、MCP 测试、Skill 上传或 RAG 编辑时，在本域完成。兼容导出在全仓库调用方迁移后删除。未完成的迁移与前置关系见 [模块拆分后续任务](../planning/module-boundaries.md)。
+修改模型保存、MCP 测试、Skill 上传或 RAG 编辑时，在本域完成。兼容导出在全仓库调用方迁移后删除。未完成的迁移与前置关系见 [任务清单](../planning/TODO.md)。
 
 ## 审查与验证
 

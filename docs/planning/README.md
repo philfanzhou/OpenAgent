@@ -1,10 +1,9 @@
-# 规划文档
+# 任务规划
 
-本目录存放目标架构、重构基线等规划性文档。
+| 文档 | 用途 |
+|---|---|
+| [任务清单](TODO.md) | 当前任务状态、优先级、修改边界、前置依赖与验收条件 |
+| [开发指南](../overview/DevelopmentGuide.md) | 模块入口与协作规则 |
+| [历史方案](../archive/README.md) | 旧规划、方案比较和当时的实施记录 |
 
-| 文档 | 内容 | 状态 |
-|------|------|------|
-| [module-boundaries.md](./module-boundaries.md) | 模块拆分后续任务、前置依赖与验收 | 第一批边界已落地，剩余范围待推进（2026-10-08） |
-| [Agent.Workflow.md](./Agent.Workflow.md) | Agent.Workflow 服务状态与兼容行为说明 | 规划中 |
-| [2026-08-03-engine-core-agent-runtime-redesign.md](./2026-08-03-engine-core-agent-runtime-redesign.md) | Engine/Core Agent Runtime 扁平化重构基线 | Implementation Baseline v5 |
-| [2026-09-session-architecture.md](./2026-09-session-architecture.md) | 会话架构重构：审查结论、第一波（PR #110~#115 已合并）与第二波（TurnContext/Metadata/AgentConfig/前端 codegen）单一进度源 | 进行中 |
+领取或更新任务从任务清单进入；历史方案不再维护当前进度。

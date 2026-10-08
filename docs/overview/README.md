@@ -1,25 +1,14 @@
 # 总览文档
 
-本目录包含 OpenAgent 平台的总览级文档，帮助读者快速建立全局认知。
+| 文档 | 用途 |
+|---|---|
+| [开发指南](DevelopmentGuide.md) | 模块入口、分工、扩展接口与验证 |
+| [系统上下文](SystemContext.md) | 当前服务、依赖、功能范围与 Workflow 状态 |
+| [运行时设计](Design.md) | 分层、MAF 执行与生命周期 |
+| [关键流程](KeyFlows.md) | 跨服务时序与调用链 |
+| [API](API.md) | HTTP/SSE、认证、错误与接口约定 |
+| [集成矩阵](Integration.md) | 外部系统与接口边界 |
+| [数据所有权](DataOwnership.md) | 数据主责、引用边界与双写禁区 |
+| [可观测性](Observability.md) | 日志、Trace、Metrics 与健康检查 |
 
-> 本目录只负责全局认知、边界和导航，不替代 `modules/`、`integrations/`、`database/` 的细节文档。
-
-## 文档清单
-
-| 文档 | 用途 | 阅读场景 |
-|------|------|----------|
-| [DevelopmentGuide.md](./DevelopmentGuide.md) | 模块入口、任务分派、代码审查与验证 | 功能开发与协作 |
-| [SystemContext.md](./SystemContext.md) | 服务定位、上下游、参与者 | 首次了解平台架构 |
-| [Integration.md](./Integration.md) | 集成矩阵、接口边界、失败语义 | 联调、排障外部依赖 |
-| [KeyFlows.md](./KeyFlows.md) | 关键跨服务时序与调用链 | 理解核心业务流程 |
-| [DataOwnership.md](./DataOwnership.md) | 数据主责、引用边界、双写禁区 | 数据库变更、数据迁移 |
-| [Requirements.md](./Requirements.md) | 平台级需求摘要 | 了解功能范围 |
-| [Design.md](./Design.md) | 平台级架构概述 | 了解分层、技术栈、依赖关系 |
-| [Observability.md](./Observability.md) | 日志、Trace、Metrics 与健康检查的当前事实 | 部署、监控、排障 |
-
-## 阅读建议
-
-1. **首次阅读**：SystemContext → Design → KeyFlows → Requirements
-2. **联调排障**：Integration → KeyFlows → Observability → 对应 `modules/` 文档
-3. **数据变更**：DataOwnership → `../database/` 文档
-4. **开发执行**：DevelopmentGuide → 对应 `modules/` 文档
+阅读路径：系统上下文 → 运行时设计 → 关键流程。开发时从开发指南进入所属功能域；分派和跟踪工作统一见 [任务清单](../planning/TODO.md)。

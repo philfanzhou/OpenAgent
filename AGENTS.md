@@ -33,6 +33,7 @@ Backend/
 
 ## 开发指南
 
+- 当前待办与分派：[任务清单](docs/planning/TODO.md)；历史方案不作为当前任务状态。
 - 模块入口、任务分派、代码审查与验证：[开发指南](docs/overview/DevelopmentGuide.md)。
 - Core 按功能域组织；新增能力通过 Tooling 的 ICapabilitySource / IAgentFeatureFactory 接入，Execution 不引用具体能力实现。
 - 各模块修改自己的 Extensions 注册文件；Exten/CoreServiceExtensions 保留公开组合入口。
@@ -60,7 +61,10 @@ Backend/
 | `docs/modules/` | 功能域详细文档（execution、conversation、capabilities、security、engine） |
 | `docs/integrations/` | 外部依赖集成（LLM、Redis、PostgreSQL、MCP、RAG） |
 | `docs/database/` | 数据存储唯一事实源 |
-| `docs/decisions/` | 架构决策归档（ADR） |
+| `docs/decisions/` | 架构决策（ADR） |
+| `docs/planning/TODO.md` | 当前任务、状态、依赖与验收的唯一入口 |
+| `docs/archive/` | 历史方案与已整合的旧文档 |
+| `docs/test-reports/` | 实测结果与验证记录 |
 
 ## 关键约定
 

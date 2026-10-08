@@ -1,6 +1,6 @@
 # 模块边界验证记录
 
-日期：2026-10-08。实施基线：`9ba17fbf28839696767044dfa8238b85a1690089`；分支：`codex/module-boundaries`。范围：本批 Core/前端模块拆分与依赖检查。当前代码入口见 [开发指南](../overview/DevelopmentGuide.md)，剩余范围见 [后续任务](../planning/module-boundaries.md)。
+日期：2026-10-08。实施基线：`9ba17fbf28839696767044dfa8238b85a1690089`；分支：`codex/module-boundaries`。范围：本批 Core/前端模块拆分与依赖检查。当前代码入口见 [开发指南](../overview/DevelopmentGuide.md)，剩余范围见 [后续任务](../planning/TODO.md)。
 
 后端构建通过；最终完整回归 917 项通过、0 失败、24 项环境门控跳过。架构检查另在 Release 配置复验，10 项通过。前端 `pnpm check` 通过：18 个测试文件、153 项测试，类型检查与生产构建成功。
 

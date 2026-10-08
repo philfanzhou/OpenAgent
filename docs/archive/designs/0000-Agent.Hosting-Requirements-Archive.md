@@ -1,5 +1,7 @@
 # Agent.Hosting 需求规格说明 (Requirement Specification)
 
+> 历史归档：保留原方案、当时的状态与验证记录，不作为当前实现或待办依据。当前架构见 [系统上下文](../../overview/SystemContext.md)，任务状态统一见 [任务清单](../../planning/TODO.md)。
+
 ## 1. 模块定位
 `Agent.Hosting` 是将纯粹底层业务逻辑（`Agent.Core` 等）转化为**可对外提供网络服务的宿主层（ASP.NET Core Wrapper）**。
 它**不包含任何核心的 AI 调度和工具执行逻辑**，也**不包含 DevOps 维度的部署脚本**（后者属于 `Agent.Deploy`）。它专注于处理 HTTP 协议、网络流、中间件管线、全局异常拦截、服务注册（DI）以及 API 文档（Swagger）。

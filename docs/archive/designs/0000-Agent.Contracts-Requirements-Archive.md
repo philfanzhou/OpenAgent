@@ -1,5 +1,7 @@
 # Agent.Contracts 规范说明 (Contracts & Abstractions Specification)
 
+> 历史归档：保留原方案、当时的状态与验证记录，不作为当前实现或待办依据。当前架构见 [系统上下文](../../overview/SystemContext.md)，任务状态统一见 [任务清单](../../planning/TODO.md)。
+
 ## 1. 模块定位
 `Agent.Contracts` 是一个**纯净的类库 (Class Library / Assembly)**，它不是一个可独立运行的系统模块。
 它的核心作用是作为整个 Agent 矩阵架构（以及外部独立业务线）的**全局标准契约层**。
