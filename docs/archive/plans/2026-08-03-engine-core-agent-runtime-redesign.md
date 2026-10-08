@@ -1,5 +1,7 @@
 # OpenAgent Engine/Core Agent Runtime 扁平化产品与架构基线
 
+> 历史归档：保留原方案、当时的状态与验证记录，不作为当前实现或待办依据。当前架构见 [系统上下文](../../overview/SystemContext.md)，任务状态统一见 [任务清单](../../planning/TODO.md)。
+
 > 状态：Implementation Baseline v5（核心重构已落地，真实环境验收待执行）
 >
 > 日期：2026-08-03

@@ -1,5 +1,7 @@
 # 主流 Agent 工具设计调研与 OpenAgent 工具层改造方案
 
+> 历史归档：保留原方案、当时的状态与验证记录，不作为当前实现或待办依据。当前架构见 [系统上下文](../../overview/SystemContext.md)，任务状态统一见 [任务清单](../../planning/TODO.md)。
+
 > 状态：提案（Proposal，阶段 0 已实施）｜日期：2026-09-22｜范围：`OpenAgent.Core/Capabilities`、执行引擎工具编排、Runner 协同
 
 > **实施记录（2026-09-22，阶段 0 契约硬化已落地）**：

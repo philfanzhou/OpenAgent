@@ -1,5 +1,7 @@
 # 平台健康检查（Platform Health Check）设计
 
+> 历史归档：保留原方案、当时的状态与验证记录，不作为当前实现或待办依据。当前架构见 [系统上下文](../../overview/SystemContext.md)，任务状态统一见 [任务清单](../../planning/TODO.md)。
+
 日期：2026-08-12
 状态：Approved
 

@@ -1,5 +1,7 @@
 # 平台健康检查 Implementation Plan
 
+> 历史归档：保留原方案、当时的状态与验证记录，不作为当前实现或待办依据。当前架构见 [系统上下文](../../overview/SystemContext.md)，任务状态统一见 [任务清单](../../planning/TODO.md)。
+
 > **状态：已实现** — 后端 `DatabaseHealthCheck`、`/health/report` 端点、`OpenAgent.Infrastructure` 目录重组与前端 `HealthCheckPanel` 均已落地。以下任务清单保留为实施记录，未勾选项不代表待办。
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
