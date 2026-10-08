@@ -1,0 +1,12 @@
+<script setup lang="ts">
+import type { useSkillSettings } from './useSkillSettings'
+
+const props = defineProps<{ context: ReturnType<typeof useSkillSettings> }>()
+const { uploadingSkill, skillPackageInput, skillCatalog, loadSkillCatalog, toggleSkillScriptExecution, chooseSkillPackage, openSkillTextEditor, editSkill, uploadSkillPackage, deleteSkillCatalog } = props.context
+</script>
+
+<template>
+<section class="settings-section"><div class="section-heading"><div><span class="eyebrow">SKILL CATALOG</span><h3>Skill 配置</h3><p>独立维护官方 Skill 目录；Agent 页面只选择 Skill ID，绑定关系保存到 Agent 配置。</p></div><div class="section-actions"><input ref="skillPackageInput" type="file" hidden accept=".zip,.md" @change="uploadSkillPackage" /><el-button @click="loadSkillCatalog">刷新</el-button><el-button :loading="uploadingSkill" type="primary" plain @click="chooseSkillPackage">上传 ZIP / MD</el-button><el-button type="primary" plain @click="openSkillTextEditor">手动填写</el-button></div></div>
+            <el-table :data="skillCatalog" class="capability-table" empty-text="还没有 Skill"><el-table-column label="名称" min-width="180"><template #default="scope"><strong>{{ scope.row.name }}</strong><small class="table-subtext">{{ scope.row.skillId }}</small></template></el-table-column><el-table-column label="说明" min-width="240" show-overflow-tooltip><template #default="scope">{{ scope.row.description }}</template></el-table-column><el-table-column label="内容" width="120"><template #default="scope">{{ scope.row.resourceCount || 0 }} 资源</template></el-table-column><el-table-column label="脚本执行" width="140"><template #default="scope"><el-tooltip :disabled="!scope.row.scriptNames?.length" :content="(scope.row.scriptNames ?? []).join('、')" placement="top"><div class="skill-script-cell"><el-switch size="small" :model-value="scope.row.scriptExecutionEnabled ?? false" @change="toggleSkillScriptExecution(scope.row)" /><small class="table-subtext">{{ scope.row.scriptCount || 0 }} 脚本</small></div></el-tooltip></template></el-table-column><el-table-column label="来源" width="150"><template #default="scope">{{ scope.row.packageFileName }}</template></el-table-column><el-table-column label="操作" width="170" fixed="right"><template #default="scope"><el-button link type="primary" @click="editSkill(scope.row)">编辑</el-button><el-button link type="danger" @click="deleteSkillCatalog(scope.row)">删除</el-button></template></el-table-column></el-table>
+          </section>
+</template>

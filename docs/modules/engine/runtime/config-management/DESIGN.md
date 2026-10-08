@@ -58,6 +58,6 @@ LLM 和 RAG API Key 使用租户绑定的服务端加密值存储在数据库和
 | HTTP | Backend/src/OpenAgent.Engine.Host/Controllers/ConfigurationController.cs |
 | 配置服务与缓存 | Backend/src/OpenAgent.Engine/Config/ConfigurationService.cs |
 | 数据访问 | Backend/src/OpenAgent.Infrastructure/Configuration/ |
-| 运行时组合 | Backend/src/OpenAgent.Core/Runtime/Agent/AgentRuntimeResolver.cs |
+| 运行时组合 | Backend/src/OpenAgent.Core/Execution/AgentRuntimeResolver.cs |
 
 表结构与迁移见 [配置表](../../../../database/tables/Configurations.md)。

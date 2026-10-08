@@ -1,14 +1,14 @@
 using System.Text.Json;
 using Microsoft.Extensions.AI;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
 using OpenAgent.Contracts.Capabilities;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Security;
-using OpenAgent.Core.Capabilities;
-using OpenAgent.Core.Files;
+using OpenAgent.Core.Files.Requests;
+using OpenAgent.Core.Tooling.Abstractions;
 
 namespace OpenAgent.Core.Capabilities.Mcp;
 

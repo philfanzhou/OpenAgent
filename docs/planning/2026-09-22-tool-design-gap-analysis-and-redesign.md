@@ -7,7 +7,7 @@
 > - `CapabilityDefinition.Invoke` 改为 `Task<ToolResult>`，四个内置能力源全部迁移（错误信封英文统一）；
 > - `IsolatedToolFunction` 成为模型侧唯一出口：分级字符预算（读 80k/执行 40k/MCP 48k/默认 60k，`AgentExecution:*ToolResultCharBudget`）+ 头尾保留截断 + 收窄提示；未捕获异常脱敏（errorId 关联日志，`exception.Message` 不再透传模型）；
 > - Schema 硬化：`additionalProperties:false`/参数 type/required 全量补齐；非法 schema 生产降级+Error 日志、Development 抛错；`BuiltInToolSchemaTests` CI 兜底；
-> - 内置工具描述按"新员工手册"标准重写（write_file 不可修改已有文件等行为契约显式化）；
+> - 内置工具描述按"开发指南"标准重写（write_file 不可修改已有文件等行为契约显式化）；
 > - 漂移修复：`MaxTurns` fallback 5→`AgentConfig.DefaultMaxTurns`(50)；tool-calling/errors 文档更新。
 > 验证：`dotnet build` 0 警告 0 错误；全解决方案 780 测试通过（新增 `ToolResultBudgetTests`、`BuiltInToolSchemaTests`）。
 > **实施记录（2026-09-22，阶段 1 执行编排已落地）**：
@@ -86,7 +86,7 @@
 3. **截断 + 分页 + 范围选择要有默认值**；"冗余调用很多"是分页/预算设错的信号。
 4. **错误要可行动**：给具体的修正建议和正确输入示例，而不是错误码/堆栈。
 5. **命名**：参数名无歧义（`user_id` 不是 `user`）；按服务/资源命名空间（`asana_search`）。
-6. **描述写给新员工**：把隐含知识（查询格式、术语、资源关系）显式化；"对工具描述的小修"曾直接带来 SWE-bench SOTA。
+6. **描述按开发指南组织**：把隐含知识（查询格式、术语、资源关系）显式化；"对工具描述的小修"曾直接带来 SWE-bench SOTA。
 7. **用 transcript 指标迭代**：追踪调用次数、非法参数错误率、冗余调用——它们分别指向描述不清、schema 不对、分页/预算失衡；甚至可以让 Claude 自己改自己的工具描述。
 
 ### 1.4 主流共识清单（后文差距分析的基准）
@@ -176,7 +176,7 @@
    - `read_file` 的"超 1 MiB 拒绝"改为"截断+提示"。
 3. **统一错误格式**：`{ "error": "<what>", "code": "...", "hint": "<how to fix>" }`，全英文（模型侧）或全中文，二选一并全仓统一；`SerializeError` 停止透传 `exception.Message`，走脱敏映射表（内部异常 → 通用文案 + 日志关联 id）。
 4. **Schema 硬化**：`NormalizeSchema` 降级时 `LogWarning`（含工具名），`Development` 环境直接抛错；补齐所有内置工具的 `required` / `additionalProperties:false` / 参数级 description；加一个单测清单逐工具 lint。
-5. **描述重写**：按"新员工手册"标准重写内置工具描述（何时用/何时不用/失败怎么办/与其他工具的配合，如 `write_file` 明确"不能修改已有文件，要修改请…（阶段 2 前：重新生成完整内容新建）"）。
+5. **描述重写**：按"开发指南"标准重写内置工具描述（何时用/何时不用/失败怎么办/与其他工具的配合，如 `write_file` 明确"不能修改已有文件，要修改请…（阶段 2 前：重新生成完整内容新建）"）。
 6. 顺手修两处漂移：`MaxTurns<=0` 时 fallback 5 与文档 50 不一致；`tool-calling/README.md` 中已不存在的 `ExecuteToolAsync` 描述。
 
 **验收**：单测覆盖预算截断（头尾保留）、错误脱敏、schema lint；抓一轮真实会话 transcript，验证无 >预算 的工具结果进入历史。

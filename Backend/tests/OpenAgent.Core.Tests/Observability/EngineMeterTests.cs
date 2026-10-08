@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics.Metrics;
 using OpenAgent.Contracts.Requests;
-using OpenAgent.Core.Runtime.Agent;
+using OpenAgent.Core.Observability;
 using Xunit;
 
 namespace OpenAgent.Core.Tests.Observability;

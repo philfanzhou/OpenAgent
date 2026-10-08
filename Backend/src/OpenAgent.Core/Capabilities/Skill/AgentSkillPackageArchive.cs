@@ -209,12 +209,3 @@ public static class AgentSkillPackageArchive
         }
     }
 }
-
-public sealed record AgentSkillPackageMetadata(
-    string Name,
-    string Description,
-    int SkillCount,
-    int ResourceCount,
-    IReadOnlyList<string> ScriptNames);
-
-public sealed record SkillPackageFile(string RelativePath, byte[] Content);
