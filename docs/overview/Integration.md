@@ -12,11 +12,6 @@
 | PostgreSQL | Npgsql EF Core | 出 | 会话、消息、文件资产元数据与引用关系 | 持久化失败返回请求错误，不用内存数据替代 |
 | S3-compatible object storage | S3 API | 出 | 文件原始字节、预览和下载 | 未配置或写入失败时文件端点返回依赖错误 |
 
-## 失败语义总结
+## 联调与故障排查
 
-- **LLM 调用失败**：请求直接失败，异常经 `AgentExceptionHandlerMiddleware` 映射为 ProblemDetails（非流式）或 SSE error 终态（流式）
-- **MCP 连接失败**：抛出 ConnectionException，工具列表为空，不影响已有工具执行
-- **MCP 调用超时**：30 秒超时，返回错误文本，不中断主流程
-- **RAG 检索失败**：返回空结果，Agent 在无 RAG 增强情况下继续推理
-- **PostgreSQL 不可用**：会话和文件元数据请求失败，避免以易失内存状态代替数据事实源
-- **对象存储不可用**：上传失败，已创建的 Pending 资产由后续治理流程处理
+超时、降级和错误行为统一查阅 [MCP](../modules/capabilities/mcp/README.md)、[工具调用](../modules/capabilities/tool-calling/README.md)、[错误处理](../modules/execution/errors/README.md)、[文件资产](../integrations/file-assets.md) 与 [集成索引](../integrations/README.md)。日志关联方式见 [可观测性](Observability.md)。

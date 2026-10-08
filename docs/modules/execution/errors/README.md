@@ -1,6 +1,6 @@
 # Execution Error Handling
 
-统一错误处理定义执行层异常分类、传播规则和会话写回保障；完整记录与重放的剩余范围见 [后续任务](../../../planning/module-boundaries.md)。
+统一错误处理定义执行层异常分类、传播规则和会话写回保障；完整记录与重放的剩余范围见 [后续任务](../../../planning/TODO.md)。
 
 ## Core Capabilities
 | Capability | Description |
