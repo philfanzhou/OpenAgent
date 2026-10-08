@@ -1,6 +1,6 @@
 # Streaming Execution
 
-流式推理输出通过 `IAsyncEnumerable<string>` 持续产出模型内容，支持工具调用中间状态透传、取消信号传播和异常向上报告。
+流式推理输出通过 `IAsyncEnumerable<AgentStreamEvent>` 持续产出模型内容，支持工具调用中间状态透传、取消信号传播和异常向上报告。
 
 ## Core Capabilities
 | Capability | Description |
@@ -31,6 +31,6 @@ AgentExecutor.ExecuteStreamingAsync
 - 不根据流式文本片段估算 Token；终态没有完整 usage 时保持不可用
 
 ## Source
-- Core: `Backend/src/OpenAgent.Core/Runtime/Agent/`
-- Core tests: `Backend/tests/OpenAgent.Core.Tests/Runtime/AgentExecutorUsageTests.cs`
+- Core: `Backend/src/OpenAgent.Core/Execution/`
+- Core tests: `Backend/tests/OpenAgent.Core.Tests/Execution/AgentExecutorUsageTests.cs`
 - SSE tests: `Backend/tests/OpenAgent.Engine.Tests/Hosting/AgentStreamWriterTests.cs`

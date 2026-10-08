@@ -33,4 +33,4 @@ Agent.Matrix → IAgentConfigProvider → IAgentRuntimeResolver → AgentRuntime
 
 ## Source
 - Contracts: `Backend/src/OpenAgent.Contracts/Configuration/IAgentConfigProvider.cs`, `Backend/src/OpenAgent.Contracts/Configuration/AgentConfig.cs`
-- Resolver: `Backend/src/OpenAgent.Core/Runtime/Agent/AgentRuntimeResolver.cs`
+- Resolver: `Backend/src/OpenAgent.Core/Execution/AgentRuntimeResolver.cs`

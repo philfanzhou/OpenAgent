@@ -23,17 +23,20 @@
 
 ## 2. 项目分层规则（硬性约束，不可违反）
 
-```
-Contracts ← Core ← {Engine, Infrastructure, Router} ← {Engine.Host, Hosting}
-```
+实际项目引用按以下白名单执行（左侧引用右侧）：
 
-- **OpenAgent.Contracts**：纯接口、DTO、错误码。**不引用任何其他项目**
-- **OpenAgent.Core**：核心逻辑。可引用 Contracts，**不可**引用 Engine 或 Router
-- **OpenAgent.Engine / OpenAgent.Router**：可引用 Contracts、Core。**不可**引用 Host
-- **OpenAgent.Infrastructure**：可引用 Contracts、Core，承载持久化（PostgreSQL+EF Core、Redis 写穿缓存、分布式锁），不可引用 Engine/Router/Host
-- **OpenAgent.Hosting**：基础设施。可引用所有下层
+| 项目 | 允许引用 |
+|---|---|
+| Contracts | 无平台项目 |
+| Core | Contracts |
+| Engine | Contracts、Core |
+| Infrastructure / Hosting / Runner | Contracts |
+| Router | Contracts、Hosting |
+| Engine.Host | Contracts、Core、Engine、Hosting、Infrastructure |
 
-> 新增项目引用前，先确认不违反上述依赖方向。
+Core 内部按功能域单向依赖；SDK/平台转换归 Mapping，模型客户端归 ModelProviders，记录归 Observability，工具治理归 Tooling，Runner 客户端归 Integrations/Runner。Execution 不引用具体能力实现。功能域白名单由架构测试检查。
+
+任务归属、注册入口、公开类型兼容与前端依赖规则见 [开发指南](../../docs/overview/DevelopmentGuide.md)。新增项目引用前同步架构测试和正式文档。
 
 ---
 
@@ -257,18 +260,20 @@ public async void GetUser(int id) { ... }
 
 ### 7.1 OpenAgent.Core 项目结构
 
-```
+```text
 Backend/src/OpenAgent.Core/
-├── Abstract/               # 抽象接口
-├── Capabilities/           # MCP / RAG / Skill
-├── Conversation/           # 会话存储与锁
-├── Exten/                  # 扩展方法
-├── Files/                  # 文件资产
-├── Models/                 # 领域模型
-├── Runtime/                # 运行时（含 Agent/）
-└── Security/               # 授权服务
+├── Execution/                    # 执行编排与组装
+├── ModelProviders/ Mapping/ Observability/
+├── Tooling/                      # Abstractions / Discovery / Invocation
+├── Conversation/                 # History / Compaction / Store / Lock
+├── Files/                        # Services / Sharing / Requests / Multimodal / Tools / Artifacts
+├── Capabilities/                 # Mcp / Skill / Rag / Code / Workspace / Plan / UserProfile
+├── Integrations/Runner/          # 共用 Runner 客户端
+├── Security/
+├── Extensions/                   # 每功能域一个注册文件
+└── Exten/                        # 兼容的公开组合入口
 
-Backend/tests/OpenAgent.Core.Tests/   # 单元测试
+Backend/tests/OpenAgent.Core.Tests/ # 按功能域验证
 ```
 
 ### 7.2 OpenAgent.Engine 项目结构

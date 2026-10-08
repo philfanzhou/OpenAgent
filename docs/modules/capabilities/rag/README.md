@@ -37,4 +37,4 @@ Agent → ToolCall("search_knowledge_base")
 ## Source
 - Core: `Backend/src/OpenAgent.Core/Capabilities/Rag/RagCapabilitySource.cs`, `Backend/src/OpenAgent.Core/Capabilities/Rag/RagService.cs`, `Backend/src/OpenAgent.Core/Capabilities/Rag/Adapters/`
 - Contracts: `Backend/src/OpenAgent.Contracts/Models/IRagAdapter.cs`
-- Tests: `Backend/tests/OpenAgent.Core.Tests/Capabilities/RagCapabilitySourceTests.cs`
+- Tests: `Backend/tests/OpenAgent.Core.Tests/Capabilities/Rag/RagCapabilitySourceTests.cs`

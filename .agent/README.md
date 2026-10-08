@@ -7,7 +7,7 @@
 ```
 .agent/
 ├── README.md                 ← 本文件
-├── rules/                    ← 规则（编码规范、文档规范、开发指南）
+├── rules/                    ← 规则（编码规范、文档规范）
 └── skills/                   ← 技能/工作流（AI 执行特定任务时读取）
 ```
 
@@ -29,8 +29,7 @@
 ```
 .agent/rules/
 ├── coding-conventions.md     ← 权威编码规范（.NET 版本、依赖、命名、DI、日志）
-├── doc-standards.md          ← 文档风格与新增指南
-└── development-guide.md      ← 代码审查、功能规划、测试编写、集成排查
+└── doc-standards.md          ← 文档风格与新增指南
 
 .agent/skills/
 ├── build-and-test.md         ← 构建与测试命令
@@ -40,4 +39,4 @@
 
 ## 任务路由
 
-详细任务路由见 `AGENTS.md`。
+详细任务路由见 `AGENTS.md`；模块开发、审查与验证见 [开发指南](../docs/overview/DevelopmentGuide.md)。

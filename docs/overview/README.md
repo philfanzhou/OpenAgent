@@ -8,6 +8,7 @@
 
 | 文档 | 用途 | 阅读场景 |
 |------|------|----------|
+| [DevelopmentGuide.md](./DevelopmentGuide.md) | 模块入口、任务分派、代码审查与验证 | 功能开发与协作 |
 | [SystemContext.md](./SystemContext.md) | 服务定位、上下游、参与者 | 首次了解平台架构 |
 | [Integration.md](./Integration.md) | 集成矩阵、接口边界、失败语义 | 联调、排障外部依赖 |
 | [KeyFlows.md](./KeyFlows.md) | 关键跨服务时序与调用链 | 理解核心业务流程 |
@@ -21,4 +22,4 @@
 1. **首次阅读**：SystemContext → Design → KeyFlows → Requirements
 2. **联调排障**：Integration → KeyFlows → Observability → 对应 `modules/` 文档
 3. **数据变更**：DataOwnership → `../database/` 文档
-4. **开发执行**：Design → `.agent/rules/coding-conventions.md` → 对应 `modules/` 文档
+4. **开发执行**：DevelopmentGuide → 对应 `modules/` 文档

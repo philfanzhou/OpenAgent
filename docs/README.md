@@ -18,7 +18,7 @@
 ## 阅读路径
 
 1. **首次阅读**：`overview/README.md` → `overview/Design.md` → `overview/KeyFlows.md`
-2. **功能开发**：`modules/` → 对应功能域
+2. **功能开发**：[开发指南](./overview/DevelopmentGuide.md) → 对应 `modules/` 功能域
 3. **集成联调**：`integrations/` → 对应外部依赖
 4. **数据库变更**：`database/`
 5. **了解决策背景**：`decisions/`
