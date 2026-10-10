@@ -1,0 +1,10 @@
+{
+  "repository": "philfanzhou/OpenAgent",
+  "start_date": "2026-10-12",
+  "developers": 1,
+  "hours_per_day": 8,
+  "working_weekdays": [0, 1, 2, 3, 4],
+  "holidays": [],
+  "task_label": "functional-task",
+  "production_label": "production-first"
+}

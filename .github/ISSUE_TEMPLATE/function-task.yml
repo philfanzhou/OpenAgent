@@ -1,0 +1,51 @@
+name: 功能任务
+description: 定义一个任何开发者都可以认领的具体功能
+labels: [functional-task]
+body:
+  - type: input
+    id: sequence
+    attributes:
+      label: 序号
+      description: 批次内固定序号；新任务可留空，报表使用 Issue 编号排序。
+  - type: input
+    id: module
+    attributes:
+      label: 任务模块
+      placeholder: 例如：异常处理、会话压缩、MCP认证、授权管理
+    validations:
+      required: true
+  - type: dropdown
+    id: priority
+    attributes:
+      label: 优先级
+      options: [P0, P1, P2]
+    validations:
+      required: true
+  - type: input
+    id: hours
+    attributes:
+      label: 预计工时（人时）
+      description: 补齐本功能的增量工时，包含开发者自测；只填写正数。
+      placeholder: '8'
+    validations:
+      required: true
+  - type: textarea
+    id: goal
+    attributes:
+      label: 任务目标
+      description: 描述用户可以使用的具体功能。
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 验收标准
+      description: 描述可观察、可验证的功能结果。
+    validations:
+      required: true
+  - type: textarea
+    id: predecessors
+    attributes:
+      label: 前序任务
+      description: 同仓库 Issue 引用，例如 '#123'；同时在 GitHub 的 Blocked by 中建立依赖，排期以原生依赖为准。
+      placeholder: 无

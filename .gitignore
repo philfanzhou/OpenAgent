@@ -74,6 +74,9 @@ TestResults/
 
 dist/
 
+# Generated progress reports and review artifacts
+/outputs/
+
 *.bak
 *.cache
 *.DS_Store

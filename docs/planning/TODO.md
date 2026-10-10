@@ -16,6 +16,10 @@
 
 ## P0：异常追溯与会话恢复
 
+具体可认领功能见 [功能 Issue 索引](functional-issues.json)，首批共 **68 条、654 人时**；下列 F01～F07 是方向概览，不与子任务重复计数。后续任务目标、工时、状态和依赖以 GitHub Issue 为准。
+
+统一 [Issue 格式和动态报表流程](issue-management.md)已写入仓库；Excel 在汇报时生成，甘特图按实时 Issue 状态与原生依赖重新排期。当前 [容量配置](project-schedule.json)为 1 名开发、每周 5 个有效人日，不预先指定认领人。
+
 - [ ] **F01 完整异常记录与会话重放**（待分派）。主责：Core/Observability、Execution、Tooling/Invocation；交界：Contracts 错误契约、Infrastructure 持久化、Host SSE、前端 diagnostics。
   验收：执行、模型、MCP/Skill/Runner、压缩、历史读写及资源清理异常均有完整堆栈、内部异常、调用阶段与 Tenant/User/Conversation/Trace/Agent 关联；原始输入输出有可追溯记录，超长内容不静默丢失；凭证按规则脱敏；能依据记录重建调用过程，取消和清理失败不覆盖原始错误。
 
