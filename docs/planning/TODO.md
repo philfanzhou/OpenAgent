@@ -14,13 +14,6 @@
 - [x] **B01 Core 第一批边界**：功能归域、模块 DI、MCP/Skill 扩展接口、Runner 客户端及产物发布复用、测试目录与依赖门禁。证据：[PR #158](https://github.com/philfanzhou/OpenAgent/pull/158)、[验证记录](../test-reports/2026-10-08-module-boundaries.md)。
 - [x] **B02 前端第一批边界**：shared transport/wire/SSE、业务 API 归域、模型/MCP/Skill/RAG 设置模块与 import 门禁。证据同 B01。第一批边界不代表下列功能已完成。
 
-## 功能任务项目管制表
-
-- [项目管制表（Excel，2026-10-09）](production-tasks-2026-10-09.xlsx)：七个功能方向与原有功能清单合并为 **68 条具体功能任务，共 654 人时**；每条保留序号、模块、优先级、工时、目标、验收标准、前序、Issue 地址、状态与负责人。
-- [任务范围与工时说明](production-progress-2026-10-09.md)：重估口径、生产首版候选范围及工期预测。工时按补齐现有能力估算，包含开发者自测。
-- 表内序号为 1～68，与本页 F/S/I 编号分开；每条功能可独立认领。表中的状态为规划快照，Issue 地址和负责人尚为空，未创建 Issue 或接入自动同步。
-- 下列 F01～F07 是方向概览，具体功能拆分以 Excel 为准，不与子任务重复计数；S/I 项保留结构和集成待办，不额外累加工时到本表。
-
 ## P0：异常追溯与会话恢复
 
 - [ ] **F01 完整异常记录与会话重放**（待分派）。主责：Core/Observability、Execution、Tooling/Invocation；交界：Contracts 错误契约、Infrastructure 持久化、Host SSE、前端 diagnostics。
