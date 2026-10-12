@@ -92,7 +92,7 @@ bash scripts/acp-preview.sh down
 
 该 compose 独立创建 Postgres/Redis 和持久 ACP 卷，不复用主实例数据；down 保留卷。镜像固定并校验 OpenCode v1.19.0 的 arm64/amd64 release digest。
 
-可运行 `python3 scripts/package-acp-preview.py <输出目录>` 导出已经构建的镜像包。解压后运行 `bash start.sh`；包只包含镜像和启动脚本，不包含容器、数据库卷或用户数据。镜像架构取决于 Docker 构建主机，跨架构构建/测试应在对应 Docker 平台运行。本 PR 沿用仓库现有 CI，不自动发布镜像包。
+可运行 `python3 scripts/package-acp-preview.py <输出目录>` 导出已经构建的镜像包。解压后运行 `bash start.sh`；包只包含镜像和启动脚本，不包含容器、数据库卷或用户数据。镜像架构取决于 Docker 构建主机，跨架构构建/测试应在对应 Docker 平台运行。追加 --local 可同时打包本地模式（需要先完成本地模式的构建）；解压后使用 start-local.sh。包内包含干净发布的宿主 Engine、Router/Chat 镜像和脚本，无需源码构建；仍需要 .NET 8、Node.js >=22 和本机已经配置的工具，Claude bridge 首次从 npm 安装。输出目录必须为空，运行中的日志、工作区、原生登录和数据库不会进入包。本 PR 沿用仓库现有 CI，不自动发布镜像包。
 
 up 会创建两个测试 Agent：
 

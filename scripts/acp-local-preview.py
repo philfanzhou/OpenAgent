@@ -144,7 +144,10 @@ def up():
     STATE.mkdir(parents=True, exist_ok=True)
     choices = harnesses()
     run(COMPOSE + ['up', '-d', '--build', '--wait'])
-    run(['dotnet', 'publish', 'Backend/src/OpenAgent.Engine.Host', '-c', 'Release', '-o', str(STATE / 'engine')])
+    if (ROOT / 'prebuilt-engine').is_dir():
+        shutil.copytree(ROOT / 'prebuilt-engine', STATE / 'engine', dirs_exist_ok=True)
+    else:
+        run(['dotnet', 'publish', 'Backend/src/OpenAgent.Engine.Host', '-c', 'Release', '-o', str(STATE / 'engine')])
     env = os.environ.copy()
     # Clear previously configured harness arrays so this preview owns its registration.
     for key in list(env):
