@@ -329,6 +329,7 @@ export interface AuthTokenResponse {
 }
 
 export interface RuntimeDescriptor {
+  supportsCodeExecutionToggle?: boolean
   requiresLlmProfile?: boolean
   environmentMode?: string
   adapter: string

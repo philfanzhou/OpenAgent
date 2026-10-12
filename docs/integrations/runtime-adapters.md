@@ -14,7 +14,7 @@ Agent 配置新增纯契约字段：
 
 旧配置默认 `{ "adapter": "maf" }`。配置持久化为 agent_configurations 的 RuntimeJson JSONB 列，新迁移用 `{}` 为旧记录填充默认 MAF。见 [配置存储](../database/tables/Configurations.md)。
 
-`IRuntimeAdapter` 接收已解析的 RuntimeInvocation，包含请求、授权后的 Agent 配置、使用平台模型时已授权的 model profile、用户、轮次身份和授权文件描述符，返回现有 AgentResponse/AgentStreamEvent。协议/SDK 类型不进入 Contracts。`IRuntimeCatalog` 提供可选绑定，`GET /api/v1/agent/runtimes` 返回 adapter/harness/name、requiresLlmProfile 和 environmentMode，不返回命令、参数、环境变量或凭据。
+`IRuntimeAdapter` 接收已解析的 RuntimeInvocation，包含请求、授权后的 Agent 配置、使用平台模型时已授权的 model profile、用户、轮次身份和授权文件描述符，返回现有 AgentResponse/AgentStreamEvent。协议/SDK 类型不进入 Contracts。`IRuntimeCatalog` 提供可选绑定，`GET /api/v1/agent/runtimes` 返回 adapter/harness/name、requiresLlmProfile、environmentMode 和 supportsCodeExecutionToggle，不返回命令、参数、环境变量或凭据。
 
 AgentExecutor 保留配置解析和授权、会话归属检查、文件准备、追溯和指标，再分派至 adapter。MafRuntimeAdapter 保持原同步与流式循环；AcpRuntimeAdapter 驱动受登记的 stdio harness。增加新 adapter 可以注册 IRuntimeAdapter 实现；新 ACP harness 可以增加服务器配置，不必新增执行器。
 

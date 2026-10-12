@@ -19,7 +19,7 @@ internal sealed class AcpRuntimeAdapter(IOptions<AcpOptions> configured, Convers
     public string Id => "acp";
     public IReadOnlyList<RuntimeDescriptor> Describe() => !_options.Enabled ? [] : _options.Harnesses
         .Select(harness => new RuntimeDescriptor("acp", harness.Id, harness.Name,
-            harness.UsePlatformModel || harness.OpenCode, harness.EnvironmentMode)).ToArray();
+            harness.UsePlatformModel || harness.OpenCode, harness.EnvironmentMode, harness.OpenCode)).ToArray();
 
     public async Task<AgentResponse> ExecuteAsync(RuntimeInvocation invocation, CancellationToken cancellationToken)
     {
@@ -85,10 +85,13 @@ internal sealed class AcpRuntimeAdapter(IOptions<AcpOptions> configured, Convers
                 .Replace("{model}", invocation.Profile.Model.ModelId, StringComparison.Ordinal);
         if (modelId != null && harness.ModelEnvironmentVariable == null)
         {
-            if (session.TryGetProperty("configOptions", out JsonElement options)
-                && options.EnumerateArray().Any(option => AcpEventMapper.ReadString(option, "id") == "model"))
+            JsonElement modelOption = session.TryGetProperty("configOptions", out JsonElement options)
+                ? options.EnumerateArray().FirstOrDefault(option => AcpEventMapper.ReadString(option, "category") == "model"
+                    || AcpEventMapper.ReadString(option, "id") == "model") : default;
+            if (modelOption.ValueKind == JsonValueKind.Object)
             {
-                await RequestAsync(connection, "session/set_config_option", new { sessionId = connection.SessionId, configId = "model", value = modelId }, deadline.Token).ConfigureAwait(false);
+                await RequestAsync(connection, "session/set_config_option", new { sessionId = connection.SessionId,
+                    configId = modelOption.GetProperty("id").GetString(), value = modelId }, deadline.Token).ConfigureAwait(false);
             }
             else if (session.TryGetProperty("models", out _))
                 await RequestAsync(connection, "session/set_model", new { sessionId = connection.SessionId, modelId }, deadline.Token).ConfigureAwait(false);
@@ -160,7 +163,7 @@ internal sealed class AcpRuntimeAdapter(IOptions<AcpOptions> configured, Convers
             connection.CaptureUpdates = false;
             if (!finished)
             {
-                if ((!prompt.IsCompleted || cancellationToken.IsCancellationRequested) && !deadline.IsCancellationRequested)
+                if (((!prompt.IsCompleted && !connection.IsDisconnected) || cancellationToken.IsCancellationRequested) && !deadline.IsCancellationRequested)
                     turn.Cancel();
                 await connection.CancelAsync(connection.SessionId!).ConfigureAwait(false);
             }

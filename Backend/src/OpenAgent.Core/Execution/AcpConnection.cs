@@ -25,6 +25,7 @@ internal sealed class AcpConnection : IAsyncDisposable
     internal bool CaptureUpdates { get; set; }
     internal string? SessionId { get; set; }
     internal ChannelReader<JsonElement> Updates => _updates.Reader;
+    internal bool IsDisconnected => _failure != null;
 
     internal AcpConnection(ProcessStartInfo start, string permissionPolicy)
     {

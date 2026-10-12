@@ -12,7 +12,7 @@ internal sealed class MafRuntimeAdapter(AgentFactory agents) : IRuntimeAdapter
 {
     private static readonly IDictionary<string, object?> EmptyToolArguments = new Dictionary<string, object?>();
     public string Id => "maf";
-    public IReadOnlyList<RuntimeDescriptor> Describe() => [new("maf", null, "Microsoft Agent Framework")];
+    public IReadOnlyList<RuntimeDescriptor> Describe() => [new("maf", null, "Microsoft Agent Framework", SupportsCodeExecutionToggle: true)];
 
     public async Task<PlatformAgentResponse> ExecuteAsync(RuntimeInvocation invocation, CancellationToken cancellationToken)
     {
