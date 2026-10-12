@@ -44,7 +44,8 @@ const selectedLlm = computed({
         <el-option v-if="props.allowAuto" label="Auto · 意图路由" :value="AUTO_AGENT_ID" />
         <el-option v-for="agent in props.agents" :key="agent.agentId" :label="agent.name || agent.agentId" :value="agent.agentId" />
       </el-select>
-      <el-select v-model="selectedLlm" class="agent-select" placeholder="选择模型">
+      <span v-if="activeAgent?.requiresLlmProfile === false" class="connection-caption">运行时管理模型与登录</span>
+      <el-select v-else v-model="selectedLlm" class="agent-select" placeholder="选择模型">
         <el-option v-for="profile in props.llmProfiles" :key="profile.id" :label="`${profile.name || profile.id} · ${profile.modelId}`" :value="profile.id" />
       </el-select>
       <el-button circle :loading="props.refreshingAgents" aria-label="刷新 Agent 列表" title="刷新 Agent 列表" @click="emit('refresh-agents')">↻</el-button>
@@ -67,6 +68,7 @@ const selectedLlm = computed({
   </header>
   <div class="route-strip">
     <span><i class="route-indicator" />{{ props.selectedAgentId === AUTO_AGENT_ID && props.allowAuto ? '意图 Agent 自动选路' : (activeAgent?.name || props.selectedAgentId || '等待选择 Agent') }}</span>
+    <span v-if="activeAgent?.runtime?.adapter === 'acp'">ACP · {{ activeAgent.runtime.harness }}</span>
     <span v-if="activeAgent?.description">{{ activeAgent.description }}</span>
   </div>
 </template>

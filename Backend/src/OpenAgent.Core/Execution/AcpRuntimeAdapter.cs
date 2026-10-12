@@ -18,23 +18,28 @@ internal sealed class AcpRuntimeAdapter(IOptions<AcpOptions> configured, Convers
     private readonly AcpOptions _options = configured.Value;
     public string Id => "acp";
     public IReadOnlyList<RuntimeDescriptor> Describe() => !_options.Enabled ? [] : _options.Harnesses
-        .Select(harness => new RuntimeDescriptor("acp", harness.Id, harness.Name)).ToArray();
+        .Select(harness => new RuntimeDescriptor("acp", harness.Id, harness.Name,
+            harness.UsePlatformModel || harness.OpenCode, harness.EnvironmentMode)).ToArray();
 
     public async Task<AgentResponse> ExecuteAsync(RuntimeInvocation invocation, CancellationToken cancellationToken)
     {
         var text = new StringBuilder();
         TokenUsage? usage = null;
+        string modelId = "harness-default";
         await foreach (AgentStreamEvent item in ExecuteStreamingAsync(invocation, cancellationToken).ConfigureAwait(false))
         {
             if (item.Type == AgentStreamEventType.Content)
                 text.Append(item.Content);
             if (item.Type == AgentStreamEventType.Usage)
+            {
                 usage = item.Usage;
+                modelId = item.ModelId ?? modelId;
+            }
         }
         return new AgentResponse
         {
             Content = text.ToString(),
-            ModelId = invocation.Profile.Model.ModelId,
+            ModelId = modelId,
             TraceId = invocation.Turn.TraceId,
             TokenUsage = usage
         };
@@ -74,18 +79,23 @@ internal sealed class AcpRuntimeAdapter(IOptions<AcpOptions> configured, Convers
             connection.SessionId = session.GetProperty("sessionId").GetString()
                 ?? throw new InvalidOperationException("The ACP harness returned an empty session identifier.");
         }
-        string modelId = harness.OpenCode ? $"matrix/{invocation.Profile.Model.ModelId}"
+        string? modelId = harness.OpenCode ? $"matrix/{invocation.Profile.Model.ModelId}"
+            : !harness.UsePlatformModel ? harness.Model
             : harness.ModelIdTemplate.Replace("{provider}", invocation.Profile.Model.Provider, StringComparison.Ordinal)
                 .Replace("{model}", invocation.Profile.Model.ModelId, StringComparison.Ordinal);
-        if (session.TryGetProperty("configOptions", out JsonElement options)
-            && options.EnumerateArray().Any(option => AcpEventMapper.ReadString(option, "id") == "model"))
+        if (modelId != null && harness.ModelEnvironmentVariable == null)
         {
-            await RequestAsync(connection, "session/set_config_option", new { sessionId = connection.SessionId, configId = "model", value = modelId }, deadline.Token).ConfigureAwait(false);
+            if (session.TryGetProperty("configOptions", out JsonElement options)
+                && options.EnumerateArray().Any(option => AcpEventMapper.ReadString(option, "id") == "model"))
+            {
+                await RequestAsync(connection, "session/set_config_option", new { sessionId = connection.SessionId, configId = "model", value = modelId }, deadline.Token).ConfigureAwait(false);
+            }
+            else if (session.TryGetProperty("models", out _))
+                await RequestAsync(connection, "session/set_model", new { sessionId = connection.SessionId, modelId }, deadline.Token).ConfigureAwait(false);
+            else
+                throw new AgentException(AgentErrorCode.InvalidRequest, "The harness cannot select a model through ACP. Configure ModelEnvironmentVariable or use the harness default model.");
         }
-        else if (session.TryGetProperty("models", out _))
-            await RequestAsync(connection, "session/set_model", new { sessionId = connection.SessionId, modelId }, deadline.Token).ConfigureAwait(false);
-        else
-            throw new AgentException(AgentErrorCode.InvalidRequest, "The harness cannot bind the selected platform model.");
+        string effectiveModel = modelId ?? ReadSessionModel(session) ?? "harness-default";
         await turn.BindAsync(connection.SessionId!, deadline.Token).ConfigureAwait(false);
         connection.CaptureUpdates = true;
         Task<JsonElement> prompt = connection.RequestAsync("session/prompt", new
@@ -135,13 +145,13 @@ internal sealed class AcpRuntimeAdapter(IOptions<AcpOptions> configured, Convers
             if (reason != "end_turn")
                 throw new AgentException(AgentErrorCode.InvalidRequest, "The harness stopped before completing the turn.");
             TokenUsage? usage = ReadUsage(result);
-            await turn.CompleteAsync(usage, invocation.Profile.Model.ModelId, deadline.Token).ConfigureAwait(false);
+            await turn.CompleteAsync(usage, effectiveModel, deadline.Token).ConfigureAwait(false);
             finished = true;
             yield return new AgentStreamEvent
             {
                 Type = AgentStreamEventType.Usage,
                 Usage = usage,
-                ModelId = invocation.Profile.Model.ModelId,
+                ModelId = effectiveModel,
                 TraceId = invocation.Turn.TraceId
             };
         }
@@ -187,6 +197,24 @@ internal sealed class AcpRuntimeAdapter(IOptions<AcpOptions> configured, Convers
         if (!result.TryGetProperty("usage", out JsonElement usage))
             return null;
         int Read(string name) => usage.TryGetProperty(name, out JsonElement value) && value.TryGetInt32(out int count) ? count : 0;
-        return new TokenUsage { PromptTokens = Read("inputTokens"), CompletionTokens = Read("outputTokens"), TotalTokens = Read("totalTokens") };
+        int cachedRead = Read("cachedReadTokens");
+        int cachedWrite = Read("cachedWriteTokens");
+        return new TokenUsage
+        {
+            PromptTokens = Read("inputTokens") + cachedRead + cachedWrite,
+            CompletionTokens = Read("outputTokens"), TotalTokens = Read("totalTokens"),
+            CachedInputTokens = usage.TryGetProperty("cachedReadTokens", out _) ? cachedRead : null
+        };
+    }
+
+    private static string? ReadSessionModel(JsonElement session)
+    {
+        if (session.TryGetProperty("models", out JsonElement models))
+            return AcpEventMapper.ReadString(models, "currentModelId");
+        if (session.TryGetProperty("configOptions", out JsonElement options))
+            foreach (JsonElement option in options.EnumerateArray())
+                if (AcpEventMapper.ReadString(option, "category") == "model")
+                    return AcpEventMapper.ReadString(option, "currentValue");
+        return null;
     }
 }

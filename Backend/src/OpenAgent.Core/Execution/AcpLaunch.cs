@@ -13,6 +13,13 @@ internal static class AcpLaunch
 {
     internal static string Workspace(AcpOptions options, RuntimeInvocation invocation)
     {
+        AcpHarness? harness = options.Harnesses.Find(item => item.Id == invocation.Profile.Config.Runtime.Harness);
+        if (harness?.WorkingDirectory is { } directory)
+        {
+            if (!Directory.Exists(directory))
+                throw new AgentException(AgentErrorCode.InvalidRequest, "The configured ACP working directory does not exist.");
+            return Path.GetFullPath(directory);
+        }
         string coordinate = JsonSerializer.Serialize(new
         {
             invocation.Turn.TenantId,
@@ -46,15 +53,30 @@ internal static class AcpLaunch
             if (Environment.GetEnvironmentVariable(name) is { } value)
                 start.Environment[name] = value;
         string home = Path.Combine(workspace, ".harness-home");
-        Directory.CreateDirectory(home);
+        if (harness.EnvironmentMode != "local")
+            Directory.CreateDirectory(home);
         start.Environment["HOME"] = home;
         start.Environment["XDG_CONFIG_HOME"] = Path.Combine(home, "config");
         start.Environment["XDG_DATA_HOME"] = Path.Combine(home, "data");
         start.Environment["XDG_CACHE_HOME"] = Path.Combine(home, "cache");
+        if (harness.EnvironmentMode == "local")
+        {
+            foreach (string name in new[] { "HOME", "USERPROFILE", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "CLAUDE_CONFIG_DIR" })
+            {
+                start.Environment.Remove(name);
+                if (Environment.GetEnvironmentVariable(name) is { } value)
+                    start.Environment[name] = value;
+            }
+        }
+        foreach (string name in harness.InheritedEnvironmentVariables)
+            if (Environment.GetEnvironmentVariable(name) is { } value)
+                start.Environment[name] = value;
         foreach (string argument in harness.Arguments)
             start.ArgumentList.Add(argument.Replace("{workspace}", workspace, StringComparison.Ordinal));
         foreach ((string name, string value) in harness.Environment)
             start.Environment[name] = value;
+        if (harness.ModelEnvironmentVariable is { } variable && harness.Model is { } nativeModel)
+            start.Environment[variable] = nativeModel;
         if (harness.OpenCode)
         {
             start.Environment["OPENCODE_CONFIG_CONTENT"] = OpenCodeConfig(invocation);

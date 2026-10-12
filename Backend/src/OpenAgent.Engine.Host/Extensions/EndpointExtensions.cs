@@ -14,6 +14,8 @@ internal static class EndpointExtensions
     {
         RouteGroupBuilder group = endpoints.MapGroup(pattern).RequireAuthorization();
         group.MapGet("/runtimes", ([FromServices] IRuntimeCatalog catalog) => catalog.List()).WithName("ListRuntimes").WithTags("Agent");
+        group.MapPost("/runtimes/{harness}/test", (string harness, [FromServices] IRuntimeDiagnostics diagnostics,
+            CancellationToken cancellationToken) => diagnostics.TestAsync(harness, cancellationToken)).WithName("TestRuntime").WithTags("Agent");
         group.MapAgentChat();
         group.MapFileAssets();
         group.MapAgentCatalog();

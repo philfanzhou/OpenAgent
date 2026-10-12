@@ -58,6 +58,7 @@ export function useSettings(options: SettingsOptions) {
   function selectRuntime(value: string): void {
     if (!config.value) return
     const runtime = runtimeChoices.value.find(item => (item.adapter === 'maf' ? 'maf' : `${item.adapter}:${item.harness ?? ''}`) === value)
+    runtimeTest.value = ''
     if (runtime) config.value.config.runtime = { adapter: runtime.adapter, harness: runtime.harness }
   }
 
@@ -125,6 +126,19 @@ export function useSettings(options: SettingsOptions) {
     }
   }
 
+  const runtimeTest = ref('')
+  const testingRuntime = ref(false)
+  async function testRuntime(): Promise<void> {
+    const harness = config.value?.config.runtime?.harness
+    if (!harness) return
+    testingRuntime.value = true
+    try {
+      const result = await api.testRuntime(harness)
+      runtimeTest.value = `${result.success ? '通过' : '失败'} · ${result.stage}: ${result.message}`
+    } catch (error) { options.notifyError(error) }
+    finally { testingRuntime.value = false }
+  }
+
   async function loadConfig(agentId = options.selectedAgentId.value): Promise<void> {
     if (!agentId || agentId === AUTO_AGENT_ID) return
     try {
@@ -160,6 +174,7 @@ export function useSettings(options: SettingsOptions) {
   }
 
   async function editAgent(agentId: string): Promise<void> {
+    runtimeTest.value = ''
     options.selectedAgentId.value = agentId
     handleAgentChange()
     await Promise.all([loadConfig(agentId), loadRuntimeChoices()])
@@ -168,6 +183,7 @@ export function useSettings(options: SettingsOptions) {
   }
 
   async function createAgent(): Promise<void> {
+    runtimeTest.value = ''
     await loadRuntimeChoices()
     const agentId = `agent-${randomUuid().slice(0, 8)}`
     options.selectedAgentId.value = agentId
@@ -277,7 +293,7 @@ export function useSettings(options: SettingsOptions) {
   }
 
   return {
-    runtimeChoices,
+    runtimeChoices, runtimeTest, testingRuntime, testRuntime,
     selectRuntime,
     showSettings,
     activeSettings,

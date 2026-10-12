@@ -4,6 +4,7 @@ namespace OpenAgent.Contracts.Configuration;
 
 /// <summary>
 /// Resolves the configuration that is valid and authorized for one invocation.
+/// An empty LLM profile id is valid when the selected harness owns its model connection.
 /// Implementations may source raw definitions from Agent.Matrix, Redis, or tests.
 /// </summary>
 public interface IAgentRuntimeResolver

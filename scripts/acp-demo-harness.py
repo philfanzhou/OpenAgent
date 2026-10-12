@@ -28,6 +28,8 @@ def finish(request, text):
     reply(request, {'stopReason': 'end_turn', 'usage': {'inputTokens': 3, 'outputTokens': 5, 'totalTokens': 8}})
 
 def options():
+    if os.getenv('ACP_DEMO_NO_MODELS') == '1':
+        return {}
     return {'configOptions': [{'id': 'model', 'name': 'Model', 'type': 'select', 'category': 'model', 'currentValue': 'preview/preview', 'options': []}]}
 
 for line in sys.stdin:

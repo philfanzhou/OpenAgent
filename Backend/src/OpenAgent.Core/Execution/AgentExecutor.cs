@@ -62,7 +62,7 @@ public sealed class AgentExecutor
         EnsureRequest(request);
         string agentId = await ResolveAgentIdAsync(request, user, cancellationToken).ConfigureAwait(false);
         TurnContext turn = CreateTurn(request, user, agentId);
-        AgentRuntimeProfile profile = await _runtime.ResolveAsync(agentId, RequireLlmProfileId(request), user, cancellationToken).ConfigureAwait(false);
+        AgentRuntimeProfile profile = await _runtime.ResolveAsync(agentId, request.LlmProfileId ?? string.Empty, user, cancellationToken).ConfigureAwait(false);
         _adapters.Resolve(profile.Config.Runtime);
         if (turn.ConversationId != null)
         {
@@ -141,13 +141,6 @@ public sealed class AgentExecutor
         ExternalContext = request.ExternalContext,
         FileIds = request.FileIds
     };
-
-    private static string RequireLlmProfileId(AgentRequest request) =>
-        !string.IsNullOrWhiteSpace(request.LlmProfileId)
-            ? request.LlmProfileId
-            : throw new AgentException(
-                AgentErrorCode.MissingRequiredField,
-                "LlmProfileId is required");
 
     private static string? ResolveConversationId(AgentRequest request)
     {

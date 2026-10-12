@@ -9,6 +9,8 @@ export interface AgentSummary {
   description: string
   status: number
   currentVersion: string
+  runtime?: { adapter: string; harness?: string | null }
+  requiresLlmProfile?: boolean
 }
 
 export interface CurrentUserContext {
@@ -327,6 +329,8 @@ export interface AuthTokenResponse {
 }
 
 export interface RuntimeDescriptor {
+  requiresLlmProfile?: boolean
+  environmentMode?: string
   adapter: string
   harness: string | null
   name: string

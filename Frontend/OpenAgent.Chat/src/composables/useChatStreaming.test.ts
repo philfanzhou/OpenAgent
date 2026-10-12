@@ -45,7 +45,7 @@ function makeRecord(messages: ConversationMessage[], status: ConversationRecord[
   }
 }
 
-async function setup() {
+async function setup(native = false) {
   const streams = useConversationStreams()
   const conversations = ref<ConversationRecord[]>([])
   // 上一轮完成后的内存形态：合并展示消息（assistant 组携带末行序号 4，
@@ -61,8 +61,8 @@ async function setup() {
 
   const streaming = useChatStreaming({
     selectedAgentId: ref('agent-1'),
-    selectedLlmProfileId: ref('profile-1'),
-    agents: ref([]),
+    selectedLlmProfileId: ref(native ? '' : 'profile-1'),
+    agents: ref(native ? [{ agentId: 'agent-1', name: 'Native', tenantId: 'tenant-1', description: '', status: 2, currentVersion: '', requiresLlmProfile: false }] : []),
     conversations,
     selectedConversation,
     selectedConversationStreaming: computed(() => false),
@@ -86,6 +86,19 @@ async function setup() {
 describe('useChatStreaming', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+  })
+
+  it('sends native harness chats without a platform model profile', async () => {
+    const { streaming } = await setup(true)
+    vi.mocked(api.streamChat).mockImplementation(() => (async function* () {
+      yield { type: 'content', content: 'native response' }
+      yield { type: 'done', done: true }
+    })() as never)
+    vi.mocked(api.getConversation).mockResolvedValue(makeRecord([], 'Completed') as never)
+    streaming.message.value = 'native request'
+    await streaming.send()
+    expect(vi.mocked(api.streamChat).mock.calls[0]?.[2]).toBeUndefined()
+    expect(api.streamChat).toHaveBeenCalledOnce()
   })
 
   it('keeps every turn intact after a user stop once the server persisted the cancelled turn', async () => {

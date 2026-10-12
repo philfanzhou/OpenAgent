@@ -1,0 +1,53 @@
+# Local tools run in the host Engine process; only supporting services use Docker.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: openagent
+      POSTGRES_USER: openagent
+      POSTGRES_PASSWORD: preview-local-only
+    ports: ["127.0.0.1:${ACP_LOCAL_DB_PORT:-5477}:5432"]
+    volumes: ["postgres:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U openagent"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  redis:
+    image: redis:7-alpine
+    ports: ["127.0.0.1:${ACP_LOCAL_REDIS_PORT:-6387}:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  router:
+    build:
+      context: ../..
+      dockerfile: Backend/src/OpenAgent.Router/Dockerfile
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__Redis: redis:6379
+      RouterSettings__Routing__EngineEndpoint: http://host.docker.internal:${ACP_LOCAL_ENGINE_PORT:-5277}
+      RouterSettings__IntentRecognition__Enabled: "false"
+      Authentication__Mode: Basic
+      Authentication__EnableKeycloak: "false"
+      Authentication__AllowDevelopmentAnonymous: "true"
+      Cors__AllowedOrigins__0: http://localhost:${ACP_LOCAL_CHAT_PORT:-8177}
+    ports: ["127.0.0.1:${ACP_LOCAL_ROUTER_PORT:-5077}:5001"]
+    depends_on:
+      redis: { condition: service_healthy }
+  chat:
+    build:
+      context: ../..
+      dockerfile: Frontend/OpenAgent.Chat/Dockerfile
+      args:
+        OPENAGENT_PUBLIC_SCHEME: http
+        OPENAGENT_PUBLIC_HOST: localhost
+        OPENAGENT_ROUTER_PORT: ${ACP_LOCAL_ROUTER_PORT:-5077}
+        OPENAGENT_ENGINE_PORT: ${ACP_LOCAL_ENGINE_PORT:-5277}
+        OPENAGENT_TENANT_ID: development
+    ports: ["127.0.0.1:${ACP_LOCAL_CHAT_PORT:-8177}:80"]
+volumes:
+  postgres:

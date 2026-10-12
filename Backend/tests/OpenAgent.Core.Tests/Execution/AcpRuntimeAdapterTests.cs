@@ -18,7 +18,7 @@ public sealed class AcpRuntimeAdapterTests : IDisposable
     private readonly InMemoryConversationStore _store = new(Mock.Of<ICurrentUserContext>());
     private readonly InMemoryConversationLock _locks = new();
 
-    private AcpRuntimeAdapter CreateAdapter(string policy = "deny", int timeout = 10) => new(
+    private AcpRuntimeAdapter CreateAdapter(string policy = "deny", int timeout = 10, bool minimal = false, string command = "python3") => new(
         Options.Create(new AcpOptions
         {
             Enabled = true,
@@ -27,8 +27,9 @@ public sealed class AcpRuntimeAdapterTests : IDisposable
             RequestTimeoutSeconds = 5,
             Harnesses = [new AcpHarness
             {
-                Id = "demo", Name = "ACP demo", Command = "python3", PermissionPolicy = policy,
-                Arguments = [Path.Combine(AppContext.BaseDirectory, "Fixtures", "acp-demo-harness.py")]
+                Id = "demo", Name = "ACP demo", Command = command, PermissionPolicy = policy,
+                Arguments = [Path.Combine(AppContext.BaseDirectory, "Fixtures", "acp-demo-harness.py")],
+                Environment = minimal ? new() { ["ACP_DEMO_NO_MODELS"] = "1" } : []
             }]
         }), new ConversationSessionStore(_store, Options.Create(new ConversationStoreOptions())), _locks);
 
@@ -39,6 +40,27 @@ public sealed class AcpRuntimeAdapterTests : IDisposable
             new AgentRuntimeProfile { AgentId = "agent", Config = config, Model = new LlmConfig { Provider = "preview", ModelId = "preview", ContextTokens = 32000 } },
             new TurnContext { TenantId = tenant, UserId = user, ConversationId = conversation, AgentId = "agent", TraceId = Guid.NewGuid().ToString("N") },
             new AgentUserContext { TenantId = tenant, UserId = user }, []);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_StartupFails_CanRetryAfterFixingCommand()
+    {
+        await Assert.ThrowsAsync<AgentException>(() => CreateAdapter(command: "missing-acp-" + Guid.NewGuid().ToString("N"))
+            .ExecuteAsync(Invocation("hello"), CancellationToken.None));
+        AgentResponse result = await CreateAdapter().ExecuteAsync(Invocation("retry"), CancellationToken.None);
+        Assert.Equal("ACP demo turn 1: retry", result.Content);
+        Assert.Equal(ConversationStatus.Completed, (await _store.GetRecordAsync("tenant", "conversation"))!.Status);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_HarnessWithoutModelConfiguration_UsesNativeDefaultAndReloads()
+    {
+        AcpRuntimeAdapter adapter = CreateAdapter(minimal: true);
+        Assert.False(adapter.Describe()[0].RequiresLlmProfile);
+        AgentResponse first = await adapter.ExecuteAsync(Invocation("hello"), CancellationToken.None);
+        AgentResponse second = await adapter.ExecuteAsync(Invocation("again"), CancellationToken.None);
+        Assert.Equal("harness-default", first.ModelId);
+        Assert.Equal("ACP demo turn 2: again", second.Content);
     }
 
     [Fact]

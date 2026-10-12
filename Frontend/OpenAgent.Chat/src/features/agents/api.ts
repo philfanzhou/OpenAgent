@@ -6,6 +6,10 @@ export const api = {
     return request<RuntimeDescriptor[]>('/api/v1/agent/runtimes')
   },
 
+  testRuntime(harness: string): Promise<{ success: boolean; stage: string; message: string }> {
+    return request(`/api/v1/agent/runtimes/${encodeURIComponent(harness)}/test`, { method: 'POST' })
+  },
+
   listAgents(): Promise<AgentSummary[]> {
     return request<AgentSummary[]>('/api/v1/agent/agents')
   },

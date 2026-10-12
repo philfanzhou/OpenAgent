@@ -73,7 +73,8 @@ public sealed class ConfigurationService : IAgentConfigProvider, ILlmConfigProvi
             Name = entity.Name,
             Description = entity.Description,
             Status = (int)entity.Status,
-            CurrentVersion = entity.CurrentVersion
+            CurrentVersion = entity.CurrentVersion,
+            Runtime = entity.Config.Runtime
         }).ToArray();
     }
 

@@ -4,11 +4,25 @@ using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Execution;
 using OpenAgent.Core.Security;
 using Xunit;
+using Microsoft.Extensions.Options;
 
 namespace OpenAgent.Core.Tests.Runtime;
 
 public sealed class AgentRuntimeResolverTests
 {
+    [Fact]
+    public async Task ResolveAsync_NativeHarnessWithoutPlatformModel_DoesNotResolveCredential()
+    {
+        var config = new AgentConfig { Runtime = new() { Adapter = "acp", Harness = "native" } };
+        var resolver = new AgentRuntimeResolver(new StaticConfigProvider(config), new StaticLlmConfigProvider(null),
+            new AgentAuthorizationGate(new AllowAllAgentAuthorizationService()), Options.Create(new AcpOptions
+            { Enabled = true, Harnesses = [new AcpHarness { Id = "native", Command = "agent" }] }));
+        AgentRuntimeProfile profile = await resolver.ResolveAsync("agent-1", "", User());
+        Assert.Equal("harness-default", profile.Model.ModelId);
+        Assert.True(string.IsNullOrEmpty(profile.Model.ApiKey));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => resolver.ResolveAsync("agent-1", "", new AgentUserContext { TenantId = "other", UserId = "user" }));
+    }
+
     [Fact]
     public async Task ResolveAsync_CombinesAgentWithSelectedTenantModel()
     {

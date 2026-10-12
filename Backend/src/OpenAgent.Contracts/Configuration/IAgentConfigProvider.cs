@@ -20,4 +20,6 @@ public sealed class AgentSummary
     public string Description { get; init; } = string.Empty;
     public int Status { get; init; }
     public string CurrentVersion { get; init; } = string.Empty;
+    public RuntimeBinding Runtime { get; init; } = new();
+    public bool RequiresLlmProfile { get; set; } = true;
 }

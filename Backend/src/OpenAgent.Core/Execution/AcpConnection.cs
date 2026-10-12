@@ -21,6 +21,7 @@ internal sealed class AcpConnection : IAsyncDisposable
     private readonly Task _stderr;
     private long _nextId;
     private bool _cancelling;
+    private volatile Exception? _failure;
     internal bool CaptureUpdates { get; set; }
     internal string? SessionId { get; set; }
     internal ChannelReader<JsonElement> Updates => _updates.Reader;
@@ -28,7 +29,10 @@ internal sealed class AcpConnection : IAsyncDisposable
     internal AcpConnection(ProcessStartInfo start, string permissionPolicy)
     {
         _permissionPolicy = permissionPolicy;
-        _process = Process.Start(start) ?? throw new InvalidOperationException("The ACP harness could not be started.");
+        try
+        { _process = Process.Start(start) ?? throw new InvalidOperationException("The ACP harness could not be started."); }
+        catch (System.ComponentModel.Win32Exception)
+        { throw new AgentException(AgentErrorCode.InvalidRequest, "The ACP executable could not be started on this Engine. Verify the installed command and execution host."); }
         _stderr = DrainErrorAsync();
         _reader = ReadAsync();
     }
@@ -40,9 +44,13 @@ internal sealed class AcpConnection : IAsyncDisposable
         _pending[id] = completion;
         try
         {
+            if (_failure != null)
+                throw _failure;
             await SendAsync(new { jsonrpc = "2.0", id, method, @params = parameters }, cancellationToken).ConfigureAwait(false);
             return await completion.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
         }
+        catch (AgentException exception)
+        { throw new AgentException(exception.ErrorCode, $"ACP {method}: {exception.Message}"); }
         finally { _pending.TryRemove(id, out _); }
     }
 
@@ -99,6 +107,7 @@ internal sealed class AcpConnection : IAsyncDisposable
         { failure = new InvalidOperationException("The ACP harness disconnected or returned invalid protocol output."); }
         finally
         {
+            _failure = failure;
             foreach (TaskCompletionSource<JsonElement> pending in _pending.Values)
                 pending.TrySetException(failure);
             _updates.Writer.TryComplete(failure);
@@ -143,7 +152,7 @@ internal sealed class AcpConnection : IAsyncDisposable
         {
             if (message.TryGetProperty("error", out JsonElement error))
                 completion.TrySetException(new AgentException(AgentErrorCode.InvalidRequest,
-                    $"The ACP harness rejected the request (RPC code {error.GetProperty("code").GetInt32()})."));
+                    $"The ACP harness rejected the request (RPC code {error.GetProperty("code").GetInt32()}). Check the harness native authentication and model configuration."));
             else
                 completion.TrySetResult(message.GetProperty("result").Clone());
         }

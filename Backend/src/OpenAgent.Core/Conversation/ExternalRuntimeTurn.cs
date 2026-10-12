@@ -39,7 +39,8 @@ internal sealed class ExternalRuntimeTurn : IAsyncDisposable
         _sequence = session.NextSequence;
         SessionId = session.History.LastOrDefault(item => item.Metadata?.Extensions?.ContainsKey("runtime.session") == true)
             ?.Metadata?.Extensions?.GetValueOrDefault("runtime.session");
-        if (session.History.Count > 0 && SessionId == null)
+        if (SessionId == null && session.History.Any(item => item.Role != "user"
+            && (item.Metadata?.ExecutionStatus != "Failed" || item.Content.Length > 0 || item.ToolCallId != null)))
             throw new AgentException(AgentErrorCode.Conflict, "The saved runtime session is unavailable. Start a new conversation.");
     }
 

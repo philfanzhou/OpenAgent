@@ -49,7 +49,9 @@ def seed():
         }, 'PUT')
 
 def stream(agent, conversation, message):
-    data = {'message': message, 'context': {'agentId': agent, 'llmProfileId': 'acp-preview', 'conversationId': conversation}}
+    data = {'message': message, 'context': {'agentId': agent, 'conversationId': conversation}}
+    if agent == 'acp-opencode':
+        data['context']['llmProfileId'] = 'acp-preview'
     req = urllib.request.Request(base + '/api/v1/agent/chat/stream', json.dumps(data).encode(), {'Content-Type': 'application/json'})
     with urllib.request.urlopen(req, timeout=180) as response:
         text = response.read().decode()

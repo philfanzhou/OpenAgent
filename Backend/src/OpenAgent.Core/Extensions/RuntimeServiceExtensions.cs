@@ -25,11 +25,15 @@ internal static class RuntimeServiceExtensions
                 && options.Harnesses.Select(harness => harness.Id).Distinct(StringComparer.Ordinal).Count() == options.Harnesses.Count
                 && options.Harnesses.All(harness => !string.IsNullOrWhiteSpace(harness.Id)
                     && !harness.Id.Contains(':') && !string.IsNullOrWhiteSpace(harness.Command)
+                    && (harness.EnvironmentMode == "isolated" || (harness.EnvironmentMode == "local" && options.LocalTrusted))
+                    && (harness.WorkingDirectory == null || (options.LocalTrusted && Path.IsPathFullyQualified(harness.WorkingDirectory)))
+                    && (!harness.UsePlatformModel || harness.ModelEnvironmentVariable == null)
                     && harness.PermissionPolicy is "deny" or "allow_once")), "Invalid ACP runtime configuration.");
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IRuntimeAdapter, MafRuntimeAdapter>());
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IRuntimeAdapter, AcpRuntimeAdapter>());
         services.TryAddScoped<RuntimeRegistry>();
         services.TryAddScoped<IRuntimeCatalog>(provider => provider.GetRequiredService<RuntimeRegistry>());
+        services.TryAddScoped<IRuntimeDiagnostics, AcpRuntimeDiagnostics>();
         services.TryAddScoped(provider => new AgentExecutor(
             provider.GetRequiredService<IAgentRuntimeResolver>(),
             provider.GetRequiredService<AgentFactory>(),

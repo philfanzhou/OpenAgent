@@ -1,17 +1,19 @@
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Security;
+using Microsoft.Extensions.Options;
+using OpenAgent.Contracts.Requests;
 using OpenAgent.Core.Security;
 
 namespace OpenAgent.Core.Execution;
 
 /// <summary>
-/// Resolves the Agent and independently selected LLM profile for one execution.
+/// Resolves an authorized Agent and, for platform-managed models, its selected LLM profile.
 /// </summary>
 internal sealed class AgentRuntimeResolver(
     IAgentConfigProvider configs,
     ILlmConfigProvider models,
-    AgentAuthorizationGate authorization) : IAgentRuntimeResolver
+    AgentAuthorizationGate authorization, IOptions<AcpOptions>? acp = null) : IAgentRuntimeResolver
 {
     public async Task<AgentRuntimeProfile> ResolveAsync(
         string agentId,
@@ -22,10 +24,6 @@ internal sealed class AgentRuntimeResolver(
         if (string.IsNullOrWhiteSpace(agentId))
         {
             throw new ArgumentException("Agent id is required.", nameof(agentId));
-        }
-        if (string.IsNullOrWhiteSpace(llmProfileId))
-        {
-            throw new ArgumentException("LLM profile id is required.", nameof(llmProfileId));
         }
 
         string tenantId = userContext.TenantId
@@ -45,6 +43,19 @@ internal sealed class AgentRuntimeResolver(
                 userContext,
                 cancellationToken)
             .ConfigureAwait(false);
+
+        AcpHarness? harness = config.Runtime.Adapter == "acp" && acp?.Value.Enabled == true
+            ? acp.Value.Harnesses.Find(item => item.Id == config.Runtime.Harness) : null;
+        if (harness != null && !harness.OpenCode && !harness.UsePlatformModel)
+        {
+            if (config.MaxTurns < 0)
+                throw new InvalidOperationException($"MaxTurns cannot be negative for agent '{agentId}'.");
+            // No platform model or credential is resolved for a harness-owned connection.
+            return new AgentRuntimeProfile { AgentId = agentId, Config = config,
+                Model = new LlmConfig { Provider = harness.Id, ModelId = "harness-default" } };
+        }
+        if (string.IsNullOrWhiteSpace(llmProfileId))
+            throw new AgentException(AgentErrorCode.MissingRequiredField, "LlmProfileId is required for this runtime.");
 
         LlmProviderProfile profile = await models.GetAsync(
                 tenantId,
