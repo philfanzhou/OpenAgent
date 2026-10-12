@@ -1,0 +1,27 @@
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+WORKDIR /src
+COPY Backend/ Backend/
+RUN dotnet restore Backend/OpenAgent.sln
+RUN dotnet publish Backend/src/OpenAgent.Engine.Host/OpenAgent.Engine.Host.csproj --configuration Release --no-restore --output /app/publish
+
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
+ARG TARGETARCH
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates python3 tar gzip \
+    && rm -rf /var/lib/apt/lists/*
+# Pin the harness release and verify GitHub's immutable release asset digest.
+RUN case "$TARGETARCH" in \
+      arm64) asset=arm64; digest=e9841d43d3e1a8f36ed2691592d3b8b4fb097e606c8b559a277a1b845840e26b ;; \
+      amd64) asset=x64; digest=7bb9e61ad6feacf2e89c10a6a2c1840e3de4220bb50ba1fc7110f31806076aec ;; \
+      *) exit 1 ;; \
+    esac \
+    && curl -fL --retry 3 "https://github.com/anomalyco/opencode/releases/download/v1.19.0/opencode-linux-${asset}.tar.gz" -o /tmp/opencode.tar.gz \
+    && echo "$digest  /tmp/opencode.tar.gz" | sha256sum -c - \
+    && tar -xzf /tmp/opencode.tar.gz -C /tmp \
+    && install -m 0755 /tmp/opencode /usr/local/bin/opencode \
+    && rm -rf /tmp/opencode.tar.gz /tmp/opencode
+COPY --from=build /app/publish/ .
+COPY scripts/acp-demo-harness.py /app/acp-demo-harness.py
+ENV ASPNETCORE_URLS=http://+:5208
+EXPOSE 5208
+ENTRYPOINT ["dotnet", "OpenAgent.Engine.Host.dll"]

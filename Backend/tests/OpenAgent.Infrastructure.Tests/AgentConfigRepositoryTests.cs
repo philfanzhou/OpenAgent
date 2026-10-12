@@ -23,6 +23,7 @@ public class AgentConfigRepositoryTests
         entity.Config.Mcp.EnabledServerIds = ["tools"];
         entity.Config.Skills.EnabledSkills = ["search"];
         entity.Config.CodeExecution.Enabled = true;
+        entity.Config.Runtime = new RuntimeBinding { Adapter = "acp", Harness = "opencode" };
         entity.Config.Rag.Instances = [new() { Id = "knowledge", ApiKeySecretRef = "rag:knowledge" }];
 
         await repository.UpsertAsync("tenant-a", "support", entity, null);
@@ -37,6 +38,8 @@ public class AgentConfigRepositoryTests
         Assert.Equal("tools", Assert.Single(stored.Config.Mcp.EnabledServerIds));
         Assert.Equal("search", Assert.Single(stored.Config.Skills.EnabledSkills));
         Assert.True(stored.Config.CodeExecution.Enabled);
+        Assert.Equal("acp", stored.Config.Runtime.Adapter);
+        Assert.Equal("opencode", stored.Config.Runtime.Harness);
         Assert.Equal("rag:knowledge", Assert.Single(stored.Config.Rag.Instances).ApiKeySecretRef);
     }
 

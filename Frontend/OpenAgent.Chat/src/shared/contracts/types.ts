@@ -326,6 +326,12 @@ export interface AuthTokenResponse {
   refresh_token?: string
 }
 
+export interface RuntimeDescriptor {
+  adapter: string
+  harness: string | null
+  name: string
+}
+
 export interface AgentConfigEntity {
   agentId: string
   name: string
@@ -334,6 +340,7 @@ export interface AgentConfigEntity {
   currentVersion: string
   config: {
     instructions: string
+    runtime?: { adapter: string; harness?: string | null }
     mcp: { enabledServerIds?: string[]; servers: McpServerConfig[] }
     rag: RagConfig
     skills: SkillsConfig

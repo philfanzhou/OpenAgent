@@ -63,6 +63,10 @@ namespace OpenAgent.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("jsonb");
 
+                    b.Property<string>("RuntimeJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
                     b.Property<string>("SkillsJson")
                         .IsRequired()
                         .HasColumnType("jsonb");
@@ -97,6 +101,7 @@ namespace OpenAgent.Infrastructure.Migrations
                             McpJson = "{}",
                             Name = "Default Assistant",
                             RagJson = "{}",
+                            RuntimeJson = "{}",
                             SkillsJson = "{}",
                             Status = "Published",
                             UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
@@ -113,6 +118,7 @@ namespace OpenAgent.Infrastructure.Migrations
                             McpJson = "{}",
                             Name = "Intent Router",
                             RagJson = "{}",
+                            RuntimeJson = "{}",
                             SkillsJson = "{}",
                             Status = "Published",
                             UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),

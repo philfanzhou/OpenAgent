@@ -9,7 +9,7 @@ import { api as skillApi } from '../features/skills/api'
 import { useSkillSettings } from '../features/skills/useSkillSettings'
 import { getTenantId } from '../shared/api/http'
 import { randomUuid } from '../shared/browserCrypto'
-import type { AgentConfigEntity, AgentSummary, ConnectionMode, McpServerConfig, SkillCatalogItem } from '../shared/contracts/types'
+import type { AgentConfigEntity, AgentSummary, ConnectionMode, McpServerConfig, SkillCatalogItem, RuntimeDescriptor } from '../shared/contracts/types'
 import { AUTO_AGENT_ID } from '../shared/contracts/types'
 
 export type SettingsPanel = 'gateway' | 'health' | 'llm' | 'mcp' | 'skill' | 'agent' | 'rag'
@@ -33,6 +33,7 @@ function createDefaultAgent(agentId: string, name: string): AgentConfigEntity {
     currentVersion: '',
     config: {
       instructions: '',
+      runtime: { adapter: 'maf' },
       mcp: { servers: [] },
       rag: { enabled: false, enabledRagInstanceIds: [], instances: [] },
       skills: { enabledSkills: [], instances: [] },
@@ -46,6 +47,19 @@ export function useSettings(options: SettingsOptions) {
   const showSettings = ref(!(options.connectionMode.value === 'router' ? options.routerUrl.value : options.engineUrl.value))
 
   const activeSettings = ref<SettingsPanel>('gateway')
+
+  const runtimeChoices = ref<RuntimeDescriptor[]>([{ adapter: 'maf', harness: null, name: 'Microsoft Agent Framework' }])
+
+  async function loadRuntimeChoices(): Promise<void> {
+    try { runtimeChoices.value = await api.listRuntimes() }
+    catch (error) { options.notifyError(error) }
+  }
+
+  function selectRuntime(value: string): void {
+    if (!config.value) return
+    const runtime = runtimeChoices.value.find(item => (item.adapter === 'maf' ? 'maf' : `${item.adapter}:${item.harness ?? ''}`) === value)
+    if (runtime) config.value.config.runtime = { adapter: runtime.adapter, harness: runtime.harness }
+  }
 
   const savingConfig = ref(false)
 
@@ -148,12 +162,13 @@ export function useSettings(options: SettingsOptions) {
   async function editAgent(agentId: string): Promise<void> {
     options.selectedAgentId.value = agentId
     handleAgentChange()
-    await loadConfig(agentId)
+    await Promise.all([loadConfig(agentId), loadRuntimeChoices()])
     isNewAgent.value = false
     showAgentEditor.value = true
   }
 
   async function createAgent(): Promise<void> {
+    await loadRuntimeChoices()
     const agentId = `agent-${randomUuid().slice(0, 8)}`
     options.selectedAgentId.value = agentId
     handleAgentChange()
@@ -262,6 +277,8 @@ export function useSettings(options: SettingsOptions) {
   }
 
   return {
+    runtimeChoices,
+    selectRuntime,
     showSettings,
     activeSettings,
     savingConfig,

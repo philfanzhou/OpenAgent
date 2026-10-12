@@ -1,7 +1,11 @@
 import { jsonInit, request } from '../../shared/api/http'
-import type { AgentConfigEntity, AgentSummary } from '../../shared/contracts/types'
+import type { AgentConfigEntity, AgentSummary, RuntimeDescriptor } from '../../shared/contracts/types'
 
 export const api = {
+  listRuntimes(): Promise<RuntimeDescriptor[]> {
+    return request<RuntimeDescriptor[]>('/api/v1/agent/runtimes')
+  },
+
   listAgents(): Promise<AgentSummary[]> {
     return request<AgentSummary[]>('/api/v1/agent/agents')
   },

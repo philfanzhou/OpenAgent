@@ -9,6 +9,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Include="../../../scripts/acp-demo-harness.py" Link="Fixtures/acp-demo-harness.py" CopyToOutputDirectory="PreserveNewest" />
     <ProjectReference Include="..\..\src\OpenAgent.Core\OpenAgent.Core.csproj" />
     <PackageReference Include="SixLabors.ImageSharp" />
   </ItemGroup>

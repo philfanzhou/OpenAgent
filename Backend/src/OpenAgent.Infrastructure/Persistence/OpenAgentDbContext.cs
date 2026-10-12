@@ -190,6 +190,7 @@ public sealed class OpenAgentDbContext(DbContextOptions<OpenAgentDbContext> opti
             entity.Property(item => item.TenantId).HasMaxLength(256);
             entity.Property(item => item.Status).HasConversion<string>().HasMaxLength(32);
             entity.Property(item => item.ContextPolicyJson).HasColumnType("jsonb");
+            entity.Property(item => item.RuntimeJson).HasColumnType("jsonb");
             entity.Property(item => item.McpJson).HasColumnType("jsonb");
             entity.Property(item => item.RagJson).HasColumnType("jsonb");
             entity.Property(item => item.SkillsJson).HasColumnType("jsonb");

@@ -28,7 +28,7 @@ public static class CoreServiceExtensions
             .AddMcpServices(configuration)
             .AddSkillServices()
             .AddRagServices()
-            .AddRuntimeServices();
+            .AddRuntimeServices(configuration);
     }
 
     private sealed class CoreRegistration;

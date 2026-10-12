@@ -106,6 +106,7 @@ internal sealed class AgentConfigRepository(
         current.MaxTurns = entity.Config.MaxTurns;
         current.ContextPolicyJson = entity.Config.ContextPolicy == null
             ? null : JsonSerializer.Serialize(entity.Config.ContextPolicy, JsonOptions);
+        current.RuntimeJson = JsonSerializer.Serialize(entity.Config.Runtime, JsonOptions);
         current.McpJson = JsonSerializer.Serialize(entity.Config.Mcp, JsonOptions);
         current.RagJson = JsonSerializer.Serialize(entity.Config.Rag, JsonOptions);
         current.SkillsJson = JsonSerializer.Serialize(entity.Config.Skills, JsonOptions);
@@ -145,6 +146,7 @@ internal sealed class AgentConfigRepository(
                 TenantId = entity.TenantId,
                 Instructions = entity.Instructions,
                 MaxTurns = entity.MaxTurns,
+                Runtime = JsonSerializer.Deserialize<RuntimeBinding>(entity.RuntimeJson, JsonOptions) ?? new(),
                 ContextPolicy = entity.ContextPolicyJson == null ? null
                     : JsonSerializer.Deserialize<ContextPolicy>(entity.ContextPolicyJson, JsonOptions),
                 Mcp = JsonSerializer.Deserialize<McpConfig>(entity.McpJson, JsonOptions) ?? new(),

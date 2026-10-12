@@ -12,6 +12,7 @@ public class AgentConfig
 {
     public string TenantId { get; set; } = string.Empty;
     public string Instructions { get; set; } = string.Empty;
+    public RuntimeBinding Runtime { get; set; } = new();
     public McpConfig Mcp { get; set; } = new();
     public RagConfig Rag { get; set; } = new();
     public SkillsConfig Skills { get; set; } = new();
@@ -107,7 +108,8 @@ internal class McpServersConverter : JsonConverter<List<McpServerConfig>>
             var result = new List<McpServerConfig>();
             while (reader.Read())
             {
-                if (reader.TokenType == JsonTokenType.EndArray) break;
+                if (reader.TokenType == JsonTokenType.EndArray)
+                    break;
 
                 if (reader.TokenType == JsonTokenType.String)
                 {
@@ -125,7 +127,8 @@ internal class McpServersConverter : JsonConverter<List<McpServerConfig>>
                 else if (reader.TokenType == JsonTokenType.StartObject)
                 {
                     var config = JsonSerializer.Deserialize<McpServerConfig>(ref reader, options);
-                    if (config != null) result.Add(config);
+                    if (config != null)
+                        result.Add(config);
                 }
             }
             return result;

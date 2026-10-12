@@ -7,6 +7,8 @@
 | LLM Provider | 大模型推理（OpenAI/Azure OpenAI/Anthropic） | [llm-provider/](./llm-provider/) |
 | Agent.Matrix | 配置与权限管理（只读引用） | [matrix/](./matrix/) |
 | Agent Provider | Router 意图识别与第三方 Agent 服务接入 | [agent-provider.md](./agent-provider.md) |
+| Runtime adapters | MAF/ACP harness 绑定与可测试预览 | [runtime-adapters.md](./runtime-adapters.md) |
+| OpenCode ACP（调研） | 外部执行后端的替换边界、版本差异与验证条件 | [opencode-acp.md](./opencode-acp.md) |
 | File Assets | 独立用户文件、S3 兼容对象存储、预览与模型文件能力 | [file-assets.md](./file-assets.md) |
 | Code Runner | Bubblewrap 隔离代码执行、文档运行时及部署 | [code-runner.md](./code-runner.md) |
 | PostgreSQL | EF Core 会话与文件资产持久化 | [../database/](../database/) |

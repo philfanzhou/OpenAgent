@@ -1,4 +1,6 @@
+using Microsoft.AspNetCore.Mvc;
 using OpenAgent.Contracts.Responses;
+using OpenAgent.Contracts.Runtime;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Engine.Host.Middleware;
 
@@ -11,6 +13,7 @@ internal static class EndpointExtensions
         string pattern = "/api/v1/agent")
     {
         RouteGroupBuilder group = endpoints.MapGroup(pattern).RequireAuthorization();
+        group.MapGet("/runtimes", ([FromServices] IRuntimeCatalog catalog) => catalog.List()).WithName("ListRuntimes").WithTags("Agent");
         group.MapAgentChat();
         group.MapFileAssets();
         group.MapAgentCatalog();

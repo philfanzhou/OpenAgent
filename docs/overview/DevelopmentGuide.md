@@ -31,7 +31,7 @@
 
 | 模块 | 实现目录/入口 | 注册文件 |
 |---|---|---|
-| 执行 | Execution/AgentExecutor、AgentFactory、AgentExecutionScope、AgentRuntimeResolver | RuntimeServiceExtensions.cs |
+| 执行 | Execution/AgentExecutor、RuntimeRegistry、MafRuntimeAdapter、AcpRuntimeAdapter、AgentFactory、AgentRuntimeResolver | RuntimeServiceExtensions.cs |
 | 模型 | ModelProviders/IAgentChatClientFactory、AgentChatClientFactory、OutputTokenLimitedChatClient | ModelProviderServiceExtensions.cs |
 | 会话 | Conversation/History、Compaction、Store、Lock | ConversationServiceExtensions.cs |
 | 消息转换 | Mapping/；含 ExecutionFailureDescriptor、SDK 消息、usage、工具结果转换 | 无 |

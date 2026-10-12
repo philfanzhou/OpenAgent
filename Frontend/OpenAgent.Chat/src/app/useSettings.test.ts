@@ -48,6 +48,24 @@ describe('settings composition', () => {
     expect(options.notifyError).not.toHaveBeenCalled()
   })
 
+  it('selects a registered ACP harness and preserves the binding when saving', async () => {
+    vi.spyOn(agentsApi, 'listRuntimes').mockResolvedValue([
+      { adapter: 'maf', harness: null, name: 'MAF' },
+      { adapter: 'acp', harness: 'opencode', name: 'OpenCode' },
+    ])
+    const { state } = settings()
+    await state.createAgent()
+    state.config.value!.name = 'ACP agent'
+    state.selectRuntime('acp:opencode')
+    const save = vi.spyOn(agentsApi, 'saveAgentConfig').mockImplementation(async (_id, config) => config)
+    await state.saveConfig()
+    expect(save).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({
+      config: expect.objectContaining({ runtime: { adapter: 'acp', harness: 'opencode' } }),
+    }))
+    state.selectRuntime('acp:unregistered')
+    expect(state.config.value!.config.runtime?.harness).toBe('opencode')
+  })
+
   it('clears capability bindings when the selected Agent changes', () => {
     const { state } = settings()
     state.toggleMcpBinding({ name: 'private-orders', url: 'http://mcp', type: 'Http' }, true)

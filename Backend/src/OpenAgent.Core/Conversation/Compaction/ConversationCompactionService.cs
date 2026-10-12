@@ -62,6 +62,9 @@ internal sealed class ConversationCompactionService(
             llmProfileId,
             user,
             cancellationToken).ConfigureAwait(false);
+        if (profile.Config.Runtime.Adapter != "maf")
+            throw new AgentException(AgentErrorCode.InvalidRequest,
+                "Platform manual compaction is not supported by this runtime preview. Use the harness native compaction command.");
         var capture = new LlmInteractionCapture
         {
             TenantId = tenantId,

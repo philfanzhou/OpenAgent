@@ -1,3 +1,4 @@
+using OpenAgent.Contracts.Runtime;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using OpenAgent.Contracts.Configuration;
@@ -198,11 +199,11 @@ internal static class ConfigurationEndpointExtensions
             .GetAgentAsync(agentId, RequireTenant(context), cancellationToken).ConfigureAwait(false);
         return entity == null ? TypedResults.Problem(AgentProblemDetails.NotFound(
             $"Agent '{agentId}' was not found.", context)) : TypedResults.Ok(new RagConfig
-        {
-            Enabled = entity.Config.Rag.Enabled,
-            EnabledRagInstanceIds = [.. entity.Config.Rag.EnabledRagInstanceIds],
-            Instances = entity.Config.Rag.Instances.Select(ConfigurationRedactor.RedactRag).ToList()
-        });
+            {
+                Enabled = entity.Config.Rag.Enabled,
+                EnabledRagInstanceIds = [.. entity.Config.Rag.EnabledRagInstanceIds],
+                Instances = entity.Config.Rag.Instances.Select(ConfigurationRedactor.RedactRag).ToList()
+            });
     }
 
     private static async Task<Results<Ok<RagInstanceConfig>, ProblemHttpResult>> SaveRagAsync(
@@ -233,8 +234,10 @@ internal static class ConfigurationEndpointExtensions
         }
         int index = existing.Config.Rag.Instances.FindIndex(item =>
             string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
-        if (index >= 0) existing.Config.Rag.Instances[index] = instance;
-        else existing.Config.Rag.Instances.Add(instance);
+        if (index >= 0)
+            existing.Config.Rag.Instances[index] = instance;
+        else
+            existing.Config.Rag.Instances.Add(instance);
         if (instance.Enabled && !existing.Config.Rag.EnabledRagInstanceIds.Contains(id, StringComparer.OrdinalIgnoreCase))
             existing.Config.Rag.EnabledRagInstanceIds.Add(id);
         AgentConfigEntity? saved = await configuration.SaveAgentAsync(
@@ -501,6 +504,7 @@ internal static class ConfigurationEndpointExtensions
 
     private static async Task<Results<Ok<AgentConfigEntity>, ProblemHttpResult>> SaveAgentAsync(
         [FromServices] ISkillCatalog skillCatalog,
+        [FromServices] IRuntimeCatalog runtimes,
         [FromServices] ConfigurationService configuration,
         string agentId,
         [FromBody] AgentConfigEntity entity,
@@ -508,6 +512,9 @@ internal static class ConfigurationEndpointExtensions
         CancellationToken cancellationToken)
     {
         string tenantId = RequireTenant(context);
+        if (entity.Config.Runtime == null || !runtimes.List().Any(runtime =>
+                runtime.Adapter == entity.Config.Runtime.Adapter && runtime.Harness == entity.Config.Runtime.Harness))
+            return TypedResults.Problem(AgentProblemDetails.Invalid("The selected runtime is not available.", context));
         AgentConfigEntity? existing = await configuration
             .GetAgentAsync(agentId, tenantId, cancellationToken)
             .ConfigureAwait(false);

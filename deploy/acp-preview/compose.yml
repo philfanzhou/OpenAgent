@@ -1,0 +1,100 @@
+# Dedicated local preview: separate DB, Redis and harness volume; no production data.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: openagent
+      POSTGRES_USER: openagent
+      POSTGRES_PASSWORD: preview-local-only
+    volumes: ["postgres:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U openagent"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  mock-model:
+    image: python:3.12-alpine
+    command: ["python", "/app/mock-model.py"]
+    volumes: ["./mock-model.py:/app/mock-model.py:ro"]
+  engine:
+    build:
+      context: ../..
+      dockerfile: Backend/src/OpenAgent.Engine.Host/Dockerfile.acp
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__OpenAgentDatabase: Host=postgres;Database=openagent;Username=openagent;Password=preview-local-only
+      ConnectionStrings__Redis: redis:6379
+      Database__ApplyMigrationsOnStartup: "true"
+      Authentication__Mode: Basic
+      Authentication__EnableKeycloak: "false"
+      Authentication__AllowDevelopmentAnonymous: "true"
+      Authorization__Mode: AllowAll
+      FileAssets__Enabled: "false"
+      CodeExecution__Enabled: "false"
+      Heartbeat__AdvertisedHost: engine
+      Heartbeat__AdvertisedPort: "5208"
+      AgentRuntimes__Acp__Enabled: "true"
+      AgentRuntimes__Acp__WorkspaceRoot: /var/lib/openagent/acp
+      AgentRuntimes__Acp__Harnesses__0__Id: opencode
+      AgentRuntimes__Acp__Harnesses__0__Name: OpenCode ACP (preview)
+      AgentRuntimes__Acp__Harnesses__0__Command: /usr/local/bin/opencode
+      AgentRuntimes__Acp__Harnesses__0__Arguments__0: acp
+      AgentRuntimes__Acp__Harnesses__0__OpenCode: "true"
+      AgentRuntimes__Acp__Harnesses__0__PermissionPolicy: allow_once
+      AgentRuntimes__Acp__Harnesses__1__Id: demo
+      AgentRuntimes__Acp__Harnesses__1__Name: ACP protocol demo (no AI)
+      AgentRuntimes__Acp__Harnesses__1__Command: /usr/bin/python3
+      AgentRuntimes__Acp__Harnesses__1__Arguments__0: /app/acp-demo-harness.py
+      AgentRuntimes__Acp__Harnesses__1__PermissionPolicy: allow_once
+      Cors__AllowedOrigins__0: http://localhost:${ACP_CHAT_PORT:-8176}
+    volumes: ["acp:/var/lib/openagent/acp"]
+    ports: ["127.0.0.1:${ACP_ENGINE_PORT:-5276}:5208"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      mock-model: { condition: service_started }
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:5208/health"]
+      interval: 3s
+      timeout: 3s
+      retries: 60
+  router:
+    build:
+      context: ../..
+      dockerfile: Backend/src/OpenAgent.Router/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__Redis: redis:6379
+      RouterSettings__Routing__EngineEndpoint: http://engine:5208
+      RouterSettings__IntentRecognition__Enabled: "false"
+      Authentication__Mode: Basic
+      Authentication__EnableKeycloak: "false"
+      Authentication__AllowDevelopmentAnonymous: "true"
+      Cors__AllowedOrigins__0: http://localhost:${ACP_CHAT_PORT:-8176}
+    ports: ["127.0.0.1:${ACP_ROUTER_PORT:-5076}:5001"]
+    depends_on:
+      engine: { condition: service_healthy }
+  chat:
+    build:
+      context: ../..
+      dockerfile: Frontend/OpenAgent.Chat/Dockerfile
+      args:
+        OPENAGENT_PUBLIC_SCHEME: http
+        OPENAGENT_PUBLIC_HOST: localhost
+        OPENAGENT_ROUTER_PORT: ${ACP_ROUTER_PORT:-5076}
+        OPENAGENT_ENGINE_PORT: ${ACP_ENGINE_PORT:-5276}
+        OPENAGENT_TENANT_ID: development
+    ports: ["127.0.0.1:${ACP_CHAT_PORT:-8176}:80"]
+    depends_on:
+      engine: { condition: service_healthy }
+      router: { condition: service_started }
+volumes:
+  postgres:
+  acp:

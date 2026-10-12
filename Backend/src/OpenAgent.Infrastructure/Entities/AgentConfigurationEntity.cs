@@ -12,6 +12,7 @@ internal sealed class AgentConfigurationEntity
     public string Instructions { get; set; } = string.Empty;
     public int MaxTurns { get; set; } = 50;
     public string? ContextPolicyJson { get; set; }
+    public string RuntimeJson { get; set; } = "{}";
     public string McpJson { get; set; } = "{}";
     public string RagJson { get; set; } = "{}";
     public string SkillsJson { get; set; } = "{}";
