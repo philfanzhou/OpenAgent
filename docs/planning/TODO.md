@@ -1,6 +1,6 @@
 # 任务清单
 
-状态核对：2026-10-08，主干基线 `313bc65dc59e21e94e0f36d4c648d0da9214b882`（[PR #158](https://github.com/philfanzhou/OpenAgent/pull/158) 已合并）。本页是当前待办的唯一入口；模块实际目录见 [开发指南](../overview/DevelopmentGuide.md)，旧方案见 [历史归档](../archive/README.md)。
+状态核对：2026-10-15，`dev` 基线 `6a3f29f`。本页是当前待办的唯一入口；方向以[新架构提案](../architecture/new-architecture.html)（Proposal，未批准）为准，模块实际目录见 [开发指南](../overview/DevelopmentGuide.md)，旧方案见 [历史归档](../archive/README.md)。
 
 ## 状态与分派规则
 
@@ -14,39 +14,49 @@
 - [x] **B01 Core 第一批边界**：功能归域、模块 DI、MCP/Skill 扩展接口、Runner 客户端及产物发布复用、测试目录与依赖门禁。证据：[PR #158](https://github.com/philfanzhou/OpenAgent/pull/158)、[验证记录](../test-reports/2026-10-08-module-boundaries.md)。
 - [x] **B02 前端第一批边界**：shared transport/wire/SSE、业务 API 归域、模型/MCP/Skill/RAG 设置模块与 import 门禁。证据同 B01。第一批边界不代表下列功能已完成。
 
-## P0：异常追溯与会话恢复
+## 方向变更
 
-- [ ] **F01 完整异常记录与会话重放**（待分派）。主责：Core/Observability、Execution、Tooling/Invocation；交界：Contracts 错误契约、Infrastructure 持久化、Host SSE、前端 diagnostics。
-  验收：执行、模型、MCP/Skill/Runner、压缩、历史读写及资源清理异常均有完整堆栈、内部异常、调用阶段与 Tenant/User/Conversation/Trace/Agent 关联；原始输入输出有可追溯记录，超长内容不静默丢失；凭证按规则脱敏；能依据记录重建调用过程，取消和清理失败不覆盖原始错误。
+执行路径由 MAF 改为“平台控制面 + Worker + 可换 ACP harness”，MAF 执行路径不保留，沙箱使用 harness 自带机制（如 Codex CLI），`OpenAgent.Runner` 暂不处理。旧清单中依赖 MAF 的任务已取代或并入下列 A 系列；任务按 A 系列重排，批准提案前不抽取 Core。
 
-- [ ] **F02 超长上下文与压缩恢复**（待分派）。主责：Core/Conversation/{History,Compaction}、Tooling/Invocation、ModelProviders；协调 S01、I01、I02、I04，预算保护不必等待全部目录迁移。
-  验收：在调用摘要模型前校验模型预算，对超大 MCP/SDK Skill 工具结果、单条输入及最新消息组采取有界处理；保留原始记录与引用；摘要调用失败有确定性降级，下一轮和手动恢复可用；测试自动/手动压缩、溢出、失败、取消、并发与重启续接。参考 [压缩文档](../modules/conversation/context-compression/README.md)。
+## P0：验证与准备
 
-## P1：身份与统一权限
+- [ ] **A01 .NET 10 升级**（待分派，须在 2026-11-10 .NET 8 停止支持前完成）。主责：`global.json`、`Directory.Build.props`、`Directory.Packages.props`；与功能改动分开提交。
+  验收：全解决方案构建与测试通过；MCP SDK、EF Core、Microsoft.Agents.AI 在 .NET 10 下逐一确认；不支持的依赖单独记录结论，不阻塞其余升级。
+- [ ] **A02 ACP 端到端 spike**（待分派）。主责：新建临时 spike 项目，不改现有 Core/Engine；以 OpenCode 为首个 harness。
+  验收：走通领任务、启动 harness、事件回传、经 MCP 调一个 C# 工具、取消；验证 ACP 协议库的会话恢复、反向权限、断线取消；实测单会话冷启动耗时与单机并发上限；记录 harness 自带沙箱的隔离反例（同名会话、越界路径、HOME 泄漏）。可从 `origin/codex/runtime-adapters-acp`（PR #229）逐块移植协议帧、失败分类与事件映射，不整体合并。
+- [ ] **A03 提案评审与 ADR 拆分**（待分派，依赖 A02 结论）。主责：`docs/architecture`、`docs/decisions`。
+  验收：提案补齐 MAF 移除顺序与前端兼容层退出条件后批准；第 8 章决策拆成 ADR，同时修正两个 `0004` 重复编号；批准后更新 overview 与模块文档，批准前不改写它们。
 
-- [ ] **F03 MCP 可靠认证**（待分派）。主责：Core/Capabilities/Mcp、Hosting、Engine.Host；前置：明确 Agent→MCP→数据服务的身份、信任边界与凭证管理契约。
-  验收：服务端验证调用身份、凭证可轮换和撤销、第三方未认证调用拒绝、跨租户凭证不复用、认证失败可审计；Engine 登录不能代替远端 MCP 认证。关联 [Issue #147](https://github.com/philfanzhou/OpenAgent/issues/147)。
+## P1：新架构落地（依赖 A03）
 
-- [ ] **F04 MCP/Skill/Agent 统一授权**（待分派）。主责：Core/Security、Contracts；交界：各能力、Engine 配置目录、Router 与 Hosting。与 F03 共定主体、资源、动作及租户范围。
-  验收：能力发现和实际调用均检查权限；覆盖 Agent、模型、MCP、Skill 与工具资源的越权、跨租户、权限撤销与默认策略；目录可见性与执行权限一致，审计可追溯。参考 [授权文档](../modules/security/permission/README.md)。
+- [ ] **A04 Runtime 契约与 Worker**（待分派）。主责：Contracts/Runtime、新建 Runtime.Acp、Worker.Host；纯新增，先于任何 Core 抽取。
+  验收：IRuntimeAdapter、RuntimeEvent、RunSpec、Worker 协议契约；假 harness 测试覆盖协议、断线、取消；Worker 租约失联后自停。
+- [ ] **A05 MCP 网关与 RunGrant**（待分派，吸收原 F03）。主责：新建 Capabilities（首版含网关，不拆 Host 项目）；交界：Hosting、Engine.Host。
+  验收：RunGrant 签发与验签、调用主体不依赖模型参数、跨租户凭证不复用、凭证可轮换与撤销、认证失败可审计；Core 中的文件/RAG/Skill/工具业务以 MCP 工具形式暴露。
+- [ ] **A06 Application 与事件持久化**（待分派，吸收原 F01 的记录与重放目标）。主责：新建 Application；从 Core/Conversation、Security 迁出。
+  验收：准入与能力匹配、Run/Session 状态机、会话租约与 fencing、事件按粒度入库并可重放、异常带完整调用阶段与 Tenant/User/Conversation/Trace/Agent 关联、凭证脱敏。
+- [ ] **A07 旧聊天接口兼容**（待分派）。主责：Engine.Host/Endpoints/ChatCompat。
+  验收：RuntimeEvent 映射为现有前端 SSE；契约测试锁定当前事件形态；取消、刷新重建、会话列表行为不变。
+- [ ] **A08 审批**（待分派，取代原 F07）。主责：Application、Engine.Host/Endpoints/Approvals；交界：前端 chat。
+  验收：ACP 权限请求映射为待审批状态；批准、拒绝、超时、取消、重启续接都有明确状态；批准前不执行风险操作。
 
-## P2：生产保障与编排
+## P2：切换与移除
 
+- [ ] **A09 切流并移除 MAF 路径**（待分派，依赖 A04–A08 验收及真实 harness 验证）。主责：Core/Execution、ModelProviders、MAF 适配及 Microsoft.Agents.AI 包引用。
+  验收：全部请求走 harness 路径且回归通过；删除 MAF 代码与包，Core 清空；Architecture.Tests 增加新依赖规则；`OpenAgent.Runner` 不受影响。
+
+## 保留的独立任务
+
+- [ ] **F04 MCP/Skill/Agent 统一授权**（待分派）。主责：Contracts、Security；与 A05 共定主体、资源、动作及租户范围。
+  验收：能力发现和实际调用均检查权限；覆盖越权、跨租户、权限撤销与默认策略；目录可见性与执行权限一致，审计可追溯。参考 [授权文档](../modules/security/permission/README.md)。
 - [ ] **F05 生产容灾备份**（待分派，生产上线前必须验收）。主责：数据库与部署运维；交界：Infrastructure、对象存储、配置密钥。
-  验收：先确定 RPO/RTO、保留周期和恢复责任人；自动备份 PostgreSQL，并明确 S3 文件与 Data Protection 密钥的配套恢复；具备失败告警、恢复脚本和实际恢复演练记录，校验会话、文件引用和历史凭证解密。
+  验收：确定 RPO/RTO、保留周期和恢复责任人；自动备份 PostgreSQL，并明确 S3 文件与 Data Protection 密钥的配套恢复；失败告警、恢复脚本和实际恢复演练记录。
+- [ ] **F06 Workflow 多 Agent 编排**（暂缓，待 A03 后按新架构重新评估）。不得将现有 `workflow` 路由占位当成已部署服务。关联 [Issue #150](https://github.com/philfanzhou/OpenAgent/issues/150)。
 
-- [ ] **F06 Workflow 多 Agent 编排**（待分派）。主责：编排与 Router；交界：Execution、Contracts、Security。先定工作流输入输出、状态、取消和持久化契约。
-  验收：多 Agent 复杂流程可跟踪与恢复，发现、鉴权、健康检查、超时和降级完整；不得将现有 `workflow` 路由占位当成已部署服务。关联 [Issue #150](https://github.com/philfanzhou/OpenAgent/issues/150)。
+## 与 MAF 无关的结构拆分
 
-- [ ] **F07 风险操作审批**（待分派）。主责：Execution、Security；交界：Host SSE、前端 chat、会话持久化。评估 MAF 原生审批扩展，协调 F04/F06。
-  验收：批准、拒绝、超时、取消与重启续接都有明确状态；批准前不执行风险操作，恢复不能绕过审批或重复执行。关联 [Issue #149](https://github.com/philfanzhou/OpenAgent/issues/149)。
+以下任务不涉及要移除的执行路径，可独立推进；目标目录不表示已经存在。
 
-## 剩余模块拆分
-
-原 T00～T05、T07～T10 的第一批工作见 B01/B02；下列保留原任务编号映射，目标目录不表示已经存在。
-
-- [ ] **S01 / T06** — Core/Conversation/History：PlatformChatHistory 拆为修复、流式缓冲、锁续租、图片历史加载职责
-  依赖与验收：协调 I01/I04；工具配对、partial/取消、锁释放/续租、历史与压缩保真
 - [ ] **S02 / T11** — Host/Extensions 端点归 Endpoints 对应域与 Admin/{Agents,Models,Mcp,Rag,Skills}；流式 writer/headers/heartbeat/payload 归 Streaming
   依赖与验收：协调 I03；保留 Map* 汇总、认证、Development-only 管理映射及 HTTP/SSE 顺序与 done
 - [ ] **S03 / T12** — Host/Skills/SkillPackageManagementService 归 Engine/Management/Skills；Contracts 提供纯命令/结果，Host 只映射 HTTP
@@ -65,34 +75,23 @@
   依赖与验收：shared 不反向依赖 auth；Markdown 注入文件解析器；验证登录、上传授权、健康检查与追溯
 - [ ] **S10 / T17** — 通用 markdown/typewriterQueue/streamingAssistantContent 归 shared；usePanelLayout 归 app
   依赖与验收：与 S08/S09 协调同文件迁移；shared 无 feature 业务状态，app 只组合工作台
-- [ ] **S11 / T18** — Runner/Program 拆 Endpoints；BubblewrapCodeExecutor/Process、SessionSandbox/Manager 归 Sandbox；WorkspaceStore/Reaper 归 Workspace
-  依赖与验收：协调 I06；小写 sandbox 部署资源保留，安全参数/路径/并发/清理不变；Linux 门控与服务 smoke 通过
-- [ ] **S12 / T19** — 剩余域依赖检查、公开面、注册与全链验收收口
-  依赖与验收：各拆分完成后汇总；真实模型/Runner、Linux 沙箱及执行、文件、授权、路由交界验证；macOS 跳过不算 Linux 验收
 
-拆独立程序集前须有独立发布、复用或依赖隔离需求；验证无循环、内部依赖、独立测试和公共 API，并同步 ADR、AGENTS、编码规则与架构测试。关联 [Issue #148](https://github.com/philfanzhou/OpenAgent/issues/148)、[Issue #151](https://github.com/philfanzhou/OpenAgent/issues/151)。
+## 已取代或暂缓
 
-## 已有 PR 的集成待办
-
-以下 PR 在核对日均为 OPEN。先适配 #158 合并后的目录和接口，再按目标验收；PR 合并后更新本清单与对应功能任务，不能沿用历史方案的完成状态。
-
-- [ ] **I01** — [#146 自动/手动压缩](https://github.com/philfanzhou/OpenAgent/pull/146)、[#144 会话续接](https://github.com/philfanzhou/OpenAgent/pull/144)
-  依赖与验收：Conversation/History、Compaction；对照 F02 与 S01，统一持久化续接和压缩状态
-- [ ] **I02** — [#152 MAF 工具策略](https://github.com/philfanzhou/OpenAgent/pull/152)
-  依赖与验收：Tooling/Invocation 与 Skill；动态 SDK 工具同样受预算、超时、并发、授权与异常策略约束
-- [ ] **I03** — [#153 执行准备与流式适配](https://github.com/philfanzhou/OpenAgent/pull/153)
-  依赖与验收：Execution 与 Host Streaming；单次准备、释放、取消、SSE 映射兼容
-- [ ] **I04** — [#154 历史修复与压缩工厂](https://github.com/philfanzhou/OpenAgent/pull/154)
-  依赖与验收：Conversation/History、Compaction；与 I01/S01 共用契约与验收，避免重复拆分
-- [ ] **I05** — [#155 DI 幂等与参数读取](https://github.com/philfanzhou/OpenAgent/pull/155)
-  依赖与验收：各域注册入口；#158 已包含部分幂等工作，先比较剩余差异，再验证重复绑定与配置读取
-- [ ] **I06** — [#156 Runner 适配](https://github.com/philfanzhou/OpenAgent/pull/156)
-  依赖与验收：Integrations/Runner、Files/Artifacts；先去除 #158 已覆盖部分，验证 Code/Skill/Workspace 与失败清理
-- [ ] **I07** — [#157 RAG Provider 验证](https://github.com/philfanzhou/OpenAgent/pull/157)
-  依赖与验收：Capabilities/Rag；遵守兼容门禁，保留检索与降级契约，不先切换未经验证的生产路径
+| 原任务 | 处置 |
+|---|---|
+| F01 完整异常记录与重放 | 并入 A06 |
+| F02 超长上下文与压缩恢复 | 取代：上下文压缩由 harness 承担 |
+| F03 MCP 可靠认证 | 并入 A05 |
+| F07 风险操作审批 | 取代为 A08 |
+| S01 PlatformChatHistory 拆分 | 取代：属于 MAF 历史路径，随 A09 删除 |
+| S11 Runner 拆分 | 暂缓：沙箱暂不处理 |
+| S12 剩余域收口 | 取代：验收并入 A09 |
+| I01–I06（PR #144、#146、#152–#156） | 取代：均为 MAF 路径；不再合并，处置方式待确认 |
+| I07（PR #157 RAG Provider 验证） | 取代：RAG 以 MCP 工具形式落在 A05；PR 处置待确认 |
 
 ## 建议执行顺序
 
-1. 分派 F01/F02，先补故障记录与超长输入回归；同步整合 I01/I02/I04，其余已有 PR 先核对重叠范围。
-2. 结构任务按拥有目录独立推进，S02→S03 串行；S01 与压缩共用基线，前端 S08～S10 协调共享文件。
-3. F03/F04 先统一身份和权限契约，再分派各能力接入；生产上线前完成 F05，随后推进 F06/F07。
+1. A01 与 A02 并行；A03 在 A02 结论后评审。
+2. A04、A05 纯新增先行，再做 A06、A07；A08 随 A06 之后。
+3. A09 最后，F04、F05 与上述并行推进；前端与 Host 拆分按拥有目录独立进行。

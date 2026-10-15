@@ -578,7 +578,7 @@ Manifests/HarnessManifest.cs                                            清单�
 <h3>OpenAgent.Worker.Host <span class="tag">新建</span> <span class="tag">运行时层宿主(Worker 进程)</span></h3>
 <table>
 <tr><th>服务对象</th><td style="white-space:normal">Control(经 Worker 协议下发任务);向下调用 Runtime.Acp</td></tr>
-<tr><th>核心职责</th><td style="white-space:normal">领取任务、持有会话租约、启动并监督 harness 进程树、回传事件、取消与自我隔离、上传与还原快照、代理工作文件、管理会话工作区布局与清理。隔离边界由部署的容器提供,代码内不含沙箱后端。</td></tr>
+<tr><th>核心职责</th><td style="white-space:normal">领取任务、持有会话租约、启动并监督 harness 进程树、回传事件、取消与自我隔离、上传与还原快照、代理工作文件、管理会话工作区布局与清理。沙箱使用 harness 自带机制(如 Codex CLI),平台暂不自建沙箱后端。</td></tr>
 <tr><th>对外暴露</th><td style="white-space:normal">无对外服务端口;只出站连接 Control</td></tr>
 <tr><th>明确不做</th><td style="white-space:normal">不引用 Infrastructure、Application;不持有业务库或 Redis 凭证;不决定用什么模型</td></tr>
 <tr><th>可引用</th><td style="white-space:normal">Runtime.Acp、Contracts、Hosting</td></tr>
@@ -720,7 +720,7 @@ Capabilities/Mcp                                                  网关侧新�
 <li><b>RunGrant 同进程也走 HTTP 验签。</b>Control 用私钥签发,网关用公钥验证,harness 仍通过 <code>/mcp</code> HTTP 路径调用,不在内存里直接校验。这样路径与生产一致,将来拆出网关不改协议。</li>
 <li><b>traceId 贯穿全链路。</b>Router → Control → Worker → harness → 网关用现有 OTel 传播;RunId、OperationId 作为日志与审计的公共关联键。</li>
 <li><b>旧 API 兼容映射有明确归属。</b><code>RuntimeEvent</code> 到现有前端 SSE 的转换放在 <code>Engine.Host</code> 兼容 API 中,并用契约测试锁定当前前端的事件形态,前端冻结期间不漂移。</li>
-<li><b>隔离靠部署边界。</b>Worker 运行在容器里,容器是隔离边界(独立 HOME/XDG、出网白名单、资源限制),代码内不再包含沙箱后端。harness 的原生 Bash/读写能绕过 C# wrapper,所以完整进程树必须在同一容器内,ACP 权限回调只是附加策略。容器与会话的对应关系(一容器一会话,还是复用)待确定。</li>
+<li><b>沙箱用 harness 自带机制。</b>文件与命令的隔离交给各 harness 的原生沙箱(如 Codex CLI),平台暂不自建沙箱后端,现有 <code>OpenAgent.Runner</code> 本方案不处理。harness 的原生 Bash/读写能绕过 C# wrapper,因此强审计与授权的业务动作只能走 MCP 网关。Worker 的部署形态(容器与会话的对应关系)待 spike 确定。</li>
 </ol></div>
 
 <h2>6. Worker 协议</h2>
@@ -794,7 +794,7 @@ sequenceDiagram
 <li><b class="warn">ACP C# SDK 是非官方的。</b>nuskey8/acp-csharp 个人维护,先做恢复、反向权限、断线取消的验证再决定是否替换现有协议代码;协议库必须封在 <code>Runtime.Acp</code> 内,契约不暴露其类型。</li>
 <li><b class="warn">harness 能力不对齐。</b>DeepSeek Harness 只支持 resume、不支持 load,且为 developer preview;OpenCode 预览只支持 load。"自由切换 harness"只在认证过的能力矩阵内成立,不是通用承诺。</li>
 <li><b class="warn">审计有缺口。</b>harness 内部模型步骤和原生工具的完整输入输出拿不到。必须强审计的业务动作只能走网关,需在产品层说明覆盖范围。</li>
-<li><b class="warn">隔离强度取决于部署。</b>取消沙箱后端后,不同会话之间的隔离完全依赖容器配置:挂载范围、出网限制、资源上限、一容器对应几个会话。这些要在部署规范里写死并用反例验证(两租户同名会话、越界路径、原生 HOME 泄漏),否则隔离只停留在设计上。</li>
+<li><b class="warn">隔离强度取决于 harness 原生沙箱。</b>不同会话、不同租户之间的隔离依赖所选 harness 的沙箱能力与配置,各 harness 不一致。认证 harness 时要用反例验证(两租户同名会话、越界路径、原生 HOME 泄漏),不满足的 harness 不得用于多租户。</li>
 <li><b class="warn">容量与冷启动未知。</b>隔离由容器提供,若采用一容器一会话且不跨租户复用,新会话会有冷启动延迟和固定内存占用。单会话启动耗时、单机并发上限、空闲回收时间需要实测,结果决定是否做同租户内的 warm 池,也影响成本估算。</li>
 <li><b>前端冻结的代价。</b>保持旧 API 兼容意味着需要兼容层(G05),长期要维护两套语义;应在 ADR 里写明退出条件。</li>
 </ol></div>
@@ -806,7 +806,7 @@ sequenceDiagram
 <tr><td>PR #229 的 ACP 预览代码</td><td><b>不复用。</b>在本地 main 上按本方案自行实现;#229 只作设计输入和测试用例来源。</td><td>它不在本地仓库,无法评审;文档已指出它在 Engine 进程内启动 harness、<code>mcpServers</code> 为空、混有 OpenCode 专用配置,与目标分层相反。例外:协议帧限制、失败分类、事件映射等独立小块,经评审后可逐块移植,不整体合并。</td></tr>
 <tr><td>Capability Gateway 部署位置</td><td><b>首版并入 Control 进程</b>,代码上保持独立项目 <code>Capabilities.Host</code>。</td><td>网关与业务服务同属受信域,单独部署只增加运维面,不增加隔离。拆分条件:出现独立扩缩容或独立信任域需求。</td></tr>
 <tr><td>目标运行时</td><td><b>.NET 10(LTS)。</b>升级与功能改动分开提交。</td><td>.NET 8 于 2026-11-10 结束支持(<a href="https://devblogs.microsoft.com/dotnet/dotnet-8-9-end-of-support/">微软公告</a>)。与重构混在一起会让回归无法定位。例外:若关键依赖(如 ACP 协议库)尚不支持 .NET 10,对该依赖单独评估,不阻塞其余升级。</td></tr>
-<tr><td>隔离边界</td><td><b>由部署的容器提供</b>,代码内不含沙箱后端;<b>MAF 执行路径直接移除</b>,不并存、不保留回退。</td><td>只保留一条执行路径,避免双套语义与维护成本。代价:harness 与 Worker 就绪前无法切流,移除须排在切换验证之后;隔离强度取决于容器配置,见风险。</td></tr>
+<tr><td>隔离边界</td><td><b>使用 harness 自带沙箱</b>(如 Codex CLI),平台暂不自建,Runner 不在本方案范围;<b>MAF 执行路径直接移除</b>,不并存、不保留回退。</td><td>只保留一条执行路径,避免双套语义与维护成本。代价:harness 与 Worker 就绪前无法切流,移除须排在切换验证之后;隔离强度取决于 harness 原生沙箱,见风险。</td></tr>
 <tr><td>Worker 传输协议</td><td><b>HTTP + JSON,事件批量用 NDJSON</b>,Worker 出站拉取。</td><td>沿用现有技术栈,足够首版。仅当压测证明不够时再评估 gRPC。</td></tr>
 <tr><td>审计与对话日志</td><td><b>作为外层旁路记录层</b>:审计中心、对话日志、模型交互日志、可观测性分开存放,各层只写不读。</td><td>业务不依赖日志系统,日志出问题不拖垮业务。例外:会修改数据的工具调用,审计写失败则拒绝执行。</td></tr>
 <tr><td>配置中心</td><td><b>不新建配置中心(取消 Matrix 配置)。</b>Agent 沿用 Engine 现有配置,增加 runtime 选择字段;harness 清单(manifest)作为随部署发布的静态数据。</td><td>范围收敛。代价:没有按配置版本做快照与回滚的能力,runtime 清单变更走部署发布;Run 创建时记录当时的 manifest 版本用于追溯。</td></tr>
@@ -827,7 +827,7 @@ sequenceDiagram
 <tr><td>Router</td><td>入口网关,负责路由和判断该交给哪个 Agent</td><td>"前台"</td></tr>
 <tr><td>Control</td><td>平台控制面进程,管身份、会话、任务、权限、记录</td><td>"总务处"</td></tr>
 <tr><td>Worker</td><td>真正执行任务的进程,运行在隔离环境里</td><td>"工作间"的管理者</td></tr>
-<tr><td>隔离容器 / 沙箱</td><td>容器是一个受限的隔离环境,里面的程序看不到别的会话的文件,也不能随便上网</td><td>由部署提供隔离边界,代码内不含沙箱后端</td></tr>
+<tr><td>隔离容器 / 沙箱</td><td>容器是一个受限的隔离环境,里面的程序看不到别的会话的文件,也不能随便上网</td><td>使用 harness 自带沙箱,平台暂不自建</td></tr>
 <tr><td>租户</td><td>一个独立的客户或组织,它们的数据必须互相看不见</td><td>所有隔离措施的边界</td></tr>
 <tr><td>会话 / Run</td><td>会话是一次完整对话;Run 是会话中的一轮任务(用户发一条消息触发一次)</td><td>租约按会话,状态按 Run</td></tr>
 <tr><td>RuntimeBinding</td><td>记录"这个会话固定使用哪个 harness、哪个版本、状态存在哪里"的绑定关系</td><td>续聊时找到同一个执行器和状态</td></tr>
