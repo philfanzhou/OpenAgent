@@ -91,7 +91,7 @@ li::marker{color:var(--acc)}
 <tr><td>前台</td><td>Router</td><td>接待客户,判断该找哪位顾问,控制同时接待的人数</td></tr>
 <tr><td>总务处</td><td>Control</td><td>核对客户身份、登记每次委托、记账留档、发放"门禁卡"、批准或拒绝敏感操作</td></tr>
 <tr><td>独立工作间</td><td>Worker + 隔离容器</td><td>每位客户一间互相看不见的房间,顾问只能在自己的房间里工作</td></tr>
-<tr><td>顾问</td><td>harness(OpenCode、Gemini CLI 等)</td><td>真正思考和动手的人,可以随时换人</td></tr>
+<tr><td>顾问</td><td>harness(OpenCode、Pi 等)</td><td>真正思考和动手的人,可以随时换人</td></tr>
 <tr><td>内部服务窗口</td><td>MCP 网关</td><td>顾问要查客户档案、调公司内部系统,只能通过窗口办理,而且必须出示门禁卡</td></tr>
 <tr><td>电话总机</td><td>模型网关</td><td>顾问要打电话请教大模型,必须经总机转接,总机核验身份后转接</td></tr>
 <tr><td>门禁卡</td><td>RunGrant</td><td>只在这次委托期间有效的临时凭证,写明"这位客户、这次任务、能做什么"</td></tr>
@@ -164,9 +164,9 @@ li::marker{color:var(--acc)}
 <rect class="b" x="142" y="448" width="160" height="52" rx="6"/>
 <text x="222" y="472" text-anchor="middle">OpenCode</text><text class="m" x="222" y="488" text-anchor="middle">原生 ACP</text>
 <rect class="b" x="310" y="448" width="160" height="52" rx="6"/>
-<text x="390" y="472" text-anchor="middle">Gemini CLI</text><text class="m" x="390" y="488" text-anchor="middle">官方 ACP</text>
+<text x="390" y="472" text-anchor="middle">Pi</text><text class="m" x="390" y="488" text-anchor="middle">开源 Agent</text>
 <rect class="b" x="478" y="448" width="160" height="52" rx="6"/>
-<text x="558" y="472" text-anchor="middle">Claude bridge</text><text class="m" x="558" y="488" text-anchor="middle">外置 bridge</text>
+<text x="558" y="472" text-anchor="middle">其他开源 Agent</text><text class="m" x="558" y="488" text-anchor="middle">按需接入</text>
 <rect class="b" x="646" y="448" width="160" height="52" rx="6"/>
 <text x="726" y="472" text-anchor="middle">DeepSeek Harness</text><text class="m" x="726" y="488" text-anchor="middle">单独试验</text>
 <rect class="z" x="14" y="518" width="802" height="72" rx="8" style="stroke-dasharray:2 3"/>
@@ -329,7 +329,7 @@ li::marker{color:var(--acc)}
 <text class="m" x="658" y="368" text-anchor="start">执行层</text>
 <rect class="b" x="656" y="376" width="276" height="48" rx="6"/>
 <text x="794" y="398" text-anchor="middle">Harness 进程树</text>
-<text class="m" x="794" y="414" text-anchor="middle">OpenCode · Gemini CLI · 可换</text>
+<text class="m" x="794" y="414" text-anchor="middle">OpenCode · Pi · 可换</text>
 <rect class="z" x="650" y="440" width="288" height="78" rx="6" style="stroke-dasharray:2 3"/>
 <text class="m" x="658" y="454" text-anchor="start">边界</text>
 <rect class="z" x="656" y="462" width="276" height="48" rx="6"/>
@@ -421,7 +421,7 @@ li::marker{color:var(--acc)}
 │  │  ├─ OpenAgent.Engine/                                                          <span class="tag">已有</span>    应用层    现有 Redis 注册、心跳与配置热重载,保持原状;Agent 沿用现有配置并增加 runtime 选择字段
 │  │  ├─ OpenAgent.Runtime.Acp/                                                     <span class="tag">新建</span>    运行时层  用 ACP 协议驱动外部 harness;每个 harness 一个配置编译器
 │  │  │  ├─ Protocol/ Events/ Recovery/                                                               协议握手与会话;ACP 通知转统一事件;resume 或 load 选择
-│  │  │  └─ Compilers/ Manifests/                                                                     OpenCode / Gemini CLI / Claude bridge 的启动参数;允许启动的清单
+│  │  │  └─ Compilers/ Manifests/                                                                     OpenCode / DeepSeek Harness / Pi 的启动参数;允许启动的清单
 │  │  ├─ OpenAgent.Worker.Host/                                                     <span class="tag">新建</span>    运行时层  Worker 进程:领任务、持租约、监督 harness、传事件、传快照(隔离由部署的容器提供)
 │  │  │  ├─ Leasing/ Supervision/                                                                     长轮询领取与续租、失联自停;进程树监督与取消
 │  │  │  └─ FileProxy/ Workspace/ Snapshot/                                                           安全读写工作文件与产物;会话工作区布局与清理;快照上传与还原
@@ -573,7 +573,7 @@ Events/AcpEventMapper.cs                                                ACP 通�
 Recovery/ResumeLoadStrategy.cs                                          按认证结果选 resume 或 load
 Compilers/                                                              每个 harness 一个编译器
   IHarnessCompiler.cs                                                   命令、模型环境、Skill 目录、mcpServers
-  OpenCodeCompiler.cs · GeminiCliCompiler.cs · ClaudeBridgeCompiler.cs  
+  OpenCodeCompiler.cs · DeepSeekHarnessCompiler.cs · PiCompiler.cs  
 Manifests/HarnessManifest.cs                                            清单模型;清单数据随部署发布</pre></div>
 <h3>OpenAgent.Worker.Host <span class="tag">新建</span> <span class="tag">运行时层宿主(Worker 进程)</span></h3>
 <table>
@@ -820,7 +820,7 @@ sequenceDiagram
 <div class="scroll"><table>
 <tr><th>术语</th><th>通俗解释</th><th>在本方案里的作用</th></tr>
 <tr><td>Agent</td><td>能听懂任务、自己拆步骤、调用工具完成工作的 AI 助手</td><td>用户面对的"智能体"</td></tr>
-<tr><td>harness</td><td>"AI 工作台":把大模型、工具调用、上下文管理组装在一起、真正去干活的程序。OpenCode、Gemini CLI 都是</td><td>被平台启动、可替换的"顾问"</td></tr>
+<tr><td>harness</td><td>"AI 工作台":把大模型、工具调用、上下文管理组装在一起、真正去干活的程序。OpenCode、Pi 都是</td><td>被平台启动、可替换的"顾问"</td></tr>
 <tr><td>ACP</td><td>Agent Client Protocol。平台和 harness 之间约定好的"对话格式",像插头标准,换任何符合标准的 harness 都能插上</td><td>让平台不必为每个 harness 单独写一套对接</td></tr>
 <tr><td>MCP</td><td>Model Context Protocol。AI 调用外部工具的统一格式,像给工具装了统一插座</td><td>让 harness 通过窗口使用平台里的 C# 函数</td></tr>
 <tr><td>MAF</td><td>Microsoft Agent Framework。现有系统里自带的 AI 执行框架</td><td>本方案移除,由 harness 取代</td></tr>
