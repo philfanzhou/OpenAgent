@@ -1,11 +1,11 @@
 # 部署指南
 
-在仓库根目录执行以下操作。当前架构见 [系统上下文](overview/SystemContext.md)，生产容灾与权限待办见 [任务清单](planning/TODO.md)。
+在仓库根目录执行以下操作。当前架构见 [系统上下文](../overview/SystemContext.md)，生产容灾与权限待办见 [任务清单](../planning/TODO.md)。
 
 ## 启动与更新
 
-目录与迁移说明见 [部署目录](../deploy/README.md)，共享变量模板见
-[deployment.env.example](../deploy/deployment.env.example)。已有部署必须保留原来的 Compose 项目名和数据卷。
+目录与迁移说明见 [部署目录](../../deploy/README.md)，共享变量模板见
+[deployment.env.example](../../deploy/deployment.env.example)。已有部署必须保留原来的 Compose 项目名和数据卷。
 
 基础设施和实际代码镜像分开部署。基础设施 Compose 同时包含 PostgreSQL、Redis、MinIO 和 Keycloak；它只需要首次启动或基础设施变更时操作，数据卷不会随着应用镜像重复构建而被重建：
 
@@ -35,7 +35,7 @@ Engine 使用 ASP.NET Data Protection 保护 PostgreSQL/Redis 中的 LLM 和 RAG
 `/root/.aspnet/DataProtection-Keys` 挂载到独立的 `engine-data-protection` 数据卷。该卷必须和数据库卷
 一样保留；删除它会导致历史密钥无法解密，需重新录入密钥。
 
-从 [deployment.env.example](../deploy/deployment.env.example) 复制变量到受保护且 shell 兼容的 `.env` 文件（不要提交）。模板中的凭据用于本地联调，生产环境需覆盖。
+从 [deployment.env.example](../../deploy/deployment.env.example) 复制变量到受保护且 shell 兼容的 `.env` 文件（不要提交）。模板中的凭据用于本地联调，生产环境需覆盖。
 
 开发环境若不经过 TLS 反向代理，可将 `OPENAGENT_PUBLIC_SCHEME` 设为 `http`，并使用 Development Basic；生产环境应保持 `https`。
 
@@ -79,7 +79,7 @@ pwsh -File ./scripts/build-images.ps1 -EnvFile ./.env
 
 需要将构建好的镜像导出为 TAR 时，可指定目录；目录不存在会自动创建，四个镜像分别导出为
 `openagent-engine.tar`、`openagent-router.tar`、`openagent-chat.tar` 和 `openagent-runner.tar`。
-Runner 随应用一起部署，部署环境文件必须设置 `OPENAGENT_RUNNER_API_KEY`（至少 32 字符）；详见 [Runner 部署](integrations/code-runner.md)：
+Runner 随应用一起部署，部署环境文件必须设置 `OPENAGENT_RUNNER_API_KEY`（至少 32 字符）；详见 [Runner 部署](../integrations/code-runner.md)：
 
 ```bash
 scripts/build-images.sh --env-file .env --tar-dir ./dist/images
@@ -134,7 +134,7 @@ docker compose -p openagent-infrastructure \
 时钟偏差；当前默认容差为 60 秒，仅用于网络抖动。
 
 需要验证真实 OIDC 登录时，基础设施 Compose 会导入本地 Realm、SPA Client 和租户 Claim Mapper；
-用户与租户组织需要在 Keycloak 管理台中手动创建，详细命令参见 [Keycloak 本地认证集成](integrations/keycloak/README.md)。
+用户与租户组织需要在 Keycloak 管理台中手动创建，详细命令参见 [Keycloak 本地认证集成](../integrations/keycloak/README.md)。
 
 默认使用 Compose 内置的 MinIO（bucket `openagent-files`）。接入外部 S3/MinIO 时，可覆盖
 `OPENAGENT_S3_SERVICE_URL`、`OPENAGENT_S3_BUCKET`、`OPENAGENT_S3_ACCESS_KEY`、
@@ -147,7 +147,7 @@ docker compose -p openagent-infrastructure \
 
 ## 日志中心
 
-将外部 Collector 地址写入 `.env` 的 `OPENAGENT_OTLP_ENDPOINT` 后执行部署脚本。Exporter、信号出口和 Trace 关联规则统一见 [可观测性](overview/Observability.md)；本仓库不管理 Collector 容器。Nginx JSON 访问日志保留 `traceparent` 与 `X-Trace-Id`，供部署侧日志中心关联。
+将外部 Collector 地址写入 `.env` 的 `OPENAGENT_OTLP_ENDPOINT` 后执行部署脚本。Exporter、信号出口和 Trace 关联规则统一见 [可观测性](../overview/Observability.md)；本仓库不管理 Collector 容器。Nginx JSON 访问日志保留 `traceparent` 与 `X-Trace-Id`，供部署侧日志中心关联。
 
 ## 已有部署与访问地址
 
@@ -180,4 +180,4 @@ Engine/Router 使用同一值作为 Authority。已有 Realm 的 Client 地址�
 生产认证使用可配置的 OIDC/OAuth2 身份提供方与 JWT Bearer 校验，验证 issuer、audience、签名和有效期。
 Basic 兼容登录严格限制在 Development；它只解析凭据，不查询用户目录，也不校验真实密码。
 认证只负责建立身份，角色、Agent ACL、能力权限与租户授权由独立的服务端授权层判断。
-详见 [安全设计文档](modules/security/README.md)。
+详见 [安全设计文档](../modules/security/README.md)。

@@ -4,7 +4,7 @@
 
 ## 开发流程
 
-1. 从 [任务清单](../planning/TODO.md) 领取任务，按下表确定所属模块；启动方式见 [部署指南](../deployment.md)。
+1. 从 [任务清单](../planning/TODO.md) 领取任务，按下表确定所属模块；启动方式见 [部署指南](../operations/deployment.md)。
 2. 阅读对应 [功能域文档](../modules/README.md) 与 [集成文档](../integrations/README.md)，从已有用例追踪接口、注册与测试。
 3. 任务卡写明基线、目标行为、拥有目录、共享文件、接口输入输出、前置任务、验收与回退；指定模块负责人和集成人。
 4. 跨域需求先确定 Contracts 协议，再分派实现。模块负责人改本域；公共 DTO、数据库迁移、包/项目引用、Host Program 和前端 app 由集成人协调。
@@ -88,4 +88,4 @@ dotnet test Backend/tests/OpenAgent.Architecture.Tests/OpenAgent.Architecture.Te
 pnpm check
 ```
 
-真实模型 E2E、Linux Bubblewrap、真实 Runner 另按 [E2E 流程](../../.agent/skills/e2e-test.md) 和 [构建测试流程](../../.agent/skills/build-and-test.md) 验证；macOS 门控跳过不计为沙箱验证。排障先确认服务 health/ready、模型或 MCP 配置与请求 TraceId，再查 [完整排查手册](../trace-troubleshoot.md)。
+真实模型 E2E、Linux Bubblewrap、真实 Runner 另按 [E2E 流程](../../.agent/skills/e2e-test.md) 和 [构建测试流程](../../.agent/skills/build-and-test.md) 验证；macOS 门控跳过不计为沙箱验证。排障先确认服务 health/ready、模型或 MCP 配置与请求 TraceId，再查 [完整排查手册](../operations/trace-troubleshoot.md)。

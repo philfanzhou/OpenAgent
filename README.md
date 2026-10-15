@@ -10,7 +10,7 @@ OpenAgent 是基于 .NET 8、ASP.NET Core 和 Microsoft Agent Framework 的多�
 | [任务清单](docs/planning/TODO.md) | P0/P1/P2、剩余模块拆分、已有 PR 集成与验收 |
 | [系统上下文](docs/overview/SystemContext.md) | 当前服务拓扑、功能范围与数据依赖 |
 | [文档中心](docs/README.md) | 功能域、集成、数据库、API 与排障导航 |
-| [部署指南](docs/deployment.md) | 启动、认证、变量、镜像更新与数据卷 |
+| [部署指南](docs/operations/deployment.md) | 启动、认证、变量、镜像更新与数据卷 |
 
 ## 构建与测试
 

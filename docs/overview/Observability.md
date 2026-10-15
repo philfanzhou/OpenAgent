@@ -1,6 +1,6 @@
 # 可观测性
 
-本文是 OpenAgent 当前可观测性能力的唯一事实入口。它描述仓库内已经实现的信号、配置与责任边界；具体排障步骤见 [`../trace-troubleshoot.md`](../trace-troubleshoot.md)。
+本文是 OpenAgent 当前可观测性能力的唯一事实入口。它描述仓库内已经实现的信号、配置与责任边界；具体排障步骤见 [`../operations/trace-troubleshoot.md`](../operations/trace-troubleshoot.md)。
 
 ## 当前实现
 

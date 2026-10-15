@@ -13,20 +13,20 @@
 下图为本地运行的 OpenAgent Chat 工作台。底部 Composer 显示独立的“+ 文件”入口及
 “最多 5 个 · 25 MB”约束；文件不再作为聊天 multipart 请求的一部分。
 
-![本地 OpenAgent Chat 文件入口](./file-workspace-ui.png)
+![本地 OpenAgent Chat 文件入口](./images/file-workspace-ui.png)
 
 ### 本轮 UI 回归截图（2026-08-12）
 
 真实选择 `docs/integrations/file-assets.md` 后，Composer 立即调用独立上传端点；在
 上传完成前发送按钮保持不可用，完成后显示 `✓`、文件名、大小和“已上传”，发送按钮启用：
 
-![文件独立上传完成状态](./file-upload-ready.png)
+![文件独立上传完成状态](./images/file-upload-ready.png)
 
 随后向真实 Kimi `kimi-k2.6` 发起携带该 `fileId` 的会话，并要求它调用 `write_file`
 创建 `preview.md`。截图上方是用户消息内的已绑定 Markdown 内容预览，底部是助手消息内
 模型生成文件的卡片和 `# Preview` 内容预览：
 
-![用户与模型文件消息预览](./file-message-previews.png)
+![用户与模型文件消息预览](./images/file-message-previews.png)
 
 ## 验证矩阵
 

@@ -1,6 +1,6 @@
 # Trace / Logs / Metrics 快速排查
 
-本文用于 Router 与 Engine 请求异常的现场取证。当前信号与配置边界见 [`overview/Observability.md`](./overview/Observability.md)。
+本文用于 Router 与 Engine 请求异常的现场取证。当前信号与配置边界见 [`overview/Observability.md`](../overview/Observability.md)。
 
 ## 先收集最小现场
 
