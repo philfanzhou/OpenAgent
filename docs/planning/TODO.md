@@ -20,8 +20,8 @@
 
 ## P0：验证与准备
 
-- [ ] **A01 .NET 10 升级**（待分派，须在 2026-11-10 .NET 8 停止支持前完成）。主责：`global.json`、`Directory.Build.props`、`Directory.Packages.props`；与功能改动分开提交。
-  验收：全解决方案构建与测试通过；MCP SDK、EF Core、Microsoft.Agents.AI 在 .NET 10 下逐一确认；不支持的依赖单独记录结论，不阻塞其余升级。
+- [ ] **A01 .NET 10 升级**（待验证：`dev` 本地构建与全部测试已通过，待 CI 与镜像构建验证；须在 2026-11-10 前完成）。主责：`global.json`、`Directory.Build.props`、`Directory.Packages.props`；与功能改动分开提交。
+  验收：全解决方案构建与测试通过（本地已通过）；MCP SDK、EF Core、Microsoft.Agents.AI 在 .NET 10 下确认可用（构建与测试已覆盖）；GitHub Actions CI 通过；Engine.Host、Router、Runner 三个镜像在 Docker 下构建并启动。C# 14 的 span 重载变化已在 `RedisConversationCache`、`AgentFactory` 处修正。Serilog.AspNetCore 暂留 8.0.0，Swashbuckle 暂留 6.6.2。
 - [ ] **A02 ACP 端到端 spike**（待分派）。主责：新建临时 spike 项目，不改现有 Core/Engine；以 OpenCode 为首个 harness。
   验收：走通领任务、启动 harness、事件回传、经 MCP 调一个 C# 工具、取消；验证 ACP 协议库的会话恢复、反向权限、断线取消；实测单会话冷启动耗时与单机并发上限；记录 harness 自带沙箱的隔离反例（同名会话、越界路径、HOME 泄漏）。可从 `origin/codex/runtime-adapters-acp`（PR #229）逐块移植协议帧、失败分类与事件映射，不整体合并。
 - [ ] **A03 提案评审与 ADR 拆分**（待分派，依赖 A02 结论）。主责：`docs/architecture`、`docs/decisions`。

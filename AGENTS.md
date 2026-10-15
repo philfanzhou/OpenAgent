@@ -1,6 +1,6 @@
 # AGENTS.md — AI 编码入口
 
-OpenAgent 是基于 .NET 8.0 的多服务 Agent 平台（C#, ASP.NET Core）。
+OpenAgent 是基于 .NET 10 的多服务 Agent 平台（C#, ASP.NET Core）。
 
 ## 模块结构
 

@@ -1,6 +1,6 @@
 # 系统上下文
 
-OpenAgent 是基于 .NET 8 与 ASP.NET Core 的多服务 Agent 平台。当前代码模块和修改入口见 [开发指南](DevelopmentGuide.md)，运行时细节见 [Design](Design.md)，未完成能力见 [任务清单](../planning/TODO.md)。
+OpenAgent 是基于 .NET 10 与 ASP.NET Core 的多服务 Agent 平台。当前代码模块和修改入口见 [开发指南](DevelopmentGuide.md)，运行时细节见 [Design](Design.md)，未完成能力见 [任务清单](../planning/TODO.md)。
 
 ## 当前部署与调用边界
 

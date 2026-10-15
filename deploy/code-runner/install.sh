@@ -12,7 +12,7 @@ if [[ ! -f "${repository_root}/Backend/src/OpenAgent.Runner/OpenAgent.Runner.csp
   exit 1
 fi
 if ! command -v dotnet >/dev/null; then
-  echo ".NET 8 SDK is required to publish the Runner." >&2
+  echo ".NET 10 SDK is required to publish the Runner." >&2
   exit 1
 fi
 

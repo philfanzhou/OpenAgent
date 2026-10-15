@@ -7,8 +7,6 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
-    <PackageReference Include="System.Text.Encodings.Web" />
-    <PackageReference Include="System.Text.Json" />
     <ProjectReference Include="..\..\src\OpenAgent.Router\OpenAgent.Router.csproj" />
   </ItemGroup>
 

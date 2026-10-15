@@ -1,10 +1,10 @@
-FROM mcr.microsoft.com/dotnet/sdk:8.0-bookworm-slim AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0-bookworm-slim AS build
 WORKDIR /src
 COPY Backend/ Backend/
 RUN dotnet restore Backend/src/OpenAgent.Runner/OpenAgent.Runner.csproj
 RUN dotnet publish Backend/src/OpenAgent.Runner/OpenAgent.Runner.csproj -c Release --no-restore -o /app/publish
 
-FROM mcr.microsoft.com/dotnet/aspnet:8.0-bookworm-slim AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-bookworm-slim AS runtime
 WORKDIR /app
 RUN apt-get update \
     && apt-get install -y --no-install-recommends bubblewrap python3 python3-venv nodejs util-linux bash \

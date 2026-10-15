@@ -19,7 +19,7 @@ Runner 使用应用内部网络与 Engine 通信，不发布宿主端口；Runne
 
 - Ubuntu 24.04 LTS 或同等能力的现代 Linux，支持非特权 user namespace。
 - 主机安装发行版提供的 Bubblewrap；不要自行授予 Runner root、sudo 或 Docker Socket 权限。
-- .NET 8 SDK 仅在安装脚本发布 Runner 时需要，服务使用自包含产物运行。
+- .NET 10 SDK 仅在安装脚本发布 Runner 时需要，服务使用自包含产物运行。
 - Engine 与 Runner 可以同机部署，也可以通过受防火墙保护的私网 HTTP(S) 通信。
 
 `/health` 会实际创建最小 Bubblewrap namespace。缺少 Bubblewrap、Python/Node 运行时或 user namespace 被禁用时返回 503；执行请求不会回退到宿主解释器。

@@ -65,7 +65,7 @@ AddAgentCore 调用各功能域的注册扩展，保留原公共入口；AgentFa
 
 ## 技术栈
 
-- .NET 8
+- .NET 10
 - Microsoft Agent Framework / Microsoft.Extensions.AI
 - Model Context Protocol SDK
 - PostgreSQL + EF Core conversation and file-asset persistence

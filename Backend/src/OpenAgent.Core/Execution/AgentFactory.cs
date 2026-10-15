@@ -224,7 +224,7 @@ internal sealed class AgentFactory
         catch
         {
             IAsyncDisposable[] resources = [history, invocation, .. features];
-            foreach (IAsyncDisposable resource in resources.Reverse())
+            foreach (IAsyncDisposable resource in Enumerable.Reverse(resources))
             {
                 try
                 {

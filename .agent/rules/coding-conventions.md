@@ -42,19 +42,19 @@ Core 内部按功能域单向依赖；SDK/平台转换归 Mapping，模型客户
 
 ## 3. .NET 版本约束
 
-### 3.1 最高版本限制
+### 3.1 目标版本
 
-**本解决方案支持的最高 .NET 版本为 .NET 8.0。**
+**本解决方案的目标运行时为 .NET 10（LTS），由 `Backend/Directory.Build.props` 统一设置，SDK 由根目录 `global.json` 固定。**
 
 | 优先级 | 目标框架 | 适用场景 |
 |--------|----------|----------|
 | 1 (最佳) | .NET Standard 2.0/2.1 | 纯类库，不依赖 ASP.NET Core |
-| 2 (可接受) | .NET 8.0 | Web API 项目、ASP.NET Core 应用 |
-| 禁止 | .NET 6.0 及更早版本 | 已过期，不再接收安全更新 |
+| 2 (可接受) | .NET 10 | Web API 项目、ASP.NET Core 应用 |
+| 禁止 | .NET 8 及更早版本 | .NET 8 于 2026-11-10 结束支持，不再接收安全更新 |
 
 **理由：**
-- .NET 8.0 是长期支持（LTS）版本，在生产环境中具有 proven 稳定性
-- .NET 6.0 已于 2024 年 11 月结束支持，不再接收安全更新和补丁
+- .NET 10 是长期支持（LTS）版本
+- .NET 8 与 .NET 9 均在 2026-11-10 结束支持，不再接收安全更新和补丁
 - 使用过期版本存在安全风险，不符合企业级应用的安全合规要求
 
 ### 3.2 决策标准
@@ -64,7 +64,7 @@ Core 内部按功能域单向依赖；SDK/平台转换归 Mapping，模型客户
 - 不依赖 ASP.NET Core 托管特定的 API
 - 需要最大化的跨平台和跨版本兼容性
 
-**使用 .NET 8.0 的场景：**
+**使用 .NET 10 的场景：**
 - Web API 项目（ASP.NET Core）
 - 需要 ASP.NET Core 特定功能
 - 控制台应用、Windows 服务等可执行项目
@@ -73,13 +73,13 @@ Core 内部按功能域单向依赖；SDK/平台转换归 Mapping，模型客户
 
 | 项目 | TFM | 类型 |
 |------|-----|------|
-| `OpenAgent.Contracts` | net8.0 | 类库 |
-| `OpenAgent.Core` | net8.0 | 类库 |
-| `OpenAgent.Engine` | net8.0 | 类库 |
-| `OpenAgent.Engine.Host` | net8.0 | Web API |
-| `OpenAgent.Router` | net8.0 | Web API |
-| `OpenAgent.Infrastructure` | net8.0 | 类库 |
-| `OpenAgent.Hosting` | net8.0 | 类库 |
+| `OpenAgent.Contracts` | net10.0 | 类库 |
+| `OpenAgent.Core` | net10.0 | 类库 |
+| `OpenAgent.Engine` | net10.0 | 类库 |
+| `OpenAgent.Engine.Host` | net10.0 | Web API |
+| `OpenAgent.Router` | net10.0 | Web API |
+| `OpenAgent.Infrastructure` | net10.0 | 类库 |
+| `OpenAgent.Hosting` | net10.0 | 类库 |
 
 ### 3.4 项目文件配置
 

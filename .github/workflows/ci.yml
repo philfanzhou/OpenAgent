@@ -24,7 +24,7 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: 10.0.x
       - name: Test image build and offline deployment commands
         run: python3 scripts/test-deployment-scripts.py
       - name: Install Bubblewrap and document runtime
@@ -77,7 +77,7 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: 10.0.x
 
       - name: Restore dependencies
         run: dotnet restore Backend/OpenAgent.sln
