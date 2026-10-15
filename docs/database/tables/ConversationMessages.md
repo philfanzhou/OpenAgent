@@ -53,7 +53,7 @@ C# 契约类型为 `OpenAgent.Contracts.Conversation.ConversationMessageMetadata
 }
 ```
 
-读取规则（`OpenAgent.Infrastructure.ConversationMessageMetadataJson`，大小写不敏感逐键解析，
+读取规则（`OpenAgent.Framework.ConversationMessageMetadataJson`，大小写不敏感逐键解析，
 两种形态统一覆盖）：
 
 - 已知键映射到强类型属性；未知键进入 `Extensions` 原样保留（非字符串值保留原始 JSON 文本）。

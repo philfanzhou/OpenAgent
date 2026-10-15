@@ -5,7 +5,7 @@ using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Responses;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Engine.Host.Middleware;
-using OpenAgent.Hosting.Errors;
+using OpenAgent.Engine.Hosting.Errors;
 
 namespace OpenAgent.Engine.Host.Extensions;
 

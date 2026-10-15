@@ -1,3 +1,4 @@
+using OpenAgent.Engine.Hosting;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Hosting;

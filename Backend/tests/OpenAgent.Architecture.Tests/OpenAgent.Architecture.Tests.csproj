@@ -9,12 +9,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\OpenAgent.Contracts\OpenAgent.Contracts.csproj" />
-    <ProjectReference Include="..\..\src\OpenAgent.Core\OpenAgent.Core.csproj" />
+    <ProjectReference Include="..\..\src\OpenAgent.Application\OpenAgent.Application.csproj" />
     <ProjectReference Include="..\..\src\OpenAgent.Engine\OpenAgent.Engine.csproj" />
     <ProjectReference Include="..\..\src\OpenAgent.Engine.Host\OpenAgent.Engine.Host.csproj" />
-    <ProjectReference Include="..\..\src\OpenAgent.Hosting\OpenAgent.Hosting.csproj" />
     <ProjectReference Include="..\..\src\OpenAgent.Router\OpenAgent.Router.csproj" />
-    <ProjectReference Include="..\..\src\OpenAgent.Infrastructure\OpenAgent.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\OpenAgent.Framework\OpenAgent.Framework.csproj" />
     <ProjectReference Include="..\..\src\OpenAgent.Runner\OpenAgent.Runner.csproj" />
   </ItemGroup>
 

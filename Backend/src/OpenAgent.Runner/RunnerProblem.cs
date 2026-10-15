@@ -5,7 +5,7 @@ namespace OpenAgent.Runner;
 
 /// <summary>
 /// Runner 本地的 ProblemDetails 构造器。Runner 刻意只依赖 Contracts（沙箱 sidecar 保持轻依赖），
-/// 因此以最小实现复刻 OpenAgent.Hosting.Errors 的统一错误契约：
+/// 因此以最小实现复刻 OpenAgent.Engine.Hosting.Errors 的统一错误契约：
 /// type/title/status/detail + 扩展字段 traceId/timestamp/code。
 /// </summary>
 internal static class RunnerProblem

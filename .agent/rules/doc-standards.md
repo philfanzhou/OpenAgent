@@ -29,11 +29,12 @@
 └── Backend/
     ├── src/
     │   ├── OpenAgent.Contracts/       ← 源码（无散落文档）
-    │   ├── OpenAgent.Core/            ← 源码（无散落文档）
+    │   ├── OpenAgent.Application/     ← 源码（无散落文档）
+    │   ├── OpenAgent.Capabilities/    ← 源码（无散落文档）
     │   ├── OpenAgent.Engine/          ← 源码（无散落文档）
     │   ├── OpenAgent.Engine.Host/     ← 源码（无散落文档）
-    │   ├── OpenAgent.Hosting/         ← 源码（无散落文档）
-    │   ├── OpenAgent.Infrastructure/  ← 源码（无散落文档）
+    │   ├── OpenAgent.Runner/          ← 源码（无散落文档）
+    │   ├── OpenAgent.Framework/       ← 源码（无散落文档）
     │   └── OpenAgent.Router/          ← 源码（无散落文档）
     └── tests/                         ← 测试项目
 ```
@@ -56,7 +57,7 @@
 - **任务状态**：当前待办只维护在 `docs/planning/TODO.md`，写明优先级、负责人/状态、拥有范围、依赖与验收证据；已有 PR 不等于已完成
 - **历史隔离**：旧规划/规格归 `docs/archive/`，保留独特内容并标明历史状态；ADR 与测试记录保留在各自目录，不维护当前进度
 - **合并再删除**：重复说明先将独特内容并入当前文档，再删除冗余文件并更新引用；部署详情统一在 `docs/operations/deployment.md`
-- **源文件引用**：关键实现标注路径 `` `Backend/src/OpenAgent.Core/Foo.cs` ``
+- **源文件引用**：关键实现标注路径 `` `Backend/src/OpenAgent.Application/Foo.cs` ``
 - **推断标注**：基于代码推断但未验证的内容，标注 `[推断]` 或 `[待确认]`
 - **交叉引用**：相关文档间使用相对路径链接
 - **语言**：文档内容使用中文；代码注释和字符串使用英文（与编码规范一致）

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <AssemblyName>OpenAgent.Application.Tests</AssemblyName>
+    <RootNamespace>OpenAgent.Application.Tests</RootNamespace>
+    <NoWarn>$(NoWarn);MAAI001</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\OpenAgent.Application\OpenAgent.Application.csproj" />
+    <PackageReference Include="SixLabors.ImageSharp" />
+    <Compile Include="..\OpenAgent.Capabilities.Tests\TestDoubles\*.cs" Link="TestDoubles\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+</Project>

@@ -6,16 +6,18 @@ OpenAgent 是基于 .NET 10 与 ASP.NET Core 的多服务 Agent 平台。当前�
 
 ```text
 Chat（浏览器）→ Router（HTTP 网关）→ Engine.Host（HTTP/SSE 宿主）
-                                      ├─ Core：MAF 执行、能力、会话与业务授权
+                                      ├─ Application：MAF 执行、会话、模型与 SDK 工具适配
+                                      ├─ Capabilities：文件、RAG、内置工具、调用授权与 Runner 客户端
                                       ├─ Engine：配置、注册、心跳与热重载
-                                      ├─ Infrastructure：PostgreSQL、Redis 实现
-                                      └─ Hosting：共享认证、身份与遥测
-Core → LLM / MCP / RAG（外部服务）
-Core → Runner（HTTP）→ Linux 沙箱与会话工作区
-Contracts：跨项目的纯接口、配置与 DTO
+                                      │    └─ Hosting：共享认证、身份与遥测（Router 也使用）
+                                      └─ Framework：PostgreSQL、Redis 存储实现
+Application → LLM / MCP（外部服务）
+Application → Capabilities → RAG（外部服务）
+Application → Capabilities → Runner（HTTP）→ Linux 沙箱与会话工作区
+Contracts：跨项目的纯接口、配置、DTO 与无 SDK 的能力定义
 ```
 
-该图表示运行时调用与宿主组装，不是项目引用白名单。Router 通过 HTTP 转发到 Engine.Host，不引用 Core；Core 是类库，不独立部署、不暴露 HTTP、不管理宿主生命周期。具体项目引用以 `.csproj` 和架构测试为准。
+该图表示运行时调用与宿主组装，不是项目引用白名单。Router 通过 HTTP 转发到 Engine.Host，不引用 Application 或 Capabilities；Application 与 Capabilities 是类库，不独立部署、不暴露 HTTP、不管理宿主生命周期。具体项目引用以 `.csproj` 和架构测试为准。
 
 ## 外部依赖与数据主责
 

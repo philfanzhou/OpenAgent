@@ -28,7 +28,7 @@ ApplicationStopping
 - 停机顺序依赖 `Program.cs` 编排
 
 ## Source
-- Core: `Backend/src/OpenAgent.Engine/Runtime/ShutdownService.cs`, `Backend/src/OpenAgent.Engine/Runtime/RequestScope.cs`
+- Engine: `Backend/src/OpenAgent.Engine/Runtime/ShutdownService.cs`, `Backend/src/OpenAgent.Engine/Runtime/RequestScope.cs`
 - Orchestration: `Backend/src/OpenAgent.Engine.Host/Program.cs`
 - Extensions: `Backend/src/OpenAgent.Engine/Extensions/ServiceCollectionExtensions.cs`
 - Tests: 无专门测试文件

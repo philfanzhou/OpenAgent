@@ -60,7 +60,7 @@ private static async Task<Results<Ok<ConversationRecord>, NotFound, ForbidHttpRe
 
 | 场景 | 用法 |
 |------|------|
-| 端点内直接返回错误 | `TypedResults.Problem(AgentProblemDetails.Invalid("keyword is required", context))`（`Hosting/Errors`） |
+| 端点内直接返回错误 | `TypedResults.Problem(AgentProblemDetails.Invalid("keyword is required", context))`（`Engine/Hosting/Errors`） |
 | 领域错误 | 抛 `AgentException(AgentErrorCode.X, message)`，由全局中间件转换 |
 | 中间件内（无 IResult） | `AgentProblemDetails.WriteAsync(context, problem)` |
 | Router 路由错误 | `TypedResults.Problem(RouterProblem.From(exception, context))` |
@@ -96,7 +96,7 @@ private static async Task<Results<Ok<ConversationRecord>, NotFound, ForbidHttpRe
 |------|------------------|------|
 | Engine.Host | `/swagger` | 主 API 文档（含 dev-only 管理端点） |
 | Router | `/swagger` | 网关本地端点 + 转发端点 |
-| Runner | `/swagger` | 沙箱执行 sidecar（内联配置，不依赖 Hosting） |
+| Runner | `/swagger` | 沙箱执行 sidecar（内联配置，不依赖 Engine/Hosting） |
 
 响应 schema 由端点的 TypedResults 返回类型自动推导，端点代码不含任何 Swagger 专属元数据
 （`WithName`/`WithTags` 除外，它们同时服务于路由标识与分组）。认证统一用 Bearer 安全定义

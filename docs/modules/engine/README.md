@@ -1,6 +1,6 @@
 # Engine — 运行时与 Host 适配
 
-本目录包含 Agent.Engine 的运行时管理和 Host 层文档。
+本目录包含 OpenAgent.Engine 的配置、注册、运行时管理与共享 Hosting，以及 OpenAgent.Engine.Host 的 HTTP 宿主文档。
 
 ## 子域
 

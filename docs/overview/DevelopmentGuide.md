@@ -12,48 +12,48 @@
 
 ## 项目归属
 
+以 [新架构方案的目录图](../architecture/新架构方案.html) 整理当前实现；保留 MAF/API 行为，不实施 ACP 新功能。历史提案中的目标能力不代表当前实现状态。
+
 | 项目（Backend/src/ 下，统一 OpenAgent. 前缀） | 主责 |
 |---|---|
-| Contracts | 纯平台接口、DTO、配置、错误码；不放 SDK 类型或实现 |
-| Core | 执行、会话、模型、文件、工具、能力与业务授权 |
-| Engine | 配置目录、服务注册、心跳与热重载 |
-| Engine.Host | HTTP/SSE、Web 中间件与最终服务组装 |
-| Infrastructure | PostgreSQL、Redis 缓存与分布式锁；S3 实现目前仍在 Host |
-| Hosting | 共享认证、身份、遥测与 Web 基础能力 |
+| Contracts | 平台接口、DTO、配置、错误码、CapabilityDefinition、ICapabilitySource 与目录接口 |
+| Application | 原 Core 的 MAF 执行、会话、模型、Mapping、Observability、SDK 工具机制与 MCP/Skill 适配 |
+| Capabilities | Files、Rag、Skills 目录、Code/Workspace/Plan/UserProfile、Security、Runner 客户端 |
+| Engine | 配置目录、服务注册、心跳与热重载；Hosting/ 合并原认证、身份、遥测与 Web 基础能力 |
+| Engine.Host | HTTP/SSE、Web 中间件、对象存储组装与最终服务组合 |
+| Framework | 原 Infrastructure 的 PostgreSQL、Redis 缓存与分布式锁 |
 | Router | 服务发现、路由、转发、限流与入口治理 |
-| Runner | 沙箱执行、工作区与资源清理 |
+| Runner | 原有沙箱执行、工作区与资源清理 |
 
-保留八个项目和统一解决方案，功能域在项目内隔离。项目引用白名单见编码规范第 2 节及 `Backend/tests/OpenAgent.Architecture.Tests/AssemblyDependencyTests.cs`；不要凭简化分层图新增项目引用。
+引用边界：Application → Contracts/Capabilities；Capabilities、Engine、Framework、Runner → Contracts；Router → Engine/Contracts；Engine.Host 组装 Application/Capabilities/Engine/Framework/Contracts。Engine 不引用执行代码，Router 仅使用 Engine/Hosting。规则和架构测试必须同步，不通过兼容项目或重复实现保留旧边界。
 
-## Core 修改入口
+## Application 与 Capabilities 修改入口
 
-下表以 `Backend/src/OpenAgent.Core/` 为根。注册文件在 `Extensions/`；公开的 `Exten/CoreServiceExtensions.cs` 仅组合各域，重复调用不会追加 Options 集合绑定。
+公开组合入口是 `Backend/src/OpenAgent.Application/Exten/ApplicationServiceExtensions.cs`；`AddAgentApplication` 仍保证重复调用不追加 Options 集合绑定。各域独立维护注册文件。
 
-| 模块 | 实现目录/入口 | 注册文件 |
+| 模块 | 所属项目与实现目录 | 注册文件 |
 |---|---|---|
-| 执行 | Execution/AgentExecutor、AgentFactory、AgentExecutionScope、AgentRuntimeResolver | RuntimeServiceExtensions.cs |
-| 模型 | ModelProviders/IAgentChatClientFactory、AgentChatClientFactory、OutputTokenLimitedChatClient | ModelProviderServiceExtensions.cs |
-| 会话 | Conversation/History、Compaction、Store、Lock | ConversationServiceExtensions.cs |
-| 消息转换 | Mapping/；含 ExecutionFailureDescriptor、SDK 消息、usage、工具结果转换 | 无 |
-| 观测 | Observability/；模型交互捕获、记录与指标 | 随模型注册 |
-| 工具机制 | Tooling/Abstractions、Discovery、Invocation；含 AgentExecutionOptions | ToolingServiceExtensions.cs |
-| MCP | Capabilities/Mcp/；McpFeatureFactory、连接、资源与延迟发现 | McpServiceExtensions.cs |
-| Skill | Capabilities/Skill/；SkillFeatureFactory、包、上下文与脚本 | SkillServiceExtensions.cs |
-| RAG | Capabilities/Rag/；Registry、检索与 Adapter | RagServiceExtensions.cs |
-| 内置能力 | Capabilities/Code、Workspace、Plan、UserProfile | BuiltinCapabilityServiceExtensions.cs |
-| Runner 客户端 | Integrations/Runner/；执行与工作区协议、连接配置 | RunnerServiceExtensions.cs |
-| 文件业务 | Files/Services、Sharing、Requests、Multimodal、Artifacts | FileAssetServiceExtensions.cs |
-| 文件工具 | Files/Tools/ | 随文件注册 |
-| 授权 | Security/；资源权限与调用检查 | SecurityServiceExtensions.cs |
+| 执行 | Application/Execution/ | RuntimeServiceExtensions.cs |
+| 模型、转换、观测 | Application/{ModelProviders,Mapping,Observability}/ | ModelProviderServiceExtensions.cs |
+| 会话 | Application/Conversation/{History,Compaction,Store,Lock}/ | ConversationServiceExtensions.cs |
+| SDK 工具机制 | Application/Tooling/{Abstractions,Discovery,Invocation}/ | ToolingServiceExtensions.cs |
+| MCP 适配 | Application/Capabilities/Mcp/ | McpServiceExtensions.cs |
+| MAF Skill 适配与包解析 | Application/Capabilities/Skill/ | SkillServiceExtensions.cs |
+| Skill 目录 | Capabilities/Skills/；ISkillCatalog 在 Contracts/Capabilities/ | 随 Skill 组合注册 |
+| RAG | Capabilities/Rag/ | RagServiceExtensions.cs |
+| 内置能力 | Capabilities/{Code,Workspace,Plan,UserProfile}/ | BuiltinCapabilityServiceExtensions.cs |
+| Runner 客户端 | Capabilities/Integrations/Runner/ | RunnerServiceExtensions.cs |
+| 文件 | Capabilities/Files/{Services,Sharing,Requests,Multimodal,Artifacts,Tools}/ | FileAssetServiceExtensions.cs |
+| 调用授权 | Capabilities/Security/ | SecurityServiceExtensions.cs |
 
-Execution 不引用具体能力实现；ModelProviders 不引用会话或执行；Observability 只使用 Mapping。Files 服务不引用工具机制，工具暴露单列 Files/Tools；Skill、Workspace、Code 共用 Runner 客户端和 Files/Artifacts，不导入彼此内部实现。完整域依赖以 `CoreModuleDependencyTests.cs` 为准。
+Capabilities 不依赖 MAF/MCP/模型 SDK 或 Application。Application 的 Execution 不引用具体能力实现，通过 Contracts 的能力接口和内部 SDK Feature 接入。Files 服务与 Files/Tools 分离；SDK Skill、Workspace、Code 共用 Runner 客户端和 Files/Artifacts。完整模块依赖由 `ApplicationModuleDependencyTests.cs` 检查。
 
 ### 扩展与生命周期
 
-- 普通工具实现本模块内部 `ICapabilitySource`，返回 CapabilityDefinition，在本域注册文件通过 TryAddEnumerable 接入；无需给 AgentFactory 增加具体能力分支。
+- 普通工具实现 Contracts 的 `ICapabilitySource`，返回 CapabilityDefinition，在本域注册文件通过 TryAddEnumerable 接入；无需给 AgentFactory 增加具体能力分支。
 - SDK 工具或上下文 Provider 实现内部 `IAgentFeatureFactory`，每轮返回 AgentFeature，提供工具、常驻工具、Provider、可选准备逻辑及待释放资源。MCP 资源转换与延迟阈值、Skill 临时包与 Provider 各由本域负责。
 - AgentExecutionScope 在正常结束时释放历史、工具信号量与贡献资源；初始化失败逆序清理已创建资源，清理异常被记录且不替换原始错误。SDK 执行循环继续由 MAF 管理。
-- 跨项目纯契约归 Contracts；Core 内部扩展接口保持 internal。公开类型保留原 namespace/assembly 身份，兼容 namespace 不改变目录归属。检查 csproj 的 InternalsVisibleTo 后再访问内部类型。
+- 跨项目纯契约归 Contracts；SDK 扩展接口在 Application 内保持 internal；跨模块能力接口归 Contracts。源码 namespace/assembly 随所属项目更新，HTTP/JSON、数据库 schema 与迁移 ID 不变。检查 csproj 的 InternalsVisibleTo 后再访问内部类型。
 
 ## 前端修改入口
 
@@ -73,10 +73,11 @@ Execution 不引用具体能力实现；ModelProviders 不引用会话或执行�
 
 ## 审查与验证
 
-- 保持 HTTP 路由、JSON 字段、错误码、SSE 顺序、schema、Redis key 和公共签名兼容；结构迁移与功能改变分别验收。Engine.Host 中间件和认证管道按现有 Program 保持，不在 Core 添加 Web 管道。
+- 保持 HTTP 路由、JSON 字段、错误码、SSE 顺序、schema、Redis key 兼容；结构迁移与功能改变分别验收。Engine.Host 中间件和认证管道按现有 Program 保持，不在 Application 添加 Web 管道。
 - 正确传播 CancellationToken、释放流式/连接资源，保持现有 DI 生命周期；包版本在 Directory.Packages.props 管理，不全局压制警告。检查授权/租户边界、参数化查询及凭证泄露。
 - 测试使用现有 TestDoubles，命名为“方法名_场景_预期行为”，相似用例用 Theory。覆盖有意义的成功、失败与取消场景，不为路径移动重复实现镜像测试。
-- Core 测试在 `Backend/tests/OpenAgent.Core.Tests/` 镜像功能域目录；跨域验证覆盖执行↔历史、MCP↔Files、Skill↔Runner↔Files、Host↔配置、Router↔Engine。默认套件不依赖 PostgreSQL/Redis 容器，环境规则见 [测试分层](../../Backend/tests/README.md)。
+- Application/Capabilities 测试在同名 `.Tests` 项目中镜像功能域目录；跨域验证覆盖执行↔历史、MCP↔Files、Skill↔Runner↔Files、Host↔配置、Router↔Engine。默认套件不依赖 PostgreSQL/Redis 容器，环境规则见 [测试分层](../../Backend/tests/README.md)。
+- 合并后的 Engine.Tests/Hosting 包含进程内宿主测试，不是外部部署 E2E。隔离认证 fixture 的配置来源，避免 Engine.Host 的 appsettings.json 污染；清空 `Configuration.Sources` 后，先添加内存配置源，再调用 `UseUrls`。
 - 后端边界检查覆盖签名、泛型、静态调用、局部变量、异步状态机及项目引用；前端 `moduleBoundaries.test.ts` 覆盖 import、re-export、字符串 dynamic import 与 Vue script。运行时反射/动态拼接的依赖仍需审查，不能扩大白名单绕过问题。
 
 ```sh

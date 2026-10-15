@@ -1,6 +1,6 @@
 # RAG Capability
 
-RAG 在 Agent.Core 中作为模型可调用的工具参与执行，是否被调用由模型和工具链路共同决定。
+RAG 业务实现位于 Capabilities，经 Application 适配为模型可调用的工具参与执行，是否被调用由模型和工具链路共同决定。
 
 ## Core Capabilities
 | Capability | Description |
@@ -35,6 +35,6 @@ Agent → ToolCall("search_knowledge_base")
 - 无检索结果缓存
 
 ## Source
-- Core: `Backend/src/OpenAgent.Core/Capabilities/Rag/RagCapabilitySource.cs`, `Backend/src/OpenAgent.Core/Capabilities/Rag/RagService.cs`, `Backend/src/OpenAgent.Core/Capabilities/Rag/Adapters/`
+- Capabilities: `Backend/src/OpenAgent.Capabilities/Rag/RagCapabilitySource.cs`, `Backend/src/OpenAgent.Capabilities/Rag/RagService.cs`, `Backend/src/OpenAgent.Capabilities/Rag/Adapters/`
 - Contracts: `Backend/src/OpenAgent.Contracts/Models/IRagAdapter.cs`
-- Tests: `Backend/tests/OpenAgent.Core.Tests/Capabilities/Rag/RagCapabilitySourceTests.cs`
+- Tests: `Backend/tests/OpenAgent.Capabilities.Tests/Capabilities/Rag/RagCapabilitySourceTests.cs`

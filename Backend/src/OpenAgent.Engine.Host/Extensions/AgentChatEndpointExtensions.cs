@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using OpenAgent.Contracts.Requests;
-using OpenAgent.Core.Runtime.Agent;
+using OpenAgent.Application.Runtime.Agent;
 using OpenAgent.Engine.Host.Middleware;
 
 namespace OpenAgent.Engine.Host.Extensions;

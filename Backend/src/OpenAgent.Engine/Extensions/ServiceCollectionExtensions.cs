@@ -6,7 +6,7 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Configuration;
-using OpenAgent.Core.Abstract;
+using OpenAgent.Contracts.Capabilities;
 using OpenAgent.Engine.Abstractions;
 using OpenAgent.Engine.Config;
 using OpenAgent.Engine.Models;

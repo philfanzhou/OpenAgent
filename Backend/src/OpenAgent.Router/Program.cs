@@ -1,6 +1,6 @@
 using OpenAgent.Contracts.Security;
-using OpenAgent.Hosting;
-using OpenAgent.Hosting.Authentication;
+using OpenAgent.Engine.Hosting;
+using OpenAgent.Engine.Hosting.Authentication;
 using OpenAgent.Router;
 using OpenAgent.Router.Security;
 using OpenAgent.Router.Middleware;

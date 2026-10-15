@@ -1,6 +1,6 @@
 # RAG Service
 
-Agent.Core 通过 RAG 服务实现知识检索，为 Agent 提供外部知识支持。`RagCapabilitySource` 将检索直接暴露为 `search_knowledge_base`，由模型自主决定何时检索。
+Application 通过 Capabilities 中的 RAG 服务实现知识检索，为 Agent 提供外部知识支持。`RagCapabilitySource` 将检索直接暴露为 `search_knowledge_base`，由模型自主决定何时检索。
 
 ## Core Capabilities
 | Capability | Description |
@@ -34,5 +34,5 @@ IRagService (RagService)
 - 适配器响应解析使用同步 `.GetAwaiter().GetResult()`
 
 ## Source
-- Core: `Backend/src/OpenAgent.Core/Capabilities/Rag/RagCapabilitySource.cs`, `Backend/src/OpenAgent.Core/Capabilities/Rag/RagService.cs`, `Backend/src/OpenAgent.Core/Capabilities/Rag/Adapters/QdrantAdapter.cs`, `Backend/src/OpenAgent.Core/Capabilities/Rag/Adapters/RagFlowAdapter.cs`
+- Capabilities: `Backend/src/OpenAgent.Capabilities/Rag/RagCapabilitySource.cs`, `Backend/src/OpenAgent.Capabilities/Rag/RagService.cs`, `Backend/src/OpenAgent.Capabilities/Rag/Adapters/QdrantAdapter.cs`, `Backend/src/OpenAgent.Capabilities/Rag/Adapters/RagFlowAdapter.cs`
 - Contracts: `Backend/src/OpenAgent.Contracts/Models/IRagAdapter.cs`

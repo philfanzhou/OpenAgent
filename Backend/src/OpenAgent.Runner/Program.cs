@@ -11,7 +11,7 @@ WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 // Information 日志，避免健康探测淹没 stdout 中的业务日志（异常仍以 Warning+ 输出）。
 builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
 builder.WebHost.ConfigureKestrel(server => server.Limits.MaxRequestBodySize = ExecutionLimits.MaxWireBytes);
-// Swagger 仅在开发环境暴露；Runner 刻意不引用 OpenAgent.Hosting，保持沙箱 sidecar 的轻依赖。
+// Swagger 仅在开发环境暴露；Runner 刻意不引用 OpenAgent.Engine.Hosting，保持沙箱 sidecar 的轻依赖。
 if (builder.Environment.IsDevelopment())
 {
     builder.Services.AddEndpointsApiExplorer();

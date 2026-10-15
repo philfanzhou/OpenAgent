@@ -1,5 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
-using OpenAgent.Hosting.Errors;
+using OpenAgent.Engine.Hosting.Errors;
 using OpenAgent.Router.Models;
 using ProblemDetails = Microsoft.AspNetCore.Mvc.ProblemDetails;
 

@@ -54,6 +54,8 @@ AgentFactory
 - 每代理按工具名的可见性裁剪曾实现后按维护者决定移除（推迟；如需恢复见方案文档记录）
 
 ## Source
-- Core: `Backend/src/OpenAgent.Core/Tooling/Discovery/`（CapabilityToolFactory）、`Backend/src/OpenAgent.Core/Capabilities/`（Plan/PlanCapabilitySource、Mcp/McpClientPool 等）、`Tooling/Invocation/IsolatedToolFunction.cs`、`Tooling/Invocation/ToolResultBudgets.cs`、`Tooling/Invocation/ToolConcurrencyRules.cs`
+- Application：`Backend/src/OpenAgent.Application/Tooling/Discovery/`（CapabilityToolFactory）、`Backend/src/OpenAgent.Application/Tooling/Invocation/`（隔离、预算与并发策略）、`Backend/src/OpenAgent.Application/Capabilities/Mcp/`（McpClientPool 等 SDK 适配）与 `Backend/src/OpenAgent.Application/Capabilities/Skill/`（MAF Skill 适配）。
+- Capabilities：`Backend/src/OpenAgent.Capabilities/Plan/PlanCapabilitySource.cs` 以及 `Files/Tools/`、`Rag/`、`Code/`、`Workspace/`、`UserProfile/` 中的能力源；调用授权位于 `Backend/src/OpenAgent.Capabilities/Security/`。
+- 共享能力定义：`Backend/src/OpenAgent.Contracts/Capabilities/CapabilityDefinition.cs`、`ICapabilitySource.cs`、`ToolConcurrency.cs`；业务能力不引用 MAF/MCP SDK，由 Application 将定义适配成 `AIFunction`。
 - Contracts: `Backend/src/OpenAgent.Contracts/Capabilities/ToolResult.cs`
-- Tests: `Backend/tests/OpenAgent.Core.Tests/Tooling/Discovery/CapabilityToolFactoryTests.cs`、`Tooling/Discovery/BuiltInToolSchemaTests.cs`、`Tooling/Invocation/ToolResultBudgetTests.cs`、`Execution/AgentExecutorSkillToolTests.cs`（工具列表在场验证）等
+- Tests: `Backend/tests/OpenAgent.Application.Tests/Tooling/Discovery/CapabilityToolFactoryTests.cs`、`Tooling/Discovery/BuiltInToolSchemaTests.cs`、`Tooling/Invocation/ToolResultBudgetTests.cs`、`Execution/AgentExecutorSkillToolTests.cs`（工具列表在场验证）等

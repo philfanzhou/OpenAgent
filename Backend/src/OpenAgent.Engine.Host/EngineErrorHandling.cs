@@ -1,7 +1,7 @@
 using System.ClientModel;
 using OpenAgent.Contracts.Requests;
-using OpenAgent.Hosting;
-using OpenAgent.Hosting.Errors;
+using OpenAgent.Engine.Hosting;
+using OpenAgent.Engine.Hosting.Errors;
 using ProblemDetails = Microsoft.AspNetCore.Mvc.ProblemDetails;
 
 namespace OpenAgent.Engine.Host;
@@ -9,7 +9,7 @@ namespace OpenAgent.Engine.Host;
 /// <summary>
 /// Engine 特有的错误处理接入：注册 OpenAI/Azure SDK 的 ClientResultException 映射与
 /// 中文 SSE 错误文案。核心映射、ProblemDetails 构造与全局异常中间件在
-/// OpenAgent.Hosting.Errors 中与其他服务共享。
+/// OpenAgent.Engine.Hosting.Errors 中与其他服务共享。
 /// </summary>
 internal static class EngineErrorHandling
 {

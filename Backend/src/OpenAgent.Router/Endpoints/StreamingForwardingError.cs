@@ -1,6 +1,6 @@
 using System.Text.Json;
 using OpenAgent.Contracts.Requests;
-using OpenAgent.Hosting.Errors;
+using OpenAgent.Engine.Hosting.Errors;
 using Yarp.ReverseProxy.Forwarder;
 
 namespace OpenAgent.Router.Endpoints;

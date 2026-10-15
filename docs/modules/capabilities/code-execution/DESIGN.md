@@ -2,7 +2,7 @@
 
 ## 范围
 
-Engine 通过 MAF `AIFunction` 暴露 `execute_code`。模型生成 Python（默认）或 JavaScript，读取执行结果，并在原有 MAF 工具循环中修正代码。沙箱运行时支持 PPT、Excel、图表和 PDF 生成。
+Engine.Host 组合 Application 的 MAF 工具适配与 Capabilities 中的 `CodeCapabilitySource`，以 `AIFunction` 暴露 `execute_code`。模型生成 Python（默认）或 JavaScript，读取执行结果，并在原有 MAF 工具循环中修正代码。沙箱运行时支持 PPT、Excel、图表和 PDF 生成。
 
 本实现使用独立 Runner 和 Bubblewrap，原生运行在 Linux 主机，不依赖 Docker daemon、containerd、KVM 或 Hyperlight，也没有添加第二套 Agent 循环。Bubblewrap 的隔离参数由 Runner 固定生成，模型和请求均不能覆盖。安装与 systemd 配置见 [Runner 部署说明](../../../integrations/code-runner.md)。
 
@@ -21,7 +21,7 @@ AgentExecutor → AgentFactory → CapabilityToolFactory → execute_code
 
 实现入口：
 
-- `Backend/src/OpenAgent.Core/Capabilities/Code/CodeCapabilitySource.cs`
+- `Backend/src/OpenAgent.Capabilities/Code/CodeCapabilitySource.cs`
 - `Backend/src/OpenAgent.Runner/BubblewrapCodeExecutor.cs`
 - `Backend/src/OpenAgent.Runner/SessionSandboxManager.cs`、`SessionSandbox.cs`
 - `Backend/src/OpenAgent.Runner/sandbox/execute.py`、`supervisor.py`、`execution_core.py`
@@ -73,7 +73,7 @@ Runner 请求目前与聊天请求共同存活；不提供断线后继续运行�
 
 ## 验证
 
-Core 测试验证双重开关、授权撤销、跨租户/用户文件拒绝、二进制资产归属，以及确定性 MAF 循环在错误后再次调用执行工具。
+Capabilities 与 Application 测试分别覆盖独立能力和 MAF 集成，验证双重开关、授权撤销、跨租户/用户文件拒绝、二进制资产归属，以及确定性 MAF 循环在错误后再次调用执行工具。
 
 Runner 的 Linux 真实测试验证 Bubblewrap 参数与实际边界、网络禁用、宿主文件不可见、任务隔离、内存限制、超时/取消清理、符号链接拒绝、输出截断、tmpfs 容量，以及 PPT/Excel 的生成、重新打开、再次编辑和 PPT 转 PDF，并覆盖 JavaScript 的 Node 执行与输入/输出文件往返。CI 显式安装 Bubblewrap、固定 Python venv 和 Node；其他平台会明确跳过真实沙箱测试。
 

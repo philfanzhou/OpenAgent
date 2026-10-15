@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
-using OpenAgent.Infrastructure;
+using OpenAgent.Framework;
 
 namespace OpenAgent.Engine.Host.Health;
 

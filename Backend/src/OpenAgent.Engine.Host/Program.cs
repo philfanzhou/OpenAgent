@@ -1,4 +1,4 @@
-using OpenAgent.Core.Exten;
+using OpenAgent.Application.Exten;
 using Microsoft.EntityFrameworkCore;
 using OpenAgent.Engine.Extensions;
 using OpenAgent.Engine.Host;
@@ -7,9 +7,9 @@ using OpenAgent.Engine.Host.Extensions;
 using OpenAgent.Engine.Host.Health;
 using OpenAgent.Engine.Host.Middleware;
 using OpenAgent.Engine.Host.Skills;
-using OpenAgent.Hosting;
-using OpenAgent.Hosting.Authentication;
-using OpenAgent.Infrastructure;
+using OpenAgent.Engine.Hosting;
+using OpenAgent.Engine.Hosting.Authentication;
+using OpenAgent.Framework;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -27,7 +27,7 @@ builder.Services.AddAgentHost(builder.Configuration, options =>
     options.OpenTelemetrySource = "OpenAgent.Engine";
 });
 
-builder.Services.AddAgentCore(builder.Configuration);
+builder.Services.AddAgentApplication(builder.Configuration);
 builder.Services.AddOpenAgentInfrastructure(builder.Configuration);
 builder.Services.AddFileAssetObjectStorage(builder.Configuration);
 builder.Services.AddSingleton<SkillPackageManagementService>();

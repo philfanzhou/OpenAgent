@@ -1,3 +1,4 @@
+using OpenAgent.Engine.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 using OpenAgent.Contracts.Requests;

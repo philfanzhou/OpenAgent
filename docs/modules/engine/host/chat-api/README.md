@@ -1,6 +1,6 @@
 # Chat API（Engine Host）
 
-ChatApi 提供 Agent.Engine 的核心 HTTP 端点；聊天使用 JSON，文件须先独立上传并以 `fileIds` 引用。
+ChatApi 由 OpenAgent.Engine.Host 提供核心 HTTP 端点；聊天使用 JSON，文件须先独立上传并以 `fileIds` 引用。
 
 ## 端点
 
@@ -56,6 +56,6 @@ data: {"done":true,"usage":{"promptTokens":21,"completionTokens":8,"totalTokens"
 - 配置管理端点（dev）：`Backend/src/OpenAgent.Engine.Host/Extensions/ConfigurationEndpointExtensions.cs`
 - 技能管理端点（dev）：`Backend/src/OpenAgent.Engine.Host/Extensions/ManagementEndpointExtensions.cs`
 - 流式响应：`Backend/src/OpenAgent.Engine.Host/Extensions/AgentStreamWriter.cs`
-- 中间件：`Backend/src/OpenAgent.Engine.Host/Middleware/`（全局异常处理在 `OpenAgent.Hosting/Errors/`）
+- 中间件：`Backend/src/OpenAgent.Engine.Host/Middleware/`（全局异常处理在 `OpenAgent.Engine/Hosting/Errors/`）
 - 流式处理：`Backend/src/OpenAgent.Engine.Host/StreamingPayloadFactory.cs`
 - 响应 DTO：`Backend/src/OpenAgent.Contracts/Responses/`

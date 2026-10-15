@@ -28,13 +28,12 @@
 | 项目 | 允许引用 |
 |---|---|
 | Contracts | 无平台项目 |
-| Core | Contracts |
-| Engine | Contracts、Core |
-| Infrastructure / Hosting / Runner | Contracts |
-| Router | Contracts、Hosting |
-| Engine.Host | Contracts、Core、Engine、Hosting、Infrastructure |
+| Application | Contracts、Capabilities |
+| Capabilities / Engine / Framework / Runner | Contracts |
+| Router | Contracts、Engine（仅 Hosting 共享宿主能力） |
+| Engine.Host | Contracts、Application、Capabilities、Engine、Framework |
 
-Core 内部按功能域单向依赖；SDK/平台转换归 Mapping，模型客户端归 ModelProviders，记录归 Observability，工具治理归 Tooling，Runner 客户端归 Integrations/Runner。Execution 不引用具体能力实现。功能域白名单由架构测试检查。
+Application 保留 MAF 执行与 MCP/Skill 适配；Capabilities 承载文件、RAG、Skill 目录、内置工具及调用授权，不引用 MAF/MCP SDK。共享目录接口及能力定义在 Contracts；Engine 不引用 Application。模块依赖由架构测试检查。
 
 任务归属、注册入口、公开类型兼容与前端依赖规则见 [开发指南](../../docs/overview/DevelopmentGuide.md)。新增项目引用前同步架构测试和正式文档。
 
@@ -74,12 +73,12 @@ Core 内部按功能域单向依赖；SDK/平台转换归 Mapping，模型客户
 | 项目 | TFM | 类型 |
 |------|-----|------|
 | `OpenAgent.Contracts` | net10.0 | 类库 |
-| `OpenAgent.Core` | net10.0 | 类库 |
+| `OpenAgent.Application` | net10.0 | 类库 |
 | `OpenAgent.Engine` | net10.0 | 类库 |
 | `OpenAgent.Engine.Host` | net10.0 | Web API |
 | `OpenAgent.Router` | net10.0 | Web API |
-| `OpenAgent.Infrastructure` | net10.0 | 类库 |
-| `OpenAgent.Hosting` | net10.0 | 类库 |
+| `OpenAgent.Framework` | net10.0 | 类库 |
+| `OpenAgent.Capabilities` | net10.0 | 类库 |
 
 ### 3.4 项目文件配置
 
@@ -143,7 +142,7 @@ Core 内部按功能域单向依赖；SDK/平台转换归 Mapping，模型客户
 | 接口 | `I` 前缀 + PascalCase | `IAgentAuthorizationService`, `IRouteTable` |
 | 异步方法 | `Async` 后缀 | `ExecuteAsync`, `SendMessageAsync`, `IsAllowedAsync` |
 | CancellationToken | 最后一个参数，默认 `default` | `Task DoAsync(..., CancellationToken ct = default)` |
-| 公共抽象 | 定义在 Agent.Contracts | `IAgentAuthorizationService`（接口）、`AgentConfig`（DTO） |
+| 跨项目纯契约 | 定义在 OpenAgent.Contracts；能力域服务接口归所属模块 | `ICapabilitySource`、`AgentConfig`；`IAgentAuthorizationService` 归 Capabilities/Security |
 | 实现类 | PascalCase，在对应模块的 `src/` 下 | `AgentExecutor`, `AgentFactory` |
 | 枚举 | PascalCase | `EngineFrameworkType` |
 | 私有字段 | `_` 前缀 + camelCase | `_redis`, `_logger`, `_config` |
@@ -169,13 +168,13 @@ Core 内部按功能域单向依赖；SDK/平台转换归 Mapping，模型客户
 
 ### 5.4 模块特定命名
 
-**OpenAgent.Core：**
+**OpenAgent.Application：**
 
 | 类别 | 约定 | 示例 |
 |------|------|------|
 | 中间件 | 语义化名称 | `AgentUserContextMiddleware`, `EngineAdmissionMiddleware`, `AgentExceptionHandlerMiddleware` |
 | 引擎 | chat client 构造 | `AgentChatClientFactory` |
-| DI 扩展方法 | `Add{功能名}` | `AddAgentCore`, `AddAgentEngine`, `AddFileAssetObjectStorage` |
+| DI 扩展方法 | `Add{功能名}` | `AddAgentApplication`, `AddAgentEngine`, `AddFileAssetObjectStorage` |
 
 **OpenAgent.Router：**
 
@@ -258,22 +257,25 @@ public async void GetUser(int id) { ... }
 
 ## 7. 项目结构
 
-### 7.1 OpenAgent.Core 项目结构
+### 7.1 OpenAgent.Application 项目结构
 
 ```text
-Backend/src/OpenAgent.Core/
-├── Execution/                    # 执行编排与组装
-├── ModelProviders/ Mapping/ Observability/
-├── Tooling/                      # Abstractions / Discovery / Invocation
+Backend/src/OpenAgent.Application/
+├── Execution/ ModelProviders/ Mapping/ Observability/
+├── Tooling/                      # SDK 工具适配与执行策略
 ├── Conversation/                 # History / Compaction / Store / Lock
-├── Files/                        # Services / Sharing / Requests / Multimodal / Tools / Artifacts
-├── Capabilities/                 # Mcp / Skill / Rag / Code / Workspace / Plan / UserProfile
-├── Integrations/Runner/          # 共用 Runner 客户端
-├── Security/
-├── Extensions/                   # 每功能域一个注册文件
-└── Exten/                        # 兼容的公开组合入口
+├── Capabilities/                 # Mcp / Skill：SDK 适配仍保留 MAF
+├── Extensions/                   # 应用域注册
+└── Exten/ApplicationServiceExtensions.cs
 
-Backend/tests/OpenAgent.Core.Tests/ # 按功能域验证
+Backend/src/OpenAgent.Capabilities/
+├── Files/ Rag/ Skills/           # 业务服务及目录
+├── Code/ Workspace/ Plan/ UserProfile/
+├── Integrations/Runner/ Security/
+└── Extensions/                   # 能力域注册
+
+Backend/tests/OpenAgent.Application.Tests/  # MAF 执行及跨模块回归
+Backend/tests/OpenAgent.Capabilities.Tests/ # 独立能力、文件、授权
 ```
 
 ### 7.2 OpenAgent.Engine 项目结构
@@ -288,6 +290,7 @@ Backend/src/OpenAgent.Engine/        # 运行时类库
 ├── Redis/                 # Redis 连接与健康检查
 ├── Registry/              # 服务注册与心跳
 ├── Reload/                # 热更新
+├── Hosting/               # 认证、请求身份、Web 基础能力与遥测
 └── Runtime/               # 运行时服务
 
 Backend/src/OpenAgent.Engine.Host/   # Web API 宿主
@@ -303,20 +306,20 @@ Backend/tests/OpenAgent.Engine.Tests/ # 单元测试
 ### 7.3 项目引用规则
 - 使用 `<ProjectReference>` 而非包引用
 - 避免循环依赖
-- 依赖关系单向流动：Host → Engine → Abstractions
+- 依赖关系遵循第 2 节的项目引用表；Engine 与 Capabilities 不反向引用 Application
 - **检查传递依赖**：避免重复引用项目已依赖的 NuGet 包
 
 ---
 
 ## 8. 模块特定编码模式
 
-### 8.1 OpenAgent.Core — 依赖注入
+### 8.1 OpenAgent.Application — 依赖注入
 
 - 通过构造函数注入，不使用 Service Locator 模式
 - 生命周期选择：
   - **Singleton**：无状态服务、注册表（`IToolRegistry`, `IRagRegistry`, `ILlmRegistry`, `IConversationStore`）
   - **Scoped**：请求级服务（`IAgentUserContext`, `AgentExecutor`, `IRagService`）
-- 扩展方法封装 DI 注册（`CoreServiceExtensions.AddAgentCore()`）
+- 扩展方法封装 DI 注册（`ApplicationServiceExtensions.AddAgentApplication()`）
 - 可重复调用的注册扩展必须幂等，优先使用 `TryAdd*`；Factory、Registry 等单例不得重复注册
 - Engine Host 的 `AgentUserContextMiddleware` 与 `EngineAdmissionMiddleware` 必须位于
   `AgentExceptionHandlerMiddleware` 之后（内层），确保异常路径也携带请求 scope 与租户上下文
@@ -330,15 +333,15 @@ services.AddScoped<AgentFactory>();
 services.AddScoped<AgentExecutor>();
 ```
 
-### 8.2 OpenAgent.Core — 错误处理
+### 8.2 OpenAgent.Application — 错误处理
 
 - 业务异常使用 `AgentException` 及其子类
 - 异常由 `AgentExceptionHandlerMiddleware` 经 `ErrorMapper` 映射为 HTTP 错误响应
 - 外部依赖异常不吞没，记录日志后向上传播或降级
-- 使用 `AgentErrorCode`（定义在 Agent.Contracts）进行错误分类
+- 使用 `AgentErrorCode`（定义在 OpenAgent.Contracts）进行错误分类
 - 错误统一流经 ASP.NET Core 中间件，不要在业务代码中直接 try-catch 吞掉
 
-### 8.3 Agent.Core — 日志
+### 8.3 Application 与 Capabilities — 日志
 
 - 生产代码使用 `ILogger<T>` 注入，并通过 `[LoggerMessage]` 源生成方法记录；禁止直接调用
   `_logger.LogDebug/LogInformation/LogWarning/LogError`。
@@ -357,7 +360,7 @@ internal static partial void EngineSelected(ILogger logger, string framework);
 | Router | `3000-3199` |
 | Engine | `4000-4199` |
 
-### 8.4 OpenAgent.Core — Engine 模式
+### 8.4 OpenAgent.Application — Engine 模式
 
 - LLM 调用通过 `AgentChatClientFactory` 构造 `IChatClient`，由 `AgentFactory` 创建 `AIAgent`，`AgentExecutor` 驱动
 - 新引擎放在 `src/<EngineName>/` 下，带独立的 `.csproj`
@@ -433,10 +436,11 @@ catch (RedisConnectionException ex)
 
 | 测试类型 | 框架 | 位置 |
 |---------|------|------|
-| Core 单元测试 | xUnit + Moq | `Backend/tests/OpenAgent.Core.Tests/<Module>/` |
+| Application 单元测试 | xUnit + Moq | `Backend/tests/OpenAgent.Application.Tests/<Module>/` |
+| Capabilities 单元测试 | xUnit + Moq | `Backend/tests/OpenAgent.Capabilities.Tests/` |
 | Engine 单元测试 | xUnit + Moq | `Backend/tests/OpenAgent.Engine.Tests/` |
 | Router 单元测试 | xUnit 2.9.0 + Moq 4.20.70 | `Backend/tests/OpenAgent.Router.Tests/` |
-| 集成测试 | xUnit + Testcontainers | `Backend/tests/OpenAgent.Infrastructure.Tests/`、`Backend/tests/OpenAgent.Engine.Tests/` |
+| 进程内 HTTP / 存储单元测试 | xUnit + 测试替身 | `Backend/tests/OpenAgent.Framework.Tests/`、`Backend/tests/OpenAgent.Engine.Tests/` |
 
 ### 9.2 测试代码规范
 
@@ -472,7 +476,7 @@ public async Task GetUserAsync_InvalidId_ThrowsNotFoundException()
 |----------|----------|
 | `Config/` | `ConfigProvider`, `ConfigSnapshot`, `HotReloadService` |
 | `HealthChecks/` | `ConfigHealthCheck`, `LlmHealthCheck`, `RedisHealthCheck` |
-| `Hosting/` | 端到端集成测试 |
+| `Hosting/` | 共享认证、身份、错误、遥测及进程内 HTTP 测试 |
 | `TestDoubles/` | `FakeRedisConnectionProvider` |
 
 ### 9.4 覆盖率目标
@@ -509,7 +513,7 @@ Agent 修改代码后应自主决定验证策略（改 `.cs` → `dotnet build` 
 ## 11. 禁止事项
 
 - ❌ 违反依赖方向添加项目引用
-- ❌ 修改 Agent.Contracts 公共接口前不检查所有消费者
+- ❌ 修改 OpenAgent.Contracts 公共接口前不检查所有消费者
 - ❌ 无理由添加 NuGet 包
 - ❌ 混合 sync/async 在同一调用链
 - ❌ 使用 `async void`

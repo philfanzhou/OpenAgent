@@ -1,6 +1,6 @@
 # Host Error Handling
 
-ErrorHandling 模块提供全平台共享的全局异常处理机制，确保所有未处理异常都被转换为结构化的错误响应。核心设施位于 `OpenAgent.Hosting/Errors`，Engine/Router 共用；Engine 通过选项注入自己的 SDK 异常映射与中文 SSE 文案。
+ErrorHandling 模块提供全平台共享的全局异常处理机制，确保所有未处理异常都被转换为结构化的错误响应。核心设施位于 `OpenAgent.Engine/Hosting/Errors`，Engine/Router 共用；Engine 通过选项注入自己的 SDK 异常映射与中文 SSE 文案。
 
 ## Core Capabilities
 | Capability | Description |
@@ -31,15 +31,15 @@ HTTP 请求
 | 其他 | 500 |
 
 ## Current Status
-**Implemented** — 异常捕获、ProblemDetails/SSE 错误载荷与 ErrorCode→HTTP 映射均已落地，含中间件测试（`OpenAgent.Hosting.Tests`）。
+**Implemented** — 异常捕获、ProblemDetails/SSE 错误载荷与 ErrorCode→HTTP 映射均已落地，含中间件测试（`OpenAgent.Engine.Tests`）。
 
 ## Limits
 - 响应已开始时重新抛出异常，不写入 ProblemDetails（仅流式端点发 error/done 事件）
 
 ## Source
-- 共享设施：`Backend/src/OpenAgent.Hosting/Errors/`（`AgentProblem.cs` 构造器 + `AgentExceptionHandling.cs` 映射器/中间件/注册）
+- 共享设施：`Backend/src/OpenAgent.Engine/Hosting/Errors/`（`AgentProblem.cs` 构造器 + `AgentExceptionHandling.cs` 映射器/中间件/注册）
 - Engine 接入：`Backend/src/OpenAgent.Engine.Host/EngineErrorHandling.cs`
 - SSE 载荷：`Backend/src/OpenAgent.Engine.Host/StreamingPayloadFactory.cs`
 - Orchestration: `Backend/src/OpenAgent.Engine.Host/Program.cs`
-- Tests: `Backend/tests/OpenAgent.Hosting.Tests/AgentExceptionHandlerMiddlewareTests.cs`
+- Tests: `Backend/tests/OpenAgent.Engine.Tests/Hosting/AgentExceptionHandlerMiddlewareTests.cs`
 - API 规范：`docs/overview/API.md`

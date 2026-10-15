@@ -1,6 +1,6 @@
 # MAF 运行时
 
-Microsoft Agent Framework 是 Core 的唯一生产 Agent 运行时。服务与模块归属见 [开发指南](../../../overview/DevelopmentGuide.md)，请求流程见 [执行编排](../../execution/pipeline/README.md)。
+Microsoft Agent Framework 是 Application 的唯一生产 Agent 运行时。服务与模块归属见 [开发指南](../../../overview/DevelopmentGuide.md)，请求流程见 [执行编排](../../execution/pipeline/README.md)。
 
 ## SDK 与平台边界
 
@@ -40,7 +40,7 @@ MAF Agent run 接入 OpenTelemetry invoke_agent span；工具调用由 FICC 产�
 
 ## 代码入口
 
-| 路径（Backend/src/OpenAgent.Core/ 下） | 职责 |
+| 路径（Backend/src/OpenAgent.Application/ 下） | 职责 |
 |---|---|
 | Execution/AgentFactory.cs、AgentExecutionScope.cs、AgentExecutor.cs | SDK 组合、资源与执行入口 |
 | ModelProviders/AgentChatClientFactory.cs | Provider 与交互记录装饰 |

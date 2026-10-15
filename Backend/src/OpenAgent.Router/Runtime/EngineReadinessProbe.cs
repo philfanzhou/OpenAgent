@@ -1,5 +1,5 @@
 using System.Diagnostics;
-using OpenAgent.Hosting;
+using OpenAgent.Engine.Hosting;
 using OpenAgent.Router.Observability;
 
 namespace OpenAgent.Router;

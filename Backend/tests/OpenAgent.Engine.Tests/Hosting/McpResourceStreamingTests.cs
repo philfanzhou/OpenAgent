@@ -1,3 +1,4 @@
+using OpenAgent.Engine.Hosting;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting.Server.Features;
@@ -11,9 +12,9 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Files;
-using OpenAgent.Core.Capabilities.Mcp;
-using OpenAgent.Core.Files.Services;
-using OpenAgent.Core.Tooling.Invocation;
+using OpenAgent.Application.Capabilities.Mcp;
+using OpenAgent.Capabilities.Files.Services;
+using OpenAgent.Application.Tooling.Invocation;
 using Xunit;
 using static OpenAgent.Engine.Tests.Hosting.SseToolStreamingTests;
 

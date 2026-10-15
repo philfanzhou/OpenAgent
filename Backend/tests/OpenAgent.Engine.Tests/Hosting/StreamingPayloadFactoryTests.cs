@@ -1,3 +1,4 @@
+using OpenAgent.Engine.Hosting;
 using System;
 using System.ClientModel;
 using System.ClientModel.Primitives;

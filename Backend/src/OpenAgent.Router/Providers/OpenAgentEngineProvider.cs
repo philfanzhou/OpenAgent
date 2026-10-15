@@ -7,7 +7,7 @@ using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Routing;
 using OpenAgent.Router.Models;
 using OpenAgent.Router.Observability;
-using OpenAgent.Hosting;
+using OpenAgent.Engine.Hosting;
 
 namespace OpenAgent.Router.Providers;
 

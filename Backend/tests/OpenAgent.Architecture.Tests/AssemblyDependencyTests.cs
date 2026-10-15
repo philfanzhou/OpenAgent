@@ -6,68 +6,56 @@ namespace OpenAgent.Architecture.Tests;
 public class AssemblyDependencyTests
 {
     [Theory]
-    [InlineData("OpenAgent.Contracts")]
-    [InlineData("OpenAgent.Hosting")]
-    public void FoundationAssemblies_DoNotReferenceOtherOpenAgentAssemblies(string assemblyName)
+    [InlineData("OpenAgent.Contracts", new string[] { })]
+    [InlineData("OpenAgent.Capabilities", new[] { "OpenAgent.Contracts" })]
+    [InlineData("OpenAgent.Engine", new[] { "OpenAgent.Contracts" })]
+    [InlineData("OpenAgent.Framework", new[] { "OpenAgent.Contracts" })]
+    [InlineData("OpenAgent.Runner", new[] { "OpenAgent.Contracts" })]
+    [InlineData("OpenAgent.Application", new[] { "OpenAgent.Capabilities", "OpenAgent.Contracts" })]
+    [InlineData("OpenAgent.Router", new[] { "OpenAgent.Contracts", "OpenAgent.Engine" })]
+    [InlineData("OpenAgent.Engine.Host", new[] { "OpenAgent.Application", "OpenAgent.Contracts", "OpenAgent.Engine", "OpenAgent.Framework" })]
+    public void Assemblies_ReferenceOnlyApprovedLayers(string assemblyName, string[] expected)
     {
-        AssertOpenAgentReferences(
-            assemblyName,
-            assemblyName == "OpenAgent.Hosting" ? ["OpenAgent.Contracts"] : []);
-    }
-
-    [Theory]
-    [InlineData("OpenAgent.Infrastructure")]
-    [InlineData("OpenAgent.Runner")]
-    public void StorageAndSandbox_ReferenceOnlyContracts(string assemblyName)
-    {
-        AssertOpenAgentReferences(assemblyName, ["OpenAgent.Contracts"]);
-    }
-
-    [Fact]
-    public void Core_ReferencesOnlyContracts()
-    {
-        AssertOpenAgentReferences("OpenAgent.Core", ["OpenAgent.Contracts"]);
-    }
-
-    [Fact]
-    public void Engine_ReferencesOnlyCoreAndContracts()
-    {
-        AssertOpenAgentReferences(
-            "OpenAgent.Engine",
-            ["OpenAgent.Contracts", "OpenAgent.Core"]);
-    }
-
-    [Fact]
-    public void EngineHost_ReferencesOnlyApprovedLowerLayers()
-    {
-        AssertOpenAgentReferences(
-            "OpenAgent.Engine.Host",
-            ["OpenAgent.Contracts", "OpenAgent.Core", "OpenAgent.Engine", "OpenAgent.Hosting", "OpenAgent.Infrastructure"]);
-    }
-
-    [Fact]
-    public void Router_DoesNotReferenceCoreOrEngine()
-    {
-        AssertOpenAgentReferences(
-            "OpenAgent.Router",
-            ["OpenAgent.Contracts", "OpenAgent.Hosting"]);
-    }
-
-    private static void AssertOpenAgentReferences(
-        string assemblyName,
-        IReadOnlyCollection<string> expectedReferences)
-    {
-        string[] actualReferences = Assembly.Load(assemblyName)
+        string[] actual = Assembly.Load(assemblyName)
             .GetReferencedAssemblies()
             .Select(reference => reference.Name)
             .Where(name => name?.StartsWith("OpenAgent.", StringComparison.Ordinal) == true)
             .Cast<string>()
             .Order(StringComparer.Ordinal)
             .ToArray();
-        string[] expected = expectedReferences
+
+        Assert.Equal(expected.Order(StringComparer.Ordinal), actual);
+    }
+
+    [Fact]
+    public void Capabilities_DoNotReferenceAgentOrProtocolSdks()
+    {
+        string[] references = Assembly.Load("OpenAgent.Capabilities")
+            .GetReferencedAssemblies()
+            .Select(reference => reference.Name!)
+            .ToArray();
+
+        Assert.DoesNotContain(references, name =>
+            name.StartsWith("Microsoft.Agents.", StringComparison.Ordinal)
+            || name.StartsWith("Microsoft.Extensions.AI", StringComparison.Ordinal)
+            || name.StartsWith("ModelContextProtocol", StringComparison.Ordinal)
+            || name.StartsWith("OpenAI", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Router_UsesOnlyEngineHostingTypes()
+    {
+        Assembly router = Assembly.Load("OpenAgent.Router");
+        Assembly engine = Assembly.Load("OpenAgent.Engine");
+        string[] violations = router.GetTypes()
+            .SelectMany(TypeDependencies.Read)
+            .Where(type => type.Assembly == engine)
+            .Where(type => type.Namespace?.StartsWith("OpenAgent.Engine.Hosting", StringComparison.Ordinal) != true)
+            .Select(type => type.FullName!)
+            .Distinct()
             .Order(StringComparer.Ordinal)
             .ToArray();
 
-        Assert.Equal(expected, actualReferences);
+        Assert.Empty(violations);
     }
 }

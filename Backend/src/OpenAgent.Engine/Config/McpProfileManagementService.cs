@@ -1,7 +1,7 @@
 using System.Text.Json;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Security;
-using OpenAgent.Core.Abstract;
+using OpenAgent.Contracts.Capabilities;
 using OpenAgent.Engine.Abstractions;
 using StackExchange.Redis;
 

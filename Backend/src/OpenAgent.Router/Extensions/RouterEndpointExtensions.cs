@@ -1,6 +1,6 @@
 using System.Diagnostics;
 using OpenAgent.Contracts.Security;
-using OpenAgent.Hosting;
+using OpenAgent.Engine.Hosting;
 using OpenAgent.Router.Endpoints;
 using OpenAgent.Router.Security;
 using Yarp.ReverseProxy.Forwarder;

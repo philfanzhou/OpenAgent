@@ -4,6 +4,8 @@
 
 已决策，第一版已实现。
 
+2026-10-15 目录重组后，共享 Hosting 并入 Engine，相关源码与测试位置已更新；原 API 和错误契约决策不变。
+
 ## 背景
 
 引入 Swagger 并统一全部 HTTP API 前，各服务的 API 层存在四类不一致：
@@ -68,10 +70,10 @@ TypedResults 已满足 OpenAPI 类型推导需求，团队无需维护两套心�
 - 连接测试端点（`/llm/test-connection` 等）保留 `200 + {success:false}` 语义——"测试已执行"本身
   不是传输错误。
 
-### 3. 共享基础设施落在 OpenAgent.Hosting.Errors
+### 3. 共享错误设施（现位于 OpenAgent.Engine.Hosting.Errors）
 
 `ProblemDetailsFactory`、`ErrorMapper`、`AgentExceptionHandlerMiddleware` 从 Engine.Host 的
-internal 类提升为 Hosting 的公共设施（`AgentProblemDetails` 静态构造器 + `AgentExceptionMapper`
+internal 类提升为共享 Hosting 公共设施，现归 Engine/Hosting（`AgentProblemDetails` 静态构造器 + `AgentExceptionMapper`
 + 共享中间件，收敛为 `Errors/AgentProblem.cs` 与 `Errors/AgentExceptionHandling.cs` 两个文件）。服务特定行为通过
 `AgentExceptionHandlingOptions` 注入：
 
@@ -104,11 +106,11 @@ Runner `/v1/execute` → `/api/v1/execute`（`RunnerClient` 同步修改）；`/
 - `AgentException` 的 ProblemDetails `type` URI 从全小写拼接改为 kebab-case
   （`tenantdataisolationviolation` → `tenant-data-isolation-violation`）。
 - 测试改动：`ConfigurationControllerTests` 重写为端点测试；直接调用 handler 的测试改为解包
-  `Results<...>.Result`；中间件测试随迁移移至 `OpenAgent.Hosting.Tests`。
+  `Results<...>.Result`；中间件测试随迁移移至 `OpenAgent.Engine.Tests/Hosting/`。
 
 ## 源码位置
 
-- 共享错误设施：`Backend/src/OpenAgent.Hosting/Errors/`
+- 共享错误设施：`Backend/src/OpenAgent.Engine/Hosting/Errors/`
 - 响应 DTO：`Backend/src/OpenAgent.Contracts/Responses/`
 - Engine 端点：`Backend/src/OpenAgent.Engine.Host/Extensions/`
 - Router 错误治理：`Backend/src/OpenAgent.Router/Endpoints/`、`Security/`、`Middleware/`

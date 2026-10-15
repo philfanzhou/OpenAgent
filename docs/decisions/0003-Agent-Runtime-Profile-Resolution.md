@@ -53,7 +53,9 @@ Endpoint
 
 ## 关键实现
 
+以下路径已按 2026-10-15 目录重组更新，决策和调用合同不变。
+
 - `Backend/src/OpenAgent.Contracts/Configuration/IAgentConfigProvider.cs`
-- `Backend/src/OpenAgent.Core/Runtime/Agent/AgentRuntimeResolver.cs`
-- `Backend/src/OpenAgent.Core/Runtime/Agent/AgentExecutionScope.cs`
-- `Backend/src/OpenAgent.Core/Runtime/Agent/AgentExecutor.cs`
+- `Backend/src/OpenAgent.Application/Execution/AgentRuntimeResolver.cs`
+- `Backend/src/OpenAgent.Application/Execution/AgentExecutionScope.cs`
+- `Backend/src/OpenAgent.Application/Execution/AgentExecutor.cs`

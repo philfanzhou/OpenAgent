@@ -2,7 +2,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using OpenAgent.Contracts.Configuration;
-using OpenAgent.Hosting;
+using OpenAgent.Engine.Hosting;
 using OpenAgent.Router.Models;
 using OpenAgent.Router.Observability;
 

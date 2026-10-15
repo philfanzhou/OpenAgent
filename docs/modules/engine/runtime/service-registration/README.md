@@ -32,7 +32,7 @@ HeartbeatService (BackgroundService)
 
 ## Source
 - Interface: `Backend/src/OpenAgent.Engine/Abstractions/IEngineRegistry.cs`
-- Core: `Backend/src/OpenAgent.Engine/Registry/RedisRegistry.cs`, `Backend/src/OpenAgent.Engine/Runtime/HeartbeatService.cs`
+- Engine: `Backend/src/OpenAgent.Engine/Registry/RedisRegistry.cs`, `Backend/src/OpenAgent.Engine/Runtime/HeartbeatService.cs`
 - Models: `Backend/src/OpenAgent.Engine/Models/HeartbeatOptions.cs`, `Backend/src/OpenAgent.Engine/Models/RegistryEntry.cs`
 - Extensions: `Backend/src/OpenAgent.Engine/Extensions/ServiceCollectionExtensions.cs`
 - Tests: `Backend/tests/OpenAgent.Engine.Tests/Registry/RedisRegistryTests.cs`

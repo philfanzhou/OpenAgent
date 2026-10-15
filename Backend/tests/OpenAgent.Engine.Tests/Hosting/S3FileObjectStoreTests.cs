@@ -1,3 +1,4 @@
+using OpenAgent.Engine.Hosting;
 using Amazon.S3;
 using Amazon.S3.Model;
 using Amazon.Runtime;

@@ -1,7 +1,7 @@
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
-using OpenAgent.Hosting;
+using OpenAgent.Engine.Hosting;
 using OpenAgent.Engine.Host.Middleware;
 
 namespace OpenAgent.Engine.Host.Extensions;

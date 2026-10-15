@@ -1,5 +1,5 @@
 using OpenAgent.Contracts.Configuration;
-using OpenAgent.Core.Abstract;
+using OpenAgent.Contracts.Capabilities;
 
 namespace OpenAgent.Engine.Abstractions;
 

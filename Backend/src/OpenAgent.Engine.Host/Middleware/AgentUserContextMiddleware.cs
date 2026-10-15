@@ -1,6 +1,6 @@
 using System.Security.Claims;
 using OpenAgent.Contracts.Security;
-using OpenAgent.Hosting.Security;
+using OpenAgent.Engine.Hosting.Security;
 
 namespace OpenAgent.Engine.Host.Middleware;
 

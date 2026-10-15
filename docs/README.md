@@ -18,6 +18,7 @@
 | 外部系统联调 | [集成索引](integrations/README.md) |
 | 数据模型与主责 | [数据所有权](overview/DataOwnership.md)、[数据库索引](database/README.md) |
 | 日志与排障 | [可观测性](overview/Observability.md)、[追踪排查](operations/trace-troubleshoot.md) |
+| 目录重组与本地验证 | [2026-10-15 验收记录](test-reports/2026-10-15-directory-restructure.md)（不代表远端 CI 或部署通过） |
 | 并行环境 | [并行预览](operations/parallel-previews.md) |
 
 ## 背景与规范

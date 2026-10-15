@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using OpenAgent.Engine.Host.Health;
-using OpenAgent.Infrastructure;
+using OpenAgent.Framework;
 using Xunit;
 
 namespace OpenAgent.Engine.Tests.HealthChecks;

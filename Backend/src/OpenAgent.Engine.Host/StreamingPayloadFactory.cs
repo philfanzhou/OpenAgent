@@ -2,8 +2,8 @@ using System.ClientModel;
 using System.Net.Http;
 using System.Net.Sockets;
 using OpenAgent.Contracts.Security;
-using OpenAgent.Core.Runtime;
-using OpenAgent.Hosting.Errors;
+using OpenAgent.Application.Runtime;
+using OpenAgent.Engine.Hosting.Errors;
 
 namespace OpenAgent.Engine.Host;
 

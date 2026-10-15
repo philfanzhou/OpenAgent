@@ -9,10 +9,10 @@
 
 ## 输入参数
 - `module`: 要测试的模块，可选值：
-  - `core` — OpenAgent.Core（类库 + xunit 单元测试）
+  - `application` — OpenAgent.Application（类库 + xunit 单元测试）
   - `engine` — OpenAgent.Engine（引擎 + xunit 单元测试）
   - `router` — OpenAgent.Router（网关 + xunit 单元测试）
-  - `hosting` — OpenAgent.Hosting（共享宿主 + xunit 单元测试）
+  - `capabilities` — OpenAgent.Capabilities（业务能力 + xunit 单元测试）
   - `all`（默认）— 全部模块
 
 ## 工作流程
@@ -21,10 +21,10 @@
 
 | 参数值 | Solution 路径 | 说明 |
 |--------|--------------|------|
-| `core` | `Backend/OpenAgent.sln` | xunit |
+| `application` | `Backend/OpenAgent.sln` | xunit |
 | `engine` | `Backend/OpenAgent.sln` | xunit |
 | `router` | `Backend/OpenAgent.sln` | xunit |
-| `hosting` | `Backend/OpenAgent.sln` | xunit |
+| `capabilities` | `Backend/OpenAgent.sln` | xunit |
 | `all` | `Backend/OpenAgent.sln` | 全部模块 |
 
 ### 步骤 2: 构建
@@ -49,7 +49,7 @@ dotnet test <sln-path> --no-build
 默认测试套件不依赖任何外部服务。两批测试默认跳过，仅由环境变量开启：
 
 - `OpenAgent.Runner.Tests` 的 `[BubblewrapFact]`（Bubblewrap 沙箱执行）需 Linux + `RUN_CODEACT_BWRAP_TESTS=1`，CI 的 codeact job 在 Linux 上运行；
-- `OpenAgent.Core.Tests` 的 `[RunnerIntegrationFact]`（连接真实 Runner）需 `RUN_CODEACT_RUNNER_TESTS=1` + `CODEACT_TEST_RUNNER_ENDPOINT/KEY`。
+- `OpenAgent.Application.Tests` 的 `[RunnerIntegrationFact]`（连接真实 Runner）需 `RUN_CODEACT_RUNNER_TESTS=1` + `CODEACT_TEST_RUNNER_ENDPOINT/KEY`。
 
 容器级/发布产物级验证由 `scripts/` 下的冒烟脚本承担（`test-codeact-runner.py`、`test-bubblewrap-basic.sh`），不属于 `dotnet test` 范围。
 

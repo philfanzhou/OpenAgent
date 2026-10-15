@@ -4,7 +4,7 @@ using Amazon.S3;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Files;
-using OpenAgent.Hosting;
+using OpenAgent.Engine.Hosting;
 
 namespace OpenAgent.Engine.Host.Files;
 

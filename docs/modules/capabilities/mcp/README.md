@@ -34,5 +34,5 @@ ChatClientAgent.ChatOptions.Tools
 
 ## Source
 
-- Core: `Backend/src/OpenAgent.Core/Capabilities/Mcp/McpToolFactory.cs`, `McpTransportFactory.cs`
+- Application: `Backend/src/OpenAgent.Application/Capabilities/Mcp/McpToolFactory.cs`, `McpTransportFactory.cs`
 - Tests: official SDK option/configuration coverage and integration tests

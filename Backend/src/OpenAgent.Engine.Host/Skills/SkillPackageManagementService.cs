@@ -5,7 +5,7 @@ using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Models;
 using OpenAgent.Contracts.Skills;
-using OpenAgent.Core.Capabilities.Skill;
+using OpenAgent.Application.Capabilities.Skill;
 using OpenAgent.Engine.Config;
 using OpenAgent.Engine.Abstractions;
 

@@ -1,6 +1,6 @@
 using System.Diagnostics;
 using OpenAgent.Contracts.Security;
-using OpenAgent.Hosting.Errors;
+using OpenAgent.Engine.Hosting.Errors;
 using OpenAgent.Router.Models;
 using OpenAgent.Router.Observability;
 

@@ -63,6 +63,7 @@ Skill 只允许本地持久化来源：数据库中的目录元数据和租户�
 
 ## Source
 
-- Core: `Backend/src/OpenAgent.Core/Capabilities/Skill/AgentSkillsProviderFactory.cs`、`SkillScriptRunner.cs`
+- Capabilities：`Backend/src/OpenAgent.Capabilities/Skills/SkillCatalog.cs`；目录接口位于 `Backend/src/OpenAgent.Contracts/Capabilities/ISkillCatalog.cs`。
+- Application: `Backend/src/OpenAgent.Application/Capabilities/Skill/AgentSkillsProviderFactory.cs`、`SkillScriptRunner.cs`
 - Host: `Backend/src/OpenAgent.Engine.Host/Skills/SkillPackageManagementService.cs`、`Backend/src/OpenAgent.Engine.Host/Extensions/ManagementEndpointExtensions.cs`
-- Tests: `Backend/tests/OpenAgent.Core.Tests/Capabilities/Skill/AgentSkillPackageArchiveTests.cs`、`SkillScriptRunnerTests.cs`、`AgentSkillsProviderFactoryTests.cs`、`Backend/tests/OpenAgent.Engine.Tests/Skills/SkillPackageManagementServiceTests.cs`
+- Tests: `Backend/tests/OpenAgent.Application.Tests/Capabilities/Skill/AgentSkillPackageArchiveTests.cs`、`SkillScriptRunnerTests.cs`、`AgentSkillsProviderFactoryTests.cs`、`Backend/tests/OpenAgent.Engine.Tests/Skills/SkillPackageManagementServiceTests.cs`

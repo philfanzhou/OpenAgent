@@ -6,9 +6,9 @@
 
 | 信号 | 应用侧实现 | 暴露方式 | 当前边界 |
 |------|------------|----------|----------|
-| 日志 | 业务代码使用 `ILogger<T>`，由 Serilog 接管；通用请求事件由 Hosting middleware 横切采集 | Console/stdout；配置 OTLP 地址后同时导出 OpenTelemetry Logs | 日志存储与查询后端由部署环境决定 |
+| 日志 | 业务代码使用 `ILogger<T>`，由 Serilog 接管；通用请求事件由 Engine/Hosting middleware 横切采集 | Console/stdout；配置 OTLP 地址后同时导出 OpenTelemetry Logs | 日志存储与查询后端由部署环境决定 |
 | Trace | OpenTelemetry ASP.NET Core、HttpClient 与服务自定义 `ActivitySource` | 配置 OTLP 地址后导出 | 仓库不内置 Collector 或 Trace 存储 |
-| Metrics | OpenTelemetry ASP.NET Core 指标、Hosting 请求指标与服务自定义 `Meter` | Prometheus `/metrics`；配置 OTLP 地址后同时导出 | 长期存储与看板由部署环境决定 |
+| Metrics | OpenTelemetry ASP.NET Core 指标、Engine/Hosting 请求指标与服务自定义 `Meter` | Prometheus `/metrics`；配置 OTLP 地址后同时导出 | 长期存储与看板由部署环境决定 |
 | Health | ASP.NET Core Health Checks | `/health`、`/ready`，兼容 `/health/live`、`/health/ready` | `ready` 用于依赖可用性，`health` 用于进程存活 |
 
 应用与基础设施的边界如下：
@@ -78,18 +78,18 @@ Router 当前提供以下业务指标：
 
 ## 高频探测降噪
 
-Prometheus 抓取（`/metrics`）与健康探针（`/health`、`/ready`、`/health/live`、`/health/ready`、`/health/report`）被编排器和 Router 按秒级高频访问，但本身不携带业务语义。Hosting 层统一将这类路径排除出请求完成日志、trace tag 与 ASP.NET Core / HttpClient instrumentation 生成的 span；出站方向同样过滤 Router 对下游 readiness 端点的轮询 span。健康探针仅在返回 4xx/5xx 或抛异常时保留日志，故障信号不丢失。业务端点不受影响。
+Prometheus 抓取（`/metrics`）与健康探针（`/health`、`/ready`、`/health/live`、`/health/ready`、`/health/report`）被编排器和 Router 按秒级高频访问，但本身不携带业务语义。Engine/Hosting 层统一将这类路径排除出请求完成日志、trace tag 与 ASP.NET Core / HttpClient instrumentation 生成的 span；出站方向同样过滤 Router 对下游 readiness 端点的轮询 span。健康探针仅在返回 4xx/5xx 或抛异常时保留日志，故障信号不丢失。业务端点不受影响。
 
 ## EventId 与日志封装
 
-各模块继续通过 `LoggerMessage` 目录维护有语义的领域日志，调用处不改为重复的 `ILogger` 模板。仅删除零调用事件，并合并消息模板、级别和参数完全一致的事件。当前事件编号范围为：Router `3000–3048`、Engine（含 Host）`4000–4069`、Core 会话域 `1450–1461`
+各模块继续通过 `LoggerMessage` 目录维护有语义的领域日志，调用处不改为重复的 `ILogger` 模板。仅删除零调用事件，并合并消息模板、级别和参数完全一致的事件。当前事件编号范围为：Router `3000–3048`、Engine（含 Host）`4000–4069`、Application 会话域 `1450–1461`
 （`AuditedCompactionStrategy` 1450–1452、`LlmInteractionRecorder` 1460–1461）。
 
 Router 的 Provider 可观测性事件在 Information 级别记录请求/响应方法、URI、状态码和 Header；请求/响应体为 Debug 级别、限长并对敏感 Header 脱敏。YARP 转发记录最终发送到 Provider 的请求 Header 和下游响应 Header，不缓冲流式响应体。
 
 ## 扩展原则
 
-1. 通用请求日志与 OpenAgent Trace tag 由 Hosting middleware 横切采集；HTTP 请求量与耗时直接使用 ASP.NET Core instrumentation，业务代码不重复写生命周期埋点或 SDK 已有指标。
+1. 通用请求日志与 OpenAgent Trace tag 由 Engine/Hosting middleware 横切采集；HTTP 请求量与耗时直接使用 ASP.NET Core instrumentation，业务代码不重复写生命周期埋点或 SDK 已有指标。
 2. 业务代码只保留领域决策、降级和异常等有语义事件，并只依赖 `ILogger<T>`、`ActivitySource` 和 `Meter`，不直接依赖具体观测后端。
 3. Logs、Traces 和 Metrics 都可统一通过 OTLP 交给部署侧 Collector；Console 和 Prometheus Pull 仍作为独立本地/拉取出口。
 4. 应用不包含供应商专用存储 exporter；新增自定义 Meter 时必须将其名称配置为服务的 `OpenTelemetrySource`。

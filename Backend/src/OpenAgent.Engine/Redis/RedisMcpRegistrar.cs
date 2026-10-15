@@ -1,7 +1,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using OpenAgent.Contracts.Configuration;
-using OpenAgent.Core.Abstract;
+using OpenAgent.Contracts.Capabilities;
 using OpenAgent.Engine.Abstractions;
 
 namespace OpenAgent.Engine.Redis;

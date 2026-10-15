@@ -17,15 +17,15 @@ using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
-using OpenAgent.Core.Conversation.Store;
-using OpenAgent.Core.Execution;
-using OpenAgent.Core.Exten;
-using OpenAgent.Core.ModelProviders;
-using OpenAgent.Core.Observability;
-using OpenAgent.Core.Runtime.Agent;
+using OpenAgent.Application.Conversation.Store;
+using OpenAgent.Application.Execution;
+using OpenAgent.Application.Exten;
+using OpenAgent.Application.ModelProviders;
+using OpenAgent.Application.Observability;
+using OpenAgent.Application.Runtime.Agent;
 using OpenAgent.Engine.Host.Extensions;
 using OpenAgent.Engine.Host;
-using OpenAgent.Hosting;
+using OpenAgent.Engine.Hosting;
 using Xunit;
 
 namespace OpenAgent.Engine.Tests.Hosting;
@@ -253,7 +253,7 @@ public sealed class SseToolStreamingTests
                 : new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
             builder.Services.AddSingleton<IConfiguration>(configuration);
             builder.Services.AddSingleton<ICurrentUserContext>(new FixedCurrentUserContext());
-            builder.Services.AddAgentCore(configuration);
+            builder.Services.AddAgentApplication(configuration);
             // 与生产一致的替身注入位置：运行时解析与 LLM 客户端工厂替换为固定实现。
             builder.Services.RemoveAll<IAgentRuntimeResolver>();
             builder.Services.RemoveAll<AgentRuntimeResolver>();

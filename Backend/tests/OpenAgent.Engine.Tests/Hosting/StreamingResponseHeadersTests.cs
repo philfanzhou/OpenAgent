@@ -1,3 +1,4 @@
+using OpenAgent.Engine.Hosting;
 using Microsoft.AspNetCore.Http;
 using OpenAgent.Engine.Host.Extensions;
 using Xunit;

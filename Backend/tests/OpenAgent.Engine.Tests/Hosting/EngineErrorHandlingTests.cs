@@ -4,8 +4,8 @@ using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using OpenAgent.Engine.Host;
-using OpenAgent.Hosting;
-using OpenAgent.Hosting.Errors;
+using OpenAgent.Engine.Hosting;
+using OpenAgent.Engine.Hosting.Errors;
 using Xunit;
 
 namespace OpenAgent.Engine.Tests.Hosting;

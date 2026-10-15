@@ -86,4 +86,4 @@ docker compose ps              # 确认服务已停止
 
 - 排查手册：`docs/operations/trace-troubleshoot.md`
 - 模块文档：`docs/modules/`
-- 集成测试项目：`Backend/tests/OpenAgent.Infrastructure.Tests/`、`Backend/tests/OpenAgent.Engine.Tests/`
+- 集成测试项目：`Backend/tests/OpenAgent.Framework.Tests/`、`Backend/tests/OpenAgent.Engine.Tests/`

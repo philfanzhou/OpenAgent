@@ -25,12 +25,12 @@ AgentExecutor.ExecuteStreamingAsync
 **Implemented** — 流式输出、ToolCall 合并、取消/失败写回均已落地。
 
 ## Limits
-- SSE/NDJSON 协议格式化属宿主层，Core 不负责
+- SSE/NDJSON 协议格式化属宿主层，Application 不负责
 - ReasoningContent 作为 `Reasoning` 类型 `AgentStreamEvent` 产出给消费者
 - 取消/失败写回使用 `CancellationToken.None` 确保 partial 消息不丢失
 - 不根据流式文本片段估算 Token；终态没有完整 usage 时保持不可用
 
 ## Source
-- Core: `Backend/src/OpenAgent.Core/Execution/`
-- Core tests: `Backend/tests/OpenAgent.Core.Tests/Execution/AgentExecutorUsageTests.cs`
+- Application: `Backend/src/OpenAgent.Application/Execution/`
+- Application tests: `Backend/tests/OpenAgent.Application.Tests/Execution/AgentExecutorUsageTests.cs`
 - SSE tests: `Backend/tests/OpenAgent.Engine.Tests/Hosting/AgentStreamWriterTests.cs`

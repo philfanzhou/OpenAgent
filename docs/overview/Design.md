@@ -2,8 +2,8 @@
 
 ## 项目定位
 
-`OpenAgent.Core` 是 MAF-first 的 Agent 核心。Microsoft Agent Framework 已直接编译进
-Core，不再存在单独的 MAF 引擎项目或可切换的生产引擎体系。
+`OpenAgent.Application` 是 MAF-first 的 Agent 核心。Microsoft Agent Framework 已直接编译进
+Application，不再存在单独的 MAF 引擎项目或可切换的生产引擎体系。
 
 项目职责、模块目录、扩展接口和测试入口统一见 [开发指南](./DevelopmentGuide.md)。
 本页说明运行时架构；持久化主责见 [DataOwnership](./DataOwnership.md)。
@@ -24,7 +24,7 @@ HTTP / Channel
 ```
 
 MAF 管理 Agent、模型、流式输出、函数回填和工具迭代。平台保留租户授权、会话一致性、
-持久化、外部协议和审计。Core 中没有 `IAgentService`、`IAgentEngine`、
+持久化、外部协议和审计。Application 中没有 `IAgentService`、`IAgentEngine`、
 `ExecutionInitializer` 或独立 `ConversationExecutor`。
 
 ## 并列扩展面
@@ -54,14 +54,14 @@ MAF 通过 `PlatformChatHistory` 主动加载和写回历史。PostgreSQL 是会
 生产 Host 只需：
 
 ```csharp
-services.AddAgentCore(configuration);
+services.AddAgentApplication(configuration);
 services.AddOpenAgentInfrastructure(configuration);
 services.AddFileAssetObjectStorage(configuration);
 services.AddAgentEngine(configuration);
 ```
 
-AddAgentCore 调用各功能域的注册扩展，保留原公共入口；AgentFactory 仅通过下层接口
-组合运行时。不得在 Core 之外引入第二 Agent composition root。
+AddAgentApplication 调用各功能域的注册扩展，使用统一的 Application 注册入口；AgentFactory 仅通过下层接口
+组合运行时。不得在 Application 之外引入第二 Agent composition root。
 
 ## 技术栈
 

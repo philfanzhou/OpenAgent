@@ -7,7 +7,7 @@ using OpenAgent.Contracts.Skills;
 using OpenAgent.Engine.Abstractions;
 using OpenAgent.Engine.Host.Middleware;
 using OpenAgent.Engine.Host.Skills;
-using OpenAgent.Hosting.Errors;
+using OpenAgent.Engine.Hosting.Errors;
 
 namespace OpenAgent.Engine.Host.Extensions;
 

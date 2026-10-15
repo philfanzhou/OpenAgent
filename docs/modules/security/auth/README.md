@@ -70,10 +70,10 @@ API Key 模式仍然执行 Agent ACL、能力权限、租户隔离、限流和�
 
 ## Source
 
-- Handler: `Backend/src/OpenAgent.Hosting/Security/BasicAuthenticationHandler.cs`
-- Third-party handler: `Backend/src/OpenAgent.Hosting/Security/ApiKeyAuthenticationHandler.cs`
-- Third-party identity store: `Backend/src/OpenAgent.Infrastructure/Security/EfThirdPartyApiKeyIdentityResolver.cs`
-- Registration: `Backend/src/OpenAgent.Hosting/Authentication/AgentAuthenticationExtensions.cs`
-- Public config and Development login: `Backend/src/OpenAgent.Hosting/Authentication/AuthenticationEndpointExtensions.cs`
+- Handler: `Backend/src/OpenAgent.Engine/Hosting/Security/BasicAuthenticationHandler.cs`
+- Third-party handler: `Backend/src/OpenAgent.Engine/Hosting/Security/ApiKeyAuthenticationHandler.cs`
+- Third-party identity store: `Backend/src/OpenAgent.Framework/Security/EfThirdPartyApiKeyIdentityResolver.cs`
+- Registration: `Backend/src/OpenAgent.Engine/Hosting/Authentication/AgentAuthenticationExtensions.cs`
+- Public config and Development login: `Backend/src/OpenAgent.Engine/Hosting/Authentication/AuthenticationEndpointExtensions.cs`
 - Context mapping: `Backend/src/OpenAgent.Engine.Host/Middleware/AgentUserContextMiddleware.cs`
 - Frontend session and PKCE: `Frontend/OpenAgent.Chat/src/api.ts`, `Frontend/OpenAgent.Chat/src/auth.ts`

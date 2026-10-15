@@ -4,11 +4,11 @@ using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Mcp;
 using OpenAgent.Contracts.Models;
 using OpenAgent.Contracts.Rag;
-using OpenAgent.Core.Abstract;
+using OpenAgent.Contracts.Capabilities;
 using OpenAgent.Engine.Abstractions;
 using OpenAgent.Engine.Config;
 using OpenAgent.Engine.Host.Middleware;
-using OpenAgent.Hosting.Errors;
+using OpenAgent.Engine.Hosting.Errors;
 
 namespace OpenAgent.Engine.Host.Extensions;
 

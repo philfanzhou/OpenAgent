@@ -1,3 +1,4 @@
+using OpenAgent.Engine.Hosting;
 using Microsoft.AspNetCore.Http;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Requests;

@@ -46,4 +46,4 @@ CodeExecutionJson 保存 `{ "enabled": false }` 形式的 Agent 代码执行开�
 
 部署时先停止旧版本配置写入、应用迁移，再切换应用；旧版本 Repository 不兼容删除 ConfigurationJson 后的表结构。新版本 Redis key 使用 `v2` 命名空间，避免读取旧字段名的缓存。HTTP 和前端统一使用 `contextTokens`。
 
-实现：`Backend/src/OpenAgent.Infrastructure/Configuration/`、`Backend/src/OpenAgent.Infrastructure/Persistence/OpenAgentDbContext.cs`。
+实现：`Backend/src/OpenAgent.Framework/Configuration/`、`Backend/src/OpenAgent.Framework/Persistence/OpenAgentDbContext.cs`。

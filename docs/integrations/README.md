@@ -5,7 +5,7 @@
 | 集成点 | 说明 | 文档 |
 |--------|------|------|
 | LLM Provider | 大模型推理（OpenAI/Azure OpenAI/Anthropic） | [llm-provider/](./llm-provider/) |
-| Agent.Matrix | 配置与权限管理（只读引用） | [matrix/](./matrix/) |
+| 配置目录 / Matrix 接入边界 | 当前 Engine 配置读取与运行前解析；Matrix 为后续可替换来源 | [matrix/](./matrix/) |
 | Agent Provider | Router 意图识别与第三方 Agent 服务接入 | [agent-provider.md](./agent-provider.md) |
 | File Assets | 独立用户文件、S3 兼容对象存储、预览与模型文件能力 | [file-assets.md](./file-assets.md) |
 | Code Runner | Bubblewrap 隔离代码执行、文档运行时及部署 | [code-runner.md](./code-runner.md) |

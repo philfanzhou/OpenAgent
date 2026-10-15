@@ -12,6 +12,8 @@ OpenAgent 是基于 .NET 10、ASP.NET Core 和 Microsoft Agent Framework 的多�
 | [文档中心](docs/README.md) | 功能域、集成、数据库、API 与排障导航 |
 | [部署指南](docs/operations/deployment.md) | 启动、认证、变量、镜像更新与数据卷 |
 
+当前后端目录已按 [新架构方案的目录图](docs/architecture/新架构方案.html) 整理：Application 保留 MAF 执行，Capabilities 承载独立业务能力，Framework 承载存储，原 Hosting 合并到 Engine。模块边界见 [开发指南](docs/overview/DevelopmentGuide.md)；ACP/Worker 仍是后续规划。
+
 ## 构建与测试
 
 ```bash

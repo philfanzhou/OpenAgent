@@ -2,11 +2,11 @@
 
 ## 接口与服务
 
-Agent 和 LLM 配置通过独立的 `ConfigurationController` 暴露，保留 `/api/v1/admin/agents` 和 `/api/v1/admin/llm` 路径。目前宿主只在 Development 环境映射管理端点。
+Agent 和 LLM 配置通过`ConfigurationEndpointExtensions` 中的 Minimal API 暴露，保留 `/api/v1/admin/agents` 和 `/api/v1/admin/llm` 路径。目前宿主只在 Development 环境映射管理端点。
 
 ```text
 HTTP + authenticated tenant
-  -> ConfigurationController
+  -> ConfigurationEndpointExtensions
   -> ConfigurationService
   -> IAgentConfigRepository / ILlmConfigRepository
   -> EF Core -> PostgreSQL commit
@@ -14,9 +14,9 @@ HTTP + authenticated tenant
   -> redacted HTTP response
 ```
 
-Controller 负责路由、HTTP 验证、Skill 绑定可用性检查、密钥响应脱敏及连接测试。ConfigurationService 合并原 Agent 管理服务、运行时 Provider、数据库缓存包装和 LLM 管理服务，负责租户归属、密钥保留、Repository 调用和缓存。
+端点层负责路由、HTTP 验证、Skill 绑定可用性检查、密钥响应脱敏及连接测试。ConfigurationService 合并原 Agent 管理服务、运行时 Provider、数据库缓存包装和 LLM 管理服务，负责租户归属、密钥保留、Repository 调用和缓存。
 
-运行时继续通过 Contracts 中的 IAgentConfigProvider / ILlmConfigProvider 读取配置；DI 把两个接口指向同一个 ConfigurationService，Core 无须引用 Engine 或 EF Core。
+运行时继续通过 Contracts 中的 IAgentConfigProvider / ILlmConfigProvider 读取配置；DI 把两个接口指向同一个 ConfigurationService，Application 无须引用 Engine 或 EF Core。
 
 ## 读取、更新和缓存
 
@@ -55,9 +55,9 @@ LLM 和 RAG API Key 使用租户绑定的服务端加密值存储在数据库和
 
 | 层 | 位置 |
 |---|---|
-| HTTP | Backend/src/OpenAgent.Engine.Host/Controllers/ConfigurationController.cs |
+| HTTP | Backend/src/OpenAgent.Engine.Host/Extensions/ConfigurationEndpointExtensions.cs |
 | 配置服务与缓存 | Backend/src/OpenAgent.Engine/Config/ConfigurationService.cs |
-| 数据访问 | Backend/src/OpenAgent.Infrastructure/Configuration/ |
-| 运行时组合 | Backend/src/OpenAgent.Core/Execution/AgentRuntimeResolver.cs |
+| 数据访问 | Backend/src/OpenAgent.Framework/Configuration/ |
+| 运行时组合 | Backend/src/OpenAgent.Application/Execution/AgentRuntimeResolver.cs |
 
 表结构与迁移见 [配置表](../../../../database/tables/Configurations.md)。

@@ -36,7 +36,7 @@ Router 结构化日志输出到 stdout，并在配置 OTLP 时进入 OpenTelemet
 
 | 事件 | 含义 |
 |------|------|
-| `Request completed` | Hosting 横切层确认请求完成，包含路由、状态和耗时 |
+| `Request completed` | Engine/Hosting 横切层确认请求完成，包含路由、状态和耗时 |
 | `Agent selection completed` | 显式 Agent 或意图识别的最终选择 |
 | `Forwarding failed` | YARP 未完成下游请求，检查 `ForwarderError` 和异常类型 |
 | `Agent access denied` | 目标 Agent 不在当前用户可见范围 |

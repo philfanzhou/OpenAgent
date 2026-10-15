@@ -1,6 +1,6 @@
 using System.Text.Json;
 using OpenAgent.Contracts.Security;
-using OpenAgent.Hosting.Errors;
+using OpenAgent.Engine.Hosting.Errors;
 using OpenAgent.Router.Models;
 
 namespace OpenAgent.Router.Endpoints;
