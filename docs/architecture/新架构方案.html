@@ -1,0 +1,881 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OpenAgent 新架构方案</title>
+
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500&family=JetBrains+Mono:wght@400&display=swap">
+<style>
+/* Kami: parchment canvas, one ink-blue accent, single-weight serif, flat surfaces, warm grays */
+:root{--bg:#f5f4ed;--card:#faf9f5;--fg:#141413;--fg2:#3d3d3a;--mut:#504e49;--soft:#6b6a64;--line:#e8e6dc;--line2:#e5e3d8;--acc:#1B365D;--tint:#EEF2F7;--tag:#E4ECF5;--code:#f0eee6;--brk:#8b4513;--serif:Charter,"Noto Serif SC","Source Han Serif SC","Songti SC",Georgia,serif;--mono:"JetBrains Mono","SF Mono",Consolas,"Noto Serif SC",monospace}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#141413;--card:#30302e;--fg:#faf9f5;--fg2:#d6d4ca;--mut:#b0aea5;--soft:#8d8b83;--line:#4a4a46;--line2:#3d3d3a;--acc:#8fb0d9;--tint:#1e2a3b;--tag:#243449;--code:#262624;--brk:#e0a27a;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#141413;--card:#30302e;--fg:#faf9f5;--fg2:#d6d4ca;--mut:#b0aea5;--soft:#8d8b83;--line:#4a4a46;--line2:#3d3d3a;--acc:#8fb0d9;--tint:#1e2a3b;--tag:#243449;--code:#262624;--brk:#e0a27a;color-scheme:dark}
+*{box-sizing:border-box}
+/* tier frames in the layered diagram */
+:root{--t1f:#ece9dc;--t1s:#b9b49c;--t2f:#e4ecf5;--t2s:#8aa6c8;--t3f:#f0e0d8;--t3s:#c99a85;--t4f:#e3e6dc;--t4s:#a3ab94}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--t1f:#2f2e29;--t1s:#6b6a5c;--t2f:#1e2a3b;--t2s:#5a7fae;--t3f:#3a2a22;--t3s:#a8705a;--t4f:#262c24;--t4s:#6f7c63}}
+:root[data-theme="dark"]{--t1f:#2f2e29;--t1s:#6b6a5c;--t2f:#1e2a3b;--t2s:#5a7fae;--t3f:#3a2a22;--t3s:#a8705a;--t4f:#262c24;--t4s:#6f7c63}
+svg .t1{fill:var(--t1f);stroke:var(--t1s);stroke-width:1.5}
+svg .t2{fill:var(--t2f);stroke:var(--t2s);stroke-width:1.5}
+svg .t3{fill:var(--t3f);stroke:var(--t3s);stroke-width:1.5}
+svg .t4{fill:var(--t4f);stroke:var(--t4s);stroke-width:1.5}
+.tiers td:first-child{white-space:nowrap}
+
+body{margin:0;background:var(--bg);color:var(--fg);font:400 15px/1.6 var(--serif);letter-spacing:.4px}
+main{max-width:920px;margin:0 auto;padding-block:56px 96px;padding-inline:16px}
+.eyebrow{font-size:12px;font-weight:500;letter-spacing:1px;text-transform:uppercase;color:var(--soft)}
+h1{font:500 40px/1.15 var(--serif);letter-spacing:.5px;margin:10px 0 12px;text-wrap:balance}
+h2{font:500 28px/1.2 var(--serif);margin:56px 0 14px;text-wrap:balance}
+h3{font:500 17px/1.3 var(--serif);margin:28px 0 8px;color:var(--fg2)}
+p{margin:8px 0}
+b,strong{font-weight:500;color:var(--acc)}
+a{color:var(--acc)}
+.sub{color:var(--mut);font-size:14px}
+.card{background:var(--card);border-radius:4px;padding:16px 20px;margin:14px 0}
+.verdict{background:var(--tint)}
+table{width:100%;border-collapse:collapse;font-size:13px;line-height:1.5;display:block;overflow-x:auto;margin:12px 0}
+th,td{padding:7px 10px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line2);min-width:0}
+th{font-weight:500;color:var(--fg2);border-bottom:1px solid var(--line);white-space:nowrap}
+td:first-child{white-space:nowrap}
+code{font:400 .85em var(--mono);background:var(--code);padding:1px 5px;border-radius:3px;letter-spacing:0}
+.tag{display:inline-block;font-size:11px;font-weight:500;letter-spacing:.4px;padding:1px 6px;border-radius:4px;background:var(--tag);color:var(--acc);margin-right:4px;white-space:nowrap}
+.warn{font-weight:500;color:var(--fg2)}
+.bad{font-weight:500;color:var(--brk)}
+.scroll{overflow-x:auto}
+.plain{background:var(--tint);border-radius:4px;padding:10px 14px;font-size:14px;margin:12px 0}
+h4.rule{font:500 15px/1.3 var(--serif);margin:20px 0 6px;color:var(--fg2)}
+.plain::before{content:"通俗说 · ";color:var(--acc);font-weight:500}
+.steps{counter-reset:s;list-style:none;padding:0}
+.steps li{counter-increment:s;padding-left:30px;position:relative;margin:8px 0}
+.steps li::before{content:counter(s);position:absolute;left:0;top:1px;width:20px;height:20px;border-radius:10px;background:var(--tag);color:var(--acc);font-size:12px;text-align:center;line-height:20px;font-weight:500}
+.scroll table{display:table;min-width:640px}
+svg{width:100%;height:auto;min-width:760px}
+svg text{font:400 13px var(--serif);fill:var(--fg);letter-spacing:0}
+svg .b{fill:var(--card);stroke:var(--line);stroke-width:1}
+svg .a{fill:var(--tint);stroke:var(--acc);stroke-width:1}
+svg .z{fill:none;stroke:var(--soft);stroke-width:.8;stroke-dasharray:5 4}
+svg .l{stroke:var(--soft);stroke-width:1.2;fill:none;marker-end:url(#ar)}
+svg .m{fill:var(--mut);font-size:11px}
+svg marker path{fill:var(--soft)}
+ol,ul{padding-left:20px;margin:8px 0}
+li{margin:4px 0}
+li::marker{color:var(--acc)}
+.tree{margin:0;padding:12px 16px;background:var(--card);border-radius:4px;font:400 12px/1.6 var(--mono);letter-spacing:0;min-width:max-content;color:var(--fg)}
+.tree .tag{font-family:var(--serif);font-size:10px}
+.mermaid{background:var(--card);border-radius:4px;padding:12px;overflow-x:auto}
+*:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+</style>
+</head>
+<body>
+
+<main>
+<div class="eyebrow">Architecture Proposal · 2026-10-14</div>
+<h1>OpenAgent 新架构方案</h1>
+<p class="sub">基于 2026-10-13 ACP Runtime 文档包 + 历史代码 <code>workspace/projects/OpenAgent</code>(main @ 045c134,2026-10-08)整理 · 2026-10-14</p>
+
+<div class="card verdict">
+<b>结论。</b>把"MAF 推理循环绑在 Engine/Core 里"改成"平台控制面 + 隔离 Worker + 可换 harness"。平台保留身份、会话、授权、审计、文件与 C# 业务服务;模型循环、上下文压缩、原生工具编排交给 ACP harness;C# 工具通过 MCP 网关继续复用。现有前端与 HTTP/SSE 接口先不动。
+</div>
+
+<p class="sub">不熟悉技术术语?先读下面的「先读这里」,遇到陌生词查页面末尾的「术语表」。每个章节开头有一句「通俗说」。</p>
+
+<h2>先读这里</h2>
+<div class="card">
+<p><b>一句话:</b>今天 OpenAgent 自己养着一个"AI 大脑"(MAF)并亲自指挥它干活。新方案让平台只当<b>前台、保安和账房</b>,把 AI 大脑换成可以随时更换的外部"专业工人"(harness),让他们在<b>隔离的独立房间</b>里干活。平台管身份、记录、权限和文件,不管工人具体怎么思考。</p>
+</div>
+<h3>用一个比喻看全貌</h3>
+<p>把平台想成一家咨询公司:</p>
+<table>
+<tr><th>公司里的角色</th><th>对应方案里的</th><th>负责什么</th></tr>
+<tr><td>前台</td><td>Router</td><td>接待客户,判断该找哪位顾问,控制同时接待的人数</td></tr>
+<tr><td>总务处</td><td>Control</td><td>核对客户身份、登记每次委托、记账留档、发放"门禁卡"、批准或拒绝敏感操作</td></tr>
+<tr><td>独立工作间</td><td>Worker + 隔离容器</td><td>每位客户一间互相看不见的房间,顾问只能在自己的房间里工作</td></tr>
+<tr><td>顾问</td><td>harness(OpenCode、Gemini CLI 等)</td><td>真正思考和动手的人,可以随时换人</td></tr>
+<tr><td>内部服务窗口</td><td>MCP 网关</td><td>顾问要查客户档案、调公司内部系统,只能通过窗口办理,而且必须出示门禁卡</td></tr>
+<tr><td>电话总机</td><td>模型网关</td><td>顾问要打电话请教大模型,必须经总机转接,总机核验身份后转接</td></tr>
+<tr><td>门禁卡</td><td>RunGrant</td><td>只在这次委托期间有效的临时凭证,写明"这位客户、这次任务、能做什么"</td></tr>
+<tr><td>房间使用借据</td><td>租约</td><td>房间使用权的临时借据,到期没续就收回,防止两个人同时占一间房</td></tr>
+<tr><td>下班拍照存档</td><td>快照</td><td>每轮结束把房间里的文件柜拍照存好,房间出问题可以在另一间还原</td></tr>
+</table>
+<h3>一次请求是怎么走完的</h3>
+<ol class="steps">
+<li>用户在现有聊天界面发一条消息,<b>前台(Router)</b>判断交给哪个 Agent。</li>
+<li><b>总务处(Control)</b>确认用户身份和权限,登记这次任务,发出门禁卡。</li>
+<li>总务处把任务放进队列,一间空闲的<b>工作间(Worker)</b>来领取,并把上次的快照还原进去。</li>
+<li>工作间里启动<b>顾问(harness)</b>,顾问开始思考,过程中的每个动作都实时回报总务处并入库。</li>
+<li>顾问需要查资料或调业务系统时,通过<b>MCP 网关</b>办理;需要大模型时,通过<b>模型网关</b>。两处都核验门禁卡。</li>
+<li>遇到敏感操作(比如写数据),任务暂停,等人在界面上批准或拒绝。</li>
+<li>结果回到聊天界面;工作间拍下快照,门禁卡作废,房间回收。</li>
+</ol>
+<h3>什么变,什么不变</h3>
+<table>
+<tr><th>变</th><th>不变</th></tr>
+<tr><td>AI 的"思考循环"由外部 harness 承担,可更换;每个会话在隔离环境里运行;出现了 Worker、网关、租约等新部件</td><td>现有前端和接口;平台的会话记录、用户权限、审计;已有的 C# 业务函数(通过窗口继续被调用);现有 MAF 执行路径保持原状,本方案不演进它</td></tr>
+</table>
+
+<h2>1. 基线与范围</h2>
+<div class="card">
+<p><b>文档包是未来规划,历史代码仓(main @ 045c134)是研发起点。</b>本方案以文档的目标设计为方向,以代码仓的真实结构为基础,逐模块标注 <span class="tag">已有</span>(直接复用)、<span class="tag">改造</span>(在现有代码上拆分或去耦)、<span class="tag">新建</span>(历史代码里没有)。</p>
+<p>代码仓里没有任何 ACP 相关代码,Worker、RuntimeBinding、MCP 网关、租约与 fencing 也都不存在,这些都要新建。文档里提到的 PR #229 预览代码不在本地仓库,只当设计输入,不作为实现基线。</p>
+</div>
+
+<h2>2. 目标架构</h2>
+<p class="plain">整张图像一栋大楼:用户从最上层进来,每一层只和相邻的下一层打交道,最底层是数据库等存储。上层不需要知道下层怎么实现的,就像你不需要知道电梯怎么造的。</p>
+<h3>分层视图</h3>
+<p class="sub">彩色大框是大分层(域),框内是七个层。蓝色底的小框为需要新建或重点改造的模块。整个系统是一条自上而下的单向链:每一层只向下调用,harness 访问 MCP 网关也是向下调用。</p>
+<div class="scroll"><svg viewBox="0 0 960 882" role="img" aria-label="分层架构图">
+<rect class="t1" x="4" y="16" width="822" height="186" rx="10"/>
+<text x="16" y="35" style="font-weight:500">入口域</text><text class="m" x="66" y="35">请求从这里进来</text>
+<rect class="z" x="14" y="42" width="802" height="72" rx="8" style="stroke-dasharray:2 3"/>
+<text x="26" y="72" style="font-weight:500">接入层</text><text class="m" x="26" y="90">前端 / 产品界面</text>
+<rect class="b" x="142" y="52" width="216" height="52" rx="6"/>
+<text x="250" y="76" text-anchor="middle">现有 Chat 前端</text><text class="m" x="250" y="92" text-anchor="middle">冻结,按兼容 API 对接</text>
+<rect class="b" x="366" y="52" width="216" height="52" rx="6"/>
+<text x="474" y="76" text-anchor="middle">SSO / Keycloak</text><text class="m" x="474" y="92" text-anchor="middle">生产身份</text>
+<rect class="b" x="590" y="52" width="216" height="52" rx="6"/>
+<text x="698" y="76" text-anchor="middle">未来界面</text><text class="m" x="698" y="92" text-anchor="middle">管理端等</text>
+<rect class="z" x="14" y="122" width="802" height="72" rx="8" style="stroke-dasharray:2 3"/>
+<text x="26" y="152" style="font-weight:500">网关层</text><text class="m" x="26" y="170">Router</text>
+<rect class="b" x="142" y="132" width="328" height="52" rx="6"/>
+<text x="306" y="156" text-anchor="middle">路由与会话粘性</text><text class="m" x="306" y="172" text-anchor="middle">一致性哈希 · 降级</text>
+<rect class="a" x="478" y="132" width="328" height="52" rx="6"/>
+<text x="642" y="156" text-anchor="middle">IntentClassifier</text><text class="m" x="642" y="172" text-anchor="middle">独立模型与密钥</text>
+<rect class="t2" x="4" y="214" width="822" height="106" rx="10"/>
+<text x="16" y="233" style="font-weight:500">控制面</text><text class="m" x="66" y="233">平台决策与记录(Control 进程)</text>
+<rect class="z" x="14" y="240" width="802" height="72" rx="8" style="stroke-dasharray:2 3"/>
+<text x="26" y="270" style="font-weight:500">应用层</text><text class="m" x="26" y="288">Control 进程</text>
+<rect class="a" x="142" y="250" width="216" height="52" rx="6"/>
+<text x="250" y="274" text-anchor="middle">Admission</text><text class="m" x="250" y="290" text-anchor="middle">主体 · ACL · 幂等</text>
+<rect class="a" x="366" y="250" width="216" height="52" rx="6"/>
+<text x="474" y="274" text-anchor="middle">Run / Session</text><text class="m" x="474" y="290" text-anchor="middle">状态机 · 取消 · 恢复</text>
+<rect class="a" x="590" y="250" width="216" height="52" rx="6"/>
+<text x="698" y="274" text-anchor="middle">Lease + fencing</text><text class="m" x="698" y="290" text-anchor="middle">单会话单活动轮次</text>
+<rect class="t3" x="4" y="332" width="822" height="266" rx="10"/>
+<text x="16" y="351" style="font-weight:500">执行域</text><text class="m" x="66" y="351">Agent 干活的地方与它能用的能力</text>
+<rect class="z" x="14" y="358" width="802" height="72" rx="8" style="stroke-dasharray:2 3"/>
+<text x="26" y="388" style="font-weight:500">运行时层</text><text class="m" x="26" y="406">Worker 容器</text>
+<rect class="a" x="142" y="368" width="328" height="52" rx="6"/>
+<text x="306" y="392" text-anchor="middle">Worker.Host</text><text class="m" x="306" y="408" text-anchor="middle">租约 · 监督 · 工作区 · 快照</text>
+<rect class="a" x="478" y="368" width="328" height="52" rx="6"/>
+<text x="642" y="392" text-anchor="middle">Runtime.Acp</text><text class="m" x="642" y="408" text-anchor="middle">ACP 协议 · compiler</text>
+<rect class="z" x="14" y="438" width="802" height="72" rx="8" style="stroke-dasharray:2 3"/>
+<text x="26" y="468" style="font-weight:500">执行层</text><text class="m" x="26" y="486">可替换 harness</text>
+<rect class="b" x="142" y="448" width="160" height="52" rx="6"/>
+<text x="222" y="472" text-anchor="middle">OpenCode</text><text class="m" x="222" y="488" text-anchor="middle">原生 ACP</text>
+<rect class="b" x="310" y="448" width="160" height="52" rx="6"/>
+<text x="390" y="472" text-anchor="middle">Gemini CLI</text><text class="m" x="390" y="488" text-anchor="middle">官方 ACP</text>
+<rect class="b" x="478" y="448" width="160" height="52" rx="6"/>
+<text x="558" y="472" text-anchor="middle">Claude bridge</text><text class="m" x="558" y="488" text-anchor="middle">外置 bridge</text>
+<rect class="b" x="646" y="448" width="160" height="52" rx="6"/>
+<text x="726" y="472" text-anchor="middle">DeepSeek Harness</text><text class="m" x="726" y="488" text-anchor="middle">单独试验</text>
+<rect class="z" x="14" y="518" width="802" height="72" rx="8" style="stroke-dasharray:2 3"/>
+<text x="26" y="548" style="font-weight:500">能力层</text><text class="m" x="26" y="566">MCP 网关 + 业务能力</text>
+<rect class="a" x="142" y="528" width="216" height="52" rx="6"/>
+<text x="250" y="552" text-anchor="middle">MCP 网关</text><text class="m" x="250" y="568" text-anchor="middle">stateless HTTP · RunGrant</text>
+<rect class="a" x="366" y="528" width="216" height="52" rx="6"/>
+<text x="474" y="552" text-anchor="middle">业务能力</text><text class="m" x="474" y="568" text-anchor="middle">文件 · RAG · Skill · C# 工具</text>
+<rect class="a" x="590" y="528" width="216" height="52" rx="6"/>
+<text x="698" y="552" text-anchor="middle">模型网关</text><text class="m" x="698" y="568" text-anchor="middle">短期 key · 转发</text>
+<rect class="t4" x="4" y="610" width="822" height="106" rx="10"/>
+<text x="16" y="629" style="font-weight:500">基础设施域</text><text class="m" x="94" y="629">状态与外部依赖</text>
+<rect class="z" x="14" y="636" width="802" height="72" rx="8" style="stroke-dasharray:2 3"/>
+<text x="26" y="666" style="font-weight:500">基础设施</text><text class="m" x="26" y="684">平台状态与外部依赖</text>
+<rect class="b" x="142" y="646" width="126" height="52" rx="6"/>
+<text x="205" y="670" text-anchor="middle">PostgreSQL</text><text class="m" x="205" y="686" text-anchor="middle">权威状态</text>
+<rect class="b" x="276" y="646" width="126" height="52" rx="6"/>
+<text x="340" y="670" text-anchor="middle">对象存储</text><text class="m" x="340" y="686" text-anchor="middle">文件 · 产物 · 快照</text>
+<rect class="b" x="411" y="646" width="126" height="52" rx="6"/>
+<text x="474" y="670" text-anchor="middle">Redis</text><text class="m" x="474" y="686" text-anchor="middle">锁 · 缓存 · 调度</text>
+<rect class="b" x="545" y="646" width="126" height="52" rx="6"/>
+<text x="608" y="670" text-anchor="middle">模型 Provider</text><text class="m" x="608" y="686" text-anchor="middle">LLM / 分类器</text>
+<rect class="b" x="680" y="646" width="126" height="52" rx="6"/>
+<text x="743" y="670" text-anchor="middle">Loki · OTel</text><text class="m" x="743" y="686" text-anchor="middle">日志 · 追踪</text>
+<rect class="b" x="832" y="16" width="116" height="700" rx="8"/><text x="890" y="44" text-anchor="middle" style="font-weight:500">横切关注</text>
+<text x="890" y="90" text-anchor="middle">身份与授权</text>
+<text x="890" y="142" text-anchor="middle">RunGrant</text>
+<text x="890" y="194" text-anchor="middle">fencing</text>
+<text x="890" y="246" text-anchor="middle">traceId 贯穿</text>
+<text x="890" y="298" text-anchor="middle">租户隔离</text>
+<text class="m" x="890" y="702" text-anchor="middle">贯穿各层</text>
+<path class="l" d="M480 720V752"/><text class="m" x="490" y="742">各层只写入,不反向依赖</text>
+<rect class="z" x="12" y="756" width="936" height="110" rx="8"/>
+<text x="24" y="778" style="font-weight:500">外层支撑:审计与日志(旁路写入,业务层不读取)</text>
+<rect class="b" x="24" y="790" width="222" height="64" rx="6"/>
+<text x="135" y="814" text-anchor="middle">审计中心</text>
+<text class="m" x="135" y="832" text-anchor="middle">授权 · 工具调用 · 审批 · 租约</text>
+<rect class="b" x="254" y="790" width="222" height="64" rx="6"/>
+<text x="365" y="814" text-anchor="middle">对话日志</text>
+<text class="m" x="365" y="832" text-anchor="middle">消息 · 事件 · 工具结果摘要</text>
+<rect class="b" x="484" y="790" width="222" height="64" rx="6"/>
+<text x="595" y="814" text-anchor="middle">模型交互日志</text>
+<text class="m" x="595" y="832" text-anchor="middle">请求 · token · 耗时</text>
+<rect class="b" x="714" y="790" width="222" height="64" rx="6"/>
+<text x="825" y="814" text-anchor="middle">可观测性</text>
+<text class="m" x="825" y="832" text-anchor="middle">日志 · 追踪 · 指标 · 健康</text>
+</svg></div>
+<h4 class="rule">大分层:四个域</h4>
+<div class="scroll"><table class="tiers">
+<tr><th>域</th><th>包含的层</th><th>一句话</th><th>部署位置</th></tr>
+<tr><td>入口域</td><td>接入层、网关层</td><td>用户的请求进来,先认证、判断交给哪个 Agent</td><td>前端 + Router 进程</td></tr>
+<tr><td>控制面</td><td>应用层</td><td>平台决策:准入、任务、租约、审批、配置,并留下记录</td><td>Control 进程</td></tr>
+<tr><td>执行域</td><td>运行时层、执行层、能力层</td><td>Agent 真正干活的地方,以及它能用的业务能力和模型</td><td>运行时与执行层在 Worker 容器;能力层在 Control 进程内</td></tr>
+<tr><td>基础设施域</td><td>基础设施层</td><td>状态与外部依赖:数据库、对象存储、缓存、模型、日志</td><td>部署环境</td></tr>
+</table></div>
+<p><b>下层对上层透明。</b>上层只依赖下层暴露的契约,不知道下层的实现;下层不引用上层,结果和事件通过上层或 Contracts 定义的接口向上回传。分层是编译期依赖关系,与进程如何部署无关(能力层网关与应用层同在 Control 进程)。</p>
+<div class="scroll"><table>
+<tr><th>层</th><th>向上层暴露的契约</th><th>对上层隐藏的内容</th></tr>
+<tr><td>网关层</td><td>统一入口 API、路由结果</td><td>Engine 实例、哈希环、降级细节</td></tr>
+<tr><td>应用层</td><td><code>Run</code> API、<code>RuntimeEvent</code> 流</td><td>用的是哪种 runtime / harness、租约与存储实现</td></tr>
+<tr><td>运行时层</td><td><code>IRuntimeAdapter</code>(Create/Execute/Cancel/Restore/Dispose)</td><td>具体用哪个 harness、进程命令</td></tr>
+<tr><td>执行层</td><td>ACP 协议 + 标准 MCP 客户端行为</td><td>模型循环、上下文压缩、原生工具编排</td></tr>
+<tr><td>能力层</td><td>MCP 工具 schema + RunGrant 校验</td><td>C# 服务、DI、数据库、文件存储</td></tr>
+<tr><td>基础设施</td><td>Application / Capabilities 定义的仓储与存储接口</td><td>PostgreSQL / Redis / 对象存储的具体实现</td></tr>
+</table></div>
+<p>由此得到几条硬约束:Application 不出现 ACP / harness 类型;Runtime 不出现 Application 或数据库类型;Infrastructure 实现上层定义的接口,自己不被上层以具体类型引用;新增 harness 或存储实现时,上层代码不变。</p>
+<h3>调用与部署视图</h3>
+<div class="scroll">
+<svg viewBox="0 0 960 740" role="img" aria-label="调用与部署视图">
+<defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z"/></marker></defs>
+<rect class="b" x="16" y="16" width="200" height="44" rx="6"/>
+<text x="116" y="38" text-anchor="middle">前端 / SSO</text>
+<text class="m" x="116" y="54" text-anchor="middle">现有 Chat · 外部</text>
+<path class="l" d="M116 60V112"/>
+<rect class="z" x="16" y="70" width="200" height="456" rx="10"/>
+<text x="28" y="88" text-anchor="start" style="font-weight:500">Router 进程</text>
+<rect class="z" x="22" y="96" width="188" height="78" rx="6" style="stroke-dasharray:2 3"/>
+<text class="m" x="30" y="110" text-anchor="start">端点层</text>
+<rect class="b" x="28" y="118" width="176" height="48" rx="6"/>
+<text x="116" y="140" text-anchor="middle">Endpoints</text>
+<text class="m" x="116" y="156" text-anchor="middle">认证 · 转发</text>
+<rect class="z" x="22" y="182" width="188" height="78" rx="6" style="stroke-dasharray:2 3"/>
+<text class="m" x="30" y="196" text-anchor="start">路由层</text>
+<rect class="b" x="28" y="204" width="176" height="48" rx="6"/>
+<text x="116" y="226" text-anchor="middle">路由表</text>
+<text class="m" x="116" y="242" text-anchor="middle">一致性哈希 · 降级</text>
+<rect class="z" x="22" y="268" width="188" height="78" rx="6" style="stroke-dasharray:2 3"/>
+<text class="m" x="30" y="282" text-anchor="start">分类层</text>
+<rect class="a" x="28" y="290" width="176" height="48" rx="6"/>
+<text x="116" y="312" text-anchor="middle">IntentClassifier</text>
+<text class="m" x="116" y="328" text-anchor="middle">自有模型与密钥</text>
+<rect class="z" x="22" y="354" width="188" height="78" rx="6" style="stroke-dasharray:2 3"/>
+<text class="m" x="30" y="368" text-anchor="start">基础层</text>
+<rect class="b" x="28" y="376" width="176" height="48" rx="6"/>
+<text x="116" y="398" text-anchor="middle">Hosting</text>
+<text class="m" x="116" y="414" text-anchor="middle">Redis 路由 · Provider</text>
+<rect class="z" x="240" y="70" width="380" height="456" rx="10"/>
+<text x="252" y="88" text-anchor="start" style="font-weight:500">Control 进程(Engine.Host)· 受信网络</text>
+<rect class="z" x="246" y="96" width="368" height="78" rx="6" style="stroke-dasharray:2 3"/>
+<text class="m" x="254" y="110" text-anchor="start">接口层</text>
+<rect class="a" x="252" y="118" width="113" height="48" rx="6"/>
+<text x="309" y="140" text-anchor="middle">Chat 兼容 API</text>
+<text class="m" x="309" y="156" text-anchor="middle">事件→SSE · 审批</text>
+<rect class="a" x="373" y="118" width="113" height="48" rx="6"/>
+<text x="430" y="140" text-anchor="middle">Worker API</text>
+<text class="m" x="430" y="156" text-anchor="middle">claim · renew</text>
+<rect class="a" x="495" y="118" width="113" height="48" rx="6"/>
+<text x="551" y="140" text-anchor="middle">/mcp · /llm</text>
+<text class="m" x="551" y="156" text-anchor="middle">独立 audience</text>
+<rect class="z" x="246" y="182" width="368" height="78" rx="6" style="stroke-dasharray:2 3"/>
+<text class="m" x="254" y="196" text-anchor="start">应用层</text>
+<rect class="a" x="252" y="204" width="356" height="48" rx="6"/>
+<text x="430" y="226" text-anchor="middle">Application</text>
+<text class="m" x="430" y="242" text-anchor="middle">准入 · Run/Session · 租约 · RunGrant · 审批</text>
+<rect class="z" x="246" y="268" width="368" height="78" rx="6" style="stroke-dasharray:2 3"/>
+<text class="m" x="254" y="282" text-anchor="start">运行时层</text>
+<rect class="b" x="252" y="290" width="356" height="48" rx="6"/>
+<text x="430" y="312" text-anchor="middle">IRuntimeAdapter</text>
+<text class="m" x="430" y="328" text-anchor="middle">Contracts 契约 · 经 Worker 队列派发</text>
+<rect class="z" x="246" y="354" width="368" height="78" rx="6" style="stroke-dasharray:2 3"/>
+<text class="m" x="254" y="368" text-anchor="start">能力层</text>
+<rect class="a" x="252" y="376" width="113" height="48" rx="6"/>
+<text x="309" y="398" text-anchor="middle">MCP 网关</text>
+<text class="m" x="309" y="414" text-anchor="middle">验 RunGrant</text>
+<rect class="a" x="373" y="376" width="113" height="48" rx="6"/>
+<text x="430" y="398" text-anchor="middle">业务能力</text>
+<text class="m" x="430" y="414" text-anchor="middle">文件 · RAG · Skill</text>
+<rect class="a" x="495" y="376" width="113" height="48" rx="6"/>
+<text x="551" y="398" text-anchor="middle">模型网关</text>
+<text class="m" x="551" y="414" text-anchor="middle">短期 key · 转发</text>
+<rect class="z" x="246" y="440" width="368" height="78" rx="6" style="stroke-dasharray:2 3"/>
+<text class="m" x="254" y="454" text-anchor="start">基础设施层</text>
+<rect class="b" x="252" y="462" width="174" height="48" rx="6"/>
+<text x="339" y="484" text-anchor="middle">Infrastructure</text>
+<text class="m" x="339" y="500" text-anchor="middle">仓储 · 租约表 · 账本</text>
+<rect class="b" x="434" y="462" width="174" height="48" rx="6"/>
+<text x="521" y="484" text-anchor="middle">Hosting</text>
+<text class="m" x="521" y="500" text-anchor="middle">认证 · OTel</text>
+<rect class="z" x="644" y="70" width="300" height="456" rx="10"/>
+<text x="656" y="88" text-anchor="start" style="font-weight:500">Worker 容器(隔离边界由部署提供)</text>
+<rect class="z" x="650" y="96" width="288" height="78" rx="6" style="stroke-dasharray:2 3"/>
+<text class="m" x="658" y="110" text-anchor="start">宿主层</text>
+<rect class="a" x="656" y="118" width="134" height="48" rx="6"/>
+<text x="723" y="140" text-anchor="middle">Worker.Host</text>
+<text class="m" x="723" y="156" text-anchor="middle">租约 · 监督</text>
+<rect class="a" x="798" y="118" width="134" height="48" rx="6"/>
+<text x="865" y="140" text-anchor="middle">FileProxy</text>
+<text class="m" x="865" y="156" text-anchor="middle">工作文件 · 产物</text>
+<rect class="z" x="650" y="182" width="288" height="78" rx="6" style="stroke-dasharray:2 3"/>
+<text class="m" x="658" y="196" text-anchor="start">运行时层</text>
+<rect class="a" x="656" y="204" width="276" height="48" rx="6"/>
+<text x="794" y="226" text-anchor="middle">Runtime.Acp</text>
+<text class="m" x="794" y="242" text-anchor="middle">ACP client · compiler · manifest</text>
+<rect class="z" x="650" y="268" width="288" height="78" rx="6" style="stroke-dasharray:2 3"/>
+<text class="m" x="658" y="282" text-anchor="start">工作区层</text>
+<rect class="a" x="656" y="290" width="276" height="48" rx="6"/>
+<text x="794" y="312" text-anchor="middle">Workspace + Snapshot</text>
+<text class="m" x="794" y="328" text-anchor="middle">/workspace /state /tmp/run · 快照</text>
+<rect class="z" x="650" y="354" width="288" height="78" rx="6" style="stroke-dasharray:2 3"/>
+<text class="m" x="658" y="368" text-anchor="start">执行层</text>
+<rect class="b" x="656" y="376" width="276" height="48" rx="6"/>
+<text x="794" y="398" text-anchor="middle">Harness 进程树</text>
+<text class="m" x="794" y="414" text-anchor="middle">OpenCode · Gemini CLI · 可换</text>
+<rect class="z" x="650" y="440" width="288" height="78" rx="6" style="stroke-dasharray:2 3"/>
+<text class="m" x="658" y="454" text-anchor="start">边界</text>
+<rect class="z" x="656" y="462" width="276" height="48" rx="6"/>
+<text x="794" y="484" text-anchor="middle">无业务库 / Redis 凭证</text>
+<text class="m" x="794" y="500" text-anchor="middle">只持短期 RunGrant</text>
+<path class="l" d="M216 142H240"/>
+<text class="m" x="228" y="136" text-anchor="middle">HTTP</text>
+<path class="l" d="M644 142H620"/>
+<text class="m" x="632" y="136" text-anchor="middle">出站</text>
+<path class="l" d="M644 400H620"/>
+<text class="m" x="632" y="394" text-anchor="middle">MCP / LLM</text>
+<path class="l" d="M430.0 526V550"/>
+<rect class="b" x="240" y="552" width="380" height="52" rx="8"/>
+<text x="430" y="574" text-anchor="middle">存储与外部依赖</text>
+<text class="m" x="430" y="592" text-anchor="middle">PostgreSQL · 对象存储(含快照) · Redis · 模型 Provider</text>
+<path class="l" d="M480 604V626"/>
+<rect class="z" x="12" y="630" width="936" height="100" rx="8"/>
+<text x="24" y="652" style="font-weight:500">外层:审计与日志 · Control 写权威库,Router 与 Worker 经 OTLP 输出日志和追踪</text>
+<rect class="b" x="24" y="664" width="222" height="54" rx="6"/>
+<text x="135" y="688" text-anchor="middle">审计中心</text>
+<text class="m" x="135" y="706" text-anchor="middle">追加写 · PostgreSQL</text>
+<rect class="b" x="254" y="664" width="222" height="54" rx="6"/>
+<text x="365" y="688" text-anchor="middle">对话日志</text>
+<text class="m" x="365" y="706" text-anchor="middle">PostgreSQL + 对象存储</text>
+<rect class="b" x="484" y="664" width="222" height="54" rx="6"/>
+<text x="595" y="688" text-anchor="middle">模型交互日志</text>
+<text class="m" x="595" y="706" text-anchor="middle">模型网关写入</text>
+<rect class="b" x="714" y="664" width="222" height="54" rx="6"/>
+<text x="825" y="688" text-anchor="middle">可观测性</text>
+<text class="m" x="825" y="706" text-anchor="middle">OTLP → Collector</text>
+</svg>
+</div>
+<p class="sub">首版 3 个部署单元:Router、Control(Application + Gateway)、Worker。每个进程内部同样自上而下分层,层间依赖遵守第 4 节依赖规则;跨进程只经协议:HTTP(Chat API)、Worker 协议(第 6 节)、MCP。Worker 的出站箭头表示它主动连接 Control,Control 不连 Worker。</p>
+
+<h3>外层支撑:审计、对话日志与可观测</h3>
+<p class="plain">这是围在整个系统外面的"记录层"。各层只管往里写记录,不会读取这些记录来决定业务;这样业务代码不依赖日志系统,日志系统出问题也不会拖垮业务(下面写明哪些情况例外)。</p>
+<div class="scroll"><table>
+<tr><th>能力</th><th>记录什么</th><th>谁写入</th><th>存放</th><th>谁能查</th><th>注意</th></tr>
+<tr><td>审计中心</td><td>谁、何时、对哪个资源、做了什么、结果如何:准入与授权决策(含拒绝)、门禁卡签发与撤销、MCP 工具调用(OperationId、参数摘要、结果引用)、审批请求与决定、租约与 fencing 变更和拒绝、manifest 变更、文件下载/分享/删除</td><td>Application、Capabilities.Host</td><td>PostgreSQL 只追加表,不可修改;大结果存对象存储,表里留引用</td><td>租户管理员查本租户;平台安全人员可跨租户</td><td>harness 原生工具的内部步骤拿不到,必须在界面标注覆盖范围</td></tr>
+<tr><td>对话日志</td><td>用户消息、助手回复、工具调用与结果摘要、审批记录、附件引用,以及 runId、traceId、runtime 与版本。用于前端历史回看和问题复盘</td><td>Application(事件写入)</td><td>PostgreSQL(对应现有 ConversationRecords);大内容存对象存储</td><td>会话参与者看自己的会话;管理员按租户审查</td><td>含用户内容,随租户的保留期和删除策略治理。与审计分开:对话日志服务业务回看,审计服务合规追责</td></tr>
+<tr><td>模型交互日志</td><td>每次模型请求与响应的元数据:模型、token、耗时、错误;内容可开关</td><td>模型网关</td><td>现有 LlmInteractionLogs</td><td>平台排障</td><td>内容需脱敏;harness 原生登录模式下拿不到,需标注覆盖范围</td></tr>
+<tr><td>可观测性</td><td>日志(Serilog)、追踪(traceId 贯穿 Router → Control → Worker → harness → 网关)、指标(Prometheus)、健康检查</td><td>所有进程</td><td>经 OTLP 到部署环境提供的 Collector、日志与指标后端</td><td>运维</td><td>日志中不得出现密钥、门禁卡和完整用户内容</td></tr>
+<tr><td>安全事件与告警</td><td>授权拒绝、旧 generation 被拒、路径逃逸尝试、Worker 异常失联</td><td>各层产生,转为指标和审计记录</td><td>指标与审计表</td><td>运维、安全</td><td>告警规则由运维按指标配置</td></tr>
+</table></div>
+<h4 class="rule">记录层的规则</h4>
+<ul>
+<li><b>单向旁路。</b>Contracts 定义只写接口(<code>IAuditSink</code>、<code>IConversationLogWriter</code>),各层通过接口写入,实现在 Infrastructure。业务逻辑不读取审计表来做决定。</li>
+<li><b>写失败的处理分三档。</b>会修改数据的工具调用:审计写不进去就拒绝执行(失败关闭)。对话与事件:先持久化,再向用户回显最终状态。可观测性数据:丢失可接受,不阻塞业务。</li>
+<li><b>Worker 不直接写审计库。</b>它只回传事件,由 Control 统一赋序号入库;Worker 本身只输出日志和追踪。</li>
+<li><b>脱敏。</b>密钥、门禁卡、短期 key 永不入日志;审计里的参数只存摘要或哈希;对话内容的保留与删除跟随租户策略,备份一并治理。</li>
+<li><b>覆盖范围要说明白。</b>平台事件、网关调用、模型网关请求是完整记录;harness 原生工具与内部推理步骤只有通知级别的记录,界面和审计报告里要标注。</li>
+</ul>
+<h2>3. 模块划分与旧代码去向</h2>
+<p class="plain">"模块"就是一个独立的代码项目,每个只做一类事。这张表说明新方案要多出哪些项目,以及它们的代码从现有仓库的哪里搬过来。</p>
+<table>
+<tr><th>新模块</th><th>职责</th><th>起点(历史代码)</th></tr>
+<tr><td><code>Contracts/Runtime</code><br><span class="tag">改造</span></td><td>RunSpec、RuntimeBinding、RuntimeCapabilities、RuntimeEvent;纯契约,不引 MAF/ACP SDK</td><td>现 <code>Contracts/Runtime</code> 去掉 <code>AgentRuntimeProfile</code>/用户接口/文件对象</td></tr>
+<tr><td><code>OpenAgent.Application</code>(新)<br><span class="tag">新建(部分从 Core 迁出)</span></td><td>准入、Run/Session 协调、事件持久化、取消与恢复</td><td>从 <code>Core/Execution/AgentExecutor</code>、<code>Core/Conversation</code>(Store/Lock/History)、<code>Core/Security</code> 抽出</td></tr>
+<tr><td><code>OpenAgent.Runtime.Acp</code>(新)<br><span class="tag">新建</span></td><td>ACP RPC、能力协商、事件映射、各 harness 的配置 compiler</td><td>历史代码无;协议库先评估 <code>acp-csharp</code>(非官方,MIT)</td></tr>
+<tr><td><code>OpenAgent.Worker.Host</code>(新)<br><span class="tag">新建</span></td><td>领取 Run、租约、起停 adapter、回传事件</td><td>历史代码无;组装 Runtime.Acp 与工作区管理</td></tr>
+<tr><td><code>OpenAgent.Capabilities(.Host)</code>(新)<br><span class="tag">新建(业务逻辑从 Core 迁出)</span></td><td>MCP 网关;文件/RAG/Skill/C# 工具的 MCP wrapper</td><td><code>Core/Files</code>、<code>Capabilities/Rag</code>、<code>Capabilities/Skill</code>、<code>Tooling/Abstractions</code> 的业务部分;MCP SDK 1.4.1 已在包清单中</td></tr>
+<tr><td>Router</td><td>显式 Agent → 会话绑定 → 授权候选 → 独立分类 → 降级</td><td>保留;<code>RecognizeIntentAsync</code> 改为自有分类器</td></tr>
+<tr><td>Core(缩小)<br><span class="tag">改造</span></td><td>不再作为公共依赖</td><td>按上面逐块迁出后只剩兼容层,最后删除</td></tr>
+</table>
+<p>依赖方向保持:Contracts 最底层;Application、Runtime.*、Capabilities 只依赖 Contracts;Infrastructure/Hosting 在宿主处组合;Application 不引用任何 Runtime.*。用现有 <code>Architecture.Tests</code> 加规则锁住,不扩白名单。</p>
+
+<h2>4. 新项目目录与模块规划</h2>
+<p class="plain">把代码按职责分成不同文件夹和项目,并规定"谁可以调用谁"。目的是防止代码互相缠绕,以后换一个部件不用动其他部分。</p>
+<p>沿用现有约定:<code>OpenAgent.*</code> 前缀、<code>Backend/src</code> + <code>Backend/tests</code>、集中包管理、文档统一进 <code>docs/</code>。不重命名现有项目(避免无谓 diff):<code>Engine.Host</code> 在迁移期承担 Control 宿主角色,稳定后再决定是否改名。</p>
+<h3>目录结构图</h3>
+<p class="sub">每行依次是:目录、状态(已有 / 改造 / 新建 / 迁移 / 移除)、所在层、一句话职责。各项目细节见下方「项目总览」与「逐项目详解」,测试项目见「测试规划」表。</p>
+<div class="scroll"><pre class="tree">OpenAgent/
+├─ Backend/                                                            后端解决方案(.NET)
+│  ├─ src/                                                             生产代码,每个项目对应下表的一行
+│  │  ├─ OpenAgent.Contracts/                 <span class="tag">改造</span>         横切        各层共用的"语言":只放数据结构和接口,不含任何实现
+│  │  │  ├─ Runtime/                                                   运行规格、会话绑定、统一事件、IRuntimeAdapter、Worker 协议消息
+│  │  │  └─ Grants/                                                    RunGrant(门禁卡)、InvocationContext;Audit 与日志写入接口
+│  │  ├─ OpenAgent.Router/                    <span class="tag">已有</span>         网关层      入口:认证、路由、独立意图分类
+│  │  │  └─ Classification/                                            新增:自带模型与密钥的分类器,不再回调 Engine
+│  │  ├─ OpenAgent.Engine.Host/               <span class="tag">改造</span>         接口层      Control 进程的 HTTP 外壳和组合根,把多个模块装进一个进程
+│  │  │  ├─ Endpoints/ChatCompat/                                      旧聊天接口;把统一事件转成前端熟悉的 SSE
+│  │  │  ├─ Endpoints/WorkerApi/                                       Worker 的 hello / claim / renew / events / complete
+│  │  │  ├─ Endpoints/Approvals/                                       审批查询与决定
+│  │  │  └─ Composition/                                               唯一允许同时引用多个模块的地方
+│  │  ├─ OpenAgent.Application/               <span class="tag">新建</span>         应用层      承担原本 Core 的任务;平台中枢:准入、任务状态机、租约调度、事件入库、审批、恢复
+│  │  │  ├─ Admission/ Runs/ Sessions/                                 准入与能力匹配;任务生命周期;会话与固定绑定
+│  │  │  ├─ Leases/ Events/ Grants/                                    租约与 fencing、亲和调度;事件序号与入库;签发门禁卡
+│  │  │  └─ Abstractions/                                              存储接口(由 Infrastructure 实现),Application 不接触具体数据库
+│  │  ├─ OpenAgent.Engine/                    <span class="tag">已有</span>         应用层      现有 Redis 注册、心跳与配置热重载,保持原状;Agent 沿用现有配置并增加 runtime 选择字段
+│  │  ├─ OpenAgent.Runtime.Acp/               <span class="tag">新建</span>         运行时层    用 ACP 协议驱动外部 harness;每个 harness 一个配置编译器
+│  │  │  ├─ Protocol/ Events/ Recovery/                                协议握手与会话;ACP 通知转统一事件;resume 或 load 选择
+│  │  │  └─ Compilers/ Manifests/                                      OpenCode / Gemini CLI / Claude bridge 启动参数;允许启动的清单
+│  │  ├─ OpenAgent.Capabilities/              <span class="tag">新建</span>         能力层      业务能力本身:文件、RAG、Skill、C# 工具;与 MAF、MCP 无关
+│  │  │  ├─ Registry/ Invocation/                                      导出工具白名单;超时、结果大小、错误的统一策略
+│  │  │  └─ Files/ Rag/ Skills/ Ledger/                                从 Core 迁入的服务;写操作 OperationId 账本
+│  │  ├─ OpenAgent.Framework/                 <span class="tag">迁移</span>         基础设施层  由 Infrastructure 重命名而来;PostgreSQL、Redis、对象存储的具体实现
+│  │  │  ├─ Persistence/ Queue/                                        新增:任务、绑定、租约、事件、账本的存储;审计与对话日志存储;工作队列
+│  │  │  └─ Snapshots/ Migrations/                                     快照存储;新表迁移
+│  │  ├─ OpenAgent.Hosting/                   <span class="tag">移除</span>         迁移        将功能整合到现有的 Engine
+│  │  └─ OpenAgent.Core/                      <span class="tag">迁移</span>         过渡层      改名成 Application,Capabilities 和 Runtime.Acp 拆分出;MAF 执行路径保持原状
+│  └─ tests/                                                           每个新项目配一个测试项目,规划见下方「测试规划」表
+│     ├─ OpenAgent.Architecture.Tests/        <span class="tag">已有</span>                     分层依赖规则,违反即构建失败
+│     ├─ OpenAgent.Application.Tests/         <span class="tag">新建</span>                     状态机、租约、幂等、审批流转
+│     ├─ OpenAgent.Runtime.Acp.Tests/         <span class="tag">新建</span>                     用假 harness 测协议、断线、取消
+│     ├─ OpenAgent.Capabilities.Tests/        <span class="tag">新建</span>                     网关授权、伪造主体、路径逃逸
+│     ├─ OpenAgent.Worker.Tests/              <span class="tag">新建</span>                     双 Worker、失联、进程残留
+│     ├─ OpenAgent.Compatibility.Tests/       <span class="tag">新建</span>                     真实 harness 兼容验证,按环境开关运行
+│     └─ OpenAgent.*.Tests/                   <span class="tag">已有</span>                     其余现有测试:Contracts/Core/Engine/Hosting/Infrastructure/Router/Runner
+├─ Frontend/OpenAgent.Chat/                   <span class="tag">已有</span>         接入层      现有前端:冻结,仅补最小审批入口
+├─ deploy/                                                             部署:compose 增加 worker;harness 镜像按 digest 固定
+├─ docs/                                                               文档中心
+│  ├─ decisions/                                                       新增 ADR:依赖方向、运行时、门禁卡、隔离边界、快照、模型网关
+│  ├─ modules/                                                         每个新项目一个目录(源码目录不放 README)
+│  └─ overview/runtime-split/                                          本方案对应的设计文档落地处
+└─ scripts/ · AGENTS.md · global.json                                  更新模块结构、依赖说明与 SDK 版本</pre></div>
+<h3>项目总览:各自在哪一层、服务谁</h3>
+<div class="scroll"><table>
+<tr><th>项目</th><th>状态</th><th>所在层</th><th>服务对象</th></tr>
+<tr><td><code>OpenAgent.Contracts</code></td><td><span class="tag">改造</span></td><td>横切(所有层共用)</td><td>所有项目;它是各层之间唯一允许共享的&quot;语言&quot;</td></tr>
+<tr><td><code>OpenAgent.Router</code></td><td><span class="tag">已有 + 小改</span></td><td>网关层</td><td>前端 / 产品界面(入口流量);向下只调用 Control</td></tr>
+<tr><td><code>OpenAgent.Application</code></td><td><span class="tag">新建</span></td><td>应用层</td><td>Engine.Host(接口层)调用它;它向下只依赖 Contracts 和自己定义的存储接口</td></tr>
+<tr><td><code>OpenAgent.Engine</code></td><td><span class="tag">已有 + 去执行职责</span></td><td>应用层(现有配置)</td><td>Application 读取 Agent 配置</td></tr>
+<tr><td><code>OpenAgent.Engine.Host</code></td><td><span class="tag">改造</span></td><td>接口层 / Control 进程组合根</td><td>Router、前端、Worker、harness(经网关路由)</td></tr>
+<tr><td><code>OpenAgent.Runtime.Acp</code></td><td><span class="tag">新建</span></td><td>运行时层</td><td>Worker.Host(把它当 IRuntimeAdapter 使用)</td></tr>
+<tr><td><code>OpenAgent.Worker.Host</code></td><td><span class="tag">新建</span></td><td>运行时层宿主(Worker 进程)</td><td>Control(经 Worker 协议下发任务);向下调用 Runtime.Acp</td></tr>
+<tr><td><code>OpenAgent.Capabilities</code></td><td><span class="tag">新建(从 Core 迁入)</span></td><td>能力层</td><td>Capabilities.Host(经 MCP 暴露给 harness)</td></tr>
+<tr><td><code>OpenAgent.Capabilities.Host</code></td><td><span class="tag">新建</span></td><td>能力层接口(在 Control 进程内)</td><td>harness(MCP 与模型调用)</td></tr>
+<tr><td><code>OpenAgent.Infrastructure</code></td><td><span class="tag">已有 + 扩展</span></td><td>基础设施层</td><td>Application、Capabilities 定义的存储接口由它实现</td></tr>
+<tr><td><code>OpenAgent.Hosting</code></td><td><span class="tag">已有 + 扩展</span></td><td>横切(基础设施支撑)</td><td>各宿主进程</td></tr>
+<tr><td><code>OpenAgent.Core</code></td><td><span class="tag">改造(只减不增)</span></td><td>过渡层</td><td>Application、Capabilities 迁出期间的过渡引用</td></tr>
+</table></div>
+<p class="plain">"层"是上一节分层图里的层。"服务对象"指谁会调用它;一个项目只为紧挨着它上面的那一层提供服务,不跳层。</p>
+<h3>逐项目详解</h3>
+<p class="sub">文件名为拟定,用来确定职责边界,实施时可按实际调整;已有的文件标注"现有"。</p>
+<h3>OpenAgent.Contracts <span class="tag">改造</span> <span class="tag">横切(所有层共用)</span></h3>
+<table>
+<tr><th>服务对象</th><td style="white-space:normal">所有项目;它是各层之间唯一允许共享的&quot;语言&quot;</td></tr>
+<tr><th>核心职责</th><td style="white-space:normal">定义跨层的数据结构和接口:运行规格、绑定、事件、Worker 协议消息、门禁卡。只有定义,没有行为。</td></tr>
+<tr><th>对外暴露</th><td style="white-space:normal">IRuntimeAdapter、RuntimeEvent、RunSpec、RuntimeBinding、RunGrant、Worker 协议 DTO</td></tr>
+<tr><th>明确不做</th><td style="white-space:normal">不含任何实现;不引用 ACP/MCP SDK、EF、DI 容器</td></tr>
+<tr><th>可引用</th><td style="white-space:normal">无(最底层)</td></tr>
+</table>
+<div class="scroll"><pre class="tree">Runtime/                                                           运行时契约(在现有目录上改造)
+  RunSpec.cs                                                       一次运行的可序列化快照:谁、哪个会话、用哪个 runtime、manifest 版本
+  RuntimeBinding.cs                                                会话固定的 adapter/harness/version、stateRef、nativeSessionId
+  RuntimeCapabilities.cs                                           协商后的真实能力:load/resume、MCP 传输、取消、Skill 等
+  RuntimeEvent.cs                                                  统一事件:文本增量、工具调用、审批请求、状态变更(区分块级与逐条)
+  IRuntimeAdapter.cs                                               Create / Execute / Cancel / Restore / Dispose
+  WorkerProtocol/                                                  Hello、RunAssignment、LeaseRenew、EventBatch、Complete、WorkerDirective
+Grants/                                                            门禁卡
+Audit/                                                             审计事件与只写接口:IAuditSink · IConversationLogWriter
+  RunGrant.cs                                                      issuer/audience/subject/tenant/runId/会话/generation/过期时间
+  InvocationContext.cs                                             网关为每次调用构造的不可变上下文
+  IRunGrantSigner.cs / IRunGrantVerifier.cs                        签发与验签接口
+(现有)Authentication/ Files/ Mcp/ Rag/ Routing/ Security/ Skills/  保持原样</pre></div>
+<h3>OpenAgent.Router <span class="tag">已有 + 小改</span> <span class="tag">网关层</span></h3>
+<table>
+<tr><th>服务对象</th><td style="white-space:normal">前端 / 产品界面(入口流量);向下只调用 Control</td></tr>
+<tr><th>核心职责</th><td style="white-space:normal">接收请求,做认证,按&quot;显式 Agent → 会话绑定 → 授权候选 → 独立分类 → 降级&quot;选出目标 Agent,再转给 Control。</td></tr>
+<tr><th>对外暴露</th><td style="white-space:normal">与现有前端兼容的 HTTP/SSE 入口</td></tr>
+<tr><th>明确不做</th><td style="white-space:normal">不执行 Agent;不调用 Engine 的 /intent;分类不依赖业务模型配置</td></tr>
+<tr><th>可引用</th><td style="white-space:normal">Hosting、Contracts</td></tr>
+</table>
+<div class="scroll"><pre class="tree">Endpoints/                  入口端点(现有)
+Middleware/                 认证(现有)
+Routing/                    路由表、一致性哈希、会话粘性、降级(现有)
+Classification/             新增:独立意图分类
+  IIntentClassifier.cs      输出候选与置信度
+  ModelIntentClassifier.cs  用自己的模型与密钥分类
+  ClassifierOptions.cs      分类专用 Provider 与阈值
+Providers/                  改造:OpenAgentEngineProvider 去掉对 /intent 的调用</pre></div>
+<h3>OpenAgent.Application <span class="tag">新建</span> <span class="tag">应用层</span></h3>
+<table>
+<tr><th>服务对象</th><td style="white-space:normal">Engine.Host(接口层)调用它;它向下只依赖 Contracts 和自己定义的存储接口</td></tr>
+<tr><th>核心职责</th><td style="white-space:normal">平台的&quot;大脑中枢&quot;:准入、任务状态机、会话与绑定、租约和调度、事件入库、审批、取消与恢复、签发门禁卡。</td></tr>
+<tr><th>对外暴露</th><td style="white-space:normal">Run API(创建/取消/查询/审批)、事件流、Worker 调度入口(供 Worker API 使用)</td></tr>
+<tr><th>明确不做</th><td style="white-space:normal">不出现 ACP、harness 类型;不直接访问数据库或 Redis(经接口);不处理 HTTP</td></tr>
+<tr><th>可引用</th><td style="white-space:normal">Contracts</td></tr>
+</table>
+<div class="scroll"><pre class="tree">Admission/                                                                                                准入
+  AdmissionService.cs                                                                                     认证主体、会话 ACL、固定绑定校验
+  CapabilityMatcher.cs                                                                                    对照认证结果选 runtime,不满足即拒绝
+  IdempotencyGuard.cs                                                                                     Run 创建幂等
+Runs/                                                                                                     任务生命周期
+  RunStateMachine.cs                                                                                      Queued→Running→终态/AwaitingApproval/Interrupted
+  RunCoordinator.cs                                                                                       创建、派发、结算
+  CancelService.cs / RecoveryService.cs                                                                   取消;失联后从快照恢复与核对
+  ApprovalService.cs                                                                                      审批请求、超时、决定下发
+Sessions/                                                                                                 会话
+  SessionService.cs / RuntimeBindingService.cs                                                            会话与固定绑定
+  SnapshotCatalog.cs                                                                                      最新快照引用
+Leases/                                                                                                   租约
+  LeaseManager.cs                                                                                         会话租约、续期、撤销
+  FencingTokenIssuer.cs                                                                                   递增 generation
+  AffinityScheduler.cs                                                                                    同会话优先回同一 Worker
+Events/                                                                                                   事件
+  EventSequencer.cs / EventWriter.cs                                                                      序号、块合并后批量入库
+  ReplayDeduplicator.cs                                                                                   load 重放事件去重
+Grants/RunGrantIssuer.cs                                                                                  按 Run 签发门禁卡
+Abstractions/                                                                                             存储接口,由 Infrastructure 实现
+  IRunStore · IBindingStore · ILeaseStore · IEventStore · IWorkQueue · ISnapshotStore · IOperationLedger  </pre></div>
+<h3>OpenAgent.Engine <span class="tag">已有 + 去执行职责</span> <span class="tag">应用层(现有配置)</span></h3>
+<table>
+<tr><th>服务对象</th><td style="white-space:normal">Application 读取 Agent 配置</td></tr>
+<tr><th>核心职责</th><td style="white-space:normal">保持现有职责:Agent 配置存取、Redis 注册与配置热更新。Agent 配置里增加"使用哪个 runtime"字段,由 Application 在准入时读取;本方案不新增配置中心。</td></tr>
+<tr><th>对外暴露</th><td style="white-space:normal">现有配置读取接口</td></tr>
+<tr><th>明确不做</th><td style="white-space:normal">不再承担执行职责,不再启动 harness 或组装 AgentFactory</td></tr>
+<tr><th>可引用</th><td style="white-space:normal">Contracts</td></tr>
+</table>
+<div class="scroll"><pre class="tree">Config/             配置存取与热更新(现有)
+Registry/ · Redis/  实例注册、心跳(现有)</pre></div>
+<h3>OpenAgent.Engine.Host <span class="tag">改造</span> <span class="tag">接口层 / Control 进程组合根</span></h3>
+<table>
+<tr><th>服务对象</th><td style="white-space:normal">Router、前端、Worker、harness(经网关路由)</td></tr>
+<tr><th>核心职责</th><td style="white-space:normal">Control 进程的 HTTP 外壳:把请求翻译成对 Application 的调用,并把 Application、Engine、Capabilities.Host 组装到一个进程。</td></tr>
+<tr><th>对外暴露</th><td style="white-space:normal">聊天兼容 API(SSE)、Worker API、审批 API、/mcp 与 /llm 路由</td></tr>
+<tr><th>明确不做</th><td style="white-space:normal">不写业务规则;不引用 Runtime.Acp 与 Worker.Host</td></tr>
+<tr><th>可引用</th><td style="white-space:normal">Application、Engine、Capabilities.Host、Infrastructure、Hosting</td></tr>
+</table>
+<div class="scroll"><pre class="tree">Endpoints/ChatCompat/                        改造:旧聊天接口;SseEventAdapter 把 RuntimeEvent 转成现有前端 SSE 形态
+Endpoints/WorkerApi/                         新增:hello、claim、renew、events、complete
+Endpoints/Approvals/                         新增:审批查询与决定
+Composition/ControlCompositionExtensions.cs  进程内模块组装(唯一允许同时引用多模块处)
+Program.cs                                   启动与路由挂载</pre></div>
+<h3>OpenAgent.Runtime.Acp <span class="tag">新建</span> <span class="tag">运行时层</span></h3>
+<table>
+<tr><th>服务对象</th><td style="white-space:normal">Worker.Host(把它当 IRuntimeAdapter 使用)</td></tr>
+<tr><th>核心职责</th><td style="white-space:normal">与 harness 说 ACP:启动握手、新建/加载/恢复会话、发送提示、接收事件、处理反向权限请求;把平台配置编译成各 harness 的启动参数。</td></tr>
+<tr><th>对外暴露</th><td style="white-space:normal">AcpRuntimeAdapter(实现 IRuntimeAdapter)</td></tr>
+<tr><th>明确不做</th><td style="white-space:normal">不知道数据库、租户、门禁卡如何签发;不决定用哪个 harness(由 manifest 决定)</td></tr>
+<tr><th>可引用</th><td style="white-space:normal">Contracts、ACP 协议库</td></tr>
+</table>
+<div class="scroll"><pre class="tree">AcpRuntimeAdapter.cs                                                    实现 IRuntimeAdapter
+Protocol/                                                               ACP 协议
+  AcpConnection.cs                                                      双向 JSON-RPC,帧大小与队列限制
+  AcpSessionClient.cs                                                   initialize / session new / load / resume / prompt
+  PermissionRequestHandler.cs                                           反向权限请求 → 审批事件
+Events/AcpEventMapper.cs                                                ACP 通知 → RuntimeEvent
+Recovery/ResumeLoadStrategy.cs                                          按认证结果选 resume 或 load
+Compilers/                                                              每个 harness 一个编译器
+  IHarnessCompiler.cs                                                   命令、模型环境、Skill 目录、mcpServers
+  OpenCodeCompiler.cs · GeminiCliCompiler.cs · ClaudeBridgeCompiler.cs  
+Manifests/HarnessManifest.cs                                            清单模型;清单数据随部署发布</pre></div>
+<h3>OpenAgent.Worker.Host <span class="tag">新建</span> <span class="tag">运行时层宿主(Worker 进程)</span></h3>
+<table>
+<tr><th>服务对象</th><td style="white-space:normal">Control(经 Worker 协议下发任务);向下调用 Runtime.Acp</td></tr>
+<tr><th>核心职责</th><td style="white-space:normal">领取任务、持有会话租约、启动并监督 harness 进程树、回传事件、取消与自我隔离、上传与还原快照、代理工作文件、管理会话工作区布局与清理。隔离边界由部署的容器提供,代码内不含沙箱后端。</td></tr>
+<tr><th>对外暴露</th><td style="white-space:normal">无对外服务端口;只出站连接 Control</td></tr>
+<tr><th>明确不做</th><td style="white-space:normal">不引用 Infrastructure、Application;不持有业务库或 Redis 凭证;不决定用什么模型</td></tr>
+<tr><th>可引用</th><td style="white-space:normal">Runtime.Acp、Contracts、Hosting</td></tr>
+</table>
+<div class="scroll"><pre class="tree">Program.cs · WorkerOptions.cs  启动与配置
+Leasing/                       租约
+  ControlClient.cs             调用 Worker 协议的 HTTP 客户端
+  ClaimLoop.cs                 长轮询领取任务
+  LeaseKeeper.cs               定期续租、处理 cancel/revoke 指令
+  SelfFence.cs                 失联超过 TTL 即停止 harness
+Supervision/                   进程监督
+  RunSupervisor.cs             一次运行的生命周期
+  EventPump.cs                 事件缓冲、至少一次发送、等 ack
+  ProcessTreeKiller.cs         取消宽限后终止整棵进程树
+  StdioChannel.cs              与 harness 的长期双向通道
+FileProxy/                     安全打开工作文件、收集产物
+Workspace/                     SessionVolume:/workspace /state /tmp/run 布局、路径校验、清理
+Snapshot/                      SnapshotUploader · SnapshotRestorer</pre></div>
+<h3>OpenAgent.Capabilities <span class="tag">新建(从 Core 迁入)</span> <span class="tag">能力层</span></h3>
+<table>
+<tr><th>服务对象</th><td style="white-space:normal">Capabilities.Host(经 MCP 暴露给 harness)</td></tr>
+<tr><th>核心职责</th><td style="white-space:normal">平台业务能力本身:文件、RAG、Skill、C# 工具,以及统一的调用策略(超时、结果大小、错误)和写操作账本。与具体 AI 框架、MCP 都无关。</td></tr>
+<tr><th>对外暴露</th><td style="white-space:normal">能力服务接口、导出工具白名单</td></tr>
+<tr><th>明确不做</th><td style="white-space:normal">不引用 MCP SDK 或任何 AI 框架;不知道 HTTP</td></tr>
+<tr><th>可引用</th><td style="white-space:normal">Contracts</td></tr>
+</table>
+<div class="scroll"><pre class="tree">Registry/                  ICapabilitySource · CapabilityDefinition · ExportedToolCatalog(只导出批准的工具)
+Invocation/                ToolInvocationPolicy(超时/结果大小/错误)· ConcurrencyRules
+Files/                     FileAssetService · FileAccessPolicy · ArtifactPublisher
+Rag/                       RagService · CitationPolicy
+Skills/                    SkillCatalog · SkillPackageStore · SkillMounter
+Ledger/OperationLedger.cs  OperationId 与写操作幂等记录</pre></div>
+<h3>OpenAgent.Capabilities.Host <span class="tag">新建</span> <span class="tag">能力层接口(在 Control 进程内)</span></h3>
+<table>
+<tr><th>服务对象</th><td style="white-space:normal">harness(MCP 与模型调用)</td></tr>
+<tr><th>核心职责</th><td style="white-space:normal">对 harness 的两个窗口:MCP 网关和模型网关。每次调用都验门禁卡、查任务和租约是否有效、做授权和审计。</td></tr>
+<tr><th>对外暴露</th><td style="white-space:normal">/mcp(Streamable HTTP,stateless)、/llm</td></tr>
+<tr><th>明确不做</th><td style="white-space:normal">不保存&quot;当前用户&quot;状态;不引用 Runtime.* 与 Worker.Host</td></tr>
+<tr><th>可引用</th><td style="white-space:normal">Capabilities、Contracts、Hosting、Infrastructure、MCP SDK 1.4.1</td></tr>
+</table>
+<div class="scroll"><pre class="tree">Mcp/                                                             显式 WithTools 注册
+  FileTools.cs · RagTools.cs · SkillTools.cs · BusinessTools.cs  每类工具一个文件,调用 Capabilities
+Auth/                                                            门禁卡核验
+  RunGrantAuthenticationHandler.cs                               验签、audience、有效期
+  InvocationContextFactory.cs                                    构造不可变上下文
+  LeaseValidator.cs                                              校验 Run 与租约 generation 仍有效
+Llm/                                                             模型网关
+  ModelGatewayEndpoints.cs · ProviderRouter.cs                   转发到批准的 Provider
+  KeyIssuer.cs                                                   短期 key 签发
+Audit/ToolAuditWriter.cs                                         OperationId、参数摘要、结果引用、时延</pre></div>
+<h3>OpenAgent.Infrastructure <span class="tag">已有 + 扩展</span> <span class="tag">基础设施层</span></h3>
+<table>
+<tr><th>服务对象</th><td style="white-space:normal">Application、Capabilities 定义的存储接口由它实现</td></tr>
+<tr><th>核心职责</th><td style="white-space:normal">所有存储的具体实现:PostgreSQL、Redis、对象存储。</td></tr>
+<tr><th>对外暴露</th><td style="white-space:normal">实现上层定义的 IRunStore 等接口</td></tr>
+<tr><th>明确不做</th><td style="white-space:normal">不被上层以具体类型引用;不含业务规则</td></tr>
+<tr><th>可引用</th><td style="white-space:normal">Contracts(以及被实现的接口所在项目)</td></tr>
+</table>
+<div class="scroll"><pre class="tree">Persistence/                                       现有 EF Core 与迁移
+  Runs/ · Bindings/ · Leases/ · Events/ · Ledger/  新增:RunStore、BindingStore、LeaseStore(乐观并发)、EventStore、OperationLedgerStore
+Audit/                                             新增:AuditStore(只追加)· ConversationLogStore
+Queue/WorkQueue.cs                                 新增:持久化工作队列(Redis 仅作调度提示,不作唯一事实源)
+Snapshots/ObjectStoreSnapshotStore.cs              新增:状态快照存对象存储
+Migrations/                                        新增表:RuntimeBindings、Leases、OperationLedger、RunEvents</pre></div>
+<h3>OpenAgent.Hosting <span class="tag">已有 + 扩展</span> <span class="tag">横切(基础设施支撑)</span></h3>
+<table>
+<tr><th>服务对象</th><td style="white-space:normal">各宿主进程</td></tr>
+<tr><th>核心职责</th><td style="white-space:normal">共享的宿主能力:认证、Redis、OpenTelemetry 注册。</td></tr>
+<tr><th>对外暴露</th><td style="white-space:normal">依赖注入扩展方法</td></tr>
+<tr><th>明确不做</th><td style="white-space:normal">不含业务逻辑</td></tr>
+<tr><th>可引用</th><td style="white-space:normal">Contracts</td></tr>
+</table>
+<div class="scroll"><pre class="tree">Authentication/  现有
+Telemetry/       现有 OTel;新增 traceId 跨 Router→Control→Worker 传播
+Security/        新增:RunGrant 签名密钥管理、签发与验签注册</pre></div>
+<h3>OpenAgent.Core <span class="tag">改造(只减不增)</span> <span class="tag">过渡层</span></h3>
+<table>
+<tr><th>服务对象</th><td style="white-space:normal">Application、Capabilities 迁出期间的过渡引用</td></tr>
+<tr><th>核心职责</th><td style="white-space:normal">现有万能模块。本方案只把 Application、Capabilities 需要的部分迁出;现有 MAF 执行路径保持原状,不抽取、不演进。</td></tr>
+<tr><th>对外暴露</th><td style="white-space:normal">无新增</td></tr>
+<tr><th>明确不做</th><td style="white-space:normal">任何新项目不得引用</td></tr>
+<tr><th>可引用</th><td style="white-space:normal">Contracts</td></tr>
+</table>
+<div class="scroll"><pre class="tree">Execution/ Conversation/ Security/                                → Application
+Execution/AgentFactory · ModelProviders/ · MAF 适配               保持原状,不迁移
+Files/ Capabilities/{Rag,Skill} Tooling/{Abstractions,Discovery}  → Capabilities
+Capabilities/Mcp                                                  网关侧新写;现有客户端池留在 Core</pre></div>
+<h3>测试规划</h3>
+<p class="sub">每个新项目配一个测试项目,统一经 <code>dotnet test Backend/OpenAgent.sln</code> 运行;依赖真实环境的用例按环境开关执行,默认跳过。</p>
+<div class="scroll"><table>
+<tr><th>测试项目</th><th>状态</th><th>覆盖重点</th><th>说明</th></tr>
+<tr><td><code>OpenAgent.Architecture.Tests</code></td><td><span class="tag">已有 + 扩展</span></td><td>分层依赖规则</td><td>新增 Application、Runtime.*、Capabilities、Worker.Host 的引用规则;违反即构建失败,不扩白名单</td></tr>
+<tr><td><code>OpenAgent.Application.Tests</code></td><td><span class="tag">新建</span></td><td>应用层逻辑</td><td>Run 状态机、租约与 fencing、幂等创建、事件去重、审批流转</td></tr>
+<tr><td><code>OpenAgent.Runtime.Acp.Tests</code></td><td><span class="tag">新建</span></td><td>ACP 协议行为</td><td>用假 harness 测握手、事件映射、断线、取消、resume/load 选择</td></tr>
+<tr><td><code>OpenAgent.Capabilities.Tests</code></td><td><span class="tag">新建</span></td><td>网关安全</td><td>授权拒绝、伪造主体、路径逃逸、OperationId 账本幂等</td></tr>
+<tr><td><code>OpenAgent.Worker.Tests</code></td><td><span class="tag">新建</span></td><td>进程与故障</td><td>双 Worker 抢占、失联超 TTL 自隔离、进程树无残留</td></tr>
+<tr><td><code>OpenAgent.Compatibility.Tests</code></td><td><span class="tag">新建</span></td><td>真实 harness</td><td>用真实 harness 做端到端兼容验证;依赖真实环境,按环境开关运行</td></tr>
+<tr><td>其余现有测试项目</td><td><span class="tag">已有</span></td><td>保持</td><td>Contracts / Core / Engine / Hosting / Infrastructure / Router / Runner</td></tr>
+</table></div>
+
+<h3>其他目录</h3>
+<div class="scroll"><table>
+<tr><th>目录</th><th>内容</th><th>变化</th></tr>
+<tr><td><code>Backend/tests/</code></td><td>每个新项目配一个测试项目,规划见上方「测试规划」表</td><td>新增 5 个</td></tr>
+<tr><td><code>Frontend/OpenAgent.Chat/</code></td><td>现有前端</td><td>冻结;仅补最小审批入口</td></tr>
+<tr><td><code>deploy/</code></td><td>compose 增加 worker 服务;harness 镜像按 digest 固定</td><td>扩展</td></tr>
+<tr><td><code>docs/decisions/</code></td><td>新增 ADR:依赖方向、目标运行时、RunGrant、隔离边界、状态快照、模型网关</td><td>新增</td></tr>
+<tr><td><code>docs/modules/</code></td><td>每个新项目一个目录(沿用"源码目录不放 README")</td><td>新增</td></tr>
+</table></div>
+
+<h3>依赖规则(写进 Architecture.Tests)</h3>
+<p class="plain">规定"上层可以用下层,下层不能反过来用上层",并用自动测试检查。谁违反了,构建就会失败,不靠大家自觉。</p>
+<div class="scroll">
+<table>
+<tr><th>项目</th><th>可以引用</th><th>禁止引用</th></tr>
+<tr><td>Contracts</td><td>无</td><td>MAF、ACP SDK、MCP SDK、EF、DI 实例</td></tr>
+<tr><td>Application</td><td>Contracts</td><td>Runtime.*、Core、Infrastructure</td></tr>
+<tr><td>Runtime.Acp</td><td>Contracts、ACP 协议库</td><td>Application、Core</td></tr>
+<tr><td>Capabilities</td><td>Contracts</td><td>Runtime.*、MCP SDK</td></tr>
+<tr><td>Capabilities.Host</td><td>Capabilities、Contracts、Hosting、Infrastructure、MCP SDK</td><td>Runtime.*、Worker.Host</td></tr>
+<tr><td>Worker.Host</td><td>Runtime.Acp、Contracts、Hosting</td><td>Infrastructure(业务库)、Capabilities.Host、Application</td></tr>
+<tr><td>Engine.Host</td><td>Application、Engine、Capabilities.Host、Infrastructure、Hosting</td><td>Runtime.Acp、Worker.Host</td></tr>
+<tr><td>Router</td><td>Hosting、Contracts</td><td>Engine、Core、Application</td></tr>
+<tr><td>Core</td><td>Contracts(现状)</td><td>新项目引用它;迁出期间 Application、Capabilities 的代码迁移所需除外</td></tr>
+</table></div>
+<p>Worker.Host 不引用 Infrastructure,是为了让它拿不到业务库和 Redis 管理凭证:它只通过 Control 的 Run 接口和网关通信。这条规则要用架构测试固化,不靠约定。</p>
+
+<h3>部署单元与进程</h3>
+<table>
+<tr><th>单元</th><th>承载项目</th><th>信任域</th></tr>
+<tr><td>Router</td><td>OpenAgent.Router</td><td>入口,可公网</td></tr>
+<tr><td>Control</td><td>Engine.Host(Application + Engine + Capabilities.Host)</td><td>受信平台网络,持有数据库/对象存储凭证</td></tr>
+<tr><td>Worker</td><td>Worker.Host + Runtime.Acp</td><td>隔离容器,只持短期 RunGrant</td></tr>
+</table>
+
+<h2>5. 关键设计决策</h2>
+<p class="plain">下面每一条都是一条"不能含糊的规矩",解释了为什么系统必须这样做。团队过方案时,重点看每条的理由有没有漏洞。</p>
+<div class="card"><ol>
+<li><b>双层状态。</b>平台会话/Run 存 PostgreSQL(历史、审计、裁决);harness 原生状态存独立持久卷。<code>RuntimeBinding</code> 记录 adapter/harness/version/nativeSessionId/workspaceId/stateRef/租约 generation,不只存 ACP sessionId。</li>
+<li><b>身份走 RunGrant,不走模型参数。</b>短期 token 绑定 subject/tenant/runId/workspaceId/leaseGeneration/expiresAt;网关每请求验签并查活动 Run,构造不可变 InvocationContext。<code>McpClientPool</code> 现按 tenant+url 共享,带用户委托的连接不能沿用。</li>
+<li><b>fencing 在写入端检查。</b>租约失效的旧 Worker 必须在状态写入、MCP 写工具、产物发布和工作卷写入处被拒,Redis 锁本身挡不住它的副作用。</li>
+<li><b>失败不自动重发 prompt。</b>平台记录 OperationId、动作、资源、批准与结果;有幂等才重试,结果不明则核对。原生状态丢失就要求新会话,不悄悄把历史灌给另一个 harness。</li>
+<li><b>runtime 选择固定到会话。</b>新会话可选 runtime;老会话绑定不变。切换只能显式新建会话并带授权摘要。</li>
+<li><b>租约绑会话,不绑单次 Run。</b>同一会话同一时刻只有一个活动轮次;Worker 持有会话租约直到空闲回收或被撤销,fencing generation 随会话租约递增。</li>
+<li><b>状态位置:会话亲和 + 快照。</b>调度优先把同一会话派回同一 Worker;每轮结束把原生状态与必要工作文件快照到对象存储,<code>stateRef</code> 指向最新快照。Worker 失联后在另一台 Worker 从快照恢复,不依赖本机盘。</li>
+<li><b>模型经平台模型网关。</b>平台编译模式下,harness 持短期 key 访问 Control 内的模型网关,密钥不进 Worker 容器;撤销和转发都在网关完成。Worker 容器出网只放行模型网关和 MCP 网关两个地址。harness 原生登录模式保留,不用于多租户。</li>
+<li><b>审批是一等状态。</b>ACP 反向权限请求映射为 <code>AwaitingApproval</code>,Control 提供审批 API 和超时/拒绝策略;决定经续租响应下发给 Worker。前端仅补最小审批入口。</li>
+<li><b>Admission 做能力匹配。</b>会话需要的 MCP 传输、load/resume、Skill 装载、文件回调,对照每个 <code>(harness, version)</code> 的认证结果选 runtime,不满足直接拒绝,不等运行时失败。认证结果是随部署发布的 manifest 数据。</li>
+<li><b>Control 多副本:会话固定副本。</b>Router 按会话把请求固定到同一 Control 副本,事件不做跨副本扇出;副本宕机后会话重新绑定,从持久化事件补发。</li>
+<li><b>事件按粒度入库。</b>增量事件按块合并后批量写;完整消息、工具调用、状态变更逐条写,以后者为权威记录。事件契约里显式区分两类。</li>
+<li><b>harness 版本不可变。</b>Worker 镜像固定 digest,运行时禁止联网安装或自动升级;manifest 记录版本与兼容指纹。升级先让少量租户的新会话切换,老会话保持原版本。</li>
+<li><b>RunGrant 同进程也走 HTTP 验签。</b>Control 用私钥签发,网关用公钥验证,harness 仍通过 <code>/mcp</code> HTTP 路径调用,不在内存里直接校验。这样路径与生产一致,将来拆出网关不改协议。</li>
+<li><b>traceId 贯穿全链路。</b>Router → Control → Worker → harness → 网关用现有 OTel 传播;RunId、OperationId 作为日志与审计的公共关联键。</li>
+<li><b>旧 API 兼容映射有明确归属。</b><code>RuntimeEvent</code> 到现有前端 SSE 的转换放在 <code>Engine.Host</code> 兼容 API 中,并用契约测试锁定当前前端的事件形态,前端冻结期间不漂移。</li>
+<li><b>隔离靠部署边界。</b>Worker 运行在容器里,容器是隔离边界(独立 HOME/XDG、出网白名单、资源限制),代码内不再包含沙箱后端。harness 的原生 Bash/读写能绕过 C# wrapper,所以完整进程树必须在同一容器内,ACP 权限回调只是附加策略。容器与会话的对应关系(一容器一会话,还是复用)待确定。</li>
+</ol></div>
+
+<h2>6. Worker 协议</h2>
+<p class="plain">Worker(工作间)和 Control(总务处)之间用什么"对讲规则"沟通:怎么领任务、怎么证明自己还活着、怎么汇报进展、怎么被叫停。规则越清楚,出故障时越容易判断谁对谁错。</p>
+<p>Worker 不引用 Application 和 Infrastructure,所以它与 Control 之间只有一条窄协议。协议 DTO 放在 <code>Contracts/Runtime/WorkerProtocol</code>;Control 侧端点在 <code>Engine.Host</code> 的 Worker API,客户端在 <code>Worker.Host/Leasing</code>。传输沿用现有 HTTP + JSON,事件批量用 NDJSON;只有压测证明不够时才考虑 gRPC。</p>
+<h3>设计原则</h3>
+<p class="plain">Worker 只主动打电话给 Control,Control 从不打电话给 Worker。这样隔离区不需要对外开任何门。</p>
+<div class="card"><ol>
+<li><b>Worker 只出站,不开入站端口。</b>Control 不需要知道 Worker 地址,Worker 位于隔离网络时不用开放反向入口。</li>
+<li><b>所有控制指令搭在租约续期的响应里。</b>取消、撤销、排空都不是 Control 主动推送,而是 Worker 在续租或长轮询时拿到。</li>
+<li><b>事件至少一次、按序号去重。</b>Worker 本地缓冲事件并带 <code>(runId, seq)</code>,Control 去重并回 <code>ackedSeq</code>,Worker 收到 ack 前不丢弃。</li>
+<li><b>每个请求都带 fencing generation。</b>Control 发现过期 generation 返回 409,Worker 必须立即终止对应进程树。</li>
+<li><b>租约属于会话。</b>续租、fencing generation、取消都以会话为单位;领取时 Control 优先派给持有该会话快照或热状态的 Worker。</li>
+<li><b>租约到期即自我隔离。</b>Worker 超过 TTL 联系不上 Control,必须自行停止 harness,不能继续执行并产生无人记录的副作用。</li>
+</ol></div>
+<h3>消息</h3>
+<div class="scroll"><table>
+<tr><th>操作</th><th>方向与路径(建议)</th><th>载荷要点</th></tr>
+<tr><td>注册 / 心跳</td><td>Worker → Control <code>POST /worker/v1/hello</code></td><td>workerId、容量(并发会话数)、支持的 adapter/harness/version 清单、isolation profile</td></tr>
+<tr><td>领取</td><td>Worker → Control <code>POST /worker/v1/runs:claim</code>(长轮询)</td><td>返回 RunAssignment:runId、fencing generation、RunSpec 快照、RuntimeBinding、stateRef(最新快照)、workspaceRef、RunGrant、模型网关短期 key、deadline;带 claimId,重试返回同一分配</td></tr>
+<tr><td>续租</td><td>Worker → Control <code>POST /worker/v1/runs/{id}/lease:renew</code></td><td>请求带 generation;响应带指令:continue、cancel、revoke、drain、approval-decision</td></tr>
+<tr><td>事件</td><td>Worker → Control <code>POST /worker/v1/runs/{id}/events</code></td><td>fromSeq + 事件批;load 重放事件带 <code>replay=true</code>;响应 ackedSeq</td></tr>
+<tr><td>审批</td><td>Worker → Control(事件流中的 <code>approval-request</code>)</td><td>动作、资源、参数摘要、超时;Control 把决定经续租响应回传;超时按拒绝处理</td></tr>
+<tr><td>结束</td><td>Worker → Control <code>POST /worker/v1/runs/{id}/complete</code></td><td>状态(成功/失败/取消/等待批准)、binding 更新、新快照引用</td></tr>
+</table></div>
+<h3>时序</h3>
+<pre class="mermaid">
+%%{init: {"themeVariables": {"fontFamily": "Charter, Noto Serif SC, Georgia, serif"}}}%%
+sequenceDiagram
+    participant C as Control
+    participant W as Worker.Host
+    participant H as Harness
+    participant G as MCP 网关(Control 内)
+    W->>C: claim(长轮询)
+    C-->>W: RunAssignment(generation=7, RunGrant)
+    W->>H: 启动并 initialize / session new 或 load
+    W->>C: events(seq 1..n)
+    C-->>W: ackedSeq
+    H->>G: MCP 调用(带 RunGrant)
+    G-->>H: 结果
+    loop 每 TTL/3
+        W->>C: lease:renew(generation=7)
+        C-->>W: continue 或 cancel
+    end
+    W->>H: 收到 cancel → 终止
+    W->>C: complete(Cancelled)
+</pre>
+<h3>Run 状态</h3>
+<p class="plain">一次任务(Run)会经历排队、领取、运行,最后是成功、失败、取消、等待批准或"中断待核对"。"中断待核对"表示工作间突然失联,系统不知道最后一步有没有做完,必须先核对再继续,不能直接重做。</p>
+<div class="scroll"><table>
+<tr><th>状态</th><th>进入条件</th><th>出口</th></tr>
+<tr><td>Queued</td><td>Admission 通过(含能力匹配)</td><td>Claimed</td></tr>
+<tr><td>Claimed → Running</td><td>领取成功;binding 已持久化后才提交 prompt</td><td>Succeeded / Failed / Cancelled / AwaitingApproval / Interrupted</td></tr>
+<tr><td>Interrupted</td><td>租约到期未续;结果待核对</td><td>确认旧进程停止、旧 generation 被拒后,从最近快照在另一 Worker 恢复;结果不明的写操作人工或业务核对;不自动重发 prompt</td></tr>
+</table></div>
+<h3>建议初值(待压测,不是结论)</h3>
+<p>租约 TTL 30 秒,续期间隔 TTL 的三分之一;长轮询 25 秒;取消先发终止信号,宽限期后终止整棵进程树并回报。以上数值只是起点,以真实运行的实测为准。</p>
+<h3>必须验证</h3>
+<ul>
+<li>续期丢包、Control 重启、Worker 断网超过 TTL:harness 被自行停止,无残留子进程。</li>
+<li>旧 Worker 在被取代后继续发事件、写产物、调写工具:全部被拒。</li>
+<li>claim 重试、事件重复发送:无重复 Run、无重复事件。</li>
+<li>取消与完成同时到达:状态只收口一次。</li>
+</ul>
+
+<h2>7. 风险与待验证项</h2>
+<p class="plain">这里列的是我们目前没有把握的地方,需要先验证或做决定,不是已经发生的问题。</p>
+<div class="card"><ol>
+<li><b class="warn">Gateway 并入 Control 的代价。</b>同进程后,网关与业务服务共享故障域和扩缩容;靠独立路由、独立 audience 和独立授权策略隔离,代码层面仍是独立项目(Capabilities.Host),保留以后拆出的可能。出现独立扩缩容或信任域需求时再拆。</li>
+<li><b class="bad">.NET 8 即将停止支持。</b>仓库为 .NET 8(<code>global.json</code>、<code>Directory.Build.props</code>)。微软公告:.NET 8 与 .NET 9 均在 2026-11-10 结束支持,之后不再有安全更新;.NET 10 为 LTS。目标运行时定为 .NET 10(见决策记录)。MAF、MCP SDK 1.4.1、EF Core、ACP 协议库是否都支持 .NET 10 尚未验证,需在升级时逐一确认。</li>
+<li><b class="warn">ACP C# SDK 是非官方的。</b>nuskey8/acp-csharp 个人维护,先做恢复、反向权限、断线取消的验证再决定是否替换现有协议代码;协议库必须封在 <code>Runtime.Acp</code> 内,契约不暴露其类型。</li>
+<li><b class="warn">harness 能力不对齐。</b>DeepSeek Harness 只支持 resume、不支持 load,且为 developer preview;OpenCode 预览只支持 load。"自由切换 harness"只在认证过的能力矩阵内成立,不是通用承诺。</li>
+<li><b class="warn">审计有缺口。</b>harness 内部模型步骤和原生工具的完整输入输出拿不到。必须强审计的业务动作只能走网关,需在产品层说明覆盖范围。</li>
+<li><b class="warn">隔离强度取决于部署。</b>取消沙箱后端后,不同会话之间的隔离完全依赖容器配置:挂载范围、出网限制、资源上限、一容器对应几个会话。这些要在部署规范里写死并用反例验证(两租户同名会话、越界路径、原生 HOME 泄漏),否则隔离只停留在设计上。</li>
+<li><b class="warn">容量与冷启动未知。</b>隔离由容器提供,若采用一容器一会话且不跨租户复用,新会话会有冷启动延迟和固定内存占用。单会话启动耗时、单机并发上限、空闲回收时间需要实测,结果决定是否做同租户内的 warm 池,也影响成本估算。</li>
+<li><b>前端冻结的代价。</b>保持旧 API 兼容意味着需要兼容层(G05),长期要维护两套语义;应在 ADR 里写明退出条件。</li>
+</ol></div>
+
+<h2>8. 决策记录</h2>
+<p class="plain">已经拍板的事项,每一项都写了理由和例外。想推翻某一条时,从理由开始讨论。</p>
+<table>
+<tr><th>议题</th><th>决定</th><th>理由与例外</th></tr>
+<tr><td>PR #229 的 ACP 预览代码</td><td><b>不复用。</b>在本地 main 上按本方案自行实现;#229 只作设计输入和测试用例来源。</td><td>它不在本地仓库,无法评审;文档已指出它在 Engine 进程内启动 harness、<code>mcpServers</code> 为空、混有 OpenCode 专用配置,与目标分层相反。例外:协议帧限制、失败分类、事件映射等独立小块,经评审后可逐块移植,不整体合并。</td></tr>
+<tr><td>Capability Gateway 部署位置</td><td><b>首版并入 Control 进程</b>,代码上保持独立项目 <code>Capabilities.Host</code>。</td><td>网关与业务服务同属受信域,单独部署只增加运维面,不增加隔离。拆分条件:出现独立扩缩容或独立信任域需求。</td></tr>
+<tr><td>目标运行时</td><td><b>.NET 10(LTS)。</b>升级与功能改动分开提交。</td><td>.NET 8 于 2026-11-10 结束支持(<a href="https://devblogs.microsoft.com/dotnet/dotnet-8-9-end-of-support/">微软公告</a>)。与重构混在一起会让回归无法定位。例外:若关键依赖(如 MAF)尚不支持 .NET 10,对该依赖单独评估,不阻塞其余升级。</td></tr>
+<tr><td>隔离边界</td><td><b>由部署的容器提供</b>,代码内不含沙箱后端;现有 MAF 执行路径保持原状,不纳入本方案演进。</td><td>范围收敛:沙箱后端与 MAF 适配属于长远规划。代价:隔离强度取决于容器配置,见风险。</td></tr>
+<tr><td>Worker 传输协议</td><td><b>HTTP + JSON,事件批量用 NDJSON</b>,Worker 出站拉取。</td><td>沿用现有技术栈,足够首版。仅当压测证明不够时再评估 gRPC。</td></tr>
+<tr><td>审计与对话日志</td><td><b>作为外层旁路记录层</b>:审计中心、对话日志、模型交互日志、可观测性分开存放,各层只写不读。</td><td>业务不依赖日志系统,日志出问题不拖垮业务。例外:会修改数据的工具调用,审计写失败则拒绝执行。</td></tr>
+<tr><td>配置中心</td><td><b>不新建配置中心(取消 Matrix 配置)。</b>Agent 沿用 Engine 现有配置,增加 runtime 选择字段;harness 清单(manifest)作为随部署发布的静态数据。</td><td>范围收敛。代价:没有按配置版本做快照与回滚的能力,runtime 清单变更走部署发布;Run 创建时记录当时的 manifest 版本用于追溯。</td></tr>
+<tr><td>现有项目重命名</td><td><b>不重命名。</b><code>Engine.Host</code> 兼任 Control 宿主。</td><td>避免无谓 diff;稳定后再决定。</td></tr>
+<tr><td>首批认证的 harness</td><td><b>OpenCode 先认证,Gemini CLI 作为第二个。</b>DeepSeek Harness 仅试验,Claude bridge 仅 LocalTrusted 预览。</td><td>两者为开源且文档已核对 ACP 入口;DSH 不支持 load 且为开发者预览;Claude 继承宿主登录不能作为生产身份方案。</td></tr>
+</table>
+<p class="sub">这些是架构层面的决定,可被推翻。排期与人力不在本页范围,架构确认后另行规划。</p>
+
+<h2>术语表</h2>
+<p class="plain">按字母和类别大致排列。看不懂的词先在这里找。</p>
+<div class="scroll"><table>
+<tr><th>术语</th><th>通俗解释</th><th>在本方案里的作用</th></tr>
+<tr><td>Agent</td><td>能听懂任务、自己拆步骤、调用工具完成工作的 AI 助手</td><td>用户面对的"智能体"</td></tr>
+<tr><td>harness</td><td>"AI 工作台":把大模型、工具调用、上下文管理组装在一起、真正去干活的程序。OpenCode、Gemini CLI 都是</td><td>被平台启动、可替换的"顾问"</td></tr>
+<tr><td>ACP</td><td>Agent Client Protocol。平台和 harness 之间约定好的"对话格式",像插头标准,换任何符合标准的 harness 都能插上</td><td>让平台不必为每个 harness 单独写一套对接</td></tr>
+<tr><td>MCP</td><td>Model Context Protocol。AI 调用外部工具的统一格式,像给工具装了统一插座</td><td>让 harness 通过窗口使用平台里的 C# 函数</td></tr>
+<tr><td>MAF</td><td>Microsoft Agent Framework。现有系统里自带的 AI 执行框架</td><td>现有路径保持原状,本方案不演进它</td></tr>
+<tr><td>Router</td><td>入口网关,负责路由和判断该交给哪个 Agent</td><td>"前台"</td></tr>
+<tr><td>Control</td><td>平台控制面进程,管身份、会话、任务、权限、记录</td><td>"总务处"</td></tr>
+<tr><td>Worker</td><td>真正执行任务的进程,运行在隔离环境里</td><td>"工作间"的管理者</td></tr>
+<tr><td>隔离容器 / 沙箱</td><td>容器是一个受限的隔离环境,里面的程序看不到别的会话的文件,也不能随便上网</td><td>由部署提供隔离边界,代码内不含沙箱后端</td></tr>
+<tr><td>租户</td><td>一个独立的客户或组织,它们的数据必须互相看不见</td><td>所有隔离措施的边界</td></tr>
+<tr><td>会话 / Run</td><td>会话是一次完整对话;Run 是会话中的一轮任务(用户发一条消息触发一次)</td><td>租约按会话,状态按 Run</td></tr>
+<tr><td>RuntimeBinding</td><td>记录"这个会话固定使用哪个 harness、哪个版本、状态存在哪里"的绑定关系</td><td>续聊时找到同一个执行器和状态</td></tr>
+<tr><td>RunGrant</td><td>发给这次任务的临时门禁卡:写明用户、租户、任务、有效期</td><td>MCP 网关和模型网关靠它判断"你有没有资格"</td></tr>
+<tr><td>租约(lease)</td><td>Worker 对一个会话的"临时占用权",要定期续期,到期没续就被收回</td><td>防止两个 Worker 同时处理同一个会话</td></tr>
+<tr><td>fencing token(generation)</td><td>每次租约更换时递增的编号。旧编号的请求一律拒绝</td><td>即使旧 Worker 还活着,它写的任何东西都会被挡住</td></tr>
+<tr><td>快照</td><td>把 harness 的内部状态和工作文件在某一刻"拍照"存进对象存储</td><td>Worker 坏了,换一台 Worker 从快照继续</td></tr>
+<tr><td>亲和调度</td><td>尽量把同一个会话派回同一台 Worker</td><td>减少还原快照的开销</td></tr>
+<tr><td>热状态 / 冷启动</td><td>热状态是进程还在内存里;冷启动是进程要从头启动,会慢一些</td><td>决定新会话的响应速度</td></tr>
+<tr><td>事件(RuntimeEvent)</td><td>harness 干活过程中产生的每个动作记录:输出文字、调用工具、请求批准等</td><td>用来实时显示、入库和审计</td></tr>
+<tr><td>SSE</td><td>服务器向浏览器持续推送消息的一种方式,聊天里一个字一个字出现靠它</td><td>现有前端继续使用</td></tr>
+<tr><td>长轮询</td><td>Worker 发一个请求,Control 没有新任务就先不回,有了再回</td><td>让 Worker 不用频繁询问</td></tr>
+<tr><td>NDJSON</td><td>一行一条记录的文本格式,适合分批发送大量事件</td><td>Worker 回传事件用</td></tr>
+<tr><td>幂等 / OperationId</td><td>同一个操作重复执行也不会产生重复后果。OperationId 是给每次写操作发的唯一编号,用来判断"做过了没有"</td><td>故障恢复时避免重复写数据</td></tr>
+<tr><td>审批(AwaitingApproval)</td><td>harness 想做敏感操作时先暂停,等人点批准或拒绝</td><td>写数据、删文件等风险动作的把关</td></tr>
+<tr><td>能力网关 / MCP 网关</td><td>harness 访问平台业务功能的唯一窗口,每次调用都核验门禁卡并记录</td><td>保留现有 C# 函数且保证权限</td></tr>
+<tr><td>模型网关</td><td>harness 访问大模型的唯一通道,负责发短期密钥并转发请求</td><td>密钥不进容器,费用可控</td></tr>
+<tr><td>manifest / compiler</td><td>manifest 是"允许启动哪些 harness、什么版本"的清单;compiler 把平台配置翻译成某个 harness 能读懂的设置</td><td>新增 harness 主要改这两处</td></tr>
+<tr><td>Skill</td><td>一组教 AI 做某类任务的说明和脚本</td><td>以只读方式挂进 Worker 容器</td></tr>
+<tr><td>RAG</td><td>先检索知识库、再让 AI 参考检索结果回答</td><td>作为 knowledge_search 工具提供</td></tr>
+<tr><td>audience</td><td>令牌上写明"这张卡只能在哪个服务使用"</td><td>防止拿 A 服务的卡去用 B 服务</td></tr>
+<tr><td>stateless</td><td>服务端不记住上一次请求,每次请求都带齐身份信息</td><td>MCP 网关每次调用重新验身份</td></tr>
+<tr><td>审计 / 审计中心</td><td>记录“谁在何时对什么资源做了什么、结果如何”,只追加、不可改,用于追责和合规</td><td>授权、工具调用、审批、租约变更都写入</td></tr>
+<tr><td>对话日志</td><td>用户与 Agent 的完整对话和过程记录,用于回看和复盘</td><td>与审计分开:一个服务业务,一个服务合规</td></tr>
+<tr><td>失败关闭 (fail-closed)</td><td>安全相关的记录写不进去时,宁可拒绝操作,也不放行</td><td>会修改数据的工具调用适用</td></tr>
+<tr><td>脱敏</td><td>把密钥、个人敏感信息等从日志里去掉或打码</td><td>所有日志与审计</td></tr>
+<tr><td>traceId / OTel</td><td>给一次请求编的追踪号,跨所有服务传递。OTel 是业界通用的追踪与监控标准</td><td>出问题时能把各处日志串起来</td></tr>
+<tr><td>ADR</td><td>架构决策记录:把"为什么这样定"写成短文档存档</td><td>避免以后没人记得原因</td></tr>
+<tr><td>架构测试</td><td>自动检查"谁引用了谁"是否违反规定的测试</td><td>用机器守住分层规则</td></tr>
+<tr><td>.NET 8 / 10</td><td>后端使用的开发平台版本。.NET 8 到 2026-11-10 停止安全更新</td><td>目标升级到 .NET 10</td></tr>
+</table></div>
+
+<p class="sub" style="margin-top:36px">来源:docs/overview/runtime-split/{DESIGN,SESSIONS,MCP,REFERENCES}.md、docs/planning/TODO.md、本地仓库目录与 .csproj 结构。未运行任何构建或测试,文件数与结构为静态统计。</p>
+</main>
+
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.1/mermaid.min.js"></script>
+<script>if(window.mermaid){mermaid.initialize({startOnLoad:true,theme:matchMedia('(prefers-color-scheme: dark)').matches?'dark':'default'});}</script>
+</body>
+</html>
