@@ -17,15 +17,10 @@ internal static class RouterMeter
     private static readonly Counter<long> ForwardingFailuresTotal = Meter.CreateCounter<long>("openagent_router_forwarding_failures_total");
     private static readonly Counter<long> DiscoveryRefreshTotal = Meter.CreateCounter<long>("openagent_router_discovery_refresh_total");
     private static readonly Counter<long> DiscoverySelectionsTotal = Meter.CreateCounter<long>("openagent_router_discovery_selections_total");
-    private static readonly Counter<long> RateLimitDecisionsTotal = Meter.CreateCounter<long>("openagent_router_rate_limit_decisions_total");
     private static readonly Histogram<int> DiscoveryEngineCount = Meter.CreateHistogram<int>("openagent_router_discovery_engine_count");
     private static readonly Counter<long> DownstreamProbesTotal = Meter.CreateCounter<long>("openagent_router_downstream_probes_total");
     private static readonly Counter<long> ProviderSelectionsTotal = Meter.CreateCounter<long>(
         "openagent_router_provider_selections_total");
-    private static readonly Counter<long> AclDenialsTotal = Meter.CreateCounter<long>(
-        "openagent_router_acl_denials_total");
-    private static readonly Counter<long> CacheHitsTotal = Meter.CreateCounter<long>(
-        "openagent_router_cache_hits_total");
     private static readonly Counter<long> RequestsTotal = Meter.CreateCounter<long>(
         "openagent_router_requests_total");
     private static readonly Counter<long> ForwardsTotal = Meter.CreateCounter<long>(
@@ -87,16 +82,6 @@ internal static class RouterMeter
         });
     }
 
-    public static void RecordRateLimitDecision(RateLimitDecision decision)
-    {
-        RateLimitDecisionsTotal.Add(1, new TagList
-        {
-            { "outcome", decision.IsAllowed ? "allowed" : "denied" },
-            { "source", Normalize(decision.Source) },
-            { "degraded", decision.IsDegraded }
-        });
-    }
-
     public static void RecordDownstreamProbe(string outcome)
     {
         DownstreamProbesTotal.Add(1, new TagList { { "outcome", Normalize(outcome) } });
@@ -107,17 +92,6 @@ internal static class RouterMeter
         ProviderSelectionsTotal.Add(1, new TagList
         {
             { "source", NormalizeSelectionSource(source) }
-        });
-    }
-
-    public static void RecordAclDenial() =>
-        AclDenialsTotal.Add(1, new TagList { { "reason", "agent_acl" } });
-
-    public static void RecordCacheHit(string cache)
-    {
-        CacheHitsTotal.Add(1, new TagList
-        {
-            { "cache", NormalizeCache(cache) }
         });
     }
 
@@ -157,13 +131,6 @@ internal static class RouterMeter
     {
         "chat" => "chat",
         "workflow" => "workflow",
-        _ => "other"
-    };
-
-    private static string NormalizeCache(string value) => value.Trim().ToLowerInvariant() switch
-    {
-        "idempotency" => "idempotency",
-        "query" => "query",
         _ => "other"
     };
 

@@ -27,20 +27,6 @@ internal static class ChatRequestReader
                     form["agentId"].FirstOrDefault());
             }
 
-            if (RequestBodySnapshot.TryGet(request.HttpContext, out Task<RequestBodySnapshot> snapshotTask))
-            {
-                RequestBodySnapshot snapshot = await snapshotTask.ConfigureAwait(false);
-                cancellationToken.ThrowIfCancellationRequested();
-                if (snapshot.Digest.Length > 0)
-                {
-                    ChatRequest cachedBody = JsonSerializer.Deserialize<ChatRequest>(
-                        snapshot.CanonicalBody,
-                        JsonOptions) ?? throw new JsonException(
-                            "The chat request body is required.");
-                    return ToParsedRequest(cachedBody);
-                }
-            }
-
             ChatRequest body = await JsonSerializer.DeserializeAsync<ChatRequest>(
                 request.Body,
                 JsonOptions,

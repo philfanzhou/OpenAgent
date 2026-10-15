@@ -53,24 +53,6 @@ public class RouterServiceCollectionExtensionsTests
         Assert.Single(registry.Providers);
     }
 
-    [Fact]
-    public void AddRouterRuntime_WithoutRedis_RegistersOperationalMemoryCaches()
-    {
-        IConfiguration configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(CreateValidSettings())
-            .Build();
-        var services = new ServiceCollection();
-        services.AddLogging();
-        services.AddRouterRuntime(configuration);
-        using ServiceProvider provider = services.BuildServiceProvider();
-
-        IQueryCache queryCache = provider.GetRequiredService<IQueryCache>();
-        IIdempotencyStore idempotencyStore = provider.GetRequiredService<IIdempotencyStore>();
-
-        Assert.IsType<RouterQueryCache>(queryCache);
-        Assert.IsType<IdempotencyStore>(idempotencyStore);
-    }
-
     [Theory]
     [InlineData("missing-default")]
     [InlineData("unknown-default")]

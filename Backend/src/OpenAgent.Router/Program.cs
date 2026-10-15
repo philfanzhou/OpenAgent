@@ -3,7 +3,6 @@ using OpenAgent.Hosting;
 using OpenAgent.Hosting.Authentication;
 using OpenAgent.Router;
 using OpenAgent.Router.Security;
-using OpenAgent.Router.Middleware;
 using System.Security.Claims;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -43,8 +42,6 @@ builder.Services.AddScoped<IAgentUserContext>(sp =>
 });
 
 builder.Services.AddRouterRuntime(builder.Configuration);
-builder.Services.AddSingleton<IAgentVisibilityService, AgentVisibilityService>();
-builder.Services.AddSingleton<IAgentAccessControl, AgentAccessControl>();
 
 builder.Services.AddHttpForwarder();
 
@@ -56,14 +53,6 @@ var app = builder.Build();
 
 app.UseAgentHost(builder.Configuration);
 app.UseMiddleware<JwtUserContextMiddleware>();
-app.UseWhen(
-    context => context.Request.Path.StartsWithSegments("/api/v1/agent/chat"),
-    branch =>
-    {
-        branch.UseMiddleware<RateLimitingMiddleware>();
-        branch.UseMiddleware<IdempotencyMiddleware>();
-        branch.UseMiddleware<QueryCacheMiddleware>();
-    });
 app.MapControllers();
 app.MapAgentAuthenticationEndpoints();
 app.MapRouterEndpoints();

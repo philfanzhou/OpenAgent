@@ -44,15 +44,8 @@ public class RouterMeterTests
         RouterMeter.RecordForwardingFailure("", "RequestTimedOut");
         RouterMeter.RecordDiscoveryRefresh("Redis_Error", 0);
         RouterMeter.RecordDiscoverySelection("CHAT", "Static_Fallback");
-        RouterMeter.RecordRateLimitDecision(new RateLimitDecision(
-            false,
-            TimeSpan.FromSeconds(1),
-            true,
-            "Fail_Closed"));
         RouterMeter.RecordDownstreamProbe("Not_Ready");
         RouterMeter.RecordProviderSelection("Explicit");
-        RouterMeter.RecordAclDenial();
-        RouterMeter.RecordCacheHit("Query");
 
         Assert.Equal(2, measurements
             .Where(measurement => measurement.Name == "openagent_router_requests_total"
@@ -83,22 +76,11 @@ public class RouterMeterTests
             && Equals(measurement.Tags["intent"], "chat")
             && Equals(measurement.Tags["source"], "static_fallback"));
         Assert.Contains(measurements, measurement =>
-            measurement.Name == "openagent_router_rate_limit_decisions_total"
-            && Equals(measurement.Tags["outcome"], "denied")
-            && Equals(measurement.Tags["source"], "fail_closed")
-            && Equals(measurement.Tags["degraded"], true));
-        Assert.Contains(measurements, measurement =>
             measurement.Name == "openagent_router_downstream_probes_total"
             && Equals(measurement.Tags["outcome"], "not_ready"));
         Assert.Contains(measurements, measurement =>
             measurement.Name == "openagent_router_provider_selections_total"
             && Equals(measurement.Tags["source"], "explicit"));
-        Assert.Contains(measurements, measurement =>
-            measurement.Name == "openagent_router_acl_denials_total"
-            && Equals(measurement.Tags["reason"], "agent_acl"));
-        Assert.Contains(measurements, measurement =>
-            measurement.Name == "openagent_router_cache_hits_total"
-            && Equals(measurement.Tags["cache"], "query"));
     }
 }
 

@@ -20,21 +20,6 @@ internal static partial class RouterLog
     [LoggerMessage(EventId = 3001, Level = LogLevel.Warning, Message = "Request rejected: tenant mismatch. Action={Action}, UserId={UserId}, UserTenantId={UserTenantId}, HeaderTenantId={HeaderTenantId}, TraceId={TraceId}")]
     public static partial void TenantMismatchRejected(ILogger logger, string? action, string userId, string? userTenantId, string headerTenantId, string? traceId);
 
-    [LoggerMessage(EventId = 3002, Level = LogLevel.Warning, Message = "Request rejected by rate limiter. Action={Action}, ClientId={ClientId}, UserId={UserId}, TenantId={TenantId}, TraceId={TraceId}")]
-    public static partial void RateLimited(ILogger logger, string? action, string clientId, string userId, string? tenantId, string? traceId);
-
-    // Idempotency cache
-    [LoggerMessage(EventId = 3003, Level = LogLevel.Information, Message = "Idempotency cache hit. Action={Action}, IdempotencyKey={IdempotencyKey}, UserId={UserId}, TenantId={TenantId}, TraceId={TraceId}")]
-    public static partial void IdempotencyCacheHit(ILogger logger, string? action, string idempotencyKey, string userId, string? tenantId, string? traceId);
-
-    public static void IdempotencyCacheCheckFailed(ILogger logger, Exception exception, string? action, string idempotencyKey, string? traceId) =>
-        IdempotencyCacheCheckFailedCore(logger, exception, action, idempotencyKey, traceId, exception.GetType().FullName ?? "unknown");
-
-    [LoggerMessage(EventId = 3004, Level = LogLevel.Warning, Message = "Idempotency cache check failed, bypassing idempotency. Action={Action}, IdempotencyKey={IdempotencyKey}, TraceId={TraceId}, ExceptionType={ExceptionType}")]
-    private static partial void IdempotencyCacheCheckFailedCore(ILogger logger, Exception exception, string? action, string idempotencyKey, string? traceId, string exceptionType);
-
-    [LoggerMessage(EventId = 3005, Level = LogLevel.Information, Message = "Query cache hit. Action={Action}, UserId={UserId}, TenantId={TenantId}, ConversationId={ConversationId}, TraceId={TraceId}")]
-    public static partial void QueryCacheHit(ILogger logger, string? action, string userId, string? tenantId, string? conversationId, string? traceId);
     /// <summary>Shared forwarding failure log used by main chat endpoint and all GET proxy endpoints.</summary>
     public static void ForwardingFailed(
         ILogger logger,
@@ -132,16 +117,6 @@ internal static partial class RouterLog
 
     #endregion
 
-    #region --- Rate Limiter ---
-
-    [LoggerMessage(EventId = 3026, Level = LogLevel.Warning, Message = "Redis rate limiting failed. ClientId={ClientId}, FailureMode={FailureMode}")]
-    public static partial void RateLimitRedisFailed(ILogger logger, Exception exception, string clientId, string failureMode);
-
-    [LoggerMessage(EventId = 3027, Level = LogLevel.Debug, Message = "Redis rate limiting is not configured. ClientId={ClientId}, FailureMode={FailureMode}")]
-    public static partial void RateLimitRedisNotConfigured(ILogger logger, string clientId, string failureMode);
-
-    #endregion
-
     #region --- Health Check ---
 
     [LoggerMessage(EventId = 3028, Level = LogLevel.Warning, Message = "Redis ping failed during readiness check")]
@@ -164,16 +139,6 @@ internal static partial class RouterLog
 
     [LoggerMessage(EventId = 3034, Level = LogLevel.Information, Message = "Readiness probe used fallback downstream. FailedEndpoint={FailedEndpoint}, FallbackEndpoint={FallbackEndpoint}")]
     public static partial void ReadinessFallbackSelected(ILogger logger, string failedEndpoint, string fallbackEndpoint);
-
-    #endregion
-
-    #region --- Router response caches ---
-
-    [LoggerMessage(EventId = 3029, Level = LogLevel.Warning, Message = "Query cache operation failed; bypassing cache. Route={Route}")]
-    public static partial void QueryCacheFailed(ILogger logger, Exception exception, string route);
-
-    [LoggerMessage(EventId = 3030, Level = LogLevel.Warning, Message = "Failed to release idempotency placeholder. StorageKey={StorageKey}")]
-    public static partial void IdempotencyReleaseFailed(ILogger logger, Exception exception, string storageKey);
 
     #endregion
 

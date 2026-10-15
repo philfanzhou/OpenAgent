@@ -5,11 +5,8 @@ using OpenAgent.Router.Models;
 namespace OpenAgent.Router.Routing;
 
 internal sealed class AgentCatalogService(
-    IAgentProviderRegistry providers,
-    IEnumerable<IAgentAccessControl> accessControls) : IAgentCatalogService
+    IAgentProviderRegistry providers) : IAgentCatalogService
 {
-    private readonly IReadOnlyList<IAgentAccessControl> _accessControls = accessControls.ToArray();
-
     public async Task<IReadOnlyList<AgentCatalogEntry>> GetAuthorizedAsync(
         AgentProviderRequestContext requestContext,
         CancellationToken cancellationToken)
@@ -38,13 +35,6 @@ internal sealed class AgentCatalogService(
             IReadOnlyList<AgentSummary> authorized = catalog.Agents
                 .Where(agent => !string.IsNullOrWhiteSpace(agent.AgentId))
                 .ToArray();
-            foreach (IAgentAccessControl accessControl in _accessControls)
-            {
-                authorized = await accessControl.GetAuthorizedAgentsAsync(
-                    requestContext.UserContext,
-                    authorized,
-                    cancellationToken).ConfigureAwait(false);
-            }
 
             entries.AddRange(authorized.Select(agent => new AgentCatalogEntry(
                 agent,

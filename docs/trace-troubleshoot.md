@@ -69,7 +69,7 @@ grep 'openagent_router_cache_hits_total' /tmp/openagent-router.metrics
 
 - 路由计数增长而转发失败不增长：问题更可能发生在下游业务响应或客户端消费。
 - 某个 `forwarder_error` 持续增长：检查目标解析、连接、超时和下游可用性。
-- Provider 选择或缓存计数没有增长：确认请求确实经过 Router 的对应认证、选择和缓存路径。
+- Provider 选择计数没有增长：确认请求确实经过 Router 的认证和选择路径。
 - 指标不存在：先确认至少完成过一次相应操作，再检查服务的 `OpenTelemetrySource` 是否匹配 Meter 名称。
 
 ASP.NET Core 运行时指标也会由 `/metrics` 暴露，可用于判断 HTTP 总体错误率和请求时长。不要把单条请求问题仅凭聚合指标下结论。
@@ -91,13 +91,12 @@ ASP.NET Core 运行时指标也会由 `/metrics` 暴露，可用于判断 HTTP �
 
 | 症状 | 优先检查 |
 |------|----------|
-| 401 / 403 | Authentication 配置、凭据、Tenant 与 Agent ACL |
+| 401 / 403 | Authentication 配置、凭据与 Tenant |
 | 404 / 未找到 Agent | Agent catalog、发布状态、外部 Agent 配置、显式 `agentId` |
-| 429 | Router rate limit 与客户端身份维度 |
 | 502 / 503 | Engine registry、外部目标健康、目标 URL、连接错误 |
 | 504 / 长时间无首包 | 意图识别超时、YARP 超时、下游模型首 token 延迟 |
 | SSE 中途结束 | 最后事件、Engine 异常日志、客户端断开、下游流协议 |
-| 选择了错误 Agent | 候选 Agent 描述、ACL 过滤结果、识别置信度与 fallback |
+| 选择了错误 Agent | 候选 Agent 描述、识别置信度与 fallback |
 
 ## 输出排障结论
 

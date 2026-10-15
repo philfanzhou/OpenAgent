@@ -29,25 +29,6 @@ public class AgentSelectionServiceTests
     }
 
     [Fact]
-    public async Task SelectAsync_ExplicitUnauthorizedAgent_ReturnsNotFound()
-    {
-        var engine = new StubProvider("self-engine", [Agent("general"), Agent("finance")]);
-        AgentSelectionService service = CreateService(
-            [engine],
-            accessControls: [new AllowOnlyAccessControl("general")]);
-
-        AgentRoutingException exception = await Assert.ThrowsAsync<AgentRoutingException>(() =>
-            service.SelectAsync(
-                "hello",
-                null,
-                "finance",
-                CancellationToken.None));
-
-        Assert.Equal(StatusCodes.Status404NotFound, exception.StatusCode);
-        Assert.Equal(RouterErrorCodes.AgentNotFound, exception.Code);
-    }
-
-    [Fact]
     public async Task SelectAsync_ExistingConversationOnPartner_BackfillsConfirmedAffinity()
     {
         var engine = new StubProvider("self-engine", [Agent("general")]);
@@ -252,13 +233,12 @@ public class AgentSelectionServiceTests
     private static AgentSelectionService CreateService(
         IReadOnlyList<IAgentProvider> providers,
         StubSelector? selector = null,
-        StubConversationProviderStore? store = null,
-        IReadOnlyList<IAgentAccessControl>? accessControls = null)
+        StubConversationProviderStore? store = null)
     {
         var registry = new StubProviderRegistry(providers[0], providers);
         var affinityStore = store ?? new StubConversationProviderStore();
         return new AgentSelectionService(
-            new AgentCatalogService(registry, accessControls ?? []),
+            new AgentCatalogService(registry),
             new ConversationProviderResolver(registry, affinityStore),
             selector ?? new StubSelector("general"),
             new AgentUserContext
@@ -365,16 +345,6 @@ public class AgentSelectionServiceTests
             CallCount++;
             return Task.FromResult(result);
         }
-    }
-
-    private sealed class AllowOnlyAccessControl(string agentId) : IAgentAccessControl
-    {
-        public Task<IReadOnlyList<AgentSummary>> GetAuthorizedAgentsAsync(
-            IAgentUserContext userContext,
-            IReadOnlyList<AgentSummary> agents,
-            CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<AgentSummary>>(
-                agents.Where(agent => agent.AgentId == agentId).ToArray());
     }
 
     private sealed class StubConversationProviderStore : IConversationProviderStore

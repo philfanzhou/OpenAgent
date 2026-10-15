@@ -67,27 +67,6 @@ public sealed class RouterHostIntegrationTests : IClassFixture<RouterHostFixture
     }
 
     [Fact]
-    public async Task Chat_RepeatedQuery_UsesCacheThroughHttpPipeline()
-    {
-        int requestCount = _fixture.PrimaryEngine.ChatRequestCount;
-        using RouterApplicationFactory factory = _fixture.CreateFactory();
-        using HttpClient client = factory.CreateClient();
-
-        using HttpResponseMessage first = await client.SendAsync(CreateChatRequest("cacheable query"));
-        string firstBody = await first.Content.ReadAsStringAsync();
-        using HttpResponseMessage second = await client.SendAsync(CreateChatRequest("cacheable query"));
-        string secondBody = await second.Content.ReadAsStringAsync();
-        string metrics = await client.GetStringAsync("/metrics");
-
-        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
-        Assert.Equal(HttpStatusCode.OK, second.StatusCode);
-        Assert.Equal(firstBody, secondBody);
-        Assert.Equal(requestCount + 1, _fixture.PrimaryEngine.ChatRequestCount);
-        Assert.Contains("cache=\"query\"", metrics, StringComparison.Ordinal);
-        Assert.Contains("openagent_router_cache_hits_total", metrics, StringComparison.Ordinal);
-    }
-
-    [Fact]
     public async Task Files_MultipartUploadAndBinaryDownload_PreservePayloads()
     {
         byte[] uploadBytes = [0x00, 0x10, 0x80, 0xff];

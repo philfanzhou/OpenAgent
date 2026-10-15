@@ -33,9 +33,6 @@ public static class RouterServiceCollectionExtensions
         services.AddSingleton<IAgentForwarder, AgentForwarder>();
         services.AddSingleton<IIntentAgentSelector, IntentAgentSelector>();
         services.AddScoped<IAgentSelectionService, AgentSelectionService>();
-        services.AddSingleton(new RouterCacheSettings(configuration));
-        services.AddSingleton<IIdempotencyStore, IdempotencyStore>();
-        services.AddSingleton<IQueryCache, RouterQueryCache>();
 
         var redisConnectionString = configuration.GetConnectionString("Redis");
         if (!string.IsNullOrEmpty(redisConnectionString))
@@ -73,7 +70,6 @@ public static class RouterServiceCollectionExtensions
             services.AddSingleton<IRouteTable, InMemoryRouteTable>();
         }
 
-        services.AddSingleton<IRateLimiter, RedisRateLimiter>();
         return services;
     }
 }
