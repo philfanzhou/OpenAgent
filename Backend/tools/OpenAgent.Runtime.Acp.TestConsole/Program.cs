@@ -34,9 +34,9 @@ internal static class Program
                 if (separator != 2 && cancelMs <= 0) throw new ArgumentException("Invalid client options.");
                 await using AcpProcess process = AcpProcess.Start(new(args[separator + 1], args[(separator + 2)..]));
                 await using AcpClient client = new(process.Transport); await client.InitializeAsync(cancellationToken: timeout.Token);
-                await using AcpSession session = await client.NewSessionAsync(new(Path.GetFullPath(Environment.CurrentDirectory), []));
+                await using AcpSession session = await client.NewSessionAsync(new(Path.GetFullPath(Environment.CurrentDirectory), []), timeout.Token);
                 Task display = DisplayAsync(session);
-                using CancellationTokenSource cancel = new();
+                using CancellationTokenSource cancel = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token);
                 await using AcpPromptTurn turn = await session.StartPromptAsync([new TextContent(args[1])], cancel.Token);
                 if (cancelMs > 0) cancel.CancelAfter(cancelMs);
                 PromptResponse result = await turn.Completion; await session.DisposeAsync(); await display;
