@@ -2,6 +2,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using OpenAgent.Router.Options;
+using OpenAgent.Router.Providers;
+using OpenAgent.Router.Selection;
 using Xunit;
 using Yarp.ReverseProxy.Forwarder;
 
@@ -51,6 +53,48 @@ public class RouterServiceCollectionExtensionsTests
 
         Assert.Equal("self-engine", registry.DefaultProvider.Id);
         Assert.Single(registry.Providers);
+    }
+
+    [Fact]
+    public void AddRouterRuntime_IntentStrategies_RunModelThenAgentThenFallback()
+    {
+        Dictionary<string, string?> settings = CreateValidSettings();
+        settings["RouterSettings:IntentRecognition:DecisionModel:Endpoint"] = "http://decision/v1/decisions";
+        IConfiguration configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(settings)
+            .Build();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton(configuration);
+        services.AddRouterRuntime(configuration);
+        using ServiceProvider provider = services.BuildServiceProvider();
+        using IServiceScope scope = provider.CreateScope();
+
+        Type[] order = scope.ServiceProvider
+            .GetServices<IIntentStrategy>()
+            .Select(strategy => strategy.GetType())
+            .ToArray();
+
+        Assert.Equal(
+            [typeof(ModelIntentStrategy), typeof(AgentIntentStrategy), typeof(FallbackStrategy)],
+            order);
+    }
+
+    [Fact]
+    public void AddRouterRuntime_InvalidDecisionModelEndpoint_FailsValidation()
+    {
+        Dictionary<string, string?> settings = CreateValidSettings();
+        settings["RouterSettings:IntentRecognition:DecisionModel:Endpoint"] = "not-a-url";
+        IConfiguration configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(settings)
+            .Build();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddRouterRuntime(configuration);
+        using ServiceProvider provider = services.BuildServiceProvider();
+
+        Assert.Throws<OptionsValidationException>(() =>
+            provider.GetRequiredService<IOptions<DecisionModelOptions>>().Value);
     }
 
     [Theory]

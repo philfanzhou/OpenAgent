@@ -30,7 +30,14 @@ public static class RouterServiceCollectionExtensions
         services.AddSingleton<IConversationProviderStore, ConversationProviderStore>();
         services.AddSingleton<IConversationProviderResolver, ConversationProviderResolver>();
         services.AddSingleton<IAgentForwarder, AgentForwarder>();
+        services.AddOptions<DecisionModelOptions>()
+            .Bind(configuration.GetSection(DecisionModelOptions.SectionName))
+            .Validate(DecisionModelOptions.IsValid, "Decision model configuration is invalid")
+            .ValidateOnStart();
+        services.AddHttpClient<ModelIntentStrategy>();
         // Strategies run in registration order; the first one with a conclusion wins.
+        services.AddTransient<IIntentStrategy>(provider =>
+            provider.GetRequiredService<ModelIntentStrategy>());
         services.AddSingleton<IIntentStrategy, AgentIntentStrategy>();
         services.AddSingleton<IIntentStrategy, FallbackStrategy>();
         services.AddScoped<IAgentSelectionService, AgentSelectionService>();

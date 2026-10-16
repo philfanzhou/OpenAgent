@@ -77,13 +77,13 @@ public interface IIntentStrategy
 }
 ```
 
-首批内置：
+首批内置，按此顺序尝试，第一个有结论的生效：
 
-- `ModelIntentStrategy`：调用决策模型 `Intern-Decision`，端点与模型名放配置，不进代码。
-- `AgentIntentStrategy`：调用 `intent-router` Agent，即现状。`[待决策]` 是否保留作后备。
+- `ModelIntentStrategy`：调用决策模型服务 `POST /v1/decisions`。把候选 Agent 作为一道选择题（`type: choice`，`criteria` 的键是 `agentId`，值是名称与描述），另加一个 `__none__` 选项让模型可以弃权。响应取 `answers.agent.choice` 与 `confidence`，低于 `MinimumConfidence`、选了非候选项、选了 `__none__`、超时或服务出错都视为无结论，交给下一个策略。未配置 `Endpoint` 时整个策略跳过。
+- `AgentIntentStrategy`：调用 `intent-router` Agent，即现状。`[待决策]` 模型稳定后是否保留作后备。
 - `FallbackStrategy`：配置的默认 Agent。
 
-决策模型的请求与响应格式、是否鉴权、是在候选 Agent 中直接选择还是输出意图类别，均为 `[待确认]`，拿到接口说明后补全策略接口。端点当前是明文 HTTP 内网地址，部署前需确认网络边界；超时、不可达、低置信度一律交给下一个策略。
+决策模型的配置在 `RouterSettings:IntentRecognition:DecisionModel`：`Endpoint`（为空则关闭）、`TimeoutMs`（默认 3000）、`MinimumConfidence`（默认 0.5）、`Headers`（若服务需要鉴权，密钥通过环境变量注入）。仓库内不提交具体地址。服务端点是明文 HTTP，部署前需确认 Router 与它之间的网络边界，用户消息会发送给它。`[待确认]` 服务是否需要鉴权，以及示例中没有出现的模型名参数是否需要传递；尚未用真实服务联调。
 
 ### 5. 长事务
 
@@ -158,7 +158,9 @@ public interface IIntentStrategy
 - `IIntentStrategy` 策略链：`AgentIntentStrategy`（现状）与 `FallbackStrategy` 按注册顺序依次尝试，第一个有结论的生效。策略顺序暂不开放配置，等出现第二个真实策略（如决策模型）再加。
 - 下游契约 OpenAPI 文件：`Router.Contracts/openapi/downstream-v1.yaml`，已实现端点按 Engine 现有代码整理，Run 端点标为提议。
 
-未落地：`ModelIntentStrategy` 与决策模型（待接口格式）、注册端点与静态目录、Engine ACL、Run 契约的实现、契约测试。
+- `ModelIntentStrategy`：按决策模型的 `/v1/decisions` 接口实现，默认关闭，配置 `DecisionModel:Endpoint` 后排在策略链首位。
+
+未落地：注册端点与静态目录、Engine ACL、Run 契约的实现、契约测试。
 
 ## 关键实现
 

@@ -44,7 +44,12 @@ Router 通过 `IAgentProvider` 调用所有下游，只有一种实现 `HttpProv
       "AgentId": "intent-router",
       "FallbackAgentId": "default",
       "MinimumConfidence": 0.5,
-      "TimeoutMs": 5000
+      "TimeoutMs": 5000,
+      "DecisionModel": {
+        "Endpoint": "",
+        "TimeoutMs": 3000,
+        "MinimumConfidence": 0.5
+      }
     },
     "AgentProviders": {
       "DefaultProviderId": "self-engine",
@@ -60,6 +65,8 @@ Router 通过 `IAgentProvider` 调用所有下游，只有一种实现 `HttpProv
   }
 }
 ```
+
+`DecisionModel.Endpoint` 为空时不使用决策模型，意图选择只走 `intent-router` Agent；配置后决策模型排在最前，无结论时再落到 `intent-router` 和 Fallback。接口与取舍见 [ADR-0004](../decisions/0004-Router-Gateway-Repositioning.md)。
 
 没有 `BaseUrl` 的 Provider 通过 `IRouteTable` 发现 Engine 实例；配置了 `BaseUrl` 时直接使用该地址，必须是 http 或 https 绝对地址。`ServiceHeaders` 只用于意图识别等服务调用，敏感凭据应由环境变量或密钥配置源注入。`DefaultProviderId` 仍是必填的注册表兼容配置，但不会覆盖显式 Agent 映射或会话亲和。Fallback Agent 也必须存在于完整目录中。
 
