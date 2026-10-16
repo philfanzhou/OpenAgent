@@ -2,6 +2,8 @@
 
 ## 状态
 
+> **已被独立仓库取代（2026-10-16）。** Router 以 `philfanzhou/OpenAgent.Router` 为准，它保留有状态会话绑定、限流、幂等、Router 侧 ACL 和 Gina，与本文的无状态网关、`HttpProvider` 统一、四项目拆分、`/v1/decisions` 决策模型方向冲突，这些部分搁置，仅作历史记录。仍然有效的只有两项：HTTP 注册端点（已移植到独立仓库，共享密钥）和 Engine 侧 Agent 白名单（`AgentConfig.Allowed*`）。分支 `refactor/router-slim` 不合并进 `main`。
+
 草案。需求已对齐；迁移顺序第 1 至 5 步已落地（见文末「实现进度」），第 6 步尚未开始。标注 `[待决策]` 的事项确认后转为已决策。
 
 ## 背景
