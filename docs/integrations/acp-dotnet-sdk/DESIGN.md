@@ -24,4 +24,4 @@
 
 Protocol/Rpc/Transport 不引用上层，不新增 Common 大目录；实现优先 internal，生成文件与手写 converter 分离。RPC 引擎在 ACP-02 用同组探针对比 StreamJsonRpc 和自有实现后确定，不能先假定选型已完成。
 
-控制台 → SDK，测试 → SDK + 控制台；SDK 不引用平台或测试资产。生成器是开发工具，SDK 运行时不下载 schema。每步同步实现、测试、公共 API 控制台场景和文档，顺序见 [IMPLEMENTATION](./IMPLEMENTATION.md)。
+控制台 → SDK，测试 → SDK + 控制台；SDK 不引用平台或测试资产。生成器是开发工具，SDK 运行时不下载 schema。固定原件/lock/许可位于 `schema/`；CodeGen 验证哈希、meta 与 x-method/x-side 后生成独立目录。DTO 持有独立 JsonElement，以生成的具体 converter 和 context 读写，手写校验器只解释固定 schema 使用的词汇；标准对象未知根字段兼容读取后丢弃，显式开放 JSON 保留。联合按已知 wire tag 优先匹配，错误 payload 不回退为默认分支。每步同步实现、测试、公共 API 控制台场景和文档，顺序见 [IMPLEMENTATION](./IMPLEMENTATION.md)。

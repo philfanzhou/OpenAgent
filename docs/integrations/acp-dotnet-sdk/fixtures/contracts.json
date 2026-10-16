@@ -1,0 +1,2114 @@
+{
+  "protocolVersion": 1,
+  "sourceCommit": "1cebe1c01837379abf34dd62b71e9c75bf140669",
+  "cases": [
+    {
+      "id": "definition-AgentAuthCapabilities",
+      "schema": "AgentAuthCapabilities",
+      "value": {}
+    },
+    {
+      "id": "definition-AgentCapabilities",
+      "schema": "AgentCapabilities",
+      "value": {}
+    },
+    {
+      "id": "definition-AgentNotification",
+      "schema": "AgentNotification",
+      "value": {
+        "method": "fixture"
+      }
+    },
+    {
+      "id": "definition-AgentRequest",
+      "schema": "AgentRequest",
+      "value": {
+        "id": null,
+        "method": "fixture"
+      }
+    },
+    {
+      "id": "definition-AgentResponse",
+      "schema": "AgentResponse",
+      "value": {
+        "id": null,
+        "result": {
+          "protocolVersion": 0
+        }
+      }
+    },
+    {
+      "id": "definition-Annotations",
+      "schema": "Annotations",
+      "value": {}
+    },
+    {
+      "id": "definition-AudioContent",
+      "schema": "AudioContent",
+      "value": {
+        "data": "fixture",
+        "mimeType": "fixture"
+      }
+    },
+    {
+      "id": "definition-AuthCapabilities",
+      "schema": "AuthCapabilities",
+      "value": {}
+    },
+    {
+      "id": "definition-AuthMethod",
+      "schema": "AuthMethod",
+      "value": {
+        "id": "fixture",
+        "name": "fixture",
+        "type": "terminal"
+      }
+    },
+    {
+      "id": "definition-AuthMethodAgent",
+      "schema": "AuthMethodAgent",
+      "value": {
+        "id": "fixture",
+        "name": "fixture"
+      }
+    },
+    {
+      "id": "definition-AuthMethodId",
+      "schema": "AuthMethodId",
+      "value": "fixture"
+    },
+    {
+      "id": "definition-AuthMethodTerminal",
+      "schema": "AuthMethodTerminal",
+      "value": {
+        "id": "fixture",
+        "name": "fixture"
+      }
+    },
+    {
+      "id": "definition-AuthenticateRequest",
+      "schema": "AuthenticateRequest",
+      "value": {
+        "methodId": "fixture"
+      }
+    },
+    {
+      "id": "definition-AuthenticateResponse",
+      "schema": "AuthenticateResponse",
+      "value": {}
+    },
+    {
+      "id": "definition-AvailableCommand",
+      "schema": "AvailableCommand",
+      "value": {
+        "name": "fixture",
+        "description": "fixture"
+      }
+    },
+    {
+      "id": "definition-AvailableCommandInput",
+      "schema": "AvailableCommandInput",
+      "value": {
+        "hint": "fixture"
+      }
+    },
+    {
+      "id": "definition-AvailableCommandsUpdate",
+      "schema": "AvailableCommandsUpdate",
+      "value": {
+        "availableCommands": []
+      }
+    },
+    {
+      "id": "definition-BlobResourceContents",
+      "schema": "BlobResourceContents",
+      "value": {
+        "blob": "fixture",
+        "uri": "fixture"
+      }
+    },
+    {
+      "id": "definition-BooleanConfigOptionCapabilities",
+      "schema": "BooleanConfigOptionCapabilities",
+      "value": {}
+    },
+    {
+      "id": "definition-BooleanPropertySchema",
+      "schema": "BooleanPropertySchema",
+      "value": {}
+    },
+    {
+      "id": "definition-CancelNotification",
+      "schema": "CancelNotification",
+      "value": {
+        "sessionId": "fixture"
+      }
+    },
+    {
+      "id": "definition-CancelRequestNotification",
+      "schema": "CancelRequestNotification",
+      "value": {
+        "requestId": null
+      }
+    },
+    {
+      "id": "definition-ClientCapabilities",
+      "schema": "ClientCapabilities",
+      "value": {}
+    },
+    {
+      "id": "definition-ClientNotification",
+      "schema": "ClientNotification",
+      "value": {
+        "method": "fixture"
+      }
+    },
+    {
+      "id": "definition-ClientRequest",
+      "schema": "ClientRequest",
+      "value": {
+        "id": null,
+        "method": "fixture"
+      }
+    },
+    {
+      "id": "definition-ClientResponse",
+      "schema": "ClientResponse",
+      "value": {
+        "id": null,
+        "result": {}
+      }
+    },
+    {
+      "id": "definition-ClientSessionCapabilities",
+      "schema": "ClientSessionCapabilities",
+      "value": {}
+    },
+    {
+      "id": "definition-CloseSessionRequest",
+      "schema": "CloseSessionRequest",
+      "value": {
+        "sessionId": "fixture"
+      }
+    },
+    {
+      "id": "definition-CloseSessionResponse",
+      "schema": "CloseSessionResponse",
+      "value": {}
+    },
+    {
+      "id": "definition-CompactionCapabilities",
+      "schema": "CompactionCapabilities",
+      "value": {}
+    },
+    {
+      "id": "definition-CompactionId",
+      "schema": "CompactionId",
+      "value": "fixture"
+    },
+    {
+      "id": "definition-CompactionStatus",
+      "schema": "CompactionStatus",
+      "value": "in_progress"
+    },
+    {
+      "id": "definition-CompactionSummaryChunk",
+      "schema": "CompactionSummaryChunk",
+      "value": {
+        "compactionId": "fixture",
+        "content": {
+          "text": "fixture",
+          "type": "text"
+        }
+      }
+    },
+    {
+      "id": "definition-CompactionUpdate",
+      "schema": "CompactionUpdate",
+      "value": {
+        "compactionId": "fixture",
+        "status": "in_progress"
+      }
+    },
+    {
+      "id": "definition-CompleteElicitationNotification",
+      "schema": "CompleteElicitationNotification",
+      "value": {
+        "elicitationId": "fixture"
+      }
+    },
+    {
+      "id": "definition-ConfigOptionUpdate",
+      "schema": "ConfigOptionUpdate",
+      "value": {
+        "configOptions": []
+      }
+    },
+    {
+      "id": "definition-Content",
+      "schema": "Content",
+      "value": {
+        "content": {
+          "text": "fixture",
+          "type": "text"
+        }
+      }
+    },
+    {
+      "id": "definition-ContentBlock",
+      "schema": "ContentBlock",
+      "value": {
+        "text": "fixture",
+        "type": "text"
+      }
+    },
+    {
+      "id": "definition-ContentChunk",
+      "schema": "ContentChunk",
+      "value": {
+        "content": {
+          "text": "fixture",
+          "type": "text"
+        }
+      }
+    },
+    {
+      "id": "definition-Cost",
+      "schema": "Cost",
+      "value": {
+        "amount": 0,
+        "currency": "fixture"
+      }
+    },
+    {
+      "id": "definition-CreateElicitationRequest",
+      "schema": "CreateElicitationRequest",
+      "value": {
+        "message": "fixture",
+        "requestedSchema": {},
+        "mode": "form",
+        "sessionId": "fixture"
+      }
+    },
+    {
+      "id": "definition-CreateElicitationResponse",
+      "schema": "CreateElicitationResponse",
+      "value": {
+        "action": "accept"
+      }
+    },
+    {
+      "id": "definition-CreateTerminalRequest",
+      "schema": "CreateTerminalRequest",
+      "value": {
+        "sessionId": "fixture",
+        "command": "fixture"
+      }
+    },
+    {
+      "id": "definition-CreateTerminalResponse",
+      "schema": "CreateTerminalResponse",
+      "value": {
+        "terminalId": "fixture"
+      }
+    },
+    {
+      "id": "definition-CurrentModeUpdate",
+      "schema": "CurrentModeUpdate",
+      "value": {
+        "currentModeId": "fixture"
+      }
+    },
+    {
+      "id": "definition-DeleteSessionRequest",
+      "schema": "DeleteSessionRequest",
+      "value": {
+        "sessionId": "fixture"
+      }
+    },
+    {
+      "id": "definition-DeleteSessionResponse",
+      "schema": "DeleteSessionResponse",
+      "value": {}
+    },
+    {
+      "id": "definition-Diff",
+      "schema": "Diff",
+      "value": {
+        "path": "fixture",
+        "newText": "fixture"
+      }
+    },
+    {
+      "id": "definition-ElicitationAcceptAction",
+      "schema": "ElicitationAcceptAction",
+      "value": {}
+    },
+    {
+      "id": "definition-ElicitationCapabilities",
+      "schema": "ElicitationCapabilities",
+      "value": {}
+    },
+    {
+      "id": "definition-ElicitationContentValue",
+      "schema": "ElicitationContentValue",
+      "value": "fixture"
+    },
+    {
+      "id": "definition-ElicitationFormCapabilities",
+      "schema": "ElicitationFormCapabilities",
+      "value": {}
+    },
+    {
+      "id": "definition-ElicitationFormMode",
+      "schema": "ElicitationFormMode",
+      "value": {
+        "requestedSchema": {},
+        "sessionId": "fixture"
+      }
+    },
+    {
+      "id": "definition-ElicitationId",
+      "schema": "ElicitationId",
+      "value": "fixture"
+    },
+    {
+      "id": "definition-ElicitationPropertySchema",
+      "schema": "ElicitationPropertySchema",
+      "value": {
+        "type": "string"
+      }
+    },
+    {
+      "id": "definition-ElicitationRequestScope",
+      "schema": "ElicitationRequestScope",
+      "value": {
+        "requestId": null
+      }
+    },
+    {
+      "id": "definition-ElicitationSchema",
+      "schema": "ElicitationSchema",
+      "value": {}
+    },
+    {
+      "id": "definition-ElicitationSchemaType",
+      "schema": "ElicitationSchemaType",
+      "value": "object"
+    },
+    {
+      "id": "definition-ElicitationSessionScope",
+      "schema": "ElicitationSessionScope",
+      "value": {
+        "sessionId": "fixture"
+      }
+    },
+    {
+      "id": "definition-ElicitationUrlCapabilities",
+      "schema": "ElicitationUrlCapabilities",
+      "value": {}
+    },
+    {
+      "id": "definition-ElicitationUrlMode",
+      "schema": "ElicitationUrlMode",
+      "value": {
+        "elicitationId": "fixture",
+        "url": "fixture",
+        "sessionId": "fixture"
+      }
+    },
+    {
+      "id": "definition-EmbeddedResource",
+      "schema": "EmbeddedResource",
+      "value": {
+        "resource": {
+          "text": "fixture",
+          "uri": "fixture"
+        }
+      }
+    },
+    {
+      "id": "definition-EmbeddedResourceResource",
+      "schema": "EmbeddedResourceResource",
+      "value": {
+        "text": "fixture",
+        "uri": "fixture"
+      }
+    },
+    {
+      "id": "definition-EnumOption",
+      "schema": "EnumOption",
+      "value": {
+        "const": "fixture",
+        "title": "fixture"
+      }
+    },
+    {
+      "id": "definition-EnvVariable",
+      "schema": "EnvVariable",
+      "value": {
+        "name": "fixture",
+        "value": "fixture"
+      }
+    },
+    {
+      "id": "definition-Error",
+      "schema": "Error",
+      "value": {
+        "code": -32700,
+        "message": "fixture"
+      }
+    },
+    {
+      "id": "definition-ErrorCode",
+      "schema": "ErrorCode",
+      "value": -32700
+    },
+    {
+      "id": "definition-ExtNotification",
+      "schema": "ExtNotification",
+      "value": {}
+    },
+    {
+      "id": "definition-ExtRequest",
+      "schema": "ExtRequest",
+      "value": {}
+    },
+    {
+      "id": "definition-ExtResponse",
+      "schema": "ExtResponse",
+      "value": {}
+    },
+    {
+      "id": "definition-FileSystemCapabilities",
+      "schema": "FileSystemCapabilities",
+      "value": {}
+    },
+    {
+      "id": "definition-HttpHeader",
+      "schema": "HttpHeader",
+      "value": {
+        "name": "fixture",
+        "value": "fixture"
+      }
+    },
+    {
+      "id": "definition-ImageContent",
+      "schema": "ImageContent",
+      "value": {
+        "data": "fixture",
+        "mimeType": "fixture"
+      }
+    },
+    {
+      "id": "definition-Implementation",
+      "schema": "Implementation",
+      "value": {
+        "name": "fixture",
+        "version": "fixture"
+      }
+    },
+    {
+      "id": "definition-InitializeRequest",
+      "schema": "InitializeRequest",
+      "value": {
+        "protocolVersion": 1,
+        "clientCapabilities": {
+          "terminal": false,
+          "session": {
+            "configOptions": {
+              "boolean": {}
+            },
+            "notices": {},
+            "compaction": {}
+          },
+          "elicitation": {
+            "form": {},
+            "url": {}
+          }
+        }
+      }
+    },
+    {
+      "id": "definition-InitializeResponse",
+      "schema": "InitializeResponse",
+      "value": {
+        "protocolVersion": 1,
+        "agentCapabilities": {},
+        "authMethods": []
+      }
+    },
+    {
+      "id": "definition-IntegerPropertySchema",
+      "schema": "IntegerPropertySchema",
+      "value": {}
+    },
+    {
+      "id": "definition-KillTerminalRequest",
+      "schema": "KillTerminalRequest",
+      "value": {
+        "sessionId": "fixture",
+        "terminalId": "fixture"
+      }
+    },
+    {
+      "id": "definition-KillTerminalResponse",
+      "schema": "KillTerminalResponse",
+      "value": {}
+    },
+    {
+      "id": "definition-ListSessionsRequest",
+      "schema": "ListSessionsRequest",
+      "value": {}
+    },
+    {
+      "id": "definition-ListSessionsResponse",
+      "schema": "ListSessionsResponse",
+      "value": {
+        "sessions": []
+      }
+    },
+    {
+      "id": "definition-LoadSessionRequest",
+      "schema": "LoadSessionRequest",
+      "value": {
+        "mcpServers": [],
+        "cwd": "fixture",
+        "sessionId": "fixture"
+      }
+    },
+    {
+      "id": "definition-LoadSessionResponse",
+      "schema": "LoadSessionResponse",
+      "value": {}
+    },
+    {
+      "id": "definition-LogoutCapabilities",
+      "schema": "LogoutCapabilities",
+      "value": {}
+    },
+    {
+      "id": "definition-LogoutRequest",
+      "schema": "LogoutRequest",
+      "value": {}
+    },
+    {
+      "id": "definition-LogoutResponse",
+      "schema": "LogoutResponse",
+      "value": {}
+    },
+    {
+      "id": "definition-McpCapabilities",
+      "schema": "McpCapabilities",
+      "value": {}
+    },
+    {
+      "id": "definition-McpServer",
+      "schema": "McpServer",
+      "value": {
+        "name": "fixture",
+        "url": "fixture",
+        "headers": [],
+        "type": "http"
+      }
+    },
+    {
+      "id": "definition-McpServerHttp",
+      "schema": "McpServerHttp",
+      "value": {
+        "name": "fixture",
+        "url": "fixture",
+        "headers": []
+      }
+    },
+    {
+      "id": "definition-McpServerSse",
+      "schema": "McpServerSse",
+      "value": {
+        "name": "fixture",
+        "url": "fixture",
+        "headers": []
+      }
+    },
+    {
+      "id": "definition-McpServerStdio",
+      "schema": "McpServerStdio",
+      "value": {
+        "name": "fixture",
+        "command": "fixture",
+        "args": [],
+        "env": []
+      }
+    },
+    {
+      "id": "definition-MessageId",
+      "schema": "MessageId",
+      "value": "fixture"
+    },
+    {
+      "id": "definition-MultiSelectItems",
+      "schema": "MultiSelectItems",
+      "value": {
+        "enum": [],
+        "type": "string"
+      }
+    },
+    {
+      "id": "definition-MultiSelectPropertySchema",
+      "schema": "MultiSelectPropertySchema",
+      "value": {
+        "items": {
+          "enum": [],
+          "type": "string"
+        }
+      }
+    },
+    {
+      "id": "definition-NewSessionRequest",
+      "schema": "NewSessionRequest",
+      "value": {
+        "cwd": "fixture",
+        "mcpServers": []
+      }
+    },
+    {
+      "id": "definition-NewSessionResponse",
+      "schema": "NewSessionResponse",
+      "value": {
+        "sessionId": "fixture"
+      }
+    },
+    {
+      "id": "definition-Notice",
+      "schema": "Notice",
+      "value": {
+        "severity": "info",
+        "title": "fixture"
+      }
+    },
+    {
+      "id": "definition-NoticeCapabilities",
+      "schema": "NoticeCapabilities",
+      "value": {}
+    },
+    {
+      "id": "definition-NoticeSeverity",
+      "schema": "NoticeSeverity",
+      "value": "info"
+    },
+    {
+      "id": "definition-NumberPropertySchema",
+      "schema": "NumberPropertySchema",
+      "value": {}
+    },
+    {
+      "id": "definition-PermissionOption",
+      "schema": "PermissionOption",
+      "value": {
+        "optionId": "fixture",
+        "name": "fixture",
+        "kind": "allow_once"
+      }
+    },
+    {
+      "id": "definition-PermissionOptionId",
+      "schema": "PermissionOptionId",
+      "value": "fixture"
+    },
+    {
+      "id": "definition-PermissionOptionKind",
+      "schema": "PermissionOptionKind",
+      "value": "allow_once"
+    },
+    {
+      "id": "definition-Plan",
+      "schema": "Plan",
+      "value": {
+        "entries": []
+      }
+    },
+    {
+      "id": "definition-PlanEntry",
+      "schema": "PlanEntry",
+      "value": {
+        "content": "fixture",
+        "priority": "high",
+        "status": "pending"
+      }
+    },
+    {
+      "id": "definition-PlanEntryPriority",
+      "schema": "PlanEntryPriority",
+      "value": "high"
+    },
+    {
+      "id": "definition-PlanEntryStatus",
+      "schema": "PlanEntryStatus",
+      "value": "pending"
+    },
+    {
+      "id": "definition-PromptCapabilities",
+      "schema": "PromptCapabilities",
+      "value": {}
+    },
+    {
+      "id": "definition-PromptRequest",
+      "schema": "PromptRequest",
+      "value": {
+        "sessionId": "sess-1",
+        "prompt": [
+          {
+            "type": "text",
+            "text": "你好🥐\nfixture"
+          },
+          {
+            "type": "resource_link",
+            "name": "test",
+            "uri": "fixture://local/item"
+          }
+        ]
+      }
+    },
+    {
+      "id": "definition-PromptResponse",
+      "schema": "PromptResponse",
+      "value": {
+        "stopReason": "refusal"
+      }
+    },
+    {
+      "id": "definition-ProtocolVersion",
+      "schema": "ProtocolVersion",
+      "value": 0
+    },
+    {
+      "id": "definition-ReadTextFileRequest",
+      "schema": "ReadTextFileRequest",
+      "value": {
+        "sessionId": "fixture",
+        "path": "fixture"
+      }
+    },
+    {
+      "id": "definition-ReadTextFileResponse",
+      "schema": "ReadTextFileResponse",
+      "value": {
+        "content": "fixture"
+      }
+    },
+    {
+      "id": "definition-ReleaseTerminalRequest",
+      "schema": "ReleaseTerminalRequest",
+      "value": {
+        "sessionId": "fixture",
+        "terminalId": "fixture"
+      }
+    },
+    {
+      "id": "definition-ReleaseTerminalResponse",
+      "schema": "ReleaseTerminalResponse",
+      "value": {}
+    },
+    {
+      "id": "definition-RequestId",
+      "schema": "RequestId",
+      "value": null
+    },
+    {
+      "id": "definition-RequestPermissionOutcome",
+      "schema": "RequestPermissionOutcome",
+      "value": {
+        "outcome": "cancelled"
+      }
+    },
+    {
+      "id": "definition-RequestPermissionRequest",
+      "schema": "RequestPermissionRequest",
+      "value": {
+        "sessionId": "fixture",
+        "toolCall": {
+          "toolCallId": "fixture"
+        },
+        "options": []
+      }
+    },
+    {
+      "id": "definition-RequestPermissionResponse",
+      "schema": "RequestPermissionResponse",
+      "value": {
+        "outcome": {
+          "outcome": "cancelled"
+        }
+      }
+    },
+    {
+      "id": "definition-ResourceLink",
+      "schema": "ResourceLink",
+      "value": {
+        "name": "fixture",
+        "uri": "fixture"
+      }
+    },
+    {
+      "id": "definition-ResumeSessionRequest",
+      "schema": "ResumeSessionRequest",
+      "value": {
+        "sessionId": "fixture",
+        "cwd": "fixture"
+      }
+    },
+    {
+      "id": "definition-ResumeSessionResponse",
+      "schema": "ResumeSessionResponse",
+      "value": {}
+    },
+    {
+      "id": "definition-Role",
+      "schema": "Role",
+      "value": "assistant"
+    },
+    {
+      "id": "definition-SelectedPermissionOutcome",
+      "schema": "SelectedPermissionOutcome",
+      "value": {
+        "optionId": "fixture"
+      }
+    },
+    {
+      "id": "definition-SessionAdditionalDirectoriesCapabilities",
+      "schema": "SessionAdditionalDirectoriesCapabilities",
+      "value": {}
+    },
+    {
+      "id": "definition-SessionCapabilities",
+      "schema": "SessionCapabilities",
+      "value": {}
+    },
+    {
+      "id": "definition-SessionCloseCapabilities",
+      "schema": "SessionCloseCapabilities",
+      "value": {}
+    },
+    {
+      "id": "definition-SessionConfigBoolean",
+      "schema": "SessionConfigBoolean",
+      "value": {
+        "currentValue": false
+      }
+    },
+    {
+      "id": "definition-SessionConfigGroupId",
+      "schema": "SessionConfigGroupId",
+      "value": "fixture"
+    },
+    {
+      "id": "definition-SessionConfigId",
+      "schema": "SessionConfigId",
+      "value": "fixture"
+    },
+    {
+      "id": "definition-SessionConfigOption",
+      "schema": "SessionConfigOption",
+      "value": {
+        "id": "fixture",
+        "name": "fixture",
+        "currentValue": "fixture",
+        "options": [],
+        "type": "select"
+      }
+    },
+    {
+      "id": "definition-SessionConfigOptionCategory",
+      "schema": "SessionConfigOptionCategory",
+      "value": "mode"
+    },
+    {
+      "id": "definition-SessionConfigOptionsCapabilities",
+      "schema": "SessionConfigOptionsCapabilities",
+      "value": {}
+    },
+    {
+      "id": "definition-SessionConfigSelect",
+      "schema": "SessionConfigSelect",
+      "value": {
+        "currentValue": "fixture",
+        "options": []
+      }
+    },
+    {
+      "id": "definition-SessionConfigSelectGroup",
+      "schema": "SessionConfigSelectGroup",
+      "value": {
+        "group": "fixture",
+        "name": "fixture",
+        "options": []
+      }
+    },
+    {
+      "id": "definition-SessionConfigSelectOption",
+      "schema": "SessionConfigSelectOption",
+      "value": {
+        "value": "fixture",
+        "name": "fixture"
+      }
+    },
+    {
+      "id": "definition-SessionConfigSelectOptions",
+      "schema": "SessionConfigSelectOptions",
+      "value": []
+    },
+    {
+      "id": "definition-SessionConfigValueId",
+      "schema": "SessionConfigValueId",
+      "value": "fixture"
+    },
+    {
+      "id": "definition-SessionDeleteCapabilities",
+      "schema": "SessionDeleteCapabilities",
+      "value": {}
+    },
+    {
+      "id": "definition-SessionId",
+      "schema": "SessionId",
+      "value": "fixture"
+    },
+    {
+      "id": "definition-SessionInfo",
+      "schema": "SessionInfo",
+      "value": {
+        "sessionId": "fixture",
+        "cwd": "fixture"
+      }
+    },
+    {
+      "id": "definition-SessionInfoUpdate",
+      "schema": "SessionInfoUpdate",
+      "value": {}
+    },
+    {
+      "id": "definition-SessionListCapabilities",
+      "schema": "SessionListCapabilities",
+      "value": {}
+    },
+    {
+      "id": "definition-SessionMode",
+      "schema": "SessionMode",
+      "value": {
+        "id": "fixture",
+        "name": "fixture"
+      }
+    },
+    {
+      "id": "definition-SessionModeId",
+      "schema": "SessionModeId",
+      "value": "fixture"
+    },
+    {
+      "id": "definition-SessionModeState",
+      "schema": "SessionModeState",
+      "value": {
+        "currentModeId": "fixture",
+        "availableModes": []
+      }
+    },
+    {
+      "id": "definition-SessionNotification",
+      "schema": "SessionNotification",
+      "value": {
+        "sessionId": "fixture",
+        "update": {
+          "content": {
+            "text": "fixture",
+            "type": "text"
+          },
+          "sessionUpdate": "user_message_chunk"
+        }
+      }
+    },
+    {
+      "id": "definition-SessionResumeCapabilities",
+      "schema": "SessionResumeCapabilities",
+      "value": {}
+    },
+    {
+      "id": "definition-SessionUpdate",
+      "schema": "SessionUpdate",
+      "value": {
+        "content": {
+          "text": "fixture",
+          "type": "text"
+        },
+        "sessionUpdate": "user_message_chunk"
+      }
+    },
+    {
+      "id": "definition-SetSessionConfigOptionRequest",
+      "schema": "SetSessionConfigOptionRequest",
+      "value": {
+        "sessionId": "fixture",
+        "configId": "fixture",
+        "value": false,
+        "type": "boolean"
+      }
+    },
+    {
+      "id": "definition-SetSessionConfigOptionResponse",
+      "schema": "SetSessionConfigOptionResponse",
+      "value": {
+        "configOptions": []
+      }
+    },
+    {
+      "id": "definition-SetSessionModeRequest",
+      "schema": "SetSessionModeRequest",
+      "value": {
+        "sessionId": "fixture",
+        "modeId": "fixture"
+      }
+    },
+    {
+      "id": "definition-SetSessionModeResponse",
+      "schema": "SetSessionModeResponse",
+      "value": {}
+    },
+    {
+      "id": "definition-StopReason",
+      "schema": "StopReason",
+      "value": "end_turn"
+    },
+    {
+      "id": "definition-StringFormat",
+      "schema": "StringFormat",
+      "value": "email"
+    },
+    {
+      "id": "definition-StringMultiSelectItems",
+      "schema": "StringMultiSelectItems",
+      "value": {
+        "enum": []
+      }
+    },
+    {
+      "id": "definition-StringPropertySchema",
+      "schema": "StringPropertySchema",
+      "value": {}
+    },
+    {
+      "id": "definition-Terminal",
+      "schema": "Terminal",
+      "value": {
+        "terminalId": "fixture"
+      }
+    },
+    {
+      "id": "definition-TerminalExitStatus",
+      "schema": "TerminalExitStatus",
+      "value": {}
+    },
+    {
+      "id": "definition-TerminalId",
+      "schema": "TerminalId",
+      "value": "fixture"
+    },
+    {
+      "id": "definition-TerminalOutputRequest",
+      "schema": "TerminalOutputRequest",
+      "value": {
+        "sessionId": "fixture",
+        "terminalId": "fixture"
+      }
+    },
+    {
+      "id": "definition-TerminalOutputResponse",
+      "schema": "TerminalOutputResponse",
+      "value": {
+        "output": "fixture",
+        "truncated": false
+      }
+    },
+    {
+      "id": "definition-TextContent",
+      "schema": "TextContent",
+      "value": {
+        "text": "fixture"
+      }
+    },
+    {
+      "id": "definition-TextResourceContents",
+      "schema": "TextResourceContents",
+      "value": {
+        "text": "fixture",
+        "uri": "fixture"
+      }
+    },
+    {
+      "id": "definition-TitledMultiSelectItems",
+      "schema": "TitledMultiSelectItems",
+      "value": {
+        "anyOf": []
+      }
+    },
+    {
+      "id": "definition-ToolCall",
+      "schema": "ToolCall",
+      "value": {
+        "toolCallId": "fixture",
+        "title": "fixture"
+      }
+    },
+    {
+      "id": "definition-ToolCallContent",
+      "schema": "ToolCallContent",
+      "value": {
+        "content": {
+          "text": "fixture",
+          "type": "text"
+        },
+        "type": "content"
+      }
+    },
+    {
+      "id": "definition-ToolCallId",
+      "schema": "ToolCallId",
+      "value": "fixture"
+    },
+    {
+      "id": "definition-ToolCallLocation",
+      "schema": "ToolCallLocation",
+      "value": {
+        "path": "fixture"
+      }
+    },
+    {
+      "id": "definition-ToolCallStatus",
+      "schema": "ToolCallStatus",
+      "value": "pending"
+    },
+    {
+      "id": "definition-ToolCallUpdate",
+      "schema": "ToolCallUpdate",
+      "value": {
+        "toolCallId": "fixture"
+      }
+    },
+    {
+      "id": "definition-ToolKind",
+      "schema": "ToolKind",
+      "value": "read"
+    },
+    {
+      "id": "definition-UnstructuredCommandInput",
+      "schema": "UnstructuredCommandInput",
+      "value": {
+        "hint": "fixture"
+      }
+    },
+    {
+      "id": "definition-UsageUpdate",
+      "schema": "UsageUpdate",
+      "value": {
+        "used": 0,
+        "size": 0
+      }
+    },
+    {
+      "id": "definition-WaitForTerminalExitRequest",
+      "schema": "WaitForTerminalExitRequest",
+      "value": {
+        "sessionId": "fixture",
+        "terminalId": "fixture"
+      }
+    },
+    {
+      "id": "definition-WaitForTerminalExitResponse",
+      "schema": "WaitForTerminalExitResponse",
+      "value": {}
+    },
+    {
+      "id": "definition-WriteTextFileRequest",
+      "schema": "WriteTextFileRequest",
+      "value": {
+        "sessionId": "fixture",
+        "path": "fixture",
+        "content": "fixture"
+      }
+    },
+    {
+      "id": "definition-WriteTextFileResponse",
+      "schema": "WriteTextFileResponse",
+      "value": {}
+    },
+    {
+      "id": "update-user_message_chunk",
+      "schema": "SessionUpdate",
+      "value": {
+        "content": {
+          "text": "fixture",
+          "type": "text"
+        },
+        "sessionUpdate": "user_message_chunk"
+      }
+    },
+    {
+      "id": "update-agent_message_chunk",
+      "schema": "SessionUpdate",
+      "value": {
+        "content": {
+          "text": "fixture",
+          "type": "text"
+        },
+        "sessionUpdate": "agent_message_chunk"
+      }
+    },
+    {
+      "id": "update-agent_thought_chunk",
+      "schema": "SessionUpdate",
+      "value": {
+        "content": {
+          "text": "fixture",
+          "type": "text"
+        },
+        "sessionUpdate": "agent_thought_chunk"
+      }
+    },
+    {
+      "id": "update-tool_call",
+      "schema": "SessionUpdate",
+      "value": {
+        "toolCallId": "fixture",
+        "title": "fixture",
+        "sessionUpdate": "tool_call"
+      }
+    },
+    {
+      "id": "update-tool_call_update",
+      "schema": "SessionUpdate",
+      "value": {
+        "toolCallId": "fixture",
+        "sessionUpdate": "tool_call_update"
+      }
+    },
+    {
+      "id": "update-plan",
+      "schema": "SessionUpdate",
+      "value": {
+        "entries": [],
+        "sessionUpdate": "plan"
+      }
+    },
+    {
+      "id": "update-available_commands_update",
+      "schema": "SessionUpdate",
+      "value": {
+        "availableCommands": [],
+        "sessionUpdate": "available_commands_update"
+      }
+    },
+    {
+      "id": "update-current_mode_update",
+      "schema": "SessionUpdate",
+      "value": {
+        "currentModeId": "fixture",
+        "sessionUpdate": "current_mode_update"
+      }
+    },
+    {
+      "id": "update-config_option_update",
+      "schema": "SessionUpdate",
+      "value": {
+        "configOptions": [],
+        "sessionUpdate": "config_option_update"
+      }
+    },
+    {
+      "id": "update-session_info_update",
+      "schema": "SessionUpdate",
+      "value": {
+        "sessionUpdate": "session_info_update"
+      }
+    },
+    {
+      "id": "update-usage_update",
+      "schema": "SessionUpdate",
+      "value": {
+        "used": 0,
+        "size": 0,
+        "sessionUpdate": "usage_update"
+      }
+    },
+    {
+      "id": "update-notice",
+      "schema": "SessionUpdate",
+      "value": {
+        "severity": "info",
+        "title": "fixture",
+        "sessionUpdate": "notice"
+      }
+    },
+    {
+      "id": "update-compaction_update",
+      "schema": "SessionUpdate",
+      "value": {
+        "compactionId": "fixture",
+        "status": "in_progress",
+        "sessionUpdate": "compaction_update"
+      }
+    },
+    {
+      "id": "update-compaction_summary_chunk",
+      "schema": "SessionUpdate",
+      "value": {
+        "compactionId": "fixture",
+        "content": {
+          "text": "fixture",
+          "type": "text"
+        },
+        "sessionUpdate": "compaction_summary_chunk"
+      }
+    },
+    {
+      "id": "variant-AgentResponse-1",
+      "schema": "AgentResponse",
+      "value": {
+        "id": null,
+        "result": {
+          "protocolVersion": 0
+        }
+      }
+    },
+    {
+      "id": "variant-AgentResponse-2",
+      "schema": "AgentResponse",
+      "value": {
+        "id": null,
+        "error": {
+          "code": -32700,
+          "message": "fixture"
+        }
+      }
+    },
+    {
+      "id": "variant-AuthMethod-1",
+      "schema": "AuthMethod",
+      "value": {
+        "id": "fixture",
+        "name": "fixture",
+        "type": "terminal"
+      }
+    },
+    {
+      "id": "variant-AuthMethod-2",
+      "schema": "AuthMethod",
+      "value": {
+        "id": "fixture",
+        "name": "fixture"
+      }
+    },
+    {
+      "id": "variant-AvailableCommandInput-1",
+      "schema": "AvailableCommandInput",
+      "value": {
+        "hint": "fixture"
+      }
+    },
+    {
+      "id": "variant-ClientResponse-1",
+      "schema": "ClientResponse",
+      "value": {
+        "id": null,
+        "result": {}
+      }
+    },
+    {
+      "id": "variant-ClientResponse-2",
+      "schema": "ClientResponse",
+      "value": {
+        "id": null,
+        "error": {
+          "code": -32700,
+          "message": "fixture"
+        }
+      }
+    },
+    {
+      "id": "variant-CompactionStatus-1",
+      "schema": "CompactionStatus",
+      "value": "in_progress"
+    },
+    {
+      "id": "variant-CompactionStatus-2",
+      "schema": "CompactionStatus",
+      "value": "completed"
+    },
+    {
+      "id": "variant-CompactionStatus-3",
+      "schema": "CompactionStatus",
+      "value": "failed"
+    },
+    {
+      "id": "variant-CompactionStatus-4",
+      "schema": "CompactionStatus",
+      "value": "cancelled"
+    },
+    {
+      "id": "variant-CompactionStatus-5",
+      "schema": "CompactionStatus",
+      "value": "fixture"
+    },
+    {
+      "id": "variant-ContentBlock-1",
+      "schema": "ContentBlock",
+      "value": {
+        "text": "fixture",
+        "type": "text"
+      }
+    },
+    {
+      "id": "variant-ContentBlock-2",
+      "schema": "ContentBlock",
+      "value": {
+        "data": "fixture",
+        "mimeType": "fixture",
+        "type": "image"
+      }
+    },
+    {
+      "id": "variant-ContentBlock-3",
+      "schema": "ContentBlock",
+      "value": {
+        "data": "fixture",
+        "mimeType": "fixture",
+        "type": "audio"
+      }
+    },
+    {
+      "id": "variant-ContentBlock-4",
+      "schema": "ContentBlock",
+      "value": {
+        "name": "fixture",
+        "uri": "fixture",
+        "type": "resource_link"
+      }
+    },
+    {
+      "id": "variant-ContentBlock-5",
+      "schema": "ContentBlock",
+      "value": {
+        "resource": {
+          "text": "fixture",
+          "uri": "fixture"
+        },
+        "type": "resource"
+      }
+    },
+    {
+      "id": "variant-CreateElicitationRequest-1",
+      "schema": "CreateElicitationRequest",
+      "value": {
+        "message": "fixture",
+        "requestedSchema": {},
+        "mode": "form",
+        "sessionId": "fixture"
+      }
+    },
+    {
+      "id": "variant-CreateElicitationRequest-2",
+      "schema": "CreateElicitationRequest",
+      "value": {
+        "message": "fixture",
+        "elicitationId": "fixture",
+        "url": "fixture",
+        "mode": "url",
+        "sessionId": "fixture"
+      }
+    },
+    {
+      "id": "variant-CreateElicitationRequest-3",
+      "schema": "CreateElicitationRequest",
+      "value": {
+        "message": "fixture",
+        "mode": "fixture",
+        "sessionId": "fixture"
+      }
+    },
+    {
+      "id": "variant-CreateElicitationResponse-1",
+      "schema": "CreateElicitationResponse",
+      "value": {
+        "action": "accept"
+      }
+    },
+    {
+      "id": "variant-CreateElicitationResponse-2",
+      "schema": "CreateElicitationResponse",
+      "value": {
+        "action": "decline"
+      }
+    },
+    {
+      "id": "variant-CreateElicitationResponse-3",
+      "schema": "CreateElicitationResponse",
+      "value": {
+        "action": "cancel"
+      }
+    },
+    {
+      "id": "variant-CreateElicitationResponse-4",
+      "schema": "CreateElicitationResponse",
+      "value": {
+        "action": "fixture"
+      }
+    },
+    {
+      "id": "variant-ElicitationContentValue-1",
+      "schema": "ElicitationContentValue",
+      "value": "fixture"
+    },
+    {
+      "id": "variant-ElicitationContentValue-2",
+      "schema": "ElicitationContentValue",
+      "value": 0
+    },
+    {
+      "id": "variant-ElicitationContentValue-3",
+      "schema": "ElicitationContentValue",
+      "value": 0
+    },
+    {
+      "id": "variant-ElicitationContentValue-4",
+      "schema": "ElicitationContentValue",
+      "value": false
+    },
+    {
+      "id": "variant-ElicitationContentValue-5",
+      "schema": "ElicitationContentValue",
+      "value": []
+    },
+    {
+      "id": "variant-ElicitationFormMode-1",
+      "schema": "ElicitationFormMode",
+      "value": {
+        "requestedSchema": {},
+        "sessionId": "fixture"
+      }
+    },
+    {
+      "id": "variant-ElicitationFormMode-2",
+      "schema": "ElicitationFormMode",
+      "value": {
+        "requestedSchema": {},
+        "requestId": null
+      }
+    },
+    {
+      "id": "variant-ElicitationPropertySchema-1",
+      "schema": "ElicitationPropertySchema",
+      "value": {
+        "type": "string"
+      }
+    },
+    {
+      "id": "variant-ElicitationPropertySchema-2",
+      "schema": "ElicitationPropertySchema",
+      "value": {
+        "type": "number"
+      }
+    },
+    {
+      "id": "variant-ElicitationPropertySchema-3",
+      "schema": "ElicitationPropertySchema",
+      "value": {
+        "type": "integer"
+      }
+    },
+    {
+      "id": "variant-ElicitationPropertySchema-4",
+      "schema": "ElicitationPropertySchema",
+      "value": {
+        "type": "boolean"
+      }
+    },
+    {
+      "id": "variant-ElicitationPropertySchema-5",
+      "schema": "ElicitationPropertySchema",
+      "value": {
+        "items": {
+          "enum": [],
+          "type": "string"
+        },
+        "type": "array"
+      }
+    },
+    {
+      "id": "variant-ElicitationPropertySchema-6",
+      "schema": "ElicitationPropertySchema",
+      "value": {
+        "type": "fixture"
+      }
+    },
+    {
+      "id": "variant-ElicitationSchemaType-1",
+      "schema": "ElicitationSchemaType",
+      "value": "object"
+    },
+    {
+      "id": "variant-ElicitationUrlMode-1",
+      "schema": "ElicitationUrlMode",
+      "value": {
+        "elicitationId": "fixture",
+        "url": "fixture",
+        "sessionId": "fixture"
+      }
+    },
+    {
+      "id": "variant-ElicitationUrlMode-2",
+      "schema": "ElicitationUrlMode",
+      "value": {
+        "elicitationId": "fixture",
+        "url": "fixture",
+        "requestId": null
+      }
+    },
+    {
+      "id": "variant-EmbeddedResourceResource-1",
+      "schema": "EmbeddedResourceResource",
+      "value": {
+        "text": "fixture",
+        "uri": "fixture"
+      }
+    },
+    {
+      "id": "variant-EmbeddedResourceResource-2",
+      "schema": "EmbeddedResourceResource",
+      "value": {
+        "blob": "fixture",
+        "uri": "fixture"
+      }
+    },
+    {
+      "id": "variant-ErrorCode-1",
+      "schema": "ErrorCode",
+      "value": -32700
+    },
+    {
+      "id": "variant-ErrorCode-2",
+      "schema": "ErrorCode",
+      "value": -32600
+    },
+    {
+      "id": "variant-ErrorCode-3",
+      "schema": "ErrorCode",
+      "value": -32601
+    },
+    {
+      "id": "variant-ErrorCode-4",
+      "schema": "ErrorCode",
+      "value": -32602
+    },
+    {
+      "id": "variant-ErrorCode-5",
+      "schema": "ErrorCode",
+      "value": -32603
+    },
+    {
+      "id": "variant-ErrorCode-6",
+      "schema": "ErrorCode",
+      "value": -32800
+    },
+    {
+      "id": "variant-ErrorCode-7",
+      "schema": "ErrorCode",
+      "value": -32000
+    },
+    {
+      "id": "variant-ErrorCode-8",
+      "schema": "ErrorCode",
+      "value": -32002
+    },
+    {
+      "id": "variant-ErrorCode-9",
+      "schema": "ErrorCode",
+      "value": 0
+    },
+    {
+      "id": "variant-McpServer-1",
+      "schema": "McpServer",
+      "value": {
+        "name": "fixture",
+        "url": "fixture",
+        "headers": [],
+        "type": "http"
+      }
+    },
+    {
+      "id": "variant-McpServer-2",
+      "schema": "McpServer",
+      "value": {
+        "name": "fixture",
+        "url": "fixture",
+        "headers": [],
+        "type": "sse"
+      }
+    },
+    {
+      "id": "variant-McpServer-3",
+      "schema": "McpServer",
+      "value": {
+        "name": "fixture",
+        "command": "fixture",
+        "args": [],
+        "env": []
+      }
+    },
+    {
+      "id": "variant-MultiSelectItems-1",
+      "schema": "MultiSelectItems",
+      "value": {
+        "enum": [],
+        "type": "string"
+      }
+    },
+    {
+      "id": "variant-MultiSelectItems-2",
+      "schema": "MultiSelectItems",
+      "value": {
+        "type": "fixture"
+      }
+    },
+    {
+      "id": "variant-MultiSelectItems-3",
+      "schema": "MultiSelectItems",
+      "value": {
+        "anyOf": []
+      }
+    },
+    {
+      "id": "variant-NoticeSeverity-1",
+      "schema": "NoticeSeverity",
+      "value": "info"
+    },
+    {
+      "id": "variant-NoticeSeverity-2",
+      "schema": "NoticeSeverity",
+      "value": "warning"
+    },
+    {
+      "id": "variant-NoticeSeverity-3",
+      "schema": "NoticeSeverity",
+      "value": "error"
+    },
+    {
+      "id": "variant-NoticeSeverity-4",
+      "schema": "NoticeSeverity",
+      "value": "fixture"
+    },
+    {
+      "id": "variant-PermissionOptionKind-1",
+      "schema": "PermissionOptionKind",
+      "value": "allow_once"
+    },
+    {
+      "id": "variant-PermissionOptionKind-2",
+      "schema": "PermissionOptionKind",
+      "value": "allow_always"
+    },
+    {
+      "id": "variant-PermissionOptionKind-3",
+      "schema": "PermissionOptionKind",
+      "value": "reject_once"
+    },
+    {
+      "id": "variant-PermissionOptionKind-4",
+      "schema": "PermissionOptionKind",
+      "value": "reject_always"
+    },
+    {
+      "id": "variant-PlanEntryPriority-1",
+      "schema": "PlanEntryPriority",
+      "value": "high"
+    },
+    {
+      "id": "variant-PlanEntryPriority-2",
+      "schema": "PlanEntryPriority",
+      "value": "medium"
+    },
+    {
+      "id": "variant-PlanEntryPriority-3",
+      "schema": "PlanEntryPriority",
+      "value": "low"
+    },
+    {
+      "id": "variant-PlanEntryStatus-1",
+      "schema": "PlanEntryStatus",
+      "value": "pending"
+    },
+    {
+      "id": "variant-PlanEntryStatus-2",
+      "schema": "PlanEntryStatus",
+      "value": "in_progress"
+    },
+    {
+      "id": "variant-PlanEntryStatus-3",
+      "schema": "PlanEntryStatus",
+      "value": "completed"
+    },
+    {
+      "id": "variant-RequestId-1",
+      "schema": "RequestId",
+      "value": null
+    },
+    {
+      "id": "variant-RequestId-2",
+      "schema": "RequestId",
+      "value": 0
+    },
+    {
+      "id": "variant-RequestId-3",
+      "schema": "RequestId",
+      "value": "fixture"
+    },
+    {
+      "id": "variant-RequestPermissionOutcome-1",
+      "schema": "RequestPermissionOutcome",
+      "value": {
+        "outcome": "cancelled"
+      }
+    },
+    {
+      "id": "variant-RequestPermissionOutcome-2",
+      "schema": "RequestPermissionOutcome",
+      "value": {
+        "optionId": "fixture",
+        "outcome": "selected"
+      }
+    },
+    {
+      "id": "variant-Role-1",
+      "schema": "Role",
+      "value": "assistant"
+    },
+    {
+      "id": "variant-Role-2",
+      "schema": "Role",
+      "value": "user"
+    },
+    {
+      "id": "variant-SessionConfigOption-1",
+      "schema": "SessionConfigOption",
+      "value": {
+        "id": "fixture",
+        "name": "fixture",
+        "currentValue": "fixture",
+        "options": [],
+        "type": "select"
+      }
+    },
+    {
+      "id": "variant-SessionConfigOption-2",
+      "schema": "SessionConfigOption",
+      "value": {
+        "id": "fixture",
+        "name": "fixture",
+        "currentValue": false,
+        "type": "boolean"
+      }
+    },
+    {
+      "id": "variant-SessionConfigOptionCategory-1",
+      "schema": "SessionConfigOptionCategory",
+      "value": "mode"
+    },
+    {
+      "id": "variant-SessionConfigOptionCategory-2",
+      "schema": "SessionConfigOptionCategory",
+      "value": "model"
+    },
+    {
+      "id": "variant-SessionConfigOptionCategory-3",
+      "schema": "SessionConfigOptionCategory",
+      "value": "model_config"
+    },
+    {
+      "id": "variant-SessionConfigOptionCategory-4",
+      "schema": "SessionConfigOptionCategory",
+      "value": "thought_level"
+    },
+    {
+      "id": "variant-SessionConfigOptionCategory-5",
+      "schema": "SessionConfigOptionCategory",
+      "value": "fixture"
+    },
+    {
+      "id": "variant-SessionConfigSelectOptions-1",
+      "schema": "SessionConfigSelectOptions",
+      "value": []
+    },
+    {
+      "id": "variant-SessionConfigSelectOptions-2",
+      "schema": "SessionConfigSelectOptions",
+      "value": []
+    },
+    {
+      "id": "variant-SetSessionConfigOptionRequest-1",
+      "schema": "SetSessionConfigOptionRequest",
+      "value": {
+        "sessionId": "fixture",
+        "configId": "fixture",
+        "value": false,
+        "type": "boolean"
+      }
+    },
+    {
+      "id": "variant-SetSessionConfigOptionRequest-2",
+      "schema": "SetSessionConfigOptionRequest",
+      "value": {
+        "sessionId": "fixture",
+        "configId": "fixture",
+        "value": "fixture"
+      }
+    },
+    {
+      "id": "variant-StopReason-1",
+      "schema": "StopReason",
+      "value": "end_turn"
+    },
+    {
+      "id": "variant-StopReason-2",
+      "schema": "StopReason",
+      "value": "max_tokens"
+    },
+    {
+      "id": "variant-StopReason-3",
+      "schema": "StopReason",
+      "value": "max_turn_requests"
+    },
+    {
+      "id": "variant-StopReason-4",
+      "schema": "StopReason",
+      "value": "refusal"
+    },
+    {
+      "id": "variant-StopReason-5",
+      "schema": "StopReason",
+      "value": "cancelled"
+    },
+    {
+      "id": "variant-StringFormat-1",
+      "schema": "StringFormat",
+      "value": "email"
+    },
+    {
+      "id": "variant-StringFormat-2",
+      "schema": "StringFormat",
+      "value": "uri"
+    },
+    {
+      "id": "variant-StringFormat-3",
+      "schema": "StringFormat",
+      "value": "date"
+    },
+    {
+      "id": "variant-StringFormat-4",
+      "schema": "StringFormat",
+      "value": "date-time"
+    },
+    {
+      "id": "variant-ToolCallContent-1",
+      "schema": "ToolCallContent",
+      "value": {
+        "content": {
+          "text": "fixture",
+          "type": "text"
+        },
+        "type": "content"
+      }
+    },
+    {
+      "id": "variant-ToolCallContent-2",
+      "schema": "ToolCallContent",
+      "value": {
+        "path": "fixture",
+        "newText": "fixture",
+        "type": "diff"
+      }
+    },
+    {
+      "id": "variant-ToolCallContent-3",
+      "schema": "ToolCallContent",
+      "value": {
+        "terminalId": "fixture",
+        "type": "terminal"
+      }
+    },
+    {
+      "id": "variant-ToolCallStatus-1",
+      "schema": "ToolCallStatus",
+      "value": "pending"
+    },
+    {
+      "id": "variant-ToolCallStatus-2",
+      "schema": "ToolCallStatus",
+      "value": "in_progress"
+    },
+    {
+      "id": "variant-ToolCallStatus-3",
+      "schema": "ToolCallStatus",
+      "value": "completed"
+    },
+    {
+      "id": "variant-ToolCallStatus-4",
+      "schema": "ToolCallStatus",
+      "value": "failed"
+    },
+    {
+      "id": "variant-ToolKind-1",
+      "schema": "ToolKind",
+      "value": "read"
+    },
+    {
+      "id": "variant-ToolKind-2",
+      "schema": "ToolKind",
+      "value": "edit"
+    },
+    {
+      "id": "variant-ToolKind-3",
+      "schema": "ToolKind",
+      "value": "delete"
+    },
+    {
+      "id": "variant-ToolKind-4",
+      "schema": "ToolKind",
+      "value": "move"
+    },
+    {
+      "id": "variant-ToolKind-5",
+      "schema": "ToolKind",
+      "value": "search"
+    },
+    {
+      "id": "variant-ToolKind-6",
+      "schema": "ToolKind",
+      "value": "execute"
+    },
+    {
+      "id": "variant-ToolKind-7",
+      "schema": "ToolKind",
+      "value": "think"
+    },
+    {
+      "id": "variant-ToolKind-8",
+      "schema": "ToolKind",
+      "value": "fetch"
+    },
+    {
+      "id": "variant-ToolKind-9",
+      "schema": "ToolKind",
+      "value": "switch_mode"
+    },
+    {
+      "id": "variant-ToolKind-10",
+      "schema": "ToolKind",
+      "value": "other"
+    }
+  ]
+}

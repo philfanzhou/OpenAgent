@@ -1,4 +1,7 @@
+using System.Diagnostics;
 using System.Text;
+using System.Text.Json.Nodes;
+using OpenAgent.Runtime.Acp.Protocol;
 using System.Text.Json;
 using OpenAgent.Runtime.Acp.Transport;
 using OpenAgent.Runtime.Acp.TestConsole.Scenarios;
@@ -11,43 +14,75 @@ internal static class ConsoleApplication
     {
         if (args is ["--help"] or ["help"])
         {
-            await output.WriteLineAsync("Usage: acp-test [list | run framing | run lifecycle | run all]").ConfigureAwait(false);
+            await output.WriteLineAsync("Usage: acp-test [list | run framing|lifecycle|schema|all [--report <json-path>] [--fixtures <json-path>]]").ConfigureAwait(false);
             return 0;
         }
-
         if (args.Length == 0 || args is ["list"])
         {
             await output.WriteLineAsync("framing\tP0\tBounded SDK Stream transport, Unicode, CRLF and EOF").ConfigureAwait(false);
             await output.WriteLineAsync("lifecycle\tP0\tEOF drain, cancellation failure and shared disposal").ConfigureAwait(false);
+            await output.WriteLineAsync("schema\tP1\tPinned v1 models, 25 methods, 14 updates and rejected input").ConfigureAwait(false);
             return 0;
         }
-
-        if (args is not ["run", "framing" or "lifecycle" or "all"])
+        string? reportPath = null;
+        string fixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "contracts.json");
+        bool valid = args.Length >= 2 && args[0] == "run" && args[1] is "framing" or "lifecycle" or "schema" or "all";
+        HashSet<string> seen = new(StringComparer.Ordinal);
+        for (int i = 2; valid && i < args.Length; i += 2)
+        {
+            if (i + 1 >= args.Length || args[i] is not ("--report" or "--fixtures") || !seen.Add(args[i]) || string.IsNullOrWhiteSpace(args[i + 1])) valid = false;
+            else if (args[i] == "--report") reportPath = args[i + 1];
+            else if (args[1] is "schema" or "all") fixturePath = args[i + 1];
+            else valid = false;
+        }
+        if (!valid)
         {
             await error.WriteLineAsync("Unknown command or scenario. Use list to see implemented scenarios.").ConfigureAwait(false);
             return 2;
         }
-
-        try
+        JsonArray results = new();
+        string[] scenarios = args[1] == "all" ? ["framing", "lifecycle", "schema"] : [args[1]];
+        int exitCode = 0;
+        foreach (string scenario in scenarios)
         {
-            if (args[1] is "framing" or "all")
+            Stopwatch elapsed = Stopwatch.StartNew();
+            JsonObject result = new() { ["scenario"] = scenario, ["phase"] = scenario == "schema" ? "P1" : "P0", ["protocolVersion"] = AcpProtocol.Version };
+            try
             {
-                await VerifyFramingAsync().ConfigureAwait(false);
-                await output.WriteLineAsync("PASS framing (SDK transport; no Agent or model invoked)").ConfigureAwait(false);
+                if (scenario == "framing") await VerifyFramingAsync().ConfigureAwait(false);
+                else if (scenario == "lifecycle") await LifecycleScenario.RunAsync().ConfigureAwait(false);
+                else result["coverage"] = await SchemaScenario.RunAsync(fixturePath).ConfigureAwait(false);
+                result["status"] = "PASS";
+                await output.WriteLineAsync(scenario == "schema"
+                    ? "PASS schema protocolVersion=1 methods=25 updates=14 definitions=178 (model coverage)"
+                    : $"PASS {scenario} (SDK transport and cleanup)").ConfigureAwait(false);
             }
-
-            if (args[1] is "lifecycle" or "all")
+            catch (Exception exception)
             {
-                await LifecycleScenario.RunAsync().ConfigureAwait(false);
-                await output.WriteLineAsync("PASS lifecycle (SDK cleanup and failure propagation)").ConfigureAwait(false);
+                result["status"] = "FAIL";
+                result["error"] = exception.GetType().Name;
+                await error.WriteLineAsync($"FAIL {scenario}: {exception.GetType().Name}").ConfigureAwait(false);
+                exitCode = 1;
             }
-            return 0;
+            result["elapsedMs"] = elapsed.Elapsed.TotalMilliseconds;
+            results.Add(result);
         }
-        catch (Exception exception)
+        if (reportPath is not null)
         {
-            await error.WriteLineAsync($"FAIL {args[1]}: {exception.GetType().Name}").ConfigureAwait(false);
-            return 1;
+            JsonObject report = new()
+            {
+                ["status"] = exitCode == 0 ? "PASS" : "FAIL", ["protocolVersion"] = AcpProtocol.Version,
+                ["sourceCommit"] = AcpProtocol.SourceCommit, ["results"] = results,
+                ["notTested"] = new JsonArray("RPC execution", "real Agent/model", "interoperability", "AOT", "Docker")
+            };
+            try { await File.WriteAllTextAsync(reportPath, report.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + "\n").ConfigureAwait(false); }
+            catch (Exception exception)
+            {
+                await error.WriteLineAsync($"FAIL report: {exception.GetType().Name}").ConfigureAwait(false);
+                exitCode = 1;
+            }
         }
+        return exitCode;
     }
 
     private static async Task VerifyFramingAsync()

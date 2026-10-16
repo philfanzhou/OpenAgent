@@ -2,8 +2,12 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <IsPackable>false</IsPackable>
+    <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/OpenAgent.Runtime.Acp/OpenAgent.Runtime.Acp.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="../../../docs/integrations/acp-dotnet-sdk/fixtures/contracts.json" Link="Fixtures/contracts.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

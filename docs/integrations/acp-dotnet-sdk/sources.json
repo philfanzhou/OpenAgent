@@ -246,7 +246,14 @@
       "notice",
       "compaction_update",
       "compaction_summary_chunk"
-    ]
+    ],
+    "vendored_schema": "schema/v1/schema.json",
+    "vendored_meta": "schema/v1/meta.json",
+    "lock_path": "schema/lock.json",
+    "license": "Apache-2.0",
+    "license_path": "schema/v1/LICENSE",
+    "license_sha256": "f250d08cee4549b22b3b4aaaf3a743473336fd280316df5d0340717e5127a221",
+    "source_url": "https://github.com/agentclientprotocol/agent-client-protocol/tree/1cebe1c01837379abf34dd62b71e9c75bf140669"
   },
   "interop_peers": [
     {

@@ -146,3 +146,33 @@ SDK 不将资源链接自动下载为本地文件，不把不同 MIME/二进制�
 权限 outcome 是 selected/cancelled；selected 的 optionId 必须来自请求 options。PermissionOption.kind 是选项意图，SDK 不自行把 allow_always 存成跨租户永久授权。
 
 terminal outputByteLimit 按字节限制并在字符边界从头截断，保留 truncation 标记；kill 不 release。`terminal/release`、session close、connection shutdown 都要覆盖资源清理测试。[终端](https://agentclientprotocol.com/protocol/v1/terminals)。
+
+## 6. 模型生成与公共入口
+
+固定原件为 `schema/v1/schema.json`、`meta.json` 与 Apache-2.0 `LICENSE`；`schema/lock.json` 和 sources.json 共同锁定来源，原件不作格式化。生成器不联网，不在 SDK 编译时运行，不引用或打包进 SDK。生成目录只能由生成器更新；既有 CI 的 ACP 测试两次运行 CodeGen --check，在内存中重新生成并逐字节核对全部已提交文件；手工 verify.py 另验证两次写出及篡改拒绝。
+
+```sh
+dotnet run --project Backend/tools/OpenAgent.Runtime.Acp.CodeGen -- .
+dotnet run --no-build --project Backend/tools/OpenAgent.Runtime.Acp.CodeGen -- . --check
+python3 Backend/tools/OpenAgent.Runtime.Acp.CodeGen/verify.py . codegen-verification.json
+```
+
+verify.py 默认使用已构建 Debug 生成器，可在最后传 `Release`；报告包含生成前/第一次/第二次逐文件 SHA256 和新增/删除/变化文件。任一 schema/meta/许可/lock/方法清单不一致均失败；不更新来源或转向 latest。
+
+```csharp
+using OpenAgent.Runtime.Acp.Protocol;
+
+ContentBlock text = new(new ContentBlockText("Hello"));
+PromptRequest prompt = new("session-1", [text]);
+string json = AcpJson.Serialize(prompt);
+PromptRequest read = AcpJson.Deserialize<PromptRequest>(json);
+string body = read.Prompt[0].AsText().Text;
+```
+
+对象以不可变 owned JSON 保存；强类型构造立即严格校验。`As*` 校验对应联合分支，投错分支抛 JsonException。每次集合 getter 返回独立值；原输入 JsonDocument 释放后 DTO、`_meta`、开放 JSON 和错误 data 仍有效。`Json` 是只读诊断视图，不自动保留标准对象的未知根字段；schema 明确开放的扩展/未来 elicitation 分支保留 raw，不能据此当作已知成功动作。
+
+可选字段返回 `Optional<T>`；`IsDefined`、`IsNull`、`HasValue` 分别判断缺失、显式 null 和值，只有 HasValue 时可取 Value。构造时用 `Optional<T>.Null` 写 null，用默认 Optional 省略；空数组不会补成缺失。声明了 schema default 的字段另有 `*OrDefault`，不在 wire 中注入默认值。`RpcId` 是 string/int64/null 值类型；缺失 ID 由 Optional 表示，数值不经过 double。schema 标量别名映射到 CLR 基础类型；闭合/开放枚举提供 wire 常量，使用目录中的 AcpSchemaDescriptor 可单独校验别名约束。
+
+读取仅对标记字段启用 default-on-error：非法 nullable 可选字段变 null，非法非 nullable 可选字段恢复缺省并经默认 getter 取 schema default；标记的集合跳过非法项。必填字段缺失、null 或类型错误不被恢复。发送/构造不启用这些宽容路径。字段大小写精确，重复 JSON 键拒绝；扩展应写入 `_meta`。数值检查固定格式与边界，JSON Schema format URI/日期作为注解，不自动规范化或访问资源；路径、权限 optionId 关联、能力门控和会话状态属于后续角色/handler 阶段。
+
+`AcpProtocol.Schemas` 提供全部 178 个稳定定义的 schema 名、CLR 类型和 JsonTypeInfo，Methods 提供 25 个方法的方向、request/notification 及参数/结果 schema，SessionUpdates 列出 14 个 tag。目录只表示模型覆盖，不能用于宣称这些方法已可调用。JSON-RPC envelope 的执行、batch/取消分派和角色状态在 ACP-02 起实现。

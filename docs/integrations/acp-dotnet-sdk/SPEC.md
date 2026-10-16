@@ -8,8 +8,9 @@
 
 SDK 负责通信和生命周期，推理、持久化、审批 UI、文件授权、命令执行、租户系统与沙箱归宿主。HTTP/WS、v2、代理编排、自动安装和平台执行链集成不在本轮范围。支持矩阵以实测为准，不承诺浏览器/WASM/Unity；0.x 迭代，满足 [发布门槛](./VALIDATION.md) 后才具备 1.0 候选资格。
 
-## 公共 API 契约（除 Transport 外均为待实现设计）
+## 公共 API 契约（角色层为后续阶段设计）
 
+- 模型入口位于 `OpenAgent.Runtime.Acp.Protocol`：`AcpProtocol` 提供稳定定义/方法目录，`AcpJson` 与 `AcpJsonContext` 提供显式 STJ 类型信息；不可变 DTO 以强类型构造和联合分支投影使用。`Optional<T>` 区分 omitted/null/value；默认字段另有 `*OrDefault`，不抹去原始缺省状态。读取兼容规则与严格发送约束见 PROTOCOL；这组模型不提供 RPC 调用或能力协商。
 - 协议层 `AcpClientConnection` / `AcpAgentConnection` 按 [PROTOCOL](./PROTOCOL.md) 提供强类型异步请求/通知，低层 Prompt 返回协议响应。泛型扩展显式注册 `AcpMethod<TRequest,TResponse>` 与 `JsonTypeInfo<T>`；原始 JSON 为显式逃生口，不反射扫描 handler，不泄漏第三方 RPC 类型。
 - Client Connect 只启动 RPC，不暗中 initialize。Agent Host 在读循环前冻结全部 handler 注册，Run 持续到 EOF/关闭/故障。无需 DI 容器；options 只放连接配置，宿主行为通过 builder/handler 注册。
 - `IAcpTransport` 传递不含分隔符的完整 UTF-8 消息体，提供 ReadAsync、WriteAsync、Completion 和 IAsyncDisposable；只做 framing。已有 Stream 用 AcpStreamTransport，进程模块提供 transport 与 ProcessLease，不代替握手。
