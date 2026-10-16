@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/OpenAgent.Runtime.Acp/OpenAgent.Runtime.Acp.csproj" />
+    <ProjectReference Include="../../tools/OpenAgent.Runtime.Acp.TestConsole/OpenAgent.Runtime.Acp.TestConsole.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,265 @@
+{
+  "protocol_baseline": {
+    "repo": "agentclientprotocol/agent-client-protocol",
+    "commit": "1cebe1c01837379abf34dd62b71e9c75bf140669",
+    "protocol_version": 1,
+    "schema_path": "schema/v1/schema.json",
+    "schema_sha256": "4bcd1d2051ff7ed379bd9b234fb9b09c5ab9245478698e9fab805bd9b52a33a6",
+    "meta_path": "schema/v1/meta.json",
+    "meta_sha256": "061edb6efa8fb2aa2792459a86ec7268de5fe665bba48b2ffe7939df01481f88",
+    "definition_count": 178,
+    "methods": [
+      {
+        "method": "initialize",
+        "direction": "client_to_agent",
+        "kind": "request",
+        "schema_types": [
+          "InitializeResponse",
+          "InitializeRequest"
+        ]
+      },
+      {
+        "method": "authenticate",
+        "direction": "client_to_agent",
+        "kind": "request",
+        "schema_types": [
+          "AuthenticateResponse",
+          "AuthenticateRequest"
+        ]
+      },
+      {
+        "method": "session/new",
+        "direction": "client_to_agent",
+        "kind": "request",
+        "schema_types": [
+          "NewSessionResponse",
+          "NewSessionRequest"
+        ]
+      },
+      {
+        "method": "session/load",
+        "direction": "client_to_agent",
+        "kind": "request",
+        "schema_types": [
+          "LoadSessionResponse",
+          "LoadSessionRequest"
+        ]
+      },
+      {
+        "method": "session/set_mode",
+        "direction": "client_to_agent",
+        "kind": "request",
+        "schema_types": [
+          "SetSessionModeResponse",
+          "SetSessionModeRequest"
+        ]
+      },
+      {
+        "method": "session/set_config_option",
+        "direction": "client_to_agent",
+        "kind": "request",
+        "schema_types": [
+          "SetSessionConfigOptionResponse",
+          "SetSessionConfigOptionRequest"
+        ]
+      },
+      {
+        "method": "session/prompt",
+        "direction": "client_to_agent",
+        "kind": "request",
+        "schema_types": [
+          "PromptResponse",
+          "PromptRequest"
+        ]
+      },
+      {
+        "method": "session/cancel",
+        "direction": "client_to_agent",
+        "kind": "notification",
+        "schema_types": [
+          "CancelNotification"
+        ]
+      },
+      {
+        "method": "session/list",
+        "direction": "client_to_agent",
+        "kind": "request",
+        "schema_types": [
+          "ListSessionsResponse",
+          "ListSessionsRequest"
+        ]
+      },
+      {
+        "method": "session/delete",
+        "direction": "client_to_agent",
+        "kind": "request",
+        "schema_types": [
+          "DeleteSessionResponse",
+          "DeleteSessionRequest"
+        ]
+      },
+      {
+        "method": "session/resume",
+        "direction": "client_to_agent",
+        "kind": "request",
+        "schema_types": [
+          "ResumeSessionResponse",
+          "ResumeSessionRequest"
+        ]
+      },
+      {
+        "method": "session/close",
+        "direction": "client_to_agent",
+        "kind": "request",
+        "schema_types": [
+          "CloseSessionResponse",
+          "CloseSessionRequest"
+        ]
+      },
+      {
+        "method": "logout",
+        "direction": "client_to_agent",
+        "kind": "request",
+        "schema_types": [
+          "LogoutResponse",
+          "LogoutRequest"
+        ]
+      },
+      {
+        "method": "session/request_permission",
+        "direction": "agent_to_client",
+        "kind": "request",
+        "schema_types": [
+          "RequestPermissionRequest",
+          "RequestPermissionResponse"
+        ]
+      },
+      {
+        "method": "session/update",
+        "direction": "agent_to_client",
+        "kind": "notification",
+        "schema_types": [
+          "SessionNotification"
+        ]
+      },
+      {
+        "method": "fs/write_text_file",
+        "direction": "agent_to_client",
+        "kind": "request",
+        "schema_types": [
+          "WriteTextFileRequest",
+          "WriteTextFileResponse"
+        ]
+      },
+      {
+        "method": "fs/read_text_file",
+        "direction": "agent_to_client",
+        "kind": "request",
+        "schema_types": [
+          "ReadTextFileRequest",
+          "ReadTextFileResponse"
+        ]
+      },
+      {
+        "method": "terminal/create",
+        "direction": "agent_to_client",
+        "kind": "request",
+        "schema_types": [
+          "CreateTerminalRequest",
+          "CreateTerminalResponse"
+        ]
+      },
+      {
+        "method": "terminal/output",
+        "direction": "agent_to_client",
+        "kind": "request",
+        "schema_types": [
+          "TerminalOutputRequest",
+          "TerminalOutputResponse"
+        ]
+      },
+      {
+        "method": "terminal/release",
+        "direction": "agent_to_client",
+        "kind": "request",
+        "schema_types": [
+          "ReleaseTerminalRequest",
+          "ReleaseTerminalResponse"
+        ]
+      },
+      {
+        "method": "terminal/wait_for_exit",
+        "direction": "agent_to_client",
+        "kind": "request",
+        "schema_types": [
+          "WaitForTerminalExitRequest",
+          "WaitForTerminalExitResponse"
+        ]
+      },
+      {
+        "method": "terminal/kill",
+        "direction": "agent_to_client",
+        "kind": "request",
+        "schema_types": [
+          "KillTerminalRequest",
+          "KillTerminalResponse"
+        ]
+      },
+      {
+        "method": "elicitation/create",
+        "direction": "agent_to_client",
+        "kind": "request",
+        "schema_types": [
+          "CreateElicitationRequest",
+          "CreateElicitationResponse"
+        ]
+      },
+      {
+        "method": "elicitation/complete",
+        "direction": "agent_to_client",
+        "kind": "notification",
+        "schema_types": [
+          "CompleteElicitationNotification"
+        ]
+      },
+      {
+        "method": "$/cancel_request",
+        "direction": "bidirectional",
+        "kind": "notification",
+        "schema_types": [
+          "CancelRequestNotification"
+        ]
+      }
+    ],
+    "session_update_variants": [
+      "user_message_chunk",
+      "agent_message_chunk",
+      "agent_thought_chunk",
+      "tool_call",
+      "tool_call_update",
+      "plan",
+      "available_commands_update",
+      "current_mode_update",
+      "config_option_update",
+      "session_info_update",
+      "usage_update",
+      "notice",
+      "compaction_update",
+      "compaction_summary_chunk"
+    ]
+  },
+  "interop_peers": [
+    {
+      "repo": "agentclientprotocol/typescript-sdk",
+      "commit": "b98857b3f0342915728d7e30d8a7258311054f8f"
+    },
+    {
+      "repo": "agentclientprotocol/rust-sdk",
+      "commit": "f5c0eef0972bbda8e75a151aeb088642911b3568"
+    },
+    {
+      "repo": "agentclientprotocol/python-sdk",
+      "commit": "bdb9ac7054fb2df76a922b60b356c3c65f8a8a64"
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageId>OpenAgent.Runtime.Acp</PackageId>
+    <Description>Agent Client Protocol SDK for .NET.</Description>
+    <Version>0.1.0-dev</Version>
+  </PropertyGroup>
+</Project>
