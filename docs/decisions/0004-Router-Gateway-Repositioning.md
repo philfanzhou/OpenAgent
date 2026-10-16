@@ -162,7 +162,7 @@ public interface IIntentStrategy
 
 - `ModelIntentStrategy`：按决策模型的 `/v1/decisions` 接口实现，默认关闭，配置 `DecisionModel:Endpoint` 后排在策略链首位。
 
-- 注册端点（迁移第 4 步）：Router 提供 `PUT/DELETE /api/v1/router/registrations/{instanceId}`，共享密钥鉴权，写入原有 `engine:registry:*` 键，因此直连 Redis 的旧 Engine 与 HTTP 注册的实例在同一个池里，兼容键无需另设迁移。Engine 配置 `Heartbeat:RouterUrl` 与 `Heartbeat:RegistrationKey` 后改走 HTTP 注册，否则仍直写 Redis。静态地址沿用 Provider 的 `BaseUrl` 与路由表的静态回退，没有新增机制。
+- 注册端点（迁移第 4 步）：Router 提供 `PUT/DELETE /api/v1/router/registrations/{instanceId}`，共享密钥鉴权，写入原有 `engine:registry:*` 键，因此直连 Redis 的旧 Engine 与 HTTP 注册的实例在同一个池里，兼容键无需另设迁移。Engine 侧的 HTTP 注册客户端已撤掉，Engine 仍直写 Redis。静态地址沿用 Provider 的 `BaseUrl` 与路由表的静态回退，没有新增机制。
 - Agent ACL（迁移第 5 步）：`AgentAccess.IsAllowed` 是唯一规则，目录接口和 `AgentRuntimeResolver` 都调用它，所以隐藏的 Agent 也不能靠显式 `X-Agent-Id` 执行。
 - ACL 同步：保存 Agent 配置时，Engine 在同一个 Redis 事务里把 `Allowed*` 写入 `agent:acl:{agentId}`（三个列表全空则删除该键），独立仓库的 Router 读这个键做目录过滤。此前没有任何代码写入该键，Router 侧 ACL 实际上一直全部放行。
 

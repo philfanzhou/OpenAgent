@@ -70,7 +70,7 @@ Router 提供注册端点，下游启动后注册并周期性续约，续约同�
 - 注册信息写入 Redis，键名由 `Router.Contracts` 定义；超过 `ttlSeconds` 未续约视为下线。Redis 是 Router 的内部实现，下游只面对上面的 HTTP 接口。
 - 静态地址在配置文件中列出，行为与动态注册一致：同样有健康探测与故障隔离，只是没有心跳。
 - 同一 `providerId` 的多个实例按会话 ID 一致性哈希分配，实例失败后隔离一段时间再重试。
-- Engine 用 `Heartbeat:RouterUrl` 与 `Heartbeat:RegistrationKey` 注册；不配置 `RouterUrl` 时仍直写 Redis（旧路径）。
+- Engine 直写 Redis 注册，没有 HTTP 注册客户端。
 
 ## Run 任务
 

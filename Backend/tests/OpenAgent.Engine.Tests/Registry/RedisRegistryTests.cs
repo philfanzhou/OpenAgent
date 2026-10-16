@@ -40,50 +40,6 @@ public class RedisRegistryTests
         Assert.Empty(await redis.SetMembersAsync(EngineRegistryKeys.Index));
     }
 
-    [Fact]
-    public async Task RouterUrlConfigured_RegistersOverHttpWithoutTouchingRedis()
-    {
-        FakeRedisConnectionProvider redis = new();
-        RecordingHandler handler = new();
-        RedisRegistry registry = new(
-            redis,
-            new StaticOptionsMonitor(new HeartbeatOptions
-            {
-                AdvertisedHost = "engine",
-                AdvertisedPort = 5208,
-                RouterUrl = "http://router:8080",
-                RegistrationKey = "s3cret"
-            }),
-            NullLogger<RedisRegistry>.Instance,
-            handler);
-
-        await registry.RegisterAsync();
-        await registry.DeregisterAsync();
-
-        Assert.Equal([HttpMethod.Put, HttpMethod.Delete], handler.Requests.Select(r => r.Method));
-        Assert.All(handler.Requests, r =>
-        {
-            Assert.StartsWith("http://router:8080/api/v1/router/registrations/", r.Uri);
-            Assert.Equal("s3cret", r.Key);
-        });
-        Assert.Contains("\"baseUrl\":\"http://engine:5208\"", handler.Requests[0].Body);
-        Assert.Empty(await redis.SetMembersAsync(EngineRegistryKeys.Index));
-    }
-
-    private sealed class RecordingHandler : HttpMessageHandler
-    {
-        public List<(HttpMethod Method, string Uri, string? Key, string Body)> Requests { get; } = [];
-
-        protected override async Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            string body = request.Content == null ? "" : await request.Content.ReadAsStringAsync(cancellationToken);
-            request.Headers.TryGetValues("X-Registration-Key", out IEnumerable<string>? key);
-            Requests.Add((request.Method, request.RequestUri!.ToString(), key?.SingleOrDefault(), body));
-            return new HttpResponseMessage(System.Net.HttpStatusCode.NoContent);
-        }
-    }
-
     private static RedisRegistry CreateRegistry(FakeRedisConnectionProvider redis)
     {
         HeartbeatOptions options = new()
