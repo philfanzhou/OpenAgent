@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Models;
+using OpenAgent.Contracts.Security;
 using OpenAgent.Engine.Abstractions;
 using OpenAgent.Engine.Reload;
 using OpenAgent.Engine.Reload.Dtos;
@@ -153,6 +154,10 @@ internal sealed class AgentConfigManagementService(
         }
 
         Task<bool> setTask = transaction.StringSetAsync(key, payload);
+        // The Router reads this key to filter its Agent directory; keep it in step with the config.
+        _ = BuildAclEntry(agentId, entity.Config) is { } acl
+            ? transaction.StringSetAsync($"agent:acl:{agentId}", JsonSerializer.Serialize(acl))
+            : transaction.KeyDeleteAsync($"agent:acl:{agentId}");
         Task<long> publishTask = transaction.PublishAsync(
             RedisChannel.Literal(HotReloadService.CurrentUpdatesChannel),
             notification);
@@ -172,6 +177,18 @@ internal sealed class AgentConfigManagementService(
         await database.SetAddAsync("agent:published:index", agentId).ConfigureAwait(false);
         return entity;
     }
+
+    // No entry means "open to the tenant", which the Router reads as a missing key.
+    internal static AgentAclEntry? BuildAclEntry(string agentId, AgentConfig config) =>
+        config.AllowedUserIds.Count == 0 && config.AllowedGroups.Count == 0 && config.AllowedRoles.Count == 0
+            ? null
+            : new AgentAclEntry
+            {
+                AgentId = agentId,
+                AllowedUserIds = config.AllowedUserIds,
+                AllowedGroups = config.AllowedGroups,
+                AllowedRoles = config.AllowedRoles
+            };
 
     private static string ResolveTenant(AgentConfigEntity entity) =>
         string.IsNullOrWhiteSpace(entity.TenantId)
