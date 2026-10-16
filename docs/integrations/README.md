@@ -11,7 +11,7 @@
 | Code Runner | Bubblewrap 隔离代码执行、文档运行时及部署 | [code-runner.md](./code-runner.md) |
 | PostgreSQL | EF Core 会话与文件资产持久化 | [../database/](../database/) |
 | MCP Server | 外部工具协议（Model Context Protocol） | [mcp-server/](./mcp-server/) |
-| ACP .NET SDK | C# SDK 架构、功能与目录设计、协议调研和基础 Demo | [acp-dotnet-sdk/](./acp-dotnet-sdk/) |
+| ACP .NET SDK | 单包 SDK 规格、协议基线、控制台与阶段验收 | [acp-dotnet-sdk/](./acp-dotnet-sdk/) |
 | RAG Service | 知识检索（Qdrant/RagFlow） | [rag-service/](./rag-service/) |
 | Redis（Engine 视角）| 可选注册中心、Pub/Sub 与短生命周期协调 | [redis-engine/](./redis-engine/) |
 | Keycloak | 本地 OIDC/JWT、Realm、SPA Client 与测试用户 | [keycloak/](./keycloak/) |

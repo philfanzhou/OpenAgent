@@ -1,8 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <OutputType>Exe</OutputType>
-  </PropertyGroup>
-  <ItemGroup>
-    <InternalsVisibleTo Include="OpenAgent.Acp.Demo.Tests" />
-  </ItemGroup>
-</Project>

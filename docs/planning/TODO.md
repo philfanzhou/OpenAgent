@@ -26,7 +26,7 @@
 | [ ] ACP-06 / P6 交互能力 | P1 | 后端工程师（OPEN-13）/ backlog，待前置验收 | ACP-05；按权限→文件→终端→elicitation→认证逐项完成 SDK、测试和对应场景 |
 | [ ] ACP-07 / P7 发布验收 | P2 | 质量安全工程师（OPEN-14）/ backlog，待前置验收 | ACP-06；跨语言、负载、AOT、包/API/文档，interop/load 场景及完整矩阵 |
 
-ACP-00 附件历史证据：[单包基线验证](../test-reports/2026-10-16-acp-single-package.md)。OPEN-6 已校验附件及 58 个文件并导入 dev 后代任务分支；本轮结果见 [dev 基线接收报告](../test-reports/2026-10-16-acp-dev-baseline-import.md)：938 通过、24 门控跳过，另有 CRLF 上限边界缺陷待独立复核和修复。草稿 [PR #231](https://github.com/philfanzhou/OpenAgent/pull/231) 指向 dev。当前仅基础传输已实现，不把旧 Demo 或历史真实 Agent 握手计入新 SDK 能力。P0 独立审查通过并由技术负责人核对交接 SHA 后才启动 OPEN-8，其余逐项推进；未合并项继续保留 `[ ]`。
+ACP-00 接收记录：附件及 58 个文件已校验后导入 dev 后代任务分支；按用户要求从 PR 移除历史试验代码与调研资料，正式文档已精简。本轮结果见 [dev 基线接收报告](../test-reports/2026-10-16-acp-dev-baseline-import.md)：938 通过、24 门控跳过，另有 CRLF 上限边界缺陷待独立复核和修复。草稿 [PR #231](https://github.com/philfanzhou/OpenAgent/pull/231) 指向 dev。当前仅基础传输已实现。P0 独立审查通过并由技术负责人核对交接 SHA 后才启动 OPEN-8，其余逐项推进；未合并项继续保留 `[ ]`。
 
 ## 已完成基线
 
