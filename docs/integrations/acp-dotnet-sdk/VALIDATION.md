@@ -99,7 +99,7 @@ uv run acp-tck --report-json report.json -- dotnet path/to/Example.Agent.dll
 | 工程 | SDK、自动化测试、测试控制台三个工程加入主解决方案，只有 SDK 可打包 |
 | 功能迭代 | 每一步同步 SDK、测试、控制台和文档，当前状态只记在 TODO |
 | 角色 | 同包提供 Client 与 Agent；Processes 是内部可选使用模块 |
-| 框架 | net8.0，复用 Backend 的集中配置 |
+| 框架 | net10.0，复用 Backend 的集中配置 |
 | 延后范围 | v2、远程传输、代理编排、平台执行链集成 |
 
 RPC 引擎通过 ACP-02 探针决定；AOT 通过实际发布和运行决定支持矩阵。以上约束不再作为是否拆包或选择其他源码目录的待定项。

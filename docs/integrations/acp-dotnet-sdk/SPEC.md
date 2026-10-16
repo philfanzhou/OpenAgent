@@ -23,7 +23,7 @@ SDK 负责通信和生命周期，不提供 LLM 推理循环、Agent 编排、RA
 |---|---|
 | 协议 | 生产入口只协商 `protocolVersion: 1` |
 | schema | 固定协议仓库稳定 v1 schema + meta，SHA/哈希见 sources.json |
-| .NET | 首版 `net8.0`，符合当前仓库最高 TFM 约束；可被兼容的更高 .NET 宿主消费 |
+| .NET | 首版 `net10.0`，按用户指定的 `dev` 基线复用集中 TFM/SDK 配置 |
 | 其他目标 | netstandard 多目标需有消费者需求及 API 可用性验证后追加 |
 | 平台 | Windows、Linux、macOS；不承诺浏览器/WASM 和 Unity |
 | SDK 发布 | `0.x` 迭代，满足稳定覆盖与验收后 `1.0`；协议版本不随 SDK 主版本机械变化 |
@@ -245,4 +245,4 @@ v2 草案改变了 prompt 完成语义、会话恢复、能力形状、消息补
 
 平台适配器负责 tenant/user 身份、conversationId ↔ sessionId 归属、文件授权、审批、审计、工作区与 Runner。ACP sessionId 不能当作授权凭证。平台 HTTP/SSE 与 ACP stdio 分别维护自己的契约，不让 SDK 默认在 Router 或公共 API 宿主进程启动外部 CLI。
 
-平台集成另行定义映射与依赖方向，不在纯 SDK 中耦合租户、数据库或推理框架。新建工程不表示已改造平台执行链；不得通过扩大现有依赖白名单让 Core 引用实现细节。
+平台集成另行定义映射与依赖方向，不在纯 SDK 中耦合租户、数据库或推理框架。新建工程不表示已改造平台执行链；不得通过扩大现有依赖白名单让 Application 引用实现细节。

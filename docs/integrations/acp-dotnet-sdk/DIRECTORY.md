@@ -7,7 +7,7 @@
 ```text
 Backend/
 ├── OpenAgent.sln
-├── Directory.Build.props                     # 沿用 net8.0、Nullable 等约束
+├── Directory.Build.props                     # 沿用 net10.0、Nullable 等约束
 ├── Directory.Packages.props                  # 唯一包版本管理入口
 ├── src/
 │   └── OpenAgent.Runtime.Acp/

@@ -1,6 +1,6 @@
 # 任务清单
 
-状态核对：2026-10-15，`dev` 基线 `6a3f29f`。本页是当前待办的唯一入口；历史功能方向以[新架构提案](../architecture/new-architecture.html)（Proposal，未批准）为准，模块实际目录见 [开发指南](../overview/DevelopmentGuide.md)，旧方案见 [历史归档](../archive/README.md)。
+状态核对：2026-10-16，ACP 任务基于 `dev` `30fde6d5010fc2e57208a95912d7fa7600eaa3f9`。本页是当前待办的唯一入口；历史功能方向以[新架构提案](../architecture/new-architecture.html)（Proposal，未批准）为准，模块实际目录见 [开发指南](../overview/DevelopmentGuide.md)，旧方案见 [历史归档](../archive/README.md)。
 
 ## 状态与分派规则
 
@@ -13,20 +13,20 @@
 
 本组更新：2026-10-16。SDK 固定为 `Backend/src/OpenAgent.Runtime.Acp`，一个可发布包；共同拥有 `Backend/tests/OpenAgent.Runtime.Acp.Tests` 与 `Backend/tools/OpenAgent.Runtime.Acp.TestConsole`。阶段任务细节见 [实现任务](../integrations/acp-dotnet-sdk/IMPLEMENTATION.md)，公共行为见 [主规格](../integrations/acp-dotnet-sdk/SPEC.md)。每个能力必须同步 SDK、测试、控制台及文档。
 
-以下均未合并，因此保留 `[ ]`；P0～P7 是 ACP 的阶段号，与本页优先级章节不同。共享文件为 Backend/OpenAgent.sln、AGENTS.md、开发指南及集中包配置；不改变既有平台依赖白名单，不接入生产执行链。
+以下均未合并，因此保留 `[ ]`；P0～P7 是 ACP 的阶段号，与本页优先级章节不同。所有阶段变更基于 `dev`，PR base 为 `dev`，继承 .NET 10 集中配置。共享文件由技术负责人协调：Backend/OpenAgent.sln、AGENTS.md、开发指南及集中包配置；不改变既有平台依赖白名单，不接入生产执行链。
 
 | 任务 / 阶段 | 优先级 | 负责人 / 状态 | 前置与验收 |
 |---|---|---|---|
-| [ ] ACP-00 / P0 工程及传输基线 | P0 | Codex / 待评审，已本地验证 | 无前置；三个工程、14 个传输 + 1 个依赖 + 4 个控制台进程测试；主解回归，见下方记录 |
-| [ ] ACP-01 / P1 协议模型与生成 | P0 | 未分配 / 待开发 | ACP-00；固定 schema、可重复生成、契约夹具、schema 控制台及报告测试 |
-| [ ] ACP-02 / P2 双向 RPC | P0 | 未分配 / 待开发 | ACP-01；引擎探针、可重入关联/取消/关闭，rpc/reverse/fault 场景与异常测试 |
-| [ ] ACP-03 / P3 双侧最小闭环 | P0 | 未分配 / 待开发 | ACP-02；握手/new/prompt/update/cancel，Session/Turn 与真实 stdio 控制台测试 |
-| [ ] ACP-04 / P4 进程接入 | P1 | 未分配 / 待开发 | ACP-03；Processes 生命周期、外部 Agent 启动选项、stderr/退出/所有权测试 |
-| [ ] ACP-05 / P5 会话与配置 | P1 | 未分配 / 待开发 | ACP-04；完整会话、配置与 14 类更新；session/config/updates 场景及顺序/恢复测试 |
-| [ ] ACP-06 / P6 交互能力 | P1 | 未分配 / 待开发 | ACP-05；按权限→文件→终端→elicitation→认证逐项完成 SDK、测试和对应场景 |
-| [ ] ACP-07 / P7 发布验收 | P2 | 未分配 / 待开发 | ACP-06；跨语言、负载、AOT、包/API/文档，interop/load 场景及完整矩阵 |
+| [ ] ACP-00 / P0 工程及传输基线 | P0 | 质量安全工程师（OPEN-7）/ 待独立验收 | 无前置；三个工程、14 个传输 + 1 个依赖 + 4 个控制台进程测试；主解回归，见下方记录 |
+| [ ] ACP-01 / P1 协议模型与生成 | P0 | 后端工程师（OPEN-8）/ backlog，待前置验收 | ACP-00；固定 schema、可重复生成、契约夹具、schema 控制台及报告测试 |
+| [ ] ACP-02 / P2 双向 RPC | P0 | 后端工程师（OPEN-9）/ backlog，待前置验收 | ACP-01；引擎探针、可重入关联/取消/关闭，rpc/reverse/fault 场景与异常测试 |
+| [ ] ACP-03 / P3 双侧最小闭环 | P0 | 后端工程师（OPEN-10）/ backlog，待前置验收 | ACP-02；握手/new/prompt/update/cancel，Session/Turn 与真实 stdio 控制台测试 |
+| [ ] ACP-04 / P4 进程接入 | P1 | 后端工程师（OPEN-11）/ backlog，待前置验收 | ACP-03；Processes 生命周期、外部 Agent 启动选项、stderr/退出/所有权测试 |
+| [ ] ACP-05 / P5 会话与配置 | P1 | 后端工程师（OPEN-12）/ backlog，待前置验收 | ACP-04；完整会话、配置与 14 类更新；session/config/updates 场景及顺序/恢复测试 |
+| [ ] ACP-06 / P6 交互能力 | P1 | 后端工程师（OPEN-13）/ backlog，待前置验收 | ACP-05；按权限→文件→终端→elicitation→认证逐项完成 SDK、测试和对应场景 |
+| [ ] ACP-07 / P7 发布验收 | P2 | 质量安全工程师（OPEN-14）/ backlog，待前置验收 | ACP-06；跨语言、负载、AOT、包/API/文档，interop/load 场景及完整矩阵 |
 
-ACP-00 证据：[单包基线验证](../test-reports/2026-10-16-acp-single-package.md)。当前仅基础传输已实现，不把旧 Demo 的协议行为或历史真实 Agent 握手计入新 SDK 能力。实施 PR：尚未创建；本地通过不等于已合并。
+ACP-00 附件历史证据：[单包基线验证](../test-reports/2026-10-16-acp-single-package.md)。OPEN-6 已校验附件及 58 个文件并导入 dev 后代任务分支；本轮结果另行记录，不沿用历史通过数。当前仅基础传输已实现，不把旧 Demo 或历史真实 Agent 握手计入新 SDK 能力。P0 独立审查通过并由技术负责人核对交接 SHA 后才启动 OPEN-8，其余逐项推进；未合并项继续保留 `[ ]`。
 
 ## 已完成基线
 
