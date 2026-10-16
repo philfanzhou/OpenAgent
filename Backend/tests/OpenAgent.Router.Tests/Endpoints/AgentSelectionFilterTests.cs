@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Router.Endpoints;
 using OpenAgent.Router.Models;
+using OpenAgent.Router.Selection;
 using Xunit;
 
 namespace OpenAgent.Router.Tests.Endpoints;

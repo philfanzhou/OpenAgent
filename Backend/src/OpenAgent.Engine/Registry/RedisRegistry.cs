@@ -5,22 +5,21 @@ using Microsoft.Extensions.Options;
 using OpenAgent.Engine.Abstractions;
 using OpenAgent.Engine.Models;
 using OpenAgent.Engine.Observability;
+using OpenAgent.Router;
 
 namespace OpenAgent.Engine.Registry;
 
 internal class RedisRegistry : IEngineRegistry, IDisposable
 {
-    internal const string RegistryIndexKey = "engine:registry:index";
-
     private readonly IRedisConnectionProvider _redis;
-    private readonly RegistryEntry _entry;
+    private readonly EngineRegistryEntry _entry;
     private readonly ILogger<RedisRegistry> _logger;
     private readonly IOptionsMonitor<HeartbeatOptions> _options;
     private bool _isRegistered;
     private bool _disposed;
     private readonly LoadCollector _loadCollector = new();
 
-    private string RegistryKey => $"engine:registry:{_entry.EngineId}";
+    private string RegistryKey => EngineRegistryKeys.ForEngine(_entry.EngineId);
 
     public bool IsRegistered => _isRegistered;
 
@@ -34,7 +33,7 @@ internal class RedisRegistry : IEngineRegistry, IDisposable
         _options = options;
 
         var heartbeatOptions = _options.CurrentValue;
-        _entry = new RegistryEntry
+        _entry = new EngineRegistryEntry
         {
             EngineId = Guid.NewGuid().ToString("N")[..8],
             Host = string.IsNullOrWhiteSpace(heartbeatOptions.AdvertisedHost) ? Dns.GetHostName() : heartbeatOptions.AdvertisedHost,
@@ -81,7 +80,7 @@ internal class RedisRegistry : IEngineRegistry, IDisposable
                 .WaitAsync(cancellationToken).ConfigureAwait(false);
             if (stored)
             {
-                await _redis.SetAddAsync(RegistryIndexKey, _entry.EngineId)
+                await _redis.SetAddAsync(EngineRegistryKeys.Index, _entry.EngineId)
                     .WaitAsync(cancellationToken).ConfigureAwait(false);
             }
 
@@ -127,7 +126,7 @@ internal class RedisRegistry : IEngineRegistry, IDisposable
                 .WaitAsync(cancellationToken).ConfigureAwait(false);
             if (stored)
             {
-                await _redis.SetAddAsync(RegistryIndexKey, _entry.EngineId)
+                await _redis.SetAddAsync(EngineRegistryKeys.Index, _entry.EngineId)
                     .WaitAsync(cancellationToken).ConfigureAwait(false);
             }
 
@@ -150,7 +149,7 @@ internal class RedisRegistry : IEngineRegistry, IDisposable
         {
             string key = RegistryKey;
             await _redis.KeyDeleteAsync(key).WaitAsync(cancellationToken).ConfigureAwait(false);
-            await _redis.SetRemoveAsync(RegistryIndexKey, _entry.EngineId)
+            await _redis.SetRemoveAsync(EngineRegistryKeys.Index, _entry.EngineId)
                 .WaitAsync(cancellationToken).ConfigureAwait(false);
             _isRegistered = false;
             EngineLog.EngineDeregisteredFromRedis(_logger, _entry.EngineId);

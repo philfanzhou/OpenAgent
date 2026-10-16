@@ -1,3 +1,4 @@
+using OpenAgent.Router;
 using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -19,7 +20,7 @@ public class RedisRegistryTests
         await registry.RegisterAsync();
 
         Assert.True(registry.IsRegistered);
-        RedisValue[] indexed = await redis.SetMembersAsync(RedisRegistry.RegistryIndexKey);
+        RedisValue[] indexed = await redis.SetMembersAsync(EngineRegistryKeys.Index);
         string engineId = Assert.Single(indexed).ToString();
         RedisValue value = await redis.StringGetAsync($"engine:registry:{engineId}");
         using JsonDocument payload = JsonDocument.Parse(value.ToString());
@@ -36,7 +37,7 @@ public class RedisRegistryTests
         await registry.DeregisterAsync();
 
         Assert.False(registry.IsRegistered);
-        Assert.Empty(await redis.SetMembersAsync(RedisRegistry.RegistryIndexKey));
+        Assert.Empty(await redis.SetMembersAsync(EngineRegistryKeys.Index));
     }
 
     private static RedisRegistry CreateRegistry(FakeRedisConnectionProvider redis)

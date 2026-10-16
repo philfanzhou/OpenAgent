@@ -2,7 +2,7 @@
 
 ## 状态
 
-草案。需求已对齐，实现尚未开始。第 4 节中标注 `[待决策]` 的事项确认后转为已决策。
+草案。需求已对齐；迁移顺序中的项目拆分已落地（见文末「实现进度」），其余尚未开始。标注 `[待决策]` 的事项确认后转为已决策。
 
 ## 背景
 
@@ -147,7 +147,17 @@ public interface IIntentStrategy
 7. 契约演进：v1 发布后字段只增不改，破坏性变更走 v2，Router 通过 `X-OpenAgent-Contract` 同时支持两个主版本。
 8. 验证环境：本机仅有 .NET SDK 10，而 `global.json` 固定 8.0.100，架构测试在此环境无法编译，落地前需在 SDK 8 或升级后的环境跑全量测试。
 
+## 实现进度
+
+已落地（行为不变，仅结构调整）：
+
+- Router 拆为 `Router.Contracts`、`Router.Core`、`Router.Providers`、`Router.Host` 四个项目；`Router.Core` 不使用 ASP.NET Core 服务端、Yarp、Redis 类型，由架构测试守住。
+- Engine 注册条目与 Redis 键收敛为 `Router.Contracts` 中的 `EngineRegistryEntry` 与 `EngineRegistryKeys`，Engine 与 Router 共用，不再各写一份。
+- 删除瘦身后遗留的 7 条无人调用的日志定义。
+
+未落地：`HttpProvider` 合并与 Gina 适配层、`IIntentStrategy` 策略链与决策模型、注册端点与静态目录、Engine ACL、Run 契约、OpenAPI 文件。迁移顺序中第 1 步的 OpenAPI 文件部分尚未完成。
+
 ## 关键实现
 
-- `Backend/src/OpenAgent.Router/`（现状，将按本决策拆分）
-- `Backend/tests/OpenAgent.Architecture.Tests/AssemblyDependencyTests.cs`
+- `Backend/src/OpenAgent.Router.{Contracts,Core,Providers,Host}/`
+- `Backend/tests/OpenAgent.Architecture.Tests/AssemblyDependencyTests.cs`（四个项目的引用规则）

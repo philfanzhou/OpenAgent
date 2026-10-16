@@ -16,7 +16,10 @@ Backend/
 │   ├── OpenAgent.Engine.Host/     ASP.NET Core 宿主（端点、中间件、流式传输）
 │   ├── OpenAgent.Hosting/         共享 DI、认证、Redis 与 OpenTelemetry 注册扩展
 │   ├── OpenAgent.Infrastructure/  持久化实现（PostgreSQL+EF Core、Redis 写穿缓存、分布式锁）
-│   └── OpenAgent.Router/          网关服务（路由、意图识别、限流、租户隔离）
+│   ├── OpenAgent.Router.Contracts/ Router 与 Engine 共享的注册契约（Redis 键、注册条目）
+│   ├── OpenAgent.Router.Core/     Router 纯逻辑（选择管线、意图选择、会话亲和、目录与路由抽象）
+│   ├── OpenAgent.Router.Providers/ 下游 Provider 与服务发现实现（Engine/Gina、Redis 注册、路由表、就绪探测）
+│   └── OpenAgent.Router.Host/     网关宿主（认证透传、端点、YARP 转发、健康检查、遥测，唯一 DI 组装点）
 └── tests/
     ├── OpenAgent.Architecture.Tests/
     ├── OpenAgent.Contracts.Tests/
@@ -27,7 +30,7 @@ Backend/
     └── OpenAgent.Router.Tests/
 ```
 
-> 项目名前缀 `OpenAgent.*` 与文件夹前缀对齐。依赖方向：Contracts ← Core ← {Engine, Infrastructure, Router} ← {Engine.Host, Hosting}（不可反向）。
+> 项目名前缀 `OpenAgent.*` 与文件夹前缀对齐。依赖方向：Contracts ← Core ← {Engine, Infrastructure} ← {Engine.Host, Hosting}；Router 内部为 Router.Contracts / Contracts ← Router.Core ← Router.Providers ← Router.Host（不可反向，Router 不引用 Core 与 Engine）。
 
 ## 编码规则
 

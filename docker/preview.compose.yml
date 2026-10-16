@@ -50,7 +50,7 @@ services:
   router:
     build:
       context: ..
-      dockerfile: Backend/src/OpenAgent.Router/Dockerfile
+      dockerfile: Backend/src/OpenAgent.Router.Host/Dockerfile
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:5001

@@ -32,8 +32,8 @@ Token 仅取服务端 Provider usage。流式生成期间等待 `done` 事件更
 
 实现入口：
 
-- `Backend/src/OpenAgent.Router/Endpoints/GatewayProxyHandler.cs`；
-- `Backend/src/OpenAgent.Router/Extensions/RouterEndpointExtensions.cs`。
+- `Backend/src/OpenAgent.Router.Host/Endpoints/GatewayProxyHandler.cs`；
+- `Backend/src/OpenAgent.Router.Host/Extensions/RouterEndpointExtensions.cs`。
 
 Router 是浏览器流量的信任边界。转发前会清除客户端提交的 Agent、用户、租户、会话和 Trace 内部 Header，再根据认证上下文写入可信值。
 

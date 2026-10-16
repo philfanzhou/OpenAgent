@@ -32,7 +32,10 @@
     │   ├── OpenAgent.Engine.Host/     ← 源码（无散落文档）
     │   ├── OpenAgent.Hosting/         ← 源码（无散落文档）
     │   ├── OpenAgent.Infrastructure/  ← 源码（无散落文档）
-    │   └── OpenAgent.Router/          ← 源码（无散落文档）
+    │   ├── OpenAgent.Router.Contracts/ ← 源码（无散落文档）
+    │   ├── OpenAgent.Router.Core/     ← 源码（无散落文档）
+    │   ├── OpenAgent.Router.Providers/ ← 源码（无散落文档）
+    │   └── OpenAgent.Router.Host/     ← 源码（无散落文档）
     └── tests/                         ← 测试项目
 ```
 

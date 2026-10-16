@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <RootNamespace>OpenAgent.Router</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="OpenAgent.Router.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Yarp.ReverseProxy" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OpenAgent.Contracts\OpenAgent.Contracts.csproj" />
+    <ProjectReference Include="..\OpenAgent.Hosting\OpenAgent.Hosting.csproj" />
+    <ProjectReference Include="..\OpenAgent.Router.Core\OpenAgent.Router.Core.csproj" />
+    <ProjectReference Include="..\OpenAgent.Router.Providers\OpenAgent.Router.Providers.csproj" />
+  </ItemGroup>
+
+</Project>

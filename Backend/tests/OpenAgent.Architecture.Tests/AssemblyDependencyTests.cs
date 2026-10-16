@@ -7,6 +7,7 @@ public class AssemblyDependencyTests
 {
     [Theory]
     [InlineData("OpenAgent.Contracts")]
+    [InlineData("OpenAgent.Router.Contracts")]
     [InlineData("OpenAgent.Hosting")]
     public void FoundationAssemblies_DoNotReferenceOtherOpenAgentAssemblies(string assemblyName)
     {
@@ -26,7 +27,7 @@ public class AssemblyDependencyTests
     {
         AssertOpenAgentReferences(
             "OpenAgent.Engine",
-            ["OpenAgent.Contracts", "OpenAgent.Core"]);
+            ["OpenAgent.Contracts", "OpenAgent.Core", "OpenAgent.Router.Contracts"]);
     }
 
     [Fact]
@@ -38,11 +39,46 @@ public class AssemblyDependencyTests
     }
 
     [Fact]
-    public void Router_DoesNotReferenceCoreOrEngine()
+    public void RouterCore_ReferencesOnlyContracts()
     {
         AssertOpenAgentReferences(
-            "OpenAgent.Router",
-            ["OpenAgent.Contracts", "OpenAgent.Hosting"]);
+            "OpenAgent.Router.Core",
+            ["OpenAgent.Contracts"]);
+    }
+
+    [Fact]
+    public void RouterCore_DoesNotUseHttpServerOrRedisTypes()
+    {
+        string[] forbidden = Assembly.Load("OpenAgent.Router.Core")
+            .GetReferencedAssemblies()
+            .Select(reference => reference.Name ?? string.Empty)
+            .Where(name => name.StartsWith("Microsoft.AspNetCore", StringComparison.Ordinal)
+                || name.StartsWith("Yarp", StringComparison.Ordinal)
+                || name.StartsWith("StackExchange.Redis", StringComparison.Ordinal))
+            .ToArray();
+
+        Assert.Empty(forbidden);
+    }
+
+    [Fact]
+    public void RouterProviders_ReferenceOnlyRouterCoreAndContracts()
+    {
+        AssertOpenAgentReferences(
+            "OpenAgent.Router.Providers",
+            ["OpenAgent.Contracts", "OpenAgent.Router.Contracts", "OpenAgent.Router.Core"]);
+    }
+
+    [Fact]
+    public void RouterHost_DoesNotReferenceCoreOrEngine()
+    {
+        AssertOpenAgentReferences(
+            "OpenAgent.Router.Host",
+            [
+                "OpenAgent.Contracts",
+                "OpenAgent.Hosting",
+                "OpenAgent.Router.Core",
+                "OpenAgent.Router.Providers"
+            ]);
     }
 
     private static void AssertOpenAgentReferences(

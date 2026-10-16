@@ -24,12 +24,14 @@
 ## 2. 项目分层规则（硬性约束，不可违反）
 
 ```
-Contracts ← Core ← {Engine, Infrastructure, Router} ← {Engine.Host, Hosting}
+Contracts ← Core ← {Engine, Infrastructure} ← {Engine.Host, Hosting}
+Contracts / Router.Contracts ← Router.Core ← Router.Providers ← Router.Host
 ```
 
 - **OpenAgent.Contracts**：纯接口、DTO、错误码。**不引用任何其他项目**
 - **OpenAgent.Core**：核心逻辑。可引用 Contracts，**不可**引用 Engine 或 Router
-- **OpenAgent.Engine / OpenAgent.Router**：可引用 Contracts、Core。**不可**引用 Host
+- **OpenAgent.Engine**：可引用 Contracts、Core、Router.Contracts。**不可**引用 Host
+- **OpenAgent.Router.\***：Router.Contracts 不引用任何 OpenAgent 项目；Router.Core 只引用 Contracts，且不使用 ASP.NET Core 服务端、Yarp、Redis 类型；Router.Providers 引用 Router.Core 与 Router.Contracts；Router.Host 引用 Router.Core、Router.Providers、Hosting。Router **不可**引用 OpenAgent.Core、Engine
 - **OpenAgent.Infrastructure**：可引用 Contracts、Core，承载持久化（PostgreSQL+EF Core、Redis 写穿缓存、分布式锁），不可引用 Engine/Router/Host
 - **OpenAgent.Hosting**：基础设施。可引用所有下层
 
@@ -74,7 +76,10 @@ Contracts ← Core ← {Engine, Infrastructure, Router} ← {Engine.Host, Hostin
 | `OpenAgent.Core` | net8.0 | 类库 |
 | `OpenAgent.Engine` | net8.0 | 类库 |
 | `OpenAgent.Engine.Host` | net8.0 | Web API |
-| `OpenAgent.Router` | net8.0 | Web API |
+| `OpenAgent.Router.Contracts` | net8.0 | 类库 |
+| `OpenAgent.Router.Core` | net8.0 | 类库 |
+| `OpenAgent.Router.Providers` | net8.0 | 类库 |
+| `OpenAgent.Router.Host` | net8.0 | Web API |
 | `OpenAgent.Infrastructure` | net8.0 | 类库 |
 | `OpenAgent.Hosting` | net8.0 | 类库 |
 
@@ -178,10 +183,10 @@ Contracts ← Core ← {Engine, Infrastructure, Router} ← {Engine.Host, Hostin
 
 | 类别 | 约定 | 示例 |
 |------|------|------|
-| 项目名 | `OpenAgent.{ServiceName}` | `OpenAgent.Router` |
-| 命名空间 | 与项目名一致 | `OpenAgent.Router` |
+| 项目名 | `OpenAgent.Router.{Layer}` | `OpenAgent.Router.Core` |
+| 命名空间 | Router 四个项目共用根命名空间 `OpenAgent.Router`，按功能分子命名空间 | `OpenAgent.Router.Selection` |
 | record 类型 | PascalCase | `RouteRequest`, `RouteResponse` |
-| 配置节 | PascalCase + 冒号分隔层级 | `RouterSettings:RateLimiting:RequestsPerSecond` |
+| 配置节 | PascalCase + 冒号分隔层级 | `RouterSettings:ServiceDiscovery:RefreshIntervalSeconds` |
 
 ### 5.5 Redis Key 命名
 
