@@ -13,7 +13,7 @@ OPEN-7 对旧 SHA `0d0017f` 的报告确认 F1/F2，并提出 F3/F4 契约风险
 | F3：EOF 过早报告成功 | EOF 拒绝新操作，排空已开始的帧；Completion 等在途操作及清理结束并保留晚到 IO 错误。Dispose/故障可中断排空，不提供继续写入的半关闭 API |
 | F4：并发 Dispose 提前返回 | 所有调用共享一次清理任务，等待同一结果/异常；覆盖慢清理、两个流均失败、同流只释放一次与 LeaveOpen |
 
-生命周期任务由 transport 持有；自定义 Stream 仍须在取消或释放时使 IO 收敛。Completion 包含 IO/清理故障，Dispose 仅重抛清理故障，不重复抛已报告的 IO 错误。契约见 SPEC 与 IAcpTransport XML；是否接受 P0 仍须新 SHA 下独立复审。
+生命周期任务由 transport 持有；自定义 Stream 仍须在取消或释放时使 IO 收敛。Completion 包含 IO/清理故障，Dispose 仅重抛清理故障，不重复抛已报告的 IO 错误。契约见 SPEC 与 IAcpTransport XML。
 
 ## 本次实际结果
 
@@ -29,6 +29,12 @@ OPEN-7 对旧 SHA `0d0017f` 的报告确认 F1/F2，并提出 F3/F4 契约风险
 新增回归在旧实现上完整运行 35 项：18 通过、17 失败，覆盖上述缺陷/旧契约；修复后全部通过。编写回归期间一次等待顺序问题导致测试中止，修正测试释放顺序后重新获得完整结果；中止运行不计入通过数。原始红/绿、主解 TRX、探针、控制台与 pack 结果随 OPEN-6 附件交付，未以历史数字代替本次结果。
 
 主解通过数：Framework 32、Architecture 12、Contracts 58、Runner 36、Application 286、Router 124、Engine 218、Capabilities 153、ACP 55。跳过为 Application 的 2 项真实 Runner 和 Runner 的 22 项 Linux/Bubblewrap/服务测试，本机未启用对应环境门控，不能算作沙箱验证。
+
+## 独立复审证据核对
+
+[OPEN-7 复审报告与原始附件](https://multica.ai/openagent/issues/01a142a2-9ff3-7113-83a3-21f1d599903b) 固定于 `3be97c118f87cd714012bc5c0889dcfe2ad7b4c0`，环境同上。质量安全工程师独立重跑主解 build/test、控制台、SDK/测试/控制台 pack 及公共 API 探针：974 通过、0 失败、24 跳过，ACP 55；原探针 27/27，新增边界/生命周期探针 123/123；退出码与单包内容符合上表。新增探针首次有一处过窄的排队取消断言，按故障可取消排空的公开契约修正后完整重跑，初始源码和失败日志保留在附件。
+
+技术负责人本次使用 Python hashlib/ElementTree 核对证据 ZIP 中 70 个文件哈希、9 份 TRX 的实际结果、38 个变更文件与当前仓库的哈希，并阅读探针差异、F1–F4 断言、日志及最终 PR 范围，全部一致。F1/F2 修复和 F3/F4 契约通过技术验收；精简正式规格无新增阻断。本轮仅更改报告/TODO，`git diff --exit-code 3be97c1 HEAD -- Backend` 验证产品内容不变，未重复运行已通过的构建/测试。人工验收和阶段状态见 TODO；此结论不表示完整 SDK 或发布就绪。
 
 ## 剩余范围
 
