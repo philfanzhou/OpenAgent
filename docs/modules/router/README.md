@@ -36,3 +36,7 @@ Router 测试不依赖真实 Redis；Engine readiness 使用进程内 TCP 测试
 ## 职责边界
 
 Router 只做认证后的请求转发、会话 Provider 亲和、意图识别选 Agent 和服务发现。幂等、响应缓存、限流和 Agent ACL 过滤已移除；需要时由上游网关或 Engine 承担。
+
+## 目标架构
+
+Router 将重新定位为面向任意下游的 Agent 网关，下游标准契约见 [downstream-contract.md](./downstream-contract.md)，决策背景见 [ADR-0004](../../decisions/0004-Router-Gateway-Repositioning.md)。本文其余内容描述当前实现。
