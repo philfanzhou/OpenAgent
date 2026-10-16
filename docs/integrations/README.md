@@ -4,6 +4,7 @@
 
 | 集成点 | 说明 | 文档 |
 |--------|------|------|
+| ACP SDK | 单包 C# 协议、Client/Agent、进程、八阶段与验证 | [acp-dotnet-sdk/](acp-dotnet-sdk/README.md) |
 | LLM Provider | 大模型推理（OpenAI/Azure OpenAI/Anthropic） | [llm-provider/](./llm-provider/) |
 | 配置目录 / Matrix 接入边界 | 当前 Engine 配置读取与运行前解析；Matrix 为后续可替换来源 | [matrix/](./matrix/) |
 | Agent Provider | Router 意图识别与第三方 Agent 服务接入 | [agent-provider.md](./agent-provider.md) |

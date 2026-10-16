@@ -4,6 +4,7 @@
 
 | 入口 | 解决的问题 |
 |---|---|
+| ACP SDK | [架构、使用与八阶段](integrations/acp-dotnet-sdk/README.md) |
 | [开发指南](overview/DevelopmentGuide.md) | 改哪个模块、接口如何协作、如何验证 |
 | [任务清单](planning/TODO.md) | P0/P1/P2、剩余拆分、已有 PR 集成、分派与验收 |
 | [系统上下文](overview/SystemContext.md) → [运行时设计](overview/Design.md) → [关键流程](overview/KeyFlows.md) | 当前服务、执行链与边界 |

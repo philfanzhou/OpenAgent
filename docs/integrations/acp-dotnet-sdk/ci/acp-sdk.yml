@@ -1,0 +1,71 @@
+name: ACP SDK
+on:
+  pull_request:
+    paths: ['Backend/src/OpenAgent.Runtime.Acp/**', 'Backend/tests/OpenAgent.Runtime.Acp.*/**', 'Backend/tools/OpenAgent.Runtime.Acp.TestConsole/**', 'Backend/Directory.*.props', 'scripts/check-acp-package.py', '.github/workflows/acp-sdk.yml', 'docs/integrations/acp-dotnet-sdk/**']
+  push:
+    branches: [dev, main]
+    paths: ['Backend/src/OpenAgent.Runtime.Acp/**', 'Backend/tests/OpenAgent.Runtime.Acp.*/**', 'Backend/tools/OpenAgent.Runtime.Acp.TestConsole/**', '.github/workflows/acp-sdk.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: acp-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  sdk:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-latest, rid: linux-x64, suffix: ''}
+          - {os: windows-latest, rid: win-x64, suffix: '.exe'}
+          - {os: macos-latest, rid: osx-arm64, suffix: ''}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: dotnet test Backend/tests/OpenAgent.Runtime.Acp.Tests -c Release --logger trx --results-directory .preview/acp-results
+      - run: dotnet publish Backend/tools/OpenAgent.Runtime.Acp.TestConsole -c Release -r ${{ matrix.rid }} -p:PublishAot=true -o .preview/acp-native
+      - run: .preview/acp-native/OpenAgent.Runtime.Acp.TestConsole${{ matrix.suffix }} run all --json > .preview/acp-results/aot.json
+      - run: dotnet pack Backend/src/OpenAgent.Runtime.Acp -c Release -o .preview/acp-package
+      - run: python scripts/check-acp-package.py .preview/acp-package
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: acp-${{ matrix.rid }}
+          path: .preview/acp-results
+  interop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: dtolnay/rust-toolchain@stable
+      - run: dotnet build Backend/tools/OpenAgent.Runtime.Acp.TestConsole
+      - run: npm ci --prefix Backend/tests/OpenAgent.Runtime.Acp.Interop/node --ignore-scripts --no-audit --no-fund
+      - run: python scripts/check-acp-contracts.py
+      - run: pip install -r Backend/tests/OpenAgent.Runtime.Acp.Interop/python/requirements.txt
+      - run: cargo build --locked --manifest-path Backend/tests/OpenAgent.Runtime.Acp.Interop/rust/Cargo.toml --target-dir .preview/acp-rust
+      - run: python Backend/tests/OpenAgent.Runtime.Acp.Interop/run.py --console Backend/tools/OpenAgent.Runtime.Acp.TestConsole/bin/Debug/net10.0/OpenAgent.Runtime.Acp.TestConsole.dll --rust .preview/acp-rust/debug/openagent-acp-interop > .preview/interop.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: acp-interop
+          path: .preview/interop.json

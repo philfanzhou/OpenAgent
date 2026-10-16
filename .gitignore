@@ -88,3 +88,7 @@ Thumbs.db
 # Python bytecode (Runner sandbox scripts)
 __pycache__/
 *.pyc
+
+# ACP cross-language fixtures
+Backend/tests/OpenAgent.Runtime.Acp.Interop/node/node_modules/
+Backend/tests/OpenAgent.Runtime.Acp.Interop/rust/target/

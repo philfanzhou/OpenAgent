@@ -1,0 +1,9 @@
+[package]
+name = "openagent-acp-interop"
+version = "0.1.0"
+edition = "2024"
+publish = false
+[dependencies]
+agent-client-protocol = { git = "https://github.com/agentclientprotocol/rust-sdk", rev = "f5c0eef0972bbda8e75a151aeb088642911b3568", features = ["stdio", "process"] }
+tokio = { version = "1", features = ["full"] }
+serde_json = "1"
