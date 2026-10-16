@@ -44,9 +44,9 @@ internal static class Scenarios
             }
             SessionNotification owned = AcpJson.Read<SessionNotification>(AcpJson.Parse("""{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"hello"}}}"""));
             Check(ReferenceEquals(owned.Update, owned.Update), "Getter allocates a replacement model");
-            ToolCallUpdate patch = new("t") { Title = new Optional<string>(null) };
+            ToolCallUpdate patch = new("t") { Title = new Optional<string>(null), RawInput = Optional<JsonElement>.Null };
             JsonElement wire = AcpJson.Element<SessionUpdate>(patch);
-            Check(wire.GetProperty("title").ValueKind == JsonValueKind.Null && !wire.TryGetProperty("status", out _), "Patch presence"); return;
+            Check(wire.GetProperty("title").ValueKind == JsonValueKind.Null && wire.GetProperty("rawInput").ValueKind == JsonValueKind.Null && !wire.TryGetProperty("status", out _), "Patch presence"); return;
         }
         if (name == "process")
         {

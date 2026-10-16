@@ -46,6 +46,15 @@ public sealed class ModelTests
     [InlineData("true")][InlineData("1.5")][InlineData("[]")]
     public void RpcId_InvalidWireValue_IsRejected(string json) => Assert.Throws<JsonException>(() => AcpJson.Read<RpcId>(AcpJson.Parse(json)));
     [Fact]
+    public void ToolPatch_ValueTypeNullRoundTripsWithoutBecomingUndefined()
+    {
+        ToolCallUpdate patch = AcpJson.Read<ToolCallUpdate>(AcpJson.Parse("""{"toolCallId":"t","rawInput":null,"rawOutput":{"ok":true}}"""));
+        Assert.True(patch.RawInput.IsDefined); Assert.True(patch.RawInput.IsNull); Assert.False(patch.RawOutput.IsNull);
+        JsonElement wire = AcpJson.Element<SessionUpdate>(patch);
+        Assert.Equal(JsonValueKind.Null, wire.GetProperty("rawInput").ValueKind); Assert.True(wire.GetProperty("rawOutput").GetProperty("ok").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, AcpJson.Element<SessionUpdate>(new ToolCallUpdate("t") { RawInput = Optional<JsonElement>.Null }).GetProperty("rawInput").ValueKind);
+    }
+    [Fact]
     public void Model_Getters_DoNotReparseJsonOrAllocate()
     {
         SessionNotification model = AcpJson.Read<SessionNotification>(AcpJson.Parse("""{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"hello"}}}"""));
