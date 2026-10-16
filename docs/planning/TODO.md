@@ -38,7 +38,7 @@
 | ACP-04 / P4 本地进程 | 待评审；stdio、环境策略、stderr、退出与租约 |
 | ACP-05 / P5 会话与配置 | 待评审；load/resume/list/close/delete、modes/config、14 更新 |
 | ACP-06 / P6 交互 | 待评审；权限、文件、终端、elicitation、认证 |
-| ACP-07 / P7 验证与发布准备 | 待评审；官方 TS/Python/Rust 双向互通、本地 AOT、压力、包检查；CI/真实模型/稳定版发布分别验收 |
+| ACP-07 / P7 验证与发布准备 | 待评审；官方 TS/Python/Rust 双向互通、本地 AOT、压力、包检查；新增 CI 模板待 workflow 权限启用；CI/真实模型/稳定版发布分别验收 |
 
 阶段定义见 [IMPLEMENTATION](../integrations/acp-dotnet-sdk/IMPLEMENTATION.md)，证据见 [本次实测记录](../test-reports/2026-10-16-acp-sdk-complete.md)。PR #231/#232 保持原状，本次提供独立替代实现，不将未合并 PR 标成已完成。
 

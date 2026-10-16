@@ -13,7 +13,7 @@ dotnet pack Backend/src/OpenAgent.Runtime.Acp -c Release -o .preview/acp-package
 python3 scripts/check-acp-package.py .preview/acp-package
 ```
 
-替换 AOT RID/可执行文件后可在对应平台复现；不能在 macOS 上构建成功就宣称 Linux/Windows 运行通过。`.github/workflows/acp-sdk.yml` 提供三平台 SDK 测试与 AOT 场景，以及 Ubuntu 官方 SDK 互通、包检查。
+替换 AOT RID/可执行文件后可在对应平台复现；不能在 macOS 上构建成功就宣称 Linux/Windows 运行通过。[CI 模板](ci/acp-sdk.yml) 提供三平台 SDK 测试与 AOT 场景，以及 Ubuntu 官方 SDK 互通、包检查。当前 OAuth 缺少 workflow scope，模板尚未启用；由具备该权限的维护者放入 `.github/workflows/acp-sdk.yml` 后运行。本 PR 的 SDK 工程仍由现有后端 CI 构建与测试。
 
 ## 官方 SDK 双向互通
 
