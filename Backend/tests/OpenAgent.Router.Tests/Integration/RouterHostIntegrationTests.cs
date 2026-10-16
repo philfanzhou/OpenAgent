@@ -2,6 +2,8 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.Configuration;
 using Xunit;
 
 namespace OpenAgent.Router.Tests.Integration;
@@ -13,6 +15,37 @@ public sealed class RouterHostIntegrationTests : IClassFixture<RouterHostFixture
     public RouterHostIntegrationTests(RouterHostFixture fixture)
     {
         _fixture = fixture;
+    }
+
+    [Fact]
+    public async Task Registration_ReachesHandlerWithoutUserAuthentication_AndChecksSharedSecret()
+    {
+        using RouterApplicationFactory baseFactory = _fixture.CreateFactory();
+        using WebApplicationFactory<Program> factory = baseFactory.WithWebHostBuilder(builder =>
+            builder.ConfigureAppConfiguration((_, configuration) =>
+                configuration.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["RouterSettings:Registration:SharedSecret"] = "s3cret"
+                })));
+        using HttpClient client = factory.CreateClient();
+        string route = RegistrationRequest.Route("engine-1");
+
+        using HttpResponseMessage wrongKey = await Put(client, route, "wrong");
+        using HttpResponseMessage rightKey = await Put(client, route, "s3cret");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, wrongKey.StatusCode);
+        // No Redis in this host: the request got past authentication and stopped at the writer check.
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, rightKey.StatusCode);
+    }
+
+    private static Task<HttpResponseMessage> Put(HttpClient client, string route, string key)
+    {
+        HttpRequestMessage request = new(HttpMethod.Put, route)
+        {
+            Content = JsonContent.Create(new RegistrationRequest { BaseUrl = "http://engine:5208" })
+        };
+        request.Headers.Add(RegistrationRequest.KeyHeader, key);
+        return client.SendAsync(request);
     }
 
     [Fact]

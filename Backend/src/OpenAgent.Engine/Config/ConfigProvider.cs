@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Models;
+using OpenAgent.Contracts.Security;
 using OpenAgent.Engine.Abstractions;
 using OpenAgent.Engine.Models;
 using OpenAgent.Engine.Observability;
@@ -247,10 +248,10 @@ internal class ConfigProvider : IAgentConfigProvider
     }
 
     public async Task<IReadOnlyList<AgentSummary>> ListAgentsAsync(
-        string tenantId,
+        IAgentUserContext user,
         CancellationToken cancellationToken = default)
     {
-        return await _agentListQuery.ExecuteAsync(tenantId, cancellationToken).ConfigureAwait(false);
+        return await _agentListQuery.ExecuteAsync(user, cancellationToken).ConfigureAwait(false);
     }
 
     private static void ApplyTenant(AgentConfigEntity entity)

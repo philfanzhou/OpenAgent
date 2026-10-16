@@ -55,6 +55,8 @@ public static class RouterServiceCollectionExtensions
             {
                 options.Configuration = redisConnectionString;
             });
+            services.AddSingleton(TimeProvider.System);
+            services.AddSingleton<EngineRegistryWriter>();
             services.AddSingleton<EngineRegistrySnapshotCache>();
             services.AddHostedService(
                 provider => provider.GetRequiredService<EngineRegistrySnapshotCache>());

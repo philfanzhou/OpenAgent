@@ -1,5 +1,6 @@
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Conversation;
+using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Models;
 using OpenAgent.Core.Runtime.Agent;
@@ -119,6 +120,22 @@ public sealed class AgentRuntimeResolverTests
         Assert.Contains("agent-a", exception.Message, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task ResolveAsync_UserOutsideAllowList_ThrowsPermissionDenied()
+    {
+        AgentConfig config = new() { AllowedUserIds = ["someone-else"] };
+        AgentRuntimeResolver resolver = new(
+            new StaticConfigProvider(config),
+            new AgentAuthorizationGate(
+                new AllowAllAgentAuthorizationService(),
+                new LlmRegistry()));
+
+        AgentException exception = await Assert.ThrowsAsync<AgentException>(
+            () => resolver.ResolveAsync("agent-1", User(), CancellationToken.None));
+
+        Assert.Equal(AgentErrorCode.PermissionDenied, exception.ErrorCode);
+    }
+
     private static AgentUserContext User() => new()
     {
         UserId = "user-1",
@@ -161,7 +178,7 @@ public sealed class AgentRuntimeResolverTests
             Task.FromResult<IReadOnlyList<AgentSummary>>([]);
 
         public Task<IReadOnlyList<AgentSummary>> ListAgentsAsync(
-            string tenantId,
+            IAgentUserContext user,
             CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<AgentSummary>>([]);
     }

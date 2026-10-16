@@ -54,20 +54,23 @@ Router 提供注册端点，下游启动后注册并周期性续约，续约同�
 | PUT | `/api/v1/router/registrations/{instanceId}` | 注册或续约 |
 | DELETE | `/api/v1/router/registrations/{instanceId}` | 优雅下线 |
 
+请求头 `X-Registration-Key` 必须等于 Router 的 `RouterSettings:Registration:SharedSecret`，不匹配返回 401；Router 未配置该密钥时这两个端点不存在。成功返回 204，Router 没有 Redis 时返回 503。
+
 ```json
 {
-  "providerId": "self-engine",
   "baseUrl": "http://engine-7f3a:5208",
-  "contractVersion": "1.0",
-  "ttlSeconds": 15,
-  "eventRetentionSeconds": 86400
+  "ttlSeconds": 30,
+  "load": 0,
+  "intents": ["chat"]
 }
 ```
+
+`baseUrl` 目前只接受不带路径的 `http` 地址；`ttlSeconds` 取 5 至 300。`providerId`、`contractVersion`、`eventRetentionSeconds` 尚未实现。
 
 - 注册信息写入 Redis，键名由 `Router.Contracts` 定义；超过 `ttlSeconds` 未续约视为下线。Redis 是 Router 的内部实现，下游只面对上面的 HTTP 接口。
 - 静态地址在配置文件中列出，行为与动态注册一致：同样有健康探测与故障隔离，只是没有心跳。
 - 同一 `providerId` 的多个实例按会话 ID 一致性哈希分配，实例失败后隔离一段时间再重试。
-- 注册接口的鉴权方式 `[待决策]`，见 ADR-0004 风险 1。
+- Engine 用 `Heartbeat:RouterUrl` 与 `Heartbeat:RegistrationKey` 注册；不配置 `RouterUrl` 时仍直写 Redis（旧路径）。
 
 ## Run 任务
 
@@ -106,7 +109,7 @@ data: {"inputId":"in-3","prompt":"是否继续执行扣款？","expiresAt":"2026
 
 - 下游自己验证 token，Router 不做授权判断。
 - Router 读取 token 中的租户仅用于路由分片，该值未经验签，下游不得信任请求头中由 Router 附带的任何身份信息替代自身校验。
-- 目录接口 `GET /api/v1/agent/agents` 只返回调用者可见的 Agent。Router 不保存权限数据，也不再过滤。`[待确认]` Engine 目前没有 ACL 实现，需先补上。
+- 目录接口 `GET /api/v1/agent/agents` 只返回调用者可见的 Agent。Router 不保存权限数据，也不再过滤。Engine 按 `AgentConfig` 的 `AllowedUserIds`、`AllowedGroups`、`AllowedRoles` 过滤，执行入口使用同一规则；三个列表全空表示租户内所有用户可用。
 
 ## OpenAPI 文件
 

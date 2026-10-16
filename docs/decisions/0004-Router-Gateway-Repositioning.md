@@ -2,7 +2,7 @@
 
 ## 状态
 
-草案。需求已对齐；迁移顺序中的项目拆分已落地（见文末「实现进度」），其余尚未开始。标注 `[待决策]` 的事项确认后转为已决策。
+草案。需求已对齐；迁移顺序第 1 至 5 步已落地（见文末「实现进度」），第 6 步尚未开始。标注 `[待决策]` 的事项确认后转为已决策。
 
 ## 背景
 
@@ -130,18 +130,18 @@ public interface IIntentStrategy
 1. 建 Contracts 项目：OpenAPI、模型、Redis 键。Engine 与 Router 同时引用。不改变行为。
 2. 抽出 Core：选择管线与策略接口，现有意图逻辑封装为 `AgentIntentStrategy`。不改变行为。
 3. 抽出 Providers：合并为 `HttpProvider`，删除 Gina 专属代码。（已完成）
-4. 加注册端点与静态目录，Engine 接入注册；旧的 `engine:registry:*` 键保留一个版本做兼容。
-5. Engine 补目录 ACL 过滤与契约测试，随后关闭兼容键。
+4. 加注册端点与静态目录，Engine 接入注册；旧的 `engine:registry:*` 键保留一个版本做兼容。（已完成）
+5. Engine 补目录 ACL 过滤与契约测试，随后关闭兼容键。（ACL 已完成，契约测试与关闭兼容键未做）
 6. 加 Run 契约：Engine 先实现任务持久化与事件重放，Router 加 runId 亲和与事件流保活。依赖第 5 步。
 
 路线 B 的差异：第 1 步之后，用 Go 实现契约最小子集（chat/stream、agents、registrations），与 C# Router 并行跑同一份契约测试，按租户或流量比例切换并保留回滚开关，通过后再补会话、文件、Run。路线 A 在第 1 步前增加第 0 步：升级到 .NET 10。
 
 ## 风险与待决策
 
-1. `[待决策]` 注册接口的鉴权方式：共享密钥或 mTLS。否则任何人都能把流量引到自己的地址。
+1. 注册接口用共享密钥鉴权（已决策）：请求头 `X-Registration-Key`，Router 配置 `RouterSettings:Registration:SharedSecret`，未配置时不暴露注册端点。共享密钥是整个集群一把，泄露后需同时轮换 Router 与所有下游；下游增多或需要按实例吊销时再换 mTLS。
 2. `[待决策]` Agent ID 是否改为 `providerId/agentId` 命名空间。现状遇重复返回 409，下游增多后冲突概率上升。
 3. `[待确认]` 第三方下游是否都能接入同一身份提供方。做不到时 Router 无法替其兜底。
-4. 风险：Engine 补上 ACL 之前（迁移第 5 步），所有已认证用户都能选到所有 Agent，此前不要对外开放。
+4. Engine 已有租户隔离，并在目录与执行入口按 `AgentConfig.AllowedUserIds/AllowedGroups/AllowedRoles` 过滤（迁移第 5 步，已完成）；三个列表全空表示租户内所有用户可用。存量 Agent 配置没有这些字段，行为不变。
 5. `[待决策]` Run 事件保留期。草案默认 24 小时，由下游在注册时声明。
 6. 风险：任务要在实例缩容后继续，Engine 的执行不能只存在内存里，这是 Engine 侧最重的改造，需单独评估。
 7. 契约演进：v1 发布后字段只增不改，破坏性变更走 v2，Router 通过 `X-OpenAgent-Contract` 同时支持两个主版本。
@@ -160,7 +160,10 @@ public interface IIntentStrategy
 
 - `ModelIntentStrategy`：按决策模型的 `/v1/decisions` 接口实现，默认关闭，配置 `DecisionModel:Endpoint` 后排在策略链首位。
 
-未落地：注册端点与静态目录、Engine ACL、Run 契约的实现、契约测试。
+- 注册端点（迁移第 4 步）：Router 提供 `PUT/DELETE /api/v1/router/registrations/{instanceId}`，共享密钥鉴权，写入原有 `engine:registry:*` 键，因此直连 Redis 的旧 Engine 与 HTTP 注册的实例在同一个池里，兼容键无需另设迁移。Engine 配置 `Heartbeat:RouterUrl` 与 `Heartbeat:RegistrationKey` 后改走 HTTP 注册，否则仍直写 Redis。静态地址沿用 Provider 的 `BaseUrl` 与路由表的静态回退，没有新增机制。
+- Agent ACL（迁移第 5 步）：`AgentAccess.IsAllowed` 是唯一规则，目录接口和 `AgentRuntimeResolver` 都调用它，所以隐藏的 Agent 也不能靠显式 `X-Agent-Id` 执行。
+
+未落地：关闭 Redis 直写的兼容路径（待所有 Engine 切到 HTTP 注册后）、注册 `providerId` 与 `contractVersion` 字段、Run 契约的实现、契约测试。
 
 ## 关键实现
 

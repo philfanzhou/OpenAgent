@@ -64,7 +64,7 @@ public class CapabilityServiceRegistrationTests
             Task.FromResult<IReadOnlyList<AgentSummary>>([]);
 
         public Task<IReadOnlyList<AgentSummary>> ListAgentsAsync(
-            string tenantId,
+            IAgentUserContext user,
             CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<AgentSummary>>([]);
     }

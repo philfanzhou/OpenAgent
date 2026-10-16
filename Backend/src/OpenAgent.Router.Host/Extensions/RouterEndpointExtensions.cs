@@ -140,6 +140,12 @@ public static class RouterEndpointExtensions
                     httpClient,
                     requestConfig,
                     requireAuthentication: true));
+        // Without a configured shared secret the registration endpoints are not exposed at all.
+        if (!string.IsNullOrEmpty(app.ServiceProvider.GetRequiredService<IConfiguration>()[RegistrationEndpointHandler.SecretConfigKey]))
+        {
+            app.MapPut(RegistrationRequest.Route("{instanceId}"), RegistrationEndpointHandler.PutAsync);
+            app.MapDelete(RegistrationRequest.Route("{instanceId}"), RegistrationEndpointHandler.DeleteAsync);
+        }
         IHostEnvironment environment = app.ServiceProvider.GetRequiredService<IHostEnvironment>();
         if (environment.IsDevelopment())
         {

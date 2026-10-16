@@ -4,6 +4,7 @@ using OpenAgent.Engine.Abstractions;
 using OpenAgent.Engine.Observability;
 using OpenAgent.Contracts.Models;
 using OpenAgent.Contracts.Configuration;
+using OpenAgent.Contracts.Security;
 using System.Text.Json.Serialization;
 
 namespace OpenAgent.Engine.Config;
@@ -21,22 +22,25 @@ internal sealed class AgentListQuery(
 
     internal async Task<IReadOnlyList<AgentSummary>> ExecuteAsync(CancellationToken cancellationToken)
     {
-        return await ExecuteCoreAsync(tenantId: null, cancellationToken).ConfigureAwait(false);
+        return await ExecuteCoreAsync(tenantId: null, user: null, cancellationToken).ConfigureAwait(false);
     }
 
     internal async Task<IReadOnlyList<AgentSummary>> ExecuteAsync(
-        string tenantId,
+        IAgentUserContext user,
         CancellationToken cancellationToken)
     {
-        return await ExecuteCoreAsync(tenantId, cancellationToken).ConfigureAwait(false);
+        string tenantId = user.TenantId
+            ?? throw new TenantDataIsolationException(null, null, "TenantId is required but not provided");
+        return await ExecuteCoreAsync(tenantId, user, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<IReadOnlyList<AgentSummary>> ExecuteCoreAsync(
         string? tenantId,
+        IAgentUserContext? user,
         CancellationToken cancellationToken)
     {
         var result = new List<AgentSummary>();
-        AddLocalAgents(result, tenantId);
+        AddLocalAgents(result, tenantId, user);
         if (!redis.IsAvailable)
         {
             EngineLog.ListAgentsRedisUnavailable(logger);
@@ -60,7 +64,7 @@ internal sealed class AgentListQuery(
                     var entity = JsonSerializer.Deserialize<AgentConfigEntity>(configJson.ToString(), JsonOptions);
                     if (entity != null)
                     {
-                        AddAgent(result, entity, tenantId);
+                        AddAgent(result, entity, tenantId, user);
                     }
                 }
                 catch (Exception exception)
@@ -78,18 +82,19 @@ internal sealed class AgentListQuery(
         return result;
     }
 
-    private void AddLocalAgents(List<AgentSummary> result, string? tenantId)
+    private void AddLocalAgents(List<AgentSummary> result, string? tenantId, IAgentUserContext? user)
     {
         foreach (AgentConfigEntity entity in localStore.List())
         {
-            AddAgent(result, entity, tenantId);
+            AddAgent(result, entity, tenantId, user);
         }
     }
 
     private static void AddAgent(
         List<AgentSummary> result,
         AgentConfigEntity entity,
-        string? tenantId)
+        string? tenantId,
+        IAgentUserContext? user)
     {
         string ownerTenantId = string.IsNullOrWhiteSpace(entity.TenantId)
             ? entity.Config?.TenantId ?? string.Empty
@@ -98,6 +103,11 @@ internal sealed class AgentListQuery(
         if (tenantId != null
             && !string.IsNullOrWhiteSpace(ownerTenantId)
             && !string.Equals(ownerTenantId, tenantId, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        if (user != null && entity.Config != null && !AgentAccess.IsAllowed(entity.Config, user))
         {
             return;
         }

@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -18,6 +19,7 @@ internal class RedisRegistry : IEngineRegistry, IDisposable
     private bool _isRegistered;
     private bool _disposed;
     private readonly LoadCollector _loadCollector = new();
+    private readonly HttpClient? _routerClient;
 
     private string RegistryKey => EngineRegistryKeys.ForEngine(_entry.EngineId);
 
@@ -26,13 +28,21 @@ internal class RedisRegistry : IEngineRegistry, IDisposable
     public RedisRegistry(
         IRedisConnectionProvider redis,
         IOptionsMonitor<HeartbeatOptions> options,
-        ILogger<RedisRegistry> logger)
+        ILogger<RedisRegistry> logger,
+        HttpMessageHandler? routerHandler = null)
     {
         _logger = logger;
         _redis = redis;
         _options = options;
 
         var heartbeatOptions = _options.CurrentValue;
+        if (!string.IsNullOrWhiteSpace(heartbeatOptions.RouterUrl))
+        {
+            _routerClient = routerHandler == null ? new HttpClient() : new HttpClient(routerHandler);
+            _routerClient.BaseAddress = new Uri(heartbeatOptions.RouterUrl);
+            _routerClient.Timeout = TimeSpan.FromSeconds(5);
+        }
+
         _entry = new EngineRegistryEntry
         {
             EngineId = Guid.NewGuid().ToString("N")[..8],
@@ -76,13 +86,7 @@ internal class RedisRegistry : IEngineRegistry, IDisposable
             string key = RegistryKey;
             string json = JsonSerializer.Serialize(_entry);
 
-            bool stored = await _redis.StringSetAsync(key, json, GetTtl())
-                .WaitAsync(cancellationToken).ConfigureAwait(false);
-            if (stored)
-            {
-                await _redis.SetAddAsync(EngineRegistryKeys.Index, _entry.EngineId)
-                    .WaitAsync(cancellationToken).ConfigureAwait(false);
-            }
+            bool stored = await StoreAsync(key, json, cancellationToken).ConfigureAwait(false);
 
             _isRegistered = stored;
             if (_isRegistered)
@@ -122,13 +126,7 @@ internal class RedisRegistry : IEngineRegistry, IDisposable
             string key = RegistryKey;
             string json = JsonSerializer.Serialize(_entry);
 
-            bool stored = await _redis.StringSetAsync(key, json, GetTtl())
-                .WaitAsync(cancellationToken).ConfigureAwait(false);
-            if (stored)
-            {
-                await _redis.SetAddAsync(EngineRegistryKeys.Index, _entry.EngineId)
-                    .WaitAsync(cancellationToken).ConfigureAwait(false);
-            }
+            bool stored = await StoreAsync(key, json, cancellationToken).ConfigureAwait(false);
 
             _isRegistered = stored;
         }
@@ -147,10 +145,7 @@ internal class RedisRegistry : IEngineRegistry, IDisposable
     {
         try
         {
-            string key = RegistryKey;
-            await _redis.KeyDeleteAsync(key).WaitAsync(cancellationToken).ConfigureAwait(false);
-            await _redis.SetRemoveAsync(EngineRegistryKeys.Index, _entry.EngineId)
-                .WaitAsync(cancellationToken).ConfigureAwait(false);
+            await RemoveAsync(cancellationToken).ConfigureAwait(false);
             _isRegistered = false;
             EngineLog.EngineDeregisteredFromRedis(_logger, _entry.EngineId);
         }
@@ -164,6 +159,58 @@ internal class RedisRegistry : IEngineRegistry, IDisposable
         }
     }
 
+    // Router registration needs the shared secret; without a RouterUrl the legacy Redis keys are written directly.
+    private async Task<bool> StoreAsync(string key, string json, CancellationToken cancellationToken)
+    {
+        if (_routerClient != null)
+        {
+            using HttpRequestMessage request = CreateRouterRequest(HttpMethod.Put);
+            request.Content = JsonContent.Create(new RegistrationRequest
+            {
+                BaseUrl = $"http://{_entry.Host}:{_entry.Port}",
+                TtlSeconds = Math.Max(_options.CurrentValue.RegistryTtlSeconds, 1),
+                Load = _entry.Load,
+                Intents = _entry.Intents
+            });
+            using HttpResponseMessage response = await _routerClient.SendAsync(request, cancellationToken)
+                .ConfigureAwait(false);
+            return response.IsSuccessStatusCode;
+        }
+
+        bool stored = await _redis.StringSetAsync(key, json, GetTtl())
+            .WaitAsync(cancellationToken).ConfigureAwait(false);
+        if (stored)
+        {
+            await _redis.SetAddAsync(EngineRegistryKeys.Index, _entry.EngineId)
+                .WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        return stored;
+    }
+
+    private async Task RemoveAsync(CancellationToken cancellationToken)
+    {
+        if (_routerClient != null)
+        {
+            using HttpRequestMessage request = CreateRouterRequest(HttpMethod.Delete);
+            using HttpResponseMessage response = await _routerClient.SendAsync(request, cancellationToken)
+                .ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
+            return;
+        }
+
+        await _redis.KeyDeleteAsync(RegistryKey).WaitAsync(cancellationToken).ConfigureAwait(false);
+        await _redis.SetRemoveAsync(EngineRegistryKeys.Index, _entry.EngineId)
+            .WaitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private HttpRequestMessage CreateRouterRequest(HttpMethod method)
+    {
+        HttpRequestMessage request = new(method, RegistrationRequest.Route(_entry.EngineId).TrimStart('/'));
+        request.Headers.Add(RegistrationRequest.KeyHeader, _options.CurrentValue.RegistrationKey ?? string.Empty);
+        return request;
+    }
+
     public void Dispose()
     {
         if (_disposed)
@@ -172,6 +219,7 @@ internal class RedisRegistry : IEngineRegistry, IDisposable
         }
 
         _disposed = true;
+        _routerClient?.Dispose();
     }
 
     private TimeSpan GetTtl()

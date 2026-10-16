@@ -19,7 +19,7 @@ internal static class AgentCatalogEndpointExtensions
         CancellationToken cancellationToken)
     {
         IReadOnlyList<AgentSummary> agents = await configProvider.ListAgentsAsync(
-            AgentEndpointRequestMapper.RequireTenant(context),
+            context.GetAgentRequest().User,
             cancellationToken).ConfigureAwait(false);
         return Results.Ok(agents);
     }

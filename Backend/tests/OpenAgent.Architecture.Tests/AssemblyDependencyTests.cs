@@ -76,6 +76,7 @@ public class AssemblyDependencyTests
             [
                 "OpenAgent.Contracts",
                 "OpenAgent.Hosting",
+                "OpenAgent.Router.Contracts",
                 "OpenAgent.Router.Core",
                 "OpenAgent.Router.Providers"
             ]);

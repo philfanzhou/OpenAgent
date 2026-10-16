@@ -1,3 +1,5 @@
+using OpenAgent.Contracts.Security;
+
 namespace OpenAgent.Contracts.Configuration;
 
 public interface IAgentConfigProvider
@@ -13,8 +15,9 @@ public interface IAgentConfigProvider
 
     Task<IReadOnlyList<AgentSummary>> ListAgentsAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>Lists the Agents the user's tenant owns and the user may use.</summary>
     Task<IReadOnlyList<AgentSummary>> ListAgentsAsync(
-        string tenantId,
+        IAgentUserContext user,
         CancellationToken cancellationToken = default);
 }
 

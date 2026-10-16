@@ -1,5 +1,6 @@
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Conversation;
+using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Core.Security;
 
@@ -41,6 +42,13 @@ internal sealed class AgentRuntimeResolver : IAgentRuntimeResolver
                 cancellationToken)
             .ConfigureAwait(false)
             ?? throw new InvalidOperationException($"Agent configuration not found: {agentId}");
+
+        if (!AgentAccess.IsAllowed(config, userContext))
+        {
+            throw new AgentException(
+                AgentErrorCode.PermissionDenied,
+                $"Access denied for Agent '{agentId}'");
+        }
 
         ValidateSkillTenant(agentId, config, userContext);
 

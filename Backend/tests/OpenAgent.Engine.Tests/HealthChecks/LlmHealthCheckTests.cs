@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using OpenAgent.Engine.Abstractions;
 using OpenAgent.Engine.Redis;
 using OpenAgent.Contracts.Configuration;
+using OpenAgent.Contracts.Security;
 using OpenAgent.Contracts.Models;
 using StackExchange.Redis;
 using Xunit;
@@ -146,7 +147,7 @@ public class LlmHealthCheckTests
             => Task.FromResult<IReadOnlyList<AgentSummary>>(Array.Empty<AgentSummary>());
 
         public Task<IReadOnlyList<AgentSummary>> ListAgentsAsync(
-            string tenantId,
+            IAgentUserContext user,
             CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<AgentSummary>>(Array.Empty<AgentSummary>());
     }

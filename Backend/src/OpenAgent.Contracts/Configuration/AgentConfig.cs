@@ -19,6 +19,12 @@ public class AgentConfig
     public ContextPolicy? ContextPolicy { get; set; }
 
     public int MaxTurns { get; set; } = 50;
+
+    // Empty lists mean every user of the owning tenant may use the Agent; otherwise a match
+    // on any one list is enough.
+    public List<string> AllowedUserIds { get; set; } = new();
+    public List<string> AllowedGroups { get; set; } = new();
+    public List<string> AllowedRoles { get; set; } = new();
 }
 
 public class LlmConfig
