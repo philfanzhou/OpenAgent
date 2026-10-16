@@ -27,7 +27,7 @@
 
 ## 独立 ACP SDK（单包）
 
-本次用户授权 P0–P7 集中实现并创建新 PR；不启动平台切流、Worker 或生产发布。负责人：Codex；状态：待评审。源码范围为 Runtime.Acp、对应 Tests、TestConsole 及官方 SDK 互通夹具；SDK 专属契约留同包，不依赖平台模块。
+本次用户授权 P0–P7 集中实现并创建新 PR；不启动平台切流、Worker 或生产发布。负责人：Codex；状态：待评审；实现 PR：[#233](https://github.com/philfanzhou/OpenAgent/pull/233)。源码范围为 Runtime.Acp、对应 Tests、TestConsole 及官方 SDK 互通夹具；SDK 专属契约留同包，不依赖平台模块。
 
 | 任务 | 状态与验收入口 |
 |---|---|
