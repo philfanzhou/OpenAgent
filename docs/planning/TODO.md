@@ -17,7 +17,7 @@
 
 | 任务 / 阶段 | 优先级 | 负责人 / 状态 | 前置与验收 |
 |---|---|---|---|
-| [ ] ACP-00 / P0 工程及传输基线 | P0 | 质量安全工程师（OPEN-7）/ 待独立验收 | 无前置；三个工程、14 个传输 + 1 个依赖 + 4 个控制台进程测试；主解回归，见下方记录 |
+| [ ] ACP-00 / P0 工程及传输基线 | P0 | 质量安全工程师（OPEN-7）/ 修复候选待独立复审 | 无前置；三个工程、49 个传输/生命周期 + 1 个依赖 + 5 个控制台进程测试；主解回归，见下方记录 |
 | [ ] ACP-01 / P1 协议模型与生成 | P0 | 后端工程师（OPEN-8）/ backlog，待前置验收 | ACP-00；固定 schema、可重复生成、契约夹具、schema 控制台及报告测试 |
 | [ ] ACP-02 / P2 双向 RPC | P0 | 后端工程师（OPEN-9）/ backlog，待前置验收 | ACP-01；引擎探针、可重入关联/取消/关闭，rpc/reverse/fault 场景与异常测试 |
 | [ ] ACP-03 / P3 双侧最小闭环 | P0 | 后端工程师（OPEN-10）/ backlog，待前置验收 | ACP-02；握手/new/prompt/update/cancel，Session/Turn 与真实 stdio 控制台测试 |
@@ -26,7 +26,7 @@
 | [ ] ACP-06 / P6 交互能力 | P1 | 后端工程师（OPEN-13）/ backlog，待前置验收 | ACP-05；按权限→文件→终端→elicitation→认证逐项完成 SDK、测试和对应场景 |
 | [ ] ACP-07 / P7 发布验收 | P2 | 质量安全工程师（OPEN-14）/ backlog，待前置验收 | ACP-06；跨语言、负载、AOT、包/API/文档，interop/load 场景及完整矩阵 |
 
-ACP-00 接收记录：附件及 58 个文件已校验后导入 dev 后代任务分支；按用户要求从 PR 移除历史试验代码与调研资料，正式文档已精简。本轮结果见 [dev 基线接收报告](../test-reports/2026-10-16-acp-dev-baseline-import.md)：938 通过、24 门控跳过，另有 CRLF 上限边界缺陷待独立复核和修复。草稿 [PR #231](https://github.com/philfanzhou/OpenAgent/pull/231) 指向 dev。当前仅基础传输已实现。P0 独立审查通过并由技术负责人核对交接 SHA 后才启动 OPEN-8，其余逐项推进；未合并项继续保留 `[ ]`。
+ACP-00：基线已接收，试验代码/历史调研已从 PR 移除，正式文档已精简。OPEN-7 首轮审查暂不放行；技术负责人已修复 CRLF 上限、取消异常清理，统一 EOF Completion 与并发 Dispose 契约。候选内容 SHA `58c1713`：主解 974 通过、0 失败、24 门控跳过，ACP 55 通过；控制台 framing/lifecycle/all 与质量探针通过，见 [验证记录](../test-reports/2026-10-16-acp-dev-baseline-import.md)。草稿 [PR #231](https://github.com/philfanzhou/OpenAgent/pull/231) 指向 dev。新 SHA 独立复审与技术负责人核对通过前，OPEN-8 至 OPEN-14 保持 backlog；未合并项继续保留 `[ ]`。
 
 ## 已完成基线
 
