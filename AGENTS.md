@@ -4,7 +4,7 @@ OpenAgent 是基于 .NET 10 的多服务 Agent 平台（C#, ASP.NET Core）。
 
 ## 模块结构与依赖
 
-以 [新架构方案的目录结构图](docs/architecture/新架构方案.html) 为本次结构整理依据；MAF 执行、现有 API、Runner 与持久化行为保持不变。本次不实现 ACP、Worker、RunGrant、审批或新表，也不把旧提案的功能规划视为已落地。
+以 [新架构方案的目录结构图](docs/architecture/新架构方案.html) 为本次结构整理依据；MAF 执行、现有 API、Runner 与持久化行为保持不变。结构整理未实现 ACP、Worker、RunGrant、审批或新表，也不把旧提案的功能规划视为已落地。
 
 ```text
 Backend/src/
@@ -15,6 +15,7 @@ Backend/src/
 ├── OpenAgent.Engine.Host/     HTTP/SSE、管理端点与最终组合根
 ├── OpenAgent.Framework/       原 Infrastructure：EF Core、PostgreSQL、Redis 存储
 ├── OpenAgent.Router/          路由、转发、限流与入口认证
+├── OpenAgent.Runtime.Acp/     单包 ACP SDK（独立于平台执行链）
 └── OpenAgent.Runner/          现有沙箱与工作区（本次不调整实现）
 ```
 
@@ -32,7 +33,8 @@ Backend/src/
 - Capabilities 不引用 MAF、MCP 或模型 SDK；MCP 及 MAF Skill 包解析、Provider 和工具适配仍在 Application，不伪造 ACP 替代路径。
 - 文件轮次上下文仍按 scoped 注册；发现/调用授权、工具并发、错误信封、Runner 隔离及回收行为保持不变。
 - `OpenAgent.Core`、`OpenAgent.Infrastructure`、独立 `OpenAgent.Hosting` 项目已退出解决方案，不新增兼容项目或双注册路径。
-- Runtime.Acp、Worker 等既有空目录仍只代表规划，不创建无实现的项目。后续功能方向单独评审，以 [任务清单](docs/planning/TODO.md) 为入口。
+- Runtime.Acp 按已授权的 ACP 单包 SDK 任务实现；Worker 等规划目录不创建无实现的项目。SDK 不引用平台模块，不改造现有执行链。
+- ACP SDK、`Backend/tests/OpenAgent.Runtime.Acp.Tests`、`Backend/tools/OpenAgent.Runtime.Acp.TestConsole` 同步演进；控制台只引用 SDK 公共 API。阶段定义见 `docs/integrations/acp-dotnet-sdk/IMPLEMENTATION.md`，状态统一记入任务清单。
 - 项目引用及模块边界由 `Backend/tests/OpenAgent.Architecture.Tests/` 检查；不得为违规实现扩大白名单。
 - 文档统一放 `docs/`，源码目录不放 README。
 

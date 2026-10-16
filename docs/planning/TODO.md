@@ -9,6 +9,25 @@
 - 每项独立 PR；写明拥有目录、共享文件、契约、验证和回退。公共 DTO、Host Program、项目/包引用、数据库模型/迁移及前端 app 由集成人协调。同一文件的迁移先合入共同基线。
 - 后端范围以下以 `Backend/src/OpenAgent.*` 为根，前端以 `Frontend/OpenAgent.Chat/src/` 为根。结构迁移保持协议和行为兼容；功能/schema 变化单独验收及制定回退方案。
 
+## ACP 单包 SDK 分阶段任务
+
+本组更新：2026-10-16。SDK 固定为 `Backend/src/OpenAgent.Runtime.Acp`，一个可发布包；共同拥有 `Backend/tests/OpenAgent.Runtime.Acp.Tests` 与 `Backend/tools/OpenAgent.Runtime.Acp.TestConsole`。阶段任务细节见 [实现任务](../integrations/acp-dotnet-sdk/IMPLEMENTATION.md)，公共行为见 [主规格](../integrations/acp-dotnet-sdk/SPEC.md)。每个能力必须同步 SDK、测试、控制台及文档。
+
+以下均未合并，因此保留 `[ ]`；P0～P7 是 ACP 的阶段号，与本页优先级章节不同。共享文件为 Backend/OpenAgent.sln、AGENTS.md、开发指南及集中包配置；不改变既有平台依赖白名单，不接入生产执行链。
+
+| 任务 / 阶段 | 优先级 | 负责人 / 状态 | 前置与验收 |
+|---|---|---|---|
+| [ ] ACP-00 / P0 工程及传输基线 | P0 | Codex / 待评审，已本地验证 | 无前置；三个工程、14 个传输 + 1 个依赖 + 4 个控制台进程测试；主解回归，见下方记录 |
+| [ ] ACP-01 / P1 协议模型与生成 | P0 | 未分配 / 待开发 | ACP-00；固定 schema、可重复生成、契约夹具、schema 控制台及报告测试 |
+| [ ] ACP-02 / P2 双向 RPC | P0 | 未分配 / 待开发 | ACP-01；引擎探针、可重入关联/取消/关闭，rpc/reverse/fault 场景与异常测试 |
+| [ ] ACP-03 / P3 双侧最小闭环 | P0 | 未分配 / 待开发 | ACP-02；握手/new/prompt/update/cancel，Session/Turn 与真实 stdio 控制台测试 |
+| [ ] ACP-04 / P4 进程接入 | P1 | 未分配 / 待开发 | ACP-03；Processes 生命周期、外部 Agent 启动选项、stderr/退出/所有权测试 |
+| [ ] ACP-05 / P5 会话与配置 | P1 | 未分配 / 待开发 | ACP-04；完整会话、配置与 14 类更新；session/config/updates 场景及顺序/恢复测试 |
+| [ ] ACP-06 / P6 交互能力 | P1 | 未分配 / 待开发 | ACP-05；按权限→文件→终端→elicitation→认证逐项完成 SDK、测试和对应场景 |
+| [ ] ACP-07 / P7 发布验收 | P2 | 未分配 / 待开发 | ACP-06；跨语言、负载、AOT、包/API/文档，interop/load 场景及完整矩阵 |
+
+ACP-00 证据：[单包基线验证](../test-reports/2026-10-16-acp-single-package.md)。当前仅基础传输已实现，不把旧 Demo 的协议行为或历史真实 Agent 握手计入新 SDK 能力。实施 PR：尚未创建；本地通过不等于已合并。
+
 ## 已完成基线
 
 - [x] **B01 Core 第一批边界**：功能归域、模块 DI、MCP/Skill 扩展接口、Runner 客户端及产物发布复用、测试目录与依赖门禁。证据：[PR #158](https://github.com/philfanzhou/OpenAgent/pull/158)、[验证记录](../test-reports/2026-10-08-module-boundaries.md)。

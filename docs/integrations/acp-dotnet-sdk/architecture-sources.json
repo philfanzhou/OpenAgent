@@ -1,0 +1,332 @@
+{
+  "research_date": "2026-10-16",
+  "timezone": "Asia/Shanghai",
+  "scope": "Static source and official directory comparison; no third-party SDK test suites run. Community selection prioritizes .NET plus representative Go and React libraries.",
+  "official_directory": "https://agentclientprotocol.com/libraries/community",
+  "repositories": [
+    {
+      "repo": "agentclientprotocol/agent-client-protocol",
+      "sha": "5ab891a2c38043b91259b21fc7b6c4f32d854a11",
+      "commit_date": "2026-10-16T00:30:38Z",
+      "url": "https://github.com/agentclientprotocol/agent-client-protocol",
+      "snapshot_url": "https://github.com/agentclientprotocol/agent-client-protocol/tree/5ab891a2c38043b91259b21fc7b6c4f32d854a11",
+      "files": [
+        {
+          "path": "schema/v1/schema.json",
+          "url": "https://github.com/agentclientprotocol/agent-client-protocol/blob/5ab891a2c38043b91259b21fc7b6c4f32d854a11/schema/v1/schema.json",
+          "sha256": "4bcd1d2051ff7ed379bd9b234fb9b09c5ab9245478698e9fab805bd9b52a33a6"
+        },
+        {
+          "path": "schema/v1/meta.json",
+          "url": "https://github.com/agentclientprotocol/agent-client-protocol/blob/5ab891a2c38043b91259b21fc7b6c4f32d854a11/schema/v1/meta.json",
+          "sha256": "061edb6efa8fb2aa2792459a86ec7268de5fe665bba48b2ffe7939df01481f88"
+        }
+      ]
+    },
+    {
+      "repo": "agentclientprotocol/typescript-sdk",
+      "sha": "b98857b3f0342915728d7e30d8a7258311054f8f",
+      "commit_date": "2026-10-14T20:39:49+02:00",
+      "url": "https://github.com/agentclientprotocol/typescript-sdk",
+      "snapshot_url": "https://github.com/agentclientprotocol/typescript-sdk/tree/b98857b3f0342915728d7e30d8a7258311054f8f",
+      "files": [
+        {
+          "path": "README.md",
+          "url": "https://github.com/agentclientprotocol/typescript-sdk/blob/b98857b3f0342915728d7e30d8a7258311054f8f/README.md",
+          "sha256": "e442ac0f0fd26b14ccb7c836d5e23fcd4bb100bd5a1b3cea9293a1db030676a0"
+        },
+        {
+          "path": "src/acp.ts",
+          "url": "https://github.com/agentclientprotocol/typescript-sdk/blob/b98857b3f0342915728d7e30d8a7258311054f8f/src/acp.ts",
+          "sha256": "8123e2275b44126d6b90b1c52211acce470336ce10074f5c17b500519a4a9d10"
+        },
+        {
+          "path": "src/jsonrpc.ts",
+          "url": "https://github.com/agentclientprotocol/typescript-sdk/blob/b98857b3f0342915728d7e30d8a7258311054f8f/src/jsonrpc.ts",
+          "sha256": "6880f5e7bb78c53d28e60f344968d021bad1878487ea887465b8a4742eadfd2f"
+        },
+        {
+          "path": "src/connection.ts",
+          "url": "https://github.com/agentclientprotocol/typescript-sdk/blob/b98857b3f0342915728d7e30d8a7258311054f8f/src/connection.ts",
+          "sha256": "41c6ff253fba4dbe547a7fcc242fc0ef386cd1e1ef6f3d93e0b026e10f4874e7"
+        },
+        {
+          "path": "src/stream.ts",
+          "url": "https://github.com/agentclientprotocol/typescript-sdk/blob/b98857b3f0342915728d7e30d8a7258311054f8f/src/stream.ts",
+          "sha256": "de9ae9f2213cf12c96f17b3f8a65b5c0fc6c0be7216517d18e3465f071df8ad5"
+        },
+        {
+          "path": "src/schema-deserialize.ts",
+          "url": "https://github.com/agentclientprotocol/typescript-sdk/blob/b98857b3f0342915728d7e30d8a7258311054f8f/src/schema-deserialize.ts",
+          "sha256": "3a42ed2fe640576605e704e405c17e0003e6b3130d63687d7db6f47c6c219ba8"
+        }
+      ]
+    },
+    {
+      "repo": "agentclientprotocol/rust-sdk",
+      "sha": "f5c0eef0972bbda8e75a151aeb088642911b3568",
+      "commit_date": "2026-10-13T16:37:25+02:00",
+      "url": "https://github.com/agentclientprotocol/rust-sdk",
+      "snapshot_url": "https://github.com/agentclientprotocol/rust-sdk/tree/f5c0eef0972bbda8e75a151aeb088642911b3568",
+      "files": [
+        {
+          "path": "README.md",
+          "url": "https://github.com/agentclientprotocol/rust-sdk/blob/f5c0eef0972bbda8e75a151aeb088642911b3568/README.md",
+          "sha256": "bda1afea67047e4325cd7e23de46c95a4fc7c28cee540663e0111b02e2cb3dec"
+        },
+        {
+          "path": "src/agent-client-protocol/src/lib.rs",
+          "url": "https://github.com/agentclientprotocol/rust-sdk/blob/f5c0eef0972bbda8e75a151aeb088642911b3568/src/agent-client-protocol/src/lib.rs",
+          "sha256": "52287c3d018926e18d8fa079da0126ec639a30418c93d4cc21ff1aaeb899d22e"
+        },
+        {
+          "path": "src/agent-client-protocol/src/role.rs",
+          "url": "https://github.com/agentclientprotocol/rust-sdk/blob/f5c0eef0972bbda8e75a151aeb088642911b3568/src/agent-client-protocol/src/role.rs",
+          "sha256": "9b933d3ddc196f2e867012a4fadd5435fdbdb5ad2c0306d4cf88e5d25f0f466c"
+        },
+        {
+          "path": "src/agent-client-protocol/src/stdio.rs",
+          "url": "https://github.com/agentclientprotocol/rust-sdk/blob/f5c0eef0972bbda8e75a151aeb088642911b3568/src/agent-client-protocol/src/stdio.rs",
+          "sha256": "61d3e0b00e98ce27ada96d27e9dccaa93b150cc296efba00674098345ad4d6a9"
+        }
+      ]
+    },
+    {
+      "repo": "agentclientprotocol/python-sdk",
+      "sha": "bdb9ac7054fb2df76a922b60b356c3c65f8a8a64",
+      "commit_date": "2026-10-12T17:33:00+08:00",
+      "url": "https://github.com/agentclientprotocol/python-sdk",
+      "snapshot_url": "https://github.com/agentclientprotocol/python-sdk/tree/bdb9ac7054fb2df76a922b60b356c3c65f8a8a64",
+      "files": [
+        {
+          "path": "README.md",
+          "url": "https://github.com/agentclientprotocol/python-sdk/blob/bdb9ac7054fb2df76a922b60b356c3c65f8a8a64/README.md",
+          "sha256": "823f7272776d2ad759dbd8fa6d499340ed9172a728d470db671669a4f1db5c91"
+        },
+        {
+          "path": "src/acp/connection.py",
+          "url": "https://github.com/agentclientprotocol/python-sdk/blob/bdb9ac7054fb2df76a922b60b356c3c65f8a8a64/src/acp/connection.py",
+          "sha256": "686da60fda68a9143ed9bb72e41c13e6dc864adb432fd74fb2bee9ff62f18d30"
+        },
+        {
+          "path": "src/acp/interfaces.py",
+          "url": "https://github.com/agentclientprotocol/python-sdk/blob/bdb9ac7054fb2df76a922b60b356c3c65f8a8a64/src/acp/interfaces.py",
+          "sha256": "fe5fed5460bf4b8e8b5fa7b7d0a9739f94a7e2fa7b7c31ab20025b6666ee911d"
+        },
+        {
+          "path": "src/acp/contrib/session_state.py",
+          "url": "https://github.com/agentclientprotocol/python-sdk/blob/bdb9ac7054fb2df76a922b60b356c3c65f8a8a64/src/acp/contrib/session_state.py",
+          "sha256": "7eaf980f8b2157337898478bccf7adbc6efe0fcd41a77ce96f61672c5a910086"
+        },
+        {
+          "path": "src/acp/contrib/permissions.py",
+          "url": "https://github.com/agentclientprotocol/python-sdk/blob/bdb9ac7054fb2df76a922b60b356c3c65f8a8a64/src/acp/contrib/permissions.py",
+          "sha256": "08e291f2de815cca63e1866e145a0ff6017244c918073fb8034028a8b0df6245"
+        }
+      ]
+    },
+    {
+      "repo": "agentclientprotocol/java-sdk",
+      "sha": "1099b30f3704642e21e2070d84a60213f2b63dea",
+      "commit_date": "2026-10-08T11:06:09+02:00",
+      "url": "https://github.com/agentclientprotocol/java-sdk",
+      "snapshot_url": "https://github.com/agentclientprotocol/java-sdk/tree/1099b30f3704642e21e2070d84a60213f2b63dea",
+      "files": [
+        {
+          "path": "README.md",
+          "url": "https://github.com/agentclientprotocol/java-sdk/blob/1099b30f3704642e21e2070d84a60213f2b63dea/README.md",
+          "sha256": "bdb4118ff1f172310d03f1c2351b191bac36fa4b2595d6172e21bf908b9f118d"
+        },
+        {
+          "path": "acp-core/src/main/java/com/agentclientprotocol/sdk/spec/AcpSession.java",
+          "url": "https://github.com/agentclientprotocol/java-sdk/blob/1099b30f3704642e21e2070d84a60213f2b63dea/acp-core/src/main/java/com/agentclientprotocol/sdk/spec/AcpSession.java",
+          "sha256": "98c6943231779e9dfb3806f4aaadb7b742202f01de064482fdfde0d4ad1ed719"
+        },
+        {
+          "path": "integration-testing/README.md",
+          "url": "https://github.com/agentclientprotocol/java-sdk/blob/1099b30f3704642e21e2070d84a60213f2b63dea/integration-testing/README.md",
+          "sha256": "5544a0526c8de8a87fea360980ee9f69930f18e60afc54103a3ce377d32f72ef"
+        }
+      ]
+    },
+    {
+      "repo": "agentclientprotocol/kotlin-sdk",
+      "sha": "0bbffa57246f46d12d701ba207764ae7a6e80e6c",
+      "commit_date": "2026-10-15T13:20:50+02:00",
+      "url": "https://github.com/agentclientprotocol/kotlin-sdk",
+      "snapshot_url": "https://github.com/agentclientprotocol/kotlin-sdk/tree/0bbffa57246f46d12d701ba207764ae7a6e80e6c",
+      "files": [
+        {
+          "path": "README.md",
+          "url": "https://github.com/agentclientprotocol/kotlin-sdk/blob/0bbffa57246f46d12d701ba207764ae7a6e80e6c/README.md",
+          "sha256": "b6d4ff4b4e96852dc5c814e27e76958eca853721b73f641d9359235a9a43ea56"
+        },
+        {
+          "path": "acp/src/commonMain/kotlin/com/agentclientprotocol/protocol/Protocol.kt",
+          "url": "https://github.com/agentclientprotocol/kotlin-sdk/blob/0bbffa57246f46d12d701ba207764ae7a6e80e6c/acp/src/commonMain/kotlin/com/agentclientprotocol/protocol/Protocol.kt",
+          "sha256": "e34c7f34485c83f5659f06d09884a79cd0c22f401071b7c670ef12a6428de530"
+        },
+        {
+          "path": "acp/src/commonMain/kotlin/com/agentclientprotocol/client/Client.kt",
+          "url": "https://github.com/agentclientprotocol/kotlin-sdk/blob/0bbffa57246f46d12d701ba207764ae7a6e80e6c/acp/src/commonMain/kotlin/com/agentclientprotocol/client/Client.kt",
+          "sha256": "e755047e7dc8d8a8b5d21cce3fbc9cc0b65f6264d09f8d8cecd91e5b6a49b32f"
+        }
+      ]
+    },
+    {
+      "repo": "nuskey8/acp-csharp",
+      "sha": "94ac17601aa024110f9ae4ed90cd2c495b98d6d9",
+      "commit_date": "2025-11-05T17:24:06+09:00",
+      "url": "https://github.com/nuskey8/acp-csharp",
+      "snapshot_url": "https://github.com/nuskey8/acp-csharp/tree/94ac17601aa024110f9ae4ed90cd2c495b98d6d9",
+      "files": [
+        {
+          "path": "README.md",
+          "url": "https://github.com/nuskey8/acp-csharp/blob/94ac17601aa024110f9ae4ed90cd2c495b98d6d9/README.md",
+          "sha256": "2e58c27b1e389eb31fdbebcf5cf7763097a729e97567a0ea9f023238326105c3"
+        },
+        {
+          "path": "src/AgentClientProtocol/IAcpAgent.cs",
+          "url": "https://github.com/nuskey8/acp-csharp/blob/94ac17601aa024110f9ae4ed90cd2c495b98d6d9/src/AgentClientProtocol/IAcpAgent.cs",
+          "sha256": "938a318994a344dd69913c15206cbc043cf43d8980219cc59dd1aae22f5ff171"
+        },
+        {
+          "path": "src/AgentClientProtocol/IAcpClient.cs",
+          "url": "https://github.com/nuskey8/acp-csharp/blob/94ac17601aa024110f9ae4ed90cd2c495b98d6d9/src/AgentClientProtocol/IAcpClient.cs",
+          "sha256": "21a4f332db4a16b788e21b2479c1b3ba70bed8d04142231e6018091e52949019"
+        },
+        {
+          "path": "src/AgentClientProtocol/ClientSideConnection.cs",
+          "url": "https://github.com/nuskey8/acp-csharp/blob/94ac17601aa024110f9ae4ed90cd2c495b98d6d9/src/AgentClientProtocol/ClientSideConnection.cs",
+          "sha256": "063e0433cc1b420403f2ee53dfe8f251f0589a76c82cf124319271a7dfc55694"
+        },
+        {
+          "path": "src/AgentClientProtocol/JsonRpc/JsonRpcEndpoint.cs",
+          "url": "https://github.com/nuskey8/acp-csharp/blob/94ac17601aa024110f9ae4ed90cd2c495b98d6d9/src/AgentClientProtocol/JsonRpc/JsonRpcEndpoint.cs",
+          "sha256": "726139c07fbb211591ff5c8fb7e61701c7e469164c9310ed91879e1bd89982ce"
+        },
+        {
+          "path": "src/AgentClientProtocol/AgentClientProtocol.csproj",
+          "url": "https://github.com/nuskey8/acp-csharp/blob/94ac17601aa024110f9ae4ed90cd2c495b98d6d9/src/AgentClientProtocol/AgentClientProtocol.csproj",
+          "sha256": "5492c627469978324423adf9af65cbb8df1698eadaa70656f9302e6366a8b930"
+        }
+      ]
+    },
+    {
+      "repo": "MertBasar0/acp-net",
+      "sha": "52c2405ed5fdace9a53b6bb130c85cede595d97a",
+      "commit_date": "2026-08-10T00:53:22+03:00",
+      "url": "https://github.com/MertBasar0/acp-net",
+      "snapshot_url": "https://github.com/MertBasar0/acp-net/tree/52c2405ed5fdace9a53b6bb130c85cede595d97a",
+      "files": [
+        {
+          "path": "README.md",
+          "url": "https://github.com/MertBasar0/acp-net/blob/52c2405ed5fdace9a53b6bb130c85cede595d97a/README.md",
+          "sha256": "0feac4e91c7ca32510a6d545a2976ebbcc115d5f4ac9a50c530f58f86aeeb1fb"
+        },
+        {
+          "path": "src/acp-net/Acp.Net.Process/AcpProcessRunner.cs",
+          "url": "https://github.com/MertBasar0/acp-net/blob/52c2405ed5fdace9a53b6bb130c85cede595d97a/src/acp-net/Acp.Net.Process/AcpProcessRunner.cs",
+          "sha256": "1850cd380ee5fd8d552ae70ece6e471ddbe3f6f302b4d9e47dc15fce58de716f"
+        },
+        {
+          "path": "src/acp-net/Acp.Net.Process/AcpProcessSession.cs",
+          "url": "https://github.com/MertBasar0/acp-net/blob/52c2405ed5fdace9a53b6bb130c85cede595d97a/src/acp-net/Acp.Net.Process/AcpProcessSession.cs",
+          "sha256": "964c40e7eac61d932d2d822e7a1c522961c3b226730fbd3e2e3b8bff025f5211"
+        },
+        {
+          "path": "src/acp-net/Acp.Net.Process/Acp.Net.Process.csproj",
+          "url": "https://github.com/MertBasar0/acp-net/blob/52c2405ed5fdace9a53b6bb130c85cede595d97a/src/acp-net/Acp.Net.Process/Acp.Net.Process.csproj",
+          "sha256": "837b15b77983cab254413ecbdaaa8dd98b02550b39d326f49e9732fd8b4e6f27"
+        }
+      ]
+    },
+    {
+      "repo": "AgenticDesktop/ACPLibrary",
+      "sha": "ba6950be2560589e5c4fe4c217dc9cb626d88382",
+      "commit_date": "2026-09-30T17:39:55+08:00",
+      "url": "https://github.com/AgenticDesktop/ACPLibrary",
+      "snapshot_url": "https://github.com/AgenticDesktop/ACPLibrary/tree/ba6950be2560589e5c4fe4c217dc9cb626d88382",
+      "files": [
+        {
+          "path": "README.md",
+          "url": "https://github.com/AgenticDesktop/ACPLibrary/blob/ba6950be2560589e5c4fe4c217dc9cb626d88382/README.md",
+          "sha256": "d21a5d399701c2676f41378a2df52aa7aedf4e351d28bb64db3d9fdcaf22033a"
+        },
+        {
+          "path": "Client/IAcpClient.cs",
+          "url": "https://github.com/AgenticDesktop/ACPLibrary/blob/ba6950be2560589e5c4fe4c217dc9cb626d88382/Client/IAcpClient.cs",
+          "sha256": "740b1bf2cce2b536f05a4c72ac5a23a0b22e2f0fdb7e5fad0e0b549c4c869096"
+        },
+        {
+          "path": "Agent/IAcpAgentHandler.cs",
+          "url": "https://github.com/AgenticDesktop/ACPLibrary/blob/ba6950be2560589e5c4fe4c217dc9cb626d88382/Agent/IAcpAgentHandler.cs",
+          "sha256": "558e485bf2fa79840807bb69183defa6c1ef88d861bd4a06f6399ddb88184998"
+        },
+        {
+          "path": "Protocol/JsonRpcDispatcher.cs",
+          "url": "https://github.com/AgenticDesktop/ACPLibrary/blob/ba6950be2560589e5c4fe4c217dc9cb626d88382/Protocol/JsonRpcDispatcher.cs",
+          "sha256": "4866764c512ebb362ead74ef6f520b9b042b8d01d05391b1b12c662f60ab5a80"
+        },
+        {
+          "path": "Transport/StdioHostTransport.cs",
+          "url": "https://github.com/AgenticDesktop/ACPLibrary/blob/ba6950be2560589e5c4fe4c217dc9cb626d88382/Transport/StdioHostTransport.cs",
+          "sha256": "45ef34805ceb2943e7bcaf713d821a31ec113bd566807221bdab1239b2127a6e"
+        },
+        {
+          "path": "Agentic.ACPLibrary.csproj",
+          "url": "https://github.com/AgenticDesktop/ACPLibrary/blob/ba6950be2560589e5c4fe4c217dc9cb626d88382/Agentic.ACPLibrary.csproj",
+          "sha256": "965ad44e6edabd0fc4a89ab6ea29a21128c29cd6ad3effa73ae966c32bcf035b"
+        }
+      ]
+    },
+    {
+      "repo": "coder/acp-go-sdk",
+      "sha": "0845a3bb9eddda5bfc22a94dd3598c90cb842451",
+      "commit_date": "2026-06-02T16:23:56+02:00",
+      "url": "https://github.com/coder/acp-go-sdk",
+      "snapshot_url": "https://github.com/coder/acp-go-sdk/tree/0845a3bb9eddda5bfc22a94dd3598c90cb842451",
+      "files": [
+        {
+          "path": "README.md",
+          "url": "https://github.com/coder/acp-go-sdk/blob/0845a3bb9eddda5bfc22a94dd3598c90cb842451/README.md",
+          "sha256": "67e6a00a7720e3cd2637af41ce4ea048ebe85c436ce096122e386fd6feb022b2"
+        },
+        {
+          "path": "connection.go",
+          "url": "https://github.com/coder/acp-go-sdk/blob/0845a3bb9eddda5bfc22a94dd3598c90cb842451/connection.go",
+          "sha256": "f47f0c609db5a9a5e65362ed53e24b4be4c5eda8a7ac2ab95f5a1a2209570796"
+        },
+        {
+          "path": "agent_gen.go",
+          "url": "https://github.com/coder/acp-go-sdk/blob/0845a3bb9eddda5bfc22a94dd3598c90cb842451/agent_gen.go",
+          "sha256": "e230317c8029043b3c1686680cc0c068b6076bad24d50fd840d60017980e1a73"
+        }
+      ]
+    },
+    {
+      "repo": "marimo-team/use-acp",
+      "sha": "c3fba7ee7e68e955503dc007539d5b5ff1dd7afb",
+      "commit_date": "2026-07-28T15:56:06-04:00",
+      "url": "https://github.com/marimo-team/use-acp",
+      "snapshot_url": "https://github.com/marimo-team/use-acp/tree/c3fba7ee7e68e955503dc007539d5b5ff1dd7afb",
+      "files": [
+        {
+          "path": "README.md",
+          "url": "https://github.com/marimo-team/use-acp/blob/c3fba7ee7e68e955503dc007539d5b5ff1dd7afb/README.md",
+          "sha256": "1a0ea6e03441d80ef2772d3b7cc870b9591fae492301ebea6eccf15fc9e4fab9"
+        },
+        {
+          "path": "src/hooks/use-acp-client.ts",
+          "url": "https://github.com/marimo-team/use-acp/blob/c3fba7ee7e68e955503dc007539d5b5ff1dd7afb/src/hooks/use-acp-client.ts",
+          "sha256": "6e192c7a1830f81afd8a75df68a65dd74e5e692c8c22b4e73a3476d6e5ea45cc"
+        },
+        {
+          "path": "package.json",
+          "url": "https://github.com/marimo-team/use-acp/blob/c3fba7ee7e68e955503dc007539d5b5ff1dd7afb/package.json",
+          "sha256": "c5da737d049536196672859d09db94d6b537165909d2468e0904f8a653d6e0fd"
+        }
+      ]
+    }
+  ]
+}

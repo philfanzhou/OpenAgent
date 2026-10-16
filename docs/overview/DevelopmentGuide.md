@@ -24,8 +24,11 @@
 | Framework | 原 Infrastructure 的 PostgreSQL、Redis 缓存与分布式锁 |
 | Router | 服务发现、路由、转发、限流与入口治理 |
 | Runner | 原有沙箱执行、工作区与资源清理 |
+| Runtime.Acp | 单包 ACP SDK；与 tests/OpenAgent.Runtime.Acp.Tests、tools/OpenAgent.Runtime.Acp.TestConsole 同步演进 |
 
 引用边界：Application → Contracts/Capabilities；Capabilities、Engine、Framework、Runner → Contracts；Router → Engine/Contracts；Engine.Host 组装 Application/Capabilities/Engine/Framework/Contracts。Engine 不引用执行代码，Router 仅使用 Engine/Hosting。规则和架构测试必须同步，不通过兼容项目或重复实现保留旧边界。
+
+ACP 协议、RPC、Client/Agent 和进程在 Runtime.Acp 项目内部隔离；SDK 无平台项目引用，控制台只调用 SDK 公共 API。三个工程加入统一解决方案，沿用 `dev` 的集中配置与 .NET 10，不改变现有平台项目白名单或执行链。
 
 ## Application 与 Capabilities 修改入口
 
