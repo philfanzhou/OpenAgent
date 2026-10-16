@@ -2,6 +2,7 @@
 
 | 文档 | 验证范围 |
 |---|---|
+| [2026-10-16-acp-dev-baseline-import.md](./2026-10-16-acp-dev-baseline-import.md) | OPEN-6 dev 接收：938 通过 / 24 门控跳过、单包检查与 CRLF 上限自审发现 |
 | [2026-10-16-acp-single-package.md](./2026-10-16-acp-single-package.md) | ACP 单包/测试控制台基线：19 个新增用例、主解 936 通过/24 门控跳过、单包产物检查 |
 | [2026-10-16-acp-local-agent.md](./2026-10-16-acp-local-agent.md) | C# Client 连接本机 Claude ACP：握手/会话通过，实际推理路由失败；34 个自动用例通过 |
 | [2026-10-15-acp-demo.md](./2026-10-15-acp-demo.md) | C# ACP 最小示例：23 个自动用例、正常流式回复与取消演示 |
