@@ -1,39 +1,35 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
-using Microsoft.Extensions.Configuration;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Routing;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Router.Models;
+using OpenAgent.Router.Options;
 using OpenAgent.Router.Providers;
 using Xunit;
 
 namespace OpenAgent.Router.Tests.Providers;
 
-public class OpenAgentEngineProviderTests
+public class HttpProviderTests
 {
     [Fact]
-    public async Task Provider_UsesRouteTableContextAndConfiguredProtocolPaths()
+    public async Task Provider_UsesRouteTableContextAndStandardContractPaths()
     {
         var handler = new RecordingHandler();
         var routeTable = new StubRouteTable();
-        IConfiguration settings = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
+        var definition = new AgentProviderDefinition
+        {
+            Id = "self-engine",
+            ServiceHeaders = new Dictionary<string, string>
             {
-                ["AgentListPath"] = "/custom/agents",
-                ["ChatPath"] = "/custom/chat",
-                ["ServiceHeaders:Authorization"] = "Basic service-token",
-                ["ServiceHeaders:X-Tenant-Id"] = "configured-tenant",
-                ["ServiceHeaders:X-User-Id"] = "configured-user"
-            })
-            .Build();
-        using var provider = new OpenAgentEngineProvider(
-            "self-engine",
-            settings,
-            routeTable,
-            handler);
+                ["Authorization"] = "Basic service-token",
+                ["X-Tenant-Id"] = "configured-tenant",
+                ["X-User-Id"] = "configured-user"
+            }
+        };
+        using var provider = new HttpProvider(definition, routeTable, handler);
 
         var requestContext = new AgentProviderRequestContext(
             new AgentUserContext
@@ -75,9 +71,9 @@ public class OpenAgentEngineProviderTests
         Assert.Equal(0.95, response?.Confidence);
         Assert.Equal(
             [
-                "http://engine/custom/agents",
-                "http://engine/custom/chat/intent",
-                "http://engine/custom/chat/intent",
+                "http://engine/api/v1/agent/agents",
+                "http://engine/api/v1/agent/chat/intent",
+                "http://engine/api/v1/agent/chat/intent",
                 "http://engine/api/v1/agent/provider/conversations/conversation-1"
             ],
             handler.RequestUris);
@@ -89,7 +85,7 @@ public class OpenAgentEngineProviderTests
         Assert.Equal("tenant-1", routeTable.TenantId);
         Assert.Equal("conversation-1", routeTable.ConversationId);
         Assert.Equal("http://engine", target?.DestinationPrefix);
-        Assert.Equal("http://engine/custom/chat/stream", target?.RequestUri.ToString());
+        Assert.Equal("http://engine/api/v1/agent/chat/stream", target?.RequestUri.ToString());
         Assert.All(handler.ChatBodies, body => AssertIntentExecution(body));
     }
 
@@ -116,7 +112,7 @@ public class OpenAgentEngineProviderTests
                 || request.Headers.Contains("X-OpenAgent-User-Id")
                 || request.Headers.Contains("X-OpenAgent-Tenant-Id"));
             if (request.Method == HttpMethod.Get
-                && request.RequestUri?.AbsolutePath == "/custom/agents")
+                && request.RequestUri?.AbsolutePath == "/api/v1/agent/agents")
             {
                 return new HttpResponseMessage(HttpStatusCode.OK)
                 {

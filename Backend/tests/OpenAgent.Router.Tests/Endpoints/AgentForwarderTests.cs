@@ -84,10 +84,6 @@ public class AgentForwarderTests
             return Task.FromResult<AgentForwardingTarget?>(null);
         }
 
-        public ValueTask ConfigureRequestAsync(
-            HttpRequestMessage request,
-            AgentForwardingTarget target,
-            CancellationToken cancellationToken) => ValueTask.CompletedTask;
     }
 
     private sealed class StubEndpointHealthTracker : IEndpointHealthTracker

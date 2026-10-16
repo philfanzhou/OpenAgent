@@ -18,7 +18,7 @@ Backend/
 │   ├── OpenAgent.Infrastructure/  持久化实现（PostgreSQL+EF Core、Redis 写穿缓存、分布式锁）
 │   ├── OpenAgent.Router.Contracts/ Router 与 Engine 共享的注册契约（Redis 键、注册条目）
 │   ├── OpenAgent.Router.Core/     Router 纯逻辑（选择管线、意图选择、会话亲和、目录与路由抽象）
-│   ├── OpenAgent.Router.Providers/ 下游 Provider 与服务发现实现（Engine/Gina、Redis 注册、路由表、就绪探测）
+│   ├── OpenAgent.Router.Providers/ 下游 Provider 与服务发现实现（统一 HttpProvider、Redis 注册、路由表、就绪探测）
 │   └── OpenAgent.Router.Host/     网关宿主（认证透传、端点、YARP 转发、健康检查、遥测，唯一 DI 组装点）
 └── tests/
     ├── OpenAgent.Architecture.Tests/

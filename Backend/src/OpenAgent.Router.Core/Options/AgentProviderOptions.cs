@@ -19,7 +19,7 @@ internal sealed class AgentProviderOptions
         foreach (AgentProviderDefinition provider in options.Providers)
         {
             if (string.IsNullOrWhiteSpace(provider.Id)
-                || string.IsNullOrWhiteSpace(provider.Type)
+                || !IsValidBaseUrl(provider.BaseUrl)
                 || !providerIds.Add(provider.Id))
             {
                 return false;
@@ -28,10 +28,17 @@ internal sealed class AgentProviderOptions
 
         return providerIds.Contains(options.DefaultProviderId);
     }
+
+    // An empty BaseUrl means "discover the instance through the route table".
+    private static bool IsValidBaseUrl(string? baseUrl) =>
+        string.IsNullOrWhiteSpace(baseUrl)
+        || (Uri.TryCreate(baseUrl, UriKind.Absolute, out Uri? uri)
+            && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps));
 }
 
 internal sealed class AgentProviderDefinition
 {
     public string Id { get; set; } = string.Empty;
-    public string Type { get; set; } = string.Empty;
+    public string? BaseUrl { get; set; }
+    public Dictionary<string, string> ServiceHeaders { get; set; } = [];
 }

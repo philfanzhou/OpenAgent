@@ -180,9 +180,5 @@ public class ChatEndpointHandlerTests
             CancellationToken cancellationToken) =>
             Task.FromResult<AgentForwardingTarget?>(null);
 
-        public ValueTask ConfigureRequestAsync(
-            HttpRequestMessage request,
-            AgentForwardingTarget target,
-            CancellationToken cancellationToken) => ValueTask.CompletedTask;
     }
 }

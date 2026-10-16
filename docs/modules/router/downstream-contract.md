@@ -31,9 +31,9 @@
 
 会话 ID 与 Agent ID 通过 `X-Conversation-Id`、`X-Agent-Id` 请求头传入，也可放在请求体 `context.conversationId`、`context.agentId` 中；缺省时由下游生成会话 ID。
 
-### 与现有 Provider 机制的关系
+### 与 Provider 的关系
 
-Router 现在已经通过 `IAgentProvider` 调用下游，各 Provider 的路径写在配置里（`AgentListPath`、`ChatPath`、`ConversationPath`）。本契约把 `OpenAgentEngine` 类型 Provider 使用的协议固定下来，作为对外标准；Gina 这类协议不同的第三方，目前由 Router 内的 `GinaProvider` 翻译。ADR-0004 的目标是把这层翻译移出 Router，该步骤尚未实施。
+Router 只有一种 Provider 实现 `HttpProvider`，按上表的固定路径调用下游；不再支持按下游配置路径，也不再内置 Gina 等协议翻译。协议不同的第三方需要自己提供标准接口。Provider 配置只有 `Id`、可选的 `BaseUrl` 和 `ServiceHeaders`，见 [Agent Provider 集成](../../integrations/agent-provider.md)。
 
 ## Router 附加的请求头
 

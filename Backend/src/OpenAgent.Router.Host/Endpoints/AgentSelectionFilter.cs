@@ -39,7 +39,6 @@ internal sealed class AgentSelectionFilter(
             ?? context.Request.Headers["X-Conversation-Id"].FirstOrDefault();
         string? explicitAgentId = string.IsNullOrWhiteSpace(request.AgentId)
             ? context.Request.Headers["X-Agent-Id"].FirstOrDefault()
-                ?? context.Request.Headers["X-Gina-Agent-Id"].FirstOrDefault()
             : request.AgentId;
         AgentSelection? selection;
         try

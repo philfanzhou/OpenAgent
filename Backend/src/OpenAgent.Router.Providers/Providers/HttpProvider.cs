@@ -6,46 +6,35 @@ using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Routing;
 using OpenAgent.Router.Models;
+using OpenAgent.Router.Options;
 
 namespace OpenAgent.Router.Providers;
 
-internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
+/// <summary>Calls any downstream that implements the standard contract (openapi/downstream-v1.yaml).</summary>
+internal sealed class HttpProvider : IAgentProvider, IDisposable
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         PropertyNameCaseInsensitive = true
     };
 
-    private readonly string _agentListPath;
-    private readonly string _chatPath;
-    private readonly string _conversationPath;
     private readonly string? _baseUrl;
     private readonly IReadOnlyDictionary<string, string> _serviceHeaders;
     private readonly IRouteTable _routeTable;
     private readonly HttpMessageInvoker _httpClient;
 
-    internal OpenAgentEngineProvider(
-        string id,
-        IConfiguration settings,
+    internal HttpProvider(
+        AgentProviderDefinition definition,
         IRouteTable routeTable,
         HttpMessageHandler? handler = null)
     {
-        Id = id;
-        _agentListPath = NormalizePath(settings["AgentListPath"], "/api/v1/agent/agents");
-        _chatPath = NormalizePath(settings["ChatPath"], "/api/v1/agent/chat");
-        _conversationPath = NormalizePath(
-            settings["ConversationPath"],
-            "/api/v1/agent/provider/conversations");
-        _baseUrl = string.IsNullOrWhiteSpace(settings["BaseUrl"])
+        Id = definition.Id;
+        _baseUrl = string.IsNullOrWhiteSpace(definition.BaseUrl)
             ? null
-            : settings["BaseUrl"]!.TrimEnd('/');
-        _serviceHeaders = settings.GetSection("ServiceHeaders")
-            .GetChildren()
-            .Where(header => header.Value != null)
-            .ToDictionary(
-                header => header.Key,
-                header => header.Value!,
-                StringComparer.OrdinalIgnoreCase);
+            : definition.BaseUrl.TrimEnd('/');
+        _serviceHeaders = new Dictionary<string, string>(
+            definition.ServiceHeaders,
+            StringComparer.OrdinalIgnoreCase);
         _routeTable = routeTable;
         _httpClient = new HttpMessageInvoker(handler ?? CreateHandler());
     }
@@ -64,7 +53,7 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
 
         using HttpRequestMessage request = CreateServiceRequest(
             HttpMethod.Get,
-            $"{endpoint.TrimEnd('/')}{_agentListPath}",
+            $"{endpoint.TrimEnd('/')}{DownstreamPaths.AgentList}",
             requestContext);
         using HttpResponseMessage response = await _httpClient.SendAsync(
             request,
@@ -93,7 +82,7 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
 
         using HttpRequestMessage request = CreateServiceRequest(
             HttpMethod.Get,
-            $"{endpoint.TrimEnd('/')}{_conversationPath}/{Uri.EscapeDataString(conversationId)}",
+            $"{endpoint.TrimEnd('/')}{DownstreamPaths.ConversationProbe}/{Uri.EscapeDataString(conversationId)}",
             requestContext);
         using HttpResponseMessage response = await _httpClient.SendAsync(
             request,
@@ -125,7 +114,7 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
 
         using HttpRequestMessage request = CreateServiceRequest(
             HttpMethod.Post,
-            $"{endpoint.TrimEnd('/')}{_chatPath.TrimEnd('/')}/intent",
+            $"{endpoint.TrimEnd('/')}{DownstreamPaths.ChatIntent}",
             requestContext);
         request.Content = new StringContent(
             JsonSerializer.Serialize(new ChatRequest
@@ -165,19 +154,10 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
         }
 
         string actionSuffix = string.IsNullOrWhiteSpace(action) ? string.Empty : $"/{action}";
-        string targetUrl = $"{endpoint.TrimEnd('/')}{_chatPath}{actionSuffix}";
+        string targetUrl = $"{endpoint.TrimEnd('/')}{DownstreamPaths.Chat}{actionSuffix}";
         return Task.FromResult<AgentForwardingTarget?>(new(
             endpoint.TrimEnd('/'),
             new Uri(targetUrl)));
-    }
-
-    public ValueTask ConfigureRequestAsync(
-        HttpRequestMessage request,
-        AgentForwardingTarget target,
-        CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.CompletedTask;
     }
 
     public void Dispose() => _httpClient.Dispose();
@@ -218,12 +198,6 @@ internal sealed class OpenAgentEngineProvider : IAgentProvider, IDisposable
 
     private string? ResolveEndpoint() =>
         _baseUrl ?? _routeTable.GetTargetEndpoint("chat");
-
-    private static string NormalizePath(string? value, string fallback)
-    {
-        string path = string.IsNullOrWhiteSpace(value) ? fallback : value;
-        return path.StartsWith("/", StringComparison.Ordinal) ? path : $"/{path}";
-    }
 
     private static string BuildIntentPrompt(
         string message,

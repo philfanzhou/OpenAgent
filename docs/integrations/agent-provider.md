@@ -1,14 +1,14 @@
 # Agent Provider 集成
 
-Router 通过 `IAgentProvider` 统一调用自有 Engine 和第三方 Agent 服务。Provider 负责目录协议、会话归属探测、意图调用、目标解析和请求配置；Router 负责公开目录、授权、Provider 映射、会话亲和与统一转发。
+Router 通过 `IAgentProvider` 调用所有下游，只有一种实现 `HttpProvider`：下游必须提供[下游契约 v1](../modules/router/downstream-contract.md)规定的标准接口，Router 不为单个下游做协议适配，也不再配置接口路径。Provider 负责目录读取、会话归属探测、意图调用和目标解析；Router 负责公开目录、Provider 映射、会话亲和与统一转发。
 
 ## 公开 Agent Catalog
 
-`GET /api/v1/agent/agents`（兼容别名：`GET /api/v1/agents`）会读取所有 Provider 的目录，并依次应用已注册的 `IAgentAccessControl`。响应仍为按 `agentId` 排序的 `AgentSummary[]`，不会包含 `providerId`、内部地址或 Provider 配置。
+`GET /api/v1/agent/agents`（兼容别名：`GET /api/v1/agents`）会读取所有 Provider 的目录并合并。响应仍为按 `agentId` 排序的 `AgentSummary[]`，不会包含 `providerId`、内部地址或 Provider 配置。
 
 公开 `agentId` 保留 Provider 发布的稳定 ID，Router 只在内部维护其 Provider 映射。同一用户可见范围内若两个 Provider 发布相同 `agentId`，目录和显式选择均返回 `409 agent_id_conflict`，不会用 Provider 前缀改写 ID 或按注册顺序静默选取。
 
-显式 `agentId` 必须先经过完整目录和授权过滤，再定位 Provider。不存在和未授权统一返回 `404 agent_not_found`，避免利用显式选择探测不可见 Agent。任何 Provider 的目录不可用时返回 `503 agent_provider_unavailable`，避免在不完整快照上产生不稳定映射。
+显式 `agentId` 必须先在完整目录中找到，再定位 Provider。目录由下游按调用者过滤，Router 不再做授权过滤；不存在或下游未返回的 Agent 统一返回 `404 agent_not_found`。任何 Provider 的目录不可用时返回 `503 agent_provider_unavailable`，避免在不完整快照上产生不稳定映射。
 
 ## 会话归属与亲和
 
@@ -24,16 +24,14 @@ Router 通过 `IAgentProvider` 统一调用自有 Engine 和第三方 Agent 服�
 
 ## Provider contract
 
-第三方接入实现 `IAgentProviderFactory` 和 `IAgentProvider`，并注册 Factory。`AgentProviderRequestContext` 只包含已认证用户上下文和当前请求认证令牌，不传递 `HttpContext`；租户从 `IAgentUserContext.TenantId` 获取。内置 Engine Provider 原样透传当前请求的 `Authorization`；Router 与 Engine 使用同一套认证配置和认证管线，用户和租户身份不通过自定义 header 传输。
+`AgentProviderRequestContext` 只包含已认证用户上下文和当前请求认证令牌，不传递 `HttpContext`；租户从 `IAgentUserContext.TenantId` 获取。`HttpProvider` 原样透传当前请求的 `Authorization`，下游自行验证，用户和租户身份不通过自定义 header 传输。
 
-- `GetAgentsAsync`：返回 `AgentProviderCatalog`；`IsAvailable=false` 表示不能形成完整目录。
-- `ResolveConversationAsync`：返回 `NotFound`、`Found`、`Forbidden` 或 `Unavailable`。
-- `RecognizeIntentAsync`：调用指定意图 Agent，返回标准化选择结果。
-- `ResolveForwardingAsync`：按 action、租户与会话解析聊天目标。
-- `ConfigureRequestAsync`：在 YARP 转发前处理 Provider 认证或协议适配。
+- `GetAgentsAsync`：`GET /api/v1/agent/agents`，返回 `AgentProviderCatalog`；`IsAvailable=false` 表示不能形成完整目录。
+- `ResolveConversationAsync`：`GET /api/v1/agent/provider/conversations/{id}`，204 为找到，404 为未找到，401/403 为无权，其余视为不可用。请求复用调用方的 `Authorization`，只返回状态码，不返回会话内容。
+- `RecognizeIntentAsync`：`POST /api/v1/agent/chat/intent` 调用指定意图 Agent，返回标准化选择结果；该调用使用 Provider 配置的服务凭据，不转发渠道用户上下文。默认生成并持久化普通会话（Engine 入口的 `PersistIntentConversations` 开关可切回无会话执行）。
+- `ResolveForwardingAsync`：按 action、租户与会话解析聊天目标，转发到 `/api/v1/agent/chat[/stream]`。
 
-内置 Engine Provider 使用 `GET /api/v1/agent/provider/conversations/{conversationId}` 探测归属。请求复用当前调用方的 `Authorization` 令牌；端点从 Engine 已验证的 `IAgentUserContext` 获取用户和租户，只返回 204/404，不返回会话内容。
-意图识别使用 `POST /api/v1/agent/chat/intent`，默认生成并持久化普通会话，便于通过现有会话查询接口查看；该调用使用 Provider 配置的服务凭据，不转发渠道用户上下文。Engine 入口的 `PersistIntentConversations` 开关可切回无会话执行。
+路径固定在 `Router.Contracts` 的 `DownstreamPaths` 中，下游不能自定义。接入新下游的方式是让它实现标准接口，而不是在 Router 里增加适配代码。
 
 ## 配置
 
@@ -51,34 +49,11 @@ Router 通过 `IAgentProvider` 统一调用自有 Engine 和第三方 Agent 服�
     "AgentProviders": {
       "DefaultProviderId": "self-engine",
       "Providers": [
-        {
-          "Id": "self-engine",
-          "Type": "OpenAgentEngine",
-          "Settings": {
-            "AgentListPath": "/api/v1/agent/agents",
-            "ChatPath": "/api/v1/agent/chat",
-            "ConversationPath": "/api/v1/agent/provider/conversations",
-            "ServiceHeaders": { "Authorization": "use-a-secret-provider" }
-          }
-        },
+        { "Id": "self-engine" },
         {
           "Id": "partner-a",
-          "Type": "OpenAgentEngine",
-          "Settings": {
-            "BaseUrl": "https://partner.example",
-            "ServiceHeaders": { "Authorization": "use-a-secret-provider" }
-          }
-        },
-        {
-          "Id": "gina",
-          "Type": "Gina",
-          "Settings": {
-            "BaseUrl": "https://gina.example",
-            "AgentListPath": "/api/agentlist",
-            "ChatPath": "/api/chat",
-            "DefaultAgentId": "general",
-            "ServerToken": "use-a-secret-provider-token"
-          }
+          "BaseUrl": "https://partner.example",
+          "ServiceHeaders": { "Authorization": "use-a-secret-provider" }
         }
       ]
     }
@@ -86,9 +61,9 @@ Router 通过 `IAgentProvider` 统一调用自有 Engine 和第三方 Agent 服�
 }
 ```
 
-The `Gina` provider supports the Gina `GET /api/agentlist` and `POST /api/chat` endpoints. It maps the selected Router agent to `X-Gina-Agent-Id`, maps `X-Conversation-Id` to `X-Gina-Session-Id` when the Gina session header is absent, and preserves the caller's `Accept: text/event-stream` header for streaming responses. Gina's opaque session ID is passed through; because the two-endpoint contract has no session-owner probe or intent endpoint, the provider does not claim conversation ownership or perform provider-side intent recognition.
+没有 `BaseUrl` 的 Provider 通过 `IRouteTable` 发现 Engine 实例；配置了 `BaseUrl` 时直接使用该地址，必须是 http 或 https 绝对地址。`ServiceHeaders` 只用于意图识别等服务调用，敏感凭据应由环境变量或密钥配置源注入。`DefaultProviderId` 仍是必填的注册表兼容配置，但不会覆盖显式 Agent 映射或会话亲和。Fallback Agent 也必须存在于完整目录中。
 
-`OpenAgentEngine` 在没有 `BaseUrl` 时使用 `IRouteTable` 发现 Engine 实例；`Gina` 必须配置 `BaseUrl`，不会回退到 Engine 地址。`Settings` 对 Registry 保持不透明，敏感凭据应由环境变量或密钥配置源注入。`DefaultProviderId` 仍是必填的注册表兼容配置，但不会覆盖显式 Agent 映射或会话亲和。Fallback Agent 也必须存在于完整、已授权的目录中。
+**破坏性变更：** 旧配置中的 `Type`、`Settings`（`AgentListPath`、`ChatPath`、`ConversationPath`、`BaseUrl`、`ServiceHeaders`）已移除，`BaseUrl` 与 `ServiceHeaders` 上移到 Provider 项本身；`Gina` 类型 Provider 已删除，Gina 需自行实现标准接口后以普通 Provider 接入。
 
 实际渠道会话统一使用 `ConversationType.Channel`，具体渠道通过已有的 `ClientType` 区分；意图识别的会话分类和会话 ID 由 Engine 入口内部生成，不由 Provider 请求携带。
 

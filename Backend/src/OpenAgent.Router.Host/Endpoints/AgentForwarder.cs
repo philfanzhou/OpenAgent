@@ -70,14 +70,10 @@ internal sealed class AgentForwarder(
                 target.DestinationPrefix,
                 _httpClient,
                 requestConfig,
-                (_, proxyRequest) => ConfigureRequestAsync(
+                (_, proxyRequest) => ForwardingContextBuilder.ApplyAsync(
                     proxyRequest,
-                    target,
-                    provider,
-                    tenantId,
-                    conversationId,
-                    traceId,
-                    cancellationToken)).ConfigureAwait(false);
+                    target.RequestUri,
+                    traceId)).ConfigureAwait(false);
         }
         catch
         {
@@ -124,25 +120,6 @@ internal sealed class AgentForwarder(
     }
 
     public void Dispose() => _httpClient.Dispose();
-
-    private static async ValueTask ConfigureRequestAsync(
-        HttpRequestMessage request,
-        AgentForwardingTarget target,
-        IAgentProvider provider,
-        string? tenantId,
-        string? conversationId,
-        string traceId,
-        CancellationToken cancellationToken)
-    {
-        await ForwardingContextBuilder.ApplyAsync(
-            request,
-            target.RequestUri,
-            traceId).ConfigureAwait(false);
-        await provider.ConfigureRequestAsync(
-            request,
-            target,
-            cancellationToken).ConfigureAwait(false);
-    }
 
     private static SocketsHttpHandler CreateHandler() => new()
     {

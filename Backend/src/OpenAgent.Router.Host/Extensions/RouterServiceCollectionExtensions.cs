@@ -25,8 +25,6 @@ public static class RouterServiceCollectionExtensions
             .Bind(configuration.GetSection(AgentProviderOptions.SectionName))
             .Validate(AgentProviderOptions.IsValid, "Agent provider configuration is invalid")
             .ValidateOnStart();
-        services.AddSingleton<IAgentProviderFactory, OpenAgentEngineProviderFactory>();
-        services.AddSingleton<IAgentProviderFactory, GinaProviderFactory>();
         services.AddSingleton<IAgentProviderRegistry, AgentProviderRegistry>();
         services.AddScoped<IAgentCatalogService, AgentCatalogService>();
         services.AddSingleton<IConversationProviderStore, ConversationProviderStore>();

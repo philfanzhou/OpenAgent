@@ -28,9 +28,4 @@ public interface IAgentProvider
         string? tenantId,
         string? conversationId,
         CancellationToken cancellationToken = default);
-
-    ValueTask ConfigureRequestAsync(
-        HttpRequestMessage request,
-        AgentForwardingTarget target,
-        CancellationToken cancellationToken = default);
 }

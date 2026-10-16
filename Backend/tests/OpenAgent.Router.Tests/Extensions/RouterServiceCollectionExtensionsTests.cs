@@ -28,7 +28,7 @@ public class RouterServiceCollectionExtensionsTests
             .Value;
 
         Assert.Equal("self-engine", providers.DefaultProviderId);
-        Assert.Equal("OpenAgentEngine", Assert.Single(providers.Providers).Type);
+        Assert.Equal("self-engine", Assert.Single(providers.Providers).Id);
         Assert.Equal("self-engine", intent.ProviderId);
         Assert.Equal("intent-router", intent.AgentId);
     }
@@ -57,7 +57,7 @@ public class RouterServiceCollectionExtensionsTests
     [InlineData("missing-default")]
     [InlineData("unknown-default")]
     [InlineData("duplicate-provider")]
-    [InlineData("missing-type")]
+    [InlineData("invalid-base-url")]
     public void AddRouterRuntime_InvalidProviderConfiguration_FailsValidation(string scenario)
     {
         Dictionary<string, string?> settings = CreateValidSettings();
@@ -71,10 +71,9 @@ public class RouterServiceCollectionExtensionsTests
                 break;
             case "duplicate-provider":
                 settings["RouterSettings:AgentProviders:Providers:1:Id"] = "self-engine";
-                settings["RouterSettings:AgentProviders:Providers:1:Type"] = "Partner";
                 break;
-            case "missing-type":
-                settings.Remove("RouterSettings:AgentProviders:Providers:0:Type");
+            case "invalid-base-url":
+                settings["RouterSettings:AgentProviders:Providers:0:BaseUrl"] = "not-a-url";
                 break;
         }
 
@@ -96,8 +95,6 @@ public class RouterServiceCollectionExtensionsTests
         ["RouterSettings:IntentRecognition:ProviderId"] = "self-engine",
         ["RouterSettings:IntentRecognition:AgentId"] = "intent-router",
         ["RouterSettings:AgentProviders:DefaultProviderId"] = "self-engine",
-        ["RouterSettings:AgentProviders:Providers:0:Id"] = "self-engine",
-        ["RouterSettings:AgentProviders:Providers:0:Type"] = "OpenAgentEngine",
-        ["RouterSettings:AgentProviders:Providers:0:Settings:ChatPath"] = "/custom/chat"
+        ["RouterSettings:AgentProviders:Providers:0:Id"] = "self-engine"
     };
 }

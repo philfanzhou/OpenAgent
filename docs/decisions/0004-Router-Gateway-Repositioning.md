@@ -10,7 +10,7 @@ Router 原本是 Engine 的前置网关，并混有幂等、响应缓存、限�
 
 现状仍有结构问题：
 
-- `Endpoints`、`Routing`、`Providers`、`Security` 在同一个项目里，Gina 作为第三方 Provider 与 Engine 混在同一层。
+- `Endpoints`、`Routing`、`Providers`、`Security` 在同一个项目里，Gina 作为带专属协议翻译的 Provider 与 Engine 混在同一层。
 - Router 与 Engine 各自写了一份 Redis 键字符串（`agent:config:*`、`engine:registry:*` 等），没有共享定义。
 - 下游被假定为 Engine，没有对外发布的下游标准。
 - 瘦身后 Agent 可见性没有任何过滤：Engine 侧没有 ACL 实现，所有已认证用户可选到所有 Agent。
@@ -19,7 +19,7 @@ Router 原本是 Engine 的前置网关，并混有幂等、响应缓存、限�
 
 ### 1. 定位
 
-Router 是面向任意下游的 Agent 网关。下游实现一份 HTTP + SSE 的 OpenAPI 契约即可接入，Engine 与 Gina 是该契约的两个实现。
+Router 是面向任意下游的 Agent 网关。下游实现一份 HTTP + SSE 的 OpenAPI 契约即可接入，Engine 是该契约的默认实现，其他下游（包括 Gina）自行实现同一契约。
 
 Router 负责：转发、会话与任务亲和、意图选择、多实例路由。Router 不存业务数据、不验证身份、不做授权。
 
@@ -48,14 +48,14 @@ Router 读取 token 中的租户仅用于路由分片。该值未经验签，不
               ├─ Router.Core       选择管线、IIntentStrategy、亲和规则、目录与路由抽象
               └─ Router.Contracts  OpenAPI v1、模型、注册 JSON、Redis 键
   ─ ─ ─ ─ 下游标准契约 v1 · HTTP + SSE ─ ─ ─ ─
-下游层      Engine（默认实现）· Gina 适配器 · 第三方下游
+下游层      Engine（默认实现）· 其他实现标准契约的下游
 基础设施层  PostgreSQL · 对象存储 · LLM/MCP/RAG · Redis（Router 唯一直连）
 ```
 
 依赖方向自上而下，上层引用下层，反向引用由架构测试禁止。
 
 - Router 无状态；会话与 runId 亲和存在可丢失的缓存里，丢失后向下游确认归属。
-- 只有 `HttpProvider` 一种 Provider 实现；Gina 通过适配服务实现同一契约，Router 内不保留 Gina 专属类。
+- 只有 `HttpProvider` 一种 Provider 实现；下游必须直接提供标准接口，Router 不为单个下游做适配，Gina 需自行实现契约。
 - Redis 键名与注册 JSON 只在 `Router.Contracts` 定义一次。
 
 契约细节见 [Router 下游契约 v1](../modules/router/downstream-contract.md)。
@@ -121,7 +121,7 @@ public interface IIntentStrategy
 |------|------|--------|
 | Router | 拆为四个项目；搬迁现有代码（约七成可复用）；新增注册端点与策略链 | 中 |
 | Engine | 启动时注册并续约；目录接口按用户过滤；读取标准请求头；实现 Run 的持久化、事件重放与实例间接管；契约测试 | 最大 |
-| Gina | 改为适配服务实现契约，或保留薄的契约翻译层 | 中 |
+| Gina | 自行实现标准契约；Router 内的 `GinaProvider` 已删除，在其实现契约前不可接入 | 中 |
 | 前端 | 路径不变；需确认是否依赖已移除的缓存与幂等行为 | 小 |
 | 架构测试 | 新增四个项目的引用规则；保留 Router 不得引用 Core 与 Engine 的约束 | 小 |
 
@@ -129,7 +129,7 @@ public interface IIntentStrategy
 
 1. 建 Contracts 项目：OpenAPI、模型、Redis 键。Engine 与 Router 同时引用。不改变行为。
 2. 抽出 Core：选择管线与策略接口，现有意图逻辑封装为 `AgentIntentStrategy`。不改变行为。
-3. 抽出 Providers：合并为 `HttpProvider`，Gina 改走适配层。
+3. 抽出 Providers：合并为 `HttpProvider`，删除 Gina 专属代码。（已完成）
 4. 加注册端点与静态目录，Engine 接入注册；旧的 `engine:registry:*` 键保留一个版本做兼容。
 5. Engine 补目录 ACL 过滤与契约测试，随后关闭兼容键。
 6. 加 Run 契约：Engine 先实现任务持久化与事件重放，Router 加 runId 亲和与事件流保活。依赖第 5 步。
@@ -154,10 +154,11 @@ public interface IIntentStrategy
 - Router 拆为 `Router.Contracts`、`Router.Core`、`Router.Providers`、`Router.Host` 四个项目；`Router.Core` 不使用 ASP.NET Core 服务端、Yarp、Redis 类型，由架构测试守住。
 - Engine 注册条目与 Redis 键收敛为 `Router.Contracts` 中的 `EngineRegistryEntry` 与 `EngineRegistryKeys`，Engine 与 Router 共用，不再各写一份。
 - 删除瘦身后遗留的 7 条无人调用的日志定义。
+- 统一 Provider：只保留 `HttpProvider`，路径固定在 `DownstreamPaths`；删除 `GinaProvider`、两个 Provider 工厂、`IAgentProviderFactory` 与 `IAgentProvider.ConfigureRequestAsync`。Provider 配置简化为 `Id`、`BaseUrl`、`ServiceHeaders`（破坏性变更，见 agent-provider.md）。
 - `IIntentStrategy` 策略链：`AgentIntentStrategy`（现状）与 `FallbackStrategy` 按注册顺序依次尝试，第一个有结论的生效。策略顺序暂不开放配置，等出现第二个真实策略（如决策模型）再加。
 - 下游契约 OpenAPI 文件：`Router.Contracts/openapi/downstream-v1.yaml`，已实现端点按 Engine 现有代码整理，Run 端点标为提议。
 
-未落地：`HttpProvider` 合并与 Gina 适配层、`ModelIntentStrategy` 与决策模型（待接口格式）、注册端点与静态目录、Engine ACL、Run 契约的实现、契约测试。
+未落地：`ModelIntentStrategy` 与决策模型（待接口格式）、注册端点与静态目录、Engine ACL、Run 契约的实现、契约测试。
 
 ## 关键实现
 
