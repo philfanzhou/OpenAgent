@@ -1,3 +1,5 @@
+using System.Runtime.ExceptionServices;
+
 namespace OpenAgent.Runtime.Acp.Transport;
 
 /// <summary>Bounded NDJSON framing with one reader and serialized writers. JSON validation belongs to RPC.</summary>
@@ -12,11 +14,17 @@ public sealed class AcpStreamTransport : IAcpTransport
     private readonly SemaphoreSlim _writer = new(1, 1);
     private readonly CancellationTokenSource _lifetime = new();
     private readonly TaskCompletionSource _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource _drained = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource _stopRequested = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly object _gate = new();
+    private Task<Exception?>? _shutdown;
     private Exception? _failure;
     private int _offset;
     private int _count;
-    private int _reading;
-    private int _disposed;
+    private int _activeOperations;
+    private bool _reading;
+    private bool _closing;
+    private bool _disposed;
 
     public AcpStreamTransport(Stream input, Stream output, AcpTransportOptions? options = null)
     {
@@ -37,12 +45,7 @@ public sealed class AcpStreamTransport : IAcpTransport
 
     public async Task<byte[]?> ReadAsync(CancellationToken cancellationToken = default)
     {
-        ThrowIfUnavailable();
-        if (Interlocked.CompareExchange(ref _reading, 1, 0) != 0)
-        {
-            throw new InvalidOperationException("Only one transport reader is allowed.");
-        }
-
+        EnterOperation(isRead: true);
         try
         {
             using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(
@@ -61,7 +64,7 @@ public sealed class AcpStreamTransport : IAcpTransport
                             throw new EndOfStreamException("ACP message ended before its newline delimiter.");
                         }
 
-                        _completion.TrySetResult();
+                        _ = StartClosing(cancelOperations: false);
                         return null;
                     }
                 }
@@ -69,7 +72,13 @@ public sealed class AcpStreamTransport : IAcpTransport
                 int newline = Array.IndexOf(_buffer, (byte)'\n', _offset, _count - _offset);
                 int end = newline < 0 ? _count : newline;
                 int length = end - _offset;
-                if (_line.Length + length > _options.MaxMessageBytes)
+                long frameBytes = _line.Length + length;
+                bool trailingCr = length > 0
+                    ? _buffer[end - 1] == (byte)'\r'
+                    : _line.Length > 0 && _line.GetBuffer()[(int)_line.Length - 1] == (byte)'\r';
+                // Only one trailing CR may be a delimiter candidate, including across reads.
+                if (frameBytes > _options.MaxMessageBytes &&
+                    !(frameBytes == (long)_options.MaxMessageBytes + 1 && trailingCr))
                 {
                     throw new InvalidDataException("ACP message exceeds MaxMessageBytes.");
                 }
@@ -89,101 +98,217 @@ public sealed class AcpStreamTransport : IAcpTransport
                 }
             }
         }
-        catch (Exception exception) when (exception is IOException or InvalidDataException)
+        catch (ObjectDisposedException) when (_lifetime.IsCancellationRequested)
         {
-            Fail(exception);
+            throw;
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            _ = StartClosing(exception);
             throw;
         }
         finally
         {
-            Volatile.Write(ref _reading, 0);
+            ExitOperation(isRead: true);
         }
     }
 
     public async Task WriteAsync(ReadOnlyMemory<byte> message, CancellationToken cancellationToken = default)
     {
-        ThrowIfUnavailable();
-        if (message.IsEmpty || message.Span.IndexOfAny((byte)'\n', (byte)'\r') >= 0)
-        {
-            throw new ArgumentException("Message must be a nonempty single-line body.", nameof(message));
-        }
-
-        if (message.Length > _options.MaxMessageBytes)
-        {
-            throw new InvalidDataException("ACP message exceeds MaxMessageBytes.");
-        }
-
-        using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken, _lifetime.Token);
-        await _writer.WaitAsync(linked.Token).ConfigureAwait(false);
+        EnterOperation(isRead: false);
         try
         {
-            ThrowIfUnavailable();
-            cancellationToken.ThrowIfCancellationRequested();
-            // Once a frame starts, only closing the transport may interrupt it.
-            await _output.WriteAsync(message, _lifetime.Token).ConfigureAwait(false);
-            await _output.WriteAsync(Newline, _lifetime.Token).ConfigureAwait(false);
-            await _output.FlushAsync(_lifetime.Token).ConfigureAwait(false);
-        }
-        catch (Exception exception) when (exception is IOException or InvalidDataException)
-        {
-            Fail(exception);
-            throw;
+            if (message.IsEmpty || message.Span.IndexOfAny((byte)'\n', (byte)'\r') >= 0)
+            {
+                throw new ArgumentException("Message must be a nonempty single-line body.", nameof(message));
+            }
+
+            if (message.Length > _options.MaxMessageBytes)
+            {
+                throw new InvalidDataException("ACP message exceeds MaxMessageBytes.");
+            }
+
+            using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken, _lifetime.Token);
+            await _writer.WaitAsync(linked.Token).ConfigureAwait(false);
+            try
+            {
+                lock (_gate)
+                {
+                    ThrowIfUnavailable();
+                }
+
+                cancellationToken.ThrowIfCancellationRequested();
+                try
+                {
+                    // Once a frame starts, caller cancellation cannot truncate it.
+                    await _output.WriteAsync(message, _lifetime.Token).ConfigureAwait(false);
+                    await _output.WriteAsync(Newline, _lifetime.Token).ConfigureAwait(false);
+                    await _output.FlushAsync(_lifetime.Token).ConfigureAwait(false);
+                }
+                catch (ObjectDisposedException) when (_lifetime.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    _ = StartClosing(exception);
+                    throw;
+                }
+            }
+            finally
+            {
+                _writer.Release();
+            }
         }
         finally
         {
-            _writer.Release();
+            ExitOperation(isRead: false);
         }
     }
 
     public async ValueTask DisposeAsync()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        Exception? failure = await StartClosing(disposing: true).ConfigureAwait(false);
+        if (failure is not null)
         {
-            return;
+            ExceptionDispatchInfo.Capture(failure).Throw();
         }
+    }
 
-        await _lifetime.CancelAsync().ConfigureAwait(false);
-        try
+    private Task<Exception?> StartClosing(Exception? failure = null, bool disposing = false, bool cancelOperations = true)
+    {
+        lock (_gate)
         {
-            if (!_options.LeaveOpen)
+            _failure ??= failure;
+            _disposed |= disposing;
+            _closing = true;
+            if (_activeOperations == 0)
             {
-                try
-                {
-                    await _input.DisposeAsync().ConfigureAwait(false);
-                }
-                finally
-                {
-                    if (!ReferenceEquals(_input, _output))
-                    {
-                        await _output.DisposeAsync().ConfigureAwait(false);
-                    }
-                }
+                _drained.TrySetResult();
             }
 
-            _completion.TrySetResult();
+            if (cancelOperations)
+            {
+                _stopRequested.TrySetResult();
+            }
+
+            // Publish one shutdown task before executing any custom Stream callbacks.
+            // Its result carries cleanup failures; it never leaves an unobserved faulted task.
+            return _shutdown ??= Task.Run(ShutdownAsync);
+        }
+    }
+
+    private async Task<Exception?> ShutdownAsync()
+    {
+        // EOF drains an already-started frame; Dispose or a fault can interrupt that drain.
+        await Task.WhenAny(_drained.Task, _stopRequested.Task).ConfigureAwait(false);
+        List<Exception> errors = [];
+        try
+        {
+            await _lifetime.CancelAsync().ConfigureAwait(false);
         }
         catch (Exception exception)
         {
-            _completion.TrySetException(exception);
-            throw;
+            errors.Add(exception);
         }
-        // Synchronization objects can still be in use by operations unwinding cancellation.
+
+        if (!_options.LeaveOpen)
+        {
+            try
+            {
+                await _input.DisposeAsync().ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                errors.Add(exception);
+            }
+
+            if (!ReferenceEquals(_input, _output))
+            {
+                try
+                {
+                    await _output.DisposeAsync().ConfigureAwait(false);
+                }
+                catch (Exception exception)
+                {
+                    errors.Add(exception);
+                }
+            }
+        }
+
+        await _drained.Task.ConfigureAwait(false);
+        _line.Dispose();
+        _writer.Dispose();
+        _lifetime.Dispose();
+        Exception? cleanupFailure = errors.Count switch
+        {
+            0 => null,
+            1 => errors[0],
+            _ => new AggregateException(errors)
+        };
+        Exception? terminalFailure;
+        lock (_gate)
+        {
+            terminalFailure = _failure is null ? cleanupFailure
+                : cleanupFailure is null ? _failure
+                : new AggregateException(_failure, cleanupFailure);
+        }
+
+        if (terminalFailure is null)
+        {
+            _completion.TrySetResult();
+        }
+        else
+        {
+            _completion.TrySetException(terminalFailure);
+        }
+
+        return cleanupFailure;
+    }
+
+    private void EnterOperation(bool isRead)
+    {
+        lock (_gate)
+        {
+            ThrowIfUnavailable();
+            if (isRead && _reading)
+            {
+                throw new InvalidOperationException("Only one transport reader is allowed.");
+            }
+
+            _reading |= isRead;
+            _activeOperations++;
+        }
+    }
+
+    private void ExitOperation(bool isRead)
+    {
+        lock (_gate)
+        {
+            if (isRead)
+            {
+                _reading = false;
+            }
+
+            if (--_activeOperations == 0 && _closing)
+            {
+                _drained.TrySetResult();
+            }
+        }
     }
 
     private void ThrowIfUnavailable()
     {
-        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        ObjectDisposedException.ThrowIf(_disposed, this);
         if (_failure is not null)
         {
             throw new IOException("ACP transport has faulted.", _failure);
         }
-    }
 
-    private void Fail(Exception exception)
-    {
-        Interlocked.CompareExchange(ref _failure, exception, null);
-        _completion.TrySetException(exception);
-        _lifetime.Cancel();
+        if (_closing)
+        {
+            throw new IOException("ACP transport is closing.");
+        }
     }
 }

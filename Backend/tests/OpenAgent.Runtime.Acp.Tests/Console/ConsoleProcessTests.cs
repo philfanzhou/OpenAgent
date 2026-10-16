@@ -8,7 +8,8 @@ public sealed class ConsoleProcessTests
     [Theory]
     [InlineData("list", null, 0, "framing")]
     [InlineData("run", "framing", 0, "PASS framing")]
-    [InlineData("run", "all", 0, "PASS framing")]
+    [InlineData("run", "lifecycle", 0, "PASS lifecycle")]
+    [InlineData("run", "all", 0, "PASS lifecycle")]
     [InlineData("run", "missing", 2, "Unknown command")]
     public async Task Main_ScenarioCommand_ReturnsExpectedResult(string command, string? scenario, int exitCode, string text)
     {

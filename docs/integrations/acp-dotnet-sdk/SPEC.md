@@ -13,6 +13,8 @@ SDK 负责通信和生命周期，推理、持久化、审批 UI、文件授权�
 - 协议层 `AcpClientConnection` / `AcpAgentConnection` 按 [PROTOCOL](./PROTOCOL.md) 提供强类型异步请求/通知，低层 Prompt 返回协议响应。泛型扩展显式注册 `AcpMethod<TRequest,TResponse>` 与 `JsonTypeInfo<T>`；原始 JSON 为显式逃生口，不反射扫描 handler，不泄漏第三方 RPC 类型。
 - Client Connect 只启动 RPC，不暗中 initialize。Agent Host 在读循环前冻结全部 handler 注册，Run 持续到 EOF/关闭/故障。无需 DI 容器；options 只放连接配置，宿主行为通过 builder/handler 注册。
 - `IAcpTransport` 传递不含分隔符的完整 UTF-8 消息体，提供 ReadAsync、WriteAsync、Completion 和 IAsyncDisposable；只做 framing。已有 Stream 用 AcpStreamTransport，进程模块提供 transport 与 ProcessLease，不代替握手。
+- Transport 的消息上限不含 LF/CRLF；跨 read 最多暂存一个候选 CR，不放宽消息体上限。输入 EOF 进入终态，拒绝新操作/尚未开始的排队写，并等待已经开始的完整帧写入；不支持继续发起半关闭写入。Dispose/IO 故障可取消此排空过程。
+- Completion 在所有在途操作及拥有资源清理结束后才完成，保留 IO/清理故障。并发或重复 Dispose 等待同一清理结果；取消回调异常仍尝试关闭全部拥有的流，合并多个清理异常。已报告的 IO 故障由 Completion 保留，Dispose 仅重抛清理故障；LeaveOpen 流不被关闭。自定义 Stream 必须使 IO 在取消或释放时收敛。
 - 必需 Agent handler 处理 initialize/new/prompt/cancel；认证、恢复、列表、关闭、删除、配置等按独立可选接口注册。Client handler 提供权限、更新及可选文件/终端/elicitation 回调；AgentContext 向 Client 发送更新和反向请求。
 - 能力由已注册 handler 与显式启用项共同生成并校验；接口存在不表示启用。无权限 handler 返回 cancelled，不默认批准。新增可选能力不能强迫现有宿主实现巨大接口。
 

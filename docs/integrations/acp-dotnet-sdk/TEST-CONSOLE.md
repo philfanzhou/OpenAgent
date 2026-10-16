@@ -6,11 +6,12 @@
 dotnet build Backend/OpenAgent.sln
 dotnet run --no-build --project Backend/tools/OpenAgent.Runtime.Acp.TestConsole -- list
 dotnet run --no-build --project Backend/tools/OpenAgent.Runtime.Acp.TestConsole -- run framing
+dotnet run --no-build --project Backend/tools/OpenAgent.Runtime.Acp.TestConsole -- run lifecycle
 dotnet run --no-build --project Backend/tools/OpenAgent.Runtime.Acp.TestConsole -- run all
 dotnet test Backend/tests/OpenAgent.Runtime.Acp.Tests --no-build
 ```
 
-当前仅 framing：Unicode、CRLF、多帧、EOF、写入；PASS 只表示此场景通过，不代表 Agent/模型或完整 SDK。退出码 0=成功/帮助/列表，1=场景失败，2=参数/场景错误；未知功能不得静默跳过。
+当前 P0 场景：framing 验证 Unicode、CRLF/上限、多帧、EOF、写入；lifecycle 验证 EOF 写入排空、取消回调异常后的清理、并发释放。all 包含两者；PASS 不代表 Agent/模型或完整 SDK。退出码 0=成功/帮助/列表，1=场景失败，2=参数/场景错误；未知功能不得静默跳过。
 
 新增能力同时更新 list/help、run all、测试和文档；未来场景按 [IMPLEMENTATION](./IMPLEMENTATION.md) 增加，未实现命令不能当作可用功能。测试必须启动真实控制台，检查输出/退出码、超时、回收自有进程；不能仅测试解析器。
 

@@ -1,6 +1,6 @@
 # ACP .NET SDK
 
-社区实现的 Agent Client Protocol v1 SDK，唯一发布包为 `OpenAgent.Runtime.Acp`。当前只有 Stream framing；RPC、Client/Agent、进程和交互能力按阶段实现，状态与负责人见 [TODO](../../planning/TODO.md)。
+社区实现的 Agent Client Protocol v1 SDK，唯一发布包为 `OpenAgent.Runtime.Acp`。当前只有 Stream framing 与传输生命周期；RPC、Client/Agent、进程和交互能力按阶段实现，状态与负责人见 [TODO](../../planning/TODO.md)。
 
 | 文档 | 唯一职责 |
 |---|---|

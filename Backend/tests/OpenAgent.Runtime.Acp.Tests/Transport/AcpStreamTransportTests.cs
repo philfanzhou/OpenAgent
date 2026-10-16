@@ -8,6 +8,57 @@ namespace OpenAgent.Runtime.Acp.Tests.Transport;
 
 public sealed class AcpStreamTransportTests
 {
+    public static TheoryData<string, string, int> ExactLimitFrames
+    {
+        get
+        {
+            TheoryData<string, string, int> data = new();
+            foreach (string body in new[] { "{}", "\"你\"" })
+            foreach (string delimiter in new[] { "\n", "\r\n" })
+            foreach (int chunk in new[] { 1, 2, 3, 4096 })
+            {
+                data.Add(body, delimiter, chunk);
+            }
+
+            return data;
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(ExactLimitFrames))]
+    public async Task ReadAsync_BodyAtByteLimit_ExcludesLfAndCrLf(string body, string delimiter, int chunk)
+    {
+        await using AcpStreamTransport transport = new(
+            new FragmentedReadStream(Encoding.UTF8.GetBytes(body + delimiter), chunk), new MemoryStream(),
+            new AcpTransportOptions { MaxMessageBytes = Encoding.UTF8.GetByteCount(body) });
+
+        Assert.Equal(Encoding.UTF8.GetBytes(body), await transport.ReadAsync());
+        Assert.Null(await transport.ReadAsync());
+        await transport.Completion.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Theory]
+    [InlineData("123\n", 1, typeof(InvalidDataException))]
+    [InlineData("123\n", 4096, typeof(InvalidDataException))]
+    [InlineData("123\r\n", 1, typeof(InvalidDataException))]
+    [InlineData("123\r\n", 4096, typeof(InvalidDataException))]
+    [InlineData("12\rX\n", 1, typeof(InvalidDataException))]
+    [InlineData("12\rX\n", 4096, typeof(InvalidDataException))]
+    [InlineData("12\r\r\n", 1, typeof(InvalidDataException))]
+    [InlineData("12\r\r\n", 4096, typeof(InvalidDataException))]
+    [InlineData("12\r", 1, typeof(EndOfStreamException))]
+    [InlineData("12\r", 4096, typeof(EndOfStreamException))]
+    public async Task ReadAsync_OversizeOrIncompleteCrFrame_FaultsWithoutRelaxingLimit(string frame, int chunk, Type expected)
+    {
+        await using AcpStreamTransport transport = new(
+            new FragmentedReadStream(Encoding.UTF8.GetBytes(frame), chunk), new MemoryStream(),
+            new AcpTransportOptions { MaxMessageBytes = 2 });
+
+        Exception? failure = await Record.ExceptionAsync(() => transport.ReadAsync());
+        Assert.IsType(expected, failure);
+        Assert.Same(failure, await Record.ExceptionAsync(() => transport.Completion.WaitAsync(TimeSpan.FromSeconds(5))));
+    }
+
     [Fact]
     public async Task ReadAsync_FragmentedUnicodeAndMultipleFrames_PreservesBodies()
     {
