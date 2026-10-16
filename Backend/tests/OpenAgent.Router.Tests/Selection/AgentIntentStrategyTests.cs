@@ -8,7 +8,7 @@ using Xunit;
 
 namespace OpenAgent.Router.Tests.Selection;
 
-public class IntentAgentSelectorTests
+public class AgentIntentStrategyTests
 {
     private static readonly IReadOnlyList<AgentSummary> Candidates =
     [
@@ -30,7 +30,7 @@ public class IntentAgentSelectorTests
         double confidence,
         string? expected)
     {
-        string? decision = IntentAgentSelector.ValidateResult(
+        string? decision = AgentIntentStrategy.ValidateResult(
             new IntentRecognitionResult(agentId, confidence),
             Candidates,
             0.5);
@@ -42,7 +42,7 @@ public class IntentAgentSelectorTests
     public async Task SelectAsync_InvokesConfiguredProviderAndAgent()
     {
         var provider = new RecordingProvider();
-        var selector = new IntentAgentSelector(
+        var selector = new AgentIntentStrategy(
             new StubProviderRegistry(provider),
             Microsoft.Extensions.Options.Options.Create(new IntentRecognitionOptions
             {
@@ -52,7 +52,7 @@ public class IntentAgentSelectorTests
                 TimeoutMs = 5000
             }));
 
-        string? decision = await selector.SelectAsync(
+        IntentSelection? decision = await selector.SelectAsync(
             new AgentProviderRequestContext(
                 new AgentUserContext
                 {
@@ -64,7 +64,7 @@ public class IntentAgentSelectorTests
             Candidates,
             CancellationToken.None);
 
-        Assert.Equal("finance", decision);
+        Assert.Equal(new IntentSelection("finance", "intent"), decision);
         Assert.Equal("intent-router", provider.AgentId);
         AgentSummary agent = Assert.Single(provider.Agents);
         Assert.Equal("finance", agent.AgentId);

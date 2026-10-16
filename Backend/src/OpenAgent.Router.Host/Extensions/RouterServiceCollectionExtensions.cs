@@ -32,7 +32,9 @@ public static class RouterServiceCollectionExtensions
         services.AddSingleton<IConversationProviderStore, ConversationProviderStore>();
         services.AddSingleton<IConversationProviderResolver, ConversationProviderResolver>();
         services.AddSingleton<IAgentForwarder, AgentForwarder>();
-        services.AddSingleton<IIntentAgentSelector, IntentAgentSelector>();
+        // Strategies run in registration order; the first one with a conclusion wins.
+        services.AddSingleton<IIntentStrategy, AgentIntentStrategy>();
+        services.AddSingleton<IIntentStrategy, FallbackStrategy>();
         services.AddScoped<IAgentSelectionService, AgentSelectionService>();
 
         var redisConnectionString = configuration.GetConnectionString("Redis");

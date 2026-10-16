@@ -211,6 +211,23 @@ public class AgentSelectionServiceTests
     }
 
     [Fact]
+    public async Task SelectAsync_StrategyPicksUnknownAgent_TriesNextStrategy()
+    {
+        var engine = new StubProvider("self-engine", [Agent("general")]);
+        AgentSelectionService service = CreateService(
+            [engine],
+            new StubSelector("not-a-candidate"));
+
+        AgentSelection? selection = await service.SelectAsync(
+            "hello",
+            null,
+            null,
+            CancellationToken.None);
+
+        Assert.Equal("general", selection?.AgentId);
+    }
+
+    [Fact]
     public async Task SelectAsync_UnboundConversationWithUnavailableProvider_DoesNotFallback()
     {
         var engine = new StubProvider("self-engine", [Agent("general")]);
@@ -238,25 +255,26 @@ public class AgentSelectionServiceTests
     {
         var registry = new StubProviderRegistry(providers[0], providers);
         var affinityStore = store ?? new StubConversationProviderStore();
+        var intentOptions = Microsoft.Extensions.Options.Options.Create(new IntentRecognitionOptions
+        {
+            Enabled = true,
+            ProviderId = "self-engine",
+            AgentId = "intent-router",
+            FallbackAgentId = "general",
+            MinimumConfidence = 0.5,
+            TimeoutMs = 5000
+        });
         return new AgentSelectionService(
             new AgentCatalogService(registry),
             new ConversationProviderResolver(registry, affinityStore),
-            selector ?? new StubSelector("general"),
+            [selector ?? new StubSelector("general"), new FallbackStrategy(intentOptions)],
             new AgentUserContext
             {
                 UserId = "user-1",
                 TenantId = "tenant-1",
                 IsAuthenticated = true
             },
-            Microsoft.Extensions.Options.Options.Create(new IntentRecognitionOptions
-            {
-                Enabled = true,
-                ProviderId = "self-engine",
-                AgentId = "intent-router",
-                FallbackAgentId = "general",
-                MinimumConfidence = 0.5,
-                TimeoutMs = 5000
-            }));
+            intentOptions);
     }
 
     private static AgentSummary Agent(string agentId) => new() { AgentId = agentId };
@@ -333,18 +351,18 @@ public class AgentSelectionServiceTests
         }
     }
 
-    private sealed class StubSelector(string? result) : IIntentAgentSelector
+    private sealed class StubSelector(string? result) : IIntentStrategy
     {
         public int CallCount { get; private set; }
 
-        public Task<string?> SelectAsync(
+        public Task<IntentSelection?> SelectAsync(
             AgentProviderRequestContext requestContext,
             string message,
             IReadOnlyList<AgentSummary> candidates,
             CancellationToken cancellationToken)
         {
             CallCount++;
-            return Task.FromResult(result);
+            return Task.FromResult(result == null ? null : new IntentSelection(result, "intent"));
         }
     }
 

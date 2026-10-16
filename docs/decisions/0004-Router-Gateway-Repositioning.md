@@ -89,7 +89,7 @@ public interface IIntentStrategy
 
 长事务的问题是连接断开后任务丢失，而不是传输协议。契约区分两种交互：
 
-- 短交互：`POST /api/v1/agent/chat/{action}`，保持现状。
+- 短交互：`POST /api/v1/agent/chat` 与 `/chat/stream`，保持现状。
 - 长事务：Run。`POST /api/v1/agent/runs` 立即返回 `runId`，事件通过 `GET /runs/{id}/events` 以 SSE 推送并支持 `Last-Event-ID` 续传，补充输入与取消用独立 POST。
 
 任务状态与事件由下游持久化，Router 只做 runId 亲和与事件流保活。
@@ -154,8 +154,10 @@ public interface IIntentStrategy
 - Router 拆为 `Router.Contracts`、`Router.Core`、`Router.Providers`、`Router.Host` 四个项目；`Router.Core` 不使用 ASP.NET Core 服务端、Yarp、Redis 类型，由架构测试守住。
 - Engine 注册条目与 Redis 键收敛为 `Router.Contracts` 中的 `EngineRegistryEntry` 与 `EngineRegistryKeys`，Engine 与 Router 共用，不再各写一份。
 - 删除瘦身后遗留的 7 条无人调用的日志定义。
+- `IIntentStrategy` 策略链：`AgentIntentStrategy`（现状）与 `FallbackStrategy` 按注册顺序依次尝试，第一个有结论的生效。策略顺序暂不开放配置，等出现第二个真实策略（如决策模型）再加。
+- 下游契约 OpenAPI 文件：`Router.Contracts/openapi/downstream-v1.yaml`，已实现端点按 Engine 现有代码整理，Run 端点标为提议。
 
-未落地：`HttpProvider` 合并与 Gina 适配层、`IIntentStrategy` 策略链与决策模型、注册端点与静态目录、Engine ACL、Run 契约、OpenAPI 文件。迁移顺序中第 1 步的 OpenAPI 文件部分尚未完成。
+未落地：`HttpProvider` 合并与 Gina 适配层、`ModelIntentStrategy` 与决策模型（待接口格式）、注册端点与静态目录、Engine ACL、Run 契约的实现、契约测试。
 
 ## 关键实现
 

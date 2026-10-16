@@ -6,22 +6,34 @@
 
 ## 下游必须实现的端点
 
-| 方法 | 路径 | 用途 | 要点 |
-|------|------|------|------|
-| POST | `/api/v1/agent/chat/{action}` | 发起聊天 | `stream` 返回 SSE；请求体含 message、conversationId、agentId，支持表单上传；适合短交互 |
-| POST | `/api/v1/agent/runs` | 创建异步任务 | 立即返回 `runId` 与 202；支持 `Idempotency-Key`，由下游去重 |
-| GET | `/api/v1/agent/runs/{id}` | 查询任务状态 | 不属于该下游返回 404，用于亲和确认 |
-| GET | `/api/v1/agent/runs/{id}/events` | 任务事件流 | SSE；每条事件带 `id`，支持 `Last-Event-ID` 续传 |
-| POST | `/api/v1/agent/runs/{id}/input` | 补充输入或审批 | 仅在 `waiting_input` 状态有效，否则 409 |
-| POST | `/api/v1/agent/runs/{id}/cancel` | 取消任务 | 幂等；已结束的任务返回当前状态 |
-| GET | `/api/v1/agent/agents` | Agent 目录 | 按调用者过滤；`agentId` 在全部下游间必须唯一 |
-| GET | `/api/v1/agent/conversations` | 会话列表 | `skip`、`take` 分页 |
-| GET | `/api/v1/agent/conversations/search` | 会话搜索 | `keyword` 加分页 |
-| GET / DELETE | `/api/v1/agent/conversations/{id}` | 读取与删除会话 | 不属于该下游的会话返回 404，用于亲和确认 |
-| POST | `/api/v1/agent/conversations/{id}/compact` | 压缩会话 | 幂等 |
-| GET | `/api/v1/agent/me` | 当前用户 | 返回下游解析出的用户与租户 |
-| GET / POST | `/api/v1/agent/files/{path}` | 文件上传下载 | 保留 multipart 与二进制响应，Router 不缓冲 |
-| GET | `/health/live`、`/health/ready` | 健康与就绪 | ready 失败的实例被摘除 |
+完整定义见 [`downstream-v1.yaml`](../../../Backend/src/OpenAgent.Router.Contracts/openapi/downstream-v1.yaml)，那是端点与字段的唯一来源；本表只做概览。标记为「已实现」的端点按 `OpenAgent.Engine.Host` 的现有代码整理，「提议」的端点尚无任何下游实现。
+
+| 方法 | 路径 | 用途 | 状态 | 要点 |
+|------|------|------|------|------|
+| POST | `/api/v1/agent/chat` | 一次对话，返回完整答案 | 已实现 | 请求体 `message`、`fileIds`、`context` |
+| POST | `/api/v1/agent/chat/stream` | 一次对话，SSE 流式返回 | 已实现 | 每条 `data` 为 `AgentStreamEvent` |
+| POST | `/api/v1/agent/chat/intent` | 意图识别 | 已实现 | Router 用 Provider 配置的服务凭据调用，不带用户上下文 |
+| GET | `/api/v1/agent/agents` | Agent 目录 | 已实现 | 下游按调用者过滤；`agentId` 在全部下游间必须唯一 |
+| GET | `/api/v1/agent/provider/conversations/{id}` | 会话归属探测 | 已实现 | 只返回 204 或 404，不返回内容；无权、跨租户、已删除统一 404 |
+| GET | `/api/v1/agent/conversations` | 会话列表 | 已实现 | `skip`、`take` 分页 |
+| GET | `/api/v1/agent/conversations/search` | 会话搜索 | 已实现 | `keyword` 加分页 |
+| GET / DELETE | `/api/v1/agent/conversations/{id}` | 读取与删除会话 | 已实现 | |
+| POST | `/api/v1/agent/conversations/{id}/compact` | 压缩会话 | 已实现 | |
+| GET | `/api/v1/agent/me` | 当前用户 | 已实现 | 返回下游解析出的用户与租户 |
+| POST | `/api/v1/agent/files` | 上传文件 | 已实现 | multipart |
+| GET | `/api/v1/agent/files/{id}`、`/content`、`/download`、`/files/object` | 文件元数据与内容 | 已实现 | 二进制响应，Router 不缓冲 |
+| GET | `/health`、`/ready` | 存活与就绪 | 已实现 | ready 失败的实例被摘除 |
+| POST | `/api/v1/agent/runs` | 创建异步任务 | 提议 | 立即返回 `runId` 与 202；支持 `Idempotency-Key`，由下游去重 |
+| GET | `/api/v1/agent/runs/{id}` | 查询任务状态 | 提议 | 不属于该下游返回 404，用于亲和确认 |
+| GET | `/api/v1/agent/runs/{id}/events` | 任务事件流 | 提议 | SSE；每条事件带 `id`，支持 `Last-Event-ID` 续传 |
+| POST | `/api/v1/agent/runs/{id}/input` | 补充输入或审批 | 提议 | 仅在 `waiting_input` 状态有效，否则 409 |
+| POST | `/api/v1/agent/runs/{id}/cancel` | 取消任务 | 提议 | 幂等；已结束的任务返回当前状态 |
+
+会话 ID 与 Agent ID 通过 `X-Conversation-Id`、`X-Agent-Id` 请求头传入，也可放在请求体 `context.conversationId`、`context.agentId` 中；缺省时由下游生成会话 ID。
+
+### 与现有 Provider 机制的关系
+
+Router 现在已经通过 `IAgentProvider` 调用下游，各 Provider 的路径写在配置里（`AgentListPath`、`ChatPath`、`ConversationPath`）。本契约把 `OpenAgentEngine` 类型 Provider 使用的协议固定下来，作为对外标准；Gina 这类协议不同的第三方，目前由 Router 内的 `GinaProvider` 翻译。ADR-0004 的目标是把这层翻译移出 Router，该步骤尚未实施。
 
 ## Router 附加的请求头
 
@@ -94,42 +106,8 @@ data: {"inputId":"in-3","prompt":"是否继续执行扣款？","expiresAt":"2026
 
 - 下游自己验证 token，Router 不做授权判断。
 - Router 读取 token 中的租户仅用于路由分片，该值未经验签，下游不得信任请求头中由 Router 附带的任何身份信息替代自身校验。
-- 目录接口 `GET /api/v1/agent/agents` 只返回调用者可见的 Agent。Router 不保存权限数据，也不再过滤。
+- 目录接口 `GET /api/v1/agent/agents` 只返回调用者可见的 Agent。Router 不保存权限数据，也不再过滤。`[待确认]` Engine 目前没有 ACL 实现，需先补上。
 
-## OpenAPI 骨架（节选）
+## OpenAPI 文件
 
-```yaml
-openapi: 3.0.3
-info: { title: OpenAgent Downstream Contract, version: "1.0.0-draft" }
-security: [ { bearer: [] } ]
-paths:
-  /api/v1/agent/agents:
-    get:
-      summary: 返回当前调用者可见的 Agent
-      responses:
-        "200": { content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/AgentSummary" } } } } }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-  /api/v1/agent/runs:
-    post:
-      summary: 创建异步任务
-      parameters: [ { name: Idempotency-Key, in: header, schema: { type: string } } ]
-      responses:
-        "202": { content: { application/json: { schema: { $ref: "#/components/schemas/RunAccepted" } } } }
-  /api/v1/agent/runs/{id}/events:
-    get:
-      parameters: [ { name: Last-Event-ID, in: header, schema: { type: string } } ]
-      responses:
-        "200": { description: "text/event-stream，事件 id 在单个 run 内单调递增" }
-  /api/v1/agent/chat/{action}:
-    post:
-      parameters: [ { name: action, in: path, required: true, schema: { type: string, enum: [stream, invoke] } } ]
-      requestBody: { content: { application/json: { schema: { $ref: "#/components/schemas/ChatRequest" } } } }
-      responses:
-        "200": { description: "action=stream 时为 text/event-stream" }
-components:
-  schemas:
-    AgentSummary: { type: object, required: [agentId, name], properties: { agentId: {type: string}, name: {type: string}, description: {type: string} } }
-    ChatRequest:  { type: object, required: [message], properties: { message: {type: string}, conversationId: {type: string}, agentId: {type: string} } }
-```
-
-完整文件落地位置：`Backend/src/OpenAgent.Router.Contracts/openapi/downstream-v1.yaml`（项目拆分后创建），并由契约测试校验 Engine 的真实响应。`[待确认]` 当前仓库中尚无该文件。
+`Backend/src/OpenAgent.Router.Contracts/openapi/downstream-v1.yaml`。已实现端点的路径与字段来自 `OpenAgent.Engine.Host` 与 `OpenAgent.Contracts` 的现有代码；`x-status: proposed` 的 Run 端点是目标设计。`[待确认]` 尚未有契约测试校验 Engine 的真实响应与该文件一致。

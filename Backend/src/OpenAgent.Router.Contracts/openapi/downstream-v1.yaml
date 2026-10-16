@@ -1,0 +1,255 @@
+# Downstream contract v1 (draft). See docs/modules/router/downstream-contract.md and ADR-0004.
+#
+# Paths marked `x-status: implemented` are served by OpenAgent.Engine.Host today and were read from
+# its endpoint code. Paths marked `x-status: proposed` are part of the target design and are not
+# implemented by any downstream yet.
+openapi: 3.0.3
+info:
+  title: OpenAgent Downstream Contract
+  version: 1.0.0-draft
+servers:
+  - url: http://engine:5208
+security:
+  - bearer: []
+paths:
+  /api/v1/agent/chat:
+    post:
+      x-status: implemented
+      summary: Run one chat turn and return the full answer.
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+        - $ref: '#/components/parameters/ConversationId'
+      requestBody: { $ref: '#/components/requestBodies/Chat' }
+      responses:
+        '200': { description: Answer, content: { application/json: { schema: { $ref: '#/components/schemas/ChatResponse' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/v1/agent/chat/stream:
+    post:
+      x-status: implemented
+      summary: Run one chat turn and stream the answer as server-sent events.
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+        - $ref: '#/components/parameters/ConversationId'
+      requestBody: { $ref: '#/components/requestBodies/Chat' }
+      responses:
+        '200':
+          description: Stream of AgentStreamEvent JSON objects, one per SSE `data` line.
+          content: { text/event-stream: { schema: { $ref: '#/components/schemas/AgentStreamEvent' } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/v1/agent/chat/intent:
+    post:
+      x-status: implemented
+      summary: Ask the intent Agent to choose among candidate Agents. Called with a service credential.
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+      requestBody: { $ref: '#/components/requestBodies/Chat' }
+      responses:
+        '200': { description: Answer carrying the decision, content: { application/json: { schema: { $ref: '#/components/schemas/ChatResponse' } } } }
+  /api/v1/agent/agents:
+    get:
+      x-status: implemented
+      summary: Agents visible to the caller. Downstream filters by caller; Router does not.
+      responses:
+        '200': { description: Visible Agents, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/AgentSummary' } } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/v1/agent/provider/conversations/{conversationId}:
+    get:
+      x-status: implemented
+      summary: Ownership probe used for conversation affinity. Returns no content.
+      parameters: [ { $ref: '#/components/parameters/ConversationIdPath' } ]
+      responses:
+        '204': { description: The conversation belongs to the caller on this downstream. }
+        '404': { description: Not found, deleted, or not accessible; the reasons are indistinguishable by design. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/v1/agent/conversations:
+    get:
+      x-status: implemented
+      summary: List the caller's conversations.
+      parameters: [ { $ref: '#/components/parameters/Skip' }, { $ref: '#/components/parameters/Take' } ]
+      responses: { '200': { description: Conversations } }
+  /api/v1/agent/conversations/search:
+    get:
+      x-status: implemented
+      summary: Search the caller's conversations.
+      parameters:
+        - { name: keyword, in: query, schema: { type: string } }
+        - { $ref: '#/components/parameters/Skip' }
+        - { $ref: '#/components/parameters/Take' }
+      responses: { '200': { description: Matching conversations } }
+  /api/v1/agent/conversations/{conversationId}:
+    parameters: [ { $ref: '#/components/parameters/ConversationIdPath' } ]
+    get:
+      x-status: implemented
+      summary: Read one conversation.
+      responses: { '200': { description: Conversation }, '404': { description: Not found } }
+    delete:
+      x-status: implemented
+      summary: Delete one conversation.
+      responses: { '204': { description: Deleted }, '404': { description: Not found } }
+  /api/v1/agent/conversations/{conversationId}/compact:
+    post:
+      x-status: implemented
+      summary: Compact one conversation's context.
+      parameters: [ { $ref: '#/components/parameters/ConversationIdPath' } ]
+      responses: { '200': { description: Compacted }, '404': { description: Not found } }
+  /api/v1/agent/me:
+    get:
+      x-status: implemented
+      summary: The caller as the downstream resolved it from the token.
+      responses:
+        '200': { description: Caller, content: { application/json: { schema: { $ref: '#/components/schemas/CurrentUser' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/v1/agent/files:
+    post:
+      x-status: implemented
+      summary: Upload a file (multipart/form-data).
+      requestBody: { content: { multipart/form-data: { schema: { type: object, properties: { file: { type: string, format: binary } } } } } }
+      responses: { '200': { description: Created file asset } }
+  /api/v1/agent/files/{fileId}:
+    get:
+      x-status: implemented
+      summary: File asset metadata.
+      parameters: [ { name: fileId, in: path, required: true, schema: { type: string } } ]
+      responses: { '200': { description: File asset }, '404': { description: Not found } }
+  /api/v1/agent/files/{fileId}/content:
+    get:
+      x-status: implemented
+      summary: File bytes for inline display. Binary body; Router does not buffer it.
+      parameters: [ { name: fileId, in: path, required: true, schema: { type: string } } ]
+      responses: { '200': { description: Bytes, content: { '*/*': { schema: { type: string, format: binary } } } } }
+  /api/v1/agent/files/{fileId}/download:
+    get:
+      x-status: implemented
+      summary: File bytes as an attachment.
+      parameters: [ { name: fileId, in: path, required: true, schema: { type: string } } ]
+      responses: { '200': { description: Bytes, content: { '*/*': { schema: { type: string, format: binary } } } } }
+  /api/v1/agent/files/object:
+    get:
+      x-status: implemented
+      summary: Object-store content addressed by reference rather than file id.
+      responses: { '200': { description: Bytes } }
+  /health:
+    get:
+      x-status: implemented
+      summary: Liveness.
+      security: []
+      responses: { '200': { description: Alive } }
+  /ready:
+    get:
+      x-status: implemented
+      summary: Readiness. A failing instance is removed from routing.
+      security: []
+      responses: { '200': { description: Ready }, '503': { description: Not ready } }
+
+  # ---- Proposed: asynchronous Run ------------------------------------------------------------
+  /api/v1/agent/runs:
+    post:
+      x-status: proposed
+      summary: Create an asynchronous task.
+      parameters: [ { name: Idempotency-Key, in: header, schema: { type: string } } ]
+      requestBody: { $ref: '#/components/requestBodies/Chat' }
+      responses:
+        '202': { description: Accepted, content: { application/json: { schema: { $ref: '#/components/schemas/RunAccepted' } } } }
+  /api/v1/agent/runs/{id}:
+    get:
+      x-status: proposed
+      summary: Run state. 404 when the run does not belong to this downstream.
+      parameters: [ { $ref: '#/components/parameters/RunId' } ]
+      responses: { '200': { description: Run, content: { application/json: { schema: { $ref: '#/components/schemas/Run' } } } }, '404': { description: Not found } }
+  /api/v1/agent/runs/{id}/events:
+    get:
+      x-status: proposed
+      summary: Run events as SSE. Event ids increase within one run; replay starts after Last-Event-ID.
+      parameters:
+        - $ref: '#/components/parameters/RunId'
+        - { name: Last-Event-ID, in: header, schema: { type: string } }
+      responses: { '200': { description: text/event-stream, content: { text/event-stream: { schema: { type: string } } } }, '410': { description: Beyond the retention window } }
+  /api/v1/agent/runs/{id}/input:
+    post:
+      x-status: proposed
+      summary: Supply input or an approval. Valid only in state waiting_input.
+      parameters: [ { $ref: '#/components/parameters/RunId' } ]
+      requestBody: { content: { application/json: { schema: { type: object, required: [inputId], properties: { inputId: { type: string }, value: {} } } } } }
+      responses: { '204': { description: Accepted }, '409': { description: Run is not waiting for input } }
+  /api/v1/agent/runs/{id}/cancel:
+    post:
+      x-status: proposed
+      summary: Cancel a run. Idempotent; a finished run returns its current state.
+      parameters: [ { $ref: '#/components/parameters/RunId' } ]
+      responses: { '200': { description: Run, content: { application/json: { schema: { $ref: '#/components/schemas/Run' } } } } }
+
+components:
+  securitySchemes:
+    bearer: { type: http, scheme: bearer, bearerFormat: JWT }
+  parameters:
+    AgentId: { name: X-Agent-Id, in: header, schema: { type: string }, description: 'Agent chosen by Router. May also arrive as context.agentId.' }
+    ConversationId: { name: X-Conversation-Id, in: header, schema: { type: string }, description: 'May also arrive as context.conversationId. Generated by the downstream when absent.' }
+    ConversationIdPath: { name: conversationId, in: path, required: true, schema: { type: string } }
+    RunId: { name: id, in: path, required: true, schema: { type: string } }
+    Skip: { name: skip, in: query, schema: { type: integer, default: 0 } }
+    Take: { name: take, in: query, schema: { type: integer, default: 20 } }
+  requestBodies:
+    Chat:
+      required: true
+      content: { application/json: { schema: { $ref: '#/components/schemas/ChatRequest' } } }
+  responses:
+    Unauthorized: { description: Missing or invalid token. The downstream validates the token itself. }
+  schemas:
+    ChatRequest:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string }
+        fileIds: { type: array, items: { type: string } }
+        context:
+          type: object
+          additionalProperties: true
+          description: 'Reserved keys: conversationId, agentId, conversationType, clientType. Other keys are passed to the Agent as external context.'
+    ChatResponse:
+      type: object
+      properties:
+        message: { type: string }
+        modelId: { type: string, nullable: true }
+        usage: { type: object, nullable: true, additionalProperties: true }
+    AgentStreamEvent:
+      type: object
+      required: [type]
+      properties:
+        type: { type: string, enum: [Content, Reasoning, ToolCall, ToolResult, Usage] }
+        content: { type: string, nullable: true }
+        toolName: { type: string, nullable: true }
+        toolCallId: { type: string, nullable: true }
+        toolArguments: { nullable: true }
+        usage: { type: object, nullable: true, additionalProperties: true }
+        modelId: { type: string, nullable: true }
+    AgentSummary:
+      type: object
+      required: [agentId]
+      properties:
+        agentId: { type: string, description: 'Must be unique across all downstreams visible to one user.' }
+        name: { type: string }
+        description: { type: string }
+        status: { type: integer }
+        currentVersion: { type: string }
+        apiFormat: { type: string }
+        llmProvider: { type: string }
+        llmModel: { type: string }
+    CurrentUser:
+      type: object
+      properties:
+        userId: { type: string }
+        tenantId: { type: string, nullable: true }
+        roles: { type: array, items: { type: string } }
+        groups: { type: array, items: { type: string } }
+        audience: { type: array, items: { type: string } }
+        isAuthenticated: { type: boolean }
+    RunAccepted:
+      type: object
+      required: [runId]
+      properties: { runId: { type: string } }
+    Run:
+      type: object
+      required: [runId, state]
+      properties:
+        runId: { type: string }
+        state: { type: string, enum: [queued, running, waiting_input, completed, failed, canceled] }

@@ -5,19 +5,22 @@ using OpenAgent.Router.Options;
 
 namespace OpenAgent.Router.Selection;
 
-internal sealed class IntentAgentSelector(
+/// <summary>Asks the configured intent Agent of a Provider to pick one of the candidates.</summary>
+internal sealed class AgentIntentStrategy(
     IAgentProviderRegistry providers,
-    IOptions<IntentRecognitionOptions> options) : IIntentAgentSelector
+    IOptions<IntentRecognitionOptions> options) : IIntentStrategy
 {
     private readonly IntentRecognitionOptions _options = options.Value;
 
-    public async Task<string?> SelectAsync(
+    public const string SourceName = "intent";
+
+    public async Task<IntentSelection?> SelectAsync(
         AgentProviderRequestContext requestContext,
         string message,
         IReadOnlyList<AgentSummary> candidates,
         CancellationToken cancellationToken)
     {
-        if (candidates.Count == 0)
+        if (!_options.Enabled || candidates.Count == 0)
         {
             return null;
         }
@@ -38,7 +41,8 @@ internal sealed class IntentAgentSelector(
                 candidates,
                 message,
                 timeout.Token).ConfigureAwait(false);
-            return ValidateResult(result, candidates, _options.MinimumConfidence);
+            string? agentId = ValidateResult(result, candidates, _options.MinimumConfidence);
+            return agentId == null ? null : new IntentSelection(agentId, SourceName);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {

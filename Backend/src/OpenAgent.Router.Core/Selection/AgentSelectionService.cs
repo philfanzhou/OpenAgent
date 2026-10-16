@@ -9,11 +9,12 @@ namespace OpenAgent.Router.Selection;
 internal sealed class AgentSelectionService(
     IAgentCatalogService catalog,
     IConversationProviderResolver conversations,
-    IIntentAgentSelector intentAgentSelector,
+    IEnumerable<IIntentStrategy> strategies,
     IAgentUserContext userContext,
     IOptions<IntentRecognitionOptions> options) : IAgentSelectionService
 {
     private readonly IntentRecognitionOptions _options = options.Value;
+    private readonly IReadOnlyList<IIntentStrategy> _strategies = strategies.ToArray();
 
     public async Task<AgentSelection?> SelectAsync(
         string message,
@@ -128,31 +129,27 @@ internal sealed class AgentSelectionService(
                 _options.AgentId,
                 StringComparison.OrdinalIgnoreCase))
             .ToArray();
-        if (_options.Enabled)
+        List<AgentSummary> summaries = candidates.Select(entry => entry.Agent).ToList();
+        foreach (IIntentStrategy strategy in _strategies)
         {
-            string? selectedAgentId = await intentAgentSelector.SelectAsync(
+            IntentSelection? selection = await strategy.SelectAsync(
                 requestContext,
                 message,
-                candidates.Select(entry => entry.Agent).ToArray(),
+                summaries,
                 cancellationToken).ConfigureAwait(false);
-            AgentCatalogEntry? selected = candidates.FirstOrDefault(entry =>
-                string.Equals(
+            AgentCatalogEntry? selected = selection == null
+                ? null
+                : candidates.FirstOrDefault(entry => string.Equals(
                     entry.Agent.AgentId,
-                    selectedAgentId,
+                    selection.AgentId,
                     StringComparison.OrdinalIgnoreCase));
             if (selected != null)
             {
-                return (selected, "intent");
+                return (selected, selection!.Source);
             }
         }
 
-        AgentCatalogEntry? fallback = string.IsNullOrWhiteSpace(_options.FallbackAgentId)
-            ? null
-            : candidates.FirstOrDefault(entry => string.Equals(
-                entry.Agent.AgentId,
-                _options.FallbackAgentId,
-                StringComparison.OrdinalIgnoreCase));
-        return (fallback, fallback == null ? "unavailable" : "fallback");
+        return (null, "unavailable");
     }
 
     private async Task EnsureConversationBindingAsync(
