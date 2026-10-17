@@ -28,7 +28,7 @@
 
 ACP-00：OPEN-7 在固定 SHA `3be97c118f87cd714012bc5c0889dcfe2ad7b4c0` 独立复审关闭 F1–F4，无新增阻断；技术负责人已核对原始证据、38 个变更文件哈希及最终 PR 范围，接受 P0 工程与传输基线。独立实测主解 974 通过、0 失败、24 门控跳过，ACP 55 通过；原探针 27/27、补充探针 123/123，见 [验证记录](../test-reports/2026-10-16-acp-dev-baseline-import.md)。试验代码/历史调研未恢复。草稿 [PR #231](https://github.com/philfanzhou/OpenAgent/pull/231) 指向 dev，本次交接仅更新验收记录，Backend 与复审 SHA 相同。仅放行 OPEN-8，OPEN-9 至 OPEN-14 保持 backlog；OPEN-7 保留 in_review 等待人工验收，未合并项继续保留 `[ ]`。
 
-ACP-01：实现提交 `71bf602a5ab04bf962b8d6dac456b8587bab8526` 固定稳定 v1 原件/lock/许可，交付 178 定义、25 方法、14 更新、307 夹具、同包 DTO/context/RpcId/错误与 schema 控制台；模型覆盖不表示 RPC 已可调用。主解实测 1416 通过、0 失败、24 门控跳过，ACP 497 通过；608 生成文件连续两次无差异，5/5 篡改探针拒绝，Release 单包检查通过。见[验证报告](../test-reports/2026-10-16-acp-p1-models-codegen.md)及 OPEN-8 原始证据附件。公开 API、CodeGen solution/测试引用仍待技术负责人及独立复核；保留原有审计警告与 P7 发布项。PR 包含未合并 P0，未合并/发包/部署；只更新本阶段交付，后续阶段继续 backlog。
+ACP-01：实现提交 `71bf602a5ab04bf962b8d6dac456b8587bab8526` 固定稳定 v1 原件/lock/许可，交付 178 定义、25 方法、14 更新、同包 DTO/context/RpcId/错误与 schema 控制台；首轮独立复核（OPEN-15）判「不通过，1 项阻断」（F-A 信封联合首个匹配静默丢字段，另有 F-B~F-F）。修复提交按信封 `method` 判别 `params`、响应 `result` 逐字保留并强制 `result`/`error` 互斥、`AuthMethod` 未知 `type` 显式拒绝（生成器钉 `type:"agent"` 常量）、补 45 个方法方向信封夹具与每例 `required` 元数据（现 352 夹具，`fixtures/build.py` 确定性重建）、文档交代运行时 323 定义 = 178 固定 + 145 合成及目录边界；模型覆盖不表示 RPC 已可调用。主解实测 1522 通过、0 失败、24 门控跳过，ACP 603 通过；608 生成文件连续两次无差异，5/5 篡改探针拒绝，Release 单包检查通过。见[验证报告](../test-reports/2026-10-16-acp-p1-models-codegen.md)及 OPEN-8 原始证据附件。信封读取语义与新公共 API 边界仍待技术负责人及独立复核；保留原有审计警告与 P7 发布项。PR 包含未合并 P0，未合并/发包/部署；只更新本阶段交付，后续阶段继续 backlog。
 
 ## 已完成基线
 
