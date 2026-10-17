@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageId>OpenAgent.Runtime.Acp</PackageId>
+    <Description>Agent Client Protocol SDK for .NET.</Description>
+    <Version>0.1.0-dev</Version>
+  </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Protocol/Generated/ProtocolSchema.g.json" LogicalName="Acp.ProtocolSchema.json" />
+    <None Include="../../../docs/integrations/acp-dotnet-sdk/schema/v1/LICENSE" Pack="true" PackagePath="licenses/" />
+    <None Include="../../../docs/integrations/acp-dotnet-sdk/schema/NOTICE" Pack="true" PackagePath="licenses/" />
+  </ItemGroup>
+</Project>

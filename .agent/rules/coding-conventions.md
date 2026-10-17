@@ -28,6 +28,7 @@
 | 项目 | 允许引用 |
 |---|---|
 | Contracts | 无平台项目 |
+| Runtime.Acp | 无平台项目；单包 SDK，专属公共接口与模型留在同项目 |
 | Application | Contracts、Capabilities |
 | Capabilities / Engine / Framework / Runner | Contracts |
 | Router | Contracts、Engine（仅 Hosting 共享宿主能力） |
@@ -142,7 +143,7 @@ Application 保留 MAF 执行与 MCP/Skill 适配；Capabilities 承载文件、
 | 接口 | `I` 前缀 + PascalCase | `IAgentAuthorizationService`, `IRouteTable` |
 | 异步方法 | `Async` 后缀 | `ExecuteAsync`, `SendMessageAsync`, `IsAllowedAsync` |
 | CancellationToken | 最后一个参数，默认 `default` | `Task DoAsync(..., CancellationToken ct = default)` |
-| 跨项目纯契约 | 定义在 OpenAgent.Contracts；能力域服务接口归所属模块 | `ICapabilitySource`、`AgentConfig`；`IAgentAuthorizationService` 归 Capabilities/Security |
+| 跨项目纯契约 | 定义在 OpenAgent.Contracts；能力域服务接口归所属模块 | `ICapabilitySource`、`AgentConfig`；`IAgentAuthorizationService` 归 Capabilities/Security；ACP SDK 专属契约留 Runtime.Acp |
 | 实现类 | PascalCase，在对应模块的 `src/` 下 | `AgentExecutor`, `AgentFactory` |
 | 枚举 | PascalCase | `EngineFrameworkType` |
 | 私有字段 | `_` 前缀 + camelCase | `_redis`, `_logger`, `_config` |

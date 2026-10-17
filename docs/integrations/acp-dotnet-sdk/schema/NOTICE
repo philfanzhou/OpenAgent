@@ -1,0 +1,7 @@
+ACP protocol schema and generated protocol models
+Derived from agentclientprotocol/agent-client-protocol
+Commit: 1cebe1c01837379abf34dd62b71e9c75bf140669
+Source: https://github.com/agentclientprotocol/agent-client-protocol
+Upstream license: Apache License, Version 2.0 (see v1/LICENSE).
+The vendored schema and meta are byte-for-byte upstream copies.
+C# generation, converters, validation, and SDK APIs are maintained by OpenAgent.

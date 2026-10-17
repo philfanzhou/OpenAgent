@@ -4,3 +4,7 @@ Dockerfile text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
 *.json text eol=lf
+
+# ACP pinned inputs are byte-for-byte upstream; generated C# is always LF.
+docs/integrations/acp-dotnet-sdk/schema/v1/* -text
+Backend/src/OpenAgent.Runtime.Acp/Protocol/Generated/*.g.cs text eol=lf

@@ -1,0 +1,10 @@
+{
+  "commit": "1cebe1c01837379abf34dd62b71e9c75bf140669",
+  "license": "Apache-2.0",
+  "license_path": "v1/LICENSE",
+  "license_sha256": "f250d08cee4549b22b3b4aaaf3a743473336fd280316df5d0340717e5127a221",
+  "schema_path": "v1/schema.json",
+  "schema_sha256": "4bcd1d2051ff7ed379bd9b234fb9b09c5ab9245478698e9fab805bd9b52a33a6",
+  "meta_path": "v1/meta.json",
+  "meta_sha256": "061edb6efa8fb2aa2792459a86ec7268de5fe665bba48b2ffe7939df01481f88"
+}

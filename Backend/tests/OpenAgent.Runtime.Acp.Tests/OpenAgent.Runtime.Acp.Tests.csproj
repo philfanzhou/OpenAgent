@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../tools/OpenAgent.Runtime.Acp.CodeGen/OpenAgent.Runtime.Acp.CodeGen.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../../src/OpenAgent.Runtime.Acp/OpenAgent.Runtime.Acp.csproj" />
+    <ProjectReference Include="../../tools/OpenAgent.Runtime.Acp.TestConsole/OpenAgent.Runtime.Acp.TestConsole.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="../../../docs/integrations/acp-dotnet-sdk/fixtures/contracts.json" Link="Fixtures/contracts.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>
