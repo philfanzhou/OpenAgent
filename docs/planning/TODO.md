@@ -19,7 +19,7 @@
 |---|---|---|---|
 | [ ] ACP-00 / P0 工程及传输基线 | P0 | 质量安全工程师（OPEN-7）/ 独立复审与技术核对通过，待人工验收 | 三个工程、49 个传输/生命周期 + 1 个依赖 + 5 个控制台进程测试；主解回归，见下方记录 |
 | [ ] ACP-01 / P1 协议模型与生成 | P0 | 后端工程师（OPEN-8）/ 待评审，[PR #232](https://github.com/philfanzhou/OpenAgent/pull/232) | ACP-00 技术门槛通过；固定 schema、可重复生成、契约夹具、schema 控制台及报告测试 |
-| [ ] ACP-02 / P2 双向 RPC | P0 | 后端工程师（OPEN-9）/ backlog，待前置验收 | ACP-01；引擎探针、可重入关联/取消/关闭，rpc/reverse/fault 场景与异常测试 |
+| [ ] ACP-02 / P2 双向 RPC | P0 | 后端工程师（OPEN-9）/ 开发中（自研引擎与 rpc/reverse 场景已实现；fault 场景与 QuotaShutdown 测试类在近期引擎改动后仍有超时/挂起，修复中；分支推送受环境网络阻塞，本地提交 `ced12727` 待推送） | ACP-01；引擎探针、可重入关联/取消/关闭，rpc/reverse/fault 场景与异常测试 |
 | [ ] ACP-03 / P3 双侧最小闭环 | P0 | 后端工程师（OPEN-10）/ backlog，待前置验收 | ACP-02；握手/new/prompt/update/cancel，Session/Turn 与真实 stdio 控制台测试 |
 | [ ] ACP-04 / P4 进程接入 | P1 | 后端工程师（OPEN-11）/ backlog，待前置验收 | ACP-03；Processes 生命周期、外部 Agent 启动选项、stderr/退出/所有权测试 |
 | [ ] ACP-05 / P5 会话与配置 | P1 | 后端工程师（OPEN-12）/ backlog，待前置验收 | ACP-04；完整会话、配置与 14 类更新；session/config/updates 场景及顺序/恢复测试 |
