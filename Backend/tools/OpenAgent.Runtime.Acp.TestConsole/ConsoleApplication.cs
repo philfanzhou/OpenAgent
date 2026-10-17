@@ -14,7 +14,7 @@ internal static class ConsoleApplication
     {
         if (args is ["--help"] or ["help"])
         {
-            await output.WriteLineAsync("Usage: acp-test [list | run framing|lifecycle|schema|all [--report <json-path>] [--fixtures <json-path>]]").ConfigureAwait(false);
+            await output.WriteLineAsync("Usage: acp-test [list | run framing|lifecycle|schema|rpc|reverse|fault|all [--report <json-path>] [--fixtures <json-path>]]").ConfigureAwait(false);
             return 0;
         }
         if (args.Length == 0 || args is ["list"])
@@ -22,11 +22,14 @@ internal static class ConsoleApplication
             await output.WriteLineAsync("framing\tP0\tBounded SDK Stream transport, Unicode, CRLF and EOF").ConfigureAwait(false);
             await output.WriteLineAsync("lifecycle\tP0\tEOF drain, cancellation failure and shared disposal").ConfigureAwait(false);
             await output.WriteLineAsync("schema\tP1\tPinned v1 models, 25 methods, 14 updates and rejected input").ConfigureAwait(false);
+            await output.WriteLineAsync("rpc\tP2\tBidirectional engine: IDs, errors, batch, ordered notifications").ConfigureAwait(false);
+            await output.WriteLineAsync("reverse\tP2\tReentrant reverse calls and cancel races").ConfigureAwait(false);
+            await output.WriteLineAsync("fault\tP2\tDeterministic fault injection with bounded convergence").ConfigureAwait(false);
             return 0;
         }
         string? reportPath = null;
         string fixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "contracts.json");
-        bool valid = args.Length >= 2 && args[0] == "run" && args[1] is "framing" or "lifecycle" or "schema" or "all";
+        bool valid = args.Length >= 2 && args[0] == "run" && args[1] is "framing" or "lifecycle" or "schema" or "rpc" or "reverse" or "fault" or "all";
         HashSet<string> seen = new(StringComparer.Ordinal);
         for (int i = 2; valid && i < args.Length; i += 2)
         {
@@ -42,27 +45,32 @@ internal static class ConsoleApplication
         }
         JsonArray results = new();
         JsonObject? coverage = null;
-        string[] scenarios = args[1] == "all" ? ["framing", "lifecycle", "schema"] : [args[1]];
+        string[] scenarios = args[1] == "all" ? ["framing", "lifecycle", "schema", "rpc", "reverse", "fault"] : [args[1]];
         int exitCode = 0;
         foreach (string scenario in scenarios)
         {
             Stopwatch elapsed = Stopwatch.StartNew();
-            JsonObject result = new() { ["scenario"] = scenario, ["phase"] = scenario == "schema" ? "P1" : "P0", ["protocolVersion"] = AcpProtocol.Version };
+            JsonObject result = new() { ["scenario"] = scenario, ["phase"] = scenario switch { "framing" or "lifecycle" => "P0", "schema" => "P1", _ => "P2" }, ["protocolVersion"] = AcpProtocol.Version };
             try
             {
                 if (scenario == "framing") await VerifyFramingAsync().ConfigureAwait(false);
                 else if (scenario == "lifecycle") await LifecycleScenario.RunAsync().ConfigureAwait(false);
+                else if (scenario == "rpc") await RpcScenario.RunAsync().ConfigureAwait(false);
+                else if (scenario == "reverse") await ReverseScenario.RunAsync().ConfigureAwait(false);
+                else if (scenario == "fault") await FaultScenario.RunAsync().ConfigureAwait(false);
                 else result["coverage"] = coverage = await SchemaScenario.RunAsync(fixturePath).ConfigureAwait(false);
                 result["status"] = "PASS";
                 await output.WriteLineAsync(scenario == "schema"
                     ? $"PASS schema protocolVersion=1 methods=25 updates=14 definitions=178 envelopes={coverage!["envelopes"]!.AsObject().Sum(pair => pair.Value!.GetValue<int>())} (model coverage)"
-                    : $"PASS {scenario} (SDK transport and cleanup)").ConfigureAwait(false);
+                    : scenario is "rpc" or "reverse" or "fault"
+                        ? $"PASS {scenario} (bidirectional RPC engine)"
+                        : $"PASS {scenario} (SDK transport and cleanup)").ConfigureAwait(false);
             }
             catch (Exception exception)
             {
                 result["status"] = "FAIL";
                 result["error"] = exception.GetType().Name;
-                await error.WriteLineAsync($"FAIL {scenario}: {exception.GetType().Name}").ConfigureAwait(false);
+                await error.WriteLineAsync($"FAIL {scenario}: {exception.GetType().Name}: {exception.Message}").ConfigureAwait(false);
                 exitCode = 1;
             }
             result["elapsedMs"] = elapsed.Elapsed.TotalMilliseconds;
@@ -74,7 +82,7 @@ internal static class ConsoleApplication
             {
                 ["status"] = exitCode == 0 ? "PASS" : "FAIL", ["protocolVersion"] = AcpProtocol.Version,
                 ["sourceCommit"] = AcpProtocol.SourceCommit, ["results"] = results,
-                ["notTested"] = new JsonArray("RPC execution", "real Agent/model", "interoperability", "AOT", "Docker")
+                ["notTested"] = new JsonArray("real Agent/model", "interoperability", "AOT", "Docker")
             };
             try { await File.WriteAllTextAsync(reportPath, report.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + "\n").ConfigureAwait(false); }
             catch (Exception exception)

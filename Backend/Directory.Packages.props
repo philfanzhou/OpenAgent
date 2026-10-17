@@ -7,6 +7,9 @@
   <ItemGroup>
     <!-- 测试框架 -->
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.10.0" />
+    <!-- 仅 ACP 测试使用：P2 RPC 引擎选型对比探针，不进入 SDK 发布依赖 -->
+    <PackageVersion Include="StreamJsonRpc" Version="2.25.29" />
+    <PackageVersion Include="MessagePack" Version="2.5.307" />
     <PackageVersion Include="xunit" Version="2.9.0" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="2.8.2" />
     <PackageVersion Include="Moq" Version="4.20.70" />

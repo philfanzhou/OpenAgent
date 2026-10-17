@@ -125,12 +125,21 @@ SDK 不将资源链接自动下载为本地文件，不把不同 MIME/二进制�
 
 - UTF-8；单行 JSON 加 LF；字符串内换行正确转义，不使用 LSP Content-Length framing。允许读取常见 CRLF。
 - 一次 read 可能是半条、多条或跨 UTF-8 字符边界；必须按字节缓冲完整行再解析。stdout 污染不当作聊天内容。
-- request 必须有 id；notification 必须缺失 id。显式 `id:null` 与缺失 ID 是不同情况。
+- request 必须有 id；notification 必须缺失 id。显式 `id:null` 与缺失 ID 是不同情况：`[SDK]` `id:null` 视为非法请求回 -32600，小数或越界数值 ID 同样回 -32600。
 - ID 保留 string/int64/null 类型；本方生成非 null 字符串 ID，不将对端 int64 经 double 造成精度损失。
 - 成功响应只含 result，错误只含 error；原 ID 原样回传。迟到/重复响应不二次完成 Task；诊断后丢弃，禁止回复 response 引起循环。
-- SDK 默认只发送单个消息；输入 JSON-RPC batch 按通用规范处理，通知项不回应、全通知 batch 不回空数组、空 batch 返回 Invalid Request；batch 内取消不能等所有长请求结束后才分派。
-- 非 JSON 返回 -32700、非法请求 -32600、未知 request -32601、参数错误 -32602；可恢复错误继续读下条，超长/无边界坏流或严重 I/O 错误关闭连接。
+- SDK 默认只发送单个消息；输入 JSON-RPC batch 按通用规范处理，通知项不回应、全通知 batch 不回空数组、空 batch 返回 Invalid Request；batch 内取消不能等所有长请求结束后才分派。batch 响应按原始项顺序聚合为一个数组，仅在全部请求项完成后写出，reader 不等待。
+- 非 JSON 返回 -32700、非法请求 -32600、未知 request -32601、参数错误 -32602；可恢复错误继续读下条，超长/无边界坏流或严重 I/O 错误关闭连接。错误码映射：信封结构破坏（缺 method、notification 用作 request、`$/cancel_request` 带 id）回 -32600；已知方法方向不符或未注册回 -32601；已知方法 payload 未过 schema（含 ext 变体 params 非对象）回 -32602。
 - 未知 notification 忽略并可诊断，不回错误；未知 `_` 扩展 request 只有注册后执行，否则 -32601。[扩展](https://agentclientprotocol.com/protocol/v1/extensibility)。
+
+### 引擎分发语义（P2，`OpenAgent.Runtime.Acp.Rpc`）
+
+- 持续 reader 只做读取/校验/路由；入站 request 每个独立任务分派，notification 经有界队列按 wire 顺序路由，出站写入经单一 writer 循环保序。handler 可重入调用对端，reader 永不等待 handler。
+- `$/cancel_request` 在读循环内即拦截：取消本方 outbound pending（进入宽限等待对端最终响应）、取消运行中的入站 handler token，或诊断后丢弃。取消不排队、不等待慢 handler。
+- 本方取消已写出站 request 时发送 `$/cancel_request` 并等待 `CancelGracePeriod` 内的最终响应；自然完成赢得竞态；宽限耗尽抛 `AcpCancellationUnconfirmedException` 并关闭连接，回收请求表，不报告假结果。写前取消只失败本地调用，不上 wire。
+- 入站 response 的 `result` 由引擎按 pending request 的方法选择 `ResponseSchema` 做严格逐方法校验（PROTOCOL §6 的 P2 接入点）；失败使该调用以本地 JsonException 失败，连接继续。本方 handler 返回的结果同样先过方法 schema 再上 wire，不发送畸形协议。
+- 配额（产品策略）：`MaxPendingRequests`（出站，超限本地 `AcpQuotaExceededException`）、`MaxConcurrentHandlers`（入站，超限回 -32603 附 `data.limit`）、`MaxQueuedNotifications`（溢出显式故障连接）。配额耗尽不阻塞响应、取消或关闭。
+- 关闭统一收敛：EOF/Dispose/故障使全部 pending 以 `AcpConnectionClosedException` 失败；终端传输/清理故障由 `Completion` 保留，干净 EOF 或 Dispose 正常完成；Dispose 幂等且不重抛终端故障。所有引擎任务都被生命周期观察，无未观察任务。
 
 ## 5. 结果、错误与资源规则
 

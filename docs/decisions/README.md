@@ -2,6 +2,7 @@
 
 | 文档 | 决策 | 状态 |
 |---|---|---|
+| [0005 ACP RPC 引擎选型](0005-Acp-Rpc-Engine-Selection.md) | 自研双向 JSON-RPC 引擎，StreamJsonRpc 仅作测试期对比基线 | 已决策，第一版已实现（OPEN-9 / ACP-02） |
 | [0003 运行配置解析](0003-Agent-Runtime-Profile-Resolution.md) | 集中解析 Agent 运行配置与请求边界 | 已决策，第一版已实现 |
 | [0004 会话归档语义](0004-Conversation-Archive-Semantics.md) | 移除 ArchivedAt 预留字段，归档语义延后设计 | 已决策，已实现 |
 | [0004 API 风格与错误契约](0004-Unified-API-Style-Minimal-Api-ProblemDetails.md) | Minimal API、TypedResults 与 ProblemDetails | 已决策，第一版已实现 |

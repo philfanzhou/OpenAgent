@@ -10,8 +10,11 @@ public sealed class ConsoleProcessTests
     [InlineData("list", null, 0, "framing")]
     [InlineData("run", "framing", 0, "PASS framing")]
     [InlineData("run", "lifecycle", 0, "PASS lifecycle")]
-    [InlineData("run", "all", 0, "PASS schema")]
     [InlineData("run", "schema", 0, "methods=25 updates=14 definitions=178")]
+    [InlineData("run", "rpc", 0, "PASS rpc")]
+    [InlineData("run", "reverse", 0, "PASS reverse")]
+    [InlineData("run", "fault", 0, "PASS fault")]
+    [InlineData("run", "all", 0, "PASS fault")]
     [InlineData("run", "missing", 2, "Unknown command")]
     public async Task Main_ScenarioCommand_ReturnsExpectedResult(string command, string? scenario, int exitCode, string text)
     {
