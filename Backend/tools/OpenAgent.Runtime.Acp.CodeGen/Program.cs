@@ -13,6 +13,33 @@ internal static class Program
     private static readonly SortedSet<string> ContextTypes = new(StringComparer.Ordinal);
     private static readonly Dictionary<string, string> Native = new(StringComparer.Ordinal);
     private static readonly Dictionary<string, string> Files = new(StringComparer.Ordinal);
+    /// <summary>Untagged union variants whose upstream documentation defines their implicit wire tag.</summary>
+    private static readonly Dictionary<string, string> DefaultVariants = new(StringComparer.Ordinal) { ["AuthMethod"] = "agent" };
+
+    /// <summary>
+    /// PROTOCOL.md §5: a missing AuthMethod type means the agent method. Pin the untagged
+    /// agent candidate to its tag so any other discriminator value is rejected instead of
+    /// silently degrading to the agent variant; the pinned candidate also feeds the emitted
+    /// branch definition, keeping the runtime schema self-describing.
+    /// </summary>
+    private static void PinDefaultVariants()
+    {
+        foreach ((string name, string tag) in DefaultVariants)
+        {
+            JsonObject definition = Schemas[name];
+            JsonArray alternatives = (JsonArray?)definition["oneOf"] ?? (JsonArray)definition["anyOf"]!;
+            string? discriminator = alternatives.OfType<JsonObject>()
+                .Select(item => item["properties"]).OfType<JsonObject>()
+                .SelectMany(fields => fields).Where(pair => pair.Value is JsonObject field && field["const"] is JsonValue)
+                .Select(pair => pair.Key).FirstOrDefault();
+            if (discriminator is null) throw new InvalidDataException("Default variant without a tagged sibling: " + name);
+            foreach (JsonObject candidate in alternatives.OfType<JsonObject>())
+            {
+                if (candidate["properties"] is not null || candidate["title"]?.GetValue<string>() != tag) continue;
+                candidate["properties"] = new JsonObject { [discriminator] = new JsonObject { ["const"] = tag } };
+            }
+        }
+    }
 
     private static int Main(string[] args)
     {
@@ -52,6 +79,7 @@ internal static class Program
         foreach ((string name, JsonNode? value) in schema["$defs"]!.AsObject()) Schemas.Add(name, value!.AsObject());
         string[] originals = Schemas.Keys.ToArray();
         if (originals.Length != baseline["definition_count"]!.GetValue<int>()) throw new InvalidDataException("Definition count mismatch.");
+        PinDefaultVariants();
         foreach (string name in originals)
         {
             string? native = Scalar(Schemas[name]);

@@ -9,6 +9,12 @@ public sealed class AcpSchemaDescriptor
     internal AcpSchemaDescriptor(string name, Type type) { Name = name; ClrType = type; }
     public string Name { get; }
     public Type ClrType { get; }
+    /// <summary>
+    /// Raw System.Text.Json metadata for report and host-tooling plumbing. Serializing through
+    /// this property applies no schema validation; use <see cref="Deserialize"/> or
+    /// <see cref="ValidateForSend"/> to enforce the pinned schema (scalar aliases such as
+    /// ToolKind are free-form strings in the locked v1 schema, so no alias constraint exists).
+    /// </summary>
     public JsonTypeInfo JsonTypeInfo => AcpJsonContext.Default.GetTypeInfo(ClrType)
         ?? throw new NotSupportedException("The schema type is not registered.");
     /// <summary>Compatible read, including schema opt-in default-on-error and skip-invalid-items.</summary>

@@ -41,6 +41,7 @@ internal static class ConsoleApplication
             return 2;
         }
         JsonArray results = new();
+        JsonObject? coverage = null;
         string[] scenarios = args[1] == "all" ? ["framing", "lifecycle", "schema"] : [args[1]];
         int exitCode = 0;
         foreach (string scenario in scenarios)
@@ -51,10 +52,10 @@ internal static class ConsoleApplication
             {
                 if (scenario == "framing") await VerifyFramingAsync().ConfigureAwait(false);
                 else if (scenario == "lifecycle") await LifecycleScenario.RunAsync().ConfigureAwait(false);
-                else result["coverage"] = await SchemaScenario.RunAsync(fixturePath).ConfigureAwait(false);
+                else result["coverage"] = coverage = await SchemaScenario.RunAsync(fixturePath).ConfigureAwait(false);
                 result["status"] = "PASS";
                 await output.WriteLineAsync(scenario == "schema"
-                    ? "PASS schema protocolVersion=1 methods=25 updates=14 definitions=178 (model coverage)"
+                    ? $"PASS schema protocolVersion=1 methods=25 updates=14 definitions=178 envelopes={coverage!["envelopes"]!.AsObject().Sum(pair => pair.Value!.GetValue<int>())} (model coverage)"
                     : $"PASS {scenario} (SDK transport and cleanup)").ConfigureAwait(false);
             }
             catch (Exception exception)

@@ -18,6 +18,18 @@ public sealed class ContractTests
             .Select(row => new object[] { row.GetProperty("id").GetString()!, row.GetProperty("schema").GetString()!, row.GetProperty("value").GetRawText() }).ToArray();
     }
 
+    internal static (string Id, string Schema, string Json, string[] Required)[] CaseRows()
+    {
+        using JsonDocument fixtures = JsonDocument.Parse(File.ReadAllText(Fixtures));
+        return fixtures.RootElement.GetProperty("cases").EnumerateArray()
+            .Select(row => (
+                Id: row.GetProperty("id").GetString()!,
+                Schema: row.GetProperty("schema").GetString()!,
+                Json: row.GetProperty("value").GetRawText(),
+                Required: row.GetProperty("required").EnumerateArray().Select(item => item.GetString()!).ToArray()))
+            .ToArray();
+    }
+
     [Theory]
     [MemberData(nameof(Cases))]
     public void Deserialize_PinnedContract_RoundTripsStrictly(string id, string schema, string json)
@@ -76,7 +88,8 @@ public sealed class ContractTests
         Assert.Equal(14, AcpProtocol.SessionUpdates.Count);
         Assert.Equal(21, AcpProtocol.Methods.Count(method => method.Kind == "request"));
         Assert.Equal(4, AcpProtocol.Methods.Count(method => method.Kind == "notification"));
-        HashSet<string> covered = Cases().Select(row => (string)row[1]).ToHashSet(StringComparer.Ordinal);
+        (string Id, string Schema, string Json, string[] Required)[] rows = CaseRows();
+        HashSet<string> covered = rows.Select(row => row.Schema).ToHashSet(StringComparer.Ordinal);
         Assert.Equal(AcpProtocol.Schemas.Keys.Order(), covered.Order());
         foreach (AcpMethodDescriptor method in AcpProtocol.Methods)
         {
@@ -87,6 +100,12 @@ public sealed class ContractTests
             .Where(row => row.GetProperty("id").GetString()!.StartsWith("update-", StringComparison.Ordinal))
             .Select(row => row.GetProperty("value").GetProperty("sessionUpdate").GetString()!).ToArray();
         Assert.Equal(AcpProtocol.SessionUpdates.Order(), updates.Order());
+        // Every object case carries its locked-schema required set, and the sample satisfies it.
+        foreach ((string id, string schema, string json, string[] required) in rows)
+        {
+            if (JsonNode.Parse(json) is not JsonObject value) continue;
+            foreach (string key in required) Assert.True(value.ContainsKey(key), $"{id} misses required {key}.");
+        }
     }
 
     public static IEnumerable<object[]> MethodSchemas() => AcpProtocol.Methods
@@ -105,19 +124,19 @@ public sealed class ContractTests
     [MemberData(nameof(MethodSchemas))]
     public void Deserialize_RequiredMethodProperties_CannotBeRecovered(string schema)
     {
-        object[] row = Cases().First(row => (string)row[1] == schema);
-        JsonObject input = JsonNode.Parse((string)row[2])!.AsObject();
-        // Independent input knowledge: every nonempty method fixture has at least one
-        // required property. Responses with only optional fields legitimately accept {}.
-        string[] required = schema switch
+        // The required set is pinned fixture data from the locked schema (see fixtures/build.py),
+        // so the assertions here never derive "required" from the sample's own keys.
+        (string Id, string Schema, string Json, string[] Required) row = CaseRows().First(row => row.Schema == schema);
+        if (row.Required.Length == 0)
         {
-            "InitializeRequest" or "InitializeResponse" => ["protocolVersion"],
-            "CreateElicitationRequest" => ["message", "mode", "requestedSchema", "sessionId"],
-            "CreateElicitationResponse" => ["action"],
-            "SetSessionConfigOptionRequest" => ["sessionId", "configId", "type", "value"],
-            _ => input.Select(pair => pair.Key).Where(key => key != "_meta").ToArray()
-        };
-        foreach (string key in required)
+            // Explicit no-op marker: the locked schema declares no required property for this
+            // method shape, so there is nothing to strip. Branch-level discrimination for the
+            // union shapes among them is covered by ModelTests.Union_KnownMalformedPayload.
+            Assert.Empty(row.Required);
+            return;
+        }
+        JsonObject input = JsonNode.Parse(row.Json)!.AsObject();
+        foreach (string key in row.Required)
         {
             JsonObject missing = (JsonObject)input.DeepClone(); missing.Remove(key);
             Assert.Throws<JsonException>(() => AcpProtocol.Schemas[schema].Deserialize(missing.ToJsonString()));

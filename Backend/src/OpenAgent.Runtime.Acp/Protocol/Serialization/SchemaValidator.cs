@@ -10,12 +10,21 @@ internal static class SchemaValidator
 {
     private static readonly JsonObject Definitions = Load();
     private static readonly ConcurrentDictionary<string, JsonObject> Expanded = new(StringComparer.Ordinal);
+    private static readonly HashSet<string> Envelopes = new(StringComparer.Ordinal)
+    {
+        "ClientRequest", "AgentRequest", "ClientNotification", "AgentNotification", "ClientResponse", "AgentResponse"
+    };
 
     internal static JsonElement Process(string name, JsonElement value, bool compatibility)
     {
         RejectDuplicates(value);
+        if (name is "ClientResponse" or "AgentResponse" && value.ValueKind == JsonValueKind.Object
+            && value.TryGetProperty("result", out _) && value.TryGetProperty("error", out _))
+            throw new JsonException("A JSON-RPC response cannot carry both a result and an error.");
         JsonObject schema = Expanded.GetOrAdd(name, key => Expand(Definitions[key]!.AsObject()));
-        JsonNode? normalized = Apply(JsonNode.Parse(value.GetRawText()), schema, compatibility);
+        string? method = Envelopes.Contains(name) && value.ValueKind == JsonValueKind.Object
+            && value.TryGetProperty("method", out JsonElement tag) && tag.ValueKind == JsonValueKind.String ? tag.GetString() : null;
+        JsonNode? normalized = Apply(JsonNode.Parse(value.GetRawText()), schema, compatibility, name, method);
         using JsonDocument document = JsonDocument.Parse(normalized?.ToJsonString() ?? "null");
         return document.RootElement.Clone();
     }
@@ -71,7 +80,7 @@ internal static class SchemaValidator
         }
     }
 
-    private static JsonNode? Apply(JsonNode? value, JsonObject original, bool compatibility)
+    private static JsonNode? Apply(JsonNode? value, JsonObject original, bool compatibility, string? envelope = null, string? method = null)
     {
         JsonObject schema = Expand(original);
         // Match a known wire tag before any permissive/default alternative. A malformed known
@@ -80,6 +89,36 @@ internal static class SchemaValidator
         {
             JsonObject common = (JsonObject)schema.DeepClone(); common.Remove("oneOf"); common.Remove("anyOf"); common.Remove("discriminator");
             List<JsonObject> candidates = alternatives.OfType<JsonObject>().ToList();
+            // Envelope payload unions tag every candidate with the wire method its definition
+            // serves, so the in-band envelope method selects exactly one payload schema and no
+            // other candidate can mask it (an empty-required variant must never swallow a
+            // sibling payload). Response payloads arrive without their request method; they are
+            // preserved verbatim and the typed As* projections validate the exact variant.
+            List<string?> methods = candidates.Select(candidate => Expand(candidate)["x-method"]?.GetValue<string>()).ToList();
+            if (methods.Any(tag => tag is not null))
+            {
+                if (method is null)
+                {
+                    if (value is not JsonObject) throw new JsonException("The envelope payload must be a protocol object.");
+                    return value.DeepClone();
+                }
+                JsonObject? selected = null;
+                for (int index = 0; index < candidates.Count; index++)
+                {
+                    if (methods[index] != method) continue;
+                    if (selected is not null) throw new JsonException("Two payload schemas claim the same protocol method.");
+                    selected = candidates[index];
+                }
+                if (selected is null)
+                {
+                    if (HasKnownMethod(method!)) throw new JsonException($"The {envelope} payload does not serve the '{method}' method.");
+                    // Anything unknown to the pinned v1 catalog is an extension method, carried
+                    // by the variant without a method tag and preserved verbatim.
+                    selected = candidates.Single(candidate => Expand(candidate)["x-method"] is null);
+                }
+                JsonObject payload = Expand(new JsonObject { ["allOf"] = new JsonArray(common.DeepClone(), selected.DeepClone()) });
+                return Apply(value?.DeepClone(), payload, compatibility);
+            }
             if (value is JsonObject tagged)
             {
                 List<JsonObject> known = candidates.Where(candidate => HasMatchingTag(tagged, Expand(candidate))).ToList();
@@ -89,7 +128,7 @@ internal static class SchemaValidator
             foreach (JsonObject candidate in candidates)
             {
                 JsonObject merged = Expand(new JsonObject { ["allOf"] = new JsonArray(common.DeepClone(), candidate.DeepClone()) });
-                try { matches.Add(Apply(value?.DeepClone(), merged, compatibility)); }
+                try { matches.Add(Apply(value?.DeepClone(), merged, compatibility, envelope, method)); }
                 catch (JsonException) { }
                 if (matches.Count > 0 && schema.ContainsKey("anyOf")) return matches[0];
             }
@@ -111,8 +150,8 @@ internal static class SchemaValidator
             if (!allowed.Any(type => IsType(value, type))) throw new JsonException("Invalid protocol value type.");
         }
         if (value is null) return null;
-        if (value is JsonObject obj) return ApplyObject(obj, schema, compatibility);
-        if (value is JsonArray array) return ApplyArray(array, schema, compatibility);
+        if (value is JsonObject obj) return ApplyObject(obj, schema, compatibility, envelope, method);
+        if (value is JsonArray array) return ApplyArray(array, schema, compatibility, envelope, method);
         using JsonDocument scalar = JsonDocument.Parse(value.ToJsonString());
         JsonElement element = scalar.RootElement;
         if (element.ValueKind == JsonValueKind.Number) CheckNumber(element, schema);
@@ -128,6 +167,13 @@ internal static class SchemaValidator
         return value.DeepClone();
     }
 
+    private static bool HasKnownMethod(string method)
+    {
+        foreach ((string _, JsonNode? definition) in Definitions)
+            if (definition?["x-method"]?.GetValue<string>() == method) return true;
+        return false;
+    }
+
     private static bool HasMatchingTag(JsonObject value, JsonObject schema)
     {
         if (schema["properties"] is not JsonObject fields) return false;
@@ -135,7 +181,7 @@ internal static class SchemaValidator
             && value.TryGetPropertyValue(pair.Key, out JsonNode? actual) && JsonNode.DeepEquals(actual, constant));
     }
 
-    private static JsonObject ApplyObject(JsonObject value, JsonObject schema, bool compatibility)
+    private static JsonObject ApplyObject(JsonObject value, JsonObject schema, bool compatibility, string? envelope, string? method)
     {
         JsonObject fields = schema["properties"] as JsonObject ?? new();
         HashSet<string> required = schema["required"]?.AsArray().Select(item => item!.GetValue<string>()).ToHashSet(StringComparer.Ordinal) ?? [];
@@ -146,7 +192,7 @@ internal static class SchemaValidator
         {
             if (fields[name] is JsonObject field)
             {
-                try { result[name] = Apply(input, field, compatibility); }
+                try { result[name] = Apply(input, field, compatibility, envelope, method); }
                 catch (JsonException) when (compatibility && !required.Contains(name) && field["x-deserialize-default-on-error"]?.GetValue<bool>() == true)
                 {
                     // No implicit empty collection: absence/null keep their original patch meaning.
@@ -162,7 +208,7 @@ internal static class SchemaValidator
         return result;
     }
 
-    private static JsonArray ApplyArray(JsonArray array, JsonObject schema, bool compatibility)
+    private static JsonArray ApplyArray(JsonArray array, JsonObject schema, bool compatibility, string? envelope, string? method)
     {
         if (schema["minItems"] is JsonNode min && array.Count < min.GetValue<int>() || schema["maxItems"] is JsonNode max && array.Count > max.GetValue<int>())
             throw new JsonException("Invalid array length.");
@@ -170,7 +216,7 @@ internal static class SchemaValidator
         JsonArray result = new();
         foreach (JsonNode? item in array)
         {
-            try { result.Add(Apply(item, items, compatibility)); }
+            try { result.Add(Apply(item, items, compatibility, envelope, method)); }
             catch (JsonException) when (compatibility && schema["x-deserialize-skip-invalid-items"]?.GetValue<bool>() == true) { }
         }
         return result;

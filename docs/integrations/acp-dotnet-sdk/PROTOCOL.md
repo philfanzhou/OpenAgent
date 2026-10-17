@@ -117,6 +117,7 @@ SDK 不将资源链接自动下载为本地文件，不把不同 MIME/二进制�
 6. `_meta` 与 schema 允许的开放 JSON 保留；未知对象字段可容忍读取，但用户自定义扩展只写 `_meta`，不得写标准类型根字段。透传场景用明确的 raw envelope，不能承诺一般 DTO 往返保留所有未来根字段。
 7. JsonPropertyName 使用原 wire 名；不把 snake_case 方法名自动改成 C# 名称。大小写严格校验。
 8. 对区分 omitted/null/value 的字段采用 Optional/自定义转换器；按各字段 schema 处理，不能把 v2 的统一 patch 语义强加于所有 v1 字段。
+9. JSON-RPC envelope 的 `params` 联合按信封 `method` 判别：校验只针对该方法的 payload schema，失败即拒绝，不得让空 `required` 的候选兜底吞掉其他方法载荷。未知方法交给 ext 变体原样保留；已知方法但方向不符显式拒绝。响应 `result` 携带的方法不在信封内，信封层只做对象结构校验并逐字保留，由 `As*` 投影按具体变体严格校验；`result` 与 `error` 同时出现一律拒绝。
 
 ## 4. JSON-RPC 与 stdio
 
@@ -173,6 +174,10 @@ string body = read.Prompt[0].AsText().Text;
 
 可选字段返回 `Optional<T>`；`IsDefined`、`IsNull`、`HasValue` 分别判断缺失、显式 null 和值，只有 HasValue 时可取 Value。构造时用 `Optional<T>.Null` 写 null，用默认 Optional 省略；空数组不会补成缺失。声明了 schema default 的字段另有 `*OrDefault`，不在 wire 中注入默认值。`RpcId` 是 string/int64/null 值类型；缺失 ID 由 Optional 表示，数值不经过 double。schema 标量别名映射到 CLR 基础类型；闭合/开放枚举提供 wire 常量，使用目录中的 AcpSchemaDescriptor 可单独校验别名约束。
 
-读取仅对标记字段启用 default-on-error：非法 nullable 可选字段变 null，非法非 nullable 可选字段恢复缺省并经默认 getter 取 schema default；标记的集合跳过非法项。必填字段缺失、null 或类型错误不被恢复。发送/构造不启用这些宽容路径。字段大小写精确，重复 JSON 键拒绝；扩展应写入 `_meta`。数值检查固定格式与边界，JSON Schema format URI/日期作为注解，不自动规范化或访问资源；路径、权限 optionId 关联、能力门控和会话状态属于后续角色/handler 阶段。
+读取仅对标记字段启用 default-on-error：非法 nullable 可选字段变 null，非法非 nullable 可选字段恢复缺省并经默认 getter 取 schema default；标记的集合跳过非法项。显式 null 落在非 nullable 的可选标记字段上同样按缺失归一（`IsDefined=false`），只有 nullable 字段保留 `IsNull`；这是 `Optional<T>` 的例外，见其文档注释。必填字段缺失、null 或类型错误不被恢复。发送/构造不启用这些宽容路径。字段大小写精确，重复 JSON 键拒绝；扩展应写入 `_meta`。数值检查固定格式与边界，JSON Schema format URI/日期作为注解，不自动规范化或访问资源；路径、权限 optionId 关联、能力门控和会话状态属于后续角色/handler 阶段。
 
 `AcpProtocol.Schemas` 提供全部 178 个稳定定义的 schema 名、CLR 类型和 JsonTypeInfo，Methods 提供 25 个方法的方向、request/notification 及参数/结果 schema，SessionUpdates 列出 14 个 tag。目录只表示模型覆盖，不能用于宣称这些方法已可调用。JSON-RPC envelope 的执行、batch/取消分派和角色状态在 ACP-02 起实现。
+
+运行时嵌入的 schema 是"固定 178 个上游定义 + 生成器合成定义"（当前共 323 个）：合成定义为信封联合的候选分支（`ClientRequestParams*`、`AgentResponseResultResult*` 等）及开放变体，是固定定义的确定性 allOf 合并；`AuthMethod` 的 agent 候选按 §3.4/§5 由生成器钉上 `type:"agent"` 常量，未知 discriminator 显式拒绝。公共目录只暴露 178 个固定定义——信封载荷的权威校验入口是方法自己的定义或信封模型本身，合成分支不进目录。
+
+信封读取语义：`ClientRequest`/`AgentRequest`/`ClientNotification`/`AgentNotification` 按带内 `method` 从 `x-method` 联合中选择唯一候选并按读取宽容度校验；响应信封（`ClientResponse`/`AgentResponse`）没有带内方法，`result` 逐字保留（必须为 JSON 对象），类型化访问走 `As*()` 严格校验或 P2 的方法级引擎；`result`/`error` 互斥。合成联合单独反序列化时是原样视图（保留全部字段、拒绝重复键与非对象），不按候选归一化，也不宜作为发送前的唯一校验。信封构造路径（类型化叶子模型、`As*()` 投影、目录描述符）始终严格校验。

@@ -6,6 +6,7 @@ using OpenAgent.Runtime.Acp.Protocol.Serialization;
 namespace OpenAgent.Runtime.Acp.Protocol;
 
 /// <summary>An immutable, owned protocol value. Unknown standard object properties are discarded on read.</summary>
+[JsonConverter(typeof(AcpModelGuardConverter))]
 public abstract class AcpModel
 {
     private protected AcpModel(string schemaName, JsonElement value, bool validated)

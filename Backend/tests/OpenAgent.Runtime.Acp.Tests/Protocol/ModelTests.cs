@@ -94,6 +94,20 @@ public sealed class ModelTests
         => Assert.Throws<JsonException>(() => AcpProtocol.Schemas[schema].Deserialize(json));
 
     [Fact]
+    public void AuthMethod_UnknownType_IsRejectedInsteadOfDegradingToAgent()
+    {
+        // PROTOCOL.md §5: a missing type is the agent method; any other discriminator value
+        // is rejected rather than silently dropped and downgraded to the agent variant.
+        Assert.Throws<JsonException>(() => AcpJson.Deserialize<AuthMethod>("""{"type":"bogus","id":"x","name":"n"}"""));
+        AuthMethod agent = AcpJson.Deserialize<AuthMethod>("""{"type":"agent","id":"x","name":"n"}""");
+        Assert.Equal("x", agent.AsAgent().Id);
+        Assert.Equal("agent", agent.Json.GetProperty("type").GetString());
+        AuthMethod omitted = AcpJson.Deserialize<AuthMethod>("""{"id":"x","name":"n"}""");
+        Assert.Equal("x", omitted.AsAgent().Id);
+        Assert.False(omitted.Json.TryGetProperty("type", out _));
+    }
+
+    [Fact]
     public void Unions_TypedConstructionAndProjection_AreDiscriminated()
     {
         ContentBlock text = new(new ContentBlockText("hello"));
@@ -161,6 +175,32 @@ public sealed class ModelTests
     [InlineData("{\"protocolVersion\":1.0}")]
     public void RequiredFields_CaseNullDuplicatesAndRange_AreRejected(string json)
         => Assert.Throws<JsonException>(() => AcpJson.Deserialize<InitializeRequest>(json));
+
+    [Fact]
+    public void ResponseEnvelope_ResultAndError_AreMutuallyExclusive()
+    {
+        Assert.Throws<JsonException>(() => AcpJson.Deserialize<AgentResponse>(
+            """{"id":1,"result":{"protocolVersion":1},"error":{"code":-32603,"message":"m"}}"""));
+    }
+
+    [Fact]
+    public void Optional_UndefinedJsonElement_IsOmittedNotACrashingValue()
+    {
+        TextContent content = new("x", meta: default(JsonElement));
+        Assert.False(content.Meta.IsDefined);
+        string json = AcpJson.Serialize(content);
+        Assert.False(JsonDocument.Parse(json).RootElement.TryGetProperty("_meta", out _));
+    }
+
+    [Fact]
+    public void AbstractAcpModel_DirectReflectionSerialization_IsRejectedLikeAcpJson()
+    {
+        TextContent content = new("x");
+        NotSupportedException written = Assert.Throws<NotSupportedException>(
+            () => JsonSerializer.Serialize(content, typeof(AcpModel)));
+        Assert.Contains("AcpJson", written.Message);
+        Assert.Throws<NotSupportedException>(() => JsonSerializer.Deserialize("""{"text":"x"}""", typeof(AcpModel)));
+    }
 
     [Fact]
     public void Numbers_Unsigned64AndSigned64_AreExact()

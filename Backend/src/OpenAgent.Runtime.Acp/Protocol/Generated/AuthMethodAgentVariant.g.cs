@@ -16,10 +16,12 @@ public sealed class AuthMethodAgentVariant : AcpModel
         Write(writer, "name", @name);
         WriteOptional(writer, "description", @description);
         WriteOptional(writer, "_meta", @meta);
+        writer.WriteString("type", "agent");
         writer.WriteEndObject();
     }), false) { }
     public string Id => Get<string>("id");
     public string Name => Get<string>("name");
     public Optional<string> Description => GetOptional<string>("description");
     public Optional<JsonElement> Meta => GetOptional<JsonElement>("_meta");
+    public Optional<JsonElement> Type => GetOptional<JsonElement>("type");
 }
