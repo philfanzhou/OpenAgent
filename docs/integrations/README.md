@@ -4,6 +4,7 @@
 
 | 集成点 | 说明 | 文档 |
 |--------|------|------|
+| OpenCode ACP 运行时 | 平台执行、工具桥接、配置与验证范围 | [opencode-runtime.md](opencode-runtime.md) |
 | ACP SDK | 单包 C# 协议、Client/Agent、进程、八阶段与验证 | [acp-dotnet-sdk/](acp-dotnet-sdk/README.md) |
 | LLM Provider | 大模型推理（OpenAI/Azure OpenAI/Anthropic） | [llm-provider/](./llm-provider/) |
 | 配置目录 / Matrix 接入边界 | 当前 Engine 配置读取与运行前解析；Matrix 为后续可替换来源 | [matrix/](./matrix/) |

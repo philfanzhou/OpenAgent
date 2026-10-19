@@ -1,6 +1,6 @@
 # 任务清单
 
-状态核对：2026-10-15，`dev` 基线 `6a3f29f`。本页是当前待办的唯一入口；历史功能方向以[新架构提案](../architecture/new-architecture.html)（Proposal，未批准）为准，模块实际目录见 [开发指南](../overview/DevelopmentGuide.md)，旧方案见 [历史归档](../archive/README.md)。
+状态核对：2026-10-19；SDK PR #233 及其后续 OpenCode 运行时 PR 均待评审。本页是当前待办的唯一入口；历史功能方向以[新架构提案](../architecture/new-architecture.html)（Proposal，未批准）为准，模块实际目录见 [开发指南](../overview/DevelopmentGuide.md)，旧方案见 [历史归档](../archive/README.md)。
 
 ## 状态与分派规则
 
@@ -19,7 +19,7 @@
 用户已批准按 [新架构方案的目录图](../architecture/新架构方案.html) 重组源码并保留现有行为：Core → Application，Infrastructure → Framework，Hosting 合并 Engine；独立能力迁入 Capabilities，MAF/MCP 适配继续由 Application 执行。不新增 ACP/Worker/审批/RunGrant 功能，不改数据库 schema。
 
 - **R01 目录与边界重组**：实现与本地验证完成；交付分支为 `dev`，尚未合并至 `main`，远端 CI 与部署未验收；覆盖源码、namespace、项目引用、架构门禁、测试归属与 CI/规则路径。迁移前：917 通过、24 跳过；迁移后：919 通过、24 跳过、0 失败，完整构建 0 警告、0 错误。证据：[验收记录](../test-reports/2026-10-15-directory-restructure.md)。
-- 下列 A 系列仍是尚未批准的功能规划，不作为本次目录迁移的前置门禁。下文主责路径已按当前模块更新；未来 ACP 切换和 MAF 删除须另行批准。
+- 下列 A 系列仍是尚未批准的功能规划，不作为本次目录迁移的前置门禁。下文主责路径已按当前模块更新；2026-10-19 用户另行授权本轮 OpenCode ACP 聊天执行切换；Worker/RunGrant 和彻底删除 MAF 包仍按 A 系列单独验收。
 
 ## 方向变更
 
@@ -41,6 +41,16 @@
 | ACP-07 / P7 验证与发布准备 | 待评审；压力与分配回归、单程序集包边界由单测与依赖门禁覆盖；互通/AOT/CI 脚手架已按用户要求移出，恢复时另行实现并实测；真实模型/稳定版发布分别验收 |
 
 阶段定义见 [IMPLEMENTATION](../integrations/acp-dotnet-sdk/IMPLEMENTATION.md)。PR #231/#232 保持原状，本次提供独立替代实现，不将未合并 PR 标成已完成。
+
+## OpenCode ACP 聊天运行时（依托 #233）
+
+用户已指定 OpenCode，并授权在第二个 PR 切换聊天执行入口。负责人：Codex；状态：待评审；实现 PR：待创建（基于 `codex/acp-sdk-complete`，先合并 #233，再把此 PR 改基到 dev）；本地证据见 [验收记录](../test-reports/2026-10-19-opencode-runtime.md)。
+
+- [ ] **ACP-R01 平台契约与默认执行入口**：Contracts/Runtime + Application/Execution；平台保留授权、历史和持久化，不引用 ACP 公共类型。
+- [ ] **ACP-R02 OpenCode 驱动与工具桥**：Runtime 类库（不打包）；固定版本 ACP 进程、隔离环境、每轮 loopback MCP bearer、工具预算及事件合并。
+- [ ] **ACP-R03 验证与交付**：真实进程/本地模型/平台 C# 工具、取消、历史续聊、HTTP/SSE；补齐配置、镜像与文档；保留原 MAF 回归快照于测试目录。
+
+本轮是同宿主 ACP 聊天执行的直接接入，不代表 A02 的并发容量/隔离攻击验证、A04 Worker、A05 分布式 RunGrant、A06 事件重放、A08 人工审批或 A09 全量移除 MAF 包已经完成。原任务保留未完成状态，具体验收边界以本轮记录为准。
 
 ## P0：验证与准备
 

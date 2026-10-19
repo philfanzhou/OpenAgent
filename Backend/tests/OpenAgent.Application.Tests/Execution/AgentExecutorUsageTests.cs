@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.DependencyInjection;
 using OpenAgent.Contracts.Configuration;
+using OpenAgent.Contracts.Runtime;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Requests;
@@ -234,7 +235,8 @@ public class AgentExecutorUsageTests
         IChatClient provider,
         OpenAgent.Contracts.Capabilities.ICapabilitySource? extraSource = null,
         int maxTurns = 2,
-        Action<IServiceCollection>? configure = null)
+        Action<IServiceCollection>? configure = null,
+        IAgentRuntimeDriver? driver = null)
     {
         var services = new ServiceCollection();
         services.AddLogging();
@@ -244,6 +246,15 @@ public class AgentExecutorUsageTests
         IConfiguration configuration = new ConfigurationBuilder().Build();
         services.AddSingleton(configuration);
         services.AddAgentApplication(configuration);
+        if (driver is null)
+        {
+            // 既有 MAF 回归夹具；传入 driver 时保留生产默认装配。
+            services.AddScoped<IAgentExecution>(provider => ActivatorUtilities.CreateInstance<LegacyMafExecutor>(provider));
+        }
+        else
+        {
+            services.AddSingleton(driver);
+        }
         if (extraSource != null)
         {
             services.AddSingleton(extraSource);

@@ -10,6 +10,7 @@ using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Execution;
 using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Requests;
+using OpenAgent.Contracts.Runtime;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Contracts.Skills;
 using OpenAgent.Contracts.Capabilities;
@@ -113,6 +114,50 @@ public class AgentExecutorSkillToolTests
         Assert.Contains("load_skill", offered);
         Assert.Contains("read_skill_resource", offered);
         Assert.Contains("run_skill_script", offered);
+    }
+
+    [Fact]
+    public async Task ExecuteStreamingAsync_AcpDriver_ReceivesAndInvokesSkillResourceWithServices()
+    {
+        var objects = new RecordingFileObjectStore();
+        var catalog = new SkillCatalog();
+        RegisterSkillPackage(objects, catalog);
+        FakeChatProvider unused = new(new InvalidOperationException("MAF inference is forbidden"));
+        SkillDriver driver = new();
+        await using AgentExecutorUsageTests.TestRuntime runtime = AgentExecutorUsageTests.CreateRuntime(unused,
+            configure: services =>
+            {
+                services.RemoveAll<IFileObjectStore>();
+                services.AddSingleton<IFileObjectStore>(objects);
+                services.RemoveAll<ISkillCatalog>();
+                services.AddSingleton<ISkillCatalog>(catalog);
+                services.RemoveAll<IAgentRuntimeResolver>();
+                services.AddSingleton<IAgentRuntimeResolver>(new SkillRuntimeResolver());
+            }, driver: driver);
+        await runtime.Executor.ExecuteAsync(CreateRequest("acp-skill-resource"), User, CancellationToken.None);
+        Assert.True(driver.Invoked);
+        Assert.Null(unused.LastOptions);
+    }
+
+    private sealed class SkillDriver : IAgentRuntimeDriver
+    {
+        internal bool Invoked { get; private set; }
+
+        public async IAsyncEnumerable<AgentStreamEvent> RunAsync(RuntimeInvocation request,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            Assert.Contains(request.Tools, tool => tool.Name == "load_skill");
+            Assert.Contains(request.Tools, tool => tool.Name == "run_skill_script");
+            RuntimeTool read = Assert.Single(request.Tools, tool => tool.Name == "read_skill_resource");
+            string result = await read.InvokeAsync(new Dictionary<string, object?>
+            {
+                ["skillName"] = SkillName,
+                ["resourceName"] = ResourcePath
+            }, cancellationToken);
+            Assert.Contains("Q3 revenue", result, StringComparison.Ordinal);
+            Invoked = true;
+            yield return new() { Type = AgentStreamEventType.Content, Content = "resource loaded" };
+        }
     }
 
     private sealed class OptionsRecordingClient(IChatClient inner) : IChatClient

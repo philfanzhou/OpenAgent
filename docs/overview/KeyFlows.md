@@ -24,6 +24,12 @@ Browser
 - 同一资产可被多条消息引用。会话追加通过 `Version` 并发令牌和 `expectedVersion` 防止写覆盖。
 - 删除会话为软删除，不删除用户资产或对象存储中的原始文件。
 
+## ACP 执行与工具回调
+
+聊天请求经过平台授权、文件与历史准备后，驱动创建本轮 OpenCode 进程，通过 ACP initialize/newSession/prompt 执行。OpenCode 通过带随机 bearer 的 loopback MCP 端点调用平台工具；回调绑定本轮 Tenant/User/Conversation/Trace 身份，不能由模型参数替换。过程更新映射为既有 SSE，保存成功后才发送终态。
+
+取消沿请求 token 传到 ACP session/cancel，等待原 prompt 的最终响应，再回收自有进程、MCP 桥和随机工作区。各轮不共享 HOME 或 OpenCode 数据目录。配置与边界见 [OpenCode 运行时](../integrations/opencode-runtime.md)。
+
 ## Engine 协调
 
 Engine 的服务注册、心跳、配置热更新和能力发现使用 Redis 作为可选协调设施。Redis 还可以保存会话

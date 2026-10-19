@@ -1,3 +1,4 @@
+using OpenAgent.Application.Tests.TestDoubles;
 using System.Collections.Concurrent;
 using System.Net;
 using System.Text.Json;
@@ -236,7 +237,9 @@ public sealed class SseToolStreamingTests
             IChatClient provider,
             AgentConfig? agentConfig = null,
             Dictionary<string, string?>? settings = null,
-            Action<IServiceCollection>? configure = null)
+            Action<IServiceCollection>? configure = null,
+            bool useAcp = false,
+            LlmConfig? model = null)
         {
             var builder = WebApplication.CreateBuilder(new WebApplicationOptions
             {
@@ -254,11 +257,16 @@ public sealed class SseToolStreamingTests
             builder.Services.AddSingleton<IConfiguration>(configuration);
             builder.Services.AddSingleton<ICurrentUserContext>(new FixedCurrentUserContext());
             builder.Services.AddAgentApplication(configuration);
+            if (!useAcp)
+            {
+                // 原有回归用旧快照；OpenCode 端到端测试保留生产默认执行器。
+                builder.Services.AddScoped<IAgentExecution>(provider => ActivatorUtilities.CreateInstance<LegacyMafExecutor>(provider));
+            }
             // 与生产一致的替身注入位置：运行时解析与 LLM 客户端工厂替换为固定实现。
             builder.Services.RemoveAll<IAgentRuntimeResolver>();
             builder.Services.RemoveAll<AgentRuntimeResolver>();
             builder.Services.AddSingleton<IAgentRuntimeResolver>(
-                new StaticRuntimeResolver(agentConfig ?? new AgentConfig { MaxTurns = 4 }));
+                new StaticRuntimeResolver(agentConfig ?? new AgentConfig { MaxTurns = 4 }, model));
             builder.Services.RemoveAll<IAgentChatClientFactory>();
             builder.Services.AddSingleton<IAgentChatClientFactory>(new Factory(provider));
             builder.Services.RemoveAll<IConversationStore>();
@@ -350,7 +358,7 @@ public sealed class SseToolStreamingTests
             await _application.DisposeAsync().ConfigureAwait(false);
         }
 
-        private sealed class StaticRuntimeResolver(AgentConfig config) : IAgentRuntimeResolver
+        private sealed class StaticRuntimeResolver(AgentConfig config, LlmConfig? model) : IAgentRuntimeResolver
         {
             public Task<AgentRuntimeProfile> ResolveAsync(
                 string agentId,
@@ -361,7 +369,7 @@ public sealed class SseToolStreamingTests
                 {
                     AgentId = agentId,
                     Config = config,
-                    Model = new LlmConfig { ModelId = "local-scripted-model" }
+                    Model = model ?? new LlmConfig { ModelId = "local-scripted-model" }
                 });
         }
 

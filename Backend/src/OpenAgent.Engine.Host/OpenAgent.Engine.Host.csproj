@@ -15,4 +15,7 @@
     <ProjectReference Include="..\OpenAgent.Framework\OpenAgent.Framework.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="../OpenAgent.Runtime/OpenAgent.Runtime.csproj" />
+  </ItemGroup>
 </Project>

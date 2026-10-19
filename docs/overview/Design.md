@@ -1,73 +1,52 @@
 # Design — OpenAgent
 
-## 项目定位
-
-`OpenAgent.Application` 是 MAF-first 的 Agent 核心。Microsoft Agent Framework 已直接编译进
-Application，不再存在单独的 MAF 引擎项目或可切换的生产引擎体系。
-
-项目职责、模块目录、扩展接口和测试入口统一见 [开发指南](./DevelopmentGuide.md)。
-本页说明运行时架构；持久化主责见 [DataOwnership](./DataOwnership.md)。
-
 ## 请求主链
 
+本分支默认通过 OpenCode ACP 执行聊天推理。SDK、平台驱动、应用协调各自承担明确职责，详细配置见 [OpenCode 运行时](../integrations/opencode-runtime.md)。
+
 ```text
-HTTP / Channel
-  -> Engine.Host middleware: validation / tracing / auth / audit
-       -> AgentExecutor
-            -> identity + authorized model snapshot
-            -> AgentFactory -> ChatClientAgent + AgentSession
-                 -> ChatHistoryProvider -> lock + platform history
-                 -> AgentFeature -> tools + AIContextProviders + resources
-                 -> CompactionProvider (when enabled)
-                 -> FunctionInvokingChatClient
-            -> usage + tool marker + SSE mapping
+Engine.Host HTTP/SSE + 身份/入口治理
+  → Application.AgentExecutor → RuntimeAgentExecutor
+      → 授权模型快照 / 文件校验 / PlatformChatHistory
+      → RuntimePreparation：能力、MCP、Skill → RuntimeTool 回调
+      → Contracts.IAgentRuntimeDriver
+          → Runtime.OpenCodeRuntime
+              → Runtime.Acp SDK → stdio → OpenCode → 选定的 LLM API
+              ← session/update → AgentStreamEvent
+              ← OpenCode → 每轮 loopback MCP 桥 → 平台工具
+      → 保存会话成功 → usage/done
 ```
 
-MAF 管理 Agent、模型、流式输出、函数回填和工具迭代。平台保留租户授权、会话一致性、
-持久化、外部协议和审计。Application 中没有 `IAgentService`、`IAgentEngine`、
-`ExecutionInitializer` 或独立 `ConversationExecutor`。
+OpenCode 管理模型请求、流式更新和工具迭代。平台保留身份、模型授权、会话一致性、文件资产、能力授权、工具预算与持久化。取消等待 ACP 原 prompt 确认，进程退出由 SDK 租约兜底回收。
 
-## 并列扩展面
+## 项目与契约边界
 
-| 扩展面 | 实现 | 约束 |
-|---|---|---|
-| Model | `AgentChatClientFactory` | Provider 返回 `IChatClient`，不新增 Engine |
-| Capability | 普通能力 `ICapabilitySource`；MCP/Skill `IAgentFeatureFactory` 接入官方工具与 Provider | Execution 通过接口组合；能力各自负责 SDK 适配与资源 |
-| Memory | `PlatformChatHistory` | 平台存储实现 MAF `ChatHistoryProvider` |
-| Orchestration | `ChatClientAgent` / `AgentSession` | 单 Agent 或未来 MAF Workflow 均留在此边界 |
+| 层 | 职责与引用 |
+|---|---|
+| Runtime.Acp | 单 NuGet SDK；Protocol/Transport/RPC/Client/Agent/Processes；不引用平台项目 |
+| Contracts/Runtime | IAgentRuntimeDriver、RuntimeInvocation、RuntimeTool；不暴露 ACP/MAF 类型 |
+| Runtime | 不打包的平台适配类库；仅引用 Contracts 与 Runtime.Acp，使用官方 MCP SDK 承接工具调用 |
+| Application | 只通过平台契约运行驱动；组合历史、能力与 Skill，不引用 Runtime/Runtime.Acp |
+| Engine.Host | 注册 AddAgentApplication 与 AddOpenCodeRuntime，组装存储、认证及服务 |
 
-四者不是串行 wrapper。一次请求只创建一个平台 turn，并在其中发起一次 MAF run。
-Factory 返回拥有 `AIAgent`、历史和资源生命周期的 `AgentExecutionScope`。轮次身份通过
-`TurnContext` 携带，分别投影给会话和交互捕获；转换与观测不反向依赖执行编排。
+项目引用由 AssemblyDependencyTests 验证。各域所有者与修改入口见 [开发指南](DevelopmentGuide.md)。
 
-## 会话一致性
+## 会话一致性与兼容范围
 
-| 层次 | 机制 | 位置 |
-|---|---|---|
-| 防覆盖 | `expectedVersion` + EF Core 并发令牌 | PostgreSQL conversation store |
-| 性能优化 | conversation affinity | Router |
+PostgreSQL 继续是会话与文件资产的持久化事实源；Redis 是缓存与协调设施，S3 兼容存储只保存原始字节。既有会话锁和 expectedVersion 保持有效。
 
-MAF 通过 `PlatformChatHistory` 主动加载和写回历史。PostgreSQL 是会话和文件资产的唯一持久化事实源；S3 兼容对象存储只保存原始文件字节。
+每轮创建新 OpenCode 进程/会话，平台历史作为有角色标识的 JSON 上下文传入；不把 ACP session ID 当作持久化会话主键，不依赖跨进程 session/load。取消或失败保存已输出的正文、reasoning 与工具记录。
+
+MAF/Microsoft.Extensions.AI 仍服务于历史和 Skill Provider 兼容、既有独立压缩服务。旧聊天推理循环只保留在 tests/TestDoubles 的回归快照中，生产入口没有自动 MAF 回退。完整移除兼容代码和包、Worker、分布式 RunGrant 是后续任务，不能以本次接入代替验收。
 
 ## DI 入口
 
-生产 Host 只需：
-
 ```csharp
 services.AddAgentApplication(configuration);
+services.AddOpenCodeRuntime(configuration);
 services.AddOpenAgentInfrastructure(configuration);
 services.AddFileAssetObjectStorage(configuration);
 services.AddAgentEngine(configuration);
 ```
 
-AddAgentApplication 调用各功能域的注册扩展，使用统一的 Application 注册入口；AgentFactory 仅通过下层接口
-组合运行时。不得在 Application 之外引入第二 Agent composition root。
-
-## 技术栈
-
-- .NET 10
-- Microsoft Agent Framework / Microsoft.Extensions.AI
-- Model Context Protocol SDK
-- PostgreSQL + EF Core conversation and file-asset persistence
-- S3-compatible object storage for file bytes
-- xUnit
+SDK 使用者不需要引用 OpenAgent.Runtime 或 Application。技术栈为 .NET 10、ACP v1、OpenCode 1.18.35、官方 MCP C# SDK、PostgreSQL/Redis/S3 与 xUnit。

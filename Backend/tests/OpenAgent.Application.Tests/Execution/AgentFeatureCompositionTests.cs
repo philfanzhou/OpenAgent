@@ -4,6 +4,7 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Requests;
+using OpenAgent.Contracts.Runtime;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Application.Tests.TestDoubles;
 using OpenAgent.Application.Tooling.Abstractions;
@@ -29,9 +30,11 @@ public class AgentFeatureCompositionTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task ExecuteAsync_LaterFeatureFails_ReleasesEarlierFeaturesAndPreservesOriginalError(bool cleanupFails)
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task ExecuteAsync_LaterFeatureFails_ReleasesEarlierFeaturesAndPreservesOriginalError(bool cleanupFails, bool useAcp)
     {
         TrackingResource resource = new(cleanupFails);
         FakeChatProvider provider = new(new Microsoft.Extensions.AI.ChatResponse(new ChatMessage(ChatRole.Assistant, "unused")));
@@ -41,7 +44,7 @@ public class AgentFeatureCompositionTests
             {
                 services.AddSingleton<IAgentFeatureFactory>(new TestFeature(resource));
                 services.AddSingleton<IAgentFeatureFactory>(new FailedFeature());
-            });
+            }, driver: useAcp ? new UnreachableDriver() : null);
 
         InvalidOperationException error = await Assert.ThrowsAsync<InvalidOperationException>(
             () => runtime.Executor.ExecuteAsync(Request, User, CancellationToken.None));
@@ -73,6 +76,12 @@ public class AgentFeatureCompositionTests
     {
         public Task<AgentFeature> CreateAsync(string agentId, AgentConfig config, IAgentUserContext user,
             CancellationToken cancellationToken) => throw new InvalidOperationException("feature failed");
+    }
+
+    private sealed class UnreachableDriver : IAgentRuntimeDriver
+    {
+        public IAsyncEnumerable<AgentStreamEvent> RunAsync(RuntimeInvocation invocation, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("Failed preparation must not start the driver.");
     }
 
     private sealed class TrackingResource(bool fail = false) : IAsyncDisposable

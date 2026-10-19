@@ -7,6 +7,8 @@
   <ItemGroup>
     <InternalsVisibleTo Include="OpenAgent.Application" />
     <InternalsVisibleTo Include="OpenAgent.Application.Tests" />
+    <!-- Engine 的旧执行器回归夹具复用内部文件解析器。 -->
+    <InternalsVisibleTo Include="OpenAgent.Engine.Tests" />
     <InternalsVisibleTo Include="OpenAgent.Capabilities.Tests" />
     <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
   </ItemGroup>

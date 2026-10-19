@@ -8,3 +8,4 @@
 | [固定来源](sources.json) | 协议 schema 的版本与许可证来源 |
 
 当前状态统一见 [任务清单](../../planning/TODO.md)。建议先看架构，再看使用指南；验证入口为 `dotnet test Backend/tests/OpenAgent.Runtime.Acp.Tests`。
+平台如何消费本 SDK 见 [OpenCode ACP 运行时](../opencode-runtime.md)；平台适配类库不增加 SDK NuGet 包。

@@ -1,4 +1,5 @@
 using OpenAgent.Application.Exten;
+using OpenAgent.Runtime;
 using Microsoft.EntityFrameworkCore;
 using OpenAgent.Engine.Extensions;
 using OpenAgent.Engine.Host;
@@ -28,6 +29,7 @@ builder.Services.AddAgentHost(builder.Configuration, options =>
 });
 
 builder.Services.AddAgentApplication(builder.Configuration);
+builder.Services.AddOpenCodeRuntime(builder.Configuration);
 builder.Services.AddOpenAgentInfrastructure(builder.Configuration);
 builder.Services.AddFileAssetObjectStorage(builder.Configuration);
 builder.Services.AddSingleton<SkillPackageManagementService>();
