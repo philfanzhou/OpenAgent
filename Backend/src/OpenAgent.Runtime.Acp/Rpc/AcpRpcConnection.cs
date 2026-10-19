@@ -43,6 +43,7 @@ public sealed partial class AcpRpcConnection
     private readonly ConcurrentDictionary<string, byte> _recentlyCompletedSet = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _inflight = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<Task, byte> _tracked = new();
+    private readonly ConcurrentDictionary<BatchCollector, byte> _activeBatches = new();
     private readonly Channel<OutboundWrite> _outgoing;
     private readonly Channel<AcpRpcNotification> _notifications;
     private readonly CancellationTokenSource _lifetime = new();
@@ -194,6 +195,9 @@ public sealed partial class AcpRpcConnection
         // Terminal faults stay observable on Completion; disposal reports only what closing itself did.
         await _completion.Task.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
     }
+
+    /// <summary>Test-only observation: tracked tasks still running, so leak regressions can assert a drained engine.</summary>
+    internal int TrackedTaskCount => _tracked.Count;
 
     private static string PendingKey(RpcId id) => id.Kind == JsonValueKind.String
         ? "s:" + id.StringValue

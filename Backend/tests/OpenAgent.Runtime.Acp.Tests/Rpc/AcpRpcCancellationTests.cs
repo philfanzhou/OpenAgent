@@ -24,7 +24,7 @@ public sealed class AcpRpcCancellationTests
         {
             handlerStarted.TrySetResult();
             ct.Register(() => cancellationSeen.TrySetResult());
-            await Task.Delay(Timeout.InfiniteTimeSpan, ct).ConfigureAwait(false);
+            await Task.Delay(Timeout.InfiniteTimeSpan, ct);
             return EngineTestUtil.BuildElement(static writer =>
         {
             writer.WriteStartObject();
@@ -36,12 +36,12 @@ public sealed class AcpRpcCancellationTests
 
         using CancellationTokenSource caller = new();
         Task<JsonElement> call = client.RequestAsync("test/long", null, caller.Token);
-        await handlerStarted.Task.ConfigureAwait(false);
-        await caller.CancelAsync().ConfigureAwait(false);
+        await handlerStarted.Task;
+        await caller.CancelAsync();
 
         // The engine sends $/cancel_request; the cooperating handler observes it and answers cancelled.
-        await cancellationSeen.Task.ConfigureAwait(false);
-        AcpRpcException failure = await Assert.ThrowsAsync<AcpRpcException>(() => call).ConfigureAwait(false);
+        await cancellationSeen.Task;
+        AcpRpcException failure = await Assert.ThrowsAsync<AcpRpcException>(() => call);
         Assert.Equal(ErrorCode.RequestCancelled, failure.Code);
     }
 
@@ -60,14 +60,14 @@ public sealed class AcpRpcCancellationTests
         {
             try
             {
-                await Task.Delay(Timeout.InfiniteTimeSpan, ct).ConfigureAwait(false);
+                await Task.Delay(Timeout.InfiniteTimeSpan, ct);
             }
             catch (OperationCanceledException)
             {
                 // Cancellation deliberately ignored.
             }
 
-            await release.Task.ConfigureAwait(false);
+            await release.Task;
             return EngineTestUtil.BuildElement(static writer =>
         {
             writer.WriteStartObject();
@@ -81,11 +81,11 @@ public sealed class AcpRpcCancellationTests
         Task<JsonElement> call = client.RequestAsync("test/ignores-cancel", null, caller.Token);
         try
         {
-            await Task.Delay(100, CancellationToken.None).ConfigureAwait(false);
-            await caller.CancelAsync().ConfigureAwait(false);
+            await Task.Delay(100, CancellationToken.None);
+            await caller.CancelAsync();
 
-            await Assert.ThrowsAsync<AcpCancellationUnconfirmedException>(() => call).ConfigureAwait(false);
-            await client.Completion.ConfigureAwait(false);
+            await Assert.ThrowsAsync<AcpCancellationUnconfirmedException>(() => call);
+            await client.Completion;
         }
         finally
         {
@@ -112,13 +112,13 @@ public sealed class AcpRpcCancellationTests
             {
                 try
                 {
-                    await Task.Delay(Timeout.InfiniteTimeSpan, ct).ConfigureAwait(false);
+                    await Task.Delay(Timeout.InfiniteTimeSpan, ct);
                 }
                 catch (OperationCanceledException)
                 {
                 }
 
-                await release.Task.ConfigureAwait(false);
+                await release.Task;
                 return EngineTestUtil.BuildElement(static writer =>
                 {
                     writer.WriteStartObject();
@@ -132,10 +132,10 @@ public sealed class AcpRpcCancellationTests
             Task<JsonElement> call = client.RequestAsync("test/ignores-cancel", null, caller.Token);
             try
             {
-                await Task.Delay(30, CancellationToken.None).ConfigureAwait(false);
-                await caller.CancelAsync().ConfigureAwait(false);
-                await Assert.ThrowsAsync<AcpCancellationUnconfirmedException>(() => call).ConfigureAwait(false);
-                await client.Completion.ConfigureAwait(false);
+                await Task.Delay(30, CancellationToken.None);
+                await caller.CancelAsync();
+                await Assert.ThrowsAsync<AcpCancellationUnconfirmedException>(() => call);
+                await client.Completion;
             }
             finally
             {
@@ -157,7 +157,7 @@ public sealed class AcpRpcCancellationTests
         // The agent takes the request but never answers, even after receiving our cancel path.
         agent.RegisterRequestHandler("test/orphan", async (_, _) =>
         {
-            await release.Task.ConfigureAwait(false);
+            await release.Task;
             return EngineTestUtil.BuildElement(static writer =>
         {
             writer.WriteStartObject();
@@ -168,10 +168,10 @@ public sealed class AcpRpcCancellationTests
         agent.Start();
 
         Task<JsonElement> call = client.RequestAsync("test/orphan", null, test.Token);
-        await RpcTestHarness.SendFrameAsync(agentWire, "{\"method\":\"$/cancel_request\",\"params\":{\"requestId\":\"acp-1\"}}").ConfigureAwait(false);
+        await RpcTestHarness.SendFrameAsync(agentWire, "{\"method\":\"$/cancel_request\",\"params\":{\"requestId\":\"acp-1\"}}");
 
-        await Assert.ThrowsAsync<AcpCancellationUnconfirmedException>(() => call).ConfigureAwait(false);
-        await client.Completion.ConfigureAwait(false);
+        await Assert.ThrowsAsync<AcpCancellationUnconfirmedException>(() => call);
+        await client.Completion;
         release.TrySetResult();
     }
 
@@ -189,13 +189,13 @@ public sealed class AcpRpcCancellationTests
         {
             try
             {
-                await Task.Delay(Timeout.InfiniteTimeSpan, ct).ConfigureAwait(false);
+                await Task.Delay(Timeout.InfiniteTimeSpan, ct);
             }
             catch (OperationCanceledException)
             {
             }
 
-            await release.Task.ConfigureAwait(false);
+            await release.Task;
             return EngineTestUtil.BuildElement(static writer =>
         {
             writer.WriteStartObject();
@@ -208,8 +208,8 @@ public sealed class AcpRpcCancellationTests
         try
         {
             await Assert.ThrowsAsync<AcpCancellationUnconfirmedException>(
-                () => client.RequestAsync("test/ignores-cancel", null, test.Token)).ConfigureAwait(false);
-            await client.Completion.ConfigureAwait(false);
+                () => client.RequestAsync("test/ignores-cancel", null, test.Token));
+            await client.Completion;
         }
         finally
         {
@@ -237,10 +237,10 @@ public sealed class AcpRpcCancellationTests
 
         using CancellationTokenSource caller = new();
         Task<JsonElement> call = client.RequestAsync("test/finish-fast", null, caller.Token);
-        JsonElement answer = await call.ConfigureAwait(false);
+        JsonElement answer = await call;
         Assert.Equal("done", answer.GetProperty("value").GetString());
         // Cancelling an already-finished call must not disturb anything.
-        await caller.CancelAsync().ConfigureAwait(false);
+        await caller.CancelAsync();
         Assert.True(call.IsCompletedSuccessfully);
     }
 
@@ -255,7 +255,7 @@ public sealed class AcpRpcCancellationTests
         TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
         agent.RegisterRequestHandler("test/slow", async (_, _) =>
         {
-            await release.Task.ConfigureAwait(false);
+            await release.Task;
             return EngineTestUtil.BuildElement(static writer =>
         {
             writer.WriteStartObject();
@@ -275,7 +275,7 @@ public sealed class AcpRpcCancellationTests
         try
         {
             // While the slow handler runs, further calls still answer.
-            JsonElement fast = await client.RequestAsync("test/fast", null, test.Token).ConfigureAwait(false);
+            JsonElement fast = await client.RequestAsync("test/fast", null, test.Token);
             Assert.Equal("fast", fast.GetProperty("speed").GetString());
         }
         finally
@@ -283,6 +283,6 @@ public sealed class AcpRpcCancellationTests
             release.TrySetResult();
         }
 
-        await slow.ConfigureAwait(false);
+        await slow;
     }
 }

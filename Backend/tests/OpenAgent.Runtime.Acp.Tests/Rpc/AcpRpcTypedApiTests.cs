@@ -32,7 +32,7 @@ public sealed class AcpRpcTypedApiTests
         InitializeResponse response = await client.RequestAsync(
             Initialize,
             new InitializeRequest(1, default, default, default),
-            test.Token).ConfigureAwait(false);
+            test.Token);
         Assert.Equal(1u, response.ProtocolVersion);
         Assert.True(response.AuthMethods.HasValue);
         Assert.Equal("oauth", response.AuthMethods.Value[0].AsAgent().Id);
@@ -58,7 +58,7 @@ public sealed class AcpRpcTypedApiTests
                 writer.WriteString("clientInfo", "wrong");
                 writer.WriteEndObject();
             }),
-            test.Token)).ConfigureAwait(false);
+            test.Token));
     }
 
     [Fact]
@@ -79,8 +79,8 @@ public sealed class AcpRpcTypedApiTests
                 default)));
         client.Start();
 
-        await RpcTestHarness.SendFrameAsync(agentWire, "{\"id\":1,\"method\":\"session/request_permission\",\"params\":{\"wrong\":true}}").ConfigureAwait(false);
-        JsonDocument? response = await RpcTestHarness.ReceiveFrameAsync(clientWire, test.Token).ConfigureAwait(false);
+        await RpcTestHarness.SendFrameAsync(agentWire, "{\"id\":1,\"method\":\"session/request_permission\",\"params\":{\"wrong\":true}}");
+        JsonDocument? response = await RpcTestHarness.ReceiveFrameAsync(clientWire, test.Token);
         Assert.Equal(ErrorCode.InvalidParams, response!.RootElement.GetProperty("error").GetProperty("code").GetInt32());
     }
 }

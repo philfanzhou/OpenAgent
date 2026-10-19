@@ -32,7 +32,9 @@ public sealed partial class AcpRpcConnection
                 }
                 catch (Exception exception)
                 {
-                    write.Written.TrySetException(exception);
+                    // The fault closes the connection, so the call fails closed like every other
+                    // pending call (PROTOCOL §4); the raw transport error stays on Completion.
+                    write.Written.TrySetException(new AcpConnectionClosedException("a frame could not be written", exception));
                     Close("a frame could not be written", exception);
                     return;
                 }
@@ -118,8 +120,18 @@ public sealed partial class AcpRpcConnection
         }
 
         FailAllPending(new AcpConnectionClosedException(reason));
-        // Every tracked task observes the lifetime token, so this converges within bounded handler limits.
-        await Task.WhenAll([.. _tracked.Keys]).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        // Converge in rounds: unfinished batch collectors are settled first (their handlers may
+        // already have stopped writing frames), then every tracked task must drain. A task
+        // tracked after one snapshot is caught by the next round, so shutdown leaves no
+        // unobserved task behind (PROTOCOL §4). Each round only waits on bounded work.
+        Error closing = new(ErrorCode.InternalError, "The connection is closing.");
+        while (true)
+        {
+            foreach (BatchCollector collector in _activeBatches.Keys) collector.Abandon(closing);
+            Task[] snapshot = [.. _tracked.Keys];
+            if (snapshot.Length == 0) break;
+            await Task.WhenAll(snapshot).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
         // Disposing first lets a dispose-initiated close settle; the transport's own EOF path already runs.
         try
         {
@@ -297,7 +309,7 @@ public sealed partial class AcpRpcConnection
         private readonly object _gate = new();
         private readonly List<TaskCompletionSource> _slots = [];
         private readonly List<BatchItem?> _items = [];
-        private int _filled;
+        private readonly HashSet<int> _open = [];
         private int _expected = -1;
         private readonly TaskCompletionSource _done = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -307,6 +319,7 @@ public sealed partial class AcpRpcConnection
             {
                 _slots.Add(new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
                 _items.Add(null);
+                _open.Add(_slots.Count - 1);
                 return _slots.Count - 1;
             }
         }
@@ -319,9 +332,22 @@ public sealed partial class AcpRpcConnection
         {
             lock (_gate)
             {
+                // Shutdown's sweep may have settled this slot first; the first fill wins.
+                if (!_open.Remove(slot)) return;
                 _items[slot] = item;
-                _filled++;
-                if (_expected >= 0 && _filled == _expected) _done.TrySetResult();
+                if (_expected >= 0 && _open.Count == 0) _done.TrySetResult();
+            }
+        }
+
+        /// <summary>Shutdown path: settles every slot no handler will fill, so assembly and disposal converge.</summary>
+        public void Abandon(Error error)
+        {
+            lock (_gate)
+            {
+                foreach (int slot in _open) _items[slot] = new BatchItem(null, error, null);
+                bool settled = _open.Count > 0;
+                _open.Clear();
+                if (settled && _expected >= 0) _done.TrySetResult();
             }
         }
 
@@ -330,7 +356,7 @@ public sealed partial class AcpRpcConnection
             lock (_gate)
             {
                 _expected = _slots.Count;
-                if (_filled == _expected) _done.TrySetResult();
+                if (_open.Count == 0) _done.TrySetResult();
             }
         }
 

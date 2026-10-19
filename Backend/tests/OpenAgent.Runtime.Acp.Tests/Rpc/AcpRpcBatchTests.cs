@@ -43,9 +43,9 @@ public sealed class AcpRpcBatchTests
               {"method":"test/note","params":{"n":1}},
               {"id":"b","method":"test/two","params":{}}
             ]
-            """).ConfigureAwait(false);
+            """);
 
-        JsonDocument? batch = await RpcTestHarness.ReceiveFrameAsync(clientWire, test.Token).ConfigureAwait(false);
+        JsonDocument? batch = await RpcTestHarness.ReceiveFrameAsync(clientWire, test.Token);
         Assert.NotNull(batch);
         Assert.Equal(JsonValueKind.Array, batch!.RootElement.ValueKind);
         Assert.Equal(2, batch.RootElement.GetArrayLength());
@@ -56,7 +56,7 @@ public sealed class AcpRpcBatchTests
         await EngineTestUtil.WaitForAsync(() =>
         {
             lock (notifications) return notifications.Count == 1;
-        }, test.Token).ConfigureAwait(false);
+        }, test.Token);
     }
 
     [Fact]
@@ -75,12 +75,12 @@ public sealed class AcpRpcBatchTests
         });
         client.Start();
 
-        await RpcTestHarness.SendFrameAsync(agentWire, "[{\"method\":\"test/note\",\"params\":{}},{\"method\":\"test/other\"}]").ConfigureAwait(false);
+        await RpcTestHarness.SendFrameAsync(agentWire, "[{\"method\":\"test/note\",\"params\":{}},{\"method\":\"test/other\"}]");
         await EngineTestUtil.WaitForAsync(() =>
         {
             lock (notifications) return notifications.Count == 1;
-        }, test.Token).ConfigureAwait(false);
-        await EngineTestUtil.AssertNoFrameAsync(clientWire, test.Token).ConfigureAwait(false);
+        }, test.Token);
+        await EngineTestUtil.AssertNoFrameAsync(clientWire, test.Token);
     }
 
     [Fact]
@@ -92,8 +92,8 @@ public sealed class AcpRpcBatchTests
         using CancellationTokenSource test = new(RpcTestHarness.TimeoutMs);
 
         client.Start();
-        await RpcTestHarness.SendFrameAsync(agentWire, "[]").ConfigureAwait(false);
-        JsonDocument? response = await RpcTestHarness.ReceiveFrameAsync(clientWire, test.Token).ConfigureAwait(false);
+        await RpcTestHarness.SendFrameAsync(agentWire, "[]");
+        JsonDocument? response = await RpcTestHarness.ReceiveFrameAsync(clientWire, test.Token);
         Assert.NotNull(response);
         Assert.Equal(JsonValueKind.Object, response!.RootElement.ValueKind);
         Assert.Equal(ErrorCode.InvalidRequest, response.RootElement.GetProperty("error").GetProperty("code").GetInt32());
@@ -111,7 +111,7 @@ public sealed class AcpRpcBatchTests
         client.RegisterRequestHandler("test/slow", async (_, ct) =>
         {
             handlerStarted.TrySetResult();
-            await Task.Delay(Timeout.InfiniteTimeSpan, ct).ConfigureAwait(false);
+            await Task.Delay(Timeout.InfiniteTimeSpan, ct);
             return EngineTestUtil.BuildElement(static writer =>
         {
             writer.WriteStartObject();
@@ -125,10 +125,10 @@ public sealed class AcpRpcBatchTests
               {"id":"long","method":"test/slow","params":{}},
               {"method":"$/cancel_request","params":{"requestId":"long"}}
             ]
-            """).ConfigureAwait(false);
+            """);
 
-        await handlerStarted.Task.ConfigureAwait(false);
-        JsonDocument? batch = await RpcTestHarness.ReceiveFrameAsync(clientWire, test.Token).ConfigureAwait(false);
+        await handlerStarted.Task;
+        JsonDocument? batch = await RpcTestHarness.ReceiveFrameAsync(clientWire, test.Token);
         Assert.NotNull(batch);
         Assert.Equal(1, batch!.RootElement.GetArrayLength());
         Assert.Equal(ErrorCode.RequestCancelled, batch.RootElement[0].GetProperty("error").GetProperty("code").GetInt32());
@@ -150,8 +150,8 @@ public sealed class AcpRpcBatchTests
         })));
         client.Start();
 
-        await RpcTestHarness.SendFrameAsync(agentWire, "[42,{\"id\":\"ok\",\"method\":\"test/echo\",\"params\":{}}]").ConfigureAwait(false);
-        JsonDocument? batch = await RpcTestHarness.ReceiveFrameAsync(clientWire, test.Token).ConfigureAwait(false);
+        await RpcTestHarness.SendFrameAsync(agentWire, "[42,{\"id\":\"ok\",\"method\":\"test/echo\",\"params\":{}}]");
+        JsonDocument? batch = await RpcTestHarness.ReceiveFrameAsync(clientWire, test.Token);
         Assert.NotNull(batch);
         Assert.Equal(2, batch!.RootElement.GetArrayLength());
         Assert.Equal(ErrorCode.InvalidRequest, batch.RootElement[0].GetProperty("error").GetProperty("code").GetInt32());

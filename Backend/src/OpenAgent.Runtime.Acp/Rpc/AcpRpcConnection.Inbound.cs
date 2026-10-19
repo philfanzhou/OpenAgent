@@ -74,6 +74,9 @@ public sealed partial class AcpRpcConnection
         }
 
         BatchCollector collector = new();
+        // Registered before any dispatch: shutdown can then settle unfinished slots even when
+        // the assembly task has not been tracked yet, so no collector is ever missed.
+        _activeBatches[collector] = 0;
         foreach (JsonElement item in batch.EnumerateArray())
         {
             if (item.ValueKind != JsonValueKind.Object)
@@ -212,7 +215,12 @@ public sealed partial class AcpRpcConnection
         }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
         {
-            // Shutdown already fails everything; no frame is written on a closing link.
+            // Shutdown writes no frame on a closing link, but the batch slot must still settle:
+            // an unfilled slot would park the batch assembly task and hang disposal forever.
+            if (target is not null)
+            {
+                target.Collector.Fail(target.Slot, request.Id, new Error(ErrorCode.InternalError, "The connection is closing."));
+            }
         }
         catch (AcpRpcException exception)
         {
@@ -482,9 +490,11 @@ public sealed partial class AcpRpcConnection
     /// <summary>Assembles and writes one response array for a fully completed batch, in original item order.</summary>
     private async Task AssembleWhenDoneAsync(BatchCollector collector)
     {
-        await collector.CollectAsync().ConfigureAwait(false);
         try
         {
+            await collector.CollectAsync().ConfigureAwait(false);
+            // A closing link owns the wire; the sweep already settled every slot, so nothing is written.
+            if (_lifetime.IsCancellationRequested) return;
             BatchItem[] items = collector.Items;
             if (items.Length == 0) return;
             JsonElement[] responses = new JsonElement[items.Length];
@@ -508,6 +518,10 @@ public sealed partial class AcpRpcConnection
         catch (Exception exception)
         {
             Close("a batch response could not be assembled", exception);
+        }
+        finally
+        {
+            _activeBatches.TryRemove(collector, out _);
         }
     }
 

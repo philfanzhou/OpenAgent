@@ -23,7 +23,7 @@ public sealed class AcpRpcEngineTests
         agent.RegisterRequestHandler("test/outer", async (_, ct) =>
         {
             // Reentrant reverse call from inside the agent handler.
-            JsonElement inner = await agent.RequestAsync("test/inner", null, ct).ConfigureAwait(false);
+            JsonElement inner = await agent.RequestAsync("test/inner", null, ct);
             return EngineTestUtil.BuildElement(writer =>
             {
                 writer.WriteStartObject();
@@ -40,7 +40,7 @@ public sealed class AcpRpcEngineTests
         client.Start();
         agent.Start();
 
-        JsonElement result = await client.RequestAsync("test/outer", null, test.Token).ConfigureAwait(false);
+        JsonElement result = await client.RequestAsync("test/outer", null, test.Token);
         Assert.Equal("inner", result.GetProperty("seen").GetString());
     }
 
@@ -73,8 +73,8 @@ public sealed class AcpRpcEngineTests
 
         Task<JsonElement> clientCall = client.RequestAsync("test/from-client", null, test.Token);
         Task<JsonElement> agentCall = agent.RequestAsync("test/from-agent", null, test.Token);
-        JsonElement clientResult = await clientCall.ConfigureAwait(false);
-        JsonElement agentResult = await agentCall.ConfigureAwait(false);
+        JsonElement clientResult = await clientCall;
+        JsonElement agentResult = await agentCall;
         Assert.True(clientResult.GetProperty("agent").GetBoolean());
         Assert.Equal("1", agentResult.GetProperty("served").GetString());
     }
@@ -96,8 +96,8 @@ public sealed class AcpRpcEngineTests
         })));
         client.Start();
 
-        await RpcTestHarness.SendFrameAsync(agentWire, $"{{\"id\":{rawId},\"method\":\"test/echo\",\"params\":{{}}}}").ConfigureAwait(false);
-        JsonDocument? response = await RpcTestHarness.ReceiveFrameAsync(clientWire, test.Token).ConfigureAwait(false);
+        await RpcTestHarness.SendFrameAsync(agentWire, $"{{\"id\":{rawId},\"method\":\"test/echo\",\"params\":{{}}}}");
+        JsonDocument? response = await RpcTestHarness.ReceiveFrameAsync(clientWire, test.Token);
         Assert.NotNull(response);
         Assert.Equal(expectedRaw, response!.RootElement.GetProperty("id").GetRawText());
     }
@@ -111,12 +111,12 @@ public sealed class AcpRpcEngineTests
         using CancellationTokenSource test = new(RpcTestHarness.TimeoutMs);
 
         client.Start();
-        await RpcTestHarness.SendFrameAsync(agentWire, "{\"id\":null,\"method\":\"test/echo\"}").ConfigureAwait(false);
-        JsonDocument? first = await RpcTestHarness.ReceiveFrameAsync(clientWire, test.Token).ConfigureAwait(false);
+        await RpcTestHarness.SendFrameAsync(agentWire, "{\"id\":null,\"method\":\"test/echo\"}");
+        JsonDocument? first = await RpcTestHarness.ReceiveFrameAsync(clientWire, test.Token);
         Assert.Equal(ErrorCode.InvalidRequest, first!.RootElement.GetProperty("error").GetProperty("code").GetInt32());
 
-        await RpcTestHarness.SendFrameAsync(agentWire, "{\"id\":1.5,\"method\":\"test/echo\"}").ConfigureAwait(false);
-        JsonDocument? second = await RpcTestHarness.ReceiveFrameAsync(clientWire, test.Token).ConfigureAwait(false);
+        await RpcTestHarness.SendFrameAsync(agentWire, "{\"id\":1.5,\"method\":\"test/echo\"}");
+        JsonDocument? second = await RpcTestHarness.ReceiveFrameAsync(clientWire, test.Token);
         Assert.Equal(ErrorCode.InvalidRequest, second!.RootElement.GetProperty("error").GetProperty("code").GetInt32());
     }
 
@@ -129,8 +129,8 @@ public sealed class AcpRpcEngineTests
         using CancellationTokenSource test = new(RpcTestHarness.TimeoutMs);
 
         client.Start();
-        await RpcTestHarness.SendFrameAsync(agentWire, "{\"id\":7,\"method\":\"nope/missing\",\"params\":{}}").ConfigureAwait(false);
-        JsonDocument? response = await RpcTestHarness.ReceiveFrameAsync(clientWire, test.Token).ConfigureAwait(false);
+        await RpcTestHarness.SendFrameAsync(agentWire, "{\"id\":7,\"method\":\"nope/missing\",\"params\":{}}");
+        JsonDocument? response = await RpcTestHarness.ReceiveFrameAsync(clientWire, test.Token);
         Assert.Equal(ErrorCode.MethodNotFound, response!.RootElement.GetProperty("error").GetProperty("code").GetInt32());
         Assert.Equal(7, response.RootElement.GetProperty("id").GetInt64());
     }
@@ -153,12 +153,12 @@ public sealed class AcpRpcEngineTests
         });
         client.Start();
 
-        await RpcTestHarness.SendFrameAsync(agentWire, "{\"method\":\"test/unknown\",\"params\":{}}").ConfigureAwait(false);
-        await RpcTestHarness.SendFrameAsync(agentWire, "{\"method\":\"test/known\",\"params\":{\"value\":1}}").ConfigureAwait(false);
-        await EngineTestUtil.WaitForAsync(() => received.Count == 1, test.Token).ConfigureAwait(false);
+        await RpcTestHarness.SendFrameAsync(agentWire, "{\"method\":\"test/unknown\",\"params\":{}}");
+        await RpcTestHarness.SendFrameAsync(agentWire, "{\"method\":\"test/known\",\"params\":{\"value\":1}}");
+        await EngineTestUtil.WaitForAsync(() => received.Count == 1, test.Token);
         Assert.Equal("test/known", received[0].Method);
         Assert.Contains(diagnostics, diagnostic => diagnostic.Kind == AcpRpcDiagnosticKind.UnhandledNotification);
-        await EngineTestUtil.AssertNoFrameAsync(clientWire, test.Token).ConfigureAwait(false);
+        await EngineTestUtil.AssertNoFrameAsync(clientWire, test.Token);
     }
 
     [Fact]
@@ -176,12 +176,12 @@ public sealed class AcpRpcEngineTests
         })));
         client.Start();
 
-        await RpcTestHarness.SendFrameAsync(agentWire, "{\"id\":1,\"method\":").ConfigureAwait(false);
-        JsonDocument? parseError = await RpcTestHarness.ReceiveFrameAsync(clientWire, test.Token).ConfigureAwait(false);
+        await RpcTestHarness.SendFrameAsync(agentWire, "{\"id\":1,\"method\":");
+        JsonDocument? parseError = await RpcTestHarness.ReceiveFrameAsync(clientWire, test.Token);
         Assert.Equal(ErrorCode.ParseError, parseError!.RootElement.GetProperty("error").GetProperty("code").GetInt32());
 
-        await RpcTestHarness.SendFrameAsync(agentWire, "{\"id\":2,\"method\":\"test/echo\",\"params\":{}}").ConfigureAwait(false);
-        JsonDocument? response = await RpcTestHarness.ReceiveFrameAsync(clientWire, test.Token).ConfigureAwait(false);
+        await RpcTestHarness.SendFrameAsync(agentWire, "{\"id\":2,\"method\":\"test/echo\",\"params\":{}}");
+        JsonDocument? response = await RpcTestHarness.ReceiveFrameAsync(clientWire, test.Token);
         Assert.Equal(2, response!.RootElement.GetProperty("id").GetInt64());
         Assert.True(response.RootElement.TryGetProperty("result", out _));
     }
@@ -205,15 +205,15 @@ public sealed class AcpRpcEngineTests
 
         Task<JsonElement> call = client.RequestAsync("test/echo", null, test.Token);
         // The agent engine writes the reply; its tap is where the response appears.
-        JsonDocument? reply = await ReceiveResponseFrameAsync(agentWire, test.Token).ConfigureAwait(false);
+        JsonDocument? reply = await ReceiveResponseFrameAsync(agentWire, test.Token);
         // The same answer twice, plus a response for an ID nobody issued.
-        await RpcTestHarness.SendFrameAsync(agentWire, reply!.RootElement.GetRawText()).ConfigureAwait(false);
-        await RpcTestHarness.SendFrameAsync(agentWire, reply.RootElement.GetRawText()).ConfigureAwait(false);
-        await RpcTestHarness.SendFrameAsync(agentWire, "{\"id\":\"never-issued\",\"result\":{}}").ConfigureAwait(false);
-        await call.ConfigureAwait(false);
+        await RpcTestHarness.SendFrameAsync(agentWire, reply!.RootElement.GetRawText());
+        await RpcTestHarness.SendFrameAsync(agentWire, reply.RootElement.GetRawText());
+        await RpcTestHarness.SendFrameAsync(agentWire, "{\"id\":\"never-issued\",\"result\":{}}");
+        await call;
 
-        await EngineTestUtil.WaitForAsync(() => diagnostics.Any(item => item.Kind == AcpRpcDiagnosticKind.DuplicateResponse), test.Token).ConfigureAwait(false);
-        await EngineTestUtil.WaitForAsync(() => diagnostics.Any(item => item.Kind == AcpRpcDiagnosticKind.UnmatchedResponse), test.Token).ConfigureAwait(false);
+        await EngineTestUtil.WaitForAsync(() => diagnostics.Any(item => item.Kind == AcpRpcDiagnosticKind.DuplicateResponse), test.Token);
+        await EngineTestUtil.WaitForAsync(() => diagnostics.Any(item => item.Kind == AcpRpcDiagnosticKind.UnmatchedResponse), test.Token);
     }
 
 
@@ -230,7 +230,7 @@ public sealed class AcpRpcEngineTests
         TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
         agent.RegisterRequestHandler("test/echo-after-await", async (request, _) =>
         {
-            await release.Task.ConfigureAwait(false);
+            await release.Task;
             return EngineTestUtil.BuildElement(writer =>
             {
                 writer.WriteStartObject();
@@ -254,13 +254,13 @@ public sealed class AcpRpcEngineTests
                 writer.WriteString("value", "kept");
                 writer.WriteEndObject();
             }), test.Token);
-        await Task.Delay(50, CancellationToken.None).ConfigureAwait(false);
+        await Task.Delay(50, CancellationToken.None);
         release.TrySetResult();
-        JsonElement answer = await call.ConfigureAwait(false);
+        JsonElement answer = await call;
         Assert.Equal("kept", answer.GetProperty("echo").GetString());
 
-        await RpcTestHarness.SendFrameAsync(agentWire, "{\"method\":\"test/payload\",\"params\":{\"n\":7}}").ConfigureAwait(false);
-        await EngineTestUtil.WaitForAsync(() => noted is not null, test.Token).ConfigureAwait(false);
+        await RpcTestHarness.SendFrameAsync(agentWire, "{\"method\":\"test/payload\",\"params\":{\"n\":7}}");
+        await EngineTestUtil.WaitForAsync(() => noted is not null, test.Token);
         Assert.Equal(7, noted!.Value.GetProperty("n").GetInt32());
     }
 
@@ -277,8 +277,8 @@ public sealed class AcpRpcEngineTests
         client.Start();
         agent.Start();
 
-        await RpcTestHarness.SendFrameAsync(clientWire, "{\"id\":5,\"method\":\"session/update\",\"params\":{}}").ConfigureAwait(false);
-        JsonDocument? response = await RpcTestHarness.ReceiveFrameAsync(agentWire, test.Token).ConfigureAwait(false);
+        await RpcTestHarness.SendFrameAsync(clientWire, "{\"id\":5,\"method\":\"session/update\",\"params\":{}}");
+        JsonDocument? response = await RpcTestHarness.ReceiveFrameAsync(agentWire, test.Token);
         Assert.Equal(ErrorCode.MethodNotFound, response!.RootElement.GetProperty("error").GetProperty("code").GetInt32());
     }
 
@@ -299,8 +299,8 @@ public sealed class AcpRpcEngineTests
         })));
         client.Start();
 
-        await RpcTestHarness.SendFrameAsync(agentWire, "{\"id\":9,\"method\":\"session/request_permission\",\"params\":{}}").ConfigureAwait(false);
-        JsonDocument? response = await RpcTestHarness.ReceiveFrameAsync(clientWire, test.Token).ConfigureAwait(false);
+        await RpcTestHarness.SendFrameAsync(agentWire, "{\"id\":9,\"method\":\"session/request_permission\",\"params\":{}}");
+        JsonDocument? response = await RpcTestHarness.ReceiveFrameAsync(clientWire, test.Token);
         Assert.Equal(ErrorCode.InvalidParams, response!.RootElement.GetProperty("error").GetProperty("code").GetInt32());
     }
 
@@ -317,7 +317,7 @@ public sealed class AcpRpcEngineTests
         agent.Start();
 
         AcpRpcException failure = await Assert.ThrowsAsync<AcpRpcException>(
-            () => client.RequestAsync("test/fail", null, test.Token)).ConfigureAwait(false);
+            () => client.RequestAsync("test/fail", null, test.Token));
         Assert.Equal(-32000, failure.Code);
         Assert.Equal("needs authentication", failure.Error.Message);
     }
@@ -346,7 +346,7 @@ public sealed class AcpRpcEngineTests
             writer.WriteStartObject();
             writer.WriteNumber("protocolVersion", 1);
             writer.WriteEndObject();
-        }), test.Token)).ConfigureAwait(false);
+        }), test.Token));
         Assert.Equal(ErrorCode.InternalError, failure.Code);
 
         // The connection stays usable: the same handler answers again with the same -32603,
@@ -356,7 +356,7 @@ public sealed class AcpRpcEngineTests
             writer.WriteStartObject();
             writer.WriteNumber("protocolVersion", 1);
             writer.WriteEndObject();
-        }), test.Token)).ConfigureAwait(false);
+        }), test.Token));
         Assert.Equal(ErrorCode.InternalError, again.Code);
     }
 
@@ -365,7 +365,7 @@ public sealed class AcpRpcEngineTests
     {
         while (true)
         {
-            JsonDocument? frame = await RpcTestHarness.ReceiveFrameAsync(wire, deadline).ConfigureAwait(false);
+            JsonDocument? frame = await RpcTestHarness.ReceiveFrameAsync(wire, deadline);
             if (frame is null) return null;
             if (frame.RootElement.ValueKind != JsonValueKind.Object || !frame.RootElement.TryGetProperty("method", out _)) return frame;
         }

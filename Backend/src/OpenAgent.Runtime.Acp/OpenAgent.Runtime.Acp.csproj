@@ -6,6 +6,9 @@
     <Version>0.1.0-dev</Version>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="OpenAgent.Runtime.Acp.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <EmbeddedResource Include="Protocol/Generated/ProtocolSchema.g.json" LogicalName="Acp.ProtocolSchema.json" />
     <None Include="../../../docs/integrations/acp-dotnet-sdk/schema/v1/LICENSE" Pack="true" PackagePath="licenses/" />
     <None Include="../../../docs/integrations/acp-dotnet-sdk/schema/NOTICE" Pack="true" PackagePath="licenses/" />
