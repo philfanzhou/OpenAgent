@@ -45,7 +45,7 @@ SDK 负责通信和生命周期，推理、持久化、审批 UI、文件授权�
 | PromptTimeout / InteractionTimeout | 默认无限，支持 token |
 | CancelGracePeriod / ProcessShutdownGracePeriod | 各 5s，进程按阶段执行 |
 
-上表是目标建议值，不是已实现清单。截至 P3 已落地：`MaxMessageBytes`（传输 32 MiB）、`MaxQueuedUpdates`（session 1024）、`MaxPendingRequests`（128）、`MaxConcurrentHandlers`（32）、`MaxQueuedNotifications`（1024）、`InitializeTimeout`（30s）、`CancelGracePeriod`（5s）、Agent 侧 `MaxSessions`（32）。尚未落地并在 [TODO](../../planning/TODO.md) 记为延期项：`MaxBufferedBytes`（连接合计字节上限，未实现）；`RequestTimeout` 引擎默认不限时（null，调用方/宿主可显式设置，60s 为后续默认化候选）；`PromptTimeout` / `InteractionTimeout` / `ProcessShutdownGracePeriod` 属后续阶段。不得把未落地行当作已生效限制引用。
+上表是目标建议值，不是已实现清单。截至 P4 已落地：`MaxMessageBytes`（传输 32 MiB）、`MaxQueuedUpdates`（session 1024）、`MaxPendingRequests`（128）、`MaxConcurrentHandlers`（32）、`MaxQueuedNotifications`（1024）、`InitializeTimeout`（30s）、`CancelGracePeriod`（5s）、Agent 侧 `MaxSessions`（32）、`ProcessShutdownGracePeriod`（5s，进程分阶段关停：transport 关闭送达 stdin EOF → 宽限等自然退出 → 超时整树强杀 → 回收并发布退出记录；租约不随单 session 结束，session 释放不杀共享进程）。尚未落地并在 [TODO](../../planning/TODO.md) 记为延期项：`MaxBufferedBytes`（连接合计字节上限，未实现）；`RequestTimeout` 引擎默认不限时（null，调用方/宿主可显式设置，60s 为后续默认化候选）；`PromptTimeout` / `InteractionTimeout` 属后续阶段。不得把未落地行当作已生效限制引用。
 
 默认值需负载验证；超限异常记录限制名称和大小，不记录敏感正文。
 

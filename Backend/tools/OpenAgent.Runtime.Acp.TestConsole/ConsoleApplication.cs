@@ -12,7 +12,7 @@ namespace OpenAgent.Runtime.Acp.TestConsole;
 
 internal static class ConsoleApplication
 {
-    private static readonly string[] Scenarios = ["framing", "lifecycle", "schema", "rpc", "reverse", "fault", "echo", "cancel"];
+    private static readonly string[] Scenarios = ["framing", "lifecycle", "schema", "rpc", "reverse", "fault", "echo", "cancel", "process"];
 
     internal static async Task<int> RunAsync(string[] args, TextWriter output, TextWriter error)
     {
@@ -21,11 +21,16 @@ internal static class ConsoleApplication
             await output.WriteLineAsync("Usage: acp-test [list | run framing|lifecycle|schema|rpc|reverse|fault|echo|cancel|all [--report <json-path>] [--fixtures <json-path>]]").ConfigureAwait(false);
             await output.WriteLineAsync("       acp-test agent                                      serve the echo agent on stdio (stdout is protocol only)").ConfigureAwait(false);
             await output.WriteLineAsync("       acp-test client [--cancel] [--agent <exe>] [--agent-arg <arg>]... [--cwd <path>] [--timeout-seconds <n>] -- <prompt>").ConfigureAwait(false);
+            await output.WriteLineAsync("       acp-test fixture <behavior>                                       controllable child process for tests").ConfigureAwait(false);
             return 0;
         }
         if (args is ["agent"])
         {
             return await AgentCommand.RunAsync(error).ConfigureAwait(false);
+        }
+        if (args.Length >= 1 && args[0] == "fixture")
+        {
+            return await FixtureCommand.RunAsync(args[1..], output, error).ConfigureAwait(false);
         }
         if (args.Length >= 1 && args[0] == "client")
         {
@@ -41,6 +46,7 @@ internal static class ConsoleApplication
             await output.WriteLineAsync("fault\tP2\tDeterministic fault injection with bounded convergence").ConfigureAwait(false);
             await output.WriteLineAsync("echo\tP3\tClient/agent loop: initialize, streaming echo, session reuse").ConfigureAwait(false);
             await output.WriteLineAsync("cancel\tP3\tCancel with trailing update, confirmed stop reason, session reuse").ConfigureAwait(false);
+            await output.WriteLineAsync("process\tP4\tSDK process lifecycle: handshake, stderr, exit codes, staged shutdown").ConfigureAwait(false);
             return 0;
         }
         string? reportPath = null;
@@ -66,7 +72,7 @@ internal static class ConsoleApplication
         foreach (string scenario in selected)
         {
             Stopwatch elapsed = Stopwatch.StartNew();
-            JsonObject result = new() { ["scenario"] = scenario, ["phase"] = scenario switch { "framing" or "lifecycle" => "P0", "schema" => "P1", "rpc" or "reverse" or "fault" => "P2", _ => "P3" }, ["protocolVersion"] = AcpProtocol.Version };
+            JsonObject result = new() { ["scenario"] = scenario, ["phase"] = scenario switch { "framing" or "lifecycle" => "P0", "schema" => "P1", "rpc" or "reverse" or "fault" => "P2", "process" => "P4", _ => "P3" }, ["protocolVersion"] = AcpProtocol.Version };
             try
             {
                 if (scenario == "framing") await VerifyFramingAsync().ConfigureAwait(false);
@@ -76,6 +82,7 @@ internal static class ConsoleApplication
                 else if (scenario == "fault") await FaultScenario.RunAsync().ConfigureAwait(false);
                 else if (scenario == "echo") await EchoScenario.RunAsync().ConfigureAwait(false);
                 else if (scenario == "cancel") await CancelScenario.RunAsync().ConfigureAwait(false);
+                else if (scenario == "process") await ProcessScenario.RunAsync().ConfigureAwait(false);
                 else result["coverage"] = coverage = await SchemaScenario.RunAsync(fixturePath).ConfigureAwait(false);
                 result["status"] = "PASS";
                 await output.WriteLineAsync(scenario == "schema"
@@ -84,7 +91,9 @@ internal static class ConsoleApplication
                         ? $"PASS {scenario} (bidirectional RPC engine)"
                         : scenario is "echo" or "cancel"
                             ? $"PASS {scenario} (client/agent minimal loop)"
-                            : $"PASS {scenario} (SDK transport and cleanup)").ConfigureAwait(false);
+                            : scenario == "process"
+                                ? $"PASS {scenario} (SDK process lifecycle)"
+                                : $"PASS {scenario} (SDK transport and cleanup)").ConfigureAwait(false);
             }
             catch (Exception exception)
             {

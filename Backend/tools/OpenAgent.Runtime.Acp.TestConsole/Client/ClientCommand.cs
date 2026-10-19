@@ -1,15 +1,16 @@
-using System.Diagnostics;
 using System.Text;
 using OpenAgent.Runtime.Acp.Client;
+using OpenAgent.Runtime.Acp.Processes;
 using OpenAgent.Runtime.Acp.Protocol;
-using OpenAgent.Runtime.Acp.Transport;
+using OpenAgent.Runtime.Acp.TestConsole.Agents;
 
 namespace OpenAgent.Runtime.Acp.TestConsole.Client;
 
 /// <summary>
-/// The `client` command: one full SDK client over a real stdio link. Without options it spawns
-/// this console's own echo agent; `--agent`/`--agent-arg` target any local stdio agent. The
-/// child-process plumbing here is console tooling only — the SDK process module (P4) replaces it.
+/// The `client` command: one full SDK client over a real stdio link, spawned by the SDK
+/// process module (P4). Without options it starts this console's own echo agent; `--agent`/
+/// `--agent-arg` target any local stdio agent — that includes real model-backed agents, whose
+/// runs are always explicit invocations like this one and never part of `run all`.
 /// </summary>
 internal static class ClientCommand
 {
@@ -66,35 +67,60 @@ internal static class ClientCommand
             return 2;
         }
 
-        // Console-only interim plumbing until the P4 process module lands: the child runs with
-        // explicit argv, no shell, and is always reaped on exit.
-        Process? started = await StartAgentAsync(agentExecutable, agentArguments, error).ConfigureAwait(false);
-        if (started is null) return 1;
-        using Process process = started;
+        AcpProcessOptions processOptions = new()
+        {
+            Executable = agentExecutable ?? AgentSpawn.Host,
+            Arguments = agentExecutable is null ? AgentSpawn.Self("agent") : [.. agentArguments],
+            Environment = agentExecutable is null ? AgentSpawn.ChildEnvironment() : null,
+            OnStdErrorLine = line => error.WriteLine($"[agent] {line}"),
+            ShutdownGracePeriod = ChildStopGrace
+        };
+        AcpProcessLease lease;
+        try
+        {
+            lease = await AcpProcessLauncher.StartAsync(processOptions).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            await error.WriteLineAsync($"FAIL client: the agent process could not start: {exception.Message}").ConfigureAwait(false);
+            return 1;
+        }
+
+        await using AcpProcessLease owned = lease;
         using CancellationTokenSource lifetime = new(timeout);
         try
         {
-            return await RunClientAsync(process, cancel, cwd, string.Join(' ', promptParts), timeout, lifetime.Token, output, error).ConfigureAwait(false);
+            int code = await RunClientAsync(lease, cancel, cwd, string.Join(' ', promptParts), lifetime.Token, output, error).ConfigureAwait(false);
+            return code;
         }
         finally
         {
-            await StopChildAsync(process).ConfigureAwait(false);
+            // Staged shutdown: stdin EOF first, then the grace window, then the tree kill.
+            await owned.DisposeAsync().ConfigureAwait(false);
+            AcpProcessExit exit = await owned.Completion.ConfigureAwait(false);
+            if (exit.Failure is not null)
+            {
+                await error.WriteLineAsync($"[agent] teardown: {exit.Failure.GetType().Name}: {exit.Failure.Message}").ConfigureAwait(false);
+            }
+            else if (!exit.Killed && exit.ExitCode is not (0 or null))
+            {
+                await error.WriteLineAsync($"[agent] exited with code {exit.ExitCode}").ConfigureAwait(false);
+            }
+
             lifetime.Dispose();
         }
     }
 
     private static async Task<int> RunClientAsync(
-        Process process,
+        AcpProcessLease lease,
         bool cancel,
         string cwd,
         string prompt,
-        TimeSpan timeout,
         CancellationToken lifetime,
         TextWriter output,
         TextWriter error)
     {
-        await using AcpStreamTransport transport = new(process.StandardOutput.BaseStream, process.StandardInput.BaseStream);
-        await using AcpClientConnection client = new(transport);
+        await using AcpClientConnection client = new(lease.Transport);
         client.Start();
         InitializeResponse negotiated;
         try
@@ -179,75 +205,5 @@ internal static class ClientCommand
         lock (echoed) output.WriteLine(echoed.ToString());
         await output.WriteLineAsync($"Stop reason: {final.StopReason}").ConfigureAwait(false);
         return 0;
-    }
-
-    private static async Task<Process?> StartAgentAsync(string? agentExecutable, List<string> agentArguments, TextWriter error)
-    {
-        ProcessStartInfo start;
-        if (agentExecutable is null)
-        {
-            // Default peer: this console in agent mode, spawned as a real child process.
-            string consolePath = Path.Combine(AppContext.BaseDirectory, "OpenAgent.Runtime.Acp.TestConsole.dll");
-            string host = Environment.ProcessPath ?? "dotnet";
-            // Under the dotnet host the DLL is the first argument; an apphost already binds its
-            // own DLL, so passing the DLL path again would land in the console as a stray argument.
-            bool viaDotnetHost = Path.GetFileNameWithoutExtension(host).Equals("dotnet", StringComparison.OrdinalIgnoreCase);
-            start = new ProcessStartInfo(host) { RedirectStandardOutput = true, RedirectStandardInput = true, RedirectStandardError = true, UseShellExecute = false };
-            if (viaDotnetHost) start.ArgumentList.Add(consolePath);
-            start.ArgumentList.Add("agent");
-        }
-        else
-        {
-            start = new ProcessStartInfo(agentExecutable) { RedirectStandardOutput = true, RedirectStandardInput = true, RedirectStandardError = true, UseShellExecute = false };
-            foreach (string argument in agentArguments) start.ArgumentList.Add(argument);
-        }
-
-        Process process;
-        try
-        {
-            process = Process.Start(start) ?? throw new InvalidOperationException("The agent process could not start.");
-        }
-        catch (Exception exception)
-        {
-            await error.WriteLineAsync($"FAIL client: the agent process could not start: {exception.Message}").ConfigureAwait(false);
-            return null;
-        }
-
-        _ = PumpErrorsAsync(process.StandardError, error, process);
-        return process;
-    }
-
-    /// <summary>Agent diagnostics arrive on the child's stderr and stay on our stderr; stdout is never mixed in.</summary>
-    private static async Task PumpErrorsAsync(StreamReader reader, TextWriter error, Process process)
-    {
-        try
-        {
-            while (await reader.ReadLineAsync(CancellationToken.None).ConfigureAwait(false) is { } line)
-            {
-                await error.WriteLineAsync($"[agent] {line}").ConfigureAwait(false);
-            }
-        }
-        catch
-        {
-            // A dead child or a closing writer ends the pump; the process exit path reports the rest.
-        }
-    }
-
-    private static async Task StopChildAsync(Process process)
-    {
-        if (process.HasExited) return;
-        try
-        {
-            using CancellationTokenSource grace = new(ChildStopGrace);
-            await process.WaitForExitAsync(grace.Token).ConfigureAwait(false);
-            return;
-        }
-        catch (OperationCanceledException)
-        {
-            // The grace elapsed: reap the child ourselves, never leaving an owned process behind.
-        }
-
-        process.Kill(entireProcessTree: true);
-        await process.WaitForExitAsync().ConfigureAwait(false);
     }
 }

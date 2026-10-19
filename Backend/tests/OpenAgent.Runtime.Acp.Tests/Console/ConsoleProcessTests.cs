@@ -16,6 +16,7 @@ public sealed class ConsoleProcessTests
     [InlineData("run", "fault", 0, "PASS fault")]
     [InlineData("run", "echo", 0, "PASS echo (client/agent minimal loop)")]
     [InlineData("run", "cancel", 0, "PASS cancel (client/agent minimal loop)")]
+    [InlineData("run", "process", 0, "PASS process (SDK process lifecycle)")]
     [InlineData("run", "all", 0, "PASS cancel")]
     [InlineData("run", "missing", 2, "Unknown command")]
     public async Task Main_ScenarioCommand_ReturnsExpectedResult(string command, string? scenario, int exitCode, string text)

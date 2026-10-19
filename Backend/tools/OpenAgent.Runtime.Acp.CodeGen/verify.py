@@ -9,7 +9,9 @@ import sys
 import tempfile
 
 root = Path(sys.argv[1] if len(sys.argv) > 1 else '.').resolve()
-report_path = Path(sys.argv[2]) if len(sys.argv) > 2 else root / 'codegen-verification.json'
+# Default the report to a temp file so a default run never dirties the repository root with
+# an untracked artifact (P4 review note O2); pass an explicit path to keep a report.
+report_path = Path(sys.argv[2]) if len(sys.argv) > 2 else Path(tempfile.gettempdir()) / 'acp-codegen-verification.json'
 project = root / 'Backend/tools/OpenAgent.Runtime.Acp.CodeGen'
 configuration = sys.argv[3] if len(sys.argv) > 3 else 'Debug'
 output = root / 'Backend/src/OpenAgent.Runtime.Acp/Protocol/Generated'
