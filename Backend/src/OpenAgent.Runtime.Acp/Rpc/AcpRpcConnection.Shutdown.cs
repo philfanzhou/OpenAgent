@@ -153,6 +153,13 @@ public sealed partial class AcpRpcConnection
     {
         foreach ((string _, PendingCall call) in _pending)
         {
+            lock (call.Gate)
+            {
+                // An elapsed cancel owns its outcome: the grace flow reports AcpCancellationUnconfirmedException
+                // even when shutdown races it, so a close never masks the cancellation that triggered it.
+                if (call.State == PendingState.Unconfirmed) continue;
+            }
+
             if (_pending.TryRemove(call.Key, out _))
             {
                 lock (call.Gate)

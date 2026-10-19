@@ -54,15 +54,23 @@ internal static class ReverseScenario
     private static async Task SlowHandlerKeepsLinkAliveAsync(RpcHarness harness, TaskCompletionSource slowRelease, List<string> notes)
     {
         Task<JsonElement> hung = harness.Client.RequestAsync("test/hang", AcpJson.ParseElement("{}"), harness.Deadline.Token);
-        JsonElement fast = await harness.Client.RequestAsync("test/fast", AcpJson.ParseElement("{}"), harness.Deadline.Token).ConfigureAwait(false);
-        RpcScenario.AssertEqual("fast", fast.GetProperty("speed").GetString(), "call during slow handler");
-
-        await RpcScenario.SendRawAsync(harness.AgentWire, "{\"method\":\"test/during\",\"params\":{}}").ConfigureAwait(false);
-        await RpcScenario.WaitForAsync(() =>
+        try
         {
-            lock (notes) return notes.Count == 1;
-        }, harness.Deadline.Token, "notification during slow handler").ConfigureAwait(false);
-        slowRelease.TrySetResult();
+            JsonElement fast = await harness.Client.RequestAsync("test/fast", AcpJson.ParseElement("{}"), harness.Deadline.Token).ConfigureAwait(false);
+            RpcScenario.AssertEqual("fast", fast.GetProperty("speed").GetString(), "call during slow handler");
+
+            await RpcScenario.SendRawAsync(harness.AgentWire, "{\"method\":\"test/during\",\"params\":{}}").ConfigureAwait(false);
+            await RpcScenario.WaitForAsync(() =>
+            {
+                lock (notes) return notes.Count == 1;
+            }, harness.Deadline.Token, "notification during slow handler").ConfigureAwait(false);
+        }
+        finally
+        {
+            // The hung handler waits here; a failed assert must not turn into a disposal hang.
+            slowRelease.TrySetResult();
+        }
+
         await hung.ConfigureAwait(false);
     }
 

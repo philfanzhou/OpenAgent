@@ -216,6 +216,54 @@ public sealed class AcpRpcEngineTests
         await EngineTestUtil.WaitForAsync(() => diagnostics.Any(item => item.Kind == AcpRpcDiagnosticKind.UnmatchedResponse), test.Token).ConfigureAwait(false);
     }
 
+
+    [Fact]
+    public async Task Payload_OutlivesFrameDocument_HandlerAndNotificationReadItLater()
+    {
+        // PROTOCOL §6: payloads stay valid after the source frame document is released. Handlers run
+        // detached and notifications queue, so both read their params only after the frame is gone.
+        (AcpRpcConnection client, AcpRpcConnection agent, LoopbackTransport clientWire, LoopbackTransport agentWire) = RpcTestHarness.Connect();
+        await using AcpRpcConnection clientOwned = client;
+        await using AcpRpcConnection agentOwned = agent;
+        using CancellationTokenSource test = new(RpcTestHarness.TimeoutMs);
+
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        agent.RegisterRequestHandler("test/echo-after-await", async (request, _) =>
+        {
+            await release.Task.ConfigureAwait(false);
+            return EngineTestUtil.BuildElement(writer =>
+            {
+                writer.WriteStartObject();
+                writer.WriteString("echo", request.Parameters!.Value.GetProperty("value").GetString());
+                writer.WriteEndObject();
+            });
+        });
+        JsonElement? noted = null;
+        client.RegisterNotificationHandler("test/payload", (notification, _) =>
+        {
+            noted = notification.Parameters!.Value;
+            return Task.CompletedTask;
+        });
+        client.Start();
+        agent.Start();
+
+        Task<JsonElement> call = client.RequestAsync("test/echo-after-await",
+            EngineTestUtil.BuildElement(writer =>
+            {
+                writer.WriteStartObject();
+                writer.WriteString("value", "kept");
+                writer.WriteEndObject();
+            }), test.Token);
+        await Task.Delay(50, CancellationToken.None).ConfigureAwait(false);
+        release.TrySetResult();
+        JsonElement answer = await call.ConfigureAwait(false);
+        Assert.Equal("kept", answer.GetProperty("echo").GetString());
+
+        await RpcTestHarness.SendFrameAsync(agentWire, "{\"method\":\"test/payload\",\"params\":{\"n\":7}}").ConfigureAwait(false);
+        await EngineTestUtil.WaitForAsync(() => noted is not null, test.Token).ConfigureAwait(false);
+        Assert.Equal(7, noted!.Value.GetProperty("n").GetInt32());
+    }
+
     [Fact]
     public async Task Request_KnownMethodWrongDirection_AnsweredMethodNotFound()
     {

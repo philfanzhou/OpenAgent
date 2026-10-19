@@ -138,6 +138,7 @@ SDK 不将资源链接自动下载为本地文件，不把不同 MIME/二进制�
 - `$/cancel_request` 在读循环内即拦截：取消本方 outbound pending（进入宽限等待对端最终响应）、取消运行中的入站 handler token，或诊断后丢弃。取消不排队、不等待慢 handler。
 - 本方取消已写出站 request 时发送 `$/cancel_request` 并等待 `CancelGracePeriod` 内的最终响应；自然完成赢得竞态；宽限耗尽抛 `AcpCancellationUnconfirmedException` 并关闭连接，回收请求表，不报告假结果。写前取消只失败本地调用，不上 wire。
 - 入站 response 的 `result` 由引擎按 pending request 的方法选择 `ResponseSchema` 做严格逐方法校验（PROTOCOL §6 的 P2 接入点）；失败使该调用以本地 JsonException 失败，连接继续。本方 handler 返回的结果同样先过方法 schema 再上 wire，不发送畸形协议。
+- handler 与通知 handler 收到的 `params`、调用方拿到的响应 `result` 与错误 `data` 都是引擎在帧边界克隆的 owned payload：帧的 JsonDocument 释放后仍然有效（§6 语义），handler 与通知分派不共享帧生命周期。
 - 配额（产品策略）：`MaxPendingRequests`（出站，超限本地 `AcpQuotaExceededException`）、`MaxConcurrentHandlers`（入站，超限回 -32603 附 `data.limit`）、`MaxQueuedNotifications`（溢出显式故障连接）。配额耗尽不阻塞响应、取消或关闭。
 - 关闭统一收敛：EOF/Dispose/故障使全部 pending 以 `AcpConnectionClosedException` 失败；终端传输/清理故障由 `Completion` 保留，干净 EOF 或 Dispose 正常完成；Dispose 幂等且不重抛终端故障。所有引擎任务都被生命周期观察，无未观察任务。
 

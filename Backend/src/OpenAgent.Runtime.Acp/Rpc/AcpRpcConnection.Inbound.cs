@@ -184,7 +184,9 @@ public sealed partial class AcpRpcConnection
                 return;
             }
 
-            AcpRpcRequest request = new(id, method, parameters is { ValueKind: not (JsonValueKind.Undefined or JsonValueKind.Null) } ? parameters : null);
+            // Handlers outlive the frame's JsonDocument, so the payload is cloned at the boundary
+            // (PROTOCOL §6: payloads stay valid after the source document is released).
+            AcpRpcRequest request = new(id, method, parameters is { ValueKind: not (JsonValueKind.Undefined or JsonValueKind.Null) } ? parameters.Value.Clone() : null);
             // The slot is reserved on the reader thread, so batch responses keep their original item order.
             BatchTarget? target = collector is null ? null : new BatchTarget(collector, collector.NextSlot());
             CancellationTokenSource cancellation = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
@@ -320,7 +322,8 @@ public sealed partial class AcpRpcConnection
             return;
         }
 
-        AcpRpcNotification notification = new(method, parameters is { ValueKind: not (JsonValueKind.Undefined or JsonValueKind.Null) } ? parameters : null);
+        // The queued notification outlives the frame's JsonDocument; clone the payload at the boundary.
+        AcpRpcNotification notification = new(method, parameters is { ValueKind: not (JsonValueKind.Undefined or JsonValueKind.Null) } ? parameters.Value.Clone() : null);
         if (!_notifications.Writer.TryWrite(notification))
         {
             Close($"the notification buffer exceeded {nameof(AcpRpcOptions.MaxQueuedNotifications)}",
@@ -439,7 +442,12 @@ public sealed partial class AcpRpcConnection
 
         if (response.Error is not null)
         {
-            CompletePending(call, null, response.Error);
+            // The error object aliases the frame document; callers read it after the frame is released.
+            Error error = response.Error;
+            Optional<JsonElement> data = !error.Data.IsDefined ? default
+                : error.Data.IsNull ? Optional<JsonElement>.Null
+                : Optional<JsonElement>.FromValue(error.Data.Value.Clone());
+            CompletePending(call, null, new Error(error.Code, error.Message, data));
             return;
         }
 
@@ -453,7 +461,8 @@ public sealed partial class AcpRpcConnection
                     writer.WriteEndObject();
                 })
                 : ValidateResult(call.Method, response.Result.Value);
-            CompletePending(call, validated, null);
+            // The awaiting caller reads the result after the frame document is released; keep an owned copy.
+            CompletePending(call, validated.Clone(), null);
         }
         catch (JsonException)
         {

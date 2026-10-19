@@ -50,7 +50,7 @@ public sealed class RpcWireProbes
         client.Start();
         agent.Start();
 
-        JsonElement result = await client.RequestAsync("test/echo", Parsed("{\"hello\":\"wire\"}"), deadline.Token).ConfigureAwait(false);
+        JsonElement result = await client.RequestAsync("test/echo", Parsed("{\"hello\":\"wire\"}"), deadline.Token);
         Assert.Equal("wire", result.GetProperty("hello").GetString());
     }
 
@@ -64,7 +64,7 @@ public sealed class RpcWireProbes
         remote.OnRequest("test/echo", (request, _) => Task.FromResult(request));
         local.Attach(remote);
 
-        JsonElement result = await local.RequestAsync("test/echo", Parsed("{\"hello\":\"wire\"}"), deadline.Token).ConfigureAwait(false);
+        JsonElement result = await local.RequestAsync("test/echo", Parsed("{\"hello\":\"wire\"}"), deadline.Token);
         Assert.Equal("wire", result.GetProperty("hello").GetString());
     }
 
@@ -77,14 +77,14 @@ public sealed class RpcWireProbes
         using CancellationTokenSource deadline = new(DeadlineMs);
         agent.RegisterRequestHandler("test/outer", async (_, ct) =>
         {
-            JsonElement inner = await agent.RequestAsync("test/inner", Parsed("{}"), ct).ConfigureAwait(false);
+            JsonElement inner = await agent.RequestAsync("test/inner", Parsed("{}"), ct);
             return Parsed($"{{\"seen\":\"{inner.GetProperty("ok").GetString()}\"}}");
         });
         client.RegisterRequestHandler("test/inner", (_, _) => Task.FromResult<JsonElement?>(Parsed("{\"ok\":\"inner\"}")));
         client.Start();
         agent.Start();
 
-        JsonElement result = await client.RequestAsync("test/outer", Parsed("{}"), deadline.Token).ConfigureAwait(false);
+        JsonElement result = await client.RequestAsync("test/outer", Parsed("{}"), deadline.Token);
         Assert.Equal("inner", result.GetProperty("seen").GetString());
     }
 
@@ -97,13 +97,13 @@ public sealed class RpcWireProbes
         using CancellationTokenSource deadline = new(DeadlineMs);
         remote.OnRequest("test/outer", async (_, ct) =>
         {
-            JsonElement inner = await remote.RequestAsync("test/inner", Parsed("{}"), ct).ConfigureAwait(false);
+            JsonElement inner = await remote.RequestAsync("test/inner", Parsed("{}"), ct);
             return Parsed($"{{\"seen\":\"{inner.GetProperty("ok").GetString()}\"}}");
         });
         local.OnRequest("test/inner", (_, _) => Task.FromResult(Parsed("{\"ok\":\"inner\"}")));
         local.Attach(remote);
 
-        JsonElement result = await local.RequestAsync("test/outer", Parsed("{}"), deadline.Token).ConfigureAwait(false);
+        JsonElement result = await local.RequestAsync("test/outer", Parsed("{}"), deadline.Token);
         Assert.Equal("inner", result.GetProperty("seen").GetString());
     }
 
@@ -119,8 +119,8 @@ public sealed class RpcWireProbes
         client.RegisterRequestHandler("test/echo", (_, _) => Task.FromResult<JsonElement?>(Parsed("{}")));
         client.Start();
 
-        await agentWire.WriteAsync("{\"id\":9007199254740993,\"method\":\"test/echo\",\"params\":{}}"u8.ToArray()).ConfigureAwait(false);
-        byte[] reply = await ReadResponseFrameAsync(clientWire, deadline.Token).ConfigureAwait(false);
+        await agentWire.WriteAsync("{\"id\":9007199254740993,\"method\":\"test/echo\",\"params\":{}}"u8.ToArray());
+        byte[] reply = await ReadResponseFrameAsync(clientWire, deadline.Token);
         using JsonDocument response = JsonDocument.Parse(reply);
         Assert.Equal("9007199254740993", response.RootElement.GetProperty("id").GetRawText());
     }
@@ -134,8 +134,8 @@ public sealed class RpcWireProbes
         using CancellationTokenSource deadline = new(DeadlineMs);
         client.Start();
 
-        await agentWire.WriteAsync("{\"id\":7,\"method\":\"missing/method\",\"params\":{}}"u8.ToArray()).ConfigureAwait(false);
-        byte[] reply = await ReadResponseFrameAsync(clientWire, deadline.Token).ConfigureAwait(false);
+        await agentWire.WriteAsync("{\"id\":7,\"method\":\"missing/method\",\"params\":{}}"u8.ToArray());
+        byte[] reply = await ReadResponseFrameAsync(clientWire, deadline.Token);
         using JsonDocument response = JsonDocument.Parse(reply);
         Assert.Equal(ErrorCode.MethodNotFound, response.RootElement.GetProperty("error").GetProperty("code").GetInt32());
     }
@@ -151,7 +151,7 @@ public sealed class RpcWireProbes
 
         // RemoteMethodNotFoundException is the library's mapping of JSON-RPC -32601 for unknown methods.
         _ = await Assert.ThrowsAnyAsync<RemoteMethodNotFoundException>(
-            () => local.RequestAsync("missing/method", Parsed("{}"), deadline.Token)).ConfigureAwait(false);
+            () => local.RequestAsync("missing/method", Parsed("{}"), deadline.Token));
     }
 
     [Fact]
@@ -166,8 +166,8 @@ public sealed class RpcWireProbes
         client.RegisterRequestHandler("test/two", (_, _) => Task.FromResult<JsonElement?>(Parsed("{\"second\":true}")));
         client.Start();
 
-        await agentWire.WriteAsync("[{\"id\":\"a\",\"method\":\"test/one\",\"params\":{}},{\"id\":\"b\",\"method\":\"test/two\",\"params\":{}}]"u8.ToArray()).ConfigureAwait(false);
-        byte[] reply = await ReadResponseFrameAsync(clientWire, deadline.Token).ConfigureAwait(false);
+        await agentWire.WriteAsync("[{\"id\":\"a\",\"method\":\"test/one\",\"params\":{}},{\"id\":\"b\",\"method\":\"test/two\",\"params\":{}}]"u8.ToArray());
+        byte[] reply = await ReadResponseFrameAsync(clientWire, deadline.Token);
         using JsonDocument response = JsonDocument.Parse(reply);
         Assert.Equal(JsonValueKind.Array, response.RootElement.ValueKind);
         Assert.Equal(2, response.RootElement.GetArrayLength());
@@ -188,19 +188,19 @@ public sealed class RpcWireProbes
         {
             handlerEntered.TrySetResult();
             ct.Register(() => cancellationObserved.TrySetResult());
-            await Task.Delay(Timeout.InfiniteTimeSpan, ct).ConfigureAwait(false);
+            await Task.Delay(Timeout.InfiniteTimeSpan, ct);
             return Parsed("{}");
         });
         client.Start();
         agent.Start();
 
         Task call = client.RequestAsync("test/long", Parsed("{}"), deadline.Token);
-        await handlerEntered.Task.ConfigureAwait(false);
+        await handlerEntered.Task;
         // A peer sends the ACP cancel notification for the engine-generated request ID (first call: acp-1).
-        await clientWire.WriteAsync("{\"method\":\"$/cancel_request\",\"params\":{\"requestId\":\"acp-1\"}}"u8.ToArray()).ConfigureAwait(false);
-        Task acpDone = await Task.WhenAny(cancellationObserved.Task, Task.Delay(1_000, CancellationToken.None)).ConfigureAwait(false);
+        await clientWire.WriteAsync("{\"method\":\"$/cancel_request\",\"params\":{\"requestId\":\"acp-1\"}}"u8.ToArray());
+        Task acpDone = await Task.WhenAny(cancellationObserved.Task, Task.Delay(1_000, CancellationToken.None));
         Assert.Equal(cancellationObserved.Task, acpDone);
-        await Assert.ThrowsAsync<AcpRpcException>(() => call).ConfigureAwait(false);
+        await Assert.ThrowsAsync<AcpRpcException>(() => call);
     }
 
     [Fact]
@@ -220,7 +220,7 @@ public sealed class RpcWireProbes
             ct.Register(() => cancellationObserved.TrySetResult());
             try
             {
-                await Task.Delay(Timeout.InfiniteTimeSpan, ct).ConfigureAwait(false);
+                await Task.Delay(Timeout.InfiniteTimeSpan, ct);
             }
             catch (OperationCanceledException)
             {
@@ -232,18 +232,18 @@ public sealed class RpcWireProbes
 
         using CancellationTokenSource caller = new();
         Task inFlight = local.RequestAsync("test/long", Parsed("{}"), caller.Token);
-        await handlerEntered.Task.ConfigureAwait(false);
+        await handlerEntered.Task;
         // The ACP shape with an unknown ID: the handler must not observe it.
         local.Notify("$/cancel_request", new { requestId = "unknown" });
-        Task acpDone = await Task.WhenAny(cancellationObserved.Task, Task.Delay(1_000, CancellationToken.None)).ConfigureAwait(false);
+        Task acpDone = await Task.WhenAny(cancellationObserved.Task, Task.Delay(1_000, CancellationToken.None));
         Assert.NotEqual(cancellationObserved.Task, acpDone);
 
         // The library's own convention (caller cancellation) does reach the handler.
-        await caller.CancelAsync().ConfigureAwait(false);
-        Task ownDone = await Task.WhenAny(cancellationObserved.Task, Task.Delay(1_000, CancellationToken.None)).ConfigureAwait(false);
+        await caller.CancelAsync();
+        Task ownDone = await Task.WhenAny(cancellationObserved.Task, Task.Delay(1_000, CancellationToken.None));
         Assert.Equal(cancellationObserved.Task, ownDone);
         // The handler swallows the cancellation and answers; the call completes normally.
-        await inFlight.ConfigureAwait(false);
+        await inFlight;
     }
 
     [Fact]
@@ -256,18 +256,25 @@ public sealed class RpcWireProbes
         using CancellationTokenSource deadline = new(DeadlineMs);
         agent.RegisterRequestHandler("test/hang", async (_, _) =>
         {
-            await release.Task.ConfigureAwait(false);
+            await release.Task;
             return Parsed("{}");
         });
         client.Start();
         agent.Start();
 
         Task<JsonElement> pending = client.RequestAsync("test/hang", Parsed("{}"), deadline.Token);
-        await Task.Delay(100, CancellationToken.None).ConfigureAwait(false);
-        await client.DisposeAsync().ConfigureAwait(false);
-        await Assert.ThrowsAsync<AcpConnectionClosedException>(() => pending).ConfigureAwait(false);
-        await client.Completion.ConfigureAwait(false);
-        release.TrySetResult();
+        try
+        {
+            await Task.Delay(100, CancellationToken.None);
+            await client.DisposeAsync();
+            await Assert.ThrowsAsync<AcpConnectionClosedException>(() => pending);
+            await client.Completion;
+        }
+        finally
+        {
+            // The hung handler waits here; a failed assert must not turn into a disposal hang.
+            release.TrySetResult();
+        }
     }
 
     [Fact]
@@ -279,19 +286,25 @@ public sealed class RpcWireProbes
         await using StreamJsonRpcAdapter remoteOwned = remote;
         remote.OnRequest("test/hang", async (_, _) =>
         {
-            await release.Task.ConfigureAwait(false);
+            await release.Task;
             return Parsed("{}");
         });
         local.Attach(remote);
         using CancellationTokenSource deadline = new(DeadlineMs);
 
         Task call = local.RequestAsync("test/hang", Parsed("{}"), deadline.Token);
-        await Task.Delay(100, CancellationToken.None).ConfigureAwait(false);
-        Task shutdown = local.ShutdownAsync();
-        Task settled = await Task.WhenAny(shutdown, Task.Delay(3_000, CancellationToken.None)).ConfigureAwait(false);
-        Assert.Equal(shutdown, settled);
-        await Assert.ThrowsAnyAsync<Exception>(() => call).ConfigureAwait(false);
-        release.TrySetResult();
+        try
+        {
+            await Task.Delay(100, CancellationToken.None);
+            Task shutdown = local.ShutdownAsync();
+            Task settled = await Task.WhenAny(shutdown, Task.Delay(3_000, CancellationToken.None));
+            Assert.Equal(shutdown, settled);
+            await Assert.ThrowsAnyAsync<Exception>(() => call);
+        }
+        finally
+        {
+            release.TrySetResult();
+        }
     }
 
     /// <summary>Reads frames until one is a response; the tap also logs frames the engine wrote as requests.</summary>
@@ -299,7 +312,7 @@ public sealed class RpcWireProbes
     {
         while (true)
         {
-            byte[]? frame = await wire.OutgoingFrames.ReadAsync(deadline).ConfigureAwait(false);
+            byte[]? frame = await wire.OutgoingFrames.ReadAsync(deadline);
             Assert.NotNull(frame);
             using JsonDocument parsed = JsonDocument.Parse(frame);
             if (parsed.RootElement.ValueKind != JsonValueKind.Object || !parsed.RootElement.TryGetProperty("method", out _)) return frame;

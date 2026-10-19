@@ -107,7 +107,8 @@ internal static class RpcScenario
         // The agent answers twice and once for an ID nobody issued; the engine completes once and diagnoses the rest.
         int before = diagnostics.Count;
         Task<JsonElement> call = harness.Client.RequestAsync("test/echo", AcpJson.ParseElement("{}"), harness.Deadline.Token);
-        using JsonDocument reply = await ReceiveResponseAsync(harness.ClientWire).ConfigureAwait(false);
+        // The agent's reply lands on the agent's outbound tap; the client tap only carries what the client wrote.
+        using JsonDocument reply = await ReceiveResponseAsync(harness.AgentWire).ConfigureAwait(false);
         await SendRawAsync(harness.AgentWire, reply.RootElement.GetRawText()).ConfigureAwait(false);
         await SendRawAsync(harness.AgentWire, reply.RootElement.GetRawText()).ConfigureAwait(false);
         await SendRawAsync(harness.AgentWire, "{\"id\":\"never-issued\",\"result\":{}}").ConfigureAwait(false);

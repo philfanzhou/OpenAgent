@@ -19,7 +19,7 @@
 |---|---|---|---|
 | [ ] ACP-00 / P0 工程及传输基线 | P0 | 质量安全工程师（OPEN-7）/ 独立复审与技术核对通过，待人工验收 | 三个工程、49 个传输/生命周期 + 1 个依赖 + 5 个控制台进程测试；主解回归，见下方记录 |
 | [ ] ACP-01 / P1 协议模型与生成 | P0 | 后端工程师（OPEN-8）/ 待评审，[PR #232](https://github.com/philfanzhou/OpenAgent/pull/232) | ACP-00 技术门槛通过；固定 schema、可重复生成、契约夹具、schema 控制台及报告测试 |
-| [ ] ACP-02 / P2 双向 RPC | P0 | 后端工程师（OPEN-9）/ 开发中（自研引擎与 rpc/reverse 场景已实现；fault 场景与 QuotaShutdown 测试类在近期引擎改动后仍有超时/挂起，修复中；分支推送受环境网络阻塞，本地提交 `ced12727` 待推送） | ACP-01；引擎探针、可重入关联/取消/关闭，rpc/reverse/fault 场景与异常测试 |
+| [ ] ACP-02 / P2 双向 RPC | P0 | 后端工程师（OPEN-9）/ 待评审，分支 `agent/agent/8b09da54e64e`，[PR #235](https://github.com/philfanzhou/OpenAgent/pull/235)（base=dev，草稿；包含未合并 P0+P1） | ACP-01；引擎探针、可重入关联/取消/关闭，rpc/reverse/fault 场景与异常测试；引擎收敛修复见 2026-10-19 记录 |
 | [ ] ACP-03 / P3 双侧最小闭环 | P0 | 后端工程师（OPEN-10）/ backlog，待前置验收 | ACP-02；握手/new/prompt/update/cancel，Session/Turn 与真实 stdio 控制台测试 |
 | [ ] ACP-04 / P4 进程接入 | P1 | 后端工程师（OPEN-11）/ backlog，待前置验收 | ACP-03；Processes 生命周期、外部 Agent 启动选项、stderr/退出/所有权测试 |
 | [ ] ACP-05 / P5 会话与配置 | P1 | 后端工程师（OPEN-12）/ backlog，待前置验收 | ACP-04；完整会话、配置与 14 类更新；session/config/updates 场景及顺序/恢复测试 |
@@ -29,6 +29,8 @@
 ACP-00：OPEN-7 在固定 SHA `3be97c118f87cd714012bc5c0889dcfe2ad7b4c0` 独立复审关闭 F1–F4，无新增阻断；技术负责人已核对原始证据、38 个变更文件哈希及最终 PR 范围，接受 P0 工程与传输基线。独立实测主解 974 通过、0 失败、24 门控跳过，ACP 55 通过；原探针 27/27、补充探针 123/123，见 [验证记录](../test-reports/2026-10-16-acp-dev-baseline-import.md)。试验代码/历史调研未恢复。草稿 [PR #231](https://github.com/philfanzhou/OpenAgent/pull/231) 指向 dev，本次交接仅更新验收记录，Backend 与复审 SHA 相同。仅放行 OPEN-8，OPEN-9 至 OPEN-14 保持 backlog；OPEN-7 保留 in_review 等待人工验收，未合并项继续保留 `[ ]`。
 
 ACP-01：实现提交 `71bf602a5ab04bf962b8d6dac456b8587bab8526` 固定稳定 v1 原件/lock/许可，交付 178 定义、25 方法、14 更新、同包 DTO/context/RpcId/错误与 schema 控制台；首轮独立复核（OPEN-15）判「不通过，1 项阻断」（F-A 信封联合首个匹配静默丢字段，另有 F-B~F-F）。修复提交按信封 `method` 判别 `params`、响应 `result` 逐字保留并强制 `result`/`error` 互斥、`AuthMethod` 未知 `type` 显式拒绝（生成器钉 `type:"agent"` 常量）、补 45 个方法方向信封夹具与每例 `required` 元数据（现 352 夹具，`fixtures/build.py` 确定性重建）、文档交代运行时 323 定义 = 178 固定 + 145 合成及目录边界；模型覆盖不表示 RPC 已可调用。主解实测 1522 通过、0 失败、24 门控跳过，ACP 603 通过；608 生成文件连续两次无差异，5/5 篡改探针拒绝，Release 单包检查通过。见[验证报告](../test-reports/2026-10-16-acp-p1-models-codegen.md)及 OPEN-8 原始证据附件。信封读取语义与新公共 API 边界仍待技术负责人及独立复核；保留原有审计警告与 P7 发布项。PR 包含未合并 P0，未合并/发包/部署；只更新本阶段交付，后续阶段继续 backlog。
+
+ACP-02：自研引擎（ADR-0005）在 `ced12727`/`179f736` 交付引擎与场景后，2026-10-19 收敛修复定位并修掉三类缺陷：① 未确认取消与关闭竞争时 `FailAllPending` 抢先以 `AcpConnectionClosedException` 失败调用，掩盖 `AcpCancellationUnconfirmedException`（引擎修复 + 8 轮回归测试钉定）；② 引擎向 handler/通知队列传出的 `params` 指向已释放的帧 JsonDocument，延迟读取触发 `ObjectDisposedException`（帧边界克隆 owned payload，符合 §6「源文档释放后仍有效」，新增回归测试：无修复失败、修复后通过）；③ 场景/测试自身的竞态（quota 阈值差一、handler 配额装错侧、tap 读错方向、溢出测试依赖外部 release 的固有竞态、断言失败后 dispose 卡在等待 release 的 handler——统一改为 handler 遵循取消令牌或 finally 释放）。修复后：主解全绿 1582 通过/0 失败/24 门控跳过（ACP 655），`run all` 六场景连续多轮 PASS（exit 0，envelopes=45），verify.py 两次字节一致 + 5/5 篡改拒绝 + `git status` 无差异，`Transport/`、`Recovery/` 与固定 schema 原件相对 `4239209c…` 零改动，Release 包仅一个 SDK DLL、依赖组为空；此前 xUnit1030 新增告警清零，仓库回到 70 个既有 ImageSharp 审计告警基线。待技术负责人审查与独立复核。
 
 ## 已完成基线
 

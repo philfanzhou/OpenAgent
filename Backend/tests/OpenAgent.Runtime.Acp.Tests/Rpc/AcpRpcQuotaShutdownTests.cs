@@ -36,12 +36,14 @@ public sealed class AcpRpcQuotaShutdownTests
         {
             Task first = client.RequestAsync("test/hang", null, test.Token);
             Task second = client.RequestAsync("test/hang", null, test.Token);
+            Task third = client.RequestAsync("test/hang", null, test.Token);
+            // Three in-flight calls fill MaxPendingRequests=3; the fourth fails locally before any frame is written.
             await Assert.ThrowsAsync<AcpQuotaExceededException>(
                 () => client.RequestAsync("test/hang", null, test.Token)).ConfigureAwait(false);
 
             // Exhausting the quota never blocks responses, cancels, or shutdown.
             release.TrySetResult();
-            await Task.WhenAll(first, second).ConfigureAwait(false);
+            await Task.WhenAll(first, second, third).ConfigureAwait(false);
         }
         finally
         {
@@ -53,7 +55,7 @@ public sealed class AcpRpcQuotaShutdownTests
     public async Task Request_HandlerTaskQuotaExhausted_AnsweredInternalError()
     {
         (AcpRpcConnection client, AcpRpcConnection agent, LoopbackTransport clientWire, LoopbackTransport agentWire) = RpcTestHarness.Connect(
-            new AcpRpcOptions { MaxConcurrentHandlers = 1 });
+            agentOptions: new AcpRpcOptions { MaxConcurrentHandlers = 1 });
         await using AcpRpcConnection clientOwned = client;
         await using AcpRpcConnection agentOwned = agent;
         using CancellationTokenSource test = new(RpcTestHarness.TimeoutMs);
@@ -102,32 +104,26 @@ public sealed class AcpRpcQuotaShutdownTests
             new AcpRpcOptions { MaxQueuedNotifications = 1 });
         await using AcpRpcConnection clientOwned = client;
         await using AcpRpcConnection agentOwned = agent;
-        using CancellationTokenSource test = new(RpcTestHarness.TimeoutMs);
-        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         TaskCompletionSource firstSeen = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        client.RegisterNotificationHandler("test/note", async (_, _) =>
+        // The handler honors its lifetime token, so the overflow shutdown converges without external release.
+        client.RegisterNotificationHandler("test/note", async (_, ct) =>
         {
             firstSeen.TrySetResult();
-            await release.Task.ConfigureAwait(false);
+            await Task.Delay(Timeout.InfiniteTimeSpan, ct).ConfigureAwait(false);
         });
         client.Start();
 
-        try
-        {
-            await RpcTestHarness.SendFrameAsync(agentWire, "{\"method\":\"test/note\",\"params\":{}}").ConfigureAwait(false);
-            await firstSeen.Task.ConfigureAwait(false);
-            // The handler is stalled; the next two notifications exceed the queue.
-            await RpcTestHarness.SendFrameAsync(agentWire, "{\"method\":\"test/note\",\"params\":{}}").ConfigureAwait(false);
-            await RpcTestHarness.SendFrameAsync(agentWire, "{\"method\":\"test/note\",\"params\":{}}").ConfigureAwait(false);
+        await RpcTestHarness.SendFrameAsync(agentWire, "{\"method\":\"test/note\",\"params\":{}}").ConfigureAwait(false);
+        await firstSeen.Task.ConfigureAwait(false);
+        // The handler is stalled; the next two notifications exceed the queue. The queue only
+        // drains again after shutdown cancels the handler, so the overflow is deterministic.
+        await RpcTestHarness.SendFrameAsync(agentWire, "{\"method\":\"test/note\",\"params\":{}}").ConfigureAwait(false);
+        await RpcTestHarness.SendFrameAsync(agentWire, "{\"method\":\"test/note\",\"params\":{}}").ConfigureAwait(false);
 
-            // Slow consumption faults the connection instead of dropping frames or blocking the reader forever.
-            await client.Completion.ConfigureAwait(false);
-        }
-        finally
-        {
-            release.TrySetResult();
-        }
+        // Slow consumption faults the connection with the quota error instead of dropping frames
+        // or blocking the reader forever.
+        await Assert.ThrowsAnyAsync<AcpQuotaExceededException>(() => client.Completion).ConfigureAwait(false);
     }
 
     [Fact]
@@ -157,7 +153,7 @@ public sealed class AcpRpcQuotaShutdownTests
     [Fact]
     public async Task Dispose_FailsPendingAndIsIdempotent()
     {
-        (AcpRpcConnection client, AcpRpcConnection agent, _, _) = RpcTestHarness.Connect();
+        (AcpRpcConnection client, AcpRpcConnection agent, LoopbackTransport clientWire, _) = RpcTestHarness.Connect();
         await using AcpRpcConnection clientOwned = client;
         await using AcpRpcConnection agentOwned = agent;
         using CancellationTokenSource test = new(RpcTestHarness.TimeoutMs);
@@ -176,11 +172,21 @@ public sealed class AcpRpcQuotaShutdownTests
         agent.Start();
 
         Task<JsonElement> pending = client.RequestAsync("test/hang", null, test.Token);
-        await ValueTaskExtensionsDisposeTwice(client).ConfigureAwait(false);
+        try
+        {
+            // The frame must be on the wire before disposal: an unwritten frame is a documented
+            // pre-write cancellation, and this test pins the pending-failure path.
+            byte[]? written = await clientWire.OutgoingFrames.ReadAsync(test.Token).ConfigureAwait(false);
+            Assert.NotNull(written);
+            await ValueTaskExtensionsDisposeTwice(client).ConfigureAwait(false);
 
-        await Assert.ThrowsAsync<AcpConnectionClosedException>(() => pending).ConfigureAwait(false);
-        await client.Completion.ConfigureAwait(false);
-        release.TrySetResult();
+            await Assert.ThrowsAsync<AcpConnectionClosedException>(() => pending).ConfigureAwait(false);
+            await client.Completion.ConfigureAwait(false);
+        }
+        finally
+        {
+            release.TrySetResult();
+        }
     }
 
     private static async Task ValueTaskExtensionsDisposeTwice(AcpRpcConnection connection)
@@ -213,12 +219,19 @@ public sealed class AcpRpcQuotaShutdownTests
         agent.Start();
 
         Task<JsonElement> pending = client.RequestAsync("test/hang", null, test.Token);
-        await Task.Delay(50, CancellationToken.None).ConfigureAwait(false);
-        clientWire.SimulateEof();
+        try
+        {
+            await Task.Delay(50, CancellationToken.None).ConfigureAwait(false);
+            clientWire.SimulateEof();
 
-        await Assert.ThrowsAsync<AcpConnectionClosedException>(() => pending).ConfigureAwait(false);
-        await client.Completion.ConfigureAwait(false);
-        release.TrySetResult();
+            await Assert.ThrowsAsync<AcpConnectionClosedException>(() => pending).ConfigureAwait(false);
+            await client.Completion.ConfigureAwait(false);
+        }
+        finally
+        {
+            release.TrySetResult();
+        }
+
         // The agent faults when its late response hits the closed peer transport.
         await Assert.ThrowsAnyAsync<Exception>(() => agent.Completion).ConfigureAwait(false);
     }

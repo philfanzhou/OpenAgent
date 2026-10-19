@@ -60,12 +60,19 @@ internal static class FaultScenario
             }).ConfigureAwait(false);
 
         using CancellationTokenSource caller = new();
-        Task<JsonElement> call = harness.Client.RequestAsync("test/ignores-cancel", AcpJson.ParseElement("{}"), caller.Token);
-        await Task.Delay(100, CancellationToken.None).ConfigureAwait(false);
-        await caller.CancelAsync().ConfigureAwait(false);
-        await RpcScenario.AssertThrowsAsync<AcpCancellationUnconfirmedException>(() => call).ConfigureAwait(false);
-        await harness.Client.Completion.ConfigureAwait(false);
-        release.TrySetResult();
+        try
+        {
+            Task<JsonElement> call = harness.Client.RequestAsync("test/ignores-cancel", AcpJson.ParseElement("{}"), caller.Token);
+            await Task.Delay(100, CancellationToken.None).ConfigureAwait(false);
+            await caller.CancelAsync().ConfigureAwait(false);
+            await RpcScenario.AssertThrowsAsync<AcpCancellationUnconfirmedException>(() => call).ConfigureAwait(false);
+            await harness.Client.Completion.ConfigureAwait(false);
+        }
+        finally
+        {
+            // The agent handler ignores cancellation and waits here; disposal must never block on it.
+            release.TrySetResult();
+        }
     }
 
     private static async Task QuotaFailsLocallyAsync()
@@ -81,10 +88,17 @@ internal static class FaultScenario
             })).ConfigureAwait(false);
 
         Task pending = harness.Client.RequestAsync("test/hang", AcpJson.ParseElement("{}"), harness.Deadline.Token);
-        await RpcScenario.AssertThrowsAsync<AcpQuotaExceededException>(
-            () => harness.Client.RequestAsync("test/hang", AcpJson.ParseElement("{}"), harness.Deadline.Token)).ConfigureAwait(false);
-        // Quota exhaustion never blocks the response path.
-        release.TrySetResult();
+        try
+        {
+            await RpcScenario.AssertThrowsAsync<AcpQuotaExceededException>(
+                () => harness.Client.RequestAsync("test/hang", AcpJson.ParseElement("{}"), harness.Deadline.Token)).ConfigureAwait(false);
+        }
+        finally
+        {
+            // Quota exhaustion never blocks the response path; a failed assert must not stall disposal.
+            release.TrySetResult();
+        }
+
         await pending.ConfigureAwait(false);
     }
 
@@ -99,11 +113,17 @@ internal static class FaultScenario
             })).ConfigureAwait(false);
 
         Task<JsonElement> pending = harness.Client.RequestAsync("test/hang", AcpJson.ParseElement("{}"), harness.Deadline.Token);
-        await Task.Delay(50, CancellationToken.None).ConfigureAwait(false);
-        harness.ClientWire.SimulateEof();
-        await RpcScenario.AssertThrowsAsync<AcpConnectionClosedException>(() => pending).ConfigureAwait(false);
-        await harness.Client.Completion.ConfigureAwait(false);
-        release.TrySetResult();
+        try
+        {
+            await Task.Delay(50, CancellationToken.None).ConfigureAwait(false);
+            harness.ClientWire.SimulateEof();
+            await RpcScenario.AssertThrowsAsync<AcpConnectionClosedException>(() => pending).ConfigureAwait(false);
+            await harness.Client.Completion.ConfigureAwait(false);
+        }
+        finally
+        {
+            release.TrySetResult();
+        }
     }
 
     private static async Task TransportFaultPreservesTerminalAsync()
@@ -138,10 +158,19 @@ internal static class FaultScenario
             });
         }).ConfigureAwait(false);
 
-        await RpcScenario.AssertThrowsAsync<JsonException>(() => harness.Client.RequestAsync(
-            "initialize", AcpJson.ParseElement("{\"protocolVersion\":1}"), harness.Deadline.Token)).ConfigureAwait(false);
+        try
+        {
+            // A schema-invalid handler result never reaches the wire; the peer observes -32603 instead.
+            AcpRpcException invalid = await RpcScenario.AssertThrowsAsync<AcpRpcException>(() => harness.Client.RequestAsync(
+                "initialize", AcpJson.ParseElement("{\"protocolVersion\":1}"), harness.Deadline.Token)).ConfigureAwait(false);
+            RpcScenario.AssertEqual(ErrorCode.InternalError, invalid.Code, "invalid handler result falls back to Internal Error");
+        }
+        finally
+        {
+            release.TrySetResult();
+        }
+
         // The link stays usable: the next roundtrip answers normally.
-        release.TrySetResult();
         JsonElement ok = await harness.Client.RequestAsync("test/after", AcpJson.ParseElement("{}"), harness.Deadline.Token).ConfigureAwait(false);
         RpcScenario.AssertEqual(true, ok.GetProperty("ok").GetBoolean(), "connection survives a schema-invalid result");
     }
