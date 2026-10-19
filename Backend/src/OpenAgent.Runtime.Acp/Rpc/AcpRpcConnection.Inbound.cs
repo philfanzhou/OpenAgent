@@ -336,7 +336,10 @@ public sealed partial class AcpRpcConnection
         {
             Close($"the notification buffer exceeded {nameof(AcpRpcOptions.MaxQueuedNotifications)}",
                 new AcpQuotaExceededException(nameof(AcpRpcOptions.MaxQueuedNotifications), _options.MaxQueuedNotifications, _options.MaxQueuedNotifications + 1L));
+            return;
         }
+
+        Interlocked.Increment(ref _notificationsQueued);
     }
 
     private async Task RunNotificationLoopAsync()
@@ -345,10 +348,12 @@ public sealed partial class AcpRpcConnection
         {
             await foreach (AcpRpcNotification notification in _notifications.Reader.ReadAllAsync(_lifetime.Token).ConfigureAwait(false))
             {
-                if (!_notificationHandlers.TryGetValue(notification.Method, out Func<AcpRpcNotification, CancellationToken, Task>? handler)) continue;
                 try
                 {
-                    await handler(notification, _lifetime.Token).ConfigureAwait(false);
+                    if (_notificationHandlers.TryGetValue(notification.Method, out Func<AcpRpcNotification, CancellationToken, Task>? handler))
+                    {
+                        await handler(notification, _lifetime.Token).ConfigureAwait(false);
+                    }
                 }
                 catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
                 {
@@ -357,6 +362,11 @@ public sealed partial class AcpRpcConnection
                 catch (Exception exception)
                 {
                     Diagnostic(AcpRpcDiagnosticKind.HandlerFault, notification.Method, null, exception.GetType().Name);
+                }
+                finally
+                {
+                    // One increment per consumed item, handled or not: drain waiters measure queue transit.
+                    SignalNotificationDispatch();
                 }
             }
         }

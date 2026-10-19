@@ -120,6 +120,9 @@ public sealed partial class AcpRpcConnection
         }
 
         FailAllPending(new AcpConnectionClosedException(reason));
+        // Queued notifications are discarded below without dispatching, so drain waiters would never
+        // observe their dispatch count arrive; cancel them with the rest of the closing link.
+        CancelDrainWaiters();
         // Converge in rounds: unfinished batch collectors are settled first (their handlers may
         // already have stopped writing frames), then every tracked task must drain. A task
         // tracked after one snapshot is caught by the next round, so shutdown leaves no

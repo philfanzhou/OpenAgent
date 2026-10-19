@@ -49,7 +49,11 @@ public sealed partial class AcpRpcConnection
     private readonly CancellationTokenSource _lifetime = new();
     private readonly TaskCompletionSource _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly object _stateGate = new();
+    private readonly object _drainGate = new();
+    private readonly List<TaskCompletionSource> _drainWaiters = [];
     private readonly List<Exception> _faults = [];
+    private long _notificationsQueued;
+    private long _notificationsDispatched;
     private int _nextId;
     private int _activeHandlers;
     private bool _started;
@@ -198,6 +202,70 @@ public sealed partial class AcpRpcConnection
 
     /// <summary>Test-only observation: tracked tasks still running, so leak regressions can assert a drained engine.</summary>
     internal int TrackedTaskCount => _tracked.Count;
+
+    /// <summary>
+    /// Waits until every notification the reader has queued so far finished dispatching to its
+    /// handler. The role layer awaits this between a turn's final response and reporting
+    /// completion, so same-session updates that preceded the response on the wire are already in
+    /// their session queues (DESIGN: updates enqueue before the turn completes). The wait stays
+    /// bounded by the connection lifetime: shutdown cancels the waiters it will never dispatch.
+    /// </summary>
+    internal async Task AwaitNotificationDrainAsync(CancellationToken cancellationToken)
+    {
+        TaskCompletionSource? waiter = RegisterDrainWaiter();
+        if (waiter is null) return;
+        try
+        {
+            await waiter.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            lock (_drainGate) _drainWaiters.Remove(waiter);
+            throw;
+        }
+    }
+
+    private TaskCompletionSource? RegisterDrainWaiter()
+    {
+        lock (_drainGate)
+        {
+            if (Interlocked.Read(ref _notificationsDispatched) >= Interlocked.Read(ref _notificationsQueued)) return null;
+            TaskCompletionSource waiter = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            _drainWaiters.Add(waiter);
+            return waiter;
+        }
+    }
+
+    /// <summary>Called by the notification loop after each dispatch; releases drain waiters once the queue caught up.</summary>
+    private void SignalNotificationDispatch()
+    {
+        long dispatched = Interlocked.Increment(ref _notificationsDispatched);
+        TaskCompletionSource[]? ready = null;
+        lock (_drainGate)
+        {
+            if (_drainWaiters.Count > 0 && dispatched >= Interlocked.Read(ref _notificationsQueued))
+            {
+                ready = [.. _drainWaiters];
+                _drainWaiters.Clear();
+            }
+        }
+
+        if (ready is null) return;
+        foreach (TaskCompletionSource waiter in ready) waiter.TrySetResult();
+    }
+
+    private void CancelDrainWaiters()
+    {
+        TaskCompletionSource[]? waiters;
+        lock (_drainGate)
+        {
+            waiters = _drainWaiters.Count > 0 ? [.. _drainWaiters] : null;
+            _drainWaiters.Clear();
+        }
+
+        if (waiters is null) return;
+        foreach (TaskCompletionSource waiter in waiters) waiter.TrySetCanceled();
+    }
 
     private static string PendingKey(RpcId id) => id.Kind == JsonValueKind.String
         ? "s:" + id.StringValue

@@ -7,14 +7,16 @@ namespace OpenAgent.Runtime.Acp.Tests.Console;
 public sealed class ConsoleProcessTests
 {
     [Theory]
-    [InlineData("list", null, 0, "framing")]
+    [InlineData("list", null, 0, "echo\tP3")]
     [InlineData("run", "framing", 0, "PASS framing")]
     [InlineData("run", "lifecycle", 0, "PASS lifecycle")]
     [InlineData("run", "schema", 0, "methods=25 updates=14 definitions=178")]
     [InlineData("run", "rpc", 0, "PASS rpc")]
     [InlineData("run", "reverse", 0, "PASS reverse")]
     [InlineData("run", "fault", 0, "PASS fault")]
-    [InlineData("run", "all", 0, "PASS fault")]
+    [InlineData("run", "echo", 0, "PASS echo (client/agent minimal loop)")]
+    [InlineData("run", "cancel", 0, "PASS cancel (client/agent minimal loop)")]
+    [InlineData("run", "all", 0, "PASS cancel")]
     [InlineData("run", "missing", 2, "Unknown command")]
     public async Task Main_ScenarioCommand_ReturnsExpectedResult(string command, string? scenario, int exitCode, string text)
     {

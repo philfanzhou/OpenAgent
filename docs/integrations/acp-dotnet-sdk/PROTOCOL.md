@@ -141,6 +141,7 @@ SDK 不将资源链接自动下载为本地文件，不把不同 MIME/二进制�
 - handler 与通知 handler 收到的 `params`、调用方拿到的响应 `result` 与错误 `data` 都是引擎在帧边界克隆的 owned payload：帧的 JsonDocument 释放后仍然有效（§6 语义），handler 与通知分派不共享帧生命周期。
 - 配额（产品策略）：`MaxPendingRequests`（出站，超限本地 `AcpQuotaExceededException`）、`MaxConcurrentHandlers`（入站，超限回 -32603 附 `data.limit`）、`MaxQueuedNotifications`（溢出显式故障连接）。配额耗尽不阻塞响应、取消或关闭。
 - 关闭统一收敛：EOF/Dispose/故障使全部 pending 以 `AcpConnectionClosedException` 失败；终端传输/清理故障由 `Completion` 保留，干净 EOF 或 Dispose 正常完成；Dispose 幂等且不重抛终端故障。所有引擎任务都被生命周期观察，无未观察任务。batch 在途时关闭：关闭流程登记并清扫未完结 batch collector——被生命周期取消而不再写响应的 handler、以及未被首个快照覆盖的聚合任务，其未填槽位由清扫以 -32603 结算，batch 聚合不写出、任务随轮次收敛清空，Dispose 在测试期限内收敛。
+- 关闭等待在途 handler 收敛：`DisposeAsync`/关闭流程会等待每一个已分派 handler 自然返回（取消或完成），不强制杀任务。因此 **handler 必须观察其 `CancellationToken`**——不观察取消令牌的长 handler 会让 Dispose 与关闭无限期不收敛（P3 契约；超时强杀选项留待后续评估）。SDK 自带与示例 handler 全部遵守取消令牌。
 
 ## 5. 结果、错误与资源规则
 

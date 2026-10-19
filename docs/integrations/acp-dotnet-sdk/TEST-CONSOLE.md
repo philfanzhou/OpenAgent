@@ -11,11 +11,15 @@ dotnet run --no-build --project Backend/tools/OpenAgent.Runtime.Acp.TestConsole 
 dotnet run --no-build --project Backend/tools/OpenAgent.Runtime.Acp.TestConsole -- run rpc
 dotnet run --no-build --project Backend/tools/OpenAgent.Runtime.Acp.TestConsole -- run reverse
 dotnet run --no-build --project Backend/tools/OpenAgent.Runtime.Acp.TestConsole -- run fault
+dotnet run --no-build --project Backend/tools/OpenAgent.Runtime.Acp.TestConsole -- run echo
+dotnet run --no-build --project Backend/tools/OpenAgent.Runtime.Acp.TestConsole -- run cancel
 dotnet run --no-build --project Backend/tools/OpenAgent.Runtime.Acp.TestConsole -- run all --report all-report.json
 dotnet test Backend/tests/OpenAgent.Runtime.Acp.Tests --no-build
 ```
 
-P0 场景：framing 验证 Unicode、CRLF/上限、多帧、EOF、写入；lifecycle 验证 EOF 写入排空、取消回调异常后的清理、并发释放。schema（P1）读取构建时复制的固定 contracts.json，覆盖 178 个定义、25 方法、14 更新和 45 个方法方向信封夹具（`$/cancel_request` 为协议级通知，上游无 envelope 联合，按定义级覆盖），校验正常往返、非法读取/发送、信封按方法判别/方向拒绝/`result`+`error` 互斥及默认能力。P2 场景：rpc 验证双向请求/通知、string/int64/null ID 回显、id:null 拒绝、-32700/-32600/-32601/-32602、重复与迟到响应诊断、batch（混合/纯通知/空/批内取消）、通知有序；reverse 验证请求内等待反向调用、慢 handler 不阻塞调用与通知、自然完成赢得取消竞态、对端取消后仍等待最终响应；fault 注入非法 payload 回 -32602 后连接可恢复、未确认取消（宽限超时、异常、关闭）、pending 配额本地失败、EOF/传输故障收敛与完成态保留、handler 结果违反方法 schema 的本地失败。all 包含六者；PASS 不代表 Agent/模型或完整 SDK。退出码 0=成功/帮助/列表，1=场景失败，2=参数/场景错误；未知功能不得静默跳过。
+P3 起控制台另有两条真实进程命令：`agent` 在 stdio 上以 SDK handler 提供 Echo Agent（stdout 只写协议帧，诊断走 stderr，EOF 干净退出）；`client [--cancel] [--agent <exe>] [--agent-arg <arg>]... [--cwd <path>] [--timeout-seconds <n>] -- <prompt>` 以完整 SDK Client 驱动一次会话，默认自动把本控制台的 `agent` 模式作为子进程启动（子进程清理为控制台临时实现，SDK 进程模块在 P4 交付）。正常输出为 `Initialized ACP v1.`、Agent 信息、`Session:`、累计回复与 `Stop reason:`；`--cancel` 在首个流式片段后发送取消，以最终响应的 stop reason 为准。
+
+P0 场景：framing 验证 Unicode、CRLF/上限、多帧、EOF、写入；lifecycle 验证 EOF 写入排空、取消回调异常后的清理、并发释放。schema（P1）读取构建时复制的固定 contracts.json，覆盖 178 个定义、25 方法、14 更新和 45 个方法方向信封夹具（`$/cancel_request` 为协议级通知，上游无 envelope 联合，按定义级覆盖），校验正常往返、非法读取/发送、信封按方法判别/方向拒绝/`result`+`error` 互斥及默认能力。P2 场景：rpc 验证双向请求/通知、string/int64/null ID 回显、id:null 拒绝、-32700/-32600/-32601/-32602、重复与迟到响应诊断、batch（混合/纯通知/空/批内取消）、通知有序；reverse 验证请求内等待反向调用、慢 handler 不阻塞调用与通知、自然完成赢得取消竞态、对端取消后仍等待最终响应；fault 注入非法 payload 回 -32602 后连接可恢复、未确认取消（宽限超时、异常、关闭）、pending 配额本地失败、EOF/传输故障收敛与完成态保留、handler 结果违反方法 schema 的本地失败。P3 场景：echo 在进程内回环对上以 SDK Client/Agent 完成 initialize、session/new、中文/表情逐字素流式回显与会话复用；cancel 在首片段后取消，验证尾部更新先于最终响应入队、stop reason=cancelled 及取消后可继续对话。all 包含八者；PASS 不代表 Agent/模型或完整 SDK。退出码 0=成功/帮助/列表，1=场景失败，2=参数/场景错误；未知功能不得静默跳过。
 
 新增能力同时更新 list/help、run all、测试和文档；未来场景按 [IMPLEMENTATION](./IMPLEMENTATION.md) 增加，未实现命令不能当作可用功能。测试必须启动真实控制台，检查输出/退出码、超时、回收自有进程；不能仅测试解析器。
 
