@@ -173,6 +173,11 @@ public sealed partial class AcpRpcConnection
                 // An elapsed cancel owns its outcome: the grace flow reports AcpCancellationUnconfirmedException
                 // even when shutdown races it, so a close never masks the cancellation that triggered it.
                 if (call.State == PendingState.Unconfirmed) continue;
+                // Only Awaiting and CancelSent calls are still live. Writing the terminal state
+                // before removal stops a racing cancel flow from re-arming a grace nobody will
+                // cancel, which would otherwise stall shutdown for a full grace period (review F2).
+                if (call.State is not (PendingState.Awaiting or PendingState.CancelSent)) continue;
+                call.State = PendingState.FailedByClose;
             }
 
             if (_pending.TryRemove(call.Key, out _))

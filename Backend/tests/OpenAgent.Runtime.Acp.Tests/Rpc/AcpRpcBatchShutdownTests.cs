@@ -105,7 +105,7 @@ public sealed class AcpRpcBatchShutdownTests
         {
             (AcpRpcConnection client, AcpRpcConnection agent, LoopbackTransport clientWire, _) = RpcTestHarness.Connect();
             using CancellationTokenSource test = new(RpcTestHarness.TimeoutMs);
-            StartHangingHandler(agent);
+            _ = StartHangingHandler(agent);
             client.Start();
             agent.Start();
 

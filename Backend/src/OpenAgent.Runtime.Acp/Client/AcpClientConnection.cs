@@ -118,6 +118,13 @@ public sealed class AcpClientConnection : IAsyncDisposable
         NewSessionRequest request = new(cwd, []);
         JsonElement result = await _rpc.RequestAsync("session/new", AcpJson.ToElement(request), cancellationToken).ConfigureAwait(false);
         NewSessionResponse response = AcpJson.FromElement<NewSessionResponse>(result);
+        if (string.IsNullOrWhiteSpace(response.SessionId))
+        {
+            // The wire schema cannot express a minimum length; a blank id would create a session
+            // no update could ever route to, so it fails locally before binding.
+            throw new AcpCapabilityException("The agent returned a blank session id; the session cannot be addressed.");
+        }
+
         AcpSession session = new(this, response.SessionId, _options.MaxQueuedUpdates);
         BindSession(session);
         return session;
@@ -197,10 +204,9 @@ public sealed class AcpClientConnection : IAsyncDisposable
     {
         // The engine validated the session/update payload before dispatch, so binding cannot fail here.
         SessionNotification update = AcpJson.FromElement<SessionNotification>(notification.Parameters!.Value);
-        AcpSession? session;
         lock (_bindGate)
         {
-            session = _sessions.GetValueOrDefault(update.SessionId);
+            AcpSession? session = _sessions.GetValueOrDefault(update.SessionId);
             if (session is null)
             {
                 if (_unbound.Count >= _options.MaxQueuedUpdates)
@@ -214,24 +220,33 @@ public sealed class AcpClientConnection : IAsyncDisposable
                 _unbound.Add(update);
                 return Task.CompletedTask;
             }
-        }
 
-        session.Enqueue(update);
-        return Task.CompletedTask;
+            // The dispatch loop and BindSession enqueue under the same gate, so a session's
+            // update stream always matches wire order across the binding boundary (review F1).
+            session.Enqueue(update);
+            return Task.CompletedTask;
+        }
     }
 
-    /// <summary>Registers the session, then moves the pre-response updates that carry its id. One lock covers both, so no update lands in the wrong state.</summary>
+    /// <summary>Registers the session, moves and enqueues its pre-response updates under one lock. The dispatch loop enqueues under the same gate, so handoff keeps wire order.</summary>
     private void BindSession(AcpSession session)
     {
-        List<SessionNotification> early;
         lock (_bindGate)
         {
             _sessions[session.SessionId] = session;
-            early = _unbound.Where(update => update.SessionId == session.SessionId).ToList();
-            if (early.Count > 0) _unbound.RemoveAll(update => update.SessionId == session.SessionId);
+            for (int index = 0; index < _unbound.Count; )
+            {
+                if (_unbound[index].SessionId == session.SessionId)
+                {
+                    session.Enqueue(_unbound[index]);
+                    _unbound.RemoveAt(index);
+                }
+                else
+                {
+                    index++;
+                }
+            }
         }
-
-        foreach (SessionNotification update in early) session.Enqueue(update);
     }
 
     private void OnConnectionClosed()

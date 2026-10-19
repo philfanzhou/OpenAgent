@@ -139,6 +139,52 @@ public sealed class AcpClientSessionTests
     }
 
     [Fact]
+    public async Task NewSessionAsync_ManyEarlyUpdates_KeepWireOrderAcrossBinding()
+    {
+        // BindSession once enqueued its pre-response snapshot outside the bind gate, so the
+        // dispatch loop could slip a still-in-flight update into the middle of the handoff and
+        // silently reorder the stream (review F1). Many rounds with a wide early window and
+        // post-binding traffic pin the full wire order on every round.
+        using CancellationTokenSource deadline = Deadline();
+        (AcpClientConnection client, LoopbackTransport clientWire, LoopbackTransport agentWire) = CreatePair();
+        await using AcpClientConnection lifetime = client;
+        RawPeer peer = await InitializeAsync(client, agentWire, deadline.Token);
+
+        const int earlyCount = 80;
+        const int afterCount = 8;
+        for (int round = 0; round < 25; round++)
+        {
+            string sessionId = $"sess-order-{round}";
+            Task<AcpSession> creating = client.NewSessionAsync("/tmp", deadline.Token);
+            using (JsonDocument request = await peer.ReceiveRequestAsync("session/new", deadline.Token))
+            {
+                for (int index = 0; index < earlyCount; index++)
+                {
+                    await peer.WriteAsync(UpdateFrame(sessionId, $"早{index:000}"));
+                }
+
+                await peer.AnswerAsync(request, $$"""{"sessionId":"{{sessionId}}"}""");
+                // The agent keeps streaming while the binding hands the early window over.
+                for (int index = 0; index < afterCount; index++)
+                {
+                    await peer.WriteAsync(UpdateFrame(sessionId, $"后{index:000}"));
+                }
+            }
+
+            AcpSession session = await creating;
+            List<SessionNotification> updates = await CollectAsync(session, earlyCount + afterCount, deadline.Token);
+            string[] expected =
+            [
+                .. Enumerable.Range(0, earlyCount).Select(index => $"早{index:000}"),
+                .. Enumerable.Range(0, afterCount).Select(index => $"后{index:000}")
+            ];
+            Assert.Equal(expected, updates.Select(TextOf).ToArray());
+        }
+
+        clientWire.SimulateEof();
+    }
+
+    [Fact]
     public async Task PromptAsync_UpdatesPrecedeResponse_AllEnqueuedBeforeCompletion()
     {
         using CancellationTokenSource deadline = Deadline();
@@ -346,6 +392,88 @@ public sealed class AcpClientSessionTests
     }
 
     [Fact]
+    public async Task NewSessionAsync_AgentAnswersBlankSessionId_FailsLocally()
+    {
+        // The wire schema cannot express a minimum length, so the client rejects a blank id
+        // before binding instead of creating a session no update could route to.
+        using CancellationTokenSource deadline = Deadline();
+        (AcpClientConnection client, LoopbackTransport clientWire, LoopbackTransport agentWire) = CreatePair();
+        await using AcpClientConnection lifetime = client;
+        RawPeer peer = await InitializeAsync(client, agentWire, deadline.Token);
+        Task<AcpSession> creating = client.NewSessionAsync("/tmp", deadline.Token);
+        using (JsonDocument request = await peer.ReceiveRequestAsync("session/new", deadline.Token))
+        {
+            await peer.AnswerAsync(request, """{"sessionId":""}""");
+        }
+
+        AcpCapabilityException failure = await Assert.ThrowsAsync<AcpCapabilityException>(() => creating);
+        Assert.Contains("blank session id", failure.Message);
+        Assert.True(client.IsReady); // A one-off protocol violation fails the call, not the link.
+        clientWire.SimulateEof();
+    }
+
+    [Fact]
+    public async Task ReadUpdatesAsync_SecondConcurrentConsumer_StillFails()
+    {
+        using CancellationTokenSource deadline = Deadline();
+        (AcpClientConnection client, LoopbackTransport clientWire, LoopbackTransport agentWire) = CreatePair();
+        await using AcpClientConnection lifetime = client;
+        RawPeer peer = await InitializeAsync(client, agentWire, deadline.Token);
+        AcpSession session = await NewSessionAsync(client, peer, "sess-1", deadline.Token);
+        IAsyncEnumerable<SessionNotification> first = session.ReadUpdatesAsync(deadline.Token);
+        InvalidOperationException busy = Assert.Throws<InvalidOperationException>(() => session.ReadUpdatesAsync(deadline.Token));
+        Assert.Contains("exactly one consumer", busy.Message);
+        await DisposeAsync(first);
+        clientWire.SimulateEof();
+    }
+
+    [Fact]
+    public async Task ReadUpdatesAsync_SecondConsumerAfterFirstEnded_ContinuesFromNextUpdate()
+    {
+        // The consumer slot used to stay taken forever, so even a sequential second consumer
+        // failed; it frees when an enumeration ends (review F5).
+        using CancellationTokenSource deadline = Deadline();
+        (AcpClientConnection client, LoopbackTransport clientWire, LoopbackTransport agentWire) = CreatePair();
+        await using AcpClientConnection lifetime = client;
+        RawPeer peer = await InitializeAsync(client, agentWire, deadline.Token);
+        AcpSession session = await NewSessionAsync(client, peer, "sess-1", deadline.Token);
+
+        await peer.WriteAsync(UpdateFrame("sess-1", "一"));
+        await peer.WriteAsync(UpdateFrame("sess-1", "二"));
+        List<SessionNotification> firstPass = await CollectAsync(session, 2, deadline.Token);
+        Assert.Equal(new[] { "一", "二" }, firstPass.Select(TextOf).ToArray());
+
+        // The first enumeration ended; a later consumer continues from the next queued update.
+        await peer.WriteAsync(UpdateFrame("sess-1", "三"));
+        List<SessionNotification> secondPass = await CollectAsync(session, 1, deadline.Token);
+        Assert.Equal("三", TextOf(secondPass[0]));
+        clientWire.SimulateEof();
+    }
+
+    [Fact]
+    public async Task ConnectionEof_AfterOneSessionDisposed_RemainingSessionStreamStillEnds()
+    {
+        // OnConnectionClosed once cancelled a disposed session's token and threw through the
+        // connection fan-out, so every later session missed the close and its stream hung
+        // (review F3). Disposing the first of two sessions must not strand the second.
+        using CancellationTokenSource deadline = Deadline();
+        (AcpClientConnection client, LoopbackTransport clientWire, LoopbackTransport agentWire) = CreatePair();
+        await using AcpClientConnection lifetime = client;
+        RawPeer peer = await InitializeAsync(client, agentWire, deadline.Token);
+        AcpSession first = await NewSessionAsync(client, peer, "sess-a", deadline.Token);
+        AcpSession second = await NewSessionAsync(client, peer, "sess-b", deadline.Token);
+        List<SessionNotification> updates = [];
+        Task consumer = CollectForeverAsync(second, updates);
+
+        await first.DisposeAsync();
+        clientWire.SimulateEof();
+        await client.Completion;
+        // The remaining session's stream ends instead of hanging the consumer.
+        await consumer.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(0, client.TrackedTaskCount);
+    }
+
+    [Fact]
     public async Task DisposeAsync_TwiceConvergesAndStaysIdempotent()
     {
         using CancellationTokenSource deadline = Deadline();
@@ -381,6 +509,13 @@ public sealed class AcpClientSessionTests
         }
 
         return updates;
+    }
+
+    /// <summary>Releases an abandoned consumer without enumerating it.</summary>
+    private static async Task DisposeAsync(IAsyncEnumerable<SessionNotification> enumerable)
+    {
+        IAsyncEnumerator<SessionNotification> enumerator = enumerable.GetAsyncEnumerator();
+        await enumerator.DisposeAsync();
     }
 
     private static Task CollectForeverAsync(AcpSession session, List<SessionNotification> updates) => Task.Run(async () =>

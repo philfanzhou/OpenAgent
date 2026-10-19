@@ -37,9 +37,10 @@ public sealed class AcpSession : IAsyncDisposable
     public AcpClientConnection Connection => _connection;
 
     /// <summary>
-    /// Streams session updates in wire order for exactly one consumer; a second concurrent
-    /// consumer fails. Start consuming before prompting: updates that precede the final
-    /// response are already queued when the turn completes.
+    /// Streams session updates in wire order for exactly one consumer at a time; a second
+    /// concurrent consumer fails. Once an enumeration has ended, a new consumer may start and
+    /// continues from the next queued update. Start consuming before prompting: updates that
+    /// precede the final response are already queued when the turn completes.
     /// </summary>
     public IAsyncEnumerable<SessionNotification> ReadUpdatesAsync(CancellationToken cancellationToken = default)
     {
@@ -132,7 +133,17 @@ public sealed class AcpSession : IAsyncDisposable
 
     internal void OnConnectionClosed()
     {
-        _lifetime.Cancel();
+        // A disposed session already completed its own stream; cancelling its token again would
+        // throw through the connection's fan-out and strand every remaining session (review F3).
+        if (Volatile.Read(ref _disposed) != 0) return;
+        try
+        {
+            _lifetime.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+
         _updates.Writer.TryComplete();
     }
 
@@ -140,9 +151,18 @@ public sealed class AcpSession : IAsyncDisposable
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
-        while (await _updates.Reader.WaitToReadAsync(linked.Token).ConfigureAwait(false))
+        try
         {
-            while (_updates.Reader.TryRead(out SessionNotification? update)) yield return update;
+            while (await _updates.Reader.WaitToReadAsync(linked.Token).ConfigureAwait(false))
+            {
+                while (_updates.Reader.TryRead(out SessionNotification? update)) yield return update;
+            }
+        }
+        finally
+        {
+            // The consumer slot frees when this enumeration ends — completed, broken, or
+            // cancelled — so a later consumer can start; consumers still never overlap (review F5).
+            Volatile.Write(ref _consumerActive, 0);
         }
     }
 }

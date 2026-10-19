@@ -366,7 +366,7 @@ public sealed partial class AcpRpcConnection
     {
         lock (call.Gate)
         {
-            if (call.State is PendingState.CancelledBeforeWrite or PendingState.Unconfirmed or PendingState.Completed) return;
+            if (call.State is PendingState.CancelledBeforeWrite or PendingState.Unconfirmed or PendingState.Completed or PendingState.FailedByClose) return;
             call.State = PendingState.Completed;
             call.Grace?.Cancel();
         }
@@ -408,7 +408,9 @@ public sealed partial class AcpRpcConnection
         CancelledBeforeWrite,
         CancelSent,
         Unconfirmed,
-        Completed
+        Completed,
+        /// <summary>The close path settled the call; cancel flows must not arm a grace on it.</summary>
+        FailedByClose
     }
 
     private sealed class PendingCall

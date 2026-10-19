@@ -114,6 +114,46 @@ public sealed class DualProcessTests
     }
 
 
+    [Fact]
+    public async Task ClientProcess_ApphostHost_DefaultAgentSpawnStillWorks()
+    {
+        // The default spawn once passed the console DLL path to an apphost, which forwarded it
+        // as a console argument and left the child in the scenario branch ("Unknown command").
+        // Launching the console through its apphost must reach the same working child.
+        string consolePath = ConsolePath();
+        string apphost = Path.Combine(Path.GetDirectoryName(consolePath)!, "OpenAgent.Runtime.Acp.TestConsole");
+        Assert.True(File.Exists(apphost), $"The console apphost was not built at {apphost}.");
+        ProcessStartInfo start = new(apphost)
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardInput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false
+        };
+        start.ArgumentList.Add("client");
+        start.ArgumentList.Add("--");
+        start.ArgumentList.Add("apphost-hosted 回显 🥐");
+        using Process process = Process.Start(start) ?? throw new InvalidOperationException("Could not start client process.");
+        List<string> stdoutLines = [];
+        try
+        {
+            Task output = PumpAsync(process.StandardOutput, stdoutLines);
+            Task error = PumpAsync(process.StandardError, []);
+            using CancellationTokenSource deadline = new(TimeSpan.FromSeconds(60));
+            await process.WaitForExitAsync(deadline.Token);
+            Assert.Equal(0, process.ExitCode);
+            await output;
+            await error;
+            string text = string.Join('\n', stdoutLines);
+            Assert.Contains("Echo: apphost-hosted 回显 🥐", text);
+            Assert.Contains("Stop reason: end_turn", text);
+        }
+        finally
+        {
+            await StopAsync(process);
+        }
+    }
+
     private static bool HasUpdateFrame(List<string> lines)
     {
         lock (lines) return lines.Any(line => line.Contains("session/update"));

@@ -189,8 +189,11 @@ internal static class ClientCommand
             // Default peer: this console in agent mode, spawned as a real child process.
             string consolePath = Path.Combine(AppContext.BaseDirectory, "OpenAgent.Runtime.Acp.TestConsole.dll");
             string host = Environment.ProcessPath ?? "dotnet";
+            // Under the dotnet host the DLL is the first argument; an apphost already binds its
+            // own DLL, so passing the DLL path again would land in the console as a stray argument.
+            bool viaDotnetHost = Path.GetFileNameWithoutExtension(host).Equals("dotnet", StringComparison.OrdinalIgnoreCase);
             start = new ProcessStartInfo(host) { RedirectStandardOutput = true, RedirectStandardInput = true, RedirectStandardError = true, UseShellExecute = false };
-            start.ArgumentList.Add(consolePath);
+            if (viaDotnetHost) start.ArgumentList.Add(consolePath);
             start.ArgumentList.Add("agent");
         }
         else
