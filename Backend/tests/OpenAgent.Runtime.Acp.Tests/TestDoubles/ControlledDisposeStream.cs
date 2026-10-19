@@ -5,7 +5,10 @@ internal sealed class ControlledDisposeStream(bool block = false, bool fail = fa
     public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public IOException Failure { get; } = new("Injected disposal failure.");
-    public int DisposeCount { get; private set; }
+    public int DisposeCount
+    {
+        get; private set;
+    }
 
     public override async ValueTask DisposeAsync()
     {

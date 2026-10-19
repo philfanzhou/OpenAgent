@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
+
 namespace OpenAgent.Runtime.Acp.Protocol;
 
 public static class AcpJson
@@ -9,7 +10,11 @@ public static class AcpJson
         ?? throw new NotSupportedException("Supply explicit JsonTypeInfo for extension types."));
     public static T Read<T>(JsonElement value) => value.Deserialize(TypeInfo<T>()) ?? throw new JsonException("Missing protocol value.");
     public static JsonElement Element<T>(T value) => JsonSerializer.SerializeToElement(value, TypeInfo<T>());
-    public static JsonElement Parse(string json) { using JsonDocument doc = JsonDocument.Parse(json); return doc.RootElement.Clone(); }
+    public static JsonElement Parse(string json)
+    {
+        using JsonDocument doc = JsonDocument.Parse(json);
+        return doc.RootElement.Clone();
+    }
 }
 
 // 这里只声明序列化元数据；编译器生成物留在 obj，不把几百个包装类纳入源码。

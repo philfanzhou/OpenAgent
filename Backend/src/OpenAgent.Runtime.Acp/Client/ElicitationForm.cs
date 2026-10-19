@@ -1,4 +1,5 @@
 using System.Text.Json;
+
 namespace OpenAgent.Runtime.Acp.Client;
 
 // ACP 表单只允许基础字段；保留 schema 为 JSON，但校验提交值，避免引入完整 JSON Schema 引擎。
@@ -6,12 +7,28 @@ internal static class ElicitationForm
 {
     internal static void Validate(JsonElement schema, JsonElement? content)
     {
-        if (content is not { ValueKind: JsonValueKind.Object } value || !schema.TryGetProperty("properties", out JsonElement properties)) throw new ArgumentException("Invalid form content.");
+        if (content is not { ValueKind: JsonValueKind.Object } value || !schema.TryGetProperty("properties", out JsonElement properties))
+        {
+            throw new ArgumentException("Invalid form content.");
+        }
+
         if (schema.TryGetProperty("required", out JsonElement required))
-            foreach (JsonElement name in required.EnumerateArray()) if (!value.TryGetProperty(name.GetString()!, out _)) throw new ArgumentException("Missing form field.");
+        {
+            foreach (JsonElement name in required.EnumerateArray())
+            {
+                if (!value.TryGetProperty(name.GetString()!, out _))
+                {
+                    throw new ArgumentException("Missing form field.");
+                }
+            }
+        }
+
         foreach (JsonProperty item in value.EnumerateObject())
         {
-            if (!properties.TryGetProperty(item.Name, out JsonElement field) || !Matches(field, item.Value)) throw new ArgumentException("Invalid form field.");
+            if (!properties.TryGetProperty(item.Name, out JsonElement field) || !Matches(field, item.Value))
+            {
+                throw new ArgumentException("Invalid form field.");
+            }
         }
     }
     private static bool Matches(JsonElement field, JsonElement value)

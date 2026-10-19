@@ -1,4 +1,5 @@
 namespace OpenAgent.Runtime.Acp.TestConsole;
+
 internal static class SelfCommand
 {
     internal static (string File, string[] Args) For(string mode)

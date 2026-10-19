@@ -1,11 +1,21 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+
 namespace OpenAgent.Runtime.Acp.Protocol;
 
+/// <summary>保留协议元数据及未知字段；JsonElement 数据由反序列化结果自行拥有。</summary>
 public record AcpData
 {
-    [JsonPropertyName("_meta")] public JsonElement? Meta { get; init; }
-    [JsonExtensionData] public Dictionary<string, JsonElement>? Extensions { get; set; }
+    [JsonPropertyName("_meta")]
+    public JsonElement? Meta
+    {
+        get; init;
+    }
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? Extensions
+    {
+        get; set;
+    }
 }
 public sealed record Empty : AcpData;
 public sealed record Implementation(string Name, string Version, string? Title = null) : AcpData;
@@ -18,17 +28,41 @@ public sealed record PromptCapabilities(bool Image = false, bool Audio = false, 
 public sealed record SessionCapabilities(Empty? List = null, Empty? Delete = null, Empty? Resume = null, Empty? Close = null, Empty? AdditionalDirectories = null) : AcpData;
 public sealed record AuthMethod(string Id, string Name, string? Description = null, string? Type = null) : AcpData
 {
-    public string[]? Args { get; init; }
-    public Dictionary<string, string>? Env { get; init; }
+    public string[]? Args
+    {
+        get; init;
+    }
+    public Dictionary<string, string>? Env
+    {
+        get; init;
+    }
 }
 public sealed record AuthenticateRequest(string MethodId) : AcpData;
 public sealed record EnvVariable(string Name, string Value);
 public sealed record McpServer(string Name) : AcpData
 {
-    public string? Type { get; init; }
-    public string? Command { get; init; }
-    public string[]? Args { get; init; }
-    public EnvVariable[]? Env { get; init; }
-    public string? Url { get; init; }
-    public EnvVariable[]? Headers { get; init; }
+    public string? Type
+    {
+        get; init;
+    }
+    public string? Command
+    {
+        get; init;
+    }
+    public string[]? Args
+    {
+        get; init;
+    }
+    public EnvVariable[]? Env
+    {
+        get; init;
+    }
+    public string? Url
+    {
+        get; init;
+    }
+    public EnvVariable[]? Headers
+    {
+        get; init;
+    }
 }

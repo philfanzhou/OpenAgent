@@ -3,7 +3,10 @@ namespace OpenAgent.Runtime.Acp.Tests.TestDoubles;
 internal sealed class PendingReadStream(bool throwOnCancel = false) : MemoryStream
 {
     public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    public int DisposeCount { get; private set; }
+    public int DisposeCount
+    {
+        get; private set;
+    }
 
     public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
     {

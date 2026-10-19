@@ -1,7 +1,9 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+
 namespace OpenAgent.Runtime.Acp.Protocol;
 
+// 保留 ACP 原始内容类型，能力门控在 Client/Agent 入口执行。
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
 [JsonDerivedType(typeof(TextContent), "text")]
 [JsonDerivedType(typeof(ImageContent), "image")]
@@ -10,7 +12,10 @@ namespace OpenAgent.Runtime.Acp.Protocol;
 [JsonDerivedType(typeof(EmbeddedResource), "resource")]
 public abstract record ContentBlock : AcpData
 {
-    public JsonElement? Annotations { get; init; }
+    public JsonElement? Annotations
+    {
+        get; init;
+    }
 }
 public sealed record TextContent(string Text) : ContentBlock;
 public sealed record ImageContent(string Data, string MimeType, string? Uri = null) : ContentBlock;

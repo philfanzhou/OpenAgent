@@ -1,4 +1,5 @@
 namespace OpenAgent.Runtime.Acp.Rpc;
+
 public sealed record AcpConnectionOptions
 {
     public int MaxPendingRequests { get; init; } = 128;

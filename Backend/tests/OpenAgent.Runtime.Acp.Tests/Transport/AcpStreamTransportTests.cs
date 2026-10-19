@@ -14,10 +14,14 @@ public sealed class AcpStreamTransportTests
         {
             TheoryData<string, string, int> data = new();
             foreach (string body in new[] { "{}", "\"你\"" })
-            foreach (string delimiter in new[] { "\n", "\r\n" })
-            foreach (int chunk in new[] { 1, 2, 3, 4096 })
             {
-                data.Add(body, delimiter, chunk);
+                foreach (string delimiter in new[] { "\n", "\r\n" })
+                {
+                    foreach (int chunk in new[] { 1, 2, 3, 4096 })
+                    {
+                        data.Add(body, delimiter, chunk);
+                    }
+                }
             }
 
             return data;

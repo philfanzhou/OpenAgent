@@ -2,7 +2,9 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using OpenAgent.Runtime.Acp.Protocol;
 using Xunit;
+
 namespace OpenAgent.Runtime.Acp.Tests.Protocol;
+
 public sealed class SchemaBaselineTests
 {
     [Fact]

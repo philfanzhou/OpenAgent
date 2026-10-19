@@ -5,7 +5,10 @@ public static class AcpMethods
 {
     public const int Version = 1;
     public const string SourceCommit = "1cebe1c01837379abf34dd62b71e9c75bf140669";
-    public static IReadOnlyList<AcpMethodInfo> All { get; } = Array.AsReadOnly<AcpMethodInfo>([
+    public static IReadOnlyList<AcpMethodInfo> All
+    {
+        get;
+    } = Array.AsReadOnly<AcpMethodInfo>([
         new("initialize", "client_to_agent", false),
         new("authenticate", "client_to_agent", false),
         new("session/new", "client_to_agent", false),

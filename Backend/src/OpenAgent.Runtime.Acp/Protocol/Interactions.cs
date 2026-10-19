@@ -1,4 +1,5 @@
 using System.Text.Json;
+
 namespace OpenAgent.Runtime.Acp.Protocol;
 
 public sealed record PermissionOption(string OptionId, string Name, string Kind) : AcpData;
@@ -19,12 +20,30 @@ public sealed record ExitStatus(int? ExitCode = null, string? Signal = null) : A
 public sealed record TerminalOutputResponse(string Output, bool Truncated, ExitStatus? ExitStatus = null) : AcpData;
 public sealed record ElicitationRequest(string Message, string Mode) : AcpData
 {
-    public string? SessionId { get; init; }
-    public RpcId? RequestId { get; init; }
-    public string? ToolCallId { get; init; }
-    public JsonElement? RequestedSchema { get; init; }
-    public string? Url { get; init; }
-    public string? ElicitationId { get; init; }
+    public string? SessionId
+    {
+        get; init;
+    }
+    public RpcId? RequestId
+    {
+        get; init;
+    }
+    public string? ToolCallId
+    {
+        get; init;
+    }
+    public JsonElement? RequestedSchema
+    {
+        get; init;
+    }
+    public string? Url
+    {
+        get; init;
+    }
+    public string? ElicitationId
+    {
+        get; init;
+    }
 }
 public sealed record ElicitationResponse(string Action, JsonElement? Content = null) : AcpData;
 public sealed record ElicitationComplete(string ElicitationId) : AcpData;

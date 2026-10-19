@@ -1,4 +1,5 @@
 using System.Text.Json;
+
 namespace OpenAgent.Runtime.Acp.Protocol;
 
 public sealed record NewSessionRequest(string Cwd, McpServer[] McpServers, string[]? AdditionalDirectories = null) : AcpData;
@@ -13,9 +14,18 @@ public sealed record SessionModes(string CurrentModeId, SessionMode[] AvailableM
 public sealed record SetModeRequest(string SessionId, string ModeId) : AcpData;
 public sealed record ConfigOption(string Id, string Name, string Type, JsonElement CurrentValue) : AcpData
 {
-    public string? Description { get; init; }
-    public string? Category { get; init; }
-    public JsonElement? Options { get; init; }
+    public string? Description
+    {
+        get; init;
+    }
+    public string? Category
+    {
+        get; init;
+    }
+    public JsonElement? Options
+    {
+        get; init;
+    }
 }
 public sealed record SetConfigRequest(string SessionId, string ConfigId, JsonElement Value, string? Type = null) : AcpData;
 public sealed record SetConfigResponse(ConfigOption[] ConfigOptions) : AcpData;
