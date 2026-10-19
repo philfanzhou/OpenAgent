@@ -44,7 +44,7 @@
 
 ## OpenCode ACP 聊天运行时（依托 #233）
 
-用户已指定 OpenCode，并授权在第二个 PR 切换聊天执行入口。负责人：Codex；状态：待评审；实现 PR：待创建（基于 `codex/acp-sdk-complete`，先合并 #233，再把此 PR 改基到 dev）；本地证据见 [验收记录](../test-reports/2026-10-19-opencode-runtime.md)。
+用户已指定 OpenCode，并授权在第二个 PR 切换聊天执行入口。负责人：Codex；状态：待评审；实现 PR：[#234](https://github.com/philfanzhou/OpenAgent/pull/234)（基于 `codex/acp-sdk-complete`，先合并 #233，再把此 PR 改基到 dev）；本地证据见 [验收记录](../test-reports/2026-10-19-opencode-runtime.md)。
 
 - [ ] **ACP-R01 平台契约与默认执行入口**：Contracts/Runtime + Application/Execution；平台保留授权、历史和持久化，不引用 ACP 公共类型。
 - [ ] **ACP-R02 OpenCode 驱动与工具桥**：Runtime 类库（不打包）；固定版本 ACP 进程、隔离环境、每轮 loopback MCP bearer、工具预算及事件合并。

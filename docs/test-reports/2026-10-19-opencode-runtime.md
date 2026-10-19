@@ -1,6 +1,6 @@
 # 2026-10-19 OpenCode ACP 运行时验证
 
-范围：依托 ACP SDK PR #233 的平台接入；真实 OpenCode 固定 1.18.35，开发环境为 macOS arm64、.NET SDK 10.0.301。源码/目录/配置见 [运行时文档](../integrations/opencode-runtime.md)，当前状态见 [任务清单](../planning/TODO.md)。
+范围：平台接入 [PR #234](https://github.com/philfanzhou/OpenAgent/pull/234)，依托 ACP SDK [PR #233](https://github.com/philfanzhou/OpenAgent/pull/233)；真实 OpenCode 固定 1.18.35，开发环境为 macOS arm64、.NET SDK 10.0.301。源码/目录/配置见 [运行时文档](../integrations/opencode-runtime.md)，当前状态见 [任务清单](../planning/TODO.md)。
 
 ## 已完成的定向验证
 
