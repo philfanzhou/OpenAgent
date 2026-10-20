@@ -3,7 +3,7 @@ using OpenAgent.Contracts.Capabilities;
 
 namespace OpenAgent.Capabilities.Skills;
 
-internal sealed class SkillCatalog : ISkillCatalog
+public sealed class SkillCatalog : ISkillCatalog
 {
     private readonly Dictionary<string, SkillInstanceConfig> _skills = new(StringComparer.OrdinalIgnoreCase);
 
