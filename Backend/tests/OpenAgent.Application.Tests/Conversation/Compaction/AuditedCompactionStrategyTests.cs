@@ -4,7 +4,6 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging.Abstractions;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Security;
-using OpenAgent.Application.Conversation.Compaction;
 using OpenAgent.Application.Conversation.Store;
 using OpenAgent.Application.Tests.TestDoubles;
 using Xunit;

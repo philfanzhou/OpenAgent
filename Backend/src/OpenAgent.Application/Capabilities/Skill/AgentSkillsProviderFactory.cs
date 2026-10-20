@@ -1,7 +1,6 @@
 using System.Security.Cryptography;
 using System.Text.Json;
 using Microsoft.Extensions.AI;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Execution;
@@ -29,8 +28,7 @@ internal sealed class AgentSkillsProviderFactory(
     ICodeExecutor executor,
     IFileAssetService files,
     FileAssetExecutionContext fileContext,
-    IOptions<CodeExecutionOptions> codeOptions,
-    ILoggerFactory loggerFactory)
+    IOptions<CodeExecutionOptions> codeOptions)
 {
     internal async Task<AgentSkillsRuntime> CreateAsync(
         string agentId,

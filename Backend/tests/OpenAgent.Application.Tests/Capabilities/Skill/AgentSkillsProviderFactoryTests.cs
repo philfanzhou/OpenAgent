@@ -4,7 +4,6 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text;
 using Microsoft.Extensions.AI;
-using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
 using OpenAgent.Contracts.Configuration;
@@ -34,7 +33,7 @@ public class AgentSkillsProviderFactoryTests
         var fixture = new FactoryFixture();
         await using AgentSkillsRuntime runtime = await fixture.CreateRuntimeAsync(agentCodeExecution: true, scriptExecutionEnabled: true);
 
-        RuntimeSkill skill = Assert.Single(runtime.Skills);
+        RuntimeSkill skill = Assert.Single(runtime.Skills)!;
         Assert.Equal(SkillName, skill.Name);
         Assert.True(File.Exists(Path.Combine(skill.Path, "SKILL.md")), "materialized package must contain SKILL.md");
 
@@ -46,7 +45,7 @@ public class AgentSkillsProviderFactoryTests
             ["path"] = "SKILL.md"
         }));
         string markdown = markdownElement.ValueKind == JsonValueKind.String
-            ? markdownElement.GetString()
+            ? markdownElement.GetString() ?? markdownElement.GetRawText()
             : markdownElement.GetRawText();
         Assert.Contains("Report writer", markdown, StringComparison.Ordinal);
     }
@@ -127,8 +126,7 @@ public class AgentSkillsProviderFactoryTests
                 Executor,
                 new FileAssetService(Repository, Objects, Options.Create(new FileAssetOptions { Enabled = true })),
                 Context,
-                Options.Create(new CodeExecutionOptions { Enabled = hostCodeExecutionEnabled }),
-                NullLoggerFactory.Instance);
+                Options.Create(new CodeExecutionOptions { Enabled = hostCodeExecutionEnabled }));
         }
 
         internal async Task<AgentSkillsRuntime> CreateRuntimeAsync(bool agentCodeExecution, bool scriptExecutionEnabled)
