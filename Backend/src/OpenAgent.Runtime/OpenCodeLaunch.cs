@@ -30,6 +30,11 @@ internal static class OpenCodeLaunch
             permission[server + "_*"] = "allow";
             permission["mcp_" + server + "_*"] = "allow";
         }
+        // skill 经工作区物化后由原生 skill 工具按需加载，SKILL.md 内容不再注入提示词。
+        if ((invocation.Skills?.Count ?? 0) > 0)
+        {
+            permission["skill"] = "allow";
+        }
         JsonObject config = new()
         {
             ["$schema"] = "https://opencode.ai/config.json",

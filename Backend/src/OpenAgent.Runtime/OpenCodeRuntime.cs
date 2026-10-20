@@ -79,6 +79,7 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, ILogger
         string parent = Path.Combine(settings.WorkspaceRoot, owner);
         string workspace = Path.Combine(parent, Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(workspace);
+        OpenCodeSkills.Materialize(workspace, invocation.Skills);
         try
         {
             await using RuntimeToolBridge bridge = await RuntimeToolBridge.StartAsync(invocation.Tools, cancellationToken).ConfigureAwait(false);
