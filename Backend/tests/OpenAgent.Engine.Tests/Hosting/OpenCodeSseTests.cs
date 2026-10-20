@@ -53,9 +53,9 @@ public sealed class OpenCodeSseTests
                 ["OpenCode:WorkspaceRoot"] = root,
                 ["OpenCode:TurnTimeoutSeconds"] = "60"
             }).Build();
-            // ContextOnlyChatClient 的推理方法会抛异常，确保默认入口没有调用旧 MAF 模型。
-            await using StreamingHost host = await StreamingHost.StartAsync(new ContextOnlyChatClient(),
-                configure: services => services.AddOpenCodeRuntime(config), useAcp: true,
+            // 摘要客户端替身：任何模型推理都说明默认入口走了错误路径。
+            await using StreamingHost host = await StreamingHost.StartAsync(
+                configure: services => services.AddOpenCodeRuntime(config),
                 model: new LlmConfig { ModelId = "fixture", Endpoint = model.Endpoint, ApiKey = "local-test", ContextTokens = 100000 });
             var first = await host.PostStreamAsync("real-acp-conversation");
             Assert.DoesNotContain(first, frame => frame.Event == "error");

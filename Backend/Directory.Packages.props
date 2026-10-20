@@ -31,12 +31,10 @@
     <PackageVersion Include="Microsoft.Extensions.Configuration" Version="10.0.12" />
 
     <!-- AI / LLM -->
-    <PackageVersion Include="Microsoft.Agents.AI" Version="1.14.0" />
-    <PackageVersion Include="Microsoft.Agents.AI.Anthropic" Version="1.14.0-preview.260721.1" />
-    <PackageVersion Include="Microsoft.Agents.AI.OpenAI" Version="1.14.0" />
     <PackageVersion Include="Microsoft.Extensions.AI" Version="10.7.0" />
     <PackageVersion Include="Microsoft.Extensions.AI.OpenAI" Version="10.7.0" />
     <PackageVersion Include="OpenAI" Version="2.11.0" />
+    <PackageVersion Include="Anthropic" Version="12.35.1" />
     <PackageVersion Include="ModelContextProtocol.Core" Version="1.4.1" />
     <!-- 仅测试使用：进程内起真实 MCP 服务端做端到端复现 -->
     <PackageVersion Include="ModelContextProtocol" Version="1.4.1" />

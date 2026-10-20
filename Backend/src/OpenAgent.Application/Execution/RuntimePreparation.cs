@@ -1,13 +1,14 @@
 using System.Text;
 using System.Text.Json;
-using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OpenAgent.Application.Conversation.History;
-using OpenAgent.Application.Mapping;
+
 using OpenAgent.Application.ModelProviders;
+using OpenAgent.Application.Conversation.Compaction;
 using OpenAgent.Application.Observability;
+using OpenAgent.Application.Mapping;
 using OpenAgent.Application.Runtime.Agent;
 using OpenAgent.Application.Tooling.Abstractions;
 using OpenAgent.Application.Tooling.Discovery;
@@ -23,7 +24,7 @@ using OpenAgent.Contracts.Security;
 
 namespace OpenAgent.Application.Execution;
 
-/// <summary>复用平台工具和 Skill 的准备逻辑，不创建或运行 MAF 推理循环。</summary>
+/// <summary>复用平台工具和 Skill 的准备逻辑；推理只发生在运行时驱动，不执行任何进程内推理循环。</summary>
 internal sealed class RuntimePreparation(
     ConversationHistoryFactory conversations,
     IAgentChatClientFactory summaries,
@@ -50,39 +51,40 @@ internal sealed class RuntimePreparation(
     {
         files.Set(turn);
         PlatformChatHistory history = conversations.Create(turn, profile.Model.ModelId, input, attachments, profile.Model.Modality == ModelModality.Multimodal);
-        ChatClientAgent carrier = new(new ContextOnlyChatClient());
-        AgentSession carrierSession = await carrier.CreateSessionAsync(ct).ConfigureAwait(false);
-        RuntimePreparationScope scope = new(history, carrier, carrierSession, logger);
+        RuntimePreparationScope scope = new(history, logger);
         try
         {
             ChatMessage message = await history.CreateUserMessageAsync(ct).ConfigureAwait(false);
-            IEnumerable<ChatMessage> prior = await history.InvokingAsync(new(carrier, carrierSession, [message]), ct).ConfigureAwait(false);
-            AIContext context = new()
+            List<ChatMessage> prior = await history.LoadAsync(ct).ConfigureAwait(false);
+            AgentTurnContext context = new()
             {
-                Instructions = profile.Config.Instructions,
-                Messages = prior
+                Instructions = profile.Config.Instructions
             };
+            context.Messages.AddRange(prior);
+            context.Messages.Add(message);
             List<AITool> tools = [.. await capabilities.CreateAsync(profile.AgentId, profile.Config, user, ct).ConfigureAwait(false)];
+            List<RuntimeSkill> skills = [];
             foreach (IAgentFeatureFactory factory in factories)
             {
                 AgentFeature feature = await factory.CreateAsync(profile.AgentId, profile.Config, user, ct).ConfigureAwait(false);
                 scope.Features.Add(feature);
                 tools.AddRange(feature.Tools);
                 tools.AddRange(feature.InlineTools);
-                foreach (AIContextProvider provider in feature.ContextProviders)
+                skills.AddRange(feature.Skills);
+                foreach (IAgentContextProvider provider in feature.ContextProviders)
                 {
-                    context = await provider.InvokingAsync(new(carrier, carrierSession, context), ct).ConfigureAwait(false);
+                    context = await provider.InvokingAsync(context, ct).ConfigureAwait(false);
                 }
             }
             if (conversations.AutoCompactionEnabled)
             {
-                // 平台摘要仍走现有独立压缩服务，保留摘要预算/审计；聊天推理只走 ACP。
+                // 平台摘要仍走现有独立压缩服务，保留摘要预算/审计；聊天推理只走运行时驱动。
                 IChatClient summarizer = summaries.CreateSummarizationClient(profile.Model, profile.Config.ContextPolicy,
                     turn.ToCapture(LlmInteractionSource.Compaction));
                 scope.Clients.Add(summarizer);
-                AIContextProvider compaction = conversations.CreateCompaction(profile.Model.ContextTokens,
-                    profile.Config.ContextPolicy, summarizer, turn);
-                context = await compaction.InvokingAsync(new(carrier, carrierSession, context), ct).ConfigureAwait(false);
+                CompactionContextProvider compaction = new(conversations.CreateCompaction(profile.Model.ContextTokens,
+                    profile.Config.ContextPolicy, summarizer, turn));
+                context = await compaction.InvokingAsync(context, ct).ConfigureAwait(false);
                 scope.Features.Add(new AgentFeature { ContextProviders = [compaction] });
             }
             tools.AddRange(context.Tools ?? []);
@@ -115,7 +117,7 @@ internal sealed class RuntimePreparation(
             }
             scope.Context = context;
             scope.InvocationRequest = new RuntimeInvocation(profile, turn, context.Instructions ?? string.Empty,
-                (context.Messages ?? []).Select(ToRuntimeMessage).ToArray(), exported);
+                context.Messages.Select(ToRuntimeMessage).ToArray(), exported, skills);
             return scope;
         }
         catch (Exception error)
@@ -123,6 +125,19 @@ internal sealed class RuntimePreparation(
             await scope.FailAsync(error).ConfigureAwait(false);
             await scope.DisposeAsync().ConfigureAwait(false);
             throw;
+        }
+    }
+
+    /// <summary>把 Conversation 侧压缩策略适配为轮次上下文提供器；分层上 Conversation 不引用 Tooling。</summary>
+    private sealed class CompactionContextProvider(AuditedCompactionStrategy strategy) : IAgentContextProvider
+    {
+        public async Task<AgentTurnContext> InvokingAsync(AgentTurnContext context, CancellationToken cancellationToken)
+        {
+            IEnumerable<ChatMessage> compacted = await CompactionProvider.CompactAsync(
+                strategy, context.Messages, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance, cancellationToken).ConfigureAwait(false);
+            context.Messages.Clear();
+            context.Messages.AddRange(compacted);
+            return context;
         }
     }
 

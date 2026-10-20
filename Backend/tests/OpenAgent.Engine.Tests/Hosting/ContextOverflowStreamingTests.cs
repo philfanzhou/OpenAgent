@@ -1,7 +1,6 @@
 using OpenAgent.Engine.Hosting;
 using System.ClientModel;
 using System.ClientModel.Primitives;
-using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Microsoft.Extensions.AI;
 using OpenAgent.Contracts.Conversation;
@@ -22,12 +21,12 @@ public sealed class ContextOverflowStreamingTests
     [Fact]
     public async Task Stream_ProviderContextOverflow_ClassifiedErrorEventAndPersistedReason()
     {
-        var provider = new ThrowingChatClient(new ClientResultException(
+        var driver = new OpenAgent.Application.Tests.TestDoubles.ScriptedRuntimeDriver([], new ClientResultException(
             "HTTP 400 (invalid_request_error: This model's maximum context length is 8192 tokens, "
             + "however you requested 10000 tokens. Please reduce the length of the messages.)",
             (PipelineResponse)null!,
             null!));
-        await using StreamingHost host = await StreamingHost.StartAsync(provider);
+        await using StreamingHost host = await StreamingHost.StartAsync(driver);
 
         List<(string Event, JsonElement Data)> frames =
             await host.PostStreamAsync("context-overflow-conversation");
@@ -57,31 +56,4 @@ public sealed class ContextOverflowStreamingTests
         Assert.False(string.IsNullOrWhiteSpace(assistantRow.Metadata?.Error?.TraceId));
     }
 
-    /// <summary>按请求抛出固定异常的最小 IChatClient：模拟 provider 直接拒绝请求。</summary>
-    private sealed class ThrowingChatClient(Exception exception) : IChatClient
-    {
-        public Task<ChatResponse> GetResponseAsync(
-            IEnumerable<ChatMessage> messages,
-            ChatOptions? options = null,
-            CancellationToken cancellationToken = default) => throw exception;
-
-        public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
-            IEnumerable<ChatMessage> messages,
-            ChatOptions? options = null,
-            [EnumeratorCancellation] CancellationToken cancellationToken = default)
-        {
-            await Task.Yield();
-            // async 迭代器语法要求 yield：实际效果是异步抛出，与生产 provider 行为一致。
-            yield return Fail();
-        }
-
-        private ChatResponseUpdate Fail() => throw exception;
-
-        public object? GetService(Type serviceType, object? serviceKey = null) =>
-            serviceKey == null && serviceType.IsInstanceOfType(this) ? this : null;
-
-        public void Dispose()
-        {
-        }
-    }
 }

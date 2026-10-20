@@ -25,34 +25,30 @@ namespace OpenAgent.Application.Tests.Runtime;
 public class AgentExecutorUsageTests
 {
     [Fact]
-    public async Task ExecuteAsync_CurrentUserProfileFunction_IsPassedToModelClient()
+    public async Task ExecuteAsync_CurrentUserProfileFunction_IsPassedToRuntimeDriver()
     {
-        var provider = new FakeChatProvider(new Microsoft.Extensions.AI.ChatResponse(
-            new ChatMessage(ChatRole.Assistant, "provider response")));
-        await using TestRuntime runtime = CreateRuntime(provider);
+        var driver = new ScriptedRuntimeDriver([Content("provider response")]);
+        await using TestRuntime runtime = CreateRuntime(driver);
 
         await runtime.Executor.ExecuteAsync(
             CreateRequest("profile-function-conversation"),
             User,
             CancellationToken.None);
 
-        Assert.Contains(
-            Assert.IsAssignableFrom<IList<AITool>>(provider.LastOptions?.Tools),
-            tool => tool is AIFunction function
-                && function.Name == "get_current_user_profile");
+        RuntimeInvocation invocation = Assert.Single(driver.Invocations);
+        Assert.Contains(invocation.Tools, tool => tool.Name == "get_current_user_profile");
     }
 
     [Fact]
-    public async Task ExecuteAsync_ProviderReturnsUsage_MapsAndPersistsActualCounts()
+    public async Task ExecuteAsync_DriverReturnsUsage_MapsAndPersistsActualCounts()
     {
-        UsageDetails providerUsage = CreateUsage();
-        var provider = new FakeChatProvider(new Microsoft.Extensions.AI.ChatResponse(
-            new ChatMessage(ChatRole.Assistant, "provider response"))
-        {
-            Usage = providerUsage,
-            ModelId = "provider-model-2026"
-        });
-        await using TestRuntime runtime = CreateRuntime(provider);
+        TokenUsage providerUsage = CreateUsage();
+        var driver = new ScriptedRuntimeDriver(
+        [
+            Content("provider response"),
+            new AgentStreamEvent { Type = AgentStreamEventType.Usage, ModelId = "configured-model", Usage = providerUsage }
+        ]);
+        await using TestRuntime runtime = CreateRuntime(driver);
 
         AgentResponse response = await runtime.Executor.ExecuteAsync(
             CreateRequest("non-stream-conversation"),
@@ -69,15 +65,43 @@ public class AgentExecutorUsageTests
     }
 
     [Fact]
-    public async Task ExecuteStreamingAsync_ToolInvocation_EmitsToolResultAfterItsCall()
+    public async Task ExecuteStreamingAsync_ToolCallWithNullArguments_NormalizedAndPersisted()
     {
-        var provider = new FakeChatProvider(
+        // 部分 harness 回放的调用参数可能为 null：持久化与播报必须统一成空字典。
+        var driver = new ScriptedRuntimeDriver(
         [
-            new ChatResponseUpdate(ChatRole.Assistant,
-                [new FunctionCallContent("call-1", "get_current_user_profile")]),
-            new ChatResponseUpdate(ChatRole.Assistant, "tool finished")
+            new AgentStreamEvent { Type = AgentStreamEventType.ToolCall, ToolCallId = "call-1", ToolName = "get_current_user_profile", ToolArguments = null },
+            new AgentStreamEvent { Type = AgentStreamEventType.ToolResult, ToolCallId = "call-1", Content = "profile text" },
+            Content("done")
         ]);
-        await using TestRuntime runtime = CreateRuntime(provider);
+        await using TestRuntime runtime = CreateRuntime(driver);
+
+        List<AgentStreamEvent> events = [];
+        await foreach (AgentStreamEvent streamEvent in runtime.Executor.ExecuteStreamingAsync(
+            CreateRequest("null-arguments-conversation"),
+            User,
+            CancellationToken.None))
+        {
+            events.Add(streamEvent);
+        }
+
+        AgentStreamEvent call = Assert.Single(events, item => item.Type == AgentStreamEventType.ToolCall);
+        ConversationRecord record = Assert.IsType<ConversationRecord>(
+            await runtime.Store.GetRecordAsync("tenant-1", "null-arguments-conversation"));
+        ConversationMessage toolRow = Assert.Single(record.Messages, message => message.Role == "tool");
+        Assert.Equal("call-1", toolRow.ToolCallId);
+    }
+
+    [Fact]
+    public async Task ExecuteStreamingAsync_ToolEvents_EmitsToolResultAfterItsCall()
+    {
+        var driver = new ScriptedRuntimeDriver(
+        [
+            new AgentStreamEvent { Type = AgentStreamEventType.ToolCall, ToolCallId = "call-1", ToolName = "get_current_user_profile" },
+            new AgentStreamEvent { Type = AgentStreamEventType.ToolResult, ToolCallId = "call-1", Content = "profile text" },
+            Content("tool finished")
+        ]);
+        await using TestRuntime runtime = CreateRuntime(driver);
 
         List<AgentStreamEvent> events = [];
         await foreach (AgentStreamEvent streamEvent in runtime.Executor.ExecuteStreamingAsync(
@@ -97,21 +121,15 @@ public class AgentExecutorUsageTests
     }
 
     [Fact]
-    public async Task ExecuteStreamingAsync_TerminalProviderUsage_EmitsTerminalEventAndPersistsCounts()
+    public async Task ExecuteStreamingAsync_TerminalUsage_EmitsTerminalEventAndPersistsCounts()
     {
-        UsageDetails providerUsage = CreateUsage();
-        var provider = new FakeChatProvider(
+        TokenUsage providerUsage = CreateUsage();
+        var driver = new ScriptedRuntimeDriver(
         [
-            new ChatResponseUpdate(ChatRole.Assistant, "streamed response")
-            {
-                ModelId = "provider-stream-model"
-            },
-            new ChatResponseUpdate(ChatRole.Assistant, [new UsageContent(providerUsage)])
-            {
-                ModelId = "provider-stream-model"
-            }
+            Content("streamed response"),
+            new AgentStreamEvent { Type = AgentStreamEventType.Usage, ModelId = "configured-model", Usage = providerUsage }
         ]);
-        await using TestRuntime runtime = CreateRuntime(provider);
+        await using TestRuntime runtime = CreateRuntime(driver);
 
         List<AgentStreamEvent> events = [];
         await foreach (AgentStreamEvent streamEvent in runtime.Executor.ExecuteStreamingAsync(
@@ -133,14 +151,10 @@ public class AgentExecutorUsageTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_ProviderOmitsUsage_ReturnsAndPersistsUnavailable()
+    public async Task ExecuteAsync_DriverOmitsUsage_ReturnsAndPersistsUnavailable()
     {
-        var provider = new FakeChatProvider(new Microsoft.Extensions.AI.ChatResponse(
-            new ChatMessage(ChatRole.Assistant, "provider response"))
-        {
-            ModelId = "provider-model"
-        });
-        await using TestRuntime runtime = CreateRuntime(provider);
+        var driver = new ScriptedRuntimeDriver([Content("provider response")]);
+        await using TestRuntime runtime = CreateRuntime(driver);
 
         AgentResponse response = await runtime.Executor.ExecuteAsync(
             CreateRequest("missing-usage-conversation"),
@@ -152,14 +166,17 @@ public class AgentExecutorUsageTests
 
         Assert.Null(response.TokenUsage);
         Assert.Null(assistant.TokenUsage);
+        Assert.Equal("configured-model", response.ModelId);
         Assert.Equal("configured-model", assistant.ModelId);
     }
 
     [Fact]
-    public async Task ExecuteAsync_ProviderFails_DoesNotPersistFabricatedUsage()
+    public async Task ExecuteAsync_DriverFails_DoesNotPersistFabricatedUsage()
     {
-        var provider = new FakeChatProvider(new InvalidOperationException("provider failed"));
-        await using TestRuntime runtime = CreateRuntime(provider);
+        var driver = new ScriptedRuntimeDriver(
+            [Content("partial response")],
+            new InvalidOperationException("provider failed"));
+        await using TestRuntime runtime = CreateRuntime(driver);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => runtime.Executor.ExecuteAsync(
             CreateRequest("failed-conversation"),
@@ -175,10 +192,12 @@ public class AgentExecutorUsageTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_ProviderIsCancelled_PersistsOneUnavailableResponse()
+    public async Task ExecuteAsync_DriverIsCancelled_PersistsOneUnavailableResponse()
     {
-        var provider = new FakeChatProvider(new OperationCanceledException("provider cancelled"));
-        await using TestRuntime runtime = CreateRuntime(provider);
+        var driver = new ScriptedRuntimeDriver(
+            [Content("partial response")],
+            new OperationCanceledException("provider cancelled"));
+        await using TestRuntime runtime = CreateRuntime(driver);
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => runtime.Executor.ExecuteAsync(
             CreateRequest("cancelled-conversation"),
@@ -192,6 +211,12 @@ public class AgentExecutorUsageTests
         Assert.Equal("Cancelled", assistant.Metadata?.ExecutionStatus);
         Assert.Null(assistant.TokenUsage);
     }
+
+    private static AgentStreamEvent Content(string text) => new()
+    {
+        Type = AgentStreamEventType.Content,
+        Content = text
+    };
 
     private static readonly AgentUserContext User = new()
     {
@@ -208,14 +233,13 @@ public class AgentExecutorUsageTests
         TraceId = $"trace-{conversationId}"
     };
 
-    private static UsageDetails CreateUsage() => new()
+    private static TokenUsage CreateUsage() => new()
     {
-        InputTokenCount = 21,
-        OutputTokenCount = 8,
-        TotalTokenCount = 29,
-        CachedInputTokenCount = 5,
-        ReasoningTokenCount = 3,
-        AdditionalCounts = new AdditionalPropertiesDictionary<long> { ["billing_units"] = 99 }
+        PromptTokens = 21,
+        CompletionTokens = 8,
+        TotalTokens = 29,
+        CachedInputTokens = 5,
+        ReasoningTokens = 3
     };
 
     private static void AssertUsage(TokenUsage? usage)
@@ -228,15 +252,14 @@ public class AgentExecutorUsageTests
         Assert.Equal(3, actual.ReasoningTokens);
     }
 
-    internal static TestRuntime CreateRuntime(IChatClient provider) =>
-        CreateRuntime(provider, configure: null);
+    internal static TestRuntime CreateRuntime(IAgentRuntimeDriver driver) =>
+        CreateRuntime(driver, configure: null);
 
     internal static TestRuntime CreateRuntime(
-        IChatClient provider,
+        IAgentRuntimeDriver driver,
         OpenAgent.Contracts.Capabilities.ICapabilitySource? extraSource = null,
         int maxTurns = 2,
-        Action<IServiceCollection>? configure = null,
-        IAgentRuntimeDriver? driver = null)
+        Action<IServiceCollection>? configure = null)
     {
         var services = new ServiceCollection();
         services.AddLogging();
@@ -246,15 +269,8 @@ public class AgentExecutorUsageTests
         IConfiguration configuration = new ConfigurationBuilder().Build();
         services.AddSingleton(configuration);
         services.AddAgentApplication(configuration);
-        if (driver is null)
-        {
-            // 既有 MAF 回归夹具；传入 driver 时保留生产默认装配。
-            services.AddScoped<IAgentExecution>(provider => ActivatorUtilities.CreateInstance<LegacyMafExecutor>(provider));
-        }
-        else
-        {
-            services.AddSingleton(driver);
-        }
+        // 生产默认装配：RuntimeAgentExecutor + 注入的驱动替身。
+        services.AddSingleton(driver);
         if (extraSource != null)
         {
             services.AddSingleton(extraSource);
@@ -263,7 +279,7 @@ public class AgentExecutorUsageTests
         services.RemoveAll<AgentRuntimeResolver>();
         services.AddSingleton<IAgentRuntimeResolver>(new StaticRuntimeResolver(maxTurns));
         services.RemoveAll<IAgentChatClientFactory>();
-        services.AddSingleton<IAgentChatClientFactory>(new FakeChatClientFactory(provider));
+        services.AddSingleton<IAgentChatClientFactory>(new FakeChatClientFactory(FakeChatClient.Unused));
         configure?.Invoke(services);
 
         ServiceProvider serviceProvider = services.BuildServiceProvider(
@@ -275,6 +291,23 @@ public class AgentExecutorUsageTests
             scope.ServiceProvider.GetRequiredService<AgentExecutor>(),
             Assert.IsType<InMemoryConversationStore>(
                 scope.ServiceProvider.GetRequiredService<IConversationStore>()));
+    }
+
+    /// <summary>摘要/兼容客户端占位：聊天推理只走驱动，任何调用都是测试失败。</summary>
+    private sealed class FakeChatClient : IChatClient
+    {
+        internal static readonly FakeChatClient Unused = new();
+
+        public Task<Microsoft.Extensions.AI.ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("Chat inference must run through the runtime driver.");
+
+        public IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("Chat inference must run through the runtime driver.");
+
+        public object? GetService(Type serviceType, object? serviceKey = null) => null;
+        public void Dispose()
+        {
+        }
     }
 
     private sealed class TestCurrentUserContext : ICurrentUserContext

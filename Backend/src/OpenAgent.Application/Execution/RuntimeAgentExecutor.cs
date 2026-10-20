@@ -119,6 +119,12 @@ internal sealed class RuntimeAgentExecutor(
                 else
                 {
                     yield return item;
+                    // 平台 update_plan 工具的结果同步映射为 PlanUpdated 事件，前端任务
+                    // 清单不依赖解析通用工具结果；ACP 原生 plan 更新由驱动事件另行覆盖。
+                    if (item is { Type: AgentStreamEventType.ToolResult, ToolName: "update_plan" } plan)
+                    {
+                        yield return new AgentStreamEvent { Type = AgentStreamEventType.PlanUpdated, Content = plan.Content };
+                    }
                 }
             }
             try

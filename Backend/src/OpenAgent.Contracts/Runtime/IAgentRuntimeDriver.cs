@@ -16,7 +16,8 @@ public sealed record RuntimeInvocation(
     TurnContext Turn,
     string Instructions,
     IReadOnlyList<RuntimeMessage> Messages,
-    IReadOnlyList<RuntimeTool> Tools);
+    IReadOnlyList<RuntimeTool> Tools,
+    IReadOnlyList<RuntimeSkill>? Skills = null);
 
 public sealed record RuntimeMessage(
     string Role,
@@ -24,6 +25,9 @@ public sealed record RuntimeMessage(
     IReadOnlyList<RuntimeAttachment>? Attachments = null);
 
 public sealed record RuntimeAttachment(string MediaType, ReadOnlyMemory<byte> Data);
+
+/// <summary>已物化的 skill 包目录；驱动负责链接进本轮工作区供 harness 原生发现。</summary>
+public sealed record RuntimeSkill(string Name, string Path);
 
 /// <summary>工具回调绑定本轮身份；Agent 不能在参数中更换租户或用户。</summary>
 public sealed record RuntimeTool(

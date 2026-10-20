@@ -1,7 +1,6 @@
 using OpenAgent.Capabilities.Tests.TestDoubles;
 using OpenAgent.Contracts.Capabilities;
 using System.Text.Json;
-using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -168,29 +167,22 @@ public class CodeCapabilityTests
     }
 
     [Fact]
-    public async Task MafLoop_ReceivesExecutionErrorAndExecutesCorrectedCode()
+    public async Task Invoke_ReceivesExecutionErrorAndReturnsItForCorrection()
     {
         var fixture = new Fixture();
         fixture.Executor.Results.Enqueue(new CodeExecutionResult { ExitCode = 1, Stderr = "NameError: misspelled" });
         fixture.Executor.Results.Enqueue(new CodeExecutionResult { ExitCode = 0, Stdout = "42" });
         AIFunction function = await fixture.GetFunctionAsync();
-        var provider = new SequenceChatProvider([
-            [new ChatResponseUpdate(ChatRole.Assistant, [new FunctionCallContent("code-1", "execute_code", new Dictionary<string, object?> { ["code"] = "misspelled()" })])],
-            [new ChatResponseUpdate(ChatRole.Assistant, [new FunctionCallContent("code-2", "execute_code", new Dictionary<string, object?> { ["code"] = "print(6*7)" })])],
-            [new ChatResponseUpdate(ChatRole.Assistant, "42")]
-        ]);
-        var agent = new ChatClientAgent(provider, new ChatClientAgentOptions { ChatOptions = new() { Tools = [function] } });
-        await foreach (AgentResponseUpdate _ in agent.RunStreamingAsync("Calculate using code")) { }
+        object? first = await function.InvokeAsync(new AIFunctionArguments { ["code"] = "misspelled()" });
+        object? second = await function.InvokeAsync(new AIFunctionArguments { ["code"] = "print(6*7)" });
+        Assert.Contains("NameError", first?.ToString(), StringComparison.Ordinal);
+        Assert.Contains("42", second?.ToString(), StringComparison.Ordinal);
         Assert.Equal(2, fixture.Executor.Requests.Count);
         Assert.Equal("print(6*7)", fixture.Executor.Requests[1].Code);
-        Assert.Contains(provider.Requests[1].SelectMany(message => message.Contents).OfType<FunctionResultContent>(),
-            result => result.Result?.ToString()?.Contains("NameError", StringComparison.Ordinal) == true);
-        Assert.Contains(provider.Requests[2].SelectMany(message => message.Contents).OfType<FunctionResultContent>(),
-            result => result.CallId == "code-2" && result.Result?.ToString()?.Contains("42", StringComparison.Ordinal) == true);
     }
 
     [RunnerIntegrationFact]
-    public async Task MafLoop_RealRunnerGeneratesEditsAndPublishesAuthorizedArtifact()
+    public async Task RealRunner_GeneratesEditsAndPublishesAuthorizedArtifact()
     {
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(180) };
         var executor = new RunnerClient(http, Options.Create(new CodeExecutionOptions
@@ -219,21 +211,14 @@ public class CodeCapabilityTests
             book.save('/output/report.xlsx')
             print('generated 42')
             """;
-        var provider = new SequenceChatProvider([
-            [new ChatResponseUpdate(ChatRole.Assistant, [new FunctionCallContent("bad", "execute_code", new Dictionary<string, object?> { ["code"] = "misspelled()" })])],
-            [new ChatResponseUpdate(ChatRole.Assistant, [new FunctionCallContent("generate", "execute_code", new Dictionary<string, object?>
-            {
-                ["code"] = code, ["inputFiles"] = new[] { new { fileId = input.FileId, name = "sales.csv" } }
-            })])],
-            [new ChatResponseUpdate(ChatRole.Assistant, "Generated the workbook.")]
-        ]);
-        var agent = new ChatClientAgent(provider, new ChatClientAgentOptions { ChatOptions = new() { Tools = [function] } });
-        await foreach (AgentResponseUpdate _ in agent.RunStreamingAsync("Read the CSV and create an Excel workbook.")) { }
-        Assert.Contains(provider.Requests[1].SelectMany(message => message.Contents).OfType<FunctionResultContent>(),
-            result => result.CallId == "bad" && result.Result?.ToString()?.Contains("NameError", StringComparison.Ordinal) == true);
-        FunctionResultContent generated = Assert.Single(provider.Requests[2].SelectMany(message => message.Contents)
-            .OfType<FunctionResultContent>(), result => result.CallId == "generate");
-        using JsonDocument generation = JsonDocument.Parse(generated.Result!.ToString()!);
+        object? failed = await function.InvokeAsync(new AIFunctionArguments { ["code"] = "misspelled()" });
+        Assert.Contains("NameError", failed?.ToString(), StringComparison.Ordinal);
+        object? generated = await function.InvokeAsync(new AIFunctionArguments
+        {
+            ["code"] = code,
+            ["inputFiles"] = new[] { new { fileId = input.FileId, name = "sales.csv" } }
+        });
+        using JsonDocument generation = JsonDocument.Parse(generated!.ToString()!);
         Assert.True(generation.RootElement.TryGetProperty("exitCode", out _), generation.RootElement.ToString());
         Assert.Equal(0, generation.RootElement.GetProperty("exitCode").GetInt32());
         string fileId = generation.RootElement.GetProperty("files")[0].GetProperty("fileId").GetString()!;

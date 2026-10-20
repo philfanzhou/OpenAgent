@@ -104,18 +104,16 @@ public class ToolConcurrencyTests
     {
         // 走真实 AgentFactory/FICC 路径：同一条 assistant 消息里的两个 ReadOnly
         // 工具调用必须重叠执行（AllowConcurrentInvocation=true 只放行白名单）。
-        var provider = new SequenceChatProvider(
+        var driver = new ToolInvokingDriver(
         [
-            [new ChatResponseUpdate(Microsoft.Extensions.AI.ChatRole.Assistant,
-                [
-                    new FunctionCallContent("call-1", "probe_read_a"),
-                    new FunctionCallContent("call-2", "probe_read_b")
-                ])],
-            [new ChatResponseUpdate(Microsoft.Extensions.AI.ChatRole.Assistant, "两个读取都完成了")]
-        ]);
+            ("probe_read_a", new Dictionary<string, object?>()),
+            ("probe_read_b", new Dictionary<string, object?>())
+        ],
+        completion: "两个读取都完成了",
+        invokeInParallel: true);
         var source = new ProbingCapabilitySource();
         await using AgentExecutorUsageTests.TestRuntime runtime =
-            AgentExecutorUsageTests.CreateRuntime(provider, source, maxTurns: 4);
+            AgentExecutorUsageTests.CreateRuntime(driver, source, maxTurns: 4);
 
         List<AgentStreamEvent> events = [];
         await foreach (AgentStreamEvent streamEvent in runtime.Executor.ExecuteStreamingAsync(

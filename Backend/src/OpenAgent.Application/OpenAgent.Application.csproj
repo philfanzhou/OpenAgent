@@ -12,9 +12,7 @@
 
   <ItemGroup>
     <PackageReference Include="ModelContextProtocol.Core" />
-    <PackageReference Include="Microsoft.Agents.AI" />
-    <PackageReference Include="Microsoft.Agents.AI.Anthropic" />
-    <PackageReference Include="Microsoft.Agents.AI.OpenAI" />
+    <PackageReference Include="Anthropic" />
     <PackageReference Include="Microsoft.Extensions.AI" />
     <PackageReference Include="Microsoft.Extensions.AI.OpenAI" />
     <PackageReference Include="OpenAI" />

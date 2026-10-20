@@ -22,18 +22,15 @@ public class ToolFailureIsolationTests
     {
         // 工具/MCP 连续失败时（旧实现 3 次后 FunctionInvokingChatClient 重抛异常终止整轮执行），
         // 异常必须被隔离成错误结果回传给模型，模型据此调整并给出最终回复。
-        var provider = new SequenceChatProvider(
+        var driver = new ToolInvokingDriver(
         [
-            [new ChatResponseUpdate(ChatRole.Assistant,
-                [new FunctionCallContent("call-1", "always_failing_tool")])],
-            [new ChatResponseUpdate(ChatRole.Assistant,
-                [new FunctionCallContent("call-2", "always_failing_tool")])],
-            [new ChatResponseUpdate(ChatRole.Assistant,
-                [new FunctionCallContent("call-3", "always_failing_tool")])],
-            [new ChatResponseUpdate(ChatRole.Assistant, "工具持续失败，我改为直接回答")]
-        ]);
+            ("always_failing_tool", new Dictionary<string, object?>()),
+            ("always_failing_tool", new Dictionary<string, object?>()),
+            ("always_failing_tool", new Dictionary<string, object?>())
+        ],
+        completion: "工具持续失败，我改为直接回答");
         await using AgentExecutorUsageTests.TestRuntime runtime =
-            AgentExecutorUsageTests.CreateRuntime(provider, new ThrowingCapabilitySource(), maxTurns: 8);
+            AgentExecutorUsageTests.CreateRuntime(driver, new ThrowingCapabilitySource(), maxTurns: 8);
 
         List<AgentStreamEvent> events = [];
         await foreach (AgentStreamEvent streamEvent in runtime.Executor.ExecuteStreamingAsync(
@@ -44,64 +41,31 @@ public class ToolFailureIsolationTests
             events.Add(streamEvent);
         }
 
-        Assert.Equal(4, provider.Requests.Count);
         List<AgentStreamEvent> results = events
             .Where(item => item.Type == AgentStreamEventType.ToolResult)
             .ToList();
         Assert.Equal(3, results.Count);
+        // 异常必须被隔离成可读错误结果（模型据此调整），而不是终止整轮执行。
         Assert.All(results, result => Assert.Contains("'always_failing_tool' failed", result.Content));
-        // 后续请求必须带回错误结果，模型才能看到失败原因并继续。
-        Assert.Contains(
-            provider.Requests[1].SelectMany(message => message.Contents).OfType<FunctionResultContent>(),
-            result => result.CallId == "call-1");
         Assert.Contains(events, item => item.Type == AgentStreamEventType.Content
             && item.Content == "工具持续失败，我改为直接回答");
     }
 
-    [Fact]
-    public async Task ExecuteStreamingAsync_UnknownToolCall_ContinuesInsteadOfTerminating()
-    {
-        // 未注册的工具名（如本次运行中某 MCP server 连接失败、工具未注册，或模型幻觉出名字）
-        // 不能终止循环，必须把 tool-not-found 结果回传给模型让它自行调整。
-        var provider = new SequenceChatProvider(
-        [
-            [new ChatResponseUpdate(ChatRole.Assistant,
-                [new FunctionCallContent("call-1", "mcp__down_server__tool")])],
-            [new ChatResponseUpdate(ChatRole.Assistant, "该工具当前不可用，已改为直接回答")]
-        ]);
-        await using AgentExecutorUsageTests.TestRuntime runtime =
-            AgentExecutorUsageTests.CreateRuntime(provider, maxTurns: 4);
-
-        List<AgentStreamEvent> events = [];
-        await foreach (AgentStreamEvent streamEvent in runtime.Executor.ExecuteStreamingAsync(
-            CreateRequest("unknown-tool-conversation"),
-            User,
-            CancellationToken.None))
-        {
-            events.Add(streamEvent);
-        }
-
-        Assert.Equal(2, provider.Requests.Count);
-        Assert.Contains(
-            provider.Requests[1].SelectMany(message => message.Contents).OfType<FunctionResultContent>(),
-            result => result.CallId == "call-1");
-        Assert.Contains(events, item => item.Type == AgentStreamEventType.Content
-            && item.Content == "该工具当前不可用，已改为直接回答");
-    }
+    // 未注册工具名的隔离属于已移除的 MAF 循环语义：运行时工具目录经 MCP 桥
+    // 如实列出，未知调用由桥/harness 侧处理，不再经执行器重试。
 
     [Fact]
     public async Task ExecuteStreamingAsync_ProviderFailsAfterToolCall_PersistsStreamedToolMessages()
     {
         // 执行失败时已流出的工具调用/结果必须随失败状态持久化，
         // 刷新后前端重建的时间线才能与实时看到的过程一致。
-        var provider = new SequenceChatProvider(
+        var driver = new ScriptedRuntimeDriver(
         [
-            [new ChatResponseUpdate(ChatRole.Assistant,
-                [new FunctionCallContent("call-1", "get_current_user_profile")])],
-            []
-        ], new InvalidOperationException("provider failed mid-run"));
+            new AgentStreamEvent { Type = AgentStreamEventType.ToolCall, ToolCallId = "call-1", ToolName = "get_current_user_profile" },
+            new AgentStreamEvent { Type = AgentStreamEventType.ToolResult, ToolCallId = "call-1", Content = "profile text" }
+        ], new InvalidOperationException("driver failed mid-run"));
         await using AgentExecutorUsageTests.TestRuntime runtime =
-            AgentExecutorUsageTests.CreateRuntime(provider);
+            AgentExecutorUsageTests.CreateRuntime(driver);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             ConsumeStreamAsync(runtime, "tool-failure-persist-conversation"));
@@ -126,14 +90,13 @@ public class ToolFailureIsolationTests
         // 模型传入空参数（"arguments":""/缺省，Arguments 为 null）时：工具返回可操作的
         // 参数缺失提示，模型看到后直接回答用户——执行不能终止，回传请求也不能被
         // "arguments":"null" 破坏。
-        var provider = new SequenceChatProvider(
+        var driver = new ToolInvokingDriver(
         [
-            [new ChatResponseUpdate(ChatRole.Assistant,
-                [new FunctionCallContent("call-1", "hinting_tool")])],
-            [new ChatResponseUpdate(ChatRole.Assistant, "请告诉我要分享哪个文件")]
-        ]);
+            ("hinting_tool", new Dictionary<string, object?>())
+        ],
+        completion: "请告诉我要分享哪个文件");
         await using AgentExecutorUsageTests.TestRuntime runtime =
-            AgentExecutorUsageTests.CreateRuntime(provider, new HintingCapabilitySource(), maxTurns: 4);
+            AgentExecutorUsageTests.CreateRuntime(driver, new HintingCapabilitySource(), maxTurns: 4);
 
         List<AgentStreamEvent> events = [];
         await foreach (AgentStreamEvent streamEvent in runtime.Executor.ExecuteStreamingAsync(
@@ -144,9 +107,8 @@ public class ToolFailureIsolationTests
             events.Add(streamEvent);
         }
 
-        Assert.Equal(2, provider.Requests.Count);
         AgentStreamEvent result = Assert.Single(events, item =>
-            item.Type == AgentStreamEventType.ToolResult && item.ToolCallId == "call-1");
+            item.Type == AgentStreamEventType.ToolResult && item.ToolCallId == "driver-call-0");
         Assert.Contains("required argument", result.Content);
         Assert.Contains(events, item => item.Type == AgentStreamEventType.Content
             && item.Content == "请告诉我要分享哪个文件");
@@ -252,14 +214,13 @@ public class ToolFailureIsolationTests
     {
         // 会话中工具调用超过上限：调用被取消、模型收到 timedOut 结果并继续对话，
         // 会话不能被终止（旧行为：挂到传输层超时，报错文本无法分辨超时）。
-        var provider = new SequenceChatProvider(
+        var driver = new ToolInvokingDriver(
         [
-            [new ChatResponseUpdate(ChatRole.Assistant,
-                [new FunctionCallContent("call-1", "slow_mcp_tool")])],
-            [new ChatResponseUpdate(ChatRole.Assistant, "工具超时了，我改为直接回答")]
-        ]);
+            ("slow_mcp_tool", new Dictionary<string, object?>())
+        ],
+        completion: "工具超时了，我改为直接回答");
         await using AgentExecutorUsageTests.TestRuntime runtime = AgentExecutorUsageTests.CreateRuntime(
-            provider,
+            driver,
             new SlowCapabilitySource(),
             maxTurns: 4,
             configure: services => services.PostConfigure<AgentExecutionOptions>(
@@ -279,12 +240,8 @@ public class ToolFailureIsolationTests
             stopwatch.Elapsed >= TimeSpan.FromMilliseconds(900),
             $"timeout must elapse before cancellation, took {stopwatch.ElapsedMilliseconds}ms");
 
-        Assert.Equal(2, provider.Requests.Count);
-        Assert.Contains(
-            provider.Requests[1].SelectMany(message => message.Contents).OfType<FunctionResultContent>(),
-            result => result.CallId == "call-1");
         AgentStreamEvent toolResult = Assert.Single(events, item =>
-            item.Type == AgentStreamEventType.ToolResult && item.ToolCallId == "call-1");
+            item.Type == AgentStreamEventType.ToolResult && item.ToolCallId == "driver-call-0");
         Assert.Contains("timed out", toolResult.Content);
         Assert.Contains(events, item => item.Type == AgentStreamEventType.Content
             && item.Content == "工具超时了，我改为直接回答");

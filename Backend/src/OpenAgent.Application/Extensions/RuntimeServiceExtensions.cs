@@ -15,7 +15,7 @@ internal static class RuntimeServiceExtensions
     {
         services.TryAddScoped<AgentRuntimeResolver>();
         services.TryAddScoped<IAgentRuntimeResolver>(provider => provider.GetRequiredService<AgentRuntimeResolver>());
-        services.TryAddScoped<AgentFactory>();
+        // MAF 推理循环已移除：AgentFactory 与进程内执行路径不再注册。
         // 宿主注入 IAgentRuntimeDriver；未注册时明确失败，不静默回退到 MAF。
         services.TryAddScoped<IAgentExecution>(provider => ActivatorUtilities.CreateInstance<RuntimeAgentExecutor>(provider));
         services.TryAddScoped<RuntimePreparation>();

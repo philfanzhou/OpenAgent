@@ -30,8 +30,7 @@ public sealed class AcpExecutionTests
     public async Task DefaultExecution_UsesDriverAndPlatformTool_PersistsBeforeTerminalEventAndReplaysHistory()
     {
         RecordingDriver driver = new();
-        FakeChatProvider unused = new(new InvalidOperationException("MAF inference must not be called"));
-        await using AgentExecutorUsageTests.TestRuntime runtime = AgentExecutorUsageTests.CreateRuntime(unused, driver: driver);
+        await using AgentExecutorUsageTests.TestRuntime runtime = AgentExecutorUsageTests.CreateRuntime(driver);
         for (int turn = 0; turn < 2; turn++)
         {
             await foreach (AgentStreamEvent item in runtime.Executor.ExecuteStreamingAsync(Request, User, CancellationToken.None))
@@ -44,7 +43,7 @@ public sealed class AcpExecutionTests
                 }
             }
         }
-        Assert.Null(unused.LastOptions);
+        // 第二轮驱动调用证明会话复用与身份传递。
         Assert.Equal(2, driver.Requests.Count);
         RuntimeInvocation second = driver.Requests[1];
         Assert.Equal("tenant-1", second.Turn.TenantId);
@@ -62,8 +61,7 @@ public sealed class AcpExecutionTests
     public async Task InterruptedDriver_PersistsPartialTextAndCorrectStatus(bool cancelled)
     {
         RecordingDriver driver = new(cancelled ? new OperationCanceledException("cancelled") : new InvalidOperationException("driver failed"));
-        FakeChatProvider unused = new(new InvalidOperationException("unused"));
-        await using AgentExecutorUsageTests.TestRuntime runtime = AgentExecutorUsageTests.CreateRuntime(unused, driver: driver);
+        await using AgentExecutorUsageTests.TestRuntime runtime = AgentExecutorUsageTests.CreateRuntime(driver);
         await Assert.ThrowsAnyAsync<Exception>(() => runtime.Executor.ExecuteAsync(Request, User, CancellationToken.None));
         ConversationRecord record = (await runtime.Store.GetRecordAsync("tenant-1", Request.ConversationId!))!;
         Assert.Equal(cancelled ? ConversationStatus.Cancelled : ConversationStatus.Failed, record.Status);
@@ -74,13 +72,12 @@ public sealed class AcpExecutionTests
     public async Task ToolPermissionRevokedAfterDiscovery_CallbackRejectsInvocation()
     {
         RecordingDriver driver = new();
-        FakeChatProvider unused = new(new InvalidOperationException("unused"));
-        await using AgentExecutorUsageTests.TestRuntime runtime = AgentExecutorUsageTests.CreateRuntime(unused,
+        await using AgentExecutorUsageTests.TestRuntime runtime = AgentExecutorUsageTests.CreateRuntime(driver,
             configure: services =>
             {
                 services.RemoveAll<IAgentAuthorizationService>();
                 services.AddSingleton<IAgentAuthorizationService, DenyInvocation>();
-            }, driver: driver);
+            });
         AgentException error = await Assert.ThrowsAsync<AgentException>(() => runtime.Executor.ExecuteAsync(Request, User, CancellationToken.None));
         Assert.Equal(AgentErrorCode.PermissionDenied, error.ErrorCode);
     }
@@ -89,8 +86,7 @@ public sealed class AcpExecutionTests
     public async Task ConsumerStops_PersistsCancelledPartialResponse()
     {
         RecordingDriver driver = new();
-        FakeChatProvider unused = new(new InvalidOperationException("unused"));
-        await using AgentExecutorUsageTests.TestRuntime runtime = AgentExecutorUsageTests.CreateRuntime(unused, driver: driver);
+        await using AgentExecutorUsageTests.TestRuntime runtime = AgentExecutorUsageTests.CreateRuntime(driver);
         driver.OnDispose = async () =>
         {
             ConversationRecord active = (await runtime.Store.GetRecordAsync("tenant-1", Request.ConversationId!))!;

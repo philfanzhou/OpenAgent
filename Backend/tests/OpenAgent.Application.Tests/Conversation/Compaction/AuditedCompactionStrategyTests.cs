@@ -1,5 +1,5 @@
 using OpenAgent.Capabilities.Tests.TestDoubles;
-using Microsoft.Agents.AI.Compaction;
+using OpenAgent.Application.Conversation.Compaction;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging.Abstractions;
 using OpenAgent.Contracts.Conversation;

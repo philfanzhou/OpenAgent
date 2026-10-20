@@ -1,5 +1,4 @@
 using System.Text;
-using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using OpenAgent.Application.Conversation.History;
@@ -12,14 +11,12 @@ namespace OpenAgent.Application.Execution;
 
 internal sealed class RuntimePreparationScope(
     PlatformChatHistory history,
-    AIAgent carrier,
-    AgentSession carrierSession,
     ILogger logger) : IAsyncDisposable
 {
     internal List<IDisposable> Clients { get; } = [];
     internal List<AgentFeature> Features { get; } = [];
     internal ToolInvocationScope Invocation { get; } = new();
-    internal AIContext Context { get; set; } = new();
+    internal AgentTurnContext Context { get; set; } = new();
     internal RuntimeInvocation InvocationRequest { get; set; } = null!;
     private readonly StringBuilder _text = new();
     private readonly StringBuilder _reasoning = new();
@@ -63,11 +60,11 @@ internal sealed class RuntimePreparationScope(
         }
         content.Add(new TextContent(_text.ToString()));
         List<ChatMessage> responses = [.. _tools, new(ChatRole.Assistant, content)];
-        foreach (AIContextProvider provider in Features.SelectMany(feature => feature.ContextProviders))
+        foreach (IAgentContextProvider provider in Features.SelectMany(feature => feature.ContextProviders))
         {
-            await provider.InvokedAsync(new(carrier, carrierSession, Context.Messages ?? [], responses), ct).ConfigureAwait(false);
+            await provider.InvokedAsync(Context, responses, ct).ConfigureAwait(false);
         }
-        await history.InvokedAsync(new ChatHistoryProvider.InvokedContext(carrier, carrierSession, Context.Messages ?? [], responses), ct).ConfigureAwait(false);
+        await history.PersistAsync(responses, ct).ConfigureAwait(false);
         await history.CompleteAsync(_usage, InvocationRequest.Profile.Model.ModelId, ct).ConfigureAwait(false);
     }
 
@@ -76,7 +73,7 @@ internal sealed class RuntimePreparationScope(
         // 请求 token 已取消时仍需落库部分正文和最终状态；沿用平台的有界存储清理路径。
         try
         {
-            await history.InvokedAsync(new ChatHistoryProvider.InvokedContext(carrier, carrierSession, Context.Messages ?? [], error), CancellationToken.None).ConfigureAwait(false);
+            await history.PersistFailureAsync(error, CancellationToken.None).ConfigureAwait(false);
         }
         catch (Exception persistenceError)
         {

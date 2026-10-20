@@ -1,4 +1,4 @@
-using Microsoft.Agents.AI.Compaction;
+
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using OpenAgent.Contracts.Configuration;
