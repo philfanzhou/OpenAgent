@@ -44,7 +44,8 @@ const selectedLlm = computed({
         <el-option v-if="props.allowAuto" label="Auto · 意图路由" :value="AUTO_AGENT_ID" />
         <el-option v-for="agent in props.agents" :key="agent.agentId" :label="agent.name || agent.agentId" :value="agent.agentId" />
       </el-select>
-      <el-select v-model="selectedLlm" class="agent-select" placeholder="选择模型">
+      <el-select v-model="selectedLlm" class="agent-select" :empty-values="[null, undefined]" placeholder="使用 Agent 模型">
+        <el-option label="使用 Agent 模型" value="" />
         <el-option v-for="profile in props.llmProfiles" :key="profile.id" :label="`${profile.name || profile.id} · ${profile.modelId}`" :value="profile.id" />
       </el-select>
       <el-button circle :loading="props.refreshingAgents" aria-label="刷新 Agent 列表" title="刷新 Agent 列表" @click="emit('refresh-agents')">↻</el-button>

@@ -15,7 +15,8 @@ internal static class OpenCodeSessionMcp
         return servers.Select(server => new McpServer(server.Name)
         {
             Type = server.Type,
-            Url = server.Url
+            Url = server.Url,
+            Headers = []
         }).ToArray();
     }
 }

@@ -5,7 +5,7 @@ public sealed class OpenCodeOptions
 {
     public const string SectionName = "OpenCode";
     public string Executable { get; set; } = "opencode";
-    public string[] Arguments { get; set; } = ["acp"];
+    public string[] Arguments { get; set; } = [];
     public string WorkspaceRoot { get; set; } = Path.Combine(Path.GetTempPath(), "openagent-acp");
     public int RequestTimeoutSeconds { get; set; } = 30;
     public int TurnTimeoutSeconds { get; set; } = 1800;

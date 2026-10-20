@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
-using OpenAgent.Capabilities.Skills;
+using System.Security.Claims;
 using OpenAgent.Application.Conversation.Store;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Models;
@@ -9,7 +9,7 @@ using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Contracts.Capabilities;
 using OpenAgent.Contracts.Skills;
-using Microsoft.Extensions.DependencyInjection.Extensions;
+using OpenAgent.Contracts.Requests;
 
 namespace OpenAgent.Engine.Host.Extensions;
 
@@ -23,9 +23,10 @@ internal static class LocalDevelopmentExtensions
 {
     internal static IServiceCollection AddLocalInMemoryStores(this IServiceCollection services)
     {
-        // 会话存储必须单例（跨请求保留会话）；其 ICurrentUserContext 依赖用固定的
-        // 开发身份满足——匿名开发认证下每个请求本来就是同一身份。
-        services.AddSingleton<IConversationStore>(_ => new InMemoryConversationStore(new LocalDevelopmentCurrentUserContext()));
+        // 数据跨请求保留，身份通过 accessor 每次读取，不能固定为匿名开发用户。
+        services.AddHttpContextAccessor();
+        services.AddSingleton<IConversationStore>(provider => new InMemoryConversationStore(
+            new LocalDevelopmentCurrentUserContext(provider.GetRequiredService<IHttpContextAccessor>())));
         services.AddSingleton<InMemoryFileAssetRepository>();
         services.AddSingleton<IFileAssetRepository>(provider => provider.GetRequiredService<InMemoryFileAssetRepository>());
         services.AddSingleton<IFileObjectStore, LocalInMemoryFileObjectStore>();
@@ -39,31 +40,21 @@ internal static class LocalDevelopmentExtensions
         services.AddSingleton<ILlmConfigRepository>(provider => provider.GetRequiredService<InMemoryLlmConfigRepository>());
         return services;
     }
-
-    /// <summary>
-    /// Engine 组合会把技能目录替换为 Redis 版；本地档改回 Application 的内存目录，
-    /// 必须在 AddAgentEngine 之后调用（后注册者胜出）。
-    /// </summary>
-    internal static IServiceCollection UseLocalInMemorySkillCatalog(this IServiceCollection services)
-    {
-        services.Replace(ServiceDescriptor.Singleton<ISkillCatalog, SkillCatalog>());
-        return services;
-    }
 }
 
-/// <summary>与 AllowDevelopmentAnonymous 一致的开发身份：development-user / development。</summary>
-internal sealed class LocalDevelopmentCurrentUserContext : ICurrentUserContext
+/// <summary>单例内存存储通过请求 accessor 读取当前身份，不捕获 scoped 服务。</summary>
+internal sealed class LocalDevelopmentCurrentUserContext(IHttpContextAccessor accessor) : ICurrentUserContext
 {
-    public string UserId => "development-user";
-    public string? Username => "development-user";
-    public string? Email => null;
-    public string? TenantId => "development";
-    public IReadOnlyList<string> Groups => [];
-    public IReadOnlyList<string> Roles => [];
-    public IReadOnlyDictionary<string, string> Claims { get; } = new Dictionary<string, string>();
-    public IReadOnlyList<string> Audience => [];
-    public bool IsAuthenticated => true;
-    public bool IsInRole(string role) => true;
+    private ClaimsPrincipal? Principal => accessor.HttpContext?.User;
+    public string UserId => Principal?.FindFirst("sub")?.Value
+        ?? Principal?.FindFirst(ClaimTypes.NameIdentifier)?.Value
+        ?? Principal?.Identity?.Name ?? "anonymous";
+    public string? TenantId => Principal?.Claims.FirstOrDefault(claim => claim.Type is "tenant_id" or "tid")?.Value;
+    public bool IsAuthenticated => Principal?.Identity?.IsAuthenticated ?? false;
+    public IReadOnlyList<string> Roles => Principal?.Claims
+        .Where(claim => claim.Type is ClaimTypes.Role or "role" or "roles")
+        .Select(claim => claim.Value).ToArray() ?? [];
+    public bool IsInRole(string role) => Roles.Contains(role, StringComparer.OrdinalIgnoreCase);
 }
 
 internal sealed class NullLlmInteractionStore : ILlmInteractionStore
@@ -84,13 +75,17 @@ internal sealed class LocalInMemoryFileObjectStore : IFileObjectStore
 {
     private readonly ConcurrentDictionary<string, byte[]> _objects = [];
 
-    public Task<FileObjectReference> WriteAsync(FileObjectWriteRequest request, Stream content, CancellationToken cancellationToken)
+    public async Task<FileObjectReference> WriteAsync(FileObjectWriteRequest request, Stream content, CancellationToken cancellationToken)
     {
         using var buffer = new MemoryStream();
-        content.CopyTo(buffer);
-        string objectKey = $"local/{request.FileId}";
+        await content.CopyToAsync(buffer, cancellationToken).ConfigureAwait(false);
+        string partition = FileObjectTenantScope.CreatePartition(request.TenantId);
+        string owner = request.Scope == FileObjectScope.Tenant
+            ? string.Empty
+            : $"users/{FileObjectTenantScope.CreatePartition(request.UserId)}/";
+        string objectKey = $"local/tenants/{partition}/{owner}{Guid.NewGuid():N}/{request.FileId}";
         _objects[objectKey] = buffer.ToArray();
-        return Task.FromResult(new FileObjectReference { ObjectKey = objectKey });
+        return new FileObjectReference { ObjectKey = objectKey };
     }
 
     public Task<byte[]> ReadAsync(string objectKey, CancellationToken cancellationToken) =>
@@ -98,8 +93,16 @@ internal sealed class LocalInMemoryFileObjectStore : IFileObjectStore
             ? data
             : throw new FileNotFoundException(objectKey));
 
-    public Task<byte[]> ReadAsync(string objectKey, long maxBytes, CancellationToken cancellationToken) =>
-        ReadAsync(objectKey, cancellationToken);
+    public async Task<byte[]> ReadAsync(string objectKey, long maxBytes, CancellationToken cancellationToken)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxBytes);
+        byte[] data = await ReadAsync(objectKey, cancellationToken).ConfigureAwait(false);
+        if (data.LongLength > maxBytes)
+        {
+            throw new AgentException(AgentErrorCode.InvalidRequest, "File object exceeds the configured byte limit.");
+        }
+        return data;
+    }
 
     public Task<FileObjectAccessReference> CreateReadUrlAsync(string objectKey, DateTimeOffset expiresAt, CancellationToken cancellationToken) =>
         throw new NotSupportedException("Local in-memory object storage does not issue read URLs.");
@@ -245,23 +248,22 @@ internal sealed class InMemoryAgentConfigRepository : IAgentConfigRepository
     private sealed record Tracked(AgentConfigEntity Entity, string Version);
 }
 
-/// <summary>内存版 LLM profile 仓储，同样保留乐观并发版本。</summary>
+/// <summary>内存版 LLM profile 仓储，读写深拷贝防止响应脱敏修改保存的密钥。</summary>
 internal sealed class InMemoryLlmConfigRepository : ILlmConfigRepository
 {
-    private readonly ConcurrentDictionary<string, Tracked> _profiles = [];
-    private int _versions;
+    private readonly ConcurrentDictionary<string, LlmProviderProfile> _profiles = [];
 
     public Task<LlmProviderProfile?> GetAsync(string tenantId, string profileId, CancellationToken cancellationToken = default)
     {
-        _profiles.TryGetValue($"{tenantId}/{profileId}", out Tracked? tracked);
-        return Task.FromResult(tracked is null ? null : Clone(tracked.Profile));
+        _profiles.TryGetValue($"{tenantId}/{profileId}", out LlmProviderProfile? profile);
+        return Task.FromResult(profile is null ? null : Clone(profile));
     }
 
     public Task<IReadOnlyList<LlmProviderProfile>> ListAsync(string tenantId, CancellationToken cancellationToken = default) =>
         Task.FromResult<IReadOnlyList<LlmProviderProfile>>(
         [.. _profiles.Values
-            .Where(tracked => tracked.Profile.TenantId == tenantId)
-            .Select(tracked => tracked.Profile)]);
+            .Where(tracked => tracked.TenantId == tenantId)
+            .Select(tracked => Clone(tracked))]);
 
     public Task<LlmProviderProfile> UpsertAsync(
         string tenantId,
@@ -270,8 +272,7 @@ internal sealed class InMemoryLlmConfigRepository : ILlmConfigRepository
         CancellationToken cancellationToken = default)
     {
         LlmProviderProfile saved = Clone(profile);
-        _profiles[$"{tenantId}/{profileId}"] = new Tracked(Clone(saved), Interlocked.Increment(ref _versions)
-            .ToString(System.Globalization.CultureInfo.InvariantCulture));
+        _profiles[$"{tenantId}/{profileId}"] = Clone(saved);
         return Task.FromResult(saved);
     }
 
@@ -280,8 +281,6 @@ internal sealed class InMemoryLlmConfigRepository : ILlmConfigRepository
 
     private static LlmProviderProfile Clone(LlmProviderProfile profile) =>
         JsonSerializer.Deserialize<LlmProviderProfile>(JsonSerializer.Serialize(profile))!;
-
-    private sealed record Tracked(LlmProviderProfile Profile, string Version);
 }
 
 /// <summary>内存版文件资产仓储：支撑上传/引用登记/读取的完整本地链路。</summary>

@@ -36,15 +36,19 @@ public sealed class OpenCodeSkillsTests : IDisposable
         Assert.True(File.Exists(Path.Combine(workspace, ".opencode", "skills", "beta-skill", "SKILL.md")));
     }
 
-    [Fact]
-    public void Materialize_PathSeparatorInName_Rejected()
+    [Theory]
+    [InlineData("../escape")]
+    [InlineData("..")]
+    [InlineData(".")]
+    [InlineData("bad\\name")]
+    public void Materialize_PathSeparatorInName_Rejected(string name)
     {
         string package = CreatePackage("safe");
         string workspace = Path.Combine(_root, "ws-3");
         Directory.CreateDirectory(workspace);
 
         Assert.Throws<InvalidOperationException>(() =>
-            OpenCodeSkills.Materialize(workspace, [new RuntimeSkill("../escape", package)]));
+            OpenCodeSkills.Materialize(workspace, [new RuntimeSkill(name, package)]));
         Assert.False(Directory.Exists(Path.Combine(workspace, ".opencode", "skills", "..")));
     }
 
@@ -100,6 +104,8 @@ public sealed class OpenCodeSessionMcpTests
         Assert.Equal(2, mapped.Length);
         Assert.Equal("localmcp", mapped[0].Name);
         Assert.Equal("http", mapped[0].Type);
+        Assert.NotNull(mapped[0].Headers);
+        Assert.Empty(mapped[0].Headers!);
         Assert.Equal("http://127.0.0.1:9/mcp", mapped[0].Url);
         Assert.Equal("sse", mapped[1].Type);
     }

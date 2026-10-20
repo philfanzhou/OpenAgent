@@ -45,7 +45,7 @@ function makeRecord(messages: ConversationMessage[], status: ConversationRecord[
   }
 }
 
-async function setup() {
+async function setup(modelProfileId = 'profile-1') {
   const streams = useConversationStreams()
   const conversations = ref<ConversationRecord[]>([])
   // 上一轮完成后的内存形态：合并展示消息（assistant 组携带末行序号 4，
@@ -61,7 +61,7 @@ async function setup() {
 
   const streaming = useChatStreaming({
     selectedAgentId: ref('agent-1'),
-    selectedLlmProfileId: ref('profile-1'),
+    selectedLlmProfileId: ref(modelProfileId),
     agents: ref([]),
     conversations,
     selectedConversation,
@@ -86,6 +86,18 @@ async function setup() {
 describe('useChatStreaming', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+  })
+
+  it('sends without a profile override when the user chooses the Agent model', async () => {
+    const { streaming } = await setup('')
+    vi.mocked(api.streamChat).mockImplementation(() => (async function* () {
+      yield { type: 'done', conversationId: 'conv-1' }
+    })() as never)
+    vi.mocked(api.getConversation).mockResolvedValue(makeRecord([], 'Completed') as never)
+    streaming.message.value = '使用 Agent 的模型'
+    await streaming.send()
+    expect(api.streamChat).toHaveBeenCalledOnce()
+    expect(vi.mocked(api.streamChat).mock.calls[0]?.[2]).toBe('')
   })
 
   it('keeps every turn intact after a user stop once the server persisted the cancelled turn', async () => {

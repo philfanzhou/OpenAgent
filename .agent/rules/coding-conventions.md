@@ -33,7 +33,7 @@
 | Router | Contracts、Engine（仅 Hosting 共享宿主能力） |
 | Runtime | Contracts、Runtime.Acp |
 | Runtime.Acp | 无平台依赖 |
-| Engine.Host | Contracts、Application、Capabilities、Engine、Framework、Runtime |
+| Engine.Host | Contracts、Application、Engine、Framework、Runtime |
 
 Application 通过平台运行时契约协调 ACP 执行，保留历史/Skill Provider 兼容与独立压缩；MCP/Skill 适配仍在 Application；Capabilities 承载文件、RAG、Skill 目录、内置工具及调用授权，不引用 MAF/MCP SDK。共享目录接口及能力定义在 Contracts；Engine 不引用 Application。模块依赖由架构测试检查。
 

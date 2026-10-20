@@ -29,7 +29,7 @@ Backend/src/
 | Application | Contracts、Capabilities |
 | Router | Contracts、Engine |
 | Runtime | Contracts、Runtime.Acp |
-| Engine.Host | Contracts、Application、Capabilities、Engine、Framework、Runtime |
+| Engine.Host | Contracts、Application、Engine、Framework、Runtime |
 
 - Engine 不再依赖 Application；共享目录接口归 Contracts。Router 只使用 Engine/Hosting 的共享宿主能力，不引用配置实现或执行代码。
 - Capabilities 不引用 MCP 或模型 SDK；MCP server 定义解析与 Skill 包物化在 Application，外部 server 经 ACP 透传给 harness 原生连接。聊天推理由 Contracts 的 IAgentRuntimeDriver 驱动，Application 不引用 Runtime/Runtime.Acp。

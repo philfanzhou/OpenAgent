@@ -4,7 +4,7 @@ namespace OpenAgent.Runtime;
 
 /// <summary>
 /// 把本轮物化好的 skill 包链接进工作区 .opencode/skills/&lt;name&gt;，交由
-/// OpenCode 原生 skill 工具按需发现/加载。优先符号链接（零拷贝、源目录只读）；
+/// OpenCode 原生 skill 工具按需发现/加载。优先符号链接（零拷贝）；
 /// Windows 未开启符号链接权限或跨卷等失败场景退化为目录复制。
 /// </summary>
 internal static class OpenCodeSkills
@@ -19,8 +19,7 @@ internal static class OpenCodeSkills
         {
             // 名称由工厂侧按 opencode 约定（^[a-z0-9]+(-[a-z0-9]+)*$）或 GUID 生成；
             // 此处仍拒绝路径分隔符，防止链接目标逃逸出 skills 目录。
-            if (string.IsNullOrWhiteSpace(skill.Name)
-                || skill.Name.IndexOfAny([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar, ':']) >= 0
+            if (!System.Text.RegularExpressions.Regex.IsMatch(skill.Name ?? string.Empty, "^[a-z0-9]+(?:-[a-z0-9]+)*$")
                 || !Path.IsPathRooted(skill.Path))
             {
                 throw new InvalidOperationException("Invalid skill package reference.");

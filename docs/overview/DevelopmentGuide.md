@@ -27,7 +27,7 @@
 | Router | 服务发现、路由、转发、限流与入口治理 |
 | Runner | 原有沙箱执行、工作区与资源清理 |
 
-引用边界：Application → Contracts/Capabilities；Capabilities、Engine、Framework、Runner → Contracts；Router → Engine/Contracts；Runtime → Contracts/Runtime.Acp；Runtime.Acp 不引用平台；Engine.Host 组装 Application/Capabilities/Engine/Framework/Contracts/Runtime。Engine 不引用执行代码，Router 仅使用 Engine/Hosting。规则和架构测试必须同步，不通过兼容项目或重复实现保留旧边界。
+引用边界：Application → Contracts/Capabilities；Capabilities、Engine、Framework、Runner → Contracts；Router → Engine/Contracts；Runtime → Contracts/Runtime.Acp；Runtime.Acp 不引用平台；Engine.Host 组装 Application/Engine/Framework/Contracts/Runtime（能力注册由 Application 组合）。Engine 不引用执行代码，Router 仅使用 Engine/Hosting。规则和架构测试必须同步，不通过兼容项目或重复实现保留旧边界。
 
 ## Application 与 Capabilities 修改入口
 

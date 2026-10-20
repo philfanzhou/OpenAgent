@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { api, ApiError, AUTH_FAILURE_EVENT, clearAuthentication, fetchHealthReport, getAccessToken, getEngineBaseUrl, getRouterBaseUrl, getTenantId, setAccessToken, setConnectionMode, setEngineBaseUrl, setRouterBaseUrl, setTenantId } from './api'
+import { api, ApiError, AUTH_FAILURE_EVENT, clearAuthentication, fetchHealthReport, getAccessToken, getConnectionMode, getEngineBaseUrl, getRouterBaseUrl, getTenantId, setAccessToken, setConnectionMode, setEngineBaseUrl, setRouterBaseUrl, setTenantId } from './api'
 
 class MemoryStorage implements Storage {
   private readonly values = new Map<string, string>()
@@ -14,6 +14,7 @@ class MemoryStorage implements Storage {
 
 beforeEach(() => {
   vi.unstubAllGlobals()
+  vi.unstubAllEnvs()
   vi.stubGlobal('localStorage', new MemoryStorage())
   vi.stubGlobal('sessionStorage', new MemoryStorage())
   vi.restoreAllMocks()
@@ -25,6 +26,13 @@ describe('workspace API', () => {
     expect(getRouterBaseUrl()).toBe('http://localhost:5001')
     expect(getEngineBaseUrl()).toBe('http://localhost:5208')
     expect(getTenantId()).toBe('development')
+  })
+
+  it('uses the local preview connection mode while preserving an explicit saved choice', () => {
+    vi.stubEnv('VITE_OPENAGENT_CONNECTION_MODE', 'engine')
+    expect(getConnectionMode()).toBe('engine')
+    setConnectionMode('router')
+    expect(getConnectionMode()).toBe('router')
   })
 
   it('sends only authentication credentials to catalog requests', async () => {

@@ -42,7 +42,7 @@ export function useModelSettings(options: SettingsOptions) {
   async function loadLlmProfiles(): Promise<void> {
     try {
       llmProfiles.value = await api.listLlmProfiles()
-      if (!llmProfiles.value.some(item => item.id === options.selectedLlmProfileId.value)) {
+      if (options.selectedLlmProfileId.value && !llmProfiles.value.some(item => item.id === options.selectedLlmProfileId.value)) {
         options.selectedLlmProfileId.value = llmProfiles.value[0]?.id || ''
       }
     } catch (error) {

@@ -158,6 +158,97 @@ public sealed class OpenCodeTests
         runtime.AssertWorkspacesReleased();
     }
 
+    [OpenCodeFact]
+    public async Task SkillsAndExternalMcp_AreLoadedAndCalledByRealHarness()
+    {
+        bool mcpCalled = false;
+        WebApplicationBuilder builder = WebApplication.CreateSlimBuilder();
+        builder.Logging.ClearProviders();
+        builder.WebHost.ConfigureKestrel(options => options.Listen(IPAddress.Loopback, 0));
+        await using WebApplication mcp = builder.Build();
+        mcp.MapPost("/mcp", async (HttpContext context) =>
+        {
+            using JsonDocument document = await JsonDocument.ParseAsync(context.Request.Body);
+            JsonElement message = document.RootElement;
+            if (!message.TryGetProperty("id", out JsonElement id))
+            {
+                context.Response.StatusCode = 202;
+                return;
+            }
+            object result;
+            switch (message.GetProperty("method").GetString())
+            {
+                case "initialize":
+                    result = new { protocolVersion = "2024-11-05", capabilities = new { tools = new { } }, serverInfo = new { name = "verification", version = "1" } };
+                    break;
+                case "tools/list":
+                    result = new { tools = new[] { new { name = "verify", description = "Get verification code", inputSchema = new { type = "object", properties = new { } } } } };
+                    break;
+                case "tools/call":
+                    mcpCalled = true;
+                    result = new { content = new[] { new { type = "text", text = "MCP-VERIFIED-842" } } };
+                    break;
+                default:
+                    result = new { };
+                    break;
+            }
+            await context.Response.WriteAsJsonAsync(new { jsonrpc = "2.0", id, result });
+        });
+        await mcp.StartAsync();
+        string endpoint = mcp.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single() + "/mcp";
+        string package = Path.Combine(Path.GetTempPath(), "runtime-skill-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(package);
+        await File.WriteAllTextAsync(Path.Combine(package, "SKILL.md"), "---\nname: local-verification\ndescription: Local verification phrase.\n---\nSKILL-VERIFIED-319\n");
+        try
+        {
+            int step = 0;
+            await using ModelFixture model = await ModelFixture.StartAsync(async (context, request) =>
+            {
+                string name;
+                string arguments;
+                if (step++ == 0)
+                {
+                    name = "skill";
+                    arguments = "{\"name\":\"local-verification\"}";
+                    Assert.Contains("local-verification", request.GetRawText());
+                }
+                else if (step == 2)
+                {
+                    Assert.Contains("SKILL-VERIFIED-319", request.GetRawText());
+                    name = request.GetProperty("tools").EnumerateArray()
+                        .Select(tool => tool.GetProperty("function").GetProperty("name").GetString()!)
+                        .Single(tool => tool.EndsWith("_verify", StringComparison.Ordinal));
+                    arguments = "{}";
+                }
+                else
+                {
+                    Assert.Contains("MCP-VERIFIED-842", request.GetRawText());
+                    await ModelFixture.TextAsync(context, "skills and MCP verified");
+                    return;
+                }
+                await ModelFixture.ChunkAsync(context, new
+                {
+                    role = "assistant",
+                    tool_calls = new[] { new { index = 0, id = "verify-" + step, type = "function", function = new { name, arguments } } }
+                }, "tool_calls");
+            });
+            await using RuntimeFixture runtime = new(model.Endpoint);
+            List<AgentStreamEvent> events = await runtime.CollectAsync(runtime.Request with
+            {
+                Skills = [new("local-verification", package)],
+                McpServers = [new("verification", endpoint, "http")]
+            });
+            Assert.Equal("skills and MCP verified", Text(events));
+            Assert.True(mcpCalled);
+            runtime.AssertWorkspacesReleased();
+            Assert.True(File.Exists(Path.Combine(package, "SKILL.md")));
+        }
+        finally
+        {
+            Directory.Delete(package, true);
+        }
+    }
+
     private static string Text(IEnumerable<AgentStreamEvent> events) =>
         string.Concat(events.Where(item => item.Type == AgentStreamEventType.Content).Select(item => item.Content));
 }

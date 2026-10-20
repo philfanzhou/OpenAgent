@@ -67,7 +67,7 @@ internal sealed class RuntimeAgentExecutor(
             ConversationType = request.ConversationType,
             TraceId = string.IsNullOrWhiteSpace(request.TraceId) ? Guid.NewGuid().ToString("N") : request.TraceId
         };
-        AgentRuntimeProfile profile = await profiles.ResolveAsync(agentId, request.LlmProfileId, user, cancellationToken).ConfigureAwait(false);
+        AgentRuntimeProfile profile = await profiles.ResolveAsync(agentId, request.LlmProfileId ?? string.Empty, user, cancellationToken).ConfigureAwait(false);
         AgentRequest resolved = new()
         {
             Query = request.Query,

@@ -12,6 +12,13 @@ public static class RuntimeServiceExtensions
         services.AddLogging();
         services.AddOptions<OpenCodeOptions>()
             .Bind(configuration.GetSection(OpenCodeOptions.SectionName))
+            .PostConfigure(options =>
+            {
+                if (options.Arguments is { Length: 0 })
+                {
+                    options.Arguments = ["acp"];
+                }
+            })
             .Validate(options => !string.IsNullOrWhiteSpace(options.Executable)
                 && Path.IsPathFullyQualified(options.WorkspaceRoot)
                 && options.Arguments is not null

@@ -1,6 +1,6 @@
 # OpenCode ACP 聊天运行时
 
-本分支将聊天默认执行入口切换为 OpenCode，依赖独立的 [ACP SDK](acp-dotnet-sdk/README.md)。用户明确选择 OpenCode；本地互操作固定为 **1.18.35**。实现状态与 PR 顺序只维护在 [任务清单](../planning/TODO.md)，验证事实见 [本轮记录](../test-reports/2026-10-19-opencode-runtime.md)。
+本分支将聊天默认执行入口切换为 OpenCode，依赖独立的 [ACP SDK](acp-dotnet-sdk/README.md)。用户明确选择 OpenCode；本地互操作固定为 **1.18.35**。实现状态与 PR 顺序只维护在 [任务清单](../planning/TODO.md)，验证事实见 [初次接入记录](../test-reports/2026-10-19-opencode-runtime.md) 与 [本机真实模型验收](../test-reports/2026-10-21-opencode-local.md)。
 
 ## 架构与目录
 
@@ -12,7 +12,6 @@ Backend/src/
     RuntimeAgentExecutor.cs        身份/配置/文件/持久化协调
     RuntimePreparation.cs          能力、MCP、Skill、历史准备
     RuntimePreparationScope.cs     部分结果和资源生命周期
-    ContextOnlyChatClient.cs       兼容 Provider 的载体，禁止推理
   OpenAgent.Runtime/               平台适配类库，IsPackable=false
     OpenCodeOptions.cs             可信宿主配置
     OpenCodeLaunch.cs              模型格式、受控环境及 OpenCode 配置
@@ -54,16 +53,18 @@ OpenCode 的原生工具默认 `* = deny`，仅允许 `openagent_*` 平台桥工
 
 ## 模型与历史
 
-- 模型解析顺序：请求显式选择的 llmProfileId（聊天头部的模型下拉）优先；未携带时使用 Agent 配置内嵌的 OpenCode 模型（`AgentConfig.OpenCode.Model`，含 Endpoint/ApiKey/ModelId/ApiFormat/Temperature/ContextTokens，管理端响应脱敏 ApiKey、保存留空即保持原值）；两者都没有则明确报错。前端 Agent 编辑器提供该内嵌配置的设置界面。
+- 模型解析顺序：请求显式选择的 llmProfileId（聊天头部的模型下拉）优先；未携带时使用 Agent 配置内嵌的 OpenCode 模型（`AgentConfig.OpenCode.Model`，含 Endpoint/ApiKey/ModelId/ApiFormat/Temperature/ContextTokens，管理端响应脱敏 ApiKey、保存留空即保持原值）；两者都没有则明确报错。前端 Agent 编辑器提供该内嵌配置的设置界面，聊天头部选择“使用 Agent 模型”时不发送独立连接覆盖。
 - 只将本轮授权后的 Endpoint、ModelId、ApiFormat、Temperature、ContextTokens 交给 OpenCode。ApiKey 用独立子进程环境变量传入，配置中只放 `{env:OPENAGENT_MODEL_API_KEY}`，不拼接到命令、提示词或日志。
 - OpenCode 会在 JSON 解析前展开配置宏。驱动在序列化时转义租户文本中的花括号，只还原随机占位的密钥引用，避免 `{file:...}`/`{env:...}` 指令变成宿主文件读取或环境变量展开；有真实进程回归测试。
 - 子进程只继承 PATH/SystemRoot/WINDIR 白名单，不继承服务数据库口令、云凭据或用户 OpenCode 配置。启动命令由宿主配置，聊天请求不能替换。
-- ApiFormat 映射为 OpenAI Chat Completions、OpenAI Responses、Anthropic 对应的 AI SDK Provider；本轮真实本地模型验证覆盖 Chat Completions，其余两种映射尚需对应模型互操作验收。
+- ApiFormat 映射为 OpenAI Chat Completions、OpenAI Responses、Anthropic 对应的 AI SDK Provider；Chat Completions 由确定性本地模型 + 真实 OpenCode 覆盖；Anthropic Messages 已通过智谱兼容端点真实模型调用，含 Skill/MCP 与 HTTP/SSE。OpenAI Responses 仍待真实服务商互操作验收；不据此宣称官方 Anthropic Claude 模型已验证。
 - ContextTokens 未配置时用 128000 作为驱动配置回退值；输出上限为上下文的四分之一且不超过 16384。实际模型限制应在平台模型 profile 中配置，不把回退值当作服务商能力。
 - 每轮使用新的 OpenCode 进程与 ACP session。旧消息按 role/content 序列化为一个嵌入 JSON 资源；当前 query 和平台筛选后的图片作为内容块传入。平台会话主键不变，但不沿用 OpenCode 私有会话或 ACP session/load。历史中的工具结果是上下文数据，不会自动重放执行。
 - usage_update.used 是上下文占用量，不是本轮计费 token。没有可靠本轮用量时 TokenUsage 保持 null，ModelId/TraceId 仍随终态返回。
 
 ## 配置与启动
+
+免 Docker 的本机启动、前端配置与数据生命周期见 [本机预览](../operations/local-preview.md)。
 
 开发机安装并固定 OpenCode 1.18.35，先验证 `opencode --version`；启动 Engine.Host 前确保该可执行文件在 PATH，或配置绝对路径。Engine 镜像包含同版本的 Linux 原生二进制，无需在运行容器内安装 Node/npm。
 
@@ -90,7 +91,7 @@ MAF（Microsoft.Agents.AI 全系包）已在本 PR 移除：PlatformChatHistory 
 
 OpenCode 内部可能产生标题等辅助模型请求，本轮未采集其底层 HTTP 请求/响应到平台 LLM interaction 表，也不据此伪造 usage。
 
-Worker/分布式租约与 fencing、RunGrant、跨重启事件重放、人工审批、MCP server 鉴权头透传和真实服务商验收仍按任务清单单独推进。本轮没有部署或修改线上配置。需要回退时回退此平台接入 PR；独立 SDK PR 可继续保留。
+Worker/分布式租约与 fencing、RunGrant、跨重启事件重放、人工审批、MCP server 鉴权头透传和其余服务商验收仍按任务清单单独推进。本轮没有部署或修改线上配置。需要回退时回退此平台接入 PR；独立 SDK PR 可继续保留。
 
 ## 验证方法
 

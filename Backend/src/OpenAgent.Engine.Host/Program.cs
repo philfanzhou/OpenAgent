@@ -46,12 +46,11 @@ else
 builder.Services.AddSingleton<SkillPackageManagementService>();
 
 builder.Services.AddAgentEngine(builder.Configuration);
-if (localInMemoryStores)
+if (!localInMemoryStores)
 {
-    builder.Services.UseLocalInMemorySkillCatalog();
+    builder.Services.AddHealthChecks()
+        .AddCheck<DatabaseHealthCheck>("database", tags: ["infrastructure", "ready"]);
 }
-builder.Services.AddHealthChecks()
-    .AddCheck<DatabaseHealthCheck>("database", tags: ["infrastructure", "ready"]);
 builder.Services.AddEngineErrorHandling();
 var app = builder.Build();
 

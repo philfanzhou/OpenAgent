@@ -79,9 +79,9 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, ILogger
         string parent = Path.Combine(settings.WorkspaceRoot, owner);
         string workspace = Path.Combine(parent, Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(workspace);
-        OpenCodeSkills.Materialize(workspace, invocation.Skills);
         try
         {
+            OpenCodeSkills.Materialize(workspace, invocation.Skills);
             await using RuntimeToolBridge bridge = await RuntimeToolBridge.StartAsync(invocation.Tools, cancellationToken).ConfigureAwait(false);
             // 平台自有工具经桥；外部 MCP server 按 Agent 配置直接透传给 harness 原生连接。
             McpServer[] sessionServers = [bridge.Server, .. OpenCodeSessionMcp.Map(invocation.McpServers)];

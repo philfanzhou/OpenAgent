@@ -105,7 +105,7 @@ function submit(): void {
       <form v-if="isBasic" class="login-form-page" @submit.prevent="submit">
         <div class="development-warning" role="note">
           <strong>仅限 Development 联调</strong>
-          <span>此方式不校验真实密码，不能用于生产环境。</span>
+          <span>本地测试账号：admin / admin 或 test / test，仅供开发预览。</span>
         </div>
         <label for="login-username">账号</label>
         <input id="login-username" ref="usernameInput" v-model="username" name="username" autocomplete="username" required autofocus>
