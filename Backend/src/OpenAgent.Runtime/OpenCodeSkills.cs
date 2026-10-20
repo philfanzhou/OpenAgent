@@ -19,7 +19,8 @@ internal static class OpenCodeSkills
         {
             // 名称由工厂侧按 opencode 约定（^[a-z0-9]+(-[a-z0-9]+)*$）或 GUID 生成；
             // 此处仍拒绝路径分隔符，防止链接目标逃逸出 skills 目录。
-            if (!System.Text.RegularExpressions.Regex.IsMatch(skill.Name ?? string.Empty, "^[a-z0-9]+(?:-[a-z0-9]+)*$")
+            string name = skill.Name ?? string.Empty;
+            if (!System.Text.RegularExpressions.Regex.IsMatch(name, "^[a-z0-9]+(?:-[a-z0-9]+)*$")
                 || !Path.IsPathRooted(skill.Path))
             {
                 throw new InvalidOperationException("Invalid skill package reference.");
@@ -28,7 +29,7 @@ internal static class OpenCodeSkills
             {
                 throw new InvalidOperationException($"Skill package directory is missing: {skill.Name}");
             }
-            string link = Path.Combine(workspace, ".opencode", "skills", skill.Name);
+            string link = Path.Combine(workspace, ".opencode", "skills", name);
             Directory.CreateDirectory(Path.GetDirectoryName(link)!);
             try
             {
