@@ -25,6 +25,23 @@
 
 执行路径由 MAF 改为“平台控制面 + Worker + 可换 ACP harness”，MAF 执行路径不保留，沙箱使用 harness 自带机制（如 Codex CLI），`OpenAgent.Runner` 暂不处理。旧清单中依赖 MAF 的任务已取代或并入下列 A 系列；后续功能任务按 A 系列评审；本次已授权的行为保持式结构整理不受 A03 限制。
 
+## 独立 ACP SDK（单包）
+
+本次用户授权 P0–P7 集中实现并创建新 PR；不启动平台切流、Worker 或生产发布。负责人：Codex；状态：待评审；实现 PR：[#233](https://github.com/philfanzhou/OpenAgent/pull/233)。源码范围为 Runtime.Acp 及对应 Tests；SDK 专属契约留同包，不依赖平台模块。测试控制台、官方 SDK 互通夹具、AOT/包检查脚本与 CI 模板按用户要求移出本 PR。
+
+| 任务 | 状态与验收入口 |
+|---|---|
+| ACP-00 / P0 工程与传输 | 待评审；framing、所有权、依赖门禁 |
+| ACP-01 / P1 模型与序列化 | 待评审；按本次精简要求改为手写 DTO + STJ 元数据，schema 只作固定契约摘要 |
+| ACP-02 / P2 双向 RPC | 待评审；重入、batch、一般取消、配额、关闭、诊断 |
+| ACP-03 / P3 Client/Agent | 待评审；会话、流式、早到更新、取消确认 |
+| ACP-04 / P4 本地进程 | 待评审；stdio、环境策略、stderr、退出与租约 |
+| ACP-05 / P5 会话与配置 | 待评审；load/resume/list/close/delete、modes/config、14 更新 |
+| ACP-06 / P6 交互 | 待评审；权限、文件、终端、elicitation、认证 |
+| ACP-07 / P7 验证与发布准备 | 待评审；压力与分配回归、单程序集包边界由单测与依赖门禁覆盖；互通/AOT/CI 脚手架已按用户要求移出，恢复时另行实现并实测；真实模型/稳定版发布分别验收 |
+
+阶段定义见 [IMPLEMENTATION](../integrations/acp-dotnet-sdk/IMPLEMENTATION.md)。PR #231/#232 保持原状，本次提供独立替代实现，不将未合并 PR 标成已完成。
+
 ## P0：验证与准备
 
 - [ ] **A01 .NET 10 升级**（待验证：`dev` 本地构建与全部测试已通过，待 CI 与镜像构建验证；须在 2026-11-10 前完成）。主责：`global.json`、`Directory.Build.props`、`Directory.Packages.props`；与功能改动分开提交。

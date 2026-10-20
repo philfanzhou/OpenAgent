@@ -1,0 +1,10 @@
+{
+  "protocol": {
+    "repository": "https://github.com/agentclientprotocol/agent-client-protocol",
+    "commit": "1cebe1c01837379abf34dd62b71e9c75bf140669",
+    "schema": "schema/v1/schema.json",
+    "sha256": "4bcd1d2051ff7ed379bd9b234fb9b09c5ab9245478698e9fab805bd9b52a33a6",
+    "license": "Apache-2.0",
+    "localTestManifest": "Backend/tests/OpenAgent.Runtime.Acp.Tests/Fixtures/contracts.json"
+  }
+}

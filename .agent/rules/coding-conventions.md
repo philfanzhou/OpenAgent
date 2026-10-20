@@ -27,13 +27,15 @@
 
 | 项目 | 允许引用 |
 |---|---|
-| Contracts | 无平台项目 |
+| Contracts / Runtime.Acp | 无平台项目 |
 | Application | Contracts、Capabilities |
 | Capabilities / Engine / Framework / Runner | Contracts |
 | Router | Contracts、Engine（仅 Hosting 共享宿主能力） |
 | Engine.Host | Contracts、Application、Capabilities、Engine、Framework |
 
 Application 保留 MAF 执行与 MCP/Skill 适配；Capabilities 承载文件、RAG、Skill 目录、内置工具及调用授权，不引用 MAF/MCP SDK。共享目录接口及能力定义在 Contracts；Engine 不引用 Application。模块依赖由架构测试检查。
+
+Runtime.Acp 专属协议契约留在同包；测试控制台只引用该 SDK。SDK 功能修改须同步测试、控制台和 docs/integrations/acp-dotnet-sdk。
 
 任务归属、注册入口、公开类型兼容与前端依赖规则见 [开发指南](../../docs/overview/DevelopmentGuide.md)。新增项目引用前同步架构测试和正式文档。
 
