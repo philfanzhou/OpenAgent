@@ -23,10 +23,6 @@ internal sealed class AgentRuntimeResolver(
         {
             throw new ArgumentException("Agent id is required.", nameof(agentId));
         }
-        if (string.IsNullOrWhiteSpace(llmProfileId))
-        {
-            throw new ArgumentException("LLM profile id is required.", nameof(llmProfileId));
-        }
 
         string tenantId = userContext.TenantId
             ?? throw new TenantDataIsolationException(
@@ -46,13 +42,27 @@ internal sealed class AgentRuntimeResolver(
                 cancellationToken)
             .ConfigureAwait(false);
 
-        LlmProviderProfile profile = await models.GetAsync(
-                tenantId,
-                llmProfileId,
-                cancellationToken)
-            .ConfigureAwait(false)
-            ?? throw new InvalidOperationException($"LLM profile not found: {llmProfileId}");
-        LlmConfig model = CreateExecutionModel(profile);
+        // 模型解析顺序：请求显式选择的 llmProfileId 优先；未携带时回落到
+        // Agent 的 OpenCode 内嵌模型；两者都没有才视为配置缺失。
+        LlmConfig model;
+        if (string.IsNullOrWhiteSpace(llmProfileId))
+        {
+            OpenCodeModelConfig? inline = config.OpenCode?.Model;
+            model = inline is null
+                ? throw new InvalidOperationException(
+                    $"Request selected no LLM profile and agent '{agentId}' has no OpenCode model configured.")
+                : CreateInlineModel(config.TenantId, inline);
+        }
+        else
+        {
+            LlmProviderProfile profile = await models.GetAsync(
+                    tenantId,
+                    llmProfileId,
+                    cancellationToken)
+                .ConfigureAwait(false)
+                ?? throw new InvalidOperationException($"LLM profile not found: {llmProfileId}");
+            model = CreateExecutionModel(profile);
+        }
         await authorization.EnsureModelAuthorizedAsync(
                 agentId,
                 model,
@@ -68,6 +78,19 @@ internal sealed class AgentRuntimeResolver(
             Model = model,
         };
     }
+
+    private static LlmConfig CreateInlineModel(string tenantId, OpenCodeModelConfig model) => new()
+    {
+        TenantId = tenantId,
+        Provider = "opencode",
+        Format = model.Format,
+        ModelId = model.ModelId,
+        ApiKey = model.ApiKey,
+        Endpoint = model.Endpoint,
+        Temperature = model.Temperature,
+        // 未配置上下文窗口时沿用驱动侧记录的回退值，避免必填项校验把内嵌配置挡下。
+        ContextTokens = model.ContextTokens > 0 ? model.ContextTokens : 128000
+    };
 
     private static LlmConfig CreateExecutionModel(LlmProviderProfile profile) => new()
     {

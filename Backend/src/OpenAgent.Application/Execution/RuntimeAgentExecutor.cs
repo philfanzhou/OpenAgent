@@ -53,9 +53,9 @@ internal sealed class RuntimeAgentExecutor(
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         using EngineMeter.EngineExecutionMeasurement measurement = EngineMeter.StartAgentCall(mode);
-        if (string.IsNullOrWhiteSpace(request.Query) || string.IsNullOrWhiteSpace(request.LlmProfileId))
+        if (string.IsNullOrWhiteSpace(request.Query))
         {
-            throw new AgentException(AgentErrorCode.MissingRequiredField, "Query and LlmProfileId are required.");
+            throw new AgentException(AgentErrorCode.MissingRequiredField, "Query is required.");
         }
         string agentId = await conversations.ResolveAsync(request, user, cancellationToken).ConfigureAwait(false) ?? "default";
         TurnContext turn = new()

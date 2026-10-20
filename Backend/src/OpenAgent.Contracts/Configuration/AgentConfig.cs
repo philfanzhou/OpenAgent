@@ -18,10 +18,33 @@ public class AgentConfig
     public CodeExecutionConfig CodeExecution { get; set; } = new();
     public ContextPolicy? ContextPolicy { get; set; }
 
+    /// <summary>
+    /// OpenCode 运行时的 Agent 级配置。Model 内嵌连接信息（endpoint/key/modelId），
+    /// API 响应必须脱敏 ApiKey；为空时模型仍按请求的 llmProfileId 解析。
+    /// </summary>
+    public OpenCodeConfig OpenCode { get; set; } = new();
+
     /// <summary>Documented default turn limit; also the fallback when MaxTurns is unset.</summary>
     public const int DefaultMaxTurns = 50;
 
     public int MaxTurns { get; set; } = DefaultMaxTurns;
+}
+
+/// <summary>OpenCode 运行时的 Agent 级配置；Model 为空表示未设置内嵌模型。</summary>
+public class OpenCodeConfig
+{
+    public OpenCodeModelConfig? Model { get; set; }
+}
+
+/// <summary>Agent 级 OpenCode 模型连接；存储于 Agent 配置，响应脱敏 ApiKey。</summary>
+public class OpenCodeModelConfig
+{
+    public string ModelId { get; set; } = string.Empty;
+    public string Endpoint { get; set; } = string.Empty;
+    public string ApiKey { get; set; } = string.Empty;
+    public ApiFormat Format { get; set; } = ApiFormat.OpenAIChatCompletions;
+    public double Temperature { get; set; } = 0.7;
+    public int ContextTokens { get; set; }
 }
 
 /// <summary>The effective model connection used by one execution.</summary>

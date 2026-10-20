@@ -516,6 +516,13 @@ internal static class ConfigurationEndpointExtensions
             return Forbidden(context, "agent.config.write");
         entity.TenantId = tenantId;
         entity.Config.TenantId = tenantId;
+        // OpenCode 内嵌模型的密钥在响应中已脱敏：保存时空值/掩码不覆盖已存密钥。
+        if (entity.Config.OpenCode.Model is { } openCodeModel
+            && existing?.Config.OpenCode.Model is { } storedModel
+            && string.IsNullOrWhiteSpace(openCodeModel.ApiKey))
+        {
+            openCodeModel.ApiKey = storedModel.ApiKey;
+        }
         foreach (SkillInstanceConfig skill in entity.Config.Skills.Instances)
         {
             if (!string.IsNullOrWhiteSpace(skill.TenantId)
