@@ -4,7 +4,7 @@ OpenAgent 是基于 .NET 10 的多服务 Agent 平台（C#, ASP.NET Core）。
 
 ## 模块结构与依赖
 
-当前分支在目录重组与独立 ACP SDK 基线上，按用户授权将聊天默认执行切换为 OpenCode ACP。现有 API、Runner 与平台持久化继续复用；Worker、RunGrant、审批和全量移除 MAF 包仍是独立任务。实现边界见 [OpenCode 运行时](docs/integrations/opencode-runtime.md)。
+当前分支在目录重组与独立 ACP SDK 基线上，聊天执行只走 OpenCode ACP，MAF 推理栈（Microsoft.Agents.AI 全系包）已移除。现有 API、Runner 与平台持久化继续复用；Worker、RunGrant、审批仍是独立任务。实现边界见 [OpenCode 运行时](docs/integrations/opencode-runtime.md)。
 
 ```text
 Backend/src/
@@ -20,7 +20,7 @@ Backend/src/
 └── OpenAgent.Runner/          现有沙箱与工作区（本次不调整实现）
 ```
 
-各模块使用同名 `.Tests` 项目；原 Hosting 测试并入 `Engine.Tests/Hosting/`，原 Core 中的文件及独立能力测试迁入 `Capabilities.Tests/`。跨模块 MAF 集成回归保留在 `Application.Tests/`。
+各模块使用同名 `.Tests` 项目；原 Hosting 测试并入 `Engine.Tests/Hosting/`，原 Core 中的文件及独立能力测试迁入 `Capabilities.Tests/`。
 
 | 项目 | 允许引用的平台项目 |
 |---|---|
@@ -32,11 +32,11 @@ Backend/src/
 | Engine.Host | Contracts、Application、Capabilities、Engine、Framework、Runtime |
 
 - Engine 不再依赖 Application；共享目录接口归 Contracts。Router 只使用 Engine/Hosting 的共享宿主能力，不引用配置实现或执行代码。
-- Capabilities 不引用 MAF、MCP 或模型 SDK；MCP 及 MAF Skill 包解析、Provider 和工具适配仍在 Application。聊天推理由 Contracts 的 IAgentRuntimeDriver 驱动，Application 不引用 Runtime/Runtime.Acp。
+- Capabilities 不引用 MCP 或模型 SDK；MCP server 定义解析与 Skill 包物化在 Application，外部 server 经 ACP 透传给 harness 原生连接。聊天推理由 Contracts 的 IAgentRuntimeDriver 驱动，Application 不引用 Runtime/Runtime.Acp。
 - 文件轮次上下文仍按 scoped 注册；发现/调用授权、工具并发、错误信封、Runner 隔离及回收行为保持不变。
 - `OpenAgent.Core`、`OpenAgent.Infrastructure`、独立 `OpenAgent.Hosting` 项目已退出解决方案，不新增兼容项目或双注册路径。
 - Runtime.Acp 是独立单包 ACP SDK，不引用平台模块，专属公共契约留在同包。每步同步维护 SDK、测试和 [阶段文档](docs/integrations/acp-dotnet-sdk/IMPLEMENTATION.md)。Worker 等空目录仍只代表规划。
-- Runtime 不发布 NuGet，仅作为平台适配程序集；SDK 仍只有一个包。生产入口不自动回退 MAF，原推理快照只编入测试。
+- Runtime 不发布 NuGet，仅作为平台适配程序集；SDK 仍只有一个包。没有第二条推理执行路径。
 - 项目引用及模块边界由 `Backend/tests/OpenAgent.Architecture.Tests/` 检查；不得为违规实现扩大白名单。
 - 文档统一放 `docs/`，源码目录不放 README。
 

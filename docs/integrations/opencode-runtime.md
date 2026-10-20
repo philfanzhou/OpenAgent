@@ -32,17 +32,29 @@ Runtime 只引用 Contracts、Runtime.Acp 和官方 MCP SDK；Application 只引
 ## 一轮执行
 
 1. HTTP 身份与入口治理不变。平台解析并授权 Agent/模型，建立 Tenant/User/Conversation/Trace 身份，校验附件，获取既有会话锁与版本。
-2. 平台把历史和能力、外部 MCP、Skill Provider 准备成 RuntimeInvocation。工具函数带本轮闭包；每次回调校验 Tool/Function 的 invoke 权限，沿用工具超时、独占/只读并发和结果字符预算。各资源域的细粒度授权仍见 F04 待办，不把桥接令牌当作完整权限系统。
-3. 驱动创建随机工作区、独立 HOME/XDG 状态目录和 loopback MCP 桥。桥使用 256 bit 随机 bearer，身份不取自模型参数，整轮取消后拒绝新请求。
-4. 通过 SDK 启动 `opencode acp`，执行 initialize → session/new → 可用时选择 model config → session/prompt。OpenCode 直接调用选定的模型，并经 MCP 桥调用平台 C# 工具；平台不再执行 MAF 聊天推理循环。
+2. 平台把历史、平台自有工具、外部 MCP server 定义和 Skill 包准备成 RuntimeInvocation。平台工具函数带本轮闭包；每次回调校验 Tool/Function 的 invoke 权限，沿用工具超时、独占/只读并发和结果字符预算。外部 MCP server 不再经平台代理连接（见"MCP 透传"），其凭据与限流由 harness 持有。
+3. 驱动创建随机工作区、独立 HOME/XDG 状态目录和 loopback MCP 桥。桥使用 256 bit 随机 bearer，身份不取自模型参数，整轮取消后拒绝新请求。启用的 Skill 包以符号链接（失败退化为复制）物化到工作区 `.opencode/skills/<name>`，交由 OpenCode 原生 skill 工具按需发现。
+4. 通过 SDK 启动 `opencode acp`，执行 initialize → session/new（携带平台桥 + 透传的外部 MCP server 定义）→ 可用时选择 model config → session/prompt。OpenCode 直接调用选定的模型，平台工具经 MCP 桥调用，外部 MCP 工具由 OpenCode 原生连接调用。
 5. 消费 session/update，合并工具增量、保留调用 ID、去除桥的显示名前缀，将正文、reasoning、工具结果和计划映射到 AgentStreamEvent。相同工具参数更新不重复发送；参数确有变化时沿同一个 ID 更新。
 6. ACP prompt 结束后排空更新队列。平台保存会话成功后才发送 usage/done。失败或取消保存部分正文、reasoning 与工具记录。
 7. 取消发送 session/cancel 并等待原 prompt 结果；SDK 对不确认的进程执行有界回收。结束后关闭 MCP 桥、释放工具资源并删除本轮随机工作区，保留平台会话数据。
 
-OpenCode 的原生工具使用 `* = deny`，仅允许 `openagent_*` MCP 工具；Client 不启用文件/终端回调，ACP 权限请求默认拒绝。平台 Runner、文件资产和 Skill 脚本策略继续约束实际工具。这是应用层授权和进程环境隔离，**不是操作系统沙箱**；本轮不宣称解决恶意 harness 的主机访问问题，也不实现人工审批。
+OpenCode 的原生工具默认 `* = deny`，仅允许 `openagent_*` 平台桥工具；按 Agent 配置透传的外部 MCP server 会追加对应 `server_*` 放行，启用 Skill 时放行原生 `skill` 工具。Client 不启用文件/终端回调，ACP 权限请求默认拒绝。平台 Runner、文件资产和 Skill 脚本策略继续约束平台侧工具。这是应用层授权和进程环境隔离，**不是操作系统沙箱**；本轮不宣称解决恶意 harness 的主机访问问题，也不实现人工审批。
+
+## MCP 透传
+
+- Agent 配置启用的外部 MCP server（租户注册表 `EnabledServerIds` 或内联 `Servers`）经租户过滤与逐 server 授权后，直接作为 ACP `session/new` 的 mcpServers 条目交给 OpenCode 原生连接。
+- 平台侧不再建立外部 MCP 客户端：McpClientPool、McpToolFactory、read_mcp_resource 与延迟加载（search_tools/DeferredToolInjector）已删除；平台桥只承载平台自有工具（文件、能力、`read_skill_file`/`run_skill_script`）。
+- 安全取舍必须知情：透传后外部 server 的凭据（当前配置仅 URL/类型，鉴权头为后续项）由 harness 进程直接持有，逐调用授权、超时与预算不再经过平台；harness 与 server 之间的网络路径也不再受平台管控。
+
+## Skill 物化
+
+- 启用的 Skill 包按轮次从对象存储物化到平台临时目录（沿用完整性校验），再以符号链接进入工作区 `.opencode/skills/<name>`（Windows 无符号链接权限或跨卷时退化为复制）；OpenCode 原生 skill 工具按需加载 SKILL.md，平台不再把 skill 文本注入提示词。
+- Skill 包内文件的受限读取（`read_skill_file`）与脚本执行（`run_skill_script`，经隔离 Runner，保留三重开关）作为平台桥工具提供；两者都限制在物化包目录内。
 
 ## 模型与历史
 
+- 模型解析顺序：请求显式选择的 llmProfileId（聊天头部的模型下拉）优先；未携带时使用 Agent 配置内嵌的 OpenCode 模型（`AgentConfig.OpenCode.Model`，含 Endpoint/ApiKey/ModelId/ApiFormat/Temperature/ContextTokens，管理端响应脱敏 ApiKey、保存留空即保持原值）；两者都没有则明确报错。前端 Agent 编辑器提供该内嵌配置的设置界面。
 - 只将本轮授权后的 Endpoint、ModelId、ApiFormat、Temperature、ContextTokens 交给 OpenCode。ApiKey 用独立子进程环境变量传入，配置中只放 `{env:OPENAGENT_MODEL_API_KEY}`，不拼接到命令、提示词或日志。
 - OpenCode 会在 JSON 解析前展开配置宏。驱动在序列化时转义租户文本中的花括号，只还原随机占位的密钥引用，避免 `{file:...}`/`{env:...}` 指令变成宿主文件读取或环境变量展开；有真实进程回归测试。
 - 子进程只继承 PATH/SystemRoot/WINDIR 白名单，不继承服务数据库口令、云凭据或用户 OpenCode 配置。启动命令由宿主配置，聊天请求不能替换。
@@ -70,15 +82,15 @@ OpenCode 的原生工具使用 `* = deny`，仅允许 `openagent_*` MCP 工具�
 
 `WorkspaceRoot` 默认是系统临时目录下的 `openagent-acp`；若覆盖，必须为绝对路径且由服务账户独占。启动时验证配置。并发上限为每个 Host 的进程租约配额，不是已验证的生产容量。超额请求等待空位并响应调用者取消；整轮时限从拿到空位后开始，包含初始化和推理。RPC 时限限制初始化/配置等调用，prompt 由整轮时限控制。
 
-缺少可执行文件、启动失败或 ACP 异常会明确失败，不自动回退 MAF。外部错误正文不会原样进入 SSE/会话；日志记录异常类型。工作区清理失败会告警并保留可定位目录，不删除其他轮次或宿主根目录。
+缺少可执行文件、启动失败或 ACP 异常会明确失败，没有第二条执行路径。外部错误正文不会原样进入 SSE/会话；日志记录异常类型。工作区清理失败会告警并保留可定位目录，不删除其他轮次或宿主根目录。
 
 ## 兼容组件与后续范围
 
-MAF/Microsoft.Extensions.AI 暂保留为 PlatformChatHistory、Skill Provider 兼容和平台独立摘要服务。自动压缩开关沿用既有摘要预算/审计，手动压缩服务不变；摘要服务仍通过原 Provider 客户端访问模型。ContextOnlyChatClient 禁止聊天推理。原聊天执行器快照只编入两个测试程序集，生产没有第二条 MAF 聊天执行路径。
+MAF（Microsoft.Agents.AI 全系包）已在本 PR 移除：PlatformChatHistory 改为显式 Load/Persist 生命周期的普通适配器；压缩（分组/触发器/摘要策略/审计）为平台自持实现，自动压缩开关与手动压缩服务语义不变；上下文提供器为平台抽象。Microsoft.Extensions.AI 仍作为工具（AIFunction）与摘要客户端的底层抽象保留；OpenAI Responses/Anthropic 摘要客户端由 ModelBindingChatClient 绑定模型（原 MAF 的 stored-output 禁用扩展随包移除）。
 
-首版将经过授权的全部 MCP 工具列入本轮桥目录，不启用原 MAF DeferredToolInjector；`Mcp:DeferredToolThreshold` 不控制 OpenCode 的工具目录。工具数和 schema 大小需要按实际目录验收。OpenCode 内部可能产生标题等辅助模型请求，本轮未采集其底层 HTTP 请求/响应到平台 LLM interaction 表，也不据此伪造 usage。
+OpenCode 内部可能产生标题等辅助模型请求，本轮未采集其底层 HTTP 请求/响应到平台 LLM interaction 表，也不据此伪造 usage。
 
-Worker/分布式租约与 fencing、RunGrant、跨重启事件重放、人工审批、全量删除 MAF 包和真实服务商验收仍按任务清单单独推进。本轮没有部署或修改线上配置。需要回退时回退此平台接入 PR；独立 SDK PR 可继续保留。
+Worker/分布式租约与 fencing、RunGrant、跨重启事件重放、人工审批、MCP server 鉴权头透传和真实服务商验收仍按任务清单单独推进。本轮没有部署或修改线上配置。需要回退时回退此平台接入 PR；独立 SDK PR 可继续保留。
 
 ## 验证方法
 

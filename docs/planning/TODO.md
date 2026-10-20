@@ -50,7 +50,7 @@
 - [ ] **ACP-R02 OpenCode 驱动与工具桥**：Runtime 类库（不打包）；固定版本 ACP 进程、隔离环境、每轮 loopback MCP bearer、工具预算及事件合并。
 - [ ] **ACP-R03 验证与交付**：真实进程/本地模型/平台 C# 工具、取消、历史续聊、HTTP/SSE；补齐配置、镜像与文档；保留原 MAF 回归快照于测试目录。
 
-本轮是同宿主 ACP 聊天执行的直接接入，不代表 A02 的并发容量/隔离攻击验证、A04 Worker、A05 分布式 RunGrant、A06 事件重放、A08 人工审批或 A09 全量移除 MAF 包已经完成。原任务保留未完成状态，具体验收边界以本轮记录为准。
+本轮已按评审意见移除 MAF 推理栈（Application 内 Microsoft.Agents.AI 全系引用、进程内推理循环与平台侧 MCP 工具代理，原 A09 的 Application 部分），并新增 Agent 级 OpenCode 模型配置、外部 MCP server 经 ACP session/new 透传、Skill 工作区物化。不代表 A02 的并发容量/隔离攻击验证、A04 Worker、A05 分布式 RunGrant、A06 事件重放或 A08 人工审批已完成；原任务保留未完成状态，具体验收边界以实测记录为准。
 
 ## P0：验证与准备
 
@@ -76,7 +76,7 @@
 
 ## P2：切换与移除
 
-- [ ] **A09 切流并移除 MAF 路径**（待分派，依赖 A04–A08 验收及真实 harness 验证）。主责：Application/Execution、ModelProviders、MAF 适配及 Microsoft.Agents.AI 包引用。
+- [ ] **A09 切流并移除 MAF 路径**（部分完成：Application 的 MAF 推理栈与 Microsoft.Agents.AI 包引用已随 #234 移除；切流验收与依赖项 A04–A08 仍待完成）。主责：Application/Execution、ModelProviders。
   验收：全部请求走 harness 路径且回归通过；移除 Application 中被新执行链替代的 MAF 代码与包，保留平台用例与契约；Architecture.Tests 增加新依赖规则；`OpenAgent.Runner` 不受影响。
 
 ## 保留的独立任务
