@@ -5,12 +5,12 @@ namespace OpenAgent.Runtime.Acp.Tests.Processes;
 
 public sealed class ProcessTests
 {
-    internal static AcpProcessOptions Command(string mode) => new("dotnet", [Path.Combine(AppContext.BaseDirectory, "OpenAgent.Runtime.Acp.TestConsole.dll"), mode]);
+    internal static AcpProcessOptions Command(string mode) => new("dotnet", [Path.Combine(AppContext.BaseDirectory, "OpenAgent.Runtime.Acp.ProcessWorker.dll"), mode]);
     [Fact]
     public async Task Process_DrainsLargeStderrWithoutBlockingAndPreservesExitCode()
     {
         long chars = 0;
-        await using AcpProcess process = AcpProcess.Start(Command("noisy-worker") with
+        await using AcpProcess process = AcpProcess.Start(Command("noisy") with
         {
             StandardError = value => Interlocked.Add(ref chars, value.Length)
         });
@@ -20,7 +20,7 @@ public sealed class ProcessTests
     [Fact]
     public async Task Process_DisposeKillsOnlyOwnedUnresponsiveProcessAndIsIdempotent()
     {
-        AcpProcess process = AcpProcess.Start(Command("stall-worker") with
+        AcpProcess process = AcpProcess.Start(Command("stall") with
         {
             ShutdownGracePeriod = TimeSpan.FromMilliseconds(50)
         });

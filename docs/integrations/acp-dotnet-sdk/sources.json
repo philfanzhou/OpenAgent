@@ -6,21 +6,5 @@
     "sha256": "4bcd1d2051ff7ed379bd9b234fb9b09c5ab9245478698e9fab805bd9b52a33a6",
     "license": "Apache-2.0",
     "localTestManifest": "Backend/tests/OpenAgent.Runtime.Acp.Tests/Fixtures/contracts.json"
-  },
-  "typescript": {
-    "package": "@agentclientprotocol/sdk",
-    "version": "1.8.0",
-    "repository": "https://github.com/agentclientprotocol/typescript-sdk"
-  },
-  "python": {
-    "repository": "https://github.com/agentclientprotocol/python-sdk",
-    "commit": "bdb9ac7054fb2df76a922b60b356c3c65f8a8a64",
-    "version": "0.12.1"
-  },
-  "rust": {
-    "repository": "https://github.com/agentclientprotocol/rust-sdk",
-    "commit": "f5c0eef0972bbda8e75a151aeb088642911b3568",
-    "version": "3.3.0",
-    "schemaCrate": "1.11.0"
   }
 }

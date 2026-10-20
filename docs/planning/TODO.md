@@ -27,20 +27,20 @@
 
 ## 独立 ACP SDK（单包）
 
-本次用户授权 P0–P7 集中实现并创建新 PR；不启动平台切流、Worker 或生产发布。负责人：Codex；状态：待评审；实现 PR：[#233](https://github.com/philfanzhou/OpenAgent/pull/233)。源码范围为 Runtime.Acp、对应 Tests、TestConsole 及官方 SDK 互通夹具；SDK 专属契约留同包，不依赖平台模块。
+本次用户授权 P0–P7 集中实现并创建新 PR；不启动平台切流、Worker 或生产发布。负责人：Codex；状态：待评审；实现 PR：[#233](https://github.com/philfanzhou/OpenAgent/pull/233)。源码范围为 Runtime.Acp 及对应 Tests；SDK 专属契约留同包，不依赖平台模块。测试控制台、官方 SDK 互通夹具、AOT/包检查脚本与 CI 模板按用户要求移出本 PR。
 
 | 任务 | 状态与验收入口 |
 |---|---|
-| ACP-00 / P0 工程与传输 | 待评审；framing、所有权、控制台进程、SDK 依赖门禁 |
+| ACP-00 / P0 工程与传输 | 待评审；framing、所有权、依赖门禁与进程退出码 |
 | ACP-01 / P1 模型与序列化 | 待评审；按本次精简要求改为手写 DTO + STJ 元数据，schema 只作固定契约摘要 |
 | ACP-02 / P2 双向 RPC | 待评审；重入、batch、一般取消、配额、关闭、诊断 |
 | ACP-03 / P3 Client/Agent | 待评审；会话、流式、早到更新、取消确认 |
 | ACP-04 / P4 本地进程 | 待评审；stdio、环境策略、stderr、退出与租约 |
 | ACP-05 / P5 会话与配置 | 待评审；load/resume/list/close/delete、modes/config、14 更新 |
 | ACP-06 / P6 交互 | 待评审；权限、文件、终端、elicitation、认证 |
-| ACP-07 / P7 验证与发布准备 | 待评审；官方 TS/Python/Rust 双向互通、本地 AOT、压力、包检查；新增 CI 模板待 workflow 权限启用；CI/真实模型/稳定版发布分别验收 |
+| ACP-07 / P7 验证与发布准备 | 待评审；压力与分配回归、单程序集包边界由单测与依赖门禁覆盖；互通/AOT/CI 脚手架已按用户要求移出，恢复时另行实现并实测；真实模型/稳定版发布分别验收 |
 
-阶段定义见 [IMPLEMENTATION](../integrations/acp-dotnet-sdk/IMPLEMENTATION.md)，证据见 [本次实测记录](../test-reports/2026-10-16-acp-sdk-complete.md)。PR #231/#232 保持原状，本次提供独立替代实现，不将未合并 PR 标成已完成。
+阶段定义见 [IMPLEMENTATION](../integrations/acp-dotnet-sdk/IMPLEMENTATION.md)。PR #231/#232 保持原状，本次提供独立替代实现，不将未合并 PR 标成已完成。
 
 ## P0：验证与准备
 

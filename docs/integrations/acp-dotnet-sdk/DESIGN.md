@@ -2,7 +2,7 @@
 
 ## 范围与边界
 
-唯一发布包为 `OpenAgent.Runtime.Acp`，包含稳定 ACP v1 的协议类型、双向 RPC、Client / Agent、Session / PromptTurn 和可选本地进程管理。测试工程及测试控制台不可打包。继承当前 `dev` 的 `net10.0` 和集中包版本管理；SDK 无第三方运行时依赖，也不引用平台项目。
+唯一发布包为 `OpenAgent.Runtime.Acp`，包含稳定 ACP v1 的协议类型、双向 RPC、Client / Agent、Session / PromptTurn 和可选本地进程管理。测试工程不可打包。继承当前 `dev` 的 `net10.0` 和集中包版本管理；SDK 无第三方运行时依赖，也不引用平台项目。
 
 该 SDK 不替换 Application 的 MAF 执行链，不实现 Worker、租户授权、数据库存储、模型调用或 OS 沙箱。会话持久化与审批由宿主回调提供。示例文件/终端处理器默认不启用，必须显式注册及授权。
 
@@ -21,17 +21,15 @@ Backend/tests/OpenAgent.Runtime.Acp.Tests/
 ├── Transport/   分片、CRLF、EOF、并发写入、取消与释放
 ├── Rpc/         关联、重入、batch、一般取消、错误与配额
 ├── Client/      会话、交互、文件与关闭边界
-├── Console/     真正启动测试控制台，校验场景与退出码
+├── Processes/   真实子进程的 stderr 排空、退出码与释放击杀
 ├── Architecture/ SDK 依赖边界
 ├── Fixtures/    官方固定契约摘要与许可，仅供测试
-└── TestDoubles/ 可控流与测试连接
-Backend/tests/OpenAgent.Runtime.Acp.Interop/  固定官方 TS/Python/Rust 的双向进程夹具
-Backend/tools/OpenAgent.Runtime.Acp.TestConsole/ 唯一 SDK 测试控制台
+└── TestDoubles/ 可控流、测试连接与 ProcessWorker 辅助子进程
 ```
 
 ## 协议类型与精简原则
 
-精简以减少重复与额外抽象为目标，不以压缩行数为目标。SDK、测试和控制台保留分支块、异常处理、缩进与换行，并在生命周期和协议边界处增加中文注释。
+精简以减少重复与额外抽象为目标，不以压缩行数为目标。SDK 与测试保留分支块、异常处理、缩进与换行，并在生命周期和协议边界处增加中文注释。
 
 - 稳定目录包含 25 个方法（含一般取消）、14 类会话更新及五类内容。公开 DTO 以少量按领域分组的文件组织。
 - 普通字段是普通 CLR 属性，访问不会重新解析 JSON 或创建替代模型。`JsonElement` 只用于 `_meta`、原始工具输入输出、开放 schema/能力字段等扩展载荷。

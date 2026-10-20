@@ -1,1 +1,0 @@
-agent-client-protocol @ git+https://github.com/agentclientprotocol/python-sdk.git@bdb9ac7054fb2df76a922b60b356c3c65f8a8a64

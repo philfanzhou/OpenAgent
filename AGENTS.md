@@ -32,7 +32,7 @@ Backend/src/
 - Capabilities 不引用 MAF、MCP 或模型 SDK；MCP 及 MAF Skill 包解析、Provider 和工具适配仍在 Application，不伪造 ACP 替代路径。
 - 文件轮次上下文仍按 scoped 注册；发现/调用授权、工具并发、错误信封、Runner 隔离及回收行为保持不变。
 - `OpenAgent.Core`、`OpenAgent.Infrastructure`、独立 `OpenAgent.Hosting` 项目已退出解决方案，不新增兼容项目或双注册路径。
-- Runtime.Acp 是独立单包 ACP SDK，不引用平台模块，专属公共契约留在同包；测试控制台只引用 SDK。每步同步维护 SDK、测试、控制台和 [阶段文档](docs/integrations/acp-dotnet-sdk/IMPLEMENTATION.md)。Worker 等空目录仍只代表规划。
+- Runtime.Acp 是独立单包 ACP SDK，不引用平台模块，专属公共契约留在同包。每步同步维护 SDK、测试和 [阶段文档](docs/integrations/acp-dotnet-sdk/IMPLEMENTATION.md)。Worker 等空目录仍只代表规划。
 - 项目引用及模块边界由 `Backend/tests/OpenAgent.Architecture.Tests/` 检查；不得为违规实现扩大白名单。
 - 文档统一放 `docs/`，源码目录不放 README。
 

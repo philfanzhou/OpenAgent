@@ -1,4 +1,4 @@
-# OpenAgent.Runtime.Acp 使用与测试控制台
+# OpenAgent.Runtime.Acp 使用指南
 
 单一 ACP v1 SDK，当前目标为 .NET 10。包内包含 Protocol、Transport、Rpc、Client、Agent、Processes，命名空间不等于独立 NuGet 包。
 
@@ -22,26 +22,8 @@ await updates;
 
 ## Agent 与交互
 
-使用 `AcpAgentHost(transport, handlers)`。`AcpAgentHandlers` 必填 Initialize、NewSession、Prompt 三个委托，其他生命周期按需注册。Prompt 回调通过 `AcpAgentContext` 发送更新及反向权限/文件/终端/elicitation 请求。完整可运行例子在 `Backend/tools/OpenAgent.Runtime.Acp.TestConsole/EchoAgent.cs`；示例只使用内存，不调用模型。
+使用 `AcpAgentHost(transport, handlers)`。`AcpAgentHandlers` 必填 Initialize、NewSession、Prompt 三个委托，其他生命周期按需注册。Prompt 回调通过 `AcpAgentContext` 发送更新及反向权限/文件/终端/elicitation 请求。基于内存连接的完整可运行用例见 `Backend/tests/OpenAgent.Runtime.Acp.Tests/Client/`（`AcpAgentHost` 与回调的真实用法）与同目录 `TestDoubles/`；示例只使用内存，不调用模型。
 
 Client 通过 `AcpClientHandlers` 注册 Permission、ReadFile、WriteFile、Terminal、Elicitation、TerminalAuthentication。文件/命令默认不可用，权限默认拒绝。`RootedFileSystem`、`LocalTerminalHandler` 是显式启用的示例策略，宿主应提供本会话授权根和命令判断；不能将其当作沙箱或跨租户鉴权实现。URL 流程只分派给宿主，不自动打开浏览器；terminal-auth 不自动执行未授权命令。
 
-## 控制台
-
-在仓库根执行：
-
-```sh
-dotnet run --project Backend/tools/OpenAgent.Runtime.Acp.TestConsole -- list
-dotnet run --project Backend/tools/OpenAgent.Runtime.Acp.TestConsole -- run all --json
-dotnet run --project Backend/tools/OpenAgent.Runtime.Acp.TestConsole -- run cancel
-dotnet run --project Backend/tools/OpenAgent.Runtime.Acp.TestConsole -- agent
-dotnet run --project Backend/tools/OpenAgent.Runtime.Acp.TestConsole -- client '你好' -- your-agent acp
-dotnet run --project Backend/tools/OpenAgent.Runtime.Acp.TestConsole -- client slow --cancel-after-ms 100 -- fixture-agent
-dotnet run --project Backend/tools/OpenAgent.Runtime.Acp.TestConsole -- interop -- fixture-agent
-```
-
-离线场景为 framing、schema、rpc、echo、cancel、process、session、config、updates、permission、files、terminal、elicitation、auth、fault、load。`run all` 包含全部离线场景，真实子进程通过 SDK 公共 API 通信。临时文件与自有进程在退出时清理。load 参数固定为 10 个 session × 10,000 次更新，报告包含实际耗时及计数。
-
-`agent` 的 stdout 只写协议帧，诊断写 stderr。普通报告或 `--json` 报告在场景模式输出。退出码：0 全部成功，1 执行失败，2 命令/场景无效。`interop` 是显式外部场景，要求夹具支持 hello/slow，并验证流式输出及取消确认；不进入离线 `run all`。
-
-真实 Agent 可用 client 显式调用；由用户提供已配置的启动命令与授权。官方测试不需要模型账户，不能据此宣称真实模型推理或平台 E2E 已验收。
+真实 Agent 由宿主经 `AcpProcess` 显式启动并自行授权；官方协议测试不需要模型账户，不能据此宣称真实模型推理或平台 E2E 已验收。
