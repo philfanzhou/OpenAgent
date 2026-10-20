@@ -82,13 +82,15 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, ILogger
         try
         {
             await using RuntimeToolBridge bridge = await RuntimeToolBridge.StartAsync(invocation.Tools, cancellationToken).ConfigureAwait(false);
+            // 平台自有工具经桥；外部 MCP server 按 Agent 配置直接透传给 harness 原生连接。
+            McpServer[] sessionServers = [bridge.Server, .. OpenCodeSessionMcp.Map(invocation.McpServers)];
             await using AcpProcess process = AcpProcess.Start(OpenCodeLaunch.Create(settings, invocation, workspace));
             await using AcpClient client = new(process.Transport, options: new()
             {
                 RequestTimeout = TimeSpan.FromSeconds(settings.RequestTimeoutSeconds)
             });
             await client.InitializeAsync(new("OpenAgent", "1"), cancellationToken).ConfigureAwait(false);
-            await using AcpSession session = await client.NewSessionAsync(new(workspace, [bridge.Server]), cancellationToken).ConfigureAwait(false);
+            await using AcpSession session = await client.NewSessionAsync(new(workspace, sessionServers), cancellationToken).ConfigureAwait(false);
             await SelectModelAsync(session, invocation.Profile.Model.ModelId, cancellationToken).ConfigureAwait(false);
             await using AcpPromptTurn turn = await session.StartPromptAsync(prompt, cancellationToken).ConfigureAwait(false);
             await using IAsyncEnumerator<SessionNotification> updates = session.ReadUpdatesAsync().GetAsyncEnumerator();

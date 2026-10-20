@@ -1,23 +1,21 @@
 using OpenAgent.Contracts.Capabilities;
-using Microsoft.Extensions.AI;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Configuration;
-using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Security;
-using OpenAgent.Capabilities.Files.Requests;
+using OpenAgent.Contracts.Runtime;
+using OpenAgent.Capabilities.Security;
 using OpenAgent.Application.Tooling.Abstractions;
-using OpenAgent.Application.Tooling.Invocation;
 
 namespace OpenAgent.Application.Capabilities.Mcp;
 
+/// <summary>
+/// 按 Agent 配置解析启用中的外部 MCP server 定义，交由运行时驱动经 ACP
+/// session/new 透传给 harness 原生连接。平台不再代理连接外部 server：
+/// 逐调用的工具授权/预算只在平台自有工具上生效，透传 server 的凭据与
+/// 限流由 harness 直接持有（见 docs/integrations/opencode-runtime.md）。
+/// </summary>
 internal sealed class McpFeatureFactory(
-    McpToolFactory tools,
-    IFileAssetService fileAssets,
-    FileAssetExecutionContext files,
-    IOptions<McpExecutionOptions> options,
-    ILogger<IsolatedToolFunction> toolLogger,
-    ILogger<McpFeatureFactory> logger) : IAgentFeatureFactory
+    AgentAuthorizationGate authorization,
+    IMcpRegistry registry) : IAgentFeatureFactory
 {
     public async Task<AgentFeature> CreateAsync(
         string agentId,
@@ -25,24 +23,35 @@ internal sealed class McpFeatureFactory(
         IAgentUserContext user,
         CancellationToken cancellationToken)
     {
-        McpToolRuntime runtime = await tools.CreateAsync(
-            agentId, config.Mcp, user, cancellationToken).ConfigureAwait(false);
-        int threshold = options.Value.DeferredToolThreshold;
-        if (threshold > 0 && runtime.Tools.Count > threshold)
+        List<RuntimeMcpServer> servers = [];
+        HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
+        IEnumerable<Contracts.Configuration.McpServerConfig> configured = config.Mcp.EnabledServerIds.Count > 0
+            ? config.Mcp.EnabledServerIds.Select(registry.Get).Where(server => server != null).Select(server => server!)
+            : config.Mcp.Servers;
+        // 空 TenantId 的存量 profile 视为全局可用，与 AgentAuthorizationGate 对 LLM profile 的约定一致。
+        foreach (Contracts.Configuration.McpServerConfig server in configured.Where(server =>
+            string.IsNullOrEmpty(server.TenantId)
+            || string.Equals(server.TenantId, user.TenantId, StringComparison.Ordinal)))
         {
-            McpFeatureLog.ToolsDeferred(logger, runtime.Tools.Count, threshold);
+            string name = string.IsNullOrWhiteSpace(server.Name) ? server.Url : server.Name;
+            if (!seen.Add(name))
+            {
+                continue;
+            }
+            if (!await authorization.IsAvailableAsync(
+                    agentId,
+                    AgentResourceType.Mcp,
+                    name,
+                    user,
+                    cancellationToken).ConfigureAwait(false))
+            {
+                continue;
+            }
+            servers.Add(new RuntimeMcpServer(
+                name,
+                server.Url,
+                server.Type == McpServerType.SSE ? "sse" : "http"));
         }
-        return new AgentFeature
-        {
-            Tools = runtime.Tools,
-            InlineTools = runtime.ResourceReader is { } reader ? [reader] : [],
-            DeferredToolThreshold = threshold,
-            PrepareTool = Prepare,
-            Resource = runtime
-        };
+        return new AgentFeature { McpServers = servers };
     }
-
-    private AITool Prepare(AITool tool) => tool.Name.StartsWith("mcp__", StringComparison.Ordinal)
-        ? McpResourcePipeline.Wrap(tool, fileAssets, files, toolLogger)
-        : tool;
 }

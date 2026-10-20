@@ -17,7 +17,8 @@ public sealed record RuntimeInvocation(
     string Instructions,
     IReadOnlyList<RuntimeMessage> Messages,
     IReadOnlyList<RuntimeTool> Tools,
-    IReadOnlyList<RuntimeSkill>? Skills = null);
+    IReadOnlyList<RuntimeSkill>? Skills = null,
+    IReadOnlyList<RuntimeMcpServer>? McpServers = null);
 
 public sealed record RuntimeMessage(
     string Role,
@@ -28,6 +29,12 @@ public sealed record RuntimeAttachment(string MediaType, ReadOnlyMemory<byte> Da
 
 /// <summary>已物化的 skill 包目录；驱动负责链接进本轮工作区供 harness 原生发现。</summary>
 public sealed record RuntimeSkill(string Name, string Path);
+
+/// <summary>
+/// 按 Agent 配置启用的外部 MCP server 定义；驱动经 ACP session/new 直接透传给
+/// harness 原生连接，不经平台代理工具转发。
+/// </summary>
+public sealed record RuntimeMcpServer(string Name, string Url, string Type);
 
 /// <summary>工具回调绑定本轮身份；Agent 不能在参数中更换租户或用户。</summary>
 public sealed record RuntimeTool(

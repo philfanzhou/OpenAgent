@@ -22,6 +22,14 @@ internal static class OpenCodeLaunch
             ApiFormat.AnthropicMessages => "@ai-sdk/anthropic",
             _ => throw new ArgumentOutOfRangeException(nameof(model.Format))
         };
+        // 原生工具默认全拒绝：只放行平台桥工具（openagent_*）与按 Agent 配置
+        // 透传的外部 MCP server 工具（harness 以 server 名作为工具名前缀）。
+        JsonObject permission = new() { ["*"] = "deny", ["openagent_*"] = "allow" };
+        foreach (string server in (invocation.McpServers ?? []).Select(server => server.Name.ToLowerInvariant()).Distinct())
+        {
+            permission[server + "_*"] = "allow";
+            permission["mcp_" + server + "_*"] = "allow";
+        }
         JsonObject config = new()
         {
             ["$schema"] = "https://opencode.ai/config.json",
@@ -31,7 +39,7 @@ internal static class OpenCodeLaunch
             ["share"] = "disabled",
             ["snapshot"] = false,
             ["enabled_providers"] = new JsonArray("openagent"),
-            ["permission"] = new JsonObject { ["*"] = "deny", ["openagent_*"] = "allow" },
+            ["permission"] = permission,
             ["agent"] = new JsonObject
             {
                 ["openagent"] = new JsonObject

@@ -10,7 +10,7 @@ internal sealed class AgentFeature : IAsyncDisposable
     internal IReadOnlyList<AITool> InlineTools { get; init; } = [];
     internal IReadOnlyList<IAgentContextProvider> ContextProviders { get; init; } = [];
     internal IReadOnlyList<RuntimeSkill> Skills { get; init; } = [];
-    internal int DeferredToolThreshold { get; init; }
+    internal IReadOnlyList<RuntimeMcpServer> McpServers { get; init; } = [];
     internal Func<AITool, AITool>? PrepareTool { get; init; }
     internal IAsyncDisposable? Resource { get; init; }
 

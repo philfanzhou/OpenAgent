@@ -15,8 +15,6 @@ internal static class McpServiceExtensions
         services.Configure<McpExecutionOptions>(configuration.GetSection("Mcp"));
         services.TryAddSingleton<IMcpRegistry, McpRegistry>();
         services.TryAddSingleton<McpTransportFactory>();
-        services.TryAddSingleton<McpClientPool>();
-        services.TryAddScoped<McpToolFactory>();
         services.TryAddScoped<IMcpConnectionTester, McpConnectionTester>();
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IAgentFeatureFactory, McpFeatureFactory>());
         return services;

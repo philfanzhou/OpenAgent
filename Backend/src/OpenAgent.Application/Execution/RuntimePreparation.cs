@@ -64,6 +64,7 @@ internal sealed class RuntimePreparation(
             context.Messages.Add(message);
             List<AITool> tools = [.. await capabilities.CreateAsync(profile.AgentId, profile.Config, user, ct).ConfigureAwait(false)];
             List<RuntimeSkill> skills = [];
+            List<RuntimeMcpServer> mcpServers = [];
             foreach (IAgentFeatureFactory factory in factories)
             {
                 AgentFeature feature = await factory.CreateAsync(profile.AgentId, profile.Config, user, ct).ConfigureAwait(false);
@@ -71,6 +72,7 @@ internal sealed class RuntimePreparation(
                 tools.AddRange(feature.Tools);
                 tools.AddRange(feature.InlineTools);
                 skills.AddRange(feature.Skills);
+                mcpServers.AddRange(feature.McpServers);
                 foreach (IAgentContextProvider provider in feature.ContextProviders)
                 {
                     context = await provider.InvokingAsync(context, ct).ConfigureAwait(false);
@@ -117,7 +119,7 @@ internal sealed class RuntimePreparation(
             }
             scope.Context = context;
             scope.InvocationRequest = new RuntimeInvocation(profile, turn, context.Instructions ?? string.Empty,
-                context.Messages.Select(ToRuntimeMessage).ToArray(), exported, skills);
+                context.Messages.Select(ToRuntimeMessage).ToArray(), exported, skills, mcpServers);
             return scope;
         }
         catch (Exception error)
