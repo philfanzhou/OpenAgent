@@ -11,6 +11,14 @@ import HealthCheckPanel from '../components/HealthCheckPanel.vue'
 import type { SettingsDialogContext } from './settings.types'
 
 const props = defineProps<{ context: SettingsDialogContext }>()
+
+function toggleOpenCodeModel(enabled: boolean): void {
+  if (!config.value) return
+  config.value.config.openCode = enabled
+    ? { model: { modelId: '', endpoint: '', apiKey: '', format: 'OpenAIChatCompletions', temperature: 0.7, contextTokens: 0 } }
+    : {}
+}
+
 const { connectionMode, routerUrl, engineUrl, tenantId, statusText, authConfig, currentUser, agents, activeEndpointLabel, activeEndpointHost, connect, logout, testHealth, showSettings, activeSettings, savingConfig, refreshingAgents, config, showAgentEditor, isNewAgent, loadingMcpBindingOptions, loadingSkillBindingOptions, ragInstances, boundMcpServers, boundSkills, openMcpBindingPicker, openSkillBindingPicker, removeMcpBinding, removeSkillBinding, isRagEnabled, toggleRagBinding, refreshAgents, editAgent, createAgent, saveConfig, openSettings, handleSettingsTabChange } = props.context
 </script>
 
@@ -79,7 +87,28 @@ const { connectionMode, routerUrl, engineUrl, tenantId, statusText, authConfig, 
       </section>
 
       <section class="agent-editor-section">
-        <div class="agent-editor-section-heading"><div><span class="eyebrow">CAPABILITY BINDINGS</span><h4>能力绑定</h4><p>当前 Agent 的 MCP、Skill、RAG 以卡片展示；勾选即可启用或停用 Skill 与 RAG。</p></div><span class="editor-section-index">02</span></div>
+        <div class="agent-editor-section-heading"><div><span class="eyebrow">OPENCODE RUNTIME</span><h4>OpenCode 运行时</h4><p>为这个 Agent 内嵌 OpenCode 的模型连接；聊天时在头部选择的模型仍可临时覆盖。API Key 只写不读，留空表示保持已保存的密钥。</p></div><span class="editor-section-index">02</span></div>
+        <el-form label-position="top" class="agent-form-grid">
+          <el-form-item label="内嵌模型"><el-switch :model-value="config.config.openCode?.model != null" @update:model-value="toggleOpenCodeModel(Boolean($event))" /><small class="form-help">开启后未显式选择模型的请求使用这里的连接。</small></el-form-item>
+          <template v-if="config.config.openCode?.model">
+            <el-form-item label="Endpoint"><el-input v-model="config.config.openCode!.model!.endpoint" placeholder="例如 https://open.bigmodel.cn/api/paas/v4" /></el-form-item>
+            <el-form-item label="API Key"><el-input v-model="config.config.openCode!.model!.apiKey" type="password" show-password placeholder="留空保持已保存的密钥" /></el-form-item>
+            <el-form-item label="模型 ID"><el-input v-model="config.config.openCode!.model!.modelId" placeholder="例如 glm-4.7" /></el-form-item>
+            <el-form-item label="接口格式">
+              <el-select v-model="config.config.openCode!.model!.format">
+                <el-option label="OpenAI Chat Completions" value="OpenAIChatCompletions" />
+                <el-option label="OpenAI Responses" value="OpenAIResponses" />
+                <el-option label="Anthropic Messages" value="AnthropicMessages" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="Temperature"><el-input-number v-model="config.config.openCode!.model!.temperature" :min="0" :max="2" :step="0.1" controls-position="right" /></el-form-item>
+            <el-form-item label="上下文窗口 (tokens)"><el-input-number v-model="config.config.openCode!.model!.contextTokens" :min="0" :step="1000" controls-position="right" /><small class="form-help">留 0 使用运行时回退值 128000。</small></el-form-item>
+          </template>
+        </el-form>
+      </section>
+
+      <section class="agent-editor-section">
+        <div class="agent-editor-section-heading"><div><span class="eyebrow">CAPABILITY BINDINGS</span><h4>能力绑定</h4><p>当前 Agent 的 MCP、Skill、RAG 以卡片展示；勾选即可启用或停用 Skill 与 RAG。</p></div><span class="editor-section-index">03</span></div>
         <div class="binding-groups">
           <article class="binding-group"><div class="binding-group-heading"><div><strong>MCP</strong><small>通过选择窗口绑定 MCP，当前仅显示已绑定项</small></div><el-button link type="primary" :loading="loadingMcpBindingOptions" @click="openMcpBindingPicker">选择 MCP</el-button></div><div v-if="boundMcpServers.length" class="binding-list"><div v-for="server in boundMcpServers" :key="server.name" class="binding-item"><span class="binding-icon mcp-avatar">M</span><div><strong>{{ server.name }}</strong><small>{{ server.type }} · {{ server.url || '配置不存在' }}</small></div><el-button link type="danger" @click="removeMcpBinding(server.name)">移除</el-button></div></div><div v-else class="binding-empty">尚未绑定 MCP，请点击“选择 MCP”。</div></article>
           <article class="binding-group"><div class="binding-group-heading"><div><strong>Skill</strong><small>通过选择窗口绑定 Skill，当前仅显示已绑定项</small></div><el-button link type="primary" :loading="loadingSkillBindingOptions" @click="openSkillBindingPicker">选择 Skill</el-button></div><div v-if="boundSkills.length" class="binding-list"><div v-for="skill in boundSkills" :key="skill.skillId" class="binding-item"><span class="binding-icon skill-avatar">S</span><div><strong>{{ skill.name || '未命名 Skill' }}</strong><small>{{ skill.skillId }}</small></div><el-button link type="danger" @click="removeSkillBinding(skill.skillId)">移除</el-button></div></div><div v-else class="binding-empty">尚未绑定 Skill，请点击“选择 Skill”。</div></article>

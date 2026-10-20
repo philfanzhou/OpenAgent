@@ -338,8 +338,23 @@ export interface AgentConfigEntity {
     rag: RagConfig
     skills: SkillsConfig
     codeExecution?: { enabled: boolean }
+    openCode?: OpenCodeAgentConfig
     maxTurns: number
   }
+}
+
+/** Agent 级 OpenCode 运行时配置；apiKey 在响应中脱敏为空串，保存时留空表示保持不变。 */
+export interface OpenCodeAgentConfig {
+  model?: OpenCodeModelBinding
+}
+
+export interface OpenCodeModelBinding {
+  modelId: string
+  endpoint: string
+  apiKey: string
+  format: 'OpenAIChatCompletions' | 'OpenAIResponses' | 'AnthropicMessages'
+  temperature: number
+  contextTokens: number
 }
 
 export interface StreamEvent {
