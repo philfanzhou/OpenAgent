@@ -21,10 +21,9 @@ Backend/tests/OpenAgent.Runtime.Acp.Tests/
 ├── Transport/   分片、CRLF、EOF、并发写入、取消与释放
 ├── Rpc/         关联、重入、batch、一般取消、错误与配额
 ├── Client/      会话、交互、文件与关闭边界
-├── Processes/   真实子进程的 stderr 排空、退出码与释放击杀
 ├── Architecture/ SDK 依赖边界
 ├── Fixtures/    官方固定契约摘要与许可，仅供测试
-└── TestDoubles/ 可控流、测试连接与 ProcessWorker 辅助子进程
+└── TestDoubles/ 可控流与测试连接
 ```
 
 ## 协议类型与精简原则

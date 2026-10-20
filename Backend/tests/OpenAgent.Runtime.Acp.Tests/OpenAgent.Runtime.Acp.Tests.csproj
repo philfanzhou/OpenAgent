@@ -5,7 +5,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/OpenAgent.Runtime.Acp/OpenAgent.Runtime.Acp.csproj" />
-    <ProjectReference Include="../OpenAgent.Runtime.Acp.ProcessWorker/OpenAgent.Runtime.Acp.ProcessWorker.csproj" />
   </ItemGroup>
   <ItemGroup>
     <None Update="Fixtures/**" CopyToOutputDirectory="PreserveNewest" />
