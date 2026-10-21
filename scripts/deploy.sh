@@ -2,12 +2,12 @@
 set -euo pipefail
 
 # 启动已经构建或拉取到本机的应用镜像；绝不触发 Docker build。
-# 用法：scripts/deploy.sh [--env-file path/to/.env] [--docker-mode docker|wsl-docker]
+# 用法：scripts/deploy.sh [--env-file path/to/.env] [--docker-mode auto|docker|wsl-docker]
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd -- "$script_dir/.." && pwd)"
 env_file=""
-docker_mode="${OPENAGENT_DOCKER_MODE:-docker}"
+docker_mode_arg=""
 docker_cmd=()
 
 die() {
@@ -34,8 +34,8 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --docker-mode)
-      [[ $# -ge 2 ]] || die "--docker-mode requires docker or wsl-docker"
-      docker_mode="$2"
+      [[ $# -ge 2 ]] || die "--docker-mode requires auto, docker, or wsl-docker"
+      docker_mode_arg="$2"
       shift 2
       ;;
     *)
@@ -49,7 +49,22 @@ if [[ -n "$env_file" ]]; then
   load_env_file "$env_file"
 fi
 
+docker_mode="${docker_mode_arg:-${OPENAGENT_DOCKER_MODE:-auto}}"
+
 case "$docker_mode" in
+  auto)
+    if [[ -n "${WSL_DISTRO_NAME:-}" && -x "$(command -v docker 2>/dev/null || true)" ]]; then
+      docker_cmd=(docker)
+    elif command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+      docker_cmd=(docker)
+    elif command -v wsl.exe >/dev/null 2>&1; then
+      docker_cmd=(wsl.exe docker)
+    elif command -v docker >/dev/null 2>&1; then
+      docker_cmd=(docker)
+    else
+      die "auto docker mode could not find a usable docker or wsl.exe command"
+    fi
+    ;;
   docker|local)
     docker_cmd=(docker)
     ;;
@@ -63,7 +78,7 @@ case "$docker_mode" in
     fi
     ;;
   *)
-    die "unsupported docker mode '$docker_mode' (use docker or wsl-docker)"
+    die "unsupported docker mode '$docker_mode' (use auto, docker, or wsl-docker)"
     ;;
 esac
 

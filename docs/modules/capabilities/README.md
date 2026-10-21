@@ -1,6 +1,6 @@
 # capabilities — 能力集成
 
-本目录按功能组织，不等同于单个程序集。独立业务能力位于 `OpenAgent.Capabilities`；MAF/MCP 与 Skill SDK 适配位于 `OpenAgent.Application`；共享定义和目录接口位于 `OpenAgent.Contracts/Capabilities`。修改入口与依赖边界见 [开发指南](../../overview/DevelopmentGuide.md)。
+本目录按功能组织，不等同于单个程序集。独立业务能力位于 `OpenAgent.Capabilities`；MCP 与 Skill 适配位于 `OpenAgent.Application`；共享定义和目录接口位于 `OpenAgent.Contracts/Capabilities`。修改入口与依赖边界见 [开发指南](../../overview/DevelopmentGuide.md)。
 
 | 功能点 | 说明 | 文档 |
 |--------|------|------|

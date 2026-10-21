@@ -5,7 +5,6 @@ namespace OpenAgent.Engine.Abstractions;
 public interface IRedisConnectionProvider : IDisposable
 {
     bool IsAvailable { get; }
-    IServer? GetServer(int database = 0);
     IDatabase GetDatabase(int database = 0);
 
     Task<RedisValue> StringGetAsync(RedisKey key, CommandFlags flags = CommandFlags.None);
@@ -17,5 +16,4 @@ public interface IRedisConnectionProvider : IDisposable
     Task<TimeSpan> PingAsync(CommandFlags flags = CommandFlags.None);
 
     RedisValue StringGet(RedisKey key, CommandFlags flags = CommandFlags.None);
-    void Subscribe(RedisChannel channel, Action<RedisChannel, RedisValue> handler);
 }

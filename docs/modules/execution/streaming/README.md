@@ -17,7 +17,7 @@
 AgentExecutor.ExecuteStreamingAsync
   → AIAgent.RunStreamingAsync
   → ChatClientAgent.RunStreamingAsync
-  → AgentResponseUpdate（MAF 原生）
+  → AgentResponseUpdate（驱动原生）
   → assistant chunks / tool markers / usage
 ```
 

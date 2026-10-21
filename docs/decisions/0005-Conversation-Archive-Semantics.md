@@ -1,4 +1,4 @@
-# ADR-0004：移除会话 ArchivedAt 预留字段，归档语义延后设计
+# ADR-0005：移除会话 ArchivedAt 预留字段，归档语义延后设计
 
 ## 状态
 
@@ -27,4 +27,4 @@
 
 - `OpenAgent.Contracts.Conversation.ConversationRecord` 公共表面缩小一个属性。全仓 grep 确认无其他编译期消费者（无测试、无前端、无 EF 映射）；Redis 中已缓存的会话 JSON 含该字段也不影响反序列化（System.Text.Json 默认忽略未知属性）。
 - 后续若恢复归档能力，需新增 EF 映射与 migration，属正向变更，无兼容性负债。
-- 本决策与会话架构重构系列（`docs/planning/session-architecture/`）中的"清理预留未实现语义"项对应。
+- 本决策与会话架构重构系列（[历史归档](../archive/plans/2026-09-session-architecture.md)）中的"清理预留未实现语义"项对应。

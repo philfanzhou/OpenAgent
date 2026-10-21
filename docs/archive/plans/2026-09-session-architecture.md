@@ -15,7 +15,7 @@
 |---|------|----------|------|
 | 110 | 统一 ChatRequest.Context 解析 | 共享 `ChatRequestContext`（Hosting，架构测试限定 Router 只能引用 Contracts+Hosting）；Engine 采纳忽略大小写+严格值语义 | 修复大小写变体键导致 Router 路由/Engine 生成新会话的分裂隐患 |
 | 111 | bwrap 沙箱参数单一事实源 | 60 行逐字重复的安全加固参数收敛为段方法，两变体只保留真差异；前后参数逐项 diff 零差异 | 安全参数改动不再双写（漏写=沙箱逃逸面） |
-| 112 | 移除 ArchivedAt（ADR-0004） | 删除"创建即归档"的死字段 | 消除误导性预留语义；未来归档按 ADR 约束重新设计 |
+| 112 | 移除 ArchivedAt（ADR-0005） | 删除"创建即归档"的死字段 | 消除误导性预留语义；未来归档按 ADR 约束重新设计 |
 | 113 | 会话 DTO record 化 | ConversationMessage/Record → record；5 处手写整对象复制改 `with`；重试保留 MessageId/IdempotencyKey | 加字段不再逐复制点同步；修复重试丢幂等键缺陷 |
 | 114 | IConversationStore 拆 Reader/Writer | 9 方法胖接口 → 5+5 窄契约 + 组合接口；纯读消费方窄化；DI 同实例转发 | 能力隔离；对齐 MAF AgentSessionStore 窄面设计 |
 | 115 | PlatformChatHistory 拆分 | 676 行上帝适配器 → 377 行编排器 + HistoryRepair（纯函数）/StreamingTurnBuffer/ConversationTurnLock/HistoryFileInflater | 五类职责单一化；调用方与既有测试零改动 |

@@ -6,7 +6,6 @@ namespace OpenAgent.Router;
 
 internal sealed class RouterQueryCache(IConnectionMultiplexer? redis = null) : IQueryCache
 {
-    private static readonly TimeSpan LegacyTimeToLive = TimeSpan.FromMinutes(5);
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly ConcurrentDictionary<string, MemoryEntry> _memory = new(StringComparer.Ordinal);
 
@@ -53,29 +52,6 @@ internal sealed class RouterQueryCache(IConnectionMultiplexer? redis = null) : I
         }
 
         _memory[key] = new MemoryEntry(response, DateTimeOffset.UtcNow.Add(timeToLive));
-    }
-
-    public async Task<string?> GetCachedResponseAsync(
-        string query,
-        CancellationToken cancellationToken = default)
-    {
-        CachedResponse? response = await GetAsync(query, cancellationToken).ConfigureAwait(false);
-        return response == null ? null : System.Text.Encoding.UTF8.GetString(response.Body);
-    }
-
-    public Task SetCachedResponseAsync(
-        string query,
-        string response,
-        CancellationToken cancellationToken = default)
-    {
-        return SetAsync(
-            query,
-            new CachedResponse(
-                StatusCodes.Status200OK,
-                "application/json",
-                System.Text.Encoding.UTF8.GetBytes(response)),
-            LegacyTimeToLive,
-            cancellationToken);
     }
 
     private sealed record MemoryEntry(CachedResponse Response, DateTimeOffset ExpiresAt);

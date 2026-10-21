@@ -21,7 +21,7 @@ AgentExecutor 层:
 能力层（CapabilityDefinition.Invoke → Task<ToolResult>）:
   校验/业务错误 → ToolResult.Error(message, code, hint)，Content 即错误信封
 
-MAF 工具执行（IsolatedToolFunction 包装所有能力+MCP 工具，模型侧唯一出口）:
+工具执行（IsolatedToolFunction 包装所有平台能力工具，模型侧唯一出口）:
   ToolResult(IsError) → 原样回传信封（不截断）
   ToolResult/字符串   → 过分级预算，超限做头尾保留截断 + 收窄提示
   Exception          → 脱敏信封 {"error":"Tool '...' failed with an unexpected error.","code":"tool_error","errorId":"..."}；

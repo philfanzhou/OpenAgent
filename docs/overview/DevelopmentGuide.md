@@ -40,7 +40,7 @@
 | 会话 | Application/Conversation/{History,Compaction,Store,Lock}/ | ConversationServiceExtensions.cs |
 | SDK 工具机制 | Application/Tooling/{Abstractions,Discovery,Invocation}/ | ToolingServiceExtensions.cs |
 | MCP 适配 | Application/Capabilities/Mcp/ | McpServiceExtensions.cs |
-| MAF Skill 适配与包解析 | Application/Capabilities/Skill/ | SkillServiceExtensions.cs |
+| Skill 适配与包解析 | Application/Capabilities/Skill/ | SkillServiceExtensions.cs |
 | Skill 目录 | Capabilities/Skills/；ISkillCatalog 在 Contracts/Capabilities/ | 随 Skill 组合注册 |
 | RAG | Capabilities/Rag/ | RagServiceExtensions.cs |
 | 内置能力 | Capabilities/{Code,Workspace,Plan,UserProfile}/ | BuiltinCapabilityServiceExtensions.cs |
@@ -48,13 +48,13 @@
 | 文件 | Capabilities/Files/{Services,Sharing,Requests,Multimodal,Artifacts,Tools}/ | FileAssetServiceExtensions.cs |
 | 调用授权 | Capabilities/Security/ | SecurityServiceExtensions.cs |
 
-Capabilities 不依赖 MAF/MCP/模型 SDK 或 Application。Application 的 Execution 不引用具体能力实现，通过 Contracts 的能力接口和内部 SDK Feature 接入。Files 服务与 Files/Tools 分离；SDK Skill、Workspace、Code 共用 Runner 客户端和 Files/Artifacts。完整模块依赖由 `ApplicationModuleDependencyTests.cs` 检查。
+Capabilities 不依赖 MCP/模型 SDK 或 Application。Application 的 Execution 不引用具体能力实现，通过 Contracts 的能力接口和内部 SDK Feature 接入。Files 服务与 Files/Tools 分离；SDK Skill、Workspace、Code 共用 Runner 客户端和 Files/Artifacts。完整模块依赖由 `ApplicationModuleDependencyTests.cs` 检查。
 
 ### 扩展与生命周期
 
 - 普通工具实现 Contracts 的 `ICapabilitySource`，返回 CapabilityDefinition，在本域注册文件通过 TryAddEnumerable 接入；无需给 AgentFactory 增加具体能力分支。
 - SDK 工具或上下文 Provider 实现内部 `IAgentFeatureFactory`，每轮返回 AgentFeature，提供工具、常驻工具、Provider、可选准备逻辑及待释放资源。MCP 资源转换与延迟阈值、Skill 临时包与 Provider 各由本域负责。
-- RuntimePreparationScope 在正常结束、失败或取消时释放历史、工具信号量与贡献资源；清理异常不替换原始执行错误。推理/工具迭代由 OpenCode 管理，平台只提供已授权工具回调。MAF 历史/Skill Provider 暂作为兼容组件，不执行聊天推理。
+- RuntimePreparationScope 在正常结束、失败或取消时释放历史、工具信号量与贡献资源；清理异常不替换原始执行错误。推理/工具迭代由 OpenCode 管理，平台只提供已授权工具回调。历史与 Skill 均由平台自持实现，不执行聊天推理。
 - 跨项目纯契约归 Contracts；SDK 扩展接口在 Application 内保持 internal；跨模块能力接口归 Contracts。源码 namespace/assembly 随所属项目更新，HTTP/JSON、数据库 schema 与迁移 ID 不变。检查 csproj 的 InternalsVisibleTo 后再访问内部类型。
 
 ## 前端修改入口

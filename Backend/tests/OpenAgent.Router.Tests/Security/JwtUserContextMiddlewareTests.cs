@@ -1,8 +1,6 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
-using Moq;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Router.Security;
 using Xunit;
@@ -12,11 +10,10 @@ namespace OpenAgent.Router.Tests.Security;
 public class JwtUserContextMiddlewareTests
 {
     [Fact]
-    public async Task InvokeAsync_ProductionHeaderWithoutTenantClaim_ThrowsTenantNotFound()
+    public async Task InvokeAsync_HeaderWithoutTenantClaim_ThrowsTenantNotFound()
     {
         bool called = false;
         JwtUserContextMiddleware middleware = CreateMiddleware(
-            Environments.Production,
             _ =>
             {
                 called = true;
@@ -38,7 +35,6 @@ public class JwtUserContextMiddlewareTests
     {
         bool called = false;
         JwtUserContextMiddleware middleware = CreateMiddleware(
-            Environments.Production,
             _ =>
             {
                 called = true;
@@ -54,25 +50,9 @@ public class JwtUserContextMiddlewareTests
     }
 
     [Fact]
-    public async Task InvokeAsync_DevelopmentHeaderWithoutClaim_ThrowsTenantNotFound()
-    {
-        JwtUserContextMiddleware middleware = CreateMiddleware(
-            Environments.Development,
-            _ => Task.CompletedTask);
-        DefaultHttpContext context = CreateContext();
-        context.Request.Headers["X-Tenant-Id"] = "development-tenant";
-
-        var exception = await Assert.ThrowsAsync<AgentException>(
-            () => middleware.InvokeAsync(context));
-
-        Assert.Equal(OpenAgent.Contracts.Requests.AgentErrorCode.TenantNotFound, exception.ErrorCode);
-    }
-
-    [Fact]
     public async Task InvokeAsync_AuthenticatedClaims_PopulatesIdentityProfile()
     {
         JwtUserContextMiddleware middleware = CreateMiddleware(
-            Environments.Production,
             _ => Task.CompletedTask);
         DefaultHttpContext context = CreateContext("trusted-tenant");
         context.User = new ClaimsPrincipal(new ClaimsIdentity(
@@ -91,16 +71,11 @@ public class JwtUserContextMiddlewareTests
         Assert.Equal("alice@example.com", user.Email);
     }
 
-    private static JwtUserContextMiddleware CreateMiddleware(
-        string environmentName,
-        RequestDelegate next)
+    private static JwtUserContextMiddleware CreateMiddleware(RequestDelegate next)
     {
-        var environment = new Mock<IHostEnvironment>();
-        environment.SetupGet(item => item.EnvironmentName).Returns(environmentName);
         return new JwtUserContextMiddleware(
             next,
-            NullLogger<JwtUserContextMiddleware>.Instance,
-            environment.Object);
+            NullLogger<JwtUserContextMiddleware>.Instance);
     }
 
     private static DefaultHttpContext CreateContext(string? tenantId = null)

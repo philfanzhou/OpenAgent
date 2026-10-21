@@ -61,6 +61,9 @@ TestResults/
 .preview/
 .claude/worktrees/
 
+# Runner 只通过 systemd/compose 部署，不使用本地 F5 启动配置
+Backend/src/OpenAgent.Runner/Properties/launchSettings.json
+
 # ── Nginx TLS 私钥 ──
 
 **/certs/*
@@ -88,7 +91,3 @@ Thumbs.db
 # Python bytecode (Runner sandbox scripts)
 __pycache__/
 *.pyc
-
-# ACP cross-language fixtures
-Backend/tests/OpenAgent.Runtime.Acp.Interop/node/node_modules/
-Backend/tests/OpenAgent.Runtime.Acp.Interop/rust/target/

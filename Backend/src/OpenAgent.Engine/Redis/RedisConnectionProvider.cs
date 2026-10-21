@@ -4,7 +4,7 @@ using StackExchange.Redis;
 namespace OpenAgent.Engine.Redis;
 
 /// <summary>
-/// Thin wrapper over the DI-provided <see cref="IConnectionMultiplexer"/> (registered by Agent.Core).
+/// Thin wrapper over the DI-provided <see cref="IConnectionMultiplexer"/> (registered by the Engine host).
 /// No self-managed connection, no lazy connect, no 5s throttle reconnect, no event hookups:
 /// ConnectionMultiplexer reconnects automatically and AbortOnConnectFail=false queues commands.
 /// Connection may be null (island mode) — all read/write operations degrade to empty/false/zero.
@@ -30,23 +30,6 @@ internal sealed class RedisConnectionProvider : IRedisConnectionProvider
     {
         return _connection?.GetDatabase(database)
             ?? throw new InvalidOperationException("Redis connection not available.");
-    }
-
-    public IServer? GetServer(int database = 0)
-    {
-        var connection = _connection;
-        if (connection == null)
-        {
-            return null;
-        }
-
-        var endpoint = connection.GetEndPoints().FirstOrDefault();
-        if (endpoint == null)
-        {
-            return null;
-        }
-
-        return connection.GetServer(endpoint);
     }
 
     public Task<RedisValue> StringGetAsync(RedisKey key, CommandFlags flags = CommandFlags.None)
@@ -108,15 +91,6 @@ internal sealed class RedisConnectionProvider : IRedisConnectionProvider
     public RedisValue StringGet(RedisKey key, CommandFlags flags = CommandFlags.None)
     {
         return _connection?.GetDatabase().StringGet(key, flags) ?? RedisValue.Null;
-    }
-
-    public void Subscribe(RedisChannel channel, Action<RedisChannel, RedisValue> handler)
-    {
-        var subscriber = _connection?.GetSubscriber();
-        if (subscriber != null)
-        {
-            subscriber.Subscribe(channel, handler);
-        }
     }
 
     public void Dispose()

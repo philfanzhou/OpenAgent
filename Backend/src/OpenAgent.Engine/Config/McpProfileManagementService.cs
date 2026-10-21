@@ -136,16 +136,12 @@ public sealed class McpProfileManagementService
             ? Condition.KeyNotExists(key)
             : Condition.StringEqual(key, currentValue));
         Task<bool> setTask = transaction.StringSetAsync(key, payload);
-        Task<long> publishTask = transaction.PublishAsync(
-            RedisChannel.Literal("mcp:registry:changed"),
-            server.Name);
         bool executed = await transaction.ExecuteAsync().ConfigureAwait(false);
         if (!executed || !await setTask.ConfigureAwait(false))
         {
             throw new InvalidOperationException($"Failed to save MCP profile '{server.Name}' to Redis.");
         }
 
-        await publishTask.ConfigureAwait(false);
         registry.Register(server);
         await redis.SetAddAsync("mcp:published:index", server.Name).ConfigureAwait(false);
         return server;
@@ -184,7 +180,6 @@ public sealed class McpProfileManagementService
 
         bool deleted = await redis.KeyDeleteAsync($"mcp:registry:{id}").ConfigureAwait(false);
         await redis.SetRemoveAsync("mcp:published:index", id).ConfigureAwait(false);
-        await redis.GetDatabase().PublishAsync(RedisChannel.Literal("mcp:registry:changed"), id).ConfigureAwait(false);
         return deleted || removed;
     }
 

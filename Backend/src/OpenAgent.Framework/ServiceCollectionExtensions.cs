@@ -20,7 +20,7 @@ namespace OpenAgent.Framework;
 
 public static class ServiceCollectionExtensions
 {
-    public static IServiceCollection AddOpenAgentInfrastructure(
+    public static IServiceCollection AddOpenAgentFramework(
         this IServiceCollection services,
         IConfiguration configuration)
     {

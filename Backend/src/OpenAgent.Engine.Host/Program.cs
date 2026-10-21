@@ -30,7 +30,7 @@ builder.Services.AddAgentHost(builder.Configuration, options =>
 
 builder.Services.AddAgentApplication(builder.Configuration);
 builder.Services.AddOpenCodeRuntime(builder.Configuration);
-builder.Services.AddOpenAgentInfrastructure(builder.Configuration);
+builder.Services.AddOpenAgentFramework(builder.Configuration);
 if (builder.Environment.IsDevelopment())
 {
     string storageRoot = builder.Configuration["LocalDevelopment:FileStorageRoot"]

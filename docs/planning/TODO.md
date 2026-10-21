@@ -1,6 +1,6 @@
 # 任务清单
 
-状态核对：2026-10-19；SDK PR #233 及其后续 OpenCode 运行时 PR 均待评审。本页是当前待办的唯一入口；历史功能方向以[新架构提案](../architecture/new-architecture.html)（Proposal，未批准）为准，模块实际目录见 [开发指南](../overview/DevelopmentGuide.md)，旧方案见 [历史归档](../archive/README.md)。
+状态核对：2026-10-21；SDK PR #233 与 OpenCode 运行时 PR #234 均已合并到 `dev`。本页是当前待办的唯一入口；历史功能方向以[新架构提案](../architecture/new-architecture.html)（Proposal，未批准）为准，模块实际目录见 [开发指南](../overview/DevelopmentGuide.md)，旧方案见 [历史归档](../archive/README.md)。
 
 ## 状态与分派规则
 
@@ -27,24 +27,24 @@
 
 ## 独立 ACP SDK（单包）
 
-本次用户授权 P0–P7 集中实现并创建新 PR；不启动平台切流、Worker 或生产发布。负责人：Codex；状态：待评审；实现 PR：[#233](https://github.com/philfanzhou/OpenAgent/pull/233)。源码范围为 Runtime.Acp 及对应 Tests；SDK 专属契约留同包，不依赖平台模块。测试控制台、官方 SDK 互通夹具、AOT/包检查脚本与 CI 模板按用户要求移出本 PR。
+本次用户授权 P0–P7 集中实现并创建新 PR；不启动平台切流、Worker 或生产发布。负责人：Codex；状态：已合并；实现 PR：[#233](https://github.com/philfanzhou/OpenAgent/pull/233)。源码范围为 Runtime.Acp 及对应 Tests；SDK 专属契约留同包，不依赖平台模块。测试控制台、官方 SDK 互通夹具、AOT/包检查脚本与 CI 模板按用户要求移出本 PR。
 
 | 任务 | 状态与验收入口 |
 |---|---|
-| ACP-00 / P0 工程与传输 | 待评审；framing、所有权、依赖门禁 |
-| ACP-01 / P1 模型与序列化 | 待评审；按本次精简要求改为手写 DTO + STJ 元数据，schema 只作固定契约摘要 |
-| ACP-02 / P2 双向 RPC | 待评审；重入、batch、一般取消、配额、关闭、诊断 |
-| ACP-03 / P3 Client/Agent | 待评审；会话、流式、早到更新、取消确认 |
-| ACP-04 / P4 本地进程 | 待评审；stdio、环境策略、stderr、退出与租约 |
-| ACP-05 / P5 会话与配置 | 待评审；load/resume/list/close/delete、modes/config、14 更新 |
-| ACP-06 / P6 交互 | 待评审；权限、文件、终端、elicitation、认证 |
-| ACP-07 / P7 验证与发布准备 | 待评审；压力与分配回归、单程序集包边界由单测与依赖门禁覆盖；互通/AOT/CI 脚手架已按用户要求移出，恢复时另行实现并实测；真实模型/稳定版发布分别验收 |
+| ACP-00 / P0 工程与传输 | 已合并；framing、所有权、依赖门禁 |
+| ACP-01 / P1 模型与序列化 | 已合并；按本次精简要求改为手写 DTO + STJ 元数据，schema 只作固定契约摘要 |
+| ACP-02 / P2 双向 RPC | 已合并；重入、batch、一般取消、配额、关闭、诊断 |
+| ACP-03 / P3 Client/Agent | 已合并；会话、流式、早到更新、取消确认 |
+| ACP-04 / P4 本地进程 | 已合并；stdio、环境策略、stderr、退出与租约 |
+| ACP-05 / P5 会话与配置 | 已合并；load/resume/list/close/delete、modes/config、14 更新 |
+| ACP-06 / P6 交互 | 已合并；权限、文件、终端、elicitation、认证 |
+| ACP-07 / P7 验证与发布准备 | 已合并；压力与分配回归、单程序集包边界由单测与依赖门禁覆盖；互通/AOT/CI 脚手架已按用户要求移出，恢复时另行实现并实测；真实模型/稳定版发布分别验收 |
 
 阶段定义见 [IMPLEMENTATION](../integrations/acp-dotnet-sdk/IMPLEMENTATION.md)。PR #231/#232 保持原状，本次提供独立替代实现，不将未合并 PR 标成已完成。
 
 ## OpenCode ACP 聊天运行时（依托 #233）
 
-用户已指定 OpenCode，并授权在第二个 PR 切换聊天执行入口。负责人：Codex；状态：待评审；实现 PR：[#234](https://github.com/philfanzhou/OpenAgent/pull/234)（当前已改基到 `dev`）；本地证据见 [接入记录](../test-reports/2026-10-19-opencode-runtime.md) 与 [独立 Runtime 与 PostgreSQL 验收](../test-reports/2026-10-21-runtime-postgres.md)。
+用户已指定 OpenCode，并授权在第二个 PR 切换聊天执行入口。负责人：Codex；状态：已合并；实现 PR：[#234](https://github.com/philfanzhou/OpenAgent/pull/234)（已改基到 `dev`）；本地证据见 [接入记录](../test-reports/2026-10-19-opencode-runtime.md) 与 [独立 Runtime 与 PostgreSQL 验收](../test-reports/2026-10-21-runtime-postgres.md)。
 
 - [ ] **ACP-R01 平台契约与默认执行入口**：Contracts/Runtime + Application/Execution；平台保留授权、历史和持久化，不引用 ACP 公共类型。
 - [ ] **ACP-R02 OpenCode 驱动与工具桥**：Runtime 类库（不打包）；固定版本 ACP 进程、隔离环境、每轮 loopback MCP bearer、工具预算及事件合并。
@@ -59,7 +59,7 @@
 - [ ] **A02 ACP 端到端 spike**（待分派）。主责：新建临时 spike 项目，不改现有 Application/Engine；以 OpenCode 为首个 harness。
   验收：走通领任务、启动 harness、事件回传、经 MCP 调一个 C# 工具、取消；验证 ACP 协议库的会话恢复、反向权限、断线取消；实测单会话冷启动耗时与单机并发上限；记录 harness 自带沙箱的隔离反例（同名会话、越界路径、HOME 泄漏）。可从 `origin/codex/runtime-adapters-acp`（PR #229）逐块移植协议帧、失败分类与事件映射，不整体合并。
 - [ ] **A03 提案评审与 ADR 拆分**（待分派，依赖 A02 结论）。主责：`docs/architecture`、`docs/decisions`。
-  验收：提案补齐 MAF 移除顺序与前端兼容层退出条件后批准；第 8 章决策拆成 ADR，同时修正两个 `0004` 重复编号；批准后按新执行行为更新 overview 与模块文档；R01 已授权的目录与边界同步不受此限制。
+  验收：提案补齐 MAF 移除顺序与前端兼容层退出条件后批准；第 8 章决策拆成 ADR（重复的 `0004` 编号已修正为 `0005`）；批准后按新执行行为更新 overview 与模块文档；R01 已授权的目录与边界同步不受此限制。
 
 ## P1：新架构落地（依赖 A03）
 

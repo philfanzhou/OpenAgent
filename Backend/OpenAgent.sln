@@ -43,8 +43,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenAgent.Runtime.Acp", "sr
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenAgent.Runtime.Acp.Tests", "tests\OpenAgent.Runtime.Acp.Tests\OpenAgent.Runtime.Acp.Tests.csproj", "{CEA515CF-4D8A-43C5-8F6C-AABB9469F36C}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tools", "tools", "{07C2787E-EAC7-C090-1BA3-A61EC2A24D84}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenAgent.Runtime", "src\OpenAgent.Runtime\OpenAgent.Runtime.csproj", "{F294FE10-D847-4216-BDD0-E857612210A0}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenAgent.Runtime.Tests", "tests\OpenAgent.Runtime.Tests\OpenAgent.Runtime.Tests.csproj", "{6FCB31BA-A52F-4A12-8167-D8842897D042}"
