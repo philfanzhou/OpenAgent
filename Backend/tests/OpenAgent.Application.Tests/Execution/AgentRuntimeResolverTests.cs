@@ -63,6 +63,65 @@ public sealed class AgentRuntimeResolverTests
         Assert.Contains("agent-1", exception.Message, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task ResolveAsync_NoProfileSelection_UsesAgentOpenCodeModel()
+    {
+        AgentConfig config = new()
+        {
+            OpenCode = new OpenCodeConfig
+            {
+                Model = new OpenCodeModelConfig
+                {
+                    ModelId = "glm-5.3",
+                    Endpoint = "https://open.bigmodel.test/api/paas/v4",
+                    ApiKey = "inline-key",
+                    Format = ApiFormat.OpenAIChatCompletions,
+                    ContextTokens = 0
+                }
+            }
+        };
+        AgentRuntimeResolver resolver = CreateResolver(config, Profile());
+
+        AgentRuntimeProfile result = await resolver.ResolveAsync(
+            "agent-1", string.Empty, User(), CancellationToken.None);
+
+        Assert.Equal("glm-5.3", result.Model.ModelId);
+        Assert.Equal("inline-key", result.Model.ApiKey);
+        Assert.Equal("https://open.bigmodel.test/api/paas/v4", result.Model.Endpoint);
+        // 未配置上下文窗口时使用记录的回退值，保证必填校验可通过。
+        Assert.Equal(128_000, result.Model.ContextTokens);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_ProfileSelection_OverridesAgentOpenCodeModel()
+    {
+        AgentConfig config = new()
+        {
+            OpenCode = new OpenCodeConfig
+            {
+                Model = new OpenCodeModelConfig { ModelId = "inline-model", Endpoint = "https://inline.test", ApiKey = "inline-key" }
+            }
+        };
+        AgentRuntimeResolver resolver = CreateResolver(config, Profile());
+
+        AgentRuntimeProfile result = await resolver.ResolveAsync(
+            "agent-1", "profile-1", User(), CancellationToken.None);
+
+        Assert.Equal("model-1", result.Model.ModelId);
+        Assert.Equal("test-key", result.Model.ApiKey);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_NoSelectionAndNoInlineModel_Throws()
+    {
+        AgentRuntimeResolver resolver = CreateResolver(new AgentConfig(), Profile());
+
+        InvalidOperationException exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => resolver.ResolveAsync("agent-1", string.Empty, User(), CancellationToken.None));
+
+        Assert.Contains("no LLM profile", exception.Message, StringComparison.Ordinal);
+    }
+
     private static AgentRuntimeResolver CreateResolver(
         AgentConfig? config,
         LlmProviderProfile? profile) => new(

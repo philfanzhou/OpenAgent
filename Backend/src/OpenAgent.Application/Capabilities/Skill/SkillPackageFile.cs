@@ -1,5 +1,5 @@
 using System.IO.Compression;
-using Microsoft.Agents.AI;
+
 using OpenAgent.Contracts.Skills;
 
 namespace OpenAgent.Application.Capabilities.Skill;

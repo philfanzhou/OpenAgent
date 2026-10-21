@@ -534,6 +534,9 @@ html[data-theme='dark'] .welcome-icon { background: #ececec; color: #1d1d1f; }
 .message-usage .message-model { color: var(--text-muted); font-family: var(--font-mono); }
 .message-usage .unavailable { color: var(--text-faint); }
 .message-usage > small { color: var(--text-faint); }
+.message-runtime { color: var(--text); font-size: 12px; }
+.message-runtime > span:first-child { font-weight: 600; }
+.message-runtime > small { color: var(--text-muted); }
 .process-only { margin-top: 8px; }
 
 /* Codex-like compression event: one quiet line until the user opens it. */

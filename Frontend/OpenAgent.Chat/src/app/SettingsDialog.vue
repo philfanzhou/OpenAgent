@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import RuntimeSettingsPanel from '../features/runtimes/RuntimeSettingsPanel.vue'
 import ModelSettingsPanel from '../features/models/ModelSettingsPanel.vue'
 import ModelSettingsEditors from '../features/models/ModelSettingsEditors.vue'
 import McpSettingsPanel from '../features/mcp/McpSettingsPanel.vue'
@@ -11,6 +12,7 @@ import HealthCheckPanel from '../components/HealthCheckPanel.vue'
 import type { SettingsDialogContext } from './settings.types'
 
 const props = defineProps<{ context: SettingsDialogContext }>()
+
 const { connectionMode, routerUrl, engineUrl, tenantId, statusText, authConfig, currentUser, agents, activeEndpointLabel, activeEndpointHost, connect, logout, testHealth, showSettings, activeSettings, savingConfig, refreshingAgents, config, showAgentEditor, isNewAgent, loadingMcpBindingOptions, loadingSkillBindingOptions, ragInstances, boundMcpServers, boundSkills, openMcpBindingPicker, openSkillBindingPicker, removeMcpBinding, removeSkillBinding, isRagEnabled, toggleRagBinding, refreshAgents, editAgent, createAgent, saveConfig, openSettings, handleSettingsTabChange } = props.context
 </script>
 
@@ -25,7 +27,7 @@ const { connectionMode, routerUrl, engineUrl, tenantId, statusText, authConfig, 
           <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">CONNECTION</span><h3>服务连接与身份</h3><p>Router 模式提供意图路由、外部 Agent 和 Engine 服务发现；Engine 模式用于直接联调单个 Engine。</p></div><span class="connection-badge" :class="{ online: statusText === '已连接' }"><i />{{ statusText }}</span></div>
             <el-form label-position="top" class="connection-form"><el-form-item label="连接模式"><el-radio-group v-model="connectionMode"><el-radio-button value="router">Router</el-radio-button><el-radio-button value="engine">直连 Engine</el-radio-button></el-radio-group></el-form-item><el-form-item label="Router 地址"><el-input v-model="routerUrl" placeholder="http://localhost:5001" /></el-form-item><el-form-item label="Engine 地址"><el-input v-model="engineUrl" placeholder="http://localhost:5000" /></el-form-item><el-form-item label="租户 ID"><el-input v-model="tenantId" placeholder="可选：用于当前工作台隔离" /></el-form-item></el-form>
             <el-descriptions :column="2" border class="identity-status"><el-descriptions-item label="当前用户">{{ currentUser?.userId || '未连接' }}</el-descriptions-item><el-descriptions-item label="当前租户">{{ currentUser?.tenantId || tenantId || '未识别' }}</el-descriptions-item><el-descriptions-item label="认证状态">{{ currentUser?.isAuthenticated ? '已认证' : '未认证' }}</el-descriptions-item><el-descriptions-item label="认证模式">{{ authConfig?.mode || '未知' }}</el-descriptions-item></el-descriptions>
-            <el-alert v-if="authConfig?.mode === 'Basic'" title="当前 Basic 模式仅用于 Development 联调，不校验真实密码，严禁用于生产环境。" type="warning" :closable="false" />
+            <el-alert v-if="authConfig?.mode === 'Basic'" title="当前 Basic 模式使用内置开发账号，仅供 Development 联调。" type="warning" :closable="false" />
             <el-alert v-else title="身份认证由企业 IdP 完成；角色、Agent ACL 与租户授权继续由服务端策略独立判定。" type="info" :closable="false" />
             <div class="button-row"><el-button type="danger" plain @click="logout">退出登录并清理会话</el-button></div>
             <div class="button-row"><el-button type="primary" @click="connect">保存并连接</el-button><el-button @click="testHealth('/health')">测试 Live</el-button><el-button @click="testHealth('/ready')">测试 Ready</el-button></div>
@@ -36,6 +38,7 @@ const { connectionMode, routerUrl, engineUrl, tenantId, statusText, authConfig, 
             <HealthCheckPanel />
           </section>
         </el-tab-pane>
+        <el-tab-pane label="Runtime 设置" name="runtime"><RuntimeSettingsPanel :context="props.context.runtimeSettings" /></el-tab-pane>
         <el-tab-pane label="LLM 配置" name="llm">
           <ModelSettingsPanel :context="props.context" />
         </el-tab-pane>
@@ -46,8 +49,8 @@ const { connectionMode, routerUrl, engineUrl, tenantId, statusText, authConfig, 
           <SkillSettingsPanel :context="props.context" />
         </el-tab-pane>
         <el-tab-pane label="Agent 配置" name="agent">
-          <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">AGENT RUNTIME</span><h3>Agent 配置</h3><p>Agent 只维护指令、运行边界和能力绑定；模型在每次执行时独立选择。</p></div><div class="section-actions"><el-button @click="refreshAgents" :loading="refreshingAgents">刷新 Agent</el-button><el-button type="primary" plain @click="createAgent">新增 Agent</el-button></div></div>
-            <div class="agent-card-grid"><article v-for="agent in agents" :key="agent.agentId" class="agent-card"><h4>{{ agent.name || agent.agentId }}</h4><p>{{ agent.description || agent.agentId }}</p><div class="agent-card-meta"><span>{{ agent.currentVersion || '未发布' }}</span></div><el-button type="primary" plain @click="editAgent(agent.agentId)">编辑配置</el-button></article><button class="agent-card agent-card-add" @click="createAgent"><span>＋</span><strong>新增 Agent</strong><small>创建独立运行配置</small></button><div v-if="!agents.length" class="resource-empty">还没有 Agent</div></div>
+          <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">AGENT CONFIGURATION</span><h3>Agent 配置</h3><p>Agent 只维护指令、运行边界和能力绑定；模型在每次执行时独立选择。</p></div><div class="section-actions"><el-button @click="refreshAgents" :loading="refreshingAgents">刷新 Agent</el-button><el-button type="primary" plain @click="createAgent">新增 Agent</el-button></div></div>
+            <div class="agent-card-grid"><article v-for="agent in agents" :key="agent.agentId" class="agent-card"><h4>{{ agent.name || agent.agentId }}</h4><p>{{ agent.description || agent.agentId }}</p><div class="agent-card-meta"><span>{{ agent.currentVersion || '未发布' }}</span></div><el-button type="primary" plain @click="editAgent(agent.agentId)">编辑配置</el-button></article><button class="agent-card agent-card-add" @click="createAgent"><span>＋</span><strong>新增 Agent</strong><small>创建 Agent 配置</small></button><div v-if="!agents.length" class="resource-empty">还没有 Agent</div></div>
           </section>
         </el-tab-pane>
         <el-tab-pane label="RAG 绑定" name="rag">
@@ -63,7 +66,7 @@ const { connectionMode, routerUrl, engineUrl, tenantId, statusText, authConfig, 
   <RagSettingsEditors :context="props.context" />
 
   <el-dialog v-model="showAgentEditor" class="editor-dialog agent-editor-dialog" modal-class="editor-overlay" width="min(920px, calc(100vw - 32px))" append-to-body destroy-on-close>
-    <template #header><div class="editor-dialog-header"><div><span class="eyebrow">AGENT RUNTIME</span><h3>{{ isNewAgent ? '创建 Agent' : (config?.name || 'Agent 配置') }}</h3></div><el-tag effect="plain" round>{{ config?.agentId }}</el-tag></div></template>
+    <template #header><div class="editor-dialog-header"><div><span class="eyebrow">AGENT CONFIGURATION</span><h3>{{ isNewAgent ? '创建 Agent' : (config?.name || 'Agent 配置') }}</h3></div><el-tag effect="plain" round>{{ config?.agentId }}</el-tag></div></template>
     <div v-if="config" class="agent-editor">
       <section class="agent-editor-section">
         <div class="agent-editor-section-heading"><div><span class="eyebrow">PROFILE</span><h4>基础信息</h4><p>先给 Agent 一个清晰的身份，再设置它的运行边界。</p></div><span class="editor-section-index">01</span></div>

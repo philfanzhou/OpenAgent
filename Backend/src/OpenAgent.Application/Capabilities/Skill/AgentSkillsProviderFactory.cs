@@ -1,11 +1,11 @@
 using System.Security.Cryptography;
 using System.Text.Json;
-using Microsoft.Agents.AI;
-using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Execution;
 using OpenAgent.Contracts.Files;
+using OpenAgent.Contracts.Runtime;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Contracts.Skills;
 using OpenAgent.Contracts.Capabilities;
@@ -16,9 +16,10 @@ using OpenAgent.Capabilities.Security;
 namespace OpenAgent.Application.Capabilities.Skill;
 
 /// <summary>
-/// Materializes configured Agent Skills packages and hands them to the official
-/// Microsoft Agent Framework provider. The package bytes remain in object storage;
-/// the temporary directory only exists for the lifetime of one agent execution.
+/// Materializes configured Agent Skills packages into per-turn directories and
+/// exposes scoped platform tools for skill resources and scripts. The package
+/// bytes remain in object storage; the temporary directory only exists for the
+/// lifetime of one agent execution.
 /// </summary>
 internal sealed class AgentSkillsProviderFactory(
     IFileObjectStore objectStore,
@@ -27,8 +28,7 @@ internal sealed class AgentSkillsProviderFactory(
     ICodeExecutor executor,
     IFileAssetService files,
     FileAssetExecutionContext fileContext,
-    IOptions<CodeExecutionOptions> codeOptions,
-    ILoggerFactory loggerFactory)
+    IOptions<CodeExecutionOptions> codeOptions)
 {
     internal async Task<AgentSkillsRuntime> CreateAsync(
         string agentId,
@@ -37,8 +37,7 @@ internal sealed class AgentSkillsProviderFactory(
         CancellationToken cancellationToken)
     {
         string temporaryRoot = Path.Combine(Path.GetTempPath(), "openagent-skills", Guid.NewGuid().ToString("N"));
-        var packagePaths = new List<string>();
-        var allowedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var skills = new List<RuntimeSkill>();
         var scriptSkillNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         try
@@ -62,76 +61,115 @@ internal sealed class AgentSkillsProviderFactory(
                     continue;
                 }
 
-                string packagePath = Path.Combine(temporaryRoot, GetPackageDirectoryName(instance.Name) ?? Guid.NewGuid().ToString("N"));
+                string directoryName = GetPackageDirectoryName(instance.Name) ?? Guid.NewGuid().ToString("N");
+                string packagePath = Path.Combine(temporaryRoot, directoryName);
                 Directory.CreateDirectory(packagePath);
                 await MaterializeAsync(instance, packagePath, cancellationToken).ConfigureAwait(false);
-                packagePaths.Add(packagePath);
+                skills.Add(new RuntimeSkill(directoryName, packagePath));
 
-                if (!string.IsNullOrWhiteSpace(instance.Name))
-                {
-                    allowedNames.Add(instance.Name);
-                }
-                if (!string.IsNullOrWhiteSpace(instance.Id))
-                {
-                    allowedNames.Add(instance.Id);
-                }
                 if (instance.ScriptExecutionEnabled && !string.IsNullOrWhiteSpace(instance.Name))
                 {
                     scriptSkillNames.Add(instance.Name);
                 }
             }
 
-            if (packagePaths.Count == 0)
+            if (skills.Count == 0)
             {
                 Directory.Delete(temporaryRoot, recursive: true);
                 return AgentSkillsRuntime.Empty;
             }
 
-            bool scriptsEnabled = IsScriptExecutionEnabled(config, fileContext.Scope);
-            var runner = new SkillScriptRunner(executor, files, fileContext, authorization, codeOptions);
-            AgentSkillsProvider provider = new AgentSkillsProviderBuilder()
-                .UseFileSkills(
-                    packagePaths,
-                    new AgentFileSkillsSourceOptions
-                    {
-                        // The sandbox language surface is Python, JavaScript, and
-                        // bash; other interpreters stay undisclosed.
-                        AllowedScriptExtensions = [".py", ".js", ".mjs", ".sh"],
-                        ScriptFilter = scriptsEnabled
-                            ? context =>
-                                AgentSkillPackageArchive.IsExecutableScript(context.RelativeFilePath)
-                                && scriptSkillNames.Contains(context.SkillName)
-                            : static _ => false
-                    })
-                .UseFileScriptRunner(scriptsEnabled
-                    ? (skill, script, arguments, _, token) =>
-                        runner.RunAsync(agentId, user, skill, script, arguments, token)
-                    : static (_, _, _, _, _) => throw new InvalidOperationException(
-                        "Skill scripts are disabled until an isolated script runner is configured."))
-                // The current chat contract cannot round-trip MAF approval requests.
-                // Loading Skill instructions, reading resources, and running scripts
-                // remain constrained by the Agent binding and OpenAgent authorization
-                // checks; script runs additionally pass through the isolated Runner.
-                .UseOptions(options =>
-                {
-                    options.DisableLoadSkillApproval = true;
-                    options.DisableReadSkillResourceApproval = true;
-                    options.DisableRunSkillScriptApproval = true;
-                    options.IncludeDetailedErrors = false;
-                })
-                .UseFilter((skill, _) =>
-                    allowedNames.Count == 0
-                    || allowedNames.Contains(skill.Frontmatter.Name))
-                .UseLoggerFactory(loggerFactory)
-                .Build();
+            Dictionary<string, string> roots = skills.ToDictionary(
+                skill => skill.Name, skill => skill.Path, StringComparer.Ordinal);
+            List<AITool> tools = [CreateSkillFileReader(roots)];
+            if (IsScriptExecutionEnabled(config, fileContext.Scope) && scriptSkillNames.Count > 0)
+            {
+                var runner = new SkillScriptRunner(executor, files, fileContext, authorization, codeOptions);
+                tools.Add(CreateScriptRunner(runner, roots, scriptSkillNames, agentId, user));
+            }
 
-            return new AgentSkillsRuntime(provider, temporaryRoot);
+            return new AgentSkillsRuntime(skills, tools, temporaryRoot);
         }
         catch
         {
             TryDelete(temporaryRoot);
             throw;
         }
+    }
+
+    /// <summary>
+    /// Skill 包内文件只经该工具暴露给模型：读取被限制在物化包目录内，
+    /// 不授予 harness 任何宿主文件系统访问。
+    /// </summary>
+    private static AIFunction CreateSkillFileReader(Dictionary<string, string> roots) =>
+        AIFunctionFactory.Create(new SkillFileTarget(roots).ReadAsync,
+            name: "read_skill_file",
+            description: "Read a file bundled with an enabled agent skill. 'skill' is the skill name; 'path' is relative to the skill package root.");
+
+    /// <summary>
+    /// Skill 脚本仍经隔离 Runner 执行，沿用 execute_code 的沙箱与产物管线；
+    /// 仅显式开启 ScriptExecutionEnabled 的 skill 可运行脚本。可选参数必须
+    /// 用带默认值的方法声明（lambda 无法表达），否则 AIFunctionFactory 视为必填。
+    /// </summary>
+    private static AIFunction CreateScriptRunner(
+        SkillScriptRunner runner,
+        Dictionary<string, string> roots,
+        HashSet<string> scriptSkillNames,
+        string agentId,
+        IAgentUserContext user) =>
+        AIFunctionFactory.Create(new SkillScriptTarget(runner, roots, scriptSkillNames, agentId, user).RunAsync,
+            name: "run_skill_script",
+            description: "Run a script bundled with an enabled agent skill through the isolated Runner. 'skill' is the skill name; 'script' is the script path relative to the skill package; 'arguments' is an optional JSON object passed to the script.");
+
+    private sealed class SkillFileTarget(Dictionary<string, string> roots)
+    {
+        public async Task<string?> ReadAsync(string skill, string path, CancellationToken cancellationToken = default)
+        {
+            ResolveInPackage(roots, skill, path, out string full);
+            return await File.ReadAllTextAsync(full, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private sealed class SkillScriptTarget(
+        SkillScriptRunner runner,
+        Dictionary<string, string> roots,
+        HashSet<string> scriptSkillNames,
+        string agentId,
+        IAgentUserContext user)
+    {
+        public async Task<object?> RunAsync(
+            string skill,
+            string script,
+            JsonElement? arguments = null,
+            CancellationToken cancellationToken = default)
+        {
+            if (!scriptSkillNames.Contains(skill))
+            {
+                throw new InvalidOperationException($"Skill '{skill}' does not expose script execution.");
+            }
+            if (!AgentSkillPackageArchive.IsExecutableScript(script))
+            {
+                throw new InvalidOperationException("Skill script extension is not executable.");
+            }
+            ResolveInPackage(roots, skill, script, out string full);
+            return await runner.RunAsync(agentId, user, skill, full, arguments, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private static string ResolveInPackage(Dictionary<string, string> roots, string skill, string path, out string full)
+    {
+        if (!roots.TryGetValue(skill, out string? root))
+        {
+            throw new InvalidOperationException($"Skill '{skill}' is not enabled for this agent.");
+        }
+        full = Path.GetFullPath(Path.Combine(root, path));
+        string rooted = Path.GetFullPath(root);
+        if (!full.StartsWith(rooted + Path.DirectorySeparatorChar, StringComparison.Ordinal)
+            && !string.Equals(full, rooted, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("Skill path escapes the skill package.");
+        }
+        return root;
     }
 
     /// <summary>

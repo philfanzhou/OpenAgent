@@ -8,4 +8,5 @@ public sealed class AgentRuntimeProfile
     public required string AgentId { get; init; }
     public required AgentConfig Config { get; init; }
     public required LlmConfig Model { get; init; }
+    public RuntimeProfile? Runtime { get; set; }
 }

@@ -9,7 +9,28 @@ internal static class ConfigurationRedactor
     {
         entity.Config.Mcp = RedactMcp(entity.Config.Mcp);
         entity.Config.Rag.Instances = entity.Config.Rag.Instances.Select(RedactRag).ToList();
+        entity.Config.OpenCode = RedactOpenCode(entity.Config.OpenCode);
         return entity;
+    }
+
+    internal static OpenCodeConfig RedactOpenCode(OpenCodeConfig config)
+    {
+        if (config.Model is not { } model)
+        {
+            return new OpenCodeConfig();
+        }
+        return new OpenCodeConfig
+        {
+            Model = new OpenCodeModelConfig
+            {
+                ModelId = model.ModelId,
+                Endpoint = model.Endpoint,
+                ApiKey = string.Empty,
+                Format = model.Format,
+                Temperature = model.Temperature,
+                ContextTokens = model.ContextTokens
+            }
+        };
     }
 
     internal static McpConfig RedactMcp(McpConfig config) => new()

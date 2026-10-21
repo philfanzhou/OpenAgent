@@ -17,7 +17,8 @@ internal sealed class SkillFeatureFactory(AgentSkillsProviderFactory skills) : I
             agentId, config, user, cancellationToken).ConfigureAwait(false);
         return new AgentFeature
         {
-            ContextProviders = runtime.Provider is { } provider ? [provider] : [],
+            Skills = runtime.Skills,
+            Tools = runtime.Tools,
             Resource = runtime
         };
     }

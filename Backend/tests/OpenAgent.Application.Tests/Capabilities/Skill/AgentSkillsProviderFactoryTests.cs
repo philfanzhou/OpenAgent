@@ -3,99 +3,105 @@ using OpenAgent.Capabilities.Skills;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text;
-using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
-using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Execution;
 using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Requests;
+using OpenAgent.Contracts.Runtime;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Contracts.Skills;
 using OpenAgent.Application.Capabilities.Skill;
 using OpenAgent.Capabilities.Files.Requests;
 using OpenAgent.Capabilities.Files.Services;
 using OpenAgent.Capabilities.Integrations.Runner;
-using OpenAgent.Capabilities.Security;
 using OpenAgent.Application.Tests.TestDoubles;
-using Xunit.Abstractions;
+using OpenAgent.Capabilities.Security;
 using Xunit;
 
 namespace OpenAgent.Application.Tests.Capabilities;
 
 public class AgentSkillsProviderFactoryTests
 {
-    private readonly ITestOutputHelper _output;
-
-    public AgentSkillsProviderFactoryTests(ITestOutputHelper output) => _output = output;
-
     private const string SkillName = "report-writer";
 
     [Fact]
-    public async Task MafLoop_RunSkillScript_ExecutesPackageScriptThroughIsolatedRunner()
+    public async Task CreateAsync_MaterializesPackagesAndExposesScopedTools()
     {
         var fixture = new FactoryFixture();
         await using AgentSkillsRuntime runtime = await fixture.CreateRuntimeAsync(agentCodeExecution: true, scriptExecutionEnabled: true);
-        Assert.NotNull(runtime.Provider);
 
-        var chat = new SequenceChatProvider(
-        [
-            [new ChatResponseUpdate(ChatRole.Assistant, [new FunctionCallContent("call-1", "run_skill_script",
-                new Dictionary<string, object?> { ["skillName"] = SkillName, ["scriptName"] = "scripts/analyze.py" })])],
-            [new ChatResponseUpdate(ChatRole.Assistant, "analysis complete")]
-        ]);
-        var agent = new ChatClientAgent(chat, new ChatClientAgentOptions
+        RuntimeSkill skill = Assert.Single(runtime.Skills)!;
+        Assert.Equal(SkillName, skill.Name);
+        Assert.True(File.Exists(Path.Combine(skill.Path, "SKILL.md")), "materialized package must contain SKILL.md");
+
+        AIFunction reader = GetTool(runtime, "read_skill_file");
+        // AIFunctionFactory 会把返回值包装为 JsonElement（字符串结果为 String 元素）。
+        JsonElement markdownElement = Assert.IsType<JsonElement>(await reader.InvokeAsync(new AIFunctionArguments
         {
-            ChatOptions = new ChatOptions(),
-            AIContextProviders = [runtime.Provider!]
+            ["skill"] = SkillName,
+            ["path"] = "SKILL.md"
+        }));
+        string markdown = markdownElement.ValueKind == JsonValueKind.String
+            ? markdownElement.GetString() ?? markdownElement.GetRawText()
+            : markdownElement.GetRawText();
+        Assert.Contains("Report writer", markdown, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task RunSkillScript_ExecutesPackageScriptThroughIsolatedRunner()
+    {
+        var fixture = new FactoryFixture();
+        await using AgentSkillsRuntime runtime = await fixture.CreateRuntimeAsync(agentCodeExecution: true, scriptExecutionEnabled: true);
+
+        AIFunction runner = GetTool(runtime, "run_skill_script");
+        object? result = await runner.InvokeAsync(new AIFunctionArguments
+        {
+            ["skill"] = SkillName,
+            ["script"] = "scripts/analyze.py"
         });
-        await foreach (AgentResponseUpdate _ in agent.RunStreamingAsync("Run the analysis script.")) { }
 
-        if (fixture.Executor.Requests.Count == 0)
-        {
-            FunctionResultContent? diagnostic = chat.Requests.Count > 1
-                ? chat.Requests[1].SelectMany(message => message.Contents).OfType<FunctionResultContent>().FirstOrDefault()
-                : null;
-            _output.WriteLine($"function result: {diagnostic?.Result}");
-        }
         CodeExecutionRequest request = Assert.Single(fixture.Executor.Requests);
         Assert.Contains("runpy.run_path(\"/input/scripts/analyze.py\"", request.Code, StringComparison.Ordinal);
         Assert.Contains("sys.path.insert(0, \"/input\")", request.Code, StringComparison.Ordinal);
         Assert.Contains(request.Files, file => file.Name.EndsWith("analyze.py", StringComparison.OrdinalIgnoreCase));
         Assert.Contains("SKILL.md", request.Files.Select(file => file.Name), StringComparer.OrdinalIgnoreCase);
-        FunctionResultContent result = Assert.Single(chat.Requests[1].SelectMany(message => message.Contents)
-            .OfType<FunctionResultContent>(), content => content.CallId == "call-1");
-        Assert.Contains("exitCode", result.Result?.ToString(), StringComparison.Ordinal);
+        Assert.Contains("exitCode", result?.ToString(), StringComparison.Ordinal);
     }
+
+    [Fact]
+    public async Task RunSkillScript_RejectsPathOutsidePackage()
+    {
+        var fixture = new FactoryFixture();
+        await using AgentSkillsRuntime runtime = await fixture.CreateRuntimeAsync(agentCodeExecution: true, scriptExecutionEnabled: true);
+
+        AIFunction runner = GetTool(runtime, "run_skill_script");
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await runner.InvokeAsync(new AIFunctionArguments
+        {
+            ["skill"] = SkillName,
+            ["script"] = "../outside.py"
+        }));
+        Assert.Empty(fixture.Executor.Requests);
+    }
+
     [Theory]
     [InlineData(false, true, true)]
     [InlineData(true, false, true)]
     [InlineData(true, true, false)]
-    public async Task MafLoop_WithoutDoubleOptIn_ScriptNeverReachesRunner(
+    public async Task WithoutDoubleOptIn_ScriptToolIsNotExposed(
         bool agentCodeExecution, bool scriptExecutionEnabled, bool hostCodeExecutionEnabled)
     {
         var fixture = new FactoryFixture(hostCodeExecutionEnabled);
         await using AgentSkillsRuntime runtime = await fixture.CreateRuntimeAsync(agentCodeExecution, scriptExecutionEnabled);
-        Assert.NotNull(runtime.Provider);
 
-        var chat = new SequenceChatProvider(
-        [
-            [new ChatResponseUpdate(ChatRole.Assistant, [new FunctionCallContent("call-1", "run_skill_script",
-                new Dictionary<string, object?> { ["skillName"] = SkillName, ["scriptName"] = "scripts/analyze.py" })])],
-            [new ChatResponseUpdate(ChatRole.Assistant, "done")]
-        ]);
-        var agent = new ChatClientAgent(chat, new ChatClientAgentOptions
-        {
-            ChatOptions = new ChatOptions(),
-            AIContextProviders = [runtime.Provider!]
-        });
-        await foreach (AgentResponseUpdate _ in agent.RunStreamingAsync("Run the analysis script.")) { }
-
+        Assert.DoesNotContain(runtime.Tools, tool => tool.Name == "run_skill_script");
         Assert.Empty(fixture.Executor.Requests);
-        Assert.Contains(chat.Requests[1].SelectMany(message => message.Contents), content => content is FunctionResultContent);
     }
+
+    private static AIFunction GetTool(AgentSkillsRuntime runtime, string name) =>
+        Assert.IsAssignableFrom<AIFunction>(Assert.Single(runtime.Tools, tool => tool.Name == name));
 
     private sealed class FactoryFixture
     {
@@ -120,8 +126,7 @@ public class AgentSkillsProviderFactoryTests
                 Executor,
                 new FileAssetService(Repository, Objects, Options.Create(new FileAssetOptions { Enabled = true })),
                 Context,
-                Options.Create(new CodeExecutionOptions { Enabled = hostCodeExecutionEnabled }),
-                NullLoggerFactory.Instance);
+                Options.Create(new CodeExecutionOptions { Enabled = hostCodeExecutionEnabled }));
         }
 
         internal async Task<AgentSkillsRuntime> CreateRuntimeAsync(bool agentCodeExecution, bool scriptExecutionEnabled)

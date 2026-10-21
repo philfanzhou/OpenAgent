@@ -338,11 +338,35 @@ export interface AgentConfigEntity {
     rag: RagConfig
     skills: SkillsConfig
     codeExecution?: { enabled: boolean }
+    openCode?: OpenCodeAgentConfig
     maxTurns: number
   }
 }
 
+/** Agent 级 OpenCode 运行时配置；apiKey 在响应中脱敏为空串，保存时留空表示保持不变。 */
+export interface OpenCodeAgentConfig {
+  model?: OpenCodeModelBinding
+}
+
+export interface OpenCodeModelBinding {
+  modelId: string
+  endpoint: string
+  apiKey: string
+  format: 'OpenAIChatCompletions' | 'OpenAIResponses' | 'AnthropicMessages'
+  temperature: number
+  contextTokens: number
+}
+
+export interface RuntimeExecutionInfo {
+  provider: string
+  profileId?: string | null
+  profileName?: string | null
+  agentName?: string | null
+  agentVersion?: string | null
+}
+
 export interface StreamEvent {
+  runtime?: RuntimeExecutionInfo
   type: string
   content?: string
   agentId?: string
@@ -411,4 +435,11 @@ export interface NativeHealthReport {
   status: string
   entries: Record<string, HealthEntry>
   totalDuration?: string
+}
+
+export interface RuntimeProfile {
+  id: string
+  name: string
+  provider: string
+  turnTimeoutSeconds: number
 }

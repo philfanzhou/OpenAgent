@@ -31,7 +31,8 @@ export function normalizeBaseUrl(value: string): string {
 }
 
 export function getConnectionMode(): ConnectionMode {
-  return localStorage.getItem(connectionModeStorageKey) === 'engine' ? 'engine' : 'router'
+  const mode = localStorage.getItem(connectionModeStorageKey) || import.meta.env.VITE_OPENAGENT_CONNECTION_MODE
+  return mode === 'engine' ? 'engine' : 'router'
 }
 
 export function setConnectionMode(value: ConnectionMode): void {

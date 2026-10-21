@@ -12,20 +12,22 @@
 
 ## 项目归属
 
-以 [新架构方案的目录图](../architecture/新架构方案.html) 整理当前实现；保留 MAF/API 行为，不实施 ACP 新功能。历史提案中的目标能力不代表当前实现状态。
+当前分支在目录重组基线上接入 OpenCode ACP 执行，细节见 [OpenCode 运行时](../integrations/opencode-runtime.md)。Worker、RunGrant 与生产发布仍是独立待办。历史提案中的目标能力不代表当前实现状态。
 
 | 项目（Backend/src/ 下，统一 OpenAgent. 前缀） | 主责 |
 |---|---|
 | Contracts | 平台接口、DTO、配置、错误码、CapabilityDefinition、ICapabilitySource 与目录接口 |
-| Application | 原 Core 的 MAF 执行、会话、模型、Mapping、Observability、SDK 工具机制与 MCP/Skill 适配 |
+| Application | 执行协调、会话、模型授权、Mapping、Observability、工具机制与 MCP/Skill 适配 |
 | Capabilities | Files、Rag、Skills 目录、Code/Workspace/Plan/UserProfile、Security、Runner 客户端 |
 | Engine | 配置目录、服务注册、心跳与热重载；Hosting/ 合并原认证、身份、遥测与 Web 基础能力 |
 | Engine.Host | HTTP/SSE、Web 中间件、对象存储组装与最终服务组合 |
+| Runtime | ACP/OpenCode 平台适配、进程、事件映射与每轮 MCP 桥（不发布 NuGet） |
+| Runtime.Acp | 独立单包协议 SDK，不引用任何平台模块 |
 | Framework | 原 Infrastructure 的 PostgreSQL、Redis 缓存与分布式锁 |
 | Router | 服务发现、路由、转发、限流与入口治理 |
 | Runner | 原有沙箱执行、工作区与资源清理 |
 
-引用边界：Application → Contracts/Capabilities；Capabilities、Engine、Framework、Runner → Contracts；Router → Engine/Contracts；Engine.Host 组装 Application/Capabilities/Engine/Framework/Contracts。Engine 不引用执行代码，Router 仅使用 Engine/Hosting。规则和架构测试必须同步，不通过兼容项目或重复实现保留旧边界。
+引用边界：Application → Contracts/Capabilities；Capabilities、Engine、Framework、Runner → Contracts；Router → Engine/Contracts；Runtime → Contracts/Runtime.Acp；Runtime.Acp 不引用平台；Engine.Host 组装 Application/Engine/Framework/Contracts/Runtime（能力注册由 Application 组合）。Engine 不引用执行代码，Router 仅使用 Engine/Hosting。规则和架构测试必须同步，不通过兼容项目或重复实现保留旧边界。
 
 ## Application 与 Capabilities 修改入口
 
@@ -52,7 +54,7 @@ Capabilities 不依赖 MAF/MCP/模型 SDK 或 Application。Application 的 Exec
 
 - 普通工具实现 Contracts 的 `ICapabilitySource`，返回 CapabilityDefinition，在本域注册文件通过 TryAddEnumerable 接入；无需给 AgentFactory 增加具体能力分支。
 - SDK 工具或上下文 Provider 实现内部 `IAgentFeatureFactory`，每轮返回 AgentFeature，提供工具、常驻工具、Provider、可选准备逻辑及待释放资源。MCP 资源转换与延迟阈值、Skill 临时包与 Provider 各由本域负责。
-- AgentExecutionScope 在正常结束时释放历史、工具信号量与贡献资源；初始化失败逆序清理已创建资源，清理异常被记录且不替换原始错误。SDK 执行循环继续由 MAF 管理。
+- RuntimePreparationScope 在正常结束、失败或取消时释放历史、工具信号量与贡献资源；清理异常不替换原始执行错误。推理/工具迭代由 OpenCode 管理，平台只提供已授权工具回调。MAF 历史/Skill Provider 暂作为兼容组件，不执行聊天推理。
 - 跨项目纯契约归 Contracts；SDK 扩展接口在 Application 内保持 internal；跨模块能力接口归 Contracts。源码 namespace/assembly 随所属项目更新，HTTP/JSON、数据库 schema 与迁移 ID 不变。检查 csproj 的 InternalsVisibleTo 后再访问内部类型。
 
 ## 前端修改入口

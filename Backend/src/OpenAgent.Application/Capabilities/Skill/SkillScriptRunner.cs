@@ -1,5 +1,4 @@
 using System.Text.Json;
-using Microsoft.Agents.AI;
 using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Execution;
 using OpenAgent.Contracts.Files;
@@ -46,21 +45,6 @@ internal sealed class SkillScriptRunner(
     internal const string PythonWrapperEntry = "openagent_skill_entry__.py";
     internal const string JavaScriptWrapperEntry = "openagent_skill_entry__.mjs";
     internal const string ShellWrapperEntry = "openagent_skill_entry__.sh";
-
-    internal Task<object?> RunAsync(
-        string agentId,
-        IAgentUserContext user,
-        AgentFileSkill skill,
-        AgentFileSkillScript script,
-        JsonElement? arguments,
-        CancellationToken cancellationToken) => RunAsync(
-            agentId,
-            user,
-            skill.Frontmatter.Name,
-            script.FullPath,
-            ResolveSkillRoot(skill),
-            arguments,
-            cancellationToken);
 
     internal Task<object?> RunAsync(
         string agentId,
@@ -133,8 +117,6 @@ internal sealed class SkillScriptRunner(
         }
     }
 
-    /// <summary>MAF reports the skill's own directory path.</summary>
-    private static string ResolveSkillRoot(AgentFileSkill skill) => skill.Path;
 
     /// <summary>Walks up from the script to the nearest directory holding SKILL.md.</summary>
     private static string FindSkillRoot(string scriptFullPath)

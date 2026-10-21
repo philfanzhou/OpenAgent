@@ -58,7 +58,7 @@ internal sealed class McpConnectionTester(
             transport = transports.Create(request.Server);
             client = await McpClient.CreateAsync(
                 transport,
-                McpToolFactory.CreateClientOptions(request.Server),
+                McpClientOptionsFactory.Create(request.Server),
                 loggerFactory: null,
                 operationToken).ConfigureAwait(false);
             IList<McpClientTool> tools = await client.ListToolsAsync(

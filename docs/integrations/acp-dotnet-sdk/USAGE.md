@@ -27,3 +27,6 @@ await updates;
 Client 通过 `AcpClientHandlers` 注册 Permission、ReadFile、WriteFile、Terminal、Elicitation、TerminalAuthentication。文件/命令默认不可用，权限默认拒绝。`RootedFileSystem`、`LocalTerminalHandler` 是显式启用的示例策略，宿主应提供本会话授权根和命令判断；不能将其当作沙箱或跨租户鉴权实现。URL 流程只分派给宿主，不自动打开浏览器；terminal-auth 不自动执行未授权命令。
 
 真实 Agent 由宿主经 `AcpProcess` 显式启动并自行授权；官方协议测试不需要模型账户，不能据此宣称真实模型推理或平台 E2E 已验收。
+## OpenCode
+
+已安装并配置 OpenCode 的开发环境可用 SDK 客户端对接 `opencode acp` 子进程验证协议互通。平台采用独立环境、授权后的模型快照和每轮 MCP 桥，使用方式及无需付费模型的真实进程测试见 [OpenCode 运行时](../opencode-runtime.md)。

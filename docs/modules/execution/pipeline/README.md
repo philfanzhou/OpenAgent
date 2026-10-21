@@ -7,10 +7,10 @@ AgentExecutor 提供同步 ExecuteAsync 和流式 ExecuteStreamingAsync，接收
 1. Engine.Host 通过Engine/Hosting 认证/错误管道、AgentUserContextMiddleware 与 EngineAdmissionMiddleware 建立身份并执行入口治理。
 2. ConversationAgentResolver 选择 Agent，IAgentRuntimeResolver 获取授权后的 Agent 配置和模型，创建 TurnContext。
 3. 带附件时先确保会话，再通过 FileAssetRequestResolver 校验和解析文件。
-4. AgentFactory 创建拥有 Agent、历史与贡献资源的 AgentExecutionScope；创建 AgentSession 和 user 消息后调用 AIAgent.RunAsync 或 RunStreamingAsync。
-5. Mapping 转换响应/usage；流式过程记录内容、reasoning、工具调用/结果与计划事件，结束时写回历史及用量。作用域释放持有的资源。
+4. RuntimePreparation 准备平台历史、能力、MCP 与 Skill；RuntimeAgentExecutor 调用 IAgentRuntimeDriver。生产驱动通过 SDK 启动 OpenCode ACP，不调用 AIAgent.RunAsync。
+5. AcpEventMapper 转换正文、reasoning、工具调用/结果与计划事件；平台保存会话成功后发出终态。ACP 未提供本轮计费 token 时保留 null，不作估算。作用域释放持有的资源。
 
-完整 SDK 运行边界见 [MAF](../../engine/maf/README.md)，历史与锁见 [会话文档](../../conversation/README.md)。
+完整运行边界见 [OpenCode ACP](../../../integrations/opencode-runtime.md)，历史与锁见 [会话文档](../../conversation/README.md)。
 
 ## 异常、取消与协议
 
@@ -33,6 +33,6 @@ AgentExecutor 提供同步 ExecuteAsync 和流式 ExecuteStreamingAsync，接收
 
 ## 代码入口
 
-- Application：Backend/src/OpenAgent.Application/Execution/AgentExecutor.cs、AgentFactory.cs、AgentExecutionScope.cs。
+- Application：Backend/src/OpenAgent.Application/Execution/AgentExecutor.cs、RuntimeAgentExecutor.cs、RuntimePreparation.cs、RuntimePreparationScope.cs。
 - Host：Backend/src/OpenAgent.Engine.Host/Program.cs、EngineErrorHandling.cs、Extensions/AgentChatEndpointExtensions.cs、AgentStreamWriter.cs。
 - HTTP 错误：Backend/src/OpenAgent.Engine/Hosting/Errors/AgentExceptionHandling.cs。

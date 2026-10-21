@@ -4,7 +4,7 @@ using OpenAgent.Contracts.Security;
 
 namespace OpenAgent.Application.Conversation.Store;
 
-internal sealed class InMemoryConversationStore : IConversationStore
+public sealed class InMemoryConversationStore : IConversationStore
 {
     private readonly ConcurrentDictionary<string, ConversationRecord> _store = new(StringComparer.OrdinalIgnoreCase);
     private readonly ICurrentUserContext _currentUser;

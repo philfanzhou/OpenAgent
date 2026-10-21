@@ -1,5 +1,5 @@
+using OpenAgent.Application.Tests.TestDoubles;
 using System.Collections.Concurrent;
-using System.Net;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting.Server.Features;
@@ -16,6 +16,7 @@ using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Requests;
+using OpenAgent.Contracts.Runtime;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Application.Conversation.Store;
 using OpenAgent.Application.Execution;
@@ -31,12 +32,11 @@ using Xunit;
 namespace OpenAgent.Engine.Tests.Hosting;
 
 /// <summary>
-/// 本地进程内端到端验证：真实 Kestrel + 共享异常中间件 + AgentExecutor +
-/// AgentStreamWriter 的完整 SSE 链路（无 Postgres/Redis，存储与 LLM 为进程内替身，
-/// 位于生产代码相同的 DI 位置）。覆盖三类用户可见缺陷：
+/// 本地进程内端到端验证：真实 Kestrel + 共享异常中间件 + RuntimeAgentExecutor +
+/// AgentStreamWriter 的完整 SSE 链路（无 Postgres/Redis，存储与运行时为进程内替身，
+/// 位于生产代码相同的 DI 位置）。覆盖两类用户可见缺陷：
 /// 1) 工具调用事件缺名字/编号、结果退化为类型名字符串；
-/// 2) 客户端停止生成被当作 Error 处理（日志与错误帧污染）；
-/// 3) 取消后会话状态错误。
+/// 2) 客户端停止生成被当作 Error 处理（日志与错误帧污染）。
 /// </summary>
 public sealed class SseToolStreamingTests
 {
@@ -49,29 +49,16 @@ public sealed class SseToolStreamingTests
     };
 
     [Fact]
-    public async Task Stream_ToolCallWithoutId_EventsCarryNamePairingAndReadableResult()
+    public async Task Stream_ToolCall_EventsCarryNamePairingAndReadableResult()
     {
-        // 提供方不给调用编号（CallId 为空）+ 工具真实执行：
-        // tool_call 必须带合成 id 与工具名，tool_result 必须配对同一 id、
-        // 结果为可读文本而不是 "Microsoft.Extensions.AI.AIContent[]"。
-        var provider = new ScriptedChatClient(
+        // 工具真实执行（平台 get_current_user_profile）：tool_call 必须带稳定 id 与
+        // 工具名，tool_result 必须配对同一 id、结果为可读文本而不是类型名字符串。
+        var driver = new ToolInvokingDriver(
         [
-            [
-                new ChatResponseUpdate(ChatRole.Assistant,
-                    [new FunctionCallContent(string.Empty, "get_current_user_profile")])
-            ],
-            [
-                new ChatResponseUpdate(ChatRole.Assistant, "最终回答"),
-                new ChatResponseUpdate(ChatRole.Assistant,
-                    [new UsageContent(new UsageDetails
-                    {
-                        InputTokenCount = 5,
-                        OutputTokenCount = 3,
-                        TotalTokenCount = 8
-                    })])
-            ]
-        ]);
-        await using StreamingHost host = await StreamingHost.StartAsync(provider);
+            ("get_current_user_profile", new Dictionary<string, object?>())
+        ],
+        completion: "最终回答");
+        await using StreamingHost host = await StreamingHost.StartAsync(driver);
 
         List<(string Event, JsonElement Data)> frames =
             await host.PostStreamAsync("tool-shape-conversation");
@@ -93,15 +80,6 @@ public sealed class SseToolStreamingTests
         (string _, JsonElement doneData) = Assert.Single(frames, frame => frame.Event == "done");
         Assert.True(doneData.GetProperty("done").GetBoolean());
         Assert.Equal("tool-shape-conversation", doneData.GetProperty("conversationId").GetString());
-
-        // 回喂模型的下一轮请求里，工具结果也必须是可读文本（空参重试循环的根因位）。
-        Assert.Equal(2, provider.Requests.Count);
-        FunctionResultContent wireResult = Assert.Single(
-            provider.Requests[1].SelectMany(message => message.Contents)
-                .OfType<FunctionResultContent>());
-        string wire = Assert.IsType<string>(wireResult.Result);
-        Assert.DoesNotContain("AIContent", wire, StringComparison.Ordinal);
-        Assert.False(string.IsNullOrWhiteSpace(wire));
     }
 
     [Fact]
@@ -109,12 +87,12 @@ public sealed class SseToolStreamingTests
     {
         // 用户点击“停止生成”：客户端断开 SSE。旧实现会记一条 Error 级
         // “Unhandled exception mapped to ProblemDetails”，且可能写错误帧。
-        var provider = new ScriptedChatClient(
+        var driver = new ScriptedRuntimeDriver(
         [
-            [new ChatResponseUpdate(ChatRole.Assistant, "部分内容")]
+            new AgentStreamEvent { Type = AgentStreamEventType.Content, Content = "部分内容" }
         ],
         holdUntilCancelled: true);
-        await using StreamingHost host = await StreamingHost.StartAsync(provider);
+        await using StreamingHost host = await StreamingHost.StartAsync(driver);
         List<string> received = [];
         using var requestCancellation = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         try
@@ -152,7 +130,6 @@ public sealed class SseToolStreamingTests
         }
 
         using var propagation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        await provider.Cancelled.WaitAsync(propagation.Token);
         ConversationRecord? record = null;
         while (record is null or { Status: ConversationStatus.Running })
         {
@@ -233,10 +210,11 @@ public sealed class SseToolStreamingTests
             .Features.Get<IServerAddressesFeature>()!.Addresses.Single();
 
         public static async Task<StreamingHost> StartAsync(
-            IChatClient provider,
+            IAgentRuntimeDriver? driver = null,
             AgentConfig? agentConfig = null,
             Dictionary<string, string?>? settings = null,
-            Action<IServiceCollection>? configure = null)
+            Action<IServiceCollection>? configure = null,
+            LlmConfig? model = null)
         {
             var builder = WebApplication.CreateBuilder(new WebApplicationOptions
             {
@@ -254,17 +232,25 @@ public sealed class SseToolStreamingTests
             builder.Services.AddSingleton<IConfiguration>(configuration);
             builder.Services.AddSingleton<ICurrentUserContext>(new FixedCurrentUserContext());
             builder.Services.AddAgentApplication(configuration);
-            // 与生产一致的替身注入位置：运行时解析与 LLM 客户端工厂替换为固定实现。
+            // 生产默认执行器（RuntimeAgentExecutor）；驱动由测试注入，未注入时
+            // 由 configure 提供（如 OpenCodeSseTests 的 AddOpenCodeRuntime）。
+            if (driver is not null)
+            {
+                builder.Services.RemoveAll<IAgentRuntimeDriver>();
+                builder.Services.AddSingleton(driver);
+            }
+            // 与生产一致的替身注入位置：运行时解析与 LLM 客户端工厂替换为固定实现；
+            // 聊天推理只走驱动，摘要客户端不可达属预期。
             builder.Services.RemoveAll<IAgentRuntimeResolver>();
             builder.Services.RemoveAll<AgentRuntimeResolver>();
             builder.Services.AddSingleton<IAgentRuntimeResolver>(
-                new StaticRuntimeResolver(agentConfig ?? new AgentConfig { MaxTurns = 4 }));
+                new StaticRuntimeResolver(agentConfig ?? new AgentConfig { MaxTurns = 4 }, model));
             builder.Services.RemoveAll<IAgentChatClientFactory>();
-            builder.Services.AddSingleton<IAgentChatClientFactory>(new Factory(provider));
+            builder.Services.AddSingleton<IAgentChatClientFactory>(new Factory(new ThrowingChatClient()));
             builder.Services.RemoveAll<IConversationStore>();
             builder.Services.AddSingleton<IConversationStore, InMemoryConversationStore>();
             builder.Services.RemoveAll<IFileAssetRepository>();
-            builder.Services.AddSingleton<IFileAssetRepository>(new EmptyFileAssetRepository());
+            builder.Services.AddSingleton<IFileAssetRepository, EmptyFileAssetRepository>();
             // 与生产 Program 一致注册 Engine 的错误装配（ClientResultException 映射 +
             // 中文 SSE 文案）；此前用无参 AddAgentErrorHandling 导致流式错误帧走默认
             // ProblemDetails 投影，测试宿主与生产行为不一致。
@@ -350,7 +336,22 @@ public sealed class SseToolStreamingTests
             await _application.DisposeAsync().ConfigureAwait(false);
         }
 
-        private sealed class StaticRuntimeResolver(AgentConfig config) : IAgentRuntimeResolver
+        internal sealed class ThrowingChatClient : IChatClient
+        {
+            public Task<Microsoft.Extensions.AI.ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default) =>
+                throw new InvalidOperationException("Chat inference must run through the runtime driver.");
+
+            public IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default) =>
+                throw new InvalidOperationException("Chat inference must run through the runtime driver.");
+
+            public object? GetService(Type serviceType, object? serviceKey = null) => null;
+
+            public void Dispose()
+            {
+            }
+        }
+
+        private sealed class StaticRuntimeResolver(AgentConfig config, LlmConfig? model) : IAgentRuntimeResolver
         {
             public Task<AgentRuntimeProfile> ResolveAsync(
                 string agentId,
@@ -361,7 +362,7 @@ public sealed class SseToolStreamingTests
                 {
                     AgentId = agentId,
                     Config = config,
-                    Model = new LlmConfig { ModelId = "local-scripted-model" }
+                    Model = model ?? new LlmConfig { ModelId = "local-scripted-model" }
                 });
         }
 

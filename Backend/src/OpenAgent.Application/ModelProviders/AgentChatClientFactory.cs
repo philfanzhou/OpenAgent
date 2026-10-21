@@ -123,7 +123,8 @@ internal sealed class AgentChatClientFactory : IAgentChatClientFactory
     private IChatClient CreateOpenAIResponses(LlmConfig llm)
     {
         OpenAIClient client = CreateOpenAIClient(llm, "https://api.openai.com/v1");
-        return client.GetResponsesClient().AsIChatClientWithStoredOutputDisabled(llm.ModelId);
+        // MAF 的 stored-output 禁用扩展随包移除；模型改由 ModelBindingChatClient 绑定。
+        return new ModelBindingChatClient(client.GetResponsesClient().AsIChatClient(), llm.ModelId);
     }
 
     private IChatClient CreateAnthropic(LlmConfig llm)
@@ -147,7 +148,7 @@ internal sealed class AgentChatClientFactory : IAgentChatClientFactory
                 ? new AnthropicClient { ApiKey = llm.ApiKey }
                 : new AnthropicClient { ApiKey = llm.ApiKey, BaseUrl = llm.Endpoint.TrimEnd('/') };
         }
-        return client.AsAIAgent(model: llm.ModelId, name: "openagent-anthropic-provider").ChatClient;
+        return new ModelBindingChatClient(client.AsIChatClient(), llm.ModelId);
     }
 
     private OpenAIClient CreateOpenAIClient(LlmConfig llm, string defaultEndpoint)

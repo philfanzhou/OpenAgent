@@ -10,7 +10,6 @@ const props = defineProps<{
   endpointUrl: string
   endpointLabel: string
   selectedAgentId: string
-  selectedLlmProfileId: string
   loading: boolean
   pendingFiles: PendingFile[]
 }>()
@@ -135,7 +134,7 @@ function handleDrop(event: DragEvent): void {
       <input ref="fileInput" class="file-input" type="file" multiple accept=".png,.jpg,.jpeg,.jps,.gif,.webp,.svg,.pdf,.json,.xml,.txt,.csv,.md,.drawio,.html,.htm,.css" @change="handleFileChange" />
       <div class="composer-footer">
         <div class="composer-hints"><el-button text class="file-button" aria-label="添加附件" @click="openFilePicker"><svg viewBox="0 0 20 20" fill="none"><path d="M7 10.8 11.8 6a2.1 2.1 0 1 1 3 3l-6.2 6.2a3.5 3.5 0 0 1-5-5L10 3.8" /></svg><span>添加附件</span></el-button><span>最多 {{ maxFileCount }} 个 · 单文件 {{ formatFileSize(maxFileSize) }} · 总量 {{ formatFileSize(maxFileTotalSize) }}</span></div>
-        <div class="composer-actions"><span class="connection-caption">{{ props.endpointLabel }} · {{ props.endpointUrl || '未配置' }}</span><span class="keyboard-hint">{{ props.loading ? '再次点击停止' : 'Enter 发送' }}</span><el-button type="primary" circle :aria-label="props.loading ? '停止生成' : '发送'" :disabled="props.loading ? false : !props.selectedAgentId || !props.selectedLlmProfileId || (!props.modelValue.trim() && !props.pendingFiles.length) || props.pendingFiles.some(item => item.state !== 'ready')" @click="props.loading ? emit('stop') : emit('send')"><svg v-if="!props.loading" viewBox="0 0 20 20" fill="none"><path d="M10 15V5m0 0L6 9m4-4 4 4" /></svg><span v-else class="stop-icon" aria-hidden="true"></span></el-button></div>
+        <div class="composer-actions"><span class="connection-caption">{{ props.endpointLabel }} · {{ props.endpointUrl || '未配置' }}</span><span class="keyboard-hint">{{ props.loading ? '再次点击停止' : 'Enter 发送' }}</span><el-button type="primary" circle :aria-label="props.loading ? '停止生成' : '发送'" :disabled="props.loading ? false : !props.selectedAgentId || (!props.modelValue.trim() && !props.pendingFiles.length) || props.pendingFiles.some(item => item.state !== 'ready')" @click="props.loading ? emit('stop') : emit('send')"><svg v-if="!props.loading" viewBox="0 0 20 20" fill="none"><path d="M10 15V5m0 0L6 9m4-4 4 4" /></svg><span v-else class="stop-icon" aria-hidden="true"></span></el-button></div>
       </div>
     </div>
   </div>

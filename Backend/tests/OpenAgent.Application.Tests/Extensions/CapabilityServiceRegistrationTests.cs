@@ -46,7 +46,6 @@ public class CapabilityServiceRegistrationTests
         Assert.Contains(sources, source => source is UserProfileCapabilitySource);
         Assert.DoesNotContain(sources, source => source.GetType().Name.Contains("HttpSkill", StringComparison.Ordinal));
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<AgentSkillsProviderFactory>());
-        Assert.NotNull(scope.ServiceProvider.GetRequiredService<McpToolFactory>());
     }
 
     [Fact]

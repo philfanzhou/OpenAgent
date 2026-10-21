@@ -6,17 +6,19 @@ import { createDefaultMcp, useMcpSettings } from '../features/mcp/useMcpSettings
 import { createDefaultLlm, useModelSettings } from '../features/models/useModelSettings'
 import { createDefaultRag, useRagSettings } from '../features/rag/useRagSettings'
 import { api as skillApi } from '../features/skills/api'
+import { useRuntimeSettings } from '../features/runtimes/useRuntimeSettings'
 import { useSkillSettings } from '../features/skills/useSkillSettings'
 import { getTenantId } from '../shared/api/http'
 import { randomUuid } from '../shared/browserCrypto'
 import type { AgentConfigEntity, AgentSummary, ConnectionMode, McpServerConfig, SkillCatalogItem } from '../shared/contracts/types'
 import { AUTO_AGENT_ID } from '../shared/contracts/types'
 
-export type SettingsPanel = 'gateway' | 'health' | 'llm' | 'mcp' | 'skill' | 'agent' | 'rag'
+export type SettingsPanel = 'gateway' | 'health' | 'runtime' | 'llm' | 'mcp' | 'skill' | 'agent' | 'rag'
 
 interface SettingsOptions {
   agents: Ref<AgentSummary[]>
   selectedAgentId: Ref<string>
+  selectedRuntimeId?: Ref<string>
   selectedLlmProfileId: Ref<string>
   connectionMode: Ref<ConnectionMode>
   routerUrl: Ref<string>
@@ -43,6 +45,7 @@ function createDefaultAgent(agentId: string, name: string): AgentConfigEntity {
 }
 
 export function useSettings(options: SettingsOptions) {
+  const runtimeSettings = useRuntimeSettings(options.selectedRuntimeId ?? ref(''), options.notifyError)
   const showSettings = ref(!(options.connectionMode.value === 'router' ? options.routerUrl.value : options.engineUrl.value))
 
   const activeSettings = ref<SettingsPanel>('gateway')
@@ -234,6 +237,7 @@ export function useSettings(options: SettingsOptions) {
   }
 
   function handleSettingsTabChange(name: string | number): void {
+    if (name === 'runtime') void runtimeSettings.load()
     if (name === 'llm') void loadLlmProfiles()
     if (name === 'mcp') void loadMcpProfiles()
     if (name === 'skill') void loadSkillCatalog()
@@ -244,6 +248,7 @@ export function useSettings(options: SettingsOptions) {
   }
 
   function resetSettings(): void {
+    runtimeSettings.reset()
     config.value = null
     llmDraft.value = createDefaultLlm()
     llmProfiles.value = []
@@ -262,6 +267,7 @@ export function useSettings(options: SettingsOptions) {
   }
 
   return {
+    runtimeSettings,
     showSettings,
     activeSettings,
     savingConfig,

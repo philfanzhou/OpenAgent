@@ -102,6 +102,7 @@ export function mergeAssistantSnapshot(
     files: stored.files?.length ? stored.files : snapshot.files,
     tokenUsage: snapshot.tokenUsage || stored.tokenUsage,
     modelId: snapshot.modelId || stored.modelId,
+    metadata: { ...stored.metadata, ...snapshot.metadata },
     error: snapshot.error || stored.error,
   }
   return merged
@@ -127,6 +128,7 @@ function mergeAssistantMessage(
         processActivities: cloneProcessActivities(current.processActivities),
         tokenUsage: message.tokenUsage || current.tokenUsage,
         modelId: message.modelId || current.modelId,
+        metadata: { ...current.metadata, ...message.metadata },
         error: message.error || current.error,
       }
     : {

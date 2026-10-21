@@ -31,9 +31,11 @@
 | Application | Contracts、Capabilities |
 | Capabilities / Engine / Framework / Runner | Contracts |
 | Router | Contracts、Engine（仅 Hosting 共享宿主能力） |
-| Engine.Host | Contracts、Application、Capabilities、Engine、Framework |
+| Runtime | Contracts、Runtime.Acp |
+| Runtime.Acp | 无平台依赖 |
+| Engine.Host | Contracts、Application、Engine、Framework、Runtime |
 
-Application 保留 MAF 执行与 MCP/Skill 适配；Capabilities 承载文件、RAG、Skill 目录、内置工具及调用授权，不引用 MAF/MCP SDK。共享目录接口及能力定义在 Contracts；Engine 不引用 Application。模块依赖由架构测试检查。
+Application 通过平台运行时契约协调 ACP 执行，保留历史/Skill Provider 兼容与独立压缩；MCP/Skill 适配仍在 Application；Capabilities 承载文件、RAG、Skill 目录、内置工具及调用授权，不引用 MAF/MCP SDK。共享目录接口及能力定义在 Contracts；Engine 不引用 Application。模块依赖由架构测试检查。
 
 Runtime.Acp 专属协议契约留在同包；测试控制台只引用该 SDK。SDK 功能修改须同步测试、控制台和 docs/integrations/acp-dotnet-sdk。
 
@@ -276,7 +278,7 @@ Backend/src/OpenAgent.Capabilities/
 ├── Integrations/Runner/ Security/
 └── Extensions/                   # 能力域注册
 
-Backend/tests/OpenAgent.Application.Tests/  # MAF 执行及跨模块回归
+Backend/tests/OpenAgent.Application.Tests/  # ACP 协调与兼容组件、跨模块回归
 Backend/tests/OpenAgent.Capabilities.Tests/ # 独立能力、文件、授权
 ```
 

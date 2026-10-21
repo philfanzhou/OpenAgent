@@ -15,12 +15,10 @@ internal static class RuntimeServiceExtensions
     {
         services.TryAddScoped<AgentRuntimeResolver>();
         services.TryAddScoped<IAgentRuntimeResolver>(provider => provider.GetRequiredService<AgentRuntimeResolver>());
-        services.TryAddScoped<AgentFactory>();
-        services.TryAddScoped(provider => new AgentExecutor(
-            provider.GetRequiredService<IAgentRuntimeResolver>(),
-            provider.GetRequiredService<AgentFactory>(),
-            provider.GetRequiredService<ConversationAgentResolver>(),
-            provider.GetRequiredService<FileAssetRequestResolver>()));
+        // 宿主注入 IAgentRuntimeDriver；未注册时明确失败，不静默回退到 MAF。
+        services.TryAddScoped<IAgentExecution>(provider => ActivatorUtilities.CreateInstance<RuntimeAgentExecutor>(provider));
+        services.TryAddScoped<RuntimePreparation>();
+        services.TryAddScoped(provider => new AgentExecutor(provider.GetRequiredService<IAgentExecution>()));
         return services;
     }
 }

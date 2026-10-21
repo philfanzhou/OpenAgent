@@ -18,9 +18,28 @@ public sealed class OpenAgentDbContext(DbContextOptions<OpenAgentDbContext> opti
     internal DbSet<LlmConfigurationEntity> LlmConfigurations => Set<LlmConfigurationEntity>();
     internal DbSet<LlmInteractionEntity> LlmInteractions => Set<LlmInteractionEntity>();
 
+    internal DbSet<RuntimeConfigurationEntity> RuntimeConfigurations => Set<RuntimeConfigurationEntity>();
+    internal DbSet<McpConfigurationEntity> McpConfigurations => Set<McpConfigurationEntity>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema("openagent");
+        modelBuilder.Entity<RuntimeConfigurationEntity>(entity =>
+        {
+            entity.ToTable("runtime_configurations");
+            entity.HasKey(item => new { item.TenantId, item.RuntimeId });
+            entity.Property(item => item.TenantId).HasMaxLength(256);
+            entity.Property(item => item.RuntimeId).HasMaxLength(256);
+            entity.Property(item => item.DefinitionJson).HasColumnType("jsonb");
+        });
+        modelBuilder.Entity<McpConfigurationEntity>(entity =>
+        {
+            entity.ToTable("mcp_configurations");
+            entity.HasKey(item => new { item.TenantId, item.Name });
+            entity.Property(item => item.TenantId).HasMaxLength(256);
+            entity.Property(item => item.Name).HasMaxLength(256);
+            entity.Property(item => item.DefinitionJson).HasColumnType("jsonb");
+        });
 
         modelBuilder.Entity<ConversationEntity>(entity =>
         {
@@ -192,6 +211,7 @@ public sealed class OpenAgentDbContext(DbContextOptions<OpenAgentDbContext> opti
             entity.Property(item => item.ContextPolicyJson).HasColumnType("jsonb");
             entity.Property(item => item.McpJson).HasColumnType("jsonb");
             entity.Property(item => item.RagJson).HasColumnType("jsonb");
+            entity.Property(item => item.OpenCodeJson).HasColumnType("jsonb").HasDefaultValue("{}");
             entity.Property(item => item.SkillsJson).HasColumnType("jsonb");
             entity.Property(item => item.CodeExecutionJson).HasColumnType("jsonb");
             entity.Property(item => item.Version).IsConcurrencyToken();

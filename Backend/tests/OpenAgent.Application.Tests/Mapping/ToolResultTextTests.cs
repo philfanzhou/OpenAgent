@@ -209,33 +209,6 @@ public class ToolResultTextTests
     }
 
     [Fact]
-    public async Task Wrap_McpErrorResultJson_RendersBlocksAndAppliesBudget()
-    {
-        // isError/structuredContent/_meta 形态的 JsonElement 由落盘装饰器归一成
-        // 文本，再进隔离/预算管道：可读且不超预算。
-        string longText = new('x', 3_000);
-        JsonElement json = Serialize(new CallToolResult
-        {
-            Content = [new TextContentBlock { Text = $"HEAD-{longText}-TAIL" }],
-            IsError = true
-        });
-        // scope 为 null 时落盘短路，文件服务不会被调用；此处只验证渲染与预算。
-        AITool wrapped = IsolatedToolFunction.Wrap(
-            McpResourcePipeline.Wrap(
-                new StubTool("mcp__srv__report", _ => ValueTask.FromResult<object?>(json)),
-                files: null!,
-                context: new FileAssetExecutionContext(),
-                logger: null),
-            budget: new ToolResultBudget(1_000, "narrow the query"));
-
-        string result = Assert.IsType<string>(await InvokeAsync(wrapped));
-
-        Assert.StartsWith("[tool error] HEAD-", result, StringComparison.Ordinal);
-        Assert.EndsWith("-TAIL", result, StringComparison.Ordinal);
-        Assert.True(result.Length <= 1_000, $"truncated length {result.Length} must not exceed the budget");
-    }
-
-    [Fact]
     public async Task Wrap_McpMultiContentResult_RendersJoinedTextNotTypeName()
     {
         AITool wrapped = IsolatedToolFunction.Wrap(

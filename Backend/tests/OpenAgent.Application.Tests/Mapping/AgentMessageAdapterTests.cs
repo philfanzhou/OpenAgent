@@ -1,4 +1,4 @@
-using Microsoft.Agents.AI.Compaction;
+using OpenAgent.Application.Conversation.Compaction;
 using Microsoft.Extensions.AI;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Files;

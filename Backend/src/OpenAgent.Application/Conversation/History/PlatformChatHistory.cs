@@ -1,5 +1,4 @@
 using System.Text;
-using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -18,10 +17,10 @@ using OpenAgent.Application.Runtime;
 namespace OpenAgent.Application.Conversation.History;
 
 /// <summary>
-/// Adapts the platform conversation store to the SDK history lifecycle.
+/// Adapts the platform conversation store to the runtime turn lifecycle.
 /// The distributed lock is retained for the complete model invocation.
 /// </summary>
-internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposable
+internal sealed class PlatformChatHistory : IAsyncDisposable
 {
     private static readonly TimeSpan DefaultLockTtl = TimeSpan.FromSeconds(30);
 
@@ -179,6 +178,19 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         return inline;
     }
 
+    internal RuntimeExecutionInfo? Runtime { get; set; }
+
+    private Dictionary<string, string>? RuntimeMetadata => Runtime is { } runtime
+        ? new()
+        {
+            ["runtimeProvider"] = runtime.Provider,
+            ["runtimeProfileId"] = runtime.ProfileId ?? string.Empty,
+            ["runtimeProfileName"] = runtime.ProfileName ?? string.Empty,
+            ["runtimeAgentName"] = runtime.AgentName ?? string.Empty,
+            ["runtimeAgentVersion"] = runtime.AgentVersion ?? string.Empty
+        }
+        : null;
+
     /// <summary>把中止/失败时已产生的部分正文与思考内容组装成一条 assistant 消息（含 reasoning 元数据）；失败时附失败原因。</summary>
     private ConversationMessage BuildPartialMessage(ConversationStatus status, MessageErrorMetadata? error = null)
     {
@@ -191,14 +203,14 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
             {
                 ExecutionStatus = status.ToString(),
                 Reasoning = reasoning.Length > 0 ? reasoning : null,
-                Error = error
+                Error = error,
+                Extensions = RuntimeMetadata
             },
             modelId: _modelId);
     }
 
-    protected override async ValueTask<IEnumerable<ChatMessage>> ProvideChatHistoryAsync(
-        InvokingContext context,
-        CancellationToken cancellationToken)
+    /// <summary>加锁并加载既有会话历史；失败或无会话时返回空列表。当前消息由调用方拼接。</summary>
+    internal async Task<List<ChatMessage>> LoadAsync(CancellationToken cancellationToken)
     {
         if (_loaded)
         {
@@ -482,14 +494,15 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         return repaired;
     }
 
-    protected override ValueTask StoreChatHistoryAsync(
-        InvokedContext context,
+    /// <summary>成功路径：把响应暂存为存储行并释放会话锁；最终保存由 CompleteAsync 完成。</summary>
+    internal Task PersistAsync(
+        IReadOnlyList<ChatMessage> responseMessages,
         CancellationToken cancellationToken)
     {
         _finalized = true;
-        StageResponses(context.ResponseMessages);
+        StageResponses(responseMessages);
         _completionStaged = true;
-        return ValueTask.CompletedTask;
+        return ReleaseLockAsync().AsTask();
     }
 
     /// <summary>
@@ -542,10 +555,21 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
             string.Equals(message.Role, "assistant", StringComparison.OrdinalIgnoreCase));
         if (assistantIndex >= 0)
         {
+            ConversationMessageMetadata? metadata = _pending[assistantIndex].Metadata;
+            if (RuntimeMetadata is { } runtimeMetadata)
+            {
+                metadata ??= new();
+                metadata.Extensions ??= new();
+                foreach (KeyValuePair<string, string> entry in runtimeMetadata)
+                {
+                    metadata.Extensions[entry.Key] = entry.Value;
+                }
+            }
             _pending[assistantIndex] = _pending[assistantIndex] with
             {
                 TokenUsage = usage,
-                ModelId = modelId
+                ModelId = modelId,
+                Metadata = metadata
             };
         }
 
@@ -558,32 +582,27 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
         _stored = true;
     }
 
-    protected override async ValueTask InvokedCoreAsync(
-        InvokedContext context,
+    /// <summary>失败/取消路径：记录原因、持久化部分输出并释放会话锁。</summary>
+    internal async Task PersistFailureAsync(
+        Exception error,
         CancellationToken cancellationToken)
     {
         try
         {
-            if (context.InvokeException == null)
-            {
-                await base.InvokedCoreAsync(context, cancellationToken).ConfigureAwait(false);
-                return;
-            }
-
-            // 记录 agent/工具执行失败，避免被框架吞掉（此前 AgentException 不会被任何日志记录）。
-            // 用户停止/断开产生的取消是正常路径：Debug 记录即可，Error 会让日志被取消事件淹没。
-            if (context.InvokeException is OperationCanceledException)
+            // 记录 agent/工具执行失败，避免被吞掉；用户停止/断开产生的取消是正常路径：
+            // Debug 记录即可，Error 会让日志被取消事件淹没。
+            if (error is OperationCanceledException)
             {
                 _logger.LogDebug(
-                    context.InvokeException,
+                    error,
                     "Agent '{AgentId}' execution cancelled for conversation '{ConversationId}'",
                     _agentId,
                     _conversation.ConversationId);
             }
-            else if (context.InvokeException is AgentException)
+            else if (error is AgentException)
             {
                 _logger.LogWarning(
-                    context.InvokeException,
+                    error,
                     "Agent '{AgentId}' execution failed for conversation '{ConversationId}'",
                     _agentId,
                     _conversation.ConversationId);
@@ -591,7 +610,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
             else
             {
                 _logger.LogError(
-                    context.InvokeException,
+                    error,
                     "Agent '{AgentId}' execution failed for conversation '{ConversationId}'",
                     _agentId,
                     _conversation.ConversationId);
@@ -599,7 +618,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
 
             RecordUser();
             _finalized = true;
-            ConversationStatus status = context.InvokeException is OperationCanceledException
+            ConversationStatus status = error is OperationCanceledException
                 ? ConversationStatus.Cancelled
                 : ConversationStatus.Failed;
             StageStreamedToolMessages();
@@ -608,7 +627,7 @@ internal sealed class PlatformChatHistory : ChatHistoryProvider, IAsyncDisposabl
             _pending.Add(BuildPartialMessage(
                 status,
                 status == ConversationStatus.Failed
-                    ? ExecutionFailureDescriptor.Describe(context.InvokeException, _conversation.TraceId)
+                    ? ExecutionFailureDescriptor.Describe(error, _conversation.TraceId)
                     : null));
             await _store.SaveAsync(
                 _conversation,

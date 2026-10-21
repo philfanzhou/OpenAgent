@@ -34,3 +34,10 @@ csharp_preserve_single_line_blocks = false
 csharp_preserve_single_line_statements = false
 csharp_prefer_braces = true:warning
 csharp_new_line_before_open_brace = all
+
+# ACP 平台适配与测试保持正常换行，不以压缩语句换取较少行数。
+[Backend/{src/OpenAgent.Runtime,tests/OpenAgent.Runtime.Tests}/**.cs]
+csharp_preserve_single_line_blocks = false
+csharp_preserve_single_line_statements = false
+csharp_prefer_braces = true:warning
+csharp_new_line_before_open_brace = all

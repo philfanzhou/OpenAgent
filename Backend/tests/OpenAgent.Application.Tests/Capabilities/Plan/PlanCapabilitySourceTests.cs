@@ -94,21 +94,20 @@ public class PlanCapabilitySourceTests
     {
         // update_plan 的工具结果之后必须紧跟 PlanUpdated 事件（Content 为计划快照），
         // 前端据此渲染任务清单，无需解析通用工具结果。
-        var provider = new SequenceChatProvider(
+        var driver = new ToolInvokingDriver(
         [
-            [new ChatResponseUpdate(ChatRole.Assistant,
-                [new FunctionCallContent("call-1", "update_plan", new Dictionary<string, object?>
+            ("update_plan", new Dictionary<string, object?>
+            {
+                ["plan"] = new object[]
                 {
-                    ["plan"] = new object[]
-                    {
-                        new Dictionary<string, object?> { ["step"] = "collect", ["status"] = "completed" },
-                        new Dictionary<string, object?> { ["step"] = "report", ["status"] = "in_progress" }
-                    }
-                })])],
-            [new ChatResponseUpdate(ChatRole.Assistant, "计划已更新，继续执行")]
-        ]);
+                    new Dictionary<string, object?> { ["step"] = "collect", ["status"] = "completed" },
+                    new Dictionary<string, object?> { ["step"] = "report", ["status"] = "in_progress" }
+                }
+            })
+        ],
+        completion: "计划已更新，继续执行");
         await using AgentExecutorUsageTests.TestRuntime runtime =
-            AgentExecutorUsageTests.CreateRuntime(provider, maxTurns: 4);
+            AgentExecutorUsageTests.CreateRuntime(driver, maxTurns: 4);
 
         List<AgentStreamEvent> events = [];
         await foreach (AgentStreamEvent streamEvent in runtime.Executor.ExecuteStreamingAsync(
@@ -120,7 +119,7 @@ public class PlanCapabilitySourceTests
         }
 
         int toolResultIndex = events.FindIndex(item =>
-            item.Type == AgentStreamEventType.ToolResult && item.ToolCallId == "call-1");
+            item.Type == AgentStreamEventType.ToolResult && item.ToolName == "update_plan");
         Assert.True(toolResultIndex >= 0, "tool result event must be emitted");
         AgentStreamEvent? planEvent = events
             .Where(item => item.Type == AgentStreamEventType.PlanUpdated)

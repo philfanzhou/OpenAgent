@@ -1,4 +1,5 @@
 using OpenAgent.Application.Exten;
+using OpenAgent.Runtime;
 using Microsoft.EntityFrameworkCore;
 using OpenAgent.Engine.Extensions;
 using OpenAgent.Engine.Host;
@@ -28,8 +29,18 @@ builder.Services.AddAgentHost(builder.Configuration, options =>
 });
 
 builder.Services.AddAgentApplication(builder.Configuration);
+builder.Services.AddOpenCodeRuntime(builder.Configuration);
 builder.Services.AddOpenAgentInfrastructure(builder.Configuration);
-builder.Services.AddFileAssetObjectStorage(builder.Configuration);
+if (builder.Environment.IsDevelopment())
+{
+    string storageRoot = builder.Configuration["LocalDevelopment:FileStorageRoot"]
+        ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OpenAgent", "objects");
+    builder.Services.AddSingleton<OpenAgent.Contracts.Files.IFileObjectStore>(new LocalFileObjectStore(storageRoot));
+}
+else
+{
+    builder.Services.AddFileAssetObjectStorage(builder.Configuration);
+}
 builder.Services.AddSingleton<SkillPackageManagementService>();
 
 builder.Services.AddAgentEngine(builder.Configuration);
@@ -55,6 +66,7 @@ if (app.Environment.IsDevelopment())
 {
     app.MapManagementEndpoints();
     app.MapConfigurationEndpoints();
+    app.MapRuntimeEndpoints();
 }
 app.MapAgentEndpoints();
 app.MapFileShareDownloads();

@@ -6,12 +6,14 @@ OpenAgent 是基于 .NET 10 与 ASP.NET Core 的多服务 Agent 平台。当前�
 
 ```text
 Chat（浏览器）→ Router（HTTP 网关）→ Engine.Host（HTTP/SSE 宿主）
-                                      ├─ Application：MAF 执行、会话、模型与 SDK 工具适配
+                                      ├─ Application：执行协调、会话、模型授权与工具适配
                                       ├─ Capabilities：文件、RAG、内置工具、调用授权与 Runner 客户端
+                                      ├─ Runtime：ACP SDK → OpenCode 子进程 → LLM API
                                       ├─ Engine：配置、注册、心跳与热重载
                                       │    └─ Hosting：共享认证、身份与遥测（Router 也使用）
                                       └─ Framework：PostgreSQL、Redis 存储实现
-Application → LLM / MCP（外部服务）
+OpenCode → 本轮 MCP 桥 → Application 平台工具 / 外部 MCP
+Application → LLM（独立历史压缩服务）
 Application → Capabilities → RAG（外部服务）
 Application → Capabilities → Runner（HTTP）→ Linux 沙箱与会话工作区
 Contracts：跨项目的纯接口、配置、DTO 与无 SDK 的能力定义
@@ -23,7 +25,8 @@ Contracts：跨项目的纯接口、配置、DTO 与无 SDK 的能力定义
 
 | 依赖 | 用途与主责 |
 |---|---|
-| MAF / Microsoft.Extensions.AI / Provider SDK | Agent 执行、模型适配、函数调用与上下文 Provider |
+| OpenCode / ACP SDK | 默认聊天推理、流式输出与工具迭代 |
+| MAF / Microsoft.Extensions.AI / Provider SDK | 历史/Skill 兼容 Provider 与独立压缩服务 |
 | LLM API | 模型推理、流式输出与函数调用 |
 | MCP Server | 工具发现、调用与资源读取 |
 | RAG 服务 | Qdrant/RagFlow 检索增强 |
@@ -38,7 +41,7 @@ Contracts：跨项目的纯接口、配置、DTO 与无 SDK 的能力定义
 
 | 原需求编号 | 范围 | 详细文档 |
 |---|---|---|
-| R-01 | MAF 推理与数据库中的 Agent/模型配置 | [Engine](../modules/engine/README.md) |
+| R-01 | ACP 推理与数据库中的 Agent/模型配置 | [Engine](../modules/engine/README.md) |
 | R-02 | 请求管线、验证、追踪与审计 | [Pipeline](../modules/execution/pipeline/README.md) |
 | R-03～R-06 | Skill、MCP、RAG 与工具调用 | [能力索引](../modules/capabilities/README.md) |
 | R-07 | 会话持久化与独立文件资产 | [会话存储](../modules/conversation/store/README.md)、[文件资产](../integrations/file-assets.md) |

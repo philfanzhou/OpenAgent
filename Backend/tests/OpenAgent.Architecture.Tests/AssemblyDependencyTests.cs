@@ -7,13 +7,15 @@ public class AssemblyDependencyTests
 {
     [Theory]
     [InlineData("OpenAgent.Contracts", new string[] { })]
+    [InlineData("OpenAgent.Runtime.Acp", new string[] { })]
+    [InlineData("OpenAgent.Runtime", new[] { "OpenAgent.Contracts", "OpenAgent.Runtime.Acp" })]
     [InlineData("OpenAgent.Capabilities", new[] { "OpenAgent.Contracts" })]
     [InlineData("OpenAgent.Engine", new[] { "OpenAgent.Contracts" })]
     [InlineData("OpenAgent.Framework", new[] { "OpenAgent.Contracts" })]
     [InlineData("OpenAgent.Runner", new[] { "OpenAgent.Contracts" })]
     [InlineData("OpenAgent.Application", new[] { "OpenAgent.Capabilities", "OpenAgent.Contracts" })]
     [InlineData("OpenAgent.Router", new[] { "OpenAgent.Contracts", "OpenAgent.Engine" })]
-    [InlineData("OpenAgent.Engine.Host", new[] { "OpenAgent.Application", "OpenAgent.Contracts", "OpenAgent.Engine", "OpenAgent.Framework" })]
+    [InlineData("OpenAgent.Engine.Host", new[] { "OpenAgent.Application", "OpenAgent.Contracts", "OpenAgent.Engine", "OpenAgent.Framework", "OpenAgent.Runtime" })]
     public void Assemblies_ReferenceOnlyApprovedLayers(string assemblyName, string[] expected)
     {
         string[] actual = Assembly.Load(assemblyName)

@@ -74,6 +74,8 @@ public class AgentStreamWriterTests
             CancellationToken.None);
 
         string payload = await ReadBodyAsync(context);
+        Assert.Contains("event: runtime", payload, StringComparison.Ordinal);
+        Assert.Contains("\"agentVersion\":\"1.2.3\"", payload, StringComparison.Ordinal);
         Assert.Contains("event: tool_result", payload, StringComparison.Ordinal);
         Assert.Contains("\"toolCallId\":\"call-1\"", payload, StringComparison.Ordinal);
         Assert.Contains("\"content\":\"sunny\"", payload, StringComparison.Ordinal);
@@ -81,6 +83,11 @@ public class AgentStreamWriterTests
 
     private static async IAsyncEnumerable<AgentStreamEvent> ToolResultEvents()
     {
+        yield return new AgentStreamEvent
+        {
+            Type = AgentStreamEventType.RuntimeStarted,
+            Runtime = new("OpenCode", "saved-runtime", "Local runtime", "opencode", "1.2.3")
+        };
         yield return new AgentStreamEvent
         {
             Type = AgentStreamEventType.ToolResult,

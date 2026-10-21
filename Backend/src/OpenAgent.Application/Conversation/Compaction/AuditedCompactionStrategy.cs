@@ -1,5 +1,4 @@
 using System.Text;
-using Microsoft.Agents.AI.Compaction;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using OpenAgent.Contracts.Conversation;
@@ -8,7 +7,7 @@ using OpenAgent.Application.Mapping;
 namespace OpenAgent.Application.Conversation.Compaction;
 
 /// <summary>
-/// Adds durable audit metadata around an existing MAF compaction strategy.
+/// Adds durable audit metadata around a summarization compaction strategy.
 /// The wrapped strategy remains the only component that changes model context.
 /// </summary>
 internal sealed class AuditedCompactionStrategy : CompactionStrategy
@@ -29,10 +28,9 @@ internal sealed class AuditedCompactionStrategy : CompactionStrategy
 
     internal Task RecordNotRunAsync(IList<ChatMessage> messages)
     {
-        int tokenCount = messages.Sum(message =>
-            Math.Max(1, (int)Math.Ceiling(Encoding.UTF8.GetByteCount(message.Text ?? string.Empty) / 4d)));
+        int tokenCount = messages.Sum(message => CompactionMessageGroup.EstimateTokens(message));
         return RecordSkippedAsync(
-            "The conversation does not contain a completed message group that MAF can compact.",
+            "The conversation does not contain a completed message group that can be compacted.",
             tokenCount,
             originalHistoryRestored: false,
             sourceEndSequence: messages.Count);
@@ -69,24 +67,24 @@ internal sealed class AuditedCompactionStrategy : CompactionStrategy
             .ToList();
         List<ChatMessage> before = index.GetIncludedMessages().ToList();
         int sourceEndSequence = before.Count;
-        int originalTokenCount = GetIncludedTokenCount(index);
+        int originalTokenCount = index.IncludedTokenCount;
         bool triggerFired = _triggerCondition(index);
         bool canCompact = CanCompact(index);
-            if (!triggerFired || !canCompact)
+        if (!triggerFired || !canCompact)
+        {
+            if (_recordUnchanged)
             {
-                if (_recordUnchanged)
-                {
-                    string reason = !triggerFired
-                        ? "Context is already within the compaction target budget."
-                        : "There is not enough older context to compact while preserving recent messages.";
-                    await RecordSkippedAsync(
-                        reason,
-                        originalTokenCount,
-                        originalHistoryRestored: false,
-                        sourceEndSequence).ConfigureAwait(false);
-                }
-                return false;
+                string reason = !triggerFired
+                    ? "Context is already within the compaction target budget."
+                    : "There is not enough older context to compact while preserving recent messages.";
+                await RecordSkippedAsync(
+                    reason,
+                    originalTokenCount,
+                    originalHistoryRestored: false,
+                    sourceEndSequence).ConfigureAwait(false);
             }
+            return false;
+        }
 
         try
         {
@@ -102,7 +100,7 @@ internal sealed class AuditedCompactionStrategy : CompactionStrategy
                 await RecordFailureAsync(
                     "Compaction strategy did not produce a compacted context.",
                     originalTokenCount,
-                    GetIncludedTokenCount(index),
+                    index.IncludedTokenCount,
                     sourceEndSequence).ConfigureAwait(false);
                 ConversationCompactionLog.CompactionRecovered(
                     _logger,
@@ -111,7 +109,7 @@ internal sealed class AuditedCompactionStrategy : CompactionStrategy
                 return false;
             }
 
-            int compactedTokenCount = GetIncludedTokenCount(index);
+            int compactedTokenCount = index.IncludedTokenCount;
             string? generatedSummary = ReadSummary(index);
             if (string.IsNullOrWhiteSpace(generatedSummary)
                 || generatedSummary.Contains(
@@ -170,7 +168,7 @@ internal sealed class AuditedCompactionStrategy : CompactionStrategy
         catch (Exception exception)
         {
             Restore(index, originalGroups);
-            await RecordFailureAsync(exception.Message, originalTokenCount, GetIncludedTokenCount(index), sourceEndSequence).ConfigureAwait(false);
+            await RecordFailureAsync(exception.Message, originalTokenCount, index.IncludedTokenCount, sourceEndSequence).ConfigureAwait(false);
             ConversationCompactionLog.CompactionRecovered(
                 _logger,
                 _conversationId ?? string.Empty,
@@ -201,16 +199,16 @@ internal sealed class AuditedCompactionStrategy : CompactionStrategy
         int tokenCount,
         bool originalHistoryRestored,
         int sourceEndSequence = 0) => TryRecordAsync(
-            status: "Skipped",
-            summary: null,
-            result,
-            error: null,
-            compressedMessageCount: 0,
-            originalTokenCount: tokenCount,
-            tokenCount: tokenCount,
-            originalHistoryRestored,
-            compactedMessages: null,
-            cancellationToken: CancellationToken.None);
+        status: "Skipped",
+        summary: null,
+        result,
+        error: null,
+        compressedMessageCount: 0,
+        originalTokenCount: tokenCount,
+        tokenCount: tokenCount,
+        originalHistoryRestored,
+        compactedMessages: null,
+        cancellationToken: CancellationToken.None);
 
     private async Task TryRecordAsync(
         string status,
@@ -311,10 +309,6 @@ internal sealed class AuditedCompactionStrategy : CompactionStrategy
         var retained = new HashSet<ChatMessage>(after, ReferenceComparer.Instance);
         return before.Count(message => !retained.Contains(message));
     }
-
-    private static int GetIncludedTokenCount(CompactionMessageIndex index) => index.Groups
-        .Where(group => !group.IsExcluded)
-        .Sum(group => group.TokenCount);
 
     private bool CanCompact(CompactionMessageIndex index) =>
         index.IncludedNonSystemGroupCount > _strategy.MinimumPreservedGroups;

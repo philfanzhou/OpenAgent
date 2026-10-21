@@ -12,12 +12,13 @@ public static class ChatRequestContext
 {
     public const string ConversationIdKey = "conversationId";
     public const string AgentIdKey = "agentId";
+    public const string RuntimeIdKey = "runtimeId";
     public const string LlmProfileIdKey = "llmProfileId";
     public const string ConversationTypeKey = "conversationType";
     public const string ClientTypeKey = "clientType";
     public const string TraceIdKey = "traceId";
     private static readonly string[] ReservedKeys =
-        [ConversationIdKey, AgentIdKey, LlmProfileIdKey, ConversationTypeKey, ClientTypeKey, TraceIdKey];
+        [ConversationIdKey, AgentIdKey, RuntimeIdKey, LlmProfileIdKey, ConversationTypeKey, ClientTypeKey, TraceIdKey];
 
     /// <summary>
     /// 忽略大小写读取字符串值；值必须是字符串（JsonElement/CLR string）或 null，

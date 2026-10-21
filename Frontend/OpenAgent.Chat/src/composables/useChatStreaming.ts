@@ -15,6 +15,7 @@ const selectedConversationStorageKey = 'openagent.chat.selected-conversation-id'
 interface ChatStreamingOptions {
   selectedAgentId: Ref<string>
   selectedLlmProfileId: Ref<string>
+  selectedRuntimeId?: Ref<string>
   agents: Ref<AgentSummary[]>
   conversations: Ref<ConversationRecord[]>
   selectedConversation: Ref<ConversationRecord | null>
@@ -41,9 +42,17 @@ export function useChatStreaming(options: ChatStreamingOptions) {
   }
 
   async function send(): Promise<void> {
+    if (options.selectedRuntimeId && !options.selectedRuntimeId.value) {
+      options.notifyError(new Error('请先在 Runtime 设置中保存并选择运行时'))
+      return
+    }
+    if (!options.selectedLlmProfileId.value) {
+      options.notifyError(new Error('请先保存并选择模型连接'))
+      return
+    }
     const content = message.value.trim()
     const hasFiles = options.pendingFiles.value.length > 0
-    if ((!content && !hasFiles) || !options.selectedAgentId.value || !options.selectedLlmProfileId.value || options.selectedConversationStreaming.value) return
+    if ((!content && !hasFiles) || !options.selectedAgentId.value || options.selectedConversationStreaming.value) return
     if (options.pendingFiles.value.some(item => item.state !== 'ready' || !item.asset)) {
       options.notifyError(new Error('请等待文件上传完成，或移除上传失败的文件后再发送'))
       return
@@ -126,6 +135,7 @@ export function useChatStreaming(options: ChatStreamingOptions) {
         uploaded.map(asset => asset.fileId),
         sendConversationId,
         streamState.controller.signal,
+        options.selectedRuntimeId?.value,
       )) {
         if (event.conversationId && event.conversationId !== conversationId) {
           const previousConversationId = conversationId
@@ -179,6 +189,19 @@ export function useChatStreaming(options: ChatStreamingOptions) {
           // 每次事件携带完整计划快照，直接整体替换即可就位更新。
           const snapshot = parsePlanSnapshot(event.content)
           if (snapshot) assistantMessage.plan = snapshot
+        } else if (event.type === 'runtime' && event.runtime) {
+          const runtime = event.runtime
+          assistantMessage.metadata = {
+            ...assistantMessage.metadata,
+            extensions: {
+              ...assistantMessage.metadata?.extensions,
+              runtimeProvider: runtime.provider,
+              runtimeProfileId: runtime.profileId || '',
+              runtimeProfileName: runtime.profileName || '',
+              runtimeAgentName: runtime.agentName || '',
+              runtimeAgentVersion: runtime.agentVersion || '',
+            },
+          }
         } else if (event.type === 'done') {
           flushStream?.()
           receivedDone = true

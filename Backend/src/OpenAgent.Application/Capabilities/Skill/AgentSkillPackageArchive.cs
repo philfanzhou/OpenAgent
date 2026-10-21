@@ -1,5 +1,5 @@
 using System.IO.Compression;
-using Microsoft.Agents.AI;
+
 using OpenAgent.Contracts.Skills;
 
 namespace OpenAgent.Application.Capabilities.Skill;
@@ -175,7 +175,7 @@ public static class AgentSkillPackageArchive
         {
             throw new InvalidOperationException("SKILL.md frontmatter requires name and description.");
         }
-        return new AgentSkillFrontmatter(name, description, compatibility ?? string.Empty);
+        return new AgentSkillFrontmatter(name!, description!, compatibility ?? string.Empty);
     }
 
     private static bool IsSafeRelativePath(string path)

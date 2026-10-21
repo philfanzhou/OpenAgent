@@ -8,6 +8,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="../OpenAgent.Application.Tests/TestDoubles/ScriptedRuntimeDriver.cs" Link="TestDoubles/ScriptedRuntimeDriver.cs" />
+    <Compile Include="../OpenAgent.Runtime.Tests/LocalModelFixture.cs" Link="TestDoubles/LocalModelFixture.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 

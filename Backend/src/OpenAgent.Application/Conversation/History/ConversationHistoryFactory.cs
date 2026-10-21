@@ -1,5 +1,3 @@
-using Microsoft.Agents.AI.Compaction;
-using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -85,7 +83,7 @@ internal sealed class ConversationHistoryFactory
             cancellationToken).ConfigureAwait(false);
     }
 
-    internal AIContextProvider CreateCompaction(
+    internal AuditedCompactionStrategy CreateCompaction(
         int contextTokens,
         ContextPolicy? policy,
         IChatClient summarizationClient,
@@ -97,7 +95,7 @@ internal sealed class ConversationHistoryFactory
             summarizationClient,
             force: false,
             out CompactionTrigger trigger);
-        var audited = new AuditedCompactionStrategy(
+        return new AuditedCompactionStrategy(
             strategy,
             trigger,
             "Automatic",
@@ -106,7 +104,6 @@ internal sealed class ConversationHistoryFactory
             _store.Store,
             _loggerFactory.CreateLogger<AuditedCompactionStrategy>(),
             recordUnchanged: false);
-        return new CompactionProvider(audited);
     }
 
     internal SummarizationCompactionStrategy CreateStrategy(

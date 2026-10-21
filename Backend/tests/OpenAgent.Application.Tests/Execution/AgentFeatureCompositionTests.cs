@@ -1,9 +1,9 @@
-using OpenAgent.Capabilities.Tests.TestDoubles;
 using OpenAgent.Contracts.Capabilities;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Requests;
+using OpenAgent.Contracts.Runtime;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Application.Tests.TestDoubles;
 using OpenAgent.Application.Tooling.Abstractions;
@@ -17,14 +17,18 @@ public class AgentFeatureCompositionTests
     public async Task ExecuteAsync_RegisteredFeature_ContributesToolAndReleasesItsResources()
     {
         TrackingResource resource = new();
-        FakeChatProvider provider = new(new Microsoft.Extensions.AI.ChatResponse(new ChatMessage(ChatRole.Assistant, "done")));
+        var driver = new ScriptedRuntimeDriver(
+        [
+            new AgentStreamEvent { Type = AgentStreamEventType.Content, Content = "done" }
+        ]);
         await using AgentExecutorUsageTests.TestRuntime runtime = AgentExecutorUsageTests.CreateRuntime(
-            provider,
+            driver,
             configure: services => services.AddSingleton<IAgentFeatureFactory>(new TestFeature(resource)));
 
         await runtime.Executor.ExecuteAsync(Request, User, CancellationToken.None);
 
-        Assert.Contains(provider.LastOptions!.Tools!, tool => tool.Name == "extension_tool");
+        RuntimeInvocation invocation = Assert.Single(driver.Invocations);
+        Assert.Contains(invocation.Tools, tool => tool.Name == "extension_tool");
         Assert.Equal(1, resource.DisposeCount);
     }
 
@@ -34,9 +38,8 @@ public class AgentFeatureCompositionTests
     public async Task ExecuteAsync_LaterFeatureFails_ReleasesEarlierFeaturesAndPreservesOriginalError(bool cleanupFails)
     {
         TrackingResource resource = new(cleanupFails);
-        FakeChatProvider provider = new(new Microsoft.Extensions.AI.ChatResponse(new ChatMessage(ChatRole.Assistant, "unused")));
         await using AgentExecutorUsageTests.TestRuntime runtime = AgentExecutorUsageTests.CreateRuntime(
-            provider,
+            new UnreachableDriver(),
             configure: services =>
             {
                 services.AddSingleton<IAgentFeatureFactory>(new TestFeature(resource));
@@ -48,7 +51,6 @@ public class AgentFeatureCompositionTests
 
         Assert.Equal("feature failed", error.Message);
         Assert.Equal(1, resource.DisposeCount);
-        Assert.Null(provider.LastOptions);
     }
 
     private static AgentRequest Request => new()
@@ -73,6 +75,12 @@ public class AgentFeatureCompositionTests
     {
         public Task<AgentFeature> CreateAsync(string agentId, AgentConfig config, IAgentUserContext user,
             CancellationToken cancellationToken) => throw new InvalidOperationException("feature failed");
+    }
+
+    private sealed class UnreachableDriver : IAgentRuntimeDriver
+    {
+        public IAsyncEnumerable<AgentStreamEvent> RunAsync(RuntimeInvocation invocation, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("Failed preparation must not start the driver.");
     }
 
     private sealed class TrackingResource(bool fail = false) : IAsyncDisposable
