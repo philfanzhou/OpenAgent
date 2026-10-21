@@ -1,4 +1,4 @@
-namespace OpenAgent.Runtime;
+namespace OpenAgent.Runtime.OpenCode;
 
 /// <summary>仅由宿主配置的 OpenCode 启动参数，聊天请求不能指定可执行文件或工作目录。</summary>
 public sealed class OpenCodeOptions

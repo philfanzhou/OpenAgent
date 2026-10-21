@@ -12,13 +12,16 @@ Backend/src/
     RuntimeAgentExecutor.cs        身份/配置/文件/持久化协调
     RuntimePreparation.cs          能力、MCP、Skill、历史准备
     RuntimePreparationScope.cs     部分结果和资源生命周期
-  OpenAgent.Runtime/               平台适配类库，IsPackable=false
-    OpenCodeOptions.cs             可信宿主配置
-    OpenCodeLaunch.cs              模型格式、受控环境及 OpenCode 配置
-    OpenCodeRuntime.cs             并发配额、ACP 会话、取消和进程回收
+  OpenAgent.Runtime/               平台适配类库，IsPackable=false；根目录为 harness 无关组件
+    RuntimeServiceExtensions.cs    AddOpenCodeRuntime 组合入口
+    AcpEventMapper.cs              协议更新到既有平台事件；工具名前缀由构造参数指定
     RuntimeToolBridge.cs           本轮 loopback MCP 端点及 bearer
-    AcpEventMapper.cs              协议更新到既有平台事件
-    RuntimeServiceExtensions.cs    AddOpenCodeRuntime
+    AcpSessionMcp.cs               外部 MCP server 定义到 ACP session/new 条目
+    OpenCode/                      OpenCode 专属 adapter；未来其他 ACP harness 平行建目录
+      OpenCodeRuntime.cs           并发配额、ACP 会话、取消和进程回收
+      OpenCodeProcess.cs           可执行文件解析、模型格式、受控环境及 OpenCode 配置
+      OpenCodeSkills.cs            Skill 物化到 .opencode/skills
+      OpenCodeOptions.cs           可信宿主配置
   OpenAgent.Runtime.Acp/           单 NuGet SDK，完全独立于平台
 Backend/tests/
   OpenAgent.Runtime.Tests/         驱动、桥、环境与真实 OpenCode 测试
@@ -26,7 +29,7 @@ Backend/tests/
   OpenAgent.Engine.Tests/Hosting/OpenCodeSseTests.cs
 ```
 
-Runtime 只引用 Contracts、Runtime.Acp 和官方 MCP SDK；Application 只引用平台契约，不接触 ACP 类型。Engine.Host 负责组合。没有增加第二个 SDK NuGet 包，也没有把平台类型移进 SDK。
+Runtime 只引用 Contracts、Runtime.Acp 和官方 MCP SDK；Application 只引用平台契约，不接触 ACP 类型。Engine.Host 负责组合。没有增加第二个 SDK NuGet 包，也没有把平台类型移进 SDK。Runtime 根目录只保留对任何 ACP harness 通用的组件（事件映射、工具桥、MCP 透传映射、组合入口）；OpenCode 专属的可执行文件解析、启动配置、Skill 物化与驱动实现收敛在 `OpenCode/` 子目录（命名空间 `OpenAgent.Runtime.OpenCode`）。后续接入其他 ACP harness 时平行新增目录，不改动根目录中性组件。
 
 ## 一轮执行
 

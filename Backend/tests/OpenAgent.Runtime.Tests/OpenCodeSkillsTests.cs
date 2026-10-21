@@ -1,5 +1,6 @@
 using OpenAgent.Contracts.Runtime;
 using OpenAgent.Runtime;
+using OpenAgent.Runtime.OpenCode;
 using Xunit;
 
 namespace OpenAgent.Runtime.Tests;
@@ -90,12 +91,12 @@ public sealed class OpenCodeSkillsTests : IDisposable
     }
 }
 
-public sealed class OpenCodeSessionMcpTests
+public sealed class AcpSessionMcpTests
 {
     [Fact]
     public void Map_ProducesRemoteEntriesForHttpAndSseServers()
     {
-        OpenAgent.Runtime.Acp.Protocol.McpServer[] mapped = OpenCodeSessionMcp.Map(
+        OpenAgent.Runtime.Acp.Protocol.McpServer[] mapped = AcpSessionMcp.Map(
         [
             new RuntimeMcpServer("localmcp", "http://127.0.0.1:9/mcp", "http"),
             new RuntimeMcpServer("events", "http://127.0.0.1:9/sse", "sse")
@@ -113,7 +114,7 @@ public sealed class OpenCodeSessionMcpTests
     [Fact]
     public void Map_EmptyOrNull_ReturnsNoEntries()
     {
-        Assert.Empty(OpenCodeSessionMcp.Map(null));
-        Assert.Empty(OpenCodeSessionMcp.Map([]));
+        Assert.Empty(AcpSessionMcp.Map(null));
+        Assert.Empty(AcpSessionMcp.Map([]));
     }
 }

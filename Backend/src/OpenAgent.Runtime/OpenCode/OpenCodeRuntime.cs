@@ -13,7 +13,7 @@ using OpenAgent.Runtime.Acp.Client;
 using OpenAgent.Runtime.Acp.Processes;
 using OpenAgent.Runtime.Acp.Protocol;
 
-namespace OpenAgent.Runtime;
+namespace OpenAgent.Runtime.OpenCode;
 
 /// <summary>每轮独立的 ACP 进程和工作区；平台历史作为上下文传入，不跨租户复用 Agent 状态。</summary>
 internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, ILogger<OpenCodeRuntime> logger) : IAgentRuntimeDriver, IDisposable
@@ -37,7 +37,7 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, ILogger
                 {
                     return resolved;
                 }
-                OpenCodeLaunchSpec spec = OpenCodeExecutable.Resolve(options.Value);
+                OpenCodeLaunchSpec spec = OpenCodeProcess.Resolve(options.Value);
                 if (spec.ShellFallback)
                 {
                     logger.LogWarning(
@@ -88,7 +88,7 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, ILogger
                 catch (Exception error)
                 {
                     // 外部 RPC 错误可能包含模型请求/凭据，不能原样进入 SSE、持久化或日志。
-                    // 可执行文件缺失已在启动前由 OpenCodeExecutable 解析为明确的 DependencyUnavailable/ConfigurationError。
+                    // 可执行文件缺失已在启动前由 OpenCodeProcess 解析为明确的 DependencyUnavailable/ConfigurationError。
                     logger.LogWarning("OpenCode runtime failed ({ErrorType})", error.GetType().Name);
                     throw new AgentException(AgentErrorCode.PipelineExecutionFailed, "OpenCode runtime failed; check the executable, provider configuration and connectivity.");
                 }
@@ -124,8 +124,8 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, ILogger
             OpenCodeSkills.Materialize(workspace, invocation.Skills);
             await using RuntimeToolBridge bridge = await RuntimeToolBridge.StartAsync(invocation.Tools, cancellationToken).ConfigureAwait(false);
             // 平台自有工具经桥；外部 MCP server 按 Agent 配置直接透传给 harness 原生连接。
-            McpServer[] sessionServers = [bridge.Server, .. OpenCodeSessionMcp.Map(invocation.McpServers)];
-            await using AcpProcess process = AcpProcess.Start(OpenCodeLaunch.Create(Launch, invocation, workspace));
+            McpServer[] sessionServers = [bridge.Server, .. AcpSessionMcp.Map(invocation.McpServers)];
+            await using AcpProcess process = AcpProcess.Start(OpenCodeProcess.Create(Launch, invocation, workspace));
             await using AcpClient client = new(process.Transport, options: new()
             {
                 RequestTimeout = TimeSpan.FromSeconds(settings.RequestTimeoutSeconds)
@@ -141,7 +141,8 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, ILogger
             await SelectModelAsync(session, invocation.Profile.Model.ModelId, cancellationToken).ConfigureAwait(false);
             await using AcpPromptTurn turn = await session.StartPromptAsync(prompt, cancellationToken).ConfigureAwait(false);
             await using IAsyncEnumerator<SessionNotification> updates = session.ReadUpdatesAsync().GetAsyncEnumerator();
-            AcpEventMapper mapper = new();
+            // OpenCode 把 MCP 工具显示为 "服务器名_工具名"；平台事件沿用无前缀工具名。
+            AcpEventMapper mapper = new("openagent_");
             bool closed = false;
             Exception? completionFailure = null;
             while (true)
@@ -273,4 +274,11 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, ILogger
         }
         return content.ToArray();
     }
+}
+
+internal static partial class OpenCodeLog
+{
+    // 由 OpenCode:LogUsageUpdates 显式开启；只记录类型化的 usage_update 值，不落对话报文。
+    [LoggerMessage(EventId = 4500, Level = LogLevel.Information, Message = "OpenCode usage update: used={Used} size={Size}")]
+    internal static partial void UsageUpdate(ILogger logger, long used, long size);
 }

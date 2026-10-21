@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using OpenAgent.Contracts.Runtime;
+using OpenAgent.Runtime.OpenCode;
 
 namespace OpenAgent.Runtime;
 

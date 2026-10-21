@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using OpenAgent.Runtime.OpenCode;
 using Xunit;
 
 namespace OpenAgent.Runtime.Tests;

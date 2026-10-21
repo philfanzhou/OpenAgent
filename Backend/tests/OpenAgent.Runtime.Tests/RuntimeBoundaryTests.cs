@@ -10,6 +10,7 @@ using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Runtime;
 using OpenAgent.Runtime.Acp.Protocol;
+using OpenAgent.Runtime.OpenCode;
 using Xunit;
 
 namespace OpenAgent.Runtime.Tests;
@@ -47,7 +48,7 @@ public sealed class RuntimeBoundaryTests
                 Config = new AgentConfig(),
                 Model = new LlmConfig { ModelId = "chosen", ApiKey = "selected-secret", Endpoint = "https://example.test/v1", ContextTokens = 100000 }
             }, new TurnContext { TenantId = "tenant", ConversationId = "c", UserId = "u", TraceId = "t" }, "平台指令 {file:/must-not-read} {env:PATH}", [new("user", "hello")], []);
-            var launch = OpenCodeLaunch.Create(new OpenCodeLaunchSpec("opencode", ["acp"]), request, root);
+            var launch = OpenCodeProcess.Create(new OpenCodeLaunchSpec("opencode", ["acp"]), request, root);
             Assert.Equal(Acp.Processes.AcpEnvironmentMode.AllowList, launch.EnvironmentMode);
             Assert.Equal("selected-secret", launch.Environment!["OPENAGENT_MODEL_API_KEY"]);
             Assert.DoesNotContain("selected-secret", launch.Environment["OPENCODE_CONFIG_CONTENT"]);
@@ -69,15 +70,16 @@ public sealed class RuntimeBoundaryTests
     [Fact]
     public void Mapper_MergesToolPatchesAndEmitsOnlyOneTerminalResult()
     {
-        AcpEventMapper mapper = new();
+        AcpEventMapper mapper = new("openagent_");
         AgentStreamEvent call = Assert.Single(mapper.Map(new ToolCall("id", "Readable title")
         {
-            Name = "echo",
+            Name = "openagent_echo",
             RawInput = JsonSerializer.SerializeToElement(new { text = "参数" })
         }));
         Assert.Equal("echo", call.ToolName);
         AgentStreamEvent result = Assert.Single(mapper.Map(new ToolCallUpdate("id")
         {
+            Name = "openagent_echo",
             Status = "completed",
             RawOutput = AcpJson.Element("结果")
         }));
