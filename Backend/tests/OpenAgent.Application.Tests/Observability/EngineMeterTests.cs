@@ -32,8 +32,7 @@ public class EngineMeterTests
 
         using (EngineMeter.EngineExecutionMeasurement execution = EngineMeter.StartAgentCall("STREAM"))
         {
-            EngineMeter.RecordCapabilityCall("load_skill");
-            EngineMeter.RecordCapabilityCall("read_skill_resource");
+            EngineMeter.RecordCapabilityCall("run_skill_script");
             EngineMeter.RecordCapabilityCall("customer_lookup");
             execution.Complete(new TokenUsage
             {
@@ -51,7 +50,7 @@ public class EngineMeterTests
         Assert.Equal(1, Sum(measurements, "openagent_engine_agent_calls_total", "mode", "sync"));
         Assert.Equal(1, Sum(measurements, "openagent_engine_executions_total", "outcome", "success"));
         Assert.Equal(1, Sum(measurements, "openagent_engine_executions_total", "outcome", "failure"));
-        Assert.Equal(2, Sum(measurements, "openagent_engine_capability_calls_total", "kind", "skill"));
+        Assert.Equal(1, Sum(measurements, "openagent_engine_capability_calls_total", "kind", "skill"));
         Assert.Equal(1, Sum(measurements, "openagent_engine_capability_calls_total", "kind", "tool"));
         Assert.Equal(12, Sum(measurements, "openagent_engine_tokens_total", "type", "input"));
         Assert.Equal(4, Sum(measurements, "openagent_engine_tokens_total", "type", "output"));

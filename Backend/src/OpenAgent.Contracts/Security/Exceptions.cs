@@ -15,19 +15,6 @@ public class AgentException : Exception
     }
 }
 
-public class ToolExecutionException : AgentException
-{
-    public string ToolName { get; }
-    public Dictionary<string, object>? Arguments { get; }
-
-    public ToolExecutionException(string toolName, string? message = null, Dictionary<string, object>? arguments = null, Exception? innerException = null)
-        : base(AgentErrorCode.SkillExecutionFailed, message ?? $"Tool '{toolName}' execution failed", details: toolName, innerException: innerException)
-    {
-        ToolName = toolName;
-        Arguments = arguments;
-    }
-}
-
 public class HumanApprovalRequiredException : AgentException
 {
     public string ActionDescription { get; }
@@ -38,19 +25,6 @@ public class HumanApprovalRequiredException : AgentException
     {
         ActionDescription = actionDescription;
         ApprovalToken = approvalToken;
-    }
-}
-
-public class AudiencePermissionDeniedException : AgentException
-{
-    public IReadOnlyList<string> DeniedAudiences { get; }
-    public string? RequiredPermission { get; }
-
-    public AudiencePermissionDeniedException(IReadOnlyList<string> deniedAudiences, string? requiredPermission = null, string? message = null)
-        : base(AgentErrorCode.AudiencePermissionDenied, message ?? "One or more audience members lack permission", details: requiredPermission)
-    {
-        DeniedAudiences = deniedAudiences;
-        RequiredPermission = requiredPermission;
     }
 }
 

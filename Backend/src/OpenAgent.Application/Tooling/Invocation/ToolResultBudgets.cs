@@ -13,8 +13,8 @@ internal readonly record struct ToolResultBudget(int MaxChars, string Truncation
 
 /// <summary>
 /// 按工具名把 <see cref="AgentExecutionOptions"/> 的分级预算解析成单工具预算。
-/// MCP 命名（mcp__server__tool）由 McpToolFactory 保证；平台工具按白名单归类，
-/// 未识别的一律走默认预算，宁紧勿漏。
+/// 平台工具按白名单归类，未识别的一律走默认预算，宁紧勿漏；
+/// 外部 MCP 工具由 OpenCode 原生连接，不经过本预算机制。
 /// </summary>
 internal static class ToolResultBudgets
 {
@@ -23,9 +23,6 @@ internal static class ToolResultBudgets
 
     internal const string ExecutionHint =
         "print only the relevant part of the output and run again";
-
-    internal const string McpHint =
-        "narrow the query or request fewer fields";
 
     internal const string DefaultHint =
         "reduce the size of the requested output";
@@ -36,10 +33,9 @@ internal static class ToolResultBudgets
         "list_files",
         "read_workspace_file",
         "list_workspace_files",
+        "read_skill_file",
         "search_knowledge_base",
-        "get_current_user_profile",
-        "load_skill",
-        "read_skill_resource"
+        "get_current_user_profile"
     };
 
     private static readonly HashSet<string> ExecutionTools = new(StringComparer.Ordinal)
@@ -50,10 +46,6 @@ internal static class ToolResultBudgets
 
     internal static ToolResultBudget Resolve(AgentExecutionOptions options, string toolName)
     {
-        if (toolName.StartsWith("mcp__", StringComparison.Ordinal))
-        {
-            return new ToolResultBudget(options.McpToolResultCharBudget, McpHint);
-        }
         if (ReadTools.Contains(toolName))
         {
             return new ToolResultBudget(options.ReadToolResultCharBudget, ReadHint);

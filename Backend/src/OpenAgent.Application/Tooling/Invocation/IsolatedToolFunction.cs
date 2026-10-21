@@ -8,15 +8,14 @@ using OpenAgent.Application.Tooling.Abstractions;
 namespace OpenAgent.Application.Tooling.Invocation;
 
 /// <summary>
-/// Wraps a tool so an invocation failure is reported to the model as an error
-/// result instead of escaping to <see cref="FunctionInvokingChatClient"/>, which
-/// would rethrow after repeated failures and abort the whole agent run.
+/// Wraps a tool so an invocation failure is reported to the model as an in-band
+/// error result instead of escaping to the runtime and aborting the whole turn.
 /// 超时同样不中断运行：单次调用超过上限（或传输层先行取消）时，调用被取消，
 /// 以带 timedOut 标记的结果告知模型，由它决定重试还是绕开。
-/// 该包装器是所有工具回传模型的唯一出口，因此也承担三件事：
+/// 该包装器是所有平台工具经 RuntimeToolBridge 回传 OpenCode 的唯一出口，因此也承担三件事：
 /// 1) Exclusive 工具经每轮共享的信号量串行化（并发调用只放行 ReadOnly 白名单）；
 /// 2) 结果预算（头尾保留截断）与统一错误信封渲染——CapabilityDefinition 返回的
-///    <see cref="ToolResult"/> 在这里落成最终字符串，MCP/MAF 工具的裸字符串同样过预算管道。
+///    <see cref="ToolResult"/> 在这里落成最终字符串，裸字符串结果同样过预算管道。
 /// </summary>
 internal sealed class IsolatedToolFunction : AIFunction
 {
