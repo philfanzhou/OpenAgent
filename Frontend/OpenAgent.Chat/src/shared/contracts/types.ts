@@ -387,14 +387,6 @@ export interface SkillPackageInstallResponse {
   storage: string
 }
 
-export interface SkillTestResult {
-  success: boolean
-  enabledCount: number
-  instanceCount: number
-  objectStorageVerifiedSkills: string[]
-  invalidSkills: string[]
-}
-
 export interface HealthReportItem {
   key: string
   status: 'Healthy' | 'Degraded' | 'Unhealthy'
