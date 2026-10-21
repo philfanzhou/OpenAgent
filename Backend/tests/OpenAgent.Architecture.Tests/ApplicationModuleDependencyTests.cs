@@ -77,7 +77,6 @@ public class ApplicationModuleDependencyTests
         {
             return type.Name switch
             {
-                "IMcpRegistry" => "Mcp",
                 "ISkillCatalog" => "Skill",
                 "IRagRegistry" or "IRagService" => "Rag",
                 _ => "Unknown"

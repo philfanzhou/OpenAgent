@@ -67,7 +67,6 @@ internal static class ServiceCollectionExtensions
             serviceProvider.GetRequiredService<ConfigurationService>());
 
         services.AddHostedService<RedisRagRegistrar>();
-        services.AddHostedService<RedisMcpRegistrar>();
 
         services.AddHealthChecks()
             .AddCheck<RedisHealthCheck>("redis", tags: new[] { "infrastructure", "ready", "live" })

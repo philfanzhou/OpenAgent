@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using OpenAgent.Contracts.Configuration;
-using OpenAgent.Contracts.Mcp;
 using OpenAgent.Contracts.Models;
 using OpenAgent.Contracts.Rag;
 using OpenAgent.Contracts.Capabilities;
@@ -34,10 +33,6 @@ internal static class ConfigurationEndpointExtensions
 
     private static void MapMcpEndpoints(RouteGroupBuilder group)
     {
-        group.MapPost("/mcp/test-connection", TestMcpAsync)
-            .WithName("TestMcpConnection")
-            .WithTags("Admin MCP");
-
         group.MapGet("/mcp", ListMcpAsync)
             .WithName("ListMcpServers")
             .WithTags("Admin MCP");
@@ -110,19 +105,6 @@ internal static class ConfigurationEndpointExtensions
         group.MapPut("/agents/{agentId}/config", SaveAgentAsync)
             .WithName("SaveAgentConfig")
             .WithTags("Admin Agents");
-    }
-
-    private static async Task<Results<Ok<McpConnectionTestResult>, ProblemHttpResult>> TestMcpAsync(
-        [FromServices] IMcpConnectionTester tester,
-        [FromBody] McpConnectionTestRequest request,
-        HttpContext context,
-        CancellationToken cancellationToken)
-    {
-        if (!HasScope(context, "capability.test"))
-            return Forbidden(context, "capability.test");
-        return TypedResults.Ok(await tester.TestAsync(
-            request, context.GetAgentRequest().User, context.GetAgentRequest().TraceId,
-            cancellationToken).ConfigureAwait(false));
     }
 
     private static async Task<Results<Ok<IReadOnlyList<McpServerConfig>>, ProblemHttpResult>> ListMcpAsync(
