@@ -71,7 +71,6 @@ public class ApplicationModuleDependencyTests
             type = type.DeclaringType;
         }
         // Public identities retained for compatibility after their files move.
-        if (type.FullName == "OpenAgent.Application.Runtime.Agent.AgentExecutor") return "Execution";
         if (type.FullName == "OpenAgent.Application.Runtime.Agent.AgentExecutionOptions") return "Tooling";
         if (type.FullName == "OpenAgent.Application.Runtime.ExecutionFailureDescriptor") return "Mapping";
         if (type.Namespace == "OpenAgent.Contracts.Capabilities")

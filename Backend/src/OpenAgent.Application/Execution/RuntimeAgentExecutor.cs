@@ -11,14 +11,31 @@ using OpenAgent.Contracts.Security;
 namespace OpenAgent.Application.Execution;
 
 /// <summary>平台执行协调：身份/模型授权、文件、历史与事件持久化不下放给外部 Agent。</summary>
-internal sealed class RuntimeAgentExecutor(
-    IAgentRuntimeResolver profiles,
-    IAgentRuntimeDriver driver,
-    ConversationAgentResolver conversations,
-    FileAssetRequestResolver files,
-    RuntimePreparation preparation,
-    IRuntimeProfileRepository? runtimes = null) : IAgentExecution
+public sealed class RuntimeAgentExecutor
 {
+    private readonly IAgentRuntimeResolver _profiles;
+    private readonly IAgentRuntimeDriver _driver;
+    private readonly ConversationAgentResolver _conversations;
+    private readonly FileAssetRequestResolver _files;
+    private readonly RuntimePreparation _preparation;
+    private readonly IRuntimeProfileRepository? _runtimes;
+
+    internal RuntimeAgentExecutor(
+        IAgentRuntimeResolver profiles,
+        IAgentRuntimeDriver driver,
+        ConversationAgentResolver conversations,
+        FileAssetRequestResolver files,
+        RuntimePreparation preparation,
+        IRuntimeProfileRepository? runtimes = null)
+    {
+        _profiles = profiles;
+        _driver = driver;
+        _conversations = conversations;
+        _files = files;
+        _preparation = preparation;
+        _runtimes = runtimes;
+    }
+
     public async Task<AgentResponse> ExecuteAsync(AgentRequest request, IAgentUserContext user, CancellationToken cancellationToken)
     {
         StringBuilder content = new();
@@ -58,7 +75,7 @@ internal sealed class RuntimeAgentExecutor(
         {
             throw new AgentException(AgentErrorCode.MissingRequiredField, "Query is required.");
         }
-        string agentId = await conversations.ResolveAsync(request, user, cancellationToken).ConfigureAwait(false) ?? "default";
+        string agentId = await _conversations.ResolveAsync(request, user, cancellationToken).ConfigureAwait(false) ?? "default";
         TurnContext turn = new()
         {
             TenantId = user.TenantId ?? string.Empty,
@@ -68,11 +85,11 @@ internal sealed class RuntimeAgentExecutor(
             ConversationType = request.ConversationType,
             TraceId = string.IsNullOrWhiteSpace(request.TraceId) ? Guid.NewGuid().ToString("N") : request.TraceId
         };
-        AgentRuntimeProfile profile = await profiles.ResolveAsync(agentId, request.LlmProfileId ?? string.Empty, user, cancellationToken).ConfigureAwait(false);
+        AgentRuntimeProfile profile = await _profiles.ResolveAsync(agentId, request.LlmProfileId ?? string.Empty, user, cancellationToken).ConfigureAwait(false);
         if (!string.IsNullOrWhiteSpace(request.RuntimeId))
         {
-            RuntimeProfile? runtime = runtimes is null ? null
-                : await runtimes.GetAsync(turn.TenantId, request.RuntimeId, cancellationToken).ConfigureAwait(false);
+            RuntimeProfile? runtime = _runtimes is null ? null
+                : await _runtimes.GetAsync(turn.TenantId, request.RuntimeId, cancellationToken).ConfigureAwait(false);
             if (runtime is null || runtime.Provider != "OpenCode" || runtime.TurnTimeoutSeconds is < 1 or > 86400)
             {
                 throw new AgentException(AgentErrorCode.InvalidRequest, "The selected runtime is unavailable.");
@@ -88,18 +105,15 @@ internal sealed class RuntimeAgentExecutor(
             ConversationId = turn.ConversationId,
             ConversationType = request.ConversationType,
             TraceId = turn.TraceId,
-            FileIds = request.FileIds,
-            ExternalContext = request.ExternalContext,
-            ClientType = request.ClientType,
-            IdempotencyKey = request.IdempotencyKey
+            FileIds = request.FileIds
         };
         if (resolved.FileIds.Count > 0)
         {
-            await preparation.EnsureConversationAsync(turn, request.Query, cancellationToken).ConfigureAwait(false);
+            await _preparation.EnsureConversationAsync(turn, request.Query, cancellationToken).ConfigureAwait(false);
         }
-        ResolvedFileRequest attachments = await files.ResolveAsync(resolved, user, cancellationToken).ConfigureAwait(false);
-        await using RuntimePreparationScope scope = await preparation.CreateAsync(profile, turn, user, request.Query, attachments.Files, cancellationToken).ConfigureAwait(false);
-        IAsyncEnumerator<AgentStreamEvent> events = driver.RunAsync(scope.InvocationRequest, cancellationToken).GetAsyncEnumerator();
+        ResolvedFileRequest attachments = await _files.ResolveAsync(resolved, user, cancellationToken).ConfigureAwait(false);
+        await using RuntimePreparationScope scope = await _preparation.CreateAsync(profile, turn, user, request.Query, attachments.Files, cancellationToken).ConfigureAwait(false);
+        IAsyncEnumerator<AgentStreamEvent> events = _driver.RunAsync(scope.InvocationRequest, cancellationToken).GetAsyncEnumerator();
         bool finalized = false;
         Exception? failure = null;
         TokenUsage? usage = null;

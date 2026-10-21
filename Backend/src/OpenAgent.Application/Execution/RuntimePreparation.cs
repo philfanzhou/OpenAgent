@@ -103,7 +103,7 @@ internal sealed class RuntimePreparation(
                 AIFunction function = (AIFunction)IsolatedToolFunction.Wrap(prepared,
                     policy.ToolCallTimeoutSeconds > 0 ? TimeSpan.FromSeconds(policy.ToolCallTimeoutSeconds) : Timeout.InfiniteTimeSpan,
                     ToolResultBudgets.Resolve(policy, tool.Name),
-                    ToolConcurrencyRules.Resolve(tool), scope.Invocation.ExclusiveGate, logger);
+                    ToolConcurrencyRules.Resolve(tool), scope.ExclusiveGate, logger);
                 if (!names.Add(function.Name))
                 {
                     throw new InvalidOperationException("Duplicate runtime tool name: " + function.Name);
