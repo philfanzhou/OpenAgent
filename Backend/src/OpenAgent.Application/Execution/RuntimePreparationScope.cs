@@ -15,7 +15,8 @@ internal sealed class RuntimePreparationScope(
 {
     internal List<IDisposable> Clients { get; } = [];
     internal List<AgentFeature> Features { get; } = [];
-    internal ToolInvocationScope Invocation { get; } = new();
+    /// <summary>本轮 Exclusive 工具共享的串行门；随轮次释放。</summary>
+    internal SemaphoreSlim ExclusiveGate { get; } = new(1, 1);
     internal AgentTurnContext Context { get; set; } = new();
     internal RuntimeInvocation InvocationRequest { get; set; } = null!;
     private readonly StringBuilder _text = new();
@@ -91,7 +92,7 @@ internal sealed class RuntimePreparationScope(
         {
             await DisposeResourceAsync(feature).ConfigureAwait(false);
         }
-        await DisposeResourceAsync(Invocation).ConfigureAwait(false);
+        ExclusiveGate.Dispose();
         foreach (IDisposable client in Clients)
         {
             try

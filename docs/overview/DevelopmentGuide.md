@@ -41,7 +41,7 @@
 | SDK 工具机制 | Application/Tooling/{Abstractions,Discovery,Invocation}/ | ToolingServiceExtensions.cs |
 | MCP 适配 | Application/Capabilities/Mcp/ | McpServiceExtensions.cs |
 | Skill 适配与包解析 | Application/Capabilities/Skill/ | SkillServiceExtensions.cs |
-| Skill 目录 | Capabilities/Skills/；ISkillCatalog 在 Contracts/Capabilities/ | 随 Skill 组合注册 |
+| Skill 目录 | ISkillCatalog 在 Contracts/Capabilities/；Engine 实现在 Engine/Config/SkillCatalogStore | 随 Skill 组合注册 |
 | RAG | Capabilities/Rag/ | RagServiceExtensions.cs |
 | 内置能力 | Capabilities/{Code,Workspace,Plan,UserProfile}/ | BuiltinCapabilityServiceExtensions.cs |
 | Runner 客户端 | Capabilities/Integrations/Runner/ | RunnerServiceExtensions.cs |

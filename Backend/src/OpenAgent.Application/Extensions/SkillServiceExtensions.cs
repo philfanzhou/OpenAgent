@@ -1,5 +1,3 @@
-using OpenAgent.Capabilities.Skills;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.DependencyInjection;
 using OpenAgent.Contracts.Capabilities;
@@ -12,9 +10,8 @@ internal static class SkillServiceExtensions
 {
     internal static IServiceCollection AddSkillServices(this IServiceCollection services)
     {
-        services.TryAddSingleton<ISkillCatalog, SkillCatalog>();
-        services.TryAddScoped<AgentSkillsProviderFactory>();
-        services.TryAddEnumerable(ServiceDescriptor.Scoped<IAgentFeatureFactory, SkillFeatureFactory>());
+        services.TryAddSingleton<ISkillCatalog, EmptySkillCatalog>();
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<IAgentFeatureFactory, AgentSkillsProviderFactory>());
         return services;
     }
 }

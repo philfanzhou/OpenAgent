@@ -1,6 +1,6 @@
 # 执行编排
 
-AgentExecutor 提供同步 ExecuteAsync 和流式 ExecuteStreamingAsync，接收 AgentRequest、IAgentUserContext 与 CancellationToken。代码目录和扩展方式见 [开发指南](../../../overview/DevelopmentGuide.md)。
+RuntimeAgentExecutor 提供同步 ExecuteAsync 和流式 ExecuteStreamingAsync，接收 AgentRequest、IAgentUserContext 与 CancellationToken。代码目录和扩展方式见 [开发指南](../../../overview/DevelopmentGuide.md)。
 
 ## 请求流程
 
@@ -14,7 +14,7 @@ AgentExecutor 提供同步 ExecuteAsync 和流式 ExecuteStreamingAsync，接收
 
 ## 异常、取消与协议
 
-- AgentExecutor 不把异常转成 Success=false 的 AgentResponse，异常向上传播；工具调用的局部错误由工具机制隔离，规则见 [异常处理](../errors/README.md)。
+- RuntimeAgentExecutor 不把异常转成 Success=false 的 AgentResponse，异常向上传播；工具调用的局部错误由工具机制隔离，规则见 [异常处理](../errors/README.md)。
 - 共享 Engine/Hosting/Errors/AgentExceptionHandling.cs 负责 HTTP ProblemDetails 映射。Engine.Host/EngineErrorHandling.cs 添加 Provider 错误与 SSE 文案；响应已开始时写 error/done，客户端断开按取消处理。
 - Application 返回 IAsyncEnumerable<AgentStreamEvent>；Host 的 AgentStreamWriter 将其写成 SSE。使用实际 CancellationToken，成功终态 usage 不根据文本估算。
 - 取消/失败时 PlatformChatHistory 在释放期间使用 CancellationToken.None 写回 partial。初始化中途失败清理已创建的功能资源，并保留原始异常。
@@ -33,6 +33,6 @@ AgentExecutor 提供同步 ExecuteAsync 和流式 ExecuteStreamingAsync，接收
 
 ## 代码入口
 
-- Application：Backend/src/OpenAgent.Application/Execution/AgentExecutor.cs、RuntimeAgentExecutor.cs、RuntimePreparation.cs、RuntimePreparationScope.cs。
+- Application：Backend/src/OpenAgent.Application/Execution/RuntimeAgentExecutor.cs、RuntimePreparation.cs、RuntimePreparationScope.cs。
 - Host：Backend/src/OpenAgent.Engine.Host/Program.cs、EngineErrorHandling.cs、Extensions/AgentChatEndpointExtensions.cs、AgentStreamWriter.cs。
 - HTTP 错误：Backend/src/OpenAgent.Engine/Hosting/Errors/AgentExceptionHandling.cs。

@@ -381,32 +381,10 @@ export interface StreamEvent {
   modelId?: string | null
 }
 
-export interface McpTestResult {
-  success: boolean
-  connected: boolean
-  authorized: boolean
-  transport: string
-  requestedProtocolVersion?: string | null
-  negotiatedProtocolVersion?: string | null
-  latencyMs: number
-  toolCount: number
-  deniedTools: string[]
-  error?: string | null
-  traceId?: string
-}
-
 export interface SkillPackageInstallResponse {
   skill: SkillInstanceConfig
   currentVersion: string
   storage: string
-}
-
-export interface SkillTestResult {
-  success: boolean
-  enabledCount: number
-  instanceCount: number
-  objectStorageVerifiedSkills: string[]
-  invalidSkills: string[]
 }
 
 export interface HealthReportItem {

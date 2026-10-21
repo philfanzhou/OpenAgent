@@ -81,8 +81,8 @@ public class ToolResultBudgetTests
     {
         var options = new AgentExecutionOptions();
         Assert.Equal(options.ReadToolResultCharBudget, ToolResultBudgets.Resolve(options, "read_file").MaxChars);
+        Assert.Equal(options.ReadToolResultCharBudget, ToolResultBudgets.Resolve(options, "read_skill_file").MaxChars);
         Assert.Equal(options.ExecutionToolResultCharBudget, ToolResultBudgets.Resolve(options, "execute_code").MaxChars);
-        Assert.Equal(options.McpToolResultCharBudget, ToolResultBudgets.Resolve(options, "mcp__any__tool").MaxChars);
         Assert.Equal(options.DefaultToolResultCharBudget, ToolResultBudgets.Resolve(options, "write_file").MaxChars);
         // 未识别工具必须落到默认预算，而不是不限。
         Assert.Equal(options.DefaultToolResultCharBudget, ToolResultBudgets.Resolve(options, "unknown_tool").MaxChars);

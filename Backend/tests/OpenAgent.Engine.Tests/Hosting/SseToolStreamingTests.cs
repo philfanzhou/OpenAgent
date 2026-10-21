@@ -265,7 +265,7 @@ public sealed class SseToolStreamingTests
             application.Urls.Add("http://127.0.0.1:0");
             application.UseAgentErrorHandling();
             application.MapPost("/api/v1/agent/chat/stream",
-                async (HttpContext context, AgentExecutor executor, CancellationToken ct) =>
+                async (HttpContext context, RuntimeAgentExecutor executor, CancellationToken ct) =>
             {
                 var request = new AgentRequest
                 {

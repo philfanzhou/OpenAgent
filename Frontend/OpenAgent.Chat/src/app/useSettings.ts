@@ -63,7 +63,7 @@ export function useSettings(options: SettingsOptions) {
   const isNewAgent = ref(false)
 
   const { llmProfiles, llmDraft, selectedLlmIndex, llmResult, testingLlm, savingLlm, showLlmEditor, isNewLlm, loadLlmProfiles, selectLlm, newLlm, editLlm, deleteLlm, saveLlm, testLlm } = useModelSettings({ selectedLlmProfileId: options.selectedLlmProfileId, notifyError: options.notifyError })
-  const { testingMcp, showMcpEditor, mcpDraft, mcpServers, agentMcpIds, showMcpBindingPicker, mcpBindingOptions, loadingMcpBindingOptions, selectedMcpIndex, mcpResult, boundMcpServers, toggleMcpBinding, openMcpBindingPicker, removeMcpBinding, loadMcpProfiles, selectMcp, newMcp, removeMcp, saveMcp, testMcp } = useMcpSettings({ agentId: () => config.value?.agentId, notifyError: options.notifyError })
+  const { showMcpEditor, mcpDraft, mcpServers, agentMcpIds, showMcpBindingPicker, mcpBindingOptions, loadingMcpBindingOptions, selectedMcpIndex, boundMcpServers, toggleMcpBinding, openMcpBindingPicker, removeMcpBinding, loadMcpProfiles, selectMcp, newMcp, removeMcp, saveMcp } = useMcpSettings({ agentId: () => config.value?.agentId, notifyError: options.notifyError })
   const { uploadingSkill, skillPackageInput, showSkillTextEditor, skillMarkdownDraft, skillEditorMode, skillEditorName, skillEditorDescription, skillEditorInstructions, editingSkillId, showSkillBindingPicker, skillBindingOptions, loadingSkillBindingOptions, skillCatalog, skillDraft, boundSkills, isSkillEnabled, toggleSkillBinding, openSkillBindingPicker, removeSkillBinding, loadSkillCatalog, toggleSkillScriptExecution, chooseSkillPackage, openSkillTextEditor, switchSkillEditorMode, editSkill, uploadSkillPackage, deleteSkillCatalog, saveTextSkill } = useSkillSettings({ notifyError: options.notifyError })
   const { testingRag, showRagEditor, ragDraft, ragInstances, selectedRagIndex, ragResult, ragEnabledText, isRagEnabled, toggleRagBinding, selectRag, newRag, editRag, saveRag, deleteRag, testRag, testRagRow } = useRagSettings({ selectedAgentId: options.selectedAgentId, config, notifyError: options.notifyError })
 
@@ -258,7 +258,6 @@ export function useSettings(options: SettingsOptions) {
     ragDraft.value = createDefaultRag()
     ragInstances.value = []
     llmResult.value = null
-    mcpResult.value = null
     ragResult.value = null
     showAgentEditor.value = false
     showLlmEditor.value = false
@@ -273,7 +272,6 @@ export function useSettings(options: SettingsOptions) {
     savingConfig,
     refreshingAgents,
     refreshingCatalog,
-    testingMcp,
     uploadingSkill,
     testingRag,
     config,
@@ -288,7 +286,6 @@ export function useSettings(options: SettingsOptions) {
     mcpBindingOptions,
     loadingMcpBindingOptions,
     selectedMcpIndex,
-    mcpResult,
     skillPackageInput,
     showSkillTextEditor,
     skillMarkdownDraft,
@@ -360,7 +357,6 @@ export function useSettings(options: SettingsOptions) {
     createAgent,
     saveConfig,
     saveMcp,
-    testMcp,
     handleAgentChange,
     selectAgent,
     openSettings,

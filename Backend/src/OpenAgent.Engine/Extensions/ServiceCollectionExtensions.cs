@@ -57,17 +57,16 @@ internal static class ServiceCollectionExtensions
         services.AddSingleton<ILlmConfigProvider>(serviceProvider =>
             serviceProvider.GetRequiredService<ConfigurationService>());
         services.AddSingleton<McpProfileManagementService>();
-        services.AddSingleton<RedisSkillCatalogStore>();
+        services.AddSingleton<SkillCatalogStore>();
         services.AddSingleton<ISkillCatalogStore>(serviceProvider =>
-            serviceProvider.GetRequiredService<RedisSkillCatalogStore>());
+            serviceProvider.GetRequiredService<SkillCatalogStore>());
         services.Replace(ServiceDescriptor.Singleton<ISkillCatalog>(serviceProvider =>
-            serviceProvider.GetRequiredService<RedisSkillCatalogStore>()));
+            serviceProvider.GetRequiredService<SkillCatalogStore>()));
 
         services.AddSingleton<IAgentConfigProvider>(serviceProvider =>
             serviceProvider.GetRequiredService<ConfigurationService>());
 
         services.AddHostedService<RedisRagRegistrar>();
-        services.AddHostedService<RedisMcpRegistrar>();
 
         services.AddHealthChecks()
             .AddCheck<RedisHealthCheck>("redis", tags: new[] { "infrastructure", "ready", "live" })

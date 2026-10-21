@@ -26,7 +26,7 @@ public static class ApplicationServiceExtensions
             .AddBuiltinCapabilityServices()
             .AddConversationServices(configuration)
             .AddFileAssetServices(configuration)
-            .AddMcpServices(configuration)
+            .AddMcpServices()
             .AddSkillServices()
             .AddRagServices()
             .AddRuntimeServices();

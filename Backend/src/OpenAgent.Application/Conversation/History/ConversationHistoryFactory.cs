@@ -1,4 +1,5 @@
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Configuration;
@@ -35,18 +36,18 @@ internal sealed class ConversationHistoryFactory
     private readonly ConversationSessionStore _store;
     private readonly ConversationStoreOptions _options;
     private readonly ILoggerFactory _loggerFactory;
-    private readonly IPlatformChatHistoryFactory _historyFactory;
+    private readonly IServiceProvider _services;
 
     public ConversationHistoryFactory(
         ConversationSessionStore store,
         IOptions<ConversationStoreOptions> options,
         ILoggerFactory loggerFactory,
-        IPlatformChatHistoryFactory historyFactory)
+        IServiceProvider services)
     {
         _store = store;
         _options = options.Value;
         _loggerFactory = loggerFactory;
-        _historyFactory = historyFactory;
+        _services = services;
     }
 
     /// <summary>
@@ -62,7 +63,7 @@ internal sealed class ConversationHistoryFactory
         bool supportsMultimodal)
     {
         ConversationContext context = turn.ToConversationContext();
-        return _historyFactory.Create(new PlatformChatHistoryContext(
+        return ActivatorUtilities.CreateInstance<PlatformChatHistory>(_services, new PlatformChatHistoryContext(
             context,
             modelId,
             input,

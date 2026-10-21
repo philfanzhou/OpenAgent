@@ -57,10 +57,6 @@ internal static class ManagementEndpointExtensions
             .WithName("DeleteAgentSkill")
             .WithTags("Admin Skills");
 
-        group.MapPost("/skills/test", ValidateSkillsAsync)
-            .WithName("ValidateSkills")
-            .WithTags("Admin Skills");
-
         return group;
     }
 
@@ -312,20 +308,6 @@ internal static class ManagementEndpointExtensions
             _ => TypedResults.Problem(AgentProblemDetails.NotFound(
                 $"Skill '{skillId}' was not found on agent '{agentId}'.", context))
         };
-    }
-
-    private static async Task<Results<Ok<SkillPackageValidationResult>, ProblemHttpResult>> ValidateSkillsAsync(
-        [FromServices] SkillPackageManagementService packages,
-        [FromBody] SkillsConfig skills,
-        HttpContext context,
-        CancellationToken cancellationToken)
-    {
-        if (!HasScope(context, "capability.test"))
-            return Forbidden(context, "capability.test");
-        SkillPackageValidationResult result = await packages
-            .ValidateAsync(RequireTenant(context), skills, cancellationToken)
-            .ConfigureAwait(false);
-        return TypedResults.Ok(result);
     }
 
     private static ProblemHttpResult Forbidden(HttpContext context, string requiredScope) =>

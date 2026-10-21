@@ -1,6 +1,6 @@
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, ref } from 'vue'
-import type { McpServerConfig, McpTestResult } from '../../shared/contracts/types'
+import type { McpServerConfig } from '../../shared/contracts/types'
 import { api } from './api'
 
 export function createDefaultMcp(): McpServerConfig {
@@ -13,8 +13,6 @@ interface SettingsOptions {
 }
 
 export function useMcpSettings(options: SettingsOptions) {
-  const testingMcp = ref(false)
-
   const showMcpEditor = ref(false)
 
   const mcpDraft = ref<McpServerConfig>(createDefaultMcp())
@@ -30,8 +28,6 @@ export function useMcpSettings(options: SettingsOptions) {
   const loadingMcpBindingOptions = ref(false)
 
   const selectedMcpIndex = ref(-1)
-
-  const mcpResult = ref<McpTestResult | null>(null)
 
   const boundMcpServers = computed(() => agentMcpIds.value.map(id =>
     mcpServers.value.find(item => item.name.toLowerCase() === id.toLowerCase())
@@ -82,7 +78,6 @@ export function useMcpSettings(options: SettingsOptions) {
   function newMcp(): void {
     selectedMcpIndex.value = -1
     mcpDraft.value = createDefaultMcp()
-    mcpResult.value = null
     showMcpEditor.value = true
   }
 
@@ -138,16 +133,5 @@ export function useMcpSettings(options: SettingsOptions) {
     }
   }
 
-  async function testMcp(): Promise<void> {
-    testingMcp.value = true
-    try {
-      mcpResult.value = await api.testMcp(mcpDraft.value, options.agentId())
-    } catch (error) {
-      options.notifyError(error)
-    } finally {
-      testingMcp.value = false
-    }
-  }
-
-  return { testingMcp, showMcpEditor, mcpDraft, mcpServers, agentMcpIds, showMcpBindingPicker, mcpBindingOptions, loadingMcpBindingOptions, selectedMcpIndex, mcpResult, boundMcpServers, toggleMcpBinding, openMcpBindingPicker, removeMcpBinding, loadMcpProfiles, selectMcp, newMcp, removeMcp, saveMcp, testMcp }
+  return { showMcpEditor, mcpDraft, mcpServers, agentMcpIds, showMcpBindingPicker, mcpBindingOptions, loadingMcpBindingOptions, selectedMcpIndex, boundMcpServers, toggleMcpBinding, openMcpBindingPicker, removeMcpBinding, loadMcpProfiles, selectMcp, newMcp, removeMcp, saveMcp }
 }
