@@ -89,16 +89,31 @@ describe('useChatStreaming', () => {
     vi.clearAllMocks()
   })
 
-  it('sends without a profile override when the user chooses the Agent model', async () => {
+  it('requires an independently saved model connection', async () => {
     const { streaming } = await setup('')
+    streaming.message.value = '运行'
+    await streaming.send()
+    expect(api.streamChat).not.toHaveBeenCalled()
+  })
+
+  it('keeps the server-reported runtime after reloading the persisted response', async () => {
+    const { streaming, selectedConversation } = await setup()
     vi.mocked(api.streamChat).mockImplementation(() => (async function* () {
+      yield { type: 'runtime', runtime: { provider: 'OpenCode', profileId: 'actual-runtime', agentVersion: '1.2.3' } }
+      yield { type: 'content', content: '完成' }
       yield { type: 'done', conversationId: 'conv-1' }
     })() as never)
-    vi.mocked(api.getConversation).mockResolvedValue(makeRecord([], 'Completed') as never)
-    streaming.message.value = '使用 Agent 的模型'
+    vi.mocked(api.getConversation).mockResolvedValue(makeRecord([
+      row({ sequence: 5, role: 'user', content: '运行' }),
+      row({ sequence: 6, role: 'assistant', content: '完成', metadata: { extensions: {
+        runtimeProvider: 'OpenCode', runtimeProfileId: 'actual-runtime', runtimeAgentVersion: '1.2.3',
+      } } }),
+    ], 'Completed') as never)
+    streaming.message.value = '运行'
     await streaming.send()
-    expect(api.streamChat).toHaveBeenCalledOnce()
-    expect(vi.mocked(api.streamChat).mock.calls[0]?.[2]).toBe('')
+    expect(selectedConversation.value?.messages?.at(-1)?.metadata?.extensions).toMatchObject({
+      runtimeProvider: 'OpenCode', runtimeProfileId: 'actual-runtime', runtimeAgentVersion: '1.2.3',
+    })
   })
 
   it('passes the saved runtime independently from Agent and model selection', async () => {

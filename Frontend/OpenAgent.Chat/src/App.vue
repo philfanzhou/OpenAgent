@@ -245,7 +245,7 @@ async function loadWorkspace(): Promise<void> {
     else notifyError(agentResult.reason)
     if (llmResult.status === 'fulfilled') {
       llmProfiles.value = llmResult.value
-      if (selectedLlmProfileId.value && !llmProfiles.value.some(item => item.id === selectedLlmProfileId.value)) selectedLlmProfileId.value = llmProfiles.value[0]?.id || ''
+      if (!llmProfiles.value.some(item => item.id === selectedLlmProfileId.value)) selectedLlmProfileId.value = llmProfiles.value[0]?.id || ''
     } else notifyError(llmResult.reason)
     if (conversationResult.status === 'fulfilled') mergeConversationList(conversationResult.value)
     else if (!conversationStreams.activeConversationIds().length) conversations.value = []

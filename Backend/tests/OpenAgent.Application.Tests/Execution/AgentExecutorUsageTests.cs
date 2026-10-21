@@ -24,6 +24,38 @@ namespace OpenAgent.Application.Tests.Runtime;
 
 public class AgentExecutorUsageTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExecuteAsync_ActualRuntimeIdentity_PersistsOnSuccessAndFailure(bool fails)
+    {
+        var driver = new ScriptedRuntimeDriver(
+        [
+            new AgentStreamEvent
+            {
+                Type = AgentStreamEventType.RuntimeStarted,
+                Runtime = new("OpenCode", "saved-runtime", "Local runtime", "opencode", "1.2.3")
+            },
+            Content("response")
+        ], fails ? new InvalidOperationException("runtime failed") : null);
+        await using TestRuntime runtime = CreateRuntime(driver);
+        Task execution = runtime.Executor.ExecuteAsync(CreateRequest("runtime-identity"), User, CancellationToken.None);
+        if (fails)
+        {
+            await Assert.ThrowsAsync<InvalidOperationException>(() => execution);
+        }
+        else
+        {
+            await execution;
+        }
+        ConversationRecord record = Assert.IsType<ConversationRecord>(
+            await runtime.Store.GetRecordAsync("tenant-1", "runtime-identity"));
+        ConversationMessage assistant = Assert.Single(record.Messages, message => message.Role == "assistant");
+        Assert.Equal("OpenCode", assistant.Metadata?.Extensions?["runtimeProvider"]);
+        Assert.Equal("saved-runtime", assistant.Metadata?.Extensions?["runtimeProfileId"]);
+        Assert.Equal("1.2.3", assistant.Metadata?.Extensions?["runtimeAgentVersion"]);
+    }
+
     [Fact]
     public async Task ExecuteAsync_CurrentUserProfileFunction_IsPassedToRuntimeDriver()
     {

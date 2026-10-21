@@ -41,6 +41,9 @@ public sealed class OpenCodeTests
         };
         List<AgentStreamEvent> events = await runtime.CollectAsync(request);
         Assert.Equal("你好 ACP", Text(events));
+        AgentStreamEvent started = Assert.Single(events.Where(item => item.Type == AgentStreamEventType.RuntimeStarted));
+        Assert.Equal("OpenCode", started.Runtime?.Provider);
+        Assert.False(string.IsNullOrWhiteSpace(started.Runtime?.AgentVersion));
         Assert.Equal("fixture", events.Last().ModelId);
         Assert.Null(events.Last().Usage);
         runtime.AssertWorkspacesReleased();

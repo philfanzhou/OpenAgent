@@ -13,13 +13,6 @@ import type { SettingsDialogContext } from './settings.types'
 
 const props = defineProps<{ context: SettingsDialogContext }>()
 
-function toggleOpenCodeModel(enabled: boolean): void {
-  if (!config.value) return
-  config.value.config.openCode = enabled
-    ? { model: { modelId: '', endpoint: '', apiKey: '', format: 'OpenAIChatCompletions', temperature: 0.7, contextTokens: 0 } }
-    : {}
-}
-
 const { connectionMode, routerUrl, engineUrl, tenantId, statusText, authConfig, currentUser, agents, activeEndpointLabel, activeEndpointHost, connect, logout, testHealth, showSettings, activeSettings, savingConfig, refreshingAgents, config, showAgentEditor, isNewAgent, loadingMcpBindingOptions, loadingSkillBindingOptions, ragInstances, boundMcpServers, boundSkills, openMcpBindingPicker, openSkillBindingPicker, removeMcpBinding, removeSkillBinding, isRagEnabled, toggleRagBinding, refreshAgents, editAgent, createAgent, saveConfig, openSettings, handleSettingsTabChange } = props.context
 </script>
 
@@ -56,8 +49,8 @@ const { connectionMode, routerUrl, engineUrl, tenantId, statusText, authConfig, 
           <SkillSettingsPanel :context="props.context" />
         </el-tab-pane>
         <el-tab-pane label="Agent 配置" name="agent">
-          <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">AGENT RUNTIME</span><h3>Agent 配置</h3><p>Agent 只维护指令、运行边界和能力绑定；模型在每次执行时独立选择。</p></div><div class="section-actions"><el-button @click="refreshAgents" :loading="refreshingAgents">刷新 Agent</el-button><el-button type="primary" plain @click="createAgent">新增 Agent</el-button></div></div>
-            <div class="agent-card-grid"><article v-for="agent in agents" :key="agent.agentId" class="agent-card"><h4>{{ agent.name || agent.agentId }}</h4><p>{{ agent.description || agent.agentId }}</p><div class="agent-card-meta"><span>{{ agent.currentVersion || '未发布' }}</span></div><el-button type="primary" plain @click="editAgent(agent.agentId)">编辑配置</el-button></article><button class="agent-card agent-card-add" @click="createAgent"><span>＋</span><strong>新增 Agent</strong><small>创建独立运行配置</small></button><div v-if="!agents.length" class="resource-empty">还没有 Agent</div></div>
+          <section class="settings-section"><div class="section-heading"><div><span class="eyebrow">AGENT CONFIGURATION</span><h3>Agent 配置</h3><p>Agent 只维护指令、运行边界和能力绑定；模型在每次执行时独立选择。</p></div><div class="section-actions"><el-button @click="refreshAgents" :loading="refreshingAgents">刷新 Agent</el-button><el-button type="primary" plain @click="createAgent">新增 Agent</el-button></div></div>
+            <div class="agent-card-grid"><article v-for="agent in agents" :key="agent.agentId" class="agent-card"><h4>{{ agent.name || agent.agentId }}</h4><p>{{ agent.description || agent.agentId }}</p><div class="agent-card-meta"><span>{{ agent.currentVersion || '未发布' }}</span></div><el-button type="primary" plain @click="editAgent(agent.agentId)">编辑配置</el-button></article><button class="agent-card agent-card-add" @click="createAgent"><span>＋</span><strong>新增 Agent</strong><small>创建 Agent 配置</small></button><div v-if="!agents.length" class="resource-empty">还没有 Agent</div></div>
           </section>
         </el-tab-pane>
         <el-tab-pane label="RAG 绑定" name="rag">
@@ -73,7 +66,7 @@ const { connectionMode, routerUrl, engineUrl, tenantId, statusText, authConfig, 
   <RagSettingsEditors :context="props.context" />
 
   <el-dialog v-model="showAgentEditor" class="editor-dialog agent-editor-dialog" modal-class="editor-overlay" width="min(920px, calc(100vw - 32px))" append-to-body destroy-on-close>
-    <template #header><div class="editor-dialog-header"><div><span class="eyebrow">AGENT RUNTIME</span><h3>{{ isNewAgent ? '创建 Agent' : (config?.name || 'Agent 配置') }}</h3></div><el-tag effect="plain" round>{{ config?.agentId }}</el-tag></div></template>
+    <template #header><div class="editor-dialog-header"><div><span class="eyebrow">AGENT CONFIGURATION</span><h3>{{ isNewAgent ? '创建 Agent' : (config?.name || 'Agent 配置') }}</h3></div><el-tag effect="plain" round>{{ config?.agentId }}</el-tag></div></template>
     <div v-if="config" class="agent-editor">
       <section class="agent-editor-section">
         <div class="agent-editor-section-heading"><div><span class="eyebrow">PROFILE</span><h4>基础信息</h4><p>先给 Agent 一个清晰的身份，再设置它的运行边界。</p></div><span class="editor-section-index">01</span></div>
@@ -89,28 +82,7 @@ const { connectionMode, routerUrl, engineUrl, tenantId, statusText, authConfig, 
       </section>
 
       <section class="agent-editor-section">
-        <div class="agent-editor-section-heading"><div><span class="eyebrow">OPENCODE RUNTIME</span><h4>OpenCode 运行时</h4><p>为这个 Agent 内嵌 OpenCode 的模型连接；聊天时在头部选择的模型仍可临时覆盖。API Key 只写不读，留空表示保持已保存的密钥。</p></div><span class="editor-section-index">02</span></div>
-        <el-form label-position="top" class="agent-form-grid">
-          <el-form-item label="内嵌模型"><el-switch :model-value="config.config.openCode?.model != null" @update:model-value="toggleOpenCodeModel(Boolean($event))" /><small class="form-help">开启后未显式选择模型的请求使用这里的连接。</small></el-form-item>
-          <template v-if="config.config.openCode?.model">
-            <el-form-item label="Endpoint"><el-input v-model="config.config.openCode!.model!.endpoint" placeholder="例如 https://open.bigmodel.cn/api/paas/v4" /></el-form-item>
-            <el-form-item label="API Key"><el-input v-model="config.config.openCode!.model!.apiKey" type="password" show-password placeholder="留空保持已保存的密钥" /></el-form-item>
-            <el-form-item label="模型 ID"><el-input v-model="config.config.openCode!.model!.modelId" placeholder="例如 glm-4.7" /></el-form-item>
-            <el-form-item label="接口格式">
-              <el-select v-model="config.config.openCode!.model!.format">
-                <el-option label="OpenAI Chat Completions" value="OpenAIChatCompletions" />
-                <el-option label="OpenAI Responses" value="OpenAIResponses" />
-                <el-option label="Anthropic Messages" value="AnthropicMessages" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="Temperature"><el-input-number v-model="config.config.openCode!.model!.temperature" :min="0" :max="2" :step="0.1" controls-position="right" /></el-form-item>
-            <el-form-item label="上下文窗口 (tokens)"><el-input-number v-model="config.config.openCode!.model!.contextTokens" :min="0" :step="1000" controls-position="right" /><small class="form-help">留 0 使用运行时回退值 128000。</small></el-form-item>
-          </template>
-        </el-form>
-      </section>
-
-      <section class="agent-editor-section">
-        <div class="agent-editor-section-heading"><div><span class="eyebrow">CAPABILITY BINDINGS</span><h4>能力绑定</h4><p>当前 Agent 的 MCP、Skill、RAG 以卡片展示；勾选即可启用或停用 Skill 与 RAG。</p></div><span class="editor-section-index">03</span></div>
+        <div class="agent-editor-section-heading"><div><span class="eyebrow">CAPABILITY BINDINGS</span><h4>能力绑定</h4><p>当前 Agent 的 MCP、Skill、RAG 以卡片展示；勾选即可启用或停用 Skill 与 RAG。</p></div><span class="editor-section-index">02</span></div>
         <div class="binding-groups">
           <article class="binding-group"><div class="binding-group-heading"><div><strong>MCP</strong><small>通过选择窗口绑定 MCP，当前仅显示已绑定项</small></div><el-button link type="primary" :loading="loadingMcpBindingOptions" @click="openMcpBindingPicker">选择 MCP</el-button></div><div v-if="boundMcpServers.length" class="binding-list"><div v-for="server in boundMcpServers" :key="server.name" class="binding-item"><span class="binding-icon mcp-avatar">M</span><div><strong>{{ server.name }}</strong><small>{{ server.type }} · {{ server.url || '配置不存在' }}</small></div><el-button link type="danger" @click="removeMcpBinding(server.name)">移除</el-button></div></div><div v-else class="binding-empty">尚未绑定 MCP，请点击“选择 MCP”。</div></article>
           <article class="binding-group"><div class="binding-group-heading"><div><strong>Skill</strong><small>通过选择窗口绑定 Skill，当前仅显示已绑定项</small></div><el-button link type="primary" :loading="loadingSkillBindingOptions" @click="openSkillBindingPicker">选择 Skill</el-button></div><div v-if="boundSkills.length" class="binding-list"><div v-for="skill in boundSkills" :key="skill.skillId" class="binding-item"><span class="binding-icon skill-avatar">S</span><div><strong>{{ skill.name || '未命名 Skill' }}</strong><small>{{ skill.skillId }}</small></div><el-button link type="danger" @click="removeSkillBinding(skill.skillId)">移除</el-button></div></div><div v-else class="binding-empty">尚未绑定 Skill，请点击“选择 Skill”。</div></article>

@@ -26,7 +26,8 @@ OpenCode 在 PATH 中时可省略 `--opencode`；脚本也会查找 `<data-root>
 
 1. 在“Runtime 设置”新增并保存名称、ID、运行时类型和单轮时限。OpenCode 可选；Claude Code、Codex CLI、Gemini CLI 显示为禁用，后端也拒绝保存这些未启用类型。
 2. 会话上方选择已保存的 Runtime。每次请求通过 `context.runtimeId` 选择当前租户的记录；实际单轮时限取该记录与宿主上限的较小值。旧 API 客户端未传 Runtime ID 时保留默认 OpenCode 行为；工作台发送要求选择已保存项。
-3. 模型、Skill、MCP 的设置入口和绑定保持原行为。独立 LLM 连接仍由聊天头部选择；“使用 Agent 模型”仍读取 Agent 编辑器中的内嵌连接。显式选择独立 LLM 配置覆盖 Agent 连接。
+3. 模型、Skill、MCP 的设置入口和能力绑定保持原位置。Agent 编辑器已移除旧 OpenCode 内嵌模型配置；聊天顶部独立选择已保存的 LLM 连接，未选择时阻止发送。
+4. 回复下方的“实际运行时 · OpenCode 版本号”由后端在原生进程完成 ACP 握手后返回，同时显示 Runtime 名称；随会话持久化，刷新后仍可核对。旧回复没有握手记录时不补造标识。
 4. Skill 上传、MCP 定义编辑、Agent 中的 Skill/MCP 绑定保持原位置，Runtime 记录不包含任何模型、Skill 或 MCP 绑定。
 
 ## 持久化与验收边界

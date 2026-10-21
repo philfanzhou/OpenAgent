@@ -57,7 +57,8 @@ Runtime 在独立设置页保存 ID、名称、Provider 和单轮时限，存入
 
 ## 模型与历史
 
-- 模型解析顺序：请求显式选择的 llmProfileId（聊天头部的模型下拉）优先；未携带时使用 Agent 配置内嵌的 OpenCode 模型（`AgentConfig.OpenCode.Model`，含 Endpoint/ApiKey/ModelId/ApiFormat/Temperature/ContextTokens，管理端响应脱敏 ApiKey、保存留空即保持原值）；两者都没有则明确报错。前端 Agent 编辑器提供该内嵌配置的设置界面，聊天头部选择“使用 Agent 模型”时不发送独立连接覆盖。
+- 聊天顶部独立选择已保存的 LLM 连接并通过 `llmProfileId` 传入；Agent 编辑器不再提供 OpenCode 或内嵌模型配置，也不再显示“使用 Agent 模型”选项。后端暂保留旧 API 的 `AgentConfig.OpenCode.Model` 回退与密钥保护，以兼容已有配置；新前端要求选择独立 LLM 连接。
+- 原生 OpenCode 进程完成 ACP `initialize` 后发送 `runtime` SSE 事件，携带驱动 Provider、保存的 Runtime ID/名称及对端报告的 Agent 名称/版本。平台将身份写入 assistant 消息 metadata.extensions，成功、失败/取消均保留已观察到的身份。前端回复下方显示“实际运行时”，刷新从持久化记录恢复；握手失败或旧消息不伪造运行时标识。
 - 只将本轮授权后的 Endpoint、ModelId、ApiFormat、Temperature、ContextTokens 交给 OpenCode。ApiKey 用独立子进程环境变量传入，配置中只放 `{env:OPENAGENT_MODEL_API_KEY}`，不拼接到命令、提示词或日志。
 - OpenCode 会在 JSON 解析前展开配置宏。驱动在序列化时转义租户文本中的花括号，只还原随机占位的密钥引用，避免 `{file:...}`/`{env:...}` 指令变成宿主文件读取或环境变量展开；有真实进程回归测试。
 - 子进程只继承 PATH/SystemRoot/WINDIR 白名单，不继承服务数据库口令、云凭据或用户 OpenCode 配置。启动命令由宿主配置，聊天请求不能替换。

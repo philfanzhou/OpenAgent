@@ -27,6 +27,9 @@ internal sealed class RuntimePreparationScope(
     {
         switch (item.Type)
         {
+            case AgentStreamEventType.RuntimeStarted when item.Runtime is { } runtime:
+                history.Runtime = runtime;
+                break;
             case AgentStreamEventType.Content:
                 _text.Append(item.Content);
                 history.AppendPartial(item.Content ?? string.Empty);

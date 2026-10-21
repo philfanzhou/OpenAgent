@@ -95,7 +95,13 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, ILogger
             {
                 RequestTimeout = TimeSpan.FromSeconds(settings.RequestTimeoutSeconds)
             });
-            await client.InitializeAsync(new("OpenAgent", "1"), cancellationToken).ConfigureAwait(false);
+            InitializeResponse initialized = await client.InitializeAsync(new("OpenAgent", "1"), cancellationToken).ConfigureAwait(false);
+            yield return new AgentStreamEvent
+            {
+                Type = AgentStreamEventType.RuntimeStarted,
+                Runtime = new("OpenCode", invocation.Profile.Runtime?.Id, invocation.Profile.Runtime?.Name,
+                    initialized.AgentInfo?.Name, initialized.AgentInfo?.Version)
+            };
             await using AcpSession session = await client.NewSessionAsync(new(workspace, sessionServers), cancellationToken).ConfigureAwait(false);
             await SelectModelAsync(session, invocation.Profile.Model.ModelId, cancellationToken).ConfigureAwait(false);
             await using AcpPromptTurn turn = await session.StartPromptAsync(prompt, cancellationToken).ConfigureAwait(false);

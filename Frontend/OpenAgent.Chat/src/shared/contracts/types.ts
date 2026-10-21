@@ -357,7 +357,16 @@ export interface OpenCodeModelBinding {
   contextTokens: number
 }
 
+export interface RuntimeExecutionInfo {
+  provider: string
+  profileId?: string | null
+  profileName?: string | null
+  agentName?: string | null
+  agentVersion?: string | null
+}
+
 export interface StreamEvent {
+  runtime?: RuntimeExecutionInfo
   type: string
   content?: string
   agentId?: string

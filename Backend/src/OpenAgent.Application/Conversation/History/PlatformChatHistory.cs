@@ -178,6 +178,19 @@ internal sealed class PlatformChatHistory : IAsyncDisposable
         return inline;
     }
 
+    internal RuntimeExecutionInfo? Runtime { get; set; }
+
+    private Dictionary<string, string>? RuntimeMetadata => Runtime is { } runtime
+        ? new()
+        {
+            ["runtimeProvider"] = runtime.Provider,
+            ["runtimeProfileId"] = runtime.ProfileId ?? string.Empty,
+            ["runtimeProfileName"] = runtime.ProfileName ?? string.Empty,
+            ["runtimeAgentName"] = runtime.AgentName ?? string.Empty,
+            ["runtimeAgentVersion"] = runtime.AgentVersion ?? string.Empty
+        }
+        : null;
+
     /// <summary>把中止/失败时已产生的部分正文与思考内容组装成一条 assistant 消息（含 reasoning 元数据）；失败时附失败原因。</summary>
     private ConversationMessage BuildPartialMessage(ConversationStatus status, MessageErrorMetadata? error = null)
     {
@@ -190,7 +203,8 @@ internal sealed class PlatformChatHistory : IAsyncDisposable
             {
                 ExecutionStatus = status.ToString(),
                 Reasoning = reasoning.Length > 0 ? reasoning : null,
-                Error = error
+                Error = error,
+                Extensions = RuntimeMetadata
             },
             modelId: _modelId);
     }
@@ -541,10 +555,21 @@ internal sealed class PlatformChatHistory : IAsyncDisposable
             string.Equals(message.Role, "assistant", StringComparison.OrdinalIgnoreCase));
         if (assistantIndex >= 0)
         {
+            ConversationMessageMetadata? metadata = _pending[assistantIndex].Metadata;
+            if (RuntimeMetadata is { } runtimeMetadata)
+            {
+                metadata ??= new();
+                metadata.Extensions ??= new();
+                foreach (KeyValuePair<string, string> entry in runtimeMetadata)
+                {
+                    metadata.Extensions[entry.Key] = entry.Value;
+                }
+            }
             _pending[assistantIndex] = _pending[assistantIndex] with
             {
                 TokenUsage = usage,
-                ModelId = modelId
+                ModelId = modelId,
+                Metadata = metadata
             };
         }
 
