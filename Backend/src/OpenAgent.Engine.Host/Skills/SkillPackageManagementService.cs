@@ -493,69 +493,6 @@ internal sealed class SkillPackageManagementService(
         return SkillPackageDeleteResult.Deleted;
     }
 
-    internal async Task<SkillPackageValidationResult> ValidateAsync(
-        string tenantId,
-        SkillsConfig skills,
-        CancellationToken cancellationToken)
-    {
-        var invalid = new List<string>();
-        var verified = new List<string>();
-        foreach (SkillInstanceConfig instance in skills.Instances.Where(item => item.Enabled))
-        {
-            if (!string.Equals(instance.TenantId, tenantId, StringComparison.Ordinal))
-            {
-                invalid.Add(instance.Id);
-                continue;
-            }
-            if (string.IsNullOrWhiteSpace(instance.Id) || string.IsNullOrWhiteSpace(instance.Name))
-            {
-                invalid.Add(string.IsNullOrWhiteSpace(instance.Id) ? instance.Name : instance.Id);
-                continue;
-            }
-
-            if (string.IsNullOrWhiteSpace(instance.ObjectKey))
-            {
-                continue;
-            }
-
-            try
-            {
-                EnsureTenantSharedObjectKey(instance.ObjectKey, tenantId);
-                byte[] content = await objectStore.ReadAsync(instance.ObjectKey, cancellationToken).ConfigureAwait(false);
-                string actual = Convert.ToHexString(SHA256.HashData(content)).ToLowerInvariant();
-                if (!string.IsNullOrWhiteSpace(instance.Sha256)
-                    && !string.Equals(instance.Sha256, actual, StringComparison.OrdinalIgnoreCase))
-                {
-                    invalid.Add(instance.Id);
-                    continue;
-                }
-
-                IReadOnlyList<SkillPackageFile> files = string.Equals(instance.PackageFormat, "directory", StringComparison.OrdinalIgnoreCase)
-                    ? await ReadStoredFilesAsync(tenantId, content, cancellationToken).ConfigureAwait(false)
-                    : AgentSkillPackageArchive.ReadZipFiles(content, cancellationToken);
-                AgentSkillPackageMetadata metadata = AgentSkillPackageArchive.InspectFiles(files, cancellationToken);
-                if (!string.Equals(metadata.Name, instance.Id, StringComparison.OrdinalIgnoreCase)
-                    && !string.Equals(metadata.Name, instance.Name, StringComparison.OrdinalIgnoreCase))
-                {
-                    invalid.Add(instance.Id);
-                    continue;
-                }
-                verified.Add(instance.Id);
-            }
-            catch (Exception exception) when (exception is InvalidOperationException or JsonException)
-            {
-                invalid.Add(instance.Id);
-            }
-        }
-
-        return new SkillPackageValidationResult(
-            invalid.Count == 0,
-            skills.EnabledSkills.Count,
-            skills.Instances.Count,
-            verified,
-            invalid);
-    }
-
     private static async Task<byte[]> ReadPackageAsync(
         Stream package,
         CancellationToken cancellationToken)
@@ -701,9 +638,3 @@ internal enum SkillPackageDeleteResult
     TenantMismatch
 }
 
-internal sealed record SkillPackageValidationResult(
-    bool Success,
-    int EnabledCount,
-    int InstanceCount,
-    IReadOnlyList<string> ObjectStorageVerifiedSkills,
-    IReadOnlyList<string> InvalidSkills);

@@ -1,5 +1,5 @@
 import { jsonInit, request, uploadForm } from '../../shared/api/http'
-import type { AgentConfigEntity, SkillCatalogItem, SkillInstanceConfig, SkillPackageInstallResponse, SkillTestResult } from '../../shared/contracts/types'
+import type { SkillCatalogItem, SkillInstanceConfig, SkillPackageInstallResponse } from '../../shared/contracts/types'
 
 export const api = {
   uploadSkillPackage(agentId: string, file: File): Promise<SkillPackageInstallResponse> {
@@ -36,9 +36,5 @@ export const api = {
 
   deleteSkillPackage(agentId: string, skillId: string): Promise<void> {
     return request<void>(`/api/v1/admin/skills/${encodeURIComponent(agentId)}/${encodeURIComponent(skillId)}`, { method: 'DELETE' })
-  },
-
-  testSkills(skills: AgentConfigEntity['config']['skills']): Promise<SkillTestResult> {
-    return request<SkillTestResult>('/api/v1/admin/skills/test', jsonInit('POST', skills))
   }
 }

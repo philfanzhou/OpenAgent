@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using OpenAgent.Contracts.Requests;
-using OpenAgent.Application.Runtime.Agent;
+using OpenAgent.Application.Execution;
 using OpenAgent.Engine.Host.Middleware;
 
 namespace OpenAgent.Engine.Host.Extensions;
@@ -28,7 +28,7 @@ internal static class AgentChatEndpointExtensions
 
     private static async Task<ChatResponse> ExecuteAsync(
         [FromBody] ChatRequest request,
-        [FromServices] AgentExecutor executor,
+        [FromServices] RuntimeAgentExecutor executor,
         HttpContext context,
         CancellationToken cancellationToken)
     {
@@ -47,7 +47,7 @@ internal static class AgentChatEndpointExtensions
 
     private static async Task<ChatResponse> ExecuteIntentAsync(
         [FromBody] ChatRequest request,
-        [FromServices] AgentExecutor executor,
+        [FromServices] RuntimeAgentExecutor executor,
         HttpContext context,
         CancellationToken cancellationToken)
     {
@@ -69,7 +69,7 @@ internal static class AgentChatEndpointExtensions
 
     private static async Task ExecuteStreamAsync(
         [FromBody] ChatRequest request,
-        [FromServices] AgentExecutor executor,
+        [FromServices] RuntimeAgentExecutor executor,
         [FromServices] ILogger<Program> logger,
         HttpContext context,
         CancellationToken cancellationToken)

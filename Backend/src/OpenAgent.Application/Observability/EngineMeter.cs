@@ -69,8 +69,7 @@ internal static class EngineMeter
         });
     }
 
-    private static bool IsSkillCall(string? name) => name?.Trim().ToLowerInvariant() is
-        "load_skill" or "read_skill_resource" or "run_skill_script";
+    private static bool IsSkillCall(string? name) => name?.Trim().ToLowerInvariant() is "run_skill_script";
 
     private static string NormalizeMode(string? value) => value?.Trim().ToLowerInvariant() switch
     {

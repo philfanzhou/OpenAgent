@@ -136,7 +136,7 @@ public sealed class ConversationHistoryFactoryTests
                 EnableAutoCompaction = enableAutoCompaction
             }),
             loggerFactory: NullLoggerFactory.Instance,
-            historyFactory: null!);
+            services: null!);
 
     private sealed class CapturingChatClient(string responseText = "summary") : IChatClient
     {

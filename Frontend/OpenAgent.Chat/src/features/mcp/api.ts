@@ -1,11 +1,7 @@
 import { jsonInit, request } from '../../shared/api/http'
-import type { McpServerConfig, McpTestResult } from '../../shared/contracts/types'
+import type { McpServerConfig } from '../../shared/contracts/types'
 
 export const api = {
-  testMcp(server: McpServerConfig, agentId?: string): Promise<McpTestResult> {
-    return request<McpTestResult>('/api/v1/admin/mcp/test-connection', jsonInit('POST', { agentId, server, action: 'discover' }))
-  },
-
   listMcpProfiles(): Promise<McpServerConfig[]> {
     return request<McpServerConfig[]>('/api/v1/admin/mcp')
   },

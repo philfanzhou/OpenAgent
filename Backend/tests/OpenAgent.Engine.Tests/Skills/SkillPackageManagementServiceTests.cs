@@ -71,32 +71,6 @@ public class SkillPackageManagementServiceTests
     }
 
     [Fact]
-    public async Task ValidateAsync_ReadsPackageFromObjectStorageAndVerifiesHash()
-    {
-        (SkillPackageManagementService service, _, RecordingObjectStore store) = await CreateServiceAsync();
-        byte[] content = CreatePackage();
-        await using var package = new MemoryStream(content);
-        SkillPackageInstallResult installed = await service.InstallAsync(
-            AgentId, "tenant", "user", "customer.zip", "application/zip", package, null, default);
-        SkillInstanceConfig storedSkill = installed.Skill!;
-        var skills = new SkillsConfig
-        {
-            EnabledSkills = ["customer-lookup"],
-            Instances =
-            [
-                storedSkill
-            ]
-        };
-
-        SkillPackageValidationResult result = await service.ValidateAsync("tenant", skills, default);
-
-        Assert.True(result.Success);
-        Assert.Equal(["customer-lookup"], result.ObjectStorageVerifiedSkills);
-        Assert.NotNull(store.LastReadObjectKey);
-        Assert.Contains(store.LastReadObjectKey!, store.Objects.Keys);
-    }
-
-    [Fact]
     public async Task DeleteAsync_RemovesAgentBindingAndStoredObject()
     {
         (SkillPackageManagementService service, ConfigurationService configs, RecordingObjectStore store) =
@@ -145,30 +119,6 @@ public class SkillPackageManagementServiceTests
         Assert.False(result.AgentExists);
         Assert.Empty(store.Objects);
         Assert.Equal("tenant-a", (await configs.GetAgentAsync(AgentId, "tenant-a"))!.TenantId);
-    }
-
-    [Fact]
-    public async Task ValidateAsync_SkillOwnedByAnotherTenant_DoesNotReadObjectStorage()
-    {
-        (SkillPackageManagementService service, _, RecordingObjectStore store) = await CreateServiceAsync();
-        var skills = new SkillsConfig
-        {
-            Instances =
-            [
-                new SkillInstanceConfig
-                {
-                    Id = "customer-lookup",
-                    Name = "customer-lookup",
-                    TenantId = "tenant-b",
-                    ObjectKey = "private/tenants/foreign/users/foreign/skill.json"
-                }
-            ]
-        };
-
-        SkillPackageValidationResult result = await service.ValidateAsync("tenant-a", skills, default);
-
-        Assert.False(result.Success);
-        Assert.Null(store.LastReadObjectKey);
     }
 
     [Fact]

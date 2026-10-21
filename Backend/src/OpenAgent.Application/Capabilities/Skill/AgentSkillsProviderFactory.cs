@@ -12,6 +12,7 @@ using OpenAgent.Contracts.Capabilities;
 using OpenAgent.Capabilities.Files.Requests;
 using OpenAgent.Capabilities.Integrations.Runner;
 using OpenAgent.Capabilities.Security;
+using OpenAgent.Application.Tooling.Abstractions;
 
 namespace OpenAgent.Application.Capabilities.Skill;
 
@@ -28,9 +29,24 @@ internal sealed class AgentSkillsProviderFactory(
     ICodeExecutor executor,
     IFileAssetService files,
     FileAssetExecutionContext fileContext,
-    IOptions<CodeExecutionOptions> codeOptions)
+    IOptions<CodeExecutionOptions> codeOptions) : IAgentFeatureFactory
 {
-    internal async Task<AgentSkillsRuntime> CreateAsync(
+    async Task<AgentFeature> IAgentFeatureFactory.CreateAsync(
+        string agentId,
+        AgentConfig config,
+        IAgentUserContext user,
+        CancellationToken cancellationToken)
+    {
+        AgentSkillsRuntime runtime = await CreateRuntimeAsync(agentId, config, user, cancellationToken).ConfigureAwait(false);
+        return new AgentFeature
+        {
+            Skills = runtime.Skills,
+            Tools = runtime.Tools,
+            Resource = runtime
+        };
+    }
+
+    internal async Task<AgentSkillsRuntime> CreateRuntimeAsync(
         string agentId,
         AgentConfig config,
         IAgentUserContext user,

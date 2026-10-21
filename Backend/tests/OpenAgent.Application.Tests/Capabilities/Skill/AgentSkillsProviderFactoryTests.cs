@@ -1,11 +1,11 @@
 using OpenAgent.Capabilities.Tests.TestDoubles;
-using OpenAgent.Capabilities.Skills;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Options;
 using Moq;
+using OpenAgent.Contracts.Capabilities;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Execution;
 using OpenAgent.Contracts.Files;
@@ -107,7 +107,7 @@ public class AgentSkillsProviderFactoryTests
     {
         internal RecordingFileAssetRepository Repository { get; } = new();
         internal RecordingFileObjectStore Objects { get; } = new();
-        internal SkillCatalog Catalog { get; } = new();
+        internal StubSkillCatalog Catalog { get; } = new();
         internal FakeCodeExecutor Executor { get; } = new();
         internal FileAssetExecutionContext Context { get; } = new();
         internal AgentUserContext User { get; } = new() { TenantId = "tenant", UserId = "user" };
@@ -133,7 +133,7 @@ public class AgentSkillsProviderFactoryTests
         {
             Context.Set(TurnContexts.Create());
             RegisterPackage();
-            return await Factory.CreateAsync(
+            return await Factory.CreateRuntimeAsync(
                 "agent",
                 new AgentConfig
                 {
@@ -198,5 +198,26 @@ public class AgentSkillsProviderFactoryTests
             Objects.ContentsByKey[baseKey + "/1"] = script;
             Catalog.Register(instance);
         }
+    }
+
+    private sealed class StubSkillCatalog : ISkillCatalog
+    {
+        private readonly List<SkillInstanceConfig> _skills = [];
+
+        internal void Register(SkillInstanceConfig skill) => _skills.Add(skill);
+
+        public Task<IReadOnlyList<SkillInstanceConfig>> ListAsync(
+            string tenantId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<SkillInstanceConfig>>(
+                _skills.Where(skill => string.Equals(skill.TenantId, tenantId, StringComparison.Ordinal)).ToList());
+
+        public Task<SkillInstanceConfig?> GetAsync(
+            string tenantId,
+            string skillId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(_skills.FirstOrDefault(skill =>
+                string.Equals(skill.TenantId, tenantId, StringComparison.Ordinal)
+                && string.Equals(skill.Id, skillId, StringComparison.Ordinal)));
     }
 }

@@ -45,7 +45,10 @@ public class CapabilityServiceRegistrationTests
         Assert.Contains(sources, source => source is RagCapabilitySource);
         Assert.Contains(sources, source => source is UserProfileCapabilitySource);
         Assert.DoesNotContain(sources, source => source.GetType().Name.Contains("HttpSkill", StringComparison.Ordinal));
-        Assert.NotNull(scope.ServiceProvider.GetRequiredService<AgentSkillsProviderFactory>());
+        IEnumerable<OpenAgent.Application.Tooling.Abstractions.IAgentFeatureFactory> features = scope.ServiceProvider
+            .GetRequiredService<IEnumerable<OpenAgent.Application.Tooling.Abstractions.IAgentFeatureFactory>>();
+        Assert.Contains(features, feature => feature is OpenAgent.Application.Capabilities.Skill.AgentSkillsProviderFactory);
+        Assert.Contains(features, feature => feature is OpenAgent.Application.Capabilities.Mcp.McpFeatureFactory);
     }
 
     [Fact]

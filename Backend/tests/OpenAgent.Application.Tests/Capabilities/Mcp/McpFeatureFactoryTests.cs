@@ -1,6 +1,3 @@
-using Microsoft.Extensions.Logging.Abstractions;
-using ModelContextProtocol.Client;
-using Moq;
 using OpenAgent.Contracts.Capabilities;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Security;
@@ -16,22 +13,6 @@ public sealed class McpFeatureFactoryTests
 {
     private const string AgentId = "agent-1";
     private static readonly AgentUserContext User = new() { UserId = "user-1", TenantId = "tenant-1" };
-
-    [Theory]
-    [InlineData(null, null)]
-    [InlineData("", null)]
-    [InlineData("2025-06-18", "2025-06-18")]
-    [InlineData("2026-07-28", "2026-07-28")]
-    public void CreateClientOptions_UsesOfficialMcpClientOptions(
-        string? configured,
-        string? expected)
-    {
-        McpClientOptions options = McpClientOptionsFactory.Create(
-            new McpServerConfig { ProtocolVersion = configured });
-
-        Assert.Equal(expected, options.ProtocolVersion);
-        Assert.Equal("OpenAgent", options.ClientInfo?.Name);
-    }
 
     [Fact]
     public async Task CreateAsync_InlineServers_ResolveToDefinitions()
@@ -60,13 +41,13 @@ public sealed class McpFeatureFactoryTests
     }
 
     [Fact]
-    public async Task CreateAsync_EnabledServerIds_ResolveThroughRegistryAndDeduplicate()
+    public async Task CreateAsync_EnabledServerIds_ResolveThroughRepositoryAndDeduplicate()
     {
-        var registry = new StaticRegistry(new McpServerConfig
+        var repository = new StubRepository(new McpServerConfig
         {
             Name = "published", Url = "http://published.test/mcp", Type = McpServerType.Http, TenantId = "tenant-1"
         });
-        McpFeatureFactory factory = CreateFactory(new AllowAllAgentAuthorizationService(), registry);
+        McpFeatureFactory factory = CreateFactory(new AllowAllAgentAuthorizationService(), repository);
 
         AgentFeature feature = await factory.CreateAsync(AgentId, new AgentConfig
         {
@@ -81,6 +62,25 @@ public sealed class McpFeatureFactoryTests
         var server = Assert.Single(feature.McpServers);
         Assert.Equal("published", server.Name);
         Assert.Equal("http://published.test/mcp", server.Url);
+    }
+
+    [Fact]
+    public async Task CreateAsync_UnknownServerId_IsSkipped()
+    {
+        McpFeatureFactory factory = CreateFactory(
+            new AllowAllAgentAuthorizationService(), new StubRepository());
+
+        AgentFeature feature = await factory.CreateAsync(AgentId, new AgentConfig
+        {
+            Mcp = new McpConfig
+            {
+                EnabledServerIds = ["missing"],
+                Servers = [new McpServerConfig { Name = "inline", Url = "http://inline.test", TenantId = "tenant-1" }]
+            }
+        }, User, CancellationToken.None);
+
+        // 注册表里不存在的 id 不报错；EnabledServerIds 仍优先于内联配置。
+        Assert.Empty(feature.McpServers);
     }
 
     [Fact]
@@ -117,25 +117,25 @@ public sealed class McpFeatureFactoryTests
 
     private static McpFeatureFactory CreateFactory(
         IAgentAuthorizationService authorization,
-        IMcpRegistry? registry = null) =>
-        new(new AgentAuthorizationGate(authorization), registry ?? new StaticRegistry());
+        IMcpConfigRepository? repository = null) =>
+        new(new AgentAuthorizationGate(authorization), repository);
 
-    private sealed class StaticRegistry(params McpServerConfig[] servers) : IMcpRegistry
+    private sealed class StubRepository(params McpServerConfig[] servers) : IMcpConfigRepository
     {
         private readonly List<McpServerConfig> _servers = [.. servers];
 
-        public IReadOnlyList<McpServerConfig> GetAll() => _servers;
+        public Task<McpServerConfig?> GetAsync(string tenantId, string id, CancellationToken cancellationToken = default) =>
+            Task.FromResult(_servers.FirstOrDefault(server =>
+                string.Equals(server.Name, id, StringComparison.OrdinalIgnoreCase)));
 
-        public McpServerConfig? Get(string id) =>
-            _servers.FirstOrDefault(server => string.Equals(server.Name, id, StringComparison.OrdinalIgnoreCase));
+        public Task<IReadOnlyList<McpServerConfig>> ListAsync(string tenantId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<McpServerConfig>>(_servers);
 
-        public void Register(McpServerConfig server) => _servers.Add(server);
+        public Task SaveAsync(string tenantId, McpServerConfig server, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
 
-        public bool Remove(string id)
-        {
-            int removed = _servers.RemoveAll(server => string.Equals(server.Name, id, StringComparison.OrdinalIgnoreCase));
-            return removed > 0;
-        }
+        public Task<bool> DeleteAsync(string tenantId, string id, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
     }
 
     private sealed class DenyMcpAuthorizationService : IAgentAuthorizationService
