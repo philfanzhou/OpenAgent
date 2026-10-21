@@ -10,7 +10,7 @@ namespace OpenAgent.Runtime;
 
 internal static class OpenCodeLaunch
 {
-    internal static AcpProcessOptions Create(OpenCodeOptions options, RuntimeInvocation invocation, string workspace)
+    internal static AcpProcessOptions Create(OpenCodeLaunchSpec launch, RuntimeInvocation invocation, string workspace)
     {
         LlmConfig model = invocation.Profile.Model;
         string keyReference = Guid.NewGuid().ToString("N");
@@ -105,7 +105,7 @@ internal static class OpenCodeLaunch
             JsonSerializer.Serialize(keyReference), JsonSerializer.Serialize("{env:OPENAGENT_MODEL_API_KEY}"), StringComparison.Ordinal);
         environment["OPENCODE_DISABLE_AUTOUPDATE"] = "true";
         environment["OPENCODE_DISABLE_SHARE"] = "true";
-        return new AcpProcessOptions(options.Executable, options.Arguments)
+        return new AcpProcessOptions(launch.FileName, launch.Arguments)
         {
             WorkingDirectory = workspace,
             EnvironmentMode = AcpEnvironmentMode.AllowList,

@@ -47,7 +47,7 @@ public sealed class RuntimeBoundaryTests
                 Config = new AgentConfig(),
                 Model = new LlmConfig { ModelId = "chosen", ApiKey = "selected-secret", Endpoint = "https://example.test/v1", ContextTokens = 100000 }
             }, new TurnContext { TenantId = "tenant", ConversationId = "c", UserId = "u", TraceId = "t" }, "平台指令 {file:/must-not-read} {env:PATH}", [new("user", "hello")], []);
-            var launch = OpenCodeLaunch.Create(new OpenCodeOptions(), request, root);
+            var launch = OpenCodeLaunch.Create(new OpenCodeLaunchSpec("opencode", ["acp"]), request, root);
             Assert.Equal(Acp.Processes.AcpEnvironmentMode.AllowList, launch.EnvironmentMode);
             Assert.Equal("selected-secret", launch.Environment!["OPENAGENT_MODEL_API_KEY"]);
             Assert.DoesNotContain("selected-secret", launch.Environment["OPENCODE_CONFIG_CONTENT"]);

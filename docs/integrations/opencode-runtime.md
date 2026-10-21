@@ -71,7 +71,7 @@ Runtime 在独立设置页保存 ID、名称、Provider 和单轮时限，存入
 
 免 Docker 的本机启动、前端配置与数据生命周期见 [本机预览](../operations/local-preview.md)。
 
-开发机安装并固定 OpenCode 1.18.35，先验证 `opencode --version`；启动 Engine.Host 前确保该可执行文件在 PATH，或配置绝对路径。Engine 镜像包含同版本的 Linux 原生二进制，无需在运行容器内安装 Node/npm。
+开发机安装并固定 OpenCode 1.18.35，先验证 `opencode --version`。首个执行轮次按以下顺序解析可执行文件（`OpenCode:Executable`，默认 `opencode`）：配置为路径且存在时直接使用；否则依次探测 PATH 目录直接命中、各 PATH 目录与 npm 默认全局根（`%APPDATA%\npm`）下的 npm 安装布局（`node_modules/opencode-ai/bin`、`node_modules/opencode-windows-x64[-baseline]/bin`）；Windows 上仍找不到时经 `cmd.exe` 转发 `.cmd/.bat` shim 兜底，全部未命中时报 `DependencyUnavailable` 并附带安装指引。Linux/macOS 的 npm 启动器可直接执行，PATH 命中即可。Engine 镜像包含同版本的 Linux 原生二进制，无需在运行容器内安装 Node/npm。
 
 ```json
 {

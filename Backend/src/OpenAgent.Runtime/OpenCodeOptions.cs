@@ -4,6 +4,7 @@ namespace OpenAgent.Runtime;
 public sealed class OpenCodeOptions
 {
     public const string SectionName = "OpenCode";
+    /// <summary>命令名或绝对路径。默认 "opencode"，按 PATH、npm 安装布局解析，Windows 最后经 cmd shim 兜底。</summary>
     public string Executable { get; set; } = "opencode";
     public string[] Arguments { get; set; } = [];
     public string WorkspaceRoot { get; set; } = Path.Combine(Path.GetTempPath(), "openagent-acp");

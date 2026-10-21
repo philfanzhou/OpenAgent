@@ -19,6 +19,40 @@ namespace OpenAgent.Runtime;
 internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, ILogger<OpenCodeRuntime> logger) : IAgentRuntimeDriver, IDisposable
 {
     private readonly SemaphoreSlim _turns = new(options.Value.MaxConcurrentTurns);
+    private readonly object _launchGate = new();
+    private OpenCodeLaunchSpec? _launch;
+
+    /// <summary>可执行文件解析一次后缓存；解析失败不影响引擎启动，只在首个执行轮次暴露错误。</summary>
+    private OpenCodeLaunchSpec Launch
+    {
+        get
+        {
+            if (_launch is { } cached)
+            {
+                return cached;
+            }
+            lock (_launchGate)
+            {
+                if (_launch is { } resolved)
+                {
+                    return resolved;
+                }
+                OpenCodeLaunchSpec spec = OpenCodeExecutable.Resolve(options.Value);
+                if (spec.ShellFallback)
+                {
+                    logger.LogWarning(
+                        "OpenCode executable fell back to npm shim '{Source}' via cmd.exe; install a native executable for direct launch.",
+                        spec.Source);
+                }
+                else
+                {
+                    logger.LogInformation("OpenCode executable resolved: {Source}", spec.Source);
+                }
+                _launch = spec;
+                return spec;
+            }
+        }
+    }
 
     public async IAsyncEnumerable<AgentStreamEvent> RunAsync(
         RuntimeInvocation invocation,
@@ -90,7 +124,7 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, ILogger
             await using RuntimeToolBridge bridge = await RuntimeToolBridge.StartAsync(invocation.Tools, cancellationToken).ConfigureAwait(false);
             // 平台自有工具经桥；外部 MCP server 按 Agent 配置直接透传给 harness 原生连接。
             McpServer[] sessionServers = [bridge.Server, .. OpenCodeSessionMcp.Map(invocation.McpServers)];
-            await using AcpProcess process = AcpProcess.Start(OpenCodeLaunch.Create(settings, invocation, workspace));
+            await using AcpProcess process = AcpProcess.Start(OpenCodeLaunch.Create(Launch, invocation, workspace));
             await using AcpClient client = new(process.Transport, options: new()
             {
                 RequestTimeout = TimeSpan.FromSeconds(settings.RequestTimeoutSeconds)
