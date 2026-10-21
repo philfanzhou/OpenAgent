@@ -17,9 +17,6 @@ internal static partial class RouterLog
     [LoggerMessage(EventId = 3000, Level = LogLevel.Warning, Message = "Request rejected: user not authenticated. Action={Action}, Method={Method}, Path={Path}, TraceId={TraceId}")]
     public static partial void UnauthenticatedRequest(ILogger logger, string? action, string method, PathString path, string? traceId);
 
-    [LoggerMessage(EventId = 3001, Level = LogLevel.Warning, Message = "Request rejected: tenant mismatch. Action={Action}, UserId={UserId}, UserTenantId={UserTenantId}, HeaderTenantId={HeaderTenantId}, TraceId={TraceId}")]
-    public static partial void TenantMismatchRejected(ILogger logger, string? action, string userId, string? userTenantId, string headerTenantId, string? traceId);
-
     [LoggerMessage(EventId = 3002, Level = LogLevel.Warning, Message = "Request rejected by rate limiter. Action={Action}, ClientId={ClientId}, UserId={UserId}, TenantId={TenantId}, TraceId={TraceId}")]
     public static partial void RateLimited(ILogger logger, string? action, string clientId, string userId, string? tenantId, string? traceId);
 
@@ -70,20 +67,8 @@ internal static partial class RouterLog
 
     #region --- Service Discovery (RedisServiceDiscoveryRouteTable) ---
 
-    [LoggerMessage(EventId = 3010, Level = LogLevel.Debug, Message = "Redis not available, skipping dynamic service discovery")]
-    public static partial void RedisNotAvailableForDiscovery(ILogger logger);
-
-    [LoggerMessage(EventId = 3011, Level = LogLevel.Debug, Message = "No healthy engines found in snapshot")]
-    public static partial void NoHealthyEnginesInSnapshot(ILogger logger);
-
     [LoggerMessage(EventId = 3012, Level = LogLevel.Debug, Message = "Session affinity selected engine {EngineId} for conversation {ConversationId}")]
     public static partial void SessionAffinityEngineSelected(ILogger logger, string engineId, string conversationId);
-
-    [LoggerMessage(EventId = 3013, Level = LogLevel.Warning, Message = "Session affinity target engine {EngineId} not in healthy list, falling back to lowest load")]
-    public static partial void AffinityEngineNotInHealthyList(ILogger logger, string engineId);
-
-    [LoggerMessage(EventId = 3014, Level = LogLevel.Warning, Message = "No healthy engines found in Redis registry")]
-    public static partial void NoHealthyEnginesInRegistry(ILogger logger);
 
     [LoggerMessage(EventId = 3015, Level = LogLevel.Information, Message = "Selected engine {EngineId} at {Endpoint} with load {Load}")]
     public static partial void EngineSelected(ILogger logger, string engineId, string endpoint, int load);

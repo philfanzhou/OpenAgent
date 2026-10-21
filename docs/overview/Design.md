@@ -37,14 +37,14 @@ PostgreSQL 继续是会话与文件资产的持久化事实源；Redis 是缓存
 
 每轮创建新 OpenCode 进程/会话，平台历史作为有角色标识的 JSON 上下文传入；不把 ACP session ID 当作持久化会话主键，不依赖跨进程 session/load。取消或失败保存已输出的正文、reasoning 与工具记录。
 
-MAF/Microsoft.Extensions.AI 仍服务于历史和 Skill Provider 兼容、既有独立压缩服务。旧聊天推理循环只保留在 tests/TestDoubles 的回归快照中，生产入口没有自动 MAF 回退。完整移除兼容代码和包、Worker、分布式 RunGrant 是后续任务，不能以本次接入代替验收。
+Microsoft.Extensions.AI 仍作为工具（`AIFunction`）与摘要客户端的底层抽象保留；历史、Skill 与压缩均为平台自持实现。MAF 包已随 PR #234 移除，生产入口没有第二条推理路径。Worker、分布式 RunGrant 是后续任务，不能以本次接入代替验收。
 
 ## DI 入口
 
 ```csharp
 services.AddAgentApplication(configuration);
 services.AddOpenCodeRuntime(configuration);
-services.AddOpenAgentInfrastructure(configuration);
+services.AddOpenAgentFramework(configuration);
 services.AddFileAssetObjectStorage(configuration);
 services.AddAgentEngine(configuration);
 ```

@@ -109,24 +109,6 @@ internal static partial class EngineLog
     [LoggerMessage(EventId = 4060, Level = LogLevel.Warning, Message = "Streaming heartbeat failed. Endpoint={Endpoint}, TraceId={TraceId}, ExceptionType={ExceptionType}")]
     private static partial void StreamingHeartbeatFailedCore(ILogger logger, Exception exception, string endpoint, string traceId, string exceptionType);
 
-    public static void UnhandledExceptionAfterResponseStart(ILogger logger, Exception exception, string method, string path, string traceId) =>
-        UnhandledExceptionAfterResponseStartCore(logger, exception, method, path, traceId, exception.GetType().FullName ?? "unknown");
-
-    [LoggerMessage(EventId = 4061, Level = LogLevel.Warning, Message = "Unhandled exception after response started. Method={Method}, Path={Path}, TraceId={TraceId}, ExceptionType={ExceptionType}")]
-    private static partial void UnhandledExceptionAfterResponseStartCore(ILogger logger, Exception exception, string method, string path, string traceId, string exceptionType);
-
-    public static void UnhandledExceptionMappedToProblemDetails(ILogger logger, Exception exception, string method, string path, int statusCode, string traceId) =>
-        UnhandledExceptionMappedToProblemDetailsCore(logger, exception, method, path, statusCode, traceId, exception.GetType().FullName ?? "unknown");
-
-    [LoggerMessage(EventId = 4062, Level = LogLevel.Error, Message = "Unhandled exception mapped to problem details. Method={Method}, Path={Path}, StatusCode={StatusCode}, TraceId={TraceId}, ExceptionType={ExceptionType}")]
-    private static partial void UnhandledExceptionMappedToProblemDetailsCore(ILogger logger, Exception exception, string method, string path, int statusCode, string traceId, string exceptionType);
-
-    public static void SseEndpointErrorOccurred(ILogger logger, Exception exception, string method, string path, string traceId, bool responseStarted) =>
-        SseEndpointErrorOccurredCore(logger, exception, method, path, traceId, responseStarted, exception.GetType().FullName ?? "unknown");
-
-    [LoggerMessage(EventId = 4063, Level = LogLevel.Error, Message = "SSE endpoint error occurred. Method={Method}, Path={Path}, TraceId={TraceId}, ResponseStarted={ResponseStarted}, ExceptionType={ExceptionType}")]
-    private static partial void SseEndpointErrorOccurredCore(ILogger logger, Exception exception, string method, string path, string traceId, bool responseStarted, string exceptionType);
-
     public static void LlmConfigCacheEvictionFailed(ILogger logger, Exception exception, string profileId) =>
         LlmConfigCacheEvictionFailedCore(logger, exception, profileId, exception.GetType().FullName ?? "unknown");
 

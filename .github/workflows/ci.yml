@@ -27,6 +27,8 @@ jobs:
           dotnet-version: 10.0.x
       - name: Test image build and offline deployment commands
         run: python3 scripts/test-deployment-scripts.py
+      - name: Test Compose deployment layout
+        run: python3 scripts/test-deployment-layout.py
       - name: Install Bubblewrap and document runtime
         run: |
           sudo apt-get update
@@ -57,7 +59,7 @@ jobs:
             export RUN_CODEACT_RUNNER_TESTS=1
             export CODEACT_TEST_RUNNER_ENDPOINT="$ASPNETCORE_URLS"
             export CODEACT_TEST_RUNNER_KEY="$Runner__ApiKey"
-            dotnet test Backend/tests/OpenAgent.Application.Tests/OpenAgent.Application.Tests.csproj --configuration Release --filter FullyQualifiedName~MafLoop_RealRunner --nologo --verbosity normal
+            dotnet test Backend/tests/OpenAgent.Application.Tests/OpenAgent.Application.Tests.csproj --configuration Release --filter FullyQualifiedName~RealRunner_GeneratesEditsAndPublishesAuthorizedArtifact --nologo --verbosity normal
           '
       - name: Show Runner service diagnostics on failure
         if: failure()

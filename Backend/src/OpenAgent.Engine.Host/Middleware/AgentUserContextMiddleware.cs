@@ -10,8 +10,7 @@ internal sealed class AgentUserContextMiddleware
     private readonly ILogger<AgentUserContextMiddleware> _logger;
     public AgentUserContextMiddleware(
         RequestDelegate next,
-        ILogger<AgentUserContextMiddleware> logger,
-        IHostEnvironment environment)
+        ILogger<AgentUserContextMiddleware> logger)
     {
         _next = next;
         _logger = logger;

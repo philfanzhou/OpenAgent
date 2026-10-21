@@ -53,8 +53,8 @@ Basic 模式仅允许 Development 环境，开发账号为 `admin/admin` 或 `te
 ## 镜像构建与导出
 
 构建脚本支持本机 Docker 和 WSL Docker。未指定模式时会自动检测当前可用的 Docker；也可以使用
-`--docker-mode docker` 或 `--docker-mode wsl-docker` 强制选择。部署也使用同一模式，确保镜像位于同一个
-Docker daemon：
+`--docker-mode auto`、`--docker-mode docker` 或 `--docker-mode wsl-docker` 强制选择。部署也使用同一模式，
+确保镜像位于同一个 Docker daemon：
 
 ```bash
 # 本机 Docker
@@ -69,7 +69,8 @@ scripts/deploy.sh --env-file .env --docker-mode wsl-docker
 先构建镜像，再部署；构建脚本不会启动容器，部署脚本不会执行构建。Chat 镜像的构建参数与部署环境文件
 同名（`OPENAGENT_PUBLIC_SCHEME`/`OPENAGENT_PUBLIC_HOST` 与 Router/Engine 端口），浏览器端地址在镜像内派生；
 不经过脚本直接 `docker build` 时也使用同一组变量。也可以在 `.env` 中设置
-`OPENAGENT_DOCKER_MODE=auto`、`docker` 或 `wsl-docker`，省略命令行参数。
+`OPENAGENT_DOCKER_MODE=auto`、`docker` 或 `wsl-docker`，省略命令行参数；命令行 `--docker-mode` 优先于
+`.env` 中的设置。
 
 Windows PowerShell 可使用等价的 `scripts/build-images.ps1`；未指定 `-DockerMode` 时同样自动检测：
 

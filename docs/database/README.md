@@ -34,4 +34,4 @@ ConversationMessage * --- * FileAsset (message_file_references)
 FileAsset 1 --- * FileShareLink
 ```
 
-详细字段见 [ConversationRecords](./tables/ConversationRecords.md)、[LlmInteractionLogs](./tables/LlmInteractionLogs.md)、[FileAssets](./tables/FileAssets.md) 和 [Configurations](./tables/Configurations.md)。
+详细字段见 [ConversationRecords](./tables/ConversationRecords.md)、[ConversationMessages](./tables/ConversationMessages.md)、[LlmInteractionLogs](./tables/LlmInteractionLogs.md)、[FileAssets](./tables/FileAssets.md) 和 [Configurations](./tables/Configurations.md)。

@@ -2,7 +2,7 @@ namespace OpenAgent.Contracts.Infrastructure;
 
 /// <summary>
 /// Selects the infrastructure implementation used for durable application data.
-/// Contracts and Core remain independent from a particular database provider.
+/// Contracts remain independent from a particular database provider.
 /// </summary>
 public sealed class StorageOptions
 {
@@ -10,7 +10,7 @@ public sealed class StorageOptions
 
     /// <summary>
     /// Provider name. PostgreSql is the current implementation; additional
-    /// providers can be added in Infrastructure without changing Core contracts.
+    /// providers can be added in Framework without changing Contracts.
     /// </summary>
     public string Provider { get; set; } = "PostgreSql";
 

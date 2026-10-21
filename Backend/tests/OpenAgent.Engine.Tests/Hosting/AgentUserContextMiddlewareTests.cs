@@ -1,9 +1,7 @@
 using OpenAgent.Engine.Hosting;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
-using Moq;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Engine.Host.Middleware;
@@ -16,7 +14,7 @@ public class AgentUserContextMiddlewareTests
     [Fact]
     public async Task InvokeAsync_MissingTenantOnAgentPath_ThrowsTenantIsolation()
     {
-        AgentUserContextMiddleware middleware = CreateMiddleware(Environments.Production);
+        AgentUserContextMiddleware middleware = CreateMiddleware();
         DefaultHttpContext context = CreateContext();
 
         await Assert.ThrowsAsync<TenantDataIsolationException>(() =>
@@ -26,7 +24,7 @@ public class AgentUserContextMiddlewareTests
     [Fact]
     public async Task InvokeAsync_ClaimAndHeaderMismatch_ThrowsTenantMismatch()
     {
-        AgentUserContextMiddleware middleware = CreateMiddleware(Environments.Production);
+        AgentUserContextMiddleware middleware = CreateMiddleware();
         DefaultHttpContext context = CreateContext("trusted-tenant");
         context.Request.Headers["X-Tenant-Id"] = "spoofed-tenant";
 
@@ -37,9 +35,9 @@ public class AgentUserContextMiddlewareTests
     }
 
     [Fact]
-    public async Task InvokeAsync_DevelopmentHeaderWithoutClaim_StillFailsTenantIsolation()
+    public async Task InvokeAsync_HeaderWithoutClaim_StillFailsTenantIsolation()
     {
-        AgentUserContextMiddleware middleware = CreateMiddleware(Environments.Development);
+        AgentUserContextMiddleware middleware = CreateMiddleware();
         DefaultHttpContext context = CreateContext();
         context.Request.Headers["X-Tenant-Id"] = "development-tenant";
 
@@ -50,7 +48,7 @@ public class AgentUserContextMiddlewareTests
     [Fact]
     public async Task InvokeAsync_AuthenticatedClaims_PopulatesIdentityProfile()
     {
-        AgentUserContextMiddleware middleware = CreateMiddleware(Environments.Production);
+        AgentUserContextMiddleware middleware = CreateMiddleware();
         DefaultHttpContext context = CreateContext("trusted-tenant");
         context.User = new ClaimsPrincipal(new ClaimsIdentity(
         [
@@ -68,14 +66,11 @@ public class AgentUserContextMiddlewareTests
         Assert.Equal("alice@example.com", request.User.Email);
     }
 
-    private static AgentUserContextMiddleware CreateMiddleware(string environmentName)
+    private static AgentUserContextMiddleware CreateMiddleware()
     {
-        var environment = new Mock<IHostEnvironment>();
-        environment.SetupGet(item => item.EnvironmentName).Returns(environmentName);
         return new AgentUserContextMiddleware(
             _ => Task.CompletedTask,
-            NullLogger<AgentUserContextMiddleware>.Instance,
-            environment.Object);
+            NullLogger<AgentUserContextMiddleware>.Instance);
     }
 
     private static DefaultHttpContext CreateContext(string? tenantId = null)

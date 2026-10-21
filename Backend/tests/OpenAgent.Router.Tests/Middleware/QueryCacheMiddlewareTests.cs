@@ -238,18 +238,6 @@ public class QueryCacheMiddlewareTests
 
     private sealed class ThrowingQueryCache : IQueryCache
     {
-        public Task<string?> GetCachedResponseAsync(
-            string query,
-            CancellationToken cancellationToken = default)
-        {
-            throw CreateException();
-        }
-
-        public Task SetCachedResponseAsync(
-            string query,
-            string response,
-            CancellationToken cancellationToken = default) => throw new NotSupportedException();
-
         public Task<CachedResponse?> GetAsync(
             string key,
             CancellationToken cancellationToken = default)

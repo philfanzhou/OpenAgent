@@ -26,7 +26,7 @@ Contracts：跨项目的纯接口、配置、DTO 与无 SDK 的能力定义
 | 依赖 | 用途与主责 |
 |---|---|
 | OpenCode / ACP SDK | 默认聊天推理、流式输出与工具迭代 |
-| MAF / Microsoft.Extensions.AI / Provider SDK | 历史/Skill 兼容 Provider 与独立压缩服务 |
+| Microsoft.Extensions.AI / Provider SDK | 工具（`AIFunction`）与摘要客户端的底层抽象 |
 | LLM API | 模型推理、流式输出与函数调用 |
 | MCP Server | 工具发现、调用与资源读取 |
 | RAG 服务 | Qdrant/RagFlow 检索增强 |

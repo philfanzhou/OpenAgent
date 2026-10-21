@@ -124,7 +124,7 @@ sudo python3 scripts/test-codeact-runner.py --environment-file /etc/openagent-ru
 
 真实测试覆盖 user/PID/IPC/UTS/network namespace、嵌套 user namespace 禁用、只读运行时与输入、宿主文件不可见、环境变量清除、tmpfs 容量、内存耗尽、超时/取消、符号链接拒绝、任务间清理，以及 PPT/XLSX/PDF 的生成和再次编辑。
 
-CI 还实际运行安装脚本和 systemd 服务，并启用 `MafLoop_RealRunnerGeneratesEditsAndPublishesAuthorizedArtifact`：通过 MAF 处理一次真实 Python 错误，再读取授权 CSV、生成 Excel、按 fileId 重新编辑并调用 `publish_files`。该联测使用真实 HTTP/Runner/Bubblewrap；模型响应与文件存储使用确定性测试替身，不代表已验证外部模型、生产对象存储和浏览器聊天。
+CI 还实际运行安装脚本和 systemd 服务，并启用 `RealRunner_GeneratesEditsAndPublishesAuthorizedArtifact`：经隔离 Runner 处理一次真实 Python 错误，再读取授权 CSV、生成 Excel、按 fileId 重新编辑并调用 `publish_files`。该联测使用真实 HTTP/Runner/Bubblewrap；模型响应与文件存储使用确定性测试替身，不代表已验证外部模型、生产对象存储和浏览器聊天。
 
 若 `/health` 返回 503，先检查 `journalctl -u openagent-runner`。常见原因是 `bwrap` 或 venv 路径错误，以及云主机/发行版禁用了非特权 user namespace。Ubuntu 的 AppArmor 限制由安装脚本加载发行版 `bwrap-userns-restrict` 策略；不要通过 `kernel.apparmor_restrict_unprivileged_userns=0` 全局关闭保护。
 

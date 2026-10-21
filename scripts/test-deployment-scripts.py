@@ -57,6 +57,13 @@ if sys.argv[1:3] == ['image', 'inspect'] and sys.argv[3] == os.environ.get('MISS
         self.assertIn('Runner API key', result.stderr)
         self.assertEqual(calls, [])
 
+    def test_runner_requires_key_before_docker_in_auto_mode(self):
+        # auto 模式会探测 docker（docker info），配置校验必须先于探测发生。
+        result, calls = self.run_script('deploy.sh', '--docker-mode', 'auto')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Runner API key', result.stderr)
+        self.assertEqual(calls, [])
+
     def test_runner_checks_image_and_validates_compose(self):
         self.env.update(OPENAGENT_RUNNER_API_KEY='x' * 32)
         result, calls = self.run_script('deploy.sh')
@@ -71,6 +78,27 @@ if sys.argv[1:3] == ['image', 'inspect'] and sys.argv[3] == os.environ.get('MISS
         result, calls = self.run_script('deploy.sh')
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse(any(call[0] == 'compose' for call in calls))
+
+    def test_deploy_accepts_auto_docker_mode(self):
+        self.env['OPENAGENT_RUNNER_API_KEY'] = 'x' * 32
+        result, calls = self.run_script('deploy.sh', '--docker-mode', 'auto')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(any(call[:2] == ['image', 'inspect'] for call in calls))
+
+    def test_deploy_reads_docker_mode_from_env_file(self):
+        self.env['OPENAGENT_RUNNER_API_KEY'] = 'x' * 32
+        env_file = self.tmp / 'deployment.env'
+        env_file.write_text('OPENAGENT_DOCKER_MODE=auto\n')
+        result, calls = self.run_script('deploy.sh', '--env-file', str(env_file))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(any(call[:2] == ['image', 'inspect'] for call in calls))
+
+    def test_deploy_rejects_unknown_docker_mode(self):
+        self.env['OPENAGENT_RUNNER_API_KEY'] = 'x' * 32
+        result, calls = self.run_script('deploy.sh', '--docker-mode', 'bogus')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('unsupported docker mode', result.stderr)
+        self.assertEqual(calls, [])
 
 
 if __name__ == '__main__':

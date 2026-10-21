@@ -57,5 +57,5 @@ Endpoint
 
 - `Backend/src/OpenAgent.Contracts/Configuration/IAgentConfigProvider.cs`
 - `Backend/src/OpenAgent.Application/Execution/AgentRuntimeResolver.cs`
-- `Backend/src/OpenAgent.Application/Execution/AgentExecutionScope.cs`
+- `Backend/src/OpenAgent.Application/Execution/RuntimePreparationScope.cs`
 - `Backend/src/OpenAgent.Application/Execution/AgentExecutor.cs`

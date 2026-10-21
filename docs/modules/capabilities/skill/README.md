@@ -1,17 +1,17 @@
 # Agent Skills
 
-OpenAgent 使用 MAF 官方 `AgentSkillsProvider` 提供 Agent Skills。Web 端支持上传 ZIP 或手动填写单文件 Markdown；两者都必须包含一个符合官方 Agent Skills 规范的 `SKILL.md`。ZIP 在 OSS 中按目录文件对象保存，并由索引对象记录路径和哈希；执行时只 materialize 到请求级临时目录，不再重复解压 ZIP。
+OpenAgent 提供符合官方 Agent Skills 规范的 `SKILL.md` 包。Web 端支持上传 ZIP 或手动填写单文件 Markdown；两者都必须包含 `SKILL.md`。ZIP 在 OSS 中按目录文件对象保存，并由索引对象记录路径和哈希；执行时只 materialize 到请求级临时目录，不再重复解压 ZIP。
 
 ## Core Capabilities
 
 | Capability | Description |
 |---|---|
 | 官方格式 | `SKILL.md` YAML frontmatter + Markdown instructions |
-| 渐进披露 | MAF 提供 `load_skill`、`read_skill_resource`，双开关 + 按实例开启后提供 `run_skill_script` |
+| 平台工具 | 平台提供 `read_skill_file` 读取包内文件；双开关 + 按实例开启后额外提供 `run_skill_script` |
 | Skill 目录 | PostgreSQL 保存租户范围的 Skill 元数据；Redis `skill:published:index` + `skill:registry:{tenantHash}:{skillId}` 仅作派生缓存 |
 | Agent 绑定 | `SkillsConfig` 只从当前 Agent 配置选择已启用 Skill；目录注册不产生绑定 |
 | 权限过滤 | 在创建 provider 前按 Agent、Skill 和用户 ACL 过滤 |
-| 生命周期 | `AgentExecutionScope` 释放 provider 并删除临时目录 |
+| 生命周期 | `RuntimePreparationScope` 释放 skill 资源并删除临时目录 |
 | 脚本执行 | 默认禁用。宿主 `CodeExecution.Enabled` + Agent `CodeExecution` 绑定 + `SkillInstanceConfig.ScriptExecutionEnabled` 全部开启后，仅 `.py` 脚本经隔离 Runner 执行（详见下文） |
 | 脚本清单 | 上传时扫描包内 `.py` / `.js` / `.mjs` / `.sh` 文件，把相对路径记录到 `SkillInstanceConfig.ScriptNames`（`ScriptCount` 为派生值）；供管理端展示与开启前审阅 |
 | 在线编辑 | `PUT /skills/{skillId}/source` 原地替换 `SKILL.md`，包内脚本与脚本执行开关保持不变 |
@@ -28,10 +28,10 @@ PostgreSQL SkillDefinitions + MinIO/S3
 AgentConfig.Skills → AgentSkillsProviderFactory
         │  租户范围对象文件 → request temp directory
         ▼
-MAF AgentSkillsProvider
+AgentSkillsRuntime（RuntimeSkill 目录 + 平台工具）
         │
         ▼
-ChatClientAgent.AIContextProviders
+RuntimeInvocation.Skills → 驱动链接进本轮工作区供 harness 原生发现
 ```
 
 ## Security boundary
@@ -57,7 +57,7 @@ Skill 指令加载与资源读取默认启用；包内脚本默认完全不可�
 - 产物经 `FileAssetService` 登记为会话资产，由 `publish_files` 发布；
 - 参数以 JSON 传入 wrapper：Python 映射为 `sys.argv`、JavaScript 映射为 `process.argv`、shell 映射为位置参数（单引号安全转义；字符串直传，其余 JSON 编码）。`.js` 以 CommonJS 语义加载，ESM 请使用 `.mjs`；`.sh` 以 bash 运行。
 
-MAF 的 `run_skill_script` 审批回调被关闭（`DisableRunSkillScriptApproval`），原因是当前 chat 契约无法往返 MAF 审批请求；补偿控制即上述授权复核、扩展名与文件名白名单、共享预算和 Bubblewrap 隔离。
+`run_skill_script` 不经模型审批往返：当前 chat 契约无法承载审批请求，补偿控制即上述授权复核、扩展名与文件名白名单、共享预算和 Bubblewrap 隔离。
 
 Skill 只允许本地持久化来源：数据库中的目录元数据和租户对象存储中的 ZIP/MD 展开文件。Skill 对象键使用 `files/tenants/{tenant-hash}/skill-packages/...`，不包含 `users/{user-hash}`；HTTP Endpoint Skill 已移除；Redis 不是事实源，数据库可用时不会用 Redis-only 数据恢复目录。
 

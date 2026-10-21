@@ -12,8 +12,7 @@ public class JwtUserContextMiddleware
     private readonly ILogger<JwtUserContextMiddleware> _logger;
     public JwtUserContextMiddleware(
         RequestDelegate next,
-        ILogger<JwtUserContextMiddleware> logger,
-        IHostEnvironment environment)
+        ILogger<JwtUserContextMiddleware> logger)
     {
         _next = next;
         _logger = logger;

@@ -2,7 +2,7 @@
 
 ## 范围
 
-Engine.Host 组合 Application 的 MAF 工具适配与 Capabilities 中的 `CodeCapabilitySource`，以 `AIFunction` 暴露 `execute_code`。模型生成 Python（默认）或 JavaScript，读取执行结果，并在原有 MAF 工具循环中修正代码。沙箱运行时支持 PPT、Excel、图表和 PDF 生成。
+Engine.Host 组合 Application 的工具适配与 Capabilities 中的 `CodeCapabilitySource`，以 `AIFunction` 暴露 `execute_code`。模型生成 Python（默认）或 JavaScript，读取执行结果，并在运行时驱动的工具循环中修正代码。沙箱运行时支持 PPT、Excel、图表和 PDF 生成。
 
 本实现使用独立 Runner 和 Bubblewrap，原生运行在 Linux 主机，不依赖 Docker daemon、containerd、KVM 或 Hyperlight，也没有添加第二套 Agent 循环。Bubblewrap 的隔离参数由 Runner 固定生成，模型和请求均不能覆盖。安装与 systemd 配置见 [Runner 部署说明](../../../integrations/code-runner.md)。
 
@@ -61,7 +61,7 @@ Bubblewrap 与 Docker 一样共享宿主 Linux 内核，不能视为抵御未知
 
 沙箱包装脚本限制用户子进程墙钟时间，Runner 另有外部总截止时间。一次性执行的请求取消或外部截止时间到达时，Runner 终止 bwrap 进程树；会话沙箱只终止当次调用的子进程组（客户端断开即提前终止），沙箱本身存活，仅在外部截止（supervisor 失去响应）时销毁重建并在下一次调用报告 `sandboxReset`。`--die-with-parent` 确保 Runner 异常退出时全部沙箱同时退出；mount namespace 和 tmpfs 由内核自动清理，后台回收器按空闲期回收会话沙箱，并清扫 Runner 崩溃遗留且超过一小时的请求输入目录。
 
-Engine 每请求默认最多执行 8 次代码，MAF 的 MaxTurns 继续约束模型循环。普通脚本错误通过 stderr 返回供模型修正。网络错误、Runner 不可用、超时和取消不会降级为宿主执行。
+Engine 每请求默认最多执行 8 次代码，运行时驱动的 MaxTurns 继续约束模型循环。普通脚本错误通过 stderr 返回供模型修正。网络错误、Runner 不可用、超时和取消不会降级为宿主执行。
 
 Runner 请求目前与聊天请求共同存活；不提供断线后继续运行、进程重启后的 Agent 恢复或跨节点调度。
 
@@ -73,8 +73,8 @@ Runner 请求目前与聊天请求共同存活；不提供断线后继续运行�
 
 ## 验证
 
-Capabilities 与 Application 测试分别覆盖独立能力和 MAF 集成，验证双重开关、授权撤销、跨租户/用户文件拒绝、二进制资产归属，以及确定性 MAF 循环在错误后再次调用执行工具。
+Capabilities 与 Application 测试分别覆盖独立能力和运行时集成，验证双重开关、授权撤销、跨租户/用户文件拒绝、二进制资产归属，以及确定性工具循环在错误后再次调用执行工具。
 
 Runner 的 Linux 真实测试验证 Bubblewrap 参数与实际边界、网络禁用、宿主文件不可见、任务隔离、内存限制、超时/取消清理、符号链接拒绝、输出截断、tmpfs 容量，以及 PPT/Excel 的生成、重新打开、再次编辑和 PPT 转 PDF，并覆盖 JavaScript 的 Node 执行与输入/输出文件往返。CI 显式安装 Bubblewrap、固定 Python venv 和 Node；其他平台会明确跳过真实沙箱测试。
 
-CI 随后发布 Runner 进行真实 HTTP 冒烟，并执行部署脚本、启动强化的 systemd 服务再验收。MAF 联测连接该已安装服务，覆盖 Python 错误反馈、授权 CSV 输入、Excel 生成与再次编辑、文件登记和 `publish_files`。模型与文件存储在此联测中使用确定性替身；不将它标记为外部模型与浏览器聊天端到端验证。
+CI 随后发布 Runner 进行真实 HTTP 冒烟，并执行部署脚本、启动强化的 systemd 服务再验收。Runner 联测连接该已安装服务，覆盖 Python 错误反馈、授权 CSV 输入、Excel 生成与再次编辑、文件登记和 `publish_files`。模型与文件存储在此联测中使用确定性替身；不将它标记为外部模型与浏览器聊天端到端验证。
