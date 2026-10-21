@@ -88,6 +88,7 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, ILogger
                 catch (Exception error)
                 {
                     // 外部 RPC 错误可能包含模型请求/凭据，不能原样进入 SSE、持久化或日志。
+                    // 可执行文件缺失已在启动前由 OpenCodeExecutable 解析为明确的 DependencyUnavailable/ConfigurationError。
                     logger.LogWarning("OpenCode runtime failed ({ErrorType})", error.GetType().Name);
                     throw new AgentException(AgentErrorCode.PipelineExecutionFailed, "OpenCode runtime failed; check the executable, provider configuration and connectivity.");
                 }
@@ -164,9 +165,14 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, ILogger
                 {
                     break;
                 }
+                (long Used, long Size)? before = mapper.LastUsage;
                 foreach (AgentStreamEvent item in mapper.Map(updates.Current.Update))
                 {
                     yield return item;
+                }
+                if (options.Value.LogUsageUpdates && mapper.LastUsage is { } updated && updated != before)
+                {
+                    OpenCodeLog.UsageUpdate(logger, updated.Used, updated.Size);
                 }
             }
             if (completionFailure is not null)
@@ -187,7 +193,16 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, ILogger
             {
                 Type = AgentStreamEventType.Usage,
                 ModelId = invocation.Profile.Model.ModelId,
-                TraceId = invocation.Turn.TraceId
+                TraceId = invocation.Turn.TraceId,
+                // usage_update 只有上下文占用（Used）与窗口上限（Size），没有逐项计费拆分；
+                // 填 prompt/total 供面板展示"本轮上下文"，completion 未知保持 0，不伪造。
+                Usage = mapper.LastUsage is { } last
+                    ? new TokenUsage
+                    {
+                        PromptTokens = Clamp(last.Used),
+                        TotalTokens = Clamp(last.Used),
+                    }
+                    : null
             };
         }
         finally
@@ -222,6 +237,8 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, ILogger
         }
         await session.SetConfigAsync(option.Id, AcpJson.Element(expected), ct).ConfigureAwait(false);
     }
+
+    private static int Clamp(long value) => value > int.MaxValue ? int.MaxValue : value < 0 ? 0 : (int)value;
 
     private static ContentBlock[] BuildPrompt(IReadOnlyList<RuntimeMessage> messages, int maxCharacters)
     {

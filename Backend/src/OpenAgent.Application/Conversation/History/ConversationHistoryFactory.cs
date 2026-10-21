@@ -50,11 +50,6 @@ internal sealed class ConversationHistoryFactory
         _services = services;
     }
 
-    /// <summary>
-    /// 执行中自动压缩的开关（ConversationStore:EnableAutoCompaction）。默认禁用。
-    /// </summary>
-    internal bool AutoCompactionEnabled => _options.EnableAutoCompaction;
-
     internal PlatformChatHistory Create(
         TurnContext turn,
         string modelId,

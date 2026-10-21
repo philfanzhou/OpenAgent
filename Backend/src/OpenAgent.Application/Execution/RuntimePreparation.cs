@@ -5,9 +5,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OpenAgent.Application.Conversation.History;
 
-using OpenAgent.Application.ModelProviders;
-using OpenAgent.Application.Conversation.Compaction;
-using OpenAgent.Application.Observability;
 using OpenAgent.Application.Mapping;
 using OpenAgent.Application.Runtime.Agent;
 using OpenAgent.Application.Tooling.Abstractions;
@@ -27,7 +24,6 @@ namespace OpenAgent.Application.Execution;
 /// <summary>复用平台工具和 Skill 的准备逻辑；推理只发生在运行时驱动，不执行任何进程内推理循环。</summary>
 internal sealed class RuntimePreparation(
     ConversationHistoryFactory conversations,
-    IAgentChatClientFactory summaries,
     CapabilityToolFactory capabilities,
     IEnumerable<IAgentFeatureFactory> factories,
     FileAssetExecutionContext files,
@@ -78,17 +74,8 @@ internal sealed class RuntimePreparation(
                     context = await provider.InvokingAsync(context, ct).ConfigureAwait(false);
                 }
             }
-            if (conversations.AutoCompactionEnabled)
-            {
-                // 平台摘要仍走现有独立压缩服务，保留摘要预算/审计；聊天推理只走运行时驱动。
-                IChatClient summarizer = summaries.CreateSummarizationClient(profile.Model, profile.Config.ContextPolicy,
-                    turn.ToCapture(LlmInteractionSource.Compaction));
-                scope.Clients.Add(summarizer);
-                CompactionContextProvider compaction = new(conversations.CreateCompaction(profile.Model.ContextTokens,
-                    profile.Config.ContextPolicy, summarizer, turn));
-                context = await compaction.InvokingAsync(context, ct).ConfigureAwait(false);
-                scope.Features.Add(new AgentFeature { ContextProviders = [compaction] });
-            }
+            // 上下文压缩由 OpenCode 原生负责（单轮内自压缩并上报 compaction_update）；
+            // 平台不再做跨轮自动压缩，跨轮整理仅保留手动压缩端点。
             tools.AddRange(context.Tools ?? []);
             List<RuntimeTool> exported = [];
             HashSet<string> names = new(StringComparer.Ordinal);
@@ -127,19 +114,6 @@ internal sealed class RuntimePreparation(
             await scope.FailAsync(error).ConfigureAwait(false);
             await scope.DisposeAsync().ConfigureAwait(false);
             throw;
-        }
-    }
-
-    /// <summary>把 Conversation 侧压缩策略适配为轮次上下文提供器；分层上 Conversation 不引用 Tooling。</summary>
-    private sealed class CompactionContextProvider(AuditedCompactionStrategy strategy) : IAgentContextProvider
-    {
-        public async Task<AgentTurnContext> InvokingAsync(AgentTurnContext context, CancellationToken cancellationToken)
-        {
-            IEnumerable<ChatMessage> compacted = await CompactionProvider.CompactAsync(
-                strategy, context.Messages, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance, cancellationToken).ConfigureAwait(false);
-            context.Messages.Clear();
-            context.Messages.AddRange(compacted);
-            return context;
         }
     }
 
