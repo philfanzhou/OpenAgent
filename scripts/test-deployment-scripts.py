@@ -57,6 +57,13 @@ if sys.argv[1:3] == ['image', 'inspect'] and sys.argv[3] == os.environ.get('MISS
         self.assertIn('Runner API key', result.stderr)
         self.assertEqual(calls, [])
 
+    def test_runner_requires_key_before_docker_in_auto_mode(self):
+        # auto 模式会探测 docker（docker info），配置校验必须先于探测发生。
+        result, calls = self.run_script('deploy.sh', '--docker-mode', 'auto')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Runner API key', result.stderr)
+        self.assertEqual(calls, [])
+
     def test_runner_checks_image_and_validates_compose(self):
         self.env.update(OPENAGENT_RUNNER_API_KEY='x' * 32)
         result, calls = self.run_script('deploy.sh')
