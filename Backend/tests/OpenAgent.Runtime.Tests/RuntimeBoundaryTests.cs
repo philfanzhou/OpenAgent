@@ -100,8 +100,11 @@ public sealed class RuntimeBoundaryTests
             calls++;
             return Task.FromResult("桥接结果");
         });
-        await using RuntimeToolBridge bridge = await RuntimeToolBridge.StartAsync([tool], turn.Token);
+        await using RuntimeToolBridgeHost bridge = await RuntimeToolBridgeHost.StartAsync(CancellationToken.None);
         using HttpClient anonymous = new();
+        // 无活动轮次注册时一律拒绝。
+        Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync(bridge.Server.Url)).StatusCode);
+        using RuntimeToolBridgeHost.BridgeLease lease = bridge.Lease([tool], turn.Token);
         Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync(bridge.Server.Url)).StatusCode);
         anonymous.DefaultRequestHeaders.Add("Authorization", "Bearer wrong-token");
         Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync(bridge.Server.Url)).StatusCode);
@@ -119,5 +122,37 @@ public sealed class RuntimeBoundaryTests
         turn.Cancel();
         Assert.Equal(HttpStatusCode.Unauthorized, (await authorized.GetAsync(bridge.Server.Url)).StatusCode);
         Assert.Equal(1, calls);
+    }
+
+    [Fact]
+    public async Task Bridge_LeaseRotation_ReplacesToolsAndRevokesPreviousTurn()
+    {
+        int firstCalls = 0;
+        int secondCalls = 0;
+        RuntimeTool first = new("first_tool", "first", """{"type":"object"}""", (_, _) => { firstCalls++; return Task.FromResult("one"); });
+        RuntimeTool second = new("second_tool", "second", """{"type":"object"}""", (_, _) => { secondCalls++; return Task.FromResult("two"); });
+        await using RuntimeToolBridgeHost bridge = await RuntimeToolBridgeHost.StartAsync(CancellationToken.None);
+        using RuntimeToolBridgeHost.BridgeLease firstLease = bridge.Lease([first], CancellationToken.None);
+        using HttpClient authorized = new();
+        authorized.DefaultRequestHeaders.Add("Authorization", Assert.Single(bridge.Server.Headers!).Value);
+        await using McpClient client = await McpClient.CreateAsync(new HttpClientTransport(new HttpClientTransportOptions
+        {
+            Endpoint = new Uri(bridge.Server.Url!),
+            TransportMode = HttpTransportMode.StreamableHttp
+        }, authorized));
+        Assert.Equal(["first_tool"], (await client.ListToolsAsync()).Select(tool => tool.Name));
+        // 下一轮接管：工具表被替换，旧工具不可见；同一 bearer 仅在活动租约期可用。
+        using RuntimeToolBridgeHost.BridgeLease secondLease = bridge.Lease([second], CancellationToken.None);
+        Assert.Equal(["second_tool"], (await client.ListToolsAsync()).Select(tool => tool.Name));
+        var stale = await client.CallToolAsync("first_tool", new Dictionary<string, object?>());
+        Assert.True(stale.IsError);
+        Assert.Equal(0, firstCalls);
+        var result = await client.CallToolAsync("second_tool", new Dictionary<string, object?>());
+        Assert.False(result.IsError ?? false);
+        Assert.Equal(1, secondCalls);
+        // 租约全部释放后桥继续监听但拒绝调用（进程保活场景）。
+        secondLease.Dispose();
+        firstLease.Dispose();
+        Assert.Equal(HttpStatusCode.Unauthorized, (await authorized.GetAsync(bridge.Server.Url)).StatusCode);
     }
 }

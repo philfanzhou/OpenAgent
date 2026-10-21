@@ -16,8 +16,12 @@ public sealed class OpenCodeOptions
     /// <summary>诊断开关：把每轮 usage_update（上下文占用 used/size）写入日志。默认关闭。</summary>
     public bool LogUsageUpdates { get; set; }
 
-    /// <summary>空闲进程保活秒数：相同会话归属与启动身份的进程在窗口内复用，追问轮次免付冷启动；0 关闭复用。</summary>
-    public int KeepAliveSeconds { get; set; } = 300;
+    /// <summary>
+    /// 空闲进程保活秒数：相同会话归属与启动身份的进程在窗口内复用，追问轮次免付冷启动。
+    /// 默认 0（关闭）：当前 OpenCode 版本空闲进程存在持续 CPU/网络活动（实测 1.19.3 每进程
+    /// 约 1-2 核空转 + 持续外呼），确认目标版本空闲行为可接受后再按会话开启。
+    /// </summary>
+    public int KeepAliveSeconds { get; set; } = 0;
 
     /// <summary>保活进程总数上限；超出时直接销毁而不是归还池。</summary>
     public int MaxKeptProcesses { get; set; } = 8;

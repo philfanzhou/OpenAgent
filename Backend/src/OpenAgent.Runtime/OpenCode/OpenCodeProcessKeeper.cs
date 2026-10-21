@@ -6,11 +6,18 @@ using OpenAgent.Runtime.Acp.Protocol;
 
 namespace OpenAgent.Runtime.OpenCode;
 
-/// <summary>已完成 initialize 的 ACP 进程租约。租约期内由单个轮次独占；进程主目录随进程销毁回收。</summary>
-internal sealed class OpenCodeAgentProcess(AcpProcess process, AcpClient client, InitializeResponse initialized, string key, string home)
+/// <summary>已完成 initialize 的 ACP 进程租约（含随进程常驻的 MCP 桥宿主）。租约期内由单个轮次独占；桥与主目录随进程销毁回收。</summary>
+internal sealed class OpenCodeAgentProcess(
+    AcpProcess process,
+    AcpClient client,
+    RuntimeToolBridgeHost bridge,
+    InitializeResponse initialized,
+    string key,
+    string home)
 {
     internal AcpProcess Process { get; } = process;
     internal AcpClient Client { get; } = client;
+    internal RuntimeToolBridgeHost Bridge { get; } = bridge;
     internal InitializeResponse Initialized { get; } = initialized;
     internal string Key { get; } = key;
     internal string Home { get; } = home;
@@ -193,6 +200,15 @@ internal sealed class OpenCodeProcessKeeper : IAsyncDisposable
         catch (Exception error)
         {
             _logger.LogWarning("OpenCode keep-alive process disposal failed ({ErrorType})", error.GetType().Name);
+        }
+        // 桥先于进程停止仍在监听会让 harness 对已死端点热重连；进程退出后再停桥并回收主目录。
+        try
+        {
+            await process.Bridge.DisposeAsync().ConfigureAwait(false);
+        }
+        catch (Exception error)
+        {
+            _logger.LogWarning("OpenCode keep-alive bridge disposal failed ({ErrorType})", error.GetType().Name);
         }
         try
         {

@@ -146,6 +146,46 @@ public sealed class OpenCodeKeepAliveTests
         Assert.Equal(0, runtime.Keeper.ReusedCount);
     }
 
+    [OpenCodeFact]
+    public async Task FollowUpTurn_RotatesToolsThroughReusedProcess()
+    {
+        int step = 0;
+        string? firstTurnArgument = null;
+        string? secondTurnArgument = null;
+        await using ModelFixture model = await ModelFixture.StartAsync(async (context, request) =>
+        {
+            JsonElement[] messages = request.GetProperty("messages").EnumerateArray().ToArray();
+            if (messages.Any(message => message.GetProperty("role").GetString() == "tool"))
+            {
+                await ModelFixture.TextAsync(context, step == 1 ? "first done" : "second done");
+                return;
+            }
+            step++;
+            string[] names = request.GetProperty("tools").EnumerateArray()
+                .Select(tool => tool.GetProperty("function").GetProperty("name").GetString()!).ToArray();
+            string name = Assert.Single(names, value =>
+                value.EndsWith(step == 1 ? "_echo_one" : "_echo_two", StringComparison.Ordinal));
+            await ModelFixture.ChunkAsync(context, new
+            {
+                role = "assistant",
+                tool_calls = new[] { new { index = 0, id = "call-" + step, type = "function", function = new { name, arguments = "{\"text\":\"turn-" + step + "\"}" } } }
+            }, "tool_calls");
+        });
+        await using RuntimeFixture runtime = new(model.Endpoint, settings => settings["OpenCode:KeepAliveSeconds"] = "120");
+        RuntimeTool first = new("echo_one", "one", """{"type":"object","properties":{"text":{"type":"string"}}}""",
+            (arguments, ct) => { firstTurnArgument = arguments["text"]?.ToString(); return Task.FromResult("first-tool-result"); });
+        RuntimeTool second = new("echo_two", "two", """{"type":"object","properties":{"text":{"type":"string"}}}""",
+            (arguments, ct) => { secondTurnArgument = arguments["text"]?.ToString(); return Task.FromResult("second-tool-result"); });
+        List<AgentStreamEvent> firstTurn = await runtime.CollectAsync(runtime.Request with { Tools = [first] });
+        Assert.Equal("first done", Text(firstTurn));
+        List<AgentStreamEvent> secondTurn = await runtime.CollectAsync(runtime.Request with { Tools = [second] });
+        Assert.Equal("second done", Text(secondTurn));
+        Assert.Equal(1, runtime.Keeper.ReusedCount);
+        Assert.Equal("turn-1", firstTurnArgument);
+        Assert.Equal("turn-2", secondTurnArgument);
+        AssertTurnWorkspacesReleased(runtime);
+    }
+
     private static RuntimeInvocation Invocation(string instructions) => new(new AgentRuntimeProfile
     {
         AgentId = "test",
