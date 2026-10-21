@@ -108,32 +108,13 @@ public sealed class ConversationHistoryFactoryTests
         Assert.Contains("no summary text", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 
-    [Fact]
-    public void AutoCompaction_DisabledByDefault()
-    {
-        ConversationHistoryFactory factory = CreateFactory();
-
-        Assert.False(new ConversationStoreOptions().EnableAutoCompaction);
-        Assert.False(factory.AutoCompactionEnabled);
-    }
-
-    [Fact]
-    public void AutoCompaction_FollowsConfiguredOption()
-    {
-        ConversationHistoryFactory factory = CreateFactory(enableAutoCompaction: true);
-
-        Assert.True(factory.AutoCompactionEnabled);
-    }
-
     private static ConversationHistoryFactory CreateFactory(
-        int defaultContextTokens = 1_000,
-        bool enableAutoCompaction = false) =>
+        int defaultContextTokens = 1_000) =>
         new(
             store: null!,
             Options.Create(new ConversationStoreOptions
             {
-                DefaultModelContextTokens = defaultContextTokens,
-                EnableAutoCompaction = enableAutoCompaction
+                DefaultModelContextTokens = defaultContextTokens
             }),
             loggerFactory: NullLoggerFactory.Instance,
             services: null!);

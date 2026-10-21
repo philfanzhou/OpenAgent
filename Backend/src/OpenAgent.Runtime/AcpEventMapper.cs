@@ -9,6 +9,12 @@ internal sealed class AcpEventMapper
 {
     private readonly Dictionary<string, ToolState> _tools = [];
 
+    /// <summary>
+    /// 最近一次 usage_update：Used 为本轮结束时 harness 的上下文占用，Size 为其对端窗口上限。
+    /// 是占用量而非逐项计费值；映射进 TokenUsage 时只填 total/prompt，不拆分 completion。
+    /// </summary>
+    internal (long Used, long Size)? LastUsage { get; private set; }
+
     internal IEnumerable<AgentStreamEvent> Map(SessionUpdate update)
     {
         switch (update)
@@ -79,7 +85,9 @@ internal sealed class AcpEventMapper
                     })
                 };
                 break;
-                // usage_update.used 是上下文占用量，不是本轮计费 token；不得伪造 TokenUsage。
+            case UsageUpdate usage:
+                LastUsage = (usage.Used, usage.Size);
+                break;
         }
     }
 

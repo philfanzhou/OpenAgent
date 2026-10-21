@@ -11,4 +11,7 @@ public sealed class OpenCodeOptions
     public int TurnTimeoutSeconds { get; set; } = 1800;
     public int MaxConcurrentTurns { get; set; } = 8;
     public int MaxPromptCharacters { get; set; } = 2 * 1024 * 1024;
+
+    /// <summary>诊断开关：把每轮 usage_update（上下文占用 used/size）写入日志。默认关闭。</summary>
+    public bool LogUsageUpdates { get; set; }
 }

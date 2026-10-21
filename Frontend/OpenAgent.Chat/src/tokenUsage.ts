@@ -11,7 +11,13 @@ export interface ConversationUsageSummary {
 
 export function formatTokenUsage(usage?: TokenUsage | null): string {
   if (!usage) return '暂不可用'
-  return `输入 ${formatTokenCount(usage.promptTokens)} · 输出 ${formatTokenCount(usage.completionTokens)} · 总计 ${formatTokenCount(usage.totalTokens)}`
+  // 部分运行时（OpenCode ACP）只上报上下文占用 total/prompt，没有输出拆分；
+  // 0 值分段不展示，避免出现"输出 0"。
+  const parts: string[] = []
+  if (usage.promptTokens > 0) parts.push(`输入 ${formatTokenCount(usage.promptTokens)}`)
+  if (usage.completionTokens > 0) parts.push(`输出 ${formatTokenCount(usage.completionTokens)}`)
+  if (usage.totalTokens > 0 || !parts.length) parts.push(`总计 ${formatTokenCount(usage.totalTokens)}`)
+  return parts.join(' · ')
 }
 
 /** Context windows cover the provider-reported input plus output total. */
