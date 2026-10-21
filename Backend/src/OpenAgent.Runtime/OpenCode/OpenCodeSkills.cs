@@ -1,6 +1,6 @@
 using OpenAgent.Contracts.Runtime;
 
-namespace OpenAgent.Runtime;
+namespace OpenAgent.Runtime.OpenCode;
 
 /// <summary>
 /// 把本轮物化好的 skill 包链接进工作区 .opencode/skills/&lt;name&gt;，交由

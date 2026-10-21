@@ -5,7 +5,10 @@ using OpenAgent.Runtime.Acp.Protocol;
 namespace OpenAgent.Runtime;
 
 /// <summary>把协议更新转成既有 SSE 事件；工具状态按 ID 合并，避免结果失去名称或参数。</summary>
-internal sealed class AcpEventMapper
+/// <param name="toolNamePrefix">
+/// harness 给 MCP 工具名加的服务器前缀（如 OpenCode 的 "openagent_"），映射前剥掉以沿用平台工具名；null 表示不剥。
+/// </param>
+internal sealed class AcpEventMapper(string? toolNamePrefix = null)
 {
     private readonly Dictionary<string, ToolState> _tools = [];
 
@@ -91,9 +94,8 @@ internal sealed class AcpEventMapper
         }
     }
 
-    // OpenCode 为 MCP 工具增加服务器前缀；平台事件沿用已有工具名，保证展示/统计兼容。
-    private static string Name(string name) => name.StartsWith("openagent_", StringComparison.Ordinal)
-        ? name["openagent_".Length..]
+    private string Name(string name) => toolNamePrefix is { } prefix && name.StartsWith(prefix, StringComparison.Ordinal)
+        ? name[prefix.Length..]
         : name;
 
     private static string Output(JsonElement output)

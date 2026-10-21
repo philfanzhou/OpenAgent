@@ -12,13 +12,16 @@ Backend/src/
     RuntimeAgentExecutor.cs        身份/配置/文件/持久化协调
     RuntimePreparation.cs          能力、MCP、Skill、历史准备
     RuntimePreparationScope.cs     部分结果和资源生命周期
-  OpenAgent.Runtime/               平台适配类库，IsPackable=false
-    OpenCodeOptions.cs             可信宿主配置
-    OpenCodeLaunch.cs              模型格式、受控环境及 OpenCode 配置
-    OpenCodeRuntime.cs             并发配额、ACP 会话、取消和进程回收
+  OpenAgent.Runtime/               平台适配类库，IsPackable=false；根目录为 harness 无关组件
+    RuntimeServiceExtensions.cs    AddOpenCodeRuntime 组合入口
+    AcpEventMapper.cs              协议更新到既有平台事件；工具名前缀由构造参数指定
     RuntimeToolBridge.cs           本轮 loopback MCP 端点及 bearer
-    AcpEventMapper.cs              协议更新到既有平台事件
-    RuntimeServiceExtensions.cs    AddOpenCodeRuntime
+    AcpSessionMcp.cs               外部 MCP server 定义到 ACP session/new 条目
+    OpenCode/                      OpenCode 专属 adapter；未来其他 ACP harness 平行建目录
+      OpenCodeRuntime.cs           并发配额、ACP 会话、取消和进程回收
+      OpenCodeProcess.cs           可执行文件解析、模型格式、受控环境及 OpenCode 配置
+      OpenCodeSkills.cs            Skill 物化到 .opencode/skills
+      OpenCodeOptions.cs           可信宿主配置
   OpenAgent.Runtime.Acp/           单 NuGet SDK，完全独立于平台
 Backend/tests/
   OpenAgent.Runtime.Tests/         驱动、桥、环境与真实 OpenCode 测试
@@ -26,7 +29,7 @@ Backend/tests/
   OpenAgent.Engine.Tests/Hosting/OpenCodeSseTests.cs
 ```
 
-Runtime 只引用 Contracts、Runtime.Acp 和官方 MCP SDK；Application 只引用平台契约，不接触 ACP 类型。Engine.Host 负责组合。没有增加第二个 SDK NuGet 包，也没有把平台类型移进 SDK。
+Runtime 只引用 Contracts、Runtime.Acp 和官方 MCP SDK；Application 只引用平台契约，不接触 ACP 类型。Engine.Host 负责组合。没有增加第二个 SDK NuGet 包，也没有把平台类型移进 SDK。Runtime 根目录只保留对任何 ACP harness 通用的组件（事件映射、工具桥、MCP 透传映射、组合入口）；OpenCode 专属的可执行文件解析、启动配置、Skill 物化与驱动实现收敛在 `OpenCode/` 子目录（命名空间 `OpenAgent.Runtime.OpenCode`）。后续接入其他 ACP harness 时平行新增目录，不改动根目录中性组件。
 
 ## 一轮执行
 
@@ -71,7 +74,7 @@ Runtime 在独立设置页保存 ID、名称、Provider 和单轮时限，存入
 
 免 Docker 的本机启动、前端配置与数据生命周期见 [本机预览](../operations/local-preview.md)。
 
-开发机安装并固定 OpenCode 1.18.35，先验证 `opencode --version`；启动 Engine.Host 前确保该可执行文件在 PATH，或配置绝对路径。Engine 镜像包含同版本的 Linux 原生二进制，无需在运行容器内安装 Node/npm。
+开发机安装并固定 OpenCode 1.18.35，先验证 `opencode --version`。首个执行轮次按以下顺序解析可执行文件（`OpenCode:Executable`，默认 `opencode`）：配置为路径且存在时直接使用；否则依次探测 PATH 目录直接命中、各 PATH 目录与 npm 默认全局根（`%APPDATA%\npm`）下的 npm 安装布局（`node_modules/opencode-ai/bin`、`node_modules/opencode-windows-x64[-baseline]/bin`）；Windows 上仍找不到时经 `cmd.exe` 转发 `.cmd/.bat` shim 兜底，全部未命中时报 `DependencyUnavailable` 并附带安装指引。Linux/macOS 的 npm 启动器可直接执行，PATH 命中即可。Engine 镜像包含同版本的 Linux 原生二进制，无需在运行容器内安装 Node/npm。
 
 ```json
 {
