@@ -423,7 +423,7 @@ defineExpose({ scrollToBottom })
 
         <div v-if="item.content || isStreamingItem(item)" class="message-bubble"><MarkdownContent :content="item.content" :streaming="isStreamingItem(item) && Boolean(item.content)" :resolve-image="imageLookup(item.messageId)" /></div>
 
-        <div v-if="item.role === 'assistant' && item.metadata?.extensions?.runtimeProvider" class="message-usage" aria-label="实际运行时">
+        <div v-if="item.role === 'assistant' && item.metadata?.extensions?.runtimeProvider" class="message-usage message-runtime" aria-label="实际运行时">
           <span>实际运行时 · {{ item.metadata.extensions.runtimeProvider }}</span>
           <span v-if="item.metadata.extensions.runtimeAgentVersion">{{ item.metadata.extensions.runtimeAgentVersion }}</span>
           <small>{{ item.metadata.extensions.runtimeProfileName || item.metadata.extensions.runtimeProfileId }}</small>
