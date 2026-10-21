@@ -37,6 +37,7 @@ public class EndpointExtensionsTests
             {
                 ["agentId"] = "body-agent",
                 ["conversationId"] = "body-conv",
+                ["runtimeId"] = "saved-runtime",
                 ["conversationType"] = "Channel",
                 ["clientType"] = "Teams",
                 ["customKey"] = "custom-value"
@@ -48,12 +49,14 @@ public class EndpointExtensionsTests
         Assert.Equal("hello", agentRequest.Query);
         Assert.Equal("body-agent", agentRequest.AgentId);
         Assert.Equal("body-conv", agentRequest.ConversationId);
+        Assert.Equal("saved-runtime", agentRequest.RuntimeId);
         Assert.Equal(ConversationType.Channel, agentRequest.ConversationType);
         Assert.Equal(ClientType.Teams, agentRequest.ClientType);
         Assert.Equal("trace-1", agentRequest.TraceId);
         Assert.NotNull(agentRequest.ExternalContext);
         Assert.Equal("custom-value", agentRequest.ExternalContext!["customKey"]);
         Assert.False(agentRequest.ExternalContext.ContainsKey("agentId"));
+        Assert.False(agentRequest.ExternalContext.ContainsKey("runtimeId"));
         Assert.False(agentRequest.ExternalContext.ContainsKey("conversationId"));
         Assert.False(agentRequest.ExternalContext.ContainsKey("conversationType"));
         Assert.False(agentRequest.ExternalContext.ContainsKey("clientType"));

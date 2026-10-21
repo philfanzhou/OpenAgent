@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import RuntimeSettingsPanel from '../features/runtimes/RuntimeSettingsPanel.vue'
 import ModelSettingsPanel from '../features/models/ModelSettingsPanel.vue'
 import ModelSettingsEditors from '../features/models/ModelSettingsEditors.vue'
 import McpSettingsPanel from '../features/mcp/McpSettingsPanel.vue'
@@ -44,6 +45,7 @@ const { connectionMode, routerUrl, engineUrl, tenantId, statusText, authConfig, 
             <HealthCheckPanel />
           </section>
         </el-tab-pane>
+        <el-tab-pane label="Runtime 设置" name="runtime"><RuntimeSettingsPanel :context="props.context.runtimeSettings" /></el-tab-pane>
         <el-tab-pane label="LLM 配置" name="llm">
           <ModelSettingsPanel :context="props.context" />
         </el-tab-pane>

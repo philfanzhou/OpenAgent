@@ -14,6 +14,7 @@ internal sealed class AgentConfigurationEntity
     public string? ContextPolicyJson { get; set; }
     public string McpJson { get; set; } = "{}";
     public string RagJson { get; set; } = "{}";
+    public string OpenCodeJson { get; set; } = "{}";
     public string SkillsJson { get; set; } = "{}";
     public string CodeExecutionJson { get; set; } = "{}";
     public long Version { get; set; }

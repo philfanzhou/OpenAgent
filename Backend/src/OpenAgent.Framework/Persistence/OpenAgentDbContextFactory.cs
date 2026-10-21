@@ -10,7 +10,7 @@ public sealed class OpenAgentDbContextFactory : IDesignTimeDbContextFactory<Open
         string connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__OpenAgentDatabase")
             ?? "Host=localhost;Port=5432;Database=openagent;Username=openagent;Password=openagent";
         var options = new DbContextOptionsBuilder<OpenAgentDbContext>();
-        options.UseNpgsql(connectionString);
+        options.UseNpgsql(connectionString, postgres => postgres.MigrationsHistoryTable("__EFMigrationsHistory", "public"));
         return new OpenAgentDbContext(options.Options);
     }
 }

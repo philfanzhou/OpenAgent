@@ -1,6 +1,6 @@
-# 本机开发预览（免 Docker）
+# 本机开发预览（PostgreSQL 持久化，免 Docker）
 
-本页描述 macOS/Linux 本机预览。需要当前分支要求的 .NET 10 SDK、Node/pnpm、OpenCode **1.18.35** 和 Python 3；不需要 Docker、PostgreSQL、Redis 或对象存储服务。代码入口为 `scripts/local-preview.py`，实测见 [本机验收记录](../test-reports/2026-10-21-opencode-local.md)。
+本页描述 macOS/Linux 本机预览。需要 .NET 10 SDK、Node/pnpm、OpenCode **1.18.35**、Python 3 和原生 PostgreSQL。Redis、Docker、MinIO 不属于本机预览依赖。代码入口为 `scripts/local-preview.py`。
 
 ## 启动与停止
 
@@ -12,21 +12,27 @@ python3 scripts/local-preview.py status
 python3 scripts/local-preview.py down
 ```
 
-OpenCode 在 PATH 中时可省略 `--opencode`。启动脚本编译后端、安装锁定的前端依赖，并启动 Engine 与前端；端口占用时直接报错。默认页面为 `http://127.0.0.1:5184`，Engine 为 `http://127.0.0.1:5240`，可用 `--web-port`、`--engine-port` 覆盖。进程和日志记录在忽略提交的 `.preview/local/`。
+OpenCode 在 PATH 中时可省略 `--opencode`；脚本也会查找 `<data-root>/tools/node_modules/.bin/opencode`，当前测试站点已在该持久目录安装 1.18.35。脚本编译后端、安装锁定的前端依赖，启动原生 PostgreSQL、Engine 与前端。PostgreSQL 工具从 PATH 或 macOS Homebrew 安装目录寻找，也可传 `--postgres-bin /path/to/bin`。已有 PostgreSQL 可通过 `--database 'Host=...;Database=...;Username=...;Password=...'` 或环境变量 `ConnectionStrings__OpenAgentDatabase` 连接。
 
-脚本只监听 loopback。登录使用开发账号 `admin / admin` 或 `test / test`。前端默认直连 Engine；已有浏览器连接偏好会保留，可在连接设置切换为“直连 Engine”。Router 意图路由不属于这个仅 Engine 的本机预览。
+默认页面为 `http://127.0.0.1:5184`，Engine 为 `http://127.0.0.1:5240`，本机 PostgreSQL 为 `127.0.0.1:55432`。可用 `--web-port`、`--engine-port`、`--postgres-port` 覆盖；端口占用时报错。登录使用开发账号 `admin / admin` 或 `test / test`。
 
-## 模型与资源
+脚本创建的 PostgreSQL 集群和对象文件默认位于 macOS 的 `~/Library/Application Support/OpenAgent/local/`，Linux 的 `~/.local/share/openagent/local/`，可通过 `--data-root` 覆盖。数据库初始密码随机生成并保存在该目录的 owner-only 文件中。模型密钥继续通过服务端 Data Protection 加密；保留服务账户的持久化密钥环才能解密既有记录。
 
-1. 在“LLM 配置”保存真实 Endpoint、接口格式、模型 ID、上下文窗口和 API Key；聊天头部选择这个已保存的连接。API Key 在查询中不回显，编辑留空会保留已保存值。
-2. 也可在“Agent 配置 → OpenCode 运行时”开启内嵌模型并填写连接；头部选择“使用 Agent 模型”时不传独立模型 ID，由服务端使用该 Agent 的连接。显式选择独立 LLM 配置会覆盖 Agent 内嵌连接。
-3. 在“Skill 配置”上传包，在“MCP 配置”保存远程 HTTP/SSE 服务，然后在 Agent 编辑器选择要绑定的资源并保存。OpenCode 在本轮工作区发现 Skill，外部 MCP 由 OpenCode 原生连接。
-4. 发送消息后可查看工具调用与结果；完成的会话保存在当前预览进程中。
+`down` 停止脚本登记的预览进程，**不删除数据库或文件，也不停止独立的 PostgreSQL 进程**。需要手动停止脚本创建的数据库时，用 PostgreSQL 的 `pg_ctl -D <data-root>/postgres -m fast -w stop`；下次 `up` 会重新启动并使用已有数据。进程和日志记录在忽略提交的 `.preview/local/`。
 
-## 数据与验证边界
+开发宿主启动时按 `Database:ApplyMigrationsOnStartup` 应用 migration，迁移历史明确位于 `public.__EFMigrationsHistory`，不受 PostgreSQL 默认 `"$user", public` 搜索路径影响。生产迁移仍由部署流水线显式执行。
 
-`LocalDevelopment:UseInMemoryStores=true` 只在 Development 环境生效，替换数据库和对象存储，使用同一份 Skill 目录供上传、绑定与执行读取。**本机预览的数据只在当前进程内保存，重启会丢失模型连接、Agent、Skill 文件和会话**；它不自动读取其他部署实例的数据。常规持久化部署继续使用数据库和对象存储，配置见 [部署指南](deployment.md)。
+## Runtime、模型与资源
 
-健康报告仍展示 Redis 缺失的 fallback/Degraded 状态；这不是本机预览启动失败。数据库检查在内存模式不注册。脚本用健康报告 HTTP 响应及前端响应确认启动，实际模型与工具调用需按上面步骤验证。
+1. 在“Runtime 设置”新增并保存名称、ID、运行时类型和单轮时限。OpenCode 可选；Claude Code、Codex CLI、Gemini CLI 显示为禁用，后端也拒绝保存这些未启用类型。
+2. 会话上方选择已保存的 Runtime。每次请求通过 `context.runtimeId` 选择当前租户的记录；实际单轮时限取该记录与宿主上限的较小值。旧 API 客户端未传 Runtime ID 时保留默认 OpenCode 行为；工作台发送要求选择已保存项。
+3. 模型、Skill、MCP 的设置入口和绑定保持原行为。独立 LLM 连接仍由聊天头部选择；“使用 Agent 模型”仍读取 Agent 编辑器中的内嵌连接。显式选择独立 LLM 配置覆盖 Agent 连接。
+4. Skill 上传、MCP 定义编辑、Agent 中的 Skill/MCP 绑定保持原位置，Runtime 记录不包含任何模型、Skill 或 MCP 绑定。
 
-默认拒绝 OpenCode 原生终端与普通文件工具；Skill 脚本和平台代码执行仍需单独配置 Runner。本机预览未验证 Linux 沙箱，不把 macOS 跳过项当成沙箱通过。外部 MCP 鉴权头尚未提供配置入口，当前支持已保存的 URL/类型；含鉴权和其他生产能力的边界见 [运行时说明](../integrations/opencode-runtime.md)。
+## 持久化与验收边界
+
+Runtime、模型连接、Agent、Skill 元数据、MCP 定义、会话和消息写入 PostgreSQL；文件字节在本机受限目录持久化。Runtime 和 MCP 记录按 TenantId 隔离。旧 Redis/内联 MCP 配置仍可读取，新保存的定义优先使用 PostgreSQL。开发模式已移除进程内存储组合。
+
+健康报告可能因未部署 Redis 显示 fallback/Degraded；独立的数据库健康项应为 Healthy。前端默认直连 Engine，已有连接偏好可在设置中调整。Router 意图路由不属于本机仅 Engine 的预览。
+
+本机未验证 Linux Runner 沙箱。Skill 脚本和平台代码执行仍需单独配置 Runner；外部 MCP 鉴权头尚未提供配置入口。完整实测与重启验证见 [Runtime 与 PostgreSQL 验收](../test-reports/2026-10-21-runtime-postgres.md)，其他边界见 [运行时说明](../integrations/opencode-runtime.md)。

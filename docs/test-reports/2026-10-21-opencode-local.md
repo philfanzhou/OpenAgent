@@ -1,5 +1,7 @@
 # OpenCode 本机运行与真实模型验收
 
+本页记录早期内存预览阶段；当前 Runtime 设置与 PostgreSQL 持久化行为见 [后续验收](2026-10-21-runtime-postgres.md)。
+
 日期：2026-10-20 至 2026-10-21。基线：PR #234 的 `6f3c8ef5`；本轮修复随该 PR 推送。环境为 macOS、本机 .NET 10、Node/pnpm、OpenCode 1.18.35。全程不使用 Docker，也不依赖 PostgreSQL/Redis/对象存储服务。任务状态见 [任务清单](../planning/TODO.md)。
 
 ## 审查发现及修复

@@ -27,6 +27,7 @@ internal static class AgentEndpointRequestMapper
             Query = request.Message,
             AgentId = ChatRequestContext.ReadString(request.Context, ChatRequestContext.AgentIdKey)
                 ?? context.Request.Headers["X-Agent-Id"].FirstOrDefault(),
+            RuntimeId = ChatRequestContext.ReadString(request.Context, ChatRequestContext.RuntimeIdKey),
             LlmProfileId = ChatRequestContext.ReadString(request.Context, ChatRequestContext.LlmProfileIdKey)
                 ?? context.Request.Headers["X-OpenAgent-Llm-Profile-Id"].FirstOrDefault(),
             ConversationId = conversationId,

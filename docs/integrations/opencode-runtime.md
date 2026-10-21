@@ -1,6 +1,6 @@
 # OpenCode ACP 聊天运行时
 
-本分支将聊天默认执行入口切换为 OpenCode，依赖独立的 [ACP SDK](acp-dotnet-sdk/README.md)。用户明确选择 OpenCode；本地互操作固定为 **1.18.35**。实现状态与 PR 顺序只维护在 [任务清单](../planning/TODO.md)，验证事实见 [初次接入记录](../test-reports/2026-10-19-opencode-runtime.md) 与 [本机真实模型验收](../test-reports/2026-10-21-opencode-local.md)。
+本分支将聊天默认执行入口切换为 OpenCode，依赖独立的 [ACP SDK](acp-dotnet-sdk/README.md)。用户明确选择 OpenCode；本地互操作固定为 **1.18.35**。实现状态与 PR 顺序只维护在 [任务清单](../planning/TODO.md)，验证事实见 [初次接入记录](../test-reports/2026-10-19-opencode-runtime.md) 与 [独立 Runtime / PostgreSQL 验收](../test-reports/2026-10-21-runtime-postgres.md)。
 
 ## 架构与目录
 
@@ -50,6 +50,10 @@ OpenCode 的原生工具默认 `* = deny`，仅允许 `openagent_*` 平台桥工
 
 - 启用的 Skill 包按轮次从对象存储物化到平台临时目录（沿用完整性校验），再以符号链接进入工作区 `.opencode/skills/<name>`（Windows 无符号链接权限或跨卷时退化为复制）；OpenCode 原生 skill 工具按需加载 SKILL.md，平台不再把 skill 文本注入提示词。
 - Skill 包内文件的受限读取（`read_skill_file`）与脚本执行（`run_skill_script`，经隔离 Runner，保留三重开关）作为平台桥工具提供；两者都限制在物化包目录内。
+
+## 独立 Runtime 设置
+
+Runtime 在独立设置页保存 ID、名称、Provider 和单轮时限，存入 PostgreSQL 的租户隔离表；它不属于 Agent 配置，也不包含模型、Skill 或 MCP 绑定。聊天顶部选择已保存项，通过 `context.runtimeId` 传入；服务器校验当前租户所有权和 Provider。实际时限受宿主上限约束。OpenCode 可选，Claude Code/Codex CLI/Gemini CLI 在前端禁用并由服务器拒绝。原有模型和能力设置及绑定保持原行为。
 
 ## 模型与历史
 

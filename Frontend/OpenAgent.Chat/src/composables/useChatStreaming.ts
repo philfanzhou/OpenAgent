@@ -15,6 +15,7 @@ const selectedConversationStorageKey = 'openagent.chat.selected-conversation-id'
 interface ChatStreamingOptions {
   selectedAgentId: Ref<string>
   selectedLlmProfileId: Ref<string>
+  selectedRuntimeId?: Ref<string>
   agents: Ref<AgentSummary[]>
   conversations: Ref<ConversationRecord[]>
   selectedConversation: Ref<ConversationRecord | null>
@@ -41,6 +42,10 @@ export function useChatStreaming(options: ChatStreamingOptions) {
   }
 
   async function send(): Promise<void> {
+    if (options.selectedRuntimeId && !options.selectedRuntimeId.value) {
+      options.notifyError(new Error('请先在 Runtime 设置中保存并选择运行时'))
+      return
+    }
     const content = message.value.trim()
     const hasFiles = options.pendingFiles.value.length > 0
     if ((!content && !hasFiles) || !options.selectedAgentId.value || options.selectedConversationStreaming.value) return
@@ -126,6 +131,7 @@ export function useChatStreaming(options: ChatStreamingOptions) {
         uploaded.map(asset => asset.fileId),
         sendConversationId,
         streamState.controller.signal,
+        options.selectedRuntimeId?.value,
       )) {
         if (event.conversationId && event.conversationId !== conversationId) {
           const previousConversationId = conversationId

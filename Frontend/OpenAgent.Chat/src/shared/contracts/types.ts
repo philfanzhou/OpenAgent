@@ -427,3 +427,10 @@ export interface NativeHealthReport {
   entries: Record<string, HealthEntry>
   totalDuration?: string
 }
+
+export interface RuntimeProfile {
+  id: string
+  name: string
+  provider: string
+  turnTimeoutSeconds: number
+}

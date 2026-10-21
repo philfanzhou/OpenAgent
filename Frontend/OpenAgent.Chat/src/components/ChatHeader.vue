@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { AUTO_AGENT_ID, type AgentSummary, type LlmProviderProfile } from '../types'
+import { AUTO_AGENT_ID, type AgentSummary, type RuntimeProfile, type LlmProviderProfile } from '../types'
 
 const props = defineProps<{
+  runtimeProfiles: RuntimeProfile[]
+  selectedRuntimeId: string
   statusText: string
   agents: AgentSummary[]
   selectedAgentId: string
@@ -15,6 +17,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
+  'update:selectedRuntimeId': [value: string]
   'update:selectedAgentId': [value: string]
   'update:selectedLlmProfileId': [value: string]
   'agent-change': []
@@ -39,6 +42,7 @@ const selectedLlm = computed({
   <header class="topbar">
     <div class="topbar-copy"><span class="topbar-kicker">WORKSPACE / CHAT</span><strong>{{ props.title }}</strong></div>
     <div class="topbar-actions">
+      <el-select :model-value="props.selectedRuntimeId" class="agent-select" placeholder="选择 Runtime" @update:model-value="emit('update:selectedRuntimeId', $event)"><el-option v-for="runtime in props.runtimeProfiles" :key="runtime.id" :label="runtime.name" :value="runtime.id" /></el-select>
       <span class="connection-pill"><i :class="{ connected: props.statusText === '已连接' }" />{{ props.statusText }}</span>
       <el-select v-model="selectedAgent" class="agent-select" placeholder="选择 Agent" @change="emit('agent-change')">
         <el-option v-if="props.allowAuto" label="Auto · 意图路由" :value="AUTO_AGENT_ID" />

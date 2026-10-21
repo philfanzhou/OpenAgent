@@ -47,3 +47,10 @@ CodeExecutionJson 保存 `{ "enabled": false }` 形式的 Agent 代码执行开�
 部署时先停止旧版本配置写入、应用迁移，再切换应用；旧版本 Repository 不兼容删除 ConfigurationJson 后的表结构。新版本 Redis key 使用 `v2` 命名空间，避免读取旧字段名的缓存。HTTP 和前端统一使用 `contextTokens`。
 
 实现：`Backend/src/OpenAgent.Framework/Configuration/`、`Backend/src/OpenAgent.Framework/Persistence/OpenAgentDbContext.cs`。
+
+
+## Runtime 与本机持久化补充
+
+`runtime_configurations` 使用 `(TenantId, RuntimeId)` 复合主键及 `DefinitionJson jsonb`，保存 Runtime 名称、Provider 和 TurnTimeoutSeconds；资源绑定不在该记录中。`mcp_configurations` 使用 `(TenantId, Name)` 和 `DefinitionJson jsonb` 保存原有 MCP 定义。运行时读取始终按当前认证租户过滤。
+
+`agent_configurations.OpenCodeJson jsonb NOT NULL DEFAULT '{}'` 持久化原有 Agent 内嵌模型连接，其中 API Key 由配置服务加密、读取时解密、管理端响应脱敏；原有 MCP/Skill 列和绑定不变。迁移为 `AddRuntimeProfilesAndDurableLocalConfiguration`。迁移历史表固定为 `public.__EFMigrationsHistory`。

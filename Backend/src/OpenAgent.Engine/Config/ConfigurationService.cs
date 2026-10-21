@@ -170,6 +170,11 @@ public sealed class ConfigurationService : IAgentConfigProvider, ILlmConfigProvi
         string tenantId,
         CancellationToken cancellationToken)
     {
+        if (entity.Config.OpenCode.Model is { } model && !string.IsNullOrWhiteSpace(model.ApiKey)
+            && !model.ApiKey.StartsWith("v1.", StringComparison.Ordinal))
+        {
+            model.ApiKey = await _secrets.ProtectAsync(tenantId, model.ApiKey, cancellationToken).ConfigureAwait(false);
+        }
         foreach (RagInstanceConfig instance in entity.Config.Rag.Instances)
         {
             if (string.IsNullOrWhiteSpace(instance.ApiKey)
@@ -186,6 +191,10 @@ public sealed class ConfigurationService : IAgentConfigProvider, ILlmConfigProvi
         AgentConfigEntity entity,
         CancellationToken cancellationToken)
     {
+        if (entity.Config.OpenCode.Model is { } model && !string.IsNullOrWhiteSpace(model.ApiKey))
+        {
+            model.ApiKey = await _secrets.ResolveAsync(entity.TenantId, model.ApiKey, cancellationToken).ConfigureAwait(false) ?? string.Empty;
+        }
         foreach (RagInstanceConfig instance in entity.Config.Rag.Instances)
         {
             if (string.IsNullOrWhiteSpace(instance.ApiKey))

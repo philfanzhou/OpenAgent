@@ -30,31 +30,26 @@ builder.Services.AddAgentHost(builder.Configuration, options =>
 
 builder.Services.AddAgentApplication(builder.Configuration);
 builder.Services.AddOpenCodeRuntime(builder.Configuration);
-// 本地开发档（LocalDevelopment:UseInMemoryStores，仅 Development）：存储/配置走
-// 进程内实现，免 PostgreSQL/Redis/对象存储；ACP 执行链路保持完全真实。
-bool localInMemoryStores = builder.Environment.IsDevelopment()
-    && builder.Configuration.GetValue<bool>("LocalDevelopment:UseInMemoryStores");
-if (localInMemoryStores)
+builder.Services.AddOpenAgentInfrastructure(builder.Configuration);
+if (builder.Environment.IsDevelopment())
 {
-    builder.Services.AddLocalInMemoryStores();
+    string storageRoot = builder.Configuration["LocalDevelopment:FileStorageRoot"]
+        ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OpenAgent", "objects");
+    builder.Services.AddSingleton<OpenAgent.Contracts.Files.IFileObjectStore>(new LocalFileObjectStore(storageRoot));
 }
 else
 {
-    builder.Services.AddOpenAgentInfrastructure(builder.Configuration);
     builder.Services.AddFileAssetObjectStorage(builder.Configuration);
 }
 builder.Services.AddSingleton<SkillPackageManagementService>();
 
 builder.Services.AddAgentEngine(builder.Configuration);
-if (!localInMemoryStores)
-{
-    builder.Services.AddHealthChecks()
-        .AddCheck<DatabaseHealthCheck>("database", tags: ["infrastructure", "ready"]);
-}
+builder.Services.AddHealthChecks()
+    .AddCheck<DatabaseHealthCheck>("database", tags: ["infrastructure", "ready"]);
 builder.Services.AddEngineErrorHandling();
 var app = builder.Build();
 
-if (app.Environment.IsDevelopment() && !localInMemoryStores && app.Configuration.GetValue<bool>("Database:ApplyMigrationsOnStartup"))
+if (app.Environment.IsDevelopment() && app.Configuration.GetValue<bool>("Database:ApplyMigrationsOnStartup"))
 {
     await using AsyncServiceScope scope = app.Services.CreateAsyncScope();
     IDbContextFactory<OpenAgentDbContext> contexts = scope.ServiceProvider.GetRequiredService<IDbContextFactory<OpenAgentDbContext>>();
@@ -71,6 +66,7 @@ if (app.Environment.IsDevelopment())
 {
     app.MapManagementEndpoints();
     app.MapConfigurationEndpoints();
+    app.MapRuntimeEndpoints();
 }
 app.MapAgentEndpoints();
 app.MapFileShareDownloads();

@@ -124,6 +124,24 @@ public sealed class OpenCodeTests
     }
 
     [OpenCodeFact]
+    public async Task SavedRuntimeTimeout_OverridesLongerHostLimitAndReleasesWorkspace()
+    {
+        await using ModelFixture model = await ModelFixture.StartAsync(async (context, request) =>
+        {
+            context.Response.ContentType = "text/event-stream";
+            await context.Response.StartAsync();
+            try { await Task.Delay(Timeout.Infinite, context.RequestAborted); }
+            catch (OperationCanceledException) { }
+        });
+        await using RuntimeFixture runtime = new(model.Endpoint);
+        runtime.Request.Profile.Runtime = new RuntimeProfile { Id = "short", Name = "Short", TurnTimeoutSeconds = 2 };
+        AgentException error = await Assert.ThrowsAsync<AgentException>(() =>
+            runtime.CollectAsync(runtime.Request).WaitAsync(TimeSpan.FromSeconds(15)));
+        Assert.Equal(AgentErrorCode.LlmTimeout, error.ErrorCode);
+        runtime.AssertWorkspacesReleased();
+    }
+
+    [OpenCodeFact]
     public async Task TenantConfigurationMacros_ArePlainInstructionText()
     {
         const string instruction = "Explain {file:/openagent-must-not-read} and {env:PATH} literally.";

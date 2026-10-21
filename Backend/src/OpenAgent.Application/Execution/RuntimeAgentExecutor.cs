@@ -16,7 +16,8 @@ internal sealed class RuntimeAgentExecutor(
     IAgentRuntimeDriver driver,
     ConversationAgentResolver conversations,
     FileAssetRequestResolver files,
-    RuntimePreparation preparation) : IAgentExecution
+    RuntimePreparation preparation,
+    IRuntimeProfileRepository? runtimes = null) : IAgentExecution
 {
     public async Task<AgentResponse> ExecuteAsync(AgentRequest request, IAgentUserContext user, CancellationToken cancellationToken)
     {
@@ -68,11 +69,22 @@ internal sealed class RuntimeAgentExecutor(
             TraceId = string.IsNullOrWhiteSpace(request.TraceId) ? Guid.NewGuid().ToString("N") : request.TraceId
         };
         AgentRuntimeProfile profile = await profiles.ResolveAsync(agentId, request.LlmProfileId ?? string.Empty, user, cancellationToken).ConfigureAwait(false);
+        if (!string.IsNullOrWhiteSpace(request.RuntimeId))
+        {
+            RuntimeProfile? runtime = runtimes is null ? null
+                : await runtimes.GetAsync(turn.TenantId, request.RuntimeId, cancellationToken).ConfigureAwait(false);
+            if (runtime is null || runtime.Provider != "OpenCode" || runtime.TurnTimeoutSeconds is < 1 or > 86400)
+            {
+                throw new AgentException(AgentErrorCode.InvalidRequest, "The selected runtime is unavailable.");
+            }
+            profile.Runtime = runtime;
+        }
         AgentRequest resolved = new()
         {
             Query = request.Query,
             AgentId = agentId,
             LlmProfileId = request.LlmProfileId,
+            RuntimeId = request.RuntimeId,
             ConversationId = turn.ConversationId,
             ConversationType = request.ConversationType,
             TraceId = turn.TraceId,

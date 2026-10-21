@@ -11,9 +11,11 @@ public sealed class McpProfileManagementService
 {
     private readonly IRedisConnectionProvider redis;
     private readonly IMcpRegistry registry;
+    private readonly IMcpConfigRepository? repository;
 
-    public McpProfileManagementService(IRedisConnectionProvider redis, IMcpRegistry registry)
+    public McpProfileManagementService(IRedisConnectionProvider redis, IMcpRegistry registry, IMcpConfigRepository? repository = null)
     {
+        this.repository = repository;
         this.redis = redis;
         this.registry = registry;
     }
@@ -50,6 +52,11 @@ public sealed class McpProfileManagementService
         CancellationToken cancellationToken = default)
     {
         IReadOnlyList<McpServerConfig> servers = await ListAsync(cancellationToken).ConfigureAwait(false);
+        if (repository is not null)
+        {
+            IReadOnlyList<McpServerConfig> saved = await repository.ListAsync(tenantId, cancellationToken).ConfigureAwait(false);
+            servers = saved.Concat(servers.Where(server => !saved.Any(item => item.Name == server.Name))).ToArray();
+        }
         // 调试用：空租户（存量）server 视为全局可见。
         return servers
             .Where(server => string.IsNullOrWhiteSpace(server.TenantId)
@@ -76,6 +83,8 @@ public sealed class McpProfileManagementService
         string tenantId,
         CancellationToken cancellationToken = default)
     {
+        if (repository is not null && await repository.GetAsync(tenantId, id, cancellationToken).ConfigureAwait(false) is { } saved)
+            return saved;
         McpServerConfig? server = await GetAsync(id, cancellationToken).ConfigureAwait(false);
         // 调试用：空租户（存量）server 视为全局可见。
         return server != null
@@ -147,6 +156,12 @@ public sealed class McpProfileManagementService
         string tenantId,
         CancellationToken cancellationToken = default)
     {
+        if (repository is not null)
+        {
+            server.TenantId = tenantId;
+            await repository.SaveAsync(tenantId, server, cancellationToken).ConfigureAwait(false);
+            return server;
+        }
         McpServerConfig? existing = await GetAsync(server.Name, cancellationToken).ConfigureAwait(false);
         if (existing != null
             && !string.Equals(existing.TenantId, tenantId, StringComparison.Ordinal))
@@ -178,6 +193,11 @@ public sealed class McpProfileManagementService
         string tenantId,
         CancellationToken cancellationToken = default)
     {
+        if (repository is not null && await repository.DeleteAsync(tenantId, id, cancellationToken).ConfigureAwait(false))
+        {
+            if (registry.Get(id)?.TenantId == tenantId) await DeleteAsync(id, cancellationToken).ConfigureAwait(false);
+            return true;
+        }
         McpServerConfig? existing = await GetAsync(id, cancellationToken).ConfigureAwait(false);
         if (existing == null
             || !string.Equals(existing.TenantId, tenantId, StringComparison.Ordinal))

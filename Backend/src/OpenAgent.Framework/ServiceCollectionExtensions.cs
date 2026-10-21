@@ -34,7 +34,7 @@ public static class ServiceCollectionExtensions
 
         string connectionString = configuration.GetConnectionString(storage.ConnectionStringName)
             ?? throw new InvalidOperationException($"ConnectionStrings:{storage.ConnectionStringName} is required.");
-        services.AddDbContextFactory<OpenAgentDbContext>(options => options.UseNpgsql(connectionString));
+        services.AddDbContextFactory<OpenAgentDbContext>(options => options.UseNpgsql(connectionString, postgres => postgres.MigrationsHistoryTable("__EFMigrationsHistory", "public")));
         services.Configure<StorageOptions>(options =>
             configuration.GetSection(StorageOptions.SectionName).Bind(options));
         services.Configure<ConversationCacheOptions>(options =>
@@ -52,6 +52,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ISkillDefinitionRepository, EfCoreSkillDefinitionRepository>();
         services.AddSingleton<IAgentConfigRepository, AgentConfigRepository>();
         services.AddSingleton<ILlmConfigRepository, LlmConfigRepository>();
+        services.AddSingleton<IRuntimeProfileRepository, RuntimeProfileRepository>();
+        services.AddSingleton<IMcpConfigRepository, McpConfigRepository>();
 
         ConversationCacheOptions cache = configuration.GetSection(ConversationCacheOptions.SectionName)
             .Get<ConversationCacheOptions>() ?? new();

@@ -23,6 +23,8 @@ const agents = ref<AgentSummary[]>([])
 const currentUser = ref<CurrentUserContext | null>(null)
 const selectedAgentId = ref(AUTO_AGENT_ID)
 const selectedLlmProfileId = ref('')
+const selectedRuntimeId = ref(localStorage.getItem('openagent.runtime.selected') || '')
+watch(selectedRuntimeId, id => localStorage.setItem('openagent.runtime.selected', id))
 const search = ref('')
 const workspaceLoading = ref(false)
 const themeMode = ref<'light' | 'dark'>(localStorage.getItem('openagent.ui.theme') === 'dark' ? 'dark' : 'light')
@@ -71,6 +73,7 @@ const settings = useSettings({
   agents,
   selectedAgentId,
   selectedLlmProfileId,
+  selectedRuntimeId,
   connectionMode,
   routerUrl,
   engineUrl,
@@ -152,6 +155,7 @@ const {
 const chatStreaming = useChatStreaming({
   selectedAgentId,
   selectedLlmProfileId,
+  selectedRuntimeId,
   agents,
   conversations,
   selectedConversation,
@@ -219,6 +223,7 @@ function resetWorkspace(): void {
   currentUser.value = null
   agents.value = []
   selectedLlmProfileId.value = ''
+  selectedRuntimeId.value = ''
   resetConversations()
   clearPendingFiles()
   clearMarkdownImageCache()
@@ -229,6 +234,7 @@ function resetWorkspace(): void {
 async function loadWorkspace(): Promise<void> {
   workspaceLoading.value = true
   try {
+    await settings.runtimeSettings.load()
     const [agentResult, llmResult, conversationResult, userResult] = await Promise.allSettled([
       api.listAgents(),
       api.listLlmProfiles(),
@@ -283,7 +289,7 @@ onBeforeUnmount(() => {
     <button v-if="sidebarCollapsed" class="panel-restore sidebar-restore" type="button" aria-label="展开侧栏" title="展开侧栏" @click="toggleSidebar">›</button>
 
     <el-main class="main-panel">
-      <ChatHeader :status-text="statusText" :agents="agents" :selected-agent-id="selectedAgentId" :llm-profiles="llmProfiles" :selected-llm-profile-id="selectedLlmProfileId" :allow-auto="connectionMode === 'router'" :refreshing-agents="refreshingCatalog" :title="selectedConversation?.title || '新对话'" :theme-mode="themeMode" @update:selected-agent-id="selectedAgentId = $event" @update:selected-llm-profile-id="selectedLlmProfileId = $event" @agent-change="handleAgentChange" @refresh-agents="refreshCatalog" @settings="openSettings('gateway')" @toggle-theme="toggleTheme" />
+      <ChatHeader :runtime-profiles="settings.runtimeSettings.profiles.value" :selected-runtime-id="selectedRuntimeId" @update:selected-runtime-id="selectedRuntimeId = $event" :status-text="statusText" :agents="agents" :selected-agent-id="selectedAgentId" :llm-profiles="llmProfiles" :selected-llm-profile-id="selectedLlmProfileId" :allow-auto="connectionMode === 'router'" :refreshing-agents="refreshingCatalog" :title="selectedConversation?.title || '新对话'" :theme-mode="themeMode" @update:selected-agent-id="selectedAgentId = $event" @update:selected-llm-profile-id="selectedLlmProfileId = $event" @agent-change="handleAgentChange" @refresh-agents="refreshCatalog" @settings="openSettings('gateway')" @toggle-theme="toggleTheme" />
 
       <div class="workspace-grid" :class="{ 'context-collapsed': contextCollapsed }">
         <section class="chat-card">

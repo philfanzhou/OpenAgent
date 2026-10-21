@@ -11,6 +11,7 @@ export const api = {
     fileIds: string[] = [],
     routingConversationId?: string,
     signal?: AbortSignal,
+    runtimeId?: string,
   ): AsyncGenerator<StreamEvent> {
     const response = await send('/api/v1/agent/chat/stream', {
       method: 'POST',
@@ -21,7 +22,7 @@ export const api = {
       body: JSON.stringify({
         message,
         fileIds,
-        context: { ...(agentId ? { agentId } : {}), ...(llmProfileId ? { llmProfileId } : {}), ...(conversationId ? { conversationId } : {}) },
+        context: { ...(runtimeId ? { runtimeId } : {}), ...(agentId ? { agentId } : {}), ...(llmProfileId ? { llmProfileId } : {}), ...(conversationId ? { conversationId } : {}) },
       }),
       signal,
     })

@@ -15,7 +15,8 @@ namespace OpenAgent.Application.Capabilities.Mcp;
 /// </summary>
 internal sealed class McpFeatureFactory(
     AgentAuthorizationGate authorization,
-    IMcpRegistry registry) : IAgentFeatureFactory
+    IMcpRegistry registry,
+    IMcpConfigRepository? repository = null) : IAgentFeatureFactory
 {
     public async Task<AgentFeature> CreateAsync(
         string agentId,
@@ -25,7 +26,18 @@ internal sealed class McpFeatureFactory(
     {
         List<RuntimeMcpServer> servers = [];
         HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
-        IEnumerable<Contracts.Configuration.McpServerConfig> configured = config.Mcp.EnabledServerIds.Count > 0
+        List<McpServerConfig> persisted = [];
+        if (repository is not null && !string.IsNullOrWhiteSpace(user.TenantId))
+        {
+            foreach (string id in config.Mcp.EnabledServerIds)
+            {
+                McpServerConfig? saved = await repository.GetAsync(user.TenantId, id, cancellationToken).ConfigureAwait(false) ?? registry.Get(id);
+                if (saved is not null) persisted.Add(saved);
+            }
+        }
+        IEnumerable<Contracts.Configuration.McpServerConfig> configured = repository is not null && config.Mcp.EnabledServerIds.Count > 0
+            ? persisted
+            : config.Mcp.EnabledServerIds.Count > 0
             ? config.Mcp.EnabledServerIds.Select(registry.Get).Where(server => server != null).Select(server => server!)
             : config.Mcp.Servers;
         // 空 TenantId 的存量 profile 视为全局可用，与 AgentAuthorizationGate 对 LLM profile 的约定一致。

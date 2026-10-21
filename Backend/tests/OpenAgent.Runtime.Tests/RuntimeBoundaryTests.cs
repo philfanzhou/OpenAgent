@@ -2,6 +2,9 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using OpenAgent.Contracts.Security;
 using ModelContextProtocol.Client;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Requests;
@@ -13,6 +16,25 @@ namespace OpenAgent.Runtime.Tests;
 
 public sealed class RuntimeBoundaryTests
 {
+    [Fact]
+    public async Task Runtime_DisabledProviderFailsBeforeAnyProcessStarts()
+    {
+        ServiceCollection services = new();
+        services.AddOpenCodeRuntime(new ConfigurationBuilder().Build());
+        using ServiceProvider provider = services.BuildServiceProvider();
+        RuntimeInvocation invocation = new(new AgentRuntimeProfile
+        {
+            AgentId = "agent", Config = new(), Model = new(),
+            Runtime = new RuntimeProfile { Provider = "ClaudeCode", Name = "disabled", Id = "disabled" }
+        }, new TurnContext { TenantId = "tenant", UserId = "user", ConversationId = "c", TraceId = "t" }, "", [new("user", "hello")], []);
+        IAgentRuntimeDriver driver = provider.GetRequiredService<IAgentRuntimeDriver>();
+        AgentException error = await Assert.ThrowsAsync<AgentException>(async () =>
+        {
+            await foreach (AgentStreamEvent item in driver.RunAsync(invocation)) { }
+        });
+        Assert.Equal(AgentErrorCode.InvalidRequest, error.ErrorCode);
+    }
+
     [Fact]
     public void Launch_UsesIsolatedEnvironmentAndDenyByDefaultToolPolicy()
     {

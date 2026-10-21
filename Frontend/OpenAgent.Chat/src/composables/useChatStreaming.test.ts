@@ -45,7 +45,7 @@ function makeRecord(messages: ConversationMessage[], status: ConversationRecord[
   }
 }
 
-async function setup(modelProfileId = 'profile-1') {
+async function setup(modelProfileId = 'profile-1', runtimeId = 'saved-runtime') {
   const streams = useConversationStreams()
   const conversations = ref<ConversationRecord[]>([])
   // 上一轮完成后的内存形态：合并展示消息（assistant 组携带末行序号 4，
@@ -62,6 +62,7 @@ async function setup(modelProfileId = 'profile-1') {
   const streaming = useChatStreaming({
     selectedAgentId: ref('agent-1'),
     selectedLlmProfileId: ref(modelProfileId),
+    selectedRuntimeId: ref(runtimeId),
     agents: ref([]),
     conversations,
     selectedConversation,
@@ -100,11 +101,31 @@ describe('useChatStreaming', () => {
     expect(vi.mocked(api.streamChat).mock.calls[0]?.[2]).toBe('')
   })
 
+  it('passes the saved runtime independently from Agent and model selection', async () => {
+    const { streaming } = await setup('profile-1', 'saved-opencode')
+    vi.mocked(api.streamChat).mockImplementation(() => (async function* () {
+      yield { type: 'done', conversationId: 'conv-1' }
+    })() as never)
+    vi.mocked(api.getConversation).mockResolvedValue(makeRecord([], 'Completed') as never)
+    streaming.message.value = '运行'
+    await streaming.send()
+    expect(vi.mocked(api.streamChat).mock.calls[0]?.[1]).toBe('agent-1')
+    expect(vi.mocked(api.streamChat).mock.calls[0]?.[2]).toBe('profile-1')
+    expect(vi.mocked(api.streamChat).mock.calls[0]?.[7]).toBe('saved-opencode')
+  })
+
+  it('does not send when the Runtime picker has no saved selection', async () => {
+    const { streaming } = await setup('profile-1', '')
+    streaming.message.value = '运行'
+    await streaming.send()
+    expect(api.streamChat).not.toHaveBeenCalled()
+  })
+
   it('keeps every turn intact after a user stop once the server persisted the cancelled turn', async () => {
     const { streams, selectedConversation, streaming } = await setup()
     let onAbort: (() => void) | undefined
     vi.mocked(api.streamChat).mockImplementation((...args: unknown[]) => {
-      const signal = args.at(-1) as AbortSignal | undefined
+      const signal = args[6] as AbortSignal | undefined
       signal?.addEventListener('abort', () => onAbort?.(), { once: true })
       return (async function* () {
         yield { type: 'conversation', conversationId: 'conv-1' }
@@ -145,7 +166,7 @@ describe('useChatStreaming', () => {
     const { streams, selectedConversation, streaming } = await setup()
     let onAbort: (() => void) | undefined
     vi.mocked(api.streamChat).mockImplementation((...args: unknown[]) => {
-      const signal = args.at(-1) as AbortSignal | undefined
+      const signal = args[6] as AbortSignal | undefined
       signal?.addEventListener('abort', () => onAbort?.(), { once: true })
       return (async function* () {
         yield { type: 'conversation', conversationId: 'conv-1' }

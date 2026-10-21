@@ -24,9 +24,14 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, ILogger
         RuntimeInvocation invocation,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
+        if (invocation.Profile.Runtime is { Provider: not "OpenCode" })
+        {
+            throw new AgentException(AgentErrorCode.InvalidRequest, "The selected runtime provider is not enabled.");
+        }
         await _turns.WaitAsync(cancellationToken).ConfigureAwait(false);
         using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        deadline.CancelAfter(TimeSpan.FromSeconds(options.Value.TurnTimeoutSeconds));
+        deadline.CancelAfter(TimeSpan.FromSeconds(Math.Min(options.Value.TurnTimeoutSeconds,
+            invocation.Profile.Runtime?.TurnTimeoutSeconds ?? options.Value.TurnTimeoutSeconds)));
         try
         {
             await using IAsyncEnumerator<AgentStreamEvent> events = RunCoreAsync(invocation, deadline.Token).GetAsyncEnumerator();
