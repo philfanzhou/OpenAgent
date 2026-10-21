@@ -65,7 +65,10 @@ public sealed class OpenCodeSseTests
             ConversationRecord record = (await host.Store.GetRecordAsync("tenant-1", "real-acp-conversation"))!;
             Assert.Equal(ConversationStatus.Completed, record.Status);
             Assert.Contains(record.Messages, message => message.Role == "assistant" && message.Content == "平台工具调用完成");
-            Assert.DoesNotContain(record.Messages, message => message.TokenUsage is not null);
+            // 版本无关：持久化 usage 只允许是上下文占用（prompt=total、completion=0），
+            // 不伪造计费拆分；不上报 usage_update 的版本保持 null。
+            Assert.DoesNotContain(record.Messages, message => message.TokenUsage is { } usage
+                && !(usage.CompletionTokens == 0 && usage.PromptTokens == usage.TotalTokens && usage.PromptTokens >= 0));
             var second = await host.PostStreamAsync("real-acp-conversation");
             Assert.DoesNotContain(second, frame => frame.Event == "error");
             Assert.True(sawHistory);

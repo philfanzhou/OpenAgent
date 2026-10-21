@@ -27,7 +27,7 @@
          会话锁 + 历史加载（PlatformChatHistory）+ 能力/工具准备 → RuntimeInvocation
   → [Runtime] OpenCodeRuntime：并发租约 → 随机工作区 + Skill 物化 → MCP 桥（每轮 Kestrel）
        → 启动 opencode acp 子进程 → initialize / session/new / session/prompt
-  → [OpenCode 1.18.35] 直接调用模型 API；平台工具经 MCP 桥回调；外部 MCP 直连
+  → [OpenCode（不固定版本）] 直接调用模型 API；平台工具经 MCP 桥回调；外部 MCP 直连
   ← session/update → AcpEventMapper → AgentStreamEvent → SSE
   → [持久化] RuntimePreparationScope → PlatformChatHistory → ConversationSessionStore
        → WriteThrough(Redis) → EF Core → PostgreSQL → 落库成功后才发 done

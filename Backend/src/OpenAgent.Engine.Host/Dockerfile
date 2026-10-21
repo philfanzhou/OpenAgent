@@ -1,6 +1,6 @@
-# 与互操作测试固定到同一 OpenCode 版本；仅把原生可执行文件带入运行镜像。
+# OpenCode 不固定版本，默认安装最新发布并仅带入原生可执行文件；需要复现时用 --build-arg OPENCODE_VERSION=<version> 锁定。
 FROM node:22-bookworm-slim AS opencode
-ARG OPENCODE_VERSION=1.18.35
+ARG OPENCODE_VERSION=latest
 RUN npm install --prefix /opt/opencode --ignore-scripts --no-audit --no-fund opencode-ai@${OPENCODE_VERSION} \
     && node -e 'const fs=require("fs"); const pkg="opencode-linux-"+process.arch+(process.arch==="x64"?"-baseline":"")+"/bin/opencode"; fs.copyFileSync(require.resolve(pkg,{paths:["/opt/opencode"]}),"/opencode"); fs.chmodSync("/opencode",0o755)'
 

@@ -45,6 +45,51 @@ public sealed class RuntimeProfileRepositoryTests
     }
 
     [Fact]
+    public async Task GetAsync_CachesWithinTtl_AndWritePathsInvalidate()
+    {
+        ServiceCollection services = new();
+        services.AddDbContextFactory<OpenAgentDbContext>(options => options.UseInMemoryDatabase(Guid.NewGuid().ToString("N")));
+        await using ServiceProvider provider = services.BuildServiceProvider();
+        CountingDbContextFactory counting = new(provider.GetRequiredService<IDbContextFactory<OpenAgentDbContext>>());
+        RuntimeProfileRepository runtimes = new(counting);
+        McpConfigRepository servers = new(counting);
+
+        await runtimes.SaveAsync("tenant", new() { Id = "runtime", Name = "First", Provider = "OpenCode" });
+        await servers.SaveAsync("tenant", new() { Name = "mcp", Url = "https://example.test/mcp" });
+        int afterSaves = counting.Created;
+        // TTL 窗口内重复读取命中进程内缓存，不再创建 DbContext；负结果同样缓存。
+        Assert.Equal("First", (await runtimes.GetAsync("tenant", "runtime"))!.Name);
+        Assert.Equal("https://example.test/mcp", (await servers.GetAsync("tenant", "mcp"))!.Url);
+        Assert.Null(await runtimes.GetAsync("tenant", "missing"));
+        Assert.Null(await servers.GetAsync("tenant", "missing"));
+        Assert.Equal(afterSaves + 4, counting.Created);
+
+        // 写入路径必须失效缓存，保证同进程内读己之写。
+        await runtimes.SaveAsync("tenant", new() { Id = "runtime", Name = "Second", Provider = "OpenCode" });
+        Assert.Equal("Second", (await runtimes.GetAsync("tenant", "runtime"))!.Name);
+        await servers.SaveAsync("tenant", new() { Name = "mcp", Url = "https://updated.test/mcp" });
+        Assert.Equal("https://updated.test/mcp", (await servers.GetAsync("tenant", "mcp"))!.Url);
+        // 删除路径与保存共用失效入口（InMemory 提供程序不支持 ExecuteDelete，删除语义由仓储实现保证）。
+    }
+
+    private sealed class CountingDbContextFactory(IDbContextFactory<OpenAgentDbContext> inner) : IDbContextFactory<OpenAgentDbContext>
+    {
+        public int Created { get; private set; }
+
+        public OpenAgentDbContext CreateDbContext()
+        {
+            Created++;
+            return inner.CreateDbContext();
+        }
+
+        public async Task<OpenAgentDbContext> CreateDbContextAsync(CancellationToken cancellationToken = default)
+        {
+            Created++;
+            return await inner.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    [Fact]
     public async Task AgentRepository_RoundTripsExistingOpenCodeModelWithoutMovingBindings()
     {
         ServiceCollection services = new();

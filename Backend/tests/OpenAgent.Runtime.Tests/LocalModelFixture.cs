@@ -87,7 +87,7 @@ internal sealed class OpenCodeFactAttribute : FactAttribute
     {
         if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENAGENT_TEST_OPENCODE")))
         {
-            Skip = "Set OPENAGENT_TEST_OPENCODE to OpenCode 1.18.35 for real harness tests.";
+            Skip = "Set OPENAGENT_TEST_OPENCODE to the OpenCode executable for real harness tests.";
         }
     }
 }

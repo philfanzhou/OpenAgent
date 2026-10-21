@@ -7,7 +7,15 @@ namespace OpenAgent.Framework.Configuration;
 
 internal sealed class McpConfigRepository(IDbContextFactory<OpenAgentDbContext> contexts) : IMcpConfigRepository
 {
-    public async Task<McpServerConfig?> GetAsync(string tenantId, string id, CancellationToken cancellationToken = default)
+    // 仓储注册为单例：轮次间复用读缓存（含负结果），写入/删除即时失效。
+    private readonly TenantEntryCache _cache = new();
+
+    public Task<McpServerConfig?> GetAsync(string tenantId, string id, CancellationToken cancellationToken = default)
+    {
+        return _cache.GetOrAddAsync(tenantId, id, ct => ReadAsync(tenantId, id, ct), cancellationToken);
+    }
+
+    private async Task<McpServerConfig?> ReadAsync(string tenantId, string id, CancellationToken cancellationToken)
     {
         await using OpenAgentDbContext context = await contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         McpConfigurationEntity? entity = await context.McpConfigurations.AsNoTracking()
@@ -36,12 +44,15 @@ internal sealed class McpConfigRepository(IDbContextFactory<OpenAgentDbContext> 
         server.TenantId = tenantId;
         entity.DefinitionJson = JsonSerializer.Serialize(server);
         await context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        _cache.Invalidate(tenantId, server.Name);
     }
 
     public async Task<bool> DeleteAsync(string tenantId, string id, CancellationToken cancellationToken = default)
     {
         await using OpenAgentDbContext context = await contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
-        return await context.McpConfigurations.Where(item => item.TenantId == tenantId && item.Name == id)
+        bool deleted = await context.McpConfigurations.Where(item => item.TenantId == tenantId && item.Name == id)
             .ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false) > 0;
+        _cache.Invalidate(tenantId, id);
+        return deleted;
     }
 }

@@ -15,4 +15,13 @@ public sealed class OpenCodeOptions
 
     /// <summary>诊断开关：把每轮 usage_update（上下文占用 used/size）写入日志。默认关闭。</summary>
     public bool LogUsageUpdates { get; set; }
+
+    /// <summary>空闲进程保活秒数：相同会话归属与启动身份的进程在窗口内复用，追问轮次免付冷启动；0 关闭复用。</summary>
+    public int KeepAliveSeconds { get; set; } = 300;
+
+    /// <summary>保活进程总数上限；超出时直接销毁而不是归还池。</summary>
+    public int MaxKeptProcesses { get; set; } = 8;
+
+    /// <summary>单个进程最多服务的 ACP 会话数；超过即销毁重建，约束 harness 侧会话/内存累积。</summary>
+    public int MaxSessionsPerProcess { get; set; } = 64;
 }

@@ -7,7 +7,15 @@ namespace OpenAgent.Framework.Configuration;
 
 internal sealed class RuntimeProfileRepository(IDbContextFactory<OpenAgentDbContext> contexts) : IRuntimeProfileRepository
 {
-    public async Task<RuntimeProfile?> GetAsync(string tenantId, string id, CancellationToken cancellationToken = default)
+    // 仓储注册为单例：轮次间复用读缓存（含负结果），写入/删除即时失效。
+    private readonly TenantEntryCache _cache = new();
+
+    public Task<RuntimeProfile?> GetAsync(string tenantId, string id, CancellationToken cancellationToken = default)
+    {
+        return _cache.GetOrAddAsync(tenantId, id, ct => ReadAsync(tenantId, id, ct), cancellationToken);
+    }
+
+    private async Task<RuntimeProfile?> ReadAsync(string tenantId, string id, CancellationToken cancellationToken)
     {
         await using OpenAgentDbContext context = await contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         RuntimeConfigurationEntity? entity = await context.RuntimeConfigurations.AsNoTracking()
@@ -35,12 +43,15 @@ internal sealed class RuntimeProfileRepository(IDbContextFactory<OpenAgentDbCont
         }
         entity.DefinitionJson = JsonSerializer.Serialize(profile);
         await context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        _cache.Invalidate(tenantId, profile.Id);
     }
 
     public async Task<bool> DeleteAsync(string tenantId, string id, CancellationToken cancellationToken = default)
     {
         await using OpenAgentDbContext context = await contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
-        return await context.RuntimeConfigurations.Where(item => item.TenantId == tenantId && item.RuntimeId == id)
+        bool deleted = await context.RuntimeConfigurations.Where(item => item.TenantId == tenantId && item.RuntimeId == id)
             .ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false) > 0;
+        _cache.Invalidate(tenantId, id);
+        return deleted;
     }
 }

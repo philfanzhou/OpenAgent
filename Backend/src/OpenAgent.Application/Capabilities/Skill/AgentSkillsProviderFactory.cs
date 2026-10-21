@@ -52,65 +52,64 @@ internal sealed class AgentSkillsProviderFactory(
         IAgentUserContext user,
         CancellationToken cancellationToken)
     {
-        string temporaryRoot = Path.Combine(Path.GetTempPath(), "openagent-skills", Guid.NewGuid().ToString("N"));
         var skills = new List<RuntimeSkill>();
         var scriptSkillNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        List<string> ephemeralRoots = [];
 
-        try
+        IReadOnlyList<SkillInstanceConfig> instances = await ResolveInstancesAsync(
+            config.Skills,
+            catalog,
+            user.TenantId,
+            cancellationToken).ConfigureAwait(false);
+        foreach (SkillInstanceConfig instance in instances.Where(IsEnabledObjectPackage))
         {
-            Directory.CreateDirectory(temporaryRoot);
-            IReadOnlyList<SkillInstanceConfig> instances = await ResolveInstancesAsync(
-                config.Skills,
-                catalog,
-                user.TenantId,
+            if (!IsSelected(config.Skills, instance)
+                || !await authorization.IsAvailableAsync(
+                    agentId,
+                    AgentResourceType.Skill,
+                    string.IsNullOrWhiteSpace(instance.Id) ? instance.Name : instance.Id,
+                    user,
+                    cancellationToken).ConfigureAwait(false))
+            {
+                continue;
+            }
+
+            string directoryName = GetPackageDirectoryName(instance.Name) ?? Guid.NewGuid().ToString("N");
+            // 包目录来自进程级内容缓存：命中时零下载；未命中时在 staging 内下载 +
+            // 校验后原子提交。无包哈希的记录退回一次性目录，随本轮释放。
+            SkillPackageCache.SkillPackageMaterialization materialized = await SkillPackageCache.GetOrMaterializeAsync(
+                instance.TenantId!,
+                instance.ObjectKey!,
+                instance.Sha256,
+                (staging, token) => MaterializeAsync(instance, staging, token),
                 cancellationToken).ConfigureAwait(false);
-            foreach (SkillInstanceConfig instance in instances.Where(IsEnabledObjectPackage))
+            if (materialized.Ephemeral)
             {
-                if (!IsSelected(config.Skills, instance)
-                    || !await authorization.IsAvailableAsync(
-                        agentId,
-                        AgentResourceType.Skill,
-                        string.IsNullOrWhiteSpace(instance.Id) ? instance.Name : instance.Id,
-                        user,
-                        cancellationToken).ConfigureAwait(false))
-                {
-                    continue;
-                }
-
-                string directoryName = GetPackageDirectoryName(instance.Name) ?? Guid.NewGuid().ToString("N");
-                string packagePath = Path.Combine(temporaryRoot, directoryName);
-                Directory.CreateDirectory(packagePath);
-                await MaterializeAsync(instance, packagePath, cancellationToken).ConfigureAwait(false);
-                skills.Add(new RuntimeSkill(directoryName, packagePath));
-
-                if (instance.ScriptExecutionEnabled && !string.IsNullOrWhiteSpace(instance.Name))
-                {
-                    scriptSkillNames.Add(instance.Name);
-                }
+                ephemeralRoots.Add(materialized.Path);
             }
+            skills.Add(new RuntimeSkill(directoryName, materialized.Path));
 
-            if (skills.Count == 0)
+            if (instance.ScriptExecutionEnabled && !string.IsNullOrWhiteSpace(instance.Name))
             {
-                Directory.Delete(temporaryRoot, recursive: true);
-                return AgentSkillsRuntime.Empty;
+                scriptSkillNames.Add(instance.Name);
             }
-
-            Dictionary<string, string> roots = skills.ToDictionary(
-                skill => skill.Name, skill => skill.Path, StringComparer.Ordinal);
-            List<AITool> tools = [CreateSkillFileReader(roots)];
-            if (IsScriptExecutionEnabled(config, fileContext.Scope) && scriptSkillNames.Count > 0)
-            {
-                var runner = new SkillScriptRunner(executor, files, fileContext, authorization, codeOptions);
-                tools.Add(CreateScriptRunner(runner, roots, scriptSkillNames, agentId, user));
-            }
-
-            return new AgentSkillsRuntime(skills, tools, temporaryRoot);
         }
-        catch
+
+        if (skills.Count == 0)
         {
-            TryDelete(temporaryRoot);
-            throw;
+            return AgentSkillsRuntime.Empty;
         }
+
+        Dictionary<string, string> roots = skills.ToDictionary(
+            skill => skill.Name, skill => skill.Path, StringComparer.Ordinal);
+        List<AITool> tools = [CreateSkillFileReader(roots)];
+        if (IsScriptExecutionEnabled(config, fileContext.Scope) && scriptSkillNames.Count > 0)
+        {
+            var runner = new SkillScriptRunner(executor, files, fileContext, authorization, codeOptions);
+            tools.Add(CreateScriptRunner(runner, roots, scriptSkillNames, agentId, user));
+        }
+
+        return new AgentSkillsRuntime(skills, tools, ephemeralRoots);
     }
 
     /// <summary>
@@ -348,21 +347,6 @@ internal sealed class AgentSkillsProviderFactory(
         if (!FileObjectTenantScope.ContainsTenantSharedPartition(objectKey, tenantId))
         {
             throw new InvalidOperationException("Skill object storage key is outside the tenant-shared partition.");
-        }
-    }
-
-    private static void TryDelete(string path)
-    {
-        try
-        {
-            if (Directory.Exists(path))
-            {
-                Directory.Delete(path, recursive: true);
-            }
-        }
-        catch
-        {
-            // Cleanup is best effort; the original exception is more useful to the caller.
         }
     }
 }

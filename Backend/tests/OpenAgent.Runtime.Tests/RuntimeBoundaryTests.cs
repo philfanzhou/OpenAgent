@@ -22,7 +22,7 @@ public sealed class RuntimeBoundaryTests
     {
         ServiceCollection services = new();
         services.AddOpenCodeRuntime(new ConfigurationBuilder().Build());
-        using ServiceProvider provider = services.BuildServiceProvider();
+        await using ServiceProvider provider = services.BuildServiceProvider();
         RuntimeInvocation invocation = new(new AgentRuntimeProfile
         {
             AgentId = "agent", Config = new(), Model = new(),
