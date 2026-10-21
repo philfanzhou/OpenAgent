@@ -79,6 +79,17 @@ function isThinking(message: ConversationMessage): boolean {
   return isStreamingItem(message) && !message.content
 }
 
+function shouldShowRuntime(message: ConversationMessage): boolean {
+  return shouldShowUsage(message) && Boolean(message.metadata?.extensions?.runtimeProvider)
+}
+
+/** 实际运行时标识 tag：Provider + 对端版本；不展示用户侧 Runtime 配置名称。 */
+function runtimeLabel(message: ConversationMessage): string {
+  const ext = message.metadata?.extensions ?? {}
+  const provider = ext.runtimeProvider ?? ''
+  return ext.runtimeAgentVersion ? `${provider} ${ext.runtimeAgentVersion}` : provider
+}
+
 function shouldShowUsage(message: ConversationMessage): boolean {
   return message.role === 'assistant' && !message.toolName && !isStreamingItem(message)
 }
@@ -423,13 +434,8 @@ defineExpose({ scrollToBottom })
 
         <div v-if="item.content || isStreamingItem(item)" class="message-bubble"><MarkdownContent :content="item.content" :streaming="isStreamingItem(item) && Boolean(item.content)" :resolve-image="imageLookup(item.messageId)" /></div>
 
-        <div v-if="item.role === 'assistant' && item.metadata?.extensions?.runtimeProvider" class="message-usage message-runtime" aria-label="实际运行时">
-          <span>实际运行时 · {{ item.metadata.extensions.runtimeProvider }}</span>
-          <span v-if="item.metadata.extensions.runtimeAgentVersion">{{ item.metadata.extensions.runtimeAgentVersion }}</span>
-          <small>{{ item.metadata.extensions.runtimeProfileName || item.metadata.extensions.runtimeProfileId }}</small>
-        </div>
-
-        <div v-if="shouldShowUsage(item)" class="message-usage" aria-label="当前响应 Token 用量">
+        <div v-if="shouldShowRuntime(item) || shouldShowUsage(item)" class="message-usage" aria-label="运行时与 Token 用量">
+          <span v-if="shouldShowRuntime(item)" class="message-model" :title="'实际运行时 ' + runtimeLabel(item)">{{ runtimeLabel(item) }}</span>
           <span v-if="item.modelId" class="message-model">{{ item.modelId }}</span>
           <span :class="{ unavailable: !item.tokenUsage }">Token · {{ formatTokenUsage(item.tokenUsage) }}</span>
           <small v-if="formatTokenBreakdown(item.tokenUsage)">{{ formatTokenBreakdown(item.tokenUsage) }}</small>
