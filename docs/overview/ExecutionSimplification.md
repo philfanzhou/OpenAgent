@@ -2,7 +2,7 @@
 
 分析基线：`dev @ 8799d479`。性质：类/方法/字段级的精简清单，是 [执行链路分析](ExecutionChainAnalysis.md) 决策点 D2 的展开；不改变任何任务状态。所有判定附证据（文件:行号，路径省略 `Backend/src/`）。
 
-> **落地状态（2026-10-21）**：§3 的 AgentExecutor/IAgentExecution/双层工厂/ToolInvocationScope/死字段复制、§4 的 MCP 客户端测试器组 + Redis 双写层 + 内存注册表、§5 的 SkillCatalog/RedisSkillCatalogStore 塌缩 + SkillFeatureFactory + test 端点、§6 的 7 个死类型与空目录、§3/§8 的预算与指标修正已随精简 PR 落地。§7 压缩影子链与 §6 的大宗 DTO 合并（身份 5→1、Chat 双契约线、连接测试/模型形状/文件分享合并、接口下沉）仍待决策或后续 PR。
+> **落地状态（2026-10-21）**：§3 的 AgentExecutor/IAgentExecution/双层工厂/ToolInvocationScope/死字段复制、§4 的 MCP 客户端测试器组 + Redis 双写层 + 内存注册表、§5 的 SkillCatalog/RedisSkillCatalogStore 塌缩 + SkillFeatureFactory + test 端点、§6 的 7 个死类型、§3/§8 的预算与指标修正已随精简 PR 落地。**`.gitkeep` 架构占位目录按评审意见保留不动**，待 A03 重审 A 系列任务范围时一并处置。§7 压缩影子链与 §6 的大宗 DTO 合并（身份 5→1、Chat 双契约线、连接测试/模型形状/文件分享合并、接口下沉）仍待决策或后续 PR。
 
 ## 1. 结论摘要
 
