@@ -15,7 +15,7 @@ Backend/src/
   OpenAgent.Runtime/               平台适配类库，IsPackable=false；根目录为 harness 无关组件
     RuntimeServiceExtensions.cs    AddOpenCodeRuntime 组合入口
     AcpEventMapper.cs              协议更新到既有平台事件；工具名前缀由构造参数指定
-    RuntimeToolBridge.cs           本轮 loopback MCP 端点及 bearer
+    RuntimeToolBridge.cs           宿主共享 loopback MCP 端点与每轮 bearer 注册
     AcpSessionMcp.cs               外部 MCP server 定义到 ACP session/new 条目
     OpenCode/                      OpenCode 专属 adapter；未来其他 ACP harness 平行建目录
       OpenCodeRuntime.cs           并发配额、ACP 会话、取消和进程回收
@@ -35,11 +35,11 @@ Runtime 只引用 Contracts、Runtime.Acp 和官方 MCP SDK；Application 只引
 
 1. HTTP 身份与入口治理不变。平台解析并授权 Agent/模型，建立 Tenant/User/Conversation/Trace 身份，校验附件，获取既有会话锁与版本。
 2. 平台把历史、平台自有工具、外部 MCP server 定义和 Skill 包准备成 RuntimeInvocation。平台工具函数带本轮闭包；每次回调校验 Tool/Function 的 invoke 权限，沿用工具超时、独占/只读并发和结果字符预算。外部 MCP server 不再经平台代理连接（见"MCP 透传"），其凭据与限流由 harness 持有。
-3. 驱动创建随机工作区、独立 HOME/XDG 状态目录和 loopback MCP 桥。桥使用 256 bit 随机 bearer，身份不取自模型参数，整轮取消后拒绝新请求。启用的 Skill 包以符号链接（失败退化为复制）物化到工作区 `.opencode/skills/<name>`，交由 OpenCode 原生 skill 工具按需发现。
+3. 驱动创建随机工作区、独立 HOME/XDG 状态目录，并向共享 loopback MCP 桥注册本轮工具集。桥是宿主单例：端点随首个轮次惰性启动、宿主关闭时回收，不再每轮启动新站点；每轮持有独立 256 bit 随机 bearer，身份不取自模型参数，整轮取消或租约释放后拒绝新请求。启用的 Skill 包以符号链接（失败退化为复制）物化到工作区 `.opencode/skills/<name>`，交由 OpenCode 原生 skill 工具按需发现。
 4. 通过 SDK 启动 `opencode acp`，执行 initialize → session/new（携带平台桥 + 透传的外部 MCP server 定义）→ 可用时选择 model config → session/prompt。OpenCode 直接调用选定的模型，平台工具经 MCP 桥调用，外部 MCP 工具由 OpenCode 原生连接调用。
 5. 消费 session/update，合并工具增量、保留调用 ID、去除桥的显示名前缀，将正文、reasoning、工具结果和计划映射到 AgentStreamEvent。相同工具参数更新不重复发送；参数确有变化时沿同一个 ID 更新。
 6. ACP prompt 结束后排空更新队列。平台保存会话成功后才发送 usage/done。失败或取消保存部分正文、reasoning 与工具记录。
-7. 取消发送 session/cancel 并等待原 prompt 结果；SDK 对不确认的进程执行有界回收。结束后关闭 MCP 桥、释放工具资源并删除本轮随机工作区，保留平台会话数据。
+7. 取消发送 session/cancel 并等待原 prompt 结果；SDK 对不确认的进程执行有界回收。结束后吊销本轮桥注册（共享端点保留给后续轮次）、释放工具资源并删除本轮随机工作区，保留平台会话数据。
 
 OpenCode 的原生工具默认 `* = deny`，仅允许 `openagent_*` 平台桥工具；按 Agent 配置透传的外部 MCP server 会追加对应 `server_*` 放行，启用 Skill 时放行原生 `skill` 工具。Client 不启用文件/终端回调，ACP 权限请求默认拒绝。平台 Runner、文件资产和 Skill 脚本策略继续约束平台侧工具。这是应用层授权和进程环境隔离，**不是操作系统沙箱**；本轮不宣称解决恶意 harness 的主机访问问题，也不实现人工审批。
 

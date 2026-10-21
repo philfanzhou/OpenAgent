@@ -16,7 +16,8 @@ using OpenAgent.Runtime.Acp.Protocol;
 namespace OpenAgent.Runtime.OpenCode;
 
 /// <summary>每轮独立的 ACP 进程和工作区；平台历史作为上下文传入，不跨租户复用 Agent 状态。</summary>
-internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, ILogger<OpenCodeRuntime> logger) : IAgentRuntimeDriver, IDisposable
+internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, RuntimeToolBridge bridge, ILogger<OpenCodeRuntime> logger)
+    : IAgentRuntimeDriver, IDisposable
 {
     private readonly SemaphoreSlim _turns = new(options.Value.MaxConcurrentTurns);
     private readonly object _launchGate = new();
@@ -122,9 +123,10 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, ILogger
         try
         {
             OpenCodeSkills.Materialize(workspace, invocation.Skills);
-            await using RuntimeToolBridge bridge = await RuntimeToolBridge.StartAsync(invocation.Tools, cancellationToken).ConfigureAwait(false);
+            // 共享桥只按本轮 bearer 注册/吊销工具集，不再每轮启动站点。
+            await using RuntimeToolLease tools = await bridge.RegisterAsync(invocation.Tools, cancellationToken).ConfigureAwait(false);
             // 平台自有工具经桥；外部 MCP server 按 Agent 配置直接透传给 harness 原生连接。
-            McpServer[] sessionServers = [bridge.Server, .. AcpSessionMcp.Map(invocation.McpServers)];
+            McpServer[] sessionServers = [tools.Server, .. AcpSessionMcp.Map(invocation.McpServers)];
             await using AcpProcess process = AcpProcess.Start(OpenCodeProcess.Create(Launch, invocation, workspace));
             await using AcpClient client = new(process.Transport, options: new()
             {

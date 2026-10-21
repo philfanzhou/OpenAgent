@@ -6,6 +6,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using OpenAgent.Contracts.Security;
 using ModelContextProtocol.Client;
+using ModelContextProtocol.Protocol;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Runtime;
@@ -22,7 +23,8 @@ public sealed class RuntimeBoundaryTests
     {
         ServiceCollection services = new();
         services.AddOpenCodeRuntime(new ConfigurationBuilder().Build());
-        using ServiceProvider provider = services.BuildServiceProvider();
+        // 桥单例只实现 IAsyncDisposable；容器必须异步释放。
+        await using ServiceProvider provider = services.BuildServiceProvider();
         RuntimeInvocation invocation = new(new AgentRuntimeProfile
         {
             AgentId = "agent", Config = new(), Model = new(),
@@ -100,24 +102,71 @@ public sealed class RuntimeBoundaryTests
             calls++;
             return Task.FromResult("桥接结果");
         });
-        await using RuntimeToolBridge bridge = await RuntimeToolBridge.StartAsync([tool], turn.Token);
+        await using RuntimeToolBridge bridge = new();
+        await using RuntimeToolLease lease = await bridge.RegisterAsync([tool], turn.Token);
         using HttpClient anonymous = new();
-        Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync(bridge.Server.Url)).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync(lease.Server.Url)).StatusCode);
         anonymous.DefaultRequestHeaders.Add("Authorization", "Bearer wrong-token");
-        Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync(bridge.Server.Url)).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync(lease.Server.Url)).StatusCode);
         using HttpClient authorized = new();
-        authorized.DefaultRequestHeaders.Add("Authorization", Assert.Single(bridge.Server.Headers!).Value);
+        authorized.DefaultRequestHeaders.Add("Authorization", Assert.Single(lease.Server.Headers!).Value);
         await using McpClient client = await McpClient.CreateAsync(new HttpClientTransport(new HttpClientTransportOptions
         {
-            Endpoint = new Uri(bridge.Server.Url!),
+            Endpoint = new Uri(lease.Server.Url!),
             TransportMode = HttpTransportMode.StreamableHttp
         }, authorized));
-        Assert.Single(await client.ListToolsAsync());
+        Assert.Equal(["echo"], (await client.ListToolsAsync()).Select(item => item.Name));
         var result = await client.CallToolAsync("echo", new Dictionary<string, object?>());
         Assert.False(result.IsError ?? false);
         Assert.Equal(1, calls);
         turn.Cancel();
-        Assert.Equal(HttpStatusCode.Unauthorized, (await authorized.GetAsync(bridge.Server.Url)).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await authorized.GetAsync(lease.Server.Url)).StatusCode);
         Assert.Equal(1, calls);
     }
+
+    [Fact]
+    public async Task Bridge_ServesConcurrentTurnsFromOneEndpointWithIsolatedToolsets()
+    {
+        RuntimeTool first = new("alpha", "first turn tool", """{"type":"object"}""", (_, _) => Task.FromResult("第一轮结果"));
+        RuntimeTool second = new("beta", "second turn tool", """{"type":"object"}""", (_, _) => Task.FromResult("第二轮结果"));
+        RuntimeTool failing = new("boom", "throws server paths", """{"type":"object"}""", (_, _) => throw new InvalidOperationException("D:/must-not-leak"));
+        await using RuntimeToolBridge bridge = new();
+        await using RuntimeToolLease one = await bridge.RegisterAsync([first, failing], CancellationToken.None);
+        await using RuntimeToolLease two = await bridge.RegisterAsync([second], CancellationToken.None);
+        // 共享端点：两轮拿到同一 URL，只有 bearer 不同。
+        Assert.Equal(one.Server.Url, two.Server.Url);
+        Assert.NotEqual(Assert.Single(one.Server.Headers!).Value, Assert.Single(two.Server.Headers!).Value);
+        using HttpClient firstClient = new();
+        firstClient.DefaultRequestHeaders.Add("Authorization", Assert.Single(one.Server.Headers!).Value);
+        using HttpClient secondClient = new();
+        secondClient.DefaultRequestHeaders.Add("Authorization", Assert.Single(two.Server.Headers!).Value);
+        await using McpClient firstMcp = await McpClient.CreateAsync(new HttpClientTransport(new HttpClientTransportOptions
+        {
+            Endpoint = new Uri(one.Server.Url!),
+            TransportMode = HttpTransportMode.StreamableHttp
+        }, firstClient));
+        await using McpClient secondMcp = await McpClient.CreateAsync(new HttpClientTransport(new HttpClientTransportOptions
+        {
+            Endpoint = new Uri(two.Server.Url!),
+            TransportMode = HttpTransportMode.StreamableHttp
+        }, secondClient));
+        // 各轮只见自己的工具集；交叉调用与回调异常都不泄漏服务端细节。
+        Assert.Equal(["alpha", "boom"], (await firstMcp.ListToolsAsync()).Select(item => item.Name).Order());
+        Assert.Equal(["beta"], (await secondMcp.ListToolsAsync()).Select(item => item.Name));
+        Assert.Equal("第一轮结果", Text(await firstMcp.CallToolAsync("alpha", new Dictionary<string, object?>())));
+        Assert.Equal("第二轮结果", Text(await secondMcp.CallToolAsync("beta", new Dictionary<string, object?>())));
+        var unknown = await firstMcp.CallToolAsync("beta", new Dictionary<string, object?>());
+        Assert.True(unknown.IsError);
+        Assert.Equal("Tool not found.", Text(unknown));
+        var failure = await firstMcp.CallToolAsync("boom", new Dictionary<string, object?>());
+        Assert.True(failure.IsError);
+        Assert.Equal("Platform tool execution failed or access was denied.", Text(failure));
+        // 释放一轮只吊销该轮 bearer，另一轮不受影响。
+        await one.DisposeAsync();
+        Assert.Equal(HttpStatusCode.Unauthorized, (await firstClient.GetAsync(one.Server.Url)).StatusCode);
+        Assert.Equal("第二轮结果", Text(await secondMcp.CallToolAsync("beta", new Dictionary<string, object?>())));
+    }
+
+    private static string Text(CallToolResult result) =>
+        string.Concat(result.Content.OfType<TextContentBlock>().Select(block => block.Text));
 }

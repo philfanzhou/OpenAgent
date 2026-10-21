@@ -28,6 +28,7 @@ public static class RuntimeServiceExtensions
                 && options.MaxConcurrentTurns is > 0 and <= 128
                 && options.MaxPromptCharacters > 0, "Invalid OpenCode runtime configuration.")
             .ValidateOnStart();
+        services.TryAddSingleton<RuntimeToolBridge>();
         services.TryAddSingleton<IAgentRuntimeDriver, OpenCodeRuntime>();
         return services;
     }
