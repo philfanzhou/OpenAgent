@@ -1,0 +1,173 @@
+name: Release
+
+# 发布流水线：v*.*.* 标签触发。先以 Engine 镜像的 runtime-tests 目标跑真实 OpenCode 回归，
+# 通过后把四个镜像推送到 GHCR，并上传 Compose 部署包。
+# Engine 镜像行为依赖内嵌的 OpenCode 版本，版本标签带 -oc<版本> 后缀以区分不同 OpenCode 基线。
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    name: OpenCode runtime regression gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Read pinned OpenCode version
+        run: |
+          version="$(tr -d '[:space:]' < Backend/opencode.version)"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Backend/opencode.version must contain a strict semver, got '$version'"
+            exit 1
+          fi
+          echo "OPENCODE_VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Run real OpenCode regression inside image build
+        run: |
+          docker build \
+            --build-arg OPENCODE_VERSION="$OPENCODE_VERSION" \
+            --target runtime-tests \
+            --file Backend/src/OpenAgent.Engine.Host/Dockerfile \
+            .
+
+  publish:
+    name: Publish ${{ matrix.name }} image
+    needs: gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: engine
+            dockerfile: Backend/src/OpenAgent.Engine.Host/Dockerfile
+          - name: router
+            dockerfile: Backend/src/OpenAgent.Router/Dockerfile
+          - name: runner
+            dockerfile: Backend/src/OpenAgent.Runner/Dockerfile
+          - name: chat
+            dockerfile: Frontend/OpenAgent.Chat/Dockerfile
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Read pinned OpenCode version
+        run: |
+          version="$(tr -d '[:space:]' < Backend/opencode.version)"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Backend/opencode.version must contain a strict semver, got '$version'"
+            exit 1
+          fi
+          echo "OPENCODE_VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Compute image tags
+        run: |
+          platform_version="${GITHUB_REF_NAME#v}"
+          owner="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          image="ghcr.io/$owner/openagent-${{ matrix.name }}"
+          suffix=""
+          if [[ "${{ matrix.name }}" == "engine" ]]; then
+            suffix="-oc$OPENCODE_VERSION"
+          fi
+          echo "VERSION_TAG=$image:$platform_version$suffix" >> "$GITHUB_ENV"
+          # 预发布标签（如 v1.0.0-rc1）不移动 latest。
+          if [[ "$platform_version" != *-* ]]; then
+            echo "LATEST_TAG=$image:latest" >> "$GITHUB_ENV"
+          fi
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build image
+        run: |
+          tags=(--tag "$VERSION_TAG")
+          if [[ -n "${LATEST_TAG:-}" ]]; then
+            tags+=(--tag "$LATEST_TAG")
+          fi
+          build_args=()
+          labels=(
+            --label "org.opencontainers.image.source=https://github.com/${{ github.repository }}"
+            --label "org.opencontainers.image.version=${GITHUB_REF_NAME#v}"
+            --label "org.opencontainers.image.revision=$GITHUB_SHA"
+          )
+          # Engine 镜像内嵌钉住版本的 OpenCode；Chat 镜像使用 Dockerfile 默认公开地址（localhost），
+          # 生产部署需按自身域名重建，或经 OPENAGENT_CHAT_IMAGE 覆盖为自有构建标签。
+          if [[ "${{ matrix.name }}" == "engine" ]]; then
+            build_args+=(--build-arg "OPENCODE_VERSION=$OPENCODE_VERSION")
+            labels+=(--label "io.openagent.opencode-version=$OPENCODE_VERSION")
+          fi
+          docker build "${tags[@]}" "${build_args[@]}" "${labels[@]}" \
+            --file "${{ matrix.dockerfile }}" \
+            .
+
+      - name: Push image
+        run: |
+          docker push "$VERSION_TAG"
+          if [[ -n "${LATEST_TAG:-}" ]]; then
+            docker push "$LATEST_TAG"
+          fi
+
+  compose-bundle:
+    name: Compose deployment bundle
+    needs: gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Read pinned OpenCode version
+        run: |
+          version="$(tr -d '[:space:]' < Backend/opencode.version)"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Backend/opencode.version must contain a strict semver, got '$version'"
+            exit 1
+          fi
+          echo "OPENCODE_VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Package compose bundle with release notes
+        run: |
+          platform_version="${GITHUB_REF_NAME#v}"
+          owner="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          mkdir -p bundle/deploy
+          cp -r deploy/openagent deploy/infrastructure bundle/deploy/
+          cp deploy/deployment.env.example bundle/deploy/ || true
+          cat > bundle/RELEASE.md <<EOF
+          # OpenAgent ${platform_version} 部署包
+
+          - 平台版本：${platform_version}（git ${GITHUB_SHA}）
+          - OpenCode 版本（Engine 镜像内嵌）：${OPENCODE_VERSION}
+          - 镜像标签：
+            - ghcr.io/${owner}/openagent-engine:${platform_version}-oc${OPENCODE_VERSION}
+            - ghcr.io/${owner}/openagent-router:${platform_version}
+            - ghcr.io/${owner}/openagent-runner:${platform_version}
+            - ghcr.io/${owner}/openagent-chat:${platform_version}
+
+          使用方式见 docs/operations/deployment.md。registry 版 Chat 镜像按默认公开地址（localhost）构建，
+          生产部署需按自身域名重建 Chat 镜像，或在 .env 中以 OPENAGENT_CHAT_IMAGE 指向自有标签。
+          升级 OpenCode 时先修改 Backend/opencode.version，并以
+          docker build --target runtime-tests 通过真实进程回归后再打标签发布。
+          EOF
+
+      - name: Upload bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: openagent-compose-bundle-${{ github.ref_name }}
+          path: bundle
