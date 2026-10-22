@@ -98,6 +98,8 @@ Runtime 在独立设置页保存 ID、名称、Provider 和单轮时限，存入
 
 `LogUsageUpdates` 打开后，每轮 `usage_update`（上下文占用 used/size）以 Information 级别写入日志（EventId 4500），用于追踪各轮 token 占用；不落对话报文，生产环境保持关闭。
 
+每轮另有一行分段计时日志（EventId 4501，Information，默认开启，不含对话内容）：`process`（进程获取/启动+initialize，近 0 表示命中保活）、`sessionNew`（ACP session/new + 桥租约）、`prompt`（模型配置+发送）、`firstUpdate`（prompt→首个 session/update，衡量 ACP 链路活性）、`firstToken`（prompt→首个可见 token，衡量模型 TTFT）、`stream`（首 token→轮次完成）、`close`（会话关闭+清理+归还）。用于判别延迟归属：ACP 侧异常会体现在 sessionNew/firstUpdate，模型侧慢会体现在 firstToken/stream。
+
 进程保活（默认关闭）：`KeepAliveSeconds > 0` 时，相同"会话归属 + 启动身份"的空闲进程在窗口内可被下一轮复用（实测可把追问轮次从约 2.5 s 降到约 1 s）；`MaxKeptProcesses`（默认 8）限制保活进程总数，`MaxSessionsPerProcess`（默认 64）限制单进程累计会话数，超限即销毁重建，后台清扫周期不超过 5 秒。失败或取消的轮次不归还进程；身份哈希覆盖模型端点/密钥与指令、工具放行策略，且不跨会话归属复用。**默认 0 的原因**：实测 OpenCode 1.19.3 空闲进程存在约 1–2 核的持续 CPU 空转与持续外呼（会话服务/watcher，与平台侧桥的存亡无关），多进程保活会拖慢整机；确认目标版本空闲行为可接受后再按部署开启。桥宿主随进程常驻、每轮以租约轮换工具注册与取消令牌的设计与保活开关无关，始终生效。
 
 缺少可执行文件、启动失败或 ACP 异常会明确失败，没有第二条执行路径。外部错误正文不会原样进入 SSE/会话；日志记录异常类型。工作区清理失败会告警并保留可定位目录，不删除其他轮次或宿主根目录。

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
 using System.Security.Cryptography;
@@ -125,11 +126,16 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
         OpenCodeAgentProcess? agent = null;
         RuntimeToolBridgeHost.BridgeLease? lease = null;
         bool completed = false;
+        // 分段计时检查点（相对轮次开始的累计毫秒，-1 表示未到达）：判别延迟归属。
+        Stopwatch clock = Stopwatch.StartNew();
+        long processAt = 0, sessionAt = -1, promptAt = -1, firstUpdateAt = -1, firstTokenAt = -1, completionAt = -1;
+        long Elapsed(long from, long to) => from >= 0 && to >= 0 ? to - from : 0;
         try
         {
             OpenCodeSkills.Materialize(workspace, invocation.Skills);
             agent = await keeper.TryAcquireAsync(leaseKey).ConfigureAwait(false)
                 ?? await SpawnAsync(settings, invocation, leaseKey, parent, cancellationToken).ConfigureAwait(false);
+            processAt = clock.ElapsedMilliseconds;
             // 桥随进程常驻：本轮以租约替换工具注册与取消令牌；端点存活期与进程一致，
             // 保活复用不给 harness 留下已死端点，也就不会触发其重连空转。
             lease = agent.Bridge.Lease(invocation.Tools, cancellationToken);
@@ -144,8 +150,10 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
             };
             agent.Sessions++;
             await using AcpSession session = await agent.Client.NewSessionAsync(new(workspace, sessionServers), cancellationToken).ConfigureAwait(false);
+            sessionAt = clock.ElapsedMilliseconds;
             await SelectModelAsync(session, invocation.Profile.Model.ModelId, cancellationToken).ConfigureAwait(false);
             await using AcpPromptTurn turn = await session.StartPromptAsync(prompt, cancellationToken).ConfigureAwait(false);
+            promptAt = clock.ElapsedMilliseconds;
             await using IAsyncEnumerator<SessionNotification> updates = session.ReadUpdatesAsync().GetAsyncEnumerator();
             // OpenCode 把 MCP 工具显示为 "服务器名_工具名"；平台事件沿用无前缀工具名。
             AcpEventMapper mapper = new("openagent_");
@@ -164,6 +172,10 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
                     {
                         completionFailure = error;
                     }
+                    if (completionAt < 0)
+                    {
+                        completionAt = clock.ElapsedMilliseconds;
+                    }
                     // 先完成会话队列，再读完尾部；最终响应并不意味着消费者已经读完更新。
                     await session.DisposeAsync().ConfigureAwait(false);
                     closed = true;
@@ -172,9 +184,17 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
                 {
                     break;
                 }
+                if (firstUpdateAt < 0)
+                {
+                    firstUpdateAt = clock.ElapsedMilliseconds;
+                }
                 (long Used, long Size)? before = mapper.LastUsage;
                 foreach (AgentStreamEvent item in mapper.Map(updates.Current.Update))
                 {
+                    if (firstTokenAt < 0 && item.Type is AgentStreamEventType.Content or AgentStreamEventType.Reasoning)
+                    {
+                        firstTokenAt = clock.ElapsedMilliseconds;
+                    }
                     yield return item;
                 }
                 if (options.Value.LogUsageUpdates && mapper.LastUsage is { } updated && updated != before)
@@ -223,6 +243,17 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
             {
                 await keeper.ReleaseAsync(agent, completed).ConfigureAwait(false);
             }
+            // 每轮一行分段计时：判别冷启动 / ACP 会话 / 模型首 token / 流式 / 收尾的延迟归属。
+            long closeAt = clock.ElapsedMilliseconds;
+            OpenCodeLog.TurnTiming(logger,
+                (int)processAt,
+                (int)Elapsed(processAt, sessionAt),
+                (int)Elapsed(sessionAt, promptAt),
+                (int)Elapsed(promptAt, firstUpdateAt),
+                (int)Elapsed(promptAt, firstTokenAt),
+                (int)Elapsed(firstTokenAt, completionAt),
+                (int)Elapsed(completionAt, closeAt),
+                (int)closeAt);
         }
     }
 
@@ -381,4 +412,14 @@ internal static partial class OpenCodeLog
     // 由 OpenCode:LogUsageUpdates 显式开启；只记录类型化的 usage_update 值，不落对话报文。
     [LoggerMessage(EventId = 4500, Level = LogLevel.Information, Message = "OpenCode usage update: used={Used} size={Size}")]
     internal static partial void UsageUpdate(ILogger logger, long used, long size);
+
+    /// <summary>
+    /// 每轮一行分段计时（不含对话内容），用于判别延迟归属：
+    /// process=进程获取/启动+initialize（近 0 表示命中保活）、sessionNew=ACP session/new、
+    /// prompt=模型配置+发送、firstUpdate=prompt→首个 session/update、firstToken=prompt→
+    /// 首个可见 token、stream=首 token→轮次完成、close=会话关闭+清理+归还。
+    /// </summary>
+    [LoggerMessage(EventId = 4501, Level = LogLevel.Information,
+        Message = "OpenCode turn timing: process={ProcessMs}ms sessionNew={SessionNewMs}ms prompt={PromptMs}ms firstUpdate={FirstUpdateMs}ms firstToken={FirstTokenMs}ms stream={StreamMs}ms close={CloseMs}ms total={TotalMs}ms")]
+    internal static partial void TurnTiming(ILogger logger, int processMs, int sessionNewMs, int promptMs, int firstUpdateMs, int firstTokenMs, int streamMs, int closeMs, int totalMs);
 }
