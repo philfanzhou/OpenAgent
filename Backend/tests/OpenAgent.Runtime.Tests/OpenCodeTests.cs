@@ -55,27 +55,48 @@ public sealed class OpenCodeTests
     }
 
     [OpenCodeFact]
-    public async Task NativeToolWhitelist_ExposesOnlyAllowedToolsToModel()
+    public async Task NativeToolWhitelist_ExposesAndExecutesAllowedBashTool()
     {
-        List<string>? listedTools = null;
+        string? toolResultSeenByModel = null;
         await using ModelFixture model = await ModelFixture.StartAsync(async (context, request) =>
         {
-            listedTools = request.GetProperty("tools").EnumerateArray()
-                .Select(tool => tool.GetProperty("function").GetProperty("name").GetString()!).ToList();
-            await ModelFixture.TextAsync(context, "ok");
+            JsonElement[] messages = request.GetProperty("messages").EnumerateArray().ToArray();
+            JsonElement[] results = messages.Where(message => message.GetProperty("role").GetString() == "tool").ToArray();
+            if (results.Length == 0)
+            {
+                string[] names = request.GetProperty("tools").EnumerateArray()
+                    .Select(tool => tool.GetProperty("function").GetProperty("name").GetString()!).ToArray();
+                // 宿主白名单放行的原生工具进入模型工具列表；未放行的原生工具（如 grep）仍被排除。
+                Assert.Contains("bash", names);
+                Assert.Contains("write", names);
+                Assert.DoesNotContain("grep", names);
+                await ModelFixture.ChunkAsync(context, new
+                {
+                    role = "assistant",
+                    tool_calls = new[] { new { index = 0, id = "bash-1", type = "function", function = new { name = "bash", arguments = "{\"command\":\"echo native-bash-ok\"}" } } }
+                }, "tool_calls");
+            }
+            else
+            {
+                toolResultSeenByModel = results[0].GetRawText();
+                await ModelFixture.TextAsync(context, "bash 已执行");
+            }
         });
         await using RuntimeFixture runtime = new(model.Endpoint, settings =>
         {
             settings["OpenCode:AllowedNativeTools:0"] = "read";
             settings["OpenCode:AllowedNativeTools:1"] = "edit";
             settings["OpenCode:AllowedNativeTools:2"] = "write";
+            settings["OpenCode:AllowedNativeTools:3"] = "bash";
         });
         List<AgentStreamEvent> events = await runtime.CollectAsync(runtime.Request);
-        Assert.Equal("ok", Text(events));
-        // 宿主白名单放行的原生文件工具确实进入模型工具列表；未放行的 bash 仍被排除。
-        Assert.Contains("write", listedTools);
-        Assert.Contains("read", listedTools);
-        Assert.DoesNotContain("bash", listedTools);
+        // 原生 bash 真实执行并把输出回传给模型与平台事件流。
+        Assert.NotNull(toolResultSeenByModel);
+        Assert.Contains("native-bash-ok", toolResultSeenByModel);
+        Assert.Equal("bash 已执行", Text(events));
+        AgentStreamEvent result = Assert.Single(events, item => item.Type == AgentStreamEventType.ToolResult);
+        Assert.Equal("bash", result.ToolName);
+        Assert.Contains("native-bash-ok", result.Content);
         runtime.AssertWorkspacesReleased();
     }
 
