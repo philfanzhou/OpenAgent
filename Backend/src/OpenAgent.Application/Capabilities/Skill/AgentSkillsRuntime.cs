@@ -4,35 +4,31 @@ using OpenAgent.Contracts.Runtime;
 namespace OpenAgent.Application.Capabilities.Skill;
 
 /// <summary>
-/// 本轮启用的 skill 包目录与配套工具。包目录来自进程级内容缓存（键含包哈希，
-/// 跨轮复用，不由本轮释放）；未登记哈希的记录使用一次性目录，仍随轮次删除。
-/// 运行时驱动把包目录链接进每轮工作区。
+/// 本轮启用的 skill 包目录与配套工具。包目录来自进程级内容缓存，由租约保护跨轮复用；
+/// 一次性目录（未登记哈希的记录）随租约释放删除。运行时驱动把包目录链接进每轮工作区。
 /// </summary>
 internal sealed class AgentSkillsRuntime(
     IReadOnlyList<RuntimeSkill> skills,
     IReadOnlyList<AITool> tools,
-    IReadOnlyList<string>? ephemeralRoots) : IAsyncDisposable
+    IReadOnlyList<SkillPackageCache.Lease>? leases) : IAsyncDisposable
 {
     internal static AgentSkillsRuntime Empty { get; } = new([], [], []);
 
     internal IReadOnlyList<RuntimeSkill> Skills { get; } = skills;
     internal IReadOnlyList<AITool> Tools { get; } = tools;
-    private IReadOnlyList<string> EphemeralRoots { get; } = ephemeralRoots ?? [];
+    private IReadOnlyList<SkillPackageCache.Lease> Leases { get; } = leases ?? [];
 
     public ValueTask DisposeAsync()
     {
-        foreach (string root in EphemeralRoots)
+        foreach (SkillPackageCache.Lease lease in Leases)
         {
             try
             {
-                if (Directory.Exists(root))
-                {
-                    Directory.Delete(root, recursive: true);
-                }
+                lease.Dispose();
             }
-            catch
+            catch (Exception)
             {
-                // 一次性包目录清理不得掩盖执行结果；缓存目录不在此释放。
+                // 租约释放不得掩盖执行结果；缓存条目仍会按引用计数回收。
             }
         }
         return ValueTask.CompletedTask;

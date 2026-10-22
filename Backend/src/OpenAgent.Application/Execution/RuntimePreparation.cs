@@ -53,6 +53,17 @@ internal sealed class RuntimePreparation(
         // 任务在 try 内增量收集：工厂同步抛出时已启动的任务仍能进入统一的失败回收。
         Task<IReadOnlyList<AITool>>? discovery = null;
         List<Task<AgentFeature>> created = [];
+        // 所有权唯一登记：成功产物（按对象身份）只进 scope.Features 一次；合并中途
+        // 失败（provider/PrepareTool/重复工具名等）时，catch 只接管尚未登记的产物，
+        // 保证每个 feature 资源恰好释放一次。
+        HashSet<AgentFeature> owned = new(ReferenceEqualityComparer.Instance);
+        void TakeOwnership(AgentFeature feature)
+        {
+            if (owned.Add(feature))
+            {
+                scope.Features.Add(feature);
+            }
+        }
         try
         {
             discovery = capabilities.CreateAsync(profile.AgentId, profile.Config, user, ct);
@@ -74,7 +85,7 @@ internal sealed class RuntimePreparation(
             List<RuntimeMcpServer> mcpServers = [];
             foreach (AgentFeature feature in features)
             {
-                scope.Features.Add(feature);
+                TakeOwnership(feature);
                 tools.AddRange(feature.Tools);
                 tools.AddRange(feature.InlineTools);
                 skills.AddRange(feature.Skills);
@@ -121,8 +132,8 @@ internal sealed class RuntimePreparation(
         }
         catch (Exception error)
         {
-            // 并行启动的任务可能在失败点之后才完成；等待全部落地并把成功完成的
-            // feature 纳入 scope，由统一释放路径回收，避免后台泄漏。
+            // 并行启动的任务可能在失败点之后才完成；等待全部落地并接管尚未登记的
+            // 产物（已登记的不会重复加入），由统一释放路径按逆序恰好回收一次。
             if (discovery is not null)
             {
                 _ = await ObserveAsync(discovery).ConfigureAwait(false);
@@ -131,7 +142,7 @@ internal sealed class RuntimePreparation(
             {
                 if (await ObserveAsync(task).ConfigureAwait(false) is { } feature)
                 {
-                    scope.Features.Add(feature);
+                    TakeOwnership(feature);
                 }
             }
             await scope.FailAsync(error).ConfigureAwait(false);

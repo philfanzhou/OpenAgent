@@ -17,10 +17,11 @@ using OpenAgent.Application.Tooling.Abstractions;
 namespace OpenAgent.Application.Capabilities.Skill;
 
 /// <summary>
-/// Materializes configured Agent Skills packages into per-turn directories and
+/// Materializes configured Agent Skills packages into cached directories and
 /// exposes scoped platform tools for skill resources and scripts. The package
-/// bytes remain in object storage; the temporary directory only exists for the
-/// lifetime of one agent execution.
+/// bytes remain in object storage; the process-level cache holds verified
+/// copies keyed by content hash for the lifetime of the process, and turns
+/// hold leases so active packages are never evicted.
 /// </summary>
 internal sealed class AgentSkillsProviderFactory(
     IFileObjectStore objectStore,
@@ -29,8 +30,11 @@ internal sealed class AgentSkillsProviderFactory(
     ICodeExecutor executor,
     IFileAssetService files,
     FileAssetExecutionContext fileContext,
-    IOptions<CodeExecutionOptions> codeOptions) : IAgentFeatureFactory
+    IOptions<CodeExecutionOptions> codeOptions,
+    SkillPackageCache? cache = null) : IAgentFeatureFactory
 {
+    private readonly SkillPackageCache _cache = cache ?? SkillPackageCache.Shared;
+
     async Task<AgentFeature> IAgentFeatureFactory.CreateAsync(
         string agentId,
         AgentConfig config,
@@ -54,7 +58,7 @@ internal sealed class AgentSkillsProviderFactory(
     {
         var skills = new List<RuntimeSkill>();
         var scriptSkillNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        List<string> ephemeralRoots = [];
+        List<SkillPackageCache.Lease> leases = [];
 
         IReadOnlyList<SkillInstanceConfig> instances = await ResolveInstancesAsync(
             config.Skills,
@@ -76,18 +80,16 @@ internal sealed class AgentSkillsProviderFactory(
 
             string directoryName = GetPackageDirectoryName(instance.Name) ?? Guid.NewGuid().ToString("N");
             // 包目录来自进程级内容缓存：命中时零下载；未命中时在 staging 内下载 +
-            // 校验后原子提交。无包哈希的记录退回一次性目录，随本轮释放。
-            SkillPackageCache.SkillPackageMaterialization materialized = await SkillPackageCache.GetOrMaterializeAsync(
+            // 校验后原子提交。租约在轮次存活期内保护目录不被淘汰；无包哈希的记录
+            // 退回一次性目录，随租约释放删除。
+            SkillPackageCache.Lease lease = await _cache.GetOrMaterializeAsync(
                 instance.TenantId!,
                 instance.ObjectKey!,
                 instance.Sha256,
                 (staging, token) => MaterializeAsync(instance, staging, token),
                 cancellationToken).ConfigureAwait(false);
-            if (materialized.Ephemeral)
-            {
-                ephemeralRoots.Add(materialized.Path);
-            }
-            skills.Add(new RuntimeSkill(directoryName, materialized.Path));
+            leases.Add(lease);
+            skills.Add(new RuntimeSkill(directoryName, lease.Path));
 
             if (instance.ScriptExecutionEnabled && !string.IsNullOrWhiteSpace(instance.Name))
             {
@@ -97,6 +99,10 @@ internal sealed class AgentSkillsProviderFactory(
 
         if (skills.Count == 0)
         {
+            foreach (SkillPackageCache.Lease lease in leases)
+            {
+                lease.Dispose();
+            }
             return AgentSkillsRuntime.Empty;
         }
 
@@ -109,7 +115,7 @@ internal sealed class AgentSkillsProviderFactory(
             tools.Add(CreateScriptRunner(runner, roots, scriptSkillNames, agentId, user));
         }
 
-        return new AgentSkillsRuntime(skills, tools, ephemeralRoots);
+        return new AgentSkillsRuntime(skills, tools, leases);
     }
 
     /// <summary>

@@ -33,8 +33,15 @@
 
 ## 验证
 
-- 全解决方案回归（真实 OpenCode 开启）：**0 失败**。Runtime.Tests 含 7 项保活测试与 2 项桥租约测试（bearer/取消拒绝、跨轮工具轮换）；Engine.Tests 215/215（真实 HTTP/SSE → OpenCode → 平台工具 → 持久化 → 续聊）；Application.Tests 含 5 项 Skill 缓存测试；Framework.Tests 含仓储缓存/写失效测试；Architecture 14/14。
+- 全解决方案回归（真实 OpenCode 开启）：**0 失败**。Runtime.Tests 含 7 项保活测试与 2 项桥租约测试（bearer/取消拒绝、跨轮工具轮换）；Engine.Tests 215/215（真实 HTTP/SSE → OpenCode → 平台工具 → 持久化 → 续聊）；Application.Tests 含 6 项 Skill 缓存测试（独立根目录，并行套件下连续三次全绿）；Framework.Tests 含 4 项配置缓存竞争测试（在途读取 vs 保存/删除/新增、负缓存）与仓储写失效测试；Architecture 14/14。
 - 上表计时为一次性探针实测（同机、同 harness、5 轮），探针未保留在仓库；准备链路并行化与缓存未单独计时（收益取决于历史长度与启用 Skill/MCP 数量，行为由回归覆盖）。
+
+## 评审修复（PR #243 review）
+
+1. **Skill 缓存租约与安全淘汰**：`SkillPackageCache` 改为实例类型（DI 单例），轮次持 `Lease` 引用；引用获取与淘汰标记在同一锁内同步，下载/校验在锁外，只回收零引用条目；缓存根按进程隔离（含进程 ID），同进程多次构造共享一次性初始化，跨进程互不删除。
+2. **配置缓存读写竞争**：`TenantEntryCache` 每键一个状态对象（代次 + 已发布值）；`Invalidate` 提升代次并清空，回填的代次检查与发布在同一临界区，失效前启动的在途读取不会回填旧值/旧负结果；补 4 项竞争测试（TCS 门控时序）。
+3. **feature 所有权唯一登记**：`RuntimePreparation.CreateAsync` 以对象身份集合保证成功产物只进 `scope.Features` 一次，合并中途失败（provider/PrepareTool/重复工具名）与迟到成功任务都恰好释放一次；补 5 项测试（异步失败、provider 失败、PrepareTool 失败、重复工具名、迟到成功）。
+4. **缓存测试隔离**：`SkillPackageCacheTests` 每测试独立根目录，断言只针对本测试路径；含"活跃租约在超限物化下不被淘汰"回归。
 
 ## 诊断过程中发现的存量问题（本 PR 未解决，待单独跟进）
 
