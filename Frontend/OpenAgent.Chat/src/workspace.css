@@ -1001,6 +1001,19 @@ html[data-theme='dark'] .message-row ::selection { background: rgba(16, 163, 127
   cursor: pointer;
 }
 .message-error-trace:hover { background: color-mix(in srgb, var(--danger) 7%, transparent); }
+/* 可自行修复的错误（凭据/限流/超时/配置）：琥珀色区别于真正的执行故障。 */
+.message-error--warn {
+  border-color: var(--warn-border);
+  color: var(--warn);
+  background: var(--warn-soft);
+}
+.message-error--warn .message-error-icon,
+.message-error--warn .message-error-body strong { color: var(--warn); }
+.message-error--warn .message-error-trace {
+  border-color: var(--warn-border);
+  color: var(--warn);
+}
+.message-error--warn .message-error-trace:hover { background: color-mix(in srgb, var(--warn) 7%, transparent); }
 .message-thinking-placeholder { display: inline-flex; align-items: center; gap: 8px; color: var(--text-faint); font-size: 13px; }
 .thinking-dots { display: inline-flex; gap: 3px; }
 

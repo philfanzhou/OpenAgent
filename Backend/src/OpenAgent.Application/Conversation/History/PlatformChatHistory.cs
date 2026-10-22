@@ -590,30 +590,34 @@ internal sealed class PlatformChatHistory : IAsyncDisposable
         try
         {
             // 记录 agent/工具执行失败，避免被吞掉；用户停止/断开产生的取消是正常路径：
-            // Debug 记录即可，Error 会让日志被取消事件淹没。
+            // Debug 记录即可，Error 会让日志被取消事件淹没。TraceId 必须入日志——
+            // 用户侧错误文案引导"提供 TraceId 联系管理员"，日志里检索不到就无从排查。
             if (error is OperationCanceledException)
             {
                 _logger.LogDebug(
                     error,
-                    "Agent '{AgentId}' execution cancelled for conversation '{ConversationId}'",
+                    "Agent '{AgentId}' execution cancelled for conversation '{ConversationId}'. TraceId={TraceId}",
                     _agentId,
-                    _conversation.ConversationId);
+                    _conversation.ConversationId,
+                    _conversation.TraceId);
             }
             else if (error is AgentException)
             {
                 _logger.LogWarning(
                     error,
-                    "Agent '{AgentId}' execution failed for conversation '{ConversationId}'",
+                    "Agent '{AgentId}' execution failed for conversation '{ConversationId}'. TraceId={TraceId}",
                     _agentId,
-                    _conversation.ConversationId);
+                    _conversation.ConversationId,
+                    _conversation.TraceId);
             }
             else
             {
                 _logger.LogError(
                     error,
-                    "Agent '{AgentId}' execution failed for conversation '{ConversationId}'",
+                    "Agent '{AgentId}' execution failed for conversation '{ConversationId}'. TraceId={TraceId}",
                     _agentId,
-                    _conversation.ConversationId);
+                    _conversation.ConversationId,
+                    _conversation.TraceId);
             }
 
             RecordUser();

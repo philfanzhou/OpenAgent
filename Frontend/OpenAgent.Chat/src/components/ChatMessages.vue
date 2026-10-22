@@ -126,6 +126,27 @@ function messageError(message: ConversationMessage) {
   return message.error ?? message.metadata?.error ?? undefined
 }
 
+/**
+ * 错误严重级别：后端 AgentErrorCode 决定样式。配置/凭据/限流/超时类（warn）
+ * 用户或管理员可自行修复，用琥珀色区别于真正的执行故障（danger）。
+ * 无 code 的历史数据按 danger 处理。
+ */
+const WARN_ERROR_CODES = new Set([
+  'LlmContextOverflow',
+  'LlmAuthFailed',
+  'LlmQuotaExceeded',
+  'LlmModelNotFound',
+  'LlmTimeout',
+  'LlmConnectionFailed',
+  'ConfigurationError',
+  'DependencyUnavailable',
+  'InvalidRequest',
+])
+
+function errorSeverity(error?: { code?: string | null }): 'warn' | 'danger' {
+  return error?.code && WARN_ERROR_CODES.has(error.code) ? 'warn' : 'danger'
+}
+
 function toolResultText(tool: ToolActivity): string | undefined {
   if (tool.result == null) return undefined
   try { return JSON.stringify(JSON.parse(tool.result), null, 2) } catch { return tool.result }
@@ -461,7 +482,7 @@ defineExpose({ scrollToBottom })
           <span v-if="isStreamingItem(item)" class="thinking-dots"><i /><i /><i /></span><span>{{ isStreamingItem(item) ? '正在生成回复' : incompleteResponseText(item) }}</span>
         </div>
 
-        <div v-if="messageError(item)" class="message-error" role="alert">
+        <div v-if="messageError(item)" class="message-error" :class="`message-error--${errorSeverity(messageError(item))}`" role="alert">
           <span class="message-error-icon">
             <svg viewBox="0 0 20 20" fill="none"><path d="M10 6v4.5M10 14h.01" /><circle cx="10" cy="10" r="7.5" /></svg>
           </span>

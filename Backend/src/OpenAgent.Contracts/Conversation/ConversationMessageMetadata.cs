@@ -25,11 +25,16 @@ public sealed class ConversationMessageMetadata
     public Dictionary<string, string>? Extensions { get; set; }
 }
 
-/// <summary>持久化的执行失败原因：标题 + 可执行建议 + 排查用 TraceId。</summary>
+/// <summary>
+/// 持久化的执行失败原因：标题 + 可执行建议 + 排查用 TraceId。
+/// Code 为 AgentErrorCode 符号名（如 LlmAuthFailed），前端按其划分严重级别；
+/// 历史数据没有该字段，消费端必须容忍 null。
+/// </summary>
 public sealed record MessageErrorMetadata(
     string Title,
     string Detail,
-    string? TraceId = null);
+    string? TraceId = null,
+    string? Code = null);
 
 /// <summary>消息附件的持久化描述（文件内容不入消息，按 FileId 惰性读取）。</summary>
 public sealed record MessageFileMetadata(

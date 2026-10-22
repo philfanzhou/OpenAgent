@@ -29,6 +29,8 @@ public enum AgentErrorCode : int
     LlmQuotaExceeded = 4004,
     LlmInvalidResponse = 4005,
     LlmModelNotFound = 4006,
+    LlmAuthFailed = 4007,
+    LlmContextOverflow = 4009,
 
     TenantMismatch = 5001,
     TenantNotFound = 5002,

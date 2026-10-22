@@ -27,6 +27,9 @@ public sealed record StreamingErrorPayload
     public required string Detail { get; init; }
 
     public required string TraceId { get; init; }
+
+    /// <summary>AgentErrorCode 符号名（如 LlmAuthFailed），前端按其划分严重级别；仅分类错误携带。</summary>
+    public string? Code { get; init; }
 }
 
 /// <summary>一次异常映射的结果：HTTP 状态码与 ProblemDetails 载荷。</summary>

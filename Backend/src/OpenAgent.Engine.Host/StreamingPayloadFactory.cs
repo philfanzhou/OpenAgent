@@ -1,6 +1,7 @@
 using System.ClientModel;
 using System.Net.Http;
 using System.Net.Sockets;
+using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Application.Runtime;
 using OpenAgent.Engine.Hosting.Errors;
@@ -9,6 +10,7 @@ namespace OpenAgent.Engine.Host;
 
 internal static class StreamingPayloadFactory
 {
+    private const string TypePrefix = "https://error.agent.com";
     private const string ContextOverflowType = "https://error.agent.com/context-length-exceeded";
 
     public static StreamingErrorPayload CreateErrorPayload(
@@ -16,7 +18,8 @@ internal static class StreamingPayloadFactory
         string traceId)
     {
         // 上下文超限优先于一切通用映射：provider 原文对用户无行动价值，且异常常被
-        // MAF/FICC 包装，必须按 InnerException 链识别，而不是只认 ClientResultException。
+        // 包装，必须按 InnerException 链识别，而不是只认 ClientResultException。
+        // Runtime 分类器产出的 LlmContextOverflow 文案同样命中链式标记，一并覆盖。
         ClientResultException? providerException = FindClientResultException(exception);
         if (ExecutionFailureDescriptor.IsContextLengthExceeded(exception))
         {
@@ -27,27 +30,42 @@ internal static class StreamingPayloadFactory
                 Detail = ExecutionFailureDescriptor.BuildContextOverflowDetail(
                     providerException?.Status,
                     providerException?.Message),
+                Code = nameof(AgentErrorCode.LlmContextOverflow),
+                TraceId = traceId
+            };
+        }
+
+        // Runtime 分类错误（AgentException）与 provider 错误：与持久化元数据共用
+        // Describe 的脱敏文案——SSE error 事件和刷新后的消息 Error 不再各说各话。
+        if (exception is AgentException or ClientResultException
+            && ExecutionFailureDescriptor.Describe(exception, traceId) is { } described)
+        {
+            return new StreamingErrorPayload
+            {
+                Type = exception is AgentException agent
+                    ? $"{TypePrefix}/{agent.ErrorCode.ToString().ToLowerInvariant()}"
+                    : $"{TypePrefix}/provider-request-error",
+                Title = described.Title,
+                Detail = described.Detail,
+                Code = described.Code,
                 TraceId = traceId
             };
         }
 
         var message = exception switch
         {
-            AgentException ae => ae.Message,
-            ClientResultException clientEx => FormatProviderError(clientEx.Status, clientEx.Message),
             TimeoutException or OperationCanceledException => "请求超时，服务暂不可用",
             InvalidOperationException => exception.Message,
             HttpRequestException httpEx when httpEx.InnerException is SocketException sockEx && sockEx.SocketErrorCode == SocketError.TryAgain => "网络连接失败，请检查网络配置",
             HttpRequestException => "服务请求失败",
-            _ => string.IsNullOrWhiteSpace(exception.Message) ? "服务内部错误" : exception.Message
+            // 未知异常原文可能包含内部细节，只给通用文案；原文随服务器日志按 TraceId 留痕。
+            _ => ExecutionFailureDescriptor.GenericDetail
         };
 
         return new StreamingErrorPayload
         {
             Type = exception switch
             {
-                AgentException ae => $"https://error.agent.com/{ae.ErrorCode.ToString().ToLowerInvariant()}",
-                ClientResultException => "https://error.agent.com/provider-request-error",
                 TimeoutException or OperationCanceledException => "https://error.agent.com/timeout",
                 InvalidOperationException => "https://error.agent.com/configuration-error",
                 HttpRequestException httpEx when httpEx.InnerException is SocketException sockEx && sockEx.SocketErrorCode == SocketError.TryAgain => "https://error.agent.com/dns-resolution-error",
@@ -56,8 +74,6 @@ internal static class StreamingPayloadFactory
             },
             Title = exception switch
             {
-                AgentException ae => ae.ErrorCode.ToString(),
-                ClientResultException => "模型服务返回错误",
                 TimeoutException or OperationCanceledException => "GatewayTimeout",
                 InvalidOperationException => "ConfigurationError",
                 HttpRequestException httpEx when httpEx.InnerException is SocketException => "DnsResolutionError",
@@ -79,35 +95,5 @@ internal static class StreamingPayloadFactory
             }
         }
         return null;
-    }
-
-    internal static string FormatProviderError(int status, string message)
-    {
-        string type = string.Empty;
-        string detail = string.Empty;
-        if (!string.IsNullOrWhiteSpace(message))
-        {
-            int open = message.LastIndexOf('(');
-            int close = message.LastIndexOf(')');
-            if (open >= 0 && close > open)
-            {
-                string inner = message.Substring(open + 1, close - open - 1);
-                int colon = inner.IndexOf(": ", StringComparison.Ordinal);
-                if (colon > 0)
-                {
-                    type = inner[..colon].Trim();
-                    detail = inner[(colon + 2)..].Trim();
-                }
-                else
-                {
-                    type = inner.Trim();
-                }
-            }
-        }
-
-        string core = string.IsNullOrWhiteSpace(type) ? $"HTTP {status}" : $"HTTP {status} · {type}";
-        return string.IsNullOrWhiteSpace(detail)
-            ? $"模型服务返回错误（{core}）。请检查模型配置后重试。"
-            : $"模型服务返回错误（{core}）：{detail}";
     }
 }

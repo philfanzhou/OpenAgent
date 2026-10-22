@@ -185,6 +185,46 @@ public sealed class OpenCodeTests
     }
 
     [OpenCodeFact]
+    public async Task ProviderAuthError_ClassifiesAsAuthFailureWithoutRawBody()
+    {
+        // 实测（OpenCode 1.19.3）：401 时 harness 的 RPC 错误 Message 会逐字回带响应体
+        // （"Internal error: Incorrect API key provided: sk-***"）。平台侧契约：
+        // 分类为 LlmAuthFailed、给出可执行建议、原文与 InnerException 均不得存在。
+        await using ModelFixture model = await ModelFixture.StartAsync((context, request) =>
+        {
+            context.Response.StatusCode = 401;
+            context.Response.ContentType = "application/json";
+            return context.Response.WriteAsync("{\"error\":{\"message\":\"Incorrect API key provided: sk-probe***\",\"type\":\"invalid_request_error\",\"code\":\"invalid_api_key\"}}");
+        });
+        await using RuntimeFixture runtime = new(model.Endpoint);
+        AgentException error = await Assert.ThrowsAsync<AgentException>(() => runtime.CollectAsync(runtime.Request));
+        Assert.Equal(AgentErrorCode.LlmAuthFailed, error.ErrorCode);
+        Assert.Contains("API Key", error.Message);
+        Assert.Null(error.InnerException);
+        Assert.DoesNotContain("sk-probe", error.ToString());
+        runtime.AssertWorkspacesReleased();
+    }
+
+    [OpenCodeFact]
+    public async Task ProviderContextOverflow_ClassifiesAsContextOverflow()
+    {
+        // 实测：OpenCode 把 provider 的 context_length_exceeded 改写为
+        // "Session too large to compact - context exceeds model limit ..." 后回传，
+        // 分类必须按 harness 文案形态识别，而非只认 provider 原生错误码。
+        await using ModelFixture model = await ModelFixture.StartAsync((context, request) =>
+        {
+            context.Response.StatusCode = 400;
+            context.Response.ContentType = "application/json";
+            return context.Response.WriteAsync("{\"error\":{\"message\":\"This model's maximum context length is 8192 tokens. However, your messages resulted in 10000 tokens\",\"type\":\"invalid_request_error\",\"code\":\"context_length_exceeded\"}}");
+        });
+        await using RuntimeFixture runtime = new(model.Endpoint);
+        AgentException error = await Assert.ThrowsAsync<AgentException>(() => runtime.CollectAsync(runtime.Request));
+        Assert.Equal(AgentErrorCode.LlmContextOverflow, error.ErrorCode);
+        Assert.Contains("新会话", error.Message);
+        runtime.AssertWorkspacesReleased();
+    }
+
+    [OpenCodeFact]
     public async Task SkillsAndExternalMcp_AreLoadedAndCalledByRealHarness()
     {
         bool mcpCalled = false;

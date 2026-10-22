@@ -1,6 +1,8 @@
 using System.ClientModel;
 using System.ClientModel.Primitives;
 using OpenAgent.Application.Runtime;
+using OpenAgent.Contracts.Requests;
+using OpenAgent.Contracts.Security;
 using Xunit;
 
 namespace OpenAgent.Application.Tests.Runtime;
@@ -106,5 +108,66 @@ public class ExecutionFailureDescriptorTests
         Assert.NotNull(error);
         Assert.DoesNotContain("boom with internal detail", error!.Detail);
         Assert.Equal("trace-9", error.TraceId);
+    }
+
+    [Fact]
+    public void Describe_ClassifiedAuthFailure_UsesCodeTitleAndCarriesCode()
+    {
+        var exception = new AgentException(
+            AgentErrorCode.LlmAuthFailed,
+            "模型服务拒绝认证（HTTP 401）：API Key 无效、已过期或无权访问该模型。请在模型配置中核对 API Key 后重试。",
+            innerException: new Exception("AI_APICallError: 401 Incorrect API key provided: sk-abc***"));
+
+        var error = ExecutionFailureDescriptor.Describe(exception, "trace-7");
+
+        Assert.NotNull(error);
+        Assert.Equal("模型服务认证失败", error!.Title);
+        Assert.Equal("LlmAuthFailed", error.Code);
+        Assert.Contains("API Key", error.Detail);
+        // InnerException 里的 provider 原文绝不透出。
+        Assert.DoesNotContain("sk-abc", error.Detail);
+        Assert.Equal("trace-7", error.TraceId);
+    }
+
+    [Fact]
+    public void Describe_ClassifiedQuotaFailure_UsesCodeTitle()
+    {
+        var exception = new AgentException(AgentErrorCode.LlmQuotaExceeded, "模型服务限流或额度不足（HTTP 429）：请稍后重试。");
+
+        var error = ExecutionFailureDescriptor.Describe(exception, "trace-4");
+
+        Assert.NotNull(error);
+        Assert.Equal("模型服务限流或额度不足", error!.Title);
+        Assert.Equal("LlmQuotaExceeded", error.Code);
+    }
+
+    [Fact]
+    public void Describe_UnmappedAgentErrorCode_FallsBackToGenericText()
+    {
+        var exception = new AgentException(AgentErrorCode.PipelineExecutionFailed, "OpenCode did not complete the prompt.");
+
+        var error = ExecutionFailureDescriptor.Describe(exception, "trace-5");
+
+        Assert.NotNull(error);
+        Assert.Equal(ExecutionFailureDescriptor.GenericTitle, error!.Title);
+        Assert.Equal(ExecutionFailureDescriptor.GenericDetail, error.Detail);
+        Assert.Null(error.Code);
+    }
+
+    [Fact]
+    public void Describe_ClassifiedContextOverflow_UsesContextTitleAndCarriesCode()
+    {
+        // Runtime 分类器不再携带 InnerException（脱敏契约），上下文超限按错误码显式识别。
+        var exception = new AgentException(
+            AgentErrorCode.LlmContextOverflow,
+            "会话内容超出模型上下文窗口上限：请开启新会话，或精简历史消息与附件后重试。",
+            "rpc=-32603");
+
+        var error = ExecutionFailureDescriptor.Describe(exception, "trace-6");
+
+        Assert.NotNull(error);
+        Assert.Equal(ExecutionFailureDescriptor.ContextOverflowTitle, error!.Title);
+        Assert.Contains("新会话", error.Detail);
+        Assert.Equal("LlmContextOverflow", error.Code);
     }
 }

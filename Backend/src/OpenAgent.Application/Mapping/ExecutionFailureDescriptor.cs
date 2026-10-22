@@ -1,6 +1,8 @@
 using System.ClientModel;
 using System.Text.RegularExpressions;
 using OpenAgent.Contracts.Conversation;
+using OpenAgent.Contracts.Requests;
+using OpenAgent.Contracts.Security;
 
 namespace OpenAgent.Application.Runtime;
 
@@ -10,11 +12,34 @@ namespace OpenAgent.Application.Runtime;
 /// <see cref="ConversationMessageMetadata.Error"/>——否则错误只存在于一次流式
 /// 事件里，前端刷新后只剩"响应未完成"占位，用户无从得知真实原因。
 /// 输出绝不包含 provider 原始错误体（可能携带账户标识或密钥材料），只保留
-/// 括号形态解析出的错误码摘要。
+/// 括号形态解析出的错误码摘要；Runtime 侧已分类的 <see cref="AgentException"/>
+/// 按错误码给出标题，其 Message 由 OpenCodeErrorClassifier 保证为脱敏模板。
 /// </summary>
 public static class ExecutionFailureDescriptor
 {
     public const string ContextOverflowTitle = "超出模型上下文窗口";
+
+    /// <summary>兜底文案：未知异常不透出原文，只引导用户带 TraceId 反馈。</summary>
+    public const string GenericTitle = "执行失败";
+
+    public const string GenericDetail =
+        "Agent 执行失败，请稍后重试；若持续失败请联系管理员并提供 TraceId。";
+
+    /// <summary>已知执行失败错误码的用户可见标题；未列出的错误码走通用兜底。</summary>
+    private static readonly Dictionary<AgentErrorCode, string> CodeTitles = new()
+    {
+        [AgentErrorCode.LlmContextOverflow] = ContextOverflowTitle,
+        [AgentErrorCode.LlmAuthFailed] = "模型服务认证失败",
+        [AgentErrorCode.LlmQuotaExceeded] = "模型服务限流或额度不足",
+        [AgentErrorCode.LlmModelNotFound] = "模型不存在或无权访问",
+        [AgentErrorCode.LlmTimeout] = "模型服务响应超时",
+        [AgentErrorCode.LlmConnectionFailed] = "无法连接模型服务",
+        [AgentErrorCode.LlmProviderNotSupported] = "模型服务不支持",
+        [AgentErrorCode.LlmInvalidResponse] = "模型服务返回了无效响应",
+        [AgentErrorCode.DependencyUnavailable] = "运行时依赖不可用",
+        [AgentErrorCode.ConfigurationError] = "运行时配置错误",
+        [AgentErrorCode.InvalidRequest] = "请求无法执行",
+    };
 
     /// <summary>
     /// 上下文超限的错误码/文案标记（大小写不敏感）。覆盖主流提供方形态：
@@ -47,7 +72,8 @@ public static class ExecutionFailureDescriptor
     }
 
     /// <summary>
-    /// 失败原因的持久化形态：上下文超限给出精确可执行建议，其余 provider 错误
+    /// 失败原因的持久化形态：上下文超限给出精确可执行建议，Runtime 已分类的
+    /// AgentException 按错误码给标题（Message 即脱敏详情），其余 provider 错误
     /// 给脱敏摘要，未知异常给通用文案（原文不透出）。取消返回 null（正常路径）。
     /// </summary>
     public static MessageErrorMetadata? Describe(Exception exception, string? traceId = null)
@@ -58,12 +84,23 @@ public static class ExecutionFailureDescriptor
         }
 
         ClientResultException? provider = FindClientResultException(exception);
+        // 上下文超限（含 Runtime 分类器产出的 LlmContextOverflow 模板文案，同样命中
+        // 链式标记）：精确可执行建议优先于错误码标题映射，并携带 Code 供前端分级。
         if (IsContextLengthExceeded(exception))
         {
             return new MessageErrorMetadata(
                 ContextOverflowTitle,
                 BuildContextOverflowDetail(provider?.Status, provider?.Message),
-                traceId);
+                traceId,
+                AgentErrorCode.LlmContextOverflow.ToString());
+        }
+        if (exception is AgentException agent && CodeTitles.TryGetValue(agent.ErrorCode, out string? title))
+        {
+            return new MessageErrorMetadata(
+                title,
+                string.IsNullOrWhiteSpace(agent.Message) ? GenericDetail : agent.Message,
+                traceId,
+                agent.ErrorCode.ToString());
         }
         if (provider != null)
         {
@@ -73,8 +110,8 @@ public static class ExecutionFailureDescriptor
                 traceId);
         }
         return new MessageErrorMetadata(
-            "执行失败",
-            "Agent 执行失败，请稍后重试；若持续失败请联系管理员并提供 TraceId。",
+            GenericTitle,
+            GenericDetail,
             traceId);
     }
 
