@@ -188,6 +188,22 @@ try {
         }
     }
 
+    # Engine 镜像内嵌的 OpenCode 版本由 Backend/opencode.version 锁定；
+    # OPENAGENT_OPENCODE_VERSION 仅用于升级前临时验证（latest 或严格语义化版本），提交仍以版本文件为准。
+    $openCodeVersionFile = Join-Path $repoRoot 'Backend/opencode.version'
+    if (-not (Test-Path -LiteralPath $openCodeVersionFile -PathType Leaf)) {
+        throw "OpenCode version file does not exist: $openCodeVersionFile"
+    }
+    $openCodeVersion = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_OPENCODE_VERSION)) {
+        (Get-Content -LiteralPath $openCodeVersionFile -Raw).Trim()
+    }
+    else {
+        $env:OPENAGENT_OPENCODE_VERSION
+    }
+    if ($openCodeVersion -notmatch '^(\d+\.\d+\.\d+|latest)$') {
+        throw "invalid OpenCode version '$openCodeVersion' (expected strict semver in Backend/opencode.version, or latest via OPENAGENT_OPENCODE_VERSION override)"
+    }
+
     $engineImage = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_ENGINE_IMAGE)) { 'openagent-engine:latest' } else { $env:OPENAGENT_ENGINE_IMAGE }
     $routerImage = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_ROUTER_IMAGE)) { 'openagent-router:latest' } else { $env:OPENAGENT_ROUTER_IMAGE }
     $chatImage = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_CHAT_IMAGE)) { 'openagent-chat:latest' } else { $env:OPENAGENT_CHAT_IMAGE }
@@ -198,14 +214,29 @@ try {
     $enginePort = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_ENGINE_PORT)) { '8083' } else { $env:OPENAGENT_ENGINE_PORT }
     $tenantId = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_TENANT_ID)) { 'development' } else { $env:OPENAGENT_TENANT_ID }
 
+    # 本地镜像带可追溯的版本标识；Release 工作流会用正式 tag/revision 覆盖同一组 label。
+    $platformVersion = 'dev'
+    try {
+        $described = & git -C $repoRoot describe --tags --always --dirty 2>$null
+        if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($described)) {
+            $platformVersion = $described.Trim()
+        }
+    }
+    catch {
+        # 非 git 检出或 git 不可用时保持 dev。
+    }
+
     # 构建应用镜像；不启动或修改任何容器。
     Invoke-Docker -Arguments @(
         'build', '--tag', $engineImage,
+        '--build-arg', "OPENCODE_VERSION=$openCodeVersion",
+        '--label', "org.opencontainers.image.version=$platformVersion",
         '--file', (Join-WslPath -Base $dockerRepoRoot -Child 'Backend/src/OpenAgent.Engine.Host/Dockerfile'),
         $dockerRepoRoot
     )
     Invoke-Docker -Arguments @(
         'build', '--tag', $routerImage,
+        '--label', "org.opencontainers.image.version=$platformVersion",
         '--file', (Join-WslPath -Base $dockerRepoRoot -Child 'Backend/src/OpenAgent.Router/Dockerfile'),
         $dockerRepoRoot
     )
@@ -217,12 +248,14 @@ try {
         '--build-arg', "OPENAGENT_ROUTER_PORT=$routerPort",
         '--build-arg', "OPENAGENT_ENGINE_PORT=$enginePort",
         '--build-arg', "OPENAGENT_TENANT_ID=$tenantId",
+        '--label', "org.opencontainers.image.version=$platformVersion",
         '--file', (Join-WslPath -Base $dockerRepoRoot -Child 'Frontend/OpenAgent.Chat/Dockerfile'),
         $dockerRepoRoot
     )
 
     Invoke-Docker -Arguments @(
         'build', '--tag', $runnerImage,
+        '--label', "org.opencontainers.image.version=$platformVersion",
         '--file', (Join-WslPath -Base $dockerRepoRoot -Child 'Backend/src/OpenAgent.Runner/Dockerfile'),
         $dockerRepoRoot
     )

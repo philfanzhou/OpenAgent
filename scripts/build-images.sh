@@ -119,6 +119,15 @@ if [[ -n "$tar_directory" ]]; then
   fi
 fi
 
+# Engine 镜像内嵌的 OpenCode 版本由 Backend/opencode.version 锁定；
+# OPENAGENT_OPENCODE_VERSION 仅用于升级前临时验证（latest 或严格语义化版本），提交仍以版本文件为准。
+opencode_version_file="$repo_root/Backend/opencode.version"
+[[ -f "$opencode_version_file" ]] || die "OpenCode version file does not exist: $opencode_version_file"
+opencode_version="${OPENAGENT_OPENCODE_VERSION:-$(tr -d '[:space:]' < "$opencode_version_file")}"
+if [[ ! "$opencode_version" =~ ^([0-9]+\.[0-9]+\.[0-9]+|latest)$ ]]; then
+  die "invalid OpenCode version '$opencode_version' in $opencode_version_file (expected strict semver, or latest via OPENAGENT_OPENCODE_VERSION override)"
+fi
+
 engine_image="${OPENAGENT_ENGINE_IMAGE:-openagent-engine:latest}"
 router_image="${OPENAGENT_ROUTER_IMAGE:-openagent-router:latest}"
 chat_image="${OPENAGENT_CHAT_IMAGE:-openagent-chat:latest}"
@@ -128,14 +137,19 @@ public_scheme="${OPENAGENT_PUBLIC_SCHEME:-https}"
 router_port="${OPENAGENT_ROUTER_PORT:-8082}"
 engine_port="${OPENAGENT_ENGINE_PORT:-8083}"
 tenant_id="${OPENAGENT_TENANT_ID:-development}"
+# 本地镜像带可追溯的版本标识；Release 工作流会用正式 tag/revision 覆盖同一组 label。
+platform_version="$(git -C "$repo_root" describe --tags --always --dirty 2>/dev/null || echo dev)"
 
 "${docker_cmd[@]}" build \
   --tag "$engine_image" \
+  --build-arg "OPENCODE_VERSION=$opencode_version" \
+  --label "org.opencontainers.image.version=$platform_version" \
   --file "$docker_root/Backend/src/OpenAgent.Engine.Host/Dockerfile" \
   "$docker_root"
 
 "${docker_cmd[@]}" build \
   --tag "$router_image" \
+  --label "org.opencontainers.image.version=$platform_version" \
   --file "$docker_root/Backend/src/OpenAgent.Router/Dockerfile" \
   "$docker_root"
 
@@ -147,11 +161,13 @@ tenant_id="${OPENAGENT_TENANT_ID:-development}"
   --build-arg "OPENAGENT_ROUTER_PORT=$router_port" \
   --build-arg "OPENAGENT_ENGINE_PORT=$engine_port" \
   --build-arg "OPENAGENT_TENANT_ID=$tenant_id" \
+  --label "org.opencontainers.image.version=$platform_version" \
   --file "$docker_root/Frontend/OpenAgent.Chat/Dockerfile" \
   "$docker_root"
 
 "${docker_cmd[@]}" build \
   --tag "$runner_image" \
+  --label "org.opencontainers.image.version=$platform_version" \
   --file "$docker_root/Backend/src/OpenAgent.Runner/Dockerfile" \
   "$docker_root"
 

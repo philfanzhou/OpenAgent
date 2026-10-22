@@ -1,4 +1,5 @@
-# OpenCode 不固定版本，默认安装最新发布并仅带入原生可执行文件；需要复现时用 --build-arg OPENCODE_VERSION=<version> 锁定。
+# OpenCode 版本由 Backend/opencode.version 锁定（scripts/build-images.* 与 Release 工作流读取该文件传入）；
+# latest 仅保留给手动 docker build 的临时构建，升级版本需先通过 --target runtime-tests 真实进程回归。
 FROM node:22-bookworm-slim AS opencode
 ARG OPENCODE_VERSION=latest
 RUN npm install --prefix /opt/opencode --ignore-scripts --no-audit --no-fund opencode-ai@${OPENCODE_VERSION} \
@@ -21,12 +22,17 @@ RUN OPENAGENT_TEST_OPENCODE=/usr/local/bin/opencode dotnet test Backend/tests/Op
 RUN OPENAGENT_TEST_OPENCODE=/usr/local/bin/opencode dotnet test Backend/tests/OpenAgent.Engine.Tests --no-restore --nologo --filter FullyQualifiedName~OpenCodeSseTests
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+ARG OPENCODE_VERSION=latest
 WORKDIR /app
 RUN apt-get update \
     && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=build /app/publish/ .
 COPY --from=opencode /opencode /usr/local/bin/opencode
+
+LABEL org.opencontainers.image.title="OpenAgent Engine" \
+      org.opencontainers.image.source="https://github.com/philfanzhou/OpenAgent" \
+      io.openagent.opencode-version="${OPENCODE_VERSION}"
 
 ENV ASPNETCORE_URLS=http://+:5208
 EXPOSE 5208

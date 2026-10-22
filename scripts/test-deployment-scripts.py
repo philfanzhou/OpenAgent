@@ -43,6 +43,44 @@ if sys.argv[1:3] == ['image', 'inspect'] and sys.argv[3] == os.environ.get('MISS
         self.assertEqual({call[-1] for call in calls if call[0] == 'save'},
                          {'openagent-' + name + ':latest' for name in ('engine', 'router', 'chat', 'runner')})
 
+    def engine_build(self, calls):
+        matches = [call for call in calls
+                   if call[0] == 'build' and any('OpenAgent.Engine.Host' in arg for arg in call)]
+        self.assertEqual(len(matches), 1, calls)
+        return matches[0]
+
+    def build_arg(self, call, name):
+        for index, arg in enumerate(call[:-1]):
+            if arg == '--build-arg' and call[index + 1].startswith(name + '='):
+                return call[index + 1][len(name) + 1:]
+        self.fail(f'{name} build arg missing from {call}')
+
+    def test_engine_build_pins_opencode_version(self):
+        version = (ROOT / 'Backend' / 'opencode.version').read_text(encoding='utf-8').strip()
+        self.assertRegex(version, r'^\d+\.\d+\.\d+$')
+        result, calls = self.run_script('build-images.sh', '--docker-mode', 'docker')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.build_arg(self.engine_build(calls), 'OPENCODE_VERSION'), version)
+        # 版本参数只属于 Engine 镜像，其他镜像不携带。
+        engine = self.engine_build(calls)
+        for call in calls:
+            if call[0] == 'build' and call != engine:
+                self.assertFalse(any('OPENCODE_VERSION' in arg for arg in call), call)
+
+    def test_engine_build_accepts_opencode_version_override(self):
+        # 升级前临时验证通道：环境变量覆盖版本文件，latest 显式放行。
+        self.env['OPENAGENT_OPENCODE_VERSION'] = 'latest'
+        result, calls = self.run_script('build-images.sh', '--docker-mode', 'docker')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.build_arg(self.engine_build(calls), 'OPENCODE_VERSION'), 'latest')
+
+    def test_engine_build_rejects_invalid_opencode_version(self):
+        self.env['OPENAGENT_OPENCODE_VERSION'] = '1.x-beta'
+        result, calls = self.run_script('build-images.sh', '--docker-mode', 'docker')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('invalid OpenCode version', result.stderr)
+        self.assertEqual(calls, [])
+
     def test_default_deployment_includes_runner(self):
         self.env['OPENAGENT_RUNNER_API_KEY'] = 'x' * 32
         result, calls = self.run_script('deploy.sh')
