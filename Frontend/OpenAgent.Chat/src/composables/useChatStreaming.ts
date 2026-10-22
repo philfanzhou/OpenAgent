@@ -81,7 +81,7 @@ export function useChatStreaming(options: ChatStreamingOptions) {
     const sendConversationId = conversationId
     const streamState = options.streams.start(conversationId)
     const requestId = streamState.requestId
-    let streamError: { title?: string; detail?: string; traceId?: string } | undefined
+    let streamError: { title?: string; detail?: string; traceId?: string; code?: string } | undefined
     let flushStream: (() => void) | undefined
     let contentQueue: TypewriterQueue | undefined
     let streamedAssistant: ConversationMessage | undefined
@@ -214,6 +214,7 @@ export function useChatStreaming(options: ChatStreamingOptions) {
             title: event.error?.title,
             detail: event.error?.detail || 'Agent 执行失败',
             traceId: event.error?.traceId,
+            code: event.error?.code,
           }
           throw new Error(streamError.detail)
         }
@@ -273,6 +274,7 @@ export function useChatStreaming(options: ChatStreamingOptions) {
             title: streamError?.title || 'Agent 执行失败',
             detail: streamError?.detail || (error instanceof Error ? error.message : '执行失败'),
             traceId: streamError?.traceId,
+            code: streamError?.code,
           }
         }
         try {

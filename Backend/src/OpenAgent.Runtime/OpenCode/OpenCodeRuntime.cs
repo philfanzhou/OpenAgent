@@ -80,7 +80,7 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
                 catch (Exception) when (deadline.IsCancellationRequested)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    throw new AgentException(AgentErrorCode.LlmTimeout, "OpenCode turn exceeded its time limit.");
+                    throw new AgentException(AgentErrorCode.LlmTimeout, "本轮执行超过时间限制：请稍后重试；若持续超时请联系管理员调整超时配置。");
                 }
                 catch (AgentException)
                 {
@@ -88,10 +88,17 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
                 }
                 catch (Exception error)
                 {
-                    // 外部 RPC 错误可能包含模型请求/凭据，不能原样进入 SSE、持久化或日志。
-                    // 可执行文件缺失已在启动前由 OpenCodeProcess 解析为明确的 DependencyUnavailable/ConfigurationError。
-                    logger.LogWarning("OpenCode runtime failed ({ErrorType})", error.GetType().Name);
-                    throw new AgentException(AgentErrorCode.PipelineExecutionFailed, "OpenCode runtime failed; check the executable, provider configuration and connectivity.");
+                    // 实测 OpenCode 的 RPC 错误 Message 会逐字回带 provider 响应体（可能含
+                    // 密钥材料/账户标识），原始异常不得进入 SSE、持久化、ProblemDetails 或日志。
+                    // 分类器只输出错误码 + 固定中文模板；TraceId/错误码/RPC 码（纯数字）入日志，
+                    // 管理员按 TraceId 可定位到具体类别——旧路径只记异常类型名，无从排查。
+                    AgentException classified = OpenCodeErrorClassifier.Classify(error);
+                    logger.LogWarning(
+                        "OpenCode turn failed. TraceId={TraceId}, ErrorCode={ErrorCode}, Diagnostic={Diagnostic}",
+                        invocation.Turn.TraceId,
+                        classified.ErrorCode,
+                        classified.Details);
+                    throw classified;
                 }
                 if (!available)
                 {
@@ -368,7 +375,7 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
             : string.Empty;
         if (history.Length + current.Content.Length > maxCharacters)
         {
-            throw new AgentException(AgentErrorCode.InvalidRequest, "Conversation exceeds the ACP prompt limit; compact it before retrying.");
+            throw new AgentException(AgentErrorCode.InvalidRequest, "会话内容超出提示词长度上限，请开启新会话或精简历史消息后重试。");
         }
         List<ContentBlock> content = [];
         if (history.Length > 0)

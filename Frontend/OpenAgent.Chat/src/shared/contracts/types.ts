@@ -41,6 +41,8 @@ export interface MessageErrorMetadata {
   title?: string | null
   detail?: string | null
   traceId?: string | null
+  /** AgentErrorCode 符号名（如 LlmAuthFailed），用于严重级别与样式；历史数据缺失。 */
+  code?: string | null
 }
 
 /** 消息附件的持久化描述（后端 MessageFileMetadata）。 */
@@ -87,7 +89,7 @@ export interface ConversationMessage {
   tokenUsage?: TokenUsage
   modelId?: string
   /** 执行失败的独立展示，不写入会话历史。 */
-  error?: { title?: string; detail?: string; traceId?: string }
+  error?: { title?: string; detail?: string; traceId?: string; code?: string }
 }
 
 export interface ToolActivity {
@@ -376,7 +378,7 @@ export interface StreamEvent {
   toolCallId?: string
   toolArguments?: unknown
   conversationId?: string
-  error?: { title?: string; detail?: string; traceId?: string }
+  error?: { title?: string; detail?: string; traceId?: string; code?: string }
   usage?: TokenUsage | null
   modelId?: string | null
 }

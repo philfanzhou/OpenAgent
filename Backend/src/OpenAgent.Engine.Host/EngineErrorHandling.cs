@@ -1,4 +1,5 @@
 using System.ClientModel;
+using OpenAgent.Application.Runtime;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Engine.Hosting;
 using OpenAgent.Engine.Hosting.Errors;
@@ -35,7 +36,7 @@ internal static class EngineErrorHandling
             $"{AgentProblemDetails.TypePrefix}/provider-request-error",
             "ProviderRequestFailed",
             statusCode,
-            StreamingPayloadFactory.FormatProviderError(clientException.Status, clientException.Message),
+            ExecutionFailureDescriptor.FormatProviderError(clientException.Status, clientException.Message),
             instance: null,
             traceId: traceId,
             ("errorCode", (int)AgentErrorCode.DependencyUnavailable));
