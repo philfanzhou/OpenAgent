@@ -29,9 +29,13 @@ public static class RuntimeServiceExtensions
                 && options.RequestTimeoutSeconds is > 0 and <= 3600
                 && options.TurnTimeoutSeconds is > 0 and <= 86400
                 && options.MaxConcurrentTurns is > 0 and <= 128
-                && options.MaxPromptCharacters > 0, "Invalid OpenCode runtime configuration.")
+                && options.MaxPromptCharacters > 0
+                && options.KeepAliveSeconds is >= 0 and <= 86400
+                && options.MaxKeptProcesses is > 0 and <= 128
+                && options.MaxSessionsPerProcess is > 0 and <= 10000, "Invalid OpenCode runtime configuration.")
             .ValidateOnStart();
         services.TryAddSingleton<RuntimeToolBridge>();
+        services.TryAddSingleton<OpenCodeProcessKeeper>();
         services.TryAddSingleton<IAgentRuntimeDriver, OpenCodeRuntime>();
         return services;
     }

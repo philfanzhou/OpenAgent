@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -106,7 +108,7 @@ internal static class OpenCodeProcess
         throw new AgentException(
             AgentErrorCode.DependencyUnavailable,
             $"OpenCode executable '{name}' was not found on PATH or in npm install roots. "
-            + "Install the pinned version (npm install -g opencode-ai@1.18.35) or set OpenCode:Executable to an absolute path.");
+            + "Install opencode (npm install -g opencode-ai) or set OpenCode:Executable to an absolute path.");
     }
 
     private static IEnumerable<string> WindowsCandidates(string dir, string name)
@@ -156,7 +158,48 @@ internal static class OpenCodeProcess
         return value.Contains(' ') ? "\"" + value + "\"" : value;
     }
 
-    internal static AcpProcessOptions Create(OpenCodeLaunchSpec launch, RuntimeInvocation invocation, string workspace)
+    internal static AcpProcessOptions Create(OpenCodeLaunchSpec launch, RuntimeInvocation invocation, string home)
+    {
+        Dictionary<string, string> environment = SharedEnvironment(invocation);
+        // 进程主目录与轮次工作区分离：进程保活跨轮次复用时，轮次工作区（ACP 会话 cwd）仍可立即回收。
+        foreach (string name in StateVariables)
+        {
+            string path = Path.Combine(home, ".state", name);
+            Directory.CreateDirectory(path);
+            environment[name] = path;
+        }
+        return new AcpProcessOptions(launch.FileName, launch.Arguments)
+        {
+            WorkingDirectory = home,
+            EnvironmentMode = AcpEnvironmentMode.AllowList,
+            Environment = environment
+        };
+    }
+
+    private static readonly string[] StateVariables =
+        ["HOME", "USERPROFILE", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME", "OPENCODE_CONFIG_DIR"];
+
+    /// <summary>
+    /// 进程复用身份：实际可执行文件、参数与除进程私有状态目录外的受控环境（含模型端点、
+    /// 密钥、指令与工具放行策略）完全一致才允许复用；状态目录路径不参与身份。
+    /// </summary>
+    internal static string Identity(OpenCodeLaunchSpec launch, RuntimeInvocation invocation)
+    {
+        Dictionary<string, string> environment = SharedEnvironment(invocation);
+        StringBuilder identity = new();
+        identity.Append(launch.FileName).Append('\0');
+        foreach (string argument in launch.Arguments)
+        {
+            identity.Append(argument).Append('\0');
+        }
+        foreach (KeyValuePair<string, string> pair in environment.OrderBy(pair => pair.Key, StringComparer.Ordinal))
+        {
+            identity.Append(pair.Key).Append('=').Append(pair.Value).Append('\0');
+        }
+        return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(identity.ToString())));
+    }
+
+    private static Dictionary<string, string> SharedEnvironment(RuntimeInvocation invocation)
     {
         LlmConfig model = invocation.Profile.Model;
         string keyReference = Guid.NewGuid().ToString("N");
@@ -232,12 +275,6 @@ internal static class OpenCodeProcess
                 environment[name] = value;
             }
         }
-        foreach (string name in new[] { "HOME", "USERPROFILE", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME", "OPENCODE_CONFIG_DIR" })
-        {
-            string path = Path.Combine(workspace, ".state", name);
-            Directory.CreateDirectory(path);
-            environment[name] = path;
-        }
         environment["OPENAGENT_MODEL_API_KEY"] = model.ApiKey;
         // OpenCode 在解析 JSON 之前展开 {file:...}/{env:...}。转义租户文本里的花括号，
         // 防止 Agent 指令/模型字段被当作宿主配置宏；只还原本轮随机占位的密钥引用。
@@ -251,11 +288,6 @@ internal static class OpenCodeProcess
             JsonSerializer.Serialize(keyReference), JsonSerializer.Serialize("{env:OPENAGENT_MODEL_API_KEY}"), StringComparison.Ordinal);
         environment["OPENCODE_DISABLE_AUTOUPDATE"] = "true";
         environment["OPENCODE_DISABLE_SHARE"] = "true";
-        return new AcpProcessOptions(launch.FileName, launch.Arguments)
-        {
-            WorkingDirectory = workspace,
-            EnvironmentMode = AcpEnvironmentMode.AllowList,
-            Environment = environment
-        };
+        return environment;
     }
 }

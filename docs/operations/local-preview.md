@@ -1,6 +1,6 @@
 # 本机开发预览（PostgreSQL 持久化，免 Docker）
 
-本页描述 macOS/Linux 本机预览。需要 .NET 10 SDK、Node/pnpm、OpenCode **1.18.35**、Python 3 和原生 PostgreSQL。Redis、Docker、MinIO 不属于本机预览依赖。代码入口为 `scripts/local-preview.py`。
+本页描述 macOS/Linux 本机预览。需要 .NET 10 SDK、Node/pnpm、OpenCode（版本不固定）、Python 3 和原生 PostgreSQL。Redis、Docker、MinIO 不属于本机预览依赖。代码入口为 `scripts/local-preview.py`。
 
 ## 启动与停止
 
@@ -12,7 +12,7 @@ python3 scripts/local-preview.py status
 python3 scripts/local-preview.py down
 ```
 
-OpenCode 在 PATH 中时可省略 `--opencode`；脚本也会查找 `<data-root>/tools/node_modules/.bin/opencode`，当前测试站点已在该持久目录安装 1.18.35。脚本编译后端、安装锁定的前端依赖，启动原生 PostgreSQL、Engine 与前端。PostgreSQL 工具从 PATH 或 macOS Homebrew 安装目录寻找，也可传 `--postgres-bin /path/to/bin`。已有 PostgreSQL 可通过 `--database 'Host=...;Database=...;Username=...;Password=...'` 或环境变量 `ConnectionStrings__OpenAgentDatabase` 连接。
+OpenCode 在 PATH 中时可省略 `--opencode`；脚本也会查找 `<data-root>/tools/node_modules/.bin/opencode`，该持久目录已安装 OpenCode。脚本编译后端、安装锁定的前端依赖，启动原生 PostgreSQL、Engine 与前端。PostgreSQL 工具从 PATH 或 macOS Homebrew 安装目录寻找，也可传 `--postgres-bin /path/to/bin`。已有 PostgreSQL 可通过 `--database 'Host=...;Database=...;Username=...;Password=...'` 或环境变量 `ConnectionStrings__OpenAgentDatabase` 连接。
 
 默认页面为 `http://127.0.0.1:5184`，Engine 为 `http://127.0.0.1:5240`，本机 PostgreSQL 为 `127.0.0.1:55432`。可用 `--web-port`、`--engine-port`、`--postgres-port` 覆盖；端口占用时报错。登录使用开发账号 `admin / admin` 或 `test / test`。
 

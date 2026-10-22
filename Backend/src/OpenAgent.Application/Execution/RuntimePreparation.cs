@@ -48,23 +48,44 @@ internal sealed class RuntimePreparation(
         files.Set(turn);
         PlatformChatHistory history = conversations.Create(turn, profile.Model.ModelId, input, attachments, profile.Model.Modality == ModelModality.Multimodal);
         RuntimePreparationScope scope = new(history, logger);
+        // 历史加载、平台工具发现与各 feature 工厂互不依赖（EF 仓储均按调用创建独立
+        // DbContext），并行执行消除串行等待；结果仍按注册顺序合并，保持顺序与串行一致。
+        // 任务在 try 内增量收集：工厂同步抛出时已启动的任务仍能进入统一的失败回收。
+        Task<IReadOnlyList<AITool>>? discovery = null;
+        List<Task<AgentFeature>> created = [];
+        // 所有权唯一登记：成功产物（按对象身份）只进 scope.Features 一次；合并中途
+        // 失败（provider/PrepareTool/重复工具名等）时，catch 只接管尚未登记的产物，
+        // 保证每个 feature 资源恰好释放一次。
+        HashSet<AgentFeature> owned = new(ReferenceEqualityComparer.Instance);
+        void TakeOwnership(AgentFeature feature)
+        {
+            if (owned.Add(feature))
+            {
+                scope.Features.Add(feature);
+            }
+        }
         try
         {
+            discovery = capabilities.CreateAsync(profile.AgentId, profile.Config, user, ct);
+            foreach (IAgentFeatureFactory factory in factories)
+            {
+                created.Add(factory.CreateAsync(profile.AgentId, profile.Config, user, ct));
+            }
             ChatMessage message = await history.CreateUserMessageAsync(ct).ConfigureAwait(false);
             List<ChatMessage> prior = await history.LoadAsync(ct).ConfigureAwait(false);
+            List<AITool> tools = [.. await discovery.ConfigureAwait(false)];
+            AgentFeature[] features = await Task.WhenAll(created).ConfigureAwait(false);
             AgentTurnContext context = new()
             {
                 Instructions = profile.Config.Instructions
             };
             context.Messages.AddRange(prior);
             context.Messages.Add(message);
-            List<AITool> tools = [.. await capabilities.CreateAsync(profile.AgentId, profile.Config, user, ct).ConfigureAwait(false)];
             List<RuntimeSkill> skills = [];
             List<RuntimeMcpServer> mcpServers = [];
-            foreach (IAgentFeatureFactory factory in factories)
+            foreach (AgentFeature feature in features)
             {
-                AgentFeature feature = await factory.CreateAsync(profile.AgentId, profile.Config, user, ct).ConfigureAwait(false);
-                scope.Features.Add(feature);
+                TakeOwnership(feature);
                 tools.AddRange(feature.Tools);
                 tools.AddRange(feature.InlineTools);
                 skills.AddRange(feature.Skills);
@@ -111,9 +132,34 @@ internal sealed class RuntimePreparation(
         }
         catch (Exception error)
         {
+            // 并行启动的任务可能在失败点之后才完成；等待全部落地并接管尚未登记的
+            // 产物（已登记的不会重复加入），由统一释放路径按逆序恰好回收一次。
+            if (discovery is not null)
+            {
+                _ = await ObserveAsync(discovery).ConfigureAwait(false);
+            }
+            foreach (Task<AgentFeature> task in created)
+            {
+                if (await ObserveAsync(task).ConfigureAwait(false) is { } feature)
+                {
+                    TakeOwnership(feature);
+                }
+            }
             await scope.FailAsync(error).ConfigureAwait(false);
             await scope.DisposeAsync().ConfigureAwait(false);
             throw;
+        }
+    }
+
+    private static async Task<T?> ObserveAsync<T>(Task<T> task)
+    {
+        try
+        {
+            return await task.ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            return default;
         }
     }
 

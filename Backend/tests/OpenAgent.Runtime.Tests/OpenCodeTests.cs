@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using OpenAgent.Runtime.OpenCode;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Runtime;
@@ -45,7 +46,11 @@ public sealed class OpenCodeTests
         Assert.Equal("OpenCode", started.Runtime?.Provider);
         Assert.False(string.IsNullOrWhiteSpace(started.Runtime?.AgentVersion));
         Assert.Equal("fixture", events.Last().ModelId);
-        Assert.Null(events.Last().Usage);
+        // 版本无关：harness 上报 usage_update 时终态携带的是上下文占用（prompt=total、completion=0），
+        // 不拆分计费；未上报时保持 null。不能断言恒为 null——那只在不上报 usage_update 的版本上成立。
+        AgentStreamEvent last = events.Last();
+        Assert.True(last.Usage is null
+            || (last.Usage.CompletionTokens == 0 && last.Usage.PromptTokens == last.Usage.TotalTokens && last.Usage.PromptTokens >= 0));
         runtime.AssertWorkspacesReleased();
     }
 
@@ -279,21 +284,28 @@ internal sealed class RuntimeFixture : IAsyncDisposable
     private readonly ServiceProvider _provider;
     private readonly string _root = Path.Combine(Path.GetTempPath(), "openagent-runtime-test-" + Guid.NewGuid().ToString("N"));
     internal IAgentRuntimeDriver Driver => _provider.GetRequiredService<IAgentRuntimeDriver>();
+    internal OpenCodeProcessKeeper Keeper => _provider.GetRequiredService<OpenCodeProcessKeeper>();
+    internal ServiceProvider Provider => _provider;
+    internal string Root => _root;
     internal RuntimeInvocation Request
     {
         get;
     }
 
-    internal RuntimeFixture(string endpoint)
+    internal RuntimeFixture(string endpoint, Action<Dictionary<string, string?>>? configure = null)
     {
         ServiceCollection services = new();
-        services.AddOpenCodeRuntime(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        Dictionary<string, string?> settings = new()
         {
             ["OpenCode:Executable"] = Environment.GetEnvironmentVariable("OPENAGENT_TEST_OPENCODE"),
             ["OpenCode:WorkspaceRoot"] = _root,
             ["OpenCode:RequestTimeoutSeconds"] = "30",
-            ["OpenCode:TurnTimeoutSeconds"] = "45"
-        }).Build());
+            ["OpenCode:TurnTimeoutSeconds"] = "45",
+            // 默认每轮销毁进程，保持既有断言语义；保活场景由用例显式开启。
+            ["OpenCode:KeepAliveSeconds"] = "0"
+        };
+        configure?.Invoke(settings);
+        services.AddOpenCodeRuntime(new ConfigurationBuilder().AddInMemoryCollection(settings).Build());
         _provider = services.BuildServiceProvider();
         Request = new RuntimeInvocation(new AgentRuntimeProfile
         {

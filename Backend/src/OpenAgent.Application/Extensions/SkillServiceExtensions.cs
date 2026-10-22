@@ -11,6 +11,7 @@ internal static class SkillServiceExtensions
     internal static IServiceCollection AddSkillServices(this IServiceCollection services)
     {
         services.TryAddSingleton<ISkillCatalog, EmptySkillCatalog>();
+        services.TryAddSingleton<SkillPackageCache>();
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IAgentFeatureFactory, AgentSkillsProviderFactory>());
         return services;
     }

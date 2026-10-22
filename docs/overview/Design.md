@@ -49,4 +49,4 @@ services.AddFileAssetObjectStorage(configuration);
 services.AddAgentEngine(configuration);
 ```
 
-SDK 使用者不需要引用 OpenAgent.Runtime 或 Application。技术栈为 .NET 10、ACP v1、OpenCode 1.18.35、官方 MCP C# SDK、PostgreSQL/Redis/S3 与 xUnit。
+SDK 使用者不需要引用 OpenAgent.Runtime 或 Application。技术栈为 .NET 10、ACP v1、OpenCode（不固定版本）、官方 MCP C# SDK、PostgreSQL/Redis/S3 与 xUnit。

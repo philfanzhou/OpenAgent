@@ -28,7 +28,7 @@ public sealed class RuntimeBoundaryTests
     {
         ServiceCollection services = new();
         services.AddOpenCodeRuntime(new ConfigurationBuilder().Build());
-        // 桥单例只实现 IAsyncDisposable；容器必须异步释放。
+        // 桥/保活池单例只实现 IAsyncDisposable；容器必须异步释放。
         await using ServiceProvider provider = services.BuildServiceProvider();
         RuntimeInvocation invocation = new(new AgentRuntimeProfile
         {

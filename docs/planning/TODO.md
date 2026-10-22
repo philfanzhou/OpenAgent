@@ -49,6 +49,8 @@
 - [ ] **ACP-R01 平台契约与默认执行入口**：Contracts/Runtime + Application/Execution；平台保留授权、历史和持久化，不引用 ACP 公共类型。
 - [ ] **ACP-R02 OpenCode 驱动与工具桥**：Runtime 类库（不打包）；固定版本 ACP 进程、隔离环境、每轮 loopback MCP bearer、工具预算及事件合并。
 - [ ] **ACP-R03 验证与交付**：真实进程/本地模型/平台 C# 工具、取消、历史续聊、HTTP/SSE；补齐配置、镜像与文档；已移除 MAF 回归快照，补充免 Docker 本机组合、前端默认模型选择、真实 Skill/MCP 原生调用与真实 Anthropic 兼容模型验收。
+- [ ] **ACP-R04 运行时延迟优化**（本地实现与验证完成，待 PR 评审）：① `OpenCodeProcessKeeper` 按"会话归属 + 启动身份"复用空闲进程（实测追问轮 -63%，但 OpenCode 1.19.3 空闲进程 1–2 核空转 + 持续外呼，故 `KeepAliveSeconds` 默认 0，机制保留待上游空闲行为可接受后开启）；② MCP 桥重构为进程常驻宿主 + 每轮租约轮换工具注册（消除每轮 Kestrel 构建与死端点热重连）；③ 准备链路并行化（历史/工具发现/feature 工厂 `Task.WhenAll`，失败统一释放）；④ `SkillPackageCache` 内容寻址 Skill 包缓存；⑤ MCP/Runtime profile 仓储内 30s TTL 读缓存；⑥ 仓库不再固定 OpenCode 版本。验证与实测见 [记录](../test-reports/2026-10-21-opencode-keepalive.md)。
+- [ ] **ACP-R05 OpenCode 进程环境隔离跟进**（待分派）：实测 Windows + OpenCode 1.19.3 下子进程无视平台设置的 HOME/USERPROFILE，扫描并加载宿主用户 `.claude/skills`、`.agents/skills`（26 个技能进入上下文）。需上游确认 homedir 解析机制或平台侧进一步收紧；同项跟进空闲进程持续外呼与 CPU 空转（阻碍保活默认开启）。证据见 [记录](../test-reports/2026-10-21-opencode-keepalive.md)。
 
 本轮已按评审意见移除 MAF 推理栈（Application 内 Microsoft.Agents.AI 全系引用、进程内推理循环与平台侧 MCP 工具代理，原 A09 的 Application 部分），并支持外部 MCP server 经 ACP session/new 透传、Skill 工作区物化。Runtime 由独立设置页管理，聊天顶部选择已保存的 Runtime 和模型连接；已移除 Agent 编辑器中的 OpenCode 配置，补充实际 ACP 握手身份的展示与持久化。不代表 A02 的并发容量/隔离攻击验证、A04 Worker、A05 分布式 RunGrant、A06 事件重放或 A08 人工审批已完成；原任务保留未完成状态，具体验收边界以实测记录为准。
 

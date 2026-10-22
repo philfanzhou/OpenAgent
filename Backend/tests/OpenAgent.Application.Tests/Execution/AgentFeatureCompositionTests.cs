@@ -53,6 +53,86 @@ public class AgentFeatureCompositionTests
         Assert.Equal(1, resource.DisposeCount);
     }
 
+    [Fact]
+    public async Task ExecuteAsync_AsyncFactoryFails_ReleasesLateSucceedingFeatureExactlyOnce()
+    {
+        TrackingResource failing = new();
+        TrackingResource lateSucceeding = new();
+        await using AgentExecutorUsageTests.TestRuntime runtime = AgentExecutorUsageTests.CreateRuntime(
+            new UnreachableDriver(),
+            configure: services =>
+            {
+                // 快速失败：工厂在产出 feature 前抛错，平台无从接管其资源（工厂自负其责）。
+                services.AddSingleton<IAgentFeatureFactory>(new DelayedFeature(failing, TimeSpan.FromMilliseconds(5), succeed: false));
+                // 慢速成功：在失败点之后才完成，必须被失败路径接管并恰好释放一次。
+                services.AddSingleton<IAgentFeatureFactory>(new DelayedFeature(lateSucceeding, TimeSpan.FromMilliseconds(120), succeed: true));
+            });
+
+        InvalidOperationException error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => runtime.Executor.ExecuteAsync(Request, User, CancellationToken.None));
+
+        Assert.Equal("delayed feature failed", error.Message);
+        Assert.Equal(0, failing.DisposeCount);
+        Assert.Equal(1, lateSucceeding.DisposeCount);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ContextProviderFails_ReleasesFeatureExactlyOnce()
+    {
+        TrackingResource resource = new();
+        await using AgentExecutorUsageTests.TestRuntime runtime = AgentExecutorUsageTests.CreateRuntime(
+            new UnreachableDriver(),
+            configure: services => services.AddSingleton<IAgentFeatureFactory>(new TestFeature(resource, new ThrowingProvider())));
+
+        InvalidOperationException error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => runtime.Executor.ExecuteAsync(Request, User, CancellationToken.None));
+
+        Assert.Equal("provider failed", error.Message);
+        Assert.Equal(1, resource.DisposeCount);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_PrepareToolFails_ReleasesEveryFeatureExactlyOnce()
+    {
+        TrackingResource first = new();
+        TrackingResource second = new();
+        await using AgentExecutorUsageTests.TestRuntime runtime = AgentExecutorUsageTests.CreateRuntime(
+            new UnreachableDriver(),
+            configure: services =>
+            {
+                services.AddSingleton<IAgentFeatureFactory>(new TestFeature(first, prepareTool: _ => throw new InvalidOperationException("prepare failed")));
+                services.AddSingleton<IAgentFeatureFactory>(new TestFeature(second));
+            });
+
+        InvalidOperationException error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => runtime.Executor.ExecuteAsync(Request, User, CancellationToken.None));
+
+        Assert.Equal("prepare failed", error.Message);
+        Assert.Equal(1, first.DisposeCount);
+        Assert.Equal(1, second.DisposeCount);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_DuplicateToolName_ReleasesEveryFeatureExactlyOnce()
+    {
+        TrackingResource first = new();
+        TrackingResource second = new();
+        await using AgentExecutorUsageTests.TestRuntime runtime = AgentExecutorUsageTests.CreateRuntime(
+            new UnreachableDriver(),
+            configure: services =>
+            {
+                services.AddSingleton<IAgentFeatureFactory>(new TestFeature(first, toolName: "dup_tool"));
+                services.AddSingleton<IAgentFeatureFactory>(new TestFeature(second, toolName: "dup_tool"));
+            });
+
+        InvalidOperationException error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => runtime.Executor.ExecuteAsync(Request, User, CancellationToken.None));
+
+        Assert.Contains("Duplicate runtime tool name", error.Message);
+        Assert.Equal(1, first.DisposeCount);
+        Assert.Equal(1, second.DisposeCount);
+    }
+
     private static AgentRequest Request => new()
     {
         Query = "hello", AgentId = "test-agent", LlmProfileId = "test-model",
@@ -61,14 +141,36 @@ public class AgentFeatureCompositionTests
 
     private static AgentUserContext User => new() { UserId = "user-1", TenantId = "tenant-1" };
 
-    private sealed class TestFeature(TrackingResource resource) : IAgentFeatureFactory
+    private sealed class TestFeature(TrackingResource resource, IAgentContextProvider? provider = null, string toolName = "extension_tool", Func<AITool, AITool>? prepareTool = null) : IAgentFeatureFactory
     {
         public Task<AgentFeature> CreateAsync(string agentId, AgentConfig config, IAgentUserContext user,
             CancellationToken cancellationToken) => Task.FromResult(new AgentFeature
+        {
+            Tools = [AIFunctionFactory.Create(() => "extension result", name: toolName)],
+            Resource = resource,
+            ContextProviders = provider is null ? [] : [provider],
+            PrepareTool = prepareTool
+        });
+    }
+
+    private sealed class ThrowingProvider : IAgentContextProvider
+    {
+        public Task<AgentTurnContext> InvokingAsync(AgentTurnContext context, CancellationToken cancellationToken)
+            => throw new InvalidOperationException("provider failed");
+    }
+
+    private sealed class DelayedFeature(TrackingResource resource, TimeSpan delay, bool succeed) : IAgentFeatureFactory
+    {
+        public async Task<AgentFeature> CreateAsync(string agentId, AgentConfig config, IAgentUserContext user,
+            CancellationToken cancellationToken)
+        {
+            await Task.Delay(delay).ConfigureAwait(false);
+            if (!succeed)
             {
-                Tools = [AIFunctionFactory.Create(() => "extension result", name: "extension_tool")],
-                Resource = resource
-            });
+                throw new InvalidOperationException("delayed feature failed");
+            }
+            return new AgentFeature { Resource = resource };
+        }
     }
 
     private sealed class FailedFeature : IAgentFeatureFactory
