@@ -158,6 +158,37 @@ internal static class OpenCodeProcess
         return value.Contains(' ') ? "\"" + value + "\"" : value;
     }
 
+    /// <summary>
+    /// 从继承的 PATH 中剔除 Windows 商店别名目录（%LOCALAPPDATA%\Microsoft\WindowsApps）。
+    /// 别名是 AppModel 激活的交互会话设施：在受控子进程环境（无 LOCALAPPDATA、USERPROFILE
+    /// 被重定向）下按名解析到别名会挂死进程而非报错，且别名目录掩盖了 PATH 中靠后的真实
+    /// 安装（如 python.org 安装管理器的 AppData\Local\Python\bin）。非 Windows 或不含该
+    /// 目录时原样返回。
+    /// </summary>
+    internal static string FilterWindowsStoreAliases(string pathValue)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return pathValue;
+        }
+        string aliasDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Microsoft", "WindowsApps");
+        List<string> kept = [];
+        foreach (string entry in pathValue.Split(';'))
+        {
+            string trimmed = entry.Trim().Trim('"');
+            bool isAlias = trimmed.Length > 0
+                && (string.Equals(trimmed, aliasDir, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(trimmed.TrimEnd('\\') + "\\", aliasDir + "\\", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(trimmed, "%LOCALAPPDATA%\\Microsoft\\WindowsApps", StringComparison.OrdinalIgnoreCase));
+            if (!isAlias)
+            {
+                kept.Add(entry);
+            }
+        }
+        return string.Join(';', kept);
+    }
+
     internal static AcpProcessOptions Create(
         OpenCodeLaunchSpec launch, RuntimeInvocation invocation, IReadOnlyList<string> allowedNativeTools, string home)
     {
@@ -274,12 +305,14 @@ internal static class OpenCodeProcess
             }
         };
         // 只给子进程环境白名单，不继承服务的数据库口令、云凭据或用户 HOME 配置。
+        // PATHEXT/COMSPEC 与 PATH 同属可执行文件解析的基础变量：缺 PATHEXT 时按名查找
+        // （如 python -> python.exe）失败，Windows PowerShell/where 表现为"命令不存在"。
         Dictionary<string, string> environment = [];
-        foreach (string name in new[] { "PATH", "SystemRoot", "WINDIR" })
+        foreach (string name in new[] { "PATH", "PATHEXT", "COMSPEC", "SystemRoot", "WINDIR" })
         {
             if (Environment.GetEnvironmentVariable(name) is { } value)
             {
-                environment[name] = value;
+                environment[name] = name == "PATH" ? FilterWindowsStoreAliases(value) : value;
             }
         }
         environment["OPENAGENT_MODEL_API_KEY"] = model.ApiKey;

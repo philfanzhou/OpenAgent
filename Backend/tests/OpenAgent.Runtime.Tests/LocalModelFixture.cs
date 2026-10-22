@@ -81,13 +81,25 @@ internal sealed class ModelFixture(WebApplication app, ConcurrentQueue<Exception
     }
 }
 
-internal sealed class OpenCodeFactAttribute : FactAttribute
+internal class OpenCodeFactAttribute : FactAttribute
 {
     public OpenCodeFactAttribute()
     {
         if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENAGENT_TEST_OPENCODE")))
         {
             Skip = "Set OPENAGENT_TEST_OPENCODE to the OpenCode executable for real harness tests.";
+        }
+    }
+}
+
+/// <summary>真实进程 + 仅 Windows：PATH/PATHEXT 命令名解析行为回归。</summary>
+internal sealed class OpenCodeWindowsFactAttribute : OpenCodeFactAttribute
+{
+    public OpenCodeWindowsFactAttribute()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip = "Windows-only: command-name resolution through PATH/PATHEXT.";
         }
     }
 }

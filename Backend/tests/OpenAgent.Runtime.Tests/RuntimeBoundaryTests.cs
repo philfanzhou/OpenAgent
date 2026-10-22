@@ -63,6 +63,12 @@ public sealed class RuntimeBoundaryTests
             Assert.DoesNotContain("{env:PATH}", launch.Environment["OPENCODE_CONFIG_CONTENT"]);
             Assert.Contains("{env:OPENAGENT_MODEL_API_KEY}", launch.Environment["OPENCODE_CONFIG_CONTENT"]);
             Assert.StartsWith(root, launch.Environment["HOME"]);
+            // PATHEXT/COMSPEC 属于可执行解析基础变量，随白名单传入；商店别名目录从子 PATH 剔除。
+            if (Environment.GetEnvironmentVariable("PATHEXT") is { } pathExt)
+            {
+                Assert.Equal(pathExt, launch.Environment["PATHEXT"]);
+            }
+            Assert.DoesNotContain("Microsoft\\WindowsApps", launch.Environment["PATH"], StringComparison.OrdinalIgnoreCase);
             using JsonDocument config = JsonDocument.Parse(launch.Environment["OPENCODE_CONFIG_CONTENT"]);
             Assert.Equal("deny", config.RootElement.GetProperty("permission").GetProperty("*").GetString());
             Assert.Equal("allow", config.RootElement.GetProperty("permission").GetProperty("openagent_*").GetString());
@@ -102,6 +108,23 @@ public sealed class RuntimeBoundaryTests
         {
             Directory.Delete(root, true);
         }
+    }
+
+    [Fact]
+    public void PathFilter_RemovesWindowsStoreAliasDirectoryOnly()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+        string alias = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Microsoft", "WindowsApps");
+        Assert.Equal("C:\\a;D:\\b", OpenCodeProcess.FilterWindowsStoreAliases("C:\\a;" + alias + ";D:\\b"));
+        Assert.Equal("C:\\a;D:\\b", OpenCodeProcess.FilterWindowsStoreAliases("C:\\a;\"" + alias + "\";D:\\b"));
+        Assert.Equal("C:\\a;D:\\b", OpenCodeProcess.FilterWindowsStoreAliases("C:\\a;" + alias + "\\;D:\\b"));
+        Assert.Equal("C:\\a;D:\\b", OpenCodeProcess.FilterWindowsStoreAliases(
+            "C:\\a;%LOCALAPPDATA%\\Microsoft\\WindowsApps;D:\\b"));
+        Assert.Equal("C:\\a;D:\\b", OpenCodeProcess.FilterWindowsStoreAliases("C:\\a;D:\\b"));
     }
 
     [Fact]

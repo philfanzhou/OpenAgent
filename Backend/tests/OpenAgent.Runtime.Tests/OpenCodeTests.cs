@@ -100,6 +100,38 @@ public sealed class OpenCodeTests
         runtime.AssertWorkspacesReleased();
     }
 
+    [OpenCodeWindowsFact]
+    public async Task NativeBash_ResolvesWindowsCommandNamesWithoutStoreAliasStubs()
+    {
+        await using ModelFixture model = await ModelFixture.StartAsync(async (context, request) =>
+        {
+            JsonElement[] messages = request.GetProperty("messages").EnumerateArray().ToArray();
+            JsonElement[] results = messages.Where(message => message.GetProperty("role").GetString() == "tool").ToArray();
+            if (results.Length == 0)
+            {
+                await ModelFixture.ChunkAsync(context, new
+                {
+                    role = "assistant",
+                    tool_calls = new[] { new { index = 0, id = "resolve-1", type = "function",
+                        function = new { name = "bash", arguments = "{\"command\":\"where.exe ping\"}" } } }
+                }, "tool_calls");
+            }
+            else
+            {
+                await ModelFixture.TextAsync(context, "resolved");
+            }
+        });
+        await using RuntimeFixture runtime = new(model.Endpoint, settings => settings["OpenCode:AllowedNativeTools:0"] = "bash");
+        List<AgentStreamEvent> events = await runtime.CollectAsync(runtime.Request);
+        Assert.Equal("resolved", Text(events));
+        AgentStreamEvent result = Assert.Single(events, item => item.Type == AgentStreamEventType.ToolResult);
+        // PATHEXT 随环境白名单传入：按名解析 ping -> ping.exe 成功而不是"找不到命令"；
+        // PATH 已剔除商店别名目录，解析不落到 WindowsApps 存根。
+        Assert.Contains("ping.exe", result.Content, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("WindowsApps", result.Content, StringComparison.OrdinalIgnoreCase);
+        runtime.AssertWorkspacesReleased();
+    }
+
     [OpenCodeFact]
     public async Task ToolCall_ExecutesPlatformCallbackAndReturnsItsResultToOpenCode()
     {
