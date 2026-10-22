@@ -15,7 +15,7 @@ Backend/src/
   OpenAgent.Runtime/               平台适配类库，IsPackable=false；根目录为 harness 无关组件
     RuntimeServiceExtensions.cs    AddOpenCodeRuntime 组合入口
     AcpEventMapper.cs              协议更新到既有平台事件；工具名前缀由构造参数指定
-    RuntimeToolBridge.cs           本轮 loopback MCP 端点及 bearer
+    RuntimeToolBridge.cs           MCP 桥：主站端口挂载（MapRuntimeToolBridge）+ 每轮 bearer 注册；无宿主挂载或主站绑定不可达时回退自建 loopback 端点
     AcpSessionMcp.cs               外部 MCP server 定义到 ACP session/new 条目
     OpenCode/                      OpenCode 专属 adapter；未来其他 ACP harness 平行建目录
       OpenCodeRuntime.cs           并发配额、ACP 会话、取消和进程回收
@@ -36,13 +36,13 @@ Runtime 只引用 Contracts、Runtime.Acp 和官方 MCP SDK；Application 只引
 
 1. HTTP 身份与入口治理不变。平台解析并授权 Agent/模型，建立 Tenant/User/Conversation/Trace 身份，校验附件，获取既有会话锁与版本。
 2. 平台把历史、平台自有工具、外部 MCP server 定义和 Skill 包准备成 RuntimeInvocation。历史加载、工具发现与各 feature 工厂互不依赖，并行执行后按注册顺序合并（EF 仓储均按调用创建独立 DbContext，天然并发安全）；工厂失败时已启动的任务进入统一释放路径。平台工具函数带本轮闭包；每次回调校验 Tool/Function 的 invoke 权限，沿用工具超时、独占/只读并发和结果字符预算。外部 MCP server 不再经平台代理连接（见"MCP 透传"），其凭据与限流由 harness 持有。MCP server 定义与 Runtime profile 的读取在单例仓储内有 30 秒 TTL 进程内缓存（含负结果），写入/删除即时失效，跨进程仍有最多 30 秒陈旧窗口。
-3. 驱动按复用键（会话归属 + 启动身份哈希）获取保活进程，未命中或已过期时才启动新的 `opencode acp` 进程并执行 initialize。进程拥有独立的主目录（HOME/XDG 状态目录与进程工作目录），跨轮次保活时保持 harness 缓存为热；每轮仍创建随机工作区作为 ACP 会话 cwd 与 loopback MCP 桥宿主。桥使用 256 bit 随机 bearer，身份不取自模型参数，整轮取消后拒绝新请求。启用的 Skill 包以符号链接（失败退化为复制）物化到本轮工作区 `.opencode/skills/<name>`，交由 OpenCode 原生 skill 工具按需发现。
+3. 驱动按复用键（会话归属 + 启动身份哈希）获取保活进程，未命中或已过期时才启动新的 `opencode acp` 进程并执行 initialize。进程拥有独立的主目录（HOME/XDG 状态目录与进程工作目录），跨轮次保活时保持 harness 缓存为热；每轮仍创建随机工作区作为 ACP 会话 cwd。平台自有工具经宿主共享 MCP 桥暴露：桥是宿主单例，Engine.Host 经 `MapRuntimeToolBridge` 把桥路由挂到主站已有端口（自闸门在用户上下文/准入中间件之前短路桥流量），没有独立监听站点；库/测试等无宿主挂载、或主站无可 loopback 直连的 http 绑定时，回退为自建 loopback 端点。每轮向共享桥注册本轮工具集并持有独立 256 bit 随机 bearer，身份不取自模型参数，整轮取消或租约释放后拒绝新请求。启用的 Skill 包以符号链接（失败退化为复制）物化到本轮工作区 `.opencode/skills/<name>`，交由 OpenCode 原生 skill 工具按需发现。
 4. 复用进程直接跳过启动与 initialize；随后执行 session/new（携带本轮平台桥 + 透传的外部 MCP server 定义，cwd 为本轮随机工作区）→ 可用时选择 model config → session/prompt。OpenCode 直接调用选定的模型，平台工具经 MCP 桥调用，外部 MCP 工具由 OpenCode 原生连接调用。
 5. 消费 session/update，合并工具增量、保留调用 ID、去除桥的显示名前缀，将正文、reasoning、工具结果和计划映射到 AgentStreamEvent。相同工具参数更新不重复发送；参数确有变化时沿同一个 ID 更新。
 6. ACP prompt 结束后排空更新队列。平台保存会话成功后才发送 usage/done。失败或取消保存部分正文、reasoning 与工具记录。
-7. 取消发送 session/cancel 并等待原 prompt 结果；SDK 对不确认的进程执行有界回收。轮次结束后关闭本轮 ACP 会话与 MCP 桥、释放工具资源并删除本轮随机工作区，保留平台会话数据。完整成功轮次的进程归还保活池等待追问复用；失败、取消、空闲到期、会话数或总量超限的进程立即销毁并回收其主目录。
+7. 取消发送 session/cancel 并等待原 prompt 结果；SDK 对不确认的进程执行有界回收。轮次结束后关闭本轮 ACP 会话、吊销本轮桥注册（共享端点保留给后续轮次）、释放工具资源并删除本轮随机工作区，保留平台会话数据。完整成功轮次的进程归还保活池等待追问复用；失败、取消、空闲到期、会话数或总量超限的进程立即销毁并回收其主目录。
 
-OpenCode 的原生工具默认 `* = deny`，仅允许 `openagent_*` 平台桥工具；按 Agent 配置透传的外部 MCP server 会追加对应 `server_*` 放行，启用 Skill 时放行原生 `skill` 工具。Client 不启用文件/终端回调，ACP 权限请求默认拒绝。平台 Runner、文件资产和 Skill 脚本策略继续约束平台侧工具。这是应用层授权和进程环境隔离，**不是操作系统沙箱**；本轮不宣称解决恶意 harness 的主机访问问题，也不实现人工审批。
+OpenCode 的原生工具默认 `* = deny`，仅允许 `openagent_*` 平台桥工具；按 Agent 配置透传的外部 MCP server 会追加对应 `server_*` 放行，启用 Skill 时放行原生 `skill` 工具。Client 不启用文件/终端回调，ACP 权限请求默认拒绝。桥路由挂载在主站端口上时，仅接受 loopback 远端（其余一律 404，不暴露路由存在性）与命中本轮注册的 bearer（未命中 401），公共认证与准入管线不感知桥流量。平台 Runner、文件资产和 Skill 脚本策略继续约束平台侧工具。这是应用层授权和进程环境隔离，**不是操作系统沙箱**；本轮不宣称解决恶意 harness 的主机访问问题，也不实现人工审批。
 
 ## MCP 透传
 
@@ -94,13 +94,13 @@ Runtime 在独立设置页保存 ID、名称、Provider 和单轮时限，存入
 }
 ```
 
-`WorkspaceRoot` 默认是系统临时目录下的 `openagent-acp`；若覆盖，必须为绝对路径且由服务账户独占。启动时验证配置。并发上限为每个 Host 的进程租约配额，不是已验证的生产容量。超额请求等待空位并响应调用者取消；整轮时限从拿到空位后开始，包含初始化和推理。RPC 时限限制初始化/配置等调用，prompt 由整轮时限控制。
+`WorkspaceRoot` 默认是系统临时目录下的 `openagent-acp`；若覆盖，必须为绝对路径且由服务账户独占。启动时验证配置。并发上限为每个 Host 的进程租约配额，不是已验证的生产容量。超额请求等待空位并响应调用者取消；整轮时限从拿到空位后开始，包含初始化和推理。RPC 时限限制初始化/配置等调用，prompt 由整轮时限控制。工具桥复用主站端口；主站仅绑定 https 或特定非通配地址、无法 loopback 直连时，自动回退为独立 loopback 监听。
 
 `LogUsageUpdates` 打开后，每轮 `usage_update`（上下文占用 used/size）以 Information 级别写入日志（EventId 4500），用于追踪各轮 token 占用；不落对话报文，生产环境保持关闭。
 
 每轮另有一行分段计时日志（EventId 4501，Information，默认开启，不含对话内容）：`process`（进程获取/启动+initialize，近 0 表示命中保活）、`sessionNew`（ACP session/new + 桥租约）、`prompt`（模型配置+发送）、`firstUpdate`（prompt→首个 session/update，衡量 ACP 链路活性）、`firstToken`（prompt→首个可见 token，衡量模型 TTFT）、`stream`（首 token→轮次完成）、`close`（会话关闭+清理+归还）。用于判别延迟归属：ACP 侧异常会体现在 sessionNew/firstUpdate，模型侧慢会体现在 firstToken/stream。
 
-进程保活（默认关闭）：`KeepAliveSeconds > 0` 时，相同"会话归属 + 启动身份"的空闲进程在窗口内可被下一轮复用（实测可把追问轮次从约 2.5 s 降到约 1 s）；`MaxKeptProcesses`（默认 8）限制保活进程总数，`MaxSessionsPerProcess`（默认 64）限制单进程累计会话数，超限即销毁重建，后台清扫周期不超过 5 秒。失败或取消的轮次不归还进程；身份哈希覆盖模型端点/密钥与指令、工具放行策略，且不跨会话归属复用。**默认 0 的原因**：实测 OpenCode 1.19.3 空闲进程存在约 1–2 核的持续 CPU 空转与持续外呼（会话服务/watcher，与平台侧桥的存亡无关），多进程保活会拖慢整机；确认目标版本空闲行为可接受后再按部署开启。桥宿主随进程常驻、每轮以租约轮换工具注册与取消令牌的设计与保活开关无关，始终生效。
+进程保活（默认关闭）：`KeepAliveSeconds > 0` 时，相同"会话归属 + 启动身份"的空闲进程在窗口内可被下一轮复用（实测可把追问轮次从约 2.5 s 降到约 1 s）；`MaxKeptProcesses`（默认 8）限制保活进程总数，`MaxSessionsPerProcess`（默认 64）限制单进程累计会话数，超限即销毁重建，后台清扫周期不超过 5 秒。失败或取消的轮次不归还进程；身份哈希覆盖模型端点/密钥与指令、工具放行策略，且不跨会话归属复用。**默认 0 的原因**：实测 OpenCode 1.19.3 空闲进程存在约 1–2 核的持续 CPU 空转与持续外呼（会话服务/watcher，与平台侧桥的存亡无关），多进程保活会拖慢整机；确认目标版本空闲行为可接受后再按部署开启。工具桥与保活开关无关：桥是宿主共享单例（挂载主站端口，回退自建 loopback），每轮以独立 bearer 注册/吊销工具集，不随进程销毁。
 
 缺少可执行文件、启动失败或 ACP 异常会明确失败，没有第二条执行路径。外部错误正文不会原样进入 SSE/会话；日志记录异常类型。工作区清理失败会告警并保留可定位目录，不删除其他轮次或宿主根目录。
 

@@ -1,11 +1,17 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using OpenAgent.Contracts.Security;
 using ModelContextProtocol.Client;
+using ModelContextProtocol.Protocol;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Runtime;
@@ -22,6 +28,7 @@ public sealed class RuntimeBoundaryTests
     {
         ServiceCollection services = new();
         services.AddOpenCodeRuntime(new ConfigurationBuilder().Build());
+        // 桥/保活池单例只实现 IAsyncDisposable；容器必须异步释放。
         await using ServiceProvider provider = services.BuildServiceProvider();
         RuntimeInvocation invocation = new(new AgentRuntimeProfile
         {
@@ -100,59 +107,117 @@ public sealed class RuntimeBoundaryTests
             calls++;
             return Task.FromResult("桥接结果");
         });
-        await using RuntimeToolBridgeHost bridge = await RuntimeToolBridgeHost.StartAsync(CancellationToken.None);
+        await using RuntimeToolBridge bridge = new();
+        await using RuntimeToolLease lease = await bridge.RegisterAsync([tool], turn.Token);
         using HttpClient anonymous = new();
-        // 无活动轮次注册时一律拒绝。
-        Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync(bridge.Server.Url)).StatusCode);
-        using RuntimeToolBridgeHost.BridgeLease lease = bridge.Lease([tool], turn.Token);
-        Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync(bridge.Server.Url)).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync(lease.Server.Url)).StatusCode);
         anonymous.DefaultRequestHeaders.Add("Authorization", "Bearer wrong-token");
-        Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync(bridge.Server.Url)).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync(lease.Server.Url)).StatusCode);
         using HttpClient authorized = new();
-        authorized.DefaultRequestHeaders.Add("Authorization", Assert.Single(bridge.Server.Headers!).Value);
+        authorized.DefaultRequestHeaders.Add("Authorization", Assert.Single(lease.Server.Headers!).Value);
         await using McpClient client = await McpClient.CreateAsync(new HttpClientTransport(new HttpClientTransportOptions
         {
-            Endpoint = new Uri(bridge.Server.Url!),
+            Endpoint = new Uri(lease.Server.Url!),
             TransportMode = HttpTransportMode.StreamableHttp
         }, authorized));
-        Assert.Single(await client.ListToolsAsync());
+        Assert.Equal(["echo"], (await client.ListToolsAsync()).Select(item => item.Name));
         var result = await client.CallToolAsync("echo", new Dictionary<string, object?>());
         Assert.False(result.IsError ?? false);
         Assert.Equal(1, calls);
         turn.Cancel();
-        Assert.Equal(HttpStatusCode.Unauthorized, (await authorized.GetAsync(bridge.Server.Url)).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await authorized.GetAsync(lease.Server.Url)).StatusCode);
         Assert.Equal(1, calls);
     }
 
     [Fact]
-    public async Task Bridge_LeaseRotation_ReplacesToolsAndRevokesPreviousTurn()
+    public async Task Bridge_ServesConcurrentTurnsFromOneEndpointWithIsolatedToolsets()
     {
-        int firstCalls = 0;
-        int secondCalls = 0;
-        RuntimeTool first = new("first_tool", "first", """{"type":"object"}""", (_, _) => { firstCalls++; return Task.FromResult("one"); });
-        RuntimeTool second = new("second_tool", "second", """{"type":"object"}""", (_, _) => { secondCalls++; return Task.FromResult("two"); });
-        await using RuntimeToolBridgeHost bridge = await RuntimeToolBridgeHost.StartAsync(CancellationToken.None);
-        using RuntimeToolBridgeHost.BridgeLease firstLease = bridge.Lease([first], CancellationToken.None);
-        using HttpClient authorized = new();
-        authorized.DefaultRequestHeaders.Add("Authorization", Assert.Single(bridge.Server.Headers!).Value);
-        await using McpClient client = await McpClient.CreateAsync(new HttpClientTransport(new HttpClientTransportOptions
+        RuntimeTool first = new("alpha", "first turn tool", """{"type":"object"}""", (_, _) => Task.FromResult("第一轮结果"));
+        RuntimeTool second = new("beta", "second turn tool", """{"type":"object"}""", (_, _) => Task.FromResult("第二轮结果"));
+        RuntimeTool failing = new("boom", "throws server paths", """{"type":"object"}""", (_, _) => throw new InvalidOperationException("D:/must-not-leak"));
+        await using RuntimeToolBridge bridge = new();
+        await using RuntimeToolLease one = await bridge.RegisterAsync([first, failing], CancellationToken.None);
+        await using RuntimeToolLease two = await bridge.RegisterAsync([second], CancellationToken.None);
+        // 共享端点：两轮拿到同一 URL，只有 bearer 不同。
+        Assert.Equal(one.Server.Url, two.Server.Url);
+        Assert.NotEqual(Assert.Single(one.Server.Headers!).Value, Assert.Single(two.Server.Headers!).Value);
+        using HttpClient firstClient = new();
+        firstClient.DefaultRequestHeaders.Add("Authorization", Assert.Single(one.Server.Headers!).Value);
+        using HttpClient secondClient = new();
+        secondClient.DefaultRequestHeaders.Add("Authorization", Assert.Single(two.Server.Headers!).Value);
+        await using McpClient firstMcp = await McpClient.CreateAsync(new HttpClientTransport(new HttpClientTransportOptions
         {
-            Endpoint = new Uri(bridge.Server.Url!),
+            Endpoint = new Uri(one.Server.Url!),
             TransportMode = HttpTransportMode.StreamableHttp
-        }, authorized));
-        Assert.Equal(["first_tool"], (await client.ListToolsAsync()).Select(tool => tool.Name));
-        // 下一轮接管：工具表被替换，旧工具不可见；同一 bearer 仅在活动租约期可用。
-        using RuntimeToolBridgeHost.BridgeLease secondLease = bridge.Lease([second], CancellationToken.None);
-        Assert.Equal(["second_tool"], (await client.ListToolsAsync()).Select(tool => tool.Name));
-        var stale = await client.CallToolAsync("first_tool", new Dictionary<string, object?>());
-        Assert.True(stale.IsError);
-        Assert.Equal(0, firstCalls);
-        var result = await client.CallToolAsync("second_tool", new Dictionary<string, object?>());
-        Assert.False(result.IsError ?? false);
-        Assert.Equal(1, secondCalls);
-        // 租约全部释放后桥继续监听但拒绝调用（进程保活场景）。
-        secondLease.Dispose();
-        firstLease.Dispose();
-        Assert.Equal(HttpStatusCode.Unauthorized, (await authorized.GetAsync(bridge.Server.Url)).StatusCode);
+        }, firstClient));
+        await using McpClient secondMcp = await McpClient.CreateAsync(new HttpClientTransport(new HttpClientTransportOptions
+        {
+            Endpoint = new Uri(two.Server.Url!),
+            TransportMode = HttpTransportMode.StreamableHttp
+        }, secondClient));
+        // 各轮只见自己的工具集；交叉调用与回调异常都不泄漏服务端细节。
+        Assert.Equal(["alpha", "boom"], (await firstMcp.ListToolsAsync()).Select(item => item.Name).Order());
+        Assert.Equal(["beta"], (await secondMcp.ListToolsAsync()).Select(item => item.Name));
+        Assert.Equal("第一轮结果", Text(await firstMcp.CallToolAsync("alpha", new Dictionary<string, object?>())));
+        Assert.Equal("第二轮结果", Text(await secondMcp.CallToolAsync("beta", new Dictionary<string, object?>())));
+        var unknown = await firstMcp.CallToolAsync("beta", new Dictionary<string, object?>());
+        Assert.True(unknown.IsError);
+        Assert.Equal("Tool not found.", Text(unknown));
+        var failure = await firstMcp.CallToolAsync("boom", new Dictionary<string, object?>());
+        Assert.True(failure.IsError);
+        Assert.Equal("Platform tool execution failed or access was denied.", Text(failure));
+        // 释放一轮只吊销该轮 bearer，另一轮不受影响。
+        await one.DisposeAsync();
+        Assert.Equal(HttpStatusCode.Unauthorized, (await firstClient.GetAsync(one.Server.Url)).StatusCode);
+        Assert.Equal("第二轮结果", Text(await secondMcp.CallToolAsync("beta", new Dictionary<string, object?>())));
     }
+
+    [Fact]
+    public async Task Bridge_MountedOnHostServesToolsWithoutExtraListener()
+    {
+        int calls = 0;
+        RuntimeTool tool = new("echo", "echo", """{"type":"object"}""", (_, _) =>
+        {
+            calls++;
+            return Task.FromResult("挂载结果");
+        });
+        WebApplicationBuilder builder = WebApplication.CreateSlimBuilder();
+        builder.Logging.ClearProviders();
+        builder.WebHost.ConfigureKestrel(options => options.Listen(IPAddress.Loopback, 0));
+        builder.Services.AddOpenCodeRuntime(builder.Configuration);
+        await using WebApplication app = builder.Build();
+        app.MapRuntimeToolBridge();
+        await app.StartAsync();
+        try
+        {
+            // 桥端点必须落在主站自己的端口上，而不是另起监听。
+            string hostAddress = app.Services.GetRequiredService<IServer>()
+                .Features.Get<IServerAddressesFeature>()!.Addresses.Single();
+            RuntimeToolBridge bridge = app.Services.GetRequiredService<RuntimeToolBridge>();
+            using CancellationTokenSource turn = new();
+            await using RuntimeToolLease lease = await bridge.RegisterAsync([tool], turn.Token);
+            Assert.Equal(hostAddress + RuntimeToolBridge.BridgePath, lease.Server.Url);
+            using HttpClient anonymous = new();
+            Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync(lease.Server.Url)).StatusCode);
+            using HttpClient authorized = new();
+            authorized.DefaultRequestHeaders.Add("Authorization", Assert.Single(lease.Server.Headers!).Value);
+            await using McpClient client = await McpClient.CreateAsync(new HttpClientTransport(new HttpClientTransportOptions
+            {
+                Endpoint = new Uri(lease.Server.Url!),
+                TransportMode = HttpTransportMode.StreamableHttp
+            }, authorized));
+            Assert.Equal(["echo"], (await client.ListToolsAsync()).Select(item => item.Name));
+            Assert.Equal("挂载结果", Text(await client.CallToolAsync("echo", new Dictionary<string, object?>())));
+            turn.Cancel();
+            Assert.Equal(HttpStatusCode.Unauthorized, (await authorized.GetAsync(lease.Server.Url)).StatusCode);
+            Assert.Equal(1, calls);
+        }
+        finally
+        {
+            await app.StopAsync();
+        }
+    }
+
+    private static string Text(CallToolResult result) =>
+        string.Concat(result.Content.OfType<TextContentBlock>().Select(block => block.Text));
 }

@@ -59,6 +59,9 @@ if (app.Environment.IsDevelopment() && app.Configuration.GetValue<bool>("Databas
 
 app.UseAgentHost(builder.Configuration);
 app.UseAgentErrorHandling();
+// 工具桥复用主站端口：自闸门（loopback 远端 + 每轮 bearer）在用户上下文/准入之前短路桥流量，
+// 不再为桥启动独立监听站点；主站无可 loopback 直连绑定时桥自动回退自建端点。
+app.MapRuntimeToolBridge();
 app.UseMiddleware<AgentUserContextMiddleware>();
 app.UseMiddleware<EngineAdmissionMiddleware>();
 app.MapAgentAuthenticationEndpoints();

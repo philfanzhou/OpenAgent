@@ -16,8 +16,8 @@ using OpenAgent.Runtime.Acp.Protocol;
 
 namespace OpenAgent.Runtime.OpenCode;
 
-/// <summary>每轮独立的 ACP 会话和工作区；进程按会话归属与启动身份在空闲窗口内保活复用，平台历史作为上下文传入，不跨租户复用 Agent 状态。</summary>
-internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCodeProcessKeeper keeper, ILogger<OpenCodeRuntime> logger) : IAgentRuntimeDriver, IDisposable
+/// <summary>每轮独立的 ACP 会话和工作区；进程按会话归属与启动身份在空闲窗口内保活复用，工具桥由宿主共享，平台历史作为上下文传入，不跨租户复用 Agent 状态。</summary>
+internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCodeProcessKeeper keeper, RuntimeToolBridge bridge, ILogger<OpenCodeRuntime> logger) : IAgentRuntimeDriver, IDisposable
 {
     private readonly SemaphoreSlim _turns = new(options.Value.MaxConcurrentTurns);
     private readonly object _launchGate = new();
@@ -124,7 +124,7 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
         string workspace = Path.Combine(parent, "t-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(workspace);
         OpenCodeAgentProcess? agent = null;
-        RuntimeToolBridgeHost.BridgeLease? lease = null;
+        RuntimeToolLease? tools = null;
         bool completed = false;
         // 分段计时检查点（相对轮次开始的累计毫秒，-1 表示未到达）：判别延迟归属。
         Stopwatch clock = Stopwatch.StartNew();
@@ -136,11 +136,11 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
             agent = await keeper.TryAcquireAsync(leaseKey).ConfigureAwait(false)
                 ?? await SpawnAsync(settings, invocation, leaseKey, parent, cancellationToken).ConfigureAwait(false);
             processAt = clock.ElapsedMilliseconds;
-            // 桥随进程常驻：本轮以租约替换工具注册与取消令牌；端点存活期与进程一致，
-            // 保活复用不给 harness 留下已死端点，也就不会触发其重连空转。
-            lease = agent.Bridge.Lease(invocation.Tools, cancellationToken);
+            // 宿主共享桥只按本轮 bearer 注册/吊销工具集，不再每轮启动站点；端点长期存活，
+            // 保活复用也不会给 harness 留下死端点。
+            tools = await bridge.RegisterAsync(invocation.Tools, cancellationToken).ConfigureAwait(false);
             // 平台自有工具经桥；外部 MCP server 按 Agent 配置直接透传给 harness 原生连接。
-            McpServer[] sessionServers = [agent.Bridge.Server, .. AcpSessionMcp.Map(invocation.McpServers)];
+            McpServer[] sessionServers = [tools.Server, .. AcpSessionMcp.Map(invocation.McpServers)];
             InitializeResponse initialized = agent.Initialized;
             yield return new AgentStreamEvent
             {
@@ -235,8 +235,11 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
         }
         finally
         {
-            // 摘除本轮工具注册：进程保活时桥继续监听但拒绝一切调用。
-            lease?.Dispose();
+            // 吊销本轮工具注册：共享桥继续监听，但旧 bearer 立即失效。
+            if (tools is not null)
+            {
+                await tools.DisposeAsync().ConfigureAwait(false);
+            }
             TryDeleteWorkspace(workspace);
             // 失败、取消或超限的进程立即销毁；只有完整成功的轮次才归还保活池。
             if (agent is not null)
@@ -268,49 +271,30 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
         Directory.CreateDirectory(home);
         AcpProcess? process = null;
         AcpClient? client = null;
-        RuntimeToolBridgeHost? bridge = null;
         try
         {
-            // 桥与进程启动/握手并行：冷路径只在 session/new 前汇合。
-            Task<RuntimeToolBridgeHost> bridgeStart = RuntimeToolBridgeHost.StartAsync(cancellationToken);
-            try
+            process = AcpProcess.Start(OpenCodeProcess.Create(Launch, invocation, home));
+            client = new AcpClient(process.Transport, options: new()
             {
-                process = AcpProcess.Start(OpenCodeProcess.Create(Launch, invocation, home));
-                client = new AcpClient(process.Transport, options: new()
-                {
-                    RequestTimeout = TimeSpan.FromSeconds(settings.RequestTimeoutSeconds)
-                });
-                InitializeResponse initialized = await client.InitializeAsync(new("OpenAgent", "1"), cancellationToken).ConfigureAwait(false);
-                bridge = await bridgeStart.ConfigureAwait(false);
-                return new OpenCodeAgentProcess(process, client, bridge, initialized, leaseKey, home);
-            }
-            catch
-            {
-                if (client is not null)
-                {
-                    try { await client.DisposeAsync().ConfigureAwait(false); }
-                    catch (Exception) { }
-                }
-                if (process is not null)
-                {
-                    try { await process.DisposeAsync().ConfigureAwait(false); }
-                    catch (Exception) { }
-                }
-                try
-                {
-                    // 桥可能已启动成功：等待并释放，避免遗留 loopback 监听。
-                    await using RuntimeToolBridgeHost orphaned = await bridgeStart.ConfigureAwait(false);
-                }
-                catch (Exception) { }
-                throw;
-            }
+                RequestTimeout = TimeSpan.FromSeconds(settings.RequestTimeoutSeconds)
+            });
+            InitializeResponse initialized = await client.InitializeAsync(new("OpenAgent", "1"), cancellationToken).ConfigureAwait(false);
+            return new OpenCodeAgentProcess(process, client, initialized, leaseKey, home);
         }
-        finally
+        catch
         {
-            if (bridge is null)
+            if (client is not null)
             {
-                TryDeleteWorkspace(home);
+                try { await client.DisposeAsync().ConfigureAwait(false); }
+                catch (Exception) { }
             }
+            if (process is not null)
+            {
+                try { await process.DisposeAsync().ConfigureAwait(false); }
+                catch (Exception) { }
+            }
+            TryDeleteWorkspace(home);
+            throw;
         }
     }
 
