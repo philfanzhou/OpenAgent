@@ -55,6 +55,31 @@ public sealed class OpenCodeTests
     }
 
     [OpenCodeFact]
+    public async Task NativeToolWhitelist_ExposesOnlyAllowedToolsToModel()
+    {
+        List<string>? listedTools = null;
+        await using ModelFixture model = await ModelFixture.StartAsync(async (context, request) =>
+        {
+            listedTools = request.GetProperty("tools").EnumerateArray()
+                .Select(tool => tool.GetProperty("function").GetProperty("name").GetString()!).ToList();
+            await ModelFixture.TextAsync(context, "ok");
+        });
+        await using RuntimeFixture runtime = new(model.Endpoint, settings =>
+        {
+            settings["OpenCode:AllowedNativeTools:0"] = "read";
+            settings["OpenCode:AllowedNativeTools:1"] = "edit";
+            settings["OpenCode:AllowedNativeTools:2"] = "write";
+        });
+        List<AgentStreamEvent> events = await runtime.CollectAsync(runtime.Request);
+        Assert.Equal("ok", Text(events));
+        // 宿主白名单放行的原生文件工具确实进入模型工具列表；未放行的 bash 仍被排除。
+        Assert.Contains("write", listedTools);
+        Assert.Contains("read", listedTools);
+        Assert.DoesNotContain("bash", listedTools);
+        runtime.AssertWorkspacesReleased();
+    }
+
+    [OpenCodeFact]
     public async Task ToolCall_ExecutesPlatformCallbackAndReturnsItsResultToOpenCode()
     {
         string? invokedArgument = null;

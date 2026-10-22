@@ -17,9 +17,11 @@ public sealed class OpenCodeKeepAliveTests
     {
         RuntimeInvocation invocation = Invocation(instructions: "同一指令");
         OpenCodeLaunchSpec spec = new("opencode", ["acp"]);
-        string identity = OpenCodeProcess.Identity(spec, invocation);
-        Assert.Equal(identity, OpenCodeProcess.Identity(spec, invocation));
-        Assert.NotEqual(identity, OpenCodeProcess.Identity(spec, invocation with { Instructions = "指令变了" }));
+        string identity = OpenCodeProcess.Identity(spec, invocation, []);
+        Assert.Equal(identity, OpenCodeProcess.Identity(spec, invocation, []));
+        // 宿主放行的原生工具属于启动身份：改动后不得复用旧权限的保活进程。
+        Assert.NotEqual(identity, OpenCodeProcess.Identity(spec, invocation, ["read", "write"]));
+        Assert.NotEqual(identity, OpenCodeProcess.Identity(spec, invocation with { Instructions = "指令变了" }, []));
         Assert.NotEqual(identity, OpenCodeProcess.Identity(spec, invocation with
         {
             Profile = new AgentRuntimeProfile
@@ -28,8 +30,8 @@ public sealed class OpenCodeKeepAliveTests
                 Config = new AgentConfig(),
                 Model = new LlmConfig { ModelId = "fixture", Endpoint = "https://other.test/v1", ApiKey = "local-test", ContextTokens = 100000, Temperature = 0.7 }
             }
-        }));
-        Assert.NotEqual(identity, OpenCodeProcess.Identity(spec, invocation with { McpServers = [new("extra", "http://127.0.0.1:9/mcp", "http")] }));
+        }, []));
+        Assert.NotEqual(identity, OpenCodeProcess.Identity(spec, invocation with { McpServers = [new("extra", "http://127.0.0.1:9/mcp", "http")] }, []));
     }
 
     [OpenCodeFact]

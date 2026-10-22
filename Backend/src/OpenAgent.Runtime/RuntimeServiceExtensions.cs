@@ -22,6 +22,12 @@ public static class RuntimeServiceExtensions
                 {
                     options.Arguments = ["acp"];
                 }
+                // 归一化原生工具白名单：去空白、去重；结构性校验（禁花括号）在 Validate。
+                options.AllowedNativeTools = options.AllowedNativeTools
+                    .Where(tool => !string.IsNullOrWhiteSpace(tool))
+                    .Select(tool => tool.Trim())
+                    .Distinct(StringComparer.Ordinal)
+                    .ToArray();
             })
             .Validate(options => !string.IsNullOrWhiteSpace(options.Executable)
                 && Path.IsPathFullyQualified(options.WorkspaceRoot)
@@ -32,7 +38,12 @@ public static class RuntimeServiceExtensions
                 && options.MaxPromptCharacters > 0
                 && options.KeepAliveSeconds is >= 0 and <= 86400
                 && options.MaxKeptProcesses is > 0 and <= 128
-                && options.MaxSessionsPerProcess is > 0 and <= 10000, "Invalid OpenCode runtime configuration.")
+                && options.MaxSessionsPerProcess is > 0 and <= 10000
+                && options.AllowedNativeTools is not null
+                // OpenCode 在 JSON 解析前展开 {file:...}/{env:...} 宏，白名单条目带花括号
+                // 会变成宿主文件/环境读取，必须拒绝。
+                && options.AllowedNativeTools.All(tool => !tool.Contains('{') && !tool.Contains('}')),
+                "Invalid OpenCode runtime configuration.")
             .ValidateOnStart();
         services.TryAddSingleton<RuntimeToolBridge>();
         services.TryAddSingleton<OpenCodeProcessKeeper>();

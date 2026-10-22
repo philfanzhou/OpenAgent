@@ -158,9 +158,10 @@ internal static class OpenCodeProcess
         return value.Contains(' ') ? "\"" + value + "\"" : value;
     }
 
-    internal static AcpProcessOptions Create(OpenCodeLaunchSpec launch, RuntimeInvocation invocation, string home)
+    internal static AcpProcessOptions Create(
+        OpenCodeLaunchSpec launch, RuntimeInvocation invocation, IReadOnlyList<string> allowedNativeTools, string home)
     {
-        Dictionary<string, string> environment = SharedEnvironment(invocation);
+        Dictionary<string, string> environment = SharedEnvironment(invocation, allowedNativeTools);
         // 进程主目录与轮次工作区分离：进程保活跨轮次复用时，轮次工作区（ACP 会话 cwd）仍可立即回收。
         foreach (string name in StateVariables)
         {
@@ -181,11 +182,11 @@ internal static class OpenCodeProcess
 
     /// <summary>
     /// 进程复用身份：实际可执行文件、参数与除进程私有状态目录外的受控环境（含模型端点、
-    /// 密钥、指令与工具放行策略）完全一致才允许复用；状态目录路径不参与身份。
+    /// 密钥、指令与工具放行策略，含宿主放行的原生工具）完全一致才允许复用；状态目录路径不参与身份。
     /// </summary>
-    internal static string Identity(OpenCodeLaunchSpec launch, RuntimeInvocation invocation)
+    internal static string Identity(OpenCodeLaunchSpec launch, RuntimeInvocation invocation, IReadOnlyList<string> allowedNativeTools)
     {
-        Dictionary<string, string> environment = SharedEnvironment(invocation);
+        Dictionary<string, string> environment = SharedEnvironment(invocation, allowedNativeTools);
         StringBuilder identity = new();
         identity.Append(launch.FileName).Append('\0');
         foreach (string argument in launch.Arguments)
@@ -199,7 +200,7 @@ internal static class OpenCodeProcess
         return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(identity.ToString())));
     }
 
-    private static Dictionary<string, string> SharedEnvironment(RuntimeInvocation invocation)
+    private static Dictionary<string, string> SharedEnvironment(RuntimeInvocation invocation, IReadOnlyList<string> allowedNativeTools)
     {
         LlmConfig model = invocation.Profile.Model;
         string keyReference = Guid.NewGuid().ToString("N");
@@ -223,6 +224,12 @@ internal static class OpenCodeProcess
         if ((invocation.Skills?.Count ?? 0) > 0)
         {
             permission["skill"] = "allow";
+        }
+        // 宿主显式放行的原生工具（如 read/edit/write）：与 "*": "deny" 并存，只有放行项
+        // 可用；把对应主机访问面交给 harness 进程是宿主的知情选择，默认不放开。
+        foreach (string tool in allowedNativeTools)
+        {
+            permission[tool] = "allow";
         }
         JsonObject config = new()
         {

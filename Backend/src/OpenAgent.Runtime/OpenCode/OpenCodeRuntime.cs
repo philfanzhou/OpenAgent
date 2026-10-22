@@ -126,7 +126,7 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
             invocation.Turn.TenantId + "\0" + invocation.Turn.UserId + "\0" + invocation.Turn.ConversationId)));
         string parent = Path.Combine(settings.WorkspaceRoot, owner);
         // 复用键 = 会话归属 + 启动身份：追问轮次命中保活进程，冷启动只在空闲窗口外支付。
-        string leaseKey = owner + "/" + OpenCodeProcess.Identity(Launch, invocation);
+        string leaseKey = owner + "/" + OpenCodeProcess.Identity(Launch, invocation, settings.AllowedNativeTools);
         // 每轮随机工作区作为 ACP 会话 cwd；进程主目录与轮次工作区分离，轮次结束即可回收。
         string workspace = Path.Combine(parent, "t-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(workspace);
@@ -280,7 +280,7 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
         AcpClient? client = null;
         try
         {
-            process = AcpProcess.Start(OpenCodeProcess.Create(Launch, invocation, home));
+            process = AcpProcess.Start(OpenCodeProcess.Create(Launch, invocation, settings.AllowedNativeTools, home));
             client = new AcpClient(process.Transport, options: new()
             {
                 RequestTimeout = TimeSpan.FromSeconds(settings.RequestTimeoutSeconds)
