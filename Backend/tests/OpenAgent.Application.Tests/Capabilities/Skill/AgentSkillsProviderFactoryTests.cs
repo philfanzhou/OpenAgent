@@ -51,6 +51,29 @@ public class AgentSkillsProviderFactoryTests
     }
 
     [Fact]
+    public async Task CreateAsync_MaterializesLegacyNestedIndexWithRootSkillMarkdown()
+    {
+        var fixture = new FactoryFixture();
+        await using AgentSkillsRuntime runtime =
+            await fixture.CreateRuntimeAsync(agentCodeExecution: true, scriptExecutionEnabled: true, nestedIndex: true);
+
+        RuntimeSkill skill = Assert.Single(runtime.Skills)!;
+        Assert.True(File.Exists(Path.Combine(skill.Path, "SKILL.md")),
+            "legacy nested storage index must materialize with SKILL.md at the package root");
+
+        AIFunction reader = GetTool(runtime, "read_skill_file");
+        JsonElement markdownElement = Assert.IsType<JsonElement>(await reader.InvokeAsync(new AIFunctionArguments
+        {
+            ["skill"] = SkillName,
+            ["path"] = "SKILL.md"
+        }));
+        string markdown = markdownElement.ValueKind == JsonValueKind.String
+            ? markdownElement.GetString() ?? markdownElement.GetRawText()
+            : markdownElement.GetRawText();
+        Assert.Contains("Report writer", markdown, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task RunSkillScript_ExecutesPackageScriptThroughIsolatedRunner()
     {
         var fixture = new FactoryFixture();
@@ -129,10 +152,13 @@ public class AgentSkillsProviderFactoryTests
                 Options.Create(new CodeExecutionOptions { Enabled = hostCodeExecutionEnabled }));
         }
 
-        internal async Task<AgentSkillsRuntime> CreateRuntimeAsync(bool agentCodeExecution, bool scriptExecutionEnabled)
+        internal async Task<AgentSkillsRuntime> CreateRuntimeAsync(
+            bool agentCodeExecution,
+            bool scriptExecutionEnabled,
+            bool nestedIndex = false)
         {
             Context.Set(TurnContexts.Create());
-            RegisterPackage();
+            RegisterPackage(nestedIndex);
             return await Factory.CreateRuntimeAsync(
                 "agent",
                 new AgentConfig
@@ -159,7 +185,7 @@ public class AgentSkillsProviderFactoryTests
             ScriptExecutionEnabled = scriptExecutionEnabled
         };
 
-        private void RegisterPackage()
+        private void RegisterPackage(bool nestedIndex)
         {
             SkillInstanceConfig instance = NewInstance(true);
             byte[] skillMd = Encoding.UTF8.GetBytes($"""
@@ -174,6 +200,8 @@ public class AgentSkillsProviderFactoryTests
                 """);
             byte[] script = Encoding.UTF8.GetBytes("print('analyze ran')\n");
             string baseKey = instance.ObjectKey!;
+            // 归一化之前上传的记录原样保留 zip 的顶层包裹目录：SKILL.md 嵌套在包名目录下。
+            string wrapper = nestedIndex ? SkillName + "/" : string.Empty;
             var index = new SkillPackageStorageIndex
             {
                 TenantId = "tenant",
@@ -181,13 +209,13 @@ public class AgentSkillsProviderFactoryTests
                 [
                     new SkillPackageStorageFile
                     {
-                        RelativePath = "SKILL.md",
+                        RelativePath = wrapper + "SKILL.md",
                         ObjectKey = baseKey + "/0",
                         Sha256 = Convert.ToHexString(SHA256.HashData(skillMd)).ToLowerInvariant()
                     },
                     new SkillPackageStorageFile
                     {
-                        RelativePath = "scripts/analyze.py",
+                        RelativePath = wrapper + "scripts/analyze.py",
                         ObjectKey = baseKey + "/1",
                         Sha256 = Convert.ToHexString(SHA256.HashData(script)).ToLowerInvariant()
                     }

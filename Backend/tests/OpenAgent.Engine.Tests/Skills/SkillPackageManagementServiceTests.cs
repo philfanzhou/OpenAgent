@@ -210,7 +210,7 @@ public class SkillPackageManagementServiceTests
             default,
             publishCatalog: false);
 
-        Assert.Equal(["customer-lookup/scripts/lookup.py"], result.Skill.ScriptNames);
+        Assert.Equal(["scripts/lookup.py"], result.Skill.ScriptNames);
         Assert.Equal(1, result.Skill.ScriptCount);
         Assert.False(result.Skill.ScriptExecutionEnabled);
     }
@@ -256,7 +256,7 @@ public class SkillPackageManagementServiceTests
 
         Assert.NotNull(updated);
         Assert.True(updated.ScriptExecutionEnabled);
-        Assert.Equal(["customer-lookup/scripts/lookup.py"], updated.ScriptNames);
+        Assert.Equal(["scripts/lookup.py"], updated.ScriptNames);
         Assert.True(catalog.Published.Last().ScriptExecutionEnabled);
     }
 
@@ -334,7 +334,7 @@ public class SkillPackageManagementServiceTests
         Assert.Equal("Refreshed description", updated.Description);
         Assert.True(updated.ScriptExecutionEnabled);
         Assert.Equal(
-            ["customer-lookup/scripts/lookup.py", "customer-lookup/scripts/report.js"],
+            ["scripts/lookup.py", "scripts/report.js"],
             updated.ScriptNames);
         Assert.Equal(2, updated.ScriptCount);
         Assert.NotEqual(oldObjectKey, updated.ObjectKey);
@@ -387,9 +387,31 @@ public class SkillPackageManagementServiceTests
             new MemoryStream(content), default, publishCatalog: false);
 
         Assert.Equal(
-            ["customer-lookup/scripts/batch.sh", "customer-lookup/scripts/helper.mjs", "customer-lookup/scripts/lookup.py", "customer-lookup/scripts/report.js"],
+            ["scripts/batch.sh", "scripts/helper.mjs", "scripts/lookup.py", "scripts/report.js"],
             result.Skill.ScriptNames);
         Assert.Equal(4, result.Skill.ScriptCount);
+    }
+
+    [Fact]
+    public async Task UploadAsync_StripsWrapperDirectoryFromStoredLayout()
+    {
+        (SkillPackageManagementService service, _, RecordingObjectStore store) = await CreateServiceAsync();
+        byte[] content = CreatePackage(archive =>
+            WriteEntry(archive, "customer-lookup/scripts/lookup.py", "print('lookup')"));
+
+        SkillPackageUploadResult result = await service.UploadAsync(
+            "tenant",
+            "user",
+            "customer.zip",
+            "application/zip",
+            new MemoryStream(content),
+            default,
+            publishCatalog: false);
+
+        SkillPackageStorageIndex storage = store.ReadIndex(result.Skill.ObjectKey!);
+        Assert.Equal(
+            ["SKILL.md", "scripts/lookup.py"],
+            storage.Files.Select(file => file.RelativePath).Order(StringComparer.Ordinal));
     }
 
     private static async Task<(
