@@ -5,12 +5,12 @@ using OpenAgent.Contracts.Security;
 namespace OpenAgent.Capabilities.Files.Artifacts;
 
 /// <summary>
-/// Publishes Runner output files as conversation-owned FileAssets. The sandbox
-/// does not filter output types; whether an output can be stored is decided
-/// here by the media type catalog — unsupported or rejected outputs are
-/// skipped and reported so the model can rename or convert them instead of
-/// losing the whole execution result. Shared by execute_code and skill script
-/// runs so both register artifacts identically.
+/// Publishes Runner output files as conversation-owned FileAssets. Neither the sandbox
+/// nor storage filters output types: every non-empty output is registered with the media
+/// type inferred from its extension (octet-stream for extensions outside the catalog).
+/// Outputs the storage layer still rejects (e.g. over the size limit) are skipped and
+/// reported so the model can retry instead of losing the whole execution result. Shared
+/// by execute_code and skill script runs so both register artifacts identically.
 /// </summary>
 internal static class CodeExecutionArtifacts
 {
@@ -33,16 +33,10 @@ internal static class CodeExecutionArtifacts
                 skipped.Add(new SkippedFile(output.Name, "Generated files must not be empty."));
                 continue;
             }
-            if (!FileMediaTypeCatalog.TryGetMediaType(Path.GetExtension(output.Name), out _))
-            {
-                skipped.Add(new SkippedFile(output.Name,
-                    $"Extension is not storable. Supported extensions: {string.Join(", ", FileMediaTypeCatalog.AllExtensions)}."));
-                continue;
-            }
             try
             {
                 await using var stream = new MemoryStream(output.Content, writable: false);
-                // 不传 MediaType：服务端按扩展名推断规范类型，并执行存储层白名单校验。
+                // 不传 MediaType：服务端按扩展名推断规范类型，目录外扩展名记为 octet-stream。
                 FileAsset asset = await files.UploadAsync(new FileAssetCreateRequest
                 {
                     FileName = output.Name,

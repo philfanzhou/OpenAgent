@@ -365,7 +365,7 @@ public class FileAssetCapabilitySourceTests
     }
 
     [Fact]
-    public async Task InvokeAsync_WriteFileWithMismatchedMediaType_ReturnsActionableError()
+    public async Task InvokeAsync_WriteFileWithDeclaredMediaType_StoresAsDeclared()
     {
         TestHarness harness = CreateHarness();
         var arguments = new Dictionary<string, object?>
@@ -377,13 +377,11 @@ public class FileAssetCapabilitySourceTests
 
         string result = await InvokeAsync(harness.Source, "write_file", arguments);
 
-        using (JsonDocument document = JsonDocument.Parse(result))
-        {
-            Assert.Equal("invalid_request", document.RootElement.GetProperty("code").GetString());
-            Assert.Contains("does not match",
-                document.RootElement.GetProperty("error").GetString(), StringComparison.Ordinal);
-        }
-        Assert.Null(harness.Objects.LastRequest);
+        using JsonDocument document = JsonDocument.Parse(result);
+        string fileId = document.RootElement.GetProperty("fileId").GetString()!;
+        Assert.Equal("text/plain", document.RootElement.GetProperty("mediaType").GetString());
+        Assert.True(harness.Repository.Assets.ContainsKey(fileId));
+        Assert.Equal("text/plain", harness.Objects.LastRequest?.MediaType);
     }
 
     [Theory]

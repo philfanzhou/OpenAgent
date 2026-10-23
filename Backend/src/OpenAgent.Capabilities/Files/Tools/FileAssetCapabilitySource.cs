@@ -379,8 +379,7 @@ internal sealed class FileAssetCapabilitySource(
                 "'content' is a required argument; provide the full file content.",
                 InvalidArguments);
         }
-        // 不默认 text/plain：伪造的具体类型会与扩展名一致性校验冲突（如 .json + text/plain 被拒）。
-        // 留空让服务端按扩展名推断规范化类型。
+        // 不默认 text/plain：留空让服务端按扩展名推断规范类型，目录外扩展名记为 octet-stream。
         string? mediaType = ReadString(arguments, "mediaType");
         if (executionContext.Scope == null)
         {
@@ -413,7 +412,7 @@ internal sealed class FileAssetCapabilitySource(
         }
         catch (OpenAgent.Contracts.Security.AgentException exception)
         {
-            // 类型/大小等校验失败：返回净化后的错误文本，供模型修正后重试，不把原始异常泄露给模型。
+            // 大小等校验失败：返回净化后的错误文本，供模型修正后重试，不把原始异常泄露给模型。
             return ToolResult.Error(exception.Message, InvalidRequest);
         }
     }

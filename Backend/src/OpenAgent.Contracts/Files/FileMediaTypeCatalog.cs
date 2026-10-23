@@ -1,10 +1,11 @@
 namespace OpenAgent.Contracts.Files;
 
 /// <summary>
-/// 文件扩展名与媒体类型的唯一事实源。存储层的白名单默认值、媒体类型推断、
-/// 扩展名一致性校验、download_file 的扩展名补全与对象下发 Content-Type 全部由此派生。
-/// 沙箱执行不按类型过滤产物；能否入库由存储层依据本目录（或运维收窄后的配置）裁决。
-/// 新增文件类型只需在此追加一条记录。
+/// 文件扩展名与媒体类型的唯一事实源，仅做类型推断，不做准入限制：
+/// 媒体类型推断（缺省或通用类型按扩展名取规范类型）、download_file 的无扩展名补全、
+/// 对象下发的 Content-Type 与 read_file 的文本判定全部由此派生。
+/// 目录之外的扩展名不拒绝入库，一律按调用方声明类型（缺省 application/octet-stream）存储。
+/// 新增可识别类型只需在此追加一条记录。
 /// </summary>
 public static class FileMediaTypeCatalog
 {
@@ -63,12 +64,6 @@ public static class FileMediaTypeCatalog
         mediaType = string.Empty;
         return false;
     }
-
-    /// <summary>媒体类型是否为该扩展名的规范类型或可接受别名（大小写不敏感）。</summary>
-    public static bool MatchesMediaType(string extension, string mediaType) =>
-        ByExtension.TryGetValue(extension, out Specification? spec)
-        && (spec.MediaType.Equals(mediaType, StringComparison.OrdinalIgnoreCase)
-            || spec.Aliases.Any(alias => alias.Equals(mediaType, StringComparison.OrdinalIgnoreCase)));
 
     /// <summary>按规范媒体类型反查扩展名，用于为无扩展名文件补后缀。</summary>
     public static bool TryGetExtensionForMediaType(string mediaType, out string extension)

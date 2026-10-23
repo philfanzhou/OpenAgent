@@ -494,26 +494,12 @@ internal sealed class FileAssetService : IFileAssetService
         }
 
         string fileName = Path.GetFileName(request.FileName);
-        string extension = Path.GetExtension(fileName);
-        // Clients frequently report "application/octet-stream" for formats the OS has no
-        // MIME mapping for (.json, .drawio, .jps, ...). Fall back to the canonical media
-        // type for the extension so the whitelist still applies to a concrete type.
-        string mediaType = ResolveMediaType(extension, request.MediaType);
-        if (!_options.AllowedExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
-        {
-            throw new AgentException(
-                AgentErrorCode.InvalidRequest,
-                $"File type is not allowed. Supported extensions: " +
-                $"{string.Join(", ", _options.AllowedExtensions.Distinct(StringComparer.OrdinalIgnoreCase))}.");
-        }
-        if (!IsAllowedMediaType(mediaType) || !MediaTypeMatchesExtension(extension, mediaType))
-        {
-            // 扩展名在白名单内但媒体类型不匹配：明确指出冲突点，模型才能省略 mediaType 重试。
-            throw new AgentException(
-                AgentErrorCode.InvalidRequest,
-                $"Media type '{mediaType}' does not match file extension '{extension}'. " +
-                "Omit the media type (it is inferred from the file name) or use the canonical type for this extension.");
-        }
+        // 不做类型准入限制：任意扩展名均可入库。Clients frequently report
+        // "application/octet-stream" for formats the OS has no MIME mapping for
+        // (.json, .drawio, .jps, ...) — fall back to the canonical media type for known
+        // extensions so downloads and content serving use a meaningful Content-Type;
+        // extensions outside the catalog keep the declared type (octet-stream when absent).
+        string mediaType = ResolveMediaType(Path.GetExtension(fileName), request.MediaType);
 
         await using var buffer = new MemoryStream();
         await content.CopyToAsync(buffer, cancellationToken).ConfigureAwait(false);
@@ -580,14 +566,6 @@ internal sealed class FileAssetService : IFileAssetService
             // Windows browsers report x-zip-compressed for .zip uploads instead of
             // the canonical type or octet-stream.
             || mediaType.Equals("application/x-zip-compressed", StringComparison.OrdinalIgnoreCase);
-
-    private bool IsAllowedMediaType(string mediaType) => _options.AllowedMediaTypes.Any(allowed =>
-        allowed.EndsWith("/*", StringComparison.Ordinal)
-            ? mediaType.StartsWith(allowed[..^1], StringComparison.OrdinalIgnoreCase)
-            : mediaType.Equals(allowed, StringComparison.OrdinalIgnoreCase));
-
-    private static bool MediaTypeMatchesExtension(string extension, string mediaType) =>
-        FileMediaTypeCatalog.MatchesMediaType(extension, mediaType);
 
     private static bool IsTextMediaType(string mediaType) => FileMediaTypeCatalog.IsTextMediaType(mediaType);
 
