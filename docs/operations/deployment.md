@@ -89,6 +89,22 @@ scripts/build-images.sh --env-file .env --tar-dir ./dist/images
 PowerShell 使用 `-TarDirectory`，也可以在环境文件中设置 `OPENAGENT_IMAGE_TAR_DIR`。WSL Docker 模式会将
 仓库和导出目录转换为 WSL 正斜杠路径后再执行构建与导出。
 
+### OpenCode 版本锁定与镜像发布
+
+Engine 镜像在构建期内嵌 OpenCode 的 Linux 原生二进制，运行容器不需要 Node/npm。内嵌版本由
+`Backend/opencode.version` 统一锁定：`scripts/build-images.sh`/`build-images.ps1` 读取该文件并经
+`OPENCODE_VERSION` 构建参数传入，镜像 label 记录 `io.openagent.opencode-version`。升级 OpenCode 的流程是
+先修改版本文件，用 `OPENAGENT_OPENCODE_VERSION` 临时覆盖跑通验证（或直接改文件），再以
+`docker build --target runtime-tests -f Backend/src/OpenAgent.Engine.Host/Dockerfile .` 通过真实进程回归后提交。
+
+推送 `v*.*.*` Git 标签会触发 [Release 工作流](../../.github/workflows/release.yml)：先执行上述
+runtime-tests 真实回归门禁，通过后将 `openagent-engine`、`openagent-router`、`openagent-runner` 与
+`openagent-chat` 四个镜像推送到 GHCR，并上传包含 `deploy/` 与版本说明的 Compose 部署包制品。Engine
+镜像的行为依赖内嵌 OpenCode 版本，版本标签带 `-oc<OpenCode 版本>` 后缀（如 `1.2.3-oc1.19.3`）以区分
+不同 OpenCode 基线；预发布标签（如 `v1.0.0-rc1`）不移动 `latest`。registry 版 Chat 镜像按默认公开地址
+（localhost）构建，生产部署需按自身 `OPENAGENT_PUBLIC_HOST` 重建 Chat 镜像，或在 `.env` 中以
+`OPENAGENT_CHAT_IMAGE` 指向自有构建的标签。
+
 ## 应用更新与排障
 
 浏览器访问 `https://openagent.intra.example:8081`；Router 与 Engine 分别使用 `https://openagent.intra.example:8082`

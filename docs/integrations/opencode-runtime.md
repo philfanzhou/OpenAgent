@@ -75,7 +75,7 @@ Runtime 在独立设置页保存 ID、名称、Provider 和单轮时限，存入
 
 免 Docker 的本机启动、前端配置与数据生命周期见 [本机预览](../operations/local-preview.md)。
 
-开发机安装 OpenCode（不固定版本），先验证 `opencode --version`。首个执行轮次按以下顺序解析可执行文件（`OpenCode:Executable`，默认 `opencode`）：配置为路径且存在时直接使用；否则依次探测 PATH 目录直接命中、各 PATH 目录与 npm 默认全局根（`%APPDATA%\npm`）下的 npm 安装布局（`node_modules/opencode-ai/bin`、`node_modules/opencode-windows-x64[-baseline]/bin`）；Windows 上仍找不到时经 `cmd.exe` 转发 `.cmd/.bat` shim 兜底，全部未命中时报 `DependencyUnavailable` 并附带安装指引。Linux/macOS 的 npm 启动器可直接执行，PATH 命中即可。Engine 镜像安装构建时最新的 Linux 原生二进制（可用构建参数 `OPENCODE_VERSION` 覆盖），无需在运行容器内安装 Node/npm；不固定版本意味着镜像不可按版本复现，升级 OpenCode 后需按验证方法重跑真实进程回归。
+开发机安装 OpenCode（不固定版本），先验证 `opencode --version`。首个执行轮次按以下顺序解析可执行文件（`OpenCode:Executable`，默认 `opencode`）：配置为路径且存在时直接使用；否则依次探测 PATH 目录直接命中、各 PATH 目录与 npm 默认全局根（`%APPDATA%\npm`）下的 npm 安装布局（`node_modules/opencode-ai/bin`、`node_modules/opencode-windows-x64[-baseline]/bin`）；Windows 上仍找不到时经 `cmd.exe` 转发 `.cmd/.bat` shim 兜底，全部未命中时报 `DependencyUnavailable` 并附带安装指引。Linux/macOS 的 npm 启动器可直接执行，PATH 命中即可。Engine 镜像内嵌的 Linux 原生二进制版本由仓库根的 `Backend/opencode.version` 锁定，`scripts/build-images.*` 与 Release 工作流读取该文件并经 `OPENCODE_VERSION` 构建参数传入；OpenCode 本体自包含、运行无需 Node/npm，镜像另含 python3 与 node 22（npm 不随镜像分发），供宿主放行的原生工具（如 `bash`）与脚本在容器内执行——这扩大的是容器内可执行面，不改变应用层授权的性质。镜像 label 记录 `io.openagent.opencode-version`，Engine 发布标签带 `-oc<版本>` 后缀。`latest` 仅保留给手动 `docker build` 的临时构建，环境变量 `OPENAGENT_OPENCODE_VERSION` 用于升级前的临时验证，提交仍以版本文件为准。升级 OpenCode 时先修改版本文件，并以 `docker build --target runtime-tests` 通过真实进程回归后再发布。
 
 ```json
 {

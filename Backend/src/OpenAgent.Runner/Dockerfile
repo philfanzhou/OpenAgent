@@ -1,10 +1,11 @@
-FROM mcr.microsoft.com/dotnet/sdk:10.0-bookworm-slim AS build
+# mcr 不存在 10.0-bookworm-slim 标签（.NET 10 未发布该变体），与 Engine/Router 一致使用 10.0 复合标签。
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 COPY Backend/ Backend/
 RUN dotnet restore Backend/src/OpenAgent.Runner/OpenAgent.Runner.csproj
 RUN dotnet publish Backend/src/OpenAgent.Runner/OpenAgent.Runner.csproj -c Release --no-restore -o /app/publish
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0-bookworm-slim AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 RUN apt-get update \
     && apt-get install -y --no-install-recommends bubblewrap python3 python3-venv nodejs util-linux bash \
