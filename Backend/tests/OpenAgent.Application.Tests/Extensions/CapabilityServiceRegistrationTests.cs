@@ -58,18 +58,18 @@ public class CapabilityServiceRegistrationTests
         IConfiguration configuration = new ConfigurationBuilder().AddInMemoryCollection(
             new Dictionary<string, string?>
             {
-                ["FileAssets:AllowedExtensions:0"] = ".txt"
+                ["FileAssets:MaxFunctionReadBytes"] = "2048"
             }).Build();
         services.AddAgentApplication(configuration);
         int registrations = services.Count;
         using ServiceProvider first = services.BuildServiceProvider();
-        string[] extensions = first.GetRequiredService<IOptions<FileAssetOptions>>().Value.AllowedExtensions.ToArray();
+        long readLimit = first.GetRequiredService<IOptions<FileAssetOptions>>().Value.MaxFunctionReadBytes;
 
         services.AddAgentApplication(configuration);
         using ServiceProvider repeated = services.BuildServiceProvider();
 
         Assert.Equal(registrations, services.Count);
-        Assert.Equal(extensions, repeated.GetRequiredService<IOptions<FileAssetOptions>>().Value.AllowedExtensions);
+        Assert.Equal(readLimit, repeated.GetRequiredService<IOptions<FileAssetOptions>>().Value.MaxFunctionReadBytes);
         Assert.Equal(2, services.Count(descriptor => descriptor.ServiceType == typeof(IAgentFeatureFactory)));
     }
 

@@ -217,7 +217,7 @@ public class SkillScriptRunnerTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task RunAsync_UnsupportedArtifactExtension_SkipsAndReports()
+    public async Task RunAsync_ArtifactExtensionOutsideCatalog_RegistersAsOctetStream()
     {
         string scriptPath = await WriteScriptAsync("analyze.py", "print('analyze ran')\n");
         _fixture.Executor.Results.Enqueue(new CodeExecutionResult
@@ -231,13 +231,13 @@ public class SkillScriptRunnerTests : IAsyncLifetime
             ]
         });
         object? result = await _fixture.RunAsync(scriptPath, null);
-        // 沙箱/执行结果不因不可入库类型失败：exe 跳过并报告，html 正常注册。
-        Assert.Contains("skippedFiles", result?.ToString(), StringComparison.Ordinal);
-        Assert.Contains("payload.exe", result?.ToString(), StringComparison.Ordinal);
+        // 产物入库不按类型过滤：exe 同样注册（octet-stream），html 取规范类型。
+        Assert.Contains("\"skippedFiles\":[]", result?.ToString(), StringComparison.Ordinal);
         Assert.DoesNotContain("\"error\"", result?.ToString(), StringComparison.Ordinal);
-        FileAsset artifact = Assert.Single(_fixture.Repository.Assets.Values);
-        Assert.Equal("report.html", artifact.FileName);
-        Assert.Equal("text/html", artifact.MediaType);
+        FileAsset exeArtifact = Assert.Single(_fixture.Repository.Assets.Values, asset => asset.FileName == "payload.exe");
+        Assert.Equal("application/octet-stream", exeArtifact.MediaType);
+        FileAsset htmlArtifact = Assert.Single(_fixture.Repository.Assets.Values, asset => asset.FileName == "report.html");
+        Assert.Equal("text/html", htmlArtifact.MediaType);
     }
 
     [RunnerIntegrationFact]

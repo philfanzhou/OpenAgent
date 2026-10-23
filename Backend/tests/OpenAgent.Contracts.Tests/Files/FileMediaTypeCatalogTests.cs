@@ -46,21 +46,6 @@ public class FileMediaTypeCatalogTests
     }
 
     [Theory]
-    [InlineData(".html", "text/html", true)]
-    [InlineData(".html", "TEXT/HTML", true)]
-    [InlineData(".md", "text/markdown", true)]
-    [InlineData(".md", "text/plain", true)]
-    [InlineData(".json", "text/json", true)]
-    [InlineData(".xml", "text/xml", true)]
-    [InlineData(".html", "text/plain", false)]
-    [InlineData(".md", "application/json", false)]
-    [InlineData(".py", "text/x-python", false)]
-    public void MatchesMediaType_AcceptsCanonicalAndAliasesOnly(string extension, string mediaType, bool expected)
-    {
-        Assert.Equal(expected, FileMediaTypeCatalog.MatchesMediaType(extension, mediaType));
-    }
-
-    [Theory]
     [InlineData("text/html", ".html")]
     [InlineData("text/css", ".css")]
     [InlineData("image/jpeg", ".jpg")]

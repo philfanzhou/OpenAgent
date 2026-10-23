@@ -251,9 +251,7 @@ public class FileAssetServiceTests
             {
                 Enabled = true,
                 MaxFileSizeBytes = 1024,
-                MaxFunctionReadBytes = 128,
-                AllowedMediaTypes = ["application/vnd.jgraph.mxfile"],
-                AllowedExtensions = [".drawio"]
+                MaxFunctionReadBytes = 128
             }));
         await using var content = new MemoryStream("<mxfile><diagram /></mxfile>"u8.ToArray());
 
@@ -285,7 +283,7 @@ public class FileAssetServiceTests
     [InlineData("circuit.drawio", "application/vnd.jgraph.mxfile")]
     [InlineData("photo.jps", "image/jpeg")]
     [InlineData("data.json", "text/json")]
-    public async Task UploadAsync_NewFormats_AcceptedWithDefaultWhitelist(string fileName, string mediaType)
+    public async Task UploadAsync_CatalogFormats_AcceptedWithCanonicalTypes(string fileName, string mediaType)
     {
         var repository = new RecordingFileAssetRepository();
         var objects = new RecordingFileObjectStore();
@@ -341,24 +339,36 @@ public class FileAssetServiceTests
         Assert.Equal(expectedMediaType, asset.MediaType);
     }
 
-    [Fact]
-    public async Task UploadAsync_UnknownExtensionWithGenericMediaType_Rejects()
+    [Theory]
+    [InlineData("macro.xlsm", "application/octet-stream", "application/octet-stream")]
+    [InlineData("script.py", null, "application/octet-stream")]
+    [InlineData("script.py", "text/x-python", "text/x-python")]
+    [InlineData("app.js", "application/octet-stream", "application/octet-stream")]
+    [InlineData("run.sh", null, "application/octet-stream")]
+    public async Task UploadAsync_ExtensionsOutsideCatalog_AcceptedAsDeclared(
+        string fileName,
+        string? requestedMediaType,
+        string expectedMediaType)
     {
         var repository = new RecordingFileAssetRepository();
         var objects = new RecordingFileObjectStore();
         IFileAssetService service = CreateService(repository, objects);
         await using var content = new MemoryStream("payload"u8.ToArray());
 
-        await Assert.ThrowsAsync<AgentException>(() => service.UploadAsync(
+        FileAsset asset = await service.UploadAsync(
             new FileAssetCreateRequest
             {
-                FileName = "macro.xlsm",
-                MediaType = "application/octet-stream",
+                FileName = fileName,
+                MediaType = requestedMediaType,
                 Source = FileAssetSource.UserUpload
             },
             content,
             Scope("conversation-a"),
-            CancellationToken.None));
+            CancellationToken.None);
+
+        Assert.Equal(FileAssetState.Ready, asset.State);
+        Assert.Equal(fileName, asset.FileName);
+        Assert.Equal(expectedMediaType, asset.MediaType);
     }
 
     [Theory]
@@ -759,42 +769,21 @@ public class FileAssetServiceTests
     }
 
     [Fact]
-    public async Task UploadAsync_HtmlWithMismatchedMediaType_Rejects()
+    public async Task UploadAsync_DeclaredConcreteMediaType_WinsOverCatalogInference()
     {
         var repository = new RecordingFileAssetRepository();
         var objects = new RecordingFileObjectStore();
         IFileAssetService service = CreateService(repository, objects);
         await using var content = new MemoryStream("<h1>hi</h1>"u8.ToArray());
 
-        await Assert.ThrowsAsync<AgentException>(() => service.UploadAsync(
+        FileAsset asset = await service.UploadAsync(
             new FileAssetCreateRequest { FileName = "report.html", MediaType = "text/plain", Source = FileAssetSource.Agent },
             content,
             Scope("conversation-a"),
-            CancellationToken.None));
-    }
+            CancellationToken.None);
 
-    [Fact]
-    public async Task UploadAsync_ConfigurationNarrowsWhitelist_RejectsCatalogType()
-    {
-        var repository = new RecordingFileAssetRepository();
-        var objects = new RecordingFileObjectStore();
-        IFileAssetService service = new FileAssetService(
-            repository,
-            objects,
-            Options.Create(new FileAssetOptions
-            {
-                Enabled = true,
-                MaxFileSizeBytes = 1024,
-                MaxFunctionReadBytes = 128,
-                AllowedExtensions = [".txt"]
-            }));
-        await using var content = new MemoryStream("<h1>hi</h1>"u8.ToArray());
-
-        await Assert.ThrowsAsync<AgentException>(() => service.UploadAsync(
-            new FileAssetCreateRequest { FileName = "report.html", Source = FileAssetSource.Agent },
-            content,
-            Scope("conversation-a"),
-            CancellationToken.None));
+        Assert.Equal(FileAssetState.Ready, asset.State);
+        Assert.Equal("text/plain", asset.MediaType);
     }
 
     private static FileAssetScope Scope(string conversationId) => new()

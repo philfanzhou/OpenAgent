@@ -19,7 +19,4 @@ public sealed class FileAssetOptions
     public int InlineImageHistoryTurns { get; init; } = 2;
     public long MaxArchiveInputBytes { get; init; } = 64 * 1024 * 1024;
     public int MaxArchiveFileCount { get; init; } = 100;
-    /// <summary>默认白名单由 FileMediaTypeCatalog 派生（目录=事实源，本配置=策略，可收窄不可隐式放宽）。</summary>
-    public IReadOnlyList<string> AllowedMediaTypes { get; init; } = FileMediaTypeCatalog.AllMediaTypes;
-    public IReadOnlyList<string> AllowedExtensions { get; init; } = FileMediaTypeCatalog.AllExtensions;
 }

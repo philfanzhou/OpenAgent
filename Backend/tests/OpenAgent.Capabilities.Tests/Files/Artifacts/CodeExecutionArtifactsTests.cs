@@ -12,7 +12,7 @@ namespace OpenAgent.Capabilities.Tests.Capabilities.Code;
 public class CodeExecutionArtifactsTests
 {
     [Fact]
-    public async Task PublishAsync_MixedOutputs_RegistersStorableAndSkipsRest()
+    public async Task PublishAsync_MixedOutputs_RegistersAllNonEmptyFiles()
     {
         var repository = new RecordingFileAssetRepository();
         var objects = new RecordingFileObjectStore();
@@ -26,18 +26,20 @@ public class CodeExecutionArtifactsTests
         CodeExecutionArtifacts.PublishResult publish = await CodeExecutionArtifacts.PublishAsync(
             result, files, Scope(), CancellationToken.None);
 
-        Assert.Equal(2, publish.Files.Count);
-        string[] registeredNames = ["report.html", "style.css"];
+        Assert.Equal(3, publish.Files.Count);
+        string[] registeredNames = ["helper.py", "report.html", "style.css"];
         Assert.Equal(registeredNames,
             repository.Assets.Values.Select(asset => asset.FileName).OrderBy(name => name).ToArray());
         Assert.Equal("text/html", repository.Assets.Values.Single(a => a.FileName == "report.html").MediaType);
         Assert.Equal("text/css", repository.Assets.Values.Single(a => a.FileName == "style.css").MediaType);
-        string[] skippedNames = ["empty.txt", "helper.py"];
-        Assert.Equal(skippedNames, publish.Skipped.Select(skipped => skipped.Name).OrderBy(n => n).ToArray());
+        Assert.Equal("application/octet-stream",
+            repository.Assets.Values.Single(a => a.FileName == "helper.py").MediaType);
+        CodeExecutionArtifacts.SkippedFile skipped = Assert.Single(publish.Skipped);
+        Assert.Equal("empty.txt", skipped.Name);
     }
 
     [Fact]
-    public async Task PublishAsync_StorageRejectsNarrowedWhitelist_SkipsAndReportsReason()
+    public async Task PublishAsync_StorageRejectsOversizeOutput_SkipsAndReportsReason()
     {
         var repository = new RecordingFileAssetRepository();
         var objects = new RecordingFileObjectStore();
@@ -47,12 +49,11 @@ public class CodeExecutionArtifactsTests
             Options.Create(new FileAssetOptions
             {
                 Enabled = true,
-                MaxFileSizeBytes = 1024,
-                MaxFunctionReadBytes = 128,
-                AllowedExtensions = [".txt"]
+                MaxFileSizeBytes = 4,
+                MaxFunctionReadBytes = 128
             }));
         CodeExecutionResult result = Result(
-            new ExecutionFile { Name = "report.html", Content = "<h1>hi</h1>"u8.ToArray() },
+            new ExecutionFile { Name = "big.bin", Content = "12345678"u8.ToArray() },
             new ExecutionFile { Name = "notes.txt", Content = "ok"u8.ToArray() });
 
         CodeExecutionArtifacts.PublishResult publish = await CodeExecutionArtifacts.PublishAsync(
@@ -62,8 +63,8 @@ public class CodeExecutionArtifactsTests
         string[] registeredNames = ["notes.txt"];
         Assert.Equal(registeredNames, repository.Assets.Values.Select(asset => asset.FileName).ToArray());
         CodeExecutionArtifacts.SkippedFile skipped = Assert.Single(publish.Skipped);
-        Assert.Equal("report.html", skipped.Name);
-        Assert.Contains("not allowed", skipped.Reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("big.bin", skipped.Name);
+        Assert.Contains("size", skipped.Reason, StringComparison.OrdinalIgnoreCase);
     }
 
     private static IFileAssetService CreateFiles(
