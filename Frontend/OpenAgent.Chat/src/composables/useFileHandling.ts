@@ -30,6 +30,12 @@ export function isMarkdownFile(mediaType: string, fileName?: string): boolean {
     || (!!fileName && mediaType === 'text/plain' && fileName.toLowerCase().endsWith('.md'))
 }
 
+export function isHtmlFile(mediaType: string, fileName?: string): boolean {
+  const lower = fileName?.toLowerCase() ?? ''
+  return mediaType === 'text/html'
+    || (mediaType === 'text/plain' && (lower.endsWith('.html') || lower.endsWith('.htm')))
+}
+
 /**
  * 已解析的 markdown 图片 blob URL。键为 `${messageId}|${selfObjectKey ?? ''}|${src}`：
  * messageId 全局唯一可省 conversationId；selfObjectKey 区分同一引用在不同 md 基准下的解析结果。
@@ -81,8 +87,12 @@ export async function toMessageFile(item: PendingFile): Promise<MessageFile> {
     fileName: asset.fileName,
     mediaType: asset.mediaType,
     length: asset.length,
-    previewUrl: asset.mediaType.startsWith('image/') ? URL.createObjectURL(item.file) : undefined,
-    previewText: isTextPreview(asset.mediaType) ? await item.file.text() : undefined,
+    previewUrl: asset.mediaType.startsWith('image/') || isHtmlFile(asset.mediaType, asset.fileName)
+      ? URL.createObjectURL(item.file)
+      : undefined,
+    previewText: isTextPreview(asset.mediaType) && !isHtmlFile(asset.mediaType, asset.fileName)
+      ? await item.file.text()
+      : undefined,
   }
 }
 
@@ -130,7 +140,8 @@ export function useFileHandling(options: FileHandlingOptions) {
       try {
         if (file.mediaType.startsWith('image/')) {
           file.previewUrl = await api.loadFilePreview(file.fileId, conversation.conversationId)
-        } else if (isTextPreview(file.mediaType)) {
+        } else if (isTextPreview(file.mediaType) && !isHtmlFile(file.mediaType, file.fileName)) {
+          // HTML 附件不预取全文：预览弹窗内按需取 blob 并以沙箱 iframe 渲染。
           file.previewText = await api.readFileText(file.fileId, conversation.conversationId)
         }
       } catch {

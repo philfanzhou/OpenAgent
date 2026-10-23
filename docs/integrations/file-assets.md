@@ -32,6 +32,12 @@ LLM Profile 选择 `Multimodal` 时，聊天请求中的 `image/*` 资产会在�
 
 权限校验通过 `FileAssetScope` 的 TenantId/OwnerUserId 边界在 `FileAssetService` 内强制执行（缺失时抛 `TenantDataIsolationException`）。
 
+## HTML 附件在线预览
+
+前端聊天界面对 `text/html` 附件提供在线预览：预览弹窗中不再展示源码文本，而是直接渲染为 HTML 页面。实现路径与图片预览一致——前端经认证 `GET /files/{fileId}/content` 拉取字节后转为 blob URL 交给渲染层（浏览器 iframe 无法携带 `Authorization` 头，不能直接引用端点地址），内容按需懒加载，不随会话预取。
+
+HTML 在 `sandbox="allow-scripts"`（不含 `allow-same-origin`）的 iframe 中渲染：页面脚本可运行以满足图表类报告，但运行于 opaque origin，无法访问应用 DOM、localStorage/sessionStorage（会话令牌所在）或 Cookie，也没有弹窗、表单与顶层导航能力。平台不提供“新窗口打开”式预览：顶层 blob 页面会继承应用源，脚本即可读取会话令牌。相对路径子资源（如 `./chart.png`）在 blob 基址下无法解析会静默失败，因此预览面向自包含 HTML（如 `mcp-data-report` 产出的 `report.html`）；引用外部资源的文件下载后查看。
+
 ## 文件分享链接（MCP 传输 / 用户分享）
 
 分享链接由平台自身的文件分享服务签发与核销（`FileShareService` + `openagent.file_share_links` 表），对外只暴露
