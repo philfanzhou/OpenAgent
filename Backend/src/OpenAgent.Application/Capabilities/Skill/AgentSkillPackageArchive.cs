@@ -37,6 +37,13 @@ public static class AgentSkillPackageArchive
         return InspectSkillFiles(files);
     }
 
+    /// <summary>
+    /// Reads a zip package into its canonical layout. Consumers resolve SKILL.md at
+    /// the package root (OpenCode native discovery links the package directory as
+    /// .opencode/skills/&lt;name&gt;; read_skill_file roots paths at the package), but
+    /// folder-compression tools commonly emit zips that wrap everything in one more
+    /// directory — the wrapper holding SKILL.md is stripped from every relative path.
+    /// </summary>
     public static IReadOnlyList<SkillPackageFile> ReadZipFiles(
         byte[] content,
         CancellationToken cancellationToken)
@@ -76,7 +83,78 @@ public static class AgentSkillPackageArchive
             throw new InvalidOperationException("Skill package is empty.");
         }
 
-        return files;
+        return NormalizeLayout(files);
+    }
+
+    /// <summary>
+    /// Rewrites relative paths so SKILL.md lands at the package root: when SKILL.md
+    /// sits inside a wrapper directory, that prefix is stripped from every entry.
+    /// Files outside the wrapper are rejected — silently rehoming them would change
+    /// the layout the skill author described. A no-op when SKILL.md is already at
+    /// the root or missing (missing files stay InspectSkillFiles' error).
+    /// </summary>
+    public static IReadOnlyList<SkillPackageFile> NormalizeLayout(IReadOnlyList<SkillPackageFile> files)
+    {
+        string? prefix = GetWrapperPrefix(files.Select(file => file.RelativePath));
+        if (prefix is null)
+        {
+            return files;
+        }
+        List<SkillPackageFile> normalized = new(files.Count);
+        foreach (SkillPackageFile file in files)
+        {
+            normalized.Add(file with { RelativePath = StripWrapperPrefix(file.RelativePath, prefix) });
+        }
+        return normalized;
+    }
+
+    /// <summary>
+    /// The storage-index twin of <see cref="NormalizeLayout"/>: rewrites relative
+    /// paths in place (object keys and hashes stay untouched) so already-stored
+    /// records uploaded before normalization materialize with SKILL.md at the root.
+    /// </summary>
+    public static void NormalizeStorageLayout(IReadOnlyList<SkillPackageStorageFile> files)
+    {
+        string? prefix = GetWrapperPrefix(files.Select(file => file.RelativePath));
+        if (prefix is null)
+        {
+            return;
+        }
+        foreach (SkillPackageStorageFile file in files)
+        {
+            file.RelativePath = StripWrapperPrefix(file.RelativePath, prefix);
+        }
+    }
+
+    private static string StripWrapperPrefix(string relativePath, string prefix)
+    {
+        if (!relativePath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                "Skill package must keep SKILL.md at the root or nest every file under its directory.");
+        }
+        return relativePath[prefix.Length..];
+    }
+
+    /// <summary>The directory holding SKILL.md (with trailing separator), or null when
+    /// SKILL.md already sits at the package root or is absent.</summary>
+    private static string? GetWrapperPrefix(IEnumerable<string> relativePaths)
+    {
+        string? skillPath = null;
+        foreach (string path in relativePaths)
+        {
+            if (!string.Equals(Path.GetFileName(path), "SKILL.md", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+            if (skillPath is not null && !string.Equals(skillPath, path, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("Each Skill package must contain exactly one SKILL.md.");
+            }
+            skillPath = path;
+        }
+        string? directory = skillPath is null ? null : Path.GetDirectoryName(skillPath)?.Replace('\\', '/');
+        return string.IsNullOrEmpty(directory) ? null : directory + "/";
     }
 
     public static void Materialize(

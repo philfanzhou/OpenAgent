@@ -286,6 +286,9 @@ internal sealed class SkillPackageManagementService(
         IReadOnlyList<SkillPackageFile> files = string.Equals(skill.PackageFormat, "directory", StringComparison.OrdinalIgnoreCase)
             ? await ReadStoredFilesAsync(tenantId, indexContent, cancellationToken).ConfigureAwait(false)
             : AgentSkillPackageArchive.ReadZipFiles(indexContent, cancellationToken);
+        // Directory-format records stored before layout normalization may still carry
+        // the zip's wrapper directory; normalize so an online edit also repairs it.
+        files = AgentSkillPackageArchive.NormalizeLayout(files);
         if (files.All(file => !string.Equals(Path.GetFileName(file.RelativePath), "SKILL.md", StringComparison.OrdinalIgnoreCase)))
             throw new InvalidOperationException($"Skill package '{skillId}' has no SKILL.md to replace.");
 
@@ -400,6 +403,8 @@ internal sealed class SkillPackageManagementService(
             SkillPackageStorageIndex index = JsonSerializer.Deserialize<SkillPackageStorageIndex>(indexContent)
                 ?? throw new InvalidOperationException($"Skill package '{skill.Id}' has an invalid storage index.");
             EnsureTenantIndex(index, tenantId);
+            // 与 zip 分支保持同一规范布局：旧嵌套记录在这里也按包根相对路径上报。
+            AgentSkillPackageArchive.NormalizeStorageLayout(index.Files);
             relativePaths = index.Files.Select(file => file.RelativePath);
         }
         else

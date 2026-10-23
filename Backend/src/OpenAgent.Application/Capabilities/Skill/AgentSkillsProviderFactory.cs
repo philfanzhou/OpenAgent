@@ -282,6 +282,9 @@ internal sealed class AgentSkillsProviderFactory(
             {
                 throw new InvalidOperationException($"Skill package '{instance.Id}' belongs to another tenant.");
             }
+            // 上传归一化之前存的记录可能还带着 zip 的顶层包裹目录（SKILL.md 嵌套）：
+            // 物化时剥掉，使 SKILL.md 落在包根，符合 OpenCode 发现与 read_skill_file 的约定。
+            AgentSkillPackageArchive.NormalizeStorageLayout(index.Files);
         }
         else
         {

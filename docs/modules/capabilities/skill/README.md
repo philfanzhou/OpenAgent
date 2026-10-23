@@ -2,6 +2,8 @@
 
 OpenAgent 提供符合官方 Agent Skills 规范的 `SKILL.md` 包。Web 端支持上传 ZIP 或手动填写单文件 Markdown；两者都必须包含 `SKILL.md`。ZIP 在 OSS 中按目录文件对象保存，并由索引对象记录路径和哈希；执行时只 materialize 到请求级临时目录，不再重复解压 ZIP。
 
+包布局以 `SKILL.md` 位于包根为准（OpenCode 原生发现按 `.opencode/skills/<name>/SKILL.md` 解析，`read_skill_file` 也以包根为基点）。上传时若 ZIP 里整包被一层顶层目录包裹（"压缩文件夹"的常见产物），该包裹目录会从所有相对路径中剥掉；包裹内外混有文件时拒绝上传。归一化之前入库的旧记录在物化、在线编辑与脚本清单读取时做同样的剥前缀处理，无需迁移。
+
 ## Core Capabilities
 
 | Capability | Description |
