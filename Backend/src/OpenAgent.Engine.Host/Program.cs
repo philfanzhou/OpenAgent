@@ -33,8 +33,13 @@ builder.Services.AddOpenCodeRuntime(builder.Configuration);
 builder.Services.AddOpenAgentFramework(builder.Configuration);
 if (builder.Environment.IsDevelopment())
 {
+    // Linux 容器里 LocalApplicationData 可能为空，Path.Combine 会拼出相对路径被 LocalFileObjectStore 拒绝；
+    // 为空时退回临时目录，保证 Development 容器可启动。
+    string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
     string storageRoot = builder.Configuration["LocalDevelopment:FileStorageRoot"]
-        ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OpenAgent", "objects");
+        ?? (string.IsNullOrEmpty(localAppData)
+            ? Path.Combine(Path.GetTempPath(), "OpenAgent", "objects")
+            : Path.Combine(localAppData, "OpenAgent", "objects"));
     builder.Services.AddSingleton<OpenAgent.Contracts.Files.IFileObjectStore>(new LocalFileObjectStore(storageRoot));
 }
 else
