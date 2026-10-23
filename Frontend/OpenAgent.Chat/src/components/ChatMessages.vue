@@ -3,7 +3,7 @@ import { ElMessage } from 'element-plus'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { api } from '../api'
 import { buildCompactionDisplay, buildCompactionTokenDisplay } from '../compactionPresentation'
-import { isMarkdownFile, isTextPreview } from '../composables/useFileHandling'
+import { isHtmlFile, isMarkdownFile, isTextPreview } from '../composables/useFileHandling'
 import { isSelfContainedImageRef } from '../markdownAssets'
 import { buildConversationTimeline, fileLabel, formatFileSize, toolArgumentsText, toolPresentation } from '../messagePresentation'
 import { formatTokenBreakdown, formatTokenCount, formatTokenUsage } from '../tokenUsage'
@@ -216,15 +216,26 @@ const filePreview = ref<{ open: boolean; loading: boolean; messageId: string; fi
 })
 const previewText = ref<string | null>(null)
 const previewImageUrl = ref<string | null>(null)
+const previewHtmlUrl = ref<string | null>(null)
 const previewFailed = ref(false)
-// 弹窗内容缓存：文本常驻内存即可，blob URL 在组件卸载时统一释放。
+// 弹窗内容缓存：文本常驻内存即可，blob URL（图片/HTML）在组件卸载时统一释放。
 const previewTextCache = new Map<string, string>()
-const previewImageUrls = new Map<string, string>()
+const previewObjectUrls = new Map<string, string>()
 
 const previewIsMarkdown = computed(() => {
   const file = filePreview.value.file
   return !!file && isMarkdownFile(file.mediaType, file.fileName)
 })
+
+const previewIsHtml = computed(() => {
+  const file = filePreview.value.file
+  return !!file && isHtmlFile(file.mediaType, file.fileName)
+})
+
+// HTML 报告信息密度更高，预览时弹窗加宽一档。
+const previewDialogWidth = computed(() => (previewIsHtml.value
+  ? 'min(1100px, calc(100vw - 40px))'
+  : 'min(880px, calc(100vw - 40px))'))
 
 function isPreviewable(file: MessageFile): boolean {
   return Boolean(file.fileId) && (
@@ -238,6 +249,7 @@ function openFilePreview(messageId: string, file: MessageFile): void {
   filePreview.value = { open: true, loading: true, messageId, file }
   previewText.value = null
   previewImageUrl.value = null
+  previewHtmlUrl.value = null
   previewFailed.value = false
   void loadPreviewContent()
 }
@@ -251,13 +263,15 @@ async function loadPreviewContent(): Promise<void> {
   const fileId = file.fileId
   const conversationId = props.conversationId
   try {
-    if (file.mediaType.startsWith('image/')) {
-      let url = file.previewUrl || previewImageUrls.get(fileId)
+    if (file.mediaType.startsWith('image/') || isHtmlFile(file.mediaType, file.fileName)) {
+      // 浏览器 iframe/img 无法携带 Authorization 头，鉴权 fetch 后以 blob URL 交付渲染。
+      let url = file.previewUrl || previewObjectUrls.get(fileId)
       if (!url) {
         url = await api.loadFilePreview(fileId, conversationId)
-        previewImageUrls.set(fileId, url)
+        previewObjectUrls.set(fileId, url)
       }
-      previewImageUrl.value = url
+      if (file.mediaType.startsWith('image/')) previewImageUrl.value = url
+      else previewHtmlUrl.value = url
     } else {
       let text = previewTextCache.get(fileId)
       if (text == null) text = file.previewText
@@ -274,7 +288,7 @@ async function loadPreviewContent(): Promise<void> {
 }
 
 onBeforeUnmount(() => {
-  for (const url of previewImageUrls.values()) URL.revokeObjectURL(url)
+  for (const url of previewObjectUrls.values()) URL.revokeObjectURL(url)
 })
 
 async function copyTraceId(traceId: string): Promise<void> {
@@ -525,7 +539,7 @@ defineExpose({ scrollToBottom })
     </template>
   </el-scrollbar>
 
-  <el-dialog v-model="filePreview.open" class="file-preview-dialog" append-to-body destroy-on-close width="min(880px, calc(100vw - 40px))" top="6vh">
+  <el-dialog v-model="filePreview.open" class="file-preview-dialog" append-to-body destroy-on-close :width="previewDialogWidth" top="6vh">
     <template #header>
       <div class="file-preview-head">
         <strong>{{ filePreview.file?.fileName }}</strong>
@@ -534,6 +548,14 @@ defineExpose({ scrollToBottom })
     </template>
     <div v-loading="filePreview.loading" class="file-preview-body">
       <img v-if="previewImageUrl" :src="previewImageUrl" :alt="filePreview.file?.fileName" />
+      <iframe
+        v-else-if="previewHtmlUrl"
+        :src="previewHtmlUrl"
+        class="file-preview-frame"
+        sandbox="allow-scripts"
+        referrerpolicy="no-referrer"
+        :title="filePreview.file?.fileName || 'HTML 预览'"
+      />
       <MarkdownContent v-else-if="previewIsMarkdown && previewText != null" :content="previewText" :resolve-image="imageLookup(filePreview.messageId, filePreview.file?.objectKey)" />
       <pre v-else-if="previewText != null" class="file-preview-text">{{ previewText }}</pre>
       <p v-else-if="previewFailed" class="file-preview-hint">预览加载失败，请下载后查看。</p>

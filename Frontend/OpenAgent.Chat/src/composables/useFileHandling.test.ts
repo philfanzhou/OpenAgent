@@ -1,9 +1,9 @@
-import { describe, expect, it, vi } from 'vitest'
-import { isTextPreview, toMessageFile } from './useFileHandling'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { isHtmlFile, isTextPreview, toMessageFile } from './useFileHandling'
 import type { PendingFile } from '../types'
 
-function readyFile(mediaType: string, content = 'hello'): PendingFile {
-  const file = new File([content], 'sample.txt', { type: mediaType })
+function readyFile(mediaType: string, content = 'hello', fileName = 'sample.txt'): PendingFile {
+  const file = new File([content], fileName, { type: mediaType })
   return {
     id: 'pending-1',
     file,
@@ -25,6 +25,10 @@ function readyFile(mediaType: string, content = 'hello'): PendingFile {
 }
 
 describe('file handling', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
   it.each([
     ['text/plain', true],
     ['application/json', true],
@@ -36,6 +40,29 @@ describe('file handling', () => {
     ['image/png', false],
   ])('classifies %s preview support', (mediaType, expected) => {
     expect(isTextPreview(mediaType)).toBe(expected)
+  })
+
+  it.each([
+    ['text/html', 'report.html', true],
+    ['text/html', undefined, true],
+    ['text/plain', 'report.html', true],
+    ['text/plain', 'report.htm', true],
+    ['text/plain', 'REPORT.HTML', true],
+    ['text/plain', 'sample.txt', false],
+    ['text/markdown', 'note.html', false],
+    ['application/pdf', 'report.html', false],
+  ])('classifies html file %s %s', (mediaType, fileName, expected) => {
+    expect(isHtmlFile(mediaType, fileName)).toBe(expected)
+  })
+
+  it('creates an object URL for html previews without eager text', async () => {
+    const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:preview')
+
+    const result = await toMessageFile(readyFile('text/html', '<p>hello</p>', 'report.html'))
+
+    expect(result.previewUrl).toBe('blob:preview')
+    expect(result.previewText).toBeUndefined()
+    expect(createObjectURL).toHaveBeenCalledOnce()
   })
 
   it('preserves uploaded asset metadata and text preview', async () => {

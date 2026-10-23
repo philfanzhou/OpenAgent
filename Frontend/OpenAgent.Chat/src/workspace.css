@@ -956,6 +956,7 @@ html[data-theme='dark'] .message-row ::selection { background: rgba(16, 163, 127
 .file-preview-head small { color: var(--text-faint); font-size: 11px; }
 .file-preview-body { min-height: 140px; max-height: calc(100vh - 240px); overflow: auto; }
 .file-preview-body > img { display: block; max-width: 100%; margin: 0 auto; border-radius: var(--r-xs); }
+.file-preview-body > .file-preview-frame { display: block; width: 100%; height: calc(100vh - 320px); min-height: 320px; border: 0; border-radius: var(--r-xs); background: #fff; }
 .file-preview-body .markdown-content img { max-width: 100%; height: auto; border-radius: var(--r-xs); }
 .file-preview-text { margin: 0; color: var(--text-muted); font-family: var(--font-mono); font-size: 12px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
 .file-preview-hint { padding: 40px 0; color: var(--text-faint); font-size: 12px; text-align: center; }
