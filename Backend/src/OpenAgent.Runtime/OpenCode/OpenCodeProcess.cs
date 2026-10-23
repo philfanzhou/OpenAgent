@@ -158,9 +158,41 @@ internal static class OpenCodeProcess
         return value.Contains(' ') ? "\"" + value + "\"" : value;
     }
 
-    internal static AcpProcessOptions Create(OpenCodeLaunchSpec launch, RuntimeInvocation invocation, string home)
+    /// <summary>
+    /// 从继承的 PATH 中剔除 Windows 商店别名目录（%LOCALAPPDATA%\Microsoft\WindowsApps）。
+    /// 别名是 AppModel 激活的交互会话设施：在受控子进程环境（无 LOCALAPPDATA、USERPROFILE
+    /// 被重定向）下按名解析到别名会挂死进程而非报错，且别名目录掩盖了 PATH 中靠后的真实
+    /// 安装（如 python.org 安装管理器的 AppData\Local\Python\bin）。非 Windows 或不含该
+    /// 目录时原样返回。
+    /// </summary>
+    internal static string FilterWindowsStoreAliases(string pathValue)
     {
-        Dictionary<string, string> environment = SharedEnvironment(invocation);
+        if (!OperatingSystem.IsWindows())
+        {
+            return pathValue;
+        }
+        string aliasDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Microsoft", "WindowsApps");
+        List<string> kept = [];
+        foreach (string entry in pathValue.Split(';'))
+        {
+            string trimmed = entry.Trim().Trim('"');
+            bool isAlias = trimmed.Length > 0
+                && (string.Equals(trimmed, aliasDir, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(trimmed.TrimEnd('\\') + "\\", aliasDir + "\\", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(trimmed, "%LOCALAPPDATA%\\Microsoft\\WindowsApps", StringComparison.OrdinalIgnoreCase));
+            if (!isAlias)
+            {
+                kept.Add(entry);
+            }
+        }
+        return string.Join(';', kept);
+    }
+
+    internal static AcpProcessOptions Create(
+        OpenCodeLaunchSpec launch, RuntimeInvocation invocation, IReadOnlyList<string> allowedNativeTools, string home)
+    {
+        Dictionary<string, string> environment = SharedEnvironment(invocation, allowedNativeTools);
         // 进程主目录与轮次工作区分离：进程保活跨轮次复用时，轮次工作区（ACP 会话 cwd）仍可立即回收。
         foreach (string name in StateVariables)
         {
@@ -181,11 +213,11 @@ internal static class OpenCodeProcess
 
     /// <summary>
     /// 进程复用身份：实际可执行文件、参数与除进程私有状态目录外的受控环境（含模型端点、
-    /// 密钥、指令与工具放行策略）完全一致才允许复用；状态目录路径不参与身份。
+    /// 密钥、指令与工具放行策略，含宿主放行的原生工具）完全一致才允许复用；状态目录路径不参与身份。
     /// </summary>
-    internal static string Identity(OpenCodeLaunchSpec launch, RuntimeInvocation invocation)
+    internal static string Identity(OpenCodeLaunchSpec launch, RuntimeInvocation invocation, IReadOnlyList<string> allowedNativeTools)
     {
-        Dictionary<string, string> environment = SharedEnvironment(invocation);
+        Dictionary<string, string> environment = SharedEnvironment(invocation, allowedNativeTools);
         StringBuilder identity = new();
         identity.Append(launch.FileName).Append('\0');
         foreach (string argument in launch.Arguments)
@@ -199,7 +231,7 @@ internal static class OpenCodeProcess
         return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(identity.ToString())));
     }
 
-    private static Dictionary<string, string> SharedEnvironment(RuntimeInvocation invocation)
+    private static Dictionary<string, string> SharedEnvironment(RuntimeInvocation invocation, IReadOnlyList<string> allowedNativeTools)
     {
         LlmConfig model = invocation.Profile.Model;
         string keyReference = Guid.NewGuid().ToString("N");
@@ -223,6 +255,12 @@ internal static class OpenCodeProcess
         if ((invocation.Skills?.Count ?? 0) > 0)
         {
             permission["skill"] = "allow";
+        }
+        // 宿主显式放行的原生工具（如 read/edit/write）：与 "*": "deny" 并存，只有放行项
+        // 可用；把对应主机访问面交给 harness 进程是宿主的知情选择，默认不放开。
+        foreach (string tool in allowedNativeTools)
+        {
+            permission[tool] = "allow";
         }
         JsonObject config = new()
         {
@@ -267,12 +305,14 @@ internal static class OpenCodeProcess
             }
         };
         // 只给子进程环境白名单，不继承服务的数据库口令、云凭据或用户 HOME 配置。
+        // PATHEXT/COMSPEC 与 PATH 同属可执行文件解析的基础变量：缺 PATHEXT 时按名查找
+        // （如 python -> python.exe）失败，Windows PowerShell/where 表现为"命令不存在"。
         Dictionary<string, string> environment = [];
-        foreach (string name in new[] { "PATH", "SystemRoot", "WINDIR" })
+        foreach (string name in new[] { "PATH", "PATHEXT", "COMSPEC", "SystemRoot", "WINDIR" })
         {
             if (Environment.GetEnvironmentVariable(name) is { } value)
             {
-                environment[name] = value;
+                environment[name] = name == "PATH" ? FilterWindowsStoreAliases(value) : value;
             }
         }
         environment["OPENAGENT_MODEL_API_KEY"] = model.ApiKey;

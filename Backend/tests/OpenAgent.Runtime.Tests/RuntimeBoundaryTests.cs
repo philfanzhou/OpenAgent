@@ -55,7 +55,7 @@ public sealed class RuntimeBoundaryTests
                 Config = new AgentConfig(),
                 Model = new LlmConfig { ModelId = "chosen", ApiKey = "selected-secret", Endpoint = "https://example.test/v1", ContextTokens = 100000 }
             }, new TurnContext { TenantId = "tenant", ConversationId = "c", UserId = "u", TraceId = "t" }, "平台指令 {file:/must-not-read} {env:PATH}", [new("user", "hello")], []);
-            var launch = OpenCodeProcess.Create(new OpenCodeLaunchSpec("opencode", ["acp"]), request, root);
+            var launch = OpenCodeProcess.Create(new OpenCodeLaunchSpec("opencode", ["acp"]), request, [], root);
             Assert.Equal(Acp.Processes.AcpEnvironmentMode.AllowList, launch.EnvironmentMode);
             Assert.Equal("selected-secret", launch.Environment!["OPENAGENT_MODEL_API_KEY"]);
             Assert.DoesNotContain("selected-secret", launch.Environment["OPENCODE_CONFIG_CONTENT"]);
@@ -63,6 +63,12 @@ public sealed class RuntimeBoundaryTests
             Assert.DoesNotContain("{env:PATH}", launch.Environment["OPENCODE_CONFIG_CONTENT"]);
             Assert.Contains("{env:OPENAGENT_MODEL_API_KEY}", launch.Environment["OPENCODE_CONFIG_CONTENT"]);
             Assert.StartsWith(root, launch.Environment["HOME"]);
+            // PATHEXT/COMSPEC 属于可执行解析基础变量，随白名单传入；商店别名目录从子 PATH 剔除。
+            if (Environment.GetEnvironmentVariable("PATHEXT") is { } pathExt)
+            {
+                Assert.Equal(pathExt, launch.Environment["PATHEXT"]);
+            }
+            Assert.DoesNotContain("Microsoft\\WindowsApps", launch.Environment["PATH"], StringComparison.OrdinalIgnoreCase);
             using JsonDocument config = JsonDocument.Parse(launch.Environment["OPENCODE_CONFIG_CONTENT"]);
             Assert.Equal("deny", config.RootElement.GetProperty("permission").GetProperty("*").GetString());
             Assert.Equal("allow", config.RootElement.GetProperty("permission").GetProperty("openagent_*").GetString());
@@ -72,6 +78,68 @@ public sealed class RuntimeBoundaryTests
         {
             Directory.Delete(root, true);
         }
+    }
+
+    [Fact]
+    public void Launch_HostAllowedNativeToolsArePermittedWhileOthersStayDenied()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "acp-launch-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            RuntimeInvocation request = new(new AgentRuntimeProfile
+            {
+                AgentId = "agent",
+                Config = new AgentConfig(),
+                Model = new LlmConfig { ModelId = "chosen", ApiKey = "key", Endpoint = "https://example.test/v1", ContextTokens = 100000 }
+            }, new TurnContext { TenantId = "tenant", ConversationId = "c", UserId = "u", TraceId = "t" }, "", [new("user", "hello")], []);
+            var launch = OpenCodeProcess.Create(new OpenCodeLaunchSpec("opencode", ["acp"]), request, ["read", "edit", "write"], root);
+            using JsonDocument config = JsonDocument.Parse(launch.Environment["OPENCODE_CONFIG_CONTENT"]);
+            JsonElement permission = config.RootElement.GetProperty("permission");
+            foreach (string tool in new[] { "read", "edit", "write" })
+            {
+                Assert.Equal("allow", permission.GetProperty(tool).GetString());
+            }
+            // 白名单只放行列出的原生工具，整体默认拒绝不变。
+            Assert.Equal("deny", permission.GetProperty("*").GetString());
+            Assert.Equal("allow", permission.GetProperty("openagent_*").GetString());
+            Assert.Throws<KeyNotFoundException>(() => permission.GetProperty("bash"));
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
+    public void PathFilter_RemovesWindowsStoreAliasDirectoryOnly()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+        string alias = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Microsoft", "WindowsApps");
+        Assert.Equal("C:\\a;D:\\b", OpenCodeProcess.FilterWindowsStoreAliases("C:\\a;" + alias + ";D:\\b"));
+        Assert.Equal("C:\\a;D:\\b", OpenCodeProcess.FilterWindowsStoreAliases("C:\\a;\"" + alias + "\";D:\\b"));
+        Assert.Equal("C:\\a;D:\\b", OpenCodeProcess.FilterWindowsStoreAliases("C:\\a;" + alias + "\\;D:\\b"));
+        Assert.Equal("C:\\a;D:\\b", OpenCodeProcess.FilterWindowsStoreAliases(
+            "C:\\a;%LOCALAPPDATA%\\Microsoft\\WindowsApps;D:\\b"));
+        Assert.Equal("C:\\a;D:\\b", OpenCodeProcess.FilterWindowsStoreAliases("C:\\a;D:\\b"));
+    }
+
+    [Fact]
+    public void Runtime_RejectsNativeToolEntriesThatLookLikeConfigMacros()
+    {
+        ServiceCollection services = new();
+        services.AddOpenCodeRuntime(new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["OpenCode:AllowedNativeTools:0"] = "write",
+                ["OpenCode:AllowedNativeTools:1"] = "{file:C:/secret}"
+            })
+            .Build());
+        using ServiceProvider provider = services.BuildServiceProvider();
+        Assert.Throws<OptionsValidationException>(() => provider.GetRequiredService<IOptions<OpenCodeOptions>>().Value);
     }
 
     [Fact]

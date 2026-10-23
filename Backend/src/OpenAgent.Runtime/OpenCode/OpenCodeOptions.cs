@@ -28,4 +28,12 @@ public sealed class OpenCodeOptions
 
     /// <summary>单个进程最多服务的 ACP 会话数；超过即销毁重建，约束 harness 侧会话/内存累积。</summary>
     public int MaxSessionsPerProcess { get; set; } = 64;
+
+    /// <summary>
+    /// 额外放行的 OpenCode 原生工具名（如 read/edit/write，可带参数模式如 bash[npm *]）。
+    /// 默认空：原生工具保持 "*": "deny"，仅平台桥 openagent_* 与透传 MCP/skill 可用。
+    /// 放行即把对应主机读写/执行面直接交给 harness 进程（应用层授权，非 OS 沙箱），
+    /// 由宿主配置自担；条目参与进程复用身份，改动后不会复用旧权限进程。
+    /// </summary>
+    public string[] AllowedNativeTools { get; set; } = [];
 }

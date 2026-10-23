@@ -42,7 +42,7 @@ Runtime 只引用 Contracts、Runtime.Acp 和官方 MCP SDK；Application 只引
 6. ACP prompt 结束后排空更新队列。平台保存会话成功后才发送 usage/done。失败或取消保存部分正文、reasoning 与工具记录。
 7. 取消发送 session/cancel 并等待原 prompt 结果；SDK 对不确认的进程执行有界回收。轮次结束后关闭本轮 ACP 会话、吊销本轮桥注册（共享端点保留给后续轮次）、释放工具资源并删除本轮随机工作区，保留平台会话数据。完整成功轮次的进程归还保活池等待追问复用；失败、取消、空闲到期、会话数或总量超限的进程立即销毁并回收其主目录。
 
-OpenCode 的原生工具默认 `* = deny`，仅允许 `openagent_*` 平台桥工具；按 Agent 配置透传的外部 MCP server 会追加对应 `server_*` 放行，启用 Skill 时放行原生 `skill` 工具。Client 不启用文件/终端回调，ACP 权限请求默认拒绝。桥路由挂载在主站端口上时，仅接受 loopback 远端（其余一律 404，不暴露路由存在性）与命中本轮注册的 bearer（未命中 401），公共认证与准入管线不感知桥流量。平台 Runner、文件资产和 Skill 脚本策略继续约束平台侧工具。这是应用层授权和进程环境隔离，**不是操作系统沙箱**；本轮不宣称解决恶意 harness 的主机访问问题，也不实现人工审批。
+OpenCode 的原生工具默认 `* = deny`，仅允许 `openagent_*` 平台桥工具；按 Agent 配置透传的外部 MCP server 会追加对应 `server_*` 放行，启用 Skill 时放行原生 `skill` 工具。宿主可通过 `OpenCode:AllowedNativeTools` 显式放行原生工具（如 `read`/`edit`/`write`，可带参数模式如 `bash[npm *]`），默认空保持全拒绝；放行即把对应主机读写/执行面直接交给 harness 进程（应用层授权，非 OS 沙箱），由宿主知情选择，白名单参与进程复用身份，改动后不复用旧权限进程。条目禁止花括号（OpenCode 在 JSON 解析前展开 `{file:...}`/`{env:...}` 宏），启动校验拒绝。当前开发配置（`appsettings.Development.json`）为便于本机联调放行了 `read`/`edit`/`write`/`bash`（含原生 shell 执行），生产配置不放开。Client 不启用文件/终端回调，ACP 权限请求默认拒绝。桥路由挂载在主站端口上时，仅接受 loopback 远端（其余一律 404，不暴露路由存在性）与命中本轮注册的 bearer（未命中 401），公共认证与准入管线不感知桥流量。平台 Runner、文件资产和 Skill 脚本策略继续约束平台侧工具。这是应用层授权和进程环境隔离，**不是操作系统沙箱**；本轮不宣称解决恶意 harness 的主机访问问题，也不实现人工审批。
 
 ## MCP 透传
 
@@ -65,7 +65,7 @@ Runtime 在独立设置页保存 ID、名称、Provider 和单轮时限，存入
 - 原生 OpenCode 进程完成 ACP `initialize` 后发送 `runtime` SSE 事件，携带驱动 Provider、保存的 Runtime ID/名称及对端报告的 Agent 名称/版本。平台将身份写入 assistant 消息 metadata.extensions，成功、失败/取消均保留已观察到的身份。前端回复下方显示“实际运行时”，刷新从持久化记录恢复；握手失败或旧消息不伪造运行时标识。
 - 只将本轮授权后的 Endpoint、ModelId、ApiFormat、Temperature、ContextTokens 交给 OpenCode。ApiKey 用独立子进程环境变量传入，配置中只放 `{env:OPENAGENT_MODEL_API_KEY}`，不拼接到命令、提示词或日志。
 - OpenCode 会在 JSON 解析前展开配置宏。驱动在序列化时转义租户文本中的花括号，只还原随机占位的密钥引用，避免 `{file:...}`/`{env:...}` 指令变成宿主文件读取或环境变量展开；有真实进程回归测试。
-- 子进程只继承 PATH/SystemRoot/WINDIR 白名单，不继承服务数据库口令、云凭据或用户 OpenCode 配置。启动命令由宿主配置，聊天请求不能替换。
+- 子进程只继承 PATH/PATHEXT/COMSPEC/SystemRoot/WINDIR 白名单，不继承服务数据库口令、云凭据或用户 OpenCode 配置；PATHEXT 缺失会让按名解析（`python` → `python.exe`）表现为"命令不存在"，Windows 上另会从子 PATH 剔除商店别名目录（`%LOCALAPPDATA%\Microsoft\WindowsApps`——AppModel 激活的存根在受控环境下挂死，且掩盖 PATH 中靠后的真实安装）。启动命令由宿主配置，聊天请求不能替换。
 - ApiFormat 映射为 OpenAI Chat Completions、OpenAI Responses、Anthropic 对应的 AI SDK Provider；Chat Completions 由确定性本地模型 + 真实 OpenCode 覆盖；Anthropic Messages 已通过智谱兼容端点真实模型调用，含 Skill/MCP 与 HTTP/SSE。OpenAI Responses 仍待真实服务商互操作验收；不据此宣称官方 Anthropic Claude 模型已验证。
 - ContextTokens 未配置时用 128000 作为驱动配置回退值；输出上限为上下文的四分之一且不超过 16384。实际模型限制应在平台模型 profile 中配置，不把回退值当作服务商能力。
 - 每轮使用新的 ACP session 与随机工作区；OpenCode 进程按"会话归属 + 启动身份"（可执行文件、模型端点/密钥/参数、指令、MCP/Skill 放行策略的哈希）在 `KeepAliveSeconds` 窗口内保活复用，追问轮次免付进程冷启动，且不跨会话归属共享进程。旧消息按 role/content 序列化为一个嵌入 JSON 资源；当前 query 和平台筛选后的图片作为内容块传入。平台会话主键不变，但不沿用 OpenCode 私有会话或 ACP session/load。历史中的工具结果是上下文数据，不会自动重放执行。
@@ -89,7 +89,8 @@ Runtime 在独立设置页保存 ID、名称、Provider 和单轮时限，存入
     "LogUsageUpdates": false,
     "KeepAliveSeconds": 0,
     "MaxKeptProcesses": 8,
-    "MaxSessionsPerProcess": 64
+    "MaxSessionsPerProcess": 64,
+    "AllowedNativeTools": []
   }
 }
 ```

@@ -55,6 +55,84 @@ public sealed class OpenCodeTests
     }
 
     [OpenCodeFact]
+    public async Task NativeToolWhitelist_ExposesAndExecutesAllowedBashTool()
+    {
+        string? toolResultSeenByModel = null;
+        await using ModelFixture model = await ModelFixture.StartAsync(async (context, request) =>
+        {
+            JsonElement[] messages = request.GetProperty("messages").EnumerateArray().ToArray();
+            JsonElement[] results = messages.Where(message => message.GetProperty("role").GetString() == "tool").ToArray();
+            if (results.Length == 0)
+            {
+                string[] names = request.GetProperty("tools").EnumerateArray()
+                    .Select(tool => tool.GetProperty("function").GetProperty("name").GetString()!).ToArray();
+                // 宿主白名单放行的原生工具进入模型工具列表；未放行的原生工具（如 grep）仍被排除。
+                Assert.Contains("bash", names);
+                Assert.Contains("write", names);
+                Assert.DoesNotContain("grep", names);
+                await ModelFixture.ChunkAsync(context, new
+                {
+                    role = "assistant",
+                    tool_calls = new[] { new { index = 0, id = "bash-1", type = "function", function = new { name = "bash", arguments = "{\"command\":\"echo native-bash-ok\"}" } } }
+                }, "tool_calls");
+            }
+            else
+            {
+                toolResultSeenByModel = results[0].GetRawText();
+                await ModelFixture.TextAsync(context, "bash 已执行");
+            }
+        });
+        await using RuntimeFixture runtime = new(model.Endpoint, settings =>
+        {
+            settings["OpenCode:AllowedNativeTools:0"] = "read";
+            settings["OpenCode:AllowedNativeTools:1"] = "edit";
+            settings["OpenCode:AllowedNativeTools:2"] = "write";
+            settings["OpenCode:AllowedNativeTools:3"] = "bash";
+        });
+        List<AgentStreamEvent> events = await runtime.CollectAsync(runtime.Request);
+        // 原生 bash 真实执行并把输出回传给模型与平台事件流。
+        Assert.NotNull(toolResultSeenByModel);
+        Assert.Contains("native-bash-ok", toolResultSeenByModel);
+        Assert.Equal("bash 已执行", Text(events));
+        AgentStreamEvent result = Assert.Single(events, item => item.Type == AgentStreamEventType.ToolResult);
+        Assert.Equal("bash", result.ToolName);
+        Assert.Contains("native-bash-ok", result.Content);
+        runtime.AssertWorkspacesReleased();
+    }
+
+    [OpenCodeWindowsFact]
+    public async Task NativeBash_ResolvesWindowsCommandNamesWithoutStoreAliasStubs()
+    {
+        await using ModelFixture model = await ModelFixture.StartAsync(async (context, request) =>
+        {
+            JsonElement[] messages = request.GetProperty("messages").EnumerateArray().ToArray();
+            JsonElement[] results = messages.Where(message => message.GetProperty("role").GetString() == "tool").ToArray();
+            if (results.Length == 0)
+            {
+                await ModelFixture.ChunkAsync(context, new
+                {
+                    role = "assistant",
+                    tool_calls = new[] { new { index = 0, id = "resolve-1", type = "function",
+                        function = new { name = "bash", arguments = "{\"command\":\"where.exe ping\"}" } } }
+                }, "tool_calls");
+            }
+            else
+            {
+                await ModelFixture.TextAsync(context, "resolved");
+            }
+        });
+        await using RuntimeFixture runtime = new(model.Endpoint, settings => settings["OpenCode:AllowedNativeTools:0"] = "bash");
+        List<AgentStreamEvent> events = await runtime.CollectAsync(runtime.Request);
+        Assert.Equal("resolved", Text(events));
+        AgentStreamEvent result = Assert.Single(events, item => item.Type == AgentStreamEventType.ToolResult);
+        // PATHEXT 随环境白名单传入：按名解析 ping -> ping.exe 成功而不是"找不到命令"；
+        // PATH 已剔除商店别名目录，解析不落到 WindowsApps 存根。
+        Assert.Contains("ping.exe", result.Content, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("WindowsApps", result.Content, StringComparison.OrdinalIgnoreCase);
+        runtime.AssertWorkspacesReleased();
+    }
+
+    [OpenCodeFact]
     public async Task ToolCall_ExecutesPlatformCallbackAndReturnsItsResultToOpenCode()
     {
         string? invokedArgument = null;
