@@ -81,6 +81,34 @@ public sealed class RuntimeBoundaryTests
     }
 
     [Fact]
+    public void Launch_PassesThroughNodeTlsOverridesOnlyWhenHostSetsThem()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "acp-launch-" + Guid.NewGuid().ToString("N"));
+        string? previous = Environment.GetEnvironmentVariable("NODE_TLS_REJECT_UNAUTHORIZED");
+        try
+        {
+            RuntimeInvocation request = new(new AgentRuntimeProfile
+            {
+                AgentId = "agent",
+                Config = new AgentConfig(),
+                Model = new LlmConfig { ModelId = "chosen", ApiKey = "selected-secret", Endpoint = "https://example.test/v1", ContextTokens = 100000 }
+            }, new TurnContext { TenantId = "tenant", ConversationId = "c", UserId = "u", TraceId = "t" }, "", [new("user", "hello")], []);
+            Environment.SetEnvironmentVariable("NODE_TLS_REJECT_UNAUTHORIZED", null);
+            var withoutOverride = OpenCodeProcess.Create(new OpenCodeLaunchSpec("opencode", ["acp"]), request, [], root);
+            Assert.False(withoutOverride.Environment!.ContainsKey("NODE_TLS_REJECT_UNAUTHORIZED"));
+
+            Environment.SetEnvironmentVariable("NODE_TLS_REJECT_UNAUTHORIZED", "0");
+            var withOverride = OpenCodeProcess.Create(new OpenCodeLaunchSpec("opencode", ["acp"]), request, [], root);
+            Assert.Equal("0", withOverride.Environment!["NODE_TLS_REJECT_UNAUTHORIZED"]);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("NODE_TLS_REJECT_UNAUTHORIZED", previous);
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
     public void Launch_HostAllowedNativeToolsArePermittedWhileOthersStayDenied()
     {
         string root = Path.Combine(Path.GetTempPath(), "acp-launch-" + Guid.NewGuid().ToString("N"));

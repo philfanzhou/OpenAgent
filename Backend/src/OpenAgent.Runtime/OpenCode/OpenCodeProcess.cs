@@ -212,6 +212,15 @@ internal static class OpenCodeProcess
         ["HOME", "USERPROFILE", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME", "OPENCODE_CONFIG_DIR"];
 
     /// <summary>
+    /// 宿主环境透传白名单：PATH/PATHEXT/COMSPEC/SystemRoot/WINDIR 供进程运行——缺 PATHEXT 时
+    /// 按名查找（如 python -> python.exe）失败，Windows PowerShell/where 表现为"命令不存在"。
+    /// Node TLS 覆盖（NODE_TLS_REJECT_UNAUTHORIZED 跳过证书校验、NODE_EXTRA_CA_CERTS 追加
+    /// 自签名 CA）仅在宿主显式设置时透传，用于自签名证书的模型端点；未设置不进入子进程环境。
+    /// </summary>
+    private static readonly string[] HostPassthroughVariables =
+        ["PATH", "PATHEXT", "COMSPEC", "SystemRoot", "WINDIR", "NODE_TLS_REJECT_UNAUTHORIZED", "NODE_EXTRA_CA_CERTS"];
+
+    /// <summary>
     /// 进程复用身份：实际可执行文件、参数与除进程私有状态目录外的受控环境（含模型端点、
     /// 密钥、指令与工具放行策略，含宿主放行的原生工具）完全一致才允许复用；状态目录路径不参与身份。
     /// </summary>
@@ -305,10 +314,8 @@ internal static class OpenCodeProcess
             }
         };
         // 只给子进程环境白名单，不继承服务的数据库口令、云凭据或用户 HOME 配置。
-        // PATHEXT/COMSPEC 与 PATH 同属可执行文件解析的基础变量：缺 PATHEXT 时按名查找
-        // （如 python -> python.exe）失败，Windows PowerShell/where 表现为"命令不存在"。
         Dictionary<string, string> environment = [];
-        foreach (string name in new[] { "PATH", "PATHEXT", "COMSPEC", "SystemRoot", "WINDIR" })
+        foreach (string name in HostPassthroughVariables)
         {
             if (Environment.GetEnvironmentVariable(name) is { } value)
             {
