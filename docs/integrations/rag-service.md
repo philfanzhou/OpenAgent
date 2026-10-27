@@ -1,7 +1,7 @@
 # RAG Service
 
 外部知识检索通过 RAG 服务接入：`RagCapabilitySource` 把检索暴露为 `search_knowledge_base` 工具，由模型自主决定何时检索。
-能力实现、调用链与限制见 [RAG Capability](../modules/capabilities/rag.md)，本文件只记录外部系统侧的接入事实。
+能力实现、调用链与限制见 [RAG Capability](../modules/capabilities.md)，本文件只记录外部系统侧的接入事实。
 
 ## 支持的后端
 

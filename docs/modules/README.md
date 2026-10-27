@@ -1,25 +1,21 @@
 # 功能域索引
 
-本目录按业务域组织 Agent 平台的功能点文档。
+本目录每个业务域一份文档，域内功能点以章节组织。
 
-## 业务域
-
-| 域 | 说明 | 功能点 |
-|----|------|--------|
-| [execution](./execution/) | 执行管线与核心调度 | pipeline, streaming, errors, conversation-lock |
-| [conversation](./conversation/) | 会话记录与存储 | store, context-compression |
-| [engine](./engine/) | 运行时驱动与 Host 适配 | runtime-execution, host/chat-api, host/error-handling |
-| [engine/runtime/](./engine/runtime/) | Engine 运行时管理 | config-management, config-hot-reload, health-check, graceful-shutdown, service-registration, capability-registration |
-| [capabilities](./capabilities/) | 能力集成 | skill, tool-calling, code-execution, mcp, rag |
-| [security](./security/) | 安全与租户 | auth, tenant, permission |
-| [chat-workspace](chat-workspace.md) | Gateway-first Chat 工作台 | chat, diagnostics, admin proxy, validation |
-| [router](router.md) | Router 服务发现、限流与下游就绪 | Redis 索引发现、故障回退、限流降级、ready |
+| 域 | 说明 | 覆盖内容 |
+|----|------|----------|
+| [execution.md](execution.md) | 执行管线与核心调度 | 执行编排、流式输出、统一错误处理 |
+| [conversation.md](conversation.md) | 会话记录与存储 | 持久化与写穿透、交互日志、上下文压缩、会话锁 |
+| [engine.md](engine.md) | 运行时驱动、Host 与运行时管理 | IAgentRuntimeDriver 边界、HTTP/SSE 端点、全局错误处理、配置管理与热更新、健康检查、优雅停机、服务注册 |
+| [capabilities.md](capabilities.md) | 能力集成 | 工具调用、Skill、MCP、RAG、CodeAct 代码执行 |
+| [security.md](security.md) | 安全与租户 | 认证（OIDC/JWT/Basic/API Key）、权限评估、租户校验 |
+| [chat-workspace.md](chat-workspace.md) | Gateway-first Chat 工作台 | 前端架构、Router 接口、开发与安全边界 |
+| [router.md](router.md) | Router 服务发现、限流与就绪 | Redis 索引发现、故障回退、限流降级、ready 探测 |
 
 ## 阅读建议
 
-1. 先看 execution/pipeline 理解主执行链路
-2. 再看 conversation/store 理解会话持久化
-3. 按需查看 engine/ 和 capabilities/ 下的具体能力
-4. security/ 下的中间件文档与 execution/pipeline 配套阅读
-5. chat-workspace 记录浏览器经 Router 访问 Agent 平台的接口与安全边界
-6. router 记录网关对 Redis 与下游 Engine 故障的处理策略
+1. 先看 execution.md 理解主执行链路
+2. 再看 conversation.md 理解会话持久化与压缩
+3. 按需查看 engine.md 和 capabilities.md 中的具体能力
+4. security.md 与 execution.md 配套阅读
+5. chat-workspace.md 记录浏览器经 Router 访问 Agent 平台的接口与安全边界；router.md 记录网关对 Redis 与下游 Engine 故障的处理策略

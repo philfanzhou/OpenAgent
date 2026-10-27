@@ -27,7 +27,7 @@ Engine.ConfigurationService → IAgentConfigProvider → IAgentRuntimeResolver �
 
 ## Limits
 - 配置持久化与 TTL 缓存分别由 Framework 和 Engine 实现，Application 不另建缓存
-- 配置写入、缓存失效与运行时读取约定见 [配置管理链路](../modules/engine/runtime/config-management/DESIGN.md)
+- 配置写入、缓存失效与运行时读取约定见 [配置管理链路](../modules/engine.md)
 - 不依赖 Matrix 内部实现细节
 - 工具发现与调用由 Application 的适配层接入 Capabilities/Security，执行时复核权限
 

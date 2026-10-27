@@ -198,4 +198,4 @@ Engine/Router 使用同一值作为 Authority。已有 Realm 的 Client 地址�
 生产认证使用可配置的 OIDC/OAuth2 身份提供方与 JWT Bearer 校验，验证 issuer、audience、签名和有效期。
 Basic 兼容登录严格限制在 Development；它只解析凭据，不查询用户目录，也不校验真实密码。
 认证只负责建立身份，角色、Agent ACL、能力权限与租户授权由独立的服务端授权层判断。
-详见 [安全设计文档](../modules/security/README.md)。
+详见 [安全设计文档](../modules/security.md)。
