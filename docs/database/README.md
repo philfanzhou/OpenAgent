@@ -18,6 +18,8 @@ PostgreSQL 是当前 OpenAgent 持久化业务数据的唯一事实源；EF Core
 | `openagent.llm_configurations` | LLM 模型连接、ContextTokens、Modality 和服务端加密 Key；主键 `(TenantId, ProfileId)` |
 | `openagent.runtime_configurations` | 独立 Runtime 设置，主键 `(TenantId, RuntimeId)`，JSON 保存名称、类型与单轮时限，不包含资源绑定 |
 | `openagent.mcp_configurations` | 持久化 MCP 定义，主键 `(TenantId, Name)` |
+| `openagent.skill_definitions` | 租户可绑定的 Skill 目录元数据（名称、对象键与包哈希）；不表示某个 Agent 已绑定 |
+| `openagent.third_party_api_keys` | 第三方服务 API Key，租户绑定、服务端加密保存，经授权的集成按租户解析 |
 | `openagent.llm_interaction_logs` | 大模型交互请求/响应审计日志（已脱敏），按会话与轮次 TraceId 检索 |
 
 文件字节生产环境保存在 S3/MinIO，Development 可持久化到本机受限目录；对象存储不保存租户、用户、会话或生命周期事实。Redis 如被部署，保存

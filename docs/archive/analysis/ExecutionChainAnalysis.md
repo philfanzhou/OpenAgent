@@ -1,6 +1,6 @@
 # 执行链路分析（OpenCode 运行时合入后）
 
-分析基线：`dev @ 8799d479`（PR #234 合入后）。性质：现状分析与精简机会盘点，供 [提案评审 A03](../planning/TODO.md) 与 ADR 拆分作输入；本文不改变任何任务状态。协议与配置细节见 [OpenCode 运行时](../integrations/opencode-runtime.md)，分层设计见 [运行时设计](Design.md)。
+分析基线：`dev @ 8799d479`（PR #234 合入后）。性质：现状分析与精简机会盘点，供 [提案评审 A03](../../planning/TODO.md) 与 ADR 拆分作输入；本文不改变任何任务状态。协议与配置细节见 [OpenCode 运行时](../../integrations/opencode-runtime.md)，分层设计见 [运行时设计](../../overview/Design.md)。
 
 ## 1. 结论摘要
 
@@ -9,7 +9,7 @@
 1. **进程链路（部署跳数）**：Docker 形态是 浏览器 → nginx → Router → Engine.Host → OpenCode 子进程（Runner 条件性介入）。其中 Router 在单 Engine 部署下退化为纯转发层：它有价值的能力（限流、幂等、查询缓存、多引擎一致性哈希、会话亲和）只在多 Engine / 对外运营场景成立。官方本地预览已经完全绕开它（`scripts/local-preview.py:91-98` 只起 Engine.Host，前端 `engine` 直连模式）。**这是最大的可压缩点，且是部署/定位决策，不是代码问题。**
 2. **进程内分层（代码链路）**：MAF 推理栈移除后，Engine.Host → AgentExecutor → RuntimeAgentExecutor → RuntimePreparation → `IAgentRuntimeDriver` → OpenCodeRuntime → Acp SDK → OpenCode 的调用序已经是薄层，每层职责可陈述。剩余的"长"来自四类低成本可收口项：双份认证与租户解析、双份 Agent 选择、纯转发层（facade、双层工厂）、请求对象 3~4 次重塑（见 §4）。
 3. **每轮资源链路（per-turn 成本）**：每轮 = 新 OpenCode 子进程 + 随机工作区 + 每轮 loopback MCP 桥（Kestrel）+ 全量历史 JSON 重放 + 会话锁与全量加载/写回。这是链路"重"的真正来源，且是**有意的隔离取舍**（进程不跨轮复用、不依赖 session/load）。压缩它意味着动摇"每轮隔离"承诺，是决策点而非缺陷。
-4. **规划中的链路**：[新架构提案](../architecture/新架构方案.html) 与任务清单 A04–A08（Worker、RunGrant、MCP 网关、事件重放、审批、ChatCompat）为"平台自持分布式推理编排"设计（Control 进程 + Worker 容器 + 队列 + 租约 + 快照）。PR #234 实际落地的是"Engine 进程内直接驱动每轮独立 harness"的短链路，规划链路的核心前提（平台需要跨进程编排有状态推理循环）已部分不成立，应在 A03 重新核定范围，而不是默认全部落地（见 §5 D6）。
+4. **规划中的链路**：[新架构提案](../../architecture/新架构方案.html) 与任务清单 A04–A08（Worker、RunGrant、MCP 网关、事件重放、审批、ChatCompat）为"平台自持分布式推理编排"设计（Control 进程 + Worker 容器 + 队列 + 租约 + 快照）。PR #234 实际落地的是"Engine 进程内直接驱动每轮独立 harness"的短链路，规划链路的核心前提（平台需要跨进程编排有状态推理循环）已部分不成立，应在 A03 重新核定范围，而不是默认全部落地（见 §5 D6）。
 
 同时要明确**不可再减**的部分：OpenCode 每轮无状态，平台是会话、租户授权、文件资产与审计的唯一事实源。身份认证、Agent/模型/Runtime 授权解析、会话锁与持久化、工具授权/预算/审计这些横切职责不会因为运行时外移而消失——链路的下界不是"前端直连 OpenCode"，而是"入口 + 身份 + 授权 + 状态 + 持久化 + 一条驱动通道"。
 

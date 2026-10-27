@@ -1,6 +1,6 @@
 # OpenAgent
 
-OpenAgent 是基于 .NET 10、ASP.NET Core 和 Microsoft Agent Framework 的多服务 Agent 平台，后端位于 `Backend/`，Chat 前端位于 `Frontend/OpenAgent.Chat/`。
+OpenAgent 是基于 .NET 10 和 ASP.NET Core 的多服务 Agent 平台，后端位于 `Backend/`，Chat 前端位于 `Frontend/OpenAgent.Chat/`。
 
 ## 开发入口
 

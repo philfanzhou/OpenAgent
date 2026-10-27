@@ -1,6 +1,6 @@
 # LLM Provider
 
-所有生产模型调用通过 `AgentChatClientFactory` 创建 `IChatClient`，支持 OpenAI Chat Completions、OpenAI Responses 与 Anthropic Messages。
+主推理由 OpenCode 按运行时配置直连选定模型；平台自用模型调用（上下文压缩摘要、交互记录）通过 `AgentChatClientFactory` 创建 `IChatClient`，支持 OpenAI Chat Completions、OpenAI Responses 与 Anthropic Messages。
 
 ## 配置与选择
 
@@ -24,7 +24,7 @@ AgentRequest(agentId, llmProfileId, tenantId)
   -> ILlmConfigProvider
   -> AgentAuthorizationGate
   -> AgentChatClientFactory
-  -> ChatClientAgent
+  -> IChatClient（平台自用：压缩摘要 / 交互记录）
 ```
 
 管理 API 对 API Key 只写不读：GET/PUT 响应均返回空 Key；编辑时空 Key 保留旧值；连接测试按租户和 Profile ID 读取已保存的真实 Key。密钥不得进入前端状态、日志或错误响应。

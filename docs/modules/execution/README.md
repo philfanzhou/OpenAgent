@@ -13,7 +13,7 @@
 
 ## 核心代码位置
 
-- 执行入口：`Backend/src/OpenAgent.Application/Execution/AgentExecutor.cs`
+- 执行入口：`Backend/src/OpenAgent.Application/Execution/RuntimeAgentExecutor.cs`
 - 会话锁实现：`Backend/src/OpenAgent.Application/Conversation/Lock/InMemoryConversationLock.cs`
 - 安全服务：`Backend/src/OpenAgent.Capabilities/Security/`
 - 错误码：`Backend/src/OpenAgent.Contracts/Requests/AgentErrorCode.cs`

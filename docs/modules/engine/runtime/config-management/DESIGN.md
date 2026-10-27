@@ -31,14 +31,14 @@ HTTP + authenticated tenant
 
 ```text
 ChatRequest(agentId, llmProfileId, fileIds)
-  -> AgentExecutor
+  -> RuntimeAgentExecutor
   -> AgentRuntimeResolver
       -> read Agent and LLM independently
       -> Agent / Model authorization
       -> request-scoped AgentRuntimeProfile
   -> FileAssetRequestResolver
-  -> AgentFactory -> model client + history + tools
-  -> AIAgent.Run[Streaming]Async
+  -> RuntimePreparation -> history + tools + MCP/Skill
+  -> IAgentRuntimeDriver（OpenCode ACP）
 ```
 
 Agent 保存指令、轮次、上下文压缩策略及能力绑定；LLM 保存模型连接、ContextTokens、Modality 和加密密钥。执行时才组合两者；LLM 的 ContextTokens 决定有效上下文上限。

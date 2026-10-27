@@ -7,17 +7,16 @@
 
 | Capability | Description |
 |---|---|
-| 配置目录 | MCP Server 独立维护并注册到 Redis，使用 Server 名称作为绑定 ID |
-| Agent 绑定 | Agent 只保存 `EnabledServerIds`；运行时按 ID 从 MCP 注册表解析配置 |
+| 配置目录 | MCP Server 独立维护并持久化到 PostgreSQL 租户注册表（`openagent.mcp_configurations`），使用 Server 名称作为绑定 ID |
+| Agent 绑定 | Agent 只保存 `EnabledServerIds`；运行时按 ID 经 `IMcpConfigRepository` 解析定义 |
 | 运行时透传 | `McpFeatureFactory` 解析出启用中的 server 定义，随 ACP `session/new` 交给 harness 原生连接 |
 | 权限 | 平台只对自有工具做逐调用授权；透传 server 的凭据与限流由 harness 持有 |
-| 连接测试 | `McpConnectionTester` 用官方 `ModelContextProtocol.Core` SDK 探测连通性与工具数 |
-| 故障隔离 | 单服务器连接失败不阻止其他服务器加载 |
+| 故障隔离 | 解析失败或未授权的 server 被跳过，不影响其余 server 透传 |
 
 ## Architecture
 
 ```text
-MCP 配置页 → Redis mcp:registry:{serverId}
+MCP 配置页 → PostgreSQL openagent.mcp_configurations
         │
 AgentConfig.Mcp.EnabledServerIds
         │
@@ -33,5 +32,6 @@ harness 原生连接外部 MCP server
 
 ## Source
 
-- Application: `Backend/src/OpenAgent.Application/Capabilities/Mcp/McpFeatureFactory.cs`, `McpRegistry.cs`, `McpTransportFactory.cs`, `McpConnectionTester.cs`
-- Contracts: `Backend/src/OpenAgent.Contracts/Capabilities/IMcpRegistry.cs`
+- Application: `Backend/src/OpenAgent.Application/Capabilities/Mcp/McpFeatureFactory.cs`
+- Contracts: `Backend/src/OpenAgent.Contracts/Configuration/IMcpConfigRepository.cs`
+- Framework: `Backend/src/OpenAgent.Framework/Configuration/McpConfigRepository.cs`
