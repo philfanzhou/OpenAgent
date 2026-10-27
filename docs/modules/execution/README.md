@@ -6,9 +6,9 @@
 
 | 功能点 | 说明 | 详细文档 |
 |--------|------|----------|
-| pipeline | 执行入口与编排 | [pipeline/](./pipeline/) |
-| streaming | 流式推理输出 | [streaming/](./streaming/) |
-| errors | 统一错误处理与错误码 | [errors/](./errors/) |
+| pipeline | 执行入口与编排 | [pipeline](pipeline.md) |
+| streaming | 流式推理输出 | [streaming](streaming.md) |
+| errors | 统一错误处理与错误码 | [errors](errors.md) |
 | conversation-lock | 分布式会话锁与数据库乐观并发边界 | [conversation-lock.md](./conversation-lock.md) |
 
 ## 核心代码位置

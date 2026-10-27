@@ -50,7 +50,7 @@ scripts/deploy.sh --env-file .env --docker-mode docker
 自定义位置时使用绝对路径 `OPENAGENT_TLS_CERT_DIR`，两套 Compose 传入同一环境文件。
 Keycloak 容器内 HTTPS 端口固定为 `8443`，Router/Engine 仍通过容器网络内 HTTP discovery 访问 Keycloak。
 
-Realm、SPA Client、API audience、`tenant_id` claim 和 Organization 能力由 [openagent-realm.json](../../../deploy/infrastructure/keycloak/realm/openagent-realm.json) 导入；用户、密码、邮箱和租户组织由业务管理员手动维护。
+Realm、SPA Client、API audience、`tenant_id` claim 和 Organization 能力由 [openagent-realm.json](../../deploy/infrastructure/keycloak/realm/openagent-realm.json) 导入；用户、密码、邮箱和租户组织由业务管理员手动维护。
 
 当前仓库没有独立的 User Profile JSON；Realm 导入文件只负责 Realm、Client、Claim Mapper 和 Organization 能力。用户属性与租户组织由业务管理员按实际 Keycloak 策略维护。
 
@@ -70,8 +70,8 @@ docker compose -p openagent-keycloak-infrastructure \
   down -v
 ```
 
-不要对正在运行的其他 Compose 项目执行 `down -v`。基础设施项目由 [deploy/infrastructure/docker-compose.yml](../../../deploy/infrastructure/docker-compose.yml)
-提供，应用代码镜像由 [deploy/openagent/docker-compose.yml](../../../deploy/openagent/docker-compose.yml) 提供。
+不要对正在运行的其他 Compose 项目执行 `down -v`。基础设施项目由 [deploy/infrastructure/docker-compose.yml](../../deploy/infrastructure/docker-compose.yml)
+提供，应用代码镜像由 [deploy/openagent/docker-compose.yml](../../deploy/openagent/docker-compose.yml) 提供。
 
 ## 功能开关
 

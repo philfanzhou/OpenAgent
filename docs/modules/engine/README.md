@@ -6,6 +6,6 @@
 
 | 域 | 说明 | 功能点 |
 |----|------|--------|
-| [runtime-execution/](./runtime-execution/) | 聊天运行时驱动与平台执行协调 | runtime-execution |
-| [host/](./host/) | Host 层（ASP.NET Core 端点、错误处理） | chat-api, error-handling |
-| [runtime/](./runtime/) | Engine 运行时管理（配置、健康检查、停机等） | config-management, config-hot-reload, health-check, graceful-shutdown, service-registration, capability-registration |
+| [runtime-execution](runtime-execution.md) | 聊天运行时驱动与平台执行协调 | runtime-execution |
+| [host](./host/) | Host 层（ASP.NET Core 端点、错误处理） | chat-api, error-handling |
+| [runtime](./runtime/) | Engine 运行时管理（配置、健康检查、停机等） | config-management, config-hot-reload, health-check, graceful-shutdown, service-registration, capability-registration |

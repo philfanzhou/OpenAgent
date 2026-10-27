@@ -1,7 +1,7 @@
 # Tool Calling
 
 工具调用体系是模型与外部能力交互的统一机制。平台把已授权的能力转换为 `RuntimeTool` 交给运行时驱动，
-外部 MCP server 则连同定义透传给 harness 原生连接。运行时边界见 [OpenCode 运行时](../../../integrations/opencode-runtime.md)。
+外部 MCP server 则连同定义透传给 harness 原生连接。运行时边界见 [OpenCode 运行时](../../integrations/opencode-runtime.md)。
 
 ## Core Capabilities
 | Capability | Description |

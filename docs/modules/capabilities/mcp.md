@@ -1,7 +1,7 @@
 # MCP Client
 
 平台维护 MCP server 的配置目录与授权边界；server 的实际连接与工具调用由 harness 经 ACP 透传完成。
-实现边界见 [OpenCode 运行时](../../../integrations/opencode-runtime.md)。
+实现边界见 [OpenCode 运行时](../../integrations/opencode-runtime.md)。
 
 ## Core Capabilities
 

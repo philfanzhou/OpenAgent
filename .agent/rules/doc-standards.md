@@ -41,10 +41,10 @@
 
 ## 2. 文档风格
 
-### 2.1 文件命名
+### 2.1 文件与目录命名
 
-- 功能点目录使用 kebab-case（如 `config-hot-reload`、`tool-calling`）
-- 功能点内的文档使用简短标题式命名（如 `DESIGN.md`、`CONVENTIONS.md`），不再强制 6 件套编号
+- 功能点文档使用 kebab-case 文件名（如 `config-hot-reload.md`、`tool-calling.md`）；只有单个文档的功能点直接放文件，不再建目录
+- 仅当功能点确有多份文档（如 `README.md` + `DESIGN.md`）时才建目录，目录名同样使用 kebab-case；目录内文档使用简短标题式命名，不再强制 6 件套编号
 - 上层目录的 `README.md` 必须作为该目录的导航索引
 
 ### 2.2 内容原则

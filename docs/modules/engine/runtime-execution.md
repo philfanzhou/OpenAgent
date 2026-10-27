@@ -1,8 +1,8 @@
 # 运行时
 
 聊天推理由运行时驱动（`IAgentRuntimeDriver`）执行，平台不再内置 Agent 推理循环。
-Microsoft Agent Framework（MAF）已在 PR #234 移除；实现边界见 [OpenCode 运行时](../../../integrations/opencode-runtime.md)。
-服务与模块归属见 [开发指南](../../../overview/DevelopmentGuide.md)，请求流程见 [执行编排](../../execution/pipeline/README.md)。
+Microsoft Agent Framework（MAF）已在 PR #234 移除；实现边界见 [OpenCode 运行时](../../integrations/opencode-runtime.md)。
+服务与模块归属见 [开发指南](../../overview/DevelopmentGuide.md)，请求流程见 [执行编排](../execution/pipeline.md)。
 
 ## SDK 与平台边界
 
@@ -29,13 +29,13 @@ Microsoft Agent Framework（MAF）已在 PR #234 移除；实现边界见 [OpenC
 
 Mapping 处理 system/user/assistant/tool、函数调用/结果、reasoning、文本及 DataContent。图片/PDF 按二进制内容发送，文本严格按 UTF-8 解码；文件名、扩展名、媒体类型与所有权检查在文件入口执行。不支持的媒体由 Provider 明确报错，不伪造解析结果。
 
-交互捕获与导出边界见 [观测文档](../../../overview/Observability.md)。
+交互捕获与导出边界见 [观测文档](../../overview/Observability.md)。
 
 ## 扩展约束与验证
 
 - 新能力扩展现有驱动/平台接口，不新增并行 Agent 引擎或第二个 composition root。
 - 真实模型、MCP 与 Runner 按环境单独验收，不由单元测试推断生产可用性。
-- 工具 schema、错误与隔离规则见 [工具调用](../../capabilities/tool-calling/README.md)；附件与共享策略见 [文件集成](../../../integrations/README.md)，避免在运行时文档重复维护行为清单。
+- 工具 schema、错误与隔离规则见 [工具调用](../capabilities/tool-calling.md)；附件与共享策略见 [文件集成](../../integrations/README.md)，避免在运行时文档重复维护行为清单。
 
 ## 代码入口
 

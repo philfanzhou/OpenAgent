@@ -42,11 +42,11 @@ Contracts：跨项目的纯接口、配置、DTO 与无 SDK 的能力定义
 | 原需求编号 | 范围 | 详细文档 |
 |---|---|---|
 | R-01 | ACP 推理与数据库中的 Agent/模型配置 | [Engine](../modules/engine/README.md) |
-| R-02 | 请求管线、验证、追踪与审计 | [Pipeline](../modules/execution/pipeline/README.md) |
+| R-02 | 请求管线、验证、追踪与审计 | [Pipeline](../modules/execution/pipeline.md) |
 | R-03～R-06 | Skill、MCP、RAG 与工具调用 | [能力索引](../modules/capabilities/README.md) |
-| R-07 | 会话持久化与独立文件资产 | [会话存储](../modules/conversation/store/README.md)、[文件资产](../integrations/file-assets.md) |
-| R-08 | 流式推理输出 | [Streaming](../modules/execution/streaming/README.md) |
-| R-09 | 错误分类、传播与错误码 | [错误处理](../modules/execution/errors/README.md) |
+| R-07 | 会话持久化与独立文件资产 | [会话存储](../modules/conversation/store.md)、[文件资产](../integrations/file-assets.md) |
+| R-08 | 流式推理输出 | [Streaming](../modules/execution/streaming.md) |
+| R-09 | 错误分类、传播与错误码 | [错误处理](../modules/execution/errors.md) |
 | R-10 | 认证、租户与能力授权 | [安全索引](../modules/security/README.md) |
 
 功能范围不表示全部生产保障已完成；异常重放、压缩恢复、MCP 认证与统一授权的剩余范围见任务清单。HTTP 端点归 Engine.Host/Router，前端归独立 Chat 项目，配置管理归 Engine 及 Host 管理入口。

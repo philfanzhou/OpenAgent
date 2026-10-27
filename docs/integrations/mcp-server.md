@@ -2,7 +2,7 @@
 
 OpenAgent 维护外部 MCP Server 的配置目录与 Agent 绑定关系；server 的实际连接与工具调用由
 harness（OpenCode）经 ACP `session/new` 原生完成，平台不建立外部 MCP 客户端。
-透传模型与安全取舍见 [OpenCode 运行时](opencode-runtime.md)，配置解析见 [MCP Client](../modules/capabilities/mcp/README.md)。
+透传模型与安全取舍见 [OpenCode 运行时](opencode-runtime.md)，配置解析见 [MCP Client](../modules/capabilities/mcp.md)。
 
 ## Core Capabilities
 | Capability | Description |
