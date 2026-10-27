@@ -61,6 +61,11 @@ TestResults/
 .preview/
 .claude/worktrees/
 
+# ── AI 工具会话产物 ──
+
+.zcode/
+artifacts/
+
 # Runner 只通过 systemd/compose 部署，不使用本地 F5 启动配置
 Backend/src/OpenAgent.Runner/Properties/launchSettings.json
 
