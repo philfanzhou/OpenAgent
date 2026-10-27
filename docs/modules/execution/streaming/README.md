@@ -14,10 +14,10 @@
 
 ## Architecture
 ```text
-AgentExecutor.ExecuteStreamingAsync
-  → AIAgent.RunStreamingAsync
-  → ChatClientAgent.RunStreamingAsync
-  → AgentResponseUpdate（驱动原生）
+RuntimeAgentExecutor.ExecuteStreamingAsync
+  → IAgentRuntimeDriver（OpenCode ACP session/update）
+  → AcpEventMapper 合并工具增量、去除桥前缀
+  → AgentStreamEvent
   → assistant chunks / tool markers / usage
 ```
 

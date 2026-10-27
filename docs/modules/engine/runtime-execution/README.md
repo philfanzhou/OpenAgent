@@ -17,10 +17,10 @@ Microsoft Agent Framework（MAF）已在 PR #234 移除；实现边界见 [OpenC
 
 ## 运行与接入
 
-- `AgentExecutor` 是对端点的稳定入口，具体执行由 `RuntimeAgentExecutor` 承担：解析运行配置、准备历史与工具、调用驱动、落库事件。
+- 端点直接注入 `RuntimeAgentExecutor` 作为稳定入口：解析运行配置、准备历史与工具、调用驱动、落库事件。
 - `RuntimeInvocation` 携带本轮的全部输入（配置、轮次上下文、指令、消息、工具、skill、MCP server）；驱动只看到已授权的输入，不暴露协议类型。
 - 平台工具经 `CapabilityToolFactory` 筛选并转换为驱动可调用的工具；`RuntimeTool.InvokeAsync` 绑定本轮身份，Agent 不能在参数中更换租户或用户。
-- 工具并发、超时与结果预算由 `ToolInvocationScope` 统一执行；MCP/Skill 通过 `IAgentFeatureFactory` 贡献定义与待释放资源，Execution 不引用具体能力。
+- 工具独占并发门由 `RuntimePreparationScope` 持有，超时与结果预算由 `IsolatedToolFunction` 包装统一执行；MCP/Skill 通过 `IAgentFeatureFactory` 贡献定义与待释放资源，Execution 不引用具体能力。
 - 平台会话由 `PlatformChatHistory` 加载与写回；自动压缩受 `ConversationStore:EnableAutoCompaction` 控制，默认关闭。
 
 ## Provider 与内容
@@ -41,7 +41,7 @@ Mapping 处理 system/user/assistant/tool、函数调用/结果、reasoning、�
 
 | 路径（Backend/src/OpenAgent.Application/ 下） | 职责 |
 |---|---|
-| Execution/AgentExecutor.cs、RuntimeAgentExecutor.cs | 端点稳定入口与平台执行协调 |
+| Execution/RuntimeAgentExecutor.cs | 端点稳定入口与平台执行协调 |
 | Execution/RuntimePreparation.cs、RuntimePreparationScope.cs | 本轮历史、工具、特性与资源准备 |
 | ModelProviders/AgentChatClientFactory.cs | Provider 与交互记录装饰 |
 | Tooling/Discovery/CapabilityToolFactory.cs | 平台工具适配与授权筛选 |

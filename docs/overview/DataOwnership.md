@@ -15,7 +15,7 @@
 
 | 数据 | 来源 | 用途 |
 |------|------|------|
-| McpServerConfig | Redis `mcp:published:index` + IMcpRegistry (内存注册) | 获取独立 MCP Server 连接配置；不复制到 Agent |
+| McpServerConfig | PostgreSQL `openagent.mcp_configurations`（IMcpConfigRepository） | 获取独立 MCP Server 定义，运行时经 ACP 透传给 harness；不复制到 Agent |
 | RagInstanceConfig | IRagRegistry (内存注册) | 获取 RAG 实例配置 |
 | Agent Skill 文件目录 | S3 兼容对象存储 | ZIP/MD 上传后按解压目录写入文件对象；运行时 materialize 到请求级临时目录，由平台工具读取并交 harness 原生发现 |
 | Skill 目录元数据 | PostgreSQL `SkillDefinitions`；Redis 为派生缓存 | 按租户保存可绑定的 Skill 元数据；不表示某个 Agent 已绑定 |

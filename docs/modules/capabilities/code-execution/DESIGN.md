@@ -9,7 +9,7 @@ Engine.Host 组合 Application 的工具适配与 Capabilities 中的 `CodeCapab
 ## 调用链
 
 ```text
-AgentExecutor → AgentFactory → CapabilityToolFactory → execute_code
+RuntimeAgentExecutor → RuntimePreparation → CapabilityToolFactory → execute_code
   → RunnerClient → authenticated Runner /api/v1/execute
     → BubblewrapCodeExecutor
       ├─ 无会话键: bwrap 一次性进程沙箱 → execute.py（prlimit 包装）

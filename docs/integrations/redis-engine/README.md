@@ -1,6 +1,6 @@
 # Redis 集成（Engine）
 
-Redis 用于可重建缓存、服务注册/心跳、分布式锁，以及尚未迁移的 MCP/RAG 目录。Redis 不拥有 Agent 或 LLM 配置事实。
+Redis 用于可重建缓存、服务注册/心跳、分布式锁，以及尚未迁移的 RAG 目录。Redis 不拥有 Agent 或 LLM 配置事实。
 
 | Key | 用途 | 生命周期 |
 |---|---|---|

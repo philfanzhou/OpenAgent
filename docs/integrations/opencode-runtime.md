@@ -8,8 +8,7 @@
 Backend/src/
   OpenAgent.Contracts/Runtime/IAgentRuntimeDriver.cs  平台输入、事件和工具回调契约
   OpenAgent.Application/Execution/
-    AgentExecutor.cs               既有公开入口
-    RuntimeAgentExecutor.cs        身份/配置/文件/持久化协调
+    RuntimeAgentExecutor.cs        端点稳定入口；身份/配置/文件/持久化协调
     RuntimePreparation.cs          能力、MCP、Skill、历史准备
     RuntimePreparationScope.cs     部分结果和资源生命周期
   OpenAgent.Runtime/               平台适配类库，IsPackable=false；根目录为 harness 无关组件

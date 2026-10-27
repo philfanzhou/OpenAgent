@@ -6,7 +6,7 @@
 | Capability | Description |
 |-----------|-------------|
 | 异常分类 | `AgentException` 携带 `AgentErrorCode`（10 大类 30+ 错误码）|
-| 异常传播 | `AgentExecutor` 不捕获异常，向上传播至 Host 注册的共享 Engine/Hosting 中间件映射 |
+| 异常传播 | `RuntimeAgentExecutor` 不捕获异常，向上传播至 Host 注册的共享 Engine/Hosting 中间件映射 |
 | 工具异常隔离 | 工具返回结构化 `ToolResult`；未捕获异常脱敏后以统一错误信封回传模型，不中断推理循环 |
 | 统一错误信封 | `{"error":"...","code":"...","hint":"...",("timedOut":true)添加于超时,("errorId":"...")添加于脱敏异常}`；code 稳定供程序判别，hint 给模型可行动修正路径 |
 | 工具调用超时 | 单次调用超过 `AgentExecution:ToolCallTimeoutSeconds`（默认 300，≤0 不限时）被主动取消，以带 `timedOut` 标记的错误结果回传模型，会话不中断 |
@@ -15,7 +15,7 @@
 
 ## Architecture
 ```text
-AgentExecutor 层:
+执行层（RuntimeAgentExecutor）:
   不捕获异常；AgentException 与通用 Exception 均向上传播
 
 能力层（CapabilityDefinition.Invoke → Task<ToolResult>）:
@@ -33,11 +33,11 @@ AgentExecutor 层:
   AgentExceptionHandlerMiddleware 捕获异常 → 映射为 HTTP 错误响应（ProblemDetails）
 
 会话写回取消/失败:
-  PlatformChatHistory.DisposeAsync（经 AgentExecutionScope 释放触发）以 CancellationToken.None 写回 partial 消息，状态置为 Cancelled
+  PlatformChatHistory.DisposeAsync（经 RuntimePreparationScope 释放触发）以 CancellationToken.None 写回 partial 消息，状态置为 Cancelled
 ```
 
 ## Current Status
-**Implemented** — 异常分类、工具异常处理、统一错误信封、结果预算截断、写回保障均已落地；异常到 HTTP 的映射由 Host 注册的共享 `AgentExceptionHandlerMiddleware` 承担（`AgentExecutor` 不做转换）。
+**Implemented** — 异常分类、工具异常处理、统一错误信封、结果预算截断、写回保障均已落地；异常到 HTTP 的映射由 Host 注册的共享 `AgentExceptionHandlerMiddleware` 承担（`RuntimeAgentExecutor` 不做转换）。
 
 ## Limits
 - HTTP 状态码映射属宿主层，Application 不负责

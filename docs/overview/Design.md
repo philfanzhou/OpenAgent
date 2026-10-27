@@ -6,7 +6,7 @@
 
 ```text
 Engine.Host HTTP/SSE + 身份/入口治理
-  → Application.AgentExecutor → RuntimeAgentExecutor
+  → Application.RuntimeAgentExecutor（端点直接注入）
       → 授权模型快照 / 文件校验 / PlatformChatHistory
       → RuntimePreparation：能力、MCP、Skill → RuntimeTool 回调
       → Contracts.IAgentRuntimeDriver
