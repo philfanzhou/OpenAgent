@@ -1,6 +1,6 @@
 # OpenCode ACP 聊天运行时
 
-本分支将聊天默认执行入口切换为 OpenCode，依赖独立的 [ACP SDK](acp-dotnet-sdk/README.md)。用户明确选择 OpenCode；仓库不固定 OpenCode 版本，互操作验收以实际安装的二进制为准。实现状态与 PR 顺序只维护在 [任务清单](../planning/TODO.md)，验证事实见 [初次接入记录](../test-reports/2026-10-19-opencode-runtime.md) 与 [独立 Runtime / PostgreSQL 验收](../test-reports/2026-10-21-runtime-postgres.md) 与 [进程保活复用记录](../test-reports/2026-10-21-opencode-keepalive.md)。
+本分支将聊天默认执行入口切换为 OpenCode，依赖独立的 [ACP SDK](acp-dotnet-sdk/README.md)。用户明确选择 OpenCode；仓库不固定 OpenCode 版本，互操作验收以实际安装的二进制为准。实现状态与 PR 顺序只维护在 [任务清单](../planning/TODO.md)，验证事实见实现 PR（#234、#243）。
 
 ## 架构与目录
 
@@ -130,6 +130,6 @@ Linux 可通过 Dockerfile 的独立测试阶段复现相同链路：
 docker build -f Backend/src/OpenAgent.Engine.Host/Dockerfile --target runtime-tests .
 ```
 
-SDK 控制台继续只有 SDK 引用，外部连接入口见 [控制台使用](acp-dotnet-sdk/USAGE.md#opencode)。所有测试事实、镜像验证和未验收范围见 [本轮记录](../test-reports/2026-10-19-opencode-runtime.md)。
+SDK 控制台继续只有 SDK 引用，外部连接入口见 [控制台使用](acp-dotnet-sdk/USAGE.md#opencode)。测试事实、镜像验证与未验收范围以实现 PR #234 的描述为准。
 
 官方参考：[ACP 接入](https://docs.opencode.ai/docs/acp/)、[配置](https://docs.opencode.ai/docs/config/)、[Provider](https://docs.opencode.ai/docs/providers/)、[权限](https://docs.opencode.ai/docs/permissions/)。配置宏的解析顺序曾按 [1.18.35 配置源码](https://github.com/anomalyco/opencode/blob/v1.18.35/packages/opencode/src/config/config.ts)核对（历史验证事实）。官网与二进制随版本演进，验收以实际安装的 OpenCode 二进制为准。

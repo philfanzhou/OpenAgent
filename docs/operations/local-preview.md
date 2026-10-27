@@ -36,4 +36,4 @@ Runtime、模型连接、Agent、Skill 元数据、MCP 定义、会话和消息�
 
 健康报告可能因未部署 Redis 显示 fallback/Degraded；独立的数据库健康项应为 Healthy。前端默认直连 Engine，已有连接偏好可在设置中调整。Router 意图路由不属于本机仅 Engine 的预览。
 
-本机未验证 Linux Runner 沙箱。Skill 脚本和平台代码执行仍需单独配置 Runner；外部 MCP 鉴权头尚未提供配置入口。完整实测与重启验证见 [Runtime 与 PostgreSQL 验收](../test-reports/2026-10-21-runtime-postgres.md)，其他边界见 [运行时说明](../integrations/opencode-runtime.md)。
+本机未验证 Linux Runner 沙箱。Skill 脚本和平台代码执行仍需单独配置 Runner；外部 MCP 鉴权头尚未提供配置入口。完整实测与重启验证随实现 PR #234，其他边界见 [运行时说明](../integrations/opencode-runtime.md)。

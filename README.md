@@ -26,4 +26,3 @@ dotnet test Backend/OpenAgent.sln
 ## 规范与背景
 
 - [编码规范](.agent/rules/coding-conventions.md)、[文档规范](.agent/rules/doc-standards.md)、[AI 工作流](.agent/README.md)。
-- [架构决策](docs/decisions/README.md)、[历史方案](docs/archive/README.md)、[验证记录](docs/test-reports/README.md)。
