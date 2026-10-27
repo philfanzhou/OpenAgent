@@ -46,7 +46,7 @@ OpenCode 的原生工具默认 `* = deny`，仅允许 `openagent_*` 平台桥工
 ## MCP 透传
 
 - Agent 配置启用的外部 MCP server（租户注册表 `EnabledServerIds` 或内联 `Servers`）经租户过滤与逐 server 授权后，直接作为 ACP `session/new` 的 mcpServers 条目交给 OpenCode 原生连接。
-- 平台侧不再建立外部 MCP 客户端：McpClientPool、McpToolFactory、read_mcp_resource 与延迟加载（search_tools/DeferredToolInjector）已删除；平台桥只承载平台自有工具（文件、能力、`read_skill_file`/`run_skill_script`）。
+- 平台侧不再建立外部 MCP 客户端：McpClientPool、McpToolFactory、read_mcp_resource 与延迟加载（search_tools/DeferredToolInjector）已删除；平台桥只承载平台自有工具（文件、能力、`read_skill_file`/`run_skill_script`）。<!-- docguard-allow -->
 - 安全取舍必须知情：透传后外部 server 的凭据（当前配置仅 URL/类型，鉴权头为后续项）由 harness 进程直接持有，逐调用授权、超时与预算不再经过平台；harness 与 server 之间的网络路径也不再受平台管控。
 
 ## Skill 物化
@@ -106,7 +106,7 @@ Runtime 在独立设置页保存 ID、名称、Provider 和单轮时限，存入
 
 ## 兼容组件与后续范围
 
-MAF（Microsoft.Agents.AI 全系包）已在本 PR 移除：PlatformChatHistory 改为显式 Load/Persist 生命周期的普通适配器；跨轮自动压缩已移除：每轮全新 ACP session 下上下文整理由 OpenCode 原生负责（单轮内自压缩并上报 compaction_update），平台仅保留手动压缩端点（分组/摘要策略/审计复用原实现）；上下文提供器为平台抽象。Microsoft.Extensions.AI 仍作为工具（AIFunction）与摘要客户端的底层抽象保留；OpenAI Responses/Anthropic 摘要客户端由 ModelBindingChatClient 绑定模型（原 MAF 的 stored-output 禁用扩展随包移除）。
+MAF（Microsoft.Agents.AI 全系包）已在本 PR 移除：PlatformChatHistory 改为显式 Load/Persist 生命周期的普通适配器；跨轮自动压缩已移除：每轮全新 ACP session 下上下文整理由 OpenCode 原生负责（单轮内自压缩并上报 compaction_update），平台仅保留手动压缩端点（分组/摘要策略/审计复用原实现）；上下文提供器为平台抽象。Microsoft.Extensions.AI 仍作为工具（AIFunction）与摘要客户端的底层抽象保留；OpenAI Responses/Anthropic 摘要客户端由 ModelBindingChatClient 绑定模型（原 MAF 的 stored-output 禁用扩展随包移除）。<!-- docguard-allow -->
 
 OpenCode 内部可能产生标题等辅助模型请求，本轮未采集其底层 HTTP 请求/响应到平台 LLM interaction 表，也不据此伪造 usage。
 

@@ -52,7 +52,7 @@ Capabilities 不依赖 MCP/模型 SDK 或 Application。Application 的 Executio
 
 ### 扩展与生命周期
 
-- 普通工具实现 Contracts 的 `ICapabilitySource`，返回 CapabilityDefinition，在本域注册文件通过 TryAddEnumerable 接入；无需给 AgentFactory 增加具体能力分支。
+- 普通工具实现 Contracts 的 `ICapabilitySource`，返回 CapabilityDefinition，在本域注册文件通过 TryAddEnumerable 接入；执行链不感知具体能力，无需为其增加分支。
 - SDK 工具或上下文 Provider 实现内部 `IAgentFeatureFactory`，每轮返回 AgentFeature，提供工具、常驻工具、Provider、可选准备逻辑及待释放资源。MCP 资源转换与延迟阈值、Skill 临时包与 Provider 各由本域负责。
 - RuntimePreparationScope 在正常结束、失败或取消时释放历史、工具信号量与贡献资源；清理异常不替换原始执行错误。推理/工具迭代由 OpenCode 管理，平台只提供已授权工具回调。历史与 Skill 均由平台自持实现，不执行聊天推理。
 - 跨项目纯契约归 Contracts；SDK 扩展接口在 Application 内保持 internal；跨模块能力接口归 Contracts。源码 namespace/assembly 随所属项目更新，HTTP/JSON、数据库 schema 与迁移 ID 不变。检查 csproj 的 InternalsVisibleTo 后再访问内部类型。

@@ -91,6 +91,18 @@
 | 新增/修改配置项 | 对应集成文档 |
 | 修改数据模型 | `docs/database/` |
 
+### 4.1 删除符号时的文档同步
+
+从代码删除类型、Redis 键或工具命名时：
+
+1. 把该符号加入 `scripts/check-doc-drift.py` 的禁引清单（`FORBIDDEN_WORDS` / `FORBIDDEN_LITERALS`）；
+2. 运行 `python3 scripts/check-doc-drift.py`，修正活文档中的残留引用；
+3. 需要保留「某物已删除」的声明行，行尾加 `<!-- docguard-allow -->` 豁免。
+
+检查范围限活文档（仓库根 README/AGENTS 与 `docs/` 的 overview、modules、integrations、database、operations）；
+archive、test-reports、decisions、planning、architecture 描述历史或规划，不在检查范围。
+CI 的 Documentation drift check job 执行同一脚本。
+
 ---
 
 ## 5. 禁止事项

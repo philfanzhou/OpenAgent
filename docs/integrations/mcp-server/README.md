@@ -27,8 +27,8 @@ harness（OpenCode）原生连接外部 MCP server
 ```
 
 ## Current Status
-**Implemented** — 配置目录、绑定解析与 ACP 透传已落地。平台侧 MCP 客户端（McpClientPool、McpToolFactory、
-`read_mcp_resource`）与 `mcp__{server}__{tool}` 工具名已删除，外部工具由 harness 以原生命名暴露。
+**Implemented** — 配置目录、绑定解析与 ACP 透传已落地。平台侧 MCP 客户端（McpClientPool、McpToolFactory、 <!-- docguard-allow -->
+`read_mcp_resource`）与 `mcp__{server}__{tool}` 工具名已删除，外部工具由 harness 以原生命名暴露。 <!-- docguard-allow -->
 
 ## Limits
 - 当前 server 定义仅 URL/类型，鉴权头为后续项；凭据由 harness 进程直接持有

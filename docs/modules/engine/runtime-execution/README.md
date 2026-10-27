@@ -1,7 +1,7 @@
 # 运行时
 
 聊天推理由运行时驱动（`IAgentRuntimeDriver`）执行，平台不再内置 Agent 推理循环。
-Microsoft Agent Framework（MAF）已在 PR #234 移除；实现边界见 [OpenCode 运行时](../../../integrations/opencode-runtime.md)。
+Microsoft Agent Framework（MAF）已在 PR #234 移除；实现边界见 [OpenCode 运行时](../../../integrations/opencode-runtime.md)。<!-- docguard-allow -->
 服务与模块归属见 [开发指南](../../../overview/DevelopmentGuide.md)，请求流程见 [执行编排](../../execution/pipeline/README.md)。
 
 ## SDK 与平台边界

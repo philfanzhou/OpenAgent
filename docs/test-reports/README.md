@@ -2,6 +2,7 @@
 
 | 文档 | 验证范围 |
 |---|---|
+| [2026-10-27-doc-drift-guard.md](2026-10-27-doc-drift-guard.md) | 文档漂移检查脚本、禁引清单、路径校验与 CI 门禁接入 |
 | [2026-10-21-opencode-keepalive.md](2026-10-21-opencode-keepalive.md) | OpenCode 进程保活池：复用、空闲清扫、会话数上限与追问链路验证 |
 | [2026-10-21-runtime-postgres.md](2026-10-21-runtime-postgres.md) | 独立 Runtime 设置与选择、原生 PostgreSQL/磁盘持久化、真实重启与资源调用验证 |
 | [2026-10-21-opencode-local.md](2026-10-21-opencode-local.md) | 免 Docker 本机运行、真实 OpenCode/智谱模型、前端保存与选模、Skill/MCP 原生调用及完整回归 |

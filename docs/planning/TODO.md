@@ -8,6 +8,7 @@
 - 领取任务时在该项补充“负责人 / 状态（待开发、开发中、待评审、待验证、阻塞） / 实现 PR / 验收证据”；有阻塞需记录原因与依赖 ID。
 - 每项独立 PR；写明拥有目录、共享文件、契约、验证和回退。公共 DTO、Host Program、项目/包引用、数据库模型/迁移及前端 app 由集成人协调。同一文件的迁移先合入共同基线。
 - 后端范围以下以 `Backend/src/OpenAgent.*` 为根，前端以 `Frontend/OpenAgent.Chat/src/` 为根。结构迁移保持协议和行为兼容；功能/schema 变化单独验收及制定回退方案。
+- `Backend/` 内仅含 `.gitkeep` 的占位目录（Application 的 Abstractions/Admission/Events/Grants/Leases/Runs/Sessions，及 Capabilities.Host、Worker.Host、Worker.Tests、Compatibility.Tests）为 A 系列规划占位，按评审意见保留至 A03 重审范围时一并处置；空目录不代表可领取的任务，也不随手删除或填充。
 
 ## 已完成基线
 

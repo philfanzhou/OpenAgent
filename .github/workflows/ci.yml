@@ -90,6 +90,18 @@ jobs:
       - name: Run tests
         run: dotnet test Backend/OpenAgent.sln --configuration Release --no-build --no-restore --nologo --verbosity normal
 
+  docs:
+    name: Documentation drift check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Check docs for deleted symbols and stale paths
+        run: python3 scripts/check-doc-drift.py
+
   frontend:
     name: Frontend build and test
     runs-on: ubuntu-latest
