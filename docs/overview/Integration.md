@@ -14,4 +14,4 @@
 
 ## 联调与故障排查
 
-超时、降级和错误行为统一查阅 [MCP](../modules/capabilities/mcp/README.md)、[工具调用](../modules/capabilities/tool-calling/README.md)、[错误处理](../modules/execution/errors/README.md)、[文件资产](../integrations/file-assets.md) 与 [集成索引](../integrations/README.md)。日志关联方式见 [可观测性](Observability.md)。
+超时、降级和错误行为统一查阅 [MCP](../modules/capabilities.md)、[工具调用](../modules/capabilities.md)、[错误处理](../modules/execution.md)、[文件资产](../integrations/file-assets.md) 与 [集成索引](../integrations/README.md)。日志关联方式见 [可观测性](Observability.md)。

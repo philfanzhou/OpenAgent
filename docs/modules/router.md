@@ -1,6 +1,6 @@
 # Router 服务发现、限流与就绪
 
-Router 使用 Redis Engine 注册索引发现动态实例，并以静态 `RouterSettings:Routing` 作为明确的回退路径。实现位于 `Backend/src/OpenAgent.Router/`；Engine 注册协议见 [service-registration](../engine/runtime/service-registration/)。
+Router 使用 Redis Engine 注册索引发现动态实例，并以静态 `RouterSettings:Routing` 作为明确的回退路径。实现位于 `Backend/src/OpenAgent.Router/`；Engine 注册协议见 [service-registration](engine.md)。
 
 ## 服务发现
 

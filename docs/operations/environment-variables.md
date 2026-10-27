@@ -41,7 +41,7 @@ Engine 与 Router 共用同一套认证（都经 `AddAgentHost` 组合，`Backen
 | `Authentication__ClockSkewSeconds` | `OPENAGENT_AUTH_CLOCK_SKEW_SECONDS` | 否 | `60`（0..300） | JWT 时钟容差，仅用于网络抖动 |
 | `Authentication__Scopes__0..n` | — | 否 | json：`openid,profile,email,organization` | 透传给前端 OIDC 请求 |
 | `Authentication__EnableKeycloak` | `OPENAGENT_AUTH_ENABLE_KEYCLOAK` | 否 | `true` | **仅控制前端是否显示 OIDC 登录入口**（`/api/v1/auth/config`），不影响服务端 JWT 校验 |
-| `Authentication__EnableApiKey` | `OPENAGENT_AUTH_ENABLE_API_KEY` | 否 | `false` | 叠加第三方 API Key 混合模式，见 [认证模块文档](../modules/security/auth/README.md) |
+| `Authentication__EnableApiKey` | `OPENAGENT_AUTH_ENABLE_API_KEY` | 否 | `false` | 叠加第三方 API Key 混合模式，见 [认证模块文档](../modules/security.md) |
 
 **校验规则**（`Backend/src/OpenAgent.Engine/Hosting/Authentication/AgentAuthenticationOptionsValidator.cs`，启动即校验、失败拒绝启动）：
 
@@ -52,7 +52,7 @@ Engine 与 Router 共用同一套认证（都经 `AddAgentHost` 组合，`Backen
 
 ### 3.2 Keycloak 侧需要准备
 
-基础设施 Compose（`deploy/infrastructure/docker-compose.yml`）首次启动自动导入 Realm（`deploy/infrastructure/keycloak/realm/openagent-realm.json`）：Realm `openagent`、公开 SPA Client `openagent-chat`（Authorization Code + PKCE）、audience mapper（把 `openagent-api` 写入 access token）、`tenant_id`/`roles` claim mapper。**用户和租户组织需在管理台手动创建**，且用户属性 `tenant_id` 必须与所属 Organization 一致，否则已登录请求会因缺租户 claim 被拒。完整步骤见 [Keycloak 本地认证集成](../integrations/keycloak/README.md)。
+基础设施 Compose（`deploy/infrastructure/docker-compose.yml`）首次启动自动导入 Realm（`deploy/infrastructure/keycloak/realm/openagent-realm.json`）：Realm `openagent`、公开 SPA Client `openagent-chat`（Authorization Code + PKCE）、audience mapper（把 `openagent-api` 写入 access token）、`tenant_id`/`roles` claim mapper。**用户和租户组织需在管理台手动创建**，且用户属性 `tenant_id` 必须与所属 Organization 一致，否则已登录请求会因缺租户 claim 被拒。完整步骤见 [Keycloak 本地认证集成](../integrations/keycloak.md)。
 
 ### 3.3 最小配置示例
 
@@ -139,7 +139,7 @@ OPENAGENT_AUTH_ALLOW_DEVELOPMENT_ANONYMOUS=false
 | `ConversationCache__ConnectionString` | E | 空 | 专用缓存连接串，优先于 `ConnectionStrings__Redis` |
 | `ConfigurationStore__RedisCacheTtlSeconds` | E | `300` | Agent/LLM 配置的 Redis 缓存 TTL |
 
-Redis 行为细节见 [Redis 集成](../integrations/redis-engine/README.md)。
+Redis 行为细节见 [Redis 集成](../integrations/redis-engine.md)。
 
 ### 5.4 认证（Engine 与 Router 共用）
 
@@ -147,13 +147,13 @@ Redis 行为细节见 [Redis 集成](../integrations/redis-engine/README.md)。
 
 | 变量 | 默认 | 作用 |
 |---|---|---|
-| `Authentication__EnableApiKey` | `false` | 开启后 `Authorization: Bearer` 非 JWT 时按第三方 API Key（数据库 `third_party_api_keys` 表）解析；Router 侧会调 Engine 换取身份，要求 Router 可达 Engine。见 [认证模块文档](../modules/security/auth/README.md) |
+| `Authentication__EnableApiKey` | `false` | 开启后 `Authorization: Bearer` 非 JWT 时按第三方 API Key（数据库 `third_party_api_keys` 表）解析；Router 侧会调 Engine 换取身份，要求 Router 可达 Engine。见 [认证模块文档](../modules/security.md) |
 
 ### 5.5 授权（Engine 能力域）
 
 | 变量 | 默认 | 作用 / 缺失影响 |
 |---|---|---|
-| `Authorization__Mode` | 代码 `AllowAll`；Engine.Host 生产 json `Claims`、Development json `AllowAll` | `Claims`：拒绝未认证、`Admin` 角色全通、按 scope/permissions 匹配；`AllowAll`：全放行。见 [权限文档](../modules/security/permission/README.md) |
+| `Authorization__Mode` | 代码 `AllowAll`；Engine.Host 生产 json `Claims`、Development json `AllowAll` | `Claims`：拒绝未认证、`Admin` 角色全通、按 scope/permissions 匹配；`AllowAll`：全放行。见 [权限文档](../modules/security.md) |
 
 已认证用户访问 `/api/v1/agent`、`/api/v1/admin` 必须携带 `tenant_id`（或 `tid`）claim，缺失即 403；与 `X-Tenant-Id` 头冲突也 403。
 
@@ -373,6 +373,6 @@ Engine 侧调用 Runner（`Backend/src/OpenAgent.Capabilities/Extensions/RunnerS
 ## 9. 相关文档
 
 - [部署指南](deployment.md)：Compose 启动、TLS 证书、数据卷与镜像更新流程
-- [Keycloak 本地认证集成](../integrations/keycloak/README.md)：Realm 导入、用户与租户创建、验证命令
-- [认证模块文档](../modules/security/auth/README.md)：认证方案行为矩阵与源码索引
+- [Keycloak 本地认证集成](../integrations/keycloak.md)：Realm 导入、用户与租户创建、验证命令
+- [认证模块文档](../modules/security.md)：认证方案行为矩阵与源码索引
 - [Runner 部署](../integrations/code-runner.md)、[文件资产](../integrations/file-assets.md)、[OpenCode 运行时](../integrations/opencode-runtime.md)、[可观测性](../overview/Observability.md)
