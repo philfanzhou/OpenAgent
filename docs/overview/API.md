@@ -1,7 +1,6 @@
 # HTTP API 规范
 
-本文是全平台 HTTP API 的唯一规范：所有新端点必须遵循。历史决策见
-[ADR-0004](../decisions/0004-Unified-API-Style-Minimal-Api-ProblemDetails.md)。
+本文是全平台 HTTP API 的唯一规范：所有新端点必须遵循。
 
 ## 总则
 
