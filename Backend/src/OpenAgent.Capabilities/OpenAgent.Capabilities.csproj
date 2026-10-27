@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
-    <ProjectReference Include="..\OpenAgent.Contracts\OpenAgent.Contracts.csproj" />
+    <ProjectReference Include="../OpenAgent.Contracts/OpenAgent.Contracts.csproj" />
     <PackageReference Include="SixLabors.ImageSharp" />
   </ItemGroup>
   <ItemGroup>

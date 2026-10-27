@@ -44,7 +44,7 @@ Backend/src/
 
 - 当前待办与分派：[任务清单](docs/planning/TODO.md)；历史方案不作为当前任务状态。
 - 模块入口、任务分派、代码审查与验证：[开发指南](docs/overview/DevelopmentGuide.md)。
-- Application 按功能域组织；新增能力通过 Tooling 的 ICapabilitySource / IAgentFeatureFactory 接入，Execution 不引用具体能力实现。
+- Application 按功能域组织；新增能力通过 Tooling 的 ICapabilitySource / IAgentFeatureFactory 接入，Execution 不引用具体能力实现（仅 Files 请求 DTO 与 Security 授权类型可直接来自 Capabilities，与 Architecture.Tests 白名单一致）。
 - 各模块修改自己的 Extensions 注册文件；Exten/ApplicationServiceExtensions 保留公开组合入口。
 - 前端 feature 只依赖本域和 shared，跨域设置由 app 组合；新模块不引用根兼容 facade。
 - 后端模块依赖与前端 import 依赖已有测试门禁；不要通过扩大白名单绕过架构问题。
