@@ -5,7 +5,8 @@
 ## 启动与更新
 
 目录与迁移说明见 [部署目录](../../deploy/README.md)，共享变量模板见
-[deployment.env.example](../../deploy/deployment.env.example)。已有部署必须保留原来的 Compose 项目名和数据卷。
+[deployment.env.example](../../deploy/deployment.env.example)，全部变量与必填项说明见
+[环境变量指南](environment-variables.md)。已有部署必须保留原来的 Compose 项目名和数据卷。
 
 基础设施和实际代码镜像分开部署。基础设施 Compose 同时包含 PostgreSQL、Redis、MinIO 和 Keycloak；它只需要首次启动或基础设施变更时操作，数据卷不会随着应用镜像重复构建而被重建：
 
