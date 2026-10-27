@@ -10,8 +10,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\OpenAgent.Contracts\OpenAgent.Contracts.csproj" />
-    <ProjectReference Include="..\OpenAgent.Engine\OpenAgent.Engine.csproj" />
+    <ProjectReference Include="../OpenAgent.Contracts/OpenAgent.Contracts.csproj" />
+    <ProjectReference Include="../OpenAgent.Engine/OpenAgent.Engine.csproj" />
   </ItemGroup>
 
 </Project>
