@@ -10,7 +10,7 @@
 | [总览索引](overview/README.md) | 系统上下文、运行时设计、关键流程、API 与可观测性 |
 | [规划索引](planning/README.md) | 任务清单、历史方案与开发指南入口 |
 | [系统上下文](overview/SystemContext.md) → [运行时设计](overview/Design.md) → [关键流程](overview/KeyFlows.md) | 当前服务、执行链与边界 |
-| [运维文档](operations/README.md)：[部署指南](operations/deployment.md) | 本地启动、认证、环境变量、数据卷与镜像更新 |
+| [运维文档](operations/README.md)：[部署指南](operations/deployment.md)、[环境变量指南](operations/environment-variables.md) | 本地启动、认证、环境变量、数据卷与镜像更新 |
 | [架构方案](architecture/README.md) | 目录结构图与提案 |
 
 ## 按工作内容查阅
