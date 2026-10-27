@@ -1,5 +1,7 @@
 # ADR-0004：统一 API 风格（Minimal API + TypedResults）与 ProblemDetails 错误契约
 
+日期：2026-09-21
+
 ## 状态
 
 已决策，第一版已实现。

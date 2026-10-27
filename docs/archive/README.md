@@ -11,6 +11,13 @@
 | [工具设计调研与改造](plans/2026-09-22-tool-design-gap-analysis-and-redesign.md) | 工具层方案比较与阶段实施记录 |
 | [健康检查规格](specs/2026-08-12-platform-health-check-design.md)、[实施计划](plans/2026-08-12-platform-health-check.md) | 2026-08 的健康检查设计与实施步骤 |
 
+## 执行链路分析（快照基线）
+
+| 记录 | 背景 |
+|---|---|
+| [执行链路分析](analysis/ExecutionChainAnalysis.md) | dev@8799d479（PR #234 合入后）的逐跳判定与 D1–D6 决策点输入 |
+| [执行域精简盘点](analysis/ExecutionSimplification.md) | 类/方法级的删除与合并清单，头部注记 2026-10-21 的落地状态 |
+
 ## 已整合的项目级旧文档
 
 | 记录 | 当前入口 |

@@ -67,13 +67,15 @@ Backend/src/
 | 目录 | 内容 |
 |------|------|
 | `docs/overview/` | 系统上下文、设计、流程、数据所有权 |
-| `docs/modules/` | 功能域详细文档（execution、conversation、capabilities、security、engine） |
+| `docs/modules/` | 功能域详细文档（execution、conversation、capabilities、security、engine、router、chat-workspace） |
 | `docs/integrations/` | 外部依赖集成（LLM、Redis、PostgreSQL、MCP、RAG） |
 | `docs/database/` | 数据存储唯一事实源 |
 | `docs/decisions/` | 架构决策（ADR） |
 | `docs/planning/TODO.md` | 当前任务、状态、依赖与验收的唯一入口 |
 | `docs/archive/` | 历史方案与已整合的旧文档 |
 | `docs/test-reports/` | 实测结果与验证记录 |
+| `docs/operations/` | 部署、本地预览与排障 |
+| `docs/architecture/` | 架构方案提案（HTML） |
 
 ## 关键约定
 
