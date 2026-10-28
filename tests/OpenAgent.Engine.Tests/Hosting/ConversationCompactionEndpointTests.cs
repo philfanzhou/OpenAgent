@@ -1,0 +1,141 @@
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.DependencyInjection;
+using Moq;
+using OpenAgent.Contracts.Conversation;
+using OpenAgent.Contracts.Security;
+using OpenAgent.Engine.Host.Extensions;
+using OpenAgent.Engine.Host.Middleware;
+using Xunit;
+
+namespace OpenAgent.Engine.Tests.Hosting;
+
+public sealed class ConversationCompactionEndpointTests
+{
+    [Fact]
+    public async Task Delete_WithoutLlmProfileQuery_DeletesOwnedConversation()
+    {
+        var query = new Mock<IConversationQueryService>();
+        query.Setup(value => value.GetRecordAsync("tenant-1", "conversation-1", Moq.It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ConversationRecord
+            {
+                ConversationId = "conversation-1", TenantId = "tenant-1",
+                UserId = "user-1", AgentId = "agent-1", Type = ConversationType.User
+            });
+        query.Setup(value => value.SoftDeleteAsync("tenant-1", "conversation-1", Moq.It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        WebApplicationBuilder builder = WebApplication.CreateBuilder();
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
+        builder.Services.AddSingleton(query.Object);
+        builder.Services.AddSingleton(new Moq.Mock<IConversationCompactionService>().Object);
+        await using WebApplication app = builder.Build();
+        app.Use(async (context, next) =>
+        {
+            context.Features.Set(CreateContext("tenant-1", "user-1").Features.Get<AgentRequestFeature>());
+            await next(context);
+        });
+        app.MapGroup("/api/v1/agent").MapConversations();
+        await app.StartAsync();
+        using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
+        using HttpResponseMessage response = await client.DeleteAsync("/api/v1/agent/conversations/conversation-1");
+        Assert.Equal(System.Net.HttpStatusCode.NoContent, response.StatusCode);
+        query.Verify(value => value.SoftDeleteAsync("tenant-1", "conversation-1", Moq.It.IsAny<CancellationToken>()), Moq.Times.Once);
+    }
+
+    [Theory]
+    [InlineData("tenant-1", "user-1", "tenant-1", "user-1", StatusCodes.Status200OK, 1)]
+    [InlineData("tenant-1", "user-2", "tenant-1", "user-1", StatusCodes.Status403Forbidden, 0)]
+    [InlineData("tenant-1", "user-1", "tenant-2", "user-1", StatusCodes.Status403Forbidden, 0)]
+    public async Task CompactAsync_OwnershipScope_EnforcesUserAndTenant(
+        string requestTenant,
+        string requestUser,
+        string recordTenant,
+        string recordUser,
+        int expectedStatus,
+        int expectedCalls)
+    {
+        var query = new QueryService(new ConversationRecord
+        {
+            ConversationId = "conversation-1",
+            TenantId = recordTenant,
+            UserId = recordUser,
+            AgentId = "agent-1"
+        });
+        var compaction = new CompactionService();
+        DefaultHttpContext context = CreateContext(requestTenant, requestUser);
+
+        Results<Ok<ContextSummary>, NotFound, ForbidHttpResult> result = await ConversationEndpointExtensions.CompactAsync(
+            query,
+            compaction,
+            context,
+            "conversation-1",
+            "profile-1",
+            CancellationToken.None);
+
+        int? status = result.Result is ForbidHttpResult
+            ? StatusCodes.Status403Forbidden
+            : Assert.IsAssignableFrom<IStatusCodeHttpResult>(result.Result).StatusCode;
+        Assert.Equal(expectedStatus, status);
+        Assert.Equal(expectedCalls, compaction.Calls);
+    }
+
+    private static DefaultHttpContext CreateContext(string tenantId, string userId)
+    {
+        var context = new DefaultHttpContext();
+        context.Features.Set(new AgentRequestFeature(
+            "trace-1",
+            new AgentUserContext
+            {
+                TenantId = tenantId,
+                UserId = userId,
+                IsAuthenticated = true
+            }));
+        return context;
+    }
+
+    private sealed class CompactionService : IConversationCompactionService
+    {
+        public int Calls { get; private set; }
+
+        public Task<ContextSummary> CompactAsync(
+            string tenantId,
+            string conversationId,
+            string llmProfileId,
+            IAgentUserContext user,
+            string? traceId = null,
+            CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            return Task.FromResult(new ContextSummary
+            {
+                CompressionId = "compression-1",
+                Strategy = "summarization",
+                Trigger = "Manual",
+                Status = "Succeeded"
+            });
+        }
+    }
+
+    private sealed class QueryService(ConversationRecord record) : IConversationQueryService
+    {
+        public Task<ConversationRecord?> GetRecordAsync(
+            string tenantId,
+            string conversationId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<ConversationRecord?>(record);
+
+        public Task<IReadOnlyList<ConversationRecord>> ListConversationsAsync(
+            string tenantId, int skip, int take, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<ConversationRecord>>([]);
+
+        public Task<IReadOnlyList<ConversationRecord>> SearchConversationsAsync(
+            string tenantId, string keyword, int skip, int take, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<ConversationRecord>>([]);
+
+        public Task<bool> SoftDeleteAsync(
+            string tenantId, string conversationId, CancellationToken cancellationToken = default) =>
+            Task.FromResult(false);
+    }
+}

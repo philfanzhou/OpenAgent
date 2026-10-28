@@ -1,0 +1,64 @@
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 测试框架 -->
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.10.0" />
+    <PackageVersion Include="xunit" Version="2.9.0" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageVersion Include="Moq" Version="4.20.70" />
+    <PackageVersion Include="coverlet.collector" Version="6.0.2" />
+    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="8.0.16" />
+
+    <!-- 基础设施 -->
+    <PackageVersion Include="AWSSDK.S3" Version="4.0.102" />
+    <PackageVersion Include="SixLabors.ImageSharp" Version="3.1.12" />
+    <PackageVersion Include="StackExchange.Redis" Version="2.9.11" />
+    <PackageVersion Include="Microsoft.Data.Sqlite" Version="8.0.29" />
+    <PackageVersion Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.12" />
+    <PackageVersion Include="Microsoft.Data.SqlClient" Version="5.2.2" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.11" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.InMemory" Version="8.0.11" />
+    <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.11" />
+    <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.16" />
+    <PackageVersion Include="Swashbuckle.AspNetCore" Version="6.6.2" />
+
+    <!-- Microsoft.Extensions -->
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="8.0.2" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration" Version="8.0.0" />
+    <PackageVersion Include="System.Net.Http.Json" Version="8.0.1" />
+    <PackageVersion Include="System.Text.Json" Version="10.0.9" />
+    <PackageVersion Include="System.Text.Encodings.Web" Version="10.0.9" />
+
+    <!-- AI / LLM -->
+    <PackageVersion Include="Microsoft.Agents.AI" Version="1.14.0" />
+    <PackageVersion Include="Microsoft.Agents.AI.Anthropic" Version="1.14.0-preview.260721.1" />
+    <PackageVersion Include="Microsoft.Agents.AI.OpenAI" Version="1.14.0" />
+    <PackageVersion Include="Microsoft.Extensions.AI" Version="10.7.0" />
+    <PackageVersion Include="Microsoft.Extensions.AI.OpenAI" Version="10.7.0" />
+    <PackageVersion Include="OpenAI" Version="2.11.0" />
+    <PackageVersion Include="ModelContextProtocol.Core" Version="1.4.1" />
+    <!-- 仅测试使用：进程内起真实 MCP 服务端做端到端复现 -->
+    <PackageVersion Include="ModelContextProtocol" Version="1.4.1" />
+    <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="1.4.1" />
+
+    <!-- OpenTelemetry -->
+    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.15.3" />
+    <PackageVersion Include="OpenTelemetry.Exporter.Prometheus.AspNetCore" Version="1.16.0-beta.1" />
+    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.15.3" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.15.2" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.15.1" />
+
+    <!-- 反向代理 / 路由 -->
+    <PackageVersion Include="Yarp.ReverseProxy" Version="2.1.0" />
+    <PackageVersion Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="8.0.0" />
+
+    <!-- Serilog -->
+    <PackageVersion Include="Serilog.AspNetCore" Version="8.0.0" />
+    <PackageVersion Include="Serilog.Settings.Configuration" Version="8.0.0" />
+    <PackageVersion Include="Serilog.Sinks.Console" Version="6.0.0" />
+  </ItemGroup>
+</Project>

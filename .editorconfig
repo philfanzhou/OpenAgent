@@ -1,0 +1,29 @@
+# OpenAgent — .editorconfig
+# 只保留"影响一致性/防 bug"的规则，风格偏好交给代码审查和 IDE 默认值。
+
+root = true
+
+[*]
+indent_style = space
+indent_size = 4
+end_of_line = lf
+charset = utf-8
+trim_trailing_whitespace = true
+insert_final_newline = true
+
+[*.cs]
+# 文件作用域命名空间（现代 C# 默认）
+csharp_style_namespace_declarations = file_scoped:warning
+
+# 必须写访问修饰符（避免忘记 internal/public）
+dotnet_style_require_accessibility_modifiers = always:warning
+
+# 禁止单行语句（if(x) y;）
+csharp_preserve_single_line_statements = false
+
+# 修饰符顺序统一
+csharp_preferred_modifier_order = public,private,protected,internal,file,static,extern,new,virtual,abstract,override,sealed,unsafe,volatile,async:warning
+
+# using 排序
+dotnet_sort_system_directives_first = true
+dotnet_separate_import_directive_groups = false

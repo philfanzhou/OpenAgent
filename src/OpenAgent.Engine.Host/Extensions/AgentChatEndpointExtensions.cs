@@ -1,0 +1,89 @@
+using Microsoft.AspNetCore.Mvc;
+using OpenAgent.Contracts.Requests;
+using OpenAgent.Core.Runtime.Agent;
+using OpenAgent.Engine.Host.Middleware;
+
+namespace OpenAgent.Engine.Host.Extensions;
+
+internal static class AgentChatEndpointExtensions
+{
+    // Set to false to restore stateless intent recognition without changing the Provider contract.
+    private const bool PersistIntentConversations = true;
+
+    internal static void MapAgentChat(this RouteGroupBuilder group)
+    {
+        group.MapPost("/chat", ExecuteAsync)
+            .WithName("Chat")
+            .WithTags("Agent");
+
+        group.MapPost("/chat/intent", ExecuteIntentAsync)
+            .WithName("IntentRecognition")
+            .WithTags("Agent");
+
+        group.MapPost("/chat/stream", ExecuteStreamAsync)
+            .WithName("ChatStream")
+            .WithTags("Agent");
+
+    }
+
+    private static async Task<ChatResponse> ExecuteAsync(
+        [FromBody] ChatRequest request,
+        [FromServices] AgentExecutor executor,
+        HttpContext context,
+        CancellationToken cancellationToken)
+    {
+        AgentRequest executionRequest = AgentEndpointRequestMapper.CreateAgentRequest(request, context);
+        AgentResponse response = await executor.ExecuteAsync(
+            executionRequest,
+            context.GetAgentRequest().User,
+            cancellationToken).ConfigureAwait(false);
+        return new ChatResponse
+        {
+            Message = response.Content,
+            Usage = response.TokenUsage,
+            ModelId = response.ModelId
+        };
+    }
+
+    private static async Task<ChatResponse> ExecuteIntentAsync(
+        [FromBody] ChatRequest request,
+        [FromServices] AgentExecutor executor,
+        HttpContext context,
+        CancellationToken cancellationToken)
+    {
+        AgentRequest executionRequest = AgentEndpointRequestMapper.CreateAgentRequest(
+            request,
+            context,
+            createConversation: PersistIntentConversations);
+        AgentResponse response = await executor.ExecuteAsync(
+            executionRequest,
+            context.GetAgentRequest().User,
+            cancellationToken).ConfigureAwait(false);
+        return new ChatResponse
+        {
+            Message = response.Content,
+            Usage = response.TokenUsage,
+            ModelId = response.ModelId
+        };
+    }
+
+    private static async Task ExecuteStreamAsync(
+        [FromBody] ChatRequest request,
+        [FromServices] AgentExecutor executor,
+        [FromServices] ILogger<Program> logger,
+        HttpContext context,
+        CancellationToken cancellationToken)
+    {
+        AgentRequest executionRequest = AgentEndpointRequestMapper.CreateAgentRequest(request, context);
+        await AgentStreamWriter.WriteSseStreamAsync(
+            context,
+            executor.ExecuteStreamingAsync(
+                executionRequest,
+                context.GetAgentRequest().User,
+                cancellationToken),
+            executionRequest.TraceId!,
+            executionRequest.ConversationId!,
+            logger,
+            cancellationToken).ConfigureAwait(false);
+    }
+}

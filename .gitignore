@@ -1,0 +1,90 @@
+# ── .NET / Visual Studio ──
+
+## Build results
+[Dd]ebug/
+[Rr]elease/
+x64/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+## Visual Studio
+.vs/
+*.sln.ide/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.userprefs
+
+## Visual Studio Code
+.vscode/
+*.code-workspace
+
+## JetBrains Rider
+.idea/
+*.sln.iml
+
+## NuGet
+*.nupkg
+
+# ── Environment ──
+
+.env
+.env.*
+!.env.example
+appsettings.*.json
+!appsettings.json
+!appsettings.Development.json
+
+# ── SQLite ──
+
+*.db-shm/
+*.db-wal/
+
+# ── Test results ──
+
+TestResults/
+*.trx
+*.coverage
+*.coveragexml
+
+# ── 并行预览 ──
+
+.preview/
+.claude/worktrees/
+
+# ── Nginx TLS 私钥 ──
+
+**/certs/*
+!**/certs/.gitkeep
+*.pem
+*.key
+*.pfx
+*.p12
+
+# ── Misc ──
+
+dist/
+
+*.bak
+*.cache
+*.DS_Store
+*.DotSettings.user
+*.swp
+*~
+*.tmp
+*.tmp_proj
+*.ncxb
+Thumbs.db
+
+# Python bytecode (Runner sandbox scripts)
+__pycache__/
+*.pyc

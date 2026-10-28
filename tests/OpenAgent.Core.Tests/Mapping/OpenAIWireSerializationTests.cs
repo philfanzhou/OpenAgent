@@ -1,0 +1,215 @@
+using System.ClientModel.Primitives;
+using System.ClientModel;
+using System.Net;
+using System.Text.Json;
+using System.Text;
+using MEAChatMessage = Microsoft.Extensions.AI.ChatMessage;
+using MEAChatRole = Microsoft.Extensions.AI.ChatRole;
+using Microsoft.Extensions.AI;
+using OpenAI;
+using OpenAgent.Contracts.Conversation;
+using OpenAgent.Core.Mapping;
+using OpenAgent.Core.ModelProviders;
+using Xunit;
+
+namespace OpenAgent.Core.Tests.Runtime;
+
+/// <summary>
+/// Captures the exact wire JSON the real OpenAI SDK serializes for our message
+/// shapes, so provider-side 400s can be diagnosed without touching product code.
+/// </summary>
+public class OpenAIWireSerializationTests
+{
+    [Fact]
+    public async Task FollowupRequest_KimiStyleColonCallId_SerializesPairedToolExchange()
+    {
+        // Reproduces the failing production shape: stored turn-1 history (underscore
+        // ids, rebuilt through FromStored), a fresh user message, then the FICC-appended
+        // assistant tool call + tool result with Kimi's colon-style id.
+        CaptureHandler capture = new();
+        using IChatClient client = CreateClient(capture);
+        List<MEAChatMessage> messages =
+        [
+            .. CreateStoredTurnHistory(),
+            AgentMessageAdapter.CreateUser("看看这个文件", []),
+            new MEAChatMessage(MEAChatRole.Assistant,
+            [
+                new TextReasoningContent("thinking about it"),
+                new FunctionCallContent("read_file:0", "read_file",
+                    new Dictionary<string, object?> { ["fileId"] = "f-1" })
+            ]),
+            new MEAChatMessage(MEAChatRole.Tool,
+                [new FunctionResultContent("read_file:0", "error: not a text file")])
+        ];
+
+        await client.GetResponseAsync(messages);
+
+        Assert.NotNull(capture.RequestBody);
+        using JsonDocument document = JsonDocument.Parse(capture.RequestBody);
+        List<JsonElement> sent = document.RootElement
+            .GetProperty("messages")
+            .EnumerateArray()
+            .ToList();
+
+        // The last serialized assistant tool_call must be the fresh colon-id call.
+        int callIndex = -1;
+        string? callId = null;
+        for (int index = 0; index < sent.Count; index++)
+        {
+            if (!sent[index].TryGetProperty("tool_calls", out JsonElement toolCalls))
+            {
+                continue;
+            }
+            foreach (JsonElement toolCall in toolCalls.EnumerateArray())
+            {
+                callIndex = index;
+                callId = toolCall.GetProperty("id").GetString();
+            }
+        }
+
+        Assert.Equal("read_file:0", callId);
+        bool paired = sent.Skip(callIndex + 1)
+            .Any(message => message.TryGetProperty("tool_call_id", out JsonElement toolCallId)
+                && toolCallId.GetString() == callId);
+        Assert.True(paired, "The serialized request must answer read_file:0 with a tool message.");
+    }
+
+    [Fact]
+    public async Task FollowupRequest_EmptyToolArguments_SerializedAsEmptyObject()
+    {
+        // 模型对无参调用会下发 "arguments":""（或缺省），解析后 Arguments 为 null；
+        // 直接序列化会得到 "arguments":"null" 被严格网关拒绝。出站必须规格化为 {}。
+        CaptureHandler capture = new();
+        using IChatClient client = CreateClient(capture);
+        await client.GetResponseAsync(
+        [
+            new MEAChatMessage(MEAChatRole.User, "撤销分享链接"),
+            new MEAChatMessage(MEAChatRole.Assistant,
+                [new FunctionCallContent("call-1", "revoke_share_link", null)]),
+            new MEAChatMessage(MEAChatRole.Tool,
+                [new FunctionResultContent("call-1", "error: shareId required")]),
+        ]);
+
+        Assert.NotNull(capture.RequestBody);
+        string? arguments = JsonDocument.Parse(capture.RequestBody!)
+            .RootElement.GetProperty("messages")
+            .EnumerateArray()
+            .Where(message => message.TryGetProperty("tool_calls", out _))
+            .SelectMany(message => message.GetProperty("tool_calls").EnumerateArray())
+            .Select(call => call.GetProperty("function").GetProperty("arguments").GetString())
+            .FirstOrDefault();
+        Assert.Equal("{}", arguments);
+    }
+
+    private static IEnumerable<MEAChatMessage> CreateStoredTurnHistory()
+    {
+        List<ConversationMessage> rows = [CreateRow("user", "hi", null, null, null)];
+        for (int index = 0; index < 4; index++)
+        {
+            string callId = $"read_file_{index}";
+            rows.Add(CreateRow(
+                "assistant", string.Empty, callId, "read_file",
+                new ConversationMessageMetadata
+                {
+                    ToolArguments = JsonSerializer.Serialize(
+                        new Dictionary<string, object?> { ["fileId"] = "f-1" })
+                }));
+            rows.Add(CreateRow("tool", "file body", callId, null, null));
+        }
+        rows.Add(CreateRow("assistant", "done describing the file", null, null, null));
+
+        return rows.Select(row => AgentMessageAdapter.FromStored(row))
+            .Where(message => message != null)
+            .Select(message => message!);
+    }
+
+    private static ConversationMessage CreateRow(
+        string role,
+        string content,
+        string? toolCallId,
+        string? toolName,
+        ConversationMessageMetadata? metadata) => new()
+    {
+        MessageId = Guid.NewGuid().ToString("N"),
+        Sequence = 0,
+        Role = role,
+        Content = content,
+        ToolCallId = toolCallId,
+        ToolName = toolName,
+        Metadata = metadata
+    };
+
+    [Fact]
+    public async Task FollowupRequest_EmptyToolResult_SerializedWithPlaceholderContent()
+    {
+        // 空工具结果直接上 wire 会得到 "content":""，严格网关（Moonshot/Kimi、Anthropic
+        // 空 tool_result）会拒绝；出站必须替换为占位符。
+        CaptureHandler capture = new();
+        using IChatClient client = CreateClient(capture);
+        await client.GetResponseAsync(
+        [
+            new MEAChatMessage(MEAChatRole.User, "执行清理"),
+            new MEAChatMessage(MEAChatRole.Assistant,
+                [new FunctionCallContent("call-1", "cleanup", null)]),
+            new MEAChatMessage(MEAChatRole.Tool,
+                [new FunctionResultContent("call-1", string.Empty)]),
+        ]);
+
+        Assert.NotNull(capture.RequestBody);
+        string? toolContent = JsonDocument.Parse(capture.RequestBody!)
+            .RootElement.GetProperty("messages")
+            .EnumerateArray()
+            .Where(message => message.TryGetProperty("tool_call_id", out _))
+            .Select(message => message.GetProperty("content").GetString())
+            .FirstOrDefault();
+        Assert.Equal(AgentMessageAdapter.EmptyToolResultPlaceholder, toolContent);
+    }
+
+    private static IChatClient CreateClient(CaptureHandler capture)
+    {
+        // Mirrors the outbound normalization layer of AgentChatClientFactory.Create,
+        // swapping only the transport so the outgoing payload can be captured.
+        var options = new OpenAIClientOptions
+        {
+            Endpoint = new Uri("http://localhost/v1"),
+            Transport = new HttpClientPipelineTransport(new HttpClient(capture))
+        };
+        return new OpenAIClient(new ApiKeyCredential("test-key"), options)
+            .GetChatClient("kimi-k2.6")
+            .AsIChatClient()
+            .AsBuilder()
+            .Use(static (messages, options, next, cancellationToken) =>
+                next(
+                    AgentMessageAdapter.NormalizeOutbound(messages),
+                    options,
+                    cancellationToken))
+            .Build();
+    }
+
+    private sealed class CaptureHandler : HttpMessageHandler
+    {
+        public string? RequestBody { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            if (request.Content != null)
+            {
+                RequestBody = await request.Content.ReadAsStringAsync(cancellationToken);
+            }
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    """
+                    {"id":"x","object":"chat.completion","created":0,"model":"kimi-k2.6",
+                     "choices":[{"index":0,"message":{"role":"assistant","content":"ok"},
+                                 "finish_reason":"stop"}],
+                     "usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}
+                    """,
+                    Encoding.UTF8,
+                    "application/json")
+            };
+        }
+    }
+}

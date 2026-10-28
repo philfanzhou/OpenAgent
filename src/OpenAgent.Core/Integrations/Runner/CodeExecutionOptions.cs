@@ -1,0 +1,9 @@
+namespace OpenAgent.Core.Integrations.Runner;
+
+internal sealed class CodeExecutionOptions
+{
+    public bool Enabled { get; set; }
+    public string Endpoint { get; set; } = string.Empty;
+    public string ApiKey { get; set; } = string.Empty;
+    public int RequestTimeoutSeconds { get; set; } = 180;
+}

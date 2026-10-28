@@ -1,0 +1,19 @@
+<Project>
+  <PropertyGroup>
+    <!-- 统一编译约束：TFM、LangVersion、Nullable、ImplicitUsings -->
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <!-- 测试项目的公共引用（版本由 Directory.Packages.props 集中管理） -->
+  <ItemGroup Condition="$(MSBuildProjectName.Contains('Tests'))">
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="Moq" />
+    <PackageReference Include="coverlet.collector" />
+  </ItemGroup>
+</Project>

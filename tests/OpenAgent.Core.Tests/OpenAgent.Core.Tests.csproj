@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <AssemblyName>OpenAgent.Core.Tests</AssemblyName>
+    <RootNamespace>OpenAgent.Core.Tests</RootNamespace>
+    <NoWarn>$(NoWarn);MAAI001</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\OpenAgent.Core\OpenAgent.Core.csproj" />
+    <PackageReference Include="SixLabors.ImageSharp" />
+  </ItemGroup>
+
+</Project>

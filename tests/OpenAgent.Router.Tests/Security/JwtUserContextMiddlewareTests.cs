@@ -1,0 +1,119 @@
+using System.Security.Claims;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
+using OpenAgent.Contracts.Security;
+using OpenAgent.Router.Security;
+using Xunit;
+
+namespace OpenAgent.Router.Tests.Security;
+
+public class JwtUserContextMiddlewareTests
+{
+    [Fact]
+    public async Task InvokeAsync_ProductionHeaderWithoutTenantClaim_ThrowsTenantNotFound()
+    {
+        bool called = false;
+        JwtUserContextMiddleware middleware = CreateMiddleware(
+            Environments.Production,
+            _ =>
+            {
+                called = true;
+                return Task.CompletedTask;
+            });
+        DefaultHttpContext context = CreateContext();
+        context.Request.Headers["X-Tenant-Id"] = "spoofed-tenant";
+
+        // 缺租户声明时抛领域异常，由共享全局异常中间件统一转换为 ProblemDetails 400。
+        var exception = await Assert.ThrowsAsync<AgentException>(
+            () => middleware.InvokeAsync(context));
+
+        Assert.Equal(OpenAgent.Contracts.Requests.AgentErrorCode.TenantNotFound, exception.ErrorCode);
+        Assert.False(called);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_TenantClaimAndHeaderMismatch_DoesNotStopForwarding()
+    {
+        bool called = false;
+        JwtUserContextMiddleware middleware = CreateMiddleware(
+            Environments.Production,
+            _ =>
+            {
+                called = true;
+                return Task.CompletedTask;
+            });
+        DefaultHttpContext context = CreateContext("trusted-tenant");
+        context.Request.Headers["X-Tenant-Id"] = "spoofed-tenant";
+
+        await middleware.InvokeAsync(context);
+
+        Assert.Equal(StatusCodes.Status200OK, context.Response.StatusCode);
+        Assert.True(called);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_DevelopmentHeaderWithoutClaim_ThrowsTenantNotFound()
+    {
+        JwtUserContextMiddleware middleware = CreateMiddleware(
+            Environments.Development,
+            _ => Task.CompletedTask);
+        DefaultHttpContext context = CreateContext();
+        context.Request.Headers["X-Tenant-Id"] = "development-tenant";
+
+        var exception = await Assert.ThrowsAsync<AgentException>(
+            () => middleware.InvokeAsync(context));
+
+        Assert.Equal(OpenAgent.Contracts.Requests.AgentErrorCode.TenantNotFound, exception.ErrorCode);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_AuthenticatedClaims_PopulatesIdentityProfile()
+    {
+        JwtUserContextMiddleware middleware = CreateMiddleware(
+            Environments.Production,
+            _ => Task.CompletedTask);
+        DefaultHttpContext context = CreateContext("trusted-tenant");
+        context.User = new ClaimsPrincipal(new ClaimsIdentity(
+        [
+            new Claim("sub", "keycloak-user-id"),
+            new Claim("preferred_username", "alice"),
+            new Claim("email", "alice@example.com"),
+            new Claim("tenant_id", "trusted-tenant")
+        ], "Test"));
+
+        await middleware.InvokeAsync(context);
+
+        AgentUserContext user = Assert.IsType<AgentUserContext>(context.Items["AgentUserContext"]);
+        Assert.Equal("keycloak-user-id", user.UserId);
+        Assert.Equal("alice", user.Username);
+        Assert.Equal("alice@example.com", user.Email);
+    }
+
+    private static JwtUserContextMiddleware CreateMiddleware(
+        string environmentName,
+        RequestDelegate next)
+    {
+        var environment = new Mock<IHostEnvironment>();
+        environment.SetupGet(item => item.EnvironmentName).Returns(environmentName);
+        return new JwtUserContextMiddleware(
+            next,
+            NullLogger<JwtUserContextMiddleware>.Instance,
+            environment.Object);
+    }
+
+    private static DefaultHttpContext CreateContext(string? tenantId = null)
+    {
+        var claims = new List<Claim> { new("sub", "user-1") };
+        if (tenantId != null)
+        {
+            claims.Add(new Claim("tenant_id", tenantId));
+        }
+
+        var context = new DefaultHttpContext();
+        context.Request.Path = "/api/v1/agent/chat";
+        context.User = new ClaimsPrincipal(new ClaimsIdentity(claims, "Test"));
+        return context;
+    }
+}

@@ -1,0 +1,33 @@
+namespace OpenAgent.Contracts.Conversation;
+
+public sealed class ConversationStoreOptions
+{
+    public const string SectionName = "ConversationStore";
+
+    /// <summary>
+    /// 执行侧历史消息窗口大小（最近 N 条）。
+    /// </summary>
+    /// <summary>
+    /// 临时的模型上下文长度回退值。模型元数据尚未提供上下文窗口时使用，默认 1000 token 便于测试。
+    /// </summary>
+    // TODO: Replace this fallback with the context window reported by the selected model.
+    public int DefaultModelContextTokens { get; set; } = 1_000;
+
+    /// <summary>
+    /// 会话标题截取的最大字符数。首轮用户消息截取前 N 个字符作为初始标题。默认 50。
+    /// </summary>
+    public int TitleTruncateLength { get; set; } = 50;
+
+    /// <summary>
+    /// 是否启用 LLM 异步生成会话摘要标题。默认 true。
+    /// </summary>
+    public bool EnableTitleSummarization { get; set; } = true;
+
+    /// <summary>
+    /// 是否启用执行中的自动上下文压缩（上下文超过模型窗口 80% 时摘要旧消息）。默认 false。
+    /// 临时禁用：压缩可能把当前轮 user query 一并摘要，Qwen 系服务端 chat template
+    /// 会以 "No user query found in messages." 拒绝请求；修复压缩保留策略后改回 true。
+    /// 手动压缩端点（POST /conversations/{id}/compact）不受此开关影响。
+    /// </summary>
+    public bool EnableAutoCompaction { get; set; } = false;
+}

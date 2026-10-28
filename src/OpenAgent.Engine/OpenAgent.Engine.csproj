@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="OpenAgent.Engine.Tests" />
+    <InternalsVisibleTo Include="OpenAgent.Engine.Host" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="StackExchange.Redis" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OpenAgent.Contracts\OpenAgent.Contracts.csproj" />
+    <ProjectReference Include="..\OpenAgent.Core\OpenAgent.Core.csproj" />
+  </ItemGroup>
+
+</Project>
