@@ -208,11 +208,6 @@ try {
     $routerImage = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_ROUTER_IMAGE)) { 'openagent-router:latest' } else { $env:OPENAGENT_ROUTER_IMAGE }
     $chatImage = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_CHAT_IMAGE)) { 'openagent-chat:latest' } else { $env:OPENAGENT_CHAT_IMAGE }
     $runnerImage = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_RUNNER_IMAGE)) { 'openagent-runner:latest' } else { $env:OPENAGENT_RUNNER_IMAGE }
-    $publicHost = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_PUBLIC_HOST)) { 'localhost' } else { $env:OPENAGENT_PUBLIC_HOST }
-    $publicScheme = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_PUBLIC_SCHEME)) { 'https' } else { $env:OPENAGENT_PUBLIC_SCHEME }
-    $routerPort = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_ROUTER_PORT)) { '8082' } else { $env:OPENAGENT_ROUTER_PORT }
-    $enginePort = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_ENGINE_PORT)) { '8083' } else { $env:OPENAGENT_ENGINE_PORT }
-    $tenantId = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_TENANT_ID)) { 'development' } else { $env:OPENAGENT_TENANT_ID }
 
     # 本地镜像带可追溯的版本标识；Release 工作流会用正式 tag/revision 覆盖同一组 label。
     $platformVersion = 'dev'
@@ -240,14 +235,9 @@ try {
         '--file', (Join-WslPath -Base $dockerRepoRoot -Child 'Backend/src/OpenAgent.Router/Dockerfile'),
         $dockerRepoRoot
     )
-    # Chat 镜像的浏览器端地址由 Dockerfile 从统一变量派生，与直接 docker build 的接口一致。
+    # Chat 镜像不含环境特定地址：公开地址由容器启动时的 OPENAGENT_* 环境变量注入 runtime-config.js。
     Invoke-Docker -Arguments @(
         'build', '--tag', $chatImage,
-        '--build-arg', "OPENAGENT_PUBLIC_SCHEME=$publicScheme",
-        '--build-arg', "OPENAGENT_PUBLIC_HOST=$publicHost",
-        '--build-arg', "OPENAGENT_ROUTER_PORT=$routerPort",
-        '--build-arg', "OPENAGENT_ENGINE_PORT=$enginePort",
-        '--build-arg', "OPENAGENT_TENANT_ID=$tenantId",
         '--label', "org.opencontainers.image.version=$platformVersion",
         '--file', (Join-WslPath -Base $dockerRepoRoot -Child 'Frontend/OpenAgent.Chat/Dockerfile'),
         $dockerRepoRoot

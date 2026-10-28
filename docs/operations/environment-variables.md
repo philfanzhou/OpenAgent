@@ -312,9 +312,9 @@ Engine 侧调用 Runner（`Backend/src/OpenAgent.Capabilities/Extensions/RunnerS
 
 | 变量 | 默认 | 用途 |
 |---|---|---|
-| `OPENAGENT_PUBLIC_HOST` / `OPENAGENT_PUBLIC_SCHEME` | `localhost` / `https` | 派生所有公开 URL（Chat、Keycloak、CORS、前端构建参数） |
+| `OPENAGENT_PUBLIC_HOST` / `OPENAGENT_PUBLIC_SCHEME` | `localhost` / `https` | 派生所有公开 URL（Chat、Keycloak、CORS、Chat 容器运行时注入） |
 | `OPENAGENT_CHAT_PORT` / `OPENAGENT_ROUTER_PORT` / `OPENAGENT_ENGINE_PORT` / `OPENAGENT_KEYCLOAK_PORT` | `8081` / `8082` / `8083` / `58081` | Nginx HTTPS 发布端口；Keycloak 8443 的映射端口 |
-| `OPENAGENT_CHAT_PUBLIC_URL` | 由 scheme+host+chat 端口派生 | 同时用于 CORS、Keycloak 回调与 Web Origin、Chat 镜像构建 |
+| `OPENAGENT_CHAT_PUBLIC_URL` | 由 scheme+host+chat 端口派生 | 同时用于 CORS 与 Keycloak 回调/Web Origin |
 | `OPENAGENT_COMPOSE_PROJECT` / `OPENAGENT_APP_NETWORK` / `OPENAGENT_INFRA_PROJECT` / `OPENAGENT_INFRA_NETWORK` | `openagent-app` / `openagent` / `openagent-infrastructure` / `openagent-infrastructure` | Compose 项目名与网络名；迁移已有部署必须保持 |
 | `OPENAGENT_NGINX_CLIENT_MAX_BODY_SIZE` | `1100m` | Nginx 上传体积限制 |
 | `OPENAGENT_TLS_CERT_DIR` | `deploy/openagent/nginx/certs` | 证书目录（Nginx 与 Keycloak 共用） |
@@ -330,7 +330,7 @@ Engine 侧调用 Runner（`Backend/src/OpenAgent.Capabilities/Extensions/RunnerS
 | `OPENAGENT_DOCKER_MODE` | `auto` | 构建部署脚本选择 docker / wsl-docker |
 | `OPENAGENT_IMAGE_TAR_DIR` | 空 | 镜像 TAR 导出目录 |
 | `OPENAGENT_OPENCODE_VERSION` | `Backend/opencode.version` 锁定值 | 仅升级前临时覆盖验证 |
-| `OPENAGENT_TENANT_ID` | `development` | Chat 镜像构建参数（→ 前端 `VITE_OPENAGENT_TENANT_ID`） |
+| `OPENAGENT_TENANT_ID` | `development` | Chat 容器运行时注入（→ `runtime-config.js` 默认租户） |
 
 ### 6.5 无效 / 遗留变量（避免踩坑）
 
@@ -341,16 +341,20 @@ Engine 侧调用 Runner（`Backend/src/OpenAgent.Capabilities/Extensions/RunnerS
 
 ## 7. 前端变量
 
-前端构建时内联 `VITE_*`（浏览器无法读取运行时环境变量），定义在 `Frontend/OpenAgent.Chat/Dockerfile` 与 `Frontend/OpenAgent.Chat/src/shared/api/http.ts`：
+浏览器端无法读取运行时环境变量。Chat 容器启动时由入口脚本
+（`Frontend/OpenAgent.Chat/docker/40-openagent-runtime-config.sh`）按统一 `OPENAGENT_*` 变量生成
+`/runtime-config.js`，前端经 `window.__OPENAGENT_RUNTIME_CONFIG__` 读取
+（`Frontend/OpenAgent.Chat/src/shared/api/http.ts`）：
 
 | 变量 | 来源 | 默认 | 作用 |
 |---|---|---|---|
-| `OPENAGENT_PUBLIC_SCHEME` / `OPENAGENT_PUBLIC_HOST` / `OPENAGENT_ROUTER_PORT` / `OPENAGENT_ENGINE_PORT` | Dockerfile 构建参数 | `https` / `localhost` / `8082` / `8083` | 镜像内拼出下面两个 `VITE_*` |
-| `OPENAGENT_TENANT_ID` | Dockerfile 构建参数 | `development` | `VITE_OPENAGENT_TENANT_ID` |
-| `VITE_OPENAGENT_ROUTER_BASE_URL` | 构建注入 / 本地 dev server | `https://{host}:{router端口}` | Router API 基地址 |
-| `VITE_OPENAGENT_ENGINE_BASE_URL` | 构建注入 / 本地 dev server | `https://{host}:{engine端口}` | 直连 Engine 模式的基地址 |
-| `VITE_OPENAGENT_TENANT_ID` | 构建注入 / 本地 dev server | `development` | 默认租户 |
+| `OPENAGENT_PUBLIC_SCHEME` / `OPENAGENT_PUBLIC_HOST` / `OPENAGENT_ROUTER_PORT` / `OPENAGENT_ENGINE_PORT` | Chat 容器运行时环境 | `https` / `localhost` / `8082` / `8083` | 生成 `runtime-config.js` 的 `routerBaseUrl` / `engineBaseUrl` |
+| `OPENAGENT_TENANT_ID` | Chat 容器运行时环境 | `development` | `runtime-config.js` 的 `tenantId`（默认租户） |
+| `VITE_OPENAGENT_ROUTER_BASE_URL` / `VITE_OPENAGENT_ENGINE_BASE_URL` / `VITE_OPENAGENT_TENANT_ID` | 本地 dev server（`.env.local`） | 空 | 未经容器部署时的本地默认；运行时注入与用户设置优先级更高 |
 | `VITE_OPENAGENT_CONNECTION_MODE` | 本地 dev server | `router` | 默认连接模式（`engine` / `router`） |
+
+默认地址优先级：`localStorage` 用户设置 > 容器运行时配置（`runtime-config.js`）> `VITE_*` 构建内联 >
+按当前页面主机推导（`http(s)://{host}:{5001|5208}`）。
 
 认证参数（authority、clientId、scopes、模式）统一由后端 `GET /api/v1/auth/config` 下发，前端没有对应环境变量。
 

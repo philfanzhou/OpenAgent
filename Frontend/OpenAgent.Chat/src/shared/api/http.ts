@@ -22,9 +22,11 @@ function defaultServiceUrl(port: number): string {
   return `http://localhost:${port}`
 }
 
-const defaultRouterBaseUrl = import.meta.env.VITE_OPENAGENT_ROUTER_BASE_URL || defaultServiceUrl(5001)
-const defaultEngineBaseUrl = import.meta.env.VITE_OPENAGENT_ENGINE_BASE_URL || defaultServiceUrl(5208)
-const defaultTenantId = import.meta.env.VITE_OPENAGENT_TENANT_ID || 'development'
+/** 容器启动时由 /runtime-config.js 注入的公开地址；优先于构建期内联的 VITE_* 默认值。 */
+function readRuntimeConfig(): OpenAgentRuntimeConfig {
+  if (typeof window === 'undefined') return {}
+  return window.__OPENAGENT_RUNTIME_CONFIG__ ?? {}
+}
 
 export function normalizeBaseUrl(value: string): string {
   return value.trim().replace(/\/$/, '')
@@ -40,9 +42,12 @@ export function setConnectionMode(value: ConnectionMode): void {
 }
 
 export function getRouterBaseUrl(): string {
+  // 默认地址优先级：用户 localStorage 设置 > 容器运行时配置 > VITE_* 构建内联 > 按当前页面主机推导。
   return localStorage.getItem(routerStorageKey)
     || localStorage.getItem(legacyBaseUrlStorageKey)
-    || defaultRouterBaseUrl
+    || readRuntimeConfig().routerBaseUrl
+    || import.meta.env.VITE_OPENAGENT_ROUTER_BASE_URL
+    || defaultServiceUrl(5001)
 }
 
 export function setRouterBaseUrl(value: string): void {
@@ -51,7 +56,10 @@ export function setRouterBaseUrl(value: string): void {
 }
 
 export function getEngineBaseUrl(): string {
-  return localStorage.getItem(engineStorageKey) || defaultEngineBaseUrl
+  return localStorage.getItem(engineStorageKey)
+    || readRuntimeConfig().engineBaseUrl
+    || import.meta.env.VITE_OPENAGENT_ENGINE_BASE_URL
+    || defaultServiceUrl(5208)
 }
 
 export function setEngineBaseUrl(value: string): void {
@@ -115,7 +123,10 @@ function clearExpiredAccessToken(): void {
 }
 
 export function getTenantId(): string {
-  return localStorage.getItem(tenantStorageKey) || defaultTenantId
+  return localStorage.getItem(tenantStorageKey)
+    || readRuntimeConfig().tenantId
+    || import.meta.env.VITE_OPENAGENT_TENANT_ID
+    || 'development'
 }
 
 export function setTenantId(value: string): void {

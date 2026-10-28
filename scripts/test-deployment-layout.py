@@ -39,6 +39,16 @@ class DeploymentLayoutTests(unittest.TestCase):
                     env = app['services'][name]['environment']
                     self.assertEqual(env['Authentication__Authority'], f'https://{host}:{port}/realms/openagent')
                     self.assertEqual(env['Cors__AllowedOrigins__0'], origin)
+                # Chat 公开地址在容器启动时注入 runtime-config.js，与后端使用同一组统一变量。
+                chat = app['services']['chat']
+                self.assertNotIn('build', chat)
+                self.assertEqual(chat['environment'], {
+                    'OPENAGENT_PUBLIC_SCHEME': overrides.get('OPENAGENT_PUBLIC_SCHEME', 'https'),
+                    'OPENAGENT_PUBLIC_HOST': host,
+                    'OPENAGENT_ROUTER_PORT': overrides.get('OPENAGENT_ROUTER_PORT', '8082'),
+                    'OPENAGENT_ENGINE_PORT': overrides.get('OPENAGENT_ENGINE_PORT', '8083'),
+                    'OPENAGENT_TENANT_ID': 'development',
+                })
                 self.assertFalse(any(p['target'] == 8080 for p in kc['ports']))
 
     def test_mounts_network_and_preview_context(self):
@@ -59,9 +69,20 @@ class DeploymentLayoutTests(unittest.TestCase):
                 for mount in service.get('volumes', []):
                     if mount['type'] == 'bind':
                         self.assertTrue(Path(mount['source']).exists(), mount['source'])
-        preview = config('deploy/openagent/preview.compose.yml')
+        preview = config('deploy/openagent/preview.compose.yml', {
+            'PREVIEW_ROUTER_PORT': '5010', 'PREVIEW_ENGINE_PORT': '5210'})
         for service in preview['services'].values():
             self.assertEqual(Path(service['build']['context']), ROOT)
+        # 预览 Chat 同样经运行时环境注入地址，不再携带构建参数。
+        preview_chat = preview['services']['chat']
+        self.assertNotIn('args', preview_chat['build'])
+        self.assertEqual(preview_chat['environment'], {
+            'OPENAGENT_PUBLIC_SCHEME': 'http',
+            'OPENAGENT_PUBLIC_HOST': 'localhost',
+            'OPENAGENT_ROUTER_PORT': '5010',
+            'OPENAGENT_ENGINE_PORT': '5210',
+            'OPENAGENT_TENANT_ID': 'development',
+        })
 
     def test_storage_security_and_internal_ports(self):
         app = config('deploy/openagent/docker-compose.yml',

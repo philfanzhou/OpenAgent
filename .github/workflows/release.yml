@@ -107,8 +107,7 @@ jobs:
             --label "org.opencontainers.image.version=${GITHUB_REF_NAME#v}"
             --label "org.opencontainers.image.revision=$GITHUB_SHA"
           )
-          # Engine 镜像内嵌钉住版本的 OpenCode；Chat 镜像使用 Dockerfile 默认公开地址（localhost），
-          # 生产部署需按自身域名重建，或经 OPENAGENT_CHAT_IMAGE 覆盖为自有构建标签。
+          # Engine 镜像内嵌钉住版本的 OpenCode；Chat 镜像不含环境特定地址，公开地址由部署侧运行时注入。
           if [[ "${{ matrix.name }}" == "engine" ]]; then
             build_args+=(--build-arg "OPENCODE_VERSION=$OPENCODE_VERSION")
             labels+=(--label "io.openagent.opencode-version=$OPENCODE_VERSION")
@@ -160,8 +159,8 @@ jobs:
             - ghcr.io/${owner}/openagent-runner:${platform_version}
             - ghcr.io/${owner}/openagent-chat:${platform_version}
 
-          使用方式见 docs/operations/deployment.md。registry 版 Chat 镜像按默认公开地址（localhost）构建，
-          生产部署需按自身域名重建 Chat 镜像，或在 .env 中以 OPENAGENT_CHAT_IMAGE 指向自有标签。
+          使用方式见 docs/operations/deployment.md。Chat 镜像不含环境特定地址：在 .env 中设置
+          OPENAGENT_PUBLIC_HOST 等统一变量即可，容器启动时注入浏览器端配置，无需重建镜像。
           升级 OpenCode 时先修改 Backend/opencode.version，并以
           docker build --target runtime-tests 通过真实进程回归后再打标签发布。
           EOF
