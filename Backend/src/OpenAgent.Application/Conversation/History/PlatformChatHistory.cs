@@ -169,6 +169,17 @@ internal sealed class PlatformChatHistory : IAsyncDisposable
             {
                 throw;
             }
+            catch (InlineImageRejectedException ex)
+            {
+                // 格式不符/畸形/超限的图片被明确拒绝内联：记录原因后跳过该图，
+                // 模型仍可通过工具读取原文件；不会退化为把原始字节继续发给模型。
+                _logger.LogWarning(
+                    ex,
+                    "Inline image '{FileId}' rejected for conversation '{ConversationId}'. TraceId={TraceId}",
+                    file.FileId,
+                    _conversation.ConversationId,
+                    _conversation.TraceId);
+            }
             catch
             {
                 // 内联读取失败时保留元数据描述符，模型仍可通过工具读取该文件。
@@ -352,6 +363,16 @@ internal sealed class PlatformChatHistory : IAsyncDisposable
                         catch (OperationCanceledException)
                         {
                             throw;
+                        }
+                        catch (InlineImageRejectedException ex)
+                        {
+                            // 同当轮路径：明确记录拒绝原因，跳过内联但保留元数据描述符。
+                            _logger.LogWarning(
+                                ex,
+                                "Inline image '{FileId}' rejected for conversation '{ConversationId}'. TraceId={TraceId}",
+                                fileId,
+                                _conversation.ConversationId,
+                                _conversation.TraceId);
                         }
                         catch
                         {
