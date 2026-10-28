@@ -136,7 +136,7 @@
 
 ## N02 / P0 — OpenCode 宿主继承缓解与隔离边界
 
-- 负责人：Codex；状态：待评审；基线：`origin/dev@768a8c1e`；实现 PR：待创建。任务方案来自 2026-10-28 非 RAG 拆解，本检出只补充 N02，不覆盖其他会话的任务细化。
+- 负责人：Codex；状态：待评审；基线：`origin/dev@768a8c1e`；实现 PR：[#294](https://github.com/philfanzhou/OpenAgent/pull/294)（草稿）。任务方案来自 2026-10-28 非 RAG 拆解，本检出只补充 N02，不覆盖其他会话的任务细化。
 - 范围：Runtime/OpenCode、Runtime.Tests、Engine 开发/镜像配置与 Data Protection 卷挂载。默认原生工具全拒绝、显式 Skill 路径/名称授权、关闭外部/祖先扫描、私有 profile/tmp、链接拒绝与 Skill 副本、非 root 服务身份。SDK、依赖白名单、Runner、RAG 不调整。
 - 对外行为：开发配置不再默认允许 read/edit/write/bash；已有 Unix workspace 需服务账户独占（0700），已有密钥卷需迁移权限。保持 KeepAliveSeconds=0，不启用整个 Worker/RunGrant 架构。
 - 验收与反例：[运行时验证和支持模式](../integrations/opencode-runtime.md#n02宿主继承缓解与受支持模式)；部署与回退：[服务身份及密钥卷](../operations/deployment.md#opencode-服务身份与已有密钥卷)。Windows、标准发布镜像与未来多租户隔离未验收，不能把 N02 缓解标成 A02/A04 全部完成。N03/N04 采用文档中的干净服务身份模式，压测数据只适用于该模式。
