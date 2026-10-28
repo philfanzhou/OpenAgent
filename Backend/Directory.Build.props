@@ -8,6 +8,20 @@
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
   </PropertyGroup>
 
+  <!--
+    Six Labors Split License（SixLabors.ImageSharp 3.2.0 起构建期校验）：
+    开源项目（本仓库为 MIT）与年营收低于 100 万美元的商用场景均可免费申请
+    Community license key（https://licensing.sixlabors.com ，开源申请自动签发，
+    需提供程序集名 OpenAgent.Capabilities 与公开仓库链接）。申请后任选其一注入：
+    环境变量 SIXLABORS_LICENSE_KEY（CI 配置同名 secret 即可）、
+    -p:SixLaborsLicenseKey=... 或把下发的 sixlabors.lic 放入仓库
+    （包内 targets 会自动按 **/sixlabors.lic 搜索）。
+    Debug 构建无 key 仅告警，Release 构建要求有效 key。
+  -->
+  <PropertyGroup>
+    <SixLaborsLicenseKey Condition="'$(SixLaborsLicenseKey)' == ''">$(SIXLABORS_LICENSE_KEY)</SixLaborsLicenseKey>
+  </PropertyGroup>
+
   <!-- 测试项目的公共引用（版本由 Directory.Packages.props 集中管理） -->
   <ItemGroup Condition="$(MSBuildProjectName.Contains('Tests'))">
     <PackageReference Include="Microsoft.NET.Test.Sdk" />

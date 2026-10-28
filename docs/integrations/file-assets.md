@@ -13,6 +13,8 @@ POST /chat/stream { fileIds } -> read ready files -> model -> message and file r
 
 LLM Profile 选择 `Multimodal` 时，聊天请求中的 `image/*` 资产会在执行期以内联图片内容发送给模型；默认每次最多 4 张、每张不超过 4 MiB，可通过 `FileAssets:MaxInlineImageCount` 和 `FileAssets:MaxInlineImageBytes` 调整。历史消息重放时仅最近 `FileAssets:InlineImageHistoryTurns`（默认 2）个用户轮次重新内联图片，更早轮次的图片只保留文件描述符，避免长会话每次请求重复携带全部历史图片 token；当轮用户消息不受该窗口限制。`Text` Profile、非图片文件、超限图片和对象读取失败均不会发送二进制，只保留 fileId manifest。当前未开放音频、视频等其他多模态输入。
 
+内联降采样（`InlineImageOptimizer`）采用"先验证、后解码"的管线：按内容嗅探真实格式（声明媒体类型可被任意伪造，以内探结果为准且必须与声明一致）、读取头信息获取真实尺寸，随后校验单帧像素数（`InlineImageMaxPixels`，默认 2^26）、解码帧数上限（`InlineImageMaxFrames`，默认 8）与解码内存预算（`InlineImageMaxDecodedBytes` = 帧数×宽×高×4 字节估算，默认 256 MiB；预算会进一步收紧实际解码帧数），全部通过后才解码并等比缩放到 `InlineImageMaxLongEdge`。任一环节不通过（格式不符、数据畸形、超限）会以 `InlineImageRejectedException` 明确拒绝并记录告警日志（含 fileId 与具体原因），该图不再内联、模型仍可通过工具读取原文件——不会回退为把原始字节继续发给模型，防止小体积头部声明超大尺寸的解压炸弹。上述限制只作用于图片内联处理，普通文件上传与存储不受影响。
+
 模型通过 `write_file` 或 `compress_files` 生成文件时，产物会登记为 `FileAsset`，但不会自动出现在 assistant 消息中。模型调用 `publish_files` 并传入一个或多个 `fileId` 后，选中的资产才会关联到当前 assistant 消息；这允许模型保留中间产物、批量发布 Markdown 与图片，或先压缩再发布 ZIP。消息只要带有文件引用，续接会话时都会把对应文件重新注入原消息的模型上下文（user、assistant 均适用）；模型还可以调用 `list_files` 发现当前会话引用的文件，再按需 `read_file` 或 `publish_files`。是否向用户交付仍由消息级发布引用决定。首条消息也必须沿用前端创建的 conversationId，确保上传文件引用和本次模型请求使用同一会话范围。前端可使用消息中的 `fileId` 调用认证下载端点；模型不应直接输出未经授权的 MinIO URL。
 
 启用文件资产后，模型还可以调用 `download_file`。该函数只接收公开的 HTTP(S) 地址，下载结果写入当前租户、用户和会话范围，并建立会话引用；工具返回 `fileId`、文件名、MIME 和长度。下载器会限制响应大小、超时和重定向次数，并拒绝回环、链路本地、私有网段及多播地址。
@@ -107,6 +109,21 @@ HTML 在 `sandbox="allow-scripts"`（不含 `allow-same-origin`）的 iframe 中
 接收方无需对象存储凭据。普通上传、查询、预览、认证下载和聊天流程不生成分享链接。
 
 > 兼容说明：对象存储层的 `CreateReadUrlAsync`（S3 预签名）仍作为底层能力保留，但所有对外链路
->（模型工具与 REST 分享）不再使用预签名 URL；`PublicServiceUrl` 配置与
+> （模型工具与 REST 分享）不再使用预签名 URL；`PublicServiceUrl` 配置与
 > `OPENAGENT_S3_PUBLIC_SERVICE_URL` 环境变量已移除，S3 只需配置内部服务地址
 > `ServiceUrl`，无需公网域名。
+
+## 图片处理依赖与许可（SixLabors.ImageSharp）
+
+内联图片处理依赖 `SixLabors.ImageSharp`（Six Labors Split License），版本统一在
+`Backend/Directory.Packages.props` 管理。3.1.x 全线受 2026-10 批次安全公告影响
+（TIFF CCITT/BigTIFF、ICC、EXR 等 6 项，其中 3 项 High），3.x 线修复版本为 3.2.0。
+
+3.2.0 起包内包含构建期许可证校验：Debug 构建无 key 仅告警，**Release 构建要求有效
+license key**（CI 的 Release 构建与发布均会触发）。本仓库为 MIT 开源项目，可在
+<https://licensing.sixlabors.com> 免费自助申请 Community key（OpenSource 类别自动签发，
+需提供程序集名 `OpenAgent.Capabilities` 与公开仓库链接；年营收低于 100 万美元的商用部署
+同样适用免费 Community 类别）。获取后任选其一：设置环境变量 `SIXLABORS_LICENSE_KEY`
+（CI 配置同名 secret，`Backend/Directory.Build.props` 会自动映射为 MSBuild 属性）、
+`-p:SixLaborsLicenseKey=...`，或将下发的 `sixlabors.lic` 放入仓库（targets 会按
+`**/sixlabors.lic` 自动搜索）。
