@@ -33,6 +33,14 @@ internal sealed class FileAssetOptionsValidator : IValidateOptions<FileAssetOpti
         {
             failures.Add("FileAssets:InlineImageMaxLongEdge must be greater than or equal to zero.");
         }
+        if (options.InlineImageMaxPixels <= 0)
+        {
+            failures.Add("FileAssets:InlineImageMaxPixels must be greater than zero.");
+        }
+        if (options.InlineImageMaxDecodedBytes <= 0)
+        {
+            failures.Add("FileAssets:InlineImageMaxDecodedBytes must be greater than zero.");
+        }
         if (options.InlineImageQuality is < 1 or > 100)
         {
             failures.Add("FileAssets:InlineImageQuality must be between 1 and 100.");

@@ -10,7 +10,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\OpenAgent.Application\OpenAgent.Application.csproj" />
-    <PackageReference Include="SixLabors.ImageSharp" />
     <Compile Include="..\OpenAgent.Capabilities.Tests\TestDoubles\*.cs" Link="TestDoubles\%(Filename)%(Extension)" />
   </ItemGroup>
 
