@@ -92,6 +92,39 @@ internal class OpenCodeFactAttribute : FactAttribute
     }
 }
 
+internal sealed class OpenCodeUnixFactAttribute : FactAttribute
+{
+    public OpenCodeUnixFactAttribute()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Skip = "Unix filesystem permissions/link test; Windows requires separate service-account ACL validation.";
+        }
+    }
+}
+
+internal sealed class OpenCodeUnixTheoryAttribute : TheoryAttribute
+{
+    public OpenCodeUnixTheoryAttribute()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Skip = "Unix symbolic-link test; Windows reparse points require separate environment validation.";
+        }
+    }
+}
+
+internal sealed class OpenCodeLinuxFactAttribute : OpenCodeFactAttribute
+{
+    public OpenCodeLinuxFactAttribute()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            Skip = "Linux-only real harness process-view boundary probe.";
+        }
+    }
+}
+
 /// <summary>真实进程 + 仅 Windows：PATH/PATHEXT 命令名解析行为回归。</summary>
 internal sealed class OpenCodeWindowsFactAttribute : OpenCodeFactAttribute
 {

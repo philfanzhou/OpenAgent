@@ -37,6 +37,49 @@ public sealed class OpenCodeSkillsTests : IDisposable
         Assert.True(File.Exists(Path.Combine(workspace, ".opencode", "skills", "beta-skill", "SKILL.md")));
     }
 
+    [Fact]
+    public void Materialize_WorkspaceMutationDoesNotModifyCachedPackage()
+    {
+        string package = CreatePackage("safe");
+        string workspace = Path.Combine(_root, "copy");
+        OpenCodeSkills.Materialize(workspace, [new("safe", package)]);
+        File.WriteAllText(Path.Combine(workspace, ".opencode", "skills", "safe", "SKILL.md"), "changed");
+        Assert.Contains("Writes reports", File.ReadAllText(Path.Combine(package, "SKILL.md")));
+    }
+
+    [OpenCodeUnixTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Materialize_LinkInsidePackageOrPackageRoot_RejectsWithoutReadingTarget(bool rootLink)
+    {
+        string package = CreatePackage("safe");
+        string outside = CreatePackage("outside");
+        string source = package;
+        if (rootLink)
+        {
+            source = Path.Combine(_root, "linked-package");
+            Directory.CreateSymbolicLink(source, outside);
+        }
+        else
+        {
+            File.CreateSymbolicLink(Path.Combine(package, "linked.md"), Path.Combine(outside, "SKILL.md"));
+        }
+        string workspace = Path.Combine(_root, "linked-workspace");
+        Assert.Throws<IOException>(() => OpenCodeSkills.Materialize(workspace, [new("safe", source)]));
+        Assert.False(File.Exists(Path.Combine(workspace, ".opencode", "skills", "safe", "linked.md")));
+        Assert.True(File.Exists(Path.Combine(outside, "SKILL.md")));
+    }
+
+    [Fact]
+    public void Materialize_Cancelled_DoesNotCopyPackage()
+    {
+        string package = CreatePackage("safe");
+        string workspace = Path.Combine(_root, "cancelled");
+        Assert.Throws<OperationCanceledException>(() =>
+            OpenCodeSkills.Materialize(workspace, [new("safe", package)], new CancellationToken(true)));
+        Assert.False(Directory.Exists(workspace));
+    }
+
     [Theory]
     [InlineData("../escape")]
     [InlineData("..")]

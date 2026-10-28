@@ -27,7 +27,7 @@ public sealed record RuntimeMessage(
 
 public sealed record RuntimeAttachment(string MediaType, ReadOnlyMemory<byte> Data);
 
-/// <summary>已物化的 skill 包目录；驱动负责链接进本轮工作区供 harness 原生发现。</summary>
+/// <summary>Materialized skill package directory; the driver exposes a private copy for harness discovery.</summary>
 public sealed record RuntimeSkill(string Name, string Path);
 
 /// <summary>

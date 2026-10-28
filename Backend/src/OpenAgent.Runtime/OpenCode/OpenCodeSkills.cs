@@ -2,14 +2,10 @@ using OpenAgent.Contracts.Runtime;
 
 namespace OpenAgent.Runtime.OpenCode;
 
-/// <summary>
-/// 把本轮物化好的 skill 包链接进工作区 .opencode/skills/&lt;name&gt;，交由
-/// OpenCode 原生 skill 工具按需发现/加载。优先符号链接（零拷贝）；
-/// Windows 未开启符号链接权限或跨卷等失败场景退化为目录复制。
-/// </summary>
+/// <summary>Copies authorized skill packages into the turn workspace without following links.</summary>
 internal static class OpenCodeSkills
 {
-    internal static void Materialize(string workspace, IReadOnlyList<RuntimeSkill>? skills)
+    internal static void Materialize(string workspace, IReadOnlyList<RuntimeSkill>? skills, CancellationToken cancellationToken = default)
     {
         if (skills is null || skills.Count == 0)
         {
@@ -29,31 +25,30 @@ internal static class OpenCodeSkills
             {
                 throw new InvalidOperationException($"Skill package directory is missing: {skill.Name}");
             }
-            string link = Path.Combine(workspace, ".opencode", "skills", name);
-            Directory.CreateDirectory(Path.GetDirectoryName(link)!);
-            try
-            {
-                Directory.CreateSymbolicLink(link, skill.Path);
-            }
-            catch (IOException)
-            {
-                CopyDirectory(skill.Path, link);
-            }
-            catch (UnauthorizedAccessException)
-            {
-                CopyDirectory(skill.Path, link);
-            }
+            string target = Path.Combine(workspace, ".opencode", "skills", name);
+            CopyDirectory(skill.Path, target, cancellationToken);
         }
     }
 
-    private static void CopyDirectory(string source, string target)
+    private static void CopyDirectory(string source, string target, CancellationToken cancellationToken)
     {
-        foreach (string file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
+        cancellationToken.ThrowIfCancellationRequested();
+        DirectoryInfo directory = new(source);
+        OpenCodeWorkspace.RejectLink(directory);
+        OpenCodeWorkspace.CreatePrivateDirectory(target);
+        foreach (FileSystemInfo entry in directory.EnumerateFileSystemInfos())
         {
-            string relative = Path.GetRelativePath(source, file);
-            string destination = Path.Combine(target, relative);
-            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-            File.Copy(file, destination, overwrite: true);
+            cancellationToken.ThrowIfCancellationRequested();
+            OpenCodeWorkspace.RejectLink(entry);
+            string destination = Path.Combine(target, entry.Name);
+            if (entry is DirectoryInfo)
+            {
+                CopyDirectory(entry.FullName, destination, cancellationToken);
+            }
+            else
+            {
+                File.Copy(entry.FullName, destination, overwrite: false);
+            }
         }
     }
 }

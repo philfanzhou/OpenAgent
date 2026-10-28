@@ -194,11 +194,11 @@ internal static class OpenCodeProcess
     {
         Dictionary<string, string> environment = SharedEnvironment(invocation, allowedNativeTools);
         // 进程主目录与轮次工作区分离：进程保活跨轮次复用时，轮次工作区（ACP 会话 cwd）仍可立即回收。
-        foreach (string name in StateVariables)
+        foreach (KeyValuePair<string, string> variable in StateVariables)
         {
-            string path = Path.Combine(home, ".state", name);
-            Directory.CreateDirectory(path);
-            environment[name] = path;
+            string path = Path.Combine(home, ".state", variable.Value);
+            OpenCodeWorkspace.CreatePrivateDirectory(path);
+            environment[variable.Key] = path;
         }
         return new AcpProcessOptions(launch.FileName, launch.Arguments)
         {
@@ -208,8 +208,16 @@ internal static class OpenCodeProcess
         };
     }
 
-    private static readonly string[] StateVariables =
-        ["HOME", "USERPROFILE", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME", "OPENCODE_CONFIG_DIR"];
+    // These are process-private storage paths, not an OS identity or sandbox boundary.
+    private static readonly Dictionary<string, string> StateVariables = new()
+    {
+        ["HOME"] = "home", ["USERPROFILE"] = "home",
+        ["APPDATA"] = "config", ["LOCALAPPDATA"] = "data",
+        ["XDG_CONFIG_HOME"] = "config", ["XDG_DATA_HOME"] = "data",
+        ["XDG_CACHE_HOME"] = "cache", ["XDG_STATE_HOME"] = "state",
+        ["OPENCODE_CONFIG_DIR"] = "opencode",
+        ["TMPDIR"] = "tmp", ["TMP"] = "tmp", ["TEMP"] = "tmp"
+    };
 
     /// <summary>
     /// 宿主环境透传白名单：PATH/PATHEXT/COMSPEC/SystemRoot/WINDIR 供进程运行——缺 PATHEXT 时
@@ -263,7 +271,12 @@ internal static class OpenCodeProcess
         // skill 经工作区物化后由原生 skill 工具按需加载，SKILL.md 内容不再注入提示词。
         if ((invocation.Skills?.Count ?? 0) > 0)
         {
-            permission["skill"] = "allow";
+            JsonObject skills = new() { ["*"] = "deny" };
+            foreach (RuntimeSkill skill in invocation.Skills!)
+            {
+                skills[skill.Name] = "allow";
+            }
+            permission["skill"] = skills;
         }
         // 宿主显式放行的原生工具（如 read/edit/write）：与 "*": "deny" 并存，只有放行项
         // 可用；把对应主机访问面交给 harness 进程是宿主的知情选择，默认不放开。
@@ -313,7 +326,12 @@ internal static class OpenCodeProcess
                 }
             }
         };
-        // 只给子进程环境白名单，不继承服务的数据库口令、云凭据或用户 HOME 配置。
+        if ((invocation.Skills?.Count ?? 0) > 0)
+        {
+            // Explicit paths still work with project config discovery disabled; resolved per ACP cwd.
+            config["skills"] = new JsonObject { ["paths"] = new JsonArray(".opencode/skills") };
+        }
+        // No database/cloud environment inheritance; filesystem config still requires a clean service identity.
         Dictionary<string, string> environment = [];
         foreach (string name in HostPassthroughVariables)
         {
@@ -335,6 +353,12 @@ internal static class OpenCodeProcess
             JsonSerializer.Serialize(keyReference), JsonSerializer.Serialize("{env:OPENAGENT_MODEL_API_KEY}"), StringComparison.Ordinal);
         environment["OPENCODE_DISABLE_AUTOUPDATE"] = "true";
         environment["OPENCODE_DISABLE_SHARE"] = "true";
+        environment["OPENCODE_DISABLE_PROJECT_CONFIG"] = "true";
+        environment["OPENCODE_DISABLE_EXTERNAL_SKILLS"] = "true";
+        environment["OPENCODE_DISABLE_CLAUDE_CODE"] = "true";
+        environment["OPENCODE_DISABLE_DEFAULT_PLUGINS"] = "true";
+        environment["OPENCODE_DISABLE_MODELS_FETCH"] = "true";
+        environment["OPENCODE_DISABLE_LSP_DOWNLOAD"] = "true";
         return environment;
     }
 }

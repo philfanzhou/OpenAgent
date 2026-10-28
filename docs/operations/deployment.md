@@ -33,7 +33,7 @@ Chat、Router 与 Engine 不直接映射宿主机端口，分别由 Nginx 的 80
 `OPENAGENT_KEYCLOAK_COMMAND` 与反向代理转发头，内置 `start-dev` 仅用于本地联调。
 
 Engine 使用 ASP.NET Data Protection 保护 PostgreSQL/Redis 中的 LLM 和 RAG 密钥，应用 Compose 会将
-`/root/.aspnet/DataProtection-Keys` 挂载到独立的 `engine-data-protection` 数据卷。该卷必须和数据库卷
+`/home/app/.aspnet/DataProtection-Keys` 挂载到独立的 `engine-data-protection` 数据卷。该卷必须和数据库卷
 一样保留；删除它会导致历史密钥无法解密，需重新录入密钥。
 
 从 [deployment.env.example](../../deploy/deployment.env.example) 复制变量到受保护且 shell 兼容的 `.env` 文件（不要提交）。模板中的凭据用于本地联调，生产环境需覆盖。
@@ -199,3 +199,21 @@ Engine/Router 使用同一值作为 Authority。已有 Realm 的 Client 地址�
 Basic 兼容登录严格限制在 Development；它只解析凭据，不查询用户目录，也不校验真实密码。
 认证只负责建立身份，角色、Agent ACL、能力权限与租户授权由独立的服务端授权层判断。
 详见 [安全设计文档](../modules/security.md)。
+
+
+## OpenCode 服务身份与已有密钥卷
+
+Engine 镜像以非 root `app`（UID 1654）启动，系统 home 为 `/home/app`，OpenCode 私有状态位于 `/var/lib/openagent/opencode`。不要挂载个人 HOME、开发机技能目录或 Docker socket。该部署仅支持可信开发/单一信任域；多租户隔离边界及 N03/N04 可用模式见 [OpenCode 运行时](../integrations/opencode-runtime.md#n02宿主继承缓解与受支持模式)。
+
+首次创建的 Data Protection 卷从新镜像取得服务账户目录权限。已有部署必须在切换镜像前停止 Engine、备份原有 `engine-data-protection` 实际命名卷（保留原 Compose 项目名），再将同一卷的所有权调整为镜像的 APP_UID。Compose 仅把原卷挂载位置从 `/root/.aspnet/DataProtection-Keys` 改到 `/home/app/.aspnet/DataProtection-Keys`，不移动/生成/删除密钥。未迁移权限时新账户可能无法读取旧密钥；不能通过重新录入全部模型密钥来掩盖迁移错误。
+
+以下为运维操作模板，替换准确卷名和新镜像后再执行；不要操作其他项目的卷，也不要输出 key XML：
+
+```sh
+# Engine 停止且卷已备份后执行；只挂载原密钥卷，不启动服务。
+docker run --rm --user 0 --entrypoint sh \
+  -v '<原有实际密钥卷名>:/keys' '<新 Engine 镜像>' \
+  -c 'chown -R "$APP_UID:$APP_UID" /keys && chmod 700 /keys && find /keys -type f -exec chmod 600 {} +'
+```
+
+用原有 Compose 项目名启动新镜像后，验证 readiness、既有模型凭据解密和一轮聊天，再结束维护窗口。回退时停止 Engine，将镜像与 Compose 挂载目标一起回退，保留同一个密钥卷；旧 root 镜像可读取迁移后的所有者权限。不要删除卷或重新生成密钥。若运维自定义了 UID/只读文件系统/挂载路径，须按实际身份预置 home、状态目录与卷 ACL，并单独验证。
