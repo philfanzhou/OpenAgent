@@ -28,6 +28,27 @@ describe('workspace API', () => {
     expect(getTenantId()).toBe('development')
   })
 
+  it('prefers the container-injected runtime config over build-time and derived defaults', () => {
+    vi.stubGlobal('window', { __OPENAGENT_RUNTIME_CONFIG__: {
+      routerBaseUrl: 'https://deploy.example:8082',
+      engineBaseUrl: 'https://deploy.example:8083',
+      tenantId: 'tenant-runtime',
+    } })
+
+    expect(getRouterBaseUrl()).toBe('https://deploy.example:8082')
+    expect(getEngineBaseUrl()).toBe('https://deploy.example:8083')
+    expect(getTenantId()).toBe('tenant-runtime')
+  })
+
+  it('still lets an explicit user choice beat the injected runtime config', () => {
+    vi.stubGlobal('window', { __OPENAGENT_RUNTIME_CONFIG__: { routerBaseUrl: 'https://deploy.example:8082' } })
+    setRouterBaseUrl('https://custom.example')
+    setTenantId('tenant-user')
+
+    expect(getRouterBaseUrl()).toBe('https://custom.example')
+    expect(getTenantId()).toBe('tenant-user')
+  })
+
   it('uses the local preview connection mode while preserving an explicit saved choice', () => {
     vi.stubEnv('VITE_OPENAGENT_CONNECTION_MODE', 'engine')
     expect(getConnectionMode()).toBe('engine')

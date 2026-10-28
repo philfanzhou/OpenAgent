@@ -67,9 +67,10 @@ scripts/build-images.sh --env-file .env --docker-mode wsl-docker
 scripts/deploy.sh --env-file .env --docker-mode wsl-docker
 ```
 
-先构建镜像，再部署；构建脚本不会启动容器，部署脚本不会执行构建。Chat 镜像的构建参数与部署环境文件
-同名（`OPENAGENT_PUBLIC_SCHEME`/`OPENAGENT_PUBLIC_HOST` 与 Router/Engine 端口），浏览器端地址在镜像内派生；
-不经过脚本直接 `docker build` 时也使用同一组变量。也可以在 `.env` 中设置
+先构建镜像，再部署；构建脚本不会启动容器，部署脚本不会执行构建。Chat 镜像不携带任何公开地址：
+容器启动时由入口脚本按部署环境文件的同名变量（`OPENAGENT_PUBLIC_SCHEME`/`OPENAGENT_PUBLIC_HOST` 与
+Router/Engine 端口）生成浏览器端运行时配置（`runtime-config.js`），更换域名只需更新 `.env` 并重新部署，
+无需重建镜像；不经过脚本直接 `docker build` 时同样不需要任何 `--build-arg`。也可以在 `.env` 中设置
 `OPENAGENT_DOCKER_MODE=auto`、`docker` 或 `wsl-docker`，省略命令行参数；命令行 `--docker-mode` 优先于
 `.env` 中的设置。
 
@@ -102,9 +103,8 @@ Engine 镜像在构建期内嵌 OpenCode 的 Linux 原生二进制，运行容�
 runtime-tests 真实回归门禁，通过后将 `openagent-engine`、`openagent-router`、`openagent-runner` 与
 `openagent-chat` 四个镜像推送到 GHCR，并上传包含 `deploy/` 与版本说明的 Compose 部署包制品。Engine
 镜像的行为依赖内嵌 OpenCode 版本，版本标签带 `-oc<OpenCode 版本>` 后缀（如 `1.2.3-oc1.19.3`）以区分
-不同 OpenCode 基线；预发布标签（如 `v1.0.0-rc1`）不移动 `latest`。registry 版 Chat 镜像按默认公开地址
-（localhost）构建，生产部署需按自身 `OPENAGENT_PUBLIC_HOST` 重建 Chat 镜像，或在 `.env` 中以
-`OPENAGENT_CHAT_IMAGE` 指向自有构建的标签。
+不同 OpenCode 基线；预发布标签（如 `v1.0.0-rc1`）不移动 `latest`。registry 版 Chat 镜像不含环境特定地址，
+生产部署只需在 `.env` 中设置 `OPENAGENT_PUBLIC_HOST` 等统一变量，容器启动时自动注入，无需重建镜像。
 
 ## 应用更新与排障
 
@@ -116,7 +116,7 @@ runtime-tests 真实回归门禁，通过后将 `openagent-engine`、`openagent-
 Compose 不包含任何模型凭据或已发布 Agent。Development Basic 兼容登录只适合受控联调，不应直接暴露到
 内网或公网；生产环境请使用 HTTPS 的企业 IdP 与 OIDC。
 
-镜像更新时依次执行构建与部署；仅修改运行时变量（例如 OTLP 地址）时只执行部署。三个应用镜像标签可分别由
+镜像更新时依次执行构建与部署；仅修改运行时变量（例如 OTLP 地址或 Chat 公开地址）时只执行部署。三个应用镜像标签可分别由
 `OPENAGENT_ENGINE_IMAGE`、`OPENAGENT_ROUTER_IMAGE` 与 `OPENAGENT_CHAT_IMAGE` 覆盖，因而也可改为私有镜像仓库
 已经推送的标签：
 
