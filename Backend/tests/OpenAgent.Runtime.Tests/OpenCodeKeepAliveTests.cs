@@ -32,6 +32,9 @@ public sealed class OpenCodeKeepAliveTests
             }
         }, []));
         Assert.NotEqual(identity, OpenCodeProcess.Identity(spec, invocation with { McpServers = [new("extra", "http://127.0.0.1:9/mcp", "http")] }, []));
+        RuntimeInvocation withServer = invocation with { McpServers = [new("extra", "http://127.0.0.1:9/mcp", "http")] };
+        Assert.NotEqual(OpenCodeProcess.Identity(spec, withServer, []), OpenCodeProcess.Identity(spec,
+            withServer with { McpServers = [new("extra", "http://127.0.0.1:10/mcp", "http")] }, []));
     }
 
     [OpenCodeFact]
@@ -52,14 +55,16 @@ public sealed class OpenCodeKeepAliveTests
         Assert.Equal("首轮已回答", Text(first));
         Assert.Equal(1, runtime.Keeper.KeptCount);
         Assert.Equal(0, runtime.Keeper.ReusedCount);
-        AssertTurnWorkspacesReleased(runtime);
+        string workspace = Assert.Single(Directory.GetDirectories(runtime.Root, "workspace", SearchOption.AllDirectories));
+        await File.WriteAllTextAsync(Path.Combine(workspace, "marker.txt"), "first turn");
         List<AgentStreamEvent> second = await runtime.CollectAsync(runtime.Request with { Messages = [new("user", "请追问")] });
         Assert.Equal("追问已回答", Text(second));
         Assert.Equal(1, runtime.Keeper.ReusedCount);
         Assert.Equal(1, runtime.Keeper.KeptCount);
         AgentStreamEvent started = Assert.Single(second.Where(item => item.Type == AgentStreamEventType.RuntimeStarted));
         Assert.False(string.IsNullOrWhiteSpace(started.Runtime?.AgentVersion));
-        AssertTurnWorkspacesReleased(runtime);
+        Assert.Equal(workspace, Assert.Single(Directory.GetDirectories(runtime.Root, "workspace", SearchOption.AllDirectories)));
+        Assert.Equal("first turn", await File.ReadAllTextAsync(Path.Combine(workspace, "marker.txt")));
         // 宿主释放时销毁保活进程并回收进程主目录。
         await runtime.Provider.DisposeAsync();
         Assert.Empty(Directory.GetDirectories(runtime.Root, "p-*", SearchOption.AllDirectories));
@@ -185,7 +190,61 @@ public sealed class OpenCodeKeepAliveTests
         Assert.Equal(1, runtime.Keeper.ReusedCount);
         Assert.Equal("turn-1", firstTurnArgument);
         Assert.Equal("turn-2", secondTurnArgument);
-        AssertTurnWorkspacesReleased(runtime);
+        Assert.Single(Directory.GetDirectories(runtime.Root, "workspace", SearchOption.AllDirectories));
+    }
+
+    [OpenCodeFact]
+    public async Task ChangedSkillContent_RebuildsWorkspaceAndKeepsOriginalCopyIndependent()
+    {
+        string package = Path.Combine(Path.GetTempPath(), "openagent-skill-generation-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(package);
+        try
+        {
+            string entry = Path.Combine(package, "SKILL.md");
+            await File.WriteAllTextAsync(entry, "---\nname: example\ndescription: Example skill\n---\nFirst version");
+            await using ModelFixture model = await ModelFixture.StartAsync((context, request) => ModelFixture.TextAsync(context, "ok"));
+            await using RuntimeFixture runtime = new(model.Endpoint, settings => settings["OpenCode:KeepAliveSeconds"] = "120");
+            RuntimeInvocation request = runtime.Request with { Skills = [new("example", package)] };
+            await runtime.CollectAsync(request);
+            string original = Assert.Single(Directory.GetDirectories(runtime.Root, "workspace", SearchOption.AllDirectories));
+            await File.WriteAllTextAsync(entry, "---\nname: example\ndescription: Example skill\n---\nSecond version");
+            await runtime.CollectAsync(request);
+            Assert.Equal(0, runtime.Keeper.ReusedCount);
+            Assert.Contains("First version", await File.ReadAllTextAsync(Path.Combine(original, ".opencode", "skills", "example", "SKILL.md")));
+            Assert.Equal(2, Directory.GetDirectories(runtime.Root, "workspace", SearchOption.AllDirectories).Length);
+        }
+        finally
+        {
+            Directory.Delete(package, recursive: true);
+        }
+    }
+
+    [OpenCodeFact]
+    public async Task CancelledFollowUp_DestroysAcquiredProcessAndWorkspace()
+    {
+        int requests = 0;
+        TaskCompletionSource started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using ModelFixture model = await ModelFixture.StartAsync(async (context, request) =>
+        {
+            if (Interlocked.Increment(ref requests) == 1)
+            {
+                await ModelFixture.TextAsync(context, "ok");
+                return;
+            }
+            started.TrySetResult();
+            try { await Task.Delay(Timeout.Infinite, context.RequestAborted); }
+            catch (OperationCanceledException) { }
+        });
+        await using RuntimeFixture runtime = new(model.Endpoint, settings => settings["OpenCode:KeepAliveSeconds"] = "120");
+        await runtime.CollectAsync(runtime.Request);
+        using CancellationTokenSource cancel = new(TimeSpan.FromSeconds(30));
+        Task<List<AgentStreamEvent>> followUp = runtime.CollectAsync(runtime.Request, cancel.Token);
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(20));
+        cancel.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => followUp.WaitAsync(TimeSpan.FromSeconds(15)));
+        Assert.Equal(1, runtime.Keeper.ReusedCount);
+        Assert.Equal(0, runtime.Keeper.KeptCount);
+        runtime.AssertWorkspacesReleased();
     }
 
     private static RuntimeInvocation Invocation(string instructions) => new(new AgentRuntimeProfile
@@ -199,6 +258,4 @@ public sealed class OpenCodeKeepAliveTests
     private static string Text(IEnumerable<AgentStreamEvent> events) =>
         string.Concat(events.Where(item => item.Type == AgentStreamEventType.Content).Select(item => item.Content));
 
-    private static void AssertTurnWorkspacesReleased(RuntimeFixture runtime) =>
-        Assert.Empty(Directory.GetDirectories(runtime.Root, "t-*", SearchOption.AllDirectories));
 }

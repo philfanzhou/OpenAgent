@@ -1,11 +1,11 @@
+using System.Security.Cryptography;
+using System.Text;
 using OpenAgent.Contracts.Runtime;
 
 namespace OpenAgent.Runtime.OpenCode;
 
 /// <summary>
-/// 把本轮物化好的 skill 包链接进工作区 .opencode/skills/&lt;name&gt;，交由
-/// OpenCode 原生 skill 工具按需发现/加载。优先符号链接（零拷贝）；
-/// Windows 未开启符号链接权限或跨卷等失败场景退化为目录复制。
+/// 把 skill 包复制进进程拥有的工作区，副本不依赖平台的单轮缓存租约。
 /// </summary>
 internal static class OpenCodeSkills
 {
@@ -18,7 +18,7 @@ internal static class OpenCodeSkills
         foreach (RuntimeSkill skill in skills)
         {
             // 名称由工厂侧按 opencode 约定（^[a-z0-9]+(-[a-z0-9]+)*$）或 GUID 生成；
-            // 此处仍拒绝路径分隔符，防止链接目标逃逸出 skills 目录。
+            // 此处仍拒绝路径分隔符，防止目标逃逸出 skills 目录。
             string name = skill.Name ?? string.Empty;
             if (!System.Text.RegularExpressions.Regex.IsMatch(name, "^[a-z0-9]+(?:-[a-z0-9]+)*$")
                 || !Path.IsPathRooted(skill.Path))
@@ -29,21 +29,33 @@ internal static class OpenCodeSkills
             {
                 throw new InvalidOperationException($"Skill package directory is missing: {skill.Name}");
             }
-            string link = Path.Combine(workspace, ".opencode", "skills", name);
-            Directory.CreateDirectory(Path.GetDirectoryName(link)!);
-            try
+            string target = Path.Combine(workspace, ".opencode", "skills", name);
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            CopyDirectory(skill.Path, target);
+        }
+    }
+
+    internal static async Task<string> FingerprintAsync(IReadOnlyList<RuntimeSkill>? skills, CancellationToken ct)
+    {
+        using IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        foreach (RuntimeSkill skill in (skills ?? []).OrderBy(skill => skill.Name, StringComparer.Ordinal))
+        {
+            ct.ThrowIfCancellationRequested();
+            hash.AppendData(Encoding.UTF8.GetBytes(skill.Name + "\0"));
+            if (!string.IsNullOrWhiteSpace(skill.ContentHash))
             {
-                Directory.CreateSymbolicLink(link, skill.Path);
+                hash.AppendData(Encoding.UTF8.GetBytes(skill.ContentHash + "\0"));
+                continue;
             }
-            catch (IOException)
+            foreach (string file in Directory.EnumerateFiles(skill.Path, "*", SearchOption.AllDirectories).Order(StringComparer.Ordinal))
             {
-                CopyDirectory(skill.Path, link);
-            }
-            catch (UnauthorizedAccessException)
-            {
-                CopyDirectory(skill.Path, link);
+                ct.ThrowIfCancellationRequested();
+                hash.AppendData(Encoding.UTF8.GetBytes(Path.GetRelativePath(skill.Path, file) + "\0"));
+                await using FileStream content = File.OpenRead(file);
+                hash.AppendData(await SHA256.HashDataAsync(content, ct).ConfigureAwait(false));
             }
         }
+        return Convert.ToHexStringLower(hash.GetHashAndReset());
     }
 
     private static void CopyDirectory(string source, string target)

@@ -89,7 +89,7 @@ internal sealed class AgentSkillsProviderFactory(
                 (staging, token) => MaterializeAsync(instance, staging, token),
                 cancellationToken).ConfigureAwait(false);
             leases.Add(lease);
-            skills.Add(new RuntimeSkill(directoryName, lease.Path));
+            skills.Add(new RuntimeSkill(directoryName, lease.Path) { ContentHash = instance.Sha256 });
 
             if (instance.ScriptExecutionEnabled && !string.IsNullOrWhiteSpace(instance.Name))
             {

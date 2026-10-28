@@ -1,55 +1,41 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using OpenAgent.Contracts.Runtime;
 using OpenAgent.Runtime.Acp.Client;
 using OpenAgent.Runtime.Acp.Processes;
 using OpenAgent.Runtime.Acp.Protocol;
 
 namespace OpenAgent.Runtime.OpenCode;
 
-/// <summary>已完成 initialize 的 ACP 进程租约。租约期内由单个轮次独占；主目录随进程销毁回收。工具桥由宿主共享，不随进程持有。</summary>
+/// <summary>独占的进程与工作区；创建、复用和销毁始终使用同一个生命周期。</summary>
 internal sealed class OpenCodeAgentProcess(
-    AcpProcess process,
-    AcpClient client,
-    InitializeResponse initialized,
-    string key,
-    string home)
+    AcpProcess process, AcpClient client, InitializeResponse initialized, string key, string home)
 {
     internal AcpProcess Process { get; } = process;
     internal AcpClient Client { get; } = client;
     internal InitializeResponse Initialized { get; } = initialized;
     internal string Key { get; } = key;
     internal string Home { get; } = home;
+    internal string Workspace { get; } = Path.Combine(home, "workspace");
     internal DateTimeOffset IdleDeadline;
     internal int Sessions;
     internal bool IsAlive => !Process.Exit.IsCompleted && !Client.Connection.Completion.IsCompleted;
 }
 
-/// <summary>
-/// 空闲进程保活池：追问轮次命中相同会话归属与启动身份的进程即可跳过冷启动
-/// （进程启动、initialize、provider 缓存）。失败/取消的进程绝不归还；空闲到期、
-/// 会话数或总量超限时销毁。进程不跨会话归属复用。
-/// </summary>
+/// <summary>每个复用键最多保留一个空闲进程；工作区随进程回收，轮次不单独管理目录。</summary>
 internal sealed class OpenCodeProcessKeeper : IAsyncDisposable
 {
     private readonly OpenCodeOptions _options;
     private readonly ILogger<OpenCodeProcessKeeper> _logger;
-    private readonly Dictionary<string, List<OpenCodeAgentProcess>> _kept = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, OpenCodeAgentProcess> _kept = new(StringComparer.Ordinal);
     private readonly CancellationTokenSource _stopping = new();
     private readonly Task _sweep;
     private readonly object _gate = new();
-    private int _keptCount;
     private int _reused;
     private bool _disposed;
 
-    internal int KeptCount
-    {
-        get { lock (_gate) { return _keptCount; } }
-    }
-
-    internal int ReusedCount
-    {
-        get { lock (_gate) { return _reused; } }
-    }
+    internal int KeptCount { get { lock (_gate) { return _kept.Count; } } }
+    internal int ReusedCount { get { lock (_gate) { return _reused; } } }
 
     public OpenCodeProcessKeeper(IOptions<OpenCodeOptions> options, ILogger<OpenCodeProcessKeeper> logger)
     {
@@ -58,175 +44,140 @@ internal sealed class OpenCodeProcessKeeper : IAsyncDisposable
         _sweep = _options.KeepAliveSeconds > 0 ? Task.Run(SweepAsync) : Task.CompletedTask;
     }
 
-    /// <summary>取出一个可复用进程；不存在、已死亡或已过期时返回 null，由调用方重新启动。</summary>
-    internal async Task<OpenCodeAgentProcess?> TryAcquireAsync(string key)
+    internal async Task<OpenCodeAgentProcess> AcquireAsync(
+        string key, string parent, OpenCodeLaunchSpec launch, RuntimeInvocation invocation, CancellationToken ct)
     {
-        if (_options.KeepAliveSeconds <= 0)
-        {
-            return null;
-        }
-        OpenCodeAgentProcess? acquired = null;
-        List<OpenCodeAgentProcess> stale = [];
+        ct.ThrowIfCancellationRequested();
+        OpenCodeAgentProcess? cached;
         lock (_gate)
         {
-            if (_disposed || !_kept.TryGetValue(key, out List<OpenCodeAgentProcess>? entries))
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            _kept.Remove(key, out cached);
+            if (cached is not null && cached.IsAlive && DateTimeOffset.UtcNow < cached.IdleDeadline)
             {
-                return null;
-            }
-            while (entries.Count > 0)
-            {
-                OpenCodeAgentProcess candidate = entries[^1];
-                entries.RemoveAt(entries.Count - 1);
-                _keptCount--;
-                if (candidate.IsAlive && DateTimeOffset.UtcNow < candidate.IdleDeadline)
-                {
-                    acquired = candidate;
-                    _reused++;
-                    break;
-                }
-                stale.Add(candidate);
-            }
-            if (entries.Count == 0)
-            {
-                _kept.Remove(key);
+                _reused++;
+                return cached;
             }
         }
-        foreach (OpenCodeAgentProcess process in stale)
+        if (cached is not null)
         {
-            await DestroyAsync(process).ConfigureAwait(false);
+            await DestroyAsync(cached.Client, cached.Process, cached.Home).ConfigureAwait(false);
         }
-        return acquired;
+
+        string home = Path.Combine(parent, "p-" + Guid.NewGuid().ToString("N"));
+        AcpProcess? process = null;
+        AcpClient? client = null;
+        try
+        {
+            string workspace = Path.Combine(home, "workspace");
+            Directory.CreateDirectory(workspace);
+            // 工作区持有独立副本：平台的 Skill 缓存租约在轮次结束后即可释放。
+            OpenCodeSkills.Materialize(workspace, invocation.Skills);
+            process = AcpProcess.Start(OpenCodeProcess.Create(launch, invocation, _options.AllowedNativeTools, home));
+            client = new AcpClient(process.Transport, options: new()
+            {
+                RequestTimeout = TimeSpan.FromSeconds(_options.RequestTimeoutSeconds)
+            });
+            InitializeResponse initialized = await client.InitializeAsync(new("OpenAgent", "1"), ct).ConfigureAwait(false);
+            return new OpenCodeAgentProcess(process, client, initialized, key, home);
+        }
+        catch
+        {
+            await DestroyAsync(client, process, home).ConfigureAwait(false);
+            throw;
+        }
     }
 
-    /// <summary>轮次结束后归还进程；仅在轮次完整成功且未超限时空闲保活，其余情况立即销毁。</summary>
     internal async ValueTask ReleaseAsync(OpenCodeAgentProcess process, bool healthy)
     {
-        bool keep;
         lock (_gate)
         {
-            keep = !_disposed
-                && healthy
-                && process.IsAlive
-                && _options.KeepAliveSeconds > 0
+            if (!_disposed && healthy && process.IsAlive && _options.KeepAliveSeconds > 0
                 && process.Sessions < _options.MaxSessionsPerProcess
-                && _keptCount < _options.MaxKeptProcesses;
-            if (keep)
+                && _kept.Count < _options.MaxKeptProcesses && !_kept.ContainsKey(process.Key))
             {
                 process.IdleDeadline = DateTimeOffset.UtcNow.AddSeconds(_options.KeepAliveSeconds);
-                if (!_kept.TryGetValue(process.Key, out List<OpenCodeAgentProcess>? entries))
-                {
-                    _kept[process.Key] = entries = [];
-                }
-                entries.Add(process);
-                _keptCount++;
+                _kept.Add(process.Key, process);
+                return;
             }
         }
-        if (!keep)
-        {
-            await DestroyAsync(process).ConfigureAwait(false);
-        }
+        await DestroyAsync(process.Client, process.Process, process.Home).ConfigureAwait(false);
     }
 
     private async Task SweepAsync()
     {
         using PeriodicTimer timer = new(TimeSpan.FromSeconds(Math.Clamp(_options.KeepAliveSeconds, 1, 5)));
-        List<OpenCodeAgentProcess> expired = [];
         try
         {
             while (await timer.WaitForNextTickAsync(_stopping.Token).ConfigureAwait(false))
             {
-                List<string> emptied = [];
-                expired.Clear();
+                OpenCodeAgentProcess[] expired;
                 lock (_gate)
                 {
-                    if (_disposed)
+                    expired = _kept.Values.Where(process => !process.IsAlive || DateTimeOffset.UtcNow >= process.IdleDeadline).ToArray();
+                    foreach (OpenCodeAgentProcess process in expired)
                     {
-                        break;
-                    }
-                    foreach (KeyValuePair<string, List<OpenCodeAgentProcess>> pair in _kept)
-                    {
-                        pair.Value.RemoveAll(process =>
-                        {
-                            if (process.IsAlive && DateTimeOffset.UtcNow < process.IdleDeadline)
-                            {
-                                return false;
-                            }
-                            expired.Add(process);
-                            _keptCount--;
-                            return true;
-                        });
-                        if (pair.Value.Count == 0)
-                        {
-                            emptied.Add(pair.Key);
-                        }
-                    }
-                    foreach (string key in emptied)
-                    {
-                        _kept.Remove(key);
+                        _kept.Remove(process.Key);
                     }
                 }
                 foreach (OpenCodeAgentProcess process in expired)
                 {
-                    await DestroyAsync(process).ConfigureAwait(false);
+                    await DestroyAsync(process.Client, process.Process, process.Home).ConfigureAwait(false);
                 }
             }
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (_stopping.IsCancellationRequested)
         {
-        }
-        catch (Exception error)
-        {
-            // 清扫故障不能拖垮宿主；残留条目由下一次获取、释放或销毁兜底回收。
-            _logger.LogWarning("OpenCode keep-alive sweep failed ({ErrorType})", error.GetType().Name);
         }
     }
 
-    private async Task DestroyAsync(OpenCodeAgentProcess process)
+    private async Task DestroyAsync(AcpClient? client, AcpProcess? process, string home)
     {
-        try
+        foreach (IAsyncDisposable? resource in new IAsyncDisposable?[] { client, process })
         {
-            await process.Client.DisposeAsync().ConfigureAwait(false);
-        }
-        catch (Exception error)
-        {
-            _logger.LogWarning("OpenCode keep-alive connection disposal failed ({ErrorType})", error.GetType().Name);
-        }
-        try
-        {
-            await process.Process.DisposeAsync().ConfigureAwait(false);
-        }
-        catch (Exception error)
-        {
-            _logger.LogWarning("OpenCode keep-alive process disposal failed ({ErrorType})", error.GetType().Name);
-        }
-        try
-        {
-            if (Directory.Exists(process.Home))
+            if (resource is null)
             {
-                Directory.Delete(process.Home, recursive: true);
+                continue;
             }
+            try { await resource.DisposeAsync().ConfigureAwait(false); }
+            catch (Exception error) { OpenCodeLog.CleanupFailure(_logger, resource.GetType().Name, error.GetType().Name); }
         }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        for (int attempt = 0; attempt < 3; attempt++)
         {
-            _logger.LogWarning("Could not remove OpenCode process home {Home} ({ErrorType})", process.Home, error.GetType().Name);
+            try
+            {
+                if (Directory.Exists(home))
+                {
+                    Directory.Delete(home, recursive: true);
+                }
+                return;
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                if (attempt == 2)
+                {
+                    OpenCodeLog.CleanupFailure(_logger, "workspace", error.GetType().Name);
+                    return;
+                }
+                await Task.Delay(100).ConfigureAwait(false);
+            }
         }
     }
 
     public async ValueTask DisposeAsync()
     {
-        List<OpenCodeAgentProcess> remaining;
+        OpenCodeAgentProcess[] remaining;
         lock (_gate)
         {
             _disposed = true;
-            remaining = [.. _kept.Values.SelectMany(entries => entries)];
+            remaining = _kept.Values.ToArray();
             _kept.Clear();
-            _keptCount = 0;
         }
         _stopping.Cancel();
         await _sweep.ConfigureAwait(false);
         foreach (OpenCodeAgentProcess process in remaining)
         {
-            await DestroyAsync(process).ConfigureAwait(false);
+            await DestroyAsync(process.Client, process.Process, process.Home).ConfigureAwait(false);
         }
         _stopping.Dispose();
     }

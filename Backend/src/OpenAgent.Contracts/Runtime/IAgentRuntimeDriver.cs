@@ -27,8 +27,11 @@ public sealed record RuntimeMessage(
 
 public sealed record RuntimeAttachment(string MediaType, ReadOnlyMemory<byte> Data);
 
-/// <summary>已物化的 skill 包目录；驱动负责链接进本轮工作区供 harness 原生发现。</summary>
-public sealed record RuntimeSkill(string Name, string Path);
+/// <summary>已物化的 Skill 包目录；已验证的内容哈希用于复用工作区。</summary>
+public sealed record RuntimeSkill(string Name, string Path)
+{
+    public string? ContentHash { get; init; }
+}
 
 /// <summary>
 /// 按 Agent 配置启用的外部 MCP server 定义；驱动经 ACP session/new 直接透传给

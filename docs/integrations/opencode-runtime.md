@@ -35,11 +35,11 @@ Runtime 只引用 Contracts、Runtime.Acp 和官方 MCP SDK；Application 只引
 
 1. HTTP 身份与入口治理不变。平台解析并授权 Agent/模型，建立 Tenant/User/Conversation/Trace 身份，校验附件，获取既有会话锁与版本。
 2. 平台把历史、平台自有工具、外部 MCP server 定义和 Skill 包准备成 RuntimeInvocation。历史加载、工具发现与各 feature 工厂互不依赖，并行执行后按注册顺序合并（EF 仓储均按调用创建独立 DbContext，天然并发安全）；工厂失败时已启动的任务进入统一释放路径。平台工具函数带本轮闭包；每次回调校验 Tool/Function 的 invoke 权限，沿用工具超时、独占/只读并发和结果字符预算。外部 MCP server 不再经平台代理连接（见"MCP 透传"），其凭据与限流由 harness 持有。MCP server 定义与 Runtime profile 的读取在单例仓储内有 30 秒 TTL 进程内缓存（含负结果），写入/删除即时失效，跨进程仍有最多 30 秒陈旧窗口。
-3. 驱动按复用键（会话归属 + 启动身份哈希）获取保活进程，未命中或已过期时才启动新的 `opencode acp` 进程并执行 initialize。进程拥有独立的主目录（HOME/XDG 状态目录与进程工作目录），跨轮次保活时保持 harness 缓存为热；每轮仍创建随机工作区作为 ACP 会话 cwd。平台自有工具经宿主共享 MCP 桥暴露：桥是宿主单例，Engine.Host 经 `MapRuntimeToolBridge` 把桥路由挂到主站已有端口（自闸门在用户上下文/准入中间件之前短路桥流量），没有独立监听站点；库/测试等无宿主挂载、或主站无可 loopback 直连的 http 绑定时，回退为自建 loopback 端点。每轮向共享桥注册本轮工具集并持有独立 256 bit 随机 bearer，身份不取自模型参数，整轮取消或租约释放后拒绝新请求。启用的 Skill 包以符号链接（失败退化为复制）物化到本轮工作区 `.opencode/skills/<name>`，交由 OpenCode 原生 skill 工具按需发现。
-4. 复用进程直接跳过启动与 initialize；随后执行 session/new（携带本轮平台桥 + 透传的外部 MCP server 定义，cwd 为本轮随机工作区）→ 可用时选择 model config → session/prompt。OpenCode 直接调用选定的模型，平台工具经 MCP 桥调用，外部 MCP 工具由 OpenCode 原生连接调用。
+3. 驱动按复用键（会话归属 + 启动身份哈希）获取保活进程，未命中或已过期时才启动新的 `opencode acp` 进程并执行 initialize。进程拥有独立的主目录（HOME/XDG 状态目录与进程工作目录），跨轮次保活时保持 harness 缓存为热；ACP 会话 cwd 固定为该进程拥有的 `workspace` 子目录，同归属追问复用目录缓存。平台自有工具经宿主共享 MCP 桥暴露：桥是宿主单例，Engine.Host 经 `MapRuntimeToolBridge` 把桥路由挂到主站已有端口（自闸门在用户上下文/准入中间件之前短路桥流量），没有独立监听站点；库/测试等无宿主挂载、或主站无可 loopback 直连的 http 绑定时，回退为自建 loopback 端点。每轮向共享桥注册本轮工具集并持有独立 256 bit 随机 bearer，身份不取自模型参数，整轮取消或租约释放后拒绝新请求。启用的 Skill 包在进程创建时复制到其工作区 `.opencode/skills/<name>`，交由 OpenCode 原生 skill 工具按需发现。
+4. 复用进程直接跳过启动与 initialize；随后执行 session/new（携带本轮平台桥 + 透传的外部 MCP server 定义，cwd 为进程拥有的固定工作区）→ 可用时选择 model config → session/prompt。OpenCode 直接调用选定的模型，平台工具经 MCP 桥调用，外部 MCP 工具由 OpenCode 原生连接调用。
 5. 消费 session/update，合并工具增量、保留调用 ID、去除桥的显示名前缀，将正文、reasoning、工具结果和计划映射到 AgentStreamEvent。相同工具参数更新不重复发送；参数确有变化时沿同一个 ID 更新。
 6. ACP prompt 结束后排空更新队列。平台保存会话成功后才发送 usage/done。失败或取消保存部分正文、reasoning 与工具记录。
-7. 取消发送 session/cancel 并等待原 prompt 结果；SDK 对不确认的进程执行有界回收。轮次结束后关闭本轮 ACP 会话、吊销本轮桥注册（共享端点保留给后续轮次）、释放工具资源并删除本轮随机工作区，保留平台会话数据。完整成功轮次的进程归还保活池等待追问复用；失败、取消、空闲到期、会话数或总量超限的进程立即销毁并回收其主目录。
+7. 取消发送 session/cancel 并等待原 prompt 结果；SDK 对不确认的进程执行有界回收。轮次结束后关闭本轮 ACP 会话、吊销本轮桥注册（共享端点保留给后续轮次）、释放本轮工具资源，保留平台会话数据。完整成功轮次的进程和工作区一起归还保活池；失败、取消、空闲到期、会话数或总量超限时，由 `OpenCodeProcessKeeper` 统一销毁进程并回收整个主目录。
 
 OpenCode 的原生工具默认 `* = deny`，仅允许 `openagent_*` 平台桥工具；按 Agent 配置透传的外部 MCP server 会追加对应 `server_*` 放行，启用 Skill 时放行原生 `skill` 工具。宿主可通过 `OpenCode:AllowedNativeTools` 显式放行原生工具（如 `read`/`edit`/`write`，可带参数模式如 `bash[npm *]`），默认空保持全拒绝；放行即把对应主机读写/执行面直接交给 harness 进程（应用层授权，非 OS 沙箱），由宿主知情选择，白名单参与进程复用身份，改动后不复用旧权限进程。条目禁止花括号（OpenCode 在 JSON 解析前展开 `{file:...}`/`{env:...}` 宏），启动校验拒绝。当前开发配置（`appsettings.Development.json`）为便于本机联调放行了 `read`/`edit`/`write`/`bash`（含原生 shell 执行），生产配置不放开。Client 不启用文件/终端回调，ACP 权限请求默认拒绝。桥路由挂载在主站端口上时，仅接受 loopback 远端（其余一律 404，不暴露路由存在性）与命中本轮注册的 bearer（未命中 401），公共认证与准入管线不感知桥流量。平台 Runner、文件资产和 Skill 脚本策略继续约束平台侧工具。这是应用层授权和进程环境隔离，**不是操作系统沙箱**；本轮不宣称解决恶意 harness 的主机访问问题，也不实现人工审批。
 
@@ -51,7 +51,7 @@ OpenCode 的原生工具默认 `* = deny`，仅允许 `openagent_*` 平台桥工
 
 ## Skill 物化
 
-- 启用的 Skill 包物化到进程级内容缓存目录（键 = 租户 + 对象键 + 包 SHA-256，首次仍逐文件下载并校验完整性，staging 原子提交；未登记哈希的记录退回一次性目录随轮释放），再以符号链接进入工作区 `.opencode/skills/<name>`（Windows 无符号链接权限或跨卷时退化为复制）；追问轮次命中缓存即零下载，新包发布自然失效旧键。缓存根目录按进程隔离（含进程 ID）；轮次以租约持有包引用，淘汰只回收零引用条目，活跃包不会被删除。OpenCode 原生 skill 工具按需加载 SKILL.md，平台不再把 skill 文本注入提示词。
+- 启用的 Skill 包物化到进程级内容缓存目录（键 = 租户 + 对象键 + 包 SHA-256，首次仍逐文件下载并校验完整性，staging 原子提交；未登记哈希的记录退回一次性目录随轮释放），进程首次创建时再复制到其工作区 `.opencode/skills/<name>`，后续复用独立副本，不延长平台缓存租约；追问轮次命中缓存即零下载，新包发布自然失效旧键。缓存根目录按进程隔离（含进程 ID）；轮次以租约持有包引用，淘汰只回收零引用条目，活跃包不会被删除。OpenCode 原生 skill 工具按需加载 SKILL.md，平台不再把 skill 文本注入提示词。
 - Skill 包内文件的受限读取（`read_skill_file`）与脚本执行（`run_skill_script`，经隔离 Runner，保留三重开关）作为平台桥工具提供；两者都限制在物化包目录内。
 
 ## 独立 Runtime 设置
@@ -67,7 +67,7 @@ Runtime 在独立设置页保存 ID、名称、Provider 和单轮时限，存入
 - 子进程只继承 PATH/PATHEXT/COMSPEC/SystemRoot/WINDIR 白名单，不继承服务数据库口令、云凭据或用户 OpenCode 配置；PATHEXT 缺失会让按名解析（`python` → `python.exe`）表现为"命令不存在"，Windows 上另会从子 PATH 剔除商店别名目录（`%LOCALAPPDATA%\Microsoft\WindowsApps`——AppModel 激活的存根在受控环境下挂死，且掩盖 PATH 中靠后的真实安装）。启动命令由宿主配置，聊天请求不能替换。宿主显式设置时额外透传 Node TLS 覆盖 `NODE_TLS_REJECT_UNAUTHORIZED`（跳过证书校验）与 `NODE_EXTRA_CA_CERTS`（追加自签名 CA），用于自签名证书的模型端点；未设置不进入子进程环境。
 - ApiFormat 映射为 OpenAI Chat Completions、OpenAI Responses、Anthropic 对应的 AI SDK Provider；Chat Completions 由确定性本地模型 + 真实 OpenCode 覆盖；Anthropic Messages 已通过智谱兼容端点真实模型调用，含 Skill/MCP 与 HTTP/SSE。OpenAI Responses 仍待真实服务商互操作验收；不据此宣称官方 Anthropic Claude 模型已验证。
 - ContextTokens 未配置时用 128000 作为驱动配置回退值；输出上限为上下文的四分之一且不超过 16384。实际模型限制应在平台模型 profile 中配置，不把回退值当作服务商能力。
-- 每轮使用新的 ACP session 与随机工作区；OpenCode 进程按"会话归属 + 启动身份"（可执行文件、模型端点/密钥/参数、指令、MCP/Skill 放行策略的哈希）在 `KeepAliveSeconds` 窗口内保活复用，追问轮次免付进程冷启动，且不跨会话归属共享进程。旧消息按 role/content 序列化为一个嵌入 JSON 资源；当前 query 和平台筛选后的图片作为内容块传入。平台会话主键不变，但不沿用 OpenCode 私有会话或 ACP session/load。历史中的工具结果是上下文数据，不会自动重放执行。
+- 每轮使用新的 ACP session 和工具 bearer；OpenCode 进程与固定工作区按"会话归属 + 启动身份 + Skill 内容"（租户/用户/会话/Agent、可执行文件、模型端点/密钥/参数、指令、Runtime ID、完整外部 MCP 定义、原生工具策略与 Skill 内容哈希）在 `KeepAliveSeconds` 窗口内保活复用，追问轮次免付进程冷启动，且不跨会话归属共享进程。旧消息按 role/content 序列化为一个嵌入 JSON 资源；当前 query 和平台筛选后的图片作为内容块传入。平台会话主键不变，但不沿用 OpenCode 私有会话或 ACP session/load。历史中的工具结果是上下文数据，不会自动重放执行。
 - usage_update.used 是上下文占用量，不是本轮计费 token。harness 上报 usage_update 时终态 Usage 事件携带上下文占用（prompt=total=used、completion=0），不拆分计费；未上报时 TokenUsage 保持 null，ModelId/TraceId 仍随终态返回，会话持久化记录不落 TokenUsage。
 
 ## 配置与启动
@@ -86,8 +86,8 @@ Runtime 在独立设置页保存 ID、名称、Provider 和单轮时限，存入
     "MaxConcurrentTurns": 8,
     "MaxPromptCharacters": 2097152,
     "LogUsageUpdates": false,
-    "KeepAliveSeconds": 0,
-    "MaxKeptProcesses": 8,
+    "KeepAliveSeconds": 15,
+    "MaxKeptProcesses": 2,
     "MaxSessionsPerProcess": 64,
     "AllowedNativeTools": []
   }
@@ -98,9 +98,9 @@ Runtime 在独立设置页保存 ID、名称、Provider 和单轮时限，存入
 
 `LogUsageUpdates` 打开后，每轮 `usage_update`（上下文占用 used/size）以 Information 级别写入日志（EventId 4500），用于追踪各轮 token 占用；不落对话报文，生产环境保持关闭。
 
-每轮另有一行分段计时日志（EventId 4501，Information，默认开启，不含对话内容）：`process`（进程获取/启动+initialize，近 0 表示命中保活）、`sessionNew`（ACP session/new + 桥租约）、`prompt`（模型配置+发送）、`firstUpdate`（prompt→首个 session/update，衡量 ACP 链路活性）、`firstToken`（prompt→首个可见 token，衡量模型 TTFT）、`stream`（首 token→轮次完成）、`close`（会话关闭+清理+归还）。用于判别延迟归属：ACP 侧异常会体现在 sessionNew/firstUpdate，模型侧慢会体现在 firstToken/stream。
+每轮另有一行分段计时日志（EventId 4501，Information，默认开启，不含对话内容）：`process`（进程获取/启动+initialize，近 0 表示命中保活）、`sessionNew`（ACP session/new + 桥租约）、`prompt`（模型配置+发送）、`firstUpdate`（prompt→首个 session/update，衡量 ACP 链路活性）、`firstToken`（prompt→首个可见 token，包含 harness 准备与模型 TTFT）、`stream`（首 token→轮次完成）、`close`（会话关闭+清理+归还）。用于判别延迟归属；firstToken 同时包含 harness 内部准备，需结合模型请求发送时刻区分模型侧耗时。
 
-进程保活（默认关闭）：`KeepAliveSeconds > 0` 时，相同"会话归属 + 启动身份"的空闲进程在窗口内可被下一轮复用（实测可把追问轮次从约 2.5 s 降到约 1 s）；`MaxKeptProcesses`（默认 8）限制保活进程总数，`MaxSessionsPerProcess`（默认 64）限制单进程累计会话数，超限即销毁重建，后台清扫周期不超过 5 秒。失败或取消的轮次不归还进程；身份哈希覆盖模型端点/密钥与指令、工具放行策略，且不跨会话归属复用。**默认 0 的原因**：实测 OpenCode 1.19.3 空闲进程存在约 1–2 核的持续 CPU 空转与持续外呼（会话服务/watcher，与平台侧桥的存亡无关），多进程保活会拖慢整机；确认目标版本空闲行为可接受后再按部署开启。工具桥与保活开关无关：桥是宿主共享单例（挂载主站端口，回退自建 loopback），每轮以独立 bearer 注册/吊销工具集，不随进程销毁。
+进程与工作区保活：默认空闲保留 15 秒，最多 2 个空闲进程；`KeepAliveSeconds=0` 可关闭。`MaxSessionsPerProcess`（默认 64）限制累计轮次；到期、失败、取消或超限统一回收，每个复用键最多保留一个空闲进程。主目录始终随机生成，只有命中同一归属和配置身份的独占租约才能继续使用，不跨租户/用户/会话/Agent 复用。Skill 使用平台验证过的包哈希参与身份；无哈希时计算本地文件内容哈希，避免给正常追问重复扫描包内容。当前 OpenCode 空闲仍消耗 CPU/内存，15 秒窗口用于限制驻留；忙进程上限仍由 `MaxConcurrentTurns` 控制，空闲数上限不等于宿主总进程上限。工具桥仍按轮次注册、吊销独立 bearer，不保留上一轮的工具闭包。
 
 缺少可执行文件、启动失败或 ACP 异常会明确失败，没有第二条执行路径。外部错误正文不会原样进入 SSE/会话；日志记录异常类型。工作区清理失败会告警并保留可定位目录，不删除其他轮次或宿主根目录。
 
@@ -113,6 +113,8 @@ OpenCode 内部可能产生标题等辅助模型请求，本轮未采集其底�
 Worker/分布式租约与 fencing、RunGrant、跨重启事件重放、人工审批、MCP server 鉴权头透传和其余服务商验收仍按任务清单单独推进。本轮没有部署或修改线上配置。需要回退时回退此平台接入 PR；独立 SDK PR 可继续保留。
 
 ## 验证方法
+
+2026-10-28 固定工作区改造本地验收：macOS arm64、.NET SDK 10.0.301、真实 OpenCode 1.19.3 + 即时本地模型；完整 Runtime driver 每组剔除首轮后采样 6 次，保活关闭时首字 p50 1535.6 ms，15 秒保活并复用 cwd 时 138.7 ms（范围 114.5–155.6 ms）。结果不含真实模型计算、平台存储和前端；窗口外的首轮仍需冷启动。新增回归验证 cwd 连续性、Skill 变化及副本独立性、追问取消后的进程/目录回收；全量后端 1104 通过、25 环境门控跳过（含 77 个真实 Runtime 回归通过）。构建成功，保留既有 NuGet 安全提示和 RuntimeBoundaryTests 可空警告。
 
 默认执行 `dotnet build Backend/OpenAgent.sln` 和 `dotnet test Backend/OpenAgent.sln --no-build`。真实 OpenCode 场景显式设置可执行文件路径：
 
