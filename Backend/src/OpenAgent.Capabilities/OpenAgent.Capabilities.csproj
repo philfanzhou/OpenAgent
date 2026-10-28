@@ -2,7 +2,10 @@
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="../OpenAgent.Contracts/OpenAgent.Contracts.csproj" />
-    <PackageReference Include="SixLabors.ImageSharp" />
+    <PackageReference Include="SkiaSharp" />
+    <!-- Linux（Docker 部署）的 libSkiaSharp.so 不随主包传递，需显式引用；
+         运行镜像需安装 libfontconfig1（见 Engine.Host Dockerfile）。 -->
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="OpenAgent.Application" />

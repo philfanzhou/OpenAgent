@@ -7,6 +7,10 @@ RUN npm install --prefix /opt/opencode --ignore-scripts --no-audit --no-fund ope
 
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
+# libfontconfig1：SkiaSharp 的 libSkiaSharp.so 依赖（runtime-tests 目标在容器内跑测试）。
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libfontconfig1 \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY Backend/ Backend/
 RUN dotnet restore Backend/OpenAgent.sln
@@ -28,7 +32,7 @@ WORKDIR /app
 # node 二进制直接取自上方 node:22 构建阶段，OpenCode 本体自包含、不依赖它。
 # npm/corepack 不随镜像分发，需要包管理的脚本应走隔离 Runner。
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl python3 python3-pip \
+    && apt-get install -y --no-install-recommends curl python3 python3-pip libfontconfig1 \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=build /app/publish/ .
 COPY --from=opencode /opencode /usr/local/bin/opencode
