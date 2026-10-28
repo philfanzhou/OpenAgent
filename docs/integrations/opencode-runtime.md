@@ -139,7 +139,7 @@ SDK 控制台继续只有 SDK 引用，外部连接入口见 [控制台使用](a
 
 ## N02：宿主继承缓解与受支持模式
 
-本节基于 `origin/dev@768a8c1e`，范围为 Runtime/OpenCode、Engine 镜像/开发配置、Data Protection 卷挂载和 Runtime.Tests。SDK 协议、项目依赖、Runner、RAG、Worker/RunGrant 实现均未改变。`KeepAliveSeconds` 保持 0。
+初始基线为 `origin/dev@768a8c1e`，交付前已合入 `origin/dev@0f670f86`（保留 SkiaSharp 的镜像依赖）。范围为 Runtime/OpenCode、Engine 镜像/开发配置、Data Protection 卷挂载和 Runtime.Tests。SDK 协议、项目依赖、Runner、RAG、Worker/RunGrant 实现均未改变。`KeepAliveSeconds` 保持 0。
 
 ### 当前缓解
 
@@ -172,7 +172,7 @@ Windows 原生运行必须使用独立服务账户、干净系统用户 profile 
 
 ### 2026-10-28 验证与未验收项
 
-- macOS arm64、SDK 10.0.301：全解决方案构建 0 错误、85 条已有警告；默认后端 1090 通过、48 跳过、0 失败。跳过包括真实 OpenCode、Windows 与 Runner/Linux 环境门控，不能作为对应平台通过证明。
+- macOS arm64、SDK 10.0.301：全解决方案构建 0 错误、1 条已有警告；默认后端 1097 通过、48 跳过、0 失败。跳过包括真实 OpenCode、Windows 与 Runner/Linux 环境门控，不能作为对应平台通过证明。
 - Linux arm64、SDK 10.0.402：使用缓存测试基础镜像，npm 固定包 `opencode-linux-arm64@1.19.3`，下载 tarball 的 SHA-512 与 registry integrity 一致，执行 `--version` 为 1.19.3。测试用非 root UID 1654 的干净 `app` profile；只使用临时 canary、确定性本地模型和假 key，未读取真实用户凭据。
 - `OpenCodeIsolationTests` 包含：探针子进程验证环境/cwd/temp、可注入的对照组与收紧后无注入、脏身份 `.opencode` 配置仍注入的反例、默认强制越界 read 拒绝、跨租户/用户的同名会话与同名 Skill、显式授权 shell/外部目录后的文件与同级进程可见性。`OpenCodeSkillsTests` 验证路径穿越、包根/包内链接拒绝、副本不回写缓存及取消。
 - 真实 Runtime 全套 86 通过、1 个 Windows 专属用例跳过、0 失败（87 总数包含普通边界测试）；Host SSE 1 通过。已有取消/失败路径检查轮次工作区与进程 home 回收。探针子进程属于替身验证，不等价于真实 OpenCode；Linux `/proc` 探针不等价于 Windows 进程视图验收。
