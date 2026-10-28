@@ -96,7 +96,7 @@ internal sealed class WorkspaceCapabilitySource(
                 ExportName,
                 "Copy a workspace file into immutable conversation file storage and return its fileId — "
                 + "the bridge from the editable workspace to delivery: hand the fileId to publish_files for user download, "
-                + "or to compress_files/read_file. The workspace copy stays untouched.",
+                + "or to read_file. The workspace copy stays untouched.",
                 """{"type":"object","properties":{"path":{"type":"string","description":"File path relative to the workspace root"},"fileName":{"type":"string","description":"Asset file name; defaults to the workspace file name"}},"required":["path"],"additionalProperties":false}""",
                 AgentResourceType.Tool,
                 "code-execution",

@@ -11,21 +11,11 @@ namespace OpenAgent.Engine.Host.Files;
 internal sealed class S3FileObjectStore : IFileObjectStore
 {
     private readonly IAmazonS3 _s3;
-    private readonly IS3Presigner _presigner;
     private readonly FileObjectStorageOptions _options;
 
     public S3FileObjectStore(IAmazonS3 s3, IOptions<FileObjectStorageOptions> options)
-        : this(s3, options, new S3Presigner(s3))
-    {
-    }
-
-    public S3FileObjectStore(
-        IAmazonS3 s3,
-        IOptions<FileObjectStorageOptions> options,
-        IS3Presigner presigner)
     {
         _s3 = s3;
-        _presigner = presigner;
         _options = options.Value;
     }
 
@@ -141,37 +131,6 @@ internal sealed class S3FileObjectStore : IFileObjectStore
         }
     }
 
-    public Task<FileObjectAccessReference> CreateReadUrlAsync(
-        string objectKey,
-        DateTimeOffset expiresAt,
-        CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        if (string.IsNullOrWhiteSpace(objectKey))
-        {
-            throw new ArgumentException("Object key is required.", nameof(objectKey));
-        }
-        if (expiresAt <= DateTimeOffset.UtcNow)
-        {
-            throw new ArgumentException("Object URL expiration must be in the future.", nameof(expiresAt));
-        }
-
-        string url = _presigner.GetPreSignedURL(new GetPreSignedUrlRequest
-        {
-            BucketName = _options.BucketName,
-            Key = objectKey,
-            Verb = HttpVerb.GET,
-            Protocol = GetPreSignedUrlProtocol(),
-            Expires = expiresAt.UtcDateTime
-        });
-        return Task.FromResult(new FileObjectAccessReference
-        {
-            ObjectKey = objectKey,
-            Url = url,
-            ExpiresAt = expiresAt
-        });
-    }
-
     public async Task DeleteAsync(string objectKey, CancellationToken cancellationToken)
     {
         try
@@ -207,14 +166,6 @@ internal sealed class S3FileObjectStore : IFileObjectStore
 
         string extension = Path.GetExtension(request.FileName).ToLowerInvariant();
         return $"{root}/{request.FileId}{extension}";
-    }
-
-    private Amazon.S3.Protocol GetPreSignedUrlProtocol()
-    {
-        return Uri.TryCreate(_options.ServiceUrl, UriKind.Absolute, out Uri? uri)
-            && uri.Scheme == Uri.UriSchemeHttp
-            ? Amazon.S3.Protocol.HTTP
-            : Amazon.S3.Protocol.HTTPS;
     }
 
     private static string NormalizePath(string value)

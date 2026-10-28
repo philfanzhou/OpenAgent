@@ -44,7 +44,7 @@ public class FileAssetCapabilitySourceTests
 
         IReadOnlyList<CapabilityDefinition> definitions = await DiscoverAsync(source);
 
-        string[] names = ["read_file", "create_file_transfer_url", "list_files", "write_file", "compress_files", "publish_files", "download_file"];
+        string[] names = ["read_file", "create_file_transfer_url", "list_files", "write_file", "publish_files", "download_file"];
         Assert.Equal(names, definitions.Select(definition => definition.Name).ToArray());
     }
 
@@ -426,36 +426,6 @@ public class FileAssetCapabilitySourceTests
     }
 
     [Fact]
-    public async Task InvokeAsync_CompressFiles_WritesArchiveAndReturnsResult()
-    {
-        TestHarness harness = CreateHarness();
-        harness.Objects.ContentsByKey[TenantObjectKey("docs/a.txt")] = "alpha"u8.ToArray();
-        harness.Objects.ContentsByKey[TenantObjectKey("img/b.csv")] = "1;2;3"u8.ToArray();
-        var arguments = new Dictionary<string, object?>
-        {
-            ["outputName"] = "bundle.zip",
-            ["items"] = JsonSerializer.Deserialize<JsonElement>(
-                $$"""[{"objectKey":"{{TenantObjectKey("docs/a.txt")}}","fileName":"text/readme.txt"},{"objectKey":"{{TenantObjectKey("img/b.csv")}}"}]""")
-        };
-
-        string result = await InvokeAsync(harness.Source, "compress_files", arguments);
-
-        using JsonDocument document = JsonDocument.Parse(result);
-        string fileId = document.RootElement.GetProperty("fileId").GetString()!;
-        Assert.Equal(2, document.RootElement.GetProperty("fileCount").GetInt32());
-        Assert.True(document.RootElement.GetProperty("length").GetInt64() > 0);
-        Assert.False(string.IsNullOrEmpty(document.RootElement.GetProperty("objectKey").GetString()));
-        Assert.Equal("bundle.zip", document.RootElement.GetProperty("fileName").GetString());
-        Assert.Equal("application/zip", document.RootElement.GetProperty("mediaType").GetString());
-        Assert.True(harness.Repository.Assets.ContainsKey(fileId));
-        Assert.Contains($"conversation-a:{fileId}", harness.Repository.References);
-        Assert.Empty(harness.Context.Published);
-        Assert.Equal("bundle.zip", harness.Objects.LastRequest?.FileName);
-        Assert.Equal("application/zip", harness.Objects.LastRequest?.MediaType);
-        Assert.Equal("tenant-a", harness.Objects.LastRequest?.TenantId);
-    }
-
-    [Fact]
     public async Task InvokeAsync_PublishFiles_AssociatesSelectedAssets()
     {
         TestHarness harness = CreateHarness();
@@ -496,77 +466,6 @@ public class FileAssetCapabilitySourceTests
         }
         Assert.DoesNotContain("missing-file", result, StringComparison.Ordinal);
         Assert.Empty(harness.Context.Published);
-    }
-
-    [Fact]
-    public async Task InvokeAsync_CompressFilesWithoutOutputName_ReturnsSanitizedError()
-    {
-        TestHarness harness = CreateHarness();
-
-        string result = await InvokeAsync(
-            harness.Source,
-            "compress_files",
-            new Dictionary<string, object?>());
-
-        using (JsonDocument document = JsonDocument.Parse(result))
-        {
-            Assert.Equal("invalid_arguments", document.RootElement.GetProperty("code").GetString());
-        }
-        Assert.Contains("'outputName'", result, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task InvokeAsync_CompressFilesWithoutItems_ReturnsSanitizedError()
-    {
-        TestHarness harness = CreateHarness();
-        var arguments = new Dictionary<string, object?> { ["outputName"] = "bundle.zip" };
-
-        string result = await InvokeAsync(harness.Source, "compress_files", arguments);
-
-        using (JsonDocument document = JsonDocument.Parse(result))
-        {
-            Assert.Equal("invalid_arguments", document.RootElement.GetProperty("code").GetString());
-        }
-        Assert.Contains("'items'", result, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task InvokeAsync_CompressFilesWithEmptyItems_ReturnsSanitizedError()
-    {
-        TestHarness harness = CreateHarness();
-        var arguments = new Dictionary<string, object?>
-        {
-            ["outputName"] = "bundle.zip",
-            ["items"] = JsonSerializer.Deserialize<JsonElement>("[]")
-        };
-
-        string result = await InvokeAsync(harness.Source, "compress_files", arguments);
-
-        using (JsonDocument document = JsonDocument.Parse(result))
-        {
-            Assert.Equal("invalid_arguments", document.RootElement.GetProperty("code").GetString());
-        }
-    }
-
-    [Fact]
-    public async Task InvokeAsync_CompressFilesWithoutZipExtension_ReturnsSanitizedError()
-    {
-        TestHarness harness = CreateHarness();
-        harness.Objects.ContentsByKey[TenantObjectKey("a.txt")] = "data"u8.ToArray();
-        var arguments = new Dictionary<string, object?>
-        {
-            ["outputName"] = "bundle.tar",
-            ["items"] = JsonSerializer.Deserialize<JsonElement>(
-                $$"""[{"objectKey":"{{TenantObjectKey("a.txt")}}"}]""")
-        };
-
-        string result = await InvokeAsync(harness.Source, "compress_files", arguments);
-
-        using (JsonDocument document = JsonDocument.Parse(result))
-        {
-            Assert.Equal("invalid_request", document.RootElement.GetProperty("code").GetString());
-        }
-        Assert.Contains(".zip", result, StringComparison.Ordinal);
     }
 
     private static async Task<IReadOnlyList<CapabilityDefinition>> DiscoverAsync(

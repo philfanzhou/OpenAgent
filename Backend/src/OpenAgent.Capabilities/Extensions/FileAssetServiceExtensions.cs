@@ -26,9 +26,18 @@ internal static class FileAssetServiceExtensions
         services.AddOptions<FileShareOptions>()
             .Bind(configuration.GetSection(FileShareOptions.SectionName))
             .ValidateOnStart();
-        services.TryAddSingleton<IFileObjectStore, UnconfiguredFileObjectStore>();
+        // 本地磁盘 store 作为组合缺省；生产配置对象存储后由 Engine.Host 替换为 S3。
+        // Linux 容器里 LocalApplicationData 可能为空，为空时退回临时目录，保证容器可启动。
+        string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        string storageRoot = configuration["LocalDevelopment:FileStorageRoot"]
+            ?? (string.IsNullOrEmpty(localAppData)
+                ? Path.Combine(Path.GetTempPath(), "OpenAgent", "objects")
+                : Path.Combine(localAppData, "OpenAgent", "objects"));
+        services.TryAddSingleton<IFileObjectStore>(_ => new LocalFileObjectStore(storageRoot));
+        // 分享仓储只有 EF 实现；未组合 Framework 的宿主（测试宿主）保持显式报错的缺省，
+        // 引擎宿主经 AddOpenAgentFramework 注册真实实现。
         services.TryAddSingleton<IFileShareRepository, UnconfiguredFileShareRepository>();
-        services.TryAddSingleton<IInlineImageOptimizer, InlineImageOptimizer>();
+        services.TryAddSingleton<InlineImageOptimizer>();
         services.AddScoped<IFileAssetService, FileAssetService>();
         services.AddScoped<IFileShareService, FileShareService>();
         services.AddScoped<FileAssetExecutionContext>();

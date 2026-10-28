@@ -1,4 +1,3 @@
-using System.IO.Compression;
 using System.Text.Json;
 using System.Text;
 using Microsoft.Extensions.Options;
@@ -87,17 +86,8 @@ internal sealed class FileAssetCapabilitySource(
                 "file-assets",
                 WriteAsync),
             new CapabilityDefinition(
-                "compress_files",
-                "Zip files into one archive, register it as a file asset and return its fileId. "
-                + "Each item targets a fileId, or an objectKey with fileName. "
-                + "Publish the archive with publish_files to deliver it.",
-                """{"type":"object","properties":{"outputName":{"type":"string","description":"Output zip name, e.g. report.zip"},"items":{"type":"array","minItems":1,"items":{"type":"object","properties":{"fileId":{"type":"string","description":"Referenced file asset ID"},"objectKey":{"type":"string","description":"Object key inside the current tenant partition (pair with fileName)"},"fileName":{"type":"string","description":"Name recorded in the archive for an objectKey item"}},"additionalProperties":false}}},"required":["outputName","items"],"additionalProperties":false}""",
-                AgentResourceType.Tool,
-                "file-assets",
-                CompressAsync),
-            new CapabilityDefinition(
                 "publish_files",
-                "Attach existing file assets (by fileId, from write_file/compress_files/earlier operations) to this assistant message for user download or preview. No bytes are copied. "
+                "Attach existing file assets (by fileId, from write_file/earlier operations) to this assistant message for user download or preview. No bytes are copied. "
                 + "This is the only way to hand files to the user — content written by tools alone is invisible to them.",
                 """{"type":"object","properties":{"fileIds":{"type":"array","items":{"type":"string"},"description":"Existing file asset IDs to deliver"}},"required":["fileIds"],"additionalProperties":false}""",
                 AgentResourceType.Tool,
@@ -520,81 +510,6 @@ internal sealed class FileAssetCapabilitySource(
         catch (OpenAgent.Capabilities.Integrations.Runner.WorkspaceOperationException exception)
         {
             return ToolResult.Error(exception.Message, $"workspace_{exception.StatusCode}");
-        }
-    }
-
-    private async Task<ToolResult> CompressAsync(
-        IReadOnlyDictionary<string, object?> arguments,
-        CancellationToken cancellationToken)
-    {
-        string? outputName = ReadString(arguments, "outputName");
-        if (string.IsNullOrWhiteSpace(outputName))
-        {
-            return ToolResult.Error(
-                "'outputName' is a required argument; provide the output zip name (e.g. report.zip).",
-                InvalidArguments);
-        }
-        if (!arguments.TryGetValue("items", out object? itemsValue) || itemsValue == null)
-        {
-            return ToolResult.Error(
-                "'items' is a required argument; provide at least one file to pack (fileId, or objectKey+fileName).",
-                InvalidArguments);
-        }
-        IReadOnlyList<FileArchiveItem> items;
-        try
-        {
-            byte[] json = JsonSerializer.SerializeToUtf8Bytes(itemsValue);
-            items = JsonSerializer.Deserialize<IReadOnlyList<FileArchiveItem>>(
-                json,
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
-        }
-        catch (JsonException)
-        {
-            return ToolResult.Error(
-                "'items' is not a valid array of pack entries.",
-                InvalidArguments,
-                hint: "Use [{\"fileId\":\"...\"}] or [{\"objectKey\":\"...\",\"fileName\":\"...\"}].");
-        }
-        if (items.Count == 0)
-        {
-            return ToolResult.Error(
-                "'items' must contain at least one file to pack.",
-                InvalidArguments);
-        }
-        if (executionContext.Scope == null)
-        {
-            return ToolResult.Error(
-                "The file execution context is unavailable for this request.",
-                UnavailableContext);
-        }
-        try
-        {
-            FileArchiveResult result = await files.CompressAsync(
-                new FileArchiveRequest
-                {
-                    OutputName = outputName,
-                    Items = items
-                },
-                executionContext.Scope,
-                cancellationToken).ConfigureAwait(false);
-            await files.EnsureReferencesAsync(
-                [result.Asset.FileId],
-                executionContext.Scope,
-                cancellationToken).ConfigureAwait(false);
-            return JsonSerializer.Serialize(new
-            {
-                fileId = result.Asset.FileId,
-                fileName = result.Asset.FileName,
-                mediaType = result.Asset.MediaType,
-                objectKey = result.Asset.ObjectKey,
-                length = result.Asset.Length,
-                fileCount = result.FileCount
-            });
-        }
-        catch (OpenAgent.Contracts.Security.AgentException exception)
-        {
-            // 返回净化后的错误文本，供模型修正后重试，不把原始异常泄露给模型。
-            return ToolResult.Error(exception.Message, InvalidRequest);
         }
     }
 

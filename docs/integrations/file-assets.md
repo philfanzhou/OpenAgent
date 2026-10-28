@@ -15,7 +15,7 @@ LLM Profile 选择 `Multimodal` 时，聊天请求中的 `image/*` 资产会在�
 
 内联降采样（`InlineImageOptimizer`）采用"先验证、后解码"的管线：按内容嗅探真实格式（声明媒体类型可被任意伪造，以内探结果为准且必须与声明一致）、读取头信息获取真实尺寸，随后校验单帧像素数（`InlineImageMaxPixels`，默认 2^26）与解码内存预算（`InlineImageMaxDecodedBytes` = 宽×高×4 字节估算，默认 256 MiB），全部通过后才解码并等比缩放到 `InlineImageMaxLongEdge`。解码基于 SkiaSharp 且只取首帧：多帧图（动画 WebP/APNG）的解码内存与单帧图相同，帧数炸弹天然受限，需降采样的动画图输出为静态首帧（视觉模型只消费首帧）；尺寸已达标的小图按原字节内联（动画保持原样）。任一环节不通过（格式不符、数据畸形、超限）会以 `InlineImageRejectedException` 明确拒绝并记录告警日志（含 fileId 与具体原因），该图不再内联、模型仍可通过工具读取原文件——不会回退为把原始字节继续发给模型，防止小体积头部声明超大尺寸的解压炸弹。上述限制只作用于图片内联处理，普通文件上传与存储不受影响。
 
-模型通过 `write_file` 或 `compress_files` 生成文件时，产物会登记为 `FileAsset`，但不会自动出现在 assistant 消息中。模型调用 `publish_files` 并传入一个或多个 `fileId` 后，选中的资产才会关联到当前 assistant 消息；这允许模型保留中间产物、批量发布 Markdown 与图片，或先压缩再发布 ZIP。消息只要带有文件引用，续接会话时都会把对应文件重新注入原消息的模型上下文（user、assistant 均适用）；模型还可以调用 `list_files` 发现当前会话引用的文件，再按需 `read_file` 或 `publish_files`。是否向用户交付仍由消息级发布引用决定。首条消息也必须沿用前端创建的 conversationId，确保上传文件引用和本次模型请求使用同一会话范围。前端可使用消息中的 `fileId` 调用认证下载端点；模型不应直接输出未经授权的 MinIO URL。
+模型通过 `write_file` 生成文件时（或经沙箱执行产物登记），产物会登记为 `FileAsset`，但不会自动出现在 assistant 消息中。模型调用 `publish_files` 并传入一个或多个 `fileId` 后，选中的资产才会关联到当前 assistant 消息；这允许模型保留中间产物、批量发布 Markdown 与图片。消息只要带有文件引用，续接会话时都会把对应文件重新注入原消息的模型上下文（user、assistant 均适用）；模型还可以调用 `list_files` 发现当前会话引用的文件，再按需 `read_file` 或 `publish_files`。是否向用户交付仍由消息级发布引用决定。首条消息也必须沿用前端创建的 conversationId，确保上传文件引用和本次模型请求使用同一会话范围。前端可使用消息中的 `fileId` 调用认证下载端点；模型不应直接输出未经授权的 MinIO URL。
 
 启用文件资产后，模型还可以调用 `download_file`。该函数只接收公开的 HTTP(S) 地址，下载结果写入当前租户、用户和会话范围，并建立会话引用；工具返回 `fileId`、文件名、MIME 和长度。下载器会限制响应大小、超时和重定向次数，并拒绝回环、链路本地、私有网段及多播地址。
 

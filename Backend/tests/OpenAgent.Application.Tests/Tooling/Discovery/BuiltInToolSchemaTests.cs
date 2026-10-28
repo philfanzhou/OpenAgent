@@ -159,7 +159,7 @@ public class BuiltInToolSchemaTests
                 fileOptions,
                 new FileAssetUrlDownloader(Mock.Of<IHttpClientFactory>(), fileOptions)),
             new AgentConfig(),
-            ["read_file", "create_file_transfer_url", "list_files", "write_file", "compress_files", "publish_files", "download_file"]);
+            ["read_file", "create_file_transfer_url", "list_files", "write_file", "publish_files", "download_file"]);
 
         var codeContext = new FileAssetExecutionContext();
         codeContext.Set(TurnContexts.Create("tenant-a", "user-a", "conversation-a"));
