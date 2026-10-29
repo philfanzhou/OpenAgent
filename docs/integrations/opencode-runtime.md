@@ -203,3 +203,9 @@ Windows 原生运行必须使用独立服务账户、干净系统用户 profile 
 启用 `FileAssets:Enabled=true` 与 `FileExchange:Enabled=true` 后，本轮附件原始字节在 MCP 桥注册前写入 `inputs/<fileId>/<安全文件名>`，prompt 附稳定相对路径清单。图片视觉预览仍走原内联流程，原文件不会被降采样替代。`import_file(fileId)` 可恢复当前会话已引用的原件；同名文件按 ID 分目录，本地副本被改写或工作区淘汰后从资产恢复。默认关闭文件交换。
 
 `FileExchange` 输入限额默认每轮 10 个、合计 200 MiB，单文件沿用 FileAssets 限额，进程内最多同时 2 个缓冲传输；它们不是 OS 配额。文件工具继续经过既有发现/调用授权和超时预算。文件租约在消息提交前关闭，回收前排空；Runtime 不保留本轮 scoped 服务。输出导出和完整交付在 FX02/FX03 接续，任务与设计见[方案](../planning/opencode-file-exchange.md)。
+
+### 本地产物导出（FX02）
+
+`export_file({path:"outputs/report.xlsx",fileName?:"报告.xlsx"})` 接受 outputs 下的普通文件，将有界临时快照登记为当前用户的 Agent 来源资产并关联会话，返回 fileId；随后必须显式 `publish_files` 才会挂到消息。快照在进程私有主目录内创建，上传/拒绝后删除；快照前后源文件发生变化时拒绝导出。同轮相同路径/内容/导出名复用 fileId，修改内容创建新资产。
+
+输出默认每轮 10 个、200 MiB（`FileExchange:MaxOutputFiles/MaxOutputBytes`），单文件沿用 FileAssets 上限，与输入共用进程传输并发门。拒绝越界、软/硬链接、设备和 FIFO；Unix 使用非阻塞句柄检查普通文件，支持 64 位 Linux/macOS，其他 Unix ABI 失败关闭。Windows 须真实平台验收；底层 PAL ABI 随 .NET 10 升级须复核。资产服务仍缓冲整文件，峰值内存由 FX04 实测。上传或关联失败不缓存成功，可重试但跨进程不承诺仅创建一个资产。
