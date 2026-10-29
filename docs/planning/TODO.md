@@ -100,7 +100,7 @@
   依赖与验收：依赖 S02；Engine internal 实现；验证上传更新删除、绑定、版本冲突与失败清理
 - [ ] **S04 / T13** — Host/Files 的 S3FileObjectStore、S3Presigner、存储 Options/Validator 归 Framework/ObjectStorage；健康检查归 Host/Health
   依赖与验收：可独立推进；AWSSDK.S3 同迁、Host 注册门面保留且不双注册；上传下载、签名、校验与 readiness 一致
-- [ ] **S05 / T14** — Framework/Persistence/OpenAgentDbContext.OnModelCreating 拆为 Mapping 下每实体 IEntityTypeConfiguration
+- [ ] **S05 / T14** — Framework/Persistence/OpenAgentDbContext.OnModelCreating 拆为 Mapping 下每实体 IEntityTypeConfiguration（负责人：zzyyu；状态：待评审；实现 PR：[#298](https://github.com/philfanzhou/OpenAgent/pull/298)；验收证据：`dotnet ef migrations has-pending-model-changes` 报告设计时模型与快照无差异、未生成 migration；全量构建 0 警告 0 错误，测试 824 通过 / 0 失败 / 19 跳过均为依赖真实环境的既有跳过项）
   依赖与验收：可独立推进；设计时模型与快照一致，关系/index/schema 不变，不生成 schema migration
 - [ ] **S06 / T15** — 核对 shared wire 类型生成与 UI 类型所有权
   依赖与验收：先查实际主干，旧方案的 #121 不代表 codegen 已落地；保留 JSON 与兼容导出；若需生成，验收生成一致性与 CI 漂移检查
