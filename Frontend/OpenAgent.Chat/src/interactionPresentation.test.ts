@@ -72,6 +72,8 @@ describe('interaction labels', () => {
 describe('toolCategory', () => {
   it('maps builtin tools to fine-grained categories and MCP tools to their server', () => {
     expect(toolCategory('read_file')).toBe('文件')
+    expect(toolCategory('import_file')).toBe('文件')
+    expect(toolCategory('export_file')).toBe('文件')
     expect(toolCategory('create_file_transfer_url')).toBe('文件')
     expect(toolCategory('load_skill')).toBe('技能')
     expect(toolCategory('read_skill_file')).toBe('技能')

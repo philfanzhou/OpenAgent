@@ -89,6 +89,28 @@ describe('useChatStreaming', () => {
     vi.clearAllMocks()
   })
 
+  it.each(['Completed', 'Failed', 'Cancelled'] as const)('restores published attachments from the persisted %s response', async (status) => {
+    const { streaming, selectedConversation } = await setup()
+    const file = { fileId: 'exported-result', fileName: '分析表.xlsx', mediaType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', length: 123 }
+    vi.mocked(api.streamChat).mockImplementation(() => (async function* () {
+      yield { type: 'conversation', conversationId: 'conv-1' }
+      yield { type: 'content', content: '已生成结果' }
+      if (status === 'Completed') yield { type: 'done', status, usage: null }
+      else throw new Error('stream interrupted')
+    })() as never)
+    vi.mocked(api.getConversation).mockResolvedValue(makeRecord([
+      row({ sequence: 1, role: 'user', content: '第一轮问题' }),
+      row({ sequence: 4, role: 'assistant', content: '第一轮回答' }),
+      row({ sequence: 5, role: 'user', content: '生成文件' }),
+      row({ sequence: 6, role: 'assistant', content: '已生成结果', files: [file], metadata: { executionStatus: status } }),
+    ], status) as never)
+    streaming.message.value = '生成文件'
+    await streaming.send()
+    const assistant = selectedConversation.value?.messages?.filter(message => message.role === 'assistant').at(-1)
+    expect(assistant?.files).toEqual([file])
+    expect(selectedConversation.value?.status).toBe(status)
+  })
+
   it('requires an independently saved model connection', async () => {
     const { streaming } = await setup('')
     streaming.message.value = '运行'

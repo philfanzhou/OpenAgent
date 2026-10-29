@@ -321,8 +321,7 @@ public class AgentExecutorUsageTests
             serviceProvider,
             scope,
             scope.ServiceProvider.GetRequiredService<RuntimeAgentExecutor>(),
-            Assert.IsType<InMemoryConversationStore>(
-                scope.ServiceProvider.GetRequiredService<IConversationStore>()));
+            scope.ServiceProvider.GetRequiredService<IConversationStore>());
     }
 
     /// <summary>摘要/兼容客户端占位：聊天推理只走驱动，任何调用都是测试失败。</summary>
@@ -380,10 +379,10 @@ public class AgentExecutorUsageTests
         ServiceProvider serviceProvider,
         AsyncServiceScope scope,
         RuntimeAgentExecutor executor,
-        InMemoryConversationStore store) : IAsyncDisposable
+        IConversationStore store) : IAsyncDisposable
     {
         internal RuntimeAgentExecutor Executor { get; } = executor;
-        internal InMemoryConversationStore Store { get; } = store;
+        internal IConversationStore Store { get; } = store;
 
         public async ValueTask DisposeAsync()
         {
