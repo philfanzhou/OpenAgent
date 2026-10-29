@@ -160,7 +160,11 @@ public sealed class OpenCodeIsolationTests : IDisposable
             }
             await ModelFixture.TextAsync(context, "ok");
         });
-        await using RuntimeFixture runtime = new(model.Endpoint, settings => settings["OpenCode:KeepAliveSeconds"] = "120");
+        await using RuntimeFixture runtime = new(model.Endpoint, settings =>
+        {
+            settings["OpenCode:KeepAliveSeconds"] = "120";
+            settings["OpenCode:MaxKeptProcesses"] = "3";
+        });
         await runtime.CollectAsync(runtime.Request with { Skills = [new("same-skill-name", packages[0])] });
         await runtime.CollectAsync(runtime.Request with
         {

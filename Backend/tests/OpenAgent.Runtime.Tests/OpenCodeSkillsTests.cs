@@ -19,7 +19,7 @@ public sealed class OpenCodeSkillsTests : IDisposable
         OpenCodeSkills.Materialize(workspace, [new RuntimeSkill("report-writer", package)]);
 
         string entry = Path.Combine(workspace, ".opencode", "skills", "report-writer", "SKILL.md");
-        Assert.True(File.Exists(entry), "SKILL.md must be reachable through the workspace entry");
+        Assert.True(File.Exists(entry), "SKILL.md must exist in the owned workspace");
         Assert.Contains("Writes reports", File.ReadAllText(entry), StringComparison.Ordinal);
     }
 
@@ -50,7 +50,7 @@ public sealed class OpenCodeSkillsTests : IDisposable
     [OpenCodeUnixTheory]
     [InlineData(false)]
     [InlineData(true)]
-    public void Materialize_LinkInsidePackageOrPackageRoot_RejectsWithoutReadingTarget(bool rootLink)
+    public async Task MaterializeAndFingerprint_LinkInsidePackageOrPackageRoot_RejectWithoutReadingTarget(bool rootLink)
     {
         string package = CreatePackage("safe");
         string outside = CreatePackage("outside");
@@ -66,6 +66,7 @@ public sealed class OpenCodeSkillsTests : IDisposable
         }
         string workspace = Path.Combine(_root, "linked-workspace");
         Assert.Throws<IOException>(() => OpenCodeSkills.Materialize(workspace, [new("safe", source)]));
+        await Assert.ThrowsAsync<IOException>(() => OpenCodeSkills.FingerprintAsync([new("safe", source)], CancellationToken.None));
         Assert.False(File.Exists(Path.Combine(workspace, ".opencode", "skills", "safe", "linked.md")));
         Assert.True(File.Exists(Path.Combine(outside, "SKILL.md")));
     }
@@ -104,6 +105,22 @@ public sealed class OpenCodeSkillsTests : IDisposable
 
         Assert.Throws<InvalidOperationException>(() =>
             OpenCodeSkills.Materialize(workspace, [new RuntimeSkill("ghost", Path.Combine(_root, "missing"))]));
+    }
+
+    [Fact]
+    public async Task Fingerprint_ContentAndNamesInvalidateButPackageLocationDoesNot()
+    {
+        string package = CreatePackage("example");
+        string first = await OpenCodeSkills.FingerprintAsync([new("example", package)], CancellationToken.None);
+        string workspace = Path.Combine(_root, "snapshot");
+        OpenCodeSkills.Materialize(workspace, [new("example", package)]);
+        string copy = Path.Combine(workspace, ".opencode", "skills", "example");
+        Assert.Equal(first, await OpenCodeSkills.FingerprintAsync([new("example", copy)], CancellationToken.None));
+        Assert.NotEqual(first, await OpenCodeSkills.FingerprintAsync([new("renamed", package)], CancellationToken.None));
+        await File.AppendAllTextAsync(Path.Combine(package, "SKILL.md"), "Changed content");
+        Assert.NotEqual(first, await OpenCodeSkills.FingerprintAsync([new("example", package)], CancellationToken.None));
+        Directory.Delete(package, recursive: true);
+        Assert.Contains("Writes reports", await File.ReadAllTextAsync(Path.Combine(copy, "SKILL.md")));
     }
 
     private string CreatePackage(string name)

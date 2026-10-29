@@ -18,7 +18,14 @@ public sealed record RuntimeInvocation(
     IReadOnlyList<RuntimeMessage> Messages,
     IReadOnlyList<RuntimeTool> Tools,
     IReadOnlyList<RuntimeSkill>? Skills = null,
-    IReadOnlyList<RuntimeMcpServer>? McpServers = null);
+    IReadOnlyList<RuntimeMcpServer>? McpServers = null)
+{
+    /// <summary>平台已提交历史的版本与上下文代次；缺省时不续用 harness 会话。</summary>
+    public string? HistoryCheckpoint { get; init; }
+
+    /// <summary>终态事件被消费后提交平台历史，返回新的检查点；失败必须丢弃运行时状态。</summary>
+    public Func<CancellationToken, Task<string?>>? CommitAsync { get; init; }
+}
 
 public sealed record RuntimeMessage(
     string Role,
@@ -27,8 +34,11 @@ public sealed record RuntimeMessage(
 
 public sealed record RuntimeAttachment(string MediaType, ReadOnlyMemory<byte> Data);
 
-/// <summary>Materialized skill package directory; the driver exposes a private copy for harness discovery.</summary>
-public sealed record RuntimeSkill(string Name, string Path);
+/// <summary>已物化的 Skill 包目录；已验证的内容哈希用于复用工作区。</summary>
+public sealed record RuntimeSkill(string Name, string Path)
+{
+    public string? ContentHash { get; init; }
+}
 
 /// <summary>
 /// 按 Agent 配置启用的外部 MCP server 定义；驱动经 ACP session/new 直接透传给

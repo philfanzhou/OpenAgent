@@ -237,6 +237,8 @@ internal static class OpenCodeProcess
         Dictionary<string, string> environment = SharedEnvironment(invocation, allowedNativeTools);
         StringBuilder identity = new();
         identity.Append(launch.FileName).Append('\0');
+        identity.Append(JsonSerializer.Serialize(invocation.McpServers)).Append('\0');
+        identity.Append(invocation.Profile.Runtime?.Id).Append('\0');
         foreach (string argument in launch.Arguments)
         {
             identity.Append(argument).Append('\0');

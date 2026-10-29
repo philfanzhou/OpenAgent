@@ -1,20 +1,16 @@
+using System.Security.Cryptography;
+using System.Text;
 using OpenAgent.Contracts.Runtime;
 
 namespace OpenAgent.Runtime.OpenCode;
 
-/// <summary>Copies authorized skill packages into the turn workspace without following links.</summary>
+/// <summary>Copies authorized packages into the process-owned workspace without following links.</summary>
 internal static class OpenCodeSkills
 {
     internal static void Materialize(string workspace, IReadOnlyList<RuntimeSkill>? skills, CancellationToken cancellationToken = default)
     {
-        if (skills is null || skills.Count == 0)
+        foreach (RuntimeSkill skill in skills ?? [])
         {
-            return;
-        }
-        foreach (RuntimeSkill skill in skills)
-        {
-            // 名称由工厂侧按 opencode 约定（^[a-z0-9]+(-[a-z0-9]+)*$）或 GUID 生成；
-            // 此处仍拒绝路径分隔符，防止链接目标逃逸出 skills 目录。
             string name = skill.Name ?? string.Empty;
             if (!System.Text.RegularExpressions.Regex.IsMatch(name, "^[a-z0-9]+(?:-[a-z0-9]+)*$")
                 || !Path.IsPathRooted(skill.Path))
@@ -25,8 +21,51 @@ internal static class OpenCodeSkills
             {
                 throw new InvalidOperationException($"Skill package directory is missing: {skill.Name}");
             }
-            string target = Path.Combine(workspace, ".opencode", "skills", name);
-            CopyDirectory(skill.Path, target, cancellationToken);
+            CopyDirectory(skill.Path, Path.Combine(workspace, ".opencode", "skills", name), cancellationToken);
+        }
+    }
+
+    internal static async Task<string> FingerprintAsync(IReadOnlyList<RuntimeSkill>? skills, CancellationToken ct)
+    {
+        using IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        foreach (RuntimeSkill skill in (skills ?? []).OrderBy(skill => skill.Name, StringComparer.Ordinal))
+        {
+            ct.ThrowIfCancellationRequested();
+            hash.AppendData(Encoding.UTF8.GetBytes(skill.Name + "\0"));
+            if (!string.IsNullOrWhiteSpace(skill.ContentHash))
+            {
+                hash.AppendData(Encoding.UTF8.GetBytes(skill.ContentHash + "\0"));
+                continue;
+            }
+            foreach (FileInfo file in PackageFiles(new DirectoryInfo(skill.Path), ct))
+            {
+                hash.AppendData(Encoding.UTF8.GetBytes(Path.GetRelativePath(skill.Path, file.FullName) + "\0"));
+                await using FileStream content = file.OpenRead();
+                hash.AppendData(await SHA256.HashDataAsync(content, ct).ConfigureAwait(false));
+            }
+        }
+        return Convert.ToHexStringLower(hash.GetHashAndReset());
+    }
+
+    private static IEnumerable<FileInfo> PackageFiles(DirectoryInfo directory, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        OpenCodeWorkspace.RejectLink(directory);
+        foreach (FileSystemInfo entry in directory.EnumerateFileSystemInfos().OrderBy(entry => entry.Name, StringComparer.Ordinal))
+        {
+            ct.ThrowIfCancellationRequested();
+            OpenCodeWorkspace.RejectLink(entry);
+            if (entry is DirectoryInfo nested)
+            {
+                foreach (FileInfo file in PackageFiles(nested, ct))
+                {
+                    yield return file;
+                }
+            }
+            else
+            {
+                yield return (FileInfo)entry;
+            }
         }
     }
 

@@ -29,7 +29,7 @@ public sealed class AcpExecutionTests
     [Fact]
     public async Task DefaultExecution_UsesDriverAndPlatformTool_PersistsBeforeTerminalEventAndReplaysHistory()
     {
-        RecordingDriver driver = new();
+        RecordingDriver driver = new(commit: true);
         await using AgentExecutorUsageTests.TestRuntime runtime = AgentExecutorUsageTests.CreateRuntime(driver);
         for (int turn = 0; turn < 2; turn++)
         {
@@ -45,6 +45,8 @@ public sealed class AcpExecutionTests
         }
         // 第二轮驱动调用证明会话复用与身份传递。
         Assert.Equal(2, driver.Requests.Count);
+        Assert.Equal(driver.Committed[0], driver.Requests[1].HistoryCheckpoint);
+        Assert.Equal(2, driver.Committed.Count);
         RuntimeInvocation second = driver.Requests[1];
         Assert.Equal("tenant-1", second.Turn.TenantId);
         Assert.Equal("user-1", second.Turn.UserId);
@@ -100,9 +102,24 @@ public sealed class AcpExecutionTests
         Assert.Equal(ConversationStatus.Cancelled, record.Status);
     }
 
-    private sealed class RecordingDriver(Exception? failure = null) : IAgentRuntimeDriver
+    [Fact]
+    public async Task CleanupFailsAfterCommit_DoesNotOverwritePersistedCompletion()
+    {
+        RecordingDriver driver = new(commit: true)
+        {
+            OnDispose = () => Task.FromException(new InvalidOperationException("Cleanup failed"))
+        };
+        await using AgentExecutorUsageTests.TestRuntime runtime = AgentExecutorUsageTests.CreateRuntime(driver);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => runtime.Executor.ExecuteAsync(Request, User, CancellationToken.None));
+        ConversationRecord record = (await runtime.Store.GetRecordAsync("tenant-1", Request.ConversationId!))!;
+        Assert.Equal(ConversationStatus.Completed, record.Status);
+        Assert.Single(record.Messages, message => message.Role == "assistant" && message.Content == "ACP 回答");
+    }
+
+    private sealed class RecordingDriver(Exception? failure = null, bool commit = false) : IAgentRuntimeDriver
     {
         internal List<RuntimeInvocation> Requests { get; } = [];
+        internal List<string?> Committed { get; } = [];
         internal Func<Task>? OnDispose { get; set; }
 
         public async IAsyncEnumerable<AgentStreamEvent> RunAsync(RuntimeInvocation request,
@@ -121,6 +138,11 @@ public sealed class AcpExecutionTests
                 string result = await tool.InvokeAsync(new Dictionary<string, object?>(), cancellationToken);
                 yield return new() { Type = AgentStreamEventType.ToolResult, ToolCallId = "profile-1", ToolName = tool.Name, Content = result };
                 yield return new() { Type = AgentStreamEventType.Usage, ModelId = request.Profile.Model.ModelId, TraceId = request.Turn.TraceId };
+                if (commit)
+                {
+                    Assert.NotNull(request.CommitAsync);
+                    Committed.Add(await request.CommitAsync(cancellationToken));
+                }
             }
             finally
             {

@@ -112,7 +112,7 @@ public sealed class ConversationSessionStoreTests
             "trace-42",
             ConversationType.User);
 
-        await sessionStore.SaveAsync(
+        int? checkpoint = await sessionStore.SaveAsync(
             context,
             expectedVersion: 1,
             [Message(1, "user", "hi"), Message(2, "assistant", "ok")],
@@ -123,6 +123,7 @@ public sealed class ConversationSessionStoreTests
             "tenant-1",
             "conversation-1",
             maxMessages: 10);
+        Assert.Equal(3, checkpoint);
         Assert.Equal(2, stored.Count);
         Assert.All(stored, message => Assert.Equal("trace-42", message.TraceId));
     }
@@ -166,7 +167,7 @@ public sealed class ConversationSessionStoreTests
             "trace-42",
             ConversationType.User);
 
-        await sessionStore.SaveAsync(
+        int? checkpoint = await sessionStore.SaveAsync(
             context,
             expectedVersion: 1,
             [retryMessage],
@@ -177,11 +178,30 @@ public sealed class ConversationSessionStoreTests
             "tenant-1",
             "conversation-1",
             maxMessages: 10);
+        Assert.Null(checkpoint);
         ConversationMessage retried = Assert.Single(stored, message => message.MessageId == "message-retry-1");
         Assert.Equal(2, retried.Sequence);
         Assert.Equal("idem-1", retried.IdempotencyKey);
         Assert.Equal(timestamp, retried.Timestamp);
         Assert.Equal("trace-42", retried.TraceId);
+    }
+
+    [Fact]
+    public async Task OpenAsync_ManualCompressionChangesGenerationWithoutChangingMessageVersion()
+    {
+        InMemoryConversationStore store = new(new FakeUserContext());
+        ConversationSessionStore sessions = new(store, Microsoft.Extensions.Options.Options.Create(new ConversationStoreOptions()));
+        ConversationContext context = new("conversation-1", "tenant-1", "user-1", "agent-1", "trace", ConversationType.User);
+        ConversationSession before = await sessions.OpenAsync(context, "agent-1", "hello", CancellationToken.None);
+        await store.RecordCompressionAsync("tenant-1", "conversation-1", new ContextSummary
+        {
+            CompressionId = "manual-1", Strategy = "summarization", Trigger = "Manual", Status = "Succeeded",
+            Summary = "summary", SourceEndSequence = 1, CompactedMessages = [Message(1, "assistant", "summary")]
+        });
+        ConversationSession after = await sessions.OpenAsync(context, "agent-1", "continue", CancellationToken.None);
+        Assert.Equal(before.CurrentVersion, after.CurrentVersion);
+        Assert.NotEqual(before.ContextGeneration, after.ContextGeneration);
+        Assert.Equal("manual-1", after.ContextGeneration);
     }
 
     private sealed class FakeUserContext : Contracts.Security.ICurrentUserContext

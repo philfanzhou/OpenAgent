@@ -9,4 +9,5 @@ namespace OpenAgent.Application.Conversation.Store;
 internal sealed record ConversationSession(
     int CurrentVersion,
     int NextSequence,
-    IReadOnlyList<ConversationMessage> History);
+    IReadOnlyList<ConversationMessage> History,
+    string ContextGeneration = "");

@@ -18,11 +18,20 @@ public sealed class OpenCodeSseTests
     {
         int mainRequests = 0;
         bool sawHistory = false;
+        bool sawNativeHistory = false;
         await using ModelFixture model = await ModelFixture.StartAsync(async (context, request) =>
         {
             mainRequests++;
             JsonElement[] messages = request.GetProperty("messages").EnumerateArray().ToArray();
-            if (messages.Any(message => message.GetProperty("role").GetString() == "tool"))
+            if (messages.Any(message => message.GetProperty("role").GetString() == "assistant"
+                && message.TryGetProperty("content", out JsonElement content) && content.ValueKind == JsonValueKind.String
+                && content.GetString() == "平台工具调用完成"))
+            {
+                sawHistory = sawNativeHistory = true;
+                Assert.DoesNotContain("openagent://conversation/history", request.GetRawText());
+                await ModelFixture.TextAsync(context, "已续接历史");
+            }
+            else if (messages.Any(message => message.GetProperty("role").GetString() == "tool"))
             {
                 Assert.Contains("tenant-1", messages.Last(message => message.GetProperty("role").GetString() == "tool").GetRawText());
                 await ModelFixture.TextAsync(context, "平台工具调用完成");
@@ -72,6 +81,7 @@ public sealed class OpenCodeSseTests
             var second = await host.PostStreamAsync("real-acp-conversation");
             Assert.DoesNotContain(second, frame => frame.Event == "error");
             Assert.True(sawHistory);
+            Assert.True(sawNativeHistory);
             Assert.Equal(3, mainRequests);
         }
         finally

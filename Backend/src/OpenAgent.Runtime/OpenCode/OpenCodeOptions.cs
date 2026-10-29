@@ -18,13 +18,12 @@ public sealed class OpenCodeOptions
 
     /// <summary>
     /// 空闲进程保活秒数：相同会话归属与启动身份的进程在窗口内复用，追问轮次免付冷启动。
-    /// 默认 0（关闭）：当前 OpenCode 版本空闲进程存在持续 CPU/网络活动（实测 1.19.3 每进程
-    /// 约 1-2 核空转 + 持续外呼），确认目标版本空闲行为可接受后再按会话开启。
+    /// 默认保留 300 秒，最多保留 16 个空闲会话；设为 0 可关闭并在每轮结束时回收全部状态。
     /// </summary>
-    public int KeepAliveSeconds { get; set; } = 0;
+    public int KeepAliveSeconds { get; set; } = 300;
 
-    /// <summary>保活进程总数上限；超出时直接销毁而不是归还池。</summary>
-    public int MaxKeptProcesses { get; set; } = 8;
+    /// <summary>空闲会话上限；池满时淘汰最久未使用的会话。</summary>
+    public int MaxKeptProcesses { get; set; } = 16;
 
     /// <summary>单个进程最多服务的 ACP 会话数；超过即销毁重建，约束 harness 侧会话/内存累积。</summary>
     public int MaxSessionsPerProcess { get; set; } = 64;

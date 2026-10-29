@@ -49,6 +49,7 @@ public interface IConversationStore
 
     /// <summary>
     /// 更新会话状态（Running/Completed/Failed/Cancelled）。
+    /// 成功后 Version 自增 1。
     /// </summary>
     Task<bool> UpdateStatusAsync(
         string tenantId,

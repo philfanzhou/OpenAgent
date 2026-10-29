@@ -11,12 +11,11 @@ using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Runtime;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Runtime.Acp.Client;
-using OpenAgent.Runtime.Acp.Processes;
 using OpenAgent.Runtime.Acp.Protocol;
 
 namespace OpenAgent.Runtime.OpenCode;
 
-/// <summary>每轮独立的 ACP 会话和工作区；进程按会话归属与启动身份在空闲窗口内保活复用，工具桥由宿主共享，平台历史作为上下文传入，不跨租户复用 Agent 状态。</summary>
+/// <summary>工作区与已提交的 harness 会话随进程复用；ACP 连接句柄和工具授权按轮次更新。</summary>
 internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCodeProcessKeeper keeper, RuntimeToolBridge bridge, ILogger<OpenCodeRuntime> logger) : IAgentRuntimeDriver, IDisposable
 {
     private readonly SemaphoreSlim _turns = new(options.Value.MaxConcurrentTurns);
@@ -120,18 +119,17 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         OpenCodeOptions settings = options.Value;
-        ContentBlock[] prompt = BuildPrompt(invocation.Messages, settings.MaxPromptCharacters);
-        // 标识仅用于目录分区；每轮随机子目录避免同会话并发/重试继承另一进程的可变状态。
+        // 同一租户、用户、平台会话与 Agent 才能复用执行环境。
+        string conversation = string.IsNullOrWhiteSpace(invocation.Turn.ConversationId)
+            ? Guid.NewGuid().ToString("N") : invocation.Turn.ConversationId;
         string owner = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(
-            invocation.Turn.TenantId + "\0" + invocation.Turn.UserId + "\0" + invocation.Turn.ConversationId)));
+            invocation.Turn.TenantId + "\0" + invocation.Turn.UserId + "\0" + conversation + "\0" + invocation.Profile.AgentId)));
         string parent = Path.Combine(settings.WorkspaceRoot, owner);
         OpenCodeWorkspace.CreatePrivateDirectory(settings.WorkspaceRoot);
         OpenCodeWorkspace.CreatePrivateDirectory(parent);
         // 复用键 = 会话归属 + 启动身份：追问轮次命中保活进程，冷启动只在空闲窗口外支付。
-        string leaseKey = owner + "/" + OpenCodeProcess.Identity(Launch, invocation, settings.AllowedNativeTools);
-        // 每轮随机工作区作为 ACP 会话 cwd；进程主目录与轮次工作区分离，轮次结束即可回收。
-        string workspace = Path.Combine(parent, "t-" + Guid.NewGuid().ToString("N"));
-        OpenCodeWorkspace.CreatePrivateDirectory(workspace);
+        string leaseKey = owner + "/" + OpenCodeProcess.Identity(Launch, invocation, settings.AllowedNativeTools)
+            + "/" + await OpenCodeSkills.FingerprintAsync(invocation.Skills, cancellationToken).ConfigureAwait(false);
         OpenCodeAgentProcess? agent = null;
         RuntimeToolLease? tools = null;
         bool completed = false;
@@ -141,16 +139,17 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
         long Elapsed(long from, long to) => from >= 0 && to >= 0 ? to - from : 0;
         try
         {
-            OpenCodeSkills.Materialize(workspace, invocation.Skills, cancellationToken);
-            MaterializeAttachments(workspace, invocation.Messages);
-            agent = await keeper.TryAcquireAsync(leaseKey).ConfigureAwait(false)
-                ?? await SpawnAsync(settings, invocation, leaseKey, parent, cancellationToken).ConfigureAwait(false);
+            agent = await keeper.AcquireAsync(leaseKey, parent, Launch, invocation, cancellationToken).ConfigureAwait(false);
+            MaterializeAttachments(agent.Workspace, invocation.Messages);
             processAt = clock.ElapsedMilliseconds;
             // 宿主共享桥只按本轮 bearer 注册/吊销工具集，不再每轮启动站点；端点长期存活，
             // 保活复用也不会给 harness 留下死端点。
             tools = await bridge.RegisterAsync(invocation.Tools, cancellationToken).ConfigureAwait(false);
             // 平台自有工具经桥；外部 MCP server 按 Agent 配置直接透传给 harness 原生连接。
             McpServer[] sessionServers = [tools.Server, .. AcpSessionMcp.Map(invocation.McpServers)];
+            string schema = Convert.ToHexStringLower(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(
+                invocation.Tools.OrderBy(tool => tool.Name, StringComparer.Ordinal)
+                    .Select(tool => new { tool.Name, tool.Description, tool.ParametersJsonSchema }))));
             InitializeResponse initialized = agent.Initialized;
             yield return new AgentStreamEvent
             {
@@ -159,9 +158,17 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
                     initialized.AgentInfo?.Name, initialized.AgentInfo?.Version)
             };
             agent.Sessions++;
-            await using AcpSession session = await agent.Client.NewSessionAsync(new(workspace, sessionServers), cancellationToken).ConfigureAwait(false);
+            bool resume = agent.SessionId is not null && invocation.HistoryCheckpoint is not null
+                && invocation.HistoryCheckpoint == agent.HistoryCheckpoint && schema == agent.ToolSchema
+                && initialized.AgentCapabilities?.SessionCapabilities?.Resume is not null
+                && initialized.AgentCapabilities?.SessionCapabilities?.Close is not null;
+            // 每轮 resume 重新绑定 MCP 凭证；不把旧 bearer 或上一轮工具闭包保留到追问。
+            await using AcpSession session = resume
+                ? await agent.Client.ResumeSessionAsync(new(agent.SessionId!, agent.Workspace, sessionServers), cancellationToken).ConfigureAwait(false)
+                : await agent.Client.NewSessionAsync(new(agent.Workspace, sessionServers), cancellationToken).ConfigureAwait(false);
             sessionAt = clock.ElapsedMilliseconds;
             await SelectModelAsync(session, invocation.Profile.Model.ModelId, cancellationToken).ConfigureAwait(false);
+            ContentBlock[] prompt = BuildPrompt(resume ? [invocation.Messages[^1]] : invocation.Messages, settings.MaxPromptCharacters);
             await using AcpPromptTurn turn = await session.StartPromptAsync(prompt, cancellationToken).ConfigureAwait(false);
             promptAt = clock.ElapsedMilliseconds;
             await using IAsyncEnumerator<SessionNotification> updates = session.ReadUpdatesAsync().GetAsyncEnumerator();
@@ -226,7 +233,8 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
             {
                 throw new AgentException(AgentErrorCode.PipelineExecutionFailed, "OpenCode did not complete the prompt.");
             }
-            completed = true;
+            // 提交平台数据前关闭本轮工具入口；保存期间也不能接受迟到的工具调用。
+            await tools.DisposeAsync().ConfigureAwait(false);
             yield return new AgentStreamEvent
             {
                 Type = AgentStreamEventType.Usage,
@@ -242,6 +250,12 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
                     }
                     : null
             };
+            // 消费者已观察完正文、工具和 usage，提交成功后才允许下一轮延续 harness 历史。
+            agent.HistoryCheckpoint = invocation.CommitAsync is null ? null
+                : await invocation.CommitAsync(cancellationToken).ConfigureAwait(false);
+            agent.SessionId = agent.HistoryCheckpoint is null ? null : session.SessionId;
+            agent.ToolSchema = schema;
+            completed = true;
         }
         finally
         {
@@ -250,7 +264,6 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
             {
                 await tools.DisposeAsync().ConfigureAwait(false);
             }
-            TryDeleteWorkspace(workspace);
             // 失败、取消或超限的进程立即销毁；只有完整成功的轮次才归还保活池。
             if (agent is not null)
             {
@@ -268,84 +281,6 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
                 (int)Elapsed(completionAt, closeAt),
                 (int)closeAt);
         }
-    }
-
-    private async Task<OpenCodeAgentProcess> SpawnAsync(
-        OpenCodeOptions settings,
-        RuntimeInvocation invocation,
-        string leaseKey,
-        string parent,
-        CancellationToken cancellationToken)
-    {
-        string home = Path.Combine(parent, "p-" + Guid.NewGuid().ToString("N"));
-        OpenCodeWorkspace.CreatePrivateDirectory(home);
-        AcpProcess? process = null;
-        AcpClient? client = null;
-        try
-        {
-            process = AcpProcess.Start(OpenCodeProcess.Create(Launch, invocation, settings.AllowedNativeTools, home));
-            client = new AcpClient(process.Transport, options: new()
-            {
-                RequestTimeout = TimeSpan.FromSeconds(settings.RequestTimeoutSeconds)
-            });
-            InitializeResponse initialized = await client.InitializeAsync(new("OpenAgent", "1"), cancellationToken).ConfigureAwait(false);
-            return new OpenCodeAgentProcess(process, client, initialized, leaseKey, home);
-        }
-        catch
-        {
-            if (client is not null)
-            {
-                try { await client.DisposeAsync().ConfigureAwait(false); }
-                catch (Exception) { }
-            }
-            if (process is not null)
-            {
-                try { await process.DisposeAsync().ConfigureAwait(false); }
-                catch (Exception) { }
-            }
-            TryDeleteWorkspace(home);
-            throw;
-        }
-    }
-
-    private void TryDeleteWorkspace(string directory)
-    {
-        // 只删除本对象创建的随机目录；不得删除宿主指定的根目录、进程主目录或其他轮次的工作区。
-        if (!Directory.Exists(directory))
-        {
-            return;
-        }
-        try
-        {
-            Directory.Delete(directory, recursive: true);
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            logger.LogWarning("Could not remove OpenCode workspace {Workspace} ({ErrorType})", directory, error.GetType().Name);
-            // 保活进程可能短暂保留会话 cwd 的句柄；延迟重试避免遗留目录，不阻塞轮次收尾。
-            _ = RetryDeleteWorkspaceAsync(directory);
-        }
-    }
-
-    private async Task RetryDeleteWorkspaceAsync(string directory)
-    {
-        for (int attempt = 1; attempt <= 5; attempt++)
-        {
-            try
-            {
-                await Task.Delay(TimeSpan.FromSeconds(2 * attempt)).ConfigureAwait(false);
-                if (!Directory.Exists(directory))
-                {
-                    return;
-                }
-                Directory.Delete(directory, recursive: true);
-                return;
-            }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-            {
-            }
-        }
-        logger.LogWarning("Could not remove OpenCode workspace {Workspace} after retries", directory);
     }
 
     private static async Task SelectModelAsync(AcpSession session, string model, CancellationToken ct)
@@ -367,9 +302,9 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
     private static int Clamp(long value) => value > int.MaxValue ? int.MaxValue : value < 0 ? 0 : (int)value;
 
     /// <summary>
-    /// 附件与内联注入的同一份字节（已按内联管线降采样）一并落进轮次工作区
+    /// 附件与内联注入的同一份字节（已按内联管线降采样）一并更新到进程工作区
     /// uploads/，模型可经 harness 原生 read/bash 按文件系统精读；
-    /// 目录随轮次工作区销毁，无残留。
+    /// 目录随进程工作区统一回收。
     /// </summary>
     private static void MaterializeAttachments(string workspace, IReadOnlyList<RuntimeMessage> messages)
     {
@@ -380,7 +315,11 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
             {
                 index++;
                 string path = Path.Combine(workspace, "uploads", $"attachment-{index}{ExtensionFor(attachment.MediaType)}");
-                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                OpenCodeWorkspace.CreatePrivateDirectory(Path.GetDirectoryName(path)!);
+                if (File.Exists(path))
+                {
+                    OpenCodeWorkspace.RejectLink(new FileInfo(path));
+                }
                 File.WriteAllBytes(path, attachment.Data.Span);
             }
         }
@@ -438,6 +377,9 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
 
 internal static partial class OpenCodeLog
 {
+    [LoggerMessage(EventId = 4502, Level = LogLevel.Warning, Message = "OpenCode cleanup failed: resource={Resource} error={ErrorType}")]
+    internal static partial void CleanupFailure(ILogger logger, string resource, string errorType);
+
     // 由 OpenCode:LogUsageUpdates 显式开启；只记录类型化的 usage_update 值，不落对话报文。
     [LoggerMessage(EventId = 4500, Level = LogLevel.Information, Message = "OpenCode usage update: used={Used} size={Size}")]
     internal static partial void UsageUpdate(ILogger logger, long used, long size);
