@@ -165,7 +165,7 @@ SDK 控制台继续只有 SDK 引用，外部连接入口见 [控制台使用](a
 
 | 模式 | 适用边界 | N03/N04 使用条件 |
 |---|---|---|
-| OpenCode 原生执行：干净独立 OS 服务账户，或一次性非 root 测试容器 | 仅可信开发/单一信任域；系统 home、祖先目录、XDG 与 managed config 均由运维确认干净，不挂载个人 HOME/凭据/socket；显式授权所需 read/edit/write/bash。开发配置保留此授权 | 固定 1.19.3、专属目录，记录实际工具列表和 Node/Python 版本；N03 冷启动基线保活 0，确定性本地模型，并包含真实代码执行负载；N04 仅实验性调整保活后恢复 0 |
+| OpenCode 原生执行：干净独立 OS 服务账户，或一次性非 root 测试容器 | 仅可信开发/单一信任域；系统 home、祖先目录、XDG 与 managed config 均由运维确认干净，不挂载个人 HOME/凭据/socket；显式授权所需 read/edit/write/bash。开发配置保留此授权 | 固定 1.19.3、专属目录，记录实际工具列表和 Node/Python 版本；N03 冷启动基线保活 0，确定性本地模型，并包含真实代码执行负载；N04 使用独立实验配置；产品默认和评估结论见下文 N04 |
 | 最小工具模式（底层默认拒绝） | 用于纯聊天/平台工具的独立对照，不能替代原生代码执行验收；external_directory 仍为单独权限，不因放行 bash 自动开放 | 与执行模式分别报告，不能用该模式数据声称 Node/Python 执行容量；跨目录探针另行标记其权限 |
 | 个人账户、脏服务账户、共享 Engine 容器承载互不信任租户 | 不获多租户安全验收；环境白名单与应用权限不足以形成 OS 隔离 | 不用于得出多租户安全或生产容量结论 |
 
@@ -192,8 +192,78 @@ Windows 原生运行必须使用独立服务账户、干净系统用户 profile 
 - 发布镜像本地检查：UID 1654、Node 22.23.4、Python 3.12.3、OpenCode 1.19.3；状态目录及 Data Protection 目录可由服务账户写入。镜像只在本机构建，未发布或部署。
 - `OpenCodeIsolationTests` 包含：探针子进程环境/cwd/temp、可注入对照组与收紧后无注入、脏身份 .opencode 配置仍注入的反例、默认强制越界 read 拒绝、跨租户/用户同名会话与 Skill、显式授权 shell/外部目录后的文件与同级进程可见性。`OpenCodeSkillsTests` 覆盖路径穿越、包根/包内链接拒绝、副本不回写缓存及取消；既有真实取消/失败用例检查轮次工作区及进程 home 回收。
 - 最新部署脚本测试 10 通过、布局测试 3 通过。合成 Data Protection key-ring 已验证 root 写入、迁移位置/权限后 UID 1654 解密、迁回旧位置后 root 解密；未使用或迁移实际部署密钥。
-- Windows 原生账户/ACL/junction/进程回收、真实服务商、实际部署与未来 Worker 多租户隔离未验收；探针子进程不等于真实 harness，Linux /proc 结果不能替代 Windows 进程视图验收。保活空闲阈值仍未测定，默认保持 0。
+- Windows 原生账户/ACL/junction/进程回收、真实服务商、实际部署与未来 Worker 多租户隔离未验收；探针子进程不等于真实 harness，Linux /proc 结果不能替代 Windows 进程视图验收。此处为 N02 初始验证边界；后续保活阈值与默认策略见下文 N04。
 
 ### 回退
 
 需要立即关闭保活时设置 `KeepAliveSeconds=0`。出现兼容问题时停用受影响 Runtime/能力或回退相应 PR；不能把恢复个人 HOME、允许宿主技能继承作为安全回退；原生工具授权也不能代替多租户 OS 隔离。Skill 新进程首次复制与工作区回收仍需计入准备/清理成本。非 root 镜像的 Data Protection 卷权限迁移与旧镜像回退见[部署指南](../operations/deployment.md#opencode-服务身份与已有密钥卷)。既有 `WorkspaceRoot` 若权限过宽，应停机后由运维收紧为专属目录，不让应用自动更改未知宿主目录权限。
+
+## N04：保活诊断与评估
+
+本项基于 `origin/dev@389d1b95` 的进程、固定工作区和原生 session 复用实现；没有另建共享池。2026-10-29 用户明确要求**保留默认 300 秒、16 个空闲会话**，本项不修改产品默认或部署配置。该决定取代 N04 初始任务中的“默认保持 0”；默认值不是已通过生产资源验收的结论。
+
+### 生命周期与诊断
+
+`OpenCodeProcessKeeper` 的 Debug 日志记录命中/冷启动、进程年龄、累计轮次，以及 `identity_changed`、`dead`、`expired`、`unhealthy`、`session_limit`、`capacity_lru`、`replaced_owner`、`disabled`、`shutdown` 回收原因；不记录身份哈希、租户标识、路径、凭据或对话内容。按需为 `OpenAgent.Runtime.OpenCode.OpenCodeProcessKeeper` 配置 Debug 级别。内部快照供验证读取命中、未命中、空闲数、年龄和回收计数，不增加管理 API 或 SDK 公共接口。
+
+进程身份增加平台工具名称/描述/schema 和可执行文件长度/修改时间；完整 MCP 定义按名称排序参与身份。宿主工具白名单、模型端点/凭据、指令、Runtime ID、会话归属与 Skill 内容仍沿用现有身份边界。相同工具元数据的新回调可复用进程，每轮 bearer/闭包重新绑定；策略变更则销毁旧空闲进程。文件元数据不是二进制内容证明，部署仍需固定制品及版本；探针另记录可执行文件 SHA-256。进程释放同时检查取消状态，Host 重复释放池保持幂等。全局 OpenCode Options 在启动时读取，修改保活/原生工具配置需要重启；本项不承诺即时撤销活动轮次，活动授权修订仍属于 N06。
+
+### 可复现探针及预设门槛
+
+先构建 Runtime.Tests，再执行：
+
+```sh
+dotnet build Backend/tests/OpenAgent.Runtime.Tests
+python3 scripts/probe-opencode-keepalive.py \
+  --executable /absolute/path/to/opencode \
+  --output artifacts/n04-probe --owners 2
+```
+
+要求 Python 3、dotnet、`ps`，可选 `lsof`；支持 macOS/Linux。版本必须与 `Backend/opencode.version` 一致（当前 1.19.3）。容器/无 Git 源码需设置 `N04_SOURCE_COMMIT`；manifest 同时记录 Runtime/SDK/Contracts/测试源码摘要，避免仅用 HEAD 代表未提交源码。结果写 JSON 和测试日志，不把捕获的命令行、环境或模型正文写入结果。
+
+探针使用同一即时本地模型、假 key、无授权原生工具/Skill/MCP；每组 4 轮，首轮单列，追问 3 次，提交检查点使开启组实际走原生会话续接。每组静置 2 秒后采样空闲 8 秒，对比 0/30 秒窗口；CPU 为一个逻辑核的百分比（100%=1 核），RSS 为驻留集而非私有内存。固定 0.5 秒间隔采样所创建测试树中的 OpenCode，另记录测试树资源和宿主 CPU/load；不匹配或终止机器上的其他 OpenCode。
+
+本次预先采用的保守评估门槛：空闲平均每进程 CPU ≤5%、单进程 RSS ≤512 MiB、2 进程合计 RSS ≤1 GiB、追问 TTFT p50 改善 ≥20%、无未解释的空闲外呼。它们是本项实验门槛，尚未成为生产 SLO。采样守护的停止阈值为最多 2 个 harness、合计 RSS 1536 MiB、空闲 CPU 3 核、每组 120 秒；达到停止阈值终止自己的执行组，并报告未完成。只有单进程资源门槛通过才进入 2 进程组；停止阶梯是有效结论，不能跳过门槛继续扩容。
+
+Linux 干净服务身份复现可使用附带的探针 Dockerfile（构建目标不执行整套环境测试）。版本参数读取 `Backend/opencode.version`，不使用 latest。容器无宿主目录挂载，结束后先导出证据再删除：
+
+```sh
+docker build -f Backend/src/OpenAgent.Engine.Host/Dockerfile --target build -t openagent-n04-build:local .
+docker build -f Backend/src/OpenAgent.Engine.Host/Dockerfile --target opencode \
+  --build-arg OPENCODE_VERSION="$(cat Backend/opencode.version)" -t openagent-n04-opencode:local .
+docker build -f scripts/probe-opencode-keepalive.Dockerfile -t openagent-n04-probe:local .
+# N04_SOURCE_COMMIT 填待测提交；exported source 的摘要也会写入 manifest。
+docker create --name n04-probe --cpus=2 --memory=2g --memory-swap=2g \
+  --pids-limit=256 --network=none -e N04_SOURCE_COMMIT="$(git rev-parse HEAD)" openagent-n04-probe:local
+docker start -a n04-probe
+docker cp n04-probe:/tmp/n04-probe artifacts/n04-probe-linux
+docker rm n04-probe
+```
+
+本地模型空闲请求统计包含标题等辅助请求；`lsof` 仅提供瞬时 socket/非 loopback 对端计数。没有抓包、DNS 或失败连接尝试覆盖，零快照不能判定无外呼；已观察到非 loopback 对端则网络门槛失败。脚本退出 0 只代表探针完整结束并完成回收，不代表允许生产启用。
+
+### 2026-10-29 验证与结论
+
+- macOS 26.5 arm64、Apple M5、10 逻辑核、16 GiB、SDK 10.0.301；使用开发者账户，仅作诊断对照，不作为 N02 干净服务身份的隔离验收。OpenCode 1.19.3 原生二进制 SHA-256 `6d3e6458fce4b649edf974c19959d5dbfe1e7f255a503dcfc01215b24ad3ea5b`。
+- Linux 容器采用 N02 的一次性非 root UID 1654、干净 `/home/app`，未挂载个人 HOME/凭据/socket。Docker Desktop VM 为 10 CPU/约 7.75 GiB；实验容器限制 2 CPU、2 GiB（无额外 swap）、256 pids、`--network=none`，模型及桥均走 loopback。此模式只能证明该单一信任域测试条件，不构成多租户 OS 隔离验收。Linux OpenCode 1.19.3 SHA-256 `e5309bc8df8deac0e4050fb4a65989839522703cf86f8a4561c2694f5157b8ca`。
+
+| 环境 / 保活窗口 | 追问 TTFT p50 / p95（ms） | 完成耗时 p50 / p95（ms） | 空闲平均 CPU（单核 %） | 空闲峰值 RSS（MiB） |
+|---|---:|---:|---:|---:|
+| macOS / 0 秒 | 1508 / 1575 | 1533 / 1644 | 0 | 0 |
+| macOS / 30 秒 | 138 / 143 | 141 / 147 | 33.19 | 1078.92 |
+| Linux 非 root、禁外网 / 0 秒 | 1613 / 1709 | 1727 / 1750 | 0 | 0 |
+| Linux 非 root、禁外网 / 30 秒 | 140 / 145 | 143 / 148 | 2.50 | 556.67 |
+
+macOS 空闲最多观察到 25 个网络 socket，其中 10 个非 loopback 对端；Linux 为禁外网组，未观察到非 loopback 对端。两组空闲本地模型请求均为 0。所有探针组正常结束、无 OOM、没有遗留 harness，进程工作区回收断言通过。Linux 首次对照另观测到 2.61% CPU / 568.28 MiB RSS，重复对照结论一致；两平台均因单进程资源门槛失败而停止 2 进程阶段。RSS 包含共享页，不能按本表直接乘 16 推算实际整机内存。
+
+本地验证：全解决方案构建通过（保留既有 RuntimeBoundaryTests 可空警告）；默认测试 981 通过、39 项环境门控跳过、0 失败。Linux 真实 Runtime 全套为 108 通过、2 跳过、1 失败，HTTP/SSE 1 通过；N04 保活用例均通过，包括提交瞬间取消不归还池、同策略换回调复用、策略变化重建、配置切回不复活旧进程、死连接、空闲到期、累计轮次与 LRU 清理及重复释放。
+
+失败项 `SkillsAndExternalMcp_AreLoadedAndCalledByRealHarness` 缺少 `SKILL-VERIFIED-319` 工具结果；单独复测仍失败。把 OpenCodeProcess/ProcessKeeper/Runtime 及保活测试恢复为未修改的 `389d1b95` 后，在相同容器限制下同样失败。因此本次未将整套真实 Runtime 标为通过，也未删除/放宽该断言；这是基线上的 Skill 调用失败，需所属工作流继续定位，不计为 N04 保活验收成功。基线对照只改变上述文件，LocalModelFixture 的可选请求计数回调保持默认空，不改变模型响应。
+
+小样本的 p95 使用最近秩，仅描述本次观测，不能作为尾延迟或吞吐承诺。每组的首轮与完整采样保留在探针输出中；开启组 3 次追问均命中、没有跨归属共享。默认 300 秒和 16 个空闲会话的持续运行/整机容量没有验收，不能从 30 秒窗口的单进程结果外推。
+
+目前证据定位到真实 OpenCode 空闲进程的驻留开销；没有定位到具体上游函数，不能沿用旧报告直接断言是某个 watcher。macOS 已观察到非 loopback socket；Linux 禁外网且未采集连接尝试，不能据此宣称上游不外呼。后续需要目标部署环境的出站审计/尝试跟踪与上游定位。
+
+**评估结论：延迟收益明确，生产启用条件未全部满足。** 按用户决定保留 300/16 默认，但本项不给出多租户生产启用或增加容量建议。待集成项为 N02 目标部署隔离验收、N03 与保活同时开启的容量/取消复测、真实出站证据，以及 300 秒/16 空闲会话的持续资源验证。N03 PR #300 的关闭保活容量数据不等于本项集成通过，本项不修改其准入或队列实现。
+
+出现资源压力时，部署方可显式设 `OpenCode:KeepAliveSeconds=0` 并重启 Host，回收现存空闲进程及工作区；无需回退共享 MCP 桥或准备并行化。需要继续保活时按目标机器降低空闲会话上限/窗口，重新测量；本项不直接修改线上配置、升级 OpenCode 或提交上游 issue。

@@ -140,3 +140,11 @@
 - 范围：Runtime/OpenCode、Runtime.Tests、Engine 开发/镜像配置与 Data Protection 卷挂载。底层原生工具默认拒绝、宿主显式授权原生执行、显式 Skill 路径/名称授权、关闭外部/祖先扫描、私有 profile/tmp、链接拒绝与 Skill 副本、非 root 服务身份。N02 不修改 SDK、依赖白名单或 RAG；Runner 移除随最新 dev 合入。
 - 对外行为：开发配置保留显式允许 read/edit/write/bash，Node/Python 实际执行走 OpenCode，Runner 不作为方案或兜底；已有 Unix workspace 需服务账户独占（0700），已有密钥卷需迁移权限。保持 KeepAliveSeconds=0，不启用整个 Worker/RunGrant 架构。
 - 验收与反例：[运行时验证和支持模式](../integrations/opencode-runtime.md#n02宿主继承缓解与受支持模式)；部署与回退：[服务身份及密钥卷](../operations/deployment.md#opencode-服务身份与已有密钥卷)。标准 Docker 测试/发布镜像已在本机构建；Windows、实际部署与未来多租户隔离未验收，不能把 N02 缓解标成 A02/A04 全部完成。N03/N04 采用文档中的干净服务身份模式，压测数据只适用于该模式。
+
+## N04 / P2 — OpenCode 保活诊断与启用条件
+
+- 负责人：Codex；状态：实现/探针待评审，生产启用条件未通过；基线：`origin/dev@389d1b95`；实现 PR：[#302](https://github.com/philfanzhou/OpenAgent/pull/302)（草稿）。原始方案只读取自 2026-10-28 非 RAG 拆解，本项未覆盖其他会话任务或共享规划文件。
+- 用户于 2026-10-29 明确要求保留最新 dev 默认 **300 秒、16 个空闲会话**，取代本项初始默认 0 要求。范围：Runtime/OpenCode 的身份、池诊断与取消/释放边界、对应 Tests、受限探针及所属集成文档；不改 N02 隔离策略、N03 准入/队列、RAG、SDK 公共接口或 Runner。
+- 交付：记录命中、未命中、淘汰原因、进程年龄与轮次数；工具策略/配置身份变更不复用旧进程；幂等释放与取消状态检查；固定 1.19.3 + 本地模型的关闭/30 秒开启对照。证据与复现：[N04 验证](../integrations/opencode-runtime.md#n04保活诊断与评估)。
+- 结论：追问延迟改善，但单进程资源门槛未全部满足，按保护停止 2 进程阶梯。保留默认不代表生产验收。N02 目标隔离、N03 保活集成容量、完整外呼审计及 300 秒/16 空闲会话持续运行仍待验证；本项不标为生产启用完成。
+- 回退：显式 `KeepAliveSeconds=0` 并重启 Host 回收现存池；共享工具桥/准备并行化可保留，无线上部署或 OpenCode 升级。

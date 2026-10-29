@@ -18,6 +18,8 @@ internal sealed class OpenCodeAgentProcess(
     internal string Owner { get; } = Path.GetDirectoryName(home)!;
     internal string Home { get; } = home;
     internal string Workspace { get; } = Path.Combine(home, "workspace");
+    internal DateTimeOffset CreatedAt { get; } = DateTimeOffset.UtcNow;
+    internal DateTimeOffset IdleSince;
     internal DateTimeOffset IdleDeadline;
     internal int Sessions;
     internal string? SessionId;
@@ -36,10 +38,23 @@ internal sealed class OpenCodeProcessKeeper : IAsyncDisposable
     private readonly Task _sweep;
     private readonly object _gate = new();
     private int _reused;
+    private int _missed;
+    private readonly Dictionary<string, long> _retired = new(StringComparer.Ordinal);
+    private Task? _dispose;
     private bool _disposed;
 
     internal int KeptCount { get { lock (_gate) { return _kept.Count; } } }
     internal int ReusedCount { get { lock (_gate) { return _reused; } } }
+
+    // Safe diagnostics: no identity hashes, owner IDs, credentials or paths.
+    internal (int Hits, int Misses, int Kept, IReadOnlyDictionary<string, long> Retired, double[] AgesSeconds) Snapshot()
+    {
+        lock (_gate)
+        {
+            return (_reused, _missed, _kept.Count, new Dictionary<string, long>(_retired),
+                _kept.Values.Select(process => (DateTimeOffset.UtcNow - process.CreatedAt).TotalSeconds).ToArray());
+        }
+    }
 
     public OpenCodeProcessKeeper(IOptions<OpenCodeOptions> options, ILogger<OpenCodeProcessKeeper> logger)
     {
@@ -60,12 +75,16 @@ internal sealed class OpenCodeProcessKeeper : IAsyncDisposable
             if (cached is not null && cached.Key == key && cached.IsAlive && DateTimeOffset.UtcNow < cached.IdleDeadline)
             {
                 _reused++;
+                cached.IdleSince = default;
+                _logger.LogDebug("OpenCode keep-alive acquisition: Hit={Hit}, AgeSeconds={AgeSeconds}, Sessions={Sessions}",
+                    true, (DateTimeOffset.UtcNow - cached.CreatedAt).TotalSeconds, cached.Sessions);
                 return cached;
             }
+            _missed++;
         }
         if (cached is not null)
         {
-            await DestroyAsync(cached.Client, cached.Process, cached.Home).ConfigureAwait(false);
+            await RetireAsync(cached, cached.Key != key ? "identity_changed" : !cached.IsAlive ? "dead" : "expired").ConfigureAwait(false);
         }
 
         string home = Path.Combine(parent, "p-" + Guid.NewGuid().ToString("N"));
@@ -84,6 +103,7 @@ internal sealed class OpenCodeProcessKeeper : IAsyncDisposable
                 RequestTimeout = TimeSpan.FromSeconds(_options.RequestTimeoutSeconds)
             });
             InitializeResponse initialized = await client.InitializeAsync(new("OpenAgent", "1"), ct).ConfigureAwait(false);
+            _logger.LogDebug("OpenCode keep-alive acquisition: Hit={Hit}, AgeSeconds={AgeSeconds}, Sessions={Sessions}", false, 0, 0);
             return new OpenCodeAgentProcess(process, client, initialized, key, home);
         }
         catch
@@ -96,10 +116,13 @@ internal sealed class OpenCodeProcessKeeper : IAsyncDisposable
     internal async ValueTask ReleaseAsync(OpenCodeAgentProcess process, bool healthy)
     {
         OpenCodeAgentProcess? retired = process;
+        string reason;
         lock (_gate)
         {
-            if (!_disposed && healthy && process.IsAlive && _options.KeepAliveSeconds > 0
-                && process.Sessions < _options.MaxSessionsPerProcess)
+            reason = _disposed ? "shutdown" : !healthy ? "unhealthy" : !process.IsAlive ? "dead"
+                : _options.KeepAliveSeconds <= 0 ? "disabled"
+                : process.Sessions >= _options.MaxSessionsPerProcess ? "session_limit" : "replaced_owner";
+            if (reason == "replaced_owner")
             {
                 _kept.Remove(process.Owner, out retired);
                 if (retired is null && _kept.Count >= _options.MaxKeptProcesses)
@@ -107,14 +130,16 @@ internal sealed class OpenCodeProcessKeeper : IAsyncDisposable
                     // TTL 相同，最早到期者就是最久未使用者；只淘汰空闲项。
                     retired = _kept.Values.MinBy(entry => entry.IdleDeadline)!;
                     _kept.Remove(retired.Owner);
+                    reason = "capacity_lru";
                 }
-                process.IdleDeadline = DateTimeOffset.UtcNow.AddSeconds(_options.KeepAliveSeconds);
+                process.IdleSince = DateTimeOffset.UtcNow;
+                process.IdleDeadline = process.IdleSince.AddSeconds(_options.KeepAliveSeconds);
                 _kept[process.Owner] = process;
             }
         }
         if (retired is not null)
         {
-            await DestroyAsync(retired.Client, retired.Process, retired.Home).ConfigureAwait(false);
+            await RetireAsync(retired, reason).ConfigureAwait(false);
         }
     }
 
@@ -136,13 +161,25 @@ internal sealed class OpenCodeProcessKeeper : IAsyncDisposable
                 }
                 foreach (OpenCodeAgentProcess process in expired)
                 {
-                    await DestroyAsync(process.Client, process.Process, process.Home).ConfigureAwait(false);
+                    await RetireAsync(process, process.IsAlive ? "expired" : "dead").ConfigureAwait(false);
                 }
             }
         }
         catch (OperationCanceledException) when (_stopping.IsCancellationRequested)
         {
         }
+    }
+
+    private async Task RetireAsync(OpenCodeAgentProcess process, string reason)
+    {
+        lock (_gate)
+        {
+            _retired[reason] = _retired.GetValueOrDefault(reason) + 1;
+        }
+        _logger.LogDebug("OpenCode process retired: Reason={Reason}, AgeSeconds={AgeSeconds}, IdleSeconds={IdleSeconds}, Sessions={Sessions}",
+            reason, (DateTimeOffset.UtcNow - process.CreatedAt).TotalSeconds,
+            process.IdleSince == default ? 0 : (DateTimeOffset.UtcNow - process.IdleSince).TotalSeconds, process.Sessions);
+        await DestroyAsync(process.Client, process.Process, process.Home).ConfigureAwait(false);
     }
 
     private async Task DestroyAsync(AcpClient? client, AcpProcess? process, string home)
@@ -178,7 +215,15 @@ internal sealed class OpenCodeProcessKeeper : IAsyncDisposable
         }
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
+    {
+        lock (_gate)
+        {
+            return new(_dispose ??= DisposeCoreAsync());
+        }
+    }
+
+    private async Task DisposeCoreAsync()
     {
         OpenCodeAgentProcess[] remaining;
         lock (_gate)
@@ -191,7 +236,7 @@ internal sealed class OpenCodeProcessKeeper : IAsyncDisposable
         await _sweep.ConfigureAwait(false);
         foreach (OpenCodeAgentProcess process in remaining)
         {
-            await DestroyAsync(process.Client, process.Process, process.Home).ConfigureAwait(false);
+            await RetireAsync(process, "shutdown").ConfigureAwait(false);
         }
         _stopping.Dispose();
     }

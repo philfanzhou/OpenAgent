@@ -25,7 +25,7 @@ internal sealed class ModelFixture(WebApplication app, ConcurrentQueue<Exception
     internal string Endpoint => app.Services.GetRequiredService<IServer>()
         .Features.Get<IServerAddressesFeature>()!.Addresses.Single() + "/v1";
 
-    internal static async Task<ModelFixture> StartAsync(Func<HttpContext, JsonElement, Task> respond)
+    internal static async Task<ModelFixture> StartAsync(Func<HttpContext, JsonElement, Task> respond, Action? onRequest = null)
     {
         WebApplicationBuilder builder = WebApplication.CreateSlimBuilder();
         builder.Logging.ClearProviders();
@@ -34,6 +34,7 @@ internal sealed class ModelFixture(WebApplication app, ConcurrentQueue<Exception
         ConcurrentQueue<Exception> failures = new();
         app.MapPost("/v1/chat/completions", async (HttpContext context) =>
         {
+            onRequest?.Invoke();
             using JsonDocument document = await JsonDocument.ParseAsync(context.Request.Body);
             // OpenCode 的标题生成是独立的辅助请求，不作为受测的用户推理轮次。
             if (document.RootElement.GetProperty("messages").EnumerateArray().Any(message =>

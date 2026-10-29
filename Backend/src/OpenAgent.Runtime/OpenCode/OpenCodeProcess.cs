@@ -237,11 +237,20 @@ internal static class OpenCodeProcess
         Dictionary<string, string> environment = SharedEnvironment(invocation, allowedNativeTools);
         StringBuilder identity = new();
         identity.Append(launch.FileName).Append('\0');
-        identity.Append(JsonSerializer.Serialize(invocation.McpServers)).Append('\0');
         identity.Append(invocation.Profile.Runtime?.Id).Append('\0');
         foreach (string argument in launch.Arguments)
         {
             identity.Append(argument).Append('\0');
+        }
+        // Session-scoped capabilities also affect reuse: a new bridge bearer alone is not
+        // a policy revision. Do not include callback instances, messages or trace IDs.
+        identity.Append(JsonSerializer.Serialize(invocation.McpServers?.OrderBy(server => server.Name, StringComparer.Ordinal).ToArray() ?? [])).Append('\0');
+        identity.Append(JsonSerializer.Serialize(invocation.Tools.OrderBy(tool => tool.Name, StringComparer.Ordinal)
+            .Select(tool => new { tool.Name, tool.Description, tool.ParametersJsonSchema }))).Append('\0');
+        if (File.Exists(launch.Source ?? launch.FileName))
+        {
+            FileInfo executable = new(launch.Source ?? launch.FileName);
+            identity.Append(executable.Length).Append(':').Append(executable.LastWriteTimeUtc.Ticks).Append('\0');
         }
         foreach (KeyValuePair<string, string> pair in environment.OrderBy(pair => pair.Key, StringComparer.Ordinal))
         {
