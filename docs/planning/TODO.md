@@ -50,7 +50,7 @@
 - [ ] **ACP-R02 OpenCode 驱动与工具桥**：Runtime 类库（不打包）；固定版本 ACP 进程、隔离环境、每轮 loopback MCP bearer、工具预算及事件合并。
 - [ ] **ACP-R03 验证与交付**：真实进程/本地模型/平台 C# 工具、取消、历史续聊、HTTP/SSE；补齐配置、镜像与文档；已移除 MAF 回归快照，补充免 Docker 本机组合、前端默认模型选择、真实 Skill/MCP 原生调用与真实 Anthropic 兼容模型验收。
 - [ ] **ACP-R04 运行时延迟优化**（本地实现与验证完成，待 PR 评审）：① `OpenCodeProcessKeeper` 按"会话归属 + 启动身份"复用空闲进程（实测追问轮 -63%，但 OpenCode 1.19.3 空闲进程 1–2 核空转 + 持续外呼，故 `KeepAliveSeconds` 默认 0，机制保留待上游空闲行为可接受后开启）；② MCP 桥重构为进程常驻宿主 + 每轮租约轮换工具注册（消除每轮 Kestrel 构建与死端点热重连）；③ 准备链路并行化（历史/工具发现/feature 工厂 `Task.WhenAll`，失败统一释放）；④ `SkillPackageCache` 内容寻址 Skill 包缓存；⑤ MCP/Runtime profile 仓储内 30s TTL 读缓存；⑥ 仓库不再固定 OpenCode 版本。实测随 PR #243 合入。
-- [ ] **ACP-R05 OpenCode 进程环境隔离跟进**（待分派）：实测 Windows + OpenCode 1.19.3 下子进程无视平台设置的 HOME/USERPROFILE，扫描并加载宿主用户 `.claude/skills`、`.agents/skills`（26 个技能进入上下文）。需上游确认 homedir 解析机制或平台侧进一步收紧；同项跟进空闲进程持续外呼与 CPU 空转（阻碍保活默认开启）。证据为 PR #243 的实测结论。
+- [ ] **ACP-R05 OpenCode 进程环境隔离跟进**（N02 实现待评审；最终多租户隔离待 N16.2 部署验收）：实测 Windows + OpenCode 1.19.3 下子进程无视平台设置的 HOME/USERPROFILE，扫描并加载宿主用户 `.claude/skills`、`.agents/skills`（26 个技能进入上下文）。需上游确认 homedir 解析机制或平台侧进一步收紧；同项跟进空闲进程持续外呼与 CPU 空转（阻碍保活默认开启）。证据为 PR #243 的实测结论。
 - [ ] **ACP-R06 镜像版本锁定与发布流水线**（待评审）：`Backend/opencode.version` 作为内嵌 OpenCode 版本的单一事实源（当前 1.19.3），`scripts/build-images.*` 读取并经 `OPENCODE_VERSION` 注入 Engine 构建、附带版本 label；`v*.*.*` 标签触发 Release 工作流，先以 `--target runtime-tests` 真实进程回归门禁，再把 engine/router/chat 推送 GHCR（Engine 标签带 `-oc<版本>` 后缀）并附 Compose 部署包制品。负责人：ZCode；实现 PR：[#247](https://github.com/philfanzhou/OpenAgent/pull/247)。验收：部署脚本测试 12/12 通过（WSL）；WSL Docker runtime-tests 以钉住 1.19.3 实测通过，镜像 label 核对一致；远端打 tag 的首次发布待验收。
 
 本轮已按评审意见移除 MAF 推理栈（Application 内 Microsoft.Agents.AI 全系引用、进程内推理循环与平台侧 MCP 工具代理，原 A09 的 Application 部分），并支持外部 MCP server 经 ACP session/new 透传、Skill 工作区物化。Runtime 由独立设置页管理，聊天顶部选择已保存的 Runtime 和模型连接；已移除 Agent 编辑器中的 OpenCode 配置，补充实际 ACP 握手身份的展示与持久化。不代表 A02 的并发容量/隔离攻击验证、A04 Worker、A05 分布式 RunGrant、A06 事件重放或 A08 人工审批已完成；原任务保留未完成状态，具体验收边界以实测记录为准。
@@ -132,3 +132,11 @@
 1. A01 与 A02 并行；A03 在 A02 结论后评审。
 2. A04、A05 纯新增先行，再做 A06、A07；A08 随 A06 之后。
 3. A09 最后，F04、F05 与上述并行推进；前端与 Host 拆分按拥有目录独立进行。
+
+
+## N02 / P0 — OpenCode 宿主继承缓解与隔离边界
+
+- 负责人：Codex；状态：待评审；初始基线：`origin/dev@768a8c1e`，已合入 `origin/dev@45802efd`；实现 PR：[#294](https://github.com/philfanzhou/OpenAgent/pull/294)（草稿）。任务方案来自 2026-10-28 非 RAG 拆解，本检出只补充 N02，不覆盖其他会话的任务细化。
+- 范围：Runtime/OpenCode、Runtime.Tests、Engine 开发/镜像配置与 Data Protection 卷挂载。底层原生工具默认拒绝、宿主显式授权原生执行、显式 Skill 路径/名称授权、关闭外部/祖先扫描、私有 profile/tmp、链接拒绝与 Skill 副本、非 root 服务身份。N02 不修改 SDK、依赖白名单或 RAG；Runner 移除随最新 dev 合入。
+- 对外行为：开发配置保留显式允许 read/edit/write/bash，Node/Python 实际执行走 OpenCode，Runner 不作为方案或兜底；已有 Unix workspace 需服务账户独占（0700），已有密钥卷需迁移权限。保持 KeepAliveSeconds=0，不启用整个 Worker/RunGrant 架构。
+- 验收与反例：[运行时验证和支持模式](../integrations/opencode-runtime.md#n02宿主继承缓解与受支持模式)；部署与回退：[服务身份及密钥卷](../operations/deployment.md#opencode-服务身份与已有密钥卷)。标准 Docker 测试/发布镜像已在本机构建；Windows、实际部署与未来多租户隔离未验收，不能把 N02 缓解标成 A02/A04 全部完成。N03/N04 采用文档中的干净服务身份模式，压测数据只适用于该模式。

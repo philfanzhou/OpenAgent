@@ -37,7 +37,7 @@ services:
       - openagent
       - infrastructure
     volumes:
-      - engine-data-protection:/root/.aspnet/DataProtection-Keys
+      - engine-data-protection:/home/app/.aspnet/DataProtection-Keys
     healthcheck:
       test: ["CMD-SHELL", "curl --fail --silent http://localhost:5208/health >/dev/null"]
       interval: 5s

@@ -10,6 +10,7 @@ using Xunit;
 namespace OpenAgent.Runtime.Tests;
 
 /// <summary>进程保活复用：追问轮次命中同会话、同启动身份的空闲进程，冷启动只在窗口外支付。</summary>
+[Collection(RealOpenCodeCollection.Name)]
 public sealed class OpenCodeKeepAliveTests
 {
     [Fact]
