@@ -188,7 +188,7 @@ Windows 原生运行必须使用独立服务账户、干净系统用户 profile 
 
 ## N03：并发准入、排队与取消
 
-基线为 `origin/dev@d38a3513`（N02 已合入）；实现入口为 `Backend/src/OpenAgent.Application/Execution/Admission/`。Host 通过 Application 的单例 TurnAdmission 统一覆盖 sync、intent 和 stream，Agent/模型授权与所选 Runtime 校验在准入之前。会话元数据可用于授权/选 Agent，但消息历史、会话锁、附件及工具资源仅在获准后准备。Application 不引用 Runtime/ACP，纯状态和错误信息留在 Contracts。
+基线为 `origin/dev@d38a3513`（N02 已合入）；实现入口为 `Backend/src/OpenAgent.Application/Execution/Admission/`。Host 通过 Application 的单例 TurnAdmission 统一覆盖 sync、intent 和 stream，Agent/模型授权与所选 Runtime 校验在准入之前。会话元数据可用于授权/选 Agent：省略 AgentId 时仅通过 GetMetadataAsync 读取 UserId/AgentId/软删除标记，EF 直接投影会话表，写穿层绕过完整记录缓存及预热；消息历史、会话锁、附件及工具资源仅在获准后准备。Application 不引用 Runtime/ACP，纯状态和错误信息留在 Contracts。
 
 配置节 `RuntimeAdmission`：
 
@@ -210,7 +210,7 @@ HTTP/SSE 行为见[执行协议](../modules/execution.md#执行编排)。状态�
 
 ### 验证与容量基线（2026-10-29）
 
-本分支默认后端 998 通过、27 项环境门控跳过、0 失败；前端 168 通过且构建通过；架构门禁未放宽。全解决方案构建成功，干净编译保留已有 SkiaSharp 过时 API 与 RuntimeBoundaryTests nullable 告警，增量构建可为 0 警告。非 root Linux 容器真实 Runtime 套件 89 通过、1 项 Windows 用例跳过，真实 Host SSE 1 通过。
+本分支默认后端 1002 通过、27 项环境门控跳过、0 失败；前端 168 通过且构建通过；架构门禁未放宽。全解决方案构建成功，干净编译保留已有 SkiaSharp 过时 API 与 RuntimeBoundaryTests nullable 告警，增量构建可为 0 警告。非 root Linux 容器真实 Runtime 套件 89 通过、1 项 Windows 用例跳过，真实 Host SSE 1 通过。
 
 默认验证覆盖：租户限额/FIFO/跳过饱和租户、Host 与租户队列满、零队列、排队超时、排队取消、取消/释放竞态、授权先于准入、准备/进程不提前启动、执行取消与超时、feature/会话锁回收、HTTP 错误与流内 error/done、前端等待展示和状态清除。真实 OpenCode 与环境范围另列，默认门控跳过不计通过。
 

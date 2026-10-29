@@ -18,7 +18,7 @@ internal sealed class ConversationAgentResolver(IConversationStore store)
             return request.AgentId;
         }
 
-        ConversationRecord? record = await store.GetRecordAsync(
+        ConversationMetadata? record = await store.GetMetadataAsync(
             user.TenantId,
             request.ConversationId,
             cancellationToken).ConfigureAwait(false);
