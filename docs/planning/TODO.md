@@ -140,3 +140,12 @@
 - 范围：Runtime/OpenCode、Runtime.Tests、Engine 开发/镜像配置与 Data Protection 卷挂载。底层原生工具默认拒绝、宿主显式授权原生执行、显式 Skill 路径/名称授权、关闭外部/祖先扫描、私有 profile/tmp、链接拒绝与 Skill 副本、非 root 服务身份。N02 不修改 SDK、依赖白名单或 RAG；Runner 移除随最新 dev 合入。
 - 对外行为：开发配置保留显式允许 read/edit/write/bash，Node/Python 实际执行走 OpenCode，Runner 不作为方案或兜底；已有 Unix workspace 需服务账户独占（0700），已有密钥卷需迁移权限。保持 KeepAliveSeconds=0，不启用整个 Worker/RunGrant 架构。
 - 验收与反例：[运行时验证和支持模式](../integrations/opencode-runtime.md#n02宿主继承缓解与受支持模式)；部署与回退：[服务身份及密钥卷](../operations/deployment.md#opencode-服务身份与已有密钥卷)。标准 Docker 测试/发布镜像已在本机构建；Windows、实际部署与未来多租户隔离未验收，不能把 N02 缓解标成 A02/A04 全部完成。N03/N04 采用文档中的干净服务身份模式，压测数据只适用于该模式。
+
+## OpenCode 文件收发闭环
+
+方案：[文件收发方案](opencode-file-exchange.md)。2026-10-29 用户授权按 FX01→FX04 实施并分别建立 PR；负责人：Codex。未合并项不标记完成。
+
+- [ ] **FX01 原文件输入与历史导入**（实现已验证，待评审）：Contracts/Runtime、Application/Execution、Capabilities/Files、Runtime/OpenCode；原始字节、稳定路径、冷热恢复、身份和限额测试；全量构建成功，995 通过 / 33 环境门控跳过 / 0 失败。
+- [ ] **FX02 本地产物导出登记**（待开发，依赖 FX01）：输出快照、export_file、资产登记、限额与同轮重试。
+- [ ] **FX03 消息发布与下载恢复**（待开发，依赖 FX02）：成功/失败/取消附件关联、前端展示与恢复。
+- [ ] **FX04 真实链路验收与启用文档**（待开发，依赖 FX03）：真实 OpenCode/原生执行/MinIO、生命周期、并发与内存验证；Windows 单独验收。

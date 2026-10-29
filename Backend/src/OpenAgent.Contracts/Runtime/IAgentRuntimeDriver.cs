@@ -25,6 +25,9 @@ public sealed record RuntimeInvocation(
 
     /// <summary>终态事件被消费后提交平台历史，返回新的检查点；失败必须丢弃运行时状态。</summary>
     public Func<CancellationToken, Task<string?>>? CommitAsync { get; init; }
+
+    /// <summary>Bind the turn's platform file tools after acquiring the workspace, before exposing the MCP bridge.</summary>
+    public Func<IRuntimeWorkspaceFiles, CancellationToken, Task<RuntimeFilePreparation>>? PrepareFilesAsync { get; init; }
 }
 
 public sealed record RuntimeMessage(
