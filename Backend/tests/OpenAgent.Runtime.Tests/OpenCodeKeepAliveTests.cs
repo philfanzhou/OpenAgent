@@ -371,7 +371,7 @@ public sealed class OpenCodeKeepAliveTests
         Assert.Equal(1, runtime.Keeper.ReusedCount);
     }
 
-    [OpenCodeUnixTheory]
+    [OpenCodeUnixTheory(requiresHarness: true)]
     [InlineData(false)]
     [InlineData(true)]
     public async Task FollowUpAttachments_RejectWorkspaceLinksWithoutWritingOutside(bool directoryLink)

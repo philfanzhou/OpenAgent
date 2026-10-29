@@ -112,11 +112,15 @@ internal sealed class OpenCodeUnixFactAttribute : FactAttribute
 
 internal sealed class OpenCodeUnixTheoryAttribute : TheoryAttribute
 {
-    public OpenCodeUnixTheoryAttribute()
+    public OpenCodeUnixTheoryAttribute(bool requiresHarness = false)
     {
         if (OperatingSystem.IsWindows())
         {
             Skip = "Unix symbolic-link test; Windows reparse points require separate environment validation.";
+        }
+        else if (requiresHarness && string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENAGENT_TEST_OPENCODE")))
+        {
+            Skip = "Set OPENAGENT_TEST_OPENCODE to the OpenCode executable for real harness tests.";
         }
     }
 }
