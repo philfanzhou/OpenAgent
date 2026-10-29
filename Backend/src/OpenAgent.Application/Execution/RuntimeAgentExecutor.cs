@@ -1,5 +1,8 @@
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Diagnostics;
+using Microsoft.Extensions.Options;
+using OpenAgent.Application.Execution.Admission;
 using OpenAgent.Application.Conversation;
 using OpenAgent.Application.Observability;
 using OpenAgent.Capabilities.Files.Requests;
@@ -19,6 +22,8 @@ public sealed class RuntimeAgentExecutor
     private readonly FileAssetRequestResolver _files;
     private readonly RuntimePreparation _preparation;
     private readonly TurnAuditWarning _auditWarning;
+    private readonly TurnAdmission _admission;
+    private readonly AdmissionOptions _limits;
     private readonly IRuntimeProfileRepository? _runtimes;
     private readonly IConfiguredRuntimeProfiles? _configuredRuntimes;
 
@@ -29,6 +34,8 @@ public sealed class RuntimeAgentExecutor
         FileAssetRequestResolver files,
         RuntimePreparation preparation,
         TurnAuditWarning auditWarning,
+        TurnAdmission admission,
+        IOptions<AdmissionOptions> limits,
         IRuntimeProfileRepository? runtimes = null,
         IConfiguredRuntimeProfiles? configuredRuntimes = null)
     {
@@ -38,6 +45,8 @@ public sealed class RuntimeAgentExecutor
         _files = files;
         _preparation = preparation;
         _auditWarning = auditWarning;
+        _admission = admission;
+        _limits = limits.Value;
         _runtimes = runtimes;
         _configuredRuntimes = configuredRuntimes;
     }
@@ -97,7 +106,6 @@ public sealed class RuntimeAgentExecutor
         }
         // 用户输入立即上标签：即使轮次中途失败，审计台也能看到用户问了什么。
         AuditActivityEnrichment.PublishContent(request.Query, null);
-        StringBuilder responseText = new();
         AgentRuntimeProfile profile = await _profiles.ResolveAsync(agentId, request.LlmProfileId ?? string.Empty, user, cancellationToken).ConfigureAwait(false);
         if (!string.IsNullOrWhiteSpace(request.RuntimeId))
         {
@@ -116,6 +124,49 @@ public sealed class RuntimeAgentExecutor
         {
             throw new AgentException(AgentErrorCode.InvalidRequest, "The selected runtime provider is unavailable.");
         }
+        // 准入在 Agent、模型与 Runtime 校验之后：被拒绝的请求不占用历史、会话锁和工具准备资源。
+        using AdmissionTicket ticket = _admission.Enter(turn.TenantId, cancellationToken);
+        if (ticket.WasQueued)
+        {
+            yield return new AgentStreamEvent { Type = AgentStreamEventType.ExecutionStatus, Status = "queued" };
+        }
+        await ticket.Ready.Task.ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(TimeSpan.FromSeconds(Math.Min(_limits.ExecutionTimeoutSeconds,
+            profile.Runtime?.TurnTimeoutSeconds ?? _limits.ExecutionTimeoutSeconds)));
+        yield return new AgentStreamEvent
+        {
+            Type = AgentStreamEventType.ExecutionStatus, Status = "started",
+            QueueMilliseconds = (long)Stopwatch.GetElapsedTime(ticket.EnqueuedAt, ticket.StartedAt).TotalMilliseconds
+        };
+        Exception Normalize(Exception error) => error is OperationCanceledException && deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested
+            ? new AgentException(AgentErrorCode.RuntimeExecutionTimeout, "Runtime execution exceeded its time limit.") : error;
+        await using IAsyncEnumerator<AgentStreamEvent> admitted = ExecuteAdmittedAsync(
+            request, user, profile, turn, agentId, measurement, driver, Normalize, deadline.Token).GetAsyncEnumerator();
+        while (true)
+        {
+            bool available;
+            try
+            {
+                available = await admitted.MoveNextAsync().ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+            {
+                throw new AgentException(AgentErrorCode.RuntimeExecutionTimeout, "Runtime execution exceeded its time limit.");
+            }
+            if (!available) break;
+            yield return admitted.Current;
+        }
+    }
+
+    private async IAsyncEnumerable<AgentStreamEvent> ExecuteAdmittedAsync(
+        AgentRequest request, IAgentUserContext user, AgentRuntimeProfile profile, TurnContext turn, string agentId,
+        EngineMeter.EngineExecutionMeasurement measurement, IAgentRuntimeDriver driver, Func<Exception, Exception> normalizeFailure,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        StringBuilder responseText = new();
         AgentRequest resolved = new()
         {
             Query = request.Query,
@@ -132,7 +183,7 @@ public sealed class RuntimeAgentExecutor
             await _preparation.EnsureConversationAsync(turn, request.Query, cancellationToken).ConfigureAwait(false);
         }
         ResolvedFileRequest attachments = await _files.ResolveAsync(resolved, user, cancellationToken).ConfigureAwait(false);
-        await using RuntimePreparationScope scope = await _preparation.CreateAsync(profile, turn, user, request.Query, attachments.Files, cancellationToken).ConfigureAwait(false);
+        await using RuntimePreparationScope scope = await _preparation.CreateAsync(profile, turn, user, request.Query, attachments.Files, normalizeFailure, cancellationToken).ConfigureAwait(false);
         IAsyncEnumerator<AgentStreamEvent> events = driver.RunAsync(scope.InvocationRequest, cancellationToken).GetAsyncEnumerator();
         using ToolAuditTrail tools = new(turn, user.Username);
         bool finalized = false;
@@ -156,7 +207,8 @@ public sealed class RuntimeAgentExecutor
                 }
                 catch (Exception error)
                 {
-                    failure = error;
+                    failure = normalizeFailure(error);
+                    if (!ReferenceEquals(failure, error)) throw failure;
                     throw;
                 }
                 if (item.Type == AgentStreamEventType.Usage)
@@ -188,7 +240,8 @@ public sealed class RuntimeAgentExecutor
             }
             catch (Exception error)
             {
-                failure = error;
+                failure = normalizeFailure(error);
+                if (!ReferenceEquals(failure, error)) throw failure;
                 throw;
             }
             // done/usage 只能在保存成功后发送，客户端收到终态即可安全刷新会话。
