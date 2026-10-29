@@ -1,4 +1,3 @@
-using OpenAgent.Engine.Hosting;
 using Amazon.S3;
 using Amazon.S3.Model;
 using Amazon.Runtime;
@@ -7,10 +6,10 @@ using Moq;
 using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
-using OpenAgent.Engine.Host.Files;
+using OpenAgent.Framework.ObjectStorage;
 using Xunit;
 
-namespace OpenAgent.Engine.Tests.Hosting;
+namespace OpenAgent.Framework.Tests.ObjectStorage;
 
 public class S3FileObjectStoreTests
 {

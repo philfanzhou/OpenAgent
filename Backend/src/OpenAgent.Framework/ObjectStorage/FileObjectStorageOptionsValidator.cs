@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Options;
 
-namespace OpenAgent.Engine.Host.Files;
+namespace OpenAgent.Framework.ObjectStorage;
 
 internal sealed class FileObjectStorageOptionsValidator : IValidateOptions<FileObjectStorageOptions>
 {

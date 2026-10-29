@@ -7,7 +7,7 @@ POST /files -> PostgreSQL FileAssets(Pending) -> S3/MinIO -> FileAssets(Ready)
 POST /chat/stream { fileIds } -> read ready files -> model -> message and file references
 ```
 
-`FileAssetService` 是上传、读取和模型函数的唯一入口，`S3FileObjectStore` 是对象存储适配器。未配置对象存储时文件端点返回依赖不可用；不存在旧的 multipart 聊天降级路径。
+`FileAssetService` 是上传、读取和模型函数的唯一入口，`S3FileObjectStore` 是对象存储适配器（实现与 `FileAssets:ObjectStorage` Options 校验位于 `Backend/src/OpenAgent.Framework/ObjectStorage/`，经 `AddS3FileObjectStorage` 注册；Engine.Host 的 `AddFileAssetObjectStorage` 门面保留启用开关与健康检查组装）。未配置对象存储时文件端点返回依赖不可用；不存在旧的 multipart 聊天降级路径。
 
 文件类型不做准入限制：任意扩展名（含 `.py`/`.js` 等脚本与未知扩展名）均可上传入库。`OpenAgent.Contracts.Files.FileMediaTypeCatalog` 仅作为类型推断目录（扩展名 → 规范媒体类型，含等价别名）：缺省或通用媒体类型（octet-stream）按扩展名推断规范类型，目录外扩展名按 `application/octet-stream` 存储，调用方显式声明的具体类型原样保留，不做扩展名一致性校验。`download_file` 的无扩展名补全与对象内容下发的 `Content-Type` 推断也由同一目录派生（目录外扩展名下发 `application/octet-stream`）；内容下发端点统一附加 `X-Content-Type-Options: nosniff`。read_file 的文本判定（`text/*` 及以文本存储的结构化类型）同样由此派生，目录外扩展名按二进制处理，走元数据信封而非报错。目录当前可识别 html/htm/css、md、csv、json、xml、txt、svg、drawio、png/jpg/jpeg/jps/gif/webp、pdf、zip、pptx、xlsx；新增可识别类型只需追加一条记录。沙箱执行同样不按类型过滤产物：仅空文件或超出存储层限制（如大小）的输出会被跳过并在工具结果的 `skippedFiles` 中报告原因，不会导致整个执行失败。
 
