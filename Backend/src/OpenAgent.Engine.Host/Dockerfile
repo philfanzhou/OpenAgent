@@ -8,9 +8,9 @@ RUN npm install --prefix /opt/opencode --ignore-scripts --no-audit --no-fund ope
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 ENV NUGET_PACKAGES=/opt/nuget/packages
-# libfontconfig1：SkiaSharp 的 libSkiaSharp.so 依赖（runtime-tests 目标在容器内跑测试）。
+# libfontconfig1 supplies SkiaSharp; python3 supports real harness execution regressions.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libfontconfig1 \
+    && apt-get install -y --no-install-recommends libfontconfig1 python3 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY Backend/ Backend/
@@ -23,6 +23,7 @@ RUN dotnet publish Backend/src/OpenAgent.Engine.Host/OpenAgent.Engine.Host.cspro
 # 显式目标：真实 Linux OpenCode + 本地模型/工具链路，不使用外部模型账户。
 FROM build AS runtime-tests
 COPY --from=opencode /opencode /usr/local/bin/opencode
+COPY --from=opencode /usr/local/bin/node /usr/local/bin/node
 RUN chown -R ${APP_UID}:${APP_UID} /src /home/app
 ENV HOME=/home/app
 USER $APP_UID

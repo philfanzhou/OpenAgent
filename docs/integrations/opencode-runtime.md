@@ -42,7 +42,7 @@ Runtime 只引用 Contracts、Runtime.Acp 和官方 MCP SDK；Application 只引
 6. ACP prompt 结束后排空更新队列。平台保存会话成功后才发送 usage/done。失败或取消保存部分正文、reasoning 与工具记录。
 7. 取消发送 session/cancel 并等待原 prompt 结果；SDK 对不确认的进程执行有界回收。轮次结束后关闭本轮 ACP 会话、吊销本轮桥注册（共享端点保留给后续轮次）、释放工具资源并删除本轮随机工作区，保留平台会话数据。完整成功轮次的进程归还保活池等待追问复用；失败、取消、空闲到期、会话数或总量超限的进程立即销毁并回收其主目录。
 
-OpenCode 的原生工具默认 `* = deny`，仅允许 `openagent_*` 平台桥工具；按 Agent 配置透传的外部 MCP server 会追加对应 `server_*` 放行，启用 Skill 时仅按本轮授权名称放行原生 `skill`，其余技能名称保持拒绝。宿主可通过 `OpenCode:AllowedNativeTools` 显式放行原生工具（如 `read`/`edit`/`write`，可带参数模式如 `bash[npm *]`），默认空保持全拒绝；放行即把对应主机读写/执行面直接交给 harness 进程（应用层授权，非 OS 沙箱），由宿主知情选择，白名单参与进程复用身份，改动后不复用旧权限进程。条目禁止花括号（OpenCode 在 JSON 解析前展开 `{file:...}`/`{env:...}` 宏），启动校验拒绝。开发与生产配置的 `AllowedNativeTools` 均为空。个人调试若显式放行，必须使用下述可信开发模式，并把结果与默认配置分开记录。Client 不启用文件/终端回调，ACP 权限请求默认拒绝。桥路由挂载在主站端口上时，仅接受 loopback 远端（其余一律 404，不暴露路由存在性）与命中本轮注册的 bearer（未命中 401），公共认证与准入管线不感知桥流量。平台 Runner、文件资产和 Skill 脚本策略继续约束平台侧工具。这是应用层授权和进程环境隔离，**不是操作系统沙箱**；本轮不宣称解决恶意 harness 的主机访问问题，也不实现人工审批。
+OpenCode 的原生工具默认 `* = deny`，仅允许 `openagent_*` 平台桥工具；按 Agent 配置透传的外部 MCP server 会追加对应 `server_*` 放行，启用 Skill 时仅按本轮授权名称放行原生 `skill`，其余技能名称保持拒绝。宿主可通过 `OpenCode:AllowedNativeTools` 显式放行原生工具（如 `read`/`edit`/`write`，可带参数模式如 `bash[npm *]`），默认空保持全拒绝；放行即把对应主机读写/执行面直接交给 harness 进程（应用层授权，非 OS 沙箱），由宿主知情选择，白名单参与进程复用身份，改动后不复用旧权限进程。条目禁止花括号（OpenCode 在 JSON 解析前展开 `{file:...}`/`{env:...}` 宏），启动校验拒绝。底层及生产基础配置的 `AllowedNativeTools` 仍为空；开发配置保留原有显式授权 `read/edit/write/bash`，代码执行走 OpenCode 自身。生产需要代码执行时，必须在干净服务身份/受控执行环境中显式配置同样的所需权限，不能依赖 Runner 兜底。Client 不启用文件/终端回调，ACP 权限请求默认拒绝。桥路由挂载在主站端口上时，仅接受 loopback 远端（其余一律 404，不暴露路由存在性）与命中本轮注册的 bearer（未命中 401），公共认证与准入管线不感知桥流量。既有平台工具实现暂时保留；N02 不启用 Runner，也不将其作为代码执行的替代路径。这是应用层授权和进程环境隔离，**不是操作系统沙箱**；本轮不宣称解决恶意 harness 的主机访问问题，也不实现人工审批。
 
 ## MCP 透传
 
@@ -53,7 +53,7 @@ OpenCode 的原生工具默认 `* = deny`，仅允许 `openagent_*` 平台桥工
 ## Skill 物化
 
 - 启用的 Skill 包物化到进程级内容缓存目录（键 = 租户 + 对象键 + 包 SHA-256，首次仍逐文件下载并校验完整性，staging 原子提交；未登记哈希的记录退回一次性目录随轮释放），再复制到工作区 `.opencode/skills/<name>`，拒绝包根及包内的符号链接/reparse point，避免把宿主目标引入工作区或通过工作区写回共享缓存；复制逐文件响应取消。追问轮次命中缓存仍零下载，但每轮承担本地复制成本，新包发布自然失效旧键。缓存根目录按进程隔离（含进程 ID）；轮次以租约持有包引用，淘汰只回收零引用条目，活跃包不会被删除。OpenCode 原生 skill 工具按需加载 SKILL.md，平台不再把 skill 文本注入提示词。
-- Skill 包内文件的受限读取（`read_skill_file`）与脚本执行（`run_skill_script`，经隔离 Runner，保留三重开关）作为平台桥工具提供；两者都限制在物化包目录内。
+- 既有 `read_skill_file`、`run_skill_script` 平台实现暂时保留，其中 `run_skill_script` 仍依赖 Runner。当前执行方向是通过 OpenCode 自身的原生工具运行技能脚本和其他 Node/Python 代码；N02 不启用 Runner，不将旧脚本工具作为兜底，也不在本 PR 删除它。
 
 ## 独立 Runtime 设置
 
@@ -139,21 +139,21 @@ SDK 控制台继续只有 SDK 引用，外部连接入口见 [控制台使用](a
 
 ## N02：宿主继承缓解与受支持模式
 
-初始基线为 `origin/dev@768a8c1e`，交付前已合入 `origin/dev@0f670f86`（保留 SkiaSharp 的镜像依赖）。范围为 Runtime/OpenCode、Engine 镜像/开发配置、Data Protection 卷挂载和 Runtime.Tests。SDK 协议、项目依赖、Runner、RAG、Worker/RunGrant 实现均未改变。`KeepAliveSeconds` 保持 0。
+初始基线为 `origin/dev@768a8c1e`，交付前已合入 `origin/dev@0f670f86`（保留 SkiaSharp 的镜像依赖）。范围为 Runtime/OpenCode、Engine 镜像/开发配置、Data Protection 卷挂载和 Runtime.Tests。SDK 协议、项目依赖、Runner、RAG、Worker/RunGrant 实现均未改变。代码执行方向已按用户要求明确为 OpenCode 自身，Runner 不启用且可能在后续任务移除。`KeepAliveSeconds` 保持 0。
 
 ### 当前缓解
 
 - HOME 与 USERPROFILE 指向同一个进程私有 home；APPDATA/LOCALAPPDATA、四个 XDG 目录、OPENCODE_CONFIG_DIR、TMPDIR/TMP/TEMP 均收拢到 `p-<random>/.state`，进程 cwd 与 ACP 轮次 cwd 分离。API key 仍仅通过该子进程白名单环境传入。PATH 与 Node TLS 覆盖仍属于可信宿主配置，并非出站访问控制。
 - 固定设置 `OPENCODE_DISABLE_PROJECT_CONFIG`、`OPENCODE_DISABLE_EXTERNAL_SKILLS`、`OPENCODE_DISABLE_CLAUDE_CODE`，阻止祖先项目配置/指令与 `.claude/.agents` 自动扫描；授权 Skill 由相对 ACP cwd 的显式路径发现。关闭默认插件、模型目录抓取和 LSP 下载，避免这些默认扩展来源；这不代表整个进程已无外呼或可启用保活。
-- 保留配置宏转义、原生工具全拒绝及 ACP 文件/终端回调关闭；开发配置移除原生 shell 默认放行。按名称授权 Skill 避免附带放行 OpenCode 内建或其他磁盘技能。目录检查与包复制防止正常执行中误跟随链接，不承诺抵抗同 UID 恶意进程并发替换路径的竞态。
+- 保留配置宏转义、底层原生工具默认拒绝及 ACP 文件/终端回调关闭；开发配置继续显式放行 `read/edit/write/bash`，保持 OpenCode 自身代码执行能力。Runner 不作为本轮执行方案。按名称授权 Skill 避免附带放行 OpenCode 内建或其他磁盘技能。目录检查与包复制防止正常执行中误跟随链接，不承诺抵抗同 UID 恶意进程并发替换路径的竞态。
 - Engine 发布镜像及 `runtime-tests` 阶段使用 .NET 镜像的非 root `app` 身份（UID 1654），干净系统 home 为 `/home/app`。Engine 和 OpenCode 仍共享这一身份；它消除开发者账户的隐式继承，不能隔离 Engine 自身的配置、进程内凭据或其他租户。
 
 上游 1.19.3 的 [Skill 扫描](https://github.com/anomalyco/opencode/blob/v1.19.3/packages/opencode/src/skill/index.ts)、[扫描开关](https://github.com/anomalyco/opencode/blob/v1.19.3/packages/opencode/src/effect/runtime-flags.ts)、[全局 home](https://github.com/anomalyco/opencode/blob/v1.19.3/packages/core/src/global.ts)、[配置目录](https://github.com/anomalyco/opencode/blob/v1.19.3/packages/opencode/src/config/paths.ts)与[配置合并](https://github.com/anomalyco/opencode/blob/v1.19.3/packages/opencode/src/config/config.ts)说明了为什么不能只改 HOME：系统身份的 `~/.opencode` 仍可进入配置来源，系统 managed config 也能参与合并。测试专用 `OPENCODE_TEST_HOME` / `OPENCODE_TEST_MANAGED_CONFIG_DIR` 只用于构造临时反例，生产代码不设置或透传它们。macOS managed preferences 也不在上述开关的隔离保证内。
 
 | 模式 | 适用边界 | N03/N04 使用条件 |
 |---|---|---|
-| 干净独立 OS 服务账户，或一次性非 root 测试容器 | 仅可信开发/单一信任域；系统 home、祖先目录、XDG 与 managed config 均由运维确认干净，不挂载个人 HOME/凭据/socket | 固定 1.19.3、默认工具全拒绝、专属目录；N03 冷启动基线保活 0，确定性本地模型；容量数据只代表该模式 |
-| 显式放行原生工具的专用调试环境 | 授权会扩大同 UID 文件/进程访问面；`external_directory` 也是独立应用权限 | 只用于有标记的边界探针或隔离环境内的单独实验，不混入默认容量基线；N04 仅实验性调整保活后恢复 0 |
+| OpenCode 原生执行：干净独立 OS 服务账户，或一次性非 root 测试容器 | 仅可信开发/单一信任域；系统 home、祖先目录、XDG 与 managed config 均由运维确认干净，不挂载个人 HOME/凭据/socket；显式授权所需 read/edit/write/bash。开发配置保留此授权 | 固定 1.19.3、专属目录，记录实际工具列表和 Node/Python 版本；N03 冷启动基线保活 0，确定性本地模型，并包含真实代码执行负载；N04 仅实验性调整保活后恢复 0 |
+| 最小工具模式（底层默认拒绝） | 用于纯聊天/平台工具的独立对照，不能替代原生代码执行验收；external_directory 仍为单独权限，不因放行 bash 自动开放 | 与执行模式分别报告，不能用该模式数据声称 Node/Python 执行容量；跨目录探针另行标记其权限 |
 | 个人账户、脏服务账户、共享 Engine 容器承载互不信任租户 | 不获多租户安全验收；环境白名单与应用权限不足以形成 OS 隔离 | 不用于得出多租户安全或生产容量结论 |
 
 Windows 原生运行必须使用独立服务账户、干净系统用户 profile 和受限目录 ACL，并为该账户安装/指定绝对路径的 OpenCode。不要依赖覆盖 USERPROFILE 修复系统 homedir。本轮没有 Windows 测试机，原生 Windows 1.19.3 的 homedir、junction/ACL、进程回收均待该环境实测；Unix 的 0700 测试不能替代它。
@@ -172,8 +172,9 @@ Windows 原生运行必须使用独立服务账户、干净系统用户 profile 
 
 ### 2026-10-28 验证与未验收项
 
-- macOS arm64、SDK 10.0.301：全解决方案构建 0 错误、1 条已有警告；默认后端 1097 通过、48 跳过、0 失败。跳过包括真实 OpenCode、Windows 与 Runner/Linux 环境门控，不能作为对应平台通过证明。
+- macOS arm64、SDK 10.0.301：全解决方案构建 0 错误、1 条已有警告；默认后端 1097 通过、49 跳过、0 失败。跳过包括真实 OpenCode、Windows 与 Runner/Linux 环境门控，不能作为对应平台通过证明。
 - Linux arm64、SDK 10.0.402：使用缓存测试基础镜像，npm 固定包 `opencode-linux-arm64@1.19.3`，下载 tarball 的 SHA-512 与 registry integrity 一致，执行 `--version` 为 1.19.3。测试用非 root UID 1654 的干净 `app` profile；只使用临时 canary、确定性本地模型和假 key，未读取真实用户凭据。
+- 原生执行回归 `OpenCodeNativeExecutionTests` 读取实际开发配置，要求真实 OpenCode 通过 bash 执行 Node/Python；覆盖本地模块加载、JSON 文件读写、私有临时目录、非 root 身份及结果回传，不注册或调用 Runner 工具。第三方依赖仍需在执行环境预置，本次不引入 Runner 的依赖集合。
 - `OpenCodeIsolationTests` 包含：探针子进程验证环境/cwd/temp、可注入的对照组与收紧后无注入、脏身份 `.opencode` 配置仍注入的反例、默认强制越界 read 拒绝、跨租户/用户的同名会话与同名 Skill、显式授权 shell/外部目录后的文件与同级进程可见性。`OpenCodeSkillsTests` 验证路径穿越、包根/包内链接拒绝、副本不回写缓存及取消。
 - 真实 Runtime 全套 86 通过、1 个 Windows 专属用例跳过、0 失败（87 总数包含普通边界测试）；Host SSE 1 通过。已有取消/失败路径检查轮次工作区与进程 home 回收。探针子进程属于替身验证，不等价于真实 OpenCode；Linux `/proc` 探针不等价于 Windows 进程视图验收。
 - 部署脚本测试 12 通过、布局测试 3 通过；合成 Data Protection key-ring 在 root 写入、切换挂载位置并将权限迁移给 UID 1654 后解密成功，再迁回旧位置由 root 解密成功；未使用或迁移实际部署密钥。
@@ -181,4 +182,4 @@ Windows 原生运行必须使用独立服务账户、干净系统用户 profile 
 
 ### 回退
 
-保持 `KeepAliveSeconds=0`。出现兼容问题时停用受影响 Runtime/能力或回退该 PR；不能把恢复个人 HOME、允许宿主技能继承或开放原生工具作为多租户安全修复。Skill 每轮复制增加磁盘开销，N03 需计入准备/清理成本。非 root 镜像的 Data Protection 卷权限迁移与旧镜像回退见[部署指南](../operations/deployment.md#opencode-服务身份与已有密钥卷)。既有 `WorkspaceRoot` 若权限过宽，应停机后由运维收紧为专属目录，不让应用自动更改未知宿主目录权限。
+保持 `KeepAliveSeconds=0`。出现兼容问题时停用受影响 Runtime/能力或回退该 PR；不能把恢复个人 HOME、允许宿主技能继承作为安全回退；原生工具授权也不能代替多租户 OS 隔离。Skill 每轮复制增加磁盘开销，N03 需计入准备/清理成本。非 root 镜像的 Data Protection 卷权限迁移与旧镜像回退见[部署指南](../operations/deployment.md#opencode-服务身份与已有密钥卷)。既有 `WorkspaceRoot` 若权限过宽，应停机后由运维收紧为专属目录，不让应用自动更改未知宿主目录权限。

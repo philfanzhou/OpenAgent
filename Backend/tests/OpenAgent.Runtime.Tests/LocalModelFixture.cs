@@ -125,6 +125,17 @@ internal sealed class OpenCodeLinuxFactAttribute : OpenCodeFactAttribute
     }
 }
 
+internal sealed class OpenCodeLinuxTheoryAttribute : TheoryAttribute
+{
+    public OpenCodeLinuxTheoryAttribute()
+    {
+        if (!OperatingSystem.IsLinux() || string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENAGENT_TEST_OPENCODE")))
+        {
+            Skip = "Linux real harness execution requires OPENAGENT_TEST_OPENCODE, Node and Python.";
+        }
+    }
+}
+
 /// <summary>真实进程 + 仅 Windows：PATH/PATHEXT 命令名解析行为回归。</summary>
 internal sealed class OpenCodeWindowsFactAttribute : OpenCodeFactAttribute
 {
