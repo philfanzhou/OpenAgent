@@ -170,15 +170,16 @@ Windows 原生运行必须使用独立服务账户、干净系统用户 profile 
 | 出站 | 默认拒绝；仅经受控代理放行授权模型/MCP 目标；阻断云 metadata、宿主和内部网络、任意 DNS/重定向绕过。仅把本轮所需短期凭据交给运行环境；平台桥应由 Worker 提供可达且鉴权的转接，不能直接沿用同宿主 loopback 假定 |
 | 生命周期 | 运行标识与 Tenant/User/Conversation 绑定，禁止跨身份复用；仅在完整隔离边界内评估保活。平台取消、Worker 失联、协议中断、进程逃逸与清理失败均需有界处置与审计；RunGrant/分布式 fencing 由对应任务实现 |
 
-### 2026-10-28 验证与未验收项
+### 2026-10-28—29 验证与未验收项
 
-- macOS arm64、SDK 10.0.301：全解决方案构建 0 错误、1 条已有警告；默认后端 1097 通过、49 跳过、0 失败。跳过包括真实 OpenCode、Windows 与 Runner/Linux 环境门控，不能作为对应平台通过证明。
-- Linux arm64、SDK 10.0.402：使用缓存测试基础镜像，npm 固定包 `opencode-linux-arm64@1.19.3`，下载 tarball 的 SHA-512 与 registry integrity 一致，执行 `--version` 为 1.19.3。测试用非 root UID 1654 的干净 `app` profile；只使用临时 canary、确定性本地模型和假 key，未读取真实用户凭据。
-- 原生执行回归 `OpenCodeNativeExecutionTests` 读取实际开发配置，要求真实 OpenCode 通过 bash 执行 Node/Python；覆盖本地模块加载、JSON 文件读写、私有临时目录、非 root 身份及结果回传，不注册或调用 Runner 工具。第三方依赖仍需在执行环境预置，本次不引入 Runner 的依赖集合。
-- `OpenCodeIsolationTests` 包含：探针子进程验证环境/cwd/temp、可注入的对照组与收紧后无注入、脏身份 `.opencode` 配置仍注入的反例、默认强制越界 read 拒绝、跨租户/用户的同名会话与同名 Skill、显式授权 shell/外部目录后的文件与同级进程可见性。`OpenCodeSkillsTests` 验证路径穿越、包根/包内链接拒绝、副本不回写缓存及取消。
-- 真实 Runtime 全套 86 通过、1 个 Windows 专属用例跳过、0 失败（87 总数包含普通边界测试）；Host SSE 1 通过。已有取消/失败路径检查轮次工作区与进程 home 回收。探针子进程属于替身验证，不等价于真实 OpenCode；Linux `/proc` 探针不等价于 Windows 进程视图验收。
-- 部署脚本测试 12 通过、布局测试 3 通过；合成 Data Protection key-ring 在 root 写入、切换挂载位置并将权限迁移给 UID 1654 后解密成功，再迁回旧位置由 root 解密成功；未使用或迁移实际部署密钥。
-- 标准 Dockerfile 目标首次构建在拉取 `node:22-bookworm-slim` 元数据时超时，未宣称发布镜像完整构建通过；缓存镜像上的真实进程测试单列。未发布镜像、未修改线上部署、未验证 Windows/真实服务商或未来 Worker 隔离，亦未测定新的保活空闲阈值。
+- 最新基线 `45802efd` 已移除 Runner，测试数量随之变化。macOS arm64、SDK 10.0.301：全解决方案构建成功，默认后端 972 通过、25 跳过、0 失败；跳过为真实 OpenCode/Windows 环境门控。现存 nullable 与 SkiaSharp 过时 API 告警未在 N02 修改或压制。
+- Linux arm64、SDK 10.0.403：标准 Dockerfile 的 `runtime-tests` 与 `runtime` 两个目标均构建成功，OpenCode 固定为 1.19.3。测试使用非 root UID 1654 的干净 app profile、临时 canary、确定性本地模型和假 key；未读取真实用户凭据。此前缓存镜像复测与独立 npm tarball SHA-512 校验仍可辅助复现，最终门禁以标准 Dockerfile 结果为准。
+- 真实 Runtime 套件 88 通过、1 个 Windows 专属用例跳过、0 失败（89 总数包含普通边界测试）；Host SSE 1 通过。真实进程夹具使用同一非并行测试集合，避免多个独立冷启动夹具争抢资源；首次未分组运行曾出现技能/MCP 45 秒超时，独立复测及最终分组全套通过。生产超时和并发配置未调整，容量由 N03 的显式负载验证。
+- `OpenCodeNativeExecutionTests` 读取实际开发配置，由真实 OpenCode 通过 bash 执行 Node/Python；覆盖工作区附件读取、本地模块加载、JSON 文件读写、私有临时目录、非 root 身份和结果回传。执行路径不依赖 Runner。第三方依赖仍需在执行环境预置，本次不引入旧 Runner 的依赖集合。
+- 发布镜像本地检查：UID 1654、Node 22.23.4、Python 3.12.3、OpenCode 1.19.3；状态目录及 Data Protection 目录可由服务账户写入。镜像只在本机构建，未发布或部署。
+- `OpenCodeIsolationTests` 包含：探针子进程环境/cwd/temp、可注入对照组与收紧后无注入、脏身份 .opencode 配置仍注入的反例、默认强制越界 read 拒绝、跨租户/用户同名会话与 Skill、显式授权 shell/外部目录后的文件与同级进程可见性。`OpenCodeSkillsTests` 覆盖路径穿越、包根/包内链接拒绝、副本不回写缓存及取消；既有真实取消/失败用例检查轮次工作区及进程 home 回收。
+- 最新部署脚本测试 10 通过、布局测试 3 通过。合成 Data Protection key-ring 已验证 root 写入、迁移位置/权限后 UID 1654 解密、迁回旧位置后 root 解密；未使用或迁移实际部署密钥。
+- Windows 原生账户/ACL/junction/进程回收、真实服务商、实际部署与未来 Worker 多租户隔离未验收；探针子进程不等于真实 harness，Linux /proc 结果不能替代 Windows 进程视图验收。保活空闲阈值仍未测定，默认保持 0。
 
 ### 回退
 

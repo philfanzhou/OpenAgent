@@ -13,6 +13,13 @@ using Xunit;
 
 namespace OpenAgent.Runtime.Tests;
 
+// Independent cold harness fixtures compete for CPU and bootstrap work; capacity tests drive their own concurrency.
+[CollectionDefinition(Name, DisableParallelization = true)]
+public sealed class RealOpenCodeCollection
+{
+    public const string Name = "Real OpenCode";
+}
+
 internal sealed class ModelFixture(WebApplication app, ConcurrentQueue<Exception> failures) : IAsyncDisposable
 {
     internal string Endpoint => app.Services.GetRequiredService<IServer>()

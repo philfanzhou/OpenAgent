@@ -8,6 +8,7 @@ using Xunit;
 
 namespace OpenAgent.Runtime.Tests;
 
+[Collection(RealOpenCodeCollection.Name)]
 public sealed class OpenCodeIsolationTests : IDisposable
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), "n02-canary-" + Guid.NewGuid().ToString("N"));

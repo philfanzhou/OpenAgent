@@ -1,9 +1,11 @@
 using System.Text.Json;
 using OpenAgent.Contracts.Requests;
+using OpenAgent.Contracts.Runtime;
 using Xunit;
 
 namespace OpenAgent.Runtime.Tests;
 
+[Collection(RealOpenCodeCollection.Name)]
 public sealed class OpenCodeNativeExecutionTests
 {
     [OpenCodeLinuxTheory]
@@ -19,6 +21,7 @@ public sealed class OpenCodeNativeExecutionTests
             assert.notEqual(process.getuid(), 0);
             assert.equal(process.env.HOME, process.env.USERPROFILE);
             assert.equal(os.tmpdir(), process.env.TMPDIR);
+            assert.equal(fs.readFileSync('uploads/attachment-1.bin', 'utf8'), 'N02_NATIVE_INPUT');
             fs.writeFileSync('local-module.cjs', 'module.exports = n => n * 3;');
             const triple = require(path.resolve('local-module.cjs'));
             fs.writeFileSync('result.json', JSON.stringify({value: triple(7)}));
@@ -33,6 +36,7 @@ public sealed class OpenCodeNativeExecutionTests
             assert os.getuid() != 0
             assert os.environ['HOME'] == os.environ['USERPROFILE']
             assert tempfile.gettempdir() == os.environ['TMPDIR']
+            assert pathlib.Path('uploads/attachment-1.bin').read_text() == 'N02_NATIVE_INPUT'
             pathlib.Path('local_module.py').write_text('def triple(n): return n * 3\n')
             spec = importlib.util.spec_from_file_location('local_module', 'local_module.py')
             module = importlib.util.module_from_spec(spec)
@@ -81,7 +85,11 @@ public sealed class OpenCodeNativeExecutionTests
                 settings[$"OpenCode:AllowedNativeTools:{i}"] = allowed[i];
             }
         });
-        List<AgentStreamEvent> events = await runtime.CollectAsync(runtime.Request);
+        List<AgentStreamEvent> events = await runtime.CollectAsync(runtime.Request with
+        {
+            Messages = [new RuntimeMessage("user", "Execute the supplied code.",
+                [new RuntimeAttachment("text/plain", System.Text.Encoding.UTF8.GetBytes("N02_NATIVE_INPUT"))])]
+        });
         Assert.True(resultSeen);
         Assert.Contains(events, item => item.Type == AgentStreamEventType.ToolResult && item.Content?.Contains(marker, StringComparison.Ordinal) == true);
         runtime.AssertWorkspacesReleased();

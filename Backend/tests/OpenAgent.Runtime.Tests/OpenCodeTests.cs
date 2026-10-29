@@ -19,6 +19,7 @@ using Xunit;
 namespace OpenAgent.Runtime.Tests;
 
 /// <summary>真实 OpenCode + 本地确定性模型；不使用外部凭据，也不消耗付费模型额度。</summary>
+[Collection(RealOpenCodeCollection.Name)]
 public sealed class OpenCodeTests
 {
     [OpenCodeFact]
