@@ -9,12 +9,15 @@ public enum AgentStreamEventType
     Usage,
     /// <summary>update_plan 工具结果后的计划快照事件，Content 为计划 JSON，前端据此渲染任务清单。</summary>
     PlanUpdated,
-    RuntimeStarted
+    RuntimeStarted,
+    ExecutionStatus
 }
 
 public sealed record AgentStreamEvent
 {
     public required AgentStreamEventType Type { get; init; }
+    public string? Status { get; init; }
+    public long? QueueMilliseconds { get; init; }
     public string? Content { get; init; }
     public string? ToolName { get; init; }
     public string? ToolCallId { get; init; }

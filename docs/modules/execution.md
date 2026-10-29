@@ -10,17 +10,19 @@ RuntimeAgentExecutor 提供同步 ExecuteAsync 和流式 ExecuteStreamingAsync�
 
 1. Engine.Host 通过 Engine/Hosting 认证/错误管道、AgentUserContextMiddleware 与 EngineAdmissionMiddleware 建立身份并执行入口治理。
 2. ConversationAgentResolver 选择 Agent，IAgentRuntimeResolver 获取授权后的 Agent 配置和模型，创建 TurnContext。
-3. 带附件时先确保会话，再通过 FileAssetRequestResolver 校验和解析文件。
+3. 授权后进入 Host 单例 TurnAdmission 的有界准入；等待期间不持有会话锁、不加载消息历史、不解析附件或准备工具。获准后，带附件时先确保会话，再通过 FileAssetRequestResolver 校验和解析文件。
 4. RuntimePreparation 准备平台历史、能力、MCP 与 Skill；RuntimeAgentExecutor 调用 IAgentRuntimeDriver。生产驱动通过 SDK 启动 OpenCode ACP，不调用 AIAgent.RunAsync。
 5. AcpEventMapper 转换正文、reasoning、工具调用/结果与计划事件；平台保存会话成功后发出终态。ACP 未提供本轮计费 token 时保留 null，不作估算。作用域释放持有的资源。
 
-完整运行边界见 [OpenCode ACP](../integrations/opencode-runtime.md)。
+完整运行边界、准入配置与容量实测见 [OpenCode ACP](../integrations/opencode-runtime.md#n03并发准入排队与取消)。
 
 异常、取消与协议：
 
 - RuntimeAgentExecutor 不把异常转成 Success=false 的 AgentResponse，异常向上传播；工具调用的局部错误由工具机制隔离（见下文错误处理）。
 - 共享 Engine/Hosting/Errors/AgentExceptionHandling.cs 负责 HTTP ProblemDetails 映射；Engine.Host/EngineErrorHandling.cs 添加 Provider 错误与 SSE 文案，响应已开始时写 error/done，客户端断开按取消处理。
-- Application 返回 IAsyncEnumerable&lt;AgentStreamEvent&gt;；Host 的 AgentStreamWriter 将其写成 SSE，使用实际 CancellationToken。
+- Application 返回 IAsyncEnumerable&lt;AgentStreamEvent&gt;；Host 的 AgentStreamWriter 预读首个事件后才建立 SSE，使用实际 CancellationToken。授权失败或队列满可以返回普通 HTTP 错误；进入 SSE 后的失败继续使用既有 error/done。
+- 附加 `execution_status` 事件携带 `queued` 或 `started` 与可选 `queueMilliseconds`；旧客户端忽略未知事件，新客户端只在 UI 展示等待，状态文本不写入 assistant 正文。`started` 表示获准准备，ACP 身份仍由原 `runtime` 事件报告。
+- `RuntimeQueueFull` 返回 HTTP 429，`RuntimeQueueTimeout` 在流前返回 HTTP 503，均带 Retry-After 与 retryAfterSeconds；流内超时在 error 事件带同一错误码与重试间隔。`RuntimeExecutionTimeout` 返回 HTTP 504（若已开流则 error/done）。
 - 取消/失败时 PlatformChatHistory 在释放期间使用 CancellationToken.None 写回 partial；初始化中途失败清理已创建的功能资源，并保留原始异常。
 - HTTP 中间件顺序由 Host Program 配置，执行域不定义或注册 Web 中间件。请求日志、Trace 与排障入口见 [观测文档](../overview/Observability.md)。
 
@@ -52,7 +54,7 @@ RuntimeAgentExecutor.ExecuteStreamingAsync
 | 统一错误信封 | `{"error":"...","code":"...","hint":"...",("timedOut":true)添加于超时,("errorId":"...")添加于脱敏异常}`；code 稳定供程序判别，hint 给模型可行动修正路径 |
 | 工具调用超时 | 单次调用超过 `AgentExecution:ToolCallTimeoutSeconds`（默认 300，≤0 不限时）被主动取消，以带 `timedOut` 标记的错误结果回传模型，会话不中断 |
 | 结果预算截断 | 工具结果超过分级字符预算（读 80k/执行 40k/MCP 48k/默认 60k，`AgentExecution:*ToolResultCharBudget`，≤0 不限）做头尾保留截断并附收窄提示 |
-| 会话写回保障 | 取消/失败时写回 partial 消息（`CancellationToken.None`），状态置为 Cancelled |
+| 会话写回保障 | 已准备的轮次在取消/失败时写回 partial 消息（`CancellationToken.None`）；用户取消为 Cancelled，执行超时/错误为 Failed。尚未获准的请求不创建消息或运行终态 |
 
 分层行为：
 

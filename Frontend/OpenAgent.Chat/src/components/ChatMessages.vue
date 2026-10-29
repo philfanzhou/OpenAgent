@@ -493,7 +493,7 @@ defineExpose({ scrollToBottom })
         </div>
 
         <div v-if="!hasMessageContent(item) && !processActivities(item).length && !messageError(item)" class="message-thinking-placeholder" aria-live="polite">
-          <span v-if="isStreamingItem(item)" class="thinking-dots"><i /><i /><i /></span><span>{{ isStreamingItem(item) ? '正在生成回复' : incompleteResponseText(item) }}</span>
+          <span v-if="isStreamingItem(item)" class="thinking-dots"><i /><i /><i /></span><span>{{ isStreamingItem(item) ? (item.executionStatus === 'queued' ? '等待执行名额…' : '正在生成回复') : incompleteResponseText(item) }}</span>
         </div>
 
         <div v-if="messageError(item)" class="message-error" :class="`message-error--${errorSeverity(messageError(item))}`" role="alert">

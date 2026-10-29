@@ -63,7 +63,11 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
         {
             throw new AgentException(AgentErrorCode.InvalidRequest, "The selected runtime provider is not enabled.");
         }
-        await _turns.WaitAsync(cancellationToken).ConfigureAwait(false);
+        // Final driver guard also bounds callers that bypass Application admission.
+        if (!await _turns.WaitAsync(TimeSpan.FromSeconds(options.Value.RequestTimeoutSeconds), cancellationToken).ConfigureAwait(false))
+        {
+            throw new RuntimeAdmissionException(AgentErrorCode.RuntimeQueueTimeout, "OpenCode process capacity wait timed out.", 1);
+        }
         using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(TimeSpan.FromSeconds(Math.Min(options.Value.TurnTimeoutSeconds,
             invocation.Profile.Runtime?.TurnTimeoutSeconds ?? options.Value.TurnTimeoutSeconds)));

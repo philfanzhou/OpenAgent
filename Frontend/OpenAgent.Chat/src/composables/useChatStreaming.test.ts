@@ -89,7 +89,24 @@ describe('useChatStreaming', () => {
     vi.clearAllMocks()
   })
 
-  it('requires an independently saved model connection', async () => {
+  it.each([true, false])('shows admission progress without adding it to assistant content (reload=%s)', async (reload) => {
+    const { streaming, selectedConversation } = await setup()
+    vi.mocked(api.streamChat).mockImplementation(() => (async function* () {
+      yield { type: 'execution_status', status: 'queued' }
+      expect(selectedConversation.value?.messages?.at(-1)?.executionStatus).toBe('queued')
+      expect(selectedConversation.value?.messages?.at(-1)?.content).toBe('')
+      yield { type: 'execution_status', status: 'started', queueMilliseconds: 42 }
+      expect(selectedConversation.value?.messages?.at(-1)?.executionStatus).toBe('started')
+      yield { type: 'done', conversationId: 'conv-1' }
+    })() as never)
+    if (reload) vi.mocked(api.getConversation).mockResolvedValue(makeRecord([], 'Completed') as never)
+    else vi.mocked(api.getConversation).mockRejectedValue(new Error('offline'))
+    streaming.message.value = '运行'
+    await streaming.send()
+    expect(selectedConversation.value?.messages?.at(-1)?.executionStatus).toBeUndefined()
+  })
+
+  it('requires an independently saved model connection' , async () => {
     const { streaming } = await setup('')
     streaming.message.value = '运行'
     await streaming.send()

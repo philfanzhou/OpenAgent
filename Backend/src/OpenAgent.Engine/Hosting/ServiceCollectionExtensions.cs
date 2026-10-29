@@ -171,7 +171,7 @@ public static class ServiceCollectionExtensions
             {
                 metrics
                     .AddAspNetCoreInstrumentation()
-                    .AddMeter(options.OpenTelemetrySource)
+                    .AddMeter(options.OpenTelemetrySource, "OpenAgent.Admission")
                     .AddPrometheusExporter();
 
                 if (otlpEndpoint != null)

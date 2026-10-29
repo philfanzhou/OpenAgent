@@ -11,6 +11,24 @@ namespace OpenAgent.Engine.Tests.Hosting;
 
 public class AgentExceptionHandlerMiddlewareTests
 {
+    [Theory]
+    [InlineData(OpenAgent.Contracts.Requests.AgentErrorCode.RuntimeQueueFull, 429)]
+    [InlineData(OpenAgent.Contracts.Requests.AgentErrorCode.RuntimeQueueTimeout, 503)]
+    public async Task InvokeAsync_AdmissionFailure_WritesStatusAndRetryInformation(OpenAgent.Contracts.Requests.AgentErrorCode code, int status)
+    {
+        DefaultHttpContext context = new();
+        context.Request.Path = "/api/v1/agent/chat/stream";
+        context.Response.Body = new MemoryStream();
+        AgentExceptionHandlerMiddleware middleware = CreateMiddleware(_ => throw new OpenAgent.Contracts.Runtime.RuntimeAdmissionException(code, "busy", 3));
+        await middleware.InvokeAsync(context);
+        Assert.Equal(status, context.Response.StatusCode);
+        Assert.Equal("3", context.Response.Headers.RetryAfter);
+        context.Response.Body.Position = 0;
+        string body = await new StreamReader(context.Response.Body).ReadToEndAsync();
+        Assert.Contains("\"retryAfterSeconds\":3", body);
+        Assert.DoesNotContain("event:", body);
+    }
+
     [Fact]
     public async Task InvokeAsync_StreamEndpointThrowsBeforeResponseStarts_WritesProblemDetails()
     {

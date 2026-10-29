@@ -28,7 +28,7 @@ public static class ApplicationServiceExtensions
             .AddMcpServices()
             .AddSkillServices()
             .AddRagServices()
-            .AddRuntimeServices();
+            .AddRuntimeServices(configuration);
     }
 
     private sealed class ApplicationRegistration;

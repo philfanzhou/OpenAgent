@@ -140,3 +140,11 @@
 - 范围：Runtime/OpenCode、Runtime.Tests、Engine 开发/镜像配置与 Data Protection 卷挂载。底层原生工具默认拒绝、宿主显式授权原生执行、显式 Skill 路径/名称授权、关闭外部/祖先扫描、私有 profile/tmp、链接拒绝与 Skill 副本、非 root 服务身份。N02 不修改 SDK、依赖白名单或 RAG；Runner 移除随最新 dev 合入。
 - 对外行为：开发配置保留显式允许 read/edit/write/bash，Node/Python 实际执行走 OpenCode，Runner 不作为方案或兜底；已有 Unix workspace 需服务账户独占（0700），已有密钥卷需迁移权限。保持 KeepAliveSeconds=0，不启用整个 Worker/RunGrant 架构。
 - 验收与反例：[运行时验证和支持模式](../integrations/opencode-runtime.md#n02宿主继承缓解与受支持模式)；部署与回退：[服务身份及密钥卷](../operations/deployment.md#opencode-服务身份与已有密钥卷)。标准 Docker 测试/发布镜像已在本机构建；Windows、实际部署与未来多租户隔离未验收，不能把 N02 缓解标成 A02/A04 全部完成。N03/N04 采用文档中的干净服务身份模式，压测数据只适用于该模式。
+
+
+## N03 / P1 — 并发容量、排队与取消（ACP-R04、A02）
+
+- 负责人：Codex；状态：待评审（实现与本机/容器验证完成）；初始基线 `origin/dev@768a8c1e`，已改基 `origin/dev@d38a3513`；实现分支 `codex/n03-admission`，PR 待创建。任务输入来自 2026-10-28 非 RAG 拆解，只补充本任务，不覆盖其他会话的规划文件。
+- 拥有范围：Application/Execution 的授权后有界准入、Contracts 状态/错误契约、Host SSE 与共享异常映射、前端 chat 等待状态及对应测试。共享边界：Runtime/OpenCodeRuntime 仅保留并收紧最后活跃进程门的等待时限，Dockerfile 仅新增显式 capacity-tests 目标；保活池与默认值由 N04 负责，SDK/架构白名单/RAG 不变，Runner 沿用已合入 dev 的移除结果。
+- 对外行为：Host/租户活跃与等待上限、排队/执行分开计时；队列满流前 429 + 重试信息，排队超时 503 或流内 error/done；兼容 execution_status 附加事件。排队取消无准备资源，执行取消在进程/工具/锁回收后归还名额，成功终态仍在保存后发送。
+- 验收证据与回退：[N03 运行时说明](../integrations/opencode-runtime.md#n03并发准入排队与取消)。采用 N02 非 root 干净服务身份；生产容量、多租户 OS 隔离、Windows/外部服务商仍不在本机基线结论内。构建、默认测试、前端与真实 1/2/4/8 阶梯结果分别记录，达到资源阈值停止；不提高默认并发，不开启保活。

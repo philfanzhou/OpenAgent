@@ -43,6 +43,7 @@ internal sealed class RuntimePreparation(
         IAgentUserContext user,
         string input,
         IReadOnlyList<FileAsset> attachments,
+        Func<Exception, Exception> normalizeFailure,
         CancellationToken ct)
     {
         files.Set(turn);
@@ -145,7 +146,7 @@ internal sealed class RuntimePreparation(
                     TakeOwnership(feature);
                 }
             }
-            await scope.FailAsync(error).ConfigureAwait(false);
+            await scope.FailAsync(normalizeFailure(error)).ConfigureAwait(false);
             await scope.DisposeAsync().ConfigureAwait(false);
             throw;
         }

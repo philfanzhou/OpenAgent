@@ -71,6 +71,8 @@ export interface ConversationMessage {
   sequence: number
   role: string
   content: string
+  /** UI-only admission progress; never persisted as assistant content. */
+  executionStatus?: 'queued' | 'started'
   /** UI-only 任务计划快照：从 update_plan 工具结果 / plan_updated 事件投影。 */
   plan?: PlanSnapshot
   toolCallId?: string
@@ -365,6 +367,7 @@ export interface RuntimeExecutionInfo {
 
 export interface StreamEvent {
   runtime?: RuntimeExecutionInfo
+  queueMilliseconds?: number
   type: string
   content?: string
   agentId?: string

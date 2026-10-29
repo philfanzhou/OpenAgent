@@ -155,6 +155,8 @@ export function useChatStreaming(options: ChatStreamingOptions) {
             ElMessage.info(`已由意图识别路由到 Agent「${routed?.name || event.agentId}」`)
             showedEarlyRoutingNotice = true
           }
+        } else if (event.type === 'execution_status') {
+          if (event.status === 'queued' || event.status === 'started') assistantMessage.executionStatus = event.status
         } else if (event.type === 'content') {
           enqueueAssistantContent(assistantContentState, content => contentQueue?.enqueue(content), event.content || '')
         } else if (event.type === 'reasoning') {
@@ -203,6 +205,7 @@ export function useChatStreaming(options: ChatStreamingOptions) {
             },
           }
         } else if (event.type === 'done') {
+          delete assistantMessage.executionStatus
           flushStream?.()
           receivedDone = true
           conversation.status = (event.status || 'Completed') as ConversationRecord['status']
@@ -241,6 +244,7 @@ export function useChatStreaming(options: ChatStreamingOptions) {
         ElMessage.info(`已由意图识别路由到 Agent「${routed?.name || completedAgentId}」`)
       }
     } catch (error) {
+      if (streamedAssistant) delete streamedAssistant.executionStatus
       flushStream?.()
       const cancelReason = options.streams.getByRequest(requestId)?.cancelReason
       if (cancelReason && cancelReason !== 'network') {
@@ -295,6 +299,7 @@ export function useChatStreaming(options: ChatStreamingOptions) {
         if (options.selectedConversation.value?.conversationId === conversationId) options.notifyError(error)
       }
     } finally {
+      if (streamedAssistant) delete streamedAssistant.executionStatus
       contentQueue?.clear()
       options.streams.finish(requestId)
     }
