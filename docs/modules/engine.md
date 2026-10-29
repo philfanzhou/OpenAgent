@@ -27,7 +27,7 @@ Provider 与内容：支持 ApiFormat OpenAIChatCompletions、OpenAIResponses、
 
 能力解析：LLM 不再通过启动期 Registrar 或内存 Registry 注册，而是在每次执行时按租户和 `llmProfileId` 从 PostgreSQL/Redis TTL 缓存解析；Agent、Runtime 与 MCP 配置同样以 PostgreSQL 为事实源（RAG 目录仍在 Engine/Redis 的 `RedisRagRegistrar`）。外部 MCP 与 Skill 不创建官方 SDK 客户端资源，分别经 ACP 透传与工作区物化交给 harness 原生处理。
 
-扩展约束：新能力扩展现有驱动/平台接口，不新增并行 Agent 引擎或第二个 composition root；真实模型、MCP 与 Runner 按环境单独验收，不由单元测试推断生产可用性。
+扩展约束：新能力扩展现有驱动/平台接口，不新增并行 Agent 引擎或第二个 composition root；真实模型与 MCP 按环境单独验收，不由单元测试推断生产可用性。
 
 | 路径（Backend/src/OpenAgent.Application/ 下） | 职责 |
 |---|---|

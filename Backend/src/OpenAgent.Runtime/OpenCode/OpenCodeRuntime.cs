@@ -366,7 +366,7 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
 
     /// <summary>
     /// 附件与内联注入的同一份字节（已按内联管线降采样）一并落进轮次工作区
-    /// uploads/，模型可经 harness 原生 read/bash 或 execute_code 按文件系统精读；
+    /// uploads/，模型可经 harness 原生 read/bash 按文件系统精读；
     /// 目录随轮次工作区销毁，无残留。
     /// </summary>
     private static void MaterializeAttachments(string workspace, IReadOnlyList<RuntimeMessage> messages)

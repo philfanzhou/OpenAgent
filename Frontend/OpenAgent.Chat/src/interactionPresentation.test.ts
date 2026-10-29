@@ -71,11 +71,10 @@ describe('interaction labels', () => {
 
 describe('toolCategory', () => {
   it('maps builtin tools to fine-grained categories and MCP tools to their server', () => {
-    expect(toolCategory('execute_code')).toBe('代码执行')
     expect(toolCategory('read_file')).toBe('文件')
     expect(toolCategory('create_file_transfer_url')).toBe('文件')
     expect(toolCategory('load_skill')).toBe('技能')
-    expect(toolCategory('run_skill_script')).toBe('技能')
+    expect(toolCategory('read_skill_file')).toBe('技能')
     expect(toolCategory('get_current_user_profile')).toBe('用户信息')
     expect(toolCategory('search_knowledge_base')).toBe('知识库')
     expect(toolCategory('mcp__github__create_issue')).toBe('MCP·github')
@@ -104,14 +103,14 @@ describe('classifyInteraction', () => {
     const result = classifyInteraction(payloadRecord({
       response: { messages: [{ contents: [
         { kind: 'functionCall', name: 'load_skill' },
-        { kind: 'functionCall', name: 'run_skill_script' },
+        { kind: 'functionCall', name: 'read_skill_file' },
         { kind: 'functionCall', name: 'read_file' },
         { kind: 'functionCall', name: 'mcp__github__create_issue' },
       ] }] },
     }))
     expect(result.primary).toBe('工具调用')
     expect(result.tags).toEqual(['技能', '文件', 'MCP·github'])
-    expect(result.toolNames).toEqual(['load_skill', 'run_skill_script', 'read_file', 'mcp__github__create_issue'])
+    expect(result.toolNames).toEqual(['load_skill', 'read_skill_file', 'read_file', 'mcp__github__create_issue'])
   })
 
   it('classifies answer calls fed with tool results as chat after tools', () => {

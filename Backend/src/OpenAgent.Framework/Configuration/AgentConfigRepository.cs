@@ -110,7 +110,6 @@ internal sealed class AgentConfigRepository(
         current.RagJson = JsonSerializer.Serialize(entity.Config.Rag, JsonOptions);
         current.OpenCodeJson = JsonSerializer.Serialize(entity.Config.OpenCode, JsonOptions);
         current.SkillsJson = JsonSerializer.Serialize(entity.Config.Skills, JsonOptions);
-        current.CodeExecutionJson = JsonSerializer.Serialize(entity.Config.CodeExecution, JsonOptions);
         current.Version = nextVersion;
         current.UpdatedAt = DateTimeOffset.UtcNow;
 
@@ -151,8 +150,7 @@ internal sealed class AgentConfigRepository(
                 Mcp = JsonSerializer.Deserialize<McpConfig>(entity.McpJson, JsonOptions) ?? new(),
                 Rag = JsonSerializer.Deserialize<RagConfig>(entity.RagJson, JsonOptions) ?? new(),
                 OpenCode = JsonSerializer.Deserialize<OpenCodeConfig>(entity.OpenCodeJson, JsonOptions) ?? new(),
-                Skills = JsonSerializer.Deserialize<SkillsConfig>(entity.SkillsJson, JsonOptions) ?? new(),
-                CodeExecution = JsonSerializer.Deserialize<CodeExecutionConfig>(entity.CodeExecutionJson, JsonOptions) ?? new()
+                Skills = JsonSerializer.Deserialize<SkillsConfig>(entity.SkillsJson, JsonOptions) ?? new()
             }
         };
         ValidateNoInlineSecrets(config);

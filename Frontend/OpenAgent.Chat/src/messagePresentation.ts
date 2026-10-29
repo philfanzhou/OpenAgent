@@ -411,7 +411,7 @@ export function toolPresentation(name: string): { kind: string; displayName: str
   if (name === 'update_plan') return { kind: '计划', displayName: '更新任务计划' }
   if (name === 'load_skill') return { kind: 'SKILL', displayName: '加载 Skill 指令' }
   if (name === 'read_skill_resource') return { kind: 'SKILL', displayName: '读取 Skill 资源' }
-  if (name === 'run_skill_script') return { kind: 'SKILL', displayName: '运行 Skill 脚本' }
+  if (name === 'read_skill_file') return { kind: 'SKILL', displayName: '读取 Skill 文件' }
   return { kind: '工具', displayName: name }
 }
 

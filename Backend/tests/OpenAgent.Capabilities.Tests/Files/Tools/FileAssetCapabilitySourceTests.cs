@@ -204,7 +204,7 @@ public class FileAssetCapabilitySourceTests
     public async Task InvokeAsync_ReadFileBinary_ReturnsMetadataWithoutContent()
     {
         // 二进制文件不再报错：返回 fileName/mediaType/length 元数据信封 + 引导，
-        // 模型据此改用 execute_code 挂载解析或发布/外链。
+        // 模型据此改用执行类工具解析或发布/外链。
         TestHarness harness = CreateHarness();
         FileAsset asset = CreateAsset("photo.png", "image/png", length: 4);
         harness.Repository.Assets[asset.FileId] = asset;
@@ -224,7 +224,7 @@ public class FileAssetCapabilitySourceTests
         Assert.False(document.RootElement.TryGetProperty("code", out _));
         Assert.Contains("not UTF-8 text",
             document.RootElement.GetProperty("notice").GetString(), StringComparison.Ordinal);
-        Assert.Contains("execute_code",
+        Assert.Contains("harness execution tools",
             document.RootElement.GetProperty("hint").GetString(), StringComparison.Ordinal);
     }
 
@@ -255,7 +255,7 @@ public class FileAssetCapabilitySourceTests
     [Fact]
     public async Task InvokeAsync_ReadFileOversizedText_ReturnsMetadataAndChunkHint()
     {
-        // 超限文本同样给元数据信封：内容不返回，引导模型用 execute_code 分段读取。
+        // 超限文本同样给元数据信封：内容不返回，引导模型用执行类工具分段读取。
         TestHarness harness = CreateHarness();
         FileAsset asset = CreateAsset("big.csv", "text/csv", length: 4096);
         harness.Repository.Assets[asset.FileId] = asset;
@@ -292,7 +292,7 @@ public class FileAssetCapabilitySourceTests
         Assert.False(document.RootElement.TryGetProperty("code", out _));
         Assert.Contains("UTF-8",
             document.RootElement.GetProperty("notice").GetString(), StringComparison.Ordinal);
-        Assert.Contains("execute_code",
+        Assert.Contains("harness execution tools",
             document.RootElement.GetProperty("hint").GetString(), StringComparison.Ordinal);
     }
 

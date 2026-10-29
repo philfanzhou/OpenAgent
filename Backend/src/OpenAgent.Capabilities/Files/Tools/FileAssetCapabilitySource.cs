@@ -7,7 +7,6 @@ using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Capabilities.Files.Requests;
 using OpenAgent.Capabilities.Files.Services;
-using OpenAgent.Capabilities.Integrations.Runner;
 
 namespace OpenAgent.Capabilities.Files.Tools;
 
@@ -16,8 +15,7 @@ internal sealed class FileAssetCapabilitySource(
     IFileShareService shares,
     FileAssetExecutionContext executionContext,
     IOptions<FileAssetOptions> options,
-    FileAssetUrlDownloader downloader,
-    OpenAgent.Capabilities.Integrations.Runner.IWorkspaceClient? workspaceClient = null) : ICapabilitySource
+    FileAssetUrlDownloader downloader) : ICapabilitySource
 {
     // 错误信封约定：code 稳定供程序判别，error/hint 面向模型给出可行动的修正路径。
     private const string InvalidArguments = "invalid_arguments";
@@ -46,7 +44,7 @@ internal sealed class FileAssetCapabilitySource(
                 + "UTF-8 text files within the size limit return JSON {fileId|objectKey, content}. "
                 + "Any other file — binary formats (images, PDF, zip, office documents) or text exceeding the inline read limit — "
                 + "does not fail: it returns metadata (fileName, mediaType, length) with content=null and a notice instead. "
-                + "Parse or chunk-read such files with execute_code (files mount at /input/<name>), "
+                + "Parse or chunk-read such files with the harness execution tools, "
                 + "deliver them via publish_files, or share via create_file_transfer_url.",
                 """{"type":"object","properties":{"fileId":{"type":"string","description":"ID of the file asset to read; exactly one of fileId/objectKey"},"objectKey":{"type":"string","description":"Object key inside the current tenant partition; exactly one of fileId/objectKey"}},"additionalProperties":false}""",
                 AgentResourceType.Tool,
@@ -98,12 +96,9 @@ internal sealed class FileAssetCapabilitySource(
         {
             definitions.Add(new CapabilityDefinition(
                 "download_file",
-                "Download a public HTTP(S) file. By default it is registered in the conversation's file storage and returns a fileId. "
-                + "Provide workspacePath instead to land the bytes directly in the sandbox workspace "
-                + "(shared with execute_code /work and the workspace tools) and get back {path} — "
-                + "use that form for files you plan to process with execute_code. "
+                "Download a public HTTP(S) file into the conversation's file storage and get back a fileId. "
                 + "Only public direct file URLs are supported — this is not a general web fetch.",
-                """{"type":"object","properties":{"url":{"type":"string","description":"The public HTTP(S) URL of the file to download."},"workspacePath":{"type":"string","description":"Optional workspace-relative path; when set, the bytes are written to the sandbox workspace instead of file storage"}},"required":["url"],"additionalProperties":false}""",
+                """{"type":"object","properties":{"url":{"type":"string","description":"The public HTTP(S) URL of the file to download."}},"required":["url"],"additionalProperties":false}""",
                 AgentResourceType.Tool,
                 "file-assets",
                 DownloadAsync));
@@ -214,11 +209,11 @@ internal sealed class FileAssetCapabilitySource(
         });
 
     private const string BinaryReadHint =
-        "Use execute_code with the file mounted at /input/<name> to parse it; "
+        "Parse it with the harness execution tools, "
         + "hand it to an external tool via create_file_transfer_url, or deliver it to the user via publish_files.";
 
     private const string ChunkedReadHint =
-        "Use execute_code with the file mounted at /input/<name> to read it in chunks "
+        "Read it in chunks with the harness execution tools "
         + "(e.g. by line ranges or byte offsets) and print only the relevant part.";
 
     private async Task<ToolResult> ListAsync(
@@ -418,7 +413,6 @@ internal sealed class FileAssetCapabilitySource(
                 "'url' is a required argument; provide the public HTTP(S) address of the file.",
                 InvalidArguments);
         }
-        string? workspacePath = ReadString(arguments, "workspacePath");
         FileAssetScope? scope = executionContext.Scope;
         if (scope == null || string.IsNullOrWhiteSpace(scope.ConversationId))
         {
@@ -430,11 +424,6 @@ internal sealed class FileAssetCapabilitySource(
         try
         {
             DownloadedFile downloaded = await downloader.DownloadAsync(url, cancellationToken).ConfigureAwait(false);
-            if (!string.IsNullOrWhiteSpace(workspacePath))
-            {
-                return await DownloadToWorkspaceAsync(
-                    scope, workspacePath, downloaded, cancellationToken).ConfigureAwait(false);
-            }
             await using var input = new MemoryStream(downloaded.Content, writable: false);
             FileAsset asset = await files.UploadAsync(
                 new FileAssetCreateRequest
@@ -477,39 +466,6 @@ internal sealed class FileAssetCapabilitySource(
                 "The remote address timed out.",
                 DownloadFailed,
                 hint: "Retry, or point at a faster mirror of the file.");
-        }
-    }
-
-    private async Task<ToolResult> DownloadToWorkspaceAsync(
-        FileAssetScope scope,
-        string workspacePath,
-        DownloadedFile downloaded,
-        CancellationToken cancellationToken)
-    {
-        if (workspaceClient == null
-            || scope.ConversationId is not { } conversationId
-            || !OpenAgent.Contracts.Execution.ExecutionLimits.IsSafeSessionKey(conversationId))
-        {
-            return ToolResult.Error(
-                "workspacePath requires the isolated Runner workspace, which is unavailable for this request.",
-                UnavailableContext);
-        }
-        try
-        {
-            OpenAgent.Contracts.Execution.WorkspaceWriteResult written = await workspaceClient.UploadAsync(
-                conversationId, workspacePath, downloaded.Content, cancellationToken).ConfigureAwait(false);
-            return JsonSerializer.Serialize(new
-            {
-                path = written.Path,
-                fileName = downloaded.FileName,
-                mediaType = downloaded.MediaType,
-                length = written.LengthBytes,
-                location = "workspace"
-            });
-        }
-        catch (OpenAgent.Capabilities.Integrations.Runner.WorkspaceOperationException exception)
-        {
-            return ToolResult.Error(exception.Message, $"workspace_{exception.StatusCode}");
         }
     }
 

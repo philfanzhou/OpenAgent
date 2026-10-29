@@ -40,10 +40,6 @@ internal static class ManagementEndpointExtensions
             .WithName("UploadSkillPackage")
             .WithTags("Admin Skills");
 
-        group.MapPatch("/skills/{skillId}", UpdateSkillScriptExecutionAsync)
-            .WithName("UpdateSkillScriptExecution")
-            .WithTags("Admin Skills");
-
         group.MapDelete("/skills/{skillId}", DeleteSkillAsync)
             .WithName("DeleteSkill")
             .WithTags("Admin Skills");
@@ -152,8 +148,6 @@ internal static class ManagementEndpointExtensions
         if (file.Length > SkillPackageManagementService.MaxPackageBytes)
             return TypedResults.Problem(AgentProblemDetails.Invalid(
                 "Skill package exceeds the 4 MB limit.", context));
-        if (!TryReadScriptExecutionFlag(form, out bool? scriptExecutionEnabled, out string? scriptFlagError))
-            return TypedResults.Problem(AgentProblemDetails.Invalid(scriptFlagError!, context));
 
         try
         {
@@ -164,39 +158,12 @@ internal static class ManagementEndpointExtensions
                 Path.GetFileName(file.FileName),
                 string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType,
                 stream,
-                cancellationToken,
-                scriptExecutionEnabled: scriptExecutionEnabled).ConfigureAwait(false);
+                cancellationToken).ConfigureAwait(false);
             return TypedResults.Ok(new SkillUploadResponse
             {
                 Skill = result.Skill,
                 Storage = "object-storage-directory"
             });
-        }
-        catch (InvalidOperationException exception)
-        {
-            return TypedResults.Problem(AgentProblemDetails.Invalid(exception.Message, context));
-        }
-    }
-
-    private static async Task<Results<Ok<SkillInstanceConfig>, ProblemHttpResult>> UpdateSkillScriptExecutionAsync(
-        [FromServices] SkillPackageManagementService packages,
-        [FromBody] SkillScriptSettingsRequest request,
-        HttpContext context,
-        string skillId,
-        CancellationToken cancellationToken)
-    {
-        if (!HasScope(context, "agent.config.write"))
-            return Forbidden(context, "agent.config.write");
-        try
-        {
-            SkillInstanceConfig? skill = await packages.UpdateScriptExecutionAsync(
-                RequireTenant(context),
-                skillId,
-                request.ScriptExecutionEnabled,
-                cancellationToken).ConfigureAwait(false);
-            return skill == null
-                ? TypedResults.Problem(AgentProblemDetails.NotFound($"Skill '{skillId}' was not found.", context))
-                : TypedResults.Ok(skill);
         }
         catch (InvalidOperationException exception)
         {
@@ -247,8 +214,6 @@ internal static class ManagementEndpointExtensions
         if (file.Length > SkillPackageManagementService.MaxPackageBytes)
             return TypedResults.Problem(AgentProblemDetails.Invalid(
                 "Skill package exceeds the 4 MB limit.", context));
-        if (!TryReadScriptExecutionFlag(form, out bool? scriptExecutionEnabled, out string? scriptFlagError))
-            return TypedResults.Problem(AgentProblemDetails.Invalid(scriptFlagError!, context));
 
         SkillPackageInstallResult result;
         try
@@ -262,8 +227,7 @@ internal static class ManagementEndpointExtensions
                 string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType,
                 stream,
                 context.Request.Headers.IfMatch.FirstOrDefault(),
-                cancellationToken,
-                scriptExecutionEnabled: scriptExecutionEnabled).ConfigureAwait(false);
+                cancellationToken).ConfigureAwait(false);
         }
         catch (InvalidOperationException exception)
         {
@@ -317,34 +281,6 @@ internal static class ManagementEndpointExtensions
     private static bool HasScope(HttpContext context, string requiredScope)
     {
         return context.User.Identity?.IsAuthenticated == true;
-    }
-
-    /// <summary>
-    /// Reads the optional "scriptExecutionEnabled" multipart field. Absent means
-    /// "default off"; a present-but-invalid value is rejected so callers notice
-    /// typos instead of silently uploading with scripts disabled.
-    /// </summary>
-    private static bool TryReadScriptExecutionFlag(
-        IFormCollection form,
-        out bool? scriptExecutionEnabled,
-        out string? error)
-    {
-        scriptExecutionEnabled = null;
-        error = null;
-        string? raw = form["scriptExecutionEnabled"].FirstOrDefault();
-        if (string.IsNullOrWhiteSpace(raw))
-        {
-            return true;
-        }
-
-        if (bool.TryParse(raw, out bool parsed))
-        {
-            scriptExecutionEnabled = parsed;
-            return true;
-        }
-
-        error = "The 'scriptExecutionEnabled' field must be true or false.";
-        return false;
     }
 
     private static string RequireTenant(HttpContext context) =>
