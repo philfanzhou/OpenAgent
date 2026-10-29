@@ -9,7 +9,6 @@ using Moq;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Security;
-using OpenAgent.Capabilities.Code;
 using OpenAgent.Capabilities.Plan;
 using OpenAgent.Capabilities.Rag;
 using OpenAgent.Capabilities.UserProfile;
@@ -17,7 +16,6 @@ using OpenAgent.Capabilities.Files.Requests;
 using OpenAgent.Capabilities.Files.Services;
 using OpenAgent.Capabilities.Files.Sharing;
 using OpenAgent.Capabilities.Files.Tools;
-using OpenAgent.Capabilities.Integrations.Runner;
 using OpenAgent.Capabilities.Security;
 using OpenAgent.Application.Tests.TestDoubles;
 using OpenAgent.Application.Tooling.Abstractions;
@@ -161,18 +159,6 @@ public class BuiltInToolSchemaTests
             new AgentConfig(),
             ["read_file", "create_file_transfer_url", "list_files", "write_file", "publish_files", "download_file"]);
 
-        var codeContext = new FileAssetExecutionContext();
-        codeContext.Set(TurnContexts.Create("tenant-a", "user-a", "conversation-a"));
-        yield return new CapabilityDefinitionHarness(
-            new CodeCapabilitySource(
-                null!,
-                null!,
-                codeContext,
-                new AgentAuthorizationGate(new AllowAllAgentAuthorizationService()),
-                Options.Create(new CodeExecutionOptions { Enabled = true })),
-            new AgentConfig { CodeExecution = new CodeExecutionConfig { Enabled = true } },
-            ["execute_code"]);
-
         yield return new CapabilityDefinitionHarness(
             new RagCapabilitySource(null!, NullLogger<RagCapabilitySource>.Instance),
             new AgentConfig { Rag = new RagConfig { Enabled = true } },
@@ -187,18 +173,6 @@ public class BuiltInToolSchemaTests
             new PlanCapabilitySource(),
             new AgentConfig(),
             ["update_plan"]);
-
-        var workspaceContext = new FileAssetExecutionContext();
-        workspaceContext.Set(TurnContexts.Create("tenant-a", "user-a", "conversation-a"));
-        yield return new CapabilityDefinitionHarness(
-            new OpenAgent.Capabilities.Workspace.WorkspaceCapabilitySource(
-                null!,
-                null!,
-                workspaceContext,
-                new AgentAuthorizationGate(new AllowAllAgentAuthorizationService()),
-                Options.Create(new CodeExecutionOptions { Enabled = true })),
-            new AgentConfig { CodeExecution = new CodeExecutionConfig { Enabled = true } },
-            ["list_workspace_files", "read_workspace_file", "write_workspace_file", "edit_workspace_file", "export_workspace_file"]);
     }
 
     private static AgentUserContext User() => new()

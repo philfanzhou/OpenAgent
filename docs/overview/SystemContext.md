@@ -7,7 +7,7 @@ OpenAgent 是基于 .NET 10 与 ASP.NET Core 的多服务 Agent 平台。当前�
 ```text
 Chat（浏览器）→ Router（HTTP 网关）→ Engine.Host（HTTP/SSE 宿主）
                                       ├─ Application：执行协调、会话、模型授权与工具适配
-                                      ├─ Capabilities：文件、RAG、内置工具、调用授权与 Runner 客户端
+                                      ├─ Capabilities：文件、RAG、内置工具与调用授权
                                       ├─ Runtime：ACP SDK → OpenCode 子进程 → LLM API
                                       ├─ Engine：配置、注册、心跳与热重载
                                       │    └─ Hosting：共享认证、身份与遥测（Router 也使用）
@@ -15,7 +15,7 @@ Chat（浏览器）→ Router（HTTP 网关）→ Engine.Host（HTTP/SSE 宿主�
 OpenCode → 本轮 MCP 桥 → Application 平台工具 / 外部 MCP
 Application → LLM（独立历史压缩服务）
 Application → Capabilities → RAG（外部服务）
-Application → Capabilities → Runner（HTTP）→ Linux 沙箱与会话工作区
+Application → Capabilities → 文件/对象存储；代码执行由 OpenCode 原生工具承担（宿主放行）
 Contracts：跨项目的纯接口、配置、DTO 与无 SDK 的能力定义
 ```
 

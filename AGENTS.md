@@ -4,20 +4,19 @@ OpenAgent 是基于 .NET 10 的多服务 Agent 平台（C#, ASP.NET Core）。
 
 ## 模块结构与依赖
 
-当前分支在目录重组与独立 ACP SDK 基线上，聊天执行只走 OpenCode ACP，MAF 推理栈（Microsoft.Agents.AI 全系包）已移除。现有 API、Runner 与平台持久化继续复用；Worker、RunGrant、审批仍是独立任务。实现边界见 [OpenCode 运行时](docs/integrations/opencode-runtime.md)。
+当前分支在目录重组与独立 ACP SDK 基线上，聊天执行只走 OpenCode ACP，MAF 推理栈（Microsoft.Agents.AI 全系包）已移除；独立 Runner 沙箱及其代码执行链路同样已移除，代码执行交给 OpenCode 原生工具（宿主经 `OpenCode:AllowedNativeTools` 显式放行）。现有 API 与平台持久化继续复用；Worker、RunGrant、审批仍是独立任务。实现边界见 [OpenCode 运行时](docs/integrations/opencode-runtime.md)。
 
 ```text
 Backend/src/
 ├── OpenAgent.Contracts/       共享接口、配置、DTO 与不含 SDK 的能力定义
 ├── OpenAgent.Application/     原 Core：执行协调、会话、模型授权、工具适配与组合入口
-├── OpenAgent.Capabilities/    文件、RAG、Skill 目录、内置工具、调用授权及 Runner 客户端
+├── OpenAgent.Capabilities/    文件、RAG、Skill 目录、内置工具及调用授权
 ├── OpenAgent.Engine/          配置、Redis 注册、热重载；Hosting/ 内为合并后的认证与遥测
 ├── OpenAgent.Engine.Host/     HTTP/SSE、管理端点与最终组合根
 ├── OpenAgent.Runtime/         ACP/OpenCode 平台驱动、事件与每轮 MCP 桥（不打包）
 ├── OpenAgent.Runtime.Acp/     独立单包 ACP SDK
 ├── OpenAgent.Framework/       原 Infrastructure：EF Core、PostgreSQL、Redis 存储
-├── OpenAgent.Router/          路由、转发、限流与入口认证
-└── OpenAgent.Runner/          现有沙箱与工作区（本次不调整实现）
+└── OpenAgent.Router/          路由、转发、限流与入口认证
 ```
 
 各模块使用同名 `.Tests` 项目；原 Hosting 测试并入 `Engine.Tests/Hosting/`，原 Core 中的文件及独立能力测试迁入 `Capabilities.Tests/`。
@@ -25,7 +24,7 @@ Backend/src/
 | 项目 | 允许引用的平台项目 |
 |---|---|
 | Contracts、Runtime.Acp | 无 |
-| Capabilities、Engine、Framework、Runner | Contracts |
+| Capabilities、Engine、Framework | Contracts |
 | Application | Contracts、Capabilities |
 | Router | Contracts、Engine |
 | Runtime | Contracts、Runtime.Acp |
@@ -33,8 +32,8 @@ Backend/src/
 
 - Engine 不再依赖 Application；共享目录接口归 Contracts。Router 只使用 Engine/Hosting 的共享宿主能力，不引用配置实现或执行代码。
 - Capabilities 不引用 MCP 或模型 SDK；MCP server 定义解析与 Skill 包物化在 Application，外部 server 经 ACP 透传给 harness 原生连接。聊天推理由 Contracts 的 IAgentRuntimeDriver 驱动，Application 不引用 Runtime/Runtime.Acp。
-- 文件轮次上下文仍按 scoped 注册；发现/调用授权、工具并发、错误信封、Runner 隔离及回收行为保持不变。
-- `OpenAgent.Core`、`OpenAgent.Infrastructure`、独立 `OpenAgent.Hosting` 项目已退出解决方案，不新增兼容项目或双注册路径。
+- 文件轮次上下文仍按 scoped 注册；发现/调用授权、工具并发、错误信封及回收行为保持不变。
+- `OpenAgent.Core`、`OpenAgent.Infrastructure`、独立 `OpenAgent.Hosting`、`OpenAgent.Runner` 项目已退出解决方案，不新增兼容项目或双注册路径。
 - Runtime.Acp 是独立单包 ACP SDK，不引用平台模块，专属公共契约留在同包。每步同步维护 SDK、测试和 [阶段文档](docs/integrations/acp-dotnet-sdk/IMPLEMENTATION.md)。Worker 等空目录仍只代表规划。
 - Runtime 不发布 NuGet，仅作为平台适配程序集；SDK 仍只有一个包。没有第二条推理执行路径。
 - 项目引用及模块边界由 `Backend/tests/OpenAgent.Architecture.Tests/` 检查；不得为违规实现扩大白名单。

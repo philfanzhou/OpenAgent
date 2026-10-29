@@ -131,7 +131,6 @@ fi
 engine_image="${OPENAGENT_ENGINE_IMAGE:-openagent-engine:latest}"
 router_image="${OPENAGENT_ROUTER_IMAGE:-openagent-router:latest}"
 chat_image="${OPENAGENT_CHAT_IMAGE:-openagent-chat:latest}"
-runner_image="${OPENAGENT_RUNNER_IMAGE:-openagent-runner:latest}"
 public_host="${OPENAGENT_PUBLIC_HOST:-localhost}"
 public_scheme="${OPENAGENT_PUBLIC_SCHEME:-https}"
 router_port="${OPENAGENT_ROUTER_PORT:-8082}"
@@ -165,14 +164,7 @@ platform_version="$(git -C "$repo_root" describe --tags --always --dirty 2>/dev/
   --file "$docker_root/Frontend/OpenAgent.Chat/Dockerfile" \
   "$docker_root"
 
-"${docker_cmd[@]}" build \
-  --tag "$runner_image" \
-  --label "org.opencontainers.image.version=$platform_version" \
-  --file "$docker_root/Backend/src/OpenAgent.Runner/Dockerfile" \
-  "$docker_root"
-
 if [[ -n "$docker_tar_directory" ]]; then
-  "${docker_cmd[@]}" save --output "$docker_tar_directory/openagent-runner.tar" "$runner_image"
   "${docker_cmd[@]}" save --output "$docker_tar_directory/openagent-engine.tar" "$engine_image"
   "${docker_cmd[@]}" save --output "$docker_tar_directory/openagent-router.tar" "$router_image"
   "${docker_cmd[@]}" save --output "$docker_tar_directory/openagent-chat.tar" "$chat_image"

@@ -15,7 +15,6 @@ public class AgentConfig
     public McpConfig Mcp { get; set; } = new();
     public RagConfig Rag { get; set; } = new();
     public SkillsConfig Skills { get; set; } = new();
-    public CodeExecutionConfig CodeExecution { get; set; } = new();
     public ContextPolicy? ContextPolicy { get; set; }
 
     /// <summary>
@@ -212,20 +211,6 @@ public class SkillInstanceConfig
     public string? ObjectKey { get; set; }
     public string? Sha256 { get; set; }
     public int ResourceCount { get; set; }
-
-    /// <summary>
-    /// Per-instance opt-in for executing package scripts through the isolated
-    /// Runner. Requires the host CodeExecution switch and the Agent's
-    /// CodeExecution binding to be enabled as well. Uploaded packages always
-    /// start disabled; the inventory below lets administrators review the
-    /// scripts before opting in.
-    /// </summary>
-    public bool ScriptExecutionEnabled { get; set; }
-
-    /// <summary>Relative paths of the .py scripts detected in the package.</summary>
-    public List<string> ScriptNames { get; set; } = new();
-
-    public int ScriptCount => ScriptNames.Count;
 
     public List<string> AllowedUserIds { get; set; } = new();
     public List<string> AllowedGroups { get; set; } = new();

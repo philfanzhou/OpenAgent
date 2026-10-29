@@ -22,12 +22,12 @@ export function interactionStatusLabel(status: number): string {
 }
 
 const FILE_TOOLS = new Set(['read_file', 'write_file', 'list_files', 'download_file', 'compress_files', 'publish_files', 'create_file_transfer_url'])
-const SKILL_TOOLS = new Set(['load_skill', 'read_skill_resource', 'run_skill_script'])
+const SKILL_TOOLS = new Set(['load_skill', 'read_skill_resource', 'read_skill_file'])
 
 export interface InteractionCategory {
   /** 主类别：会话 / 工具调用 / 工具结果 / 压缩摘要。 */
   primary: string
-  /** 细分标签：代码执行、文件、技能、知识库、用户信息、MCP·<server>、其他、图片。 */
+  /** 细分标签：文件、技能、知识库、用户信息、MCP·<server>、其他、图片。 */
   tags: string[]
   /** 本次调用由模型发起的工具名（来自响应中的 functionCall）。 */
   toolNames: string[]
@@ -39,7 +39,6 @@ export function toolCategory(name: string): string {
     const parts = name.split('__')
     return parts.length >= 3 && parts[1] ? `MCP·${parts[1]}` : 'MCP'
   }
-  if (name === 'execute_code') return '代码执行'
   if (SKILL_TOOLS.has(name)) return '技能'
   if (FILE_TOOLS.has(name)) return '文件'
   if (name === 'get_current_user_profile') return '用户信息'

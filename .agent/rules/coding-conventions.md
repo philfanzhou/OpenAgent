@@ -29,7 +29,7 @@
 |---|---|
 | Contracts / Runtime.Acp | 无平台项目 |
 | Application | Contracts、Capabilities |
-| Capabilities / Engine / Framework / Runner | Contracts |
+| Capabilities / Engine / Framework | Contracts |
 | Router | Contracts、Engine（仅 Hosting 共享宿主能力） |
 | Runtime | Contracts、Runtime.Acp |
 | Runtime.Acp | 无平台依赖 |
@@ -275,7 +275,7 @@ Backend/src/OpenAgent.Application/
 Backend/src/OpenAgent.Capabilities/
 ├── Files/ Rag/ Skills/           # 业务服务及目录
 ├── Code/ Workspace/ Plan/ UserProfile/
-├── Integrations/Runner/ Security/
+├── Security/
 └── Extensions/                   # 能力域注册
 
 Backend/tests/OpenAgent.Application.Tests/  # ACP 协调与兼容组件、跨模块回归

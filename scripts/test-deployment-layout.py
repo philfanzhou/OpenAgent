@@ -11,9 +11,6 @@ ROOT = Path(__file__).resolve().parents[1]
 def config(relative, overrides=None):
     env = {key: value for key, value in os.environ.items()
            if not key.startswith(('OPENAGENT_', 'COMPOSE_'))}
-    env.update({
-        'OPENAGENT_RUNNER_API_KEY': 'layout-test-runner-key-32-characters',
-    })
     env.update(overrides or {})
     output = subprocess.check_output(
         ['docker', 'compose', '--env-file', os.devnull, '-f', str(ROOT / relative),
@@ -52,7 +49,7 @@ class DeploymentLayoutTests(unittest.TestCase):
                          {'openagent': None, 'infrastructure': None})
         self.assertEqual(app['services']['router']['networks'],
                          {'openagent': None, 'infrastructure': None})
-        for name in ('runner', 'chat', 'nginx'):
+        for name in ('chat', 'nginx'):
             self.assertEqual(app['services'][name]['networks'], {'openagent': None})
         for document in (infra, app):
             for service in document['services'].values():
