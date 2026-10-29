@@ -3,8 +3,9 @@ using Amazon.S3;
 using Amazon.S3.Model;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
+using OpenAgent.Framework.ObjectStorage;
 
-namespace OpenAgent.Engine.Host.Files;
+namespace OpenAgent.Engine.Host.Health;
 
 internal sealed class FileObjectStorageHealthCheck : IHealthCheck
 {

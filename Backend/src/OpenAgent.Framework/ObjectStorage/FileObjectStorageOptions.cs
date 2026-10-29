@@ -1,6 +1,6 @@
-namespace OpenAgent.Engine.Host.Files;
+namespace OpenAgent.Framework.ObjectStorage;
 
-internal sealed class FileObjectStorageOptions
+public sealed class FileObjectStorageOptions
 {
     internal const string SectionName = "FileAssets:ObjectStorage";
 

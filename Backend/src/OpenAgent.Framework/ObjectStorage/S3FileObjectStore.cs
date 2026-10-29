@@ -6,7 +6,7 @@ using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
 
-namespace OpenAgent.Engine.Host.Files;
+namespace OpenAgent.Framework.ObjectStorage;
 
 internal sealed class S3FileObjectStore : IFileObjectStore
 {
