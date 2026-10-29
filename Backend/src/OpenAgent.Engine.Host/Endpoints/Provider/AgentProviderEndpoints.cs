@@ -4,9 +4,9 @@ using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Engine.Host.Middleware;
 
-namespace OpenAgent.Engine.Host.Extensions;
+namespace OpenAgent.Engine.Host.Endpoints.Provider;
 
-internal static class AgentProviderEndpointExtensions
+internal static class AgentProviderEndpoints
 {
     internal static void MapAgentProviderContract(this RouteGroupBuilder group)
     {

@@ -1,7 +1,7 @@
 using OpenAgent.Engine.Hosting;
 using System.Text;
 using Microsoft.Extensions.Logging.Abstractions;
-using OpenAgent.Engine.Host.Extensions;
+using OpenAgent.Engine.Host.Streaming;
 using Xunit;
 
 namespace OpenAgent.Engine.Tests.Hosting;

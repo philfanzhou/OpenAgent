@@ -1,5 +1,10 @@
 using OpenAgent.Contracts.Responses;
 using OpenAgent.Contracts.Security;
+using OpenAgent.Engine.Host.Endpoints.Agents;
+using OpenAgent.Engine.Host.Endpoints.Chat;
+using OpenAgent.Engine.Host.Endpoints.Conversations;
+using OpenAgent.Engine.Host.Endpoints.Files;
+using OpenAgent.Engine.Host.Endpoints.Provider;
 using OpenAgent.Engine.Host.Middleware;
 
 namespace OpenAgent.Engine.Host.Extensions;

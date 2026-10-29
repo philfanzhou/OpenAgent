@@ -7,7 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Security;
-using OpenAgent.Engine.Host.Extensions;
+using OpenAgent.Engine.Host.Endpoints.Conversations;
 using OpenAgent.Engine.Host.Middleware;
 using Xunit;
 
@@ -67,7 +67,7 @@ public sealed class ConversationCompactionEndpointTests
         var compaction = new CompactionService();
         DefaultHttpContext context = CreateContext(requestTenant, requestUser);
 
-        Results<Ok<ContextSummary>, NotFound, ForbidHttpResult> result = await ConversationEndpointExtensions.CompactAsync(
+        Results<Ok<ContextSummary>, NotFound, ForbidHttpResult> result = await ConversationEndpoints.CompactAsync(
             query,
             compaction,
             context,

@@ -1,10 +1,11 @@
 using Microsoft.AspNetCore.Mvc;
 using OpenAgent.Contracts.Configuration;
+using OpenAgent.Engine.Host.Endpoints;
 using OpenAgent.Engine.Host.Middleware;
 
-namespace OpenAgent.Engine.Host.Extensions;
+namespace OpenAgent.Engine.Host.Endpoints.Agents;
 
-internal static class AgentCatalogEndpointExtensions
+internal static class AgentCatalogEndpoints
 {
     internal static void MapAgentCatalog(this RouteGroupBuilder group)
     {

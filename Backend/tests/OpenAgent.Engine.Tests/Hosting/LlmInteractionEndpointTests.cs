@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Http.HttpResults;
 using Moq;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Security;
-using OpenAgent.Engine.Host.Extensions;
+using OpenAgent.Engine.Host.Endpoints.Conversations;
 using OpenAgent.Engine.Host.Middleware;
 using Xunit;
 
@@ -39,7 +39,7 @@ public sealed class LlmInteractionEndpointTests
             .ReturnsAsync((IReadOnlyList<LlmInteractionRecord>)[]);
         DefaultHttpContext context = CreateContext("tenant-1", requestUser);
 
-        Results<Ok<IReadOnlyList<LlmInteractionRecord>>, NotFound, ForbidHttpResult> result = await ConversationEndpointExtensions.ListInteractionsAsync(
+        Results<Ok<IReadOnlyList<LlmInteractionRecord>>, NotFound, ForbidHttpResult> result = await ConversationEndpoints.ListInteractionsAsync(
             query.Object,
             interactions.Object,
             context,

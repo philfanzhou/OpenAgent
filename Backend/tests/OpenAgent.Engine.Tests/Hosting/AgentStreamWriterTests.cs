@@ -2,7 +2,7 @@ using OpenAgent.Engine.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 using OpenAgent.Contracts.Requests;
-using OpenAgent.Engine.Host.Extensions;
+using OpenAgent.Engine.Host.Streaming;
 using Xunit;
 
 namespace OpenAgent.Engine.Tests.Hosting;

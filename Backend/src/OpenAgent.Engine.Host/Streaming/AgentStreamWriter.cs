@@ -1,8 +1,7 @@
 using System.Text.Json;
 using OpenAgent.Contracts.Requests;
-using OpenAgent.Engine.Host;
 
-namespace OpenAgent.Engine.Host.Extensions;
+namespace OpenAgent.Engine.Host.Streaming;
 
 internal static class AgentStreamWriter
 {

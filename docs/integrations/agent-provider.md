@@ -105,4 +105,4 @@ The `Gina` provider supports the Gina `GET /api/agentlist` and `POST /api/chat` 
 | `503 conversation_owner_unresolved` | 无亲和且迁移探测不完整 | 不落到默认 Provider |
 | `503 no_agent_available` | 意图和授权后的 fallback 均无法选择 Agent | 无 |
 
-关键实现位于 `Backend/src/OpenAgent.Router/Routing/AgentCatalogService.cs`、`ConversationProviderResolver.cs` 与 `Backend/src/OpenAgent.Engine.Host/Extensions/AgentProviderEndpointExtensions.cs`。
+关键实现位于 `Backend/src/OpenAgent.Router/Routing/AgentCatalogService.cs`、`ConversationProviderResolver.cs` 与 `Backend/src/OpenAgent.Engine.Host/Endpoints/Provider/AgentProviderEndpoints.cs`。

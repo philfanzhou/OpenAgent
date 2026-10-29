@@ -4,12 +4,13 @@ using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Responses;
 using OpenAgent.Contracts.Security;
+using OpenAgent.Engine.Host.Endpoints;
 using OpenAgent.Engine.Host.Middleware;
 using OpenAgent.Engine.Hosting.Errors;
 
-namespace OpenAgent.Engine.Host.Extensions;
+namespace OpenAgent.Engine.Host.Endpoints.Files;
 
-internal static class FileAssetEndpointExtensions
+internal static class FileAssetEndpoints
 {
     internal static void MapFileAssets(this RouteGroupBuilder group)
     {

@@ -6,7 +6,7 @@ using OpenAgent.Contracts.Security;
 using OpenAgent.Application.Runtime;
 using OpenAgent.Engine.Hosting.Errors;
 
-namespace OpenAgent.Engine.Host;
+namespace OpenAgent.Engine.Host.Streaming;
 
 internal static class StreamingPayloadFactory
 {

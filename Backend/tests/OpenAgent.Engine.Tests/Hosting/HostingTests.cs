@@ -7,6 +7,7 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Files;
 using OpenAgent.Engine.Host.Extensions;
+using OpenAgent.Engine.Host.Endpoints.Files;
 using OpenAgent.Engine.Hosting;
 using Xunit;
 

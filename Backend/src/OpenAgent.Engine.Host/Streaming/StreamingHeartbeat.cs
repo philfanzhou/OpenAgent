@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Logging;
 using OpenAgent.Engine.Observability;
 
-namespace OpenAgent.Engine.Host.Extensions;
+namespace OpenAgent.Engine.Host.Streaming;
 
 internal sealed class StreamingHeartbeat : IAsyncDisposable
 {
