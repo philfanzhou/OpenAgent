@@ -213,3 +213,21 @@ Windows 原生运行必须使用独立服务账户、干净系统用户 profile 
 ### 消息交付（FX03）
 
 只将本轮显式 `publish_files` 的 Ready 资产挂到助手消息；仅 export 的资产保留会话引用，未选择发布时不显示为消息附件。失败、取消及客户端断开后的部分助手消息也关联已发布文件，保留未完成状态和错误元数据；前端沿现有完成/错误/取消后的会话重载恢复附件，不新增 SSE 事件。消息提交失败不发送成功 done，失败保存前丢弃尚未提交的完整响应暂存，避免重复正文；清理重试继续使用失败状态。
+
+### 文件交换验证与启用（FX04）
+
+生产基础配置显式保留 `FileExchange:Enabled=false`，开发配置启用；同时要求 FileAssets 开启、对象存储可用，以及宿主授权必要的原生工具。输入/输出数量与总字节、共享传输并发配置见 appsettings 的 FileExchange 节；关闭该开关不影响既有文件资产、消息附件和下载。配置与回退操作见[部署指南](../operations/deployment.md#opencode-文件收发)。
+
+默认执行 `scripts/test-file-exchange.sh`：从当前源码构建标准 runtime-tests 镜像，临时启动独立 MinIO/网络，执行 Linux 真实 OpenCode 与 S3 门控测试并自动清理。可用 `FILE_EXCHANGE_TEST_IMAGE` 指定已从当前源码编译的测试镜像、`FILE_EXCHANGE_MINIO_IMAGE` 指定可信测试存储镜像；使用覆盖项时调用方须确认源码与钉住 OpenCode 版本，脚本不会删除外部提供的镜像。输出详细测试与内存观测，不调用真实模型账户。
+
+官方 registry 无法拉取时，`scripts/build-file-exchange-minio.sh` 可用 Go/Python/Docker 从官方 release 构建测试镜像：核验源码 revision `0d7408fc9969caf07de6a8c3a84f9fbb10a6739e` 与 Go module 校验和，默认产物 `openagent-file-exchange-minio:local`。再设置 `FILE_EXCHANGE_MINIO_IMAGE=openagent-file-exchange-minio:local` 运行测试；该回退仅供本地测试，不改变部署镜像来源。
+
+源码构建回退脚本已实际执行，并用生成的存储镜像重跑两个往返用例通过；Go 代理缓存可能不返回 Origin，脚本同时固定 pseudo-version 与源码校验和，Origin 存在时再校验完整 revision。
+
+2026-10-29 本地事实：macOS/.NET 10.0.301 全量构建成功，默认后端 1026 通过、35 环境门控跳过、0 失败；前端 169 测试与类型/生产构建通过。Linux arm64、非 root UID 1654、OpenCode 1.19.3：真实 Runtime 119 通过、1 Windows 跳过，新增文件清理失败不覆盖原错用例另行通过；原有真实 HTTP/SSE 1 通过；文件往返 2 通过（普通与 64 MiB XLSX）：HTTP 上传、原字节 SHA-256、Python 修改工作表、导出 XLSX/PNG、发布、HTTP 下载、工作区销毁、重组宿主后重新导入全部验证。
+
+标准镜像构建曾因 NuGet EOF/下载超时中止；最终使用已有同版 SDK/OpenCode 测试镜像中的包缓存，删除其中旧源码后复制当前 Backend，重新 restore/build/test。独立存储来自同版官方 MinIO 源码构建：Docker Hub 拉取失败、Quay 返回 401、官方二进制地址返回 410。不会把缓存容器中的旧二进制当成本次验证；MSBuild 曾报告节点 socket 冲突，随后单节点编译/用例验证通过。
+
+64 MiB 用例一次观测：测试进程 PeakWorkingSet 1078.5 MiB，容器 memory.peak 1744547840 字节；包含同进程 HTTP 客户端、测试 ZIP/下载缓冲及 harness，不可直接视为纯 Engine 峰值或“100 MiB×2”的容量保证。三轮共享两路传输门、相同 fileId/文件名而不同主体的数据独立性另有确定性测试。资产读写仍有整文件缓冲，生产应依据部署预算收紧 FileAssets 单文件大小/交换并发，或另行完成流式存储改造。
+
+会话与资产元数据仓储在往返测试中是内存替身，重组宿主时复用元数据对象，S3 对象是真实持久化；不等于 PostgreSQL 恢复或真实服务重启验收。Windows 文件句柄/ACL、实际部署、生产并发容量及不可信多租户 OS 隔离未验收。失败/取消附件与消息保存失败由 FX03 平台链路测试覆盖。

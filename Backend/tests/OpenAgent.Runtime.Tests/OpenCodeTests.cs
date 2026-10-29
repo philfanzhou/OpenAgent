@@ -249,6 +249,24 @@ public sealed class OpenCodeTests
     }
 
     [OpenCodeFact]
+    public async Task ProviderError_FileCleanupAlsoFails_PreservesClassifiedErrorAndRetiresWorkspace()
+    {
+        await using ModelFixture model = await ModelFixture.StartAsync(async (context, request) =>
+        {
+            context.Response.StatusCode = 401;
+            await context.Response.WriteAsync("remote-secret");
+        });
+        await using RuntimeFixture runtime = new(model.Endpoint);
+        AgentException error = await Assert.ThrowsAsync<AgentException>(() => runtime.CollectAsync(runtime.Request with
+        {
+            PrepareFilesAsync = (_, _) => Task.FromResult(new RuntimeFilePreparation([], new TestDoubles.FailingRuntimeFileLease()))
+        }));
+        Assert.DoesNotContain("file-lease-cleanup-failed", error.ToString());
+        Assert.DoesNotContain("remote-secret", error.ToString());
+        runtime.AssertWorkspacesReleased();
+    }
+
+    [OpenCodeFact]
     public async Task ProviderError_DoesNotExposeRemotePayload()
     {
         await using ModelFixture model = await ModelFixture.StartAsync(async (context, request) =>

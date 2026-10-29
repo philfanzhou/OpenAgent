@@ -1,6 +1,7 @@
 using OpenAgent.Application.Tests.TestDoubles;
 using System.Collections.Concurrent;
 using System.Text.Json;
+using System.Net.Http.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Hosting.Server;
@@ -214,7 +215,8 @@ public sealed class SseToolStreamingTests
             AgentConfig? agentConfig = null,
             Dictionary<string, string?>? settings = null,
             Action<IServiceCollection>? configure = null,
-            LlmConfig? model = null)
+            LlmConfig? model = null,
+            Action<WebApplication>? configureApplication = null)
         {
             var builder = WebApplication.CreateBuilder(new WebApplicationOptions
             {
@@ -223,6 +225,8 @@ public sealed class SseToolStreamingTests
             builder.WebHost.UseKestrel().UseUrls("http://127.0.0.1:0");
 
             var capture = new CapturingLoggerProvider();
+            // Match Program.cs so the real file-transfer fixture can exercise >30 MiB uploads.
+            builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 256L * 1024 * 1024);
             builder.Services.AddSingleton<ILoggerProvider>(capture);
             builder.Services.AddSingleton(capture);
 
@@ -264,12 +268,16 @@ public sealed class SseToolStreamingTests
             application.Urls.Clear();
             application.Urls.Add("http://127.0.0.1:0");
             application.UseAgentErrorHandling();
+            configureApplication?.Invoke(application);
             application.MapPost("/api/v1/agent/chat/stream",
                 async (HttpContext context, RuntimeAgentExecutor executor, CancellationToken ct) =>
             {
+                ChatRequest? input = context.Request.HasJsonContentType()
+                    ? await context.Request.ReadFromJsonAsync<ChatRequest>(ct).ConfigureAwait(false) : null;
                 var request = new AgentRequest
                 {
-                    Query = "hello",
+                    Query = input?.Message ?? "hello",
+                    FileIds = input?.FileIds ?? [],
                     AgentId = "default",
                     LlmProfileId = "test-profile",
                     ConversationId = context.Request.Headers["X-Conversation-Id"].FirstOrDefault()
@@ -294,12 +302,16 @@ public sealed class SseToolStreamingTests
         }
 
         internal async Task<List<(string Event, JsonElement Data)>> PostStreamAsync(
-            string conversationId)
+            string conversationId, IReadOnlyList<string>? fileIds = null, string? message = null)
         {
             using HttpRequestMessage request = new(
                 HttpMethod.Post,
                 "/api/v1/agent/chat/stream");
             request.Headers.Add("X-Conversation-Id", conversationId);
+            if (fileIds is not null || message is not null)
+            {
+                request.Content = JsonContent.Create(new ChatRequest { Message = message ?? "hello", FileIds = fileIds?.ToList() ?? [] });
+            }
             using HttpResponseMessage response = await Client.SendAsync(
                 request,
                 HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false);
