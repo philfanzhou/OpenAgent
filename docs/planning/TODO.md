@@ -94,9 +94,9 @@
 
 以下任务不涉及要移除的执行路径，可独立推进；目标目录不表示已经存在。
 
-- [ ] **S02 / T11** — Host/Extensions 端点归 Endpoints 对应域与 Admin/{Agents,Models,Mcp,Rag,Skills}；流式 writer/headers/heartbeat/payload 归 Streaming（负责人：zzyyu；状态：待评审；实现 PR：[#301](https://github.com/philfanzhou/OpenAgent/pull/301)；验收证据：路由/认证矩阵由 `MapAgentEndpoints_PreservesBusinessRouteContract` 逐条锁定并通过；SSE headers/心跳/done 终态测试通过；全量构建 0 警告 0 错误，测试 968 通过 / 0 失败 / 28 既有环境依赖跳过；RAG 端点按范围限制原文留在门面文件）
+- [x] **S02 / T11** — Host/Extensions 端点归 Endpoints 对应域与 Admin/{Agents,Models,Mcp,Rag,Skills}；流式 writer/headers/heartbeat/payload 归 Streaming（负责人：zzyyu；已合并；实现 PR：[#301](https://github.com/philfanzhou/OpenAgent/pull/301)；验收证据：路由/认证矩阵由 `MapAgentEndpoints_PreservesBusinessRouteContract` 逐条锁定并通过；SSE headers/心跳/done 终态测试通过；全量构建 0 警告 0 错误，测试 968 通过 / 0 失败 / 28 既有环境依赖跳过；RAG 端点按范围限制原文留在门面文件）
   依赖与验收：协调 I03；保留 Map* 汇总、认证、Development-only 管理映射及 HTTP/SSE 顺序与 done
-- [ ] **S03 / T12** — Host/Skills/SkillPackageManagementService 归 Engine/Management/Skills；Contracts 提供纯命令/结果，Host 只映射 HTTP
+- [ ] **S03 / T12** — Host/Skills/SkillPackageManagementService 归 Engine/Management/Skills；Contracts 提供纯命令/结果，Host 只映射 HTTP（负责人：zzyyu；状态：待评审；实现 PR：待补；验收证据：服务实现与包解析代码逐字搬运；SkillPackageManagementServiceTests 10 项（上传/安装/更新/删除/版本冲突/失败清理）与 AgentSkillPackageArchiveTests 9 项通过；全量构建 0 警告 0 错误，测试 971 通过 / 0 失败）
   依赖与验收：依赖 S02；Engine internal 实现；验证上传更新删除、绑定、版本冲突与失败清理
 - [x] **S04 / T13** — Host/Files 的 S3FileObjectStore、S3Presigner、存储 Options/Validator 归 Framework/ObjectStorage；健康检查归 Host/Health（负责人：zzyyu；已合并；实现 PR：[#299](https://github.com/philfanzhou/OpenAgent/pull/299)；验收证据：实现代码逐字搬运，对象键/元数据/限制/错误信封不变并由迁移后 4 个单测覆盖；全量构建 0 警告 0 错误，测试 968 通过 / 0 失败 / 28 既有环境依赖跳过；本机无 Docker，真实 MinIO 往返待部署环境验证；主干不存在 S3Presigner，无可迁移对象；CI 全绿）
   依赖与验收：可独立推进；AWSSDK.S3 同迁、Host 注册门面保留且不双注册；上传下载、签名、校验与 readiness 一致

@@ -1,12 +1,11 @@
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using OpenAgent.Contracts.Configuration;
+using OpenAgent.Contracts.Skills;
 using OpenAgent.Contracts.Responses;
 using OpenAgent.Contracts.Security;
-using OpenAgent.Contracts.Skills;
 using OpenAgent.Engine.Abstractions;
 using OpenAgent.Engine.Host.Middleware;
-using OpenAgent.Engine.Host.Skills;
 using OpenAgent.Engine.Hosting.Errors;
 
 namespace OpenAgent.Engine.Host.Endpoints.Admin.Skills;
@@ -69,7 +68,7 @@ internal static class SkillManagementEndpoints
     }
 
     private static async Task<Results<Ok<SkillMarkdownResponse>, ProblemHttpResult>> ReadSkillSourceAsync(
-        [FromServices] SkillPackageManagementService packages,
+        [FromServices] ISkillPackageManagementService packages,
         HttpContext context,
         string skillId,
         CancellationToken cancellationToken)
@@ -86,7 +85,7 @@ internal static class SkillManagementEndpoints
     }
 
     private static async Task<Results<Ok<SkillInstanceConfig>, ProblemHttpResult>> UpdateSkillSourceAsync(
-        [FromServices] SkillPackageManagementService packages,
+        [FromServices] ISkillPackageManagementService packages,
         [FromBody] SkillMarkdownUpdateRequest request,
         HttpContext context,
         string skillId,
@@ -130,7 +129,7 @@ internal static class SkillManagementEndpoints
     }
 
     private static async Task<Results<Ok<SkillUploadResponse>, ProblemHttpResult>> UploadSkillPackageAsync(
-        [FromServices] SkillPackageManagementService packages,
+        [FromServices] ISkillPackageManagementService packages,
         HttpContext context,
         CancellationToken cancellationToken)
     {
@@ -145,7 +144,7 @@ internal static class SkillManagementEndpoints
         if (file == null)
             return TypedResults.Problem(AgentProblemDetails.Invalid(
                 "The multipart field 'file' is required.", context));
-        if (file.Length > SkillPackageManagementService.MaxPackageBytes)
+        if (file.Length > ISkillPackageManagementService.MaxPackageBytes)
             return TypedResults.Problem(AgentProblemDetails.Invalid(
                 "Skill package exceeds the 4 MB limit.", context));
 
@@ -172,7 +171,7 @@ internal static class SkillManagementEndpoints
     }
 
     private static async Task<Results<NoContent, ProblemHttpResult>> DeleteSkillAsync(
-        [FromServices] SkillPackageManagementService packages,
+        [FromServices] ISkillPackageManagementService packages,
         HttpContext context,
         string skillId,
         CancellationToken cancellationToken)
@@ -188,7 +187,7 @@ internal static class SkillManagementEndpoints
     }
 
     private static async Task<Results<Ok<SkillInstallResponse>, ProblemHttpResult>> InstallSkillPackageAsync(
-        [FromServices] SkillPackageManagementService packages,
+        [FromServices] ISkillPackageManagementService packages,
         HttpContext context,
         string agentId,
         CancellationToken cancellationToken)
@@ -211,7 +210,7 @@ internal static class SkillManagementEndpoints
             return TypedResults.Problem(AgentProblemDetails.Invalid(
                 "Skill upload must be a .zip package or a single .md file.", context));
         }
-        if (file.Length > SkillPackageManagementService.MaxPackageBytes)
+        if (file.Length > ISkillPackageManagementService.MaxPackageBytes)
             return TypedResults.Problem(AgentProblemDetails.Invalid(
                 "Skill package exceeds the 4 MB limit.", context));
 
@@ -249,7 +248,7 @@ internal static class SkillManagementEndpoints
     }
 
     private static async Task<Results<NoContent, ProblemHttpResult>> DeleteAgentSkillAsync(
-        [FromServices] SkillPackageManagementService packages,
+        [FromServices] ISkillPackageManagementService packages,
         HttpContext context,
         string agentId,
         string skillId,

@@ -7,8 +7,10 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Capabilities;
+using OpenAgent.Contracts.Skills;
 using OpenAgent.Engine.Abstractions;
 using OpenAgent.Engine.Config;
+using OpenAgent.Engine.Management.Skills;
 using OpenAgent.Engine.Models;
 using OpenAgent.Engine.Redis;
 using OpenAgent.Engine.Registry;
@@ -62,6 +64,8 @@ internal static class ServiceCollectionExtensions
             serviceProvider.GetRequiredService<SkillCatalogStore>());
         services.Replace(ServiceDescriptor.Singleton<ISkillCatalog>(serviceProvider =>
             serviceProvider.GetRequiredService<SkillCatalogStore>()));
+
+        services.AddSingleton<ISkillPackageManagementService, SkillPackageManagementService>();
 
         services.AddSingleton<IAgentConfigProvider>(serviceProvider =>
             serviceProvider.GetRequiredService<ConfigurationService>());
