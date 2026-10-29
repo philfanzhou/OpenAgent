@@ -49,9 +49,6 @@ if [[ -n "$env_file" ]]; then
   load_env_file "$env_file"
 fi
 
-runner_key="${OPENAGENT_RUNNER_API_KEY:-}"
-[[ ${#runner_key} -ge 32 ]] || die "Runner API key must contain at least 32 characters"
-
 docker_mode="${docker_mode_arg:-${OPENAGENT_DOCKER_MODE:-auto}}"
 
 case "$docker_mode" in
@@ -89,7 +86,7 @@ engine_image="${OPENAGENT_ENGINE_IMAGE:-openagent-engine:latest}"
 router_image="${OPENAGENT_ROUTER_IMAGE:-openagent-router:latest}"
 chat_image="${OPENAGENT_CHAT_IMAGE:-openagent-chat:latest}"
 
-images=("$engine_image" "$router_image" "$chat_image" "${OPENAGENT_RUNNER_IMAGE:-openagent-runner:latest}")
+images=("$engine_image" "$router_image" "$chat_image")
 for image in "${images[@]}"; do
   "${docker_cmd[@]}" image inspect "$image" >/dev/null 2>&1 \
     || die "required application image is unavailable locally: $image; run scripts/build-images.sh first or pull the image"

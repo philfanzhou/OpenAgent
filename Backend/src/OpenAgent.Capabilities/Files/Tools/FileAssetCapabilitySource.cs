@@ -1,4 +1,3 @@
-using System.IO.Compression;
 using System.Text.Json;
 using System.Text;
 using Microsoft.Extensions.Options;
@@ -8,7 +7,6 @@ using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Capabilities.Files.Requests;
 using OpenAgent.Capabilities.Files.Services;
-using OpenAgent.Capabilities.Integrations.Runner;
 
 namespace OpenAgent.Capabilities.Files.Tools;
 
@@ -17,8 +15,7 @@ internal sealed class FileAssetCapabilitySource(
     IFileShareService shares,
     FileAssetExecutionContext executionContext,
     IOptions<FileAssetOptions> options,
-    FileAssetUrlDownloader downloader,
-    OpenAgent.Capabilities.Integrations.Runner.IWorkspaceClient? workspaceClient = null) : ICapabilitySource
+    FileAssetUrlDownloader downloader) : ICapabilitySource
 {
     // 错误信封约定：code 稳定供程序判别，error/hint 面向模型给出可行动的修正路径。
     private const string InvalidArguments = "invalid_arguments";
@@ -47,7 +44,7 @@ internal sealed class FileAssetCapabilitySource(
                 + "UTF-8 text files within the size limit return JSON {fileId|objectKey, content}. "
                 + "Any other file — binary formats (images, PDF, zip, office documents) or text exceeding the inline read limit — "
                 + "does not fail: it returns metadata (fileName, mediaType, length) with content=null and a notice instead. "
-                + "Parse or chunk-read such files with execute_code (files mount at /input/<name>), "
+                + "Parse or chunk-read such files with the harness execution tools, "
                 + "deliver them via publish_files, or share via create_file_transfer_url.",
                 """{"type":"object","properties":{"fileId":{"type":"string","description":"ID of the file asset to read; exactly one of fileId/objectKey"},"objectKey":{"type":"string","description":"Object key inside the current tenant partition; exactly one of fileId/objectKey"}},"additionalProperties":false}""",
                 AgentResourceType.Tool,
@@ -87,17 +84,8 @@ internal sealed class FileAssetCapabilitySource(
                 "file-assets",
                 WriteAsync),
             new CapabilityDefinition(
-                "compress_files",
-                "Zip files into one archive, register it as a file asset and return its fileId. "
-                + "Each item targets a fileId, or an objectKey with fileName. "
-                + "Publish the archive with publish_files to deliver it.",
-                """{"type":"object","properties":{"outputName":{"type":"string","description":"Output zip name, e.g. report.zip"},"items":{"type":"array","minItems":1,"items":{"type":"object","properties":{"fileId":{"type":"string","description":"Referenced file asset ID"},"objectKey":{"type":"string","description":"Object key inside the current tenant partition (pair with fileName)"},"fileName":{"type":"string","description":"Name recorded in the archive for an objectKey item"}},"additionalProperties":false}}},"required":["outputName","items"],"additionalProperties":false}""",
-                AgentResourceType.Tool,
-                "file-assets",
-                CompressAsync),
-            new CapabilityDefinition(
                 "publish_files",
-                "Attach existing file assets (by fileId, from write_file/compress_files/earlier operations) to this assistant message for user download or preview. No bytes are copied. "
+                "Attach existing file assets (by fileId, from write_file/earlier operations) to this assistant message for user download or preview. No bytes are copied. "
                 + "This is the only way to hand files to the user — content written by tools alone is invisible to them.",
                 """{"type":"object","properties":{"fileIds":{"type":"array","items":{"type":"string"},"description":"Existing file asset IDs to deliver"}},"required":["fileIds"],"additionalProperties":false}""",
                 AgentResourceType.Tool,
@@ -108,12 +96,9 @@ internal sealed class FileAssetCapabilitySource(
         {
             definitions.Add(new CapabilityDefinition(
                 "download_file",
-                "Download a public HTTP(S) file. By default it is registered in the conversation's file storage and returns a fileId. "
-                + "Provide workspacePath instead to land the bytes directly in the sandbox workspace "
-                + "(shared with execute_code /work and the workspace tools) and get back {path} — "
-                + "use that form for files you plan to process with execute_code. "
+                "Download a public HTTP(S) file into the conversation's file storage and get back a fileId. "
                 + "Only public direct file URLs are supported — this is not a general web fetch.",
-                """{"type":"object","properties":{"url":{"type":"string","description":"The public HTTP(S) URL of the file to download."},"workspacePath":{"type":"string","description":"Optional workspace-relative path; when set, the bytes are written to the sandbox workspace instead of file storage"}},"required":["url"],"additionalProperties":false}""",
+                """{"type":"object","properties":{"url":{"type":"string","description":"The public HTTP(S) URL of the file to download."}},"required":["url"],"additionalProperties":false}""",
                 AgentResourceType.Tool,
                 "file-assets",
                 DownloadAsync));
@@ -224,11 +209,11 @@ internal sealed class FileAssetCapabilitySource(
         });
 
     private const string BinaryReadHint =
-        "Use execute_code with the file mounted at /input/<name> to parse it; "
+        "Parse it with the harness execution tools, "
         + "hand it to an external tool via create_file_transfer_url, or deliver it to the user via publish_files.";
 
     private const string ChunkedReadHint =
-        "Use execute_code with the file mounted at /input/<name> to read it in chunks "
+        "Read it in chunks with the harness execution tools "
         + "(e.g. by line ranges or byte offsets) and print only the relevant part.";
 
     private async Task<ToolResult> ListAsync(
@@ -428,7 +413,6 @@ internal sealed class FileAssetCapabilitySource(
                 "'url' is a required argument; provide the public HTTP(S) address of the file.",
                 InvalidArguments);
         }
-        string? workspacePath = ReadString(arguments, "workspacePath");
         FileAssetScope? scope = executionContext.Scope;
         if (scope == null || string.IsNullOrWhiteSpace(scope.ConversationId))
         {
@@ -440,11 +424,6 @@ internal sealed class FileAssetCapabilitySource(
         try
         {
             DownloadedFile downloaded = await downloader.DownloadAsync(url, cancellationToken).ConfigureAwait(false);
-            if (!string.IsNullOrWhiteSpace(workspacePath))
-            {
-                return await DownloadToWorkspaceAsync(
-                    scope, workspacePath, downloaded, cancellationToken).ConfigureAwait(false);
-            }
             await using var input = new MemoryStream(downloaded.Content, writable: false);
             FileAsset asset = await files.UploadAsync(
                 new FileAssetCreateRequest
@@ -487,114 +466,6 @@ internal sealed class FileAssetCapabilitySource(
                 "The remote address timed out.",
                 DownloadFailed,
                 hint: "Retry, or point at a faster mirror of the file.");
-        }
-    }
-
-    private async Task<ToolResult> DownloadToWorkspaceAsync(
-        FileAssetScope scope,
-        string workspacePath,
-        DownloadedFile downloaded,
-        CancellationToken cancellationToken)
-    {
-        if (workspaceClient == null
-            || scope.ConversationId is not { } conversationId
-            || !OpenAgent.Contracts.Execution.ExecutionLimits.IsSafeSessionKey(conversationId))
-        {
-            return ToolResult.Error(
-                "workspacePath requires the isolated Runner workspace, which is unavailable for this request.",
-                UnavailableContext);
-        }
-        try
-        {
-            OpenAgent.Contracts.Execution.WorkspaceWriteResult written = await workspaceClient.UploadAsync(
-                conversationId, workspacePath, downloaded.Content, cancellationToken).ConfigureAwait(false);
-            return JsonSerializer.Serialize(new
-            {
-                path = written.Path,
-                fileName = downloaded.FileName,
-                mediaType = downloaded.MediaType,
-                length = written.LengthBytes,
-                location = "workspace"
-            });
-        }
-        catch (OpenAgent.Capabilities.Integrations.Runner.WorkspaceOperationException exception)
-        {
-            return ToolResult.Error(exception.Message, $"workspace_{exception.StatusCode}");
-        }
-    }
-
-    private async Task<ToolResult> CompressAsync(
-        IReadOnlyDictionary<string, object?> arguments,
-        CancellationToken cancellationToken)
-    {
-        string? outputName = ReadString(arguments, "outputName");
-        if (string.IsNullOrWhiteSpace(outputName))
-        {
-            return ToolResult.Error(
-                "'outputName' is a required argument; provide the output zip name (e.g. report.zip).",
-                InvalidArguments);
-        }
-        if (!arguments.TryGetValue("items", out object? itemsValue) || itemsValue == null)
-        {
-            return ToolResult.Error(
-                "'items' is a required argument; provide at least one file to pack (fileId, or objectKey+fileName).",
-                InvalidArguments);
-        }
-        IReadOnlyList<FileArchiveItem> items;
-        try
-        {
-            byte[] json = JsonSerializer.SerializeToUtf8Bytes(itemsValue);
-            items = JsonSerializer.Deserialize<IReadOnlyList<FileArchiveItem>>(
-                json,
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
-        }
-        catch (JsonException)
-        {
-            return ToolResult.Error(
-                "'items' is not a valid array of pack entries.",
-                InvalidArguments,
-                hint: "Use [{\"fileId\":\"...\"}] or [{\"objectKey\":\"...\",\"fileName\":\"...\"}].");
-        }
-        if (items.Count == 0)
-        {
-            return ToolResult.Error(
-                "'items' must contain at least one file to pack.",
-                InvalidArguments);
-        }
-        if (executionContext.Scope == null)
-        {
-            return ToolResult.Error(
-                "The file execution context is unavailable for this request.",
-                UnavailableContext);
-        }
-        try
-        {
-            FileArchiveResult result = await files.CompressAsync(
-                new FileArchiveRequest
-                {
-                    OutputName = outputName,
-                    Items = items
-                },
-                executionContext.Scope,
-                cancellationToken).ConfigureAwait(false);
-            await files.EnsureReferencesAsync(
-                [result.Asset.FileId],
-                executionContext.Scope,
-                cancellationToken).ConfigureAwait(false);
-            return JsonSerializer.Serialize(new
-            {
-                fileId = result.Asset.FileId,
-                fileName = result.Asset.FileName,
-                mediaType = result.Asset.MediaType,
-                objectKey = result.Asset.ObjectKey,
-                length = result.Asset.Length,
-                fileCount = result.FileCount
-            });
-        }
-        catch (OpenAgent.Contracts.Security.AgentException exception)
-        {
-            // 返回净化后的错误文本，供模型修正后重试，不把原始异常泄露给模型。
-            return ToolResult.Error(exception.Message, InvalidRequest);
         }
     }
 

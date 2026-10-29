@@ -3,21 +3,14 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text;
 using Microsoft.Extensions.AI;
-using Microsoft.Extensions.Options;
 using Moq;
 using OpenAgent.Contracts.Capabilities;
 using OpenAgent.Contracts.Configuration;
-using OpenAgent.Contracts.Execution;
 using OpenAgent.Contracts.Files;
-using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Runtime;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Contracts.Skills;
 using OpenAgent.Application.Capabilities.Skill;
-using OpenAgent.Capabilities.Files.Requests;
-using OpenAgent.Capabilities.Files.Services;
-using OpenAgent.Capabilities.Integrations.Runner;
-using OpenAgent.Application.Tests.TestDoubles;
 using OpenAgent.Capabilities.Security;
 using Xunit;
 
@@ -31,7 +24,7 @@ public class AgentSkillsProviderFactoryTests
     public async Task CreateAsync_MaterializesPackagesAndExposesScopedTools()
     {
         var fixture = new FactoryFixture();
-        await using AgentSkillsRuntime runtime = await fixture.CreateRuntimeAsync(agentCodeExecution: true, scriptExecutionEnabled: true);
+        await using AgentSkillsRuntime runtime = await fixture.CreateRuntimeAsync();
 
         RuntimeSkill skill = Assert.Single(runtime.Skills)!;
         Assert.Equal(SkillName, skill.Name);
@@ -54,8 +47,7 @@ public class AgentSkillsProviderFactoryTests
     public async Task CreateAsync_MaterializesLegacyNestedIndexWithRootSkillMarkdown()
     {
         var fixture = new FactoryFixture();
-        await using AgentSkillsRuntime runtime =
-            await fixture.CreateRuntimeAsync(agentCodeExecution: true, scriptExecutionEnabled: true, nestedIndex: true);
+        await using AgentSkillsRuntime runtime = await fixture.CreateRuntimeAsync(nestedIndex: true);
 
         RuntimeSkill skill = Assert.Single(runtime.Skills)!;
         Assert.True(File.Exists(Path.Combine(skill.Path, "SKILL.md")),
@@ -74,53 +66,17 @@ public class AgentSkillsProviderFactoryTests
     }
 
     [Fact]
-    public async Task RunSkillScript_ExecutesPackageScriptThroughIsolatedRunner()
+    public async Task ReadSkillFile_RejectsPathOutsidePackage()
     {
         var fixture = new FactoryFixture();
-        await using AgentSkillsRuntime runtime = await fixture.CreateRuntimeAsync(agentCodeExecution: true, scriptExecutionEnabled: true);
+        await using AgentSkillsRuntime runtime = await fixture.CreateRuntimeAsync();
 
-        AIFunction runner = GetTool(runtime, "run_skill_script");
-        object? result = await runner.InvokeAsync(new AIFunctionArguments
+        AIFunction reader = GetTool(runtime, "read_skill_file");
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await reader.InvokeAsync(new AIFunctionArguments
         {
             ["skill"] = SkillName,
-            ["script"] = "scripts/analyze.py"
-        });
-
-        CodeExecutionRequest request = Assert.Single(fixture.Executor.Requests);
-        Assert.Contains("runpy.run_path(\"/input/scripts/analyze.py\"", request.Code, StringComparison.Ordinal);
-        Assert.Contains("sys.path.insert(0, \"/input\")", request.Code, StringComparison.Ordinal);
-        Assert.Contains(request.Files, file => file.Name.EndsWith("analyze.py", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains("SKILL.md", request.Files.Select(file => file.Name), StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("exitCode", result?.ToString(), StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task RunSkillScript_RejectsPathOutsidePackage()
-    {
-        var fixture = new FactoryFixture();
-        await using AgentSkillsRuntime runtime = await fixture.CreateRuntimeAsync(agentCodeExecution: true, scriptExecutionEnabled: true);
-
-        AIFunction runner = GetTool(runtime, "run_skill_script");
-        await Assert.ThrowsAsync<InvalidOperationException>(async () => await runner.InvokeAsync(new AIFunctionArguments
-        {
-            ["skill"] = SkillName,
-            ["script"] = "../outside.py"
+            ["path"] = "../outside.md"
         }));
-        Assert.Empty(fixture.Executor.Requests);
-    }
-
-    [Theory]
-    [InlineData(false, true, true)]
-    [InlineData(true, false, true)]
-    [InlineData(true, true, false)]
-    public async Task WithoutDoubleOptIn_ScriptToolIsNotExposed(
-        bool agentCodeExecution, bool scriptExecutionEnabled, bool hostCodeExecutionEnabled)
-    {
-        var fixture = new FactoryFixture(hostCodeExecutionEnabled);
-        await using AgentSkillsRuntime runtime = await fixture.CreateRuntimeAsync(agentCodeExecution, scriptExecutionEnabled);
-
-        Assert.DoesNotContain(runtime.Tools, tool => tool.Name == "run_skill_script");
-        Assert.Empty(fixture.Executor.Requests);
     }
 
     private static AIFunction GetTool(AgentSkillsRuntime runtime, string name) =>
@@ -128,15 +84,12 @@ public class AgentSkillsProviderFactoryTests
 
     private sealed class FactoryFixture
     {
-        internal RecordingFileAssetRepository Repository { get; } = new();
         internal RecordingFileObjectStore Objects { get; } = new();
         internal StubSkillCatalog Catalog { get; } = new();
-        internal FakeCodeExecutor Executor { get; } = new();
-        internal FileAssetExecutionContext Context { get; } = new();
         internal AgentUserContext User { get; } = new() { TenantId = "tenant", UserId = "user" };
         internal AgentSkillsProviderFactory Factory { get; }
 
-        internal FactoryFixture(bool hostCodeExecutionEnabled = true)
+        internal FactoryFixture()
         {
             var auth = new Mock<IAgentAuthorizationService>();
             auth.Setup(service => service.IsAuthorizedAsync(
@@ -145,35 +98,26 @@ public class AgentSkillsProviderFactoryTests
             Factory = new AgentSkillsProviderFactory(
                 Objects,
                 Catalog,
-                new AgentAuthorizationGate(auth.Object),
-                Executor,
-                new FileAssetService(Repository, Objects, Options.Create(new FileAssetOptions { Enabled = true })),
-                Context,
-                Options.Create(new CodeExecutionOptions { Enabled = hostCodeExecutionEnabled }));
+                new AgentAuthorizationGate(auth.Object));
         }
 
-        internal async Task<AgentSkillsRuntime> CreateRuntimeAsync(
-            bool agentCodeExecution,
-            bool scriptExecutionEnabled,
-            bool nestedIndex = false)
+        internal async Task<AgentSkillsRuntime> CreateRuntimeAsync(bool nestedIndex = false)
         {
-            Context.Set(TurnContexts.Create());
             RegisterPackage(nestedIndex);
             return await Factory.CreateRuntimeAsync(
                 "agent",
                 new AgentConfig
                 {
-                    CodeExecution = new CodeExecutionConfig { Enabled = agentCodeExecution },
                     Skills = new SkillsConfig
                     {
-                        Instances = [NewInstance(scriptExecutionEnabled)]
+                        Instances = [NewInstance()]
                     }
                 },
                 User,
                 CancellationToken.None);
         }
 
-        private SkillInstanceConfig NewInstance(bool scriptExecutionEnabled) => new()
+        private static SkillInstanceConfig NewInstance() => new()
         {
             TenantId = "tenant",
             Id = "skill-1",
@@ -181,13 +125,12 @@ public class AgentSkillsProviderFactoryTests
             Type = SkillTypes.AgentSkill,
             Enabled = true,
             ObjectKey = "files/tenants/" + FileObjectTenantScope.CreatePartition("tenant") + "/skill-packages/skill-1",
-            PackageFormat = "directory",
-            ScriptExecutionEnabled = scriptExecutionEnabled
+            PackageFormat = "directory"
         };
 
         private void RegisterPackage(bool nestedIndex)
         {
-            SkillInstanceConfig instance = NewInstance(true);
+            SkillInstanceConfig instance = NewInstance();
             byte[] skillMd = Encoding.UTF8.GetBytes($"""
                 ---
                 name: {SkillName}

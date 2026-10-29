@@ -38,7 +38,6 @@ function createDefaultAgent(agentId: string, name: string): AgentConfigEntity {
       mcp: { servers: [] },
       rag: { enabled: false, enabledRagInstanceIds: [], instances: [] },
       skills: { enabledSkills: [], instances: [] },
-      codeExecution: { enabled: false },
       maxTurns: 50,
     },
   }
@@ -64,7 +63,7 @@ export function useSettings(options: SettingsOptions) {
 
   const { llmProfiles, llmDraft, selectedLlmIndex, llmResult, testingLlm, savingLlm, showLlmEditor, isNewLlm, loadLlmProfiles, selectLlm, newLlm, editLlm, deleteLlm, saveLlm, testLlm } = useModelSettings({ selectedLlmProfileId: options.selectedLlmProfileId, notifyError: options.notifyError })
   const { showMcpEditor, mcpDraft, mcpServers, agentMcpIds, showMcpBindingPicker, mcpBindingOptions, loadingMcpBindingOptions, selectedMcpIndex, boundMcpServers, toggleMcpBinding, openMcpBindingPicker, removeMcpBinding, loadMcpProfiles, selectMcp, newMcp, removeMcp, saveMcp } = useMcpSettings({ agentId: () => config.value?.agentId, notifyError: options.notifyError })
-  const { uploadingSkill, skillPackageInput, showSkillTextEditor, skillMarkdownDraft, skillEditorMode, skillEditorName, skillEditorDescription, skillEditorInstructions, editingSkillId, showSkillBindingPicker, skillBindingOptions, loadingSkillBindingOptions, skillCatalog, skillDraft, boundSkills, isSkillEnabled, toggleSkillBinding, openSkillBindingPicker, removeSkillBinding, loadSkillCatalog, toggleSkillScriptExecution, chooseSkillPackage, openSkillTextEditor, switchSkillEditorMode, editSkill, uploadSkillPackage, deleteSkillCatalog, saveTextSkill } = useSkillSettings({ notifyError: options.notifyError })
+  const { uploadingSkill, skillPackageInput, showSkillTextEditor, skillMarkdownDraft, skillEditorMode, skillEditorName, skillEditorDescription, skillEditorInstructions, editingSkillId, showSkillBindingPicker, skillBindingOptions, loadingSkillBindingOptions, skillCatalog, skillDraft, boundSkills, isSkillEnabled, toggleSkillBinding, openSkillBindingPicker, removeSkillBinding, loadSkillCatalog, chooseSkillPackage, openSkillTextEditor, switchSkillEditorMode, editSkill, uploadSkillPackage, deleteSkillCatalog, saveTextSkill } = useSkillSettings({ notifyError: options.notifyError })
   const { testingRag, showRagEditor, ragDraft, ragInstances, selectedRagIndex, ragResult, ragEnabledText, isRagEnabled, toggleRagBinding, selectRag, newRag, editRag, saveRag, deleteRag, testRag, testRagRow } = useRagSettings({ selectedAgentId: options.selectedAgentId, config, notifyError: options.notifyError })
 
   function syncCapabilityDraftsToAgent(): void {
@@ -326,7 +325,6 @@ export function useSettings(options: SettingsOptions) {
     loadLlmProfiles,
     loadMcpProfiles,
     loadSkillCatalog,
-    toggleSkillScriptExecution,
     selectLlm,
     newLlm,
     editLlm,

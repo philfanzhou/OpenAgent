@@ -238,9 +238,6 @@ export interface SkillInstanceConfig {
   objectKey?: string | null
   sha256?: string | null
   resourceCount?: number
-  scriptExecutionEnabled?: boolean
-  scriptNames?: string[]
-  scriptCount?: number
   allowedUserIds?: string[]
   allowedGroups?: string[]
   allowedTenantIds?: string[]
@@ -339,7 +336,6 @@ export interface AgentConfigEntity {
     mcp: { enabledServerIds?: string[]; servers: McpServerConfig[] }
     rag: RagConfig
     skills: SkillsConfig
-    codeExecution?: { enabled: boolean }
     openCode?: OpenCodeAgentConfig
     maxTurns: number
   }

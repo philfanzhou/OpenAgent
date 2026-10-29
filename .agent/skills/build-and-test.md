@@ -48,10 +48,8 @@ dotnet test <sln-path> --no-build
 
 默认测试套件不依赖任何外部服务。两批测试默认跳过，仅由环境变量开启：
 
-- `OpenAgent.Runner.Tests` 的 `[BubblewrapFact]`（Bubblewrap 沙箱执行）需 Linux + `RUN_CODEACT_BWRAP_TESTS=1`，CI 的 codeact job 在 Linux 上运行；
-- `OpenAgent.Application.Tests` 的 `[RunnerIntegrationFact]`（连接真实 Runner）需 `RUN_CODEACT_RUNNER_TESTS=1` + `CODEACT_TEST_RUNNER_ENDPOINT/KEY`。
 
-容器级/发布产物级验证由 `scripts/` 下的冒烟脚本承担（`test-codeact-runner.py`、`test-bubblewrap-basic.sh`），不属于 `dotnet test` 范围。
+容器级/发布产物级验证由 `scripts/` 下的冒烟脚本承担，不属于 `dotnet test` 范围。
 
 ### 步骤 4: 如有测试失败
 - 提取失败测试名称和错误信息
@@ -59,7 +57,7 @@ dotnet test <sln-path> --no-build
 
 ## 注意
 - 全部测试项目使用 **xunit + Moq**；默认 `dotnet test Backend/OpenAgent.sln` 无需 Docker、PostgreSQL、Redis 等外部服务
-- 依赖真实容器的集成测试已移除（见 `Backend/tests/README.md`）；沙箱/真 Runner 测试由环境变量门控（见 3b）
+- 依赖真实容器的集成测试已移除（见 `Backend/tests/README.md`）；真实 OpenCode 进程测试由环境变量门控（见 3b）
 - **真 E2E 测试**（连接真实 Redis + LLM）需要单独配置，见 `e2e-test` 技能
 - Agent 根据改动范围自主决定调用哪些模块（改 `.cs` → 单测；改 Contracts → 全量）
 - 所有路径相对于仓库根目录 `<repository-root>`

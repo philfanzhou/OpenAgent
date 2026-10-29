@@ -9,9 +9,9 @@ set -euo pipefail
 #   wsl -e bash -lc 'cd <worktree> && bash scripts/preview.sh status'
 #   wsl -e bash -lc 'cd <worktree> && bash scripts/preview.sh cleanup'
 #
-# 每个预览起 engine + router + chat + runner，复用主 openagent 栈的 postgres/redis/minio
+# 每个预览起 engine + router + chat，复用主 openagent 栈的 postgres/redis/minio
 # （经 host.docker.internal 直连，宿主端口以运行中容器为准）。
-# 端口经 flock 原子分配；每个预览的 Runner API key 生成后持久化在 .preview/<slug>.runnerkey。
+# 端口经 flock 原子分配。
 # 支持多个 agent 并发开预览不冲突。
 
 PREVIEW_DIR=".preview"
@@ -76,16 +76,6 @@ read_infra_ports() {
     || die "无法读取共享基础设施的宿主端口(postgres/redis/minio)"
 }
 
-# 每个预览的 Runner API key 生成一次并持久化，重启预览复用同一 key。
-ensure_runner_key() {
-  local slug="$1"
-  local keyfile="$PREVIEW_DIR/$slug.runnerkey"
-  if [[ ! -s "$keyfile" ]]; then
-    (umask 077; openssl rand -hex 32 >"$keyfile")
-  fi
-  cat "$keyfile"
-}
-
 write_env_file() {
   local line
   local slug engine_port router_port chat_port redis_db
@@ -100,7 +90,6 @@ PREVIEW_REDIS_DB=$redis_db
 OPENAGENT_POSTGRES_PORT=$pg_port
 OPENAGENT_REDIS_PORT=$redis_port
 OPENAGENT_MINIO_PORT=$minio_port
-OPENAGENT_RUNNER_API_KEY=$(ensure_runner_key "$slug")
 OPENAGENT_OTLP_ENDPOINT=http://host.docker.internal:4317
 OPENAGENT_SHARE_PUBLIC_BASE_URL=http://localhost:$engine_port
 EOF
@@ -206,7 +195,7 @@ cmd_down() {
   grep -vP "^${slug}\t" "$ALLOC_FILE" >"$ALLOC_FILE.tmp" 2>/dev/null || true
   mv "$ALLOC_FILE.tmp" "$ALLOC_FILE" 2>/dev/null || true
   flock -u 9
-  rm -f "$PREVIEW_DIR/$slug.env" "$PREVIEW_DIR/$slug.runnerkey"
+  rm -f "$PREVIEW_DIR/$slug.env"
 
   echo "预览 '$slug' 已销毁，槽位已释放 (engine=$engine_port router=$router_port chat=$chat_port redis_db=$redis_db)。"
 }
@@ -243,7 +232,7 @@ cmd_cleanup() {
       grep -vP "^${slug}\t" "$ALLOC_FILE" >"$ALLOC_FILE.tmp" 2>/dev/null || true
       mv "$ALLOC_FILE.tmp" "$ALLOC_FILE" 2>/dev/null || true
       flock -u 9
-      rm -f "$PREVIEW_DIR/$slug.env" "$PREVIEW_DIR/$slug.runnerkey"
+      rm -f "$PREVIEW_DIR/$slug.env"
       removed=1
     fi
   done <<<"$lines"

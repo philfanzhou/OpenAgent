@@ -18,16 +18,15 @@
 |---|---|
 | Contracts | 平台接口、DTO、配置、错误码、CapabilityDefinition、ICapabilitySource 与目录接口 |
 | Application | 执行协调、会话、模型授权、Mapping、Observability、工具机制与 MCP/Skill 适配 |
-| Capabilities | Files、Rag、Skills 目录、Code/Workspace/Plan/UserProfile、Security、Runner 客户端 |
+| Capabilities | Files、Rag、Skills 目录、Plan/UserProfile、Security |
 | Engine | 配置目录、服务注册、心跳与热重载；Hosting/ 合并原认证、身份、遥测与 Web 基础能力 |
 | Engine.Host | HTTP/SSE、Web 中间件、对象存储组装与最终服务组合 |
 | Runtime | ACP/OpenCode 平台适配、进程、事件映射与每轮 MCP 桥（不发布 NuGet） |
 | Runtime.Acp | 独立单包协议 SDK，不引用任何平台模块 |
 | Framework | 原 Infrastructure 的 PostgreSQL、Redis 缓存与分布式锁 |
 | Router | 服务发现、路由、转发、限流与入口治理 |
-| Runner | 原有沙箱执行、工作区与资源清理 |
 
-引用边界：Application → Contracts/Capabilities；Capabilities、Engine、Framework、Runner → Contracts；Router → Engine/Contracts；Runtime → Contracts/Runtime.Acp；Runtime.Acp 不引用平台；Engine.Host 组装 Application/Engine/Framework/Contracts/Runtime（能力注册由 Application 组合）。Engine 不引用执行代码，Router 仅使用 Engine/Hosting。规则和架构测试必须同步，不通过兼容项目或重复实现保留旧边界。
+引用边界：Application → Contracts/Capabilities；Capabilities、Engine、Framework → Contracts；Router → Engine/Contracts；Runtime → Contracts/Runtime.Acp；Runtime.Acp 不引用平台；Engine.Host 组装 Application/Engine/Framework/Contracts/Runtime（能力注册由 Application 组合）。Engine 不引用执行代码，Router 仅使用 Engine/Hosting。规则和架构测试必须同步，不通过兼容项目或重复实现保留旧边界。
 
 ## Application 与 Capabilities 修改入口
 
@@ -44,11 +43,10 @@
 | Skill 目录 | ISkillCatalog 在 Contracts/Capabilities/；Engine 实现在 Engine/Config/SkillCatalogStore | 随 Skill 组合注册 |
 | RAG | Capabilities/Rag/ | RagServiceExtensions.cs |
 | 内置能力 | Capabilities/{Code,Workspace,Plan,UserProfile}/ | BuiltinCapabilityServiceExtensions.cs |
-| Runner 客户端 | Capabilities/Integrations/Runner/ | RunnerServiceExtensions.cs |
 | 文件 | Capabilities/Files/{Services,Sharing,Requests,Multimodal,Artifacts,Tools}/ | FileAssetServiceExtensions.cs |
 | 调用授权 | Capabilities/Security/ | SecurityServiceExtensions.cs |
 
-Capabilities 不依赖 MCP/模型 SDK 或 Application。Application 的 Execution 不引用具体能力实现，通过 Contracts 的能力接口和内部 SDK Feature 接入。Files 服务与 Files/Tools 分离；SDK Skill、Workspace、Code 共用 Runner 客户端和 Files/Artifacts。完整模块依赖由 `ApplicationModuleDependencyTests.cs` 检查。
+Capabilities 不依赖 MCP/模型 SDK 或 Application。Application 的 Execution 不引用具体能力实现，通过 Contracts 的能力接口和内部 SDK Feature 接入。Files 服务与 Files/Tools 分离。完整模块依赖由 `ApplicationModuleDependencyTests.cs` 检查。
 
 ### 扩展与生命周期
 
@@ -78,7 +76,7 @@ Capabilities 不依赖 MCP/模型 SDK 或 Application。Application 的 Executio
 - 保持 HTTP 路由、JSON 字段、错误码、SSE 顺序、schema、Redis key 兼容；结构迁移与功能改变分别验收。Engine.Host 中间件和认证管道按现有 Program 保持，不在 Application 添加 Web 管道。
 - 正确传播 CancellationToken、释放流式/连接资源，保持现有 DI 生命周期；包版本在 Directory.Packages.props 管理，不全局压制警告。检查授权/租户边界、参数化查询及凭证泄露。
 - 测试使用现有 TestDoubles，命名为“方法名_场景_预期行为”，相似用例用 Theory。覆盖有意义的成功、失败与取消场景，不为路径移动重复实现镜像测试。
-- Application/Capabilities 测试在同名 `.Tests` 项目中镜像功能域目录；跨域验证覆盖执行↔历史、MCP↔Files、Skill↔Runner↔Files、Host↔配置、Router↔Engine。默认套件不依赖 PostgreSQL/Redis 容器，环境规则见 [测试分层](../../Backend/tests/README.md)。
+- Application/Capabilities 测试在同名 `.Tests` 项目中镜像功能域目录；跨域验证覆盖执行↔历史、MCP↔Files、Skill↔Files、Host↔配置、Router↔Engine。默认套件不依赖 PostgreSQL/Redis 容器，环境规则见 [测试分层](../../Backend/tests/README.md)。
 - 合并后的 Engine.Tests/Hosting 包含进程内宿主测试，不是外部部署 E2E。隔离认证 fixture 的配置来源，避免 Engine.Host 的 appsettings.json 污染；清空 `Configuration.Sources` 后，先添加内存配置源，再调用 `UseUrls`。
 - 后端边界检查覆盖签名、泛型、静态调用、局部变量、异步状态机及项目引用；前端 `moduleBoundaries.test.ts` 覆盖 import、re-export、字符串 dynamic import 与 Vue script。运行时反射/动态拼接的依赖仍需审查，不能扩大白名单绕过问题。
 
@@ -91,4 +89,4 @@ dotnet test Backend/tests/OpenAgent.Architecture.Tests/OpenAgent.Architecture.Te
 pnpm check
 ```
 
-真实模型 E2E、Linux Bubblewrap、真实 Runner 另按 [E2E 流程](../../.agent/skills/e2e-test.md) 和 [构建测试流程](../../.agent/skills/build-and-test.md) 验证；macOS 门控跳过不计为沙箱验证。排障先确认服务 health/ready、模型或 MCP 配置与请求 TraceId，再查 [完整排查手册](../operations/trace-troubleshoot.md)。
+真实模型 E2E 另按 [E2E 流程](../../.agent/skills/e2e-test.md) 和 [构建测试流程](../../.agent/skills/build-and-test.md) 验证。排障先确认服务 health/ready、模型或 MCP 配置与请求 TraceId，再查 [完整排查手册](../operations/trace-troubleshoot.md)。

@@ -23,7 +23,7 @@
 
 ## 方向变更
 
-执行路径由 MAF 改为“平台控制面 + Worker + 可换 ACP harness”，MAF 执行路径不保留，沙箱使用 harness 自带机制（如 Codex CLI），`OpenAgent.Runner` 暂不处理。旧清单中依赖 MAF 的任务已取代或并入下列 A 系列；后续功能任务按 A 系列评审；本次已授权的行为保持式结构整理不受 A03 限制。
+执行路径由 MAF 改为“平台控制面 + Worker + 可换 ACP harness”，MAF 执行路径不保留，沙箱使用 harness 自带机制（如 Codex CLI）。2026-10-28 用户授权移除独立 Runner：`OpenAgent.Runner` 项目、Runner 客户端、`execute_code`/workspace 文件工具/`run_skill_script`、`CodeExecution` 配置开关（含 `CodeExecutionJson` 列，新增迁移 `20261028091823_RemoveCodeExecutionConfiguration`）与部署/CI 面一并删除；代码执行交给 OpenCode 原生工具（宿主经 `OpenCode:AllowedNativeTools` 放行，默认仍全拒绝）。旧清单中依赖 MAF 的任务已取代或并入下列 A 系列；后续功能任务按 A 系列评审；本次已授权的行为保持式结构整理不受 A03 限制。
 
 ## 独立 ACP SDK（单包）
 
@@ -51,14 +51,14 @@
 - [ ] **ACP-R03 验证与交付**：真实进程/本地模型/平台 C# 工具、取消、历史续聊、HTTP/SSE；补齐配置、镜像与文档；已移除 MAF 回归快照，补充免 Docker 本机组合、前端默认模型选择、真实 Skill/MCP 原生调用与真实 Anthropic 兼容模型验收。
 - [ ] **ACP-R04 运行时延迟优化**（本地实现与验证完成，待 PR 评审）：① `OpenCodeProcessKeeper` 按"会话归属 + 启动身份"复用空闲进程（实测追问轮 -63%，但 OpenCode 1.19.3 空闲进程 1–2 核空转 + 持续外呼，故 `KeepAliveSeconds` 默认 0，机制保留待上游空闲行为可接受后开启）；② MCP 桥重构为进程常驻宿主 + 每轮租约轮换工具注册（消除每轮 Kestrel 构建与死端点热重连）；③ 准备链路并行化（历史/工具发现/feature 工厂 `Task.WhenAll`，失败统一释放）；④ `SkillPackageCache` 内容寻址 Skill 包缓存；⑤ MCP/Runtime profile 仓储内 30s TTL 读缓存；⑥ 仓库不再固定 OpenCode 版本。实测随 PR #243 合入。
 - [ ] **ACP-R05 OpenCode 进程环境隔离跟进**（待分派）：实测 Windows + OpenCode 1.19.3 下子进程无视平台设置的 HOME/USERPROFILE，扫描并加载宿主用户 `.claude/skills`、`.agents/skills`（26 个技能进入上下文）。需上游确认 homedir 解析机制或平台侧进一步收紧；同项跟进空闲进程持续外呼与 CPU 空转（阻碍保活默认开启）。证据为 PR #243 的实测结论。
-- [ ] **ACP-R06 镜像版本锁定与发布流水线**（待评审）：`Backend/opencode.version` 作为内嵌 OpenCode 版本的单一事实源（当前 1.19.3），`scripts/build-images.*` 读取并经 `OPENCODE_VERSION` 注入 Engine 构建、附带版本 label；`v*.*.*` 标签触发 Release 工作流，先以 `--target runtime-tests` 真实进程回归门禁，再把 engine/router/runner/chat 推送 GHCR（Engine 标签带 `-oc<版本>` 后缀）并附 Compose 部署包制品。负责人：ZCode；实现 PR：[#247](https://github.com/philfanzhou/OpenAgent/pull/247)。验收：部署脚本测试 12/12 通过（WSL）；WSL Docker runtime-tests 以钉住 1.19.3 实测通过，镜像 label 核对一致；远端打 tag 的首次发布待验收。
+- [ ] **ACP-R06 镜像版本锁定与发布流水线**（待评审）：`Backend/opencode.version` 作为内嵌 OpenCode 版本的单一事实源（当前 1.19.3），`scripts/build-images.*` 读取并经 `OPENCODE_VERSION` 注入 Engine 构建、附带版本 label；`v*.*.*` 标签触发 Release 工作流，先以 `--target runtime-tests` 真实进程回归门禁，再把 engine/router/chat 推送 GHCR（Engine 标签带 `-oc<版本>` 后缀）并附 Compose 部署包制品。负责人：ZCode；实现 PR：[#247](https://github.com/philfanzhou/OpenAgent/pull/247)。验收：部署脚本测试 12/12 通过（WSL）；WSL Docker runtime-tests 以钉住 1.19.3 实测通过，镜像 label 核对一致；远端打 tag 的首次发布待验收。
 
 本轮已按评审意见移除 MAF 推理栈（Application 内 Microsoft.Agents.AI 全系引用、进程内推理循环与平台侧 MCP 工具代理，原 A09 的 Application 部分），并支持外部 MCP server 经 ACP session/new 透传、Skill 工作区物化。Runtime 由独立设置页管理，聊天顶部选择已保存的 Runtime 和模型连接；已移除 Agent 编辑器中的 OpenCode 配置，补充实际 ACP 握手身份的展示与持久化。不代表 A02 的并发容量/隔离攻击验证、A04 Worker、A05 分布式 RunGrant、A06 事件重放或 A08 人工审批已完成；原任务保留未完成状态，具体验收边界以实测记录为准。
 
 ## P0：验证与准备
 
 - [ ] **A01 .NET 10 升级**（待验证：`dev` 本地构建与全部测试已通过，待 CI 与镜像构建验证；须在 2026-11-10 前完成）。主责：`global.json`、`Directory.Build.props`、`Directory.Packages.props`；与功能改动分开提交。
-  验收：全解决方案构建与测试通过（本地已通过）；MCP SDK、EF Core、Microsoft.Agents.AI 在 .NET 10 下确认可用（构建与测试已覆盖）；GitHub Actions CI 通过；Engine.Host、Router、Runner 三个镜像在 Docker 下构建并启动。C# 14 的 span 重载变化已在 `RedisConversationCache`、`AgentFactory` 处修正。Serilog.AspNetCore 暂留 8.0.0，Swashbuckle 暂留 6.6.2。
+  验收：全解决方案构建与测试通过（本地已通过）；MCP SDK、EF Core、Microsoft.Agents.AI 在 .NET 10 下确认可用（构建与测试已覆盖）；GitHub Actions CI 通过；Engine.Host、Router 两个镜像在 Docker 下构建并启动。C# 14 的 span 重载变化已在 `RedisConversationCache`、`AgentFactory` 处修正。Serilog.AspNetCore 暂留 8.0.0，Swashbuckle 暂留 6.6.2。
 - [ ] **A02 ACP 端到端 spike**（待分派）。主责：新建临时 spike 项目，不改现有 Application/Engine；以 OpenCode 为首个 harness。
   验收：走通领任务、启动 harness、事件回传、经 MCP 调一个 C# 工具、取消；验证 ACP 协议库的会话恢复、反向权限、断线取消；实测单会话冷启动耗时与单机并发上限；记录 harness 自带沙箱的隔离反例（同名会话、越界路径、HOME 泄漏）。可从 `origin/codex/runtime-adapters-acp`（PR #229）逐块移植协议帧、失败分类与事件映射，不整体合并。
 - [ ] **A03 提案评审与决策落地**（待分派，依赖 A02 结论）。主责：`docs/planning/architecture`（提案）、对应总览/模块文档（决策结论）。
@@ -80,7 +80,7 @@
 ## P2：切换与移除
 
 - [ ] **A09 切流并移除 MAF 路径**（部分完成：Application 的 MAF 推理栈与 Microsoft.Agents.AI 包引用已随 #234 移除；切流验收与依赖项 A04–A08 仍待完成）。主责：Application/Execution、ModelProviders。
-  验收：全部请求走 harness 路径且回归通过；移除 Application 中被新执行链替代的 MAF 代码与包，保留平台用例与契约；Architecture.Tests 增加新依赖规则；`OpenAgent.Runner` 不受影响。
+  验收：全部请求走 harness 路径且回归通过；移除 Application 中被新执行链替代的 MAF 代码与包，保留平台用例与契约；Architecture.Tests 增加新依赖规则；（历史验收口径；Runner 已于 2026-10-28 移除。）
 
 ## 保留的独立任务
 
@@ -122,7 +122,7 @@
 | F03 MCP 可靠认证 | 并入 A05 |
 | F07 风险操作审批 | 取代为 A08 |
 | S01 PlatformChatHistory 拆分 | 取代：属于 MAF 历史路径，随 A09 删除 |
-| S11 Runner 拆分 | 暂缓：沙箱暂不处理 |
+| S11 Runner 拆分 | 取代：Runner 已整体移除，代码执行交给 OpenCode 原生工具（见“方向变更”） |
 | S12 剩余域收口 | 取代：验收并入 A09 |
 | I01–I06（PR #144、#146、#152–#156） | 取代：均为 MAF 路径；不再合并，处置方式待确认 |
 | I07（PR #157 RAG Provider 验证） | 取代：RAG 以 MCP 工具形式落在 A05；PR 处置待确认 |

@@ -192,118 +192,7 @@ public class SkillPackageManagementServiceTests
     }
 
     [Fact]
-    public async Task UploadAsync_RecordsPythonScriptInventory()
-    {
-        (SkillPackageManagementService service, _, _) = await CreateServiceAsync();
-        byte[] content = CreatePackage(archive =>
-        {
-            WriteEntry(archive, "customer-lookup/scripts/lookup.py", "print('lookup')");
-            WriteEntry(archive, "customer-lookup/notes.txt", "plain text");
-        });
-
-        SkillPackageUploadResult result = await service.UploadAsync(
-            "tenant",
-            "user",
-            "customer.zip",
-            "application/zip",
-            new MemoryStream(content),
-            default,
-            publishCatalog: false);
-
-        Assert.Equal(["scripts/lookup.py"], result.Skill.ScriptNames);
-        Assert.Equal(1, result.Skill.ScriptCount);
-        Assert.False(result.Skill.ScriptExecutionEnabled);
-    }
-
-    [Fact]
-    public async Task UploadAsync_EnableScriptExecutionWithoutScripts_Throws()
-    {
-        (SkillPackageManagementService service, _, RecordingObjectStore store) = await CreateServiceAsync();
-
-        await Assert.ThrowsAsync<InvalidOperationException>(() => service.UploadAsync(
-            "tenant",
-            "user",
-            "customer.md",
-            "text/markdown",
-            new MemoryStream(Encoding.UTF8.GetBytes(SkillMarkdown)),
-            default,
-            publishCatalog: false,
-            scriptExecutionEnabled: true));
-
-        Assert.Empty(store.Objects);
-    }
-
-    [Fact]
-    public async Task UpdateScriptExecutionAsync_RereadsInventoryFromStorageAndPublishes()
-    {
-        var catalog = new RecordingSkillCatalogStore();
-        (SkillPackageManagementService service, _, _) = await CreateServiceAsync(catalog: catalog);
-        byte[] content = CreatePackage(archive =>
-            WriteEntry(archive, "customer-lookup/scripts/lookup.py", "print('lookup')"));
-        await service.UploadAsync(
-            "tenant",
-            "user",
-            "customer.zip",
-            "application/zip",
-            new MemoryStream(content),
-            default);
-
-        SkillInstanceConfig? updated = await service.UpdateScriptExecutionAsync(
-            "tenant",
-            "customer-lookup",
-            scriptExecutionEnabled: true,
-            default);
-
-        Assert.NotNull(updated);
-        Assert.True(updated.ScriptExecutionEnabled);
-        Assert.Equal(["scripts/lookup.py"], updated.ScriptNames);
-        Assert.True(catalog.Published.Last().ScriptExecutionEnabled);
-    }
-
-    [Fact]
-    public async Task UpdateScriptExecutionAsync_EnablingWithoutScripts_Throws()
-    {
-        var catalog = new RecordingSkillCatalogStore();
-        (SkillPackageManagementService service, _, _) = await CreateServiceAsync(catalog: catalog);
-        await service.UploadAsync(
-            "tenant",
-            "user",
-            "customer.md",
-            "text/markdown",
-            new MemoryStream(Encoding.UTF8.GetBytes(SkillMarkdown)),
-            default);
-
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            service.UpdateScriptExecutionAsync("tenant", "customer-lookup", scriptExecutionEnabled: true, default));
-        SkillInstanceConfig stored = catalog.Published.Last();
-        Assert.False(stored.ScriptExecutionEnabled);
-
-        SkillInstanceConfig? disabled = await service.UpdateScriptExecutionAsync(
-            "tenant",
-            "customer-lookup",
-            scriptExecutionEnabled: false,
-            default);
-        Assert.NotNull(disabled);
-        Assert.False(disabled.ScriptExecutionEnabled);
-    }
-
-    [Fact]
-    public async Task UpdateScriptExecutionAsync_UnknownSkill_ReturnsNull()
-    {
-        var catalog = new RecordingSkillCatalogStore();
-        (SkillPackageManagementService service, _, _) = await CreateServiceAsync(catalog: catalog);
-
-        SkillInstanceConfig? result = await service.UpdateScriptExecutionAsync(
-            "tenant",
-            "missing-skill",
-            scriptExecutionEnabled: true,
-            default);
-
-        Assert.Null(result);
-    }
-
-    [Fact]
-    public async Task UpdateMarkdownAsync_ReplacesMarkdownPreservingScriptsAndFlag()
+    public async Task UpdateMarkdownAsync_ReplacesMarkdownPreservingPackageFiles()
     {
         var catalog = new RecordingSkillCatalogStore();
         (SkillPackageManagementService service, _, RecordingObjectStore store) = await CreateServiceAsync(catalog: catalog);
@@ -314,7 +203,6 @@ public class SkillPackageManagementServiceTests
         });
         await service.UploadAsync(
             "tenant", "user", "customer.zip", "application/zip", new MemoryStream(content), default);
-        await service.UpdateScriptExecutionAsync("tenant", "customer-lookup", scriptExecutionEnabled: true, default);
         string oldObjectKey = catalog.Published.Last().ObjectKey!;
 
         string updatedMarkdown = """
@@ -332,11 +220,6 @@ public class SkillPackageManagementServiceTests
 
         Assert.NotNull(updated);
         Assert.Equal("Refreshed description", updated.Description);
-        Assert.True(updated.ScriptExecutionEnabled);
-        Assert.Equal(
-            ["scripts/lookup.py", "scripts/report.js"],
-            updated.ScriptNames);
-        Assert.Equal(2, updated.ScriptCount);
         Assert.NotEqual(oldObjectKey, updated.ObjectKey);
         Assert.Contains("Refreshed description", await service.ReadMarkdownAsync("tenant", "customer-lookup", default));
         Assert.Equal(updated, catalog.Published.Last());
@@ -368,28 +251,6 @@ public class SkillPackageManagementServiceTests
             "tenant", "user", "missing-skill", SkillMarkdown, default);
 
         Assert.Null(result);
-    }
-
-    [Fact]
-    public async Task UploadAsync_RecordsJavaScriptScriptInventory()
-    {
-        (SkillPackageManagementService service, _, _) = await CreateServiceAsync();
-        byte[] content = CreatePackage(archive =>
-        {
-            WriteEntry(archive, "customer-lookup/scripts/lookup.py", "print('lookup')");
-            WriteEntry(archive, "customer-lookup/scripts/report.js", "console.log('report')");
-            WriteEntry(archive, "customer-lookup/scripts/helper.mjs", "export const x = 1;");
-            WriteEntry(archive, "customer-lookup/scripts/batch.sh", "echo batch");
-        });
-
-        SkillPackageUploadResult result = await service.UploadAsync(
-            "tenant", "user", "customer.zip", "application/zip",
-            new MemoryStream(content), default, publishCatalog: false);
-
-        Assert.Equal(
-            ["scripts/batch.sh", "scripts/helper.mjs", "scripts/lookup.py", "scripts/report.js"],
-            result.Skill.ScriptNames);
-        Assert.Equal(4, result.Skill.ScriptCount);
     }
 
     [Fact]
@@ -544,17 +405,6 @@ public class SkillPackageManagementServiceTests
 
             return Task.FromResult(content);
         }
-
-        public Task<FileObjectAccessReference> CreateReadUrlAsync(
-            string objectKey,
-            DateTimeOffset expiresAt,
-            CancellationToken cancellationToken) =>
-            Task.FromResult(new FileObjectAccessReference
-            {
-                ObjectKey = objectKey,
-                Url = $"https://storage.example/{Uri.EscapeDataString(objectKey)}",
-                ExpiresAt = expiresAt
-            });
 
         public Task DeleteAsync(string objectKey, CancellationToken cancellationToken)
         {

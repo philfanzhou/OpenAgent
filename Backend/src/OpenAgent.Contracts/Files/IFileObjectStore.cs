@@ -18,10 +18,5 @@ public interface IFileObjectStore
         long maxBytes,
         CancellationToken cancellationToken);
 
-    Task<FileObjectAccessReference> CreateReadUrlAsync(
-        string objectKey,
-        DateTimeOffset expiresAt,
-        CancellationToken cancellationToken);
-
     Task DeleteAsync(string objectKey, CancellationToken cancellationToken);
 }

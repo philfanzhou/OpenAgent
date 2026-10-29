@@ -11,17 +11,14 @@ public class ApplicationModuleDependencyTests
         ["Mapping"] = [],
         ["Observability"] = ["Mapping"],
         ["ModelProviders"] = ["Mapping", "Observability"],
-        ["Runner"] = [],
         ["Security"] = [],
         ["Tooling"] = ["Mapping", "Observability", "Security"],
         ["Files"] = ["Mapping"],
-        ["FileTools"] = ["Files", "Tooling", "Runner", "Security", "Mapping"],
+        ["FileTools"] = ["Files", "Tooling", "Security", "Mapping"],
         ["Conversation"] = ["Files", "Mapping", "ModelProviders", "Observability"],
         ["Mcp"] = ["Files", "Tooling", "Security", "Mapping"],
-        ["Skill"] = ["Files", "Runner", "Tooling", "Security", "Mapping"],
+        ["Skill"] = ["Files", "Tooling", "Security", "Mapping"],
         ["Rag"] = ["Tooling", "Security", "Mapping"],
-        ["Code"] = ["Files", "Runner", "Tooling", "Security", "Mapping"],
-        ["Workspace"] = ["Files", "Runner", "Tooling", "Security", "Mapping"],
         ["Plan"] = ["Tooling"],
         ["UserProfile"] = ["Tooling"],
         ["Execution"] = ["Files", "Conversation", "ModelProviders", "Tooling", "Security", "Mapping", "Observability"]
@@ -88,7 +85,6 @@ public class ApplicationModuleDependencyTests
         return parts[2] switch
         {
             "Exten" or "Extensions" => "Composition",
-            "Integrations" when parts.ElementAtOrDefault(3) == "Runner" => "Runner",
             "Capabilities" when parts.ElementAtOrDefault(1) == "Application" => parts.ElementAtOrDefault(3) ?? "Unknown",
             "Skills" => "Skill",
             "Files" when parts.ElementAtOrDefault(3) == "Tools" => "FileTools",
