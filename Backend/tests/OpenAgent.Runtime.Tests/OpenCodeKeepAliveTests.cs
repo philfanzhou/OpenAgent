@@ -155,7 +155,12 @@ public sealed class OpenCodeKeepAliveTests
     }
 
     [OpenCodeFact]
-    public async Task FollowUpTurn_RotatesToolsThroughReusedProcess()
+    public Task FollowUpTurn_ToolPolicyChangeRetiresOldProcess() => AssertToolRotationAsync(changePolicy: true);
+
+    [OpenCodeFact]
+    public Task FollowUpTurn_SameToolPolicyUsesCurrentCallback() => AssertToolRotationAsync(changePolicy: false);
+
+    private static async Task AssertToolRotationAsync(bool changePolicy)
     {
         int step = 0;
         string? firstTurnArgument = null;
@@ -172,7 +177,7 @@ public sealed class OpenCodeKeepAliveTests
             string[] names = request.GetProperty("tools").EnumerateArray()
                 .Select(tool => tool.GetProperty("function").GetProperty("name").GetString()!).ToArray();
             string name = Assert.Single(names, value =>
-                value.EndsWith(step == 1 ? "_echo_one" : "_echo_two", StringComparison.Ordinal));
+                value.EndsWith(step == 1 || !changePolicy ? "_echo_one" : "_echo_two", StringComparison.Ordinal));
             await ModelFixture.ChunkAsync(context, new
             {
                 role = "assistant",
@@ -182,13 +187,14 @@ public sealed class OpenCodeKeepAliveTests
         await using RuntimeFixture runtime = new(model.Endpoint, settings => settings["OpenCode:KeepAliveSeconds"] = "120");
         RuntimeTool first = new("echo_one", "one", """{"type":"object","properties":{"text":{"type":"string"}}}""",
             (arguments, ct) => { firstTurnArgument = arguments["text"]?.ToString(); return Task.FromResult("first-tool-result"); });
-        RuntimeTool second = new("echo_two", "two", """{"type":"object","properties":{"text":{"type":"string"}}}""",
+        RuntimeTool second = new(changePolicy ? "echo_two" : "echo_one", changePolicy ? "two" : "one", """{"type":"object","properties":{"text":{"type":"string"}}}""",
             (arguments, ct) => { secondTurnArgument = arguments["text"]?.ToString(); return Task.FromResult("second-tool-result"); });
         List<AgentStreamEvent> firstTurn = await runtime.CollectAsync(runtime.Request with { Tools = [first] });
         Assert.Equal("first done", Text(firstTurn));
         List<AgentStreamEvent> secondTurn = await runtime.CollectAsync(runtime.Request with { Tools = [second] });
         Assert.Equal("second done", Text(secondTurn));
-        Assert.Equal(1, runtime.Keeper.ReusedCount);
+        Assert.Equal(changePolicy ? 0 : 1, runtime.Keeper.ReusedCount);
+        Assert.Equal(changePolicy ? 1 : 0, runtime.Keeper.Snapshot().Retired.GetValueOrDefault("identity_changed"));
         Assert.Equal("turn-1", firstTurnArgument);
         Assert.Equal("turn-2", secondTurnArgument);
         Assert.Single(Directory.GetDirectories(runtime.Root, "workspace", SearchOption.AllDirectories));
@@ -250,6 +256,7 @@ public sealed class OpenCodeKeepAliveTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => followUp.WaitAsync(TimeSpan.FromSeconds(15)));
         Assert.Equal(1, runtime.Keeper.ReusedCount);
         Assert.Equal(0, runtime.Keeper.KeptCount);
+        Assert.Equal(1, runtime.Keeper.Snapshot().Retired["unhealthy"]);
         runtime.AssertWorkspacesReleased();
     }
 
@@ -302,6 +309,27 @@ public sealed class OpenCodeKeepAliveTests
         }
         Assert.Equal([1, 2], invoked);
         Assert.Equal(1, runtime.Keeper.ReusedCount);
+    }
+
+    [OpenCodeFact]
+    public async Task CancellationDuringPlatformCommit_DoesNotKeepCompletedProcess()
+    {
+        await using ModelFixture model = await ModelFixture.StartAsync((context, _) => ModelFixture.TextAsync(context, "ok"));
+        await using RuntimeFixture runtime = new(model.Endpoint, settings => settings["OpenCode:KeepAliveSeconds"] = "30");
+        using CancellationTokenSource cancelled = new();
+        await runtime.CollectAsync(runtime.Request with
+        {
+            HistoryCheckpoint = "initial",
+            CommitAsync = _ =>
+            {
+                // The durable write succeeds just as the caller disconnects.
+                cancelled.Cancel();
+                return Task.FromResult<string?>("committed");
+            }
+        }, cancelled.Token);
+        Assert.Equal(0, runtime.Keeper.KeptCount);
+        Assert.Equal(1, runtime.Keeper.Snapshot().Retired["unhealthy"]);
+        runtime.AssertWorkspacesReleased();
     }
 
     [OpenCodeFact]
@@ -438,6 +466,94 @@ public sealed class OpenCodeKeepAliveTests
         await runtime.CollectAsync(Conversation("b")); // Evicted b requires a new process.
         Assert.Equal(2, runtime.Keeper.ReusedCount);
         Assert.Equal(2, runtime.Keeper.KeptCount);
+    }
+
+    [Theory]
+    [InlineData("key")]
+    [InlineData("mcp-url")]
+    [InlineData("mcp-type")]
+    [InlineData("tool")]
+    [InlineData("schema")]
+    [InlineData("arguments")]
+    public void Identity_CredentialsOrCapabilitiesChange_Differs(string change)
+    {
+        RuntimeTool tool = new("echo", "echo", "{}", (_, _) => Task.FromResult("ok"));
+        RuntimeInvocation invocation = Invocation("instructions") with
+        {
+            Tools = [tool],
+            Skills = [new("skill", "/packages/v1")],
+            McpServers = [new("server", "http://127.0.0.1:9/mcp", "http")]
+        };
+        OpenCodeLaunchSpec launch = new("opencode", ["acp"]);
+        string before = OpenCodeProcess.Identity(launch, invocation, []);
+        switch (change)
+        {
+            case "key": invocation.Profile.Model.ApiKey = "rotated-key"; break;
+            case "mcp-url": invocation = invocation with { McpServers = [new("server", "http://127.0.0.1:10/mcp", "http")] }; break;
+            case "mcp-type": invocation = invocation with { McpServers = [new("server", "http://127.0.0.1:9/mcp", "sse")] }; break;
+            case "tool": invocation = invocation with { Tools = [tool with { Name = "different" }] }; break;
+            case "schema": invocation = invocation with { Tools = [tool with { ParametersJsonSchema = "{\"type\":\"object\"}" }] }; break;
+            case "arguments": launch = launch with { Arguments = ["acp", "--port", "0"] }; break;
+        }
+        Assert.NotEqual(before, OpenCodeProcess.Identity(launch, invocation, []));
+    }
+
+    [OpenCodeFact]
+    public async Task IdentityChange_ThenRevert_DoesNotResurrectOldProcess()
+    {
+        await using ModelFixture model = await ModelFixture.StartAsync((context, _) => ModelFixture.TextAsync(context, "ok"));
+        await using RuntimeFixture runtime = new(model.Endpoint, settings => settings["OpenCode:KeepAliveSeconds"] = "30");
+        await runtime.CollectAsync(runtime.Request);
+        await runtime.CollectAsync(runtime.Request with { Instructions = "Changed instructions" });
+        Assert.Equal(1, runtime.Keeper.KeptCount);
+        await runtime.CollectAsync(runtime.Request);
+        Assert.Equal(0, runtime.Keeper.ReusedCount);
+        Assert.Equal(2, runtime.Keeper.Snapshot().Retired["identity_changed"]);
+        Assert.Single(Directory.GetDirectories(runtime.Root, "p-*", SearchOption.AllDirectories));
+    }
+
+    [OpenCodeFact]
+    public async Task CapacityLimit_EvictsLruAndHostShutdownIsIdempotent()
+    {
+        await using ModelFixture model = await ModelFixture.StartAsync((context, _) => ModelFixture.TextAsync(context, "ok"));
+        await using RuntimeFixture runtime = new(model.Endpoint, settings =>
+        {
+            settings["OpenCode:KeepAliveSeconds"] = "30";
+            settings["OpenCode:MaxKeptProcesses"] = "1";
+        });
+        await runtime.CollectAsync(runtime.Request);
+        await runtime.CollectAsync(runtime.Request with
+        {
+            Turn = new TurnContext { TenantId = "other-tenant", UserId = "user", TraceId = "capacity", ConversationId = "conversation" }
+        });
+        Assert.Equal(1, runtime.Keeper.KeptCount);
+        Assert.Equal(1, runtime.Keeper.Snapshot().Retired["capacity_lru"]);
+        Assert.Equal(0, runtime.Keeper.ReusedCount);
+        await runtime.Keeper.DisposeAsync();
+        await runtime.Keeper.DisposeAsync();
+        runtime.AssertWorkspacesReleased();
+    }
+
+    [OpenCodeFact]
+    public async Task DeadIdleProcess_IsRetiredInsteadOfReused()
+    {
+        await using ModelFixture model = await ModelFixture.StartAsync((context, _) => ModelFixture.TextAsync(context, "ok"));
+        await using RuntimeFixture runtime = new(model.Endpoint, settings => settings["OpenCode:KeepAliveSeconds"] = "30");
+        await runtime.CollectAsync(runtime.Request);
+        string owner = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(
+            "tenant\0user\0conversation\0test")));
+        OpenCodeOptions options = new() { Executable = Environment.GetEnvironmentVariable("OPENAGENT_TEST_OPENCODE")!, Arguments = ["acp"] };
+        string key = owner + "/" + OpenCodeProcess.Identity(OpenCodeProcess.Resolve(options), runtime.Request, [])
+            + "/" + await OpenCodeSkills.FingerprintAsync(null, CancellationToken.None);
+        OpenCodeAgentProcess agent = await runtime.Keeper.AcquireAsync(key, Path.Combine(runtime.Root, owner),
+            OpenCodeProcess.Resolve(options), runtime.Request, CancellationToken.None);
+        // Simulate a harness disconnect while idle without relying on OS-wide process matching.
+        await agent.Client.DisposeAsync();
+        await runtime.Keeper.ReleaseAsync(agent, healthy: true);
+        Assert.Equal(0, runtime.Keeper.KeptCount);
+        Assert.Equal(1, runtime.Keeper.Snapshot().Retired["dead"]);
+        await runtime.CollectAsync(runtime.Request);
+        Assert.Equal(1, runtime.Keeper.ReusedCount); // only the explicit acquisition above
     }
 
     private static RuntimeInvocation Invocation(string instructions) => new(new AgentRuntimeProfile

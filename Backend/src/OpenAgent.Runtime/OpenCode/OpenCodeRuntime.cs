@@ -267,7 +267,7 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
             // 失败、取消或超限的进程立即销毁；只有完整成功的轮次才归还保活池。
             if (agent is not null)
             {
-                await keeper.ReleaseAsync(agent, completed).ConfigureAwait(false);
+                await keeper.ReleaseAsync(agent, completed && !cancellationToken.IsCancellationRequested).ConfigureAwait(false);
             }
             // 每轮一行分段计时：判别冷启动 / ACP 会话 / 模型首 token / 流式 / 收尾的延迟归属。
             long closeAt = clock.ElapsedMilliseconds;
