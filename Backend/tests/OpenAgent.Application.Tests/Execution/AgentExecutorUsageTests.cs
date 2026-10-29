@@ -383,6 +383,7 @@ public class AgentExecutorUsageTests
         InMemoryConversationStore store) : IAsyncDisposable
     {
         internal RuntimeAgentExecutor Executor { get; } = executor;
+        internal AsyncServiceScope CreateScope() => serviceProvider.CreateAsyncScope();
         internal InMemoryConversationStore Store { get; } = store;
 
         public async ValueTask DisposeAsync()

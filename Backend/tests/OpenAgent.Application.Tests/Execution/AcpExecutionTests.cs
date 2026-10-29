@@ -94,7 +94,10 @@ public sealed class AcpExecutionTests
         };
         await using (IAsyncEnumerator<AgentStreamEvent> stream = runtime.Executor.ExecuteStreamingAsync(Request, User, CancellationToken.None).GetAsyncEnumerator())
         {
-            Assert.True(await stream.MoveNextAsync());
+            do
+            {
+                Assert.True(await stream.MoveNextAsync());
+            } while (stream.Current.Type == AgentStreamEventType.ExecutionStatus);
         }
         ConversationRecord record = (await runtime.Store.GetRecordAsync("tenant-1", Request.ConversationId!))!;
         Assert.Equal(ConversationStatus.Cancelled, record.Status);

@@ -55,6 +55,10 @@ public enum AgentErrorCode : int
 
     Conflict = 8101,
 
+    RuntimeQueueFull = 8201,
+    RuntimeQueueTimeout = 8202,
+    RuntimeExecutionTimeout = 8203,
+
     InternalError = 9001,
     PipelineExecutionFailed = 9002,
     ConfigurationError = 9003,

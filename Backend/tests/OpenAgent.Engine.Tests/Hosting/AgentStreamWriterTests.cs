@@ -81,6 +81,45 @@ public class AgentStreamWriterTests
         Assert.Contains("\"content\":\"sunny\"", payload, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task WriteSseStreamAsync_PreStreamRejection_DoesNotCommitSseOrConversation()
+    {
+        DefaultHttpContext context = new();
+        context.Response.Body = new MemoryStream();
+        await Assert.ThrowsAsync<OpenAgent.Contracts.Runtime.RuntimeAdmissionException>(() => AgentStreamWriter.WriteSseStreamAsync(
+            context, Rejected(), "trace", "conversation", NullLogger.Instance, default));
+        Assert.Equal(0, context.Response.Body.Length);
+        Assert.Null(context.Response.ContentType);
+    }
+
+    [Fact]
+    public async Task WriteSseStreamAsync_QueueStatus_WritesAdditionalEventWithoutContent()
+    {
+        DefaultHttpContext context = new();
+        context.Response.Body = new MemoryStream();
+        await AgentStreamWriter.WriteSseStreamAsync(context, Status(), "trace", "conversation", NullLogger.Instance, default);
+        string body = await ReadBodyAsync(context);
+        Assert.Contains("event: execution_status", body);
+        Assert.Contains("\"status\":\"queued\"", body);
+        Assert.Contains("\"status\":\"started\"", body);
+        Assert.Contains("\"queueMilliseconds\":42", body);
+        Assert.DoesNotContain("event: content", body);
+    }
+
+    private static async IAsyncEnumerable<AgentStreamEvent> Status()
+    {
+        yield return new AgentStreamEvent { Type = AgentStreamEventType.ExecutionStatus, Status = "queued" };
+        await Task.Yield();
+        yield return new AgentStreamEvent { Type = AgentStreamEventType.ExecutionStatus, Status = "started", QueueMilliseconds = 42 };
+    }
+
+    private static async IAsyncEnumerable<AgentStreamEvent> Rejected()
+    {
+        await Task.Yield();
+        await Task.FromException(new OpenAgent.Contracts.Runtime.RuntimeAdmissionException(AgentErrorCode.RuntimeQueueFull, "busy", 1));
+        yield break;
+    }
+
     private static async IAsyncEnumerable<AgentStreamEvent> ToolResultEvents()
     {
         yield return new AgentStreamEvent

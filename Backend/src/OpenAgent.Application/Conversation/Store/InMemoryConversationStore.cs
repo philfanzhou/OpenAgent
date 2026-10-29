@@ -39,6 +39,18 @@ public sealed class InMemoryConversationStore : IConversationStore
         return Task.FromResult<IReadOnlyList<ConversationMessage>>(result);
     }
 
+    public Task<ConversationMetadata?> GetMetadataAsync(
+        string tenantId, string conversationId, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!_store.TryGetValue(BuildKey(tenantId, conversationId), out ConversationRecord? record))
+            return Task.FromResult<ConversationMetadata?>(null);
+        lock (record)
+        {
+            return Task.FromResult<ConversationMetadata?>(new(record.UserId, record.AgentId, record.IsDeletedByUser));
+        }
+    }
+
     public Task<ConversationRecord?> GetRecordAsync(
         string tenantId, string conversationId, CancellationToken cancellationToken = default)
     {

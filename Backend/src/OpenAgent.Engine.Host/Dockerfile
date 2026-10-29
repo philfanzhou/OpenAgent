@@ -30,6 +30,18 @@ USER $APP_UID
 RUN OPENAGENT_TEST_OPENCODE=/usr/local/bin/opencode dotnet test Backend/tests/OpenAgent.Runtime.Tests --no-restore --nologo
 RUN OPENAGENT_TEST_OPENCODE=/usr/local/bin/opencode dotnet test Backend/tests/OpenAgent.Engine.Tests --no-restore --nologo --filter FullyQualifiedName~OpenCodeSseTests
 
+# Explicit opt-in capacity target; the production image does not install ps or run load tests.
+FROM runtime-tests AS capacity-tests
+USER root
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends procps \
+    && rm -rf /var/lib/apt/lists/*
+USER $APP_UID
+ENV OPENAGENT_TEST_OPENCODE=/usr/local/bin/opencode \
+    OPENAGENT_RUN_CAPACITY=1 \
+    OPENAGENT_CAPACITY_OUTPUT=/tmp/openagent-capacity.json
+CMD ["dotnet", "test", "Backend/tests/OpenAgent.Engine.Tests", "--no-build", "--nologo", "--filter", "FullyQualifiedName~OpenCodeCapacityTests"]
+
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 ARG OPENCODE_VERSION=latest
 WORKDIR /app

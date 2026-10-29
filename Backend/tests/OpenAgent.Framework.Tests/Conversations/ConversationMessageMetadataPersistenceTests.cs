@@ -21,6 +21,22 @@ namespace OpenAgent.Framework.Tests.Conversations;
 /// </summary>
 public sealed class ConversationMessageMetadataPersistenceTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task EfCoreStore_GetMetadata_ProjectsRoutingIdentityAndScopesTenant(bool deleted)
+    {
+        ContextFactory factory = new($"routing-{Guid.NewGuid():N}");
+        EfCoreConversationStore store = CreateStore(factory);
+        await store.CreateAsync(new ConversationRecord
+        {
+            TenantId = "tenant-1", ConversationId = "conversation-1", UserId = "user-1",
+            AgentId = "bound-agent", IsDeletedByUser = deleted
+        });
+        Assert.Equal(new ConversationMetadata("user-1", "bound-agent", deleted), await store.GetMetadataAsync("tenant-1", "conversation-1"));
+        Assert.Null(await store.GetMetadataAsync("other-tenant", "conversation-1"));
+    }
+
     [Fact]
     public async Task EfCoreStore_WriteThenRead_PersistsNewFormAndDeepEquals()
     {

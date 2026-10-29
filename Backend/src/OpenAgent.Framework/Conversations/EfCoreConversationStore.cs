@@ -71,6 +71,16 @@ internal sealed class EfCoreConversationStore(
         return await ToMessagesAsync(context, entities, logger, cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task<ConversationMetadata?> GetMetadataAsync(
+        string tenantId, string conversationId, CancellationToken cancellationToken = default)
+    {
+        await using OpenAgentDbContext context = await contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        return await context.Conversations.AsNoTracking()
+            .Where(item => item.ConversationId == conversationId && item.TenantId == tenantId)
+            .Select(item => new ConversationMetadata(item.UserId, item.AgentId, item.IsDeletedByUser))
+            .SingleOrDefaultAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task<ConversationRecord?> GetRecordAsync(
         string tenantId,
         string conversationId,

@@ -43,6 +43,11 @@ internal sealed class WriteThroughConversationStore(
         return messages;
     }
 
+    // Pre-admission routing must not deserialize a cached full conversation or warm history.
+    public Task<ConversationMetadata?> GetMetadataAsync(
+        string tenantId, string conversationId, CancellationToken cancellationToken = default) =>
+        durable.GetMetadataAsync(tenantId, conversationId, cancellationToken);
+
     public async Task<ConversationRecord?> GetRecordAsync(
         string tenantId, string conversationId, CancellationToken cancellationToken = default)
     {
