@@ -1,16 +1,12 @@
 using System.Security.Cryptography;
 using System.Text.Json;
 using Microsoft.Extensions.AI;
-using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Configuration;
-using OpenAgent.Contracts.Execution;
 using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Runtime;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Contracts.Skills;
 using OpenAgent.Contracts.Capabilities;
-using OpenAgent.Capabilities.Files.Requests;
-using OpenAgent.Capabilities.Integrations.Runner;
 using OpenAgent.Capabilities.Security;
 using OpenAgent.Application.Tooling.Abstractions;
 
@@ -18,19 +14,15 @@ namespace OpenAgent.Application.Capabilities.Skill;
 
 /// <summary>
 /// Materializes configured Agent Skills packages into cached directories and
-/// exposes scoped platform tools for skill resources and scripts. The package
-/// bytes remain in object storage; the process-level cache holds verified
-/// copies keyed by content hash for the lifetime of the process, and turns
-/// hold leases so active packages are never evicted.
+/// exposes scoped platform tools for skill resources. The package bytes remain
+/// in object storage; the process-level cache holds verified copies keyed by
+/// content hash for the lifetime of the process, and turns hold leases so
+/// active packages are never evicted.
 /// </summary>
 internal sealed class AgentSkillsProviderFactory(
     IFileObjectStore objectStore,
     ISkillCatalog catalog,
     AgentAuthorizationGate authorization,
-    ICodeExecutor executor,
-    IFileAssetService files,
-    FileAssetExecutionContext fileContext,
-    IOptions<CodeExecutionOptions> codeOptions,
     SkillPackageCache? cache = null) : IAgentFeatureFactory
 {
     private readonly SkillPackageCache _cache = cache ?? SkillPackageCache.Shared;
@@ -57,7 +49,6 @@ internal sealed class AgentSkillsProviderFactory(
         CancellationToken cancellationToken)
     {
         var skills = new List<RuntimeSkill>();
-        var scriptSkillNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         List<SkillPackageCache.Lease> leases = [];
 
         IReadOnlyList<SkillInstanceConfig> instances = await ResolveInstancesAsync(
@@ -90,11 +81,6 @@ internal sealed class AgentSkillsProviderFactory(
                 cancellationToken).ConfigureAwait(false);
             leases.Add(lease);
             skills.Add(new RuntimeSkill(directoryName, lease.Path) { ContentHash = instance.Sha256 });
-
-            if (instance.ScriptExecutionEnabled && !string.IsNullOrWhiteSpace(instance.Name))
-            {
-                scriptSkillNames.Add(instance.Name);
-            }
         }
 
         if (skills.Count == 0)
@@ -109,11 +95,6 @@ internal sealed class AgentSkillsProviderFactory(
         Dictionary<string, string> roots = skills.ToDictionary(
             skill => skill.Name, skill => skill.Path, StringComparer.Ordinal);
         List<AITool> tools = [CreateSkillFileReader(roots)];
-        if (IsScriptExecutionEnabled(config, fileContext.Scope) && scriptSkillNames.Count > 0)
-        {
-            var runner = new SkillScriptRunner(executor, files, fileContext, authorization, codeOptions);
-            tools.Add(CreateScriptRunner(runner, roots, scriptSkillNames, agentId, user));
-        }
 
         return new AgentSkillsRuntime(skills, tools, leases);
     }
@@ -127,53 +108,12 @@ internal sealed class AgentSkillsProviderFactory(
             name: "read_skill_file",
             description: "Read a file bundled with an enabled agent skill. 'skill' is the skill name; 'path' is relative to the skill package root.");
 
-    /// <summary>
-    /// Skill 脚本仍经隔离 Runner 执行，沿用 execute_code 的沙箱与产物管线；
-    /// 仅显式开启 ScriptExecutionEnabled 的 skill 可运行脚本。可选参数必须
-    /// 用带默认值的方法声明（lambda 无法表达），否则 AIFunctionFactory 视为必填。
-    /// </summary>
-    private static AIFunction CreateScriptRunner(
-        SkillScriptRunner runner,
-        Dictionary<string, string> roots,
-        HashSet<string> scriptSkillNames,
-        string agentId,
-        IAgentUserContext user) =>
-        AIFunctionFactory.Create(new SkillScriptTarget(runner, roots, scriptSkillNames, agentId, user).RunAsync,
-            name: "run_skill_script",
-            description: "Run a script bundled with an enabled agent skill through the isolated Runner. 'skill' is the skill name; 'script' is the script path relative to the skill package; 'arguments' is an optional JSON object passed to the script.");
-
     private sealed class SkillFileTarget(Dictionary<string, string> roots)
     {
         public async Task<string?> ReadAsync(string skill, string path, CancellationToken cancellationToken = default)
         {
             ResolveInPackage(roots, skill, path, out string full);
             return await File.ReadAllTextAsync(full, cancellationToken).ConfigureAwait(false);
-        }
-    }
-
-    private sealed class SkillScriptTarget(
-        SkillScriptRunner runner,
-        Dictionary<string, string> roots,
-        HashSet<string> scriptSkillNames,
-        string agentId,
-        IAgentUserContext user)
-    {
-        public async Task<object?> RunAsync(
-            string skill,
-            string script,
-            JsonElement? arguments = null,
-            CancellationToken cancellationToken = default)
-        {
-            if (!scriptSkillNames.Contains(skill))
-            {
-                throw new InvalidOperationException($"Skill '{skill}' does not expose script execution.");
-            }
-            if (!AgentSkillPackageArchive.IsExecutableScript(script))
-            {
-                throw new InvalidOperationException("Skill script extension is not executable.");
-            }
-            ResolveInPackage(roots, skill, script, out string full);
-            return await runner.RunAsync(agentId, user, skill, full, arguments, cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -192,17 +132,6 @@ internal sealed class AgentSkillsProviderFactory(
         }
         return root;
     }
-
-    /// <summary>
-    /// Script execution needs the same double opt-in as execute_code — the host
-    /// Runner configuration and the Agent's CodeExecution binding — plus an
-    /// identified conversation so artifacts can be registered as FileAssets.
-    /// The per-instance ScriptExecutionEnabled flag is applied on top.
-    /// </summary>
-    private bool IsScriptExecutionEnabled(AgentConfig config, FileAssetScope? scope) =>
-        codeOptions.Value.Enabled
-        && config.CodeExecution?.Enabled == true
-        && scope is { TenantId: not null and not "", UserId: not null and not "", ConversationId: not null and not "" };
 
     private static bool IsEnabledObjectPackage(SkillInstanceConfig instance) =>
         instance.Enabled

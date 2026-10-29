@@ -32,7 +32,7 @@ public class EngineMeterTests
 
         using (EngineMeter.EngineExecutionMeasurement execution = EngineMeter.StartAgentCall("STREAM"))
         {
-            EngineMeter.RecordCapabilityCall("run_skill_script");
+            EngineMeter.RecordCapabilityCall("read_skill_file");
             EngineMeter.RecordCapabilityCall("customer_lookup");
             execution.Complete(new TokenUsage
             {

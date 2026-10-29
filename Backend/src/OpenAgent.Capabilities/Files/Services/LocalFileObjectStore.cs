@@ -2,9 +2,12 @@ using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
 
-namespace OpenAgent.Engine.Host.Files;
+namespace OpenAgent.Capabilities.Files.Services;
 
-/// <summary>本机开发的持久化对象存储；元数据仍由 PostgreSQL 管理。</summary>
+/// <summary>
+/// 未配置对象存储时的本地磁盘缺省实现；元数据仍由仓储（PostgreSQL）管理。
+/// 生产配置 FileAssets:ObjectStorage 后由 Engine.Host 替换为 S3 实现。
+/// </summary>
 internal sealed class LocalFileObjectStore : IFileObjectStore
 {
     private readonly string _root;
@@ -61,9 +64,6 @@ internal sealed class LocalFileObjectStore : IFileObjectStore
         File.Delete(Resolve(objectKey));
         return Task.CompletedTask;
     }
-
-    public Task<FileObjectAccessReference> CreateReadUrlAsync(string objectKey, DateTimeOffset expiresAt, CancellationToken cancellationToken) =>
-        throw new NotSupportedException("Use the authenticated platform download endpoint for local files.");
 
     private string Resolve(string key)
     {

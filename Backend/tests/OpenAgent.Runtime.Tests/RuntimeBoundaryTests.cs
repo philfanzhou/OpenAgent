@@ -63,6 +63,18 @@ public sealed class RuntimeBoundaryTests
             Assert.DoesNotContain("{env:PATH}", launch.Environment["OPENCODE_CONFIG_CONTENT"]);
             Assert.Contains("{env:OPENAGENT_MODEL_API_KEY}", launch.Environment["OPENCODE_CONFIG_CONTENT"]);
             Assert.StartsWith(root, launch.Environment["HOME"]);
+            Assert.Equal(launch.Environment["HOME"], launch.Environment["USERPROFILE"]);
+            Assert.Equal(launch.Environment["TMPDIR"], launch.Environment["TEMP"]);
+            foreach (string variable in new[] { "APPDATA", "LOCALAPPDATA", "TMP", "TEMP", "TMPDIR", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME" })
+            {
+                Assert.StartsWith(root + Path.DirectorySeparatorChar, launch.Environment[variable]);
+                Assert.True(Directory.Exists(launch.Environment[variable]));
+            }
+            foreach (string variable in new[] { "OPENCODE_DISABLE_EXTERNAL_SKILLS", "OPENCODE_DISABLE_CLAUDE_CODE", "OPENCODE_DISABLE_PROJECT_CONFIG", "OPENCODE_DISABLE_DEFAULT_PLUGINS", "OPENCODE_DISABLE_MODELS_FETCH", "OPENCODE_DISABLE_LSP_DOWNLOAD" })
+            {
+                Assert.Equal("true", launch.Environment[variable]);
+            }
+            Assert.False(launch.Environment.ContainsKey("OPENCODE_TEST_HOME"));
             // PATHEXT/COMSPEC 属于可执行解析基础变量，随白名单传入；商店别名目录从子 PATH 剔除。
             if (Environment.GetEnvironmentVariable("PATHEXT") is { } pathExt)
             {

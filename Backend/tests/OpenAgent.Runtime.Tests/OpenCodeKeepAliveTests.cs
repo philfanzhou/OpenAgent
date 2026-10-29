@@ -10,6 +10,7 @@ using Xunit;
 namespace OpenAgent.Runtime.Tests;
 
 /// <summary>进程保活复用：追问轮次命中同会话、同启动身份的空闲进程，冷启动只在窗口外支付。</summary>
+[Collection(RealOpenCodeCollection.Name)]
 public sealed class OpenCodeKeepAliveTests
 {
     [Fact]
@@ -340,6 +341,71 @@ public sealed class OpenCodeKeepAliveTests
             });
         }
         Assert.Equal(1, runtime.Keeper.ReusedCount);
+    }
+
+    [OpenCodeFact]
+    public async Task FollowUpAttachments_UpdateFixedWorkspaceForNativeTools()
+    {
+        int step = 0;
+        RuntimeFixture? fixture = null;
+        await using ModelFixture model = await ModelFixture.StartAsync(async (context, request) =>
+        {
+            string workspace = Assert.Single(Directory.GetDirectories(fixture!.Root, "workspace", SearchOption.AllDirectories));
+            Assert.Equal("input-" + ++step, await File.ReadAllTextAsync(Path.Combine(workspace, "uploads", "attachment-1.bin")));
+            await ModelFixture.TextAsync(context, "ok");
+        });
+        await using RuntimeFixture runtime = new(model.Endpoint, settings => settings["OpenCode:KeepAliveSeconds"] = "120");
+        fixture = runtime;
+        for (int turn = 1; turn <= 2; turn++)
+        {
+            await runtime.CollectAsync(runtime.Request with
+            {
+                HistoryCheckpoint = "checkpoint-" + (turn - 1),
+                CommitAsync = _ => Task.FromResult<string?>("checkpoint-" + turn),
+                Messages = [new("user", "Read the attachment.", [new("text/plain", System.Text.Encoding.UTF8.GetBytes("input-" + turn))])]
+            });
+        }
+        Assert.Equal(2, step);
+        Assert.Equal(1, runtime.Keeper.ReusedCount);
+    }
+
+    [OpenCodeUnixTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FollowUpAttachments_RejectWorkspaceLinksWithoutWritingOutside(bool directoryLink)
+    {
+        string outside = Path.Combine(Path.GetTempPath(), "acp-attachment-canary-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(outside);
+        string canary = Path.Combine(outside, "canary.txt");
+        await File.WriteAllTextAsync(canary, "unchanged");
+        try
+        {
+            await using ModelFixture model = await ModelFixture.StartAsync((context, request) => ModelFixture.TextAsync(context, "ok"));
+            await using RuntimeFixture runtime = new(model.Endpoint, settings => settings["OpenCode:KeepAliveSeconds"] = "120");
+            await runtime.CollectAsync(runtime.Request);
+            string workspace = Assert.Single(Directory.GetDirectories(runtime.Root, "workspace", SearchOption.AllDirectories));
+            string uploads = Path.Combine(workspace, "uploads");
+            if (directoryLink)
+            {
+                Directory.CreateSymbolicLink(uploads, outside);
+            }
+            else
+            {
+                OpenCodeWorkspace.CreatePrivateDirectory(uploads);
+                File.CreateSymbolicLink(Path.Combine(uploads, "attachment-1.bin"), canary);
+            }
+            await Assert.ThrowsAsync<AgentException>(() => runtime.CollectAsync(runtime.Request with
+            {
+                Messages = [new("user", "new input", [new("text/plain", System.Text.Encoding.UTF8.GetBytes("new data"))])]
+            }));
+            Assert.Equal("unchanged", await File.ReadAllTextAsync(canary));
+            Assert.False(File.Exists(Path.Combine(outside, "attachment-1.bin")));
+            Assert.Equal(0, runtime.Keeper.KeptCount);
+        }
+        finally
+        {
+            Directory.Delete(outside, recursive: true);
+        }
     }
 
     private static RuntimeInvocation Invocation(string instructions) => new(new AgentRuntimeProfile

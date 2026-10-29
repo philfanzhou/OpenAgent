@@ -7,9 +7,10 @@ RUN npm install --prefix /opt/opencode --ignore-scripts --no-audit --no-fund ope
 
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
-# libfontconfig1：SkiaSharp 的 libSkiaSharp.so 依赖（runtime-tests 目标在容器内跑测试）。
+ENV NUGET_PACKAGES=/opt/nuget/packages
+# libfontconfig1 supplies SkiaSharp; python3 supports real harness execution regressions.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libfontconfig1 \
+    && apt-get install -y --no-install-recommends libfontconfig1 python3 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY Backend/ Backend/
@@ -22,6 +23,10 @@ RUN dotnet publish Backend/src/OpenAgent.Engine.Host/OpenAgent.Engine.Host.cspro
 # 显式目标：真实 Linux OpenCode + 本地模型/工具链路，不使用外部模型账户。
 FROM build AS runtime-tests
 COPY --from=opencode /opencode /usr/local/bin/opencode
+COPY --from=opencode /usr/local/bin/node /usr/local/bin/node
+RUN chown -R ${APP_UID}:${APP_UID} /src /home/app
+ENV HOME=/home/app
+USER $APP_UID
 RUN OPENAGENT_TEST_OPENCODE=/usr/local/bin/opencode dotnet test Backend/tests/OpenAgent.Runtime.Tests --no-restore --nologo
 RUN OPENAGENT_TEST_OPENCODE=/usr/local/bin/opencode dotnet test Backend/tests/OpenAgent.Engine.Tests --no-restore --nologo --filter FullyQualifiedName~OpenCodeSseTests
 
@@ -43,5 +48,11 @@ LABEL org.opencontainers.image.title="OpenAgent Engine" \
       io.openagent.opencode-version="${OPENCODE_VERSION}"
 
 ENV ASPNETCORE_URLS=http://+:5208
+ENV HOME=/home/app \
+    OpenCode__WorkspaceRoot=/var/lib/openagent/opencode
+RUN mkdir -p /home/app/.aspnet/DataProtection-Keys /var/lib/openagent/opencode \
+    && chown -R ${APP_UID}:${APP_UID} /home/app /var/lib/openagent \
+    && chmod 700 /home/app /var/lib/openagent/opencode
+USER $APP_UID
 EXPOSE 5208
 ENTRYPOINT ["dotnet", "OpenAgent.Engine.Host.dll"]

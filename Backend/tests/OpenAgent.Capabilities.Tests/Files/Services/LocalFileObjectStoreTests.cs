@@ -1,9 +1,9 @@
 using System.Text;
 using OpenAgent.Contracts.Files;
-using OpenAgent.Engine.Host.Files;
+using OpenAgent.Capabilities.Files.Services;
 using Xunit;
 
-namespace OpenAgent.Engine.Tests.Hosting;
+namespace OpenAgent.Capabilities.Tests.Files;
 
 public sealed class LocalFileObjectStoreTests
 {

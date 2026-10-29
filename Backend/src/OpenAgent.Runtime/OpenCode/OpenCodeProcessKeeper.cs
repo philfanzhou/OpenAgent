@@ -73,9 +73,10 @@ internal sealed class OpenCodeProcessKeeper : IAsyncDisposable
         try
         {
             string workspace = Path.Combine(home, "workspace");
-            Directory.CreateDirectory(workspace);
+            OpenCodeWorkspace.CreatePrivateDirectory(home);
+            OpenCodeWorkspace.CreatePrivateDirectory(workspace);
             // 工作区持有独立副本：平台的 Skill 缓存租约在轮次结束后即可释放。
-            OpenCodeSkills.Materialize(workspace, invocation.Skills);
+            OpenCodeSkills.Materialize(workspace, invocation.Skills, ct);
             process = AcpProcess.Start(OpenCodeProcess.Create(launch, invocation, _options.AllowedNativeTools, home));
             client = new AcpClient(process.Transport, options: new()
             {

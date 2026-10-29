@@ -7,7 +7,7 @@
 | 项 | 约定 |
 |----|------|
 | 风格 | Minimal API + `TypedResults`，`MapGroup` + `MapXxx` 扩展方法组织；不新增 Controller |
-| 版本前缀 | `/api/v1/...`（所有业务端点，含 Runner） |
+| 版本前缀 | `/api/v1/...`（所有业务端点） |
 | 成功响应 | 直接返回业务 DTO（camelCase JSON），不做 `{code,message,data}` 信封 |
 | 错误响应 | 统一 RFC 7807 ProblemDetails（见下），`application/problem+json` |
 | 文档 | 每个端点建议 `.WithName`（operationId，全服务唯一）+ `.WithTags`（分组）；不要求更多元数据 |
@@ -63,7 +63,6 @@ private static async Task<Results<Ok<ConversationRecord>, NotFound, ForbidHttpRe
 | 领域错误 | 抛 `AgentException(AgentErrorCode.X, message)`，由全局中间件转换 |
 | 中间件内（无 IResult） | `AgentProblemDetails.WriteAsync(context, problem)` |
 | Router 路由错误 | `TypedResults.Problem(RouterProblem.From(exception, context))` |
-| Runner（轻依赖） | 本地 `RunnerProblem.Create` 复刻同一契约 |
 
 错误码段位：1xxx Skill / 2xxx MCP / 3xxx RAG / 4xxx LLM / 5xxx Tenant / 6xxx Audience /
 7xxx HumanApproval / 8xxx 请求与通用（含 `NotFound=8004`、`AuthenticationRequired=8005`、
@@ -95,7 +94,6 @@ private static async Task<Results<Ok<ConversationRecord>, NotFound, ForbidHttpRe
 |------|------------------|------|
 | Engine.Host | `/swagger` | 主 API 文档（含 dev-only 管理端点） |
 | Router | `/swagger` | 网关本地端点 + 转发端点 |
-| Runner | `/swagger` | 沙箱执行 sidecar（内联配置，不依赖 Engine/Hosting） |
 
 响应 schema 由端点的 TypedResults 返回类型自动推导，端点代码不含任何 Swagger 专属元数据
 （`WithName`/`WithTags` 除外，它们同时服务于路由标识与分组）。认证统一用 Bearer 安全定义

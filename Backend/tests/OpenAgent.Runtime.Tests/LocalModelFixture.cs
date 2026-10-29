@@ -13,6 +13,13 @@ using Xunit;
 
 namespace OpenAgent.Runtime.Tests;
 
+// Independent cold harness fixtures compete for CPU and bootstrap work; capacity tests drive their own concurrency.
+[CollectionDefinition(Name, DisableParallelization = true)]
+public sealed class RealOpenCodeCollection
+{
+    public const string Name = "Real OpenCode";
+}
+
 internal sealed class ModelFixture(WebApplication app, ConcurrentQueue<Exception> failures) : IAsyncDisposable
 {
     internal string Endpoint => app.Services.GetRequiredService<IServer>()
@@ -88,6 +95,50 @@ internal class OpenCodeFactAttribute : FactAttribute
         if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENAGENT_TEST_OPENCODE")))
         {
             Skip = "Set OPENAGENT_TEST_OPENCODE to the OpenCode executable for real harness tests.";
+        }
+    }
+}
+
+internal sealed class OpenCodeUnixFactAttribute : FactAttribute
+{
+    public OpenCodeUnixFactAttribute()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Skip = "Unix filesystem permissions/link test; Windows requires separate service-account ACL validation.";
+        }
+    }
+}
+
+internal sealed class OpenCodeUnixTheoryAttribute : TheoryAttribute
+{
+    public OpenCodeUnixTheoryAttribute()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Skip = "Unix symbolic-link test; Windows reparse points require separate environment validation.";
+        }
+    }
+}
+
+internal sealed class OpenCodeLinuxFactAttribute : OpenCodeFactAttribute
+{
+    public OpenCodeLinuxFactAttribute()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            Skip = "Linux-only real harness process-view boundary probe.";
+        }
+    }
+}
+
+internal sealed class OpenCodeLinuxTheoryAttribute : TheoryAttribute
+{
+    public OpenCodeLinuxTheoryAttribute()
+    {
+        if (!OperatingSystem.IsLinux() || string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENAGENT_TEST_OPENCODE")))
+        {
+            Skip = "Linux real harness execution requires OPENAGENT_TEST_OPENCODE, Node and Python.";
         }
     }
 }

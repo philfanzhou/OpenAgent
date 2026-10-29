@@ -17,9 +17,6 @@ public sealed class AgentExecutionOptions
     /// <summary>读类工具（read_file/list_files/search_knowledge_base 等）结果预算。</summary>
     public int ReadToolResultCharBudget { get; set; } = 80_000;
 
-    /// <summary>执行类工具（execute_code/run_skill_script）结果预算。</summary>
-    public int ExecutionToolResultCharBudget { get; set; } = 40_000;
-
     /// <summary>其余工具结果的默认预算。</summary>
     public int DefaultToolResultCharBudget { get; set; } = 60_000;
 }

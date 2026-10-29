@@ -23,6 +23,4 @@ public sealed class FileAssetOptions
     /// <summary>历史重放时仍内联图片的最近用户轮次数；更早轮次的图片只保留文件描述符，
     /// 避免每次请求重复携带全部历史图片 token。0 表示历史图片一律不内联。</summary>
     public int InlineImageHistoryTurns { get; init; } = 2;
-    public long MaxArchiveInputBytes { get; init; } = 64 * 1024 * 1024;
-    public int MaxArchiveFileCount { get; init; } = 100;
 }

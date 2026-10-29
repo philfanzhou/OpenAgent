@@ -125,6 +125,8 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
         string owner = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(
             invocation.Turn.TenantId + "\0" + invocation.Turn.UserId + "\0" + conversation + "\0" + invocation.Profile.AgentId)));
         string parent = Path.Combine(settings.WorkspaceRoot, owner);
+        OpenCodeWorkspace.CreatePrivateDirectory(settings.WorkspaceRoot);
+        OpenCodeWorkspace.CreatePrivateDirectory(parent);
         // 复用键 = 会话归属 + 启动身份：追问轮次命中保活进程，冷启动只在空闲窗口外支付。
         string leaseKey = owner + "/" + OpenCodeProcess.Identity(Launch, invocation, settings.AllowedNativeTools)
             + "/" + await OpenCodeSkills.FingerprintAsync(invocation.Skills, cancellationToken).ConfigureAwait(false);
@@ -138,6 +140,7 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
         try
         {
             agent = await keeper.AcquireAsync(leaseKey, parent, Launch, invocation, cancellationToken).ConfigureAwait(false);
+            MaterializeAttachments(agent.Workspace, invocation.Messages);
             processAt = clock.ElapsedMilliseconds;
             // 宿主共享桥只按本轮 bearer 注册/吊销工具集，不再每轮启动站点；端点长期存活，
             // 保活复用也不会给 harness 留下死端点。
@@ -298,6 +301,38 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
 
     private static int Clamp(long value) => value > int.MaxValue ? int.MaxValue : value < 0 ? 0 : (int)value;
 
+    /// <summary>
+    /// 附件与内联注入的同一份字节（已按内联管线降采样）一并更新到进程工作区
+    /// uploads/，模型可经 harness 原生 read/bash 按文件系统精读；
+    /// 目录随进程工作区统一回收。
+    /// </summary>
+    private static void MaterializeAttachments(string workspace, IReadOnlyList<RuntimeMessage> messages)
+    {
+        int index = 0;
+        foreach (RuntimeMessage message in messages)
+        {
+            foreach (RuntimeAttachment attachment in message.Attachments ?? [])
+            {
+                index++;
+                string path = Path.Combine(workspace, "uploads", $"attachment-{index}{ExtensionFor(attachment.MediaType)}");
+                OpenCodeWorkspace.CreatePrivateDirectory(Path.GetDirectoryName(path)!);
+                if (File.Exists(path))
+                {
+                    OpenCodeWorkspace.RejectLink(new FileInfo(path));
+                }
+                File.WriteAllBytes(path, attachment.Data.Span);
+            }
+        }
+    }
+
+    private static string ExtensionFor(string mediaType) => mediaType.Split(';', 2)[0].Trim().ToLowerInvariant() switch
+    {
+        "image/png" => ".png",
+        "image/jpeg" => ".jpg",
+        "image/webp" => ".webp",
+        _ => ".bin"
+    };
+
     private static ContentBlock[] BuildPrompt(IReadOnlyList<RuntimeMessage> messages, int maxCharacters)
     {
         if (messages.Count == 0)
@@ -319,15 +354,22 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
         }
         content.Add(new TextContent(current.Content));
         // 历史图片已由平台按窗口筛选；保留其数据，才能继续讨论上一轮上传的图片。
+        int attachmentCount = 0;
         foreach (RuntimeMessage message in messages)
         {
             foreach (RuntimeAttachment attachment in message.Attachments ?? [])
             {
+                attachmentCount++;
                 if (attachment.MediaType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
                 {
                     content.Add(new ImageContent(Convert.ToBase64String(attachment.Data.Span), attachment.MediaType));
                 }
             }
+        }
+        if (attachmentCount > 0)
+        {
+            content.Add(new TextContent(
+                $"Attachments are also saved as files under uploads/ in the workspace ({attachmentCount} attachment(s)) for closer inspection."));
         }
         return content.ToArray();
     }
