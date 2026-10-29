@@ -9,7 +9,7 @@ RuntimeAgentExecutor 提供同步 ExecuteAsync 和流式 ExecuteStreamingAsync�
 请求流程：
 
 1. Engine.Host 通过 Engine/Hosting 认证/错误管道、AgentUserContextMiddleware 与 EngineAdmissionMiddleware 建立身份并执行入口治理。
-2. ConversationAgentResolver 选择 Agent，IAgentRuntimeResolver 获取授权后的 Agent 配置和模型，创建 TurnContext。
+2. ConversationAgentResolver 仅从会话路由元数据选择 Agent（不读取完整消息），IAgentRuntimeResolver 获取授权后的 Agent 配置和模型，创建 TurnContext。
 3. 授权后进入 Host 单例 TurnAdmission 的有界准入；等待期间不持有会话锁、不加载消息历史、不解析附件或准备工具。获准后，带附件时先确保会话，再通过 FileAssetRequestResolver 校验和解析文件。
 4. RuntimePreparation 准备平台历史、能力、MCP 与 Skill；RuntimeAgentExecutor 调用 IAgentRuntimeDriver。生产驱动通过 SDK 启动 OpenCode ACP，不调用 AIAgent.RunAsync。
 5. AcpEventMapper 转换正文、reasoning、工具调用/结果与计划事件；平台保存会话成功后发出终态。ACP 未提供本轮计费 token 时保留 null，不作估算。作用域释放持有的资源。

@@ -2,6 +2,12 @@ namespace OpenAgent.Contracts.Conversation;
 
 public interface IConversationStore
 {
+    /// <summary>Reads routing/ownership fields without fetching messages or warming a full-history cache.</summary>
+    Task<ConversationMetadata?> GetMetadataAsync(
+        string tenantId,
+        string conversationId,
+        CancellationToken cancellationToken = default);
+
     /// <summary>
     /// 获取会话的最近 N 条消息，按 Sequence 升序返回。
     /// </summary>
