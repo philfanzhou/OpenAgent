@@ -3,6 +3,7 @@ using OpenAgent.Application.Runtime;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Engine.Hosting;
 using OpenAgent.Engine.Hosting.Errors;
+using OpenAgent.Engine.Host.Streaming;
 using ProblemDetails = Microsoft.AspNetCore.Mvc.ProblemDetails;
 
 namespace OpenAgent.Engine.Host;

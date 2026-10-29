@@ -4,7 +4,7 @@ using OpenAgent.Contracts.Security;
 using OpenAgent.Engine.Hosting;
 using OpenAgent.Engine.Host.Middleware;
 
-namespace OpenAgent.Engine.Host.Extensions;
+namespace OpenAgent.Engine.Host.Endpoints;
 
 internal static class AgentEndpointRequestMapper
 {

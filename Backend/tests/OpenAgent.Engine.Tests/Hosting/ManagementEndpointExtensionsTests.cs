@@ -1,7 +1,8 @@
 using OpenAgent.Engine.Hosting;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Models;
-using OpenAgent.Engine.Host.Extensions;
+using OpenAgent.Engine.Host.Endpoints.Admin;
+using OpenAgent.Engine.Host.Endpoints.Admin.Skills;
 using Xunit;
 
 namespace OpenAgent.Engine.Tests.Hosting;

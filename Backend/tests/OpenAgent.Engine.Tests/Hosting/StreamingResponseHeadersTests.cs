@@ -1,6 +1,6 @@
 using OpenAgent.Engine.Hosting;
 using Microsoft.AspNetCore.Http;
-using OpenAgent.Engine.Host.Extensions;
+using OpenAgent.Engine.Host.Streaming;
 using Xunit;
 
 namespace OpenAgent.Engine.Tests.Hosting;

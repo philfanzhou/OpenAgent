@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Security;
-using OpenAgent.Engine.Host.Extensions;
+using OpenAgent.Engine.Host.Endpoints.Provider;
 using OpenAgent.Engine.Host.Middleware;
 using Xunit;
 
@@ -31,7 +31,7 @@ public class AgentProviderEndpointTests
         });
         DefaultHttpContext context = CreateContext(authenticated: true, tenantId, userId);
 
-        Results<NoContent, NotFound, UnauthorizedHttpResult> result = await AgentProviderEndpointExtensions.ResolveConversationAsync(
+        Results<NoContent, NotFound, UnauthorizedHttpResult> result = await AgentProviderEndpoints.ResolveConversationAsync(
             query,
             context,
             "conversation-1",
@@ -50,7 +50,7 @@ public class AgentProviderEndpointTests
             "tenant-1",
             "user-1");
 
-        Results<NoContent, NotFound, UnauthorizedHttpResult> result = await AgentProviderEndpointExtensions.ResolveConversationAsync(
+        Results<NoContent, NotFound, UnauthorizedHttpResult> result = await AgentProviderEndpoints.ResolveConversationAsync(
             new StubConversationQueryService(null),
             context,
             "conversation-1",
@@ -75,7 +75,7 @@ public class AgentProviderEndpointTests
         });
         DefaultHttpContext context = CreateContext(true, "tenant-1", "user-1");
 
-        Results<NoContent, NotFound, UnauthorizedHttpResult> result = await AgentProviderEndpointExtensions.ResolveConversationAsync(
+        Results<NoContent, NotFound, UnauthorizedHttpResult> result = await AgentProviderEndpoints.ResolveConversationAsync(
             query,
             context,
             "conversation-1",

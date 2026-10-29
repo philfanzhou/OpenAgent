@@ -2,12 +2,13 @@ using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Security;
+using OpenAgent.Engine.Host.Endpoints;
 using OpenAgent.Engine.Host.Middleware;
 using OpenAgent.Engine.Hosting.Errors;
 
-namespace OpenAgent.Engine.Host.Extensions;
+namespace OpenAgent.Engine.Host.Endpoints.Conversations;
 
-internal static class ConversationEndpointExtensions
+internal static class ConversationEndpoints
 {
     internal static void MapConversations(this RouteGroupBuilder group)
     {

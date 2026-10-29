@@ -1,9 +1,10 @@
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Engine.Hosting.Errors;
+using OpenAgent.Engine.Host.Endpoints;
 
-namespace OpenAgent.Engine.Host.Extensions;
+namespace OpenAgent.Engine.Host.Endpoints.Admin.Runtime;
 
-internal static class RuntimeEndpointExtensions
+internal static class RuntimeEndpoints
 {
     internal static void MapRuntimeEndpoints(this IEndpointRouteBuilder endpoints)
     {

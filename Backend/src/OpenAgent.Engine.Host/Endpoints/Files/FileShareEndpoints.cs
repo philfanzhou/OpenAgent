@@ -4,11 +4,12 @@ using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Responses;
 using OpenAgent.Contracts.Security;
+using OpenAgent.Engine.Host.Endpoints;
 using OpenAgent.Engine.Host.Middleware;
 
-namespace OpenAgent.Engine.Host.Extensions;
+namespace OpenAgent.Engine.Host.Endpoints.Files;
 
-internal static class FileShareEndpointExtensions
+internal static class FileShareEndpoints
 {
     /// <summary>
     /// 匿名分享下载端点。链接令牌本身就是凭证，不要求登录，也不经过

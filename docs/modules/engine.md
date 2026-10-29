@@ -102,7 +102,7 @@ HTTP 请求
 
 ### 配置管理与热更新
 
-Agent 和 LLM 配置通过 `ConfigurationEndpointExtensions` 中的 Minimal API 暴露，保留 `/api/v1/admin/agents` 和 `/api/v1/admin/llm` 路径；宿主只在 Development 环境映射管理端点。端点层负责路由、HTTP 验证、Skill 绑定可用性检查、密钥响应脱敏及连接测试；ConfigurationService 合并原 Agent 管理服务、运行时 Provider、数据库缓存包装和 LLM 管理服务，负责租户归属、密钥保留、Repository 调用和缓存。运行时继续通过 Contracts 中的 IAgentConfigProvider / ILlmConfigProvider 读取配置；DI 把两个接口指向同一个 ConfigurationService，Application 无须引用 Engine 或 EF Core。
+Agent 和 LLM 配置经 `ConfigurationEndpointExtensions` 汇总门面映射为 Minimal API（Agent/LLM/MCP 子域分别位于 `Endpoints/Admin/{Agents,Models,Mcp}`，RAG 端点暂留门面文件），保留 `/api/v1/admin/agents` 和 `/api/v1/admin/llm` 路径；宿主只在 Development 环境映射管理端点。端点层负责路由、HTTP 验证、Skill 绑定可用性检查、密钥响应脱敏及连接测试；ConfigurationService 合并原 Agent 管理服务、运行时 Provider、数据库缓存包装和 LLM 管理服务，负责租户归属、密钥保留、Repository 调用和缓存。运行时继续通过 Contracts 中的 IAgentConfigProvider / ILlmConfigProvider 读取配置；DI 把两个接口指向同一个 ConfigurationService，Application 无须引用 Engine 或 EF Core。
 
 ```text
 HTTP + authenticated tenant
@@ -183,7 +183,7 @@ HeartbeatService (BackgroundService)
 
 ## 代码入口
 
-- Host 端点：`Backend/src/OpenAgent.Engine.Host/Extensions/`（EndpointExtensions、AgentChatEndpointExtensions、ConversationEndpointExtensions、FileAssetEndpointExtensions、ConfigurationEndpointExtensions、ManagementEndpointExtensions、AgentStreamWriter）、`Middleware/`、`StreamingPayloadFactory.cs`、`Program.cs`、`EngineErrorHandling.cs`。
+- Host 端点：`Backend/src/OpenAgent.Engine.Host/Endpoints/`（按域 Chat/Agents/Provider/Conversations/Files 与 Admin/{Agents,Models,Mcp,Skills,Runtime} 的 Map* 入口；RAG 端点暂留 `Extensions/ConfigurationEndpointExtensions`）、`Extensions/`（EndpointExtensions、ConfigurationEndpointExtensions 汇总门面）、`Streaming/`（AgentStreamWriter、StreamingHeartbeat、StreamingResponseHeaders、StreamingPayloadFactory）、`Middleware/`、`Program.cs`、`EngineErrorHandling.cs`。
 - 共享错误设施：`Backend/src/OpenAgent.Engine/Hosting/Errors/`（AgentProblem.cs、AgentExceptionHandling.cs）。
 - 运行时管理：`Backend/src/OpenAgent.Engine/Redis/`（RedisRegistry、RedisHealthCheck、ConfigHealthCheck、LlmHealthCheck）、`Runtime/`（ShutdownService、RequestScope、HeartbeatService）。
 - 测试：`Backend/tests/OpenAgent.Engine.Tests/`（Hosting/、Registry/、HealthChecks/）。

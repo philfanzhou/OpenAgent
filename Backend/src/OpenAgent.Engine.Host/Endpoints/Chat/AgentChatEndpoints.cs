@@ -1,11 +1,13 @@
 using Microsoft.AspNetCore.Mvc;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Application.Execution;
+using OpenAgent.Engine.Host.Endpoints;
 using OpenAgent.Engine.Host.Middleware;
+using OpenAgent.Engine.Host.Streaming;
 
-namespace OpenAgent.Engine.Host.Extensions;
+namespace OpenAgent.Engine.Host.Endpoints.Chat;
 
-internal static class AgentChatEndpointExtensions
+internal static class AgentChatEndpoints
 {
     // Set to false to restore stateless intent recognition without changing the Provider contract.
     private const bool PersistIntentConversations = true;

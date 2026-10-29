@@ -92,7 +92,7 @@ RuntimeAgentExecutor.ExecuteStreamingAsync
 ## 代码入口
 
 - Application：Backend/src/OpenAgent.Application/Execution/RuntimeAgentExecutor.cs、RuntimePreparation.cs、RuntimePreparationScope.cs。
-- Host：Backend/src/OpenAgent.Engine.Host/Program.cs、EngineErrorHandling.cs、Extensions/AgentChatEndpointExtensions.cs、AgentStreamWriter.cs。
+- Host：Backend/src/OpenAgent.Engine.Host/Program.cs、EngineErrorHandling.cs、Endpoints/Chat/AgentChatEndpoints.cs、Streaming/AgentStreamWriter.cs。
 - HTTP 错误：Backend/src/OpenAgent.Engine/Hosting/Errors/AgentExceptionHandling.cs。
 - 工具隔离与预算：Backend/src/OpenAgent.Application/Tooling/Invocation/（IsolatedToolFunction、ToolResultBudgets、AgentExecutionOptions）。
 - 契约：Backend/src/OpenAgent.Contracts/Security/Exceptions.cs、Requests/AgentErrorCode.cs、Capabilities/ToolResult.cs。

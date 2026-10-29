@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Http;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
-using OpenAgent.Engine.Host.Extensions;
+using OpenAgent.Engine.Host.Endpoints;
 using OpenAgent.Engine.Host.Middleware;
 using Xunit;
 

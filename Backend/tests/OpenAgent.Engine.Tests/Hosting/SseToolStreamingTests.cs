@@ -24,7 +24,7 @@ using OpenAgent.Application.Exten;
 using OpenAgent.Application.ModelProviders;
 using OpenAgent.Application.Observability;
 using OpenAgent.Application.Runtime.Agent;
-using OpenAgent.Engine.Host.Extensions;
+using OpenAgent.Engine.Host.Streaming;
 using OpenAgent.Engine.Host;
 using OpenAgent.Engine.Hosting;
 using Xunit;

@@ -9,9 +9,9 @@ using OpenAgent.Engine.Host.Middleware;
 using OpenAgent.Engine.Host.Skills;
 using OpenAgent.Engine.Hosting.Errors;
 
-namespace OpenAgent.Engine.Host.Extensions;
+namespace OpenAgent.Engine.Host.Endpoints.Admin.Skills;
 
-internal static class ManagementEndpointExtensions
+internal static class SkillManagementEndpoints
 {
     public static IEndpointConventionBuilder MapManagementEndpoints(
         this IEndpointRouteBuilder endpoints,

@@ -5,7 +5,7 @@ using System.ClientModel.Primitives;
 using OpenAgent.Application.Runtime;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
-using OpenAgent.Engine.Host;
+using OpenAgent.Engine.Host.Streaming;
 using Xunit;
 
 namespace OpenAgent.Engine.Tests.Hosting;
