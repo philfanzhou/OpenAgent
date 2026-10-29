@@ -19,10 +19,7 @@ internal readonly record struct ToolResultBudget(int MaxChars, string Truncation
 internal static class ToolResultBudgets
 {
     internal const string ReadHint =
-        "extract only the relevant part (e.g. via execute_code with the file mounted at /input) instead of re-reading the whole file";
-
-    internal const string ExecutionHint =
-        "print only the relevant part of the output and run again";
+        "extract only the relevant part instead of re-reading the whole file";
 
     internal const string DefaultHint =
         "reduce the size of the requested output";
@@ -31,17 +28,9 @@ internal static class ToolResultBudgets
     {
         "read_file",
         "list_files",
-        "read_workspace_file",
-        "list_workspace_files",
         "read_skill_file",
         "search_knowledge_base",
         "get_current_user_profile"
-    };
-
-    private static readonly HashSet<string> ExecutionTools = new(StringComparer.Ordinal)
-    {
-        "execute_code",
-        "run_skill_script"
     };
 
     internal static ToolResultBudget Resolve(AgentExecutionOptions options, string toolName)
@@ -49,10 +38,6 @@ internal static class ToolResultBudgets
         if (ReadTools.Contains(toolName))
         {
             return new ToolResultBudget(options.ReadToolResultCharBudget, ReadHint);
-        }
-        if (ExecutionTools.Contains(toolName))
-        {
-            return new ToolResultBudget(options.ExecutionToolResultCharBudget, ExecutionHint);
         }
         return new ToolResultBudget(options.DefaultToolResultCharBudget, DefaultHint);
     }

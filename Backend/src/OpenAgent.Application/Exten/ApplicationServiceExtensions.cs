@@ -21,7 +21,6 @@ public static class ApplicationServiceExtensions
         return services
             .AddSecurityServices(configuration)
             .AddModelProviderServices(configuration)
-            .AddRunnerServices(configuration)
             .AddToolingServices(configuration)
             .AddBuiltinCapabilityServices()
             .AddConversationServices(configuration)

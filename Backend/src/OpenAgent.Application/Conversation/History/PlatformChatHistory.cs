@@ -34,7 +34,7 @@ internal sealed class PlatformChatHistory : IAsyncDisposable
     private readonly ConversationSessionStore _store;
     private readonly ILogger<PlatformChatHistory> _logger;
     private readonly IFileAssetService _fileService;
-    private readonly IInlineImageOptimizer _imageOptimizer;
+    private readonly InlineImageOptimizer _imageOptimizer;
     private readonly bool _supportsMultimodal;
     private readonly long _maxInlineImageBytes;
     private readonly int _maxInlineImageCount;
@@ -60,7 +60,7 @@ internal sealed class PlatformChatHistory : IAsyncDisposable
         ConversationSessionStore store,
         ILogger<PlatformChatHistory> logger,
         IFileAssetService fileService,
-        IInlineImageOptimizer imageOptimizer,
+        InlineImageOptimizer imageOptimizer,
         IOptions<FileAssetOptions> fileOptions)
     {
         _conversation = context.Conversation;

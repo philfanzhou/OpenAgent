@@ -56,8 +56,6 @@ jobs:
             dockerfile: Backend/src/OpenAgent.Engine.Host/Dockerfile
           - name: router
             dockerfile: Backend/src/OpenAgent.Router/Dockerfile
-          - name: runner
-            dockerfile: Backend/src/OpenAgent.Runner/Dockerfile
           - name: chat
             dockerfile: Frontend/OpenAgent.Chat/Dockerfile
     steps:
@@ -157,7 +155,6 @@ jobs:
           - 镜像标签：
             - ghcr.io/${owner}/openagent-engine:${platform_version}-oc${OPENCODE_VERSION}
             - ghcr.io/${owner}/openagent-router:${platform_version}
-            - ghcr.io/${owner}/openagent-runner:${platform_version}
             - ghcr.io/${owner}/openagent-chat:${platform_version}
 
           使用方式见 docs/operations/deployment.md。registry 版 Chat 镜像按默认公开地址（localhost）构建，

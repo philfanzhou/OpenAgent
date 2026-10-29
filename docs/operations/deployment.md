@@ -79,9 +79,8 @@ Windows PowerShell 可使用等价的 `scripts/build-images.ps1`；未指定 `-D
 pwsh -File ./scripts/build-images.ps1 -EnvFile ./.env
 ```
 
-需要将构建好的镜像导出为 TAR 时，可指定目录；目录不存在会自动创建，四个镜像分别导出为
-`openagent-engine.tar`、`openagent-router.tar`、`openagent-chat.tar` 和 `openagent-runner.tar`。
-Runner 随应用一起部署，部署环境文件必须设置 `OPENAGENT_RUNNER_API_KEY`（至少 32 字符）；详见 [Runner 部署](../integrations/code-runner.md)：
+需要将构建好的镜像导出为 TAR 时，可指定目录；目录不存在会自动创建，三个镜像分别导出为
+`openagent-engine.tar`、`openagent-router.tar` 和 `openagent-chat.tar`：
 
 ```bash
 scripts/build-images.sh --env-file .env --tar-dir ./dist/images
@@ -99,8 +98,8 @@ Engine 镜像在构建期内嵌 OpenCode 的 Linux 原生二进制，运行容�
 `docker build --target runtime-tests -f Backend/src/OpenAgent.Engine.Host/Dockerfile .` 通过真实进程回归后提交。
 
 推送 `v*.*.*` Git 标签会触发 [Release 工作流](../../.github/workflows/release.yml)：先执行上述
-runtime-tests 真实回归门禁，通过后将 `openagent-engine`、`openagent-router`、`openagent-runner` 与
-`openagent-chat` 四个镜像推送到 GHCR，并上传包含 `deploy/` 与版本说明的 Compose 部署包制品。Engine
+runtime-tests 真实回归门禁，通过后将 `openagent-engine`、`openagent-router` 与
+`openagent-chat` 三个镜像推送到 GHCR，并上传包含 `deploy/` 与版本说明的 Compose 部署包制品。Engine
 镜像的行为依赖内嵌 OpenCode 版本，版本标签带 `-oc<OpenCode 版本>` 后缀（如 `1.2.3-oc1.19.3`）以区分
 不同 OpenCode 基线；预发布标签（如 `v1.0.0-rc1`）不移动 `latest`。registry 版 Chat 镜像按默认公开地址
 （localhost）构建，生产部署需按自身 `OPENAGENT_PUBLIC_HOST` 重建 Chat 镜像，或在 `.env` 中以
@@ -178,7 +177,7 @@ docker compose -p openagent-infrastructure \
 分别通过 HTTPS 访问。容器之间使用服务别名和内部端口；宿主端口修改不影响内部连接。
 Keycloak 直接提供 HTTPS，内部 HTTP 8080 不发布到宿主机。
 应用栈创建独立的 `openagent` 网络；Engine 和 Router 额外加入基础设施网络以访问数据库、Redis、MinIO 和 Keycloak，
-Runner、Chat、Nginx 不直接加入基础设施网络。
+Chat、Nginx 不直接加入基础设施网络。
 
 `OPENAGENT_CHAT_PUBLIC_URL` 同时用于 CORS、Keycloak 回调、Web Origin 和退出回调，
 默认由 `OPENAGENT_PUBLIC_SCHEME`/`OPENAGENT_PUBLIC_HOST` 与 `OPENAGENT_CHAT_PORT` 派生，无需重复配置。
@@ -189,7 +188,7 @@ Engine/Router 使用同一值作为 Authority。已有 Realm 的 Client 地址�
 
 默认证书为 `deploy/openagent/nginx/certs/tls.crt` 和 `tls.key`，两套服务共用。
 自定义时给 `OPENAGENT_TLS_CERT_DIR` 设置绝对路径。证书和私钥不应进入 Git 或镜像。
-本地部署可直接使用示例中的默认凭据；生产环境应覆盖数据库、MinIO 和 Keycloak 凭据。Runner API key 仍必须单独生成，示例不包含实际部署域名、私钥、API key 或服务器目录。
+本地部署可直接使用示例中的默认凭据；生产环境应覆盖数据库、MinIO 和 Keycloak 凭据。示例不包含实际部署域名、私钥或服务器目录。
 
 对象存储使用 `OPENAGENT_S3_SERVICE_URL` 供引擎内部访问。客户端对外下载与分享使用平台端点（`/api/v1/share/{token}`、认证下载），S3 无需公网域名；底层存储实现仍保留签名能力。默认保持 TLS 校验。
 

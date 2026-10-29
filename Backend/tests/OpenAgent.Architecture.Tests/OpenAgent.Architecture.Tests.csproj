@@ -14,7 +14,6 @@
     <ProjectReference Include="..\..\src\OpenAgent.Engine.Host\OpenAgent.Engine.Host.csproj" />
     <ProjectReference Include="..\..\src\OpenAgent.Router\OpenAgent.Router.csproj" />
     <ProjectReference Include="..\..\src\OpenAgent.Framework\OpenAgent.Framework.csproj" />
-    <ProjectReference Include="..\..\src\OpenAgent.Runner\OpenAgent.Runner.csproj" />
   </ItemGroup>
 
 </Project>

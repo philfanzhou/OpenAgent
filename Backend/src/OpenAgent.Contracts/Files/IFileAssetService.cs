@@ -66,13 +66,4 @@ public interface IFileAssetService
         FileAssetScope scope,
         CancellationToken cancellationToken);
 
-    /// <summary>
-    /// 将多个文件（fileId 或 objectKey 定位）打包为 zip 并登记为当前租户/用户的新 FileAsset。
-    /// 是否关联到 assistant 消息由 publish_files 能力决定。输入条目数与总字节数受 FileAssets 档案限额约束。
-    /// </summary>
-    Task<FileArchiveResult> CompressAsync(
-        FileArchiveRequest request,
-        FileAssetScope scope,
-        CancellationToken cancellationToken);
-
 }

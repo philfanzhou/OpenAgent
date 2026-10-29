@@ -142,6 +142,7 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
         try
         {
             OpenCodeSkills.Materialize(workspace, invocation.Skills, cancellationToken);
+            MaterializeAttachments(workspace, invocation.Messages);
             agent = await keeper.TryAcquireAsync(leaseKey).ConfigureAwait(false)
                 ?? await SpawnAsync(settings, invocation, leaseKey, parent, cancellationToken).ConfigureAwait(false);
             processAt = clock.ElapsedMilliseconds;
@@ -365,6 +366,34 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
 
     private static int Clamp(long value) => value > int.MaxValue ? int.MaxValue : value < 0 ? 0 : (int)value;
 
+    /// <summary>
+    /// 附件与内联注入的同一份字节（已按内联管线降采样）一并落进轮次工作区
+    /// uploads/，模型可经 harness 原生 read/bash 按文件系统精读；
+    /// 目录随轮次工作区销毁，无残留。
+    /// </summary>
+    private static void MaterializeAttachments(string workspace, IReadOnlyList<RuntimeMessage> messages)
+    {
+        int index = 0;
+        foreach (RuntimeMessage message in messages)
+        {
+            foreach (RuntimeAttachment attachment in message.Attachments ?? [])
+            {
+                index++;
+                string path = Path.Combine(workspace, "uploads", $"attachment-{index}{ExtensionFor(attachment.MediaType)}");
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                File.WriteAllBytes(path, attachment.Data.Span);
+            }
+        }
+    }
+
+    private static string ExtensionFor(string mediaType) => mediaType.Split(';', 2)[0].Trim().ToLowerInvariant() switch
+    {
+        "image/png" => ".png",
+        "image/jpeg" => ".jpg",
+        "image/webp" => ".webp",
+        _ => ".bin"
+    };
+
     private static ContentBlock[] BuildPrompt(IReadOnlyList<RuntimeMessage> messages, int maxCharacters)
     {
         if (messages.Count == 0)
@@ -386,15 +415,22 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
         }
         content.Add(new TextContent(current.Content));
         // 历史图片已由平台按窗口筛选；保留其数据，才能继续讨论上一轮上传的图片。
+        int attachmentCount = 0;
         foreach (RuntimeMessage message in messages)
         {
             foreach (RuntimeAttachment attachment in message.Attachments ?? [])
             {
+                attachmentCount++;
                 if (attachment.MediaType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
                 {
                     content.Add(new ImageContent(Convert.ToBase64String(attachment.Data.Span), attachment.MediaType));
                 }
             }
+        }
+        if (attachmentCount > 0)
+        {
+            content.Add(new TextContent(
+                $"Attachments are also saved as files under uploads/ in the workspace ({attachmentCount} attachment(s)) for closer inspection."));
         }
         return content.ToArray();
     }

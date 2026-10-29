@@ -1,10 +1,10 @@
 # 环境变量指南
 
-本文件是 OpenAgent 环境变量的唯一事实源：覆盖 Engine.Host、Router、Runner 三个宿主实际读取的全部配置环境变量、Compose 部署层的 `OPENAGENT_*` 包装变量、前端构建变量，以及不同场景的最小配置集。部署流程本身见 [部署指南](deployment.md)。
+本文件是 OpenAgent 环境变量的唯一事实源：覆盖 Engine.Host、Router 两个宿主实际读取的全部配置环境变量、Compose 部署层的 `OPENAGENT_*` 包装变量、前端构建变量，以及不同场景的最小配置集。部署流程本身见 [部署指南](deployment.md)。
 
 ## 1. 配置加载规则
 
-三个宿主均使用 `WebApplication.CreateBuilder` 默认配置管线（`Backend/src/OpenAgent.Engine.Host/Program.cs`、`Backend/src/OpenAgent.Router/Program.cs`、`Backend/src/OpenAgent.Runner/Program.cs`），**没有应用级环境变量前缀**：
+两个宿主均使用 `WebApplication.CreateBuilder` 默认配置管线（`Backend/src/OpenAgent.Engine.Host/Program.cs`、`Backend/src/OpenAgent.Router/Program.cs`），**没有应用级环境变量前缀**：
 
 - 优先级从低到高：`appsettings.json` → `appsettings.{Environment}.json` → User Secrets（仅 Development）→ **全部环境变量** → 命令令行。
 - 环境变量用双下划线 `__` 表示配置层级，等价于 `:`。例如 `Authentication__Mode` 覆盖 `appsettings.json` 的 `Authentication:Mode`。数组用 `节__键__0`、`节__键__1` 形式。
@@ -17,12 +17,12 @@
 | 场景 | 需要设置的环境变量 |
 |---|---|
 | 本地裸机开发（`dotnet run`） | **零配置**。Development 配置默认 Basic 匿名登录、连接本机 PostgreSQL（`localhost:5432`，账号 openagent/openagent）。前置条件：本机可用的 PostgreSQL 与 `opencode` 可执行；否则见第 5.2 / 5.6 节覆盖 |
-| 本地 Docker 全栈（Keycloak） | 复制 `deploy/deployment.env.example` 为 `.env`，**必填 `OPENAGENT_RUNNER_API_KEY`**（≥32 字符）；其余走 Compose 兜底值。默认 `OPENAGENT_ASPNETCORE_ENVIRONMENT=Development` |
-| 内网/生产部署 | `OPENAGENT_ASPNETCORE_ENVIRONMENT=Production`；`OPENAGENT_PUBLIC_HOST`（+443 时设置 `OPENAGENT_CHAT_PORT=443` 等）；覆盖数据库/MinIO/Keycloak 管理员默认凭据；`OPENAGENT_RUNNER_API_KEY`；`OPENAGENT_KEYCLOAK_COMMAND=start`。认证变量见第 3 节 |
-| 不启用代码执行沙箱 | 不部署 Runner，并在 Engine 侧设 `CodeExecution__Enabled=false`（默认即 false；应用 Compose 当前写死 `true` 并依赖 Runner 健康检查） |
+| 本地 Docker 全栈（Keycloak） | 复制 `deploy/deployment.env.example` 为 `.env`，其余走 Compose 兜底值。默认 `OPENAGENT_ASPNETCORE_ENVIRONMENT=Development` |
+| 内网/生产部署 | `OPENAGENT_ASPNETCORE_ENVIRONMENT=Production`；`OPENAGENT_PUBLIC_HOST`（+443 时设置 `OPENAGENT_CHAT_PORT=443` 等）；覆盖数据库/MinIO/Keycloak 管理员默认凭据；`OPENAGENT_KEYCLOAK_COMMAND=start`。认证变量见第 3 节 |
+| 启用代码执行 | 平台无独立沙箱：经 `OpenCode__AllowedNativeTools__0..n` 放行 OpenCode 原生工具（如 `read`/`edit`/`write`/`bash`），见第 5.6 节与 [OpenCode 运行时](../integrations/opencode-runtime.md) |
 | 外接 S3/MinIO | `OPENAGENT_S3_SERVICE_URL`、`OPENAGENT_S3_BUCKET`、`OPENAGENT_S3_ACCESS_KEY`、`OPENAGENT_S3_SECRET_KEY`（等价 `FileAssets__ObjectStorage__*`） |
 | 接入日志中心 | `.env` 设置 `OPENAGENT_OTLP_ENDPOINT`（OTLP gRPC/HTTP 地址）；规则见 [可观测性](../overview/Observability.md) |
-| 自签证书内网 | `OPENAGENT_ALLOW_INSECURE_TLS=true`（逃生门，默认关闭；详见第 5.13 节） |
+| 自签证书内网 | `OPENAGENT_ALLOW_INSECURE_TLS=true`（逃生门，默认关闭；详见第 5.12 节） |
 
 ## 3. 启用 Keycloak（JwtBearer）
 
@@ -71,7 +71,6 @@ Compose 部署只需在 `.env` 中（其余走兜底）：
 
 ```dotenv
 OPENAGENT_PUBLIC_HOST=openagent.intra.example
-OPENAGENT_RUNNER_API_KEY=<openssl rand -hex 32>
 # 需要覆盖派生值时：
 # OPENAGENT_KEYCLOAK_PUBLIC_URL=https://keycloak.intra.example
 # OPENAGENT_AUTH_AUDIENCE=openagent-api
@@ -105,16 +104,16 @@ OPENAGENT_AUTH_ALLOW_DEVELOPMENT_ANONYMOUS=false
 
 ## 5. .NET 配置环境变量参考
 
-以下变量对 Engine.Host（E）、Router（R）、Runner（u）生效，未标注则适用于 E+R。默认值指当前 `appsettings.json` / 选项类的生效值。
+以下变量对 Engine.Host（E）、Router（R）生效，未标注则适用于 E+R。默认值指当前 `appsettings.json` / 选项类的生效值。
 
 ### 5.1 ASP.NET Core 宿主
 
 | 变量 | 适用 | 默认 | 作用 / 缺失影响 |
 |---|---|---|---|
-| `ASPNETCORE_ENVIRONMENT` | E/R/u | `Production`（应用 Compose 兜底 `Development`） | 选择 appsettings 覆盖文件；门控 Basic 认证、启动迁移、管理端点、Swagger |
-| `ASPNETCORE_URLS` | E/R/u | 镜像 Dockerfile 固定：engine `http://+:5208`、router `http://+:5001`、runner `http://+:5209` | Kestrel 绑定；也用于心跳端口探测 |
+| `ASPNETCORE_ENVIRONMENT` | E/R | `Production`（应用 Compose 兜底 `Development`） | 选择 appsettings 覆盖文件；门控 Basic 认证、启动迁移、管理端点、Swagger |
+| `ASPNETCORE_URLS` | E/R | 镜像 Dockerfile 固定：engine `http://+:5208`、router `http://+:5001` | Kestrel 绑定；也用于心跳端口探测 |
 | `ASPNETCORE_HTTP_PORTS` | E | — | 心跳端口探测优先于此变量 |
-| `DOTNET_ENVIRONMENT` | E/R/u | — | `ASPNETCORE_ENVIRONMENT` 缺失时的回退 |
+| `DOTNET_ENVIRONMENT` | E/R | — | `ASPNETCORE_ENVIRONMENT` 缺失时的回退 |
 | `AllowedHosts` | E/R | `*` | 主机过滤 |
 | `Cors__AllowedOrigins__0..n` | E/R | `http://localhost:5173` | CORS 白名单（应用 Compose 注入 Chat 公开地址） |
 
@@ -174,35 +173,11 @@ Redis 行为细节见 [Redis 集成](../integrations/redis-engine.md)。
 | `OpenCode__KeepAliveSeconds` | `0`（关闭） | 空闲进程保活复用窗口 |
 | `OpenCode__MaxKeptProcesses` | `8` | 保活进程池上限 |
 | `OpenCode__MaxSessionsPerProcess` | `64` | 单进程会话数上限 |
-| `OpenCode__AllowedNativeTools__0..n` | 空（Development json：`read,edit,write,bash`） | 放行给模型的 OpenCode 原生工具名 |
+| `OpenCode__AllowedNativeTools__0..n` | 空（Development json：`read,edit,write,bash`） | 放行给模型的 OpenCode 原生工具名。平台已无独立代码执行沙箱：需要模型执行代码时须在此放行（如 `bash`），放行即把对应主机读写/执行面交给 harness 进程 |
 
 宿主会向 OpenCode 子进程白名单透传 `NODE_TLS_REJECT_UNAUTHORIZED`、`NODE_EXTRA_CA_CERTS`（自签模型端点场景）及 `PATH`/`PATHEXT`/`COMSPEC`/`SystemRoot`/`WINDIR`。`OPENAGENT_MODEL_API_KEY`、`OPENCODE_CONFIG_CONTENT` 等由代码注入子进程，不是用户配置项。详见 [OpenCode 运行时](../integrations/opencode-runtime.md)。
 
-### 5.7 代码执行 / Runner
-
-Runner 服务自身（实现：`Backend/src/OpenAgent.Runner/RunnerOptions.cs`、校验 `Program.cs`）：
-
-| 变量 | 默认 | 必填 | 作用 |
-|---|---|---|---|
-| `Runner__ApiKey` | 空 | **必填**（≥32 字符，`ValidateOnStart` 失败即进程崩溃） | Runner 全部 `/api/v1/*` 的 Bearer 鉴权 |
-| `Runner__WorkspaceRoot` | `/var/lib/openagent-runner/workspaces` | 须专用绝对目录 | 会话工作区根 |
-| `Runner__BubblewrapPath` | `/usr/bin/bwrap` | 否 | 沙箱可执行（绝对路径） |
-| `Runner__PythonPath` / `Runner__NodePath` | `/opt/openagent-code/venv/bin/python` / `/usr/bin/node` | 否 | 沙箱内解释器 |
-| `Runner__TimeoutSeconds` | `120` | 否 | 单次执行超时 |
-| `Runner__MaxConcurrentExecutions` | `2` | 否 | 并发执行上限 |
-| `Runner__MemoryMiB` / `Runner__WorkspaceMiB` / `Runner__MaxProcesses` | `1536` / `128` / `64` | 否 | 每沙箱资源限额 |
-| `Runner__SessionIdleMinutes` / `Runner__MaxSessionSandboxes` | `120` / `64` | 否 | 会话回收与沙箱池上限 |
-
-Engine 侧调用 Runner（`Backend/src/OpenAgent.Capabilities/Extensions/RunnerServiceExtensions.cs`）：
-
-| 变量 | 默认 | 必填 | 作用 / 缺失影响 |
-|---|---|---|---|
-| `CodeExecution__Enabled` | `false`（应用 Compose `true`） | 否 | 总开关；false 时 execute_code / run_skill_script 能力禁用 |
-| `CodeExecution__Endpoint` | 空 | **`Enabled=true` 时必填**（绝对 http/https） | Runner 地址（如 `http://runner:5209`），缺失启动失败 |
-| `CodeExecution__ApiKey` | 空 | **`Enabled=true` 时必填**（≥32 字符，与 Runner 共享） | 服务间鉴权，缺失启动失败 |
-| `CodeExecution__RequestTimeoutSeconds` | `180`（10..900） | 否 | 请求超时 |
-
-### 5.8 文件资产 / 对象存储（Engine）
+### 5.7 文件资产 / 对象存储（Engine）
 
 实现：`Backend/src/OpenAgent.Capabilities/Extensions/FileAssetServiceExtensions.cs` 等。
 
@@ -224,7 +199,7 @@ Engine 侧调用 Runner（`Backend/src/OpenAgent.Capabilities/Extensions/RunnerS
 
 详见 [文件资产](../integrations/file-assets.md)。
 
-### 5.9 遥测与日志（E/R）
+### 5.8 遥测与日志（E/R）
 
 | 变量 | 默认 | 作用 / 缺失影响 |
 |---|---|---|
@@ -233,7 +208,7 @@ Engine 侧调用 Runner（`Backend/src/OpenAgent.Capabilities/Extensions/RunnerS
 | `OpenTelemetry__ServiceVersion` | `1.0.0`（Compose 注入构建版本） | OTel 资源版本 |
 | `Serilog__MinimumLevel__Default` | `Information`（Development `Debug`） | 日志级别，任意 Serilog 节均可 env 覆盖（如 `Serilog__MinimumLevel__Override__Microsoft.AspNetCore=Debug`） |
 
-### 5.10 LLM 与会话行为（Engine）
+### 5.9 LLM 与会话行为（Engine）
 
 | 变量 | 默认 | 作用 |
 |---|---|---|
@@ -245,7 +220,7 @@ Engine 侧调用 Runner（`Backend/src/OpenAgent.Capabilities/Extensions/RunnerS
 
 模型 Endpoint / ApiKey 本身存数据库（`LlmConfig`），**不是环境变量**；录入界面见管理端点。
 
-### 5.11 心跳与停机（Engine）
+### 5.10 心跳与停机（Engine）
 
 | 变量 | 默认 | 作用 |
 |---|---|---|
@@ -254,7 +229,7 @@ Engine 侧调用 Runner（`Backend/src/OpenAgent.Capabilities/Extensions/RunnerS
 | `Heartbeat__Intents__0..n` | `["chat"]` | 通告能力意图 |
 | `Shutdown__TimeoutSeconds` | `30` | 优雅停机宽限 |
 
-### 5.12 Router 专属
+### 5.11 Router 专属
 
 | 变量 | 默认 | 作用 |
 |---|---|---|
@@ -267,11 +242,11 @@ Engine 侧调用 Runner（`Backend/src/OpenAgent.Capabilities/Extensions/RunnerS
 | `RouterSettings__IntentRecognition__Enabled` / `__TimeoutMs` / `__MinimumConfidence` | `true` / `5000`（Compose `30000`）/ `0.5` | 意图识别路由 |
 | `RouterSettings__AgentProviders__DefaultProviderId` 等 | appsettings.json 提供 `self-engine` | Provider 注册表；结构无效时 Router 启动失败（默认配置已满足，一般无需 env） |
 
-### 5.13 其他
+### 5.12 其他
 
 | 变量 | 默认 | 作用 |
 |---|---|---|
-| `OPENAGENT_ALLOW_INSECURE_TLS` | `false` | 部署逃生门：跳过 LLM、S3、MCP、RAG、Runner、OIDC 回调等出站请求的 TLS 证书校验。仅自签证书受控场景使用，生产优先安装内部 CA |
+| `OPENAGENT_ALLOW_INSECURE_TLS` | `false` | 部署逃生门：跳过 LLM、S3、MCP、RAG、OIDC 回调等出站请求的 TLS 证书校验。仅自签证书受控场景使用，生产优先安装内部 CA |
 | `Secrets__{tenantId}__{name}` | 无 | 租户密钥的配置引用形式（`Backend/src/OpenAgent.Engine/Config/ConfigurationSecretResolver.cs`） |
 
 ## 6. Compose 部署变量（`OPENAGENT_*`）
@@ -306,7 +281,6 @@ Engine 侧调用 Runner（`Backend/src/OpenAgent.Capabilities/Extensions/RunnerS
 | `OPENAGENT_MINIO_PORT` / `OPENAGENT_MINIO_CONSOLE_PORT` | `9000` / `9001` | MinIO 宿主机发布端口 |
 | `OPENAGENT_FILE_ASSETS_ENABLED` | `true` | engine 的 `FileAssets__Enabled` |
 | `OPENAGENT_SHARE_PUBLIC_BASE_URL` | 空 | engine 的 `FileAssets__Share__PublicBaseUrl` |
-| `OPENAGENT_RUNNER_API_KEY` | **无（必填）** | engine 的 `CodeExecution__ApiKey` 与 runner 的 `Runner__ApiKey`；Compose 用 `:?` 语法强制要求，缺失直接拒绝部署 |
 
 ### 6.3 地址 / 端口 / 网络 / TLS
 
@@ -323,7 +297,7 @@ Engine 侧调用 Runner（`Backend/src/OpenAgent.Capabilities/Extensions/RunnerS
 
 | 变量 | 默认 | 用途 |
 |---|---|---|
-| `OPENAGENT_ENGINE_IMAGE` / `OPENAGENT_ROUTER_IMAGE` / `OPENAGENT_CHAT_IMAGE` / `OPENAGENT_RUNNER_IMAGE` | `openagent-*:latest` | 各服务镜像标签 |
+| `OPENAGENT_ENGINE_IMAGE` / `OPENAGENT_ROUTER_IMAGE` / `OPENAGENT_CHAT_IMAGE` | `openagent-*:latest` | 各服务镜像标签 |
 | `OPENAGENT_SERVICE_VERSION` | `development` | 注入 `OpenTelemetry__ServiceVersion` |
 | `OPENAGENT_OTLP_ENDPOINT` | 空（禁用） | engine/router 的 `OpenTelemetry__OtlpEndpoint` |
 | `OPENAGENT_ALLOW_INSECURE_TLS` | `false` | 原名注入 engine/router |
@@ -358,12 +332,10 @@ Engine 侧调用 Runner（`Backend/src/OpenAgent.Capabilities/Extensions/RunnerS
 
 | 变量 | 适用场景 | 缺失 / 非法后果 |
 |---|---|---|
-| `OPENAGENT_RUNNER_API_KEY` → `Runner__ApiKey` / `CodeExecution__ApiKey` | 部署 Runner（应用 Compose 默认启用） | **Compose 拒绝部署**；裸机 Runner 启动崩溃；Engine 侧 `CodeExecution__Enabled=true` 时启动失败 |
 | `Authentication__Authority` / `__Audience` / `__ClientId` | `Mode=JwtBearer`（生产默认） | Engine 与 Router **启动失败**；生产 json 三者为空，必须经 `.env` 或直接环境变量提供 |
 | `Authentication__Mode=Basic` 且非 Development | — | 启动失败（Basic 仅限 Development） |
 | `RequireHttpsMetadata=false` 且（非 Development 或 Authority 非 localhost） | 本地 HTTP 联调外 | 启动失败 |
 | `ConnectionStrings__OpenAgentDatabase` | Engine | 键完全缺失 → 启动异常；保留默认值 → 只连本机库（生产不可用） |
-| `CodeExecution__Endpoint` / `__ApiKey` | `CodeExecution__Enabled=true` | 启动失败 |
 | `FileAssets__ObjectStorage__*` | `FileAssets__Enabled=true` | 桶名/区域为空或凭证不成对 → 启动失败（默认值已满足） |
 | `OpenTelemetry__OtlpEndpoint` | 可选 | 不设 → 禁用 OTLP 导出（可运行）；设了但 URI 非法 → 启动异常 |
 | `OpenCode__Executable` / `PATH` 中的 opencode | 聊天功能 | 启动正常，**首次聊天报错**（DependencyUnavailable） |
@@ -375,4 +347,4 @@ Engine 侧调用 Runner（`Backend/src/OpenAgent.Capabilities/Extensions/RunnerS
 - [部署指南](deployment.md)：Compose 启动、TLS 证书、数据卷与镜像更新流程
 - [Keycloak 本地认证集成](../integrations/keycloak.md)：Realm 导入、用户与租户创建、验证命令
 - [认证模块文档](../modules/security.md)：认证方案行为矩阵与源码索引
-- [Runner 部署](../integrations/code-runner.md)、[文件资产](../integrations/file-assets.md)、[OpenCode 运行时](../integrations/opencode-runtime.md)、[可观测性](../overview/Observability.md)
+- [文件资产](../integrations/file-assets.md)、[OpenCode 运行时](../integrations/opencode-runtime.md)、[可观测性](../overview/Observability.md)

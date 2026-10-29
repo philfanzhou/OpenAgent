@@ -42,18 +42,18 @@ Runtime 只引用 Contracts、Runtime.Acp 和官方 MCP SDK；Application 只引
 6. ACP prompt 结束后排空更新队列。平台保存会话成功后才发送 usage/done。失败或取消保存部分正文、reasoning 与工具记录。
 7. 取消发送 session/cancel 并等待原 prompt 结果；SDK 对不确认的进程执行有界回收。轮次结束后关闭本轮 ACP 会话、吊销本轮桥注册（共享端点保留给后续轮次）、释放工具资源并删除本轮随机工作区，保留平台会话数据。完整成功轮次的进程归还保活池等待追问复用；失败、取消、空闲到期、会话数或总量超限的进程立即销毁并回收其主目录。
 
-OpenCode 的原生工具默认 `* = deny`，仅允许 `openagent_*` 平台桥工具；按 Agent 配置透传的外部 MCP server 会追加对应 `server_*` 放行，启用 Skill 时仅按本轮授权名称放行原生 `skill`，其余技能名称保持拒绝。宿主可通过 `OpenCode:AllowedNativeTools` 显式放行原生工具（如 `read`/`edit`/`write`，可带参数模式如 `bash[npm *]`），默认空保持全拒绝；放行即把对应主机读写/执行面直接交给 harness 进程（应用层授权，非 OS 沙箱），由宿主知情选择，白名单参与进程复用身份，改动后不复用旧权限进程。条目禁止花括号（OpenCode 在 JSON 解析前展开 `{file:...}`/`{env:...}` 宏），启动校验拒绝。底层及生产基础配置的 `AllowedNativeTools` 仍为空；开发配置保留原有显式授权 `read/edit/write/bash`，代码执行走 OpenCode 自身。生产需要代码执行时，必须在干净服务身份/受控执行环境中显式配置同样的所需权限，不能依赖 Runner 兜底。Client 不启用文件/终端回调，ACP 权限请求默认拒绝。桥路由挂载在主站端口上时，仅接受 loopback 远端（其余一律 404，不暴露路由存在性）与命中本轮注册的 bearer（未命中 401），公共认证与准入管线不感知桥流量。既有平台工具实现暂时保留；N02 不启用 Runner，也不将其作为代码执行的替代路径。这是应用层授权和进程环境隔离，**不是操作系统沙箱**；本轮不宣称解决恶意 harness 的主机访问问题，也不实现人工审批。
+OpenCode 的原生工具默认 `* = deny`，仅允许 `openagent_*` 平台桥工具；按 Agent 配置透传的外部 MCP server 会追加对应 `server_*` 放行，启用 Skill 时仅按本轮授权名称放行原生 `skill`，其余技能名称保持拒绝。宿主可通过 `OpenCode:AllowedNativeTools` 显式放行原生工具（如 `read`/`edit`/`write`，可带参数模式如 `bash[npm *]`），默认空保持全拒绝；放行即把对应主机读写/执行面直接交给 harness 进程（应用层授权，非 OS 沙箱），由宿主知情选择，白名单参与进程复用身份，改动后不复用旧权限进程。条目禁止花括号（OpenCode 在 JSON 解析前展开 `{file:...}`/`{env:...}` 宏），启动校验拒绝。底层及生产基础配置的 `AllowedNativeTools` 仍为空；开发配置保留原有显式授权 `read/edit/write/bash`，代码执行走 OpenCode 自身。生产需要代码执行时，必须在干净服务身份/受控执行环境中显式配置同样的所需权限，不能依赖 Runner 兜底。Client 不启用文件/终端回调，ACP 权限请求默认拒绝。桥路由挂载在主站端口上时，仅接受 loopback 远端（其余一律 404，不暴露路由存在性）与命中本轮注册的 bearer（未命中 401），公共认证与准入管线不感知桥流量。独立 Runner 沙箱已移除：平台不再提供 execute_code/workspace 文件工具/run_skill_script，代码执行完全依赖宿主放行的 OpenCode 原生工具。文件资产策略继续约束平台侧工具。这是应用层授权和进程环境隔离，**不是操作系统沙箱**；本轮不宣称解决恶意 harness 的主机访问问题，也不实现人工审批。
 
 ## MCP 透传
 
 - Agent 配置启用的外部 MCP server（租户注册表 `EnabledServerIds` 或内联 `Servers`）经租户过滤与逐 server 授权后，直接作为 ACP `session/new` 的 mcpServers 条目交给 OpenCode 原生连接。
-- 平台侧不再建立外部 MCP 客户端：McpClientPool、McpToolFactory、read_mcp_resource 与延迟加载（search_tools/DeferredToolInjector）已删除；平台桥只承载平台自有工具（文件、能力、`read_skill_file`/`run_skill_script`）。
+- 平台侧不再建立外部 MCP 客户端：McpClientPool、McpToolFactory、read_mcp_resource 与延迟加载（search_tools/DeferredToolInjector）已删除；平台桥只承载平台自有工具（文件、能力、`read_skill_file`）。
 - 安全取舍必须知情：透传后外部 server 的凭据（当前配置仅 URL/类型，鉴权头为后续项）由 harness 进程直接持有，逐调用授权、超时与预算不再经过平台；harness 与 server 之间的网络路径也不再受平台管控。
 
 ## Skill 物化
 
 - 启用的 Skill 包物化到进程级内容缓存目录（键 = 租户 + 对象键 + 包 SHA-256，首次仍逐文件下载并校验完整性，staging 原子提交；未登记哈希的记录退回一次性目录随轮释放），再复制到工作区 `.opencode/skills/<name>`，拒绝包根及包内的符号链接/reparse point，避免把宿主目标引入工作区或通过工作区写回共享缓存；复制逐文件响应取消。追问轮次命中缓存仍零下载，但每轮承担本地复制成本，新包发布自然失效旧键。缓存根目录按进程隔离（含进程 ID）；轮次以租约持有包引用，淘汰只回收零引用条目，活跃包不会被删除。OpenCode 原生 skill 工具按需加载 SKILL.md，平台不再把 skill 文本注入提示词。
-- 既有 `read_skill_file`、`run_skill_script` 平台实现暂时保留，其中 `run_skill_script` 仍依赖 Runner。当前执行方向是通过 OpenCode 自身的原生工具运行技能脚本和其他 Node/Python 代码；N02 不启用 Runner，不将旧脚本工具作为兜底，也不在本 PR 删除它。
+- Skill 包内文件的受限读取（`read_skill_file`）作为平台桥工具提供，限制在物化包目录内；包内脚本不再有平台执行路径，Skill 物化进工作区后可由宿主放行的 OpenCode 原生工具（如 `bash`）直接运行。
 
 ## 独立 Runtime 设置
 
@@ -139,7 +139,7 @@ SDK 控制台继续只有 SDK 引用，外部连接入口见 [控制台使用](a
 
 ## N02：宿主继承缓解与受支持模式
 
-初始基线为 `origin/dev@768a8c1e`，交付前已合入 `origin/dev@0f670f86`（保留 SkiaSharp 的镜像依赖）。范围为 Runtime/OpenCode、Engine 镜像/开发配置、Data Protection 卷挂载和 Runtime.Tests。SDK 协议、项目依赖、Runner、RAG、Worker/RunGrant 实现均未改变。代码执行方向已按用户要求明确为 OpenCode 自身，Runner 不启用且可能在后续任务移除。`KeepAliveSeconds` 保持 0。
+初始基线为 `origin/dev@768a8c1e`，交付前已合入 `origin/dev@45802efd`（保留 SkiaSharp 依赖、Runner 移除与附件工作区文件化）。范围为 Runtime/OpenCode、Engine 镜像/开发配置、Data Protection 卷挂载和 Runtime.Tests。N02 不修改 SDK 协议、依赖白名单、RAG 或 Worker/RunGrant 实现；Runner 移除来自已合入的最新 dev。代码执行按用户要求走 OpenCode 自身；最新 dev 已移除 Runner，本 PR 不恢复该路径。`KeepAliveSeconds` 保持 0。
 
 ### 当前缓解
 

@@ -199,6 +199,69 @@ public sealed class InlineImageOptimizerTests
         Assert.Equal(1024, decoded.Width);
     }
 
+    [Fact]
+    public void Optimize_SameContentDifferentFileId_ServedFromSharedCache()
+    {
+        // 缓存键是内容摘要：同一图片重复上传（新 fileId、同 Sha256）不重复解码。
+        byte[] source = CreateImage(SKEncodedImageFormat.Png, 3200, 1600);
+        InlineImageOptimizer optimizer = CreateOptimizer(maxLongEdge: 1568);
+        FileAsset assetA = CreateAsset("image/png", fileId: "file-a", sha256: "digest-1");
+        FileAsset assetB = CreateAsset("image/png", fileId: "file-b", sha256: "digest-1");
+
+        byte[] first = optimizer.Optimize(assetA, source);
+        byte[] second = optimizer.Optimize(assetB, source);
+
+        Assert.Same(first, second);
+    }
+
+    // 基准 2x2：TL=红 FF0000、TR=绿 008000、BL=蓝 0000FF、BR=黄 FFFF00。
+    [Theory]
+    [InlineData(SKEncodedOrigin.RightTop, "0000FF", "FF0000", "FFFF00", "008000")]
+    [InlineData(SKEncodedOrigin.LeftBottom, "008000", "FFFF00", "FF0000", "0000FF")]
+    [InlineData(SKEncodedOrigin.BottomRight, "FFFF00", "0000FF", "008000", "FF0000")]
+    [InlineData(SKEncodedOrigin.TopRight, "008000", "FF0000", "FFFF00", "0000FF")]
+    [InlineData(SKEncodedOrigin.BottomLeft, "0000FF", "FFFF00", "FF0000", "008000")]
+    [InlineData(SKEncodedOrigin.LeftTop, "FF0000", "0000FF", "008000", "FFFF00")]
+    [InlineData(SKEncodedOrigin.RightBottom, "FFFF00", "008000", "0000FF", "FF0000")]
+    public void OrientDecoded_AppliesExifTransform(
+        SKEncodedOrigin origin,
+        string expectedTopLeft,
+        string expectedTopRight,
+        string expectedBottomLeft,
+        string expectedBottomRight)
+    {
+        using SKBitmap source = CreateQuad(
+            SKColors.Red, SKColors.Green, SKColors.Blue, SKColors.Yellow);
+
+        using SKBitmap? oriented = InlineImageOptimizer.OrientDecoded(source, origin);
+
+        Assert.NotNull(oriented);
+        Assert.Equal(SKColor.Parse(expectedTopLeft), oriented!.GetPixel(0, 0));
+        Assert.Equal(SKColor.Parse(expectedTopRight), oriented.GetPixel(1, 0));
+        Assert.Equal(SKColor.Parse(expectedBottomLeft), oriented.GetPixel(0, 1));
+        Assert.Equal(SKColor.Parse(expectedBottomRight), oriented.GetPixel(1, 1));
+    }
+
+    [Fact]
+    public void OrientDecoded_QuarterTurnsSwapDimensions()
+    {
+        using SKBitmap wide = new(new SKImageInfo(4, 2, SKColorType.Bgra8888, SKAlphaType.Opaque));
+        using SKBitmap? rotated = InlineImageOptimizer.OrientDecoded(wide, SKEncodedOrigin.RightTop);
+        Assert.NotNull(rotated);
+        Assert.Equal(2, rotated!.Width);
+        Assert.Equal(4, rotated.Height);
+    }
+
+    private static SKBitmap CreateQuad(SKColor topLeft, SKColor topRight, SKColor bottomLeft, SKColor bottomRight)
+    {
+        var bitmap = new SKBitmap(new SKImageInfo(2, 2, SKColorType.Bgra8888, SKAlphaType.Opaque));
+        bitmap.SetPixel(0, 0, topLeft);
+        bitmap.SetPixel(1, 0, topRight);
+        bitmap.SetPixel(0, 1, bottomLeft);
+        bitmap.SetPixel(1, 1, bottomRight);
+        return bitmap;
+    }
+
     private static InlineImageOptimizer CreateOptimizer(
         int maxLongEdge,
         long? maxPixels = null,
@@ -215,15 +278,15 @@ public sealed class InlineImageOptimizerTests
         }));
     }
 
-    private static FileAsset CreateAsset(string mediaType) => new()
+    private static FileAsset CreateAsset(string mediaType, string? fileId = null, string? sha256 = null) => new()
     {
-        FileId = Guid.NewGuid().ToString("N"),
+        FileId = fileId ?? Guid.NewGuid().ToString("N"),
         TenantId = "tenant-1",
         OwnerUserId = "user-1",
         FileName = "image",
         MediaType = mediaType,
         Length = 1,
-        Sha256 = "sha",
+        Sha256 = sha256 ?? Guid.NewGuid().ToString("N"),
         ObjectKey = "files/tenant-1/image",
         Source = FileAssetSource.UserUpload,
         State = FileAssetState.Ready,

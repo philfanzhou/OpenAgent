@@ -435,18 +435,26 @@ public sealed class PlatformChatHistoryTests
         Assert.Equal(2, optimizer.OptimizedFileIds.Count(fileId => fileId == asset.FileId));
     }
 
-    private sealed class NoopImageOptimizer : IInlineImageOptimizer
+    private sealed class NoopImageOptimizer : InlineImageOptimizer
     {
-        public byte[] Optimize(FileAsset asset, byte[] data) => data;
+        public NoopImageOptimizer() : base(Microsoft.Extensions.Options.Options.Create(new FileAssetOptions()))
+        {
+        }
+
+        public override byte[] Optimize(FileAsset asset, byte[] data) => data;
     }
 
-    private sealed class RecordingImageOptimizer : IInlineImageOptimizer
+    private sealed class RecordingImageOptimizer : InlineImageOptimizer
     {
         private readonly List<string> _fileIds = [];
 
+        public RecordingImageOptimizer() : base(Microsoft.Extensions.Options.Options.Create(new FileAssetOptions()))
+        {
+        }
+
         public IEnumerable<string> OptimizedFileIds => _fileIds;
 
-        public byte[] Optimize(FileAsset asset, byte[] data)
+        public override byte[] Optimize(FileAsset asset, byte[] data)
         {
             _fileIds.Add(asset.FileId);
             return data;

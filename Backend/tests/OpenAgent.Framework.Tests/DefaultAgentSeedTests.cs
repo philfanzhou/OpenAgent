@@ -41,7 +41,6 @@ public sealed class DefaultAgentSeedTests
             Assert.Equal("{}", row["McpJson"]);
             Assert.Equal("{}", row["RagJson"]);
             Assert.Equal("{}", row["SkillsJson"]);
-            Assert.Equal("{}", row["CodeExecutionJson"]);
         });
         Assert.Contains(
             "20260916022059_SeedDefaultAgents",
@@ -75,6 +74,5 @@ public sealed class DefaultAgentSeedTests
         Assert.Empty(defaultAgent.Config.Mcp.EnabledServerIds);
         Assert.Empty(defaultAgent.Config.Rag.Instances);
         Assert.Empty(defaultAgent.Config.Skills.Instances);
-        Assert.False(defaultAgent.Config.CodeExecution.Enabled);
     }
 }

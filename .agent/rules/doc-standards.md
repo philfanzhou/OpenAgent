@@ -29,8 +29,7 @@
     │   ├── OpenAgent.Capabilities/    ← 源码（无散落文档）
     │   ├── OpenAgent.Engine/          ← 源码（无散落文档）
     │   ├── OpenAgent.Engine.Host/     ← 源码（无散落文档）
-    │   ├── OpenAgent.Runner/          ← 源码（无散落文档）
-    │   ├── OpenAgent.Framework/       ← 源码（无散落文档）
+        │   ├── OpenAgent.Framework/       ← 源码（无散落文档）
     │   └── OpenAgent.Router/          ← 源码（无散落文档）
     └── tests/                         ← 测试项目
 ```

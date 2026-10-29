@@ -213,7 +213,6 @@ public sealed class OpenAgentDbContext(DbContextOptions<OpenAgentDbContext> opti
             entity.Property(item => item.RagJson).HasColumnType("jsonb");
             entity.Property(item => item.OpenCodeJson).HasColumnType("jsonb").HasDefaultValue("{}");
             entity.Property(item => item.SkillsJson).HasColumnType("jsonb");
-            entity.Property(item => item.CodeExecutionJson).HasColumnType("jsonb");
             entity.Property(item => item.Version).IsConcurrencyToken();
             entity.HasIndex(item => new { item.TenantId, item.UpdatedAt });
             entity.HasData(
@@ -230,7 +229,6 @@ public sealed class OpenAgentDbContext(DbContextOptions<OpenAgentDbContext> opti
                     McpJson = "{}",
                     RagJson = "{}",
                     SkillsJson = "{}",
-                    CodeExecutionJson = "{}",
                     Version = 1,
                     UpdatedAt = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero)
                 },
@@ -247,7 +245,6 @@ public sealed class OpenAgentDbContext(DbContextOptions<OpenAgentDbContext> opti
                     McpJson = "{}",
                     RagJson = "{}",
                     SkillsJson = "{}",
-                    CodeExecutionJson = "{}",
                     Version = 1,
                     UpdatedAt = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero)
                 });
