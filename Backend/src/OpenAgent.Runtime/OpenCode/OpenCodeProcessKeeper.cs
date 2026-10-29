@@ -19,6 +19,9 @@ internal sealed class OpenCodeAgentProcess(
     internal string Workspace { get; } = Path.Combine(home, "workspace");
     internal DateTimeOffset IdleDeadline;
     internal int Sessions;
+    internal string? SessionId;
+    internal string? HistoryCheckpoint;
+    internal string? ToolSchema;
     internal bool IsAlive => !Process.Exit.IsCompleted && !Client.Connection.Completion.IsCompleted;
 }
 

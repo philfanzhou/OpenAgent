@@ -23,6 +23,15 @@ internal sealed class RuntimePreparationScope(
     private readonly StringBuilder _reasoning = new();
     private readonly List<ChatMessage> _tools = [];
     private TokenUsage? _usage;
+    private bool _completed;
+
+    internal string? HistoryCheckpoint => history.Checkpoint;
+
+    internal async Task<string?> CommitAsync(CancellationToken ct)
+    {
+        await CompleteAsync(ct).ConfigureAwait(false);
+        return history.Checkpoint;
+    }
 
     internal void Observe(AgentStreamEvent item)
     {
@@ -57,6 +66,10 @@ internal sealed class RuntimePreparationScope(
 
     internal async Task CompleteAsync(CancellationToken ct)
     {
+        if (_completed)
+        {
+            return;
+        }
         List<AIContent> content = [];
         if (_reasoning.Length > 0)
         {
@@ -70,10 +83,15 @@ internal sealed class RuntimePreparationScope(
         }
         await history.PersistAsync(responses, ct).ConfigureAwait(false);
         await history.CompleteAsync(_usage, InvocationRequest.Profile.Model.ModelId, ct).ConfigureAwait(false);
+        _completed = true;
     }
 
     internal async Task FailAsync(Exception error)
     {
+        if (_completed)
+        {
+            return;
+        }
         // 请求 token 已取消时仍需落库部分正文和最终状态；沿用平台的有界存储清理路径。
         try
         {

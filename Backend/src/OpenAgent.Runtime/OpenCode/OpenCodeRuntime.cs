@@ -15,7 +15,7 @@ using OpenAgent.Runtime.Acp.Protocol;
 
 namespace OpenAgent.Runtime.OpenCode;
 
-/// <summary>工作区随进程按会话归属复用；ACP 会话与工具授权仍按轮次创建和关闭。</summary>
+/// <summary>工作区与已提交的 harness 会话随进程复用；ACP 连接句柄和工具授权按轮次更新。</summary>
 internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCodeProcessKeeper keeper, RuntimeToolBridge bridge, ILogger<OpenCodeRuntime> logger) : IAgentRuntimeDriver, IDisposable
 {
     private readonly SemaphoreSlim _turns = new(options.Value.MaxConcurrentTurns);
@@ -119,7 +119,6 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         OpenCodeOptions settings = options.Value;
-        ContentBlock[] prompt = BuildPrompt(invocation.Messages, settings.MaxPromptCharacters);
         // 同一租户、用户、平台会话与 Agent 才能复用执行环境。
         string conversation = string.IsNullOrWhiteSpace(invocation.Turn.ConversationId)
             ? Guid.NewGuid().ToString("N") : invocation.Turn.ConversationId;
@@ -145,6 +144,9 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
             tools = await bridge.RegisterAsync(invocation.Tools, cancellationToken).ConfigureAwait(false);
             // 平台自有工具经桥；外部 MCP server 按 Agent 配置直接透传给 harness 原生连接。
             McpServer[] sessionServers = [tools.Server, .. AcpSessionMcp.Map(invocation.McpServers)];
+            string schema = Convert.ToHexStringLower(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(
+                invocation.Tools.OrderBy(tool => tool.Name, StringComparer.Ordinal)
+                    .Select(tool => new { tool.Name, tool.Description, tool.ParametersJsonSchema }))));
             InitializeResponse initialized = agent.Initialized;
             yield return new AgentStreamEvent
             {
@@ -153,9 +155,17 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
                     initialized.AgentInfo?.Name, initialized.AgentInfo?.Version)
             };
             agent.Sessions++;
-            await using AcpSession session = await agent.Client.NewSessionAsync(new(agent.Workspace, sessionServers), cancellationToken).ConfigureAwait(false);
+            bool resume = agent.SessionId is not null && invocation.HistoryCheckpoint is not null
+                && invocation.HistoryCheckpoint == agent.HistoryCheckpoint && schema == agent.ToolSchema
+                && initialized.AgentCapabilities?.SessionCapabilities?.Resume is not null
+                && initialized.AgentCapabilities?.SessionCapabilities?.Close is not null;
+            // 每轮 resume 重新绑定 MCP 凭证；不把旧 bearer 或上一轮工具闭包保留到追问。
+            await using AcpSession session = resume
+                ? await agent.Client.ResumeSessionAsync(new(agent.SessionId!, agent.Workspace, sessionServers), cancellationToken).ConfigureAwait(false)
+                : await agent.Client.NewSessionAsync(new(agent.Workspace, sessionServers), cancellationToken).ConfigureAwait(false);
             sessionAt = clock.ElapsedMilliseconds;
             await SelectModelAsync(session, invocation.Profile.Model.ModelId, cancellationToken).ConfigureAwait(false);
+            ContentBlock[] prompt = BuildPrompt(resume ? [invocation.Messages[^1]] : invocation.Messages, settings.MaxPromptCharacters);
             await using AcpPromptTurn turn = await session.StartPromptAsync(prompt, cancellationToken).ConfigureAwait(false);
             promptAt = clock.ElapsedMilliseconds;
             await using IAsyncEnumerator<SessionNotification> updates = session.ReadUpdatesAsync().GetAsyncEnumerator();
@@ -220,7 +230,8 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
             {
                 throw new AgentException(AgentErrorCode.PipelineExecutionFailed, "OpenCode did not complete the prompt.");
             }
-            completed = true;
+            // 提交平台数据前关闭本轮工具入口；保存期间也不能接受迟到的工具调用。
+            await tools.DisposeAsync().ConfigureAwait(false);
             yield return new AgentStreamEvent
             {
                 Type = AgentStreamEventType.Usage,
@@ -236,6 +247,12 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
                     }
                     : null
             };
+            // 消费者已观察完正文、工具和 usage，提交成功后才允许下一轮延续 harness 历史。
+            agent.HistoryCheckpoint = invocation.CommitAsync is null ? null
+                : await invocation.CommitAsync(cancellationToken).ConfigureAwait(false);
+            agent.SessionId = agent.HistoryCheckpoint is null ? null : session.SessionId;
+            agent.ToolSchema = schema;
+            completed = true;
         }
         finally
         {

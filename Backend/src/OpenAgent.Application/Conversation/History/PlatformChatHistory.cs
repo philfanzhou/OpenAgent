@@ -45,6 +45,9 @@ internal sealed class PlatformChatHistory : IAsyncDisposable
     private readonly List<ChatMessage> _streamedToolMessages = [];
     private IConversationLockHandle? _lockHandle;
     private int _currentVersion;
+    private string _contextGeneration = string.Empty;
+    private bool _checkpointValid;
+    internal string? Checkpoint => _checkpointValid ? $"{_currentVersion}:{_contextGeneration}" : null;
     private int _nextSequence = 1;
     private bool _loaded;
     private bool _userRecorded;
@@ -258,6 +261,8 @@ internal sealed class PlatformChatHistory : IAsyncDisposable
                 _input,
                 cancellationToken).ConfigureAwait(false);
             _currentVersion = loaded.CurrentVersion;
+            _contextGeneration = loaded.ContextGeneration;
+            _checkpointValid = true;
             _nextSequence = loaded.NextSequence;
             List<ChatMessage> history = await BuildHistoryAsync(loaded.History, cancellationToken).ConfigureAwait(false);
             return RepairToolHistory(history);
@@ -515,7 +520,7 @@ internal sealed class PlatformChatHistory : IAsyncDisposable
         return repaired;
     }
 
-    /// <summary>成功路径：把响应暂存为存储行并释放会话锁；最终保存由 CompleteAsync 完成。</summary>
+    /// <summary>暂存响应；会话锁持续持有到平台提交完成。</summary>
     internal Task PersistAsync(
         IReadOnlyList<ChatMessage> responseMessages,
         CancellationToken cancellationToken)
@@ -523,7 +528,7 @@ internal sealed class PlatformChatHistory : IAsyncDisposable
         _finalized = true;
         StageResponses(responseMessages);
         _completionStaged = true;
-        return ReleaseLockAsync().AsTask();
+        return Task.CompletedTask;
     }
 
     /// <summary>
@@ -594,13 +599,16 @@ internal sealed class PlatformChatHistory : IAsyncDisposable
             };
         }
 
-        await _store.SaveAsync(
+        int? savedVersion = await _store.SaveAsync(
             _conversation,
             _currentVersion,
             _pending,
             ConversationStatus.Completed,
             cancellationToken).ConfigureAwait(false);
+        _checkpointValid = savedVersion.HasValue;
+        _currentVersion = savedVersion ?? _currentVersion;
         _stored = true;
+        await ReleaseLockAsync().ConfigureAwait(false);
     }
 
     /// <summary>失败/取消路径：记录原因、持久化部分输出并释放会话锁。</summary>

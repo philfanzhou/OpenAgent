@@ -127,7 +127,12 @@ internal sealed class RuntimePreparation(
             }
             scope.Context = context;
             scope.InvocationRequest = new RuntimeInvocation(profile, turn, context.Instructions ?? string.Empty,
-                context.Messages.Select(ToRuntimeMessage).ToArray(), exported, skills, mcpServers);
+                context.Messages.Select(ToRuntimeMessage).ToArray(), exported, skills, mcpServers)
+            {
+                // 自定义 Provider 可改写非持久化上下文，此时维持完整历史的新会话路径。
+                HistoryCheckpoint = features.Any(feature => feature.ContextProviders.Count > 0) ? null : scope.HistoryCheckpoint,
+                CommitAsync = scope.CommitAsync
+            };
             return scope;
         }
         catch (Exception error)

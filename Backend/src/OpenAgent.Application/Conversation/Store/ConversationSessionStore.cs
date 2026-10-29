@@ -64,15 +64,13 @@ internal sealed class ConversationSessionStore
         return new ConversationSession(
             record.Version,
             record.MessageCount + 1,
-            ResolveModelHistory(record));
+            ResolveModelHistory(record),
+            ResolveSummary(record)?.CompressionId ?? string.Empty);
     }
 
     internal static IReadOnlyList<ConversationMessage> ResolveModelHistory(ConversationRecord record)
     {
-        ContextSummary? latest = record.ContextSummaries.LastOrDefault(summary =>
-            string.Equals(summary.Status, "Succeeded", StringComparison.Ordinal)
-            && summary.CompactedMessages.Count > 0
-            && IsUsableProjection(summary));
+        ContextSummary? latest = ResolveSummary(record);
         if (latest == null)
         {
             return record.Messages.AsReadOnly();
@@ -87,6 +85,11 @@ internal sealed class ConversationSessionStore
             .ToList()
             .AsReadOnly();
     }
+
+    private static ContextSummary? ResolveSummary(ConversationRecord record) =>
+        record.ContextSummaries.LastOrDefault(summary =>
+            string.Equals(summary.Status, "Succeeded", StringComparison.Ordinal)
+            && summary.CompactedMessages.Count > 0 && IsUsableProjection(summary));
 
     private static bool IsUsableProjection(ContextSummary summary) =>
         !string.IsNullOrWhiteSpace(summary.Summary)
@@ -128,7 +131,7 @@ internal sealed class ConversationSessionStore
         && string.Equals(left.ToolCallId, right.ToolCallId, StringComparison.Ordinal)
         && string.Equals(left.ToolName, right.ToolName, StringComparison.Ordinal);
 
-    internal async Task SaveAsync(
+    internal async Task<int?> SaveAsync(
         ConversationContext context,
         int expectedVersion,
         IReadOnlyList<ConversationMessage> messages,
@@ -137,8 +140,9 @@ internal sealed class ConversationSessionStore
     {
         if (!context.IsValid)
         {
-            return;
+            return null;
         }
+        bool consistent = true;
 
         // 本轮所有落库消息统一盖章轮次追溯键，前端消息与 LLM 交互日志按 TraceId 对齐。
         if (messages.Count > 0 && !string.IsNullOrWhiteSpace(context.TraceId))
@@ -160,6 +164,7 @@ internal sealed class ConversationSessionStore
                 cancellationToken).ConfigureAwait(false);
             if (!append.Success)
             {
+                consistent = false;
                 append = await RetryAppendAsync(context, messages, cancellationToken).ConfigureAwait(false);
             }
 
@@ -170,6 +175,7 @@ internal sealed class ConversationSessionStore
             }
 
             expectedVersion = append.NewVersion;
+            consistent &= append.SkippedDuplicateCount == 0;
         }
 
         if (status != ConversationStatus.Running)
@@ -185,7 +191,9 @@ internal sealed class ConversationSessionStore
                 throw new InvalidOperationException(
                     $"Conversation status update failed: {status}");
             }
+            expectedVersion++;
         }
+        return consistent ? expectedVersion : null;
     }
 
     internal static ConversationMessage Message(

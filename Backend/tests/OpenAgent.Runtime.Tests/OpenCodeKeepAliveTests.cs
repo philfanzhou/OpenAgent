@@ -236,15 +236,110 @@ public sealed class OpenCodeKeepAliveTests
             catch (OperationCanceledException) { }
         });
         await using RuntimeFixture runtime = new(model.Endpoint, settings => settings["OpenCode:KeepAliveSeconds"] = "120");
-        await runtime.CollectAsync(runtime.Request);
+        await runtime.CollectAsync(runtime.Request with
+        {
+            HistoryCheckpoint = "initial", CommitAsync = _ => Task.FromResult<string?>("committed")
+        });
         using CancellationTokenSource cancel = new(TimeSpan.FromSeconds(30));
-        Task<List<AgentStreamEvent>> followUp = runtime.CollectAsync(runtime.Request, cancel.Token);
+        Task<List<AgentStreamEvent>> followUp = runtime.CollectAsync(runtime.Request with { HistoryCheckpoint = "committed" }, cancel.Token);
         await started.Task.WaitAsync(TimeSpan.FromSeconds(20));
         cancel.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => followUp.WaitAsync(TimeSpan.FromSeconds(15)));
         Assert.Equal(1, runtime.Keeper.ReusedCount);
         Assert.Equal(0, runtime.Keeper.KeptCount);
         runtime.AssertWorkspacesReleased();
+    }
+
+    [OpenCodeFact]
+    public async Task CommittedFollowUp_ResumesNativeHistoryAndUsesCurrentToolClosure()
+    {
+        int turn = 0;
+        List<int> invoked = [];
+        await using ModelFixture model = await ModelFixture.StartAsync(async (context, request) =>
+        {
+            JsonElement[] messages = request.GetProperty("messages").EnumerateArray().ToArray();
+            int lastUser = Array.FindLastIndex(messages, message => message.GetProperty("role").GetString() == "user");
+            if (messages.Skip(lastUser + 1).Any(message => message.GetProperty("role").GetString() == "tool"))
+            {
+                await ModelFixture.TextAsync(context, "answer-" + turn);
+                return;
+            }
+            if (turn == 2)
+            {
+                Assert.Contains(messages, message => message.GetProperty("role").GetString() == "assistant"
+                    && message.TryGetProperty("content", out JsonElement content) && content.ToString().Contains("answer-1", StringComparison.Ordinal));
+                Assert.DoesNotContain("openagent://conversation/history", request.GetRawText());
+            }
+            string name = request.GetProperty("tools").EnumerateArray()
+                .Select(tool => tool.GetProperty("function").GetProperty("name").GetString()!).Single();
+            await ModelFixture.ChunkAsync(context, new
+            {
+                role = "assistant",
+                tool_calls = new[] { new { index = 0, id = "echo-" + turn, type = "function", function = new { name, arguments = "{}" } } }
+            }, "tool_calls");
+        });
+        await using RuntimeFixture runtime = new(model.Endpoint, settings => settings["OpenCode:KeepAliveSeconds"] = "120");
+        string checkpoint = "empty";
+        for (turn = 1; turn <= 2; turn++)
+        {
+            int current = turn;
+            RuntimeTool tool = new("echo", "Echo", "{\"type\":\"object\",\"properties\":{}}", (_, _) =>
+            {
+                invoked.Add(current);
+                return Task.FromResult("tool-" + current);
+            });
+            List<AgentStreamEvent> events = await runtime.CollectAsync(runtime.Request with
+            {
+                Tools = [tool],
+                Messages = turn == 1 ? [new("user", "hello")] : [new("user", "hello"), new("assistant", "answer-1"), new("user", "continue")],
+                HistoryCheckpoint = checkpoint,
+                CommitAsync = _ => Task.FromResult<string?>(checkpoint = "committed-" + current)
+            });
+            Assert.Equal("answer-" + current, Text(events));
+        }
+        Assert.Equal([1, 2], invoked);
+        Assert.Equal(1, runtime.Keeper.ReusedCount);
+    }
+
+    [OpenCodeFact]
+    public async Task FailedPlatformCommit_DiscardsNativeSessionAndProcess()
+    {
+        await using ModelFixture model = await ModelFixture.StartAsync((context, request) => ModelFixture.TextAsync(context, "ok"));
+        await using RuntimeFixture runtime = new(model.Endpoint, settings => settings["OpenCode:KeepAliveSeconds"] = "120");
+        await Assert.ThrowsAsync<AgentException>(() => runtime.CollectAsync(runtime.Request with
+        {
+            HistoryCheckpoint = "initial",
+            CommitAsync = _ => throw new InvalidOperationException("Storage rejected commit")
+        }));
+        Assert.Equal(0, runtime.Keeper.KeptCount);
+        runtime.AssertWorkspacesReleased();
+    }
+
+    [OpenCodeFact]
+    public async Task ChangedPlatformCheckpoint_RebuildsNativeContextWithoutOldConversation()
+    {
+        int turn = 0;
+        await using ModelFixture model = await ModelFixture.StartAsync(async (context, request) =>
+        {
+            if (turn == 2)
+            {
+                Assert.DoesNotContain(request.GetProperty("messages").EnumerateArray(),
+                    message => message.GetProperty("role").GetString() == "assistant");
+                Assert.Contains("manual-summary", request.GetRawText());
+            }
+            await ModelFixture.TextAsync(context, "original-answer");
+        });
+        await using RuntimeFixture runtime = new(model.Endpoint, settings => settings["OpenCode:KeepAliveSeconds"] = "120");
+        for (turn = 1; turn <= 2; turn++)
+        {
+            await runtime.CollectAsync(runtime.Request with
+            {
+                HistoryCheckpoint = turn == 1 ? "empty" : "same-version:new-compression",
+                Messages = turn == 1 ? [new("user", "hello")] : [new("assistant", "manual-summary"), new("user", "continue")],
+                CommitAsync = _ => Task.FromResult<string?>("committed")
+            });
+        }
+        Assert.Equal(1, runtime.Keeper.ReusedCount);
     }
 
     private static RuntimeInvocation Invocation(string instructions) => new(new AgentRuntimeProfile

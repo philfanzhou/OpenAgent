@@ -18,7 +18,14 @@ public sealed record RuntimeInvocation(
     IReadOnlyList<RuntimeMessage> Messages,
     IReadOnlyList<RuntimeTool> Tools,
     IReadOnlyList<RuntimeSkill>? Skills = null,
-    IReadOnlyList<RuntimeMcpServer>? McpServers = null);
+    IReadOnlyList<RuntimeMcpServer>? McpServers = null)
+{
+    /// <summary>平台已提交历史的版本与上下文代次；缺省时不续用 harness 会话。</summary>
+    public string? HistoryCheckpoint { get; init; }
+
+    /// <summary>终态事件被消费后提交平台历史，返回新的检查点；失败必须丢弃运行时状态。</summary>
+    public Func<CancellationToken, Task<string?>>? CommitAsync { get; init; }
+}
 
 public sealed record RuntimeMessage(
     string Role,
