@@ -87,8 +87,8 @@ Runtime 在独立设置页保存 ID、名称、Provider 和单轮时限，存入
     "MaxConcurrentTurns": 8,
     "MaxPromptCharacters": 2097152,
     "LogUsageUpdates": false,
-    "KeepAliveSeconds": 15,
-    "MaxKeptProcesses": 2,
+    "KeepAliveSeconds": 300,
+    "MaxKeptProcesses": 16,
     "MaxSessionsPerProcess": 64,
     "AllowedNativeTools": []
   }
@@ -101,7 +101,7 @@ Runtime 在独立设置页保存 ID、名称、Provider 和单轮时限，存入
 
 每轮另有一行分段计时日志（EventId 4501，Information，默认开启，不含对话内容）：`process`（进程获取/启动+initialize，近 0 表示命中保活）、`sessionNew`（ACP session/new + 桥租约）、`prompt`（模型配置+发送）、`firstUpdate`（prompt→首个 session/update，衡量 ACP 链路活性）、`firstToken`（prompt→首个可见 token，包含 harness 准备与模型 TTFT）、`stream`（首 token→轮次完成）、`close`（会话关闭+清理+归还）。用于判别延迟归属；firstToken 同时包含 harness 内部准备，需结合模型请求发送时刻区分模型侧耗时。
 
-进程与工作区保活：默认空闲保留 15 秒，最多 2 个空闲进程；`KeepAliveSeconds=0` 可关闭。`MaxSessionsPerProcess`（默认 64）限制累计轮次；到期、失败、取消或超限统一回收，每个复用键最多保留一个空闲进程。主目录始终随机生成，只有命中同一归属和配置身份的独占租约才能继续使用，不跨租户/用户/会话/Agent 复用。Skill 使用平台验证过的包哈希参与身份；无哈希时计算本地文件内容哈希，避免给正常追问重复扫描包内容。当前 OpenCode 空闲仍消耗 CPU/内存，15 秒窗口用于限制驻留；忙进程上限仍由 `MaxConcurrentTurns` 控制，空闲数上限不等于宿主总进程上限。工具桥仍按轮次注册、吊销独立 bearer，不保留上一轮的工具闭包。
+进程与工作区保活：默认空闲保留 300 秒，最多 16 个空闲会话；`KeepAliveSeconds=0` 可关闭。`MaxSessionsPerProcess`（默认 64）限制累计轮次；到期、失败、取消或超限统一回收，每个会话最多保留一个空闲进程，池满时淘汰最久未使用者；会话配置变更会替换旧空闲项。主目录始终随机生成，只有命中同一归属和配置身份的独占租约才能继续使用，不跨租户/用户/会话/Agent 复用。Skill 使用平台验证过的包哈希参与身份；无哈希时计算本地文件内容哈希，避免给正常追问重复扫描包内容。当前 OpenCode 空闲仍消耗 CPU/内存，300 秒窗口和 LRU 容量上限共同限制驻留；忙进程上限仍由 `MaxConcurrentTurns` 控制，空闲数上限不等于宿主总进程上限。工具桥仍按轮次注册、吊销独立 bearer，不保留上一轮的工具闭包。
 
 缺少可执行文件、启动失败或 ACP 异常会明确失败，没有第二条执行路径。外部错误正文不会原样进入 SSE/会话；日志记录异常类型。工作区清理失败会告警并保留可定位目录，不删除其他轮次或宿主根目录。
 
@@ -125,6 +125,8 @@ Worker/分布式租约与 fencing、RunGrant、跨重启事件重放、人工审
 2026-10-28 本地验收（dev `0f670f86` 基线）：macOS arm64、.NET SDK 10.0.301、真实 OpenCode 1.19.3 + 即时本地模型；完整驱动每组剔除首轮后采样 6 次。保活关闭首字 p50 1656.3 ms，固定工作区 + 新 session 140.4 ms，检查点匹配后 resume 同一原生 session 142.8 ms（范围 110.0–185.9 ms）。后两者短文本开销相近：每轮轮换凭证仍需重新注册 MCP，未达到固定凭证直连原型的 19 ms；本次 session 复用的收益是保留原生多轮上下文、避免重复注入平台历史。结果不含真实模型计算、平台数据库和前端，窗口外首轮仍需冷启动。回归覆盖原生历史续接、本轮工具闭包、提交失败回收、手动压缩/版本冲突失效、续接取消、HTTP/SSE 保存顺序及提交后清理异常；全量后端 1116 通过、25 环境门控跳过。构建保留既有 RuntimeBoundaryTests 可空警告。
 
 2026-10-29 合并最新 dev `d38a3513` 后重新验收：构建通过，全量后端 1005 通过、3 项环境门控跳过；其中真实 Runtime 94 通过。保留 N02 的私有目录/Skill 链接拒绝、Runner 移除与原生执行配置，并新增复用工作区附件更新、附件目录/文件链接拒绝、Skill 指纹链接拒绝回归。测试数量随 dev 删除 Runner 与旧能力用例而变化，不与上一基线直接比较。
+
+2026-10-29 保活策略更新：默认 300 秒、16 个空闲会话，使用现有字典按最近归还时间淘汰最久未使用者，不引入第二套队列。相同会话配置变更直接替换旧空闲进程。构建通过，真实 Runtime 95 通过、3 项环境门控跳过；新增回归验证刷新后 LRU 淘汰顺序及工作区回收。
 
 默认执行 `dotnet build Backend/OpenAgent.sln` 和 `dotnet test Backend/OpenAgent.sln --no-build`。真实 OpenCode 场景显式设置可执行文件路径：
 
@@ -150,7 +152,7 @@ SDK 控制台继续只有 SDK 引用，外部连接入口见 [控制台使用](a
 
 ## N02：宿主继承缓解与受支持模式
 
-初始基线为 `origin/dev@768a8c1e`，交付前已合入 `origin/dev@45802efd`（保留 SkiaSharp 依赖、Runner 移除与附件工作区文件化）。范围为 Runtime/OpenCode、Engine 镜像/开发配置、Data Protection 卷挂载和 Runtime.Tests。N02 不修改 SDK 协议、依赖白名单、RAG 或 Worker/RunGrant 实现；Runner 移除来自已合入的最新 dev。代码执行按用户要求走 OpenCode 自身；最新 dev 已移除 Runner，本 PR 不恢复该路径。N02 原始验收时 `KeepAliveSeconds=0`；当前短时保活策略见上文“进程与工作区保活”。
+初始基线为 `origin/dev@768a8c1e`，交付前已合入 `origin/dev@45802efd`（保留 SkiaSharp 依赖、Runner 移除与附件工作区文件化）。范围为 Runtime/OpenCode、Engine 镜像/开发配置、Data Protection 卷挂载和 Runtime.Tests。N02 不修改 SDK 协议、依赖白名单、RAG 或 Worker/RunGrant 实现；Runner 移除来自已合入的最新 dev。代码执行按用户要求走 OpenCode 自身；最新 dev 已移除 Runner，本 PR 不恢复该路径。N02 原始验收时 `KeepAliveSeconds=0`；当前保活与 LRU 策略见上文“进程与工作区保活”。
 
 ### 当前缓解
 

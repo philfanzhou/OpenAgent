@@ -209,10 +209,12 @@ public sealed class OpenCodeKeepAliveTests
             await runtime.CollectAsync(request);
             string original = Assert.Single(Directory.GetDirectories(runtime.Root, "workspace", SearchOption.AllDirectories));
             await File.WriteAllTextAsync(entry, "---\nname: example\ndescription: Example skill\n---\nSecond version");
+            Assert.Contains("First version", await File.ReadAllTextAsync(Path.Combine(original, ".opencode", "skills", "example", "SKILL.md")));
             await runtime.CollectAsync(request);
             Assert.Equal(0, runtime.Keeper.ReusedCount);
-            Assert.Contains("First version", await File.ReadAllTextAsync(Path.Combine(original, ".opencode", "skills", "example", "SKILL.md")));
-            Assert.Equal(2, Directory.GetDirectories(runtime.Root, "workspace", SearchOption.AllDirectories).Length);
+            Assert.False(Directory.Exists(original));
+            string updated = Assert.Single(Directory.GetDirectories(runtime.Root, "workspace", SearchOption.AllDirectories));
+            Assert.Contains("Second version", await File.ReadAllTextAsync(Path.Combine(updated, ".opencode", "skills", "example", "SKILL.md")));
         }
         finally
         {
@@ -406,6 +408,36 @@ public sealed class OpenCodeKeepAliveTests
         {
             Directory.Delete(outside, recursive: true);
         }
+    }
+
+    [OpenCodeFact]
+    public async Task FullPool_EvictsLeastRecentlyUsedConversationAndReclaimsWorkspace()
+    {
+        await using ModelFixture model = await ModelFixture.StartAsync((context, request) => ModelFixture.TextAsync(context, "ok"));
+        await using RuntimeFixture runtime = new(model.Endpoint, settings =>
+        {
+            settings["OpenCode:KeepAliveSeconds"] = "300";
+            settings["OpenCode:MaxKeptProcesses"] = "2";
+        });
+        RuntimeInvocation Conversation(string id) => runtime.Request with
+        {
+            Turn = runtime.Request.Turn with { ConversationId = id }
+        };
+        await runtime.CollectAsync(Conversation("a"));
+        string first = Assert.Single(Directory.GetDirectories(runtime.Root, "workspace", SearchOption.AllDirectories));
+        await runtime.CollectAsync(Conversation("b"));
+        string oldest = Assert.Single(Directory.GetDirectories(runtime.Root, "workspace", SearchOption.AllDirectories).Except([first]));
+        await runtime.CollectAsync(Conversation("a")); // Refresh a; b must become the eviction candidate.
+        await runtime.CollectAsync(Conversation("c"));
+        Assert.Equal(2, runtime.Keeper.KeptCount);
+        Assert.Equal(1, runtime.Keeper.ReusedCount);
+        Assert.True(Directory.Exists(first));
+        Assert.False(Directory.Exists(oldest));
+        await runtime.CollectAsync(Conversation("a"));
+        Assert.Equal(2, runtime.Keeper.ReusedCount);
+        await runtime.CollectAsync(Conversation("b")); // Evicted b requires a new process.
+        Assert.Equal(2, runtime.Keeper.ReusedCount);
+        Assert.Equal(2, runtime.Keeper.KeptCount);
     }
 
     private static RuntimeInvocation Invocation(string instructions) => new(new AgentRuntimeProfile

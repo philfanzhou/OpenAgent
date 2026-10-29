@@ -15,6 +15,7 @@ internal sealed class OpenCodeAgentProcess(
     internal AcpClient Client { get; } = client;
     internal InitializeResponse Initialized { get; } = initialized;
     internal string Key { get; } = key;
+    internal string Owner { get; } = Path.GetDirectoryName(home)!;
     internal string Home { get; } = home;
     internal string Workspace { get; } = Path.Combine(home, "workspace");
     internal DateTimeOffset IdleDeadline;
@@ -25,7 +26,7 @@ internal sealed class OpenCodeAgentProcess(
     internal bool IsAlive => !Process.Exit.IsCompleted && !Client.Connection.Completion.IsCompleted;
 }
 
-/// <summary>每个复用键最多保留一个空闲进程；工作区随进程回收，轮次不单独管理目录。</summary>
+/// <summary>每个会话保留一个空闲进程；池满时回收最久未使用者，工作区随进程回收。</summary>
 internal sealed class OpenCodeProcessKeeper : IAsyncDisposable
 {
     private readonly OpenCodeOptions _options;
@@ -55,8 +56,8 @@ internal sealed class OpenCodeProcessKeeper : IAsyncDisposable
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            _kept.Remove(key, out cached);
-            if (cached is not null && cached.IsAlive && DateTimeOffset.UtcNow < cached.IdleDeadline)
+            _kept.Remove(parent, out cached);
+            if (cached is not null && cached.Key == key && cached.IsAlive && DateTimeOffset.UtcNow < cached.IdleDeadline)
             {
                 _reused++;
                 return cached;
@@ -94,18 +95,27 @@ internal sealed class OpenCodeProcessKeeper : IAsyncDisposable
 
     internal async ValueTask ReleaseAsync(OpenCodeAgentProcess process, bool healthy)
     {
+        OpenCodeAgentProcess? retired = process;
         lock (_gate)
         {
             if (!_disposed && healthy && process.IsAlive && _options.KeepAliveSeconds > 0
-                && process.Sessions < _options.MaxSessionsPerProcess
-                && _kept.Count < _options.MaxKeptProcesses && !_kept.ContainsKey(process.Key))
+                && process.Sessions < _options.MaxSessionsPerProcess)
             {
+                _kept.Remove(process.Owner, out retired);
+                if (retired is null && _kept.Count >= _options.MaxKeptProcesses)
+                {
+                    // TTL 相同，最早到期者就是最久未使用者；只淘汰空闲项。
+                    retired = _kept.Values.MinBy(entry => entry.IdleDeadline)!;
+                    _kept.Remove(retired.Owner);
+                }
                 process.IdleDeadline = DateTimeOffset.UtcNow.AddSeconds(_options.KeepAliveSeconds);
-                _kept.Add(process.Key, process);
-                return;
+                _kept[process.Owner] = process;
             }
         }
-        await DestroyAsync(process.Client, process.Process, process.Home).ConfigureAwait(false);
+        if (retired is not null)
+        {
+            await DestroyAsync(retired.Client, retired.Process, retired.Home).ConfigureAwait(false);
+        }
     }
 
     private async Task SweepAsync()
@@ -121,7 +131,7 @@ internal sealed class OpenCodeProcessKeeper : IAsyncDisposable
                     expired = _kept.Values.Where(process => !process.IsAlive || DateTimeOffset.UtcNow >= process.IdleDeadline).ToArray();
                     foreach (OpenCodeAgentProcess process in expired)
                     {
-                        _kept.Remove(process.Key);
+                        _kept.Remove(process.Owner);
                     }
                 }
                 foreach (OpenCodeAgentProcess process in expired)
