@@ -1,7 +1,8 @@
 # Database
 
 PostgreSQL 是当前 OpenAgent 持久化业务数据的唯一事实源；EF Core migration 位于
-`Backend/src/OpenAgent.Framework/Persistence/Migrations/`。`IConversationStore` 与文件资产契约不绑定
+`Backend/src/OpenAgent.Framework/Persistence/Migrations/`，实体映射按实体拆分为同目录 `Mapping/` 下的
+`IEntityTypeConfiguration`，由 `OpenAgentDbContext.OnModelCreating` 按固定顺序汇总应用。`IConversationStore` 与文件资产契约不绑定
 特定数据库，后续 Provider 可在 Framework 层独立实现。生产部署流水线应显式执行 migration；Development 可配置启动时应用 migration。迁移历史固定在 `public.__EFMigrationsHistory`，避免与 PostgreSQL 用户同名 schema 影响重启。
 
 ## 表清单
