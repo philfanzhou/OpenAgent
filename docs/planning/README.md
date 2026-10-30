@@ -2,6 +2,7 @@
 
 | 文档 | 用途 |
 |---|---|
+| [文件收发方案](opencode-file-exchange.md) | OpenCode 原文件输入、本地产物登记与消息交付 |
 | [任务清单](TODO.md) | 当前任务状态、优先级、修改边界、前置依赖与验收条件 |
 | [架构提案](architecture/README.md) | 新架构方案图与提案（未批准，任务评审输入） |
 | [开发指南](../overview/DevelopmentGuide.md) | 模块入口与协作规则 |

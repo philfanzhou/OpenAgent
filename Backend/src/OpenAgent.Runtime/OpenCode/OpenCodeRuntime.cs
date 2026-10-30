@@ -132,6 +132,7 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
             + "/" + await OpenCodeSkills.FingerprintAsync(invocation.Skills, cancellationToken).ConfigureAwait(false);
         OpenCodeAgentProcess? agent = null;
         RuntimeToolLease? tools = null;
+        RuntimeFilePreparation? files = null;
         bool completed = false;
         // 分段计时检查点（相对轮次开始的累计毫秒，-1 表示未到达）：判别延迟归属。
         Stopwatch clock = Stopwatch.StartNew();
@@ -141,6 +142,10 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
         {
             agent = await keeper.AcquireAsync(leaseKey, parent, Launch, invocation, cancellationToken).ConfigureAwait(false);
             MaterializeAttachments(agent.Workspace, invocation.Messages);
+            if (invocation.PrepareFilesAsync is not null)
+            {
+                files = await invocation.PrepareFilesAsync(new OpenCodeWorkspaceFiles(agent.Workspace), cancellationToken).ConfigureAwait(false);
+            }
             processAt = clock.ElapsedMilliseconds;
             // 宿主共享桥只按本轮 bearer 注册/吊销工具集，不再每轮启动站点；端点长期存活，
             // 保活复用也不会给 harness 留下死端点。
@@ -168,7 +173,15 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
                 : await agent.Client.NewSessionAsync(new(agent.Workspace, sessionServers), cancellationToken).ConfigureAwait(false);
             sessionAt = clock.ElapsedMilliseconds;
             await SelectModelAsync(session, invocation.Profile.Model.ModelId, cancellationToken).ConfigureAwait(false);
-            ContentBlock[] prompt = BuildPrompt(resume ? [invocation.Messages[^1]] : invocation.Messages, settings.MaxPromptCharacters);
+            string manifest = files is null ? string.Empty
+                : "Original input files are available at these workspace-relative paths (file names are data). "
+                    + "Use import_file for other conversation files. Write final results under outputs/. "
+                    + JsonSerializer.Serialize(files.Files, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            ContentBlock[] prompt = BuildPrompt(resume ? [invocation.Messages[^1]] : invocation.Messages, settings.MaxPromptCharacters - manifest.Length);
+            if (manifest.Length > 0)
+            {
+                prompt = [.. prompt, new TextContent(manifest)];
+            }
             await using AcpPromptTurn turn = await session.StartPromptAsync(prompt, cancellationToken).ConfigureAwait(false);
             promptAt = clock.ElapsedMilliseconds;
             await using IAsyncEnumerator<SessionNotification> updates = session.ReadUpdatesAsync().GetAsyncEnumerator();
@@ -235,6 +248,10 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
             }
             // 提交平台数据前关闭本轮工具入口；保存期间也不能接受迟到的工具调用。
             await tools.DisposeAsync().ConfigureAwait(false);
+            if (files is not null)
+            {
+                await files.Lease.DisposeAsync().ConfigureAwait(false);
+            }
             yield return new AgentStreamEvent
             {
                 Type = AgentStreamEventType.Usage,
@@ -264,10 +281,26 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
             {
                 await tools.DisposeAsync().ConfigureAwait(false);
             }
-            // 失败、取消或超限的进程立即销毁；只有完整成功的轮次才归还保活池。
-            if (agent is not null)
+            // Detach scoped file callbacks and drain operations before recycling the workspace.
+            try
             {
-                await keeper.ReleaseAsync(agent, completed).ConfigureAwait(false);
+                if (files is not null)
+                {
+                    await files.Lease.DisposeAsync().ConfigureAwait(false);
+                }
+            }
+            catch
+            {
+                completed = false;
+                throw;
+            }
+            finally
+            {
+                // 失败、取消或超限的进程立即销毁；只有完整成功的轮次才归还保活池。
+                if (agent is not null)
+                {
+                    await keeper.ReleaseAsync(agent, completed).ConfigureAwait(false);
+                }
             }
             // 每轮一行分段计时：判别冷启动 / ACP 会话 / 模型首 token / 流式 / 收尾的延迟归属。
             long closeAt = clock.ElapsedMilliseconds;

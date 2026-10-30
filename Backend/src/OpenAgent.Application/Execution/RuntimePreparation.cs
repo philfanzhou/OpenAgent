@@ -27,6 +27,7 @@ internal sealed class RuntimePreparation(
     CapabilityToolFactory capabilities,
     IEnumerable<IAgentFeatureFactory> factories,
     FileAssetExecutionContext files,
+    FileExchangeContext exchange,
     AgentAuthorizationGate authorization,
     IServiceProvider services,
     IOptions<AgentExecutionOptions> options,
@@ -131,7 +132,10 @@ internal sealed class RuntimePreparation(
             {
                 // 自定义 Provider 可改写非持久化上下文，此时维持完整历史的新会话路径。
                 HistoryCheckpoint = features.Any(feature => feature.ContextProviders.Count > 0) ? null : scope.HistoryCheckpoint,
-                CommitAsync = scope.CommitAsync
+                CommitAsync = scope.CommitAsync,
+                PrepareFilesAsync = exchange.Enabled
+                    ? (workspace, token) => exchange.PrepareAsync(workspace, attachments, token)
+                    : null
             };
             return scope;
         }

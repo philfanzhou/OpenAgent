@@ -22,6 +22,15 @@ internal static class FileAssetServiceExtensions
         services.AddOptions<FileAssetOptions>()
             .Bind(configuration.GetSection(FileAssetOptions.SectionName))
             .ValidateOnStart();
+        services.AddOptions<FileExchangeOptions>()
+            .Bind(configuration.GetSection(FileExchangeOptions.SectionName))
+            .Validate(options => options.MaxInputFiles is > 0 and <= 100
+                && options.MaxInputBytes > 0
+                && options.MaxConcurrentTransfers is > 0 and <= 16, "Invalid file exchange limits.")
+            .ValidateOnStart();
+        services.TryAddSingleton<FileTransferGate>();
+        services.AddScoped<FileExchangeContext>();
+        services.AddScoped<ICapabilitySource, FileExchangeCapabilitySource>();
         services.AddSingleton<IValidateOptions<FileShareOptions>, FileShareOptionsValidator>();
         services.AddOptions<FileShareOptions>()
             .Bind(configuration.GetSection(FileShareOptions.SectionName))

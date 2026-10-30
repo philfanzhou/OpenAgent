@@ -197,3 +197,9 @@ Windows 原生运行必须使用独立服务账户、干净系统用户 profile 
 ### 回退
 
 需要立即关闭保活时设置 `KeepAliveSeconds=0`。出现兼容问题时停用受影响 Runtime/能力或回退相应 PR；不能把恢复个人 HOME、允许宿主技能继承作为安全回退；原生工具授权也不能代替多租户 OS 隔离。Skill 新进程首次复制与工作区回收仍需计入准备/清理成本。非 root 镜像的 Data Protection 卷权限迁移与旧镜像回退见[部署指南](../operations/deployment.md#opencode-服务身份与已有密钥卷)。既有 `WorkspaceRoot` 若权限过宽，应停机后由运维收紧为专属目录，不让应用自动更改未知宿主目录权限。
+
+## 文件原件输入（FX01）
+
+启用 `FileAssets:Enabled=true` 与 `FileExchange:Enabled=true` 后，本轮附件原始字节在 MCP 桥注册前写入 `inputs/<fileId>/<安全文件名>`，prompt 附稳定相对路径清单。图片视觉预览仍走原内联流程，原文件不会被降采样替代。`import_file(fileId)` 可恢复当前会话已引用的原件；同名文件按 ID 分目录，本地副本被改写或工作区淘汰后从资产恢复。默认关闭文件交换。
+
+`FileExchange` 输入限额默认每轮 10 个、合计 200 MiB，单文件沿用 FileAssets 限额，进程内最多同时 2 个缓冲传输；它们不是 OS 配额。文件工具继续经过既有发现/调用授权和超时预算。文件租约在消息提交前关闭，回收前排空；Runtime 不保留本轮 scoped 服务。输出导出和完整交付在 FX02/FX03 接续，任务与设计见[方案](../planning/opencode-file-exchange.md)。
