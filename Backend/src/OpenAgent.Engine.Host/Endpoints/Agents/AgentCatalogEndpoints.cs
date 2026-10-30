@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
+using OpenAgent.Contracts.Security;
+using OpenAgent.Engine.Host.Endpoints.Admin;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Engine.Host.Endpoints;
 using OpenAgent.Engine.Host.Middleware;
@@ -16,11 +18,13 @@ internal static class AgentCatalogEndpoints
 
     private static async Task<IReadOnlyList<AgentSummary>> ExecuteAsync(
         [FromServices] IAgentConfigProvider configProvider,
+        [FromServices] IResourceAuthorization authorization,
         HttpContext context,
         CancellationToken cancellationToken)
     {
-        return await configProvider.ListAgentsAsync(
+        var agents = await configProvider.ListAgentsAsync(
             AgentEndpointRequestMapper.RequireTenant(context),
             cancellationToken).ConfigureAwait(false);
+        return await ResourceAccess.FilterAsync(agents, item => item.AgentId, AgentResourceType.Agent, "execute", authorization, context, cancellationToken).ConfigureAwait(false);
     }
 }

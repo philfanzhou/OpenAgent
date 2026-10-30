@@ -28,6 +28,7 @@ internal static class ConfigurationEndpointExtensions
     {
         RouteGroupBuilder group = endpoints.MapGroup(pattern).RequireAuthorization();
 
+        group.MapResourcePolicyEndpoints();
         group.MapMcpConfigurationEndpoints();
         MapRagEndpoints(group);
         group.MapLlmConfigurationEndpoints();

@@ -5,8 +5,21 @@ using OpenAgent.Framework.Entities;
 
 namespace OpenAgent.Framework.Configuration;
 
-internal sealed class McpConfigRepository(IDbContextFactory<OpenAgentDbContext> contexts) : IMcpConfigRepository
+internal sealed class McpConfigRepository : IMcpConfigRepository
 {
+    private readonly IDbContextFactory<OpenAgentDbContext> contexts;
+    private readonly ConfigurationInvalidation? _invalidation;
+
+    public McpConfigRepository(IDbContextFactory<OpenAgentDbContext> contexts, ConfigurationInvalidation? invalidation = null)
+    {
+        this.contexts = contexts;
+        _invalidation = invalidation;
+        if (invalidation is not null) invalidation.Changed += (kind, tenant, id) =>
+        {
+            if (kind == "mcp") _cache.Invalidate(tenant, id);
+        };
+    }
+
     // 仓储注册为单例：轮次间复用读缓存（含负结果），写入/删除即时失效。
     private readonly TenantEntryCache _cache = new();
 
@@ -14,6 +27,9 @@ internal sealed class McpConfigRepository(IDbContextFactory<OpenAgentDbContext> 
     {
         return _cache.GetOrAddAsync(tenantId, id, ct => ReadAsync(tenantId, id, ct), cancellationToken);
     }
+
+    public Task<McpServerConfig?> GetFreshAsync(string tenantId, string id, CancellationToken cancellationToken = default)
+        => ReadAsync(tenantId, id, cancellationToken);
 
     private async Task<McpServerConfig?> ReadAsync(string tenantId, string id, CancellationToken cancellationToken)
     {
@@ -45,6 +61,7 @@ internal sealed class McpConfigRepository(IDbContextFactory<OpenAgentDbContext> 
         entity.DefinitionJson = JsonSerializer.Serialize(server);
         await context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         _cache.Invalidate(tenantId, server.Name);
+        if (_invalidation is not null) await _invalidation.PublishAsync("mcp", tenantId, server.Name).ConfigureAwait(false);
     }
 
     public async Task<bool> DeleteAsync(string tenantId, string id, CancellationToken cancellationToken = default)
@@ -53,6 +70,7 @@ internal sealed class McpConfigRepository(IDbContextFactory<OpenAgentDbContext> 
         bool deleted = await context.McpConfigurations.Where(item => item.TenantId == tenantId && item.Name == id)
             .ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false) > 0;
         _cache.Invalidate(tenantId, id);
+        if (_invalidation is not null) await _invalidation.PublishAsync("mcp", tenantId, id).ConfigureAwait(false);
         return deleted;
     }
 }

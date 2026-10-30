@@ -61,10 +61,38 @@ IAgentUserContext + AgentAuthorizationRequest
 
 - 双阶段校验：发现阶段过滤可见性，执行阶段复核权限，避免发现与调用之间权限变化仍沿用旧授权。
 - `AgentAuthorizationGate` 拒绝时统一返回 `PermissionDenied`。
-- `Authorization:Mode` 在能力域注册时选择实现；Options 默认 `AllowAll`，Engine.Host 随仓库提供的 `appsettings.json` 显式配置为 `Claims`。
-- Claims 模式拒绝未认证身份；`Admin` 角色允许全部资源；其余身份按 `scope`、`scp`、`permissions` 声明中的空格分隔值匹配 `agent.admin`、`{resource}.{action}` 或 `agent.{action}`，角色和权限值不区分大小写。`AllowAll` 直接放行，不检查认证状态，不能视为认证保护。
+- `Authorization:Mode=Claims` 使用 PostgreSQL 资源策略及现有身份 scope；`AllowAll` 仅用于显式开发兼容。`Authorization:RequireResourcePolicy=true` 强制启用资源策略，即使 Mode 误配为 AllowAll 也不会放行。
+- 先按认证租户读取资源归属和当前配置，再评估显式拒绝、允许规则和 scope；其他租户的同名资源不可用。Admin 只豁免 scope，不豁免归属、显式拒绝或已配置策略中的允许规则。
+- 规则按动作匹配（`*` 或动作名，忽略大小写）；UserIds 区分大小写，Roles 不区分大小写，两者为 OR；两者都为空匹配所有主体。拒绝优先；已配置策略没有匹配允许时拒绝。策略允许还须满足原 scope：`agent.admin`、`{resource}.{action}` 或兼容的 `agent.{action}`；Admin 可满足此 scope 检查。
+- Agent 目录使用 `execute`，模型目录使用 `invoke`，MCP/Skill 与平台工具发现使用 `use`，平台工具实际调用使用 `invoke`。目录过滤与执行共用 `IResourceAuthorization`；平台工具调用另复核定义资源、父资源、Tool/Function 以及 Agent/模型授权。可以配置“发现允许但调用拒绝”。
 
-现状：已提供 Claims 授权与可替换的 `IAgentAuthorizationService`，尚无按资源 ID 的 RBAC/ABAC 规则库；Claims 模式按资源类型和动作判断，不检查具体 `ResourceId`，对象归属与租户隔离仍由入口和业务服务单独校验。需要资源级策略时通过 DI 替换 `IAgentAuthorizationService`；不新增 RunGrant 或审批机制。`ResourceId` 只能包含业务标识，不得包含 API key、token 等敏感信息。
+### 资源 ID 与策略管理
+
+策略表结构见 [配置表](../database/tables/Configurations.md)。资源 ID：Agent 为 AgentId；Model 为 LLM ProfileId（不再使用 provider/model 拼接值），内嵌模型保留 `@agent/<AgentId>` 命名空间；MCP 为 Name；Skill 为 SkillId；Tool/Function 为平台注册工具名。平台工具没有独立配置行，在当前租户的策略命名空间评估；业务服务继续检查工具参数所指对象的归属。存量内联 MCP/Skill 只从当前租户 Agent 的配置验证，不作为全局资源。
+
+现有 Development 管理映射新增：
+
+- `GET /api/v1/admin/resource-policies/{resourceType}/{resourceId}` 返回策略；未配置时返回 Revision=0、空规则。
+- `PUT` 同路径提交 `{ "revision": 0, "rules": [{ "actions": ["use"], "userIds": ["alice"], "roles": [], "deny": false }] }`；Revision=0 创建，之后必须携带当前修订，竞争失败返回 409。空规则表示撤权；没有删除策略回退为宽松规则的端点。
+- 仅当前认证租户的 Admin、`agent.admin` 或 `resource.policy.write` 可读写策略，不能由请求体指定其他租户。通用配置写入要求 `agent.config.write` 或 Admin/agent.admin；Development + AllowAll + 非严格模式保留已认证用户的开发配置写入兼容。
+
+### 迁移与回退
+
+先应用 `20261029155656_AddResourcePolicies`，默认 `RequireResourcePolicy=false`：没有策略的既有资源沿用 scope，已有策略立即执行拒绝优先。管理员逐资源安装策略并验证目录和调用矩阵，再将所有实例设为 `RequireResourcePolicy=true`，此时缺少策略一律拒绝。Model 的内嵌与命名连接、Tool 和 Function 均需覆盖；RAG 专属功能和 ACL 继续暂缓。
+
+需要恢复兼容模式时关闭 RequireResourcePolicy 并重启所有实例；已经存在的拒绝策略继续生效。回退到旧二进制会失去本次资源级控制，须先停止入口和活动轮次，保存策略备份，再切回旧版本；可暂留新增表。只有确认退回旧代码且已备份策略后，才将数据库迁移降至 `20261028091823_RemoveCodeExecutionConfiguration`；该 Down 仅删除 resource_policies，不改资源配置。重新升级后恢复策略再开放入口。
+
+### 配置失效与活动撤权
+
+授权读取、Agent/模型凭据解析及执行用 MCP 读取直接访问 PostgreSQL；不使用 TTL 授权缓存。每轮登记已授予资源的配置指纹，启动驱动前与成功提交前复核；活动期每 1 秒复核，单次批量检查预算 2 秒。拒绝、资源删除、配置轮换或权威读取失败都会取消关联轮次，权限失败原因写入历史并经现有 SSE 错误终态返回。取消信号设计预算为 3 秒（轮询间隔 + 检查超时）；进程退出和工具回收沿用 Runtime 的取消机制，不能把信号预算宣称为外部副作用回滚或进程强杀时限。已发往外部 MCP 的请求可能已执行，逐工具网关拦截由 N17.2（#278）完成。
+
+普通 MCP/Runtime Get 缓存使用提交后的 Redis 通知跨实例失效，并保留 30 秒 TTL 与代次检查。通知缺失/Redis 不可用时以读取开始时间计算 TTL，慢读取不能延长旧值的有效期；安全敏感路径始终绕过该缓存。Skill 目录原本直接读库。JWT 中的角色和 scope 仍为本次认证快照；IdP 撤销 token 不在本任务的资源策略撤权保证内。
+
+### 验证
+
+2026-10-30：单元用例覆盖主体/动作、显式拒绝、Admin、兼容/严格默认策略、跨租户、目录后撤权及权威读取失败。真实 Kestrel/SSE + 可控驱动验证撤权会取消驱动、回收枚举器、保存 Failed 与权限错误，客户端收到 error 终态。临时 PostgreSQL 17/Redis 7 的两个独立 ServiceProvider 验证策略 CAS、跨租户、负缓存创建、配置更新、删除通知和轮换取消；一次实测跨实例取消信号 1013 ms（预算 3000 ms）；真实数据库 Down/Up 均成功，模型快照无漂移。这些证据不代表真实 OpenCode 进程或外部 MCP 副作用已回滚。
+
+复现真实存储测试：为一次性数据库和 Redis 设置 `OPENAGENT_TEST_POLICY_POSTGRES` / `OPENAGENT_TEST_POLICY_REDIS`，运行 `dotnet test Backend/tests/OpenAgent.Engine.Tests --filter FullyQualifiedName~ResourcePolicyIntegrationTests`。测试会应用迁移并创建唯一租户；不要指向生产数据库。未设置时仅真实存储用例跳过，HTTP 与单元用例仍执行。
 
 ## 租户校验（Tenant）
 

@@ -12,6 +12,10 @@ internal sealed class AgentAuthorizationGate
         _authorizationService = authorizationService;
     }
 
+    internal AuthorizationLease Watch(CancellationToken cancellationToken) => new(
+        _authorizationService is ResourcePolicyAuthorizationService policies ? policies.RevalidateAsync : null,
+        cancellationToken, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2));
+
     internal Task EnsureAgentAuthorizedAsync(
         string agentId,
         IAgentUserContext userContext,
@@ -32,7 +36,7 @@ internal sealed class AgentAuthorizationGate
         EnsureAuthorizedAsync(
             agentId,
             AgentResourceType.Model,
-            $"{model.Provider}/{model.ModelId}",
+            model.Provider,
             "invoke",
             userContext,
             cancellationToken);

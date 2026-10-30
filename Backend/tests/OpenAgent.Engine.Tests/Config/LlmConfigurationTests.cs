@@ -46,7 +46,7 @@ public class LlmConfigurationTests
     }
 
     [Fact]
-    public async Task GetAsync_CacheMiss_BackfillsFromDatabaseWithoutCrossTenantLeak()
+    public async Task GetAsync_ExecutionRead_BypassesCacheWithoutCrossTenantLeak()
     {
         var redis = new FakeRedisConnectionProvider();
         var repository = new InMemoryRepository();
@@ -58,7 +58,7 @@ public class LlmConfigurationTests
 
         Assert.Equal("secret-a", own?.ApiKey);
         Assert.Null(foreign);
-        Assert.False(redis.StringGet(
+        Assert.True(redis.StringGet(
             ConfigurationService.BuildCacheKey("llm", "tenant-a", "primary")).IsNullOrEmpty);
     }
 

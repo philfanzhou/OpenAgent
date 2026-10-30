@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
+using OpenAgent.Contracts.Security;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Models;
 using OpenAgent.Engine.Config;
@@ -13,6 +14,7 @@ internal static class LlmConfigurationEndpoints
 {
     internal static void MapLlmConfigurationEndpoints(this RouteGroupBuilder group)
     {
+        group = group.MapGroup(string.Empty).AddEndpointFilter<ConfigurationWriteFilter>();
         group.MapGet("/llm", ListModelsAsync)
             .WithName("ListLlmProfiles")
             .WithTags("Admin LLM");
@@ -36,6 +38,7 @@ internal static class LlmConfigurationEndpoints
 
     private static async Task<Results<Ok<IReadOnlyList<LlmProviderProfile>>, ProblemHttpResult>> ListModelsAsync(
         [FromServices] ConfigurationService configuration,
+        [FromServices] IResourceAuthorization authorization,
         HttpContext context,
         CancellationToken cancellationToken)
     {
@@ -44,15 +47,19 @@ internal static class LlmConfigurationEndpoints
             .ConfigureAwait(false);
         IReadOnlyList<LlmProviderProfile> redacted = profiles
             .Select(ConfigurationRedactor.RedactLlm).ToList();
-        return TypedResults.Ok(redacted);
+        return TypedResults.Ok(await ResourceAccess.FilterAsync(redacted, item => item.Id, AgentResourceType.Model, "invoke", authorization, context, cancellationToken).ConfigureAwait(false));
     }
 
     private static async Task<Results<Ok<LlmProviderProfile>, ProblemHttpResult>> GetModelAsync(
         string id,
         [FromServices] ConfigurationService configuration,
+        [FromServices] IResourceAuthorization authorization,
         HttpContext context,
         CancellationToken cancellationToken)
     {
+        if (!await authorization.IsAuthorizedAsync(new(string.Empty, AgentResourceType.Model, id, "invoke"),
+                context.GetAgentRequest().User, cancellationToken).ConfigureAwait(false))
+            return TypedResults.Problem(AgentProblemDetails.PermissionDenied("Resource access denied.", context));
         LlmProviderProfile? profile = await configuration
             .GetAsync(RequireTenant(context), id, cancellationToken)
             .ConfigureAwait(false);
@@ -68,7 +75,7 @@ internal static class LlmConfigurationEndpoints
         HttpContext context,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(profile.Name)
+        if (string.IsNullOrWhiteSpace(id) || id.StartsWith("@agent/", StringComparison.Ordinal) || string.IsNullOrWhiteSpace(profile.Name)
             || string.IsNullOrWhiteSpace(profile.Endpoint)
             || string.IsNullOrWhiteSpace(profile.ModelId)
             || profile.ContextTokens <= 0
@@ -100,9 +107,14 @@ internal static class LlmConfigurationEndpoints
         [FromServices] IHttpClientFactory httpClientFactory,
         [FromServices] ConfigurationService configuration,
         [FromBody] LlmProviderProfile profile,
+        [FromServices] IResourceAuthorization authorization,
         HttpContext context,
         CancellationToken cancellationToken)
     {
+        if (!string.IsNullOrWhiteSpace(profile.Id)
+            && !await authorization.IsAuthorizedAsync(new(string.Empty, AgentResourceType.Model, profile.Id, "invoke"),
+                context.GetAgentRequest().User, cancellationToken).ConfigureAwait(false))
+            return TypedResults.Problem(AgentProblemDetails.PermissionDenied("Resource access denied.", context));
         if (!string.IsNullOrWhiteSpace(profile.Id)
             && (string.IsNullOrWhiteSpace(profile.ApiKey)
                 || profile.ApiKey.StartsWith("***", StringComparison.Ordinal)))

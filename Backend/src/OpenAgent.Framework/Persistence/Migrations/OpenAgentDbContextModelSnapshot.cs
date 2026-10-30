@@ -588,6 +588,33 @@ namespace OpenAgent.Framework.Migrations
                     b.ToTable("message_file_references", "openagent");
                 });
 
+            modelBuilder.Entity("OpenAgent.Framework.Entities.ResourcePolicyEntity", b =>
+                {
+                    b.Property<string>("TenantId")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("ResourceType")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("ResourceId")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<long>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("RulesJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.HasKey("TenantId", "ResourceType", "ResourceId");
+
+                    b.ToTable("resource_policies", "openagent");
+                });
+
             modelBuilder.Entity("OpenAgent.Framework.Entities.RuntimeConfigurationEntity", b =>
                 {
                     b.Property<string>("TenantId")

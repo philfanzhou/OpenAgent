@@ -21,8 +21,11 @@ public sealed class OpenAgentDbContext(DbContextOptions<OpenAgentDbContext> opti
     internal DbSet<RuntimeConfigurationEntity> RuntimeConfigurations => Set<RuntimeConfigurationEntity>();
     internal DbSet<McpConfigurationEntity> McpConfigurations => Set<McpConfigurationEntity>();
 
+    internal DbSet<ResourcePolicyEntity> ResourcePolicies => Set<ResourcePolicyEntity>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.ApplyConfiguration(new ResourcePolicyEntityConfiguration());
         modelBuilder.HasDefaultSchema("openagent");
         modelBuilder.ApplyConfiguration(new RuntimeConfigurationEntityConfiguration());
         modelBuilder.ApplyConfiguration(new McpConfigurationEntityConfiguration());

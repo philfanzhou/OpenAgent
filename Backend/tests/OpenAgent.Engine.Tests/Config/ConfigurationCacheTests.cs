@@ -12,7 +12,7 @@ namespace OpenAgent.Engine.Tests.Config;
 public class ConfigurationCacheTests
 {
     [Fact]
-    public async Task GetConfigAsync_CacheMiss_LoadsPostgreSqlAndBackfillsRedisWithTtl()
+    public async Task GetConfigAsync_ExecutionRead_DoesNotDependOnRedisCache()
     {
         var redis = new FakeRedisConnectionProvider();
         var repository = new RecordingRepository(CreateEntity("database"));
@@ -24,8 +24,7 @@ public class ConfigurationCacheTests
             ConfigurationService.BuildCacheKey("agent", "tenant-a", "support"));
 
         Assert.Equal("database", result?.Instructions);
-        Assert.False(cached.IsNullOrEmpty);
-        Assert.Equal(TimeSpan.FromSeconds(300), redis.LastStringExpiry);
+        Assert.True(cached.IsNullOrEmpty);
     }
 
     [Fact]

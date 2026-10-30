@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
+using OpenAgent.Contracts.Security;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Engine.Config;
 using OpenAgent.Engine.Host.Endpoints;
+using OpenAgent.Engine.Host.Middleware;
 using OpenAgent.Engine.Hosting.Errors;
 
 namespace OpenAgent.Engine.Host.Endpoints.Admin.Mcp;
@@ -11,6 +13,7 @@ internal static class McpConfigurationEndpoints
 {
     internal static void MapMcpConfigurationEndpoints(this RouteGroupBuilder group)
     {
+        group = group.MapGroup(string.Empty).AddEndpointFilter<ConfigurationWriteFilter>();
         group.MapGet("/mcp", ListMcpAsync)
             .WithName("ListMcpServers")
             .WithTags("Admin MCP");
@@ -30,6 +33,7 @@ internal static class McpConfigurationEndpoints
 
     private static async Task<Results<Ok<IReadOnlyList<McpServerConfig>>, ProblemHttpResult>> ListMcpAsync(
         [FromServices] McpProfileManagementService mcpProfiles,
+        [FromServices] IResourceAuthorization authorization,
         HttpContext context,
         CancellationToken cancellationToken)
     {
@@ -39,15 +43,19 @@ internal static class McpConfigurationEndpoints
             .ListAsync(RequireTenant(context), cancellationToken).ConfigureAwait(false);
         IReadOnlyList<McpServerConfig> redacted = servers
             .Select(ConfigurationRedactor.RedactMcpServer).ToList();
-        return TypedResults.Ok(redacted);
+        return TypedResults.Ok(await ResourceAccess.FilterAsync(redacted, item => item.Name, AgentResourceType.Mcp, "use", authorization, context, cancellationToken).ConfigureAwait(false));
     }
 
     private static async Task<Results<Ok<McpServerConfig>, ProblemHttpResult>> GetMcpAsync(
         [FromServices] McpProfileManagementService mcpProfiles,
         string id,
+        [FromServices] IResourceAuthorization authorization,
         HttpContext context,
         CancellationToken cancellationToken)
     {
+        if (!await authorization.IsAuthorizedAsync(new(string.Empty, AgentResourceType.Mcp, id, "use"),
+                context.GetAgentRequest().User, cancellationToken).ConfigureAwait(false))
+            return TypedResults.Problem(AgentProblemDetails.PermissionDenied("Resource access denied.", context));
         if (!HasScope(context, "agent.config.read"))
             return Forbidden(context, "agent.config.read");
         McpServerConfig? server = await mcpProfiles

@@ -4,6 +4,7 @@ using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Responses;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Contracts.Skills;
+using OpenAgent.Engine.Host.Endpoints.Admin;
 using OpenAgent.Engine.Abstractions;
 using OpenAgent.Engine.Host.Middleware;
 using OpenAgent.Engine.Host.Skills;
@@ -19,6 +20,7 @@ internal static class SkillManagementEndpoints
     {
         RouteGroupBuilder group = endpoints.MapGroup(pattern).RequireAuthorization();
 
+        group = group.MapGroup(string.Empty).AddEndpointFilter<ConfigurationWriteFilter>();
         group.MapGet("/skills", ListSkillsAsync)
             .WithName("ListSkills")
             .WithTags("Admin Skills");
@@ -58,22 +60,28 @@ internal static class SkillManagementEndpoints
 
     private static async Task<Results<Ok<IReadOnlyList<SkillInstanceConfig>>, ProblemHttpResult>> ListSkillsAsync(
         [FromServices] ISkillCatalogStore catalog,
+        [FromServices] IResourceAuthorization authorization,
         HttpContext context,
         CancellationToken cancellationToken)
     {
         if (!HasScope(context, "agent.config.read"))
             return Forbidden(context, "agent.config.read");
-        return TypedResults.Ok(await catalog.ListAsync(
+        var items = await catalog.ListAsync(
             RequireTenant(context),
-            cancellationToken).ConfigureAwait(false));
+            cancellationToken).ConfigureAwait(false);
+        return TypedResults.Ok(await ResourceAccess.FilterAsync(items, item => item.Id, AgentResourceType.Skill, "use", authorization, context, cancellationToken).ConfigureAwait(false));
     }
 
     private static async Task<Results<Ok<SkillMarkdownResponse>, ProblemHttpResult>> ReadSkillSourceAsync(
         [FromServices] SkillPackageManagementService packages,
+        [FromServices] IResourceAuthorization authorization,
         HttpContext context,
         string skillId,
         CancellationToken cancellationToken)
     {
+        if (!await authorization.IsAuthorizedAsync(new(string.Empty, AgentResourceType.Skill, skillId, "use"),
+                context.GetAgentRequest().User, cancellationToken).ConfigureAwait(false))
+            return TypedResults.Problem(AgentProblemDetails.PermissionDenied("Resource access denied.", context));
         if (!HasScope(context, "agent.config.read"))
             return Forbidden(context, "agent.config.read");
         string? markdown = await packages.ReadMarkdownAsync(
@@ -114,10 +122,14 @@ internal static class SkillManagementEndpoints
 
     private static async Task<Results<Ok<SkillInstanceConfig>, ProblemHttpResult>> GetSkillAsync(
         [FromServices] ISkillCatalogStore catalog,
+        [FromServices] IResourceAuthorization authorization,
         HttpContext context,
         string skillId,
         CancellationToken cancellationToken)
     {
+        if (!await authorization.IsAuthorizedAsync(new(string.Empty, AgentResourceType.Skill, skillId, "use"),
+                context.GetAgentRequest().User, cancellationToken).ConfigureAwait(false))
+            return TypedResults.Problem(AgentProblemDetails.PermissionDenied("Resource access denied.", context));
         if (!HasScope(context, "agent.config.read"))
             return Forbidden(context, "agent.config.read");
         SkillInstanceConfig? skill = await catalog.GetAsync(

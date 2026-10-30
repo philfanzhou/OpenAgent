@@ -58,7 +58,14 @@ internal sealed class CapabilityToolFactory
                         throw new InvalidOperationException(
                             $"Duplicate capability runtime name: {definition.Name}");
                     }
-                    tools.Add(new CapabilityAIFunction(definition, _logger, _environment));
+                    tools.Add(new CapabilityAIFunction(definition, _logger, _environment, async token =>
+                    {
+                        await _authorization.EnsureAuthorizedAsync(agentId, definition.ResourceType,
+                            definition.ResourceId, "invoke", user, token).ConfigureAwait(false);
+                        if (!string.IsNullOrWhiteSpace(definition.ParentResourceId))
+                            await _authorization.EnsureAuthorizedAsync(agentId, definition.ResourceType,
+                                definition.ParentResourceId, "invoke", user, token).ConfigureAwait(false);
+                    }));
                 }
             }
         }
@@ -110,6 +117,7 @@ internal sealed class CapabilityToolFactory
     private sealed class CapabilityAIFunction : AIFunction, IToolConcurrencyProvider
     {
         private readonly CapabilityDefinition _definition;
+        private readonly Func<CancellationToken, Task> _authorize;
         private readonly JsonElement _schema;
         private readonly ILogger<CapabilityToolFactory> _logger;
         private readonly IHostEnvironment? _environment;
@@ -117,8 +125,10 @@ internal sealed class CapabilityToolFactory
         internal CapabilityAIFunction(
             CapabilityDefinition definition,
             ILogger<CapabilityToolFactory> logger,
-            IHostEnvironment? environment)
+            IHostEnvironment? environment,
+            Func<CancellationToken, Task> authorize)
         {
+            _authorize = authorize;
             _definition = definition;
             _logger = logger;
             _environment = environment;
@@ -135,6 +145,7 @@ internal sealed class CapabilityToolFactory
             AIFunctionArguments arguments,
             CancellationToken cancellationToken)
         {
+            await _authorize(cancellationToken).ConfigureAwait(false);
             IReadOnlyDictionary<string, object?> values = arguments.ToDictionary(
                 item => item.Key,
                 item => item.Value);
