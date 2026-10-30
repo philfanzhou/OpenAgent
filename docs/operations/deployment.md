@@ -67,11 +67,9 @@ scripts/build-images.sh --env-file .env --docker-mode wsl-docker
 scripts/deploy.sh --env-file .env --docker-mode wsl-docker
 ```
 
-先构建镜像，再部署；构建脚本不会启动容器，部署脚本不会执行构建。Chat 镜像的构建参数与部署环境文件
-同名（`OPENAGENT_PUBLIC_SCHEME`/`OPENAGENT_PUBLIC_HOST` 与 Router/Engine 端口），浏览器端地址在镜像内派生；
-不经过脚本直接 `docker build` 时也使用同一组变量。也可以在 `.env` 中设置
-`OPENAGENT_DOCKER_MODE=auto`、`docker` 或 `wsl-docker`，省略命令行参数；命令行 `--docker-mode` 优先于
-`.env` 中的设置。
+先构建镜像，再部署；构建脚本不会启动容器，部署脚本不会执行构建。Chat 镜像不包含部署地址，
+构建时无需传入域名、端口或租户，同一个镜像可用于不同环境。也可以在 `.env` 中设置
+`OPENAGENT_DOCKER_MODE=auto`、`docker` 或 `wsl-docker`，省略命令行参数；命令行 `--docker-mode` 优先于 `.env` 中的设置。
 
 Windows PowerShell 可使用等价的 `scripts/build-images.ps1`；未指定 `-DockerMode` 时同样自动检测：
 
@@ -101,9 +99,23 @@ Engine 镜像在构建期内嵌 OpenCode 的 Linux 原生二进制，运行容�
 runtime-tests 真实回归门禁，通过后将 `openagent-engine`、`openagent-router` 与
 `openagent-chat` 三个镜像推送到 GHCR，并上传包含 `deploy/` 与版本说明的 Compose 部署包制品。Engine
 镜像的行为依赖内嵌 OpenCode 版本，版本标签带 `-oc<OpenCode 版本>` 后缀（如 `1.2.3-oc1.19.3`）以区分
-不同 OpenCode 基线；预发布标签（如 `v1.0.0-rc1`）不移动 `latest`。registry 版 Chat 镜像按默认公开地址
-（localhost）构建，生产部署需按自身 `OPENAGENT_PUBLIC_HOST` 重建 Chat 镜像，或在 `.env` 中以
-`OPENAGENT_CHAT_IMAGE` 指向自有构建的标签。
+不同 OpenCode 基线；预发布标签（如 `v1.0.0-rc1`）不移动 `latest`。registry 版 Chat 镜像
+在容器启动时读取公开地址，可以直接复用于不同部署环境。
+
+## 前端运行时配置
+
+`.env` 默认只需设置公网主机、运行环境和凭据；端口、网络及内部服务地址使用 Compose 默认值，
+模板中的可选项仅在需要覆盖时取消注释。Chat 容器启动时生成 `/runtime-config.json`，页面读取成功后才启动，
+该文件禁止缓存且只包含公开的 Router/Engine 地址与默认租户。配置不可用或格式错误时，页面显示加载错误。
+
+地址、端口与租户变量及其默认值见[环境变量指南第 7 节](environment-variables.md#7-前端运行时配置)。
+
+修改地址后执行 `scripts/deploy.sh --env-file .env` 并刷新页面即可，无需重新构建镜像。
+页面设置中保存的连接地址优先于部署默认值；清空对应地址并保存可恢复为部署默认值。
+旧版地址和租户的 `VITE_OPENAGENT_*` 构建变量不再使用，已有部署首次升级仍需构建新版 Chat 镜像。
+直接运行 Chat 镜像时可用 `docker run -e` 传入上述变量；非 Docker 静态托管需提供同路径的 JSON 文件，
+字段为 `routerBaseUrl`、`engineBaseUrl`、`tenantId`，地址使用绝对 HTTP(S) URL。本地 `pnpm dev` 使用
+`public/runtime-config.json` 中的空配置，默认连接 Router `5001`、Engine `5208`。
 
 ## 应用更新与排障
 

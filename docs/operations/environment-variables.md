@@ -1,6 +1,6 @@
 # 环境变量指南
 
-本文件是 OpenAgent 环境变量的唯一事实源：覆盖 Engine.Host、Router 两个宿主实际读取的全部配置环境变量、Compose 部署层的 `OPENAGENT_*` 包装变量、前端构建变量，以及不同场景的最小配置集。部署流程本身见 [部署指南](deployment.md)。
+本文件是 OpenAgent 环境变量的唯一事实源：覆盖 Engine.Host、Router 两个宿主实际读取的全部配置环境变量、Compose 部署层的 `OPENAGENT_*` 包装变量、前端运行时配置，以及不同场景的最小配置集。部署流程本身见 [部署指南](deployment.md)。
 
 ## 1. 配置加载规则
 
@@ -17,7 +17,7 @@
 | 场景 | 需要设置的环境变量 |
 |---|---|
 | 本地裸机开发（`dotnet run`） | **零配置**。Development 配置默认 Basic 匿名登录、连接本机 PostgreSQL（`localhost:5432`，账号 openagent/openagent）。前置条件：本机可用的 PostgreSQL 与 `opencode` 可执行；否则见第 5.2 / 5.6 节覆盖 |
-| 本地 Docker 全栈（Keycloak） | 复制 `deploy/deployment.env.example` 为 `.env`，其余走 Compose 兜底值。默认 `OPENAGENT_ASPNETCORE_ENVIRONMENT=Development` |
+| 本地 Docker 全栈（Keycloak） | 复制 `deploy/deployment.env.example` 为 `.env`，其余走 Compose 兜底值。模板默认 `OPENAGENT_ASPNETCORE_ENVIRONMENT=Production`；Basic 联调需显式改为 `Development` |
 | 内网/生产部署 | `OPENAGENT_ASPNETCORE_ENVIRONMENT=Production`；`OPENAGENT_PUBLIC_HOST`（+443 时设置 `OPENAGENT_CHAT_PORT=443` 等）；覆盖数据库/MinIO/Keycloak 管理员默认凭据；`OPENAGENT_KEYCLOAK_COMMAND=start`。认证变量见第 3 节 |
 | 启用代码执行 | 平台无独立沙箱：经 `OpenCode__AllowedNativeTools__0..n` 放行 OpenCode 原生工具（如 `read`/`edit`/`write`/`bash`），见第 5.6 节与 [OpenCode 运行时](../integrations/opencode-runtime.md) |
 | 外接 S3/MinIO | `OPENAGENT_S3_SERVICE_URL`、`OPENAGENT_S3_BUCKET`、`OPENAGENT_S3_ACCESS_KEY`、`OPENAGENT_S3_SECRET_KEY`（等价 `FileAssets__ObjectStorage__*`） |
@@ -286,9 +286,9 @@ Redis 行为细节见 [Redis 集成](../integrations/redis-engine.md)。
 
 | 变量 | 默认 | 用途 |
 |---|---|---|
-| `OPENAGENT_PUBLIC_HOST` / `OPENAGENT_PUBLIC_SCHEME` | `localhost` / `https` | 派生所有公开 URL（Chat、Keycloak、CORS、前端构建参数） |
+| `OPENAGENT_PUBLIC_HOST` / `OPENAGENT_PUBLIC_SCHEME` | `localhost` / `https` | 派生所有公开 URL（Chat、Keycloak、CORS、前端运行时地址） |
 | `OPENAGENT_CHAT_PORT` / `OPENAGENT_ROUTER_PORT` / `OPENAGENT_ENGINE_PORT` / `OPENAGENT_KEYCLOAK_PORT` | `8081` / `8082` / `8083` / `58081` | Nginx HTTPS 发布端口；Keycloak 8443 的映射端口 |
-| `OPENAGENT_CHAT_PUBLIC_URL` | 由 scheme+host+chat 端口派生 | 同时用于 CORS、Keycloak 回调与 Web Origin、Chat 镜像构建 |
+| `OPENAGENT_CHAT_PUBLIC_URL` | 由 scheme+host+chat 端口派生 | 同时用于 CORS、Keycloak 回调与 Web Origin |
 | `OPENAGENT_COMPOSE_PROJECT` / `OPENAGENT_APP_NETWORK` / `OPENAGENT_INFRA_PROJECT` / `OPENAGENT_INFRA_NETWORK` | `openagent-app` / `openagent` / `openagent-infrastructure` / `openagent-infrastructure` | Compose 项目名与网络名；迁移已有部署必须保持 |
 | `OPENAGENT_NGINX_CLIENT_MAX_BODY_SIZE` | `1100m` | Nginx 上传体积限制 |
 | `OPENAGENT_TLS_CERT_DIR` | `deploy/openagent/nginx/certs` | 证书目录（Nginx 与 Keycloak 共用） |
@@ -304,7 +304,7 @@ Redis 行为细节见 [Redis 集成](../integrations/redis-engine.md)。
 | `OPENAGENT_DOCKER_MODE` | `auto` | 构建部署脚本选择 docker / wsl-docker |
 | `OPENAGENT_IMAGE_TAR_DIR` | 空 | 镜像 TAR 导出目录 |
 | `OPENAGENT_OPENCODE_VERSION` | `Backend/opencode.version` 锁定值 | 仅升级前临时覆盖验证 |
-| `OPENAGENT_TENANT_ID` | `development` | Chat 镜像构建参数（→ 前端 `VITE_OPENAGENT_TENANT_ID`） |
+| `OPENAGENT_TENANT_ID` | `development` | Chat 容器生成的前端默认租户（实际租户由服务端身份确定） |
 
 ### 6.5 无效 / 遗留变量（避免踩坑）
 
@@ -313,20 +313,26 @@ Redis 行为细节见 [Redis 集成](../integrations/redis-engine.md)。
 - `Engine__AllowMockAgent`（`deploy/openagent/preview.compose.yml` 遗留）；
 - `Engine__AdvertisedHost` / `Engine__AdvertisedPort`（Engine.Host 的 `appsettings.Development.json` 遗留；现行键是 `Heartbeat__AdvertisedHost` / `Heartbeat__AdvertisedPort`）。
 
-## 7. 前端变量
+## 7. 前端运行时配置
 
-前端构建时内联 `VITE_*`（浏览器无法读取运行时环境变量），定义在 `Frontend/OpenAgent.Chat/Dockerfile` 与 `Frontend/OpenAgent.Chat/src/shared/api/http.ts`：
+Chat 容器启动时由 `Frontend/OpenAgent.Chat/docker-entrypoint.d/40-runtime-config.sh` 将以下公开变量写入
+`/runtime-config.json`，页面在挂载前加载并校验该文件，响应禁止缓存。仅输出列出的三个 JSON 字段，不导出容器凭据。
 
-| 变量 | 来源 | 默认 | 作用 |
-|---|---|---|---|
-| `OPENAGENT_PUBLIC_SCHEME` / `OPENAGENT_PUBLIC_HOST` / `OPENAGENT_ROUTER_PORT` / `OPENAGENT_ENGINE_PORT` | Dockerfile 构建参数 | `https` / `localhost` / `8082` / `8083` | 镜像内拼出下面两个 `VITE_*` |
-| `OPENAGENT_TENANT_ID` | Dockerfile 构建参数 | `development` | `VITE_OPENAGENT_TENANT_ID` |
-| `VITE_OPENAGENT_ROUTER_BASE_URL` | 构建注入 / 本地 dev server | `https://{host}:{router端口}` | Router API 基地址 |
-| `VITE_OPENAGENT_ENGINE_BASE_URL` | 构建注入 / 本地 dev server | `https://{host}:{engine端口}` | 直连 Engine 模式的基地址 |
-| `VITE_OPENAGENT_TENANT_ID` | 构建注入 / 本地 dev server | `development` | 默认租户 |
-| `VITE_OPENAGENT_CONNECTION_MODE` | 本地 dev server | `router` | 默认连接模式（`engine` / `router`） |
+| 变量 | 默认 | JSON 字段 / 用途 |
+|---|---|---|
+| `OPENAGENT_PUBLIC_SCHEME` / `OPENAGENT_PUBLIC_HOST` | `https` / `localhost` | 与端口共同派生后台地址 |
+| `OPENAGENT_ROUTER_PORT` / `OPENAGENT_ENGINE_PORT` | `8082` / `8083` | 派生 Router / Engine 的浏览器访问地址 |
+| `OPENAGENT_ROUTER_PUBLIC_URL` | 由 scheme+host+router 端口派生 | `routerBaseUrl`，可覆盖为独立域名或带路径前缀的绝对 HTTP(S) URL |
+| `OPENAGENT_ENGINE_PUBLIC_URL` | 由 scheme+host+engine 端口派生 | `engineBaseUrl`，可覆盖为独立域名或带路径前缀的绝对 HTTP(S) URL |
+| `OPENAGENT_TENANT_ID` | `development` | `tenantId`，前端默认租户 |
 
-认证参数（authority、clientId、scopes、模式）统一由后端 `GET /api/v1/auth/config` 下发，前端没有对应环境变量。
+连接地址优先级为：页面设置中保存的地址 → 运行时配置 → 本地开发默认地址（Router 5001、Engine 5208，按页面主机推导）。
+本地 `pnpm dev` 和 `pnpm preview` 使用 `public/runtime-config.json` 的空配置；静态托管可按上述字段提供 JSON 文件。
+旧版 `VITE_OPENAGENT_ROUTER_BASE_URL`、`VITE_OPENAGENT_ENGINE_BASE_URL`、`VITE_OPENAGENT_TENANT_ID` 不再读取。
+本地开发的 `VITE_OPENAGENT_CONNECTION_MODE` 保留，用于选择默认连接模式（`engine` / `router`，默认 `router`）。
+
+认证参数（authority、clientId、scopes、模式）继续由后端 `GET /api/v1/auth/config` 下发。
+修改运行时变量的部署方式见[部署指南](deployment.md#前端运行时配置)。
 
 ## 8. 必填与缺失影响总览
 

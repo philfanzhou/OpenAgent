@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def config(relative, overrides=None):
     env = {key: value for key, value in os.environ.items()
-           if not key.startswith(('OPENAGENT_', 'COMPOSE_'))}
+           if not key.startswith(('OPENAGENT_', 'COMPOSE_', 'PREVIEW_'))}
     env.update(overrides or {})
     output = subprocess.check_output(
         ['docker', 'compose', '--env-file', os.devnull, '-f', str(ROOT / relative),
@@ -19,6 +19,32 @@ def config(relative, overrides=None):
 
 
 class DeploymentLayoutTests(unittest.TestCase):
+    def test_chat_addresses_are_runtime_settings(self):
+        for overrides, router_url, engine_url, tenant_id in [
+            ({}, 'https://localhost:8082', 'https://localhost:8083', 'development'),
+            ({'OPENAGENT_PUBLIC_HOST': 'review.example', 'OPENAGENT_PUBLIC_SCHEME': 'http',
+              'OPENAGENT_ROUTER_PORT': '18082', 'OPENAGENT_ENGINE_PORT': '18083'},
+             'http://review.example:18082', 'http://review.example:18083', 'development'),
+            ({'OPENAGENT_ROUTER_PUBLIC_URL': 'https://router.example',
+              'OPENAGENT_ENGINE_PUBLIC_URL': 'https://engine.example', 'OPENAGENT_TENANT_ID': 'review'},
+             'https://router.example', 'https://engine.example', 'review'),
+        ]:
+            with self.subTest(overrides=overrides):
+                chat = config('deploy/openagent/docker-compose.yml', overrides)['services']['chat']
+                self.assertNotIn('build', chat)
+                self.assertEqual(chat['environment'], {
+                    'OPENAGENT_ROUTER_PUBLIC_URL': router_url,
+                    'OPENAGENT_ENGINE_PUBLIC_URL': engine_url,
+                    'OPENAGENT_TENANT_ID': tenant_id,
+                })
+        chat = config('deploy/openagent/preview.compose.yml', {
+            'PREVIEW_ROUTER_PORT': '15010', 'PREVIEW_ENGINE_PORT': '15210',
+        })['services']['chat']
+        self.assertNotIn('args', chat['build'])
+        self.assertEqual(chat['environment']['OPENAGENT_PUBLIC_SCHEME'], 'http')
+        self.assertEqual(chat['environment']['OPENAGENT_ROUTER_PORT'], '15010')
+        self.assertEqual(chat['environment']['OPENAGENT_ENGINE_PORT'], '15210')
+
     def test_public_addresses_are_shared(self):
         for overrides, host, port, origin in [
             ({}, 'localhost', '58081', 'https://localhost:8081'),
