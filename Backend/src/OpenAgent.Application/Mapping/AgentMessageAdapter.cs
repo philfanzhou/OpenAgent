@@ -241,6 +241,7 @@ internal static class AgentMessageAdapter
             {
                 Reasoning = message.Metadata.Reasoning,
                 ExecutionStatus = message.Metadata.ExecutionStatus,
+                Error = message.Metadata.Error,
                 ToolArguments = message.Metadata.ToolArguments,
                 Extensions = message.Metadata.Extensions == null
                     ? null

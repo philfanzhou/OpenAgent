@@ -21,7 +21,7 @@ export function interactionStatusLabel(status: number): string {
   return '成功'
 }
 
-const FILE_TOOLS = new Set(['read_file', 'write_file', 'list_files', 'download_file', 'compress_files', 'publish_files', 'create_file_transfer_url'])
+const FILE_TOOLS = new Set(['read_file', 'write_file', 'list_files', 'download_file', 'compress_files', 'publish_files', 'create_file_transfer_url', 'import_file', 'export_file'])
 const SKILL_TOOLS = new Set(['load_skill', 'read_skill_resource', 'read_skill_file'])
 
 export interface InteractionCategory {
