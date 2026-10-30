@@ -14,6 +14,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
 using OpenAgent.Contracts.Configuration;
+using OpenAgent.Contracts.Security;
+using OpenAgent.Capabilities.Security;
 using OpenAgent.Engine.Config;
 using OpenAgent.Engine.Host.Extensions;
 using OpenAgent.Engine.Host.Middleware;
@@ -51,6 +53,7 @@ public class ConfigurationEndpointTests
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Logging.ClearProviders();
         builder.Services.AddSingleton(configuration);
+        builder.Services.AddSingleton<IResourceAuthorization, AllowAllAgentAuthorizationService>();
         builder.Services.AddSingleton(clients.Object);
         builder.Services.AddAuthentication("Test").AddScheme<AuthenticationSchemeOptions, TenantAuthenticationHandler>("Test", _ => { });
         builder.Services.AddAuthorization();
@@ -121,7 +124,7 @@ public class ConfigurationEndpointTests
         {
             string? tenant = Request.Headers["X-Test-Tenant"].FirstOrDefault();
             if (tenant == null) return Task.FromResult(AuthenticateResult.NoResult());
-            var identity = new ClaimsIdentity([new Claim("sub", "user"), new Claim("tenant_id", tenant)], "Test");
+            var identity = new ClaimsIdentity([new Claim("sub", "user"), new Claim("tenant_id", tenant), new Claim("scope", "agent.config.write")], "Test");
             return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(identity), "Test")));
         }
     }

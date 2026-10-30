@@ -52,6 +52,8 @@ internal sealed class AgentSkillsProviderFactory(
         List<SkillPackageCache.Lease> leases = [];
 
         IReadOnlyList<SkillInstanceConfig> instances = await ResolveInstancesAsync(
+            agentId,
+            user,
             config.Skills,
             catalog,
             user.TenantId,
@@ -156,7 +158,9 @@ internal sealed class AgentSkillsProviderFactory(
         || config.EnabledSkills.Contains(instance.Id, StringComparer.OrdinalIgnoreCase)
         || config.EnabledSkills.Contains(instance.Name, StringComparer.OrdinalIgnoreCase);
 
-    private static async Task<IReadOnlyList<SkillInstanceConfig>> ResolveInstancesAsync(
+    private async Task<IReadOnlyList<SkillInstanceConfig>> ResolveInstancesAsync(
+        string agentId,
+        IAgentUserContext user,
         SkillsConfig config,
         ISkillCatalog catalog,
         string? tenantId,
@@ -178,6 +182,7 @@ internal sealed class AgentSkillsProviderFactory(
         var resolved = new List<SkillInstanceConfig>();
         foreach (string id in config.EnabledSkills)
         {
+            if (!await authorization.IsAvailableAsync(agentId, AgentResourceType.Skill, id, user, cancellationToken).ConfigureAwait(false)) continue;
             SkillInstanceConfig? skill = await catalog.GetAsync(
                 tenantId,
                 id,

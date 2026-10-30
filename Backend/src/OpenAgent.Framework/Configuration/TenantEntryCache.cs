@@ -8,8 +8,9 @@ namespace OpenAgent.Framework.Configuration;
 /// 回填的代次检查与发布在同一临界区完成，失效前启动的在途读取不会把旧值
 /// （或旧负结果）重新写回缓存。
 /// </summary>
-internal sealed class TenantEntryCache
+internal sealed class TenantEntryCache(TimeProvider? timeProvider = null)
 {
+    private readonly TimeProvider _time = timeProvider ?? TimeProvider.System;
     private static readonly TimeSpan TimeToLive = TimeSpan.FromSeconds(30);
     private readonly ConcurrentDictionary<(string TenantId, string Id), KeyState> _keys = new();
 
@@ -21,9 +22,10 @@ internal sealed class TenantEntryCache
     {
         KeyState state = _keys.GetOrAdd((tenantId, id), _ => new KeyState());
         long generation;
+        DateTimeOffset readStarted = _time.GetUtcNow();
         lock (state)
         {
-            if (state.HasValue && state.Expires > DateTimeOffset.UtcNow)
+            if (state.HasValue && state.Expires > _time.GetUtcNow())
             {
                 return state.Published as T;
             }
@@ -39,7 +41,7 @@ internal sealed class TenantEntryCache
             {
                 state.Published = value;
                 state.HasValue = true;
-                state.Expires = DateTimeOffset.UtcNow.Add(TimeToLive);
+                state.Expires = readStarted.Add(TimeToLive);
             }
         }
         return value;

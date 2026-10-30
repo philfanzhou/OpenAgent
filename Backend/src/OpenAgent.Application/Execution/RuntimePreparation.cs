@@ -32,6 +32,8 @@ internal sealed class RuntimePreparation(
     IOptions<AgentExecutionOptions> options,
     ILogger<IsolatedToolFunction> logger)
 {
+    internal AuthorizationLease WatchAuthorization(CancellationToken ct) => authorization.Watch(ct);
+
     internal Task EnsureConversationAsync(TurnContext turn, string query, CancellationToken ct)
     {
         return conversations.EnsureConversationAsync(turn, query, ct);
@@ -119,6 +121,8 @@ internal sealed class RuntimePreparation(
                 exported.Add(new RuntimeTool(function.Name, function.Description ?? string.Empty, function.JsonSchema.GetRawText(), async (arguments, token) =>
                 {
                     // 每次调用重新查授权，避免 tools/list 之后权限变化仍沿用旧授权。
+                    await authorization.EnsureAgentAuthorizedAsync(profile.AgentId, user, token).ConfigureAwait(false);
+                    await authorization.EnsureModelAuthorizedAsync(profile.AgentId, profile.Model, user, token).ConfigureAwait(false);
                     await authorization.EnsureAuthorizedAsync(profile.AgentId, AgentResourceType.Tool, function.Name, "invoke", user, token).ConfigureAwait(false);
                     await authorization.EnsureAuthorizedAsync(profile.AgentId, AgentResourceType.Function, function.Name, "invoke", user, token).ConfigureAwait(false);
                     object? result = await function.InvokeAsync(new AIFunctionArguments(arguments.ToDictionary(item => item.Key, item => item.Value)) { Services = services }, token).ConfigureAwait(false);

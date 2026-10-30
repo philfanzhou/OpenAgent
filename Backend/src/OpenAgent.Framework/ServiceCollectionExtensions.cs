@@ -53,7 +53,11 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IAgentConfigRepository, AgentConfigRepository>();
         services.AddSingleton<ILlmConfigRepository, LlmConfigRepository>();
         services.AddSingleton<IRuntimeProfileRepository, RuntimeProfileRepository>();
+        services.AddSingleton<ConfigurationInvalidation>(provider => new(
+            provider.GetService<IConnectionMultiplexer>(), provider.GetRequiredService<ILogger<ConfigurationInvalidation>>()));
+        services.AddHostedService(provider => provider.GetRequiredService<ConfigurationInvalidation>());
         services.AddSingleton<IMcpConfigRepository, McpConfigRepository>();
+        services.AddSingleton<IResourcePolicyStore, ResourcePolicyStore>();
 
         ConversationCacheOptions cache = configuration.GetSection(ConversationCacheOptions.SectionName)
             .Get<ConversationCacheOptions>() ?? new();

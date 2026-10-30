@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Runtime.ExceptionServices;
 using System.Text;
 using OpenAgent.Application.Conversation;
 using OpenAgent.Application.Observability;
@@ -70,6 +71,8 @@ public sealed class RuntimeAgentExecutor
         string mode,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
+        await using var authorization = _preparation.WatchAuthorization(cancellationToken);
+        cancellationToken = authorization.Token;
         using EngineMeter.EngineExecutionMeasurement measurement = EngineMeter.StartAgentCall(mode);
         if (string.IsNullOrWhiteSpace(request.Query))
         {
@@ -114,6 +117,7 @@ public sealed class RuntimeAgentExecutor
         ResolvedFileRequest attachments = await _files.ResolveAsync(resolved, user, cancellationToken).ConfigureAwait(false);
         await using RuntimePreparationScope scope = await _preparation.CreateAsync(profile, turn, user, request.Query, attachments.Files, cancellationToken).ConfigureAwait(false);
         IAsyncEnumerator<AgentStreamEvent> events = _driver.RunAsync(scope.InvocationRequest, cancellationToken).GetAsyncEnumerator();
+        bool verified = false;
         bool finalized = false;
         Exception? failure = null;
         TokenUsage? usage = null;
@@ -125,17 +129,24 @@ public sealed class RuntimeAgentExecutor
                 AgentStreamEvent item;
                 try
                 {
+                    if (!verified)
+                    {
+                        await authorization.CheckAsync().ConfigureAwait(false);
+                        verified = true;
+                    }
                     if (!await events.MoveNextAsync().ConfigureAwait(false))
                     {
                         break;
                     }
+                    authorization.ThrowIfRevoked();
                     item = events.Current;
                     scope.Observe(item);
                     usage = item.Usage ?? usage;
                 }
                 catch (Exception error)
                 {
-                    failure = error;
+                    failure = authorization.ResolveFailure(error);
+                    if (!ReferenceEquals(failure, error)) ExceptionDispatchInfo.Capture(failure).Throw();
                     throw;
                 }
                 if (item.Type == AgentStreamEventType.Usage)
@@ -155,13 +166,16 @@ public sealed class RuntimeAgentExecutor
             }
             try
             {
+                await authorization.CheckAsync().ConfigureAwait(false);
+                cancellationToken.ThrowIfCancellationRequested();
                 await scope.CompleteAsync(cancellationToken).ConfigureAwait(false);
                 measurement.Complete(usage);
                 finalized = true;
             }
             catch (Exception error)
             {
-                failure = error;
+                failure = authorization.ResolveFailure(error);
+                if (!ReferenceEquals(failure, error)) ExceptionDispatchInfo.Capture(failure).Throw();
                 throw;
             }
             // done/usage 只能在保存成功后发送，客户端收到终态即可安全刷新会话。

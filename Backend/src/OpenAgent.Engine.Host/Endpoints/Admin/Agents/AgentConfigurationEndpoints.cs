@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
+using OpenAgent.Contracts.Security;
 using OpenAgent.Contracts.Capabilities;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Models;
@@ -14,6 +15,7 @@ internal static class AgentConfigurationEndpoints
 {
     internal static void MapAgentConfigurationEndpoints(this RouteGroupBuilder group)
     {
+        group = group.MapGroup(string.Empty).AddEndpointFilter<ConfigurationWriteFilter>();
         group.MapGet("/agents", ListAgentsAsync)
             .WithName("ListAgentConfigs")
             .WithTags("Admin Agents");
@@ -29,20 +31,26 @@ internal static class AgentConfigurationEndpoints
 
     private static async Task<Ok<IReadOnlyList<AgentSummary>>> ListAgentsAsync(
         [FromServices] ConfigurationService configuration,
+        [FromServices] IResourceAuthorization authorization,
         HttpContext context,
         CancellationToken cancellationToken)
     {
-        return TypedResults.Ok(await configuration
+        var items = await configuration
             .ListAgentsAsync(RequireTenant(context), cancellationToken)
-            .ConfigureAwait(false));
+            .ConfigureAwait(false);
+        return TypedResults.Ok(await ResourceAccess.FilterAsync(items, item => item.AgentId, AgentResourceType.Agent, "execute", authorization, context, cancellationToken).ConfigureAwait(false));
     }
 
     private static async Task<Results<Ok<AgentConfigEntity>, ProblemHttpResult>> GetAgentAsync(
         string agentId,
         [FromServices] ConfigurationService configuration,
+        [FromServices] IResourceAuthorization authorization,
         HttpContext context,
         CancellationToken cancellationToken)
     {
+        if (!await authorization.IsAuthorizedAsync(new(agentId, AgentResourceType.Agent, agentId, "execute"),
+                context.GetAgentRequest().User, cancellationToken).ConfigureAwait(false))
+            return TypedResults.Problem(AgentProblemDetails.PermissionDenied("Resource access denied.", context));
         AgentConfigEntity? entity = await configuration
             .GetAgentAsync(agentId, RequireTenant(context), cancellationToken)
             .ConfigureAwait(false);

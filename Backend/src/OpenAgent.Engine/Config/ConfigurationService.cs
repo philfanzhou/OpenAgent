@@ -48,11 +48,8 @@ public sealed class ConfigurationService : IAgentConfigProvider, ILlmConfigProvi
     public async Task<AgentConfig?> GetConfigAsync(
         string agentId, string tenantId, CancellationToken cancellationToken = default)
     {
-        AgentConfigEntity? entity = await ReadCachedAsync(
-            BuildCacheKey("agent", tenantId, agentId),
-            () => _agents.GetAsync(tenantId, agentId, cancellationToken),
-            cached => cached.TenantId == tenantId && cached.AgentId == agentId,
-            cancellationToken).ConfigureAwait(false);
+        // Execution reads the authority before resolving credentials; cached snapshots can outlive revocation.
+        AgentConfigEntity? entity = await _agents.GetAsync(tenantId, agentId, cancellationToken).ConfigureAwait(false);
         if (entity == null)
         {
             return null;
@@ -132,11 +129,7 @@ public sealed class ConfigurationService : IAgentConfigProvider, ILlmConfigProvi
     public async Task<LlmProviderProfile?> GetAsync(
         string tenantId, string profileId, CancellationToken cancellationToken = default)
     {
-        LlmProviderProfile? profile = await ReadCachedAsync(
-            BuildCacheKey("llm", tenantId, profileId),
-            () => _models.GetAsync(tenantId, profileId, cancellationToken),
-            cached => cached.TenantId == tenantId && cached.Id == profileId,
-            cancellationToken).ConfigureAwait(false);
+        LlmProviderProfile? profile = await _models.GetAsync(tenantId, profileId, cancellationToken).ConfigureAwait(false);
         if (profile != null)
         {
             profile = await ResolveLlmSecretAsync(profile, tenantId, cancellationToken).ConfigureAwait(false);
@@ -270,33 +263,8 @@ public sealed class ConfigurationService : IAgentConfigProvider, ILlmConfigProvi
     internal static string BuildCacheKey(string kind, string tenantId, string id) =>
         $"{kind}:config-cache:v2:{Uri.EscapeDataString(tenantId)}:{Uri.EscapeDataString(id)}";
 
-    private async Task<T?> ReadCachedAsync<T>(
-        string key, Func<Task<T?>> load, Func<T, bool> matches,
-        CancellationToken cancellationToken) where T : class
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        if (_redis.IsAvailable)
-        {
-            try
-            {
-                RedisValue value = await _redis.StringGetAsync(key).ConfigureAwait(false);
-                if (!value.IsNullOrEmpty)
-                {
-                    T? cached = JsonSerializer.Deserialize<T>(value.ToString(), JsonOptions);
-                    if (cached != null && matches(cached)) return cached;
-                }
-            }
-            catch (Exception exception) when (exception is RedisException or JsonException or InvalidOperationException)
-            {
-                EngineLog.ConfigurationCacheFailed(_logger, "read", key, exception.GetType().Name);
-            }
-        }
-
-        T? persisted = await load().ConfigureAwait(false);
-        if (persisted != null) await WriteCacheAsync(key, persisted).ConfigureAwait(false);
-        return persisted;
-    }
-
+    // Retain the encrypted write-through mirror for older readers during a rolling upgrade.
+    // Current execution paths never trust this mirror for capability or credential issuance.
     private async Task WriteCacheAsync<T>(string key, T value)
     {
         if (!_redis.IsAvailable) return;

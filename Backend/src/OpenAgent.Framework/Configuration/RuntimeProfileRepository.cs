@@ -5,8 +5,21 @@ using OpenAgent.Framework.Entities;
 
 namespace OpenAgent.Framework.Configuration;
 
-internal sealed class RuntimeProfileRepository(IDbContextFactory<OpenAgentDbContext> contexts) : IRuntimeProfileRepository
+internal sealed class RuntimeProfileRepository : IRuntimeProfileRepository
 {
+    private readonly IDbContextFactory<OpenAgentDbContext> contexts;
+    private readonly ConfigurationInvalidation? _invalidation;
+
+    public RuntimeProfileRepository(IDbContextFactory<OpenAgentDbContext> contexts, ConfigurationInvalidation? invalidation = null)
+    {
+        this.contexts = contexts;
+        _invalidation = invalidation;
+        if (invalidation is not null) invalidation.Changed += (kind, tenant, id) =>
+        {
+            if (kind == "runtime") _cache.Invalidate(tenant, id);
+        };
+    }
+
     // 仓储注册为单例：轮次间复用读缓存（含负结果），写入/删除即时失效。
     private readonly TenantEntryCache _cache = new();
 
@@ -44,6 +57,7 @@ internal sealed class RuntimeProfileRepository(IDbContextFactory<OpenAgentDbCont
         entity.DefinitionJson = JsonSerializer.Serialize(profile);
         await context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         _cache.Invalidate(tenantId, profile.Id);
+        if (_invalidation is not null) await _invalidation.PublishAsync("runtime", tenantId, profile.Id).ConfigureAwait(false);
     }
 
     public async Task<bool> DeleteAsync(string tenantId, string id, CancellationToken cancellationToken = default)
@@ -52,6 +66,7 @@ internal sealed class RuntimeProfileRepository(IDbContextFactory<OpenAgentDbCont
         bool deleted = await context.RuntimeConfigurations.Where(item => item.TenantId == tenantId && item.RuntimeId == id)
             .ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false) > 0;
         _cache.Invalidate(tenantId, id);
+        if (_invalidation is not null) await _invalidation.PublishAsync("runtime", tenantId, id).ConfigureAwait(false);
         return deleted;
     }
 }

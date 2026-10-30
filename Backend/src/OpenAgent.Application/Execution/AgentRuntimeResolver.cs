@@ -29,21 +29,24 @@ internal sealed class AgentRuntimeResolver(
                 null,
                 null,
                 "TenantId is required but not provided");
+        await authorization.EnsureAgentAuthorizedAsync(
+                agentId,
+                userContext,
+                cancellationToken)
+            .ConfigureAwait(false);
         AgentConfig config = await configs.GetConfigAsync(
                 agentId,
                 tenantId,
                 cancellationToken)
             .ConfigureAwait(false)
             ?? throw new InvalidOperationException($"Agent configuration not found: {agentId}");
-        ValidateSkillTenant(agentId, config, userContext);
-        await authorization.EnsureAgentAuthorizedAsync(
-                agentId,
-                userContext,
-                cancellationToken)
-            .ConfigureAwait(false);
+        ValidateTenant(agentId, config, userContext);
 
         // 模型解析顺序：请求显式选择的 llmProfileId 优先；未携带时回落到
         // Agent 的 OpenCode 内嵌模型；两者都没有才视为配置缺失。
+        await authorization.EnsureAuthorizedAsync(agentId, AgentResourceType.Model,
+            string.IsNullOrWhiteSpace(llmProfileId) ? "@agent/" + agentId : llmProfileId,
+            "invoke", userContext, cancellationToken).ConfigureAwait(false);
         LlmConfig model;
         if (string.IsNullOrWhiteSpace(llmProfileId))
         {
@@ -51,7 +54,7 @@ internal sealed class AgentRuntimeResolver(
             model = inline is null
                 ? throw new InvalidOperationException(
                     $"Request selected no LLM profile and agent '{agentId}' has no OpenCode model configured.")
-                : CreateInlineModel(config.TenantId, inline);
+                : CreateInlineModel(config.TenantId, agentId, inline);
         }
         else
         {
@@ -63,6 +66,8 @@ internal sealed class AgentRuntimeResolver(
                 ?? throw new InvalidOperationException($"LLM profile not found: {llmProfileId}");
             model = CreateExecutionModel(profile);
         }
+        if (!string.Equals(model.TenantId, tenantId, StringComparison.Ordinal))
+            throw new TenantDataIsolationException(tenantId, model.TenantId);
         await authorization.EnsureModelAuthorizedAsync(
                 agentId,
                 model,
@@ -79,10 +84,10 @@ internal sealed class AgentRuntimeResolver(
         };
     }
 
-    private static LlmConfig CreateInlineModel(string tenantId, OpenCodeModelConfig model) => new()
+    private static LlmConfig CreateInlineModel(string tenantId, string agentId, OpenCodeModelConfig model) => new()
     {
         TenantId = tenantId,
-        Provider = "opencode",
+        Provider = "@agent/" + agentId,
         Format = model.Format,
         ModelId = model.ModelId,
         ApiKey = model.ApiKey,
@@ -126,20 +131,17 @@ internal sealed class AgentRuntimeResolver(
 
     }
 
-    private static void ValidateSkillTenant(
+    private static void ValidateTenant(
         string agentId,
         AgentConfig config,
         IAgentUserContext userContext)
     {
-        bool hasSkillBinding = config.Skills.EnabledSkills.Count > 0
-            || config.Skills.Instances.Count > 0;
-        if (hasSkillBinding
-            && !string.Equals(config.TenantId, userContext.TenantId, StringComparison.Ordinal))
+        if (!string.Equals(config.TenantId, userContext.TenantId, StringComparison.Ordinal))
         {
             throw new TenantDataIsolationException(
                 userContext.TenantId,
                 config.TenantId,
-                $"Agent '{agentId}' cannot use Skills from another tenant.");
+                $"Agent '{agentId}' belongs to another tenant.");
         }
     }
 

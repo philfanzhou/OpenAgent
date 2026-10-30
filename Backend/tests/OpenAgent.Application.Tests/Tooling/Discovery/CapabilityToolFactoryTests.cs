@@ -7,6 +7,7 @@ using OpenAgent.Capabilities.Security;
 using OpenAgent.Application.Tooling.Abstractions;
 using OpenAgent.Application.Tooling.Discovery;
 using Xunit;
+using Moq;
 
 namespace OpenAgent.Application.Tests.Capabilities;
 
@@ -108,7 +109,8 @@ public class CapabilityToolFactoryTests
         object? result = await tool.InvokeAsync(new AIFunctionArguments(), default);
 
         Assert.Equal("ok", result);
-        Assert.Equal(availabilityChecks, authorization.Actions.Count);
+        Assert.Equal(availabilityChecks + 1, authorization.Actions.Count);
+        Assert.Equal("invoke", authorization.Actions.Last());
     }
 
     [Fact]
@@ -119,6 +121,19 @@ public class CapabilityToolFactoryTests
         var tools = await factory.CreateAsync("a1", new AgentConfig(), Context(), default);
 
         Assert.Empty(tools);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_DiscoveryAllowedButInvocationDenied_RejectsCall()
+    {
+        var auth = new Moq.Mock<IAgentAuthorizationService>();
+        auth.Setup(value => value.IsAuthorizedAsync(Moq.It.IsAny<AgentAuthorizationRequest>(),
+                Moq.It.IsAny<IAgentUserContext>(), Moq.It.IsAny<CancellationToken>()))
+            .ReturnsAsync((AgentAuthorizationRequest request, IAgentUserContext user, CancellationToken ct) => request.Action == "use");
+        var tools = await Factory(new FakeCapabilitySource([Tool("search")]), auth.Object)
+            .CreateAsync("agent", new AgentConfig(), Context(), default);
+        AIFunction tool = Assert.IsAssignableFrom<AIFunction>(Assert.Single(tools));
+        await Assert.ThrowsAsync<AgentException>(async () => await tool.InvokeAsync(new AIFunctionArguments(), default));
     }
 
     private class DenyAuthorizationService : IAgentAuthorizationService

@@ -6,6 +6,25 @@ namespace OpenAgent.Framework.Tests;
 /// <summary>缓存失效与在途读取的竞争：失效前启动的读取不得把旧值/旧负结果回填进缓存。</summary>
 public sealed class TenantEntryCacheTests
 {
+    private sealed class ManualTime : TimeProvider
+    {
+        internal DateTimeOffset Now = DateTimeOffset.UtcNow;
+        public override DateTimeOffset GetUtcNow() => Now;
+    }
+
+    [Fact]
+    public async Task SlowRead_TtlStartsBeforeRead_DoesNotExtendStaleCacheWindow()
+    {
+        ManualTime clock = new();
+        TenantEntryCache cache = new(clock);
+        await cache.GetOrAddAsync("tenant", "key", ct =>
+        {
+            clock.Now = clock.Now.AddSeconds(31);
+            return Task.FromResult<string?>("stale");
+        }, default);
+        Assert.Equal("fresh", await cache.GetOrAddAsync("tenant", "key", ct => Task.FromResult<string?>("fresh"), default));
+    }
+
     private sealed class Gates
     {
         internal TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);

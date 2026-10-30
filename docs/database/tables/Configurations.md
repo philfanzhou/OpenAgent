@@ -54,3 +54,20 @@ Agent 与 LLM 配置以 PostgreSQL 为事实源，共用 `OpenAgentDbContext`，
 `runtime_configurations` 使用 `(TenantId, RuntimeId)` 复合主键及 `DefinitionJson jsonb`，保存 Runtime 名称、Provider 和 TurnTimeoutSeconds；资源绑定不在该记录中。`mcp_configurations` 使用 `(TenantId, Name)` 和 `DefinitionJson jsonb` 保存原有 MCP 定义。运行时读取始终按当前认证租户过滤。
 
 `agent_configurations.OpenCodeJson jsonb NOT NULL DEFAULT '{}'` 持久化原有 Agent 内嵌模型连接，其中 API Key 由配置服务加密、读取时解密、管理端响应脱敏；原有 MCP/Skill 列和绑定不变。迁移为 `AddRuntimeProfilesAndDurableLocalConfiguration`。迁移历史表固定为 `public.__EFMigrationsHistory`。
+
+
+## 资源策略
+
+迁移 `20261029155656_AddResourcePolicies` 新增 `openagent.resource_policies`，不修改已有资源表。
+
+| 列 | 类型 | 用途 |
+|---|---|---|
+| TenantId | varchar(256) | 当前认证租户 |
+| ResourceType | varchar(32) | Agent / Model / Mcp / Skill / Tool / Function |
+| ResourceId | varchar(512) | 资源业务 ID |
+| Revision | bigint | 从 1 起的乐观并发修订；保存必须匹配上次读到的值 |
+| RulesJson | jsonb | 动作、用户、角色与显式拒绝规则，不保存凭据 |
+
+前三列组成主键；Revision 为并发 token。不存在策略和存在空策略含义不同：前者由兼容/严格开关决定，后者始终拒绝。策略行不能证明资源存在或属于租户，授权仓储另读真实资源配置行。资源删除后策略仍保留，避免重新创建时意外恢复宽松权限。策略不经 Redis 或本地授权缓存。
+
+策略编辑采用条件更新，创建竞争由主键唯一约束处理，冲突返回 409；Down 只删除新增表，先备份策略再执行。迁移、资源 ID、启用顺序、撤权上限与回退见 [安全域](../../modules/security.md#迁移与回退)。

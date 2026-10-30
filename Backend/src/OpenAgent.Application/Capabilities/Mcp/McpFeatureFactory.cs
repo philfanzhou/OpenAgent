@@ -33,7 +33,8 @@ internal sealed class McpFeatureFactory(
             List<Contracts.Configuration.McpServerConfig> persisted = [];
             foreach (string id in config.Mcp.EnabledServerIds)
             {
-                McpServerConfig? saved = await repository.GetAsync(user.TenantId, id, cancellationToken).ConfigureAwait(false);
+                if (!await authorization.IsAvailableAsync(agentId, AgentResourceType.Mcp, id, user, cancellationToken).ConfigureAwait(false)) continue;
+                McpServerConfig? saved = await repository.GetFreshAsync(user.TenantId, id, cancellationToken).ConfigureAwait(false);
                 if (saved is not null) persisted.Add(saved);
             }
             configured = persisted;
@@ -43,7 +44,7 @@ internal sealed class McpFeatureFactory(
             // 无租户上下文或无仓储时无法解析 EnabledServerIds，退化为内联存量配置。
             configured = config.Mcp.Servers;
         }
-        // 空 TenantId 的存量 profile 视为全局可用，与 AgentAuthorizationGate 对 LLM profile 的约定一致。
+        // 存量内联配置由所属 Agent 的租户定界；独立配置始终使用租户仓储和权威授权。
         foreach (Contracts.Configuration.McpServerConfig server in configured.Where(server =>
             string.IsNullOrEmpty(server.TenantId)
             || string.Equals(server.TenantId, user.TenantId, StringComparison.Ordinal)))

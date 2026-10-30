@@ -40,7 +40,7 @@ public class AgentAuthorizationGateTests
             default);
 
         Assert.Equal(AgentResourceType.Model, authorization.Request?.ResourceType);
-        Assert.Equal("profile-1/model-1", authorization.Request?.ResourceId);
+        Assert.Equal("profile-1", authorization.Request?.ResourceId);
     }
 
     private static AgentUserContext Context() => new() { UserId = "u1", TenantId = "t1" };

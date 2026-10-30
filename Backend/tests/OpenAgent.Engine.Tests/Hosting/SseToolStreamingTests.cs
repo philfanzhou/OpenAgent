@@ -214,7 +214,8 @@ public sealed class SseToolStreamingTests
             AgentConfig? agentConfig = null,
             Dictionary<string, string?>? settings = null,
             Action<IServiceCollection>? configure = null,
-            LlmConfig? model = null)
+            LlmConfig? model = null,
+            IAgentUserContext? user = null)
         {
             var builder = WebApplication.CreateBuilder(new WebApplicationOptions
             {
@@ -278,7 +279,7 @@ public sealed class SseToolStreamingTests
                 };
                 await AgentStreamWriter.WriteSseStreamAsync(
                     context,
-                    executor.ExecuteStreamingAsync(request, User, ct),
+                    executor.ExecuteStreamingAsync(request, user ?? User, ct),
                     request.TraceId,
                     request.ConversationId,
                     context.RequestServices.GetRequiredService<ILogger<StreamingHost>>(),

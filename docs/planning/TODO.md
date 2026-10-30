@@ -84,7 +84,8 @@
 
 ## 保留的独立任务
 
-- [ ] **F04 MCP/Skill/Agent 统一授权**（待分派）。主责：Contracts、Capabilities/Security；与 A05 共定主体、资源、动作及租户范围。
+- [ ] **F04 / N06 统一资源授权与配置失效**（[Issue #265](https://github.com/philfanzhou/OpenAgent/issues/265)，主任务 [#262](https://github.com/philfanzhou/OpenAgent/issues/262)；负责人：zzyyu；状态：实现完成、待评审；实现 PR：待创建；验收证据：全量构建通过，后端测试 1003 通过 / 0 失败 / 34 环境门控跳过；资源策略矩阵、真实 SSE 撤权持久化与 PostgreSQL/Redis 双实例验证通过（真实存储另行 2/2 通过）；迁移与验证边界见[安全域](../modules/security.md#验证)）。主责：Contracts/Security、Capabilities/Security；交界：Application/Tooling 与 feature 工厂、Engine 管理入口、Framework/Configuration/TenantEntryCache。基线：`dev` `7d13057bd478f123b8e2e820a2e4e03f1dfa885f`；任务分支：`codex/n06-resource-authorization`。无本批硬前置；先落实主体、租户、资源 ID、动作与拒绝策略，与 N05（[#264](https://github.com/philfanzhou/OpenAgent/issues/264)）协调凭据契约，与 A05 共定授权边界。
+  N06 范围：统一 Agent、模型、MCP、Skill 与平台工具的目录及调用评估；验证默认策略、Admin、跨租户、配置更新/删除、负缓存、多实例失效和可测量的撤权上限。默认策略变更保留兼容迁移与回退；RAG 暂缓；外部直连 MCP 仅覆盖服务可见性与凭据发放资格，逐工具控制由 N17.2（[#278](https://github.com/philfanzhou/OpenAgent/issues/278)）验收。
   验收：能力发现和实际调用均检查权限；覆盖越权、跨租户、权限撤销与默认策略；目录可见性与执行权限一致，审计可追溯。参考 [授权文档](../modules/security.md)。
 - [ ] **F05 生产容灾备份**（待分派，生产上线前必须验收）。主责：数据库与部署运维；交界：Framework、对象存储、配置密钥。
   验收：确定 RPO/RTO、保留周期和恢复责任人；自动备份 PostgreSQL，并明确 S3 文件与 Data Protection 密钥的配套恢复；失败告警、恢复脚本和实际恢复演练记录。
