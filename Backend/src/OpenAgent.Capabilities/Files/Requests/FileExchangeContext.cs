@@ -18,9 +18,11 @@ internal sealed class FileExchangeContext(
 {
     private readonly SemaphoreSlim _operations = new(1);
     private readonly Dictionary<string, RuntimeWorkspaceFile> _imports = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, FileAsset> _exports = new(StringComparer.Ordinal);
     private IRuntimeWorkspaceFiles? _workspace;
     private CancellationTokenSource? _lifetime;
     private long _inputBytes;
+    private long _outputBytes;
     private int _closed;
 
     internal bool Enabled => assets.Value.Enabled && options.Value.Enabled && execution.Scope?.ConversationId is not null;
@@ -92,6 +94,60 @@ internal sealed class FileExchangeContext(
                 }
                 _imports[fileId] = imported;
                 return imported;
+            }
+            finally
+            {
+                gate.Transfers.Release();
+            }
+        }
+        finally
+        {
+            _operations.Release();
+        }
+    }
+
+    internal async Task<FileAsset> ExportAsync(string path, string? fileName, CancellationToken ct)
+    {
+        IRuntimeWorkspaceFiles workspace = _workspace
+            ?? throw new AgentException(AgentErrorCode.InvalidRequest, "The runtime workspace is not attached.");
+        using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(ct, _lifetime!.Token);
+        await _operations.WaitAsync(linked.Token).ConfigureAwait(false);
+        try
+        {
+            EnsureActive(linked.Token);
+            await gate.Transfers.WaitAsync(linked.Token).ConfigureAwait(false);
+            try
+            {
+                await using RuntimeOutputFile snapshot = await workspace.SnapshotAsync(path, assets.Value.MaxFileSizeBytes, linked.Token).ConfigureAwait(false);
+                EnsureActive(linked.Token);
+                string name = string.IsNullOrWhiteSpace(fileName) ? snapshot.FileName : fileName;
+                if (name != Path.GetFileName(name) || name.Contains('\\') || name.Any(char.IsControl)
+                    || name.Contains(':') || name is "." or "..")
+                {
+                    throw new AgentException(AgentErrorCode.InvalidRequest, "The export file name is not allowed.");
+                }
+                string key = snapshot.RelativePath + "\0" + snapshot.Sha256 + "\0" + name;
+                if (_exports.TryGetValue(key, out FileAsset? cached))
+                {
+                    return cached;
+                }
+                if (_exports.Count >= options.Value.MaxOutputFiles || snapshot.Length > options.Value.MaxOutputBytes - _outputBytes)
+                {
+                    throw new AgentException(AgentErrorCode.InvalidRequest, "The turn's output file limit was exceeded.");
+                }
+                FileAsset asset = await files.UploadAsync(new FileAssetCreateRequest
+                {
+                    FileName = name, Source = FileAssetSource.Agent
+                }, snapshot.Content, execution.Scope!, linked.Token).ConfigureAwait(false);
+                if (asset.Length != snapshot.Length || !asset.Sha256.Equals(snapshot.Sha256, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new AgentException(AgentErrorCode.InvalidRequest, "The exported file failed its integrity check.");
+                }
+                EnsureActive(linked.Token);
+                await files.EnsureReferencesAsync([asset.FileId], execution.Scope!, linked.Token).ConfigureAwait(false);
+                _exports[key] = asset;
+                _outputBytes += asset.Length;
+                return asset;
             }
             finally
             {

@@ -14,6 +14,97 @@ namespace OpenAgent.Capabilities.Tests.Files.Requests;
 
 public sealed class FileExchangeContextTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExportAsync_StorageOrReferenceFailureDoesNotCacheSuccess(bool referenceFails)
+    {
+        await using Harness harness = new();
+        await harness.Context.PrepareAsync(harness.Workspace, [], default);
+        harness.Workspace.Outputs["outputs/file.bin"] = [1, 2];
+        AgentException failure = new(AgentErrorCode.DependencyUnavailable, "Storage unavailable.");
+        if (referenceFails)
+        {
+            harness.Repository.ReferenceFailure = failure;
+        }
+        else
+        {
+            harness.Objects.WriteFailure = failure;
+        }
+        await Assert.ThrowsAsync<AgentException>(() => harness.Context.ExportAsync("outputs/file.bin", null, default));
+        Assert.Empty(harness.Repository.References);
+        harness.Repository.ReferenceFailure = null;
+        harness.Objects.WriteFailure = null;
+        FileAsset retried = await harness.Context.ExportAsync("outputs/file.bin", null, default);
+        Assert.Equal(FileAssetState.Ready, retried.State);
+        Assert.Contains("conversation:" + retried.FileId, harness.Repository.References);
+        Assert.Equal(2, harness.Repository.Assets.Count);
+    }
+    [Fact]
+    public async Task ExportAsync_StoresBinaryReferencesItAndReusesSameTurnRetry()
+    {
+        await using Harness harness = new();
+        await harness.Context.PrepareAsync(harness.Workspace, [], default);
+        byte[] data = [0, 255, 128, 10];
+        harness.Workspace.Outputs["outputs/result.xlsx"] = data;
+        FileAsset first = await harness.Context.ExportAsync("outputs/result.xlsx", null, default);
+        FileAsset retried = await harness.Context.ExportAsync("outputs/result.xlsx", null, default);
+        Assert.Equal(first.FileId, retried.FileId);
+        Assert.Single(harness.Repository.Assets);
+        Assert.Equal(data, (await harness.Files.ReadAsync(first.FileId, new() { TenantId = "tenant", UserId = "user", ConversationId = "conversation" }, default)).Data);
+        Assert.Contains("conversation:" + first.FileId, harness.Repository.References);
+        harness.Workspace.Outputs["outputs/result.xlsx"] = [1, 2, 3];
+        FileAsset revised = await harness.Context.ExportAsync("outputs/result.xlsx", null, default);
+        Assert.NotEqual(first.FileId, revised.FileId);
+        Assert.Equal(FileAssetSource.Agent, revised.Source);
+    }
+
+    [Theory]
+    [InlineData(1, 20)]
+    [InlineData(10, 3)]
+    public async Task ExportAsync_LimitsDistinctSuccessfulExportsAndAllowsCachedRetry(int maxFiles, long maxBytes)
+    {
+        await using Harness harness = new(new() { Enabled = true, MaxOutputFiles = maxFiles, MaxOutputBytes = maxBytes });
+        await harness.Context.PrepareAsync(harness.Workspace, [], default);
+        harness.Workspace.Outputs["outputs/first.bin"] = [1, 2];
+        harness.Workspace.Outputs["outputs/second.bin"] = [3, 4];
+        FileAsset first = await harness.Context.ExportAsync("outputs/first.bin", null, default);
+        await Assert.ThrowsAsync<AgentException>(() => harness.Context.ExportAsync("outputs/second.bin", null, default));
+        Assert.Equal(first.FileId, (await harness.Context.ExportAsync("outputs/first.bin", null, default)).FileId);
+        Assert.Single(harness.Repository.Assets);
+    }
+
+    [Fact]
+    public async Task DisposeAsync_CancelsAndDrainsInFlightExportWithoutRegisteringIt()
+    {
+        await using Harness harness = new();
+        await harness.Context.PrepareAsync(harness.Workspace, [], default);
+        TaskCompletionSource started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        harness.Workspace.BeforeSnapshot = async token =>
+        {
+            started.SetResult();
+            await Task.Delay(Timeout.Infinite, token);
+        };
+        Task<FileAsset> exporting = harness.Context.ExportAsync("outputs/file.bin", null, default);
+        await started.Task;
+        await harness.Context.DisposeAsync();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => exporting);
+        Assert.Empty(harness.Repository.Assets);
+        await Assert.ThrowsAnyAsync<Exception>(() => harness.Context.ExportAsync("outputs/file.bin", null, default));
+    }
+
+    [Theory]
+    [InlineData("../leak")]
+    [InlineData("bad\\name")]
+    [InlineData("bad\nname")]
+    public async Task ExportAsync_RejectsUnsafeSuggestedName(string name)
+    {
+        await using Harness harness = new();
+        await harness.Context.PrepareAsync(harness.Workspace, [], default);
+        harness.Workspace.Outputs["outputs/file.bin"] = [1, 2];
+        await Assert.ThrowsAsync<AgentException>(() => harness.Context.ExportAsync("outputs/file.bin", name, default));
+        Assert.Empty(harness.Repository.Assets);
+    }
     [Fact]
     public async Task PrepareAsync_MaterializesOriginalAndAllowsHistoryImportUntilLeaseEnds()
     {

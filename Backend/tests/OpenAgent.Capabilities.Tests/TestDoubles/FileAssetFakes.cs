@@ -11,6 +11,7 @@ internal sealed class RecordingFileAssetRepository : IFileAssetRepository
 {
     public Dictionary<string, FileAsset> Assets { get; } = [];
     public HashSet<string> References { get; } = new(StringComparer.Ordinal);
+    public Exception? ReferenceFailure { get; set; }
 
     public Task CreateAsync(FileAsset asset, CancellationToken cancellationToken)
     {
@@ -40,6 +41,10 @@ internal sealed class RecordingFileAssetRepository : IFileAssetRepository
         DateTimeOffset createdAt,
         CancellationToken cancellationToken)
     {
+        if (ReferenceFailure is not null)
+        {
+            return Task.FromException(ReferenceFailure);
+        }
         foreach (string fileId in fileIds)
         {
             References.Add($"{conversationId}:{fileId}");
@@ -84,6 +89,7 @@ internal sealed class EmptyFileAssetRepository : IFileAssetRepository
 internal sealed class RecordingFileObjectStore : IFileObjectStore
 {
     public byte[] Content { get; set; } = [];
+    public Exception? WriteFailure { get; set; }
 
     /// <summary>Per-key read results; keys without an entry fall back to <see cref="Content"/>.</summary>
     public Dictionary<string, byte[]> ContentsByKey { get; } = new(StringComparer.Ordinal);
@@ -97,6 +103,10 @@ internal sealed class RecordingFileObjectStore : IFileObjectStore
         Stream content,
         CancellationToken cancellationToken)
     {
+        if (WriteFailure is not null)
+        {
+            throw WriteFailure;
+        }
         LastRequest = request;
         await using var buffer = new MemoryStream();
         await content.CopyToAsync(buffer, cancellationToken);

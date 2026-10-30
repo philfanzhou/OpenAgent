@@ -6,8 +6,18 @@ using OpenAgent.Contracts.Security;
 namespace OpenAgent.Runtime.OpenCode;
 
 /// <summary>Filesystem side of a turn lease; platform services retain authorization and asset storage.</summary>
-internal sealed class OpenCodeWorkspaceFiles(string workspace) : IRuntimeWorkspaceFiles
+internal sealed class OpenCodeWorkspaceFiles : IRuntimeWorkspaceFiles
 {
+    private readonly string _workspace;
+
+    internal OpenCodeWorkspaceFiles(string workspace)
+    {
+        _workspace = workspace;
+        EnsureDirectory(workspace);
+        EnsureDirectory(Path.Combine(workspace, "inputs"));
+        EnsureDirectory(Path.Combine(workspace, "outputs"));
+    }
+
     public async Task<RuntimeWorkspaceFile> ImportAsync(RuntimeFile file, ReadOnlyMemory<byte> data, CancellationToken cancellationToken)
     {
         if (string.IsNullOrEmpty(file.FileId) || file.FileId.Any(character => !char.IsAsciiLetterOrDigit(character) && character is not '-' and not '_'))
@@ -16,11 +26,11 @@ internal sealed class OpenCodeWorkspaceFiles(string workspace) : IRuntimeWorkspa
         }
         string name = SafeName(file.FileName);
         string relative = $"inputs/{file.FileId}/{name}";
-        string directory = Path.Combine(workspace, "inputs", file.FileId);
-        EnsureDirectory(workspace);
-        EnsureDirectory(Path.Combine(workspace, "inputs"));
+        string directory = Path.Combine(_workspace, "inputs", file.FileId);
+        EnsureDirectory(_workspace);
+        EnsureDirectory(Path.Combine(_workspace, "inputs"));
         EnsureDirectory(directory);
-        EnsureDirectory(Path.Combine(workspace, "outputs"));
+        EnsureDirectory(Path.Combine(_workspace, "outputs"));
         string target = Path.Combine(directory, name);
         RejectExistingLink(target);
         if (data.Length != file.Length || !Convert.ToHexStringLower(SHA256.HashData(data.Span)).Equals(file.Sha256, StringComparison.OrdinalIgnoreCase))
@@ -29,7 +39,7 @@ internal sealed class OpenCodeWorkspaceFiles(string workspace) : IRuntimeWorkspa
         }
         if (File.Exists(target))
         {
-            await using FileStream existing = new(target, FileMode.Open, FileAccess.Read, FileShare.Read, 65536, FileOptions.Asynchronous);
+            await using FileStream existing = WorkspaceFileHandle.Open(target);
             if (existing.Length == file.Length
                 && Convert.ToHexStringLower(await SHA256.HashDataAsync(existing, cancellationToken).ConfigureAwait(false))
                     .Equals(file.Sha256, StringComparison.OrdinalIgnoreCase))
@@ -54,6 +64,102 @@ internal sealed class OpenCodeWorkspaceFiles(string workspace) : IRuntimeWorkspa
             File.Delete(temporary);
         }
         return new(file, relative);
+    }
+
+    public async Task<RuntimeOutputFile> SnapshotAsync(string relativePath, long maxBytes, CancellationToken cancellationToken)
+    {
+        if (maxBytes <= 0)
+        {
+            throw new AgentException(AgentErrorCode.InvalidRequest, "The output byte limit must be positive.");
+        }
+        string path = OutputPath(relativePath);
+        string snapshots = Path.Combine(Path.GetDirectoryName(_workspace)!, ".file-exchange");
+        EnsureDirectory(snapshots);
+        FileStream snapshot = new(Path.Combine(snapshots, Guid.NewGuid().ToString("N")), FileMode.CreateNew,
+            FileAccess.ReadWrite, FileShare.None, 65536, FileOptions.Asynchronous | FileOptions.DeleteOnClose);
+        try
+        {
+            await using FileStream source = WorkspaceFileHandle.Open(path);
+            long length = source.Length;
+            DateTime modified = File.GetLastWriteTimeUtc(path);
+            if (length == 0 || length > maxBytes)
+            {
+                throw new AgentException(AgentErrorCode.InvalidRequest, "The output file is empty or exceeds the file size limit.");
+            }
+            byte[] buffer = new byte[65536];
+            while (true)
+            {
+                int count = await source.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+                if (count == 0)
+                {
+                    break;
+                }
+                if (count > maxBytes - snapshot.Length)
+                {
+                    throw new AgentException(AgentErrorCode.InvalidRequest, "The output file exceeds the file size limit.");
+                }
+                await snapshot.WriteAsync(buffer.AsMemory(0, count), cancellationToken).ConfigureAwait(false);
+            }
+            snapshot.Position = 0;
+            string hash = Convert.ToHexStringLower(await SHA256.HashDataAsync(snapshot, cancellationToken).ConfigureAwait(false));
+            source.Position = 0;
+            using IncrementalHash verifier = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+            long verifiedLength = 0;
+            while (true)
+            {
+                int count = await source.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+                if (count == 0)
+                {
+                    break;
+                }
+                verifiedLength += count;
+                if (verifiedLength > length)
+                {
+                    throw new AgentException(AgentErrorCode.InvalidRequest, "The output file changed while being exported.");
+                }
+                verifier.AppendData(buffer, 0, count);
+            }
+            string verified = Convert.ToHexStringLower(verifier.GetHashAndReset());
+            _ = OutputPath(relativePath);
+            if (length != snapshot.Length || source.Length != length || File.GetLastWriteTimeUtc(path) != modified || hash != verified)
+            {
+                throw new AgentException(AgentErrorCode.InvalidRequest, "The output file changed while being exported. Finish writing it before retrying.");
+            }
+            snapshot.Position = 0;
+            return new RuntimeOutputFile(Path.GetRelativePath(_workspace, path).Replace('\\', '/'), Path.GetFileName(path), length, hash, snapshot);
+        }
+        catch
+        {
+            await snapshot.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    private string OutputPath(string relative)
+    {
+        if (string.IsNullOrWhiteSpace(relative) || Path.IsPathRooted(relative)
+            || relative.Contains('\\') || relative.Contains(':') || relative.Any(char.IsControl))
+        {
+            throw InvalidPath();
+        }
+        string[] segments = relative.Split('/');
+        if (segments.Length < 2 || segments[0] != "outputs" || segments.Any(segment => segment is "" or "." or ".."))
+        {
+            throw InvalidPath();
+        }
+        OpenCodeWorkspace.RejectLink(new DirectoryInfo(_workspace));
+        string path = _workspace;
+        foreach (string segment in segments)
+        {
+            path = Path.Combine(path, segment);
+            RejectExistingLink(path);
+            FileAttributes attributes = File.GetAttributes(path);
+            if ((attributes & (FileAttributes.ReparsePoint | FileAttributes.Device)) != 0)
+            {
+                throw InvalidPath();
+            }
+        }
+        return path;
     }
 
     private static string SafeName(string name)
