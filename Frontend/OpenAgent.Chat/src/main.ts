@@ -15,5 +15,12 @@ import '@fontsource/noto-sans-sc/700.css'
 import './theme.css'
 import './workspace.css'
 import App from './App.vue'
+import { loadRuntimeConfig } from './shared/runtimeConfig'
 
-createApp(App).use(ElementPlus).mount('#app')
+loadRuntimeConfig()
+  .then(() => createApp(App).use(ElementPlus).mount('#app'))
+  .catch((error: unknown) => {
+    console.error('Failed to start OpenAgent Chat', error)
+    const root = document.getElementById('app')
+    if (root) root.textContent = '无法加载应用配置，请检查部署配置后刷新页面。'
+  })

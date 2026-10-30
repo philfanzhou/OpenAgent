@@ -81,6 +81,10 @@ services:
 
   chat:
     image: ${OPENAGENT_CHAT_IMAGE:-openagent-chat:latest}
+    environment:
+      OPENAGENT_ROUTER_PUBLIC_URL: ${OPENAGENT_ROUTER_PUBLIC_URL:-${OPENAGENT_PUBLIC_SCHEME:-https}://${OPENAGENT_PUBLIC_HOST:-localhost}:${OPENAGENT_ROUTER_PORT:-8082}}
+      OPENAGENT_ENGINE_PUBLIC_URL: ${OPENAGENT_ENGINE_PUBLIC_URL:-${OPENAGENT_PUBLIC_SCHEME:-https}://${OPENAGENT_PUBLIC_HOST:-localhost}:${OPENAGENT_ENGINE_PORT:-8083}}
+      OPENAGENT_TENANT_ID: ${OPENAGENT_TENANT_ID:-development}
     depends_on:
       router:
         condition: service_healthy

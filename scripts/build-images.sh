@@ -131,11 +131,6 @@ fi
 engine_image="${OPENAGENT_ENGINE_IMAGE:-openagent-engine:latest}"
 router_image="${OPENAGENT_ROUTER_IMAGE:-openagent-router:latest}"
 chat_image="${OPENAGENT_CHAT_IMAGE:-openagent-chat:latest}"
-public_host="${OPENAGENT_PUBLIC_HOST:-localhost}"
-public_scheme="${OPENAGENT_PUBLIC_SCHEME:-https}"
-router_port="${OPENAGENT_ROUTER_PORT:-8082}"
-engine_port="${OPENAGENT_ENGINE_PORT:-8083}"
-tenant_id="${OPENAGENT_TENANT_ID:-development}"
 # 本地镜像带可追溯的版本标识；Release 工作流会用正式 tag/revision 覆盖同一组 label。
 platform_version="$(git -C "$repo_root" describe --tags --always --dirty 2>/dev/null || echo dev)"
 
@@ -152,14 +147,9 @@ platform_version="$(git -C "$repo_root" describe --tags --always --dirty 2>/dev/
   --file "$docker_root/Backend/src/OpenAgent.Router/Dockerfile" \
   "$docker_root"
 
-# Chat 镜像的浏览器端地址由 Dockerfile 从统一变量派生，与直接 docker build 的接口一致。
+# Chat connection settings are supplied when the container starts.
 "${docker_cmd[@]}" build \
   --tag "$chat_image" \
-  --build-arg "OPENAGENT_PUBLIC_SCHEME=$public_scheme" \
-  --build-arg "OPENAGENT_PUBLIC_HOST=$public_host" \
-  --build-arg "OPENAGENT_ROUTER_PORT=$router_port" \
-  --build-arg "OPENAGENT_ENGINE_PORT=$engine_port" \
-  --build-arg "OPENAGENT_TENANT_ID=$tenant_id" \
   --label "org.opencontainers.image.version=$platform_version" \
   --file "$docker_root/Frontend/OpenAgent.Chat/Dockerfile" \
   "$docker_root"

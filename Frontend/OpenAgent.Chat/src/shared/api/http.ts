@@ -1,5 +1,6 @@
 import { randomUuid } from '../browserCrypto'
 import type { ConnectionMode } from '../contracts/types'
+import { getRuntimeConfig } from '../runtimeConfig'
 
 const legacyBaseUrlStorageKey = 'openagent.engine.base-url'
 const routerStorageKey = 'openagent.router.base-url'
@@ -14,17 +15,13 @@ const tenantStorageKey = 'openagent.auth.tenant-id'
 export const AUTH_FAILURE_EVENT = 'openagent:auth-failure'
 function defaultServiceUrl(port: number): string {
   if (typeof window !== 'undefined'
-    && window.location.hostname
+    && window.location?.hostname
     && window.location.hostname !== 'localhost'
     && window.location.hostname !== '127.0.0.1') {
     return `${window.location.protocol}//${window.location.hostname}:${port}`
   }
   return `http://localhost:${port}`
 }
-
-const defaultRouterBaseUrl = import.meta.env.VITE_OPENAGENT_ROUTER_BASE_URL || defaultServiceUrl(5001)
-const defaultEngineBaseUrl = import.meta.env.VITE_OPENAGENT_ENGINE_BASE_URL || defaultServiceUrl(5208)
-const defaultTenantId = import.meta.env.VITE_OPENAGENT_TENANT_ID || 'development'
 
 export function normalizeBaseUrl(value: string): string {
   return value.trim().replace(/\/$/, '')
@@ -42,7 +39,8 @@ export function setConnectionMode(value: ConnectionMode): void {
 export function getRouterBaseUrl(): string {
   return localStorage.getItem(routerStorageKey)
     || localStorage.getItem(legacyBaseUrlStorageKey)
-    || defaultRouterBaseUrl
+    || getRuntimeConfig().routerBaseUrl
+    || defaultServiceUrl(5001)
 }
 
 export function setRouterBaseUrl(value: string): void {
@@ -51,7 +49,7 @@ export function setRouterBaseUrl(value: string): void {
 }
 
 export function getEngineBaseUrl(): string {
-  return localStorage.getItem(engineStorageKey) || defaultEngineBaseUrl
+  return localStorage.getItem(engineStorageKey) || getRuntimeConfig().engineBaseUrl || defaultServiceUrl(5208)
 }
 
 export function setEngineBaseUrl(value: string): void {
@@ -115,7 +113,7 @@ function clearExpiredAccessToken(): void {
 }
 
 export function getTenantId(): string {
-  return localStorage.getItem(tenantStorageKey) || defaultTenantId
+  return localStorage.getItem(tenantStorageKey) || getRuntimeConfig().tenantId || 'development'
 }
 
 export function setTenantId(value: string): void {
