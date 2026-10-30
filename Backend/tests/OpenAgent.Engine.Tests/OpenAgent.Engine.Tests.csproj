@@ -10,6 +10,7 @@
   <ItemGroup>
     <Compile Include="../OpenAgent.Application.Tests/TestDoubles/ScriptedRuntimeDriver.cs" Link="TestDoubles/ScriptedRuntimeDriver.cs" />
     <Compile Include="../OpenAgent.Runtime.Tests/LocalModelFixture.cs" Link="TestDoubles/LocalModelFixture.cs" />
+    <Compile Include="../OpenAgent.Capabilities.Tests/TestDoubles/FileAssetFakes.cs" Link="TestDoubles/FileAssetFakes.cs" />
   </ItemGroup>
 
   <ItemGroup>

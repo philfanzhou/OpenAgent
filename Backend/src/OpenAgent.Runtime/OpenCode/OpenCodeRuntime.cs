@@ -289,10 +289,12 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
                     await files.Lease.DisposeAsync().ConfigureAwait(false);
                 }
             }
-            catch
+            catch (Exception error)
             {
                 completed = false;
-                throw;
+                // The successful path drains before CommitAsync and already propagates failures.
+                // During unwinding, preserve the original failure/cancellation and retire the process.
+                OpenCodeLog.CleanupFailure(logger, "file-exchange", error.GetType().Name);
             }
             finally
             {

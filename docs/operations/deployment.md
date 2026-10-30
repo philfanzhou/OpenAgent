@@ -162,6 +162,14 @@ docker compose -p openagent-infrastructure \
 `OPENAGENT_ALLOW_INSECURE_TLS=true`，让 LLM、S3、MCP、RAG 及其他平台 HTTP 请求跳过 TLS 证书校验。
 该选项默认关闭，生产环境优先安装并信任内部 CA；它同时覆盖平台 HTTP 客户端和 JWT/OIDC 认证回调。
 
+## OpenCode 文件收发
+
+基础配置默认关闭文件交换，开发配置显式启用。需要启用时配置 `FileExchange__Enabled=true`、`FileAssets__Enabled=true`，确认对象存储可读写，并在可信服务身份下通过 `OpenCode__AllowedNativeTools` 放行所需原生工具。模型获得 inputs 原件路径，可经 export_file 登记 outputs 产物，再显式 publish_files 交付。
+
+交换默认每轮输入/输出各 10 个、各 200 MiB，进程内最多同时 2 个传输；单文件沿用 `FileAssets__MaxFileSizeBytes`。它们不限制原生脚本的全部内存或磁盘，资产服务仍有缓冲；生产按部署预算收紧文件大小/并发。测试观测、真实环境限制及独立验证脚本见[运行时文件验证](../integrations/opencode-runtime.md#文件交换验证与启用fx04)。
+
+回退时关闭 FileExchange 并排空当前轮次；保留既有文件资产、消息引用和下载能力，无数据库迁移回滚。工作区保活不是持久化方案，已导出的文件存于对象存储；未导出的临时文件仍会随进程回收。
+
 ## 日志中心
 
 将外部 Collector 地址写入 `.env` 的 `OPENAGENT_OTLP_ENDPOINT` 后执行部署脚本。Exporter、信号出口和 Trace 关联规则统一见 [可观测性](../overview/Observability.md)；本仓库不管理 Collector 容器。Nginx JSON 访问日志保留 `traceparent` 与 `X-Trace-Id`，供部署侧日志中心关联。
