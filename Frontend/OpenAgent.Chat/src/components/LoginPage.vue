@@ -27,11 +27,16 @@ const mode = ref(props.connectionMode)
 const router = ref(props.routerUrl)
 const engine = ref(props.engineUrl)
 const tenant = ref(props.tenantId)
-const showConnection = ref(false)
+const needsConnection = computed(() => !(props.connectionMode === 'router' ? props.routerUrl : props.engineUrl).trim())
+const showConnection = ref(needsConnection.value || !props.authConfig)
 const usernameInput = ref<HTMLInputElement>()
 const isBasic = computed(() => props.authConfig?.mode === 'Basic')
 const isJwtBearer = computed(() => props.authConfig?.mode === 'JwtBearer')
 const isOidc = computed(() => isJwtBearer.value && props.authConfig?.keycloak?.enabled !== false)
+
+watch(() => props.authConfig, (config) => {
+  showConnection.value = !config
+})
 
 watch(() => props.loading, async (loading, wasLoading) => {
   if (!loading && wasLoading && isBasic.value) {
@@ -48,7 +53,6 @@ function applyConnection(): void {
     engineUrl: engine.value,
     tenantId: tenant.value,
   })
-  showConnection.value = false
 }
 
 function submit(): void {
@@ -71,33 +75,33 @@ function submit(): void {
         </svg>
       </div>
       <span class="eyebrow">OPENAGENT PLATFORM</span>
-      <h1>登录工作台</h1>
-      <p>恢复你的会话，并通过统一身份边界访问 Agent 服务。</p>
+      <h1>{{ needsConnection ? '连接工作台' : '登录工作台' }}</h1>
+      <p>{{ needsConnection ? '连接你的后台服务，然后登录并开始会话。' : '恢复你的会话，并通过统一身份边界访问 Agent 服务。' }}</p>
     </section>
 
     <section class="login-panel" aria-labelledby="login-title" :aria-busy="props.loading">
       <header>
         <div>
           <span class="eyebrow">SECURE ACCESS</span>
-          <h2 id="login-title">欢迎回来</h2>
+          <h2 id="login-title">{{ needsConnection ? '设置连接' : '欢迎回来' }}</h2>
         </div>
-        <button class="connection-link" type="button" :aria-expanded="showConnection" @click="showConnection = !showConnection">
+        <button v-if="!needsConnection" class="connection-link" type="button" :aria-expanded="showConnection" @click="showConnection = !showConnection">
           连接设置
         </button>
       </header>
 
-      <div v-if="showConnection" class="login-connection" aria-label="连接设置">
+      <form v-if="showConnection || needsConnection" class="login-connection" aria-label="连接设置" @submit.prevent="applyConnection">
         <label>连接模式
           <select v-model="mode">
             <option value="router">Router（推荐）</option>
-            <option value="engine">Engine 直连（仅开发）</option>
+            <option value="engine">Engine 直连</option>
           </select>
         </label>
-        <label>Router 地址<input v-model="router" type="url" autocomplete="url" spellcheck="false"></label>
-        <label v-if="mode === 'engine'">Engine 地址<input v-model="engine" type="url" autocomplete="url" spellcheck="false"></label>
+        <label v-if="mode === 'router'">Router 地址<input v-model="router" type="url" placeholder="https://api.example.com" autocomplete="url" spellcheck="false" required></label>
+        <label v-else>Engine 地址<input v-model="engine" type="url" placeholder="https://engine.example.com" autocomplete="url" spellcheck="false" required></label>
         <label v-if="isBasic">租户 ID<input v-model="tenant" autocomplete="organization" spellcheck="false"></label>
-        <button class="secondary-action" type="button" @click="applyConnection">应用并重新检测</button>
-      </div>
+        <button class="secondary-action" type="submit" :disabled="props.loading">{{ props.loading ? '正在连接…' : '连接并继续' }}</button>
+      </form>
 
       <p v-if="props.reason" class="login-notice" role="status">{{ props.reason }}</p>
       <p v-if="props.error" class="login-error" role="alert" aria-live="assertive">{{ props.error }}</p>
@@ -135,7 +139,7 @@ function submit(): void {
         <button class="primary-action" type="button" :disabled="props.loading" @click="emit('retry')">重新检测</button>
       </div>
 
-      <div v-else class="login-unavailable">
+      <div v-else-if="!showConnection && !needsConnection" class="login-unavailable">
         <p>无法读取服务的认证配置。请检查连接地址和服务状态。</p>
         <button class="primary-action" type="button" :disabled="props.loading" @click="emit('retry')">重新检测</button>
       </div>

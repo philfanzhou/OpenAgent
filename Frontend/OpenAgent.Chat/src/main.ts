@@ -22,5 +22,5 @@ loadRuntimeConfig()
   .catch((error: unknown) => {
     console.error('Failed to start OpenAgent Chat', error)
     const root = document.getElementById('app')
-    if (root) root.textContent = '无法加载应用配置，请检查部署配置后刷新页面。'
+    if (root) root.textContent = '应用启动失败，请刷新页面重试。'
   })

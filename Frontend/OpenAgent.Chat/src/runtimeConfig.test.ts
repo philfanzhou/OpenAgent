@@ -1,8 +1,14 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 beforeEach(() => {
   vi.resetModules()
   vi.unstubAllGlobals()
+  vi.spyOn(console, 'warn').mockImplementation(() => {})
+})
+
+afterEach(() => {
+  vi.useRealTimers()
+  vi.restoreAllMocks()
 })
 
 describe('runtime configuration', () => {
@@ -24,7 +30,9 @@ describe('runtime configuration', () => {
 
     await loadRuntimeConfig()
 
-    expect(fetchMock).toHaveBeenCalledWith('/runtime-config.json', { cache: 'no-store' })
+    expect(fetchMock).toHaveBeenCalledWith('/runtime-config.json', {
+      cache: 'no-store', signal: expect.any(AbortSignal),
+    })
     expect(http.getRouterBaseUrl()).toBe('https://router.example/gateway')
     expect(http.getEngineBaseUrl()).toBe('https://engine.example')
     expect(http.getTenantId()).toBe('deployed-tenant')
@@ -44,15 +52,28 @@ describe('runtime configuration', () => {
     expect(http.getTenantId()).toBe('deployed-tenant')
   })
 
-  it('keeps local development defaults with the shipped empty configuration', async () => {
+  it('leaves backend addresses empty with the shipped empty configuration', async () => {
     vi.stubGlobal('localStorage', { getItem: () => null })
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}')))
     const { loadRuntimeConfig } = await import('./shared/runtimeConfig')
     await loadRuntimeConfig()
     const http = await import('./shared/api/http')
-    expect(http.getRouterBaseUrl()).toBe('http://localhost:5001')
-    expect(http.getEngineBaseUrl()).toBe('http://localhost:5208')
+    expect(http.getRouterBaseUrl()).toBe('')
+    expect(http.getEngineBaseUrl()).toBe('')
     expect(http.getTenantId()).toBe('development')
+  })
+
+  it('selects direct Engine mode when it is the only deployment default and no mode is saved', async () => {
+    vi.stubGlobal('localStorage', { getItem: () => null })
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ engineBaseUrl: 'https://engine.example' }))))
+    const { loadRuntimeConfig } = await import('./shared/runtimeConfig')
+    await loadRuntimeConfig()
+    const http = await import('./shared/api/http')
+    expect(http.getConnectionMode()).toBe('engine')
+    expect(http.getEngineBaseUrl()).toBe('https://engine.example')
+    vi.stubGlobal('localStorage', { getItem: (key: string) => key === 'openagent.router.base-url' ? 'https://saved.example' : null })
+    expect(http.getConnectionMode()).toBe('router')
+    expect(http.getRouterBaseUrl()).toBe('https://saved.example')
   })
 
   it.each([
@@ -60,23 +81,42 @@ describe('runtime configuration', () => {
     [],
     { routerBaseUrl: 5001 },
     { routerBaseUrl: 'javascript:alert(1)' },
+    { routerBaseUrl: 'https:/example.com' },
     { engineBaseUrl: '/relative' },
     { engineBaseUrl: 'https://user:password@example.com' },
     { engineBaseUrl: 'https://example.com?token=secret' },
     { tenantId: false },
-  ])('rejects invalid deployment settings: %j', async (config) => {
+  ])('ignores invalid deployment settings so users can configure a connection: %j', async (config) => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify(config))))
-    const { loadRuntimeConfig } = await import('./shared/runtimeConfig')
-    await expect(loadRuntimeConfig()).rejects.toThrow()
+    const { loadRuntimeConfig, getRuntimeConfig } = await import('./shared/runtimeConfig')
+    await loadRuntimeConfig()
+    expect(getRuntimeConfig()).toEqual({})
   })
 
   it.each([
     () => Promise.resolve(new Response('', { status: 404 })),
+    () => Promise.resolve(new Response('', { status: 500 })),
     () => Promise.resolve(new Response('<html>Fallback page</html>')),
     () => Promise.reject(new TypeError('Network unavailable')),
-  ])('reports configuration failures instead of silently using local endpoints', async (fetchConfig) => {
+  ])('keeps saved connections usable when deployment configuration is unavailable', async (fetchConfig) => {
+    vi.stubGlobal('localStorage', { getItem: (key: string) => key === 'openagent.router.base-url' ? 'https://saved.example' : null })
     vi.stubGlobal('fetch', vi.fn(fetchConfig))
     const { loadRuntimeConfig } = await import('./shared/runtimeConfig')
-    await expect(loadRuntimeConfig()).rejects.toThrow()
+    await loadRuntimeConfig()
+    const http = await import('./shared/api/http')
+    expect(http.getRouterBaseUrl()).toBe('https://saved.example')
+    expect(http.getEngineBaseUrl()).toBe('')
+  })
+
+  it('bounds the optional configuration request so a hung server cannot prevent startup', async () => {
+    vi.useFakeTimers()
+    vi.stubGlobal('fetch', vi.fn((_url: string, init: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')))
+    })))
+    const { loadRuntimeConfig, getRuntimeConfig } = await import('./shared/runtimeConfig')
+    const loading = loadRuntimeConfig()
+    await vi.advanceTimersByTimeAsync(3000)
+    await loading
+    expect(getRuntimeConfig()).toEqual({})
   })
 })

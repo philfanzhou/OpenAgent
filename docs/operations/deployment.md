@@ -100,22 +100,25 @@ runtime-tests 真实回归门禁，通过后将 `openagent-engine`、`openagent-
 `openagent-chat` 三个镜像推送到 GHCR，并上传包含 `deploy/` 与版本说明的 Compose 部署包制品。Engine
 镜像的行为依赖内嵌 OpenCode 版本，版本标签带 `-oc<OpenCode 版本>` 后缀（如 `1.2.3-oc1.19.3`）以区分
 不同 OpenCode 基线；预发布标签（如 `v1.0.0-rc1`）不移动 `latest`。registry 版 Chat 镜像
-在容器启动时读取公开地址，可以直接复用于不同部署环境。
+不包含后台地址，可以直接复用于不同部署环境。
 
 ## 前端运行时配置
 
-`.env` 默认只需设置公网主机、运行环境和凭据；端口、网络及内部服务地址使用 Compose 默认值，
-模板中的可选项仅在需要覆盖时取消注释。Chat 容器启动时生成 `/runtime-config.json`，页面读取成功后才启动，
-该文件禁止缓存且只包含公开的 Router/Engine 地址与默认租户。配置不可用或格式错误时，页面显示加载错误。
+Chat 是独立静态前端，可以与后台部署在不同服务器。首次打开页面时，选择 Router 或直连 Engine，
+填写当前模式的一个完整 HTTP(S) 后台地址，连接成功后进入登录；地址保存在当前浏览器，后续自动使用。
+生产、预览及本地开发均不猜测 localhost 或当前页面主机的后台端口，未配置时直接显示连接页。
+切换后台地址会清除旧服务的登录状态，再读取目标服务的认证配置。后台须允许前端来源跨域访问，
+OIDC 的前端回调和 Web Origin 仍需在身份提供方单独配置。
 
-地址、端口与租户变量及其默认值见[环境变量指南第 7 节](environment-variables.md#7-前端运行时配置)。
+需要为所有用户提供默认连接时，可选提供 `/runtime-config.json`。Docker 可将已有 JSON 文件只读挂载到
+`/usr/share/nginx/html/runtime-config.json`；普通静态托管放在站点根路径（有 Vite base 时放在该 base 下）。
+例如只配置 Router：`{"routerBaseUrl":"https://api.example.com"}`。完整字段见
+[环境变量指南第 7 节](environment-variables.md#7-前端运行时配置)。
 
-修改地址后执行 `scripts/deploy.sh --env-file .env` 并刷新页面即可，无需重新构建镜像。
-页面设置中保存的连接地址优先于部署默认值；清空对应地址并保存可恢复为部署默认值。
-旧版地址和租户的 `VITE_OPENAGENT_*` 构建变量不再使用，已有部署首次升级仍需构建新版 Chat 镜像。
-直接运行 Chat 镜像时可用 `docker run -e` 传入上述变量；非 Docker 静态托管需提供同路径的 JSON 文件，
-字段为 `routerBaseUrl`、`engineBaseUrl`、`tenantId`，地址使用绝对 HTTP(S) URL。本地 `pnpm dev` 使用
-`public/runtime-config.json` 中的空配置，默认连接 Router `5001`、Engine `5208`。
+连接地址优先级为：浏览器已保存连接 → 可选部署配置 → 连接页。文件缺失、格式错误或网络失败不会阻止进入连接页，
+可选配置请求最多等待 3 秒；已有浏览器连接仍可使用。该文件禁止缓存，更新并刷新页面即可生效，无需重新构建。
+本地 `pnpm dev`、`pnpm preview` 和默认 Chat 镜像均提供空配置，首次使用同样在页面填写地址。
+Chat 不读取后台地址/租户环境变量，不包含配置生成脚本或 jq；已有部署首次升级仍需构建新版 Chat 镜像。
 
 ## 应用更新与排障
 

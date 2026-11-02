@@ -13,23 +13,16 @@ const tokenEndpointStorageKey = 'openagent.auth.endpoint'
 const refreshTokenStorageKey = 'openagent.auth.refresh-token'
 const tenantStorageKey = 'openagent.auth.tenant-id'
 export const AUTH_FAILURE_EVENT = 'openagent:auth-failure'
-function defaultServiceUrl(port: number): string {
-  if (typeof window !== 'undefined'
-    && window.location?.hostname
-    && window.location.hostname !== 'localhost'
-    && window.location.hostname !== '127.0.0.1') {
-    return `${window.location.protocol}//${window.location.hostname}:${port}`
-  }
-  return `http://localhost:${port}`
-}
-
 export function normalizeBaseUrl(value: string): string {
   return value.trim().replace(/\/$/, '')
 }
 
 export function getConnectionMode(): ConnectionMode {
   const mode = localStorage.getItem(connectionModeStorageKey) || import.meta.env.VITE_OPENAGENT_CONNECTION_MODE
-  return mode === 'engine' ? 'engine' : 'router'
+  if (mode) return mode === 'engine' ? 'engine' : 'router'
+  if (localStorage.getItem(routerStorageKey) || localStorage.getItem(legacyBaseUrlStorageKey)) return 'router'
+  if (localStorage.getItem(engineStorageKey)) return 'engine'
+  return !getRuntimeConfig().routerBaseUrl && getRuntimeConfig().engineBaseUrl ? 'engine' : 'router'
 }
 
 export function setConnectionMode(value: ConnectionMode): void {
@@ -40,7 +33,7 @@ export function getRouterBaseUrl(): string {
   return localStorage.getItem(routerStorageKey)
     || localStorage.getItem(legacyBaseUrlStorageKey)
     || getRuntimeConfig().routerBaseUrl
-    || defaultServiceUrl(5001)
+    || ''
 }
 
 export function setRouterBaseUrl(value: string): void {
@@ -49,7 +42,7 @@ export function setRouterBaseUrl(value: string): void {
 }
 
 export function getEngineBaseUrl(): string {
-  return localStorage.getItem(engineStorageKey) || getRuntimeConfig().engineBaseUrl || defaultServiceUrl(5208)
+  return localStorage.getItem(engineStorageKey) || getRuntimeConfig().engineBaseUrl || ''
 }
 
 export function setEngineBaseUrl(value: string): void {
@@ -63,7 +56,7 @@ export function getAccessToken(): string {
     return ''
   }
   const tokenEndpoint = sessionStorage.getItem(tokenEndpointStorageKey)
-  if (tokenEndpoint && tokenEndpoint !== normalizeBaseUrl(requireBaseUrl())) return ''
+  if (tokenEndpoint && tokenEndpoint !== normalizeBaseUrl(activeBaseUrl())) return ''
   return sessionStorage.getItem(tokenStorageKey) || ''
 }
 
@@ -77,7 +70,7 @@ export function getAccessTokenExpiresAt(): number {
 
 export function getRefreshToken(): string {
   const tokenEndpoint = sessionStorage.getItem(tokenEndpointStorageKey)
-  if (tokenEndpoint && tokenEndpoint !== normalizeBaseUrl(requireBaseUrl())) return ''
+  if (tokenEndpoint && tokenEndpoint !== normalizeBaseUrl(activeBaseUrl())) return ''
   return sessionStorage.getItem(refreshTokenStorageKey) || ''
 }
 
@@ -120,9 +113,13 @@ export function setTenantId(value: string): void {
   localStorage.setItem(tenantStorageKey, value.trim())
 }
 
+function activeBaseUrl(): string {
+  return getConnectionMode() === 'router' ? getRouterBaseUrl() : getEngineBaseUrl()
+}
+
 function requireBaseUrl(): string {
   const mode = getConnectionMode()
-  const value = mode === 'router' ? getRouterBaseUrl() : getEngineBaseUrl()
+  const value = activeBaseUrl()
   if (!value) throw new Error(`请先在设置中输入 ${mode === 'router' ? 'Router' : 'Engine'} 地址`)
   return value
 }

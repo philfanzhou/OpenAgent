@@ -286,7 +286,7 @@ Redis 行为细节见 [Redis 集成](../integrations/redis-engine.md)。
 
 | 变量 | 默认 | 用途 |
 |---|---|---|
-| `OPENAGENT_PUBLIC_HOST` / `OPENAGENT_PUBLIC_SCHEME` | `localhost` / `https` | 派生所有公开 URL（Chat、Keycloak、CORS、前端运行时地址） |
+| `OPENAGENT_PUBLIC_HOST` / `OPENAGENT_PUBLIC_SCHEME` | `localhost` / `https` | 派生部署公开 URL（Chat、Keycloak、CORS）；不配置前端后台连接 |
 | `OPENAGENT_CHAT_PORT` / `OPENAGENT_ROUTER_PORT` / `OPENAGENT_ENGINE_PORT` / `OPENAGENT_KEYCLOAK_PORT` | `8081` / `8082` / `8083` / `58081` | Nginx HTTPS 发布端口；Keycloak 8443 的映射端口 |
 | `OPENAGENT_CHAT_PUBLIC_URL` | 由 scheme+host+chat 端口派生 | 同时用于 CORS、Keycloak 回调与 Web Origin |
 | `OPENAGENT_COMPOSE_PROJECT` / `OPENAGENT_APP_NETWORK` / `OPENAGENT_INFRA_PROJECT` / `OPENAGENT_INFRA_NETWORK` | `openagent-app` / `openagent` / `openagent-infrastructure` / `openagent-infrastructure` | Compose 项目名与网络名；迁移已有部署必须保持 |
@@ -304,7 +304,6 @@ Redis 行为细节见 [Redis 集成](../integrations/redis-engine.md)。
 | `OPENAGENT_DOCKER_MODE` | `auto` | 构建部署脚本选择 docker / wsl-docker |
 | `OPENAGENT_IMAGE_TAR_DIR` | 空 | 镜像 TAR 导出目录 |
 | `OPENAGENT_OPENCODE_VERSION` | `Backend/opencode.version` 锁定值 | 仅升级前临时覆盖验证 |
-| `OPENAGENT_TENANT_ID` | `development` | Chat 容器生成的前端默认租户（实际租户由服务端身份确定） |
 
 ### 6.5 无效 / 遗留变量（避免踩坑）
 
@@ -315,24 +314,25 @@ Redis 行为细节见 [Redis 集成](../integrations/redis-engine.md)。
 
 ## 7. 前端运行时配置
 
-Chat 容器启动时由 `Frontend/OpenAgent.Chat/docker-entrypoint.d/40-runtime-config.sh` 将以下公开变量写入
-`/runtime-config.json`，页面在挂载前加载并校验该文件，响应禁止缓存。仅输出列出的三个 JSON 字段，不导出容器凭据。
+Chat 不需要部署环境变量。首次打开页面选择连接模式并填写一个后台地址，保存在浏览器；无连接时不调用后台 API。
+如需统一默认连接，可在静态站点提供可选的 `/runtime-config.json`，仅包含以下公开字段，响应禁止缓存。
 
-| 变量 | 默认 | JSON 字段 / 用途 |
+| JSON 字段 | 默认 | 用途 |
 |---|---|---|
-| `OPENAGENT_PUBLIC_SCHEME` / `OPENAGENT_PUBLIC_HOST` | `https` / `localhost` | 与端口共同派生后台地址 |
-| `OPENAGENT_ROUTER_PORT` / `OPENAGENT_ENGINE_PORT` | `8082` / `8083` | 派生 Router / Engine 的浏览器访问地址 |
-| `OPENAGENT_ROUTER_PUBLIC_URL` | 由 scheme+host+router 端口派生 | `routerBaseUrl`，可覆盖为独立域名或带路径前缀的绝对 HTTP(S) URL |
-| `OPENAGENT_ENGINE_PUBLIC_URL` | 由 scheme+host+engine 端口派生 | `engineBaseUrl`，可覆盖为独立域名或带路径前缀的绝对 HTTP(S) URL |
-| `OPENAGENT_TENANT_ID` | `development` | `tenantId`，前端默认租户 |
+| `routerBaseUrl` | 空 | Router 的绝对 HTTP(S) URL，可包含路径前缀 |
+| `engineBaseUrl` | 空 | 直连 Engine 的绝对 HTTP(S) URL，可包含路径前缀 |
+| `tenantId` | `development` | 前端默认租户；实际租户以服务端认证身份为准 |
 
-连接地址优先级为：页面设置中保存的地址 → 运行时配置 → 本地开发默认地址（Router 5001、Engine 5208，按页面主机推导）。
-本地 `pnpm dev` 和 `pnpm preview` 使用 `public/runtime-config.json` 的空配置；静态托管可按上述字段提供 JSON 文件。
-旧版 `VITE_OPENAGENT_ROUTER_BASE_URL`、`VITE_OPENAGENT_ENGINE_BASE_URL`、`VITE_OPENAGENT_TENANT_ID` 不再读取。
+只提供 `engineBaseUrl` 且浏览器没有已保存连接或模式时，默认选择直连 Engine；其余情况默认 Router。
+地址不能包含账号、密码、查询参数或片段。连接地址优先级为：浏览器已保存连接 → 可选部署配置 → 连接页。
+本地 `pnpm dev`、`pnpm preview` 和默认镜像使用 `public/runtime-config.json` 的空配置，不自动连接本机后台。
+文件缺失、网络失败、格式错误或超过 3 秒等待时忽略该文件，已保存连接和连接页仍可使用。
+旧版 `VITE_OPENAGENT_ROUTER_BASE_URL`、`VITE_OPENAGENT_ENGINE_BASE_URL`、`VITE_OPENAGENT_TENANT_ID`，
+以及 Chat 容器的 `OPENAGENT_ROUTER_PUBLIC_URL`、`OPENAGENT_ENGINE_PUBLIC_URL`、`OPENAGENT_TENANT_ID` 均不再读取。
 本地开发的 `VITE_OPENAGENT_CONNECTION_MODE` 保留，用于选择默认连接模式（`engine` / `router`，默认 `router`）。
 
 认证参数（authority、clientId、scopes、模式）继续由后端 `GET /api/v1/auth/config` 下发。
-修改运行时变量的部署方式见[部署指南](deployment.md#前端运行时配置)。
+配置文件挂载与独立前端部署见[部署指南](deployment.md#前端运行时配置)。
 
 ## 8. 必填与缺失影响总览
 

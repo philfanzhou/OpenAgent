@@ -22,9 +22,9 @@ beforeEach(() => {
 })
 
 describe('workspace API', () => {
-  it('uses runnable local stack defaults before the user customizes a connection', () => {
-    expect(getRouterBaseUrl()).toBe('http://localhost:5001')
-    expect(getEngineBaseUrl()).toBe('http://localhost:5208')
+  it('requires a connection instead of guessing local backend addresses', () => {
+    expect(getRouterBaseUrl()).toBe('')
+    expect(getEngineBaseUrl()).toBe('')
     expect(getTenantId()).toBe('development')
   })
 
@@ -70,6 +70,7 @@ describe('workspace API', () => {
   })
 
   it('drops expired session tokens', () => {
+    setRouterBaseUrl('https://router.example')
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-08-17T00:00:00Z'))
     setAccessToken('short-lived-token', 'Bearer', 1)
@@ -77,6 +78,13 @@ describe('workspace API', () => {
 
     expect(getAccessToken()).toBe('')
     expect(sessionStorage.getItem('openagent.auth.access-token')).toBeNull()
+  })
+
+  it('ignores endpoint-bound tokens when no backend is configured', () => {
+    sessionStorage.setItem('openagent.auth.access-token', 'old-token')
+    sessionStorage.setItem('openagent.auth.refresh-token', 'old-refresh')
+    sessionStorage.setItem('openagent.auth.endpoint', 'https://previous.example')
+    expect(getAccessToken()).toBe('')
   })
 
   it('does not send a client tenant header with bearer tokens', async () => {
