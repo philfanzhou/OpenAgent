@@ -10,7 +10,6 @@ using OpenAgent.Engine.Host.Files;
 using OpenAgent.Engine.Host.Extensions;
 using OpenAgent.Engine.Host.Health;
 using OpenAgent.Engine.Host.Middleware;
-using OpenAgent.Engine.Host.Skills;
 using OpenAgent.Engine.Hosting;
 using OpenAgent.Engine.Hosting.Authentication;
 using OpenAgent.Framework;
@@ -36,7 +35,6 @@ builder.Services.AddOpenCodeRuntime(builder.Configuration);
 builder.Services.AddOpenAgentFramework(builder.Configuration);
 // 文件对象存储：本地磁盘缺省已由 AddFileAssetServices 注册；配置对象存储时替换为 S3。
 builder.Services.AddFileAssetObjectStorage(builder.Configuration);
-builder.Services.AddSingleton<SkillPackageManagementService>();
 
 builder.Services.AddAgentEngine(builder.Configuration);
 builder.Services.AddHealthChecks()

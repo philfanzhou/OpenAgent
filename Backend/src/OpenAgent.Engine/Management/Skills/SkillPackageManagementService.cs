@@ -5,21 +5,18 @@ using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Models;
 using OpenAgent.Contracts.Skills;
-using OpenAgent.Application.Capabilities.Skill;
-using OpenAgent.Engine.Config;
 using OpenAgent.Engine.Abstractions;
+using OpenAgent.Engine.Config;
 
-namespace OpenAgent.Engine.Host.Skills;
+namespace OpenAgent.Engine.Management.Skills;
 
 internal sealed class SkillPackageManagementService(
     ConfigurationService agentConfigs,
     IFileObjectStore objectStore,
     ILogger<SkillPackageManagementService> logger,
-    ISkillCatalogStore? skillCatalog = null)
+    ISkillCatalogStore? skillCatalog = null) : ISkillPackageManagementService
 {
-    internal const long MaxPackageBytes = 4 * 1024 * 1024;
-
-    internal async Task<SkillPackageInstallResult> InstallAsync(
+    public async Task<SkillPackageInstallResult> InstallAsync(
         string agentId,
         string tenantId,
         string userId,
@@ -49,7 +46,7 @@ internal sealed class SkillPackageManagementService(
         entity.TenantId = tenantId;
         entity.Config.TenantId = tenantId;
 
-        SkillPackageUploadResult uploaded = await UploadAsync(
+        SkillPackageUploadResult uploaded = await UploadCoreAsync(
             tenantId, userId, fileName, mediaType, package, cancellationToken,
             publishCatalog: false).ConfigureAwait(false);
         SkillInstanceConfig instance = uploaded.Skill;
@@ -100,14 +97,33 @@ internal sealed class SkillPackageManagementService(
         return SkillPackageInstallResult.Installed(instance, saved.CurrentVersion);
     }
 
-    internal async Task<SkillPackageUploadResult> UploadAsync(
+    public Task<SkillPackageUploadResult> UploadAsync(
+        string tenantId,
+        string userId,
+        string fileName,
+        string mediaType,
+        Stream package,
+        CancellationToken cancellationToken) =>
+        UploadCoreAsync(tenantId, userId, fileName, mediaType, package, cancellationToken, publishCatalog: true);
+
+    internal Task<SkillPackageUploadResult> UploadAsync(
         string tenantId,
         string userId,
         string fileName,
         string mediaType,
         Stream package,
         CancellationToken cancellationToken,
-        bool publishCatalog = true)
+        bool publishCatalog) =>
+        UploadCoreAsync(tenantId, userId, fileName, mediaType, package, cancellationToken, publishCatalog);
+
+    private async Task<SkillPackageUploadResult> UploadCoreAsync(
+        string tenantId,
+        string userId,
+        string fileName,
+        string mediaType,
+        Stream package,
+        CancellationToken cancellationToken,
+        bool publishCatalog)
     {
         byte[] content = await ReadPackageAsync(package, cancellationToken).ConfigureAwait(false);
         bool isMarkdown = string.Equals(Path.GetExtension(fileName), ".md", StringComparison.OrdinalIgnoreCase);
@@ -117,7 +133,7 @@ internal sealed class SkillPackageManagementService(
         IReadOnlyList<SkillPackageFile> files = isMarkdown
             ? [new SkillPackageFile("SKILL.md", content)]
             : AgentSkillPackageArchive.ReadZipFiles(content, cancellationToken);
-        if (files.Sum(item => item.Content.LongLength) > MaxPackageBytes)
+        if (files.Sum(item => item.Content.LongLength) > ISkillPackageManagementService.MaxPackageBytes)
             throw new InvalidOperationException("Expanded Skill package exceeds the 4 MB limit.");
 
         AgentSkillPackageMetadata metadata = AgentSkillPackageArchive.InspectFiles(files, cancellationToken);
@@ -249,7 +265,7 @@ internal sealed class SkillPackageManagementService(
     /// package survives an online description edit. The frontmatter name must
     /// stay the same to keep Agent bindings and the catalog id stable.
     /// </summary>
-    internal async Task<SkillInstanceConfig?> UpdateMarkdownAsync(
+    public async Task<SkillInstanceConfig?> UpdateMarkdownAsync(
         string tenantId,
         string userId,
         string skillId,
@@ -291,7 +307,7 @@ internal sealed class SkillPackageManagementService(
                 ? new SkillPackageFile(file.RelativePath, markdownBytes)
                 : file);
         }
-        if (merged.Sum(file => file.Content.LongLength) > MaxPackageBytes)
+        if (merged.Sum(file => file.Content.LongLength) > ISkillPackageManagementService.MaxPackageBytes)
             throw new InvalidOperationException("Updated Skill package exceeds the 4 MB limit.");
         AgentSkillPackageMetadata metadata = AgentSkillPackageArchive.InspectFiles(merged, cancellationToken);
 
@@ -333,7 +349,7 @@ internal sealed class SkillPackageManagementService(
         return updated;
     }
 
-    internal async Task<bool> DeleteCatalogAsync(
+    public async Task<bool> DeleteCatalogAsync(
         string tenantId,
         string skillId,
         CancellationToken cancellationToken)
@@ -349,7 +365,7 @@ internal sealed class SkillPackageManagementService(
         return true;
     }
 
-    internal async Task<string?> ReadMarkdownAsync(
+    public async Task<string?> ReadMarkdownAsync(
         string tenantId,
         string skillId,
         CancellationToken cancellationToken)
@@ -382,7 +398,7 @@ internal sealed class SkillPackageManagementService(
         return legacyMarkdown == null ? null : System.Text.Encoding.UTF8.GetString(legacyMarkdown.Content);
     }
 
-    internal async Task<SkillPackageDeleteResult> DeleteAsync(
+    public async Task<SkillPackageDeleteResult> DeleteAsync(
         string agentId,
         string tenantId,
         string skillId,
@@ -438,7 +454,7 @@ internal sealed class SkillPackageManagementService(
             throw new InvalidOperationException("Skill package is empty.");
         }
 
-        if (buffer.Length > MaxPackageBytes)
+        if (buffer.Length > ISkillPackageManagementService.MaxPackageBytes)
         {
             throw new InvalidOperationException("Skill package exceeds the 4 MB limit.");
         }
@@ -536,37 +552,3 @@ internal sealed class SkillPackageManagementService(
         }
     }
 }
-
-internal sealed record SkillMarkdownUpdateRequest(string Markdown);
-
-internal sealed record SkillPackageInstallResult(
-    SkillInstanceConfig? Skill,
-    string? CurrentVersion,
-    bool AgentExists,
-    bool HasConflict,
-    bool HasTenantMismatch)
-{
-    internal static SkillPackageInstallResult Installed(SkillInstanceConfig skill, string currentVersion) =>
-        new(skill, currentVersion, AgentExists: true, HasConflict: false, HasTenantMismatch: false);
-
-    internal static SkillPackageInstallResult NotFound() =>
-        new(null, null, AgentExists: false, HasConflict: false, HasTenantMismatch: false);
-
-    internal static SkillPackageInstallResult Conflict() =>
-        new(null, null, AgentExists: true, HasConflict: true, HasTenantMismatch: false);
-
-    internal static SkillPackageInstallResult TenantMismatch() =>
-        new(null, null, AgentExists: true, HasConflict: false, HasTenantMismatch: true);
-}
-
-internal sealed record SkillPackageUploadResult(SkillInstanceConfig Skill);
-
-internal enum SkillPackageDeleteResult
-{
-    Deleted,
-    AgentNotFound,
-    SkillNotFound,
-    Conflict,
-    TenantMismatch
-}
-

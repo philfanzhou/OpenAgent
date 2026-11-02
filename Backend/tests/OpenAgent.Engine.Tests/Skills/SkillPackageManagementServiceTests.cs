@@ -13,7 +13,7 @@ using OpenAgent.Contracts.Skills;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Engine.Abstractions;
 using OpenAgent.Engine.Config;
-using OpenAgent.Engine.Host.Skills;
+using OpenAgent.Engine.Management.Skills;
 using StackExchange.Redis;
 using Xunit;
 

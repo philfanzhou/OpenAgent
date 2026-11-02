@@ -1,8 +1,6 @@
 using System.IO.Compression;
 
-using OpenAgent.Contracts.Skills;
-
-namespace OpenAgent.Application.Capabilities.Skill;
+namespace OpenAgent.Contracts.Skills;
 
 /// <summary>
 /// Validates uploaded Skill packages, extracts official frontmatter metadata, and

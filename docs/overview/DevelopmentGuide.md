@@ -39,7 +39,7 @@
 | 会话 | Application/Conversation/{History,Compaction,Store,Lock}/ | ConversationServiceExtensions.cs |
 | SDK 工具机制 | Application/Tooling/{Abstractions,Discovery,Invocation}/ | ToolingServiceExtensions.cs |
 | MCP 适配 | Application/Capabilities/Mcp/ | McpServiceExtensions.cs |
-| Skill 适配与包解析 | Application/Capabilities/Skill/ | SkillServiceExtensions.cs |
+| Skill 适配 | Application/Capabilities/Skill/（包解析/校验在 Contracts/Skills/AgentSkillPackageArchive.cs） | SkillServiceExtensions.cs |
 | Skill 目录 | ISkillCatalog 在 Contracts/Capabilities/；Engine 实现在 Engine/Config/SkillCatalogStore | 随 Skill 组合注册 |
 | RAG | Capabilities/Rag/ | RagServiceExtensions.cs |
 | 内置能力 | Capabilities/{Code,Workspace,Plan,UserProfile}/ | BuiltinCapabilityServiceExtensions.cs |

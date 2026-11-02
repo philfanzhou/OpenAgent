@@ -115,7 +115,7 @@ Agent → ToolCall("search_knowledge_base")
 ## 代码入口
 
 - 工具适配与隔离：`Backend/src/OpenAgent.Application/Tooling/Discovery/`（CapabilityToolFactory）、`Tooling/Invocation/`（隔离、预算与并发策略）、`Execution/RuntimePreparation.cs`。
-- Skill：`Backend/src/OpenAgent.Contracts/Capabilities/ISkillCatalog.cs`、`OpenAgent.Engine/Config/SkillCatalogStore.cs`、`OpenAgent.Application/Capabilities/Skill/`（AgentSkillsProviderFactory）、`OpenAgent.Engine.Host/Skills/SkillPackageManagementService.cs`。
+- Skill：`Backend/src/OpenAgent.Contracts/Capabilities/ISkillCatalog.cs`、`OpenAgent.Engine/Config/SkillCatalogStore.cs`、`OpenAgent.Application/Capabilities/Skill/`（AgentSkillsProviderFactory；包解析在 `Contracts/Skills/AgentSkillPackageArchive.cs`）、`OpenAgent.Engine/Management/Skills/SkillPackageManagementService.cs`（经 `Contracts/Skills/ISkillPackageManagementService` 暴露，Host 只做 HTTP 映射）。
 - MCP：`Backend/src/OpenAgent.Application/Capabilities/Mcp/McpFeatureFactory.cs`、`Contracts/Configuration/IMcpConfigRepository.cs`、`Framework/Configuration/McpConfigRepository.cs`。
 - RAG：`Backend/src/OpenAgent.Capabilities/Rag/`（RagCapabilitySource、RagService、Adapters/）、`Contracts/Models/IRagAdapter.cs`。
 - 计划工具与内置能力源：`Backend/src/OpenAgent.Capabilities/Plan/` 以及 `Files/Tools/`、`UserProfile/`。
