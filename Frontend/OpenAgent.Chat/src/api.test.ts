@@ -28,8 +28,9 @@ describe('workspace API', () => {
     expect(getTenantId()).toBe('development')
   })
 
-  it('uses the local preview connection mode while preserving an explicit saved choice', () => {
-    vi.stubEnv('VITE_OPENAGENT_CONNECTION_MODE', 'engine')
+  it('uses the saved connection mode instead of deployment settings', () => {
+    expect(getConnectionMode()).toBe('router')
+    setConnectionMode('engine')
     expect(getConnectionMode()).toBe('engine')
     setConnectionMode('router')
     expect(getConnectionMode()).toBe('router')

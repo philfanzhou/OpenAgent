@@ -1,6 +1,5 @@
 import { randomUuid } from '../browserCrypto'
 import type { ConnectionMode } from '../contracts/types'
-import { getRuntimeConfig } from '../runtimeConfig'
 
 const legacyBaseUrlStorageKey = 'openagent.engine.base-url'
 const routerStorageKey = 'openagent.router.base-url'
@@ -17,12 +16,20 @@ export function normalizeBaseUrl(value: string): string {
   return value.trim().replace(/\/$/, '')
 }
 
+export function normalizeServiceUrl(value: string): string {
+  const trimmed = value.trim()
+  if (!/^https?:\/\//i.test(trimmed)) throw new Error('Invalid service URL')
+  const url = new URL(trimmed)
+  if (url.username || url.password || url.search || url.hash) throw new Error('Invalid service URL')
+  return url.href.replace(/\/+$/, '')
+}
+
 export function getConnectionMode(): ConnectionMode {
-  const mode = localStorage.getItem(connectionModeStorageKey) || import.meta.env.VITE_OPENAGENT_CONNECTION_MODE
+  const mode = localStorage.getItem(connectionModeStorageKey)
   if (mode) return mode === 'engine' ? 'engine' : 'router'
   if (localStorage.getItem(routerStorageKey) || localStorage.getItem(legacyBaseUrlStorageKey)) return 'router'
   if (localStorage.getItem(engineStorageKey)) return 'engine'
-  return !getRuntimeConfig().routerBaseUrl && getRuntimeConfig().engineBaseUrl ? 'engine' : 'router'
+  return 'router'
 }
 
 export function setConnectionMode(value: ConnectionMode): void {
@@ -32,7 +39,6 @@ export function setConnectionMode(value: ConnectionMode): void {
 export function getRouterBaseUrl(): string {
   return localStorage.getItem(routerStorageKey)
     || localStorage.getItem(legacyBaseUrlStorageKey)
-    || getRuntimeConfig().routerBaseUrl
     || ''
 }
 
@@ -42,7 +48,7 @@ export function setRouterBaseUrl(value: string): void {
 }
 
 export function getEngineBaseUrl(): string {
-  return localStorage.getItem(engineStorageKey) || getRuntimeConfig().engineBaseUrl || ''
+  return localStorage.getItem(engineStorageKey) || ''
 }
 
 export function setEngineBaseUrl(value: string): void {
@@ -106,7 +112,7 @@ function clearExpiredAccessToken(): void {
 }
 
 export function getTenantId(): string {
-  return localStorage.getItem(tenantStorageKey) || getRuntimeConfig().tenantId || 'development'
+  return localStorage.getItem(tenantStorageKey) || 'development'
 }
 
 export function setTenantId(value: string): void {

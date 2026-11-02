@@ -147,7 +147,7 @@ platform_version="$(git -C "$repo_root" describe --tags --always --dirty 2>/dev/
   --file "$docker_root/Backend/src/OpenAgent.Router/Dockerfile" \
   "$docker_root"
 
-# Chat connection settings are supplied when the container starts.
+# Chat connections are configured in the browser.
 "${docker_cmd[@]}" build \
   --tag "$chat_image" \
   --label "org.opencontainers.image.version=$platform_version" \

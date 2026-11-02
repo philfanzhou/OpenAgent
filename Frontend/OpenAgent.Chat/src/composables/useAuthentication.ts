@@ -31,7 +31,7 @@ import {
   WORKSPACE_HASH,
 } from '../auth'
 import type { AuthConfig, ConnectionMode, CurrentUserContext } from '../types'
-import { getRuntimeConfig, normalizeServiceUrl } from '../shared/runtimeConfig'
+import { normalizeServiceUrl } from '../shared/api/http'
 
 interface AuthenticationOptions {
   currentUser: Ref<CurrentUserContext | null>
@@ -181,10 +181,9 @@ export function useAuthentication(options: AuthenticationOptions) {
     const previousEndpoint = getConnectionMode() === 'router' ? getRouterBaseUrl() : getEngineBaseUrl()
     let address: string
     try {
-      const defaults = getRuntimeConfig()
       address = normalizeServiceUrl(value.mode === 'router'
-        ? value.routerUrl.trim() || defaults.routerBaseUrl || ''
-        : value.engineUrl.trim() || defaults.engineBaseUrl || '')
+        ? value.routerUrl
+        : value.engineUrl)
     } catch {
       authError.value = '请输入完整的 HTTP(S) 后台地址，不包含账号、密码、查询参数或片段。'
       return
@@ -192,8 +191,8 @@ export function useAuthentication(options: AuthenticationOptions) {
     connectionMode.value = value.mode
     tenantId.value = value.tenantId
     setConnectionMode(value.mode)
-    setRouterBaseUrl(value.mode === 'router' && value.routerUrl.trim() ? address : value.routerUrl)
-    setEngineBaseUrl(value.mode === 'engine' && value.engineUrl.trim() ? address : value.engineUrl)
+    setRouterBaseUrl(value.mode === 'router' ? address : value.routerUrl)
+    setEngineBaseUrl(value.mode === 'engine' ? address : value.engineUrl)
     setTenantId(value.tenantId)
     routerUrl.value = getRouterBaseUrl()
     engineUrl.value = getEngineBaseUrl()

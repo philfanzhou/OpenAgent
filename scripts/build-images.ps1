@@ -234,7 +234,7 @@ try {
         '--file', (Join-WslPath -Base $dockerRepoRoot -Child 'Backend/src/OpenAgent.Router/Dockerfile'),
         $dockerRepoRoot
     )
-    # Chat connection settings are supplied when the container starts.
+    # Chat connections are configured in the browser.
     Invoke-Docker -Arguments @(
         'build', '--tag', $chatImage,
         '--label', "org.opencontainers.image.version=$platformVersion",

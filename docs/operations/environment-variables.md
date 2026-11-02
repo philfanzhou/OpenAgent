@@ -1,6 +1,6 @@
 # 环境变量指南
 
-本文件是 OpenAgent 环境变量的唯一事实源：覆盖 Engine.Host、Router 两个宿主实际读取的全部配置环境变量、Compose 部署层的 `OPENAGENT_*` 包装变量、前端运行时配置，以及不同场景的最小配置集。部署流程本身见 [部署指南](deployment.md)。
+本文件是 OpenAgent 环境变量的唯一事实源：覆盖 Engine.Host、Router 两个宿主实际读取的全部配置环境变量、Compose 部署层的 `OPENAGENT_*` 包装变量，以及不同场景的最小配置集。部署流程本身见 [部署指南](deployment.md)。
 
 ## 1. 配置加载规则
 
@@ -312,27 +312,17 @@ Redis 行为细节见 [Redis 集成](../integrations/redis-engine.md)。
 - `Engine__AllowMockAgent`（`deploy/openagent/preview.compose.yml` 遗留）；
 - `Engine__AdvertisedHost` / `Engine__AdvertisedPort`（Engine.Host 的 `appsettings.Development.json` 遗留；现行键是 `Heartbeat__AdvertisedHost` / `Heartbeat__AdvertisedPort`）。
 
-## 7. 前端运行时配置
+## 7. 前端连接
 
-Chat 不需要部署环境变量。首次打开页面选择连接模式并填写一个后台地址，保存在浏览器；无连接时不调用后台 API。
-如需统一默认连接，可在静态站点提供可选的 `/runtime-config.json`，仅包含以下公开字段，响应禁止缓存。
+Chat 只使用浏览器中保存的连接，不读取前端环境变量或部署配置文件。首次打开页面选择 Router 或直连 Engine，
+填写当前模式的一个完整 HTTP(S) 后台地址；支持路径前缀，不允许账号、密码、查询参数或片段。
+默认连接模式为 Router，地址为空时直接显示连接页，不请求后台 API，也不猜测 localhost 端口。
+地址和连接模式保存在 localStorage，认证凭据保存在当前标签页的 sessionStorage。
+租户显示默认值为 development，登录后以服务端认证身份中的租户为准。
 
-| JSON 字段 | 默认 | 用途 |
-|---|---|---|
-| `routerBaseUrl` | 空 | Router 的绝对 HTTP(S) URL，可包含路径前缀 |
-| `engineBaseUrl` | 空 | 直连 Engine 的绝对 HTTP(S) URL，可包含路径前缀 |
-| `tenantId` | `development` | 前端默认租户；实际租户以服务端认证身份为准 |
-
-只提供 `engineBaseUrl` 且浏览器没有已保存连接或模式时，默认选择直连 Engine；其余情况默认 Router。
-地址不能包含账号、密码、查询参数或片段。连接地址优先级为：浏览器已保存连接 → 可选部署配置 → 连接页。
-本地 `pnpm dev`、`pnpm preview` 和默认镜像使用 `public/runtime-config.json` 的空配置，不自动连接本机后台。
-文件缺失、网络失败、格式错误或超过 3 秒等待时忽略该文件，已保存连接和连接页仍可使用。
-旧版 `VITE_OPENAGENT_ROUTER_BASE_URL`、`VITE_OPENAGENT_ENGINE_BASE_URL`、`VITE_OPENAGENT_TENANT_ID`，
-以及 Chat 容器的 `OPENAGENT_ROUTER_PUBLIC_URL`、`OPENAGENT_ENGINE_PUBLIC_URL`、`OPENAGENT_TENANT_ID` 均不再读取。
-本地开发的 `VITE_OPENAGENT_CONNECTION_MODE` 保留，用于选择默认连接模式（`engine` / `router`，默认 `router`）。
-
-认证参数（authority、clientId、scopes、模式）继续由后端 `GET /api/v1/auth/config` 下发。
-配置文件挂载与独立前端部署见[部署指南](deployment.md#前端运行时配置)。
+旧版 `VITE_OPENAGENT_*` 前端构建变量及 `OPENAGENT_TENANT_ID` 不再读取。
+认证参数（authority、clientId、scopes、模式）由目标后台 `GET /api/v1/auth/config` 下发。
+独立前端部署见[部署指南](deployment.md#前端连接)。
 
 ## 8. 必填与缺失影响总览
 
