@@ -107,8 +107,9 @@ runtime-tests 真实回归门禁，通过后将 `openagent-engine`、`openagent-
 Chat 是独立静态前端，可以与后台部署在不同服务器。首次打开页面时，选择 Router 或直连 Engine，
 填写当前模式的一个完整 HTTP(S) 后台地址，连接成功后进入登录；地址保存在当前浏览器，后续自动使用。
 生产、预览及本地开发均不猜测 localhost 或当前页面主机的后台端口，未配置时直接显示连接页。
-切换后台地址会清除旧服务的登录状态，再读取目标服务的认证配置。后台须允许前端来源跨域访问，
-OIDC 的前端回调和 Web Origin 仍需在身份提供方单独配置。
+切换后台地址会清除旧服务的登录状态，再读取目标服务的认证配置。Router 与 Engine 默认允许任意来源的跨域请求，
+支持任意方法和请求头；认证与租户授权照常执行。通配模式不启用跨域 Cookie，使用 Authorization 头发送凭据。
+如需显式白名单，见[环境变量指南](environment-variables.md)。OIDC 的前端回调和 Web Origin 仍需在身份提供方单独配置。
 
 连接只保存在浏览器；未保存连接时显示连接页。修改页面连接即可切换后台，无需重新构建镜像。
 本地 `pnpm dev`、`pnpm preview` 和 Chat 镜像使用相同流程，不读取前端环境变量或部署配置文件。
@@ -188,7 +189,7 @@ Keycloak 直接提供 HTTPS，内部 HTTP 8080 不发布到宿主机。
 应用栈创建独立的 `openagent` 网络；Engine 和 Router 额外加入基础设施网络以访问数据库、Redis、MinIO 和 Keycloak，
 Chat、Nginx 不直接加入基础设施网络。
 
-`OPENAGENT_CHAT_PUBLIC_URL` 同时用于 CORS、Keycloak 回调、Web Origin 和退出回调，
+`OPENAGENT_CHAT_PUBLIC_URL` 用于 Keycloak 回调、Web Origin 和退出回调，
 默认由 `OPENAGENT_PUBLIC_SCHEME`/`OPENAGENT_PUBLIC_HOST` 与 `OPENAGENT_CHAT_PORT` 派生，无需重复配置。
 切换到 443 时设 `OPENAGENT_CHAT_PORT=443`、`OPENAGENT_CHAT_PUBLIC_URL=https://localhost`；
 域名替换时同时更新公开 URL。Keycloak 的公开 URL 必须匹配其 HTTPS 对外入口，

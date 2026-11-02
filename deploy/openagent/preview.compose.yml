@@ -44,7 +44,6 @@ services:
       Authentication__ClientId: openagent-chat
       Authentication__RequireHttpsMetadata: "false"
       Authentication__ClockSkewSeconds: "60"
-      Cors__AllowedOrigins__0: http://localhost:${PREVIEW_CHAT_PORT:-8090}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
@@ -80,7 +79,6 @@ services:
       Authentication__ClientId: openagent-chat
       Authentication__RequireHttpsMetadata: "false"
       Authentication__ClockSkewSeconds: "60"
-      Cors__AllowedOrigins__0: http://localhost:${PREVIEW_CHAT_PORT:-8090}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:

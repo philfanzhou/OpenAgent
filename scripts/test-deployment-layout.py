@@ -43,7 +43,7 @@ class DeploymentLayoutTests(unittest.TestCase):
                 for name in ('engine', 'router'):
                     env = app['services'][name]['environment']
                     self.assertEqual(env['Authentication__Authority'], f'https://{host}:{port}/realms/openagent')
-                    self.assertEqual(env['Cors__AllowedOrigins__0'], origin)
+                    self.assertNotIn('Cors__AllowedOrigins__0', env)
                 self.assertFalse(any(p['target'] == 8080 for p in kc['ports']))
 
     def test_mounts_network_and_preview_context(self):
@@ -65,6 +65,8 @@ class DeploymentLayoutTests(unittest.TestCase):
                     if mount['type'] == 'bind':
                         self.assertTrue(Path(mount['source']).exists(), mount['source'])
         preview = config('deploy/openagent/preview.compose.yml')
+        for name in ('engine', 'router'):
+            self.assertNotIn('Cors__AllowedOrigins__0', preview['services'][name]['environment'])
         for service in preview['services'].values():
             self.assertEqual(Path(service['build']['context']), ROOT)
 

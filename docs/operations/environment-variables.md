@@ -115,7 +115,7 @@ OPENAGENT_AUTH_ALLOW_DEVELOPMENT_ANONYMOUS=false
 | `ASPNETCORE_HTTP_PORTS` | E | — | 心跳端口探测优先于此变量 |
 | `DOTNET_ENVIRONMENT` | E/R | — | `ASPNETCORE_ENVIRONMENT` 缺失时的回退 |
 | `AllowedHosts` | E/R | `*` | 主机过滤 |
-| `Cors__AllowedOrigins__0..n` | E/R | `http://localhost:5173` | CORS 白名单（应用 Compose 注入 Chat 公开地址） |
+| `Cors__AllowedOrigins__0..n` | E/R | `*` | 默认允许任意来源、方法和请求头；主/预览 Compose 不覆盖。通配模式不启用跨域 Cookie，支持 Authorization 头；如需白名单，用完整来源地址替换 `*`（协议、主机、端口，无路径和末尾斜杠），白名单来源沿用允许 credentials 的行为 |
 
 ### 5.2 数据库与存储（Engine）
 
@@ -286,9 +286,9 @@ Redis 行为细节见 [Redis 集成](../integrations/redis-engine.md)。
 
 | 变量 | 默认 | 用途 |
 |---|---|---|
-| `OPENAGENT_PUBLIC_HOST` / `OPENAGENT_PUBLIC_SCHEME` | `localhost` / `https` | 派生部署公开 URL（Chat、Keycloak、CORS）；不配置前端后台连接 |
+| `OPENAGENT_PUBLIC_HOST` / `OPENAGENT_PUBLIC_SCHEME` | `localhost` / `https` | 派生部署公开 URL（Chat、Keycloak）；不配置前端后台连接 |
 | `OPENAGENT_CHAT_PORT` / `OPENAGENT_ROUTER_PORT` / `OPENAGENT_ENGINE_PORT` / `OPENAGENT_KEYCLOAK_PORT` | `8081` / `8082` / `8083` / `58081` | Nginx HTTPS 发布端口；Keycloak 8443 的映射端口 |
-| `OPENAGENT_CHAT_PUBLIC_URL` | 由 scheme+host+chat 端口派生 | 同时用于 CORS、Keycloak 回调与 Web Origin |
+| `OPENAGENT_CHAT_PUBLIC_URL` | 由 scheme+host+chat 端口派生 | 用于 Keycloak 回调与 Web Origin |
 | `OPENAGENT_COMPOSE_PROJECT` / `OPENAGENT_APP_NETWORK` / `OPENAGENT_INFRA_PROJECT` / `OPENAGENT_INFRA_NETWORK` | `openagent-app` / `openagent` / `openagent-infrastructure` / `openagent-infrastructure` | Compose 项目名与网络名；迁移已有部署必须保持 |
 | `OPENAGENT_NGINX_CLIENT_MAX_BODY_SIZE` | `1100m` | Nginx 上传体积限制 |
 | `OPENAGENT_TLS_CERT_DIR` | `deploy/openagent/nginx/certs` | 证书目录（Nginx 与 Keycloak 共用） |

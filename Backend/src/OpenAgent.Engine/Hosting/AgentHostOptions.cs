@@ -8,7 +8,7 @@ public class AgentHostOptions
     public bool EnableJwtAuth { get; set; } = true;
     public bool EnableOpenTelemetry { get; set; } = true;
     public string CorsPolicyName { get; set; } = "AgentCorsPolicy";
-    public string[] CorsAllowedOrigins { get; set; } = ["http://localhost:5173"];
+    public string[] CorsAllowedOrigins { get; set; } = ["*"];
     public string HealthCheckLivePath { get; set; } = "/health";
     public string HealthCheckReadyPath { get; set; } = "/ready";
     public string ServiceName { get; set; } = "openagent-service";
