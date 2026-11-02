@@ -53,12 +53,19 @@ public static class ServiceCollectionExtensions
             {
                 cors.AddPolicy(options.CorsPolicyName, policy =>
                 {
+                    if (options.CorsAllowedOrigins.Contains("*", StringComparer.Ordinal))
+                    {
+                        policy.AllowAnyOrigin();
+                    }
+                    else
+                    {
+                        policy.WithOrigins(options.CorsAllowedOrigins).AllowCredentials();
+                    }
+
                     policy
-                        .WithOrigins(options.CorsAllowedOrigins)
                         .AllowAnyMethod()
                         .AllowAnyHeader()
                         .WithExposedHeaders("X-OpenAgent-Selected-Agent-Id")
-                        .AllowCredentials()
                         .SetPreflightMaxAge(TimeSpan.FromMinutes(30));
                 });
             });

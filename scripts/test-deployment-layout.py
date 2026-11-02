@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def config(relative, overrides=None):
     env = {key: value for key, value in os.environ.items()
-           if not key.startswith(('OPENAGENT_', 'COMPOSE_'))}
+           if not key.startswith(('OPENAGENT_', 'COMPOSE_', 'PREVIEW_'))}
     env.update(overrides or {})
     output = subprocess.check_output(
         ['docker', 'compose', '--env-file', os.devnull, '-f', str(ROOT / relative),
@@ -19,6 +19,14 @@ def config(relative, overrides=None):
 
 
 class DeploymentLayoutTests(unittest.TestCase):
+    def test_chat_runs_without_environment_specific_settings(self):
+        chat = config('deploy/openagent/docker-compose.yml')['services']['chat']
+        self.assertNotIn('build', chat)
+        self.assertNotIn('environment', chat)
+        preview = config('deploy/openagent/preview.compose.yml')['services']['chat']
+        self.assertNotIn('args', preview['build'])
+        self.assertNotIn('environment', preview)
+
     def test_public_addresses_are_shared(self):
         for overrides, host, port, origin in [
             ({}, 'localhost', '58081', 'https://localhost:8081'),
@@ -35,7 +43,7 @@ class DeploymentLayoutTests(unittest.TestCase):
                 for name in ('engine', 'router'):
                     env = app['services'][name]['environment']
                     self.assertEqual(env['Authentication__Authority'], f'https://{host}:{port}/realms/openagent')
-                    self.assertEqual(env['Cors__AllowedOrigins__0'], origin)
+                    self.assertNotIn('Cors__AllowedOrigins__0', env)
                 self.assertFalse(any(p['target'] == 8080 for p in kc['ports']))
 
     def test_mounts_network_and_preview_context(self):
@@ -57,6 +65,8 @@ class DeploymentLayoutTests(unittest.TestCase):
                     if mount['type'] == 'bind':
                         self.assertTrue(Path(mount['source']).exists(), mount['source'])
         preview = config('deploy/openagent/preview.compose.yml')
+        for name in ('engine', 'router'):
+            self.assertNotIn('Cors__AllowedOrigins__0', preview['services'][name]['environment'])
         for service in preview['services'].values():
             self.assertEqual(Path(service['build']['context']), ROOT)
 

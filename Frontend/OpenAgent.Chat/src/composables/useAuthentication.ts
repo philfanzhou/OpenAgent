@@ -31,6 +31,7 @@ import {
   WORKSPACE_HASH,
 } from '../auth'
 import type { AuthConfig, ConnectionMode, CurrentUserContext } from '../types'
+import { normalizeServiceUrl } from '../shared/api/http'
 
 interface AuthenticationOptions {
   currentUser: Ref<CurrentUserContext | null>
@@ -161,45 +162,49 @@ export function useAuthentication(options: AuthenticationOptions) {
   }
 
   async function connect(): Promise<void> {
-    setConnectionMode(connectionMode.value)
-    setRouterBaseUrl(routerUrl.value)
-    setEngineBaseUrl(engineUrl.value)
-    setTenantId(tenantId.value)
-    if (token.value && !getAccessToken()) {
-      clearAuthState()
-      showLogin('服务地址已变更，请针对新的认证边界重新登录。')
-      await detectAuthentication(false)
-      return
-    }
-    try {
-      await api.health('/ready')
-      await loadAuthConfig()
-      statusText.value = '已连接'
-      options.closeSettings()
-      await options.loadWorkspace()
-    } catch (error) {
-      statusText.value = '连接失败'
-      options.notifyError(error)
+    await updateLoginConnection({
+      mode: connectionMode.value, routerUrl: routerUrl.value,
+      engineUrl: engineUrl.value, tenantId: tenantId.value,
+    })
+    if (authView.value === 'workspace') {
+      if (authError.value) options.notifyError(new Error(authError.value))
+      else options.closeSettings()
     }
   }
 
-  function updateLoginConnection(value: {
+  async function updateLoginConnection(value: {
     mode: ConnectionMode
     routerUrl: string
     engineUrl: string
     tenantId: string
-  }): void {
+  }): Promise<void> {
+    const previousEndpoint = getConnectionMode() === 'router' ? getRouterBaseUrl() : getEngineBaseUrl()
+    let address: string
+    try {
+      address = normalizeServiceUrl(value.mode === 'router'
+        ? value.routerUrl
+        : value.engineUrl)
+    } catch {
+      authError.value = '请输入完整的 HTTP(S) 后台地址，不包含账号、密码、查询参数或片段。'
+      return
+    }
     connectionMode.value = value.mode
-    routerUrl.value = value.routerUrl
-    engineUrl.value = value.engineUrl
     tenantId.value = value.tenantId
     setConnectionMode(value.mode)
-    setRouterBaseUrl(value.routerUrl)
-    setEngineBaseUrl(value.engineUrl)
+    setRouterBaseUrl(value.mode === 'router' ? address : value.routerUrl)
+    setEngineBaseUrl(value.mode === 'engine' ? address : value.engineUrl)
     setTenantId(value.tenantId)
+    routerUrl.value = getRouterBaseUrl()
+    engineUrl.value = getEngineBaseUrl()
     authConfig.value = null
+    if (previousEndpoint !== activeEndpointUrl.value) {
+      clearAuthState()
+      token.value = ''
+      clearRenewTimer()
+      showLogin(previousEndpoint ? '服务地址已变更，请登录目标服务。' : '')
+    }
     authError.value = ''
-    void detectAuthentication()
+    await detectAuthentication()
   }
 
   async function loginWithPassword(credentials: { username: string; password: string }): Promise<void> {
@@ -259,7 +264,14 @@ export function useAuthentication(options: AuthenticationOptions) {
   async function detectAuthentication(restoreSession = true): Promise<void> {
     authLoading.value = true
     authError.value = ''
+    if (!activeEndpointUrl.value.trim()) {
+      authConfig.value = null
+      showLogin()
+      authLoading.value = false
+      return
+    }
     try {
+      normalizeServiceUrl(activeEndpointUrl.value)
       await loadAuthConfig()
       if (restoreSession && getAccessToken()) {
         authView.value = 'restoring'
@@ -277,7 +289,7 @@ export function useAuthentication(options: AuthenticationOptions) {
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) return
       authConfig.value = null
-      authView.value = 'login'
+      showLogin()
       authError.value = '无法读取服务认证配置，请检查连接地址后重试。'
     } finally {
       authLoading.value = false

@@ -12,27 +12,24 @@ const tokenEndpointStorageKey = 'openagent.auth.endpoint'
 const refreshTokenStorageKey = 'openagent.auth.refresh-token'
 const tenantStorageKey = 'openagent.auth.tenant-id'
 export const AUTH_FAILURE_EVENT = 'openagent:auth-failure'
-function defaultServiceUrl(port: number): string {
-  if (typeof window !== 'undefined'
-    && window.location.hostname
-    && window.location.hostname !== 'localhost'
-    && window.location.hostname !== '127.0.0.1') {
-    return `${window.location.protocol}//${window.location.hostname}:${port}`
-  }
-  return `http://localhost:${port}`
-}
-
-const defaultRouterBaseUrl = import.meta.env.VITE_OPENAGENT_ROUTER_BASE_URL || defaultServiceUrl(5001)
-const defaultEngineBaseUrl = import.meta.env.VITE_OPENAGENT_ENGINE_BASE_URL || defaultServiceUrl(5208)
-const defaultTenantId = import.meta.env.VITE_OPENAGENT_TENANT_ID || 'development'
-
 export function normalizeBaseUrl(value: string): string {
   return value.trim().replace(/\/$/, '')
 }
 
+export function normalizeServiceUrl(value: string): string {
+  const trimmed = value.trim()
+  if (!/^https?:\/\//i.test(trimmed)) throw new Error('Invalid service URL')
+  const url = new URL(trimmed)
+  if (url.username || url.password || url.search || url.hash) throw new Error('Invalid service URL')
+  return url.href.replace(/\/+$/, '')
+}
+
 export function getConnectionMode(): ConnectionMode {
-  const mode = localStorage.getItem(connectionModeStorageKey) || import.meta.env.VITE_OPENAGENT_CONNECTION_MODE
-  return mode === 'engine' ? 'engine' : 'router'
+  const mode = localStorage.getItem(connectionModeStorageKey)
+  if (mode) return mode === 'engine' ? 'engine' : 'router'
+  if (localStorage.getItem(routerStorageKey) || localStorage.getItem(legacyBaseUrlStorageKey)) return 'router'
+  if (localStorage.getItem(engineStorageKey)) return 'engine'
+  return 'router'
 }
 
 export function setConnectionMode(value: ConnectionMode): void {
@@ -42,7 +39,7 @@ export function setConnectionMode(value: ConnectionMode): void {
 export function getRouterBaseUrl(): string {
   return localStorage.getItem(routerStorageKey)
     || localStorage.getItem(legacyBaseUrlStorageKey)
-    || defaultRouterBaseUrl
+    || ''
 }
 
 export function setRouterBaseUrl(value: string): void {
@@ -51,7 +48,7 @@ export function setRouterBaseUrl(value: string): void {
 }
 
 export function getEngineBaseUrl(): string {
-  return localStorage.getItem(engineStorageKey) || defaultEngineBaseUrl
+  return localStorage.getItem(engineStorageKey) || ''
 }
 
 export function setEngineBaseUrl(value: string): void {
@@ -65,7 +62,7 @@ export function getAccessToken(): string {
     return ''
   }
   const tokenEndpoint = sessionStorage.getItem(tokenEndpointStorageKey)
-  if (tokenEndpoint && tokenEndpoint !== normalizeBaseUrl(requireBaseUrl())) return ''
+  if (tokenEndpoint && tokenEndpoint !== normalizeBaseUrl(activeBaseUrl())) return ''
   return sessionStorage.getItem(tokenStorageKey) || ''
 }
 
@@ -79,7 +76,7 @@ export function getAccessTokenExpiresAt(): number {
 
 export function getRefreshToken(): string {
   const tokenEndpoint = sessionStorage.getItem(tokenEndpointStorageKey)
-  if (tokenEndpoint && tokenEndpoint !== normalizeBaseUrl(requireBaseUrl())) return ''
+  if (tokenEndpoint && tokenEndpoint !== normalizeBaseUrl(activeBaseUrl())) return ''
   return sessionStorage.getItem(refreshTokenStorageKey) || ''
 }
 
@@ -115,16 +112,20 @@ function clearExpiredAccessToken(): void {
 }
 
 export function getTenantId(): string {
-  return localStorage.getItem(tenantStorageKey) || defaultTenantId
+  return localStorage.getItem(tenantStorageKey) || 'development'
 }
 
 export function setTenantId(value: string): void {
   localStorage.setItem(tenantStorageKey, value.trim())
 }
 
+function activeBaseUrl(): string {
+  return getConnectionMode() === 'router' ? getRouterBaseUrl() : getEngineBaseUrl()
+}
+
 function requireBaseUrl(): string {
   const mode = getConnectionMode()
-  const value = mode === 'router' ? getRouterBaseUrl() : getEngineBaseUrl()
+  const value = activeBaseUrl()
   if (!value) throw new Error(`请先在设置中输入 ${mode === 'router' ? 'Router' : 'Engine'} 地址`)
   return value
 }

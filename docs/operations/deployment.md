@@ -67,11 +67,9 @@ scripts/build-images.sh --env-file .env --docker-mode wsl-docker
 scripts/deploy.sh --env-file .env --docker-mode wsl-docker
 ```
 
-先构建镜像，再部署；构建脚本不会启动容器，部署脚本不会执行构建。Chat 镜像的构建参数与部署环境文件
-同名（`OPENAGENT_PUBLIC_SCHEME`/`OPENAGENT_PUBLIC_HOST` 与 Router/Engine 端口），浏览器端地址在镜像内派生；
-不经过脚本直接 `docker build` 时也使用同一组变量。也可以在 `.env` 中设置
-`OPENAGENT_DOCKER_MODE=auto`、`docker` 或 `wsl-docker`，省略命令行参数；命令行 `--docker-mode` 优先于
-`.env` 中的设置。
+先构建镜像，再部署；构建脚本不会启动容器，部署脚本不会执行构建。Chat 镜像不包含部署地址，
+构建时无需传入域名、端口或租户，同一个镜像可用于不同环境。也可以在 `.env` 中设置
+`OPENAGENT_DOCKER_MODE=auto`、`docker` 或 `wsl-docker`，省略命令行参数；命令行 `--docker-mode` 优先于 `.env` 中的设置。
 
 Windows PowerShell 可使用等价的 `scripts/build-images.ps1`；未指定 `-DockerMode` 时同样自动检测：
 
@@ -101,9 +99,21 @@ Engine 镜像在构建期内嵌 OpenCode 的 Linux 原生二进制，运行容�
 runtime-tests 真实回归门禁，通过后将 `openagent-engine`、`openagent-router` 与
 `openagent-chat` 三个镜像推送到 GHCR，并上传包含 `deploy/` 与版本说明的 Compose 部署包制品。Engine
 镜像的行为依赖内嵌 OpenCode 版本，版本标签带 `-oc<OpenCode 版本>` 后缀（如 `1.2.3-oc1.19.3`）以区分
-不同 OpenCode 基线；预发布标签（如 `v1.0.0-rc1`）不移动 `latest`。registry 版 Chat 镜像按默认公开地址
-（localhost）构建，生产部署需按自身 `OPENAGENT_PUBLIC_HOST` 重建 Chat 镜像，或在 `.env` 中以
-`OPENAGENT_CHAT_IMAGE` 指向自有构建的标签。
+不同 OpenCode 基线；预发布标签（如 `v1.0.0-rc1`）不移动 `latest`。registry 版 Chat 镜像
+不包含后台地址，可以直接复用于不同部署环境。
+
+## 前端连接
+
+Chat 是独立静态前端，可以与后台部署在不同服务器。首次打开页面时，选择 Router 或直连 Engine，
+填写当前模式的一个完整 HTTP(S) 后台地址，连接成功后进入登录；地址保存在当前浏览器，后续自动使用。
+生产、预览及本地开发均不猜测 localhost 或当前页面主机的后台端口，未配置时直接显示连接页。
+切换后台地址会清除旧服务的登录状态，再读取目标服务的认证配置。Router 与 Engine 默认允许任意来源的跨域请求，
+支持任意方法和请求头；认证与租户授权照常执行。通配模式不启用跨域 Cookie，使用 Authorization 头发送凭据。
+如需显式白名单，见[环境变量指南](environment-variables.md)。OIDC 的前端回调和 Web Origin 仍需在身份提供方单独配置。
+
+连接只保存在浏览器；未保存连接时显示连接页。修改页面连接即可切换后台，无需重新构建镜像。
+本地 `pnpm dev`、`pnpm preview` 和 Chat 镜像使用相同流程，不读取前端环境变量或部署配置文件。
+已有部署首次升级仍需构建新版 Chat 镜像。配置边界见[环境变量指南第 7 节](environment-variables.md#7-前端连接)。
 
 ## 应用更新与排障
 
@@ -179,7 +189,7 @@ Keycloak 直接提供 HTTPS，内部 HTTP 8080 不发布到宿主机。
 应用栈创建独立的 `openagent` 网络；Engine 和 Router 额外加入基础设施网络以访问数据库、Redis、MinIO 和 Keycloak，
 Chat、Nginx 不直接加入基础设施网络。
 
-`OPENAGENT_CHAT_PUBLIC_URL` 同时用于 CORS、Keycloak 回调、Web Origin 和退出回调，
+`OPENAGENT_CHAT_PUBLIC_URL` 用于 Keycloak 回调、Web Origin 和退出回调，
 默认由 `OPENAGENT_PUBLIC_SCHEME`/`OPENAGENT_PUBLIC_HOST` 与 `OPENAGENT_CHAT_PORT` 派生，无需重复配置。
 切换到 443 时设 `OPENAGENT_CHAT_PORT=443`、`OPENAGENT_CHAT_PUBLIC_URL=https://localhost`；
 域名替换时同时更新公开 URL。Keycloak 的公开 URL 必须匹配其 HTTPS 对外入口，
