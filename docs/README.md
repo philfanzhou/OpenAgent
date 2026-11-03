@@ -7,6 +7,7 @@
 | [开发指南](overview/DevelopmentGuide.md) | 改哪个模块、接口如何协作、如何验证 |
 | [任务清单](planning/TODO.md) | P0/P1/P2、剩余拆分、已有 PR 集成、分派与验收 |
 | [系统上下文](overview/SystemContext.md) → [运行时设计](overview/Design.md) → [关键流程](overview/KeyFlows.md) | 当前服务、执行链与边界 |
+| [应用变量清单](deployment-variables.md) / [基础设施变量](deployment-infrastructure-variables.md) | 各应用变量归属、默认值与必填项 |
 | [部署指南](deployment.md) | 本地启动、认证、环境变量、数据卷与镜像更新 |
 
 ## 按工作内容查阅

@@ -34,6 +34,10 @@ public static class ServiceCollectionExtensions
 
         string connectionString = configuration.GetConnectionString(storage.ConnectionStringName)
             ?? throw new InvalidOperationException($"ConnectionStrings:{storage.ConnectionStringName} is required.");
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            throw new InvalidOperationException($"ConnectionStrings:{storage.ConnectionStringName} is required.");
+        }
         services.AddDbContextFactory<OpenAgentDbContext>(options => options.UseNpgsql(connectionString));
         services.Configure<StorageOptions>(options =>
             configuration.GetSection(StorageOptions.SectionName).Bind(options));

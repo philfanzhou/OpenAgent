@@ -4,7 +4,7 @@ namespace OpenAgent.Hosting.Authentication;
 
 /// <summary>
 /// 开发环境内置账号校验。仅用于 Basic 模式下的本地开发预览，
-/// 生产环境必须使用 JWT Bearer。当前默认账号：admin/admin、test/test。
+/// 配置 BasicPassword 后禁用这些账号。当前开发账号：admin/admin、test/test。
 /// </summary>
 internal static class DevelopmentCredentials
 {

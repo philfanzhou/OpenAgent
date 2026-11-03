@@ -1,0 +1,20 @@
+name: ${OPENAGENT_INFRA_PROJECT:-openagent-infrastructure}
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "${OPENAGENT_REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+volumes:
+  redis-data:
+networks:
+  default:
+    external: true
+    name: ${OPENAGENT_APP_NETWORK:-openagent-infrastructure}

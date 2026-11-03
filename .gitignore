@@ -88,3 +88,6 @@ Thumbs.db
 # Python bytecode (Runner sandbox scripts)
 __pycache__/
 *.pyc
+
+# Per-application deployment credentials
+deploy/**/*.env

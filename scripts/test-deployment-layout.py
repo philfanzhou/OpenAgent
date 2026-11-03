@@ -1,78 +1,125 @@
-"""Validate Compose paths and shared defaults without starting services."""
+"""Validate independent deployments without starting services or contacting S3."""
 import json
 import os
 from pathlib import Path
 import subprocess
+import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
+ENGINE_REQUIRED = {
+    'ConnectionStrings__OpenAgentDatabase': 'Host=db.example;Database=agents;Username=agents;Password=test',
+    'FileAssets__ObjectStorage__ServiceUrl': 'https://s3.example',
+    'FileAssets__ObjectStorage__AccessKey': 'example-access',
+    'FileAssets__ObjectStorage__SecretKey': 'example-secret',
+}
 
 
-def config(relative, overrides=None):
+def render(relative, overrides=None, check=True):
     env = {key: value for key, value in os.environ.items()
-           if not key.startswith(('OPENAGENT_', 'COMPOSE_'))}
-    env.update({
-        'OPENAGENT_RUNNER_API_KEY': 'layout-test-runner-key-32-characters',
-    })
+           if not key.startswith(('OPENAGENT_', 'COMPOSE_', 'Authentication__',
+                                  'ConnectionStrings__', 'FileAssets__', 'Runner__',
+                                  'POSTGRES_', 'MINIO_', 'KC_'))}
     env.update(overrides or {})
-    output = subprocess.check_output(
+    return subprocess.run(
         ['docker', 'compose', '--env-file', os.devnull, '-f', str(ROOT / relative),
-         '--profile', 'storage', 'config', '--format', 'json'], env=env, text=True)
-    return json.loads(output)
+         'config', '--format', 'json'], env=env, text=True,
+        capture_output=True, check=check)
+
+
+def config(app, overrides=None, directory='openagent'):
+    return json.loads(render(f'deploy/{directory}/{app}.compose.yml', overrides).stdout)
 
 
 class DeploymentLayoutTests(unittest.TestCase):
-    def test_public_addresses_are_shared(self):
-        for overrides, host, port, origin in [
-            ({}, 'localhost', '58081', 'https://localhost:8081'),
-            ({'OPENAGENT_PUBLIC_HOST': 'review.example', 'OPENAGENT_KEYCLOAK_PORT': '58443',
-              'OPENAGENT_CHAT_PORT': '443', 'OPENAGENT_CHAT_PUBLIC_URL': 'https://review.example'},
-             'review.example', '58443', 'https://review.example')
-        ]:
-            with self.subTest(overrides=overrides):
-                infra = config('deploy/infrastructure/docker-compose.yml', overrides)
-                app = config('deploy/openagent/docker-compose.yml', overrides)
-                kc = infra['services']['keycloak']
-                self.assertEqual(kc['environment']['KC_HOSTNAME'], f'https://{host}:{port}')
-                self.assertEqual(kc['environment']['OPENAGENT_CHAT_PUBLIC_URL'], origin)
-                for name in ('engine', 'router'):
-                    env = app['services'][name]['environment']
-                    self.assertEqual(env['Authentication__Authority'], f'https://{host}:{port}/realms/openagent')
-                    self.assertEqual(env['Cors__AllowedOrigins__0'], origin)
-                self.assertFalse(any(p['target'] == 8080 for p in kc['ports']))
+    def test_router_is_independent_of_database_s3_runner_and_keycloak(self):
+        document = config('router')
+        self.assertEqual(set(document['services']), {'router'})
+        router = document['services']['router']
+        self.assertNotIn('depends_on', router)
+        env = router['environment']
+        self.assertEqual(env['Authentication__Mode'], 'Basic')
+        self.assertEqual(env['Authentication__EnableKeycloak'], 'false')
+        self.assertEqual(env['Authentication__RequireHttpsMetadata'], 'true')
+        self.assertEqual(env['ConnectionStrings__Redis'], '')
+        self.assertFalse(any('ObjectStorage' in key or 'OpenAgentDatabase' in key for key in env))
 
-    def test_mounts_network_and_preview_context(self):
-        infra = config('deploy/infrastructure/docker-compose.yml')
-        app = config('deploy/openagent/docker-compose.yml')
-        self.assertEqual(infra['name'], 'openagent-infrastructure')
-        self.assertEqual(app['name'], 'openagent-app')
-        self.assertEqual(app['networks']['openagent']['name'], 'openagent')
-        self.assertEqual(infra['networks']['default']['name'], app['networks']['infrastructure']['name'])
-        self.assertEqual(app['services']['engine']['networks'],
-                         {'openagent': None, 'infrastructure': None})
-        self.assertEqual(app['services']['router']['networks'],
-                         {'openagent': None, 'infrastructure': None})
-        for name in ('runner', 'chat', 'nginx'):
-            self.assertEqual(app['services'][name]['networks'], {'openagent': None})
-        for document in (infra, app):
-            for service in document['services'].values():
-                for mount in service.get('volumes', []):
-                    if mount['type'] == 'bind':
-                        self.assertTrue(Path(mount['source']).exists(), mount['source'])
-        preview = config('deploy/openagent/preview.compose.yml')
-        for service in preview['services'].values():
-            self.assertEqual(Path(service['build']['context']), ROOT)
+    def test_engine_requires_each_database_and_s3_value(self):
+        for key in ENGINE_REQUIRED:
+            with self.subTest(key=key):
+                settings = {k: v for k, v in ENGINE_REQUIRED.items() if k != key}
+                result = render('deploy/openagent/engine.compose.yml', settings, check=False)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(key, result.stderr)
 
-    def test_storage_security_and_internal_ports(self):
-        app = config('deploy/openagent/docker-compose.yml',
-                     {'OPENAGENT_POSTGRES_PORT': '55432', 'OPENAGENT_REDIS_PORT': '56379'})
-        env = app['services']['engine']['environment']
-        self.assertIn('Host=postgres;Port=5432;', env['ConnectionStrings__OpenAgentDatabase'])
-        self.assertEqual(env['ConnectionStrings__Redis'], 'redis:6379')
-        self.assertEqual(env['OPENAGENT_ALLOW_INSECURE_TLS'], 'false')
-        self.assertNotIn('OPENAGENT_S3_ALLOW_INSECURE_TLS', env)
-        self.assertNotIn('FileAssets__ObjectStorage__PublicServiceUrl', env)
-        self.assertEqual(env['FileAssets__ObjectStorage__ServiceUrl'], 'http://minio:9000')
+    def test_engine_accepts_external_s3_and_region_and_addressing(self):
+        settings = dict(ENGINE_REQUIRED,
+                        FileAssets__ObjectStorage__Region='custom-region',
+                        FileAssets__ObjectStorage__ForcePathStyle='true',
+                        FileAssets__ObjectStorage__BucketName='existing-bucket')
+        document = config('engine', settings)
+        engine = document['services']['engine']
+        self.assertNotIn('depends_on', engine)
+        env = engine['environment']
+        self.assertEqual(env['FileAssets__ObjectStorage__ServiceUrl'], 'https://s3.example')
+        self.assertEqual(env['FileAssets__ObjectStorage__Region'], 'custom-region')
+        self.assertEqual(env['FileAssets__ObjectStorage__ForcePathStyle'], 'true')
+        self.assertEqual(env['FileAssets__ObjectStorage__BucketName'], 'existing-bucket')
+        self.assertEqual(env['FileAssets__Enabled'], 'true')
+        self.assertEqual(env['CodeExecution__Enabled'], 'false')
+        self.assertEqual(env['Authentication__Mode'], 'Basic')
+
+    def test_runner_requires_only_its_own_key(self):
+        document = config('runner', {'Runner__ApiKey': 'a' * 32})
+        self.assertEqual(set(document['services']), {'runner'})
+        self.assertEqual(document['services']['runner']['environment']['Runner__ApiKey'], 'a' * 32)
+        self.assertTrue(document['services']['runner']['privileged'])
+        result = render('deploy/openagent/runner.compose.yml', check=False)
+        self.assertNotEqual(result.returncode, 0)
+
+    def test_chat_receives_no_backend_secrets(self):
+        chat = config('chat')['services']['chat']
+        self.assertNotIn('environment', chat)
+        self.assertNotIn('build', chat)
+        self.assertNotIn('depends_on', chat)
+
+    def test_combined_stack_keeps_application_configuration_separate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            settings = {}
+            values = {
+                'engine': dict(ENGINE_REQUIRED, Authentication__BasicPassword='engine-password'),
+                'router': {'Authentication__BasicPassword': 'router-password'},
+                'runner': {'Runner__ApiKey': 'a' * 32},
+                'chat': {},
+            }
+            for app, app_values in values.items():
+                path = Path(directory) / f'{app}.env'
+                path.write_text('\n'.join(f"{k}='{v}'" for k, v in app_values.items()))
+                settings[f'OPENAGENT_{app.upper()}_ENV_FILE'] = str(path)
+            document = json.loads(render('deploy/openagent/docker-compose.yml', settings).stdout)
+            self.assertEqual(set(document['services']), set(values))
+            self.assertEqual(document['services']['engine']['environment']['Authentication__BasicPassword'], 'engine-password')
+            self.assertEqual(document['services']['router']['environment']['Authentication__BasicPassword'], 'router-password')
+            self.assertNotIn('keycloak', document['services'])
+
+    def test_infrastructure_starts_independently(self):
+        cases = [('postgres', {'POSTGRES_PASSWORD': 'example'}), ('redis', {}),
+                 ('minio', {'MINIO_ROOT_USER': 'example', 'MINIO_ROOT_PASSWORD': 'example-secret'})]
+        for app, settings in cases:
+            with self.subTest(app=app):
+                document = config(app, settings, 'infrastructure')
+                self.assertNotIn('keycloak', document['services'])
+                self.assertIn(app, document['services'])
+        document = config('minio', cases[2][1], 'infrastructure')
+        self.assertIn('$$S3_BUCKET', document['services']['minio-init']['entrypoint'][-1])
+
+    def test_build_contexts_match_split_repository(self):
+        document = json.loads(render('deploy/build.compose.yml').stdout)
+        self.assertEqual(set(document['services']), {'engine', 'router', 'runner'})
+        for app, service in document['services'].items():
+            context = Path(service['build']['context'])
+            self.assertEqual(context, ROOT)
+            self.assertTrue((context / service['build']['dockerfile']).is_file(), app)
 
 
 if __name__ == '__main__':

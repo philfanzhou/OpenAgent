@@ -2,11 +2,12 @@
 set -euo pipefail
 
 # 构建应用镜像；不启动或修改任何容器。
-# 用法：scripts/build-images.sh [--env-file path/to/.env] [--docker-mode auto|docker|wsl-docker] [--tar-dir directory]
+# 用法：scripts/build-images.sh [--app all|engine|router|runner] [--env-file path/to/build.env] [--docker-mode auto|docker|wsl-docker] [--tar-dir directory]
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd -- "$script_dir/.." && pwd)"
 env_file=""
+app="all"
 docker_mode_arg=""
 tar_directory_arg=""
 docker_cmd=()
@@ -29,19 +30,13 @@ to_wsl_path() {
   wsl.exe wslpath -a -u "$windows_path" | tr -d '\r'
 }
 
-load_env_file() {
-  local file="$1"
-  [[ -f "$file" ]] || die "environment file does not exist: $file"
-
-  # 部署环境文件由操作者维护；以 shell 方式加载可保留 Docker build 所需的完整变量值。
-  set -a
-  # shellcheck disable=SC1090
-  source "$file"
-  set +a
-}
-
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --app)
+      [[ $# -ge 2 ]] || die "--app requires all, engine, router, or runner"
+      app="$2"
+      shift 2
+      ;;
     --env-file)
       [[ $# -ge 2 ]] || die "--env-file requires a path"
       env_file="$2"
@@ -65,7 +60,7 @@ done
 
 if [[ -n "$env_file" ]]; then
   [[ "$env_file" = /* ]] || env_file="$PWD/$env_file"
-  load_env_file "$env_file"
+  [[ -f "$env_file" ]] || die "environment file does not exist: $env_file"
 fi
 
 docker_mode="${docker_mode_arg:-${OPENAGENT_DOCKER_MODE:-auto}}"
@@ -119,45 +114,20 @@ if [[ -n "$tar_directory" ]]; then
   fi
 fi
 
-engine_image="${OPENAGENT_ENGINE_IMAGE:-openagent-engine:latest}"
-router_image="${OPENAGENT_ROUTER_IMAGE:-openagent-router:latest}"
-chat_image="${OPENAGENT_CHAT_IMAGE:-openagent-chat:latest}"
-runner_image="${OPENAGENT_RUNNER_IMAGE:-openagent-runner:latest}"
-public_host="${OPENAGENT_PUBLIC_HOST:-localhost}"
-public_scheme="${OPENAGENT_PUBLIC_SCHEME:-https}"
-router_port="${OPENAGENT_ROUTER_PORT:-8082}"
-engine_port="${OPENAGENT_ENGINE_PORT:-8083}"
-tenant_id="${OPENAGENT_TENANT_ID:-development}"
-
-"${docker_cmd[@]}" build \
-  --tag "$engine_image" \
-  --file "$docker_root/Backend/src/OpenAgent.Engine.Host/Dockerfile" \
-  "$docker_root"
-
-"${docker_cmd[@]}" build \
-  --tag "$router_image" \
-  --file "$docker_root/Backend/src/OpenAgent.Router/Dockerfile" \
-  "$docker_root"
-
-# Chat 镜像的浏览器端地址由 Dockerfile 从统一变量派生，与直接 docker build 的接口一致。
-"${docker_cmd[@]}" build \
-  --tag "$chat_image" \
-  --build-arg "OPENAGENT_PUBLIC_SCHEME=$public_scheme" \
-  --build-arg "OPENAGENT_PUBLIC_HOST=$public_host" \
-  --build-arg "OPENAGENT_ROUTER_PORT=$router_port" \
-  --build-arg "OPENAGENT_ENGINE_PORT=$engine_port" \
-  --build-arg "OPENAGENT_TENANT_ID=$tenant_id" \
-  --file "$docker_root/Frontend/OpenAgent.Chat/Dockerfile" \
-  "$docker_root"
-
-"${docker_cmd[@]}" build \
-  --tag "$runner_image" \
-  --file "$docker_root/Backend/src/OpenAgent.Runner/Dockerfile" \
-  "$docker_root"
-
+case "$app" in
+  all) apps=(engine router runner) ;;
+  engine|router|runner) apps=("$app") ;;
+  *) die "unsupported build application '$app'" ;;
+esac
+compose_args=(--file "$docker_root/deploy/build.compose.yml")
+if [[ -n "$env_file" ]]; then
+  if [[ "${docker_cmd[0]}" == "wsl.exe" ]]; then env_file="$(to_wsl_path "$env_file")"; fi
+  compose_args+=(--env-file "$env_file")
+fi
+"${docker_cmd[@]}" compose "${compose_args[@]}" build "${apps[@]}"
 if [[ -n "$docker_tar_directory" ]]; then
-  "${docker_cmd[@]}" save --output "$docker_tar_directory/openagent-runner.tar" "$runner_image"
-  "${docker_cmd[@]}" save --output "$docker_tar_directory/openagent-engine.tar" "$engine_image"
-  "${docker_cmd[@]}" save --output "$docker_tar_directory/openagent-router.tar" "$router_image"
-  "${docker_cmd[@]}" save --output "$docker_tar_directory/openagent-chat.tar" "$chat_image"
+  for build_app in "${apps[@]}"; do
+    image="$("${docker_cmd[@]}" compose "${compose_args[@]}" config --images "$build_app")"
+    "${docker_cmd[@]}" save --output "$docker_tar_directory/openagent-$build_app.tar" "$image"
+  done
 fi

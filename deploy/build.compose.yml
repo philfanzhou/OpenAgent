@@ -1,0 +1,17 @@
+# Source builds are independent from runtime credentials and application startup.
+services:
+  engine:
+    image: ${OPENAGENT_ENGINE_IMAGE:-openagent-engine:latest}
+    build:
+      context: ..
+      dockerfile: src/OpenAgent.Engine.Host/Dockerfile
+  router:
+    image: ${OPENAGENT_ROUTER_IMAGE:-openagent-router:latest}
+    build:
+      context: ..
+      dockerfile: src/OpenAgent.Router/Dockerfile
+  runner:
+    image: ${OPENAGENT_RUNNER_IMAGE:-openagent-runner:latest}
+    build:
+      context: ..
+      dockerfile: src/OpenAgent.Runner/Dockerfile

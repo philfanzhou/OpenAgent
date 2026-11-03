@@ -1,0 +1,42 @@
+name: ${OPENAGENT_COMPOSE_PROJECT:-openagent-runner}
+services:
+  runner:
+    image: ${OPENAGENT_RUNNER_IMAGE:-openagent-runner:latest}
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_URLS: http://+:5209
+      Runner__ApiKey: "${Runner__ApiKey:?Set Runner__ApiKey}"
+      ASPNETCORE_ENVIRONMENT: "${ASPNETCORE_ENVIRONMENT:-Production}"
+      Runner__TimeoutSeconds: "${Runner__TimeoutSeconds:-120}"
+      Runner__MaxConcurrentExecutions: "${Runner__MaxConcurrentExecutions:-2}"
+      Runner__MemoryMiB: "${Runner__MemoryMiB:-1536}"
+      Runner__WorkspaceMiB: "${Runner__WorkspaceMiB:-128}"
+      Runner__MaxProcesses: "${Runner__MaxProcesses:-64}"
+      Runner__SessionIdleMinutes: "${Runner__SessionIdleMinutes:-120}"
+      Runner__MaxSessionSandboxes: "${Runner__MaxSessionSandboxes:-64}"
+      Runner__WorkspaceRoot: "${Runner__WorkspaceRoot:-/var/lib/openagent-runner/workspaces}"
+      Runner__BubblewrapPath: "${Runner__BubblewrapPath:-/usr/bin/bwrap}"
+      Runner__PythonPath: "${Runner__PythonPath:-/opt/openagent-code/venv/bin/python}"
+      Runner__NodePath: "${Runner__NodePath:-/usr/bin/node}"
+    # Bubblewrap requires a dedicated trusted Linux host/VM.
+    privileged: true
+    security_opt:
+      - seccomp:unconfined
+    mem_limit: 8g
+    cpus: 2
+    pids_limit: 512
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:5209/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    ports:
+      - "${OPENAGENT_RUNNER_PORT:-5209}:5209"
+    networks:
+      runner-network:
+        aliases:
+          - runner
+networks:
+  runner-network:
+    external: true
+    name: ${OPENAGENT_APP_NETWORK:-openagent-infrastructure}

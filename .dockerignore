@@ -1,0 +1,9 @@
+.git
+**/bin
+**/obj
+**/TestResults
+**/*.env
+**/.env
+**/.env.*
+**/certs
+.preview

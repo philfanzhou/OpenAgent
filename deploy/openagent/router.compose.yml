@@ -1,0 +1,42 @@
+name: ${OPENAGENT_COMPOSE_PROJECT:-openagent-router}
+services:
+  router:
+    image: ${OPENAGENT_ROUTER_IMAGE:-openagent-router:latest}
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_URLS: http://+:5001
+      ASPNETCORE_ENVIRONMENT: "${ASPNETCORE_ENVIRONMENT:-Production}"
+      RouterSettings__Routing__EngineEndpoint: "${RouterSettings__Routing__EngineEndpoint:-http://engine:5208}"
+      RouterSettings__IntentRecognition__TimeoutMs: "${RouterSettings__IntentRecognition__TimeoutMs:-30000}"
+      ConnectionStrings__Redis: "${ConnectionStrings__Redis:-}"
+      Authentication__Mode: "${Authentication__Mode:-Basic}"
+      Authentication__BasicUsername: "${Authentication__BasicUsername:-admin}"
+      Authentication__BasicPassword: "${Authentication__BasicPassword:-}"
+      Authentication__BasicTenantId: "${Authentication__BasicTenantId:-default}"
+      Authentication__EnableKeycloak: "${Authentication__EnableKeycloak:-false}"
+      Authentication__EnableApiKey: "${Authentication__EnableApiKey:-false}"
+      Authentication__AllowDevelopmentAnonymous: "${Authentication__AllowDevelopmentAnonymous:-false}"
+      Authentication__Authority: "${Authentication__Authority:-}"
+      Authentication__Audience: "${Authentication__Audience:-openagent-api}"
+      Authentication__ClientId: "${Authentication__ClientId:-openagent-chat}"
+      Authentication__MetadataAddress: "${Authentication__MetadataAddress:-}"
+      Authentication__RequireHttpsMetadata: "${Authentication__RequireHttpsMetadata:-true}"
+      Authentication__ClockSkewSeconds: "${Authentication__ClockSkewSeconds:-60}"
+      Cors__AllowedOrigins__0: "${Cors__AllowedOrigins__0:-http://localhost:8081}"
+      OpenTelemetry__OtlpEndpoint: "${OpenTelemetry__OtlpEndpoint:-}"
+      OPENAGENT_ALLOW_INSECURE_TLS: "${OPENAGENT_ALLOW_INSECURE_TLS:-false}"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:5001/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    ports:
+      - "${OPENAGENT_ROUTER_PORT:-5001}:5001"
+    networks:
+      router-network:
+        aliases:
+          - router
+networks:
+  router-network:
+    external: true
+    name: ${OPENAGENT_APP_NETWORK:-openagent-infrastructure}

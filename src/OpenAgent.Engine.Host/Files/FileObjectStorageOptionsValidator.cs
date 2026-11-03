@@ -20,16 +20,16 @@ internal sealed class FileObjectStorageOptionsValidator : IValidateOptions<FileO
         {
             failures.Add("FileAssets:ObjectStorage:KeyPrefix must contain safe path segments.");
         }
-        if (!IsHttpOrigin(options.ServiceUrl))
+        if (string.IsNullOrWhiteSpace(options.ServiceUrl) || !IsHttpOrigin(options.ServiceUrl))
         {
             failures.Add("FileAssets:ObjectStorage:ServiceUrl must be an HTTP(S) origin without credentials, query, or fragment.");
         }
 
         bool hasAccessKey = !string.IsNullOrWhiteSpace(options.AccessKey);
         bool hasSecretKey = !string.IsNullOrWhiteSpace(options.SecretKey);
-        if (hasAccessKey != hasSecretKey)
+        if (!hasAccessKey || !hasSecretKey)
         {
-            failures.Add("FileAssets:ObjectStorage:AccessKey and SecretKey must be configured together.");
+            failures.Add("FileAssets:ObjectStorage:AccessKey and SecretKey are required.");
         }
 
         return failures.Count == 0

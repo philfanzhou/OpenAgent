@@ -1,0 +1,15 @@
+name: ${OPENAGENT_COMPOSE_PROJECT:-openagent-chat}
+services:
+  chat:
+    image: ${OPENAGENT_CHAT_IMAGE:-openagent-chat:latest}
+    restart: unless-stopped
+    ports:
+      - "${OPENAGENT_CHAT_PORT:-8081}:80"
+    networks:
+      chat-network:
+        aliases:
+          - chat
+networks:
+  chat-network:
+    external: true
+    name: ${OPENAGENT_APP_NETWORK:-openagent-infrastructure}
