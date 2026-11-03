@@ -62,7 +62,7 @@ internal sealed class BasicAuthenticationHandler(
         string username = decoded[..separator];
         string password = decoded[(separator + 1)..];
 
-        if (!BasicCredentials.IsValid(username, password, _authenticationOptions, _environment.IsDevelopment()))
+        if (!DevelopmentCredentials.IsValid(username, password, _authenticationOptions, _environment.IsDevelopment()))
         {
             return Task.FromResult(AuthenticateResult.Fail("Invalid username or password."));
         }

@@ -1,11 +1,11 @@
 # 并行预览实例
 
 在多个 worktree 并行跑 agent 时，每个 agent 可以给自己部署一个**独立预览实例**供 review：
-只启动 engine + router + runner + chat，**复用主 openagent 栈的 postgres/redis/minio**（数据共享，不重建）。
+只启动 engine + router + chat，**复用主 openagent 栈的 postgres/redis/minio**（数据共享，不重建）。
 
 ## 机制
 
-- `deploy/openagent/preview.compose.yml` — 预览 compose：仅 engine/router/runner/chat，经 `host.docker.internal` 直连主栈共享基础设施。
+- `deploy/openagent/preview.compose.yml` — 预览 compose：仅 engine/router/chat，经 `host.docker.internal` 直连主栈共享基础设施。
 - `scripts/preview.sh` — 生命周期管理（`up`/`down`/`status`/`cleanup`），flock 原子分配端口与 Redis DB 序号。
 - `.claude/skills/preview-instance/SKILL.md` — 给 agent 的操作说明（部署→报地址→等确认→销毁）。
 - 隔离方式：
@@ -37,6 +37,6 @@ wsl -e bash -lc 'cd /mnt/d/Code/Agent.Matrix && bash scripts/preview.sh cleanup'
 
 ## 注意
 
-- 每个预览都会重新构建 engine/router/runner 镜像，Chat 使用前端仓库发布的 `OPENAGENT_CHAT_IMAGE` 镜像（对应其 worktree 代码），dotnet 构建较慢属正常。
-- 并行建议不超过 2~3 个（每个含 4 个容器）。
+- 每个预览都会重新构建 engine/router/chat 镜像（对应其 worktree 代码），dotnet 构建较慢属正常。
+- 并行建议不超过 2~3 个（每个含 3 个容器）。
 - 共享同一个 postgres 库：若某 worktree 改动 EF 模型/迁移，会影响共享 schema，需谨慎。

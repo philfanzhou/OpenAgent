@@ -1,7 +1,5 @@
 ﻿[CmdletBinding()]
 param(
-    [ValidateSet('all', 'engine', 'router', 'runner')]
-    [string]$Application = 'all',
     [string]$EnvFile = '',
     [string]$DockerMode = '',
     [string]$TarDirectory = ''
@@ -61,6 +59,33 @@ function Resolve-DockerCommand {
     }
 
     throw "unsupported docker mode '$DockerMode' (use auto, docker, or wsl-docker)"
+}
+
+function Import-EnvironmentFile {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        throw "environment file does not exist: $Path"
+    }
+
+    foreach ($line in Get-Content -LiteralPath $Path) {
+        if ($line -match '^\s*(?:#.*)?$') {
+            continue
+        }
+
+        if ($line -notmatch '^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$') {
+            throw "invalid environment file entry: $line"
+        }
+
+        $name = $Matches[1]
+        $value = $Matches[2].Trim()
+        if (($value.StartsWith('"') -and $value.EndsWith('"')) -or
+            ($value.StartsWith("'") -and $value.EndsWith("'"))) {
+            $value = $value.Substring(1, $value.Length - 2)
+        }
+
+        [Environment]::SetEnvironmentVariable($name, $value, 'Process')
+    }
 }
 
 function Invoke-Docker {
@@ -128,9 +153,7 @@ try {
         else {
             Join-Path (Get-Location) $EnvFile
         }
-        if (-not (Test-Path -LiteralPath $resolvedEnvFile -PathType Leaf)) {
-            throw "environment file does not exist: $resolvedEnvFile"
-        }
+        Import-EnvironmentFile -Path $resolvedEnvFile
     }
 
     if ([string]::IsNullOrWhiteSpace($DockerMode)) {
@@ -165,27 +188,51 @@ try {
         }
     }
 
-    $composeArgs = @('--file', (Join-WslPath -Base $dockerRepoRoot -Child 'deploy/build.compose.yml'))
-    if (-not [string]::IsNullOrWhiteSpace($EnvFile)) {
-        $dockerEnvFile = if ($script:dockerCommand[0] -eq 'wsl.exe') {
-            Convert-ToWslPath -Path $resolvedEnvFile
-        } else { $resolvedEnvFile }
-        $composeArgs += @('--env-file', $dockerEnvFile)
-    }
-    $applications = if ($Application -eq 'all') { @('engine', 'router', 'runner') } else { @($Application) }
-    Invoke-Docker -Arguments (@('compose') + $composeArgs + @('build') + $applications)
+    $engineImage = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_ENGINE_IMAGE)) { 'openagent-engine:latest' } else { $env:OPENAGENT_ENGINE_IMAGE }
+    $routerImage = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_ROUTER_IMAGE)) { 'openagent-router:latest' } else { $env:OPENAGENT_ROUTER_IMAGE }
+    $chatImage = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_CHAT_IMAGE)) { 'openagent-chat:latest' } else { $env:OPENAGENT_CHAT_IMAGE }
+    $runnerImage = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_RUNNER_IMAGE)) { 'openagent-runner:latest' } else { $env:OPENAGENT_RUNNER_IMAGE }
+    $publicHost = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_PUBLIC_HOST)) { 'localhost' } else { $env:OPENAGENT_PUBLIC_HOST }
+    $publicScheme = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_PUBLIC_SCHEME)) { 'https' } else { $env:OPENAGENT_PUBLIC_SCHEME }
+    $routerPort = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_ROUTER_PORT)) { '8082' } else { $env:OPENAGENT_ROUTER_PORT }
+    $enginePort = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_ENGINE_PORT)) { '8083' } else { $env:OPENAGENT_ENGINE_PORT }
+    $tenantId = if ([string]::IsNullOrWhiteSpace($env:OPENAGENT_TENANT_ID)) { 'development' } else { $env:OPENAGENT_TENANT_ID }
+
+    # 构建应用镜像；不启动或修改任何容器。
+    Invoke-Docker -Arguments @(
+        'build', '--tag', $engineImage,
+        '--file', (Join-WslPath -Base $dockerRepoRoot -Child 'Backend/src/OpenAgent.Engine.Host/Dockerfile'),
+        $dockerRepoRoot
+    )
+    Invoke-Docker -Arguments @(
+        'build', '--tag', $routerImage,
+        '--file', (Join-WslPath -Base $dockerRepoRoot -Child 'Backend/src/OpenAgent.Router/Dockerfile'),
+        $dockerRepoRoot
+    )
+    # Chat 镜像的浏览器端地址由 Dockerfile 从统一变量派生，与直接 docker build 的接口一致。
+    Invoke-Docker -Arguments @(
+        'build', '--tag', $chatImage,
+        '--build-arg', "OPENAGENT_PUBLIC_SCHEME=$publicScheme",
+        '--build-arg', "OPENAGENT_PUBLIC_HOST=$publicHost",
+        '--build-arg', "OPENAGENT_ROUTER_PORT=$routerPort",
+        '--build-arg', "OPENAGENT_ENGINE_PORT=$enginePort",
+        '--build-arg', "OPENAGENT_TENANT_ID=$tenantId",
+        '--file', (Join-WslPath -Base $dockerRepoRoot -Child 'Frontend/OpenAgent.Chat/Dockerfile'),
+        $dockerRepoRoot
+    )
+
+    Invoke-Docker -Arguments @(
+        'build', '--tag', $runnerImage,
+        '--file', (Join-WslPath -Base $dockerRepoRoot -Child 'Backend/src/OpenAgent.Runner/Dockerfile'),
+        $dockerRepoRoot
+    )
+
     if (-not [string]::IsNullOrWhiteSpace($dockerTarDirectory)) {
-        foreach ($buildApp in $applications) {
-            $arguments = @('compose') + $composeArgs + @('config', '--images', $buildApp)
-            $image = if ($script:dockerCommand.Count -eq 1) {
-                & $script:dockerCommand[0] @arguments
-            } else {
-                & $script:dockerCommand[0] $script:dockerCommand[1] @arguments
-            }
-            if ($LASTEXITCODE -ne 0) { throw 'failed to resolve image name' }
-            Export-ImageTar -Image $image.Trim() -FileName "openagent-$buildApp.tar" `
-                -OutputDirectory $dockerTarDirectory -Wsl:($script:dockerCommand[0] -eq 'wsl.exe')
-        }
+        $exportWsl = $script:dockerCommand[0] -eq 'wsl.exe'
+        Export-ImageTar -Image $runnerImage -FileName 'openagent-runner.tar' -OutputDirectory $dockerTarDirectory -Wsl:$exportWsl
+        Export-ImageTar -Image $engineImage -FileName 'openagent-engine.tar' -OutputDirectory $dockerTarDirectory -Wsl:$exportWsl
+        Export-ImageTar -Image $routerImage -FileName 'openagent-router.tar' -OutputDirectory $dockerTarDirectory -Wsl:$exportWsl
+        Export-ImageTar -Image $chatImage -FileName 'openagent-chat.tar' -OutputDirectory $dockerTarDirectory -Wsl:$exportWsl
     }
 }
 catch {

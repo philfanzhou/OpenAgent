@@ -1,9 +1,9 @@
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
-COPY . .
-RUN dotnet restore OpenAgent.sln
-RUN dotnet publish src/OpenAgent.Router/OpenAgent.Router.csproj \
+COPY Backend/ Backend/
+RUN dotnet restore Backend/OpenAgent.sln
+RUN dotnet publish Backend/src/OpenAgent.Router/OpenAgent.Router.csproj \
     --configuration Release \
     --no-restore \
     --output /app/publish

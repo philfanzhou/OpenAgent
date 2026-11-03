@@ -14,7 +14,7 @@ public sealed class AgentAuthenticationOptions
     public bool AllowDevelopmentAnonymous { get; set; }
     public string BasicUsername { get; set; } = "admin";
     public string? BasicPassword { get; set; }
-    public string BasicTenantId { get; set; } = "default";
+    public string BasicTenantId { get; set; } = "development";
     public string DevelopmentUserId { get; set; } = "development-user";
     public string DevelopmentTenantId { get; set; } = "development";
     public string? Authority { get; set; }

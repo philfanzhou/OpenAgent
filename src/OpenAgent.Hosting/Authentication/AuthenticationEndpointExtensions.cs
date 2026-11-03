@@ -68,7 +68,7 @@ public static class AuthenticationEndpointExtensions
                         "username_and_password_required", context));
                 }
 
-                if (!BasicCredentials.IsValid(request.Username, request.Password, options, environment.IsDevelopment()))
+                if (!DevelopmentCredentials.IsValid(request.Username, request.Password, options, environment.IsDevelopment()))
                 {
                     return TypedResults.Problem(AgentProblemDetails.AuthenticationRequired(
                         "Invalid username or password.", context));

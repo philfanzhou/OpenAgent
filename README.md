@@ -43,7 +43,7 @@ dotnet test OpenAgent.sln
 - 警告不全局压制；仅对预览/实验性 API（MAAI001/OPENAI001）做必要 NoWarn。
 - Runner 沙箱执行测试为 `BubblewrapFact` 环境门控（Linux Bubblewrap）。
 
-> 注：`AGENTS.md` 中仍有原 monorepo 路径描述；本仓库使用根目录 `OpenAgent.sln` 和 `src/`。镜像构建仅包含本仓库的三个后端应用，前端镜像由 OpenAgent-Frontend 仓库发布。
+> 注：`scripts/` 与 `AGENTS.md` 中的路径描述来自原 monorepo（如 `Backend/OpenAgent.sln`、`Frontend/OpenAgent.Chat`），在本仓库中对应根目录的 `OpenAgent.sln`，前端见 OpenAgent-Frontend 仓库。
 
 ## 与前端的边界
 
@@ -68,7 +68,7 @@ dotnet test OpenAgent.sln
 
 ## 部署
 
-入口见 [`deploy/README.md`](deploy/README.md)。各应用使用独立 Compose 与环境变量模板；默认 Basic，Keycloak 可选。变量归属、默认值和必填项见 [部署变量清单](docs/deployment-variables.md)。
+入口见 [`deploy/README.md`](deploy/README.md)：基础设施 compose（PostgreSQL、Redis、MinIO、Keycloak）、服务 compose（Engine、Runner、Router、Chat、Nginx）与环境变量模板。
 
 ## License
 

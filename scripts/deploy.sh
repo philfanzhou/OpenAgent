@@ -1,84 +1,89 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Deploy one application using its own Compose environment file. Never build images.
-# Usage: scripts/deploy.sh --app engine|router|runner|chat|gateway|postgres|redis|minio|keycloak [--env-file path] [--docker-mode docker|wsl-docker]
+# 启动已经构建或拉取到本机的应用镜像；绝不触发 Docker build。
+# 用法：scripts/deploy.sh [--env-file path/to/.env] [--docker-mode docker|wsl-docker]
+
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd -- "$script_dir/.." && pwd)"
-app="engine"
 env_file=""
 docker_mode="${OPENAGENT_DOCKER_MODE:-docker}"
 docker_cmd=()
 
-die() { echo "error: $*" >&2; exit 1; }
+die() {
+  echo "error: $*" >&2
+  exit 1
+}
+
+load_env_file() {
+  local file="$1"
+  [[ -f "$file" ]] || die "environment file does not exist: $file"
+
+  # 与构建脚本使用同一份受保护的部署变量，确保镜像标签和公开地址一致。
+  set -a
+  # shellcheck disable=SC1090
+  source "$file"
+  set +a
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --app|--env-file|--docker-mode)
-      [[ $# -ge 2 ]] || die "$1 requires a value"
-      case "$1" in
-        --app) app="$2" ;;
-        --env-file) env_file="$2" ;;
-        --docker-mode) docker_mode="$2" ;;
-      esac
-      shift 2 ;;
-    *) die "unknown argument: $1" ;;
+    --env-file)
+      [[ $# -ge 2 ]] || die "--env-file requires a path"
+      env_file="$2"
+      shift 2
+      ;;
+    --docker-mode)
+      [[ $# -ge 2 ]] || die "--docker-mode requires docker or wsl-docker"
+      docker_mode="$2"
+      shift 2
+      ;;
+    *)
+      die "unknown argument: $1"
+      ;;
   esac
 done
-case "$app" in
-  engine|router|runner|chat|gateway) directory="openagent" ;;
-  postgres|redis|minio|keycloak) directory="infrastructure" ;;
-  *) die "unsupported application '$app'" ;;
-esac
-if [[ -z "$env_file" ]]; then
-  env_file="$repo_root/deploy/$directory/$app.env"
+
+if [[ -n "$env_file" ]]; then
+  [[ "$env_file" = /* ]] || env_file="$PWD/$env_file"
+  load_env_file "$env_file"
 fi
-[[ "$env_file" = /* ]] || env_file="$PWD/$env_file"
-[[ -f "$env_file" ]] || die "environment file does not exist: $env_file; copy deploy/$directory/$app.env.example first"
+
 case "$docker_mode" in
-  docker|local) docker_cmd=(docker) ;;
+  docker|local)
+    docker_cmd=(docker)
+    ;;
   wsl-docker|wsl)
-    if [[ -n "${WSL_DISTRO_NAME:-}" ]]; then docker_cmd=(docker)
-    elif command -v wsl.exe >/dev/null 2>&1; then docker_cmd=(wsl.exe docker)
-    else die "wsl-docker mode requires running inside WSL or having wsl.exe available"
-    fi ;;
-  *) die "unsupported docker mode '$docker_mode'" ;;
+    if [[ -n "${WSL_DISTRO_NAME:-}" ]]; then
+      docker_cmd=(docker)
+    elif command -v wsl.exe >/dev/null 2>&1; then
+      docker_cmd=(wsl.exe docker)
+    else
+      die "wsl-docker mode requires running inside WSL or having wsl.exe available"
+    fi
+    ;;
+  *)
+    die "unsupported docker mode '$docker_mode' (use docker or wsl-docker)"
+    ;;
 esac
-cd "$repo_root"
-compose_root="$repo_root"
-if [[ "${docker_cmd[0]}" == "wsl.exe" ]]; then
-  if command -v cygpath >/dev/null 2>&1; then
-    compose_root="$(cygpath -w "$compose_root")"
-    env_file="$(cygpath -w "$env_file")"
-  fi
-  compose_root="$(wsl.exe wslpath -a -u "$compose_root" | tr -d '\r')"
-  env_file="$(wsl.exe wslpath -a -u "$env_file" | tr -d '\r')"
-fi
-compose_args=(--file "$compose_root/deploy/$directory/$app.compose.yml" --env-file "$env_file")
-"${docker_cmd[@]}" compose "${compose_args[@]}" config --quiet
-# Compose parses the env file; it is never executed as shell code.
-images="$("${docker_cmd[@]}" compose "${compose_args[@]}" config --images)"
-while IFS= read -r image; do
-  [[ -z "$image" ]] && continue
+
+engine_image="${OPENAGENT_ENGINE_IMAGE:-openagent-engine:latest}"
+router_image="${OPENAGENT_ROUTER_IMAGE:-openagent-router:latest}"
+chat_image="${OPENAGENT_CHAT_IMAGE:-openagent-chat:latest}"
+
+runner_key="${OPENAGENT_RUNNER_API_KEY:-}"
+[[ ${#runner_key} -ge 32 ]] || die "Runner API key must contain at least 32 characters"
+images=("$engine_image" "$router_image" "$chat_image" "${OPENAGENT_RUNNER_IMAGE:-openagent-runner:latest}")
+for image in "${images[@]}"; do
   "${docker_cmd[@]}" image inspect "$image" >/dev/null 2>&1 \
-    || die "required image is unavailable locally: $image; build or pull it first"
-done <<< "$images"
-networks="$("${docker_cmd[@]}" compose "${compose_args[@]}" config --format json | python3 -c '
-import json, sys
-for network in json.load(sys.stdin).get("networks", {}).values():
-    if network.get("external"):
-        print(network["name"])
-')"
-while IFS= read -r network; do
-  [[ -z "$network" ]] && continue
-  if ! "${docker_cmd[@]}" network inspect "$network" >/dev/null 2>&1; then
-    "${docker_cmd[@]}" network create "$network" >/dev/null 2>&1 \
-      || "${docker_cmd[@]}" network inspect "$network" >/dev/null
-  fi
-done <<< "$networks"
-if [[ "$app" == "minio" ]]; then
-  # Run the one-shot initializer after readiness; it must not be treated as a daemon.
-  "${docker_cmd[@]}" compose "${compose_args[@]}" up --detach --no-build --pull never --wait minio
-  "${docker_cmd[@]}" compose "${compose_args[@]}" run --rm --no-deps --no-build --pull never minio-init
-else
-  "${docker_cmd[@]}" compose "${compose_args[@]}" up --detach --no-build --pull never --wait
+    || die "required application image is unavailable locally: $image; run scripts/build-images.sh first or pull the image"
+done
+
+cd "$repo_root"
+compose_args=(--project-name "${OPENAGENT_COMPOSE_PROJECT:-openagent-app}" --file deploy/openagent/docker-compose.yml)
+if [[ -n "$env_file" ]]; then
+  compose_args+=(--env-file "$env_file")
 fi
+
+"${docker_cmd[@]}" compose "${compose_args[@]}" config --quiet
+"${docker_cmd[@]}" compose "${compose_args[@]}" up --detach --no-build --pull never
