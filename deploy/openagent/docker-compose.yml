@@ -1,18 +1,3 @@
-x-authentication: &authentication
-  Authentication__AllowDevelopmentAnonymous: "${OPENAGENT_AUTH_ALLOW_DEVELOPMENT_ANONYMOUS:-false}"
-  Authentication__Mode: ${OPENAGENT_AUTH_MODE:-Basic}
-  Authentication__EnableKeycloak: "${OPENAGENT_AUTH_ENABLE_KEYCLOAK:-false}"
-  Authentication__EnableApiKey: "${OPENAGENT_AUTH_ENABLE_API_KEY:-false}"
-  Authentication__Authority: ${OPENAGENT_KEYCLOAK_PUBLIC_URL:-https://${OPENAGENT_PUBLIC_HOST:-localhost}:${OPENAGENT_KEYCLOAK_PORT:-58081}}/realms/openagent
-  Authentication__MetadataAddress: ${OPENAGENT_KEYCLOAK_METADATA_ADDRESS:-}
-  Authentication__Audience: ${OPENAGENT_AUTH_AUDIENCE:-openagent-api}
-  Authentication__ClientId: ${OPENAGENT_AUTH_CLIENT_ID:-openagent-chat}
-  Authentication__RequireHttpsMetadata: ${OPENAGENT_AUTH_REQUIRE_HTTPS_METADATA:-true}
-  Authentication__ClockSkewSeconds: ${OPENAGENT_AUTH_CLOCK_SKEW_SECONDS:-60}
-  Authentication__BasicUsername: ${OPENAGENT_AUTH_BASIC_USERNAME:-admin}
-  Authentication__BasicPassword: ${OPENAGENT_AUTH_BASIC_PASSWORD:-}
-  Authentication__BasicTenantId: ${OPENAGENT_AUTH_BASIC_TENANT_ID:-development}
-
 name: ${OPENAGENT_COMPOSE_PROJECT:-openagent-app}
 services:
   engine:
@@ -20,6 +5,7 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: ${OPENAGENT_ASPNETCORE_ENVIRONMENT:-Production}
       ASPNETCORE_URLS: http://+:5208
+      # Engine 专用：数据库与 S3；不会传给 Router、Runner 或 Chat。
       ConnectionStrings__OpenAgentDatabase: Host=${OPENAGENT_POSTGRES_HOST:-postgres};Port=${OPENAGENT_POSTGRES_INTERNAL_PORT:-5432};Database=${OPENAGENT_POSTGRES_DB:-openagent};Username=${OPENAGENT_POSTGRES_USER:-openagent};Password=${OPENAGENT_POSTGRES_PASSWORD:?Set OPENAGENT_POSTGRES_PASSWORD}
       ConnectionStrings__Redis: ${OPENAGENT_REDIS_HOST:-redis}:${OPENAGENT_REDIS_INTERNAL_PORT:-6379}
       Database__ApplyMigrationsOnStartup: "true"
@@ -39,10 +25,26 @@ services:
       Heartbeat__AdvertisedHost: engine
       CodeExecution__Enabled: "true"
       CodeExecution__Endpoint: http://runner:5209
+      # Engine 与 Runner 的服务间认证，不是用户登录密码。
       CodeExecution__ApiKey: ${OPENAGENT_RUNNER_API_KEY:?Set a random Runner API key of at least 32 characters}
       CodeExecution__RequestTimeoutSeconds: "180"
       Heartbeat__AdvertisedPort: "5208"
-      <<: *authentication
+      # 登录配置：默认 Basic；Engine 与 Router 使用相同账号和租户。
+      # 部署默认禁止匿名；开发预览使用独立配置。
+      Authentication__AllowDevelopmentAnonymous: "false"
+      Authentication__Mode: ${OPENAGENT_AUTH_MODE:-Basic}
+      Authentication__EnableKeycloak: "${OPENAGENT_AUTH_ENABLE_KEYCLOAK:-false}"
+      Authentication__EnableApiKey: "${OPENAGENT_AUTH_ENABLE_API_KEY:-false}"
+      Authentication__Authority: ${OPENAGENT_KEYCLOAK_PUBLIC_URL:-https://${OPENAGENT_PUBLIC_HOST:-localhost}:${OPENAGENT_KEYCLOAK_PORT:-58081}}/realms/openagent
+      Authentication__MetadataAddress: ${OPENAGENT_KEYCLOAK_METADATA_ADDRESS:-}
+      Authentication__Audience: ${OPENAGENT_AUTH_AUDIENCE:-openagent-api}
+      Authentication__ClientId: ${OPENAGENT_AUTH_CLIENT_ID:-openagent-chat}
+      # 生产 OIDC 元数据必须使用 HTTPS，时钟容差默认 60 秒。
+      Authentication__RequireHttpsMetadata: "true"
+      Authentication__ClockSkewSeconds: "60"
+      Authentication__BasicUsername: ${OPENAGENT_AUTH_BASIC_USERNAME:-admin}
+      Authentication__BasicPassword: ${OPENAGENT_AUTH_BASIC_PASSWORD:-}
+      Authentication__BasicTenantId: ${OPENAGENT_AUTH_BASIC_TENANT_ID:-development}
       Cors__AllowedOrigins__0: ${OPENAGENT_CHAT_PUBLIC_URL:-${OPENAGENT_PUBLIC_SCHEME:-https}://${OPENAGENT_PUBLIC_HOST:-localhost}:${OPENAGENT_CHAT_PORT:-8081}}
     networks:
       - openagent
@@ -62,6 +64,7 @@ services:
     image: ${OPENAGENT_RUNNER_IMAGE:-openagent-runner:latest}
     environment:
       ASPNETCORE_URLS: http://+:5209
+      # 只接收执行服务密钥，不接收数据库、S3 或 Basic 凭据。
       Runner__ApiKey: ${OPENAGENT_RUNNER_API_KEY:?Set a random Runner API key of at least 32 characters}
     networks:
       - openagent
@@ -91,7 +94,22 @@ services:
       OPENAGENT_ALLOW_INSECURE_TLS: ${OPENAGENT_ALLOW_INSECURE_TLS:-false}
       RouterSettings__Routing__EngineEndpoint: http://engine:5208
       RouterSettings__IntentRecognition__TimeoutMs: "30000"
-      <<: *authentication
+      # 登录配置：默认 Basic；Engine 与 Router 使用相同账号和租户。
+      # 部署默认禁止匿名；开发预览使用独立配置。
+      Authentication__AllowDevelopmentAnonymous: "false"
+      Authentication__Mode: ${OPENAGENT_AUTH_MODE:-Basic}
+      Authentication__EnableKeycloak: "${OPENAGENT_AUTH_ENABLE_KEYCLOAK:-false}"
+      Authentication__EnableApiKey: "${OPENAGENT_AUTH_ENABLE_API_KEY:-false}"
+      Authentication__Authority: ${OPENAGENT_KEYCLOAK_PUBLIC_URL:-https://${OPENAGENT_PUBLIC_HOST:-localhost}:${OPENAGENT_KEYCLOAK_PORT:-58081}}/realms/openagent
+      Authentication__MetadataAddress: ${OPENAGENT_KEYCLOAK_METADATA_ADDRESS:-}
+      Authentication__Audience: ${OPENAGENT_AUTH_AUDIENCE:-openagent-api}
+      Authentication__ClientId: ${OPENAGENT_AUTH_CLIENT_ID:-openagent-chat}
+      # 生产 OIDC 元数据必须使用 HTTPS，时钟容差默认 60 秒。
+      Authentication__RequireHttpsMetadata: "true"
+      Authentication__ClockSkewSeconds: "60"
+      Authentication__BasicUsername: ${OPENAGENT_AUTH_BASIC_USERNAME:-admin}
+      Authentication__BasicPassword: ${OPENAGENT_AUTH_BASIC_PASSWORD:-}
+      Authentication__BasicTenantId: ${OPENAGENT_AUTH_BASIC_TENANT_ID:-development}
       Cors__AllowedOrigins__0: ${OPENAGENT_CHAT_PUBLIC_URL:-${OPENAGENT_PUBLIC_SCHEME:-https}://${OPENAGENT_PUBLIC_HOST:-localhost}:${OPENAGENT_CHAT_PORT:-8081}}
     depends_on:
       engine:

@@ -61,13 +61,14 @@ services:
   keycloak:
     profiles: [keycloak]
     image: quay.io/keycloak/keycloak:26.7.2
-    command: ${OPENAGENT_KEYCLOAK_COMMAND:-start --import-realm}
+    # 可选服务；使用固定的 HTTPS 启动方式，部署时只需配置对外地址和管理员凭据。
+    command: start --import-realm
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: ${OPENAGENT_KEYCLOAK_ADMIN_USERNAME:-admin}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${OPENAGENT_KEYCLOAK_ADMIN_PASSWORD:-admin}
       KC_HOSTNAME: ${OPENAGENT_KEYCLOAK_PUBLIC_URL:-https://${OPENAGENT_PUBLIC_HOST:-localhost}:${OPENAGENT_KEYCLOAK_PORT:-58081}}
-      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: ${OPENAGENT_KEYCLOAK_BACKCHANNEL_DYNAMIC:-true}
-      KC_HTTP_ENABLED: ${OPENAGENT_KEYCLOAK_HTTP_ENABLED:-true}
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      KC_HTTP_ENABLED: "true"
       KC_HTTPS_CERTIFICATE_FILE: /opt/keycloak/conf/certs/tls.crt
       KC_HTTPS_CERTIFICATE_KEY_FILE: /opt/keycloak/conf/certs/tls.key
       KC_HTTPS_PORT: "8443"

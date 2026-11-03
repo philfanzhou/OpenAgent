@@ -28,14 +28,13 @@ Chat、Router 与 Engine 不直接映射宿主机端口，分别由 Nginx 的 80
 `MetadataAddress` 可覆盖 discovery 地址，生产需可信 HTTPS。Chat/Router/Engine 的公开地址由
 `OPENAGENT_PUBLIC_HOST` 和端口变量生成；Keycloak 公开地址默认同样由 `OPENAGENT_PUBLIC_HOST` 与
 `OPENAGENT_KEYCLOAK_PORT` 生成，需要覆盖时设置 `OPENAGENT_KEYCLOAK_PUBLIC_URL`。
-生产模式需配置
-`OPENAGENT_KEYCLOAK_COMMAND` 与反向代理转发头，内置 `start-dev` 仅用于本地联调。
+内置 Keycloak 固定使用 `start --import-realm`；经过外部代理时按其要求配置转发头。
 
 Engine 使用 ASP.NET Data Protection 保护 PostgreSQL/Redis 中的 LLM 和 RAG 密钥，应用 Compose 会将
 `/root/.aspnet/DataProtection-Keys` 挂载到独立的 `engine-data-protection` 数据卷。该卷必须和数据库卷
 一样保留；删除它会导致历史密钥无法解密，需重新录入密钥。
 
-从 [deployment.env.example](../deploy/deployment.env.example) 复制到受保护、shell 兼容的 `.env` 文件。模板只展开必填项和运行环境；其他参数按应用归属分区注释，注释值就是默认值，通常无需修改。保留原有变量名和两套 Compose 入口。
+从 [deployment.env.example](../deploy/deployment.env.example) 复制到受保护、shell 兼容的 `.env` 文件。模板只展开 6 项必填值；其余按「Engine」「Basic 登录」「Chat/Nginx」「可选 Keycloak」「高级项」用注释分隔，每项右侧注明用途，注释中的赋值即默认值。空的可选值表示自动派生或不启用。保留原有变量名和两套 Compose 入口。
 
 | 使用方 | 配置归属 | 默认值与必填项 |
 |---|---|---|
@@ -47,9 +46,11 @@ Engine 使用 ASP.NET Data Protection 保护 PostgreSQL/Redis 中的 LLM 和 RAG
 | 各应用 / Compose | 镜像、项目名、网络名 | 镜像 `openagent-<应用>:latest`；应用项目 `openagent-app`，基础设施项目 `openagent-infrastructure`；沿用原网络和卷 |
 | 可选 Keycloak | `OPENAGENT_KEYCLOAK_*`、OIDC audience/client/metadata | 只在选用 JwtBearer 时配置；公开地址默认 `https://localhost:58081`，生产 discovery 使用可信 HTTPS |
 
-Basic 的账号、密码和租户在 Compose 中共享同一份配置，保证 Engine 与 Router 一致。配置密码后不再接受内置开发账号；只有 Development 且未配置密码时保留 `admin/admin`、`test/test`。匿名访问默认关闭，对外入口使用 HTTPS。
+Engine 与 Router 各自显式列出认证参数，并从同名变量读取账号、密码和租户，保证两端一致。配置密码后不再接受内置开发账号；只有 Development 且未配置密码时保留 `admin/admin`、`test/test`。匿名访问默认关闭，对外入口使用 HTTPS。
 
 选择 Keycloak 时额外启动其 profile，并设置 `OPENAGENT_AUTH_MODE=JwtBearer`、`OPENAGENT_AUTH_ENABLE_KEYCLOAK=true`。`OPENAGENT_KEYCLOAK_PUBLIC_URL` 生成 issuer，`OPENAGENT_KEYCLOAK_METADATA_ADDRESS` 默认为空、从 issuer 派生；生产自定义 discovery 也必须使用 HTTPS。Basic 不需要填写这些参数。
+
+生产匿名访问固定关闭，OIDC 元数据固定要求 HTTPS，JWT 时钟容差固定为 60 秒；这三项不再暴露为部署变量。Keycloak 内部启动命令、HTTP 开关和动态 backchannel 也使用固定默认值。开发预览继续使用其独立配置。
 
 ## 镜像构建与导出
 

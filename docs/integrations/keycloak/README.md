@@ -81,7 +81,6 @@ docker compose -p openagent-keycloak-infrastructure \
 OPENAGENT_ASPNETCORE_ENVIRONMENT=Production
 OPENAGENT_AUTH_MODE=JwtBearer
 OPENAGENT_AUTH_ENABLE_KEYCLOAK=true
-OPENAGENT_AUTH_ALLOW_DEVELOPMENT_ANONYMOUS=false
 OPENAGENT_AUTH_AUDIENCE=openagent-api
 OPENAGENT_AUTH_CLIENT_ID=openagent-chat
 OPENAGENT_KEYCLOAK_PUBLIC_URL=https://localhost:58081
@@ -91,7 +90,7 @@ OPENAGENT_KEYCLOAK_METADATA_ADDRESS=
 - 默认使用 Basic，Keycloak 默认关闭。Production Basic 必须配置 `OPENAGENT_AUTH_BASIC_PASSWORD`；配置密码后不接受内置开发账号。只有 Development 且未配置密码时才保留 `admin/admin`、`test/test`。
 - `OPENAGENT_AUTH_ENABLE_API_KEY=true` 时，Router 和 Engine 增加数据库中的第三方 Bearer API Key 认证，不访问 Keycloak；该开关与 `OPENAGENT_AUTH_MODE` 并存，不替换 Basic/JWT Bearer 方案。API Key 记录位于 `openagent.third_party_api_keys`。
 - `OPENAGENT_AUTH_ENABLE_KEYCLOAK` 控制 Keycloak/OIDC 登录入口。AD 只是 Keycloak 的一种身份源；接入真实 AD 时，需要在 Keycloak 中配置 LDAP/AD User Federation。本地 Realm 没有真实域控，因此只验证开关和登录链路。
-- `OPENAGENT_AUTH_AUDIENCE`、`OPENAGENT_AUTH_CLIENT_ID`、`OPENAGENT_AUTH_REQUIRE_HTTPS_METADATA` 和 `OPENAGENT_AUTH_CLOCK_SKEW_SECONDS` 分别控制 JWT audience、OIDC client、元数据 HTTPS 要求和时钟容差。
+- `OPENAGENT_AUTH_AUDIENCE` 和 `OPENAGENT_AUTH_CLIENT_ID` 分别配置 JWT audience 和 OIDC client；正式部署固定要求 HTTPS 元数据，时钟容差为 60 秒。
 - `OPENAGENT_KEYCLOAK_PUBLIC_URL` 是浏览器使用的公开 Issuer 地址；`OPENAGENT_KEYCLOAK_METADATA_ADDRESS` 是 Engine/Router 访问 discovery 的服务端地址。
 - Engine 和 Router 固定解析认证 token 中的租户 claim，并在 Agent/管理接口缺少租户时拒绝请求，不提供关闭租户隔离的配置。
 - 本地 Realm 已启用 Keycloak Organization。创建用户时，需要在用户属性中设置 `tenant_id`，并将用户加入同名 Organization；申请 `organization` scope 后，访问令牌会包含对应的 `tenant_id` 和 `organization` claim。
