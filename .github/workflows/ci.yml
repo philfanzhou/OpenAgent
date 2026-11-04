@@ -88,12 +88,31 @@ jobs:
       - name: Run tests
         run: dotnet test OpenAgent.sln --configuration Release --no-build --no-restore --nologo --verbosity normal
 
+  frontend-paths:
+    name: Detect frontend sources
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      has_frontend: ${{ steps.detect.outputs.has_frontend }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Detect Frontend/OpenAgent.Chat
+        id: detect
+        # 独立后端检出不含 Frontend/；只有源码树包含前端时才运行 frontend 任务。
+        run: |
+          if [ -f Frontend/OpenAgent.Chat/package.json ]; then
+            echo "has_frontend=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_frontend=false" >> "$GITHUB_OUTPUT"
+          fi
+
   frontend:
     name: Frontend build and test
+    needs: frontend-paths
+    if: needs.frontend-paths.outputs.has_frontend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # 独立后端检出不含 Frontend/；只有源码树包含前端时才运行本任务。
-    if: ${{ hashFiles('Frontend/OpenAgent.Chat/package.json') != '' }}
 
     defaults:
       run:
