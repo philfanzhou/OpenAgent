@@ -4,17 +4,23 @@
 
 ## 启动与更新
 
-目录与迁移说明见 [部署目录](../../deploy/README.md)，共享变量模板见
-[deployment.env.example](../../deploy/deployment.env.example)，全部变量与必填项说明见
-[环境变量指南](environment-variables.md)。已有部署必须保留原来的 Compose 项目名和数据卷。
+目录与迁移说明见 [部署目录](../../deploy/README.md)，必填变量模板见
+[deployment.env.example](../../deploy/deployment.env.example)。已有部署必须保留原来的 Compose 项目名和数据卷。
 
-基础设施和实际代码镜像分开部署。基础设施 Compose 同时包含 PostgreSQL、Redis、MinIO 和 Keycloak；它只需要首次启动或基础设施变更时操作，数据卷不会随着应用镜像重复构建而被重建：
+基础设施和实际代码镜像分开部署。基础设施 Compose 包含 PostgreSQL、Redis、MinIO 和可选 Keycloak；Basic 默认不启动 Keycloak，需要 OIDC 时额外添加 `--profile keycloak`。它只需要首次启动或基础设施变更时操作，数据卷不会随着应用镜像重复构建而被重建：
 
 ```bash
 docker compose -p openagent-infrastructure \
   -f deploy/infrastructure/docker-compose.yml \
   --env-file .env --profile storage up -d
 ```
+
+注意镜像可得性：MinIO 官方镜像（`minio/minio` 与 `minio/mc`）已于 2026-09 从 Docker Hub 与 quay.io 删除。
+固定标签仅在本机缓存或镜像加速器仍保留副本时可拉取；全新环境请按基础设施 Compose 中的注释，用
+`OPENAGENT_MINIO_IMAGE` 与 `OPENAGENT_MC_IMAGE` 指向内网仓库或仍可访问的镜像源。
+
+应用 Compose 默认设置 `Database__ApplyMigrationsOnStartup=true`：Engine 启动时自动应用待执行的 EF 迁移
+（对 Production 同样生效），全新数据库无需手工建表；升级镜像时也由它滚动应用新迁移。
 
 ## HTTPS 与认证配置
 
@@ -25,31 +31,20 @@ Chat、Router 与 Engine 不直接映射宿主机端口，分别由 Nginx 的 80
 该 CA。证书 SAN 必须包含实际访问的内网域名。
 
 前端与 Keycloak 的公开地址必须使用 HTTPS；OIDC PKCE 和 Web Crypto 在普通 HTTP 页面中不可用。Nginx
-终止 TLS 后，Router、Engine 与 Keycloak 容器之间仍可使用内部 HTTP；浏览器可见的公开地址固定为 HTTPS，
-`MetadataAddress` 使用服务端可访问的内部 discovery 地址。Chat/Router/Engine 的公开地址由
-`OPENAGENT_PUBLIC_HOST` 和端口变量生成；Keycloak 公开地址默认同样由 `OPENAGENT_PUBLIC_HOST` 与
-`OPENAGENT_KEYCLOAK_PORT` 生成，需要覆盖时设置 `OPENAGENT_KEYCLOAK_PUBLIC_URL`。
-生产模式需配置
-`OPENAGENT_KEYCLOAK_COMMAND` 与反向代理转发头，内置 `start-dev` 仅用于本地联调。
+终止 TLS 后，Router、Engine 与 Keycloak 容器之间仍可使用内部 HTTP；浏览器可见的公开地址固定为 HTTPS。
+Chat/Router/Engine 默认 `https://localhost` 的 8081/8082/8083；需要更换域名或端口时按应用 Compose 中的
+注释同步修改 Nginx 端口与 listen 值。Keycloak 公开地址默认 `https://localhost:58081`，外部 IdP 地址按
+Compose 注释覆盖；内置 Keycloak 固定使用 `start --import-realm`，经过外部代理时按其要求配置转发头。
 
 Engine 使用 ASP.NET Data Protection 保护 PostgreSQL/Redis 中的 LLM 和 RAG 密钥，应用 Compose 会将
 `/home/app/.aspnet/DataProtection-Keys` 挂载到独立的 `engine-data-protection` 数据卷。该卷必须和数据库卷
 一样保留；删除它会导致历史密钥无法解密，需重新录入密钥。
 
-从 [deployment.env.example](../../deploy/deployment.env.example) 复制变量到受保护且 shell 兼容的 `.env` 文件（不要提交）。模板中的凭据用于本地联调，生产环境需覆盖。
+从 [deployment.env.example](../../deploy/deployment.env.example) 复制到受保护的 `.env` 文件，只填写 5 项必填凭据。Compose 使用 `${变量:?提示}` 检查必填项，未设置或为空时会在启动前报错，不提供默认凭据。可选覆盖项连同默认值和用途写在各自 `docker-compose.yml` 的注释中；需要调整时再取消注释并替换对应的固定默认值。
 
-开发环境若不经过 TLS 反向代理，可将 `OPENAGENT_PUBLIC_SCHEME` 设为 `http`，并使用 Development Basic；生产环境应保持 `https`。
+默认认证为 Basic：用户名 `admin`、租户 `development`，密码由必填项 `OPENAGENT_AUTH_BASIC_PASSWORD` 提供，Engine 与 Router 共享。配置密码后内置开发账号（`admin/admin`、`test/test`）即失效；匿名访问默认关闭。生产 OIDC 元数据固定要求 HTTPS，JWT 时钟容差固定 60 秒。
 
-Compose 会把 `OPENAGENT_AUTH_*` 和 `OPENAGENT_KEYCLOAK_*` 认证变量同时注入 Engine 与 Router。需要本地使用 Basic 登录调试时，保持环境为 Development，并在 `.env` 中改为：
-
-```dotenv
-OPENAGENT_ASPNETCORE_ENVIRONMENT=Development
-OPENAGENT_AUTH_MODE=Basic
-OPENAGENT_AUTH_ENABLE_KEYCLOAK=false
-OPENAGENT_AUTH_ALLOW_DEVELOPMENT_ANONYMOUS=false
-```
-
-Basic 模式仅允许 Development 环境，开发账号为 `admin/admin` 或 `test/test`；生产环境必须使用 `JwtBearer`。`OPENAGENT_AUTH_REQUIRE_HTTPS_METADATA`、`OPENAGENT_AUTH_CLOCK_SKEW_SECONDS`、`OPENAGENT_KEYCLOAK_PUBLIC_URL` 和 `OPENAGENT_KEYCLOAK_METADATA_ADDRESS` 分别控制 OIDC 元数据校验、时钟容差、浏览器公开 Issuer 和服务端 discovery 地址。
+选择 Keycloak 时额外启动其 profile，并按应用 Compose 注释将 Engine 与 Router 的 `Authentication__Mode` 改为 `JwtBearer`、启用 `Authentication__EnableKeycloak`。同时按基础设施 Compose 注释填写 Keycloak 管理员凭据和公开地址。Basic 无需这些配置。
 
 ## 镜像构建与导出
 
@@ -119,13 +114,13 @@ Chat 是独立静态前端，可以与后台部署在不同服务器。首次打
 
 浏览器访问 `https://openagent.intra.example:8081`；Router 与 Engine 分别使用 `https://openagent.intra.example:8082`
 和 `https://openagent.intra.example:8083`。Nginx 的默认
-请求体限制为 1100 MB（可用 `OPENAGENT_NGINX_CLIENT_MAX_BODY_SIZE` 调整），允许通过 Router 上传大文件
+请求体限制为 1100 MB（需要调整时修改应用 Compose 中的 Nginx 环境项），允许通过 Router 上传大文件
 （前端单文件上限 100 MB、单次会话附件总量 1000 MB）；后端仍会按 FileAssets 与 Skill 包自身的大小限制校验请求。
 
-Compose 不包含任何模型凭据或已发布 Agent。Development Basic 兼容登录只适合受控联调，不应直接暴露到
-内网或公网；生产环境请使用 HTTPS 的企业 IdP 与 OIDC。
+Compose 不包含任何模型凭据或已发布 Agent。默认 Basic 登录密码由必填项提供，没有内置账号；
+需要企业身份源时按 Compose 注释切换到 HTTPS 的企业 IdP 与 OIDC。
 
-镜像更新时依次执行构建与部署；仅修改运行时变量（例如 OTLP 地址）时只执行部署。三个应用镜像标签可分别由
+镜像更新时依次执行构建与部署；仅修改运行时配置（例如 OTLP 地址）时只执行部署。三个应用镜像标签可分别由
 `OPENAGENT_ENGINE_IMAGE`、`OPENAGENT_ROUTER_IMAGE` 与 `OPENAGENT_CHAT_IMAGE` 覆盖，因而也可改为私有镜像仓库
 已经推送的标签：
 
@@ -189,23 +184,22 @@ Keycloak 直接提供 HTTPS，内部 HTTP 8080 不发布到宿主机。
 应用栈创建独立的 `openagent` 网络；Engine 和 Router 额外加入基础设施网络以访问数据库、Redis、MinIO 和 Keycloak，
 Chat、Nginx 不直接加入基础设施网络。
 
-`OPENAGENT_CHAT_PUBLIC_URL` 用于 Keycloak 回调、Web Origin 和退出回调，
-默认由 `OPENAGENT_PUBLIC_SCHEME`/`OPENAGENT_PUBLIC_HOST` 与 `OPENAGENT_CHAT_PORT` 派生，无需重复配置。
-切换到 443 时设 `OPENAGENT_CHAT_PORT=443`、`OPENAGENT_CHAT_PUBLIC_URL=https://localhost`；
-域名替换时同时更新公开 URL。Keycloak 的公开 URL 必须匹配其 HTTPS 对外入口，
+选用 Keycloak 时，`OPENAGENT_CHAT_PUBLIC_URL` 用于回调、Web Origin 和退出回调，默认 `https://localhost:8081`；
+更换域名或端口时按基础设施 Compose 注释同步覆盖，Keycloak 的公开 URL 必须匹配其 HTTPS 对外入口，
 Engine/Router 使用同一值作为 Authority。已有 Realm 的 Client 地址需通过管理台更新，
 启动导入文件不是已有配置的更新机制。
 
 默认证书为 `deploy/openagent/nginx/certs/tls.crt` 和 `tls.key`，两套服务共用。
-自定义时给 `OPENAGENT_TLS_CERT_DIR` 设置绝对路径。证书和私钥不应进入 Git 或镜像。
-本地部署可直接使用示例中的默认凭据；生产环境应覆盖数据库、MinIO 和 Keycloak 凭据。示例不包含实际部署域名、私钥或服务器目录。
+自定义时按应用 Compose 注释替换 Nginx 的证书目录挂载。证书和私钥不应进入 Git 或镜像。
+`.env` 只包含必填凭据，没有可复用的默认账号；数据库、MinIO 与 Basic 登录密码均由部署者提供。
 
 对象存储使用 `OPENAGENT_S3_SERVICE_URL` 供引擎内部访问。客户端对外下载与分享使用平台端点（`/api/v1/share/{token}`、认证下载），S3 无需公网域名；底层存储实现仍保留签名能力。默认保持 TLS 校验。
 
 ## 认证边界
 
-生产认证使用可配置的 OIDC/OAuth2 身份提供方与 JWT Bearer 校验，验证 issuer、audience、签名和有效期。
-Basic 兼容登录严格限制在 Development；它只解析凭据，不查询用户目录，也不校验真实密码。
+部署默认 Basic：校验配置的账号密码（`OPENAGENT_AUTH_BASIC_PASSWORD` 必填，固定时间比较），
+用户名 `admin`、租户 `development`；配置密码后内置开发账号仅在 Development 且未配置密码时可用。
+可选企业 IdP 走 OIDC/JWT Bearer，验证 issuer、audience、签名和有效期。
 认证只负责建立身份，角色、Agent ACL、能力权限与租户授权由独立的服务端授权层判断。
 详见 [安全设计文档](../modules/security.md)。
 

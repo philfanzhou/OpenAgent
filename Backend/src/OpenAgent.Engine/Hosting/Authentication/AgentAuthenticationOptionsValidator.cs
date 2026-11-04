@@ -8,12 +8,21 @@ internal sealed class AgentAuthenticationOptionsValidator(IHostEnvironment? envi
 {
     public ValidateOptionsResult Validate(string? name, AgentAuthenticationOptions options)
     {
-        if (options.Mode == AgentAuthenticationMode.Basic
-            && environment != null
-            && !environment.IsDevelopment())
+        if (options.Mode == AgentAuthenticationMode.Basic)
         {
-            return ValidateOptionsResult.Fail(
-                "Basic authentication is restricted to the Development environment.");
+            if (string.IsNullOrWhiteSpace(options.BasicUsername) || options.BasicUsername.Contains(':')
+                || string.IsNullOrWhiteSpace(options.BasicTenantId))
+            {
+                return ValidateOptionsResult.Fail(
+                    "Basic authentication requires a username without ':' and a tenant ID.");
+            }
+
+            if (environment != null && !environment.IsDevelopment()
+                && string.IsNullOrWhiteSpace(options.BasicPassword))
+            {
+                return ValidateOptionsResult.Fail(
+                    "Authentication:BasicPassword is required outside Development.");
+            }
         }
 
         if (options.Mode == AgentAuthenticationMode.JwtBearer)

@@ -17,8 +17,8 @@
 | 场景 | 需要设置的环境变量 |
 |---|---|
 | 本地裸机开发（`dotnet run`） | **零配置**。Development 配置默认 Basic 匿名登录、连接本机 PostgreSQL（`localhost:5432`，账号 openagent/openagent）。前置条件：本机可用的 PostgreSQL 与 `opencode` 可执行；否则见第 5.2 / 5.6 节覆盖 |
-| 本地 Docker 全栈（Keycloak） | 复制 `deploy/deployment.env.example` 为 `.env`，其余走 Compose 兜底值。模板默认 `OPENAGENT_ASPNETCORE_ENVIRONMENT=Production`；Basic 联调需显式改为 `Development` |
-| 内网/生产部署 | `OPENAGENT_ASPNETCORE_ENVIRONMENT=Production`；`OPENAGENT_PUBLIC_HOST`（+443 时设置 `OPENAGENT_CHAT_PORT=443` 等）；覆盖数据库/MinIO/Keycloak 管理员默认凭据；`OPENAGENT_KEYCLOAK_COMMAND=start`。认证变量见第 3 节 |
+| 本地 Docker 全栈 | 复制 `deploy/deployment.env.example` 为 `.env`，填写 5 项必填凭据；其余走 Compose 兜底。默认 Basic + Production，无需认证变量 |
+| 内网/生产部署 | `.env` 填写 5 项必填凭据；按需覆盖端口/镜像/OTLP（见对应节）。默认 Basic；企业 IdP 按第 3 节启用 |
 | 启用代码执行 | 平台无独立沙箱：经 `OpenCode__AllowedNativeTools__0..n` 放行 OpenCode 原生工具（如 `read`/`edit`/`write`/`bash`），见第 5.6 节与 [OpenCode 运行时](../integrations/opencode-runtime.md) |
 | 外接 S3/MinIO | `OPENAGENT_S3_SERVICE_URL`、`OPENAGENT_S3_BUCKET`、`OPENAGENT_S3_ACCESS_KEY`、`OPENAGENT_S3_SECRET_KEY`（等价 `FileAssets__ObjectStorage__*`） |
 | 接入日志中心 | `.env` 设置 `OPENAGENT_OTLP_ENDPOINT`（OTLP gRPC/HTTP 地址）；规则见 [可观测性](../overview/Observability.md) |
@@ -32,15 +32,15 @@ Engine 与 Router 共用同一套认证（都经 `AddAgentHost` 组合，`Backen
 
 | 环境变量 | Compose 包装 | 必填 | 默认（生效值） | 说明 |
 |---|---|---|---|---|
-| `Authentication__Mode=JwtBearer` | `OPENAGENT_AUTH_MODE` | 是 | `JwtBearer`（镜像 json 与 Compose 兜底均是） | 切到 JWT 校验 |
+| `Authentication__Mode=JwtBearer` | `OPENAGENT_AUTH_MODE` | 是 | `Basic`（部署默认；切 `JwtBearer` 才启用本节） | 切到 JWT 校验 |
 | `Authentication__Authority` | 由 `OPENAGENT_KEYCLOAK_PUBLIC_URL`（或 `OPENAGENT_PUBLIC_HOST`+`OPENAGENT_KEYCLOAK_PORT` 派生）+`/realms/openagent` | **是** | 生产 json 置空 → **必须提供** | OIDC 签发方，须绝对 HTTP(S) URI |
 | `Authentication__Audience` | `OPENAGENT_AUTH_AUDIENCE` | **是** | 空串（json）/ `openagent-api`（Compose 兜底） | JWT audience 校验 |
 | `Authentication__ClientId` | `OPENAGENT_AUTH_CLIENT_ID` | **是** | 空串（json）/ `openagent-chat`（Compose 兜底） | OIDC 客户端 ID，透传给前端登录页 |
 | `Authentication__MetadataAddress` | `OPENAGENT_KEYCLOAK_METADATA_ADDRESS` | 否 | `http://keycloak:8080/realms/openagent/.well-known/openid-configuration` | 服务端 discovery 地址（浏览器不可达的容器内地址） |
-| `Authentication__RequireHttpsMetadata` | `OPENAGENT_AUTH_REQUIRE_HTTPS_METADATA` | 否 | 代码 true / Compose 兜底 false | 见下方校验规则 |
+| `Authentication__RequireHttpsMetadata` | `OPENAGENT_AUTH_REQUIRE_HTTPS_METADATA` | 否 | `true`（代码与 Compose 一致） | 见下方校验规则 |
 | `Authentication__ClockSkewSeconds` | `OPENAGENT_AUTH_CLOCK_SKEW_SECONDS` | 否 | `60`（0..300） | JWT 时钟容差，仅用于网络抖动 |
 | `Authentication__Scopes__0..n` | — | 否 | json：`openid,profile,email,organization` | 透传给前端 OIDC 请求 |
-| `Authentication__EnableKeycloak` | `OPENAGENT_AUTH_ENABLE_KEYCLOAK` | 否 | `true` | **仅控制前端是否显示 OIDC 登录入口**（`/api/v1/auth/config`），不影响服务端 JWT 校验 |
+| `Authentication__EnableKeycloak` | `OPENAGENT_AUTH_ENABLE_KEYCLOAK` | 否 | `false` | **仅控制前端是否显示 OIDC 登录入口**（`/api/v1/auth/config`），不影响服务端 JWT 校验 |
 | `Authentication__EnableApiKey` | `OPENAGENT_AUTH_ENABLE_API_KEY` | 否 | `false` | 叠加第三方 API Key 混合模式，见 [认证模块文档](../modules/security.md) |
 
 **校验规则**（`Backend/src/OpenAgent.Engine/Hosting/Authentication/AgentAuthenticationOptionsValidator.cs`，启动即校验、失败拒绝启动）：
@@ -67,40 +67,28 @@ Authentication__ClientId=openagent-chat
 Authentication__RequireHttpsMetadata=true
 ```
 
-Compose 部署只需在 `.env` 中（其余走兜底）：
-
-```dotenv
-OPENAGENT_PUBLIC_HOST=openagent.intra.example
-# 需要覆盖派生值时：
-# OPENAGENT_KEYCLOAK_PUBLIC_URL=https://keycloak.intra.example
-# OPENAGENT_AUTH_AUDIENCE=openagent-api
-# OPENAGENT_AUTH_CLIENT_ID=openagent-chat
-```
+Compose 部署按应用 Compose 中的 OIDC 注释启用（取消 `Authentication__Mode=JwtBearer` 等注释行并启动 `keycloak` profile），公开地址按基础设施 Compose 注释覆盖；Engine 与 Router 必须使用同一组参数。
 
 前端不需要任何认证环境变量：OIDC 参数由 `GET /api/v1/auth/config` 下发。
 
-## 4. 启用 Basic 认证（仅开发）
+## 4. Basic 认证（部署默认）
 
-Basic 是 Development 专用兼容登录，**非 Development 环境设置 `Authentication__Mode=Basic` 会直接启动失败**（`AgentAuthenticationOptionsValidator.cs`）。凭据硬编码为 `admin/admin`、`test/test`（`Backend/src/OpenAgent.Engine/Hosting/Authentication/DevelopmentCredentials.cs`），无法用环境变量修改，也不校验真实用户目录。
+Basic 是部署默认认证方式，任意环境可用；Production 下必须配置密码（`Authentication__BasicPassword`，缺失即启动失败），用户名默认 `admin`、租户默认 `development`，Engine 与 Router 共用。**配置密码后内置开发账号（`admin/admin`、`test/test`）即失效**；仅 Development 且未配置密码时才回退到内置账号（`Backend/src/OpenAgent.Engine/Hosting/Authentication/DevelopmentCredentials.cs`，固定时间比较）。
 
 | 环境变量 | 默认 | 说明 |
 |---|---|---|
-| `ASPNETCORE_ENVIRONMENT=Development` | `Production` | **前置条件**，handler 与校验器双重限制 |
-| `Authentication__Mode=Basic` | Development json 已默认 | 无必填子项 |
-| `Authentication__EnableKeycloak=false` | `true` | 可选：隐藏前端 OIDC 登录入口，只留账号密码表单 |
+| `Authentication__Mode=Basic` | 部署默认 | Production 可用，无需 Development |
+| `Authentication__BasicPassword` | 空 | **Production 必填**（缺失启动失败）；Compose 由 `OPENAGENT_AUTH_BASIC_PASSWORD` 必填项注入 |
+| `Authentication__BasicUsername` / `__BasicTenantId` | `admin` / `development` | Engine 与 Router 必须一致；含 `:` 的用户名被拒绝 |
+| `Authentication__EnableKeycloak=false` | `false` | 隐藏前端 OIDC 登录入口，只留账号密码表单 |
 | `Authentication__AllowDevelopmentAnonymous` | 代码 `true` / json 与 Compose `false` | `true` 时无凭据请求认证为 `development-user`；`false` 时必须带 Basic 头 |
 | `Authentication__DevelopmentUserId` / `__DevelopmentTenantId` | `development-user` / `development` | 匿名身份与租户 |
 
 Basic 模式下 `POST /api/v1/auth/password/token`（仅 Development 映射）返回 `base64(user:pass)` 供前端当 AccessToken 使用。
 
-本地 Docker 联调切 Basic（`deploy/.env`）：
+Basic 模式下 `POST /api/v1/auth/password/token`（`Mode=Basic` 时映射）返回 `base64(user:pass)` 供前端当 AccessToken 使用。
 
-```dotenv
-OPENAGENT_ASPNETCORE_ENVIRONMENT=Development
-OPENAGENT_AUTH_MODE=Basic
-OPENAGENT_AUTH_ENABLE_KEYCLOAK=false
-OPENAGENT_AUTH_ALLOW_DEVELOPMENT_ANONYMOUS=false
-```
+Compose 部署的密码由必填项 `OPENAGENT_AUTH_BASIC_PASSWORD` 注入，`.env` 无需任何认证变量；匿名访问默认关闭（`Authentication__AllowDevelopmentAnonymous=false`）。
 
 ## 5. .NET 配置环境变量参考
 
@@ -110,7 +98,7 @@ OPENAGENT_AUTH_ALLOW_DEVELOPMENT_ANONYMOUS=false
 
 | 变量 | 适用 | 默认 | 作用 / 缺失影响 |
 |---|---|---|---|
-| `ASPNETCORE_ENVIRONMENT` | E/R | `Production`（应用 Compose 兜底 `Development`） | 选择 appsettings 覆盖文件；门控 Basic 认证、启动迁移、管理端点、Swagger |
+| `ASPNETCORE_ENVIRONMENT` | E/R | `Production`（应用 Compose 同为 `Production`；预览栈用 `Development`） | 选择 appsettings 覆盖文件；门控管理端点、Swagger。Basic 认证与启动迁移（`Database__ApplyMigrationsOnStartup`）在任意环境均按开关生效 |
 | `ASPNETCORE_URLS` | E/R | 镜像 Dockerfile 固定：engine `http://+:5208`、router `http://+:5001` | Kestrel 绑定；也用于心跳端口探测 |
 | `ASPNETCORE_HTTP_PORTS` | E | — | 心跳端口探测优先于此变量 |
 | `DOTNET_ENVIRONMENT` | E/R | — | `ASPNETCORE_ENVIRONMENT` 缺失时的回退 |
@@ -328,15 +316,15 @@ Chat 只使用浏览器中保存的连接，不读取前端环境变量或部署
 
 | 变量 | 适用场景 | 缺失 / 非法后果 |
 |---|---|---|
-| `Authentication__Authority` / `__Audience` / `__ClientId` | `Mode=JwtBearer`（生产默认） | Engine 与 Router **启动失败**；生产 json 三者为空，必须经 `.env` 或直接环境变量提供 |
-| `Authentication__Mode=Basic` 且非 Development | — | 启动失败（Basic 仅限 Development） |
+| `Authentication__Authority` / `__Audience` / `__ClientId` | `Mode=JwtBearer`（可选启用） | Engine 与 Router **启动失败**；生产 json 三者为空，必须经 `.env` 或直接环境变量提供 |
+| `Authentication__Mode=Basic` 且非 Development 且 `__BasicPassword` 为空 | — | 启动失败（Production 必须配置密码；用户名含 `:` 或租户为空同样拒绝启动） |
 | `RequireHttpsMetadata=false` 且（非 Development 或 Authority 非 localhost） | 本地 HTTP 联调外 | 启动失败 |
 | `ConnectionStrings__OpenAgentDatabase` | Engine | 键完全缺失 → 启动异常；保留默认值 → 只连本机库（生产不可用） |
 | `FileAssets__ObjectStorage__*` | `FileAssets__Enabled=true` | 桶名/区域为空或凭证不成对 → 启动失败（默认值已满足） |
 | `OpenTelemetry__OtlpEndpoint` | 可选 | 不设 → 禁用 OTLP 导出（可运行）；设了但 URI 非法 → 启动异常 |
 | `OpenCode__Executable` / `PATH` 中的 opencode | 聊天功能 | 启动正常，**首次聊天报错**（DependencyUnavailable） |
 | `ConnectionStrings__Redis` | 可选 | Engine/Router 降级运行（无会话缓存、静态路由、内存缓存） |
-| `OPENAGENT_POSTGRES_PASSWORD` / MinIO 与 Keycloak 管理员凭据 | 生产 | 不改默认凭据 = 安全风险（功能不中断） |
+| `OPENAGENT_POSTGRES_PASSWORD` / `OPENAGENT_S3_*` / `OPENAGENT_AUTH_BASIC_PASSWORD` | Compose 部署 | **必填**：缺失或为空时 Compose 在启动前报错（`${VAR:?}`），不提供默认凭据 |
 
 ## 9. 相关文档
 

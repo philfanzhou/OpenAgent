@@ -1,4 +1,3 @@
-using OpenAgent.Engine.Hosting;
 using System.Text;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
@@ -8,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
+using OpenAgent.Engine.Hosting;
 using OpenAgent.Engine.Hosting.Authentication;
 using OpenAgent.Engine.Hosting.Security;
 using Xunit;
@@ -59,22 +59,62 @@ public class BasicAuthenticationHandlerTests
     }
 
     [Fact]
-    public void AuthenticationOptions_ProductionBasicMode_IsRejected()
+    public void AuthenticationOptions_ProductionBasicWithoutPassword_IsRejected()
     {
         using ServiceProvider provider = CreateProvider(Environments.Production);
 
         OptionsValidationException exception = Assert.Throws<OptionsValidationException>(() =>
             provider.GetRequiredService<IOptions<AgentAuthenticationOptions>>().Value);
-        Assert.Contains("Development", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("BasicPassword", exception.Message, StringComparison.Ordinal);
     }
 
-    private static ServiceProvider CreateProvider(string environmentName)
+    [Theory]
+    [InlineData("Production", "operator", "configured:password", true)]
+    [InlineData("Production", "operator", "wrong-password", false)]
+    [InlineData("Production", "admin", "admin", false)]
+    [InlineData("Development", "test", "test", false)]
+    [InlineData("Development", "operator", "configured:password", true)]
+    public async Task AuthenticateAsync_ConfiguredCredentials_RejectsOtherAccounts(
+        string environment, string username, string password, bool succeeds)
+    {
+        using ServiceProvider provider = CreateProvider(environment, "configured:password");
+        var context = new DefaultHttpContext { RequestServices = provider };
+        context.Request.Headers.Authorization =
+            $"Basic {Convert.ToBase64String(Encoding.UTF8.GetBytes($"{username}:{password}"))}";
+        context.Request.Headers["X-Tenant-Id"] = "untrusted-tenant";
+
+        AuthenticateResult result = await context.AuthenticateAsync(BasicAuthenticationHandler.SchemeName);
+
+        Assert.Equal(succeeds, result.Succeeded);
+        if (succeeds)
+        {
+            Assert.Equal("operator", result.Principal?.FindFirst("sub")?.Value);
+            Assert.Equal("tenant-a", result.Principal?.FindFirst("tenant_id")?.Value);
+        }
+    }
+
+    [Fact]
+    public async Task AuthenticateAsync_ProductionAnonymousFlag_DoesNotAuthenticate()
+    {
+        using ServiceProvider provider = CreateProvider(Environments.Production, "configured:password", true);
+        var context = new DefaultHttpContext { RequestServices = provider };
+
+        AuthenticateResult result = await context.AuthenticateAsync(BasicAuthenticationHandler.SchemeName);
+
+        Assert.False(result.Succeeded);
+    }
+
+    private static ServiceProvider CreateProvider(
+        string environmentName, string? password = null, bool allowAnonymous = false)
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["Authentication:Mode"] = "Basic",
-                ["Authentication:AllowDevelopmentAnonymous"] = "false"
+                ["Authentication:AllowDevelopmentAnonymous"] = allowAnonymous.ToString(),
+                ["Authentication:BasicUsername"] = "operator",
+                ["Authentication:BasicPassword"] = password,
+                ["Authentication:BasicTenantId"] = "tenant-a"
             })
             .Build();
         var services = new ServiceCollection();

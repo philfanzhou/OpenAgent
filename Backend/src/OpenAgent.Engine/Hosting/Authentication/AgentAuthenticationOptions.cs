@@ -9,9 +9,12 @@ public enum AgentAuthenticationMode
 public sealed class AgentAuthenticationOptions
 {
     public AgentAuthenticationMode Mode { get; set; } = AgentAuthenticationMode.Basic;
-    public bool EnableKeycloak { get; set; } = true;
+    public bool EnableKeycloak { get; set; }
     public bool EnableApiKey { get; set; }
-    public bool AllowDevelopmentAnonymous { get; set; } = true;
+    public bool AllowDevelopmentAnonymous { get; set; }
+    public string BasicUsername { get; set; } = "admin";
+    public string? BasicPassword { get; set; }
+    public string BasicTenantId { get; set; } = "development";
     public string DevelopmentUserId { get; set; } = "development-user";
     public string DevelopmentTenantId { get; set; } = "development";
     public string? Authority { get; set; }

@@ -4,7 +4,7 @@
 
 ## 启动
 
-当前工作区已有其他 OpenAgent Compose 项目运行时，请使用独立的基础设施项目、应用项目和网络。基础设施 Compose 同时启动 PostgreSQL、Redis、MinIO 和 Keycloak：
+当前工作区已有其他 OpenAgent Compose 项目运行时，请使用独立的基础设施项目、应用项目和网络。基础设施 Compose 通过 profile 启动 PostgreSQL、Redis、MinIO 与 Keycloak（`--profile storage --profile keycloak`）：
 
 ```bash
 export OPENAGENT_INFRA_NETWORK=openagent-keycloak-infrastructure
@@ -20,7 +20,7 @@ OPENAGENT_MINIO_CONSOLE_PORT=59011 \
 docker compose -p openagent-keycloak-infrastructure \
   -f deploy/infrastructure/docker-compose.yml \
   --env-file .env \
-  --profile storage up -d
+  --profile storage --profile keycloak up -d
 
 OPENAGENT_ROUTER_PORT=55011 \
 OPENAGENT_ENGINE_PORT=55218 \
@@ -88,10 +88,10 @@ OPENAGENT_KEYCLOAK_PUBLIC_URL=https://localhost:58081
 OPENAGENT_KEYCLOAK_METADATA_ADDRESS=http://keycloak:8080/realms/openagent/.well-known/openid-configuration
 ```
 
-- `OPENAGENT_AUTH_MODE` 支持 `JwtBearer` 和仅限 Development 的 `Basic`。本地 Basic 调试时设置 `OPENAGENT_ASPNETCORE_ENVIRONMENT=Development`、`OPENAGENT_AUTH_MODE=Basic`，并可将 `OPENAGENT_AUTH_ENABLE_KEYCLOAK=false`；开发账号为 `admin/admin` 或 `test/test`。
+- `OPENAGENT_AUTH_MODE` 支持 `Basic`（部署默认，任意环境可用）和 `JwtBearer`。Basic 登录密码由必填项 `OPENAGENT_AUTH_BASIC_PASSWORD` 提供（配置后内置开发账号即失效）；切换 Keycloak 时设置 `OPENAGENT_AUTH_MODE=JwtBearer`、`OPENAGENT_AUTH_ENABLE_KEYCLOAK=true`，并在 `.env` 中保留该必填密码变量（Compose 启动前校验）。
 - `OPENAGENT_AUTH_ENABLE_API_KEY=true` 时，Router 和 Engine 增加数据库中的第三方 Bearer API Key 认证，不访问 Keycloak；该开关与 `OPENAGENT_AUTH_MODE` 并存，不替换 Basic/JWT Bearer 方案。API Key 记录位于 `openagent.third_party_api_keys`。
 - `OPENAGENT_AUTH_ENABLE_KEYCLOAK` 控制 Keycloak/OIDC 登录入口。AD 只是 Keycloak 的一种身份源；接入真实 AD 时，需要在 Keycloak 中配置 LDAP/AD User Federation。本地 Realm 没有真实域控，因此只验证开关和登录链路。
-- `OPENAGENT_AUTH_AUDIENCE`、`OPENAGENT_AUTH_CLIENT_ID`、`OPENAGENT_AUTH_REQUIRE_HTTPS_METADATA` 和 `OPENAGENT_AUTH_CLOCK_SKEW_SECONDS` 分别控制 JWT audience、OIDC client、元数据 HTTPS 要求和时钟容差。
+- `OPENAGENT_AUTH_AUDIENCE` 与 `OPENAGENT_AUTH_CLIENT_ID` 控制 JWT audience 与 OIDC client；生产元数据固定要求 HTTPS、时钟容差固定 60 秒。
 - `OPENAGENT_KEYCLOAK_PUBLIC_URL` 是浏览器使用的公开 Issuer 地址；`OPENAGENT_KEYCLOAK_METADATA_ADDRESS` 是 Engine/Router 访问 discovery 的服务端地址。
 - Engine 和 Router 固定解析认证 token 中的租户 claim，并在 Agent/管理接口缺少租户时拒绝请求，不提供关闭租户隔离的配置。
 - 本地 Realm 已启用 Keycloak Organization。创建用户时，需要在用户属性中设置 `tenant_id`，并将用户加入同名 Organization；申请 `organization` scope 后，访问令牌会包含对应的 `tenant_id` 和 `organization` claim。
