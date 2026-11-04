@@ -201,37 +201,29 @@ try {
     # 构建应用镜像；不启动或修改任何容器。
     Invoke-Docker -Arguments @(
         'build', '--tag', $engineImage,
-        '--file', (Join-WslPath -Base $dockerRepoRoot -Child 'src/OpenAgent.Engine.Host/Dockerfile'),
+        '--file', (Join-WslPath -Base $dockerRepoRoot -Child 'Backend/src/OpenAgent.Engine.Host/Dockerfile'),
         $dockerRepoRoot
     )
     Invoke-Docker -Arguments @(
         'build', '--tag', $routerImage,
-        '--file', (Join-WslPath -Base $dockerRepoRoot -Child 'src/OpenAgent.Router/Dockerfile'),
+        '--file', (Join-WslPath -Base $dockerRepoRoot -Child 'Backend/src/OpenAgent.Router/Dockerfile'),
         $dockerRepoRoot
     )
     # Chat 镜像的浏览器端地址由 Dockerfile 从统一变量派生，与直接 docker build 的接口一致。
-    # 独立后端检出不含 Frontend/ 时跳过 chat 构建，沿用已有镜像或从包含前端的源码树构建。
-    $chatDockerfile = Join-Path $repoRoot 'Frontend/OpenAgent.Chat/Dockerfile'
-    if (Test-Path $chatDockerfile) {
-        Invoke-Docker -Arguments @(
-            'build', '--tag', $chatImage,
-            '--build-arg', "OPENAGENT_PUBLIC_SCHEME=$publicScheme",
-            '--build-arg', "OPENAGENT_PUBLIC_HOST=$publicHost",
-            '--build-arg', "OPENAGENT_ROUTER_PORT=$routerPort",
-            '--build-arg', "OPENAGENT_ENGINE_PORT=$enginePort",
-            '--build-arg', "OPENAGENT_TENANT_ID=$tenantId",
-            '--file', (Join-WslPath -Base $dockerRepoRoot -Child 'Frontend/OpenAgent.Chat/Dockerfile'),
-            $dockerRepoRoot
-        )
-    }
-    else {
-        $chatImage = ''
-        Write-Host 'note: Frontend/OpenAgent.Chat/Dockerfile not found; skipping chat image build.'
-    }
+    Invoke-Docker -Arguments @(
+        'build', '--tag', $chatImage,
+        '--build-arg', "OPENAGENT_PUBLIC_SCHEME=$publicScheme",
+        '--build-arg', "OPENAGENT_PUBLIC_HOST=$publicHost",
+        '--build-arg', "OPENAGENT_ROUTER_PORT=$routerPort",
+        '--build-arg', "OPENAGENT_ENGINE_PORT=$enginePort",
+        '--build-arg', "OPENAGENT_TENANT_ID=$tenantId",
+        '--file', (Join-WslPath -Base $dockerRepoRoot -Child 'Frontend/OpenAgent.Chat/Dockerfile'),
+        $dockerRepoRoot
+    )
 
     Invoke-Docker -Arguments @(
         'build', '--tag', $runnerImage,
-        '--file', (Join-WslPath -Base $dockerRepoRoot -Child 'src/OpenAgent.Runner/Dockerfile'),
+        '--file', (Join-WslPath -Base $dockerRepoRoot -Child 'Backend/src/OpenAgent.Runner/Dockerfile'),
         $dockerRepoRoot
     )
 
@@ -240,9 +232,7 @@ try {
         Export-ImageTar -Image $runnerImage -FileName 'openagent-runner.tar' -OutputDirectory $dockerTarDirectory -Wsl:$exportWsl
         Export-ImageTar -Image $engineImage -FileName 'openagent-engine.tar' -OutputDirectory $dockerTarDirectory -Wsl:$exportWsl
         Export-ImageTar -Image $routerImage -FileName 'openagent-router.tar' -OutputDirectory $dockerTarDirectory -Wsl:$exportWsl
-        if (-not [string]::IsNullOrWhiteSpace($chatImage)) {
-            Export-ImageTar -Image $chatImage -FileName 'openagent-chat.tar' -OutputDirectory $dockerTarDirectory -Wsl:$exportWsl
-        }
+        Export-ImageTar -Image $chatImage -FileName 'openagent-chat.tar' -OutputDirectory $dockerTarDirectory -Wsl:$exportWsl
     }
 }
 catch {

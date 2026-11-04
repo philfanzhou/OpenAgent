@@ -27,13 +27,10 @@ public static class AuthenticationEndpointExtensions
         {
             Mode = options.Mode.ToString(),
             Development = environment.IsDevelopment(),
-            Keycloak = new KeycloakConfigResponse
-            {
-                Enabled = options.Mode == AgentAuthenticationMode.JwtBearer && options.EnableKeycloak
-            },
+            Keycloak = new KeycloakConfigResponse { Enabled = options.EnableKeycloak },
             Password = new PasswordAuthConfigResponse
             {
-                Enabled = options.Mode == AgentAuthenticationMode.Basic,
+                Enabled = environment.IsDevelopment() && options.Mode == AgentAuthenticationMode.Basic,
                 Endpoint = "/api/v1/auth/password/token"
             },
             Anonymous = new AnonymousAuthConfigResponse
@@ -56,7 +53,7 @@ public static class AuthenticationEndpointExtensions
             .WithName("GetAuthConfig")
             .WithTags("Authentication");
 
-        if (options.Mode == AgentAuthenticationMode.Basic)
+        if (environment.IsDevelopment() && options.Mode == AgentAuthenticationMode.Basic)
         {
             group.MapPost("/password/token",
                 Results<Ok<TokenResponse>, ProblemHttpResult> (PasswordLoginRequest request, HttpContext context) =>
@@ -68,7 +65,7 @@ public static class AuthenticationEndpointExtensions
                         "username_and_password_required", context));
                 }
 
-                if (!DevelopmentCredentials.IsValid(request.Username, request.Password, options, environment.IsDevelopment()))
+                if (!DevelopmentCredentials.IsValid(request.Username, request.Password))
                 {
                     return TypedResults.Problem(AgentProblemDetails.AuthenticationRequired(
                         "Invalid username or password.", context));

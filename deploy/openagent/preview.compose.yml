@@ -14,7 +14,7 @@ services:
   engine:
     build:
       context: ../..
-      dockerfile: src/OpenAgent.Engine.Host/Dockerfile
+      dockerfile: Backend/src/OpenAgent.Engine.Host/Dockerfile
     # WSL 空闲关机后，下次启动 Docker 时自动拉回预览。
     restart: unless-stopped
     environment:
@@ -66,7 +66,7 @@ services:
   runner:
     build:
       context: ../..
-      dockerfile: src/OpenAgent.Runner/Dockerfile
+      dockerfile: Backend/src/OpenAgent.Runner/Dockerfile
     # WSL 空闲关机后，下次启动 Docker 时自动拉回预览。
     restart: unless-stopped
     environment:
@@ -88,7 +88,7 @@ services:
   router:
     build:
       context: ../..
-      dockerfile: src/OpenAgent.Router/Dockerfile
+      dockerfile: Backend/src/OpenAgent.Router/Dockerfile
     # WSL 空闲关机后，下次启动 Docker 时自动拉回预览。
     restart: unless-stopped
     environment:

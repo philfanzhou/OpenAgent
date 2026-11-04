@@ -20,11 +20,10 @@ to_wsl_path() {
   local path="$1"
   local windows_path="$path"
 
-  # 用正斜杠形式的 Windows 路径（D:/...）：反斜杠路径经 wsl.exe 转发时会被中间 shell 当转义符吃掉。
   if command -v cygpath >/dev/null 2>&1; then
-    windows_path="$(cygpath -m "$path")"
+    windows_path="$(cygpath -w "$path")"
   elif [[ "$path" =~ ^/([[:alpha:]])/(.*)$ ]]; then
-    windows_path="${BASH_REMATCH[1]^^}:/${BASH_REMATCH[2]}"
+    windows_path="${BASH_REMATCH[1]^^}:\\${BASH_REMATCH[2]//\//\\}"
   fi
 
   wsl.exe wslpath -a -u "$windows_path" | tr -d '\r'
@@ -107,8 +106,6 @@ docker_root="$repo_root"
 if [[ "${docker_cmd[0]}" == "wsl.exe" ]]; then
   docker_root="$(to_wsl_path "$repo_root")"
   [[ -n "$docker_root" ]] || die "failed to convert repository path for WSL Docker"
-  # Git Bash 会把传给 wsl.exe 的 /mnt/... 参数改写为 Windows 路径，必须关闭该转换。
-  export MSYS_NO_PATHCONV=1
 fi
 
 docker_tar_directory=""
@@ -134,42 +131,33 @@ tenant_id="${OPENAGENT_TENANT_ID:-development}"
 
 "${docker_cmd[@]}" build \
   --tag "$engine_image" \
-  --file "$docker_root/src/OpenAgent.Engine.Host/Dockerfile" \
+  --file "$docker_root/Backend/src/OpenAgent.Engine.Host/Dockerfile" \
   "$docker_root"
 
 "${docker_cmd[@]}" build \
   --tag "$router_image" \
-  --file "$docker_root/src/OpenAgent.Router/Dockerfile" \
+  --file "$docker_root/Backend/src/OpenAgent.Router/Dockerfile" \
   "$docker_root"
 
 # Chat 镜像的浏览器端地址由 Dockerfile 从统一变量派生，与直接 docker build 的接口一致。
-# 独立后端检出不含 Frontend/ 时跳过 chat 构建，沿用已有镜像或从包含前端的源码树构建。
-chat_dockerfile="$repo_root/Frontend/OpenAgent.Chat/Dockerfile"
-if [[ -f "$chat_dockerfile" ]]; then
-  "${docker_cmd[@]}" build \
-    --tag "$chat_image" \
-    --build-arg "OPENAGENT_PUBLIC_SCHEME=$public_scheme" \
-    --build-arg "OPENAGENT_PUBLIC_HOST=$public_host" \
-    --build-arg "OPENAGENT_ROUTER_PORT=$router_port" \
-    --build-arg "OPENAGENT_ENGINE_PORT=$engine_port" \
-    --build-arg "OPENAGENT_TENANT_ID=$tenant_id" \
-    --file "$docker_root/Frontend/OpenAgent.Chat/Dockerfile" \
-    "$docker_root"
-else
-  chat_image=""
-  echo "note: Frontend/OpenAgent.Chat/Dockerfile not found; skipping chat image build." >&2
-fi
+"${docker_cmd[@]}" build \
+  --tag "$chat_image" \
+  --build-arg "OPENAGENT_PUBLIC_SCHEME=$public_scheme" \
+  --build-arg "OPENAGENT_PUBLIC_HOST=$public_host" \
+  --build-arg "OPENAGENT_ROUTER_PORT=$router_port" \
+  --build-arg "OPENAGENT_ENGINE_PORT=$engine_port" \
+  --build-arg "OPENAGENT_TENANT_ID=$tenant_id" \
+  --file "$docker_root/Frontend/OpenAgent.Chat/Dockerfile" \
+  "$docker_root"
 
 "${docker_cmd[@]}" build \
   --tag "$runner_image" \
-  --file "$docker_root/src/OpenAgent.Runner/Dockerfile" \
+  --file "$docker_root/Backend/src/OpenAgent.Runner/Dockerfile" \
   "$docker_root"
 
 if [[ -n "$docker_tar_directory" ]]; then
   "${docker_cmd[@]}" save --output "$docker_tar_directory/openagent-runner.tar" "$runner_image"
   "${docker_cmd[@]}" save --output "$docker_tar_directory/openagent-engine.tar" "$engine_image"
   "${docker_cmd[@]}" save --output "$docker_tar_directory/openagent-router.tar" "$router_image"
-  if [[ -n "$chat_image" ]]; then
-    "${docker_cmd[@]}" save --output "$docker_tar_directory/openagent-chat.tar" "$chat_image"
-  fi
+  "${docker_cmd[@]}" save --output "$docker_tar_directory/openagent-chat.tar" "$chat_image"
 fi

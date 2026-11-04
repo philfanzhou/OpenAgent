@@ -1,65 +1,42 @@
-name: openagent-app
+name: ${OPENAGENT_COMPOSE_PROJECT:-openagent-app}
 services:
   engine:
-    image: openagent-engine:latest
+    image: ${OPENAGENT_ENGINE_IMAGE:-openagent-engine:latest}
     environment:
-      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_ENVIRONMENT: ${OPENAGENT_ASPNETCORE_ENVIRONMENT:-Development}
       ASPNETCORE_URLS: http://+:5208
-      # Engine 专用：数据库与 S3；不会传给 Router、Runner 或 Chat。
-      ConnectionStrings__OpenAgentDatabase: Host=postgres;Port=5432;Database=openagent;Username=openagent;Password=${OPENAGENT_POSTGRES_PASSWORD:?Set OPENAGENT_POSTGRES_PASSWORD}
-      # 可选覆盖：外部 S3-compatible 服务商按需修改区域和寻址方式。
-      # FileAssets__ObjectStorage__Region: ${OPENAGENT_S3_REGION:-us-east-1}
-      # FileAssets__ObjectStorage__ForcePathStyle: "${OPENAGENT_S3_FORCE_PATH_STYLE:-true}"
-      # 可选：连接外部 Redis 时启用；默认不连接 Redis。
-      # ConnectionStrings__Redis: ${OPENAGENT_REDIS_HOST:-redis}:${OPENAGENT_REDIS_INTERNAL_PORT:-6379}
+      ConnectionStrings__OpenAgentDatabase: Host=${OPENAGENT_POSTGRES_HOST:-postgres};Port=${OPENAGENT_POSTGRES_INTERNAL_PORT:-5432};Database=${OPENAGENT_POSTGRES_DB:-openagent};Username=${OPENAGENT_POSTGRES_USER:-openagent};Password=${OPENAGENT_POSTGRES_PASSWORD:-openagent}
+      ConnectionStrings__Redis: ${OPENAGENT_REDIS_HOST:-redis}:${OPENAGENT_REDIS_INTERNAL_PORT:-6379}
       Database__ApplyMigrationsOnStartup: "true"
       ConversationCache__Enabled: "true"
-      FileAssets__Enabled: "true"
-      # 可选：启用外部 OpenTelemetry Collector。
-      # OpenTelemetry__OtlpEndpoint: ${OPENAGENT_OTLP_ENDPOINT:-}
+      FileAssets__Enabled: ${OPENAGENT_FILE_ASSETS_ENABLED:-true}
+      OpenTelemetry__OtlpEndpoint: ${OPENAGENT_OTLP_ENDPOINT:-}
       OpenTelemetry__ServiceName: openagent-engine
-      OpenTelemetry__ServiceVersion: 1.0.0
-      # 可选：仅在明确接受跳过证书校验时启用，默认 false。
-      # OPENAGENT_ALLOW_INSECURE_TLS: ${OPENAGENT_ALLOW_INSECURE_TLS:-false}
-      FileAssets__ObjectStorage__ServiceUrl: ${OPENAGENT_S3_SERVICE_URL:?Set OPENAGENT_S3_SERVICE_URL}
+      OpenTelemetry__ServiceVersion: ${OPENAGENT_SERVICE_VERSION:-development}
+      OPENAGENT_ALLOW_INSECURE_TLS: ${OPENAGENT_ALLOW_INSECURE_TLS:-false}
+      FileAssets__ObjectStorage__ServiceUrl: ${OPENAGENT_S3_SERVICE_URL:-http://minio:9000}
       FileAssets__ObjectStorage__ForcePathStyle: "true"
-      FileAssets__ObjectStorage__BucketName: openagent-files
-      FileAssets__ObjectStorage__AccessKey: ${OPENAGENT_S3_ACCESS_KEY:?Set OPENAGENT_S3_ACCESS_KEY}
-      FileAssets__ObjectStorage__SecretKey: ${OPENAGENT_S3_SECRET_KEY:?Set OPENAGENT_S3_SECRET_KEY}
-      # 可选：S3 bucket 不是 openagent-files 时，先创建 bucket 再替换默认值。
-      # FileAssets__ObjectStorage__BucketName: ${OPENAGENT_S3_BUCKET:-openagent-files}
-      # FileAssets__Share__PublicBaseUrl: ${OPENAGENT_SHARE_PUBLIC_BASE_URL:-}
+      FileAssets__ObjectStorage__BucketName: ${OPENAGENT_S3_BUCKET:-openagent-files}
+      FileAssets__ObjectStorage__AccessKey: ${OPENAGENT_S3_ACCESS_KEY:-openagent}
+      FileAssets__ObjectStorage__SecretKey: ${OPENAGENT_S3_SECRET_KEY:-openagent-secret}
+      FileAssets__Share__PublicBaseUrl: ${OPENAGENT_SHARE_PUBLIC_BASE_URL:-}
       Heartbeat__AdvertisedHost: engine
       CodeExecution__Enabled: "true"
       CodeExecution__Endpoint: http://runner:5209
-      # Engine 与 Runner 的服务间认证，不是用户登录密码。
       CodeExecution__ApiKey: ${OPENAGENT_RUNNER_API_KEY:?Set a random Runner API key of at least 32 characters}
       CodeExecution__RequestTimeoutSeconds: "180"
       Heartbeat__AdvertisedPort: "5208"
-      # 登录配置：默认 Basic；Engine 与 Router 使用相同账号和租户。
-      # 部署默认禁止匿名；开发预览使用独立配置。
-      Authentication__AllowDevelopmentAnonymous: "false"
-      Authentication__Mode: Basic
-      Authentication__EnableKeycloak: "false"
-      Authentication__EnableApiKey: "false"
-      # 可选 OIDC：改用 JwtBearer、启用 Keycloak，并同步修改 Router。
-      # Authentication__Mode: JwtBearer
-      # Authentication__EnableKeycloak: "true"
-      # Authentication__EnableApiKey: "true"
-      # Authentication__Authority: ${OPENAGENT_KEYCLOAK_PUBLIC_URL:-https://localhost:58081}/realms/openagent
-      # Authentication__MetadataAddress: ${OPENAGENT_KEYCLOAK_METADATA_ADDRESS:-}
-      # Authentication__Audience: ${OPENAGENT_AUTH_AUDIENCE:-openagent-api}
-      # Authentication__ClientId: ${OPENAGENT_AUTH_CLIENT_ID:-openagent-chat}
-      # 生产 OIDC 元数据必须使用 HTTPS，时钟容差默认 60 秒。
-      Authentication__RequireHttpsMetadata: "true"
-      Authentication__ClockSkewSeconds: "60"
-      Authentication__BasicUsername: admin
-      Authentication__BasicPassword: ${OPENAGENT_AUTH_BASIC_PASSWORD:?Set OPENAGENT_AUTH_BASIC_PASSWORD}
-      Authentication__BasicTenantId: development
-      # 可选覆盖：Engine 与 Router 的用户名和租户必须保持一致。
-      # Authentication__BasicUsername: ${OPENAGENT_AUTH_BASIC_USERNAME:-admin}
-      # Authentication__BasicTenantId: ${OPENAGENT_AUTH_BASIC_TENANT_ID:-development}
-      Cors__AllowedOrigins__0: https://localhost:8081
+      Authentication__AllowDevelopmentAnonymous: "${OPENAGENT_AUTH_ALLOW_DEVELOPMENT_ANONYMOUS:-false}"
+      Authentication__Mode: ${OPENAGENT_AUTH_MODE:-JwtBearer}
+      Authentication__EnableKeycloak: "${OPENAGENT_AUTH_ENABLE_KEYCLOAK:-true}"
+      Authentication__EnableApiKey: "${OPENAGENT_AUTH_ENABLE_API_KEY:-false}"
+      Authentication__Authority: ${OPENAGENT_KEYCLOAK_PUBLIC_URL:-https://${OPENAGENT_PUBLIC_HOST:-localhost}:${OPENAGENT_KEYCLOAK_PORT:-58081}}/realms/openagent
+      Authentication__MetadataAddress: ${OPENAGENT_KEYCLOAK_METADATA_ADDRESS:-http://keycloak:8080/realms/openagent/.well-known/openid-configuration}
+      Authentication__Audience: ${OPENAGENT_AUTH_AUDIENCE:-openagent-api}
+      Authentication__ClientId: ${OPENAGENT_AUTH_CLIENT_ID:-openagent-chat}
+      Authentication__RequireHttpsMetadata: ${OPENAGENT_AUTH_REQUIRE_HTTPS_METADATA:-false}
+      Authentication__ClockSkewSeconds: ${OPENAGENT_AUTH_CLOCK_SKEW_SECONDS:-60}
+      Cors__AllowedOrigins__0: ${OPENAGENT_CHAT_PUBLIC_URL:-${OPENAGENT_PUBLIC_SCHEME:-https}://${OPENAGENT_PUBLIC_HOST:-localhost}:${OPENAGENT_CHAT_PORT:-8081}}
     networks:
       - openagent
       - infrastructure
@@ -75,10 +52,9 @@ services:
       retries: 30
 
   runner:
-    image: openagent-runner:latest
+    image: ${OPENAGENT_RUNNER_IMAGE:-openagent-runner:latest}
     environment:
       ASPNETCORE_URLS: http://+:5209
-      # 只接收执行服务密钥，不接收数据库、S3 或 Basic 凭据。
       Runner__ApiKey: ${OPENAGENT_RUNNER_API_KEY:?Set a random Runner API key of at least 32 characters}
     networks:
       - openagent
@@ -97,42 +73,28 @@ services:
       retries: 30
 
   router:
-    image: openagent-router:latest
+    image: ${OPENAGENT_ROUTER_IMAGE:-openagent-router:latest}
     environment:
-      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_ENVIRONMENT: ${OPENAGENT_ASPNETCORE_ENVIRONMENT:-Development}
       ASPNETCORE_URLS: http://+:5001
-      # 可选：连接外部 Redis / OpenTelemetry 时启用。
-      # ConnectionStrings__Redis: ${OPENAGENT_REDIS_HOST:-redis}:${OPENAGENT_REDIS_INTERNAL_PORT:-6379}
-      # OpenTelemetry__OtlpEndpoint: ${OPENAGENT_OTLP_ENDPOINT:-}
+      ConnectionStrings__Redis: ${OPENAGENT_REDIS_HOST:-redis}:${OPENAGENT_REDIS_INTERNAL_PORT:-6379}
+      OpenTelemetry__OtlpEndpoint: ${OPENAGENT_OTLP_ENDPOINT:-}
       OpenTelemetry__ServiceName: openagent-router
-      OpenTelemetry__ServiceVersion: 1.0.0
-      # OPENAGENT_ALLOW_INSECURE_TLS: ${OPENAGENT_ALLOW_INSECURE_TLS:-false}
+      OpenTelemetry__ServiceVersion: ${OPENAGENT_SERVICE_VERSION:-development}
+      OPENAGENT_ALLOW_INSECURE_TLS: ${OPENAGENT_ALLOW_INSECURE_TLS:-false}
       RouterSettings__Routing__EngineEndpoint: http://engine:5208
       RouterSettings__IntentRecognition__TimeoutMs: "30000"
-      # 登录配置：默认 Basic；Engine 与 Router 使用相同账号和租户。
-      # 部署默认禁止匿名；开发预览使用独立配置。
-      Authentication__AllowDevelopmentAnonymous: "false"
-      Authentication__Mode: Basic
-      Authentication__EnableKeycloak: "false"
-      Authentication__EnableApiKey: "false"
-      # 可选 OIDC：Engine 与 Router 必须使用同一组参数。
-      # Authentication__Mode: JwtBearer
-      # Authentication__EnableKeycloak: "true"
-      # Authentication__EnableApiKey: "true"
-      # Authentication__Authority: ${OPENAGENT_KEYCLOAK_PUBLIC_URL:-https://localhost:58081}/realms/openagent
-      # Authentication__MetadataAddress: ${OPENAGENT_KEYCLOAK_METADATA_ADDRESS:-}
-      # Authentication__Audience: ${OPENAGENT_AUTH_AUDIENCE:-openagent-api}
-      # Authentication__ClientId: ${OPENAGENT_AUTH_CLIENT_ID:-openagent-chat}
-      # 生产 OIDC 元数据必须使用 HTTPS，时钟容差默认 60 秒。
-      Authentication__RequireHttpsMetadata: "true"
-      Authentication__ClockSkewSeconds: "60"
-      Authentication__BasicUsername: admin
-      Authentication__BasicPassword: ${OPENAGENT_AUTH_BASIC_PASSWORD:?Set OPENAGENT_AUTH_BASIC_PASSWORD}
-      Authentication__BasicTenantId: development
-      # 可选覆盖：与 Engine 保持一致。
-      # Authentication__BasicUsername: ${OPENAGENT_AUTH_BASIC_USERNAME:-admin}
-      # Authentication__BasicTenantId: ${OPENAGENT_AUTH_BASIC_TENANT_ID:-development}
-      Cors__AllowedOrigins__0: https://localhost:8081
+      Authentication__AllowDevelopmentAnonymous: "${OPENAGENT_AUTH_ALLOW_DEVELOPMENT_ANONYMOUS:-false}"
+      Authentication__Mode: ${OPENAGENT_AUTH_MODE:-JwtBearer}
+      Authentication__EnableKeycloak: "${OPENAGENT_AUTH_ENABLE_KEYCLOAK:-true}"
+      Authentication__EnableApiKey: "${OPENAGENT_AUTH_ENABLE_API_KEY:-false}"
+      Authentication__Authority: ${OPENAGENT_KEYCLOAK_PUBLIC_URL:-https://${OPENAGENT_PUBLIC_HOST:-localhost}:${OPENAGENT_KEYCLOAK_PORT:-58081}}/realms/openagent
+      Authentication__MetadataAddress: ${OPENAGENT_KEYCLOAK_METADATA_ADDRESS:-http://keycloak:8080/realms/openagent/.well-known/openid-configuration}
+      Authentication__Audience: ${OPENAGENT_AUTH_AUDIENCE:-openagent-api}
+      Authentication__ClientId: ${OPENAGENT_AUTH_CLIENT_ID:-openagent-chat}
+      Authentication__RequireHttpsMetadata: ${OPENAGENT_AUTH_REQUIRE_HTTPS_METADATA:-false}
+      Authentication__ClockSkewSeconds: ${OPENAGENT_AUTH_CLOCK_SKEW_SECONDS:-60}
+      Cors__AllowedOrigins__0: ${OPENAGENT_CHAT_PUBLIC_URL:-${OPENAGENT_PUBLIC_SCHEME:-https}://${OPENAGENT_PUBLIC_HOST:-localhost}:${OPENAGENT_CHAT_PORT:-8081}}
     depends_on:
       engine:
         condition: service_healthy
@@ -146,7 +108,7 @@ services:
       retries: 30
 
   chat:
-    image: openagent-chat:latest
+    image: ${OPENAGENT_CHAT_IMAGE:-openagent-chat:latest}
     depends_on:
       router:
         condition: service_healthy
@@ -163,30 +125,27 @@ services:
       engine:
         condition: service_healthy
     environment:
-      OPENAGENT_NGINX_CLIENT_MAX_BODY_SIZE: 1100m
-      OPENAGENT_NGINX_SERVER_NAME: localhost
-      OPENAGENT_CHAT_PORT: "8081"
-      OPENAGENT_ROUTER_PORT: "8082"
-      OPENAGENT_ENGINE_PORT: "8083"
-      # 可选覆盖：修改这里的端口、下方 ports 和 Nginx 模板中的 listen 值，保持三处一致。
+      OPENAGENT_NGINX_CLIENT_MAX_BODY_SIZE: ${OPENAGENT_NGINX_CLIENT_MAX_BODY_SIZE:-1100m}
+      OPENAGENT_NGINX_SERVER_NAME: ${OPENAGENT_PUBLIC_HOST:-localhost}
+      OPENAGENT_CHAT_PORT: ${OPENAGENT_CHAT_PORT:-8081}
+      OPENAGENT_ROUTER_PORT: ${OPENAGENT_ROUTER_PORT:-8082}
+      OPENAGENT_ENGINE_PORT: ${OPENAGENT_ENGINE_PORT:-8083}
     ports:
-      - "8081:8081"
-      - "8082:8082"
-      - "8083:8083"
+      - "${OPENAGENT_CHAT_PORT:-8081}:${OPENAGENT_CHAT_PORT:-8081}"
+      - "${OPENAGENT_ROUTER_PORT:-8082}:${OPENAGENT_ROUTER_PORT:-8082}"
+      - "${OPENAGENT_ENGINE_PORT:-8083}:${OPENAGENT_ENGINE_PORT:-8083}"
     volumes:
       - ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
-      # 可选：自定义证书目录时，将下一行路径替换为宿主机证书目录（需含 tls.crt/tls.key）。
-      - ./nginx/certs:/etc/nginx/tls:ro
+      - ${OPENAGENT_TLS_CERT_DIR:-./nginx/certs}:/etc/nginx/tls:ro
     networks:
       - openagent
 
 networks:
   openagent:
-    name: openagent
-    # 可选：已有部署需沿用其他网络名时，修改此处及应用服务引用。
+    name: ${OPENAGENT_APP_NETWORK:-openagent}
   infrastructure:
     external: true
-    name: openagent-infrastructure
+    name: ${OPENAGENT_INFRA_NETWORK:-openagent-infrastructure}
 
 volumes:
   engine-data-protection:
