@@ -48,6 +48,7 @@ public class AuthenticationEndpointTests
             new Dictionary<string, string?>
             {
                 ["Authentication:Mode"] = "JwtBearer",
+                ["Authentication:EnableKeycloak"] = "true",
                 ["Authentication:Authority"] = "https://identity.example",
                 ["Authentication:Audience"] = "openagent-api",
                 ["Authentication:ClientId"] = "openagent-chat"
@@ -69,6 +70,34 @@ public class AuthenticationEndpointTests
             new[] { "openid", "profile" },
             config.RootElement.GetProperty("oidc").GetProperty("scopes").Deserialize<string[]>());
         Assert.Equal(HttpStatusCode.NotFound, login.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("operator", "configured-password", HttpStatusCode.OK)]
+    [InlineData("operator", "wrong-password", HttpStatusCode.Unauthorized)]
+    [InlineData("admin", "admin", HttpStatusCode.Unauthorized)]
+    public async Task ProductionBasicEndpoints_UseConfiguredLoginWithoutKeycloak(
+        string username, string password, HttpStatusCode expected)
+    {
+        await using WebApplication app = await StartApplicationAsync(
+            Environments.Production,
+            new Dictionary<string, string?>
+            {
+                ["Authentication:BasicUsername"] = "operator",
+                ["Authentication:BasicPassword"] = "configured-password"
+            });
+        using HttpClient client = CreateClient(app);
+        using JsonDocument config = await client.GetFromJsonAsync<JsonDocument>("/api/v1/auth/config")
+            ?? throw new InvalidOperationException("Authentication config was empty.");
+
+        HttpResponseMessage login = await client.PostAsJsonAsync(
+            "/api/v1/auth/password/token", new { username, password });
+
+        Assert.Equal("Basic", config.RootElement.GetProperty("mode").GetString());
+        Assert.True(config.RootElement.GetProperty("password").GetProperty("enabled").GetBoolean());
+        Assert.False(config.RootElement.GetProperty("keycloak").GetProperty("enabled").GetBoolean());
+        Assert.False(config.RootElement.GetProperty("anonymous").GetProperty("enabled").GetBoolean());
+        Assert.Equal(expected, login.StatusCode);
     }
 
     private static async Task<WebApplication> StartApplicationAsync(

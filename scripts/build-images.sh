@@ -20,10 +20,11 @@ to_wsl_path() {
   local path="$1"
   local windows_path="$path"
 
+  # 用正斜杠形式的 Windows 路径（D:/...）：反斜杠路径经 wsl.exe 转发时会被中间 shell 当转义符吃掉。
   if command -v cygpath >/dev/null 2>&1; then
-    windows_path="$(cygpath -w "$path")"
+    windows_path="$(cygpath -m "$path")"
   elif [[ "$path" =~ ^/([[:alpha:]])/(.*)$ ]]; then
-    windows_path="${BASH_REMATCH[1]^^}:\\${BASH_REMATCH[2]//\//\\}"
+    windows_path="${BASH_REMATCH[1]^^}:/${BASH_REMATCH[2]}"
   fi
 
   wsl.exe wslpath -a -u "$windows_path" | tr -d '\r'
@@ -106,6 +107,8 @@ docker_root="$repo_root"
 if [[ "${docker_cmd[0]}" == "wsl.exe" ]]; then
   docker_root="$(to_wsl_path "$repo_root")"
   [[ -n "$docker_root" ]] || die "failed to convert repository path for WSL Docker"
+  # Git Bash 会把传给 wsl.exe 的 /mnt/... 参数改写为 Windows 路径，必须关闭该转换。
+  export MSYS_NO_PATHCONV=1
 fi
 
 docker_tar_directory=""
