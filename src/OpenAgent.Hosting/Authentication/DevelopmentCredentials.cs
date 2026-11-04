@@ -1,12 +1,10 @@
 using System.Collections.Generic;
-using System.Security.Cryptography;
-using System.Text;
 
 namespace OpenAgent.Hosting.Authentication;
 
 /// <summary>
-/// Basic credential validation with development-account compatibility.
-/// Configured passwords disable the built-in development accounts.
+/// 开发环境内置账号校验。仅用于 Basic 模式下的本地开发预览，
+/// 生产环境必须使用 JWT Bearer。当前默认账号：admin/admin、test/test。
 /// </summary>
 internal static class DevelopmentCredentials
 {
@@ -16,23 +14,6 @@ internal static class DevelopmentCredentials
             ["admin"] = "admin",
             ["test"] = "test",
         };
-
-    internal static bool IsValid(
-        string username,
-        string password,
-        AgentAuthenticationOptions options,
-        bool isDevelopment)
-    {
-        if (string.IsNullOrWhiteSpace(options.BasicPassword))
-        {
-            return isDevelopment && IsValid(username, password);
-        }
-
-        byte[] expected = SHA256.HashData(Encoding.UTF8.GetBytes(options.BasicPassword));
-        byte[] supplied = SHA256.HashData(Encoding.UTF8.GetBytes(password));
-        return CryptographicOperations.FixedTimeEquals(expected, supplied)
-            && string.Equals(username, options.BasicUsername, System.StringComparison.Ordinal);
-    }
 
     /// <summary>
     /// 校验用户名/密码是否匹配内置开发账号。

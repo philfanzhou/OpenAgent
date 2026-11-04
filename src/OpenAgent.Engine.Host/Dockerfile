@@ -1,10 +1,9 @@
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
-COPY Directory.Build.props Directory.Packages.props global.json ./
-COPY src/ src/
-RUN dotnet restore src/OpenAgent.Engine.Host/OpenAgent.Engine.Host.csproj
-RUN dotnet publish src/OpenAgent.Engine.Host/OpenAgent.Engine.Host.csproj \
+COPY Backend/ Backend/
+RUN dotnet restore Backend/OpenAgent.sln
+RUN dotnet publish Backend/src/OpenAgent.Engine.Host/OpenAgent.Engine.Host.csproj \
     --configuration Release \
     --no-restore \
     --output /app/publish

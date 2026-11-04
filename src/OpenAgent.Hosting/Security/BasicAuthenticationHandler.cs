@@ -11,8 +11,9 @@ using OpenAgent.Hosting.Authentication;
 namespace OpenAgent.Hosting.Security;
 
 /// <summary>
-/// Validates configured Basic credentials. Built-in accounts are only available
-/// in Development when no password has been configured.
+/// Development-only basic authentication boundary. Credentials are validated
+/// against <see cref="DevelopmentCredentials"/> (admin/admin, test/test).
+/// Authorization is a separate future concern.
 /// </summary>
 internal sealed class BasicAuthenticationHandler(
     IOptionsMonitor<AuthenticationSchemeOptions> options,
@@ -29,6 +30,12 @@ internal sealed class BasicAuthenticationHandler(
 
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
+        if (!_environment.IsDevelopment())
+        {
+            return Task.FromResult(AuthenticateResult.Fail(
+                "Basic authentication is available only in Development."));
+        }
+
         string? authorization = Request.Headers.Authorization.FirstOrDefault();
         if (string.IsNullOrWhiteSpace(authorization)
             || !authorization.StartsWith("Basic ", StringComparison.OrdinalIgnoreCase))
@@ -62,14 +69,12 @@ internal sealed class BasicAuthenticationHandler(
         string username = decoded[..separator];
         string password = decoded[(separator + 1)..];
 
-        if (!DevelopmentCredentials.IsValid(username, password, _authenticationOptions, _environment.IsDevelopment()))
+        if (!DevelopmentCredentials.IsValid(username, password))
         {
             return Task.FromResult(AuthenticateResult.Fail("Invalid username or password."));
         }
 
-        return Task.FromResult(string.IsNullOrWhiteSpace(_authenticationOptions.BasicPassword)
-            ? SucceedDevelopment(username)
-            : Succeed(username, _authenticationOptions.BasicTenantId));
+        return Task.FromResult(SucceedDevelopment(username));
     }
 
     private AuthenticateResult SucceedDevelopment(string username)

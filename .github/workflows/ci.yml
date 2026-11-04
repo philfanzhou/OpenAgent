@@ -35,13 +35,13 @@ jobs:
           sudo apparmor_parser --replace /etc/apparmor.d/bwrap-userns-restrict
           python3 -m venv "$RUNNER_TEMP/openagent-code-venv"
           "$RUNNER_TEMP/openagent-code-venv/bin/pip" install --disable-pip-version-check --no-cache-dir \
-            --requirement src/OpenAgent.Runner/sandbox/requirements.txt
+            --requirement Backend/src/OpenAgent.Runner/sandbox/requirements.txt
           echo "CODEACT_TEST_PYTHON=$RUNNER_TEMP/openagent-code-venv/bin/python" >> "$GITHUB_ENV"
       - name: Test real Bubblewrap isolation and document generation
-        run: dotnet test tests/OpenAgent.Runner.Tests/OpenAgent.Runner.Tests.csproj --configuration Release --nologo --verbosity normal
+        run: dotnet test Backend/tests/OpenAgent.Runner.Tests/OpenAgent.Runner.Tests.csproj --configuration Release --nologo --verbosity normal
       - name: Publish and smoke-test Runner service
         run: |
-          dotnet publish src/OpenAgent.Runner/OpenAgent.Runner.csproj --configuration Release --output "$RUNNER_TEMP/openagent-runner"
+          dotnet publish Backend/src/OpenAgent.Runner/OpenAgent.Runner.csproj --configuration Release --output "$RUNNER_TEMP/openagent-runner"
           export CODEACT_RUNNER_DLL="$RUNNER_TEMP/openagent-runner/OpenAgent.Runner.dll"
           python3 scripts/test-codeact-runner.py
       - name: Install and smoke-test hardened systemd service
@@ -57,7 +57,7 @@ jobs:
             export RUN_CODEACT_RUNNER_TESTS=1
             export CODEACT_TEST_RUNNER_ENDPOINT="$ASPNETCORE_URLS"
             export CODEACT_TEST_RUNNER_KEY="$Runner__ApiKey"
-            dotnet test tests/OpenAgent.Core.Tests/OpenAgent.Core.Tests.csproj --configuration Release --filter FullyQualifiedName~MafLoop_RealRunner --nologo --verbosity normal
+            dotnet test Backend/tests/OpenAgent.Core.Tests/OpenAgent.Core.Tests.csproj --configuration Release --filter FullyQualifiedName~MafLoop_RealRunner --nologo --verbosity normal
           '
       - name: Show Runner service diagnostics on failure
         if: failure()
@@ -80,37 +80,16 @@ jobs:
           dotnet-version: 8.0.x
 
       - name: Restore dependencies
-        run: dotnet restore OpenAgent.sln
+        run: dotnet restore Backend/OpenAgent.sln
 
       - name: Build solution
-        run: dotnet build OpenAgent.sln --configuration Release --no-restore --nologo
+        run: dotnet build Backend/OpenAgent.sln --configuration Release --no-restore --nologo
 
       - name: Run tests
-        run: dotnet test OpenAgent.sln --configuration Release --no-build --no-restore --nologo --verbosity normal
-
-  frontend-paths:
-    name: Detect frontend sources
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      has_frontend: ${{ steps.detect.outputs.has_frontend }}
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-      - name: Detect Frontend/OpenAgent.Chat
-        id: detect
-        # 独立后端检出不含 Frontend/；只有源码树包含前端时才运行 frontend 任务。
-        run: |
-          if [ -f Frontend/OpenAgent.Chat/package.json ]; then
-            echo "has_frontend=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_frontend=false" >> "$GITHUB_OUTPUT"
-          fi
+        run: dotnet test Backend/OpenAgent.sln --configuration Release --no-build --no-restore --nologo --verbosity normal
 
   frontend:
     name: Frontend build and test
-    needs: frontend-paths
-    if: needs.frontend-paths.outputs.has_frontend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
