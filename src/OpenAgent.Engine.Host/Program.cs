@@ -38,7 +38,8 @@ builder.Services.AddHealthChecks()
 builder.Services.AddEngineErrorHandling();
 var app = builder.Build();
 
-if (app.Environment.IsDevelopment() && app.Configuration.GetValue<bool>("Database:ApplyMigrationsOnStartup"))
+// 显式开关在任意环境生效；部署 Compose 默认开启，全新数据库由此完成建表。
+if (app.Configuration.GetValue<bool>("Database:ApplyMigrationsOnStartup"))
 {
     await using AsyncServiceScope scope = app.Services.CreateAsyncScope();
     IDbContextFactory<OpenAgentDbContext> contexts = scope.ServiceProvider.GetRequiredService<IDbContextFactory<OpenAgentDbContext>>();

@@ -110,6 +110,17 @@ class DeploymentLayoutTests(unittest.TestCase):
             self.assertFalse(any(key.startswith('FileAssets__ObjectStorage__')
                                  or key == 'ConnectionStrings__OpenAgentDatabase' for key in env))
 
+    def test_build_dockerfiles_exist(self):
+        preview = config('deploy/openagent/preview.compose.yml')
+        checked = 0
+        for service in preview['services'].values():
+            dockerfile = (service.get('build') or {}).get('dockerfile')
+            if not dockerfile or dockerfile.startswith('Frontend/'):
+                continue
+            self.assertTrue((ROOT / dockerfile).exists(), dockerfile)
+            checked += 1
+        self.assertGreaterEqual(checked, 3)
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -1,0 +1,8 @@
+# 构建上下文白名单：Dockerfile 只需要根构建属性与 src/。
+# 采用先排除全部再放行的写法，避免检出目录中的本地残留（node_modules、bin/obj、.vs 等）进入上下文。
+**
+!Directory.Build.props
+!Directory.Packages.props
+!global.json
+!src
+!src/**

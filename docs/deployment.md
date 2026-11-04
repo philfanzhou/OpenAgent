@@ -15,6 +15,13 @@ docker compose -p openagent-infrastructure \
   --env-file .env --profile storage up -d
 ```
 
+注意镜像可得性：MinIO 官方镜像（`minio/minio` 与 `minio/mc`）已于 2026-09 从 Docker Hub 与 quay.io 删除。
+固定标签仅在本机缓存或镜像加速器仍保留副本时可拉取；全新环境请按基础设施 Compose 中的注释，用
+`OPENAGENT_MINIO_IMAGE` 与 `OPENAGENT_MC_IMAGE` 指向内网仓库或仍可访问的镜像源。
+
+应用 Compose 默认设置 `Database__ApplyMigrationsOnStartup=true`：Engine 启动时自动应用待执行的 EF 迁移
+（对 Production 同样生效），全新数据库无需手工建表；升级镜像时也由它滚动应用新迁移。
+
 ## HTTPS 与认证配置
 
 应用 Compose 只引用已构建或已拉取的镜像，绝不包含 `build` 定义；
@@ -73,14 +80,19 @@ scripts/deploy.sh --env-file .env --docker-mode wsl-docker
 同步修改运行时的 Nginx、CORS 与 Keycloak 地址。不经过脚本直接 `docker build` 时也使用相同构建参数。也可以在 `.env` 中设置
 `OPENAGENT_DOCKER_MODE=auto`、`docker` 或 `wsl-docker`，省略命令行参数。
 
+Chat 镜像的来源：本仓库为独立后端检出（不含 `Frontend/`）时，构建脚本会跳过 chat 并给出提示；
+chat 镜像需在包含 `Frontend/OpenAgent.Chat` 的源码树中构建，或从镜像仓库拉取既有版本，部署脚本对缺失的
+chat 镜像会明确报错。
+
 Windows PowerShell 可使用等价的 `scripts/build-images.ps1`；未指定 `-DockerMode` 时同样自动检测：
 
 ```powershell
 pwsh -File ./scripts/build-images.ps1 -EnvFile ./.env
 ```
 
-需要将构建好的镜像导出为 TAR 时，可指定目录；目录不存在会自动创建，四个镜像分别导出为
-`openagent-engine.tar`、`openagent-router.tar`、`openagent-chat.tar` 和 `openagent-runner.tar`。
+需要将构建好的镜像导出为 TAR 时，可指定目录；目录不存在会自动创建，镜像分别导出为
+`openagent-engine.tar`、`openagent-router.tar`、`openagent-chat.tar` 和 `openagent-runner.tar`
+（独立后端检出跳过 chat 时不出 chat 的 TAR）。
 Runner 随应用一起部署，部署环境文件必须设置 `OPENAGENT_RUNNER_API_KEY`（至少 32 字符）；详见 [Runner 部署](integrations/code-runner.md)：
 
 ```bash

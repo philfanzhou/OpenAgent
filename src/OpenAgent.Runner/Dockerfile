@@ -1,8 +1,9 @@
 FROM mcr.microsoft.com/dotnet/sdk:8.0-bookworm-slim AS build
 WORKDIR /src
-COPY Backend/ Backend/
-RUN dotnet restore Backend/src/OpenAgent.Runner/OpenAgent.Runner.csproj
-RUN dotnet publish Backend/src/OpenAgent.Runner/OpenAgent.Runner.csproj -c Release --no-restore -o /app/publish
+COPY Directory.Build.props Directory.Packages.props global.json ./
+COPY src/ src/
+RUN dotnet restore src/OpenAgent.Runner/OpenAgent.Runner.csproj
+RUN dotnet publish src/OpenAgent.Runner/OpenAgent.Runner.csproj -c Release --no-restore -o /app/publish
 
 FROM mcr.microsoft.com/dotnet/aspnet:8.0-bookworm-slim AS runtime
 WORKDIR /app
@@ -11,7 +12,7 @@ RUN apt-get update \
        libreoffice-impress libreoffice-calc fonts-noto-cjk curl \
     && bwrap --help | grep -q -- --disable-userns \
     && rm -rf /var/lib/apt/lists/*
-COPY Backend/src/OpenAgent.Runner/sandbox/requirements.txt /opt/openagent-code/requirements.txt
+COPY src/OpenAgent.Runner/sandbox/requirements.txt /opt/openagent-code/requirements.txt
 RUN python3 -m venv /opt/openagent-code/venv \
     && /opt/openagent-code/venv/bin/pip install --disable-pip-version-check --no-cache-dir \
        -r /opt/openagent-code/requirements.txt
