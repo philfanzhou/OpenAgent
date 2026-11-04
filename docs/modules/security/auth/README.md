@@ -6,9 +6,9 @@
 
 | 能力 | 行为 |
 |---|---|
-| Production 登录 | 前端通过企业 IdP 执行 OIDC Authorization Code + PKCE |
-| Production API | JWT Bearer 校验 issuer、audience、签名和 lifetime，不接受 URL token；启用第三方 API Key 后，API Key 请求由数据库校验 Bearer 凭据，不访问 Keycloak |
-| Development 登录 | `/api/v1/auth/password/token` 返回 Basic 凭据，仅用于联调且不校验真实密码 |
+| 默认登录 | Basic 校验配置的账号密码；可选企业 IdP + OIDC PKCE |
+| 可选 JWT API | JWT Bearer 校验 issuer、audience、签名和 lifetime，不接受 URL token；启用第三方 API Key 后，API Key 请求由数据库校验 Bearer 凭据，不访问 Keycloak |
+| 密码登录 | `/api/v1/auth/password/token` 校验配置的 Basic 账号；内置账号仅限 Development 且未配置密码 |
 | 登录态 | access token、refresh token、PKCE verifier/state 仅存于 `sessionStorage`，不进入 `localStorage`；OIDC 会在 access token 到期前自动续期 |
 | 租户 | Production 仅信任 `tenant_id`/`tid` claim；客户端 tenant header 不覆盖 claim，不一致返回 403 |
 | Development 兼容 | 仅 Development 的 Basic 认证允许 `X-Tenant-Id` 作为 claim 缺失时的回退，并由 Router 净化后转发 |
@@ -20,8 +20,12 @@
 ```json
 {
   "Authentication": {
-    "Mode": "JwtBearer",
-    "Authority": "https://idp.example.com",
+    "Mode": "Basic",
+    "EnableKeycloak": false,
+    "BasicUsername": "admin",
+    "BasicPassword": "<部署时注入>",
+    "BasicTenantId": "development",
+    "Authority": "",
     "Audience": "openagent-api",
     "ClientId": "openagent-chat",
     "Scopes": [ "openid", "profile" ],
@@ -56,8 +60,8 @@ API Key 的启用状态、租户和 scope 由数据库记录决定，调用方�
 API Key 模式仍然执行 Agent ACL、能力权限、租户隔离、限流和审计。生产环境应将 Engine
 保持为内网服务；Router 与 Engine 必须使用同一个数据库。
 
-生产环境缺少 `Authority`、`Audience` 或 `ClientId` 会启动校验失败；启用 HTTPS metadata 时 Authority
-必须为 HTTPS。`Basic` 模式在非 Development 环境同样启动失败。启用 API Key 后，API Key 仍可独立工作，
+选择 JwtBearer 后缺少 `Authority`、`Audience` 或 `ClientId` 会启动校验失败；启用 HTTPS metadata 时 Authority
+必须为 HTTPS。Basic 默认启用，Keycloak 默认关闭；非 Development 环境必须配置 `BasicPassword`。启用 API Key 后，API Key 仍可独立工作，
 已配置的 Basic/JWT Bearer 方案仍按原规则处理。Development 可显式启用匿名兼容，
 但默认关闭。`EnableApiKey` 默认关闭；开启后使用数据库中的启用记录认证。
 
@@ -65,7 +69,7 @@ API Key 模式仍然执行 Agent ACL、能力权限、租户隔离、限流和�
 缺少租户 claim 的受保护资源请求会被拒绝，header 与 claim 不一致时返回 403。Router 仅在 Development
 向 Engine 转发从认证上下文解析并净化后的租户值，Production 转发始终移除租户 header。
 
-`GET /api/v1/auth/config` 可匿名读取公开登录参数；Basic 密码端点只在 Development + Basic 模式映射。
+`GET /api/v1/auth/config` 可匿名读取公开登录参数；Basic 密码端点在 Basic 模式映射，并与 API Handler 共用账号密码校验；配置密码后禁用开发内置账号。
 前端交换 OIDC code 后立即清理回调查询参数；OIDC refresh token 仅用于当前标签页的自动续期，不会进入 `localStorage`、URL、日志或错误详情。退出登录或 refresh token 失效后才要求重新进行交互式登录。
 
 ## Source

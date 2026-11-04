@@ -35,13 +35,18 @@ if sys.argv[1:3] == ['image', 'inspect'] and sys.argv[3] == os.environ.get('MISS
         calls = [json.loads(line) for line in self.log.read_text().splitlines()] if self.log.exists() else []
         return result, calls
 
-    def test_build_exports_all_four_images(self):
+    def test_build_exports_expected_images(self):
         result, calls = self.run_script('build-images.sh', '--docker-mode', 'docker',
                                        '--tar-dir', str(self.tmp / 'image exports'))
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(len([call for call in calls if call[0] == 'build']), 4)
-        self.assertEqual({call[-1] for call in calls if call[0] == 'save'},
-                         {'openagent-' + name + ':latest' for name in ('engine', 'router', 'chat', 'runner')})
+        # 独立后端检出不含 Frontend/ 时跳过 chat 构建；包含前端的源码树构建全部四个。
+        chat_available = (ROOT / 'Frontend' / 'OpenAgent.Chat' / 'Dockerfile').exists()
+        self.assertEqual(len([call for call in calls if call[0] == 'build']),
+                         4 if chat_available else 3)
+        expected = {'openagent-' + name + ':latest' for name in ('engine', 'router', 'runner')}
+        if chat_available:
+            expected.add('openagent-chat:latest')
+        self.assertEqual({call[-1] for call in calls if call[0] == 'save'}, expected)
 
     def test_default_deployment_includes_runner(self):
         self.env['OPENAGENT_RUNNER_API_KEY'] = 'x' * 32

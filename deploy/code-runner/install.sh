@@ -7,7 +7,7 @@ if [[ ${EUID} -ne 0 ]]; then
 fi
 
 repository_root=${1:-$(pwd)}
-if [[ ! -f "${repository_root}/Backend/src/OpenAgent.Runner/OpenAgent.Runner.csproj" ]]; then
+if [[ ! -f "${repository_root}/src/OpenAgent.Runner/OpenAgent.Runner.csproj" ]]; then
   echo "Usage: sudo deploy/code-runner/install.sh <repository-root>" >&2
   exit 1
 fi
@@ -42,14 +42,14 @@ install -d -m 0755 /opt/openagent-runner/app /opt/openagent-code
 install -d -o openagent-runner -g openagent-runner -m 0700 /var/lib/openagent-runner /var/lib/openagent-runner/workspaces
 python3 -m venv /opt/openagent-code/venv
 /opt/openagent-code/venv/bin/pip install --disable-pip-version-check --no-cache-dir \
-  --requirement "${repository_root}/Backend/src/OpenAgent.Runner/sandbox/requirements.txt"
+  --requirement "${repository_root}/src/OpenAgent.Runner/sandbox/requirements.txt"
 
 case $(uname -m) in
   x86_64) runtime=linux-x64 ;;
   aarch64|arm64) runtime=linux-arm64 ;;
   *) echo "Unsupported CPU architecture: $(uname -m)" >&2; exit 1 ;;
 esac
-dotnet publish "${repository_root}/Backend/src/OpenAgent.Runner/OpenAgent.Runner.csproj" \
+dotnet publish "${repository_root}/src/OpenAgent.Runner/OpenAgent.Runner.csproj" \
   --configuration Release --runtime "${runtime}" --self-contained true --output /opt/openagent-runner/app
 chown -R root:root /opt/openagent-runner /opt/openagent-code
 chmod -R go-w /opt/openagent-runner /opt/openagent-code
