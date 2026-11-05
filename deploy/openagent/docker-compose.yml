@@ -163,12 +163,14 @@ networks:
   infrastructure:
     external: true
     name: ${OPENAGENT_INFRA_NETWORK:-openagent-infrastructure}
-  # Network of the OpenAgent.Audit stack (its AUDIT_COMPOSE_NETWORK, default
-  # "openagent-audit"). Created by that stack's compose file; only the engine
-  # joins it so it can reach masking-gateway:8102. Nothing here is published on
-  # the audit side, and audit-db / Langfuse / decrypt-svc stay unreachable.
+  # Network shared with the OpenAgent.Audit stack. This file OWNS it (no
+  # `external: true`) because the audit stack declares the same network as
+  # external: whichever file also declared it external would deadlock — each
+  # stack would wait for the other to create it, and `docker compose up` fails
+  # with "network openagent-audit declared as external, but could not be found".
+  # Only the engine and router join it so they can reach masking-gateway:8102;
+  # audit-db / Langfuse / decrypt-svc stay off this network.
   audit:
-    external: true
     name: ${OPENAGENT_AUDIT_NETWORK:-openagent-audit}
 
 volumes:
