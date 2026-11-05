@@ -319,17 +319,26 @@ public sealed class AgentExecutor
     /// TurnContext 的唯一构造点：这里完成 traceId 兜底与租户归一化，
     /// 下游（AgentFactory/历史/文件）一律消费已解析的值，不再各自兜底。
     /// </summary>
-    private static TurnContext CreateTurn(AgentRequest request, IAgentUserContext user, string agentId) => new()
+    private static TurnContext CreateTurn(AgentRequest request, IAgentUserContext user, string agentId)
     {
-        TraceId = string.IsNullOrWhiteSpace(request.TraceId)
-            ? Guid.NewGuid().ToString("N")
-            : request.TraceId,
-        TenantId = user.TenantId ?? string.Empty,
-        UserId = user.UserId,
-        ConversationId = ResolveConversationId(request),
-        AgentId = agentId,
-        ConversationType = request.ConversationType
-    };
+        var turn = new TurnContext
+        {
+            TraceId = string.IsNullOrWhiteSpace(request.TraceId)
+                ? Guid.NewGuid().ToString("N")
+                : request.TraceId,
+            TenantId = user.TenantId ?? string.Empty,
+            UserId = user.UserId,
+            ConversationId = ResolveConversationId(request),
+            AgentId = agentId,
+            ConversationType = request.ConversationType
+        };
+
+        // Publish the correlation coordinates onto the current Activity so the
+        // OTLP trace carries them to the audit plane (see AuditActivityEnrichment).
+        AuditActivityEnrichment.Publish(turn);
+
+        return turn;
+    }
 
     private static AgentRequest CopyWithResolvedValues(AgentRequest request, TurnContext turn) => new()
     {

@@ -11,6 +11,15 @@ services:
       ConversationCache__Enabled: "true"
       FileAssets__Enabled: ${OPENAGENT_FILE_ASSETS_ENABLED:-true}
       OpenTelemetry__OtlpEndpoint: ${OPENAGENT_OTLP_ENDPOINT:-}
+      # Audit plane (OpenAgent.Audit) receives TRACES ONLY. Logs and metrics keep
+      # the shared endpoint above: the masking gateway must never see log lines,
+      # which carry request text the masking pipeline never touches. Leave
+      # OPENAGENT_OTLP_TRACES_ENDPOINT unset to disable audit tracing entirely.
+      OpenTelemetry__TracesEndpoint: ${OPENAGENT_OTLP_TRACES_ENDPOINT:-}
+      # Bearer token for the masking gateway (AUDIT_GATEWAY_TOKEN on the audit
+      # side). Standard OTLP header convention: "key=value,key2=value2".
+      OpenTelemetry__TracesHeaders: ${OPENAGENT_OTLP_TRACES_HEADERS:-}
+      OpenTelemetry__Protocol: ${OPENAGENT_OTLP_PROTOCOL:-http/protobuf}
       OpenTelemetry__ServiceName: openagent-engine
       OpenTelemetry__ServiceVersion: ${OPENAGENT_SERVICE_VERSION:-development}
       OPENAGENT_ALLOW_INSECURE_TLS: ${OPENAGENT_ALLOW_INSECURE_TLS:-false}
@@ -40,6 +49,9 @@ services:
     networks:
       - openagent
       - infrastructure
+      # Only the engine joins the audit network: it is the only service that
+      # exports traces to the masking gateway. Router/Runner/Chat stay off it.
+      - audit
     depends_on:
       runner:
         condition: service_healthy
@@ -79,6 +91,10 @@ services:
       ASPNETCORE_URLS: http://+:5001
       ConnectionStrings__Redis: ${OPENAGENT_REDIS_HOST:-redis}:${OPENAGENT_REDIS_INTERNAL_PORT:-6379}
       OpenTelemetry__OtlpEndpoint: ${OPENAGENT_OTLP_ENDPOINT:-}
+      # Same trace-only audit routing as the engine (see the engine comment).
+      OpenTelemetry__TracesEndpoint: ${OPENAGENT_OTLP_TRACES_ENDPOINT:-}
+      OpenTelemetry__TracesHeaders: ${OPENAGENT_OTLP_TRACES_HEADERS:-}
+      OpenTelemetry__Protocol: ${OPENAGENT_OTLP_PROTOCOL:-http/protobuf}
       OpenTelemetry__ServiceName: openagent-router
       OpenTelemetry__ServiceVersion: ${OPENAGENT_SERVICE_VERSION:-development}
       OPENAGENT_ALLOW_INSECURE_TLS: ${OPENAGENT_ALLOW_INSECURE_TLS:-false}
@@ -101,6 +117,7 @@ services:
     networks:
       - openagent
       - infrastructure
+      - audit
     healthcheck:
       test: ["CMD-SHELL", "curl --fail --silent http://localhost:5001/health >/dev/null"]
       interval: 5s
@@ -146,6 +163,13 @@ networks:
   infrastructure:
     external: true
     name: ${OPENAGENT_INFRA_NETWORK:-openagent-infrastructure}
+  # Network of the OpenAgent.Audit stack (its AUDIT_COMPOSE_NETWORK, default
+  # "openagent-audit"). Created by that stack's compose file; only the engine
+  # joins it so it can reach masking-gateway:8102. Nothing here is published on
+  # the audit side, and audit-db / Langfuse / decrypt-svc stay unreachable.
+  audit:
+    external: true
+    name: ${OPENAGENT_AUDIT_NETWORK:-openagent-audit}
 
 volumes:
   engine-data-protection:

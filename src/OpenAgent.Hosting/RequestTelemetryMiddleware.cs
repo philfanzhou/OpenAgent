@@ -1,8 +1,11 @@
 using System.Diagnostics;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using OpenAgent.Contracts.Runtime;
+using OpenAgent.Contracts.Security;
 
 namespace OpenAgent.Hosting;
 
@@ -89,6 +92,18 @@ internal sealed class RequestTelemetryMiddleware(
             activity?.SetTag(
                 "openagent.agent.id",
                 context.Response.Headers["X-OpenAgent-Selected-Agent-Id"].FirstOrDefault());
+
+            // Fallback audit correlation. The executor publishes the
+            // authoritative conversation/user/agent ids once it resolves a turn
+            // (AgentExecutor.CreateTurn -> AuditActivityEnrichment); this covers
+            // the requests that never reach the executor (file access,
+            // conversation queries) so every audited trace still carries the
+            // platform's identifiers.
+            SetAuditTagIfAbsent(activity, AuditAttributeNames.ConversationId,
+                context.Request.Headers["X-Conversation-Id"].FirstOrDefault());
+            SetAuditTagIfAbsent(activity, AuditAttributeNames.UserId, ResolveUserId(context));
+            SetAuditTagIfAbsent(activity, AuditAttributeNames.TenantId, ResolveTenantId(context));
+
             if (failure == null)
             {
                 logger.LogInformation(
@@ -147,5 +162,44 @@ internal sealed class RequestTelemetryMiddleware(
                     context.Response.StatusCode);
             }
         }
+    }
+
+    /// <summary>
+    /// 仅在 activity 上尚无该标签时写入，避免用请求头覆盖执行器解析出的权威值。
+    /// </summary>
+    private static void SetAuditTagIfAbsent(Activity? activity, string key, string? value)
+    {
+        if (activity is null
+            || string.IsNullOrWhiteSpace(value)
+            || activity.GetTagItem(key) is not null)
+        {
+            return;
+        }
+
+        activity.SetTag(key, value);
+    }
+
+    /// <summary>
+    /// 解析请求用户 ID，顺序与 <c>HttpCurrentUserContext</c> /
+    /// <c>AgentUserContextMiddleware</c> 保持一致（sub 优先），
+    /// 避免同一用户在 trace 与 LLM 交互日志中出现两种 ID。
+    /// </summary>
+    private static string? ResolveUserId(HttpContext context)
+    {
+        ICurrentUserContext? userContext = context.RequestServices?.GetService(typeof(ICurrentUserContext)) as ICurrentUserContext;
+        if (userContext is not null && userContext.IsAuthenticated)
+        {
+            return userContext.UserId;
+        }
+
+        return context.User.FindFirst("sub")?.Value
+            ?? context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+            ?? context.User.Identity?.Name;
+    }
+
+    private static string? ResolveTenantId(HttpContext context)
+    {
+        ICurrentUserContext? userContext = context.RequestServices?.GetService(typeof(ICurrentUserContext)) as ICurrentUserContext;
+        return userContext?.TenantId;
     }
 }

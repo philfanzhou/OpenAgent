@@ -221,3 +221,85 @@ public class RequestTelemetryMiddlewareTests
 
     private sealed record LogEntry(LogLevel Level, string Message, Exception? Exception);
 }
+
+/// <summary>
+/// Audit correlation attributes on the request span. The masking gateway maps
+/// these keys onto the audit plane's session/user identifiers, so their absence
+/// used to leave every audited trace ungroupable.
+/// </summary>
+public class RequestTelemetryAuditAttributeTests
+{
+    [Fact]
+    public async Task InvokeAsync_SetsConversationAndUserIdFromRequest()
+    {
+        var logger = new RecordingLogger<RequestTelemetryMiddleware>();
+        var middleware = new RequestTelemetryMiddleware(
+            _ => Task.CompletedTask, Options.Create(new AgentHostOptions()), logger);
+
+        var context = new DefaultHttpContext();
+        context.Request.Method = HttpMethods.Post;
+        context.Request.Headers["X-Conversation-Id"] = "conv-123";
+        context.User = new System.Security.Claims.ClaimsPrincipal(
+            new System.Security.Claims.ClaimsIdentity(
+                [new System.Security.Claims.Claim("sub", "usr_42")], "test"));
+
+        using var activity = new Activity("request").Start();
+        await middleware.InvokeAsync(context);
+
+        Assert.Equal("conv-123", activity.GetTagItem("openagent.conversation_id"));
+        Assert.Equal("usr_42", activity.GetTagItem("openagent.user_id"));
+    }
+
+    [Fact]
+    public async Task InvokeAsync_DoesNotOverwriteExecutorPublishedValues()
+    {
+        var logger = new RecordingLogger<RequestTelemetryMiddleware>();
+        var middleware = new RequestTelemetryMiddleware(
+            _ => Task.CompletedTask, Options.Create(new AgentHostOptions()), logger);
+
+        var context = new DefaultHttpContext();
+        context.Request.Method = HttpMethods.Post;
+        // A stale/absent client header must not clobber the executor's value.
+        context.Request.Headers["X-Conversation-Id"] = "from-header";
+
+        using var activity = new Activity("request").Start();
+        activity.SetTag("openagent.conversation_id", "resolved-by-executor");
+
+        await middleware.InvokeAsync(context);
+
+        Assert.Equal("resolved-by-executor", activity.GetTagItem("openagent.conversation_id"));
+    }
+
+    [Fact]
+    public async Task InvokeAsync_LeavesAuditTagsUnset_WhenNoIdentifiersExist()
+    {
+        var logger = new RecordingLogger<RequestTelemetryMiddleware>();
+        var middleware = new RequestTelemetryMiddleware(
+            _ => Task.CompletedTask, Options.Create(new AgentHostOptions()), logger);
+
+        var context = new DefaultHttpContext();
+        using var activity = new Activity("request").Start();
+
+        await middleware.InvokeAsync(context);
+
+        Assert.Null(activity.GetTagItem("openagent.conversation_id"));
+        Assert.Null(activity.GetTagItem("openagent.user_id"));
+        Assert.Null(activity.GetTagItem("openagent.tenant_id"));
+    }
+
+    private sealed class RecordingLogger<T> : ILogger<T>
+    {
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+        }
+    }
+}
