@@ -14,6 +14,10 @@ services:
       FileAssets__Enabled: "true"
       # 可选：启用外部 OpenTelemetry Collector。
       # OpenTelemetry__OtlpEndpoint: ${OPENAGENT_OTLP_ENDPOINT:-}
+      # 审计平面：trace 走掩码网关；分信号端点优先于共享的 OtlpEndpoint。
+      OpenTelemetry__TracesEndpoint: ${OPENAGENT_OTLP_TRACES_ENDPOINT:-}
+      OpenTelemetry__TracesHeaders: ${OPENAGENT_OTLP_TRACES_HEADERS:-}
+      OpenTelemetry__Protocol: ${OPENAGENT_OTLP_PROTOCOL:-http/protobuf}
       OpenTelemetry__ServiceName: openagent-engine
       OpenTelemetry__ServiceVersion: ${OPENAGENT_SERVICE_VERSION:-development}
       # 可选：仅在明确接受跳过证书校验时启用，默认 false。
@@ -65,6 +69,9 @@ services:
       # 可选：连接外部 Redis / OpenTelemetry 时启用。
       ConnectionStrings__Redis: redis:6379
       # OpenTelemetry__OtlpEndpoint: ${OPENAGENT_OTLP_ENDPOINT:-}
+      OpenTelemetry__TracesEndpoint: ${OPENAGENT_OTLP_TRACES_ENDPOINT:-}
+      OpenTelemetry__TracesHeaders: ${OPENAGENT_OTLP_TRACES_HEADERS:-}
+      OpenTelemetry__Protocol: ${OPENAGENT_OTLP_PROTOCOL:-http/protobuf}
       OpenTelemetry__ServiceName: openagent-router
       OpenTelemetry__ServiceVersion: ${OPENAGENT_SERVICE_VERSION:-development}
       # OPENAGENT_ALLOW_INSECURE_TLS: ${OPENAGENT_ALLOW_INSECURE_TLS:-false}

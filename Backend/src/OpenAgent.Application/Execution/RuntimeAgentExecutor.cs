@@ -85,6 +85,7 @@ public sealed class RuntimeAgentExecutor
             ConversationType = request.ConversationType,
             TraceId = string.IsNullOrWhiteSpace(request.TraceId) ? Guid.NewGuid().ToString("N") : request.TraceId
         };
+        AuditActivityEnrichment.Publish(turn);
         AgentRuntimeProfile profile = await _profiles.ResolveAsync(agentId, request.LlmProfileId ?? string.Empty, user, cancellationToken).ConfigureAwait(false);
         if (!string.IsNullOrWhiteSpace(request.RuntimeId))
         {

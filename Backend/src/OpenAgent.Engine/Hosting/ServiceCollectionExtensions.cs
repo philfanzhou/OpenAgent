@@ -134,7 +134,8 @@ public static class ServiceCollectionExtensions
 
         if (options.EnableOpenTelemetry)
         {
-            Uri? otlpEndpoint = ResolveOtlpEndpoint(configuration);
+            OtlpSettings otlp = OtlpSettings.FromConfiguration(configuration);
+            Func<HttpClient>? otlpHttpClientFactory = HttpClientSecurity.CreateHttpClientFactory(configuration);
 
             string serviceName = configuration["OpenTelemetry:ServiceName"] ?? options.ServiceName;
             string serviceVersion = configuration["OpenTelemetry:ServiceVersion"] ?? options.ServiceVersion;
@@ -149,10 +150,8 @@ public static class ServiceCollectionExtensions
                 logs.IncludeFormattedMessage = true;
                 logs.IncludeScopes = true;
                 logs.ParseStateValues = true;
-                if (otlpEndpoint != null)
-                {
-                    logs.AddOtlpExporter(exporter => ApplyOtlpEndpoint(exporter, otlpEndpoint, "v1/logs"));
-                }
+                logs.AddOtlpExporter(exporter => ApplyOtlpExporter(
+                    exporter, otlp, OtlpSignal.Logs, otlp.LogsEndpoint, otlpHttpClientFactory));
             }));
 
             openTelemetry.WithTracing(tracing =>
@@ -168,10 +167,8 @@ public static class ServiceCollectionExtensions
                     .AddSource(options.OpenTelemetrySource)
                     .AddSource("OpenAgent.AgentFramework");
 
-                if (otlpEndpoint != null)
-                {
-                    tracing.AddOtlpExporter(exporter => ApplyOtlpEndpoint(exporter, otlpEndpoint, "v1/traces"));
-                }
+                tracing.AddOtlpExporter(exporter => ApplyOtlpExporter(
+                    exporter, otlp, OtlpSignal.Traces, otlp.TracesEndpoint, otlpHttpClientFactory));
             });
 
             openTelemetry.WithMetrics(metrics =>
@@ -181,10 +178,8 @@ public static class ServiceCollectionExtensions
                     .AddMeter(options.OpenTelemetrySource)
                     .AddPrometheusExporter();
 
-                if (otlpEndpoint != null)
-                {
-                    metrics.AddOtlpExporter(exporter => ApplyOtlpEndpoint(exporter, otlpEndpoint, "v1/metrics"));
-                }
+                metrics.AddOtlpExporter(exporter => ApplyOtlpExporter(
+                    exporter, otlp, OtlpSignal.Metrics, otlp.MetricsEndpoint, otlpHttpClientFactory));
             });
         }
 
@@ -192,46 +187,78 @@ public static class ServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Resolves the OTLP endpoint. A blank <c>OpenTelemetry:OtlpEndpoint</c> value (deployments set the
-    /// environment variable to an empty string by default) must not shadow the standard
-    /// <c>OTEL_EXPORTER_OTLP_ENDPOINT</c> fallback. Returns <c>null</c> when no endpoint is configured.
+    /// Configures one signal's exporter, or disables it when that signal has no endpoint.
     /// </summary>
-    internal static Uri? ResolveOtlpEndpoint(IConfiguration configuration)
+    /// <remarks>
+    /// Each signal is resolved independently so traces can reach the audit gateway
+    /// while logs stay local. Setting <see cref="OtlpExporterOptions.Endpoint"/>
+    /// programmatically also disables the SDK's signal-path appending, so with
+    /// http/protobuf the path is appended here — otherwise every request goes to
+    /// <c>POST /</c> and a spec-conformant collector rejects it.
+    /// </remarks>
+    internal static void ApplyOtlpExporter(
+        OtlpExporterOptions exporter,
+        OtlpSettings settings,
+        OtlpSignal signal,
+        Uri? endpoint,
+        Func<HttpClient>? httpClientFactory = null)
     {
-        string? configuredEndpoint = configuration["OpenTelemetry:OtlpEndpoint"];
-        if (string.IsNullOrWhiteSpace(configuredEndpoint))
+        if (endpoint is null)
         {
-            configuredEndpoint = Environment.GetEnvironmentVariable("OTEL_EXPORTER_OTLP_ENDPOINT");
+            // No endpoint for this signal: leave the exporter's own defaults alone
+            // but do not point it at a collector that does not exist. The caller
+            // registers the exporter unconditionally (the SDK requires it), so the
+            // "disabled" state is expressed by keeping the configured endpoint null.
+            ApplyProtocol(exporter, settings.Protocol);
+            return;
         }
 
-        if (string.IsNullOrWhiteSpace(configuredEndpoint))
-        {
-            return null;
-        }
+        ApplyProtocol(exporter, settings.Protocol);
+        ApplyHeaders(exporter, settings.HeadersFor(signal));
 
-        if (!Uri.TryCreate(configuredEndpoint, UriKind.Absolute, out Uri? endpoint)
-            || (endpoint.Scheme != Uri.UriSchemeHttp
-                && endpoint.Scheme != Uri.UriSchemeHttps))
-        {
-            throw new InvalidOperationException(
-                $"OpenTelemetry:OtlpEndpoint / OTEL_EXPORTER_OTLP_ENDPOINT must be an absolute HTTP(S) URI. Value: '{configuredEndpoint}'.");
-        }
-
-        return endpoint;
-    }
-
-    /// <summary>
-    /// Assigning <see cref="OtlpExporterOptions.Endpoint"/> programmatically disables the SDK's
-    /// signal-path appending, so with the http/protobuf protocol requests would go to the bare
-    /// endpoint (for example <c>POST /</c>) and be rejected by spec-conformant collectors.
-    /// Append the signal path ourselves when the endpoint carries none.
-    /// </summary>
-    internal static void ApplyOtlpEndpoint(OtlpExporterOptions exporter, Uri endpoint, string signalPath)
-    {
         exporter.Endpoint = endpoint;
         if (exporter.Protocol == OtlpExportProtocol.HttpProtobuf && endpoint.AbsolutePath == "/")
         {
-            exporter.Endpoint = new UriBuilder(endpoint) { Path = $"/{signalPath}" }.Uri;
+            exporter.Endpoint = new UriBuilder(endpoint) { Path = $"/{settings.PathFor(signal)}" }.Uri;
         }
+
+        if (httpClientFactory is not null)
+        {
+            // Without this the exporter builds its own client and ignores the
+            // deployment TLS policy, so a self-signed collector silently drops
+            // every batch.
+            exporter.HttpClientFactory = httpClientFactory;
+        }
+    }
+
+    private static void ApplyProtocol(OtlpExporterOptions exporter, string? protocol)
+    {
+        if (string.IsNullOrWhiteSpace(protocol))
+        {
+            return;
+        }
+
+        exporter.Protocol = protocol.Trim().ToLowerInvariant() switch
+        {
+            "http/protobuf" or "httpprotobuf" => OtlpExportProtocol.HttpProtobuf,
+            "grpc" => OtlpExportProtocol.Grpc,
+            _ => throw new InvalidOperationException(
+                $"OpenTelemetry:Protocol must be 'http/protobuf' or 'grpc'. Value: '{protocol}'.")
+        };
+    }
+
+    private static void ApplyHeaders(OtlpExporterOptions exporter, IReadOnlyDictionary<string, string> headers)
+    {
+        if (headers.Count == 0)
+        {
+            return;
+        }
+
+        var target = exporter.Headers ?? string.Empty;
+        IEnumerable<string> existing = target.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        IEnumerable<string> merged = existing
+            .Concat(headers.Select(pair => $"{pair.Key}={pair.Value}"))
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+        exporter.Headers = string.Join(",", merged);
     }
 }
