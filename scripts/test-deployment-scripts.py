@@ -36,12 +36,53 @@ if sys.argv[1:3] == ['image', 'inspect'] and sys.argv[3] == os.environ.get('MISS
         return result, calls
 
     def test_build_exports_all_four_images(self):
+        """With a combined workspace (Frontend/OpenAgent.Chat present), all four
+        images are built and exported."""
         result, calls = self.run_script('build-images.sh', '--docker-mode', 'docker',
                                        '--tar-dir', str(self.tmp / 'image exports'))
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(len([call for call in calls if call[0] == 'build']), 4)
-        self.assertEqual({call[-1] for call in calls if call[0] == 'save'},
-                         {'openagent-' + name + ':latest' for name in ('engine', 'router', 'chat', 'runner')})
+        # The chat workbench lives in the OpenAgent-Frontend repository, so this
+        # backend checkout has no Frontend/OpenAgent.Chat and the script skips
+        # that image with a warning. Backend images must still all be built and
+        # exported; only the chat tarball may be absent.
+        built = {call[call.index('--tag') + 1] for call in calls if call[0] == 'build'}
+        self.assertIn('openagent-engine:latest', built)
+        self.assertIn('openagent-router:latest', built)
+        self.assertIn('openagent-runner:latest', built)
+        self.assertIn(len(built), (3, 4))  # 4 only when Frontend/OpenAgent.Chat exists
+
+        saved = {call[-1] for call in calls if call[0] == 'save'}
+        self.assertIn('openagent-engine:latest', saved)
+        self.assertIn('openagent-router:latest', saved)
+        self.assertIn('openagent-runner:latest', saved)
+
+    def test_build_skips_missing_frontend_without_failing(self):
+        """A backend-only checkout must not fail because the chat sources live
+        in a separate repository."""
+        has_frontend = (ROOT / 'Frontend' / 'OpenAgent.Chat' / 'Dockerfile').is_file()
+        if has_frontend:
+            self.skipTest('combined workspace has the frontend sources')
+
+        result, calls = self.run_script('build-images.sh', '--docker-mode', 'docker')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        # Either the image is already present (reused) or it is absent (warning
+        # pointing at the other repository); both are non-fatal.
+        output = result.stderr + result.stdout
+        self.assertTrue('reusing existing image' in output or 'OpenAgent-Frontend' in output, output)
+        built = [call for call in calls if call[0] == 'build']
+        self.assertEqual(len(built), 3)
+
+    def test_build_uses_repository_root_dockerfiles(self):
+        """The repository was flattened from Backend/src to src; stale paths
+        made the first docker build fail with 'path not found'."""
+        result, calls = self.run_script('build-images.sh', '--docker-mode', 'docker')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        dockerfiles = [call[call.index('--file') + 1] for call in calls
+                       if call[0] == 'build' and '--file' in call]
+        self.assertTrue(dockerfiles)
+        for dockerfile in dockerfiles:
+            self.assertNotIn('Backend/', dockerfile)
+            self.assertTrue(Path(dockerfile).is_file(), dockerfile)
 
     def test_default_deployment_includes_runner(self):
         self.env['OPENAGENT_RUNNER_API_KEY'] = 'x' * 32
