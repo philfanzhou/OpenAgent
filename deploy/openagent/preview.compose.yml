@@ -14,7 +14,7 @@ services:
   engine:
     build:
       context: ../..
-      dockerfile: Backend/src/OpenAgent.Engine.Host/Dockerfile
+      dockerfile: src/OpenAgent.Engine.Host/Dockerfile
     # WSL 空闲关机后，下次启动 Docker 时自动拉回预览。
     restart: unless-stopped
     environment:
@@ -66,7 +66,7 @@ services:
   runner:
     build:
       context: ../..
-      dockerfile: Backend/src/OpenAgent.Runner/Dockerfile
+      dockerfile: src/OpenAgent.Runner/Dockerfile
     # WSL 空闲关机后，下次启动 Docker 时自动拉回预览。
     restart: unless-stopped
     environment:
@@ -88,7 +88,7 @@ services:
   router:
     build:
       context: ../..
-      dockerfile: Backend/src/OpenAgent.Router/Dockerfile
+      dockerfile: src/OpenAgent.Router/Dockerfile
     # WSL 空闲关机后，下次启动 Docker 时自动拉回预览。
     restart: unless-stopped
     environment:
@@ -125,16 +125,14 @@ services:
       retries: 30
 
   chat:
-    build:
-      context: ../..
-      dockerfile: Frontend/OpenAgent.Chat/Dockerfile
-      # 与主部署同一套 OPENAGENT_* 构建参数；预览经 Nginx 之外的宿主机端口直连（http）。
-      args:
-        OPENAGENT_PUBLIC_SCHEME: http
-        OPENAGENT_PUBLIC_HOST: localhost
-        OPENAGENT_ROUTER_PORT: ${PREVIEW_ROUTER_PORT:-5010}
-        OPENAGENT_ENGINE_PORT: ${PREVIEW_ENGINE_PORT:-5210}
-        OPENAGENT_TENANT_ID: development
+    # The Vue workbench lives in the separate OpenAgent-Frontend repository, so
+    # this backend checkout has no Frontend/OpenAgent.Chat to build from.
+    # Reference the published image instead of a local build context.
+    image: ${OPENAGENT_CHAT_IMAGE:-openagent-chat:latest}
+    # 镜像内的浏览器端地址由构建参数决定；预览经 Nginx 之外的宿主机端口直连（http）。
+    # 如需自定义地址，请在该镜像的构建阶段传入：
+    #   OPENAGENT_PUBLIC_SCHEME=http OPENAGENT_PUBLIC_HOST=localhost
+    #   OPENAGENT_ROUTER_PORT=... OPENAGENT_ENGINE_PORT=... OPENAGENT_TENANT_ID=development
     # WSL 空闲关机后，下次启动 Docker 时自动拉回预览。
     restart: unless-stopped
     depends_on:

@@ -1,4 +1,4 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param(
     [string]$EnvFile = '',
     [string]$DockerMode = '',
@@ -201,29 +201,39 @@ try {
     # 构建应用镜像；不启动或修改任何容器。
     Invoke-Docker -Arguments @(
         'build', '--tag', $engineImage,
-        '--file', (Join-WslPath -Base $dockerRepoRoot -Child 'Backend/src/OpenAgent.Engine.Host/Dockerfile'),
+        '--file', (Join-WslPath -Base $dockerRepoRoot -Child 'src/OpenAgent.Engine.Host/Dockerfile'),
         $dockerRepoRoot
     )
     Invoke-Docker -Arguments @(
         'build', '--tag', $routerImage,
-        '--file', (Join-WslPath -Base $dockerRepoRoot -Child 'Backend/src/OpenAgent.Router/Dockerfile'),
+        '--file', (Join-WslPath -Base $dockerRepoRoot -Child 'src/OpenAgent.Router/Dockerfile'),
         $dockerRepoRoot
     )
     # Chat 镜像的浏览器端地址由 Dockerfile 从统一变量派生，与直接 docker build 的接口一致。
-    Invoke-Docker -Arguments @(
-        'build', '--tag', $chatImage,
-        '--build-arg', "OPENAGENT_PUBLIC_SCHEME=$publicScheme",
-        '--build-arg', "OPENAGENT_PUBLIC_HOST=$publicHost",
-        '--build-arg', "OPENAGENT_ROUTER_PORT=$routerPort",
-        '--build-arg', "OPENAGENT_ENGINE_PORT=$enginePort",
-        '--build-arg', "OPENAGENT_TENANT_ID=$tenantId",
-        '--file', (Join-WslPath -Base $dockerRepoRoot -Child 'Frontend/OpenAgent.Chat/Dockerfile'),
-        $dockerRepoRoot
-    )
+    #
+    # The Vue workbench lives in the separate OpenAgent-Frontend repository, so
+    # Frontend/OpenAgent.Chat is absent in this backend repository. Build it only
+    # when present; otherwise skip (a backend-only deployment must not fail).
+    $chatDockerfile = Join-Path (Join-Path (Join-Path $dockerRepoRoot 'Frontend') 'OpenAgent.Chat') 'Dockerfile'
+    if (Test-Path $chatDockerfile) {
+        Invoke-Docker -Arguments @(
+            'build', '--tag', $chatImage,
+            '--build-arg', "OPENAGENT_PUBLIC_SCHEME=$publicScheme",
+            '--build-arg', "OPENAGENT_PUBLIC_HOST=$publicHost",
+            '--build-arg', "OPENAGENT_ROUTER_PORT=$routerPort",
+            '--build-arg', "OPENAGENT_ENGINE_PORT=$enginePort",
+            '--build-arg', "OPENAGENT_TENANT_ID=$tenantId",
+            '--file', (Join-WslPath -Base $dockerRepoRoot -Child 'Frontend/OpenAgent.Chat/Dockerfile'),
+            $dockerRepoRoot
+        )
+    }
+    else {
+        Write-Warning "Frontend/OpenAgent.Chat/Dockerfile not found; skipping chat image. The workbench is built from the OpenAgent-Frontend repository."
+    }
 
     Invoke-Docker -Arguments @(
         'build', '--tag', $runnerImage,
-        '--file', (Join-WslPath -Base $dockerRepoRoot -Child 'Backend/src/OpenAgent.Runner/Dockerfile'),
+        '--file', (Join-WslPath -Base $dockerRepoRoot -Child 'src/OpenAgent.Runner/Dockerfile'),
         $dockerRepoRoot
     )
 

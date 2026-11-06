@@ -131,33 +131,58 @@ tenant_id="${OPENAGENT_TENANT_ID:-development}"
 
 "${docker_cmd[@]}" build \
   --tag "$engine_image" \
-  --file "$docker_root/Backend/src/OpenAgent.Engine.Host/Dockerfile" \
+  --file "$docker_root/src/OpenAgent.Engine.Host/Dockerfile" \
   "$docker_root"
 
 "${docker_cmd[@]}" build \
   --tag "$router_image" \
-  --file "$docker_root/Backend/src/OpenAgent.Router/Dockerfile" \
+  --file "$docker_root/src/OpenAgent.Router/Dockerfile" \
   "$docker_root"
 
 # Chat 镜像的浏览器端地址由 Dockerfile 从统一变量派生，与直接 docker build 的接口一致。
-"${docker_cmd[@]}" build \
-  --tag "$chat_image" \
-  --build-arg "OPENAGENT_PUBLIC_SCHEME=$public_scheme" \
-  --build-arg "OPENAGENT_PUBLIC_HOST=$public_host" \
-  --build-arg "OPENAGENT_ROUTER_PORT=$router_port" \
-  --build-arg "OPENAGENT_ENGINE_PORT=$engine_port" \
-  --build-arg "OPENAGENT_TENANT_ID=$tenant_id" \
-  --file "$docker_root/Frontend/OpenAgent.Chat/Dockerfile" \
-  "$docker_root"
+#
+# The Vue workbench lives in the separate OpenAgent-Frontend repository; this
+# backend repository no longer ships Frontend/OpenAgent.Chat. Build the chat
+# image only when that directory is present (e.g. a combined workspace), or
+# when an image is supplied by the caller. Failing hard here would block every
+# backend-only deployment.
+chat_dockerfile="$docker_root/Frontend/OpenAgent.Chat/Dockerfile"
+build_chat=1
+if [[ ! -f "$chat_dockerfile" ]]; then
+  if "${docker_cmd[@]}" image inspect "$chat_image" >/dev/null 2>&1; then
+    echo "note: $chat_dockerfile not found; reusing existing image $chat_image"
+  else
+    echo "warning: $chat_dockerfile not found and $chat_image is not available." >&2
+    echo "         The chat workbench is built from the OpenAgent-Frontend repository." >&2
+    echo "         Skipping the chat image; deploy will require OPENAGENT_CHAT_IMAGE to exist." >&2
+  fi
+  build_chat=0
+fi
+
+if [[ "$build_chat" -eq 1 ]]; then
+  "${docker_cmd[@]}" build \
+    --tag "$chat_image" \
+    --build-arg "OPENAGENT_PUBLIC_SCHEME=$public_scheme" \
+    --build-arg "OPENAGENT_PUBLIC_HOST=$public_host" \
+    --build-arg "OPENAGENT_ROUTER_PORT=$router_port" \
+    --build-arg "OPENAGENT_ENGINE_PORT=$engine_port" \
+    --build-arg "OPENAGENT_TENANT_ID=$tenant_id" \
+    --file "$chat_dockerfile" \
+    "$docker_root"
+fi
 
 "${docker_cmd[@]}" build \
   --tag "$runner_image" \
-  --file "$docker_root/Backend/src/OpenAgent.Runner/Dockerfile" \
+  --file "$docker_root/src/OpenAgent.Runner/Dockerfile" \
   "$docker_root"
 
 if [[ -n "$docker_tar_directory" ]]; then
   "${docker_cmd[@]}" save --output "$docker_tar_directory/openagent-runner.tar" "$runner_image"
   "${docker_cmd[@]}" save --output "$docker_tar_directory/openagent-engine.tar" "$engine_image"
   "${docker_cmd[@]}" save --output "$docker_tar_directory/openagent-router.tar" "$router_image"
-  "${docker_cmd[@]}" save --output "$docker_tar_directory/openagent-chat.tar" "$chat_image"
+  if "${docker_cmd[@]}" image inspect "$chat_image" >/dev/null 2>&1; then
+    "${docker_cmd[@]}" save --output "$docker_tar_directory/openagent-chat.tar" "$chat_image"
+  else
+    echo "note: skipping openagent-chat.tar ($chat_image not present)" >&2
+  fi
 fi
