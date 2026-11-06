@@ -11,8 +11,55 @@ namespace OpenAgent.Hosting;
 /// </summary>
 public static class HttpClientSecurity
 {
-    public static bool AllowInsecureTls(IConfiguration configuration) =>
-        configuration.GetValue("OPENAGENT_ALLOW_INSECURE_TLS", false);
+    /// <summary>
+    /// Whether the deployment opted into accepting certificates it does not
+    /// otherwise trust.
+    ///
+    /// Parsed leniently: the binder's <c>GetValue&lt;bool&gt;</c> throws on
+    /// <c>1</c>/<c>0</c>/empty strings, which are exactly the values compose
+    /// files and shell scripts pass, and a throw here would fail service
+    /// startup over a telemetry switch.
+    /// </summary>
+    public static bool AllowInsecureTls(IConfiguration configuration)
+    {
+        string? raw = configuration["OPENAGENT_ALLOW_INSECURE_TLS"];
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return false;
+        }
+
+        return raw.Trim().ToLowerInvariant() switch
+        {
+            "1" or "true" or "yes" or "on" => true,
+            "0" or "false" or "no" or "off" => false,
+            _ => false
+        };
+    }
+
+    /// <summary>
+    /// Builds the factory used by components that own their HTTP stack (the
+    /// OTLP exporters do). Returning <c>null</c> leaves the component's own
+    /// default in place — the SDK default already validates certificates, so
+    /// the factory is only needed when the deployment opts into accepting an
+    /// otherwise-untrusted (typically internal, self-signed) CA.
+    ///
+    /// Without this hook, a deployment that trusts an internal CA everywhere
+    /// else would still drop every trace at the collector, because the
+    /// exporter never consults <c>OPENAGENT_ALLOW_INSECURE_TLS</c>.
+    /// </summary>
+    public static Func<HttpClient>? CreateHttpClientFactory(IConfiguration configuration)
+    {
+        if (!AllowInsecureTls(configuration))
+        {
+            return null;
+        }
+
+        // One handler per factory invocation: the exporter may create several
+        // clients, and a shared handler that gets disposed breaks the others.
+        return () => new HttpClient(
+            CreateHttpClientHandler(configuration, allowInsecureTls: true),
+            disposeHandler: true);
+    }
 
     public static HttpClientHandler CreateHttpClientHandler(
         IConfiguration configuration,

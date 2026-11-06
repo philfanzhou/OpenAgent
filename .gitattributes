@@ -1,0 +1,33 @@
+# Shell scripts run inside Linux containers and on Linux servers. A CRLF
+# checkout makes them fail immediately with
+#   syntax error near unexpected token `$'{\r''
+# because the carriage return becomes part of the token. Both developer
+# machines run with core.autocrlf=true, so pin LF for everything a Linux
+# process executes or parses and let git normalise the rest.
+* text=auto eol=lf
+
+*.sh            text eol=lf
+*.bash          text eol=lf
+Dockerfile      text eol=lf
+*.dockerfile    text eol=lf
+*.yml           text eol=lf
+*.yaml          text eol=lf
+*.json          text eol=lf
+*.props         text eol=lf
+*.targets       text eol=lf
+*.csproj        text eol=lf
+*.sln           text eol=lf
+*.template      text eol=lf
+
+# Windows-only tooling keeps CRLF.
+*.ps1           text eol=crlf
+*.bat           text eol=crlf
+*.cmd           text eol=crlf
+
+*.png           binary
+*.jpg           binary
+*.gif           binary
+*.ico           binary
+*.pdf           binary
+*.tar           binary
+*.gz            binary

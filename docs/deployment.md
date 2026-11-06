@@ -149,6 +149,27 @@ docker compose -p openagent-infrastructure \
 
 将外部 Collector 地址写入 `.env` 的 `OPENAGENT_OTLP_ENDPOINT` 后执行部署脚本。Exporter、信号出口和 Trace 关联规则统一见 [可观测性](overview/Observability.md)；本仓库不管理 Collector 容器。Nginx JSON 访问日志保留 `traceparent` 与 `X-Trace-Id`，供部署侧日志中心关联。
 
+Engine 与 Router 默认以 `Serilog:ConsoleFormat=Json` 输出单行 JSON，`ConversationId`、`TraceId`、`ServiceName` 等字段位于 `Properties` 下，供日志中心按会话/trace 关联。若下游仍依赖纯文本输出，将该键改为 `Plain`。
+
+## 审计平面（OpenAgent.Audit）
+
+审计平面单独部署（见其仓库的 `docs/openagent-integration.md`）。本仓库侧需要三项配合，均已内置在 `deploy/openagent/docker-compose.yml` 与 `deploy/deployment.env.example`：
+
+```dotenv
+OPENAGENT_AUDIT_NETWORK=openagent-audit                    # 对方 compose 网络名
+OPENAGENT_OTLP_TRACES_ENDPOINT=http://masking-gateway:8102 # 仅 traces
+OPENAGENT_OTLP_TRACES_HEADERS=Authorization=Bearer ${AUDIT_GATEWAY_TOKEN}
+OPENAGENT_OTLP_PROTOCOL=http/protobuf
+```
+
+- **只有 traces 进入审计网关**。logs 与 metrics 继续走 `OPENAGENT_OTLP_ENDPOINT`；日志含未脱敏的请求文本，不属于脱敏管线的覆盖范围。
+- **只有 engine 与 router 加入审计网络**，Runner、Chat、Nginx 不加入；审计侧的 audit-db、Langfuse、decrypt-svc 也不会暴露到本栈网络。
+- **令牌必须与审计侧 `AUDIT_GATEWAY_TOKEN` 一致**。该值应放在受保护的 `.env` 中，不要写进仓库。
+- 留空 `OPENAGENT_OTLP_TRACES_ENDPOINT` 即完全关闭审计 trace 导出。
+
+未接入审计平面时无法直接使用本 compose（`audit` 网络声明为 external），需去掉
+engine/router 的 `audit` 网络项；接入时先启动审计栈，再部署应用栈。
+
 ## 已有部署与访问地址
 
 迁移已有部署时，必须把 `OPENAGENT_INFRA_PROJECT`、`OPENAGENT_COMPOSE_PROJECT` 和

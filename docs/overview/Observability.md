@@ -54,6 +54,69 @@ Meter / ASP.NET Core Metrics -> OpenTelemetry
 - `OpenTelemetry:ServiceName` 与 `ServiceVersion` 可以覆盖应用默认值。
 - Serilog 的输出和最小级别由各服务 `appsettings*.json` 中的 `Serilog` 节控制。
 
+### 按信号分流与认证头
+
+单一地址会把 traces、logs 和 metrics 一起发送。审计平面（OpenAgent.Audit）必须
+**只接收 traces**——日志含有未脱敏的请求文本，不属于脱敏管线覆盖范围。为此支持按信号
+覆盖端点与请求头，未覆盖的信号继续使用共享地址：
+
+| 配置键 | 环境变量 | 说明 |
+|--------|----------|------|
+| `OpenTelemetry:TracesEndpoint` | `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | 仅 traces 的端点 |
+| `OpenTelemetry:LogsEndpoint` | `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` | 仅 logs 的端点 |
+| `OpenTelemetry:MetricsEndpoint` | `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` | 仅 metrics 的端点 |
+| `OpenTelemetry:TracesHeaders` / `LogsHeaders` / `MetricsHeaders` | `OTEL_EXPORTER_OTLP_*_HEADERS` | 对应信号的请求头，格式 `key=value,key2=value2` |
+| `OpenTelemetry:Headers` | `OTEL_EXPORTER_OTLP_HEADERS` | 所有信号的共享请求头 |
+| `OpenTelemetry:Protocol` | `OTEL_EXPORTER_OTLP_PROTOCOL` | `grpc` / `http/protobuf` / `http/json` |
+
+配置键优先于同名环境变量；某一信号没有端点时不注册该信号的 exporter。请求头必须显式
+绑定：端点一旦由代码赋值，SDK 就不会再自行读取 `OTEL_EXPORTER_OTLP_HEADERS`，这正是
+需要认证的下游（如审计脱敏网关）此前收不到令牌的原因。
+
+接入审计平面时的最小配置：
+
+```bash
+OPENAGENT_OTLP_TRACES_ENDPOINT=http://masking-gateway:8102
+OPENAGENT_OTLP_TRACES_HEADERS=Authorization=Bearer <AUDIT_GATEWAY_TOKEN>
+OPENAGENT_OTLP_PROTOCOL=http/protobuf
+```
+
+### 审计关联属性
+
+审计网关按 span 属性把 trace 归集到会话、用户与 Agent：
+
+| 属性 | 来源 |
+|------|------|
+| `openagent.conversation_id` | `TurnContext.ConversationId`（端点解析/生成） |
+| `openagent.user_id` | `TurnContext.UserId` |
+| `openagent.agent_id` | 解析后的 agent id |
+| `openagent.tenant_id` | `TurnContext.TenantId` |
+| `openagent.trace_id` | 轮次追溯键（对应 `X-Trace-Id`） |
+
+唯一投影是 `TurnContext.ToAuditAttributes()`；发布点是
+`AgentExecutor.CreateTurn`（`AuditActivityEnrichment.Publish`）。不经过执行器的请求
+（文件访问、会话查询）由 `RequestTelemetryMiddleware` 兜底回填请求头与用户身份，
+且不会覆盖执行器已写入的值。新增会话级标识应先加入该投影。
+
+### 日志输出格式
+
+Serilog 默认控制台模板是**纯文本**，只渲染消息与内联属性：`Enrich.WithProperty`
+添加的 ServiceName/InstanceId，以及 `BeginScope` 中的 TraceId/ConversationId
+都不会出现在输出行里。需要日志中心按 trace/会话关联（Promtail → Loki）时必须启用
+JSON 输出——Engine 与 Router 的 `appsettings.json` 已默认配置：
+
+```json
+"Serilog": {
+  "ConsoleFormat": "Json",
+  "WriteTo": [ { "Name": "Console",
+                 "Args": { "formatter": "Serilog.Formatting.Json.JsonFormatter, Serilog" } } ]
+}
+```
+
+`ConsoleFormat` 只接受 `Json` 与 `Plain`，其他取值启动即失败，避免拼写错误悄悄退回
+纯文本导致字段静默消失。JSON 行中消息属性位于 `Properties`，顶层 `TraceId` 是 W3C
+Activity id，二者含义不同，排障时不要混用。
+
 ## 指标
 
 Router 当前提供以下业务指标：
