@@ -219,6 +219,6 @@ public class OtlpSettingsTests
             "TryCreateExporterOptions",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
         Assert.NotNull(method);
-        return (OtlpExporterOptions?)method!.Invoke(null, [settings, signal, signalPath]);
+        return (OtlpExporterOptions?)method!.Invoke(null, [settings, signal, signalPath, null]);
     }
 }

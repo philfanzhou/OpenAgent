@@ -129,6 +129,13 @@ public static class ServiceCollectionExtensions
         if (options.EnableOpenTelemetry)
         {
             OtlpSettings otlp = OtlpSettings.FromConfiguration(configuration);
+            // Exporters build their own HttpClient, so the deployment TLS policy
+            // has to be handed to them explicitly. Without this an HTTPS
+            // collector behind the internal (often self-signed) CA fails
+            // certificate validation and every export is dropped silently —
+            // the app looks healthy while no trace ever arrives.
+            Func<HttpClient>? otlpHttpClientFactory =
+                HttpClientSecurity.CreateHttpClientFactory(configuration);
 
             string serviceName = configuration["OpenTelemetry:ServiceName"] ?? options.ServiceName;
             string serviceVersion = configuration["OpenTelemetry:ServiceVersion"] ?? options.ServiceVersion;
@@ -143,7 +150,7 @@ public static class ServiceCollectionExtensions
                 logs.IncludeFormattedMessage = true;
                 logs.IncludeScopes = true;
                 logs.ParseStateValues = true;
-                ApplyOtlpExporter(logs, otlp, OtlpSignal.Logs, "v1/logs");
+                ApplyOtlpExporter(logs, otlp, OtlpSignal.Logs, "v1/logs", otlpHttpClientFactory);
             }));
 
             openTelemetry.WithTracing(tracing =>
@@ -159,7 +166,7 @@ public static class ServiceCollectionExtensions
                     .AddSource(options.OpenTelemetrySource)
                     .AddSource("OpenAgent.AgentFramework");
 
-                ApplyOtlpExporter(tracing, otlp, OtlpSignal.Traces, "v1/traces");
+                ApplyOtlpExporter(tracing, otlp, OtlpSignal.Traces, "v1/traces", otlpHttpClientFactory);
             });
 
             openTelemetry.WithMetrics(metrics =>
@@ -169,7 +176,7 @@ public static class ServiceCollectionExtensions
                     .AddMeter(options.OpenTelemetrySource)
                     .AddPrometheusExporter();
 
-                ApplyOtlpExporter(metrics, otlp, OtlpSignal.Metrics, "v1/metrics");
+                ApplyOtlpExporter(metrics, otlp, OtlpSignal.Metrics, "v1/metrics", otlpHttpClientFactory);
             });
         }
 
@@ -202,34 +209,38 @@ public static class ServiceCollectionExtensions
     /// with no endpoint for a signal, nothing is exported, exactly as before.
     /// </summary>
     internal static void ApplyOtlpExporter(
-        OpenTelemetryLoggerOptions logs, OtlpSettings settings, OtlpSignal signal, string signalPath)
+        OpenTelemetryLoggerOptions logs, OtlpSettings settings, OtlpSignal signal, string signalPath,
+        Func<HttpClient>? httpClientFactory = null)
     {
-        if (TryCreateExporterOptions(settings, signal, signalPath) is { } exporter)
+        if (TryCreateExporterOptions(settings, signal, signalPath, httpClientFactory) is { } exporter)
         {
             logs.AddOtlpExporter(configure: options => CopyExporterOptions(options, exporter));
         }
     }
 
     internal static void ApplyOtlpExporter(
-        TracerProviderBuilder tracing, OtlpSettings settings, OtlpSignal signal, string signalPath)
+        TracerProviderBuilder tracing, OtlpSettings settings, OtlpSignal signal, string signalPath,
+        Func<HttpClient>? httpClientFactory = null)
     {
-        if (TryCreateExporterOptions(settings, signal, signalPath) is { } exporter)
+        if (TryCreateExporterOptions(settings, signal, signalPath, httpClientFactory) is { } exporter)
         {
             tracing.AddOtlpExporter(configure: options => CopyExporterOptions(options, exporter));
         }
     }
 
     internal static void ApplyOtlpExporter(
-        MeterProviderBuilder metrics, OtlpSettings settings, OtlpSignal signal, string signalPath)
+        MeterProviderBuilder metrics, OtlpSettings settings, OtlpSignal signal, string signalPath,
+        Func<HttpClient>? httpClientFactory = null)
     {
-        if (TryCreateExporterOptions(settings, signal, signalPath) is { } exporter)
+        if (TryCreateExporterOptions(settings, signal, signalPath, httpClientFactory) is { } exporter)
         {
             metrics.AddOtlpExporter(configure: options => CopyExporterOptions(options, exporter));
         }
     }
 
     private static OtlpExporterOptions? TryCreateExporterOptions(
-        OtlpSettings settings, OtlpSignal signal, string signalPath)
+        OtlpSettings settings, OtlpSignal signal, string signalPath,
+        Func<HttpClient>? httpClientFactory = null)
     {
         string? rawEndpoint = settings.EndpointFor(signal);
         if (string.IsNullOrWhiteSpace(rawEndpoint))
@@ -251,6 +262,13 @@ public static class ServiceCollectionExtensions
         if (!string.IsNullOrWhiteSpace(headers))
         {
             exporter.Headers = headers;
+        }
+
+        // Exporters create their own HttpClient; supply one that honours the
+        // deployment TLS policy (see CreateHttpClientFactory).
+        if (httpClientFactory is not null)
+        {
+            exporter.HttpClientFactory = httpClientFactory;
         }
 
         return exporter;
