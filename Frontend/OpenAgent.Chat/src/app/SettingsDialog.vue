@@ -9,6 +9,7 @@ import SkillSettingsEditors from '../features/skills/SkillSettingsEditors.vue'
 import RagSettingsPanel from '../features/rag/RagSettingsPanel.vue'
 import RagSettingsEditors from '../features/rag/RagSettingsEditors.vue'
 import HealthCheckPanel from '../components/HealthCheckPanel.vue'
+import AuditSettingsPanel from '../features/audit/AuditSettingsPanel.vue'
 import type { SettingsDialogContext } from './settings.types'
 
 const props = defineProps<{ context: SettingsDialogContext }>()
@@ -55,6 +56,9 @@ const { connectionMode, routerUrl, engineUrl, tenantId, statusText, authConfig, 
         </el-tab-pane>
         <el-tab-pane label="RAG 绑定" name="rag">
           <RagSettingsPanel :context="props.context" />
+        </el-tab-pane>
+        <el-tab-pane label="会话审计" name="audit">
+          <AuditSettingsPanel />
         </el-tab-pane>
       </el-tabs>
     </div>
