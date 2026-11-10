@@ -26,6 +26,7 @@ public static class RouterServiceCollectionExtensions
             .ValidateOnStart();
         services.AddSingleton<IAgentProviderFactory, OpenAgentEngineProviderFactory>();
         services.AddSingleton<IAgentProviderFactory, GinaProviderFactory>();
+        services.AddSingleton<IAgentProviderFactory, InternDecisionProviderFactory>();
         services.AddSingleton<IAgentProviderRegistry, AgentProviderRegistry>();
         services.AddScoped<IAgentCatalogService, AgentCatalogService>();
         services.AddSingleton<IConversationProviderStore, ConversationProviderStore>();

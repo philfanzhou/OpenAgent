@@ -211,4 +211,34 @@ internal static partial class RouterLog
 
     #endregion
 
+    #region --- InternDecisionProvider (Intent-Decision-4B routing service) ---
+
+    [LoggerMessage(EventId = 3049, Level = LogLevel.Warning, Message = "Intern decision provider is not configured (missing BaseUrl or invalid settings). ProviderId={ProviderId}")]
+    public static partial void InternDecisionNotConfigured(ILogger logger, string providerId);
+
+    [LoggerMessage(EventId = 3050, Level = LogLevel.Information, Message = "Intern decision routing started. ProviderId={ProviderId}, Endpoint={Endpoint}, CandidateCount={CandidateCount}")]
+    public static partial void InternDecisionRequest(ILogger logger, string providerId, string endpoint, int candidateCount);
+
+    [LoggerMessage(EventId = 3051, Level = LogLevel.Information, Message = "Intern decision routing completed. ProviderId={ProviderId}, AgentId={AgentId}, Confidence={Confidence}, Action={Action}, SelectedAgentId={SelectedAgentId}")]
+    public static partial void InternDecisionResult(ILogger logger, string providerId, string? agentId, double confidence, string? action, string? selectedAgentId);
+
+    [LoggerMessage(EventId = 3052, Level = LogLevel.Warning, Message = "Intern decision service returned a non-success status; falling back. ProviderId={ProviderId}, StatusCode={StatusCode}, Body={Body}")]
+    public static partial void InternDecisionUnavailable(ILogger logger, string providerId, int statusCode, string body);
+
+    [LoggerMessage(EventId = 3053, Level = LogLevel.Warning, Message = "Intern decision routing timed out; falling back. ProviderId={ProviderId}, TimeoutMs={TimeoutMs}")]
+    public static partial void InternDecisionTimedOut(ILogger logger, string providerId, int timeoutMs);
+
+    [LoggerMessage(EventId = 3054, Level = LogLevel.Warning, Message = "Intern decision service call failed; falling back. ProviderId={ProviderId}, ExceptionType={ExceptionType}")]
+    private static partial void InternDecisionFailedCore(ILogger logger, string providerId, string exceptionType);
+
+    public static void InternDecisionFailed(ILogger logger, string providerId, Exception exception) =>
+        InternDecisionFailedCore(logger, providerId, exception.GetType().FullName ?? "unknown");
+
+    [LoggerMessage(EventId = 3055, Level = LogLevel.Warning, Message = "Intern decision returned an agent outside the authorized candidate set; ignoring. ProviderId={ProviderId}, AgentId={AgentId}")]
+    public static partial void InternDecisionUnknownAgent(ILogger logger, string providerId, string agentId);
+
+    [LoggerMessage(EventId = 3056, Level = LogLevel.Warning, Message = "Intern decision received no usable candidates; skipping routing. ProviderId={ProviderId}")]
+    public static partial void InternDecisionNoCandidates(ILogger logger, string providerId);
+
+    #endregion
 }
