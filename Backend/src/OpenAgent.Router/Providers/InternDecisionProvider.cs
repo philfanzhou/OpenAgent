@@ -273,11 +273,24 @@ internal sealed class InternDecisionProvider : IAgentProvider
         }
 
         // The model only chooses from what it is given, so a missing fallback
-        // forces it to pick arbitrarily. Add the entry rather than fail.
+        // forces it to pick arbitrarily. It is also a hard requirement of the
+        // request contract: a fallback outside the candidate set is rejected
+        // outright. Inject the entry rather than fail — and if the list is
+        // already at the ceiling, drop the last candidate to make room, because
+        // losing one candidate degrades routing while rejecting the request
+        // disables it entirely.
         if (!string.IsNullOrWhiteSpace(_options.FallbackAgentId)
-            && !candidates.ContainsKey(_options.FallbackAgentId)
-            && candidates.Count < MaxAgents)
+            && !candidates.ContainsKey(_options.FallbackAgentId))
         {
+            if (candidates.Count >= MaxAgents)
+            {
+                string? last = candidates.Keys.LastOrDefault();
+                if (last is not null)
+                {
+                    candidates.Remove(last);
+                }
+            }
+
             candidates[_options.FallbackAgentId] = _options.FallbackDescription;
         }
 

@@ -277,6 +277,38 @@ public class InternDecisionProviderTests
     }
 
     [Fact]
+    public void BuildCandidates_StillInjectsTheFallbackWhenTheListIsFull()
+    {
+        // 62 is the service ceiling, and a fallback outside the candidate set is
+        // rejected outright. Dropping one candidate is a routing quality cost;
+        // omitting the fallback would disable routing for the request entirely.
+        InternDecisionProvider provider = CreateProvider(new StubHandler(_ => Json("{}")));
+        AgentSummary[] agents = Enumerable.Range(0, 62)
+            .Select(i => new AgentSummary { AgentId = $"agent-{i:D3}", Description = "desc" })
+            .ToArray();
+
+        IReadOnlyDictionary<string, string> candidates = provider.BuildCandidates(agents);
+
+        Assert.Equal(62, candidates.Count);
+        Assert.True(candidates.ContainsKey(FallbackAgent));
+    }
+
+    [Fact]
+    public void BuildCandidates_KeepsAnExistingFallbackEntry()
+    {
+        // The platform's own description wins over the placeholder.
+        InternDecisionProvider provider = CreateProvider(new StubHandler(_ => Json("{}")));
+        AgentSummary[] agents =
+        [
+            new() { AgentId = FallbackAgent, Name = "默认助手", Description = "通用对话助手" }
+        ];
+
+        IReadOnlyDictionary<string, string> candidates = provider.BuildCandidates(agents);
+
+        Assert.Equal("通用对话助手", candidates[FallbackAgent]);
+    }
+
+    [Fact]
     public void BuildCandidates_SkipsAgentsWithoutId()
     {
         InternDecisionProvider provider = CreateProvider(new StubHandler(_ => Json("{}")));
