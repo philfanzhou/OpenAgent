@@ -70,7 +70,7 @@ Skill 只允许本地持久化来源：数据库中的目录元数据和租户�
 
 ## MCP
 
-平台维护 MCP server 的配置目录与授权边界；server 的实际连接与工具调用由 harness 经 ACP 透传完成（详见 [MCP Server 集成](../integrations/mcp-server.md)与 [OpenCode 运行时](../integrations/opencode-runtime.md)）。
+平台维护 MCP server 的配置目录与授权边界；聊天中的连接与工具调用由 harness 经 ACP 透传完成。设置页可独立测试连接并查看工具 Schema，不执行工具，详见 [MCP 连接测试](../integrations/mcp-server.md#设置页连接测试)与 [OpenCode 运行时](../integrations/opencode-runtime.md)。
 
 ```text
 MCP 配置页 → PostgreSQL openagent.mcp_configurations
@@ -88,7 +88,7 @@ harness 原生连接外部 MCP server
 - Agent 绑定：Agent 只保存 `EnabledServerIds`；运行时按 ID 经 `IMcpConfigRepository` 解析定义，内联 `Mcp.Servers` 仅作存量兼容。
 - 权限：平台只对自有工具做逐调用授权；透传 server 的凭据与限流由 harness 持有。
 - 故障隔离：解析失败或未授权的 server 被跳过，不影响其余 server 透传。
-- 平台不代理外部 MCP 连接，也不复制 MCP 协议或工具执行逻辑。
+- 平台不代理聊天中的外部 MCP 连接，也不复制 MCP 协议或工具执行逻辑；设置页诊断使用官方 SDK 的独立短连接。
 
 ## RAG
 

@@ -25,7 +25,7 @@ SDK 与平台边界：
 
 Provider 与内容：支持 ApiFormat OpenAIChatCompletions、OpenAIResponses、AnthropicMessages，使用对应 SDK；OpenAI 兼容服务通过其协议与 Endpoint 配置接入，不伪装不同协议。模型工厂还负责出站规格化、交互记录与压缩客户端。Mapping 处理 system/user/assistant/tool、函数调用/结果、reasoning、文本及 DataContent；图片/PDF 按二进制内容发送，文本严格按 UTF-8 解码；文件名、扩展名、媒体类型与所有权检查在文件入口执行，不支持的媒体由 Provider 明确报错。交互捕获与导出边界见 [观测文档](../overview/Observability.md)；工具 schema、错误与隔离规则见 [能力文档](capabilities.md)，附件与共享策略见 [文件集成](../integrations/README.md)。
 
-能力解析：LLM 不再通过启动期 Registrar 或内存 Registry 注册，而是在每次执行时按租户和 `llmProfileId` 从 PostgreSQL/Redis TTL 缓存解析；Agent、Runtime 与 MCP 配置同样以 PostgreSQL 为事实源（RAG 目录仍在 Engine/Redis 的 `RedisRagRegistrar`）。外部 MCP 与 Skill 不创建官方 SDK 客户端资源，分别经 ACP 透传与工作区物化交给 harness 原生处理。
+能力解析：LLM 不再通过启动期 Registrar 或内存 Registry 注册，而是在每次执行时按租户和 `llmProfileId` 从 PostgreSQL/Redis TTL 缓存解析；Agent、Runtime 与 MCP 配置同样以 PostgreSQL 为事实源（RAG 目录仍在 Engine/Redis 的 `RedisRagRegistrar`）。聊天中的外部 MCP 与 Skill 不创建官方 SDK 客户端资源，分别经 ACP 透传与工作区物化交给 harness 原生处理；设置页的 [MCP 连接测试](../integrations/mcp-server.md#设置页连接测试)使用独立短连接，不改变此执行路径。
 
 扩展约束：新能力扩展现有驱动/平台接口，不新增并行 Agent 引擎或第二个 composition root；真实模型与 MCP 按环境单独验收，不由单元测试推断生产可用性。
 

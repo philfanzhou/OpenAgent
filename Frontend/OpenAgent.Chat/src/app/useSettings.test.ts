@@ -62,6 +62,24 @@ describe('settings composition', () => {
     expect(state.config.value).toBeNull()
   })
 
+  it('closes module editors and removes MCP diagnostics when the workspace is reset', async () => {
+    const { state } = settings()
+    state.showLlmEditor.value = true
+    state.showMcpEditor.value = true
+    vi.spyOn(mcpApi, 'testConnection').mockResolvedValue({
+      success: true, connected: true, latencyMs: 10,
+      serverName: 'tools', serverVersion: '1', protocolVersion: '2025-11-25', tools: [], error: null,
+    })
+    await state.testMcp({ name: 'private-tools', url: 'http://mcp', type: 'Http' })
+
+    state.resetSettings()
+
+    expect(state.showLlmEditor.value).toBe(false)
+    expect(state.showMcpEditor.value).toBe(false)
+    expect(state.mcpTestTarget.value).toBeNull()
+    expect(state.mcpTestResult.value).toBeNull()
+  })
+
   it('keeps module failures in the shared error presentation flow', async () => {
     const { state, options } = settings()
     const error = new Error('MCP catalog unavailable')

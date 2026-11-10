@@ -220,6 +220,24 @@ export interface McpServerConfig {
   type: 'Http' | 'SSE'
   protocolVersion?: string | null
 }
+export interface McpDiagnosticTool {
+  name: string
+  title: string | null
+  description: string | null
+  inputSchema: unknown
+  outputSchema: unknown | null
+}
+
+export interface McpConnectionTestResult {
+  success: boolean
+  connected: boolean
+  latencyMs: number
+  serverName: string | null
+  serverVersion: string | null
+  protocolVersion: string | null
+  tools: McpDiagnosticTool[]
+  error: string | null
+}
 
 export interface McpConfig {
   enabledServerIds: string[]

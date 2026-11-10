@@ -21,7 +21,7 @@ using Xunit;
 
 namespace OpenAgent.Engine.Tests.Hosting;
 
-public class ConfigurationEndpointTests
+public partial class ConfigurationEndpointTests
 {
     [Fact]
     public async Task ModelRoutes_PreserveTenantIsolationSecretsAndContextTokensContract()

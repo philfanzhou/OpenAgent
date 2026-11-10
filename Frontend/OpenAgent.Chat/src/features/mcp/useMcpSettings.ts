@@ -1,6 +1,6 @@
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, ref } from 'vue'
-import type { McpServerConfig } from '../../shared/contracts/types'
+import type { McpConnectionTestResult, McpServerConfig } from '../../shared/contracts/types'
 import { api } from './api'
 
 export function createDefaultMcp(): McpServerConfig {
@@ -28,6 +28,10 @@ export function useMcpSettings(options: SettingsOptions) {
   const loadingMcpBindingOptions = ref(false)
 
   const selectedMcpIndex = ref(-1)
+  const testingMcp = ref(false)
+  const mcpTestResult = ref<McpConnectionTestResult | null>(null)
+  const mcpTestTarget = ref<McpServerConfig | null>(null)
+  let mcpTestSequence = 0
 
   const boundMcpServers = computed(() => agentMcpIds.value.map(id =>
     mcpServers.value.find(item => item.name.toLowerCase() === id.toLowerCase())
@@ -80,6 +84,37 @@ export function useMcpSettings(options: SettingsOptions) {
     mcpDraft.value = createDefaultMcp()
     showMcpEditor.value = true
   }
+  function clearMcpTest(): void {
+    mcpTestSequence += 1
+    testingMcp.value = false
+    mcpTestResult.value = null
+    mcpTestTarget.value = null
+  }
+
+  async function testMcp(server: McpServerConfig): Promise<void> {
+    const target = { ...server, name: server.name.trim(), url: server.url.trim() }
+    if (!target.url) return
+    const sequence = ++mcpTestSequence
+    testingMcp.value = true
+    mcpTestResult.value = null
+    mcpTestTarget.value = target
+    try {
+      const result = await api.testConnection(target)
+      if (sequence === mcpTestSequence) mcpTestResult.value = result
+    } catch (error) {
+      if (sequence === mcpTestSequence) {
+        mcpTestResult.value = { success: false, connected: false, latencyMs: 0, serverName: null, serverVersion: null, protocolVersion: null, tools: [], error: error instanceof Error ? error.message : '连接测试失败' }
+      }
+    } finally {
+      if (sequence === mcpTestSequence) testingMcp.value = false
+    }
+  }
+
+  function testMcpRow(index: number): Promise<void> {
+    const server = mcpServers.value[index]
+    return server ? testMcp(server) : Promise.resolve()
+  }
+
 
   async function removeMcp(index: number): Promise<void> {
     const current = mcpServers.value[index]
@@ -133,5 +168,5 @@ export function useMcpSettings(options: SettingsOptions) {
     }
   }
 
-  return { showMcpEditor, mcpDraft, mcpServers, agentMcpIds, showMcpBindingPicker, mcpBindingOptions, loadingMcpBindingOptions, selectedMcpIndex, boundMcpServers, toggleMcpBinding, openMcpBindingPicker, removeMcpBinding, loadMcpProfiles, selectMcp, newMcp, removeMcp, saveMcp }
+  return { showMcpEditor, mcpDraft, mcpServers, agentMcpIds, showMcpBindingPicker, mcpBindingOptions, loadingMcpBindingOptions, selectedMcpIndex, boundMcpServers, testingMcp, mcpTestResult, mcpTestTarget, clearMcpTest, testMcp, testMcpRow, toggleMcpBinding, openMcpBindingPicker, removeMcpBinding, loadMcpProfiles, selectMcp, newMcp, removeMcp, saveMcp }
 }

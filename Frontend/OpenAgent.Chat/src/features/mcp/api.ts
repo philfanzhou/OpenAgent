@@ -1,5 +1,5 @@
 import { jsonInit, request } from '../../shared/api/http'
-import type { McpServerConfig } from '../../shared/contracts/types'
+import type { McpConnectionTestResult, McpServerConfig } from '../../shared/contracts/types'
 
 export const api = {
   listMcpProfiles(): Promise<McpServerConfig[]> {
@@ -16,5 +16,8 @@ export const api = {
 
   deleteMcpProfile(id: string): Promise<void> {
     return request<void>(`/api/v1/admin/mcp/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  },
+  testConnection(server: McpServerConfig): Promise<McpConnectionTestResult> {
+    return request<McpConnectionTestResult>('/api/v1/admin/mcp/test-connection', jsonInit('POST', server))
   }
 }

@@ -47,7 +47,7 @@ OpenCode 的原生工具默认 `* = deny`，仅允许 `openagent_*` 平台桥工
 ## MCP 透传
 
 - Agent 配置启用的外部 MCP server（租户注册表 `EnabledServerIds` 或内联 `Servers`）经租户过滤与逐 server 授权后，直接作为 ACP `session/new` 的 mcpServers 条目交给 OpenCode 原生连接。
-- 平台侧不再建立外部 MCP 客户端：McpClientPool、McpToolFactory、read_mcp_resource 与延迟加载（search_tools/DeferredToolInjector）已删除；平台桥只承载平台自有工具（文件、能力、`read_skill_file`）。
+- 聊天执行不再建立平台侧外部 MCP 客户端：McpClientPool、McpToolFactory、read_mcp_resource 与延迟加载（search_tools/DeferredToolInjector）已删除；平台桥只承载平台自有工具（文件、能力、`read_skill_file`）。设置页的短生命周期连接诊断仅握手和读取目录，不参与聊天（见 [MCP Server 集成](mcp-server.md#设置页连接测试)）。
 - 安全取舍必须知情：透传后外部 server 的凭据（当前配置仅 URL/类型，鉴权头为后续项）由 harness 进程直接持有，逐调用授权、超时与预算不再经过平台；harness 与 server 之间的网络路径也不再受平台管控。
 
 ## Skill 物化

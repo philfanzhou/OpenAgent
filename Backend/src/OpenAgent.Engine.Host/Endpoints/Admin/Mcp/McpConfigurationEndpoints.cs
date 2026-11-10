@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
+using System.Globalization;
 using OpenAgent.Contracts.Configuration;
+using OpenAgent.Contracts.Models;
 using OpenAgent.Engine.Config;
 using OpenAgent.Engine.Host.Endpoints;
 using OpenAgent.Engine.Hosting.Errors;
@@ -25,6 +27,10 @@ internal static class McpConfigurationEndpoints
 
         group.MapDelete("/mcp/{id}", DeleteMcpAsync)
             .WithName("DeleteMcpServer")
+            .WithTags("Admin MCP");
+
+        group.MapPost("/mcp/test-connection", TestMcpAsync)
+            .WithName("TestMcpConnection")
             .WithTags("Admin MCP");
     }
 
@@ -87,6 +93,29 @@ internal static class McpConfigurationEndpoints
         return await mcpProfiles.DeleteAsync(id, RequireTenant(context), cancellationToken).ConfigureAwait(false)
             ? TypedResults.NoContent()
             : TypedResults.Problem(AgentProblemDetails.NotFound($"MCP server '{id}' was not found.", context));
+    }
+
+    private static async Task<Results<Ok<McpConnectionTestResult>, ProblemHttpResult>> TestMcpAsync(
+        [FromBody] McpServerConfig server,
+        HttpContext context,
+        CancellationToken cancellationToken)
+    {
+        if (!HasScope(context, "capability.test"))
+            return Forbidden(context, "capability.test");
+        _ = RequireTenant(context);
+        if (string.IsNullOrWhiteSpace(server.Url)
+            || !Uri.TryCreate(server.Url, UriKind.Absolute, out Uri? endpoint)
+            || (endpoint.Scheme != Uri.UriSchemeHttp && endpoint.Scheme != Uri.UriSchemeHttps))
+            return TypedResults.Problem(AgentProblemDetails.Invalid("MCP requires an absolute HTTP or HTTPS URL.", context));
+        if (!Enum.IsDefined(server.Type))
+            return TypedResults.Problem(AgentProblemDetails.Invalid("MCP type must be Http or SSE.", context));
+        if (server.ProtocolVersion is not null
+            && !DateOnly.TryParseExact(server.ProtocolVersion, "yyyy-MM-dd", CultureInfo.InvariantCulture,
+                DateTimeStyles.None, out _))
+            return TypedResults.Problem(AgentProblemDetails.Invalid("MCP protocolVersion must be a date in yyyy-MM-dd format.", context));
+
+        return TypedResults.Ok(await McpConnectionDiagnostic.TestAsync(
+            endpoint, server.Type, server.ProtocolVersion, cancellationToken).ConfigureAwait(false));
     }
 
     private static ProblemHttpResult Forbidden(HttpContext context, string requiredScope) =>
