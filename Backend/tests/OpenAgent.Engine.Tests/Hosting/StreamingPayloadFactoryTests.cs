@@ -68,6 +68,22 @@ public class StreamingPayloadFactoryTests
     }
 
     [Fact]
+    public void CreateErrorPayload_ClassifiedConnectionFailureCarriesActionableCode()
+    {
+        var exception = new AgentException(
+            AgentErrorCode.LlmConnectionFailed,
+            "无法连接模型服务：请检查模型服务地址、网络连接和 TLS 证书配置后重试。");
+
+        var payload = StreamingPayloadFactory.CreateErrorPayload(exception, "trace-tls");
+
+        Assert.Equal("无法连接模型服务", payload.Title);
+        Assert.Equal("https://error.agent.com/llmconnectionfailed", payload.Type);
+        Assert.Equal("LlmConnectionFailed", payload.Code);
+        Assert.Contains("TLS", payload.Detail);
+        Assert.Equal("trace-tls", payload.TraceId);
+    }
+
+    [Fact]
     public void CreateErrorPayload_ClientResultException_UsesProviderTitleAndDetail()
     {
         var exception = new ClientResultException(

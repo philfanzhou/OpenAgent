@@ -1,6 +1,8 @@
 using System.Net;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
@@ -285,6 +287,20 @@ public sealed class OpenCodeTests
     }
 
     [OpenCodeFact]
+    public async Task ProviderTlsError_ClassifiesAsConnectionFailure()
+    {
+        await using TlsModelFixture model = await TlsModelFixture.StartAsync();
+        await using RuntimeFixture runtime = new(model.Endpoint);
+
+        AgentException error = await Assert.ThrowsAsync<AgentException>(() => runtime.CollectAsync(runtime.Request));
+
+        Assert.Equal(AgentErrorCode.LlmConnectionFailed, error.ErrorCode);
+        Assert.Contains("TLS", error.Message);
+        Assert.Null(error.InnerException);
+        runtime.AssertWorkspacesReleased();
+    }
+
+    [OpenCodeFact]
     public async Task ProviderContextOverflow_ClassifiesAsContextOverflow()
     {
         // 实测：OpenCode 把 provider 的 context_length_exceeded 改写为
@@ -396,6 +412,36 @@ public sealed class OpenCodeTests
 
     private static string Text(IEnumerable<AgentStreamEvent> events) =>
         string.Concat(events.Where(item => item.Type == AgentStreamEventType.Content).Select(item => item.Content));
+}
+
+internal sealed class TlsModelFixture(WebApplication app, X509Certificate2 certificate) : IAsyncDisposable
+{
+    internal string Endpoint => app.Services.GetRequiredService<IServer>()
+        .Features.Get<IServerAddressesFeature>()!.Addresses.Single(address => address.StartsWith("https://", StringComparison.Ordinal)) + "/v1";
+
+    internal static async Task<TlsModelFixture> StartAsync()
+    {
+        using RSA rsa = RSA.Create(2048);
+        CertificateRequest request = new("CN=127.0.0.1", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        SubjectAlternativeNameBuilder san = new();
+        san.AddIpAddress(IPAddress.Loopback);
+        request.CertificateExtensions.Add(san.Build());
+        X509Certificate2 certificate = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddDays(1));
+
+        WebApplicationBuilder builder = WebApplication.CreateSlimBuilder();
+        builder.Logging.ClearProviders();
+        builder.WebHost.ConfigureKestrel(options => options.Listen(IPAddress.Loopback, 0, listen => listen.UseHttps(certificate)));
+        WebApplication app = builder.Build();
+        app.MapPost("/v1/chat/completions", (HttpContext context) => context.Response.WriteAsync("unexpected request"));
+        await app.StartAsync();
+        return new(app, certificate);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await app.DisposeAsync();
+        certificate.Dispose();
+    }
 }
 
 internal sealed class RuntimeFixture : IAsyncDisposable

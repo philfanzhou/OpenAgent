@@ -9,11 +9,11 @@ namespace OpenAgent.Runtime.OpenCode;
 /// <summary>
 /// 把 OpenCode 轮次失败分类为携带 <see cref="AgentErrorCode"/> 的 <see cref="AgentException"/>。
 /// Provider 错误经 harness 以 JSON-RPC error（<see cref="AcpRpcException"/>）回到平台，
-/// 实测（OpenCode 1.19.3）其 Message 会**逐字回带 provider 响应体**（如
+/// Message 与 Data 可能逐字带回 provider 响应体（如
 /// "Internal error: Incorrect API key provided: sk-***"、"Internal error: Unauthorized: &lt;body&gt;"），
-/// 因此：产出消息只能是固定中文模板，绝不引用原文片段；InnerException 一律为 null
-/// （防止 ToString() 进入日志时泄露）；仅 HTTP 状态码与 RPC 错误码两个纯数字字段
-/// 经 <see cref="AgentException.Details"/> 进入服务器日志，供管理员按 TraceId 排查。
+/// 因此分类时可以读取结构化字段，但产出消息只能是固定中文模板，绝不引用原文片段；
+/// InnerException 一律为 null（防止 ToString() 进入日志时泄露）；仅 HTTP 状态码与 RPC 错误码
+/// 两个纯数字字段经 <see cref="AgentException.Details"/> 进入服务器日志，供管理员按 TraceId 排查。
 /// </summary>
 internal static class OpenCodeErrorClassifier
 {
@@ -54,6 +54,21 @@ internal static class OpenCodeErrorClassifier
         "timeout|timed out|etimedout|deadline exceeded|超时",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
+    /// <summary>模型服务连接/TLS失败：证书校验、网络请求和底层 socket 错误。</summary>
+    private static readonly Regex ConnectionPattern = new(
+        "fetch failed|failed to fetch|network (error|request failed)|socket hang up|socket connection was closed"
+        + "|connection reset|connection refused|connection error|connection lost|upstream connect|reset before headers"
+        + "|getaddrinfo|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET"
+        + "|certificate|tls|ssl|CERT_|ERR_TLS_|UNABLE_TO_VERIFY|SELF_SIGNED"
+        + "|证书|TLS|SSL|连接失败|连接被拒绝|网络请求失败",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
+    /// <summary>OpenCode v2 ACP 自身不可用，而不是模型服务失败。</summary>
+    private static readonly Regex RuntimeUnavailablePattern = new(
+        "opencode server is unavailable|server unavailable|serverunavailable|internal service failure"
+        + "|运行时服务不可用|运行时服务失败",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
     /// <summary>从原始错误提取 HTTP 状态码（仅限常见状态码集合，纯数字无泄露面）。</summary>
     private static readonly Regex HttpStatusPattern = new(
         "\\b(400|401|402|403|404|408|409|413|422|429|500|502|503|504)\\b",
@@ -64,7 +79,7 @@ internal static class OpenCodeErrorClassifier
         AcpRpcException? rpc = FindAcpRpcException(error);
         if (rpc is not null)
         {
-            string message = rpc.Message;
+            string message = BuildClassificationText(rpc);
             string? status = ExtractHttpStatus(message);
             string diagnostic = $"rpc={rpc.Code}";
             if (ContextOverflowPattern.IsMatch(message))
@@ -72,6 +87,14 @@ internal static class OpenCodeErrorClassifier
                 return new AgentException(
                     AgentErrorCode.LlmContextOverflow,
                     "会话内容超出模型上下文窗口上限：请开启新会话，或精简历史消息与附件后重试。",
+                    diagnostic);
+            }
+
+            if (RuntimeUnavailablePattern.IsMatch(message))
+            {
+                return new AgentException(
+                    AgentErrorCode.DependencyUnavailable,
+                    "OpenCode 运行时服务不可用：请稍后重试；若持续失败请联系管理员并提供 TraceId。",
                     diagnostic);
             }
             if (AuthPattern.IsMatch(message) || status is "401" or "403")
@@ -100,6 +123,14 @@ internal static class OpenCodeErrorClassifier
                 return new AgentException(
                     AgentErrorCode.LlmTimeout,
                     "模型服务响应超时：请稍后重试；若持续超时请联系管理员调整超时配置。",
+                    diagnostic);
+            }
+
+            if (ConnectionPattern.IsMatch(message))
+            {
+                return new AgentException(
+                    AgentErrorCode.LlmConnectionFailed,
+                    "无法连接模型服务：请检查模型服务地址、网络连接和 TLS 证书配置后重试。",
                     diagnostic);
             }
             // 未识别形态的 provider 错误：沿用通用执行失败码，摘要只带状态码。
@@ -133,6 +164,11 @@ internal static class OpenCodeErrorClassifier
         Match match = message is null ? Match.Empty : HttpStatusPattern.Match(message);
         return match.Success ? match.Value : null;
     }
+
+    private static string BuildClassificationText(AcpRpcException rpc) =>
+        rpc.ErrorData is { } data
+            ? $"{rpc.Message}\n{data.GetRawText()}"
+            : rpc.Message;
 
     private static string StatusCore(string? status) =>
         string.IsNullOrEmpty(status) ? string.Empty : $"（HTTP {status}）";

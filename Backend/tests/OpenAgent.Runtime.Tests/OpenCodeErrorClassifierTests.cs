@@ -25,12 +25,62 @@ public sealed class OpenCodeErrorClassifierTests
     [InlineData("HTTP 403 (invalid_api_key: Invalid API key provided)")]
     // 国内服务中文文案
     [InlineData("Internal error: 鉴权失败：无效的API密钥")]
+    [InlineData("provider authentication required")]
     public void Classify_AuthFailure_MapsToLlmAuthFailed(string rpcMessage)
     {
         AgentException classified = OpenCodeErrorClassifier.Classify(Rpc(rpcMessage));
 
         Assert.Equal(AgentErrorCode.LlmAuthFailed, classified.ErrorCode);
         Assert.Contains("API Key", classified.Message);
+    }
+
+    [Theory]
+    [InlineData("fetch failed: self-signed certificate in certificate chain")]
+    [InlineData("Error: certificate has expired")]
+    [InlineData("ERR_TLS_CERT_ALTNAME_INVALID")]
+    [InlineData("connect ECONNREFUSED 127.0.0.1:8499")]
+    [InlineData("getaddrinfo ENOTFOUND model.example.com")]
+    public void Classify_TlsFailure_MapsToLlmConnectionFailed(string rpcMessage)
+    {
+        AgentException classified = OpenCodeErrorClassifier.Classify(Rpc(rpcMessage));
+
+        Assert.Equal(AgentErrorCode.LlmConnectionFailed, classified.ErrorCode);
+        Assert.Contains("证书", classified.Message);
+        Assert.Null(classified.InnerException);
+    }
+
+    [Fact]
+    public void Classify_StructuredTlsErrorData_MapsToLlmConnectionFailed()
+    {
+        using JsonDocument data = JsonDocument.Parse("{\"cause\":{\"code\":\"SELF_SIGNED_CERT_IN_CHAIN\"}}");
+        AgentException classified = OpenCodeErrorClassifier.Classify(
+            new AcpRpcException(-32603, "fetch failed", data.RootElement));
+
+        Assert.Equal(AgentErrorCode.LlmConnectionFailed, classified.ErrorCode);
+        Assert.Contains("TLS", classified.Message);
+        Assert.Null(classified.InnerException);
+    }
+
+
+    [Fact]
+    public void Classify_StructuredModelErrorData_MapsToModelNotFound()
+    {
+        using JsonDocument data = JsonDocument.Parse("{\"code\":\"model_not_found\",\"status\":404}");
+        AgentException classified = OpenCodeErrorClassifier.Classify(
+            new AcpRpcException(-32603, "Internal error", data.RootElement));
+
+        Assert.Equal(AgentErrorCode.LlmModelNotFound, classified.ErrorCode);
+        Assert.Contains("HTTP 404", classified.Message);
+    }
+    [Fact]
+    public void Classify_OpenCodeV2ServerUnavailable_MapsToDependencyUnavailable()
+    {
+        AgentException classified = OpenCodeErrorClassifier.Classify(
+            Rpc("OpenCode server is unavailable"));
+
+        Assert.Equal(AgentErrorCode.DependencyUnavailable, classified.ErrorCode);
+        Assert.Contains("OpenCode", classified.Message);
+        Assert.Null(classified.InnerException);
     }
 
     [Fact]
