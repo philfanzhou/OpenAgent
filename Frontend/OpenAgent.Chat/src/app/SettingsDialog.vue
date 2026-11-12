@@ -9,14 +9,10 @@ import SkillSettingsEditors from '../features/skills/SkillSettingsEditors.vue'
 import RagSettingsPanel from '../features/rag/RagSettingsPanel.vue'
 import RagSettingsEditors from '../features/rag/RagSettingsEditors.vue'
 import HealthCheckPanel from '../components/HealthCheckPanel.vue'
-import AuditSettingsPanel from '../features/audit/AuditSettingsPanel.vue'
 import type { SettingsDialogContext } from './settings.types'
-
 const props = defineProps<{ context: SettingsDialogContext }>()
-
 const { connectionMode, routerUrl, engineUrl, tenantId, statusText, authConfig, currentUser, agents, activeEndpointLabel, activeEndpointHost, connect, logout, testHealth, showSettings, activeSettings, savingConfig, refreshingAgents, config, showAgentEditor, isNewAgent, loadingMcpBindingOptions, loadingSkillBindingOptions, ragInstances, boundMcpServers, boundSkills, openMcpBindingPicker, openSkillBindingPicker, removeMcpBinding, removeSkillBinding, isRagEnabled, toggleRagBinding, refreshAgents, editAgent, createAgent, saveConfig, openSettings, handleSettingsTabChange } = props.context
 </script>
-
 <template>
   <el-dialog v-model="showSettings" class="settings-dialog" modal-class="settings-overlay" width="min(1180px, calc(100vw - 40px))" top="3vh" :close-on-click-modal="false" destroy-on-close>
     <template #header>
@@ -57,18 +53,13 @@ const { connectionMode, routerUrl, engineUrl, tenantId, statusText, authConfig, 
         <el-tab-pane label="RAG 绑定" name="rag">
           <RagSettingsPanel :context="props.context" />
         </el-tab-pane>
-        <el-tab-pane label="会话审计" name="audit">
-          <AuditSettingsPanel />
-        </el-tab-pane>
       </el-tabs>
     </div>
   </el-dialog>
-
   <ModelSettingsEditors :context="props.context" />
   <McpSettingsEditors :context="props.context" />
   <SkillSettingsEditors :context="props.context" />
   <RagSettingsEditors :context="props.context" />
-
   <el-dialog v-model="showAgentEditor" class="editor-dialog agent-editor-dialog" modal-class="editor-overlay" width="min(920px, calc(100vw - 32px))" append-to-body destroy-on-close>
     <template #header><div class="editor-dialog-header"><div><span class="eyebrow">AGENT CONFIGURATION</span><h3>{{ isNewAgent ? '创建 Agent' : (config?.name || 'Agent 配置') }}</h3></div><el-tag effect="plain" round>{{ config?.agentId }}</el-tag></div></template>
     <div v-if="config" class="agent-editor">
@@ -83,7 +74,6 @@ const { connectionMode, routerUrl, engineUrl, tenantId, statusText, authConfig, 
           <el-form-item label="发布状态"><div class="agent-readonly-value"><el-tag round effect="plain">{{ config.status === 2 ? 'Published' : config.status === 1 ? 'Pending review' : 'Draft' }}</el-tag><span>版本 {{ config.currentVersion || '尚未发布' }}</span></div></el-form-item>
         </el-form>
       </section>
-
       <section class="agent-editor-section">
         <div class="agent-editor-section-heading"><div><span class="eyebrow">CAPABILITY BINDINGS</span><h4>能力绑定</h4><p>当前 Agent 的 MCP、Skill、RAG 以卡片展示；勾选即可启用或停用 Skill 与 RAG。</p></div><span class="editor-section-index">02</span></div>
         <div class="binding-groups">
@@ -95,5 +85,4 @@ const { connectionMode, routerUrl, engineUrl, tenantId, statusText, authConfig, 
     </div>
     <template #footer><el-button @click="showAgentEditor = false">取消</el-button><el-button type="primary" :loading="savingConfig" @click="saveConfig">保存 Agent 配置</el-button></template>
   </el-dialog>
-
 </template>
