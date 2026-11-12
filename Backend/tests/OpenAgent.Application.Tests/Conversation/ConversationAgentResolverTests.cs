@@ -1,3 +1,4 @@
+using Moq;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
@@ -9,12 +10,12 @@ namespace OpenAgent.Application.Tests.Conversation;
 
 public class ConversationAgentResolverTests
 {
-    private static ICurrentUserContext UserContext(string userId = "u1") => new FakeUserContext(userId);
+    private static ICurrentUserContext UserContext(string userId = "user-1") => new FakeUserContext(userId);
 
     private sealed class FakeUserContext(string userId) : ICurrentUserContext
     {
         public string UserId => userId;
-        public string? TenantId => null;
+        public string? TenantId => "tenant-1";
         public bool IsAuthenticated => true;
         public IReadOnlyList<string> Roles => [];
         public bool IsInRole(string role) => false;
@@ -68,11 +69,12 @@ public class ConversationAgentResolverTests
         string ownerId,
         bool deleted)
     {
-        var store = new InMemoryConversationStore(UserContext());
         ConversationRecord record = CreateRecord(ownerId, "finance");
         record.IsDeletedByUser = deleted;
-        await store.CreateAsync(record);
-        var resolver = new ConversationAgentResolver(store);
+        Mock<IConversationStore> store = new();
+        store.Setup(value => value.GetRecordAsync("tenant-1", "conversation-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(record);
+        var resolver = new ConversationAgentResolver(store.Object);
 
         AgentException exception = await Assert.ThrowsAsync<AgentException>(() =>
             resolver.ResolveAsync(

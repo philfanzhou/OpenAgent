@@ -46,20 +46,13 @@ internal sealed class ConversationSessionStore
                     context.TenantId!,
                     context.ConversationId!,
                     cancellationToken).ConfigureAwait(false)
-                    ?? throw new InvalidOperationException(
-                        "Conversation could not be created or reloaded.");
+                    ?? throw new AgentException(
+                        AgentErrorCode.PermissionDenied,
+                        "Conversation is unavailable to the current user.");
             }
         }
 
-        if (!string.Equals(record.TenantId, context.TenantId, StringComparison.Ordinal)
-            || record.Type != context.Type
-            || (!string.IsNullOrWhiteSpace(context.UserId)
-                && !string.Equals(record.UserId, context.UserId, StringComparison.Ordinal)))
-        {
-            throw new AgentException(
-                AgentErrorCode.PermissionDenied,
-                "Conversation does not belong to the current user");
-        }
+        EnsureOwnership(context, record);
 
         return new ConversationSession(
             record.Version,
@@ -133,6 +126,7 @@ internal sealed class ConversationSessionStore
 
     internal async Task<int?> SaveAsync(
         ConversationContext context,
+        IConversationLockHandle? lockHandle,
         int expectedVersion,
         IReadOnlyList<ConversationMessage> messages,
         ConversationStatus status,
@@ -142,6 +136,10 @@ internal sealed class ConversationSessionStore
         {
             return null;
         }
+        EnsureLockHeld(context, lockHandle);
+        ConversationRecord? record = await _store.GetRecordAsync(
+            context.TenantId!, context.ConversationId!, cancellationToken).ConfigureAwait(false);
+        EnsureOwnership(context, record);
         bool consistent = true;
 
         // 本轮所有落库消息统一盖章轮次追溯键，前端消息与 LLM 交互日志按 TraceId 对齐。
@@ -156,6 +154,7 @@ internal sealed class ConversationSessionStore
 
         if (messages.Count > 0)
         {
+            EnsureLockHeld(context, lockHandle);
             AppendResult append = await _store.AppendMessagesAsync(
                 context.TenantId!,
                 context.ConversationId!,
@@ -165,7 +164,7 @@ internal sealed class ConversationSessionStore
             if (!append.Success)
             {
                 consistent = false;
-                append = await RetryAppendAsync(context, messages, cancellationToken).ConfigureAwait(false);
+                append = await RetryAppendAsync(context, lockHandle, messages, cancellationToken).ConfigureAwait(false);
             }
 
             if (!append.Success)
@@ -180,6 +179,7 @@ internal sealed class ConversationSessionStore
 
         if (status != ConversationStatus.Running)
         {
+            EnsureLockHeld(context, lockHandle);
             bool updated = await _store.UpdateStatusAsync(
                 context.TenantId!,
                 context.ConversationId!,
@@ -194,6 +194,32 @@ internal sealed class ConversationSessionStore
             expectedVersion++;
         }
         return consistent ? expectedVersion : null;
+    }
+
+    private static void EnsureLockHeld(ConversationContext context, IConversationLockHandle? lockHandle)
+    {
+        if (lockHandle?.IsHeld != true
+            || !string.Equals(lockHandle.TenantId, context.TenantId, StringComparison.Ordinal)
+            || !string.Equals(lockHandle.ConversationId, context.ConversationId, StringComparison.Ordinal))
+        {
+            throw new AgentException(AgentErrorCode.Conflict, "Conversation lock is not held by this request.");
+        }
+    }
+
+    private static void EnsureOwnership(ConversationContext context, ConversationRecord? record)
+    {
+        if (record is null
+            || record.IsDeletedByUser
+            || !string.Equals(record.TenantId, context.TenantId, StringComparison.Ordinal)
+            || !string.Equals(record.ConversationId, context.ConversationId, StringComparison.Ordinal)
+            || record.Type != context.Type
+            || string.IsNullOrWhiteSpace(context.UserId)
+            || !string.Equals(record.UserId, context.UserId, StringComparison.Ordinal))
+        {
+            throw new AgentException(
+                AgentErrorCode.PermissionDenied,
+                "Conversation does not belong to the current user.");
+        }
     }
 
     internal static ConversationMessage Message(
@@ -248,6 +274,7 @@ internal sealed class ConversationSessionStore
 
     private async Task<AppendResult> RetryAppendAsync(
         ConversationContext context,
+        IConversationLockHandle? lockHandle,
         IReadOnlyList<ConversationMessage> messages,
         CancellationToken cancellationToken)
     {
@@ -259,6 +286,7 @@ internal sealed class ConversationSessionStore
         {
             return AppendResult.Conflict("conversation-not-found");
         }
+        EnsureOwnership(context, current);
 
         // 保留原 MessageId/Timestamp/IdempotencyKey：重试是同一批逻辑消息的重排序，
         // 重新生成标识会让幂等去重失效。
@@ -269,6 +297,7 @@ internal sealed class ConversationSessionStore
                 TraceId = message.TraceId ?? context.TraceId
             })
             .ToList();
+        EnsureLockHeld(context, lockHandle);
         return await _store.AppendMessagesAsync(
             context.TenantId!,
             context.ConversationId!,

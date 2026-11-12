@@ -11,9 +11,9 @@ public class InMemoryConversationStoreTests
 
     private sealed class FakeUserContext(string userId) : ICurrentUserContext
     {
-        public string UserId => userId;
-        public string? TenantId => null;
-        public bool IsAuthenticated => true;
+        public string UserId { get; set; } = userId;
+        public string? TenantId { get; set; } = "t1";
+        public bool IsAuthenticated { get; set; } = true;
         public IReadOnlyList<string> Roles => [];
         public bool IsInRole(string role) => false;
     }
@@ -80,9 +80,9 @@ public class InMemoryConversationStoreTests
     public async Task GetRecordAsync_DifferentTenant_ReturnsNull()
     {
         var store = new InMemoryConversationStore(UserContext());
-        await store.CreateAsync(CreateRecord(tenantId: "tenant-a"));
+        Assert.True(await store.CreateAsync(CreateRecord()));
 
-        ConversationRecord? result = await store.GetRecordAsync("tenant-b", "c1");
+        ConversationRecord? result = await store.GetRecordAsync("t2", "c1");
 
         Assert.Null(result);
     }
@@ -219,4 +219,104 @@ public class InMemoryConversationStoreTests
         var ok = await store.UpdateStatusAsync("t1", "c1", ConversationStatus.Completed, 5);
         Assert.False(ok);
     }
+
+    [Theory]
+    [InlineData("u2", "t1", true)]
+    [InlineData("U1", "t1", true)]
+    [InlineData("u1", "t2", true)]
+    [InlineData("u1", "T1", true)]
+    [InlineData(null, "t1", true)]
+    [InlineData("", "t1", true)]
+    [InlineData(" ", "t1", true)]
+    [InlineData("u1", null, true)]
+    [InlineData("u1", "", true)]
+    [InlineData("u1", " ", true)]
+    [InlineData("u1", "t1", false)]
+    public async Task AllOperations_UntrustedOrForeignIdentity_DenyWithoutMutating(
+        string? userId, string? tenantId, bool isAuthenticated)
+    {
+        FakeUserContext identity = new("u1");
+        InMemoryConversationStore store = new(identity);
+        Assert.True(await store.CreateAsync(CreateRecord()));
+        Assert.True((await store.AppendMessagesAsync("t1", "c1", 1,
+            [CreateMessage("owner-message", 1, content: "private needle")])).Success);
+
+        identity.UserId = userId!;
+        identity.TenantId = tenantId;
+        identity.IsAuthenticated = isAuthenticated;
+
+        Assert.Null(await store.GetRecordAsync("t1", "c1"));
+        Assert.Empty(await store.GetMessagesAsync("t1", "c1", 10));
+        Assert.Empty(await store.GetMessagesPagedAsync("t1", "c1", 0, 10));
+        Assert.Empty(await store.ListConversationsAsync("t1", 0, 10));
+        Assert.Empty(await store.SearchConversationsAsync("t1", "needle", 0, 10));
+        Assert.False(await store.CreateAsync(CreateRecord(conversationId: "forged")));
+        AppendResult append = await store.AppendMessagesAsync("t1", "c1", 2,
+            [CreateMessage("attacker-message", 2)]);
+        AppendResult conflict = await store.AppendMessagesAsync("t1", "c1", 999, []);
+        Assert.False(append.Success);
+        Assert.False(conflict.Success);
+        Assert.Equal("Conversation not found", append.ConflictReason);
+        Assert.Equal(append.ConflictReason, conflict.ConflictReason);
+        foreach (ConversationStatus status in Enum.GetValues<ConversationStatus>())
+        {
+            Assert.False(await store.UpdateStatusAsync("t1", "c1", status, 2));
+        }
+        Assert.False(await store.SoftDeleteAsync("t1", "c1"));
+        Assert.False(await store.RecordCompressionAsync("t1", "c1", new ContextSummary
+        {
+            CompressionId = "unauthorized",
+            Strategy = "test",
+            Trigger = "Manual",
+            Status = "Succeeded"
+        }));
+
+        identity.UserId = "u1";
+        identity.TenantId = "t1";
+        identity.IsAuthenticated = true;
+        ConversationRecord record = Assert.IsType<ConversationRecord>(await store.GetRecordAsync("t1", "c1"));
+        Assert.Equal(2, record.Version);
+        Assert.Equal(ConversationStatus.Running, record.Status);
+        Assert.Equal("owner-message", Assert.Single(record.Messages).MessageId);
+        Assert.Empty(record.ContextSummaries);
+        Assert.False(record.IsDeletedByUser);
+        Assert.Null(await store.GetRecordAsync("t1", "forged"));
+    }
+
+    [Theory]
+    [InlineData("u2", "t1")]
+    [InlineData("u1", "t2")]
+    [InlineData("U1", "t1")]
+    [InlineData("u1", "T1")]
+    [InlineData(null, "t1")]
+    [InlineData("", "t1")]
+    public async Task CreateAsync_ForgedRecordIdentity_ReturnsFalse(string? userId, string tenantId)
+    {
+        InMemoryConversationStore store = new(UserContext());
+
+        Assert.False(await store.CreateAsync(CreateRecord(tenantId: tenantId, userId: userId!)));
+        Assert.Null(await store.GetRecordAsync("t1", "c1"));
+    }
+
+    [Fact]
+    public async Task GetAndMutate_DeletedConversation_DenyOwnerAccess()
+    {
+        InMemoryConversationStore store = new(UserContext());
+        Assert.True(await store.CreateAsync(CreateRecord()));
+        Assert.True(await store.RecordCompressionAsync("t1", "c1", new ContextSummary
+        {
+            CompressionId = "owned",
+            Strategy = "test",
+            Trigger = "Manual",
+            Status = "Succeeded"
+        }));
+        Assert.True(await store.SoftDeleteAsync("t1", "c1"));
+
+        Assert.Null(await store.GetRecordAsync("t1", "c1"));
+        Assert.Empty(await store.GetMessagesAsync("t1", "c1", 10));
+        Assert.Empty(await store.GetMessagesPagedAsync("t1", "c1", 0, 10));
+        Assert.False((await store.AppendMessagesAsync("t1", "c1", 1, [])).Success);
+        Assert.False(await store.UpdateStatusAsync("t1", "c1", ConversationStatus.Completed, 1));
+    }
+
 }

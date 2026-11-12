@@ -112,11 +112,142 @@ public sealed class ConversationMessageMetadataPersistenceTests
         ConversationRecord? reloaded = await cache.GetAsync("tenant-1", "conversation-1");
 
         AssertMetadataEqual(metadata, Assert.Single(reloaded!.Messages).Metadata);
+        Assert.Null(await cache.GetAsync("tenant-2", "conversation-1"));
+        Assert.Null(await cache.GetAsync("tenant-1", "conversation-2"));
+        Assert.Null(await cache.GetAsync("TENANT-1", "conversation-1"));
 
         // EF 写侧（Web options）与 Redis 缓存（camelCase policy）的 metadata 载荷必须同形。
         string redisPayload = JsonDocument.Parse(captured.ToString())
             .RootElement.GetProperty("messages")[0].GetProperty("metadata").GetRawText();
         Assert.Equal(ConversationMessageMetadataJson.Serialize(metadata), redisPayload);
+    }
+
+    [Theory]
+    [InlineData("user-2", "tenant-1", true)]
+    [InlineData("USER-1", "tenant-1", true)]
+    [InlineData("user-1", "tenant-2", true)]
+    [InlineData("user-1", "TENANT-1", true)]
+    [InlineData(null, "tenant-1", true)]
+    [InlineData("", "tenant-1", true)]
+    [InlineData(" ", "tenant-1", true)]
+    [InlineData("user-1", null, true)]
+    [InlineData("user-1", "", true)]
+    [InlineData("user-1", " ", true)]
+    [InlineData("user-1", "tenant-1", false)]
+    public async Task EfCoreStore_UntrustedOrForeignIdentity_DeniesAllOperationsWithoutMutating(
+        string? userId, string? tenantId, bool isAuthenticated)
+    {
+        ContextFactory factory = new($"ownership-{Guid.NewGuid():N}");
+        FakeUserContext identity = new();
+        EfCoreConversationStore store = new(factory, identity, NullLogger<EfCoreConversationStore>.Instance);
+        await CreateConversationAsync(store);
+        Assert.True((await store.AppendMessagesAsync("tenant-1", "conversation-1", 1,
+            [CreateMessage(CreateFullMetadata())])).Success);
+
+        identity.UserId = userId!;
+        identity.TenantId = tenantId;
+        identity.IsAuthenticated = isAuthenticated;
+
+        Assert.Null(await store.GetRecordAsync("tenant-1", "conversation-1"));
+        Assert.Empty(await store.GetMessagesAsync("tenant-1", "conversation-1", 10));
+        Assert.Empty(await store.GetMessagesPagedAsync("tenant-1", "conversation-1", 0, 10));
+        Assert.Empty(await store.ListConversationsAsync("tenant-1", 0, 10));
+        Assert.Empty(await store.SearchConversationsAsync("tenant-1", "partial", 0, 10));
+        Assert.False(await store.CreateAsync(new ConversationRecord
+        {
+            ConversationId = "forged",
+            TenantId = "tenant-1",
+            UserId = "user-1"
+        }));
+        AppendResult append = await store.AppendMessagesAsync("tenant-1", "conversation-1", 2,
+            [CreateMessage(CreateFullMetadata()) with { MessageId = "attacker-message", Sequence = 2 }]);
+        AppendResult conflict = await store.AppendMessagesAsync("tenant-1", "conversation-1", 999, []);
+        Assert.False(append.Success);
+        Assert.False(conflict.Success);
+        Assert.Equal("conversation-not-found", append.ConflictReason);
+        Assert.Equal(append.ConflictReason, conflict.ConflictReason);
+        foreach (ConversationStatus status in Enum.GetValues<ConversationStatus>())
+        {
+            Assert.False(await store.UpdateStatusAsync("tenant-1", "conversation-1", status, 2));
+        }
+        Assert.False(await store.SoftDeleteAsync("tenant-1", "conversation-1"));
+        Assert.False(await store.RecordCompressionAsync("tenant-1", "conversation-1", new ContextSummary
+        {
+            CompressionId = "unauthorized",
+            Strategy = "test",
+            Trigger = "Manual",
+            Status = "Succeeded"
+        }));
+
+        await using OpenAgentDbContext context = await factory.CreateDbContextAsync();
+        ConversationEntity record = Assert.Single(await context.Conversations.AsNoTracking().ToListAsync());
+        Assert.Equal(2, record.Version);
+        Assert.Equal((int)ConversationStatus.Running, record.Status);
+        Assert.False(record.IsDeletedByUser);
+        Assert.Equal("[]", record.ContextSummariesJson);
+        Assert.Equal("message-1", Assert.Single(await context.ConversationMessages.AsNoTracking().ToListAsync()).MessageId);
+    }
+
+    [Fact]
+    public async Task EfCoreStore_OwnerMutations_PreserveVersionChecksAndDeletionFiltering()
+    {
+        ContextFactory factory = new($"ownership-{Guid.NewGuid():N}");
+        EfCoreConversationStore store = CreateStore(factory);
+        await CreateConversationAsync(store);
+
+        AppendResult conflict = await store.AppendMessagesAsync("tenant-1", "conversation-1", 999,
+            [CreateMessage(CreateFullMetadata())]);
+        Assert.False(conflict.Success);
+        Assert.Equal("version-conflict", conflict.ConflictReason);
+        Assert.False(await store.UpdateStatusAsync("tenant-1", "conversation-1", ConversationStatus.Completed, 999));
+        ConversationRecord unchanged = Assert.IsType<ConversationRecord>(
+            await store.GetRecordAsync("tenant-1", "conversation-1"));
+        Assert.Equal(1, unchanged.Version);
+        Assert.Empty(unchanged.Messages);
+
+        Assert.True((await store.AppendMessagesAsync("tenant-1", "conversation-1", 1,
+            [CreateMessage(CreateFullMetadata())])).Success);
+        Assert.True(await store.UpdateStatusAsync("tenant-1", "conversation-1", ConversationStatus.Completed, 2));
+        Assert.True(await store.RecordCompressionAsync("tenant-1", "conversation-1", new ContextSummary
+        {
+            CompressionId = "owned", Strategy = "test", Trigger = "Manual", Status = "Succeeded"
+        }));
+        ConversationRecord updated = Assert.IsType<ConversationRecord>(
+            await store.GetRecordAsync("tenant-1", "conversation-1"));
+        Assert.Equal(3, updated.Version);
+        Assert.Equal(ConversationStatus.Completed, updated.Status);
+        Assert.Single(updated.ContextSummaries);
+        Assert.Single(await store.GetMessagesPagedAsync("tenant-1", "conversation-1", 0, 10));
+        Assert.Single(await store.ListConversationsAsync("tenant-1", 0, 10));
+
+        Assert.True(await store.SoftDeleteAsync("tenant-1", "conversation-1"));
+        Assert.Null(await store.GetRecordAsync("tenant-1", "conversation-1"));
+        Assert.Empty(await store.GetMessagesAsync("tenant-1", "conversation-1", 10));
+        Assert.Empty(await store.GetMessagesPagedAsync("tenant-1", "conversation-1", 0, 10));
+        Assert.Empty(await store.ListConversationsAsync("tenant-1", 0, 10));
+    }
+
+    [Theory]
+    [InlineData("user-2", "tenant-1")]
+    [InlineData("user-1", "tenant-2")]
+    [InlineData("USER-1", "tenant-1")]
+    [InlineData("user-1", "TENANT-1")]
+    [InlineData(null, "tenant-1")]
+    [InlineData("", "tenant-1")]
+    public async Task EfCoreStore_CreateWithForgedIdentity_DoesNotPersist(string? userId, string tenantId)
+    {
+        ContextFactory factory = new($"ownership-{Guid.NewGuid():N}");
+        EfCoreConversationStore store = CreateStore(factory);
+
+        Assert.False(await store.CreateAsync(new ConversationRecord
+        {
+            ConversationId = "forged",
+            TenantId = tenantId,
+            UserId = userId!
+        }));
+
+        await using OpenAgentDbContext context = await factory.CreateDbContextAsync();
+        Assert.Empty(await context.Conversations.AsNoTracking().ToListAsync());
     }
 
     private static EfCoreConversationStore CreateStore(ContextFactory factory) => new(
@@ -149,9 +280,9 @@ public sealed class ConversationMessageMetadataPersistenceTests
 
     private sealed class FakeUserContext : ICurrentUserContext
     {
-        public string UserId => "user-1";
-        public string? TenantId => "tenant-1";
-        public bool IsAuthenticated => true;
+        public string UserId { get; set; } = "user-1";
+        public string? TenantId { get; set; } = "tenant-1";
+        public bool IsAuthenticated { get; set; } = true;
         public IReadOnlyList<string> Roles => [];
         public bool IsInRole(string role) => false;
     }

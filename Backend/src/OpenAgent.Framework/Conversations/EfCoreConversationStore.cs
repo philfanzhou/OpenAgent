@@ -18,14 +18,15 @@ internal sealed class EfCoreConversationStore(
         int maxMessages,
         CancellationToken cancellationToken = default)
     {
-        if (maxMessages <= 0)
+        if (!HasCurrentTenant(tenantId) || maxMessages <= 0)
         {
             return Array.Empty<ConversationMessage>();
         }
 
         await using OpenAgentDbContext context = await contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         bool exists = await context.Conversations.AsNoTracking().AnyAsync(
-            item => item.ConversationId == conversationId && item.TenantId == tenantId && !item.IsDeletedByUser,
+            item => item.ConversationId == conversationId && item.TenantId == tenantId
+                && item.UserId == currentUser.UserId && !item.IsDeletedByUser,
             cancellationToken).ConfigureAwait(false);
         if (!exists)
         {
@@ -48,14 +49,15 @@ internal sealed class EfCoreConversationStore(
         int take,
         CancellationToken cancellationToken = default)
     {
-        if (take <= 0)
+        if (!HasCurrentTenant(tenantId) || take <= 0)
         {
             return Array.Empty<ConversationMessage>();
         }
 
         await using OpenAgentDbContext context = await contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         bool exists = await context.Conversations.AsNoTracking().AnyAsync(
-            item => item.ConversationId == conversationId && item.TenantId == tenantId && !item.IsDeletedByUser,
+            item => item.ConversationId == conversationId && item.TenantId == tenantId
+                && item.UserId == currentUser.UserId && !item.IsDeletedByUser,
             cancellationToken).ConfigureAwait(false);
         if (!exists)
         {
@@ -76,9 +78,15 @@ internal sealed class EfCoreConversationStore(
         string conversationId,
         CancellationToken cancellationToken = default)
     {
+        if (!HasCurrentTenant(tenantId))
+        {
+            return null;
+        }
+
         await using OpenAgentDbContext context = await contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         ConversationEntity? entity = await context.Conversations.AsNoTracking().SingleOrDefaultAsync(
-            item => item.ConversationId == conversationId && item.TenantId == tenantId && !item.IsDeletedByUser,
+            item => item.ConversationId == conversationId && item.TenantId == tenantId
+                && item.UserId == currentUser.UserId && !item.IsDeletedByUser,
             cancellationToken).ConfigureAwait(false);
         if (entity == null)
         {
@@ -94,6 +102,12 @@ internal sealed class EfCoreConversationStore(
 
     public async Task<bool> CreateAsync(ConversationRecord record, CancellationToken cancellationToken = default)
     {
+        if (!HasCurrentTenant(record.TenantId)
+            || !string.Equals(record.UserId, currentUser.UserId, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
         await using OpenAgentDbContext context = await contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         context.Conversations.Add(ToEntity(record));
         try
@@ -114,10 +128,16 @@ internal sealed class EfCoreConversationStore(
         IReadOnlyList<ConversationMessage> messages,
         CancellationToken cancellationToken = default)
     {
+        if (!HasCurrentTenant(tenantId))
+        {
+            return AppendResult.Conflict("conversation-not-found");
+        }
+
         await using OpenAgentDbContext context = await contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
         ConversationEntity? conversation = await context.Conversations.SingleOrDefaultAsync(
-            item => item.ConversationId == conversationId && item.TenantId == tenantId && !item.IsDeletedByUser,
+            item => item.ConversationId == conversationId && item.TenantId == tenantId
+                && item.UserId == currentUser.UserId && !item.IsDeletedByUser,
             cancellationToken).ConfigureAwait(false);
         if (conversation == null)
         {
@@ -203,9 +223,15 @@ internal sealed class EfCoreConversationStore(
         int expectedVersion,
         CancellationToken cancellationToken = default)
     {
+        if (!HasCurrentTenant(tenantId))
+        {
+            return false;
+        }
+
         await using OpenAgentDbContext context = await contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         ConversationEntity? conversation = await context.Conversations.SingleOrDefaultAsync(
-            item => item.ConversationId == conversationId && item.TenantId == tenantId && !item.IsDeletedByUser,
+            item => item.ConversationId == conversationId && item.TenantId == tenantId
+                && item.UserId == currentUser.UserId && !item.IsDeletedByUser,
             cancellationToken).ConfigureAwait(false);
         if (conversation == null || conversation.Version != expectedVersion)
         {
@@ -232,7 +258,7 @@ internal sealed class EfCoreConversationStore(
         int take,
         CancellationToken cancellationToken = default)
     {
-        if (take <= 0)
+        if (!HasCurrentTenant(tenantId) || take <= 0)
         {
             return Array.Empty<ConversationRecord>();
         }
@@ -256,7 +282,7 @@ internal sealed class EfCoreConversationStore(
         int take,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(keyword) || take <= 0)
+        if (!HasCurrentTenant(tenantId) || string.IsNullOrWhiteSpace(keyword) || take <= 0)
         {
             return Array.Empty<ConversationRecord>();
         }
@@ -281,9 +307,15 @@ internal sealed class EfCoreConversationStore(
         string conversationId,
         CancellationToken cancellationToken = default)
     {
+        if (!HasCurrentTenant(tenantId))
+        {
+            return false;
+        }
+
         await using OpenAgentDbContext context = await contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         ConversationEntity? conversation = await context.Conversations.SingleOrDefaultAsync(
-            item => item.ConversationId == conversationId && item.TenantId == tenantId && !item.IsDeletedByUser,
+            item => item.ConversationId == conversationId && item.TenantId == tenantId
+                && item.UserId == currentUser.UserId && !item.IsDeletedByUser,
             cancellationToken).ConfigureAwait(false);
         if (conversation == null)
         {
@@ -303,9 +335,15 @@ internal sealed class EfCoreConversationStore(
         ContextSummary summary,
         CancellationToken cancellationToken = default)
     {
+        if (!HasCurrentTenant(tenantId))
+        {
+            return false;
+        }
+
         await using OpenAgentDbContext context = await contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         ConversationEntity? conversation = await context.Conversations.SingleOrDefaultAsync(
-            item => item.ConversationId == conversationId && item.TenantId == tenantId && !item.IsDeletedByUser,
+            item => item.ConversationId == conversationId && item.TenantId == tenantId
+                && item.UserId == currentUser.UserId && !item.IsDeletedByUser,
             cancellationToken).ConfigureAwait(false);
         if (conversation == null)
         {
@@ -326,6 +364,12 @@ internal sealed class EfCoreConversationStore(
             return false;
         }
     }
+
+    private bool HasCurrentTenant(string tenantId) =>
+        currentUser.IsAuthenticated
+        && !string.IsNullOrWhiteSpace(currentUser.UserId)
+        && !string.IsNullOrWhiteSpace(currentUser.TenantId)
+        && string.Equals(currentUser.TenantId, tenantId, StringComparison.Ordinal);
 
     private static ConversationEntity ToEntity(ConversationRecord record) => new()
     {

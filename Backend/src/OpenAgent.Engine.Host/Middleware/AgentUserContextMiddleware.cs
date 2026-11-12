@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Engine.Hosting.Security;
 
@@ -29,6 +30,14 @@ internal sealed class AgentUserContextMiddleware
                 null,
                 "TenantId is required but not provided");
         }
+        if (RequiresTenant(context.Request.Path)
+            && user.IsAuthenticated
+            && string.IsNullOrWhiteSpace(user.UserId))
+        {
+            throw new AgentException(
+                AgentErrorCode.PermissionDenied,
+                "Authenticated user identity is required.");
+        }
         context.Features.Set(new AgentRequestFeature(traceId, user));
 
         using IDisposable? scope = _logger.BeginScope(new Dictionary<string, object?>
@@ -42,8 +51,8 @@ internal sealed class AgentUserContextMiddleware
 
     private AgentUserContext BuildUserContext(HttpContext context)
     {
-        string? userId = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value
-            ?? context.User.FindFirst("sub")?.Value
+        string? userId = context.User.FindFirst("sub")?.Value
+            ?? context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value
             ?? context.User.Identity?.Name;
         string? username = context.User.FindFirst("preferred_username")?.Value
             ?? context.User.FindFirst("username")?.Value
@@ -70,7 +79,7 @@ internal sealed class AgentUserContextMiddleware
 
         return new AgentUserContext
         {
-            UserId = userId ?? "anonymous",
+            UserId = userId ?? string.Empty,
             Username = username,
             Email = email,
             TenantId = tenantId,

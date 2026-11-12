@@ -2,6 +2,8 @@ using System.Runtime.CompilerServices;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Moq;
+using OpenAgent.Application.Conversation.Lock;
 using OpenAgent.Application.Tests.Runtime;
 using OpenAgent.Application.Tests.TestDoubles;
 using OpenAgent.Capabilities.Security;
@@ -68,6 +70,124 @@ public sealed class AcpExecutionTests
         ConversationRecord record = (await runtime.Store.GetRecordAsync("tenant-1", Request.ConversationId!))!;
         Assert.Equal(cancelled ? ConversationStatus.Cancelled : ConversationStatus.Failed, record.Status);
         Assert.Contains(record.Messages, message => message.Role == "assistant" && message.Content.Contains("ACP 回答", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData(ConversationStatus.Running)]
+    [InlineData(ConversationStatus.Completed)]
+    [InlineData(ConversationStatus.Failed)]
+    [InlineData(ConversationStatus.Cancelled)]
+    public async Task ExecuteAsync_OtherUserConversation_RejectsWithoutPersistingFailure(ConversationStatus status)
+    {
+        RecordingDriver driver = new();
+        await using AgentExecutorUsageTests.TestRuntime runtime = AgentExecutorUsageTests.CreateRuntime(driver);
+        Assert.True(await runtime.Store.CreateAsync(new ConversationRecord
+        {
+            TenantId = "tenant-1",
+            UserId = "user-1",
+            ConversationId = Request.ConversationId!,
+            Status = status,
+            Version = 7,
+            MessageCount = 1,
+            Messages = [new() { MessageId = "original", Sequence = 1, Role = "user", Content = "owner message" }]
+        }));
+        AgentUserContext otherUser = new() { TenantId = "tenant-1", UserId = "user-2" };
+
+        AgentException error = await Assert.ThrowsAsync<AgentException>(() =>
+            runtime.Executor.ExecuteAsync(Request, otherUser, CancellationToken.None));
+
+        Assert.Equal(AgentErrorCode.PermissionDenied, error.ErrorCode);
+        Assert.Empty(driver.Requests);
+        ConversationRecord record = Assert.IsType<ConversationRecord>(
+            await runtime.Store.GetRecordAsync("tenant-1", Request.ConversationId!));
+        Assert.Equal("user-1", record.UserId);
+        Assert.Equal(status, record.Status);
+        Assert.Equal(7, record.Version);
+        Assert.Equal(1, record.MessageCount);
+        Assert.Equal("owner message", Assert.Single(record.Messages).Content);
+    }
+
+    [Theory]
+    [InlineData(ConversationStatus.Running)]
+    [InlineData(ConversationStatus.Failed)]
+    public async Task ExecuteAsync_LockAlreadyHeld_RejectsWithoutWritingOrReleasingOtherLock(ConversationStatus status)
+    {
+        InMemoryConversationLock conversationLock = new();
+        RecordingDriver driver = new();
+        await using AgentExecutorUsageTests.TestRuntime runtime = AgentExecutorUsageTests.CreateRuntime(driver,
+            configure: services => services.AddSingleton<IConversationLock>(conversationLock));
+        Assert.True(await runtime.Store.CreateAsync(new ConversationRecord
+        {
+            TenantId = "tenant-1", UserId = "user-1", ConversationId = Request.ConversationId!,
+            Status = status, Version = 7
+        }));
+        await using IConversationLockHandle? handle = await conversationLock.TryAcquireAsync(
+            "tenant-1", Request.ConversationId!, TimeSpan.FromSeconds(30));
+        Assert.NotNull(handle);
+
+        AgentException error = await Assert.ThrowsAsync<AgentException>(() =>
+            runtime.Executor.ExecuteAsync(Request, User, CancellationToken.None));
+
+        Assert.Equal(AgentErrorCode.Conflict, error.ErrorCode);
+        Assert.Empty(driver.Requests);
+        ConversationRecord record = Assert.IsType<ConversationRecord>(
+            await runtime.Store.GetRecordAsync("tenant-1", Request.ConversationId!));
+        Assert.Equal(status, record.Status);
+        Assert.Equal(7, record.Version);
+        Assert.Empty(record.Messages);
+        Assert.True(handle.IsHeld);
+        Assert.Null(await conversationLock.TryAcquireAsync("tenant-1", Request.ConversationId!, TimeSpan.FromSeconds(30)));
+    }
+
+    [Theory]
+    [InlineData("success")]
+    [InlineData("failure")]
+    [InlineData("cancelled")]
+    public async Task ExecuteAsync_LockLostBeforeFinalization_DoesNotPersist(string outcome)
+    {
+        bool held = true;
+        Mock<IConversationLockHandle> handle = new();
+        handle.SetupGet(value => value.IsHeld).Returns(() => held);
+        handle.SetupGet(value => value.TenantId).Returns("tenant-1");
+        handle.SetupGet(value => value.ConversationId).Returns(Request.ConversationId!);
+        Mock<IConversationLock> conversationLock = new();
+        conversationLock.Setup(value => value.TryAcquireAsync("tenant-1", Request.ConversationId!,
+                It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(handle.Object);
+        Exception? failure = outcome switch
+        {
+            "failure" => new InvalidOperationException("runtime failed"),
+            "cancelled" => new OperationCanceledException("runtime cancelled"),
+            _ => null
+        };
+        RecordingDriver driver = new(failure)
+        {
+            OnDispose = () => { held = false; return Task.CompletedTask; }
+        };
+        await using AgentExecutorUsageTests.TestRuntime runtime = AgentExecutorUsageTests.CreateRuntime(driver,
+            configure: services => services.AddSingleton(conversationLock.Object));
+        Assert.True(await runtime.Store.CreateAsync(new ConversationRecord
+        {
+            TenantId = "tenant-1", UserId = "user-1", ConversationId = Request.ConversationId!,
+            Status = ConversationStatus.Running, Version = 7
+        }));
+
+        Exception error = await Assert.ThrowsAnyAsync<Exception>(() =>
+            runtime.Executor.ExecuteAsync(Request, User, CancellationToken.None));
+
+        if (failure is null)
+        {
+            Assert.Equal(AgentErrorCode.Conflict, Assert.IsType<AgentException>(error).ErrorCode);
+        }
+        else
+        {
+            Assert.Same(failure, error);
+        }
+        ConversationRecord record = Assert.IsType<ConversationRecord>(
+            await runtime.Store.GetRecordAsync("tenant-1", Request.ConversationId!));
+        Assert.Equal(ConversationStatus.Running, record.Status);
+        Assert.Equal(7, record.Version);
+        Assert.Empty(record.Messages);
     }
 
     [Fact]

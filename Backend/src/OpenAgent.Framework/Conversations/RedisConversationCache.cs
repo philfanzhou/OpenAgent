@@ -28,9 +28,14 @@ internal sealed class RedisConversationCache(
     {
         RedisValue value = await connection.GetDatabase().StringGetAsync(BuildKey(tenantId, conversationId))
             .ConfigureAwait(false);
-        return value.IsNullOrEmpty
+        ConversationRecord? record = value.IsNullOrEmpty
             ? null
             : JsonSerializer.Deserialize<ConversationRecord>((string)value!, JsonOptions);
+        return record != null
+            && string.Equals(record.TenantId, tenantId, StringComparison.Ordinal)
+            && string.Equals(record.ConversationId, conversationId, StringComparison.Ordinal)
+                ? record
+                : null;
     }
 
     public Task SetAsync(ConversationRecord record, CancellationToken cancellationToken = default) =>

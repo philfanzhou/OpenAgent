@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using OpenAgent.Contracts.Conversation;
+using OpenAgent.Contracts.Security;
 
 namespace OpenAgent.Framework;
 
@@ -11,6 +12,7 @@ namespace OpenAgent.Framework;
 internal sealed class WriteThroughConversationStore(
     IConversationStore durable,
     IConversationCache cache,
+    ICurrentUserContext currentUser,
     ILogger<WriteThroughConversationStore> logger) : IConversationStore
 {
     public async Task<IReadOnlyList<ConversationMessage>> GetMessagesAsync(
@@ -148,9 +150,24 @@ internal sealed class WriteThroughConversationStore(
 
     private async Task<ConversationRecord?> TryGetCachedAsync(string tenantId, string conversationId, CancellationToken cancellationToken)
     {
+        if (!currentUser.IsAuthenticated
+            || string.IsNullOrWhiteSpace(currentUser.UserId)
+            || string.IsNullOrWhiteSpace(currentUser.TenantId)
+            || !string.Equals(currentUser.TenantId, tenantId, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
         try
         {
-            return await cache.GetAsync(tenantId, conversationId, cancellationToken).ConfigureAwait(false);
+            ConversationRecord? record = await cache.GetAsync(tenantId, conversationId, cancellationToken).ConfigureAwait(false);
+            return record != null
+                && !record.IsDeletedByUser
+                && string.Equals(record.TenantId, tenantId, StringComparison.Ordinal)
+                && string.Equals(record.ConversationId, conversationId, StringComparison.Ordinal)
+                && string.Equals(record.UserId, currentUser.UserId, StringComparison.Ordinal)
+                    ? record
+                    : null;
         }
         catch (Exception exception)
         {

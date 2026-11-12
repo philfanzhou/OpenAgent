@@ -28,10 +28,11 @@ internal sealed class RedisConversationLock(
     {
         string key = $"openagent:conversation-lock:{tenantId}:{conversationId}";
         string token = Guid.NewGuid().ToString("N");
+        long expiresAt = Environment.TickCount64 + (long)ttl.TotalMilliseconds;
         bool acquired = await connection.GetDatabase().StringSetAsync(key, token, ttl, When.NotExists)
             .ConfigureAwait(false);
         return acquired
-            ? new Handle(connection, logger, key, token, tenantId, conversationId, ttl)
+            ? new Handle(connection, logger, key, token, tenantId, conversationId, ttl, expiresAt)
             : null;
     }
 
@@ -45,9 +46,11 @@ internal sealed class RedisConversationLock(
         private readonly Task _heartbeat;
         private int _disposed;
 
+        private int _lost;
+        private long _expiresAt;
         public Handle(
             IConnectionMultiplexer connection, ILogger logger, string key, string ownerToken,
-            string tenantId, string conversationId, TimeSpan ttl)
+            string tenantId, string conversationId, TimeSpan ttl, long expiresAt)
         {
             _connection = connection;
             _logger = logger;
@@ -56,13 +59,24 @@ internal sealed class RedisConversationLock(
             TenantId = tenantId;
             ConversationId = conversationId;
             _ttl = ttl;
+            _expiresAt = expiresAt;
             _heartbeat = HeartbeatAsync(_heartbeatCancellation.Token);
         }
 
         public string TenantId { get; }
         public string ConversationId { get; }
         public string OwnerToken { get; }
-        public bool IsHeld => Volatile.Read(ref _disposed) == 0;
+        public bool IsHeld
+        {
+            get
+            {
+                if (Environment.TickCount64 >= Volatile.Read(ref _expiresAt))
+                {
+                    Interlocked.Exchange(ref _lost, 1);
+                }
+                return Volatile.Read(ref _disposed) == 0 && Volatile.Read(ref _lost) == 0;
+            }
+        }
 
         public async ValueTask DisposeAsync()
         {
@@ -92,18 +106,26 @@ internal sealed class RedisConversationLock(
                 while (true)
                 {
                     await Task.Delay(interval, cancellationToken).ConfigureAwait(false);
+                    if (!IsHeld)
+                    {
+                        return;
+                    }
+                    long expiresAt = Environment.TickCount64 + (long)_ttl.TotalMilliseconds;
                     RedisResult result = await _connection.GetDatabase().ScriptEvaluateAsync(
                         ExtendScript, [_key], [OwnerToken, (long)_ttl.TotalMilliseconds]).ConfigureAwait(false);
                     if ((long)result == 0)
                     {
+                        Interlocked.Exchange(ref _lost, 1);
                         _logger.LogWarning("Conversation lock was lost for {ConversationId}", ConversationId);
                         return;
                     }
+                    Volatile.Write(ref _expiresAt, expiresAt);
                 }
             }
-            catch (OperationCanceledException) { }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
             catch (Exception exception)
             {
+                Interlocked.Exchange(ref _lost, 1);
                 _logger.LogWarning(exception, "Conversation lock heartbeat failed for {ConversationId}", ConversationId);
             }
         }

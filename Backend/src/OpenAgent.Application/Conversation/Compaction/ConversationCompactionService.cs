@@ -127,7 +127,7 @@ internal sealed class ConversationCompactionService(
             tenantId,
             conversationId,
             cancellationToken).ConfigureAwait(false);
-        if (record == null)
+        if (record == null || record.IsDeletedByUser || record.Type != ConversationType.User)
         {
             throw new InvalidOperationException("Conversation was not found.");
         }

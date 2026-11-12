@@ -48,6 +48,8 @@ API Key 的启用状态、租户和 scope 由数据库记录决定，调用方�
 
 `X-Tenant-Id` 只用于 Development 的 Basic 联调。Production 中该 header 不能建立或覆盖租户身份；缺少租户 claim 的受保护资源请求会被拒绝，header 与 claim 不一致时返回 403。Router 仅在 Development 向 Engine 转发从认证上下文解析并净化后的租户值，Production 转发始终移除租户 header。
 
+Engine 的会话执行上下文与存储当前用户上下文统一按 `sub` → `NameIdentifier` → `Identity.Name` 解析用户主体。已认证的 Agent／Admin 请求缺失有效用户主体时返回 `PermissionDenied`，不回退为共享的 `anonymous` 用户。用户 ID、租户 ID 的数据归属比较区分大小写；角色／权限值的大小写规则不变。会话存储与失败路径的访问规则见 [会话访问边界](conversation.md#会话访问边界)。
+
 ## 权限评估（Permission）
 
 身份契约 `IAgentUserContext` 位于 Contracts，HTTP 认证与身份建立由 Engine/Hosting 和宿主管道负责。资源授权接口、门闩与实现位于 Capabilities/Security；Application 在运行配置解析、能力发现和实际调用时接入授权，不在业务能力中引入宿主或 SDK 依赖。

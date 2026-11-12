@@ -21,7 +21,7 @@ internal sealed class HttpCurrentUserContext : ICurrentUserContext
         Principal?.FindFirst("sub")?.Value
         ?? Principal?.FindFirst(ClaimTypes.NameIdentifier)?.Value
         ?? Principal?.Identity?.Name
-        ?? "anonymous";
+        ?? string.Empty;
 
     public string? TenantId =>
         Principal?.Claims.FirstOrDefault(c => c.Type is "tenant_id" or "tid")?.Value;

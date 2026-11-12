@@ -51,7 +51,6 @@ internal sealed class PlatformChatHistory : IAsyncDisposable
     private int _nextSequence = 1;
     private bool _loaded;
     private bool _userRecorded;
-    private bool _released;
     private bool _stored;
     private bool _finalized;
     private bool _completionStaged;
@@ -223,7 +222,7 @@ internal sealed class PlatformChatHistory : IAsyncDisposable
             modelId: _modelId);
     }
 
-    /// <summary>加锁并加载既有会话历史；失败或无会话时返回空列表。当前消息由调用方拼接。</summary>
+    /// <summary>加锁并验证归属后加载会话历史；失败直接向上传播，不开放持久化。</summary>
     internal async Task<List<ChatMessage>> LoadAsync(CancellationToken cancellationToken)
     {
         if (_loaded)
@@ -239,8 +238,9 @@ internal sealed class PlatformChatHistory : IAsyncDisposable
                 conversation.ConversationId!,
                 DefaultLockTtl,
                 cancellationToken).ConfigureAwait(false);
-            if (_lockHandle == null)
+            if (_lockHandle?.IsHeld != true)
             {
+                await ReleaseLockAsync().ConfigureAwait(false);
                 throw new AgentException(
                     AgentErrorCode.Conflict,
                     "Conversation is being processed by another request");
@@ -249,9 +249,9 @@ internal sealed class PlatformChatHistory : IAsyncDisposable
 
         try
         {
-            _loaded = true;
             if (!conversation.IsValid)
             {
+                _loaded = true;
                 return [];
             }
 
@@ -265,7 +265,9 @@ internal sealed class PlatformChatHistory : IAsyncDisposable
             _checkpointValid = true;
             _nextSequence = loaded.NextSequence;
             List<ChatMessage> history = await BuildHistoryAsync(loaded.History, cancellationToken).ConfigureAwait(false);
-            return RepairToolHistory(history);
+            List<ChatMessage> repaired = RepairToolHistory(history);
+            _loaded = true;
+            return repaired;
         }
         catch
         {
@@ -525,6 +527,7 @@ internal sealed class PlatformChatHistory : IAsyncDisposable
         IReadOnlyList<ChatMessage> responseMessages,
         CancellationToken cancellationToken)
     {
+        EnsureCanPersist();
         _finalized = true;
         StageResponses(responseMessages);
         _completionStaged = true;
@@ -572,6 +575,7 @@ internal sealed class PlatformChatHistory : IAsyncDisposable
         {
             return;
         }
+        EnsureCanPersist();
         if (!_completionStaged)
         {
             throw new InvalidOperationException("Conversation completion was not staged.");
@@ -601,6 +605,7 @@ internal sealed class PlatformChatHistory : IAsyncDisposable
 
         int? savedVersion = await _store.SaveAsync(
             _conversation,
+            _lockHandle,
             _currentVersion,
             _pending,
             ConversationStatus.Completed,
@@ -649,6 +654,12 @@ internal sealed class PlatformChatHistory : IAsyncDisposable
                     _conversation.TraceId);
             }
 
+            if (!_loaded || _stored)
+            {
+                return;
+            }
+            EnsureCanPersist();
+
             RecordUser();
             _finalized = true;
             ConversationStatus status = error is OperationCanceledException
@@ -664,6 +675,7 @@ internal sealed class PlatformChatHistory : IAsyncDisposable
                     : null));
             await _store.SaveAsync(
                 _conversation,
+                _lockHandle,
                 _currentVersion,
                 _pending,
                 status,
@@ -682,6 +694,7 @@ internal sealed class PlatformChatHistory : IAsyncDisposable
         {
             if (_loaded && !_stored)
             {
+                EnsureCanPersist();
                 ConversationStatus status = ConversationStatus.Completed;
                 if (!_finalized)
                 {
@@ -693,6 +706,7 @@ internal sealed class PlatformChatHistory : IAsyncDisposable
                 }
                 await _store.SaveAsync(
                     _conversation,
+                    _lockHandle,
                     _currentVersion,
                     _pending,
                     status,
@@ -762,17 +776,21 @@ internal sealed class PlatformChatHistory : IAsyncDisposable
             fileIds: published.Select(file => file.FileId).ToArray()));
     }
 
+    private void EnsureCanPersist()
+    {
+        if (!_loaded || (_conversation.IsValid && _lockHandle?.IsHeld != true))
+        {
+            throw new AgentException(AgentErrorCode.Conflict, "Conversation lock is not held by this request.");
+        }
+    }
+
     private async ValueTask ReleaseLockAsync()
     {
-        if (_released)
+        IConversationLockHandle? handle = _lockHandle;
+        _lockHandle = null;
+        if (handle != null)
         {
-            return;
-        }
-
-        _released = true;
-        if (_lockHandle != null)
-        {
-            await _lockHandle.DisposeAsync().ConfigureAwait(false);
+            await handle.DisposeAsync().ConfigureAwait(false);
         }
     }
 }

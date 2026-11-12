@@ -74,6 +74,7 @@ public static class ServiceCollectionExtensions
             services.AddScoped<IConversationStore>(serviceProvider => new WriteThroughConversationStore(
                 serviceProvider.GetRequiredService<EfCoreConversationStore>(),
                 serviceProvider.GetRequiredService<IConversationCache>(),
+                serviceProvider.GetRequiredService<ICurrentUserContext>(),
                 serviceProvider.GetRequiredService<ILogger<WriteThroughConversationStore>>()));
             services.Replace(ServiceDescriptor.Singleton<IConversationLock, RedisConversationLock>());
         }

@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Engine.Host.Middleware;
+using OpenAgent.Engine.Hosting.Security;
 using Xunit;
 
 namespace OpenAgent.Engine.Tests.Hosting;
@@ -64,6 +65,45 @@ public class AgentUserContextMiddlewareTests
         Assert.Equal("keycloak-user-id", request.User.UserId);
         Assert.Equal("alice", request.User.Username);
         Assert.Equal("alice@example.com", request.User.Email);
+    }
+
+    [Theory]
+    [InlineData("subject-user", "mapped-user")]
+    [InlineData("subject-user", null)]
+    [InlineData(null, "mapped-user")]
+    public async Task InvokeAsync_SubjectClaims_UsesSameUserAsConversationStore(string? subject, string? nameIdentifier)
+    {
+        DefaultHttpContext context = CreateContext("trusted-tenant");
+        List<Claim> claims = [new("tid", "trusted-tenant")];
+        if (subject is not null)
+        {
+            claims.Add(new Claim("sub", subject));
+        }
+        if (nameIdentifier is not null)
+        {
+            claims.Add(new Claim(ClaimTypes.NameIdentifier, nameIdentifier));
+        }
+        context.User = new ClaimsPrincipal(new ClaimsIdentity(claims, "Test"));
+
+        await CreateMiddleware().InvokeAsync(context);
+
+        HttpCurrentUserContext currentUser = new(new HttpContextAccessor { HttpContext = context });
+        Assert.Equal(subject ?? nameIdentifier, currentUser.UserId);
+        Assert.Equal(currentUser.UserId, context.GetAgentRequest().User.UserId);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_AuthenticatedWithoutSubject_DoesNotShareAnonymousConversations()
+    {
+        DefaultHttpContext context = CreateContext("trusted-tenant");
+        context.User = new ClaimsPrincipal(new ClaimsIdentity([new Claim("tid", "trusted-tenant")], "Test"));
+        HttpCurrentUserContext currentUser = new(new HttpContextAccessor { HttpContext = context });
+
+        AgentException error = await Assert.ThrowsAsync<AgentException>(() => CreateMiddleware().InvokeAsync(context));
+
+        Assert.Equal(AgentErrorCode.PermissionDenied, error.ErrorCode);
+        Assert.Equal(string.Empty, currentUser.UserId);
+        Assert.Null(context.Features.Get<AgentRequestFeature>());
     }
 
     private static AgentUserContextMiddleware CreateMiddleware()

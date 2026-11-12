@@ -46,23 +46,30 @@ public sealed class ConversationCompactionEndpointTests
     }
 
     [Theory]
-    [InlineData("tenant-1", "user-1", "tenant-1", "user-1", StatusCodes.Status200OK, 1)]
-    [InlineData("tenant-1", "user-2", "tenant-1", "user-1", StatusCodes.Status403Forbidden, 0)]
-    [InlineData("tenant-1", "user-1", "tenant-2", "user-1", StatusCodes.Status403Forbidden, 0)]
+    [InlineData("tenant-1", "user-1", "tenant-1", "user-1", StatusCodes.Status200OK, 1, ConversationType.User, false)]
+    [InlineData("tenant-1", "user-2", "tenant-1", "user-1", StatusCodes.Status403Forbidden, 0, ConversationType.User, false)]
+    [InlineData("tenant-1", "user-1", "tenant-2", "user-1", StatusCodes.Status403Forbidden, 0, ConversationType.User, false)]
+    [InlineData("tenant-1", "USER-1", "tenant-1", "user-1", StatusCodes.Status403Forbidden, 0, ConversationType.User, false)]
+    [InlineData("tenant-1", "user-1", "tenant-1", "user-1", StatusCodes.Status404NotFound, 0, ConversationType.Internal, false)]
+    [InlineData("tenant-1", "user-1", "tenant-1", "user-1", StatusCodes.Status404NotFound, 0, ConversationType.User, true)]
     public async Task CompactAsync_OwnershipScope_EnforcesUserAndTenant(
         string requestTenant,
         string requestUser,
         string recordTenant,
         string recordUser,
         int expectedStatus,
-        int expectedCalls)
+        int expectedCalls,
+        ConversationType recordType,
+        bool deleted)
     {
         var query = new QueryService(new ConversationRecord
         {
             ConversationId = "conversation-1",
             TenantId = recordTenant,
             UserId = recordUser,
-            AgentId = "agent-1"
+            AgentId = "agent-1",
+            Type = recordType,
+            IsDeletedByUser = deleted
         });
         var compaction = new CompactionService();
         DefaultHttpContext context = CreateContext(requestTenant, requestUser);

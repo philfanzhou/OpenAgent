@@ -1,6 +1,9 @@
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Application.Conversation.Store;
 using OpenAgent.Application.Conversation;
+using OpenAgent.Contracts.Requests;
+using OpenAgent.Contracts.Security;
+using OpenAgent.Application.Conversation.Lock;
 using Xunit;
 
 namespace OpenAgent.Application.Tests.Conversation;
@@ -92,6 +95,7 @@ public sealed class ConversationSessionStoreTests
     [Fact]
     public async Task SaveAsync_StampsTurnTraceIdOnAllMessagesOfTheTurn()
     {
+        await using IConversationLockHandle handle = await AcquireLockAsync();
         var store = new OpenAgent.Application.Conversation.Store.InMemoryConversationStore(new FakeUserContext());
         var sessionStore = new ConversationSessionStore(
             store,
@@ -114,6 +118,7 @@ public sealed class ConversationSessionStoreTests
 
         int? checkpoint = await sessionStore.SaveAsync(
             context,
+            handle,
             expectedVersion: 1,
             [Message(1, "user", "hi"), Message(2, "assistant", "ok")],
             ConversationStatus.Completed,
@@ -131,6 +136,7 @@ public sealed class ConversationSessionStoreTests
     [Fact]
     public async Task SaveAsync_VersionConflictRetry_PreservesMessageIdentityAndIdempotencyKey()
     {
+        await using IConversationLockHandle handle = await AcquireLockAsync();
         var store = new OpenAgent.Application.Conversation.Store.InMemoryConversationStore(new FakeUserContext());
         var sessionStore = new ConversationSessionStore(
             store,
@@ -169,6 +175,7 @@ public sealed class ConversationSessionStoreTests
 
         int? checkpoint = await sessionStore.SaveAsync(
             context,
+            handle,
             expectedVersion: 1,
             [retryMessage],
             ConversationStatus.Completed,
@@ -184,6 +191,36 @@ public sealed class ConversationSessionStoreTests
         Assert.Equal("idem-1", retried.IdempotencyKey);
         Assert.Equal(timestamp, retried.Timestamp);
         Assert.Equal("trace-42", retried.TraceId);
+    }
+
+    [Theory]
+    [InlineData("user-2", ConversationType.User, false)]
+    [InlineData("USER-1", ConversationType.User, false)]
+    [InlineData("", ConversationType.User, false)]
+    [InlineData("user-1", ConversationType.Channel, false)]
+    [InlineData("user-1", ConversationType.User, true)]
+    public async Task SaveAsync_InaccessibleConversation_RejectsBeforeAppendOrStatusChange(
+        string userId, ConversationType type, bool deleted)
+    {
+        await using IConversationLockHandle handle = await AcquireLockAsync();
+        InMemoryConversationStore store = new(new FakeUserContext());
+        ConversationSessionStore sessions = new(store, Microsoft.Extensions.Options.Options.Create(new ConversationStoreOptions()));
+        ConversationRecord record = new()
+        {
+            ConversationId = "conversation-1", TenantId = "tenant-1", UserId = "user-1",
+            Version = 7, Status = ConversationStatus.Completed
+        };
+        Assert.True(await store.CreateAsync(record));
+        record.IsDeletedByUser = deleted;
+        ConversationContext context = new("conversation-1", "tenant-1", userId, "agent-1", "trace", type);
+
+        AgentException error = await Assert.ThrowsAsync<AgentException>(() => sessions.SaveAsync(
+            context, handle, 7, [Message(1, "user", "unauthorized")], ConversationStatus.Failed, CancellationToken.None));
+
+        Assert.Equal(AgentErrorCode.PermissionDenied, error.ErrorCode);
+        Assert.Equal(7, record.Version);
+        Assert.Equal(ConversationStatus.Completed, record.Status);
+        Assert.Empty(record.Messages);
     }
 
     [Fact]
@@ -203,6 +240,10 @@ public sealed class ConversationSessionStoreTests
         Assert.NotEqual(before.ContextGeneration, after.ContextGeneration);
         Assert.Equal("manual-1", after.ContextGeneration);
     }
+
+    private static async Task<IConversationLockHandle> AcquireLockAsync() =>
+        Assert.IsAssignableFrom<IConversationLockHandle>(await new InMemoryConversationLock().TryAcquireAsync(
+            "tenant-1", "conversation-1", TimeSpan.FromMinutes(1)));
 
     private sealed class FakeUserContext : Contracts.Security.ICurrentUserContext
     {

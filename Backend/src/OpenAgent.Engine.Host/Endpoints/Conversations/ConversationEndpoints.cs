@@ -84,14 +84,15 @@ internal static class ConversationEndpoints
             tenantId,
             conversationId,
             cancellationToken).ConfigureAwait(false);
-        if (record == null
+        if (record == null || record.IsDeletedByUser
             || record.Type != ConversationType.User)
         {
             return TypedResults.NotFound();
         }
 
         string userId = context.GetAgentRequest().User.UserId;
-        if (!string.Equals(record.UserId, userId, StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(record.TenantId, tenantId, StringComparison.Ordinal)
+            || !string.Equals(record.UserId, userId, StringComparison.Ordinal))
         {
             return TypedResults.Forbid();
         }
@@ -109,16 +110,18 @@ internal static class ConversationEndpoints
         string conversationId,
         CancellationToken cancellationToken = default)
     {
+        string tenantId = AgentEndpointRequestMapper.RequireTenant(context);
         ConversationRecord? record = await queryService.GetRecordAsync(
-            AgentEndpointRequestMapper.RequireTenant(context),
+            tenantId,
             conversationId,
             cancellationToken).ConfigureAwait(false);
-        if (record == null
+        if (record == null || record.IsDeletedByUser
             || record.Type != ConversationType.User)
             return TypedResults.NotFound();
 
         string userId = context.GetAgentRequest().User.UserId;
-        return string.Equals(record.UserId, userId, StringComparison.OrdinalIgnoreCase)
+        return string.Equals(record.TenantId, tenantId, StringComparison.Ordinal)
+            && string.Equals(record.UserId, userId, StringComparison.Ordinal)
             ? TypedResults.Ok(record)
             : TypedResults.Forbid();
     }
@@ -136,7 +139,7 @@ internal static class ConversationEndpoints
             tenantId,
             conversationId,
             cancellationToken).ConfigureAwait(false);
-        if (record == null)
+        if (record == null || record.IsDeletedByUser || record.Type != ConversationType.User)
         {
             return TypedResults.NotFound();
         }
@@ -167,15 +170,17 @@ internal static class ConversationEndpoints
         [FromQuery] int take = 50,
         CancellationToken cancellationToken = default)
     {
+        string tenantId = AgentEndpointRequestMapper.RequireTenant(context);
         ConversationRecord? record = await queryService.GetRecordAsync(
-            AgentEndpointRequestMapper.RequireTenant(context),
+            tenantId,
             conversationId,
             cancellationToken).ConfigureAwait(false);
-        if (record == null || record.Type != ConversationType.User)
+        if (record == null || record.IsDeletedByUser || record.Type != ConversationType.User)
             return TypedResults.NotFound();
 
         string userId = context.GetAgentRequest().User.UserId;
-        if (!string.Equals(record.UserId, userId, StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(record.TenantId, tenantId, StringComparison.Ordinal)
+            || !string.Equals(record.UserId, userId, StringComparison.Ordinal))
             return TypedResults.Forbid();
 
         IReadOnlyList<LlmInteractionRecord> logs = await interactions.ListAsync(
