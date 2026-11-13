@@ -81,6 +81,53 @@ if sys.argv[1:3] == ['image', 'inspect'] and sys.argv[3] == os.environ.get('MISS
         self.assertIn('invalid OpenCode version', result.stderr)
         self.assertEqual(calls, [])
 
+    def prepare_preview(self):
+        preview = self.tmp / '.preview'
+        preview.mkdir()
+        (preview / 'allocations').write_text('test\t5210\t5010\t8090\t0\n')
+        docker = self.tmp / 'docker'
+        docker.write_text(docker.read_text() + "\nif sys.argv[1] == 'port': print('0.0.0.0:5432')\n")
+        curl = self.tmp / 'curl'
+        curl.write_text('#!/usr/bin/env bash\nexit 0\n')
+        curl.chmod(0o755)
+        # preview.sh targets WSL/GNU grep; adapt its tab-only PCRE usage on macOS test hosts.
+        grep = self.tmp / 'grep'
+        grep.write_text("""#!/usr/bin/env python3
+import os, sys
+args = [arg.replace('-P', '-E').replace('\\t', '\t') for arg in sys.argv[1:]]
+os.execv('/usr/bin/grep', ['grep', *args])
+""")
+        grep.chmod(0o755)
+
+    def test_preview_build_pins_version_before_starting_without_rebuild(self):
+        self.prepare_preview()
+        version = (ROOT / 'Backend' / 'opencode.version').read_text().strip()
+        for override in (None, '1.19.3', 'latest'):
+            with self.subTest(override=override):
+                if override is None:
+                    self.env.pop('OPENAGENT_OPENCODE_VERSION', None)
+                else:
+                    self.env['OPENAGENT_OPENCODE_VERSION'] = override
+                self.log.unlink(missing_ok=True)
+                result, calls = self.run_script('preview.sh', 'up', 'test')
+                self.assertEqual(result.returncode, 0, result.stderr)
+                builds = [call for call in calls if 'build' in call]
+                self.assertEqual(len(builds), 1, calls)
+                self.assertEqual(self.build_arg(builds[0], 'OPENCODE_VERSION'), override or version)
+                starts = [call for call in calls if 'up' in call]
+                self.assertEqual(len(starts), 1, calls)
+                self.assertIn('--no-build', starts[0])
+                self.assertNotIn('--build', starts[0])
+                self.assertLess(calls.index(builds[0]), calls.index(starts[0]))
+
+    def test_preview_rejects_invalid_version_before_docker_or_allocation(self):
+        self.env['OPENAGENT_OPENCODE_VERSION'] = '1.x-beta'
+        result, calls = self.run_script('preview.sh', 'up', 'test')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('invalid OpenCode version', result.stderr)
+        self.assertEqual(calls, [])
+        self.assertFalse((self.tmp / '.preview').exists())
+
     def test_default_deployment_checks_images_and_starts_compose(self):
         result, calls = self.run_script('deploy.sh')
         self.assertEqual(result.returncode, 0, result.stderr)
