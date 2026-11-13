@@ -56,6 +56,8 @@ public static class ApplicationBuilderExtensions
             {
                 MapHealthChecks(endpoints, "/health/ready", "ready");
             }
+
+            endpoints.MapHealthReport();
         }
 
         if (options.EnableOpenTelemetry
@@ -73,6 +75,6 @@ public static class ApplicationBuilderExtensions
         endpoints.MapHealthChecks(path, new HealthCheckOptions
         {
             Predicate = r => r.Tags.Contains(tag)
-        });
+        }).AllowAnonymous();
     }
 }

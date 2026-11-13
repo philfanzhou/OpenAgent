@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { api, fetchHealth, fetchHealthReport, getConnectionMode, getEngineBaseUrl, getRouterBaseUrl } from '../api'
+import { api, fetchHealthReport, getConnectionMode, getEngineBaseUrl, getRouterBaseUrl } from '../api'
 import { loadHealthCheckCache, mergeChecksWithSeed, saveHealthCheckCache, type CheckGroup, type CheckItem, type CheckStatus } from '../healthCheckCache'
 import type { HealthReport } from '../types'
 
@@ -65,9 +65,10 @@ function seeded(): CheckItem[] {
     { key: 'file-storage', group: 'infrastructure', name: '文件存储', detail: '待检测', status: 'idle' },
   ]
   const data: CheckItem[] = [
+    { key: 'agent-config', group: 'data', name: 'Agent 配置', detail: '待检测', status: 'idle' },
     { key: 'catalog', group: 'data', name: 'Agent 目录', detail: '待检测', status: 'idle' },
     { key: 'conversations', group: 'data', name: '会话存储', detail: '待检测', status: 'idle' },
-    { key: 'llm-config', group: 'data', name: 'LLM 配置', detail: '待检测', status: 'idle' },
+    { key: 'llm-config', group: 'data', name: '模型配置', detail: '待检测', status: 'idle' },
   ]
   return [...services, ...infra, ...data]
 }
@@ -94,50 +95,46 @@ function toggle(key: string): void {
 async function probeEngine(): Promise<void> {
   let report: HealthReport
   try {
+    if (!engineUrl.value) throw new Error('未配置 Engine 直连地址，无法检测 Engine 依赖')
     report = await fetchHealthReport(engineUrl.value)
   } catch (error) {
     patch('engine', { status: 'error', detail: error instanceof Error ? error.message : 'Engine 无法直连' })
-    for (const key of ['redis', 'database', 'file-storage']) {
+    for (const key of ['redis', 'database', 'file-storage', 'agent-config', 'llm-config']) {
       patch(key, { status: 'na', detail: 'Engine 不可达，无法检测' })
     }
-    patch('llm-config', { status: 'na', detail: 'Engine 不可达，无法检测' })
     return
   }
   patch('engine', { status: mapStatus(report.status), detail: `${engineUrl.value} · 总耗时 ${report.totalDurationMs ?? '—'} ms` })
-  const known: Record<string, string> = { redis: 'redis', database: 'database', 'file-object-storage': 'file-storage' }
-  for (const item of report.items) {
-    const target = known[item.key]
-    if (target) {
-      patch(target, { status: mapStatus(item.status), detail: item.detail || '', latencyMs: item.latencyMs, data: item.data })
+  const known: Record<string, string> = {
+    redis: 'redis',
+    database: 'database',
+    'file-object-storage': 'file-storage',
+    'agent-config': 'agent-config',
+    'model-config': 'llm-config',
+  }
+  for (const [source, target] of Object.entries(known)) {
+    const item = report.items.find(item => item.key === source)
+    if (!item) {
+      patch(target, { status: 'na', detail: 'Engine 未返回该检查项' })
+      continue
     }
+    patch(target, {
+      status: item.data?.enabled === false ? 'na' : mapStatus(item.status),
+      detail: item.detail || item.status,
+      latencyMs: item.latencyMs,
+      data: item.data,
+    })
   }
-  if (!report.items.some(item => item.key === 'file-object-storage')) {
-    patch('file-storage', { status: 'na', detail: '未启用（FileAssets.Enabled=false）' })
-  }
-  const llm = report.items.find(item => item.key === 'llm-connectivity')
-  if (llm) {
-    patch('llm-config', { status: mapStatus(llm.status), detail: `${llm.detail || ''} · 真实连接测试见 LLM 配置页`, latencyMs: llm.latencyMs, data: llm.data })
-  } else {
-    patch('llm-config', { status: 'na', detail: '未配置 LLM Provider' })
-  }
-}
-
-function parseDuration(duration?: string): number | undefined {
-  if (!duration) return undefined
-  const match = /^([0-9]+):([0-9]{2}):([0-9]{2})(?:\.([0-9]{1,7}))?$/.exec(duration)
-  if (!match) return undefined
-  const ms = Number((match[4] || '').padEnd(3, '0'))
-  return Math.round(Number(match[1]) * 3600000 + Number(match[2]) * 60000 + Number(match[3]) * 1000 + ms)
 }
 
 async function probeRouter(): Promise<void> {
   try {
-    const ready = await fetchHealth(routerUrl.value, '/ready')
-    const entry = ready.entries['router-ready']
+    const report = await fetchHealthReport(routerUrl.value)
+    const entry = report.items.find(item => item.key === 'router-ready')
     patch('router', {
-      status: mapStatus(ready.status),
-      detail: entry?.description || ready.status,
-      latencyMs: parseDuration(entry?.duration),
+      status: mapStatus(report.status),
+      detail: entry?.detail || report.status,
+      latencyMs: entry?.latencyMs,
       data: entry?.data,
     })
   } catch (error) {
@@ -169,6 +166,9 @@ async function probeGateway(): Promise<void> {
 }
 
 async function run(): Promise<void> {
+  mode.value = getConnectionMode()
+  engineUrl.value = getEngineBaseUrl()
+  routerUrl.value = getRouterBaseUrl()
   running.value = true
   checks.value = seeded().map(item => ({ ...item, status: 'running' }))
   try {

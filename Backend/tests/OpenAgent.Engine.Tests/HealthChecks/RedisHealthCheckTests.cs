@@ -46,7 +46,23 @@ public class RedisHealthCheckTests
         var result = await check.CheckHealthAsync(new HealthCheckContext());
 
         Assert.Equal(HealthStatus.Unhealthy, result.Status);
-        Assert.NotNull(result.Exception);
+        Assert.Null(result.Exception);
+    }
+
+    [Fact]
+    public async Task CheckHealthAsync_Cancellation_Propagates()
+    {
+        var redis = new FakeRedisConnectionProvider
+        {
+            IsAvailableValue = true,
+            PingTask = new TaskCompletionSource<TimeSpan>().Task
+        };
+        var check = new RedisHealthCheck(redis);
+        using CancellationTokenSource cancellation = new();
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            check.CheckHealthAsync(new HealthCheckContext(), cancellation.Token));
     }
 
     private sealed class FakeRedisConnectionProvider : IRedisConnectionProvider
@@ -54,6 +70,7 @@ public class RedisHealthCheckTests
         public bool IsAvailableValue { get; set; } = true;
         public bool IsAvailable => IsAvailableValue;
         public Exception? PingException { get; set; }
+        public Task<TimeSpan>? PingTask { get; set; }
 
         public IServer? GetServer(int database = 0) => null;
         public IDatabase GetDatabase(int database = 0) => throw new NotSupportedException();
@@ -78,6 +95,10 @@ public class RedisHealthCheckTests
 
         public Task<TimeSpan> PingAsync(CommandFlags flags = CommandFlags.None)
         {
+            if (PingTask != null)
+            {
+                return PingTask;
+            }
             if (PingException != null)
             {
                 throw PingException;

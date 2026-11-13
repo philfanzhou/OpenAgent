@@ -10,8 +10,9 @@ public interface ILlmConfigRepository
         string profileId,
         CancellationToken cancellationToken = default);
 
+    /// <summary>Lists one tenant's profiles, or all tenants for internal health aggregation when null.</summary>
     Task<IReadOnlyList<LlmProviderProfile>> ListAsync(
-        string tenantId,
+        string? tenantId = null,
         CancellationToken cancellationToken = default);
 
     Task<LlmProviderProfile> UpsertAsync(

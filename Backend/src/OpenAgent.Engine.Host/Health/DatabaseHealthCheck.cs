@@ -26,9 +26,13 @@ internal sealed class DatabaseHealthCheck : IHealthCheck
                 ? HealthCheckResult.Healthy("Database is reachable")
                 : HealthCheckResult.Unhealthy("Database is not reachable");
         }
-        catch (Exception exception)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            return HealthCheckResult.Unhealthy("Database connection failed", exception);
+            throw;
+        }
+        catch (Exception)
+        {
+            return HealthCheckResult.Unhealthy("Database connection failed");
         }
     }
 }

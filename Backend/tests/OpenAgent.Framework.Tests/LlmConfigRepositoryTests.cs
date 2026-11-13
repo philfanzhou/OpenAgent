@@ -74,6 +74,23 @@ public class LlmConfigRepositoryTests
         Assert.Equal("key-b", tenantB.ApiKey);
     }
 
+    [Fact]
+    public async Task ListAsync_NullTenant_ReturnsAllTenants()
+    {
+        await using ServiceProvider services = CreateServices();
+        ILlmConfigRepository repository = CreateRepository(services);
+        await repository.UpsertAsync("tenant-a", "primary", Profile("key-a"));
+        await repository.UpsertAsync("tenant-b", "primary", Profile("key-b"));
+
+        IReadOnlyList<LlmProviderProfile> profiles = await repository.ListAsync();
+
+        Assert.Equal(2, profiles.Count);
+        Assert.Equal(new[] { "tenant-a", "tenant-b" }, profiles.Select(profile => profile.TenantId));
+        LlmProviderProfile tenantProfile = Assert.Single(await repository.ListAsync("tenant-b"));
+        Assert.Equal("tenant-b", tenantProfile.TenantId);
+        Assert.Equal("key-b", tenantProfile.ApiKey);
+    }
+
     private static LlmProviderProfile Profile(string key) => new()
     {
         Name = "Primary",

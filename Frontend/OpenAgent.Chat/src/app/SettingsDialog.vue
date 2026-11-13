@@ -30,7 +30,7 @@ const { connectionMode, routerUrl, engineUrl, tenantId, statusText, authConfig, 
             <div class="button-row"><el-button type="primary" @click="connect">保存并连接</el-button><el-button @click="testHealth('/health')">测试 Live</el-button><el-button @click="testHealth('/ready')">测试 Ready</el-button></div>
           </section>
         </el-tab-pane>
-        <el-tab-pane label="健康检查" name="health">
+        <el-tab-pane label="健康检查" name="health" lazy>
           <section class="settings-section">
             <HealthCheckPanel />
           </section>

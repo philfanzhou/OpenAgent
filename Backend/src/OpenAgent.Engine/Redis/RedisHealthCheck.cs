@@ -23,12 +23,16 @@ internal class RedisHealthCheck : IHealthCheck
 
         try
         {
-            await _redis.PingAsync();
+            await _redis.PingAsync().WaitAsync(cancellationToken).ConfigureAwait(false);
             return HealthCheckResult.Healthy("Redis connection is healthy");
         }
-        catch (Exception ex)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            return HealthCheckResult.Unhealthy("Redis connection failed", ex);
+            throw;
+        }
+        catch (Exception)
+        {
+            return HealthCheckResult.Unhealthy("Redis connection failed");
         }
     }
 }

@@ -43,7 +43,7 @@ internal sealed class RouterReadyCheck : IHealthCheck
         if (await _probe.IsReadyAsync(endpoint, cancellationToken).ConfigureAwait(false))
         {
             _healthTracker.ReportSuccess(endpoint);
-            checks["engine"] = $"Engine is ready: {endpoint}";
+            checks["engine"] = "Engine is ready";
             return redisDegraded
                 ? HealthCheckResult.Degraded("Router is serving through a degraded discovery path", data: checks)
                 : HealthCheckResult.Healthy("Router is ready", data: checks);
@@ -58,12 +58,12 @@ internal sealed class RouterReadyCheck : IHealthCheck
         {
             _healthTracker.ReportSuccess(fallbackEndpoint);
             RouterLog.ReadinessFallbackSelected(_logger, endpoint, fallbackEndpoint);
-            checks["engine"] = $"Fallback Engine is ready: {fallbackEndpoint}";
+            checks["engine"] = "Fallback Engine is ready";
             return HealthCheckResult.Degraded(
                 "Router is serving through a fallback downstream", data: checks);
         }
 
-        checks["engine"] = $"Engine is unreachable: {endpoint}";
+        checks["engine"] = "Engine is unreachable";
         return HealthCheckResult.Unhealthy("Router downstream is not serviceable", data: checks);
     }
 

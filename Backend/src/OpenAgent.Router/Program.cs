@@ -59,7 +59,8 @@ builder.Services.AddHttpForwarder();
 
 builder.Services.AddHealthChecks()
     .AddCheck<RouterHealthCheck>("router", tags: new[] { "live" })
-    .AddCheck<RouterReadyCheck>("router-ready", tags: new[] { "ready" });
+    .AddCheck<RouterReadyCheck>("router-ready", tags: ["ready"],
+        timeout: TimeSpan.FromSeconds(5));
 
 var app = builder.Build();
 

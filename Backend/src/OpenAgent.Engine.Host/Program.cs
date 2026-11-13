@@ -38,7 +38,8 @@ builder.Services.AddFileAssetObjectStorage(builder.Configuration);
 
 builder.Services.AddAgentEngine(builder.Configuration);
 builder.Services.AddHealthChecks()
-    .AddCheck<DatabaseHealthCheck>("database", tags: ["infrastructure", "ready"]);
+    .AddCheck<DatabaseHealthCheck>("database", tags: ["infrastructure", "ready"],
+        timeout: TimeSpan.FromSeconds(5));
 builder.Services.AddEngineErrorHandling();
 var app = builder.Build();
 
@@ -67,6 +68,5 @@ if (app.Environment.IsDevelopment())
 }
 app.MapAgentEndpoints();
 app.MapFileShareDownloads();
-app.MapHealthReport();
 
 app.Run();

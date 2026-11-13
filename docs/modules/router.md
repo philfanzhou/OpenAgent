@@ -47,6 +47,13 @@ Router 会在 `Information` 级别记录 Provider 的请求方法、目标 URI�
 
 对应环境变量为 `Serilog__MinimumLevel__Override__OpenAgent.Router=Debug`。
 
+## 健康检查
+
+Router 自己暴露存活、就绪和明细报告，统一端点语义见 [健康端点契约](../overview/Observability.md#健康端点契约)。`/health/report` 的 `service` 为 `openagent-router`，只包含 Router 的检查，不混入 Engine 的数据库、模型或文件存储明细。
+
+- `router`：仅检查 Router 进程存活，标签 `live`。
+- `router-ready`：检查 Redis 发现路径和下游 Engine 的 `/ready`，标签 `ready`，整体检查上限 5 秒。无 Redis 的静态路由模式正常；Redis 故障或使用可用回退目标时 Degraded；无可服务下游时 Unhealthy。保留既有目标隔离与回退选择规则。
+
 ## 关键配置
 
 | 配置 | 默认值 | 说明 |

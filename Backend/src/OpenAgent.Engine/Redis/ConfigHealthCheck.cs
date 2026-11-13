@@ -1,44 +1,67 @@
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using OpenAgent.Contracts.Configuration;
-using OpenAgent.Engine.Abstractions;
+using OpenAgent.Contracts.Models;
 
 namespace OpenAgent.Engine.Redis;
 
-internal class ConfigHealthCheck : IHealthCheck
+internal sealed class ConfigHealthCheck(IAgentConfigRepository repository) : IHealthCheck
 {
-    private readonly IRedisConnectionProvider _redis;
-    private readonly IAgentConfigRepository _repository;
-
-    public ConfigHealthCheck(
-        IRedisConnectionProvider redis,
-        IAgentConfigRepository repository)
-    {
-        _redis = redis;
-        _repository = repository;
-    }
-
     public async Task<HealthCheckResult> CheckHealthAsync(
         HealthCheckContext context,
         CancellationToken cancellationToken = default)
     {
         try
         {
-            IReadOnlyList<OpenAgent.Contracts.Models.AgentConfigEntity> agents = await _repository
-                .ListAsync(tenantId: null, cancellationToken)
+            IReadOnlyList<AgentConfigEntity> agents = await repository
+                .ListAsync(null, cancellationToken)
                 .ConfigureAwait(false);
-            if (!_redis.IsAvailable)
+            int publishedAgentCount = agents.Count(agent => agent.Status == AgentPublishStatus.Published);
+            int invalidAgentCount = agents.Count(agent => !IsValid(agent));
+            Dictionary<string, object> data = new()
             {
-                return HealthCheckResult.Degraded(
-                    $"PostgreSQL configuration store is available with {agents.Count} agents; Redis cache is unavailable.");
+                ["agentCount"] = agents.Count,
+                ["publishedAgentCount"] = publishedAgentCount,
+                ["invalidAgentCount"] = invalidAgentCount
+            };
+
+            if (invalidAgentCount > 0)
+            {
+                return HealthCheckResult.Unhealthy("Agent configuration contains invalid data.", data: data);
             }
 
-            return HealthCheckResult.Healthy(
-                $"PostgreSQL configuration store and Redis cache are available. Agents: {agents.Count}.");
+            if (agents.Count == 0)
+            {
+                return HealthCheckResult.Degraded("No agent configuration is available.", data: data);
+            }
+
+            return HealthCheckResult.Healthy("Agent configuration is available.", data);
         }
-        catch (Exception ex)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            return HealthCheckResult.Unhealthy(
-                "Failed to check configuration store health.", ex);
+            throw;
         }
+        catch (Exception exception)
+        {
+            return HealthCheckResult.Unhealthy("Failed to read agent configuration.", exception);
+        }
+    }
+
+    private static bool IsValid(AgentConfigEntity agent)
+    {
+        if (string.IsNullOrWhiteSpace(agent.TenantId)
+            || string.IsNullOrWhiteSpace(agent.AgentId)
+            || !string.Equals(agent.TenantId, agent.Config.TenantId, StringComparison.Ordinal)
+            || agent.Config.MaxTurns < 0)
+        {
+            return false;
+        }
+
+        OpenCodeModelConfig? model = agent.Config.OpenCode.Model;
+        if (model is null)
+        {
+            return true;
+        }
+
+        return ModelConfigValidation.IsValid(model);
     }
 }

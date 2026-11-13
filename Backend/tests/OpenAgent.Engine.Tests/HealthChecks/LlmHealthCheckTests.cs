@@ -1,7 +1,7 @@
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Moq;
 using OpenAgent.Contracts.Configuration;
+using OpenAgent.Contracts.Models;
 using OpenAgent.Engine.Redis;
 using Xunit;
 
@@ -9,63 +9,99 @@ namespace OpenAgent.Engine.Tests.HealthChecks;
 
 public class LlmHealthCheckTests
 {
-    private const string DefaultTenantId = "tenant-default";
-
     [Fact]
-    public async Task Returns_degraded_when_no_provider_is_configured()
+    public async Task Returns_degraded_when_no_model_is_configured()
     {
-        var repository = new Mock<ILlmConfigRepository>();
-        repository.Setup(item => item.ListAsync(DefaultTenantId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Array.Empty<LlmProviderProfile>());
-
-        HealthCheckResult result = await new LlmHealthCheck(repository.Object, Configuration())
-            .CheckHealthAsync(new HealthCheckContext());
-
+        HealthCheckResult result = await CreateCheck().CheckHealthAsync(new HealthCheckContext());
         Assert.Equal(HealthStatus.Degraded, result.Status);
-        Assert.Equal("No LLM provider is configured.", result.Description);
+    }
+
+    [Theory]
+    [InlineData("http://localhost:11434", HealthStatus.Healthy, 0)]
+    [InlineData("not-a-uri", HealthStatus.Unhealthy, 1)]
+    public async Task CheckHealthAsync_OnlyInlineModel_ReportsModelValidity(string endpoint, HealthStatus expected, int invalidCount)
+    {
+        var agents = new Mock<IAgentConfigRepository>();
+        agents.Setup(item => item.ListAsync(null, It.IsAny<CancellationToken>())).ReturnsAsync(new[]
+        {
+            new AgentConfigEntity { TenantId = "tenant-a", AgentId = "agent-a", Config = new AgentConfig
+            {
+                TenantId = "tenant-a", OpenCode = new OpenCodeConfig { Model = new OpenCodeModelConfig
+                { ModelId = "local", Endpoint = endpoint, ContextTokens = 4096 } }
+            }}
+        });
+        HealthCheckResult result = await CreateCheck(agents.Object).CheckHealthAsync(new HealthCheckContext());
+        Assert.Equal(expected, result.Status);
+        Assert.Equal(1, result.Data["inlineModelCount"]);
+        Assert.Equal(invalidCount, result.Data["invalidInlineModelCount"]);
     }
 
     [Fact]
-    public async Task Returns_healthy_when_a_valid_provider_is_configured()
+    public async Task Returns_unhealthy_when_provider_data_is_partially_invalid()
     {
-        var repository = new Mock<ILlmConfigRepository>();
-        repository.Setup(item => item.ListAsync(DefaultTenantId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new[]
-            {
-                new LlmProviderProfile
-                {
-                    Id = "primary",
-                    Endpoint = "https://llm.example.test/v1",
-                    ModelId = "model",
-                    ContextTokens = 8192
-                }
-            });
+        HealthCheckResult result = await CreateCheck(profiles: new[]
+        {
+            Profile("tenant-a", "primary", "https://llm.example.test/v1"),
+            Profile("tenant-b", "broken", "not-a-uri")
+        }).CheckHealthAsync(new HealthCheckContext());
+        Assert.Equal(HealthStatus.Unhealthy, result.Status);
+        Assert.Equal(1, result.Data["invalidProviderCount"]);
+    }
 
-        HealthCheckResult result = await new LlmHealthCheck(repository.Object, Configuration())
-            .CheckHealthAsync(new HealthCheckContext());
+    [Fact]
+    public async Task CheckHealthAsync_ValidProvidersAcrossTenants_ReturnsHealthyWithoutRequiringApiKeys()
+    {
+        HealthCheckResult result = await CreateCheck(profiles: new[]
+        {
+            Profile("tenant-a", "primary", "https://llm.example.test/v1"),
+            Profile("tenant-b", "primary", "http://localhost:11434")
+        }).CheckHealthAsync(new HealthCheckContext());
 
         Assert.Equal(HealthStatus.Healthy, result.Status);
-        Assert.Equal(1, result.Data["providerCount"]);
+        Assert.Equal(2, result.Data["providerCount"]);
+        Assert.Equal(2, result.Data["validProviderCount"]);
+        Assert.Equal(0, result.Data["invalidProviderCount"]);
     }
 
-    [Fact]
-    public async Task Returns_unhealthy_when_provider_configuration_cannot_be_read()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CheckHealthAsync_RepositoryFailure_DistinguishesFailureFromCancellation(bool cancelled)
+    {
+        using CancellationTokenSource cancellation = new();
+        if (cancelled) cancellation.Cancel();
+        var repository = new Mock<ILlmConfigRepository>();
+        repository.Setup(item => item.ListAsync(null, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(cancelled ? new OperationCanceledException(cancellation.Token) : new InvalidOperationException("read failed"));
+        var agents = new Mock<IAgentConfigRepository>();
+        var check = new LlmHealthCheck(repository.Object, agents.Object);
+
+        if (cancelled)
+        {
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => check.CheckHealthAsync(new HealthCheckContext(), cancellation.Token));
+        }
+        else
+        {
+            HealthCheckResult result = await check.CheckHealthAsync(new HealthCheckContext());
+            Assert.Equal(HealthStatus.Unhealthy, result.Status);
+        }
+    }
+
+    private static LlmHealthCheck CreateCheck(IAgentConfigRepository? agents = null, LlmProviderProfile[]? profiles = null)
     {
         var repository = new Mock<ILlmConfigRepository>();
-        repository.Setup(item => item.ListAsync(DefaultTenantId, It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new InvalidOperationException("database unavailable"));
-
-        HealthCheckResult result = await new LlmHealthCheck(repository.Object, Configuration())
-            .CheckHealthAsync(new HealthCheckContext());
-
-        Assert.Equal(HealthStatus.Unhealthy, result.Status);
-        Assert.NotNull(result.Exception);
+        repository.Setup(item => item.ListAsync(null, It.IsAny<CancellationToken>())).ReturnsAsync(profiles ?? Array.Empty<LlmProviderProfile>());
+        if (agents is null)
+        {
+            var empty = new Mock<IAgentConfigRepository>();
+            empty.Setup(item => item.ListAsync(null, It.IsAny<CancellationToken>())).ReturnsAsync(Array.Empty<AgentConfigEntity>());
+            agents = empty.Object;
+        }
+        return new LlmHealthCheck(repository.Object, agents);
     }
 
-    private static IConfiguration Configuration() => new ConfigurationBuilder()
-        .AddInMemoryCollection(new Dictionary<string, string?>
-        {
-            ["Authentication:DevelopmentTenantId"] = DefaultTenantId
-        })
-        .Build();
+    private static LlmProviderProfile Profile(string tenant, string id, string endpoint) => new()
+    {
+        TenantId = tenant, Id = id, ModelId = "model", ContextTokens = 8192, Endpoint = endpoint
+    };
 }

@@ -149,15 +149,22 @@ Agent 保存指令、轮次、上下文压缩策略及能力绑定；LLM 保存�
 
 ### 健康检查
 
-通过 ASP.NET Core 健康检查框架注册三类检查，暴露 `/health`（live）和 `/ready`（ready）：
+端点和 HTTP 状态规则见 [健康端点契约](../overview/Observability.md#健康端点契约)。Engine 独立注册以下检查：
 
 | Check | 内容 | Tags |
 |-------|------|------|
-| redis | Redis 可用性和 Ping 响应 | infrastructure, ready, live |
-| agent-config | 已发布 Agent 的配置缓存完整度 | ready |
-| llm-connectivity | 示例 Agent 的 LLM 配置可读性（不发起真实 API 调用，仅检查第一个 Agent 作为样本）| live |
+| engine | 进程存活，不访问外部依赖 | live |
+| agent-config | 从 PostgreSQL 读取全部租户的 Agent 配置，校验标识、租户一致性、轮次与已设置的内嵌模型；返回总数、发布数、无效数 | ready |
+| model-config | 读取全部租户的模型配置及 Agent 内嵌模型，检查必要字段、HTTP(S) 地址、格式与上下文容量；返回独立 Provider 和内嵌模型的有效/无效计数 | ready |
+| database | PostgreSQL 连接可达性 | infrastructure, ready |
+| redis | 连接状态和实际 Ping | infrastructure, ready |
+| file-object-storage | 文件存储启用时，通过 S3 HeadBucket 检查桶存在且当前身份可访问；关闭时明确报告 `enabled=false` | infrastructure, ready |
 
-状态分级 Healthy / Degraded / Unhealthy；Redis 不可用返回 Degraded（非 Unhealthy），Engine 可在孤岛模式运行。
+Agent 或模型为空返回 Degraded，允许新环境通过管理接口完成初始化；持久配置非法、查询失败、数据库或 S3 不可达返回 Unhealthy。Redis 未连接时返回 Degraded，继续使用既有降级路径；已连接但 Ping 失败则返回 Unhealthy。无内嵌模型的 Agent 合法，执行时可通过请求选择模型；只有内嵌模型时不会误报没有模型。
+
+模型与 Agent 报告只包含跨租户汇总，不输出配置内容、租户明细或密钥。模型检查不证明远程推理成功，S3 检查不证明对象的上传、下载或删除权限；健康探针不调用模型、不写入对象、不创建桶。真实模型连接和文件读写需要单独业务验收。
+
+共享报告映射位于 `Backend/src/OpenAgent.Engine/Hosting/HealthReportEndpointExtensions.cs`；数据库和 S3 探测位于 `Backend/src/OpenAgent.Engine.Host/Health/`。
 
 ### 优雅停机
 

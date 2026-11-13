@@ -9,7 +9,7 @@
 | 日志 | 业务代码使用 `ILogger<T>`，由 Serilog 接管；通用请求事件由 Engine/Hosting middleware 横切采集 | Console/stdout；配置 OTLP 地址后同时导出 OpenTelemetry Logs | 日志存储与查询后端由部署环境决定 |
 | Trace | OpenTelemetry ASP.NET Core、HttpClient 与服务自定义 `ActivitySource` | 配置 OTLP 地址后导出 | 仓库不内置 Collector 或 Trace 存储 |
 | Metrics | OpenTelemetry ASP.NET Core 指标、Engine/Hosting 请求指标与服务自定义 `Meter` | Prometheus `/metrics`；配置 OTLP 地址后同时导出 | 长期存储与看板由部署环境决定 |
-| Health | ASP.NET Core Health Checks | `/health`、`/ready`，兼容 `/health/live`、`/health/ready` | `ready` 用于依赖可用性，`health` 用于进程存活 |
+| Health | ASP.NET Core Health Checks | 每个服务独立暴露 `/health`、`/ready`、`/health/report`，兼容 `/health/live`、`/health/ready` | 存活不依赖外部服务；就绪反映本服务依赖，报告提供安全汇总 |
 
 应用与基础设施的边界如下：
 
@@ -26,6 +26,17 @@ Meter / ASP.NET Core Metrics -> OpenTelemetry
 
 仓库不绑定 Loki、Tempo、Grafana、Prometheus Server 或 OpenTelemetry Collector。Collector 由部署环境
 单独提供；持久化、索引和查询后端也由部署环境选择。
+
+### 健康端点契约
+
+Router 和 Engine 的路径相同，但检查的是各自进程与依赖，不通过 Router 的健康端点代替 Engine 检查：
+
+- `/health`、`/health/live`：仅存活检查，纯文本；依赖故障不会把运行中的进程标记为死亡。
+- `/ready`、`/health/ready`：就绪检查，纯文本；Healthy / Degraded 返回 HTTP 200，Unhealthy 返回 HTTP 503。允许继续服务的降级不会触发摘流。
+- `/health/report`：始终返回 HTTP 200 的诊断 JSON，故障判断必须读取 `status` 和 `items[].status`，不能仅看 HTTP 状态。`service` 为 `openagent-engine` 或 `openagent-router`，每项包含 `key`、`status`、`detail`、`latencyMs`、`data`。报告不序列化异常、模型密钥或连接串，并禁止缓存。
+
+依赖检查有 5 秒上限，取消会传递给探测；模型检查不调用付费推理接口。Engine 项目详见 [Engine 健康检查](../modules/engine.md#健康检查)，Router 项目详见 [Router 健康检查](../modules/router.md#健康检查)。
+
 
 ## 服务标识与配置
 

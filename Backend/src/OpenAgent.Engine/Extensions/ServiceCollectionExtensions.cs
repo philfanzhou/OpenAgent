@@ -73,9 +73,13 @@ internal static class ServiceCollectionExtensions
         services.AddHostedService<RedisRagRegistrar>();
 
         services.AddHealthChecks()
-            .AddCheck<RedisHealthCheck>("redis", tags: new[] { "infrastructure", "ready", "live" })
-            .AddCheck<ConfigHealthCheck>("agent-config", tags: new[] { "ready" })
-            .AddCheck<LlmHealthCheck>("llm-connectivity", tags: new[] { "live" });
+            .AddCheck("engine", () => HealthCheckResult.Healthy("Engine is alive"), tags: ["live"])
+            .AddCheck<RedisHealthCheck>("redis", tags: ["infrastructure", "ready"],
+                timeout: TimeSpan.FromSeconds(5))
+            .AddCheck<ConfigHealthCheck>("agent-config", tags: ["ready"],
+                timeout: TimeSpan.FromSeconds(5))
+            .AddCheck<LlmHealthCheck>("model-config", tags: ["ready"],
+                timeout: TimeSpan.FromSeconds(5));
 
         services.AddSingleton<IEngineRegistry, RedisRegistry>();
         services.AddHostedService<HeartbeatService>();

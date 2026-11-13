@@ -1,16 +1,12 @@
 using Microsoft.Extensions.Diagnostics.HealthChecks;
-using Microsoft.Extensions.Configuration;
 using OpenAgent.Contracts.Configuration;
+using OpenAgent.Contracts.Models;
 
 namespace OpenAgent.Engine.Redis;
 
-/// <summary>
-/// Checks that at least one structurally valid LLM provider profile is readable.
-/// It deliberately does not call an external model endpoint from a health probe.
-/// </summary>
 internal sealed class LlmHealthCheck(
     ILlmConfigRepository repository,
-    IConfiguration configuration) : IHealthCheck
+    IAgentConfigRepository agentRepository) : IHealthCheck
 {
     public async Task<HealthCheckResult> CheckHealthAsync(
         HealthCheckContext context,
@@ -18,34 +14,43 @@ internal sealed class LlmHealthCheck(
     {
         try
         {
-            string? configuredTenantId = configuration["Authentication:DevelopmentTenantId"];
-            string tenantId = string.IsNullOrWhiteSpace(configuredTenantId)
-                ? "development"
-                : configuredTenantId;
             IReadOnlyList<LlmProviderProfile> profiles = await repository
-                .ListAsync(tenantId, cancellationToken)
-                .ConfigureAwait(false);
-            int configuredCount = profiles.Count(IsConfigured);
-            if (configuredCount == 0)
+                .ListAsync(null, cancellationToken).ConfigureAwait(false);
+            IReadOnlyList<AgentConfigEntity> agents = await agentRepository
+                .ListAsync(null, cancellationToken).ConfigureAwait(false);
+            int validProviderCount = profiles.Count(ModelConfigValidation.IsValid);
+            int invalidProviderCount = profiles.Count - validProviderCount;
+            int inlineModelCount = agents.Count(agent => agent.Config.OpenCode.Model is not null);
+            int invalidInlineModelCount = agents.Count(agent =>
+                agent.Config.OpenCode.Model is not null && !ModelConfigValidation.IsValid(agent.Config.OpenCode.Model));
+            Dictionary<string, object> data = new()
             {
-                return HealthCheckResult.Degraded("No LLM provider is configured.");
+                ["providerCount"] = profiles.Count,
+                ["validProviderCount"] = validProviderCount,
+                ["invalidProviderCount"] = invalidProviderCount,
+                ["inlineModelCount"] = inlineModelCount,
+                ["invalidInlineModelCount"] = invalidInlineModelCount
+            };
+
+            if (invalidProviderCount > 0 || invalidInlineModelCount > 0)
+            {
+                return HealthCheckResult.Unhealthy("LLM configuration contains invalid data.", data: data);
             }
 
-            return HealthCheckResult.Healthy(
-                $"LLM provider configuration is available. Providers: {configuredCount}.",
-                new Dictionary<string, object> { ["providerCount"] = configuredCount });
+            if (validProviderCount == 0 && inlineModelCount == 0)
+            {
+                return HealthCheckResult.Degraded("No LLM provider is configured.", data: data);
+            }
+
+            return HealthCheckResult.Healthy("LLM provider configuration is available.", data);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception exception)
         {
-            return HealthCheckResult.Unhealthy(
-                "Failed to read LLM provider configuration.",
-                exception);
+            return HealthCheckResult.Unhealthy("Failed to read LLM provider configuration.", exception);
         }
     }
-
-    private static bool IsConfigured(LlmProviderProfile profile) =>
-        !string.IsNullOrWhiteSpace(profile.Id)
-        && !string.IsNullOrWhiteSpace(profile.Endpoint)
-        && !string.IsNullOrWhiteSpace(profile.ModelId)
-        && profile.ContextTokens > 0;
 }

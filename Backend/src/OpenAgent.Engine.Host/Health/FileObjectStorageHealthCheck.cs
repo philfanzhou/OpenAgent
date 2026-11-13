@@ -1,39 +1,58 @@
-using Amazon.Runtime;
 using Amazon.S3;
 using Amazon.S3.Model;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
+using OpenAgent.Contracts.Files;
 using OpenAgent.Framework.ObjectStorage;
 
 namespace OpenAgent.Engine.Host.Health;
 
 internal sealed class FileObjectStorageHealthCheck : IHealthCheck
 {
-    private readonly IAmazonS3 _s3;
+    private readonly IAmazonS3? _s3;
     private readonly FileObjectStorageOptions _options;
+    private readonly bool _enabled;
 
     public FileObjectStorageHealthCheck(
-        IAmazonS3 s3,
-        IOptions<FileObjectStorageOptions> options)
+        IOptions<FileAssetOptions> fileAssets,
+        IOptions<FileObjectStorageOptions> options,
+        IAmazonS3? s3 = null)
     {
-        _s3 = s3;
+        _enabled = fileAssets.Value.Enabled;
         _options = options.Value;
+        _s3 = s3;
     }
 
     public async Task<HealthCheckResult> CheckHealthAsync(
         HealthCheckContext context,
         CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        Dictionary<string, object> data = new() { ["enabled"] = _enabled, ["provider"] = "s3" };
+        if (!_enabled)
+        {
+            return HealthCheckResult.Healthy("File object storage is disabled.", data);
+        }
+
+        if (_s3 is null)
+        {
+            return HealthCheckResult.Unhealthy("File object storage is not configured.", data: data);
+        }
+
         try
         {
-            await _s3.GetBucketLocationAsync(
-                new GetBucketLocationRequest { BucketName = _options.BucketName },
-                cancellationToken).ConfigureAwait(false);
-            return HealthCheckResult.Healthy("File object storage is available.");
+            await _s3.HeadBucketAsync(
+                new HeadBucketRequest { BucketName = _options.BucketName },
+                cancellationToken).WaitAsync(cancellationToken).ConfigureAwait(false);
+            return HealthCheckResult.Healthy("File object storage bucket is accessible.", data);
         }
-        catch (Exception exception) when (exception is AmazonServiceException or AmazonClientException or HttpRequestException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            return HealthCheckResult.Unhealthy("File object storage is unavailable.", exception);
+            throw;
+        }
+        catch (Exception)
+        {
+            return HealthCheckResult.Unhealthy("File object storage is unavailable.", data: data);
         }
     }
 }

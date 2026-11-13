@@ -22,13 +22,17 @@
 ```bash
 curl -i http://localhost:5001/health
 curl -i http://localhost:5001/ready
+curl -sS http://localhost:5001/health/report
 curl -i http://localhost:5208/health
 curl -i http://localhost:5208/ready
+curl -sS http://localhost:5208/health/report
 ```
 
 - `health` 失败：先处理进程、监听端口或启动配置。
-- `health` 成功而 `ready` 失败：检查 Redis、注册发现或服务自身 readiness 检查。
-- 两者均成功：继续按单次请求证据排查。
+- `health` 成功而 `ready` 失败：读取同一服务的 `/health/report`。Engine 分别检查 `agent-config`、`model-config`、`database`、`redis`、`file-object-storage`；Router 检查 `router-ready` 的下游与 Redis 信息。
+- `ready` HTTP 200 仍可能为 Degraded，例如空模型/Agent、Redis 降级或 Router 使用回退目标；检查响应状态文本与报告明细。
+- 报告 HTTP 200 只表示诊断请求成功，不表示依赖健康。状态规则与探测边界见 [健康端点契约](../overview/Observability.md#健康端点契约)。
+- 存活与就绪均 Healthy：继续按单次请求证据排查。
 
 ## 2. 从 Router 日志定位请求
 

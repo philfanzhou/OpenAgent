@@ -1,5 +1,5 @@
 export * from './shared/api/http'
-export { fetchHealth, fetchHealthReport } from './features/diagnostics/api'
+export { fetchHealthReport } from './features/diagnostics/api'
 export { makeLocalConversation } from './features/conversations/api'
 import { api as authApi } from './features/auth/api'
 import { api as diagnosticsApi } from './features/diagnostics/api'

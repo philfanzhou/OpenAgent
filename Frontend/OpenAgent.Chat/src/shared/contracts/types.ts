@@ -418,19 +418,6 @@ export interface HealthReport {
   items: HealthReportItem[]
 }
 
-export interface HealthEntry {
-  status: string
-  description?: string
-  duration?: string
-  data?: Record<string, unknown>
-}
-
-export interface NativeHealthReport {
-  status: string
-  entries: Record<string, HealthEntry>
-  totalDuration?: string
-}
-
 export interface RuntimeProfile {
   id: string
   name: string
