@@ -53,6 +53,8 @@
 - [ ] **ACP-R05 OpenCode 进程环境隔离跟进**（N02 实现待评审；最终多租户隔离待 N16.2 部署验收）：实测 Windows + OpenCode 1.19.3 下子进程无视平台设置的 HOME/USERPROFILE，扫描并加载宿主用户 `.claude/skills`、`.agents/skills`（26 个技能进入上下文）。需上游确认 homedir 解析机制或平台侧进一步收紧；同项跟进空闲进程持续外呼与 CPU 空转（当前按时限与数量上限保活）。证据为 PR #243 的实测结论。
 - [ ] **ACP-R06 镜像版本锁定与发布流水线**（待评审）：`Backend/opencode.version` 作为内嵌 OpenCode 版本的单一事实源（当前 1.19.3），`scripts/build-images.*` 读取并经 `OPENCODE_VERSION` 注入 Engine 构建、附带版本 label；`v*.*.*` 标签触发 Release 工作流，先以 `--target runtime-tests` 真实进程回归门禁，再把 engine/router/chat 推送 GHCR（Engine 标签带 `-oc<版本>` 后缀）并附 Compose 部署包制品。负责人：ZCode；实现 PR：[#247](https://github.com/philfanzhou/OpenAgent/pull/247)。验收：部署脚本测试 12/12 通过（WSL）；WSL Docker runtime-tests 以钉住 1.19.3 实测通过，镜像 label 核对一致；远端打 tag 的首次发布待验收。
 
+- [ ] **ACP-R07 压缩审计与原生会话持久恢复**（本地实现，未合并/部署）：基线 `dev@8a8172df`，分支 `codex/remove-platform-model-compaction`，负责人 Codex。范围：Contracts 压缩事件、Application 持锁审计、Runtime/OpenCode 标准事件与 v1 原生导出适配、Engine SSE/状态卷、Chat 时间线。平台摘要客户端/策略/手动接口已删除；展示摘要不充当恢复快照。验收与降级规则见 [会话文档](../modules/conversation.md#上下文压缩)。真实 1.19.3 + 本地确定性模型已验证自动压缩后跨进程恢复、缺失/拒绝恢复时回放及取消作废；正式环境、共享存储与 Windows 卷权限待验收。回退必须保留数据库会话记录及状态卷。
+
 本轮已按评审意见移除 MAF 推理栈（Application 内 Microsoft.Agents.AI 全系引用、进程内推理循环与平台侧 MCP 工具代理，原 A09 的 Application 部分），并支持外部 MCP server 经 ACP session/new 透传、Skill 工作区物化。Runtime 由独立设置页管理，聊天顶部选择已保存的 Runtime 和模型连接；已移除 Agent 编辑器中的 OpenCode 配置，补充实际 ACP 握手身份的展示与持久化。不代表 A02 的并发容量/隔离攻击验证、A04 Worker、A05 分布式 RunGrant、A06 事件重放或 A08 人工审批已完成；原任务保留未完成状态，具体验收边界以实测记录为准。
 
 ## P0：验证与准备

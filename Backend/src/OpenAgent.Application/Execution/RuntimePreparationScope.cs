@@ -13,7 +13,6 @@ internal sealed class RuntimePreparationScope(
     PlatformChatHistory history,
     ILogger logger) : IAsyncDisposable
 {
-    internal List<IDisposable> Clients { get; } = [];
     internal List<AgentFeature> Features { get; } = [];
     /// <summary>本轮 Exclusive 工具共享的串行门；随轮次释放。</summary>
     internal SemaphoreSlim ExclusiveGate { get; } = new(1, 1);
@@ -33,7 +32,7 @@ internal sealed class RuntimePreparationScope(
         return history.Checkpoint;
     }
 
-    internal void Observe(AgentStreamEvent item)
+    internal AgentStreamEvent Observe(AgentStreamEvent item)
     {
         switch (item.Type)
         {
@@ -58,10 +57,14 @@ internal sealed class RuntimePreparationScope(
                 history.AppendToolResult(item.ToolCallId, item.Content);
                 _tools.Add(new ChatMessage(ChatRole.Tool, [new FunctionResultContent(item.ToolCallId, item.Content)]));
                 break;
+            case AgentStreamEventType.Compaction when item.Compaction is { } compaction:
+                item = item with { Compaction = history.ObserveCompaction(compaction) };
+                break;
             case AgentStreamEventType.Usage:
                 _usage = item.Usage;
                 break;
         }
+        return item;
     }
 
     internal async Task CompleteAsync(CancellationToken ct)
@@ -111,17 +114,6 @@ internal sealed class RuntimePreparationScope(
             await DisposeResourceAsync(feature).ConfigureAwait(false);
         }
         ExclusiveGate.Dispose();
-        foreach (IDisposable client in Clients)
-        {
-            try
-            {
-                client.Dispose();
-            }
-            catch (Exception error)
-            {
-                logger.LogWarning("Summary client cleanup failed ({ErrorType})", error.GetType().Name);
-            }
-        }
     }
 
     private async ValueTask DisposeResourceAsync(IAsyncDisposable resource)

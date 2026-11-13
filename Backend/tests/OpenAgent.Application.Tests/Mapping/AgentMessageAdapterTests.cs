@@ -1,4 +1,3 @@
-using OpenAgent.Application.Conversation.Compaction;
 using Microsoft.Extensions.AI;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Files;
@@ -49,7 +48,7 @@ public sealed class AgentMessageAdapterTests
         {
             AdditionalProperties = new AdditionalPropertiesDictionary
             {
-                [CompactionMessageGroup.SummaryPropertyKey] = true
+                ["openagent:compaction-summary"] = true
             }
         };
         int sequence = 1;

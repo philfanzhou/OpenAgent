@@ -28,9 +28,6 @@ internal static class ConversationEndpoints
             .WithName("DeleteConversation")
             .WithTags("Conversation");
 
-        group.MapPost("/conversations/{conversationId}/compact", CompactAsync)
-            .WithName("CompactConversation")
-            .WithTags("Conversation");
 
         group.MapGet("/conversations/{conversationId}/llm-interactions", ListInteractionsAsync)
             .WithName("ListConversationLlmInteractions")
@@ -126,41 +123,6 @@ internal static class ConversationEndpoints
             : TypedResults.Forbid();
     }
 
-    internal static async Task<Results<Ok<ContextSummary>, NotFound, ForbidHttpResult>> CompactAsync(
-        [FromServices] IConversationQueryService queryService,
-        [FromServices] IConversationCompactionService compactionService,
-        HttpContext context,
-        string conversationId,
-        [FromQuery] string llmProfileId,
-        CancellationToken cancellationToken = default)
-    {
-        string tenantId = AgentEndpointRequestMapper.RequireTenant(context);
-        ConversationRecord? record = await queryService.GetRecordAsync(
-            tenantId,
-            conversationId,
-            cancellationToken).ConfigureAwait(false);
-        if (record == null || record.IsDeletedByUser || record.Type != ConversationType.User)
-        {
-            return TypedResults.NotFound();
-        }
-
-        IAgentUserContext user = context.GetAgentRequest().User;
-        if (!string.Equals(record.TenantId, tenantId, StringComparison.Ordinal)
-            || !string.Equals(record.UserId, user.UserId, StringComparison.Ordinal))
-        {
-            return TypedResults.Forbid();
-        }
-
-        ContextSummary result = await compactionService.CompactAsync(
-            tenantId,
-            conversationId,
-            llmProfileId,
-            user,
-            context.GetAgentRequest().TraceId,
-            cancellationToken).ConfigureAwait(false);
-        return TypedResults.Ok(result);
-    }
-
     internal static async Task<Results<Ok<IReadOnlyList<LlmInteractionRecord>>, NotFound, ForbidHttpResult>> ListInteractionsAsync(
         [FromServices] IConversationQueryService queryService,
         [FromServices] ILlmInteractionStore interactions,
@@ -191,5 +153,4 @@ internal static class ConversationEndpoints
             cancellationToken).ConfigureAwait(false);
         return TypedResults.Ok(logs);
     }
-
 }

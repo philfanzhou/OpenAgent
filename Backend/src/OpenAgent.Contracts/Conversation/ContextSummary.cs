@@ -9,9 +9,14 @@ public sealed class ContextSummary
     /// Stable identifier for the compression attempt.
     /// </summary>
     public required string CompressionId { get; init; }
+    public string? RuntimeSessionId { get; init; }
+    public string? RuntimeCompactionId { get; init; }
+    public string? TraceId { get; init; }
+    /// <summary>True for an ACP display summary, never a replacement model-context projection.</summary>
+    public bool IsRuntimeEvent { get; init; }
 
     /// <summary>
-    /// MAF compaction strategy used for the attempt.
+    /// Compaction strategy used for the attempt.
     /// </summary>
     public required string Strategy { get; init; }
 
@@ -76,7 +81,8 @@ public sealed class ContextSummary
     public bool OriginalHistoryRestored { get; init; }
 
     /// <summary>
-    /// Last persisted message sequence represented by the compacted result.
+    /// Last persisted message sequence represented by a legacy compacted projection.
+    /// For runtime display events this is only a timeline anchor, never a coverage boundary.
     /// </summary>
     public int SourceEndSequence { get; init; }
 

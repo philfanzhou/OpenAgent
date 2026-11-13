@@ -1,6 +1,5 @@
 using System.Text.Json;
 using Microsoft.Extensions.AI;
-using OpenAgent.Application.Conversation.Compaction;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Files;
 
@@ -109,7 +108,7 @@ internal static class AgentMessageAdapter
         foreach (ChatMessage message in messages)
         {
             bool isSummary = message.AdditionalProperties?.TryGetValue(
-                CompactionMessageGroup.SummaryPropertyKey,
+                "openagent:compaction-summary",
                 out object? summaryValue) == true
                 && summaryValue is true;
             string? role;

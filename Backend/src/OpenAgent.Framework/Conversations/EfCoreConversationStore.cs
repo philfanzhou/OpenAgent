@@ -351,7 +351,9 @@ internal sealed class EfCoreConversationStore(
         }
 
         List<ContextSummary> summaries = DeserializeSummaries(conversation.ContextSummariesJson);
-        summaries.Add(summary);
+        int existing = summaries.FindIndex(item => item.CompressionId == summary.CompressionId);
+        if (existing >= 0) summaries[existing] = summary;
+        else summaries.Add(summary);
         conversation.ContextSummariesJson = JsonSerializer.Serialize(summaries);
         conversation.UpdatedAt = DateTimeOffset.UtcNow;
         try

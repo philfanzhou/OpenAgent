@@ -18,6 +18,7 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:5208
+      OpenCode__SessionStateRoot: /home/app/openagent-sessions
       ConnectionStrings__OpenAgentDatabase: Host=host.docker.internal;Port=${OPENAGENT_POSTGRES_PORT:-5432};Database=${OPENAGENT_POSTGRES_DB:-openagent};Username=${OPENAGENT_POSTGRES_USER:-openagent};Password=${OPENAGENT_POSTGRES_PASSWORD:-openagent}
       ConnectionStrings__Redis: host.docker.internal:${OPENAGENT_REDIS_PORT:-6379},defaultDatabase=0
       Database__ApplyMigrationsOnStartup: "true"
@@ -53,6 +54,9 @@ services:
       interval: 5s
       timeout: 3s
       retries: 30
+
+    volumes:
+      - engine-sessions:/home/app/openagent-sessions
 
   router:
     build:
@@ -103,3 +107,6 @@ services:
         condition: service_healthy
     ports:
       - "${PREVIEW_CHAT_PORT:-8090}:80"
+
+volumes:
+  engine-sessions:

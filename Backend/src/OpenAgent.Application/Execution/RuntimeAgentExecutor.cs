@@ -131,7 +131,7 @@ public sealed class RuntimeAgentExecutor
                         break;
                     }
                     item = events.Current;
-                    scope.Observe(item);
+                    item = scope.Observe(item);
                     usage = item.Usage ?? usage;
                 }
                 catch (Exception error)

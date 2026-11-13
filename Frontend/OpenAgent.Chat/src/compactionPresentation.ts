@@ -27,11 +27,11 @@ export function buildCompactionTokenDisplay(summary: ContextSummary): Compaction
 
 export function buildCompactionDisplay(summary: ContextSummary): CompactionDisplay {
   return {
-    strategy: summary.strategy === 'summarization' ? '摘要' : summary.strategy,
-    trigger: summary.trigger === 'Manual' ? '手动' : '自动',
-    status: summary.status === 'Succeeded' ? '已完成' : summary.status === 'Skipped' ? '未执行' : '失败',
-    tagType: summary.status === 'Succeeded' ? 'success' : summary.status === 'Skipped' ? 'warning' : 'danger',
-    detail: summary.summary || summary.result || summary.error || '暂无压缩结果',
+    strategy: summary.strategy === 'runtime' ? '运行时压缩' : summary.strategy === 'summarization' ? '摘要' : summary.strategy,
+    trigger: summary.trigger === 'Manual' ? '手动' : summary.trigger === 'Runtime' ? '运行时' : '自动',
+    status: summary.status === 'Succeeded' ? '已完成' : summary.status === 'Skipped' ? '未执行' : summary.status === 'InProgress' ? '压缩中' : summary.status === 'Cancelled' ? '已取消' : summary.status === 'Interrupted' ? '已中断' : summary.status === 'Failed' ? '失败' : '状态未知',
+    tagType: summary.status === 'Succeeded' ? 'success' : summary.status === 'Failed' ? 'danger' : 'warning',
+    detail: summary.error || summary.summary || summary.result || (summary.isRuntimeEvent ? '运行时未提供可展示的压缩摘要' : '暂无压缩结果'),
     recovered: summary.originalHistoryRestored,
   }
 }

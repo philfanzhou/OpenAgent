@@ -464,6 +464,7 @@ internal sealed class RuntimeFixture : IAsyncDisposable
         {
             ["OpenCode:Executable"] = Environment.GetEnvironmentVariable("OPENAGENT_TEST_OPENCODE"),
             ["OpenCode:WorkspaceRoot"] = _root,
+            ["OpenCode:SessionStateRoot"] = Path.Combine(_root, "durable"),
             ["OpenCode:RequestTimeoutSeconds"] = "30",
             ["OpenCode:TurnTimeoutSeconds"] = "45",
             // 默认每轮销毁进程，保持既有断言语义；保活场景由用例显式开启。
@@ -493,8 +494,7 @@ internal sealed class RuntimeFixture : IAsyncDisposable
 
     internal void AssertWorkspacesReleased()
     {
-        Assert.DoesNotContain(Directory.GetDirectories(_root, "*", SearchOption.AllDirectories),
-            path => Path.GetFileName(Path.GetDirectoryName(path)) != Path.GetFileName(_root));
+        Assert.Empty(Directory.GetDirectories(_root, "p-*", SearchOption.AllDirectories));
     }
 
     public async ValueTask DisposeAsync()
