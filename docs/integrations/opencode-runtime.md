@@ -68,7 +68,7 @@ Runtime 在独立设置页保存 ID、名称、Provider 和单轮时限，存入
 - 子进程只继承 PATH/PATHEXT/COMSPEC/SystemRoot/WINDIR 白名单，不透传服务数据库口令或云凭据环境变量；用户配置的非注入保证仍依赖干净服务身份（见下文）。PATHEXT 缺失会让按名解析（`python` → `python.exe`）表现为"命令不存在"，Windows 上另会从子 PATH 剔除商店别名目录（`%LOCALAPPDATA%\Microsoft\WindowsApps`——AppModel 激活的存根在受控环境下挂死，且掩盖 PATH 中靠后的真实安装）。启动命令由宿主配置，聊天请求不能替换。宿主显式设置时额外透传 Node TLS 覆盖 `NODE_TLS_REJECT_UNAUTHORIZED`（跳过证书校验）与 `NODE_EXTRA_CA_CERTS`（追加自签名 CA），用于自签名证书的模型端点；未设置不进入子进程环境。
 - ApiFormat 映射为 OpenAI Chat Completions、OpenAI Responses、Anthropic 对应的 AI SDK Provider；Chat Completions 由确定性本地模型 + 真实 OpenCode 覆盖；Anthropic Messages 已通过智谱兼容端点真实模型调用，含 Skill/MCP 与 HTTP/SSE。OpenAI Responses 仍待真实服务商互操作验收；不据此宣称官方 Anthropic Claude 模型已验证。
 - ContextTokens 未配置时用 128000 作为驱动配置回退值；输出上限为上下文的四分之一且不超过 16384。实际模型限制应在平台模型 profile 中配置，不把回退值当作服务商能力。
-- 每轮使用独立的 ACP 连接句柄和工具 bearer；原生 session 通过 `session/resume` 跨轮延续。OpenCode 进程与固定工作区按"会话归属 + 启动身份 + Skill 内容"（租户/用户/会话/Agent、可执行文件、模型端点/密钥/参数、指令、Runtime ID、完整外部 MCP 定义、原生工具策略与 Skill 内容哈希）在 `KeepAliveSeconds` 窗口内保活复用，追问轮次免付进程冷启动，且不跨会话归属共享进程。新建 session 时旧消息按 role/content 序列化为嵌入 JSON 资源，并附窗口内图片；续接时只传当前 query 及当前附件，历史由 harness 保留。平台会话主键与持久化事实源不变；只在同进程内续接已确认的 session，不依赖 `session/load` 重放。进程丢失或不支持 resume/close 时使用平台完整历史重建。历史中的工具结果是上下文数据，不会自动重放执行。
+- 每轮使用独立的 ACP 连接句柄和工具 bearer；原生 session 通过 `session/resume` 跨轮延续。OpenCode 进程与固定工作区按"会话归属 + 启动身份 + Skill 内容"（租户/用户/会话/Agent、可执行文件、模型端点/密钥/参数、指令、Runtime ID、完整外部 MCP 定义、原生工具策略与 Skill 内容哈希）在 `KeepAliveSeconds` 窗口内保活复用，追问轮次免付进程冷启动，且不跨会话归属共享进程。新建 session 时旧消息按 role/content 序列化为嵌入 JSON 资源，并附窗口内图片；续接时只传当前 query 及当前附件，历史由 harness 保留。平台会话主键与持久化事实源不变；已提交 session 的原生数据库、固定工作区与检查点保存在 `SessionStateRoot`，进程重建后可通过 `session/resume` 恢复；不依赖 `session/load` 重放。缺少有效状态、不支持 resume/close 或恢复被拒绝时使用平台历史重建，并输出脱敏降级日志。历史中的工具结果是上下文数据，不会自动重放执行。
 - usage_update.used 是上下文占用量，不是本轮计费 token。harness 上报 usage_update 时终态 Usage 事件携带上下文占用（prompt=total=used、completion=0），不拆分计费；未上报时 TokenUsage 保持 null，ModelId/TraceId 仍随终态返回，会话持久化记录不落 TokenUsage。
 
 ## 配置与启动
@@ -87,6 +87,7 @@ Runtime 在独立设置页保存 ID、名称、Provider 和单轮时限，存入
     "MaxConcurrentTurns": 8,
     "MaxPromptCharacters": 2097152,
     "LogUsageUpdates": false,
+    "SessionStateRoot": "/home/app/openagent-sessions",
     "KeepAliveSeconds": 300,
     "MaxKeptProcesses": 16,
     "MaxSessionsPerProcess": 64,
@@ -101,26 +102,28 @@ Runtime 在独立设置页保存 ID、名称、Provider 和单轮时限，存入
 
 每轮另有一行分段计时日志（EventId 4501，Information，默认开启，不含对话内容）：`process`（进程获取/启动+initialize，近 0 表示命中保活）、`sessionNew`（ACP session/new + 桥租约）、`prompt`（模型配置+发送）、`firstUpdate`（prompt→首个 session/update，衡量 ACP 链路活性）、`firstToken`（prompt→首个可见 token，包含 harness 准备与模型 TTFT）、`stream`（首 token→轮次完成）、`close`（会话关闭+清理+归还）。用于判别延迟归属；firstToken 同时包含 harness 内部准备，需结合模型请求发送时刻区分模型侧耗时。
 
-进程与工作区保活：默认空闲保留 300 秒，最多 16 个空闲会话；`KeepAliveSeconds=0` 可关闭。`MaxSessionsPerProcess`（默认 64）限制累计轮次；到期、失败、取消或超限统一回收，每个会话最多保留一个空闲进程，池满时淘汰最久未使用者；会话配置变更会替换旧空闲项。主目录始终随机生成，只有命中同一归属和配置身份的独占租约才能继续使用，不跨租户/用户/会话/Agent 复用。Skill 使用平台验证过的包哈希参与身份；无哈希时计算本地文件内容哈希，避免给正常追问重复扫描包内容。当前 OpenCode 空闲仍消耗 CPU/内存，300 秒窗口和 LRU 容量上限共同限制驻留；忙进程上限仍由 `MaxConcurrentTurns` 控制，空闲数上限不等于宿主总进程上限。工具桥仍按轮次注册、吊销独立 bearer，不保留上一轮的工具闭包。
+进程与工作区保活：默认空闲保留 300 秒，最多 16 个空闲会话；`KeepAliveSeconds=0` 可关闭。`MaxSessionsPerProcess`（默认 64）限制累计轮次；到期、失败、取消或超限回收进程；已提交的原生会话状态保留在 SessionStateRoot，失败/取消轮次的原生状态作废，每个会话最多保留一个空闲进程，池满时淘汰最久未使用者；会话配置变更会替换旧空闲项。原生会话主目录首次随机生成；恢复时重用检查点指向的原目录，只有命中同一归属和配置身份的独占租约才能继续使用，不跨租户/用户/会话/Agent 复用。Skill 使用平台验证过的包哈希参与身份；无哈希时计算本地文件内容哈希，避免给正常追问重复扫描包内容。当前 OpenCode 空闲仍消耗 CPU/内存，300 秒窗口和 LRU 容量上限共同限制驻留；忙进程上限仍由 `MaxConcurrentTurns` 控制，空闲数上限不等于宿主总进程上限。工具桥仍按轮次注册、吊销独立 bearer，不保留上一轮的工具闭包。
 
 缺少可执行文件、启动失败或 ACP 异常会明确失败，没有第二条执行路径。外部错误正文不会原样进入 SSE/会话；日志记录异常类型。工作区清理失败会告警并保留可定位目录，不删除其他轮次或宿主根目录。
 
 ### 会话复用边界
 
 - 每轮使用 `session/resume` 重新连接 MCP 并轮换 bearer；空闲期旧凭证无效，不长期保留请求作用域或工具回调。该方案沿用现有 SDK，不新增工具代理、常驻事件消费者或分布式 session 服务。
-- 工具 schema、平台历史版本、有效手动压缩代次变化时重建原生 session。启动配置、Skill 内容或归属变化时换新进程/工作区。自定义上下文 Provider 仍使用完整历史的新会话路径。
+- 工具 schema、平台历史版本、旧有效压缩投影代次变化时重建原生 session。启动配置、Skill 内容或归属变化时换新进程/工作区。自定义上下文 Provider 仍使用完整历史的新会话路径。
 - 追加发生版本冲突重试或幂等去重时不签发续用检查点；平台落库失败、未确认取消或消费者中断时销毁进程。已提交成功后的清理错误不会把持久化记录重新写成失败。
-- 存储版本与检查点只在进程内使用，不构成 Worker 故障迁移协议；进程消失后的下一次请求从平台历史重建，不自动重放有副作用的工具。
+- 存储版本与检查点保存在受控原生状态目录中，跨进程恢复要求目录仍可访问；它不构成 Worker 分布式故障迁移或 fencing 协议。恢复不可用时从平台历史重建，不自动重放有副作用的工具。
 
 ## 兼容组件与后续范围
 
-MAF（Microsoft.Agents.AI 全系包）已在本 PR 移除：PlatformChatHistory 改为显式 Load/Persist 生命周期的普通适配器；跨轮自动压缩已移除：连续 ACP 原生 session 的上下文整理由 OpenCode 原生负责（单轮内自压缩并上报 compaction_update），平台仅保留手动压缩端点（分组/摘要策略/审计复用原实现）；上下文提供器为平台抽象。Microsoft.Extensions.AI 仍作为工具（AIFunction）与摘要客户端的底层抽象保留；OpenAI Responses/Anthropic 摘要客户端由 ModelBindingChatClient 绑定模型（原 MAF 的 stored-output 禁用扩展随包移除）。
+MAF（Microsoft.Agents.AI 全系包）已移除；PlatformChatHistory 使用显式 Load/Persist 生命周期。模型推理与自动压缩均由 OpenCode 承担，平台无摘要模型客户端或手动压缩端点。压缩事件审计、OpenCode 1.19.3 原生导出适配、持久恢复和降级规则见 [会话文档](../modules/conversation.md#上下文压缩)。Microsoft.Extensions.AI 仅用于平台消息和工具抽象，不再创建 `IChatClient`。
 
 OpenCode 内部可能产生标题等辅助模型请求，本轮未采集其底层 HTTP 请求/响应到平台 LLM interaction 表，也不据此伪造 usage。
 
 Worker/分布式租约与 fencing、RunGrant、跨重启事件重放、人工审批、MCP server 鉴权头透传和其余服务商验收仍按任务清单单独推进。本轮没有部署或修改线上配置。需要回退时回退此平台接入 PR；独立 SDK PR 可继续保留。
 
 ## 验证方法
+
+2026-11-13 压缩审计与持久恢复：固定 1.19.3 原生二进制配合本地 HTTP/SSE 模型，运行时套件 125 项通过、3 项平台门控跳过；自动压缩后连续销毁进程与 DI 容器，第三轮模型输入仍包含原生摘要且无平台历史嵌入。默认后端与前端验收数量见 [会话验证](../modules/conversation.md#验证)。
 
 2026-10-28 本地验收（dev `0f670f86` 基线）：macOS arm64、.NET SDK 10.0.301、真实 OpenCode 1.19.3 + 即时本地模型；完整驱动每组剔除首轮后采样 6 次。保活关闭首字 p50 1656.3 ms，固定工作区 + 新 session 140.4 ms，检查点匹配后 resume 同一原生 session 142.8 ms（范围 110.0–185.9 ms）。后两者短文本开销相近：每轮轮换凭证仍需重新注册 MCP，未达到固定凭证直连原型的 19 ms；本次 session 复用的收益是保留原生多轮上下文、避免重复注入平台历史。结果不含真实模型计算、平台数据库和前端，窗口外首轮仍需冷启动。回归覆盖原生历史续接、本轮工具闭包、提交失败回收、手动压缩/版本冲突失效、续接取消、HTTP/SSE 保存顺序及提交后清理异常；全量后端 1116 通过、25 环境门控跳过。构建保留既有 RuntimeBoundaryTests 可空警告。
 

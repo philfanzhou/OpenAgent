@@ -49,10 +49,11 @@ LABEL org.opencontainers.image.title="OpenAgent Engine" \
 
 ENV ASPNETCORE_URLS=http://+:5208
 ENV HOME=/home/app \
-    OpenCode__WorkspaceRoot=/var/lib/openagent/opencode
-RUN mkdir -p /home/app/.aspnet/DataProtection-Keys /var/lib/openagent/opencode \
+    OpenCode__WorkspaceRoot=/var/lib/openagent/opencode \
+    OpenCode__SessionStateRoot=/home/app/openagent-sessions
+RUN mkdir -p /home/app/.aspnet/DataProtection-Keys /var/lib/openagent/opencode /home/app/openagent-sessions \
     && chown -R ${APP_UID}:${APP_UID} /home/app /var/lib/openagent \
-    && chmod 700 /home/app /var/lib/openagent/opencode
+    && chmod 700 /home/app /var/lib/openagent/opencode /home/app/openagent-sessions
 USER $APP_UID
 EXPOSE 5208
 ENTRYPOINT ["dotnet", "OpenAgent.Engine.Host.dll"]

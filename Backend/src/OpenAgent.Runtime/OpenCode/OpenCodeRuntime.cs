@@ -12,6 +12,7 @@ using OpenAgent.Contracts.Runtime;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Runtime.Acp.Client;
 using OpenAgent.Runtime.Acp.Protocol;
+using OpenAgent.Runtime.Acp.Rpc;
 
 namespace OpenAgent.Runtime.OpenCode;
 
@@ -124,9 +125,13 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
             ? Guid.NewGuid().ToString("N") : invocation.Turn.ConversationId;
         string owner = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(
             invocation.Turn.TenantId + "\0" + invocation.Turn.UserId + "\0" + conversation + "\0" + invocation.Profile.AgentId)));
-        string parent = Path.Combine(settings.WorkspaceRoot, owner);
+        bool durable = !string.IsNullOrEmpty(invocation.HistoryCheckpoint);
+        string root = durable ? settings.SessionStateRoot : settings.WorkspaceRoot;
+        string parent = Path.Combine(root, owner);
         OpenCodeWorkspace.CreatePrivateDirectory(settings.WorkspaceRoot);
+        OpenCodeWorkspace.CreatePrivateDirectory(root);
         OpenCodeWorkspace.CreatePrivateDirectory(parent);
+        await using OpenCodeSessionState? state = durable ? new(parent) : null;
         // 复用键 = 会话归属 + 启动身份：追问轮次命中保活进程，冷启动只在空闲窗口外支付。
         string leaseKey = owner + "/" + OpenCodeProcess.Identity(Launch, invocation, settings.AllowedNativeTools)
             + "/" + await OpenCodeSkills.FingerprintAsync(invocation.Skills, cancellationToken).ConfigureAwait(false);
@@ -140,7 +145,10 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
         long Elapsed(long from, long to) => from >= 0 && to >= 0 ? to - from : 0;
         try
         {
-            agent = await keeper.AcquireAsync(leaseKey, parent, Launch, invocation, cancellationToken).ConfigureAwait(false);
+            OpenCodeSessionState.Snapshot? restored = state is null ? null
+                : await state.TakeAsync(leaseKey, invocation.HistoryCheckpoint, cancellationToken).ConfigureAwait(false);
+            agent = await keeper.AcquireAsync(leaseKey, parent, Launch, invocation, cancellationToken, restored).ConfigureAwait(false);
+            agent.Persisted = false;
             MaterializeAttachments(agent.Workspace, invocation.Messages);
             if (invocation.PrepareFilesAsync is not null)
             {
@@ -167,10 +175,25 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
                 && invocation.HistoryCheckpoint == agent.HistoryCheckpoint && schema == agent.ToolSchema
                 && initialized.AgentCapabilities?.SessionCapabilities?.Resume is not null
                 && initialized.AgentCapabilities?.SessionCapabilities?.Close is not null;
+            logger.LogInformation("Native context selection. TraceId={TraceId}, Mode={Mode}, Reason={Reason}",
+                invocation.Turn.TraceId, resume ? "Resume" : "Replay",
+                resume ? "CommittedCheckpoint" : agent.SessionId is null ? "NoCommittedNativeSession" : "CheckpointSchemaOrCapabilityChanged");
             // 每轮 resume 重新绑定 MCP 凭证；不把旧 bearer 或上一轮工具闭包保留到追问。
-            await using AcpSession session = resume
-                ? await agent.Client.ResumeSessionAsync(new(agent.SessionId!, agent.Workspace, sessionServers), cancellationToken).ConfigureAwait(false)
-                : await agent.Client.NewSessionAsync(new(agent.Workspace, sessionServers), cancellationToken).ConfigureAwait(false);
+            AcpSession opened;
+            try
+            {
+                opened = resume
+                    ? await agent.Client.ResumeSessionAsync(new(agent.SessionId!, agent.Workspace, sessionServers), cancellationToken).ConfigureAwait(false)
+                    : await agent.Client.NewSessionAsync(new(agent.Workspace, sessionServers), cancellationToken).ConfigureAwait(false);
+            }
+            catch (AcpRpcException) when (resume)
+            {
+                // A native session may have expired or been removed. Do not retry prompt/model failures.
+                logger.LogWarning("Native session restore rejected; replaying platform history. TraceId={TraceId}", invocation.Turn.TraceId);
+                resume = false;
+                opened = await agent.Client.NewSessionAsync(new(agent.Workspace, sessionServers), cancellationToken).ConfigureAwait(false);
+            }
+            await using AcpSession session = opened;
             sessionAt = clock.ElapsedMilliseconds;
             await SelectModelAsync(session, invocation.Profile.Model.ModelId, cancellationToken).ConfigureAwait(false);
             string manifest = files is null ? string.Empty
@@ -186,7 +209,7 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
             promptAt = clock.ElapsedMilliseconds;
             await using IAsyncEnumerator<SessionNotification> updates = session.ReadUpdatesAsync().GetAsyncEnumerator();
             // OpenCode 把 MCP 工具显示为 "服务器名_工具名"；平台事件沿用无前缀工具名。
-            AcpEventMapper mapper = new("openagent_");
+            AcpEventMapper mapper = new("openagent_", session.SessionId);
             bool closed = false;
             Exception? completionFailure = null;
             while (true)
@@ -232,6 +255,24 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
                     OpenCodeLog.UsageUpdate(logger, updated.Used, updated.Size);
                 }
             }
+            // v1 streams native summaries as assistant text and has no typed ACP compaction notifications.
+            // Export is a local read of the native session; it never invokes a model.
+            if (initialized.AgentInfo?.Version?.StartsWith("1.", StringComparison.Ordinal) == true)
+            {
+                IReadOnlyList<Contracts.Conversation.ContextSummary> audits = [];
+                try
+                {
+                    audits = await OpenCodeCompactionExport.ReadAsync(Launch, invocation, agent,
+                        settings.AllowedNativeTools, session.SessionId, cancellationToken).ConfigureAwait(false);
+                }
+                catch (Exception error) when (error is not OperationCanceledException)
+                {
+                    logger.LogWarning("Native compaction audit unavailable. TraceId={TraceId}, ErrorType={ErrorType}",
+                        invocation.Turn.TraceId, error.GetType().Name);
+                }
+                foreach (Contracts.Conversation.ContextSummary audit in audits)
+                    yield return new AgentStreamEvent { Type = AgentStreamEventType.Compaction, Compaction = audit };
+            }
             if (completionFailure is not null)
             {
                 ExceptionDispatchInfo.Capture(completionFailure).Throw();
@@ -272,6 +313,12 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
                 : await invocation.CommitAsync(cancellationToken).ConfigureAwait(false);
             agent.SessionId = agent.HistoryCheckpoint is null ? null : session.SessionId;
             agent.ToolSchema = schema;
+            if (state is not null && agent.SessionId is not null
+                && initialized.AgentCapabilities?.SessionCapabilities?.Resume is not null
+                && initialized.AgentCapabilities?.SessionCapabilities?.Close is not null)
+            {
+                await state.CommitAsync(agent, cancellationToken).ConfigureAwait(false);
+            }
             completed = true;
         }
         finally
@@ -299,7 +346,15 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
                 // 失败、取消或超限的进程立即销毁；只有完整成功的轮次才归还保活池。
                 if (agent is not null)
                 {
-                    await keeper.ReleaseAsync(agent, completed).ConfigureAwait(false);
+                    try
+                    {
+                        if (!completed) state?.Invalidate();
+                    }
+                    finally
+                    {
+                        if (!completed) agent.Persisted = false;
+                        await keeper.ReleaseAsync(agent, completed).ConfigureAwait(false);
+                    }
                 }
             }
             // 每轮一行分段计时：判别冷启动 / ACP 会话 / 模型首 token / 流式 / 收尾的延迟归属。

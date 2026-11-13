@@ -32,6 +32,7 @@ services:
       # 可选：S3 bucket 不是 openagent-files 时，先创建 bucket 再替换默认值。
       # FileAssets__ObjectStorage__BucketName: ${OPENAGENT_S3_BUCKET:-openagent-files}
       # FileAssets__Share__PublicBaseUrl: ${OPENAGENT_SHARE_PUBLIC_BASE_URL:-}
+      OpenCode__SessionStateRoot: /home/app/openagent-sessions
       Heartbeat__AdvertisedHost: engine
       Heartbeat__AdvertisedPort: "5208"
       # 登录配置：默认 Basic（用户名 admin、租户 development）；与 Router 使用相同账号和租户，
@@ -55,6 +56,7 @@ services:
       - infrastructure
     volumes:
       - engine-data-protection:/home/app/.aspnet/DataProtection-Keys
+      - engine-sessions:/home/app/openagent-sessions
     healthcheck:
       test: ["CMD-SHELL", "curl --fail --silent http://localhost:5208/health >/dev/null"]
       interval: 5s
@@ -146,3 +148,4 @@ networks:
 
 volumes:
   engine-data-protection:
+  engine-sessions:

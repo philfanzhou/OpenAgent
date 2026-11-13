@@ -31,6 +31,7 @@ public static class RuntimeServiceExtensions
             })
             .Validate(options => !string.IsNullOrWhiteSpace(options.Executable)
                 && Path.IsPathFullyQualified(options.WorkspaceRoot)
+                && Path.IsPathFullyQualified(options.SessionStateRoot)
                 && options.Arguments is not null
                 && options.RequestTimeoutSeconds is > 0 and <= 3600
                 && options.TurnTimeoutSeconds is > 0 and <= 86400

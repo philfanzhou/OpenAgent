@@ -12,10 +12,8 @@
 
   <ItemGroup>
     <PackageReference Include="ModelContextProtocol.Core" />
-    <PackageReference Include="Anthropic" />
     <PackageReference Include="Microsoft.Extensions.AI" />
-    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" />
-    <PackageReference Include="OpenAI" />
+    <PackageReference Include="System.ClientModel" />
   </ItemGroup>
 
   <PropertyGroup>

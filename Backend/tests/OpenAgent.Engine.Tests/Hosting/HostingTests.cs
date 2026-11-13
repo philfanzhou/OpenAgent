@@ -75,7 +75,6 @@ public class HostingTests
             ("/api/v1/agent/conversations/search", "GET", "SearchConversations", "Conversation"),
             ("/api/v1/agent/conversations/{conversationId}", "GET", "GetConversation", "Conversation"),
             ("/api/v1/agent/conversations/{conversationId}", "DELETE", "DeleteConversation", "Conversation"),
-            ("/api/v1/agent/conversations/{conversationId}/compact", "POST", "CompactConversation", "Conversation"),
             ("/api/v1/agent/conversations/{conversationId}/llm-interactions", "GET", "ListConversationLlmInteractions", "Conversation")
         };
 

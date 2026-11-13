@@ -40,6 +40,34 @@ internal sealed class PlatformChatHistory : IAsyncDisposable
     private readonly int _maxInlineImageCount;
     private readonly int _inlineImageHistoryTurns;
     private readonly List<ConversationMessage> _pending = [];
+    private readonly Dictionary<string, ContextSummary> _compactions = [];
+
+    internal ContextSummary ObserveCompaction(ContextSummary incoming, string? statusOverride = null)
+    {
+        int boundary = _compactions.TryGetValue(incoming.CompressionId, out ContextSummary? prior)
+            ? prior.SourceEndSequence : _nextSequence + _streamedToolMessages.Count;
+        ContextSummary summary = new()
+        {
+            CompressionId = incoming.CompressionId, Strategy = incoming.Strategy, Trigger = incoming.Trigger,
+            Status = statusOverride ?? incoming.Status, Summary = incoming.Summary, Error = incoming.Error,
+            LastCompressedAt = incoming.LastCompressedAt, SourceEndSequence = boundary,
+            RuntimeSessionId = incoming.RuntimeSessionId, RuntimeCompactionId = incoming.RuntimeCompactionId,
+            TraceId = _conversation.TraceId, IsRuntimeEvent = true
+        };
+        _compactions[summary.CompressionId] = summary;
+        return summary;
+    }
+
+    internal void FinalizeCompactions(string status)
+    {
+        foreach (ContextSummary summary in _compactions.Values.Where(item => item.Status == "InProgress").ToArray())
+        {
+            ObserveCompaction(summary, status);
+        }
+    }
+
+    private Task PersistCompactionsAsync(CancellationToken ct) =>
+        _store.RecordCompactionsAsync(_conversation, _lockHandle, _compactions.Values, ct);
     private readonly StringBuilder _partialAssistant = new();
     private readonly StringBuilder _partialReasoning = new();
     private readonly List<ChatMessage> _streamedToolMessages = [];
@@ -613,6 +641,8 @@ internal sealed class PlatformChatHistory : IAsyncDisposable
         _checkpointValid = savedVersion.HasValue;
         _currentVersion = savedVersion ?? _currentVersion;
         _stored = true;
+        FinalizeCompactions("Interrupted");
+        await PersistCompactionsAsync(cancellationToken).ConfigureAwait(false);
         await ReleaseLockAsync().ConfigureAwait(false);
     }
 
@@ -681,6 +711,8 @@ internal sealed class PlatformChatHistory : IAsyncDisposable
                 status,
                 CancellationToken.None).ConfigureAwait(false);
             _stored = true;
+            FinalizeCompactions(error is OperationCanceledException ? "Cancelled" : "Interrupted");
+            await PersistCompactionsAsync(CancellationToken.None).ConfigureAwait(false);
         }
         finally
         {
@@ -712,6 +744,8 @@ internal sealed class PlatformChatHistory : IAsyncDisposable
                     status,
                     CancellationToken.None).ConfigureAwait(false);
                 _stored = true;
+                FinalizeCompactions("Interrupted");
+                await PersistCompactionsAsync(CancellationToken.None).ConfigureAwait(false);
             }
         }
         finally

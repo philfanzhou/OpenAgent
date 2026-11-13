@@ -9,7 +9,6 @@ using Microsoft.Extensions.AI;
 using OpenAI;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Application.Mapping;
-using OpenAgent.Application.ModelProviders;
 using Xunit;
 
 namespace OpenAgent.Application.Tests.Runtime;
@@ -167,7 +166,7 @@ public class OpenAIWireSerializationTests
 
     private static IChatClient CreateClient(CaptureHandler capture)
     {
-        // Mirrors the outbound normalization layer of AgentChatClientFactory.Create,
+        // Exercises the legacy message normalization format,
         // swapping only the transport so the outgoing payload can be captured.
         var options = new OpenAIClientOptions
         {

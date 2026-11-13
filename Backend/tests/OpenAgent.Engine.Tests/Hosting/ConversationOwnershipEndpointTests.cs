@@ -47,7 +47,6 @@ public sealed class ConversationOwnershipEndpointTests
             };
         });
         builder.Services.AddSingleton(query.Object);
-        builder.Services.AddSingleton(Mock.Of<IConversationCompactionService>());
         await using WebApplication app = builder.Build();
         app.Use(async (context, next) =>
         {

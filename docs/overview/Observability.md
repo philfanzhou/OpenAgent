@@ -93,8 +93,7 @@ Prometheus 抓取（`/metrics`）与健康探针（`/health`、`/ready`、`/heal
 
 ## EventId 与日志封装
 
-各模块继续通过 `LoggerMessage` 目录维护有语义的领域日志，调用处不改为重复的 `ILogger` 模板。仅删除零调用事件，并合并消息模板、级别和参数完全一致的事件。当前事件编号范围为：Router `3000–3048`、Engine（含 Host）`4000–4069`、Application 会话域 `1450–1461`
-（`AuditedCompactionStrategy` 1450–1452、`LlmInteractionRecorder` 1460–1461）。
+各模块继续通过 `LoggerMessage` 目录维护有语义的领域日志，调用处不改为重复的 `ILogger` 模板。仅删除零调用事件，并合并消息模板、级别和参数完全一致的事件。当前事件编号范围为：Router `3000–3048`、Engine（含 Host）`4000–4069`。平台压缩与模型直调记录器已删除，原 `1450–1461` 仅用于识别历史日志；当前自动压缩和模型错误由 ACP 对端执行与返回，详见 [会话文档](../modules/conversation.md)。
 
 Router 的 Provider 可观测性事件在 Information 级别记录请求/响应方法、URI、状态码和 Header；请求/响应体为 Debug 级别、限长并对敏感 Header 脱敏。YARP 转发记录最终发送到 Provider 的请求 Header 和下游响应 Header，不缓冲流式响应体。
 

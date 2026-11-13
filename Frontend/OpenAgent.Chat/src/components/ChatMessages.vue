@@ -525,7 +525,7 @@ defineExpose({ scrollToBottom })
           <span class="context-summary-status" :class="compactionStatusClass(item.contextSummary)">{{ compactionDisplay(item.contextSummary).status }}</span>
         </summary>
         <div class="context-summary-expanded">
-          <div class="context-summary-meta">
+          <div v-if="!item.contextSummary.isRuntimeEvent" class="context-summary-meta">
             <span>范围 <strong>{{ item.contextSummary.originalStartSequence || '—' }}–{{ item.contextSummary.originalEndSequence || '—' }}</strong></span>
             <span>压缩前 <strong>{{ compactionBeforeTokenText(item.contextSummary) }}</strong></span>
             <span>压缩后 <strong>{{ formatTokenCount(compactionTokens(item.contextSummary).after) }} tokens</strong></span>

@@ -4,7 +4,6 @@ using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Runtime;
 using OpenAgent.Application.Conversation.History;
 using OpenAgent.Application.Conversation;
-using OpenAgent.Application.Observability;
 using OpenAgent.Application.Tests.TestDoubles;
 using Xunit;
 
@@ -28,28 +27,6 @@ public class TurnContextProjectionsTests
         Assert.Equal("tenant-a", projected.TenantId);
         Assert.Equal("user-a", projected.UserId);
         Assert.Equal("conversation-a", projected.ConversationId);
-    }
-
-    [Theory]
-    [InlineData(LlmInteractionSource.AgentTurn)]
-    [InlineData(LlmInteractionSource.Compaction)]
-    public void ToCapture_MapsAllCoordinates(LlmInteractionSource source)
-    {
-        TurnContext turn = TurnContexts.Create(
-            tenantId: "tenant-a",
-            userId: "user-a",
-            conversationId: "conversation-a",
-            traceId: "trace-a",
-            agentId: "agent-a");
-
-        LlmInteractionCapture capture = turn.ToCapture(source);
-
-        Assert.Equal("tenant-a", capture.TenantId);
-        Assert.Equal("user-a", capture.UserId);
-        Assert.Equal("conversation-a", capture.ConversationId);
-        Assert.Equal("trace-a", capture.TraceId);
-        Assert.Equal("agent-a", capture.AgentId);
-        Assert.Equal(source, capture.Source);
     }
 
     [Fact]

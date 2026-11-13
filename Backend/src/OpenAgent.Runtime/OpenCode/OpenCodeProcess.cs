@@ -28,6 +28,11 @@ internal sealed record OpenCodeLaunchSpec(
 /// </summary>
 internal static class OpenCodeProcess
 {
+    internal static OpenCodeLaunchSpec WithArguments(OpenCodeLaunchSpec launch, IReadOnlyList<string> arguments) =>
+        launch.ShellFallback
+            ? launch with { Arguments = ["/d", "/s", "/c", string.Join(' ', new[] { Quote(launch.Source!) }.Concat(arguments.Select(Quote)))] }
+            : launch with { Arguments = arguments };
+
     public static OpenCodeLaunchSpec Resolve(OpenCodeOptions options)
     {
         bool windows = OperatingSystem.IsWindows();
@@ -294,6 +299,7 @@ internal static class OpenCodeProcess
             ["autoupdate"] = false,
             ["share"] = "disabled",
             ["snapshot"] = false,
+            ["compaction"] = new JsonObject { ["auto"] = true },
             ["enabled_providers"] = new JsonArray("openagent"),
             ["permission"] = permission,
             ["agent"] = new JsonObject
