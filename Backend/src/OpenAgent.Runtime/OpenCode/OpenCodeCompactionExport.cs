@@ -17,41 +17,85 @@ internal static class OpenCodeCompactionExport
             throw new InvalidOperationException("Native session ID cannot be exported.");
         OpenCodeLaunchSpec command = OpenCodeProcess.WithArguments(launch, ["export", sessionId]);
         Acp.Processes.AcpProcessOptions options = OpenCodeProcess.Create(command, invocation, allowedTools, agent.Home);
-        ProcessStartInfo start = new(command.FileName)
+        string output = Path.Combine(options.Environment!["TMPDIR"], "compaction-export-" + Guid.NewGuid().ToString("N") + ".json");
+        FileStreamOptions createOptions = new()
         {
-            WorkingDirectory = agent.Home, UseShellExecute = false,
-            RedirectStandardOutput = true, RedirectStandardError = true, RedirectStandardInput = true
+            Mode = FileMode.CreateNew, Access = FileAccess.Write, Share = FileShare.None
         };
-        foreach (string argument in command.Arguments) start.ArgumentList.Add(argument);
-        start.Environment.Clear();
-        foreach (KeyValuePair<string, string> variable in options.Environment!) start.Environment[variable.Key] = variable.Value;
-        using Process process = new() { StartInfo = start };
-        if (!process.Start()) throw new IOException("Native session export did not start.");
-        process.StandardInput.Close();
-        Task stderr = process.StandardError.BaseStream.CopyToAsync(Stream.Null, ct);
+        if (!OperatingSystem.IsWindows()) createOptions.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+        // Pre-create in the private runtime directory; shell redirection preserves mode 0600.
+        using (FileStream file = new(output, createOptions)) { }
         try
         {
-            using MemoryStream buffer = new();
-            byte[] block = new byte[8192];
-            int count;
-            while ((count = await process.StandardOutput.BaseStream.ReadAsync(block, ct).ConfigureAwait(false)) > 0)
+            ProcessStartInfo start = CreateExportStartInfo(launch, command, agent.Home, options.Environment, output, sessionId);
+            using Process process = new() { StartInfo = start };
+            if (!process.Start()) throw new IOException("Native session export did not start.");
+            process.StandardInput.Close();
+            Task stderr = process.StandardError.BaseStream.CopyToAsync(Stream.Null, ct);
+            try
             {
-                if (buffer.Length + count > 32 * 1024 * 1024) throw new IOException("Native session export exceeds the audit limit.");
-                buffer.Write(block, 0, count);
+                Task exited = process.WaitForExitAsync(ct);
+                while (!exited.IsCompleted)
+                {
+                    if (new FileInfo(output).Length > MaxExportBytes) throw new IOException("Native session export exceeds the audit limit.");
+                    await Task.WhenAny(exited, Task.Delay(25, ct)).ConfigureAwait(false);
+                    ct.ThrowIfCancellationRequested();
+                }
+                await exited.ConfigureAwait(false);
+                await stderr.ConfigureAwait(false);
+                if (process.ExitCode != 0) throw new IOException("Native session export failed.");
+                await using FileStream file = File.OpenRead(output);
+                if (file.Length > MaxExportBytes) throw new IOException("Native session export exceeds the audit limit.");
+                using JsonDocument document = await JsonDocument.ParseAsync(file, cancellationToken: ct).ConfigureAwait(false);
+                return ReadSummaries(document.RootElement, sessionId, agent.ReportedCompactions);
             }
-            await process.WaitForExitAsync(ct).ConfigureAwait(false);
-            await stderr.ConfigureAwait(false);
-            if (process.ExitCode != 0) throw new IOException("Native session export failed.");
-            buffer.Position = 0;
-            using JsonDocument document = await JsonDocument.ParseAsync(buffer, cancellationToken: ct).ConfigureAwait(false);
-            return ReadSummaries(document.RootElement, sessionId, agent.ReportedCompactions);
+            finally
+            {
+                if (!process.HasExited) process.Kill(entireProcessTree: true);
+                await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+                try { await stderr.ConfigureAwait(false); } catch (OperationCanceledException) { }
+            }
         }
         finally
         {
-            if (!process.HasExited) process.Kill(entireProcessTree: true);
-            await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
-            try { await stderr.ConfigureAwait(false); } catch (OperationCanceledException) { }
+            File.Delete(output);
         }
+    }
+
+    private const long MaxExportBytes = 32 * 1024 * 1024;
+
+    private static ProcessStartInfo CreateExportStartInfo(
+        OpenCodeLaunchSpec launch, OpenCodeLaunchSpec command, string home,
+        IReadOnlyDictionary<string, string> environment, string output, string sessionId)
+    {
+        // OpenCode v1 can exit before flushing stdout pipes. Its stdout must be a regular file,
+        // rather than a pipe copied to a file by the reader. Only fixed shell programs are used;
+        // paths and arguments are passed as positional arguments or quoted environment values.
+        ProcessStartInfo start = new()
+        {
+            WorkingDirectory = home, UseShellExecute = false,
+            RedirectStandardOutput = false, RedirectStandardError = true, RedirectStandardInput = true
+        };
+        start.Environment.Clear();
+        foreach (KeyValuePair<string, string> variable in environment) start.Environment[variable.Key] = variable.Value;
+        start.Environment["OPENAGENT_EXPORT_FILE"] = output;
+        if (OperatingSystem.IsWindows())
+        {
+            start.FileName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "cmd.exe");
+            start.Environment["OPENAGENT_EXPORT_EXECUTABLE"] = launch.ShellFallback ? launch.Source! : launch.FileName;
+            start.Environment["OPENAGENT_EXPORT_SESSION"] = sessionId;
+            start.Arguments = "/d /v:off /s /c \"\"%OPENAGENT_EXPORT_EXECUTABLE%\" export \"%OPENAGENT_EXPORT_SESSION%\" > \"%OPENAGENT_EXPORT_FILE%\"\"";
+        }
+        else
+        {
+            start.FileName = "/bin/sh";
+            start.ArgumentList.Add("-c");
+            start.ArgumentList.Add("exec \"$@\" > \"$OPENAGENT_EXPORT_FILE\"");
+            start.ArgumentList.Add("openagent-export");
+            start.ArgumentList.Add(command.FileName);
+            foreach (string argument in command.Arguments) start.ArgumentList.Add(argument);
+        }
+        return start;
     }
 
     internal static IReadOnlyList<ContextSummary> ReadSummaries(JsonElement export, string sessionId, HashSet<string> reported)

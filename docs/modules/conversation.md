@@ -30,7 +30,7 @@
 
 ACP `compaction_update` 和 `compaction_summary_chunk` 经 `AcpCompactionMapper`、`AcpEventMapper` 转为平台 `compaction` 事件，SSE 实时更新前端时间线，并在轮次完成、失败或取消的持锁保存路径中写入 `ContextSummary`。同一原生 session + compaction ID 对应稳定的平台 ID；分块追加、整体替换、显式 null/空数组清除均按协议处理。审计写入按 ID 原位更新，重放不新增重复记录；未收到终态的进行中记录在轮次结束时标为中断/取消。
 
-仓库锁定的 OpenCode 1.19.3 实测不发送上述标准事件，且会把摘要作为普通 assistant 文本输出。兼容适配在 prompt 更新队列读完后调用同一可执行文件的 `export <sessionId>`，读取原生 `assistant.summary=true` 元数据，再补发压缩事件；不按回复文案或 token 下降猜测压缩，不新增模型调用。已报告的原生摘要 ID 随检查点保存，冷启动不重复发出旧摘要。导出输出只在内存中解析（上限 32 MiB），stderr 丢弃，不保存完整导出文件；失败只输出脱敏告警。该版本的摘要审计在轮次结束后可见，实时正文仍遵循其原有 ACP 输出行为。
+仓库锁定的 OpenCode 1.19.3 实测不发送上述标准事件，且会把摘要作为普通 assistant 文本输出。兼容适配在 prompt 更新队列读完后调用同一可执行文件的 `export <sessionId>`，读取原生 `assistant.summary=true` 元数据，再补发压缩事件；不按回复文案或 token 下降猜测压缩，不新增模型调用。已报告的原生摘要 ID 随检查点保存，冷启动不重复发出旧摘要。OpenCode 1.19.3 在 Linux stdout 管道下可能截断大导出，因此子进程 stdout 直接指向私有 TMPDIR 下的随机临时文件（Unix 0600），不能先接管道再复制。进程退出后解析文件，执行期间监测、解析前检查 32 MiB 上限；成功、非零退出、解析失败、取消和超限均在终止子进程后删除临时文件。stderr 丢弃；失败只输出脱敏告警。该版本的摘要审计在轮次结束后可见，实时正文仍遵循其原有 ACP 输出行为。
 
 原生压缩审计的 `IsRuntimeEvent=true`，携带 `RuntimeSessionId`、`RuntimeCompactionId` 和轮次 `TraceId`；`SourceEndSequence` 仅是平台接收到事件时的时间线锚点，不代表原生上下文的覆盖边界。`CompactedMessages` 保持空，窗口/计费用量未知时前端不显示零值。可展示摘要不替代模型上下文；已有完整会话消息及旧有效压缩投影仍可读取。
 
@@ -49,6 +49,8 @@ ACP `compaction_update` 和 `compaction_summary_chunk` 经 `AcpCompactionMapper`
 `PlatformChatHistory` 只有在加锁、所有权校验和历史加载全部成功后才开放持久化。正常完成、失败、取消和资源释放均要求本请求仍持有锁；锁冲突、加载或授权失败只清理资源，不追加用户消息、不修改会话状态。`ConversationSessionStore` 接受本轮锁句柄，在每次追加（含冲突重试）和状态更新发起前复核租户、会话 ID 与 `IsHeld`，覆盖异步读取或前一次写入等待期间丢锁的情况；已发起的数据库操作仍由事务和乐观并发约束，不将本地持锁检查视为数据库 fencing。Redis 续租被拒绝、续租异常或本地租期到期后，`IsHeld` 返回 `false`，不会因句柄尚未释放而继续报告持锁。
 
 ## 验证
+
+PR #314 评论修复验证：真实 OpenCode 1.19.3 配合确定性本地模型，首轮历史扩展至 256 KiB。在 Linux 容器中使用旧管道实现时压缩审计缺失，新文件重定向实现通过同一自动压缩/冷恢复断言；macOS 同用例也通过。额外验证普通文件 stdout、含空格/引号/元字符的路径，以及成功/JSON 解析失败/非零退出/取消/超限后的临时文件清理。 修复后构建通过，默认后端套件 1190 项通过、37 项门控跳过；真实 OpenCode 运行时套件 129 项通过、3 项平台门控跳过；部署脚本 12 项通过。
 
 2026-11-13 清理与持久恢复验证：后端解决方案构建通过，默认套件 1166 项通过、37 项环境门控跳过；真实 OpenCode 1.19.3 + 确定性本地模型运行时套件 125 项通过、3 项平台门控跳过；前端 `pnpm check` 通过（185 项测试及类型/生产构建）。新增覆盖标准 ACP 补丁语义、压缩审计落库/失败路径/EF 重放去重、SSE/前端原位更新、真实自动压缩后跨进程恢复、状态缺失或恢复被拒绝后的平台历史回放，以及取消/提交失败时原生状态作废。架构门禁禁止 Application 引用模型 SDK 或 `IChatClient`；旧压缩入口返回 404。未部署正式环境；未验证真实外部模型、跨实例共享文件系统、Windows 持久卷 ACL 或 Docker 镜像构建。
 

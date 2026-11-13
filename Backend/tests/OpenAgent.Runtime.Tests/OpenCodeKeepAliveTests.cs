@@ -95,8 +95,9 @@ public sealed class OpenCodeKeepAliveTests
                 {
                     HistoryCheckpoint = "checkpoint-" + (round - 1),
                     CommitAsync = _ => Task.FromResult<string?>("checkpoint-" + round),
-                    Messages = [new("user", round == 1 ? "first question" : "continue")]
+                    Messages = [new("user", round == 1 ? new string('h', 256 * 1024) + " first question" : "continue")]
                 });
+                Assert.Empty(Directory.GetFiles(durable, "compaction-export-*", SearchOption.AllDirectories));
                 compactions.AddRange(events.Where(item => item.Type == AgentStreamEventType.Compaction));
                 Assert.EndsWith("answer-" + round, Text(events));
             }
