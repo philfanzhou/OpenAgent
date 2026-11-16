@@ -20,7 +20,7 @@ public static class AuditActivityEnrichment
     /// 把 <paramref name="turn"/> 的审计属性写入当前 Activity。
     /// 无活动 Activity 时静默返回——未开启追踪的部署不应因此失败。
     /// </summary>
-    public static void Publish(TurnContext turn)
+    public static void Publish(TurnContext turn, string? username = null)
     {
         ArgumentNullException.ThrowIfNull(turn);
 
@@ -35,6 +35,12 @@ public static class AuditActivityEnrichment
             // SetTag 不覆盖已有值以外的行为；重复设置同名标签会覆盖旧值，
             // 因此只在轮次开始时设置一次，后续中间件不重复写入。
             activity.SetTag(attribute.Key, attribute.Value);
+        }
+        // 登录名让审计台的用户列显示域账号而不是平台内部的用户 UUID；
+        // 网关把它列为用户身份属性的首选来源。
+        if (!string.IsNullOrEmpty(username))
+        {
+            activity.SetTag("openagent.username", username);
         }
 
         activity.SetBaggage(AuditAttributeNames.TraceId, turn.TraceId);

@@ -85,7 +85,7 @@ public sealed class RuntimeAgentExecutor
             ConversationType = request.ConversationType,
             TraceId = string.IsNullOrWhiteSpace(request.TraceId) ? Guid.NewGuid().ToString("N") : request.TraceId
         };
-        AuditActivityEnrichment.Publish(turn);
+        AuditActivityEnrichment.Publish(turn, user.Username);
         // 用户输入立即上标签：即使轮次中途失败，审计台也能看到用户问了什么。
         AuditActivityEnrichment.PublishContent(request.Query, null);
         StringBuilder responseText = new();
