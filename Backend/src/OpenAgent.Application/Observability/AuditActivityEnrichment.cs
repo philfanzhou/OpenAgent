@@ -56,6 +56,21 @@ public static class AuditActivityEnrichment
     ///
     /// 在轮次结束时调用一次；无活动 Activity 时静默返回。
     /// </remarks>
+    /// <summary>
+    /// 把 Agent 的可读名称写入当前 Activity。审计网关优先取它（低于 agent_id
+    /// 的编号）作为标签值，审计台 Agent 列由此显示名称而不是 agent-xxxx 编号。
+    /// </summary>
+    public static void PublishAgentName(string? agentName)
+    {
+        Activity? activity = Activity.Current;
+        if (activity is null || string.IsNullOrEmpty(agentName))
+        {
+            return;
+        }
+
+        activity.SetTag("openagent.agent_name", agentName);
+    }
+
     public static void PublishContent(string? query, string? response)
     {
         Activity? activity = Activity.Current;
