@@ -2,6 +2,7 @@ using OpenAgent.Engine.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 using OpenAgent.Contracts.Requests;
+using OpenAgent.Contracts.Conversation;
 using OpenAgent.Engine.Host.Streaming;
 using Xunit;
 
@@ -76,6 +77,8 @@ public class AgentStreamWriterTests
         string payload = await ReadBodyAsync(context);
         Assert.Contains("event: runtime", payload, StringComparison.Ordinal);
         Assert.Contains("\"agentVersion\":\"1.2.3\"", payload, StringComparison.Ordinal);
+        Assert.Contains("event: compaction", payload, StringComparison.Ordinal);
+        Assert.Contains("\"runtimeCompactionId\":\"compact-1\"", payload, StringComparison.Ordinal);
         Assert.Contains("event: tool_result", payload, StringComparison.Ordinal);
         Assert.Contains("\"toolCallId\":\"call-1\"", payload, StringComparison.Ordinal);
         Assert.Contains("\"content\":\"sunny\"", payload, StringComparison.Ordinal);
@@ -87,6 +90,15 @@ public class AgentStreamWriterTests
         {
             Type = AgentStreamEventType.RuntimeStarted,
             Runtime = new("OpenCode", "saved-runtime", "Local runtime", "opencode", "1.2.3")
+        };
+        yield return new AgentStreamEvent
+        {
+            Type = AgentStreamEventType.Compaction,
+            Compaction = new ContextSummary
+            {
+                CompressionId = "audit-1", Strategy = "runtime", Trigger = "Runtime", Status = "Succeeded",
+                IsRuntimeEvent = true, RuntimeCompactionId = "compact-1", Summary = "retained"
+            }
         };
         yield return new AgentStreamEvent
         {

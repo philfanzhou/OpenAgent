@@ -35,8 +35,8 @@
 | 模块 | 所属项目与实现目录 | 注册文件 |
 |---|---|---|
 | 执行 | Application/Execution/ | RuntimeServiceExtensions.cs |
-| 模型、转换、观测 | Application/{ModelProviders,Mapping,Observability}/ | ModelProviderServiceExtensions.cs |
-| 会话 | Application/Conversation/{History,Compaction,Store,Lock}/ | ConversationServiceExtensions.cs |
+| 消息转换、平台观测 | Application/{Mapping,Observability}/ | 随执行注册；模型调用由 Runtime/OpenCode 承担 |
+| 会话 | Application/Conversation/{History,Store,Lock}/ | ConversationServiceExtensions.cs |
 | SDK 工具机制 | Application/Tooling/{Abstractions,Discovery,Invocation}/ | ToolingServiceExtensions.cs |
 | MCP 适配 | Application/Capabilities/Mcp/ | McpServiceExtensions.cs |
 | Skill 适配 | Application/Capabilities/Skill/（包解析/校验在 Contracts/Skills/AgentSkillPackageArchive.cs） | SkillServiceExtensions.cs |

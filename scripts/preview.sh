@@ -115,6 +115,12 @@ used_ports() { awk -F'\t' -v c="$1" 'NR>0 {print $c}' "$ALLOC_FILE" 2>/dev/null 
 cmd_up() {
   local slug="$2"
   validate_slug "$slug"
+  local opencode_version_file opencode_version
+  opencode_version_file="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)/Backend/opencode.version"
+  [[ -f "$opencode_version_file" ]] || die "OpenCode version file does not exist: $opencode_version_file"
+  opencode_version="${OPENAGENT_OPENCODE_VERSION:-$(tr -d '[:space:]' < "$opencode_version_file")}"
+  [[ "$opencode_version" =~ ^([0-9]+\.[0-9]+\.[0-9]+|latest)$ ]] \
+    || die "invalid OpenCode version '$opencode_version' (expected strict semver, or latest via OPENAGENT_OPENCODE_VERSION override)"
   ensure_preview_dir
   read_infra_ports
 
@@ -147,7 +153,9 @@ cmd_up() {
 
   echo "==> 构建并启动预览 '$slug' (engine=$engine_port router=$router_port chat=$chat_port redis_db=$redis_db)"
   docker compose -f "$COMPOSE_FILE" --env-file "$PREVIEW_DIR/$slug.env" \
-    -p "openagent-preview-$slug" up -d --build
+    -p "openagent-preview-$slug" build --build-arg "OPENCODE_VERSION=$opencode_version"
+  docker compose -f "$COMPOSE_FILE" --env-file "$PREVIEW_DIR/$slug.env" \
+    -p "openagent-preview-$slug" up -d --no-build
 
   local i
   for i in $(seq 1 90); do

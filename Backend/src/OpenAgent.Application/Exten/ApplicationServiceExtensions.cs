@@ -20,7 +20,6 @@ public static class ApplicationServiceExtensions
         services.AddHttpContextAccessor();
         return services
             .AddSecurityServices(configuration)
-            .AddModelProviderServices(configuration)
             .AddToolingServices(configuration)
             .AddBuiltinCapabilityServices()
             .AddConversationServices(configuration)

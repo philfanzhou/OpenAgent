@@ -161,6 +161,10 @@ export interface ConversationRecord {
 }
 
 export interface ContextSummary {
+  isRuntimeEvent?: boolean
+  runtimeSessionId?: string | null
+  runtimeCompactionId?: string | null
+  traceId?: string | null
   compressionId: string
   strategy: string
   trigger: 'Automatic' | 'Manual' | string
@@ -382,6 +386,7 @@ export interface RuntimeExecutionInfo {
 }
 
 export interface StreamEvent {
+  compaction?: ContextSummary
   runtime?: RuntimeExecutionInfo
   type: string
   content?: string

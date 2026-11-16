@@ -23,6 +23,8 @@ internal sealed class OpenCodeAgentProcess(
     internal string? SessionId;
     internal string? HistoryCheckpoint;
     internal string? ToolSchema;
+    internal bool Persisted;
+    internal HashSet<string> ReportedCompactions { get; set; } = [];
     internal bool IsAlive => !Process.Exit.IsCompleted && !Client.Connection.Completion.IsCompleted;
 }
 
@@ -49,7 +51,7 @@ internal sealed class OpenCodeProcessKeeper : IAsyncDisposable
     }
 
     internal async Task<OpenCodeAgentProcess> AcquireAsync(
-        string key, string parent, OpenCodeLaunchSpec launch, RuntimeInvocation invocation, CancellationToken ct)
+        string key, string parent, OpenCodeLaunchSpec launch, RuntimeInvocation invocation, CancellationToken ct, OpenCodeSessionState.Snapshot? restored = null)
     {
         ct.ThrowIfCancellationRequested();
         OpenCodeAgentProcess? cached;
@@ -65,10 +67,10 @@ internal sealed class OpenCodeProcessKeeper : IAsyncDisposable
         }
         if (cached is not null)
         {
-            await DestroyAsync(cached.Client, cached.Process, cached.Home).ConfigureAwait(false);
+            await DestroyAsync(cached.Client, cached.Process, cached.Home, cached.Persisted).ConfigureAwait(false);
         }
 
-        string home = Path.Combine(parent, "p-" + Guid.NewGuid().ToString("N"));
+        string home = Path.Combine(parent, restored?.Home ?? "p-" + Guid.NewGuid().ToString("N"));
         AcpProcess? process = null;
         AcpClient? client = null;
         try
@@ -84,7 +86,11 @@ internal sealed class OpenCodeProcessKeeper : IAsyncDisposable
                 RequestTimeout = TimeSpan.FromSeconds(_options.RequestTimeoutSeconds)
             });
             InitializeResponse initialized = await client.InitializeAsync(new("OpenAgent", "1"), ct).ConfigureAwait(false);
-            return new OpenCodeAgentProcess(process, client, initialized, key, home);
+            return new OpenCodeAgentProcess(process, client, initialized, key, home)
+            {
+                SessionId = restored?.SessionId, HistoryCheckpoint = restored?.Checkpoint, ToolSchema = restored?.ToolSchema,
+                ReportedCompactions = (restored?.ReportedCompactions ?? []).ToHashSet(StringComparer.Ordinal)
+            };
         }
         catch
         {
@@ -114,7 +120,7 @@ internal sealed class OpenCodeProcessKeeper : IAsyncDisposable
         }
         if (retired is not null)
         {
-            await DestroyAsync(retired.Client, retired.Process, retired.Home).ConfigureAwait(false);
+            await DestroyAsync(retired.Client, retired.Process, retired.Home, retired.Persisted).ConfigureAwait(false);
         }
     }
 
@@ -136,7 +142,7 @@ internal sealed class OpenCodeProcessKeeper : IAsyncDisposable
                 }
                 foreach (OpenCodeAgentProcess process in expired)
                 {
-                    await DestroyAsync(process.Client, process.Process, process.Home).ConfigureAwait(false);
+                    await DestroyAsync(process.Client, process.Process, process.Home, process.Persisted).ConfigureAwait(false);
                 }
             }
         }
@@ -145,7 +151,7 @@ internal sealed class OpenCodeProcessKeeper : IAsyncDisposable
         }
     }
 
-    private async Task DestroyAsync(AcpClient? client, AcpProcess? process, string home)
+    private async Task DestroyAsync(AcpClient? client, AcpProcess? process, string home, bool preserveState = false)
     {
         foreach (IAsyncDisposable? resource in new IAsyncDisposable?[] { client, process })
         {
@@ -156,6 +162,7 @@ internal sealed class OpenCodeProcessKeeper : IAsyncDisposable
             try { await resource.DisposeAsync().ConfigureAwait(false); }
             catch (Exception error) { OpenCodeLog.CleanupFailure(_logger, resource.GetType().Name, error.GetType().Name); }
         }
+        if (preserveState) return;
         for (int attempt = 0; attempt < 3; attempt++)
         {
             try
@@ -191,7 +198,7 @@ internal sealed class OpenCodeProcessKeeper : IAsyncDisposable
         await _sweep.ConfigureAwait(false);
         foreach (OpenCodeAgentProcess process in remaining)
         {
-            await DestroyAsync(process.Client, process.Process, process.Home).ConfigureAwait(false);
+            await DestroyAsync(process.Client, process.Process, process.Home, process.Persisted).ConfigureAwait(false);
         }
         _stopping.Dispose();
     }

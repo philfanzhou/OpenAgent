@@ -1,6 +1,6 @@
 import { getTenantId, request } from '../../shared/api/http'
 import { randomUuid } from '../../shared/browserCrypto'
-import type { ContextSummary, ConversationMessage, ConversationRecord, MessageFile, MessageFileMetadata } from '../../shared/contracts/types'
+import type { ConversationMessage, ConversationRecord, MessageFile, MessageFileMetadata } from '../../shared/contracts/types'
 
 function normalizeConversation(record: ConversationRecord): ConversationRecord {
   return {
@@ -40,10 +40,6 @@ export const api = {
   deleteConversation(id: string): Promise<void> {
     return request<void>(`/api/v1/agent/conversations/${encodeURIComponent(id)}`, { method: 'DELETE' })
   },
-
-  compactConversation(id: string, llmProfileId: string): Promise<ContextSummary> {
-    return request<ContextSummary>(`/api/v1/agent/conversations/${encodeURIComponent(id)}/compact?llmProfileId=${encodeURIComponent(llmProfileId)}`, { method: 'POST' })
-  }
 }
 
 export function makeLocalConversation(agentId: string, message: string): ConversationRecord {

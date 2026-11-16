@@ -8,6 +8,9 @@ public sealed class OpenCodeOptions
     public string Executable { get; set; } = "opencode";
     public string[] Arguments { get; set; } = [];
     public string WorkspaceRoot { get; set; } = Path.Combine(Path.GetTempPath(), "openagent-acp");
+    /// <summary>Durable native sessions; use a persistent volume. Local to an engine unless this directory is shared.</summary>
+    public string SessionStateRoot { get; set; } = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "openagent", "sessions");
     public int RequestTimeoutSeconds { get; set; } = 30;
     public int TurnTimeoutSeconds { get; set; } = 1800;
     public int MaxConcurrentTurns { get; set; } = 8;

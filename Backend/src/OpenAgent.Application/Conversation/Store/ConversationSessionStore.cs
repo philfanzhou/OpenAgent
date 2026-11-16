@@ -81,7 +81,7 @@ internal sealed class ConversationSessionStore
 
     private static ContextSummary? ResolveSummary(ConversationRecord record) =>
         record.ContextSummaries.LastOrDefault(summary =>
-            string.Equals(summary.Status, "Succeeded", StringComparison.Ordinal)
+            !summary.IsRuntimeEvent && string.Equals(summary.Status, "Succeeded", StringComparison.Ordinal)
             && summary.CompactedMessages.Count > 0 && IsUsableProjection(summary));
 
     private static bool IsUsableProjection(ContextSummary summary) =>
@@ -123,6 +123,24 @@ internal sealed class ConversationSessionStore
         && string.Equals(left.Content, right.Content, StringComparison.Ordinal)
         && string.Equals(left.ToolCallId, right.ToolCallId, StringComparison.Ordinal)
         && string.Equals(left.ToolName, right.ToolName, StringComparison.Ordinal);
+
+    internal async Task RecordCompactionsAsync(
+        ConversationContext context, IConversationLockHandle? lockHandle,
+        IEnumerable<ContextSummary> summaries, CancellationToken cancellationToken)
+    {
+        foreach (ContextSummary summary in summaries)
+        {
+            EnsureLockHeld(context, lockHandle);
+            ConversationRecord? record = await _store.GetRecordAsync(
+                context.TenantId!, context.ConversationId!, cancellationToken).ConfigureAwait(false);
+            EnsureOwnership(context, record);
+            EnsureLockHeld(context, lockHandle);
+            if (!await _store.RecordCompressionAsync(context.TenantId!, context.ConversationId!, summary, cancellationToken).ConfigureAwait(false))
+            {
+                throw new InvalidOperationException("Runtime compaction audit could not be persisted.");
+            }
+        }
+    }
 
     internal async Task<int?> SaveAsync(
         ConversationContext context,

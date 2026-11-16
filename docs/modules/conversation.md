@@ -12,46 +12,33 @@
 
 会话锁只负责同一租户、同一会话的并发协调，不授予访问权限。数据库、内存存储与 Redis 热副本读取均使用请求作用域的 `ICurrentUserContext`：必须已认证且用户、租户非空；请求租户、记录租户、所有者与会话 ID 精确匹配，不忽略大小写。创建会话也必须匹配当前身份，不能通过指定 `UserId` 或 `TenantId` 替他人创建记录。数据库与内存存储拒绝对软删除会话的读写，缓存读取拒绝已标记删除的载荷；缓存失效失败时仍可能读到属于原所有者的旧副本，不提供删除即时不可读的保证。
 
-`ConversationSessionStore` 在加载、保存及版本冲突重试时校验租户、用户、会话 ID、会话类型和删除状态；用户侧详情、删除、交互日志与手动压缩入口仅接受未删除的 `User` 会话。`Running`、`Completed`、`Failed`、`Cancelled` 状态不改变上述授权规则。
+`ConversationSessionStore` 在加载、保存及版本冲突重试时校验租户、用户、会话 ID、会话类型和删除状态；用户侧详情、删除与交互日志入口仅接受未删除的 `User` 会话。`Running`、`Completed`、`Failed`、`Cancelled` 状态不改变上述授权规则。
 
 ## 交互日志与轮次追溯
 
-所有发往大模型的交互（Agent 轮次内的每次调用，含工具循环迭代；自动/手动压缩摘要调用）由 `LlmInteractionRecorder`（紧贴 `AgentChatClientFactory` 产出的 provider client，出站消息规格化层在其外层）捕获，记录的是规格化（空 assistant 文本剥离、空工具结果占位、null 工具参数规格化为 `{}`）后真正发往 provider 的最终消息，写入 `openagent.llm_interaction_logs`（见 [LlmInteractionLogs](../database/tables/LlmInteractionLogs.md)），同时输出一条摘要结构化日志（EventId 1460/1461）。载荷经过脱敏投影：API Key 永不落日志，二进制内容仅记录占位符，超长字段按 `LlmInteraction:MaxContentLength` 截断。记录失败只降级为警告，绝不影响对话主流程；`LlmInteraction:Enabled=false` 可整体关闭。
+模型推理、工具循环与自动压缩均由 ACP 对端 OpenCode 执行。平台不创建 `IChatClient`，不通过 OpenAI/Anthropic SDK 直接调用模型。原 `LlmInteractionRecorder` 与摘要模型工厂已删除；交互日志表及查询接口继续支持读取历史记录，不能据此认为当前 ACP 执行会保存每次模型调用的原始请求和响应。
 
-轮次关联键是每次请求携带的 `X-Trace-Id`：同一轮内所有 LLM 调用与该轮全部落库消息（`conversation_messages.TraceId`，由 `ConversationSessionStore.SaveAsync` 统一盖章）共享同一个值，据此可把消息时间线与交互日志按轮次对齐做原始会话状态分析。
+轮次请求使用 `X-Trace-Id` 关联平台消息与执行日志。ACP 对端的模型错误经 JSON-RPC 返回，由 `OpenCodeErrorClassifier` 分类；旧平台 `.NET OpenAIChatClient` 堆栈不属于当前 OpenCode 自动压缩路径。
 
 查询 API：`GET /api/v1/agent/conversations/{id}/llm-interactions`（租户 + 属主校验，按 `(StartedAt, CallIndex)` 升序分页）。Router 已注册同路径转发。
 
 ## 上下文压缩
 
-上下文压缩由平台自持实现（`OpenAgent.Application/Conversation/Compaction/`），不依赖外部 Agent 框架的 CompactionProvider。会话压缩只有一种策略：`SummarizationCompactionStrategy`；`ContextPolicy` 只配置摘要预算、模型上下文长度和保留消息组数，不暴露策略选择字段。
+自动压缩由 OpenCode 原生负责。`RuntimePreparation` 只准备平台历史、附件与工具，随后通过 `RuntimeAgentExecutor` → `OpenCodeRuntime` → ACP `session/prompt` 执行，不在请求前或工具循环中另发平台摘要请求。
 
-```text
-PlatformChatHistory -> 平台 ChatMessage history
-  -> RuntimePreparation
-       -> CompactionContextProvider（每次模型调用前）
-            -> CompactionProvider.CompactAsync
-                 -> AuditedCompactionStrategy -> SummarizationCompactionStrategy
-       -> RuntimeInvocation.Messages -> 运行时驱动
-```
+平台已删除自动/手动摘要策略、模型客户端工厂、DI 注册，以及 Engine/Router 的 `POST /api/v1/agent/conversations/{conversationId}/compact` 路由；前端不再提供“手动压缩”按钮。旧 `ContextPolicy` 配置不再控制运行时压缩阈值、摘要预算或摘要模型。
 
-触发时机：`RuntimePreparation`（经 `ConversationHistoryFactory.CreateCompaction`）创建唯一的摘要策略，并把它注册为 `IAgentContextProvider` 挂在本轮执行上下文上。用户发送后的第一次模型调用和工具结果后的每次自主迭代都会重新检查阈值；保持函数调用与函数结果的原子消息组，可覆盖同一 Agent run 内的后续工具迭代。最终回复完成后没有下一次模型调用，不会额外触发压缩。摘要调用复用已解析和授权的 `IChatClient`，不会通过第二套 Engine 请求或未授权的模型路径生成摘要。
+ACP `compaction_update` 和 `compaction_summary_chunk` 经 `AcpCompactionMapper`、`AcpEventMapper` 转为平台 `compaction` 事件，SSE 实时更新前端时间线，并在轮次完成、失败或取消的持锁保存路径中写入 `ContextSummary`。同一原生 session + compaction ID 对应稳定的平台 ID；分块追加、整体替换、显式 null/空数组清除均按协议处理。审计写入按 ID 原位更新，重放不新增重复记录；未收到终态的进行中记录在轮次结束时标为中断/取消。
 
-平台会话存储保留完整审计历史；compaction 只决定本次模型调用看到的消息。最近一次成功的压缩结果（手动或自动）作为后续模型调用的历史视图，并自动拼接压缩后新增的原始消息。
+仓库锁定的 OpenCode 1.19.3 实测不发送上述标准事件，且会把摘要作为普通 assistant 文本输出。兼容适配在 prompt 更新队列读完后调用同一可执行文件的 `export <sessionId>`，读取原生 `assistant.summary=true` 元数据，再补发压缩事件；不按回复文案或 token 下降猜测压缩，不新增模型调用。已报告的原生摘要 ID 随检查点保存，冷启动不重复发出旧摘要。OpenCode 1.19.3 在 Linux stdout 管道下可能截断大导出，因此子进程 stdout 直接指向私有 TMPDIR 下的随机临时文件（Unix 0600），不能先接管道再复制。进程退出后解析文件，执行期间监测、解析前检查 32 MiB 上限；成功、非零退出、解析失败、取消和超限均在终止子进程后删除临时文件。stderr 丢弃；失败只输出脱敏告警。该版本的摘要审计在轮次结束后可见，实时正文仍遵循其原有 ACP 输出行为。
 
-审计与恢复：自动压缩通过审计包装记录触发方式、策略、原始消息范围、摘要或结果以及失败恢复状态。审计层不实现消息裁剪，但会拒绝 token 节省不足 10% 的结果并恢复原始上下文，避免压缩后上下文反而膨胀；压缩失败时恢复调用前的消息组，完整会话消息不会被覆盖或删除。每次实际自动压缩和每次手动尝试以 `ContextSummary` 追加到会话的数据库记录，Chat Inspector 展示压缩次数、最近策略、触发方式、原始范围、摘要或结果，失败记录同时标识原始上下文是否已恢复。
+原生压缩审计的 `IsRuntimeEvent=true`，携带 `RuntimeSessionId`、`RuntimeCompactionId` 和轮次 `TraceId`；`SourceEndSequence` 仅是平台接收到事件时的时间线锚点，不代表原生上下文的覆盖边界。`CompactedMessages` 保持空，窗口/计费用量未知时前端不显示零值。可展示摘要不替代模型上下文；已有完整会话消息及旧有效压缩投影仍可读取。
 
-策略参数（`ContextPolicy` 是 `AgentConfig` 的一部分，由 `IAgentRuntimeResolver` 从 Agent Profile 解析后提供给本次运行；客户端请求不再覆盖该策略）：
+原生会话状态通过 `OpenCode:SessionStateRoot` 保存（镜像为 `/home/app/openagent-sessions`，Compose 挂载 `engine-sessions`）。平台消息与审计提交成功后，才以临时文件 + 原子替换写入原生 session ID、归属/配置身份、工具 schema、历史检查点及已报告压缩 ID；下轮开始前使旧检查点失效，避免崩溃/失败轮次恢复到未提交状态。目录为服务账户私有，文件租约防止两个进程同时修改同一原生状态。进程空闲回收、池淘汰与 Engine 正常关闭只结束进程，保留已提交的原生数据库和工作区。
 
-| 字段 | 用途 |
-|---|---|
-| `ContextTokens`（LLM 配置） | 模型上下文 token 上限；自动压缩在其 80% 处触发，压缩目标为其 50%，未配置时临时使用 1000 token |
-| `PreserveRecentTurns` | 摘要压缩时保留的最近消息组数（硬性下限 `MinimumPreservedGroups`，最近消息组超过目标预算时不会继续压缩它们）|
-| `SummarizeOptions` | 摘要模型调用的专用预算和模型配置；摘要 prompt 与普通对话上下文隔离 |
+下次请求优先恢复同一身份且检查点匹配的原生 session，只发送本轮增量；原生会话保留其真实压缩上下文。状态丢失、配置/工具 schema/历史改变、对端不支持 resume/close 或 resume 被拒绝时，创建新 session 并回放平台历史，日志记录选择或降级原因。不把展示摘要拼成不完整的替代历史。默认状态为本机文件，不提供跨实例数据库复制；多实例需要会话黏性或正确挂载受控共享存储，缺少原生状态的实例将降级回放。
 
-摘要实现：保留最近 `MinimumPreservedGroups` 个轮次，其余轮次交给摘要模型，替换为一个带 summary 标记的消息组。摘要模型使用专用压缩 prompt，`MaxSummaryTokens` 作为上限，同时受上下文 20% 的比例预算约束；该限制经 `ChatOptions.MaxOutputTokens` 实际传给模型，并在返回后按 token 估算边界再次裁定。推理模型的生成上限包含独立的 reasoning 余量，避免推理 token 耗尽上限后只留下空摘要。生成的 summary assistant 消息写入当前会话的压缩投影，后续模型调用使用"最近一次 summary + 之后新增消息"。
-
-手动压缩：`POST /api/v1/agent/conversations/{conversationId}/compact` 在校验租户、用户、会话归属和 Agent 授权后，使用同一策略执行。手动压缩是显式用户操作，不受自动阈值或 50% 目标限制，允许将全部非系统消息组压缩成一条摘要，只要会话中存在可压缩消息就会调用摘要模型。模型生成结果未达到至少 10% token 节省时仍会被拒绝，且不会成为后续模型上下文；此类记录在前端统一显示为"未执行"。
+排查旧 `.NET OpenAIChatClient` 压缩异常时，需核对实际部署版本、日志时间和运行实例。Git 提交 `cd509de8` 移除了 `RuntimePreparation` 中的平台自动摘要调用；此前即使普通聊天通过 ACP，自动压缩仍可能通过平台 SDK 直调模型。[推断] 自动压缩期间出现该 SDK 堆栈，可能来自仍包含旧链路的部署或历史记录；仅凭最新源码无法确定正式环境的具体情况。
 
 ## 会话锁
 
@@ -62,6 +49,11 @@ PlatformChatHistory -> 平台 ChatMessage history
 `PlatformChatHistory` 只有在加锁、所有权校验和历史加载全部成功后才开放持久化。正常完成、失败、取消和资源释放均要求本请求仍持有锁；锁冲突、加载或授权失败只清理资源，不追加用户消息、不修改会话状态。`ConversationSessionStore` 接受本轮锁句柄，在每次追加（含冲突重试）和状态更新发起前复核租户、会话 ID 与 `IsHeld`，覆盖异步读取或前一次写入等待期间丢锁的情况；已发起的数据库操作仍由事务和乐观并发约束，不将本地持锁检查视为数据库 fencing。Redis 续租被拒绝、续租异常或本地租期到期后，`IsHeld` 返回 `false`，不会因句柄尚未释放而继续报告持锁。
 
 ## 验证
+
+PR #314 评论修复验证：真实 OpenCode 1.19.3 配合确定性本地模型，首轮历史扩展至 256 KiB。在 Linux 容器中使用旧管道实现时压缩审计缺失，新文件重定向实现通过同一自动压缩/冷恢复断言；macOS 同用例也通过。额外验证普通文件 stdout、含空格/引号/元字符的路径，以及成功/JSON 解析失败/非零退出/取消/超限后的临时文件清理。 修复后构建通过，默认后端套件 1190 项通过、37 项门控跳过；真实 OpenCode 运行时套件 129 项通过、3 项平台门控跳过；部署脚本 12 项通过。
+
+2026-11-13 清理与持久恢复验证：后端解决方案构建通过，默认套件 1166 项通过、37 项环境门控跳过；真实 OpenCode 1.19.3 + 确定性本地模型运行时套件 125 项通过、3 项平台门控跳过；前端 `pnpm check` 通过（185 项测试及类型/生产构建）。新增覆盖标准 ACP 补丁语义、压缩审计落库/失败路径/EF 重放去重、SSE/前端原位更新、真实自动压缩后跨进程恢复、状态缺失或恢复被拒绝后的平台历史回放，以及取消/提交失败时原生状态作废。架构门禁禁止 Application 引用模型 SDK 或 `IChatClient`；旧压缩入口返回 404。未部署正式环境；未验证真实外部模型、跨实例共享文件系统、Windows 持久卷 ACL 或 Docker 镜像构建。
+
 
 回归测试覆盖跨用户、跨租户、大小写不同的身份、缺失身份、缓存命中／异常回退、软删除、锁冲突，以及在加载、保存读取、冲突重读和追加等待期间丢锁；并验证合法用户的正常完成、失败部分输出和取消持久化。失败绕过回归在修复前实测 6 项全部失败，拒绝请求仍使会话版本从 7 增至 9 或状态变为 `Failed`。
 
@@ -90,6 +82,6 @@ dotnet test Backend/OpenAgent.sln --no-build --no-restore \
 ## 代码入口
 
 - 存储契约与实现：`Backend/src/OpenAgent.Contracts/`（IConversationStore、IConversationLock）、`Backend/src/OpenAgent.Framework/`（EF Core + PostgreSQL 实现）。
-- 压缩：`Backend/src/OpenAgent.Application/Conversation/Compaction/`。
-- 交互记录：`Backend/src/OpenAgent.Application/ModelProviders/`（LlmInteractionRecorder，紧贴 AgentChatClientFactory）。
-- 测试：`Backend/tests/OpenAgent.Application.Tests/Conversation/`（History/、Lock/、Compaction/）。
+- 自动压缩执行：`Backend/src/OpenAgent.Runtime/OpenCode/OpenCodeRuntime.cs`（ACP 对端 OpenCode）。
+- 历史交互查询：`Backend/src/OpenAgent.Engine.Host/Endpoints/Conversations/ConversationEndpoints.cs`。
+- 测试：`Backend/tests/OpenAgent.Application.Tests/Conversation/`（History/、Lock/）。

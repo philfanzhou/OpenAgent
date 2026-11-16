@@ -10,18 +10,17 @@ public class ApplicationModuleDependencyTests
     {
         ["Mapping"] = [],
         ["Observability"] = ["Mapping"],
-        ["ModelProviders"] = ["Mapping", "Observability"],
         ["Security"] = [],
         ["Tooling"] = ["Mapping", "Observability", "Security"],
         ["Files"] = ["Mapping"],
         ["FileTools"] = ["Files", "Tooling", "Security", "Mapping"],
-        ["Conversation"] = ["Files", "Mapping", "ModelProviders", "Observability"],
+        ["Conversation"] = ["Files", "Mapping", "Observability"],
         ["Mcp"] = ["Files", "Tooling", "Security", "Mapping"],
         ["Skill"] = ["Files", "Tooling", "Security", "Mapping"],
         ["Rag"] = ["Tooling", "Security", "Mapping"],
         ["Plan"] = ["Tooling"],
         ["UserProfile"] = ["Tooling"],
-        ["Execution"] = ["Files", "Conversation", "ModelProviders", "Tooling", "Security", "Mapping", "Observability"]
+        ["Execution"] = ["Files", "Conversation", "Tooling", "Security", "Mapping", "Observability"]
     };
 
     [Fact]

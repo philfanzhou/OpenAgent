@@ -201,7 +201,9 @@ public sealed class InMemoryConversationStore : IConversationStore
 
         lock (record)
         {
-            record.ContextSummaries.Add(summary);
+            int existing = record.ContextSummaries.FindIndex(item => item.CompressionId == summary.CompressionId);
+            if (existing >= 0) record.ContextSummaries[existing] = summary;
+            else record.ContextSummaries.Add(summary);
             record.UpdatedAt = DateTimeOffset.UtcNow;
         }
         return Task.FromResult(true);

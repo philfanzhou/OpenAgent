@@ -119,7 +119,7 @@ public sealed class RouterHostIntegrationTests : IClassFixture<RouterHostFixture
     }
 
     [Fact]
-    public async Task ConversationCompaction_ForwardsPostToEngine()
+    public async Task ConversationCompaction_IsUnavailable()
     {
         using RouterApplicationFactory factory = _fixture.CreateFactory();
         using HttpClient client = factory.CreateClient();
@@ -130,9 +130,7 @@ public sealed class RouterHostIntegrationTests : IClassFixture<RouterHostFixture
 
         using HttpResponseMessage response = await client.SendAsync(request);
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal("conversation-1", _fixture.PrimaryEngine.LastCompactedConversationId);
-        Assert.StartsWith("Basic ", _fixture.PrimaryEngine.LastAuthorization, StringComparison.Ordinal);
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
     [Fact]

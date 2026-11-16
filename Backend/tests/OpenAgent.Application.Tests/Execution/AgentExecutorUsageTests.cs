@@ -13,8 +13,6 @@ using OpenAgent.Contracts.Security;
 using OpenAgent.Application.Conversation.Store;
 using OpenAgent.Application.Execution;
 using OpenAgent.Application.Exten;
-using OpenAgent.Application.ModelProviders;
-using OpenAgent.Application.Observability;
 using OpenAgent.Application.Runtime.Agent;
 using OpenAgent.Application.Tests.TestDoubles;
 using OpenAgent.Application.Tooling.Abstractions;
@@ -24,6 +22,39 @@ namespace OpenAgent.Application.Tests.Runtime;
 
 public class AgentExecutorUsageTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExecuteAsync_RuntimeCompaction_PersistsAuditWithoutReplacingHistory(bool fails)
+    {
+        ContextSummary Audit(string status, string? text) => new()
+        {
+            CompressionId = "native-audit", Strategy = "runtime", Trigger = "Automatic", Status = status,
+            Summary = text, IsRuntimeEvent = true, RuntimeSessionId = "session-1", RuntimeCompactionId = "compact-1"
+        };
+        ScriptedRuntimeDriver driver = new(
+        [
+            new AgentStreamEvent { Type = AgentStreamEventType.Compaction, Compaction = Audit("InProgress", null) },
+            new AgentStreamEvent { Type = AgentStreamEventType.Compaction, Compaction = Audit("Succeeded", "display summary") },
+            Content("answer")
+        ], fails ? new InvalidOperationException("failed after compaction") : null);
+        await using TestRuntime runtime = CreateRuntime(driver);
+        Task execute = runtime.Executor.ExecuteAsync(CreateRequest("native-compaction"), User, CancellationToken.None);
+        if (fails) await Assert.ThrowsAsync<InvalidOperationException>(() => execute);
+        else await execute;
+        ConversationRecord record = (await runtime.Store.GetRecordAsync("tenant-1", "native-compaction"))!;
+        ContextSummary saved = Assert.Single(record.ContextSummaries);
+        Assert.Equal("Succeeded", saved.Status);
+        Assert.Equal("display summary", saved.Summary);
+        Assert.Equal("session-1", saved.RuntimeSessionId);
+        Assert.NotNull(saved.TraceId);
+        Assert.Equal(1, saved.SourceEndSequence);
+        Assert.Empty(saved.CompactedMessages);
+        Assert.Contains(record.Messages, message => message.Role == "user");
+        Assert.Contains(record.Messages, message => message.Role == "assistant" && message.Content == "answer");
+        Assert.Equal(record.Messages, ConversationSessionStore.ResolveModelHistory(record));
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -310,8 +341,6 @@ public class AgentExecutorUsageTests
         services.RemoveAll<IAgentRuntimeResolver>();
         services.RemoveAll<AgentRuntimeResolver>();
         services.AddSingleton<IAgentRuntimeResolver>(new StaticRuntimeResolver(maxTurns));
-        services.RemoveAll<IAgentChatClientFactory>();
-        services.AddSingleton<IAgentChatClientFactory>(new FakeChatClientFactory(FakeChatClient.Unused));
         configure?.Invoke(services);
 
         ServiceProvider serviceProvider = services.BuildServiceProvider(
@@ -323,23 +352,6 @@ public class AgentExecutorUsageTests
             scope.ServiceProvider.GetRequiredService<RuntimeAgentExecutor>(),
             Assert.IsType<InMemoryConversationStore>(
                 scope.ServiceProvider.GetRequiredService<IConversationStore>()));
-    }
-
-    /// <summary>摘要/兼容客户端占位：聊天推理只走驱动，任何调用都是测试失败。</summary>
-    private sealed class FakeChatClient : IChatClient
-    {
-        internal static readonly FakeChatClient Unused = new();
-
-        public Task<Microsoft.Extensions.AI.ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default) =>
-            throw new InvalidOperationException("Chat inference must run through the runtime driver.");
-
-        public IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default) =>
-            throw new InvalidOperationException("Chat inference must run through the runtime driver.");
-
-        public object? GetService(Type serviceType, object? serviceKey = null) => null;
-        public void Dispose()
-        {
-        }
     }
 
     private sealed class TestCurrentUserContext : ICurrentUserContext
@@ -364,16 +376,6 @@ public class AgentExecutorUsageTests
                 Config = new AgentConfig { MaxTurns = maxTurns },
                 Model = new LlmConfig { ModelId = "configured-model" }
             });
-    }
-
-    private sealed class FakeChatClientFactory(IChatClient provider) : IAgentChatClientFactory
-    {
-        public IChatClient Create(LlmConfig llm, LlmInteractionCapture? capture = null) => provider;
-
-        public IChatClient CreateSummarizationClient(
-            LlmConfig llm,
-            ContextPolicy? policy,
-            LlmInteractionCapture? capture = null) => provider;
     }
 
     internal sealed class TestRuntime(

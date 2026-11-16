@@ -21,8 +21,6 @@ using OpenAgent.Contracts.Security;
 using OpenAgent.Application.Conversation.Store;
 using OpenAgent.Application.Execution;
 using OpenAgent.Application.Exten;
-using OpenAgent.Application.ModelProviders;
-using OpenAgent.Application.Observability;
 using OpenAgent.Application.Runtime.Agent;
 using OpenAgent.Engine.Host.Streaming;
 using OpenAgent.Engine.Host;
@@ -245,8 +243,6 @@ public sealed class SseToolStreamingTests
             builder.Services.RemoveAll<AgentRuntimeResolver>();
             builder.Services.AddSingleton<IAgentRuntimeResolver>(
                 new StaticRuntimeResolver(agentConfig ?? new AgentConfig { MaxTurns = 4 }, model));
-            builder.Services.RemoveAll<IAgentChatClientFactory>();
-            builder.Services.AddSingleton<IAgentChatClientFactory>(new Factory(new ThrowingChatClient()));
             builder.Services.RemoveAll<IConversationStore>();
             builder.Services.AddSingleton<IConversationStore, InMemoryConversationStore>();
             builder.Services.RemoveAll<IFileAssetRepository>();
@@ -336,21 +332,6 @@ public sealed class SseToolStreamingTests
             await _application.DisposeAsync().ConfigureAwait(false);
         }
 
-        internal sealed class ThrowingChatClient : IChatClient
-        {
-            public Task<Microsoft.Extensions.AI.ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default) =>
-                throw new InvalidOperationException("Chat inference must run through the runtime driver.");
-
-            public IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default) =>
-                throw new InvalidOperationException("Chat inference must run through the runtime driver.");
-
-            public object? GetService(Type serviceType, object? serviceKey = null) => null;
-
-            public void Dispose()
-            {
-            }
-        }
-
         private sealed class StaticRuntimeResolver(AgentConfig config, LlmConfig? model) : IAgentRuntimeResolver
         {
             public Task<AgentRuntimeProfile> ResolveAsync(
@@ -364,17 +345,6 @@ public sealed class SseToolStreamingTests
                     Config = config,
                     Model = model ?? new LlmConfig { ModelId = "local-scripted-model" }
                 });
-        }
-
-        private sealed class Factory(IChatClient provider) : IAgentChatClientFactory
-        {
-            public IChatClient Create(LlmConfig llm, LlmInteractionCapture? capture = null) =>
-                provider;
-
-            public IChatClient CreateSummarizationClient(
-                LlmConfig llm,
-                ContextPolicy? policy,
-                LlmInteractionCapture? capture = null) => provider;
         }
 
         private sealed class FixedCurrentUserContext : ICurrentUserContext

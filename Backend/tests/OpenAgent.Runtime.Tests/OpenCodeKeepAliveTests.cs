@@ -13,6 +13,141 @@ namespace OpenAgent.Runtime.Tests;
 [Collection(RealOpenCodeCollection.Name)]
 public sealed class OpenCodeKeepAliveTests
 {
+    [OpenCodeTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task MissingOrRejectedNativeSession_ReplaysPlatformHistory(bool rejected)
+    {
+        string durable = Path.Combine(Path.GetTempPath(), "acp-native-fallback-" + Guid.NewGuid().ToString("N"));
+        int round = 0;
+        try
+        {
+            await using ModelFixture model = await ModelFixture.StartAsync((context, request) =>
+            {
+                if (round == 2) Assert.Contains("openagent://conversation/history", request.GetRawText());
+                return ModelFixture.TextAsync(context, "answer");
+            });
+            for (round = 1; round <= 2; round++)
+            {
+                await using RuntimeFixture runtime = new(model.Endpoint, config => config["OpenCode:SessionStateRoot"] = durable);
+                await runtime.CollectAsync(runtime.Request with
+                {
+                    HistoryCheckpoint = "checkpoint-" + (round - 1),
+                    CommitAsync = _ => Task.FromResult<string?>("checkpoint-" + round),
+                    Messages = round == 1 ? [new("user", "first")]
+                        : [new("user", "first"), new("assistant", "answer"), new("user", "continue")]
+                });
+                if (round != 1) continue;
+                string manifest = Assert.Single(Directory.GetFiles(durable, "committed-session.json", SearchOption.AllDirectories));
+                if (!rejected) File.Delete(manifest);
+                else
+                {
+                    var state = JsonSerializer.Deserialize<OpenCodeSessionState.Snapshot>(await File.ReadAllTextAsync(manifest))!;
+                    await File.WriteAllTextAsync(manifest, JsonSerializer.Serialize(state with { SessionId = "ses_missing" }));
+                }
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(durable)) Directory.Delete(durable, recursive: true);
+        }
+    }
+
+    [OpenCodeFact]
+    public async Task AutoCompaction_AfterColdRestart_RetainsNativeCompressedContext()
+    {
+        string durable = Path.Combine(Path.GetTempPath(), "acp-auto-compaction-" + Guid.NewGuid().ToString("N"));
+        int round = 0;
+        int summaries = 0;
+        int generations = 0;
+        List<AgentStreamEvent> compactions = [];
+        try
+        {
+            await using ModelFixture model = await ModelFixture.StartAsync(async (context, request) =>
+            {
+                int generation = ++generations;
+                bool summarizing = request.GetProperty("messages").EnumerateArray().Any(message =>
+                    message.GetProperty("role").GetString() == "system"
+                    && message.GetProperty("content").ToString().Contains("summar", StringComparison.OrdinalIgnoreCase));
+                if (summarizing)
+                {
+                    summaries++;
+                    await ModelFixture.TextAsync(context, "retained-summary-native");
+                    return;
+                }
+                if (round == 3)
+                {
+                    Assert.Contains("retained-summary-native", request.GetRawText());
+                    Assert.DoesNotContain("openagent://conversation/history", request.GetRawText());
+                }
+                context.Response.ContentType = "text/event-stream";
+                await context.Response.WriteAsync("data: " + JsonSerializer.Serialize(new
+                {
+                    id = "local", @object = "chat.completion.chunk", created = 1, model = "fixture",
+                    choices = new[] { new { index = 0, delta = new { role = "assistant", content = "answer-" + round }, finish_reason = "stop" } },
+                    usage = new { prompt_tokens = generation == 1 ? 95000 : 100, completion_tokens = 10, total_tokens = generation == 1 ? 95010 : 110 }
+                }) + "\n\ndata: [DONE]\n\n");
+            });
+            for (round = 1; round <= 3; round++)
+            {
+                await using RuntimeFixture runtime = new(model.Endpoint, config => config["OpenCode:SessionStateRoot"] = durable);
+                List<AgentStreamEvent> events = await runtime.CollectAsync(runtime.Request with
+                {
+                    HistoryCheckpoint = "checkpoint-" + (round - 1),
+                    CommitAsync = _ => Task.FromResult<string?>("checkpoint-" + round),
+                    Messages = [new("user", round == 1 ? new string('h', 256 * 1024) + " first question" : "continue")]
+                });
+                Assert.Empty(Directory.GetFiles(durable, "compaction-export-*", SearchOption.AllDirectories));
+                compactions.AddRange(events.Where(item => item.Type == AgentStreamEventType.Compaction));
+                Assert.EndsWith("answer-" + round, Text(events));
+            }
+            Assert.True(summaries > 0);
+            Assert.Equal("retained-summary-native", Assert.Single(compactions, item => item.Compaction?.Status == "Succeeded").Compaction?.Summary);
+        }
+        finally
+        {
+            if (Directory.Exists(durable)) Directory.Delete(durable, recursive: true);
+        }
+    }
+
+    [OpenCodeFact]
+    public async Task CommittedSession_AfterEngineAndProcessRestart_RestoresNativeHistory()
+    {
+        string durable = Path.Combine(Path.GetTempPath(), "acp-durable-restart-" + Guid.NewGuid().ToString("N"));
+        int round = 0;
+        try
+        {
+            await using ModelFixture model = await ModelFixture.StartAsync((context, request) =>
+            {
+                if (round == 2)
+                {
+                    Assert.Contains("native-answer-first", request.GetRawText());
+                    Assert.DoesNotContain("openagent://conversation/history", request.GetRawText());
+                }
+                return ModelFixture.TextAsync(context, round == 1 ? "native-answer-first" : "native-answer-second");
+            });
+            for (round = 1; round <= 2; round++)
+            {
+                // New DI container, process keeper and harness process on every turn.
+                await using RuntimeFixture runtime = new(model.Endpoint, config => config["OpenCode:SessionStateRoot"] = durable);
+                List<AgentStreamEvent> events = await runtime.CollectAsync(runtime.Request with
+                {
+                    HistoryCheckpoint = round == 1 ? "initial" : "committed-first",
+                    CommitAsync = _ => Task.FromResult<string?>(round == 1 ? "committed-first" : "committed-second"),
+                    Messages = round == 1 ? [new("user", "first question")]
+                        : [new("user", "first question"), new("assistant", "native-answer-first"), new("user", "follow up")]
+                });
+                Assert.Equal(round == 1 ? "native-answer-first" : "native-answer-second", Text(events));
+                Assert.Equal(0, runtime.Keeper.KeptCount);
+                Assert.Single(Directory.GetFiles(durable, "committed-session.json", SearchOption.AllDirectories));
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(durable)) Directory.Delete(durable, recursive: true);
+        }
+    }
+
     [Fact]
     public void Identity_IsStableAndSensitiveToLaunchDifferences()
     {
@@ -245,7 +380,9 @@ public sealed class OpenCodeKeepAliveTests
         });
         using CancellationTokenSource cancel = new(TimeSpan.FromSeconds(30));
         Task<List<AgentStreamEvent>> followUp = runtime.CollectAsync(runtime.Request with { HistoryCheckpoint = "committed" }, cancel.Token);
-        await started.Task.WaitAsync(TimeSpan.FromSeconds(20));
+        Task first = await Task.WhenAny(started.Task, followUp).WaitAsync(TimeSpan.FromSeconds(20));
+        if (first == followUp) await followUp;
+        await started.Task;
         cancel.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => followUp.WaitAsync(TimeSpan.FromSeconds(15)));
         Assert.Equal(1, runtime.Keeper.ReusedCount);

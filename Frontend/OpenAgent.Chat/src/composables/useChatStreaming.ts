@@ -189,6 +189,11 @@ export function useChatStreaming(options: ChatStreamingOptions) {
           // 每次事件携带完整计划快照，直接整体替换即可就位更新。
           const snapshot = parsePlanSnapshot(event.content)
           if (snapshot) assistantMessage.plan = snapshot
+        } else if (event.type === 'compaction' && event.compaction) {
+          const summaries = conversation.contextSummaries ||= []
+          const index = summaries.findIndex(item => item.compressionId === event.compaction!.compressionId)
+          if (index >= 0) summaries[index] = event.compaction
+          else summaries.push(event.compaction)
         } else if (event.type === 'runtime' && event.runtime) {
           const runtime = event.runtime
           assistantMessage.metadata = {

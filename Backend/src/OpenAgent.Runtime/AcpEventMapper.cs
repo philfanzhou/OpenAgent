@@ -8,9 +8,10 @@ namespace OpenAgent.Runtime;
 /// <param name="toolNamePrefix">
 /// harness 给 MCP 工具名加的服务器前缀（如 OpenCode 的 "openagent_"），映射前剥掉以沿用平台工具名；null 表示不剥。
 /// </param>
-internal sealed class AcpEventMapper(string? toolNamePrefix = null)
+internal sealed class AcpEventMapper(string? toolNamePrefix = null, string? sessionId = null)
 {
     private readonly Dictionary<string, ToolState> _tools = [];
+    private readonly AcpCompactionMapper _compactions = new(sessionId ?? "unknown");
 
     /// <summary>
     /// 最近一次 usage_update：Used 为本轮结束时 harness 的上下文占用，Size 为其对端窗口上限。
@@ -87,6 +88,9 @@ internal sealed class AcpEventMapper(string? toolNamePrefix = null)
                         plan = plan.Entries.Select(entry => new { step = entry.Content, status = entry.Status })
                     })
                 };
+                break;
+            case CompactionUpdate or CompactionSummaryChunk:
+                yield return new() { Type = AgentStreamEventType.Compaction, Compaction = _compactions.Map(update) };
                 break;
             case UsageUpdate usage:
                 LastUsage = (usage.Used, usage.Size);

@@ -48,6 +48,7 @@ internal static class AgentStreamWriter
             string eventName = streamEvent.Type switch
             {
                 AgentStreamEventType.RuntimeStarted => "runtime",
+                AgentStreamEventType.Compaction => "compaction",
                 AgentStreamEventType.Reasoning => "reasoning",
                 AgentStreamEventType.ToolCall => "tool_call",
                 AgentStreamEventType.ToolResult => "tool_result",
@@ -57,6 +58,7 @@ internal static class AgentStreamWriter
             string data = JsonSerializer.Serialize(new
             {
                 runtime = streamEvent.Runtime,
+                compaction = streamEvent.Compaction,
                 content = streamEvent.Content,
                 toolName = streamEvent.ToolName,
                 toolCallId = streamEvent.ToolCallId,

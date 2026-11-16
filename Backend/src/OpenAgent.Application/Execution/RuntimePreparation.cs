@@ -97,7 +97,7 @@ internal sealed class RuntimePreparation(
                 }
             }
             // 上下文压缩由 OpenCode 原生负责（单轮内自压缩并上报 compaction_update）；
-            // 平台不再做跨轮自动压缩，跨轮整理仅保留手动压缩端点。
+            // 平台不再创建摘要客户端或执行自动/手动压缩。
             tools.AddRange(context.Tools ?? []);
             List<RuntimeTool> exported = [];
             HashSet<string> names = new(StringComparer.Ordinal);

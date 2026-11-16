@@ -44,6 +44,16 @@ public class AssemblyDependencyTests
     }
 
     [Fact]
+    public void Application_DoesNotCallModelProviders()
+    {
+        Assembly application = Assembly.Load("OpenAgent.Application");
+        Assert.DoesNotContain(application.GetReferencedAssemblies(), reference =>
+            reference.Name is "OpenAI" or "Anthropic" or "Microsoft.Extensions.AI.OpenAI");
+        Assert.DoesNotContain(application.GetTypes().SelectMany(TypeDependencies.Read), type =>
+            type.FullName == "Microsoft.Extensions.AI.IChatClient");
+    }
+
+    [Fact]
     public void Router_UsesOnlyEngineHostingTypes()
     {
         Assembly router = Assembly.Load("OpenAgent.Router");

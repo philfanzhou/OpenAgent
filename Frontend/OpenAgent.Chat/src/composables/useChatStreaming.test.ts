@@ -116,6 +116,26 @@ describe('useChatStreaming', () => {
     })
   })
 
+  it('updates a native compaction in place and preserves the persisted audit after reload', async () => {
+    const { streaming, selectedConversation } = await setup()
+    const audit = {
+      compressionId: 'native-1', strategy: 'runtime', trigger: 'Automatic', status: 'Succeeded',
+      summary: 'retained state', isRuntimeEvent: true, lastCompressedAt: '2026-11-13T00:00:00Z',
+      compressedMessageCount: 0, originalStartSequence: 0, originalEndSequence: 0,
+      originalTokenCount: 0, tokenCount: 0, originalHistoryRestored: false, sourceEndSequence: 5,
+    }
+    vi.mocked(api.streamChat).mockImplementation(() => (async function* () {
+      yield { type: 'compaction', compaction: { ...audit, status: 'InProgress', summary: null } }
+      yield { type: 'compaction', compaction: audit }
+      expect(selectedConversation.value?.contextSummaries).toEqual([audit])
+      yield { type: 'done', conversationId: 'conv-1' }
+    })() as never)
+    vi.mocked(api.getConversation).mockResolvedValue({ ...makeRecord([], 'Completed'), contextSummaries: [audit] } as never)
+    streaming.message.value = '继续'
+    await streaming.send()
+    expect(selectedConversation.value?.contextSummaries).toEqual([audit])
+  })
+
   it('passes the saved runtime independently from Agent and model selection', async () => {
     const { streaming } = await setup('profile-1', 'saved-opencode')
     vi.mocked(api.streamChat).mockImplementation(() => (async function* () {

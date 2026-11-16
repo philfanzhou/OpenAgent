@@ -1,7 +1,8 @@
 namespace OpenAgent.Contracts.Conversation;
 
 /// <summary>
-/// Summary-compression settings selected by the Agent runtime profile.
+/// Legacy platform summary-compression settings retained for stored profile compatibility.
+/// ACP runtimes manage their own compaction and do not consume these settings.
 /// </summary>
 public sealed class ContextPolicy
 {

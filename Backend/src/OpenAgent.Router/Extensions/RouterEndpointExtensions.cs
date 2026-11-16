@@ -93,25 +93,6 @@ public static class RouterEndpointExtensions
                     requireAuthentication: true))
             .WithName("RouterGetOrDeleteConversation")
             .WithTags("Conversations");
-        app.MapPost(
-            "/api/v1/agent/conversations/{conversationId}/compact",
-            (
-                HttpContext context,
-                IHttpForwarder forwarder,
-                IAgentUserContext userContext,
-                IRouteTable routeTable,
-                ILogger<Program> logger) =>
-                GatewayProxyHandler.HandleAsync(
-                    context,
-                    forwarder,
-                    userContext,
-                    routeTable,
-                    logger,
-                    httpClient,
-                    requestConfig,
-                    requireAuthentication: true))
-            .WithName("RouterCompactConversation")
-            .WithTags("Conversations");
         app.MapGet(
             "/api/v1/agent/conversations/{conversationId}/llm-interactions",
             (

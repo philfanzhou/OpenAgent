@@ -1,3 +1,5 @@
+using OpenAgent.Contracts.Conversation;
+
 namespace OpenAgent.Contracts.Requests;
 
 public enum AgentStreamEventType
@@ -9,7 +11,8 @@ public enum AgentStreamEventType
     Usage,
     /// <summary>update_plan 工具结果后的计划快照事件，Content 为计划 JSON，前端据此渲染任务清单。</summary>
     PlanUpdated,
-    RuntimeStarted
+    RuntimeStarted,
+    Compaction
 }
 
 public sealed record AgentStreamEvent
@@ -20,6 +23,7 @@ public sealed record AgentStreamEvent
     public string? ToolCallId { get; init; }
     public object? ToolArguments { get; init; }
     public TokenUsage? Usage { get; init; }
+    public ContextSummary? Compaction { get; init; }
     public RuntimeExecutionInfo? Runtime { get; init; }
     public string? ModelId { get; init; }
     /// <summary>本轮实际使用的追溯键，随 Usage 事件带出并写入 SSE done 帧。</summary>

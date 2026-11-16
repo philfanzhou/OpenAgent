@@ -216,6 +216,20 @@ public sealed class ConversationMessageMetadataPersistenceTests
             await store.GetRecordAsync("tenant-1", "conversation-1"));
         Assert.Equal(3, updated.Version);
         Assert.Equal(ConversationStatus.Completed, updated.Status);
+        Assert.True(await store.RecordCompressionAsync("tenant-1", "conversation-1", new ContextSummary
+        {
+            CompressionId = "owned", Strategy = "runtime", Trigger = "Runtime", Status = "Succeeded",
+            IsRuntimeEvent = true, RuntimeSessionId = "native-session", RuntimeCompactionId = "native-compaction",
+            TraceId = "runtime-trace", Summary = "retained display summary"
+        }));
+        ConversationRecord replayed = (await store.GetRecordAsync("tenant-1", "conversation-1"))!;
+        ContextSummary audit = Assert.Single(replayed.ContextSummaries);
+        Assert.True(audit.IsRuntimeEvent);
+        Assert.Equal("native-session", audit.RuntimeSessionId);
+        Assert.Equal("native-compaction", audit.RuntimeCompactionId);
+        Assert.Equal("runtime-trace", audit.TraceId);
+        Assert.Equal("retained display summary", audit.Summary);
+        Assert.Equal(3, replayed.Version);
         Assert.Single(updated.ContextSummaries);
         Assert.Single(await store.GetMessagesPagedAsync("tenant-1", "conversation-1", 0, 10));
         Assert.Single(await store.ListConversationsAsync("tenant-1", 0, 10));

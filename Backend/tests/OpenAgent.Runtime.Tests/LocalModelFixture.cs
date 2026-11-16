@@ -99,6 +99,15 @@ internal class OpenCodeFactAttribute : FactAttribute
     }
 }
 
+internal sealed class OpenCodeTheoryAttribute : TheoryAttribute
+{
+    public OpenCodeTheoryAttribute()
+    {
+        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENAGENT_TEST_OPENCODE")))
+            Skip = "Set OPENAGENT_TEST_OPENCODE for real harness tests.";
+    }
+}
+
 internal sealed class OpenCodeUnixFactAttribute : FactAttribute
 {
     public OpenCodeUnixFactAttribute()
