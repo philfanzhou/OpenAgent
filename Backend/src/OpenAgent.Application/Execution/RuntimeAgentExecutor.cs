@@ -86,6 +86,9 @@ public sealed class RuntimeAgentExecutor
             TraceId = string.IsNullOrWhiteSpace(request.TraceId) ? Guid.NewGuid().ToString("N") : request.TraceId
         };
         AuditActivityEnrichment.Publish(turn);
+        // 用户输入立即上标签：即使轮次中途失败，审计台也能看到用户问了什么。
+        AuditActivityEnrichment.PublishContent(request.Query, null);
+        StringBuilder responseText = new();
         AgentRuntimeProfile profile = await _profiles.ResolveAsync(agentId, request.LlmProfileId ?? string.Empty, user, cancellationToken).ConfigureAwait(false);
         if (!string.IsNullOrWhiteSpace(request.RuntimeId))
         {
@@ -145,6 +148,11 @@ public sealed class RuntimeAgentExecutor
                 }
                 else
                 {
+                    // 审计台展示对话内容：回复文本随流式输出累积，轮次收尾时统一上标签。
+                    if (item.Type == AgentStreamEventType.Content && !string.IsNullOrEmpty(item.Content))
+                    {
+                        responseText.Append(item.Content);
+                    }
                     yield return item;
                     // 平台 update_plan 工具的结果同步映射为 PlanUpdated 事件，前端任务
                     // 清单不依赖解析通用工具结果；ACP 原生 plan 更新由驱动事件另行覆盖。
@@ -166,6 +174,8 @@ public sealed class RuntimeAgentExecutor
                 throw;
             }
             // done/usage 只能在保存成功后发送，客户端收到终态即可安全刷新会话。
+            // 收尾时把完整问答写上 Activity：审计台由此展示对话内容（网关先掩码再转发）。
+            AuditActivityEnrichment.PublishContent(request.Query, responseText.ToString());
             yield return terminal ?? new AgentStreamEvent
             {
                 Type = AgentStreamEventType.Usage,

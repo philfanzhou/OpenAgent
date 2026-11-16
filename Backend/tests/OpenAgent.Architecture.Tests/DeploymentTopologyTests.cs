@@ -23,14 +23,17 @@ public class DeploymentTopologyTests
         Path.Combine(RepoRoot, "deploy", "deployment.env.example");
 
     [Fact]
-    public void Compose_ForwardsPerSignalOtlpSettingsToEngineAndRouter()
+    public void Compose_ForwardsAuditOtlpSettingsToEngineAndRouter()
     {
         string compose = File.ReadAllText(ComposePath);
 
-        // Both services export spans; each needs the per-signal endpoint and headers.
-        Assert.Equal(2, CountOccurrences(compose, "OpenTelemetry__TracesEndpoint"));
-        Assert.Equal(2, CountOccurrences(compose, "OpenTelemetry__TracesHeaders"));
-        Assert.Equal(2, CountOccurrences(compose, "OpenTelemetry__Protocol"));
+        // Both services export spans to the audit gateway. The production
+        // deployment uses the .NET SDK's standard OTEL_* environment variables
+        // (proven working end-to-end); each service must carry all three.
+        Assert.Equal(2, CountOccurrences(compose, "OTEL_EXPORTER_OTLP_ENDPOINT"));
+        Assert.Equal(2, CountOccurrences(compose, "OTEL_EXPORTER_OTLP_HEADERS"));
+        Assert.Equal(2, CountOccurrences(compose, "OTEL_EXPORTER_OTLP_PROTOCOL"));
+        Assert.Equal(2, CountOccurrences(compose, "OTEL_TRACES_EXPORTER"));
     }
 
     [Fact]

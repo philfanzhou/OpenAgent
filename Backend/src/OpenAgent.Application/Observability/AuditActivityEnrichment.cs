@@ -39,4 +39,33 @@ public static class AuditActivityEnrichment
 
         activity.SetBaggage(AuditAttributeNames.TraceId, turn.TraceId);
     }
+
+    /// <summary>
+    /// 把对话内容（用户输入与助手回复）写入当前 Activity，供审计平面展示。
+    /// </summary>
+    /// <remarks>
+    /// 属性名沿用 Langfuse OTLP 的观察字段约定（langfuse.observation.input/output），
+    /// 同时被审计网关的内容前缀（langfuse.observation）覆盖——网关会在转发前掩码
+    /// 其中的敏感值并把原文密文入库，因此到达 Langfuse 的内容永远是脱敏后的。
+    ///
+    /// 在轮次结束时调用一次；无活动 Activity 时静默返回。
+    /// </remarks>
+    public static void PublishContent(string? query, string? response)
+    {
+        Activity? activity = Activity.Current;
+        if (activity is null)
+        {
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(query))
+        {
+            activity.SetTag("langfuse.observation.input", query);
+        }
+
+        if (!string.IsNullOrEmpty(response))
+        {
+            activity.SetTag("langfuse.observation.output", response);
+        }
+    }
 }

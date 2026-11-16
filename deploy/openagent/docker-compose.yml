@@ -3,10 +3,10 @@ services:
   engine:
     image: ${OPENAGENT_ENGINE_IMAGE:-openagent-engine:latest}
     environment:
-      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
       ASPNETCORE_URLS: http://+:5208
       # Engine 专用：数据库与 S3；不会传给 Router 或 Chat。
-      ConnectionStrings__OpenAgentDatabase: Host=postgres;Port=5432;Database=openagent;Username=openagent;Password=${OPENAGENT_POSTGRES_PASSWORD:?Set OPENAGENT_POSTGRES_PASSWORD}
+      ConnectionStrings__OpenAgentDatabase: Host=postgres;Port=5432;Database=openagent;Username=openagent;Password=${OPENAGENT_POSTGRES_PASSWORD:-}
       # 默认连接基础设施 Compose 的 Redis；Engine 注册与缓存依赖它。
       ConnectionStrings__Redis: redis:6379
       Database__ApplyMigrationsOnStartup: "true"
@@ -14,14 +14,15 @@ services:
       FileAssets__Enabled: "true"
       # 可选：启用外部 OpenTelemetry Collector。
       # OpenTelemetry__OtlpEndpoint: ${OPENAGENT_OTLP_ENDPOINT:-}
-      # 审计平面：trace 走掩码网关；分信号端点优先于共享的 OtlpEndpoint。
-      OpenTelemetry__TracesEndpoint: ${OPENAGENT_OTLP_TRACES_ENDPOINT:-}
-      OpenTelemetry__TracesHeaders: ${OPENAGENT_OTLP_TRACES_HEADERS:-}
-      OpenTelemetry__Protocol: ${OPENAGENT_OTLP_PROTOCOL:-http/protobuf}
       OpenTelemetry__ServiceName: openagent-engine
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OPENAGENT_OTLP_TRACES_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_HEADERS: ${OPENAGENT_OTLP_TRACES_HEADERS:-}
+      OTEL_EXPORTER_OTLP_PROTOCOL: ${OPENAGENT_OTLP_PROTOCOL:-http/protobuf}
+      OTEL_TRACES_EXPORTER: otlp
       OpenTelemetry__ServiceVersion: ${OPENAGENT_SERVICE_VERSION:-development}
-      # 可选：仅在明确接受跳过证书校验时启用，默认 false。
-      # OPENAGENT_ALLOW_INSECURE_TLS: ${OPENAGENT_ALLOW_INSECURE_TLS:-false}
+      OPENAGENT_ALLOW_INSECURE_TLS: ${OPENAGENT_ALLOW_INSECURE_TLS:-false}
+      # Opencode 跳过 TLS 证书校验（用于自签名证书）
+      NODE_TLS_REJECT_UNAUTHORIZED: "0"
       # 可选覆盖：外部 S3-compatible 服务商按需修改区域和寻址方式。
       # FileAssets__ObjectStorage__Region: ${OPENAGENT_S3_REGION:-us-east-1}
       FileAssets__ObjectStorage__ServiceUrl: ${OPENAGENT_S3_SERVICE_URL:?Set OPENAGENT_S3_SERVICE_URL}
@@ -32,31 +33,25 @@ services:
       # 可选：S3 bucket 不是 openagent-files 时，先创建 bucket 再替换默认值。
       # FileAssets__ObjectStorage__BucketName: ${OPENAGENT_S3_BUCKET:-openagent-files}
       # FileAssets__Share__PublicBaseUrl: ${OPENAGENT_SHARE_PUBLIC_BASE_URL:-}
-      OpenCode__SessionStateRoot: /home/app/openagent-sessions
       Heartbeat__AdvertisedHost: engine
       Heartbeat__AdvertisedPort: "5208"
       # 登录配置：默认 Basic（用户名 admin、租户 development）；与 Router 使用相同账号和租户，
       # 可选 OIDC 覆盖变量也必须两端一致。生产 OIDC 元数据固定 HTTPS，时钟容差固定 60 秒。
       Authentication__AllowDevelopmentAnonymous: "${OPENAGENT_AUTH_ALLOW_DEVELOPMENT_ANONYMOUS:-false}"
-      Authentication__Mode: ${OPENAGENT_AUTH_MODE:-Basic}
-      Authentication__EnableKeycloak: "${OPENAGENT_AUTH_ENABLE_KEYCLOAK:-false}"
+      Authentication__Mode: ${OPENAGENT_AUTH_MODE:-JwtBearer}
+      Authentication__EnableKeycloak: "${OPENAGENT_AUTH_ENABLE_KEYCLOAK:-true}"
       Authentication__EnableApiKey: "${OPENAGENT_AUTH_ENABLE_API_KEY:-false}"
-      Authentication__Authority: ${OPENAGENT_KEYCLOAK_PUBLIC_URL:-https://localhost:58081}/realms/openagent
-      Authentication__MetadataAddress: ${OPENAGENT_KEYCLOAK_METADATA_ADDRESS:-}
+      Authentication__Authority: ${OPENAGENT_KEYCLOAK_PUBLIC_URL:-https://agent.monolithicpower.com:8443}/realms/openagent
+      Authentication__MetadataAddress: https://openagent-infrastructure-keycloak-1:8443/realms/openagent/.well-known/openid-configuration
       Authentication__Audience: ${OPENAGENT_AUTH_AUDIENCE:-openagent-api}
       Authentication__ClientId: ${OPENAGENT_AUTH_CLIENT_ID:-openagent-chat}
       Authentication__RequireHttpsMetadata: "true"
       Authentication__ClockSkewSeconds: "60"
-      Authentication__BasicUsername: ${OPENAGENT_AUTH_BASIC_USERNAME:-admin}
-      Authentication__BasicPassword: ${OPENAGENT_AUTH_BASIC_PASSWORD:?Set OPENAGENT_AUTH_BASIC_PASSWORD}
-      Authentication__BasicTenantId: ${OPENAGENT_AUTH_BASIC_TENANT_ID:-development}
-      # CORS 默认来自 appsettings（当前允许 *）；需要收紧时在此覆盖 AllowedOrigins。
     networks:
       - openagent
       - infrastructure
     volumes:
       - engine-data-protection:/home/app/.aspnet/DataProtection-Keys
-      - engine-sessions:/home/app/openagent-sessions
     healthcheck:
       test: ["CMD-SHELL", "curl --fail --silent http://localhost:5208/health >/dev/null"]
       interval: 5s
@@ -68,31 +63,29 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:5001
+      OPENAGENT_INTERN_DECISION_API_KEY: ${OPENAGENT_INTERN_DECISION_API_KEY:-}
       # 可选：连接外部 Redis / OpenTelemetry 时启用。
       ConnectionStrings__Redis: redis:6379
       # OpenTelemetry__OtlpEndpoint: ${OPENAGENT_OTLP_ENDPOINT:-}
-      OpenTelemetry__TracesEndpoint: ${OPENAGENT_OTLP_TRACES_ENDPOINT:-}
-      OpenTelemetry__TracesHeaders: ${OPENAGENT_OTLP_TRACES_HEADERS:-}
-      OpenTelemetry__Protocol: ${OPENAGENT_OTLP_PROTOCOL:-http/protobuf}
       OpenTelemetry__ServiceName: openagent-router
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OPENAGENT_OTLP_TRACES_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_HEADERS: ${OPENAGENT_OTLP_TRACES_HEADERS:-}
+      OTEL_EXPORTER_OTLP_PROTOCOL: ${OPENAGENT_OTLP_PROTOCOL:-http/protobuf}
+      OTEL_TRACES_EXPORTER: otlp
       OpenTelemetry__ServiceVersion: ${OPENAGENT_SERVICE_VERSION:-development}
       # OPENAGENT_ALLOW_INSECURE_TLS: ${OPENAGENT_ALLOW_INSECURE_TLS:-false}
       RouterSettings__Routing__EngineEndpoint: http://engine:5208
       RouterSettings__IntentRecognition__TimeoutMs: "30000"
-      # 登录配置：默认 Basic；与 Engine 使用相同账号和租户，可选覆盖变量也必须一致。
       Authentication__AllowDevelopmentAnonymous: "${OPENAGENT_AUTH_ALLOW_DEVELOPMENT_ANONYMOUS:-false}"
-      Authentication__Mode: ${OPENAGENT_AUTH_MODE:-Basic}
-      Authentication__EnableKeycloak: "${OPENAGENT_AUTH_ENABLE_KEYCLOAK:-false}"
+      Authentication__Mode: ${OPENAGENT_AUTH_MODE:-JwtBearer}
+      Authentication__EnableKeycloak: "${OPENAGENT_AUTH_ENABLE_KEYCLOAK:-true}"
       Authentication__EnableApiKey: "${OPENAGENT_AUTH_ENABLE_API_KEY:-false}"
-      Authentication__Authority: ${OPENAGENT_KEYCLOAK_PUBLIC_URL:-https://localhost:58081}/realms/openagent
-      Authentication__MetadataAddress: ${OPENAGENT_KEYCLOAK_METADATA_ADDRESS:-}
+      Authentication__Authority: ${OPENAGENT_KEYCLOAK_PUBLIC_URL:-https://agent.monolithicpower.com:8443}/realms/openagent
+      Authentication__MetadataAddress: https://openagent-infrastructure-keycloak-1:8443/realms/openagent/.well-known/openid-configuration
       Authentication__Audience: ${OPENAGENT_AUTH_AUDIENCE:-openagent-api}
       Authentication__ClientId: ${OPENAGENT_AUTH_CLIENT_ID:-openagent-chat}
       Authentication__RequireHttpsMetadata: "true"
       Authentication__ClockSkewSeconds: "60"
-      Authentication__BasicUsername: ${OPENAGENT_AUTH_BASIC_USERNAME:-admin}
-      Authentication__BasicPassword: ${OPENAGENT_AUTH_BASIC_PASSWORD:?Set OPENAGENT_AUTH_BASIC_PASSWORD}
-      Authentication__BasicTenantId: ${OPENAGENT_AUTH_BASIC_TENANT_ID:-development}
     depends_on:
       engine:
         condition: service_healthy
@@ -148,4 +141,3 @@ networks:
 
 volumes:
   engine-data-protection:
-  engine-sessions:
