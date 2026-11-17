@@ -12,6 +12,7 @@ services:
     volumes:
       - ./default.conf.template:/etc/nginx/templates/default.conf.template:ro
       - ${OPENAGENT_TLS_CERT_DIR}:/etc/nginx/tls:ro
+      - ${OPENAGENT_MAINTENANCE_DIR}:/etc/nginx/maintenance:ro
     networks:
       - openagent
 
