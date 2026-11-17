@@ -49,6 +49,7 @@ Engine/Router 另加入既有 `openagent-infrastructure` 网络。项目、网�
 应用的三个文件直接填写 .NET 原生 `__` 配置，由 Compose `env_file` 加载；不再有顶层 `deploy/.env` 或 S3/数据库别名转译。
 应用 Compose 显式使用 `deploy/openagent/.env` 作为 CLI 环境文件，避免隐式读取工作目录中的其他 `.env`。
 Nginx 的 `.env` 同时供其 Compose `--env-file`（端口、挂载）与容器 `env_file`（模板）使用，部署脚本仅读它做证书预检。
+端口变量只控制宿主机发布端口；Nginx 容器内固定监听 Chat `8081`、Router `8082`、Engine `8083`，修改外部端口无需改模板。
 原生服务值可包含连接串分号；含 `$`、`#` 的值用单引号包裹，不要用 shell source 应用文件。
 修改运行配置后重新部署即可生效。共享认证与遥测字段仅注入 Engine/Router，数据库与 S3 密钥只注入 Engine。
 
@@ -79,8 +80,10 @@ Windows 在 WSL 中执行同一套 Bash 脚本，不再维护重复 PowerShell �
 
 ## 证书、数据卷与迁移
 
-为兼容 infrastructure，默认证书仍在 `deploy/openagent/nginx/certs/tls.crt` 和 `tls.key`。
-`OPENAGENT_TLS_CERT_DIR` 在 Nginx 文件中直接填写，示例为 `../openagent/nginx/certs`，相对路径以 `deploy/nginx` 为基准；也可填写绝对路径。
+Nginx 默认证书放在 `deploy/nginx/certs/tls.crt` 和 `tls.key`。
+`OPENAGENT_TLS_CERT_DIR=./certs` 相对 `deploy/nginx` 解析，也可直接填写绝对路径。
+`infrastructure` 配置保持不变，Keycloak 仍从 `deploy/openagent/nginx/certs` 读取证书。
+已有部署若继续共用旧目录，将 Nginx 的证书目录设置为 `../openagent/nginx/certs`；使用新默认目录时，为 Keycloak 在旧目录单独准备有效证书。
 终端、应用及 IdP 必须信任所用 CA。
 Engine 的 `engine-data-protection` 卷继续挂载到 `/home/app/.aspnet/DataProtection-Keys`，保持 dev 非 root 镜像路径。
 保留该卷及原密钥，不会自动迁移数据；代码执行由 OpenCode 原生工具负责，不配置 Runner 服务或密钥。

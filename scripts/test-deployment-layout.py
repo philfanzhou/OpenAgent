@@ -71,7 +71,13 @@ class DeploymentLayoutTests(DeploymentFixture):
         self.assertEqual(app['volumes']['engine-data-protection']['name'], 'openagent-app_engine-data-protection')
         mount = app['services']['engine']['volumes'][0]
         self.assertEqual(mount['target'], '/home/app/.aspnet/DataProtection-Keys')
-        self.assertNotIn('depends_on', nginx['services']['nginx'])
+        nginx_service = nginx['services']['nginx']
+        self.assertEqual(nginx_service['volumes'][1]['source'], str(self.tmp / 'nginx/certs'))
+        changed = self.config('nginx', {'OPENAGENT_CHAT_PORT': '18081', 'OPENAGENT_ROUTER_PORT': '18082',
+                                         'OPENAGENT_ENGINE_PORT': '18083'})['services']['nginx']
+        self.assertEqual({(port['target'], str(port['published'])) for port in changed['ports']},
+                         {(8081, '18081'), (8082, '18082'), (8083, '18083')})
+        self.assertNotIn('depends_on', nginx_service)
         self.assertFalse(any(service.get('ports') for service in app['services'].values()))
 
     def test_storage_values_are_configured_directly_without_aliases(self):
@@ -155,8 +161,8 @@ class NginxDeploymentTests(DeploymentFixture):
             for name, port in zip(('CHAT', 'ROUTER', 'ENGINE'), self.ports):
                 env_file.write(f'\nOPENAGENT_{name}_PORT={port}\n')
         subprocess.run(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1',
-                        '-subj', '/CN=localhost', '-keyout', str(self.tmp / 'certs/tls.key'),
-                        '-out', str(self.tmp / 'certs/tls.crt')], check=True, capture_output=True)
+                        '-subj', '/CN=localhost', '-keyout', str(self.tmp / 'nginx/certs/tls.key'),
+                        '-out', str(self.tmp / 'nginx/certs/tls.crt')], check=True, capture_output=True)
         self.docker('compose', '--project-name', self.prefix, '--env-file', str(self.env_file),
                     '--file', str(compose), 'up', '--detach', '--pull', 'never', '--wait')
         self.nginx = self.prefix + '-nginx-1'

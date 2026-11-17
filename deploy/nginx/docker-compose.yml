@@ -6,12 +6,11 @@ services:
     env_file:
       - ./.env
     ports:
-      - "${OPENAGENT_CHAT_PORT}:${OPENAGENT_CHAT_PORT}"
-      - "${OPENAGENT_ROUTER_PORT}:${OPENAGENT_ROUTER_PORT}"
-      - "${OPENAGENT_ENGINE_PORT}:${OPENAGENT_ENGINE_PORT}"
+      - "${OPENAGENT_CHAT_PORT}:8081"
+      - "${OPENAGENT_ROUTER_PORT}:8082"
+      - "${OPENAGENT_ENGINE_PORT}:8083"
     volumes:
       - ./default.conf.template:/etc/nginx/templates/default.conf.template:ro
-      # Keep the infrastructure certificate location until that stack is migrated.
       - ${OPENAGENT_TLS_CERT_DIR}:/etc/nginx/tls:ro
     networks:
       - openagent

@@ -42,7 +42,7 @@ class DeploymentFixture(unittest.TestCase):
         shutil.copyfile(ROOT / 'Frontend/OpenAgent.Chat/Dockerfile', target / 'Dockerfile')
         shutil.copyfile(ROOT / 'Backend/opencode.version', self.checkout / 'Backend/opencode.version')
         subprocess.run([str(self.checkout / 'scripts/deploy.sh'), 'init'], check=True, capture_output=True)
-        certs = self.tmp / 'certs'
+        certs = self.tmp / 'nginx/certs'
         certs.mkdir()
         for name in ('tls.crt', 'tls.key'):
             (certs / name).write_text('test fixture, not a certificate')
@@ -52,8 +52,6 @@ class DeploymentFixture(unittest.TestCase):
                          "FileAssets__ObjectStorage__ServiceUrl=http://minio:9000\n"
                          "FileAssets__ObjectStorage__AccessKey=test-access\n"
                          "FileAssets__ObjectStorage__SecretKey='test-s3-$literal#value'\n")
-        with (self.tmp / 'nginx/.env').open('a') as stream:
-            stream.write(f"\nOPENAGENT_TLS_CERT_DIR='{certs}'\n")
 
     def config(self, stack, overrides=None):
         output = subprocess.check_output(
@@ -172,9 +170,9 @@ if args[0] == 'compose':
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse(any('openagent-app' in call for call in calls))
 
-    def test_nginx_certificate_path_is_relative_to_its_compose_directory(self):
+    def test_nginx_certificate_path_can_be_absolute(self):
         with (self.tmp / 'nginx/.env').open('a') as stream:
-            stream.write('\nOPENAGENT_TLS_CERT_DIR=../certs\n')
+            stream.write(f"\nOPENAGENT_TLS_CERT_DIR='{self.tmp / 'nginx/certs'}'\n")
         result, calls = self.run_script('deploy.sh', 'nginx')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue(any('up' in call for call in calls))

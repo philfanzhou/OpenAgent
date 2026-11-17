@@ -24,9 +24,9 @@ scripts/deploy.sh
 - 管理员：默认值为 `admin/admin`，仅适用于本地临时环境；生产环境请覆盖 `OPENAGENT_KEYCLOAK_ADMIN_USERNAME` / `OPENAGENT_KEYCLOAK_ADMIN_PASSWORD`
 - 用户和租户组织：不在 Realm 文件中预置，需要在管理台手动创建
 
-公开地址固定使用 HTTPS。将 PEM 证书 `tls.crt`、私钥 `tls.key` 放入与 Nginx 共用的
-`deploy/openagent/nginx/certs/` 目录；应用 Nginx 和 Keycloak 共用该目录。
-自定义位置时，在 Nginx 配置中直接填写 `OPENAGENT_TLS_CERT_DIR`（相对路径以该 Compose 目录为基准，或使用绝对路径），基础设施单独使用相同证书目录。
+公开地址固定使用 HTTPS。基础设施配置保持不变，Keycloak 的 PEM 证书 `tls.crt`、私钥 `tls.key`
+仍放在 `deploy/openagent/nginx/certs/`。Nginx 已迁至独立目录，默认使用 `deploy/nginx/certs/`；
+共用旧证书目录或自定义位置时，按[部署指南](../operations/deployment.md#证书数据卷与迁移)设置 Nginx。
 Keycloak 容器内 HTTPS 端口固定为 `8443`，Router/Engine 仍通过容器网络内 HTTP discovery 访问 Keycloak。
 
 Realm、SPA Client、API audience、`tenant_id` claim 和 Organization 能力由 [openagent-realm.json](../../deploy/infrastructure/keycloak/realm/openagent-realm.json) 导入；用户、密码、邮箱和租户组织由业务管理员手动维护。
