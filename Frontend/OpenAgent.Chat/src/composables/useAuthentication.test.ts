@@ -7,7 +7,7 @@ import type { AuthConfig, CurrentUserContext } from '../shared/contracts/types'
 vi.mock('element-plus', () => ({ ElMessage: { success: vi.fn() } }))
 
 const config: AuthConfig = {
-  mode: 'Basic', development: true, password: { enabled: true, endpoint: '/api/v1/auth/password/token' },
+  mode: 'Basic', password: { enabled: true, endpoint: '/api/v1/auth/password/token' },
   anonymous: { enabled: false },
   oidc: { authority: '', clientId: '', audience: '', scopes: [] },
 }
@@ -36,7 +36,7 @@ beforeEach(() => {
   vi.stubGlobal('document', { title: 'OpenAgent' })
   const location = { pathname: '/', hash: '', search: '' }
   vi.stubGlobal('window', {
-    location, addEventListener: vi.fn(), removeEventListener: vi.fn(),
+    location, addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
     history: { replaceState: vi.fn((_data: unknown, _title: string, value: string) => {
       const url = new URL(value, 'https://chat.example')
       location.hash = url.hash
@@ -131,10 +131,34 @@ describe('connection startup', () => {
     const { state, options } = authentication()
     await state.updateLoginConnection({ mode: 'router', routerUrl: 'https://remote.example', engineUrl: '', tenantId: '' })
     expect(options.loadWorkspace).not.toHaveBeenCalled()
-    await state.loginWithPassword({ username: 'admin', password: 'admin' })
+    await state.loginWithPassword({ username: 'admin', password: 'server-configured-password' })
     expect(state.authView.value).toBe('workspace')
     expect(state.tenantId.value).toBe('tenant-1')
     expect(options.loadWorkspace).toHaveBeenCalledOnce()
     expect(localStorage.getItem('openagent.auth.access-token')).toBeNull()
+  })
+
+  it('reports the client-side rejection reason when password login is not offered', async () => {
+    const disabledConfig: AuthConfig = { ...config, mode: 'JwtBearer', password: { ...config.password, enabled: false } }
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(disabledConfig)))
+    vi.stubGlobal('fetch', fetchMock)
+    const { state } = authentication()
+    await state.updateLoginConnection({ mode: 'router', routerUrl: 'https://remote.example', engineUrl: '', tenantId: '' })
+    await state.loginWithPassword({ username: 'admin', password: 'admin' })
+    expect(state.authError.value).toBe('Basic 密码登录未启用')
+    expect(fetchMock).toHaveBeenCalledExactlyOnceWith('https://remote.example/api/v1/auth/config', expect.anything())
+  })
+
+  it('keeps the generic failure message for server-rejected credentials', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(config)))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ detail: 'Invalid username or password.' }), { status: 401 }))
+    vi.stubGlobal('fetch', fetchMock)
+    const { state, options } = authentication()
+    await state.updateLoginConnection({ mode: 'router', routerUrl: 'https://remote.example', engineUrl: '', tenantId: '' })
+    await state.loginWithPassword({ username: 'admin', password: 'wrong-password' })
+    expect(state.authError.value).toBe('登录失败，请检查连接、账号和租户后重试。')
+    expect(state.authView.value).toBe('login')
+    expect(options.loadWorkspace).not.toHaveBeenCalled()
   })
 })

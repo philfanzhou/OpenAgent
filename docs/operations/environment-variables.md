@@ -74,20 +74,20 @@ Compose 部署按应用 Compose 中的 OIDC 注释启用（取消 `Authenticatio
 
 ## 4. Basic 认证（应用默认，可按部署显式启用）
 
-Basic 是部署默认认证方式，任意环境可用；Production 下必须配置密码（`Authentication__BasicPassword`，缺失即启动失败），用户名默认 `admin`、租户默认 `development`，Engine 与 Router 共用。**配置密码后内置开发账号（`admin/admin`、`test/test`）即失效**；仅 Development 且未配置密码时才回退到内置账号（`Backend/src/OpenAgent.Engine/Hosting/Authentication/DevelopmentCredentials.cs`，固定时间比较）。
+Basic 是部署默认认证方式，内置双账号 `admin` / `test`（默认密码与用户名相同），任意环境可用，不区分 Development 与 Production，Engine 与 Router 共用（`Backend/src/OpenAgent.Engine/Hosting/Authentication/BasicCredentials.cs`）。设置 `Authentication__BasicPassword` 后两个账号共用该密码，覆盖内置密码（固定时间比较）；租户默认 `development`。
 
 | 环境变量 | 默认 | 说明 |
 |---|---|---|
-| `Authentication__Mode=Basic` | 部署默认 | Production 可用，无需 Development |
-| `Authentication__BasicPassword` | 空 | **Production 必填**（缺失启动失败）；直接填写共享文件中的原生字段 |
-| `Authentication__BasicUsername` / `__BasicTenantId` | `admin` / `development` | Engine 与 Router 必须一致；含 `:` 的用户名被拒绝 |
+| `Authentication__Mode=Basic` | 部署默认 | 任意环境可用，无需 Development |
+| `Authentication__BasicPassword` | 空 | 可选；设置后覆盖内置双账号密码（`admin` 与 `test` 共用该密码） |
+| `Authentication__BasicTenantId` | `development` | Basic 登录租户；Engine 与 Router 必须一致 |
 | `Authentication__EnableKeycloak=false` | `false` | 隐藏前端 OIDC 登录入口，只留账号密码表单 |
 | `Authentication__AllowDevelopmentAnonymous` | 默认 false；Development 可另行覆盖 | `true` 时无凭据请求认证为 `development-user`；`false` 时必须带 Basic 头 |
 | `Authentication__DevelopmentUserId` / `__DevelopmentTenantId` | `development-user` / `development` | 匿名身份与租户 |
 
 Basic 模式下 `POST /api/v1/auth/password/token`（`Mode=Basic` 时映射）返回 `base64(user:pass)` 供前端当 AccessToken 使用。
 
-本部署示例使用 JWT。如需 Basic，在共享 `.env` 中显式设置 `Authentication__Mode=Basic`、`Authentication__EnableKeycloak=false` 和 `Authentication__BasicPassword`；匿名访问默认关闭。
+本部署示例使用 JWT。如需 Basic，在共享 `.env` 中显式设置 `Authentication__Mode=Basic`、`Authentication__EnableKeycloak=false`；可选设置 `Authentication__BasicPassword` 覆盖内置双账号密码；匿名访问默认关闭。
 
 ## 5. .NET 配置环境变量参考
 
@@ -272,7 +272,7 @@ Chat 只使用浏览器中保存的连接，不读取前端环境变量或部署
 | 变量 | 适用场景 | 缺失 / 非法后果 |
 |---|---|---|
 | `Authentication__Authority` / `__Audience` / `__ClientId` | `Mode=JwtBearer`（可选启用） | Engine 与 Router **启动失败**；生产 json 三者为空，必须经 `.env` 或直接环境变量提供 |
-| `Authentication__Mode=Basic` 且非 Development 且 `__BasicPassword` 为空 | — | 启动失败（Production 必须配置密码；用户名含 `:` 或租户为空同样拒绝启动） |
+| `Authentication__Mode=Basic` 且 `__BasicTenantId` 为空 | `Mode=Basic` | 启动失败（Basic 登录租户不能为空；内置双账号始终可用） |
 | `RequireHttpsMetadata=false` 且（非 Development 或 Authority 非 localhost） | 本地 HTTP 联调外 | 启动失败 |
 | `ConnectionStrings__OpenAgentDatabase` | Engine | 键完全缺失 → 启动异常；保留默认值 → 只连本机库（生产不可用） |
 | `FileAssets__ObjectStorage__*` | `FileAssets__Enabled=true` | 桶名/区域为空或凭证不成对 → 启动失败（默认值已满足） |

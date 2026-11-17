@@ -10,18 +10,10 @@ internal sealed class AgentAuthenticationOptionsValidator(IHostEnvironment? envi
     {
         if (options.Mode == AgentAuthenticationMode.Basic)
         {
-            if (string.IsNullOrWhiteSpace(options.BasicUsername) || options.BasicUsername.Contains(':')
-                || string.IsNullOrWhiteSpace(options.BasicTenantId))
+            if (string.IsNullOrWhiteSpace(options.BasicTenantId))
             {
                 return ValidateOptionsResult.Fail(
-                    "Basic authentication requires a username without ':' and a tenant ID.");
-            }
-
-            if (environment != null && !environment.IsDevelopment()
-                && string.IsNullOrWhiteSpace(options.BasicPassword))
-            {
-                return ValidateOptionsResult.Fail(
-                    "Authentication:BasicPassword is required outside Development.");
+                    "Basic authentication requires a tenant ID.");
             }
         }
 

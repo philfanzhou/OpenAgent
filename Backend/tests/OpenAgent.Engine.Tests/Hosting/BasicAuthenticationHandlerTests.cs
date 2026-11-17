@@ -6,7 +6,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Options;
 using OpenAgent.Engine.Hosting;
 using OpenAgent.Engine.Hosting.Authentication;
 using OpenAgent.Engine.Hosting.Security;
@@ -27,7 +26,7 @@ public class BasicAuthenticationHandlerTests
 
         Assert.True(result.Succeeded);
         Assert.Equal("admin", result.Principal?.FindFirst("sub")?.Value);
-        Assert.Equal("development", result.Principal?.FindFirst("tenant_id")?.Value);
+        Assert.Equal("tenant-a", result.Principal?.FindFirst("tenant_id")?.Value);
     }
 
     [Fact]
@@ -55,26 +54,39 @@ public class BasicAuthenticationHandlerTests
             BasicAuthenticationHandler.SchemeName);
 
         Assert.True(result.Succeeded);
-        Assert.Equal("development", result.Principal?.FindFirst("tenant_id")?.Value);
-    }
-
-    [Fact]
-    public void AuthenticationOptions_ProductionBasicWithoutPassword_IsRejected()
-    {
-        using ServiceProvider provider = CreateProvider(Environments.Production);
-
-        OptionsValidationException exception = Assert.Throws<OptionsValidationException>(() =>
-            provider.GetRequiredService<IOptions<AgentAuthenticationOptions>>().Value);
-        Assert.Contains("BasicPassword", exception.Message, StringComparison.Ordinal);
+        Assert.Equal("tenant-a", result.Principal?.FindFirst("tenant_id")?.Value);
     }
 
     [Theory]
-    [InlineData("Production", "operator", "configured:password", true)]
-    [InlineData("Production", "operator", "wrong-password", false)]
+    [InlineData("Production", "admin", "admin", true)]
+    [InlineData("Production", "test", "test", true)]
+    [InlineData("Development", "admin", "wrong-password", false)]
+    [InlineData("Production", "operator", "admin", false)]
+    public async Task AuthenticateAsync_BuiltInAccounts_WorkInAnyEnvironment(
+        string environment, string username, string password, bool succeeds)
+    {
+        using ServiceProvider provider = CreateProvider(environment);
+        var context = new DefaultHttpContext { RequestServices = provider };
+        context.Request.Headers.Authorization =
+            $"Basic {Convert.ToBase64String(Encoding.UTF8.GetBytes($"{username}:{password}"))}";
+
+        AuthenticateResult result = await context.AuthenticateAsync(BasicAuthenticationHandler.SchemeName);
+
+        Assert.Equal(succeeds, result.Succeeded);
+        if (succeeds)
+        {
+            Assert.Equal(username, result.Principal?.FindFirst("sub")?.Value);
+            Assert.Equal("tenant-a", result.Principal?.FindFirst("tenant_id")?.Value);
+        }
+    }
+
+    [Theory]
+    [InlineData("Production", "admin", "configured:password", true)]
+    [InlineData("Production", "test", "configured:password", true)]
     [InlineData("Production", "admin", "admin", false)]
-    [InlineData("Development", "test", "test", false)]
-    [InlineData("Development", "operator", "configured:password", true)]
-    public async Task AuthenticateAsync_ConfiguredCredentials_RejectsOtherAccounts(
+    [InlineData("Development", "admin", "admin", false)]
+    [InlineData("Production", "operator", "configured:password", false)]
+    public async Task AuthenticateAsync_ConfiguredPassword_OverridesBothBuiltInAccounts(
         string environment, string username, string password, bool succeeds)
     {
         using ServiceProvider provider = CreateProvider(environment, "configured:password");
@@ -88,7 +100,7 @@ public class BasicAuthenticationHandlerTests
         Assert.Equal(succeeds, result.Succeeded);
         if (succeeds)
         {
-            Assert.Equal("operator", result.Principal?.FindFirst("sub")?.Value);
+            Assert.Equal(username, result.Principal?.FindFirst("sub")?.Value);
             Assert.Equal("tenant-a", result.Principal?.FindFirst("tenant_id")?.Value);
         }
     }
@@ -112,7 +124,6 @@ public class BasicAuthenticationHandlerTests
             {
                 ["Authentication:Mode"] = "Basic",
                 ["Authentication:AllowDevelopmentAnonymous"] = allowAnonymous.ToString(),
-                ["Authentication:BasicUsername"] = "operator",
                 ["Authentication:BasicPassword"] = password,
                 ["Authentication:BasicTenantId"] = "tenant-a"
             })

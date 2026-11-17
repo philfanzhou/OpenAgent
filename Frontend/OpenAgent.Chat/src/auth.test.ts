@@ -15,7 +15,6 @@ class MemoryStorage implements Storage {
 
 const config: AuthConfig = {
   mode: 'JwtBearer',
-  development: false,
   password: { enabled: false, endpoint: '/api/v1/auth/password/token' },
   anonymous: { enabled: false },
   oidc: {
