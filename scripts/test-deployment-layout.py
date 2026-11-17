@@ -31,7 +31,7 @@ class DeploymentLayoutTests(DeploymentFixture):
         self.assertEqual(app['networks']['infrastructure']['name'], 'openagent-infrastructure')
         for name in ('engine', 'router', 'chat'):
             self.assertEqual(app['services'][name]['image'], 'openagent-' + name + ':latest')
-        self.assertEqual(nginx['services']['nginx']['image'], 'nginx:1.28-alpine')
+        self.assertEqual(nginx['services']['nginx']['image'], 'nginx:latest')
 
     def test_shared_configuration_and_secret_scoping(self):
         services = self.config('openagent')['services']

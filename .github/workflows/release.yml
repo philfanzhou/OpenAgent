@@ -157,7 +157,7 @@ jobs:
             - ghcr.io/${owner}/openagent-chat:${platform_version}
 
           使用方式见 docs/operations/deployment.md。将上面的三个发布镜像分别 retag 为固定本地名称
-          openagent-engine:latest、openagent-router:latest、openagent-chat:latest，并准备 nginx:1.28-alpine。
+          openagent-engine:latest、openagent-router:latest、openagent-chat:latest，并准备 nginx:latest。
           先运行 scripts/deploy.sh init，填写各服务的 .env 与共享认证配置，再运行 scripts/deploy.sh。
           Nginx 优先创建网络，业务随后加入；Chat 的 Router/Engine 连接在浏览器中配置。
           升级 OpenCode 时先修改 Backend/opencode.version，并以

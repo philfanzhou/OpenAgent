@@ -1,7 +1,7 @@
 name: openagent-nginx
 services:
   nginx:
-    image: nginx:1.28-alpine
+    image: nginx:latest
     restart: unless-stopped
     env_file:
       - ./.env

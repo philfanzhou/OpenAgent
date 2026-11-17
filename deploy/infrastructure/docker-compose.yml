@@ -85,7 +85,7 @@ services:
       OPENAGENT_CHAT_PUBLIC_URL: ${OPENAGENT_CHAT_PUBLIC_URL:-https://localhost:8081}
     volumes:
       - ./keycloak/realm:/opt/keycloak/data/import:ro
-      - ../openagent/nginx/certs:/opt/keycloak/conf/certs:ro
+      - ../nginx/certs:/opt/keycloak/conf/certs:ro
       - keycloak-data:/opt/keycloak/data
     ports:
       - "${OPENAGENT_KEYCLOAK_PORT:-58081}:8443"
