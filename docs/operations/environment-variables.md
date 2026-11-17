@@ -8,7 +8,7 @@
 
 - 优先级从低到高：`appsettings.json` → `appsettings.{Environment}.json` → User Secrets（仅 Development）→ **全部环境变量** → 命令令行。
 - 环境变量用双下划线 `__` 表示配置层级，等价于 `:`。例如 `Authentication__Mode` 覆盖 `appsettings.json` 的 `Authentication:Mode`。数组用 `节__键__0`、`节__键__1` 形式。
-- 不存在 `OPENAGENT__SECTION__KEY` 之类的应用前缀；`deploy/` 里的 `OPENAGENT_*` 是 **Compose/脚本插值变量**，由 compose 文件转换成 `节__键` 形式再注入容器（见第 6 节）。
+- 不存在 `OPENAGENT__SECTION__KEY` 之类的应用前缀；`deploy/` 里的 `OPENAGENT_*` 是 **Compose/脚本插值变量**，在服务 env_file 中展开为原生配置后注入容器（见第 6 节）。
 
 少数变量绕过 IConfiguration 直读：`OTEL_EXPORTER_OTLP_ENDPOINT`（OTLP 回退地址）、`ASPNETCORE_URLS` / `ASPNETCORE_HTTP_PORTS`（心跳端口探测）、`PATH` / `PATHEXT` 等（OpenCode 子进程可执行解析与最小环境透传）。
 
@@ -17,8 +17,8 @@
 | 场景 | 需要设置的环境变量 |
 |---|---|
 | 本地裸机开发（`dotnet run`） | **零配置**。Development 配置默认 Basic 匿名登录、连接本机 PostgreSQL（`localhost:5432`，账号 openagent/openagent）。前置条件：本机可用的 PostgreSQL 与 `opencode` 可执行；否则见第 5.2 / 5.6 节覆盖 |
-| 本地 Docker 全栈 | 复制 `deploy/deployment.env.example` 为 `.env`，填写 5 项必填凭据；其余走 Compose 兜底。默认 Basic + Production，无需认证变量 |
-| 内网/生产部署 | `.env` 填写 5 项必填凭据；按需覆盖端口/镜像/OTLP（见对应节）。默认 Basic；企业 IdP 按第 3 节启用 |
+| 本地 Docker 全栈 | 运行 `scripts/deploy.sh init`，填写公共凭据并检查共享运行配置；当前 dev 部署选择 Production + JWT/Keycloak |
+| 内网/生产部署 | 填写公共 `.env` 与 Engine/Router 共享 `.env`；端口和运行参数可配置，项目/网络/镜像名称固定，见第 6 节 |
 | 启用代码执行 | 平台无独立沙箱：经 `OpenCode__AllowedNativeTools__0..n` 放行 OpenCode 原生工具（如 `read`/`edit`/`write`/`bash`），见第 5.6 节与 [OpenCode 运行时](../integrations/opencode-runtime.md) |
 | 外接 S3/MinIO | `OPENAGENT_S3_SERVICE_URL`、`OPENAGENT_S3_BUCKET`、`OPENAGENT_S3_ACCESS_KEY`、`OPENAGENT_S3_SECRET_KEY`（等价 `FileAssets__ObjectStorage__*`） |
 | 接入日志中心 | `.env` 设置 `OPENAGENT_OTLP_ENDPOINT`（OTLP gRPC/HTTP 地址）；规则见 [可观测性](../overview/Observability.md) |
@@ -237,68 +237,27 @@ Redis 行为细节见 [Redis 集成](../integrations/redis-engine.md)。
 | `OPENAGENT_ALLOW_INSECURE_TLS` | `false` | 部署逃生门：跳过 LLM、S3、MCP、RAG、OIDC 回调等出站请求的 TLS 证书校验。仅自签证书受控场景使用，生产优先安装内部 CA |
 | `Secrets__{tenantId}__{name}` | 无 | 租户密钥的配置引用形式（`Backend/src/OpenAgent.Engine/Config/ConfigurationSecretResolver.cs`） |
 
-## 6. Compose 部署变量（`OPENAGENT_*`）
+## 6. Compose 部署配置
 
-这一层变量只在 `deploy/` 的 Compose 文件与脚本中插值（`.env` 文件），由 Compose 转换成第 5 节的 `节__键` 注入容器，或供基础设施容器自身使用。模板见 `deploy/deployment.env.example`。
+部署文件通过 env_file 注入变量，项目/网络/镜像名称固定。公共示例为 `deploy/.env.example`；
+Engine/Router 共用 `deploy/openagent/.env`，专用参数在各自子目录。所有可选项均注释，完整流程见 [部署指南](deployment.md)。
 
-### 6.1 认证与 Keycloak
-
-| 变量 | 默认 | 注入为 / 用途 |
+| 位置 | 必填或启用的部署选择 | 可选项 |
 |---|---|---|
-| `OPENAGENT_AUTH_MODE` | `JwtBearer` | engine/router 的 `Authentication__Mode` |
-| `OPENAGENT_AUTH_ENABLE_KEYCLOAK` / `OPENAGENT_AUTH_ENABLE_API_KEY` | `true` / `false` | 对应 `Authentication__Enable*` |
-| `OPENAGENT_AUTH_ALLOW_DEVELOPMENT_ANONYMOUS` | `false` | `Authentication__AllowDevelopmentAnonymous` |
-| `OPENAGENT_AUTH_AUDIENCE` / `OPENAGENT_AUTH_CLIENT_ID` | `openagent-api` / `openagent-chat` | `Authentication__Audience` / `ClientId` |
-| `OPENAGENT_AUTH_REQUIRE_HTTPS_METADATA` / `OPENAGENT_AUTH_CLOCK_SKEW_SECONDS` | `false` / `60` | 对应 `Authentication__*` |
-| `OPENAGENT_KEYCLOAK_PUBLIC_URL` | 由 `OPENAGENT_PUBLIC_HOST`+`OPENAGENT_KEYCLOAK_PORT` 派生 | 双重用途：派生 `Authentication__Authority` 与 Keycloak 容器 `KC_HOSTNAME` |
-| `OPENAGENT_KEYCLOAK_METADATA_ADDRESS` | `http://keycloak:8080/realms/openagent/.well-known/openid-configuration` | `Authentication__MetadataAddress` |
-| `OPENAGENT_KEYCLOAK_ADMIN_USERNAME` / `OPENAGENT_KEYCLOAK_ADMIN_PASSWORD` | `admin` / `admin` | Keycloak 容器 `KC_BOOTSTRAP_ADMIN_*`，生产必改 |
-| `OPENAGENT_KEYCLOAK_COMMAND` | `start --import-realm` | Keycloak 启动命令；生产用 `start`（首次导入后） |
-| `OPENAGENT_KEYCLOAK_BACKCHANNEL_DYNAMIC` / `OPENAGENT_KEYCLOAK_HTTP_ENABLED` | `true` / `true` | Keycloak 容器 `KC_HOSTNAME_BACKCHANNEL_DYNAMIC` / `KC_HTTP_ENABLED` |
+| `deploy/.env` | `OPENAGENT_PUBLIC_HOST`、PostgreSQL 密码、S3 地址及 AK/SK | 入口端口、IdP 公开基地址、证书目录、上传上限 |
+| `deploy/openagent/.env` | Production、Redis、JWT/Keycloak、Issuer/discovery、Audience/ClientId | Basic 配置、API Key、CORS、OTLP 通用/信号专用出口及令牌、遥测版本、出站 TLS |
+| `engine/.env` | 数据库连接、迁移开关、S3 文件资产、心跳 | bucket/region、分享基地址、Node TLS/附加 CA、监听地址、服务名 |
+| `router/.env` | Engine 内部地址、意图识别超时 | Intern-Decision API Key、监听地址、服务名 |
+| `deploy/nginx/.env` | 模板的 server name、端口与上传上限 | 值从公共文件派生 |
 
-### 6.2 数据库 / Redis / S3
+公共凭据保持 `OPENAGENT_*` 包装；运行参数直接使用第 5 节的 .NET `节__键` 或标准 `OTEL_*`，不再逐项写在 Compose environment 中。
+示例：旧 `OPENAGENT_AUTH_MODE` 迁到共享文件 `Authentication__Mode`；旧审计地址/令牌迁到标准 OTEL 出口/headers，
+可按信号分离 traces、logs、metrics；旧 `OPENAGENT_INTERN_DECISION_API_KEY` 移到 Router 文件。
+当前部署保留 dev Compose 的 JWT 选择；应用 appsettings 自身默认 Basic，使用 Basic 时需显式设置密码。
 
-| 变量 | 默认 | 用途 |
-|---|---|---|
-| `OPENAGENT_POSTGRES_DB` / `__USER` / `__PASSWORD` | `openagent` / `openagent` / `openagent` | 同时拼进 engine 连接串与 PostgreSQL 容器 `POSTGRES_*`；生产必改密码 |
-| `OPENAGENT_POSTGRES_HOST` / `__INTERNAL_PORT` | `postgres` / `5432` | engine 连接串的目标地址（容器网络内） |
-| `OPENAGENT_POSTGRES_PORT` | `5432` | PostgreSQL 宿主机发布端口 |
-| `OPENAGENT_REDIS_HOST` / `__INTERNAL_PORT` | `redis` / `6379` | engine/router 的 `ConnectionStrings__Redis` |
-| `OPENAGENT_REDIS_PORT` | `6379` | Redis 宿主机发布端口 |
-| `OPENAGENT_S3_SERVICE_URL` / `OPENAGENT_S3_BUCKET` / `OPENAGENT_S3_ACCESS_KEY` / `OPENAGENT_S3_SECRET_KEY` | `http://minio:9000` / `openagent-files` / `openagent` / `openagent-secret` | engine 的 `FileAssets__ObjectStorage__*`；AK/SK 同时是 MinIO 容器 `MINIO_ROOT_*` |
-| `OPENAGENT_MINIO_PORT` / `OPENAGENT_MINIO_CONSOLE_PORT` | `9000` / `9001` | MinIO 宿主机发布端口 |
-| `OPENAGENT_FILE_ASSETS_ENABLED` | `true` | engine 的 `FileAssets__Enabled` |
-| `OPENAGENT_SHARE_PUBLIC_BASE_URL` | 空 | engine 的 `FileAssets__Share__PublicBaseUrl` |
+基础设施 Compose 未改动，其自身变量、profiles 与镜像源仍以 `deploy/infrastructure/docker-compose.yml` 为准。
+应用脚本只连接固定的 `openagent-infrastructure` 网络，不创建或更新基础设施。
 
-### 6.3 地址 / 端口 / 网络 / TLS
-
-| 变量 | 默认 | 用途 |
-|---|---|---|
-| `OPENAGENT_PUBLIC_HOST` / `OPENAGENT_PUBLIC_SCHEME` | `localhost` / `https` | 派生部署公开 URL（Chat、Keycloak）；不配置前端后台连接 |
-| `OPENAGENT_CHAT_PORT` / `OPENAGENT_ROUTER_PORT` / `OPENAGENT_ENGINE_PORT` / `OPENAGENT_KEYCLOAK_PORT` | `8081` / `8082` / `8083` / `58081` | Nginx HTTPS 发布端口；Keycloak 8443 的映射端口 |
-| `OPENAGENT_CHAT_PUBLIC_URL` | 由 scheme+host+chat 端口派生 | 用于 Keycloak 回调与 Web Origin |
-| `OPENAGENT_COMPOSE_PROJECT` / `OPENAGENT_APP_NETWORK` / `OPENAGENT_INFRA_PROJECT` / `OPENAGENT_INFRA_NETWORK` | `openagent-app` / `openagent` / `openagent-infrastructure` / `openagent-infrastructure` | Compose 项目名与网络名；迁移已有部署必须保持 |
-| `OPENAGENT_NGINX_CLIENT_MAX_BODY_SIZE` | `1100m` | Nginx 上传体积限制 |
-| `OPENAGENT_TLS_CERT_DIR` | `deploy/openagent/nginx/certs` | 证书目录（Nginx 与 Keycloak 共用） |
-
-### 6.4 镜像 / 构建 / 脚本
-
-| 变量 | 默认 | 用途 |
-|---|---|---|
-| `OPENAGENT_ENGINE_IMAGE` / `OPENAGENT_ROUTER_IMAGE` / `OPENAGENT_CHAT_IMAGE` | `openagent-*:latest` | 各服务镜像标签 |
-| `OPENAGENT_SERVICE_VERSION` | `development` | 注入 `OpenTelemetry__ServiceVersion` |
-| `OPENAGENT_OTLP_ENDPOINT` | 空（禁用） | engine/router 的 `OpenTelemetry__OtlpEndpoint` |
-| `OPENAGENT_ALLOW_INSECURE_TLS` | `false` | 原名注入 engine/router |
-| `OPENAGENT_DOCKER_MODE` | `auto` | 构建部署脚本选择 docker / wsl-docker |
-| `OPENAGENT_IMAGE_TAR_DIR` | 空 | 镜像 TAR 导出目录 |
-| `OPENAGENT_OPENCODE_VERSION` | `Backend/opencode.version` 锁定值 | 仅升级前临时覆盖验证 |
-
-### 6.5 无效 / 遗留变量（避免踩坑）
-
-以下键在部署文件中出现过但当前代码**不读取**，设置无效：
-
-- `Engine__AllowMockAgent`（`deploy/openagent/preview.compose.yml` 遗留）；
-- `Engine__AdvertisedHost` / `Engine__AdvertisedPort`（Engine.Host 的 `appsettings.Development.json` 遗留；现行键是 `Heartbeat__AdvertisedHost` / `Heartbeat__AdvertisedPort`）。
 
 ## 7. 前端连接
 

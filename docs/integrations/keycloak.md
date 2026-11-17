@@ -4,43 +4,21 @@
 
 ## 启动
 
-当前工作区已有其他 OpenAgent Compose 项目运行时，请使用独立的基础设施项目、应用项目和网络。基础设施 Compose 通过 profile 启动 PostgreSQL、Redis、MinIO 与 Keycloak（`--profile storage --profile keycloak`）：
+先按 [部署指南](../operations/deployment.md) 运行 `scripts/deploy.sh init`。
+应用项目固定为 `openagent-app`、入口为 `openagent-nginx`；应用通过固定的 `openagent-infrastructure` 网络连接基础设施。
+在共享 `deploy/openagent/.env` 中检查公开 Authority 和内部 HTTPS MetadataAddress，须与现有 IdP 一致且 CA 受信任。
 
 ```bash
-export OPENAGENT_INFRA_NETWORK=openagent-keycloak-infrastructure
-
-OPENAGENT_PUBLIC_HOST=localhost \
-OPENAGENT_CHAT_PORT=58090 \
-OPENAGENT_KEYCLOAK_PORT=58091 \
-OPENAGENT_KEYCLOAK_PUBLIC_URL=https://localhost:58091 \
-OPENAGENT_POSTGRES_PORT=55442 \
-OPENAGENT_REDIS_PORT=56389 \
-OPENAGENT_MINIO_PORT=59010 \
-OPENAGENT_MINIO_CONSOLE_PORT=59011 \
-docker compose -p openagent-keycloak-infrastructure \
-  -f deploy/infrastructure/docker-compose.yml \
-  --env-file .env \
-  --profile storage --profile keycloak up -d
-
-OPENAGENT_ROUTER_PORT=55011 \
-OPENAGENT_ENGINE_PORT=55218 \
-OPENAGENT_KEYCLOAK_PORT=58091 \
-OPENAGENT_INFRA_NETWORK=openagent-keycloak-infrastructure \
-scripts/build-images.sh --env-file .env
-
-OPENAGENT_PUBLIC_HOST=localhost \
-OPENAGENT_CHAT_PORT=58090 \
-OPENAGENT_ROUTER_PORT=55011 \
-OPENAGENT_ENGINE_PORT=55218 \
-OPENAGENT_KEYCLOAK_PORT=58091 \
-OPENAGENT_INFRA_NETWORK=openagent-keycloak-infrastructure \
-scripts/deploy.sh --env-file .env --docker-mode docker
+# 基础设施仍单独管理；需要内置 Keycloak 时启用其 profile。
+docker compose --env-file deploy/.env -f deploy/infrastructure/docker-compose.yml --profile storage --profile keycloak up -d
+scripts/build-images.sh
+scripts/deploy.sh
 ```
 
 访问（证书已被系统信任时）：
 
-- 工作台：`https://localhost:58090`
-- Keycloak 管理台：`https://localhost:58091/admin/`
+- 工作台：`https://localhost:8081`
+- Keycloak 管理台：`https://localhost:58081/admin/`
 - Keycloak Realm：`openagent`
 - 管理员：默认值为 `admin/admin`，仅适用于本地临时环境；生产环境请覆盖 `OPENAGENT_KEYCLOAK_ADMIN_USERNAME` / `OPENAGENT_KEYCLOAK_ADMIN_PASSWORD`
 - 用户和租户组织：不在 Realm 文件中预置，需要在管理台手动创建
@@ -57,42 +35,33 @@ Realm、SPA Client、API audience、`tenant_id` claim 和 Organization 能力由
 停止应用时只删除应用容器，不影响 PostgreSQL、Redis、MinIO 数据：
 
 ```bash
-docker compose -p openagent-keycloak-app \
+docker compose -p openagent-app \
   -f deploy/openagent/docker-compose.yml \
   down
 ```
 
-确认不再需要这套隔离的本地基础设施后，才清理基础设施项目和数据卷：
-
-```bash
-docker compose -p openagent-keycloak-infrastructure \
-  -f deploy/infrastructure/docker-compose.yml \
-  down -v
-```
-
-不要对正在运行的其他 Compose 项目执行 `down -v`。基础设施项目由 [deploy/infrastructure/docker-compose.yml](../../deploy/infrastructure/docker-compose.yml)
-提供，应用代码镜像由 [deploy/openagent/docker-compose.yml](../../deploy/openagent/docker-compose.yml) 提供。
+基础设施生命周期单独管理；停止业务不应删除 PostgreSQL 或 Data Protection 数据卷。
 
 ## 功能开关
 
-认证配置由 Compose 通过环境变量同时注入 Engine 和 Router，Engine 和 Router 应保持一致。生产环境示例：
+认证配置统一放在共享 `deploy/openagent/.env`，以 env_file 同时注入 Engine / Router。生产环境示例：
 
 ```dotenv
-OPENAGENT_ASPNETCORE_ENVIRONMENT=Production
-OPENAGENT_AUTH_MODE=JwtBearer
-OPENAGENT_AUTH_ENABLE_KEYCLOAK=true
-OPENAGENT_AUTH_ALLOW_DEVELOPMENT_ANONYMOUS=false
-OPENAGENT_AUTH_AUDIENCE=openagent-api
-OPENAGENT_AUTH_CLIENT_ID=openagent-chat
-OPENAGENT_KEYCLOAK_PUBLIC_URL=https://localhost:58081
-OPENAGENT_KEYCLOAK_METADATA_ADDRESS=http://keycloak:8080/realms/openagent/.well-known/openid-configuration
+ASPNETCORE_ENVIRONMENT=Production
+Authentication__Mode=JwtBearer
+Authentication__EnableKeycloak=true
+Authentication__AllowDevelopmentAnonymous=false
+Authentication__Audience=openagent-api
+Authentication__ClientId=openagent-chat
+Authentication__Authority=https://localhost:58081/realms/openagent
+Authentication__MetadataAddress=https://openagent-infrastructure-keycloak-1:8443/realms/openagent/.well-known/openid-configuration
 ```
 
-- `OPENAGENT_AUTH_MODE` 支持 `Basic`（部署默认，任意环境可用）和 `JwtBearer`。Basic 登录密码由必填项 `OPENAGENT_AUTH_BASIC_PASSWORD` 提供（配置后内置开发账号即失效）；切换 Keycloak 时设置 `OPENAGENT_AUTH_MODE=JwtBearer`、`OPENAGENT_AUTH_ENABLE_KEYCLOAK=true`，并在 `.env` 中保留该必填密码变量（Compose 启动前校验）。
-- `OPENAGENT_AUTH_ENABLE_API_KEY=true` 时，Router 和 Engine 增加数据库中的第三方 Bearer API Key 认证，不访问 Keycloak；该开关与 `OPENAGENT_AUTH_MODE` 并存，不替换 Basic/JWT Bearer 方案。API Key 记录位于 `openagent.third_party_api_keys`。
-- `OPENAGENT_AUTH_ENABLE_KEYCLOAK` 控制 Keycloak/OIDC 登录入口。AD 只是 Keycloak 的一种身份源；接入真实 AD 时，需要在 Keycloak 中配置 LDAP/AD User Federation。本地 Realm 没有真实域控，因此只验证开关和登录链路。
-- `OPENAGENT_AUTH_AUDIENCE` 与 `OPENAGENT_AUTH_CLIENT_ID` 控制 JWT audience 与 OIDC client；生产元数据固定要求 HTTPS、时钟容差固定 60 秒。
-- `OPENAGENT_KEYCLOAK_PUBLIC_URL` 是浏览器使用的公开 Issuer 地址；`OPENAGENT_KEYCLOAK_METADATA_ADDRESS` 是 Engine/Router 访问 discovery 的服务端地址。
+- `Authentication__Mode` 支持 `Basic`（部署默认，任意环境可用）和 `JwtBearer`。Basic 登录密码由必填项 `OPENAGENT_AUTH_BASIC_PASSWORD` 提供（配置后内置开发账号即失效）；切换 Keycloak 时设置 `Authentication__Mode=JwtBearer`、`Authentication__EnableKeycloak=true`，并在 `.env` 中保留该必填密码变量（Compose 启动前校验）。
+- `Authentication__EnableApiKey=true` 时，Router 和 Engine 增加数据库中的第三方 Bearer API Key 认证，不访问 Keycloak；该开关与 `Authentication__Mode` 并存，不替换 Basic/JWT Bearer 方案。API Key 记录位于 `openagent.third_party_api_keys`。
+- `Authentication__EnableKeycloak` 控制 Keycloak/OIDC 登录入口。AD 只是 Keycloak 的一种身份源；接入真实 AD 时，需要在 Keycloak 中配置 LDAP/AD User Federation。本地 Realm 没有真实域控，因此只验证开关和登录链路。
+- `Authentication__Audience` 与 `Authentication__ClientId` 控制 JWT audience 与 OIDC client；生产元数据固定要求 HTTPS、时钟容差固定 60 秒。
+- `OPENAGENT_KEYCLOAK_PUBLIC_URL` 是浏览器使用的公开 Issuer 地址；`Authentication__MetadataAddress` 是 Engine/Router 访问 discovery 的服务端地址。
 - Engine 和 Router 固定解析认证 token 中的租户 claim，并在 Agent/管理接口缺少租户时拒绝请求，不提供关闭租户隔离的配置。
 - 本地 Realm 已启用 Keycloak Organization。创建用户时，需要在用户属性中设置 `tenant_id`，并将用户加入同名 Organization；申请 `organization` scope 后，访问令牌会包含对应的 `tenant_id` 和 `organization` claim。
 - 邮箱由 Keycloak 用户资料维护，并通过 OIDC `email` scope 返回。
