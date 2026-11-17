@@ -43,7 +43,7 @@ Engine/Router 另加入既有 `openagent-infrastructure` 网络。项目、网�
 | [openagent/.env.example](../../deploy/openagent/.env.example) | Engine / Router 共用环境、Redis、认证、遥测 |
 | [openagent/engine/.env.example](../../deploy/openagent/engine/.env.example) | 数据库、对象存储、心跳、Node/OpenCode TLS |
 | [openagent/router/.env.example](../../deploy/openagent/router/.env.example) | Engine 地址、意图识别超时和 Intern-Decision 密钥 |
-| [nginx/.env.example](../../deploy/nginx/.env.example) | 入口主机、端口、模板变量和证书目录 |
+| [nginx/.env.example](../../deploy/nginx/.env.example) | 入口主机、端口、模板变量、证书目录与维护模式目录 |
 
 文件位置固定；Engine/Router 先读共享文件，再读专用文件，同名项以后者为准。
 应用的三个文件直接填写 .NET 原生 `__` 配置，由 Compose `env_file` 加载；不再有顶层 `deploy/.env` 或 S3/数据库别名转译。
@@ -85,6 +85,13 @@ Nginx 默认证书放在 `deploy/nginx/certs/tls.crt` 和 `tls.key`。
 `infrastructure` 配置保持不变，Keycloak 仍从 `deploy/openagent/nginx/certs` 读取证书。
 已有部署若继续共用旧目录，将 Nginx 的证书目录设置为 `../openagent/nginx/certs`；使用新默认目录时，为 Keycloak 在旧目录单独准备有效证书。
 终端、应用及 IdP 必须信任所用 CA。
+
+前端维护模式以文件为开关：`deploy/nginx/maintenance/maintenance.html` 存在时，Nginx 对前端（8081）
+返回 503 与该页面内容，删除文件即恢复，无需 reload；Router 与 Engine 不受影响。
+页面模板见 [maintenance.html.example](../../deploy/nginx/maintenance/maintenance.html.example)：
+单文件自包含（内联样式、无脚本与外部资源），修改后复制为 `maintenance.html` 即生效。
+目录可用 `OPENAGENT_MAINTENANCE_DIR` 调整，默认 `./maintenance`，相对路径以 `deploy/nginx` 为基准。
+仓库不跟踪 `maintenance.html` 本身，避免新部署直接进入维护模式。
 Engine 的 `engine-data-protection` 卷继续挂载到 `/home/app/.aspnet/DataProtection-Keys`，保持 dev 非 root 镜像路径。
 保留该卷及原密钥，不会自动迁移数据；代码执行由 OpenCode 原生工具负责，不配置 Runner 服务或密钥。
 

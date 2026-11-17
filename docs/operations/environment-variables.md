@@ -247,7 +247,7 @@ Redis 行为细节见 [Redis 集成](../integrations/redis-engine.md)。
 | `deploy/openagent/.env` | Production、Redis、JWT/Keycloak、Issuer/discovery、Audience/ClientId；可选 Basic、API Key、CORS、OTLP 与服务版本 |
 | `deploy/openagent/engine/.env` | 完整数据库连接串、迁移开关、S3 地址与凭据、文件资产、心跳；可选 bucket/region、分享基地址、Node TLS |
 | `deploy/openagent/router/.env` | Engine 内部地址、意图识别超时；可选 Intern-Decision 密钥 |
-| `deploy/nginx/.env` | server name、入口端口、请求体上限、证书目录 |
+| `deploy/nginx/.env` | server name、入口端口、请求体上限、证书目录、维护模式目录 |
 
 只有 Nginx 文件由脚本做证书预检时 source；应用文件仅由 Compose 解析，连接串的分号不经过 shell 执行。
 含 `$` / `#` 的凭据应将整个值放在单引号内，避免 Compose 插值改变字面量。
