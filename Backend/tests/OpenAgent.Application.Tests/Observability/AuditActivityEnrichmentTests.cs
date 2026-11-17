@@ -2,6 +2,7 @@ using System.Diagnostics;
 using OpenAgent.Application.Execution;
 using OpenAgent.Application.Observability;
 using OpenAgent.Contracts.Conversation;
+using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Runtime;
 using Xunit;
 
@@ -63,5 +64,75 @@ public class AuditActivityEnrichmentTests
         };
         AuditActivityEnrichment.Publish(turn, "sinzoli");
         AuditActivityEnrichment.PublishContent("q", "a");
+    }
+
+    [Fact]
+    public void StartToolCall_EndToolCall_EmitToolObservationSpan()
+    {
+        List<Activity> stopped = [];
+        using ActivityListener listener = new()
+        {
+            ShouldListenTo = _ => true,
+            Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllData,
+            ActivityStopped = stopped.Add,
+        };
+        ActivitySource.AddActivityListener(listener);
+
+        using ActivitySource source = new("OpenAgent");
+        using Activity? turn = source.StartActivity("POST /api/v1/agent/chat/stream");
+        Assert.NotNull(turn);
+
+        TurnContext turnContext = new()
+        {
+            TenantId = "tenant-1",
+            UserId = "8b95d904-12fb",
+            ConversationId = "conv-tool",
+            TraceId = "trace-tool",
+            AgentId = "cs-bot",
+            ConversationType = ConversationType.User
+        };
+        var call = new AgentStreamEvent { Type = AgentStreamEventType.ToolCall, ToolName = "filesystem.read", ToolCallId = "call-1", ToolArguments = new { path = "/data/orders.xlsx" } };
+        using var toolSpan = AuditActivityEnrichment.StartToolCall(turnContext, "sinli", call);
+        Assert.NotNull(toolSpan);
+
+        AuditActivityEnrichment.EndToolCall(new AgentStreamEvent { Type = AgentStreamEventType.ToolResult, ToolName = "filesystem.read", ToolCallId = "call-1", Content = "订单数据 3 条" });
+
+        Assert.Equal("filesystem.read", toolSpan.OperationName);
+        Assert.Equal("sinli", toolSpan.GetTagItem("openagent.username"));
+        Assert.Equal("cs-bot", toolSpan.GetTagItem("openagent.agent_id"));
+        Assert.Equal("tool", toolSpan.GetTagItem("langfuse.observation.type"));
+        Assert.Contains("orders.xlsx", toolSpan.GetTagItem("langfuse.observation.input") as string);
+        Assert.Contains("订单数据 3 条", toolSpan.GetTagItem("langfuse.observation.output") as string);
+        Assert.Equal("completed", toolSpan.GetTagItem("openagent.tool.status"));
+    }
+
+    [Fact]
+    public void ToolCallArguments_LongerThanLimit_AreTruncated()
+    {
+        List<Activity> stopped = [];
+        using ActivityListener listener = new()
+        {
+            ShouldListenTo = _ => true,
+            Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllData,
+            ActivityStopped = stopped.Add,
+        };
+        ActivitySource.AddActivityListener(listener);
+
+        using ActivitySource source = new("OpenAgent.Test");
+        using Activity? turn = source.StartActivity("t");
+        TurnContext turnContext = new()
+        {
+            TenantId = "tenant-1",
+            UserId = "u",
+            TraceId = "t",
+            ConversationType = ConversationType.User
+        };
+        var call = new AgentStreamEvent { Type = AgentStreamEventType.ToolCall, ToolName = "big", ToolArguments = new string('x', 9000) };
+        using var toolSpan = AuditActivityEnrichment.StartToolCall(turnContext, null, call);
+
+        var input = toolSpan.GetTagItem("langfuse.observation.input") as string;
+        Assert.NotNull(input);
+        Assert.True(input.Length < 9000);
+        Assert.Contains("审计截断", input);
     }
 }

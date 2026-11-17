@@ -1,4 +1,7 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
+using OpenAgent.Contracts.Requests;
+using OpenAgent.Contracts.Runtime;
 using OpenAgent.Contracts.Runtime;
 
 namespace OpenAgent.Application.Observability;
@@ -16,6 +19,13 @@ namespace OpenAgent.Application.Observability;
 /// </remarks>
 public static class AuditActivityEnrichment
 {
+    private static readonly ActivitySource ToolSource = new("OpenAgent");
+    private static readonly ConcurrentDictionary<string, Activity?> PendingTools = new();
+    private const int MaxAuditContentChars = 4000;
+
+    private static string Truncate(string? value) => value is null || value.Length <= MaxAuditContentChars
+        ? value ?? string.Empty
+        : value[..MaxAuditContentChars] + "…[审计截断]";
     /// <summary>
     /// 把 <paramref name="turn"/> 的审计属性写入当前 Activity。
     /// 无活动 Activity 时静默返回——未开启追踪的部署不应因此失败。
@@ -47,6 +57,79 @@ public static class AuditActivityEnrichment
     }
 
     /// <summary>
+    /// <summary>
+    /// 工具调用开始：为本次调用创建子 span（OpenAgent 源已被 OTLP 导出器订阅），
+    /// 携带身份属性与调用参数——审计台由此展示一次会话的工具调用时间线。
+    /// 子 span 自动继承轮次 Activity 的 trace 上下文，与输入输出同属一条 trace。
+    /// 无监听器时返回 null——未开启追踪的部署不应因此失败。
+    /// </summary>
+    public static Activity? StartToolCall(TurnContext turn, string? username, AgentStreamEvent call)
+    {
+        ArgumentNullException.ThrowIfNull(turn);
+        var activity = ToolSource.StartActivity(call.ToolName ?? "tool", ActivityKind.Internal);
+        if (activity is null)
+        {
+            return null;
+        }
+
+        activity.SetTag("openagent.conversation_id", turn.ConversationId ?? string.Empty);
+        activity.SetTag("openagent.user_id", turn.UserId);
+        activity.SetTag("openagent.username", username ?? string.Empty);
+        if (!string.IsNullOrEmpty(turn.AgentId))
+        {
+            activity.SetTag("openagent.agent_id", turn.AgentId);
+        }
+        activity.SetTag("openagent.tool.call_id", call.ToolCallId ?? string.Empty);
+        activity.SetTag("langfuse.observation.type", "tool");
+        activity.SetTag("langfuse.observation.input", Truncate(call.ToolArguments?.ToString() ?? call.Content));
+
+        if (!string.IsNullOrEmpty(call.ToolCallId))
+        {
+            PendingTools[call.ToolCallId] = activity;
+        }
+
+        return activity;
+    }
+
+    /// <summary>
+    /// 工具调用结束：记录结果（截断）与状态，并结束 span。
+    /// </summary>
+    public static void EndToolCall(AgentStreamEvent result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+
+        Activity? activity = null;
+        if (!string.IsNullOrEmpty(result.ToolCallId))
+        {
+            PendingTools.TryRemove(result.ToolCallId, out activity);
+        }
+
+        activity ??= ToolSource.StartActivity(result.ToolName ?? "tool", ActivityKind.Internal);
+        if (activity is null)
+        {
+            return;
+        }
+
+        activity.SetTag("langfuse.observation.type", "tool");
+        activity.SetTag("langfuse.observation.output", Truncate(result.Content));
+        activity.SetTag("openagent.tool.status", "completed");
+        activity.Stop();
+    }
+
+    /// <summary>
+    /// 轮次收尾时关闭仍未匹配到结果的工具 span（轮次失败/驱动异常的兜底）。
+    /// </summary>
+    public static void ClosePendingToolSpans()
+    {
+        foreach (var pair in PendingTools)
+        {
+            if (PendingTools.TryRemove(pair.Key, out var activity) && activity is not null)
+            {
+                activity.SetTag("openagent.tool.status", "aborted");
+                activity.Stop();
+            }
+        }
+    }
     /// 把对话内容（用户输入与助手回复）写入当前 Activity，供审计平面展示。
     /// </summary>
     /// <remarks>

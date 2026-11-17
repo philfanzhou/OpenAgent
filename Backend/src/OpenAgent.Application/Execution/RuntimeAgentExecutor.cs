@@ -154,6 +154,15 @@ public sealed class RuntimeAgentExecutor
                         responseText.Append(item.Content);
                     }
                     yield return item;
+                    // 工具调用过程审计：调用开始建 span（携带身份与参数），结果到达时关闭。
+                    if (item.Type == AgentStreamEventType.ToolCall)
+                    {
+                        AuditActivityEnrichment.StartToolCall(turn, user.Username, item);
+                    }
+                    else if (item.Type == AgentStreamEventType.ToolResult)
+                    {
+                        AuditActivityEnrichment.EndToolCall(item);
+                    }
                     // 平台 update_plan 工具的结果同步映射为 PlanUpdated 事件，前端任务
                     // 清单不依赖解析通用工具结果；ACP 原生 plan 更新由驱动事件另行覆盖。
                     if (item is { Type: AgentStreamEventType.ToolResult, ToolName: "update_plan" } plan)
@@ -173,6 +182,8 @@ public sealed class RuntimeAgentExecutor
                 failure = error;
                 throw;
             }
+            // 轮次结束：关闭未匹配到结果的工具 span（审计兜底，防悬挂）。
+            AuditActivityEnrichment.ClosePendingToolSpans();
             // done/usage 只能在保存成功后发送，客户端收到终态即可安全刷新会话。
             // 收尾时把完整问答写上 Activity：审计台由此展示对话内容（网关先掩码再转发）。
             AuditActivityEnrichment.PublishContent(request.Query, responseText.ToString());
