@@ -9,14 +9,14 @@ action="${1:-all}"
 case "$action" in
   init)
     umask 077
-    for directory in deploy deploy/openagent deploy/openagent/{engine,router} deploy/nginx; do
+    for directory in deploy/openagent deploy/openagent/{engine,router} deploy/nginx; do
       file="$directory/.env"
       if [[ ! -e "$file" && ! -L "$file" ]]; then
         (set -o noclobber; cat "$file.example" > "$file")
         echo "Created $file"
       fi
     done
-    echo 'Fill deploy/.env and review deploy/openagent/.env before deployment.'
+    echo 'Configure deploy/openagent/.env, its service .env files, and deploy/nginx/.env.'
     exit 0 ;;
   nginx) stacks=(nginx) ;;
   app) stacks=(openagent) ;;
@@ -25,19 +25,13 @@ case "$action" in
   *) echo "unknown action: $action" >&2; exit 1 ;;
 esac
 
-[[ -f deploy/.env ]] || { echo 'Run scripts/deploy.sh init first.' >&2; exit 1; }
-set -a
-# Only the operator-owned public file is shell-compatible; Compose reads service env_files.
-source deploy/.env
-set +a
-: "${OPENAGENT_PUBLIC_HOST:?Set OPENAGENT_PUBLIC_HOST in deploy/.env}"
-if [[ "$action" != nginx ]]; then
-  : "${OPENAGENT_POSTGRES_PASSWORD:?Set OPENAGENT_POSTGRES_PASSWORD in deploy/.env}"
-  : "${OPENAGENT_S3_SECRET_KEY:?Set OPENAGENT_S3_SECRET_KEY in deploy/.env}"
-  : "${OPENAGENT_S3_SERVICE_URL:?Set OPENAGENT_S3_SERVICE_URL in deploy/.env}"
-  : "${OPENAGENT_S3_ACCESS_KEY:?Set OPENAGENT_S3_ACCESS_KEY in deploy/.env}"
-fi
 if [[ "$action" != app ]]; then
+  [[ -f deploy/nginx/.env ]] || { echo 'Run scripts/deploy.sh init first.' >&2; exit 1; }
+  # Only Nginx's shell-compatible public settings are read for certificate preflight.
+  # Application env_files (connection strings and credentials) are parsed by Compose only.
+  set -a
+  source deploy/nginx/.env
+  set +a
   cert_dir="${OPENAGENT_TLS_CERT_DIR:-$repo_root/deploy/openagent/nginx/certs}"
   [[ "$cert_dir" = /* && -s "$cert_dir/tls.crt" && -s "$cert_dir/tls.key" ]] \
     || { echo 'Set an absolute TLS directory containing tls.crt and tls.key.' >&2; exit 1; }
@@ -47,7 +41,7 @@ compose() {
   local stack="$1" project=openagent-app
   shift
   [[ "$stack" != nginx ]] || project=openagent-nginx
-  docker compose --project-name "$project" --env-file deploy/.env --file "deploy/$stack/docker-compose.yml" "$@"
+  docker compose --project-name "$project" --env-file "deploy/$stack/.env" --file "deploy/$stack/docker-compose.yml" "$@"
 }
 for stack in "${stacks[@]}"; do compose "$stack" config --quiet; done
 if owner="$(docker network inspect openagent --format '{{index .Labels "com.docker.compose.project"}}/{{index .Labels "com.docker.compose.network"}}' 2>/dev/null)"; then

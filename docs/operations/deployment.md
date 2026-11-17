@@ -7,14 +7,14 @@
 
 ```bash
 scripts/deploy.sh init
-# 填写 deploy/.env，并检查 deploy/openagent/.env 的共享运行配置。
+# 填写 deploy/openagent/ 的共享/专用 .env，以及 deploy/nginx/.env。
 scripts/build-images.sh
 scripts/deploy.sh check
 scripts/deploy.sh
 ```
 
 `init` 只将缺失的 `.env.example` 复制为 `.env`（0600），不覆盖已有文件。
-公共必填项为实际访问主机、既有 PostgreSQL 密码、S3 API 地址、access key 和 secret key。
+数据库连接串、S3 API 地址和凭据直接填入 Engine 文件；入口主机和端口直接填入 Nginx 文件。
 可选项全部注释并说明用途。默认保留当前 dev Compose 的 Production + JwtBearer / Keycloak 选择；
 共享文件中的公开 Issuer、内部 HTTPS discovery、Audience 和 ClientId 必须匹配现有 IdP。
 应用 appsettings 自身默认 Basic，与部署选择不同；如改用 Basic，须同时设置共享文件中的模式和密码。
@@ -27,7 +27,8 @@ scripts/deploy.sh nginx  # 不要求数据库/S3凭据或业务镜像，可先�
 scripts/deploy.sh app    # 业务就绪后加入 Nginx 网络
 ```
 
-`check` 校验环境文件、必填值、证书存在、Compose 配置及网络归属，不启动服务。
+`check` 校验环境文件格式/路径、证书存在、Compose 结构及网络归属，不启动服务。
+它不验证数据库、S3 或 IdP 的真实连接与凭据；这些由服务启动和健康检查验证。
 Nginx 失败时不启动业务；业务失败时保留入口。脚本不会操作 infrastructure。
 维护页与维护开关尚未实现，本次提供独立入口生命周期。
 
@@ -39,16 +40,29 @@ Engine/Router 另加入既有 `openagent-infrastructure` 网络。项目、网�
 
 | 示例文件（以 deploy/ 为根） | 对应 .env 的用途 |
 |---|---|
-| [.env.example](../../deploy/.env.example) | 域名、端口、共享存储凭据；不整份注入容器 |
 | [openagent/.env.example](../../deploy/openagent/.env.example) | Engine / Router 共用环境、Redis、认证、遥测 |
 | [openagent/engine/.env.example](../../deploy/openagent/engine/.env.example) | 数据库、对象存储、心跳、Node/OpenCode TLS |
 | [openagent/router/.env.example](../../deploy/openagent/router/.env.example) | Engine 地址、意图识别超时和 Intern-Decision 密钥 |
-| [nginx/.env.example](../../deploy/nginx/.env.example) | 入口模板变量 |
+| [nginx/.env.example](../../deploy/nginx/.env.example) | 入口主机、端口、模板变量和可选证书目录 |
 
 文件位置固定；Engine/Router 先读共享文件，再读专用文件，同名项以后者为准。
-服务文件用 Compose `env_file` 加载 .NET 原生 `__` 配置。`${OPENAGENT_*}` 从公共 `deploy/.env` 展开。
-只有公共文件由部署脚本 source，含 `$`、`#`、空格的值用单引号包裹；不要 source 服务文件。
+应用的三个文件直接填写 .NET 原生 `__` 配置，由 Compose `env_file` 加载；不再有顶层 `deploy/.env` 或 S3/数据库别名转译。
+应用 Compose 显式使用 `deploy/openagent/.env` 作为 CLI 环境文件，避免隐式读取工作目录中的其他 `.env`。
+Nginx 的 `.env` 同时供其 Compose `--env-file`（端口、挂载）与容器 `env_file`（模板）使用，部署脚本仅读它做证书预检。
+原生服务值可包含连接串分号；含 `$`、`#` 的值用单引号包裹，不要用 shell source 应用文件。
 修改运行配置后重新部署即可生效。共享认证与遥测字段仅注入 Engine/Router，数据库与 S3 密钥只注入 Engine。
+
+### 监听地址与容器地址
+
+`ASPNETCORE_URLS` 的注释值来自镜像 Dockerfile 的 ENV：Engine 为 `http://+:5208`、Router 为 `http://+:5001`。
+这是镜像默认监听地址，省略时仍然生效，因此作为非必填项注释；不是 ASP.NET 通用默认端口。
+Router 的 `http://engine:5208` 及 Nginx 的 `engine:5208` / `router:5001` 是 Docker 服务名与内部端口，必须与监听端口一致。
+它们不属于 .NET 默认路由：Router 代码兜底是 localhost，不能用于跨容器访问，故其 EngineEndpoint 保持显式配置。
+
+Engine 文件直接配置 `FileAssets__ObjectStorage__ServiceUrl`，示例使用内置 MinIO 地址 `http://minio:9000`；外接 S3 时直接改值。
+旧 `${OPENAGENT_S3_SERVICE_URL:?Set ...}` 的含义是变量未设置或为空时终止 Compose，并非默认地址或赋值语句。
+去掉中间别名后不再需要该表达式；请填写 Engine 文件中标注必填的连接与凭据，服务启动时仍执行自身配置/连接检查。
+
 
 ## 镜像构建与 OpenCode
 
@@ -74,7 +88,7 @@ Engine 的 `engine-data-protection` 卷继续挂载到 `/home/app/.aspnet/DataPr
 确认无连接后手工移除旧网络，再由 `scripts/deploy.sh nginx` 创建；脚本不自动接管或删除网络。
 旧应用项目中的 Nginx 容器也需先停止/移除，释放入口端口。停止整套服务时先停业务，再停入口。
 
-原 `deploy/deployment.env.example` 改为 `deploy/.env.example`；认证、OTLP 与服务版本迁到共享 `.env` 的原生变量。
+顶层环境文件已移除。已有顶层 `.env` 不会自动转换或删除；请将数据库/S3 值移入 Engine，入口参数移入 Nginx，认证与遥测移入共享文件。
 原 `OPENAGENT_OTLP_TRACES_ENDPOINT` / `HEADERS` 对应共享文件中的 OTEL 通用出口；也可显式采用 traces 专用变量，
 使审计掩码网关仅接收 traces。旧 Basic 密码迁到 `Authentication__BasicPassword`，Intern-Decision 密钥迁到 Router 文件。
 原 dev 的 `NODE_TLS_REJECT_UNAUTHORIZED=0` 改为可选项；依赖自签名回源时需按 Engine 示例显式取消注释，或配置附加 CA。
@@ -82,7 +96,7 @@ Engine 的 `engine-data-protection` 卷继续挂载到 `/home/app/.aspnet/DataPr
 
 ## 基础设施与排障
 
-`deploy/infrastructure/` 未改动，仍单独管理 PostgreSQL、Redis、MinIO 和 Keycloak profiles。
+`deploy/infrastructure/` 未改动，仍使用其既有环境文件单独管理 PostgreSQL、Redis、MinIO 和 Keycloak profiles；不要把应用原生文件当成基础设施变量文件。
 MinIO 镜像源按原基础设施 Compose 中的说明配置；应用启动会执行待应用的 EF 迁移。
 完整变量与默认值见 [环境变量指南](environment-variables.md)，认证见 [Keycloak](../integrations/keycloak.md)，
 遥测见 [可观测性](../overview/Observability.md)，OpenCode 的原生工具与版本验证见 [运行时](../integrations/opencode-runtime.md)。

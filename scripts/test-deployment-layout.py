@@ -53,11 +53,10 @@ class DeploymentLayoutTests(DeploymentFixture):
 
     def test_runtime_overrides_remain_supported(self):
         with (self.tmp / 'openagent/.env').open('a') as stream:
-            stream.write('\nOpenTelemetry__OtlpEndpoint=http://collector:4317\nCors__AllowedOrigins__0=https://review.example\n')
+            stream.write('\nOpenTelemetry__OtlpEndpoint=http://collector:4317\nCors__AllowedOrigins__0=https://review.example\nAuthentication__Authority=https://sso.example/realms/openagent\n')
         with (self.tmp / 'openagent/engine/.env').open('a') as stream:
             stream.write('\nOpenTelemetry__ServiceName=custom-engine\n')
-        app = self.config('openagent', {'OPENAGENT_PUBLIC_HOST': 'review.example',
-                                     'OPENAGENT_CHAT_PORT': '443', 'OPENAGENT_KEYCLOAK_PUBLIC_URL': 'https://sso.example'})
+        app = self.config('openagent')
         for name in ('engine', 'router'):
             env = app['services'][name]['environment']
             self.assertEqual(env['Cors__AllowedOrigins__0'], 'https://review.example')
@@ -75,13 +74,13 @@ class DeploymentLayoutTests(DeploymentFixture):
         self.assertNotIn('depends_on', nginx['services']['nginx'])
         self.assertFalse(any(service.get('ports') for service in app['services'].values()))
 
-    def test_missing_credentials_fail_compose_validation(self):
-        result = subprocess.run([REAL_DOCKER, 'compose', '--env-file', str(self.env_file), '--file',
-                                 str(self.tmp / 'openagent/docker-compose.yml'), 'config', '--quiet'],
-                                env={**clean_environment(), 'OPENAGENT_S3_SECRET_KEY': ''}, capture_output=True, text=True)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn('OPENAGENT_S3_SECRET_KEY', result.stderr)
-
+    def test_storage_values_are_configured_directly_without_aliases(self):
+        with (self.tmp / 'openagent/engine/.env').open('a') as stream:
+            stream.write('\nFileAssets__ObjectStorage__ServiceUrl=https://objects.example\n')
+        app = self.config('openagent', {'OPENAGENT_S3_SERVICE_URL': 'https://ignored.example'})
+        self.assertEqual(app['services']['engine']['environment']['FileAssets__ObjectStorage__ServiceUrl'],
+                         'https://objects.example')
+        self.assertNotIn('OPENAGENT_S3_SERVICE_URL', app['services']['engine']['environment'])
 
     def test_audit_and_intent_credentials_remain_scoped(self):
         with (self.tmp / 'openagent/.env').open('a') as stream:
@@ -135,6 +134,7 @@ class NginxDeploymentTests(DeploymentFixture):
 
     def setUp(self):
         super().setUp()
+        self.env_file = self.tmp / 'nginx/.env'
         self.prefix = 'openagent-nginx-test-' + uuid.uuid4().hex[:10]
         self.network = self.prefix
         self.containers = []

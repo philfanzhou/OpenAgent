@@ -89,10 +89,9 @@ Frontend/OpenAgent.Chat/  Vue 3 Chat 工作台
 docs/                     功能域、集成、数据库、API 与排障文档
 deploy/
 ├── infrastructure/       PostgreSQL、Redis、MinIO、Keycloak 编排
-├── openagent/            Engine、Router、Chat 编排；独立 Nginx 位于 nginx/
-└── .env.example            公共环境变量模板
-docker/nginx/             Nginx 配置
-scripts/                  构建、部署、预览与沙箱测试脚本
+├── openagent/            Engine、Router、Chat 编排
+└── nginx/                独立入口、网络与环境模板
+scripts/                  构建、部署、预览与测试脚本
 .agent/                   AI 技能、编码与文档规范
 ```
 
@@ -126,7 +125,7 @@ pnpm dev
 使用 Docker Compose 启动基础设施（PostgreSQL、Redis、MinIO、Keycloak）与平台服务（Engine、Router、Chat、Nginx）：
 
 ```bash
-scripts/deploy.sh init  # 填写 deploy/.env 并检查共享运行配置
+scripts/deploy.sh init  # 填写 deploy/openagent/ 与 deploy/nginx/ 的配置
 # 按 docs/operations/deployment.md 单独准备基础设施
 scripts/build-images.sh
 scripts/deploy.sh

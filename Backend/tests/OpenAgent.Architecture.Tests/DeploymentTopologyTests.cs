@@ -19,9 +19,6 @@ public class DeploymentTopologyTests
     private static string ComposePath =>
         Path.Combine(RepoRoot, "deploy", "openagent", "docker-compose.yml");
 
-    private static string EnvExamplePath =>
-        Path.Combine(RepoRoot, "deploy", ".env.example");
-
     private static string SharedEnvExamplePath =>
         Path.Combine(RepoRoot, "deploy", "openagent", ".env.example");
 
@@ -49,12 +46,15 @@ public class DeploymentTopologyTests
         Assert.Contains("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=", shared, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void PublicEnvExample_UsesLiteralValues()
+    [Theory]
+    [InlineData("openagent")]
+    [InlineData("openagent/engine")]
+    [InlineData("openagent/router")]
+    [InlineData("nginx")]
+    public void ServiceEnvExamples_UseLiteralValues(string directory)
     {
-        // Operator-owned public credentials must be literal values. Service
-        // env_files separately use Compose interpolation for those credentials.
-        string example = File.ReadAllText(EnvExamplePath);
+        // Service configuration is entered directly, without a separate top-level alias file.
+        string example = File.ReadAllText(Path.Combine(RepoRoot, "deploy", directory, ".env.example"));
 
         string[] offenders = example
             .Split('\n')
@@ -71,7 +71,7 @@ public class DeploymentTopologyTests
 
         Assert.True(
             offenders.Length == 0,
-            "Public deployment values must be literals: " + string.Join(" | ", offenders));
+            "Service environment values must be literals: " + string.Join(" | ", offenders));
     }
 
     [Fact]

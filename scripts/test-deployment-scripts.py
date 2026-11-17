@@ -46,16 +46,18 @@ class DeploymentFixture(unittest.TestCase):
         certs.mkdir()
         for name in ('tls.crt', 'tls.key'):
             (certs / name).write_text('test fixture, not a certificate')
-        self.env_file = self.tmp / '.env'
-        with self.env_file.open('a') as stream:
-            stream.write(f"\nOPENAGENT_POSTGRES_PASSWORD='test-postgres-$literal#value'\n"
-                         "OPENAGENT_S3_SECRET_KEY='test-s3-$literal#value'\n"
-                         "OPENAGENT_S3_SERVICE_URL=http://minio:9000\nOPENAGENT_S3_ACCESS_KEY=test-access\n"
-                         f"OPENAGENT_TLS_CERT_DIR='{certs}'\n")
+        self.env_file = self.tmp / 'openagent/.env'
+        with (self.tmp / 'openagent/engine/.env').open('a') as stream:
+            stream.write("\nConnectionStrings__OpenAgentDatabase='Host=postgres;Port=5432;Database=openagent;Username=openagent;Password=test-postgres-$literal#value'\n"
+                         "FileAssets__ObjectStorage__ServiceUrl=http://minio:9000\n"
+                         "FileAssets__ObjectStorage__AccessKey=test-access\n"
+                         "FileAssets__ObjectStorage__SecretKey='test-s3-$literal#value'\n")
+        with (self.tmp / 'nginx/.env').open('a') as stream:
+            stream.write(f"\nOPENAGENT_TLS_CERT_DIR='{certs}'\n")
 
     def config(self, stack, overrides=None):
         output = subprocess.check_output(
-            [REAL_DOCKER, 'compose', '--env-file', str(self.env_file), '--file',
+            [REAL_DOCKER, 'compose', '--env-file', str(self.tmp / stack / '.env'), '--file',
              str(self.tmp / stack / 'docker-compose.yml'), 'config', '--format', 'json'],
             env={**clean_environment(), **(overrides or {})}, text=True)
         config = json.loads(output)
@@ -103,6 +105,7 @@ if args[0] == 'compose':
         self.assertEqual(self.env_file.read_text(), original)
         self.assertEqual(self.env_file.stat().st_mode & 0o777, 0o600)
         self.assertEqual(calls, [])
+        self.assertFalse((self.tmp / '.env').exists())
 
     def test_default_deploys_nginx_first_with_fixed_project_names(self):
         self.env.update(OPENAGENT_COMPOSE_PROJECT='override-app', OPENAGENT_NGINX_PROJECT='override-nginx',
@@ -153,19 +156,18 @@ if args[0] == 'compose':
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse(any('up' in call for call in calls))
 
-    def test_required_values_are_checked_before_docker(self):
-        original = self.env_file.read_text()
-        for name, value in [('OPENAGENT_S3_SERVICE_URL', ''), ('OPENAGENT_S3_ACCESS_KEY', ''), ('OPENAGENT_PUBLIC_HOST', ''),
-                            ('OPENAGENT_POSTGRES_PASSWORD', ''), ('OPENAGENT_S3_SECRET_KEY', '')]:
-            with self.subTest(name=name):
-                self.env_file.write_text(original + f'\n{name}={value}\n')
-                result, calls = self.run_script('deploy.sh', 'app')
-                self.assertNotEqual(result.returncode, 0)
-                self.assertEqual(calls, [])
+    def test_application_values_are_not_executed_by_shell(self):
+        marker = self.checkout / 'unexpected-shell-execution'
+        with (self.tmp / 'openagent/engine/.env').open('a') as stream:
+            stream.write(f"\nFileAssets__ObjectStorage__SecretKey=$(touch '{marker}')\n")
+        result, calls = self.run_script('deploy.sh', 'app')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(marker.exists())
+        self.assertTrue(any('up' in call for call in calls))
 
-    def test_nginx_can_deploy_without_business_credentials(self):
-        self.env_file.write_text("OPENAGENT_PUBLIC_HOST=localhost\n" + '\n'.join(
-            line for line in self.env_file.read_text().splitlines() if line.startswith('OPENAGENT_TLS_CERT_DIR=')))
+    def test_nginx_can_deploy_without_application_env_files(self):
+        for relative in ('openagent/.env', 'openagent/engine/.env', 'openagent/router/.env'):
+            (self.tmp / relative).unlink()
         result, calls = self.run_script('deploy.sh', 'nginx')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse(any('openagent-app' in call for call in calls))

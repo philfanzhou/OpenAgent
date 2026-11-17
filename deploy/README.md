@@ -4,7 +4,6 @@
 
 | 入口 | 内容 |
 |---|---|
-| [.env.example](.env.example) | 公共部署参数；必填项启用、可选项注释 |
 | [openagent/.env.example](openagent/.env.example) | Engine / Router 共用运行配置 |
 | [openagent/engine/.env.example](openagent/engine/.env.example) | Engine 专用配置 |
 | [openagent/router/.env.example](openagent/router/.env.example) | Router 专用配置 |
