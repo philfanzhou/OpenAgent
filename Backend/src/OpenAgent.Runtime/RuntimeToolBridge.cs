@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Security.Cryptography;
@@ -38,13 +39,19 @@ internal sealed class RuntimeToolBridge : IAsyncDisposable
     /// <summary>注册本轮工具集并返回携带独立 bearer 的 MCP server 定义；释放租约即吊销该 bearer。</summary>
     internal async Task<RuntimeToolLease> RegisterAsync(
         IReadOnlyList<RuntimeTool> definitions,
-        CancellationToken turnCancellation)
+        CancellationToken turnCancellation,
+        string conversationId,
+        string userId,
+        string username,
+        string agentId)
     {
         Dictionary<string, RuntimeTool> tools = definitions.ToDictionary(tool => tool.Name, StringComparer.Ordinal);
         string endpoint = MountedEndpoint() ?? await StartOnceAsync().ConfigureAwait(false);
         // 256 bit 随机 bearer 兼作注册键；身份不取自模型参数，不接受客户端传入。
         string token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
-        _registrations[token] = new Registration(tools, turnCancellation);
+        // 会话身份随注册进入 AsyncLocal 通道，MCP 处理器把它打到工具请求 span 上，
+        // 审计网关据此把工具调用关联到会话（否则工具 span 是无身份的孤儿 trace）。
+        _registrations[token] = new Registration(tools, turnCancellation, conversationId, userId, username, agentId);
         return new RuntimeToolLease(this, token, new McpServer("openagent")
         {
             Type = "http",
@@ -212,9 +219,27 @@ internal sealed class RuntimeToolBridge : IAsyncDisposable
                 using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(ct, registration.TurnCancellation);
                 linked.Token.ThrowIfCancellationRequested();
                 Dictionary<string, object?> arguments = parameters.Arguments?.ToDictionary(x => x.Key, x => (object?)x.Value) ?? [];
+                // 审计：把会话身份与调用参数打到 /runtime-tools/ 请求 span 上——没有这些
+                // 标签时该 span 是无身份的孤儿 trace，审计台无法把它关联到会话。
+                if (Activity.Current is { } callActivity)
+                {
+                    callActivity.SetTag("openagent.conversation_id", registration.ConversationId);
+                    callActivity.SetTag("openagent.user_id", registration.UserId);
+                    callActivity.SetTag("openagent.username", registration.Username);
+                    callActivity.SetTag("openagent.agent_id", registration.AgentId);
+                    callActivity.SetTag("openagent.tool.name", parameters.Name);
+                    callActivity.SetTag("langfuse.observation.type", "tool");
+                    callActivity.SetTag("langfuse.observation.input",
+                        Truncate(JsonSerializer.Serialize(arguments)));
+                }
                 try
                 {
                     string result = await tool.InvokeAsync(arguments, linked.Token).ConfigureAwait(false);
+                    if (Activity.Current is { } doneActivity)
+                    {
+                        doneActivity.SetTag("langfuse.observation.output", Truncate(result));
+                        doneActivity.SetTag("openagent.tool.status", "completed");
+                    }
                     return new CallToolResult { Content = [new McpText { Text = result }] };
                 }
                 catch (OperationCanceledException) when (linked.IsCancellationRequested)
@@ -224,6 +249,10 @@ internal sealed class RuntimeToolBridge : IAsyncDisposable
                 catch (Exception)
                 {
                     // 回调异常可能携带服务端路径/凭据；只把可读、无敏感数据的失败交给 Agent。
+                    if (Activity.Current is { } failActivity)
+                    {
+                        failActivity.SetTag("openagent.tool.status", "failed");
+                    }
                     return new CallToolResult { IsError = true, Content = [new McpText { Text = "Platform tool execution failed or access was denied." }] };
                 }
             });
@@ -265,7 +294,19 @@ internal sealed class RuntimeToolBridge : IAsyncDisposable
         }
     }
 
-    private sealed record Registration(Dictionary<string, RuntimeTool> Tools, CancellationToken TurnCancellation);
+    private const int MaxBridgeAuditChars = 4000;
+
+    private static string Truncate(string? value) => value is null || value.Length <= MaxBridgeAuditChars
+        ? value ?? string.Empty
+        : value[..MaxBridgeAuditChars] + "…[审计截断]";
+
+    private sealed record Registration(
+        Dictionary<string, RuntimeTool> Tools,
+        CancellationToken TurnCancellation,
+        string ConversationId,
+        string UserId,
+        string Username,
+        string AgentId);
 }
 
 /// <summary>本轮桥租约：释放即从共享端点吊销 bearer，整轮取消同样拒绝后续调用。</summary>

@@ -216,7 +216,7 @@ public sealed class RuntimeBoundaryTests
             return Task.FromResult("桥接结果");
         });
         await using RuntimeToolBridge bridge = new();
-        await using RuntimeToolLease lease = await bridge.RegisterAsync([tool], turn.Token);
+        await using RuntimeToolLease lease = await bridge.RegisterAsync([tool], turn.Token, "conv-test", "user-test", "tester", "cs-bot");
         using HttpClient anonymous = new();
         Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync(lease.Server.Url)).StatusCode);
         anonymous.DefaultRequestHeaders.Add("Authorization", "Bearer wrong-token");
@@ -244,8 +244,8 @@ public sealed class RuntimeBoundaryTests
         RuntimeTool second = new("beta", "second turn tool", """{"type":"object"}""", (_, _) => Task.FromResult("第二轮结果"));
         RuntimeTool failing = new("boom", "throws server paths", """{"type":"object"}""", (_, _) => throw new InvalidOperationException("D:/must-not-leak"));
         await using RuntimeToolBridge bridge = new();
-        await using RuntimeToolLease one = await bridge.RegisterAsync([first, failing], CancellationToken.None);
-        await using RuntimeToolLease two = await bridge.RegisterAsync([second], CancellationToken.None);
+        await using RuntimeToolLease one = await bridge.RegisterAsync([first, failing], CancellationToken.None, "conv-1", "user-1", "tester", "agent-1");
+        await using RuntimeToolLease two = await bridge.RegisterAsync([second], CancellationToken.None, "conv-2", "user-2", "tester", "agent-2");
         // 共享端点：两轮拿到同一 URL，只有 bearer 不同。
         Assert.Equal(one.Server.Url, two.Server.Url);
         Assert.NotEqual(Assert.Single(one.Server.Headers!).Value, Assert.Single(two.Server.Headers!).Value);
@@ -303,7 +303,7 @@ public sealed class RuntimeBoundaryTests
                 .Features.Get<IServerAddressesFeature>()!.Addresses.Single();
             RuntimeToolBridge bridge = app.Services.GetRequiredService<RuntimeToolBridge>();
             using CancellationTokenSource turn = new();
-            await using RuntimeToolLease lease = await bridge.RegisterAsync([tool], turn.Token);
+            await using RuntimeToolLease lease = await bridge.RegisterAsync([tool], turn.Token, "conv-test", "user-test", "tester", "cs-bot");
             Assert.Equal(hostAddress + RuntimeToolBridge.BridgePath, lease.Server.Url);
             using HttpClient anonymous = new();
             Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync(lease.Server.Url)).StatusCode);

@@ -157,7 +157,7 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
             processAt = clock.ElapsedMilliseconds;
             // 宿主共享桥只按本轮 bearer 注册/吊销工具集，不再每轮启动站点；端点长期存活，
             // 保活复用也不会给 harness 留下死端点。
-            tools = await bridge.RegisterAsync(invocation.Tools, cancellationToken).ConfigureAwait(false);
+            tools = await bridge.RegisterAsync(invocation.Tools, cancellationToken, invocation.Turn.ConversationId ?? string.Empty, invocation.Turn.UserId, invocation.Username ?? string.Empty, invocation.Turn.AgentId ?? string.Empty).ConfigureAwait(false);
             // 平台自有工具经桥；外部 MCP server 按 Agent 配置直接透传给 harness 原生连接。
             McpServer[] sessionServers = [tools.Server, .. AcpSessionMcp.Map(invocation.McpServers)];
             string schema = Convert.ToHexStringLower(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(

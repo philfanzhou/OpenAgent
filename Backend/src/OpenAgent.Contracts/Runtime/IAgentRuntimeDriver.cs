@@ -28,6 +28,9 @@ public sealed record RuntimeInvocation(
 
     /// <summary>Bind the turn's platform file tools after acquiring the workspace, before exposing the MCP bridge.</summary>
     public Func<IRuntimeWorkspaceFiles, CancellationToken, Task<RuntimeFilePreparation>>? PrepareFilesAsync { get; init; }
+
+    /// <summary>引擎登录名（如 Keycloak/SSO 账号），供审计桥把工具调用关联到真实账号；缺省为空。</summary>
+    public string? Username { get; init; }
 }
 
 public sealed record RuntimeMessage(
