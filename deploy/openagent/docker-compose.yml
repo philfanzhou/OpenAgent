@@ -1,52 +1,10 @@
-name: ${OPENAGENT_COMPOSE_PROJECT:-openagent-app}
+name: openagent-app
 services:
   engine:
-    image: ${OPENAGENT_ENGINE_IMAGE:-openagent-engine:latest}
-    environment:
-      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
-      ASPNETCORE_URLS: http://+:5208
-      # Engine 专用：数据库与 S3；不会传给 Router 或 Chat。
-      ConnectionStrings__OpenAgentDatabase: Host=postgres;Port=5432;Database=openagent;Username=openagent;Password=${OPENAGENT_POSTGRES_PASSWORD:-}
-      # 默认连接基础设施 Compose 的 Redis；Engine 注册与缓存依赖它。
-      ConnectionStrings__Redis: redis:6379
-      Database__ApplyMigrationsOnStartup: "true"
-      ConversationCache__Enabled: "true"
-      FileAssets__Enabled: "true"
-      # 可选：启用外部 OpenTelemetry Collector。
-      # OpenTelemetry__OtlpEndpoint: ${OPENAGENT_OTLP_ENDPOINT:-}
-      OpenTelemetry__ServiceName: openagent-engine
-      OTEL_EXPORTER_OTLP_ENDPOINT: ${OPENAGENT_OTLP_TRACES_ENDPOINT:-}
-      OTEL_EXPORTER_OTLP_HEADERS: ${OPENAGENT_OTLP_TRACES_HEADERS:-}
-      OTEL_EXPORTER_OTLP_PROTOCOL: ${OPENAGENT_OTLP_PROTOCOL:-http/protobuf}
-      OTEL_TRACES_EXPORTER: otlp
-      OpenTelemetry__ServiceVersion: ${OPENAGENT_SERVICE_VERSION:-development}
-      OPENAGENT_ALLOW_INSECURE_TLS: ${OPENAGENT_ALLOW_INSECURE_TLS:-false}
-      # Opencode 跳过 TLS 证书校验（用于自签名证书）
-      NODE_TLS_REJECT_UNAUTHORIZED: "0"
-      # 可选覆盖：外部 S3-compatible 服务商按需修改区域和寻址方式。
-      # FileAssets__ObjectStorage__Region: ${OPENAGENT_S3_REGION:-us-east-1}
-      FileAssets__ObjectStorage__ServiceUrl: ${OPENAGENT_S3_SERVICE_URL:?Set OPENAGENT_S3_SERVICE_URL}
-      FileAssets__ObjectStorage__ForcePathStyle: "true"
-      FileAssets__ObjectStorage__BucketName: openagent-files
-      FileAssets__ObjectStorage__AccessKey: ${OPENAGENT_S3_ACCESS_KEY:?Set OPENAGENT_S3_ACCESS_KEY}
-      FileAssets__ObjectStorage__SecretKey: ${OPENAGENT_S3_SECRET_KEY:?Set OPENAGENT_S3_SECRET_KEY}
-      # 可选：S3 bucket 不是 openagent-files 时，先创建 bucket 再替换默认值。
-      # FileAssets__ObjectStorage__BucketName: ${OPENAGENT_S3_BUCKET:-openagent-files}
-      # FileAssets__Share__PublicBaseUrl: ${OPENAGENT_SHARE_PUBLIC_BASE_URL:-}
-      Heartbeat__AdvertisedHost: engine
-      Heartbeat__AdvertisedPort: "5208"
-      # 登录配置：默认 Basic（用户名 admin、租户 development）；与 Router 使用相同账号和租户，
-      # 可选 OIDC 覆盖变量也必须两端一致。生产 OIDC 元数据固定 HTTPS，时钟容差固定 60 秒。
-      Authentication__AllowDevelopmentAnonymous: "${OPENAGENT_AUTH_ALLOW_DEVELOPMENT_ANONYMOUS:-false}"
-      Authentication__Mode: ${OPENAGENT_AUTH_MODE:-JwtBearer}
-      Authentication__EnableKeycloak: "${OPENAGENT_AUTH_ENABLE_KEYCLOAK:-true}"
-      Authentication__EnableApiKey: "${OPENAGENT_AUTH_ENABLE_API_KEY:-false}"
-      Authentication__Authority: ${OPENAGENT_KEYCLOAK_PUBLIC_URL:-https://agent.monolithicpower.com:8443}/realms/openagent
-      Authentication__MetadataAddress: https://openagent-infrastructure-keycloak-1:8443/realms/openagent/.well-known/openid-configuration
-      Authentication__Audience: ${OPENAGENT_AUTH_AUDIENCE:-openagent-api}
-      Authentication__ClientId: ${OPENAGENT_AUTH_CLIENT_ID:-openagent-chat}
-      Authentication__RequireHttpsMetadata: "true"
-      Authentication__ClockSkewSeconds: "60"
+    image: openagent-engine:latest
+    env_file:
+      - ./.env
+      - ./engine/.env
     networks:
       - openagent
       - infrastructure
@@ -59,33 +17,10 @@ services:
       retries: 30
 
   router:
-    image: ${OPENAGENT_ROUTER_IMAGE:-openagent-router:latest}
-    environment:
-      ASPNETCORE_ENVIRONMENT: Production
-      ASPNETCORE_URLS: http://+:5001
-      OPENAGENT_INTERN_DECISION_API_KEY: ${OPENAGENT_INTERN_DECISION_API_KEY:-}
-      # 可选：连接外部 Redis / OpenTelemetry 时启用。
-      ConnectionStrings__Redis: redis:6379
-      # OpenTelemetry__OtlpEndpoint: ${OPENAGENT_OTLP_ENDPOINT:-}
-      OpenTelemetry__ServiceName: openagent-router
-      OTEL_EXPORTER_OTLP_ENDPOINT: ${OPENAGENT_OTLP_TRACES_ENDPOINT:-}
-      OTEL_EXPORTER_OTLP_HEADERS: ${OPENAGENT_OTLP_TRACES_HEADERS:-}
-      OTEL_EXPORTER_OTLP_PROTOCOL: ${OPENAGENT_OTLP_PROTOCOL:-http/protobuf}
-      OTEL_TRACES_EXPORTER: otlp
-      OpenTelemetry__ServiceVersion: ${OPENAGENT_SERVICE_VERSION:-development}
-      # OPENAGENT_ALLOW_INSECURE_TLS: ${OPENAGENT_ALLOW_INSECURE_TLS:-false}
-      RouterSettings__Routing__EngineEndpoint: http://engine:5208
-      RouterSettings__IntentRecognition__TimeoutMs: "30000"
-      Authentication__AllowDevelopmentAnonymous: "${OPENAGENT_AUTH_ALLOW_DEVELOPMENT_ANONYMOUS:-false}"
-      Authentication__Mode: ${OPENAGENT_AUTH_MODE:-JwtBearer}
-      Authentication__EnableKeycloak: "${OPENAGENT_AUTH_ENABLE_KEYCLOAK:-true}"
-      Authentication__EnableApiKey: "${OPENAGENT_AUTH_ENABLE_API_KEY:-false}"
-      Authentication__Authority: ${OPENAGENT_KEYCLOAK_PUBLIC_URL:-https://agent.monolithicpower.com:8443}/realms/openagent
-      Authentication__MetadataAddress: https://openagent-infrastructure-keycloak-1:8443/realms/openagent/.well-known/openid-configuration
-      Authentication__Audience: ${OPENAGENT_AUTH_AUDIENCE:-openagent-api}
-      Authentication__ClientId: ${OPENAGENT_AUTH_CLIENT_ID:-openagent-chat}
-      Authentication__RequireHttpsMetadata: "true"
-      Authentication__ClockSkewSeconds: "60"
+    image: openagent-router:latest
+    env_file:
+      - ./.env
+      - ./router/.env
     depends_on:
       engine:
         condition: service_healthy
@@ -99,45 +34,20 @@ services:
       retries: 30
 
   chat:
-    image: ${OPENAGENT_CHAT_IMAGE:-openagent-chat:latest}
+    image: openagent-chat:latest
     depends_on:
       router:
         condition: service_healthy
-    networks:
-      - openagent
-
-  nginx:
-    image: nginx:latest
-    depends_on:
-      chat:
-        condition: service_started
-      router:
-        condition: service_healthy
-      engine:
-        condition: service_healthy
-    environment:
-      OPENAGENT_NGINX_CLIENT_MAX_BODY_SIZE: ${OPENAGENT_NGINX_CLIENT_MAX_BODY_SIZE:-1100m}
-      OPENAGENT_NGINX_SERVER_NAME: ${OPENAGENT_PUBLIC_HOST:-localhost}
-      OPENAGENT_CHAT_PORT: ${OPENAGENT_CHAT_PORT:-8081}
-      OPENAGENT_ROUTER_PORT: ${OPENAGENT_ROUTER_PORT:-8082}
-      OPENAGENT_ENGINE_PORT: ${OPENAGENT_ENGINE_PORT:-8083}
-    ports:
-      - "${OPENAGENT_CHAT_PORT:-8081}:${OPENAGENT_CHAT_PORT:-8081}"
-      - "${OPENAGENT_ROUTER_PORT:-8082}:${OPENAGENT_ROUTER_PORT:-8082}"
-      - "${OPENAGENT_ENGINE_PORT:-8083}:${OPENAGENT_ENGINE_PORT:-8083}"
-    volumes:
-      - ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
-      # 自定义证书目录时用绝对路径覆盖 OPENAGENT_TLS_CERT_DIR（目录需含 tls.crt/tls.key）。
-      - ${OPENAGENT_TLS_CERT_DIR:-./nginx/certs}:/etc/nginx/tls:ro
     networks:
       - openagent
 
 networks:
   openagent:
-    name: ${OPENAGENT_APP_NETWORK:-openagent}
+    external: true
+    name: openagent
   infrastructure:
     external: true
-    name: ${OPENAGENT_INFRA_NETWORK:-openagent-infrastructure}
+    name: openagent-infrastructure
 
 volumes:
   engine-data-protection:

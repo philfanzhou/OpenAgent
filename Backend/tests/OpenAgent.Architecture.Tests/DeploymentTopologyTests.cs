@@ -19,41 +19,42 @@ public class DeploymentTopologyTests
     private static string ComposePath =>
         Path.Combine(RepoRoot, "deploy", "openagent", "docker-compose.yml");
 
-    private static string EnvExamplePath =>
-        Path.Combine(RepoRoot, "deploy", "deployment.env.example");
+    private static string SharedEnvExamplePath =>
+        Path.Combine(RepoRoot, "deploy", "openagent", ".env.example");
 
     [Fact]
-    public void Compose_ForwardsAuditOtlpSettingsToEngineAndRouter()
+    public void Compose_SharesAuditOtlpSettingsBetweenEngineAndRouter()
     {
         string compose = File.ReadAllText(ComposePath);
+        string shared = File.ReadAllText(SharedEnvExamplePath);
 
-        // Both services export spans to the audit gateway. The production
-        // deployment uses the .NET SDK's standard OTEL_* environment variables
-        // (proven working end-to-end); each service must carry all three.
-        Assert.Equal(2, CountOccurrences(compose, "OTEL_EXPORTER_OTLP_ENDPOINT"));
-        Assert.Equal(2, CountOccurrences(compose, "OTEL_EXPORTER_OTLP_HEADERS"));
-        Assert.Equal(2, CountOccurrences(compose, "OTEL_EXPORTER_OTLP_PROTOCOL"));
-        Assert.Equal(2, CountOccurrences(compose, "OTEL_TRACES_EXPORTER"));
+        // Both services load the same runtime env_file. Optional audit values
+        // live there once rather than being duplicated in Compose environment.
+        Assert.Equal(2, Regex.Matches(compose, @"(?m)^      - \./\.env$").Count);
+        Assert.Equal(1, CountOccurrences(shared, "OTEL_EXPORTER_OTLP_ENDPOINT="));
+        Assert.Equal(1, CountOccurrences(shared, "OTEL_EXPORTER_OTLP_HEADERS="));
+        Assert.Equal(1, CountOccurrences(shared, "OTEL_EXPORTER_OTLP_PROTOCOL="));
+        Assert.Equal(1, CountOccurrences(shared, "OTEL_TRACES_EXPORTER="));
     }
 
     [Fact]
-    public void Compose_KeepsTheSharedEndpointAsAFallback()
+    public void SharedEnv_KeepsTheSharedEndpointAsAFallback()
     {
-        // The per-signal variables must add to the shared one, not replace it:
-        // deployments that only set OPENAGENT_OTLP_ENDPOINT keep working.
-        string compose = File.ReadAllText(ComposePath);
+        string shared = File.ReadAllText(SharedEnvExamplePath);
 
-        Assert.Contains("OpenTelemetry__OtlpEndpoint", compose, StringComparison.Ordinal);
+        Assert.Contains("OpenTelemetry__OtlpEndpoint=", shared, StringComparison.Ordinal);
+        Assert.Contains("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=", shared, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void EnvExample_DoesNotReferenceVariablesInsideValues()
+    [Theory]
+    [InlineData("openagent")]
+    [InlineData("openagent/engine")]
+    [InlineData("openagent/router")]
+    [InlineData("nginx")]
+    public void ServiceEnvExamples_UseLiteralValues(string directory)
     {
-        // Docker Compose does not expand ${...} inside .env values. A header
-        // written as "Authorization=Bearer ${AUDIT_GATEWAY_TOKEN}" reaches the
-        // container literally, the gateway answers 401 for every batch, and all
-        // audit data is dropped while both services look healthy.
-        string example = File.ReadAllText(EnvExamplePath);
+        // Service configuration is entered directly, without a separate top-level alias file.
+        string example = File.ReadAllText(Path.Combine(RepoRoot, "deploy", directory, ".env.example"));
 
         string[] offenders = example
             .Split('\n')
@@ -64,25 +65,30 @@ public class DeploymentTopologyTests
             {
                 int separator = line.IndexOf('=');
                 string value = line[(separator + 1)..];
-                return Regex.IsMatch(value, @"\$\{[A-Za-z_][A-Za-z0-9_]*\}");
+                return value.Contains("${", StringComparison.Ordinal);
             })
             .ToArray();
 
         Assert.True(
             offenders.Length == 0,
-            "Values must not embed ${VAR}; compose will not expand it: " + string.Join(" | ", offenders));
+            "Service environment values must be literals: " + string.Join(" | ", offenders));
     }
 
     [Fact]
-    public void Compose_DeclaresTheSharedNetworkByName()
+    public void Compose_NginxOwnsTheFixedSharedNetwork()
     {
-        // Declaring the network external on both sides deadlocks a first deploy:
-        // each stack waits for the other to create it. Declaring it by name lets
-        // either stack create it and the other reuse it.
-        string compose = File.ReadAllText(ComposePath);
-        Match network = Regex.Match(compose, @"^\s{2}openagent:\s*\n\s+name:\s*\S+", RegexOptions.Multiline);
+        string app = File.ReadAllText(ComposePath);
+        string nginx = File.ReadAllText(Path.Combine(RepoRoot, "deploy", "nginx", "docker-compose.yml"));
+        const string networkPattern = @"(?m)^  openagent:\r?\n(?:    .*\r?\n)+";
+        Match appNetwork = Regex.Match(app, networkPattern);
+        Match nginxNetwork = Regex.Match(nginx, networkPattern);
 
-        Assert.True(network.Success, "the openagent network must be declared with an explicit name");
+        Assert.True(appNetwork.Success);
+        Assert.True(nginxNetwork.Success);
+        Assert.Contains("name: openagent", appNetwork.Value, StringComparison.Ordinal);
+        Assert.Contains("name: openagent", nginxNetwork.Value, StringComparison.Ordinal);
+        Assert.Contains("external: true", appNetwork.Value, StringComparison.Ordinal);
+        Assert.DoesNotContain("external:", nginxNetwork.Value, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -110,12 +116,14 @@ public class DeploymentTopologyTests
         string script = File.ReadAllText(Path.Combine(RepoRoot, "scripts", "build-images.sh"));
 
         string[] referenced = Regex
-            .Matches(script, @"docker_root/([A-Za-z0-9._/-]+)/Dockerfile")
-            .Select(match => match.Groups[1].Value + "/Dockerfile")
+            .Matches(script, @"\bdockerfile=([A-Za-z0-9._/-]+/Dockerfile)")
+            .Select(match => match.Groups[1].Value)
             .Distinct(StringComparer.Ordinal)
             .ToArray();
 
-        Assert.NotEmpty(referenced);
+        Assert.Equal(3, referenced.Length);
+        Assert.Contains("Backend/opencode.version", script, StringComparison.Ordinal);
+        Assert.Contains("OPENCODE_VERSION=$opencode_version", script, StringComparison.Ordinal);
 
         string[] missing = referenced
             .Where(path => !File.Exists(Path.Combine(RepoRoot, path)))

@@ -16,7 +16,7 @@ OpenAgent 是基于 .NET 10 与 ASP.NET Core 的多服务 Agent 平台：后端�
 - Skill 目录与 Skill 包物化、内置工具与调用授权（[Capabilities](docs/modules/capabilities.md)）
 - MCP Server 工具发现、调用与资源读取；外部 server 经 ACP 透传给 harness 原生连接（[MCP](docs/integrations/mcp-server.md)）
 - RAG 检索增强，对接 Qdrant / RagFlow（[RAG](docs/integrations/rag-service.md)）
-- CodeAct 代码执行：Runner 在 Linux 沙箱（Bubblewrap）中运行代码并管理会话工作区（[Runner](docs/integrations/code-runner.md)）
+- 代码执行由 OpenCode 原生工具承担，宿主通过 AllowedNativeTools 显式放行（[OpenCode](docs/integrations/opencode-runtime.md)）
 
 **安全与多租户**
 
@@ -39,14 +39,13 @@ OpenAgent 是基于 .NET 10 与 ASP.NET Core 的多服务 Agent 平台：后端�
 ```text
 Chat（浏览器）→ Router（HTTP 网关）→ Engine.Host（HTTP/SSE 宿主）
                                       ├─ Application：执行协调、会话、模型授权与工具适配
-                                      ├─ Capabilities：文件、RAG、内置工具、调用授权与 Runner 客户端
+                                      ├─ Capabilities：文件、RAG、内置工具、调用授权
                                       ├─ Runtime：ACP SDK → OpenCode 子进程 → LLM API
                                       ├─ Engine：配置、注册、心跳与热重载
                                       │    └─ Hosting：共享认证、身份与遥测（Router 也使用）
                                       └─ Framework：PostgreSQL、Redis 存储实现
 OpenCode → 本轮 MCP 桥 → Application 平台工具 / 外部 MCP
 Application → Capabilities → RAG（外部服务）
-Application → Capabilities → Runner（HTTP）→ Linux 沙箱与会话工作区
 Contracts：跨项目的纯接口、配置、DTO 与无 SDK 的能力定义
 ```
 
@@ -56,14 +55,13 @@ Contracts：跨项目的纯接口、配置、DTO 与无 SDK 的能力定义
 |---|---|
 | `OpenAgent.Contracts` | 共享接口、配置、DTO 与不含 SDK 的能力定义 |
 | `OpenAgent.Application` | 执行协调、会话、模型授权、工具适配与组合入口 |
-| `OpenAgent.Capabilities` | 文件、RAG、Skill 目录、内置工具、调用授权及 Runner 客户端 |
+| `OpenAgent.Capabilities` | 文件、RAG、Skill 目录、内置工具、调用授权 |
 | `OpenAgent.Engine` | 配置、Redis 注册、热重载；Hosting/ 内为共享认证与遥测 |
 | `OpenAgent.Engine.Host` | HTTP/SSE、管理端点与最终组合根 |
 | `OpenAgent.Runtime` | ACP/OpenCode 平台驱动、事件与每轮 MCP 桥（不打包） |
 | `OpenAgent.Runtime.Acp` | 独立单包 ACP SDK，不引用平台模块 |
 | `OpenAgent.Framework` | EF Core、PostgreSQL、Redis 存储实现 |
 | `OpenAgent.Router` | 路由、转发、限流与入口认证 |
-| `OpenAgent.Runner` | 沙箱与工作区 |
 
 各模块使用同名 `.Tests` 项目。调用边界、数据主责与功能范围的权威说明见 [系统上下文](docs/overview/SystemContext.md)。
 
@@ -91,10 +89,9 @@ Frontend/OpenAgent.Chat/  Vue 3 Chat 工作台
 docs/                     功能域、集成、数据库、API 与排障文档
 deploy/
 ├── infrastructure/       PostgreSQL、Redis、MinIO、Keycloak 编排
-├── openagent/            Engine、Runner、Router、Chat、Nginx 编排
-└── deployment.env.example 环境变量模板
-docker/nginx/             Nginx 配置
-scripts/                  构建、部署、预览与沙箱测试脚本
+├── openagent/            Engine、Router、Chat 编排
+└── nginx/                独立入口、网络与环境模板
+scripts/                  构建、部署、预览与测试脚本
 .agent/                   AI 技能、编码与文档规范
 ```
 
@@ -125,11 +122,13 @@ pnpm dev
 
 ### 本地部署
 
-使用 Docker Compose 启动基础设施（PostgreSQL、Redis、MinIO、Keycloak）与平台服务（Engine、Runner、Router、Chat、Nginx）：
+使用 Docker Compose 启动基础设施（PostgreSQL、Redis、MinIO、Keycloak）与平台服务（Engine、Router、Chat、Nginx）：
 
 ```bash
-cp deploy/deployment.env.example deploy/deployment.env  # 按需修改
-# 按 docs/operations/deployment.md 启动两个 compose
+scripts/deploy.sh init  # 填写 deploy/openagent/ 与 deploy/nginx/ 的配置
+# 按 docs/operations/deployment.md 单独准备基础设施
+scripts/build-images.sh
+scripts/deploy.sh
 ```
 
 启动步骤、认证配置、环境变量、数据卷与镜像更新见 [部署指南](docs/operations/deployment.md)；本地预览脚本见 [本地预览](docs/operations/local-preview.md)。

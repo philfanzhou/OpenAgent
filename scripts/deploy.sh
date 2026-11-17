@@ -1,126 +1,56 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# 启动已经构建或拉取到本机的应用镜像；绝不触发 Docker build。
-# 用法：scripts/deploy.sh [--env-file path/to/.env] [--docker-mode auto|docker|wsl-docker]
-
-script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-repo_root="$(cd -- "$script_dir/.." && pwd)"
-env_file=""
-docker_mode_arg=""
-docker_cmd=()
-
-die() {
-  echo "error: $*" >&2
-  exit 1
-}
-
-load_env_file() {
-  local file="$1"
-  [[ -f "$file" ]] || die "environment file does not exist: $file"
-
-  # 与构建脚本使用同一份受保护的部署变量，确保镜像标签和公开地址一致。
-  set -a
-  # shellcheck disable=SC1090
-  source "$file"
-  set +a
-}
-
-to_wsl_path() {
-  local path="$1"
-  local windows_path="$path"
-
-  # 用正斜杠形式的 Windows 路径（D:/...）：反斜杠路径经 wsl.exe 转发时会被中间 shell 当转义符吃掉。
-  if command -v cygpath >/dev/null 2>&1; then
-    windows_path="$(cygpath -m "$path")"
-  elif [[ "$path" =~ ^/([[:alpha:]])/(.*)$ ]]; then
-    windows_path="${BASH_REMATCH[1]^^}:/${BASH_REMATCH[2]}"
-  fi
-
-  wsl.exe wslpath -a -u "$windows_path" | tr -d '\r'
-}
-
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --env-file)
-      [[ $# -ge 2 ]] || die "--env-file requires a path"
-      env_file="$2"
-      shift 2
-      ;;
-    --docker-mode)
-      [[ $# -ge 2 ]] || die "--docker-mode requires auto, docker, or wsl-docker"
-      docker_mode_arg="$2"
-      shift 2
-      ;;
-    *)
-      die "unknown argument: $1"
-      ;;
-  esac
-done
-
-if [[ -n "$env_file" ]]; then
-  [[ "$env_file" = /* ]] || env_file="$PWD/$env_file"
-  load_env_file "$env_file"
-fi
-
-docker_mode="${docker_mode_arg:-${OPENAGENT_DOCKER_MODE:-auto}}"
-
-case "$docker_mode" in
-  auto)
-    if [[ -n "${WSL_DISTRO_NAME:-}" && -x "$(command -v docker 2>/dev/null || true)" ]]; then
-      docker_cmd=(docker)
-    elif command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
-      docker_cmd=(docker)
-    elif command -v wsl.exe >/dev/null 2>&1; then
-      docker_cmd=(wsl.exe docker)
-    elif command -v docker >/dev/null 2>&1; then
-      docker_cmd=(docker)
-    else
-      die "auto docker mode could not find a usable docker or wsl.exe command"
-    fi
-    ;;
-  docker|local)
-    docker_cmd=(docker)
-    ;;
-  wsl-docker|wsl)
-    if [[ -n "${WSL_DISTRO_NAME:-}" ]]; then
-      docker_cmd=(docker)
-    elif command -v wsl.exe >/dev/null 2>&1; then
-      docker_cmd=(wsl.exe docker)
-    else
-      die "wsl-docker mode requires running inside WSL or having wsl.exe available"
-    fi
-    ;;
-  *)
-    die "unsupported docker mode '$docker_mode' (use auto, docker, or wsl-docker)"
-    ;;
+# Run in Linux, macOS or WSL. Infrastructure is managed separately.
+repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$repo_root"
+action="${1:-all}"
+[[ $# -le 1 ]] || { echo 'usage: scripts/deploy.sh [init|nginx|app|all|check]' >&2; exit 1; }
+case "$action" in
+  init)
+    umask 077
+    for directory in deploy/openagent deploy/openagent/{engine,router} deploy/nginx; do
+      file="$directory/.env"
+      if [[ ! -e "$file" && ! -L "$file" ]]; then
+        (set -o noclobber; cat "$file.example" > "$file")
+        echo "Created $file"
+      fi
+    done
+    echo 'Configure deploy/openagent/.env, its service .env files, and deploy/nginx/.env.'
+    exit 0 ;;
+  nginx) stacks=(nginx) ;;
+  app) stacks=(openagent) ;;
+  all|check) stacks=(nginx openagent) ;;
+  -h|--help) echo 'usage: scripts/deploy.sh [init|nginx|app|all|check]'; exit 0 ;;
+  *) echo "unknown action: $action" >&2; exit 1 ;;
 esac
 
-# Git Bash 会把传给 wsl.exe 的 /mnt/... 参数改写为 Windows 路径，必须关闭该转换。
-if [[ "${docker_cmd[0]:-docker}" == "wsl.exe" ]]; then
-  export MSYS_NO_PATHCONV=1
+if [[ "$action" != app ]]; then
+  [[ -f deploy/nginx/.env ]] || { echo 'Run scripts/deploy.sh init first.' >&2; exit 1; }
+  # Only Nginx's shell-compatible public settings are read for certificate preflight.
+  # Application env_files (connection strings and credentials) are parsed by Compose only.
+  set -a
+  source deploy/nginx/.env
+  set +a
+  cert_dir="$OPENAGENT_TLS_CERT_DIR"
+  [[ "$cert_dir" = /* ]] || cert_dir="$repo_root/deploy/nginx/$cert_dir"
+  [[ -s "$cert_dir/tls.crt" && -s "$cert_dir/tls.key" ]] \
+    || { echo 'TLS directory must contain tls.crt and tls.key; relative paths start in deploy/nginx.' >&2; exit 1; }
 fi
 
-engine_image="${OPENAGENT_ENGINE_IMAGE:-openagent-engine:latest}"
-router_image="${OPENAGENT_ROUTER_IMAGE:-openagent-router:latest}"
-chat_image="${OPENAGENT_CHAT_IMAGE:-openagent-chat:latest}"
-
-images=("$engine_image" "$router_image" "$chat_image")
-for image in "${images[@]}"; do
-  "${docker_cmd[@]}" image inspect "$image" >/dev/null 2>&1 \
-    || die "required application image is unavailable locally: $image; run scripts/build-images.sh first or pull the image"
-done
-
-cd "$repo_root"
-compose_args=(--project-name "${OPENAGENT_COMPOSE_PROJECT:-openagent-app}" --file deploy/openagent/docker-compose.yml)
-if [[ -n "$env_file" ]]; then
-  # wsl.exe 模式下把宿主机路径转换为 WSL 路径，避免 compose 在 WSL 内读不到。
-  if [[ "${docker_cmd[0]}" == "wsl.exe" ]]; then
-    compose_args+=(--env-file "$(to_wsl_path "$env_file")")
-  else
-    compose_args+=(--env-file "$env_file")
-  fi
+compose() {
+  local stack="$1" project=openagent-app
+  shift
+  [[ "$stack" != nginx ]] || project=openagent-nginx
+  docker compose --project-name "$project" --env-file "deploy/$stack/.env" --file "deploy/$stack/docker-compose.yml" "$@"
+}
+for stack in "${stacks[@]}"; do compose "$stack" config --quiet; done
+if owner="$(docker network inspect openagent --format '{{index .Labels "com.docker.compose.project"}}/{{index .Labels "com.docker.compose.network"}}' 2>/dev/null)"; then
+  [[ "$owner" == openagent-nginx/openagent ]] \
+    || { echo 'Migrate the existing openagent network to Nginx ownership; see docs/operations/deployment.md.' >&2; exit 1; }
+elif [[ "$action" == app ]]; then
+  echo 'Deploy Nginx first: scripts/deploy.sh nginx' >&2
+  exit 1
 fi
-
-"${docker_cmd[@]}" compose "${compose_args[@]}" config --quiet
-"${docker_cmd[@]}" compose "${compose_args[@]}" up --detach --no-build --pull never
+[[ "$action" != check ]] || { echo 'Deployment configuration is valid.'; exit 0; }
+for stack in "${stacks[@]}"; do compose "$stack" up --detach --no-build --pull never --wait; done

@@ -105,8 +105,7 @@ jobs:
             --label "org.opencontainers.image.version=${GITHUB_REF_NAME#v}"
             --label "org.opencontainers.image.revision=$GITHUB_SHA"
           )
-          # Engine 镜像内嵌钉住版本的 OpenCode；Chat 镜像使用 Dockerfile 默认公开地址（localhost），
-          # 生产部署需按自身域名重建，或经 OPENAGENT_CHAT_IMAGE 覆盖为自有构建标签。
+          # Engine 内嵌钉住版本的 OpenCode；Chat 的后台连接在浏览器中配置。
           if [[ "${{ matrix.name }}" == "engine" ]]; then
             build_args+=(--build-arg "OPENCODE_VERSION=$OPENCODE_VERSION")
             labels+=(--label "io.openagent.opencode-version=$OPENCODE_VERSION")
@@ -144,9 +143,9 @@ jobs:
         run: |
           platform_version="${GITHUB_REF_NAME#v}"
           owner="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
-          mkdir -p bundle/deploy
-          cp -r deploy/openagent deploy/infrastructure bundle/deploy/
-          cp deploy/deployment.env.example bundle/deploy/ || true
+          mkdir -p bundle/deploy bundle/scripts
+          cp -r deploy/openagent deploy/nginx deploy/infrastructure bundle/deploy/
+          cp scripts/deploy.sh bundle/scripts/
           cat > bundle/RELEASE.md <<EOF
           # OpenAgent ${platform_version} 部署包
 
@@ -157,8 +156,10 @@ jobs:
             - ghcr.io/${owner}/openagent-router:${platform_version}
             - ghcr.io/${owner}/openagent-chat:${platform_version}
 
-          使用方式见 docs/operations/deployment.md。registry 版 Chat 镜像按默认公开地址（localhost）构建，
-          生产部署需按自身域名重建 Chat 镜像，或在 .env 中以 OPENAGENT_CHAT_IMAGE 指向自有标签。
+          使用方式见 docs/operations/deployment.md。将上面的三个发布镜像分别 retag 为固定本地名称
+          openagent-engine:latest、openagent-router:latest、openagent-chat:latest，并准备 nginx:1.28-alpine。
+          先运行 scripts/deploy.sh init，填写各服务的 .env 与共享认证配置，再运行 scripts/deploy.sh。
+          Nginx 优先创建网络，业务随后加入；Chat 的 Router/Engine 连接在浏览器中配置。
           升级 OpenCode 时先修改 Backend/opencode.version，并以
           docker build --target runtime-tests 通过真实进程回归后再打标签发布。
           EOF
