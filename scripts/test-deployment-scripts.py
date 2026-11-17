@@ -172,6 +172,13 @@ if args[0] == 'compose':
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse(any('openagent-app' in call for call in calls))
 
+    def test_nginx_certificate_path_is_relative_to_its_compose_directory(self):
+        with (self.tmp / 'nginx/.env').open('a') as stream:
+            stream.write('\nOPENAGENT_TLS_CERT_DIR=../certs\n')
+        result, calls = self.run_script('deploy.sh', 'nginx')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(any('up' in call for call in calls))
+
     def test_build_uses_fixed_names_and_exports_three_dev_services(self):
         self.env.update(OPENAGENT_ENGINE_IMAGE='override-image', OPENAGENT_ROUTER_IMAGE='override-image',
                         OPENAGENT_CHAT_IMAGE='override-image')

@@ -65,7 +65,7 @@ public class DeploymentTopologyTests
             {
                 int separator = line.IndexOf('=');
                 string value = line[(separator + 1)..];
-                return Regex.IsMatch(value, @"\$\{[A-Za-z_][A-Za-z0-9_]*\}");
+                return value.Contains("${", StringComparison.Ordinal);
             })
             .ToArray();
 

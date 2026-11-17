@@ -43,7 +43,7 @@ Engine/Router 另加入既有 `openagent-infrastructure` 网络。项目、网�
 | [openagent/.env.example](../../deploy/openagent/.env.example) | Engine / Router 共用环境、Redis、认证、遥测 |
 | [openagent/engine/.env.example](../../deploy/openagent/engine/.env.example) | 数据库、对象存储、心跳、Node/OpenCode TLS |
 | [openagent/router/.env.example](../../deploy/openagent/router/.env.example) | Engine 地址、意图识别超时和 Intern-Decision 密钥 |
-| [nginx/.env.example](../../deploy/nginx/.env.example) | 入口主机、端口、模板变量和可选证书目录 |
+| [nginx/.env.example](../../deploy/nginx/.env.example) | 入口主机、端口、模板变量和证书目录 |
 
 文件位置固定；Engine/Router 先读共享文件，再读专用文件，同名项以后者为准。
 应用的三个文件直接填写 .NET 原生 `__` 配置，由 Compose `env_file` 加载；不再有顶层 `deploy/.env` 或 S3/数据库别名转译。
@@ -60,8 +60,8 @@ Router 的 `http://engine:5208` 及 Nginx 的 `engine:5208` / `router:5001` 是 
 它们不属于 .NET 默认路由：Router 代码兜底是 localhost，不能用于跨容器访问，故其 EngineEndpoint 保持显式配置。
 
 Engine 文件直接配置 `FileAssets__ObjectStorage__ServiceUrl`，示例使用内置 MinIO 地址 `http://minio:9000`；外接 S3 时直接改值。
-旧 `${OPENAGENT_S3_SERVICE_URL:?Set ...}` 的含义是变量未设置或为空时终止 Compose，并非默认地址或赋值语句。
-去掉中间别名后不再需要该表达式；请填写 Engine 文件中标注必填的连接与凭据，服务启动时仍执行自身配置/连接检查。
+连接地址与凭据直接填写在所属环境文件中，不嵌入其他变量、默认值分支或错误提示表达式。
+Nginx Compose 仅直接引用入口文件中的字段；默认值集中在其 .env.example。服务启动时仍执行自身配置/连接检查。
 
 
 ## 镜像构建与 OpenCode
@@ -80,7 +80,8 @@ Windows 在 WSL 中执行同一套 Bash 脚本，不再维护重复 PowerShell �
 ## 证书、数据卷与迁移
 
 为兼容 infrastructure，默认证书仍在 `deploy/openagent/nginx/certs/tls.crt` 和 `tls.key`。
-可通过绝对路径 `OPENAGENT_TLS_CERT_DIR` 覆盖；终端、应用及 IdP 必须信任所用 CA。
+`OPENAGENT_TLS_CERT_DIR` 在 Nginx 文件中直接填写，示例为 `../openagent/nginx/certs`，相对路径以 `deploy/nginx` 为基准；也可填写绝对路径。
+终端、应用及 IdP 必须信任所用 CA。
 Engine 的 `engine-data-protection` 卷继续挂载到 `/home/app/.aspnet/DataProtection-Keys`，保持 dev 非 root 镜像路径。
 保留该卷及原密钥，不会自动迁移数据；代码执行由 OpenCode 原生工具负责，不配置 Runner 服务或密钥。
 

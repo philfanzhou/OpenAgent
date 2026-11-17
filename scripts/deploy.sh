@@ -32,9 +32,10 @@ if [[ "$action" != app ]]; then
   set -a
   source deploy/nginx/.env
   set +a
-  cert_dir="${OPENAGENT_TLS_CERT_DIR:-$repo_root/deploy/openagent/nginx/certs}"
-  [[ "$cert_dir" = /* && -s "$cert_dir/tls.crt" && -s "$cert_dir/tls.key" ]] \
-    || { echo 'Set an absolute TLS directory containing tls.crt and tls.key.' >&2; exit 1; }
+  cert_dir="$OPENAGENT_TLS_CERT_DIR"
+  [[ "$cert_dir" = /* ]] || cert_dir="$repo_root/deploy/nginx/$cert_dir"
+  [[ -s "$cert_dir/tls.crt" && -s "$cert_dir/tls.key" ]] \
+    || { echo 'TLS directory must contain tls.crt and tls.key; relative paths start in deploy/nginx.' >&2; exit 1; }
 fi
 
 compose() {

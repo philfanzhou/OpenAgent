@@ -26,7 +26,7 @@ scripts/deploy.sh
 
 公开地址固定使用 HTTPS。将 PEM 证书 `tls.crt`、私钥 `tls.key` 放入与 Nginx 共用的
 `deploy/openagent/nginx/certs/` 目录；应用 Nginx 和 Keycloak 共用该目录。
-自定义位置时，在 Nginx 配置中填写绝对路径 `OPENAGENT_TLS_CERT_DIR`，基础设施单独使用相同证书目录。
+自定义位置时，在 Nginx 配置中直接填写 `OPENAGENT_TLS_CERT_DIR`（相对路径以该 Compose 目录为基准，或使用绝对路径），基础设施单独使用相同证书目录。
 Keycloak 容器内 HTTPS 端口固定为 `8443`，Router/Engine 仍通过容器网络内 HTTP discovery 访问 Keycloak。
 
 Realm、SPA Client、API audience、`tenant_id` claim 和 Organization 能力由 [openagent-realm.json](../../deploy/infrastructure/keycloak/realm/openagent-realm.json) 导入；用户、密码、邮箱和租户组织由业务管理员手动维护。
