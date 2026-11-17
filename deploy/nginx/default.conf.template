@@ -33,6 +33,18 @@ server {
     ssl_certificate_key /etc/nginx/tls/tls.key;
     ssl_protocols TLSv1.2 TLSv1.3;
 
+    # 维护模式：文件即开关，每次请求实时检查，无需 reload；删除文件即恢复。
+    if (-f /etc/nginx/maintenance/maintenance.html) {
+        return 503;
+    }
+
+    error_page 503 @maintenance;
+    location @maintenance {
+        add_header Retry-After 300 always;
+        root /etc/nginx/maintenance;
+        rewrite ^(.*)$ /maintenance.html break;
+    }
+
     location / {
         proxy_pass http://openagent_chat;
         proxy_http_version 1.1;
