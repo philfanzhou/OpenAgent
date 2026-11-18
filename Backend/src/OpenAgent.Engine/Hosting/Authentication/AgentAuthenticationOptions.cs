@@ -12,7 +12,6 @@ public sealed class AgentAuthenticationOptions
     public bool EnableKeycloak { get; set; }
     public bool EnableApiKey { get; set; }
     public bool AllowDevelopmentAnonymous { get; set; }
-    public string BasicUsername { get; set; } = "admin";
     public string? BasicPassword { get; set; }
     public string BasicTenantId { get; set; } = "development";
     public string DevelopmentUserId { get; set; } = "development-user";

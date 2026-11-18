@@ -26,7 +26,6 @@ public static class AuthenticationEndpointExtensions
         group.MapGet("/config", () => TypedResults.Ok(new AuthConfigResponse
         {
             Mode = options.Mode.ToString(),
-            Development = environment.IsDevelopment(),
             Keycloak = new KeycloakConfigResponse
             {
                 Enabled = options.Mode == AgentAuthenticationMode.JwtBearer && options.EnableKeycloak
@@ -68,7 +67,7 @@ public static class AuthenticationEndpointExtensions
                         "username_and_password_required", context));
                 }
 
-                if (!DevelopmentCredentials.IsValid(request.Username, request.Password, options, environment.IsDevelopment()))
+                if (!BasicCredentials.IsValid(request.Username, request.Password, options))
                 {
                     return TypedResults.Problem(AgentProblemDetails.AuthenticationRequired(
                         "Invalid username or password.", context));

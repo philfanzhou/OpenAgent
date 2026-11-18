@@ -155,9 +155,9 @@ public static class RouterEndpointExtensions
         IHostEnvironment environment = app.ServiceProvider.GetRequiredService<IHostEnvironment>();
         if (environment.IsDevelopment())
         {
-            // Basic authentication is a local-development convenience and does not
-            // establish a production authorization boundary. Keep both the login
-            // endpoint and the management proxy unreachable outside Development.
+            // The management proxy forwards to Engine management endpoints and does
+            // not establish a production authorization boundary. Keep it
+            // unreachable outside Development.
             app.MapMethods(
                 "/api/v1/admin/{**path}",
                 [HttpMethods.Get, HttpMethods.Post, HttpMethods.Put, HttpMethods.Delete, HttpMethods.Patch],

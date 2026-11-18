@@ -10,7 +10,7 @@
 |---|---|
 | Production 登录 | 前端通过企业 IdP 执行 OIDC Authorization Code + PKCE |
 | Production API | JWT Bearer 校验 issuer、audience、签名和 lifetime，不接受 URL token；启用第三方 API Key 后，API Key 请求由数据库校验 Bearer 凭据，不访问 Keycloak |
-| Development 登录 | `/api/v1/auth/password/token` 返回 Basic 凭据，仅用于联调且不校验真实密码 |
+| 密码登录 | Basic 模式下 `/api/v1/auth/password/token` 返回 Basic 凭据，校验内置双账号（`admin` / `test`）或配置的共享密码 |
 | 登录态 | access token、refresh token、PKCE verifier/state 仅存于 `sessionStorage`，不进入 `localStorage`；OIDC 会在 access token 到期前自动续期 |
 | 租户 | Production 仅信任 `tenant_id`/`tid` claim；客户端 tenant header 不覆盖 claim，不一致返回 403 |
 | Development 兼容 | 仅 Development 的 Basic 认证允许 `X-Tenant-Id` 作为 claim 缺失时的回退，并由 Router 净化后转发 |
@@ -32,7 +32,7 @@
 }
 ```
 
-生产环境缺少 `Authority`、`Audience` 或 `ClientId` 会启动校验失败；启用 HTTPS metadata 时 Authority 必须为 HTTPS。`Basic` 模式在非 Development 环境同样启动失败。Development 可显式启用匿名兼容，但默认关闭。
+生产环境缺少 `Authority`、`Audience` 或 `ClientId` 会启动校验失败；启用 HTTPS metadata 时 Authority 必须为 HTTPS。`Basic` 模式任意环境可用：内置双账号 `admin` / `test`（默认密码与用户名相同），设置 `Authentication:BasicPassword` 后双账号共用该密码。Development 可显式启用匿名兼容，但默认关闭。
 
 ### 第三方 API Key 模式
 
@@ -44,7 +44,7 @@ API Key 的启用状态、租户和 scope 由数据库记录决定，调用方�
 
 ### 端点与前端会话
 
-`GET /api/v1/auth/config` 可匿名读取公开登录参数；Basic 密码端点只在 Development + Basic 模式映射。前端交换 OIDC code 后立即清理回调查询参数；OIDC refresh token 仅用于当前标签页的自动续期，不会进入 `localStorage`、URL、日志或错误详情。退出登录或 refresh token 失效后才要求重新进行交互式登录。
+`GET /api/v1/auth/config` 可匿名读取公开登录参数；Basic 密码端点在 Basic 模式映射，内置双账号（`admin` / `test`）任意环境可用。前端交换 OIDC code 后立即清理回调查询参数；OIDC refresh token 仅用于当前标签页的自动续期，不会进入 `localStorage`、URL、日志或错误详情。退出登录或 refresh token 失效后才要求重新进行交互式登录。
 
 `X-Tenant-Id` 只用于 Development 的 Basic 联调。Production 中该 header 不能建立或覆盖租户身份；缺少租户 claim 的受保护资源请求会被拒绝，header 与 claim 不一致时返回 403。Router 仅在 Development 向 Engine 转发从认证上下文解析并净化后的租户值，Production 转发始终移除租户 header。
 

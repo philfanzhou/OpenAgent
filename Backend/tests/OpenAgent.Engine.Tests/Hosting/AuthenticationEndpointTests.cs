@@ -17,10 +17,10 @@ namespace OpenAgent.Engine.Tests.Hosting;
 public class AuthenticationEndpointTests
 {
     [Fact]
-    public async Task DevelopmentBasicEndpoints_ExposeWarningConfigurationAndCompatibilityLogin()
+    public async Task BasicEndpoints_ExposeConfigurationAndBuiltInLoginInAnyEnvironment()
     {
         await using WebApplication app = await StartApplicationAsync(
-            Environments.Development,
+            Environments.Production,
             new Dictionary<string, string?>
             {
                 ["Authentication:Mode"] = "Basic",
@@ -30,18 +30,26 @@ public class AuthenticationEndpointTests
 
         JsonDocument config = await client.GetFromJsonAsync<JsonDocument>("/api/v1/auth/config")
             ?? throw new InvalidOperationException("Authentication config was empty.");
-        HttpResponseMessage login = await client.PostAsJsonAsync(
+        HttpResponseMessage adminLogin = await client.PostAsJsonAsync(
             "/api/v1/auth/password/token",
             new { username = "admin", password = "admin" });
+        HttpResponseMessage testLogin = await client.PostAsJsonAsync(
+            "/api/v1/auth/password/token",
+            new { username = "test", password = "test" });
+        HttpResponseMessage wrongLogin = await client.PostAsJsonAsync(
+            "/api/v1/auth/password/token",
+            new { username = "admin", password = "wrong" });
 
         Assert.Equal("Basic", config.RootElement.GetProperty("mode").GetString());
-        Assert.True(config.RootElement.GetProperty("development").GetBoolean());
+        Assert.False(config.RootElement.TryGetProperty("development", out _));
         Assert.True(config.RootElement.GetProperty("password").GetProperty("enabled").GetBoolean());
-        Assert.Equal(HttpStatusCode.OK, login.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, adminLogin.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, testLogin.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, wrongLogin.StatusCode);
     }
 
     [Fact]
-    public async Task ProductionJwtEndpoints_DisableCompatibilityPasswordLogin()
+    public async Task ProductionJwtEndpoints_DisablePasswordLogin()
     {
         await using WebApplication app = await StartApplicationAsync(
             Environments.Production,
@@ -62,7 +70,7 @@ public class AuthenticationEndpointTests
             new { username = "developer", password = "anything" });
 
         Assert.Equal("JwtBearer", config.RootElement.GetProperty("mode").GetString());
-        Assert.False(config.RootElement.GetProperty("development").GetBoolean());
+        Assert.False(config.RootElement.TryGetProperty("development", out _));
         Assert.True(config.RootElement.GetProperty("keycloak").GetProperty("enabled").GetBoolean());
         Assert.False(config.RootElement.GetProperty("password").GetProperty("enabled").GetBoolean());
         Assert.Equal("openagent-chat", config.RootElement.GetProperty("oidc").GetProperty("clientId").GetString());
@@ -73,17 +81,17 @@ public class AuthenticationEndpointTests
     }
 
     [Theory]
-    [InlineData("operator", "configured-password", HttpStatusCode.OK)]
-    [InlineData("operator", "wrong-password", HttpStatusCode.Unauthorized)]
+    [InlineData("admin", "configured-password", HttpStatusCode.OK)]
+    [InlineData("test", "configured-password", HttpStatusCode.OK)]
+    [InlineData("operator", "configured-password", HttpStatusCode.Unauthorized)]
     [InlineData("admin", "admin", HttpStatusCode.Unauthorized)]
-    public async Task ProductionBasicEndpoints_UseConfiguredLoginWithoutKeycloak(
+    public async Task ProductionBasicEndpoints_ConfiguredPasswordOverridesBothAccounts(
         string username, string password, HttpStatusCode expected)
     {
         await using WebApplication app = await StartApplicationAsync(
             Environments.Production,
             new Dictionary<string, string?>
             {
-                ["Authentication:BasicUsername"] = "operator",
                 ["Authentication:BasicPassword"] = "configured-password"
             });
         using HttpClient client = CreateClient(app);

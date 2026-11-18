@@ -107,10 +107,6 @@ function submit(): void {
       <p v-if="props.error" class="login-error" role="alert" aria-live="assertive">{{ props.error }}</p>
 
       <form v-if="isBasic" class="login-form-page" @submit.prevent="submit">
-        <div class="development-warning" role="note">
-          <strong>仅限 Development 联调</strong>
-          <span>本地测试账号：admin / admin 或 test / test，仅供开发预览。</span>
-        </div>
         <label for="login-username">账号</label>
         <input id="login-username" ref="usernameInput" v-model="username" name="username" autocomplete="username" required autofocus>
         <label for="login-password">密码</label>
@@ -169,7 +165,6 @@ function submit(): void {
 .login-connection input, .login-connection select, .login-form-page input { width: 100%; min-height: 42px; padding: 9px 11px; border: 1px solid var(--border); border-radius: var(--r-sm); outline: 0; background: var(--bg); }
 .login-connection input:focus, .login-connection select:focus, .login-form-page input:focus { border-color: var(--border-focus); box-shadow: 0 0 0 3px var(--accent-soft); }
 .login-form-page { display: grid; gap: 9px; }
-.development-warning { display: grid; gap: 2px; margin-bottom: 8px; padding: 12px; border: 1px solid var(--warn-border); border-radius: var(--r-sm); color: var(--warn); background: var(--warn-soft); font-size: 12px; }
 .password-control { position: relative; }
 .password-control input { padding-right: 66px; }
 .password-control button { position: absolute; top: 5px; right: 5px; min-height: 32px; padding: 0 9px; border: 0; border-radius: 6px; color: var(--text-muted); background: var(--bg-subtle); cursor: pointer; }

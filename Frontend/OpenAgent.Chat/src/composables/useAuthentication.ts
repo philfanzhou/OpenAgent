@@ -211,17 +211,19 @@ export function useAuthentication(options: AuthenticationOptions) {
     authLoading.value = true
     authError.value = ''
     try {
-      if (!authConfig.value?.development || authConfig.value.mode !== 'Basic' || !authConfig.value.password.enabled) {
-        throw new Error('Development Basic 登录未启用')
+      if (authConfig.value?.mode !== 'Basic' || !authConfig.value.password.enabled) {
+        throw new Error('Basic 密码登录未启用')
       }
       const result = await api.passwordLogin(credentials.username, credentials.password)
       setAccessToken(result.access_token, result.token_type || 'Basic', result.expires_in)
       token.value = result.access_token
       await establishSession(authReturnHash.value)
-    } catch {
+    } catch (error) {
       clearAuthentication()
       token.value = ''
-      authError.value = '登录失败，请检查连接、账号和租户后重试。'
+      authError.value = error instanceof Error && !(error instanceof ApiError) && !(error instanceof TypeError)
+        ? error.message
+        : '登录失败，请检查连接、账号和租户后重试。'
     } finally {
       authLoading.value = false
     }

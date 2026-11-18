@@ -36,7 +36,7 @@ Nginx 失败时不启动业务；业务失败时保留入口。脚本不会操�
 
 项目固定为 `openagent-nginx` / `openagent-app`；Nginx 管理 `openagent` 网络，应用以 external 方式加入。
 Engine/Router 另加入既有 `openagent-infrastructure` 网络。项目、网络和镜像名称不接受环境变量覆盖。
-镜像固定为 `openagent-engine:latest`、`openagent-router:latest`、`openagent-chat:latest` 和 `nginx:1.28-alpine`。
+镜像固定为 `openagent-engine:latest`、`openagent-router:latest`、`openagent-chat:latest` 和 `nginx:latest`。
 
 | 示例文件（以 deploy/ 为根） | 对应 .env 的用途 |
 |---|---|
@@ -82,8 +82,8 @@ Windows 在 WSL 中执行同一套 Bash 脚本，不再维护重复 PowerShell �
 
 Nginx 默认证书放在 `deploy/nginx/certs/tls.crt` 和 `tls.key`。
 `OPENAGENT_TLS_CERT_DIR=./certs` 相对 `deploy/nginx` 解析，也可直接填写绝对路径。
-`infrastructure` 配置保持不变，Keycloak 仍从 `deploy/openagent/nginx/certs` 读取证书。
-已有部署若继续共用旧目录，将 Nginx 的证书目录设置为 `../openagent/nginx/certs`；使用新默认目录时，为 Keycloak 在旧目录单独准备有效证书。
+Keycloak（infrastructure）同样从 `deploy/nginx/certs` 读取证书，与 Nginx 共用同一目录。
+已有部署若证书仍在旧目录 `deploy/openagent/nginx/certs`，将其迁移到 `deploy/nginx/certs`（或同时把 Nginx 证书目录指向旧目录）。
 终端、应用及 IdP 必须信任所用 CA。
 
 前端维护模式以文件为开关：`deploy/nginx/maintenance/maintenance.html` 存在时，Nginx 对前端（8081）

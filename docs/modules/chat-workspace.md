@@ -28,7 +28,7 @@ Token 仅取服务端 Provider usage。流式生成期间等待 `done` 事件更
 - `GET|DELETE /api/v1/agent/conversations/{conversationId}`；
 - `GET /api/v1/agent/me`；
 - `GET|POST|PUT|DELETE|PATCH /api/v1/admin/{**path}`；
-- `GET /api/v1/auth/config` 与 Development-only `POST /api/v1/auth/password/token` 由 Router 本地提供。
+- `GET /api/v1/auth/config` 与 Basic 模式下的 `POST /api/v1/auth/password/token` 由 Router 本地提供。
 
 实现入口：
 
@@ -51,7 +51,7 @@ pnpm install
 pnpm dev
 ```
 
-在设置窗口分别填写 Router 地址（例如 `http://localhost:5001`）和 Engine 地址（例如 `http://localhost:5208`），选择连接模式，再填写租户并登录开发账号。
+在设置窗口分别填写 Router 地址（例如 `http://localhost:5001`）和 Engine 地址（例如 `http://localhost:5208`），选择连接模式，再填写租户并登录。
 
 ## 验证
 

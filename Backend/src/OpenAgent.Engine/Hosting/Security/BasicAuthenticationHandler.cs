@@ -5,14 +5,13 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
-using OpenAgent.Contracts.Security;
 using OpenAgent.Engine.Hosting.Authentication;
 
 namespace OpenAgent.Engine.Hosting.Security;
 
 /// <summary>
-/// Validates configured Basic credentials. Built-in accounts are only available
-/// in Development when no password has been configured.
+/// Validates Basic credentials for the built-in accounts. A configured
+/// BasicPassword overrides both built-in account passwords.
 /// </summary>
 internal sealed class BasicAuthenticationHandler(
     IOptionsMonitor<AuthenticationSchemeOptions> options,
@@ -35,8 +34,9 @@ internal sealed class BasicAuthenticationHandler(
         {
             if (IsDevelopmentAnonymousAllowed())
             {
-                return Task.FromResult(SucceedDevelopment(
-                    _authenticationOptions.DevelopmentUserId));
+                return Task.FromResult(Succeed(
+                    _authenticationOptions.DevelopmentUserId,
+                    _authenticationOptions.DevelopmentTenantId));
             }
 
             return Task.FromResult(AuthenticateResult.NoResult());
@@ -62,26 +62,12 @@ internal sealed class BasicAuthenticationHandler(
         string username = decoded[..separator];
         string password = decoded[(separator + 1)..];
 
-        if (!DevelopmentCredentials.IsValid(username, password, _authenticationOptions, _environment.IsDevelopment()))
+        if (!BasicCredentials.IsValid(username, password, _authenticationOptions))
         {
             return Task.FromResult(AuthenticateResult.Fail("Invalid username or password."));
         }
 
-        return Task.FromResult(string.IsNullOrWhiteSpace(_authenticationOptions.BasicPassword)
-            ? SucceedDevelopment(username)
-            : Succeed(username, _authenticationOptions.BasicTenantId));
-    }
-
-    private AuthenticateResult SucceedDevelopment(string username)
-    {
-        try
-        {
-            return Succeed(username, _authenticationOptions.DevelopmentTenantId);
-        }
-        catch (AgentException exception)
-        {
-            return AuthenticateResult.Fail(exception.Message);
-        }
+        return Task.FromResult(Succeed(username, _authenticationOptions.BasicTenantId));
     }
 
     private AuthenticateResult Succeed(string username, string? tenantId)

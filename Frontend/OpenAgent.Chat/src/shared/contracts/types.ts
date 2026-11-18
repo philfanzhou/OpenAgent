@@ -328,7 +328,6 @@ export interface RagTestResult {
 
 export interface AuthConfig {
   mode: 'Basic' | 'JwtBearer' | string
-  development: boolean
   keycloak?: { enabled: boolean }
   password: { enabled: boolean; endpoint: string }
   anonymous: { enabled: boolean }
