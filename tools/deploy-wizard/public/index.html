@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenAgent · 部署配置向导</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#"><span class="brand-mark">O</span>OpenAgent <span class="brand-tag">部署工具</span></a>
+    <label class="remember"><input type="checkbox" id="remember">记住非敏感配置</label>
+  </header>
+  <div class="intro"><div><p class="eyebrow">DEPLOYMENT WORKSPACE</p><h1>配置就绪，再出发。</h1><p>填写基础服务与访问入口，生成与 dev 一致的部署配置。</p></div><span class="local-badge">本机运行 · 零构建</span></div>
+  <main class="layout">
+    <nav id="sections" aria-label="配置分组"></nav>
+    <div class="form-col"><div class="section-head"><span>01 / 配置服务</span><span>＊ 为必填项</span></div><form id="form" autocomplete="off"></form></div>
+    <aside class="side-col">
+      <section class="card preview-card">
+        <div class="card-head"><div><p class="eyebrow">LIVE OUTPUT</p><h2>配置文件</h2></div><span id="readyBadge" class="status"></span></div>
+        <div id="fileTabs" class="file-tabs" role="tablist" aria-label="配置文件"></div>
+        <div class="file-meta"><code id="filePath"></code><p id="fileDescription"></p></div>
+        <div class="preview-toolbar"><label><input type="checkbox" id="showSecrets">显示密钥</label><span id="lineCount"></span></div>
+        <pre id="envPreview" class="env-preview" tabindex="0" aria-label="配置预览"></pre>
+        <div id="missingBanner" class="banner" role="status" aria-live="polite"></div>
+        <div class="actions"><button type="button" id="copyBtn">复制当前文件</button><button type="button" id="downloadBtn" class="primary">下载当前 .env</button></div>
+        <p class="tip">分别下载 4 个文件，各自重命名为 .env 并保存到上方路径。复制和下载包含真实密钥，请限制文件访问权限。</p>
+      </section>
+      <details class="card probes-panel" open>
+        <summary>连通性检查 <span>从本机发起</span></summary>
+        <p class="tip">容器地址无法解析时，展开「本机探测地址」填写可达地址。入口端口检测仅检查本机。</p>
+        <button type="button" id="probeAllBtn">测试全部服务</button>
+        <div id="probeCards"></div>
+      </details>
+      <details class="card usage"><summary>如何使用</summary><ol><li>仓库根目录运行 <code>cd tools/deploy-wizard &amp;&amp; npm ci &amp;&amp; npm start</code>（Node.js ≥ 20）。</li><li>准备已有 PostgreSQL、Redis、S3 和 IdP，填写并下载配置。</li><li>按文件路径保存后，在仓库根目录运行 <code>scripts/deploy.sh check</code>。准备镜像和证书后运行 <code>scripts/deploy.sh</code>。</li></ol><p class="tip">仅生成配置和探测，不直接部署；不生成基础设施环境文件。部署说明：<code>docs/operations/deployment.md</code>。</p></details>
+    </aside>
+  </main>
+  <footer>OpenAgent Deployment Wizard <span>配置留在当前浏览器 · 探测时仅发送对应服务参数至本机</span></footer>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
