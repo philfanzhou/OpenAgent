@@ -229,6 +229,7 @@ internal sealed class RuntimeToolBridge : IAsyncDisposable
                     callActivity.SetTag("openagent.agent_id", registration.AgentId);
                     callActivity.SetTag("openagent.tool.name", parameters.Name);
                     callActivity.SetTag("langfuse.observation.type", "tool");
+                    callActivity.SetTag("langfuse.observation.name", parameters.Name);
                     callActivity.SetTag("langfuse.observation.input",
                         Truncate(JsonSerializer.Serialize(arguments)));
                 }
