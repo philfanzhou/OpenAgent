@@ -110,7 +110,9 @@ public static class ServiceCollectionExtensions
         }
 
         services.AddHttpContextAccessor();
-        services.AddScoped<ICurrentUserContext, HttpCurrentUserContext>();
+        services.AddScoped<HttpCurrentUserContext>();
+        services.AddScoped<ICurrentUserContext>(provider => provider.GetRequiredService<HttpCurrentUserContext>());
+        services.AddScoped<ICurrentUserContextInitializer>(provider => provider.GetRequiredService<HttpCurrentUserContext>());
         services.ConfigureHttpClientDefaults(builder =>
         {
             builder.ConfigurePrimaryHttpMessageHandler(() =>

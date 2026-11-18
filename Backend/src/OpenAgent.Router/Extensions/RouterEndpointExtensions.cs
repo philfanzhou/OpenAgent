@@ -94,6 +94,44 @@ public static class RouterEndpointExtensions
             .WithName("RouterGetOrDeleteConversation")
             .WithTags("Conversations");
         app.MapGet(
+            "/api/v1/agent/conversations/{conversationId}/stream",
+            (
+                HttpContext context,
+                IHttpForwarder forwarder,
+                IAgentUserContext userContext,
+                IRouteTable routeTable,
+                ILogger<Program> logger) =>
+                GatewayProxyHandler.HandleAsync(
+                    context,
+                    forwarder,
+                    userContext,
+                    routeTable,
+                    logger,
+                    httpClient,
+                    requestConfig,
+                    requireAuthentication: true))
+            .WithName("RouterResumeConversationStream")
+            .WithTags("Conversations");
+        app.MapPost(
+            "/api/v1/agent/conversations/{conversationId}/cancel",
+            (
+                HttpContext context,
+                IHttpForwarder forwarder,
+                IAgentUserContext userContext,
+                IRouteTable routeTable,
+                ILogger<Program> logger) =>
+                GatewayProxyHandler.HandleAsync(
+                    context,
+                    forwarder,
+                    userContext,
+                    routeTable,
+                    logger,
+                    httpClient,
+                    requestConfig,
+                    requireAuthentication: true))
+            .WithName("RouterCancelConversation")
+            .WithTags("Conversations");
+        app.MapGet(
             "/api/v1/agent/conversations/{conversationId}/llm-interactions",
             (
                 HttpContext context,

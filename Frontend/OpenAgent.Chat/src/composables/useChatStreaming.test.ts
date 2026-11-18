@@ -13,6 +13,8 @@ vi.mock('../api', async () => {
   return {
     api: {
       streamChat: vi.fn(),
+      resumeChat: vi.fn(),
+      cancelChat: vi.fn(),
       getConversation: vi.fn(),
     },
     makeLocalConversation: actual.makeLocalConversation,
@@ -291,4 +293,165 @@ describe('useChatStreaming', () => {
     const assistant = selectedConversation.value?.messages?.filter(item => item.role === 'assistant').at(-1)
     expect(assistant?.toolActivities?.map(tool => tool.name)).toEqual(['read_file'])
   })
+  it('retries the failed input and its attachments in the same conversation without consuming a new draft', async () => {
+    const { streaming, selectedConversation } = await setup()
+    const failed = makeRecord([
+      row({ sequence: 5, role: 'user', content: '分析附件', files: [{ fileId: 'file-1', fileName: 'report.txt', mediaType: 'text/plain', length: 10 }] }),
+      row({ sequence: 6, role: 'assistant', content: '', error: { detail: '模型不可用' } }),
+    ], 'Failed')
+    selectedConversation.value = failed
+    vi.mocked(api.getConversation).mockResolvedValue(failed)
+    vi.mocked(api.streamChat).mockImplementation(() => (async function* () {
+      yield { type: 'content', content: '附件分析完成' }
+      yield { type: 'done' }
+    })())
+    streaming.message.value = '尚未发送的草稿'
+
+    await streaming.retry()
+
+    expect(api.streamChat).toHaveBeenCalledWith('分析附件', 'agent-1', 'profile-1', 'conv-1', ['file-1'], 'conv-1', expect.any(AbortSignal), 'saved-runtime')
+    expect(streaming.message.value).toBe('尚未发送的草稿')
+  })
+
+  it('reattaches instead of resubmitting when a connection error hid a running turn', async () => {
+    const { streaming, selectedConversation } = await setup()
+    selectedConversation.value = makeRecord([
+      row({ sequence: 5, role: 'user', content: '正在运行的问题' }),
+      row({ sequence: 6, role: 'assistant', content: '', error: { detail: '连接中断' } }),
+    ], 'Failed')
+    const running = makeRecord([row({ sequence: 5, role: 'user', content: '正在运行的问题' })], 'Running')
+    const completed = makeRecord([
+      ...running.messages!, row({ sequence: 6, role: 'assistant', content: '完整结果' }),
+    ], 'Completed')
+    vi.mocked(api.getConversation).mockResolvedValueOnce(running).mockResolvedValue(completed)
+    vi.mocked(api.resumeChat).mockImplementation(() => (async function* () {
+      yield { type: 'content', content: '完整结果' }
+      yield { type: 'done' }
+    })())
+
+    await streaming.retry()
+
+    expect(api.streamChat).not.toHaveBeenCalled()
+    expect(api.resumeChat).toHaveBeenCalledWith('conv-1', expect.any(AbortSignal))
+    expect(selectedConversation.value?.messages?.map(item => item.content)).toEqual(['正在运行的问题', '完整结果'])
+  })
+
+  it('replays a running turn without duplicating partial content or losing earlier turns even before settings load', async () => {
+    const { streaming, selectedConversation } = await setup('', '')
+    const running = makeRecord([
+      row({ sequence: 1, role: 'user', content: '第一轮问题' }),
+      row({ sequence: 4, role: 'assistant', content: '第一轮回答' }),
+      row({ sequence: 5, role: 'user', content: '第二轮问题' }),
+      row({ sequence: 6, role: 'assistant', content: '部分' }),
+    ], 'Running')
+    selectedConversation.value = running
+    vi.mocked(api.resumeChat).mockImplementation(() => (async function* () {
+      yield { type: 'content', content: '部分' }
+      yield { type: 'content', content: '完整回答' }
+      yield { type: 'done' }
+    })())
+    vi.mocked(api.getConversation).mockResolvedValue(makeRecord([
+      ...running.messages!.slice(0, 3), row({ sequence: 6, role: 'assistant', content: '部分完整回答' }),
+    ], 'Completed'))
+
+    await streaming.reconnect(selectedConversation.value)
+
+    expect(api.streamChat).not.toHaveBeenCalled()
+    expect(selectedConversation.value?.messages?.map(item => item.content)).toEqual(['第一轮问题', '第一轮回答', '第二轮问题', '部分完整回答'])
+    expect(streaming.canRetry.value).toBe(false)
+  })
+
+  it('loads the completed result when execution finishes between detail loading and reconnect', async () => {
+    const { streaming, selectedConversation } = await setup()
+    selectedConversation.value!.status = 'Running'
+    vi.mocked(api.resumeChat).mockImplementation(() => (async function* () {})())
+    vi.mocked(api.getConversation).mockResolvedValue(makeRecord([
+      row({ sequence: 1, role: 'user', content: '第一轮问题' }),
+      row({ sequence: 4, role: 'assistant', content: '后端已完成的结果' }),
+    ], 'Completed'))
+
+    await streaming.reconnect(selectedConversation.value!)
+
+    expect(selectedConversation.value?.status).toBe('Completed')
+    expect(selectedConversation.value?.messages?.at(-1)?.content).toBe('后端已完成的结果')
+    expect(api.streamChat).not.toHaveBeenCalled()
+  })
+
+  it('keeps retry available when a resumed stream ends before its terminal event', async () => {
+    const { streaming, selectedConversation } = await setup()
+    selectedConversation.value!.status = 'Running'
+    vi.mocked(api.resumeChat).mockImplementation(() => (async function* () {
+      yield { type: 'content', content: '中断的部分回答' }
+    })())
+    vi.mocked(api.getConversation).mockRejectedValue(new Error('网络不可用'))
+
+    await streaming.reconnect(selectedConversation.value!)
+
+    expect(selectedConversation.value?.status).toBe('Failed')
+    expect(selectedConversation.value?.messages?.at(-1)?.error?.detail).toBe('流连接在完成事件前意外结束')
+    expect(streaming.canRetry.value).toBe(true)
+  })
+
+  it('detaches on logout without marking the server turn cancelled or restoring private data', async () => {
+    const { streaming, selectedConversation, streams } = await setup()
+    let ready!: () => void
+    const started = new Promise<void>(resolve => { ready = resolve })
+    vi.mocked(api.streamChat).mockImplementation((...args) => (async function* () {
+      const signal = args[6]!
+      yield { type: 'content', content: '生成中' }
+      await new Promise<void>((_, reject) => {
+        signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true })
+        ready()
+      })
+    })())
+    streaming.message.value = '继续运行'
+    const pending = streaming.send()
+    await started
+    streams.cancelAll('logout')
+    await pending
+
+    expect(selectedConversation.value?.status).toBe('Running')
+    expect(api.getConversation).not.toHaveBeenCalled()
+    expect(api.cancelChat).not.toHaveBeenCalled()
+  })
+
+  it('explicitly cancels the server execution before detaching the subscriber on stop', async () => {
+    const { streaming, streams } = await setup()
+    const state = streams.start('conv-1')
+    vi.mocked(api.cancelChat).mockImplementation(async () => {
+      expect(state.controller.signal.aborted).toBe(false)
+    })
+    await streaming.stopStreaming()
+    expect(api.cancelChat).toHaveBeenCalledWith('conv-1')
+    expect(state.controller.signal.aborted).toBe(true)
+    expect(state.cancelReason).toBe('user')
+    streams.finish(state.requestId)
+  })
+
+  it('treats a producer cancellation arriving before the cancel HTTP reply as an intentional stop', async () => {
+    const { streaming, selectedConversation } = await setup()
+    let cancelProducer: (() => void) | undefined
+    vi.mocked(api.streamChat).mockImplementation(() => (async function* () {
+      yield { type: 'content', content: '部分结果' }
+      await new Promise<void>((_, reject) => { cancelProducer = () => reject(new DOMException('cancelled', 'AbortError')) })
+    })())
+    vi.mocked(api.getConversation).mockResolvedValue(makeRecord([
+      row({ sequence: 5, role: 'user', content: '停止这个问题' }),
+      row({ sequence: 6, role: 'assistant', content: '部分结果', metadata: { executionStatus: 'Cancelled' } }),
+    ], 'Cancelled'))
+    streaming.message.value = '停止这个问题'
+    const pending = streaming.send()
+    await vi.waitFor(() => expect(cancelProducer).toBeTypeOf('function'))
+    vi.mocked(api.cancelChat).mockImplementation(async () => {
+      cancelProducer!()
+      await pending
+    })
+
+    await streaming.stopStreaming()
+
+    expect(selectedConversation.value?.status).toBe('Cancelled')
+    expect(selectedConversation.value?.messages?.at(-1)?.error).toBeUndefined()
+    expect(streaming.canRetry.value).toBe(false)
+  })
+
 })

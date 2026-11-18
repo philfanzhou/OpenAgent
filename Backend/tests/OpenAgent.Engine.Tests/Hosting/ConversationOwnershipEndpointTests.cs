@@ -5,9 +5,11 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using OpenAgent.Contracts.Conversation;
+using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Engine.Host.Endpoints.Conversations;
 using OpenAgent.Engine.Host.Middleware;
+using OpenAgent.Engine.Host.Streaming;
 using Xunit;
 
 namespace OpenAgent.Engine.Tests.Hosting;
@@ -22,7 +24,7 @@ public sealed class ConversationOwnershipEndpointTests
     [InlineData("TENANT-1", "user-1", false, ConversationType.User, HttpStatusCode.Forbidden)]
     [InlineData("tenant-1", "user-1", true, ConversationType.User, HttpStatusCode.NotFound)]
     [InlineData("tenant-1", "user-1", false, ConversationType.Internal, HttpStatusCode.NotFound)]
-    public async Task GetAndDelete_AllExecutionStatuses_EnforceOwnership(
+    public async Task ConversationRoutes_AllExecutionStatuses_EnforceOwnership(
         string tenantId, string userId, bool deleted, ConversationType type, HttpStatusCode expectedGet)
     {
         ConversationRecord record = new()
@@ -47,6 +49,8 @@ public sealed class ConversationOwnershipEndpointTests
             };
         });
         builder.Services.AddSingleton(query.Object);
+        builder.Services.AddSingleton<ConversationRunRegistry>();
+        builder.Services.AddSingleton(Mock.Of<IFileAssetService>());
         await using WebApplication app = builder.Build();
         app.Use(async (context, next) =>
         {
@@ -77,6 +81,13 @@ public sealed class ConversationOwnershipEndpointTests
 
             using HttpResponseMessage remove = await client.DeleteAsync("/api/v1/agent/conversations/conversation-1");
             Assert.Equal(expectedGet == HttpStatusCode.OK ? HttpStatusCode.NoContent : expectedGet, remove.StatusCode);
+
+            using HttpResponseMessage resume = await client.GetAsync("/api/v1/agent/conversations/conversation-1/stream");
+            Assert.Equal(expectedGet == HttpStatusCode.OK ? HttpStatusCode.NoContent : expectedGet, resume.StatusCode);
+            Assert.Empty(await resume.Content.ReadAsStringAsync());
+
+            using HttpResponseMessage cancel = await client.PostAsync("/api/v1/agent/conversations/conversation-1/cancel", null);
+            Assert.Equal(expectedGet == HttpStatusCode.OK ? HttpStatusCode.NoContent : expectedGet, cancel.StatusCode);
         }
         query.Verify(value => value.SoftDeleteAsync(tenantId, "conversation-1", It.IsAny<CancellationToken>()),
             Times.Exactly(expectedGet == HttpStatusCode.OK ? Enum.GetValues<ConversationStatus>().Length : 0));

@@ -16,6 +16,7 @@ interface ConversationStateOptions {
   hydrateFilePreviews: (conversation: ConversationRecord) => Promise<void>
   notifyError: (error: unknown) => void
   onSelectedConversationDeleted: () => void
+  onConversationLoaded?: (conversation: ConversationRecord) => void
 }
 
 export function useConversationState(options: ConversationStateOptions) {
@@ -71,16 +72,32 @@ export function useConversationState(options: ConversationStateOptions) {
   async function restoreSelectedConversation(): Promise<void> {
     if (selectedConversation.value) return
     const storedConversationId = sessionStorage.getItem(selectedConversationStorageKey)
+    if (!storedConversationId) return
     const stored = conversations.value.find(item => item.conversationId === storedConversationId)
-    if (stored) await selectConversation(stored)
+    if (stored) {
+      await selectConversation(stored)
+    } else {
+      try {
+        const detail = await api.getConversation(storedConversationId)
+        await options.hydrateFilePreviews(detail)
+        if (selectedConversation.value || sessionStorage.getItem(selectedConversationStorageKey) !== storedConversationId) return
+        selectedConversation.value = detail
+        options.selectedAgentId.value = detail.agentId || options.selectedAgentId.value
+        replaceConversation(detail)
+        options.onConversationLoaded?.(detail)
+      } catch (error) {
+        options.notifyError(error)
+      }
+    }
   }
 
   async function selectConversation(item: ConversationRecord): Promise<void> {
     selectedConversation.value = item
     sessionStorage.setItem(selectedConversationStorageKey, item.conversationId)
     options.selectedAgentId.value = item.agentId || options.selectedAgentId.value
-    if (item.messages?.length) {
+    if (options.streams.isStreaming(item.conversationId) || (item.messages?.length && item.status !== 'Running')) {
       await options.hydrateFilePreviews(item)
+      options.onConversationLoaded?.(item)
       return
     }
     const requestId = randomUuid()
@@ -91,6 +108,7 @@ export function useConversationState(options: ConversationStateOptions) {
       if (conversationDetailRequests.get(item.conversationId) !== requestId
         || options.streams.isStreaming(item.conversationId)) return
       replaceConversation(detail, item.conversationId)
+      if (selectedConversation.value?.conversationId === detail.conversationId) options.onConversationLoaded?.(detail)
     } catch (error) {
       if (conversationDetailRequests.get(item.conversationId) === requestId
         && selectedConversation.value?.conversationId === item.conversationId) options.notifyError(error)

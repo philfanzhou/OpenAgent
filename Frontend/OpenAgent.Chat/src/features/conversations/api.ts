@@ -5,6 +5,9 @@ import type { ConversationMessage, ConversationRecord, MessageFile, MessageFileM
 function normalizeConversation(record: ConversationRecord): ConversationRecord {
   return {
     ...record,
+    status: typeof record.status === 'number'
+      ? (['Running', 'Completed', 'Failed', 'Cancelled'] as const)[record.status] ?? record.status
+      : record.status,
     // 附件清单与思考链已由后端以强类型 metadata 下发，这里仅做顶层 UI 投影。
     messages: record.messages?.map(message => {
       const { files, reasoning } = message.metadata ?? {}
@@ -30,7 +33,7 @@ function toMessageFile(file: MessageFileMetadata): MessageFile {
 
 export const api = {
   listConversations(): Promise<ConversationRecord[]> {
-    return request<ConversationRecord[]>('/api/v1/agent/conversations?skip=0&take=1000')
+    return request<ConversationRecord[]>('/api/v1/agent/conversations?skip=0&take=1000').then(records => records.map(normalizeConversation))
   },
 
   getConversation(id: string): Promise<ConversationRecord> {

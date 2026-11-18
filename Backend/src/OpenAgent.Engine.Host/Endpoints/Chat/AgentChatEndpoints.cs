@@ -71,18 +71,16 @@ internal static class AgentChatEndpoints
 
     private static async Task ExecuteStreamAsync(
         [FromBody] ChatRequest request,
-        [FromServices] RuntimeAgentExecutor executor,
+        [FromServices] ConversationRunRegistry runs,
         [FromServices] ILogger<Program> logger,
         HttpContext context,
         CancellationToken cancellationToken)
     {
         AgentRequest executionRequest = AgentEndpointRequestMapper.CreateAgentRequest(request, context);
+        ConversationRun run = runs.Start(executionRequest, context.GetAgentRequest().User);
         await AgentStreamWriter.WriteSseStreamAsync(
             context,
-            executor.ExecuteStreamingAsync(
-                executionRequest,
-                context.GetAgentRequest().User,
-                cancellationToken),
+            run.ReadAsync(cancellationToken),
             executionRequest.TraceId!,
             executionRequest.ConversationId!,
             logger,

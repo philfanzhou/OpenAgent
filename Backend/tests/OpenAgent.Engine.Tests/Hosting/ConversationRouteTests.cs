@@ -8,6 +8,7 @@ using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Engine.Host.Endpoints.Conversations;
 using OpenAgent.Engine.Host.Middleware;
+using OpenAgent.Engine.Host.Streaming;
 using Xunit;
 
 namespace OpenAgent.Engine.Tests.Hosting;
@@ -29,6 +30,7 @@ public sealed class ConversationRouteTests
         WebApplicationBuilder builder = WebApplication.CreateBuilder();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Services.AddSingleton(query.Object);
+        builder.Services.AddSingleton<ConversationRunRegistry>();
         await using WebApplication app = builder.Build();
         app.Use(async (context, next) =>
         {

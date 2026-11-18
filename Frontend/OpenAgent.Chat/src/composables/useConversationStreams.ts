@@ -25,6 +25,7 @@ export function useConversationStreams(
   cancelRequest: (requestId: string, reason: StreamCancelReason) => void
   cancelAll: (reason: StreamCancelReason) => Promise<void>[]
   getByRequest: (requestId: string) => ConversationStreamState | undefined
+  getByConversation: (conversationId: string) => ConversationStreamState | undefined
   isStreaming: (conversationId: string | undefined) => boolean
   activeConversationIds: () => string[]
 } {
@@ -108,6 +109,11 @@ export function useConversationStreams(
     return streamsByRequest.get(requestId)
   }
 
+  function getByConversation(conversationId: string): ConversationStreamState | undefined {
+    const requestId = requestsByConversation.get(conversationId)
+    return requestId ? streamsByRequest.get(requestId) : undefined
+  }
+
   function isStreaming(conversationId: string | undefined): boolean {
     return conversationId ? requestsByConversation.has(conversationId) : false
   }
@@ -124,6 +130,7 @@ export function useConversationStreams(
     cancelRequest,
     cancelAll,
     getByRequest,
+    getByConversation,
     isStreaming,
     activeConversationIds,
   }

@@ -1,9 +1,11 @@
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using OpenAgent.Contracts.Conversation;
+using OpenAgent.Contracts.Files;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Engine.Host.Endpoints;
 using OpenAgent.Engine.Host.Middleware;
+using OpenAgent.Engine.Host.Streaming;
 using OpenAgent.Engine.Hosting.Errors;
 
 namespace OpenAgent.Engine.Host.Endpoints.Conversations;
@@ -26,6 +28,14 @@ internal static class ConversationEndpoints
 
         group.MapDelete("/conversations/{conversationId}", DeleteAsync)
             .WithName("DeleteConversation")
+            .WithTags("Conversation");
+
+        group.MapGet("/conversations/{conversationId}/stream", ResumeStreamAsync)
+            .WithName("ResumeConversationStream")
+            .WithTags("Conversation");
+
+        group.MapPost("/conversations/{conversationId}/cancel", CancelAsync)
+            .WithName("CancelConversation")
             .WithTags("Conversation");
 
 
@@ -70,57 +80,196 @@ internal static class ConversationEndpoints
         return TypedResults.Ok(results);
     }
 
-    private static async Task<Results<NoContent, NotFound, ForbidHttpResult>> DeleteAsync(
+    private static async Task<IResult> DeleteAsync(
         [FromServices] IConversationQueryService queryService,
+        [FromServices] ConversationRunRegistry runs,
         HttpContext context,
         string conversationId,
         CancellationToken cancellationToken = default)
     {
-        string tenantId = AgentEndpointRequestMapper.RequireTenant(context);
-        ConversationRecord? record = await queryService.GetRecordAsync(
-            tenantId,
-            conversationId,
-            cancellationToken).ConfigureAwait(false);
-        if (record == null || record.IsDeletedByUser
-            || record.Type != ConversationType.User)
-        {
-            return TypedResults.NotFound();
-        }
+        var access = await FindOwnedAsync(queryService, runs, context, conversationId, cancellationToken)
+            .ConfigureAwait(false);
+        if (access.Failure != null)
+            return access.Failure;
 
-        string userId = context.GetAgentRequest().User.UserId;
-        if (!string.Equals(record.TenantId, tenantId, StringComparison.Ordinal)
-            || !string.Equals(record.UserId, userId, StringComparison.Ordinal))
+        if (access.Run != null)
         {
-            return TypedResults.Forbid();
+            access.Run.Cancel();
+            await access.Run.Completion.ConfigureAwait(false);
         }
 
         bool deleted = await queryService.SoftDeleteAsync(
-            tenantId,
+            AgentEndpointRequestMapper.RequireTenant(context),
             conversationId,
             cancellationToken).ConfigureAwait(false);
         return deleted ? TypedResults.NoContent() : TypedResults.NotFound();
     }
 
-    private static async Task<Results<Ok<ConversationRecord>, NotFound, ForbidHttpResult>> GetAsync(
+    private static async Task<IResult> GetAsync(
         [FromServices] IConversationQueryService queryService,
+        [FromServices] ConversationRunRegistry runs,
+        [FromServices] IFileAssetService files,
         HttpContext context,
         string conversationId,
         CancellationToken cancellationToken = default)
     {
-        string tenantId = AgentEndpointRequestMapper.RequireTenant(context);
-        ConversationRecord? record = await queryService.GetRecordAsync(
-            tenantId,
+        var access = await FindOwnedAsync(queryService, runs, context, conversationId, cancellationToken)
+            .ConfigureAwait(false);
+        if (access.Failure != null)
+            return access.Failure;
+
+        if (access.Run == null)
+            return TypedResults.Ok(access.Record!);
+
+        ConversationRun run = access.Run;
+        ConversationRecord record = access.Record ?? new ConversationRecord
+        {
+            ConversationId = conversationId,
+            TenantId = run.User.TenantId!,
+            UserId = run.User.UserId,
+            Type = run.Request.ConversationType,
+            AgentId = run.Request.AgentId,
+            TraceId = run.Request.TraceId,
+            CreatedAt = run.StartedAt
+        };
+        List<ConversationMessage> messages = [.. record.Messages];
+        string inputId = run.Request.TraceId + "-input";
+        if (!messages.Any(message => string.Equals(message.MessageId, inputId, StringComparison.Ordinal)
+            || (string.Equals(message.Role, "user", StringComparison.Ordinal)
+                && string.Equals(message.TraceId, run.Request.TraceId, StringComparison.Ordinal))))
+        {
+            List<MessageFileMetadata> attachments = [];
+            FileAssetScope scope = new()
+            {
+                TenantId = run.User.TenantId!,
+                UserId = run.User.UserId,
+                ConversationId = conversationId
+            };
+            foreach (string fileId in run.Request.FileIds)
+            {
+                FileAsset? asset = await files.GetAsync(fileId, scope, cancellationToken).ConfigureAwait(false);
+                attachments.Add(new MessageFileMetadata(
+                    fileId,
+                    asset?.FileName ?? fileId,
+                    asset?.MediaType ?? "application/octet-stream",
+                    asset?.Length ?? 0,
+                    asset?.ObjectKey));
+            }
+
+            messages.Add(new ConversationMessage
+            {
+                MessageId = inputId,
+                Sequence = messages.Count == 0 ? 1 : messages.Max(message => message.Sequence) + 1,
+                Role = "user",
+                Content = run.Request.Query,
+                Timestamp = run.StartedAt,
+                TraceId = run.Request.TraceId,
+                FileIds = run.Request.FileIds,
+                Metadata = attachments.Count == 0 ? null : new ConversationMessageMetadata { Files = attachments }
+            });
+        }
+
+        if (run.Completion.IsCompleted)
+        {
+            var finalized = await FindOwnedAsync(queryService, runs, context, conversationId, cancellationToken)
+                .ConfigureAwait(false);
+            if (finalized.Failure != null) return finalized.Failure;
+            if (finalized.Run == null) return TypedResults.Ok(finalized.Record!);
+        }
+
+        return TypedResults.Ok(record with
+        {
+            Status = ConversationStatus.Running,
+            TraceId = run.Request.TraceId,
+            UpdatedAt = run.StartedAt,
+            LastMessageAt = run.StartedAt,
+            MessageCount = messages.Count,
+            Messages = messages
+        });
+    }
+
+    private static async Task<IResult> ResumeStreamAsync(
+        [FromServices] IConversationQueryService queryService,
+        [FromServices] ConversationRunRegistry runs,
+        [FromServices] ILogger<Program> logger,
+        HttpContext context,
+        string conversationId,
+        CancellationToken cancellationToken = default)
+    {
+        var access = await FindOwnedAsync(queryService, runs, context, conversationId, cancellationToken)
+            .ConfigureAwait(false);
+        if (access.Failure != null)
+            return access.Failure;
+        if (access.Run == null)
+            return TypedResults.NoContent();
+
+        await AgentStreamWriter.WriteSseStreamAsync(
+            context,
+            access.Run.ReadAsync(cancellationToken),
+            access.Run.Request.TraceId!,
             conversationId,
+            logger,
             cancellationToken).ConfigureAwait(false);
-        if (record == null || record.IsDeletedByUser
-            || record.Type != ConversationType.User)
-            return TypedResults.NotFound();
+        return TypedResults.Empty;
+    }
+
+    private static async Task<IResult> CancelAsync(
+        [FromServices] IConversationQueryService queryService,
+        [FromServices] ConversationRunRegistry runs,
+        HttpContext context,
+        string conversationId,
+        CancellationToken cancellationToken = default)
+    {
+        var access = await FindOwnedAsync(queryService, runs, context, conversationId, cancellationToken)
+            .ConfigureAwait(false);
+        if (access.Failure != null)
+            return access.Failure;
+        if (access.Run != null)
+        {
+            access.Run.Cancel();
+            await access.Run.Completion.ConfigureAwait(false);
+        }
+
+        return TypedResults.NoContent();
+    }
+
+    private static async Task<(ConversationRecord? Record, ConversationRun? Run, IResult? Failure)> FindOwnedAsync(
+        IConversationQueryService queryService,
+        ConversationRunRegistry runs,
+        HttpContext context,
+        string conversationId,
+        CancellationToken cancellationToken)
+    {
+        string tenantId = AgentEndpointRequestMapper.RequireTenant(context);
+        ConversationRun? observedRun = runs.Find(tenantId, conversationId);
+        ConversationRecord? record = await queryService.GetRecordAsync(
+            tenantId, conversationId, cancellationToken).ConfigureAwait(false);
+        ConversationRun? run = runs.Find(tenantId, conversationId);
+        if (observedRun != null && run == null)
+        {
+            record = await queryService.GetRecordAsync(tenantId, conversationId, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        if ((record == null && run == null)
+            || record is { IsDeletedByUser: true }
+            || (record != null && record.Type != ConversationType.User)
+            || (run != null && run.Request.ConversationType != ConversationType.User))
+        {
+            return (null, null, TypedResults.NotFound());
+        }
 
         string userId = context.GetAgentRequest().User.UserId;
-        return string.Equals(record.TenantId, tenantId, StringComparison.Ordinal)
-            && string.Equals(record.UserId, userId, StringComparison.Ordinal)
-            ? TypedResults.Ok(record)
-            : TypedResults.Forbid();
+        if ((record != null
+                && (!string.Equals(record.TenantId, tenantId, StringComparison.Ordinal)
+                    || !string.Equals(record.UserId, userId, StringComparison.Ordinal)))
+            || (run != null
+                && (!string.Equals(run.User.TenantId, tenantId, StringComparison.Ordinal)
+                    || !string.Equals(run.User.UserId, userId, StringComparison.Ordinal))))
+        {
+            return (null, null, TypedResults.Forbid());
+        }
+
+        return (record, run, null);
     }
 
     internal static async Task<Results<Ok<IReadOnlyList<LlmInteractionRecord>>, NotFound, ForbidHttpResult>> ListInteractionsAsync(

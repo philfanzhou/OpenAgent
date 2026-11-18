@@ -10,6 +10,7 @@ using OpenAgent.Engine.Host.Files;
 using OpenAgent.Engine.Host.Extensions;
 using OpenAgent.Engine.Host.Health;
 using OpenAgent.Engine.Host.Middleware;
+using OpenAgent.Engine.Host.Streaming;
 using OpenAgent.Engine.Hosting;
 using OpenAgent.Engine.Hosting.Authentication;
 using OpenAgent.Framework;
@@ -41,6 +42,8 @@ builder.Services.AddHealthChecks()
     .AddCheck<DatabaseHealthCheck>("database", tags: ["infrastructure", "ready"],
         timeout: TimeSpan.FromSeconds(5));
 builder.Services.AddEngineErrorHandling();
+builder.Services.AddSingleton<ConversationRunRegistry>();
+builder.Services.AddHostedService(services => services.GetRequiredService<ConversationRunRegistry>());
 var app = builder.Build();
 
 // 显式开关在任意环境生效；部署 Compose 默认开启，全新数据库由此完成建表。

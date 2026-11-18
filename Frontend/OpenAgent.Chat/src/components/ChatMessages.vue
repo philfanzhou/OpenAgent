@@ -17,6 +17,7 @@ const props = defineProps<{
   loading: boolean
   currentUser: CurrentUserContext | null
   streaming: boolean
+  canRetry?: boolean
   /** 当前会话 ID：文件预览弹窗懒加载内容时需要。 */
   conversationId?: string
   /** 已解析的 markdown 图片 blob URL（见 useFileHandling.markdownImageUrls）。 */
@@ -26,6 +27,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   suggest: [value: string]
   download: [file: MessageFile]
+  retry: []
 }>()
 
 const suggestions = [
@@ -506,6 +508,7 @@ defineExpose({ scrollToBottom })
             <button v-if="messageError(item)?.traceId" type="button" class="message-error-trace" title="复制 TraceId" @click="copyTraceId(messageError(item)!.traceId!)">TraceId · {{ messageError(item)?.traceId }}</button>
           </div>
         </div>
+        <el-button v-if="props.canRetry && item.messageId === displayMessages.at(-1)?.messageId" size="small" :disabled="props.streaming" @click="emit('retry')">重试</el-button>
       </div>
 
       <div v-if="item.role === 'user'" class="user-mark" aria-hidden="true">{{ (props.currentUser?.userId || 'U').slice(0, 1).toUpperCase() }}</div>

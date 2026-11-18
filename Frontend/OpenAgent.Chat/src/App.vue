@@ -130,6 +130,7 @@ const conversationState = useConversationState({
   hydrateFilePreviews,
   notifyError,
   onSelectedConversationDeleted: () => newConversation(),
+  onConversationLoaded: conversation => { void chatStreaming.reconnect(conversation) },
 })
 const {
   conversations,
@@ -165,7 +166,7 @@ const chatStreaming = useChatStreaming({
   refreshConversations,
   notifyError,
 })
-const { message, send, stopStreaming, clearDraft } = chatStreaming
+const { message, send, retry, canRetry, stopStreaming, clearDraft } = chatStreaming
 
 const chatMessagesRef = ref<InstanceType<typeof ChatMessages> | null>(null)
 const showInteractionDebug = ref(false)
@@ -291,7 +292,7 @@ onBeforeUnmount(() => {
 
       <div class="workspace-grid" :class="{ 'context-collapsed': contextCollapsed }">
         <section class="chat-card">
-          <ChatMessages ref="chatMessagesRef" :messages="currentMessages" :context-summaries="selectedConversation?.contextSummaries" :loading="loadingConversation" :current-user="currentUser" :streaming="selectedConversationStreaming" :conversation-id="selectedConversation?.conversationId" :markdown-image-urls="markdownImageUrls" @suggest="message = $event" @download="downloadFile" />
+          <ChatMessages ref="chatMessagesRef" :messages="currentMessages" :context-summaries="selectedConversation?.contextSummaries" :loading="loadingConversation" :current-user="currentUser" :streaming="selectedConversationStreaming" :can-retry="canRetry" :conversation-id="selectedConversation?.conversationId" :markdown-image-urls="markdownImageUrls" @suggest="message = $event" @download="downloadFile" @retry="retry" />
           <MessageComposer :model-value="message" :endpoint-url="activeEndpointUrl" :endpoint-label="activeEndpointLabel" :selected-agent-id="selectedAgentId" :loading="selectedConversationStreaming" :pending-files="pendingFiles" @update:model-value="message = $event" @files-change="handleFilesChange" @retry-file="retryPendingFile" @send="handleSend" @stop="stopStreaming" />
         </section>
         <aside class="context-panel">

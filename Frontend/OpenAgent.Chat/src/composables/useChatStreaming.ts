@@ -1,4 +1,4 @@
-import { ref, type ComputedRef, type Ref } from 'vue'
+import { computed, ref, type ComputedRef, type Ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { api, makeLocalConversation } from '../api'
 import { randomUuid } from '../browserCrypto'
@@ -28,12 +28,36 @@ interface ChatStreamingOptions {
   notifyError: (error: unknown) => void
 }
 
+function lastUserMessage(messages: ConversationMessage[] = []): ConversationMessage | undefined {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    if (messages[index]?.role === 'user') return messages[index]
+  }
+  return undefined
+}
+
 export function useChatStreaming(options: ChatStreamingOptions) {
   const message = ref('')
 
-  function stopStreaming(): void {
+  const canRetry = computed(() => {
+    const conversation = options.selectedConversation.value
+    const last = conversation?.messages?.at(-1)
+    return Boolean(conversation && !options.streams.isStreaming(conversation.conversationId)
+      && (conversation.status === 'Failed' || last?.error || last?.metadata?.executionStatus === 'Failed')
+      && conversation.messages?.some(item => item.role === 'user'))
+  })
+
+  async function stopStreaming(): Promise<void> {
     const conversationId = options.selectedConversation.value?.conversationId
-    if (conversationId) options.streams.cancelConversation(conversationId, 'user')
+    if (!conversationId) return
+    const stream = options.streams.getByConversation(conversationId)
+    if (stream) stream.cancelReason = 'user'
+    try {
+      await api.cancelChat(conversationId)
+      options.streams.cancelConversation(conversationId, 'user')
+    } catch (error) {
+      if (stream && !stream.controller.signal.aborted) stream.cancelReason = undefined
+      options.notifyError(error)
+    }
   }
 
   function clearDraft(): void {
@@ -41,19 +65,24 @@ export function useChatStreaming(options: ChatStreamingOptions) {
     options.pendingFiles.value = []
   }
 
-  async function send(): Promise<void> {
-    if (options.selectedRuntimeId && !options.selectedRuntimeId.value) {
+  async function runTurn(resume?: ConversationRecord, retryMessage?: ConversationMessage): Promise<void> {
+    if (resume) {
+      const selected = options.selectedConversation.value
+      if (selected?.conversationId === resume.conversationId) resume = selected
+    }
+    if (!resume && options.selectedRuntimeId && !options.selectedRuntimeId.value) {
       options.notifyError(new Error('请先在 Runtime 设置中保存并选择运行时'))
       return
     }
-    if (!options.selectedLlmProfileId.value) {
+    if (!resume && !options.selectedLlmProfileId.value) {
       options.notifyError(new Error('请先保存并选择模型连接'))
       return
     }
-    const content = message.value.trim()
-    const hasFiles = options.pendingFiles.value.length > 0
-    if ((!content && !hasFiles) || !options.selectedAgentId.value || options.selectedConversationStreaming.value) return
-    if (options.pendingFiles.value.some(item => item.state !== 'ready' || !item.asset)) {
+    const content = retryMessage?.content ?? message.value.trim()
+    const hasFiles = (retryMessage?.files?.length ?? options.pendingFiles.value.length) > 0
+    if (!resume && ((!content && !hasFiles) || !options.selectedAgentId.value || options.selectedConversationStreaming.value)) return
+    if (options.streams.isStreaming((resume ?? options.selectedConversation.value)?.conversationId)) return
+    if (!resume && !retryMessage && options.pendingFiles.value.some(item => item.state !== 'ready' || !item.asset)) {
       options.notifyError(new Error('请等待文件上传完成，或移除上传失败的文件后再发送'))
       return
     }
@@ -62,19 +91,23 @@ export function useChatStreaming(options: ChatStreamingOptions) {
     const uploaded = options.pendingFiles.value
       .map(item => item.asset)
       .filter((asset): asset is NonNullable<typeof asset> => asset != null)
-    const requestedAgentId = options.selectedAgentId.value === AUTO_AGENT_ID
-      ? options.selectedConversation.value?.agentId
-      : options.selectedAgentId.value
-    const local = options.selectedConversation.value || makeLocalConversation(requestedAgentId || '', requestContent)
+    const requestedAgentId = resume?.agentId || (retryMessage ? options.selectedConversation.value?.agentId : undefined)
+      || (options.selectedAgentId.value === AUTO_AGENT_ID
+        ? options.selectedConversation.value?.agentId
+        : options.selectedAgentId.value)
+    const local = resume || options.selectedConversation.value || makeLocalConversation(requestedAgentId || '', requestContent)
     if (isNewConversation) {
       local.messages = []
       local.messageCount = 0
       options.selectedConversation.value = local
       options.conversations.value = [local, ...options.conversations.value.filter(item => item.conversationId !== local.conversationId)]
     }
-    const conversation = options.selectedConversation.value
+    const conversation = resume || options.selectedConversation.value
     if (!conversation) return
     let conversationId = conversation.conversationId
+    if (options.selectedConversation.value?.conversationId === conversationId) {
+      sessionStorage.setItem(selectedConversationStorageKey, conversationId)
+    }
     // Send the local id even on the first message. Uploaded assets were created
     // for this conversation; omitting it made Engine generate a different id and
     // caused the first message's file references to miss their scope.
@@ -87,6 +120,7 @@ export function useChatStreaming(options: ChatStreamingOptions) {
     let streamedAssistant: ConversationMessage | undefined
     let receivedDone = false
     let completedAgentId = conversation.agentId
+    let receivedEvent = false
     const assistantContentState = createStreamingAssistantContentState()
     let showedEarlyRoutingNotice = false
     try {
@@ -96,23 +130,29 @@ export function useChatStreaming(options: ChatStreamingOptions) {
       // 不能用数组长度推算新序号；取现有最大序号递增，保证乐观消息始终排在最后。
       const baseSequence = conversation.messages.reduce(
         (max, item) => Math.max(max, item.sequence || 0), 0)
-      const messageFiles = await Promise.all(options.pendingFiles.value.map(toMessageFile))
-      conversation.messages.push({
-        messageId: randomUuid(), sequence: baseSequence + 1,
-        // 与服务端落库的 _input 完全一致（含纯文件兜底文案），停止/完成后的
-        // 历史合并按 messageId 或 (sequence, content) 匹配才能命中同一条消息。
-        role: 'user', content: requestContent, timestamp: new Date().toISOString(),
-        files: messageFiles,
-      })
+      if (resume) {
+        // The endpoint replays the entire active turn; do not append it to an old partial response.
+        const input = lastUserMessage(conversation.messages)
+        conversation.messages = input ? conversation.messages.slice(0, conversation.messages.indexOf(input) + 1) : []
+      } else {
+        const messageFiles = retryMessage?.files ?? await Promise.all(options.pendingFiles.value.map(toMessageFile))
+        conversation.messages.push({
+          messageId: randomUuid(), sequence: baseSequence + 1,
+          role: 'user', content: requestContent, timestamp: new Date().toISOString(),
+          files: messageFiles,
+        })
+        conversation.updatedAt = new Date().toISOString()
+        conversation.lastMessageAt = conversation.updatedAt
+        if (!retryMessage) {
+          message.value = ''
+          options.pendingFiles.value = []
+        }
+      }
       conversation.messageCount = conversation.messages.length
-      conversation.updatedAt = new Date().toISOString()
-      conversation.lastMessageAt = conversation.updatedAt
-      message.value = ''
-      options.pendingFiles.value = []
       let reasoning = ''
       let lastFlush = 0
       conversation.messages.push({
-        messageId: randomUuid(), sequence: baseSequence + 2,
+        messageId: randomUuid(), sequence: resume ? (conversation.messages.at(-1)?.sequence || 0) + 1 : baseSequence + 2,
         role: 'assistant', content: '', timestamp: new Date().toISOString(),
       })
       const assistantMessage = conversation.messages[conversation.messages.length - 1]!
@@ -127,16 +167,20 @@ export function useChatStreaming(options: ChatStreamingOptions) {
         lastFlush = performance.now()
       }
       // Keep content paced by the typewriter queue and throttle reasoning renders.
-      for await (const event of api.streamChat(
-        requestContent,
-        requestedAgentId,
-        options.selectedLlmProfileId.value,
-        sendConversationId,
-        uploaded.map(asset => asset.fileId),
-        sendConversationId,
-        streamState.controller.signal,
-        options.selectedRuntimeId?.value,
-      )) {
+      const events = resume
+        ? api.resumeChat(conversationId, streamState.controller.signal)
+        : api.streamChat(
+            requestContent,
+            requestedAgentId,
+            options.selectedLlmProfileId.value,
+            sendConversationId,
+            retryMessage ? (retryMessage.files || retryMessage.metadata?.files || []).map(file => file.fileId).filter((id): id is string => Boolean(id)) : uploaded.map(asset => asset.fileId),
+            sendConversationId,
+            streamState.controller.signal,
+            options.selectedRuntimeId?.value,
+          )
+      for await (const event of events) {
+        receivedEvent = true
         if (event.conversationId && event.conversationId !== conversationId) {
           const previousConversationId = conversationId
           const selectionMatches = options.selectedConversation.value === conversation
@@ -225,9 +269,10 @@ export function useChatStreaming(options: ChatStreamingOptions) {
         }
       }
       flushStream?.()
-      if (!receivedDone) throw new Error('流连接在完成事件前意外结束')
+      if (!receivedDone && (!resume || receivedEvent)) throw new Error('流连接在完成事件前意外结束')
       try {
         const persisted = await api.getConversation(conversationId)
+        if (resume && !receivedEvent && persisted.status === 'Running') throw new Error('当前会话没有可重连的执行，请重试')
         await options.hydrateFilePreviews(persisted)
         persisted.messages = mergeAssistantSnapshot(
           mergeOptimisticUserMessages(persisted.messages || [], conversation.messages || []),
@@ -236,6 +281,7 @@ export function useChatStreaming(options: ChatStreamingOptions) {
         completedAgentId = persisted.agentId
         options.replaceConversation(persisted, conversationId)
       } catch (error) {
+        if (resume) throw error
         if (options.selectedConversation.value?.conversationId === conversationId) options.notifyError(error)
       }
       await options.refreshConversations(false)
@@ -249,27 +295,27 @@ export function useChatStreaming(options: ChatStreamingOptions) {
       flushStream?.()
       const cancelReason = options.streams.getByRequest(requestId)?.cancelReason
       if (cancelReason && cancelReason !== 'network') {
+        // Logout and refresh detach the subscriber, not the server execution.
+        if (cancelReason === 'logout' || cancelReason === 'unload') return
         conversation.status = 'Cancelled'
         conversation.updatedAt = new Date().toISOString()
         conversation.lastMessageAt = conversation.updatedAt
-        if (cancelReason !== 'unload') {
-          try {
-            const persisted = await api.getConversation(conversationId)
-            await options.hydrateFilePreviews(persisted)
-            if (streamedAssistant) {
-              persisted.messages = mergeAssistantSnapshot(
-                mergeOptimisticUserMessages(persisted.messages || [], conversation.messages || []),
-                streamedAssistant,
-              )
-            }
-            if (persisted.messages?.length && persisted.status !== 'Running') {
-              options.replaceConversation(persisted, conversationId)
-            }
-          } catch {
-            // The server may not have persisted a newly cancelled conversation yet.
+        try {
+          const persisted = await api.getConversation(conversationId)
+          await options.hydrateFilePreviews(persisted)
+          if (streamedAssistant) {
+            persisted.messages = mergeAssistantSnapshot(
+              mergeOptimisticUserMessages(persisted.messages || [], conversation.messages || []),
+              streamedAssistant,
+            )
           }
-          await options.refreshConversations(false)
+          if (persisted.messages?.length && persisted.status !== 'Running') {
+            options.replaceConversation(persisted, conversationId)
+          }
+        } catch {
+          // The server may not have persisted a newly cancelled conversation yet.
         }
+        await options.refreshConversations(false)
       } else {
         if (!streamError) options.streams.cancelRequest(requestId, 'network')
         conversation.status = 'Failed'
@@ -305,5 +351,40 @@ export function useChatStreaming(options: ChatStreamingOptions) {
     }
   }
 
-  return { message, send, stopStreaming, clearDraft }
+  function send(): Promise<void> {
+    return runTurn()
+  }
+
+  function reconnect(conversation: ConversationRecord): Promise<void> {
+    if (conversation.status !== 'Running' || options.streams.isStreaming(conversation.conversationId)) return Promise.resolve()
+    return runTurn(conversation)
+  }
+
+  async function retry(): Promise<void> {
+    const conversation = options.selectedConversation.value
+    if (!conversation || !canRetry.value) return
+    const input = lastUserMessage(conversation.messages)
+    if (!input) return
+    try {
+      const persisted = await api.getConversation(conversation.conversationId)
+      if (options.selectedConversation.value !== conversation || options.streams.isStreaming(conversation.conversationId)) return
+      const persistedInput = lastUserMessage(persisted.messages)
+      if (persisted.status === 'Running'
+        || (persisted.status === 'Completed' && persistedInput?.sequence === input.sequence && persistedInput?.content === input.content)) {
+        await options.hydrateFilePreviews(persisted)
+        options.replaceConversation(persisted, conversation.conversationId)
+        await reconnect(persisted)
+        return
+      }
+    } catch (error) {
+      // A rejected first request has no persisted conversation to reload.
+      if (!(error && typeof error === 'object' && 'status' in error && error.status === 404)) {
+        options.notifyError(error)
+        return
+      }
+    }
+    if (options.selectedConversation.value === conversation) await runTurn(undefined, input)
+  }
+
+  return { message, send, retry, canRetry, reconnect, stopStreaming, clearDraft }
 }

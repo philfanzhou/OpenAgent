@@ -504,4 +504,43 @@ describe('workspace API', () => {
     expect(assistant?.reasoning).toBe('only reasoning')
     expect(assistant?.files).toBeUndefined()
   })
+  it('replays SSE through an authenticated read without resubmitting chat input', async () => {
+    setConnectionMode('engine')
+    setEngineBaseUrl('http://engine.example')
+    setAccessToken('encoded-user', 'Basic')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
+      'event: content\ndata: {"content":"已生成"}\n\nevent: done\ndata: {"conversationId":"conversation/1"}\n\n',
+      { headers: { 'Content-Type': 'text/event-stream' } },
+    )))
+    const events = []
+    for await (const event of api.resumeChat('conversation/1')) events.push(event)
+
+    expect(events.map(event => event.type)).toEqual(['content', 'done'])
+    expect(events[0]?.content).toBe('已生成')
+    const [url, init] = vi.mocked(fetch).mock.calls[0]!
+    expect(url).toBe('http://engine.example/api/v1/agent/conversations/conversation%2F1/stream')
+    expect((init!.headers as Headers).get('Authorization')).toBe('Basic encoded-user')
+    expect(init!.body).toBeUndefined()
+  })
+
+  it('does not invent a completion event when reconnect requires a persisted snapshot', async () => {
+    setEngineBaseUrl('http://engine.example')
+    setConnectionMode('engine')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 204 })))
+    const events = []
+    for await (const event of api.resumeChat('conversation-1')) events.push(event)
+    expect(events).toEqual([])
+  })
+
+  it.each([[0, 'Running'], [1, 'Completed'], [2, 'Failed'], [3, 'Cancelled']] as const)('normalizes persisted status %s for detail and list recovery', async (status, expected) => {
+    setConnectionMode('engine')
+    setEngineBaseUrl('http://engine.example')
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ conversationId: 'c1', status })))
+      .mockResolvedValueOnce(new Response(JSON.stringify([{ conversationId: 'c1', status }]))))
+
+    expect((await api.getConversation('c1')).status).toBe(expected)
+    expect((await api.listConversations())[0]?.status).toBe(expected)
+  })
+
 })
