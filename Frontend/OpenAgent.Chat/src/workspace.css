@@ -335,8 +335,9 @@ html[data-theme='dark'] .identity-button:hover { background: #2f2f2f; }
   letter-spacing: .1em;
   text-transform: uppercase;
 }
-.topbar-actions { display: flex; min-width: 0; gap: 6px; align-items: center; flex: 0 0 auto; }
-.topbar-actions .agent-select { width: 248px; flex: 0 0 auto; }
+.topbar-actions { display: flex; min-width: 0; gap: 6px; align-items: center; flex: 0 1 auto; }
+/* 下拉框允许在空间不足时收缩到 150px（文字省略号），保证右侧刷新/主题/设置按钮任何宽度下都可见。 */
+.topbar-actions .agent-select { width: 248px; flex: 0 1 auto; min-width: 150px; }
 
 /* ---------- Route strip ---------- */
 .route-strip {

@@ -13,8 +13,32 @@ internal sealed class ConversationProviderStore(
     IConnectionMultiplexer? redis = null) : IConversationProviderStore
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-    private readonly ConcurrentDictionary<string, ConversationProviderAffinity> _local =
+    // 亲和键必须有过期时间：否则随会话量无限增长（Redis 与本地内存都是）。新会话自然会重新绑定。
+    private static readonly TimeSpan KeyTtl = TimeSpan.FromHours(24);
+    private const int LocalCapacity = 8192;
+
+    private sealed record LocalEntry(ConversationProviderAffinity Affinity, DateTimeOffset CreatedAt);
+    private readonly ConcurrentDictionary<string, LocalEntry> _local =
         new(StringComparer.Ordinal);
+
+    private static bool IsExpired(LocalEntry entry) =>
+        DateTimeOffset.UtcNow - entry.CreatedAt > KeyTtl;
+
+    private void EvictOverflow()
+    {
+        if (_local.Count <= LocalCapacity)
+        {
+            return;
+        }
+
+        foreach ((string key, LocalEntry entry) in _local)
+        {
+            if (IsExpired(entry))
+            {
+                _local.TryRemove(key, out _);
+            }
+        }
+    }
 
     public async Task<ConversationProviderAffinity?> GetAsync(
         string tenantId,
@@ -34,9 +58,14 @@ internal sealed class ConversationProviderStore(
                 : null;
         }
 
-        if (redis == null && _local.TryGetValue(key, out ConversationProviderAffinity? local))
+        if (redis == null && _local.TryGetValue(key, out LocalEntry? local) && local is not null)
         {
-            return local;
+            if (!IsExpired(local))
+            {
+                return local.Affinity;
+            }
+
+            _local.TryRemove(key, out _);
         }
 
         string? value = await cache.GetStringAsync(
@@ -47,7 +76,8 @@ internal sealed class ConversationProviderStore(
             : JsonSerializer.Deserialize<ConversationProviderAffinity>(value, JsonOptions);
         if (affinity != null)
         {
-            _local.TryAdd(key, affinity);
+            _local[key] = new LocalEntry(affinity, DateTimeOffset.UtcNow);
+            EvictOverflow();
         }
 
         return affinity;
@@ -64,14 +94,16 @@ internal sealed class ConversationProviderStore(
         if (redis != null)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            await redis.GetDatabase().StringSetAsync(key, value).ConfigureAwait(false);
+            await redis.GetDatabase().StringSetAsync(key, value, KeyTtl).ConfigureAwait(false);
             return;
         }
 
-        _local[key] = affinity;
+        _local[key] = new LocalEntry(affinity, DateTimeOffset.UtcNow);
+        EvictOverflow();
         await cache.SetStringAsync(
             key,
             value,
+            new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = KeyTtl },
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -84,22 +116,26 @@ internal sealed class ConversationProviderStore(
         string key = BuildKey(tenantId, conversationId);
         if (redis == null)
         {
-            ConversationProviderAffinity bound = _local.GetOrAdd(key, affinity);
-            if (ReferenceEquals(bound, affinity))
+            if (_local.TryGetValue(key, out LocalEntry? existingLocal) && existingLocal is not null
+                && !IsExpired(existingLocal))
             {
-                await cache.SetStringAsync(
-                    key,
-                    JsonSerializer.Serialize(bound, JsonOptions),
-                    cancellationToken).ConfigureAwait(false);
+                return existingLocal.Affinity;
             }
 
-            return bound;
+            _local[key] = new LocalEntry(affinity, DateTimeOffset.UtcNow);
+            EvictOverflow();
+            await cache.SetStringAsync(
+                key,
+                JsonSerializer.Serialize(affinity, JsonOptions),
+                new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = KeyTtl },
+                cancellationToken).ConfigureAwait(false);
+            return affinity;
         }
 
         IDatabase database = redis.GetDatabase();
         cancellationToken.ThrowIfCancellationRequested();
         string value = JsonSerializer.Serialize(affinity, JsonOptions);
-        if (await database.StringSetAsync(key, value, when: When.NotExists)
+        if (await database.StringSetAsync(key, value, KeyTtl, When.NotExists)
             .ConfigureAwait(false))
         {
             return affinity;

@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Models;
 using OpenAgent.Contracts.Security;
@@ -9,8 +10,10 @@ internal sealed class RagService(
     IHttpClientFactory httpClientFactory,
     IRagRegistry ragRegistry,
     IEnumerable<IRagAdapter> adapters,
-    IAgentSecretResolver? secrets = null) : IRagService
+    IAgentSecretResolver? secrets = null,
+    ILogger<RagService>? logger = null) : IRagService
 {
+    private readonly ILogger<RagService> _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<RagService>.Instance;
     public async Task IndexDocumentAsync(
         string content,
         Dictionary<string, object>? metadata,
@@ -239,7 +242,12 @@ internal sealed class RagService(
         {
             throw;
         }
-        catch (Exception) { }
+        catch (Exception exception)
+        {
+            // 索引失败绝不能静默：否则知识库缺数据完全无法察觉。
+            _logger.LogWarning(exception, "RAG index failed for instance '{InstanceId}' ({Endpoint}). ErrorType={ErrorType}",
+                config.Id, config.ApiEndpoint, exception.GetType().Name);
+        }
     }
 
     private async Task<List<SearchResult>> SearchExternalDetailedAsync(
@@ -276,8 +284,11 @@ internal sealed class RagService(
         {
             throw;
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            // 检索失败降级为"零结果"，但必须留痕：否则 Agent 会在无资料状态下自信作答且不可诊断。
+            _logger.LogWarning(exception, "RAG search failed for instance '{InstanceId}' ({Endpoint}). ErrorType={ErrorType}",
+                config.Id, config.ApiEndpoint, exception.GetType().Name);
             return new List<SearchResult>();
         }
     }
