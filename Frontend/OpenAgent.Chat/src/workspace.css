@@ -335,8 +335,8 @@ html[data-theme='dark'] .identity-button:hover { background: #2f2f2f; }
   letter-spacing: .1em;
   text-transform: uppercase;
 }
-.topbar-actions { display: flex; gap: 6px; align-items: center; }
-.topbar-actions .agent-select { width: 248px; }
+.topbar-actions { display: flex; min-width: 0; gap: 6px; align-items: center; flex: 0 0 auto; }
+.topbar-actions .agent-select { width: 248px; flex: 0 0 auto; }
 
 /* ---------- Route strip ---------- */
 .route-strip {

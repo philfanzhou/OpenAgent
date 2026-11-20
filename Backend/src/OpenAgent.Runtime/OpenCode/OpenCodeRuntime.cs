@@ -69,10 +69,16 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
             invocation.Profile.Runtime?.TurnTimeoutSeconds ?? options.Value.TurnTimeoutSeconds)));
         try
         {
-            await using IAsyncEnumerator<AgentStreamEvent> events = RunCoreAsync(invocation, deadline.Token).GetAsyncEnumerator();
-            while (true)
+            // Retry once with a fresh process when a kept-alive process dies before any
+            // event is yielded (no side effects yet), instead of failing the whole turn.
+            bool yielded = false;
+            for (int attempt = 0; ; attempt++)
             {
-                bool available;
+                bool retry = false;
+                await using IAsyncEnumerator<AgentStreamEvent> events = RunCoreAsync(invocation, deadline.Token).GetAsyncEnumerator();
+                while (true)
+                {
+                    bool available = false;
                 try
                 {
                     available = await events.MoveNextAsync().ConfigureAwait(false);
@@ -85,6 +91,15 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
                 catch (AgentException)
                 {
                     throw;
+                }
+                catch (Exception error) when (attempt == 0 && !yielded && !deadline.IsCancellationRequested
+                    && error is IOException or ObjectDisposedException or EndOfStreamException or JsonException)
+                {
+                    retry = true;
+                    logger.LogWarning(
+                        "OpenCode process exited before any output; retrying with a fresh process. TraceId={TraceId}, ErrorType={ErrorType}",
+                        invocation.Turn.TraceId,
+                        error.GetType().Name);
                 }
                 catch (Exception error)
                 {
@@ -100,11 +115,21 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
                         classified.Details);
                     throw classified;
                 }
+                if (retry)
+                {
+                    break;
+                }
                 if (!available)
                 {
                     break;
                 }
+                yielded = true;
                 yield return events.Current;
+                }
+                if (!retry)
+                {
+                    break;
+                }
             }
         }
         finally

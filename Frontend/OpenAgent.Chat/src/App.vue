@@ -215,6 +215,8 @@ function toggleTheme(): void {
 
 function newConversation(): void {
   clearSelectedConversation()
+  // 新会话强制回到 Auto 意图路由，避免继承上一个会话选中的 Agent。
+  if (connectionMode.value === 'router') selectedAgentId.value = AUTO_AGENT_ID
   clearDraft()
 }
 
