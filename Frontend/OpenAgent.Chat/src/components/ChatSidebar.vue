@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { groupConversationsByDay } from '../conversationGroups'
 import type { ConversationRecord, CurrentUserContext } from '../types'
 
 const props = defineProps<{
@@ -30,18 +31,7 @@ const filteredConversations = computed(() => {
   return props.conversations.filter(item => `${item.title || ''} ${item.conversationId}`.toLowerCase().includes(keyword))
 })
 
-const conversationGroups = computed(() => {
-  const today = new Date()
-  const groups = new Map<string, ConversationRecord[]>()
-  for (const item of filteredConversations.value) {
-    const date = new Date(item.updatedAt || item.lastMessageAt || item.createdAt)
-    const dayDiff = Number.isNaN(date.getTime()) ? 3 : Math.floor((today.getTime() - date.getTime()) / 86400000)
-    const label = dayDiff <= 0 ? '今天' : dayDiff === 1 ? '昨天' : '更早'
-    if (!groups.has(label)) groups.set(label, [])
-    groups.get(label)?.push(item)
-  }
-  return Array.from(groups, ([label, items]) => ({ label, items }))
-})
+const conversationGroups = computed(() => groupConversationsByDay(filteredConversations.value))
 
 const displayUserName = computed(() => {
   const username = props.currentUser?.username?.trim()
