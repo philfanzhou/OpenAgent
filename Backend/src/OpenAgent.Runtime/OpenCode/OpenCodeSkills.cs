@@ -86,7 +86,8 @@ internal static class OpenCodeSkills
             }
             else
             {
-                File.Copy(entry.FullName, destination, overwrite: false);
+                // 目标工作区随持久化进程复用：同一包的副本可能已存在，按源覆盖重物化（幂等）。
+                File.Copy(entry.FullName, destination, overwrite: true);
             }
         }
     }

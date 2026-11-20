@@ -94,7 +94,8 @@ internal sealed class OpenCodeProcessKeeper : IAsyncDisposable
         }
         catch
         {
-            await DestroyAsync(client, process, home).ConfigureAwait(false);
+            // 恢复路径的 home 承载已提交的原生会话状态：启动失败时保留，防止误删检查点。
+            await DestroyAsync(client, process, home, restored is not null).ConfigureAwait(false);
             throw;
         }
     }

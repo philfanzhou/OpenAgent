@@ -191,7 +191,10 @@ export function useChatStreaming(options: ChatStreamingOptions) {
           if (selectionMatches) sessionStorage.setItem(selectedConversationStorageKey, conversationId)
         }
         if (event.type === 'agent_selected') {
-          if (isNewConversation && options.selectedAgentId.value === AUTO_AGENT_ID && event.agentId) {
+          // 仅当本流仍对应当前选中会话时才回填全局选择器，避免切换会话/新对话后被迟到的路由结果串台。
+          const selectionMatches = options.selectedConversation.value === conversation
+            || options.selectedConversation.value?.conversationId === conversationId
+          if (isNewConversation && selectionMatches && options.selectedAgentId.value === AUTO_AGENT_ID && event.agentId) {
             completedAgentId = event.agentId
             conversation.agentId = event.agentId
             options.selectedAgentId.value = event.agentId

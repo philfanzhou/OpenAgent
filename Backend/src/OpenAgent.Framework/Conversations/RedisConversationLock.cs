@@ -101,6 +101,11 @@ internal sealed class RedisConversationLock(
         private async Task HeartbeatAsync(CancellationToken cancellationToken)
         {
             TimeSpan interval = TimeSpan.FromMilliseconds(Math.Max(1000, _ttl.TotalMilliseconds / 3));
+            // 瞬时抖动（网络闪断、单条命令超时）不应立刻放弃锁：连续失败到累计约一个 TTL
+            // 才判定失效；期间任何一次成功续期都会重置计数。达到阈值时锁的剩余 TTL 已趋近
+            // 于零，与真实持锁状态一致，不会扩大与其他节点的冲突窗口。
+            const int MaxConsecutiveFailures = 3;
+            int failures = 0;
             try
             {
                 while (true)
@@ -110,24 +115,38 @@ internal sealed class RedisConversationLock(
                     {
                         return;
                     }
-                    long expiresAt = Environment.TickCount64 + (long)_ttl.TotalMilliseconds;
-                    RedisResult result = await _connection.GetDatabase().ScriptEvaluateAsync(
-                        ExtendScript, [_key], [OwnerToken, (long)_ttl.TotalMilliseconds]).ConfigureAwait(false);
-                    if ((long)result == 0)
+                    try
                     {
-                        Interlocked.Exchange(ref _lost, 1);
-                        _logger.LogWarning("Conversation lock was lost for {ConversationId}", ConversationId);
-                        return;
+                        long expiresAt = Environment.TickCount64 + (long)_ttl.TotalMilliseconds;
+                        RedisResult result = await _connection.GetDatabase().ScriptEvaluateAsync(
+                            ExtendScript, [_key], [OwnerToken, (long)_ttl.TotalMilliseconds]).ConfigureAwait(false);
+                        if ((long)result == 0)
+                        {
+                            Interlocked.Exchange(ref _lost, 1);
+                            _logger.LogWarning("Conversation lock was lost for {ConversationId}", ConversationId);
+                            return;
+                        }
+                        failures = 0;
+                        Volatile.Write(ref _expiresAt, expiresAt);
                     }
-                    Volatile.Write(ref _expiresAt, expiresAt);
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                    {
+                        throw;
+                    }
+                    catch (Exception exception)
+                    {
+                        failures++;
+                        if (failures >= MaxConsecutiveFailures)
+                        {
+                            Interlocked.Exchange(ref _lost, 1);
+                            _logger.LogWarning(exception, "Conversation lock heartbeat failed {Failures} times for {ConversationId}", failures, ConversationId);
+                            return;
+                        }
+                        _logger.LogWarning(exception, "Conversation lock heartbeat failed once ({Failures}) for {ConversationId}; retrying", failures, ConversationId);
+                    }
                 }
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
-            catch (Exception exception)
-            {
-                Interlocked.Exchange(ref _lost, 1);
-                _logger.LogWarning(exception, "Conversation lock heartbeat failed for {ConversationId}", ConversationId);
-            }
         }
     }
 }

@@ -47,22 +47,25 @@ function makeRecord(messages: ConversationMessage[], status: ConversationRecord[
   }
 }
 
-async function setup(modelProfileId = 'profile-1', runtimeId = 'saved-runtime') {
-  const streams = useConversationStreams()
-  const conversations = ref<ConversationRecord[]>([])
-  // 上一轮完成后的内存形态：合并展示消息（assistant 组携带末行序号 4，
-  // 对应服务端原始行 user1/call2/tool3/text4）。
-  const selectedConversation = ref<ConversationRecord | null>(makeRecord([
+async function setup(modelProfileId = 'profile-1', runtimeId = 'saved-runtime',
+  initialSelection: ConversationRecord | null = makeRecord([
     row({ sequence: 1, role: 'user', content: '第一轮问题' }),
     row({
       sequence: 4, role: 'assistant', content: '第一轮回答',
       toolActivities: [{ name: 'search', callId: 'c1', result: '结果', arguments: {} }],
     }),
-  ], 'Completed'))
-  conversations.value = [selectedConversation.value!]
+  ], 'Completed'),
+  agentId = 'agent-1') {
+  const streams = useConversationStreams()
+  const conversations = ref<ConversationRecord[]>([])
+  // 上一轮完成后的内存形态：合并展示消息（assistant 组携带末行序号 4，
+  // 对应服务端原始行 user1/call2/tool3/text4）。
+  const selectedConversation = ref<ConversationRecord | null>(initialSelection)
+  conversations.value = selectedConversation.value ? [selectedConversation.value] : []
 
+  const selectedAgentId = ref(agentId)
   const streaming = useChatStreaming({
-    selectedAgentId: ref('agent-1'),
+    selectedAgentId,
     selectedLlmProfileId: ref(modelProfileId),
     selectedRuntimeId: ref(runtimeId),
     agents: ref([]),
@@ -83,7 +86,7 @@ async function setup(modelProfileId = 'profile-1', runtimeId = 'saved-runtime') 
     refreshConversations: async () => {},
     notifyError: () => {},
   })
-  return { streams, selectedConversation, streaming }
+  return { streams, selectedConversation, streaming, selectedAgentId }
 }
 
 describe('useChatStreaming', () => {
@@ -96,6 +99,41 @@ describe('useChatStreaming', () => {
     streaming.message.value = '运行'
     await streaming.send()
     expect(api.streamChat).not.toHaveBeenCalled()
+  })
+
+  it('drops a late agent_selected event after the user switches conversations', async () => {
+    const { streaming, selectedConversation, selectedAgentId } = await setup(
+      'profile-1', 'saved-runtime', null, '__auto__')
+    let releaseSwitch: (() => void) | undefined
+    const switched = new Promise<void>(resolve => { releaseSwitch = resolve })
+    vi.mocked(api.streamChat).mockImplementation(() => (async function* () {
+      yield { type: 'content', content: 'partial' }
+      await switched
+      yield { type: 'agent_selected', agentId: 'agent-9' }
+      yield { type: 'done' }
+    })() as never)
+    streaming.message.value = 'test'
+    const sending = streaming.send()
+    await vi.waitFor(() => expect(selectedConversation.value).not.toBeNull())
+    // 用户在流进行中切走（等价于点了另一个会话/新对话）。
+    selectedConversation.value = {
+      ...makeRecord([], 'Completed'), conversationId: 'conv-other',
+    }
+    releaseSwitch?.()
+    await sending
+    expect(selectedAgentId.value).toBe('__auto__')
+  })
+
+  it('applies the agent_selected event when the conversation stays selected', async () => {
+    const { streaming, selectedAgentId } = await setup(
+      'profile-1', 'saved-runtime', null, '__auto__')
+    vi.mocked(api.streamChat).mockImplementation(() => (async function* () {
+      yield { type: 'agent_selected', agentId: 'agent-9' }
+      yield { type: 'done' }
+    })() as never)
+    streaming.message.value = 'test'
+    await streaming.send()
+    expect(selectedAgentId.value).toBe('agent-9')
   })
 
   it('keeps the server-reported runtime after reloading the persisted response', async () => {

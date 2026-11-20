@@ -8,11 +8,8 @@ namespace OpenAgent.Framework.Tests.Conversations;
 
 public sealed class RedisConversationLockTests
 {
-    [Theory]
-    [InlineData("rejected")]
-    [InlineData("unavailable")]
-    [InlineData("cancelled")]
-    public async Task IsHeld_RenewalRejectedOrUnavailable_BecomesFalseBeforeLeaseExpires(string failure)
+    [Fact]
+    public async Task IsHeld_RenewalRejectedByOtherOwner_BecomesFalseBeforeLeaseExpires()
     {
         Mock<IDatabase> database = CreateDatabase();
         TaskCompletionSource renewal = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -25,12 +22,7 @@ public sealed class RedisConversationLockTests
                     return Task.FromResult(RedisResult.Create((RedisValue)1L));
                 }
                 renewal.TrySetResult();
-                return failure switch
-                {
-                    "unavailable" => Task.FromException<RedisResult>(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Unavailable")),
-                    "cancelled" => Task.FromException<RedisResult>(new OperationCanceledException("Renewal cancelled")),
-                    _ => Task.FromResult(RedisResult.Create((RedisValue)0L))
-                };
+                return Task.FromResult(RedisResult.Create((RedisValue)0L));
             });
         RedisConversationLock conversationLock = CreateLock(database.Object);
         await using IConversationLockHandle? handle = await conversationLock.TryAcquireAsync("tenant-1", "conversation-1", TimeSpan.FromSeconds(6));
@@ -45,6 +37,40 @@ public sealed class RedisConversationLockTests
         }
 
         Assert.False(handle.IsHeld);
+    }
+
+    [Theory]
+    [InlineData("unavailable")]
+    [InlineData("cancelled")]
+    public async Task IsHeld_SingleTransientRenewalFailure_ToleratedAndLockStaysHeld(string failure)
+    {
+        Mock<IDatabase> database = CreateDatabase();
+        TaskCompletionSource renewal = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        database.Setup(value => value.ScriptEvaluateAsync(It.IsAny<string>(), It.IsAny<RedisKey[]>(),
+                It.IsAny<RedisValue[]>(), It.IsAny<CommandFlags>()))
+            .Returns((string script, RedisKey[] keys, RedisValue[] values, CommandFlags flags) =>
+            {
+                if (values.Length == 1)
+                {
+                    return Task.FromResult(RedisResult.Create((RedisValue)1L));
+                }
+                renewal.TrySetResult();
+                return failure switch
+                {
+                    "cancelled" => Task.FromException<RedisResult>(new OperationCanceledException("Renewal cancelled")),
+                    _ => Task.FromException<RedisResult>(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Unavailable")),
+                };
+            });
+        RedisConversationLock conversationLock = CreateLock(database.Object);
+        // TTL 3.3s keeps the heartbeat interval at its 1s floor: one failure lands ~1s in.
+        await using IConversationLockHandle? handle = await conversationLock.TryAcquireAsync("tenant-1", "conversation-1", TimeSpan.FromMilliseconds(3300));
+        Assert.NotNull(handle);
+        Assert.True(handle.IsHeld);
+
+        await renewal.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        // One transient failure must NOT give up the lock: it is still held shortly after.
+        await Task.Delay(300);
+        Assert.True(handle.IsHeld);
     }
 
     [Fact]

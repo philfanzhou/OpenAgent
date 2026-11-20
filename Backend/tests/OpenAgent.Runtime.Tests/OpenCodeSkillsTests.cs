@@ -38,6 +38,26 @@ public sealed class OpenCodeSkillsTests : IDisposable
     }
 
     [Fact]
+    public void Materialize_RematerializeIntoReusedWorkspace_IsIdempotentAndRefreshesContent()
+    {
+        // A persisted process keeps its home across idle recycling; the next turn
+        // rematerializes the same packages into the existing workspace. This must
+        // not throw (the old overwrite:false copy failed with IOException) and must
+        // pick up package content changes.
+        string package = CreatePackage("reuse-skill");
+        string workspace = Path.Combine(_root, "ws-reuse");
+        Directory.CreateDirectory(workspace);
+        OpenCodeSkills.Materialize(workspace, [new("reuse-skill", package)]);
+        File.WriteAllText(Path.Combine(package, "SKILL.md"), "updated body");
+
+        OpenCodeSkills.Materialize(workspace, [new("reuse-skill", package)]);
+
+        Assert.Contains("updated body",
+            File.ReadAllText(Path.Combine(workspace, ".opencode", "skills", "reuse-skill", "SKILL.md")),
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Materialize_WorkspaceMutationDoesNotModifyCachedPackage()
     {
         string package = CreatePackage("safe");
