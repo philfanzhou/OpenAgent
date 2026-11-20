@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { randomUuid } from '../browserCrypto'
 import { formatFileSize } from '../messagePresentation'
 import type { PendingFile } from '../types'
@@ -77,8 +77,15 @@ function removeFile(id: string): void {
 function handleKeydown(event: KeyboardEvent): void {
   if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return
   event.preventDefault()
+  // 与发送按钮的禁用条件保持一致：不满足条件时 Enter 不触发发送，
+  // 避免静默失败（未选 Agent / 空消息 / 附件未就绪）。
+  if (props.loading || !canSend.value) return
   emit('send')
 }
+
+const canSend = computed(() => !!props.selectedAgentId
+  && (!!props.modelValue.trim() || props.pendingFiles.length > 0)
+  && props.pendingFiles.every(item => item.state === 'ready'))
 
 function openFilePicker(): void {
   fileInput.value?.click()

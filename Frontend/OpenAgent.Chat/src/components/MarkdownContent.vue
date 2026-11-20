@@ -32,7 +32,11 @@ const renderedContent = computed(() => {
   const stable = lastNl >= 0 ? props.content.slice(0, lastNl + 1) : ''
   const tail = lastNl >= 0 ? props.content.slice(lastNl + 1) : props.content
   const overWindow = stable.length > STREAM_MARKDOWN_WINDOW
-  const renderPart = overWindow ? stable.slice(stable.length - STREAM_MARKDOWN_WINDOW) : stable
+  let renderPart = overWindow ? stable.slice(stable.length - STREAM_MARKDOWN_WINDOW) : stable
+  // 窗口截断或行未闭合导致代码围栏不成对时，补一个闭合围栏，避免流式期间渲染错乱闪动。
+  if ((renderPart.match(/```/g)?.length ?? 0) % 2 === 1) {
+    renderPart += '\n```'
+  }
   const stableHtml = renderPart ? renderMarkdown(prepare(renderPart)) : ''
   const collapseNote = overWindow
     ? `<div class="stream-collapsed">… 更早内容已折叠（约 ${Math.ceil(stable.length / 1000)}k 字符）</div>`

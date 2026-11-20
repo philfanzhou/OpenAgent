@@ -255,6 +255,8 @@ async function loadWorkspace(): Promise<void> {
       || (selectedAgentId.value !== AUTO_AGENT_ID && !agents.value.some(item => item.agentId === selectedAgentId.value))) {
       selectedAgentId.value = agents.value[0]?.agentId || ''
       config.value = null
+      // 兜底切换后清掉旧 Agent 的能力绑定草稿，避免旧绑定写入新 Agent。
+      handleAgentChange()
     }
     await restoreSelectedConversation()
   } catch (error) {
@@ -268,15 +270,25 @@ function handlePageUnload(): void {
   conversationStreams.cancelAll('unload')
 }
 
+// 窗口级拖拽守卫：文件落到消息输入框之外时阻止浏览器默认行为
+// （默认会直接导航打开该文件，导致当前页面被替换、会话与登录态丢失）。
+function preventWindowFileNavigation(event: DragEvent): void {
+  event.preventDefault()
+}
+
 onMounted(async () => {
   applyTheme()
   window.addEventListener('beforeunload', handlePageUnload)
+  window.addEventListener('dragover', preventWindowFileNavigation)
+  window.addEventListener('drop', preventWindowFileNavigation)
   await initializeAuthentication()
 })
 
 onBeforeUnmount(() => {
   disposeAuthentication()
   window.removeEventListener('beforeunload', handlePageUnload)
+  window.removeEventListener('dragover', preventWindowFileNavigation)
+  window.removeEventListener('drop', preventWindowFileNavigation)
   handlePageUnload()
 })
 </script>

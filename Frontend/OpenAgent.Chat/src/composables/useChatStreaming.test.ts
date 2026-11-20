@@ -136,6 +136,18 @@ describe('useChatStreaming', () => {
     expect(selectedAgentId.value).toBe('agent-9')
   })
 
+  it('maps a failed done frame to the Failed status', async () => {
+    const { streaming, selectedConversation } = await setup()
+    vi.mocked(api.streamChat).mockImplementation(() => (async function* () {
+      yield { type: 'content', content: 'x' }
+      yield { type: 'done', status: 'error' }
+    })() as never)
+    vi.mocked(api.getConversation).mockResolvedValue(
+      makeRecord([row({ sequence: 1, role: 'user', content: 'test' })], 'Failed') as never)
+    streaming.message.value = 'test'
+    await streaming.send()
+    expect(selectedConversation.value?.status).toBe('Failed')
+  })
   it('keeps the server-reported runtime after reloading the persisted response', async () => {
     const { streaming, selectedConversation } = await setup()
     vi.mocked(api.streamChat).mockImplementation(() => (async function* () {
@@ -493,3 +505,4 @@ describe('useChatStreaming', () => {
   })
 
 })
+

@@ -65,9 +65,21 @@ export function useRagSettings(options: SettingsOptions) {
   }
 
   async function saveRag(): Promise<void> {
-    if (!options.selectedAgentId.value || !ragDraft.value.id.trim()) return
+    const id = ragDraft.value.id.trim()
+    if (!options.selectedAgentId.value) {
+      options.notifyError(new Error('请先选择 Agent'))
+      return
+    }
+    if (!id) {
+      options.notifyError(new Error('请输入 RAG 实例 ID'))
+      return
+    }
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(id)) {
+      options.notifyError(new Error('RAG 实例 ID 只能使用字母、数字、点、下划线或短横线'))
+      return
+    }
     try {
-      const saved = await api.saveRag(ragDraft.value.id.trim(), options.selectedAgentId.value, ragDraft.value)
+      const saved = await api.saveRag(id, options.selectedAgentId.value, ragDraft.value)
       const existingIndex = ragInstances.value.findIndex(item => item.id === saved.id)
       if (existingIndex >= 0) ragInstances.value[existingIndex] = saved
       else ragInstances.value.push(saved)
@@ -93,6 +105,12 @@ export function useRagSettings(options: SettingsOptions) {
       ragInstances.value.splice(selectedRagIndex.value, 1)
       selectedRagIndex.value = ragInstances.value.length ? 0 : -1
       if (selectedRagIndex.value >= 0) selectRag(selectedRagIndex.value)
+      // 同步清理当前 Agent 配置里的启用记录，避免失效 ID 随 saveConfig 持久化。
+      const rag = config.value?.config.rag
+      if (rag) {
+        rag.enabledRagInstanceIds = rag.enabledRagInstanceIds.filter(id => id !== current.id)
+        rag.instances = rag.instances.filter(item => item.id !== current.id)
+      }
       ElMessage.success('RAG 已移除')
     } catch (error) {
       if (error !== 'cancel' && error !== 'close') options.notifyError(error)

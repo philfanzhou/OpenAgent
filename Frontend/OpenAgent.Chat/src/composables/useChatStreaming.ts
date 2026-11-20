@@ -160,7 +160,7 @@ export function useChatStreaming(options: ChatStreamingOptions) {
       conversation.messageCount = conversation.messages.length
       contentQueue = createTypewriterQueue(content => {
         assistantMessage.content += content
-      })
+      }, { intervalMs: 48 })
       flushStream = (): void => {
         contentQueue?.flush()
         assistantMessage.reasoning = reasoning || undefined
@@ -185,10 +185,21 @@ export function useChatStreaming(options: ChatStreamingOptions) {
           const previousConversationId = conversationId
           const selectionMatches = options.selectedConversation.value === conversation
             || options.selectedConversation.value?.conversationId === previousConversationId
-          options.streams.remap(requestId, event.conversationId)
-          conversationId = event.conversationId
-          conversation.conversationId = conversationId
-          if (selectionMatches) sessionStorage.setItem(selectedConversationStorageKey, conversationId)
+          // 服务端分配的会话 ID 已被另一个活跃流占用（重复打开同一持久会话）时，
+          // 不做本地重映射，也不把这种冲突当网络失败处理（避免误标 Failed）。
+          let remapConflict = false
+          try {
+            options.streams.remap(requestId, event.conversationId)
+          } catch {
+            remapConflict = true
+          }
+          if (remapConflict) {
+            ElMessage.warning('该会话已在另一个窗口处理中，本窗口结果不再同步')
+          } else {
+            conversationId = event.conversationId
+            conversation.conversationId = conversationId
+            if (selectionMatches) sessionStorage.setItem(selectedConversationStorageKey, conversationId)
+          }
         }
         if (event.type === 'agent_selected') {
           // 仅当本流仍对应当前选中会话时才回填全局选择器，避免切换会话/新对话后被迟到的路由结果串台。
@@ -257,7 +268,10 @@ export function useChatStreaming(options: ChatStreamingOptions) {
         } else if (event.type === 'done') {
           flushStream?.()
           receivedDone = true
-          conversation.status = (event.status || 'Completed') as ConversationRecord['status']
+          // 后端流式失败帧携带 status:"error"，映射为持久化的 Failed 状态，
+          // 不能把非法字面量直接写进会话状态。
+          const doneStatus = event.status === 'error' ? 'Failed' : (event.status || 'Completed')
+          conversation.status = doneStatus as ConversationRecord['status']
           assistantMessage.tokenUsage = event.usage ?? undefined
           assistantMessage.modelId = event.modelId ?? undefined
         } else if (event.type === 'error') {

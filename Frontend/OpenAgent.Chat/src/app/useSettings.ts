@@ -91,6 +91,8 @@ export function useSettings(options: SettingsOptions) {
         || (options.selectedAgentId.value !== AUTO_AGENT_ID && !refreshed.some(item => item.agentId === options.selectedAgentId.value))) {
         options.selectedAgentId.value = refreshed[0]?.agentId || ''
         config.value = null
+        // 兜底切换后必须清掉旧 Agent 的能力绑定草稿，否则旧绑定会写进新 Agent。
+        handleAgentChange()
       }
       if (options.selectedAgentId.value && options.selectedAgentId.value !== AUTO_AGENT_ID && activeSettings.value === 'agent') {
         await loadConfig()

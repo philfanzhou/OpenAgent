@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { api as agentsApi } from '../features/agents/api'
 import { api as mcpApi } from '../features/mcp/api'
 import { api as modelsApi } from '../features/models/api'
+import { api as ragApi } from '../features/rag/api'
 import { getTenantId } from '../shared/api/http'
 import type { AgentConfigEntity, AgentSummary, ConnectionMode } from '../shared/contracts/types'
 import { useSettings } from './useSettings'
@@ -73,6 +74,28 @@ describe('settings composition', () => {
     expect(options.notifyError).not.toHaveBeenCalled()
   })
 
+const ragInstance: import('../shared/contracts/types').RagInstanceConfig = { id: 'rag-1', name: 'K', enabled: true, type: 'ragflow', collectionName: 'c', apiEndpoint: 'http://rag' }
+  it('removes a deleted RAG instance from the agent config bindings', async () => {
+    const { state } = settings()
+    state.config.value = {
+      agentId: 'agent-1', name: 'Agent', description: '', status: 0, currentVersion: '',
+      config: {
+        instructions: '', maxTurns: 5, mcp: { servers: [] },
+        skills: { enabledSkills: [], instances: [] },
+        rag: { enabled: true, enabledRagInstanceIds: ['rag-1'], instances: [ragInstance] },
+      },
+    }
+    state.ragInstances.value = [ragInstance]
+    state.selectedRagIndex.value = 0
+    const spy = vi.spyOn(ragApi, 'deleteRag').mockResolvedValue(undefined)
+
+    await state.deleteRag()
+
+    expect(spy).toHaveBeenCalledWith('rag-1', 'agent-1')
+    expect(state.config.value?.config.rag?.enabledRagInstanceIds).toEqual([])
+    expect(state.config.value?.config.rag?.instances).toEqual([])
+    expect(state.ragInstances.value).toEqual([])
+  })
   it('clears capability bindings when the selected Agent changes', () => {
     const { state } = settings()
     state.toggleMcpBinding({ name: 'private-orders', url: 'http://mcp', type: 'Http' }, true)
@@ -116,4 +139,5 @@ describe('settings composition', () => {
     expect(options.notifyError).toHaveBeenCalledWith(error)
   })
 })
+
 
