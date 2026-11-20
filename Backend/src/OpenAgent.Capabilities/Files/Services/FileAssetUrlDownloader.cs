@@ -225,6 +225,33 @@ internal sealed class FileAssetUrlDownloader
         HttpStatusCode.TemporaryRedirect or
         HttpStatusCode.PermanentRedirect;
 
+    /// <summary>连接时对最终目标 IP 再做一次拦截：校验阶段与 HttpClient 实际连接之间
+    /// 存在 DNS 重新解析（TOCTOU/rebinding）窗口，只有连接级校验能真正闭合它。</summary>
+    internal static void EnsureAddressAllowed(IPAddress address)
+    {
+        if (IsBlockedAddress(address))
+        {
+            throw new AgentException(
+                AgentErrorCode.InvalidRequest,
+                "出于安全原因，不允许下载内网或本机地址。");
+        }
+    }
+
+    internal static async Task<Stream> ConnectAsync(IPAddress address, int port, CancellationToken cancellationToken)
+    {
+        TcpClient tcp = new(address.AddressFamily);
+        try
+        {
+            await tcp.ConnectAsync(address, port, cancellationToken).ConfigureAwait(false);
+            return new NetworkStream(tcp.Client, ownsSocket: true);
+        }
+        catch
+        {
+            tcp.Dispose();
+            throw;
+        }
+    }
+
     private static bool IsBlockedAddress(IPAddress address)
     {
         if (address.IsIPv4MappedToIPv6)

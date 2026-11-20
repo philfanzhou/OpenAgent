@@ -22,6 +22,31 @@ function settings() {
 beforeEach(() => vi.restoreAllMocks())
 
 describe('settings composition', () => {
+  it('discards a stale loadConfig response after the selection moved on', async () => {
+    const { state } = settings()
+    const entity = (id: string, name: string): AgentConfigEntity => ({
+      agentId: id, name, description: '', status: 0, currentVersion: '',
+      config: {
+        instructions: '', maxTurns: 5, mcp: { servers: [] },
+        skills: { enabledSkills: [], instances: [] }, rag: { enabled: false, enabledRagInstanceIds: [], instances: [] }
+      },
+    })
+    let releaseSlow: () => void = () => {}
+    const gate = new Promise<void>(resolve => { releaseSlow = resolve })
+    const spy = vi.spyOn(agentsApi, 'getAgentConfig')
+      .mockImplementationOnce(() => gate.then(() => entity('agent-1', 'Slow')))
+      .mockResolvedValueOnce(entity('agent-2', 'Fast'))
+
+    const slow = state.loadConfig('agent-1')
+    await state.loadConfig('agent-2')
+    releaseSlow()
+    await slow
+
+    expect(spy).toHaveBeenCalledTimes(2)
+    // The late agent-1 response must not overwrite the newer agent-2 state.
+    expect(state.config.value?.agentId).toBe('agent-2')
+    expect(state.config.value?.name).toBe('Fast')
+  })
   it('saves bindings selected in independent modules through the Agent configuration', async () => {
     const { state, options } = settings()
     const config: AgentConfigEntity = {
@@ -91,3 +116,4 @@ describe('settings composition', () => {
     expect(options.notifyError).toHaveBeenCalledWith(error)
   })
 })
+

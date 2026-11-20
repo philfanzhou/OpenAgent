@@ -1,4 +1,10 @@
+using System.Net;
+using System.Net.Http;
+using System.Net.Security;
+using System.Net.Sockets;
 using OpenAgent.Contracts.Capabilities;
+using OpenAgent.Contracts.Requests;
+using OpenAgent.Contracts.Security;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.DependencyInjection;
@@ -59,15 +65,29 @@ internal static class FileAssetServiceExtensions
             })
             .ConfigurePrimaryHttpMessageHandler(() =>
             {
-                var handler = new HttpClientHandler
+                // DNS rebinding 防护：地址校验阶段解析的 IP 与 HttpClient 实际连接时重新解析
+                // 得到的 IP 可能不同（TOCTOU）。ConnectCallback 在连接级对最终目标 IP 再拦截一次。
+                SocketsHttpHandler handler = new()
                 {
                     AllowAutoRedirect = false,
-                    UseProxy = false
+                    UseProxy = false,
+                    ConnectCallback = async (context, cancellationToken) =>
+                    {
+                        if (!IPAddress.TryParse(context.DnsEndPoint.Host, out IPAddress? address))
+                        {
+                            throw new AgentException(
+                                AgentErrorCode.InvalidRequest,
+                                "只支持不带账号密码的 HTTP(S) 下载地址。");
+                        }
+                        FileAssetUrlDownloader.EnsureAddressAllowed(address);
+                        return await FileAssetUrlDownloader
+                            .ConnectAsync(address, context.DnsEndPoint.Port, cancellationToken)
+                            .ConfigureAwait(false);
+                    },
                 };
                 if (allowInsecureTls)
                 {
-                    handler.ServerCertificateCustomValidationCallback =
-                        HttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
+                    handler.SslOptions.RemoteCertificateValidationCallback = (_, _, _, _) => true;
                 }
 
                 return handler;

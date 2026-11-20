@@ -113,8 +113,13 @@ export function useSettings(options: SettingsOptions) {
     }
   }
 
+  // 并发加载守卫：快速切换 Agent/打开设置时，迟到的旧响应不得覆盖新选择，
+  // 否则编辑器会显示旧 Agent 的配置并可能把旧配置保存到错误的 agentId 上。
+  let loadConfigRequestSeq = 0
+
   async function loadConfig(agentId = options.selectedAgentId.value): Promise<void> {
     if (!agentId || agentId === AUTO_AGENT_ID) return
+    const requestId = ++loadConfigRequestSeq
     try {
       const loadedConfig = await api.getAgentConfig(agentId)
       const mcpIds = [...(loadedConfig.config.mcp?.enabledServerIds || [])]
@@ -125,6 +130,7 @@ export function useSettings(options: SettingsOptions) {
         Promise.all(mcpIds.map(id => mcpApi.getMcpProfile(id).catch(() => null))),
         Promise.all(loadedConfig.config.skills.enabledSkills.map(id => skillApi.getSkill(id).catch(() => null))),
       ])
+      if (requestId !== loadConfigRequestSeq) return
       config.value = loadedConfig
       mcpServers.value = selectedMcps.filter((item): item is McpServerConfig => item !== null)
       skillCatalog.value = selectedSkills.filter((item): item is SkillCatalogItem => item !== null)

@@ -1,4 +1,7 @@
 using System.Net.Http.Headers;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using OpenAgent.Capabilities.Extensions;
 using System.Net;
 using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Files;
@@ -74,6 +77,45 @@ public sealed class FileAssetUrlDownloaderTests
         Assert.Equal(1, handler.RequestCount);
     }
 
+    [Fact]
+    public void EnsureAddressAllowed_RejectsBlockedRangesAndAllowsPublic()
+    {
+        string[] blocked =
+        {
+            "127.0.0.1", "10.1.2.3", "172.16.0.9", "172.31.255.1", "192.168.1.1",
+            "169.254.169.254", "100.64.0.1", "0.0.0.0", "::1", "fe80::1", "fd00::1",
+        };
+        foreach (string address in blocked)
+        {
+            Assert.Throws<OpenAgent.Contracts.Security.AgentException>(
+                () => FileAssetUrlDownloader.EnsureAddressAllowed(IPAddress.Parse(address)));
+        }
+
+        // Public addresses pass the connect-time gate.
+        FileAssetUrlDownloader.EnsureAddressAllowed(IPAddress.Parse("93.184.216.34"));
+        FileAssetUrlDownloader.EnsureAddressAllowed(IPAddress.Parse("2606:2800:220:1:248:1893:25c8:1946"));
+    }
+
+    [Fact]
+    public async Task RegisteredClient_ConnectCallback_RejectsLoopbackTargets()
+    {
+        // Mirrors the DI registration: a rebinding attempt that swaps the validated
+        // public DNS answer for a loopback address must fail at connect time.
+        ServiceCollection services = new();
+        services.AddFileAssetServices(new ConfigurationBuilder().Build());
+        using ServiceProvider provider = services.BuildServiceProvider();
+        IHttpClientFactory factory = provider.GetRequiredService<IHttpClientFactory>();
+        using HttpClient client = factory.CreateClient("AgentFileDownload");
+
+        // HttpClient wraps connect-stage failures; the gate exception is the inner one.
+        HttpRequestException failure = await Assert.ThrowsAsync<HttpRequestException>(
+            () => client.GetAsync("http://127.0.0.1:1/forbidden.txt"));
+
+        OpenAgent.Contracts.Security.AgentException? gate =
+            failure.InnerException as OpenAgent.Contracts.Security.AgentException;
+        Assert.NotNull(gate);
+        Assert.Equal(OpenAgent.Contracts.Requests.AgentErrorCode.InvalidRequest, gate!.ErrorCode);
+    }
     private static FileAssetUrlDownloader CreateDownloader(
         HttpMessageHandler handler,
         long maxBytes = 1024) => new(
@@ -136,3 +178,4 @@ public sealed class FileAssetUrlDownloaderTests
         public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 }
+
