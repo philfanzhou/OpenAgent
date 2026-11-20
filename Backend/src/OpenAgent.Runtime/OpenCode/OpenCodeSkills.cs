@@ -86,7 +86,12 @@ internal static class OpenCodeSkills
             }
             else
             {
-                // 目标工作区随持久化进程复用：同一包的副本可能已存在，按源覆盖重物化（幂等）。
+                // 目标工作区随持久化进程复用且内容由 harness 可写：覆盖前必须拒绝目标
+                // 侧的链接/reparse point，防止 overwrite 语义跟随链接把包内容写穿工作区。
+                if (File.Exists(destination))
+                {
+                    OpenCodeWorkspace.RejectLink(new FileInfo(destination));
+                }
                 File.Copy(entry.FullName, destination, overwrite: true);
             }
         }

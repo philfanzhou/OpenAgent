@@ -189,12 +189,6 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
                 invocation.Tools.OrderBy(tool => tool.Name, StringComparer.Ordinal)
                     .Select(tool => new { tool.Name, tool.Description, tool.ParametersJsonSchema }))));
             InitializeResponse initialized = agent.Initialized;
-            yield return new AgentStreamEvent
-            {
-                Type = AgentStreamEventType.RuntimeStarted,
-                Runtime = new("OpenCode", invocation.Profile.Runtime?.Id, invocation.Profile.Runtime?.Name,
-                    initialized.AgentInfo?.Name, initialized.AgentInfo?.Version)
-            };
             agent.Sessions++;
             bool resume = agent.SessionId is not null && invocation.HistoryCheckpoint is not null
                 && invocation.HistoryCheckpoint == agent.HistoryCheckpoint && schema == agent.ToolSchema
@@ -219,6 +213,14 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
                 opened = await agent.Client.NewSessionAsync(new(agent.Workspace, sessionServers), cancellationToken).ConfigureAwait(false);
             }
             await using AcpSession session = opened;
+            // Runtime 身份在会话真正建立后才对外发布：这之前（进程获取/启动/建会）的进程级
+            // 失败尚未产出任何事件，RunAsync 可安全地用全新进程重试一次。
+            yield return new AgentStreamEvent
+            {
+                Type = AgentStreamEventType.RuntimeStarted,
+                Runtime = new("OpenCode", invocation.Profile.Runtime?.Id, invocation.Profile.Runtime?.Name,
+                    initialized.AgentInfo?.Name, initialized.AgentInfo?.Version)
+            };
             sessionAt = clock.ElapsedMilliseconds;
             await SelectModelAsync(session, invocation.Profile.Model.ModelId, cancellationToken).ConfigureAwait(false);
             string manifest = files is null ? string.Empty

@@ -67,6 +67,23 @@ public sealed class OpenCodeSkillsTests : IDisposable
         Assert.Contains("Writes reports", File.ReadAllText(Path.Combine(package, "SKILL.md")));
     }
 
+    [OpenCodeUnixFact]
+    public void Materialize_DestinationReplacedByLink_RejectsInsteadOfWritingThrough()
+    {
+        // A harness-controlled workspace file must not be followed by the overwrite copy.
+        string package = CreatePackage("safe");
+        string outside = CreatePackage("outside-target");
+        string workspace = Path.Combine(_root, "ws-link-target");
+        OpenCodeSkills.Materialize(workspace, [new("safe", package)]);
+        string destination = Path.Combine(workspace, ".opencode", "skills", "safe", "SKILL.md");
+        File.Delete(destination);
+        File.CreateSymbolicLink(destination, Path.Combine(outside, "SKILL.md"));
+
+        Assert.Throws<IOException>(() =>
+            OpenCodeSkills.Materialize(workspace, [new("safe", package)]));
+        // The linked target outside the workspace stays untouched.
+        Assert.Contains("Writes reports", File.ReadAllText(Path.Combine(outside, "SKILL.md")));
+    }
     [OpenCodeUnixTheory]
     [InlineData(false)]
     [InlineData(true)]
@@ -198,3 +215,4 @@ public sealed class AcpSessionMcpTests
         Assert.Empty(AcpSessionMcp.Map([]));
     }
 }
+
