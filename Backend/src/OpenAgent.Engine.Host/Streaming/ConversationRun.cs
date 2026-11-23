@@ -142,7 +142,8 @@ internal sealed class ConversationRun
 
     private async Task RunProducerAsync()
     {
-        using Activity producerActivity = StartProducerActivity();
+        // 无监听器（未开启追踪的部署）时为 null：退化为不建 span，行为与旧版一致。
+        using Activity? producerActivity = StartProducerActivity();
         Exception? failure = null;
         try
         {
@@ -164,16 +165,26 @@ internal sealed class ConversationRun
         }
     }
 
-    private Activity StartProducerActivity()
+    /// <summary>
+    /// 与宿主 OTLP 订阅（Engine.Hosting AddSource(OpenTelemetrySource)）同名：
+    /// 生产者 span 必须可导出，轮次审计标签（AuditActivityEnrichment.Publish 写入
+    /// Activity.Current）才能随 span 到达审计网关；裸 new Activity() 无监听器、
+    /// 永不导出，会导致导出 span 丢失会话身份（audit 界面无法关联会话）。
+    /// </summary>
+    private static readonly ActivitySource ProducerSource = new("OpenAgent.Engine");
+
+    private Activity? StartProducerActivity()
     {
-        Activity activity = new("OpenAgent.ConversationRun");
-        if (_parentActivityContext is { } parent)
+        // 后台线程里 ExecutionContext 已被切断（Activity.Current 为 null），
+        // 因此 parentContext 必须显式传入；为 null 时退化为独立 trace（同旧行为）。
+        Activity? activity = _parentActivityContext is { } parent
+            ? ProducerSource.StartActivity("OpenAgent.ConversationRun", ActivityKind.Internal, parent)
+            : ProducerSource.StartActivity("OpenAgent.ConversationRun", ActivityKind.Internal);
+        if (activity is not null && _parentActivityContext is { } context)
         {
-            activity.SetParentId(parent.TraceId, parent.SpanId, parent.TraceFlags);
-            activity.TraceStateString = parent.TraceState;
+            activity.TraceStateString = context.TraceState;
         }
 
-        activity.Start();
         return activity;
     }
 

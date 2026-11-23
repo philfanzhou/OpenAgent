@@ -1,6 +1,9 @@
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Security;
+using OpenAgent.Contracts.Runtime;
+using OpenAgent.Application.Observability;
 using OpenAgent.Engine.Host.Streaming;
 using Xunit;
 
@@ -273,6 +276,59 @@ public sealed class ConversationRunRegistryTests
             [EnumeratorCancellation] CancellationToken cancellationToken)
         {
             observedAmbient.TrySetResult(ambient.Value);
+            yield return Content("done");
+        }
+    }
+
+    [Fact]
+    public async Task ProducerActivity_IsExportedWithParentAndCarriesAuditIdentity()
+    {
+        // 回归：生产者 span 必须经 ActivitySource 创建（可被 OTLP 订阅导出）并挂在
+        // HTTP 请求 activity 之下；轮次审计标签写入该 span，审计网关才能关联会话。
+        // 旧实现用裸 new Activity()，监听器看不到、永不导出，会话身份全部丢失。
+        Activity? exported = null;
+        using ActivityListener listener = new()
+        {
+            ShouldListenTo = source => source.Name == "OpenAgent.Engine",
+            Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllData,
+            ActivityStarted = activity => exported = activity,
+        };
+        ActivitySource.AddActivityListener(listener);
+
+        Activity http = new Activity("POST /api/v1/agent/chat/stream");
+        http.Start();
+        try
+        {
+            var registry = new ConversationRunRegistry(AuditedProducer);
+            await using (registry)
+            {
+                ConversationRun run = registry.Start(CreateRequest("audit-export"), CreateUser("tenant-1"));
+                await run.Completion.WaitAsync(TimeSpan.FromSeconds(10));
+            }
+
+            Assert.NotNull(exported);
+            Assert.Equal("OpenAgent.ConversationRun", exported!.OperationName);
+            Assert.Equal(http.SpanId, exported.ParentSpanId);
+            Assert.Equal("audit-export", exported.GetTagItem("openagent.conversation_id"));
+            Assert.Equal("user-tenant-1", exported.GetTagItem("openagent.user_id"));
+        }
+        finally
+        {
+            http.Stop();
+        }
+
+        static async IAsyncEnumerable<AgentStreamEvent> AuditedProducer(
+            AgentRequest request,
+            IAgentUserContext user,
+            [EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            AuditActivityEnrichment.Publish(new TurnContext
+            {
+                TenantId = user.TenantId ?? string.Empty,
+                UserId = user.UserId,
+                ConversationId = request.ConversationId,
+                TraceId = request.TraceId ?? "trace",
+            });
             yield return Content("done");
         }
     }
