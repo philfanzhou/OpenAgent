@@ -9,7 +9,84 @@ namespace OpenAgent.Runtime.Tests;
 
 public sealed class OpenCodeWorkspaceFilesTests : IDisposable
 {
-    private readonly string _root = Path.Combine(Path.GetTempPath(), "workspace-files-" + Guid.NewGuid().ToString("N"));
+    private readonly string _home = Path.Combine(Path.GetTempPath(), "workspace-files-" + Guid.NewGuid().ToString("N"));
+    private string _root => Path.Combine(_home, "workspace");
+
+    [Fact]
+    public async Task SnapshotAsync_IsIndependentOfSubsequentSourceChangesAndDeletesTemporaryCopy()
+    {
+        OpenCodeWorkspaceFiles workspace = new(_root);
+        string path = Path.Combine(_root, "outputs", "分析.bin");
+        byte[] original = [0, 255, 128, 10];
+        await File.WriteAllBytesAsync(path, original);
+        await using (RuntimeOutputFile snapshot = await workspace.SnapshotAsync("outputs/分析.bin", 100, default))
+        {
+            await File.WriteAllTextAsync(path, "revised");
+            await using MemoryStream downloaded = new();
+            await snapshot.Content.CopyToAsync(downloaded);
+            Assert.Equal(original, downloaded.ToArray());
+            Assert.Equal(Convert.ToHexStringLower(SHA256.HashData(original)), snapshot.Sha256);
+        }
+        Assert.Empty(Directory.EnumerateFiles(Path.Combine(_home, ".file-exchange")));
+    }
+
+    [Theory]
+    [InlineData("../escape")]
+    [InlineData("/tmp/outside")]
+    [InlineData("inputs/a/data")]
+    [InlineData("outputs/../input")]
+    [InlineData("outputs\\data")]
+    [InlineData("outputs/data:stream")]
+    public async Task SnapshotAsync_RejectsPathsOutsideOutputs(string path)
+    {
+        await Assert.ThrowsAsync<AgentException>(() => new OpenCodeWorkspaceFiles(_root).SnapshotAsync(path, 100, default));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(101)]
+    public async Task SnapshotAsync_RejectsEmptyOrOversizedFilesWithoutLeavingSnapshots(int length)
+    {
+        OpenCodeWorkspaceFiles workspace = new(_root);
+        await File.WriteAllBytesAsync(Path.Combine(_root, "outputs/data"), new byte[length]);
+        await Assert.ThrowsAsync<AgentException>(() => workspace.SnapshotAsync("outputs/data", 100, default));
+        Assert.Empty(Directory.EnumerateFiles(Path.Combine(_home, ".file-exchange")));
+    }
+
+    [Theory]
+    [InlineData("symlink")]
+    [InlineData("hardlink")]
+    [InlineData("fifo")]
+    public async Task SnapshotAsync_RejectsLinksAndSpecialFilesWithoutBlocking(string kind)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+        OpenCodeWorkspaceFiles workspace = new(_root);
+        string external = Path.Combine(_home, "external");
+        await File.WriteAllTextAsync(external, "external");
+        string target = Path.Combine(_root, "outputs/data");
+        if (kind == "symlink")
+        {
+            File.CreateSymbolicLink(target, external);
+        }
+        else
+        {
+            System.Diagnostics.ProcessStartInfo start = new(kind == "fifo" ? "mkfifo" : "ln") { UseShellExecute = false };
+            if (kind == "hardlink")
+            {
+                start.ArgumentList.Add(external);
+            }
+            start.ArgumentList.Add(target);
+            using System.Diagnostics.Process process = System.Diagnostics.Process.Start(start)!;
+            await process.WaitForExitAsync();
+            Assert.Equal(0, process.ExitCode);
+        }
+        using CancellationTokenSource deadline = new(TimeSpan.FromSeconds(2));
+        await Assert.ThrowsAsync<AgentException>(() => workspace.SnapshotAsync("outputs/data", 100, deadline.Token));
+        Assert.Equal("external", await File.ReadAllTextAsync(external));
+    }
 
     [Theory]
     [InlineData("销售表.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")]
@@ -88,9 +165,9 @@ public sealed class OpenCodeWorkspaceFilesTests : IDisposable
 
     public void Dispose()
     {
-        if (Directory.Exists(_root))
+        if (Directory.Exists(_home))
         {
-            Directory.Delete(_root, true);
+            Directory.Delete(_home, true);
         }
     }
 }

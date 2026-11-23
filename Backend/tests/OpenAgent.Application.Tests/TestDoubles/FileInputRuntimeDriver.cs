@@ -10,6 +10,9 @@ internal sealed class FileInputRuntimeDriver : IAgentRuntimeDriver, IRuntimeWork
     internal Dictionary<string, byte[]> Inputs { get; } = new();
     internal RuntimeFilePreparation? Preparation { get; private set; }
 
+    public Task<RuntimeOutputFile> SnapshotAsync(string relativePath, long maxBytes, CancellationToken cancellationToken) =>
+        throw new NotSupportedException();
+
     public async IAsyncEnumerable<AgentStreamEvent> RunAsync(RuntimeInvocation invocation,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
