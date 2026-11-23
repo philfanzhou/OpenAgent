@@ -184,7 +184,8 @@ internal sealed class OpenCodeWorkspaceFiles : IRuntimeWorkspaceFiles
             RejectExistingLink(path);
             if (createParents)
             {
-                if (i < segments.Length - 1)
+                // The private outputs root protects ordinary subdirectories created by native tools.
+                if (i < segments.Length - 1 && (i == 0 || !Directory.Exists(path)))
                 {
                     EnsureDirectory(path);
                 }

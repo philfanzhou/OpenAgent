@@ -160,6 +160,27 @@ public sealed class OpenCodeWorkspaceFilesTests : IDisposable
         Assert.False(File.Exists(Path.Combine(_root, "inputs/a/input.bin")));
     }
 
+    [Fact]
+    public async Task RestoreAsync_NestedOutputUsesExistingNativeToolDirectory()
+    {
+        OpenCodeWorkspaceFiles workspace = new(_root);
+        string directory = Path.Combine(_root, "outputs", "reports");
+        Directory.CreateDirectory(directory);
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(directory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
+                | UnixFileMode.GroupRead | UnixFileMode.GroupExecute);
+        }
+        byte[] bytes = [0, 1, 255];
+        RuntimeFile file = CreateFile("sample", "result.bin", "application/octet-stream", bytes);
+
+        RuntimeWorkspaceFile restored = await workspace.RestoreAsync(file, "outputs/reports/result.bin",
+            (destination, token) => destination.WriteAsync(bytes, token).AsTask(), default);
+
+        Assert.Equal("outputs/reports/result.bin", restored.RelativePath);
+        Assert.Equal(bytes, await File.ReadAllBytesAsync(Path.Combine(directory, "result.bin")));
+    }
+
     private static Task<RuntimeWorkspaceFile> RestoreInputAsync(
         OpenCodeWorkspaceFiles workspace, RuntimeFile file, ReadOnlyMemory<byte> bytes, CancellationToken ct) =>
         workspace.RestoreAsync(file, null, (output, token) => output.WriteAsync(bytes, token).AsTask(), ct);
