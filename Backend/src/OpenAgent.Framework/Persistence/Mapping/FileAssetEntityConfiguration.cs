@@ -14,6 +14,7 @@ internal sealed class FileAssetEntityConfiguration : IEntityTypeConfiguration<Fi
         entity.Property(item => item.TenantId).HasMaxLength(256);
         entity.Property(item => item.OwnerUserId).HasMaxLength(256);
         entity.Property(item => item.FileName).HasMaxLength(1024);
+        entity.Property(item => item.RuntimeOutputPath).HasMaxLength(1024);
         entity.Property(item => item.MediaType).HasMaxLength(256);
         entity.Property(item => item.Sha256).HasMaxLength(128);
         entity.Property(item => item.ObjectKey).HasMaxLength(2048);

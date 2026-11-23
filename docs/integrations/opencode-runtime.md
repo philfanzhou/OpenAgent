@@ -203,13 +203,15 @@ Windows 原生运行必须使用独立服务账户、干净系统用户 profile 
 
 ## 文件输入、交付与冷启动
 
-开启 `FileAssets:Enabled` 与 `FileExchange:Enabled` 后，本轮上传的原件在 ACP 建会成功后、首次模型请求前从 S3 写入 `inputs/<fileId>/<安全文件名>`。图片视觉预览仍独立生成。同一会话的历史文件可通过 `list_files` 找到资产 ID，再用 `import_file(fileId)` 从对象存储恢复原件。冷启动只自动准备本轮随请求提交的附件；历史原件按需导入。
+开启 `FileAssets:Enabled` 与 `FileExchange:Enabled` 后，ACP 建会成功才准备文件。本轮附件从 S3 流式写入 `inputs/<fileId>/<安全文件名>`，校验通过后才可使用。历史原件用 `list_files` 找到资产 ID，再通过 `import_file` 按需恢复。
 
-保活到期或容量淘汰时，空闲 OpenCode 进程会被正常回收，下一轮自动创建进程。如果本地原生会话检查点仍有效，驱动可以恢复原生会话及其工作区。需要重建工作区时，已保存的输入和输出可从文件资产恢复，单纯写在工作区的临时文件取决于原目录是否还在。ACP 建会阶段遇到连接中断时允许再启动一次；建会成功后才绑定本轮文件租约。轮次已开始后意外退出会报告失败，避免重复执行工具。
+OpenCode 将最终成品写在 `outputs/`。轮次正常结束时，平台将该目录中的成品流式保存，校验一致的版本复用原资产。冷启动自动恢复每个成品路径最近保存的版本，受恢复文件数量和大小限额约束。中间文件和临时文件放在 `outputs/` 外，仅在本地工作区可用。轮次中断后仍可恢复已成功保存的成品，上一轮仅存本地的文件随工作区回收。
 
-完成的文件先写入 `outputs/`，用 `export_file(path)` 快照、校验并登记为文件资产，再把返回的 ID 交给 `publish_files`。已发布文件随助手消息保存，包含中途失败或取消的已保存消息，之后可下载或再次导入。轮次已成功发布时才向用户确认可下载。工作区写入、S3 读取和 OpenCode 连接中断可通过错误详情及 TraceId 区分。
+模型调用 `publish_files(paths)` 才会把成品挂到助手消息，已有资产可继续用 `publish_files(fileIds)`。发布会复用已保存的版本，已发布附件随完成、失败或取消的已保存消息保留。对象存储与平台文件资产维护历史版本的下载链接。
 
-文件交换默认关闭。导入和导出各默认最多 10 个文件、200 MiB，单文件沿用 FileAssets 限额。进程内最多 2 个并发文件传输，原生工具另由宿主权限控制。生产启用方式见 [部署指南](../operations/deployment.md#启用-opencode-文件交换)。
+空闲 OpenCode 进程回收后，下一轮自动创建进程。已提交的本地原生会话仍可按检查点恢复。ACP 建会阶段遇到连接中断时允许再启动一次，建会成功后才绑定文件租约。
+
+文件交换默认关闭。输入和成品各默认最多 10 个、200 MiB，单文件沿用 FileAssets 限额。文件交换使用进程内并发传输限制，默认最多 2 个。生产启用方式见 [部署指南](../operations/deployment.md#启用-opencode-文件交换)。
 
 在 Linux 或 macOS 上可以用真实 OpenCode、Python 3 和独立的 S3 兼容测试服务运行文件交换验收。将可执行路径和测试存储地址、凭据分别设置到 `OPENAGENT_TEST_OPENCODE`、`OPENAGENT_TEST_S3_URL`、`OPENAGENT_TEST_S3_ACCESS_KEY`、`OPENAGENT_TEST_S3_SECRET_KEY`，然后运行：
 

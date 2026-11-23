@@ -15,7 +15,8 @@ internal sealed class FileAssetCapabilitySource(
     IFileShareService shares,
     FileAssetExecutionContext executionContext,
     IOptions<FileAssetOptions> options,
-    FileAssetUrlDownloader downloader) : ICapabilitySource
+    FileAssetUrlDownloader downloader,
+    FileExchangeContext? exchange = null) : ICapabilitySource
 {
     // 错误信封约定：code 稳定供程序判别，error/hint 面向模型给出可行动的修正路径。
     private const string InvalidArguments = "invalid_arguments";
@@ -85,9 +86,13 @@ internal sealed class FileAssetCapabilitySource(
                 WriteAsync),
             new CapabilityDefinition(
                 "publish_files",
-                "Attach existing file assets (by fileId, from write_file/earlier operations) to this assistant message for user download or preview. No bytes are copied. "
-                + "This is the only way to hand files to the user — content written by tools alone is invisible to them.",
-                """{"type":"object","properties":{"fileIds":{"type":"array","items":{"type":"string"},"description":"Existing file asset IDs to deliver"}},"required":["fileIds"],"additionalProperties":false}""",
+                exchange?.Enabled == true
+                    ? "Attach finished workspace files under outputs/ or existing file assets to this assistant message for user download. "
+                        + "Use paths for workspace files and fileIds for existing assets."
+                    : "Attach existing file assets (by fileId) to this assistant message for user download or preview.",
+                exchange?.Enabled == true
+                    ? """{"type":"object","properties":{"fileIds":{"type":"array","items":{"type":"string"}},"paths":{"type":"array","items":{"type":"string"},"description":"Finished workspace files, such as outputs/report.xlsx"}},"anyOf":[{"required":["fileIds"]},{"required":["paths"]}],"additionalProperties":false}"""
+                    : """{"type":"object","properties":{"fileIds":{"type":"array","items":{"type":"string"},"description":"Existing file asset IDs to deliver"}},"required":["fileIds"],"additionalProperties":false}""",
                 AgentResourceType.Tool,
                 "file-assets",
                 PublishAsync)
@@ -474,12 +479,17 @@ internal sealed class FileAssetCapabilitySource(
         CancellationToken cancellationToken)
     {
         IReadOnlyList<string> fileIds = ReadStrings(arguments, "fileIds");
-        if (fileIds.Count == 0)
+        IReadOnlyList<string> paths = ReadStrings(arguments, "paths");
+        if (fileIds.Count == 0 && paths.Count == 0)
         {
             return ToolResult.Error(
-                "'fileIds' is a required argument; provide at least one file ID.",
+                exchange?.Enabled == true ? "Provide at least one fileId or outputs/ path." : "'fileIds' is a required argument; provide at least one file ID.",
                 InvalidArguments,
                 hint: "Call list_files to discover fileIds.");
+        }
+        if (paths.Count > 0 && exchange?.Enabled != true)
+        {
+            return ToolResult.Error("Publishing by workspace path is unavailable for this turn.", UnavailableContext);
         }
         if (executionContext.Scope == null)
         {
@@ -508,6 +518,11 @@ internal sealed class FileAssetCapabilitySource(
                 assets.Add(asset);
             }
 
+            foreach (string path in paths.Distinct(StringComparer.Ordinal))
+            {
+                assets.Add(await exchange!.ExportAsync(path, fileName: null, cancellationToken).ConfigureAwait(false));
+            }
+            assets = assets.DistinctBy(asset => asset.FileId).ToList();
             await files.EnsureReferencesAsync(
                 fileIds,
                 executionContext.Scope,
@@ -532,6 +547,10 @@ internal sealed class FileAssetCapabilitySource(
         catch (OpenAgent.Contracts.Security.AgentException exception)
         {
             return ToolResult.Error(exception.Message, InvalidRequest);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return ToolResult.Error("The workspace file could not be published.", InvalidRequest);
         }
     }
 

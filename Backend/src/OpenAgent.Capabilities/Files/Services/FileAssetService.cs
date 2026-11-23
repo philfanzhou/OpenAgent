@@ -31,17 +31,29 @@ internal sealed class FileAssetService : IFileAssetService
     {
         EnsureEnabled();
         ValidateScope(scope);
-        (byte[] data, string mediaType) = await ReadAndValidateAsync(request, content, cancellationToken).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(request.FileName))
+        {
+            throw new AgentException(AgentErrorCode.InvalidRequest, "FileName is required.");
+        }
+        string fileName = Path.GetFileName(request.FileName);
+        string mediaType = ResolveMediaType(Path.GetExtension(fileName), request.MediaType);
+        // S3 signing and retry need a seekable stream. Buffer non-seekable sources on disk.
+        await using FileStream? buffer = content.CanSeek && content.Position == 0 ? null : CreateUploadBuffer();
+        using IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        long length = await HashUploadAsync(content, buffer, hash, cancellationToken).ConfigureAwait(false);
+        string sha256 = Convert.ToHexStringLower(hash.GetHashAndReset());
+        Stream input = buffer ?? content;
+        input.Position = 0;
         string fileId = Guid.NewGuid().ToString("N");
-        string sha256 = Convert.ToHexString(SHA256.HashData(data)).ToLowerInvariant();
         FileAsset pending = new()
         {
             FileId = fileId,
             TenantId = scope.TenantId,
             OwnerUserId = scope.UserId,
-            FileName = Path.GetFileName(request.FileName),
+            FileName = fileName,
+            RuntimeOutputPath = request.RuntimeOutputPath,
             MediaType = mediaType,
-            Length = data.LongLength,
+            Length = length,
             Sha256 = sha256,
             ObjectKey = string.Empty,
             Source = request.Source,
@@ -52,7 +64,6 @@ internal sealed class FileAssetService : IFileAssetService
 
         try
         {
-            await using var input = new MemoryStream(data, writable: false);
             FileObjectReference stored = await _objectStore.WriteAsync(
                 new FileObjectWriteRequest
                 {
@@ -181,6 +192,15 @@ internal sealed class FileAssetService : IFileAssetService
         return new FileAssetContent { Asset = asset, Data = data };
     }
 
+    public async Task CopyReferencedToAsync(string fileId, FileAssetScope scope, Stream destination, long maxBytes, CancellationToken cancellationToken)
+    {
+        EnsureEnabled();
+        ValidateScope(scope);
+        FileAsset asset = await GetReadyAssetAsync(fileId, scope, cancellationToken).ConfigureAwait(false);
+        EnsureTenantObjectKey(asset.ObjectKey, scope.TenantId);
+        await _objectStore.CopyToAsync(asset.ObjectKey, destination, Math.Min(maxBytes, _options.MaxFileSizeBytes), cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task<string> ReadTextAsync(
         string fileId,
         FileAssetScope scope,
@@ -304,33 +324,44 @@ internal sealed class FileAssetService : IFileAssetService
         CancellationToken cancellationToken) =>
         _repository.IsReferencedAsync(scope.ConversationId!, asset.FileId, cancellationToken);
 
-    private async Task<(byte[] Data, string MediaType)> ReadAndValidateAsync(
-        FileAssetCreateRequest request,
-        Stream content,
-        CancellationToken cancellationToken)
+    private async Task<long> HashUploadAsync(Stream content, FileStream? buffer, IncrementalHash hash, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(request.FileName))
+        long length = 0;
+        byte[] chunk = new byte[65536];
+        int read;
+        while ((read = await content.ReadAsync(chunk, cancellationToken).ConfigureAwait(false)) != 0)
         {
-            throw new AgentException(AgentErrorCode.InvalidRequest, "FileName is required.");
+            if (read > _options.MaxFileSizeBytes - length)
+            {
+                throw InvalidFileSize();
+            }
+            hash.AppendData(chunk, 0, read);
+            if (buffer is not null)
+            {
+                await buffer.WriteAsync(chunk.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
+            }
+            length += read;
         }
-
-        string fileName = Path.GetFileName(request.FileName);
-        // 不做类型准入限制：任意扩展名均可入库。Clients frequently report
-        // "application/octet-stream" for formats the OS has no MIME mapping for
-        // (.json, .drawio, .jps, ...) — fall back to the canonical media type for known
-        // extensions so downloads and content serving use a meaningful Content-Type;
-        // extensions outside the catalog keep the declared type (octet-stream when absent).
-        string mediaType = ResolveMediaType(Path.GetExtension(fileName), request.MediaType);
-
-        await using var buffer = new MemoryStream();
-        await content.CopyToAsync(buffer, cancellationToken).ConfigureAwait(false);
-        if (buffer.Length == 0 || buffer.Length > _options.MaxFileSizeBytes)
-        {
-            throw new AgentException(AgentErrorCode.InvalidRequest, "File size is outside the configured limit.");
-        }
-
-        return (buffer.ToArray(), mediaType);
+        return length == 0 ? throw InvalidFileSize() : length;
     }
+
+    private static FileStream CreateUploadBuffer()
+    {
+        FileStreamOptions options = new()
+        {
+            Access = FileAccess.ReadWrite,
+            Mode = FileMode.CreateNew,
+            Options = FileOptions.Asynchronous | FileOptions.DeleteOnClose
+        };
+        if (!OperatingSystem.IsWindows())
+        {
+            options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+        }
+        return new FileStream(Path.Combine(Path.GetTempPath(), $"openagent-upload-{Guid.NewGuid():N}"), options);
+    }
+
+    private static AgentException InvalidFileSize() =>
+        new(AgentErrorCode.InvalidRequest, "File size is outside the configured limit.");
 
     private void EnsureEnabled()
     {
@@ -400,6 +431,7 @@ internal sealed class FileAssetService : IFileAssetService
         TenantId = asset.TenantId,
         OwnerUserId = asset.OwnerUserId,
         FileName = asset.FileName,
+        RuntimeOutputPath = asset.RuntimeOutputPath,
         MediaType = asset.MediaType,
         Length = asset.Length,
         Sha256 = asset.Sha256,

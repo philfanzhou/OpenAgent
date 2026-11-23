@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using Microsoft.Extensions.Options;
 using OpenAgent.Capabilities.Files.Services;
 using OpenAgent.Contracts.Files;
@@ -18,11 +17,13 @@ internal sealed class FileExchangeContext(
 {
     private readonly SemaphoreSlim _operations = new(1);
     private readonly Dictionary<string, RuntimeWorkspaceFile> _imports = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, FileAsset> _exports = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, FileAsset> _pendingExports = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, FileAsset> _savedOutputs = new(StringComparer.Ordinal);
     private IRuntimeWorkspaceFiles? _workspace;
     private CancellationTokenSource? _lifetime;
     private long _inputBytes;
     private long _outputBytes;
+    private int _outputFiles;
     private int _closed;
 
     internal bool Enabled => assets.Value.Enabled && options.Value.Enabled && execution.Scope?.ConversationId is not null;
@@ -42,7 +43,12 @@ internal sealed class FileExchangeContext(
             {
                 await ImportAsync(input.FileId, ct).ConfigureAwait(false);
             }
-            return new RuntimeFilePreparation(_imports.Values.ToArray(), this);
+            IReadOnlyList<RuntimeWorkspaceFile> outputs = await RestoreOutputsAsync(ct).ConfigureAwait(false);
+            return new RuntimeFilePreparation(_imports.Values.ToArray(), this)
+            {
+                Outputs = outputs,
+                SaveOutputsAsync = SaveOutputsAsync
+            };
         }
         catch
         {
@@ -77,17 +83,7 @@ internal sealed class FileExchangeContext(
             await gate.Transfers.WaitAsync(linked.Token).ConfigureAwait(false);
             try
             {
-                FileAssetContent content = await files.ReadAsync(fileId, scope, linked.Token,
-                    Math.Min(assets.Value.MaxFileSizeBytes, options.Value.MaxInputBytes)).ConfigureAwait(false);
-                EnsureActive(linked.Token);
-                if (content.Data.LongLength != asset.Length
-                    || !Convert.ToHexStringLower(SHA256.HashData(content.Data)).Equals(asset.Sha256, StringComparison.OrdinalIgnoreCase))
-                {
-                    throw new AgentException(AgentErrorCode.InvalidRequest, "The input file failed its integrity check.");
-                }
-                RuntimeWorkspaceFile imported = await workspace.ImportAsync(
-                    new RuntimeFile(asset.FileId, asset.FileName, asset.MediaType, asset.Length, asset.Sha256),
-                    content.Data, linked.Token).ConfigureAwait(false);
+                RuntimeWorkspaceFile imported = await RestoreAsync(workspace, asset, outputPath: null, linked.Token).ConfigureAwait(false);
                 if (!known)
                 {
                     _inputBytes += asset.Length;
@@ -106,6 +102,55 @@ internal sealed class FileExchangeContext(
         }
     }
 
+    private async Task<IReadOnlyList<RuntimeWorkspaceFile>> RestoreOutputsAsync(CancellationToken ct)
+    {
+        IReadOnlyList<FileAsset> referenced = await files.ListAsync(execution.Scope!, ct).ConfigureAwait(false);
+        foreach (FileAsset asset in referenced.OrderByDescending(asset => asset.CreatedAt).ThenByDescending(asset => asset.FileId, StringComparer.Ordinal))
+        {
+            if (asset.State == FileAssetState.Ready && asset.RuntimeOutputPath is { } path)
+            {
+                _savedOutputs.TryAdd(path, asset);
+            }
+        }
+
+        List<RuntimeWorkspaceFile> restored = [];
+        long remaining = options.Value.MaxOutputBytes;
+        foreach ((string path, FileAsset asset) in _savedOutputs)
+        {
+            if (restored.Count == options.Value.MaxOutputFiles)
+            {
+                break;
+            }
+            if (asset.Length > remaining || asset.Length > assets.Value.MaxFileSizeBytes)
+            {
+                continue;
+            }
+            await gate.Transfers.WaitAsync(ct).ConfigureAwait(false);
+            try
+            {
+                restored.Add(await RestoreAsync(_workspace!, asset, path, ct).ConfigureAwait(false));
+                remaining -= asset.Length;
+            }
+            finally
+            {
+                gate.Transfers.Release();
+            }
+        }
+        return restored;
+    }
+
+    private Task<RuntimeWorkspaceFile> RestoreAsync(IRuntimeWorkspaceFiles workspace, FileAsset asset, string? outputPath, CancellationToken ct) =>
+        workspace.RestoreAsync(new RuntimeFile(asset.FileId, asset.FileName, asset.MediaType, asset.Length, asset.Sha256), outputPath,
+            (destination, token) => files.CopyReferencedToAsync(asset.FileId, execution.Scope!, destination, asset.Length, token), ct);
+
+    private async Task SaveOutputsAsync(CancellationToken ct)
+    {
+        foreach (string path in _workspace!.EnumerateOutputPaths())
+        {
+            await ExportAsync(path, fileName: null, ct).ConfigureAwait(false);
+        }
+    }
+
     internal async Task<FileAsset> ExportAsync(string path, string? fileName, CancellationToken ct)
     {
         IRuntimeWorkspaceFiles workspace = _workspace
@@ -120,33 +165,44 @@ internal sealed class FileExchangeContext(
             {
                 await using RuntimeOutputFile snapshot = await workspace.SnapshotAsync(path, assets.Value.MaxFileSizeBytes, linked.Token).ConfigureAwait(false);
                 EnsureActive(linked.Token);
-                string name = string.IsNullOrWhiteSpace(fileName) ? snapshot.FileName : fileName;
+                bool hasSuggestedName = !string.IsNullOrWhiteSpace(fileName);
+                string name = hasSuggestedName ? fileName! : snapshot.FileName;
                 if (name != Path.GetFileName(name) || name.Contains('\\') || name.Any(char.IsControl)
                     || name.Contains(':') || name is "." or "..")
                 {
                     throw new AgentException(AgentErrorCode.InvalidRequest, "The export file name is not allowed.");
                 }
-                string key = snapshot.RelativePath + "\0" + snapshot.Sha256 + "\0" + name;
-                if (!_exports.TryGetValue(key, out FileAsset? asset))
+                if (_savedOutputs.TryGetValue(snapshot.RelativePath, out FileAsset? saved)
+                    && (!hasSuggestedName || saved.FileName == name) && saved.Length == snapshot.Length
+                    && saved.Sha256.Equals(snapshot.Sha256, StringComparison.OrdinalIgnoreCase))
                 {
-                    if (_exports.Count >= options.Value.MaxOutputFiles || snapshot.Length > options.Value.MaxOutputBytes - _outputBytes)
+                    return saved;
+                }
+
+                string key = snapshot.RelativePath + "\0" + snapshot.Sha256 + "\0" + name;
+                if (!_pendingExports.TryGetValue(key, out FileAsset? asset))
+                {
+                    if (_outputFiles >= options.Value.MaxOutputFiles || snapshot.Length > options.Value.MaxOutputBytes - _outputBytes)
                     {
                         throw new AgentException(AgentErrorCode.InvalidRequest, "The turn's output file limit was exceeded.");
                     }
                     asset = await files.UploadAsync(new FileAssetCreateRequest
                     {
-                        FileName = name, Source = FileAssetSource.Agent
+                        FileName = name, Source = FileAssetSource.Agent, RuntimeOutputPath = snapshot.RelativePath
                     }, snapshot.Content, execution.Scope!, linked.Token).ConfigureAwait(false);
                     if (asset.Length != snapshot.Length || !asset.Sha256.Equals(snapshot.Sha256, StringComparison.OrdinalIgnoreCase))
                     {
                         throw new AgentException(AgentErrorCode.InvalidRequest, "The exported file failed its integrity check.");
                     }
                     // If reference registration fails, retry it for the stored asset without uploading another copy.
-                    _exports.Add(key, asset);
+                    _pendingExports.Add(key, asset);
+                    _outputFiles++;
                     _outputBytes += asset.Length;
                 }
                 EnsureActive(linked.Token);
                 await files.EnsureReferencesAsync([asset.FileId], execution.Scope!, linked.Token).ConfigureAwait(false);
+                _pendingExports.Remove(key);
+                _savedOutputs[snapshot.RelativePath] = asset;
                 return asset;
             }
             finally

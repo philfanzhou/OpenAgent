@@ -32,9 +32,15 @@ internal sealed class FileInputRuntimeDriver : IAgentRuntimeDriver, IRuntimeWork
         }
     }
 
-    public Task<RuntimeWorkspaceFile> ImportAsync(RuntimeFile file, ReadOnlyMemory<byte> data, CancellationToken cancellationToken)
+    public IEnumerable<string> EnumerateOutputPaths() => [];
+
+    public async Task<RuntimeWorkspaceFile> RestoreAsync(
+        RuntimeFile file, string? outputPath, Func<Stream, CancellationToken, Task> copy, CancellationToken cancellationToken)
     {
-        Inputs[file.FileId] = data.ToArray();
-        return Task.FromResult(new RuntimeWorkspaceFile(file, $"inputs/{file.FileId}/{file.FileName}"));
+        Assert.Null(outputPath);
+        using MemoryStream content = new();
+        await copy(content, cancellationToken);
+        Inputs[file.FileId] = content.ToArray();
+        return new RuntimeWorkspaceFile(file, $"inputs/{file.FileId}/{file.FileName}");
     }
 }

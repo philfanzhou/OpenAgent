@@ -42,6 +42,8 @@ public interface IFileAssetService
         CancellationToken cancellationToken,
         long? maxBytes = null);
 
+    Task CopyReferencedToAsync(string fileId, FileAssetScope scope, Stream destination, long maxBytes, CancellationToken cancellationToken);
+
     Task<string> ReadTextAsync(
         string fileId,
         FileAssetScope scope,

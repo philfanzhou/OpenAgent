@@ -45,6 +45,23 @@ public class FileAssetServiceTests
     }
 
     [Fact]
+    public async Task UploadAsync_WithNonzeroStreamPosition_StoresOnlyRemainingBytes()
+    {
+        var repository = new RecordingFileAssetRepository();
+        var objects = new RecordingFileObjectStore();
+        IFileAssetService service = CreateService(repository, objects);
+        using MemoryStream content = new([1, 2, 3, 4]);
+        content.Position = 2;
+
+        FileAsset asset = await service.UploadAsync(new() { FileName = "output.bin", Source = FileAssetSource.Agent },
+            content, Scope("conversation-a"), default);
+
+        Assert.Equal(2, asset.Length);
+        Assert.Equal(new byte[] { 3, 4 }, objects.LastContent);
+        Assert.Equal(4, content.Position);
+    }
+
+    [Fact]
     public async Task ReadAsync_NoConversationReference_RejectsWithoutReadingObject()
     {
         var repository = new RecordingFileAssetRepository();

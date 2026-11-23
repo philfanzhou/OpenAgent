@@ -18,5 +18,7 @@ public interface IFileObjectStore
         long maxBytes,
         CancellationToken cancellationToken);
 
+    Task CopyToAsync(string objectKey, Stream destination, long maxBytes, CancellationToken cancellationToken);
+
     Task DeleteAsync(string objectKey, CancellationToken cancellationToken);
 }

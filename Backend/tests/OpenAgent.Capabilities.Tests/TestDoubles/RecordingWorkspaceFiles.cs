@@ -24,10 +24,27 @@ internal sealed class RecordingWorkspaceFiles : IRuntimeWorkspaceFiles
             Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(data)), new MemoryStream(data, writable: false));
     }
 
-    public Task<RuntimeWorkspaceFile> ImportAsync(RuntimeFile file, ReadOnlyMemory<byte> data, CancellationToken cancellationToken)
+    public IEnumerable<string> EnumerateOutputPaths() => Outputs.Keys.ToArray();
+
+    public async Task<RuntimeWorkspaceFile> RestoreAsync(
+        RuntimeFile file, string? outputPath, Func<Stream, CancellationToken, Task> copy, CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        Inputs[file.FileId] = data.ToArray();
-        return Task.FromResult(new RuntimeWorkspaceFile(file, $"inputs/{file.FileId}/{file.FileName}"));
+        using MemoryStream buffer = new();
+        await copy(buffer, cancellationToken);
+        byte[] bytes = buffer.ToArray();
+        if (bytes.LongLength != file.Length || !Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(bytes))
+            .Equals(file.Sha256, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new OpenAgent.Contracts.Security.AgentException(OpenAgent.Contracts.Requests.AgentErrorCode.InvalidRequest, "Integrity check failed.");
+        }
+        if (outputPath is null)
+        {
+            Inputs[file.FileId] = bytes;
+        }
+        else
+        {
+            Outputs[outputPath] = bytes;
+        }
+        return new(file, outputPath ?? $"inputs/{file.FileId}/{file.FileName}");
     }
 }

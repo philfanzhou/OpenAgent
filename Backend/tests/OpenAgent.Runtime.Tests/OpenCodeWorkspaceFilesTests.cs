@@ -97,16 +97,16 @@ public sealed class OpenCodeWorkspaceFilesTests : IDisposable
         byte[] data = [0, 255, 128, 10, 13, 0];
         RuntimeFile file = CreateFile("first", name, mediaType, data);
         OpenCodeWorkspaceFiles workspace = new(_root);
-        RuntimeWorkspaceFile first = await workspace.ImportAsync(file, data, CancellationToken.None);
+        RuntimeWorkspaceFile first = await RestoreInputAsync(workspace, file, data, CancellationToken.None);
         Assert.Equal($"inputs/first/{name}", first.RelativePath);
         string path = Path.Combine(_root, first.RelativePath);
         Assert.Equal(data, await File.ReadAllBytesAsync(path));
         await File.WriteAllTextAsync(path, "changed");
-        Assert.Equal(first, await workspace.ImportAsync(file, data, CancellationToken.None));
+        Assert.Equal(first, await RestoreInputAsync(workspace, file, data, CancellationToken.None));
         Assert.Equal(data, await File.ReadAllBytesAsync(path));
         Directory.Delete(_root, true);
         OpenCodeWorkspaceFiles rebuilt = new(_root);
-        Assert.Equal(first, await rebuilt.ImportAsync(file, data, CancellationToken.None));
+        Assert.Equal(first, await RestoreInputAsync(rebuilt, file, data, CancellationToken.None));
         Assert.Equal(data, await File.ReadAllBytesAsync(path));
     }
 
@@ -115,10 +115,10 @@ public sealed class OpenCodeWorkspaceFilesTests : IDisposable
     {
         OpenCodeWorkspaceFiles workspace = new(_root);
         byte[] data = Encoding.UTF8.GetBytes("original");
-        RuntimeWorkspaceFile first = await workspace.ImportAsync(CreateFile("a", "同名.xlsx", "application/octet-stream", data), data, default);
-        RuntimeWorkspaceFile second = await workspace.ImportAsync(CreateFile("b", "同名.xlsx", "application/octet-stream", data), data, default);
+        RuntimeWorkspaceFile first = await RestoreInputAsync(workspace, CreateFile("a", "同名.xlsx", "application/octet-stream", data), data, default);
+        RuntimeWorkspaceFile second = await RestoreInputAsync(workspace, CreateFile("b", "同名.xlsx", "application/octet-stream", data), data, default);
         Assert.NotEqual(first.RelativePath, second.RelativePath);
-        RuntimeWorkspaceFile escaped = await workspace.ImportAsync(CreateFile("c", "../../outside\n.txt", "text/plain", data), data, default);
+        RuntimeWorkspaceFile escaped = await RestoreInputAsync(workspace, CreateFile("c", "../../outside\n.txt", "text/plain", data), data, default);
         Assert.Equal("inputs/c/.._.._outside_.txt", escaped.RelativePath);
         Assert.True(File.Exists(Path.Combine(_root, escaped.RelativePath)));
     }
@@ -129,8 +129,8 @@ public sealed class OpenCodeWorkspaceFilesTests : IDisposable
     [InlineData("a\\b")]
     public async Task ImportAsync_RejectsUnsafeAssetId(string id)
     {
-        await Assert.ThrowsAsync<AgentException>(() => new OpenCodeWorkspaceFiles(_root)
-            .ImportAsync(CreateFile(id, "x", "text/plain", [1]), new byte[] { 1 }, default));
+        await Assert.ThrowsAsync<AgentException>(() => RestoreInputAsync(new OpenCodeWorkspaceFiles(_root),
+            CreateFile(id, "x", "text/plain", [1]), new byte[] { 1 }, default));
     }
 
     [Fact]
@@ -142,13 +142,13 @@ public sealed class OpenCodeWorkspaceFilesTests : IDisposable
         }
         byte[] data = [1, 2];
         OpenCodeWorkspaceFiles workspace = new(_root);
-        RuntimeWorkspaceFile imported = await workspace.ImportAsync(CreateFile("a", "input.bin", "application/octet-stream", data), data, default);
+        RuntimeWorkspaceFile imported = await RestoreInputAsync(workspace, CreateFile("a", "input.bin", "application/octet-stream", data), data, default);
         string outside = Path.Combine(_root, "external.bin");
         await File.WriteAllTextAsync(outside, "external");
         string target = Path.Combine(_root, imported.RelativePath);
         File.Delete(target);
         File.CreateSymbolicLink(target, outside);
-        await Assert.ThrowsAsync<AgentException>(() => workspace.ImportAsync(imported.File, data, default));
+        await Assert.ThrowsAsync<AgentException>(() => RestoreInputAsync(workspace, imported.File, data, default));
         Assert.Equal("external", await File.ReadAllTextAsync(outside));
     }
 
@@ -156,9 +156,13 @@ public sealed class OpenCodeWorkspaceFilesTests : IDisposable
     public async Task ImportAsync_CorruptBytesNeverBecomeAnInput()
     {
         OpenCodeWorkspaceFiles workspace = new(_root);
-        await Assert.ThrowsAsync<AgentException>(() => workspace.ImportAsync(CreateFile("a", "input.bin", "application/octet-stream", [1]), new byte[] { 2 }, default));
+        await Assert.ThrowsAsync<AgentException>(() => RestoreInputAsync(workspace, CreateFile("a", "input.bin", "application/octet-stream", [1]), new byte[] { 2 }, default));
         Assert.False(File.Exists(Path.Combine(_root, "inputs/a/input.bin")));
     }
+
+    private static Task<RuntimeWorkspaceFile> RestoreInputAsync(
+        OpenCodeWorkspaceFiles workspace, RuntimeFile file, ReadOnlyMemory<byte> bytes, CancellationToken ct) =>
+        workspace.RestoreAsync(file, null, (output, token) => output.WriteAsync(bytes, token).AsTask(), ct);
 
     private static RuntimeFile CreateFile(string id, string name, string mediaType, byte[] data) =>
         new(id, name, mediaType, data.Length, Convert.ToHexStringLower(SHA256.HashData(data)));
