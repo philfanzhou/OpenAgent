@@ -203,7 +203,7 @@ Windows 原生运行必须使用独立服务账户、干净系统用户 profile 
 
 ## 文件输入、交付与冷启动
 
-开启 `FileAssets:Enabled` 与 `FileExchange:Enabled` 后，ACP 建会成功才准备文件。本轮附件从 S3 流式写入 `inputs/<fileId>/<安全文件名>`，校验通过后才可使用。历史原件用 `list_files` 找到资产 ID，再通过 `import_file` 按需恢复。
+启用 `FileAssets:Enabled` 后，OpenCode 默认启用文件交换，在 ACP 建会成功后准备文件。本轮附件从 S3 流式写入 `inputs/<fileId>/<安全文件名>`，校验通过后才可使用。历史原件用 `list_files` 找到资产 ID，再通过 `import_file` 按需恢复。
 
 OpenCode 将最终成品写在 `outputs/`。轮次正常结束时，平台将该目录中的成品流式保存，校验一致的版本复用原资产。冷启动自动恢复每个成品路径最近保存的版本，受恢复文件数量和大小限额约束。中间文件和临时文件放在 `outputs/` 外，仅在本地工作区可用。轮次中断后仍可恢复已成功保存的成品，上一轮仅存本地的文件随工作区回收。
 
@@ -211,7 +211,7 @@ OpenCode 将最终成品写在 `outputs/`。轮次正常结束时，平台将该
 
 空闲 OpenCode 进程回收后，下一轮自动创建进程。已提交的本地原生会话仍可按检查点恢复。ACP 建会阶段遇到连接中断时允许再启动一次，建会成功后才绑定文件租约。
 
-文件交换默认关闭。输入和成品各默认最多 10 个、200 MiB，单文件沿用 FileAssets 限额。文件交换使用进程内并发传输限制，默认最多 2 个。生产启用方式见 [部署指南](../operations/deployment.md#启用-opencode-文件交换)。
+输入和成品各默认最多 10 个、200 MiB，单文件沿用 FileAssets 限额。文件交换使用进程内并发传输限制，默认最多 2 个。生产启用方式见 [部署指南](../operations/deployment.md#启用-opencode-文件交换)。
 
 在 Linux 或 macOS 上可以用真实 OpenCode、Python 3 和独立的 S3 兼容测试服务运行文件交换验收。将可执行路径和测试存储地址、凭据分别设置到 `OPENAGENT_TEST_OPENCODE`、`OPENAGENT_TEST_S3_URL`、`OPENAGENT_TEST_S3_ACCESS_KEY`、`OPENAGENT_TEST_S3_SECRET_KEY`，然后运行：
 

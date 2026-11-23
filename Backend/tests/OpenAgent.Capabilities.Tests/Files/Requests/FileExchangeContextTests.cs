@@ -164,13 +164,16 @@ public sealed class FileExchangeContextTests
     }
 
     [Theory]
-    [InlineData(false, true)]
-    [InlineData(true, false)]
-    public async Task DiscoverAsync_RequiresBothAssetStorageAndExchangeEnabled(bool assets, bool exchange)
+    [InlineData(false, null, false)]
+    [InlineData(true, false, false)]
+    [InlineData(true, null, true)]
+    public async Task DiscoverAsync_UsesAssetStorageAndOptionalExchangeOverride(bool assets, bool? exchange, bool available)
     {
-        await using Harness harness = new(new() { Enabled = exchange }, assets);
+        await using Harness harness = new(exchange is bool enabled ? new() { Enabled = enabled } : null, assets);
         FileExchangeCapabilitySource source = new(harness.Context);
-        Assert.Empty(await source.DiscoverAsync("agent", new(), new AgentUserContext { UserId = "user" }, default));
+        IReadOnlyList<CapabilityDefinition> tools = await source.DiscoverAsync("agent", new(),
+            new AgentUserContext { UserId = "user" }, default);
+        Assert.Equal(available, tools.Count > 0);
     }
 
     internal sealed class Harness : IAsyncDisposable
@@ -185,7 +188,7 @@ public sealed class FileExchangeContextTests
         internal Harness(FileExchangeOptions? exchange = null, bool assetsEnabled = true)
         {
             IOptions<FileAssetOptions> assets = Options.Create(new FileAssetOptions { Enabled = assetsEnabled });
-            IOptions<FileExchangeOptions> settings = Options.Create(exchange ?? new() { Enabled = true });
+            IOptions<FileExchangeOptions> settings = Options.Create(exchange ?? new());
             _gate = new(settings);
             Files = new(Repository, Objects, assets);
             FileAssetExecutionContext execution = new();

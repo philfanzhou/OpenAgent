@@ -80,7 +80,7 @@ Windows 在 WSL 中执行同一套 Bash 脚本，不再维护重复 PowerShell �
 
 ### 启用 OpenCode 文件交换
 
-在 Engine 的 `.env` 同时开启 `FileAssets__Enabled=true` 和 `FileExchange__Enabled=true`，并配置可读写的 S3 存储桶。根据部署环境和任务需要配置 `OpenCode__AllowedNativeTools__0` 等原生工具白名单。处理表格的脚本依赖由执行环境预装。轮次行为与原生工具授权边界见 [OpenCode 运行时](../integrations/opencode-runtime.md)。
+在 Engine 的 `.env` 设置 `FileAssets__Enabled=true` 并配置可读写的 S3 存储桶后，OpenCode 默认启用文件交换。已有 `FileExchange__Enabled=false` 配置时，删除该配置即可恢复默认行为。根据部署环境和任务需要配置 `OpenCode__AllowedNativeTools__0` 等原生工具白名单。处理表格的脚本依赖由执行环境预装。轮次行为与原生工具授权边界见 [OpenCode 运行时](../integrations/opencode-runtime.md)。
 
 ## 证书、数据卷与迁移
 

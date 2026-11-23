@@ -4,7 +4,7 @@ namespace OpenAgent.Contracts.Files;
 public sealed class FileExchangeOptions
 {
     public const string SectionName = "FileExchange";
-    public bool Enabled { get; init; }
+    public bool Enabled { get; init; } = true;
     public int MaxInputFiles { get; init; } = 10;
     public long MaxInputBytes { get; init; } = 200 * 1024 * 1024;
     public int MaxOutputFiles { get; init; } = 10;

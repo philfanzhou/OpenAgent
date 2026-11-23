@@ -145,7 +145,7 @@ public sealed class OpenCodeFileExchangeTests(ITestOutputHelper output)
             });
             Dictionary<string, string?> settings = new()
             {
-                ["FileAssets:Enabled"] = "true", ["FileExchange:Enabled"] = "true",
+                ["FileAssets:Enabled"] = "true",
                 ["FileAssets:ObjectStorage:ServiceUrl"] = endpoint, ["FileAssets:ObjectStorage:BucketName"] = bucket,
                 ["FileAssets:ObjectStorage:Region"] = "us-east-1", ["FileAssets:ObjectStorage:KeyPrefix"] = "files",
                 ["FileAssets:ObjectStorage:ForcePathStyle"] = "true", ["FileAssets:ObjectStorage:AccessKey"] = access,
