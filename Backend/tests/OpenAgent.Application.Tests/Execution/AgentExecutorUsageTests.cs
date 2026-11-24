@@ -350,8 +350,7 @@ public class AgentExecutorUsageTests
             serviceProvider,
             scope,
             scope.ServiceProvider.GetRequiredService<RuntimeAgentExecutor>(),
-            Assert.IsType<InMemoryConversationStore>(
-                scope.ServiceProvider.GetRequiredService<IConversationStore>()));
+            scope.ServiceProvider.GetRequiredService<IConversationStore>());
     }
 
     private sealed class TestCurrentUserContext : ICurrentUserContext
@@ -382,10 +381,10 @@ public class AgentExecutorUsageTests
         ServiceProvider serviceProvider,
         AsyncServiceScope scope,
         RuntimeAgentExecutor executor,
-        InMemoryConversationStore store) : IAsyncDisposable
+        IConversationStore store) : IAsyncDisposable
     {
         internal RuntimeAgentExecutor Executor { get; } = executor;
-        internal InMemoryConversationStore Store { get; } = store;
+        internal IConversationStore Store { get; } = store;
 
         public async ValueTask DisposeAsync()
         {

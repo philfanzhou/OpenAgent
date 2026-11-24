@@ -51,11 +51,30 @@ internal sealed class LocalFileObjectStore : IFileObjectStore
     public async Task<byte[]> ReadAsync(string objectKey, long maxBytes, CancellationToken cancellationToken)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxBytes);
-        await using FileStream input = new(Resolve(objectKey), FileMode.Open, FileAccess.Read, FileShare.Read, 65536, useAsync: true);
-        if (input.Length > maxBytes) throw new AgentException(AgentErrorCode.InvalidRequest, "File object exceeds the configured byte limit.");
         using MemoryStream output = new();
-        await input.CopyToAsync(output, cancellationToken).ConfigureAwait(false);
+        await CopyToAsync(objectKey, output, maxBytes, cancellationToken).ConfigureAwait(false);
         return output.ToArray();
+    }
+
+    public async Task CopyToAsync(string objectKey, Stream destination, long maxBytes, CancellationToken cancellationToken)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(maxBytes);
+        await using FileStream input = new(Resolve(objectKey), FileMode.Open, FileAccess.Read, FileShare.Read, 65536, useAsync: true);
+        byte[] buffer = new byte[65536];
+        if (input.Length > maxBytes)
+        {
+            throw new AgentException(AgentErrorCode.InvalidRequest, "File object exceeds the configured byte limit.");
+        }
+        int read;
+        while ((read = await input.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) != 0)
+        {
+            maxBytes -= read;
+            if (maxBytes < 0)
+            {
+                throw new AgentException(AgentErrorCode.InvalidRequest, "File object exceeds the configured byte limit.");
+            }
+            await destination.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
+        }
     }
 
     public Task DeleteAsync(string objectKey, CancellationToken cancellationToken)

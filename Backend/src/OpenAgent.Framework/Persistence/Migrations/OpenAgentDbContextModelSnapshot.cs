@@ -315,6 +315,10 @@ namespace OpenAgent.Framework.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
 
+                    b.Property<string>("RuntimeOutputPath")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)");
+
                     b.Property<string>("Sha256")
                         .IsRequired()
                         .HasMaxLength(128)

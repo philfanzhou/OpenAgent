@@ -145,9 +145,9 @@
 
 ## OpenCode 文件收发闭环
 
-方案：[文件收发方案](opencode-file-exchange.md)。2026-10-29 用户授权按 FX01→FX04 实施并分别建立 PR；负责人：Codex。未合并项不标记完成。
+方案见 [OpenCode 文件收发](opencode-file-exchange.md)。
 
-- [ ] **FX01 原文件输入与历史导入**（实现已验证，待评审）：Contracts/Runtime、Application/Execution、Capabilities/Files、Runtime/OpenCode；原始字节、稳定路径、冷热恢复、身份和限额测试；全量构建成功，995 通过 / 33 环境门控跳过 / 0 失败。
-- [ ] **FX02 本地产物导出登记**（待开发，依赖 FX01）：输出快照、export_file、资产登记、限额与同轮重试。
-- [ ] **FX03 消息发布与下载恢复**（待开发，依赖 FX02）：成功/失败/取消附件关联、前端展示与恢复。
-- [ ] **FX04 真实链路验收与启用文档**（待开发，依赖 FX03）：真实 OpenCode/原生执行/MinIO、生命周期、并发与内存验证；Windows 单独验收。
+- [x] **FX01 原文件输入与历史导入**。已合入 `dev`，见 [#304](https://github.com/philfanzhou/OpenAgent/pull/304)。
+- [ ] **FX02 本地产物导出登记**。待合入 `dev`，含输出快照、同轮重试和限额。
+- [ ] **FX03 消息发布与下载恢复**。待合入 `dev`，含成功、失败、取消的已发布附件。
+- [ ] **FX04 端到端验收与启用文档**。待合入 `dev`，含断线重试、XLSX/PNG 交付和冷启动恢复测试。

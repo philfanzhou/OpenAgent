@@ -201,8 +201,20 @@ Windows 原生运行必须使用独立服务账户、干净系统用户 profile 
 
 需要立即关闭保活时设置 `KeepAliveSeconds=0`。出现兼容问题时停用受影响 Runtime/能力或回退相应 PR；不能把恢复个人 HOME、允许宿主技能继承作为安全回退；原生工具授权也不能代替多租户 OS 隔离。Skill 新进程首次复制与工作区回收仍需计入准备/清理成本。非 root 镜像的 Data Protection 卷权限迁移与旧镜像回退见[部署指南](../operations/deployment.md#opencode-服务身份与已有密钥卷)。既有 `WorkspaceRoot` 若权限过宽，应停机后由运维收紧为专属目录，不让应用自动更改未知宿主目录权限。
 
-## 文件原件输入（FX01）
+## 文件输入、交付与冷启动
 
-启用 `FileAssets:Enabled=true` 与 `FileExchange:Enabled=true` 后，本轮附件原始字节在 MCP 桥注册前写入 `inputs/<fileId>/<安全文件名>`，prompt 附稳定相对路径清单。图片视觉预览仍走原内联流程，原文件不会被降采样替代。`import_file(fileId)` 可恢复当前会话已引用的原件；同名文件按 ID 分目录，本地副本被改写或工作区淘汰后从资产恢复。默认关闭文件交换。
+启用 `FileAssets:Enabled` 后，OpenCode 默认启用文件交换，在 ACP 建会成功后准备文件。本轮附件从 S3 流式写入 `inputs/<fileId>/<安全文件名>`，校验通过后才可使用。历史原件用 `list_files` 找到资产 ID，再通过 `import_file` 按需恢复。
 
-`FileExchange` 输入限额默认每轮 10 个、合计 200 MiB，单文件沿用 FileAssets 限额，进程内最多同时 2 个缓冲传输；它们不是 OS 配额。文件工具继续经过既有发现/调用授权和超时预算。文件租约在消息提交前关闭，回收前排空；Runtime 不保留本轮 scoped 服务。输出导出和完整交付在 FX02/FX03 接续，任务与设计见[方案](../planning/opencode-file-exchange.md)。
+OpenCode 将最终成品写在 `outputs/`。轮次正常结束时，平台流式保存符合要求的成品，校验一致的版本复用原资产。自动保存会跳过不符合规则或在本地无法读取的文件，达到轮次限额时停止。冷启动尝试恢复各路径最近保存的版本，跳过无法读取或校验失败的旧成品。两种自动操作均记录跳过原因，本轮附件和显式导入、导出、发布仍会返回各自的错误。中间文件和临时文件放在 `outputs/` 外，随本地工作区回收。
+
+模型调用 `publish_files(paths)` 才会把成品挂到助手消息，已有资产可继续用 `publish_files(fileIds)`。发布会复用已保存的版本，已发布附件随完成、失败或取消的已保存消息保留。对象存储与平台文件资产维护历史版本的下载链接。
+
+空闲 OpenCode 进程回收后，下一轮自动创建进程。已提交的本地原生会话仍可按检查点恢复。ACP 建会阶段遇到连接中断时允许再启动一次，建会成功后才绑定文件租约。
+
+输入和成品各默认最多 10 个、200 MiB，单文件沿用 FileAssets 限额。文件交换使用进程内并发传输限制，默认最多 2 个。生产启用方式见 [部署指南](../operations/deployment.md#启用-opencode-文件交换)。
+
+在 Linux 或 macOS 上可以用真实 OpenCode、Python 3 和独立的 S3 兼容测试服务运行文件交换验收。将可执行路径和测试存储地址、凭据分别设置到 `OPENAGENT_TEST_OPENCODE`、`OPENAGENT_TEST_S3_URL`、`OPENAGENT_TEST_S3_ACCESS_KEY`、`OPENAGENT_TEST_S3_SECRET_KEY`，然后运行：
+
+```sh
+dotnet test Backend/tests/OpenAgent.Engine.Tests --filter FullyQualifiedName~OpenCodeFileExchangeTests
+```

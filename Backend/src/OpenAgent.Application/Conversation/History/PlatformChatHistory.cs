@@ -82,6 +82,8 @@ internal sealed class PlatformChatHistory : IAsyncDisposable
     private bool _stored;
     private bool _finalized;
     private bool _completionStaged;
+    private int _responseStart;
+    private ConversationStatus _pendingStatus = ConversationStatus.Completed;
 
     public PlatformChatHistory(
         PlatformChatHistoryContext context,
@@ -236,7 +238,7 @@ internal sealed class PlatformChatHistory : IAsyncDisposable
     private ConversationMessage BuildPartialMessage(ConversationStatus status, MessageErrorMetadata? error = null)
     {
         string reasoning = _partialReasoning.ToString();
-        return ConversationSessionStore.Message(
+        ConversationMessage message = ConversationSessionStore.Message(
             _nextSequence++,
             "assistant",
             _partialAssistant.ToString(),
@@ -248,6 +250,7 @@ internal sealed class PlatformChatHistory : IAsyncDisposable
                 Extensions = RuntimeMetadata
             },
             modelId: _modelId);
+        return AgentMessageAdapter.AssociateFiles(message, _fileExecution.Published);
     }
 
     /// <summary>加锁并验证归属后加载会话历史；失败直接向上传播，不开放持久化。</summary>
@@ -570,6 +573,7 @@ internal sealed class PlatformChatHistory : IAsyncDisposable
     private void StageResponses(IEnumerable<ChatMessage>? responseMessages)
     {
         RecordUser();
+        _responseStart = _pending.Count;
         HashSet<string> recordedCallIds = new(StringComparer.Ordinal);
         foreach (FunctionCallContent call in (responseMessages ?? [])
             .SelectMany(message => message.Contents.OfType<FunctionCallContent>()))
@@ -690,11 +694,20 @@ internal sealed class PlatformChatHistory : IAsyncDisposable
             }
             EnsureCanPersist();
 
+            // A failed commit must not persist both staged completion and a new partial response.
+            if (_completionStaged && _pending.Count > _responseStart)
+            {
+                _nextSequence = _pending[_responseStart].Sequence;
+                _pending.RemoveRange(_responseStart, _pending.Count - _responseStart);
+                _completionStaged = false;
+            }
             RecordUser();
             _finalized = true;
             ConversationStatus status = error is OperationCanceledException
                 ? ConversationStatus.Cancelled
                 : ConversationStatus.Failed;
+            _pendingStatus = status;
+            _checkpointValid = false;
             StageStreamedToolMessages();
             // 失败原因随消息持久化：SSE error 事件只存活一次流式连接，前端刷新后
             // 只剩"响应未完成"占位；取消是用户主动行为，不携带错误。
@@ -727,7 +740,7 @@ internal sealed class PlatformChatHistory : IAsyncDisposable
             if (_loaded && !_stored)
             {
                 EnsureCanPersist();
-                ConversationStatus status = ConversationStatus.Completed;
+                ConversationStatus status = _pendingStatus;
                 if (!_finalized)
                 {
                     _finalized = true;

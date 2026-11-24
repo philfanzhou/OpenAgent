@@ -406,6 +406,12 @@ public class SkillPackageManagementServiceTests
             return Task.FromResult(content);
         }
 
+        public async Task CopyToAsync(string objectKey, Stream destination, long maxBytes, CancellationToken cancellationToken)
+        {
+            byte[] data = await ReadAsync(objectKey, maxBytes, cancellationToken);
+            await destination.WriteAsync(data, cancellationToken);
+        }
+
         public Task DeleteAsync(string objectKey, CancellationToken cancellationToken)
         {
             DeletedObjectKeys.Add(objectKey);
