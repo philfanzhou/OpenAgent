@@ -28,12 +28,15 @@ namespace OpenAgent.Engine.Tests.Hosting;
 
 public sealed class OpenCodeFileExchangeTests(ITestOutputHelper output)
 {
+    private const string ChartPngBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5EAAAAAASUVORK5CYII=";
+
     [OpenCodeS3Theory]
-    [InlineData(0, false)]
-    [InlineData(0, true)]
-    [InlineData(64, false)]
+    [InlineData(0, false, false)]
+    [InlineData(0, true, false)]
+    [InlineData(64, false, false)]
+    [InlineData(0, false, true)]
     public async Task HttpUpload_NativePython_ExportPublishAndDownload_AfterRuntimeAndHostRebuild(
-        int payloadMiB, bool disconnectDuringFirstSession)
+        int payloadMiB, bool disconnectDuringFirstSession, bool unavailableOutput)
     {
         string endpoint = Environment.GetEnvironmentVariable("OPENAGENT_TEST_S3_URL")!;
         string access = Environment.GetEnvironmentVariable("OPENAGENT_TEST_S3_ACCESS_KEY")!;
@@ -47,7 +50,7 @@ public sealed class OpenCodeFileExchangeTests(ITestOutputHelper output)
         string? originalHash = null;
         string? resultHash = null;
         string? resultId = null;
-        string? chartHash = null;
+        FileAsset? previousChart = null;
         int generated = 0;
         int restored = 0;
         using AmazonS3Client s3 = new(new BasicAWSCredentials(access, secret), new AmazonS3Config
@@ -81,20 +84,36 @@ public sealed class OpenCodeFileExchangeTests(ITestOutputHelper output)
                 {
                     if (tools.Length == 0)
                     {
-                        Assert.Contains("outputs/analysis.xlsx", request.GetRawText());
-                        Assert.Contains("outputs/chart.png", request.GetRawText());
+                        string raw = request.GetRawText();
+                        int start = raw.IndexOf("Previously saved deliverables available", StringComparison.Ordinal);
+                        Assert.True(start >= 0);
+                        int end = raw.IndexOf("Keep intermediate files outside outputs/", start, StringComparison.Ordinal);
+                        Assert.True(end > start);
+                        string manifest = raw[start..end];
+                        Assert.Contains("outputs/analysis.xlsx", manifest);
+                        if (unavailableOutput)
+                        {
+                            Assert.DoesNotContain("outputs/chart.png", manifest);
+                        }
+                        else
+                        {
+                            Assert.Contains("outputs/chart.png", manifest);
+                        }
                         await Call(Tool("import_file"), new { fileId = uploadedId });
                     }
                     else if (tools.Length == 1)
                     {
+                        string replaceChart = unavailableOutput
+                            ? $"assert not chart.exists()\nchart.write_bytes(base64.b64decode('{ChartPngBase64}'))" : "";
                         string script = $$"""
-                            import hashlib,pathlib
+                            import hashlib,pathlib,base64
                             assert not pathlib.Path('work/intermediate.csv').exists()
                             result=pathlib.Path('outputs/analysis.xlsx')
                             chart=pathlib.Path('outputs/chart.png')
                             original=pathlib.Path('inputs/{{uploadedId}}/sales.xlsx')
                             assert hashlib.sha256(result.read_bytes()).hexdigest()=='{{resultHash}}'
-                            assert hashlib.sha256(chart.read_bytes()).hexdigest()=='{{chartHash}}'
+                            {{replaceChart}}
+                            assert hashlib.sha256(chart.read_bytes()).hexdigest()=='{{previousChart!.Sha256}}'
                             assert hashlib.sha256(original.read_bytes()).hexdigest()=='{{originalHash}}'
                             print('FX_RESTORED')
                             """;
@@ -126,7 +145,8 @@ public sealed class OpenCodeFileExchangeTests(ITestOutputHelper output)
                                 result.writestr(item,data)
                         pathlib.Path('work').mkdir()
                         pathlib.Path('work/intermediate.csv').write_text('temporary,scratch')
-                        pathlib.Path('outputs/chart.png').write_bytes(base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5EAAAAAASUVORK5CYII='))
+                        pathlib.Path('outputs/chart.png').write_bytes(base64.b64decode('{{ChartPngBase64}}'))
+                        {{(unavailableOutput ? "pathlib.Path('outputs/.keep').touch()" : "")}}
                         print('FX_GENERATED')
                         """;
                     await Call("bash", new { command = Python(script) });
@@ -211,9 +231,13 @@ public sealed class OpenCodeFileExchangeTests(ITestOutputHelper output)
                 using ZipArchive zip = new(new MemoryStream(downloaded), ZipArchiveMode.Read);
                 using StreamReader sheet = new(zip.GetEntry("xl/worksheets/sheet1.xml")!.Open());
                 Assert.Contains("<v>42</v>", await sheet.ReadToEndAsync());
-                FileAsset chart = repository.Assets.Values.Single(asset => asset.FileName == "chart.png");
-                chartHash = chart.Sha256;
-                Assert.Equal("outputs/chart.png", chart.RuntimeOutputPath);
+                previousChart = repository.Assets.Values.Single(asset => asset.FileName == "chart.png");
+                Assert.Equal("outputs/chart.png", previousChart.RuntimeOutputPath);
+                if (unavailableOutput)
+                {
+                    Assert.DoesNotContain(repository.Assets.Values, asset => asset.FileName == ".keep");
+                    await s3.DeleteObjectAsync(bucket, previousChart.ObjectKey);
+                }
             }
             // Force a cold workspace, including loss of the optional native-session checkpoint.
             Directory.Delete(stateRoot, recursive: true);
@@ -225,7 +249,15 @@ public sealed class OpenCodeFileExchangeTests(ITestOutputHelper output)
                 Assert.DoesNotContain(frames, frame => frame.Event == "error");
                 Assert.Single(frames, frame => frame.Event == "done");
             }
-            Assert.Equal(3, repository.Assets.Count);
+            Assert.Equal(unavailableOutput ? 4 : 3, repository.Assets.Count);
+            if (unavailableOutput)
+            {
+                FileAsset newChart = Assert.Single(repository.Assets.Values,
+                    asset => asset.RuntimeOutputPath == "outputs/chart.png" && asset.FileId != previousChart!.FileId);
+                Assert.Equal(previousChart!.Sha256, newChart.Sha256);
+                using GetObjectResponse data = await s3.GetObjectAsync(bucket, newChart.ObjectKey);
+                Assert.Equal(newChart.Length, data.ContentLength);
+            }
             Assert.Equal(1, generated);
             Assert.Equal(1, restored);
             output.WriteLine("Original XLSX, published XLSX and unpublished PNG survived a cold workspace; the intermediate file did not.");

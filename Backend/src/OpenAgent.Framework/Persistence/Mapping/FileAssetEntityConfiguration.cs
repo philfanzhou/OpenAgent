@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using OpenAgent.Contracts.Files;
 using OpenAgent.Framework.Entities;
 
 namespace OpenAgent.Framework.Persistence.Mapping;
@@ -13,7 +14,7 @@ internal sealed class FileAssetEntityConfiguration : IEntityTypeConfiguration<Fi
         entity.Property(item => item.FileId).HasMaxLength(64);
         entity.Property(item => item.TenantId).HasMaxLength(256);
         entity.Property(item => item.OwnerUserId).HasMaxLength(256);
-        entity.Property(item => item.FileName).HasMaxLength(1024);
+        entity.Property(item => item.FileName).HasMaxLength(FileAsset.MaxFileNameLength);
         entity.Property(item => item.RuntimeOutputPath).HasMaxLength(1024);
         entity.Property(item => item.MediaType).HasMaxLength(256);
         entity.Property(item => item.Sha256).HasMaxLength(128);

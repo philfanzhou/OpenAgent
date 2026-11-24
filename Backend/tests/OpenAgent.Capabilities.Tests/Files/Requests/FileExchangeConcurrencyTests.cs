@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
 using OpenAgent.Capabilities.Files.Requests;
@@ -61,7 +62,7 @@ public sealed class FileExchangeConcurrencyTests
                     });
                 FileAssetExecutionContext execution = new();
                 execution.Set(TurnContexts.Create(asset.TenantId, asset.OwnerUserId));
-                FileExchangeContext context = new(files.Object, execution, assets, options, gate);
+                FileExchangeContext context = new(files.Object, execution, assets, options, gate, NullLogger<FileExchangeContext>.Instance);
                 contexts.Add(context);
                 RecordingWorkspaceFiles workspace = new();
                 workspaces.Add(workspace);

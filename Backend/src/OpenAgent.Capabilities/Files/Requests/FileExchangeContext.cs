@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OpenAgent.Capabilities.Files.Services;
 using OpenAgent.Contracts.Files;
@@ -13,7 +14,8 @@ internal sealed class FileExchangeContext(
     FileAssetExecutionContext execution,
     IOptions<FileAssetOptions> assets,
     IOptions<FileExchangeOptions> options,
-    FileTransferGate gate) : IAsyncDisposable
+    FileTransferGate gate,
+    ILogger<FileExchangeContext> logger) : IAsyncDisposable
 {
     private readonly SemaphoreSlim _operations = new(1);
     private readonly Dictionary<string, RuntimeWorkspaceFile> _imports = new(StringComparer.Ordinal);
@@ -115,7 +117,7 @@ internal sealed class FileExchangeContext(
 
         List<RuntimeWorkspaceFile> restored = [];
         long remaining = options.Value.MaxOutputBytes;
-        foreach ((string path, FileAsset asset) in _savedOutputs)
+        foreach ((string path, FileAsset asset) in _savedOutputs.ToArray())
         {
             if (restored.Count == options.Value.MaxOutputFiles)
             {
@@ -131,6 +133,14 @@ internal sealed class FileExchangeContext(
                 restored.Add(await RestoreAsync(_workspace!, asset, path, ct).ConfigureAwait(false));
                 remaining -= asset.Length;
             }
+            catch (Exception error) when (IsUnavailableOutput(error)
+                || error is AgentException { ErrorCode: AgentErrorCode.DependencyUnavailable })
+            {
+                ct.ThrowIfCancellationRequested();
+                // A regenerated file must be uploaded even if its contents match this asset.
+                _savedOutputs.Remove(path);
+                LogSkippedOutput("restore", error, asset.FileId);
+            }
             finally
             {
                 gate.Transfers.Release();
@@ -145,11 +155,44 @@ internal sealed class FileExchangeContext(
 
     private async Task SaveOutputsAsync(CancellationToken ct)
     {
-        foreach (string path in _workspace!.EnumerateOutputPaths())
+        ct.ThrowIfCancellationRequested();
+        try
         {
-            await ExportAsync(path, fileName: null, ct).ConfigureAwait(false);
+            foreach (string path in _workspace!.EnumerateOutputPaths())
+            {
+                ct.ThrowIfCancellationRequested();
+                if (_outputFiles >= options.Value.MaxOutputFiles || _outputBytes >= options.Value.MaxOutputBytes)
+                {
+                    logger.LogWarning("Automatic output saving stopped at the turn limit. TraceId={TraceId}", execution.Turn?.TraceId);
+                    break;
+                }
+
+                try
+                {
+                    await ExportAsync(path, fileName: null, ct).ConfigureAwait(false);
+                }
+                catch (Exception error) when (IsUnavailableOutput(error))
+                {
+                    ct.ThrowIfCancellationRequested();
+                    LogSkippedOutput("save", error);
+                }
+            }
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            // The enumeration itself can fail before an individual path is returned.
+            ct.ThrowIfCancellationRequested();
+            LogSkippedOutput("enumerate", error);
         }
     }
+
+    private static bool IsUnavailableOutput(Exception error) => error is IOException or UnauthorizedAccessException
+        or AgentException { ErrorCode: AgentErrorCode.InvalidRequest or AgentErrorCode.NotFound };
+
+    private void LogSkippedOutput(string operation, Exception error, string? fileId = null) =>
+        logger.LogWarning("Automatic output {Operation} skipped. TraceId={TraceId} FileId={FileId} Reason={Reason}",
+            operation, execution.Turn?.TraceId, fileId,
+            error is AgentException agent ? agent.ErrorCode.ToString() : error.GetType().Name);
 
     internal async Task<FileAsset> ExportAsync(string path, string? fileName, CancellationToken ct)
     {
@@ -167,6 +210,7 @@ internal sealed class FileExchangeContext(
                 EnsureActive(linked.Token);
                 bool hasSuggestedName = !string.IsNullOrWhiteSpace(fileName);
                 string name = hasSuggestedName ? fileName! : snapshot.FileName;
+                FileAssetService.ValidateFileNameLength(name);
                 if (name != Path.GetFileName(name) || name.Contains('\\') || name.Any(char.IsControl)
                     || name.Contains(':') || name is "." or "..")
                 {

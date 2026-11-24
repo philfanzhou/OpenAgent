@@ -36,6 +36,7 @@ internal sealed class FileAssetService : IFileAssetService
             throw new AgentException(AgentErrorCode.InvalidRequest, "FileName is required.");
         }
         string fileName = Path.GetFileName(request.FileName);
+        ValidateFileNameLength(fileName);
         string mediaType = ResolveMediaType(Path.GetExtension(fileName), request.MediaType);
         // S3 signing and retry need a seekable stream. Buffer non-seekable sources on disk.
         await using FileStream? buffer = content.CanSeek && content.Position == 0 ? null : CreateUploadBuffer();
@@ -358,6 +359,14 @@ internal sealed class FileAssetService : IFileAssetService
             options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
         }
         return new FileStream(Path.Combine(Path.GetTempPath(), $"openagent-upload-{Guid.NewGuid():N}"), options);
+    }
+
+    internal static void ValidateFileNameLength(string fileName)
+    {
+        if (fileName.Length > FileAsset.MaxFileNameLength && fileName.EnumerateRunes().Count() > FileAsset.MaxFileNameLength)
+        {
+            throw new AgentException(AgentErrorCode.InvalidRequest, $"FileName must not exceed {FileAsset.MaxFileNameLength} characters.");
+        }
     }
 
     private static AgentException InvalidFileSize() =>

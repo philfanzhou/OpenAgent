@@ -53,16 +53,12 @@ public sealed class OpenCodeWorkspaceFilesTests : IDisposable
         Assert.Empty(Directory.EnumerateFiles(Path.Combine(_home, ".file-exchange")));
     }
 
-    [Theory]
+    [OpenCodeUnixTheory]
     [InlineData("symlink")]
     [InlineData("hardlink")]
     [InlineData("fifo")]
     public async Task SnapshotAsync_RejectsLinksAndSpecialFilesWithoutBlocking(string kind)
     {
-        if (OperatingSystem.IsWindows())
-        {
-            return;
-        }
         OpenCodeWorkspaceFiles workspace = new(_root);
         string external = Path.Combine(_home, "external");
         await File.WriteAllTextAsync(external, "external");

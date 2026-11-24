@@ -2,6 +2,8 @@ namespace OpenAgent.Contracts.Files;
 
 public sealed class FileAsset
 {
+    public const int MaxFileNameLength = 1024;
+
     public required string FileId { get; init; }
     public required string TenantId { get; init; }
     public required string OwnerUserId { get; init; }

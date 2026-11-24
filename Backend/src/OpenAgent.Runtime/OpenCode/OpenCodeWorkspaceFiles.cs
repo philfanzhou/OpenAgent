@@ -76,7 +76,7 @@ internal sealed class OpenCodeWorkspaceFiles : IRuntimeWorkspaceFiles
         return Directory.EnumerateFiles(outputs, "*", new EnumerationOptions
         {
             RecurseSubdirectories = true,
-            IgnoreInaccessible = false,
+            IgnoreInaccessible = true,
             AttributesToSkip = FileAttributes.ReparsePoint | FileAttributes.Device
         }).Select(path => Path.GetRelativePath(_workspace, path).Replace('\\', '/'));
     }

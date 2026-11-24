@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using OpenAgent.Capabilities.Files.Requests;
 using OpenAgent.Capabilities.Files.Services;
@@ -75,6 +76,48 @@ public sealed class FileExchangeContextTests
     }
 
     [Fact]
+    public async Task SaveOutputsAsync_SkipsEmptyAndOversizedFilesAndSavesTheRest()
+    {
+        await using Harness harness = new(new() { Enabled = true, MaxOutputBytes = 3 });
+        RuntimeFilePreparation prepared = await harness.Context.PrepareAsync(harness.Workspace, [], default);
+        harness.Workspace.Outputs["outputs/empty.bin"] = [];
+        harness.Workspace.Outputs["outputs/too-large.bin"] = [1, 2, 3, 4];
+        harness.Workspace.Outputs["outputs/valid.bin"] = [1, 2, 3];
+        harness.Workspace.Outputs["outputs/past-limit.bin"] = [1];
+
+        await prepared.SaveOutputsAsync!(default);
+
+        Assert.Equal("valid.bin", Assert.Single(harness.Repository.Assets.Values).FileName);
+        Assert.Single(harness.Repository.References);
+    }
+
+    [Fact]
+    public async Task PrepareAsync_SkipsCorruptOutputAndAllowsReplacingItWithIdenticalContent()
+    {
+        await using Harness harness = new();
+        FileAssetScope scope = new() { TenantId = "tenant", UserId = "user", ConversationId = "conversation" };
+        byte[] bytes = [1, 2];
+        const string path = "outputs/result.bin";
+        using MemoryStream stream = new(bytes);
+        FileAsset damaged = await harness.Files.UploadAsync(new()
+        {
+            FileName = "result.bin", Source = FileAssetSource.Agent, RuntimeOutputPath = path
+        }, stream, scope, default);
+        await harness.Files.EnsureReferencesAsync([damaged.FileId], scope, default);
+        harness.Objects.ContentsByKey[damaged.ObjectKey] = [9, 9];
+
+        RuntimeFilePreparation prepared = await harness.Context.PrepareAsync(harness.Workspace, [], default);
+        Assert.Empty(prepared.Outputs);
+        Assert.Empty(harness.Workspace.Outputs);
+
+        harness.Workspace.Outputs[path] = bytes;
+        FileAsset replaced = await harness.Context.ExportAsync(path, null, default);
+
+        Assert.NotEqual(damaged.FileId, replaced.FileId);
+        Assert.Equal(damaged.Sha256, replaced.Sha256);
+    }
+
+    [Fact]
     public async Task DisposeAsync_CancelsAndDrainsInFlightExportWithoutRegisteringIt()
     {
         await using Harness harness = new();
@@ -105,6 +148,21 @@ public sealed class FileExchangeContextTests
         await Assert.ThrowsAsync<AgentException>(() => harness.Context.ExportAsync("outputs/file.bin", name, default));
         Assert.Empty(harness.Repository.Assets);
     }
+    [Fact]
+    public async Task ExportAsync_RejectsNamesTooLongForAssetStorage()
+    {
+        await using Harness harness = new();
+        await harness.Context.PrepareAsync(harness.Workspace, [], default);
+        harness.Workspace.Outputs["outputs/file.bin"] = [1, 2];
+
+        AgentException error = await Assert.ThrowsAsync<AgentException>(() =>
+            harness.Context.ExportAsync("outputs/file.bin", new string('a', FileAsset.MaxFileNameLength + 1), default));
+
+        Assert.Equal(AgentErrorCode.InvalidRequest, error.ErrorCode);
+        Assert.Contains(FileAsset.MaxFileNameLength.ToString(), error.Message);
+        Assert.Empty(harness.Repository.Assets);
+    }
+
     [Fact]
     public async Task PrepareAsync_MaterializesOriginalAndAllowsHistoryImportUntilLeaseEnds()
     {
@@ -193,7 +251,7 @@ public sealed class FileExchangeContextTests
             Files = new(Repository, Objects, assets);
             FileAssetExecutionContext execution = new();
             execution.Set(TurnContexts.Create());
-            Context = new(Files, execution, assets, settings, _gate);
+            Context = new(Files, execution, assets, settings, _gate, NullLogger<FileExchangeContext>.Instance);
         }
 
         internal async Task<FileAsset> AddAsync(string name, byte[] data, FileAssetScope? scope = null)
