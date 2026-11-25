@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Files;
+using OpenAgent.Contracts.Runtime;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Engine.Host.Endpoints;
 using OpenAgent.Engine.Host.Middleware;
@@ -203,6 +205,7 @@ internal static class ConversationEndpoints
         if (access.Run == null)
             return TypedResults.NoContent();
 
+        context.Features.Get<IHttpActivityFeature>()?.Activity.SetTag(AuditAttributeNames.ConversationId, conversationId);
         await AgentStreamWriter.WriteSseStreamAsync(
             context,
             access.Run.ReadAsync(cancellationToken),

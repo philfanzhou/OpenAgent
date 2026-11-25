@@ -4,6 +4,7 @@ using OpenAgent.Engine.Hosting;
 using OpenAgent.Engine.Hosting.Errors;
 using OpenAgent.Router.Models;
 using OpenAgent.Router.Observability;
+using OpenAgent.Router.Providers;
 using Yarp.ReverseProxy.Forwarder;
 
 namespace OpenAgent.Router.Endpoints;
@@ -19,13 +20,15 @@ internal sealed class AgentForwarder(
         ActivityTimeout = TimeSpan.FromSeconds(100)
     };
 
-    private static readonly ForwarderRequestConfig StreamingRequestConfig = new()
+    private readonly ForwarderRequestConfig _streamingRequestConfig = CreateStreamingRequestConfig(configuration);
+
+    internal static ForwarderRequestConfig CreateStreamingRequestConfig(IConfiguration configuration) => new()
     {
-        ActivityTimeout = Timeout.InfiniteTimeSpan
+        ActivityTimeout = TimeSpan.FromSeconds(Math.Max(16,
+            configuration.GetValue("RouterSettings:Routing:StreamingIdleTimeoutSeconds", 120)))
     };
 
-    private readonly HttpMessageInvoker _httpClient = new(
-        HttpClientSecurity.CreateSocketsHttpHandler(configuration, TimeSpan.FromSeconds(15)));
+    private readonly HttpMessageInvoker _httpClient = ForwardingContextBuilder.CreateClient(configuration);
 
     public async Task ForwardAsync(
         HttpContext context,
@@ -40,7 +43,7 @@ internal sealed class AgentForwarder(
         string? tenantId = userContext.TenantId;
         string? conversationId = context.Features.Get<AgentRoutingFeature>()?.ConversationId
             ?? context.Request.Headers["X-Conversation-Id"].FirstOrDefault();
-        string traceId = Activity.Current?.Id ?? context.TraceIdentifier;
+        string traceId = AgentProblemDetails.ResolveTraceId(context);
 
         AgentForwardingTarget? target = await provider.ResolveForwardingAsync(
             action,
@@ -67,7 +70,7 @@ internal sealed class AgentForwarder(
         }
 
         ForwarderRequestConfig requestConfig = isStreaming
-            ? StreamingRequestConfig
+            ? _streamingRequestConfig
             : DefaultRequestConfig;
         ForwarderError error;
         try
@@ -114,8 +117,7 @@ internal sealed class AgentForwarder(
             traceId);
         bool succeeded = error == ForwarderError.None;
         // 客户端主动断开 SSE（用户停止生成、页面关闭）表现为各类 *Canceled 且
-        // RequestAborted 触发：这是正常结束，不应计为下游故障——否则一次断开就把
-        // Engine 隔离 30 秒（FailureThreshold=1），后续请求被错误地 503。
+        // RequestAborted 触发：这是正常结束，不应计为下游故障。
         if (!succeeded && IsClientCancellation(error) && context.RequestAborted.IsCancellationRequested)
         {
             return;
@@ -130,12 +132,16 @@ internal sealed class AgentForwarder(
         }
         if (succeeded)
         {
-            healthTracker.ReportSuccess(target.DestinationPrefix);
+            if (context.Response.StatusCode is 502 or 503 or 504)
+                healthTracker.ReportFailure(target.DestinationPrefix);
+            else
+                healthTracker.ReportSuccess(target.DestinationPrefix);
             return;
         }
 
         healthTracker.ReportFailure(target.DestinationPrefix);
-        Observability.RouterLog.DownstreamQuarantined(logger, target.DestinationPrefix);
+        if (!healthTracker.IsAvailable(target.DestinationPrefix))
+            Observability.RouterLog.DownstreamQuarantined(logger, target.DestinationPrefix);
 
         IResult result = await ForwardingErrorHandler.HandleChatAsync(
             context,
@@ -174,7 +180,8 @@ internal sealed class AgentForwarder(
         await ForwardingContextBuilder.ApplyAsync(
             request,
             target.RequestUri,
-            traceId).ConfigureAwait(false);
+            traceId,
+            propagateBaggage: provider is OpenAgentEngineProvider).ConfigureAwait(false);
         await provider.ConfigureRequestAsync(
             request,
             target,

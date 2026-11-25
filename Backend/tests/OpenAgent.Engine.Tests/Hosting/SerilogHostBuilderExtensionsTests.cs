@@ -35,6 +35,7 @@ public class SerilogHostBuilderExtensionsTests
     private static WebApplication CreateApp(Action<AgentHostOptions> configure)
     {
         var builder = WebApplication.CreateBuilder();
+        builder.Configuration["OpenTelemetry:LogsEndpoint"] = "http://127.0.0.1:4318";
         builder.Host.UseAgentSerilog("agent-host-tests");
         builder.Services.AddAgentHost(builder.Configuration, options =>
         {

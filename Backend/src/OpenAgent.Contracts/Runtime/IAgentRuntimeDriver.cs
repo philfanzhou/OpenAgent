@@ -6,6 +6,8 @@ namespace OpenAgent.Contracts.Runtime;
 /// <summary>推理运行时边界；平台负责已授权的输入、工具和持久化，驱动不暴露协议类型。</summary>
 public interface IAgentRuntimeDriver
 {
+    string Provider => "OpenCode";
+
     IAsyncEnumerable<AgentStreamEvent> RunAsync(
         RuntimeInvocation invocation,
         CancellationToken cancellationToken = default);

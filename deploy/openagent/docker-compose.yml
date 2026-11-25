@@ -18,6 +18,10 @@ services:
 
   router:
     image: openagent-router:latest
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp]
     env_file:
       - ./.env
       - ./router/.env

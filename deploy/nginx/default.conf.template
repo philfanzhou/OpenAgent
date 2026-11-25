@@ -25,6 +25,11 @@ upstream openagent_engine {
     server engine:5208 resolve;
 }
 
+map $uri $openagent_engine_entry_upstream {
+    ~*^/api/v1/agent/chat(?:/|$) openagent_router;
+    default openagent_engine;
+}
+
 server {
     listen 8081 ssl;
     server_name ${OPENAGENT_NGINX_SERVER_NAME};
@@ -93,7 +98,7 @@ server {
     ssl_protocols TLSv1.2 TLSv1.3;
 
     location / {
-        proxy_pass http://openagent_engine;
+        proxy_pass http://$openagent_engine_entry_upstream;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;

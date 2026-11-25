@@ -1,6 +1,7 @@
 using System.IO.Compression;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using Amazon.Runtime;
@@ -14,11 +15,14 @@ using OpenAgent.Capabilities.Tests.TestDoubles;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Files;
+using OpenAgent.Contracts.Requests;
+using OpenAgent.Contracts.Runtime;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Engine.Host.Endpoints.Files;
 using OpenAgent.Engine.Host.Middleware;
 using OpenAgent.Framework.ObjectStorage;
 using OpenAgent.Runtime;
+using OpenAgent.Runtime.OpenCode;
 using OpenAgent.Runtime.Tests;
 using Xunit;
 using Xunit.Abstractions;
@@ -29,6 +33,105 @@ namespace OpenAgent.Engine.Tests.Hosting;
 public sealed class OpenCodeFileExchangeTests(ITestOutputHelper output)
 {
     private const string ChartPngBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5EAAAAAASUVORK5CYII=";
+
+    [S3FixtureFact]
+    public async Task ChatStream_AutoArchiveWriteFailurePreservesText_AndStorageRecoveryAllowsRetry()
+    {
+        string endpoint = Environment.GetEnvironmentVariable("OPENAGENT_TEST_S3_URL")!;
+        string access = Environment.GetEnvironmentVariable("OPENAGENT_TEST_S3_ACCESS_KEY")!;
+        string secret = Environment.GetEnvironmentVariable("OPENAGENT_TEST_S3_SECRET_KEY")!;
+        string bucket = "fx-write-failure-" + Guid.NewGuid().ToString("N");
+        Dictionary<string, string?> settings = new()
+        {
+            ["FileAssets:Enabled"] = "true", ["FileAssets:ObjectStorage:ServiceUrl"] = endpoint,
+            ["FileAssets:ObjectStorage:BucketName"] = bucket, ["FileAssets:ObjectStorage:Region"] = "us-east-1",
+            ["FileAssets:ObjectStorage:ForcePathStyle"] = "true", ["FileAssets:ObjectStorage:KeyPrefix"] = "files",
+            ["FileAssets:ObjectStorage:AccessKey"] = access, ["FileAssets:ObjectStorage:SecretKey"] = secret
+        };
+        IConfiguration configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
+        RecordingFileAssetRepository repository = new();
+        using SwitchableS3Client s3 = new(endpoint, access, secret);
+        await using StreamingHost host = await StreamingHost.StartAsync(new ArchiveDriver(), settings: settings, configure: services =>
+        {
+            services.AddSingleton<IAmazonS3>(s3);
+            services.AddS3FileObjectStorage(configuration, allowInsecureTls: false);
+            services.RemoveAll<IFileAssetRepository>();
+            services.AddSingleton<IFileAssetRepository>(repository);
+        });
+        await s3.PutBucketAsync(bucket);
+        try
+        {
+            var first = await host.PostStreamAsync("archive-test", message: "Create a file");
+            Assert.DoesNotContain(first, item => item.Event == "error");
+            Assert.Single(first, item => item.Event == "done");
+            Assert.Empty(repository.References);
+            ConversationRecord? record = await host.Store.GetRecordAsync("tenant-1", "archive-test");
+            Assert.Contains(record!.Messages, item => item.Role == "assistant" && item.Content == "Completed text");
+
+            s3.RejectWrites = false;
+            var second = await host.PostStreamAsync("archive-test", message: "Retry saving");
+            Assert.DoesNotContain(second, item => item.Event == "error");
+            FileAsset file = Assert.Single(repository.Assets.Values, asset => asset.State == FileAssetState.Ready);
+            Assert.Contains("archive-test:" + file.FileId, repository.References);
+            using GetObjectResponse stored = await s3.GetObjectAsync(bucket, file.ObjectKey);
+            Assert.Equal(3, stored.ContentLength);
+            await s3.DeleteObjectAsync(bucket, file.ObjectKey);
+        }
+        finally
+        {
+            await s3.DeleteBucketAsync(bucket);
+        }
+    }
+
+    private sealed class SwitchableS3Client(string endpoint, string access, string secret)
+        : AmazonS3Client(new BasicAWSCredentials(access, secret), S3Config(endpoint))
+    {
+        internal bool RejectWrites { get; set; } = true;
+
+        public override async Task<PutObjectResponse> PutObjectAsync(PutObjectRequest request, CancellationToken cancellationToken = default)
+        {
+            if (!RejectWrites)
+                return await base.PutObjectAsync(request, cancellationToken);
+            using AmazonS3Client denied = new(new BasicAWSCredentials("denied-fixture", Guid.NewGuid().ToString("N")), S3Config(endpoint));
+            return await denied.PutObjectAsync(request, cancellationToken);
+        }
+
+        private static AmazonS3Config S3Config(string endpoint) => new()
+        {
+            ServiceURL = endpoint, ForcePathStyle = true, AuthenticationRegion = "us-east-1",
+            RequestChecksumCalculation = RequestChecksumCalculation.WHEN_REQUIRED,
+            ResponseChecksumValidation = ResponseChecksumValidation.WHEN_REQUIRED
+        };
+    }
+
+    private sealed class ArchiveDriver : IAgentRuntimeDriver
+    {
+        public async IAsyncEnumerable<AgentStreamEvent> RunAsync(RuntimeInvocation invocation,
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            string workspace = Directory.CreateTempSubdirectory("openagent-archive-").FullName;
+            try
+            {
+                RuntimeFilePreparation prepared = await invocation.PrepareFilesAsync!(new OpenCodeWorkspaceFiles(workspace), cancellationToken);
+                await using IAsyncDisposable lease = prepared.Lease;
+                string outputs = Directory.CreateDirectory(Path.Combine(workspace, "outputs")).FullName;
+                await File.WriteAllBytesAsync(Path.Combine(outputs, "result.bin"), new byte[] { 1, 2, 3 }, cancellationToken);
+                yield return new AgentStreamEvent { Type = AgentStreamEventType.Content, Content = "Completed text" };
+                await prepared.SaveOutputsAsync!(cancellationToken);
+            }
+            finally { Directory.Delete(workspace, recursive: true); }
+        }
+    }
+
+    private sealed class S3FixtureFactAttribute : FactAttribute
+    {
+        public S3FixtureFactAttribute()
+        {
+            if (new[] { "OPENAGENT_TEST_S3_URL", "OPENAGENT_TEST_S3_ACCESS_KEY", "OPENAGENT_TEST_S3_SECRET_KEY" }
+                .Any(name => string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(name))))
+                Skip = "Requires an isolated S3-compatible test service.";
+        }
+    }
 
     [OpenCodeS3Theory]
     [InlineData(0, false, false)]

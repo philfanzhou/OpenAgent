@@ -19,13 +19,14 @@ services:
 
   redis:
     image: redis:7-alpine
-    ports:
-      # 可选：宿主机端口冲突时修改左侧端口。
-      - "${OPENAGENT_REDIS_PORT:-6379}:6379"
+    environment:
+      REDIS_PASSWORD: ${OPENAGENT_REDIS_PASSWORD:?Set OPENAGENT_REDIS_PASSWORD}
+    command: ["sh", "-ec", "exec redis-server --requirepass \"$$REDIS_PASSWORD\""]
     volumes:
       - redis-data:/data
+    networks: [default, preview-redis]
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping | grep -qx PONG"]
       interval: 2s
       timeout: 3s
       retries: 30
@@ -69,11 +70,10 @@ services:
     profiles: [keycloak]
     image: quay.io/keycloak/keycloak:26.7.2
     # 可选服务；使用固定的 HTTPS 启动方式，部署时只需配置对外地址和管理员凭据。
-    command: start --import-realm
+    entrypoint: ["/bin/bash", "-ec", "test -n \"$$KC_BOOTSTRAP_ADMIN_PASSWORD\" || { echo 'Set OPENAGENT_KEYCLOAK_ADMIN_PASSWORD' >&2; exit 1; }; exec /opt/keycloak/bin/kc.sh start --import-realm"]
     environment:
-      # 本地默认管理员仅用于联调；生产环境覆盖为强凭据。
       KC_BOOTSTRAP_ADMIN_USERNAME: ${OPENAGENT_KEYCLOAK_ADMIN_USERNAME:-admin}
-      KC_BOOTSTRAP_ADMIN_PASSWORD: ${OPENAGENT_KEYCLOAK_ADMIN_PASSWORD:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${OPENAGENT_KEYCLOAK_ADMIN_PASSWORD:-}
       # 公开地址默认 https://localhost:58081；外部访问时覆盖，并与应用 Compose 的 Authority 保持一致。
       KC_HOSTNAME: ${OPENAGENT_KEYCLOAK_PUBLIC_URL:-https://localhost:58081}
       KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
@@ -99,3 +99,6 @@ volumes:
 networks:
   default:
     name: openagent-infrastructure
+  preview-redis:
+    name: openagent-preview-redis
+    internal: true

@@ -5,10 +5,12 @@
 | 集成点 | 说明 | 文档 |
 |--------|------|------|
 | OpenCode ACP 运行时 | 平台执行、工具桥接、配置与验证范围 | [opencode-runtime.md](opencode-runtime.md) |
+| Pi ACP 运行时 | 租户启用方式、临时工作区与历史续聊 | [pi-runtime.md](pi-runtime.md) |
 | ACP SDK | 单包 C# 协议、Client/Agent、进程、八阶段与验证 | [acp-dotnet-sdk](acp-dotnet-sdk/README.md) |
 | LLM Provider | 大模型推理（OpenAI/Azure OpenAI/Anthropic） | [llm-provider](llm-provider.md) |
 | 配置目录 / Matrix 接入边界 | 当前 Engine 配置读取与运行前解析；Matrix 为后续可替换来源 | [matrix](matrix.md) |
 | Agent Provider | Router 意图识别与第三方 Agent 服务接入 | [agent-provider.md](./agent-provider.md) |
+| Intern Decision | 意图识别服务请求、授权候选和故障降级 | [intern-decision.md](./intern-decision.md) |
 | File Assets | 独立用户文件、S3 兼容对象存储、预览与模型文件能力 | [file-assets.md](./file-assets.md) |
 | PostgreSQL | EF Core 会话与文件资产持久化 | [../database/](../database/) |
 | MCP Server | 外部工具协议（Model Context Protocol） | [mcp-server](mcp-server.md) |

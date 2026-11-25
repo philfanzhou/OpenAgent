@@ -223,11 +223,11 @@ describe('useChatStreaming', () => {
     expect(vi.mocked(api.streamChat).mock.calls[0]?.[7]).toBe('saved-opencode')
   })
 
-  it('does not send when the Runtime picker has no saved selection', async () => {
+  it('sends with the server default when the Runtime picker has no saved selection', async () => {
     const { streaming } = await setup('profile-1', '')
     streaming.message.value = '运行'
     await streaming.send()
-    expect(api.streamChat).not.toHaveBeenCalled()
+    expect(api.streamChat).toHaveBeenCalledOnce()
   })
 
   it('keeps every turn intact after a user stop once the server persisted the cancelled turn', async () => {

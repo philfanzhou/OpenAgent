@@ -70,10 +70,6 @@ export function useChatStreaming(options: ChatStreamingOptions) {
       const selected = options.selectedConversation.value
       if (selected?.conversationId === resume.conversationId) resume = selected
     }
-    if (!resume && options.selectedRuntimeId && !options.selectedRuntimeId.value) {
-      options.notifyError(new Error('请先在 Runtime 设置中保存并选择运行时'))
-      return
-    }
     if (!resume && !options.selectedLlmProfileId.value) {
       options.notifyError(new Error('请先保存并选择模型连接'))
       return

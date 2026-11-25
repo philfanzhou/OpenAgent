@@ -22,17 +22,20 @@ public sealed class RouterHostFixture : IAsyncLifetime
     internal RouterApplicationFactory CreateFactory(
         string? engineEndpoint = null,
         int requestsPerSecond = 100,
-        int burstCapacity = 200) =>
+        int burstCapacity = 200,
+        IReadOnlyDictionary<string, string?>? settings = null) =>
         new(
             engineEndpoint ?? PrimaryEngine.Endpoint,
             requestsPerSecond,
-            burstCapacity);
+            burstCapacity,
+            settings);
 }
 
 internal sealed class RouterApplicationFactory(
     string engineEndpoint,
     int requestsPerSecond,
-    int burstCapacity) : WebApplicationFactory<Program>
+    int burstCapacity,
+    IReadOnlyDictionary<string, string?>? settings = null) : WebApplicationFactory<Program>
 {
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -50,11 +53,13 @@ internal sealed class RouterApplicationFactory(
                 ["RouterSettings:RateLimiting:RequestsPerSecond"] = requestsPerSecond.ToString(),
                 ["RouterSettings:RateLimiting:BurstCapacity"] = burstCapacity.ToString()
             });
+            if (settings is not null)
+                configuration.AddInMemoryCollection(settings);
         });
     }
 }
 
-public sealed class TestEngineHost(string responseName) : IAsyncDisposable
+public sealed class TestEngineHost(string responseName, bool sendHeartbeats = false) : IAsyncDisposable
 {
     private static readonly byte[] DownloadBytes = [0x00, 0x01, 0x7f, 0x80, 0xfe, 0xff];
     private readonly TaskCompletionSource<bool> _sseCanceled = new(
@@ -89,7 +94,8 @@ public sealed class TestEngineHost(string responseName) : IAsyncDisposable
         {
             EnvironmentName = Environments.Production
         });
-        builder.WebHost.UseKestrel().UseUrls("http://127.0.0.1:0");
+        builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 256L * 1024 * 1024)
+            .UseUrls("http://127.0.0.1:0");
         WebApplication application = builder.Build();
 
         application.MapGet("/ready", () => Results.Ok());
@@ -122,6 +128,17 @@ public sealed class TestEngineHost(string responseName) : IAsyncDisposable
                 "event: token\ndata: first\n\n",
                 context.RequestAborted).ConfigureAwait(false);
             await context.Response.Body.FlushAsync(context.RequestAborted).ConfigureAwait(false);
+            if (sendHeartbeats)
+            {
+                for (int heartbeat = 0; heartbeat < 4; heartbeat++)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(5), context.RequestAborted).ConfigureAwait(false);
+                    await context.Response.WriteAsync(": heartbeat\n\n", context.RequestAborted).ConfigureAwait(false);
+                    await context.Response.Body.FlushAsync(context.RequestAborted).ConfigureAwait(false);
+                }
+                await context.Response.WriteAsync("event: done\ndata: {}\n\n", context.RequestAborted).ConfigureAwait(false);
+                return;
+            }
             try
             {
                 await Task.Delay(Timeout.InfiniteTimeSpan, context.RequestAborted).ConfigureAwait(false);
@@ -131,6 +148,7 @@ public sealed class TestEngineHost(string responseName) : IAsyncDisposable
                 _sseCanceled.TrySetResult(true);
             }
         });
+        application.MapGet("/api/v1/agent/conversations", () => Results.Json(Array.Empty<object>()));
         application.MapPost("/api/v1/agent/files", async context =>
         {
             IFormCollection form = await context.Request.ReadFormAsync(

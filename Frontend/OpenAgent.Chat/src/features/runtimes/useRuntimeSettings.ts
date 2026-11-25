@@ -7,14 +7,19 @@ const fresh = (): RuntimeProfile => ({ id: '', name: '', provider: 'OpenCode', t
 
 export function useRuntimeSettings(selected: Ref<string>, notifyError: (error: unknown) => void) {
   const profiles = ref<RuntimeProfile[]>([])
+  const selectableProfiles = ref<RuntimeProfile[]>([])
   const draft = ref<RuntimeProfile>(fresh())
   const editing = ref(false)
   const saving = ref(false)
   const creating = ref(true)
   async function load(): Promise<void> {
     try {
-      profiles.value = await runtimeApi.list()
-      if (!profiles.value.some(profile => profile.id === selected.value)) selected.value = profiles.value[0]?.id || ''
+      const [saved, available] = await Promise.allSettled([runtimeApi.list(), runtimeApi.available()])
+      if (saved.status === 'rejected' && available.status === 'rejected') throw available.reason
+      profiles.value = saved.status === 'fulfilled' ? saved.value : []
+      const preset = available.status === 'fulfilled' ? available.value : []
+      selectableProfiles.value = [...profiles.value, ...preset.filter(profile => !profiles.value.some(saved => saved.id === profile.id))]
+      if (!selectableProfiles.value.some(profile => profile.id === selected.value)) selected.value = ''
     } catch (error) { notifyError(error) }
   }
   function create(): void { draft.value = fresh(); creating.value = true; editing.value = true }
@@ -37,6 +42,6 @@ export function useRuntimeSettings(selected: Ref<string>, notifyError: (error: u
       await load()
     } catch (error) { if (error !== 'cancel' && error !== 'close') notifyError(error) }
   }
-  function reset(): void { profiles.value = []; draft.value = fresh(); editing.value = false; creating.value = true }
-  return { profiles, draft, editing, saving, creating, load, create, edit, save, remove, reset }
+  function reset(): void { profiles.value = []; selectableProfiles.value = []; draft.value = fresh(); editing.value = false; creating.value = true }
+  return { profiles, selectableProfiles, draft, editing, saving, creating, load, create, edit, save, remove, reset }
 }

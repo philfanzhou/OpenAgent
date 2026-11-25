@@ -162,6 +162,77 @@ public sealed class RouterHostIntegrationTests : IClassFixture<RouterHostFixture
     }
 
     [Fact]
+    public async Task Chat_SseIdleTimeoutReleasesQuietUpstreamAndAllowsHeartbeats()
+    {
+        await using TestEngineHost idleEngine = new("idle-engine");
+        await using TestEngineHost heartbeatEngine = new("heartbeat-engine", sendHeartbeats: true);
+        await Task.WhenAll(idleEngine.StartAsync(), heartbeatEngine.StartAsync());
+        Dictionary<string, string?> settings = new() { ["RouterSettings:Routing:StreamingIdleTimeoutSeconds"] = "16" };
+        using RouterApplicationFactory idleRouter = _fixture.CreateFactory(idleEngine.Endpoint, settings: settings);
+        using RouterApplicationFactory heartbeatRouter = _fixture.CreateFactory(heartbeatEngine.Endpoint, settings: settings);
+        using HttpClient idleClient = idleRouter.CreateClient();
+        using HttpClient heartbeatClient = heartbeatRouter.CreateClient();
+        using HttpRequestMessage idleRequest = CreateChatRequest("idle", "/api/v1/agent/chat/sse");
+        using HttpRequestMessage heartbeatRequest = CreateChatRequest("heartbeats", "/api/v1/agent/chat/sse");
+        using CancellationTokenSource deadline = new(TimeSpan.FromSeconds(36));
+        Task<HttpResponseMessage> heartbeatResponse = heartbeatClient.SendAsync(heartbeatRequest, deadline.Token);
+        using HttpResponseMessage idleResponse = await idleClient.SendAsync(idleRequest,
+            HttpCompletionOption.ResponseHeadersRead, deadline.Token);
+        await using Stream idleStream = await idleResponse.Content.ReadAsStreamAsync(deadline.Token);
+        using StreamReader idleReader = new(idleStream);
+        Assert.Equal("event: token", await idleReader.ReadLineAsync(deadline.Token));
+        await idleEngine.WaitForSseCancellationAsync(deadline.Token);
+
+        using HttpResponseMessage completed = await heartbeatResponse;
+        Assert.Equal(HttpStatusCode.OK, completed.StatusCode);
+        Assert.Contains("event: done", await completed.Content.ReadAsStringAsync(deadline.Token));
+    }
+
+    [Fact]
+    public async Task RateLimiting_ConversationPollingUploadAndAnonymousUseIndependentBudgets()
+    {
+        Dictionary<string, string?> settings = new()
+        {
+            ["RouterSettings:RateLimiting:RequestsPerSecond"] = "0.001",
+            ["RouterSettings:RateLimiting:Conversations:BurstCapacity"] = "4",
+            ["RouterSettings:RateLimiting:Uploads:RequestsPerSecond"] = "0.001",
+            ["RouterSettings:RateLimiting:Uploads:BurstCapacity"] = "1",
+            ["RouterSettings:RateLimiting:Anonymous:RequestsPerSecond"] = "0.001",
+            ["RouterSettings:RateLimiting:Anonymous:BurstCapacity"] = "1"
+        };
+        using RouterApplicationFactory factory = _fixture.CreateFactory(burstCapacity: 1, settings: settings);
+        using HttpClient client = factory.CreateClient();
+        for (int request = 0; request < 5; request++)
+        {
+            using HttpRequestMessage poll = new(HttpMethod.Get, "/api/v1/agent/conversations");
+            AddAuthentication(poll);
+            using HttpResponseMessage response = await client.SendAsync(poll);
+            Assert.Equal(request < 4 ? HttpStatusCode.OK : HttpStatusCode.TooManyRequests, response.StatusCode);
+        }
+
+        using HttpRequestMessage upload = new(HttpMethod.Post, "/api/v1/agent/files");
+        AddAuthentication(upload);
+        using MultipartFormDataContent form = new();
+        form.Add(new ByteArrayContent(new byte[31 * 1024 * 1024]), "file", "large.bin");
+        upload.Content = form;
+        using HttpResponseMessage uploaded = await client.SendAsync(upload);
+        Assert.Equal(HttpStatusCode.Created, uploaded.StatusCode);
+        using HttpRequestMessage extraUpload = new(HttpMethod.Post, "/api/v1/agent/files");
+        AddAuthentication(extraUpload);
+        using HttpResponseMessage limitedUpload = await client.SendAsync(extraUpload);
+        Assert.Equal(HttpStatusCode.TooManyRequests, limitedUpload.StatusCode);
+
+        using HttpResponseMessage unauthorized = await client.GetAsync("/api/v1/agent/conversations");
+        using HttpResponseMessage limitedAnonymous = await client.GetAsync("/api/v1/agent/conversations");
+        Assert.Equal(HttpStatusCode.Unauthorized, unauthorized.StatusCode);
+        Assert.Equal(HttpStatusCode.TooManyRequests, limitedAnonymous.StatusCode);
+        Assert.NotNull(limitedAnonymous.Headers.RetryAfter);
+        using HttpRequestMessage chat = CreateChatRequest("chat uses a separate budget");
+        using HttpResponseMessage chatted = await client.SendAsync(chat);
+        Assert.Equal(HttpStatusCode.OK, chatted.StatusCode);
+    }
+
+    [Fact]
     public async Task Chat_AfterSseClientCancellation_DownstreamNotQuarantined()
     {
         // 用户停止生成（客户端断开 SSE）是正常取消：一次断开不得把下游 Engine

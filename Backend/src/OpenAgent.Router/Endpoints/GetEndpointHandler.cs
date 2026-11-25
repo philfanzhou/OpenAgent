@@ -46,7 +46,7 @@ internal static class GetEndpointHandler
 
         var normalizedPath = targetPath.StartsWith('/') ? targetPath : "/" + targetPath;
         var targetUrl = $"{targetEndpoint.TrimEnd('/')}{normalizedPath}";
-        var traceId = Activity.Current?.Id ?? context.TraceIdentifier;
+        var traceId = AgentProblemDetails.ResolveTraceId(context);
         ForwarderError error;
         try
         {

@@ -1,0 +1,21 @@
+name: openagent-audit-collector
+services:
+  audit-collector:
+    image: otel/opentelemetry-collector-contrib:0.149.0
+    command: ["--config=/etc/otelcol/audit-collector.yaml"]
+    environment:
+      OPENAGENT_AUDIT_GATEWAY_ENDPOINT: ${OPENAGENT_AUDIT_GATEWAY_ENDPOINT:?Set the audit gateway HTTP endpoint}
+      OPENAGENT_AUDIT_GATEWAY_AUTHORIZATION: ${OPENAGENT_AUDIT_GATEWAY_AUTHORIZATION:?Set the audit gateway Authorization header}
+    volumes:
+      - ./audit-collector.yaml:/etc/otelcol/audit-collector.yaml:ro
+      - ${OPENAGENT_AUDIT_QUEUE_DIR:?Set a private local queue directory for UID 10001}:/var/lib/otelcol
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    networks: [openagent]
+
+networks:
+  openagent:
+    external: true
+    name: openagent

@@ -9,6 +9,7 @@ internal static class RouterErrorCodes
     internal const string AgentIdConflict = "agent-id-conflict";
     internal const string AgentNotFound = "agent-not-found";
     internal const string AgentProviderUnavailable = "agent-provider-unavailable";
+    internal const string AgentAuthorizationUnavailable = "agent-authorization-unavailable";
     internal const string ConversationNotFound = "conversation-not-found";
     internal const string ConversationOwnerConflict = "conversation-owner-conflict";
     internal const string ConversationOwnerUnresolved = "conversation-owner-unresolved";

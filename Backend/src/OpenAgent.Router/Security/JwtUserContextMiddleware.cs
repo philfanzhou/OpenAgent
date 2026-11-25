@@ -44,10 +44,7 @@ public class JwtUserContextMiddleware
                     "A tenant identifier is required for this request.");
             }
 
-            var roles = context.User.Claims
-                .Where(c => c.Type == ClaimTypes.Role || c.Type == "roles")
-                .Select(c => c.Value)
-                .ToList();
+            List<string> roles = AgentRoleClaims.Read(context.User);
 
             var groups = context.User.Claims
                 .Where(c => c.Type == "groups" || c.Type == "group")

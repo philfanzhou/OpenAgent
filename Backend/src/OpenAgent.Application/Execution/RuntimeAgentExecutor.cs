@@ -14,26 +14,32 @@ namespace OpenAgent.Application.Execution;
 public sealed class RuntimeAgentExecutor
 {
     private readonly IAgentRuntimeResolver _profiles;
-    private readonly IAgentRuntimeDriver _driver;
+    private readonly IReadOnlyDictionary<string, IAgentRuntimeDriver> _drivers;
     private readonly ConversationAgentResolver _conversations;
     private readonly FileAssetRequestResolver _files;
     private readonly RuntimePreparation _preparation;
+    private readonly TurnAuditWarning _auditWarning;
     private readonly IRuntimeProfileRepository? _runtimes;
+    private readonly IConfiguredRuntimeProfiles? _configuredRuntimes;
 
     internal RuntimeAgentExecutor(
         IAgentRuntimeResolver profiles,
-        IAgentRuntimeDriver driver,
+        IEnumerable<IAgentRuntimeDriver> drivers,
         ConversationAgentResolver conversations,
         FileAssetRequestResolver files,
         RuntimePreparation preparation,
-        IRuntimeProfileRepository? runtimes = null)
+        TurnAuditWarning auditWarning,
+        IRuntimeProfileRepository? runtimes = null,
+        IConfiguredRuntimeProfiles? configuredRuntimes = null)
     {
         _profiles = profiles;
-        _driver = driver;
+        _drivers = drivers.ToDictionary(driver => driver.Provider, StringComparer.Ordinal);
         _conversations = conversations;
         _files = files;
         _preparation = preparation;
+        _auditWarning = auditWarning;
         _runtimes = runtimes;
+        _configuredRuntimes = configuredRuntimes;
     }
 
     public async Task<AgentResponse> ExecuteAsync(AgentRequest request, IAgentUserContext user, CancellationToken cancellationToken)
@@ -85,7 +91,10 @@ public sealed class RuntimeAgentExecutor
             ConversationType = request.ConversationType,
             TraceId = string.IsNullOrWhiteSpace(request.TraceId) ? Guid.NewGuid().ToString("N") : request.TraceId
         };
-        AuditActivityEnrichment.Publish(turn, user.Username);
+        if (!AuditActivityEnrichment.Publish(turn, user.Username))
+        {
+            _auditWarning.ReportMissingIdentity();
+        }
         // 用户输入立即上标签：即使轮次中途失败，审计台也能看到用户问了什么。
         AuditActivityEnrichment.PublishContent(request.Query, null);
         StringBuilder responseText = new();
@@ -94,11 +103,18 @@ public sealed class RuntimeAgentExecutor
         {
             RuntimeProfile? runtime = _runtimes is null ? null
                 : await _runtimes.GetAsync(turn.TenantId, request.RuntimeId, cancellationToken).ConfigureAwait(false);
-            if (runtime is null || runtime.Provider != "OpenCode" || runtime.TurnTimeoutSeconds is < 1 or > 86400)
+            IReadOnlyList<RuntimeProfile> configured = _configuredRuntimes?.ListForTenant(turn.TenantId) ?? [];
+            runtime ??= configured.FirstOrDefault(item => item.Id == request.RuntimeId);
+            if (runtime is null || runtime.TurnTimeoutSeconds is < 1 or > 86400
+                || (runtime.Provider != "OpenCode" && !configured.Any(item => item.Provider == runtime.Provider)))
             {
                 throw new AgentException(AgentErrorCode.InvalidRequest, "The selected runtime is unavailable.");
             }
             profile.Runtime = runtime;
+        }
+        if (!_drivers.TryGetValue(profile.Runtime?.Provider ?? "OpenCode", out IAgentRuntimeDriver? driver))
+        {
+            throw new AgentException(AgentErrorCode.InvalidRequest, "The selected runtime provider is unavailable.");
         }
         AgentRequest resolved = new()
         {
@@ -117,7 +133,8 @@ public sealed class RuntimeAgentExecutor
         }
         ResolvedFileRequest attachments = await _files.ResolveAsync(resolved, user, cancellationToken).ConfigureAwait(false);
         await using RuntimePreparationScope scope = await _preparation.CreateAsync(profile, turn, user, request.Query, attachments.Files, cancellationToken).ConfigureAwait(false);
-        IAsyncEnumerator<AgentStreamEvent> events = _driver.RunAsync(scope.InvocationRequest, cancellationToken).GetAsyncEnumerator();
+        IAsyncEnumerator<AgentStreamEvent> events = driver.RunAsync(scope.InvocationRequest, cancellationToken).GetAsyncEnumerator();
+        using ToolAuditTrail tools = new(turn, user.Username);
         bool finalized = false;
         Exception? failure = null;
         TokenUsage? usage = null;
@@ -153,16 +170,8 @@ public sealed class RuntimeAgentExecutor
                     {
                         responseText.Append(item.Content);
                     }
+                    tools.Observe(item);
                     yield return item;
-                    // 工具调用过程审计：调用开始建 span（携带身份与参数），结果到达时关闭。
-                    if (item.Type == AgentStreamEventType.ToolCall)
-                    {
-                        AuditActivityEnrichment.StartToolCall(turn, user.Username, item);
-                    }
-                    else if (item.Type == AgentStreamEventType.ToolResult)
-                    {
-                        AuditActivityEnrichment.EndToolCall(item);
-                    }
                     // 平台 update_plan 工具的结果同步映射为 PlanUpdated 事件，前端任务
                     // 清单不依赖解析通用工具结果；ACP 原生 plan 更新由驱动事件另行覆盖。
                     if (item is { Type: AgentStreamEventType.ToolResult, ToolName: "update_plan" } plan)
@@ -182,8 +191,6 @@ public sealed class RuntimeAgentExecutor
                 failure = error;
                 throw;
             }
-            // 轮次结束：关闭未匹配到结果的工具 span（审计兜底，防悬挂）。
-            AuditActivityEnrichment.ClosePendingToolSpans();
             // done/usage 只能在保存成功后发送，客户端收到终态即可安全刷新会话。
             // 收尾时把完整问答写上 Activity：审计台由此展示对话内容（网关先掩码再转发）。
             AuditActivityEnrichment.PublishContent(request.Query, responseText.ToString());

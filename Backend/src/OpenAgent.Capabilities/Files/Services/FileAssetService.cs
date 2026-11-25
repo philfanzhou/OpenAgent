@@ -79,6 +79,8 @@ internal sealed class FileAssetService : IFileAssetService
                 cancellationToken).ConfigureAwait(false);
             FileAsset ready = CopyWithStorage(pending, stored.ObjectKey, FileAssetState.Ready);
             await _repository.UpdateAsync(ready, cancellationToken).ConfigureAwait(false);
+            FileAssetMetrics.StoredBytes.Add(ready.Length);
+            FileAssetMetrics.StoredAssets.Add(1);
             return ready;
         }
         catch
@@ -144,6 +146,17 @@ internal sealed class FileAssetService : IFileAssetService
         return assets
             .Where(asset => IsOwner(asset, scope))
             .ToArray();
+    }
+
+    public Task<IReadOnlyList<FileAsset>> ListRecentOutputsAsync(FileAssetScope scope, int limit, CancellationToken cancellationToken)
+    {
+        EnsureEnabled();
+        ValidateScope(scope);
+        if (string.IsNullOrWhiteSpace(scope.ConversationId) || limit <= 0)
+        {
+            throw new AgentException(AgentErrorCode.InvalidRequest, "A conversation and positive limit are required to list recent outputs.");
+        }
+        return _repository.ListRecentOutputsAsync(scope.ConversationId, scope.TenantId, scope.UserId, limit, cancellationToken);
     }
 
     public async Task EnsureReferencesAsync(

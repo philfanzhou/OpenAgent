@@ -78,44 +78,20 @@ internal sealed class AgentSelectionService(
             return selection;
         }
 
-        using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken);
-        timeout.CancelAfter(TimeSpan.FromMilliseconds(_options.TimeoutMs));
-        try
+        IReadOnlyList<AgentCatalogEntry> entries = await catalog.GetAuthorizedAsync(
+            requestContext, cancellationToken).ConfigureAwait(false);
+        (AgentCatalogEntry? Entry, string Source) decision = await SelectNewAsync(
+            requestContext, message, entries, cancellationToken).ConfigureAwait(false);
+        if (decision.Entry == null)
         {
-            IReadOnlyList<AgentCatalogEntry> entries = await catalog.GetAuthorizedAsync(
-                requestContext,
-                timeout.Token).ConfigureAwait(false);
-            (AgentCatalogEntry? Entry, string Source) selection = await SelectNewAsync(
-                requestContext,
-                message,
-                entries,
-                timeout.Token).ConfigureAwait(false);
-            if (selection.Entry == null)
-            {
-                RouterMeter.RecordProviderSelection("unavailable");
-                return null;
-            }
+            RouterMeter.RecordProviderSelection("unavailable");
+            return null;
+        }
 
-            await EnsureConversationBindingAsync(
-                requestContext,
-                conversationId,
-                affinity,
-                selection.Entry.ProviderId,
-                cancellationToken).ConfigureAwait(false);
-            AgentSelection result = new(
-                selection.Entry.Agent.AgentId,
-                selection.Entry.ProviderId);
-            RouterMeter.RecordProviderSelection(selection.Source);
-            return result;
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            throw new AgentRoutingException(
-                StatusCodes.Status503ServiceUnavailable,
-                RouterErrorCodes.AgentProviderUnavailable,
-                "Agent selection timed out");
-        }
+        await EnsureConversationBindingAsync(requestContext, conversationId, affinity,
+            decision.Entry.ProviderId, cancellationToken).ConfigureAwait(false);
+        RouterMeter.RecordProviderSelection(decision.Source);
+        return new AgentSelection(decision.Entry.Agent.AgentId, decision.Entry.ProviderId);
     }
 
     private async Task<(AgentCatalogEntry? Entry, string Source)> SelectNewAsync(

@@ -109,5 +109,5 @@ internal sealed class RedisServiceDiscoveryRouteTable : IRouteTable
     }
 
     private static string BuildEndpoint(EngineRegistryEntry entry) =>
-        $"http://{entry.Host}:{entry.Port}";
+        new UriBuilder("http", entry.Host, entry.Port).Uri.GetLeftPart(UriPartial.Authority);
 }

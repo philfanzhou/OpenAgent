@@ -232,18 +232,19 @@ public class InternDecisionProviderTests
     }
 
     [Fact]
-    public void BuildCandidates_InjectsTheFallbackAgentWhenMissing()
+    public async Task RecognizeIntent_UsesFirstAuthorizedCandidateWhenFallbackIsMissing()
     {
-        InternDecisionProvider provider = CreateProvider(new StubHandler(_ => Json("{}")));
+        var handler = new StubHandler(_ => Json("{}"));
+        using InternDecisionProvider provider = CreateProvider(handler);
         AgentSummary[] agents =
         [
             new() { AgentId = "order-agent", Name = "Order", Description = "Orders" }
         ];
 
-        IReadOnlyDictionary<string, string> candidates = provider.BuildCandidates(agents);
-
-        // Without a fallback entry the model is forced to pick arbitrarily.
-        Assert.True(candidates.ContainsKey(FallbackAgent));
+        await provider.RecognizeIntentAsync(Context(), "intent-router", agents, "orders");
+        RouteBody body = handler.LastBody<RouteBody>();
+        Assert.Equal("order-agent", body.Fallback);
+        Assert.Equal("order-agent", Assert.Single(body.Agents).Key);
     }
 
     [Fact]
@@ -277,11 +278,8 @@ public class InternDecisionProviderTests
     }
 
     [Fact]
-    public void BuildCandidates_StillInjectsTheFallbackWhenTheListIsFull()
+    public void BuildCandidates_DoesNotAddAnUnauthorizedFallbackWhenTheListIsFull()
     {
-        // 62 is the service ceiling, and a fallback outside the candidate set is
-        // rejected outright. Dropping one candidate is a routing quality cost;
-        // omitting the fallback would disable routing for the request entirely.
         InternDecisionProvider provider = CreateProvider(new StubHandler(_ => Json("{}")));
         AgentSummary[] agents = Enumerable.Range(0, 62)
             .Select(i => new AgentSummary { AgentId = $"agent-{i:D3}", Description = "desc" })
@@ -290,7 +288,7 @@ public class InternDecisionProviderTests
         IReadOnlyDictionary<string, string> candidates = provider.BuildCandidates(agents);
 
         Assert.Equal(62, candidates.Count);
-        Assert.True(candidates.ContainsKey(FallbackAgent));
+        Assert.False(candidates.ContainsKey(FallbackAgent));
     }
 
     [Fact]
@@ -326,7 +324,27 @@ public class InternDecisionProviderTests
 
     // -- helpers ---------------------------------------------------------
 
-    private static InternDecisionProvider CreateProvider(StubHandler handler, string baseUrl = "http://10.51.1.106:8000")
+    [Fact]
+    public async Task RecognizeIntent_StopsSendingDuringOutageAndProbesAfterCooldown()
+    {
+        TestClock clock = new();
+        bool recovered = false;
+        var handler = new StubHandler(_ => recovered
+            ? Json("""{"agent":"order-agent","confidence":0.9,"action":"execute"}""")
+            : new HttpResponseMessage(System.Net.HttpStatusCode.ServiceUnavailable));
+        using InternDecisionProvider provider = CreateProvider(handler, clock: clock);
+        for (int count = 0; count < 6; count++)
+            Assert.Null(await provider.RecognizeIntentAsync(Context(), "intent-router", Candidates(), "orders"));
+        Assert.Equal(5, handler.CallCount);
+
+        recovered = true;
+        clock.Now += TimeSpan.FromSeconds(30);
+        Assert.Equal("order-agent", (await provider.RecognizeIntentAsync(Context(), "intent-router", Candidates(), "orders"))?.AgentId);
+        Assert.NotNull(await provider.RecognizeIntentAsync(Context(), "intent-router", Candidates(), "orders"));
+        Assert.Equal(7, handler.CallCount);
+    }
+
+    private static InternDecisionProvider CreateProvider(StubHandler handler, string baseUrl = "http://127.0.0.1:8000", TimeProvider? clock = null)
     {
         // The production shape is RouterSettings:AgentProviders:Providers:{i}:Settings,
         // so the section handed to the provider holds the leaf keys directly.
@@ -335,7 +353,6 @@ public class InternDecisionProviderTests
             {
                 ["Settings:BaseUrl"] = baseUrl,
                 ["Settings:RoutePath"] = "/v1/route",
-                ["Settings:TimeoutMs"] = "5000",
                 ["Settings:FallbackAgentId"] = FallbackAgent
             })
             .Build();
@@ -344,7 +361,13 @@ public class InternDecisionProviderTests
             "intern-decision",
             configuration.GetSection("Settings"),
             NullLogger<InternDecisionProvider>.Instance,
-            handler);
+            handler, clock: clock);
+    }
+
+    private sealed class TestClock : TimeProvider
+    {
+        internal DateTimeOffset Now { get; set; } = DateTimeOffset.UnixEpoch;
+        public override DateTimeOffset GetUtcNow() => Now;
     }
 
     private static AgentProviderRequestContext Context() =>

@@ -74,6 +74,8 @@ internal static class RouterHttpLog
         name.Equals("Authorization", StringComparison.OrdinalIgnoreCase)
         || name.Equals("Proxy-Authorization", StringComparison.OrdinalIgnoreCase)
         || name.Equals("Cookie", StringComparison.OrdinalIgnoreCase)
+        || name.Equals("baggage", StringComparison.OrdinalIgnoreCase)
+        || name.Equals("Correlation-Context", StringComparison.OrdinalIgnoreCase)
         || name.Equals("Set-Cookie", StringComparison.OrdinalIgnoreCase)
         || name.Contains("api-key", StringComparison.OrdinalIgnoreCase)
         || name.Contains("apikey", StringComparison.OrdinalIgnoreCase)

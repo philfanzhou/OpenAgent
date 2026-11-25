@@ -9,6 +9,61 @@
 - 每项独立 PR；写明拥有目录、共享文件、契约、验证和回退。公共 DTO、Host Program、项目/包引用、数据库模型/迁移及前端 app 由集成人协调。同一文件的迁移先合入共同基线。
 - 后端范围以下以 `Backend/src/OpenAgent.*` 为根，前端以 `Frontend/OpenAgent.Chat/src/` 为根。结构迁移保持协议和行为兼容；功能/schema 变化单独验收及制定回退方案。
 
+## OpenAgent 稳定性修复计划（2026-11-25）
+
+**实施范围仅限 11 月 24 日邮件《OpenAgent平台开发任务支持》及其两份 Markdown 附件明确提出的修复和验收项。** 条目编号采用详细版，首批顺序采用简要版的建议。每处改动对应到附件条目及其验收条件。关联 GitHub Issue 和 PR 用于核对当前状态、已合入内容及重叠范围。GitHub `dev` 核对基线为 `87319d1e`。当前修复在本地 worktree，等待推送确认。 [dev 基线](https://github.com/philfanzhou/OpenAgent/commit/87319d1e)
+
+### 实施顺序
+
+1. **首批先做第 2 项**。用本地 HTTP 和 OTLP 接收端建立审计回归测试，再补告警。第 3 项可先核对事件来源并确认去重规则。第 5 项可先做导出监测，本地补传演练通过后再安排测试环境切换。
+2. **第二批补齐已知缺口**。优先复核第 4 项的 S3 故障路径和第 6、7 项与 PR #308 的分工。第 8、9、11、12、13 项按各自前置条件拆分交付。第 10 项先量化容量和恢复成本，清理策略另行确认。
+3. **第 1 项先做适配器验证**。验证 Pi 的 ACP 与平台工具能力后再做产品接入。上线验收依赖第 2、3 项及第 4 项的归档故障隔离。
+
+### 首批审计修复
+
+| 附件项 | 状态与主责范围 | 实施与验收 |
+|---|---|---|
+| **2 · 轮次审计身份防回归** | 建议首做，待确认。Application/Observability、Application/Execution、Engine.Host 的续播端点及 Engine.Tests。`f22d7ec5` 已修复生产者 span 的导出，仍缺失败告警和真实导出验证。 [修复提交](https://github.com/philfanzhou/OpenAgent/commit/f22d7ec5) · [相关 Issue #267](https://github.com/philfanzhou/OpenAgent/issues/267) | 执行步骤见下文。复用生产宿主的 OTLP 注册与现有 HTTP 测试夹具。 |
+| **3 · 原生工具和外部 MCP 审计** | 待确认平台工具去重规则。Application/Observability 与 Runtime 工具事件。现有 `OpenAgent` 工具源和 Engine 的订阅不匹配，待结束记录跨轮次共享。 [相关 Issue #278](https://github.com/philfanzhou/OpenAgent/issues/278) | 通过宿主已订阅的源导出，按轮次及调用 ID 配对和收尾。单测仅监听宿主实际订阅的源，并验证审计源均在宿主订阅列表内。实测原生、外部 MCP、平台工具、同 ID 并发轮次、取消和异常。校验孤立结果不生成记录，平台工具每次调用只显示一条，属性名与脱敏规则兼容审计网关。 |
+| **5 · 审计导出告警与补传** | 待开发。Engine/Hosting、Collector 和部署配置。现有 PR #313 面向 `main`，涉及 OTLP 信号、认证和关联。 [相关 PR #313](https://github.com/philfanzhou/OpenAgent/pull/313) | 先验证 trace 导出失败的限频告警与计数，再配置持久队列、重试、容量与队列监控。使用 traces 专用端点，保留网关协议和认证契约。测试环境模拟网关离线、产生会话和工具记录、重启 Collector、恢复网关，逐条核对补传与归属。上线前确认数据目录访问权限、容量和保留期。同步清理无效环境变量和无来源订阅。回退时让 Engine 和 Router 重新直连原网关。 |
+
+### 第 2 项实施与验收
+
+1. 复用 `Backend/tests/OpenAgent.Engine.Tests/Hosting/OtlpLogExportIntegrationTests.cs` 的接收端和现有 SSE 测试夹具，用真实聊天 HTTP 路由、生产宿主的 tracing 注册和 fake runtime。解析收到的 OTLP traces，断言 `OpenAgent.ConversationRun` 来自 `OpenAgent.Engine`，携带会话和用户标签，与聊天 HTTP span 同属一个 TraceId，且该 HTTP span 是其直接父级。
+2. 在测试工作区临时将生产者换回事故时的裸 `new Activity()`，确认上一步因为收不到有效的生产者 span 失败。撤回实验性改动后重新跑通。
+3. 让 `Backend/src/OpenAgent.Application/Observability/AuditActivityEnrichment.cs` 的 `Publish` 报告身份写入结果。`RuntimeAgentExecutor` 仅在宿主配置了 traces 导出且写入失败时，记录有固定 EventId 的限频 Warning。验证健康轮次、未配置导出、无 Activity、裸 Activity 及连续失败，确认失败告警不影响聊天响应。实际导出由接收端测试判定。
+4. 发真实工具桥请求，验证 `/runtime-tools` 的 HTTP span 有会话 ID 与工具名。为已通过归属校验的续播请求补会话标签，验证 `GET /api/v1/agent/conversations/{conversationId}/stream` 实际导出该标签。跨服务父子关系由第 11 项验收。
+5. 运行 Application、Engine 的相关测试及架构门禁，记录命令、结果和反例。回退以本项 PR 为单位。涉及生产的审计与 Auto 检查在部署后单独记录。
+
+### 其余任务与前置条件
+
+| 附件项 | 状态与主责范围 | 实施与验收 |
+|---|---|---|
+| 1 · Pi 运行时 | 待调研。Runtime、Engine 的运行时配置和 Chat 选择入口。上线前完成第 2、3 项及第 4 项归档故障验收。 | 固定 Pi 和适配器版本，先验证握手、取消、续聊与工具桥。允许用户选择运行时，默认仍为 OpenCode。用同一套 Agent 验证两种运行时的聊天、工具、文件和审计，再验已有会话切换后保留会话 ID、历史及附件，且不重放历史工具。 |
+| 4 · 自动归档故障隔离 | 部分合入。Capabilities/Files、Runtime 和 Engine.Tests。#320 已隔离部分保存和恢复失败，`FileExchangeContext.SaveOutputsAsync` 仍需验证对象存储写入故障与独立时间预算。 [PR #320](https://github.com/philfanzhou/OpenAgent/pull/320) | 用真实 S3 兼容存储注入写入失败、超时及恢复，验证 SSE 正常结束、正文持久化、失败附件无下载链接、显式发布明确失败且恢复后可重试。另验用户取消语义。 |
+| 6 · ACL 数据不可用 | 待开发。Router/Security、Agent 列表和选择入口。PR #308 未涉及 Router 文件。 [Issue #265](https://github.com/philfanzhou/OpenAgent/issues/265) · [PR #308](https://github.com/philfanzhou/OpenAgent/pull/308) | 区分无 ACL、拒绝和读取故障。故障时使用有效快照，缺快照时明确返回 503。验证冷缓存、短暂故障、快照过期和撤权，核对列表、显式选择、Auto 候选与 fallback 的权限一致性。 |
+| 7 · Engine 直连授权 | 待核对。部署入口、Router 与 Engine.Host。先复核 PR #308 的执行授权覆盖，以及生产允许直连的端点。 [Issue #265](https://github.com/philfanzhou/OpenAgent/issues/265) · [PR #308](https://github.com/philfanzhou/OpenAgent/pull/308) | 明确 Agent 授权规则由谁执行。用同一身份验证 Router 和获准的直连入口，允许与拒绝结果一致，文件分享和服务间接口继续可用。 |
+| 8 · `intern-decision` 稳定与安全 | 待开发。Router/Providers、Agent 选择及部署配置。调整默认地址前先设置并验证目标环境的显式配置。 | 复用受控 HTTP handler，收敛超时，添加有界熔断，保护日志与授权候选。用本地假服务验证重定向、故障、恢复、超时与取消，验证 Auto 正常选路及故障时的授权回退。 |
+| 9 · Router 容器降权 | 待开发。Router 镜像、生产与预览 Compose。第 13 项的 Router 子项归此交付。 | 验证非 root、能力移除、提权限制和只读根文件系统。按需配置可写路径，实测健康、转发、Auto 与 SSE。 |
+| 10 · 文件容量与保留 | 先度量，待业务和运维确认保留及删除策略。Capabilities/Files、Framework 与对象存储。 [历史 Issue #185](https://github.com/philfanzhou/OpenAgent/issues/185) | 先量化新增量、占用量、恢复耗时和查询上限。规则确认后验证过期无引用文件可清理，已发布文件、有效分享及续聊素材仍可访问。 |
+| 11 · 跨组件追踪关联 | 待验证。Router 转发、Engine.Host、Runtime 工具桥。先确认审计网关的归集规则，第 2 项负责续播会话标签。 [相关 Issue #267](https://github.com/philfanzhou/OpenAgent/issues/267) | 用 OTLP 记录实际父子关系再补上下文传播和追踪 ID 校验。真实链路验证 Router、Engine 和桥属于同一 trace，并发及连续轮次归属正确，现有审计标签兼容。 |
+| 12 · Router 运行问题 | 待拆分。Router 限流、SSE 转发、实例隔离、Router 与 Engine 的角色解析。 | 分别验证各入口限流不影响正常轮询及上传，有心跳的 SSE 可完成，单次故障不误摘除实例，持续故障可隔离并恢复。角色规则先对照实际 IdP 声明，再验证两端对同一令牌的结果。 |
+| 13 · Redis 与 Keycloak 配置 | 待安排维护窗口。基础设施 Compose。Router 降权归第 9 项，无效 OTLP 环境变量归第 5 项。 | 明确所有 Redis 客户端和备份恢复步骤，再统一切换认证、收紧网络暴露与注册表地址范围。Keycloak 管理员凭据由部署配置提供。切换后验证内部连接、路由、权限及 Auto。 |
+
+### 验收记录
+
+下表记录当前交付状态。上面的计划表保留邮件核对时的起点。
+
+| 邮件条目 | 本地验证 | 待验收或待决定 |
+|---|---|---|
+| 1 · Pi | 真实适配器 0.1.8 通过建会、关闭、平台历史重放、图片输入、HTTP MCP 调用、流式正文和取消。真实 OpenCode 和 Pi 连接同一个回环模型，已验证在同一个 Engine 会话切换后保留历史及 Agent，旧工具调用未重复执行。试点镜像已本地构建并核对版本。 | 试点环境待验收实际模型、文件交付、压缩后续聊及审计结果。 |
+| 2、3、5、11 · 审计 | 本地 OTLP 检查 Router 到 Engine 和对话轮次的父子关系、聊天、续播、原生工具、外部 MCP、工具桥和导出失败告警及计数。Collector 在网关离线时接收两条测试记录，重建后补传成功。 | 在真实审计台核对平台工具去重、脱敏和会话归集。Collector 切换前由运维确定队列容量与保留期。 |
+| 4 · 自动归档 | 隔离 SeaweedFS 的真实 S3 拒绝写入时，SSE 正常结束且正文持久化，文件保持未关联。恢复写权限后存储对象读取成功。独立时限和调用者取消均有回归。 | 部署后随业务链路验收。 |
+| 6、7、8、9、12、13 · Router 与部署 | ACL 快照和熔断由本地测试验证。Nginx、Router 和 Redis 容器用同一身份验证两个公开入口均执行 Agent ACL，分享仍可访问；另实测 Auto 和 SSE 转发。Router 实际转发测试覆盖空闲连接释放、心跳保活、31 MiB 上传、会话轮询及分类限流。容器 UID 非 0、有效 capabilities 为 0、禁止提权且根目录只读。Redis 拒绝未认证请求、接受认证 PING 且无宿主端口。 | 生产入口授权、实际 IdP 声明、决策服务合同、Redis 切换及 Keycloak 现有账号轮换，需要对应环境和维护窗口。 |
+| 10 · 文件保留 | 25 个历史成品仅查询 8 个候选并读取 2 个对象。记录上传数量、字节数和恢复耗时。容量盘点查询已在 PostgreSQL 验证消息、有效分享、续聊、无引用成品和其他资产。 [容量与保留盘点](../database/tables/FileAssets.md#容量与保留盘点) | 实际存量占用由对象存储观测。删除对象需先确定保留期限、引用标准和清理规则。 |
+
+每个 PR 记录负责人、基线、改动范围、本地验证命令、结果和回退方式。涉及 Engine、Runtime 或 Router 的发布在获准的环境执行附件附 A 的回归。发送一条含工具调用的消息，确认审计库收到新会话与工具记录并在审计台可见，再新建 Auto 会话验证实际路由。生产验收结果在发布后单独登记。 [部署与回退](../operations/deployment.md)
+
 ## 已完成基线
 
 - [x] **B01 Core 第一批边界**：功能归域、模块 DI、MCP/Skill 扩展接口、Runner 客户端及产物发布复用、测试目录与依赖门禁。证据：[PR #158](https://github.com/philfanzhou/OpenAgent/pull/158)。

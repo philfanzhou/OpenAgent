@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using OpenAgent.Contracts.Runtime;
 using OpenAgent.Runtime.OpenCode;
+using OpenAgent.Runtime.Pi;
 
 namespace OpenAgent.Runtime;
 
@@ -49,6 +50,15 @@ public static class RuntimeServiceExtensions
         services.TryAddSingleton<RuntimeToolBridge>();
         services.TryAddSingleton<OpenCodeProcessKeeper>();
         services.TryAddSingleton<IAgentRuntimeDriver, OpenCodeRuntime>();
+        PiOptions pi = configuration.GetSection("Pi").Get<PiOptions>() ?? new PiOptions();
+        if (pi.Enabled)
+        {
+            if (!Path.IsPathFullyQualified(pi.Executable) || pi.AllowedTenants.Length == 0)
+                throw new InvalidOperationException("Pi requires an absolute executable path and an explicit tenant allowlist.");
+            services.TryAddSingleton(pi);
+            services.TryAddEnumerable(ServiceDescriptor.Singleton<IAgentRuntimeDriver, PiRuntime>());
+            services.TryAddSingleton<IConfiguredRuntimeProfiles, PiProfiles>();
+        }
         return services;
     }
 

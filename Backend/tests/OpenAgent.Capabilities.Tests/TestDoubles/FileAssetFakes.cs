@@ -12,6 +12,7 @@ internal sealed class RecordingFileAssetRepository : IFileAssetRepository
     public Dictionary<string, FileAsset> Assets { get; } = [];
     public HashSet<string> References { get; } = new(StringComparer.Ordinal);
     public Exception? ReferenceFailure { get; set; }
+    public int? LastOutputCandidateLimit { get; private set; }
 
     public Task CreateAsync(FileAsset asset, CancellationToken cancellationToken)
     {
@@ -34,6 +35,15 @@ internal sealed class RecordingFileAssetRepository : IFileAssetRepository
         Task.FromResult<IReadOnlyList<FileAsset>>(Assets.Values
             .Where(asset => References.Contains($"{conversationId}:{asset.FileId}"))
             .ToArray());
+
+    public Task<IReadOnlyList<FileAsset>> ListRecentOutputsAsync(
+        string conversationId, string tenantId, string userId, int limit, CancellationToken cancellationToken)
+    {
+        LastOutputCandidateLimit = limit;
+        return Task.FromResult<IReadOnlyList<FileAsset>>(Assets.Values.Where(asset => asset.TenantId == tenantId && asset.OwnerUserId == userId
+            && asset.State == FileAssetState.Ready && asset.RuntimeOutputPath != null && References.Contains($"{conversationId}:{asset.FileId}"))
+            .OrderByDescending(asset => asset.CreatedAt).ThenByDescending(asset => asset.FileId, StringComparer.Ordinal).Take(limit).ToArray());
+    }
 
     public Task EnsureConversationReferencesAsync(
         string conversationId,
@@ -64,6 +74,9 @@ internal sealed class RecordingFileAssetRepository : IFileAssetRepository
 /// </summary>
 internal sealed class EmptyFileAssetRepository : IFileAssetRepository
 {
+    public Task<IReadOnlyList<FileAsset>> ListRecentOutputsAsync(
+        string conversationId, string tenantId, string userId, int limit, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<FileAsset>>([]);
     public Task CreateAsync(FileAsset asset, CancellationToken cancellationToken) => Task.CompletedTask;
     public Task UpdateAsync(FileAsset asset, CancellationToken cancellationToken) => Task.CompletedTask;
     public Task<FileAsset?> GetAsync(string fileId, CancellationToken cancellationToken) =>

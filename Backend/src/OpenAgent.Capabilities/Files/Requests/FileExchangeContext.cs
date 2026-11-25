@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OpenAgent.Capabilities.Files.Services;
@@ -106,8 +107,11 @@ internal sealed class FileExchangeContext(
 
     private async Task<IReadOnlyList<RuntimeWorkspaceFile>> RestoreOutputsAsync(CancellationToken ct)
     {
-        IReadOnlyList<FileAsset> referenced = await files.ListAsync(execution.Scope!, ct).ConfigureAwait(false);
-        foreach (FileAsset asset in referenced.OrderByDescending(asset => asset.CreatedAt).ThenByDescending(asset => asset.FileId, StringComparer.Ordinal))
+        long started = Stopwatch.GetTimestamp();
+        // Inspect a bounded set even when a long conversation has many historical versions.
+        int candidates = options.Value.MaxOutputFiles * 4;
+        IReadOnlyList<FileAsset> referenced = await files.ListRecentOutputsAsync(execution.Scope!, candidates, ct).ConfigureAwait(false);
+        foreach (FileAsset asset in referenced)
         {
             if (asset.State == FileAssetState.Ready && asset.RuntimeOutputPath is { } path)
             {
@@ -146,6 +150,7 @@ internal sealed class FileExchangeContext(
                 gate.Transfers.Release();
             }
         }
+        FileAssetMetrics.RestoreDuration.Record(Stopwatch.GetElapsedTime(started).TotalSeconds);
         return restored;
     }
 
@@ -156,11 +161,13 @@ internal sealed class FileExchangeContext(
     private async Task SaveOutputsAsync(CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
+        using CancellationTokenSource budget = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        budget.CancelAfter(options.Value.AutoSaveTimeoutMs);
         try
         {
             foreach (string path in _workspace!.EnumerateOutputPaths())
             {
-                ct.ThrowIfCancellationRequested();
+                budget.Token.ThrowIfCancellationRequested();
                 if (_outputFiles >= options.Value.MaxOutputFiles || _outputBytes >= options.Value.MaxOutputBytes)
                 {
                     logger.LogWarning("Automatic output saving stopped at the turn limit. TraceId={TraceId}", execution.Turn?.TraceId);
@@ -169,7 +176,7 @@ internal sealed class FileExchangeContext(
 
                 try
                 {
-                    await ExportAsync(path, fileName: null, ct).ConfigureAwait(false);
+                    await ExportAsync(path, fileName: null, budget.Token).ConfigureAwait(false);
                 }
                 catch (Exception error) when (IsUnavailableOutput(error))
                 {
@@ -177,6 +184,15 @@ internal sealed class FileExchangeContext(
                     LogSkippedOutput("save", error);
                 }
             }
+        }
+        catch (OperationCanceledException error) when (budget.IsCancellationRequested && !ct.IsCancellationRequested)
+        {
+            LogSkippedOutput("save timeout", error);
+        }
+        catch (AgentException error) when (error.ErrorCode == AgentErrorCode.DependencyUnavailable)
+        {
+            ct.ThrowIfCancellationRequested();
+            LogSkippedOutput("save", error);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {

@@ -60,11 +60,7 @@ internal sealed class AgentUserContextMiddleware
         string? email = context.User.FindFirst("email")?.Value
             ?? context.User.FindFirst(ClaimTypes.Email)?.Value;
         string? tenantId = TenantIdentityResolver.Resolve(context.User, context.Request.Headers);
-        List<string> roles = context.User.Claims
-            .Where(claim => claim.Type == ClaimTypes.Role || claim.Type is "roles" or "role")
-            .Select(claim => claim.Value)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        List<string> roles = AgentRoleClaims.Read(context.User);
         List<string> groups = context.User.Claims
             .Where(claim => claim.Type is "groups" or "group")
             .Select(claim => claim.Value)

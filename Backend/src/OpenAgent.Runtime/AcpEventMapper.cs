@@ -38,24 +38,24 @@ internal sealed class AcpEventMapper(string? toolNamePrefix = null, string? sess
                 };
                 break;
             case ToolCall call:
-                ToolState state = new(Name(call.Name ?? call.Title), call.RawInput, call.Content, call.RawOutput);
+                ToolState state = new(call.Name ?? call.Title, call.RawInput, call.Content, call.RawOutput);
                 _tools[call.ToolCallId] = state;
                 yield return Call(call.ToolCallId, state);
                 if (call.Status is "completed" or "failed")
                 {
                     state.Completed = true;
-                    yield return Result(call.ToolCallId, state);
+                    yield return Result(call.ToolCallId, state, call.Status == "failed");
                 }
                 break;
             case ToolCallUpdate patch:
                 bool first = !_tools.TryGetValue(patch.ToolCallId, out ToolState? current);
-                current ??= new(Name(patch.Name.Value ?? patch.Title.Value ?? "tool"), null, null, null);
+                current ??= new(patch.Name.Value ?? patch.Title.Value ?? "tool", null, null, null);
                 _tools[patch.ToolCallId] = current;
                 string? previousInput = current.Input?.GetRawText();
                 string previousName = current.Name;
                 if (patch.Name.IsDefined && !patch.Name.IsNull)
                 {
-                    current.Name = Name(patch.Name.Value!);
+                    current.Name = patch.Name.Value!;
                 }
                 if (patch.RawInput.IsDefined)
                 {
@@ -71,12 +71,12 @@ internal sealed class AcpEventMapper(string? toolNamePrefix = null, string? sess
                 }
                 if (first || previousName != current.Name || (patch.RawInput.IsDefined && previousInput != current.Input?.GetRawText()))
                 {
-                    yield return Call(patch.ToolCallId, current);
+                    yield return Call(patch.ToolCallId, current, isUpdate: true);
                 }
                 if (!current.Completed && patch.Status.Value is "completed" or "failed")
                 {
                     current.Completed = true;
-                    yield return Result(patch.ToolCallId, current);
+                    yield return Result(patch.ToolCallId, current, patch.Status.Value == "failed");
                 }
                 break;
             case PlanUpdate plan:
@@ -102,6 +102,8 @@ internal sealed class AcpEventMapper(string? toolNamePrefix = null, string? sess
         ? name[prefix.Length..]
         : name;
 
+    private bool IsBridged(string name) => toolNamePrefix is { } prefix && name.StartsWith(prefix, StringComparison.Ordinal);
+
     private static string Output(JsonElement output)
     {
         if (output.ValueKind == JsonValueKind.Object && output.TryGetProperty("output", out JsonElement text)
@@ -112,21 +114,25 @@ internal sealed class AcpEventMapper(string? toolNamePrefix = null, string? sess
         return output.ValueKind == JsonValueKind.String ? output.GetString() ?? string.Empty : output.GetRawText();
     }
 
-    private static AgentStreamEvent Call(string id, ToolState tool) => new()
+    private AgentStreamEvent Call(string id, ToolState tool, bool isUpdate = false) => new()
     {
         Type = AgentStreamEventType.ToolCall,
         ToolCallId = id,
-        ToolName = tool.Name,
+        ToolName = Name(tool.Name),
+        IsBridgedTool = IsBridged(tool.Name),
+        IsToolUpdate = isUpdate,
         ToolArguments = tool.Input is { ValueKind: JsonValueKind.Object } input
             ? JsonSerializer.Deserialize<Dictionary<string, object?>>(input)
             : new Dictionary<string, object?>()
     };
 
-    private static AgentStreamEvent Result(string id, ToolState tool) => new()
+    private AgentStreamEvent Result(string id, ToolState tool, bool failed) => new()
     {
         Type = AgentStreamEventType.ToolResult,
         ToolCallId = id,
-        ToolName = tool.Name,
+        ToolName = Name(tool.Name),
+        IsBridgedTool = IsBridged(tool.Name),
+        ToolFailed = failed,
         Content = tool.Output is { } output
             ? Output(output)
             : string.Join("\n", (tool.Content ?? []).Select(content => content switch

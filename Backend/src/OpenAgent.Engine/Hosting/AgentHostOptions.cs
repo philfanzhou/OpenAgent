@@ -14,4 +14,5 @@ public class AgentHostOptions
     public string ServiceName { get; set; } = "openagent-service";
     public string ServiceVersion { get; set; } = "1.0.0";
     public string OpenTelemetrySource { get; set; } = "OpenAgent";
+    public string[] AdditionalTraceSources { get; set; } = [];
 }

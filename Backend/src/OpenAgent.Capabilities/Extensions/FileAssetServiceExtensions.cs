@@ -34,7 +34,8 @@ internal static class FileAssetServiceExtensions
                 && options.MaxInputBytes > 0
                 && options.MaxOutputFiles is > 0 and <= 100
                 && options.MaxOutputBytes > 0
-                && options.MaxConcurrentTransfers is > 0 and <= 16, "Invalid file exchange limits.")
+                && options.MaxConcurrentTransfers is > 0 and <= 16
+                && options.AutoSaveTimeoutMs is > 0 and <= 60_000, "Invalid file exchange limits.")
             .ValidateOnStart();
         services.TryAddSingleton<FileTransferGate>();
         services.AddScoped<FileExchangeContext>();

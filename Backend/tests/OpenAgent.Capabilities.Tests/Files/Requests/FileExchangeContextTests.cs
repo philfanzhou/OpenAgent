@@ -92,6 +92,42 @@ public sealed class FileExchangeContextTests
     }
 
     [Fact]
+    public async Task SaveOutputsAsync_StorageFailure_LeavesOutputUnpublishedAndAllowsExplicitRetry()
+    {
+        await using Harness harness = new();
+        RuntimeFilePreparation prepared = await harness.Context.PrepareAsync(harness.Workspace, [], default);
+        const string path = "outputs/result.bin";
+        harness.Workspace.Outputs[path] = [1, 2];
+        harness.Objects.WriteFailure = new AgentException(AgentErrorCode.DependencyUnavailable, "Storage unavailable.");
+
+        await prepared.SaveOutputsAsync!(default);
+
+        Assert.Empty(harness.Repository.References);
+        AgentException failed = await Assert.ThrowsAsync<AgentException>(() => harness.Context.ExportAsync(path, null, default));
+        Assert.Equal(AgentErrorCode.DependencyUnavailable, failed.ErrorCode);
+        harness.Objects.WriteFailure = null;
+        FileAsset retried = await harness.Context.ExportAsync(path, null, default);
+        Assert.Equal(FileAssetState.Ready, retried.State);
+        Assert.Contains("conversation:" + retried.FileId, harness.Repository.References);
+    }
+
+    [Fact]
+    public async Task SaveOutputsAsync_StopsAtItsOwnDeadlineAndPropagatesCallerCancellation()
+    {
+        await using Harness harness = new(new() { Enabled = true, AutoSaveTimeoutMs = 100 });
+        RuntimeFilePreparation prepared = await harness.Context.PrepareAsync(harness.Workspace, [], default);
+        harness.Workspace.Outputs["outputs/result.bin"] = [1, 2];
+        harness.Workspace.BeforeSnapshot = token => Task.Delay(Timeout.Infinite, token);
+
+        await prepared.SaveOutputsAsync!(default).WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Empty(harness.Repository.References);
+        using CancellationTokenSource cancelled = new();
+        cancelled.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => prepared.SaveOutputsAsync(cancelled.Token));
+    }
+
+    [Fact]
     public async Task PrepareAsync_SkipsCorruptOutputAndAllowsReplacingItWithIdenticalContent()
     {
         await using Harness harness = new();
@@ -115,6 +151,29 @@ public sealed class FileExchangeContextTests
 
         Assert.NotEqual(damaged.FileId, replaced.FileId);
         Assert.Equal(damaged.Sha256, replaced.Sha256);
+    }
+
+    [Fact]
+    public async Task PrepareAsync_LimitsColdRestoreCandidatesBeforeReadingObjects()
+    {
+        await using Harness harness = new(new() { Enabled = true, MaxOutputFiles = 2 });
+        FileAssetScope scope = new() { TenantId = "tenant", UserId = "user", ConversationId = "conversation" };
+        for (int i = 0; i < 25; i++)
+        {
+            using MemoryStream content = new(new byte[] { (byte)i });
+            FileAsset output = await harness.Files.UploadAsync(new()
+            {
+                FileName = $"file-{i}.bin", Source = FileAssetSource.Agent, RuntimeOutputPath = $"outputs/file-{i}.bin"
+            }, content, scope, default);
+            await harness.Files.EnsureReferencesAsync([output.FileId], scope, default);
+        }
+
+        RuntimeFilePreparation prepared = await harness.Context.PrepareAsync(harness.Workspace, [], default);
+
+        Assert.Equal(8, harness.Repository.LastOutputCandidateLimit);
+        Assert.Equal(2, prepared.Outputs.Count);
+        Assert.Equal(2, harness.Objects.ReadCount);
+        Assert.Equal(25, harness.Repository.References.Count);
     }
 
     [Fact]

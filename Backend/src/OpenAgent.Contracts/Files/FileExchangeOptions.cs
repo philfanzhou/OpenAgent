@@ -10,4 +10,5 @@ public sealed class FileExchangeOptions
     public int MaxOutputFiles { get; init; } = 10;
     public long MaxOutputBytes { get; init; } = 200 * 1024 * 1024;
     public int MaxConcurrentTransfers { get; init; } = 2;
+    public int AutoSaveTimeoutMs { get; init; } = 10_000;
 }

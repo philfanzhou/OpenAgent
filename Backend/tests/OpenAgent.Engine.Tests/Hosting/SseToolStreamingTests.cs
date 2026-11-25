@@ -25,6 +25,9 @@ using OpenAgent.Application.Exten;
 using OpenAgent.Application.Runtime.Agent;
 using OpenAgent.Engine.Host.Streaming;
 using OpenAgent.Engine.Host;
+using OpenAgent.Engine.Host.Endpoints.Chat;
+using OpenAgent.Engine.Host.Endpoints.Conversations;
+using OpenAgent.Engine.Host.Middleware;
 using OpenAgent.Engine.Hosting;
 using Xunit;
 
@@ -186,6 +189,7 @@ public sealed class SseToolStreamingTests
     internal sealed class StreamingHost : IAsyncDisposable
     {
         private readonly WebApplication _application;
+        private readonly CapturingLoggerProvider _loggerProvider;
 
         private StreamingHost(
             WebApplication application,
@@ -194,7 +198,7 @@ public sealed class SseToolStreamingTests
         {
             _application = application;
             Store = store;
-            Logs = loggerProvider.Logs;
+            _loggerProvider = loggerProvider;
             Client = new HttpClient { BaseAddress = new Uri(Endpoint) };
         }
 
@@ -202,7 +206,9 @@ public sealed class SseToolStreamingTests
 
         internal HttpClient Client { get; }
 
-        internal IReadOnlyList<CapturedLog> Logs { get; }
+        internal IServiceProvider Services => _application.Services;
+
+        internal IReadOnlyList<CapturedLog> Logs => _loggerProvider.Logs;
 
         internal string Endpoint => _application.Services
             .GetRequiredService<IServer>()
@@ -214,7 +220,8 @@ public sealed class SseToolStreamingTests
             Dictionary<string, string?>? settings = null,
             Action<IServiceCollection>? configure = null,
             LlmConfig? model = null,
-            Action<WebApplication>? configureApplication = null)
+            Action<WebApplication>? configureApplication = null,
+            bool useConversationRuns = false)
         {
             var builder = WebApplication.CreateBuilder(new WebApplicationOptions
             {
@@ -255,9 +262,20 @@ public sealed class SseToolStreamingTests
             // 中文 SSE 文案）；此前用无参 AddAgentErrorHandling 导致流式错误帧走默认
             // ProblemDetails 投影，测试宿主与生产行为不一致。
             builder.Services.AddEngineErrorHandling();
+            if (useConversationRuns)
+            {
+                builder.Services.AddSingleton<ConversationRunRegistry>();
+                builder.Services.AddHostedService(services => services.GetRequiredService<ConversationRunRegistry>());
+            }
 
             // 附加替换位于全部默认注册之后（RemoveAll 类替换才能生效）。
             configure?.Invoke(builder.Services);
+            if (useConversationRuns)
+            {
+                // The in-memory store uses this identity in the producer's background scope.
+                builder.Services.RemoveAll<ICurrentUserContext>();
+                builder.Services.AddSingleton<ICurrentUserContext>(new FixedCurrentUserContext());
+            }
             WebApplication application = builder.Build();
             // 本测试宿主环境下 WebHost.UseUrls 会被默认地址（localhost:5000）覆盖，
             // 并发跑多个宿主时必然端口冲突；Build 后显式写 Urls 才稳定生效。
@@ -265,6 +283,31 @@ public sealed class SseToolStreamingTests
             application.Urls.Add("http://127.0.0.1:0");
             application.UseAgentErrorHandling();
             configureApplication?.Invoke(application);
+            if (useConversationRuns)
+            {
+                application.Use((context, next) =>
+                {
+                    context.Features.Set(new AgentRequestFeature(Guid.NewGuid().ToString("N"), User));
+                    return next(context);
+                });
+                var routes = application.MapGroup("/api/v1/agent");
+                routes.MapAgentChat();
+                routes.MapConversations();
+            }
+            else
+            {
+                MapDirectStream(application);
+            }
+            await application.StartAsync().ConfigureAwait(false);
+            var store = Assert.IsType<InMemoryConversationStore>(
+                application.Services.GetRequiredService<IConversationStore>());
+            return new StreamingHost(
+                application,
+                store,
+                application.Services.GetRequiredService<CapturingLoggerProvider>());
+        }
+
+        private static void MapDirectStream(WebApplication application) =>
             application.MapPost("/api/v1/agent/chat/stream",
                 async (HttpContext context, RuntimeAgentExecutor executor, CancellationToken ct) =>
             {
@@ -288,25 +331,21 @@ public sealed class SseToolStreamingTests
                     context.RequestServices.GetRequiredService<ILogger<StreamingHost>>(),
                     ct).ConfigureAwait(false);
             });
-            await application.StartAsync().ConfigureAwait(false);
-            var store = Assert.IsType<InMemoryConversationStore>(
-                application.Services.GetRequiredService<IConversationStore>());
-            return new StreamingHost(
-                application,
-                store,
-                application.Services.GetRequiredService<CapturingLoggerProvider>());
-        }
 
         internal async Task<List<(string Event, JsonElement Data)>> PostStreamAsync(
-            string conversationId, IReadOnlyList<string>? fileIds = null, string? message = null)
+            string conversationId, IReadOnlyList<string>? fileIds = null, string? message = null, string? runtimeId = null)
         {
             using HttpRequestMessage request = new(
                 HttpMethod.Post,
                 "/api/v1/agent/chat/stream");
             request.Headers.Add("X-Conversation-Id", conversationId);
-            if (fileIds is not null || message is not null)
+            if (fileIds is not null || message is not null || runtimeId is not null)
             {
-                request.Content = JsonContent.Create(new ChatRequest { Message = message ?? "hello", FileIds = fileIds?.ToList() ?? [] });
+                request.Content = JsonContent.Create(new ChatRequest
+                {
+                    Message = message ?? "hello", FileIds = fileIds?.ToList() ?? [],
+                    Context = runtimeId is null ? null : new() { ["runtimeId"] = runtimeId }
+                });
             }
             using HttpResponseMessage response = await Client.SendAsync(
                 request,
@@ -370,6 +409,9 @@ public sealed class SseToolStreamingTests
 
         private sealed class EmptyFileAssetRepository : IFileAssetRepository
         {
+            public Task<IReadOnlyList<FileAsset>> ListRecentOutputsAsync(
+                string conversationId, string tenantId, string userId, int limit, CancellationToken cancellationToken) =>
+                Task.FromResult<IReadOnlyList<FileAsset>>([]);
             public Task CreateAsync(FileAsset asset, CancellationToken cancellationToken) =>
                 Task.CompletedTask;
 

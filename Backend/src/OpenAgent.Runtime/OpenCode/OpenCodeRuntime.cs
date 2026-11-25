@@ -442,7 +442,7 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
     /// uploads/，模型可经 harness 原生 read/bash 按文件系统精读；
     /// 目录随进程工作区统一回收。
     /// </summary>
-    private static string BuildFileManifest(RuntimeFilePreparation files, IReadOnlyList<RuntimeTool> tools)
+    internal static string BuildFileManifest(RuntimeFilePreparation files, IReadOnlyList<RuntimeTool> tools)
     {
         string manifest = files.Files.Count == 0
             ? string.Empty
@@ -468,7 +468,7 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
         return manifest;
     }
 
-    private static void MaterializeAttachments(string workspace, IReadOnlyList<RuntimeMessage> messages)
+    internal static void MaterializeAttachments(string workspace, IReadOnlyList<RuntimeMessage> messages)
     {
         int index = 0;
         foreach (RuntimeMessage message in messages)
@@ -495,7 +495,7 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
         _ => ".bin"
     };
 
-    private static ContentBlock[] BuildPrompt(IReadOnlyList<RuntimeMessage> messages, int maxCharacters)
+    internal static ContentBlock[] BuildPrompt(IReadOnlyList<RuntimeMessage> messages, int maxCharacters)
     {
         if (messages.Count == 0)
         {

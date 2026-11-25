@@ -41,6 +41,9 @@ public class RedisRateLimiter : IRateLimiter
     private readonly IConnectionMultiplexer? _redis;
     private readonly ILogger<RedisRateLimiter> _logger;
     private readonly RateLimitSettings _settings;
+    private readonly RateLimitSettings? _uploads;
+    private readonly RateLimitSettings? _conversations;
+    private readonly RateLimitSettings? _anonymous;
     private readonly TimeProvider _timeProvider;
 
     public RedisRateLimiter(
@@ -53,6 +56,9 @@ public class RedisRateLimiter : IRateLimiter
             redis,
             TimeProvider.System)
     {
+        _uploads = _settings.ForRoute(configuration, "Uploads", 10, 20);
+        _conversations = _settings.ForRoute(configuration, "Conversations", _settings.RequestsPerSecond, _settings.BurstCapacity);
+        _anonymous = _settings.ForRoute(configuration, "Anonymous", 20, 40);
     }
 
     internal RedisRateLimiter(
@@ -71,9 +77,16 @@ public class RedisRateLimiter : IRateLimiter
         string clientId,
         CancellationToken cancellationToken = default)
     {
+        RateLimitSettings settings = clientId.Split(':', 2)[0] switch
+        {
+            "uploads" => _uploads ?? _settings,
+            "conversations" => _conversations ?? _settings,
+            "anonymous" => _anonymous ?? _settings,
+            _ => _settings
+        };
         if (_redis == null)
         {
-            return HandleRedisFailure(clientId, null);
+            return HandleRedisFailure(clientId, settings, null);
         }
 
         try
@@ -83,7 +96,7 @@ public class RedisRateLimiter : IRateLimiter
             RedisResult result = await database.ScriptEvaluateAsync(
                 TokenBucketScript,
                 [$"ratelimit:{clientId}"],
-                [_settings.RequestsPerSecond, _settings.BurstCapacity, nowMilliseconds])
+                [settings.RequestsPerSecond, settings.BurstCapacity, nowMilliseconds])
                 .WaitAsync(cancellationToken).ConfigureAwait(false);
             RedisResult[] values = (RedisResult[])result!;
             bool isAllowed = (long)values[0] == 1;
@@ -98,15 +111,15 @@ public class RedisRateLimiter : IRateLimiter
         }
         catch (RedisException ex)
         {
-            return HandleRedisFailure(clientId, ex);
+            return HandleRedisFailure(clientId, settings, ex);
         }
         catch (Exception ex)
         {
-            return HandleRedisFailure(clientId, ex);
+            return HandleRedisFailure(clientId, settings, ex);
         }
     }
 
-    private RateLimitDecision HandleRedisFailure(string clientId, Exception? exception)
+    private RateLimitDecision HandleRedisFailure(string clientId, RateLimitSettings settings, Exception? exception)
     {
         if (exception != null)
         {
@@ -121,24 +134,24 @@ public class RedisRateLimiter : IRateLimiter
         {
             RateLimitFailureMode.FailOpen => new(true, TimeSpan.Zero, true, "fail_open"),
             RateLimitFailureMode.FailClosed => new(false, TimeSpan.FromSeconds(1), true, "fail_closed"),
-            _ => AcquireLocal(clientId)
+            _ => AcquireLocal(clientId, settings)
         };
         RouterMeter.RecordRateLimitDecision(decision);
         return decision;
     }
 
-    private RateLimitDecision AcquireLocal(string clientId)
+    private RateLimitDecision AcquireLocal(string clientId, RateLimitSettings settings)
     {
         LocalBucket bucket = _localBuckets.GetOrAdd(
             clientId,
-            _ => new LocalBucket(_settings.BurstCapacity, _timeProvider.GetUtcNow()));
+            _ => new LocalBucket(settings.BurstCapacity, _timeProvider.GetUtcNow()));
         lock (bucket)
         {
             DateTimeOffset now = _timeProvider.GetUtcNow();
             double elapsedSeconds = Math.Max((now - bucket.LastRefreshed).TotalSeconds, 0);
             bucket.Tokens = Math.Min(
-                _settings.BurstCapacity,
-                bucket.Tokens + (elapsedSeconds * _settings.RequestsPerSecond));
+                settings.BurstCapacity,
+                bucket.Tokens + (elapsedSeconds * settings.RequestsPerSecond));
             bucket.LastRefreshed = now;
             if (bucket.Tokens >= 1)
             {
@@ -146,7 +159,7 @@ public class RedisRateLimiter : IRateLimiter
                 return new(true, TimeSpan.Zero, true, "local");
             }
 
-            double retrySeconds = (1 - bucket.Tokens) / _settings.RequestsPerSecond;
+            double retrySeconds = (1 - bucket.Tokens) / settings.RequestsPerSecond;
             return new(false, TimeSpan.FromSeconds(retrySeconds), true, "local");
         }
     }

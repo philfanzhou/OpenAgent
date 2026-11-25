@@ -222,8 +222,8 @@ internal static partial class RouterLog
     [LoggerMessage(EventId = 3051, Level = LogLevel.Information, Message = "Intern decision routing completed. ProviderId={ProviderId}, AgentId={AgentId}, Confidence={Confidence}, Action={Action}, SelectedAgentId={SelectedAgentId}")]
     public static partial void InternDecisionResult(ILogger logger, string providerId, string? agentId, double confidence, string? action, string? selectedAgentId);
 
-    [LoggerMessage(EventId = 3052, Level = LogLevel.Warning, Message = "Intern decision service returned a non-success status; falling back. ProviderId={ProviderId}, StatusCode={StatusCode}, Body={Body}")]
-    public static partial void InternDecisionUnavailable(ILogger logger, string providerId, int statusCode, string body);
+    [LoggerMessage(EventId = 3052, Level = LogLevel.Warning, Message = "Intern decision service returned a non-success status; falling back. ProviderId={ProviderId}, StatusCode={StatusCode}")]
+    public static partial void InternDecisionUnavailable(ILogger logger, string providerId, int statusCode);
 
     [LoggerMessage(EventId = 3053, Level = LogLevel.Warning, Message = "Intern decision routing timed out; falling back. ProviderId={ProviderId}, TimeoutMs={TimeoutMs}")]
     public static partial void InternDecisionTimedOut(ILogger logger, string providerId, int timeoutMs);

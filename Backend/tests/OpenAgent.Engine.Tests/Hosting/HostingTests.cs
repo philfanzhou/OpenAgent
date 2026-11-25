@@ -71,6 +71,7 @@ public class HostingTests
             ("/api/v1/agent/agents", "GET", "ListAgents", "Agent"),
             ("/api/v1/agent/provider/conversations/{conversationId}", "GET", "ResolveProviderConversation", "Agent Provider"),
             ("/api/v1/agent/me", "GET", "CurrentAgentUser", "Agent"),
+            ("/api/v1/agent/runtimes", "GET", "AvailableAgentRuntimes", "Agent"),
             ("/api/v1/agent/conversations", "GET", "ListConversations", "Conversation"),
             ("/api/v1/agent/conversations/search", "GET", "SearchConversations", "Conversation"),
             ("/api/v1/agent/conversations/{conversationId}", "GET", "GetConversation", "Conversation"),

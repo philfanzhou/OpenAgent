@@ -1,0 +1,38 @@
+extensions:
+  file_storage/audit:
+    directory: /var/lib/otelcol
+    fsync: true
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+exporters:
+  otlp_http/audit:
+    endpoint: ${env:OPENAGENT_AUDIT_GATEWAY_ENDPOINT}
+    headers:
+      Authorization: ${env:OPENAGENT_AUDIT_GATEWAY_AUTHORIZATION}
+    sending_queue:
+      storage: file_storage/audit
+      queue_size: 10000
+    retry_on_failure:
+      initial_interval: 1s
+      max_interval: 30s
+      max_elapsed_time: 0s
+
+service:
+  extensions: [file_storage/audit]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [otlp_http/audit]
+  telemetry:
+    metrics:
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888

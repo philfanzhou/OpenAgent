@@ -11,10 +11,10 @@ public static class RouterEndpointExtensions
 {
     public static IEndpointRouteBuilder MapRouterEndpoints(this IEndpointRouteBuilder app)
     {
-        var httpClient = new HttpMessageInvoker(HttpClientSecurity.CreateSocketsHttpHandler(
-            app.ServiceProvider.GetRequiredService<IConfiguration>(),
-            TimeSpan.FromSeconds(15)));
+        var configuration = app.ServiceProvider.GetRequiredService<IConfiguration>();
+        HttpMessageInvoker httpClient = ForwardingContextBuilder.CreateClient(configuration);
         var requestConfig = new ForwarderRequestConfig { ActivityTimeout = TimeSpan.FromSeconds(100) };
+        ForwarderRequestConfig streamingRequestConfig = AgentForwarder.CreateStreamingRequestConfig(configuration);
 
         app.MapPost("/api/v1/agent/chat/{*action}", (
             string? action,
@@ -108,7 +108,7 @@ public static class RouterEndpointExtensions
                     routeTable,
                     logger,
                     httpClient,
-                    requestConfig,
+                    streamingRequestConfig,
                     requireAuthentication: true))
             .WithName("RouterResumeConversationStream")
             .WithTags("Conversations");
@@ -167,6 +167,12 @@ public static class RouterEndpointExtensions
                 requireAuthentication: true))
             .WithName("RouterCurrentUser")
             .WithTags("Agent Catalog");
+        app.MapGet("/api/v1/agent/runtimes", (
+            HttpContext context, IHttpForwarder forwarder, IAgentUserContext userContext,
+            IRouteTable routeTable, ILogger<Program> logger) =>
+            GatewayProxyHandler.HandleAsync(context, forwarder, userContext, routeTable, logger,
+                httpClient, requestConfig, requireAuthentication: true))
+            .WithName("RouterAvailableAgentRuntimes");
         // File assets are owned by Engine, but clients use the Router as their
         // single API origin. Preserve multipart request bodies and binary
         // responses by forwarding every file method through YARP.

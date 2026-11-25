@@ -7,19 +7,20 @@ namespace OpenAgent.Router.Middleware;
 
 internal sealed class RateLimitingMiddleware(RequestDelegate next, ILogger<RateLimitingMiddleware> logger)
 {
+    internal static bool AppliesTo(HttpContext context) => context.Request.Path.StartsWithSegments("/api/v1/agent/chat")
+        || context.Request.Path.StartsWithSegments("/api/v1/agent/conversations")
+        || (HttpMethods.IsPost(context.Request.Method) && context.Request.Path.StartsWithSegments("/api/v1/agent/files"));
+
     public async Task InvokeAsync(
         HttpContext context,
         IAgentUserContext userContext,
         IRateLimiter rateLimiter)
     {
-        if (!userContext.IsAuthenticated)
-        {
-            await next(context);
-            return;
-        }
-
         var tenantId = userContext.TenantId;
-        var clientId = $"{tenantId}:{userContext.UserId}";
+        string clientId = !userContext.IsAuthenticated ? $"anonymous:{context.Connection.RemoteIpAddress}"
+            : context.Request.Path.StartsWithSegments("/api/v1/agent/files") ? $"uploads:{tenantId}:{userContext.UserId}"
+            : context.Request.Path.StartsWithSegments("/api/v1/agent/conversations") ? $"conversations:{tenantId}:{userContext.UserId}"
+            : $"chat:{tenantId}:{userContext.UserId}";
         RateLimitDecision decision = await rateLimiter.AcquireAsync(
             clientId, context.RequestAborted).ConfigureAwait(false);
         if (!decision.IsAllowed)

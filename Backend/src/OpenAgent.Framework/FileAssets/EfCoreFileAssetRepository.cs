@@ -56,6 +56,20 @@ internal sealed class EfCoreFileAssetRepository(IDbContextFactory<OpenAgentDbCon
         return entities.Select(ToAsset).ToArray();
     }
 
+    public async Task<IReadOnlyList<FileAsset>> ListRecentOutputsAsync(
+        string conversationId, string tenantId, string userId, int limit, CancellationToken cancellationToken)
+    {
+        await using OpenAgentDbContext context = await contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        var assets = from reference in context.ConversationFileReferences.AsNoTracking()
+            join asset in context.FileAssets.AsNoTracking() on reference.FileId equals asset.FileId
+            where reference.ConversationId == conversationId && asset.TenantId == tenantId && asset.OwnerUserId == userId
+                && asset.State == (int)FileAssetState.Ready && asset.RuntimeOutputPath != null
+            select asset;
+        var recent = await assets.OrderByDescending(asset => asset.CreatedAt).ThenByDescending(asset => asset.FileId)
+            .Take(limit).ToListAsync(cancellationToken).ConfigureAwait(false);
+        return recent.Select(ToAsset).ToArray();
+    }
+
     public async Task EnsureConversationReferencesAsync(
         string conversationId,
         IReadOnlyList<string> fileIds,

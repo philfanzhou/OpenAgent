@@ -1,5 +1,4 @@
 using OpenAgent.Engine.Hosting;
-using System.Net;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -19,70 +18,27 @@ public class OtlpLogExportIntegrationTests
     [Fact]
     public async Task UseAgentSerilog_ForwardsLoggerEventsToOtlpLogsEndpoint()
     {
-        HttpListener? listener = null;
-        var port = 15991;
-        while (listener is null && port < 16000)
+        await using OtlpTestCollector collector = await OtlpTestCollector.StartAsync();
+        var builder = WebApplication.CreateBuilder();
+        builder.Host.UseAgentSerilog("agent-host-tests");
+        builder.Configuration["OpenTelemetry:LogsEndpoint"] = collector.Endpoint;
+        builder.Configuration["OpenTelemetry:Protocol"] = "http/protobuf";
+        builder.Services.AddAgentHost(builder.Configuration, options =>
         {
-            try
-            {
-                listener = new HttpListener();
-                listener.Prefixes.Add($"http://127.0.0.1:{port}/");
-                listener.Start();
-            }
-            catch (HttpListenerException)
-            {
-                listener = null;
-                port++;
-            }
-        }
+            options.EnableCors = false;
+            options.EnableSwagger = false;
+            options.EnableJwtAuth = false;
+            options.EnableHealthChecks = false;
+            options.ServiceName = "otlp-log-tests";
+        });
 
-        if (listener is null)
+        await using (var app = builder.Build())
         {
-            // No listening permission in this environment; covered by unit tests instead.
-            return;
-        }
+            app.Services.GetRequiredService<ILoggerFactory>()
+                .CreateLogger("OtlpLogExport")
+                .LogInformation("hello otel log export");
+        } // Disposing flushes the batch log exporter.
 
-        try
-        {
-            Environment.SetEnvironmentVariable("OTEL_EXPORTER_OTLP_PROTOCOL", "http/protobuf");
-
-            var builder = WebApplication.CreateBuilder();
-            builder.Host.UseAgentSerilog("agent-host-tests");
-            builder.Configuration["OpenTelemetry:OtlpEndpoint"] = $"http://127.0.0.1:{port}";
-            builder.Services.AddAgentHost(builder.Configuration, options =>
-            {
-                options.EnableCors = false;
-                options.EnableSwagger = false;
-                options.EnableJwtAuth = false;
-                options.EnableHealthChecks = false;
-                options.ServiceName = "otlp-log-tests";
-            });
-
-            using (var app = builder.Build())
-            {
-                app.Services.GetRequiredService<ILoggerFactory>()
-                    .CreateLogger("OtlpLogExport")
-                    .LogInformation("hello otel log export");
-
-                var requestTask = listener.GetContextAsync();
-                ((IDisposable)app).Dispose(); // disposing flushes the batch log exporter
-                var received = await Task.WhenAny(requestTask, Task.Delay(TimeSpan.FromSeconds(15))) == requestTask;
-
-                Assert.True(received, "No OTLP export request reached the endpoint within the timeout.");
-                HttpListenerContext context = await requestTask;
-                Assert.Equal(
-                    $"/v1/logs",
-                    context.Request.Url?.AbsolutePath,
-                    StringComparer.OrdinalIgnoreCase);
-                context.Response.StatusCode = 200;
-                context.Response.Close();
-            }
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable("OTEL_EXPORTER_OTLP_PROTOCOL", null);
-            listener.Stop();
-            listener.Close();
-        }
+        Assert.Contains(collector.Requests, request => request.Path == "/v1/logs" && request.Body.Length > 0);
     }
 }

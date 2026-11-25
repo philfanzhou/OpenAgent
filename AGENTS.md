@@ -4,7 +4,7 @@ OpenAgent 是基于 .NET 10 的多服务 Agent 平台（C#, ASP.NET Core）。
 
 ## 模块结构与依赖
 
-当前分支在目录重组与独立 ACP SDK 基线上，聊天执行只走 OpenCode ACP，MAF 推理栈（Microsoft.Agents.AI 全系包）已移除；独立 Runner 沙箱及其代码执行链路同样已移除，代码执行交给 OpenCode 原生工具（宿主经 `OpenCode:AllowedNativeTools` 显式放行）。现有 API 与平台持久化继续复用；Worker、RunGrant、审批仍是独立任务。实现边界见 [OpenCode 运行时](docs/integrations/opencode-runtime.md)。
+当前分支在目录重组与独立 ACP SDK 基线上。聊天通过 ACP 执行，默认 OpenCode，指定租户可通过部署配置启用 Pi。原生工具由宿主按运行时显式放行。运行时复用现有 API 与平台持久化。Worker、RunGrant 和审批仍是独立任务。 [OpenCode 运行时](docs/integrations/opencode-runtime.md) · [Pi 运行时](docs/integrations/pi-runtime.md)
 
 ```text
 Backend/src/

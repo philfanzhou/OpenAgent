@@ -4,6 +4,7 @@ using OpenAgent.Contracts.Configuration;
 using OpenAgent.Router.Models;
 using OpenAgent.Router.Observability;
 using OpenAgent.Router.Options;
+using OpenAgent.Router.Providers;
 
 namespace OpenAgent.Router.Endpoints;
 
@@ -26,8 +27,6 @@ internal sealed class IntentAgentSelector(
             return null;
         }
 
-        using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(TimeSpan.FromMilliseconds(_options.TimeoutMs));
         try
         {
             if (!providers.TryGet(_options.ProviderId, out IAgentProvider? provider)
@@ -40,6 +39,10 @@ internal sealed class IntentAgentSelector(
                 return null;
             }
 
+            // InternDecision owns its timeout so the circuit can distinguish an outage from caller cancellation.
+            using CancellationTokenSource? timeout = provider is InternDecisionProvider
+                ? null : CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout?.CancelAfter(_options.TimeoutMs);
             RouterLog.IntentRecognitionStarted(
                 _logger,
                 provider.Id,
@@ -51,7 +54,7 @@ internal sealed class IntentAgentSelector(
                 _options.AgentId,
                 candidates,
                 message,
-                timeout.Token).ConfigureAwait(false);
+                timeout?.Token ?? cancellationToken).ConfigureAwait(false);
             string? selectedAgentId = ValidateResult(result, candidates, _options.MinimumConfidence);
             RouterLog.IntentRecognitionCompleted(
                 _logger,

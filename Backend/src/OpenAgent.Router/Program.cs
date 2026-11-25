@@ -20,6 +20,7 @@ builder.Services.AddAgentHost(builder.Configuration, options =>
 {
     options.ServiceName = "openagent-router";
     options.OpenTelemetrySource = "OpenAgent.Router";
+    options.AdditionalTraceSources = ["YARP.ReverseProxy"];
 });
 
 builder.Services.AddHttpContextAccessor();
@@ -67,11 +68,12 @@ var app = builder.Build();
 app.UseAgentHost(builder.Configuration);
 app.UseAgentErrorHandling();
 app.UseMiddleware<JwtUserContextMiddleware>();
+app.UseWhen(RateLimitingMiddleware.AppliesTo,
+    branch => branch.UseMiddleware<RateLimitingMiddleware>());
 app.UseWhen(
     context => context.Request.Path.StartsWithSegments("/api/v1/agent/chat"),
     branch =>
     {
-        branch.UseMiddleware<RateLimitingMiddleware>();
         branch.UseMiddleware<IdempotencyMiddleware>();
         branch.UseMiddleware<QueryCacheMiddleware>();
     });

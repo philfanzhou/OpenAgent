@@ -16,5 +16,6 @@ RUN apt-get update \
 COPY --from=build /app/publish/ .
 
 ENV ASPNETCORE_URLS=http://+:5001
+USER $APP_UID
 EXPOSE 5001
 ENTRYPOINT ["dotnet", "OpenAgent.Router.dll"]

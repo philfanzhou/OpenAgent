@@ -40,12 +40,7 @@ internal sealed class HttpCurrentUserContext : ICurrentUserContext, ICurrentUser
         _executionUser?.IsAuthenticated ?? Principal?.Identity?.IsAuthenticated ?? false;
 
     public IReadOnlyList<string> Roles =>
-        _executionUser?.Roles ?? Principal?.Claims
-            .Where(c => c.Type is ClaimTypes.Role or "roles" or "role")
-            .Select(c => c.Value)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList()
-        ?? [];
+        _executionUser?.Roles ?? AgentRoleClaims.Read(Principal);
 
     public bool IsInRole(string role) =>
         Roles.Contains(role, StringComparer.OrdinalIgnoreCase);

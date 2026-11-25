@@ -10,6 +10,15 @@ using Xunit;
 
 namespace OpenAgent.Router.Tests.Providers;
 
+internal sealed class InternDecisionServiceFactAttribute : FactAttribute
+{
+    public InternDecisionServiceFactAttribute()
+    {
+        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENAGENT_INTERN_DECISION_TEST_URL")))
+            Skip = "Requires an isolated Intern Decision test service.";
+    }
+}
+
 /// <summary>
 /// Contract test against a running Intern-Decision-4B service.
 /// </summary>
@@ -32,14 +41,10 @@ public class InternDecisionContractTests
     private static string? ServiceKey =>
         Environment.GetEnvironmentVariable("OPENAGENT_INTERN_DECISION_API_KEY");
 
-    [Fact]
+    [InternDecisionServiceFact]
     public async Task RealService_AcceptsTheProviderRequestShape()
     {
-        string? url = ServiceUrl;
-        if (string.IsNullOrWhiteSpace(url))
-        {
-            return; // No live service configured; nothing to assert.
-        }
+        string url = ServiceUrl!;
 
         using var handler = new HttpClientHandler();
         IConfigurationRoot configuration = new ConfigurationBuilder()
@@ -47,7 +52,6 @@ public class InternDecisionContractTests
             {
                 ["BaseUrl"] = url,
                 ["RoutePath"] = "/v1/route",
-                ["TimeoutMs"] = "5000",
                 ["FallbackAgentId"] = "default"
             })
             .Build();
@@ -91,14 +95,10 @@ public class InternDecisionContractTests
         }
     }
 
-    [Fact]
+    [InternDecisionServiceFact]
     public async Task RealService_RejectsNothingInTheSerialisedBody()
     {
-        string? url = ServiceUrl;
-        if (string.IsNullOrWhiteSpace(url))
-        {
-            return;
-        }
+        string url = ServiceUrl!;
 
         // The service forbids unknown request fields (extra="forbid"). A single
         // extra property would surface here as 400.

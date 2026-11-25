@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 using OpenAgent.Contracts.Security;
+using OpenAgent.Router.Models;
 using OpenAgent.Router.Observability;
 using StackExchange.Redis;
 
@@ -10,15 +11,19 @@ internal sealed class AgentVisibilityService : IAgentVisibilityService
 {
     private readonly ILogger<AgentVisibilityService> _logger;
     private readonly IConnectionMultiplexer? _redis;
-    private readonly ConcurrentDictionary<string, AgentAclEntry> _cache = new();
+    private static readonly TimeSpan SnapshotLifetime = TimeSpan.FromSeconds(30);
+    private readonly ConcurrentDictionary<string, AclSnapshot> _cache = new(StringComparer.Ordinal);
     private readonly AgentConfigAccessor _configAccessor;
+    private readonly TimeProvider _clock;
 
     public AgentVisibilityService(
         ILogger<AgentVisibilityService> logger,
-        IConnectionMultiplexer? redis = null)
+        IConnectionMultiplexer? redis = null,
+        TimeProvider? clock = null)
     {
         _logger = logger;
         _redis = redis;
+        _clock = clock ?? TimeProvider.System;
         _configAccessor = new AgentConfigAccessor(redis, logger);
     }
 
@@ -52,39 +57,47 @@ internal sealed class AgentVisibilityService : IAgentVisibilityService
 
     private async Task<AgentAclEntry?> GetAclEntryAsync(string agentId, CancellationToken cancellationToken)
     {
-        if (_cache.TryGetValue(agentId, out var cached))
+        cancellationToken.ThrowIfCancellationRequested();
+        if (_redis is null)
         {
-            return cached;
+            // Router can also run in the explicit no-Redis mode.
+            return null;
         }
 
-        string? aclJson = null;
-
-        if (_redis != null)
+        long readStarted = _clock.GetTimestamp();
+        if (_cache.TryGetValue(agentId, out AclSnapshot? cached)
+            && _clock.GetElapsedTime(cached.ReadStarted, readStarted) < SnapshotLifetime)
         {
-            try
-            {
-                var db = _redis.GetDatabase();
-                var value = await db.StringGetAsync($"agent:acl:{agentId}");
-                aclJson = value.HasValue ? value.ToString() : null;
-            }
-            catch (Exception ex)
-            {
-                RouterLog.ReadAclEntryFailed(_logger, ex, agentId);
-            }
+            return cached.Entry;
         }
 
-        if (aclJson != null)
+        try
         {
-            var entry = JsonSerializer.Deserialize<AgentAclEntry>(aclJson);
-            if (entry != null)
+            RedisValue value = await _redis.GetDatabase().StringGetAsync($"agent:acl:{agentId}")
+                .WaitAsync(cancellationToken).ConfigureAwait(false);
+            AgentAclEntry? entry = value.IsNull ? null : JsonSerializer.Deserialize<AgentAclEntry>(value.ToString());
+            if (!value.IsNull && (entry is null || entry.AllowedUserIds is null || entry.AllowedGroups is null
+                || entry.AllowedTenantIds is null || entry.AllowedRoles is null))
             {
-                _cache[agentId] = entry;
-                return entry;
+                throw new JsonException("Invalid Agent ACL record.");
             }
+            AclSnapshot refreshed = new(entry, readStarted);
+            return _cache.AddOrUpdate(agentId, refreshed,
+                (_, current) => current.ReadStarted > readStarted ? current : refreshed).Entry;
         }
-
-        return null;
+        catch (Exception error) when (error is RedisException or JsonException)
+        {
+            RouterLog.ReadAclEntryFailed(_logger, error, agentId);
+            if (_cache.TryGetValue(agentId, out cached) && _clock.GetElapsedTime(cached.ReadStarted) < SnapshotLifetime)
+            {
+                return cached.Entry;
+            }
+            throw new AgentRoutingException(StatusCodes.Status503ServiceUnavailable,
+                RouterErrorCodes.AgentAuthorizationUnavailable, "Agent authorization is temporarily unavailable");
+        }
     }
+
+    private sealed record AclSnapshot(AgentAclEntry? Entry, long ReadStarted);
 
     private static bool IsAllowedForUser(
         AgentAclEntry acl,

@@ -113,7 +113,17 @@ Engine 的 `engine-data-protection` 卷继续挂载到 `/home/app/.aspnet/DataPr
 
 ## 基础设施与排障
 
-`deploy/infrastructure/` 未改动，仍使用其既有环境文件单独管理 PostgreSQL、Redis、MinIO 和 Keycloak profiles；不要把应用原生文件当成基础设施变量文件。
+`deploy/infrastructure/` 使用单独的基础设施配置，管理 PostgreSQL、Redis、MinIO 和 Keycloak profiles。Redis 仅供容器网络访问，使用 `OPENAGENT_REDIS_PASSWORD` 启动。切换前执行 `BGSAVE` 并确认备份完成，在同一维护窗口同步 Engine、Router、预览和其他 Redis 客户端的连接配置。预览使用 `openagent-preview-redis` 网络，运行 `scripts/preview.sh up` 时从当前环境取得 `OPENAGENT_REDIS_PASSWORD`。动态 Engine 注册只接受 `RouterSettings:ServiceDiscovery:AllowedHosts` 或 `AllowedNetworks` 中的目标。启用 Keycloak profile 时需提供 `OPENAGENT_KEYCLOAK_ADMIN_PASSWORD`。已有管理员账号仍按 IdP 的凭据管理流程轮换。
+
+Nginx 的 Engine 公共端口将 `/api/v1/agent/chat` 及其子路径交给 Router 做执行授权。文件分享及服务间接口继续使用 Engine 路径。上线时核对实际允许的入口，确认其中没有绕过 Nginx 的公共 Engine 端口，并用同一身份验证 Router 与 Engine 公共入口的允许、拒绝和文件分享行为。
+
+### 审计 Collector 与故障补传
+
+`deploy/openagent/audit-collector.compose.yml` 可在应用主机单独启动 Collector。配置 `OPENAGENT_AUDIT_GATEWAY_ENDPOINT` 为原网关基地址和端口，`OPENAGENT_AUDIT_GATEWAY_AUTHORIZATION` 为原网关完整授权头，`OPENAGENT_AUDIT_QUEUE_DIR` 为同一主机上的持久目录。队列内容尚未经网关脱敏。切换前确认磁盘容量、可接受的断网窗口和保留期，目录限定 Collector UID `10001` 可读写，目录权限设为 `0700`。
+
+用 `docker compose --env-file <collector-env> -f audit-collector.compose.yml up -d` 启动后，在 Engine 和 Router 共同环境文件配置 `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://audit-collector:4318` 和 `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`。原网关授权头只放在 Collector 的环境配置。若旧配置通过 `OTEL_EXPORTER_OTLP_ENDPOINT` 或 `OpenTelemetry__OtlpEndpoint` 指向审计网关，移除该共享设置，并为其他信号单独指定各自的端点。切换后逐项核对审计会话、工具记录与 Auto 路由。
+
+抓取应用 `openagent_trace_export_failures_total` 和 Collector 内网 `8888` 的队列容量、占用和发送失败指标。队列上限为 10000 个请求。演练时在网关离线期间生成带工具调用的轮次，重启 Collector，再恢复网关并核对积压记录。回退时将应用 traces 专用端点和授权头恢复到原网关，保留 Collector 队列目录，待核对积压状态后再停用 Collector。
 MinIO 镜像源按原基础设施 Compose 中的说明配置；应用启动会执行待应用的 EF 迁移。
 完整变量与默认值见 [环境变量指南](environment-variables.md)，认证见 [Keycloak](../integrations/keycloak.md)，
 遥测见 [可观测性](../overview/Observability.md)，OpenCode 的原生工具与版本验证见 [运行时](../integrations/opencode-runtime.md)。

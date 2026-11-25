@@ -102,13 +102,27 @@ public static class AgentProblemDetails
     }
 
     /// <summary>
-    /// 统一的 TraceId 解析顺序：X-Trace-Id 请求头 → Activity.Current.Id → HttpContext.TraceIdentifier。
+    /// Resolves a bounded trace key once per request.
     /// 所有产生错误载荷的代码都经此处解析，保证同一请求内 traceId 一致。
     /// </summary>
-    public static string ResolveTraceId(HttpContext context) =>
-        context.Request.Headers["X-Trace-Id"].FirstOrDefault()
-        ?? Activity.Current?.Id
-        ?? context.TraceIdentifier;
+    public static string ResolveTraceId(HttpContext context)
+    {
+        if (context.Items.TryGetValue(TraceKey, out object? cached) && cached is string resolved)
+            return resolved;
+
+        var values = context.Request.Headers["X-Trace-Id"];
+        string? supplied = values.Count == 1 ? values[0] : null;
+        string traceId = IsTraceKey(supplied) ? supplied!
+            : Activity.Current is { IdFormat: ActivityIdFormat.W3C } activity ? activity.TraceId.ToHexString()
+            : IsTraceKey(context.TraceIdentifier) ? context.TraceIdentifier : Guid.NewGuid().ToString("N");
+        context.Items[TraceKey] = traceId;
+        return traceId;
+    }
+
+    private static readonly object TraceKey = new();
+
+    private static bool IsTraceKey(string? value) => value is { Length: >= 1 and <= 64 }
+        && value.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_');
 
     private static string? TraceId(HttpContext? context) =>
         context is null ? null : ResolveTraceId(context);

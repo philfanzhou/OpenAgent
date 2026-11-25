@@ -13,6 +13,9 @@ public interface IFileAssetRepository
         string conversationId,
         CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<FileAsset>> ListRecentOutputsAsync(
+        string conversationId, string tenantId, string userId, int limit, CancellationToken cancellationToken);
+
     /// <summary>
     /// 幂等地将会话与文件关联写入 <c>conversation_file_references</c>，已存在的引用保留原时间戳。
     /// </summary>

@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
@@ -28,7 +29,8 @@ internal sealed class RuntimeToolBridge : IAsyncDisposable
     internal const string BridgePath = "/runtime-tools";
 
     // 认证中间件按请求解析出的注册经执行上下文传给 MCP 处理器；未认证请求到不了处理器。
-    private static readonly AsyncLocal<Registration?> Current = new();
+    private static readonly AsyncLocal<BridgeRequest?> Current = new();
+    private static readonly ActivitySource AuditSource = new("OpenAgent.Engine");
 
     private readonly SemaphoreSlim _startGate = new(1, 1);
     private readonly ConcurrentDictionary<string, Registration> _registrations = new(StringComparer.Ordinal);
@@ -46,17 +48,25 @@ internal sealed class RuntimeToolBridge : IAsyncDisposable
         string agentId)
     {
         Dictionary<string, RuntimeTool> tools = definitions.ToDictionary(tool => tool.Name, StringComparer.Ordinal);
+        Activity? parent = Activity.Current;
         string endpoint = MountedEndpoint() ?? await StartOnceAsync().ConfigureAwait(false);
         // 256 bit 随机 bearer 兼作注册键；身份不取自模型参数，不接受客户端传入。
         string token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
         // 会话身份随注册进入 AsyncLocal 通道，MCP 处理器把它打到工具请求 span 上，
         // 审计网关据此把工具调用关联到会话（否则工具 span 是无身份的孤儿 trace）。
         _registrations[token] = new Registration(tools, turnCancellation, conversationId, userId, username, agentId);
+        List<EnvVariable> headers = [new("Authorization", "Bearer " + token)];
+        if (parent is { IdFormat: ActivityIdFormat.W3C, Id: { } parentId })
+        {
+            headers.Add(new("traceparent", parentId));
+            if (!string.IsNullOrEmpty(parent.TraceStateString))
+                headers.Add(new("tracestate", parent.TraceStateString));
+        }
         return new RuntimeToolLease(this, token, new McpServer("openagent")
         {
             Type = "http",
             Url = endpoint,
-            Headers = [new("Authorization", "Bearer " + token)]
+            Headers = headers.ToArray()
         });
     }
 
@@ -187,7 +197,7 @@ internal sealed class RuntimeToolBridge : IAsyncDisposable
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
             return;
         }
-        Current.Value = registration;
+        Current.Value = new BridgeRequest(registration, context.Features.Get<IHttpActivityFeature>()?.Activity);
         try
         {
             await next().ConfigureAwait(false);
@@ -205,11 +215,11 @@ internal sealed class RuntimeToolBridge : IAsyncDisposable
             .WithHttpTransport(options => options.Stateless = true)
             .WithListToolsHandler((_, _) => ValueTask.FromResult(new ListToolsResult
             {
-                Tools = Current.Value?.Tools.Values.Select(ToProtocolTool).ToList() ?? []
+                Tools = Current.Value?.Registration.Tools.Values.Select(ToProtocolTool).ToList() ?? []
             }))
             .WithCallToolHandler(async (request, ct) =>
             {
-                if (Current.Value is not { } registration
+                if (Current.Value is not { Registration: var registration, HttpActivity: var callActivity }
                     || request.Params is not { } parameters
                     || !registration.Tools.TryGetValue(parameters.Name, out RuntimeTool? tool))
                 {
@@ -219,9 +229,14 @@ internal sealed class RuntimeToolBridge : IAsyncDisposable
                 using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(ct, registration.TurnCancellation);
                 linked.Token.ThrowIfCancellationRequested();
                 Dictionary<string, object?> arguments = parameters.Arguments?.ToDictionary(x => x.Key, x => (object?)x.Value) ?? [];
+                using Activity? toolActivity = AuditSource.StartActivity("OpenAgent.RuntimeTool.Invoke", ActivityKind.Internal,
+                    callActivity?.Context ?? Activity.Current?.Context ?? default);
+                toolActivity?.SetTag(AuditAttributeNames.ConversationId, registration.ConversationId);
+                toolActivity?.SetTag(AuditAttributeNames.UserId, registration.UserId);
+                toolActivity?.SetTag("openagent.tool.name", parameters.Name);
                 // 审计：把会话身份与调用参数打到 /runtime-tools/ 请求 span 上——没有这些
                 // 标签时该 span 是无身份的孤儿 trace，审计台无法把它关联到会话。
-                if (Activity.Current is { } callActivity)
+                if (callActivity is not null)
                 {
                     callActivity.SetTag("openagent.conversation_id", registration.ConversationId);
                     callActivity.SetTag("openagent.user_id", registration.UserId);
@@ -236,11 +251,9 @@ internal sealed class RuntimeToolBridge : IAsyncDisposable
                 try
                 {
                     string result = await tool.InvokeAsync(arguments, linked.Token).ConfigureAwait(false);
-                    if (Activity.Current is { } doneActivity)
-                    {
-                        doneActivity.SetTag("langfuse.observation.output", Truncate(result));
-                        doneActivity.SetTag("openagent.tool.status", "completed");
-                    }
+                    callActivity?.SetTag("langfuse.observation.output", Truncate(result));
+                    callActivity?.SetTag("openagent.tool.status", "completed");
+                    toolActivity?.SetStatus(ActivityStatusCode.Ok);
                     return new CallToolResult { Content = [new McpText { Text = result }] };
                 }
                 catch (OperationCanceledException) when (linked.IsCancellationRequested)
@@ -250,10 +263,8 @@ internal sealed class RuntimeToolBridge : IAsyncDisposable
                 catch (Exception)
                 {
                     // 回调异常可能携带服务端路径/凭据；只把可读、无敏感数据的失败交给 Agent。
-                    if (Activity.Current is { } failActivity)
-                    {
-                        failActivity.SetTag("openagent.tool.status", "failed");
-                    }
+                    callActivity?.SetTag("openagent.tool.status", "failed");
+                    toolActivity?.SetStatus(ActivityStatusCode.Error);
                     return new CallToolResult { IsError = true, Content = [new McpText { Text = "Platform tool execution failed or access was denied." }] };
                 }
             });
@@ -300,6 +311,8 @@ internal sealed class RuntimeToolBridge : IAsyncDisposable
     private static string Truncate(string? value) => value is null || value.Length <= MaxBridgeAuditChars
         ? value ?? string.Empty
         : value[..MaxBridgeAuditChars] + "…[审计截断]";
+
+    private sealed record BridgeRequest(Registration Registration, Activity? HttpActivity);
 
     private sealed record Registration(
         Dictionary<string, RuntimeTool> Tools,

@@ -22,7 +22,7 @@ public class RouterPipelineMiddlewareTests
 
         Assert.Equal(StatusCodes.Status429TooManyRequests, context.Response.StatusCode);
         Assert.Equal("2", context.Response.Headers.RetryAfter);
-        Assert.Equal("tenant-1:user-1", limiter.ClientId);
+        Assert.Equal("chat:tenant-1:user-1", limiter.ClientId);
         Assert.False(nextCalled);
     }
 
@@ -41,7 +41,7 @@ public class RouterPipelineMiddlewareTests
     }
 
     [Fact]
-    public async Task RateLimiting_AnonymousRequest_BypassesLimiter()
+    public async Task RateLimiting_AnonymousRequest_UsesPeerAddressWithoutTrustingHeaders()
     {
         bool nextCalled = false;
         var middleware = new RateLimitingMiddleware(
@@ -49,10 +49,13 @@ public class RouterPipelineMiddlewareTests
             NullLogger<RateLimitingMiddleware>.Instance);
         var limiter = new StubRateLimiter(false);
 
-        await middleware.InvokeAsync(new DefaultHttpContext(), AnonymousUser, limiter);
+        DefaultHttpContext context = new();
+        context.Connection.RemoteIpAddress = System.Net.IPAddress.Loopback;
+        context.Request.Headers["X-Forwarded-For"] = "203.0.113.8";
+        await middleware.InvokeAsync(context, AnonymousUser, limiter);
 
-        Assert.True(nextCalled);
-        Assert.Null(limiter.ClientId);
+        Assert.False(nextCalled);
+        Assert.Equal("anonymous:127.0.0.1", limiter.ClientId);
     }
 
     private static AgentUserContext AuthenticatedUser => new()

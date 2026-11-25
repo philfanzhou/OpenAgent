@@ -20,7 +20,7 @@ services:
       ASPNETCORE_URLS: http://+:5208
       OpenCode__SessionStateRoot: /home/app/openagent-sessions
       ConnectionStrings__OpenAgentDatabase: Host=host.docker.internal;Port=${OPENAGENT_POSTGRES_PORT:-5432};Database=${OPENAGENT_POSTGRES_DB:-openagent};Username=${OPENAGENT_POSTGRES_USER:-openagent};Password=${OPENAGENT_POSTGRES_PASSWORD:-openagent}
-      ConnectionStrings__Redis: host.docker.internal:${OPENAGENT_REDIS_PORT:-6379},defaultDatabase=0
+      ConnectionStrings__Redis: "redis:6379,defaultDatabase=0,Password=${OPENAGENT_REDIS_PASSWORD:?Set OPENAGENT_REDIS_PASSWORD}"
       Database__ApplyMigrationsOnStartup: "true"
       ConversationCache__Enabled: "true"
       FileAssets__Enabled: "true"
@@ -33,7 +33,7 @@ services:
       FileAssets__ObjectStorage__SecretKey: ${OPENAGENT_S3_SECRET_KEY:-openagent-secret}
       FileAssets__Share__PublicBaseUrl: ${OPENAGENT_SHARE_PUBLIC_BASE_URL:-}
       Engine__AllowMockAgent: "true"
-      Heartbeat__AdvertisedHost: engine
+      Heartbeat__AdvertisedHost: preview-engine-${PREVIEW_SLUG:-dev}
       Heartbeat__AdvertisedPort: "5208"
       Authentication__AllowDevelopmentAnonymous: "${PREVIEW_ALLOW_ANONYMOUS:-true}"
       Authentication__Mode: ${OPENAGENT_AUTH_MODE:-Basic}
@@ -57,22 +57,31 @@ services:
 
     volumes:
       - engine-sessions:/home/app/openagent-sessions
+    networks:
+      default:
+        aliases: ["preview-engine-${PREVIEW_SLUG:-dev}"]
+      preview-redis: {}
 
   router:
     build:
       context: ../..
       dockerfile: Backend/src/OpenAgent.Router/Dockerfile
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp]
     # WSL 空闲关机后，下次启动 Docker 时自动拉回预览。
     restart: unless-stopped
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:5001
-      ConnectionStrings__Redis: host.docker.internal:${OPENAGENT_REDIS_PORT:-6379},defaultDatabase=0
+      ConnectionStrings__Redis: "redis:6379,defaultDatabase=0,Password=${OPENAGENT_REDIS_PASSWORD:?Set OPENAGENT_REDIS_PASSWORD}"
       OpenTelemetry__OtlpEndpoint: ${OPENAGENT_OTLP_ENDPOINT:-http://host.docker.internal:4317}
       OpenTelemetry__ServiceName: openagent-router
       OpenTelemetry__ServiceVersion: preview-${PREVIEW_SLUG:-dev}
-      RouterSettings__Routing__EngineEndpoint: http://engine:5208
-      RouterSettings__IntentRecognition__TimeoutMs: "30000"
+      RouterSettings__Routing__EngineEndpoint: http://preview-engine-${PREVIEW_SLUG:-dev}:5208
+      RouterSettings__ServiceDiscovery__AllowedHosts__0: preview-engine-${PREVIEW_SLUG:-dev}
+      RouterSettings__IntentRecognition__TimeoutMs: "5000"
       Authentication__AllowDevelopmentAnonymous: "${PREVIEW_ALLOW_ANONYMOUS:-true}"
       Authentication__Mode: ${OPENAGENT_AUTH_MODE:-Basic}
       Authentication__EnableKeycloak: "${OPENAGENT_AUTH_ENABLE_KEYCLOAK:-false}"
@@ -85,6 +94,7 @@ services:
       Authentication__ClockSkewSeconds: "60"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    networks: [default, preview-redis]
     depends_on:
       engine:
         condition: service_healthy
@@ -107,6 +117,11 @@ services:
         condition: service_healthy
     ports:
       - "${PREVIEW_CHAT_PORT:-8090}:80"
+
+networks:
+  preview-redis:
+    name: openagent-preview-redis
+    external: true
 
 volumes:
   engine-sessions:

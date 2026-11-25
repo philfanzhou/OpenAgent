@@ -30,7 +30,6 @@ REDIS_DB_MAX=15
 
 # 共享基础设施宿主端口（由 read_infra_ports 覆盖，仅 up 需要）
 pg_port=5432
-redis_port=6379
 minio_port=9000
 
 die() { echo "error: $*" >&2; exit 1; }
@@ -70,10 +69,9 @@ read_infra_ports() {
   minio_name="$(infra_container minio)" \
     || die "共享基础设施容器 (minio) 未运行。请先在主 openagent 栈启动基础设施后再开预览。"
   pg_port="$(host_publish_port "$pg_name" 5432)"
-  redis_port="$(host_publish_port "$redis_name" 6379)"
   minio_port="$(host_publish_port "$minio_name" 9000)"
-  [[ -n "$pg_port" && -n "$redis_port" && -n "$minio_port" ]] \
-    || die "无法读取共享基础设施的宿主端口(postgres/redis/minio)"
+  [[ -n "$pg_port" && -n "$minio_port" ]] \
+    || die "无法读取共享基础设施的宿主端口(postgres/minio)"
 }
 
 write_env_file() {
@@ -88,7 +86,6 @@ PREVIEW_ROUTER_PORT=$router_port
 PREVIEW_CHAT_PORT=$chat_port
 PREVIEW_REDIS_DB=$redis_db
 OPENAGENT_POSTGRES_PORT=$pg_port
-OPENAGENT_REDIS_PORT=$redis_port
 OPENAGENT_MINIO_PORT=$minio_port
 OPENAGENT_OTLP_ENDPOINT=http://host.docker.internal:4317
 OPENAGENT_SHARE_PUBLIC_BASE_URL=http://localhost:$engine_port

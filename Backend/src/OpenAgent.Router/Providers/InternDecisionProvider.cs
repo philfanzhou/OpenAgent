@@ -1,8 +1,6 @@
-using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Configuration;
 using OpenAgent.Engine.Hosting;
 using OpenAgent.Router.Models;
@@ -31,7 +29,7 @@ namespace OpenAgent.Router.Providers;
 ///   must never take chat down.</item>
 /// </list>
 /// </remarks>
-internal sealed class InternDecisionProvider : IAgentProvider
+internal sealed class InternDecisionProvider : IAgentProvider, IDisposable
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -42,19 +40,25 @@ internal sealed class InternDecisionProvider : IAgentProvider
     private readonly InternDecisionOptions _options;
     private readonly ILogger<InternDecisionProvider> _logger;
     private readonly HttpClient _httpClient;
+    private readonly int _timeoutMs;
+    private readonly DecisionCircuit _circuit;
 
     public InternDecisionProvider(
         string providerId,
         IConfigurationSection settings,
         ILogger<InternDecisionProvider> logger,
-        HttpMessageHandler? handler = null)
+        HttpMessageHandler? handler = null,
+        int timeoutMs = 5000,
+        TimeProvider? clock = null)
     {
         Id = providerId;
         _logger = logger;
         _options = BindOptions(settings);
+        _timeoutMs = timeoutMs;
+        _circuit = new DecisionCircuit(clock ?? TimeProvider.System);
 
-        _httpClient = handler is null ? new HttpClient() : new HttpClient(handler, disposeHandler: false);
-        _httpClient.Timeout = TimeSpan.FromMilliseconds(_options.TimeoutMs);
+        _httpClient = new HttpClient(handler ?? HttpClientSecurity.CreateSocketsHttpHandler(settings, Timeout.InfiniteTimeSpan),
+            disposeHandler: handler is null) { Timeout = Timeout.InfiniteTimeSpan };
     }
 
     public string Id { get; }
@@ -123,9 +127,18 @@ internal sealed class InternDecisionProvider : IAgentProvider
         {
             Query = message,
             Agents = candidates,
-            Fallback = _options.FallbackAgentId
+            Fallback = candidates.ContainsKey(_options.FallbackAgentId) ? _options.FallbackAgentId : candidates.Keys.First()
         };
 
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!_circuit.TryEnter(out DecisionCircuit.Attempt attempt))
+        {
+            return null;
+        }
+
+        using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(_timeoutMs);
+        bool? succeeded = null;
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
@@ -142,7 +155,7 @@ internal sealed class InternDecisionProvider : IAgentProvider
             RouterLog.InternDecisionRequest(_logger, Id, endpoint, candidates.Count);
 
             using HttpResponseMessage response = await _httpClient
-                .SendAsync(request, cancellationToken)
+                .SendAsync(request, timeout.Token)
                 .ConfigureAwait(false);
 
             if (!response.IsSuccessStatusCode)
@@ -153,13 +166,14 @@ internal sealed class InternDecisionProvider : IAgentProvider
                 RouterLog.InternDecisionUnavailable(
                     _logger,
                     Id,
-                    (int)response.StatusCode,
-                    await ReadSnippetAsync(response, cancellationToken).ConfigureAwait(false));
+                    (int)response.StatusCode);
+                succeeded = false;
                 return null;
             }
 
-            RouteResponse? result = await ReadRouteResponseAsync(response, cancellationToken)
+            RouteResponse? result = await ReadRouteResponseAsync(response, timeout.Token)
                 .ConfigureAwait(false);
+            succeeded = result is not null;
             IntentRecognitionResult? intent = Interpret(result, candidates, intentAgentId);
             RouterLog.InternDecisionResult(
                 _logger,
@@ -172,20 +186,29 @@ internal sealed class InternDecisionProvider : IAgentProvider
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            RouterLog.InternDecisionTimedOut(_logger, Id, _options.TimeoutMs);
+            succeeded = false;
+            RouterLog.InternDecisionTimedOut(_logger, Id, _timeoutMs);
             return null;
         }
         catch (HttpRequestException exception)
         {
+            succeeded = false;
             RouterLog.InternDecisionFailed(_logger, Id, exception);
             return null;
         }
         catch (JsonException exception)
         {
+            succeeded = false;
             RouterLog.InternDecisionFailed(_logger, Id, exception);
             return null;
         }
+        finally
+        {
+            _circuit.Complete(attempt, succeeded);
+        }
     }
+
+    public void Dispose() => _httpClient.Dispose();
 
     /// <summary>
     /// Maps the service's answer onto the router's selection result.
@@ -272,28 +295,6 @@ internal sealed class InternDecisionProvider : IAgentProvider
             candidates[agent.AgentId] = description;
         }
 
-        // The model only chooses from what it is given, so a missing fallback
-        // forces it to pick arbitrarily. It is also a hard requirement of the
-        // request contract: a fallback outside the candidate set is rejected
-        // outright. Inject the entry rather than fail — and if the list is
-        // already at the ceiling, drop the last candidate to make room, because
-        // losing one candidate degrades routing while rejecting the request
-        // disables it entirely.
-        if (!string.IsNullOrWhiteSpace(_options.FallbackAgentId)
-            && !candidates.ContainsKey(_options.FallbackAgentId))
-        {
-            if (candidates.Count >= MaxAgents)
-            {
-                string? last = candidates.Keys.LastOrDefault();
-                if (last is not null)
-                {
-                    candidates.Remove(last);
-                }
-            }
-
-            candidates[_options.FallbackAgentId] = _options.FallbackDescription;
-        }
-
         return candidates;
     }
 
@@ -309,31 +310,11 @@ internal sealed class InternDecisionProvider : IAgentProvider
             .ConfigureAwait(false);
     }
 
-    private static async Task<string> ReadSnippetAsync(
-        HttpResponseMessage response,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            string body = await response.Content
-                .ReadAsStringAsync(cancellationToken)
-                .ConfigureAwait(false);
-            return body.Length <= 400 ? body : body[..400];
-        }
-        catch (Exception)
-        {
-            return string.Empty;
-        }
-    }
-
     private InternDecisionOptions BindOptions(IConfigurationSection settings)
     {
         var options = new InternDecisionOptions
         {
-            BaseUrl = settings["BaseUrl"] ?? string.Empty,
-            TimeoutMs = int.TryParse(settings["TimeoutMs"], out int timeout) && timeout > 0
-                ? timeout
-                : 5000
+            BaseUrl = settings["BaseUrl"] ?? string.Empty
         };
 
         if (settings["RoutePath"] is { Length: > 0 } routePath)
@@ -349,11 +330,6 @@ internal sealed class InternDecisionProvider : IAgentProvider
         if (settings["FallbackAgentId"] is { Length: > 0 } fallback)
         {
             options.FallbackAgentId = fallback;
-        }
-
-        if (settings["FallbackDescription"] is { Length: > 0 } fallbackDescription)
-        {
-            options.FallbackDescription = fallbackDescription;
         }
 
         if (settings["DefaultAgentDescription"] is { Length: > 0 } defaultDescription)

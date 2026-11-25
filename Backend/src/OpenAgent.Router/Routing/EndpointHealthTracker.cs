@@ -11,7 +11,7 @@ internal sealed class EndpointHealthTracker : IEndpointHealthTracker
 
     public EndpointHealthTracker(IConfiguration configuration)
         : this(
-            Math.Max(configuration.GetValue("RouterSettings:ServiceDiscovery:FailureThreshold", 1), 1),
+            Math.Max(configuration.GetValue("RouterSettings:ServiceDiscovery:FailureThreshold", 3), 1),
             TimeSpan.FromSeconds(Math.Max(
                 configuration.GetValue("RouterSettings:ServiceDiscovery:FailureQuarantineSeconds", 30), 1)),
             TimeProvider.System)
@@ -35,18 +35,13 @@ internal sealed class EndpointHealthTracker : IEndpointHealthTracker
             return true;
         }
 
-        if (state.Failures < _failureThreshold)
-        {
-            return true;
-        }
-
         if (state.QuarantinedUntil <= _timeProvider.GetUtcNow())
         {
-            _failures.TryRemove(endpoint, out _);
+            _failures.TryRemove(new KeyValuePair<string, FailureState>(endpoint, state));
             return true;
         }
 
-        return false;
+        return state.Failures < _failureThreshold;
     }
 
     public void ReportSuccess(string endpoint)
@@ -60,7 +55,9 @@ internal sealed class EndpointHealthTracker : IEndpointHealthTracker
         _failures.AddOrUpdate(
             endpoint,
             _ => new FailureState(1, now + _quarantineDuration),
-            (_, current) => new FailureState(current.Failures + 1, now + _quarantineDuration));
+            (_, current) => current.QuarantinedUntil <= now
+                ? new FailureState(1, now + _quarantineDuration)
+                : new FailureState(current.Failures + 1, now + _quarantineDuration));
     }
 
     private sealed record FailureState(int Failures, DateTimeOffset QuarantinedUntil);

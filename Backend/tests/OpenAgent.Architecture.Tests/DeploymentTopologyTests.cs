@@ -34,7 +34,7 @@ public class DeploymentTopologyTests
         Assert.Equal(1, CountOccurrences(shared, "OTEL_EXPORTER_OTLP_ENDPOINT="));
         Assert.Equal(1, CountOccurrences(shared, "OTEL_EXPORTER_OTLP_HEADERS="));
         Assert.Equal(1, CountOccurrences(shared, "OTEL_EXPORTER_OTLP_PROTOCOL="));
-        Assert.Equal(1, CountOccurrences(shared, "OTEL_TRACES_EXPORTER="));
+        Assert.DoesNotContain("OTEL_TRACES_EXPORTER=", shared, StringComparison.Ordinal);
     }
 
     [Fact]

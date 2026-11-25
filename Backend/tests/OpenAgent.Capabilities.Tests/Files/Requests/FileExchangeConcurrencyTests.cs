@@ -40,7 +40,7 @@ public sealed class FileExchangeConcurrencyTests
                 Mock<IFileAssetService> files = new();
                 files.Setup(value => value.GetReferencedAsync(asset.FileId, It.IsAny<FileAssetScope>(), It.IsAny<CancellationToken>()))
                     .ReturnsAsync(asset);
-                files.Setup(value => value.ListAsync(It.IsAny<FileAssetScope>(), It.IsAny<CancellationToken>()))
+                files.Setup(value => value.ListRecentOutputsAsync(It.IsAny<FileAssetScope>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
                     .ReturnsAsync([]);
                 files.Setup(value => value.CopyReferencedToAsync(asset.FileId, It.IsAny<FileAssetScope>(), It.IsAny<Stream>(), data.Length, It.IsAny<CancellationToken>()))
                     .Returns(async (string _, FileAssetScope scope, Stream destination, long _, CancellationToken token) =>

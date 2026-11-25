@@ -49,7 +49,7 @@ internal static class GatewayProxyHandler
         }
 
         string targetUrl = $"{targetEndpoint.TrimEnd('/')}{context.Request.Path}{context.Request.QueryString}";
-        string traceId = Activity.Current?.Id ?? context.TraceIdentifier;
+        string traceId = AgentProblemDetails.ResolveTraceId(context);
         ForwarderError error;
         try
         {
@@ -117,11 +117,6 @@ internal static class GatewayProxyHandler
         Uri targetUri,
         string traceId)
     {
-        proxyRequest.RequestUri = targetUri;
-        if (!proxyRequest.Headers.Contains("X-Trace-Id"))
-        {
-            proxyRequest.Headers.TryAddWithoutValidation("X-Trace-Id", traceId);
-        }
-        return ValueTask.CompletedTask;
+        return ForwardingContextBuilder.ApplyAsync(proxyRequest, targetUri, traceId);
     }
 }

@@ -3,9 +3,11 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using OpenAgent.Contracts.Runtime;
 using OpenAgent.Contracts.Security;
 using OpenAgent.Engine.Hosting.Authentication;
 using OpenAgent.Engine.Hosting.Security;
+using OpenTelemetry;
 using OpenTelemetry.Exporter;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
@@ -43,6 +45,7 @@ public static class ServiceCollectionExtensions
             opt.ServiceName = options.ServiceName;
             opt.ServiceVersion = options.ServiceVersion;
             opt.OpenTelemetrySource = options.OpenTelemetrySource;
+            opt.AdditionalTraceSources = options.AdditionalTraceSources;
         });
         services.AddOptions<AgentAuthenticationOptions>()
             .Bind(configuration.GetSection("Authentication"));
@@ -137,6 +140,7 @@ public static class ServiceCollectionExtensions
         if (options.EnableOpenTelemetry)
         {
             OtlpSettings otlp = OtlpSettings.FromConfiguration(configuration);
+            services.AddSingleton(new TraceExportStatus(otlp.TracesEndpoint is not null));
             Func<HttpClient>? otlpHttpClientFactory = HttpClientSecurity.CreateHttpClientFactory(configuration);
 
             string serviceName = configuration["OpenTelemetry:ServiceName"] ?? options.ServiceName;
@@ -145,16 +149,19 @@ public static class ServiceCollectionExtensions
                 .ConfigureResource(resource => resource
                     .AddService(serviceName, serviceVersion: serviceVersion));
 
-            services.AddLogging(logging => logging.AddOpenTelemetry(logs =>
+            if (otlp.LogsEndpoint is not null)
             {
-                logs.SetResourceBuilder(ResourceBuilder.CreateDefault()
-                    .AddService(serviceName, serviceVersion: serviceVersion));
-                logs.IncludeFormattedMessage = true;
-                logs.IncludeScopes = true;
-                logs.ParseStateValues = true;
-                logs.AddOtlpExporter(exporter => ApplyOtlpExporter(
-                    exporter, otlp, OtlpSignal.Logs, otlp.LogsEndpoint, otlpHttpClientFactory));
-            }));
+                services.AddLogging(logging => logging.AddOpenTelemetry(logs =>
+                {
+                    logs.SetResourceBuilder(ResourceBuilder.CreateDefault()
+                        .AddService(serviceName, serviceVersion: serviceVersion));
+                    logs.IncludeFormattedMessage = true;
+                    logs.IncludeScopes = true;
+                    logs.ParseStateValues = true;
+                    logs.AddOtlpExporter(exporter => ApplyOtlpExporter(
+                        exporter, otlp, OtlpSignal.Logs, otlp.LogsEndpoint, otlpHttpClientFactory));
+                }));
+            }
 
             openTelemetry.WithTracing(tracing =>
             {
@@ -166,11 +173,22 @@ public static class ServiceCollectionExtensions
                     .AddHttpClientInstrumentation(instrumentation =>
                         instrumentation.FilterHttpRequestMessage = request =>
                             !RequestTelemetryMiddleware.IsHealthProbeUri(request.RequestUri, options))
-                    .AddSource(options.OpenTelemetrySource)
-                    .AddSource("OpenAgent.AgentFramework");
+                    .AddSource(options.OpenTelemetrySource);
+                foreach (string source in options.AdditionalTraceSources)
+                    tracing.AddSource(source);
 
-                tracing.AddOtlpExporter(exporter => ApplyOtlpExporter(
-                    exporter, otlp, OtlpSignal.Traces, otlp.TracesEndpoint, otlpHttpClientFactory));
+                if (otlp.TracesEndpoint is not null)
+                {
+                    tracing.AddProcessor(provider =>
+                    {
+                        OtlpExporterOptions exporter = new();
+                        ApplyOtlpExporter(exporter, otlp, OtlpSignal.Traces, otlp.TracesEndpoint, otlpHttpClientFactory);
+                        var batch = exporter.BatchExportProcessorOptions;
+                        return new BatchActivityExportProcessor(new TraceExportMonitor(exporter,
+                            provider.GetRequiredService<ILogger<TraceExportMonitor>>()), batch.MaxQueueSize,
+                            batch.ScheduledDelayMilliseconds, batch.ExporterTimeoutMilliseconds, batch.MaxExportBatchSize);
+                    });
+                }
             });
 
             openTelemetry.WithMetrics(metrics =>
@@ -178,10 +196,12 @@ public static class ServiceCollectionExtensions
                 metrics
                     .AddAspNetCoreInstrumentation()
                     .AddMeter(options.OpenTelemetrySource)
+                    .AddMeter(TraceExportMonitor.MeterName)
                     .AddPrometheusExporter();
 
-                metrics.AddOtlpExporter(exporter => ApplyOtlpExporter(
-                    exporter, otlp, OtlpSignal.Metrics, otlp.MetricsEndpoint, otlpHttpClientFactory));
+                if (otlp.MetricsEndpoint is not null)
+                    metrics.AddOtlpExporter(exporter => ApplyOtlpExporter(
+                        exporter, otlp, OtlpSignal.Metrics, otlp.MetricsEndpoint, otlpHttpClientFactory));
             });
         }
 

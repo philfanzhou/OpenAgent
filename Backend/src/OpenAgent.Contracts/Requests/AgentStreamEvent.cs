@@ -1,4 +1,5 @@
 using OpenAgent.Contracts.Conversation;
+using System.Text.Json.Serialization;
 
 namespace OpenAgent.Contracts.Requests;
 
@@ -22,6 +23,9 @@ public sealed record AgentStreamEvent
     public string? ToolName { get; init; }
     public string? ToolCallId { get; init; }
     public object? ToolArguments { get; init; }
+    [JsonIgnore] public bool IsBridgedTool { get; init; }
+    [JsonIgnore] public bool IsToolUpdate { get; init; }
+    [JsonIgnore] public bool ToolFailed { get; init; }
     public TokenUsage? Usage { get; init; }
     public ContextSummary? Compaction { get; init; }
     public RuntimeExecutionInfo? Runtime { get; init; }

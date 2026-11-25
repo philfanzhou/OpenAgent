@@ -139,6 +139,9 @@ public sealed class EngineRegistrySnapshotCache : BackgroundService
                     continue;
                 }
 
+                if (!_settings.IsAllowedHost(entry!.Host))
+                    continue;
+
                 TimeSpan heartbeatAge = utcNow - entry!.LastHeartbeat.ToUniversalTime();
                 if (heartbeatAge > _settings.HeartbeatStaleAfter)
                 {

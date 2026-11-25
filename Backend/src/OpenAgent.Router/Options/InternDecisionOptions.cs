@@ -33,9 +33,6 @@ internal sealed class InternDecisionOptions
     /// <summary>Path of the health endpoint, used to report availability.</summary>
     public string HealthPath { get; set; } = "/health";
 
-    /// <summary>Per-request timeout in milliseconds.</summary>
-    public int TimeoutMs { get; set; } = 5000;
-
     /// <summary>
     /// Agent id used as the model's fallback option.
     /// </summary>
@@ -46,9 +43,6 @@ internal sealed class InternDecisionOptions
     /// fallback when left empty.
     /// </remarks>
     public string FallbackAgentId { get; set; } = "default";
-
-    /// <summary>Description stored on the fallback entry when the agent has none.</summary>
-    public string FallbackDescription { get; set; } = "无法明确归入以上任何类别的用户请求";
 
     /// <summary>
     /// Description used for candidate agents that carry none of their own.
@@ -70,8 +64,7 @@ internal sealed class InternDecisionOptions
     internal bool IsConfigured =>
         Uri.TryCreate(BaseUrl, UriKind.Absolute, out Uri? uri)
         && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)
-        && !string.IsNullOrWhiteSpace(RoutePath)
-        && TimeoutMs > 0;
+        && !string.IsNullOrWhiteSpace(RoutePath);
 
     private static string? NullIfBlank(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
