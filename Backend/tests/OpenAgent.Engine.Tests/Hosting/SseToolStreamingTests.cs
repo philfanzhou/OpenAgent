@@ -82,6 +82,8 @@ public sealed class SseToolStreamingTests
         (string _, JsonElement doneData) = Assert.Single(frames, frame => frame.Event == "done");
         Assert.True(doneData.GetProperty("done").GetBoolean());
         Assert.Equal("tool-shape-conversation", doneData.GetProperty("conversationId").GetString());
+        // 正常结束的 done 不带 status，载荷与引入取消状态之前一致。
+        Assert.False(doneData.TryGetProperty("status", out _));
     }
 
     [Fact]

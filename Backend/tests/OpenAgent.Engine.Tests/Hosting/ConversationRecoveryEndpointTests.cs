@@ -245,6 +245,26 @@ public sealed class ConversationRecoveryEndpointTests
         Assert.False(run.Completion.IsCompleted);
     }
 
+    [Fact]
+    public async Task Stream_RunCancelledWhileClientListening_EndsWithDoneCarryingCancelledStatus()
+    {
+        // 同一会话的新轮次取代旧轮次、或会话被删除时，旧连接可能还在监听。取消不是执行失败：
+        // 不再给它发 GatewayTimeout 的 error 事件，而是以带 status 的 done 正常收尾。
+        await using RecoveryHost host = await RecoveryHost.StartAsync();
+        using HttpResponseMessage response = await host.PostStreamAsync();
+        ConversationRun run = Assert.IsType<ConversationRun>(host.Runs.Find("tenant-1", "conversation-1"));
+        using StreamReader reader = new(await response.Content.ReadAsStreamAsync());
+        await ReadThroughContentAsync(reader);
+
+        run.Cancel();
+        host.Producer.AllowFinalization.TrySetResult();
+        string tail = await reader.ReadToEndAsync().WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.DoesNotContain("event: error", tail, StringComparison.Ordinal);
+        Assert.Contains("event: done\ndata: {\"done\":true,\"status\":\"Cancelled\"", tail, StringComparison.Ordinal);
+        Assert.Equal("Cancelled", run.CompletionStatus);
+    }
+
     private static ConversationRecord CreateRecord() => new()
     {
         ConversationId = "conversation-1", TenantId = "tenant-1", UserId = "user-1",

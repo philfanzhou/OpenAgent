@@ -14,6 +14,12 @@ internal sealed class ConversationRunRegistry : IHostedService, IAsyncDisposable
     private TaskCompletionSource<bool>? _stopCompletion;
     private bool _stopped;
 
+    /// <summary>
+    /// 最后一个订阅者离开后留给重连的时间：刷新页面会先断开再接上。之后仍未开始的轮次被取消，
+    /// 已开始产出的轮次不受影响，照旧跑到结束并持久化。
+    /// </summary>
+    internal TimeSpan AbandonGrace { get; init; } = TimeSpan.FromSeconds(2);
+
     public ConversationRunRegistry(IServiceScopeFactory scopeFactory)
     {
         _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
@@ -49,7 +55,8 @@ internal sealed class ConversationRunRegistry : IHostedService, IAsyncDisposable
                 user,
                 _shutdown.Token,
                 _producer ?? ExecuteWithScopeAsync,
-                RemoveFinalizedRun);
+                RemoveFinalizedRun,
+                AbandonGrace);
             _runs.Add(key, run);
         }
 
