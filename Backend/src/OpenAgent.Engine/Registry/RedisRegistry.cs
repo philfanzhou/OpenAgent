@@ -2,6 +2,7 @@ using System.Net;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using OpenAgent.Contracts.Runtime;
 using OpenAgent.Engine.Abstractions;
 using OpenAgent.Engine.Models;
 using OpenAgent.Engine.Observability;
@@ -18,7 +19,7 @@ internal class RedisRegistry : IEngineRegistry, IDisposable
     private readonly IOptionsMonitor<HeartbeatOptions> _options;
     private bool _isRegistered;
     private bool _disposed;
-    private readonly LoadCollector _loadCollector = new();
+    private readonly LoadCollector _loadCollector;
 
     private string RegistryKey => $"engine:registry:{_entry.EngineId}";
 
@@ -27,11 +28,13 @@ internal class RedisRegistry : IEngineRegistry, IDisposable
     public RedisRegistry(
         IRedisConnectionProvider redis,
         IOptionsMonitor<HeartbeatOptions> options,
-        ILogger<RedisRegistry> logger)
+        ILogger<RedisRegistry> logger,
+        IEnumerable<IRuntimeLoadSource>? runtimeLoad = null)
     {
         _logger = logger;
         _redis = redis;
         _options = options;
+        _loadCollector = new LoadCollector(runtimeLoad?.ToArray() ?? []);
 
         var heartbeatOptions = _options.CurrentValue;
         _entry = new RegistryEntry

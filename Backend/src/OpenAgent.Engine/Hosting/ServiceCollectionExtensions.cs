@@ -197,6 +197,10 @@ public static class ServiceCollectionExtensions
                     .AddAspNetCoreInstrumentation()
                     .AddMeter(options.OpenTelemetrySource)
                     .AddMeter(TraceExportMonitor.MeterName)
+                    // 运行时自身的指标：.NET 的 GC/线程池/分配，Npgsql 连接池，以及 ACP 链路的 RPC 计数与时长。
+                    .AddMeter("System.Runtime")
+                    .AddMeter("Npgsql")
+                    .AddMeter("OpenAgent.Runtime.Acp")
                     .AddPrometheusExporter();
 
                 if (otlp.MetricsEndpoint is not null)

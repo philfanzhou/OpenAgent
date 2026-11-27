@@ -6,9 +6,9 @@ using Yarp.ReverseProxy.Forwarder;
 namespace OpenAgent.Router.Endpoints;
 
 /// <summary>
-/// 转发失败时的降级响应：非流式请求返回统一 ProblemDetails；流式请求在响应已开始后
-/// 发 error/done 事件（SSE 载荷与 Engine 的 {type,title,detail,traceId} 形态一致，
-/// NDJSON 保持 {type,error:{title,detail,traceId}} 结构）。
+/// 转发失败时的降级响应：非流式请求返回统一 ProblemDetails；流式请求在响应尚未开始时
+/// 发 error/done 事件。Engine 的聊天流式端点只有 SSE（<c>/chat/stream</c>），没有 NDJSON 端点，
+/// 所以所有流式动作都写 SSE，载荷与 Engine 的失败帧同形。
 /// </summary>
 internal static class StreamingForwardingError
 {
@@ -37,14 +37,7 @@ internal static class StreamingForwardingError
 
         try
         {
-            if (string.Equals(action, "stream", StringComparison.OrdinalIgnoreCase))
-            {
-                await WriteNdjsonErrorAsync(context, error, traceId, cancellationToken);
-            }
-            else
-            {
-                await WriteSseErrorAsync(context, error, traceId, cancellationToken);
-            }
+            await WriteSseErrorAsync(context, error, traceId, cancellationToken);
         }
         catch (OperationCanceledException)
         {
@@ -109,39 +102,6 @@ internal static class StreamingForwardingError
 
         await context.Response.WriteAsync($"event: error\ndata: {payload}\n\n", cancellationToken);
         await context.Response.WriteAsync($"event: done\ndata: {done}\n\n", cancellationToken);
-        await context.Response.Body.FlushAsync(cancellationToken);
-    }
-
-    private static async Task WriteNdjsonErrorAsync(
-        HttpContext context,
-        ForwarderError error,
-        string traceId,
-        CancellationToken cancellationToken)
-    {
-        context.Response.StatusCode = StatusCodes.Status200OK;
-        context.Response.ContentType = "application/x-ndjson";
-        context.Response.Headers.CacheControl = "no-cache";
-
-        var errorLine = JsonSerializer.Serialize(new
-        {
-            type = "error",
-            error = new
-            {
-                title = error == ForwarderError.RequestTimedOut ? "GatewayTimeout" : "ServiceUnavailable",
-                detail = $"Forwarding failed: {error}",
-                traceId
-            },
-            traceId
-        }, JsonOptions);
-        var doneLine = JsonSerializer.Serialize(new
-        {
-            type = "done",
-            status = "error",
-            traceId
-        }, JsonOptions);
-
-        await context.Response.WriteAsync(errorLine + "\n", cancellationToken);
-        await context.Response.WriteAsync(doneLine + "\n", cancellationToken);
         await context.Response.Body.FlushAsync(cancellationToken);
     }
 }

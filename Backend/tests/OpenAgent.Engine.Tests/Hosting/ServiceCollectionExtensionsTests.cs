@@ -1,3 +1,4 @@
+using OpenAgent.Engine.Extensions;
 using OpenAgent.Engine.Hosting;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -5,7 +6,9 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using OpenAgent.Engine.Hosting.Authentication;
+using OpenAgent.Engine.Registry;
 using StackExchange.Redis;
 using Xunit;
 
@@ -49,6 +52,20 @@ public class ServiceCollectionExtensionsTests
         Assert.Equal("Test.Host", options.OpenTelemetrySource);
         Assert.Equal("/live", options.HealthCheckLivePath);
     }
+
+    [Fact]
+    public void AddAgentEngine_StartsRuntimeLoadMetricsWithTheHost()
+    {
+        // 仪表必须随宿主启动：惰性单例没人解析就不会被构造，/metrics 里也就没有运行时占用。
+        ServiceCollection services = new();
+        IConfiguration configuration = new ConfigurationBuilder().Build();
+        services.AddSingleton<IConfiguration>(configuration);
+        services.AddAgentEngine(configuration);
+
+        Assert.Contains(services, descriptor =>
+            descriptor.ServiceType == typeof(IHostedService) && descriptor.ImplementationType == typeof(RuntimeLoadMetrics));
+    }
+
 
     [Fact]
     public async Task AddAgentHost_WithBasicModeAndApiKeyEnabled_RegistersBothSchemes()
