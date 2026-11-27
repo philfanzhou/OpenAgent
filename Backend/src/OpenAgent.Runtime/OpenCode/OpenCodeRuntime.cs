@@ -7,6 +7,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Configuration;
+using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Runtime;
 using OpenAgent.Contracts.Security;
@@ -240,6 +241,11 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
             {
                 prompt = [.. prompt, new TextContent(manifest)];
             }
+            bool needsNativeAudit = initialized.AgentInfo?.Version?.StartsWith("1.", StringComparison.Ordinal) == true;
+            await using OpenCodeCompactionEvents? compactionEvents = initialized.AgentInfo?.Version == OpenCodeCompactionEvents.SupportedVersion
+                ? await SubscribeToCompactionAsync(agent, session.SessionId, invocation.Turn.TraceId, cancellationToken)
+                    .ConfigureAwait(false)
+                : null;
             await using AcpPromptTurn turn = await session.StartPromptAsync(prompt, cancellationToken).ConfigureAwait(false);
             promptAt = clock.ElapsedMilliseconds;
             await using IAsyncEnumerator<SessionNotification> updates = session.ReadUpdatesAsync().GetAsyncEnumerator();
@@ -290,22 +296,11 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
                     OpenCodeLog.UsageUpdate(logger, updated.Used, updated.Size);
                 }
             }
-            // v1 streams native summaries as assistant text and has no typed ACP compaction notifications.
-            // Export is a local read of the native session; it never invokes a model.
-            if (initialized.AgentInfo?.Version?.StartsWith("1.", StringComparison.Ordinal) == true)
+            if (needsNativeAudit)
             {
-                IReadOnlyList<Contracts.Conversation.ContextSummary> audits = [];
-                try
-                {
-                    audits = await OpenCodeCompactionExport.ReadAsync(Launch, invocation, agent,
-                        settings.AllowedNativeTools, session.SessionId, cancellationToken).ConfigureAwait(false);
-                }
-                catch (Exception error) when (error is not OperationCanceledException)
-                {
-                    logger.LogWarning("Native compaction audit unavailable. TraceId={TraceId}, ErrorType={ErrorType}",
-                        invocation.Turn.TraceId, error.GetType().Name);
-                }
-                foreach (Contracts.Conversation.ContextSummary audit in audits)
+                IReadOnlyList<ContextSummary> audits = await ReadCompactionsAsync(compactionEvents, invocation, agent,
+                    settings.AllowedNativeTools, session.SessionId, cancellationToken).ConfigureAwait(false);
+                foreach (ContextSummary audit in audits)
                     yield return new AgentStreamEvent { Type = AgentStreamEventType.Compaction, Compaction = audit };
             }
             if (completionFailure is not null)
@@ -495,6 +490,59 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
         _ => ".bin"
     };
 
+    private async Task<OpenCodeCompactionEvents?> SubscribeToCompactionAsync(OpenCodeAgentProcess agent,
+        string sessionId, string traceId, CancellationToken ct)
+    {
+        if (agent.CompactionEndpoint is not { } endpoint) return null;
+        try
+        {
+            return await OpenCodeCompactionEvents.StartAsync(endpoint.CreateClient(), sessionId, agent.Workspace, ct)
+                .ConfigureAwait(false);
+        }
+        catch (Exception error) when (OpenCodeCompactionEvents.CanFallback(error, ct))
+        {
+            OpenCodeLog.CompactionExportFallback(logger, traceId, error.GetType().Name);
+            return null;
+        }
+    }
+
+    private async Task<IReadOnlyList<ContextSummary>> ReadCompactionsAsync(OpenCodeCompactionEvents? events,
+        RuntimeInvocation invocation, OpenCodeAgentProcess agent, IReadOnlyList<string> allowedTools,
+        string sessionId, CancellationToken ct)
+    {
+        if (events is not null)
+        {
+            try
+            {
+                IReadOnlyList<ContextSummary> audits = await events.ReadAuditsAsync(
+                    agent.ReportedCompactions, agent.CompactionAuditPending, ct).ConfigureAwait(false);
+                agent.CompactionAuditPending = false;
+                if (audits.Count > 0)
+                    OpenCodeLog.CompactionEventsRead(logger, invocation.Turn.TraceId, audits.Count);
+                return audits;
+            }
+            catch (Exception error) when (OpenCodeCompactionEvents.CanFallback(error, ct))
+            {
+                OpenCodeLog.CompactionExportFallback(logger, invocation.Turn.TraceId, error.GetType().Name);
+            }
+        }
+
+        try
+        {
+            IReadOnlyList<ContextSummary> audits = await OpenCodeCompactionExport.ReadAsync(
+                Launch, invocation, agent, allowedTools, sessionId, ct).ConfigureAwait(false);
+            agent.CompactionAuditPending = false;
+            return audits;
+        }
+        catch (Exception error) when (error is not OperationCanceledException)
+        {
+            agent.CompactionAuditPending = true;
+            logger.LogWarning("Native compaction audit unavailable. TraceId={TraceId}, ErrorType={ErrorType}",
+                invocation.Turn.TraceId, error.GetType().Name);
+            return [];
+        }
+    }
+
     internal static ContentBlock[] BuildPrompt(IReadOnlyList<RuntimeMessage> messages, int maxCharacters)
     {
         if (messages.Count == 0)
@@ -539,6 +587,14 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
 
 internal static partial class OpenCodeLog
 {
+    [LoggerMessage(EventId = 4503, Level = LogLevel.Warning,
+        Message = "OpenCode compaction events unavailable; using export. TraceId={TraceId}, ErrorType={ErrorType}")]
+    internal static partial void CompactionExportFallback(ILogger logger, string traceId, string errorType);
+
+    [LoggerMessage(EventId = 4504, Level = LogLevel.Information,
+        Message = "OpenCode compaction audits read from native events. TraceId={TraceId}, Count={Count}")]
+    internal static partial void CompactionEventsRead(ILogger logger, string traceId, int count);
+
     [LoggerMessage(EventId = 4502, Level = LogLevel.Warning, Message = "OpenCode cleanup failed: resource={Resource} error={ErrorType}")]
     internal static partial void CleanupFailure(ILogger logger, string resource, string errorType);
 

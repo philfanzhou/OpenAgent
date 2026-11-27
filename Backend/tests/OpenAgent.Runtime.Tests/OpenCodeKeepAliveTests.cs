@@ -3,8 +3,11 @@ using OpenAgent.Contracts.Configuration;
 using OpenAgent.Contracts.Requests;
 using OpenAgent.Contracts.Runtime;
 using OpenAgent.Contracts.Security;
+using System.Collections.Concurrent;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Xunit;
 
 namespace OpenAgent.Runtime.Tests;
@@ -53,9 +56,13 @@ public sealed class OpenCodeKeepAliveTests
         }
     }
 
-    [OpenCodeFact]
-    public async Task AutoCompaction_AfterColdRestart_RetainsNativeCompressedContext()
+    [OpenCodeTheory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task AutoCompaction_AfterColdRestart_RetainsNativeCompressedContext(bool useCompactionEvents)
     {
+        CompactionLogProvider logs = new();
+        string? version = null;
         string durable = Path.Combine(Path.GetTempPath(), "acp-auto-compaction-" + Guid.NewGuid().ToString("N"));
         int round = 0;
         int summaries = 0;
@@ -90,19 +97,29 @@ public sealed class OpenCodeKeepAliveTests
             });
             for (round = 1; round <= 3; round++)
             {
-                await using RuntimeFixture runtime = new(model.Endpoint, config => config["OpenCode:SessionStateRoot"] = durable);
+                await using RuntimeFixture runtime = new(model.Endpoint, config =>
+                {
+                    config["OpenCode:SessionStateRoot"] = durable;
+                    config["OpenCode:UseCompactionEvents"] = useCompactionEvents ? "true" : "false";
+                });
+                runtime.Provider.GetRequiredService<ILoggerFactory>().AddProvider(logs);
                 List<AgentStreamEvent> events = await runtime.CollectAsync(runtime.Request with
                 {
                     HistoryCheckpoint = "checkpoint-" + (round - 1),
                     CommitAsync = _ => Task.FromResult<string?>("checkpoint-" + round),
                     Messages = [new("user", round == 1 ? new string('h', 256 * 1024) + " first question" : "continue")]
                 });
+                version = events.First(item => item.Type == AgentStreamEventType.RuntimeStarted).Runtime?.AgentVersion;
                 Assert.Empty(Directory.GetFiles(durable, "compaction-export-*", SearchOption.AllDirectories));
                 compactions.AddRange(events.Where(item => item.Type == AgentStreamEventType.Compaction));
                 Assert.EndsWith("answer-" + round, Text(events));
             }
             Assert.True(summaries > 0);
             Assert.Equal("retained-summary-native", Assert.Single(compactions, item => item.Compaction?.Status == "Succeeded").Compaction?.Summary);
+            if (useCompactionEvents && version == OpenCodeCompactionEvents.SupportedVersion)
+                Assert.Equal(new[] { 4504 }, logs.EventIds);
+            else
+                Assert.Empty(logs.EventIds);
         }
         finally
         {
@@ -588,4 +605,21 @@ public sealed class OpenCodeKeepAliveTests
     private static string Text(IEnumerable<AgentStreamEvent> events) =>
         string.Concat(events.Where(item => item.Type == AgentStreamEventType.Content).Select(item => item.Content));
 
+    private sealed class CompactionLogProvider : ILoggerProvider, ILogger
+    {
+        internal ConcurrentQueue<int> EventIds { get; } = new();
+
+        public ILogger CreateLogger(string categoryName) => this;
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            if (eventId.Id is 4503 or 4504)
+                EventIds.Enqueue(eventId.Id);
+        }
+
+        public void Dispose() { }
+    }
 }

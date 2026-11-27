@@ -50,7 +50,7 @@ internal sealed class OpenCodeSessionState : IAsyncDisposable
 
     internal async Task CommitAsync(OpenCodeAgentProcess process, CancellationToken ct)
     {
-        Snapshot snapshot = new(process.Key, Path.GetFileName(process.Home), process.SessionId!, process.HistoryCheckpoint!, process.ToolSchema!, [.. process.ReportedCompactions]);
+        Snapshot snapshot = new(process.Key, Path.GetFileName(process.Home), process.SessionId!, process.HistoryCheckpoint!, process.ToolSchema!, [.. process.ReportedCompactions], process.CompactionAuditPending);
         string temporary = Path.Combine(_parent, "checkpoint-" + Guid.NewGuid().ToString("N") + ".tmp");
         try
         {
@@ -78,5 +78,5 @@ internal sealed class OpenCodeSessionState : IAsyncDisposable
     internal void Invalidate() => File.Delete(ManifestPath);
 
     public ValueTask DisposeAsync() => _lease.DisposeAsync();
-    internal sealed record Snapshot(string Key, string Home, string SessionId, string Checkpoint, string ToolSchema, string[]? ReportedCompactions = null);
+    internal sealed record Snapshot(string Key, string Home, string SessionId, string Checkpoint, string ToolSchema, string[]? ReportedCompactions = null, bool CompactionAuditPending = false);
 }

@@ -156,6 +156,7 @@ Redis 行为细节见 [Redis 集成](../integrations/redis-engine.md)。
 | `OpenCode__TurnTimeoutSeconds` | `1800` | 单轮对话超时（1..86400） |
 | `OpenCode__MaxConcurrentTurns` | `8`（1..128） | 并发轮上限 |
 | `OpenCode__MaxPromptCharacters` | `2097152` | 提示词长度上限 |
+| `OpenCode__UseCompactionEvents` | `true` | OpenCode 1.19.3 使用原生 HTTP 事件读取压缩摘要。设为 `false` 可切回逐轮导出 |
 | `OpenCode__LogUsageUpdates` | `false` | usage_update 事件日志开关 |
 | `OpenCode__KeepAliveSeconds` | `0`（关闭） | 空闲进程保活复用窗口 |
 | `OpenCode__MaxKeptProcesses` | `8` | 保活进程池上限 |
