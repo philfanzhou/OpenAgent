@@ -225,25 +225,25 @@ dotnet test Backend/tests/OpenAgent.Engine.Tests --filter FullyQualifiedName~Ope
 
 ## N03：并发准入、排队与取消
 
-基线为 `origin/dev@d38a3513`（N02 已合入）；实现入口为 `Backend/src/OpenAgent.Application/Execution/Admission/`。Host 通过 Application 的单例 TurnAdmission 统一覆盖 sync、intent 和 stream，Agent/模型授权与所选 Runtime 校验在准入之前。会话元数据可用于授权/选 Agent：省略 AgentId 时仅通过 GetMetadataAsync 读取 UserId/AgentId/软删除标记，EF 直接投影会话表，写穿层绕过完整记录缓存及预热；消息历史、会话锁、附件及工具资源仅在获准后准备。Application 不引用 Runtime/ACP，纯状态和错误信息留在 Contracts。
+已变基到 `dev@3ce714a9`（N02 已合入）；实现入口为 `Backend/src/OpenAgent.Application/Execution/Admission/`。Host 通过 Application 的单例 TurnAdmission 统一覆盖 sync、intent 和 stream，Agent/模型授权与所选 Runtime 校验在准入之前。会话元数据可用于授权/选 Agent：省略 AgentId 时仅通过 GetMetadataAsync 读取 UserId/AgentId/软删除标记，EF 直接投影会话表，写穿层绕过完整记录缓存及预热；消息历史、会话锁、附件及工具资源仅在获准后准备。Application 不引用 Runtime/ACP，纯状态和错误信息留在 Contracts。
 
 配置节 `RuntimeAdmission`：
 
 | 字段 | 默认 | 约束/含义 |
 |---|---:|---|
-| MaxConcurrentTurns | 2 | Host 活跃轮次上限，1–128；包括准备、执行、终态持久化及清理 |
-| MaxQueuedTurns | 8 | Host 等待上限，0–4096；0 表示关闭排队并立即拒绝 |
-| MaxConcurrentPerTenant | 1 | 单租户活跃上限，1–Host 活跃上限 |
-| MaxQueuedPerTenant | 4 | 单租户等待上限，0–Host 等待上限 |
-| QueueTimeoutSeconds | 30 | 排队截止时间，1–3600 秒；不消耗执行时限 |
+| MaxConcurrentTurns | 8 | Host 活跃轮次上限，1–128；包括准备、执行、终态持久化及清理。默认与 `OpenCode:MaxConcurrentTurns` 相同 |
+| MaxQueuedTurns | 16 | Host 等待上限，0–4096；0 表示关闭排队并立即拒绝 |
+| MaxConcurrentPerTenant | 8 | 单租户活跃上限，1–Host 活跃上限；默认与 Host 相同，即不额外限制 |
+| MaxQueuedPerTenant | 16 | 单租户等待上限，0–Host 等待上限；默认与 Host 相同，单租户部署可以用满整个队列 |
+| QueueTimeoutSeconds | 120 | 排队截止时间，1–3600 秒；不消耗执行时限 |
 | ExecutionTimeoutSeconds | 1800 | 从准入成功起到准备/执行/持久化结束的取消时限，1–86400 秒；与所选 Runtime 的时限取较小值 |
 | RetryAfterSeconds | 1 | 队列满/排队超时提示的重试间隔，1–3600 秒；不自动重试有副作用的轮次 |
 
-字段需成组调整，不能将租户限额设得高于 Host 上限；格式/范围错误在启动时失败。配置为 Host 局部、启动时固定，不提供分布式容量或热改现存队列。`OpenCode:MaxConcurrentTurns` 保留最后的活跃进程租约门，默认仍为 8；低于 Host 限额时还可能发生驱动内的有界等待，部署宜将两个活跃上限对齐。本任务不改保活池、KeepAliveSeconds 默认 0 或 MaxKeptProcesses；打开保活后的空闲进程资源与最终配额由 N04 独立验收。
+字段需成组调整，不能将租户限额设得高于 Host 上限；格式/范围错误在启动时失败。配置为 Host 局部、启动时固定，不提供分布式容量或热改现存队列。`OpenCode:MaxConcurrentTurns` 保留最后的活跃进程租约门，默认 8，与 Host 活跃上限相同；调低 `RuntimeAdmission:MaxConcurrentTurns` 时宜一并调低它，否则被接纳的请求还可能在驱动内等待。准入默认值只保证队列有界并在过载时给出信号，不按主机内存标定：本任务不改保活池与 `MaxKeptProcesses`（当前默认保活 300 秒、空闲上限 16），默认配置在 16 GB 主机上仍会因空闲进程占满内存而失败，见任务清单的 LT 记录。
 
 队列按进入顺序挑选符合租户活跃限额的最早请求；已饱和租户的等待项不会阻塞其他租户。同租户保持 FIFO，但这不是严格的租户轮转或跨 Host 调度。排队取消/超时立即移除等待项；取消与授予竞态通过单一锁串行化，并在准备前再次检查请求 token。活动轮次取消后必须先回收进程/工具、写回中止状态并释放会话锁，最后归还准入名额。排队中止不启动 OpenCode、不创建本轮消息或保存虚假的运行终态；已开始的用户取消/失败沿用部分结果持久化，执行截止导致的取消映射为 Failed 和 RuntimeExecutionTimeout。
 
-HTTP/SSE 行为见[执行协议](../modules/execution.md#执行编排)。状态事件的 started 表示获准准备，不能当作模型首 token。Meter `OpenAgent.Admission` 已接入宿主现有 OpenTelemetry：`openagent_admission_active`、`openagent_admission_waiting`、`openagent_admission_rejected`、`openagent_admission_queue_duration` 与 `openagent_admission_execution_duration`，时长单位秒；无租户/会话标签，避免指标基数和身份泄漏。进程数/CPU/RSS 由容量夹具在测试进程及其子进程树采样，TTFT 从 HTTP 请求发出到首个正文事件，另保留原有 OpenCode 分段日志。
+HTTP/SSE 行为见[执行协议](../modules/execution.md#执行编排)。**过载提示。** 队列满时 Engine 在流开始之前返回 HTTP 429，带 `Retry-After` 与问题详情（`errorCode` 8201、`retryAfterSeconds`），Router 原样透传；排队超时（8202）在流内以 `error` 加 `done{status:"error"}` 收尾，携带同一重试间隔。前端不把这两种情况当作执行故障：气泡用提示色显示「排队已满」或「排队等待超时」及可重试的说明，同时弹出提示条而不是错误；排队中的轮次显示「正在排队，请稍候…」。被 429 拒绝的请求在服务端不写入任何内容，用户的提问留在气泡里，可直接重试。`Retry-After` 只是提示，服务端与前端都不会自动重试。状态事件的 started 表示获准准备，不能当作模型首 token。Meter `OpenAgent.Admission` 已接入宿主现有 OpenTelemetry：`openagent_admission_active`、`openagent_admission_waiting`、`openagent_admission_rejected`、`openagent_admission_queue_duration` 与 `openagent_admission_execution_duration`，时长单位秒；无租户/会话标签，避免指标基数和身份泄漏。进程数/CPU/RSS 由容量夹具在测试进程及其子进程树采样，TTFT 从 HTTP 请求发出到首个正文事件，另保留原有 OpenCode 分段日志。
 
 ### 验证与容量基线（2026-10-29）
 
@@ -273,8 +273,31 @@ docker rm openagent-capacity-check
 
 每阶结束后活跃/等待/进程均为 0，轮次与进程目录清空。4 并发取消后约 450ms 收敛，15 秒上限未触及；前两阶在采样前已完成回收。testhost RSS 基线约 96.8MiB，结束各阶约 145.5/154.0/158.9MiB；托管运行时堆与宿主缓存仍驻留，不能声称宿主内存逐字节回到启动值。首次容器试跑用固定 500ms 检查过早，曾观察到清理中的进程；最终夹具等待指标/进程有界收敛并保留耗时，不放宽回收条件。个人账户上的更早最小工具试跑只作诊断，不列入该容量表。
 
-新增准入默认总活跃 2、单租户 1、总等待 8、单租户等待 4，为此环境的保守起点；部署须按自己的 CPU/内存和负载重新验收，可先降为总活跃 1。驱动原有默认 8 没有提高；它是最终保护门，当前实际 Host 默认仅允许 2 个活跃轮次。该次仅 6 个成功请求，不足以确认稳态错误率、长上下文/大附件/Skill/MCP 负载或生产 SLO。外部真实服务商、Windows 原生、互不信任多租户 OS 隔离、长时间 soak、生产发布均未验收；KeepAliveSeconds 继续 0。
+首次评审时的默认是总活跃 2、单租户 1、总等待 8、单租户等待 4，为该环境的保守起点；2026-11-27 变基后按压测数据调整为总活跃 8、单租户 8、等待 16/16、排队超时 120 秒，依据见下一小节。该次仅 6 个成功请求，不足以确认稳态错误率、长上下文/大附件/Skill/MCP 负载或生产 SLO。外部真实服务商、Windows 原生、互不信任多租户 OS 隔离、长时间 soak、生产发布均未验收。
+
+### 变基后的验证与默认值依据（2026-11-27）
+
+变基到 `dev@3ce714a9` 后，后端全量 1317 通过、0 失败、57 跳过（含架构门禁，未放宽）；前端 224 通过且构建通过；Linux 非 root 容器真实 OpenCode 套件通过；Router 集成测试确认 429、`Retry-After` 与问题详情原样到达客户端。新增用例覆盖默认队列（8 个在跑、16 个排队，第 25 个被拒绝）、随镜像发布的 `appsettings.json` 与代码默认值一致、前端在 429 与排队超时时给出提示并保留重试。
+
+默认值在隔离压测栈上测定（WSL2，20 vCPU、15.46 GB，Engine 容器内存上限 9.5 GiB；单租户单用户，直连 Engine，保活关闭；模型桩每轮约 1 秒，慢轮次另加每轮约 20 秒的一组）。40 个新会话同时到达：
+
+| 配置 | 立即 429 | 放行 | 完成 | 排队超时 | 完成者整轮 p50 / 最长 |
+|---|---:|---:|---:|---:|---|
+| 原默认：并发 2、单租户 1、排队超时 30 秒 | 23 | 17 | 10 | 7 | 17.5 / 31.2 秒 |
+| 只把排队超时放宽到 120 秒 | 23 | 17 | 17 | 0 | 28.4 / 53.4 秒 |
+| 只把单租户并发提到 2 | 22 | 18 | 18 | 0 | 17.5 / 30.9 秒 |
+| 最终默认，快轮次 | 16 | 24 | 24 | 0 | 12.3 / 18.1 秒 |
+| 最终默认，慢轮次 | 16 | 24 | 24 | 0 | 53.6 / 80.4 秒 |
+
+429 在 100–160 毫秒内返回。并发上限对吞吐的影响（60 秒内完成的轮次，与 `dev` 的评分卡对照）：
+
+| 场景 | 原默认（并发 2 / 单租户 1） | 最终默认（8 / 8） | `dev`，无准入 |
+|---|---|---|---|
+| 新会话 8 并发 | 27 轮，p50 24.4 秒 | 95 轮，p50 5.3 秒 | 86–88 轮，p50 5.7 秒 |
+| 追问 4 并发 | 41 轮，p50 5.6 秒 | 160 轮，p50 1.4 秒 | 160 轮，p50 1.45 秒 |
+
+原默认下单租户一次只执行一轮，队列排不完，放行的 17 个里有 7 个超时，吞吐比 `dev` 低 3.6–3.9 倍；所以并发上限与运行时默认对齐，排队超时放宽到 120 秒，让 16 个排队名额在每轮 60 秒以内的回答下都能轮到。饱和时（30 并发持续 45 秒）直连与经 Router 的探测请求都得到 429，`Retry-After` 保留；该轮共 48,824 个 429、72 轮全部完成。数值只代表这台主机。
 
 ### N03 回退
 
-降低 Host/租户/驱动活跃限额，保持数值相容；或将两级排队上限设为 0，超额请求返回 429。旧客户端继续忽略 execution_status，可回退 UI 提示；不能回到无限队列或无限等待。KeepAliveSeconds 保持 0。回退代码不涉及数据库 schema、消息格式迁移或部署操作。
+降低 Host/租户/驱动活跃限额，保持数值相容；或将两级排队上限设为 0，超额请求立即返回 429。旧客户端继续忽略 execution_status，可回退 UI 提示；不能回到无限队列或无限等待。回退代码不涉及数据库 schema、消息格式迁移或部署操作。

@@ -22,7 +22,7 @@ RuntimeAgentExecutor 提供同步 ExecuteAsync 和流式 ExecuteStreamingAsync�
 - 共享 Engine/Hosting/Errors/AgentExceptionHandling.cs 负责 HTTP ProblemDetails 映射；Engine.Host/EngineErrorHandling.cs 添加 Provider 错误与 SSE 文案，响应已开始时写 error/done，客户端断开按取消处理。
 - Application 返回 IAsyncEnumerable&lt;AgentStreamEvent&gt;；Host 的 AgentStreamWriter 预读首个事件后才建立 SSE，使用实际 CancellationToken。授权失败或队列满可以返回普通 HTTP 错误；进入 SSE 后的失败继续使用既有 error/done。
 - 附加 `execution_status` 事件携带 `queued` 或 `started` 与可选 `queueMilliseconds`；旧客户端忽略未知事件，新客户端只在 UI 展示等待，状态文本不写入 assistant 正文。`started` 表示获准准备，ACP 身份仍由原 `runtime` 事件报告。
-- `RuntimeQueueFull` 返回 HTTP 429，`RuntimeQueueTimeout` 在流前返回 HTTP 503，均带 Retry-After 与 retryAfterSeconds；流内超时在 error 事件带同一错误码与重试间隔。`RuntimeExecutionTimeout` 返回 HTTP 504（若已开流则 error/done）。
+- `RuntimeQueueFull` 返回 HTTP 429，`RuntimeQueueTimeout` 在流前返回 HTTP 503，均带 Retry-After 与 retryAfterSeconds；流内超时在 error 事件带同一错误码与重试间隔。`RuntimeExecutionTimeout` 返回 HTTP 504（若已开流则 error/done）。Router 原样透传 429 与 `Retry-After`。前端把队列满与排队超时显示为提示色卡片（「排队已满」「排队等待超时」，可直接重试）并弹出提示条，不按执行故障报错；排队中显示「正在排队，请稍候…」。
 - 取消/失败时 PlatformChatHistory 在释放期间使用 CancellationToken.None 写回 partial；初始化中途失败清理已创建的功能资源，并保留原始异常。
 - HTTP 中间件顺序由 Host Program 配置，执行域不定义或注册 Web 中间件。请求日志、Trace 与排障入口见 [观测文档](../overview/Observability.md)。
 

@@ -160,7 +160,22 @@ Redis 行为细节见 [Redis 集成](../integrations/redis-engine.md)。
 | `OpenCode__KeepAliveSeconds` | `0`（关闭） | 空闲进程保活复用窗口 |
 | `OpenCode__MaxKeptProcesses` | `8` | 保活进程池上限 |
 | `OpenCode__MaxSessionsPerProcess` | `64` | 单进程会话数上限 |
+
 | `OpenCode__AllowedNativeTools__0..n` | 空（Development json：`read,edit,write,bash`） | 放行给模型的 OpenCode 原生工具名。平台已无独立代码执行沙箱：需要模型执行代码时须在此放行（如 `bash`），放行即把对应主机读写/执行面交给 harness 进程 |
+
+进程内准入（`RuntimeAdmission`，Engine；队列满返回 429，详见 [OpenCode 运行时](../integrations/opencode-runtime.md#n03并发准入排队与取消)）：
+
+| 变量 | 默认 | 作用 / 缺失影响 |
+|---|---|---|
+| `RuntimeAdmission__MaxConcurrentTurns` | `8`（1..128） | 整个进程同时执行的轮次上限；与 `OpenCode__MaxConcurrentTurns` 保持一致 |
+| `RuntimeAdmission__MaxQueuedTurns` | `16`（0..4096） | 整个进程的等待队列上限，超出立即返回 429；0 表示不排队 |
+| `RuntimeAdmission__MaxConcurrentPerTenant` | `8`（1..进程上限） | 单个租户同时执行的轮次上限；多租户部署可调低以保证公平 |
+| `RuntimeAdmission__MaxQueuedPerTenant` | `16`（0..进程队列上限） | 单个租户的等待队列上限 |
+| `RuntimeAdmission__QueueTimeoutSeconds` | `120`（1..3600） | 排队最长等待时间，超时按错误收尾 |
+| `RuntimeAdmission__ExecutionTimeoutSeconds` | `1800`（1..86400） | 从获准执行到持久化结束的时限，与所选 Runtime 的时限取较小值 |
+| `RuntimeAdmission__RetryAfterSeconds` | `1`（1..3600） | 429 与排队超时提示的重试间隔（秒）；不自动重试 |
+
+两级上限需成组调整：租户限额不能高于进程限额，否则启动校验失败。
 
 宿主会向 OpenCode 子进程白名单透传 `NODE_TLS_REJECT_UNAUTHORIZED`、`NODE_EXTRA_CA_CERTS`（自签模型端点场景）及 `PATH`/`PATHEXT`/`COMSPEC`/`SystemRoot`/`WINDIR`。`OPENAGENT_MODEL_API_KEY`、`OPENCODE_CONFIG_CONTENT` 等由代码注入子进程，不是用户配置项。详见 [OpenCode 运行时](../integrations/opencode-runtime.md)。
 
