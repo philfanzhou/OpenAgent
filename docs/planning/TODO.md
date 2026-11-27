@@ -213,7 +213,7 @@
 
 - [x] **LT01 OpenCode 后台依赖安装空操作**（实现 PR：[#323](https://github.com/philfanzhou/OpenAgent/pull/323)；待合入 `dev`）。`OpenCodeConfigDependencies` 在 XDG 配置目录、`OPENCODE_CONFIG_DIR` 与工作区 `.opencode` 预置空壳，使上游无开关的后台 `@opencode-ai/plugin` 安装成为空操作。验收证据：保活进程空闲 15 秒 CPU 1148% → 15.3%，每会话落盘 244 MB → 7 MB，追问 4 并发吞吐 1.00 → 1.43 轮/秒；对应 ACP-R05 提到的空闲进程 CPU 空转与外呼现象，是否仍有其他外呼未验证。
 - [x] **LT02 压缩摘要直接读会话数据库**（实现 PR：[#325](https://github.com/philfanzhou/OpenAgent/pull/325)，堆叠在 LT01 上；待合入 `dev`。[#324](https://github.com/philfanzhou/OpenAgent/pull/324) 是同一问题的另一方案（订阅 OpenCode 事件流），代码上互斥，需选定其一）。原方案「按上下文占用比例决定是否导出」不成立：实测压缩发生在同一轮的提示词处理中途，而 `usage_update` 只在整轮结束后上报一次、报的是压缩之后回落的占用。改为 Engine 以只读连接直接查询原生会话数据库，导出命令只作回退。验收证据：新会话首轮 p50 4158 → 3220 ms，追问 p50 2255 → 1402 ms（收尾 872 → 29 ms），追问 4 并发 p50 2660 → 1455 ms、吞吐 1.43 → 2.61 轮/秒，新会话 8 并发 p50 7302 → 5759 ms；Linux `runtime-tests` 真实进程套件通过，含按真实 `export` 调用次数断言的用例。
-- [ ] **LT03 会话状态瘦身与回收**（待开发，依赖 LT02）。
-- [ ] **LT04 并发有界排队与断开取消**（待开发，依赖 LT03）。含默认值调整 `MaxConcurrentTurns` 8 → 4、`MaxKeptProcesses` 16 → 4，与 #302 记录的「300 秒 / 16 个空闲会话」不同，需单独确认。
+- [x] **LT03 会话状态瘦身与回收**（实现 PR：[#326](https://github.com/philfanzhou/OpenAgent/pull/326)，堆叠在 LT02 上；待合入 `dev`）。进程销毁时已提交的主目录只保留原生数据库与工作区，同一归属目录不再累积旧主目录；新增随宿主启动的回收器，回收无进程使用的残留、失效目录和超过 `SessionStateRetentionDays`（默认 14 天）的已提交状态。验收证据：进程回收后每会话落盘 6380 KB → 852 KB，延迟与吞吐持平；403 个真实会话目录中回拨 15 天的 201 个在重启 21 秒后被精确回收，其余 202 个全部保留。未做：会话删除时立即释放其原生状态（目前靠保留期回收）。
+- [ ] **LT04 并发有界排队与断开取消**（待确认方案，依赖 LT03）。有界准入、队列满 429、排队取消与活跃/等待指标已由草稿 [#300](https://github.com/philfanzhou/OpenAgent/pull/300) 实现（Host 默认活跃 2 / 等待 8，单租户活跃 1 / 等待 4），不重复实现；待决定是否采用并变基到当前 `dev`，再用压测评分卡核定默认值。含默认值调整 `MaxConcurrentTurns` 8 → 4、`MaxKeptProcesses` 16 → 4，与 #302 记录的「300 秒 / 16 个空闲会话」不同，需单独确认。
 - [ ] **LT05 取消语义与僵尸会话**（待开发，依赖 LT04）。
 - [ ] **LT06 Router 失败帧、运行时指标与负载值**（待开发，依赖 LT05）。

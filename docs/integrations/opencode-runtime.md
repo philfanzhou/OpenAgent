@@ -40,7 +40,7 @@ Runtime 只引用 Contracts、Runtime.Acp 和官方 MCP SDK；Application 只引
 4. 复用进程直接跳过启动与 initialize。平台历史检查点（存储版本 + 有效压缩代次）、工具 schema 与已提交的 harness 状态一致且对端支持 resume/close 时，执行 `session/resume` 续接同一原生 session，只发送本轮新增输入；否则执行 `session/new` 并传入完整平台历史。两条路径都携带本轮新 bearer 的 MCP 定义，cwd 为固定工作区，随后按需选模并 `session/prompt`。OpenCode 直接调用选定的模型，平台工具经 MCP 桥调用，外部 MCP 工具由 OpenCode 原生连接调用。
 5. 消费 session/update，合并工具增量、保留调用 ID、去除桥的显示名前缀，将正文、reasoning、工具结果和计划映射到 AgentStreamEvent。相同工具参数更新不重复发送；参数确有变化时沿同一个 ID 更新。
 6. ACP prompt 结束后关闭当前 ACP 句柄并排空其更新队列。驱动先吊销本轮工具 bearer，再将 usage 交给执行器观察，随后调用平台 `CommitAsync`；平台持有会话锁完成消息与状态保存，返回新检查点，驱动才将原生 session 标为可续接并归还进程。执行器完成幂等确认后发送 usage/done。保存失败、取消或中断均不复用该进程；失败路径仍保存部分正文、reasoning 与工具记录。
-7. 取消发送 session/cancel 并等待原 prompt 结果；SDK 对不确认的进程执行有界回收。轮次结束后关闭本轮 ACP 会话、吊销本轮桥注册（共享端点保留给后续轮次）、释放本轮工具资源，保留平台会话数据。完整成功轮次的进程和工作区一起归还保活池；失败、取消、空闲到期、会话数或总量超限时，由 `OpenCodeProcessKeeper` 统一销毁进程并回收整个主目录。
+7. 取消发送 session/cancel 并等待原 prompt 结果；SDK 对不确认的进程执行有界回收。轮次结束后关闭本轮 ACP 会话、吊销本轮桥注册（共享端点保留给后续轮次）、释放本轮工具资源，保留平台会话数据。完整成功轮次的进程和工作区一起归还保活池；失败、取消、空闲到期、会话数或总量超限时，由 `OpenCodeProcessKeeper` 统一销毁进程：从未提交过的主目录整个回收，已提交的只保留原生数据库（`.state/data`）与工作区。
 
 OpenCode 的原生工具默认 `* = deny`，仅允许 `openagent_*` 平台桥工具；按 Agent 配置透传的外部 MCP server 会追加对应 `server_*` 放行，启用 Skill 时仅按本轮授权名称放行原生 `skill`，其余技能名称保持拒绝。宿主可通过 `OpenCode:AllowedNativeTools` 显式放行原生工具（如 `read`/`edit`/`write`，可带参数模式如 `bash[npm *]`），默认空保持全拒绝；放行即把对应主机读写/执行面直接交给 harness 进程（应用层授权，非 OS 沙箱），由宿主知情选择，白名单参与进程复用身份，改动后不复用旧权限进程。条目禁止花括号（OpenCode 在 JSON 解析前展开 `{file:...}`/`{env:...}` 宏），启动校验拒绝。底层及生产基础配置的 `AllowedNativeTools` 仍为空；开发配置保留原有显式授权 `read/edit/write/bash`，代码执行走 OpenCode 自身。生产需要代码执行时，必须在干净服务身份/受控执行环境中显式配置同样的所需权限，不能依赖 Runner 兜底。Client 不启用文件/终端回调，ACP 权限请求默认拒绝。桥路由挂载在主站端口上时，仅接受 loopback 远端（其余一律 404，不暴露路由存在性）与命中本轮注册的 bearer（未命中 401），公共认证与准入管线不感知桥流量。独立 Runner 沙箱已移除：平台不再提供 execute_code/workspace 文件工具/run_skill_script，代码执行完全依赖宿主放行的 OpenCode 原生工具。文件资产策略继续约束平台侧工具。这是应用层授权和进程环境隔离，**不是操作系统沙箱**；本轮不宣称解决恶意 harness 的主机访问问题，也不实现人工审批。
 
@@ -91,6 +91,7 @@ Runtime 在独立设置页保存 ID、名称、Provider 和单轮时限，存入
     "KeepAliveSeconds": 300,
     "MaxKeptProcesses": 16,
     "MaxSessionsPerProcess": 64,
+    "SessionStateRetentionDays": 14,
     "AllowedNativeTools": []
   }
 }
@@ -107,6 +108,8 @@ Runtime 在独立设置页保存 ID、名称、Provider 和单轮时限，存入
 **后台依赖安装。** OpenCode 1.x 加载配置时，会对 XDG 配置目录、`OPENCODE_CONFIG_DIR` 和工作区里的 `.opencode` 目录各启动一次后台依赖安装（添加 `@opencode-ai/plugin`，供 JS/TS 配置文件 import），上游没有开关，1.19.6 仍然如此。安装会访问 npm registry 并解包数千个文件：保活开启时，进程在轮次结束后约 30 秒内持续占用 1.3–1.6 核，并在主目录留下 npm 缓存和 `node_modules`。平台只通过 `OPENCODE_CONFIG_CONTENT` 提供 JSON 配置，不加载 JS/TS 配置插件。`OpenCodeConfigDependencies` 在创建进程目录时向这三处预置满足上游跳过检查的空壳（空的 `node_modules` 目录加只登记依赖名的 `package-lock.json`），使安装成为空操作。空壳不含真实包，上游若确实需要该包会回到按需安装；已有目录只拒绝链接，不收紧权限位，升级前已提交的会话仍可追问。
 
 隔离压测对比（WSL2，20 vCPU / 15.5 GB，2026-11-27，基线 `dev@9099f7f3`）：保活进程空闲 15 秒时的 CPU 1148% → 15.3%，进程回收后每会话落盘 244 MB → 7 MB，追问 4 并发吞吐 1.00 → 1.43 轮/秒，新会话 8 并发吞吐 0.73 → 1.08 轮/秒。
+
+**会话状态落盘与回收。** 进程销毁时，已提交的主目录只保留原生数据库（`.state/data`）与工作区；`.state` 下的其余目录是进程运行期文件（Bun 的 JIT 映射、缓存、配置依赖桩、临时文件），下次启动时由进程重建。同一归属目录里因换键、检查点变化或恢复失败留下的旧主目录，在下一次获取该目录时删除。此前没有任何机制删除会话状态，`SessionStateRoot` 随会话数无限增长。现在 `OpenCodeSessionStateSweeper` 随宿主启动（延迟 20 秒后首轮，之后每 15 分钟）回收不再被任何进程使用的归属目录：异常退出留下的残留与已失效（无有效检查点）的目录在静默期后回收（持久根 5 分钟；工作区根取轮次超时与保活窗口的较大值再加 5 分钟），已提交的目录自最后一次成功提交起超过 `SessionStateRetentionDays`（默认 14 天，0 表示不按时间回收）后回收。本实例内按进程占用判断；共享存储下另一实例正在执行的轮次持有独占租约，探测打不开即跳过。被回收的会话下一轮回放平台历史，功能不受影响。每轮回收输出一行日志（EventId 4504），回收失败为告警（4505）。同一评分卡下的对比：进程回收后每会话落盘 7 MB → 1 MB（精确值 6380 KB → 852 KB），延迟与吞吐在波动范围内持平；在 403 个真实会话目录上把一半的检查点时间回拨 15 天后重启，21 秒后恰好回收这 201 个，其余 202 个全部保留。
 
 缺少可执行文件、启动失败或 ACP 异常会明确失败，没有第二条执行路径。外部错误正文不会原样进入 SSE/会话；日志记录异常类型。工作区清理失败会告警并保留可定位目录，不删除其他轮次或宿主根目录。
 
