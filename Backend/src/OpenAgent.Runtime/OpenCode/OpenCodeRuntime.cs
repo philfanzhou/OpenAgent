@@ -298,7 +298,7 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
                 try
                 {
                     audits = await OpenCodeCompactionExport.ReadAsync(Launch, invocation, agent,
-                        settings.AllowedNativeTools, session.SessionId, cancellationToken).ConfigureAwait(false);
+                        settings.AllowedNativeTools, session.SessionId, logger, cancellationToken).ConfigureAwait(false);
                 }
                 catch (Exception error) when (error is not OperationCanceledException)
                 {
@@ -541,6 +541,10 @@ internal static partial class OpenCodeLog
 {
     [LoggerMessage(EventId = 4502, Level = LogLevel.Warning, Message = "OpenCode cleanup failed: resource={Resource} error={ErrorType}")]
     internal static partial void CleanupFailure(ILogger logger, string resource, string errorType);
+
+    [LoggerMessage(EventId = 4503, Level = LogLevel.Warning,
+        Message = "OpenCode native summary read failed, falling back to export: error={ErrorType}")]
+    internal static partial void NativeSummaryReadFailed(ILogger logger, string errorType);
 
     // 由 OpenCode:LogUsageUpdates 显式开启；只记录类型化的 usage_update 值，不落对话报文。
     [LoggerMessage(EventId = 4500, Level = LogLevel.Information, Message = "OpenCode usage update: used={Used} size={Size}")]

@@ -30,7 +30,7 @@
 
 ACP `compaction_update` 和 `compaction_summary_chunk` 经 `AcpCompactionMapper`、`AcpEventMapper` 转为平台 `compaction` 事件，SSE 实时更新前端时间线，并在轮次完成、失败或取消的持锁保存路径中写入 `ContextSummary`。同一原生 session + compaction ID 对应稳定的平台 ID；分块追加、整体替换、显式 null/空数组清除均按协议处理。审计写入按 ID 原位更新，重放不新增重复记录；未收到终态的进行中记录在轮次结束时标为中断/取消。
 
-仓库锁定的 OpenCode 1.19.3 实测不发送上述标准事件，且会把摘要作为普通 assistant 文本输出。兼容适配在 prompt 更新队列读完后调用同一可执行文件的 `export <sessionId>`，读取原生 `assistant.summary=true` 元数据，再补发压缩事件；不按回复文案或 token 下降猜测压缩，不新增模型调用。已报告的原生摘要 ID 随检查点保存，冷启动不重复发出旧摘要。OpenCode 1.19.3 在 Linux stdout 管道下可能截断大导出，因此子进程 stdout 直接指向私有 TMPDIR 下的随机临时文件（Unix 0600），不能先接管道再复制。进程退出后解析文件，执行期间监测、解析前检查 32 MiB 上限；成功、非零退出、解析失败、取消和超限均在终止子进程后删除临时文件。stderr 丢弃；失败只输出脱敏告警。该版本的摘要审计在轮次结束后可见，实时正文仍遵循其原有 ACP 输出行为。
+仓库锁定的 OpenCode 1.19.3 实测不发送上述标准事件，且会把摘要作为普通 assistant 文本输出。兼容适配在 prompt 更新队列读完后读取原生 `assistant.summary=true` 元数据，再补发压缩事件；不按回复文案或 token 下降猜测压缩，不新增模型调用。Engine 以只读连接直接查询进程数据目录里的原生会话数据库（SQLite，`message.data` 与其文本 `part.data`），按导出命令相同的 JSON 形状交给同一套解析逻辑，不再为读摘要多启动一个 OpenCode 进程；数据库读不到时（文件不存在、上游改了表结构、行损坏）回退到同一可执行文件的 `export <sessionId>`，只输出脱敏告警。已报告的原生摘要 ID 随检查点保存，冷启动不重复发出旧摘要。回退执行导出命令时，OpenCode 1.19.3 在 Linux stdout 管道下可能截断大导出，因此子进程 stdout 直接指向私有 TMPDIR 下的随机临时文件（Unix 0600），不能先接管道再复制。进程退出后解析文件，执行期间监测、解析前检查 32 MiB 上限；成功、非零退出、解析失败、取消和超限均在终止子进程后删除临时文件。stderr 丢弃；失败只输出脱敏告警。该版本的摘要审计在轮次结束后可见，实时正文仍遵循其原有 ACP 输出行为。
 
 原生压缩审计的 `IsRuntimeEvent=true`，携带 `RuntimeSessionId`、`RuntimeCompactionId` 和轮次 `TraceId`；`SourceEndSequence` 仅是平台接收到事件时的时间线锚点，不代表原生上下文的覆盖边界。`CompactedMessages` 保持空，窗口/计费用量未知时前端不显示零值。可展示摘要不替代模型上下文；已有完整会话消息及旧有效压缩投影仍可读取。
 

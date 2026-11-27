@@ -1,20 +1,54 @@
 using System.Diagnostics;
 using System.Text.Json;
+using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Logging;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Runtime;
 using OpenAgent.Runtime.Acp.Protocol;
 
 namespace OpenAgent.Runtime.OpenCode;
 
-/// <summary>OpenCode v1 does not emit ACP compaction events. Read native summary metadata through its export CLI.</summary>
+/// <summary>
+/// OpenCode v1 does not emit ACP compaction events. Read native summary metadata straight from the session database;
+/// the export CLI is only the fallback.
+/// </summary>
 internal static class OpenCodeCompactionExport
 {
     internal static async Task<IReadOnlyList<ContextSummary>> ReadAsync(
         OpenCodeLaunchSpec launch, RuntimeInvocation invocation, OpenCodeAgentProcess agent,
-        IReadOnlyList<string> allowedTools, string sessionId, CancellationToken ct)
+        IReadOnlyList<string> allowedTools, string sessionId, ILogger logger, CancellationToken ct)
     {
         if (sessionId.Length > 256 || sessionId.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not '_' and not '-'))
             throw new InvalidOperationException("Native session ID cannot be exported.");
+        Acp.Processes.AcpProcessOptions options = OpenCodeProcess.Create(launch, invocation, allowedTools, agent.Home);
+        string database = Path.Combine(options.Environment!["XDG_DATA_HOME"], "opencode", "opencode.db");
+        return await ReadSummariesAsync(database, sessionId, agent.ReportedCompactions,
+            token => ExportAsync(launch, invocation, agent, allowedTools, sessionId, token), logger, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Reads the session database first. Only a database that cannot be read (missing file, changed upstream schema,
+    /// malformed rows) falls back to the export CLI, which costs about a second and a second OpenCode process.
+    /// </summary>
+    internal static async Task<IReadOnlyList<ContextSummary>> ReadSummariesAsync(
+        string database, string sessionId, HashSet<string> reported,
+        Func<CancellationToken, Task<IReadOnlyList<ContextSummary>>> fallback, ILogger logger, CancellationToken ct)
+    {
+        try
+        {
+            return await OpenCodeSessionDatabase.ReadSummariesAsync(database, sessionId, reported, ct).ConfigureAwait(false);
+        }
+        catch (Exception error) when (error is SqliteException or IOException or JsonException or KeyNotFoundException or InvalidOperationException)
+        {
+            OpenCodeLog.NativeSummaryReadFailed(logger, error.GetType().Name);
+            return await fallback(ct).ConfigureAwait(false);
+        }
+    }
+
+    private static async Task<IReadOnlyList<ContextSummary>> ExportAsync(
+        OpenCodeLaunchSpec launch, RuntimeInvocation invocation, OpenCodeAgentProcess agent,
+        IReadOnlyList<string> allowedTools, string sessionId, CancellationToken ct)
+    {
         OpenCodeLaunchSpec command = OpenCodeProcess.WithArguments(launch, ["export", sessionId]);
         Acp.Processes.AcpProcessOptions options = OpenCodeProcess.Create(command, invocation, allowedTools, agent.Home);
         string output = Path.Combine(options.Environment!["TMPDIR"], "compaction-export-" + Guid.NewGuid().ToString("N") + ".json");
@@ -116,7 +150,7 @@ internal static class OpenCodeCompactionExport
                 .Select(part => part.GetProperty("text").GetString()));
             bool failed = info.TryGetProperty("error", out JsonElement error) && error.ValueKind is not JsonValueKind.Null;
             string status = failed ? "failed"
-                : info.GetProperty("time").TryGetProperty("completed", out _) ? "completed" : "in_progress";
+                : info.TryGetProperty("time", out JsonElement time) && time.TryGetProperty("completed", out _) ? "completed" : "in_progress";
             ContextSummary audit = mapper.Map(new CompactionUpdate(id, status)
             {
                 Summary = new ContentBlock[] { new TextContent(text) },

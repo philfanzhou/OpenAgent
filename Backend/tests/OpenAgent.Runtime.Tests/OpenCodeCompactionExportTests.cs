@@ -1,6 +1,9 @@
 using System.Text.Json;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Data.Sqlite;
 using OpenAgent.Runtime.OpenCode;
 using OpenAgent.Contracts.Configuration;
+using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Runtime;
 using Xunit;
 
@@ -38,12 +41,14 @@ public sealed class OpenCodeCompactionExportTests
                 Model = new LlmConfig { ModelId = "fixture", Endpoint = "http://127.0.0.1:9/v1", ApiKey = "local-test" }
             }, new TurnContext { TenantId = "tenant", UserId = "user", ConversationId = "conversation", TraceId = "trace" }, "", [], []);
             OpenCodeAgentProcess agent = new(null!, null!, null!, "key", root);
-            var audit = Assert.Single(await OpenCodeCompactionExport.ReadAsync(new(executable, []), invocation, agent, [], "session", CancellationToken.None));
+            // 没有会话数据库时回退到导出命令：这里用脚本替身验证真实的导出路径。
+            var audit = Assert.Single(await OpenCodeCompactionExport.ReadAsync(
+                new(executable, []), invocation, agent, [], "session", NullLogger.Instance, CancellationToken.None));
             Assert.Equal("retained from large export", audit.Summary);
             Assert.Empty(Directory.GetFiles(root, "compaction-export-*", SearchOption.AllDirectories));
             await File.WriteAllTextAsync(executable + ".json", "{invalid json");
             await Assert.ThrowsAnyAsync<JsonException>(() => OpenCodeCompactionExport.ReadAsync(
-                new(executable, []), invocation, agent, [], "session", CancellationToken.None));
+                new(executable, []), invocation, agent, [], "session", NullLogger.Instance, CancellationToken.None));
             Assert.Empty(Directory.GetFiles(root, "compaction-export-*", SearchOption.AllDirectories));
         }
         finally
@@ -79,7 +84,7 @@ public sealed class OpenCodeCompactionExportTests
             }, new TurnContext { TenantId = "tenant", UserId = "user", ConversationId = "conversation", TraceId = "trace" }, "", [], []);
             OpenCodeAgentProcess agent = new(null!, null!, null!, "key", root);
             using CancellationTokenSource cancel = new(TimeSpan.FromMilliseconds(scenario == "cancel" ? 250 : 10000));
-            Task export = OpenCodeCompactionExport.ReadAsync(new(executable, []), invocation, agent, [], "session", cancel.Token);
+            Task export = OpenCodeCompactionExport.ReadAsync(new(executable, []), invocation, agent, [], "session", NullLogger.Instance, cancel.Token);
             if (scenario == "cancel") await Assert.ThrowsAnyAsync<OperationCanceledException>(() => export);
             else await Assert.ThrowsAnyAsync<IOException>(() => export);
             Assert.Empty(Directory.GetFiles(root, "compaction-export-*", SearchOption.AllDirectories));
@@ -88,6 +93,17 @@ public sealed class OpenCodeCompactionExportTests
         {
             Directory.Delete(root, recursive: true);
         }
+    }
+
+    [Fact]
+    public async Task ReadSummariesAsync_WithoutSessionDatabase_FallsBackToExportCommand()
+    {
+        List<ContextSummary> exported = [];
+        IReadOnlyList<ContextSummary> result = await OpenCodeCompactionExport.ReadSummariesAsync(
+            Path.Combine(Path.GetTempPath(), "missing-" + Guid.NewGuid().ToString("N"), "opencode.db"), "session", [],
+            _ => Task.FromResult<IReadOnlyList<ContextSummary>>(exported), NullLogger.Instance, CancellationToken.None);
+
+        Assert.Same(exported, result);
     }
 
     [Fact]
