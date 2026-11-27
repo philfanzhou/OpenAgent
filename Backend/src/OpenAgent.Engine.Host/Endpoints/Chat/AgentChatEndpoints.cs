@@ -84,6 +84,7 @@ internal static class AgentChatEndpoints
             executionRequest.TraceId!,
             executionRequest.ConversationId!,
             logger,
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken,
+            () => run.CompletionStatus).ConfigureAwait(false);
     }
 }

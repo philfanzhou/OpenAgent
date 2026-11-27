@@ -14,7 +14,8 @@ internal static class AgentStreamWriter
         string traceId,
         string conversationId,
         ILogger logger,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Func<string?>? completionStatus = null)
     {
         context.Response.StatusCode = StatusCodes.Status200OK;
         StreamingResponseHeaders.ApplySse(context);
@@ -69,9 +70,12 @@ internal static class AgentStreamWriter
                 cancellationToken).ConfigureAwait(false);
         }
 
-        string done = JsonSerializer.Serialize(
-            new { done = true, usage, modelId, conversationId, traceId = turnTraceId ?? traceId },
-            JsonOptions);
+        // 以取消收尾时带上 status:"Cancelled"，不另发 error 事件；正常结束的载荷保持原样。
+        string? status = completionStatus?.Invoke();
+        object donePayload = status is null
+            ? new { done = true, usage, modelId, conversationId, traceId = turnTraceId ?? traceId }
+            : new { done = true, status, usage, modelId, conversationId, traceId = turnTraceId ?? traceId };
+        string done = JsonSerializer.Serialize(donePayload, JsonOptions);
         await WriteSseEventAsync(context, "done", done, cancellationToken).ConfigureAwait(false);
     }
 

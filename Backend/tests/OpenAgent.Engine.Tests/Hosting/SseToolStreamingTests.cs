@@ -82,6 +82,32 @@ public sealed class SseToolStreamingTests
         (string _, JsonElement doneData) = Assert.Single(frames, frame => frame.Event == "done");
         Assert.True(doneData.GetProperty("done").GetBoolean());
         Assert.Equal("tool-shape-conversation", doneData.GetProperty("conversationId").GetString());
+        // 正常结束的 done 不带 status，载荷与引入取消状态之前一致。
+        Assert.False(doneData.TryGetProperty("status", out _));
+    }
+
+    [Fact]
+    public async Task Stream_RunCancelledWhileClientListening_DoneCarriesCancelledStatusWithoutErrorEvent()
+    {
+        // 同一会话的新轮次取代旧轮次、或会话被删除时，旧连接可能还在监听。取消不是执行失败：
+        // 不再给它发 GatewayTimeout 的 error 事件，而是以带 status 的 done 正常收尾。
+        var driver = new ScriptedRuntimeDriver([], holdUntilCancelled: true);
+        await using StreamingHost host = await StreamingHost.StartAsync(driver, useConversationRuns: true);
+        Task<List<(string Event, JsonElement Data)>> stream = host.PostStreamAsync("superseded-conversation", message: "hello");
+        ConversationRunRegistry runs = host.Services.GetRequiredService<ConversationRunRegistry>();
+        ConversationRun? run;
+        for (run = runs.Find(TenantId, "superseded-conversation"); run is null; run = runs.Find(TenantId, "superseded-conversation"))
+        {
+            await Task.Delay(10);
+        }
+        run.Cancel();
+
+        List<(string Event, JsonElement Data)> frames = await stream.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.DoesNotContain(frames, frame => frame.Event == "error");
+        (string _, JsonElement doneData) = Assert.Single(frames, frame => frame.Event == "done");
+        Assert.Equal("Cancelled", doneData.GetProperty("status").GetString());
+        Assert.Equal("superseded-conversation", doneData.GetProperty("conversationId").GetString());
     }
 
     [Fact]

@@ -11,6 +11,7 @@ namespace OpenAgent.Engine.Host.Streaming;
 internal sealed class ConversationRun
 {
     private readonly object _gate = new();
+    private readonly TimeSpan _abandonGrace;
     private readonly Func<AgentRequest, IAgentUserContext, CancellationToken, IAsyncEnumerable<AgentStreamEvent>> _producer;
     private readonly Action<ConversationRun> _finalized;
     private readonly ActivityContext? _parentActivityContext;
@@ -20,18 +21,23 @@ internal sealed class ConversationRun
     private readonly TaskCompletionSource<bool> _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private bool _completed;
     private Exception? _failure;
+    private bool _cancelled;
+    private bool _started;
 
     internal ConversationRun(
         AgentRequest request,
         IAgentUserContext user,
         CancellationToken hostShutdown,
         Func<AgentRequest, IAgentUserContext, CancellationToken, IAsyncEnumerable<AgentStreamEvent>> producer,
-        Action<ConversationRun> finalized)
+        Action<ConversationRun> finalized,
+        TimeSpan abandonGrace)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(user);
         ArgumentNullException.ThrowIfNull(producer);
         ArgumentNullException.ThrowIfNull(finalized);
+
+        _abandonGrace = abandonGrace;
 
         _parentActivityContext = Activity.Current?.Context;
         Request = CloneRequest(request);
@@ -49,6 +55,9 @@ internal sealed class ConversationRun
     internal DateTimeOffset StartedAt { get; }
 
     internal Task Completion => _completion.Task;
+
+    /// <summary>轮次以取消收尾时为 "Cancelled"，与持久化的会话状态同名；其余情况为 null。</summary>
+    internal string? CompletionStatus { get { lock (_gate) { return _cancelled ? "Cancelled" : null; } } }
 
     internal void Start()
     {
@@ -72,6 +81,11 @@ internal sealed class ConversationRun
 
     internal void Cancel()
     {
+        lock (_gate)
+        {
+            if (_completed) return;
+            _cancelled = true;
+        }
         try
         {
             _executionCancellation.Cancel();
@@ -88,12 +102,14 @@ internal sealed class ConversationRun
         Subscriber? subscriber = null;
         AgentStreamEvent[] replay;
         bool completed;
+        bool cancelled;
         Exception? failure;
 
         lock (_gate)
         {
             replay = _events.ToArray();
             completed = _completed;
+            cancelled = _cancelled;
             failure = _failure;
             if (!completed)
             {
@@ -110,9 +126,11 @@ internal sealed class ConversationRun
                 yield return item;
             }
 
+            // 显式取消（同会话新轮次取代、会话删除、宿主排空、订阅者全部离开）不是执行失败：
+            // 按取消正常收尾，不向仍在监听的客户端报超时。
             if (completed)
             {
-                ThrowFailure(failure);
+                if (!cancelled) ThrowFailure(failure);
                 yield break;
             }
 
@@ -125,18 +143,50 @@ internal sealed class ConversationRun
             lock (_gate)
             {
                 finalFailure = _failure;
+                cancelled = _cancelled;
             }
-            ThrowFailure(finalFailure);
+            if (!cancelled) ThrowFailure(finalFailure);
         }
         finally
         {
             if (subscriber is not null)
             {
-                lock (_gate)
-                {
-                    _subscribers.Remove(subscriber);
-                }
+                Detach(subscriber);
             }
+        }
+    }
+
+    private void Detach(Subscriber subscriber)
+    {
+        bool abandoned;
+        lock (_gate)
+        {
+            _subscribers.Remove(subscriber);
+            abandoned = !_completed && _subscribers.Count == 0;
+        }
+        if (abandoned) _ = CancelIfAbandonedAsync();
+    }
+
+    /// <summary>
+    /// 所有订阅者都离开、轮次又还没开始（尚未发布任何事件）时，没有人会再等它的结果：
+    /// 留出重连窗口后取消它，把准入名额、会话锁和进程让给还在排队的请求。
+    /// 已经开始产出的轮次照旧跑到结束并持久化，刷新页面或短暂断线不会丢结果。
+    /// </summary>
+    private async Task CancelIfAbandonedAsync()
+    {
+        await Task.Delay(_abandonGrace).ConfigureAwait(false);
+        lock (_gate)
+        {
+            if (_completed || _started || _cancelled || _subscribers.Count > 0) return;
+            _cancelled = true;
+        }
+        try
+        {
+            _executionCancellation.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // The producer has already finalized.
         }
     }
 
@@ -198,6 +248,7 @@ internal sealed class ConversationRun
             }
 
             _events.Add(item);
+            _started = true;
             foreach (Subscriber subscriber in _subscribers)
             {
                 subscriber.Writer.TryWrite(item);

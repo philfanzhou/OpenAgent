@@ -212,7 +212,8 @@ internal static class ConversationEndpoints
             access.Run.Request.TraceId!,
             conversationId,
             logger,
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken,
+            () => access.Run.CompletionStatus).ConfigureAwait(false);
         return TypedResults.Empty;
     }
 

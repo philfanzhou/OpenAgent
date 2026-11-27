@@ -333,6 +333,187 @@ public sealed class ConversationRunRegistryTests
         }
     }
 
+    [Fact]
+    public async Task ReadAsync_AfterExplicitCancel_EndsAsCancelledWithoutFailure()
+    {
+        var entered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var registry = new ConversationRunRegistry(Producer);
+        await using (registry)
+        {
+            ConversationRun run = registry.Start(CreateRequest("cancel-status"), CreateUser("tenant-1"));
+            await using IAsyncEnumerator<AgentStreamEvent> reader = run.ReadAsync().GetAsyncEnumerator();
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+            run.Cancel();
+
+            // 仍在监听的客户端看到的是一次正常的收尾，不是执行失败。
+            Assert.False(await reader.MoveNextAsync());
+            Assert.Equal("Cancelled", run.CompletionStatus);
+            await run.Completion;
+        }
+
+        async IAsyncEnumerable<AgentStreamEvent> Producer(
+            AgentRequest request,
+            IAgentUserContext user,
+            [EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            entered.TrySetResult(true);
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken).ConfigureAwait(false);
+            yield break;
+        }
+    }
+
+    [Fact]
+    public async Task ReadAsync_LateSubscriberAfterCancel_ReplaysProducedEventsWithoutFailure()
+    {
+        // 同会话新轮次取代旧轮次后，旧页面重连：只看到已产出的部分，然后正常结束。
+        var produced = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var registry = new ConversationRunRegistry(Producer);
+        await using (registry)
+        {
+            ConversationRun run = registry.Start(CreateRequest("cancel-replay"), CreateUser("tenant-1"));
+            await produced.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            run.Cancel();
+            await run.Completion;
+
+            List<string> replayed = [];
+            await foreach (AgentStreamEvent item in run.ReadAsync())
+            {
+                replayed.Add(item.Content);
+            }
+
+            Assert.Equal(["partial"], replayed);
+            Assert.Equal("Cancelled", run.CompletionStatus);
+        }
+
+        async IAsyncEnumerable<AgentStreamEvent> Producer(
+            AgentRequest request,
+            IAgentUserContext user,
+            [EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            yield return Content("partial");
+            produced.TrySetResult(true);
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken).ConfigureAwait(false);
+            yield break;
+        }
+    }
+
+    [Fact]
+    public async Task ReadAsync_LastSubscriberLeavesBeforeStart_CancelsTheRunAfterTheGracePeriod()
+    {
+        var producerObservedCancellation = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var registry = new ConversationRunRegistry(Producer) { AbandonGrace = TimeSpan.FromMilliseconds(50) };
+        await using (registry)
+        {
+            ConversationRun run = registry.Start(CreateRequest("abandoned"), CreateUser("tenant-1"));
+            using var leaving = new CancellationTokenSource();
+            await using IAsyncEnumerator<AgentStreamEvent> reader = run.ReadAsync(leaving.Token).GetAsyncEnumerator();
+            leaving.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => reader.MoveNextAsync().AsTask());
+
+            // 没有人会再等这一轮：宽限期过后取消，把准入名额、会话锁和进程让出来。
+            Assert.True(await producerObservedCancellation.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+            Assert.Equal("Cancelled", run.CompletionStatus);
+            await run.Completion;
+        }
+
+        async IAsyncEnumerable<AgentStreamEvent> Producer(
+            AgentRequest request,
+            IAgentUserContext user,
+            [EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            try
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                producerObservedCancellation.TrySetResult(cancellationToken.IsCancellationRequested);
+            }
+            yield break;
+        }
+    }
+
+    [Fact]
+    public async Task ReadAsync_SubscriberReattachesWithinGrace_RunIsNotCancelled()
+    {
+        // 刷新页面：旧连接断开后很快接上新的，不能因此丢掉这一轮。
+        var release = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var registry = new ConversationRunRegistry(Producer) { AbandonGrace = TimeSpan.FromMilliseconds(50) };
+        await using (registry)
+        {
+            ConversationRun run = registry.Start(CreateRequest("reattach"), CreateUser("tenant-1"));
+            using var leaving = new CancellationTokenSource();
+            await using (IAsyncEnumerator<AgentStreamEvent> first = run.ReadAsync(leaving.Token).GetAsyncEnumerator())
+            {
+                leaving.Cancel();
+                await Assert.ThrowsAnyAsync<OperationCanceledException>(() => first.MoveNextAsync().AsTask());
+            }
+            await using IAsyncEnumerator<AgentStreamEvent> second = run.ReadAsync().GetAsyncEnumerator();
+            // 迭代器到第一次 MoveNextAsync 才真正订阅；真实链路里写入器收到事件流后立即开始读。
+            ValueTask<bool> waiting = second.MoveNextAsync();
+            await Task.Delay(TimeSpan.FromMilliseconds(300));
+            Assert.Null(run.CompletionStatus);
+
+            release.TrySetResult(true);
+            Assert.True(await waiting);
+            Assert.Equal("answer", second.Current.Content);
+            Assert.False(await second.MoveNextAsync());
+        }
+
+        async IAsyncEnumerable<AgentStreamEvent> Producer(
+            AgentRequest request,
+            IAgentUserContext user,
+            [EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            await release.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+            yield return Content("answer");
+        }
+    }
+
+    [Fact]
+    public async Task ReadAsync_LastSubscriberLeavesAfterStart_RunContinuesToCompletion()
+    {
+        // 已经开始产出的轮次照旧跑完并持久化：断线或刷新不丢结果。
+        var release = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var registry = new ConversationRunRegistry(Producer) { AbandonGrace = TimeSpan.FromMilliseconds(50) };
+        await using (registry)
+        {
+            ConversationRun run = registry.Start(CreateRequest("detached-after-start"), CreateUser("tenant-1"));
+            using var leaving = new CancellationTokenSource();
+            await using (IAsyncEnumerator<AgentStreamEvent> reader = run.ReadAsync(leaving.Token).GetAsyncEnumerator())
+            {
+                Assert.True(await reader.MoveNextAsync());
+                Assert.Equal("first", reader.Current.Content);
+                leaving.Cancel();
+                await Assert.ThrowsAnyAsync<OperationCanceledException>(() => reader.MoveNextAsync().AsTask());
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(300));
+            Assert.Null(run.CompletionStatus);
+            release.TrySetResult(true);
+            await run.Completion;
+
+            List<string> replayed = [];
+            await foreach (AgentStreamEvent item in run.ReadAsync())
+            {
+                replayed.Add(item.Content);
+            }
+            Assert.Equal(["first", "done"], replayed);
+            Assert.Null(run.CompletionStatus);
+        }
+
+        async IAsyncEnumerable<AgentStreamEvent> Producer(
+            AgentRequest request,
+            IAgentUserContext user,
+            [EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            yield return Content("first");
+            await release.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+            yield return Content("done");
+        }
+    }
+
     private static AgentRequest CreateRequest(string conversationId) => new()
     {
         Query = "query",
