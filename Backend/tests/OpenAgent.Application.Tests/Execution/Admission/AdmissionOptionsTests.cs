@@ -9,6 +9,23 @@ namespace OpenAgent.Application.Tests.Execution.Admission;
 
 public sealed class AdmissionOptionsTests
 {
+    [Fact]
+    public void Bind_Unconfigured_QueuesSixteenAndKeepsTheRuntimeConcurrencyOfEight()
+    {
+        ServiceCollection services = new();
+        services.AddAgentApplication(new ConfigurationBuilder().Build());
+        using ServiceProvider provider = services.BuildServiceProvider();
+
+        AdmissionOptions options = provider.GetRequiredService<IOptions<AdmissionOptions>>().Value;
+
+        Assert.Equal(16, options.MaxQueuedTurns);
+        Assert.Equal(16, options.MaxQueuedPerTenant);
+        // 准入不额外压低现有吞吐：两级并发上限都与运行时的 OpenCode:MaxConcurrentTurns 默认值相同。
+        Assert.Equal(8, options.MaxConcurrentTurns);
+        Assert.Equal(8, options.MaxConcurrentPerTenant);
+        Assert.Equal(120, options.QueueTimeoutSeconds);
+    }
+
     [Theory]
     [InlineData("MaxConcurrentTurns", "0")]
     [InlineData("MaxConcurrentTurns", "129")]

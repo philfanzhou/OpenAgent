@@ -273,6 +273,44 @@ describe('workspace API', () => {
     await expect(api.getCurrentUser()).rejects.toThrow('No Engine is available (TraceId: trace-1)')
   })
 
+  it('exposes the error code and the retry interval when the server is overloaded', async () => {
+    setConnectionMode('router')
+    setRouterBaseUrl('http://router.example')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      title: 'RuntimeQueueFull',
+      detail: 'Runtime capacity is busy. Retry after the indicated delay.',
+      status: 429,
+      errorCode: 8201,
+      retryAfterSeconds: 3,
+    }), {
+      status: 429,
+      statusText: 'Too Many Requests',
+      headers: { 'Content-Type': 'application/problem+json', 'Retry-After': '5' },
+    })))
+
+    const error = await api.getCurrentUser().catch(value => value) as ApiError
+
+    expect(error.status).toBe(429)
+    expect(error.code).toBe('RuntimeQueueFull')
+    // 问题详情里的扩展字段优先，其次才是 Retry-After 响应头。
+    expect(error.retryAfterSeconds).toBe(3)
+  })
+
+  it('reads Retry-After from the header and does not guess a code for other problems', async () => {
+    setConnectionMode('router')
+    setRouterBaseUrl('http://router.example')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ detail: 'Too many requests' }), {
+      status: 429,
+      statusText: 'Too Many Requests',
+      headers: { 'Content-Type': 'application/problem+json', 'Retry-After': '7' },
+    })))
+
+    const error = await api.getCurrentUser().catch(value => value) as ApiError
+
+    expect(error.code).toBeUndefined()
+    expect(error.retryAfterSeconds).toBe(7)
+  })
+
   it('uploads skill packages as multipart data to the selected agent', async () => {
     setConnectionMode('engine')
     setEngineBaseUrl('http://engine.example')

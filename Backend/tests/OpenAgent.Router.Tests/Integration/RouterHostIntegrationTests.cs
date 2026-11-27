@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
@@ -287,6 +288,24 @@ public sealed class RouterHostIntegrationTests : IClassFixture<RouterHostFixture
 
         Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
         Assert.Contains("openagent_router_forwarding_failures_total", metrics, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Chat_QueueFullDownstream_PassesThrough429WithRetryAfterAndProblemDetails()
+    {
+        using RouterApplicationFactory factory = _fixture.CreateFactory();
+        using HttpClient client = factory.CreateClient();
+        using HttpRequestMessage request = CreateChatRequest("queued out", "/api/v1/agent/chat/stream");
+
+        using HttpResponseMessage response = await client.SendAsync(request);
+
+        // 队列满是过载信号而不是转发故障：状态码、重试间隔和问题详情原样到达客户端，不被改写成流。
+        Assert.Equal(HttpStatusCode.TooManyRequests, response.StatusCode);
+        Assert.Equal("1", Assert.Single(response.Headers.GetValues("Retry-After")));
+        using JsonDocument problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("RuntimeQueueFull", problem.RootElement.GetProperty("title").GetString());
+        Assert.Equal(8201, problem.RootElement.GetProperty("errorCode").GetInt32());
+        Assert.Equal(1, problem.RootElement.GetProperty("retryAfterSeconds").GetInt32());
     }
 
     private static HttpRequestMessage CreateChatRequest(

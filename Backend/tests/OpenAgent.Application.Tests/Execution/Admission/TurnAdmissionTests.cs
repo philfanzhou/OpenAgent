@@ -51,6 +51,38 @@ public sealed class TurnAdmissionTests
     }
 
     [Fact]
+    public void Enter_DefaultLimits_SingleTenantRunsEightQueuesSixteenThenIsRejected()
+    {
+        // 默认配置对单租户同样有效：8 个在跑、16 个排队，第 25 个请求才被拒绝，得到 429 与重试间隔。
+        TurnAdmission admission = new(Options.Create(new AdmissionOptions()));
+        List<AdmissionTicket> held = [];
+        try
+        {
+            for (int i = 0; i < 8; i++)
+            {
+                AdmissionTicket ticket = admission.Enter("a", default);
+                Assert.False(ticket.WasQueued);
+                held.Add(ticket);
+            }
+            for (int i = 0; i < 16; i++)
+            {
+                AdmissionTicket ticket = admission.Enter("a", default);
+                Assert.True(ticket.WasQueued);
+                held.Add(ticket);
+            }
+
+            RuntimeAdmissionException error = Assert.Throws<RuntimeAdmissionException>(() => admission.Enter("a", default));
+
+            Assert.Equal(AgentErrorCode.RuntimeQueueFull, error.ErrorCode);
+            Assert.Equal(1, error.RetryAfterSeconds);
+        }
+        finally
+        {
+            foreach (AdmissionTicket ticket in held) ticket.Dispose();
+        }
+    }
+
+    [Fact]
     public async Task Enter_QueueDeadline_RemovesWaiterAndAllowsReplacement()
     {
         TurnAdmission admission = Create(queue: 1, tenantQueue: 1, timeout: 1);

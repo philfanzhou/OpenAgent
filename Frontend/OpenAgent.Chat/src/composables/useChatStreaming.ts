@@ -3,6 +3,7 @@ import { ElMessage } from 'element-plus'
 import { api, makeLocalConversation } from '../api'
 import { randomUuid } from '../browserCrypto'
 import { mergeOptimisticUserMessages } from '../conversationCollection'
+import { describeQueueFull, describeQueueTimeout } from '../features/chat/queueNotice'
 import { appendStreamingReasoning, appendStreamingTool, mergeAssistantSnapshot, parsePlanSnapshot } from '../messagePresentation'
 import { createStreamingAssistantContentState, enqueueAssistantContent, markAssistantPhaseBoundary } from '../streamingAssistantContent'
 import { createTypewriterQueue, type TypewriterQueue } from '../typewriterQueue'
@@ -334,15 +335,17 @@ export function useChatStreaming(options: ChatStreamingOptions) {
         }
         await options.refreshConversations(false)
       } else {
+        // 排队已满（HTTP 429）与排队超时不是执行故障：换成面向用户的提示，用提示条而不是错误弹出。
+        const queueNotice = streamError ? describeQueueTimeout(streamError) : describeQueueFull(error)
         if (!streamError) options.streams.cancelRequest(requestId, 'network')
         conversation.status = 'Failed'
         const lastMessage = conversation.messages?.at(-1)
         if (lastMessage?.role === 'assistant') {
           lastMessage.error = {
-            title: streamError?.title || 'Agent 执行失败',
-            detail: streamError?.detail || (error instanceof Error ? error.message : '执行失败'),
+            title: queueNotice?.title ?? streamError?.title ?? 'Agent 执行失败',
+            detail: queueNotice?.detail ?? streamError?.detail ?? (error instanceof Error ? error.message : '执行失败'),
             traceId: streamError?.traceId,
-            code: streamError?.code,
+            code: queueNotice?.code ?? streamError?.code,
           }
         }
         try {
@@ -360,7 +363,10 @@ export function useChatStreaming(options: ChatStreamingOptions) {
         } catch {
           // Reconnect and conversation detail loading will recover persisted messages later.
         }
-        if (options.selectedConversation.value?.conversationId === conversationId) options.notifyError(error)
+        if (options.selectedConversation.value?.conversationId === conversationId) {
+          if (queueNotice) ElMessage.warning(queueNotice.detail)
+          else options.notifyError(error)
+        }
       }
     } finally {
       if (streamedAssistant) delete streamedAssistant.executionStatus
