@@ -100,43 +100,37 @@ internal sealed class OpenCodeProcessKeeper : IAsyncDisposable
     }
 
     private async Task<OpenCodeAgentProcess> StartAsync(
-        AcpProcessOptions start, string key, string home, string traceId, CancellationToken ct)
+        AcpProcessOptions original, string key, string home, string traceId, CancellationToken ct)
     {
-        if (_options.UseCompactionEvents && start.Arguments is ["acp"])
+        bool useEvents = _options.UseCompactionEvents && original.Arguments is ["acp"];
+        while (true)
         {
+            AcpProcess? process = null;
+            AcpClient? client = null;
             try
             {
-                OpenCodeCompactionEvents.Endpoint endpoint = OpenCodeCompactionEvents.Configure(start, out AcpProcessOptions configured);
-                return await StartProcessAsync(configured, key, home, endpoint, ct).ConfigureAwait(false);
+                AcpProcessOptions start = original;
+                OpenCodeCompactionEvents.Endpoint? endpoint = useEvents
+                    ? OpenCodeCompactionEvents.Configure(original, out start)
+                    : null;
+                process = AcpProcess.Start(start);
+                client = new AcpClient(process.Transport, options: new()
+                {
+                    RequestTimeout = TimeSpan.FromSeconds(_options.RequestTimeoutSeconds)
+                });
+                InitializeResponse initialized = await client.InitializeAsync(new("OpenAgent", "1"), ct).ConfigureAwait(false);
+                return new OpenCodeAgentProcess(process, client, initialized, key, home) { CompactionEndpoint = endpoint };
             }
-            catch (Exception error) when (!ct.IsCancellationRequested && error is SocketException or IOException
-                or AcpRpcException or TimeoutException or ObjectDisposedException)
+            catch (Exception error)
             {
-                OpenCodeLog.CompactionExportFallback(_logger, traceId, error.GetType().Name);
-            }
-        }
-        return await StartProcessAsync(start, key, home, null, ct).ConfigureAwait(false);
-    }
+                await DestroyAsync(client, process, home, preserveState: true).ConfigureAwait(false);
+                if (!useEvents || ct.IsCancellationRequested || error is not
+                    (SocketException or IOException or AcpRpcException or TimeoutException or ObjectDisposedException))
+                    throw;
 
-    private async Task<OpenCodeAgentProcess> StartProcessAsync(AcpProcessOptions start, string key, string home,
-        OpenCodeCompactionEvents.Endpoint? endpoint, CancellationToken ct)
-    {
-        AcpProcess? process = null;
-        AcpClient? client = null;
-        try
-        {
-            process = AcpProcess.Start(start);
-            client = new AcpClient(process.Transport, options: new()
-            {
-                RequestTimeout = TimeSpan.FromSeconds(_options.RequestTimeoutSeconds)
-            });
-            InitializeResponse initialized = await client.InitializeAsync(new("OpenAgent", "1"), ct).ConfigureAwait(false);
-            return new OpenCodeAgentProcess(process, client, initialized, key, home) { CompactionEndpoint = endpoint };
-        }
-        catch
-        {
-            await DestroyAsync(client, process, home, preserveState: true).ConfigureAwait(false);
-            throw;
+                OpenCodeLog.CompactionExportFallback(_logger, traceId, error.GetType().Name);
+                useEvents = false;
+            }
         }
     }
 

@@ -499,7 +499,7 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
             return await OpenCodeCompactionEvents.StartAsync(endpoint.CreateClient(), sessionId, agent.Workspace, ct)
                 .ConfigureAwait(false);
         }
-        catch (Exception error) when (!ct.IsCancellationRequested && error is IOException or HttpRequestException or TimeoutException)
+        catch (Exception error) when (OpenCodeCompactionEvents.CanFallback(error, ct))
         {
             OpenCodeLog.CompactionExportFallback(logger, traceId, error.GetType().Name);
             return null;
@@ -521,8 +521,7 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
                     OpenCodeLog.CompactionEventsRead(logger, invocation.Turn.TraceId, audits.Count);
                 return audits;
             }
-            catch (Exception error) when (!ct.IsCancellationRequested && error is IOException or HttpRequestException
-                or TimeoutException or JsonException or KeyNotFoundException or InvalidOperationException or OperationCanceledException)
+            catch (Exception error) when (OpenCodeCompactionEvents.CanFallback(error, ct))
             {
                 OpenCodeLog.CompactionExportFallback(logger, invocation.Turn.TraceId, error.GetType().Name);
             }

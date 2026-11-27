@@ -17,30 +17,19 @@ internal sealed class OpenCodeCompactionEvents : IAsyncDisposable
     private readonly string _sessionId;
     private readonly string _directory;
     private readonly CancellationTokenSource _stop = new();
-    private readonly TaskCompletionSource<bool> _connected = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private readonly TaskCompletionSource<bool> _idle = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private readonly Task _reader;
-    private bool _hasSummary;
+    private readonly StreamReader _stream;
+    private readonly Task<bool> _hasSummary;
 
-    internal sealed class Endpoint
+    internal sealed class Endpoint(int port, string password)
     {
-        private readonly int _port;
-        private readonly string _password;
-
-        internal Endpoint(int port, string password)
-        {
-            _port = port;
-            _password = password;
-        }
-
         internal HttpClient CreateClient()
         {
             HttpClient http = new(new SocketsHttpHandler { UseProxy = false, AllowAutoRedirect = false })
             {
-                BaseAddress = new Uri($"http://127.0.0.1:{_port}/")
+                BaseAddress = new Uri($"http://127.0.0.1:{port}/")
             };
             http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
-                "Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes("opencode:" + _password)));
+                "Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes("opencode:" + password)));
             return http;
         }
     }
@@ -49,11 +38,9 @@ internal sealed class OpenCodeCompactionEvents : IAsyncDisposable
     {
         // The child binds its own socket. If another process takes the port in between,
         // process startup retries with the original ACP arguments.
-        TcpListener listener = new(IPAddress.Loopback, 0);
+        using TcpListener listener = new(IPAddress.Loopback, 0);
         listener.Start();
-        int port;
-        try { port = ((IPEndPoint)listener.LocalEndpoint).Port; }
-        finally { listener.Stop(); }
+        int port = ((IPEndPoint)listener.LocalEndpoint).Port;
 
         string password = Guid.NewGuid().ToString("N");
         Dictionary<string, string> environment = new(original.Environment ?? new Dictionary<string, string>())
@@ -70,38 +57,44 @@ internal sealed class OpenCodeCompactionEvents : IAsyncDisposable
         return new Endpoint(port, password);
     }
 
-    private OpenCodeCompactionEvents(HttpClient http, string sessionId, string directory)
+    private OpenCodeCompactionEvents(HttpClient http, StreamReader stream, string sessionId, string directory)
     {
         _http = http;
+        _stream = stream;
         _sessionId = sessionId;
-        _directory = "directory=" + Uri.EscapeDataString(directory);
-        _reader = ReadEventsAsync();
+        _directory = directory;
+        _hasSummary = ReadUntilIdleAsync();
     }
 
     internal static async Task<OpenCodeCompactionEvents> StartAsync(
         HttpClient http, string sessionId, string directory, CancellationToken ct)
     {
-        OpenCodeCompactionEvents events = new(http, sessionId, directory);
+        string workspace = "directory=" + Uri.EscapeDataString(directory);
+        using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        deadline.CancelAfter(EventTimeout);
+        StreamReader? stream = null;
         try
         {
-            if (!await events._connected.Task.WaitAsync(EventTimeout, ct).ConfigureAwait(false))
-                throw new IOException("OpenCode event stream disconnected before subscribing.");
-            return events;
+            stream = new StreamReader(await http.GetStreamAsync("event?" + workspace, deadline.Token).ConfigureAwait(false));
+            using JsonDocument connected = await ReadNotificationAsync(stream, deadline.Token).ConfigureAwait(false);
+            if (connected.RootElement.GetProperty("type").GetString() != "server.connected")
+                throw new IOException("OpenCode event stream did not confirm the subscription.");
+            return new OpenCodeCompactionEvents(http, stream, sessionId, workspace);
         }
         catch
         {
-            await events.DisposeAsync().ConfigureAwait(false);
+            stream?.Dispose();
+            http.Dispose();
             throw;
         }
     }
 
-    internal async Task<IReadOnlyList<ContextSummary>> ReadAuditsAsync(HashSet<string> reported, bool auditPending, CancellationToken ct)
+    internal async Task<IReadOnlyList<ContextSummary>> ReadAuditsAsync(
+        HashSet<string> reported, bool auditPending, CancellationToken ct)
     {
-        // The native idle notification follows the compaction events on the same stream.
-        // ACP completion and HTTP events arrive on separate transports.
-        if (!await _idle.Task.WaitAsync(EventTimeout, ct).ConfigureAwait(false))
-            throw new IOException("OpenCode event stream disconnected before the session became idle.");
-        if (!_hasSummary && !auditPending) return [];
+        // ACP completion can arrive before idle on the native event stream.
+        bool hasSummary = await _hasSummary.WaitAsync(EventTimeout, ct).ConfigureAwait(false);
+        if (!hasSummary && !auditPending) return [];
 
         using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
         deadline.CancelAfter(EventTimeout);
@@ -117,65 +110,59 @@ internal sealed class OpenCodeCompactionEvents : IAsyncDisposable
         return OpenCodeCompactionExport.ReadMessages(messages.RootElement, _sessionId, reported);
     }
 
-    private async Task ReadEventsAsync()
+    private async Task<bool> ReadUntilIdleAsync()
     {
-        try
+        bool hasSummary = false;
+        bool busy = false;
+        while (true)
         {
-            using Stream stream = await _http.GetStreamAsync("event?" + _directory, _stop.Token).ConfigureAwait(false);
-            using StreamReader reader = new(stream);
-            bool busy = false;
-            while (await reader.ReadLineAsync(_stop.Token).ConfigureAwait(false) is { } line)
-            {
-                if (!line.StartsWith("data:", StringComparison.Ordinal)) continue;
-                using JsonDocument json = JsonDocument.Parse(line[5..]);
-                JsonElement root = json.RootElement;
-                string? type = root.GetProperty("type").GetString();
-                if (type == "server.connected")
-                {
-                    _connected.TrySetResult(true);
-                    continue;
-                }
-                if (!root.TryGetProperty("properties", out JsonElement properties)
-                    || !properties.TryGetProperty("sessionID", out JsonElement session)
-                    || session.GetString() != _sessionId) continue;
+            using JsonDocument json = await ReadNotificationAsync(_stream, _stop.Token).ConfigureAwait(false);
+            JsonElement root = json.RootElement;
+            if (!root.TryGetProperty("properties", out JsonElement properties)
+                || !properties.TryGetProperty("sessionID", out JsonElement session)
+                || session.GetString() != _sessionId) continue;
 
-                // A summary message can exist even when compaction fails or does not finish.
-                if (type == "session.compacted" || (type == "message.updated"
-                    && properties.TryGetProperty("info", out JsonElement info)
-                    && OpenCodeCompactionExport.IsSummary(info)))
-                {
-                    _hasSummary = true;
-                }
-                if (type == "session.status")
-                {
+            switch (root.GetProperty("type").GetString())
+            {
+                case "session.compacted":
+                // This also picks up failed or incomplete summaries that never emit session.compacted.
+                case "message.updated" when properties.TryGetProperty("info", out JsonElement info)
+                    && OpenCodeCompactionExport.IsSummary(info):
+                    hasSummary = true;
+                    break;
+                case "session.status":
                     string? status = properties.GetProperty("status").GetProperty("type").GetString();
-                    if (status == "busy") busy = true;
-                    if (status == "idle" && busy)
-                    {
-                        _idle.TrySetResult(true);
-                        return;
-                    }
-                }
+                    if (status == "idle" && busy) return hasSummary;
+                    busy |= status == "busy";
+                    break;
             }
         }
-        catch (Exception error) when (error is IOException or HttpRequestException or JsonException
-            or InvalidOperationException or KeyNotFoundException or OperationCanceledException)
-        {
-            // The caller falls back to the export command when the stream is incomplete.
-        }
-        finally
-        {
-            _connected.TrySetResult(false);
-            _idle.TrySetResult(false);
-        }
     }
+
+    private static async Task<JsonDocument> ReadNotificationAsync(StreamReader stream, CancellationToken ct)
+    {
+        while (await stream.ReadLineAsync(ct).ConfigureAwait(false) is { } line)
+        {
+            if (line.StartsWith("data:", StringComparison.Ordinal)) return JsonDocument.Parse(line[5..]);
+        }
+        throw new IOException("OpenCode event stream closed before the session became idle.");
+    }
+
+    internal static bool CanFallback(Exception error, CancellationToken ct) =>
+        !ct.IsCancellationRequested && error is IOException or HttpRequestException or JsonException
+            or InvalidOperationException or KeyNotFoundException or OperationCanceledException or TimeoutException;
 
     public async ValueTask DisposeAsync()
     {
         await _stop.CancelAsync().ConfigureAwait(false);
-        try { await _reader.ConfigureAwait(false); }
+        try { await _hasSummary.ConfigureAwait(false); }
+        catch (Exception error) when (CanFallback(error, CancellationToken.None))
+        {
+            // The turn handles stream failures through the export fallback.
+        }
         finally
         {
+            _stream.Dispose();
             _http.Dispose();
             _stop.Dispose();
         }
