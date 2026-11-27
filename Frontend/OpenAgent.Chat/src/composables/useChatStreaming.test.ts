@@ -1,5 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { ElMessage } from 'element-plus'
 import { computed, ref } from 'vue'
+import { ApiError } from '../shared/api/http'
 import { useChatStreaming } from './useChatStreaming'
 import { useConversationStreams } from './useConversationStreams'
 import { api } from '../api'
@@ -7,6 +9,8 @@ import type { ConversationMessage, ConversationRecord } from '../types'
 
 vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} })
 vi.stubGlobal('sessionStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} })
+
+vi.mock('element-plus', () => ({ ElMessage: { warning: vi.fn(), info: vi.fn(), error: vi.fn() } }))
 
 vi.mock('../api', async () => {
   const actual = await vi.importActual<typeof import('../api')>('../api')
@@ -64,6 +68,7 @@ async function setup(modelProfileId = 'profile-1', runtimeId = 'saved-runtime',
   conversations.value = selectedConversation.value ? [selectedConversation.value] : []
 
   const selectedAgentId = ref(agentId)
+  const notifyError = vi.fn()
   const streaming = useChatStreaming({
     selectedAgentId,
     selectedLlmProfileId: ref(modelProfileId),
@@ -84,9 +89,9 @@ async function setup(modelProfileId = 'profile-1', runtimeId = 'saved-runtime',
       if (selectedConversation.value?.conversationId === previous) selectedConversation.value = detail
     },
     refreshConversations: async () => {},
-    notifyError: () => {},
+    notifyError,
   })
-  return { streams, selectedConversation, streaming, selectedAgentId }
+  return { streams, selectedConversation, streaming, selectedAgentId, notifyError }
 }
 
 describe('useChatStreaming', () => {
@@ -114,6 +119,88 @@ describe('useChatStreaming', () => {
     const assistant = selectedConversation.value?.messages?.filter(message => message.role === 'assistant').at(-1)
     expect(assistant?.files).toEqual([file])
     expect(selectedConversation.value?.status).toBe(status)
+  })
+
+  it.each([true, false])('shows admission progress without adding it to assistant content (reload=%s)', async (reload) => {
+    const { streaming, selectedConversation } = await setup()
+    vi.mocked(api.streamChat).mockImplementation(() => (async function* () {
+      yield { type: 'execution_status', status: 'queued' }
+      expect(selectedConversation.value?.messages?.at(-1)?.executionStatus).toBe('queued')
+      expect(selectedConversation.value?.messages?.at(-1)?.content).toBe('')
+      yield { type: 'execution_status', status: 'started', queueMilliseconds: 42 }
+      expect(selectedConversation.value?.messages?.at(-1)?.executionStatus).toBe('started')
+      yield { type: 'done', conversationId: 'conv-1' }
+    })() as never)
+    if (reload) vi.mocked(api.getConversation).mockResolvedValue(makeRecord([], 'Completed') as never)
+    else vi.mocked(api.getConversation).mockRejectedValue(new Error('offline'))
+    streaming.message.value = '运行'
+    await streaming.send()
+    expect(selectedConversation.value?.messages?.at(-1)?.executionStatus).toBeUndefined()
+  })
+
+  it('tells the user the queue is full when the server rejects the turn with 429', async () => {
+    const { streaming, selectedConversation, notifyError } = await setup()
+    // streamChat 是异步生成器：HTTP 错误在读取第一个事件时抛出。
+    const rejected = new ApiError('Runtime capacity is busy. Retry after the indicated delay. (TraceId: trace-1)', 429, 'RuntimeQueueFull', 1)
+    vi.mocked(api.streamChat).mockImplementation(() => (async function* () { throw rejected })() as never)
+    // 被拒绝的这一轮在服务端什么都没有写入：首次请求的会话还不存在。
+    vi.mocked(api.getConversation).mockRejectedValue(new ApiError('404', 404))
+    streaming.message.value = '帮我查一下'
+    await streaming.send()
+
+    const assistant = selectedConversation.value?.messages?.at(-1)
+    expect(assistant?.error).toMatchObject({
+      title: '排队已满',
+      detail: '当前使用人数较多，排队已满，请稍后重试。',
+      code: 'RuntimeQueueFull',
+    })
+    expect(ElMessage.warning).toHaveBeenCalledWith('当前使用人数较多，排队已满，请稍后重试。')
+    expect(notifyError).not.toHaveBeenCalled()
+    // 用户的提问留在气泡里，可以直接重试。
+    expect(selectedConversation.value?.messages?.some(message => message.role === 'user' && message.content === '帮我查一下')).toBe(true)
+    expect(streaming.canRetry.value).toBe(true)
+  })
+
+  it('tells the user the wait timed out when the turn never left the queue', async () => {
+    const { streaming, selectedConversation, notifyError } = await setup()
+    vi.mocked(api.streamChat).mockImplementation(() => (async function* () {
+      yield { type: 'execution_status', status: 'queued' }
+      yield {
+        type: 'error',
+        error: {
+          title: '排队等待超时',
+          detail: 'Runtime queue wait timed out. Retry after the indicated delay.',
+          code: 'RuntimeQueueTimeout',
+          traceId: 'trace-1',
+        },
+      }
+    })() as never)
+    vi.mocked(api.getConversation).mockResolvedValue(makeRecord([], 'Completed') as never)
+    streaming.message.value = '运行'
+    await streaming.send()
+
+    const assistant = selectedConversation.value?.messages?.at(-1)
+    expect(assistant?.error).toMatchObject({
+      title: '排队等待超时',
+      detail: '当前排队的请求较多，这次没有轮到执行，请稍后重试。',
+      code: 'RuntimeQueueTimeout',
+      traceId: 'trace-1',
+    })
+    expect(ElMessage.warning).toHaveBeenCalledWith('当前排队的请求较多，这次没有轮到执行，请稍后重试。')
+    expect(notifyError).not.toHaveBeenCalled()
+  })
+
+  it('keeps reporting failures unrelated to admission as errors', async () => {
+    const { streaming, selectedConversation, notifyError } = await setup()
+    const failure = new ApiError('Agent failed', 500)
+    vi.mocked(api.streamChat).mockImplementation(() => (async function* () { throw failure })() as never)
+    vi.mocked(api.getConversation).mockRejectedValue(new ApiError('404', 404))
+    streaming.message.value = '运行'
+    await streaming.send()
+
+    expect(selectedConversation.value?.messages?.at(-1)?.error).toMatchObject({ title: 'Agent 执行失败', detail: 'Agent failed' })
+    expect(notifyError).toHaveBeenCalledWith(failure)
+    expect(ElMessage.warning).not.toHaveBeenCalled()
   })
 
   it('requires an independently saved model connection', async () => {

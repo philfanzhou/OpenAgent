@@ -37,6 +37,13 @@ x-engine-environment: &engine-environment
   OpenCode__RequestTimeoutSeconds: "${LT_REQ_TIMEOUT:-30}"
   OpenCode__TurnTimeoutSeconds: "${LT_TURN_TIMEOUT:-1800}"
   OpenCode__LogUsageUpdates: "${LT_LOG_USAGE:-false}"
+  # 进程内有界准入（PR #300）：默认值与 Engine appsettings.json 一致，场景可覆盖。
+  RuntimeAdmission__MaxConcurrentTurns: "${LT_ADM_MAX_TURNS:-8}"
+  RuntimeAdmission__MaxQueuedTurns: "${LT_ADM_QUEUE:-16}"
+  RuntimeAdmission__MaxConcurrentPerTenant: "${LT_ADM_TENANT_TURNS:-8}"
+  RuntimeAdmission__MaxQueuedPerTenant: "${LT_ADM_TENANT_QUEUE:-16}"
+  RuntimeAdmission__QueueTimeoutSeconds: "${LT_ADM_QUEUE_TIMEOUT:-120}"
+  RuntimeAdmission__RetryAfterSeconds: "${LT_ADM_RETRY_AFTER:-1}"
 
 x-logging: &logging
   driver: json-file

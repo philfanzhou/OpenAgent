@@ -11,6 +11,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Requests;
+using OpenAgent.Contracts.Runtime;
 using OpenAgent.Contracts.Security;
 using ProblemDetails = Microsoft.AspNetCore.Mvc.ProblemDetails;
 
@@ -30,6 +31,8 @@ public sealed record StreamingErrorPayload
 
     /// <summary>AgentErrorCode 符号名（如 LlmAuthFailed），前端按其划分严重级别；仅分类错误携带。</summary>
     public string? Code { get; init; }
+
+    public int? RetryAfterSeconds { get; init; }
 }
 
 /// <summary>一次异常映射的结果：HTTP 状态码与 ProblemDetails 载荷。</summary>
@@ -111,6 +114,10 @@ public sealed class AgentExceptionMapper
                 instance, traceId,
                 ("approvalToken", approval.ApprovalToken ?? string.Empty),
                 ("actionDescription", approval.ActionDescription))),
+            RuntimeAdmissionException admission => (MapAgentErrorCode(admission.ErrorCode), AgentProblemDetails.Create(
+                $"{AgentProblemDetails.TypePrefix}/{AgentProblemDetails.ToSymbolicName(admission.ErrorCode)}",
+                admission.ErrorCode.ToString(), MapAgentErrorCode(admission.ErrorCode), admission.Message,
+                instance, traceId, ("errorCode", (int)admission.ErrorCode), ("retryAfterSeconds", admission.RetryAfterSeconds))),
             AgentException agent => (MapAgentErrorCode(agent.ErrorCode), AgentProblemDetails.Create(
                 $"{AgentProblemDetails.TypePrefix}/{AgentProblemDetails.ToSymbolicName(agent.ErrorCode)}",
                 agent.ErrorCode.ToString(), MapAgentErrorCode(agent.ErrorCode), agent.Message,
@@ -199,6 +206,9 @@ public sealed class AgentExceptionMapper
         AgentErrorCode.AuthenticationRequired => 401,
         AgentErrorCode.TenantMismatch => 403,
         AgentErrorCode.TenantNotFound or AgentErrorCode.TenantDataIsolationViolation => 400,
+        AgentErrorCode.RuntimeQueueFull => 429,
+        AgentErrorCode.RuntimeQueueTimeout => 503,
+        AgentErrorCode.RuntimeExecutionTimeout => 504,
         AgentErrorCode.Conflict => 409,
         AgentErrorCode.DependencyUnavailable => 503,
         _ => 500
@@ -293,6 +303,11 @@ public sealed class AgentExceptionHandlerMiddleware
                 TraceId = traceId
             };
 
+        if (exception is RuntimeAdmissionException admission)
+        {
+            payload = payload with { RetryAfterSeconds = admission.RetryAfterSeconds };
+        }
+
         // camelCase 序列化错误载荷：前端 parseSseBlock 读取 detail/title/traceId（小写）。
         string error = JsonSerializer.Serialize(payload, SseJsonOptions);
         string done = JsonSerializer.Serialize(new { done = true, status = "error" }, SseJsonOptions);
@@ -332,6 +347,10 @@ public sealed class AgentExceptionHandlerMiddleware
             IncludeExceptionDetails(context));
         LogMappedException(context, exception, traceId, statusCode);
 
+        if (exception is RuntimeAdmissionException admission)
+        {
+            context.Response.Headers.RetryAfter = admission.RetryAfterSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
         await AgentProblemDetails.WriteAsync(
             context, problemDetails, CancellationToken.None).ConfigureAwait(false);
     }

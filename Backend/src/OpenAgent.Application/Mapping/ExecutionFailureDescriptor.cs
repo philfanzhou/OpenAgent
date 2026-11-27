@@ -39,6 +39,9 @@ public static class ExecutionFailureDescriptor
         [AgentErrorCode.DependencyUnavailable] = "运行时依赖不可用",
         [AgentErrorCode.ConfigurationError] = "运行时配置错误",
         [AgentErrorCode.InvalidRequest] = "请求无法执行",
+        [AgentErrorCode.RuntimeQueueFull] = "运行时繁忙",
+        [AgentErrorCode.RuntimeQueueTimeout] = "排队等待超时",
+        [AgentErrorCode.RuntimeExecutionTimeout] = "执行超时",
     };
 
     /// <summary>

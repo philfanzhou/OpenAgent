@@ -4,6 +4,7 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { api } from '../api'
 import { buildCompactionDisplay, buildCompactionTokenDisplay } from '../compactionPresentation'
 import { isHtmlFile, isMarkdownFile, isTextPreview } from '../composables/useFileHandling'
+import { QUEUED_PLACEHOLDER } from '../features/chat/queueNotice'
 import { isSelfContainedImageRef } from '../markdownAssets'
 import { buildConversationTimeline, fileLabel, formatFileSize, toolArgumentsText, toolPresentation } from '../messagePresentation'
 import { formatTokenBreakdown, formatTokenCount, formatTokenUsage } from '../tokenUsage'
@@ -495,7 +496,7 @@ defineExpose({ scrollToBottom })
         </div>
 
         <div v-if="!hasMessageContent(item) && !processActivities(item).length && !messageError(item)" class="message-thinking-placeholder" aria-live="polite">
-          <span v-if="isStreamingItem(item)" class="thinking-dots"><i /><i /><i /></span><span>{{ isStreamingItem(item) ? '正在生成回复' : incompleteResponseText(item) }}</span>
+          <span v-if="isStreamingItem(item)" class="thinking-dots"><i /><i /><i /></span><span>{{ isStreamingItem(item) ? (item.executionStatus === 'queued' ? '等待执行名额…' : '正在生成回复') : incompleteResponseText(item) }}</span>
         </div>
 
         <div v-if="messageError(item)" class="message-error" :class="`message-error--${errorSeverity(messageError(item))}`" role="alert">

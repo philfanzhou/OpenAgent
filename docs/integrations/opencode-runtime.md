@@ -34,7 +34,7 @@ Runtime 只引用 Contracts、Runtime.Acp 和官方 MCP SDK；Application 只引
 
 ## 一轮执行
 
-1. HTTP 身份与入口治理不变。平台解析并授权 Agent/模型，建立 Tenant/User/Conversation/Trace 身份，校验附件，获取既有会话锁与版本。
+1. HTTP 身份与入口治理不变。平台解析并授权 Agent/模型，建立 Tenant/User/Conversation/Trace 身份，再进入 Host 有界准入；获准后校验附件、获取既有会话锁与版本（见 N03）。
 2. 平台把历史、平台自有工具、外部 MCP server 定义和 Skill 包准备成 RuntimeInvocation。历史加载、工具发现与各 feature 工厂互不依赖，并行执行后按注册顺序合并（EF 仓储均按调用创建独立 DbContext，天然并发安全）；工厂失败时已启动的任务进入统一释放路径。平台工具函数带本轮闭包；每次回调校验 Tool/Function 的 invoke 权限，沿用工具超时、独占/只读并发和结果字符预算。外部 MCP server 不再经平台代理连接（见"MCP 透传"），其凭据与限流由 harness 持有。MCP server 定义与 Runtime profile 的读取在单例仓储内有 30 秒 TTL 进程内缓存（含负结果），写入/删除即时失效，跨进程仍有最多 30 秒陈旧窗口。
 3. 驱动按复用键（会话归属 + 启动身份哈希）获取保活进程，未命中或已过期时才启动新的 `opencode acp` 进程并执行 initialize。进程拥有独立的主目录（HOME/XDG 状态目录与进程工作目录），跨轮次保活时保持 harness 缓存为热；ACP 会话 cwd 固定为该进程拥有的 `workspace` 子目录，同归属追问复用目录缓存。每轮将窗口内附件更新到该工作区 `uploads/`，供原生 read/bash 使用；目标目录和已有目标文件均拒绝符号链接，附件随进程工作区回收。平台自有工具经宿主共享 MCP 桥暴露：桥是宿主单例，Engine.Host 经 `MapRuntimeToolBridge` 把桥路由挂到主站已有端口（自闸门在用户上下文/准入中间件之前短路桥流量），没有独立监听站点；库/测试等无宿主挂载、或主站无可 loopback 直连的 http 绑定时，回退为自建 loopback 端点。每轮向共享桥注册本轮工具集并持有独立 256 bit 随机 bearer，身份不取自模型参数，整轮取消或租约释放后拒绝新请求。启用的 Skill 包在进程创建时复制到其工作区 `.opencode/skills/<name>`，拒绝包根目录及包内符号链接/reparse point；通过显式 `skills.paths` 交由 OpenCode 原生 skill 工具发现。
 4. 复用进程直接跳过启动与 initialize。平台历史检查点（存储版本 + 有效压缩代次）、工具 schema 与已提交的 harness 状态一致且对端支持 resume/close 时，执行 `session/resume` 续接同一原生 session，只发送本轮新增输入；否则执行 `session/new` 并传入完整平台历史。两条路径都携带本轮新 bearer 的 MCP 定义，cwd 为固定工作区，随后按需选模并 `session/prompt`。OpenCode 直接调用选定的模型，平台工具经 MCP 桥调用，外部 MCP 工具由 OpenCode 原生连接调用。
@@ -96,7 +96,7 @@ Runtime 在独立设置页保存 ID、名称、Provider 和单轮时限，存入
 }
 ```
 
-`WorkspaceRoot` 默认是系统临时目录下的 `openagent-acp`；镜像改用 `/var/lib/openagent/opencode`。必须为绝对路径，父目录由运维可信地提供，根目录由服务账户独占；Unix 创建模式为 0700，已有目录若开放组/其他用户访问则拒绝使用，需运维先收紧权限。Windows 需预置仅服务账户可访问的 ACL。根目录和各 owner/随机轮次/进程目录拒绝链接。启动时验证配置格式，首轮创建目录时验证文件系统。并发上限为每个 Host 的进程租约配额，不是已验证的生产容量。超额请求等待空位并响应调用者取消；整轮时限从拿到空位后开始，包含初始化和推理。RPC 时限限制初始化/配置等调用，prompt 由整轮时限控制。工具桥复用主站端口；主站仅绑定 https 或特定非通配地址、无法 loopback 直连时，自动回退为独立 loopback 监听。
+`WorkspaceRoot` 默认是系统临时目录下的 `openagent-acp`；镜像改用 `/var/lib/openagent/opencode`。必须为绝对路径，父目录由运维可信地提供，根目录由服务账户独占；Unix 创建模式为 0700，已有目录若开放组/其他用户访问则拒绝使用，需运维先收紧权限。Windows 需预置仅服务账户可访问的 ACL。根目录和各 owner/随机轮次/进程目录拒绝链接。启动时验证配置格式，首轮创建目录时验证文件系统。并发上限为每个 Host 的进程租约配额，不是已验证的生产容量。Host 有界准入先于准备资源；驱动物理执行门额外等待最多 RequestTimeoutSeconds 并响应调用者取消。驱动整轮时限从拿到物理执行空位后开始，包含初始化和推理；Host 执行时限更早，从准入成功起包含准备和持久化。RPC 时限限制初始化/配置等调用，prompt 由整轮时限控制。工具桥复用主站端口；主站仅绑定 https 或特定非通配地址、无法 loopback 直连时，自动回退为独立 loopback 监听。
 
 `LogUsageUpdates` 打开后，每轮 `usage_update`（上下文占用 used/size）以 Information 级别写入日志（EventId 4500），用于追踪各轮 token 占用；不落对话报文，生产环境保持关闭。
 
@@ -203,7 +203,7 @@ Windows 原生运行必须使用独立服务账户、干净系统用户 profile 
 
 ### 回退
 
-需要立即关闭保活时设置 `KeepAliveSeconds=0`。出现兼容问题时停用受影响 Runtime/能力或回退相应 PR；不能把恢复个人 HOME、允许宿主技能继承作为安全回退；原生工具授权也不能代替多租户 OS 隔离。Skill 新进程首次复制与工作区回收仍需计入准备/清理成本。非 root 镜像的 Data Protection 卷权限迁移与旧镜像回退见[部署指南](../operations/deployment.md#opencode-服务身份与已有密钥卷)。既有 `WorkspaceRoot` 若权限过宽，应停机后由运维收紧为专属目录，不让应用自动更改未知宿主目录权限。
+需要立即关闭保活时设置 `KeepAliveSeconds=0`。出现兼容问题时停用受影响 Runtime/能力或回退相应 PR；不能把恢复个人 HOME、允许宿主技能继承作为安全回退；原生工具授权也不能代替多租户 OS 隔离。Skill 每轮复制增加磁盘开销，N03 需计入准备/清理成本。Skill 新进程首次复制与工作区回收仍需计入准备/清理成本。非 root 镜像的 Data Protection 卷权限迁移与旧镜像回退见[部署指南](../operations/deployment.md#opencode-服务身份与已有密钥卷)。既有 `WorkspaceRoot` 若权限过宽，应停机后由运维收紧为专属目录，不让应用自动更改未知宿主目录权限。
 
 ## 文件输入、交付与冷启动
 
@@ -222,3 +222,82 @@ OpenCode 将最终成品写在 `outputs/`。轮次正常结束时，平台流式
 ```sh
 dotnet test Backend/tests/OpenAgent.Engine.Tests --filter FullyQualifiedName~OpenCodeFileExchangeTests
 ```
+
+## N03：并发准入、排队与取消
+
+已变基到 `dev@3ce714a9`（N02 已合入）；实现入口为 `Backend/src/OpenAgent.Application/Execution/Admission/`。Host 通过 Application 的单例 TurnAdmission 统一覆盖 sync、intent 和 stream，Agent/模型授权与所选 Runtime 校验在准入之前。会话元数据可用于授权/选 Agent：省略 AgentId 时仅通过 GetMetadataAsync 读取 UserId/AgentId/软删除标记，EF 直接投影会话表，写穿层绕过完整记录缓存及预热；消息历史、会话锁、附件及工具资源仅在获准后准备。Application 不引用 Runtime/ACP，纯状态和错误信息留在 Contracts。
+
+配置节 `RuntimeAdmission`：
+
+| 字段 | 默认 | 约束/含义 |
+|---|---:|---|
+| MaxConcurrentTurns | 8 | Host 活跃轮次上限，1–128；包括准备、执行、终态持久化及清理。默认与 `OpenCode:MaxConcurrentTurns` 相同 |
+| MaxQueuedTurns | 16 | Host 等待上限，0–4096；0 表示关闭排队并立即拒绝 |
+| MaxConcurrentPerTenant | 8 | 单租户活跃上限，1–Host 活跃上限；默认与 Host 相同，即不额外限制 |
+| MaxQueuedPerTenant | 16 | 单租户等待上限，0–Host 等待上限；默认与 Host 相同，单租户部署可以用满整个队列 |
+| QueueTimeoutSeconds | 120 | 排队截止时间，1–3600 秒；不消耗执行时限 |
+| ExecutionTimeoutSeconds | 1800 | 从准入成功起到准备/执行/持久化结束的取消时限，1–86400 秒；与所选 Runtime 的时限取较小值 |
+| RetryAfterSeconds | 1 | 队列满/排队超时提示的重试间隔，1–3600 秒；不自动重试有副作用的轮次 |
+
+字段需成组调整，不能将租户限额设得高于 Host 上限；格式/范围错误在启动时失败。配置为 Host 局部、启动时固定，不提供分布式容量或热改现存队列。`OpenCode:MaxConcurrentTurns` 保留最后的活跃进程租约门，默认 8，与 Host 活跃上限相同；调低 `RuntimeAdmission:MaxConcurrentTurns` 时宜一并调低它，否则被接纳的请求还可能在驱动内等待。准入默认值只保证队列有界并在过载时给出信号，不按主机内存标定：本任务不改保活池与 `MaxKeptProcesses`（当前默认保活 300 秒、空闲上限 16），默认配置在 16 GB 主机上仍会因空闲进程占满内存而失败，见任务清单的 LT 记录。
+
+队列按进入顺序挑选符合租户活跃限额的最早请求；已饱和租户的等待项不会阻塞其他租户。同租户保持 FIFO，但这不是严格的租户轮转或跨 Host 调度。排队取消/超时立即移除等待项；取消与授予竞态通过单一锁串行化，并在准备前再次检查请求 token。活动轮次取消后必须先回收进程/工具、写回中止状态并释放会话锁，最后归还准入名额。排队中止不启动 OpenCode、不创建本轮消息或保存虚假的运行终态；已开始的用户取消/失败沿用部分结果持久化，执行截止导致的取消映射为 Failed 和 RuntimeExecutionTimeout。
+
+HTTP/SSE 行为见[执行协议](../modules/execution.md#执行编排)。**过载提示。** 队列满时 Engine 在流开始之前返回 HTTP 429，带 `Retry-After` 与问题详情（`errorCode` 8201、`retryAfterSeconds`），Router 原样透传；排队超时（8202）在流内以 `error` 加 `done{status:"error"}` 收尾，携带同一重试间隔。前端不把这两种情况当作执行故障：气泡用提示色显示「排队已满」或「排队等待超时」及可重试的说明，同时弹出提示条而不是错误；排队中的轮次显示「正在排队，请稍候…」。被 429 拒绝的请求在服务端不写入任何内容，用户的提问留在气泡里，可直接重试。`Retry-After` 只是提示，服务端与前端都不会自动重试。状态事件的 started 表示获准准备，不能当作模型首 token。Meter `OpenAgent.Admission` 已接入宿主现有 OpenTelemetry：`openagent_admission_active`、`openagent_admission_waiting`、`openagent_admission_rejected`、`openagent_admission_queue_duration` 与 `openagent_admission_execution_duration`，时长单位秒；无租户/会话标签，避免指标基数和身份泄漏。进程数/CPU/RSS 由容量夹具在测试进程及其子进程树采样，TTFT 从 HTTP 请求发出到首个正文事件，另保留原有 OpenCode 分段日志。
+
+### 验证与容量基线（2026-10-29）
+
+本分支默认后端 1002 通过、27 项环境门控跳过、0 失败；前端 168 通过且构建通过；架构门禁未放宽。全解决方案构建成功，干净编译保留已有 SkiaSharp 过时 API 与 RuntimeBoundaryTests nullable 告警，增量构建可为 0 警告。非 root Linux 容器真实 Runtime 套件 89 通过、1 项 Windows 用例跳过，真实 Host SSE 1 通过。
+
+默认验证覆盖：租户限额/FIFO/跳过饱和租户、Host 与租户队列满、零队列、排队超时、排队取消、取消/释放竞态、授权先于准入、准备/进程不提前启动、执行取消与超时、feature/会话锁回收、HTTP 错误与流内 error/done、前端等待展示和状态清除。真实 OpenCode 与环境范围另列，默认门控跳过不计通过。
+
+复现入口为 `OpenCodeCapacityTests`，显式设置 `OPENAGENT_TEST_OPENCODE`、`OPENAGENT_RUN_CAPACITY=1` 与可写的 `OPENAGENT_CAPACITY_OUTPUT` JSON 路径；只支持 macOS/Linux 的 ps 采样。容器可用显式目标复现（常规发布目标不运行压测，也不增加 procps）：
+
+```sh
+docker build -f Backend/src/OpenAgent.Engine.Host/Dockerfile --target capacity-tests --build-arg OPENCODE_VERSION=1.19.3 -t openagent-capacity:local .
+docker run --init --name openagent-capacity-check --network none openagent-capacity:local
+docker cp openagent-capacity-check:/tmp/openagent-capacity.json /tmp/openagent-capacity.json
+docker rm openagent-capacity-check
+```
+
+必须在 N02 干净服务身份/一次性非 root 容器下运行，不能把个人账户试跑当生产容量。固定 OpenCode 1.19.3、保活 0，Host/租户/驱动活跃上限同步按 1/2/4/8 提高；每阶同时提交两倍于活跃上限的独立会话，故同时覆盖排队与执行。确定性本地模型每次响应等待 100ms，先调用原生 bash 执行 Node/Python JSON 文件读写再返回正文；显式工具 read/edit/write/bash，真实模型和外部 MCP 不参与。采样每约 250ms 一次，进程树 CPU 超过 600%（单核=100%）连续三次或 RSS 超过 3GiB 时取消本阶并停止后续阶梯；阈值是本机保护线，不是生产 SLO。小样本 P95 仅供本机比较，不作容量承诺。
+
+本机 Apple M5（10 个逻辑核、16GiB）、macOS 26.5 / Docker Linux arm64（Linux 6.12.76-linuxkit，10 vCPU、约 7.75GiB VM 内存），非 root UID 1654，网络关闭且无个人目录挂载；SDK 10.0.403、Node v22.23.4、Python 3.12.3、OpenCode 1.19.3。最终容量实测使用仓库显式 capacity-tests 目标，单独运行以避开其他测试负载。样本为冷进程，每轮均经过原生代码执行。CPU/RSS 是 testhost 及后代总和，ps 的 CPU 百分比为进程历史平均采样，不是 cgroup 瞬时 CPU；RSS 含共享页重复计数，不是独占物理内存。
+
+| 活跃上限 / 样本数 | 完成 P50/P95 ms | HTTP TTFT P50/P95 ms | 排队 P95 ms | 峰值 CPU / RSS MiB | 峰值活跃/等待/进程 | 结果 |
+|---|---|---|---:|---|---|---|
+| 1 / 2 | 2757 / 4482 | 2702 / 4456 | 2696 | 225.2% / 825.1 | 1 / 1 / 1 | 0/2 错误 |
+| 2 / 4 | 4138 / 7130 | 4057 / 7062 | 4131 | 471.6% / 1533.8 | 2 / 2 / 2 | 0/4 错误 |
+| 4 / 8 | 保护性取消，不计成功分位数 | 无正文 | — | 662.7% / 1346.5 | 4 / 4 / 4 | 8/8 取消，非模型失败 |
+| 8 | 未执行：4 并发已触发停止阈值 | — | — | — | — | 无容量结论 |
+
+每阶结束后活跃/等待/进程均为 0，轮次与进程目录清空。4 并发取消后约 450ms 收敛，15 秒上限未触及；前两阶在采样前已完成回收。testhost RSS 基线约 96.8MiB，结束各阶约 145.5/154.0/158.9MiB；托管运行时堆与宿主缓存仍驻留，不能声称宿主内存逐字节回到启动值。首次容器试跑用固定 500ms 检查过早，曾观察到清理中的进程；最终夹具等待指标/进程有界收敛并保留耗时，不放宽回收条件。个人账户上的更早最小工具试跑只作诊断，不列入该容量表。
+
+首次评审时的默认是总活跃 2、单租户 1、总等待 8、单租户等待 4，为该环境的保守起点；2026-11-27 变基后按压测数据调整为总活跃 8、单租户 8、等待 16/16、排队超时 120 秒，依据见下一小节。该次仅 6 个成功请求，不足以确认稳态错误率、长上下文/大附件/Skill/MCP 负载或生产 SLO。外部真实服务商、Windows 原生、互不信任多租户 OS 隔离、长时间 soak、生产发布均未验收。
+
+### 变基后的验证与默认值依据（2026-11-27）
+
+变基到 `dev@3ce714a9` 后，后端全量 1317 通过、0 失败、57 跳过（含架构门禁，未放宽）；前端 224 通过且构建通过；Linux 非 root 容器真实 OpenCode 套件通过；Router 集成测试确认 429、`Retry-After` 与问题详情原样到达客户端。新增用例覆盖默认队列（8 个在跑、16 个排队，第 25 个被拒绝）、随镜像发布的 `appsettings.json` 与代码默认值一致、前端在 429 与排队超时时给出提示并保留重试。
+
+默认值在隔离压测栈上测定（WSL2，20 vCPU、15.46 GB，Engine 容器内存上限 9.5 GiB；单租户单用户，直连 Engine，保活关闭；模型桩每轮约 1 秒，慢轮次另加每轮约 20 秒的一组）。40 个新会话同时到达：
+
+| 配置 | 立即 429 | 放行 | 完成 | 排队超时 | 完成者整轮 p50 / 最长 |
+|---|---:|---:|---:|---:|---|
+| 原默认：并发 2、单租户 1、排队超时 30 秒 | 23 | 17 | 10 | 7 | 17.5 / 31.2 秒 |
+| 只把排队超时放宽到 120 秒 | 23 | 17 | 17 | 0 | 28.4 / 53.4 秒 |
+| 只把单租户并发提到 2 | 22 | 18 | 18 | 0 | 17.5 / 30.9 秒 |
+| 最终默认，快轮次 | 16 | 24 | 24 | 0 | 12.3 / 18.1 秒 |
+| 最终默认，慢轮次 | 16 | 24 | 24 | 0 | 53.6 / 80.4 秒 |
+
+429 在 100–160 毫秒内返回。并发上限对吞吐的影响（60 秒内完成的轮次，与 `dev` 的评分卡对照）：
+
+| 场景 | 原默认（并发 2 / 单租户 1） | 最终默认（8 / 8） | `dev`，无准入 |
+|---|---|---|---|
+| 新会话 8 并发 | 27 轮，p50 24.4 秒 | 95 轮，p50 5.3 秒 | 86–88 轮，p50 5.7 秒 |
+| 追问 4 并发 | 41 轮，p50 5.6 秒 | 160 轮，p50 1.4 秒 | 160 轮，p50 1.45 秒 |
+
+原默认下单租户一次只执行一轮，队列排不完，放行的 17 个里有 7 个超时，吞吐比 `dev` 低 3.6–3.9 倍；所以并发上限与运行时默认对齐，排队超时放宽到 120 秒，让 16 个排队名额在每轮 60 秒以内的回答下都能轮到。饱和时（30 并发持续 45 秒）直连与经 Router 的探测请求都得到 429，`Retry-After` 保留；该轮共 48,824 个 429、72 轮全部完成。数值只代表这台主机。
+
+### N03 回退
+
+降低 Host/租户/驱动活跃限额，保持数值相容；或将两级排队上限设为 0，超额请求立即返回 429。旧客户端继续忽略 execution_status，可回退 UI 提示；不能回到无限队列或无限等待。回退代码不涉及数据库 schema、消息格式迁移或部署操作。

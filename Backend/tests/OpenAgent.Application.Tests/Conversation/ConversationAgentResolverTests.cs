@@ -5,6 +5,7 @@ using OpenAgent.Contracts.Security;
 using OpenAgent.Application.Conversation;
 using OpenAgent.Application.Conversation.Store;
 using Xunit;
+using Moq;
 
 namespace OpenAgent.Application.Tests.Conversation;
 
@@ -19,6 +20,18 @@ public class ConversationAgentResolverTests
         public bool IsAuthenticated => true;
         public IReadOnlyList<string> Roles => [];
         public bool IsInRole(string role) => false;
+    }
+
+    [Fact]
+    public async Task ResolveAsync_OmittedAgent_ReadsOnlyRoutingMetadata()
+    {
+        Mock<IConversationStore> store = new(MockBehavior.Strict);
+        store.Setup(item => item.GetMetadataAsync("tenant-1", "conversation-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ConversationMetadata("user-1", "bound-agent", false));
+        ConversationAgentResolver resolver = new(store.Object);
+        Assert.Equal("bound-agent", await resolver.ResolveAsync(CreateRequest(conversationId: "conversation-1"), CreateUser(), default));
+        store.Verify(item => item.GetMetadataAsync("tenant-1", "conversation-1", It.IsAny<CancellationToken>()), Times.Once);
+        store.VerifyNoOtherCalls();
     }
 
     [Fact]
@@ -72,8 +85,9 @@ public class ConversationAgentResolverTests
         ConversationRecord record = CreateRecord(ownerId, "finance");
         record.IsDeletedByUser = deleted;
         Mock<IConversationStore> store = new();
-        store.Setup(value => value.GetRecordAsync("tenant-1", "conversation-1", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(record);
+        // 归属与删除标记只从元数据读取，不加载会话历史。
+        store.Setup(value => value.GetMetadataAsync("tenant-1", "conversation-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ConversationMetadata(record.UserId, record.AgentId, record.IsDeletedByUser));
         var resolver = new ConversationAgentResolver(store.Object);
 
         AgentException exception = await Assert.ThrowsAsync<AgentException>(() =>
@@ -83,6 +97,8 @@ public class ConversationAgentResolverTests
                 CancellationToken.None));
 
         Assert.Equal(AgentErrorCode.PermissionDenied, exception.ErrorCode);
+        store.Verify(value => value.GetMetadataAsync("tenant-1", "conversation-1", It.IsAny<CancellationToken>()), Times.Once);
+        store.VerifyNoOtherCalls();
     }
 
     private static AgentRequest CreateRequest(

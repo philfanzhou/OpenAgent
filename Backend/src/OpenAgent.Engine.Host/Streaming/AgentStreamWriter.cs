@@ -16,6 +16,10 @@ internal static class AgentStreamWriter
         ILogger logger,
         CancellationToken cancellationToken)
     {
+        // Resolve authorization/admission before committing SSE headers. Queue-full failures
+        // remain HTTP problems; accepted waiters immediately yield a queued status event.
+        await using IAsyncEnumerator<AgentStreamEvent> enumerator = events.GetAsyncEnumerator(cancellationToken);
+        bool available = await enumerator.MoveNextAsync().ConfigureAwait(false);
         context.Response.StatusCode = StatusCodes.Status200OK;
         StreamingResponseHeaders.ApplySse(context);
         TokenUsage? usage = null;
@@ -35,8 +39,9 @@ internal static class AgentStreamWriter
             "conversation",
             JsonSerializer.Serialize(new { conversationId }, JsonOptions),
             cancellationToken).ConfigureAwait(false);
-        await foreach (AgentStreamEvent streamEvent in events.WithCancellation(cancellationToken))
+        for (; available; available = await enumerator.MoveNextAsync().ConfigureAwait(false))
         {
+            AgentStreamEvent streamEvent = enumerator.Current;
             if (streamEvent.Type == AgentStreamEventType.Usage)
             {
                 usage = streamEvent.Usage;
@@ -49,6 +54,7 @@ internal static class AgentStreamWriter
             {
                 AgentStreamEventType.RuntimeStarted => "runtime",
                 AgentStreamEventType.Compaction => "compaction",
+                AgentStreamEventType.ExecutionStatus => "execution_status",
                 AgentStreamEventType.Reasoning => "reasoning",
                 AgentStreamEventType.ToolCall => "tool_call",
                 AgentStreamEventType.ToolResult => "tool_result",
@@ -57,6 +63,8 @@ internal static class AgentStreamWriter
             };
             string data = JsonSerializer.Serialize(new
             {
+                status = streamEvent.Status,
+                queueMilliseconds = streamEvent.QueueMilliseconds,
                 runtime = streamEvent.Runtime,
                 compaction = streamEvent.Compaction,
                 content = streamEvent.Content,

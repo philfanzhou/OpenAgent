@@ -384,6 +384,7 @@ public class AgentExecutorUsageTests
         IConversationStore store) : IAsyncDisposable
     {
         internal RuntimeAgentExecutor Executor { get; } = executor;
+        internal AsyncServiceScope CreateScope() => serviceProvider.CreateAsyncScope();
         internal IConversationStore Store { get; } = store;
 
         public async ValueTask DisposeAsync()

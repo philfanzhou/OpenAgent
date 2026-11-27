@@ -171,10 +171,26 @@ export async function requestUrl(url: string, init: RequestInit = {}, timeoutMs 
 }
 
 export class ApiError extends Error {
-  constructor(message: string, public readonly status: number) {
+  constructor(
+    message: string,
+    public readonly status: number,
+    /** 后端错误码名（如 RuntimeQueueFull）；只有 ProblemDetails 带 errorCode 时才有值。 */
+    public readonly code?: string,
+    /** 服务端建议的重试间隔（秒）。 */
+    public readonly retryAfterSeconds?: number,
+  ) {
     super(message)
     this.name = 'ApiError'
   }
+}
+
+/** 把正整数形式的秒数解析出来；其它取值（缺失、0、负数、非数字）视为没有。 */
+function retrySeconds(...values: (unknown)[]): number | undefined {
+  for (const value of values) {
+    const seconds = Number(value)
+    if (Number.isFinite(seconds) && seconds > 0) return Math.ceil(seconds)
+  }
+  return undefined
 }
 
 function safeErrorMessage(value: string, fallback: string): string {
@@ -200,10 +216,22 @@ async function readError(response: Response): Promise<ApiError> {
 
   try {
     // 后端统一返回 ProblemDetails：detail（兜底 title）+ camelCase traceId。
-    const body = JSON.parse(raw) as { detail?: string; title?: string; traceId?: string }
+    const body = JSON.parse(raw) as {
+      detail?: string; title?: string; traceId?: string; errorCode?: unknown; retryAfterSeconds?: unknown
+    }
     const message = safeErrorMessage(body.detail || body.title || fallback, fallback)
     const traceId = body.traceId ? safeErrorMessage(body.traceId, '') : ''
-    return new ApiError(`${message}${traceId ? ` (TraceId: ${traceId})` : ''}`, response.status)
+    // 平台错误映射出的 ProblemDetails 里 title 就是错误码名（如 RuntimeQueueFull），
+    // 调用方据此给出针对性提示；没有 errorCode 的 ProblemDetails 不猜。
+    const code = typeof body.errorCode === 'number' && typeof body.title === 'string' && !/\s/.test(body.title)
+      ? body.title
+      : undefined
+    return new ApiError(
+      `${message}${traceId ? ` (TraceId: ${traceId})` : ''}`,
+      response.status,
+      code,
+      retrySeconds(body.retryAfterSeconds, response.headers.get('Retry-After')),
+    )
   } catch {
     return new ApiError(fallback, response.status)
   }

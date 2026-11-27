@@ -2,11 +2,26 @@ using Microsoft.Extensions.Logging.Abstractions;
 using OpenAgent.Contracts.Conversation;
 using OpenAgent.Contracts.Security;
 using Xunit;
+using Moq;
 
 namespace OpenAgent.Framework.Tests;
 
 public sealed class WriteThroughConversationStoreTests
 {
+    [Fact]
+    public async Task GetMetadata_DoesNotLoadOrWarmFullConversationCache()
+    {
+        Mock<IConversationStore> durable = new(MockBehavior.Strict);
+        Mock<IConversationCache> cache = new(MockBehavior.Strict);
+        ConversationMetadata metadata = new("user", "agent", false);
+        durable.Setup(item => item.GetMetadataAsync("tenant", "conversation", It.IsAny<CancellationToken>())).ReturnsAsync(metadata);
+        WriteThroughConversationStore store = new(durable.Object, cache.Object, new FakeUserContext(), NullLogger<WriteThroughConversationStore>.Instance);
+        Assert.Same(metadata, await store.GetMetadataAsync("tenant", "conversation"));
+        durable.Verify(item => item.GetMetadataAsync("tenant", "conversation", It.IsAny<CancellationToken>()), Times.Once);
+        durable.VerifyNoOtherCalls();
+        cache.VerifyNoOtherCalls();
+    }
+
     [Fact]
     public async Task CreateAndAppend_WriteDurableRecordThenRefreshHotCache()
     {
@@ -258,6 +273,9 @@ public sealed class WriteThroughConversationStoreTests
             Record.MessageCount = Record.Messages.Count;
             return Task.FromResult(AppendResult.Ok(Record.Version, Record.MessageCount));
         }
+
+        public Task<ConversationMetadata?> GetMetadataAsync(string tenantId, string conversationId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<ConversationMetadata?>(new(Record.UserId, Record.AgentId, Record.IsDeletedByUser));
 
         public Task<ConversationRecord?> GetRecordAsync(string tenantId, string conversationId, CancellationToken cancellationToken = default)
         {

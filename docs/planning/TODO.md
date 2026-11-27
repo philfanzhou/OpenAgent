@@ -214,6 +214,13 @@
 - [x] **LT01 OpenCode 后台依赖安装空操作**（实现 PR：[#323](https://github.com/philfanzhou/OpenAgent/pull/323)；待合入 `dev`）。`OpenCodeConfigDependencies` 在 XDG 配置目录、`OPENCODE_CONFIG_DIR` 与工作区 `.opencode` 预置空壳，使上游无开关的后台 `@opencode-ai/plugin` 安装成为空操作。验收证据：保活进程空闲 15 秒 CPU 1148% → 15.3%，每会话落盘 244 MB → 7 MB，追问 4 并发吞吐 1.00 → 1.43 轮/秒；对应 ACP-R05 提到的空闲进程 CPU 空转与外呼现象，是否仍有其他外呼未验证。
 - [x] **LT02 压缩摘要直接读会话数据库**（实现 PR：[#325](https://github.com/philfanzhou/OpenAgent/pull/325)，堆叠在 LT01 上；待合入 `dev`。[#324](https://github.com/philfanzhou/OpenAgent/pull/324) 是同一问题的另一方案（订阅 OpenCode 事件流），代码上互斥，需选定其一）。原方案「按上下文占用比例决定是否导出」不成立：实测压缩发生在同一轮的提示词处理中途，而 `usage_update` 只在整轮结束后上报一次、报的是压缩之后回落的占用。改为 Engine 以只读连接直接查询原生会话数据库，导出命令只作回退。验收证据：新会话首轮 p50 4158 → 3220 ms，追问 p50 2255 → 1402 ms（收尾 872 → 29 ms），追问 4 并发 p50 2660 → 1455 ms、吞吐 1.43 → 2.61 轮/秒，新会话 8 并发 p50 7302 → 5759 ms；Linux `runtime-tests` 真实进程套件通过，含按真实 `export` 调用次数断言的用例。
 - [ ] **LT03 会话状态瘦身与回收**（待开发，依赖 LT02）。
-- [ ] **LT04 并发有界排队与断开取消**（待开发，依赖 LT03）。含默认值调整 `MaxConcurrentTurns` 8 → 4、`MaxKeptProcesses` 16 → 4，与 #302 记录的「300 秒 / 16 个空闲会话」不同，需单独确认。
+- [x] **LT04 有界排队**（实现 PR：[#300](https://github.com/philfanzhou/OpenAgent/pull/300)；待合入 `dev`）。进程内准入默认并发 8、等待队列 16，队列满返回 429 加 `Retry-After` 并提示用户，排队超时 120 秒。验收证据：40 个请求同时到达时 16 个得到 429、24 个全部完成；新会话 8 并发与追问 4 并发的吞吐与 `dev` 持平。客户端断开时取消未开始的轮次在 LT05（#327）。**仍未解决**：保活相关默认值（300 秒 / 16 个空闲会话）没有按内存标定，16 GB 主机上默认配置仍会失败；16 GB 主机实测空闲上限 8、4 稳定，与 #302 记录的选择不同，需单独确认。
 - [ ] **LT05 取消语义与僵尸会话**（待开发，依赖 LT04）。
 - [ ] **LT06 Router 失败帧、运行时指标与负载值**（待开发，依赖 LT05）。
+
+## N03 / P1 — 并发容量、排队与取消（ACP-R04、A02）
+
+- 负责人：Codex；状态：待评审（实现与本机/容器验证完成）；初始基线 `origin/dev@768a8c1e`，已改基 `origin/dev@d38a3513`，2026-11-27 再变基到 `dev@3ce714a9`；实现分支 `codex/n03-admission`，实现 PR：[#300](https://github.com/philfanzhou/OpenAgent/pull/300)（草稿）。任务输入来自 2026-10-28 非 RAG 拆解，只补充本任务，不覆盖其他会话的规划文件。
+- 拥有范围：Application/Execution 的授权后有界准入、Conversation 的消息体外路由读取、Contracts 状态/错误及会话元数据契约、Framework 元数据投影、Host SSE 与共享异常映射、前端 chat 等待状态及对应测试。共享边界：Runtime/OpenCodeRuntime 仅保留并收紧最后活跃进程门的等待时限，Dockerfile 仅新增显式 capacity-tests 目标；保活池与默认值由 N04 负责，SDK/架构白名单/RAG 不变，Runner 沿用已合入 dev 的移除结果。
+- 对外行为：Host/租户活跃与等待上限、排队/执行分开计时；队列满流前 429 + 重试信息，排队超时 503 或流内 error/done；兼容 execution_status 附加事件。排队取消无准备资源，执行取消在进程/工具/锁回收后归还名额，成功终态仍在保存后发送。
+- 验收证据与回退：[N03 运行时说明](../integrations/opencode-runtime.md#n03并发准入排队与取消)。采用 N02 非 root 干净服务身份；生产容量、多租户 OS 隔离、Windows/外部服务商仍不在本机基线结论内。构建、默认测试、前端与真实 1/2/4/8 阶梯结果分别记录，达到资源阈值停止。2026-11-27 按压测数据调整默认值：并发 8、队列 16、排队超时 120 秒，队列满返回 429 并给用户提示；保活默认值不在本任务范围。

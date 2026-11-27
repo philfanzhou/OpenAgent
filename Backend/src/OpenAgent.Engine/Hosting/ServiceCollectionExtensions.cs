@@ -195,7 +195,7 @@ public static class ServiceCollectionExtensions
             {
                 metrics
                     .AddAspNetCoreInstrumentation()
-                    .AddMeter(options.OpenTelemetrySource)
+                    .AddMeter(options.OpenTelemetrySource, "OpenAgent.Admission")
                     .AddMeter(TraceExportMonitor.MeterName)
                     .AddPrometheusExporter();
 

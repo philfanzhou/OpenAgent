@@ -148,6 +148,22 @@ public sealed class TestEngineHost(string responseName, bool sendHeartbeats = fa
                 _sseCanceled.TrySetResult(true);
             }
         });
+        application.MapPost("/api/v1/agent/chat/stream", context =>
+        {
+            // 模拟 Engine 准入拒绝：队列已满，在流开始之前就返回 429。
+            context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+            context.Response.Headers.RetryAfter = "1";
+            return context.Response.WriteAsJsonAsync(new
+            {
+                type = "https://error.agent.com/runtime-queue-full",
+                title = "RuntimeQueueFull",
+                status = StatusCodes.Status429TooManyRequests,
+                detail = "Runtime capacity is busy. Retry after the indicated delay.",
+                traceId = "trace-queue-full",
+                errorCode = 8201,
+                retryAfterSeconds = 1,
+            }, context.RequestAborted);
+        });
         application.MapGet("/api/v1/agent/conversations", () => Results.Json(Array.Empty<object>()));
         application.MapPost("/api/v1/agent/files", async context =>
         {

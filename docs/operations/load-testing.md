@@ -42,7 +42,7 @@ python3 tools/loadtest/scripts/lt.py compare before after
 ## 参数
 
 - 环境变量 `LT_PROJECT` 是 compose 项目名，默认 `openagent-loadtest`。Engine 容器内存上限默认 7 GB（`LT_ENGINE_MEM_LIMIT`），超限时 OOM 只发生在容器内，用来保护同机的其他服务。
-- `apply --engine KEY=VALUE` 持久设置 Engine 的环境变量，之后每次启动都带上：`LT_MAX_TURNS`、`LT_KEEPALIVE`、`LT_MAX_KEPT`、`LT_REQ_TIMEOUT`、`LT_RETENTION_DAYS`、`LT_LOG_USAGE` 分别对应 `OpenCode:MaxConcurrentTurns` 等运行时参数；`apply --router KEY=VALUE` 同理设置 Router，例如 `LT_ROUTER_IMAGE=openagent-router:标签`。
+- `apply --engine KEY=VALUE` 持久设置 Engine 的环境变量，之后每次启动都带上：`LT_MAX_TURNS`、`LT_KEEPALIVE`、`LT_MAX_KEPT`、`LT_REQ_TIMEOUT`、`LT_RETENTION_DAYS`、`LT_LOG_USAGE` 分别对应 `OpenCode:MaxConcurrentTurns` 等运行时参数；`LT_ADM_MAX_TURNS`、`LT_ADM_QUEUE`、`LT_ADM_TENANT_TURNS`、`LT_ADM_TENANT_QUEUE`、`LT_ADM_QUEUE_TIMEOUT`、`LT_ADM_RETRY_AFTER` 对应 `RuntimeAdmission` 的准入参数（默认值同样与 `appsettings.json` 一致）；`apply --router KEY=VALUE` 同理设置 Router，例如 `LT_ROUTER_IMAGE=openagent-router:标签`。
 - 镜像没变时 `apply` 不会重建容器。要观察只在启动时发生的行为（例如会话状态的首轮回收），需要显式重启容器，或等下一个周期。
 - `run --env KEY=VALUE` 传给发生器：
   - `MODEL`：`closed`（固定并发）、`open`（固定到达率）、`ramp`（逐级爬坡，`RAMP=1:40,2:40,4:60`）、`burst`（一次性齐发）。
