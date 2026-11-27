@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 using OpenAgent.Contracts.Runtime;
 using OpenAgent.Runtime.OpenCode;
 using OpenAgent.Runtime.Pi;
@@ -40,6 +41,9 @@ public static class RuntimeServiceExtensions
                 && options.MaxPromptCharacters > 0
                 && options.KeepAliveSeconds is >= 0 and <= 86400
                 && options.MaxKeptProcesses is > 0 and <= 128
+                // 共享存储下，另一实例的空闲保活进程不能比它的会话状态活得久。
+                && options.SessionStateRetentionDays is >= 0 and <= 3650
+                && (options.SessionStateRetentionDays == 0 || options.SessionStateRetentionDays * 86400L > options.KeepAliveSeconds)
                 && options.MaxSessionsPerProcess is > 0 and <= 10000
                 && options.AllowedNativeTools is not null
                 // OpenCode 在 JSON 解析前展开 {file:...}/{env:...} 宏，白名单条目带花括号
@@ -49,6 +53,8 @@ public static class RuntimeServiceExtensions
             .ValidateOnStart();
         services.TryAddSingleton<RuntimeToolBridge>();
         services.TryAddSingleton<OpenCodeProcessKeeper>();
+        // 会话状态回收随宿主启动；库与测试组合不启动宿主服务，直接调用 SweepOnceAsync。
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, OpenCodeSessionStateSweeper>());
         services.TryAddSingleton<IAgentRuntimeDriver, OpenCodeRuntime>();
         PiOptions pi = configuration.GetSection("Pi").Get<PiOptions>() ?? new PiOptions();
         if (pi.Enabled)

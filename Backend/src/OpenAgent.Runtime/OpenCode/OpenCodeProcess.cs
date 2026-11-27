@@ -217,7 +217,7 @@ internal static class OpenCodeProcess
     }
 
     // These are process-private storage paths, not an OS identity or sandbox boundary.
-    private static readonly Dictionary<string, string> StateVariables = new()
+    internal static readonly Dictionary<string, string> StateVariables = new()
     {
         ["HOME"] = "home", ["USERPROFILE"] = "home",
         ["APPDATA"] = "config", ["LOCALAPPDATA"] = "data",

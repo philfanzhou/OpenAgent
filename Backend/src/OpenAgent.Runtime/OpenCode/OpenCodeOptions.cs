@@ -11,6 +11,11 @@ public sealed class OpenCodeOptions
     /// <summary>Durable native sessions; use a persistent volume. Local to an engine unless this directory is shared.</summary>
     public string SessionStateRoot { get; set; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "openagent", "sessions");
+    /// <summary>
+    /// 已提交原生会话状态的保留天数：自最后一次成功提交起算，超期且没有进程在用的归属目录
+    /// （原生数据库与工作区）被回收，该会话下一轮回放平台历史。默认 14 天，0 表示不按时间回收。
+    /// </summary>
+    public int SessionStateRetentionDays { get; set; } = 14;
     public int RequestTimeoutSeconds { get; set; } = 30;
     public int TurnTimeoutSeconds { get; set; } = 1800;
     public int MaxConcurrentTurns { get; set; } = 8;

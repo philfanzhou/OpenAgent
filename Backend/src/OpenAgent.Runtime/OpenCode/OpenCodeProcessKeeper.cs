@@ -34,6 +34,7 @@ internal sealed class OpenCodeProcessKeeper : IAsyncDisposable
     private readonly OpenCodeOptions _options;
     private readonly ILogger<OpenCodeProcessKeeper> _logger;
     private readonly Dictionary<string, OpenCodeAgentProcess> _kept = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, int> _active = new(StringComparer.Ordinal);
     private readonly CancellationTokenSource _stopping = new();
     private readonly Task _sweep;
     private readonly object _gate = new();
@@ -42,6 +43,9 @@ internal sealed class OpenCodeProcessKeeper : IAsyncDisposable
 
     internal int KeptCount { get { lock (_gate) { return _kept.Count; } } }
     internal int ReusedCount { get { lock (_gate) { return _reused; } } }
+
+    /// <summary>该归属目录（会话状态所在目录）是否仍有进程在使用：执行中的轮次或保活进程。路径按绝对路径比较。</summary>
+    internal bool IsActive(string owner) { lock (_gate) { return _active.ContainsKey(owner); } }
 
     public OpenCodeProcessKeeper(IOptions<OpenCodeOptions> options, ILogger<OpenCodeProcessKeeper> logger)
     {
@@ -64,6 +68,8 @@ internal sealed class OpenCodeProcessKeeper : IAsyncDisposable
                 _reused++;
                 return cached;
             }
+            // 本轮起独占该归属目录，直到对应进程销毁；状态回收器据此跳过仍在使用的目录。
+            _active[Path.GetFullPath(parent)] = _active.GetValueOrDefault(Path.GetFullPath(parent)) + 1;
         }
         if (cached is not null)
         {
@@ -75,6 +81,13 @@ internal sealed class OpenCodeProcessKeeper : IAsyncDisposable
         AcpClient? client = null;
         try
         {
+            // 同一归属目录只保留本轮使用的主目录：换键、检查点变化或恢复失败留下的旧主目录已不可复用。
+            foreach (string sibling in Directory.EnumerateDirectories(parent, "p-*"))
+            {
+                if (Path.GetFileName(sibling) == Path.GetFileName(home)) continue;
+                Exception? failure = OpenCodeWorkspace.TryDelete(sibling);
+                if (failure is not null) OpenCodeLog.CleanupFailure(_logger, "workspace", failure.GetType().Name);
+            }
             string workspace = Path.Combine(home, "workspace");
             OpenCodeWorkspace.CreatePrivateDirectory(home);
             OpenCodeWorkspace.CreatePrivateDirectory(workspace);
@@ -154,6 +167,12 @@ internal sealed class OpenCodeProcessKeeper : IAsyncDisposable
 
     private async Task DestroyAsync(AcpClient? client, AcpProcess? process, string home, bool preserveState = false)
     {
+        lock (_gate)
+        {
+            string owner = Path.GetFullPath(Path.GetDirectoryName(home)!);
+            if (_active.GetValueOrDefault(owner) <= 1) _active.Remove(owner);
+            else _active[owner]--;
+        }
         foreach (IAsyncDisposable? resource in new IAsyncDisposable?[] { client, process })
         {
             if (resource is null)
@@ -163,7 +182,12 @@ internal sealed class OpenCodeProcessKeeper : IAsyncDisposable
             try { await resource.DisposeAsync().ConfigureAwait(false); }
             catch (Exception error) { OpenCodeLog.CleanupFailure(_logger, resource.GetType().Name, error.GetType().Name); }
         }
-        if (preserveState) return;
+        if (preserveState)
+        {
+            // 已提交的原生会话状态留在主目录里；进程运行期目录不再需要，随进程一并回收。
+            OpenCodeWorkspace.ReleaseRuntimeState(home, _logger);
+            return;
+        }
         for (int attempt = 0; attempt < 3; attempt++)
         {
             try
