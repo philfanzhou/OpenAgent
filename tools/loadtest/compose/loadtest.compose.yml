@@ -1,0 +1,227 @@
+# OpenAgent 压测栈：隔离的 PostgreSQL / Redis / MinIO + 最新 dev 的 Engine / Router 镜像 + 确定性模型桩。
+#
+# 项目名默认 openagent-loadtest（docker compose -p 或 LT_PROJECT 可覆盖），数据全部落在独立卷，
+# 不与开发 / 预览栈共享，也不向任何 OTLP 端点导出。
+# Engine / Router 的环境与 deploy/openagent/preview.compose.yml 保持一致，只做了三处调整：
+#   1. 基础设施改为栈内服务（不经过 host.docker.internal）；
+#   2. 不配置 OpenTelemetry__OtlpEndpoint，避免把压测数据写进共享的观测后端；
+#   3. 日志级别用 Information（Development 配置默认是 Debug，与生产不一致）。
+# 以 LT_ / STUB_ 开头的变量由 tools/loadtest/scripts/lt.py 按场景注入；LT_ENGINE_IMAGE / LT_ROUTER_IMAGE
+# 指定被测镜像，用来对比不同提交。
+name: openagent-loadtest
+
+x-engine-environment: &engine-environment
+  ASPNETCORE_ENVIRONMENT: Development
+  ASPNETCORE_URLS: http://+:5208
+  Serilog__MinimumLevel__Default: Information
+  ConnectionStrings__OpenAgentDatabase: Host=postgres;Port=5432;Database=openagent;Username=openagent;Password=loadtest
+  ConnectionStrings__Redis: redis:6379,defaultDatabase=0,Password=loadtest
+  Database__ApplyMigrationsOnStartup: "true"
+  ConversationCache__Enabled: "true"
+  FileAssets__Enabled: "true"
+  FileAssets__ObjectStorage__ServiceUrl: http://minio:9000
+  FileAssets__ObjectStorage__ForcePathStyle: "true"
+  FileAssets__ObjectStorage__AccessKey: loadtest
+  FileAssets__ObjectStorage__SecretKey: loadtest-secret
+  Engine__AllowMockAgent: "true"
+  Authentication__AllowDevelopmentAnonymous: "true"
+  Authentication__Mode: Basic
+  Authentication__EnableKeycloak: "false"
+  Authentication__EnableApiKey: "false"
+  # 被测运行时参数：默认值与 Engine appsettings.json 一致，场景可覆盖。
+  OpenCode__MaxConcurrentTurns: "${LT_MAX_TURNS:-8}"
+  OpenCode__KeepAliveSeconds: "${LT_KEEPALIVE:-300}"
+  OpenCode__MaxKeptProcesses: "${LT_MAX_KEPT:-16}"
+  OpenCode__MaxSessionsPerProcess: "${LT_MAX_SESSIONS:-64}"
+  OpenCode__RequestTimeoutSeconds: "${LT_REQ_TIMEOUT:-30}"
+  OpenCode__TurnTimeoutSeconds: "${LT_TURN_TIMEOUT:-1800}"
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 50m
+    max-file: "10"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: openagent
+      POSTGRES_USER: openagent
+      POSTGRES_PASSWORD: loadtest
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U openagent -d openagent"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    environment:
+      REDIS_PASSWORD: loadtest
+    command: ["sh", "-ec", "exec redis-server --requirepass \"$$REDIS_PASSWORD\""]
+    volumes:
+      - redis-data:/data
+    networks: [default, loadtest-redis]
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping | grep -qx PONG"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: loadtest
+      MINIO_ROOT_PASSWORD: loadtest-secret
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-05-21T01-59-54Z
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "mc alias set local http://minio:9000 loadtest loadtest-secret &&
+      mc mb --ignore-existing local/openagent-files"
+
+  modelstub:
+    build:
+      context: ../src/ModelStub
+    image: openagent-loadtest-modelstub:latest
+    environment:
+      STUB_TTFT_MS: "${STUB_TTFT_MS:-300}"
+      STUB_TOKENS: "${STUB_TOKENS:-32}"
+      STUB_TOKEN_INTERVAL_MS: "${STUB_TOKEN_INTERVAL_MS:-25}"
+    ports:
+      - "127.0.0.1:5312:8080"
+    logging: *logging
+
+  engine:
+    image: "${LT_ENGINE_IMAGE:-openagent-engine:latest}"
+    environment:
+      <<: *engine-environment
+      Heartbeat__AdvertisedHost: engine
+      Heartbeat__AdvertisedPort: "5208"
+    volumes:
+      - engine-sessions:/home/app/openagent-sessions
+    ports:
+      - "127.0.0.1:5310:5208"
+    # 安全网：一个 OpenCode 进程约 600 MB，默认配置满载 24 个进程需要约 14 GB。限制容器内存并把
+    # memswap 设为同值（不使用交换），内存耗尽时 OOM 只发生在本容器内，不波及同机的其他服务。
+    # 设为 0 表示不限制。这是压测条件的一部分，会写入每次运行的 manifest。
+    mem_limit: "${LT_ENGINE_MEM_LIMIT:-7g}"
+    memswap_limit: "${LT_ENGINE_MEM_LIMIT:-7g}"
+    # 与生产 compose 一致：不设 restart 策略，进程崩溃后保持停止，便于观察。
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:5208/health >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    logging: *logging
+
+  # 多实例场景（S9）使用：同一镜像、独立状态卷，默认不启动。
+  engine2:
+    image: "${LT_ENGINE_IMAGE:-openagent-engine:latest}"
+    profiles: [multi]
+    environment:
+      <<: *engine-environment
+      Heartbeat__AdvertisedHost: engine2
+      Heartbeat__AdvertisedPort: "5208"
+    volumes:
+      - engine2-sessions:/home/app/openagent-sessions
+    mem_limit: "${LT_ENGINE_MEM_LIMIT:-7g}"
+    memswap_limit: "${LT_ENGINE_MEM_LIMIT:-7g}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:5208/health >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    logging: *logging
+
+  router:
+    image: "${LT_ROUTER_IMAGE:-openagent-router:latest}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp]
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:5001
+      Serilog__MinimumLevel__Default: Information
+      ConnectionStrings__Redis: redis:6379,defaultDatabase=0,Password=loadtest
+      RouterSettings__Routing__EngineEndpoint: http://engine:5208
+      RouterSettings__ServiceDiscovery__AllowedHosts__0: engine
+      RouterSettings__ServiceDiscovery__AllowedHosts__1: engine2
+      RouterSettings__IntentRecognition__TimeoutMs: "5000"
+      RouterSettings__RateLimiting__RequestsPerSecond: "${LT_RATE_RPS:-100}"
+      RouterSettings__RateLimiting__BurstCapacity: "${LT_RATE_BURST:-200}"
+      Authentication__AllowDevelopmentAnonymous: "true"
+      Authentication__Mode: Basic
+      Authentication__EnableKeycloak: "false"
+      Authentication__EnableApiKey: "false"
+    ports:
+      - "127.0.0.1:5311:5001"
+    depends_on:
+      engine:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:5001/health >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    logging: *logging
+
+  generator:
+    build:
+      context: ../src/LoadDriver
+    image: openagent-loadtest-generator:latest
+    # 结果目录挂在 WSL 的 /mnt 下，非 root 身份无法写入，所以发生器以 root 运行；它不接触任何被测数据。
+    user: "0:0"
+    environment:
+      TARGET: http://engine:5208
+      ROUTER_TARGET: http://router:5001
+    volumes:
+      - ../../../artifacts/loadtest/results:/out
+
+networks:
+  # 两个网段都显式固定：只固定 default 时，Docker 可能先把相邻网段自动分给 loadtest-redis 而导致冲突。
+  default:
+    ipam:
+      config:
+        - subnet: 172.28.250.0/24
+  loadtest-redis:
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.29.250.0/24
+
+volumes:
+  postgres-data:
+  redis-data:
+  minio-data:
+  engine-sessions:
+  engine2-sessions:
