@@ -35,6 +35,7 @@ x-engine-environment: &engine-environment
   OpenCode__MaxSessionsPerProcess: "${LT_MAX_SESSIONS:-64}"
   OpenCode__RequestTimeoutSeconds: "${LT_REQ_TIMEOUT:-30}"
   OpenCode__TurnTimeoutSeconds: "${LT_TURN_TIMEOUT:-1800}"
+  OpenCode__LogUsageUpdates: "${LT_LOG_USAGE:-false}"
 
 x-logging: &logging
   driver: json-file

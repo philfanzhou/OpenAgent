@@ -911,9 +911,12 @@ def load_scorecard(label):
 def cmd_scorecard(args):
     """固定的一组场景，用来比较不同 Engine 镜像。所有场景直连 Engine、同一模型桩档位。"""
     stub = ["ttft_ms=300", "tokens=32", "interval_ms=25"]
+    if args.prompt_tokens > 0:
+        # 真实 Provider 会返回 usage；模型桩默认不带，需要时显式指定，用于依赖占用的路径（例如自动压缩）。
+        stub.append(f"prompt_tokens={args.prompt_tokens}")
     closed = ["MODEL=closed", "DURATION_SEC=3600"]
     SCORECARD.mkdir(parents=True, exist_ok=True)
-    report = {"label": args.label, "startedUtc": now_iso(), "scenarios": {}}
+    report = {"label": args.label, "startedUtc": now_iso(), "scenarios": {}, "stub": stub}
 
     apply_engine(["LT_KEEPALIVE=0", "LT_MAX_KEPT=16", "LT_MAX_TURNS=8"])
     report["scenarios"]["cold1"] = scenario_metrics(run_scenario(
@@ -1186,6 +1189,7 @@ def main():
     scorecard = commands.add_parser("scorecard")
     scorecard.add_argument("label")
     scorecard.add_argument("--skip-idle", action="store_true")
+    scorecard.add_argument("--prompt-tokens", dest="prompt_tokens", type=int, default=0)
     scorecard.set_defaults(func=cmd_scorecard)
 
     idle = commands.add_parser("idle")
