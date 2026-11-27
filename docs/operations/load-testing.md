@@ -25,6 +25,7 @@ python3 tools/loadtest/scripts/lt.py run NAME --env MODEL=closed --env CONCURREN
 python3 tools/loadtest/scripts/lt.py report artifacts/loadtest/results/<目录>
 python3 tools/loadtest/scripts/lt.py scorecard LABEL      # 跑固定的一组场景，用于对比镜像
 python3 tools/loadtest/scripts/lt.py compare BEFORE AFTER # 输出两个评分卡的前后对比
+python3 tools/loadtest/scripts/lt.py idle LABEL              # 只跑空闲场景：保活进程的空闲 CPU、进程回收后每会话落盘
 python3 tools/loadtest/scripts/lt.py stack-down -v        # 停栈并删除数据卷
 ```
 
@@ -41,7 +42,8 @@ python3 tools/loadtest/scripts/lt.py compare before after
 ## 参数
 
 - 环境变量 `LT_PROJECT` 是 compose 项目名，默认 `openagent-loadtest`。Engine 容器内存上限默认 7 GB（`LT_ENGINE_MEM_LIMIT`），超限时 OOM 只发生在容器内，用来保护同机的其他服务。
-- `apply --engine KEY=VALUE` 持久设置 Engine 的环境变量，之后每次启动都带上：`LT_MAX_TURNS`、`LT_KEEPALIVE`、`LT_MAX_KEPT`、`LT_REQ_TIMEOUT` 分别对应 `OpenCode:MaxConcurrentTurns` 等运行时参数。
+- `apply --engine KEY=VALUE` 持久设置 Engine 的环境变量，之后每次启动都带上：`LT_MAX_TURNS`、`LT_KEEPALIVE`、`LT_MAX_KEPT`、`LT_REQ_TIMEOUT`、`LT_RETENTION_DAYS`、`LT_LOG_USAGE` 分别对应 `OpenCode:MaxConcurrentTurns` 等运行时参数；`apply --router KEY=VALUE` 同理设置 Router，例如 `LT_ROUTER_IMAGE=openagent-router:标签`。
+- 镜像没变时 `apply` 不会重建容器。要观察只在启动时发生的行为（例如会话状态的首轮回收），需要显式重启容器，或等下一个周期。
 - `run --env KEY=VALUE` 传给发生器：
   - `MODEL`：`closed`（固定并发）、`open`（固定到达率）、`ramp`（逐级爬坡，`RAMP=1:40,2:40,4:60`）、`burst`（一次性齐发）。
   - `CONCURRENCY`、`RATE`、`DURATION_SEC`、`MAX_REQUESTS`、`BURST_SIZE`。
