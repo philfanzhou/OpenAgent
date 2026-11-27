@@ -110,11 +110,15 @@ internal sealed class OpenCodeTheoryAttribute : TheoryAttribute
 
 internal sealed class OpenCodeUnixFactAttribute : FactAttribute
 {
-    public OpenCodeUnixFactAttribute()
+    public OpenCodeUnixFactAttribute(bool requiresHarness = false)
     {
         if (OperatingSystem.IsWindows())
         {
             Skip = "Unix filesystem permissions/link test; Windows requires separate service-account ACL validation.";
+        }
+        else if (requiresHarness && string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENAGENT_TEST_OPENCODE")))
+        {
+            Skip = "Set OPENAGENT_TEST_OPENCODE to the OpenCode executable for real harness tests.";
         }
     }
 }

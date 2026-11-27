@@ -11,5 +11,6 @@
     <ProjectReference Include="../OpenAgent.Contracts/OpenAgent.Contracts.csproj" />
     <ProjectReference Include="../OpenAgent.Runtime.Acp/OpenAgent.Runtime.Acp.csproj" />
     <PackageReference Include="ModelContextProtocol.AspNetCore" />
+    <PackageReference Include="Microsoft.Data.Sqlite" />
   </ItemGroup>
 </Project>
