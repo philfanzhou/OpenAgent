@@ -93,6 +93,38 @@ public sealed class RuntimeBoundaryTests
     }
 
     [Fact]
+    public void Launch_SeedsConfigDependencyStubsInBothConfigDirectories()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "acp-launch-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            RuntimeInvocation request = new(new AgentRuntimeProfile
+            {
+                AgentId = "agent",
+                Config = new AgentConfig(),
+                Model = new LlmConfig { ModelId = "chosen", ApiKey = "selected-secret", Endpoint = "https://example.test/v1", ContextTokens = 100000 }
+            }, new TurnContext { TenantId = "tenant", ConversationId = "c", UserId = "u", TraceId = "t" }, "", [new("user", "hello")], []);
+            var launch = OpenCodeProcess.Create(new OpenCodeLaunchSpec("opencode", ["acp"]), request, [], root);
+            // OpenCode 对 XDG 配置目录和 OPENCODE_CONFIG_DIR 各做一次后台依赖安装，两处都要预置空壳。
+            foreach (string directory in new[]
+                     {
+                         Path.Combine(launch.Environment!["XDG_CONFIG_HOME"], "opencode"), launch.Environment["OPENCODE_CONFIG_DIR"]
+                     })
+            {
+                Assert.Empty(Directory.GetFileSystemEntries(Path.Combine(directory, "node_modules")));
+                using JsonDocument lockFile = JsonDocument.Parse(File.ReadAllText(Path.Combine(directory, "package-lock.json")));
+                Assert.True(lockFile.RootElement.GetProperty("packages").GetProperty("").GetProperty("dependencies")
+                    .TryGetProperty(OpenCodeConfigDependencies.PackageName, out _));
+            }
+            Assert.Empty(Directory.GetDirectories(root, "@opencode-ai", SearchOption.AllDirectories));
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
     public void Launch_PassesThroughNodeTlsOverridesOnlyWhenHostSetsThem()
     {
         string root = Path.Combine(Path.GetTempPath(), "acp-launch-" + Guid.NewGuid().ToString("N"));

@@ -23,6 +23,11 @@ internal static class OpenCodeSkills
             }
             CopyDirectory(skill.Path, Path.Combine(workspace, ".opencode", "skills", name), cancellationToken);
         }
+        if (skills is { Count: > 0 })
+        {
+            // 工作区出现 .opencode 目录后，OpenCode 也会对它启动后台依赖安装。
+            OpenCodeConfigDependencies.Seed(Path.Combine(workspace, ".opencode"));
+        }
     }
 
     internal static async Task<string> FingerprintAsync(IReadOnlyList<RuntimeSkill>? skills, CancellationToken ct)

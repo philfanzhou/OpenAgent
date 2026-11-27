@@ -205,6 +205,9 @@ internal static class OpenCodeProcess
             OpenCodeWorkspace.CreatePrivateDirectory(path);
             environment[variable.Key] = path;
         }
+        // OpenCode 会为 XDG 配置目录与 OPENCODE_CONFIG_DIR 各启动一次后台依赖安装；平台不加载 JS 配置插件。
+        OpenCodeConfigDependencies.Seed(Path.Combine(environment["XDG_CONFIG_HOME"], "opencode"));
+        OpenCodeConfigDependencies.Seed(environment["OPENCODE_CONFIG_DIR"]);
         return new AcpProcessOptions(launch.FileName, launch.Arguments)
         {
             WorkingDirectory = home,

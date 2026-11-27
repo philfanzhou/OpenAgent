@@ -102,7 +102,11 @@ Runtime 在独立设置页保存 ID、名称、Provider 和单轮时限，存入
 
 每轮另有一行分段计时日志（EventId 4501，Information，默认开启，不含对话内容）：`process`（进程获取/启动+initialize，近 0 表示命中保活）、`sessionNew`（ACP session/new + 桥租约）、`prompt`（模型配置+发送）、`firstUpdate`（prompt→首个 session/update，衡量 ACP 链路活性）、`firstToken`（prompt→首个可见 token，包含 harness 准备与模型 TTFT）、`stream`（首 token→轮次完成）、`close`（会话关闭+清理+归还）。用于判别延迟归属；firstToken 同时包含 harness 内部准备，需结合模型请求发送时刻区分模型侧耗时。
 
-进程与工作区保活：默认空闲保留 300 秒，最多 16 个空闲会话；`KeepAliveSeconds=0` 可关闭。`MaxSessionsPerProcess`（默认 64）限制累计轮次；到期、失败、取消或超限回收进程；已提交的原生会话状态保留在 SessionStateRoot，失败/取消轮次的原生状态作废，每个会话最多保留一个空闲进程，池满时淘汰最久未使用者；会话配置变更会替换旧空闲项。原生会话主目录首次随机生成；恢复时重用检查点指向的原目录，只有命中同一归属和配置身份的独占租约才能继续使用，不跨租户/用户/会话/Agent 复用。Skill 使用平台验证过的包哈希参与身份；无哈希时计算本地文件内容哈希，避免给正常追问重复扫描包内容。当前 OpenCode 空闲仍消耗 CPU/内存，300 秒窗口和 LRU 容量上限共同限制驻留；忙进程上限仍由 `MaxConcurrentTurns` 控制，空闲数上限不等于宿主总进程上限。工具桥仍按轮次注册、吊销独立 bearer，不保留上一轮的工具闭包。
+进程与工作区保活：默认空闲保留 300 秒，最多 16 个空闲会话；`KeepAliveSeconds=0` 可关闭。`MaxSessionsPerProcess`（默认 64）限制累计轮次；到期、失败、取消或超限回收进程；已提交的原生会话状态保留在 SessionStateRoot，失败/取消轮次的原生状态作废，每个会话最多保留一个空闲进程，池满时淘汰最久未使用者；会话配置变更会替换旧空闲项。原生会话主目录首次随机生成；恢复时重用检查点指向的原目录，只有命中同一归属和配置身份的独占租约才能继续使用，不跨租户/用户/会话/Agent 复用。Skill 使用平台验证过的包哈希参与身份；无哈希时计算本地文件内容哈希，避免给正常追问重复扫描包内容。空闲进程稳定后 CPU 占用很低，但每个仍驻留约 0.6 GB 内存，300 秒窗口和 LRU 容量上限共同限制驻留；忙进程上限仍由 `MaxConcurrentTurns` 控制，空闲数上限不等于宿主总进程上限。工具桥仍按轮次注册、吊销独立 bearer，不保留上一轮的工具闭包。
+
+**后台依赖安装。** OpenCode 1.x 加载配置时，会对 XDG 配置目录、`OPENCODE_CONFIG_DIR` 和工作区里的 `.opencode` 目录各启动一次后台依赖安装（添加 `@opencode-ai/plugin`，供 JS/TS 配置文件 import），上游没有开关，1.19.6 仍然如此。安装会访问 npm registry 并解包数千个文件：保活开启时，进程在轮次结束后约 30 秒内持续占用 1.3–1.6 核，并在主目录留下 npm 缓存和 `node_modules`。平台只通过 `OPENCODE_CONFIG_CONTENT` 提供 JSON 配置，不加载 JS/TS 配置插件。`OpenCodeConfigDependencies` 在创建进程目录时向这三处预置满足上游跳过检查的空壳（空的 `node_modules` 目录加只登记依赖名的 `package-lock.json`），使安装成为空操作。空壳不含真实包，上游若确实需要该包会回到按需安装；已有目录只拒绝链接，不收紧权限位，升级前已提交的会话仍可追问。
+
+隔离压测对比（WSL2，20 vCPU / 15.5 GB，2026-11-27，基线 `dev@9099f7f3`）：保活进程空闲 15 秒时的 CPU 1148% → 15.3%，进程回收后每会话落盘 244 MB → 7 MB，追问 4 并发吞吐 1.00 → 1.43 轮/秒，新会话 8 并发吞吐 0.73 → 1.08 轮/秒。
 
 缺少可执行文件、启动失败或 ACP 异常会明确失败，没有第二条执行路径。外部错误正文不会原样进入 SSE/会话；日志记录异常类型。工作区清理失败会告警并保留可定位目录，不删除其他轮次或宿主根目录。
 
@@ -160,7 +164,7 @@ SDK 控制台继续只有 SDK 引用，外部连接入口见 [控制台使用](a
 ### 当前缓解
 
 - HOME 与 USERPROFILE 指向同一个进程私有 home；APPDATA/LOCALAPPDATA、四个 XDG 目录、OPENCODE_CONFIG_DIR、TMPDIR/TMP/TEMP 均收拢到 `p-<random>/.state`，进程 cwd 与 ACP 轮次 cwd 分离。API key 仍仅通过该子进程白名单环境传入。PATH 与 Node TLS 覆盖仍属于可信宿主配置，并非出站访问控制。
-- 固定设置 `OPENCODE_DISABLE_PROJECT_CONFIG`、`OPENCODE_DISABLE_EXTERNAL_SKILLS`、`OPENCODE_DISABLE_CLAUDE_CODE`，阻止祖先项目配置/指令与 `.claude/.agents` 自动扫描；授权 Skill 由相对 ACP cwd 的显式路径发现。关闭默认插件、模型目录抓取和 LSP 下载，避免这些默认扩展来源；这不代表整个进程已无外呼，保活仍需受空闲时限与数量上限约束。
+- 固定设置 `OPENCODE_DISABLE_PROJECT_CONFIG`、`OPENCODE_DISABLE_EXTERNAL_SKILLS`、`OPENCODE_DISABLE_CLAUDE_CODE`，阻止祖先项目配置/指令与 `.claude/.agents` 自动扫描；授权 Skill 由相对 ACP cwd 的显式路径发现。关闭默认插件、模型目录抓取和 LSP 下载，避免这些默认扩展来源；OpenCode 启动时对配置目录的后台依赖安装由预置空壳跳过（见上文「后台依赖安装」）。这不代表整个进程已无外呼，保活仍需受空闲时限与数量上限约束。
 - 保留配置宏转义、底层原生工具默认拒绝及 ACP 文件/终端回调关闭；开发配置继续显式放行 `read/edit/write/bash`，保持 OpenCode 自身代码执行能力。Runner 不作为本轮执行方案。按名称授权 Skill 避免附带放行 OpenCode 内建或其他磁盘技能。目录检查与包复制防止正常执行中误跟随链接，不承诺抵抗同 UID 恶意进程并发替换路径的竞态。
 - Engine 发布镜像及 `runtime-tests` 阶段使用 .NET 镜像的非 root `app` 身份（UID 1654），干净系统 home 为 `/home/app`。Engine 和 OpenCode 仍共享这一身份；它消除开发者账户的隐式继承，不能隔离 Engine 自身的配置、进程内凭据或其他租户。
 

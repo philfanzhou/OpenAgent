@@ -23,6 +23,27 @@ public sealed class OpenCodeSkillsTests : IDisposable
         Assert.Contains("Writes reports", File.ReadAllText(entry), StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    public void Materialize_SeedsConfigDependencyStubOnlyWhenWorkspaceHasOpenCodeDirectory(int skillCount)
+    {
+        string workspace = Path.Combine(_root, "ws-config-deps");
+        Directory.CreateDirectory(workspace);
+        RuntimeSkill[] skills = skillCount == 0 ? [] : [new RuntimeSkill("report-writer", CreatePackage("report-writer"))];
+
+        OpenCodeSkills.Materialize(workspace, skills);
+
+        string modules = Path.Combine(workspace, ".opencode", "node_modules");
+        if (skillCount == 0)
+        {
+            Assert.False(Directory.Exists(Path.Combine(workspace, ".opencode")));
+            return;
+        }
+        // 工作区出现 .opencode 后 OpenCode 会对它做后台依赖安装，空壳让安装成为空操作。
+        Assert.Empty(Directory.GetFileSystemEntries(modules));
+    }
+
     [Fact]
     public void Materialize_MultipleSkills_KeepSeparateEntries()
     {

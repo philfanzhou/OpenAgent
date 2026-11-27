@@ -148,6 +148,22 @@ public sealed class OpenCodeKeepAliveTests
         }
     }
 
+    [OpenCodeFact]
+    public async Task KeptAliveProcess_DoesNotRunBackgroundConfigDependencyInstall()
+    {
+        await using ModelFixture model = await ModelFixture.StartAsync((context, _) => ModelFixture.TextAsync(context, "answer"));
+        await using RuntimeFixture runtime = new(model.Endpoint, config => config["OpenCode:KeepAliveSeconds"] = "300");
+        await runtime.CollectAsync(runtime.Request);
+        string home = Assert.Single(Directory.GetDirectories(runtime.Root, "p-*", SearchOption.AllDirectories));
+
+        // 未处理时 npm 缓存从进程启动起开始下载，node_modules 在启动后约 18–49 秒写入。
+        await Task.Delay(TimeSpan.FromSeconds(30));
+
+        Assert.Equal(1, runtime.Keeper.KeptCount);
+        Assert.Empty(Directory.GetDirectories(home, "_cacache", SearchOption.AllDirectories));
+        Assert.Empty(Directory.GetDirectories(home, "@opencode-ai", SearchOption.AllDirectories));
+    }
+
     [Fact]
     public void Identity_IsStableAndSensitiveToLaunchDifferences()
     {
