@@ -53,6 +53,9 @@ public static class RuntimeServiceExtensions
             .ValidateOnStart();
         services.TryAddSingleton<RuntimeToolBridge>();
         services.TryAddSingleton<OpenCodeProcessKeeper>();
+        // 闸门是单例：运行时用它排队，心跳与指标读它的在跑/排队数，必须是同一个实例。
+        services.TryAddSingleton<OpenCodeTurnGate>();
+        services.TryAddSingleton<IRuntimeLoadSource>(ResolveTurnGate);
         // 会话状态回收随宿主启动；库与测试组合不启动宿主服务，直接调用 SweepOnceAsync。
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, OpenCodeSessionStateSweeper>());
         services.TryAddSingleton<IAgentRuntimeDriver, OpenCodeRuntime>();
@@ -67,6 +70,9 @@ public static class RuntimeServiceExtensions
         }
         return services;
     }
+
+    // 负载来源指向闸门单例本身，而不是另建一个计数器。
+    private static IRuntimeLoadSource ResolveTurnGate(IServiceProvider provider) => provider.GetRequiredService<OpenCodeTurnGate>();
 
     /// <summary>把工具桥挂到主站已有端口；须在用户上下文/准入等中间件之前调用。</summary>
     public static void MapRuntimeToolBridge(this WebApplication app)

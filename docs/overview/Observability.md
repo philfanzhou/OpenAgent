@@ -8,7 +8,7 @@
 |------|------------|----------|----------|
 | 日志 | 业务代码使用 `ILogger<T>`，由 Serilog 接管；通用请求事件由 Engine/Hosting middleware 横切采集 | Console/stdout；配置 OTLP 地址后同时导出 OpenTelemetry Logs | 日志存储与查询后端由部署环境决定 |
 | Trace | OpenTelemetry ASP.NET Core、HttpClient 与服务自定义 `ActivitySource` | 配置 OTLP 地址后导出 | 仓库不内置 Collector 或 Trace 存储 |
-| Metrics | OpenTelemetry ASP.NET Core 指标、Engine/Hosting 请求指标与服务自定义 `Meter` | Prometheus `/metrics`；配置 OTLP 地址后同时导出 | 长期存储与看板由部署环境决定 |
+| Metrics | OpenTelemetry ASP.NET Core 指标、Engine/Hosting 请求指标与服务自定义 `Meter`；Engine 另订阅 .NET 运行时、Npgsql 与 ACP RPC 的 Meter，并上报在跑/排队轮次与保活进程数（`openagent_engine_runtime_*`） | Prometheus `/metrics`；配置 OTLP 地址后同时导出 | 长期存储与看板由部署环境决定 |
 | Health | ASP.NET Core Health Checks | 每个服务独立暴露 `/health`、`/ready`、`/health/report`，兼容 `/health/live`、`/health/ready` | 存活不依赖外部服务；就绪反映本服务依赖，报告提供安全汇总 |
 
 应用与基础设施的边界如下：

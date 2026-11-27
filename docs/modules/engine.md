@@ -182,7 +182,7 @@ HeartbeatService (BackgroundService)
 停机: ApplicationStopping → ShutdownService.ShutdownAsync → DeregisterAsync
 ```
 
-- 心跳周期性更新注册信息并刷新 TTL，综合内存、GC、线程池压力计算负载值，随心跳发布支持的 intent。
+- 心跳周期性更新注册信息并刷新 TTL，随心跳发布支持的 intent。负载值（0–100）取两者中较大的一个：聊天运行时的名额饱和度（在跑加排队的轮次占名额容量的比例，经 `IRuntimeLoadSource` 取自 Runtime 的并发闸门），以及宿主压力（托管堆占用、当前 GC 暂停时间占比、线程池占用）。饱和度随心跳刷新，最多滞后一个心跳周期。同一组数值以 `openagent_engine_runtime_active_turns`、`_queued_turns`、`_kept_processes` 暴露在 `/metrics`；启用 OpenTelemetry 时同时导出 .NET 运行时（`dotnet_*`）、Npgsql（`db_client_*`）与 ACP RPC（`acp_rpc_*`）指标。
 - Redis 不可用时降级为孤岛模式运行，不阻塞 Engine 启动。
 - 注销失败依赖 TTL 自然过期；进程异常退出会暂时留下索引成员，Router 发现注册值已过期后会清理该成员。
 - 心跳单线程顺序执行，`IsRegistered` 非 volatile；注册、心跳、索引自修复与注销均有单元测试覆盖（`OpenAgent.Engine.Tests/Registry/`）。Router 侧消费方式见 [Router 文档](router.md)。

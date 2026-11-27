@@ -77,8 +77,7 @@ private static async Task<Results<Ok<ConversationRecord>, NotFound, ForbidHttpRe
 - 事件名：`conversation` / `reasoning` / `tool_call` / `tool_result` / `content` / `done`；心跳为注释行。
 - 错误：`event: error`，data 为 camelCase `{type,title,detail,traceId}`；随后
   `event: done`，data 为 `{"done":true,"status":"error"}`。
-- Router 转发失败时的降级同样遵循上述 SSE 形态；NDJSON 流保持
-  `{"type":"error","error":{title,detail,traceId}}` 结构。
+- Router 转发失败且响应尚未开始时同样写上述 SSE 失败帧：Engine 的聊天流式端点只有 SSE（`/chat/stream`），没有 NDJSON 端点。Engine 不可达时，Router 在会话归属解析阶段就返回 HTTP 503 的 ProblemDetails，不会开始流。
 
 ## 路由与命名
 

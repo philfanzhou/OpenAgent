@@ -83,6 +83,8 @@ internal static class ServiceCollectionExtensions
 
         services.AddSingleton<IEngineRegistry, RedisRegistry>();
         services.AddHostedService<HeartbeatService>();
+        // 仪表要随宿主启动就存在，不能等第一次被解析：直接作为宿主服务注册。
+        services.AddHostedService<RuntimeLoadMetrics>();
 
         services.AddSingleton<ShutdownService>();
         services.AddHostedService(sp => sp.GetRequiredService<ShutdownService>());

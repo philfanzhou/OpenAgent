@@ -17,9 +17,9 @@ using OpenAgent.Runtime.Acp.Rpc;
 namespace OpenAgent.Runtime.OpenCode;
 
 /// <summary>工作区与已提交的 harness 会话随进程复用；ACP 连接句柄和工具授权按轮次更新。</summary>
-internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCodeProcessKeeper keeper, RuntimeToolBridge bridge, ILogger<OpenCodeRuntime> logger) : IAgentRuntimeDriver, IDisposable
+internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCodeProcessKeeper keeper, OpenCodeTurnGate gate, RuntimeToolBridge bridge, ILogger<OpenCodeRuntime> logger) : IAgentRuntimeDriver
 {
-    private readonly SemaphoreSlim _turns = new(options.Value.MaxConcurrentTurns);
+    private readonly OpenCodeTurnGate _gate = gate;
     private readonly object _launchGate = new();
     private OpenCodeLaunchSpec? _launch;
 
@@ -63,7 +63,7 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
         {
             throw new AgentException(AgentErrorCode.InvalidRequest, "The selected runtime provider is not enabled.");
         }
-        await _turns.WaitAsync(cancellationToken).ConfigureAwait(false);
+        OpenCodeTurnGate.Slot slot = await _gate.EnterAsync(cancellationToken).ConfigureAwait(false);
         using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(TimeSpan.FromSeconds(Math.Min(options.Value.TurnTimeoutSeconds,
             invocation.Profile.Runtime?.TurnTimeoutSeconds ?? options.Value.TurnTimeoutSeconds)));
@@ -134,11 +134,9 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
         }
         finally
         {
-            _turns.Release();
+            slot.Dispose();
         }
     }
-
-    public void Dispose() => _turns.Dispose();
 
     private async IAsyncEnumerable<AgentStreamEvent> RunCoreAsync(
         RuntimeInvocation invocation,
