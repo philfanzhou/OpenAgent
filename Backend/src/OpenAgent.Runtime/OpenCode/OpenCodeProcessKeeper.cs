@@ -1,9 +1,11 @@
+using System.Net.Sockets;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OpenAgent.Contracts.Runtime;
 using OpenAgent.Runtime.Acp.Client;
 using OpenAgent.Runtime.Acp.Processes;
 using OpenAgent.Runtime.Acp.Protocol;
+using OpenAgent.Runtime.Acp.Rpc;
 
 namespace OpenAgent.Runtime.OpenCode;
 
@@ -11,6 +13,7 @@ namespace OpenAgent.Runtime.OpenCode;
 internal sealed class OpenCodeAgentProcess(
     AcpProcess process, AcpClient client, InitializeResponse initialized, string key, string home)
 {
+    internal OpenCodeCompactionEvents.Endpoint? CompactionEndpoint { get; init; }
     internal AcpProcess Process { get; } = process;
     internal AcpClient Client { get; } = client;
     internal InitializeResponse Initialized { get; } = initialized;
@@ -24,6 +27,7 @@ internal sealed class OpenCodeAgentProcess(
     internal string? HistoryCheckpoint;
     internal string? ToolSchema;
     internal bool Persisted;
+    internal bool CompactionAuditPending;
     internal HashSet<string> ReportedCompactions { get; set; } = [];
     internal bool IsAlive => !Process.Exit.IsCompleted && !Client.Connection.Completion.IsCompleted;
 }
@@ -71,8 +75,6 @@ internal sealed class OpenCodeProcessKeeper : IAsyncDisposable
         }
 
         string home = Path.Combine(parent, restored?.Home ?? "p-" + Guid.NewGuid().ToString("N"));
-        AcpProcess? process = null;
-        AcpClient? client = null;
         try
         {
             string workspace = Path.Combine(home, "workspace");
@@ -80,22 +82,60 @@ internal sealed class OpenCodeProcessKeeper : IAsyncDisposable
             OpenCodeWorkspace.CreatePrivateDirectory(workspace);
             // 工作区持有独立副本：平台的 Skill 缓存租约在轮次结束后即可释放。
             OpenCodeSkills.Materialize(workspace, invocation.Skills, ct);
-            process = AcpProcess.Start(OpenCodeProcess.Create(launch, invocation, _options.AllowedNativeTools, home));
+            AcpProcessOptions start = OpenCodeProcess.Create(launch, invocation, _options.AllowedNativeTools, home);
+            OpenCodeAgentProcess agent = await StartAsync(start, key, home, invocation.Turn.TraceId, ct).ConfigureAwait(false);
+            agent.SessionId = restored?.SessionId;
+            agent.HistoryCheckpoint = restored?.Checkpoint;
+            agent.ToolSchema = restored?.ToolSchema;
+            agent.CompactionAuditPending = restored?.CompactionAuditPending ?? false;
+            agent.ReportedCompactions = (restored?.ReportedCompactions ?? []).ToHashSet(StringComparer.Ordinal);
+            return agent;
+        }
+        catch
+        {
+            // 恢复路径的 home 承载已提交的原生会话状态：启动失败时保留，防止误删检查点。
+            await DestroyAsync(null, null, home, restored is not null).ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    private async Task<OpenCodeAgentProcess> StartAsync(
+        AcpProcessOptions start, string key, string home, string traceId, CancellationToken ct)
+    {
+        if (_options.UseCompactionEvents && start.Arguments is ["acp"])
+        {
+            try
+            {
+                OpenCodeCompactionEvents.Endpoint endpoint = OpenCodeCompactionEvents.Configure(start, out AcpProcessOptions configured);
+                return await StartProcessAsync(configured, key, home, endpoint, ct).ConfigureAwait(false);
+            }
+            catch (Exception error) when (!ct.IsCancellationRequested && error is SocketException or IOException
+                or AcpRpcException or TimeoutException or ObjectDisposedException)
+            {
+                OpenCodeLog.CompactionExportFallback(_logger, traceId, error.GetType().Name);
+            }
+        }
+        return await StartProcessAsync(start, key, home, null, ct).ConfigureAwait(false);
+    }
+
+    private async Task<OpenCodeAgentProcess> StartProcessAsync(AcpProcessOptions start, string key, string home,
+        OpenCodeCompactionEvents.Endpoint? endpoint, CancellationToken ct)
+    {
+        AcpProcess? process = null;
+        AcpClient? client = null;
+        try
+        {
+            process = AcpProcess.Start(start);
             client = new AcpClient(process.Transport, options: new()
             {
                 RequestTimeout = TimeSpan.FromSeconds(_options.RequestTimeoutSeconds)
             });
             InitializeResponse initialized = await client.InitializeAsync(new("OpenAgent", "1"), ct).ConfigureAwait(false);
-            return new OpenCodeAgentProcess(process, client, initialized, key, home)
-            {
-                SessionId = restored?.SessionId, HistoryCheckpoint = restored?.Checkpoint, ToolSchema = restored?.ToolSchema,
-                ReportedCompactions = (restored?.ReportedCompactions ?? []).ToHashSet(StringComparer.Ordinal)
-            };
+            return new OpenCodeAgentProcess(process, client, initialized, key, home) { CompactionEndpoint = endpoint };
         }
         catch
         {
-            // 恢复路径的 home 承载已提交的原生会话状态：启动失败时保留，防止误删检查点。
-            await DestroyAsync(client, process, home, restored is not null).ConfigureAwait(false);
+            await DestroyAsync(client, process, home, preserveState: true).ConfigureAwait(false);
             throw;
         }
     }

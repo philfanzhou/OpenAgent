@@ -62,7 +62,7 @@ internal static class OpenCodeCompactionExport
         }
     }
 
-    private const long MaxExportBytes = 32 * 1024 * 1024;
+    internal const long MaxExportBytes = 32 * 1024 * 1024;
 
     private static ProcessStartInfo CreateExportStartInfo(
         OpenCodeLaunchSpec launch, OpenCodeLaunchSpec command, string home,
@@ -102,15 +102,24 @@ internal static class OpenCodeCompactionExport
     {
         if (export.GetProperty("info").GetProperty("id").GetString() != sessionId)
             throw new InvalidOperationException("Native export session identity mismatch.");
+        return ReadMessages(export.GetProperty("messages"), sessionId, reported);
+    }
+
+    internal static bool IsSummary(JsonElement info) =>
+        info.GetProperty("role").GetString() == "assistant"
+        && info.TryGetProperty("summary", out JsonElement summary) && summary.ValueKind == JsonValueKind.True;
+
+    internal static IReadOnlyList<ContextSummary> ReadMessages(JsonElement messages, string sessionId, HashSet<string> reported)
+    {
         AcpCompactionMapper mapper = new(sessionId);
         List<ContextSummary> result = [];
-        foreach (JsonElement message in export.GetProperty("messages").EnumerateArray())
+        HashSet<string> completed = new(StringComparer.Ordinal);
+        foreach (JsonElement message in messages.EnumerateArray())
         {
             JsonElement info = message.GetProperty("info");
-            if (info.GetProperty("role").GetString() != "assistant"
-                || !info.TryGetProperty("summary", out JsonElement summary) || summary.ValueKind != JsonValueKind.True) continue;
+            if (!IsSummary(info)) continue;
             string id = info.GetProperty("id").GetString()!;
-            if (reported.Contains(id)) continue;
+            if (reported.Contains(id) || completed.Contains(id)) continue;
             string text = string.Concat(message.GetProperty("parts").EnumerateArray()
                 .Where(part => part.GetProperty("type").GetString() == "text")
                 .Select(part => part.GetProperty("text").GetString()));
@@ -123,8 +132,9 @@ internal static class OpenCodeCompactionExport
                 Error = failed ? new Optional<string>("Native compaction failed") : Optional<string>.Null
             });
             result.Add(audit);
-            if (status != "in_progress") reported.Add(id);
+            if (status != "in_progress") completed.Add(id);
         }
+        reported.UnionWith(completed);
         return result;
     }
 }
