@@ -665,9 +665,20 @@ def collect_logs(out, start, end):
 
 
 def oom_kill_count():
-    """内核日志里被 OOM 杀掉的进程数（累计值，运行前后各取一次求差）。"""
-    result = run(["dmesg"], check=False)
-    return sum(1 for line in result.stdout.splitlines() if "Killed process" in line)
+    """引擎容器内存控制组因 OOM 杀掉的进程累计数（cgroup v2，只增不减）；读不到时返回 -1 表示未知。
+
+    不数内核日志：那是环形缓冲，旧条目被挤出去会让「后 − 前」出现负数。
+    """
+    result = run(["docker", "exec", container("engine"), "cat", "/sys/fs/cgroup/memory.events"], check=False)
+    for line in result.stdout.splitlines():
+        if line.startswith("oom_kill "):
+            return int(line.split()[1])
+    return -1
+
+
+def oom_kills_between(before, after):
+    """一次运行期间的 OOM 杀进程数；任一端读不到时为 -1（未知）。"""
+    return after - before if before >= 0 and after >= 0 else -1
 
 
 def cmd_run(args):
@@ -733,7 +744,7 @@ def cmd_run(args):
         "modelStubConfig": json.loads(http("GET", STUB_URL + "/stats", auth=False)[1])["config"],
         "modelStubOverrides": stub_overrides,
         "sampleIntervalSec": args.interval,
-        "oomKillsDuringRun": oom_after - oom_before,
+        "oomKillsDuringRun": oom_kills_between(oom_before, oom_after),
         "engineOomKilled": run(["docker", "inspect", "--format", "{{.State.OOMKilled}}", container("engine")],
                                check=False).stdout.strip() == "true",
         "engineLimits": {"memoryBytes": int(memory_limit[0]), "memorySwapBytes": int(memory_limit[1]),
@@ -749,7 +760,7 @@ def cmd_run(args):
                             if item.startswith(("RouterSettings__", "Serilog__", "ASPNETCORE_ENVIRONMENT"))),
     }
     (out / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
-    print(f"==> generator exit {process.returncode}; OOM kills during run: {oom_after - oom_before}; results in {out}")
+    print(f"==> generator exit {process.returncode}; OOM kills during run: {oom_kills_between(oom_before, oom_after)}; results in {out}")
     print_report(out)
 
 

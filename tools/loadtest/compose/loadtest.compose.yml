@@ -33,6 +33,7 @@ x-engine-environment: &engine-environment
   OpenCode__KeepAliveSeconds: "${LT_KEEPALIVE:-300}"
   OpenCode__MaxKeptProcesses: "${LT_MAX_KEPT:-16}"
   OpenCode__MaxSessionsPerProcess: "${LT_MAX_SESSIONS:-64}"
+  OpenCode__SessionStateRetentionDays: "${LT_RETENTION_DAYS:-14}"
   OpenCode__RequestTimeoutSeconds: "${LT_REQ_TIMEOUT:-30}"
   OpenCode__TurnTimeoutSeconds: "${LT_TURN_TIMEOUT:-1800}"
   OpenCode__LogUsageUpdates: "${LT_LOG_USAGE:-false}"
