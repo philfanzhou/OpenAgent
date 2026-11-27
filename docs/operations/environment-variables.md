@@ -152,6 +152,7 @@ Redis 行为细节见 [Redis 集成](../integrations/redis-engine.md)。
 | `OpenCode__Executable` | `opencode`（容器镜像内嵌绝对路径） | 可执行名或绝对路径。找不到时**启动正常、首次聊天抛错**（DependencyUnavailable）；显式路径不存在为配置错误 |
 | `OpenCode__Arguments__0..n` | `["acp"]` | 子进程参数 |
 | `OpenCode__WorkspaceRoot` | `%TEMP%\openagent-acp` | ACP 会话工作区根，必须绝对路径，否则启动校验失败 |
+| `OpenCode__SessionStateRoot` | `%LOCALAPPDATA%\openagent\sessions`（镜像 `/home/app/openagent-sessions`） | 已提交原生会话状态根目录，必须绝对路径，否则启动校验失败；应挂持久卷 |
 | `OpenCode__RequestTimeoutSeconds` | `30` | 单 JSON-RPC 请求超时（1..3600） |
 | `OpenCode__TurnTimeoutSeconds` | `1800` | 单轮对话超时（1..86400） |
 | `OpenCode__MaxConcurrentTurns` | `8`（1..128） | 并发轮上限 |
@@ -160,6 +161,7 @@ Redis 行为细节见 [Redis 集成](../integrations/redis-engine.md)。
 | `OpenCode__KeepAliveSeconds` | `0`（关闭） | 空闲进程保活复用窗口 |
 | `OpenCode__MaxKeptProcesses` | `8` | 保活进程池上限 |
 | `OpenCode__MaxSessionsPerProcess` | `64` | 单进程会话数上限 |
+| `OpenCode__SessionStateRetentionDays` | `14`（0..3650） | 已提交原生会话状态的保留天数，自最后一次成功提交起算，超期且无进程在用即回收；0 表示不按时间回收，大于 0 时必须长于 `KeepAliveSeconds` |
 | `OpenCode__AllowedNativeTools__0..n` | 空（Development json：`read,edit,write,bash`） | 放行给模型的 OpenCode 原生工具名。平台已无独立代码执行沙箱：需要模型执行代码时须在此放行（如 `bash`），放行即把对应主机读写/执行面交给 harness 进程 |
 
 宿主会向 OpenCode 子进程白名单透传 `NODE_TLS_REJECT_UNAUTHORIZED`、`NODE_EXTRA_CA_CERTS`（自签模型端点场景）及 `PATH`/`PATHEXT`/`COMSPEC`/`SystemRoot`/`WINDIR`。`OPENAGENT_MODEL_API_KEY`、`OPENCODE_CONFIG_CONTENT` 等由代码注入子进程，不是用户配置项。详见 [OpenCode 运行时](../integrations/opencode-runtime.md)。

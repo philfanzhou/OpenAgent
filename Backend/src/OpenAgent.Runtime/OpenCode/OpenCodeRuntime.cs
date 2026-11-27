@@ -155,7 +155,7 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
         string parent = Path.Combine(root, owner);
         OpenCodeWorkspace.CreatePrivateDirectory(settings.WorkspaceRoot);
         OpenCodeWorkspace.CreatePrivateDirectory(root);
-        OpenCodeWorkspace.CreatePrivateDirectory(parent);
+        using FileStream ownerLease = await OpenCodeOwnerLease.AcquireAsync(parent, cancellationToken).ConfigureAwait(false);
         await using OpenCodeSessionState? state = durable ? new(parent) : null;
         // 复用键 = 会话归属 + 启动身份：追问轮次命中保活进程，冷启动只在空闲窗口外支付。
         string leaseKey = owner + "/" + OpenCodeProcess.Identity(Launch, invocation, settings.AllowedNativeTools)
@@ -545,6 +545,15 @@ internal static partial class OpenCodeLog
     [LoggerMessage(EventId = 4503, Level = LogLevel.Warning,
         Message = "OpenCode native summary read failed, falling back to export: error={ErrorType}")]
     internal static partial void NativeSummaryReadFailed(ILogger logger, string errorType);
+
+    /// <summary>每轮回收一行（不含对话内容）：确认回收器在运行，并看出会话状态目录的积压规模。</summary>
+    [LoggerMessage(EventId = 4504, Level = LogLevel.Information,
+        Message = "OpenCode session state sweep: scanned={Scanned} removed={Removed} elapsed={ElapsedMs}ms")]
+    internal static partial void SessionStateSweepCompleted(ILogger logger, int scanned, int removed, long elapsedMs);
+
+    [LoggerMessage(EventId = 4505, Level = LogLevel.Warning,
+        Message = "OpenCode session state sweep failed: error={ErrorType}")]
+    internal static partial void SessionStateSweepFailed(ILogger logger, string errorType);
 
     // 由 OpenCode:LogUsageUpdates 显式开启；只记录类型化的 usage_update 值，不落对话报文。
     [LoggerMessage(EventId = 4500, Level = LogLevel.Information, Message = "OpenCode usage update: used={Used} size={Size}")]

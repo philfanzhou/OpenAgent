@@ -34,7 +34,7 @@ ACP `compaction_update` 和 `compaction_summary_chunk` 经 `AcpCompactionMapper`
 
 原生压缩审计的 `IsRuntimeEvent=true`，携带 `RuntimeSessionId`、`RuntimeCompactionId` 和轮次 `TraceId`；`SourceEndSequence` 仅是平台接收到事件时的时间线锚点，不代表原生上下文的覆盖边界。`CompactedMessages` 保持空，窗口/计费用量未知时前端不显示零值。可展示摘要不替代模型上下文；已有完整会话消息及旧有效压缩投影仍可读取。
 
-原生会话状态通过 `OpenCode:SessionStateRoot` 保存（镜像为 `/home/app/openagent-sessions`，Compose 挂载 `engine-sessions`）。平台消息与审计提交成功后，才以临时文件 + 原子替换写入原生 session ID、归属/配置身份、工具 schema、历史检查点及已报告压缩 ID；下轮开始前使旧检查点失效，避免崩溃/失败轮次恢复到未提交状态。目录为服务账户私有，文件租约防止两个进程同时修改同一原生状态。进程空闲回收、池淘汰与 Engine 正常关闭只结束进程，保留已提交的原生数据库和工作区。
+原生会话状态通过 `OpenCode:SessionStateRoot` 保存（镜像为 `/home/app/openagent-sessions`，Compose 挂载 `engine-sessions`）。平台消息与审计提交成功后，才以临时文件 + 原子替换写入原生 session ID、归属/配置身份、工具 schema、历史检查点及已报告压缩 ID；下轮开始前使旧检查点失效，避免崩溃/失败轮次恢复到未提交状态。目录为服务账户私有，文件租约防止两个进程同时修改同一原生状态。进程空闲回收、池淘汰与 Engine 正常关闭只结束进程，保留已提交的原生数据库和工作区，进程运行期目录随进程回收。已提交状态自最后一次成功提交起保留 `OpenCode:SessionStateRetentionDays`（默认 14 天），超期且没有进程在用即被回收；此后的追问回放平台历史。
 
 下次请求优先恢复同一身份且检查点匹配的原生 session，只发送本轮增量；原生会话保留其真实压缩上下文。状态丢失、配置/工具 schema/历史改变、对端不支持 resume/close 或 resume 被拒绝时，创建新 session 并回放平台历史，日志记录选择或降级原因。不把展示摘要拼成不完整的替代历史。默认状态为本机文件，不提供跨实例数据库复制；多实例需要会话黏性或正确挂载受控共享存储，缺少原生状态的实例将降级回放。
 
