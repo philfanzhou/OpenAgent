@@ -7,8 +7,7 @@ namespace OpenAgent.Runtime.OpenCode;
 
 /// <summary>
 /// 回收不再使用的原生会话状态：异常退出留下的残留、已失效（无有效检查点）的归属目录，
-/// 以及超过保留期的已提交状态。本实例内按进程占用判断；共享存储下另一实例正在执行的轮次持有
-/// <c>session.lock</c> 独占租约，探测打不开即跳过。
+/// 以及超过保留期的已提交状态。运行中和保活的进程持有归属目录租约，跨实例回收共用根目录下的锁。
 /// </summary>
 internal sealed class OpenCodeSessionStateSweeper : IHostedService
 {
@@ -17,7 +16,6 @@ internal sealed class OpenCodeSessionStateSweeper : IHostedService
     /// <summary>无检查点目录的静默期：刚建立或刚失效的归属目录可能正要开始下一轮。</summary>
     private static readonly TimeSpan Quiet = TimeSpan.FromMinutes(5);
 
-    private readonly OpenCodeProcessKeeper _keeper;
     private readonly OpenCodeOptions _options;
     private readonly ILogger<OpenCodeSessionStateSweeper> _logger;
     private CancellationTokenSource? _stopping;
@@ -26,9 +24,8 @@ internal sealed class OpenCodeSessionStateSweeper : IHostedService
     /// <summary>当前时间；测试拨快时钟来推进保留期与静默期，不必改文件系统时间。</summary>
     internal Func<DateTime> UtcNow { get; init; } = static () => DateTime.UtcNow;
 
-    public OpenCodeSessionStateSweeper(OpenCodeProcessKeeper keeper, IOptions<OpenCodeOptions> options, ILogger<OpenCodeSessionStateSweeper> logger)
+    public OpenCodeSessionStateSweeper(IOptions<OpenCodeOptions> options, ILogger<OpenCodeSessionStateSweeper> logger)
     {
-        _keeper = keeper;
         _options = options.Value;
         _logger = logger;
     }
@@ -105,49 +102,79 @@ internal sealed class OpenCodeSessionStateSweeper : IHostedService
     private async Task<(int Scanned, int Removed)> SweepRootAsync(string root, TimeSpan? retention, TimeSpan quiet, string otherRoot, CancellationToken ct)
     {
         if (!Directory.Exists(root)) return (0, 0);
+        OpenCodeWorkspace.RejectLink(new DirectoryInfo(root));
         int scanned = 0, removed = 0;
         DateTime now = UtcNow();
         foreach (string owner in Directory.EnumerateDirectories(root))
         {
             ct.ThrowIfCancellationRequested();
-            if (IsWithin(owner, otherRoot)) continue;
+            string name = Path.GetFileName(owner);
+            if (name.Length != 64 || !name.All(char.IsAsciiHexDigitLower) || IsWithin(owner, otherRoot)) continue;
             scanned++;
-            // 已提交的状态只在超过保留期后回收；被回收的会话下一轮回放平台历史。
-            string manifest = Path.Combine(owner, "committed-session.json");
-            bool committed = File.Exists(manifest);
-            if (committed && (retention is null || retention == TimeSpan.Zero
-                || now - File.GetLastWriteTimeUtc(manifest) < retention)) continue;
-            if (!committed && now - LastWrite(owner) < quiet) continue;
-            if (IsInUse(owner)) continue;
-            for (int attempt = 0; ; attempt++)
+            try
             {
-                // 二次确认：从判定到删除之间可能刚好有轮次开始使用该目录。
-                if (IsInUse(owner)) break;
-                Exception? failure = OpenCodeWorkspace.TryDelete(owner);
-                if (failure is null)
+                // Hold the stable gate from the final inspection through all deletion attempts.
+                using FileStream? gate = OpenCodeOwnerLease.TryOpenGate(owner, exclusive: true);
+                if (gate is null || !Directory.Exists(owner) || !HasOwnerLayout(owner)) continue;
+                if (IsLeased(owner, OpenCodeOwnerLease.FileName) || IsLeased(owner, "session.lock")) continue;
+
+                string manifest = Path.Combine(owner, "committed-session.json");
+                if (File.Exists(manifest))
                 {
-                    removed++;
-                    break;
+                    if (retention is null || retention == TimeSpan.Zero || now - File.GetLastWriteTimeUtc(manifest) < retention) continue;
                 }
-                if (attempt == 2)
+                else if (now - LastWrite(owner) < quiet) continue;
+
+                for (int attempt = 0; ; attempt++)
                 {
-                    OpenCodeLog.CleanupFailure(_logger, "session-state", failure.GetType().Name);
-                    break;
+                    Exception? failure = OpenCodeWorkspace.TryDelete(owner);
+                    if (failure is null)
+                    {
+                        removed++;
+                        break;
+                    }
+                    if (attempt == 2) throw failure;
+                    await Task.Delay(100, ct).ConfigureAwait(false);
                 }
-                await Task.Delay(100, ct).ConfigureAwait(false);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                OpenCodeLog.CleanupFailure(_logger, "session-state", error.GetType().Name);
             }
         }
         return (scanned, removed);
     }
 
-    private bool IsInUse(string owner)
+    private static bool HasOwnerLayout(string owner)
     {
-        if (_keeper.IsActive(Path.GetFullPath(owner))) return true;
-        string lease = Path.Combine(owner, "session.lock");
-        if (!File.Exists(lease)) return false;
+        DirectoryInfo directory = new(owner);
+        if ((directory.Attributes & FileAttributes.ReparsePoint) != 0) return false;
+        foreach (FileSystemInfo entry in directory.EnumerateFileSystemInfos())
+        {
+            if ((entry.Attributes & FileAttributes.ReparsePoint) != 0) return false;
+            string name = entry.Name;
+            if (entry is DirectoryInfo)
+            {
+                if (name.Length != 34 || !name.StartsWith("p-", StringComparison.Ordinal)
+                    || !Guid.TryParseExact(name.AsSpan(2), "N", out _)) return false;
+            }
+            else if (name is not ("session.lock" or "committed-session.json" or OpenCodeOwnerLease.FileName)
+                && !(name.StartsWith("checkpoint-", StringComparison.Ordinal) && name.EndsWith(".tmp", StringComparison.Ordinal)
+                    && name.Length == 47 && Guid.TryParseExact(name.AsSpan(11, 32), "N", out _)))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static bool IsLeased(string owner, string name)
+    {
+        string path = Path.Combine(owner, name);
+        if (!File.Exists(path)) return false;
         try
         {
-            using FileStream probe = new(lease, new FileStreamOptions { Mode = FileMode.Open, Access = FileAccess.Read, Share = FileShare.None });
+            using FileStream probe = new(path, FileMode.Open, FileAccess.Read, FileShare.None);
             return false;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
@@ -172,6 +199,7 @@ internal sealed class OpenCodeSessionStateSweeper : IHostedService
     private static bool IsWithin(string ancestor, string path)
     {
         string relative = Path.GetRelativePath(ancestor, path);
-        return !relative.StartsWith("..", StringComparison.Ordinal) && !Path.IsPathRooted(relative);
+        return relative != ".." && !relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal)
+            && !Path.IsPathRooted(relative);
     }
 }

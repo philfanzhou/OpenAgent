@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -16,10 +17,6 @@ public sealed class OpenCodeSessionStateSweeperTests : IDisposable
     private readonly string _temporary;
     // 回收器读到的时间比真实时间快这么多，磁盘上的目录随之变旧。
     private TimeSpan _advanced;
-    // 用例里的归属目录都没有真实进程；保活池保持为空，回收器只依赖租约探测。
-    private readonly OpenCodeProcessKeeper _keeper = new(
-        Options.Create(new OpenCodeOptions { KeepAliveSeconds = 0 }), NullLogger<OpenCodeProcessKeeper>.Instance);
-
     public OpenCodeSessionStateSweeperTests()
     {
         OpenCodeWorkspace.CreatePrivateDirectory(_root);
@@ -116,6 +113,60 @@ public sealed class OpenCodeSessionStateSweeperTests : IDisposable
     }
 
     [Fact]
+    public async Task SweepOnceAsync_OldForeignDirectories_LeavesTheirContentsInPlace()
+    {
+        string backups = Path.Combine(_temporary, "backups");
+        string matchingName = Path.Combine(_temporary, NewOwnerName());
+        foreach (string directory in new[] { backups, matchingName })
+        {
+            OpenCodeWorkspace.CreatePrivateDirectory(directory);
+            await File.WriteAllTextAsync(Path.Combine(directory, "keep.txt"), "backup");
+        }
+        Advance(TimeSpan.FromHours(2));
+
+        Assert.Equal(0, await Sweeper(retentionDays: 14).SweepOnceAsync(CancellationToken.None));
+
+        Assert.Equal("backup", await File.ReadAllTextAsync(Path.Combine(backups, "keep.txt")));
+        Assert.Equal("backup", await File.ReadAllTextAsync(Path.Combine(matchingName, "keep.txt")));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SweepOnceAsync_PinnedOwner_SkipsBothKindsOfStorage(bool durable)
+    {
+        string owner = CreateOwner(durable ? _durable : _temporary, committed: durable);
+        Advance(TimeSpan.FromDays(15));
+        using (await OpenCodeOwnerLease.AcquireAsync(owner, CancellationToken.None))
+        {
+            Assert.Equal(0, await Sweeper(retentionDays: 14).SweepOnceAsync(CancellationToken.None));
+            Assert.True(Directory.Exists(owner));
+        }
+
+        Assert.Equal(1, await Sweeper(retentionDays: 14).SweepOnceAsync(CancellationToken.None));
+        Assert.False(Directory.Exists(owner));
+    }
+
+    [Fact]
+    public async Task AcquireAsync_WhileSweepHoldsGate_ReopensOnlyAfterRemoval()
+    {
+        string owner = CreateOwner(_durable, committed: true);
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(5));
+        Task<FileStream> acquisition;
+        using (FileStream gate = Assert.IsType<FileStream>(OpenCodeOwnerLease.TryOpenGate(owner, exclusive: true)))
+        {
+            acquisition = OpenCodeOwnerLease.AcquireAsync(owner, timeout.Token);
+            Assert.False(acquisition.IsCompleted);
+            Directory.Delete(owner, recursive: true);
+        }
+
+        using FileStream lease = await acquisition;
+        Assert.True(Directory.Exists(owner));
+        Assert.True(File.Exists(Path.Combine(owner, OpenCodeOwnerLease.FileName)));
+        Assert.False(File.Exists(Path.Combine(owner, Manifest)));
+    }
+
+    [Fact]
     public async Task SweepOnceAsync_RootsDoNotExistYet_ReturnsZero()
     {
         Assert.Equal(0, await Sweeper(retentionDays: 14).SweepOnceAsync(CancellationToken.None));
@@ -125,7 +176,7 @@ public sealed class OpenCodeSessionStateSweeperTests : IDisposable
     public async Task SweepOnceAsync_RootNestedInsideTheOther_IsNotMistakenForALeftover()
     {
         // 夹具等组合会把持久根放在工作区根之下；内层根目录本身不是归属目录，再久也不能当残留删掉。
-        string nested = Path.Combine(_temporary, "sessions");
+        string nested = Path.Combine(_temporary, NewOwnerName(), "p-" + Guid.NewGuid().ToString("N"));
         OpenCodeWorkspace.CreatePrivateDirectory(nested);
         Advance(TimeSpan.FromHours(2));
 
@@ -159,16 +210,20 @@ public sealed class OpenCodeSessionStateSweeperTests : IDisposable
 
     private void Advance(TimeSpan by) => _advanced += by;
 
+    private static string NewOwnerName() => Convert.ToHexStringLower(SHA256.HashData(Guid.NewGuid().ToByteArray()));
+
     /// <summary>建一个归属目录：含租约文件和一个带原生数据库占位的主目录，可带检查点。</summary>
     private string CreateOwner(string root, bool committed = false)
     {
-        string owner = Path.Combine(root, Guid.NewGuid().ToString("N"));
+        string owner = Path.Combine(root, NewOwnerName());
+        OpenCodeWorkspace.CreatePrivateDirectory(root);
+        OpenCodeWorkspace.CreatePrivateDirectory(owner);
         string home = Path.Combine(owner, "p-" + Guid.NewGuid().ToString("N"));
         string database = Path.Combine(home, ".state", "data", "opencode", "opencode.db");
         OpenCodeWorkspace.CreatePrivateDirectory(Path.GetDirectoryName(database)!);
         OpenCodeWorkspace.CreatePrivateDirectory(Path.Combine(home, "workspace"));
         File.WriteAllText(database, "database");
-        File.WriteAllBytes(Path.Combine(owner, "session.lock"), []);
+        if (root != _temporary) File.WriteAllBytes(Path.Combine(owner, "session.lock"), []);
         if (committed) File.WriteAllText(Path.Combine(owner, Manifest), "{}");
         return owner;
     }
@@ -183,7 +238,7 @@ public sealed class OpenCodeSessionStateSweeperTests : IDisposable
             KeepAliveSeconds = 0,
             TurnTimeoutSeconds = 1800
         };
-        return new OpenCodeSessionStateSweeper(_keeper, Options.Create(options), NullLogger<OpenCodeSessionStateSweeper>.Instance)
+        return new OpenCodeSessionStateSweeper(Options.Create(options), NullLogger<OpenCodeSessionStateSweeper>.Instance)
         {
             UtcNow = () => DateTime.UtcNow + _advanced
         };
@@ -191,7 +246,6 @@ public sealed class OpenCodeSessionStateSweeperTests : IDisposable
 
     public void Dispose()
     {
-        _keeper.DisposeAsync().AsTask().GetAwaiter().GetResult();
         if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true);
     }
 }

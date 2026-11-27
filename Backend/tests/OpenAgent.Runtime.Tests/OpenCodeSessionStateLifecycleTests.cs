@@ -117,7 +117,7 @@ public sealed class OpenCodeSessionStateLifecycleTests
                     HistoryCheckpoint = "initial", CommitAsync = _ => Task.FromResult<string?>("committed")
                 });
                 string manifest = Assert.Single(Directory.GetFiles(durable, Manifest, SearchOption.AllDirectories));
-                sweeper = new(runtime.Keeper, Options.Create(new OpenCodeOptions
+                sweeper = new(Options.Create(new OpenCodeOptions
                 {
                     SessionStateRoot = durable, WorkspaceRoot = runtime.Root, KeepAliveSeconds = 60
                 }), NullLogger<OpenCodeSessionStateSweeper>.Instance)

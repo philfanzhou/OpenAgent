@@ -24,6 +24,7 @@ internal sealed class OpenCodeAgentProcess(
     internal string? HistoryCheckpoint;
     internal string? ToolSchema;
     internal bool Persisted;
+    internal FileStream? OwnerLease { get; init; }
     internal HashSet<string> ReportedCompactions { get; set; } = [];
     internal bool IsAlive => !Process.Exit.IsCompleted && !Client.Connection.Completion.IsCompleted;
 }
@@ -34,7 +35,6 @@ internal sealed class OpenCodeProcessKeeper : IAsyncDisposable
     private readonly OpenCodeOptions _options;
     private readonly ILogger<OpenCodeProcessKeeper> _logger;
     private readonly Dictionary<string, OpenCodeAgentProcess> _kept = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, int> _active = new(StringComparer.Ordinal);
     private readonly CancellationTokenSource _stopping = new();
     private readonly Task _sweep;
     private readonly object _gate = new();
@@ -43,9 +43,6 @@ internal sealed class OpenCodeProcessKeeper : IAsyncDisposable
 
     internal int KeptCount { get { lock (_gate) { return _kept.Count; } } }
     internal int ReusedCount { get { lock (_gate) { return _reused; } } }
-
-    /// <summary>该归属目录（会话状态所在目录）是否仍有进程在使用：执行中的轮次或保活进程。路径按绝对路径比较。</summary>
-    internal bool IsActive(string owner) { lock (_gate) { return _active.ContainsKey(owner); } }
 
     public OpenCodeProcessKeeper(IOptions<OpenCodeOptions> options, ILogger<OpenCodeProcessKeeper> logger)
     {
@@ -68,12 +65,10 @@ internal sealed class OpenCodeProcessKeeper : IAsyncDisposable
                 _reused++;
                 return cached;
             }
-            // 本轮起独占该归属目录，直到对应进程销毁；状态回收器据此跳过仍在使用的目录。
-            _active[Path.GetFullPath(parent)] = _active.GetValueOrDefault(Path.GetFullPath(parent)) + 1;
         }
         if (cached is not null)
         {
-            await DestroyAsync(cached.Client, cached.Process, cached.Home, cached.Persisted).ConfigureAwait(false);
+            await DestroyAsync(cached).ConfigureAwait(false);
         }
 
         string home = Path.Combine(parent, restored?.Home ?? "p-" + Guid.NewGuid().ToString("N"));
@@ -101,6 +96,7 @@ internal sealed class OpenCodeProcessKeeper : IAsyncDisposable
             InitializeResponse initialized = await client.InitializeAsync(new("OpenAgent", "1"), ct).ConfigureAwait(false);
             return new OpenCodeAgentProcess(process, client, initialized, key, home)
             {
+                OwnerLease = OpenCodeOwnerLease.Pin(parent),
                 SessionId = restored?.SessionId, HistoryCheckpoint = restored?.Checkpoint, ToolSchema = restored?.ToolSchema,
                 ReportedCompactions = (restored?.ReportedCompactions ?? []).ToHashSet(StringComparer.Ordinal)
             };
@@ -134,7 +130,7 @@ internal sealed class OpenCodeProcessKeeper : IAsyncDisposable
         }
         if (retired is not null)
         {
-            await DestroyAsync(retired.Client, retired.Process, retired.Home, retired.Persisted).ConfigureAwait(false);
+            await DestroyAsync(retired).ConfigureAwait(false);
         }
     }
 
@@ -156,7 +152,7 @@ internal sealed class OpenCodeProcessKeeper : IAsyncDisposable
                 }
                 foreach (OpenCodeAgentProcess process in expired)
                 {
-                    await DestroyAsync(process.Client, process.Process, process.Home, process.Persisted).ConfigureAwait(false);
+                    await DestroyAsync(process).ConfigureAwait(false);
                 }
             }
         }
@@ -165,14 +161,14 @@ internal sealed class OpenCodeProcessKeeper : IAsyncDisposable
         }
     }
 
+    private async Task DestroyAsync(OpenCodeAgentProcess agent)
+    {
+        using FileStream? lease = agent.OwnerLease;
+        await DestroyAsync(agent.Client, agent.Process, agent.Home, agent.Persisted).ConfigureAwait(false);
+    }
+
     private async Task DestroyAsync(AcpClient? client, AcpProcess? process, string home, bool preserveState = false)
     {
-        lock (_gate)
-        {
-            string owner = Path.GetFullPath(Path.GetDirectoryName(home)!);
-            if (_active.GetValueOrDefault(owner) <= 1) _active.Remove(owner);
-            else _active[owner]--;
-        }
         foreach (IAsyncDisposable? resource in new IAsyncDisposable?[] { client, process })
         {
             if (resource is null)
@@ -223,7 +219,7 @@ internal sealed class OpenCodeProcessKeeper : IAsyncDisposable
         await _sweep.ConfigureAwait(false);
         foreach (OpenCodeAgentProcess process in remaining)
         {
-            await DestroyAsync(process.Client, process.Process, process.Home, process.Persisted).ConfigureAwait(false);
+            await DestroyAsync(process).ConfigureAwait(false);
         }
         _stopping.Dispose();
     }

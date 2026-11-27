@@ -155,7 +155,7 @@ internal sealed class OpenCodeRuntime(IOptions<OpenCodeOptions> options, OpenCod
         string parent = Path.Combine(root, owner);
         OpenCodeWorkspace.CreatePrivateDirectory(settings.WorkspaceRoot);
         OpenCodeWorkspace.CreatePrivateDirectory(root);
-        OpenCodeWorkspace.CreatePrivateDirectory(parent);
+        using FileStream ownerLease = await OpenCodeOwnerLease.AcquireAsync(parent, cancellationToken).ConfigureAwait(false);
         await using OpenCodeSessionState? state = durable ? new(parent) : null;
         // 复用键 = 会话归属 + 启动身份：追问轮次命中保活进程，冷启动只在空闲窗口外支付。
         string leaseKey = owner + "/" + OpenCodeProcess.Identity(Launch, invocation, settings.AllowedNativeTools)
